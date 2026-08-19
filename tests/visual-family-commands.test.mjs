@@ -23,6 +23,7 @@ import {
   visualImportPlan,
   visualUploadAccept,
 } from "../src/shell/media-editors/visual-formats.ts";
+import { uploadUnavailableReason } from "../src/shell/workbench-route-formats.ts";
 import { exportFrozenImageDocument } from "../src/shell/image-editor/image-document-contract.ts";
 import { visualCommandIdErrors } from "../src/shell/media-editors/visual-command-kit.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
@@ -733,11 +734,8 @@ test("图片本地导出：菜单选什么格式，画布就按什么 MIME 与�
 
 test("冷门格式有归一化去处，去不了的给人话", () => {
   const cases = [
-    ["image", "IMG_2031.HEIC", "convert", "jpg"],
-    ["image", "scan.heif", "convert", "jpg"],
     ["image", "老图.bmp", "convert", "png"],
     ["image", "扫描件.tiff", "convert", "png"],
-    ["image", "DSC001.cr2", "convert", "jpg"],
     ["image", "封面.png", "accept", ""],
     ["video-timeline", "手机录的.mov", "convert", "mp4"],
     ["video-timeline", "片子.mkv", "convert", "mp4"],
@@ -755,6 +753,63 @@ test("冷门格式有归一化去处，去不了的给人话", () => {
       assert.equal(plan.message.includes("adapter"), false);
       assert.equal(plan.message.includes("schema"), false);
     }
+  }
+});
+
+test("HEIC / HEIF 明说打不开，且与入口表逐字同一句话", () => {
+  // 依据：`01-arbitration.md` A-4（父 agent 复现：转换容器的 PIL 没注册 .heic/.heif）。
+  // 编辑器这边只要还写着 heic → jpg，用户就会白等一趟注定 415 的上传。
+  for (const [editorId, name] of [
+    ["image", "IMG_2031.HEIC"],
+    ["image", "scan.heif"],
+    ["video-timeline", "手机照片.heic"],
+  ]) {
+    const plan = visualImportPlan(editorId, name);
+    assert.equal(plan.action, "reject", `${name} 不许再被许诺能转`);
+    assert.equal(plan.target, undefined, `${name} 不许留下转换目标`);
+    assert.equal(plan.via, undefined, `${name} 不许还指着某个转换端点`);
+    assert.equal(
+      plan.message,
+      uploadUnavailableReason(plan.extension),
+      `${name} 的说法和入口表对不上（同一张照片两条入口两套说法）`,
+    );
+    assert.match(plan.message, /JPG/, `${name} 没告诉用户下一步怎么办`);
+  }
+});
+
+test("8 种相机原片同一把尺子：全部明说转不了并点名格式", () => {
+  // 依据：`verdicts/W10-delivery.md` 图片能力表——PIL 可打开扩展名清单里没有这 8 个。
+  for (const extension of [
+    "cr2",
+    "cr3",
+    "nef",
+    "arw",
+    "dng",
+    "raf",
+    "orf",
+    "rw2",
+  ]) {
+    const plan = visualImportPlan("image", `DSC001.${extension}`);
+    assert.equal(plan.action, "reject", `.${extension} 不许再被许诺能转`);
+    assert.equal(plan.target, undefined);
+    assert.match(
+      plan.message,
+      new RegExp(extension, "i"),
+      `.${extension} 的原因里没点名是哪个格式`,
+    );
+    assert.match(plan.message, /JPG/, `.${extension} 没给出下一步`);
+    assert.doesNotMatch(plan.message, /artifact|adapter|schema/i);
+  }
+});
+
+test("转不了的格式仍然挑得到：accept 列出，计划判 reject，零上传", () => {
+  const accept = visualUploadAccept("image");
+  for (const extension of ["heic", "heif", "cr2", "nef"]) {
+    assert.ok(
+      accept.includes(`.${extension}`),
+      `accept 少了 .${extension}：选择框里灰掉，用户只会以为软件坏了`,
+    );
+    assert.equal(visualImportPlan("image", `x.${extension}`).action, "reject");
   }
 });
 
