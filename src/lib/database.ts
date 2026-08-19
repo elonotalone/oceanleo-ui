@@ -170,6 +170,52 @@ export function getDatabaseOverview(opts: { mediaType?: MediaType; limit?: numbe
   );
 }
 
+// ---------- 容量（我的库用了多少、上限多少、买不买加量包） ----------
+//
+// 后端两个读数（快读=数库索引、精读=数对象存储）与它们的取舍写在
+// `oceanleo/backend/app/storage_quota.py` 顶部；界面只管把 `source` 如实标出来，
+// 绝不把快读当账单。`precise=1` 是用户点「重新核对」时才发的，它会慢十几秒。
+export interface StorageUsage {
+  used_bytes: number;
+  limit_bytes: number;
+  remaining_bytes: number;
+  file_count: number;
+  used_text: string;
+  limit_text: string;
+  remaining_text: string;
+  source: string;
+  unavailable?: boolean;
+  truncated?: boolean;
+  cached?: boolean;
+  /** 已买的加量包数（后端 W2 补的字段；老后端没有这三个字段时按 0 处理）。 */
+  packs?: number;
+  pack_price_cny?: number;
+  pack_bytes?: number;
+  by_site?: Record<string, number>;
+  largest?: { name: string; size_text: string }[];
+}
+
+export function getStorageUsage(opts: { precise?: boolean } = {}) {
+  return authed<StorageUsage>(
+    `/v1/database/storage${qs({ precise: opts.precise ? 1 : undefined })}`,
+  );
+}
+
+/** 买/退加量包。`packs` 为正是加、为负是减；钱从钱包扣，不走新的支付通道。 */
+export function changeStoragePacks(packs: number) {
+  return authed<{
+    ok: boolean;
+    packs: number;
+    limit_bytes: number;
+    charged_fen?: number;
+    balance_fen?: number;
+    message?: string;
+  }>(`/v1/storage/packs`, {
+    method: "POST",
+    body: JSON.stringify({ packs }),
+  });
+}
+
 /** Resolve a stable advanced-feature deep link without depending on workspace state. */
 export function resolveDatabaseItem(source: DatabaseItemSource, id: string) {
   return authed<ResolvedDatabaseItem>(

@@ -22,6 +22,7 @@ import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 import { MyLibrary } from "./MyLibrary";
+import { StorageCapacityStrip } from "./StorageCapacityStrip";
 
 export interface ArtifactItem {
   id: string;
@@ -508,6 +509,14 @@ function ArtifactLibraryLegacy({
           accent={accent}
           tt={tt}
         />
+      )}
+
+      {/* 容量条（2026-08-19）：上限一直都在，用户以前只能靠「传不上去」发现它。
+          没登录 / 读数拿不到时它自己返回 null，所以这里不需要额外条件。 */}
+      {!authMsg && (
+        <div className="mt-3">
+          <StorageCapacityStrip accent={accent} />
+        </div>
       )}
 
       {authMsg ? (

@@ -404,6 +404,10 @@ export * from "./editor-protocol";
 export { MaterialLibrary, type MaterialLibraryProps, type MaterialItem } from "./MaterialLibrary";
 export { MyLibrary, type MyLibraryProps } from "./MyLibrary";
 export {
+  StorageCapacityStrip,
+  type StorageCapacityStripProps,
+} from "./StorageCapacityStrip";
+export {
   LibraryLocalScopeProvider,
   LibraryScope,
   cloudReferenceForLocalFile,

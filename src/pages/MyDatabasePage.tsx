@@ -27,6 +27,7 @@ import {
   type AssetItem,
   type KnowledgeItem,
 } from "../lib/database";
+import { StorageCapacityStrip } from "../shell/StorageCapacityStrip";
 import { useUI } from "../i18n/ui/useUI";
 
 type Tab = "works" | "assets" | "knowledge";
@@ -122,6 +123,11 @@ export function MyDatabasePanel({
           })}
         </div>
         <span className="text-xs text-stone-400">{loading ? tt("加载中…") : tt("全 OceanLeo 系列共享 · 跨站可见")}</span>
+      </div>
+
+      {/* 容量条：上限一直都在，用户以前看不见它，传到满才知道。 */}
+      <div className="pb-3">
+        <StorageCapacityStrip accent={accent} />
       </div>
 
       <div className="min-h-0 flex-1">
