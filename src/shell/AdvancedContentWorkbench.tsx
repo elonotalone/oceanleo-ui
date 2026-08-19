@@ -144,7 +144,6 @@ export function AdvancedContentWorkbench(
 ) {
   const [mounted, setMounted] = useState(false);
   const [droppedItem, setDroppedItem] = useState<LibraryItem | null>(null);
-  const inheritedWorkspace = useOptionalWorkspaceSession();
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
@@ -159,9 +158,23 @@ export function AdvancedContentWorkbench(
       />
     );
   }
-  const itemProps: AdvancedContentWorkbenchProps = { ...props, item };
+  return <AdvancedContentWorkbenchMounted {...props} item={item} />;
+}
 
-  const route = editorRouteFor(item);
+/**
+ * 素材已经在手上之后的那一段。
+ *
+ * 空件挂载（合同 §3.2）让「有没有素材」成了两种形态，所以上面那个函数只负责**把素材
+ * 弄到手**——调用方给的，或者用户刚拖进来的那一件；从这里往下只认一件已经存在的素材，
+ * 路由、会话、编辑器宿主全部照原样按 `props.item` 判，与空框那条路互不干扰。
+ * 不拆的话，这里每一处都要写成「调用方给的或拖进来的那个」，判定点就散了。
+ */
+function AdvancedContentWorkbenchMounted(
+  props: AdvancedContentWorkbenchProps,
+) {
+  const inheritedWorkspace = useOptionalWorkspaceSession();
+  const item = props.item;
+  const route = editorRouteFor(props.item);
   const siteId = props.siteId || item.siteId || "oceanleo";
   const appId =
     props.initialSession?.app_id || advancedSessionAppId(item, route.type);
@@ -179,7 +192,7 @@ export function AdvancedContentWorkbench(
       }}
     >
       <WorkbenchMaterialProvider siteId={siteId} appId={materialAppId}>
-        <AdvancedContentWorkbenchRuntime {...itemProps} />
+        <AdvancedContentWorkbenchRuntime {...props} />
       </WorkbenchMaterialProvider>
     </AdvancedEditorHostProvider>
   );
