@@ -443,13 +443,19 @@ export async function loadGridSheets(
   return sheets.length > 0 ? sheets : [emptyGridSheet()];
 }
 
+/**
+ * `.tsv` 走的就是 `.csv` 那条纯文本路径：读取器在字符串模式下自己认制表符
+ * （实测 `城市\t销量` 正确分列），所以这里只是把后缀闸放开，没有新增任何解析器。
+ * 后端转换服务的入口白名单里没有 `.tsv`（实测 400 `unsupported source format`），
+ * 指望转一次是转不出来的——这条必须在前端这条文本路径上收。
+ */
 export async function loadGridFile(file: File): Promise<GridSheet[]> {
   const extension = file.name.toLowerCase().split(".").pop() || "";
-  if (!["csv", "xlsx", "xls", "xlsm", "ods"].includes(extension)) {
-    throw new Error("只支持 CSV、XLS、XLSX、XLSM 或 ODS");
+  if (!["csv", "tsv", "xlsx", "xls", "xlsm", "ods"].includes(extension)) {
+    throw new Error("只支持 CSV、TSV、XLS、XLSX、XLSM 或 ODS");
   }
   const sheets =
-    extension === "csv"
+    extension === "csv" || extension === "tsv"
       ? await readWorkbook(await file.text(), "string")
       : await readWorkbook(
           ["xlsx", "xlsm"].includes(extension)

@@ -74,61 +74,56 @@ export const DOC_FAMILY_NATIVE_EXTENSIONS: Readonly<
   Record<DocFamilyEditorId, readonly string[]>
 > = {
   richdoc: ["docx", "md", "markdown", "txt", "html", "htm"],
-  grid: ["csv", "xlsx", "xls", "xlsm", "ods"],
+  // `tsv` 与 `csv` 是同一条纯文本路径（读取器自己认制表符）；
+  // 后端转换服务的入口白名单里没有 `.tsv`，所以它只能在这里收。
+  grid: ["csv", "tsv", "xlsx", "xls", "xlsm", "ods"],
   deck: ["pptx"],
   pdf: ["pdf"],
 };
 
 /**
- * 「先转一次才能编」的后缀 → 转成什么。转换只走后端 `/v1/convert/office`
- * （LibreOffice headless），所以这里列的每一条都必须是 LibreOffice 真能读的格式。
+ * 「先转一次才能编」的后缀 → 转成什么。转换只走后端 `/v1/convert/office`。
+ *
+ * **这张表照着后端的白名单写，并且用真文件实测过（2026-08-19）。**
+ * 白名单的单一事实源是 `oceanleo/backend/app/convert/capabilities.py`：
+ *   来源 doc/docx/odt/rtf/txt · xls/xlsx/ods/csv/tsv · ppt/pptx/odp · pdf；
+ *   落地 pdf / docx / xlsx / pptx。
+ * 实测补出一条白名单没写的规则：**跨家族转不了**——真 pptx 要 docx 会拿回 422
+ * `no export filter`，而 rtf→docx、csv→xlsx、ppt/odp→pptx、任意→pdf 都是 200。
+ * 白名单外的后缀（dotx / docm / wps / xlsb / xltx / pptm / potx / fodp…）
+ * 送过去只会拿回 400，所以它们不进这张表，而是进 `DOC_FAMILY_KNOWN_REFUSALS`
+ * ——给用户一句「另存成什么再上传」，而不是转一圈再失败。
  */
 export const DOC_FAMILY_CONVERT_TARGETS: Readonly<
   Record<DocFamilyEditorId, Readonly<Record<string, string>>>
 > = {
   richdoc: {
     doc: "docx",
-    dot: "docx",
-    dotx: "docx",
-    docm: "docx",
     rtf: "docx",
     odt: "docx",
-    fodt: "docx",
-    wps: "docx",
   },
-  grid: {
-    tsv: "xlsx",
-    xlsb: "xlsx",
-    xlt: "xlsx",
-    xltx: "xlsx",
-    fods: "xlsx",
-  },
+  // 表格这一格是空的，而且是故意的：后端能读的表格格式（csv/tsv/xls/xlsx/ods）
+  // 本机的读取器本来就全认，转一趟只会多花一次往返、还得先登录；
+  // 后端也读不了的（xlsb/xltx/fods…）转过去同样是 400。
+  grid: {},
   deck: {
     ppt: "pptx",
-    pot: "pptx",
-    potx: "pptx",
-    potm: "pptx",
-    pptm: "pptx",
     odp: "pptx",
-    fodp: "pptx",
   },
-  // PDF 路由的「编辑」就是把别的文件变成页码接进来，所以什么都往 pdf 转。
+  // PDF 路由的「编辑」就是把别的文件变成页码接进来，所以白名单里的都往 pdf 转。
   pdf: {
     doc: "pdf",
     docx: "pdf",
     odt: "pdf",
     rtf: "pdf",
     txt: "pdf",
-    md: "pdf",
-    html: "pdf",
-    htm: "pdf",
+    csv: "pdf",
     xls: "pdf",
     xlsx: "pdf",
-    csv: "pdf",
     ods: "pdf",
     ppt: "pdf",
-    pptx: "pdf",
     odp: "pdf",
+    pptx: "pdf",
   },
 };
 
@@ -137,6 +132,22 @@ export const DOC_FAMILY_CONVERT_TARGETS: Readonly<
  * 存在的意义是**不许静默留白**：这些格式过去要么被拒得没有理由，要么打开是空编辑器。
  */
 export const DOC_FAMILY_KNOWN_REFUSALS: Readonly<Record<string, string>> = {
+  docm: "带宏的 .docm 打不开；请在 Word 里另存为 .docx（宏不会保留）再上传。",
+  dot: "这是 Word 的模板文件；请另存为 .docx 再上传。",
+  dotx: "这是 Word 的模板文件；请另存为 .docx 再上传。",
+  pptm: "带宏的 .pptm 打不开；请在 PowerPoint 里另存为 .pptx（宏不会保留）再上传。",
+  pot: "这是 PowerPoint 的模板文件；请另存为 .pptx 再上传。",
+  potx: "这是 PowerPoint 的模板文件；请另存为 .pptx 再上传。",
+  potm: "这是带宏的 PowerPoint 模板；请另存为 .pptx 再上传。",
+  xlsb: "Excel 的二进制格式 .xlsb 打不开；请另存为 .xlsx 再上传。",
+  xlt: "这是 Excel 的模板文件；请另存为 .xlsx 再上传。",
+  xltx: "这是 Excel 的模板文件；请另存为 .xlsx 再上传。",
+  wps: "这是 WPS 文字的 .wps 格式；请另存为 .docx 或 .pdf 再上传。",
+  et: "这是 WPS 表格的 .et 格式；请另存为 .xlsx 或 .csv 再上传。",
+  dps: "这是 WPS 演示的 .dps 格式；请另存为 .pptx 再上传。",
+  fodt: "平面 ODF 文档 .fodt 打不开；请另存为 .odt 或 .docx 再上传。",
+  fods: "平面 ODF 表格 .fods 打不开；请另存为 .ods 或 .xlsx 再上传。",
+  fodp: "平面 ODF 演示 .fodp 打不开；请另存为 .odp 或 .pptx 再上传。",
   numbers:
     "这是苹果 Numbers 的表格，平台还打不开；请在 Numbers 里导出成 Excel 或 CSV 再上传。",
   pages:
@@ -146,7 +157,62 @@ export const DOC_FAMILY_KNOWN_REFUSALS: Readonly<Record<string, string>> = {
   epub: "电子书 .epub 还打不开；请先转成 Word 或 PDF 再上传。",
   mht: "网页归档 .mht 还打不开；请另存成 .html 再上传。",
   wpd: "WordPerfect 的 .wpd 还打不开；请先转成 Word 或 PDF 再上传。",
-  pdf: "PDF 不能直接当文档编辑；请打开 PDF 编辑器，或先转成 Word 再上传。",
+};
+
+/**
+ * 后缀 → 它本来属于哪条路由。
+ *
+ * 用来分开两种「打不开」：**送错了门**（把表格拖进文档编辑器）和
+ * **这条路真的不认**（把 .xlsb 拖进表格编辑器）。前者要指路，后者要给另存建议；
+ * 混在一张按后缀查的表里，就会对着文档编辑器的用户说「请另存为 .xlsx」——
+ * 而文档编辑器根本不开 .xlsx。
+ */
+const DOC_FAMILY_EXTENSION_OWNER: Readonly<Record<string, DocFamilyEditorId>> = {
+  doc: "richdoc",
+  docx: "richdoc",
+  docm: "richdoc",
+  dot: "richdoc",
+  dotx: "richdoc",
+  rtf: "richdoc",
+  odt: "richdoc",
+  fodt: "richdoc",
+  wps: "richdoc",
+  md: "richdoc",
+  markdown: "richdoc",
+  txt: "richdoc",
+  html: "richdoc",
+  htm: "richdoc",
+  csv: "grid",
+  tsv: "grid",
+  xls: "grid",
+  xlsx: "grid",
+  xlsm: "grid",
+  xlsb: "grid",
+  xlt: "grid",
+  xltx: "grid",
+  ods: "grid",
+  fods: "grid",
+  et: "grid",
+  numbers: "grid",
+  ppt: "deck",
+  pptx: "deck",
+  pptm: "deck",
+  pot: "deck",
+  potx: "deck",
+  potm: "deck",
+  odp: "deck",
+  fodp: "deck",
+  dps: "deck",
+  key: "deck",
+  pages: "richdoc",
+  pdf: "pdf",
+};
+
+const DOC_FAMILY_EDITOR_NAMES: Readonly<Record<DocFamilyEditorId, string>> = {
+  richdoc: "文档编辑器",
+  grid: "表格编辑器",
+  deck: "演示编辑器",
+  pdf: "PDF 编辑器",
 };
 
 /** 文件名 / URL → 小写后缀（没有后缀给空串）。 */
@@ -214,6 +280,12 @@ export function docFamilyRefusalReason(
   if (DOC_FAMILY_CONVERT_TARGETS[editorId][extension]) return "";
   if ((editorId === "richdoc" || editorId === "deck") && docFamilyIsImage(fileName)) {
     return "";
+  }
+  const owner = DOC_FAMILY_EXTENSION_OWNER[extension];
+  if (owner && owner !== editorId) {
+    return `.${extension} 是${DOC_FAMILY_EDITOR_NAMES[owner]}的文件，这里打不开；请在${
+      DOC_FAMILY_EDITOR_NAMES[owner]
+    }里打开它，或先转成${docFamilyPreferredFormatsText(editorId)}再上传。`;
   }
   const known = DOC_FAMILY_KNOWN_REFUSALS[extension];
   if (known) return known;
