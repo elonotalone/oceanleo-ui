@@ -197,45 +197,38 @@ test("排序稳定，打开地址按 site_url + open_path 拼接", () => {
 
 test("未登录整块不渲染；登录后的首帧是骨架", () => {
   const signedOut = renderToStaticMarkup(
-    React.createElement(MyAppsRail, {
-      variant: "home",
-      signedIn: false,
-    }),
+    React.createElement(MyAppsRail, { signedIn: false }),
   );
   assert.equal(signedOut, "");
 
   const loading = renderToStaticMarkup(
-    React.createElement(MyAppsRail, {
-      variant: "home",
-      signedIn: true,
-    }),
+    React.createElement(MyAppsRail, { signedIn: true }),
   );
   assert.match(loading, /data-my-apps-loading/);
   assert.match(loading, /aria-busy="true"/);
 });
 
-test("首页把我的应用放在原有分类与卡片之前", async () => {
+test("首页不再有「我的应用」这一块", async () => {
   const source = await readFile("src/shell/HomeAppCards.tsx", "utf8");
-  assert.match(source, /import \{ MyAppsRail \} from "\.\/MyAppsRail"/);
-  const railAt = source.indexOf('<MyAppsRail variant="home" />');
-  const tabsAt = source.indexOf("{/* 分类 tab");
-  assert.ok(railAt >= 0, "HomeAppCards 没有挂 MyAppsRail");
-  assert.ok(tabsAt > railAt, "我的应用必须排在既有分类 tab 与卡片之前");
+  assert.equal(
+    source.includes("MyAppsRail"),
+    false,
+    "首页是办公站的门面，装过的应用只在侧边栏出现，首页不再留这一块",
+  );
 });
 
 test("AppShell 两种滚动范围都只为登录用户把我的应用接在导航与历史之间", async () => {
   const source = await readFile("src/shell/AppShell.tsx", "utf8");
   assert.match(source, /import \{ MyAppsRail \} from "\.\/MyAppsRail"/);
 
-  const mount =
-    '{userEmail ? <MyAppsRail variant="sidebar" signedIn /> : null}';
+  const mount = "{userEmail ? <MyAppsRail signedIn /> : null}";
   assert.equal(
     source.split(mount).length - 1,
     2,
     "whole 与 history 两条支路应各有一个受 userEmail 保护的侧栏入口",
   );
   assert.equal(
-    source.split('<MyAppsRail variant="sidebar" signedIn />').length - 1,
+    source.split("<MyAppsRail signedIn />").length - 1,
     2,
     "侧栏 MyAppsRail 不应出现在登录保护之外",
   );
@@ -261,7 +254,7 @@ test("AppShell 两种滚动范围都只为登录用户把我的应用接在导�
   );
 });
 
-test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生效并二次确认", async () => {
+test("侧栏展示服务端列表且限八个；移除立即生效并二次确认", async () => {
   const { window, restore } = await installDom();
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
@@ -279,14 +272,14 @@ test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生�
     marketApi.__reset();
     marketApi.__setApps(INSTALLED);
 
-    await render({ variant: "home", signedIn: true });
-    const homeItems = [
+    await render({ signedIn: true });
+    const items = [
       ...container.querySelectorAll(
-        '[data-my-apps-rail="home"] [data-my-apps-item]',
+        '[data-my-apps-rail="sidebar"] [data-my-apps-item]',
       ),
     ];
     assert.deepEqual(
-      homeItems.map((item) => item.getAttribute("data-my-apps-item")),
+      items.map((item) => item.getAttribute("data-my-apps-item")),
       [
         "site.one",
         "site.two-a",
@@ -296,11 +289,10 @@ test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生�
         "site.five",
         "site.six",
         "site.seven",
-        "site.eight",
-        "site.ten",
       ],
+      "侧栏按排序取前八个",
     );
-    const firstOpen = homeItems[0].querySelector("[data-my-apps-open]");
+    const firstOpen = items[0].querySelector("[data-my-apps-open]");
     assert.equal(
       firstOpen.getAttribute("href"),
       "https://image.oceanleo.com/workspace/one",
@@ -308,13 +300,6 @@ test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生�
     assert.equal(firstOpen.getAttribute("target"), "_blank");
     assert.equal(firstOpen.getAttribute("rel"), "noopener noreferrer");
 
-    await render({ variant: "sidebar", signedIn: true });
-    assert.equal(
-      container.querySelectorAll(
-        '[data-my-apps-rail="sidebar"] [data-my-apps-item]',
-      ).length,
-      8,
-    );
     const seeAll = container.querySelector(
       '[data-my-apps-rail="sidebar"] [data-my-apps-market]',
     );
@@ -322,7 +307,6 @@ test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生�
     assert.equal(seeAll.getAttribute("href"), MY_APPS_MARKET_HREF);
     assert.match(seeAll.textContent, /查看全部/);
 
-    await render({ variant: "home", signedIn: true });
     const releaseUninstall = marketApi.__holdUninstall();
     let confirmText = "";
     window.confirm = (message) => {
@@ -352,7 +336,7 @@ test("首页与侧栏展示服务端列表；侧栏限八个；移除立即生�
   }
 });
 
-test("空列表给市场入口；加载失败给重试；鉴权失败则隐藏", async () => {
+test("空列表整块不渲染；加载失败给重试；鉴权失败则隐藏", async () => {
   const { window, restore } = await installDom();
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
@@ -369,18 +353,16 @@ test("空列表给市场入口；加载失败给重试；鉴权失败则隐藏",
   try {
     marketApi.__reset();
     marketApi.__setApps([]);
-    await render({ variant: "home", signedIn: true });
-    const empty = container.querySelector("[data-my-apps-empty]");
-    assert.ok(empty);
-    assert.match(empty.textContent, /还没有装过应用/);
+    await render({ signedIn: true });
     assert.equal(
-      empty.querySelector("[data-my-apps-market]").getAttribute("href"),
-      MY_APPS_MARKET_HREF,
+      container.querySelector("[data-my-apps-rail]"),
+      null,
+      "一个应用都没装时不许留一句「还没有装过应用」占着位置",
     );
 
     marketApi.__setListError(new Error("gateway down"));
-    await render({ variant: "home", signedIn: false });
-    await render({ variant: "home", signedIn: true });
+    await render({ signedIn: false });
+    await render({ signedIn: true });
     const failure = container.querySelector("[data-my-apps-error]");
     assert.ok(failure);
     assert.match(failure.textContent, /加载失败/);
@@ -401,8 +383,8 @@ test("空列表给市场入口；加载失败给重试；鉴权失败则隐藏",
     const authError = new Error("not signed in");
     authError.name = "MarketAuthError";
     marketApi.__setListError(authError);
-    await render({ variant: "home", signedIn: false });
-    await render({ variant: "home" });
+    await render({ signedIn: false });
+    await render({});
     assert.equal(container.querySelector("[data-my-apps-rail]"), null);
   } finally {
     await act(async () => root.unmount());

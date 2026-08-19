@@ -8,8 +8,6 @@ import {
 } from "../lib/app-market";
 import { useUI } from "../i18n/ui/useUI";
 
-export type MyAppsRailVariant = "home" | "sidebar";
-
 /** “我的应用”统一回到主站应用市场，并直接表达要打开“我的”视图。 */
 export const MY_APPS_MARKET_HREF =
   "https://oceanleo.com/playground?tab=app&view=mine";
@@ -42,10 +40,9 @@ export function marketAppOpenHref(
 }
 
 export interface MyAppsRailProps {
-  variant: MyAppsRailVariant;
   /**
    * 外壳已有登录事实时传入：false 立即整块隐藏；未传时以 `listMyApps()` 的
-   * MarketAuthError 为准，首页不另造一套登录状态。
+   * MarketAuthError 为准，不另造一套登录状态。
    */
   signedIn?: boolean;
   marketHref?: string;
@@ -54,7 +51,6 @@ export interface MyAppsRailProps {
 type LoadState = "hidden" | "loading" | "ready" | "error";
 
 export function MyAppsRail({
-  variant,
   signedIn,
   marketHref = MY_APPS_MARKET_HREF,
 }: MyAppsRailProps) {
@@ -116,35 +112,23 @@ export function MyAppsRail({
 
   if (loadState === "hidden") return null;
 
-  const isSidebar = variant === "sidebar";
-  const rootClass = isSidebar
-    ? "mx-2 mt-2 rounded-xl border border-neutral-200/80 bg-white/70 p-2"
-    : "mb-5 w-full rounded-2xl border border-stone-200/80 bg-white/80 p-4 shadow-sm";
+  const rootClass = "mx-2 mt-2 rounded-xl border border-neutral-200/80 bg-white/70 p-2";
 
   if (loadState === "loading") {
-    const skeletons = isSidebar ? 3 : 4;
     return (
       <section
         aria-busy="true"
         aria-label={tt("正在加载我的应用")}
         className={rootClass}
         data-my-apps-loading
-        data-my-apps-rail={variant}
+        data-my-apps-rail="sidebar"
       >
         <div className="mb-2 h-3 w-20 animate-pulse rounded bg-stone-200" />
-        <div
-          className={
-            isSidebar
-              ? "space-y-1.5"
-              : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
-          }
-        >
-          {Array.from({ length: skeletons }, (_, index) => (
+        <div className="space-y-1.5">
+          {Array.from({ length: 3 }, (_, index) => (
             <div
               key={index}
-              className={`animate-pulse rounded-xl bg-stone-100 ${
-                isSidebar ? "h-9" : "h-20"
-              }`}
+              className="h-9 animate-pulse rounded-xl bg-stone-100"
             />
           ))}
         </div>
@@ -157,7 +141,7 @@ export function MyAppsRail({
       <section
         className={rootClass}
         data-my-apps-error
-        data-my-apps-rail={variant}
+        data-my-apps-rail="sidebar"
       >
         <p className="text-[13px] text-stone-600">
           {tt("我的应用暂时加载失败。")}
@@ -174,69 +158,22 @@ export function MyAppsRail({
     );
   }
 
-  if (apps.length === 0) {
-    return (
-      <section
-        className={rootClass}
-        data-my-apps-empty
-        data-my-apps-rail={variant}
-      >
-        <h2
-          className={
-            isSidebar
-              ? "text-[12px] font-semibold text-neutral-700"
-              : "text-[15px] font-semibold text-stone-900"
-          }
-        >
-          {tt("我的应用")}
-        </h2>
-        <p
-          className={`text-stone-500 ${
-            isSidebar ? "mt-1 text-[11px]" : "mt-1 text-[13px]"
-          }`}
-        >
-          {tt("还没有装过应用。")}
-        </p>
-        <a
-          className={`inline-flex font-medium text-stone-800 underline underline-offset-2 ${
-            isSidebar ? "mt-1.5 text-[11px]" : "mt-2 text-[13px]"
-          }`}
-          data-my-apps-market
-          href={marketHref}
-        >
-          {tt("去应用市场看看")}
-        </a>
-      </section>
-    );
-  }
+  // 没装过应用就整块不出现。曾经这里有一句「还没有装过应用。去应用市场看看」——
+  // 办公站的空白位置不该被一句无事可做的话占着，用户装了应用它自己会出来。
+  if (apps.length === 0) return null;
 
-  const shownApps = isSidebar ? apps.slice(0, SIDEBAR_APP_LIMIT) : apps;
+  const shownApps = apps.slice(0, SIDEBAR_APP_LIMIT);
 
   return (
     <section
       className={rootClass}
-      data-my-apps-rail={variant}
+      data-my-apps-rail="sidebar"
       data-my-apps-state="ready"
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2
-          className={
-            isSidebar
-              ? "text-[12px] font-semibold text-neutral-700"
-              : "text-[15px] font-semibold text-stone-900"
-          }
-        >
+        <h2 className="text-[12px] font-semibold text-neutral-700">
           {tt("我的应用")}
         </h2>
-        {!isSidebar && (
-          <a
-            className="text-[12px] font-medium text-stone-500 hover:text-stone-800"
-            data-my-apps-market
-            href={marketHref}
-          >
-            {tt("管理我的应用")} →
-          </a>
-        )}
       </div>
 
       {actionError && (
@@ -248,29 +185,15 @@ export function MyAppsRail({
         </p>
       )}
 
-      <div
-        className={
-          isSidebar
-            ? "space-y-1"
-            : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
-        }
-      >
+      <div className="space-y-1">
         {shownApps.map((app) => (
           <article
-            className={`group relative ${
-              isSidebar
-                ? "rounded-lg hover:bg-neutral-100"
-                : "rounded-xl border border-stone-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md"
-            }`}
+            className="group relative rounded-lg hover:bg-neutral-100"
             data-my-apps-item={app.app_id}
             key={app.app_id}
           >
             <a
-              className={`flex min-w-0 items-center ${
-                isSidebar
-                  ? "gap-2 px-2 py-1.5 pr-9"
-                  : "gap-3 px-3 py-3 pr-10"
-              }`}
+              className="flex min-w-0 items-center gap-2 px-2 py-1.5 pr-9"
               data-my-apps-open
               href={marketAppOpenHref(app)}
               rel="noopener noreferrer"
@@ -278,32 +201,19 @@ export function MyAppsRail({
             >
               <span
                 aria-hidden="true"
-                className={`grid shrink-0 place-items-center rounded-lg bg-stone-100 ${
-                  isSidebar ? "h-6 w-6 text-[14px]" : "h-10 w-10 text-xl"
-                }`}
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-stone-100 text-[14px]"
               >
                 {app.icon || "◻"}
               </span>
               <span className="min-w-0">
-                <span
-                  className={`block truncate font-medium text-stone-800 ${
-                    isSidebar ? "text-[12px]" : "text-[14px]"
-                  }`}
-                >
+                <span className="block truncate text-[12px] font-medium text-stone-800">
                   {app.name}
                 </span>
-                {!isSidebar && app.tagline && (
-                  <span className="mt-0.5 block line-clamp-2 text-[12px] leading-4 text-stone-500">
-                    {app.tagline}
-                  </span>
-                )}
               </span>
             </a>
             <button
               aria-label={`${tt("从我的应用移除")}：${app.name}`}
-              className={`absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-md text-stone-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${
-                isSidebar ? "h-6 w-6 text-[14px]" : "text-base"
-              }`}
+              className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md text-[14px] text-stone-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
               data-my-apps-remove={app.app_id}
               onClick={() => void removeApp(app)}
               title={tt("移除")}
@@ -315,7 +225,7 @@ export function MyAppsRail({
         ))}
       </div>
 
-      {isSidebar && apps.length > SIDEBAR_APP_LIMIT && (
+      {apps.length > SIDEBAR_APP_LIMIT && (
         <a
           className="mt-2 flex items-center justify-center rounded-lg px-2 py-1.5 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
           data-my-apps-market

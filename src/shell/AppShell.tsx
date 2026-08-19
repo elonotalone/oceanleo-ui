@@ -711,7 +711,7 @@ function AppShellInner({
         {brandHeader}
         {searchPanel}
         {navSection}
-        {userEmail ? <MyAppsRail variant="sidebar" signedIn /> : null}
+        {userEmail ? <MyAppsRail signedIn /> : null}
         {historySection}
         <div className="space-y-3 px-3 pb-3 pt-3">
           {renderSwitchers()}
@@ -742,7 +742,7 @@ function AppShellInner({
         {navSection}
       </div>
 
-      {userEmail ? <MyAppsRail variant="sidebar" signedIn /> : null}
+      {userEmail ? <MyAppsRail signedIn /> : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-oceanleo-scroll-nav>
         {historySection}
@@ -796,9 +796,15 @@ function AppShellInner({
       {/* desktop sidebar。固定宽度 256px（2026-07-02 对齐主站 oceanleo.com 侧栏宽，
           利于显示历史记录的 AI 概括标题）——主导航态与覆盖式子栏态共用同一宽度，
           点「工作台 / 文件库 / 历史记录」等带子栏的项时侧栏不再变宽。 */}
+      {/* 侧栏钉在视口上（fixed），不是 sticky。理由是实测出来的：sticky 的元素被自己
+          的父块夹住，而消费站的根布局会在外壳**之后**再渲染东西（境内站的备案页脚就是
+          这么挂的），那一条高度不属于外壳，于是滚到底时侧栏左下角露出一条空白。
+          fixed 之后侧栏的高度只跟视口有关，页面下面再挂什么都不会在它底下留缝。
+          代价是它不再占据文档流，所以下面那个同宽的占位块是必须的，收起/展开时
+          两者宽度必须一起变。 */}
       <aside
         data-oceanleo-chrome
-        className={`hidden h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:flex md:sticky md:top-0 ${
+        className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${
           collapsed ? "w-0 border-r-0" : "w-[256px]"
         }`}
       >
@@ -806,6 +812,13 @@ function AppShellInner({
           {sidebarBody}
         </div>
       </aside>
+      <div
+        aria-hidden="true"
+        data-oceanleo-sidebar-spacer
+        className={`hidden shrink-0 transition-[width] duration-200 ease-out md:block ${
+          collapsed ? "w-0" : "w-[256px]"
+        }`}
+      />
 
       {/* mobile drawer */}
       {mobileOpen && (
