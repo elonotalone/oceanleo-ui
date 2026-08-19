@@ -187,10 +187,19 @@ export interface StorageUsage {
   unavailable?: boolean;
   truncated?: boolean;
   cached?: boolean;
-  /** 已买的加量包数（后端 W2 补的字段；老后端没有这三个字段时按 0 处理）。 */
+  /** 已买的加量包数（老后端没有这些字段时按 0 / 缺失处理）。 */
   packs?: number;
   pack_price_cny?: number;
   pack_bytes?: number;
+  max_packs?: number;
+  pack_state?: string;
+  pack_in_grace?: boolean;
+  /**
+   * 「满了之后还能怎么办」的那句话，**由后端出**：价格、包多大、买到上限了、
+   * 因欠费停了——四种情形的措辞都在 `storage_quota._upgrade_hint()` 一处。
+   * 界面照抄，不在这里拼第二份文案（拼了就会和后端说的不一致）。
+   */
+  upgrade_hint?: string;
   by_site?: Record<string, number>;
   largest?: { name: string; size_text: string }[];
 }

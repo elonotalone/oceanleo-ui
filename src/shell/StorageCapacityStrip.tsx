@@ -79,6 +79,8 @@ export function StorageCapacityStrip({
   const nearlyFull = ratio >= BUY_HINT_RATIO;
   const price = usage.pack_price_cny;
   const packs = usage.packs || 0;
+  const maxedOut = usage.max_packs !== undefined && packs >= usage.max_packs;
+  const canBuy = nearlyFull && Boolean(price) && !maxedOut;
 
   return (
     <section
@@ -107,7 +109,7 @@ export function StorageCapacityStrip({
           >
             {checking ? tt("正在核对…") : tt("重新核对")}
           </button>
-          {nearlyFull && price ? (
+          {canBuy ? (
             <button
               type="button"
               className="rounded-lg px-2.5 py-1 font-medium text-white transition disabled:opacity-60"
@@ -141,8 +143,12 @@ export function StorageCapacityStrip({
         {usage.source === "object-storage"
           ? tt("这是按对象存储真实字节数出来的。")
           : tt("这是按库里登记的文件数出来的，点「重新核对」可按真实字节再数一遍。")}
-        {nearlyFull && price
-          ? ` ${tt("快满了。加 100 GB 是每月")} ¥${price}${tt("，从钱包里扣；也可以删掉几个大文件腾地方。")}`
+        {/* 「满了怎么办」这句由后端出（storage_quota._upgrade_hint）：价格、包多大、
+            买到上限、欠费停了四种措辞都在那一处，界面照抄不另拼一份。
+            欠费停了要立刻说，不等快满 —— 那时候用户已经在损失可用空间。 */}
+        {(nearlyFull || usage.pack_in_grace || usage.pack_state === "lapsed") &&
+        usage.upgrade_hint
+          ? ` ${usage.upgrade_hint}`
           : ""}
       </p>
 
