@@ -5,6 +5,8 @@
  * 传输在 `visual-convert-client.ts`，落地在各自路由。
  */
 
+import { uploadUnavailableReason } from "../workbench-route-formats";
+
 export type VisualEditorId =
   | "image"
   | "video-timeline"
@@ -252,22 +254,10 @@ const NATIVE: Record<VisualEditorId, readonly string[]> = {
 const RULES: Record<VisualEditorId, readonly VisualImportRule[]> = {
   image: [
     {
-      from: ["heic", "heif"],
-      to: "jpg",
-      via: "convert-image",
-      failure: "这张手机照片（HEIC）转成 JPG 时失败了，可以先在手机相册里导出 JPG 再传。",
-    },
-    {
       from: ["bmp", "tif", "tiff", "avif", "ico"],
       to: "png",
       via: "convert-image",
       failure: "这张老格式图片转成 PNG 时失败了，可以先用系统看图软件另存为 PNG。",
-    },
-    {
-      from: ["cr2", "cr3", "nef", "arw", "dng", "raf", "orf", "rw2"],
-      to: "jpg",
-      via: "convert-image",
-      failure: "相机原片（RAW）暂时转不出来，可以在相机或修图软件里导出 JPG 再传。",
     },
   ],
   "video-timeline": [
@@ -284,7 +274,7 @@ const RULES: Record<VisualEditorId, readonly VisualImportRule[]> = {
       failure: "这段声音转成 MP3 时失败了，可以先导出 MP3 或 WAV 再传。",
     },
     {
-      from: ["heic", "heif", "bmp", "tif", "tiff"],
+      from: ["bmp", "tif", "tiff"],
       to: "png",
       via: "convert-image",
       failure: "这张图转成 PNG 时失败了，可以先另存为 PNG 再传。",
@@ -308,8 +298,35 @@ const RULES: Record<VisualEditorId, readonly VisualImportRule[]> = {
   threed: [],
 };
 
+/**
+ * 相机原片：**这台服务器实测转不了**。
+ *
+ * `verdicts/W10-delivery.md` 的图片能力表原话：`cr2/cr3/nef/arw/dng/raf/orf/rw2`
+ * 「PIL 可打开扩展名清单里没有它们」。第一轮我把它们写成了「→ jpg」，那是让用户
+ * 传完整张原片（动辄几十 MB）再收到一句失败——所以改成上传之前就说清，并点名格式。
+ */
+const RAW_PHOTO_EXT: readonly string[] = [
+  "cr2",
+  "cr3",
+  "nef",
+  "arw",
+  "dng",
+  "raf",
+  "orf",
+  "rw2",
+];
+
+function rawPhotoRejection(extension: string): string {
+  return (
+    `这里还打不开相机原片（RAW）：转换服务不认 .${extension.toUpperCase()} 这类原片格式。` +
+    `请在相机、Lightroom 或系统看图软件里导出 JPG 再拖进来。`
+  );
+}
+
 const REJECTIONS: Record<VisualEditorId, Record<string, string>> = {
-  image: {},
+  image: Object.fromEntries(
+    RAW_PHOTO_EXT.map((extension) => [extension, rawPhotoRejection(extension)]),
+  ),
   "video-timeline": {},
   audio: {},
   "chart-editor@1": {
@@ -318,8 +335,12 @@ const REJECTIONS: Record<VisualEditorId, Record<string, string>> = {
     json: "这个 JSON 不是图表工程文件；要恢复图表请用「导出图表数据」存下来的那份。",
   },
   threed: {
-    obj: "现在只能打开 GLB 和 glTF 模型；OBJ 还没有可用的转换通道。",
-    stl: "现在只能打开 GLB 和 glTF 模型；STL 还没有可用的转换通道。",
+    obj:
+      "3D 编辑器这个入口只直接打开 GLB 和 glTF；OBJ 请从工作台的上传入口拖进来，" +
+      "那条路会自动转成 GLB（只搬形状，贴图和材质不带过来）。",
+    stl:
+      "3D 编辑器这个入口只直接打开 GLB 和 glTF；STL 请从工作台的上传入口拖进来，" +
+      "那条路会自动转成 GLB（只搬形状，贴图和材质不带过来）。",
     fbx: "现在只能打开 GLB 和 glTF 模型；FBX 还没有可用的转换通道。",
     dae: "现在只能打开 GLB 和 glTF 模型；DAE 还没有可用的转换通道。",
     ply: "现在只能打开 GLB 和 glTF 模型；PLY 还没有可用的转换通道。",
@@ -327,6 +348,22 @@ const REJECTIONS: Record<VisualEditorId, Record<string, string>> = {
     usdz: "现在只能打开 GLB 和 glTF 模型；USDZ 还没有可用的转换通道。",
     blend: "现在只能打开 GLB 和 glTF 模型；请在 Blender 里导出 GLB 再传。",
   },
+};
+
+/**
+ * 挑得到、但一个字节都不会上传的后缀。
+ *
+ * 它们**不在**能转的规则表里（真转不了），却仍然写进文件选择框的 `accept`：
+ * 手机相册里最常见的就是 HEIC，选择框里把它灰掉，用户只会以为「这软件坏了」；
+ * 挑得到、当场收到一句「怎么自己导出 JPG」，才是能照做的。判成 `reject` 之后
+ * 路由不会发任何请求，所以是零上传。
+ */
+const PICKABLE_BUT_REFUSED: Record<VisualEditorId, readonly string[]> = {
+  image: ["heic", "heif", ...RAW_PHOTO_EXT],
+  "video-timeline": ["heic", "heif"],
+  audio: [],
+  "chart-editor@1": [],
+  threed: [],
 };
 
 const FAMILY_NAME: Record<VisualEditorId, string> = {
@@ -377,7 +414,13 @@ export function visualImportPlan(
       message: rule.failure,
     };
   }
-  const rejection = REJECTIONS[editorId][extension];
+  // 顺序有讲究：W1 的入口表是 heic/heif/fbx 这几句话的**唯一出处**，编辑器这边照读，
+  // 不另抄一份。同一张照片从空框拖进来、和在图片编辑器里选进来，必须是同一句话。
+  const ownFamily =
+    PICKABLE_BUT_REFUSED[editorId].includes(extension) ||
+    Boolean(REJECTIONS[editorId][extension]);
+  const shared = ownFamily ? uploadUnavailableReason(extension) : "";
+  const rejection = shared || REJECTIONS[editorId][extension];
   return {
     action: "reject",
     extension,
@@ -387,11 +430,17 @@ export function visualImportPlan(
   };
 }
 
-/** 上传按钮的 accept：原生格式 + 所有能自动转的格式。 */
+/**
+ * 上传按钮的 accept：原生格式 + 能自动转的格式 + 挑得到但会当场被拒的那几个。
+ *
+ * 最后一类不会产生任何上传（`visualImportPlan` 判 `reject`），列出来只是为了让用户
+ * 在选择框里挑得到、当场拿到一句能照做的话。
+ */
 export function visualUploadAccept(editorId: VisualEditorId): string {
   const extensions = [
     ...NATIVE[editorId],
     ...RULES[editorId].flatMap((rule) => rule.from),
+    ...PICKABLE_BUT_REFUSED[editorId],
   ];
   return [...new Set(extensions)].map((entry) => `.${entry}`).join(",");
 }
