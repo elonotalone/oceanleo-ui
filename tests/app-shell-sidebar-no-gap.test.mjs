@@ -42,4 +42,9 @@ test("有同宽占位块，且与侧栏的收起/展开宽度一一对应", () =
   });
   assert.deepEqual(widths(spacer), widths(aside), "占位块与侧栏必须同宽同步");
   assert.match(spacer, /aria-hidden="true"/, "占位块只是让位用的，不该被读屏软件念出来");
+  assert.match(
+    spacer,
+    /data-oceanleo-chrome/,
+    "内嵌（?embed=1）时 EmbedChrome 靠这个属性把外壳藏掉；漏挂就会在 iframe 里留一条 256px 空白",
+  );
 });

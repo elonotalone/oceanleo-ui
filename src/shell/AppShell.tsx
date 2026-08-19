@@ -812,8 +812,12 @@ function AppShellInner({
           {sidebarBody}
         </div>
       </aside>
+      {/* 占位块也必须挂 data-oceanleo-chrome：内嵌（?embed=1）时 EmbedChrome 那段
+          pre-paint CSS 靠这个属性把外壳整体 display:none，漏挂就会在 iframe 里留下
+          一条 256px 的空白，把内容顶到右边。 */}
       <div
         aria-hidden="true"
+        data-oceanleo-chrome
         data-oceanleo-sidebar-spacer
         className={`hidden shrink-0 transition-[width] duration-200 ease-out md:block ${
           collapsed ? "w-0" : "w-[256px]"
