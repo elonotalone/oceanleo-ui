@@ -152,8 +152,12 @@ test("RichDoc groups DOCX Markdown HTML and JSON behind one download contract", 
   );
   assert.match(
     route,
-    /DOC_FAMILY_DOWNLOAD_FORMATS\.richdoc\.slice\(1\)[\s\S]{0,120}?id: `richdoc-export-\$\{format\.extension\}`[\s\S]{0,160}?group: "download" as const/,
+    /DOC_FAMILY_DOWNLOAD_FORMATS\.richdoc\.slice\(1\)\.map\(\(format\) => \(\{[\s\S]{0,160}?id: `richdoc-export-\$\{format\.extension\}`[\s\S]{0,160}?group: "download" as const/,
   );
+  // 派生链里插一道筛子就能把某个格式从菜单里悄悄拿掉，而上面那条只看首尾——
+  // V1 第 3 轮的探针（`V1-probe-11-w2r3-strictness.mjs` 变异 6）把这个洞钉在盘上。
+  // 这里正面堵死：`.slice(1)` 之后只准直接 `.map`，不准夹任何筛选。
+  assert.doesNotMatch(route, /\.slice\(1\)\s*\.filter/);
   assert.deepEqual(
     [...route.matchAll(/id: "(richdoc-export-[a-z0-9]+)"/g)].map(
       (match) => match[1],
