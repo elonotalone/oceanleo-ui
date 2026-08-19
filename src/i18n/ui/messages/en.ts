@@ -6492,6 +6492,8 @@ const en: Record<string, string> = {
   "跳转中...": "Redirecting...",
   "目前仅开放被邀请的账号登录。": "Sign-in is currently limited to invited accounts.",
   "登录服务尚未配置": "Sign-in service not configured",
+  "境内版还没有开放注册和登录": "Sign-up and sign-in are not open yet on the mainland site",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。": "You can keep browsing the public content. Sign-up opens once the mainland filings and review are complete, and we will say so on the home page.",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。": "This site is not connected to the OceanLeo sign-in service yet. Please contact an administrator.",
   "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。": "SMS sign-in is unavailable: the SMS service is not configured yet. Please sign in with email instead.",
   "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。": "WeChat sign-in is unavailable: the WeChat Open Platform is not configured yet. Please sign in with email or a mobile number instead.",

@@ -36,6 +36,7 @@
 // 用户内容域（oceanleo.app / leoapp.cn）不属于任何家族，一律 host-only。
 
 import {
+  currentDomainFamily,
   currentDomainProfile,
   domainProfileForHost,
   familyForHost,
@@ -117,4 +118,45 @@ export function cookieOptions(host: string | null | undefined) {
 
 export function configured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+}
+
+/**
+ * 登不上的时候该跟用户说什么。
+ *
+ * 境内版（`.cn`）的镜像**刻意不带** Supabase 变量：境内按「暂不开放注册」上线，
+ * 备案与生成式 AI 审核走完之前不开放用户（见 oceandino 仓
+ * `docs/work-logs/2026-08/oceanleo-cn-launch/OPERATOR-BLOCKERS.md`）。所以境内看到的
+ * 「登不上」不是故障，是产品状态——2026-08-19 之前那里却弹一句「缺少 Supabase
+ * 环境变量」，把我们的运维内情当成用户须知甩给了访客。
+ *
+ * 于是这里按家族分开答：境内说「还没开放」，其他 host 保留原来那句技术说明——
+ * 那种情况只可能是本地开发或有人漏配了 Vercel 变量，看的人正是需要那句话的人。
+ */
+export type LoginUnavailableNotice = {
+  /** 大字，一句话说清是什么状态。 */
+  title: string;
+  /** 小字，说清用户现在能做什么、不能做什么。空串表示不需要小字。 */
+  detail: string;
+};
+
+/** 判据本体，入参显式，可直接单测（`tests/login-unavailable-notice.test.mjs`）。 */
+export function loginUnavailableNoticeFor(
+  family: string | undefined,
+  isConfigured: boolean,
+): LoginUnavailableNotice | null {
+  if (isConfigured) return null;
+  if (family === "cn") {
+    return {
+      title: "境内版还没有开放注册和登录",
+      detail: "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。",
+    };
+  }
+  return {
+    title: "登录服务尚未配置",
+    detail: "本站还没有接入 OceanLeo 登录服务，请联系管理员。",
+  };
+}
+
+export function loginUnavailableNotice(): LoginUnavailableNotice | null {
+  return loginUnavailableNoticeFor(currentDomainFamily(), configured());
 }

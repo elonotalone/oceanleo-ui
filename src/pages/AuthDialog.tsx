@@ -44,6 +44,7 @@ import {
   verifyPhoneOtp,
   wechatLoginUrl,
 } from "../lib/auth/client";
+import { loginUnavailableNotice } from "../lib/auth/config";
 import { ButtonSpinner, Modal } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
@@ -101,6 +102,8 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "目前仅开放被邀请的账号登录。",
   "登录服务尚未配置",
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。",
+  "境内版还没有开放注册和登录",
+  "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。",
   ...Object.values(ERROR_COPY),
 ];
 
@@ -309,9 +312,14 @@ export function AuthPanel({
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-2xl">
             🔒
           </div>
-          <p className="text-[14px] font-medium text-neutral-900">{tt("登录服务尚未配置")}</p>
+          <p className="text-[14px] font-medium text-neutral-900">
+            {tt(loginUnavailableNotice()?.title || "登录服务尚未配置")}
+          </p>
           <p className="text-[13px] leading-relaxed text-neutral-500">
-            {tt("本站还没有接入 OceanLeo 登录服务，请联系管理员。")}
+            {tt(
+              loginUnavailableNotice()?.detail ||
+                "本站还没有接入 OceanLeo 登录服务，请联系管理员。",
+            )}
           </p>
         </div>
       ) : (

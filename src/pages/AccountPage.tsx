@@ -26,6 +26,7 @@ import Link from "next/link";
 import {
   browserClient,
   oceanleoConfigured,
+  loginUnavailableNotice,
   getUserEmail,
   getCredits,
   getCreditHistory,
@@ -181,16 +182,20 @@ export function AccountPage({
     else if (typeof window !== "undefined") window.location.reload();
   }
 
-  // 登录服务未配置（缺 Supabase 环境变量）：说清楚原因，不要假装未登录后
-  // 再给一个必然失败的登录框。
+  // 登不上的时候说清楚原因，不要假装未登录后再给一个必然失败的登录框。
+  // 说什么由 loginUnavailableNotice() 按域名家族决定（境内=还没开放，其他=没接上）。
   if (!configured) {
+    const notice = loginUnavailableNotice();
     return (
       <div className="px-8 py-6">
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
           {tt("账户")}
         </h1>
-        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-[13px] text-amber-800">
-          {tt("登录服务尚未配置（缺少 Supabase 环境变量）。")}
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+          <p className="text-[14px] font-medium">{tt(notice?.title || "")}</p>
+          {notice?.detail && (
+            <p className="mt-1.5 text-[13px] text-amber-700">{tt(notice.detail)}</p>
+          )}
         </div>
       </div>
     );

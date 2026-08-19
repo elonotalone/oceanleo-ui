@@ -19,7 +19,12 @@
 // ============================================================================
 
 import { useEffect, useState, type ReactNode } from "react";
-import { browserClient, oceanleoConfigured, getUserEmail } from "../lib/auth";
+import {
+  browserClient,
+  oceanleoConfigured,
+  loginUnavailableNotice,
+  getUserEmail,
+} from "../lib/auth";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 import { currentDomainProfile } from "../contracts/domain-family";
@@ -59,11 +64,15 @@ export function SettingsPage({ extraSections, knowledgeBaseLink = true }: Settin
   }, [configured]);
 
   if (!configured) {
+    const notice = loginUnavailableNotice();
     return (
       <div className="px-8 py-6">
         <PageHeader title={tt("设置")} />
-        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-[13px] text-amber-800">
-          {tt("登录服务尚未配置（缺少 Supabase 环境变量）。")}
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+          <p className="text-[14px] font-medium">{tt(notice?.title || "")}</p>
+          {notice?.detail && (
+            <p className="mt-1.5 text-[13px] text-amber-700">{tt(notice.detail)}</p>
+          )}
         </div>
       </div>
     );

@@ -5,6 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import {
   browserClient,
   oceanleoConfigured,
+  loginUnavailableNotice,
   getCredits,
   getModelCatalog,
   pricingDocUrl,
@@ -80,11 +81,15 @@ export function ApiPage({
   }, [user]);
 
   if (!oceanleoConfigured()) {
+    const notice = loginUnavailableNotice();
     return (
       <div className="px-8 py-6">
         <PageHeader title={tt("AI 模型")} />
-        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-[13px] text-amber-800">
-          {tt("登录服务尚未配置（缺少 Supabase 环境变量）。")}
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+          <p className="text-[14px] font-medium">{tt(notice?.title || "")}</p>
+          {notice?.detail && (
+            <p className="mt-1.5 text-[13px] text-amber-700">{tt(notice.detail)}</p>
+          )}
         </div>
       </div>
     );
