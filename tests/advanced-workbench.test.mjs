@@ -140,7 +140,8 @@ test("library panels are static while embedded editors stay isolated", () => {
   ].join("\n");
   const protocol =
     source("../src/shell/editor-protocol.ts") +
-    source("../src/shell/editor-protocol-types.ts");
+    source("../src/shell/editor-protocol-types.ts") +
+    source("../src/shell/editor-protocol-message-types.ts");
   const embed =
     source("../src/shell/workbench-embed.tsx") +
     source("../src/shell/use-embed-editor-messages.ts");
@@ -314,7 +315,8 @@ test("late catalog categories stay behind More and native Office routes use the 
 test("specialist embeds require a trusted origin, frame and instance handshake", () => {
   const protocol =
     source("../src/shell/editor-protocol.ts") +
-    source("../src/shell/editor-protocol-types.ts");
+    source("../src/shell/editor-protocol-types.ts") +
+    source("../src/shell/editor-protocol-message-types.ts");
   const embed =
     source("../src/shell/workbench-embed.tsx") +
     source("../src/shell/use-embed-editor-messages.ts");

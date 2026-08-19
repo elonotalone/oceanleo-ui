@@ -48,6 +48,15 @@ export type {
 } from "./editor-protocol-types.mjs";
 export { isEditorRecoverySnapshot } from "./editor-protocol-validation.mjs";
 export * from "./editor-sandbox-origin";
+// 指令白名单本身住在隔壁（600 行拆分闸），但两个方向的前置拦截仍在本文件里。
+import {
+  EDITOR_TO_HOST_MESSAGE_TYPES,
+  HOST_TO_EDITOR_MESSAGE_TYPES,
+} from "./editor-protocol-message-types";
+export {
+  EDITOR_TO_HOST_MESSAGE_TYPES,
+  HOST_TO_EDITOR_MESSAGE_TYPES,
+} from "./editor-protocol-message-types";
 
 export const EDITOR_PROTOCOL = "oceanleo.editor.v1";
 // [loopback-dev-gate:begin] 网页永远不许直连本机。
@@ -188,44 +197,6 @@ export function isValidEditorTargetOrigin(origin: string): boolean {
   // `*` 会把消息广播给任何导航到该 frame 的文档，等于放弃投递方向的校验。
   return origin !== "*" && isTrustedEditorOrigin(origin);
 }
-
-/** 来自 frame 的消息只允许这些指令；不含任何「代我调用 API」式通用代理。 */
-export const EDITOR_TO_HOST_MESSAGE_TYPES = new Set([
-  "artifact-created",
-  "artifact-updated",
-  "close-request",
-  "dirty",
-  "error",
-  "export-result",
-  "history-changed",
-  "material-result",
-  "project-manifest",
-  "project-result",
-  "ready",
-  "recovery-result",
-  "recovery-snapshot",
-  "selection-changed",
-  "selection-result",
-  "tools-manifest",
-  "viewport-changed",
-]);
-
-export const HOST_TO_EDITOR_MESSAGE_TYPES = new Set([
-  "dispose",
-  "export-request",
-  "init",
-  "material-insert",
-  "open-asset",
-  "project-action",
-  "project-view",
-  "recovery-capture",
-  "recovery-restore",
-  "save-request",
-  "save-result",
-  "selection-command",
-  "set-host-layout",
-  "viewport-command",
-]);
 
 /**
  * 单一收信闸门：source（必须是本 frame 的 contentWindow）、origin（必须等于

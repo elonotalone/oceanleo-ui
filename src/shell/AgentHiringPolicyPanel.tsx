@@ -16,7 +16,7 @@
 // 回落到 DEFAULT_AGENT_HIRING_POLICY，**绝不把开关画成开着的**。
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
   DEFAULT_AGENT_HIRING_POLICY,
@@ -79,6 +79,19 @@ export function AgentHiringPolicyPanel({
   eventLimit = EVENT_LIMIT_DEFAULT,
 }: AgentHiringPolicyPanelProps) {
   const tt = useUI();
+  // 挂载读取那条 effect 只能跑一次，所以它不能把 `tt` 写进依赖：`tt` 是 locale
+  // provider 所有的函数，切一次语言就换一次身份，effect 重跑会拿服务端值把用户
+  // 刚填进去的额度和白名单冲掉（而且一旦有站不记忆化 messages，它就是自锁循环）。
+  // 形状照 `doc-editors/use-grid-editor.ts:415-422`：身份走 ref，调用点恒定。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
+  const translate = useCallback(
+    (zh: string, vars?: Record<string, string | number>) =>
+      translateRef.current(zh, vars),
+    [],
+  );
   // 起点就是最保守的那一份：读取失败也停在这里。
   const [policy, setPolicy] = useState<AgentHiringPolicy>({
     ...DEFAULT_AGENT_HIRING_POLICY,
@@ -100,7 +113,10 @@ export function AgentHiringPolicyPanel({
       setLoaded(true);
       if (!result.ok || !result.data?.policy) {
         if (result.status !== 401) {
-          setError(result.error || tt("读取 agent 雇人设置失败，界面显示的是最保守的默认值。"));
+          setError(
+            result.error ||
+              translate("读取 agent 雇人设置失败，界面显示的是最保守的默认值。"),
+          );
         }
         return;
       }
@@ -116,7 +132,7 @@ export function AgentHiringPolicyPanel({
     return () => {
       cancelled = true;
     };
-  }, [tt]);
+  }, [translate]);
 
   const reloadEvents = useCallback(async () => {
     const result = await listAgentHiringEvents({ limit: eventLimit });
