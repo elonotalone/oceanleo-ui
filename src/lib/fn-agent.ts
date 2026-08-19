@@ -678,6 +678,61 @@ export async function runEditorCommand(
   }
 }
 
+/** 对话流里够用的最小消息形状（不 import agent.ts 的类型，免得两个模块互相绕）。 */
+interface CommandCarryingMessage {
+  id: number;
+  role: string;
+  kind?: string;
+  content: string;
+  meta?: { interim?: boolean } & Record<string, unknown>;
+}
+
+/** 「哪些消息已经看过」的账本。 */
+export interface EditorCommandIntake {
+  taskKey: string;
+  ids: Set<number>;
+  primed: boolean;
+}
+
+export function createEditorCommandIntake(): EditorCommandIntake {
+  return { taskKey: "", ids: new Set(), primed: false };
+}
+
+/**
+ * 从一轮轮询结果里挑出「真正是新说的、且可能带指令」的 assistant 消息。
+ *
+ * 换会话时**整整吃掉一轮**只记账不返回：宿主清空旧消息与这里拿到新消息之间隔着一次渲染，
+ * 只看一眼很容易把整段历史当成新消息——回看一段旧对话就会把里面的指令再执行一遍。
+ * 宁可漏掉一条刚好与首轮同时到达的回答，也不许重放历史。
+ */
+export function takeFreshCommandMessages(
+  intake: EditorCommandIntake,
+  messages: readonly CommandCarryingMessage[],
+  taskKey: string,
+): { fresh: CommandCarryingMessage[]; switched: boolean } {
+  if (intake.taskKey !== taskKey) {
+    intake.taskKey = taskKey;
+    intake.ids = new Set(messages.map((m) => m.id));
+    intake.primed = false;
+    return { fresh: [], switched: true };
+  }
+  if (!intake.primed) {
+    for (const message of messages) intake.ids.add(message.id);
+    intake.primed = true;
+    return { fresh: [], switched: false };
+  }
+  const fresh: CommandCarryingMessage[] = [];
+  for (const message of messages) {
+    if (intake.ids.has(message.id)) continue;
+    intake.ids.add(message.id);
+    if (message.role !== "assistant") continue;
+    if (message.kind && message.kind !== "text" && message.kind !== "report") continue;
+    if (message.meta?.interim === true) continue;
+    fresh.push(message);
+  }
+  return { fresh, switched: false };
+}
+
 export interface EditorCommandOutcome {
   editorId: string;
   spec: PluginCommandSpec;

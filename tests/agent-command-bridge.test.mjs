@@ -10,11 +10,13 @@ import {
   createEditorCommandSession,
   describeEditorCommand,
   editorCommandResultNote,
+  createEditorCommandIntake,
   parseEditorCommandRequests,
   planEditorCommand,
   readEditorCommandSurface,
   registerEditorCommandSurfaceReader,
   runEditorCommand,
+  takeFreshCommandMessages,
 } from "../src/lib/fn-agent.ts";
 
 const block = (payload) =>
@@ -401,6 +403,75 @@ test("指令面读取器：prop 注入优先于模块级注册，读不到就是
   assert.equal(readEditorCommandSurface(), null);
   registerEditorCommandSurfaceReader(null);
   assert.equal(readEditorCommandSurface(), null);
+});
+
+test("回看一段旧对话不会把里面的指令再执行一遍", async () => {
+  const history = [
+    { id: 1, role: "user", kind: "text", content: "插入标题" },
+    {
+      id: 2,
+      role: "assistant",
+      kind: "text",
+      content: block({ id: "richdoc.insert-heading", params: { text: "概述" } }),
+    },
+  ];
+  const intake = createEditorCommandIntake();
+  // 换会话那一轮：宿主已清空消息，这里只记账。
+  assert.deepEqual(takeFreshCommandMessages(intake, [], "task-9"), {
+    fresh: [],
+    switched: true,
+  });
+  // 历史整段到达的那一轮：一条都不返回（否则就是重放）。
+  const primed = takeFreshCommandMessages(intake, history, "task-9");
+  assert.deepEqual(primed.fresh, []);
+  assert.equal(primed.switched, false);
+  // 之后真正新说的那一条才交出来。
+  const next = { id: 3, role: "assistant", kind: "text", content: "又一条" };
+  assert.deepEqual(
+    takeFreshCommandMessages(intake, [...history, next], "task-9").fresh.map(
+      (m) => m.id,
+    ),
+    [3],
+  );
+  // 同一条再喂一次不会重复交出。
+  assert.deepEqual(
+    takeFreshCommandMessages(intake, [...history, next], "task-9").fresh,
+    [],
+  );
+  // 换到另一个会话又要重新吃一轮。
+  assert.equal(
+    takeFreshCommandMessages(intake, [...history, next], "task-10").switched,
+    true,
+  );
+  assert.deepEqual(
+    takeFreshCommandMessages(intake, [...history, next], "task-10").fresh,
+    [],
+  );
+});
+
+test("过程消息与用户自己说的话不当指令来源", () => {
+  const intake = createEditorCommandIntake();
+  takeFreshCommandMessages(intake, [], "t");
+  takeFreshCommandMessages(intake, [], "t");
+  const batch = takeFreshCommandMessages(
+    intake,
+    [
+      { id: 1, role: "user", kind: "text", content: block({ id: "richdoc.x" }) },
+      { id: 2, role: "assistant", kind: "step", content: "读取文档" },
+      { id: 3, role: "assistant", kind: "plan", content: "先插标题" },
+      {
+        id: 4,
+        role: "assistant",
+        kind: "text",
+        content: "想一想",
+        meta: { interim: true },
+      },
+      { id: 5, role: "assistant", kind: "text", content: "正式回答" },
+      { id: 6, role: "assistant", kind: "report", content: "成员回答" },
+    ],
+    "t",
+  );
+  assert.deepEqual(batch.fresh.map((m) => m.id), [5, 6]);
 });
 
 // 唯一一处跨面检查：agent 侧读的是 W1 的指令面单例（合同 §3.1）。

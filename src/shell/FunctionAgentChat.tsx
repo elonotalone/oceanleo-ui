@@ -54,8 +54,10 @@ import {
 } from "../lib/agent";
 import {
   buildEditorCommandContext,
+  createEditorCommandIntake,
   createEditorCommandSession,
   readEditorCommandSurface,
+  takeFreshCommandMessages,
   type EditorCommandPending,
   type EditorCommandSurfaceReader,
   type OpsPatch,
@@ -125,9 +127,7 @@ export interface EditorCommandBridge {
   contextFor: (prompt: string) => string;
   /** 每次轮询拿到消息后调一次；同一条消息只会被处理一次，历史消息不会被重放。 */
   ingest: (messages: AgentMessage[], taskKey: string) => void;
-  /**
-   * 用户刚发出一句话 → 解除「上一条被拒就停」，并声明「接下来这个会话里的回答是新的」，
-   * 免得刚建好的会话第一条回答被当成历史消息跳过。 */
+  /** 用户刚发出一句话 → 解除「上一条被拒就停」，拒绝回喂计数归零。 */
   noteUserTurn: () => void;
   pending: EditorCommandPending | null;
   notes: EditorCommandNote[];
@@ -155,13 +155,8 @@ export function useEditorCommandBridge(opts: {
   const [notes, setNotes] = useState<EditorCommandNote[]>([]);
   const [busy, setBusy] = useState(false);
   const noteSeqRef = useRef(0);
-  // 打开历史会话时，已经躺在里面的指令块一律当读过——不能因为回看旧对话就再改一次文件。
-  const seenRef = useRef<{ taskKey: string; ids: Set<number> }>({
-    taskKey: "",
-    ids: new Set(),
-  });
-  // 用户刚发过话 → 下一个会话里的回答是新鲜的，不走「历史一律当读过」那条路。
-  const adoptRef = useRef(false);
+  // 「哪些消息已经看过」的账本（换会话时先整整吃掉一轮，绝不重放历史里的指令）。
+  const intakeRef = useRef(createEditorCommandIntake());
   // 连着被拒几次就不再把拒绝理由喂回给模型：每喂一次都是一轮真实花费，
   // 不能让「模型乱下 id → 我告诉它不行 → 它再乱下」自己转起来。
   const rejectReportsRef = useRef(0);
@@ -223,28 +218,13 @@ export function useEditorCommandBridge(opts: {
   const ingest = useCallback(
     (messages: AgentMessage[], taskKey: string) => {
       if (!liveRef.current.enabled || liveRef.current.readOnly) return;
-      let seen = seenRef.current;
-      if (seen.taskKey !== taskKey) {
-        if (!adoptRef.current) {
-          seenRef.current = {
-            taskKey,
-            ids: new Set(messages.map((m) => m.id)),
-          };
-          setNotes([]);
-          return;
-        }
-        adoptRef.current = false;
-        seen = { taskKey, ids: new Set() };
-        seenRef.current = seen;
-        setNotes([]);
-      }
-      for (const message of messages) {
-        if (message.role !== "assistant") continue;
-        if (message.kind && message.kind !== "text" && message.kind !== "report")
-          continue;
-        if (message.meta?.interim === true) continue;
-        if (seen.ids.has(message.id)) continue;
-        seen.ids.add(message.id);
+      const { fresh, switched } = takeFreshCommandMessages(
+        intakeRef.current,
+        messages,
+        taskKey,
+      );
+      if (switched) setNotes([]);
+      for (const message of fresh) {
         void handleMessage(message.id, message.content || "");
       }
     },
@@ -293,7 +273,6 @@ export function useEditorCommandBridge(opts: {
 
   const noteUserTurn = useCallback(() => {
     sessionRef.current.resume();
-    adoptRef.current = true;
     rejectReportsRef.current = 0;
   }, []);
 
