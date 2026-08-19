@@ -646,3 +646,21 @@ test("换编辑器/换素材导致组件重挂：既有对话的下一条指令�
   assert.deepEqual(fresh.map((m) => m.id), [901], "重挂之后第一条指令被吞了");
   assert.equal(host.offers[0].kind, "confirm");
 });
+
+test("两个对话宿主都只在消息属于当前对话时才记账（否则会把新对话的历史当成刚说的话）", async () => {
+  const { readFile } = await import("node:fs/promises");
+  for (const file of ["AgentChat.tsx", "FunctionAgentChat.tsx"]) {
+    const source = await readFile(
+      new URL(`../src/shell/${file}`, import.meta.url),
+      "utf8",
+    );
+    const effect = source.slice(source.indexOf("ingestEditorCommands(messages"));
+    assert.ok(
+      /messagesTaskId !== \(taskId \|\| ""\)/.test(
+        source.slice(0, source.indexOf("ingestEditorCommands(messages")).slice(-400),
+      ),
+      `${file} 的指令记账没有先确认这份消息属于当前对话`,
+    );
+    assert.ok(effect.length > 0);
+  }
+});

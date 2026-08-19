@@ -345,6 +345,9 @@ function AgentChatInner({
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  // 手上这份消息属于哪段对话。换对话时它先归零，等服务端那份到齐才跟上；
+  // 编辑器指令只在两者一致时才看，否则会拿上一段对话的消息去对新对话记账。
+  const [messagesTaskId, setMessagesTaskId] = useState("");
   const [activeArtifactIds, setActiveArtifactIds] = useState<Set<string> | null>(
     null,
   );
@@ -379,6 +382,7 @@ function AgentChatInner({
   });
   const editorContextFor = editorCommands.contextFor;
   const noteUserTurn = editorCommands.noteUserTurn;
+  const noteOwnEditorTask = editorCommands.noteOwnTask;
   const ingestEditorCommands = editorCommands.ingest;
   // 与 HomeIntro 同名同义的开关（见 AgentChatProps.enableInputTools）。默认 true，
   // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
@@ -400,6 +404,7 @@ function AgentChatInner({
     if (loadedTaskRef.current !== id) return "";
     if (r.ok && r.data) {
       const incoming = r.data.messages || [];
+      setMessagesTaskId(id);
       setMessages((current) =>
         sameAgentMessages(current, incoming) ? current : incoming,
       );
@@ -420,6 +425,7 @@ function AgentChatInner({
   useEffect(() => {
     if (!taskId) {
       loadedTaskRef.current = "";
+      setMessagesTaskId("");
       setMessages([]);
       setActiveArtifactIds(null);
       setHiddenArtifactMessageIds(new Set());
@@ -435,6 +441,7 @@ function AgentChatInner({
     }
     if (loadedTaskRef.current === taskId) return;
     loadedTaskRef.current = taskId;
+    setMessagesTaskId("");
     setMessages([]);
     setActiveArtifactIds(null);
     setHiddenArtifactMessageIds(new Set());
@@ -484,9 +491,11 @@ function AgentChatInner({
   }, [messages]);
 
   // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
+  // 手上的消息还属于上一段对话时先不看，免得把新对话的历史当成刚说的话。
   useEffect(() => {
+    if (messagesTaskId !== (taskId || "")) return;
     ingestEditorCommands(messages, taskId || "");
-  }, [messages, taskId, ingestEditorCommands]);
+  }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
 
   const start = useCallback(
     async (prompt: string, uploaded?: AgentAttachment[]) => {
@@ -559,6 +568,8 @@ function AgentChatInner({
       }
 
       const createdTaskId = result.data.task_id;
+      // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
+      noteOwnEditorTask(createdTaskId);
       loadedTaskRef.current = createdTaskId;
       setLocalTaskId(createdTaskId);
       setStatus("running");
@@ -575,6 +586,7 @@ function AgentChatInner({
       agentId,
       editorContextFor,
       mode,
+      noteOwnEditorTask,
       noteUserTurn,
       onTaskCreated,
       promptOverride,
