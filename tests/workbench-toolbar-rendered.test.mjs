@@ -354,6 +354,9 @@ const agentStubUrl = dataModule(`
   export async function followUp() { return { ok: true }; }
   export async function getTask() { return { ok: false }; }
   export async function stopTask() { return { ok: true }; }
+  // 编辑器指令执行完把结果回报给会话（真实定义在 src/lib/agent.ts）。
+  // 这份假模块要跟着真模块的导出走，否则整份测试在加载期就抛。
+  export async function reportEditorCommandResult() { return { ok: true }; }
 `);
 const snapshotStubUrl = dataModule(`
   export function mergeWorkspaceSessionSnapshot(runtime) { return runtime || {}; }
