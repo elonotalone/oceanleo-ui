@@ -133,12 +133,14 @@ export const VIDEO_IMPORT_EXT = new Set(["wmv"]);
  */
 export const AUDIO_IMPORT_EXT = new Set<string>([]);
 /**
- * 3D 入口：等 W10 的 `verdicts/W10-delivery.md` 落盘后按它的实际结论补。
+ * 3D 入口：obj 与 stl，走 `POST /v1/convert/model3d` 转成 glb。
  *
- * 它的流水已实测 obj/stl → glb 能转（网关纯 Python，只留形状不留材质）、
- * fbx 转不了（FBX SDK / Blender 都不在机器上）；交付说明落盘前不改这里。
+ * 按 W10 交付 §5 的原话补的：「3D 路由的判型表可以从『只有 glb+gltf』扩到
+ * glb / gltf / obj / stl……**fbx 不要放进判型表**，它会被 415 拒绝」。
+ * 转换是纯 Python 实现，**只搬形状**——贴图、材质、UV、动画都不带过来，
+ * 这句话必须在用户按下上传之前就说（见 `UPLOAD_CONVERSION_NOTE`）。
  */
-export const MODEL_IMPORT_EXT = new Set<string>([]);
+export const MODEL_IMPORT_EXT = new Set(["obj", "stl"]);
 
 /**
  * 用户真会拖进来、但**这台服务器已经实测转不了**的那几个后缀，各自配一句能照做的话。
@@ -173,6 +175,22 @@ const UPLOAD_UNAVAILABLE = new Map<string, string>([
  */
 export function uploadUnavailableReason(value: string): string {
   return UPLOAD_UNAVAILABLE.get(normalizedUploadExtension(value)) || "";
+}
+
+/**
+ * 转这一道**会丢什么**，在用户开始等之前就说。
+ *
+ * 今天只有 3D 这一条：obj/stl → glb 的转换是纯 Python 写的，只搬几何形状，
+ * 贴图、材质、UV、动画一概不带（W10 交付 §5 要求这句话必须落在界面上，
+ * 它在接口回答和响应头 `x-model3d-dropped` 里也写着）。转完才告诉用户丢了东西，
+ * 那时他已经等完一整趟上传了。
+ */
+const UPLOAD_CONVERSION_NOTE: Partial<Record<UploadEditorTarget, string>> = {
+  threed: "3D 模型只会搬过来形状，贴图和材质不会带过来。",
+};
+
+export function uploadConversionNote(target: UploadEditorTarget | ""): string {
+  return target ? UPLOAD_CONVERSION_NOTE[target] || "" : "";
 }
 
 /** 本地文件第一次落进工作台时，它该去哪条编辑器路由。 */

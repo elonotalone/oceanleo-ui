@@ -2289,12 +2289,6 @@
         },
         {
           "kind": "named",
-          "name": "AdvancedContentWorkbenchProps",
-          "importedName": "AdvancedContentWorkbenchProps",
-          "source": "./AdvancedContentWorkbench"
-        },
-        {
-          "kind": "named",
           "name": "advancedFeatureById",
           "importedName": "advancedFeatureById",
           "source": "./advanced-features"
@@ -2355,20 +2349,8 @@
         },
         {
           "kind": "named",
-          "name": "AgentCardConfig",
-          "importedName": "AgentCardConfig",
-          "source": "./SiteCatalogConsole"
-        },
-        {
-          "kind": "named",
           "name": "AgentChat",
           "importedName": "AgentChat",
-          "source": "./AgentChat"
-        },
-        {
-          "kind": "named",
-          "name": "AgentChatProps",
-          "importedName": "AgentChatProps",
           "source": "./AgentChat"
         },
         {
@@ -2382,12 +2364,6 @@
           "name": "AgentHiringPolicyPanel",
           "importedName": "AgentHiringPolicyPanel",
           "source": "./AgentHiringPolicyPanel"
-        },
-        {
-          "kind": "named",
-          "name": "AgentLibraryTabs",
-          "importedName": "AgentLibraryTabs",
-          "source": "./AgentChat"
         },
         {
           "kind": "named",
@@ -2459,12 +2435,6 @@
           "kind": "named",
           "name": "AppCapabilityBar",
           "importedName": "AppCapabilityBar",
-          "source": "./AppCapabilityBar"
-        },
-        {
-          "kind": "named",
-          "name": "AppCapabilityBarProps",
-          "importedName": "AppCapabilityBarProps",
           "source": "./AppCapabilityBar"
         },
         {
@@ -2793,12 +2763,6 @@
         },
         {
           "kind": "named",
-          "name": "CanvasTab",
-          "importedName": "CanvasTab",
-          "source": "./ResultCanvas"
-        },
-        {
-          "kind": "named",
           "name": "capabilityImageOf",
           "importedName": "capabilityImageOf",
           "source": "./app-catalog"
@@ -2862,12 +2826,6 @@
           "name": "ConsoleFnSubNav",
           "importedName": "ConsoleFnSubNav",
           "source": "./WorkspaceMasterDetail"
-        },
-        {
-          "kind": "named",
-          "name": "ConsoleFunction",
-          "importedName": "ConsoleFunction",
-          "source": "./OperatorConsole"
         },
         {
           "kind": "named",
@@ -3117,12 +3075,6 @@
         },
         {
           "kind": "named",
-          "name": "FileLibraryProps",
-          "importedName": "FileLibraryProps",
-          "source": "./FileLibrary"
-        },
-        {
-          "kind": "named",
           "name": "FillNonceProvider",
           "importedName": "FillNonceProvider",
           "source": "./guide-context"
@@ -3149,12 +3101,6 @@
           "kind": "named",
           "name": "FunctionAgentChat",
           "importedName": "FunctionAgentChat",
-          "source": "./FunctionAgentChat"
-        },
-        {
-          "kind": "named",
-          "name": "FunctionAgentChatProps",
-          "importedName": "FunctionAgentChatProps",
           "source": "./FunctionAgentChat"
         },
         {
@@ -3357,12 +3303,6 @@
         },
         {
           "kind": "named",
-          "name": "HumanHandoffButtonProps",
-          "importedName": "HumanHandoffButtonProps",
-          "source": "./HumanHandoffButton"
-        },
-        {
-          "kind": "named",
           "name": "HumanHandoffDialog",
           "importedName": "HumanHandoffDialog",
           "source": "./HumanHandoffDialog"
@@ -3390,6 +3330,18 @@
           "name": "ImageLightboxProps",
           "importedName": "ImageLightboxProps",
           "source": "./ImageLightbox"
+        },
+        {
+          "kind": "named",
+          "name": "ImportedProject",
+          "importedName": "ImportedProject",
+          "source": "./project-import"
+        },
+        {
+          "kind": "named",
+          "name": "ImportPlan",
+          "importedName": "ImportPlan",
+          "source": "./project-import"
         },
         {
           "kind": "named",
@@ -3678,12 +3630,6 @@
           "name": "LibrarySubNav",
           "importedName": "LibrarySubNav",
           "source": "./LibraryMasterDetail"
-        },
-        {
-          "kind": "named",
-          "name": "LibraryTab",
-          "importedName": "LibraryTab",
-          "source": "./FileLibrary"
         },
         {
           "kind": "named",
@@ -4089,12 +4035,6 @@
         },
         {
           "kind": "named",
-          "name": "OperatorConsoleProps",
-          "importedName": "OperatorConsoleProps",
-          "source": "./OperatorConsole"
-        },
-        {
-          "kind": "named",
           "name": "OperatorRemarkField",
           "importedName": "OperatorRemarkField",
           "source": "./OperatorRemark"
@@ -4284,6 +4224,18 @@
           "name": "ProjectEmptyStateProps",
           "importedName": "ProjectEmptyStateProps",
           "source": "./project-workspace"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectImportPanel",
+          "importedName": "ProjectImportPanel",
+          "source": "./project-import"
+        },
+        {
+          "kind": "named",
+          "name": "ProjectImportPanelProps",
+          "importedName": "ProjectImportPanelProps",
+          "source": "./project-import"
         },
         {
           "kind": "named",
@@ -4497,12 +4449,6 @@
         },
         {
           "kind": "named",
-          "name": "ResultCanvasProps",
-          "importedName": "ResultCanvasProps",
-          "source": "./ResultCanvas"
-        },
-        {
-          "kind": "named",
           "name": "retireArtifact",
           "importedName": "retireArtifact",
           "source": "./artifact-client"
@@ -4518,12 +4464,6 @@
           "name": "runPluginCommand",
           "importedName": "runPluginCommand",
           "source": "./plugin-command"
-        },
-        {
-          "kind": "named",
-          "name": "RuntimeHydrationValue",
-          "importedName": "RuntimeHydrationValue",
-          "source": "./workspace-runtime-hydration"
         },
         {
           "kind": "named",
@@ -4689,12 +4629,6 @@
         },
         {
           "kind": "named",
-          "name": "SelectionNamespace",
-          "importedName": "SelectionNamespace",
-          "source": "./WorkspaceSelection"
-        },
-        {
-          "kind": "named",
           "name": "selectionRequestId",
           "importedName": "selectionRequestId",
           "source": "./selection-context"
@@ -4803,12 +4737,6 @@
         },
         {
           "kind": "named",
-          "name": "SiteCatalogConsoleProps",
-          "importedName": "SiteCatalogConsoleProps",
-          "source": "./SiteCatalogConsole"
-        },
-        {
-          "kind": "named",
           "name": "SiteDirectoryApp",
           "importedName": "SiteDirectoryApp",
           "source": "./material-scene-axis"
@@ -4824,12 +4752,6 @@
           "name": "siteIconFor",
           "importedName": "siteIconFor",
           "source": "./site-icons"
-        },
-        {
-          "kind": "named",
-          "name": "SiteOption",
-          "importedName": "SiteOption",
-          "source": "./FileLibrary"
         },
         {
           "kind": "named",
@@ -4977,6 +4899,12 @@
         },
         {
           "kind": "named",
+          "name": "uploadConversionNote",
+          "importedName": "uploadConversionNote",
+          "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "named",
           "name": "uploadEditorTargetForExtension",
           "importedName": "uploadEditorTargetForExtension",
           "source": "./workbench-route-formats"
@@ -5033,18 +4961,6 @@
           "kind": "named",
           "name": "useConsoleDraft",
           "importedName": "useConsoleDraft",
-          "source": "./useConsoleDraft"
-        },
-        {
-          "kind": "named",
-          "name": "UseConsoleDraftArgs",
-          "importedName": "UseConsoleDraftArgs",
-          "source": "./useConsoleDraft"
-        },
-        {
-          "kind": "named",
-          "name": "UseConsoleDraftReturn",
-          "importedName": "UseConsoleDraftReturn",
           "source": "./useConsoleDraft"
         },
         {
@@ -5487,6 +5403,24 @@
         },
         {
           "kind": "type",
+          "name": "AdvancedContentWorkbenchProps",
+          "importedName": "AdvancedContentWorkbenchProps",
+          "source": "./AdvancedContentWorkbench"
+        },
+        {
+          "kind": "type",
+          "name": "AgentCardConfig",
+          "importedName": "AgentCardConfig",
+          "source": "./SiteCatalogConsole"
+        },
+        {
+          "kind": "type",
+          "name": "AgentChatProps",
+          "importedName": "AgentChatProps",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "type",
           "name": "AgentConsoleProps",
           "importedName": "AgentConsoleProps",
           "source": "./AgentConsole"
@@ -5499,9 +5433,21 @@
         },
         {
           "kind": "type",
+          "name": "AgentLibraryTabs",
+          "importedName": "AgentLibraryTabs",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "type",
           "name": "AiRecommendBoxProps",
           "importedName": "AiRecommendBoxProps",
           "source": "./AiRecommendBox"
+        },
+        {
+          "kind": "type",
+          "name": "AppCapabilityBarProps",
+          "importedName": "AppCapabilityBarProps",
+          "source": "./AppCapabilityBar"
         },
         {
           "kind": "type",
@@ -5514,6 +5460,18 @@
           "name": "ArtifactRendererProps",
           "importedName": "ArtifactRendererProps",
           "source": "./ArtifactRenderer"
+        },
+        {
+          "kind": "type",
+          "name": "CanvasTab",
+          "importedName": "CanvasTab",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "type",
+          "name": "ConsoleFunction",
+          "importedName": "ConsoleFunction",
+          "source": "./OperatorConsole"
         },
         {
           "kind": "type",
@@ -5547,6 +5505,18 @@
         },
         {
           "kind": "type",
+          "name": "FileLibraryProps",
+          "importedName": "FileLibraryProps",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "type",
+          "name": "FunctionAgentChatProps",
+          "importedName": "FunctionAgentChatProps",
+          "source": "./FunctionAgentChat"
+        },
+        {
+          "kind": "type",
           "name": "HistoryPageProps",
           "importedName": "HistoryPageProps",
           "source": "./HistoryPage"
@@ -5562,6 +5532,12 @@
           "name": "HomeIntroProps",
           "importedName": "HomeIntroProps",
           "source": "./HomeIntro"
+        },
+        {
+          "kind": "type",
+          "name": "HumanHandoffButtonProps",
+          "importedName": "HumanHandoffButtonProps",
+          "source": "./HumanHandoffButton"
         },
         {
           "kind": "type",
@@ -5589,6 +5565,12 @@
         },
         {
           "kind": "type",
+          "name": "LibraryTab",
+          "importedName": "LibraryTab",
+          "source": "./FileLibrary"
+        },
+        {
+          "kind": "type",
           "name": "MaterialItem",
           "importedName": "MaterialItem",
           "source": "./MaterialLibrary"
@@ -5604,6 +5586,12 @@
           "name": "MyLibraryProps",
           "importedName": "MyLibraryProps",
           "source": "./MyLibrary"
+        },
+        {
+          "kind": "type",
+          "name": "OperatorConsoleProps",
+          "importedName": "OperatorConsoleProps",
+          "source": "./OperatorConsole"
         },
         {
           "kind": "type",
@@ -5661,15 +5649,45 @@
         },
         {
           "kind": "type",
+          "name": "ResultCanvasProps",
+          "importedName": "ResultCanvasProps",
+          "source": "./ResultCanvas"
+        },
+        {
+          "kind": "type",
           "name": "RunCapabilityFn",
           "importedName": "RunCapabilityFn",
           "source": "./AgentConsole"
         },
         {
           "kind": "type",
+          "name": "RuntimeHydrationValue",
+          "importedName": "RuntimeHydrationValue",
+          "source": "./workspace-runtime-hydration"
+        },
+        {
+          "kind": "type",
+          "name": "SelectionNamespace",
+          "importedName": "SelectionNamespace",
+          "source": "./WorkspaceSelection"
+        },
+        {
+          "kind": "type",
           "name": "SelectionToolbarProps",
           "importedName": "SelectionToolbarProps",
           "source": "./SelectionToolbar"
+        },
+        {
+          "kind": "type",
+          "name": "SiteCatalogConsoleProps",
+          "importedName": "SiteCatalogConsoleProps",
+          "source": "./SiteCatalogConsole"
+        },
+        {
+          "kind": "type",
+          "name": "SiteOption",
+          "importedName": "SiteOption",
+          "source": "./FileLibrary"
         },
         {
           "kind": "type",
@@ -5706,6 +5724,18 @@
           "name": "UploadEditorTarget",
           "importedName": "UploadEditorTarget",
           "source": "./workbench-route-formats"
+        },
+        {
+          "kind": "type",
+          "name": "UseConsoleDraftArgs",
+          "importedName": "UseConsoleDraftArgs",
+          "source": "./useConsoleDraft"
+        },
+        {
+          "kind": "type",
+          "name": "UseConsoleDraftReturn",
+          "importedName": "UseConsoleDraftReturn",
+          "source": "./useConsoleDraft"
         },
         {
           "kind": "type",

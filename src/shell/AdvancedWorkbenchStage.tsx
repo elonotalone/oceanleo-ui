@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import {
   useCallback,
   useRef,
@@ -14,6 +15,7 @@ import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer } from "./library-viewers";
 import { WORKBENCH_MATERIAL_MIME } from "./workbench-material-provider";
 import {
+  uploadConversionNote,
   uploadEditorTargetForFileName,
   uploadSupportedExtensionsByTarget,
   uploadUnavailableReason,
@@ -217,6 +219,45 @@ async function libraryItemFromLocalFile(
       };
 }
 
+/**
+ * W9 的「把本地做好的项目整个搬上来」面板（`verdicts/W9-delivery.md` §5）。
+ *
+ * 懒加载：它自带上传、进度、过滤说明，而绝大多数人打开空框是来拖一个文件的，
+ * 不该为那条少数路径先付一份体积。
+ */
+const ProjectImportPanel = dynamic(
+  () => import("./project-import").then((module) => module.ProjectImportPanel),
+  { ssr: false },
+);
+
+/**
+ * 导入回来的项目转成一件素材，交给工作台按 `kind:"website"` 挂网站编辑器。
+ *
+ * 判定依据是 `workbench-routes.ts:570-592`：`kind === "website"` 且 `meta` 里有
+ * `project_id` 就进网站编辑器；两者缺一它会判成「只有预览、没有可恢复的项目」。
+ */
+function libraryItemFromImportedProject(
+  project: { project_id?: string; display_name?: string; slug?: string },
+  siteId: string,
+): LibraryItem | null {
+  const projectId = String(project.project_id || "");
+  if (!projectId) return null;
+  return {
+    key: `website:${projectId}`,
+    source: "creation",
+    id: projectId,
+    title: project.display_name || project.slug || "导入的项目",
+    kind: "website",
+    siteId: siteId || "oceanleo",
+    favorite: false,
+    meta: {
+      project_id: projectId,
+      slug: project.slug,
+      display_name: project.display_name,
+    },
+  };
+}
+
 export function AdvancedWorkbenchBlankStage({
   accent = "#6d5dfc",
   siteId = "",
@@ -234,6 +275,7 @@ export function AdvancedWorkbenchBlankStage({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [importingProject, setImportingProject] = useState(false);
 
   const accept = useCallback(
     async (files: File[]) => {
@@ -259,9 +301,12 @@ export function AdvancedWorkbenchBlankStage({
         );
         return;
       }
+      const note = judged.needsConversion
+        ? uploadConversionNote(judged.target)
+        : "";
       setBusy(
         judged.needsConversion
-          ? tt("正在上传，稍后会转成能编辑的格式…")
+          ? `${tt("正在上传，稍后会转成能编辑的格式…")}${note ? tt(note) : ""}`
           : tt("正在上传…"),
       );
       try {
@@ -331,11 +376,42 @@ export function AdvancedWorkbenchBlankStage({
             void accept(files);
           }}
         />
-        {/* W9 的「上传整个文件夹 / zip」入口挂这里（合同 §4 W9 一行）。
-            它的 verdicts/W9-delivery.md §5 还没落盘时这里就是空的。 */}
+        {/* 「或者，把本地做好的整个项目搬上来」——W9 的导入面板（合同 §4 W9 一行）。
+            调用方自己塞了 `projectImportSlot` 就用它的，否则挂 W9 那一份。
+            默认收起：来空框的人绝大多数是拖一个文件的，这条是少数路径。 */}
         {projectImportSlot ? (
           <div className="mt-4">{projectImportSlot}</div>
-        ) : null}
+        ) : importingProject ? (
+          <div className="mt-4 text-left">
+            <ProjectImportPanel
+              onCancel={() => setImportingProject(false)}
+              onImported={(project) => {
+                const item = libraryItemFromImportedProject(project, siteId);
+                if (!item) {
+                  setError(
+                    tt("项目已经搬上来了，但没拿到它的编号，打不开编辑器。刷新一下再看。"),
+                  );
+                  setImportingProject(false);
+                  return;
+                }
+                onItemReady(item);
+              }}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={() => {
+              setError("");
+              setImportingProject(true);
+            }}
+            className="mt-3 text-[12px] font-medium underline underline-offset-4 transition disabled:opacity-60"
+            style={{ color: accent }}
+          >
+            {tt("或者，把本地做好的整个项目（文件夹 / zip）搬上来")}
+          </button>
+        )}
         {busy && (
           <p
             role="status"

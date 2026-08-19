@@ -29,8 +29,7 @@ export type {
   ProjectModalProps,
 } from "./project-workspace";
 // doctrine v4：覆盖式子栏「选中态」桥（子栏列表 ↔ 主区详情跨树通信）。
-export { WorkspaceSelectionProvider, useWorkspaceSelection } from "./WorkspaceSelection";
-export type { SelectionNamespace } from "./WorkspaceSelection";
+export { WorkspaceSelectionProvider, useWorkspaceSelection, type SelectionNamespace } from "./WorkspaceSelection";
 // 完整 App 工作会话：服务端 session + versioned snapshot + revision 冲突显式处理。
 export {
   WorkspaceSessionProvider,
@@ -50,8 +49,7 @@ export type {
 } from "./WorkspaceSession";
 // Specialist runtimes without FunctionAgentChat use this to end snapshot
 // hydration only after their own state is ready.
-export { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
-export type { RuntimeHydrationValue } from "./workspace-runtime-hydration";
+export { useWorkspaceRuntimeHydration, type RuntimeHydrationValue } from "./workspace-runtime-hydration";
 // 操作员 2026-06-24：外壳「顶栏控制」上下文——主区自带模型选择时，让 AppShell 隐藏
 // 它 header 里的模型选择条（消灭子站工作台「两行顶栏」）。
 export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
@@ -120,8 +118,7 @@ export { InputCard, type InputCardProps, type InputAttachment } from "./InputCar
 // 三栏工作台模板（= image 站版式，全站统一）。
 export { Studio, type StudioProps } from "./Studio";
 // 单页「操作台」+ 顶部功能按键（OceanLeo 强制版式宗旨，2026-06-18）。
-export { OperatorConsole } from "./OperatorConsole";
-export type { OperatorConsoleProps, ConsoleFunction } from "./OperatorConsole";
+export { OperatorConsole, type OperatorConsoleProps, type ConsoleFunction } from "./OperatorConsole";
 // ── 功能直入（H 波 W2，2026-08-04） ─────────────────────────────────────────
 // 目标形态 `docs/architecture/oceanleo-advanced-capability-entry.md` §7(a)：成品素材
 // 的第二个出口 = 在它所属 app 的操控台按键条上，以【它自己的名字】出现一枚按钮。
@@ -168,8 +165,7 @@ export type {
   AppCapabilityUrlBindingArgs,
   OperatorConsoleCapabilityProps,
 } from "./app-capability-context";
-export { AppCapabilityBar, APP_CAPABILITY_BAR_HEIGHT } from "./AppCapabilityBar";
-export type { AppCapabilityBarProps } from "./AppCapabilityBar";
+export { AppCapabilityBar, APP_CAPABILITY_BAR_HEIGHT, type AppCapabilityBarProps } from "./AppCapabilityBar";
 // 所有成品 app 共用的补充备注：OperatorConsole 提供 app 级状态，
 // FunctionAgentChat 统一渲染；直接生成引擎在最终 prompt 边界读取并追加。
 export {
@@ -184,8 +180,7 @@ export {
 } from "../lib/operator-remark";
 // 宗旨 v14（2026-07-05）：成品 app 目录数据模型 + 统一模板组件（改一次模板全站同步）。
 // 宗旨 v19（2026-07-08）：SiteCatalogConsole 目录首张自动插「agent」卡片（AgentCardConfig）。
-export { SiteCatalogConsole } from "./SiteCatalogConsole";
-export type { SiteCatalogConsoleProps, AgentCardConfig } from "./SiteCatalogConsole";
+export { SiteCatalogConsole, type SiteCatalogConsoleProps, type AgentCardConfig } from "./SiteCatalogConsole";
 // 2026-07-25（合同 §3）：一张首页卡 = 一个 app = 一个【代表 prompt】的取值契约由
 // app-catalog 独家提供，首页卡片 / lightbox / `?fill=preset` 深链都必须走它。
 // 2026-07-26（合同 §0.1 / §3）：两层图像职责分开——`capabilityImageOf` 取**功能图**
@@ -209,8 +204,7 @@ export { StudioSection, CollapsibleSection, type StudioSectionProps } from "./St
 // 宗旨 v18（2026-07-07）：操作台「选项按键组」（单选点已选=取消；多选切换）。全家桶
 // 操作台的比例/画质/风格/数量档等选项统一用它，自动获得「再点一次取消选择」。
 export { OptionRow, type OptionRowProps, type OptionItem } from "./OptionRow";
-export { ResultCanvas, CanvasEmpty, CanvasSubTabs } from "./ResultCanvas";
-export type { ResultCanvasProps, CanvasTab } from "./ResultCanvas";
+export { ResultCanvas, CanvasEmpty, CanvasSubTabs, type ResultCanvasProps, type CanvasTab } from "./ResultCanvas";
 // v0.179 canonical artifact control-plane surface. Consumers must not fork
 // response parsers, /v1 HTTP clients, ACL checks or editor command contracts.
 export * from "./artifact-contract";
@@ -275,14 +269,14 @@ export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
 export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
-export { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
-export type { AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
+export { AdvancedContentWorkbench, type AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
 // 空件挂载（合同 §3.2）：`item` 可以先不给，工作台先给空框，第一件素材落成后再挂编辑器。
 export type { AdvancedContentWorkbenchMountProps } from "./AdvancedContentWorkbench";
 export { AdvancedWorkbenchBlankStage } from "./AdvancedWorkbenchStage";
 // 本地文件第一次落进工作台时的判型：该去哪条编辑器、要不要先转一道、转不了时那句能
 // 照做的话。（同模块的 `*_EXT` 表是路由内部用的，不上公开面。）
 export {
+  uploadConversionNote,
   uploadEditorTargetForExtension,
   uploadEditorTargetForFileName,
   uploadSupportedExtensions,
@@ -290,6 +284,10 @@ export {
   uploadUnavailableReason,
   type UploadEditorTarget,
 } from "./workbench-route-formats";
+// W9 的项目导入面板。空框里已经默认挂着它（「把整个项目搬上来」），这里导出是给自写
+// 落地页的站点用的；它自足，不需要别的新导出。
+export { ProjectImportPanel } from "./project-import";
+export type { ProjectImportPanelProps, ImportPlan, ImportedProject } from "./project-import";
 // 上传归一化（合同 §3.3）：机制在共享包，映射表由各编辑器路由自己声明。
 export {
   editorImportExtensions,
@@ -511,13 +509,11 @@ export { Markdown } from "./Markdown";
 // 全站 agent 共用：规划 + 执行步骤 + 自动折叠分析/代码。
 export { AgentProgress } from "./AgentProgress";
 // agent 工作界面（左推导 / 右固定五槽位，真实调 /v1/agent/tasks）。
-export { AgentChat, orgStatusFromMessages } from "./AgentChat";
-export type { AgentChatProps, AgentLibraryTabs } from "./AgentChat";
+export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentLibraryTabs } from "./AgentChat";
 // 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
 // 单独导出是给别的场景（工作台、企业任务、设置页）复用同一套授权与闸门语义用的。
 // 上下文默认一条都不勾、可逐条撤回；agent 雇人默认全关且每个决定都能被人推翻。
-export { HumanHandoffButton, handoffContextCandidates } from "./HumanHandoffButton";
-export type { HumanHandoffButtonProps } from "./HumanHandoffButton";
+export { HumanHandoffButton, handoffContextCandidates, type HumanHandoffButtonProps } from "./HumanHandoffButton";
 export { HumanHandoffDialog } from "./HumanHandoffDialog";
 export type {
   HumanHandoffDialogProps,
@@ -534,8 +530,7 @@ export { CloudBrowserPanel } from "./CloudBrowserPanel";
 export type { AgentAttachment } from "../lib/agent";
 // 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
 // agent 独立带工具，结果共用右栏）。
-export { FunctionAgentChat, useFnAgentBridge } from "./FunctionAgentChat";
-export type { FunctionAgentChatProps } from "./FunctionAgentChat";
+export { FunctionAgentChat, useFnAgentBridge, type FunctionAgentChatProps } from "./FunctionAgentChat";
 // 左栏 agent ↔ 右栏编辑器的指令桥（W4 交付 §5.2）。站点侧自写左栏时用这三个接上：
 // hook 返回的 `card` 是「要我改吗」确认卡，`notes` 是执行结果那几行。
 // 会改内容的指令**必须**经确认卡，不许绕过去自己调 `run()`。
@@ -545,8 +540,7 @@ export {
   useEditorCommandBridge,
 } from "./FunctionAgentChat";
 // session-first 操作台自动恢复/保存；旧后端与未登录状态兼容本地草稿。
-export { useConsoleDraft } from "./useConsoleDraft";
-export type { UseConsoleDraftArgs, UseConsoleDraftReturn } from "./useConsoleDraft";
+export { useConsoleDraft, type UseConsoleDraftArgs, type UseConsoleDraftReturn } from "./useConsoleDraft";
 export { RestartDraftButton, type RestartDraftButtonProps } from "./RestartDraftButton";
 // 操作台 run 持久化为 task，并聚合到同一个 AppSession 历史。
 export { useConsoleRun } from "./useConsoleRun";
@@ -702,8 +696,7 @@ export { HomeAgentCards, type HomeAgentPick } from "./HomeAgentCards";
 export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards, loadAllCustomPromptCards } from "./home-cards";
 export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
-export { FileLibrary, LIBRARY_TABS } from "./FileLibrary";
-export type { FileLibraryProps, SiteOption, LibraryTab } from "./FileLibrary";
+export { FileLibrary, LIBRARY_TABS, type FileLibraryProps, type SiteOption, type LibraryTab } from "./FileLibrary";
 export { LocalTaskLauncher } from './LocalTaskLauncher';
 export { LocalTaskProgress } from './LocalTaskProgress';
 export * from './local-task-client';

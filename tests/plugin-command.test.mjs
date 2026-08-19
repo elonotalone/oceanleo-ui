@@ -550,13 +550,68 @@ test("要先转一道的后缀（tiff）照样收下，不当成不支持", asyn
   mounted.unmount();
 });
 
-test("3D 的 obj 在 W10 证明能转之前一律明说打不开，不假装能收", async () => {
+// W10 交付 §5 落盘后判型表按它的结论补：obj/stl 收下（走 `/v1/convert/model3d` 转 glb），
+// fbx 不收（它会被 415 拒）。落盘之前这里断言的是「obj 也明说打不开」，
+// 依据是同一句任务书——「能不能真转由 W10 决定」。
+test("3D 的 obj 收下，并在开始等之前就说清贴图材质不会带过来", async () => {
+  let release = () => {};
+  globalThis.__blankStageCalls.uploadResponse = new Promise((resolve) => {
+    release = () => resolve({ ok: false, error: "先停在这里。" });
+  });
   const mounted = mountBlankStage();
-  await dropFile(mounted.host, "模型.obj");
+  const input = mounted.host.querySelector('input[type="file"]');
+  const file = new window.File(["x"], "模型.obj", { type: "" });
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act(async () => {
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+
+  assert.equal(mounted.host.querySelector('[role="alert"]'), null, "obj 被当成打不开的格式");
+  assert.equal(globalThis.__blankStageCalls.uploads.length, 1);
+  const status = mounted.host.querySelector('[role="status"]');
+  assert.ok(status, "转 3D 的时候没有任何提示");
+  assert.match(
+    status.textContent,
+    /贴图和材质不会带过来/,
+    "转完才告诉用户丢了贴图材质，那时他已经等完一整趟上传了",
+  );
+
+  release();
+  await settle(() => Boolean(mounted.host.querySelector('[role="alert"]')));
+  mounted.unmount();
+});
+
+test("3D 的 fbx 明说收不了，并告诉用户导出成 GLB", async () => {
+  const mounted = mountBlankStage();
+  await dropFile(mounted.host, "角色.fbx");
   const alert = mounted.host.querySelector('[role="alert"]');
   assert.ok(alert);
-  assert.match(alert.textContent, /OBJ/);
-  assert.equal(globalThis.__blankStageCalls.uploads.length, 0);
+  assert.match(alert.textContent, /FBX/);
+  assert.match(alert.textContent, /GLB/, "只说不行、不说怎么办，等于没说");
+  assert.equal(
+    globalThis.__blankStageCalls.uploads.length,
+    0,
+    "后端会 415 拒掉 fbx，不该让用户先白传一趟",
+  );
+  mounted.unmount();
+});
+
+test("空框给出「把整个项目搬上来」这条路，点开就是导入面板", async () => {
+  const mounted = mountBlankStage();
+  const entry = [...mounted.host.querySelectorAll("button")].find((node) =>
+    /整个项目/.test(node.textContent || ""),
+  );
+  assert.ok(entry, "空框里找不到「把整个项目搬上来」的入口");
+  await act(async () => {
+    entry.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(
+    [...mounted.host.querySelectorAll("button")].some((node) =>
+      /整个项目/.test(node.textContent || ""),
+    ),
+    false,
+    "点开之后入口还在原地，说明没切到导入面板",
+  );
   mounted.unmount();
 });
 
