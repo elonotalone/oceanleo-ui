@@ -64,6 +64,19 @@ export interface AudioWorkbenchState {
   setVolume: (value: number) => void;
   cropSelection: () => void;
   deleteSelection: () => void;
+  /** 按明确起止秒数裁剪/删除；给 agent 用，不依赖波形上的鼠标选区。 */
+  editRange: (
+    mode: "crop" | "delete",
+    start: number,
+    end: number,
+  ) => Promise<boolean>;
+  /** 按百分比调音量（100 = 原样）；不给区间就是整段。 */
+  applyGainRange: (
+    percent: number,
+    range?: AudioSelection | null,
+  ) => Promise<boolean>;
+  /** 当前编辑结果的 WAV 字节；mp3/m4a 交付以它为源。 */
+  wavBlob: () => Blob | null;
   applyFade: (edge: "in" | "out") => void;
   applyGain: () => void;
   applyEffectChain: () => void;

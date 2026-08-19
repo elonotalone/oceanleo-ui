@@ -245,6 +245,71 @@ export function useAudioWorkbench(
     [commit, selection, tt],
   );
 
+  /**
+   * 按明确时间段裁剪或删除。
+   *
+   * `cropSelection`/`deleteSelection` 只认波形上拖出来的选区，agent 拿不到鼠标；
+   * 这条允许直接给起止秒数，越界的自动夹到音频长度内，太短的直接拒绝。
+   */
+  const editRange = useCallback(
+    async (
+      mode: "crop" | "delete",
+      start: number,
+      end: number,
+    ): Promise<boolean> => {
+      const source = bufferRef.current;
+      if (!source) {
+        setError(tt("音频还没载入，没法裁剪"));
+        return false;
+      }
+      const total = source.duration;
+      const from = Math.max(0, Math.min(total, Math.min(start, end)));
+      const to = Math.max(0, Math.min(total, Math.max(start, end)));
+      if (to - from < 0.01) {
+        setError(tt("这个时间段太短了，至少要 0.01 秒"));
+        return false;
+      }
+      if (mode === "crop" && to - from >= total) {
+        setError(tt("这个时间段就是整段音频，裁了等于没裁"));
+        return false;
+      }
+      return commit({ type: mode, start: from, end: to });
+    },
+    [commit, tt],
+  );
+
+  /** 按倍数调音量；不给区间就是整段。 */
+  const applyGainRange = useCallback(
+    async (
+      percent: number,
+      range?: { start: number; end: number } | null,
+    ): Promise<boolean> => {
+      const source = bufferRef.current;
+      if (!source) {
+        setError(tt("音频还没载入，没法调音量"));
+        return false;
+      }
+      const total = source.duration;
+      return commit({
+        type: "gain",
+        multiplier: percent / 100,
+        ...(range
+          ? {
+              start: Math.max(0, Math.min(total, Math.min(range.start, range.end))),
+              end: Math.max(0, Math.min(total, Math.max(range.start, range.end))),
+            }
+          : {}),
+      });
+    },
+    [commit, tt],
+  );
+
+  /** 当前编辑结果的 WAV 字节；要转 mp3/m4a 的调用方从这里拿源。 */
+  const wavBlob = useCallback(
+    () => (bufferRef.current ? encodeWav(bufferRef.current) : null),
+    [],
+  );
+
   const applyFade = useCallback(
     (edge: "in" | "out") => {
       const source = bufferRef.current;
@@ -448,6 +513,9 @@ export function useAudioWorkbench(
     },
     cropSelection: () => editSelection("crop"),
     deleteSelection: () => editSelection("delete"),
+    editRange,
+    applyGainRange,
+    wavBlob,
     applyFade,
     applyGain,
     applyEffectChain,
