@@ -75,6 +75,7 @@ export function VideoTimelineRoute({
   const sourcePending = editor.loadingSource && !editor.sourceReady;
   const [deliverNotice, setDeliverNotice] = useState("");
   const [convertingWebm, setConvertingWebm] = useState(false);
+  const busy = editor.exporting || convertingWebm;
   /**
    * mp4 = 既有的渲染路径，产物同时进我的库。
    * webm = 同一份渲染结果再转一道容器，转完直接下载到本机（后端不留副本）。
@@ -219,10 +220,7 @@ export function VideoTimelineRoute({
           busyLabel: "渲染中…",
           busy: editor.exporting,
           disabled:
-            editor.exporting ||
-            convertingWebm ||
-            editor.loadingSource ||
-            !editor.sourceReady,
+            busy || editor.loadingSource || !editor.sourceReady,
           onTrigger: async () => {
             await editor.exportVideo();
           },
@@ -235,13 +233,10 @@ export function VideoTimelineRoute({
               label: entry.label,
               icon: "download" as const,
               group: "download" as const,
-              busy: convertingWebm || editor.exporting,
+              busy,
               busyLabel: editor.exporting ? "渲染中…" : "转换中…",
               disabled:
-                editor.exporting ||
-                convertingWebm ||
-                editor.loadingSource ||
-                !editor.sourceReady,
+                busy || editor.loadingSource || !editor.sourceReady,
               onTrigger: () => deliver(entry.format).catch(() => undefined),
             })),
           ...(editor.exporting
