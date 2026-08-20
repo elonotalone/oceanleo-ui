@@ -1,5 +1,9 @@
 // agent 回放页（W06，合同 2026-08-20）画出来之后的契约。
 //
+// 同一个组件带两档（仲裁 A-1）：`/replay/<id>` 逐步播放，`/share/<id>` 静态铺开。
+// 静态档的契约在文件末尾那两条用例里 —— 它必须**没有**播放条、没有「重播」、
+// 不逐条动画，而卡片展开、表格、防注入这些照旧。
+//
 // 这份守四件事：
 //   ① 三种预览输入（缺失 / 超长 / 含表格）都画得出来，缺失时是「无预览」不是白屏；
 //   ② 播放 → 跳过 → 重播在真 DOM 上确实那样动（纯逻辑那份已经钉死状态机，
@@ -446,6 +450,129 @@ test("取数：加载中给占位，失败给一句人话，都不是白屏", as
     assert.equal(rows(ok.container).length, 1);
   } finally {
     await ok.unmount();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 静态档 `playback={false}`（`/share/<share_id>` 用的那一档，仲裁 A-1）
+// ---------------------------------------------------------------------------
+
+const SHARED_MESSAGES = [
+  {
+    id: 1,
+    role: "user",
+    kind: "text",
+    content: "帮我看看 NVDA 最近三天的收盘",
+    created_at: "2026-08-20T02:00:01.000Z",
+  },
+  {
+    id: 2,
+    role: "assistant",
+    kind: "step",
+    content: "行情表",
+    meta: {
+      tool: "read_url",
+      args_preview: '{"url":"https://finance.yahoo.com/quote/NVDA"}',
+      result_preview: TABLE,
+    },
+    created_at: "2026-08-20T02:00:02.000Z",
+  },
+  {
+    id: 3,
+    role: "assistant",
+    kind: "text",
+    content: "三天都在涨。",
+    meta: { final: true },
+    created_at: "2026-08-20T02:00:03.000Z",
+  },
+];
+
+test("静态档：三条消息首帧就全在，没有播放条 / 重播 / 逐条动画", async () => {
+  const view = await mount(
+    React.createElement(AgentReplayPage, {
+      playback: false,
+      replay: shared(SHARED_MESSAGES, "NVDA 收盘"),
+    }),
+  );
+  try {
+    // ① 一次铺完：收到链接的人看的是那几条消息本身，不是一段动画。
+    assert.equal(rows(view.container).length, 3);
+    assert.equal(status(view.container), "static");
+    assert.equal(
+      view.container
+        .querySelector("[data-replay-root]")
+        .getAttribute("data-replay-mode"),
+      "static",
+    );
+
+    // ② 播放这件事整体不在：没有状态栏，也没有跳过 / 结果 / 重播三个按钮。
+    assert.equal(view.container.querySelector("[data-replay-statusbar]"), null);
+    for (const name of ["skip", "result", "replay"]) {
+      assert.equal(control(view.container, name), null, `静态档不该有 ${name} 按钮`);
+    }
+    assert.equal(view.container.querySelector("[data-replay-cursor]"), null);
+    // 「正在播放」「播放完毕」这两句话在静态档一句都不该出现。
+    assert.doesNotMatch(view.container.textContent, /正在播放|播放完毕|重播/);
+    // 头部说的是分享了几条消息，不是「共几步」。
+    assert.match(view.container.textContent, /分享了 3 条消息/);
+
+    // ③ 等过整段本来要播的时间：条数一动不动（定时器根本没挂上）。
+    await view.wait(1500);
+    assert.equal(rows(view.container).length, 3);
+    assert.equal(view.container.querySelector("[data-replay-statusbar]"), null);
+
+    // ④ 点正文不再有「跳过」语义，也不该把已经铺好的内容动掉。
+    await view.click(view.container.querySelector("[data-replay-body]"));
+    assert.equal(rows(view.container).length, 3);
+    assert.equal(status(view.container), "static");
+
+    // ⑤ 该有的照旧：卡片能展开，表格是真表格，用户文字原样可见。
+    await view.click(view.container.querySelector("[data-replay-card-toggle]"));
+    const detail = view.container.querySelector("[data-replay-card-detail]");
+    assert.ok(detail, "静态档的行卡片照样要能展开");
+    assert.deepEqual(
+      [...detail.querySelectorAll("[data-replay-table] thead th")].map(
+        (cell) => cell.textContent,
+      ),
+      ["日期", "收盘", "成交量"],
+    );
+    assert.equal(
+      view.container.querySelector('[data-replay-text="user"]').textContent,
+      "帮我看看 NVDA 最近三天的收盘",
+    );
+    assert.equal(view.container.querySelector("iframe"), null);
+    assert.equal(view.container.querySelector("img"), null);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("静态档取数：与回放同一个 /v1/share，失败时说的是「这个分享打不开了」", async () => {
+  shareStub.__setShareResponse({ ok: true, data: shared(SHARED_MESSAGES) });
+  const ok = await mount(
+    React.createElement(AgentReplayPage, { shareId: "abc123", playback: false }),
+  );
+  try {
+    assert.equal(rows(ok.container).length, 3);
+    assert.equal(status(ok.container), "static");
+    assert.equal(ok.container.querySelector("[data-replay-statusbar]"), null);
+  } finally {
+    await ok.unmount();
+  }
+
+  // 分享被关掉：一句人话，且措辞是「分享」而不是「回放」——这页不是回放页。
+  shareStub.__setShareResponse({ ok: false, error: "share 404" });
+  const gone = await mount(
+    React.createElement(AgentReplayPage, { shareId: "gone", playback: false }),
+  );
+  try {
+    assert.equal(
+      gone.container.querySelector("[data-replay-root]").getAttribute("data-replay-root"),
+      "error",
+    );
+    assert.match(gone.container.textContent, /这个分享打不开了/);
+  } finally {
+    await gone.unmount();
   }
 });
 

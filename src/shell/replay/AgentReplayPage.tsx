@@ -1,11 +1,18 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — agent 回放页（像看视频一样看 agent 干活）
+// @oceanleo/ui — agent 回放页 / 分享页（同一个组件，`playback` 一个开关分两用）
 // ----------------------------------------------------------------------------
 // 顶上是任务标题；正文按时间顺序**一条条播出来**，工具步骤是可展开的行卡片
 // （标题左半是动作、右半是对象，展开后是入参与结果预览，结果像表格就画成真表格）；
 // 底部一条状态栏：播放中给「正在播放」+ 结果；播完给「播放完毕」+ 重播。
+//
+// 两条路由（仲裁 A-1，2026-08-20）：
+//   - `/replay/<share_id>`：整段任务，逐步播放 —— `playback` 默认 true。
+//   - `/share/<share_id>`：用户勾选后分享出去的那几条消息，静态铺开 ——
+//     `playback={false}`。收到链接的人要看的是那几条消息本身，不是一段动画，
+//     所以这一档**不出**播放条、不出「重播」、不逐条动画。
+//   两条路由共用这一个组件（不复制一份），差别只在这个开关。
 //
 // 安全（任务书不可协商项）：
 //   - 这页渲染的全是**用户文字**，一律走 React 文本节点。没有 `dangerouslySetInnerHTML`，
@@ -38,6 +45,11 @@ export interface AgentReplayPageProps {
   shareId?: string;
   /** 直接把数据喂进来（测试、SSR 预取、以及后端未上线时的样例）。 */
   replay?: SharedReplay;
+  /**
+   * 播放这件事整体在不在。`false` = 静态铺开：没有播放条、没有「重播」、
+   * 没有逐条动画，一进来全部消息就在那儿（`/share/<share_id>` 用这一档）。
+   */
+  playback?: boolean;
   /** 关掉自动播放，一进来就是铺完的完成态（打印、截图、无障碍偏好用）。 */
   autoPlay?: boolean;
   gatewayBase?: string;
@@ -57,7 +69,16 @@ function initialLoadState(props: AgentReplayPageProps): LoadState {
 }
 
 export function AgentReplayPage(props: AgentReplayPageProps) {
-  const { shareId, replay, autoPlay = true, gatewayBase, fetchImpl } = props;
+  const {
+    shareId,
+    replay,
+    playback = true,
+    autoPlay = true,
+    gatewayBase,
+    fetchImpl,
+  } = props;
+  // 静态档连「自动播放」都无从谈起：一个开关关掉，下面所有定时器就都不挂。
+  const animate = playback && autoPlay;
   const tt = useUI();
   const [load, setLoad] = useState<LoadState>(() => initialLoadState(props));
 
@@ -96,19 +117,19 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
 
   const [state, dispatch] = useReducer(replayReducer, steps.length, createReplayState);
 
-  // 数据换了就从头播；`autoPlay=false` 时直接铺完。
+  // 数据换了就从头播；不播的那两档（`playback=false` / `autoPlay=false`）直接铺完。
   useEffect(() => {
     dispatch({ type: "load", total: steps.length });
-    if (!autoPlay) dispatch({ type: "skip" });
-  }, [steps, autoPlay]);
+    if (!animate) dispatch({ type: "skip" });
+  }, [steps, animate]);
 
   useEffect(() => {
-    if (!autoPlay) return;
+    if (!animate) return;
     const delay = nextReplayDelayMs(state, steps);
     if (delay === null) return;
     const timer = setTimeout(() => dispatch({ type: "reveal" }), delay);
     return () => clearTimeout(timer);
-  }, [state, steps, autoPlay]);
+  }, [state, steps, animate]);
 
   const resultId = useMemo(() => replayResultStepId(steps), [steps]);
   const resultRef = useRef<HTMLDivElement | null>(null);
@@ -138,7 +159,7 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
         data-replay-root="loading"
         className="grid min-h-[60vh] place-items-center text-[13px] text-stone-400"
       >
-        {tt("正在打开回放…")}
+        {playback ? tt("正在打开回放…") : tt("正在打开分享…")}
       </div>
     );
   }
@@ -148,18 +169,23 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
         data-replay-root="error"
         className="grid min-h-[60vh] place-items-center px-6 text-center text-[13px] text-stone-500"
       >
-        {tt("这个回放打不开了，可能已被分享者关闭。")}
+        {playback
+          ? tt("这个回放打不开了，可能已被分享者关闭。")
+          : tt("这个分享打不开了，可能已被分享者关闭。")}
       </div>
     );
   }
 
-  const visible = steps.slice(0, state.revealed);
-  const playing = state.status === "playing";
+  // 静态档不看 reducer：全部消息在**首帧**就在那儿，不经过「先空一下再补齐」
+  // 那一帧（分享链接是给陌生人开的，不该先给人看一眼空白）。
+  const visible = playback ? steps.slice(0, state.revealed) : steps;
+  const playing = playback && state.status === "playing";
 
   return (
     <div
       data-replay-root="ready"
-      data-replay-status={state.status}
+      data-replay-mode={playback ? "playback" : "static"}
+      data-replay-status={playback ? state.status : "static"}
       className="flex min-h-screen flex-col bg-white"
     >
       <header className="shrink-0 border-b border-stone-100 px-5 py-4 sm:px-8">
@@ -170,7 +196,9 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
           {load.replay.title || tt("agent 回放")}
         </h1>
         <p className="mt-1 text-[12px] text-stone-400">
-          {tt("共 {n} 步", { n: steps.length })}
+          {playback
+            ? tt("共 {n} 步", { n: steps.length })
+            : tt("分享了 {n} 条消息", { n: steps.length })}
         </p>
       </header>
 
@@ -197,53 +225,56 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
         )}
       </main>
 
-      <footer
-        data-replay-statusbar
-        className="sticky bottom-0 z-10 flex shrink-0 items-center justify-between gap-3 border-t border-stone-100 bg-white/95 px-5 py-3 backdrop-blur sm:px-8"
-      >
-        <span className="flex min-w-0 items-center gap-2 text-[13px] text-stone-500">
-          <span
-            aria-hidden
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              playing ? "animate-pulse bg-sky-500" : "bg-stone-300"
-            }`}
-          />
-          <span className="truncate">
-            {playing
-              ? `OceanLeo Agent ${tt("正在播放")}`
-              : `OceanLeo Agent ${tt("播放完毕")}`}
+      {/* 静态档没有播放条：没有在播的东西，也就没有「播放完毕」和「重播」。 */}
+      {playback && (
+        <footer
+          data-replay-statusbar
+          className="sticky bottom-0 z-10 flex shrink-0 items-center justify-between gap-3 border-t border-stone-100 bg-white/95 px-5 py-3 backdrop-blur sm:px-8"
+        >
+          <span className="flex min-w-0 items-center gap-2 text-[13px] text-stone-500">
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                playing ? "animate-pulse bg-sky-500" : "bg-stone-300"
+              }`}
+            />
+            <span className="truncate">
+              {playing
+                ? `OceanLeo Agent ${tt("正在播放")}`
+                : `OceanLeo Agent ${tt("播放完毕")}`}
+            </span>
           </span>
-        </span>
-        {playing ? (
-          <span className="flex shrink-0 items-center gap-2">
+          {playing ? (
+            <span className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                data-replay-control="skip"
+                onClick={skip}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-stone-500 transition hover:bg-stone-100"
+              >
+                {tt("跳过")}
+              </button>
+              <button
+                type="button"
+                data-replay-control="result"
+                onClick={jumpToResult}
+                className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-neutral-700"
+              >
+                {tt("结果")}
+              </button>
+            </span>
+          ) : (
             <button
               type="button"
-              data-replay-control="skip"
-              onClick={skip}
-              className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-stone-500 transition hover:bg-stone-100"
+              data-replay-control="replay"
+              onClick={restart}
+              className="shrink-0 rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-neutral-700"
             >
-              {tt("跳过")}
+              {tt("重播")}
             </button>
-            <button
-              type="button"
-              data-replay-control="result"
-              onClick={jumpToResult}
-              className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-neutral-700"
-            >
-              {tt("结果")}
-            </button>
-          </span>
-        ) : (
-          <button
-            type="button"
-            data-replay-control="replay"
-            onClick={restart}
-            className="shrink-0 rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-neutral-700"
-          >
-            {tt("重播")}
-          </button>
-        )}
-      </footer>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
