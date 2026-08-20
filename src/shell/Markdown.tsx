@@ -1,8 +1,40 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { KATEX_OPTIONS, hasMathDelimiters } from "./share/katex-runtime";
+
+type Plugins = NonNullable<ComponentProps<typeof ReactMarkdown>["remarkPlugins"]>;
+
+/**
+ * 合同 R6：长图与对话正文用**同一个**公式渲染器（KaTeX）。这里按需加载
+ * remark-math / rehype-katex —— 不含公式的会话一个字节都不下载，30 多个站的
+ * 首屏包因此不变。选项从 `share/katex-runtime` 取，两边逐字一致。
+ */
+let mathPlugins: Promise<{ remark: Plugins; rehype: Plugins } | null> | null =
+  null;
+
+function loadMathPlugins() {
+  if (!mathPlugins) {
+    mathPlugins = (async () => {
+      try {
+        const loaded = await Promise.all([
+          import("remark-math"),
+          import("rehype-katex"),
+          import("./share/katex-styles"),
+        ]);
+        return {
+          remark: [loaded[0].default] as Plugins,
+          rehype: [[loaded[1].default, KATEX_OPTIONS]] as Plugins,
+        };
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return mathPlugins;
+}
 
 export function Markdown({
   children,
@@ -12,12 +44,27 @@ export function Markdown({
   className?: string;
 }) {
   const hasSize = /(?:^|\s)text-(\[|xs|sm|base|lg|xl)/.test(className);
+  const needsMath = hasMathDelimiters(children);
+  const [math, setMath] = useState<{ remark: Plugins; rehype: Plugins } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!needsMath || math) return;
+    let alive = true;
+    void loadMathPlugins().then((loaded) => {
+      if (alive && loaded) setMath(loaded);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [needsMath, math]);
   return (
     <div
       className={`${hasSize ? "" : "text-[13px]"} min-w-0 break-words ${className}`}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={math ? [remarkGfm, ...math.remark] : [remarkGfm]}
+        rehypePlugins={math ? math.rehype : undefined}
         skipHtml
         components={{
           h1: ({ children: value }) => (
