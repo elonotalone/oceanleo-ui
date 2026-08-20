@@ -24,6 +24,7 @@
     ".": "./src/index.ts",
     "./shell": "./src/shell/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
+    "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",
