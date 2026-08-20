@@ -302,6 +302,32 @@ function oversizeNotice(byteLength: number): string {
 }
 
 /**
+ * 声明是网页、字节却不是文字的那一档。
+ *
+ * 与 `opaque-bytes` 的通用说法分开：那句话说的是「这一件本来就是打包源码」，
+ * 而这里的情况是「这一件本该是网页，但它的字节坏了」——两者的出路不同，
+ * 前者要先构建，后者要重新产一份预览件。含糊成同一句话，用户就只能反复重试。
+ */
+function unreadableNotice(): string {
+  return (
+    "这份预览件声明自己是网页，但取回来的字节不是文字（其中含二进制内容），"
+    + "说明这一件的预览件在产出时就坏了。预览通道不会把这些字节当文字摆上屏幕；"
+    + "这一件需要重新产一份预览件，在那之前，下载与编辑这两条出口照常可用。"
+  );
+}
+
+/**
+ * 判读结果与它要说的那句话在同一处成对给出。分开写过一次，结果就是新增一档时
+ * 只加了 `reason`、忘了配文案，用户拿到一个空白说明面。
+ */
+function plan(
+  surface: WebsiteViewerSurface,
+  reason: WebsiteViewerReason,
+): WebsiteViewerPlan {
+  return { surface, reason, notice: WEBSITE_VIEWER_COPY[reason] };
+}
+
+/**
  * 三档判读的唯一出口。查看器只按这里给的 `surface` 分支，不许自己再兜一次底
  * ——「兜底时把字节当文字摆出来」就是这样长出来的。
  */
@@ -336,17 +362,24 @@ export function websiteViewerPlan(input: {
     // 正文又没读回来 —— 两头都没有证据却放行，就是拿一屏乱码赌一把。判读读不回来
     // 不是小概率：`MAX_PROBE_BYTES` 是 8 MB，超限的整站包会让取字节直接抛错。
     return admission === "page"
-      ? { surface: "page", reason: "self-painting" }
-      : { surface: "unavailable", reason: "unverified" };
+      ? plan("page", "self-painting")
+      : plan("unavailable", "unverified");
   }
   const { html, shape } = input.body;
-  if (!isDisplayableText(html) || !looksLikeHtmlDocument(html)) {
-    return { surface: "unavailable", reason: "opaque-bytes" };
+  if (!isDisplayableText(html)) {
+    return {
+      surface: "unavailable",
+      reason: "opaque-bytes",
+      notice: unreadableNotice(),
+    };
+  }
+  if (!looksLikeHtmlDocument(html)) {
+    return plan("unavailable", "opaque-bytes");
   }
   if (websitePaintMode(shape) === "script-bootstrapped") {
-    return { surface: "script-explainer", reason: "script-bootstrapped" };
+    return plan("script-explainer", "script-bootstrapped");
   }
-  return { surface: "page", reason: "self-painting" };
+  return plan("page", "self-painting");
 }
 
 /**
