@@ -38,15 +38,17 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   const locale = normalizeLocale(rawLocale);
   if (locale === DEFAULT_LOCALE) return {};
 
-  const [base, recent, progress] = await Promise.all([
+  const [base, recent, progress, share] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
     import("./agent-progress-copy"),
+    import("./share-copy"),
   ]);
   return {
     ...base.default,
     ...recent.RECENT_MODEL_AND_TASK_MESSAGES[locale],
     ...progress.AGENT_PROGRESS_MESSAGES[locale],
     ...CLOUD_BROWSER_MESSAGES[locale],
+    ...share.SHARE_COPY_MESSAGES[locale],
   };
 };
