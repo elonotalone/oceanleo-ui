@@ -706,7 +706,12 @@ export { LocalTaskProgress } from './LocalTaskProgress';
 // 本机能力的产品面（W09，2026-08-20）：文件树 + 统一动作台。六个动作的表单与状态只有
 // 这一份，站点两个入口（/devices、/library 的本地库插槽）只负责挂载。
 export { LocalFileTree, humanizeGrantedKinds, type LocalFileTreeProps } from './LocalFileTree';
-export { LocalActionConsole, type LocalActionConsoleProps } from './LocalActionConsole';
+export {
+  LocalActionConsole,
+  MyDevicesActionConsole,
+  type LocalActionConsoleProps,
+  type MyDevicesActionConsoleProps,
+} from './LocalActionConsole';
 export * from './local-task-client';
 // 统一文件库（2026-07-02）：主站 + 全部子站同一套「全部/图片/文档/幻灯片/视频/
 // 音频/3D/收藏」分区，agent_artifacts 全系列打通。

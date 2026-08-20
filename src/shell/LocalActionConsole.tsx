@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { deviceErrorCopy } from "../api/device-error-copy";
 import type { LibraryDevice } from "./library-scope";
+import { listLibraryDevices } from "./library-scope-client";
 import { LocalFileTree, humanizeGrantedKinds } from "./LocalFileTree";
 import { LocalTaskProgress } from "./LocalTaskProgress";
 import {
@@ -628,6 +629,97 @@ export function LocalActionConsole({
         </p>
       </div>
     </section>
+  );
+}
+
+export interface MyDevicesActionConsoleProps {
+  devicesHref?: string;
+  className?: string;
+  /** 测试缝；产品调用方一律不传。 */
+  listDevices?: () => Promise<readonly LibraryDevice[]>;
+  runAction?: StartLocalActionOptions;
+}
+
+/**
+ * 「我的设备」页用的自带取数版本。
+ *
+ * 为什么要有这一层：`/devices` 路由被 `tests/devices-route-wiring.test.mjs` 钉死
+ * 「不许自己 useState、不许自己 fetch」—— 设备列表与动作台状态都必须留在共享组件里。
+ * 所以这里把「列出我的电脑 → 选一台 → 动作台」这一小段收在 `@oceanleo/ui` 内部。
+ */
+export function MyDevicesActionConsole({
+  devicesHref = "/devices",
+  className,
+  listDevices = listLibraryDevices,
+  runAction,
+}: MyDevicesActionConsoleProps) {
+  const [devices, setDevices] = useState<readonly LibraryDevice[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    listDevices()
+      .then((next) => {
+        if (!active) return;
+        setDevices(next);
+        setActiveId(next[0]?.device_id ?? null);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [listDevices]);
+
+  if (failed) {
+    return (
+      <p className={className} role="alert">
+        设备列表暂时读不到，请刷新页面重试。已经在跑的本机任务不受影响。
+      </p>
+    );
+  }
+  if (devices === null) {
+    return (
+      <p className={className} role="status">
+        正在读取你已连接的电脑…
+      </p>
+    );
+  }
+  if (devices.length === 0) {
+    return <NotInstalled devicesHref={devicesHref} />;
+  }
+
+  const active = devices.find((device) => device.device_id === activeId) ?? devices[0];
+  return (
+    <div className={className} data-my-devices-console>
+      {devices.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="选择一台电脑">
+          {devices.map((device) => (
+            <button
+              key={device.device_id}
+              type="button"
+              aria-pressed={device.device_id === active.device_id}
+              onClick={() => setActiveId(device.device_id)}
+              className={`min-h-10 rounded-lg px-3 text-xs font-medium transition ${
+                device.device_id === active.device_id
+                  ? "bg-stone-900 text-white"
+                  : "border border-stone-200 text-stone-700 hover:bg-stone-50"
+              }`}
+            >
+              {device.device_name}
+              {!device.online && <span className="ml-1 text-amber-700">（离线）</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      <LocalActionConsole
+        device={active}
+        devicesHref={devicesHref}
+        runAction={runAction}
+      />
+    </div>
   );
 }
 
