@@ -3337,6 +3337,12 @@
         },
         {
           "kind": "named",
+          "name": "humanizeGrantedKinds",
+          "importedName": "humanizeGrantedKinds",
+          "source": "./LocalFileTree"
+        },
+        {
+          "kind": "named",
           "name": "ImageLightbox",
           "importedName": "ImageLightbox",
           "source": "./ImageLightbox"
@@ -3682,6 +3688,18 @@
           "name": "loadCustomPromptCards",
           "importedName": "loadCustomPromptCards",
           "source": "./home-cards"
+        },
+        {
+          "kind": "named",
+          "name": "LocalActionConsole",
+          "importedName": "LocalActionConsole",
+          "source": "./LocalActionConsole"
+        },
+        {
+          "kind": "named",
+          "name": "LocalFileTree",
+          "importedName": "LocalFileTree",
+          "source": "./LocalFileTree"
         },
         {
           "kind": "named",
@@ -5590,6 +5608,18 @@
           "name": "LibraryTab",
           "importedName": "LibraryTab",
           "source": "./FileLibrary"
+        },
+        {
+          "kind": "type",
+          "name": "LocalActionConsoleProps",
+          "importedName": "LocalActionConsoleProps",
+          "source": "./LocalActionConsole"
+        },
+        {
+          "kind": "type",
+          "name": "LocalFileTreeProps",
+          "importedName": "LocalFileTreeProps",
+          "source": "./LocalFileTree"
         },
         {
           "kind": "type",

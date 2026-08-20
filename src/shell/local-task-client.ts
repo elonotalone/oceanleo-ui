@@ -262,11 +262,35 @@ export function sanitizeLocalTaskSummary(
   return Object.keys(summary).length > 0 ? summary : undefined;
 }
 
+/**
+ * Protocol §4.1, mirroring the gateway's `_is_absolute_path`: POSIX absolute,
+ * a Windows drive path, or a UNC share. A bare `C:data` is drive-relative and
+ * therefore does not count.
+ */
+export function isAbsoluteLocalPath(value: string): boolean {
+  const path = value.trim();
+  if (!path) return false;
+  return (
+    path.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(path) ||
+    /^\\\\[^\\]+\\[^\\]+(?:\\|$)/.test(path)
+  );
+}
+
 export async function createLocalTask<K extends LocalActionKind>(
   deviceId: string,
   actionKind: K,
   payload: LocalActionPayloadByKind[NoInfer<K>],
 ): Promise<CreatedLocalTask> {
+  // Protocol §4.1: every `path`/`cwd` is absolute on the device. Catching it
+  // here keeps a doomed task from spending one of the hourly creation slots,
+  // and names the refusal with the code the gateway itself would have used.
+  for (const field of ["path", "cwd"] as const) {
+    const value = (payload as Record<string, unknown>)[field];
+    if (typeof value === "string" && !isAbsoluteLocalPath(value)) {
+      throw new LocalTaskApiError("payload_path_not_absolute", 400);
+    }
+  }
   // Refuse the shapes the device cannot run before spending a rate-limit slot
   // on a task that is certain to come back as a bare "执行失败" (contract §4).
   if (actionKind === "shell.run") {
