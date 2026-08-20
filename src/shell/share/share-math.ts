@@ -8,8 +8,10 @@
 // 字体必须内联成 data URI：作为 `<img>` 加载的 SVG 不会去取外部资源，不内联就会
 // 掉成衬线体。
 //
-// 安全：KaTeX 的 `trust:false` 输出本身不含脚本与事件属性，这里再过一道 DOMPurify
-// 才落到 DOM 上——用户输入永远不会以原样 HTML 的身份进入页面（合同 R7 / UC-4）。
+// 安全（仲裁 A-2）：公式一律走 `katex.render(tex, node, …)`，由 KaTeX 自己往元素里
+// 建 DOM。我们这边从头到尾没有 HTML 字符串，也就没有 `innerHTML` /
+// `dangerouslySetInnerHTML` 这类注入面（合同 R7 / UC-4）。`trust:false` 显式写在
+// `KATEX_OPTIONS` 里，`\href`、`\includegraphics` 这类能产出 HTML 的命令是关着的。
 // 任何一步失败都返回「量不出来」，排版层会退回等宽文本画公式，绝不崩。
 // ============================================================================
 
@@ -107,33 +109,6 @@ async function collectKatexCss(families: ReadonlySet<string>): Promise<string> {
 // 渲染
 // ---------------------------------------------------------------------------
 
-type PurifyModule = {
-  sanitize: (
-    value: string,
-    options: { RETURN_DOM_FRAGMENT: true },
-  ) => DocumentFragment;
-};
-
-/**
- * KaTeX 的输出**永远不以 HTML 字符串的身份**进入页面：DOMPurify 直接交出已消毒的
- * DOM 片段，我们 appendChild 它。全链路没有 `innerHTML` / `dangerouslySetInnerHTML`
- * 这类注入面（UC-4）。DOMPurify 拿不到就干脆不渲染公式，退回等宽兜底。
- */
-async function sanitizeToFragment(
-  html: string,
-): Promise<DocumentFragment | null> {
-  try {
-    const module = await import("dompurify");
-    const purify =
-      (module as { default?: PurifyModule }).default ??
-      (module as unknown as PurifyModule);
-    if (typeof purify?.sanitize !== "function") return null;
-    return purify.sanitize(html, { RETURN_DOM_FRAGMENT: true });
-  } catch {
-    return null;
-  }
-}
-
 function rasterize(
   html: string,
   css: string,
@@ -188,21 +163,21 @@ export async function prepareShareMath(
   const families = new Set<string>();
   try {
     for (const [key, item] of unique) {
-      let html = "";
-      try {
-        html = katex.renderToString(item.tex, {
-          ...KATEX_OPTIONS,
-          displayMode: item.display,
-        });
-      } catch {
-        continue;
-      }
-      const fragment = await sanitizeToFragment(html);
-      if (!fragment) continue;
       const node = document.createElement("span");
       node.style.display = "inline-block";
-      node.appendChild(fragment);
       host.appendChild(node);
+      try {
+        // A-2：KaTeX 自己往 node 里建 DOM，不经 HTML 字符串。
+        katex.render(item.tex, node, {
+          ...KATEX_OPTIONS,
+          displayMode: item.display,
+          trust: false,
+          strict: "ignore",
+        });
+      } catch {
+        node.remove();
+        continue;
+      }
       const box = node.getBoundingClientRect();
       const width = Math.ceil(box.width) + 4;
       const height = Math.ceil(box.height) + 4;

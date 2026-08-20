@@ -10,8 +10,17 @@
 // 全程动态 import：没有公式的会话一个字节都不下载。
 // ============================================================================
 
+/**
+ * 只暴露 `render`（往元素里建 DOM），**不暴露** `renderToString`（吐 HTML 字符串）。
+ * 仲裁 A-2：公式串来自用户对话，拿到 HTML 字符串就迟早有人把它塞进 `innerHTML`；
+ * 类型上没有这个方法，这条路在源码级就不存在。
+ */
 export type KatexModule = {
-  renderToString: (tex: string, options?: Record<string, unknown>) => string;
+  render: (
+    tex: string,
+    element: HTMLElement,
+    options?: Record<string, unknown>,
+  ) => void;
 };
 
 /** 正文与长图共用的一组渲染选项。`trust:false` 禁掉 `\href`/`\url` 之类的注入面。 */
@@ -35,7 +44,7 @@ export function loadKatex(): Promise<KatexModule | null> {
         ]);
         const module = (katex as { default?: KatexModule }).default ??
           (katex as unknown as KatexModule);
-        return typeof module?.renderToString === "function" ? module : null;
+        return typeof module?.render === "function" ? module : null;
       } catch {
         return null;
       }
