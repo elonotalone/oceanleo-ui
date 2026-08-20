@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
+import { ShareCheckbox } from "./share/ShareActionBar";
+import { writeClipboardText } from "./share/share-clipboard";
 
 export function agentArtifactLabels(
   tt: UITranslate,
@@ -20,15 +22,7 @@ export function agentArtifactLabels(
   };
 }
 
-export function AgentTranscriptBubble({
-  message,
-  streaming = false,
-  onBranch,
-  onArtifactOpen,
-  gateActive = false,
-  gateBusy = false,
-  onGate,
-}: {
+export interface AgentTranscriptBubbleProps {
   message: AgentMessage;
   streaming?: boolean;
   onBranch?: () => void;
@@ -36,7 +30,148 @@ export function AgentTranscriptBubble({
   gateActive?: boolean;
   gateBusy?: boolean;
   onGate?: (decision: "approve" | "reject", feedback: string) => void;
+  /** 选段模式：每条消息左侧长出圆形勾选框，整行可点。 */
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+  /** 普通模式下每条回答底下那排小图标。 */
+  onRegenerate?: () => void;
+  onShare?: () => void;
+}
+
+/**
+ * 一条消息。普通模式下助手回答底下有「复制 / 重做 / 分享」一排小图标；
+ * 选段模式下整条变成可勾选的行，图标收起（此时用户是在选，不是在操作单条）。
+ */
+export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
+  const tt = useUI();
+  const {
+    message,
+    selectMode = false,
+    selected = false,
+    onSelectToggle,
+    onRegenerate,
+    onShare,
+    streaming = false,
+  } = props;
+  if (message.kind === "ui_action") return null;
+  const body = <TranscriptBody {...props} />;
+  const actionable =
+    !selectMode &&
+    message.role === "assistant" &&
+    !streaming &&
+    (message.kind === "text" || !message.kind || message.kind === "report") &&
+    Boolean(message.content?.trim());
+  if (!selectMode && !actionable) return body;
+  return (
+    <div
+      className={`group/message flex gap-2.5 ${
+        selectMode
+          ? "cursor-pointer rounded-xl px-1.5 py-1 transition hover:bg-stone-50"
+          : ""
+      } ${selected ? "bg-stone-100/70" : ""}`}
+      onClick={selectMode ? onSelectToggle : undefined}
+    >
+      {selectMode && (
+        <ShareCheckbox
+          checked={selected}
+          onToggle={() => onSelectToggle?.()}
+          label={tt("选择这条消息")}
+        />
+      )}
+      <div className={`min-w-0 flex-1 ${selectMode ? "pointer-events-none" : ""}`}>
+        {body}
+        {actionable && (
+          <MessageActions
+            content={message.content}
+            onRegenerate={onRegenerate}
+            onShare={onShare}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 「复制 / 重做 / 分享」——平时淡出，鼠标移到这条回答上才显形。 */
+function MessageActions({
+  content,
+  onRegenerate,
+  onShare,
+}: {
+  content: string;
+  onRegenerate?: () => void;
+  onShare?: () => void;
 }) {
+  const tt = useUI();
+  const [copied, setCopied] = useState(false);
+  const iconClass = "h-4 w-4";
+  const buttonClass =
+    "inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] text-stone-400 transition hover:bg-stone-100 hover:text-stone-700";
+  return (
+    <div className="mt-1 flex items-center gap-0.5 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        title={tt("复制")}
+        aria-label={tt("复制")}
+        className={buttonClass}
+        onClick={() => {
+          void writeClipboardText(content).then((ok) => {
+            if (!ok) return;
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
+          });
+        }}
+      >
+        <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V5a2 2 0 012-2h10" strokeLinecap="round" />
+        </svg>
+        {copied && <span>{tt("已复制")}</span>}
+      </button>
+      {onRegenerate && (
+        <button
+          type="button"
+          title={tt("重做")}
+          aria-label={tt("重做")}
+          className={buttonClass}
+          onClick={onRegenerate}
+        >
+          <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M20 11a8 8 0 10-2.3 6.3" strokeLinecap="round" />
+            <path d="M20 5v6h-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+      {onShare && (
+        <button
+          type="button"
+          title={tt("分享")}
+          aria-label={tt("分享")}
+          className={buttonClass}
+          onClick={onShare}
+        >
+          <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TranscriptBody({
+  message,
+  streaming = false,
+  onBranch,
+  onArtifactOpen,
+  gateActive = false,
+  gateBusy = false,
+  onGate,
+}: AgentTranscriptBubbleProps) {
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
 

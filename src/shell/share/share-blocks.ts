@@ -33,13 +33,17 @@ export interface ShareListItem {
   inlines: ShareInline[];
 }
 
+/** 一个单元格 = 一串行内片段；一行 = 一串单元格。 */
+export type ShareTableCell = ShareInline[];
+export type ShareTableRow = ShareTableCell[];
+
 export type ShareBlock =
   | { type: "heading"; level: number; inlines: ShareInline[] }
   | { type: "paragraph"; inlines: ShareInline[] }
   | { type: "quote"; inlines: ShareInline[] }
   | { type: "list"; ordered: boolean; items: ShareListItem[] }
   | { type: "code"; lang: string; lines: string[] }
-  | { type: "table"; header: ShareInline[][]; rows: ShareInline[][] }
+  | { type: "table"; header: ShareTableRow; rows: ShareTableRow[] }
   | { type: "math"; tex: string }
   | { type: "image"; src: string; alt: string }
   | { type: "rule" };
@@ -168,7 +172,7 @@ function flattenListItems(
   });
 }
 
-function cellsFrom(cells: MarkedToken[] | undefined): ShareInline[][] {
+function cellsFrom(cells: MarkedToken[] | undefined): ShareTableRow {
   return (cells || []).map((cell) =>
     inlinesFrom(cell.tokens || [{ type: "text", text: cell.text || "" }]),
   );

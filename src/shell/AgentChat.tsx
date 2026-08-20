@@ -41,6 +41,10 @@ import {
 } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
+// 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
+import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
+import { ShareCardPreview } from "./share/ShareCard";
+import { useShareMode } from "./share/useShareMode";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -829,6 +833,32 @@ function AgentChatInner({
     [taskId, busy, readOnly, tt, editorContextFor, noteUserTurn],
   );
 
+  // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
+  const share = useShareMode({
+    messages,
+    taskId,
+    title: taskTitle,
+    siteLabel:
+      appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined,
+  });
+
+  /** 「重做」：把上一句用户的话原样再问一遍，让 agent 重新作答。 */
+  const regenerateFrom = useCallback(
+    (messageId: number) => {
+      if (readOnly || busy || status === "running") return;
+      const index = messages.findIndex((message) => message.id === messageId);
+      if (index < 0) return;
+      for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+        const candidate = messages[cursor];
+        if (candidate.role === "user" && candidate.content.trim()) {
+          void sendSuggestion(candidate.content);
+          return;
+        }
+      }
+    },
+    [busy, messages, readOnly, sendSuggestion, status],
+  );
+
   const artifactMessages = useMemo(
     () =>
       messages.filter((message) => {
@@ -1047,6 +1077,10 @@ function AgentChatInner({
       ) : (
         <span className="min-w-0 flex-1" />
       )}
+      {/* 右上角「分享」：点它整页进入选段模式（对标 Kimi）。 */}
+      {!share.active && share.selectable.length > 0 && (
+        <ShareEntryButton onClick={() => share.enter()} />
+      )}
     </div>
   ) : null;
 
@@ -1111,6 +1145,12 @@ function AgentChatInner({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。 */}
         <div className="mx-auto w-full max-w-2xl space-y-3">
+          {/* 右上角「分享」入口。有顶栏时它在顶栏里，这里就不再重复一个。 */}
+          {!topBarActive && !share.active && share.selectable.length > 0 && (
+            <div className="sticky top-0 z-10 flex justify-end">
+              <ShareEntryButton onClick={() => share.enter()} />
+            </div>
+          )}
           {messages.length === 0 && !running && (
             <div className="py-10 text-center text-[15px] text-stone-400">
               {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
@@ -1149,6 +1189,15 @@ function AgentChatInner({
                 gateActive={item.message.id === activeGateId}
                 gateBusy={gateBusy}
                 onGate={onGate ? handleGate : undefined}
+                selectMode={share.active}
+                selected={share.selectedIds.has(item.message.id)}
+                onSelectToggle={() => share.toggle(item.message.id)}
+                onRegenerate={
+                  !readOnly && item.message.role === "assistant"
+                    ? () => regenerateFrom(item.message.id)
+                    : undefined
+                }
+                onShare={() => share.enter(item.message.id)}
               />
             ),
           )}
@@ -1190,8 +1239,13 @@ function AgentChatInner({
       </div>
       <div className="shrink-0 border-t border-stone-100 px-3 py-3">
         {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，
-            与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。 */}
+            与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。
+            选段模式下**这一整块**换成操作条，退出即恢复。 */}
         <div className="mx-auto w-full max-w-2xl space-y-2">
+          {share.active ? (
+            <ShareActionBar share={share} />
+          ) : (
+            <>
           {composerHeader}
           {/* 会改内容的指令：先问用户一句「要我改吗」。 */}
           {editorCommands.card}
@@ -1238,8 +1292,17 @@ function AgentChatInner({
             onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onVoiceTranscript={handleVoiceTranscript}
           />
+            </>
+          )}
         </div>
       </div>
+      {share.preview && (
+        <ShareCardPreview
+          images={share.preview}
+          fileBaseName="oceanleo-share"
+          onClose={share.closePreview}
+        />
+      )}
     </div>
   );
 
