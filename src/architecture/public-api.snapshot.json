@@ -27,6 +27,7 @@
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
+    "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
     "./tailwind-preset": "./src/theme/tailwind-preset.ts",
     "./theme": "./src/theme/index.ts",
@@ -1476,12 +1477,27 @@
         },
         {
           "kind": "named",
+          "name": "loginUnavailableNotice",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "loginUnavailableNoticeFor",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "SUPABASE_ANON_KEY",
           "source": ""
         },
         {
           "kind": "named",
           "name": "SUPABASE_URL",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LoginUnavailableNotice",
           "source": ""
         }
       ]
@@ -4791,6 +4807,12 @@
         },
         {
           "kind": "named",
+          "name": "StorageCapacityStrip",
+          "importedName": "StorageCapacityStrip",
+          "source": "./StorageCapacityStrip"
+        },
+        {
+          "kind": "named",
           "name": "Studio",
           "importedName": "Studio",
           "source": "./Studio"
@@ -5703,6 +5725,12 @@
         },
         {
           "kind": "type",
+          "name": "StorageCapacityStripProps",
+          "importedName": "StorageCapacityStripProps",
+          "source": "./StorageCapacityStrip"
+        },
+        {
+          "kind": "type",
           "name": "StudioProps",
           "importedName": "StudioProps",
           "source": "./Studio"
@@ -5957,6 +5985,191 @@
           "name": "platformToEntry",
           "importedName": "platformToEntry",
           "source": "./material-library-controller"
+        }
+      ]
+    },
+    "./shell/replay": {
+      "target": "./src/shell/replay/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AgentReplayPage",
+          "importedName": "AgentReplayPage",
+          "source": "./AgentReplayPage"
+        },
+        {
+          "kind": "named",
+          "name": "buildReplaySteps",
+          "importedName": "buildReplaySteps",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "createReplayState",
+          "importedName": "createReplayState",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "detectPreviewTable",
+          "importedName": "detectPreviewTable",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "fetchSharedReplay",
+          "importedName": "fetchSharedReplay",
+          "source": "./share-client"
+        },
+        {
+          "kind": "named",
+          "name": "nextReplayDelayMs",
+          "importedName": "nextReplayDelayMs",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "normalizeSharedReplay",
+          "importedName": "normalizeSharedReplay",
+          "source": "./share-client"
+        },
+        {
+          "kind": "named",
+          "name": "parseReplayPreview",
+          "importedName": "parseReplayPreview",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_ARGS_PREVIEW_LIMIT",
+          "importedName": "REPLAY_ARGS_PREVIEW_LIMIT",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_BASE_STEP_MS",
+          "importedName": "REPLAY_BASE_STEP_MS",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_MAX_STEP_MS",
+          "importedName": "REPLAY_MAX_STEP_MS",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_PER_CHAR_MS",
+          "importedName": "REPLAY_PER_CHAR_MS",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_RESULT_PREVIEW_LIMIT",
+          "importedName": "REPLAY_RESULT_PREVIEW_LIMIT",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_SAMPLE",
+          "importedName": "REPLAY_SAMPLE",
+          "source": "./replay-sample"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_TABLE_MAX_COLUMNS",
+          "importedName": "REPLAY_TABLE_MAX_COLUMNS",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "REPLAY_TABLE_MAX_ROWS",
+          "importedName": "REPLAY_TABLE_MAX_ROWS",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "replayReducer",
+          "importedName": "replayReducer",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "replayResultStepId",
+          "importedName": "replayResultStepId",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "replayStepDelayMs",
+          "importedName": "replayStepDelayMs",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "replayStepTarget",
+          "importedName": "replayStepTarget",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "replayTimeline",
+          "importedName": "replayTimeline",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "named",
+          "name": "replayToolLabel",
+          "importedName": "replayToolLabel",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "type",
+          "name": "AgentReplayPageProps",
+          "importedName": "AgentReplayPageProps",
+          "source": "./AgentReplayPage"
+        },
+        {
+          "kind": "type",
+          "name": "FetchSharedReplayOptions",
+          "importedName": "FetchSharedReplayOptions",
+          "source": "./share-client"
+        },
+        {
+          "kind": "type",
+          "name": "ReplayAction",
+          "importedName": "ReplayAction",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "type",
+          "name": "ReplayPreview",
+          "importedName": "ReplayPreview",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "type",
+          "name": "ReplayState",
+          "importedName": "ReplayState",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "type",
+          "name": "ReplayStatus",
+          "importedName": "ReplayStatus",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "type",
+          "name": "ReplayStep",
+          "importedName": "ReplayStep",
+          "source": "./replay-model"
+        },
+        {
+          "kind": "type",
+          "name": "SharedReplay",
+          "importedName": "SharedReplay",
+          "source": "./share-client"
         }
       ]
     },
