@@ -85,9 +85,13 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
     };
   }, [shareId, replay, gatewayBase, fetchImpl]);
 
+  // 刻意**不**把 `tt` 喂进 `buildReplaySteps`：动作名回来的就是中文原文，也就是
+  // 词典 key，翻译推迟到画每一行时做。若把 `tt` 变成这里的依赖，只要哪天 `useUI()`
+  // 不再返回稳定引用，这份 memo 每渲染一次就换一个数组，下面那个 `load` effect 会
+  // 跟着复位播放进度——页面表现成「永远播不完第一条」。
   const steps = useMemo(
-    () => (load.phase === "ready" ? buildReplaySteps(load.replay.messages, tt) : []),
-    [load, tt],
+    () => (load.phase === "ready" ? buildReplaySteps(load.replay.messages) : []),
+    [load],
   );
 
   const [state, dispatch] = useReducer(replayReducer, steps.length, createReplayState);
@@ -113,7 +117,12 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
   useEffect(() => {
     if (!jumpPending || state.status !== "completed") return;
     setJumpPending(false);
-    resultRef.current?.scrollIntoView({ block: "center" });
+    const node = resultRef.current;
+    // `scrollIntoView` 在 jsdom 与部分内嵌 WebView 里根本不存在；跳不动是小事，
+    // 因为它把整页炸成空白才是大事。
+    if (node && typeof node.scrollIntoView === "function") {
+      node.scrollIntoView({ block: "center" });
+    }
   }, [jumpPending, state.status]);
 
   const skip = useCallback(() => dispatch({ type: "skip" }), []);
@@ -317,7 +326,7 @@ function ReplayStepCard({ step }: { step: ReplayStep }) {
           data-replay-action
           className="shrink-0 text-[13px] font-medium text-neutral-900"
         >
-          {step.action}
+          {tt(step.action)}
         </span>
         {step.target && (
           <>
