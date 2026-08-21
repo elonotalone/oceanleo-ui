@@ -6,6 +6,9 @@
 // 版式（参考 Base44 模板详情弹层）：
 //   左上：主预览大图 = **当前选中模板**的真实素材（无模板时回退 app 封面 / emoji tint），
 //         按素材真实宽高自适应且 `object-contain`，**任何情况下不裁切**（见 §主预览）
+//         网站类模板例外（2026-08-21 裁定 A11）：主预览位放**那个站本身**（探索页同一份
+//         `TemplateMaterialPreview`），因为操作员点名「首页 prompt 卡片打开后没有显示
+//         真实的网站素材」。其余类型的主预览逐字不变，仍是封面大图。
 //   左下：缩略图条，切换同一 app 下的多份模板；**只有 1 份（或 0 份）时整条不渲染**
 //   右侧：素材标题、说明（无模板时退回代表 prompt 全文）、标签
 //   右侧按钮（**恰好三个，顺序定死**，合同 §0.4）：「预览&编辑」「生成类似」「更多」
@@ -70,6 +73,12 @@ import {
   exploreAppHref as defaultExploreHref,
   workspaceTemplatePreviewHref as defaultPreviewHref,
 } from "./site-catalog-controller";
+import {
+  isWebsiteTemplateMaterial,
+  listTemplateMaterials,
+  templateMaterialIdForArtifact,
+} from "./material-library-template-source";
+import { TemplateMaterialPreview } from "./WebsiteArtifactViewer";
 
 /** @deprecated 本轮已收敛到 `TemplateMaterial`（合同 §3.1），改用那个。 */
 export type ShowcaseTemplate = TemplateMaterial;
@@ -77,6 +86,12 @@ export type ShowcaseTemplate = TemplateMaterial;
 export interface TemplateShowcaseProps {
   /** 所属 app id，「预览&编辑」与「更多」两条深链都要用。 */
   appId?: string;
+  /**
+   * 本站 site key（首页传 `siteId`）。**网站类模板的主预览要靠它**：整站预览端点按
+   * 目录行 `id` 取内容，而 app 目录里只有 `artifactId`，得向 `/v1/template-materials`
+   * 问一次才知道对应哪一行。不给 → 网站类退回封面大图（今天的样子），其余类型无影响。
+   */
+  siteKey?: string;
   /** 标题（app 名）。同时作为 dialog 的无障碍名。 */
   title: string;
   /**
@@ -144,6 +159,58 @@ function metaAspectRatio(item: TemplateMaterial | null): number | null {
   return width / height;
 }
 
+/**
+ * 选中模板对应的**目录行 id**（整站预览端点的 `{template_id}`）；拿不到就是空串。
+ *
+ * 为什么首页非得多问一次：大卡片的数据来自站点静态 app 目录（`app-catalog.ts`），
+ * 那里登记的是 `artifactId`；而端点按目录行 `id` 取内容
+ * （`template_materials_router.py:219-220` 的 `query.eq("id", template_id)`）。
+ * 两条来路，顺序刻意如此：
+ *
+ *   - 同步反查表：本次会话里素材目录已经取过（用户先逛过探索页/素材库）时立刻就有，
+ *     首帧不会先闪一张封面图再换成站；
+ *   - 取一次目录：首页直接开大卡片时反查表是空的，按 `siteKey` + `appId` 拉一次
+ *     （匿名可读、带 5 分钟缓存），按 `artifactId` 对上那一行。
+ *
+ * 两条都落空就返回空串，调用方据此**不回退**——编一个 id 去撞端点只会拿到 404，
+ * 或者更糟：别人的站。
+ */
+function useTemplateMaterialId(input: {
+  enabled: boolean;
+  siteKey: string;
+  appId: string;
+  artifactId: string;
+}): string {
+  const { enabled, siteKey, appId, artifactId } = input;
+  const known = enabled ? templateMaterialIdForArtifact(artifactId) : "";
+  const [fetched, setFetched] = useState("");
+  useEffect(() => {
+    if (!enabled || !artifactId || !siteKey) {
+      setFetched("");
+      return;
+    }
+    if (templateMaterialIdForArtifact(artifactId)) return;
+    const controller = new AbortController();
+    setFetched("");
+    void (async () => {
+      const result = await listTemplateMaterials({
+        siteKey,
+        appId,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const hit = result.ok
+        ? (result.data || []).find((row) => row.artifactId === artifactId)
+        : undefined;
+      // 目录取不回来（离线、网关抖动）也不是错误态：主预览退回封面大图，
+      // 与这条通道上线之前完全一样。
+      setFetched(hit?.id || "");
+    })();
+    return () => controller.abort();
+  }, [enabled, siteKey, appId, artifactId]);
+  return enabled ? known || fetched : "";
+}
+
 /** 选中模板的解析：id 命中优先，否则回落第一份（templates 变化时不会选到空）。 */
 function resolveSelected(
   templates: TemplateMaterial[],
@@ -156,6 +223,7 @@ function resolveSelected(
 
 export function TemplateShowcase({
   appId = "",
+  siteKey = "",
   title,
   templates,
   initialTemplateId,
@@ -228,6 +296,17 @@ export function TemplateShowcase({
     appId && previewArtifactId
       ? (templatePreviewHref ?? defaultPreviewHref)(appId, previewArtifactId)
       : editHref || "";
+  /**
+   * 网站类模板的主预览 = **那个站本身**，不是封面大图（合同裁定 A11）。
+   * 操作员原话第二条：「首页的 prompt 卡片打开后，没有显示真实的网站素材。」
+   * 其余类型（图片 / 音频 / PPT / 文档…）逐字不变，仍是 `<img>` 封面。
+   */
+  const siteTemplateId = useTemplateMaterialId({
+    enabled: Boolean(selected && isWebsiteTemplateMaterial(selected.artifactType)),
+    siteKey,
+    appId,
+    artifactId: previewArtifactId,
+  });
   const similarTarget = promptText && fillHref ? fillHref : "";
   // 「更多」不依赖模板：素材还没补齐的 app 上它恰恰是最该在的那颗。
   const moreTarget = exploreHref || (appId ? defaultExploreHref(appId) : "");
@@ -275,16 +354,31 @@ export function TemplateShowcase({
                 只有下方缩略图条保留 object-cover —— 那里等比塞进小方块，裁切是合理的。 */}
             <div
               data-template-showcase-preview
-              data-preview-fit={previewRatio ? "intrinsic" : "contain"}
+              data-preview-fit={
+                siteTemplateId ? "site" : previewRatio ? "intrinsic" : "contain"
+              }
               className="relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-stone-100"
               style={{
-                aspectRatio: previewRatio ?? undefined,
-                height: previewRatio ? undefined : PREVIEW_FALLBACK_HEIGHT,
+                /* 站本身要的是**竖向空间**而不是素材封面的宽高比：按封面比例（常见
+                   16:10）定高会把整站预览压成一条横带，页签与界线说明挤在下缘。
+                   所以网站类固定用主预览的高度上限，不跟封面比例走。 */
+                aspectRatio: siteTemplateId ? undefined : previewRatio ?? undefined,
+                height: siteTemplateId
+                  ? PREVIEW_MAX_HEIGHT
+                  : previewRatio
+                    ? undefined
+                    : PREVIEW_FALLBACK_HEIGHT,
                 maxHeight: PREVIEW_MAX_HEIGHT,
                 minHeight: "180px",
               }}
             >
-              {bigImage ? (
+              {siteTemplateId ? (
+                <TemplateMaterialPreview
+                  templateId={siteTemplateId}
+                  title={paneTitle}
+                  layout="inline"
+                />
+              ) : bigImage ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={bigImage}

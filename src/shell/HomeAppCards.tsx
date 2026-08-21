@@ -364,6 +364,11 @@ export function HomeAppCards({
       {opened && (
         <TemplateShowcase
           appId={opened.id}
+          /* 网站类模板的主预览要落到站本身（裁定 A11）。整站预览端点按素材目录行 id
+             取内容，而这里手上只有 app 目录登记的 artifactId —— `siteKey` 是大卡片
+             那侧向 `/v1/template-materials` 问回目录行 id 的唯一凭据。
+             站点 id 就是目录端点的 site key（`material-library-view.tsx:311` 同一条）。 */
+          siteKey={siteId}
           title={tt(opened.name)}
           templates={openedTemplates}
           imageKey={appPreviewImageKey(opened)}

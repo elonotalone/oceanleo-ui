@@ -397,13 +397,24 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
  *   - **不弹窗**：界线说明是内容下面的一行常驻文字，既不遮内容也不打断浏览；
  *   - **不预取页面字节**：`/preview` 的响应带 `Content-Security-Policy: sandbox`
  *     由网关保证，判读那一套是给 rendition 用的，这条通道不重复一遍。
+ *
+ * 导出给首页大卡片（`ImageLightbox.tsx` 的 `TemplateShowcase`）复用：那一层的数据源
+ * 不是素材目录，落点原本是一张 OSS 大图。两处各写一份 iframe + 页签 + 界线说明，
+ * 沙箱值与文案就会各漂一点，所以首页与探索页共用这一个实现。
  */
-function TemplateMaterialPreview({
+export function TemplateMaterialPreview({
   templateId,
   title,
+  layout = "viewer",
 }: {
   templateId: string;
   title: string;
+  /**
+   * `"viewer"` = 库详情整幅，高度自己撑到 520px 起；
+   * `"inline"` = 首页大卡片的主预览位，高度由那个舞台给（52–60vh），
+   * 所以最小高度必须让位 —— 不让位的话 520px 会把舞台顶破，页签与界线说明被裁掉。
+   */
+  layout?: "viewer" | "inline";
 }) {
   const tt = useUI();
   /**
@@ -416,7 +427,12 @@ function TemplateMaterialPreview({
     ? pages.findIndex((page) => page.slug === slug)
     : 0;
   return (
-    <div className="flex h-full min-h-[520px] flex-col bg-stone-100">
+    <div
+      data-template-material-preview={layout}
+      className={`flex h-full flex-col bg-stone-100 ${
+        layout === "inline" ? "w-full min-h-0" : "min-h-[520px]"
+      }`}
+    >
       <UntrustedFrame
         url={templateMaterialPreviewUrl(templateId, slug)}
         title={title}
