@@ -28,6 +28,7 @@ import test from "node:test";
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import ts from "typescript";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -132,10 +133,13 @@ const {
   base64ByteLength,
   bytesToBase64,
   canHandOffFiles,
+  formatBytes,
   handoffFailureMessage,
   handoffFileName,
   handoffFolderNote,
+  handoffOfflineNotice,
   handoffProgressText,
+  handoffSendLabel,
   handoffSuccessText,
   handoffTargetPath,
   parseHandoffFolders,
@@ -824,6 +828,219 @@ test("离线时界面提前说清小文件会排队、大文件要等它上线",
     assert.match(view.container.textContent, /大文件要分几次送/);
   } finally {
     await view.unmount();
+    clearNativeHost();
+  }
+});
+
+/* ================================================================== *
+ * 第 7 节 · 13 种非 CJK 语言下这一屏没有一个汉字
+ *
+ * 手机壳打开的就是这个网站。日语用户点开「发送到电脑」看到一屏中文，等于这一屏
+ * 只做给中文用户 —— 而这一屏正是手机端存在的理由。
+ *
+ * 这一节不是「抽查几句」：**先把源码里的中文句子逐条数出来**，再要求每一条在 17
+ * 份词典里都有。以后谁在这两份文件里新写一句中文而忘了补词典，这一节当场判红 ——
+ * 漏译不会再靠人眼发现。
+ * ================================================================== */
+
+const LOCALES = [
+  "ar", "de", "en", "es", "es-419", "fr", "hi", "it", "ja",
+  "ko", "pt-BR", "pt-PT", "th", "tr", "vi", "zh", "zh-TW",
+];
+
+/** 会写汉字的四种语言。剩下 13 种里出现汉字就是漏译。 */
+const CJK_LOCALES = new Set(["zh", "zh-TW", "ja", "ko"]);
+const NON_CJK_LOCALES = LOCALES.filter((locale) => !CJK_LOCALES.has(locale));
+
+/** 汉字与中日韩标点、全角符号。 */
+const HAN = /[\u3400-\u4DBF\u4E00-\u9FFF\u3000-\u303F\uFF01-\uFF60]/;
+
+const DICTIONARIES = Object.fromEntries(
+  await Promise.all(
+    LOCALES.map(async (locale) => [
+      locale,
+      (await import(await compileModule(`src/i18n/ui/messages/${locale}.ts`))).default,
+    ]),
+  ),
+);
+
+/** 词典查表，形状与 `useUI()` 的 `tt` 相同：未命中回退中文原文。 */
+function translatorFor(locale) {
+  const dictionary = DICTIONARIES[locale];
+  return (zh) => {
+    const hit = dictionary[zh];
+    return hit == null || hit === "" ? zh : hit;
+  };
+}
+
+const PLACEHOLDERS = /\{\w+\}/g;
+
+/** 这一屏的源码里所有中文字面量（`mobile-file-handoff.ts` 全份 + 送达组件那一段）。 */
+function chineseLiterals() {
+  const found = new Set();
+  const files = [
+    ["src/shell/mobile-file-handoff.ts", readFileSync(
+      fileURLToPath(new URL("../src/shell/mobile-file-handoff.ts", import.meta.url)),
+      "utf8",
+    )],
+    ["LocalFileHandoffLauncher.tsx", HANDOFF_COMPONENT_SOURCE],
+  ];
+  for (const [name, text] of files) {
+    const source = ts.createSourceFile(
+      name,
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+      name.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const visit = (node) => {
+      const literal =
+        ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+      if (literal && HAN.test(node.text)) found.add(node.text);
+      if (ts.isJsxText(node) && HAN.test(node.text)) found.add(node.text.trim());
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(source, visit);
+  }
+  return [...found];
+}
+
+test("这一屏源码里的每一句中文，17 份词典都有它，占位符一个不差", () => {
+  const literals = chineseLiterals();
+  // 反向保险：谁把 tt() 整片删掉、或者这份提取失效，这一节不许因为「没找到句子」而变绿。
+  assert.ok(
+    literals.length >= 30,
+    `只数出 ${literals.length} 句中文，提取多半失效了（预期 30 句以上）`,
+  );
+  for (const sentence of ["发送到{device}", "落点文件夹", "已送达。"]) {
+    assert.ok(literals.includes(sentence), `没数到已知的那一句：${sentence}`);
+  }
+
+  const missing = [];
+  for (const locale of LOCALES) {
+    const dictionary = DICTIONARIES[locale];
+    for (const zh of literals) {
+      const translated = dictionary[zh];
+      if (translated == null || translated === "") {
+        missing.push(`${locale}: ${zh}`);
+        continue;
+      }
+      // 占位符靠 `fill()` 填，不靠 `tt`：译文里少一个 `{device}`，用户看到的就是
+      // 一句没有电脑名字的话；多一个不认识的，就会有 `{foo}` 直接漏到脸上。
+      const want = (zh.match(PLACEHOLDERS) ?? []).slice().sort();
+      const got = (translated.match(PLACEHOLDERS) ?? []).slice().sort();
+      assert.deepEqual(got, want, `${locale} 占位符不符：${translated}`);
+      if (!CJK_LOCALES.has(locale)) {
+        assert.ok(
+          !HAN.test(translated),
+          `${locale} 的译文里还有汉字：${translated}`,
+        );
+      }
+    }
+  }
+  assert.deepEqual(missing, [], `这些句子在词典里没有译文：\n${missing.join("\n")}`);
+});
+
+test("13 种非 CJK 语言下，落点说明、按钮、进度、回执、失败各句都不含汉字", () => {
+  // 协议 §7 那张码表（额度、撤销、真机拒绝……）由 `api/device-error-copy.ts` 独家持有，
+  // 它今天仍是写死的中文，且不在这份活的独占面上（见 `signals/W07-signal.md`）。
+  // 这份断言因此只钉这一屏自己出的句子 —— 那张表里的码走 default 分支，不在下面。
+  const handoffCodes = [
+    "grant_missing",
+    "path_outside_grant",
+    "device_offline",
+    "payload_too_large",
+    "handoff_part_out_of_order",
+    "handoff_part_not_landed",
+    "handoff_offset_mismatch",
+    "network_error",
+    "unauthorized",
+    "failed",
+    "expired",
+    "cancelled",
+  ];
+  const device = "Studio PC";
+
+  for (const locale of NON_CJK_LOCALES) {
+    const tt = translatorFor(locale);
+    const sentences = [
+      handoffFolderNote({ folders: [], source: "heartbeat" }, device, tt),
+      handoffFolderNote({ folders: [], source: "none" }, device, tt),
+      handoffFolderNote({ folders: ["/srv/in"], source: "history" }, device, tt),
+      handoffFolderNote({ folders: ["/srv/in"], source: "heartbeat" }, device, tt),
+      handoffSendLabel(device, tt),
+      handoffSendLabel("", tt),
+      handoffOfflineNotice(device, tt),
+      handoffProgressText({ phase: "queued", sentParts: 0, totalParts: 1 }, device, tt),
+      handoffProgressText({ phase: "sending", sentParts: 0, totalParts: 1 }, device, tt),
+      handoffProgressText({ phase: "sending", sentParts: 2, totalParts: 5 }, device, tt),
+      handoffProgressText({ phase: "done", sentParts: 1, totalParts: 1 }, device, tt),
+      handoffSuccessText({ ok: true, path: "/srv/in/a.jpg", queued: false }, device, tt),
+      handoffSuccessText({ ok: true, path: "/srv/in/a.jpg", queued: true }, device, tt),
+      handoffFileName("", "", tt),
+      formatBytes(900, tt),
+      planFileHandoff({
+        media: { name: "a.jpg", mime: "image/jpeg", bytes: new Uint8Array(0) },
+        folder: "/srv/in",
+        deviceName: device,
+        tt,
+      }).message,
+      planFileHandoff({
+        media: mediaOf(3),
+        folder: "",
+        deviceName: device,
+        tt,
+      }).message,
+      ...handoffCodes.map((code) =>
+        handoffFailureMessage(
+          code,
+          device,
+          { limit: HANDOFF_MAX_PART_B64_CHARS, landedParts: 2, totalParts: 5 },
+          tt,
+        ),
+      ),
+    ];
+    for (const sentence of sentences) {
+      assert.ok(sentence, `${locale}: 出了一句空话`);
+      assert.ok(!HAN.test(sentence), `${locale} 这一屏还有汉字：${sentence}`);
+      assert.doesNotMatch(
+        sentence,
+        /\{\w+\}/,
+        `${locale}: 占位符没被填上，漏到用户脸上了：${sentence}`,
+      );
+    }
+  }
+});
+
+test("挂载渲染：日语用户看到日语，阿拉伯语用户整屏没有一个汉字", async () => {
+  installNativeHost();
+  const props = {
+    deviceId: "device-1",
+    deviceName: "Studio PC",
+    deviceOnline: false,
+    folders: { folders: ["/srv/in"], source: "heartbeat" },
+  };
+  const zhView = await mount(props);
+  const zhText = zhView.container.textContent;
+  await zhView.unmount();
+  assert.ok(HAN.test(zhText), "中文站这一屏本来就该是中文");
+
+  try {
+    globalThis.__W07_DICT__ = DICTIONARIES.ja;
+    const jaView = await mount(props);
+    const jaText = jaView.container.textContent;
+    await jaView.unmount();
+    assert.notEqual(jaText, zhText, "日语这一屏与中文逐字相同 ⇒ tt 根本没接上");
+    assert.match(jaText, /送信/, "日语用户没看到日语");
+
+    globalThis.__W07_DICT__ = DICTIONARIES.ar;
+    const arView = await mount(props);
+    const arText = arView.container.textContent;
+    await arView.unmount();
+    // 落点名 `/srv/in` 是那台电脑上报的真实目录，不是文案，所以整屏只剩译文与路径。
+    assert.ok(!HAN.test(arText), `阿拉伯语这一屏还有汉字：${arText}`);
+  } finally {
+    delete globalThis.__W07_DICT__;
     clearNativeHost();
   }
 });
