@@ -313,6 +313,46 @@ const CLASS_ATTRS = [...SHELL_CODE.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\
   (m) => (m[1] ?? m[2]).replace(/\s+/g, " "),
 );
 
+// 外壳自己渲的每一个可点元素的开标签。`<button[^>]*>` 在 JSX 里不管用：
+// `onClick={() => …}` 里的那个 `>` 会把标签提前截断，className 就漏掉了。
+// 所以按花括号 / 引号深度扫到真正结束这个开标签的 `>`。
+function openingTags(code, names) {
+  const found = [];
+  const re = new RegExp(`<(${names.join("|")})[\\s/>]`, "g");
+  for (const m of code.matchAll(re)) {
+    let i = m.index + m[0].length - 1;
+    let depth = 0;
+    let quote = "";
+    while (i < code.length) {
+      const ch = code[i];
+      if (quote) {
+        if (ch === quote) quote = "";
+      } else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+      else if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) break;
+      i += 1;
+    }
+    found.push({ tag: m[1], text: code.slice(m.index, i) });
+  }
+  return found;
+}
+
+// className 可能是字面量、模板串，或者一个变量（导航行那条 `const cls = …`
+// 同时供 button 与 Link 用）。变量形式回到源码里取它的定义再判。
+function classOfTag(tagText, code) {
+  const literal = /className="([^"]*)"/.exec(tagText);
+  if (literal) return literal[1];
+  const template = /className=\{`([^`]*)`\}/.exec(tagText);
+  if (template) return template[1];
+  const ident = /className=\{(\w+)\}/.exec(tagText);
+  if (!ident) return null;
+  const decl = new RegExp(`const ${ident[1]} =\\s*(?:\`|")`).exec(code);
+  assert.ok(decl, `找不到 className 变量 ${ident[1]} 的定义，量不出它的点击区`);
+  const rest = code.slice(decl.index);
+  return rest.slice(0, rest.indexOf(";"));
+}
+
 function classAttr(...markers) {
   const hits = CLASS_ATTRS.filter((c) => markers.every((m) => c.includes(m)));
   assert.equal(
@@ -485,25 +525,64 @@ for (const device of DEVICES) {
   });
 
   test(`抽屉不糊满屏，旁边留得下「点空白关掉」（${device.name}）`, () => {
-    // 抽屉本身只在 md 以下出现（横屏 844px 走的是桌面固定侧栏那条路）。
+    // 抽屉整层只在 md 以下出现（横屏 844px 走的是桌面固定侧栏那条路）。
     assert.match(DRAWER_WRAP_CLASS, /md:hidden/, "抽屉整层必须只在窄屏出现");
-    if (device.w >= 768) return;
 
     const width = value(".leo-safe-drawer", "width", device);
-    const outside = device.w - width;
-    assert.ok(
-      outside >= 44,
-      `抽屉宽 ${width}px，旁边只剩 ${outside}px，点不中空白就关不掉（${device.name}）`,
-    );
+    // 可读宽度：刘海那一侧的 inset 必须加在宽度之外，不许从内容里切走。
+    // 这一条对**任何** inset 组合都成立，所以横屏也判 —— 横屏左 inset 47px
+    // 正是当初把可读宽度切到 233px 的那一档（V2 判红的真缺陷）。
     const inner = width - value(".leo-safe-drawer", "padding-left", device);
+    assert.equal(
+      inner,
+      Math.min(280, device.w * 0.85),
+      `抽屉可读宽 ${inner}px：刘海那一侧的 inset 又被从内容宽里切走了（${device.name}）`,
+    );
     assert.ok(inner >= 240, `抽屉里只剩 ${inner}px，导航标题会挤断行`);
-    // 写成 min(定值, vw)：再窄的机型也按比例留出那条空白。
-    assert.match(rawDecl(".leo-safe-drawer", "width"), /^min\(\s*[\d.]+px\s*,\s*[\d.]+vw\s*\)$/);
+    // 写成 `calc(min(定值, vw) + 左 inset)`：再窄的机型也按比例留出那条空白，
+    // 而刘海那一条是外加的。
+    assert.match(
+      rawDecl(".leo-safe-drawer", "width"),
+      /^calc\(\s*min\(\s*[\d.]+px\s*,\s*[\d.]+vw\s*\)\s*\+\s*var\(--leo-safe-left\)\s*\)$/,
+      "抽屉宽度必须是 min(定值, vw) 再外加左 inset",
+    );
     assert.doesNotMatch(
       DRAWER_CLASS,
       /w-\[/,
       "抽屉宽度只能由 leo-safe-drawer 说，不许再挂 Tailwind 定宽",
     );
+
+    // 「点旁边关掉」那条空白只在抽屉真的出现的档位上量。
+    if (device.w >= 768) return;
+    const outside = device.w - width;
+    assert.ok(
+      outside >= 44,
+      `抽屉宽 ${width}px，旁边只剩 ${outside}px，点不中空白就关不掉（${device.name}）`,
+    );
+  });
+
+  test(`主区顶边不压在状态栏区里，而顶栏布局不许多让一次（A13，${device.name}）`, () => {
+    // sidebar 布局的主区头上没有顶栏 ⇒ 顶边自己让位。
+    assert.match(MAIN_CLASS, /leo-safe-main-top/, "sidebar 布局的主区必须挂 leo-safe-main-top");
+    assert.match(rawDecl(".leo-safe-main-top", "padding-top"), /^var\(--leo-safe-top\)$/);
+    assert.equal(
+      value(".leo-safe-main-top", "padding-top", device),
+      device.insets.top,
+      "顶边让位必须正好等于状态栏那一条",
+    );
+
+    // topbar 布局的刘海已经被 .leo-safe-topbar 吃掉了：主区再让一次就会在顶栏
+    // 底下多出一条 47px 的空白，那是新缺陷不是修复。
+    assert.doesNotMatch(
+      TOPBAR_MAIN_CLASS,
+      /leo-safe-main-top/,
+      "顶栏布局的主区不许再让一次顶边（顶栏已经让过）",
+    );
+
+    // 这是布局，不是触感：不许挂到 pointer/宽度媒体查询下去。
+    assert.equal(rulesFor(".leo-safe-main-top").length, 1, "leo-safe-main-top 只许有一条无条件规则");
+    assert.equal(rulesFor(".leo-safe-main-top", [COARSE]).length, 0);
+    assert.equal(rulesFor(".leo-safe-main-top", [NARROW]).length, 0);
   });
 }
 
@@ -534,6 +613,84 @@ test("点击目标 ≥ 44×44（只在 pointer: coarse 下发生）", () => {
   }
   assert.match(HAMBURGER_CLASS, /md:hidden/, "汉堡键只在窄屏出现");
   assert.match(EXPAND_CLASS, /(^| )hidden( |$)/, "展开键在窄屏不出现");
+});
+
+test("44×44 覆盖外壳里每一个可点目标，不只是那两颗浮出键", () => {
+  // 整行可点的目标：只补高度。写了 min-width 会把账户行的 flex-1 min-w-0 压掉。
+  const row = ruleFor(".leo-tap-row", [COARSE]);
+  assert.ok(px(row.decls.get("min-height"), DESKTOP) >= 44);
+  assert.deepEqual([...row.decls.keys()], ["min-height"]);
+
+  // 图标键：44×44 且把图标居中（这一条允许写 display，见 CSS 里的理由）。
+  const icon = ruleFor(".leo-tap-icon", [COARSE]);
+  assert.ok(px(icon.decls.get("min-width"), DESKTOP) >= 44);
+  assert.ok(px(icon.decls.get("min-height"), DESKTOP) >= 44);
+  assert.equal(icon.decls.get("display"), "inline-flex", "撑高之后图标不许贴在盒子顶上");
+  assert.equal(icon.decls.get("align-items"), "center");
+
+  // 子组件自带的那颗按钮（消费站塞进骨架的铃铛这类）从外面撑到 44×44。
+  const inner = ruleFor(".leo-tap-target-inner > button", [COARSE]);
+  assert.ok(px(inner.decls.get("min-width"), DESKTOP) >= 44);
+  assert.ok(px(inner.decls.get("min-height"), DESKTOP) >= 44);
+
+  // 三个新类一条都不许漏到 pointer: coarse 之外，否则鼠标设备也跟着变。
+  for (const selector of [".leo-tap-row", ".leo-tap-icon", ".leo-tap-target-inner > button"]) {
+    assert.equal(
+      rulesFor(selector).length,
+      0,
+      `${selector} 不许出现在 @media (pointer: coarse) 之外`,
+    );
+  }
+
+  // 兜底那一条：骨架容器里的可点元素都不矮于 44px，而且作用面不许下到 main
+  // （那会改动每个消费站每个页面里的按钮高度）。
+  const fallback = RULES.filter(
+    (r) =>
+      r.media.length === 1 &&
+      r.media[0] === COARSE &&
+      r.selectors.length > 1 &&
+      r.selectors.every((s) =>
+        /^\.leo-(safe|chrome)-\S+ (a|button|summary|\[role="button"\])$/.test(s),
+      ),
+  );
+  assert.equal(fallback.length, 1, "期望恰好一条骨架容器兜底规则");
+  assert.ok(px(fallback[0].decls.get("min-height"), DESKTOP) >= 44);
+  assert.deepEqual([...fallback[0].decls.keys()], ["min-height"]);
+  for (const container of [
+    ".leo-safe-sidebar",
+    ".leo-safe-drawer",
+    ".leo-safe-topbar",
+    ".leo-chrome-topright",
+  ]) {
+    for (const el of ["a", "button", "summary", '[role="button"]']) {
+      assert.ok(
+        fallback[0].selectors.includes(`${container} ${el}`),
+        `兜底规则缺 ${container} ${el}`,
+      );
+    }
+  }
+  for (const selector of fallback[0].selectors) {
+    assert.doesNotMatch(selector, /(^|\s)main(\s|$)/, `兜底不许下到 main：${selector}`);
+    assert.doesNotMatch(
+      selector,
+      /^\.leo-safe-shell/,
+      `兜底不许挂在外壳根上（那等于整页所有按钮）：${selector}`,
+    );
+  }
+
+  // 逐个元素：外壳自己渲的每一个 button / Link / a 都必须挂上其中一个点击目标类。
+  // 这一条才是「不只是两颗浮出键」的硬判据 —— 以后往侧栏加一行忘了挂类就红。
+  const interactive = openingTags(SHELL_CODE, ["button", "Link", "a"]);
+  assert.ok(interactive.length >= 13, `外壳里只找到 ${interactive.length} 个可点元素，扫漏了`);
+  for (const el of interactive) {
+    const cls = classOfTag(el.text, SHELL_CODE);
+    assert.ok(cls, `<${el.tag}> 没有 className，量不出点击区：${el.text.slice(0, 90)}`);
+    assert.match(
+      cls.replace(/\s+/g, " "),
+      /leo-tap-(target|row|icon)/,
+      `外壳里这个可点元素没挂点击目标类，手机上点不准：<${el.tag}> ${cls.slice(0, 90)}`,
+    );
+  }
 });
 
 /* ── 5. 正文仍可选中可复制 ───────────────────────────────────────────── */
@@ -610,6 +767,7 @@ test("桌面浏览器逐像素等于改动前", () => {
   assert.equal(value(".leo-safe-shell", "padding-left", DESKTOP), 0);
   assert.equal(value(".leo-safe-shell", "padding-right", DESKTOP), 0);
   assert.equal(value(".leo-safe-main", "padding-bottom", DESKTOP), 0);
+  assert.equal(value(".leo-safe-main-top", "padding-top", DESKTOP), 0);
   assert.equal(value(".leo-safe-sidebar", "padding-top", DESKTOP), 0);
   assert.equal(value(".leo-safe-sidebar", "padding-bottom", DESKTOP), 0);
   assert.equal(value(".leo-safe-sidebar", "padding-left", DESKTOP), 0);
@@ -637,6 +795,44 @@ test("桌面浏览器逐像素等于改动前", () => {
     assert.doesNotMatch(attr, /(^| )(top|left)-3( |$)/);
   }
   assert.doesNotMatch(TOPRIGHT_CLASS, /(^| )top-3( |$)/);
+});
+
+test("A13 与安全区那一整段在网页端天然零变化：浏览器里 inset 就是 0", () => {
+  // 普通浏览器标签页里 `env(safe-area-inset-*)` 恒为 0（只有原生宿主与
+  // 独立模式/PWA 下才非 0）。所以「补顶部让位」这条改动在**手机浏览器**上
+  // 也是逐像素零变化 —— 不只是桌面宽屏。这里拿 390×844 的视口配四个 0 inset 算。
+  const phoneInBrowser = {
+    name: "手机浏览器标签页 390×844（inset 全 0）",
+    w: 390,
+    h: 844,
+    insets: { top: 0, right: 0, bottom: 0, left: 0 },
+  };
+  assert.equal(
+    value(".leo-safe-main-top", "padding-top", phoneInBrowser),
+    0,
+    "A13 的顶边让位在浏览器里必须算出 0",
+  );
+  assert.equal(value(".leo-safe-main", "padding-bottom", phoneInBrowser), 0);
+  assert.equal(value(".leo-safe-shell", "padding-left", phoneInBrowser), 0);
+  assert.equal(value(".leo-safe-shell", "padding-right", phoneInBrowser), 0);
+  assert.equal(value(".leo-safe-sidebar", "padding-top", phoneInBrowser), 0);
+  assert.equal(value(".leo-safe-drawer", "padding-left", phoneInBrowser), 0);
+  // 抽屉宽度改成 calc(min(...) + 左 inset) 之后，浏览器里仍然是原来那个 280px。
+  assert.equal(value(".leo-safe-drawer", "width", phoneInBrowser), 280);
+  assert.equal(value(".leo-chrome-topleft", "top", phoneInBrowser), 12);
+  assert.equal(value(".leo-chrome-topleft", "left", phoneInBrowser), 12);
+  // 顶栏那条原值是 py-2.5 = 10px：浏览器里算出来还是 10px。
+  assert.equal(value(".leo-safe-topbar", "padding-top", phoneInBrowser), 10);
+
+  // 机制而不是巧合：让位值一律取自 env() 且回退 0px，没有一处写死的像素。
+  for (const [selector, prop] of [
+    [".leo-safe-main-top", "padding-top"],
+    [".leo-safe-main", "padding-bottom"],
+    [".leo-safe-shell", "padding-left"],
+    [".leo-safe-shell", "padding-right"],
+  ]) {
+    assert.match(rawDecl(selector, prop), /^var\(--leo-safe-(top|right|bottom|left)\)$/);
+  }
 });
 
 test("触感与窄屏两段一条都不落到浏览器身上", () => {

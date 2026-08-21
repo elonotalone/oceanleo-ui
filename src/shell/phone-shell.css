@@ -50,6 +50,17 @@
   padding-bottom: var(--leo-safe-bottom);
 }
 
+/* 主区顶边（A13）。刘海机上正文顶端本来压在状态栏区里：iPhone 14 的上 inset 是 47px，
+   而页面自己的顶部内边距只有 40px（首页 `py-10`），差那几个像素就压进去了。
+   **单独一个类**、不写进 `.leo-safe-main`：`topbar` 布局的主区头上有一条
+   `sticky top-0` 的顶栏，刘海已经由 `.leo-safe-topbar` 吃掉了，主区再让一次就会在
+   顶栏底下多出一条 47px 的空白。所以只有「头上没有顶栏」的主区才挂这个类。
+   浏览器标签页里 `env(safe-area-inset-top)` 恒为 0（只有原生宿主与独立模式下才非 0），
+   所以桌面与网页端在这一条上逐像素零变化。 */
+.leo-safe-main-top {
+  padding-top: var(--leo-safe-top);
+}
+
 /* topbar 布局那条 `sticky top-0` 的顶栏：刘海正压在它上面。 */
 .leo-safe-topbar {
   padding-top: calc(0.625rem + var(--leo-safe-top));
@@ -64,9 +75,13 @@
 }
 
 /* 移动端抽屉。宽度用 min()：360px 的安卓机上 280px 抽屉几乎糊满屏，
-   留 15% 给「点旁边关掉」这个手势。 */
+   留 15% 给「点旁边关掉」这个手势。
+   横屏刘海那一侧的 inset 必须**加在**这个宽度之外，不能从里面切走：`box-sizing`
+   是 border-box，`padding-left` 吃的是内容宽 —— 844×390 横过来时 280 − 47 = 233px，
+   抽屉里的导航标题会挤断行。加回去之后，可读宽度在任何 inset 下都还是 min(280px, 85vw)，
+   而桌面上 inset 恒为 0，算出来仍然逐像素等于 280px。 */
 .leo-safe-drawer {
-  width: min(280px, 85vw);
+  width: calc(min(280px, 85vw) + var(--leo-safe-left));
   padding-top: var(--leo-safe-top);
   padding-bottom: var(--leo-safe-bottom);
   padding-left: var(--leo-safe-left);
@@ -84,15 +99,67 @@
   top: calc(0.75rem + var(--leo-safe-top));
 }
 
-/* --- 3. 点击目标 --------------------------------------------------------
+/* --- 3. 点击目标：窄屏下**每一个**可点目标，不只是那两颗浮出键 -------------
    只对手指生效：鼠标设备一个像素都不变（完成标准里的「浏览器端零变化」）。
-   这里**只写尺寸、绝不写 display**：外壳按钮靠 `hidden` / `md:hidden` 之类的
-   Tailwind display 工具类决定在哪个断点出现，本文件再声明一次 display 就会把它们
-   全部掀翻（汉堡键会在横屏手机上和桌面侧栏一起出现）。居中由元素自己带
-   `inline-flex items-center justify-center` 完成。 */
+   外壳里原来只有浮出键够大，抽屉里的导航行是 `px-3 py-2` ≈ 36px、账户行
+   `py-1.5` ≈ 30px —— 手机上点菜单项要瞄准。下面四条按元素形态分工。 */
 @media (pointer: coarse) {
+  /* ① 独立的小方键（那两颗浮出键）。**只写尺寸、绝不写 display**：它们靠
+     `hidden` / `md:hidden` / `md:flex` 决定在哪个断点出现，本文件再声明一次
+     display 就会把这些工具类全部掀翻（汉堡键会在横屏手机上和桌面侧栏一起冒出来）。
+     居中由元素自己带的 `inline-flex items-center justify-center` 完成。 */
   .leo-tap-target {
     min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ② 整行可点的目标：品牌行、导航行、页脚行、账户行。这些行自带
+     `flex items-center`，撑高之后文字仍然居中。
+     **只补高度、不写 min-width**：账户行是 `flex-1 min-w-0`，横向下限会把它的
+     截断行为压掉；而行宽本来就是整条抽屉，不缺那 44px。 */
+  .leo-tap-row {
+    min-height: 44px;
+  }
+
+  /* ③ 只有一个图标、没有任何 display 工具类的小键（侧栏头上的「搜索」「收起侧栏」）。
+     这一条**可以**连 display 一起接管，因为这些元素的 display 不随断点变；不接管的话
+     inline-block 撑高后图标会贴在 44px 盒子的顶上，跟旁边的品牌行错开一截。
+     绝不许把这个类挂到 ① 那两颗浮出键上。 */
+  .leo-tap-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ④ 子组件自带那颗按钮时（通知铃铛这类，组件文件不在本轮的面上），从外面把
+     44×44 落到它身上，而不是去改别人的文件。 */
+  .leo-tap-target-inner > button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ⑤ 兜底：外壳骨架里凡是可点的东西都不矮于 44px —— 包括别处组件塞进骨架的行
+     （通知列表、历史记录、我的应用、模型选择器）。
+     作用面刻意**只到骨架容器**，一律不下到 `main`：那会改动每个页面里的按钮高度，
+     早就越界了。同样只补高度 —— 横向下限会把图标轨道那种横排挤出抽屉。 */
+  .leo-safe-sidebar a,
+  .leo-safe-sidebar button,
+  .leo-safe-sidebar summary,
+  .leo-safe-sidebar [role="button"],
+  .leo-safe-drawer a,
+  .leo-safe-drawer button,
+  .leo-safe-drawer summary,
+  .leo-safe-drawer [role="button"],
+  .leo-safe-topbar a,
+  .leo-safe-topbar button,
+  .leo-safe-topbar summary,
+  .leo-safe-topbar [role="button"],
+  .leo-chrome-topright a,
+  .leo-chrome-topright button,
+  .leo-chrome-topright summary,
+  .leo-chrome-topright [role="button"] {
     min-height: 44px;
   }
 }

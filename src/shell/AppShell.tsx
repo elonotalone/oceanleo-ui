@@ -420,8 +420,9 @@ function AppShellInner({
         </span>
       </>
     );
+    // leo-tap-row：手指设备上这一行不矮于 44px（原来 py-1.5 ≈ 30px）。
     const accountCls =
-      "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-neutral-200/50";
+      "leo-tap-row flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-neutral-200/50";
     return onAccountClick ? (
       <button
         type="button"
@@ -479,12 +480,12 @@ function AppShellInner({
       <button
         type="button"
         onClick={onBrandClick}
-        className="flex items-center gap-2 text-neutral-900"
+        className="leo-tap-row flex items-center gap-2 text-neutral-900"
       >
         {brandInner}
       </button>
     ) : (
-      <Link href="/" className="flex items-center gap-2 text-neutral-900">
+      <Link href="/" className="leo-tap-row flex items-center gap-2 text-neutral-900">
         {brandInner}
       </Link>
     );
@@ -498,7 +499,8 @@ function AppShellInner({
       : false;
     /* 侧栏文字加深（操作员 2026-07-02：旧 text-neutral-600 太浅、观感廉价；
        对照 Manus 侧栏近黑文字）。深色下由 globals.css 全局重映射到 --leo-d-fg。 */
-    const cls = `group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150 ${
+    // leo-tap-row：手指设备上这一行不矮于 44px（原来 px-3 py-2 ≈ 36px，要瞄准才点得中）。
+    const cls = `leo-tap-row group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150 ${
       active
         ? "bg-neutral-200/80 font-medium text-neutral-900"
         : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
@@ -609,7 +611,7 @@ function AppShellInner({
             setMobileOpen(false);
             onBrandClick();
           }}
-          className="flex items-center gap-2 text-neutral-900"
+          className="leo-tap-row flex items-center gap-2 text-neutral-900"
         >
           <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
             {brand.logo}
@@ -617,7 +619,7 @@ function AppShellInner({
           <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
         </button>
       ) : (
-        <Link href="/" className="flex items-center gap-2 text-neutral-900">
+        <Link href="/" className="leo-tap-row flex items-center gap-2 text-neutral-900">
           <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
             {brand.logo}
           </span>
@@ -629,7 +631,7 @@ function AppShellInner({
           <button
             type="button"
             onClick={() => setSearchOpen((v) => !v)}
-            className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
+            className="leo-tap-icon rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
             title={tt("搜索")}
           >
             <IconSearch />
@@ -641,7 +643,7 @@ function AppShellInner({
             toggleCollapsed(true);
             setMobileOpen(false);
           }}
-          className="rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
+          className="leo-tap-icon rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
           title={tt("收起侧栏")}
         >
           <IconPanel />
@@ -915,8 +917,13 @@ function AppShellInner({
           顶部工具已改为右上角浮层（不占行高），main 一律按「无 header」方式让位。
           这是按钮让位的「唯一事实源」。页面/组件内部不要再各自加让位内边距。
         */}
-        {/* leo-safe-main：底部手势条那一条不许压在页面内容上（桌面 0px）。 */}
-        <main className={`leo-safe-main flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}>
+        {/* leo-safe-main：底部手势条那一条不许压在页面内容上（桌面 0px）。
+            leo-safe-main-top（A13）：这条主区头上没有顶栏，顶边也要让出刘海那一条，
+            否则刘海机上首屏顶端压在状态栏区里。topbar 布局的主区**不挂**这个类 ——
+            那边刘海已经被 .leo-safe-topbar 吃掉，再让一次会多出一条 47px 的空白。 */}
+        <main
+          className={`leo-safe-main leo-safe-main-top flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}
+        >
           {/* Route changes update this stable surface in place. In particular,
               /workspace → /workspace/<app> must not remount a live app merely
               to replay a page animation; the app-level console owns its one
