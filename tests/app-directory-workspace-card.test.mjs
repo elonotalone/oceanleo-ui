@@ -60,6 +60,18 @@ const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", {
   "./library-data": dataModule(
     "export function libraryKindForArtifactType(t){ return t === 'single_file_image' ? 'image' : undefined; }",
   ),
+  // 大卡片的网站类主预览（裁定 A11）会把整站预览那棵树拉进图，上面那个 `library-data`
+  // 最小替身供不上它要的导出。本文件断言的是卡片 DOM，网站类主预览由
+  // `tests/home-showcase-website-preview-w04.test.mjs` 用真件钉住。
+  "./WebsiteArtifactViewer": dataModule(
+    "export function TemplateMaterialPreview(){ return null; }\nexport function WebsiteArtifactViewer(){ return null; }",
+  ),
+  // 同一条边的另一半：真目录源会把 `deck-delivery-family` → `library-data` 那条链拉进来。
+  "./material-library-template-source": dataModule(
+    "export function isWebsiteTemplateMaterial(t){ return t === 'website'; }\n" +
+      "export function templateMaterialIdForArtifact(){ return ''; }\n" +
+      "export async function listTemplateMaterials(){ return { ok: true, data: [] }; }",
+  ),
 });
 const { HomeAppCards } = await import(homeAppCardsUrl);
 

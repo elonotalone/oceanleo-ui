@@ -59,6 +59,23 @@ const authClientStubUrl = dataModule(
 const libraryDataStubUrl = dataModule(
   "export function libraryKindForArtifactType(t){ return t === 'single_file_image' ? 'image' : undefined; }",
 );
+// 大卡片的网站类主预览（裁定 A11）复用查看器里那份整站预览，它把 rendition / 判读器 /
+// 目录源整棵树拉进了图 —— 而上面那个 `library-data` 最小替身供不上那棵树要的导出，
+// 少一个导出就是「整份测试一条断言都不执行」。本文件断言的是卡片 DOM 与深链，
+// 网站类主预览由 `tests/home-showcase-website-preview-w04.test.mjs` 用真件钉住，
+// 所以这里给它最小替身，把图收回原来的形状。
+const websiteViewerStubUrl = dataModule(
+  "export function TemplateMaterialPreview(){ return null; }\n" +
+    "export function WebsiteArtifactViewer(){ return null; }",
+);
+// 同一条边的另一半：大卡片按 `siteKey` 向素材目录问回目录行 id。真目录源会把
+// `deck-delivery-family` → `library-data` 那条链拉进来，同样供不上最小替身。
+// 「网站类不是这一份」是本文件全部 fixture 的既有事实，所以替身一律回「问不到」。
+const templateSourceStubUrl = dataModule(
+  "export function isWebsiteTemplateMaterial(t){ return t === 'website'; }\n" +
+    "export function templateMaterialIdForArtifact(){ return ''; }\n" +
+    "export async function listTemplateMaterials(){ return { ok: true, data: [] }; }",
+);
 
 // 一份共用的替身表：递归编译会把它一路往下传，所以只需在这里声明一次。
 // 没列进来的相对依赖全部**接真模块**——包括 W5 的 `app-capability-image`（本文件要断言
@@ -70,6 +87,8 @@ const OVERRIDES = {
   "./HomePromptModals": modalsStubUrl,
   "../lib/auth/client": authClientStubUrl,
   "./library-data": libraryDataStubUrl,
+  "./WebsiteArtifactViewer": websiteViewerStubUrl,
+  "./material-library-template-source": templateSourceStubUrl,
 };
 
 const assetThumbUrl = await compileModule("src/lib/asset-thumb.ts", OVERRIDES);
