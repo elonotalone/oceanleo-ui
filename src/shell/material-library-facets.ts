@@ -316,6 +316,13 @@ export function materialFacetOptions(
   );
 }
 
+/** 注册表标题里是不是已经写着同一个页数（`… · 5 页专业服务站` vs 标签 `5页`）。 */
+function titleStatesPageCount(title: string, shapeLabel: string): boolean {
+  const digits = shapeLabel.replace(/[^0-9]/g, "");
+  if (!digits) return false;
+  return new RegExp(`${digits}\\s*页`).test(title);
+}
+
 /**
  * 页数与外观直接进入网格卡标题；无新 facet 的旧行逐字不变。
  *
@@ -323,14 +330,23 @@ export function materialFacetOptions(
  * 就是让同一件素材的四五张皮肤在货架上看起来像四五件不同的东西——那正是要消掉的毛病。
  * 页数**保留**：分组键 `<appId>-<sub>-<shape>` 含 shape，同一子类的 5 页版与 6 页版
  * 是两组两张卡，去掉页数它们的标题会一模一样。
+ *
+ * 但页数只许出现一次。`website` 站的新标题本身就是
+ * `<子类中文名> · <页数> 页<形态后缀>`，再追加一次页数标签，用户读到的是
+ * 「财务会计 · 5 页专业服务站 · 5页」（2026-08-21 真数据实测 403/403 张卡都这样）。
+ * 所以分组卡在标题已经说了页数时不再追加——**未分组的旧行不走这条判断，逐字不变**。
  */
 export function materialFacetCardEntry(
   record: MaterialFacetRecord,
   options: { grouped?: boolean } = {},
 ): WorkspaceLibraryEntry {
-  const shape = record.facets.shape
+  const shapeLabel = record.facets.shape
     ? MATERIAL_SHAPE_LABELS[record.facets.shape] || record.facets.shape
     : "";
+  const shape =
+    options.grouped && titleStatesPageCount(record.entry.title, shapeLabel)
+      ? ""
+      : shapeLabel;
   const skin =
     options.grouped || !record.facets.skin
       ? ""

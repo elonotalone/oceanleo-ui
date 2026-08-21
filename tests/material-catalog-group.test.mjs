@@ -312,6 +312,38 @@ test("没有 group: 的旧行逐字不变", () => {
   );
 });
 
+test("标题已经写着页数时不再追加一次页数", () => {
+  // `W01` 落盘的真标题格式是 `<子类中文名> · <页数> 页<形态后缀>`，
+  // 追加 `MATERIAL_SHAPE_LABELS[shape]` 会让用户读到「… · 5 页专业服务站 · 5页」。
+  const realTitle = templateRow({
+    id: "acct-s5-real-title",
+    title: "财务会计 · 5 页专业服务站",
+    group: "agency-accounting-s5-real",
+    sub: "accounting",
+    shape: "s5",
+    skin: "paper",
+    cover: true,
+  });
+  const [entry] = materialCatalogEntries(shelfCards([realTitle]));
+  assert.equal(entry.title, "财务会计 · 5 页专业服务站");
+  assert.equal(entry.title.match(/5\s*页/g).length, 1);
+  // 标题没说页数的分组卡照旧补页数：分组键含 shape，5 页版与 6 页版是两张卡。
+  assert.equal(
+    materialCatalogEntries(shelfCards(ACCOUNTING_S5))[0].title,
+    `财务会计专业服务站 · ${MATERIAL_SHAPE_LABELS.s5}`,
+  );
+  // 未分组的旧行不走这条判断：标题里自带页数也照旧追加，与今天逐字一致。
+  const legacyWithPageCount = {
+    ...LEGACY_ROW,
+    id: "legacy-3-pages",
+    title: "老版通用企业站 3 页",
+  };
+  assert.equal(
+    materialCatalogEntries(shelfCards([legacyWithPageCount]))[0].title,
+    `老版通用企业站 3 页 · ${MATERIAL_SHAPE_LABELS.s3} · ${MATERIAL_SKIN_LABELS.bento}`,
+  );
+});
+
 test("同一个标题不会在货架上出现两次", () => {
   const titles = materialCatalogEntries(shelfCards()).map(
     (entry) => entry.title,
