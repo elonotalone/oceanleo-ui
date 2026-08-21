@@ -899,9 +899,17 @@ function DailyLimitBlock({ tt }: { tt: UITranslate }) {
 export interface AccountSecurityPageProps {
   /** 「退出所有设备」之后去哪。默认刷新当前页。 */
   onSignedOutAll?: () => void;
+  /**
+   * 嵌在账户页里就地展开，而不是自己占一整页。
+   *
+   * 路由长在 36 个消费站各自的仓里，共享包碰不到，所以「账号安全」不能只是一个
+   * 指向 `/account/security` 的链接——那条路由今天哪个站都没有，点了就是 404。
+   * 就地展开的这一份不需要任何消费站改代码，今天就能点开。
+   */
+  embedded?: boolean;
 }
 
-export function AccountSecurityPage({ onSignedOutAll }: AccountSecurityPageProps) {
+export function AccountSecurityPage({ onSignedOutAll, embedded }: AccountSecurityPageProps) {
   const tt = useUI();
   const configured = oceanleoConfigured();
   const [aalChecked, setAalChecked] = useState(false);
@@ -921,11 +929,13 @@ export function AccountSecurityPage({ onSignedOutAll }: AccountSecurityPageProps
   if (!configured) {
     const notice = loginUnavailableNotice();
     return (
-      <div className="px-8 py-6">
-        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
-          {tt("账号安全")}
-        </h1>
-        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+      <div className={embedded ? "" : "px-8 py-6"} data-security-page>
+        {!embedded && (
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
+            {tt("账号安全")}
+          </h1>
+        )}
+        <div className="mx-auto mt-6 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
           <p className="text-[14px] font-medium">{tt(notice?.title || "登录服务尚未配置")}</p>
           {notice?.detail && <p className="mt-1.5 text-[13px]">{tt(notice.detail)}</p>}
         </div>
@@ -934,14 +944,22 @@ export function AccountSecurityPage({ onSignedOutAll }: AccountSecurityPageProps
   }
 
   return (
-    <div className="px-8 py-6" data-security-page data-security-aal-checked={String(aalChecked)}>
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
-        {tt("账号安全")}
-      </h1>
-      <p className="mt-1 text-[13px] text-neutral-500">
-        {tt("最近的登录与改动、还在登录状态的设备、每天最多能花多少")}
-      </p>
-      <div className="v-fade-up mx-auto mt-6 max-w-lg pb-10">
+    <div
+      className={embedded ? "" : "px-8 py-6"}
+      data-security-page
+      data-security-aal-checked={String(aalChecked)}
+    >
+      {!embedded && (
+        <>
+          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
+            {tt("账号安全")}
+          </h1>
+          <p className="mt-1 text-[13px] text-neutral-500">
+            {tt("最近的登录与改动、还在登录状态的设备、每天最多能花多少")}
+          </p>
+        </>
+      )}
+      <div className={embedded ? "v-fade-up" : "v-fade-up mx-auto mt-6 max-w-lg pb-10"}>
         <TwoStepBlock tt={tt} />
         <ChangePasswordBlock tt={tt} />
         <ActiveDevicesBlock tt={tt} onSignedOutAll={onSignedOutAll} />

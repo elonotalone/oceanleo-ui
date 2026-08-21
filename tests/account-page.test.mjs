@@ -139,8 +139,22 @@ const pageHeaderStubUrl = dataModule(`
   }
 `);
 
+// 账号安全中心由 W4 的 src/pages/AccountSecurityPage.tsx 提供；这里只按契约 stub
+// （embedded / onSignedOutAll），真身的行为由 tests/account-security-w4.test.mjs 挂真组件验。
+const securityStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function AccountSecurityPage({ embedded }) {
+    return React.createElement(
+      "div",
+      { "data-testid": "security-panel", "data-embedded": String(!!embedded) },
+      "security",
+    );
+  }
+`);
+
 const COMPONENT_STUBS = {
   "next/link": linkStubUrl,
+  "./AccountSecurityPage": securityStubUrl,
   "../lib/auth": authStubUrl,
   "../ui": confirmStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
@@ -286,6 +300,44 @@ test("菜单项 external 走原生 <a target=_blank>，内链走 next/link", asy
 });
 
 /* ---------- 超集第 4 项：oceanleoConfigured() 为假 ---------- */
+
+/* ---------- W4：账号安全就地展开 ---------- */
+
+test("「账号安全」不是链接：共享包没有路由，写成 href 就是 36 个站一起 404", async () => {
+  const stub = signedInStub();
+  const view = await render(React.createElement(AccountPage), stub);
+  const links = [...view.host.querySelectorAll("a[data-next-link], a[target=_blank]")];
+  // 菜单里每一条链接都必须指向一个真实存在的路径；空 href 会把人送回站点根。
+  for (const a of links) {
+    assert.ok((a.getAttribute("href") || "").length > 1, `空链接：${a.textContent}`);
+  }
+  assert.equal(
+    links.some((a) => (a.textContent || "").includes("账号安全")),
+    false,
+    "账号安全被渲染成了链接，但没有任何消费站有 /account/security 这条路由",
+  );
+  view.cleanup();
+});
+
+test("点「账号安全」就地展开安全中心，再点收起——不跳走，也不需要消费站改代码", async () => {
+  const stub = signedInStub();
+  const view = await render(React.createElement(AccountPage), stub);
+  const entry = view.host.querySelector("button[data-account-expands=security]");
+  assert.ok(entry, "账号安全那一条没有渲染成可展开的按钮");
+  assert.equal(view.host.querySelector("[data-testid=security-panel]"), null);
+  assert.equal(entry.getAttribute("aria-expanded"), "false");
+
+  await view.click(entry);
+  const panel = view.host.querySelector("[data-testid=security-panel]");
+  assert.ok(panel, "点了没有展开");
+  // embedded：嵌进来的那一份不再自带整页的标题与外边距。
+  assert.equal(panel.getAttribute("data-embedded"), "true");
+  assert.equal(entry.getAttribute("aria-expanded"), "true");
+
+  await view.click(entry);
+  assert.equal(view.host.querySelector("[data-testid=security-panel]"), null, "再点没收起");
+  view.cleanup();
+});
 
 test("登不上时说明原因，而不是渲染一个必然失败的登录入口", async () => {
   const view = await render(

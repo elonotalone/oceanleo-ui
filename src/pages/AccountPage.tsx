@@ -35,6 +35,7 @@ import {
 } from "../lib/auth";
 import { ConfirmDialog } from "../ui";
 import { AuthDialog } from "./AuthDialog";
+import { AccountSecurityPage } from "./AccountSecurityPage";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface AccountMenuItem {
@@ -46,6 +47,11 @@ export interface AccountMenuItem {
    * 不走 next/link 的 SPA 预取——跨站预取只会 404。
    */
   external?: boolean;
+  /**
+   * 就地展开的面板，而不是跳走。共享包没有路由——路由长在 36 个消费站各自的仓里，
+   * 所以新增的账号页内容只能这样才在今天真的点得开。
+   */
+  expands?: "security";
 }
 
 export interface AccountPageProps {
@@ -115,10 +121,13 @@ export function AccountPage({
     },
     { label: tt("账户设置"), href: "/settings", desc: tt("个人资料、用量与知识库") },
     // W4（2026-08-21）：在这条之前，用户能对自己账号做的只有登录和退出所有设备。
+    // 不给 href：路由长在 36 个消费站各自的仓里，`/account/security` 今天哪个站
+    // 都没有，写成链接就是点了 404。这一条就地展开，不需要任何消费站改代码。
     {
       label: tt("账号安全"),
-      href: "/account/security",
+      href: "",
       desc: tt("最近的登录与改动、还在登录状态的设备、每天最多能花多少"),
+      expands: "security",
     },
     {
       label: tt("插件与连接器"),
@@ -135,6 +144,7 @@ export function AccountPage({
   const [checked, setChecked] = useState(() => !configured);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [openPanel, setOpenPanel] = useState<AccountMenuItem["expands"]>(undefined);
 
   useEffect(() => {
     if (!configured) return;
@@ -314,6 +324,27 @@ export function AccountPage({
             );
             const className =
               "group flex items-center justify-between px-4 py-3.5 transition hover:bg-neutral-50";
+            if (item.expands) {
+              const open = openPanel === item.expands;
+              return (
+                <div key={item.label}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    data-account-expands={item.expands}
+                    onClick={() => setOpenPanel(open ? undefined : item.expands)}
+                    className={`${className} w-full text-left`}
+                  >
+                    {body}
+                  </button>
+                  {open && (
+                    <div className="border-t border-neutral-100 bg-neutral-50/60 px-4 py-4">
+                      <AccountSecurityPage embedded onSignedOutAll={onSignedOut} />
+                    </div>
+                  )}
+                </div>
+              );
+            }
             return item.external ? (
               <a
                 key={item.label}
