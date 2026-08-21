@@ -102,6 +102,19 @@ const STUBS = {
       return Promise.resolve(globalThis.__W07_MEDIA__ ?? null);
     }
   `),
+  // 真 `useUI()` 要 next-intl 的 provider 才拿得到 locale，而这份测试是直接挂组件的。
+  // 桩只做查表（`tt` 在送达这一层的合同就只有查表），**故意不做插值** ——
+  // 占位符要是靠调用方的 `tt` 去填，`发送到{device}` 就会漏到用户脸上。
+  // 词典由 `__W07_DICT__` 拨动：不设就是中文原文，设成 `UI_MESSAGES.ja` 就是日语用户看到的那一屏。
+  "../i18n/ui/useUI": dataModule(`
+    export function useUI(){
+      return (zh) => {
+        const dictionary = globalThis.__W07_DICT__;
+        const hit = dictionary ? dictionary[zh] : undefined;
+        return hit == null || hit === "" ? zh : hit;
+      };
+    }
+  `),
 };
 
 const handoff = await import(

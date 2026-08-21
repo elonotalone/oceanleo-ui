@@ -18,7 +18,9 @@ import {
   canHandOffFiles,
   handoffFailureMessage,
   handoffFolderNote,
+  handoffOfflineNotice,
   handoffProgressText,
+  handoffSendLabel,
   handoffSuccessText,
   pickFileForHandoff,
   planFileHandoff,
@@ -26,6 +28,7 @@ import {
   type HandoffFolders,
   type HandoffProgress,
 } from "./mobile-file-handoff";
+import { useUI } from "../i18n/ui/useUI";
 
 export interface LocalTaskLauncherProps<K extends LocalActionKind = LocalActionKind> {
   deviceId: string | null | undefined;
@@ -80,16 +83,21 @@ export interface LocalFileHandoffLauncherProps {
  * 落点只能从下拉框里选，**没有手敲路径的口子**。手敲路径看着像功能，实际是绕过授权：
  * 那台电脑会把范围外的路径拒成 `path_outside_grant`，等于先请用户瞄准一个没人授权的
  * 文件夹，再当着他的面拒绝他。
+ *
+ * 这一屏的每一句话都走 `tt()`，包括送达逻辑那一层报回来的进度与失败态 ——
+ * 手机壳打开的就是这个网站，日语用户点开「发送到电脑」不该看到一屏中文。
  */
 export function LocalFileHandoffLauncher({
   deviceId,
-  deviceName = "这台电脑",
+  deviceName: deviceNameProp,
   deviceOnline = true,
   folders,
   devicesHref = "/devices",
   className,
   onSent,
 }: LocalFileHandoffLauncherProps) {
+  const tt = useUI();
+  const deviceName = deviceNameProp || tt("这台电脑");
   const [native, setNative] = useState(false);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
@@ -113,7 +121,7 @@ export function LocalFileHandoffLauncher({
           href={devicesHref}
           className="inline-flex min-h-11 items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white"
         >
-          去连接一台电脑
+          {tt("去连接一台电脑")}
         </a>
       </div>
     );
@@ -132,6 +140,7 @@ export function LocalFileHandoffLauncher({
       folder: selected,
       deviceName,
       deviceOnline,
+      tt,
     });
     if (!plan.ok) {
       setError(plan.message);
@@ -145,16 +154,17 @@ export function LocalFileHandoffLauncher({
         deviceOnline,
         plan,
         onProgress: setProgress,
+        tt,
       });
       if (result.ok) {
-        setDone(handoffSuccessText(result, deviceName));
+        setDone(handoffSuccessText(result, deviceName, tt));
         onSent?.(result.path);
       } else {
         setError(result.message);
       }
     } catch (caught) {
       const code = caught instanceof LocalTaskApiError ? caught.code : "network_error";
-      setError(handoffFailureMessage(code, deviceName));
+      setError(handoffFailureMessage(code, deviceName, {}, tt));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -169,7 +179,7 @@ export function LocalFileHandoffLauncher({
     >
       {choices.length > 0 ? (
         <label className="block text-sm text-slate-700">
-          落点文件夹
+          {tt("落点文件夹")}
           <select
             value={selected}
             onChange={(event) => setFolder(event.target.value)}
@@ -186,7 +196,7 @@ export function LocalFileHandoffLauncher({
         </label>
       ) : null}
       <p className="mt-2 text-sm text-slate-600" data-file-handoff-note>
-        {handoffFolderNote(folders, deviceName)}
+        {handoffFolderNote(folders, deviceName, tt)}
       </p>
       <button
         type="button"
@@ -194,16 +204,16 @@ export function LocalFileHandoffLauncher({
         disabled={busy || choices.length === 0}
         className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {busy ? "正在发送…" : `发送到${deviceName}`}
+        {busy ? tt("正在发送…") : handoffSendLabel(deviceName, tt)}
       </button>
       {progress ? (
         <p className="mt-2 text-sm text-slate-600" role="status" data-file-handoff-progress>
-          {handoffProgressText(progress, deviceName)}
+          {handoffProgressText(progress, deviceName, tt)}
         </p>
       ) : null}
       {!deviceOnline ? (
-        <p className="mt-2 text-sm text-amber-700" role="status">
-          {deviceName}现在离线。小文件会排队等它上线；大文件要分几次送，得等它上线后再发。
+        <p className="mt-2 text-sm text-amber-700" role="status" data-file-handoff-offline>
+          {handoffOfflineNotice(deviceName, tt)}
         </p>
       ) : null}
       {done ? (

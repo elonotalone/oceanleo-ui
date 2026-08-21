@@ -32,6 +32,35 @@ import {
 import { detectNativeHost, pickNativeMedia, type NativeMedia } from "./mobile-bridge";
 
 /* ------------------------------------------------------------------ *
+ * 文案的翻译口
+ * ------------------------------------------------------------------ */
+
+/**
+ * 这一屏每一句话的翻译口，形状与 `useUI()` 的 `tt` 相同（`src/i18n/ui/useUI.ts`：
+ * 中文原文即 key，未命中就回退中文原文）。
+ *
+ * 为什么要当参数传进来：这个模块里出文案的全是纯函数，不是组件，取不到 hook。
+ * 不传就落回中文原文 —— 中文站因此逐字不变，而手机上那一屏由
+ * `LocalFileHandoffLauncher` 把 `useUI()` 传下来，日语用户看到的是日语。
+ */
+export type HandoffTranslate = (zh: string) => string;
+
+const KEEP_ZH: HandoffTranslate = (zh) => zh;
+
+/**
+ * 译文里的 `{device}`、`{path}` 这些位由这里填，不交给 `tt` 自己的插值：
+ * `tt` 在这个模块里的合同只有「查表」一件，把填空押在它身上，一个只查表的实现
+ * 就会让用户看见 `发送到{device}` 这种半成品。
+ *
+ * 填空放在取译文之后，因此「设备名在句子里的位置」由每种语言的译文自己决定。
+ */
+function fill(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    key in vars ? String(vars[key]) : match,
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * 分片尺寸
  * ------------------------------------------------------------------ */
 
@@ -127,16 +156,32 @@ export function parseHandoffFolders(device: unknown): HandoffFolders {
 /** 落点列表下面那一句解释。空列表尤其需要它，否则用户只看到一个空框。 */
 export function handoffFolderNote(
   folders: HandoffFolders,
-  deviceName = "这台电脑",
+  deviceName?: string,
+  tt: HandoffTranslate = KEEP_ZH,
 ): string {
+  const device = deviceName || tt("这台电脑");
   if (folders.folders.length === 0) {
     return folders.source === "heartbeat"
-      ? `${deviceName}上还没有授权任何文件夹。先在那台电脑上授权一个，这里才会出现落点。`
-      : `${deviceName}还没上报它授权了哪些文件夹。先在那台电脑上授权一个文件夹，或把它上面的客户端升到新版。`;
+      ? fill(tt("{device}上还没有授权任何文件夹。先在那台电脑上授权一个，这里才会出现落点。"), {
+          device,
+        })
+      : fill(
+          tt(
+            "{device}还没上报它授权了哪些文件夹。先在那台电脑上授权一个文件夹，或把它上面的客户端升到新版。",
+          ),
+          { device },
+        );
   }
   return folders.source === "history"
-    ? `${deviceName}上的客户端还报不了授权目录，这里列的是它以前成功写入过的文件夹。要发到别的文件夹，请先在那台电脑上授权。`
-    : `只能发到${deviceName}上已经授权的文件夹。要多一个落点，请在那台电脑上授权。`;
+    ? fill(
+        tt(
+          "{device}上的客户端还报不了授权目录，这里列的是它以前成功写入过的文件夹。要发到别的文件夹，请先在那台电脑上授权。",
+        ),
+        { device },
+      )
+    : fill(tt("只能发到{device}上已经授权的文件夹。要多一个落点，请在那台电脑上授权。"), {
+        device,
+      });
 }
 
 /* ------------------------------------------------------------------ *
@@ -147,18 +192,28 @@ export function handoffFolderNote(
  * 手机相册给的文件名是不可信输入。它只能是一个**名字**：
  * 带上路径分隔符或 `..` 就能从授权目录里走出去，那正是这个模块存在的意义要防的事。
  */
-export function handoffFileName(name: string, fallback = "手机文件"): string {
+export function handoffFileName(
+  name: string,
+  fallback?: string,
+  tt: HandoffTranslate = KEEP_ZH,
+): string {
   const base = String(name ?? "")
     .split(/[\\/]/)
     .pop()!
     .replace(/[\u0000-\u001f]/g, "")
     .trim();
-  if (!base || base === "." || base === "..") return fallback;
+  // 兜底名字会成为那台电脑上真实的文件名，所以它也要跟界面同一种语言 ——
+  // 日语用户的下载目录里不该多出一个叫「手机文件」的文件。
+  if (!base || base === "." || base === "..") return fallback || tt("手机文件");
   return base.slice(0, 120);
 }
 
-export function handoffTargetPath(folder: string, name: string): string {
-  return joinLocalPath(folder, handoffFileName(name));
+export function handoffTargetPath(
+  folder: string,
+  name: string,
+  tt: HandoffTranslate = KEEP_ZH,
+): string {
+  return joinLocalPath(folder, handoffFileName(name, undefined, tt));
 }
 
 /* ------------------------------------------------------------------ *
@@ -221,21 +276,25 @@ export function planFileHandoff(options: {
   folder: string;
   deviceName?: string;
   deviceOnline?: boolean;
+  tt?: HandoffTranslate;
 }): HandoffPlanResult {
-  const deviceName = options.deviceName || "这台电脑";
+  const tt = options.tt || KEEP_ZH;
+  const deviceName = options.deviceName || tt("这台电脑");
   const bytes = options.media.bytes;
   if (!options.folder) {
     return {
       ok: false,
       reason: "no_folder",
-      message: `还没选落点。只能发到${deviceName}上已经授权的文件夹。`,
+      message: fill(tt("还没选落点。只能发到{device}上已经授权的文件夹。"), {
+        device: deviceName,
+      }),
     };
   }
   if (!bytes || bytes.length === 0) {
     return {
       ok: false,
       reason: "empty_file",
-      message: "这个文件是空的，没有内容可以发。",
+      message: tt("这个文件是空的，没有内容可以发。"),
     };
   }
   if (bytes.length > HANDOFF_MAX_TOTAL_BYTES) {
@@ -243,10 +302,13 @@ export function planFileHandoff(options: {
     return {
       ok: false,
       reason: "too_large",
-      message: `这个文件有 ${formatBytes(bytes.length)}，一次最多只能发 ${megabytes} MB。`,
+      message: fill(tt("这个文件有 {size}，一次最多只能发 {max} MB。"), {
+        size: formatBytes(bytes.length, tt),
+        max: megabytes,
+      }),
     };
   }
-  const path = handoffTargetPath(options.folder, options.media.name);
+  const path = handoffTargetPath(options.folder, options.media.name, tt);
   const partCount = Math.ceil(bytes.length / HANDOFF_PART_BYTES);
   if (partCount === 1) {
     return {
@@ -264,7 +326,10 @@ export function planFileHandoff(options: {
     return {
       ok: false,
       reason: "offline_multipart",
-      message: `${deviceName}现在离线。这个文件要分 ${partCount} 次送，中途它必须一直在线 —— 等它上线再发。`,
+      message: fill(
+        tt("{device}现在离线。这个文件要分 {parts} 次送，中途它必须一直在线 —— 等它上线再发。"),
+        { device: deviceName, parts: partCount },
+      ),
     };
   }
   const parts: HandoffPart[] = [];
@@ -289,8 +354,9 @@ export function base64ByteLength(value: string): number {
   return (value.length / 4) * 3 - padding;
 }
 
-export function formatBytes(value: number): string {
-  if (value < 1024) return `${value} 字节`;
+export function formatBytes(value: number, tt: HandoffTranslate = KEEP_ZH): string {
+  // KB / MB 是国际单位，17 种语言都照写；只有「字节」这个词要跟界面同一种语言。
+  if (value < 1024) return fill(tt("{size} 字节"), { size: value });
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(0)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -348,6 +414,8 @@ export interface SendFileHandoffOptions {
   ) => Promise<CreatedPart>;
   awaitPart?: (taskId: string) => Promise<LocalTask>;
   watchOptions?: WatchLocalTaskOptions;
+  /** 界面的翻译口。不传就落回中文原文。 */
+  tt?: HandoffTranslate;
 }
 
 async function gatewayRequest(path: string, init: RequestInit): Promise<unknown> {
@@ -454,7 +522,8 @@ function awaitPartOutcome(
 export async function sendFileHandoff(
   options: SendFileHandoffOptions,
 ): Promise<HandoffResult> {
-  const deviceName = options.deviceName || "这台电脑";
+  const tt = options.tt || KEEP_ZH;
+  const deviceName = options.deviceName || tt("这台电脑");
   const createPart = options.createPart || createHandoffPart;
   const awaitPart =
     options.awaitPart || ((taskId: string) => awaitPartOutcome(taskId, options.watchOptions));
@@ -487,7 +556,12 @@ export async function sendFileHandoff(
         return {
           ok: false,
           code: outcome.denyReason || outcome.status,
-          message: handoffFailureMessage(outcome.denyReason || outcome.status, deviceName),
+          message: handoffFailureMessage(
+            outcome.denyReason || outcome.status,
+            deviceName,
+            {},
+            tt,
+          ),
           landedParts: 0,
           totalParts: 1,
         };
@@ -501,7 +575,7 @@ export async function sendFileHandoff(
       });
       return { ok: true, path: plan.path, bytes: plan.totalBytes, queued: false };
     } catch (error) {
-      return failureFromError(error, deviceName, 0, 1);
+      return failureFromError(error, deviceName, 0, 1, tt);
     }
   }
 
@@ -522,23 +596,25 @@ export async function sendFileHandoff(
       // 抓「那台电脑其实在覆盖而不是追加」的唯一一条。
       created = await createPart(options.deviceId, { ...part }, previousTaskId);
     } catch (error) {
-      return failureFromError(error, deviceName, part.part_index - 1, totalParts);
+      return failureFromError(error, deviceName, part.part_index - 1, totalParts, tt);
     }
     let outcome: LocalTask;
     try {
       outcome = await awaitPart(created.taskId);
     } catch (error) {
-      return failureFromError(error, deviceName, part.part_index - 1, totalParts);
+      return failureFromError(error, deviceName, part.part_index - 1, totalParts, tt);
     }
     if (outcome.status !== "succeeded") {
       const code = outcome.denyReason || outcome.status;
       return {
         ok: false,
         code,
-        message: handoffFailureMessage(code, deviceName, {
-          landedParts: part.part_index - 1,
-          totalParts,
-        }),
+        message: handoffFailureMessage(
+          code,
+          deviceName,
+          { landedParts: part.part_index - 1, totalParts },
+          tt,
+        ),
         landedParts: part.part_index - 1,
         totalParts,
       };
@@ -567,6 +643,7 @@ function failureFromError(
   deviceName: string,
   landedParts: number,
   totalParts: number,
+  tt: HandoffTranslate = KEEP_ZH,
 ): HandoffFailure {
   const code =
     error instanceof LocalTaskApiError ? error.code : "network_error";
@@ -574,11 +651,12 @@ function failureFromError(
   return {
     ok: false,
     code,
-    message: handoffFailureMessage(code, deviceName, {
-      limit,
-      landedParts,
-      totalParts,
-    }),
+    message: handoffFailureMessage(
+      code,
+      deviceName,
+      { limit, landedParts, totalParts },
+      tt,
+    ),
     landedParts,
     totalParts,
   };
@@ -596,73 +674,131 @@ function failureFromError(
  */
 export function handoffFailureMessage(
   code: string,
-  deviceName = "这台电脑",
+  deviceName?: string,
   context: { limit?: number; landedParts?: number; totalParts?: number } = {},
+  tt: HandoffTranslate = KEEP_ZH,
 ): string {
+  const device = deviceName || tt("这台电脑");
   const partial =
     (context.landedParts ?? 0) > 0 && (context.totalParts ?? 0) > 1
-      ? `已经送到 ${context.landedParts}/${context.totalParts} 片，${deviceName}上现在是一个不完整的文件，重发会从头覆盖它。`
+      ? fill(
+          tt("已经送到 {landed}/{total} 片，{device}上现在是一个不完整的文件，重发会从头覆盖它。"),
+          { landed: context.landedParts!, total: context.totalParts!, device },
+        )
       : "";
-  const base = handoffFailureBase(code, deviceName, context.limit);
+  const base = handoffFailureBase(code, device, context.limit, tt);
   return partial ? `${base}${partial}` : base;
 }
 
 function handoffFailureBase(
   code: string,
-  deviceName: string,
+  device: string,
   limit: number | undefined,
+  tt: HandoffTranslate,
 ): string {
   switch (code) {
     case "grant_missing":
-      return `${deviceName}还没授权「写入与新建文件」。要在那台电脑上授权之后才能收东西。`;
+      return fill(
+        tt("{device}还没授权「写入与新建文件」。要在那台电脑上授权之后才能收东西。"),
+        { device },
+      );
     case "path_outside_grant":
-      return `这个文件夹不在${deviceName}已授权的范围内。请换一个落点，或者在那台电脑上授权它。`;
+      return fill(
+        tt("这个文件夹不在{device}已授权的范围内。请换一个落点，或者在那台电脑上授权它。"),
+        { device },
+      );
     case "device_offline":
-      return `${deviceName}现在离线。等它上线再发。`;
+      return fill(tt("{device}现在离线。等它上线再发。"), { device });
     case "payload_too_large":
       return limit
-        ? `这个文件太大，一片最多 ${formatBytes(Math.floor((limit / 4) * 3))}。`
-        : "这个文件太大，送不过去。";
+        ? fill(tt("这个文件太大，一片最多 {size}。"), {
+            size: formatBytes(Math.floor((limit / 4) * 3), tt),
+          })
+        : tt("这个文件太大，送不过去。");
     case "handoff_part_out_of_order":
     case "handoff_part_not_landed":
     case "handoff_offset_mismatch":
-      return `传输中断了：${deviceName}收到的片对不上号，已经停下来，不会留下一个错乱的文件。请重新发一次。`;
+      return fill(
+        tt(
+          "传输中断了：{device}收到的片对不上号，已经停下来，不会留下一个错乱的文件。请重新发一次。",
+        ),
+        { device },
+      );
     case "network_error":
-      return "网络断了，这一片没送出去。恢复后重新发一次。";
+      return tt("网络断了，这一片没送出去。恢复后重新发一次。");
     case "unauthorized":
-      return "登录后才能把文件发到你的电脑上。";
+      return tt("登录后才能把文件发到你的电脑上。");
     case "failed":
-      return `${deviceName}写这个文件时失败了。失败原因的全文在那台电脑的「本地审计」里。`;
+      return fill(
+        tt("{device}写这个文件时失败了。失败原因的全文在那台电脑的「本地审计」里。"),
+        { device },
+      );
     case "expired":
-      return `等了 24 小时${deviceName}也没上线，这次发送已经过期。`;
+      return fill(tt("等了 24 小时{device}也没上线，这次发送已经过期。"), { device });
     case "cancelled":
-      return "已取消，文件没有写到那台电脑上。";
+      return tt("已取消，文件没有写到那台电脑上。");
     default:
-      return deviceErrorCopy(code, { deviceName, limit });
+      // 协议 §7 那张表由 `api/device-error-copy.ts` 独家持有（设备页与这一屏共用
+      // 同一句），它今天还是中文硬编，而那不是这个模块能改的文件 ——
+      // 见 `signals/W07-signal.md`：额度、撤销、真机拒绝这几个码到这一屏仍是中文。
+      return deviceErrorCopy(code, { deviceName: device, limit });
   }
 }
 
 /** 进度条旁边那一句。单片时不报「1/1 片」，那只会让人困惑。 */
 export function handoffProgressText(
   progress: HandoffProgress,
-  deviceName = "这台电脑",
+  deviceName?: string,
+  tt: HandoffTranslate = KEEP_ZH,
 ): string {
+  const device = deviceName || tt("这台电脑");
   if (progress.phase === "queued") {
-    return `已排队，等${deviceName}上线后自动写入。`;
+    return fill(tt("已排队，等{device}上线后自动写入。"), { device });
   }
-  if (progress.phase === "done") return "已送达。";
-  if (progress.totalParts <= 1) return `正在发送到${deviceName}…`;
-  return `正在发送 ${progress.sentParts + 1}/${progress.totalParts} 片…`;
+  if (progress.phase === "done") return tt("已送达。");
+  if (progress.totalParts <= 1) return fill(tt("正在发送到{device}…"), { device });
+  return fill(tt("正在发送 {sent}/{total} 片…"), {
+    sent: progress.sentParts + 1,
+    total: progress.totalParts,
+  });
 }
 
 /** 送达之后那一句：说清文件到底躺在哪。 */
 export function handoffSuccessText(
   result: HandoffSuccess,
-  deviceName = "这台电脑",
+  deviceName?: string,
+  tt: HandoffTranslate = KEEP_ZH,
 ): string {
+  const device = deviceName || tt("这台电脑");
   return result.queued
-    ? `已排队，等${deviceName}上线后会写入 ${result.path}。`
-    : `已落到 ${result.path}。`;
+    ? fill(tt("已排队，等{device}上线后会写入 {path}。"), { device, path: result.path })
+    : fill(tt("已落到 {path}。"), { path: result.path });
+}
+
+/** 送达按钮上那一句。设备名嵌在句子里，位置由各语言的译文自己决定。 */
+export function handoffSendLabel(
+  deviceName?: string,
+  tt: HandoffTranslate = KEEP_ZH,
+): string {
+  const device = deviceName || tt("这台电脑");
+  return fill(tt("发送到{device}"), { device });
+}
+
+/**
+ * 那台电脑离线时，按钮上方提前说清「小文件照旧、大文件得等」。
+ *
+ * 提前说是有代价差别的：让用户选完一张 8 MB 的照片、等到分片那一刻才被拒，
+ * 比一开始就告诉他要糟得多。
+ */
+export function handoffOfflineNotice(
+  deviceName?: string,
+  tt: HandoffTranslate = KEEP_ZH,
+): string {
+  const device = deviceName || tt("这台电脑");
+  return fill(
+    tt("{device}现在离线。小文件会排队等它上线；大文件要分几次送，得等它上线后再发。"),
+    { device },
+  );
 }
 
 /* ------------------------------------------------------------------ *

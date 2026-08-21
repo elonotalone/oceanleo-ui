@@ -14,7 +14,12 @@ const clientUrl = await compileModule("src/shell/local-task-client.ts", {
 });
 const client = await import(clientUrl);
 
+// 只换 `LocalTaskApiError` 与 `createLocalTask` 两个名字（下面的同名声明盖住 `export *`），
+// 同一份模块里别人用的照旧走真源码。手抄一份完整的假客户端会跟真模块漂：`LocalTaskLauncher`
+// 自 W07 起顺着 `mobile-file-handoff` 多用了 `joinLocalPath` / `watchLocalTask`，
+// 手抄那份缺这两个符号，**整份测试在加载期就炸掉、一条断言都不执行**。
 const launcherClientStub = dataModule(`
+  export * from ${JSON.stringify(clientUrl)};
   export class LocalTaskApiError extends Error {
     constructor(code, status, limit){ super(code); this.code=code; this.status=status; this.limit=limit; }
   }

@@ -607,6 +607,11 @@ test("下单被配额挡住时，页面上换成的是契约中文而不是「�
         export async function createLocalTask(){
           throw new LocalTaskApiError("quota_unfinished_tasks", 429, 100);
         }
+        // 同一份文件里的送达入口（W07）也从这份模块取这两个名字，而桩是整份模块的替身：
+        // 少一个名字就是加载期 SyntaxError，**这条断言一次都不执行**。
+        // 这条断言走的是 LocalTaskLauncher，送达那条链在这里跑不到，所以它们空着就行。
+        export function joinLocalPath(folder, name){ return folder + "/" + name; }
+        export function watchLocalTask(){ return () => {}; }
       `),
     })
   );
