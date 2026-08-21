@@ -788,6 +788,9 @@ export function MaterialLibrary({
       onMaterialDragEnd={onMaterialDragEnd}
       allowAdvanced={allowAdvancedOnSelect}
       // D4：网格卡上不再挂「下载」。下载只在详情浮层里（W5），卡片的职责是「点进去看」。
+      // 卡内插槽只放「换一个版本」：一组多版的网站卡收成了一张，这排小格子是用户看到
+      // 其余那几版的唯一入口。其它卡片这里返回 null，货架照旧安静。
+      entryActions={facetShelf.entryActions}
       onOpenItem={openPreparedItem}
       className={className}
     />

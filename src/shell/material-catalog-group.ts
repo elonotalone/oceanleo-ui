@@ -57,7 +57,9 @@ export interface MaterialCatalogVariantChoice {
   perCard?: Readonly<Record<string, string>>;
 }
 
-const SKIN_RANK = new Map(MATERIAL_SKIN_ORDER.map((skin, index) => [skin, index]));
+const SKIN_RANK = new Map<string, number>(
+  MATERIAL_SKIN_ORDER.map((skin, index) => [skin, index]),
+);
 
 function groupKeyOf(record: MaterialFacetRecord): string {
   return (record.facets.group || "").trim();
