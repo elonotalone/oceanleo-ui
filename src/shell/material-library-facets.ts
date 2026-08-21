@@ -3,6 +3,11 @@ import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 /**
  * Website 官方模板写进 `tags[]` 的稳定机读维度。标签前部的中文展示词不参与解析；
  * 它们可以改文案，而这里的键值是货架筛选合同。
+ *
+ * `group:<appId>-<sub>-<shape>` 与 `groupcover:1` 是「一件素材的多张皮肤只出一张卡」
+ * 的分组合同：同一 `group:` 的多行是同一件的不同 `skin:`，其中恰有一行带
+ * `groupcover:1`，那是这组的封面与默认皮肤。没有 `group:` 的行不参与分组，
+ * 各自单独成卡（其它站点、其它品类的货架因此逐字不变）。
  */
 export const MATERIAL_FACET_KEYS = [
   "industry",
@@ -12,6 +17,8 @@ export const MATERIAL_FACET_KEYS = [
   "tpl",
   "shape",
   "skin",
+  "group",
+  "groupcover",
 ] as const;
 
 export type MaterialFacetKey = (typeof MATERIAL_FACET_KEYS)[number];
@@ -229,6 +236,8 @@ function emptyMaterialFacets(): MaterialFacets {
     tpl: null,
     shape: null,
     skin: null,
+    group: null,
+    groupcover: null,
   };
 }
 
@@ -273,6 +282,19 @@ export function materialFacetRecordMatches(
   );
 }
 
+/** 声明序在前、其余按中文名——分组计数（`material-catalog-group.ts`）共用这一把尺。 */
+export function sortMaterialFacetOptions(
+  options: readonly MaterialFacetOption[],
+  order: readonly string[] = [],
+): MaterialFacetOption[] {
+  const rank = new Map(order.map((value, index) => [value, index]));
+  return [...options].sort((left, right) => {
+    const leftRank = rank.get(left.value) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = rank.get(right.value) ?? Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank || left.label.localeCompare(right.label, "zh-CN");
+  });
+}
+
 export function materialFacetOptions(
   records: readonly MaterialFacetRecord[],
   key: "industry" | "sub" | "shape" | "skin",
@@ -284,28 +306,35 @@ export function materialFacetOptions(
     const value = record.facets[key];
     if (value) counts.set(value, (counts.get(value) || 0) + 1);
   }
-  const rank = new Map(order.map((value, index) => [value, index]));
-  return [...counts].map(([value, count]) => ({
-    value,
-    label: labels[value] || value,
-    count,
-  })).sort((left, right) => {
-    const leftRank = rank.get(left.value) ?? Number.MAX_SAFE_INTEGER;
-    const rightRank = rank.get(right.value) ?? Number.MAX_SAFE_INTEGER;
-    return leftRank - rightRank || left.label.localeCompare(right.label, "zh-CN");
-  });
+  return sortMaterialFacetOptions(
+    [...counts].map(([value, count]) => ({
+      value,
+      label: labels[value] || value,
+      count,
+    })),
+    order,
+  );
 }
 
-/** 页数与外观直接进入网格卡标题；无新 facet 的旧行逐字不变。 */
+/**
+ * 页数与外观直接进入网格卡标题；无新 facet 的旧行逐字不变。
+ *
+ * 分组卡（`grouped`）不再把皮肤写进标题：皮肤已经是卡内的一排切换按钮，再写进标题
+ * 就是让同一件素材的四五张皮肤在货架上看起来像四五件不同的东西——那正是要消掉的毛病。
+ * 页数**保留**：分组键 `<appId>-<sub>-<shape>` 含 shape，同一子类的 5 页版与 6 页版
+ * 是两组两张卡，去掉页数它们的标题会一模一样。
+ */
 export function materialFacetCardEntry(
   record: MaterialFacetRecord,
+  options: { grouped?: boolean } = {},
 ): WorkspaceLibraryEntry {
   const shape = record.facets.shape
     ? MATERIAL_SHAPE_LABELS[record.facets.shape] || record.facets.shape
     : "";
-  const skin = record.facets.skin
-    ? MATERIAL_SKIN_LABELS[record.facets.skin] || record.facets.skin
-    : "";
+  const skin =
+    options.grouped || !record.facets.skin
+      ? ""
+      : MATERIAL_SKIN_LABELS[record.facets.skin] || record.facets.skin;
   const detail = [shape, skin].filter(Boolean).join(" · ");
   return detail
     ? { ...record.entry, title: `${record.entry.title} · ${detail}` }
