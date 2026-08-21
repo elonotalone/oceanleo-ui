@@ -35,6 +35,10 @@ import { LOCALES } from "../i18n/config";
 import { useUI } from "../i18n/ui/useUI";
 import { usePresenceHeartbeat } from "../lib/presence";
 import { MyAppsRail } from "./MyAppsRail";
+// 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
+// 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
+// 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
+import "./phone-shell.css";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
@@ -67,6 +71,29 @@ export type ShellSidebarScroll = "history" | "whole";
  * 站点想把这件事写在自己的接线里，传 prop 就能覆盖这张表。
  */
 const WHOLE_SCROLL_SIDEBAR_SITES = new Set(["asset", "aitools"]);
+
+// 手机客户端打开的就是这套网页端，所以「像不像一个 app」全靠网页端这一侧收口。
+// phone-shell.css 的触感段（不闪灰、骨架不弹系统菜单、整页不橡皮筋）全部挂在
+// <html data-leo-native-shell> 下，浏览器里一条都不生效——这个属性就是那道开关。
+//
+// 判据用宿主注入的全局，不依赖任何桥接模块。没选 `@media (display-mode: standalone)`，
+// 因为 Capacitor 在安卓 WebView 下不保证匹配，用它整套修复会在安卓上静默失效。
+// 属性名故意不叫 `data-oceanleo-native`：那个名字别处也可能用，撞名就互相覆盖。
+const NATIVE_SHELL_ATTR = "data-leo-native-shell";
+
+function useNativeShellFlag() {
+  useLayoutEffect(() => {
+    const host = window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean };
+      __oceanleoNative?: unknown;
+    };
+    const native =
+      host.Capacitor?.isNativePlatform?.() === true ||
+      Boolean(host.__oceanleoNative);
+    // 只置不清：这个属性是「宿主是原生」的事实，不是组件状态，卸载时不该抹掉。
+    if (native) document.documentElement.setAttribute(NATIVE_SHELL_ATTR, "");
+  }, []);
+}
 
 /** @deprecated v5 不再允许覆盖式子栏；仅为旧消费端类型兼容保留。 */
 export interface ShellSubNav {
@@ -334,6 +361,7 @@ function AppShellInner({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  useNativeShellFlag();
   const [term, setTerm] = useState("");
 
   const sourceNavGroups: ShellNavGroup[] = navGroups?.length
@@ -761,10 +789,12 @@ function AppShellInner({
   //    用于单页操作台站（侧栏原本只有一个功能按键，无站级导航可留）。
   if (layout === "topbar") {
     return (
-      <div className="flex min-h-screen flex-col bg-transparent" data-oceanleo-shell>
+      <div className="leo-safe-shell flex min-h-screen flex-col bg-transparent" data-oceanleo-shell>
+        {/* leo-safe-topbar 把 py-2.5 的上半段换成 `2.5 + 刘海高度`，
+            否则手机上站名与账户按钮正好落在灵动岛底下。桌面 inset=0，等于原值。 */}
         <header
           data-oceanleo-chrome
-          className="sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-sm md:px-6"
+          className="leo-safe-topbar sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-200/70 bg-white/80 px-4 pb-2.5 backdrop-blur-sm md:px-6"
         >
           {/* 左：站名标题（原左上角位置） */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
@@ -780,7 +810,7 @@ function AppShellInner({
           </div>
         </header>
 
-        <main className="min-w-0 flex-1">
+        <main className="leo-safe-main min-w-0 flex-1">
           <div data-oceanleo-route-surface className="contents">
             {children}
           </div>
@@ -792,7 +822,7 @@ function AppShellInner({
   return (
     /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
        侧栏保留半透明浅灰与主区渐变区分；主区不再铺白，统一渐变底。 */
-    <div className="flex min-h-screen bg-transparent" data-oceanleo-shell>
+    <div className="leo-safe-shell flex min-h-screen bg-transparent" data-oceanleo-shell>
       {/* desktop sidebar。固定宽度 256px（2026-07-02 对齐主站 oceanleo.com 侧栏宽，
           利于显示历史记录的 AI 概括标题）——主导航态与覆盖式子栏态共用同一宽度，
           点「工作台 / 文件库 / 历史记录」等带子栏的项时侧栏不再变宽。 */}
@@ -808,7 +838,7 @@ function AppShellInner({
           collapsed ? "w-0 border-r-0" : "w-[256px]"
         }`}
       >
-        <div className="flex h-full w-[256px] flex-col">
+        <div className="leo-safe-sidebar flex h-full w-[256px] flex-col">
           {sidebarBody}
         </div>
       </aside>
@@ -830,7 +860,10 @@ function AppShellInner({
           <div className="v-fade-in absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
           {/* 中部滚动交给 sidebarBody 内部的滚动容器（与 desktop 一致），这里不再整体
               overflow-y-auto，避免底部账户区被推走 / 出现双滚动条。 */}
-          <aside className="absolute left-0 top-0 flex h-full w-[280px] flex-col bg-[#f7f7f7] shadow-xl">
+          {/* leo-safe-drawer 同时管宽度（`min(280px, 85vw)`，360px 安卓机上留出
+              「点旁边关掉」的余地）与三个方向的安全区让位：底部账户行不会被
+              手势条盖住，横屏时也不会被刘海切掉。 */}
+          <aside className="leo-safe-drawer absolute left-0 top-0 flex h-full flex-col bg-[#f7f7f7] shadow-xl">
             {sidebarBody}
           </aside>
         </div>
@@ -842,7 +875,7 @@ function AppShellInner({
             type="button"
             data-oceanleo-chrome
             onClick={() => toggleCollapsed(false)}
-            className="fixed left-3 top-3 z-50 hidden rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:block"
+            className="leo-chrome-topleft leo-tap-target fixed z-50 hidden items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:flex"
             title={tt("展开侧栏")}
           >
             <IconPanel />
@@ -852,7 +885,7 @@ function AppShellInner({
           type="button"
           data-oceanleo-chrome
           onClick={() => setMobileOpen(true)}
-          className="fixed left-3 top-3 z-50 rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:hidden"
+          className="leo-chrome-topleft leo-tap-target fixed z-50 inline-flex items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:hidden"
           title={tt("打开菜单")}
         >
           <IconPanel />
@@ -863,7 +896,7 @@ function AppShellInner({
           <div
             data-oceanleo-chrome
             data-oceanleo-header-tools
-            className="pointer-events-none absolute right-4 top-3 z-30 flex items-center gap-2 md:right-6"
+            className="leo-chrome-topright pointer-events-none absolute right-4 z-30 flex items-center gap-2 md:right-6"
           >
             {modelPickerSlot}
             {/* headerRight 各站自定义操作按钮（与模型组合同一行浮层） */}
@@ -882,7 +915,8 @@ function AppShellInner({
           顶部工具已改为右上角浮层（不占行高），main 一律按「无 header」方式让位。
           这是按钮让位的「唯一事实源」。页面/组件内部不要再各自加让位内边距。
         */}
-        <main className={`flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}>
+        {/* leo-safe-main：底部手势条那一条不许压在页面内容上（桌面 0px）。 */}
+        <main className={`leo-safe-main flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}>
           {/* Route changes update this stable surface in place. In particular,
               /workspace → /workspace/<app> must not remount a live app merely
               to replay a page animation; the app-level console owns its one

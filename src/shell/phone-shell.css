@@ -1,2 +1,190 @@
-/* probe */
-:root { --leo-probe: 1; }
+/* ============================================================================
+ * 手机上它得看起来是一个 app，而不是「手机壳里套着一张网页」
+ * ----------------------------------------------------------------------------
+ * 手机客户端（Capacitor，`server.url` 指向线上站）打开的就是这套网页端，所以
+ * 「像不像 app」这件事只能修在网页端。四类一眼看穿的破绽在这里一次收口：
+ *
+ *   1. 刘海 / 灵动岛压住顶部按钮、底部手势条盖住内容  → 安全区让位（`--leo-safe-*`）
+ *   2. 点哪都闪一层灰                                  → `-webkit-tap-highlight-color`
+ *   3. 长按外壳到处弹「拷贝/查询」系统菜单             → 骨架禁选，**正文照旧可选可复制**
+ *   4. 下拉整页橡皮筋回弹露出白底                      → `overscroll-behavior`
+ *
+ * 两条硬约束，改这个文件之前先读：
+ *
+ * A. **桌面浏览器必须零变化。** 所以第 1 类写成 `calc(原值 + var(--leo-safe-*))`
+ *    ——桌面上 `env(safe-area-inset-*)` 恒为 0，算出来逐像素等于原值；
+ *    第 2/3/4 类一律挂在 `html[data-leo-native-shell]` 下，浏览器里**一条都不生效**；
+ *    点击目标放大只在 `@media (pointer: coarse)` 里发生，鼠标设备摸不到。
+ *    `tests/phone-viewport.test.mjs` 会逐条守这三件事。
+ *
+ * B. **`oceanleo` 门户走它自己的 CloneShell，不吃本包的 AppShell**，而且它把
+ *    `@oceanleo/ui` 钉在已发布版本上（生产构建取的是 pin 的 tarball，里面没有这个
+ *    新文件）。所以门户 `app/globals.css` 里有一份**逐条等价的拷贝**，类名与选择器
+ *    完全一致。改这里必须同步改那边，否则手机上「首页是 app、子站是网页」。
+ *
+ * `data-leo-native-shell` 由 AppShell / CloneShell 自己在挂载后按
+ * `window.Capacitor?.isNativePlatform?.()` 或 `window.__oceanleoNative` 置到 <html> 上。
+ * 故意不叫 `data-oceanleo-native`：那个名字别处也可能用，撞名就互相覆盖。
+ * ========================================================================= */
+
+/* --- 1. 安全区变量 ------------------------------------------------------
+   前提是宿主页面的 viewport 带 `viewport-fit=cover`，否则这四个值在手机上恒为 0。 */
+:root {
+  --leo-safe-top: env(safe-area-inset-top, 0px);
+  --leo-safe-right: env(safe-area-inset-right, 0px);
+  --leo-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --leo-safe-left: env(safe-area-inset-left, 0px);
+}
+
+/* --- 2. 外壳让位（桌面上这一段全部等于原值） ---------------------------- */
+
+/* 外壳根：主区与占位块都在文档流里，横向 inset 加在这里就够。
+   固定定位的侧栏 / 抽屉 / 浮出按钮不受祖先内边距影响，各自单独让位（见下）。 */
+.leo-safe-shell {
+  padding-left: var(--leo-safe-left);
+  padding-right: var(--leo-safe-right);
+}
+
+/* 主区底边：不让底部手势条压在内容上。 */
+.leo-safe-main {
+  padding-bottom: var(--leo-safe-bottom);
+}
+
+/* topbar 布局那条 `sticky top-0` 的顶栏：刘海正压在它上面。 */
+.leo-safe-topbar {
+  padding-top: calc(0.625rem + var(--leo-safe-top));
+}
+
+/* 桌面固定侧栏。横屏手机宽度 ≥768px（iPhone 横过来是 844×390），md: 断点会命中，
+   于是这条侧栏在横屏真机上是**看得见的**，左侧刘海正好压在它上面。 */
+.leo-safe-sidebar {
+  padding-top: var(--leo-safe-top);
+  padding-bottom: var(--leo-safe-bottom);
+  padding-left: var(--leo-safe-left);
+}
+
+/* 移动端抽屉。宽度用 min()：360px 的安卓机上 280px 抽屉几乎糊满屏，
+   留 15% 给「点旁边关掉」这个手势。 */
+.leo-safe-drawer {
+  width: min(280px, 85vw);
+  padding-top: var(--leo-safe-top);
+  padding-bottom: var(--leo-safe-bottom);
+  padding-left: var(--leo-safe-left);
+}
+
+/* 左上角浮出的汉堡键 / 展开键（fixed，逃出根内边距，自己让位）。
+   原值是 Tailwind 的 `left-3 top-3` = 12px；这里连位置一起接管，避免两边打架。 */
+.leo-chrome-topleft {
+  top: calc(0.75rem + var(--leo-safe-top));
+  left: calc(0.75rem + var(--leo-safe-left));
+}
+
+/* 右上角浮层（absolute，横向已由外壳根让过位，只补顶部）。 */
+.leo-chrome-topright {
+  top: calc(0.75rem + var(--leo-safe-top));
+}
+
+/* --- 3. 点击目标 --------------------------------------------------------
+   只对手指生效：鼠标设备一个像素都不变（完成标准里的「浏览器端零变化」）。
+   这里**只写尺寸、绝不写 display**：外壳按钮靠 `hidden` / `md:hidden` 之类的
+   Tailwind display 工具类决定在哪个断点出现，本文件再声明一次 display 就会把它们
+   全部掀翻（汉堡键会在横屏手机上和桌面侧栏一起出现）。居中由元素自己带
+   `inline-flex items-center justify-center` 完成。 */
+@media (pointer: coarse) {
+  .leo-tap-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* --- 4. 触感：只在原生宿主下生效，浏览器里一条都不生效 ------------------ */
+
+html[data-leo-native-shell] {
+  /* 点哪闪一层灰是 WebView 的默认反馈，原生 app 里没有这东西。 */
+  -webkit-tap-highlight-color: transparent;
+  /* 整页橡皮筋回弹会露出 WebView 底色，那一下白底最出戏。 */
+  overscroll-behavior: none;
+}
+
+html[data-leo-native-shell] body {
+  overscroll-behavior: none;
+}
+
+/* 侧栏这类内部滚动区照常滚，只是滚到头不再把手势传给整页。 */
+html[data-leo-native-shell] [data-oceanleo-scroll-nav] {
+  overscroll-behavior-y: contain;
+}
+
+/* 界面骨架不许长按弹系统菜单、不许被选中。
+   `user-select` / `-webkit-touch-callout` 都是继承属性，所以只写容器就够——
+   **不要**加 ` *` 后代选择器：那会连容器里的输入框一起锁掉，iOS 上输入框
+   `user-select: none` 会连光标和选词都没了。 */
+html[data-leo-native-shell] [data-oceanleo-chrome],
+html[data-leo-native-shell] [data-oceanleo-pinned-nav],
+html[data-leo-native-shell] [data-oceanleo-scroll-nav],
+html[data-leo-native-shell] nav,
+html[data-leo-native-shell] button,
+html[data-leo-native-shell] summary,
+html[data-leo-native-shell] label,
+html[data-leo-native-shell] [role="button"],
+html[data-leo-native-shell] [role="tab"],
+html[data-leo-native-shell] [role="menuitem"] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 但正文、消息、代码块、表格、输入框必须仍然可选中可复制。
+   一刀切禁选会让用户复制不了 AI 的回答，那是退化不是优化。
+   这些规则直接命中元素本身，压得过从骨架容器继承下来的 none。 */
+html[data-leo-native-shell] main,
+html[data-leo-native-shell] [data-oceanleo-route-surface],
+html[data-leo-native-shell] p,
+html[data-leo-native-shell] li,
+html[data-leo-native-shell] pre,
+html[data-leo-native-shell] code,
+html[data-leo-native-shell] blockquote,
+html[data-leo-native-shell] table,
+html[data-leo-native-shell] td,
+html[data-leo-native-shell] th,
+html[data-leo-native-shell] h1,
+html[data-leo-native-shell] h2,
+html[data-leo-native-shell] h3,
+html[data-leo-native-shell] h4,
+html[data-leo-native-shell] h5,
+html[data-leo-native-shell] h6,
+html[data-leo-native-shell] input,
+html[data-leo-native-shell] textarea,
+html[data-leo-native-shell] select,
+html[data-leo-native-shell] [contenteditable],
+html[data-leo-native-shell] [data-leo-selectable] {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* --- 5. 窄屏：内容不许撑破屏幕 ------------------------------------------
+   同样只在原生宿主下动手。浏览器端窄屏的表现保持原样，本波不改它。 */
+@media (max-width: 767px) {
+  /* clip 而不是 hidden：hidden 会造出一个滚动容器，把 main 里所有
+     `position: sticky` 的表头 / 工具条钉到这个容器上，行为当场变样。 */
+  html[data-leo-native-shell] [data-oceanleo-shell] {
+    overflow-x: clip;
+  }
+
+  /* 宽表格与长代码块在自己内部横滚，而不是把整页撑宽。 */
+  html[data-leo-native-shell] main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  html[data-leo-native-shell] main pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  html[data-leo-native-shell] main img {
+    max-width: 100%;
+  }
+}
