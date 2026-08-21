@@ -239,7 +239,13 @@ export function NativeAttachSheet({
  * 发送到电脑：手机拍的照片、录的音落进那台电脑已授权的目录
  * ------------------------------------------------------------------ */
 
-/** 一台能接收文件的电脑（手机自己不算 —— 把照片发给手机自己没有意义）。 */
+/**
+ * 一台能接收文件的电脑（手机自己不算 —— 把照片发给手机自己没有意义）。
+ *
+ * `deviceName` 是**服务器原样**：那台电脑没报机器名就是空串。兜底名不写进这里，
+ * 而是渲染时才由 `deviceLabel()` 给 —— 数据里放一个中文常量，日语用户就会在
+ * 一句日语里看到「这台电脑」四个汉字，而且它还会被当 prop 传下去。
+ */
 export interface HandoffDevice {
   deviceId: string;
   deviceName: string;
@@ -247,12 +253,38 @@ export interface HandoffDevice {
   folders: HandoffFolders;
 }
 
+/** 查不到电脑的三种原因。它们是**码**不是句子，见 `handoffFailureCopy()`。 */
+export type HandoffLookupFailure = "signed_out" | "offline" | "unavailable";
+
 export type HandoffDevicesState =
   | { status: "loading" }
   | { status: "ready"; devices: HandoffDevice[] }
-  | { status: "error"; message: string };
+  | { status: "error"; reason: HandoffLookupFailure };
 
 const HANDOFF_LOADING: HandoffDevicesState = { status: "loading" };
+
+/**
+ * 失败文案在**渲染处**取，不在取数处 —— 取数只回一个码。
+ *
+ * 两个理由：取数发生在 `useEffect` 里，依赖是 `[host, open, reloads]` 不含 `tt`，
+ * 译文一旦在那时定死，用户切了语言这条错误就还留着上一种语言；而且句子进了 state
+ * 就等于把文案藏进了数据，下一个人照样漏译。
+ */
+function handoffFailureCopy(reason: HandoffLookupFailure, tt: UITranslate): string {
+  switch (reason) {
+    case "signed_out":
+      return tt("登录后才能把文件发到你的电脑上。");
+    case "offline":
+      return tt("网络断了，没能查到你的电脑。恢复后再试一次。");
+    case "unavailable":
+      return tt("暂时查不到你的电脑，稍后再试一次。");
+  }
+}
+
+/** 那台电脑没报机器名时显示什么。落点下拉与传给送达组件的 prop 必须用同一个名字。 */
+function deviceLabel(device: HandoffDevice, tt: UITranslate): string {
+  return device.deviceName || tt("这台电脑");
+}
 
 /** 电脑才收得下文件。手机/平板配对进来的行不列进落点，免得用户发给自己。 */
 const DESKTOP_PLATFORMS: ReadonlySet<string> = new Set(["windows", "macos", "linux"]);
@@ -267,7 +299,7 @@ const DESKTOP_PLATFORMS: ReadonlySet<string> = new Set(["windows", "macos", "lin
 async function fetchHandoffDevices(): Promise<HandoffDevicesState> {
   const token = await accessToken();
   if (!token) {
-    return { status: "error", message: "登录后才能把文件发到你的电脑上。" };
+    return { status: "error", reason: "signed_out" };
   }
   let response: Response;
   try {
@@ -276,22 +308,19 @@ async function fetchHandoffDevices(): Promise<HandoffDevicesState> {
       cache: "no-store",
     });
   } catch {
-    return { status: "error", message: "网络断了，没能查到你的电脑。恢复后再试一次。" };
+    return { status: "error", reason: "offline" };
   }
   if (!response.ok) {
     return {
       status: "error",
-      message:
-        response.status === 401
-          ? "登录后才能把文件发到你的电脑上。"
-          : "暂时查不到你的电脑，稍后再试一次。",
+      reason: response.status === 401 ? "signed_out" : "unavailable",
     };
   }
   let payload: unknown = null;
   try {
     payload = await response.json();
   } catch {
-    return { status: "error", message: "暂时查不到你的电脑，稍后再试一次。" };
+    return { status: "error", reason: "unavailable" };
   }
   const rows =
     payload && typeof payload === "object" && Array.isArray((payload as any).devices)
@@ -306,7 +335,7 @@ async function fetchHandoffDevices(): Promise<HandoffDevicesState> {
     if (!DESKTOP_PLATFORMS.has(String(device.platform ?? ""))) continue;
     devices.push({
       deviceId,
-      deviceName: String(device.device_name || "这台电脑"),
+      deviceName: String(device.device_name || ""),
       online: device.online === true,
       folders: parseHandoffFolders(device),
     });
@@ -400,7 +429,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
         {state.status === "error" && (
           <div>
             <p className="text-[13px] text-red-700" role="alert">
-              {state.message}
+              {handoffFailureCopy(state.reason, tt)}
             </p>
             <button
               type="button"
@@ -440,8 +469,8 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
                   {devices.map((device) => (
                     <option key={device.deviceId} value={device.deviceId}>
                       {device.online
-                        ? device.deviceName
-                        : `${device.deviceName}（${tt("离线")}）`}
+                        ? deviceLabel(device, tt)
+                        : tt("{name}（离线）", { name: deviceLabel(device, tt) })}
                     </option>
                   ))}
                 </select>
@@ -449,7 +478,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
             )}
             <LocalFileHandoffLauncher
               deviceId={target.deviceId}
-              deviceName={target.deviceName}
+              deviceName={deviceLabel(target, tt)}
               deviceOnline={target.online}
               folders={target.folders}
             />
