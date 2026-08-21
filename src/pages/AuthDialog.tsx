@@ -660,7 +660,9 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
   const [code, setCode] = useState("");
   const [factorId, setFactorId] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  // 存的是原始报错串，不是译好的句子：句子在渲染处才生成。否则 `tt` 得进
+  // effect 依赖，用户中途换语言就会重新拉一次因子、把已经输了一半的这一屏冲掉。
+  const [errorRaw, setErrorRaw] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -668,25 +670,27 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
       if (!alive) return;
       const verified = factors.find((f) => f.status === "verified");
       if (verified) setFactorId(verified.id);
-      else if (listError) setError(tt(totpErrorCopy(listError)));
+      else if (listError) setErrorRaw(listError);
     });
     return () => {
       alive = false;
     };
-  }, [tt]);
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError("");
+    setErrorRaw("");
     setLoading(true);
     const result = await challengeAndVerify(factorId, code);
     setLoading(false);
     if (result.error) {
-      setError(tt(totpErrorCopy(result.error)));
+      setErrorRaw(result.error);
       return;
     }
     onDone();
   }
+
+  const error = errorRaw ? tt(totpErrorCopy(errorRaw)) : "";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="mfa">
