@@ -9,12 +9,13 @@ import type { ArtifactRenditionPurpose } from "./artifact-contract";
 import { webViewerFrameSandbox } from "./editor-sandbox-origin";
 import {
   isDisplayableText,
+  isMediaOversizeError,
+  MAX_PROBE_BYTES,
   websiteFrameAdmission,
   websiteInlineOutline,
   websiteViewerPlan,
   type WebsiteBodyProbe,
   type WebsiteInlineOutline,
-  type WebsiteViewerReason,
 } from "./website-inline-preview";
 
 /**
@@ -34,9 +35,6 @@ const WEBSITE_PAGE_PURPOSES: readonly ArtifactRenditionPurpose[] = [
   "full",
   "preview",
 ];
-
-/** 判读用的读取上限：整站内联 HTML 实测 ~300 KB，8 MB 足够且不至于吃内存。 */
-const MAX_PROBE_BYTES = 8 * 1024 * 1024;
 
 interface PageProbe {
   status: "probing" | "done";
@@ -70,10 +68,19 @@ const UNREAD_BODY: WebsiteBodyProbe = { status: "unread" };
 /**
  * 取回页面字节，交给 `websiteViewerPlan` 判读。
  *
- * 判读失败（网络错、超限）留成 `unread`，由判读器决定怎么解释；这里不自己下结论，
- * 也不把取回来的字节带进 UI —— 它只用于判读，判完就留在这个 hook 里。
+ * 取不回来时**分两档**交给判读器，而不是一律 `unread`：
+ * `unread` 的含义是「判读器这次没跑成」，判读器会因此宁可把声明了 `text/html`
+ * 的真页面放进 frame；而超限件是**注定**判读不了的，把它按 `unread` 交上去，
+ * 等于让一份没人核对过的整站包直接上屏 —— 那正是操作员截图里的那一屏。
+ *
+ * 精确体积只能从 rendition 的登记里拿（`declaredBytes`）：超限是在下载之前
+ * 按 `content-length` 挡下的，这里手里没有内容，也就没有实测字节数。
  */
-function usePagePaintProbe(url: string, version: number): PageProbe {
+function usePagePaintProbe(
+  url: string,
+  version: number,
+  declaredBytes: number,
+): PageProbe {
   const [probe, setProbe] = useState<PageProbe>({
     status: url ? "probing" : "done",
     body: UNREAD_BODY,
@@ -99,16 +106,21 @@ function usePagePaintProbe(url: string, version: number): PageProbe {
           body: { status: "read", html, shape: documentShape(html) },
           outline: websiteInlineOutline(html),
         });
-      } catch {
-        if (!cancelled) {
-          setProbe({ status: "done", body: UNREAD_BODY, outline: null });
-        }
+      } catch (error) {
+        if (cancelled) return;
+        setProbe({
+          status: "done",
+          body: isMediaOversizeError(error)
+            ? { status: "oversize", byteLength: declaredBytes }
+            : UNREAD_BODY,
+          outline: null,
+        });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [url, version]);
+  }, [url, version, declaredBytes]);
   return probe;
 }
 
@@ -148,23 +160,6 @@ function PageOutline({ outline }: { outline: WebsiteInlineOutline }) {
   );
 }
 
-/**
- * 每一档说的都是**这一件是什么**，不是替产品的空缺道歉。
- * 判据：文案里不出现「暂时」「抱歉」「制作得较早」这类替缺陷开脱的说法。
- */
-const SURFACE_COPY: Record<WebsiteViewerReason, string> = {
-  "self-painting": "",
-  "script-bootstrapped":
-    "这是一份要在浏览器里跑起来才成型的网站：页面结构由它自带的脚本在打开时现画。素材预览通道按平台隔离规则不执行脚本，所以这里给出它的封面与页面清单。",
-  "cover-image-only":
-    "这一件在素材库里只存了一张封面图，没有随附可打开的页面文件。",
-  "opaque-bytes":
-    "这一件存的是打包后的网站源码，不是可以直接打开的网页；要看到页面需要先把它构建出来。",
-  unverified:
-    "这一件在素材库里没有登记文件类型，内容也没能读回来核对；在确认它是一份能直接打开的网页之前，预览通道不会把它的内容放上屏幕。",
-  "no-body": "这一件在素材库里没有可打开的文件。",
-};
-
 /** 出口本身在详情工具条上（那是动作条的面），这里只把它们指出来。 */
 const EXIT_HINT = "可用的出口：详情工具条上的「下载」拿到源文件，「编辑」在网站编辑器里打开它。";
 
@@ -201,7 +196,11 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
    * 一颗按下去什么都不会发生的按钮。
    */
   const [probeNonce, setProbeNonce] = useState(0);
-  const probe = usePagePaintProbe(pageUrl, rendition.version + probeNonce);
+  const probe = usePagePaintProbe(
+    pageUrl,
+    rendition.version + probeNonce,
+    rendition.rendition?.byteSize || 0,
+  );
   const plan = websiteViewerPlan({
     hasUrl: Boolean(rendition.url),
     mediaType,
@@ -239,7 +238,7 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
     <Panel>
       {cover && <StaticCover url={cover} title={item.title} />}
       <p className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
-        {tt(SURFACE_COPY[plan.reason])}
+        {tt(plan.notice)}
       </p>
       {plan.surface === "script-explainer" && probe.outline && (
         <PageOutline outline={probe.outline} />

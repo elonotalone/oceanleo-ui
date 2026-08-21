@@ -63,6 +63,25 @@ export interface WebsiteInlineOutline {
  */
 export const MAX_PROBE_BYTES = 8 * 1024 * 1024;
 
+/**
+ * `fetchMediaBlob` 超限时抛的那一句（`src/lib/media-proxy.ts` 里两处 `maxBytes`
+ * 判定共用同一字面量）。它抛的是普通 `Error`，没有错误码，所以「这一件太大」与
+ * 「网络抖了一下」在调用方眼里长得一模一样 —— 而这两件事该给用户的话完全相反：
+ * 前者重试一百次都一样，后者重试就好。
+ *
+ * 认这句话是有代价的耦合，所以把它摆在明处：
+ * `scripts/tests/oceanleo-website-inline-bundle.test.mjs` 有一条闸去 `media-proxy.ts`
+ * 里逐字找它，那边改了措辞而这里没跟上，测试当场判红，而不是悄悄退化成「超限件照旧上屏」。
+ */
+export const MEDIA_OVERSIZE_ERROR_TEXT = "素材过大，无法在浏览器内存中安全处理";
+
+/** 取字节失败的原因是不是「这一件超出了观看端能处理的体量」。 */
+export function isMediaOversizeError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return message.includes(MEDIA_OVERSIZE_ERROR_TEXT);
+}
+
 /** 内联 `FILES` 表的体量上限：超过就不解析，避免为了一份清单啃掉主线程。 */
 const MAX_INLINE_FILES_CHARS = 4 * 1024 * 1024;
 
@@ -229,7 +248,9 @@ export function websiteFrameAdmission(
  * - `unread`：判读没跑成（网络抖动之类），**不是**「读到了空」；
  * - `oversize`：字节数超过 `MAX_PROBE_BYTES`，这一件**注定**判读不了，重试也一样。
  *   过去这一档被并进 `unread`，于是「声明了 text/html」的超限件照旧进 frame ——
- *   一份没人核对过的整站包直接上屏，坏成什么样就显示成什么样；
+ *   一份没人核对过的整站包直接上屏，坏成什么样就显示成什么样。
+ *   `byteLength` 取 rendition 登记的字节数；登记里没有就传 **0**（表示「只知道超了，
+ *   不知道超到多少」），文案会据此少说一个数，而不是编一个；
  * - `read`：正文取回来了，形状也量出来了。
  */
 export type WebsiteBodyProbe =
@@ -250,9 +271,25 @@ export type WebsiteViewerReason =
   | "script-bootstrapped"
   | "cover-image-only"
   | "opaque-bytes"
+  /**
+   * 声明自己是网页、字节却不是文字：这一件的预览件在**产出时**就坏了。
+   * 与 `opaque-bytes` 分开，因为出路不同 —— 那一档要先构建，这一档要重新产。
+   */
+  | "unreadable-bytes"
+  /**
+   * 字节数超出观看端能取回来核对的上限。重试不会有别的结果，出路是重产一份小的。
+   * 曾经并进 `unverified`，于是超限件被当成「判读器这次没跑成」放行进 frame。
+   */
+  | "oversize"
   /** 媒体类型没说、正文也没读到：没有任何证据支持「它是网页」。 */
   | "unverified"
   | "no-body";
+
+/**
+ * 话是死的那几档。`oversize` 不在其中：它要报出这一件到底多大，话由
+ * `oversizeNotice()` 现给。把它硬塞进下面那张表只会多出一条永远用不上的死文案。
+ */
+export type WebsiteStaticNoticeReason = Exclude<WebsiteViewerReason, "oversize">;
 
 export interface WebsiteViewerPlan {
   surface: WebsiteViewerSurface;
@@ -269,13 +306,12 @@ export interface WebsiteViewerPlan {
  * 每一档说的都是**这一件是什么**，不是替产品的空缺道歉。
  * 判据：文案里不出现「暂时」「抱歉」「制作得较早」这类替缺陷开脱的说法。
  *
- * ⚠️ 这份表与 `WebsiteArtifactViewer.tsx` 的 `SURFACE_COPY` 逐字相同，
- * 而那个文件在本轮不属于我这一面，所以现在是**两份**。
- * `scripts/tests/oceanleo-website-inline-bundle.test.mjs` 有一条用例逐字比对两处，
- * 漂移当场判红；换引用那一步写在
- * `docs/work-logs/2026-08/local-client-and-orthogonal/signals/W03-to-W09.md`。
+ * 这是这几句话的**唯一**产地。`WebsiteArtifactViewer.tsx` 过去自带一份逐字相同的
+ * `SURFACE_COPY`，按 `reason` 查表往外摆；两处各写一份的结果是判读器新分出一档、
+ * 查看器还在说旧话。现在查看器只摆 `plan.notice`，
+ * `scripts/tests/oceanleo-website-inline-bundle.test.mjs` 有一条闸盯着它不许再长回去。
  */
-export const WEBSITE_VIEWER_COPY: Record<WebsiteViewerReason, string> = {
+export const WEBSITE_VIEWER_COPY: Record<WebsiteStaticNoticeReason, string> = {
   "self-painting": "",
   "script-bootstrapped":
     "这是一份要在浏览器里跑起来才成型的网站：页面结构由它自带的脚本在打开时现画。素材预览通道按平台隔离规则不执行脚本，所以这里给出它的封面与页面清单。",
@@ -283,6 +319,8 @@ export const WEBSITE_VIEWER_COPY: Record<WebsiteViewerReason, string> = {
     "这一件在素材库里只存了一张封面图，没有随附可打开的页面文件。",
   "opaque-bytes":
     "这一件存的是打包后的网站源码，不是可以直接打开的网页；要看到页面需要先把它构建出来。",
+  "unreadable-bytes":
+    "这份预览件声明自己是网页，但取回来的字节不是文字（其中含二进制内容），说明这一件的预览件在产出时就坏了。预览通道不会把这些字节当文字摆上屏幕；这一件需要重新产一份预览件，在那之前，下载与编辑这两条出口照常可用。",
   unverified:
     "这一件在素材库里没有登记文件类型，内容也没能读回来核对；在确认它是一份能直接打开的网页之前，预览通道不会把它的内容放上屏幕。",
   "no-body": "这一件在素材库里没有可打开的文件。",
@@ -291,28 +329,21 @@ export const WEBSITE_VIEWER_COPY: Record<WebsiteViewerReason, string> = {
 /**
  * 超限那一档的话要**说清楚是这一件太大**，而不是含糊地说"读不回来"：
  * 用户按重试一百次结果都一样，出路只有让这一件重新产一份小的。
+ *
+ * `byteLength` 是 rendition 在线上登记的字节数；登记里没有这一项时传 0，
+ * 那时只说「超出上限」，**不编一个数**——取字节这一步是在拿到内容之前就被挡下的，
+ * 查看器手里本来就没有精确体积。
  */
 function oversizeNotice(byteLength: number): string {
   const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  const scale =
+    byteLength > MAX_PROBE_BYTES
+      ? `这份预览件有 ${mb(byteLength)}，超出`
+      : "这份预览件超出";
   return (
-    `这份预览件有 ${mb(byteLength)}，超出预览通道能读回来核对的上限 ${mb(MAX_PROBE_BYTES)}，`
+    `${scale}预览通道能读回来核对的上限 ${mb(MAX_PROBE_BYTES)}，`
     + "所以它的内容没有经过核对，预览通道不会把它放上屏幕。这一件需要重新产一份更小的预览件；"
     + "在那之前，下载与编辑这两条出口照常可用。"
-  );
-}
-
-/**
- * 声明是网页、字节却不是文字的那一档。
- *
- * 与 `opaque-bytes` 的通用说法分开：那句话说的是「这一件本来就是打包源码」，
- * 而这里的情况是「这一件本该是网页，但它的字节坏了」——两者的出路不同，
- * 前者要先构建，后者要重新产一份预览件。含糊成同一句话，用户就只能反复重试。
- */
-function unreadableNotice(): string {
-  return (
-    "这份预览件声明自己是网页，但取回来的字节不是文字（其中含二进制内容），"
-    + "说明这一件的预览件在产出时就坏了。预览通道不会把这些字节当文字摆上屏幕；"
-    + "这一件需要重新产一份预览件，在那之前，下载与编辑这两条出口照常可用。"
   );
 }
 
@@ -322,7 +353,7 @@ function unreadableNotice(): string {
  */
 function plan(
   surface: WebsiteViewerSurface,
-  reason: WebsiteViewerReason,
+  reason: WebsiteStaticNoticeReason,
 ): WebsiteViewerPlan {
   return { surface, reason, notice: WEBSITE_VIEWER_COPY[reason] };
 }
@@ -349,8 +380,8 @@ export function websiteViewerPlan(input: {
     // frame；超限是「这一件本身超出了观看端的能力」，重试不会有别的结果，
     // 把未经核对的整站包放上屏就是拿一屏乱码赌一把。
     return {
-      surface: "script-explainer",
-      reason: "unverified",
+      surface: "unavailable",
+      reason: "oversize",
       notice: oversizeNotice(input.body.byteLength),
     };
   }
@@ -367,11 +398,7 @@ export function websiteViewerPlan(input: {
   }
   const { html, shape } = input.body;
   if (!isDisplayableText(html)) {
-    return {
-      surface: "unavailable",
-      reason: "opaque-bytes",
-      notice: unreadableNotice(),
-    };
+    return plan("unavailable", "unreadable-bytes");
   }
   if (!looksLikeHtmlDocument(html)) {
     return plan("unavailable", "opaque-bytes");
