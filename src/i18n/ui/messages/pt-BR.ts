@@ -6455,5 +6455,6 @@ const ptBR: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "Um parâmetro desta etapa está no formato errado. Atualize a página e tente de novo.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Informe um caminho absoluto completo, por exemplo /Users/you/Documents ou C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Esta etapa não foi concluída. Tente de novo mais tarde.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Aqui só cabe um comando, e ele não passa por um shell: pipes |, redirecionamentos > <, encadeamentos ; &&, acentos graves e $() não são aceitos.",
 };
 export default ptBR;

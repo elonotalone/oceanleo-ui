@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import {
   deviceErrorCopy,
   isUnsupportedShellCommand,
-  SHELL_COMMAND_SHAPE_HINT,
+  shellCommandShapeHint,
 } from "../api/device-error-copy";
 import {
   createLocalTask,
@@ -241,6 +241,10 @@ export function LocalTaskLauncher<K extends LocalActionKind>({
   devicesHref = "/devices",
   className,
 }: LocalTaskLauncherProps<K>) {
+  // 只为下面那一句 shell 形状提示取翻译口。这个组件的其余文案（按钮、离线提示、
+  // 确认说明）**本轮一个字都不动**：整个组件的 i18n 是另一件活，混在这里做等于
+  // 在一次改动里同时改契约那张表和这一屏的既有行为，没人能分开验。
+  const tt = useUI();
   const [submitting, setSubmitting] = useState(false);
   const [queuedOffline, setQueuedOffline] = useState(false);
   const [error, setError] = useState("");
@@ -302,7 +306,7 @@ export function LocalTaskLauncher<K extends LocalActionKind>({
             命令执行每次都要在{deviceName}上单独确认，不能一次授权长期生效。
           </p>
           <p className="mt-1 text-sm text-slate-600" data-shell-command-shape-hint>
-            {SHELL_COMMAND_SHAPE_HINT}
+            {shellCommandShapeHint(tt)}
           </p>
         </>
       ) : null}

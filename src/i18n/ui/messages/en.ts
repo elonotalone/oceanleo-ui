@@ -6573,5 +6573,6 @@ const en: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "A parameter in this step has the wrong format. Refresh the page and try again.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Enter a full absolute path, for example /Users/you/Documents or C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "This step did not complete. Please try again later.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Only one command can go here, and it does not run through a shell: pipes |, redirects > <, chaining ; &&, backticks and $() are all unsupported.",
 };
 export default en;

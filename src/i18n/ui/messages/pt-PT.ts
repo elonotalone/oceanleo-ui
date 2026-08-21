@@ -6455,5 +6455,6 @@ const ptPT: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "Um parâmetro deste passo está no formato errado. Atualize a página e tente novamente.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Indique um caminho absoluto completo, por exemplo /Users/you/Documents ou C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Este passo não foi concluído. Tente novamente mais tarde.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Aqui só pode escrever um comando, e ele não passa por uma shell: pipes |, redirecionamentos > <, encadeamentos ; &&, acentos graves e $() não são suportados.",
 };
 export default ptPT;

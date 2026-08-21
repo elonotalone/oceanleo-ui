@@ -33,9 +33,6 @@ export const DEVICE_ERROR_CODES = [
 
 export type DeviceErrorCode = (typeof DEVICE_ERROR_CODES)[number];
 
-/** Contract §1.3: every unrecognised code collapses to this one sentence. */
-export const DEVICE_ERROR_UNKNOWN_COPY = "这一步没有完成，请稍后重试。";
-
 /**
  * 这张表的翻译口，形状与 `useUI()` 的 `tt` 相同（中文原文即 key，未命中回退原文）。
  *
@@ -47,6 +44,18 @@ export const DEVICE_ERROR_UNKNOWN_COPY = "这一步没有完成，请稍后重�
 export type DeviceErrorTranslate = (zh: string) => string;
 
 const KEEP_ZH: DeviceErrorTranslate = (zh) => zh;
+
+/**
+ * Contract §1.3: every unrecognised code collapses to this one sentence.
+ *
+ * 为什么是函数而不是一句 `export const`：常量只有一种读法 —— 谁 `import` 到就直接
+ * 渲染，句子里没有任何位置能换成用户自己的语言。这张表上最后两句漏中文的正是常量
+ * 那两句。改成函数以后翻译口进了签名：不传 `tt` 就是今天这句中文（读取方逐字不变），
+ * 传了就是那门语言，而且**再也没有一条不经过 `tt` 的路径**。
+ */
+export function deviceErrorUnknownCopy(tt: DeviceErrorTranslate = KEEP_ZH): string {
+  return tt("这一步没有完成，请稍后重试。");
+}
 
 export interface DeviceErrorCopyContext {
   deviceName?: string;
@@ -95,7 +104,7 @@ export function deviceErrorCopy(
   context: DeviceErrorCopyContext = {},
 ): string {
   const t = context.tt ?? KEEP_ZH;
-  if (!isDeviceErrorCode(code)) return t(DEVICE_ERROR_UNKNOWN_COPY);
+  if (!isDeviceErrorCode(code)) return deviceErrorUnknownCopy(t);
   const device = context.deviceName || t("这台电脑");
   switch (code) {
     case "device_offline":
@@ -176,8 +185,16 @@ export function deviceErrorCopy(
  */
 export const UNSUPPORTED_SHELL_COMMAND_CHARS = ["|", ";", "&", ">", "<", "`", "$("] as const;
 
-export const SHELL_COMMAND_SHAPE_HINT =
-  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。";
+/**
+ * 输入框下面那一句「这里能写什么」的提示，和上面那句兜底一样只走 `tt`：
+ * 它是这张表里唯一一句**不是失败文案**的话，但用户读到它的时机（正准备敲命令）
+ * 恰恰是最需要看懂的时候，所以它没有资格留在中文里。
+ */
+export function shellCommandShapeHint(tt: DeviceErrorTranslate = KEEP_ZH): string {
+  return tt(
+    "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。",
+  );
+}
 
 export function isUnsupportedShellCommand(command: string): boolean {
   return UNSUPPORTED_SHELL_COMMAND_CHARS.some((token) => command.includes(token));

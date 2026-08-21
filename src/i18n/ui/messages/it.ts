@@ -6455,5 +6455,6 @@ const it: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "Un parametro di questo passaggio ha un formato errato. Aggiorna la pagina e riprova.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Inserisci un percorso assoluto completo, ad esempio /Users/you/Documents oppure C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Questo passaggio non è stato completato. Riprova più tardi.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Qui puoi scrivere un solo comando, che non passa da una shell: pipe |, redirezioni > <, concatenazioni ; &&, apici inversi e $() non sono supportati.",
 };
 export default it;

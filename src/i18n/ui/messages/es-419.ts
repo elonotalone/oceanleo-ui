@@ -6455,5 +6455,6 @@ const es419: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "Un parámetro de este paso tiene un formato incorrecto. Actualiza la página e inténtalo de nuevo.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Escribe una ruta absoluta completa, por ejemplo /Users/you/Documents o C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Este paso no se completó. Inténtalo de nuevo más tarde.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Aquí solo puedes escribir un comando, y no pasa por un shell: no se admiten tuberías |, redirecciones > <, encadenamientos ; &&, comillas invertidas ni $().",
 };
 export default es419;

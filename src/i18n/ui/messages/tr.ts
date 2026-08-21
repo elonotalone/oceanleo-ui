@@ -6455,5 +6455,6 @@ const tr: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "Bu adımdaki bir parametrenin biçimi yanlış. Sayfayı yenileyip tekrar deneyin.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Tam bir mutlak yol yazın, örneğin /Users/you/Documents veya C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Bu adım tamamlanmadı. Daha sonra tekrar deneyin.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Buraya yalnızca tek bir komut yazılabilir ve komut bir kabuktan geçmez: ardışık düzen |, yönlendirme > <, zincirleme ; &&, ters tırnak ve $() desteklenmez.",
 };
 export default tr;

@@ -6455,5 +6455,6 @@ const vi: Record<string, string> = {
   "这一步的参数格式不对，请刷新页面后重试。": "Định dạng tham số của bước này không đúng. Hãy tải lại trang rồi thử lại.",
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Hãy nhập đường dẫn tuyệt đối đầy đủ, ví dụ /Users/you/Documents hoặc C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Bước này chưa hoàn tất. Hãy thử lại sau.",
+  "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Ở đây chỉ viết được một lệnh và lệnh không đi qua shell: đường ống |, chuyển hướng > <, nối lệnh ; &&, dấu backtick và $() đều không được hỗ trợ.",
 };
 export default vi;
