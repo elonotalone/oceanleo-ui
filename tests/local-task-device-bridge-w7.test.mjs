@@ -26,8 +26,16 @@ const launcherClientStub = dataModule(`
   export async function createLocalTask(){ return {taskId:"task-1",offline:false}; }
 `);
 const { LocalTaskApiError: StubApiError } = await import(launcherClientStub);
+// 同一份文件里的送达入口（W07）把 `mobile-file-handoff` → `lib/auth` 拉进了依赖图。
+// `src/lib/auth/client.ts` node 能原生加载（`.ts`），于是编译台不编它，而它里面
+// `from "./config"` 是无扩展名写法、node 自己的解析器不认 ⇒ `ERR_MODULE_NOT_FOUND`
+// 在加载期就把**整份文件**打哑（第 6 轮到第 7 轮它一直是这个状态）。
+// 这份文件验的是下单那条链，登录令牌与网关地址走不到，替身即可。
 const launcherUrl = await compileModule("src/shell/LocalTaskLauncher.tsx", {
   "./local-task-client": launcherClientStub,
+  "../lib/auth/client": authStub,
+  "../lib/auth/config": configStub,
+  "../i18n/ui/useUI": dataModule(`export function useUI(){ return (zh) => zh; }`),
 });
 const launcherModule = await import(launcherUrl);
 const { LocalTaskLauncher } = launcherModule;

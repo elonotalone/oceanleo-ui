@@ -26,6 +26,25 @@ export interface Device {
   local_exec_enabled: boolean;
   granted_kinds: DeviceGrantKind[];
   last_seen_at: string | null;
+  /**
+   * 那台电脑上报的「已授权目录根」，**只有 `listDevices({ folders: true })` 才有**。
+   * 手机上的落点列表只认这份数据：界面上没有手敲路径的口子，因为范围外的路径那台
+   * 电脑一定会拒成 `path_outside_grant`，让用户敲就是先请他瞄准再当面拒绝他。
+   *
+   * 形状故意留成 `unknown`：网关有脏行时（不是列表、少这一栏）判定归读取方，
+   * 读不懂就照实说「还没上报」，**绝不能回退成「随便哪个目录都行」**。
+   */
+  granted_roots?: unknown;
+  /** `heartbeat` / `history` / `none`，同上只在 `folders: true` 时出现。 */
+  granted_roots_source?: unknown;
+}
+
+export interface ListDevicesOptions {
+  /**
+   * 顺带取回每台电脑已授权的目录根（网关 `GET /v1/devices?folders=true`）。
+   * 默认不带：网站设备页 30 秒一次的轮询不该替手机付这份钱。
+   */
+  folders?: boolean;
 }
 
 export interface DeviceApiResult<T> {
@@ -71,9 +90,23 @@ function errorCode(data: unknown, status: number): string {
   return `HTTP ${status}`;
 }
 
+/**
+ * `error` 一律是**码**，从不是句子。
+ *
+ * 这三种失败原来写的是中文句子（`未登录` / `网络错误：无法连接到设备服务。` /
+ * `设备列表响应格式错误`），而三个读取方没有一个把它当句子用：设备页把它喂给
+ * `deviceErrorCopy()`（不在协议码表里 ⇒ 收成「这一步没有完成，请稍后重试。」），
+ * 本地库那两处 `.catch()` 直接丢掉。也就是说那三句**从来没有一个用户看见过**，
+ * 却让这一层看起来像在出文案 —— 日语用户真要是哪天看见了，看见的就是中文。
+ *
+ * 句子留在渲染处取（`mobile-native-actions.tsx:266` 已经把这条写成规矩）：取数发生在
+ * `useEffect` 里、依赖不含 `tt`，译文一旦在取数时定死，用户切了语言这条错误还是旧语言。
+ * 码用的是这条链上已有的词汇（`unauthorized` / `network_error`，见 `launcherErrorMessage`
+ * 与 `handoffFailureMessage`），网关来的拒绝与客户端自己的失败因此说同一种话。
+ */
 async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiResult<T>> {
   const token = await accessToken();
-  if (!token) return { ok: false, error: "未登录", status: 401 };
+  if (!token) return { ok: false, error: "unauthorized", status: 401 };
 
   let response: Response;
   try {
@@ -87,7 +120,7 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
       cache: "no-store",
     });
   } catch {
-    return { ok: false, error: "网络错误：无法连接到设备服务。", status: 0 };
+    return { ok: false, error: "network_error", status: 0 };
   }
 
   let data: unknown = null;
@@ -108,8 +141,19 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
   return { ok: true, data: data as T };
 }
 
-export async function listDevices(): Promise<DeviceApiResult<Device[]>> {
-  const response = await authed<{ devices: Device[] }>("/v1/devices");
+/**
+ * 「我的哪几台电脑」。
+ *
+ * 手机送达那条链要的是同一份数据外加「每台电脑授权了哪些文件夹」，靠 `folders` 打开 ——
+ * 令牌、取数、错误解析因此只有这一份实现。手抄第二份的代价是实测过的：抄的那一份
+ * 401 与网络失败分不开、脏行判定各写一遍，两边迟早对不上。
+ */
+export async function listDevices(
+  options: ListDevicesOptions = {},
+): Promise<DeviceApiResult<Device[]>> {
+  const response = await authed<{ devices: Device[] }>(
+    options.folders ? "/v1/devices?folders=true" : "/v1/devices",
+  );
   if (!response.ok) {
     return {
       ok: false,
@@ -121,7 +165,7 @@ export async function listDevices(): Promise<DeviceApiResult<Device[]>> {
   if (!response.data || !Array.isArray(response.data.devices)) {
     return {
       ok: false,
-      error: "设备列表响应格式错误",
+      error: "response_malformed",
       status: response.status,
     };
   }
