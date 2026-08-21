@@ -26,6 +26,7 @@ const STATUS_COPY: Record<LocalTaskStatus, string> = {
   queued: "任务已排队，正在等待设备领取。",
   claimed: "设备已领取任务，正在准备执行。",
   running: "正在那台电脑上执行。",
+  canceling: "已把「中止」发给那台电脑，正在等它回话。",
   succeeded: "这一步已在那台电脑上完成。",
   failed: "这一步执行失败，请在那台电脑上检查后重试。",
   denied: "那台电脑拒绝了这一步。",
@@ -148,15 +149,19 @@ export function LocalTaskProgress({
     );
   }, [initialTask, onUpdate, taskId]);
 
+  /**
+   * A-24：以前这里不问网关答什么，直接把状态写成 `cancelled`。对一条已经在那台
+   * 电脑上跑的命令，那句「已取消」是假的 —— 命令会一直跑到自己结束。
+   * 现在按网关的真实答复走：没被领走的是真停了，已经在跑的只能是「已请求中止」。
+   */
   const cancel = async () => {
     if (cancelling) return;
     setCancelling(true);
     setWatchError(false);
     try {
-      await cancelLocalTask(taskId);
-      const cancelled: LocalTask = { status: "cancelled" };
-      setTask(cancelled);
-      onUpdate?.(cancelled);
+      const answered = await cancelLocalTask(taskId);
+      setTask((current) => ({ ...current, ...answered }));
+      onUpdate?.(answered);
     } catch {
       setWatchError(true);
     } finally {

@@ -31,6 +31,12 @@ export const LOCAL_TASK_STATUSES = [
   "queued",
   "claimed",
   "running",
+  /**
+   * A-24：用户点过中止，那台电脑还没回话。**它不是「已取消」**——
+   * 一条已经在跑的命令，网关下发中止不等于它停得下来。把这两件事画成同一个状态，
+   * 就是让用户以为命令停了而它其实还在写文件。
+   */
+  "canceling",
   "succeeded",
   "failed",
   "denied",
@@ -85,6 +91,11 @@ export interface LocalTask {
   createdAt?: string;
   claimedAt?: string;
   finishedAt?: string;
+  /**
+   * A-24：**请求**与**结果**是两个事实。它有值而状态却不是 `cancelled`，
+   * 说明中止来晚了 —— 这一步照样做完了，界面必须这么说。
+   */
+  cancelRequestedAt?: string;
   /** `path` or `cwd` echoed from the request; never file contents. */
   target?: string;
   /** `shell.run` only: the command the user themselves submitted. */
@@ -362,6 +373,9 @@ export async function getLocalTask(taskId: string): Promise<LocalTask> {
   const createdAt = stringField(raw.created_at ?? raw.createdAt);
   const claimedAt = stringField(raw.claimed_at ?? raw.claimedAt);
   const finishedAt = stringField(raw.finished_at ?? raw.finishedAt);
+  const cancelRequestedAt = stringField(
+    raw.cancel_requested_at ?? raw.cancelRequestedAt,
+  );
   return {
     status: raw.status,
     ...(actionKind ? { actionKind } : {}),
@@ -373,23 +387,55 @@ export async function getLocalTask(taskId: string): Promise<LocalTask> {
     ...(createdAt ? { createdAt } : {}),
     ...(claimedAt ? { claimedAt } : {}),
     ...(finishedAt ? { finishedAt } : {}),
+    ...(cancelRequestedAt ? { cancelRequestedAt } : {}),
     ...requestEcho(raw.action_payload ?? raw.actionPayload),
   };
 }
 
-export async function cancelLocalTask(taskId: string): Promise<void> {
-  await request(`/v1/devices/tasks/${encodeURIComponent(taskId)}/cancel`, {
-    method: "POST",
-  });
+function readTask(response: unknown): LocalTask {
+  const raw = isObject(response) && isObject(response.task) ? response.task : response;
+  if (!isObject(raw) || !isStatus(raw.status)) {
+    throw new LocalTaskApiError("invalid_response", 200);
+  }
+  const finishedAt = stringField(raw.finished_at ?? raw.finishedAt);
+  const cancelRequestedAt = stringField(
+    raw.cancel_requested_at ?? raw.cancelRequestedAt,
+  );
+  return {
+    status: raw.status,
+    ...(finishedAt ? { finishedAt } : {}),
+    ...(cancelRequestedAt ? { cancelRequestedAt } : {}),
+  };
 }
 
-const TERMINAL_STATUSES: ReadonlySet<LocalTaskStatus> = new Set([
+/**
+ * A-24：这个调用的答案**不是**「已取消」。
+ *
+ * 它以前回 `void`，界面于是自己把状态写成 `cancelled` —— 而网关对一条已经在那台
+ * 电脑手上的任务只能记下「用户要求中止」。两者的差别不是措辞：用户会据此以为
+ * 命令停了、文件没被写。所以这里把网关的真实答复原样交回去，由界面照着说。
+ */
+export async function cancelLocalTask(taskId: string): Promise<LocalTask> {
+  const response = await request(
+    `/v1/devices/tasks/${encodeURIComponent(taskId)}/cancel`,
+    { method: "POST" },
+  );
+  return readTask(response);
+}
+
+/**
+ * 状态到了这里就不会再变了。`canceling` **不在**表里：它正是在等那台电脑回话，
+ * 把它当终态就等于停在「已请求中止」，永远看不到最后到底停没停下来。
+ */
+export const LOCAL_TASK_TERMINAL_STATUSES: ReadonlySet<LocalTaskStatus> = new Set([
   "succeeded",
   "failed",
   "denied",
   "expired",
   "cancelled",
 ]);
+
+const TERMINAL_STATUSES = LOCAL_TASK_TERMINAL_STATUSES;
 
 export const LOCAL_TASK_POLL_DELAYS_MS = [1_000, 2_000, 5_000] as const;
 
@@ -593,6 +639,8 @@ export function localTaskStatusText(
       return "设备已领取";
     case "running":
       return "正在那台电脑上执行";
+    case "canceling":
+      return "已请求中止，等那台电脑回话";
     case "succeeded":
       return "已完成";
     case "failed":
@@ -790,6 +838,17 @@ export function localActionOutcomeText(
   task: LocalTask,
   deviceName = "这台电脑",
 ): string {
+  const outcome = finishedOutcomeText(task, deviceName);
+  // A-24：点过中止、结局却不是「已取消」⇒ 中止到得太晚。不说这一句，那次点击
+  // 在界面上就消失了，用户会以为它生效过 —— 一次 `file.write` 的差别就是
+  // 「文件没被动」和「文件已经被整份覆盖」。
+  if (task.cancelRequestedAt && task.status !== "cancelled" && outcome) {
+    return `${outcome}（你点过中止，但${deviceName}收到时这一步已经做完了。）`;
+  }
+  return outcome;
+}
+
+function finishedOutcomeText(task: LocalTask, deviceName: string): string {
   const summary = task.resultSummary;
   switch (task.status) {
     case "succeeded": {
