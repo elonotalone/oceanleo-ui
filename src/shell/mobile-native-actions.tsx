@@ -393,7 +393,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
 
         {state.status === "loading" && (
           <p className="text-[13px] text-neutral-500" role="status">
-            {tt("正在看你的哪几台电脑能收…")}
+            {tt("正在查你的电脑…")}
           </p>
         )}
 
@@ -415,7 +415,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
         {state.status === "ready" && devices.length === 0 && (
           <div>
             <p className="text-[13px] text-neutral-600">
-              {tt("你还没有一台配对好的电脑可以收东西。在那台电脑上装好 OceanLeo 并配对，这里就会出现它。")}
+              {tt("你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。")}
             </p>
             <a
               href="/devices"

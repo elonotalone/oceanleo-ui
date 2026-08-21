@@ -851,7 +851,20 @@ test("三项与完成通知的文案在 17 个词典里都有译文，非中文�
   const { LOCALES } = await import("../src/i18n/config.ts");
   const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 
-  const phrases = ["拍照", "从相册选择", "选择文件", "任务已完成", "回到 OceanLeo 查看结果"];
+  const phrases = [
+    "拍照",
+    "从相册选择",
+    "选择文件",
+    "任务已完成",
+    "回到 OceanLeo 查看结果",
+    // A14 的第四项与它展开后的那一屏。
+    "发送到电脑",
+    "发到哪台电脑",
+    "离线",
+    "正在查你的电脑…",
+    "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。",
+    "去连接一台电脑",
+  ];
   for (const locale of LOCALES) {
     const dictionary = UI_MESSAGES[locale];
     assert.ok(dictionary, `缺少 ${locale} 词典`);
