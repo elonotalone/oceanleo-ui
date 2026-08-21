@@ -14,6 +14,7 @@ import {
   MOBILE_DEGRADATION,
   MOBILE_BRIDGE_GLOBAL,
   MOBILE_NOTICE_EVENT,
+  NOTIFICATION_DECLINED_KEY,
   SHARE_EVENT_NAME,
   SHARE_LANDING_PATH,
   TRUSTED_ORIGIN,
@@ -35,7 +36,7 @@ const MODULE_SOURCE = readFileSync(MODULE_PATH, "utf8");
  * Fakes
  * ------------------------------------------------------------------ */
 
-function createFakeWindow() {
+function createFakeWindow({ storage = new Map() } = {}) {
   const listeners = new Map();
   const calls = { addEventListener: 0, removeEventListener: 0 };
   const assigned = [];
@@ -50,6 +51,12 @@ function createFakeWindow() {
   return {
     calls,
     assigned,
+    // A refusal has to survive a relaunch, so the fake host needs real storage.
+    localStorage: {
+      getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key),
+    },
     dispatched: [],
     listenerCount: (type) => (listeners.get(type) ?? []).length,
     CustomEvent: FakeCustomEvent,
@@ -101,14 +108,24 @@ function createFakeCamera({ photos = "granted", camera = "granted" } = {}) {
 }
 
 function createFakeNotifications({ display = "granted", receive = "granted" } = {}) {
-  const seen = { registered: 0, scheduled: [], listeners: [] };
+  const seen = {
+    registered: 0,
+    scheduled: [],
+    listeners: [],
+    /** Every prompt the user would actually see, local + push. */
+    permissionPrompts: 0,
+    /** Any touch of the notification permission state at all. */
+    permissionChecks: 0,
+  };
   return {
     seen,
     local: {
       async checkPermissions() {
+        seen.permissionChecks += 1;
         return { display };
       },
       async requestPermissions() {
+        seen.permissionPrompts += 1;
         return { display };
       },
       async schedule(payload) {
@@ -117,9 +134,11 @@ function createFakeNotifications({ display = "granted", receive = "granted" } = 
     },
     push: {
       async checkPermissions() {
+        seen.permissionChecks += 1;
         return { receive };
       },
       async requestPermissions() {
+        seen.permissionPrompts += 1;
         return { receive };
       },
       async addListener(name) {
@@ -317,12 +336,44 @@ test("native host: a share from another app lands in the site", async () => {
   handle.dispose();
 });
 
-test("native host: notifications are registered and a finished task can notify", async () => {
+/**
+ * The gate for "we do not ask on launch". An app that puts a permission sheet
+ * in front of a screen the user has not used yet gets refused, and on iOS a
+ * refusal is permanent — one bad first second costs every later notification.
+ */
+test("launch asks for nothing: the notification permission is untouched until a task is handed over", async () => {
   const { win, notifications } = nativeSetup();
   const handle = await startMobileBridge({ windowRef: win });
 
+  assert.equal(
+    notifications.seen.permissionChecks,
+    0,
+    "starting the bridge must not even read the notification permission",
+  );
+  assert.equal(notifications.seen.permissionPrompts, 0, "no sheet on launch");
+  assert.equal(notifications.seen.registered, 0, "no push registration on launch");
+  assert.deepEqual(notifications.seen.listeners, []);
+  assert.equal(
+    win.dispatched.filter((event) => event.type === MOBILE_NOTICE_EVENT).length,
+    0,
+    "launch must not produce a notification notice either",
+  );
+  handle.dispose();
+});
+
+test("native host: notifications are registered on the first hand-off and a finished task can notify", async () => {
+  const { win, notifications } = nativeSetup();
+  const handle = await startMobileBridge({ windowRef: win });
+
+  const enabled = await handle.ensureTaskNotifications();
+
+  assert.equal(enabled.ok, true);
   assert.equal(notifications.seen.registered, 1);
   assert.deepEqual(notifications.seen.listeners, ["registration", "registrationError"]);
+
+  // Handing over a second task must not re-run registration.
+  await handle.ensureTaskNotifications();
+  assert.equal(notifications.seen.registered, 1, "the ask happens at most once");
 
   const result = await handle.notifyTask({
     notificationId: 7,
@@ -385,11 +436,77 @@ test("denied notification permission is announced on the notice channel", async 
   });
 
   const handle = await startMobileBridge({ windowRef: win });
+  await handle.ensureTaskNotifications();
 
   const notices = win.dispatched.filter((event) => event.type === MOBILE_NOTICE_EVENT);
   assert.equal(notices.length, 1);
   assert.equal(notices[0].detail.ok, false);
   assert.equal(notices[0].detail.message, MOBILE_DEGRADATION.notifications);
+  handle.dispose();
+});
+
+test("a refusal is final: a later launch never puts the sheet up again", async () => {
+  const storage = new Map();
+  const denied = createFakeNotifications({ display: "denied" });
+  const first = nativeSetup({ notifications: denied });
+  first.win.localStorage = {
+    getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+    setItem: (key, value) => storage.set(key, String(value)),
+    removeItem: (key) => storage.delete(key),
+  };
+
+  const firstHandle = await startMobileBridge({ windowRef: first.win });
+  await firstHandle.ensureTaskNotifications();
+  assert.equal(storage.get(NOTIFICATION_DECLINED_KEY), "1", "the refusal is written down");
+  firstHandle.dispose();
+
+  // Next launch: same phone, same storage, a user who already said no.
+  const second = nativeSetup({ notifications: denied });
+  second.win.localStorage = first.win.localStorage;
+  const promptsBefore = denied.seen.permissionPrompts;
+  const checksBefore = denied.seen.permissionChecks;
+
+  const secondHandle = await startMobileBridge({ windowRef: second.win });
+  const result = await secondHandle.ensureTaskNotifications();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "declined_before");
+  assert.equal(denied.seen.permissionPrompts, promptsBefore, "no second sheet, ever");
+  assert.equal(denied.seen.permissionChecks, checksBefore, "not even a re-read");
+  secondHandle.dispose();
+});
+
+test("a finished task raises no banner while the user is looking at the app", async () => {
+  const app = createFakeApp();
+  app.getState = async () => ({ isActive: true });
+  const { win, notifications } = nativeSetup({ app });
+  const handle = await startMobileBridge({ windowRef: win });
+  await handle.ensureTaskNotifications();
+
+  const result = await handle.notifyTask({
+    notificationId: 11,
+    title: "任务已完成",
+    body: "回到 OceanLeo 查看结果",
+    taskId: "task-11",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.suppressed, "foreground");
+  assert.deepEqual(
+    notifications.seen.scheduled,
+    [],
+    "the result is already on screen; a system banner over it is noise",
+  );
+
+  // Screen off / app in the background: the same task does get a banner.
+  app.getState = async () => ({ isActive: false });
+  await handle.notifyTask({
+    notificationId: 11,
+    title: "任务已完成",
+    body: "回到 OceanLeo 查看结果",
+    taskId: "task-11",
+  });
+  assert.equal(notifications.seen.scheduled.length, 1);
   handle.dispose();
 });
 
