@@ -347,6 +347,156 @@ export async function scanWithSystemCamera(
 }
 
 /* ------------------------------------------------------------------ *
+ * One picked item, as bytes
+ * ------------------------------------------------------------------ */
+
+/** A single item the user picked, already read into memory. */
+export interface NativeMedia {
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+}
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  mp4: "video/mp4",
+};
+
+function fileNameFromPath(path: string): string {
+  const withoutQuery = String(path).split(/[?#]/)[0] ?? "";
+  const last = withoutQuery.split("/").pop() ?? "";
+  return decodeURIComponent(last);
+}
+
+function mimeFromName(name: string, fallback = "application/octet-stream"): string {
+  const extension = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  return MIME_BY_EXTENSION[extension] ?? fallback;
+}
+
+/**
+ * Reads a native picker result into bytes.
+ *
+ * Both Capacitor and the HarmonyOS shell hand back a webview-readable URL
+ * rather than the bytes themselves, so the page has to fetch it. That fetch
+ * stays on a `capacitor://`/`file://` handle the user just chose; the bridge
+ * never walks storage on its own.
+ */
+export async function readNativeMediaUrl(
+  url: string,
+  options: { fetchRef?: typeof fetch; name?: string; mime?: string } = {},
+): Promise<NativeMedia | null> {
+  const fetchRef =
+    options.fetchRef ?? (typeof fetch === "undefined" ? undefined : fetch);
+  if (!fetchRef || !url) return null;
+  try {
+    const response = await fetchRef(url);
+    const blob: any = await response.blob();
+    const buffer = await blob.arrayBuffer();
+    const name = options.name || fileNameFromPath(url) || "media";
+    const blobMime = typeof blob.type === "string" ? blob.type : "";
+    return {
+      name,
+      mime: options.mime || blobMime || mimeFromName(name),
+      bytes: new Uint8Array(buffer),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Opens the phone's own media picker and returns the chosen item as bytes.
+ *
+ * `source: "PROMPT"` is what makes a single no-argument call cover both "take
+ * one now" and "choose an existing one": the platform shows its own camera /
+ * library sheet. A shell whose Camera plugin cannot prompt degrades to the
+ * library picker rather than failing.
+ *
+ * Returns `null` in every ordinary browser, during SSR, when no native host is
+ * present, and whenever the user backs out — a cancelled pick is not an error.
+ */
+export async function pickNativeMediaFrom(
+  options: {
+    windowRef?: any;
+    loadPlugin?: PluginLoader;
+    fetchRef?: typeof fetch;
+  } = {},
+): Promise<NativeMedia | null> {
+  const windowRef = currentWindow(options.windowRef);
+  if (!windowRef) return null;
+
+  const host = detectNativeHost(windowRef);
+  if (!host) return null;
+
+  const camera = await resolvePlugin("Camera", host, options.loadPlugin);
+  if (!camera) return null;
+
+  const fetchRef =
+    options.fetchRef ??
+    ((windowRef as any).fetch
+      ? (windowRef as any).fetch.bind(windowRef)
+      : undefined);
+
+  try {
+    if (typeof camera.getPhoto === "function") {
+      const photo = await camera.getPhoto({
+        quality: 90,
+        source: "PROMPT",
+        resultType: "uri",
+        saveToGallery: false,
+        correctOrientation: true,
+      });
+      const path = photo?.webPath || photo?.path;
+      if (path) {
+        const format = typeof photo?.format === "string" ? photo.format : "";
+        return await readNativeMediaUrl(String(path), {
+          fetchRef,
+          mime: format ? `image/${format}` : undefined,
+        });
+      }
+    }
+  } catch {
+    // fall through to the library picker
+  }
+
+  try {
+    if (typeof camera.pickImages === "function") {
+      const picked = await camera.pickImages({ quality: 90, limit: 1 });
+      const first = picked?.photos?.[0];
+      const path = first?.webPath || first?.path;
+      if (path) {
+        const format = typeof first?.format === "string" ? first.format : "";
+        return await readNativeMediaUrl(String(path), {
+          fetchRef,
+          mime: format ? `image/${format}` : undefined,
+        });
+      }
+    }
+  } catch {
+    // a failed pick is reported as "nothing picked", never as a throw
+  }
+
+  return null;
+}
+
+/**
+ * Contract surface other site code depends on: no arguments, and `null`
+ * whenever there is nothing native to pick from.
+ */
+export function pickNativeMedia(): Promise<NativeMedia | null> {
+  return pickNativeMediaFrom();
+}
+
+/* ------------------------------------------------------------------ *
  * Share intake
  * ------------------------------------------------------------------ */
 
