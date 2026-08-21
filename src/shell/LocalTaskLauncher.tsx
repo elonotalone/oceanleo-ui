@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   deviceErrorCopy,
@@ -14,6 +14,18 @@ import {
   type LocalActionKind,
   type LocalActionPayloadByKind,
 } from "./local-task-client";
+import {
+  canHandOffFiles,
+  handoffFailureMessage,
+  handoffFolderNote,
+  handoffProgressText,
+  handoffSuccessText,
+  pickFileForHandoff,
+  planFileHandoff,
+  sendFileHandoff,
+  type HandoffFolders,
+  type HandoffProgress,
+} from "./mobile-file-handoff";
 
 export interface LocalTaskLauncherProps<K extends LocalActionKind = LocalActionKind> {
   deviceId: string | null | undefined;
@@ -45,6 +57,167 @@ export function launcherErrorMessage(error: unknown, deviceName: string): string
     default:
       return deviceErrorCopy(code, { deviceName, limit });
   }
+}
+
+export interface LocalFileHandoffLauncherProps {
+  deviceId: string | null | undefined;
+  deviceName?: string;
+  deviceOnline?: boolean;
+  /** 只能来自那台电脑上报的授权目录（网关 `GET /v1/devices?folders=true`）。 */
+  folders: HandoffFolders;
+  devicesHref?: string;
+  className?: string;
+  onSent?: (path: string) => void;
+}
+
+/**
+ * 「发送到这台电脑」——把手机上刚拍的照片、刚录的音直接送进那台电脑的授权目录。
+ *
+ * **浏览器里这个组件什么都不渲染。** 不是因为它会出错，而是因为它承诺的正是浏览器
+ * 做不到的那件事：一个在浏览器里出现的「发送到这台电脑」按钮是在骗人。原生宿主的
+ * 判定放在挂载之后做，这样服务端渲染出来的东西跟浏览器里一模一样，不会水合不一致。
+ *
+ * 落点只能从下拉框里选，**没有手敲路径的口子**。手敲路径看着像功能，实际是绕过授权：
+ * 那台电脑会把范围外的路径拒成 `path_outside_grant`，等于先请用户瞄准一个没人授权的
+ * 文件夹，再当着他的面拒绝他。
+ */
+export function LocalFileHandoffLauncher({
+  deviceId,
+  deviceName = "这台电脑",
+  deviceOnline = true,
+  folders,
+  devicesHref = "/devices",
+  className,
+  onSent,
+}: LocalFileHandoffLauncherProps) {
+  const [native, setNative] = useState(false);
+  const [folder, setFolder] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<HandoffProgress | null>(null);
+  const [done, setDone] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setNative(canHandOffFiles());
+  }, []);
+
+  const choices = folders?.folders ?? [];
+  const selected = folder || choices[0] || "";
+
+  if (!native) return null;
+
+  if (!deviceId) {
+    return (
+      <div className={className} data-file-handoff="no-device">
+        <a
+          href={devicesHref}
+          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white"
+        >
+          去连接一台电脑
+        </a>
+      </div>
+    );
+  }
+
+  const send = async () => {
+    if (busy) return;
+    setError("");
+    setDone("");
+    setProgress(null);
+    const media = await pickFileForHandoff();
+    // 用户自己退出了选择器不是错误，界面上不该冒出一行红字。
+    if (!media) return;
+    const plan = planFileHandoff({
+      media,
+      folder: selected,
+      deviceName,
+      deviceOnline,
+    });
+    if (!plan.ok) {
+      setError(plan.message);
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await sendFileHandoff({
+        deviceId,
+        deviceName,
+        deviceOnline,
+        plan,
+        onProgress: setProgress,
+      });
+      if (result.ok) {
+        setDone(handoffSuccessText(result, deviceName));
+        onSent?.(result.path);
+      } else {
+        setError(result.message);
+      }
+    } catch (caught) {
+      const code = caught instanceof LocalTaskApiError ? caught.code : "network_error";
+      setError(handoffFailureMessage(code, deviceName));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  };
+
+  return (
+    <div
+      className={className}
+      data-file-handoff={deviceOnline ? "online" : "offline"}
+      data-file-handoff-source={folders?.source ?? "none"}
+    >
+      {choices.length > 0 ? (
+        <label className="block text-sm text-slate-700">
+          落点文件夹
+          <select
+            value={selected}
+            onChange={(event) => setFolder(event.target.value)}
+            disabled={busy}
+            className="mt-1 block w-full min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            data-file-handoff-folder
+          >
+            {choices.map((choice) => (
+              <option key={choice} value={choice}>
+                {choice}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <p className="mt-2 text-sm text-slate-600" data-file-handoff-note>
+        {handoffFolderNote(folders, deviceName)}
+      </p>
+      <button
+        type="button"
+        onClick={() => void send()}
+        disabled={busy || choices.length === 0}
+        className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {busy ? "正在发送…" : `发送到${deviceName}`}
+      </button>
+      {progress ? (
+        <p className="mt-2 text-sm text-slate-600" role="status" data-file-handoff-progress>
+          {handoffProgressText(progress, deviceName)}
+        </p>
+      ) : null}
+      {!deviceOnline ? (
+        <p className="mt-2 text-sm text-amber-700" role="status">
+          {deviceName}现在离线。小文件会排队等它上线；大文件要分几次送，得等它上线后再发。
+        </p>
+      ) : null}
+      {done ? (
+        <p className="mt-2 text-sm text-emerald-700" role="status" data-file-handoff-done>
+          {done}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mt-2 text-sm text-red-700" role="alert" data-file-handoff-error>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export function LocalTaskLauncher<K extends LocalActionKind>({
