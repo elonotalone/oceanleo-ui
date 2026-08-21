@@ -739,9 +739,9 @@ function handoffFailureBase(
       return tt("已取消，文件没有写到那台电脑上。");
     default:
       // 协议 §7 那张表由 `api/device-error-copy.ts` 独家持有（设备页与这一屏共用
-      // 同一句），它今天还是中文硬编，而那不是这个模块能改的文件 ——
-      // 见 `signals/W07-signal.md`：额度、撤销、真机拒绝这几个码到这一屏仍是中文。
-      return deviceErrorCopy(code, { deviceName: device, limit });
+      // 同一句）。那张表的句子由代码合同 §1 逐字规定，所以这里只把翻译口交下去，
+      // 一个字都不在这边改写；不传 `tt` 的读取方仍然拿到原来的中文。
+      return deviceErrorCopy(code, { deviceName: device, limit, tt });
   }
 }
 
