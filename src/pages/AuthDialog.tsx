@@ -37,8 +37,13 @@ import {
   type ReactElement,
 } from "react";
 import {
+  challengeAndVerify,
+  currentAal,
+  listMfaFactors,
+  needsMfaChallenge,
   normalizeCnPhone,
   oceanleoConfigured,
+  sendPasswordReset,
   sendPhoneOtp,
   signIn,
   verifyPhoneOtp,
@@ -104,6 +109,20 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "本站还没有接入 OceanLeo 登录服务，请联系管理员。",
   "境内版还没有开放注册和登录",
   "现在可以照常浏览公开内容；开放注册要等备案与审核走完，开放时会在首页说明。",
+  // W4（2026-08-21）：忘了密码的自救入口 + 开了两步验证之后的第二屏。
+  "忘记密码？",
+  "找回密码",
+  "输入你注册时用的邮箱，我们发一条重置链接过去。",
+  "发送重置链接",
+  "重置邮件已经发出去了",
+  "邮件可能要几分钟才到，也可能被归进垃圾邮件。没收到就过一会儿再发一次——目前每小时最多发 2 封。",
+  "返回登录",
+  "请先填写邮箱地址。",
+  "再验一步",
+  "这个账号开了两步验证。打开验证器 App，输入它现在显示的 6 位码。",
+  "6 位数字",
+  "验证码不对，或者已经过了它 30 秒的有效期。",
+  "两步验证现在开不了，稍后再试。",
   ...Object.values(ERROR_COPY),
 ];
 
@@ -213,6 +232,25 @@ export function authErrorCopy(method: AuthMethod, raw?: string): string {
   return text;
 }
 
+/** 6 位码这一屏的上游报错。认不出来的照旧原样透出（吞掉才是白屏）。 */
+const BAD_TOTP_PATTERNS = [
+  /invalid\s+totp/i,
+  /invalid[^.]{0,20}(one[-\s]?time|mfa|totp)[^.]{0,20}(code|password)/i,
+  /mfa_verification_failed/i,
+  /token has expired or is invalid/i,
+  /验证码不对|验证码.*(错误|无效|过期)/,
+];
+
+export function totpErrorCopy(raw?: string): string {
+  const text = (raw || "").trim();
+  if (!text) return "验证码不对，或者已经过了它 30 秒的有效期。";
+  if (matchesAny(text, NETWORK_PATTERNS)) return ERROR_COPY.network;
+  if (matchesAny(text, RATE_LIMIT_PATTERNS)) return ERROR_COPY.rateLimited;
+  if (NOT_CONFIGURED_CLIENT.test(text)) return "两步验证现在开不了，稍后再试。";
+  if (matchesAny(text, BAD_TOTP_PATTERNS)) return "验证码不对，或者已经过了它 30 秒的有效期。";
+  return text;
+}
+
 // ---------------------------------------------------------------------------
 // 组件
 // ---------------------------------------------------------------------------
@@ -279,6 +317,18 @@ export function AuthPanel({
   const initial = enabled.includes(defaultMethod) ? defaultMethod : enabled[0];
   const [method, setMethod] = useState<AuthMethod>(initial);
 
+  /**
+   * 这道门现在有三种画面：
+   *   `credentials` 输密码 / 验证码 / 扫码（原来的全部）
+   *   `forgot`      忘了密码，填邮箱要一条重置链接
+   *   `mfa`         密码已经过了，但这个账号开了两步验证，还差 6 位码
+   *
+   * `mfa` 这一屏由 `needsMfaChallenge()` 决定出不出现，**不是**由「有没有因子」
+   * 决定：注册到一半的 unverified 因子不该把人拦在门外，取不到等级时一律放行。
+   * 这一屏拦错的代价是把开了 2FA 的人锁在外面，所以宁可不拦。
+   */
+  const [view, setView] = useState<"credentials" | "forgot" | "mfa">("credentials");
+
   // 站点没配 Supabase：不渲染任何表单——渲染了也只会在提交时报
   // "Supabase not configured"，让用户白填一遍。
   const configured = oceanleoConfigured();
@@ -287,6 +337,15 @@ export function AuthPanel({
     onSuccess?.();
     if (closeOnSuccess) onClose?.();
   }, [onSuccess, closeOnSuccess, onClose]);
+
+  /** 凭据这一关过了之后走这里：该补第二步就补，否则直接算登录成功。 */
+  const afterCredentials = useCallback(async () => {
+    if (needsMfaChallenge(await currentAal())) {
+      setView("mfa");
+      return;
+    }
+    finish();
+  }, [finish]);
 
   return (
     <div data-auth-panel className={`p-6 ${className}`}>
@@ -322,6 +381,10 @@ export function AuthPanel({
             )}
           </p>
         </div>
+      ) : view === "forgot" ? (
+        <ForgotPasswordForm tt={tt} onBack={() => setView("credentials")} />
+      ) : view === "mfa" ? (
+        <MfaChallengeForm tt={tt} onDone={finish} />
       ) : (
         <>
           {enabled.length > 1 && (
@@ -351,8 +414,14 @@ export function AuthPanel({
             </div>
           )}
 
-          {method === "email" && <EmailForm tt={tt} onDone={finish} />}
-          {method === "phone" && <PhoneForm tt={tt} onDone={finish} />}
+          {method === "email" && (
+            <EmailForm
+              tt={tt}
+              onDone={afterCredentials}
+              onForgotPassword={() => setView("forgot")}
+            />
+          )}
+          {method === "phone" && <PhoneForm tt={tt} onDone={afterCredentials} />}
           {method === "wechat" && <WechatPanel tt={tt} redirect={wechatRedirect} />}
 
           <p className="mt-4 text-center text-[11px] leading-relaxed text-neutral-400">
@@ -406,7 +475,18 @@ function Notice({ text }: { text: string }) {
   );
 }
 
-function EmailForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
+/** 凭据通过后的回调。可能要 await（要先问一次会话等级够不够）。 */
+type CredentialsDone = () => void | Promise<void>;
+
+function EmailForm({
+  tt,
+  onDone,
+  onForgotPassword,
+}: {
+  tt: UITranslate;
+  onDone: CredentialsDone;
+  onForgotPassword: () => void;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -424,7 +504,7 @@ function EmailForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
       return;
     }
     setDone(true);
-    onDone();
+    await onDone();
   }
 
   return (
@@ -465,11 +545,177 @@ function EmailForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
       <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
         {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("登录")}
       </button>
+      {/* 忘了密码在这之前是绝路：整个共享登录组件里没有任何找回入口。 */}
+      <button
+        type="button"
+        data-auth-forgot
+        onClick={onForgotPassword}
+        className="w-full text-center text-[12px] text-neutral-500 underline-offset-2 transition hover:text-neutral-800 hover:underline"
+      >
+        {tt("忘记密码？")}
+      </button>
     </form>
   );
 }
 
-function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
+/**
+ * 找回密码的一屏。
+ *
+ * 发信这条路**现在能用但极其有限**：平台没配 SMTP，`rate_limit_email_sent`
+ * 实测 2 封/小时。所以成功文案不写「已发送，请查收」然后让人干等，而是把
+ * 「要等几分钟 / 可能进垃圾邮件 / 每小时只能发 2 封」如实写出来。
+ */
+function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!email.trim()) {
+      setError(tt("请先填写邮箱地址。"));
+      return;
+    }
+    setLoading(true);
+    const result = await sendPasswordReset(email);
+    setLoading(false);
+    if (result.error) {
+      setError(tt(authErrorCopy("email", result.error)));
+      return;
+    }
+    setSent(true);
+  }
+
+  if (sent) {
+    return (
+      <div data-auth-form="forgot-sent" className="space-y-3 py-2 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-2xl">
+          ✉️
+        </div>
+        <p className="text-[14px] font-medium text-neutral-900">{tt("重置邮件已经发出去了")}</p>
+        <p className="text-left text-[13px] leading-relaxed text-neutral-500">
+          {tt(
+            "邮件可能要几分钟才到，也可能被归进垃圾邮件。没收到就过一会儿再发一次——目前每小时最多发 2 封。",
+          )}
+        </p>
+        <button
+          type="button"
+          data-auth-back
+          onClick={onBack}
+          className="w-full rounded-lg border border-neutral-200 py-2.5 text-[13px] text-neutral-600 transition hover:bg-neutral-50"
+        >
+          {tt("返回登录")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="forgot">
+      <div>
+        <p className="mb-3 text-[13px] leading-relaxed text-neutral-500">
+          {tt("输入你注册时用的邮箱，我们发一条重置链接过去。")}
+        </p>
+        <label
+          className="mb-1.5 block text-[13px] font-medium text-neutral-700"
+          htmlFor="oceanleo-auth-reset-email"
+        >
+          {tt("邮箱")}
+        </label>
+        <input
+          id="oceanleo-auth-reset-email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className={FIELD_CLASS}
+          placeholder="your@email.com"
+        />
+      </div>
+      {error && <ErrorNote text={error} />}
+      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
+        {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("发送重置链接")}
+      </button>
+      <button
+        type="button"
+        data-auth-back
+        onClick={onBack}
+        className="w-full text-center text-[12px] text-neutral-500 transition hover:text-neutral-800"
+      >
+        {tt("返回登录")}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * 密码过了之后的第二屏（aal1 → aal2）。
+ *
+ * 只在 `needsMfaChallenge()` 为真时挂载。因子取不到时不把人卡在这里干瞪眼——
+ * 报错照实说，但按钮保持可点，用户还能重试。
+ */
+function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
+  const [code, setCode] = useState("");
+  const [factorId, setFactorId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    listMfaFactors().then(({ factors, error: listError }) => {
+      if (!alive) return;
+      const verified = factors.find((f) => f.status === "verified");
+      if (verified) setFactorId(verified.id);
+      else if (listError) setError(tt(totpErrorCopy(listError)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tt]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const result = await challengeAndVerify(factorId, code);
+    setLoading(false);
+    if (result.error) {
+      setError(tt(totpErrorCopy(result.error)));
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="mfa">
+      <div>
+        <p className="text-[14px] font-medium text-neutral-900">{tt("再验一步")}</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-500">
+          {tt("这个账号开了两步验证。打开验证器 App，输入它现在显示的 6 位码。")}
+        </p>
+      </div>
+      <input
+        id="oceanleo-auth-mfa-code"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        required
+        className={`${FIELD_CLASS} text-center text-[18px] tracking-[0.4em] tabular-nums`}
+        placeholder={tt("6 位数字")}
+      />
+      {error && <ErrorNote text={error} />}
+      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
+        {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("验证并登录")}
+      </button>
+    </form>
+  );
+}
+
+function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: CredentialsDone }) {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
@@ -534,7 +780,7 @@ function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: () => void }) {
       return;
     }
     setNotice(tt("登录成功"));
-    onDone();
+    await onDone();
   }
 
   return (

@@ -169,7 +169,7 @@ export async function sendPasswordReset(
   const c = browserClient();
   if (!c) return { error: "Supabase not configured" };
   const target = (email || "").trim();
-  if (!target) return { error: "请输入邮箱地址。" };
+  if (!target) return { error: "请先填写邮箱地址。" };
   const redirectTo = passwordResetRedirectTo(origin);
   const { error } = await c.auth.resetPasswordForEmail(
     target,
@@ -211,7 +211,7 @@ export async function updatePassword(
   if (next.length < 6) return { error: "密码至少 6 位。" };
   if (options.currentPassword) {
     const email = await getUserEmail();
-    if (!email) return { error: "登录状态已失效，请重新登录后再改密码。" };
+    if (!email) return { error: "登录状态失效了，请重新登录。" };
     const check = await c.auth.signInWithPassword({
       email,
       password: options.currentPassword,
@@ -286,7 +286,7 @@ export async function enrollTotp(
   if (error) return { error: error.message };
   const totp = (data as { totp?: { qr_code?: string; secret?: string; uri?: string } })?.totp;
   const factorId = String((data as { id?: string })?.id || "");
-  if (!factorId || !totp?.secret) return { error: "两步验证暂时开通不了，请稍后重试。" };
+  if (!factorId || !totp?.secret) return { error: "两步验证现在开不了，稍后再试。" };
   return {
     enrollment: {
       factorId,
@@ -305,7 +305,7 @@ export async function challengeAndVerify(
   const c = browserClient();
   if (!c) return { error: "Supabase not configured" };
   const digits = (code || "").replace(/\s/g, "");
-  if (!/^\d{6}$/.test(digits)) return { error: "请输入验证器上的 6 位数字。" };
+  if (!/^\d{6}$/.test(digits)) return { error: "验证码不对，或者已经过了它 30 秒的有效期。" };
   const { error } = await c.auth.mfa.challengeAndVerify({ factorId, code: digits });
   if (error) return { error: error.message };
   // 通过之后会话升到 aal2，access token 换了新的，缓存那份必须跟上。

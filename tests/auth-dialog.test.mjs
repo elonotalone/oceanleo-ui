@@ -45,6 +45,10 @@ const uiStubUrl = dataModule(`
 // lib/auth 替身：把调用转发到 globalThis.__W10_AUTH__，每个用例自己装。
 // **只替换这一层**——组件里不允许有第二套身份逻辑，所以替掉 lib/auth 之后
 // 组件就应当彻底没有登录能力，这本身也是「只消费既有函数」的证明。
+// 2026-08-21（W4）：找回密码与两步验证接进来之后，组件从这一层多取了四个函数。
+// 替身少一个导出，整例会在**加载期**就炸掉、一条断言都不执行（读数是假红），
+// 所以新函数一进组件就要同步进这份替身。`needsMfaChallenge` 用真的那一份：
+// 「什么时候该多出一屏」是这一波的判据本身，不能由替身自说自话。
 const authStubUrl = dataModule(`
   const g = () => globalThis.__W10_AUTH__;
   export const oceanleoConfigured = (...a) => g().oceanleoConfigured(...a);
@@ -53,6 +57,14 @@ const authStubUrl = dataModule(`
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
   export const normalizeCnPhone = (...a) => g().normalizeCnPhone(...a);
+  export const sendPasswordReset = (...a) => g().sendPasswordReset(...a);
+  export const currentAal = (...a) => g().currentAal(...a);
+  export const listMfaFactors = (...a) => g().listMfaFactors(...a);
+  export const challengeAndVerify = (...a) => g().challengeAndVerify(...a);
+  export function needsMfaChallenge(aal) {
+    if (!aal || !aal.current || !aal.next) return false;
+    return aal.current === "aal1" && aal.next === "aal2";
+  }
 `);
 
 // @supabase/ssr 只在真 client.ts 的顶层被 import；`normalizeCnPhone` 是纯函数，
@@ -188,6 +200,22 @@ function defaultAuth() {
     async wechatLoginUrl(redirect) {
       this.calls.push(["wechatLoginUrl", redirect]);
       return { url: "https://open.weixin.qq.com/connect/qrconnect?x=1" };
+    },
+    // W4：默认账号**没有**开两步验证（aal1 就是它该到的等级），所以密码过了
+    // 就直接登录成功——上面每一条既有用例的期望都建立在这个默认之上。
+    // 这四个**不记进 `calls`**：既有用例按 `deepEqual(auth.calls, …)` 逐条对，
+    // 记进去会把它们全部改成假红。要断言这几个的入参就在用例里自己覆盖。
+    async currentAal() {
+      return { current: "aal1", next: "aal1" };
+    },
+    async listMfaFactors() {
+      return { factors: [] };
+    },
+    async challengeAndVerify() {
+      return {};
+    },
+    async sendPasswordReset() {
+      return {};
     },
   };
 }
@@ -541,11 +569,17 @@ const LOCALES = [
 ];
 const CHINESE_LOCALES = new Set(["zh", "zh-TW"]);
 
+// 2026-08-21（W4）：词典改成从 `UI_MESSAGES` 取，而不是各 locale 的平表文件。
+// 平表只是四个来源之一（另有 share / cloud-browser / agent-progress / 账号安全
+// 四张语义名分表），`useUI()` 实际读的是合并后的这一份——判据要判的就是用户
+// 真正看到的那一份。既有断言一条不动，覆盖面只增不减。
+// `dictionarySources` 仍读平表文件：它查的是「同一个 key 在一份文件里写了两遍」，
+// 而 W10 的词条本来就落在平表里。
 const dictionaries = new Map();
 const dictionarySources = new Map();
+const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 for (const locale of LOCALES) {
-  const mod = await import(`../src/i18n/ui/messages/${locale}.ts`);
-  dictionaries.set(locale, mod.default);
+  dictionaries.set(locale, UI_MESSAGES[locale]);
   dictionarySources.set(
     locale,
     await readFile(resolve(`src/i18n/ui/messages/${locale}.ts`), "utf8"),
