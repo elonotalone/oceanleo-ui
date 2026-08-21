@@ -49,6 +49,108 @@ interface PageProbe {
 }
 
 /**
+ * 这一件是不是「有匿名整站预览通道」的官方模板，以及那条通道的 `{template_id}`。
+ *
+ * 两条来路，因为详情面在打开时会把目录行整件换成服务端 durable 投影
+ * （`material-detail-slot.tsx:135-230`），catalog `id` 与 `template_material_*` meta
+ * 在那一跳全部丢失：
+ *
+ *   - 目录行直接渲染（passthrough）：`meta` 里就有 `template_material_id`，而
+ *     `TEMPLATE_MATERIAL_PREVIEW_META_KEY` 只在网站这一类出现，所以它同时是「有没有
+ *     这条通道」的判据；
+ *   - durable 投影：只剩 `artifactId`，向目录源模块反查 catalog id。查不到就是空串，
+ *     此时**不回退**，而不是编一个 id 去撞端点。
+ */
+function templateMaterialPreviewId(item: LibraryItem): string {
+  const declaredPath = item.meta?.[TEMPLATE_MATERIAL_PREVIEW_META_KEY];
+  const declaredId = item.meta?.template_material_id;
+  if (
+    typeof declaredPath === "string" &&
+    declaredPath.trim() &&
+    typeof declaredId === "string" &&
+    declaredId.trim()
+  ) {
+    return declaredId.trim();
+  }
+  if (!isDurableLibraryItem(item) || item.artifactType !== "website") return "";
+  return templateMaterialIdForArtifact(item.artifactId);
+}
+
+interface PreviewPage {
+  slug: string;
+  title: string;
+}
+
+/**
+ * 页面清单（`GET /v1/template-materials/{id}/preview/manifest`）。
+ *
+ * 清单只决定**要不要出翻页控件**，不决定第一屏看什么：`/preview` 本身就是整站入口，
+ * 所以清单没回来、回来是空的、或者只有一页时，用户看到的仍然是同一个页面，
+ * 只是没有那排页签。翻页控件依据 `pages` 的长度而不是响应里的 `pageCount` ——
+ * 两者不一致时按 `pageCount` 出页签会画出一排点不动的空标签。
+ */
+function usePreviewManifest(templateId: string): PreviewPage[] {
+  const [pages, setPages] = useState<PreviewPage[]>([]);
+  useEffect(() => {
+    if (!templateId) {
+      setPages([]);
+      return;
+    }
+    const controller = new AbortController();
+    setPages([]);
+    void (async () => {
+      try {
+        const response = await fetch(
+          templateMaterialPreviewManifestUrl(templateId),
+          {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            // 公共产品内容：不带 cookie、不带 bearer，与目录端点同一条纪律
+            // （`material-library-template-source.ts` 的 `fetchTemplateMaterials`）。
+            credentials: "omit",
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) throw new Error(String(response.status));
+        const payload = (await response.json()) as unknown;
+        if (controller.signal.aborted) return;
+        setPages(previewPages(payload));
+      } catch {
+        if (controller.signal.aborted) return;
+        // 清单取不回来不是错误态：整站入口照常能看，只是没有页签。
+        setPages([]);
+      }
+    })();
+    return () => controller.abort();
+  }, [templateId]);
+  return pages;
+}
+
+/** `slug` 是唯一进 URL 的响应可控字段，形状不合格就整条丢掉（URL 侧另有编码兜底）。 */
+const PREVIEW_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function previewPages(payload: unknown): PreviewPage[] {
+  const rawPages = (payload as { pages?: unknown } | null)?.pages;
+  if (!Array.isArray(rawPages)) return [];
+  const pages: PreviewPage[] = [];
+  const seen = new Set<string>();
+  for (const raw of rawPages) {
+    const slug =
+      typeof (raw as { slug?: unknown })?.slug === "string"
+        ? (raw as { slug: string }).slug.trim()
+        : "";
+    if (!PREVIEW_SLUG.test(slug) || seen.has(slug)) continue;
+    const title =
+      typeof (raw as { title?: unknown })?.title === "string"
+        ? (raw as { title: string }).title.trim()
+        : "";
+    seen.add(slug);
+    pages.push({ slug, title: title || slug });
+  }
+  return pages;
+}
+
+/**
  * `DOMParser` 不执行脚本，但 `textContent` **会**把 `<script>` 的源码算进去
  * ——整站内联 HTML 的脚本有 25 万字，直接读就会把空白引导页误判成有内容的页面。
  * 所以先把 script/style/template 从副本里摘掉再量文字。
@@ -217,6 +319,7 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
     item.previewUrl ||
     item.thumbUrl ||
     "";
+  const previewTemplateId = templateMaterialPreviewId(item);
 
   if (rendition.loading && !rendition.url) {
     return (
@@ -238,6 +341,20 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
 
   if (plan.surface === "page") {
     return <SandboxedPage url={pageUrl} title={item.title} />;
+  }
+
+  /**
+   * 拿不到可读页面 rendition，但这一件有匿名整站预览通道 —— 那就看站本身，
+   * 而不是退回封面图。这条分支只对官方模板成立（`templateMaterialPreviewId` 空串
+   * 即不成立），登录态拿得到 `full` 的路径在上一句就已经返回，逐字没动。
+   */
+  if (previewTemplateId) {
+    return (
+      <TemplateMaterialPreview
+        templateId={previewTemplateId}
+        title={item.title}
+      />
+    );
   }
 
   return (
@@ -272,19 +389,105 @@ export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
 }
 
 /**
+ * 匿名整站预览：iframe 里是站本身，下面是页签与那条界线说明。
+ *
+ * 三件事刻意不做：
+ *   - **不新增沙箱授权**：frame 复用 `UntrustedFrame`，值仍来自
+ *     `webViewerFrameSandbox(false)`，一个字没加；
+ *   - **不弹窗**：界线说明是内容下面的一行常驻文字，既不遮内容也不打断浏览；
+ *   - **不预取页面字节**：`/preview` 的响应带 `Content-Security-Policy: sandbox`
+ *     由网关保证，判读那一套是给 rendition 用的，这条通道不重复一遍。
+ */
+function TemplateMaterialPreview({
+  templateId,
+  title,
+}: {
+  templateId: string;
+  title: string;
+}) {
+  const tt = useUI();
+  /**
+   * `slug` 空串 = 整站入口 `/preview`（合同 §5 接口 A 的第一条），也就是第一页。
+   * 第一个页签点回去也写空串，所以清单到达不会让 frame 白重载一次。
+   */
+  const pages = usePreviewManifest(templateId);
+  const [slug, setSlug] = useState("");
+  const activeIndex = slug
+    ? pages.findIndex((page) => page.slug === slug)
+    : 0;
+  return (
+    <div className="flex h-full min-h-[520px] flex-col bg-stone-100">
+      <UntrustedFrame
+        url={templateMaterialPreviewUrl(templateId, slug)}
+        title={title}
+      />
+      {pages.length > 1 && (
+        <nav
+          aria-label={tt("站内页面")}
+          className="flex shrink-0 flex-wrap items-center gap-1 border-t border-stone-200 bg-white px-3 py-2"
+        >
+          {pages.map((page, index) => (
+            <button
+              key={page.slug}
+              type="button"
+              aria-current={index === activeIndex ? "page" : undefined}
+              onClick={() => setSlug(index === 0 ? "" : page.slug)}
+              className={`min-h-8 rounded-lg px-3 text-[12px] font-medium ${
+                index === activeIndex
+                  ? "bg-stone-900 text-white"
+                  : "text-stone-600 hover:bg-stone-100"
+              }`}
+            >
+              {page.title}
+            </button>
+          ))}
+        </nav>
+      )}
+      <p className="shrink-0 border-t border-stone-200 bg-white px-3 py-2 text-[12px] leading-relaxed text-stone-500">
+        {tt(PREVIEW_BOUNDARY)}{" "}
+        <a
+          href="/account"
+          className="font-medium text-stone-700 underline decoration-stone-300 underline-offset-2 hover:text-stone-900"
+        >
+          {tt("登录")}
+        </a>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 界线说的是**这条预览通道**给什么、不给什么，而不是「你是谁」：查看器手里没有
+ * 会话身份，只有「这次没拿到可读的页面 rendition」这一件事实。按身份措辞就得猜，
+ * 猜错的那一半会对已登录的人说一句假话；按通道措辞对谁都成立。
+ */
+const PREVIEW_BOUNDARY =
+  "这里能翻页看完整个站。下载源码、复制到工作台需要登录账号：";
+
+/**
  * 与 `library-viewers.tsx` 的 `SandboxedWebViewer` 同一套沙箱值：单一事实源是
  * `editor-sandbox-origin.ts` 的 `webViewerFrameSandbox()`，这里不新增任何授权。
  */
 function SandboxedPage({ url, title }: { url: string; title: string }) {
   return (
     <div className="flex h-full min-h-[520px] flex-col bg-stone-100">
-      <iframe
-        src={url}
-        title={title}
-        className="min-h-0 flex-1 border-0 bg-white"
-        sandbox={webViewerFrameSandbox(false)}
-        referrerPolicy="no-referrer"
-      />
+      <UntrustedFrame url={url} title={title} />
     </div>
+  );
+}
+
+/**
+ * 两条渲染路径（rendition 页面 / 匿名预览端点）共用的同一个 frame。刻意只有一处：
+ * 沙箱值出现两遍，将来就会有一遍被单独放宽。
+ */
+function UntrustedFrame({ url, title }: { url: string; title: string }) {
+  return (
+    <iframe
+      src={url}
+      title={title}
+      className="min-h-0 flex-1 border-0 bg-white"
+      sandbox={webViewerFrameSandbox(false)}
+      referrerPolicy="no-referrer"
+    />
   );
 }
