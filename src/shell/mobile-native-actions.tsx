@@ -39,8 +39,7 @@ import {
 } from "./mobile-bridge";
 import { LocalFileHandoffLauncher } from "./LocalTaskLauncher";
 import { parseHandoffFolders, type HandoffFolders } from "./mobile-file-handoff";
-import { accessToken } from "../lib/auth/client";
-import { GATEWAY_BASE } from "../lib/auth/config";
+import { listDevices, type DeviceApiResult } from "../api/devices";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 /** 站点在任务真的跑完时派发这个事件，手机上就会收到系统通知。 */
@@ -290,42 +289,38 @@ function deviceLabel(device: HandoffDevice, tt: UITranslate): string {
 const DESKTOP_PLATFORMS: ReadonlySet<string> = new Set(["windows", "macos", "linux"]);
 
 /**
+ * 「查不到电脑」的三个码，从 `listDevices()` 回的失败上判出来。
+ *
+ * 判据只看 `status` 与网络失败那一个码，**不看句子** —— 那一层回的 `error` 一律是码，
+ * 而且未来还会多出别的码；只有「令牌没了」与「根本没连上」这两件事对用户是不同的话。
+ *
+ * `response_malformed`（网关回了 200 但正文里没有一份设备列表）落到 `unavailable`：
+ * 读不懂的正文**不是**「你没有电脑」的证据，把它渲成一份空列表等于替网关撒谎。
+ * 这一处是本次收口里唯一与旧手抄实现不同的边（旧的把它当空列表放过）。
+ */
+function handoffLookupFailure(result: DeviceApiResult<unknown>): HandoffLookupFailure {
+  if (result.status === 401) return "signed_out";
+  if (result.error === "network_error") return "offline";
+  return "unavailable";
+}
+
+/**
  * 取「我的哪几台电脑能收、各自授权了哪些文件夹」。
  *
- * `folders=true` 是网关既有 `GET /v1/devices` 上的查询参数，默认不带 ⇒ 网站设备页的
- * 成本一字节不变。**目录名只能来自这里**：界面上没有手敲路径的口子，因为手敲的路径
- * 那台电脑一定会拒，让用户敲就是先请他瞄准再当面拒绝他。
+ * 走的是设备那一层唯一的实现 `listDevices({ folders: true })` —— 令牌、取数、错误
+ * 解析全在那一处，这里不再手抄第二份（手抄那份 401 与网络失败分不开，脏行判定各写
+ * 一遍，两边迟早对不上）。`folders` 默认不带 ⇒ 网站设备页 30 秒一次的轮询成本一字节不变。
+ *
+ * **目录名只能来自这里**：界面上没有手敲路径的口子，因为手敲的路径那台电脑一定会拒，
+ * 让用户敲就是先请他瞄准再当面拒绝他。
  */
 async function fetchHandoffDevices(): Promise<HandoffDevicesState> {
-  const token = await accessToken();
-  if (!token) {
-    return { status: "error", reason: "signed_out" };
+  const result = await listDevices({ folders: true });
+  if (!result.ok || !result.data) {
+    return { status: "error", reason: handoffLookupFailure(result) };
   }
-  let response: Response;
-  try {
-    response = await fetch(`${GATEWAY_BASE}/v1/devices?folders=true`, {
-      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
-  } catch {
-    return { status: "error", reason: "offline" };
-  }
-  if (!response.ok) {
-    return {
-      status: "error",
-      reason: response.status === 401 ? "signed_out" : "unavailable",
-    };
-  }
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    return { status: "error", reason: "unavailable" };
-  }
-  const rows =
-    payload && typeof payload === "object" && Array.isArray((payload as any).devices)
-      ? ((payload as any).devices as unknown[])
-      : [];
+  // 逐行仍按 `unknown` 读：那一层只保证 `devices` 是一份列表，没保证行里每一栏干净。
+  const rows: unknown[] = result.data;
   const devices: HandoffDevice[] = [];
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
