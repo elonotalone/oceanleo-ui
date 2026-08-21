@@ -10,7 +10,11 @@ export { ByokKeys } from "./ByokKeys";
 // 表单的无外壳版本，供已有自己浮层/抽屉的站内嵌。
 export { AuthDialog, AuthPanel } from "./AuthDialog";
 export type { AuthDialogProps, AuthPanelProps, AuthMethod } from "./AuthDialog";
-export { AUTH_METHODS, authErrorCopy, wechatRedirectTarget } from "./AuthDialog";
+export { AUTH_METHODS, authErrorCopy, totpErrorCopy, wechatRedirectTarget } from "./AuthDialog";
+// 找回密码的落地页（W4）：用户从重置邮件的链接进来落在这里。路径由
+// `lib/auth/client.ts` 的 `PASSWORD_RESET_PATH` 定死，两边共用同一个常量。
+export { PasswordResetPage, hasRecoveryParams } from "./PasswordResetPage";
+export type { PasswordResetPageProps } from "./PasswordResetPage";
 export { AccountPage } from "./AccountPage";
 export type { AccountPageProps, AccountMenuItem } from "./AccountPage";
 export { SettingsPage } from "./SettingsPage";
