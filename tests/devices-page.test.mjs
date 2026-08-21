@@ -613,6 +613,17 @@ test("下单被配额挡住时，页面上换成的是契约中文而不是「�
         export function joinLocalPath(folder, name){ return folder + "/" + name; }
         export function watchLocalTask(){ return () => {}; }
       `),
+      // 送达入口把 `src/lib/auth/client.ts` 拉进了这一屏的依赖图。那份文件 node 能直接
+      // 加载（`.ts`），于是编译台不编它，而它里面 `from "./config"` 是无扩展名写法 ——
+      // node 自己的解析器不认，`ERR_MODULE_NOT_FOUND` 在加载期就把**整例**打哑。
+      // 这一例只验配额文案，登录令牌与网关地址一步都走不到，给替身即可。
+      "../lib/auth/client": dataModule(
+        `export async function accessToken(){ return "devices-page-test-token"; }`,
+      ),
+      "../lib/auth/config": dataModule(
+        `export const GATEWAY_BASE = "https://gateway.invalid";`,
+      ),
+      "../i18n/ui/useUI": uiTextStubUrl,
     })
   );
   const host = document.createElement("div");
