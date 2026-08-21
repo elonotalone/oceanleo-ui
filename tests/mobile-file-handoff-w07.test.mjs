@@ -875,7 +875,23 @@ function translatorFor(locale) {
 
 const PLACEHOLDERS = /\{\w+\}/g;
 
-/** 这一屏的源码里所有中文字面量（`mobile-file-handoff.ts` 全份 + 送达组件那一段）。 */
+const copyTable = await import(await compileModule("src/api/device-error-copy.ts"));
+
+/**
+ * 协议 §7 那张码表里**唯一**不必进词典的句子。
+ *
+ * 它不是失败文案，是桌面 `LocalTaskLauncher` 直接当常量渲染的输入提示；那个读取方
+ * 不在手机送达链上，本轮明令它的既有行为逐字不变，所以它此刻仍是中文。
+ * 例外写成一份具名清单而不是一个洞：谁在这张表里再写一句不走 `tt()` 的中文，
+ * 下面那条断言当场判红。
+ */
+const DEVICE_ERROR_COPY_EXEMPT = [copyTable.SHELL_COMMAND_SHAPE_HINT];
+
+/**
+ * 这一屏的源码里所有中文字面量：`mobile-file-handoff.ts` 全份 + 送达组件那一段 +
+ * 协议 §7 那张码表（额度、撤销、真机拒绝这些码从 `handoffFailureBase()` 的
+ * `default:` 落进它，所以它也是这一屏用户看得见的字）。
+ */
 function chineseLiterals() {
   const found = new Set();
   const files = [
@@ -884,6 +900,10 @@ function chineseLiterals() {
       "utf8",
     )],
     ["LocalFileHandoffLauncher.tsx", HANDOFF_COMPONENT_SOURCE],
+    ["src/api/device-error-copy.ts", readFileSync(
+      fileURLToPath(new URL("../src/api/device-error-copy.ts", import.meta.url)),
+      "utf8",
+    )],
   ];
   for (const [name, text] of files) {
     const source = ts.createSourceFile(
@@ -906,15 +926,27 @@ function chineseLiterals() {
 }
 
 test("这一屏源码里的每一句中文，17 份词典都有它，占位符一个不差", () => {
-  const literals = chineseLiterals();
+  const all = chineseLiterals();
   // 反向保险：谁把 tt() 整片删掉、或者这份提取失效，这一节不许因为「没找到句子」而变绿。
   assert.ok(
-    literals.length >= 30,
-    `只数出 ${literals.length} 句中文，提取多半失效了（预期 30 句以上）`,
+    all.length >= 53,
+    `只数出 ${all.length} 句中文，提取多半失效了（预期 53 句以上）`,
   );
-  for (const sentence of ["发送到{device}", "落点文件夹", "已送达。"]) {
-    assert.ok(literals.includes(sentence), `没数到已知的那一句：${sentence}`);
+  for (const sentence of [
+    "发送到{device}",
+    "落点文件夹",
+    "已送达。",
+    // 协议 §7 那张表里的三句，各代表一类：设备名嵌在句中、上限来自后端、兜底句。
+    "{device}已被撤销，需要在那台电脑上重新配对。",
+    "还有{limit}个任务没跑完，等它们结束再下单。",
+    "这一步没有完成，请稍后重试。",
+  ]) {
+    assert.ok(all.includes(sentence), `没数到已知的那一句：${sentence}`);
   }
+  for (const exempt of DEVICE_ERROR_COPY_EXEMPT) {
+    assert.ok(all.includes(exempt), `具名例外已经不在源码里了，这份清单该更新：${exempt}`);
+  }
+  const literals = all.filter((zh) => !DEVICE_ERROR_COPY_EXEMPT.includes(zh));
 
   const missing = [];
   for (const locale of LOCALES) {
@@ -942,9 +974,6 @@ test("这一屏源码里的每一句中文，17 份词典都有它，占位符�
 });
 
 test("13 种非 CJK 语言下，落点说明、按钮、进度、回执、失败各句都不含汉字", () => {
-  // 协议 §7 那张码表（额度、撤销、真机拒绝……）由 `api/device-error-copy.ts` 独家持有，
-  // 它今天仍是写死的中文，且不在这份活的独占面上（见 `signals/W07-signal.md`）。
-  // 这份断言因此只钉这一屏自己出的句子 —— 那张表里的码走 default 分支，不在下面。
   const handoffCodes = [
     "grant_missing",
     "path_outside_grant",
@@ -1010,6 +1039,80 @@ test("13 种非 CJK 语言下，落点说明、按钮、进度、回执、失败
       );
     }
   }
+});
+
+test("协议 §7 那 19 个码走到这一屏也不是中文了，未知码同样", () => {
+  // 这些码（额度、撤销、真机拒绝、路径越权……）不在上面那张表里，它们从
+  // `handoffFailureBase()` 的 `default:` 落进 `api/device-error-copy.ts`。
+  // 手机送达失败时用户看见的正是这些句子，所以它们也得逐个过 13 种非 CJK 语言。
+  assert.equal(copyTable.DEVICE_ERROR_CODES.length, 19);
+  const device = "Studio PC";
+  // 这三个码这一屏自己有更贴切的说法（说的是「收文件」这件事，不是泛指的操作），
+  // 所以它们不落到那张表上；其余 16 个必须逐字等于契约那句。
+  const screenOwned = new Set(["device_offline", "grant_missing", "path_outside_grant"]);
+
+  for (const locale of NON_CJK_LOCALES) {
+    const tt = translatorFor(locale);
+    for (const code of [...copyTable.DEVICE_ERROR_CODES, "internal_server_error", "HTTP 500"]) {
+      // 带上限与不带上限是两句不同的话（契约 §1.2b），两句都得有译文。
+      for (const limit of [undefined, 7]) {
+        const viaTable = copyTable.deviceErrorCopy(code, { deviceName: device, limit, tt });
+        const onScreen = handoffFailureMessage(code, device, { limit }, tt);
+        for (const [where, sentence] of [["表", viaTable], ["这一屏", onScreen]]) {
+          assert.ok(sentence, `${locale} ${code}：${where}出了一句空话`);
+          assert.ok(!HAN.test(sentence), `${locale} ${code} ${where}里还有汉字：${sentence}`);
+          assert.doesNotMatch(
+            sentence,
+            /\{\w+\}/,
+            `${locale} ${code}：占位符漏到用户脸上了：${sentence}`,
+          );
+          assert.doesNotMatch(
+            sentence,
+            /[a-z]+_[a-z_]+/,
+            `${locale} ${code}：把错误码原文摆给用户了：${sentence}`,
+          );
+        }
+        // 这一屏不许改写契约的句子，只许换语言。
+        if (screenOwned.has(code)) {
+          assert.notEqual(
+            onScreen,
+            viaTable,
+            `${locale} ${code}：这一屏本该说收文件那句更贴切的话`,
+          );
+        } else {
+          assert.equal(onScreen, viaTable, `${locale} ${code}：这一屏把契约那句改写了`);
+        }
+      }
+    }
+    // 兜底设备名也得是这门语言的，不能一句译文里嵌一个中文「这台电脑」。
+    const noName = copyTable.deviceErrorCopy("revoked", { tt });
+    assert.ok(!HAN.test(noName), `${locale}: 兜底设备名还是中文：${noName}`);
+  }
+});
+
+test("不传 tt 的读取方逐字不变：设备页、进度面板、文件树拿到的仍是契约中文", () => {
+  // 这张表有六个读取方，只有手机送达那一屏会把 `tt` 传下来。其余五个（设备页、
+  // 桌面 launcher、进度面板、本地控制台、文件树）本轮一个字节都不该变 ——
+  // 契约中文的逐字比对在 `devices-page.test.mjs`，这里钉的是「默认值仍是恒等」。
+  const zh = (sentence) => sentence;
+  for (const code of [...copyTable.DEVICE_ERROR_CODES, "internal_server_error"]) {
+    for (const limit of [undefined, 20]) {
+      const withoutTt = copyTable.deviceErrorCopy(code, { deviceName: "书房电脑", limit });
+      assert.equal(
+        withoutTt,
+        copyTable.deviceErrorCopy(code, { deviceName: "书房电脑", limit, tt: zh }),
+        `${code}: 不传 tt 与传恒等 tt 出的话不一样`,
+      );
+      assert.ok(HAN.test(withoutTt), `${code}: 不传 tt 时不该变成别的语言：${withoutTt}`);
+      assert.doesNotMatch(withoutTt, /\{\w+\}/, `${code}: 占位符没填上：${withoutTt}`);
+    }
+  }
+  // 设备名与上限由 `fill()` 填，不靠 `tt` 插值：一个只查表的翻译口也不许漏出半成品。
+  const lookupOnly = (sentence) => DICTIONARIES.ja[sentence] ?? sentence;
+  const ja = copyTable.deviceErrorCopy("quota_unpaired_devices", { limit: 5, tt: lookupOnly });
+  assert.match(ja, /5/, `上限没填进日语译文：${ja}`);
+  assert.doesNotMatch(ja, /\{\w+\}/, `占位符漏到日语用户脸上：${ja}`);
+  assert.equal(copyTable.deviceErrorCopy("revoked", { deviceName: "", tt: lookupOnly }).includes("このパソコン"), true);
 });
 
 test("挂载渲染：日语用户看到日语，阿拉伯语用户整屏没有一个汉字", async () => {
