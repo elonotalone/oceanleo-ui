@@ -31,6 +31,10 @@
 import { type ReactNode, useRef, useState } from "react";
 import { LeoComposer } from "./LeoComposer";
 import { StudioSection } from "./StudioSection";
+import {
+  NativeAttachSheet,
+  useNativeAttachActions,
+} from "./mobile-native-actions";
 import { useUI } from "../i18n/ui/useUI";
 
 /** 已选附件（业务上传后回传进来渲染缩略条；本组件不负责上传）。 */
@@ -120,6 +124,11 @@ export function InputCard({
   const uploadLabel = uploadLabelProp ?? tt("上传文件（可多选）");
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // 手机原生宿主下，同一颗上传按钮改成展开「拍照 / 从相册选择 / 选择文件」——
+  // 不多一颗按钮，也不为手机另开一套上传实现（三项照样回到下面的 onFiles）。
+  // 普通浏览器里它恒为空数组：按钮照旧直接开文件选择器，DOM 一个字节不变。
+  const nativeAttachActions = useNativeAttachActions({ onFiles, accept, multiple });
+  const [nativeSheetOpen, setNativeSheetOpen] = useState(false);
 
   const hasContent = Boolean(value.trim()) || (attachments?.length ?? 0) > 0;
   const disableSubmit = submitDisabled ?? (!hasContent || loading);
@@ -202,10 +211,20 @@ export function InputCard({
 
       {belowComposer}
 
+      <NativeAttachSheet
+        actions={nativeAttachActions}
+        open={nativeSheetOpen}
+        onClose={() => setNativeSheetOpen(false)}
+      />
+
       {onFiles && (
         <button
           type="button"
-          onClick={() => fileRef.current?.click()}
+          onClick={() =>
+            nativeAttachActions.length > 0
+              ? setNativeSheetOpen((v) => !v)
+              : fileRef.current?.click()
+          }
           className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-[13px] font-medium transition-colors ${
             dragging
               ? "border-stone-400 bg-stone-50 text-stone-700"

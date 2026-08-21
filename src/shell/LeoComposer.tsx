@@ -15,6 +15,12 @@ import {
   type TemplateFillAreaHandle,
 } from "./PromptHighlightArea";
 import { useFillNonce, useFillTemplate } from "./guide-context";
+import {
+  requestTaskNotificationsOnce,
+  useNativeAttachActions,
+  useNativeTaskNotifications,
+  type NativeAttachAction,
+} from "./mobile-native-actions";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 
@@ -227,6 +233,16 @@ export function LeoComposer({
   // 子元素间穿梭时反复触发的 enter/leave（只在真正离开卡片时收起）。
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
+  // 手机原生宿主下，「＋」菜单里的「从本地添加文件」换成「拍照 / 从相册选择 / 选择文件」
+  // 三项；普通浏览器里它恒为空数组，菜单与今天逐字相同。拿到的文件走的是下面同一条
+  // `onAttachFiles` 通路，附件缩略条 / 上传中转圈 / 发送键可用性全部照旧。
+  const nativeAttachActions = useNativeAttachActions({
+    onFiles: onAttachFiles,
+    accept,
+    multiple,
+  });
+  // 任务跑完推一条系统通知（手机后台/息屏时才推）。浏览器里是空操作。
+  useNativeTaskNotifications();
 
   // 自增高由编辑器自身 CSS 处理（min-height + max-height + overflow-y:auto），LeoComposer 不再管。
   useEffect(() => {
@@ -251,8 +267,15 @@ export function LeoComposer({
       !e.nativeEvent.isComposing
     ) {
       e.preventDefault();
-      if (canSend) onSubmit(cleanPromptValue());
+      if (canSend) submitPrompt();
     }
+  }
+
+  // 用户第一次真的派活的时刻 —— 通知权限在这里要，不在启动时要。启动就弹权限框的
+  // app 会被直接拒掉，而拒绝是永久的。浏览器里这一行是空操作。
+  function submitPrompt() {
+    requestTaskNotificationsOnce();
+    onSubmit?.(cleanPromptValue());
   }
 
   function cleanPromptValue(): string {
@@ -401,6 +424,7 @@ export function LeoComposer({
             <AttachMenu
               onAttachFiles={onAttachFiles}
               openFilePicker={() => fileRef.current?.click()}
+              nativeActions={nativeAttachActions}
               recentFiles={recentFiles}
               onPickRecent={onPickRecent}
               recentLoading={recentLoading}
@@ -453,7 +477,7 @@ export function LeoComposer({
             ) : (
               <button
                 type="button"
-                onClick={() => canSend && onSubmit(cleanPromptValue())}
+                onClick={() => canSend && submitPrompt()}
                 disabled={!canSend}
                 aria-label={tt("发送")}
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-200 ${
@@ -491,6 +515,7 @@ export function LeoComposer({
 function AttachMenu({
   onAttachFiles,
   openFilePicker,
+  nativeActions = [],
   recentFiles,
   onPickRecent,
   recentLoading,
@@ -498,6 +523,8 @@ function AttachMenu({
 }: {
   onAttachFiles?: (files: File[]) => void;
   openFilePicker: () => void;
+  /** 手机原生宿主下的「拍照 / 相册 / 文件」；浏览器里恒为空。 */
+  nativeActions?: NativeAttachAction[];
   recentFiles?: ComposerRecentFile[];
   onPickRecent?: (f: ComposerRecentFile) => void;
   recentLoading: boolean;
@@ -540,7 +567,24 @@ function AttachMenu({
 
       {open && (
         <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
-          {onAttachFiles && (
+          {/* 手机上「从本地添加文件」被这三项取代 —— 手机里「本地」本来就分成
+              相机、相册、文件三处，一颗笼统的「本地」既到不了相机，也让相册要多绕
+              两步。三项走的还是同一条 onAttachFiles 通路。浏览器里 nativeActions
+              恒为空，这段不渲染，菜单与今天逐字相同。 */}
+          {nativeActions.map((action) => (
+            <MenuRow
+              key={action.id}
+              icon={action.icon}
+              label={action.label}
+              onClick={() => {
+                setOpen(false);
+                setRecentOpen(false);
+                action.onClick();
+              }}
+            />
+          ))}
+
+          {onAttachFiles && nativeActions.length === 0 && (
             <MenuRow
               icon={<PaperclipGlyph />}
               label={tt("从本地添加文件")}
