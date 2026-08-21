@@ -780,6 +780,8 @@ export {
   pickFilesWithSystemPicker,
   pickPhotosWithSystemPicker,
   scanWithSystemCamera,
+  pickNativeMedia,
+  readNativeMediaUrl,
   showTaskNotification,
   normalizeTrustedDeepLink,
   queuedDeviceTaskMessage,
@@ -797,6 +799,7 @@ export type {
   MobileCapability,
   MobileResult,
   NativeHost,
+  NativeMedia,
   TaskNotification,
 } from "./mobile-bridge";
 // `registerMobileAsExecutionDevice` 刻意**不**进公开门面：它是个永远返回

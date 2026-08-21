@@ -3979,6 +3979,12 @@
         },
         {
           "kind": "named",
+          "name": "NativeMedia",
+          "importedName": "NativeMedia",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
           "name": "navigateToArtifactPlay",
           "importedName": "navigateToArtifactPlay",
           "source": "./explore-artifact-class"
@@ -4131,6 +4137,12 @@
           "kind": "named",
           "name": "pickFilesWithSystemPicker",
           "importedName": "pickFilesWithSystemPicker",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "pickNativeMedia",
+          "importedName": "pickNativeMedia",
           "source": "./mobile-bridge"
         },
         {
@@ -4371,6 +4383,12 @@
           "kind": "named",
           "name": "queuedDeviceTaskMessage",
           "importedName": "queuedDeviceTaskMessage",
+          "source": "./mobile-bridge"
+        },
+        {
+          "kind": "named",
+          "name": "readNativeMediaUrl",
+          "importedName": "readNativeMediaUrl",
           "source": "./mobile-bridge"
         },
         {
