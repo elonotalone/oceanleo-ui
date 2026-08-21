@@ -121,7 +121,7 @@ const STUBS = {
 const handoff = await import(
   await compileModule("src/shell/mobile-file-handoff.ts", STUBS)
 );
-const { LocalFileHandoffLauncher } = await import(
+const { LocalFileHandoffLauncher, LocalTaskLauncher } = await import(
   await compileModule("src/shell/LocalTaskLauncher.tsx", STUBS)
 );
 
@@ -878,14 +878,14 @@ const PLACEHOLDERS = /\{\w+\}/g;
 const copyTable = await import(await compileModule("src/api/device-error-copy.ts"));
 
 /**
- * 协议 §7 那张码表里**唯一**不必进词典的句子。
+ * 这张表的例外清单**已经空了**（第 9 轮）。
  *
- * 它不是失败文案，是桌面 `LocalTaskLauncher` 直接当常量渲染的输入提示；那个读取方
- * 不在手机送达链上，本轮明令它的既有行为逐字不变，所以它此刻仍是中文。
- * 例外写成一份具名清单而不是一个洞：谁在这张表里再写一句不走 `tt()` 的中文，
- * 下面那条断言当场判红。
+ * 上一轮这里挂着 shell 形状提示一句：它不是失败文案，而是桌面 `LocalTaskLauncher`
+ * 直接当常量渲染的输入提示，所以暂时留在中文里。现在它也走 `tt()` 了 ——
+ * 清单空掉不是把断言放宽，恰恰相反：**这张表里的每一句中文都必须在 17 份词典里**，
+ * 一句都不再豁免。清单本身留着，是为了让「谁再想加一个洞」这件事必须显式写在这里。
  */
-const DEVICE_ERROR_COPY_EXEMPT = [copyTable.SHELL_COMMAND_SHAPE_HINT];
+const DEVICE_ERROR_COPY_EXEMPT = [];
 
 /**
  * 这一屏的源码里所有中文字面量：`mobile-file-handoff.ts` 全份 + 送达组件那一段 +
@@ -936,16 +936,20 @@ test("这一屏源码里的每一句中文，17 份词典都有它，占位符�
     "发送到{device}",
     "落点文件夹",
     "已送达。",
-    // 协议 §7 那张表里的三句，各代表一类：设备名嵌在句中、上限来自后端、兜底句。
+    // 协议 §7 那张表里的四句，各代表一类：设备名嵌在句中、上限来自后端、兜底句、
+    // 以及这张表里唯一一句不是失败文案的输入提示（第 9 轮才进词典的那句）。
     "{device}已被撤销，需要在那台电脑上重新配对。",
     "还有{limit}个任务没跑完，等它们结束再下单。",
     "这一步没有完成，请稍后重试。",
+    "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。",
   ]) {
     assert.ok(all.includes(sentence), `没数到已知的那一句：${sentence}`);
   }
-  for (const exempt of DEVICE_ERROR_COPY_EXEMPT) {
-    assert.ok(all.includes(exempt), `具名例外已经不在源码里了，这份清单该更新：${exempt}`);
-  }
+  assert.deepEqual(
+    DEVICE_ERROR_COPY_EXEMPT,
+    [],
+    "这张表不许再有豁免句：每一句中文都得进 17 份词典",
+  );
   const literals = all.filter((zh) => !DEVICE_ERROR_COPY_EXEMPT.includes(zh));
 
   const missing = [];
@@ -1087,6 +1091,90 @@ test("协议 §7 那 19 个码走到这一屏也不是中文了，未知码同�
     // 兜底设备名也得是这门语言的，不能一句译文里嵌一个中文「这台电脑」。
     const noName = copyTable.deviceErrorCopy("revoked", { tt });
     assert.ok(!HAN.test(noName), `${locale}: 兜底设备名还是中文：${noName}`);
+  }
+});
+
+test("这张表不再导出一句裸中文：常量改成了带翻译口的函数", () => {
+  // 一句 `export const 中文` 只有一种读法 —— 谁 import 到就直接渲染，句子里没有
+  // 任何位置能换语言。这张表最后两句漏中文的正是常量那两句，所以这里钉的不是
+  // 「那两个名字消失了」，而是**整个模块的导出面上不许再出现一句能直接渲染的中文**。
+  for (const [name, value] of Object.entries(copyTable)) {
+    if (typeof value !== "string") continue;
+    assert.ok(
+      !HAN.test(value),
+      `${name} 又是一句裸中文常量了：${value}（该改成收 tt 的函数）`,
+    );
+  }
+  assert.equal(typeof copyTable.deviceErrorUnknownCopy, "function");
+  assert.equal(typeof copyTable.shellCommandShapeHint, "function");
+});
+
+test("兜底句与 shell 形状提示：13 种非 CJK 语言零汉字，不传 tt 时仍是契约那句中文", () => {
+  const zhUnknown = "这一步没有完成，请稍后重试。";
+  const zhHint =
+    "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。";
+  // 不传 tt 的那五个读取方一个字节都不该变。
+  assert.equal(copyTable.deviceErrorUnknownCopy(), zhUnknown);
+  assert.equal(copyTable.shellCommandShapeHint(), zhHint);
+  assert.equal(copyTable.deviceErrorCopy("totally_unknown_code"), zhUnknown);
+
+  for (const locale of NON_CJK_LOCALES) {
+    const tt = translatorFor(locale);
+    for (const [name, sentence] of [
+      ["兜底句", copyTable.deviceErrorUnknownCopy(tt)],
+      ["shell 形状提示", copyTable.shellCommandShapeHint(tt)],
+    ]) {
+      assert.ok(sentence, `${locale} ${name}：出了一句空话`);
+      assert.ok(!HAN.test(sentence), `${locale} ${name} 还有汉字：${sentence}`);
+      assert.doesNotMatch(sentence, /\{\w+\}/, `${locale} ${name}：占位符漏出来了`);
+      // 回退到中文原文也算漏译：词典缺这一条时 `tt` 是恒等的，不比对就发现不了。
+      assert.notEqual(
+        sentence,
+        name === "兜底句" ? zhUnknown : zhHint,
+        `${locale} ${name}：词典里没有这一条，${name}回退成了中文原文`,
+      );
+    }
+  }
+});
+
+test("挂载渲染：命令输入那句提示日语用户看到日语，中文站逐字不变", async () => {
+  const props = {
+    deviceId: "device-1",
+    deviceName: "Studio PC",
+    actionKind: "shell.run",
+    payload: { command: "ls -l" },
+    label: "Run",
+    onCreated() {},
+  };
+  const hintOf = async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(LocalTaskLauncher, props));
+    });
+    const text = container.querySelector("[data-shell-command-shape-hint]")?.textContent;
+    await act(async () => root.unmount());
+    container.remove();
+    return text;
+  };
+
+  const zh = await hintOf();
+  assert.equal(
+    zh,
+    "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。",
+    "中文站这一句必须逐字等于契约原文",
+  );
+  try {
+    globalThis.__W07_DICT__ = DICTIONARIES.ja;
+    const ja = await hintOf();
+    assert.notEqual(ja, zh, "日语这一句与中文逐字相同 ⇒ tt 根本没接上");
+    assert.match(ja, /コマンド/, "日语用户没看到日语");
+    globalThis.__W07_DICT__ = DICTIONARIES.ar;
+    const ar = await hintOf();
+    assert.ok(!HAN.test(ar), `阿拉伯语这一句还有汉字：${ar}`);
+  } finally {
+    delete globalThis.__W07_DICT__;
   }
 });
 
