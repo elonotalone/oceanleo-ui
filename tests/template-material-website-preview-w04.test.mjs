@@ -27,7 +27,10 @@ import test from "node:test";
 
 import React, { act } from "react";
 
-import { MATERIAL_CATALOG_TYPES } from "../src/shell/artifact-contract.ts";
+import {
+  ARTIFACT_TYPES,
+  VIEW_ONLY_ARTIFACT_TYPES,
+} from "../src/shell/artifact-contract.ts";
 import {
   TEMPLATE_MATERIAL_PREVIEW_META_KEY,
   normalizeTemplateMaterial,
@@ -70,9 +73,9 @@ function websiteRow() {
 
 // ── 目录源：只有网站这一类换落点 ─────────────────────────────────────────────
 
-test("W04/1 十六类里只有网站改成整站查看器，其余十五类逐字不变", () => {
+test("W04/1 目录源认的类型里只有网站改了落点，其余十三类逐字不变", () => {
   const kinds = new Map();
-  for (const artifactType of MATERIAL_CATALOG_TYPES) {
+  for (const artifactType of ARTIFACT_TYPES) {
     const listing = normalizeTemplateMaterial(catalogRow(artifactType));
     assert.ok(listing, `${artifactType}：目录行必须能归一化`);
     const item = templateMaterialLibraryItem(listing);
@@ -89,12 +92,26 @@ test("W04/1 十六类里只有网站改成整站查看器，其余十五类逐�
   }
   assert.equal(kinds.get("website"), "website");
   const others = [...kinds].filter(([type]) => type !== "website");
-  assert.equal(others.length, 15, "目录今天呈现 16 类");
+  assert.equal(others.length, 13, "目录源认 14 类 typed artifact");
   for (const [type, kind] of others) {
     assert.equal(
       kind,
       "image",
       `${type}：这一波只动网站这一类，别的类点开行为必须逐字不变`,
+    );
+  }
+
+  /**
+   * 只读浏览的那两类（`geo_map` / `interactive_doc`）在**归一化那一步**就被丢了
+   * ——`templateMaterialDropReason` 只认 `ARTIFACT_TYPES`。这是本波之前就有的行为，
+   * 这里把它钉住而不是顺手改：它们根本到不了落点这一层，所以「点开行为不变」对
+   * 它们同样成立；哪天有人放它们进来，这条会红，提醒先想清楚落点。
+   */
+  for (const artifactType of VIEW_ONLY_ARTIFACT_TYPES) {
+    assert.equal(
+      normalizeTemplateMaterial(catalogRow(artifactType)),
+      null,
+      `${artifactType}：目录源今天不收这一类`,
     );
   }
 });
