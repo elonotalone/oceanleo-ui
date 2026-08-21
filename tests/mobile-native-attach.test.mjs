@@ -845,6 +845,10 @@ test("原生：任务完成事件推一条系统通知，同一个任务不重�
  * 4. 文案：17 语都要有译文
  * ================================================================== */
 
+/** 汉字。日语/韩语译文本身含汉字，所以只拿它判非 CJK 语种。 */
+const HAN = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+const CJK_LOCALES = new Set(["zh", "zh-TW", "ja", "ko"]);
+
 test("三项与完成通知的文案在 17 个词典里都有译文，非中文用户不会看见中文按钮", async () => {
   // `useUI()` 的回退规则是「未命中就原样返回中文」，所以缺译文在中文站完全看不出来 ——
   // 只有日语用户点开「＋」时才会发现三个按钮印着中文。
@@ -864,6 +868,13 @@ test("三项与完成通知的文案在 17 个词典里都有译文，非中文�
     "正在查你的电脑…",
     "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。",
     "去连接一台电脑",
+    // 第 7 轮：这一屏上剩下的那几处 —— 三种「查不到你的电脑」、服务器没报机器名
+    // 时的兜底名、以及离线标注。兜底名那条最要紧：它会当 prop 传给送达组件。
+    "登录后才能把文件发到你的电脑上。",
+    "网络断了，没能查到你的电脑。恢复后再试一次。",
+    "暂时查不到你的电脑，稍后再试一次。",
+    "这台电脑",
+    "{name}（离线）",
   ];
   for (const locale of LOCALES) {
     const dictionary = UI_MESSAGES[locale];
@@ -878,6 +889,28 @@ test("三项与完成通知的文案在 17 个词典里都有译文，非中文�
           translated,
           phrase,
           `${locale} 的「${phrase}」还是中文原文`,
+        );
+      }
+      // 占位符译丢了不会报错，只会让用户看到一句缺了机器名的话。
+      if (phrase.includes("{name}")) {
+        assert.match(
+          translated,
+          /\{name\}/,
+          `${locale} 的「${phrase}」把 {name} 占位符译掉了，机器名会消失`,
+        );
+      }
+      // 「整句译了但里面还留着一个中文词」在中文站同样看不出来。日语/韩语译文
+      // 本身含汉字，拿汉字判它们会假红，所以这一条只对非 CJK 语种成立。
+      if (!CJK_LOCALES.has(locale)) {
+        assert.doesNotMatch(
+          translated,
+          HAN,
+          `${locale} 的「${phrase}」译文里还留着汉字`,
+        );
+        assert.doesNotMatch(
+          translated,
+          /[（）]/,
+          `${locale} 的「${phrase}」还用着全角括号（会渲成「Studio-PC（offline）」）`,
         );
       }
     }
@@ -900,4 +933,257 @@ test("浏览器：任务完成事件什么也不做（没有桥，就不该有�
   }
   assert.equal(threw, null, "浏览器里派发这个事件不许抛");
   await view.unmount();
+});
+
+/* ================================================================== *
+ * 5. 这一屏在非中文语言下真渲染出来是什么样
+ * ------------------------------------------------------------------
+ * 上一节只查「词典里有没有那一条」。词典有、代码却没走 `tt()`（或者走的是
+ * 一个拼出来的 key）时，上一节照样绿而日语用户照样看见中文 —— 所以这一节
+ * 把 `useUI()` 的**真实现**接上真词典，只桩 `useLocale()` 与词典下发，
+ * 把这一屏在法语下渲出来看。
+ *
+ * 兜底设备名尤其要渲：它不是印在自己面上，而是当 **prop** 交给送达组件的。
+ * 组件把它嵌进「发送到 X」那句话里，所以它一旦是中文常量，法语用户看到的
+ * 就是一句法语里插着一个中文词，而占位符替换从不翻译变量值。
+ * ================================================================== */
+
+/** 送达组件的替身：只把收到的 props 记下来，不渲染 `W07` 面内的任何东西。 */
+const handoffLauncherSpy = dataModule(`
+  import { createElement } from "${reactUrl}";
+  export function LocalFileHandoffLauncher(props){
+    (globalThis.__W06_HANDOFF_PROPS__ ??= []).push(props);
+    return createElement("div", { "data-handoff-spy": "1" });
+  }
+`);
+
+/**
+ * 按 locale 编一台「词典与 `useUI` 全是真的」的组件台。
+ * 只有 `useLocale()` 与词典下发是桩 —— 查表规则一旦在测试里复刻，
+ * 它迟早与生产漂移，那时这条闸就是在验它自己。
+ */
+async function nativeActionsIn(locale) {
+  const { "../i18n/ui/useUI": _realUseUINotStubbed, ...rest } = OVERRIDES;
+  return import(
+    await compileModule(
+      "src/shell/mobile-native-actions.tsx",
+      {
+        ...rest,
+        "next-intl": dataModule(
+          `export function useLocale(){ return ${JSON.stringify(locale)}; }`,
+        ),
+        "./messages/context": dataModule(
+          `import { UI_MESSAGES } from ${JSON.stringify(
+            realModule("src/i18n/ui/messages/index.ts"),
+          )};\n` +
+            `export function useUiMessages(){ return UI_MESSAGES[${JSON.stringify(
+              locale,
+            )}]; }`,
+        ),
+        "./LocalTaskLauncher": handoffLauncherSpy,
+      },
+      { missingPackageStub: lazyStub },
+    )
+  );
+}
+
+const frActions = await nativeActionsIn("fr");
+const FR = (await import("../src/i18n/ui/messages/index.ts")).UI_MESSAGES.fr;
+
+/** 只渲这一屏：那一行入口 + 展开后的面板，不牵扯整个输入框。 */
+function handoffProbeOf(actions) {
+  return function HandoffProbe() {
+    const entry = actions.useNativeHandoffEntry();
+    return React.createElement(
+      "div",
+      null,
+      entry.action
+        ? React.createElement(
+            "button",
+            { type: "button", onClick: entry.action.onClick },
+            entry.action.label,
+          )
+        : null,
+      entry.panel,
+    );
+  };
+}
+
+async function openProbe(actions) {
+  globalThis.__W06_HANDOFF_PROPS__ = [];
+  const view = await mount(handoffProbeOf(actions), {});
+  await view.click(view.container.querySelector("button"));
+  await act(async () => {});
+  await act(async () => {});
+  return view;
+}
+
+test("法语：那台电脑没报机器名时，兜底名是法语 —— 而且传给送达组件的也是法语", async () => {
+  const native = installNativeHost({
+    devices: [
+      { ...DESKTOP_ROW, device_id: "dev-nameless", device_name: "" },
+      { ...DESKTOP_ROW, device_id: "dev-named", device_name: "Studio-PC" },
+    ],
+  });
+  try {
+    const view = await openProbe(frActions);
+    const panel = view.container.querySelector("[data-native-handoff-panel]");
+    assert.equal(panel.getAttribute("data-native-handoff-panel"), "ready");
+
+    const options = [
+      ...panel.querySelectorAll("[data-native-handoff-device] option"),
+    ].map((option) => option.textContent);
+    assert.ok(
+      options.includes(FR["这台电脑"]),
+      `没报机器名的那台在法语下印的是「${options}」，不是「${FR["这台电脑"]}」`,
+    );
+    for (const option of options) {
+      assert.doesNotMatch(option, HAN, `落点下拉里的「${option}」还是中文`);
+    }
+
+    // prop 这一环是重点：面板自己印得对，交下去的却可能还是中文常量。
+    const props = globalThis.__W06_HANDOFF_PROPS__;
+    assert.equal(props.length, 1, "送达组件没被渲染，这条断言就什么也没验");
+    assert.equal(
+      props[0].deviceName,
+      FR["这台电脑"],
+      "交给送达组件的机器名不是译文 —— 法语句子里会嵌一个中文词",
+    );
+    assert.doesNotMatch(props[0].deviceName, HAN, "交下去的机器名里有汉字");
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("法语：机器名是用户自己起的中文名时照原样显示 —— 那不是漏译", async () => {
+  const native = installNativeHost({
+    devices: [{ ...DESKTOP_ROW, device_name: "书房台式机" }],
+  });
+  try {
+    const view = await openProbe(frActions);
+    const props = globalThis.__W06_HANDOFF_PROPS__;
+    assert.equal(
+      props[0].deviceName,
+      "书房台式机",
+      "用户自己给机器起的名字被兜底名顶掉了",
+    );
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("法语：离线那台电脑的标注是「Studio-PC (hors ligne)」，不是全角括号加中文", async () => {
+  const native = installNativeHost({
+    devices: [
+      { ...DESKTOP_ROW, device_id: "dev-a", device_name: "Studio-PC", online: true },
+      { ...DESKTOP_ROW, device_id: "dev-b", device_name: "Loft-PC", online: false },
+    ],
+  });
+  try {
+    const view = await openProbe(frActions);
+    const panel = view.container.querySelector("[data-native-handoff-panel]");
+    const offline = [
+      ...panel.querySelectorAll("[data-native-handoff-device] option"),
+    ].find((option) => option.value === "dev-b");
+    assert.equal(
+      offline.textContent,
+      FR["{name}（离线）"].replace("{name}", "Loft-PC"),
+      "离线标注没走带占位符的那条 key",
+    );
+    assert.doesNotMatch(offline.textContent, HAN, "离线标注里还有汉字");
+    assert.doesNotMatch(offline.textContent, /[（）]/, "离线标注还用着全角括号");
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("法语：三种「查不到你的电脑」各说各的法语，不是同一句、也不是中文", async () => {
+  const cases = [
+    {
+      why: "没登录",
+      key: "登录后才能把文件发到你的电脑上。",
+      arrange(native) {
+        delete globalThis.__W06_TOKEN__;
+        return native;
+      },
+    },
+    {
+      why: "断网",
+      key: "网络断了，没能查到你的电脑。恢复后再试一次。",
+      arrange() {
+        globalThis.fetch = async () => {
+          throw new TypeError("Failed to fetch");
+        };
+      },
+    },
+    {
+      why: "网关 500",
+      key: "暂时查不到你的电脑，稍后再试一次。",
+      arrange() {
+        globalThis.fetch = async () => ({ ok: false, status: 500 });
+      },
+    },
+  ];
+
+  const seen = new Set();
+  for (const scenario of cases) {
+    const native = installNativeHost();
+    try {
+      scenario.arrange(native);
+      const view = await openProbe(frActions);
+      const panel = view.container.querySelector("[data-native-handoff-panel]");
+      assert.equal(
+        panel.getAttribute("data-native-handoff-panel"),
+        "error",
+        `${scenario.why}：面板没有进错误态，这条断言就没在验文案`,
+      );
+      const alert = panel.querySelector('[role="alert"]');
+      assert.equal(
+        alert.textContent,
+        FR[scenario.key],
+        `${scenario.why}：这句话没走词典`,
+      );
+      assert.doesNotMatch(alert.textContent, HAN, `${scenario.why}：还是中文`);
+      seen.add(alert.textContent);
+
+      await view.unmount();
+    } finally {
+      native.remove();
+    }
+  }
+  assert.equal(seen.size, 3, "三种原因被收成了同一句话 —— 用户不知道该做什么");
+});
+
+test("中文站逐字不变：同一屏在 zh 下印的还是原来那几句", async () => {
+  const zhActions = await nativeActionsIn("zh");
+  const native = installNativeHost({
+    devices: [{ ...DESKTOP_ROW, device_name: "" }],
+  });
+  try {
+    const view = await openProbe(zhActions);
+    assert.equal(
+      globalThis.__W06_HANDOFF_PROPS__[0].deviceName,
+      "这台电脑",
+      "中文站的兜底设备名被改掉了",
+    );
+    await view.unmount();
+
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    const errored = await openProbe(zhActions);
+    assert.equal(
+      errored.container
+        .querySelector('[role="alert"]')
+        .textContent,
+      "暂时查不到你的电脑，稍后再试一次。",
+      "中文站的错误提示被改掉了",
+    );
+    await errored.unmount();
+  } finally {
+    native.remove();
+  }
 });
