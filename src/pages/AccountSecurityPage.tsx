@@ -238,7 +238,7 @@ function ChangePasswordBlock({ tt }: { tt: UITranslate }) {
     <Section
       slot="password"
       title={tt("修改密码")}
-      desc={tt("改密码要先证明你是你：填一次原密码，或者用寄到信箱的验证码。")}
+      desc={tt("改密码要先证明你是你：填一次原密码，或者用发到邮箱的验证码。")}
     >
       <form onSubmit={submit} className="space-y-3" data-security-form="password">
         <div>
