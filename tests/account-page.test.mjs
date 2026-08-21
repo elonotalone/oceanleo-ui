@@ -95,6 +95,11 @@ const authStubUrl = dataModule(`
       ? { title: "登录服务尚未配置", detail: "本站还没有接入 OceanLeo 登录服务，请联系管理员。" }
       : s().notice;
   }
+  // 真身在 src/lib/auth/client.ts。这里照抄同一条正则；两边不许走样这件事由
+  // tests/account-security-w4.test.mjs 拿真身与 PASSWORD_RESET_PATH 对着钉。
+  export function isPasswordResetLanding(href) {
+    return /[?&]reset=1(?:[&#]|$)/.test((href || "").trim());
+  }
 `);
 
 const confirmStubUrl = dataModule(`
@@ -152,9 +157,21 @@ const securityStubUrl = dataModule(`
   }
 `);
 
+const resetStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function PasswordResetPage({ currentHref }) {
+    return React.createElement(
+      "div",
+      { "data-testid": "reset-page", "data-href": currentHref || "" },
+      "reset",
+    );
+  }
+`);
+
 const COMPONENT_STUBS = {
   "next/link": linkStubUrl,
   "./AccountSecurityPage": securityStubUrl,
+  "./PasswordResetPage": resetStubUrl,
   "../lib/auth": authStubUrl,
   "../ui": confirmStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
@@ -336,6 +353,36 @@ test("点「账号安全」就地展开安全中心，再点收起——不跳�
 
   await view.click(entry);
   assert.equal(view.host.querySelector("[data-testid=security-panel]"), null, "再点没收起");
+  view.cleanup();
+});
+
+test("从找回密码的邮件点回来（/account?reset=1）落在改密码那一屏，而不是一张普通账户页", async () => {
+  const stub = signedInStub();
+  const view = await render(
+    React.createElement(AccountPage, {
+      currentHref: "https://design.oceanleo.com/account?reset=1#access_token=x&type=recovery",
+    }),
+    stub,
+  );
+  const reset = view.host.querySelector("[data-testid=reset-page]");
+  assert.ok(reset, "带 reset=1 进来却还是渲染了普通账户页——用户无处输入新密码");
+  assert.equal(view.host.querySelector("[data-account-expands=security]"), null);
+  view.cleanup();
+});
+
+test("微信回跳带的 code= 不能被当成找回密码（两条路撞在同一个 /account 上）", async () => {
+  const stub = signedInStub();
+  const view = await render(
+    React.createElement(AccountPage, {
+      currentHref: "https://design.oceanleo.com/account?code=wx-oauth-code",
+    }),
+    stub,
+  );
+  assert.equal(
+    view.host.querySelector("[data-testid=reset-page]"),
+    null,
+    "微信登录回跳被误判成找回密码，登录完直接被弹到改密码页",
+  );
   view.cleanup();
 });
 

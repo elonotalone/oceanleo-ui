@@ -714,3 +714,42 @@ test("新词条不会被 useUI 的两条改写规则误伤", async () => {
     assert.doesNotMatch(key, /文件库|檔案庫|灵感|靈感/, `"${key}" 会被 useUI 改写`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// 找回密码的落点：邮件里那条链接必须落在一条真实存在的路由上
+// ---------------------------------------------------------------------------
+
+test("邮件落点与「这是找回密码」的判断对得上，且不会把微信回跳算进来", async () => {
+  const clientSource = await readFile(new URL("../src/lib/auth/client.ts", import.meta.url), "utf8");
+
+  const pathLiteral = clientSource.match(/PASSWORD_RESET_PATH = "([^"]+)"/);
+  assert.ok(pathLiteral, "client.ts 里找不到 PASSWORD_RESET_PATH");
+  // 共享包没有路由；36 个消费站里今天真实存在的账户路由只有 /account。落点写成
+  // 别的（比如 /account/reset-password）＝ 找回密码的邮件点开是 404。
+  assert.match(pathLiteral[1], /^\/account(\?|$)/);
+
+  const landingRe = clientSource.match(/isPasswordResetLanding[\s\S]{0,200}?return (\/.+?\/)\.test/);
+  assert.ok(landingRe, "client.ts 里找不到 isPasswordResetLanding 的判断");
+  const re = new RegExp(landingRe[1].slice(1, -1));
+
+  const origin = "https://design.oceanleo.com";
+  assert.equal(
+    re.test(`${origin}${pathLiteral[1]}`),
+    true,
+    "邮件把人送到 PASSWORD_RESET_PATH，账户页却认不出这是找回密码——那一屏永远出不来",
+  );
+  assert.equal(
+    re.test(`${origin}${pathLiteral[1]}#access_token=x&type=recovery`),
+    true,
+  );
+  // 微信登录回跳也落在 /account，带的是 code=。两条路撞在一起就会把刚登录的人
+  // 弹到改密码屏。
+  assert.equal(re.test(`${origin}/account?code=wx-oauth-code`), false);
+  assert.equal(re.test(`${origin}/account`), false);
+
+  // 账户页的测试替身照抄了同一条正则，两边不许走样。
+  const pageTest = await readFile(new URL("./account-page.test.mjs", import.meta.url), "utf8");
+  const stubRe = pageTest.match(/isPasswordResetLanding\(href\) \{\s*return (\/.+?\/)\.test/);
+  assert.ok(stubRe, "account-page 替身里找不到 isPasswordResetLanding");
+  assert.equal(stubRe[1], landingRe[1], "替身与真身的正则不一致，账户页那两条断言就是在验一个假东西");
+});

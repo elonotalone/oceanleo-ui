@@ -147,8 +147,20 @@ export async function wechatLoginUrl(redirect?: string): Promise<{ url?: string;
 //   - W3 会打开「改密码需要重新验证身份」。所以 updatePassword 一定要能带
 //     nonce / 旧密码走完整流程，而不是裸调 updateUser。
 
-/** 用户点了邮件里的链接之后落在哪一页。各站路由一致，跟 AccountPage 同级。 */
-export const PASSWORD_RESET_PATH = "/account/reset-password";
+/**
+ * 用户点了邮件里的链接之后落在哪一页。
+ *
+ * 只能是 `/account`：路由长在 36 个消费站各自的仓里，共享包一条也加不了，而
+ * `/account` 是唯一每个站都已经有的那条。落点若指向一条不存在的路由，找回密码
+ * 的邮件点开就是 404——整条路白修。`reset=1` 是我们自己的标记，AccountPage
+ * 认这个标记才切到改密码那一屏；不认 `code=`，那个跟微信回跳撞。
+ */
+export const PASSWORD_RESET_PATH = "/account?reset=1";
+
+/** AccountPage 用它判断「这次是从找回密码的邮件点进来的」。 */
+export function isPasswordResetLanding(href: string): boolean {
+  return /[?&]reset=1(?:[&#]|$)/.test((href || "").trim());
+}
 
 /**
  * 邮件里那条链接的落点。显式传 `origin` 只为可测；浏览器里取当前站点，

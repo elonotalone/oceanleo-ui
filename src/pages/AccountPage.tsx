@@ -32,10 +32,12 @@ import {
   getCreditHistory,
   getUsageBySite,
   signOutEverywhere,
+  isPasswordResetLanding,
 } from "../lib/auth";
 import { ConfirmDialog } from "../ui";
 import { AuthDialog } from "./AuthDialog";
 import { AccountSecurityPage } from "./AccountSecurityPage";
+import { PasswordResetPage } from "./PasswordResetPage";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface AccountMenuItem {
@@ -57,6 +59,8 @@ export interface AccountMenuItem {
 export interface AccountPageProps {
   /** 账户菜单项（默认 通用 / AI 模型 / Cost / 账户设置 / 插件与连接器）。 */
   menuItems?: AccountMenuItem[];
+  /** 仅为可测：不传就取 `window.location.href`。 */
+  currentHref?: string;
   /** 额外统计卡片（如主站的「任务数」）。每项 {value,label}，排在内置格子之后。 */
   extraStats?: { value: ReactNode; label: string }[];
   /**
@@ -103,6 +107,7 @@ export function AccountPage({
   onSignInClick,
   onSignedIn,
   onSignedOut,
+  currentHref,
 }: AccountPageProps) {
   const tt = useUI();
   // 2026-07-02：「我的数据库」入口删除（左侧侧栏的文件库已覆盖其功能）；
@@ -136,6 +141,11 @@ export function AccountPage({
     },
   ];
   const configured = oceanleoConfigured();
+  // 找回密码的邮件把人送回 `/account?reset=1`（见 client.ts 的 PASSWORD_RESET_PATH：
+  // 那是唯一一条 36 个消费站都已经有的路由）。带这个标记进来时，账户页整页让位给
+  // 改密码那一屏——否则用户点开邮件看到的是一张普通账户页，无处输入新密码。
+  const href = currentHref ?? (typeof window !== "undefined" ? window.location.href : "");
+  const resetLanding = isPasswordResetLanding(href);
   const [email, setEmail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [monthSpend, setMonthSpend] = useState<number | null>(null);
@@ -196,6 +206,12 @@ export function AccountPage({
     setShowAuth(false);
     if (onSignedIn) onSignedIn();
     else if (typeof window !== "undefined") window.location.reload();
+  }
+
+  // 邮件链接进来的这一趟先于一切：这时用户既不是来看余额的，多半也还没「登录」
+  // 到能看账户页的程度（恢复会话只够改一次密码）。
+  if (resetLanding) {
+    return <PasswordResetPage currentHref={href} onDone={onSignedIn} />;
   }
 
   // 登不上的时候说清楚原因，不要假装未登录后再给一个必然失败的登录框。
