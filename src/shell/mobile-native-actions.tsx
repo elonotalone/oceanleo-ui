@@ -286,13 +286,16 @@ async function onTaskFinished(event: Event) {
 
 /**
  * 监听任务完成 → 推系统通知。多处输入框同时挂载也只装一个监听（同一个 taskId 只推一次），
- * 否则用户一次任务会收到好几条。浏览器里 `bridgeHandle()` 恒为 `null`，什么都不会发生。
+ * 否则用户一次任务会收到好几条。
+ *
+ * 非原生宿主下**连监听都不装**：网页端不该因为手机的功能多出一个事件监听器。
  */
 export function useNativeTaskNotifications(): void {
   const tt = useUI();
   taskNoticeTranslate = tt;
 
   useEffect(() => {
+    if (!detectNativeHost()) return;
     taskNoticeSubscribers += 1;
     if (taskNoticeSubscribers === 1) {
       const handler = (event: Event) => void onTaskFinished(event);
