@@ -98,15 +98,20 @@ function isFolderSource(value: unknown): value is HandoffFolderSource {
 export function parseHandoffFolders(device: unknown): HandoffFolders {
   if (!isObject(device)) return { folders: [], source: "none" };
   const raw = device.granted_roots ?? device.grantedRoots;
-  const folders = Array.isArray(raw)
+  const reported = Array.isArray(raw);
+  const folders = reported
     ? raw.filter((item): item is string => typeof item === "string" && item.length > 0)
     : [];
   const rawSource = device.granted_roots_source ?? device.grantedRootsSource;
-  const source: HandoffFolderSource = isFolderSource(rawSource)
-    ? rawSource
-    : folders.length > 0
-      ? "heartbeat"
-      : "none";
+  const source: HandoffFolderSource = !reported
+    ? // 那一栏根本不是一份列表 —— 无论它自称什么来源，我们**没读到**任何目录。
+      // 信了它的自称就会对用户说「这台电脑一个文件夹都没授权」，而事实只是我们没读懂。
+      "none"
+    : isFolderSource(rawSource)
+      ? rawSource
+      : folders.length > 0
+        ? "heartbeat"
+        : "none";
   const reportedAt = stringField(
     device.granted_roots_reported_at ?? device.grantedRootsReportedAt,
   );
