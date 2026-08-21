@@ -64,6 +64,76 @@ export interface TemplateMaterialListing {
 
 export const TEMPLATE_MATERIAL_ENTRY_PREFIX = "template-material:";
 
+/**
+ * 匿名整站预览端点（合同 §5 接口 A，`W03` 供）。`{template_id}` 是**目录行的 `id`**，
+ * 不是 `artifactId` —— 后端按 `query.eq("id", template_id)` 取那一行
+ * （`oceanleo/backend/app/routers/template_materials_router.py:219-220`）。
+ */
+export const TEMPLATE_MATERIAL_PREVIEW_META_KEY = "template_material_preview_path";
+
+export function templateMaterialPreviewPath(templateId: string): string {
+  const id = (templateId || "").trim();
+  return id ? `/v1/template-materials/${encodeURIComponent(id)}/preview` : "";
+}
+
+/**
+ * 预览端点的绝对地址。`page` 给了就取那一页（slug 或序号），`"manifest"` 取页面清单。
+ *
+ * `encodeURIComponent` 两处都不能省：这两段是唯一进 URL 的响应可控字段，不编码的话
+ * 一个 `../` 就能把 iframe 的 src 指到网关上的别的路径去。
+ */
+export function templateMaterialPreviewUrl(
+  templateId: string,
+  page = "",
+): string {
+  const path = templateMaterialPreviewPath(templateId);
+  if (!path) return "";
+  const suffix = (page || "").trim();
+  return `${GATEWAY}${path}${suffix ? `/${encodeURIComponent(suffix)}` : ""}`;
+}
+
+export function templateMaterialPreviewManifestUrl(templateId: string): string {
+  return templateMaterialPreviewUrl(templateId, "manifest");
+}
+
+/** 只有网站这一类走整站查看器；其余 15 类的落点这一波逐字不变。 */
+export function isWebsiteTemplateMaterial(
+  artifactType: ArtifactType | string,
+): boolean {
+  return artifactType === "website";
+}
+
+/**
+ * `artifactId → 目录行 id` 的反查表。
+ *
+ * 为什么需要它：详情面在打开时会把目录行整件换成服务端 durable 投影
+ * （`material-detail-slot.tsx:135-230`），只把封面 `posterUrl` 带过去 —— 目录行的
+ * `id` 与 `template_material_*` meta 在那一跳全部丢失。而 `W03` 的预览端点恰恰按
+ * 目录行 `id` 取内容，所以查看器拿着投影的 `artifactId` 必须能问回来。
+ *
+ * 住在这里而不是详情面：那个文件不是本 owner 的独占面，而这张表的**唯一**数据来源
+ * 就是本模块归一化过的目录行，写在别处等于把事实源搬离产地。
+ */
+const TEMPLATE_ID_BY_ARTIFACT_LIMIT = 4000;
+const templateIdByArtifactId = new Map<string, string>();
+
+function rememberTemplateMaterialIdentity(
+  material: TemplateMaterialListing,
+): void {
+  if (!material.artifactId || !material.id) return;
+  // 溢出就整张丢掉重来，而不是留一半：留一半会让「查不到」变成看运气的事。
+  if (templateIdByArtifactId.size >= TEMPLATE_ID_BY_ARTIFACT_LIMIT) {
+    templateIdByArtifactId.clear();
+  }
+  templateIdByArtifactId.set(material.artifactId, material.id);
+}
+
+/** 查不到就是空串；调用方据此**不做**回退，而不是编一个 id 出来。 */
+export function templateMaterialIdForArtifact(artifactId: string): string {
+  const wanted = (artifactId || "").trim();
+  return wanted ? templateIdByArtifactId.get(wanted) || "" : "";
+}
+
 const TEMPLATE_MATERIAL_TTL_MS = 5 * 60_000;
 const BARE_PREVIEW_KEY = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 const templateMaterialCache = new Map<
@@ -171,7 +241,7 @@ export function normalizeTemplateMaterial(
   const tags = Array.isArray(raw.tags)
     ? raw.tags.map(templateText).filter(Boolean)
     : [];
-  return {
+  const listing: TemplateMaterialListing = {
     id,
     title: templateText(raw.title) || id,
     summary: templateText(raw.summary),
@@ -189,6 +259,8 @@ export function normalizeTemplateMaterial(
     // 这是导航 sink，判据只能有一处，多一处就会两处慢慢走偏。
     activeRuntimeUrl: safeDeckHtmlRuntimeUrl(raw.activeRuntimeUrl),
   };
+  rememberTemplateMaterialIdentity(listing);
+  return listing;
 }
 
 export function templateMaterialEntryId(
@@ -207,13 +279,20 @@ export function templateMaterialLibraryItem(
 ): LibraryItem {
   const key = templateMaterialEntryId(material);
   const preview = assetPreviewUrl(material.previewKey);
+  const website = isWebsiteTemplateMaterial(material.artifactType);
   return {
     key,
     source: "artifact",
     id: key,
-    // The only bytes a signed-out visitor can read are the preview image, so
-    // the viewer is the image viewer whatever the sample's own type is.
-    kind: "image",
+    /**
+     * 其余类型仍是图片查看器：匿名访客读得到的字节只有那张预览图，这条前提对
+     * 图片 / 音频 / PPT / 文档照旧成立。
+     *
+     * 网站这一类今天不成立了 —— `W03` 的 `/preview` 端点匿名可读整站
+     * （合同 §5 接口 A），所以点开该落到整站查看器，而不是一张封面 webp。
+     * 卡片仍然用 `previewUrl` / `thumbUrl` 那张封面位图，产品决定没动。
+     */
+    kind: website ? "website" : "image",
     title: material.title,
     siteId: material.siteKey,
     url: preview,
@@ -228,6 +307,14 @@ export function templateMaterialLibraryItem(
       template_material_artifact_id: material.artifactId,
       template_material_artifact_type: material.artifactType,
       template_material_download_path: `/v1/template-materials/${material.id}/download`,
+      // 只有网站这一类有整站预览端点。键不够格就整个不出现，与下面 `deliveryFamily`
+      // 同一条纪律：一个空串会让「没有这条通道」和「通道地址算空了」混成一件事。
+      ...(website
+        ? {
+            [TEMPLATE_MATERIAL_PREVIEW_META_KEY]:
+              templateMaterialPreviewPath(material.id),
+          }
+        : {}),
       // W1 的自适应主预览按真实宽高排版；解析不出来时留 0，由调用方退化。
       width: material.width,
       height: material.height,
@@ -348,6 +435,7 @@ export function templateMaterialRequestKey(
 export function invalidateTemplateMaterialCache(): void {
   templateMaterialCache.clear();
   templateMaterialPending.clear();
+  templateIdByArtifactId.clear();
 }
 
 /**

@@ -2,11 +2,17 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import type { LibraryItem } from "./library-data";
+import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { useArtifactRendition } from "./ArtifactRendition";
 import { fetchMediaBlob } from "../lib/media-proxy";
 import type { ArtifactRenditionPurpose } from "./artifact-contract";
 import { webViewerFrameSandbox } from "./editor-sandbox-origin";
+import {
+  TEMPLATE_MATERIAL_PREVIEW_META_KEY,
+  templateMaterialIdForArtifact,
+  templateMaterialPreviewManifestUrl,
+  templateMaterialPreviewUrl,
+} from "./material-library-template-source";
 import {
   isDisplayableText,
   isMediaOversizeError,

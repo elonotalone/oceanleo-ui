@@ -600,6 +600,45 @@ export async function enableSystemNotifications(
   }
 }
 
+/**
+ * Where a refusal is remembered.
+ *
+ * A phone that asks for notifications again on every launch is the fastest way
+ * to make a user uninstall an app. One refusal is final until the user turns
+ * notifications on again in system settings.
+ */
+export const NOTIFICATION_DECLINED_KEY = "oceanleo:mobile:notifications-declined";
+
+function notificationsDeclinedBefore(windowRef: any): boolean {
+  try {
+    return windowRef?.localStorage?.getItem(NOTIFICATION_DECLINED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberNotificationsDeclined(windowRef: any): void {
+  try {
+    windowRef?.localStorage?.setItem(NOTIFICATION_DECLINED_KEY, "1");
+  } catch {
+    // A host without storage simply asks once per launch instead of once ever.
+  }
+}
+
+/**
+ * `null` when the host cannot tell. Unknown must not silence a notification:
+ * losing a finished-task notice is worse than raising one the user can see.
+ */
+export async function isAppInForeground(app: any): Promise<boolean | null> {
+  if (!app || typeof app.getState !== "function") return null;
+  try {
+    const state = await app.getState();
+    return typeof state?.isActive === "boolean" ? state.isActive : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface TaskNotification {
   notificationId: number;
   title: string;
@@ -736,6 +775,16 @@ export interface MobileBridgeHandle {
   scanWithCamera: (options?: { quality?: number }) => Promise<MobileResult>;
   /** Open the system document picker. */
   pickFiles: (options?: { accept?: string; multiple?: boolean }) => Promise<MobileResult>;
+  /** Pick one item from the phone's camera/library sheet and read its bytes. */
+  pickMedia: () => Promise<NativeMedia | null>;
+  /**
+   * Ask for notification permission, at most once ever.
+   *
+   * Call this the first time the user actually hands over a task, never on
+   * launch: a permission sheet in front of a screen the user has not used yet
+   * gets refused, and a refusal is permanent.
+   */
+  ensureTaskNotifications: () => Promise<MobileResult>;
   /** Raise a local notification when a task finishes. */
   notifyTask: (task: TaskNotification) => Promise<MobileResult>;
   /** Removes every listener this bridge installed. */
@@ -825,17 +874,35 @@ export async function startMobileBridge(
     }
   }
 
-  const [local, push] = await Promise.all([
-    localNotifications(),
-    resolvePlugin("PushNotifications", host, options.loadPlugin),
-  ]);
-  if (local && push) {
-    const result = await enableSystemNotifications(
-      { localNotifications: local, pushNotifications: push },
-      emit,
-    );
-    if (!result.ok) emit(result);
-  }
+  // Notification permission is deliberately NOT requested here. Starting the
+  // bridge happens on the first page load; asking then puts a system sheet in
+  // front of a user who has not yet asked for anything. It is requested from
+  // `ensureTaskNotifications()` instead, i.e. when the user first hands over a
+  // task and a "your task is done" notice is something they actually want.
+  let notificationsPromise: Promise<MobileResult> | undefined;
+  const ensureTaskNotifications = (): Promise<MobileResult> => {
+    notificationsPromise ??= (async () => {
+      if (notificationsDeclinedBefore(windowRef)) {
+        return declined("notifications", "declined_before");
+      }
+      const [local, push] = await Promise.all([
+        localNotifications(),
+        resolvePlugin("PushNotifications", host, options.loadPlugin),
+      ]);
+      if (!local || !push) return declined("notifications", "plugin_unavailable");
+
+      const result = await enableSystemNotifications(
+        { localNotifications: local, pushNotifications: push },
+        emit,
+      );
+      if (!result.ok) {
+        rememberNotificationsDeclined(windowRef);
+        emit(result);
+      }
+      return result;
+    })();
+    return notificationsPromise;
+  };
 
   const handle: MobileBridgeHandle = {
     host,
@@ -855,7 +922,15 @@ export async function startMobileBridge(
     },
     pickFiles: (pickOptions = {}) =>
       pickFilesWithSystemPicker(pickOptions, (windowRef as any).document),
+    pickMedia: () =>
+      pickNativeMediaFrom({ windowRef, loadPlugin: options.loadPlugin }),
+    ensureTaskNotifications,
     notifyTask: async (task: TaskNotification) => {
+      // The user is looking at the app: the finished task is already on screen,
+      // so a system banner over it is noise, not news.
+      if ((await isAppInForeground(app)) === true) {
+        return accepted({ capability: "notifications", suppressed: "foreground" });
+      }
       const plugin = await localNotifications();
       if (!plugin) return declined("notifications", "plugin_unavailable");
       const result = await showTaskNotification(plugin, task);
