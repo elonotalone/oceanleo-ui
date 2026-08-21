@@ -557,6 +557,36 @@ test("原生：任务完成事件推一条系统通知，同一个任务不重�
   }
 });
 
+/* ================================================================== *
+ * 4. 文案：17 语都要有译文
+ * ================================================================== */
+
+test("三项与完成通知的文案在 17 个词典里都有译文，非中文用户不会看见中文按钮", async () => {
+  // `useUI()` 的回退规则是「未命中就原样返回中文」，所以缺译文在中文站完全看不出来 ——
+  // 只有日语用户点开「＋」时才会发现三个按钮印着中文。
+  const { LOCALES } = await import("../src/i18n/config.ts");
+  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+
+  const phrases = ["拍照", "从相册选择", "选择文件", "任务已完成", "回到 OceanLeo 查看结果"];
+  for (const locale of LOCALES) {
+    const dictionary = UI_MESSAGES[locale];
+    assert.ok(dictionary, `缺少 ${locale} 词典`);
+    for (const phrase of phrases) {
+      const translated = dictionary[phrase];
+      assert.ok(translated, `${locale} 少了「${phrase}」的译文`);
+      // zh-TW 只查有没有：「拍照」在繁体里本来就写作「拍照」，逐字相同是对的，
+      // 不是漏译。其余 15 个语种与原文逐字相同就一定是漏译。
+      if (locale !== "zh" && locale !== "zh-TW") {
+        assert.notEqual(
+          translated,
+          phrase,
+          `${locale} 的「${phrase}」还是中文原文`,
+        );
+      }
+    }
+  }
+});
+
 test("浏览器：任务完成事件什么也不做（没有桥，就不该有通知）", async () => {
   const view = await mount(composerReal.LeoComposer, COMPOSER_PROPS);
   let threw = null;
