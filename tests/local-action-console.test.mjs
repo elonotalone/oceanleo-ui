@@ -45,10 +45,15 @@ const {
   LOCAL_ACTION_EFFECTS,
   LOCAL_ACTION_KINDS,
   LOCAL_ACTIONS_THAT_CHANGE_THE_DEVICE,
+  LOCAL_TASK_CANCELLABLE_STATUSES,
+  LOCAL_TASK_STATUSES,
+  LOCAL_TASK_TERMINAL_STATUSES,
   describeLocalAction,
   isInsideLocalRoot,
   localActionChangesDevice,
   localActionOutcomeText,
+  localCancelArrivedTooLateNote,
+  localTaskCanBeCancelled,
   localTaskStatusText,
   localTextToBase64,
 } = await import(await compileModule("src/shell/local-task-client.ts", stubs));
@@ -66,6 +71,10 @@ const DEVICE = {
 
 const render = (Component, props) =>
   renderToStaticMarkup(React.createElement(Component, props));
+
+/** 中止按钮那一个 `<button …>` 开标签。属性顺序由 React 决定，别用整份 HTML 去猜。 */
+const cancelButtonTag = (html) =>
+  (html.match(/<button[^>]*data-local-task-cancel-button[^>]*>/) || [""])[0];
 
 const consoleMarkup = (props = {}) =>
   render(LocalActionConsole, { device: DEVICE, basePath: ROOT, ...props });
@@ -185,13 +194,19 @@ test("台账里每一种状态都有话说，没有一条是空白的转圈", ()
   assert.equal(localTaskStatusText(undefined), "已排队");
   assert.equal(localTaskStatusText(undefined, true), "已排队（设备离线）");
   assert.match(localTaskStatusText("queued", true), /离线/);
-  for (const status of [
-    "queued", "claimed", "running", "succeeded", "failed", "denied", "expired", "cancelled",
-  ]) {
+  // 状态表里的每一条都要有话说，包括 A-24 新增的 `canceling` —— 用登记表本身
+  // 遍历，往协议里加一个状态而忘了给它文案，这条当场红。
+  for (const status of LOCAL_TASK_STATUSES) {
     const text = localTaskStatusText(status);
     assert.ok(text.length > 1, `${status} 没有状态文案`);
     assert.notEqual(text, status, `${status} 直接把状态码丢给了用户`);
   }
+  assert.match(localTaskStatusText("canceling"), /已请求中止/);
+  assert.doesNotMatch(
+    localTaskStatusText("canceling"),
+    /^已取消$/,
+    "「已请求中止」不许写成「已取消」——那两件事不一样",
+  );
 });
 
 test("结果是读数或一句人话，失败不许只剩一个错误码", () => {
@@ -228,21 +243,68 @@ test("结果是读数或一句人话，失败不许只剩一个错误码", () =>
 });
 
 test("还没结束的动作可以取消，已经结束的不再给一个骗人的取消按钮", () => {
-  for (const status of ["queued", "claimed"]) {
+  // A-24：`running` 以前**没有任何中止手段**（判据 15 判黄的那一条）。现在网关
+  // 受理 queued/claimed/running 三个状态，界面就必须在这三个上给按钮。
+  const CANCELLABLE = ["queued", "claimed", "running"];
+  assert.deepEqual([...LOCAL_TASK_CANCELLABLE_STATUSES].sort(), [...CANCELLABLE].sort());
+  for (const status of CANCELLABLE) {
     const html = render(LocalTaskProgress, {
       taskId: "task-1",
       deviceName: "书房电脑",
       actionKind: "shell.run",
       initialTask: { status },
     });
-    assert.match(html, />取消这一步</, `${status} 应该还能取消`);
+    assert.match(
+      html,
+      /data-local-task-cancel-button="available"/,
+      `${status} 应该还能中止`,
+    );
+    assert.doesNotMatch(
+      cancelButtonTag(html),
+      /\sdisabled=/,
+      `${status} 的中止按钮不该是灰的`,
+    );
   }
-  for (const status of ["running", "succeeded", "failed", "denied", "expired", "cancelled"]) {
+  // 排队中是**真停**（网关当场写 cancelled），已经在设备手上的只能是一句请求。
+  // 两件事不许用同一个词，否则界面替那台电脑许下一个它做不到的承诺。
+  const queued = render(LocalTaskProgress, {
+    taskId: "task-1",
+    deviceName: "书房电脑",
+    initialTask: { status: "queued" },
+  });
+  assert.match(queued, />取消这一步</);
+  assert.doesNotMatch(queued, /只能把「中止」请求发过去/);
+  const claimed = render(LocalTaskProgress, {
+    taskId: "task-1",
+    deviceName: "书房电脑",
+    initialTask: { status: "claimed" },
+  });
+  assert.match(claimed, />中止这一步</);
+  assert.match(claimed, /只能把「中止」请求发过去/);
+  assert.match(claimed, /认下来才算真的没做/);
+
+  // 已经请求过：按钮还在（用户要看见自己按过），但是灰的，且旁边说清楚
+  // 结局由那台电脑作证。
+  const canceling = render(LocalTaskProgress, {
+    taskId: "task-1",
+    deviceName: "书房电脑",
+    initialTask: { status: "canceling" },
+  });
+  assert.match(cancelButtonTag(canceling), /\sdisabled=/);
+  assert.match(cancelButtonTag(canceling), /data-local-task-cancel-button="requested"/);
+  assert.match(canceling, />已请求中止</);
+  assert.match(canceling, /只有那台电脑说了算/);
+
+  for (const status of ["succeeded", "failed", "denied", "expired", "cancelled"]) {
     const html = render(LocalTaskProgress, {
       taskId: "task-1",
       initialTask: { status },
     });
-    assert.doesNotMatch(html, />取消这一步</, `${status} 不该再给取消按钮`);
+    assert.doesNotMatch(
+      html,
+      /data-local-task-cancel-button/,
+      `${status} 不该再给取消按钮`,
+    );
   }
   // 结果读得到：shell.run 只给退出码与字节数，并说明全文在哪台电脑上。
   const shell = render(LocalTaskProgress, {
@@ -253,6 +315,85 @@ test("还没结束的动作可以取消，已经结束的不再给一个骗人�
   });
   assert.match(shell, /42 字节/);
   assert.match(shell, /命令输出只保存在书房电脑上/);
+});
+
+test("A-24 反例：后端不认的中止，网页端不许自己写成「已取消」", async () => {
+  const client = await import(
+    await compileModule("src/shell/local-task-client.ts", stubs)
+  );
+  const originalFetch = globalThis.fetch;
+  try {
+    // 反例一：网关判 409（中止没赶上，活已经做完）。旧代码 `await cancel()` 之后
+    // 无条件把状态写成 `cancelled`，于是一次没生效的中止在界面上变成了
+    // 「已取消，没有在那台电脑上执行」——而文件其实已经被整份覆盖。
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ detail: { code: "illegal_transition" } }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      });
+    await assert.rejects(
+      () => client.cancelLocalTask("task-1"),
+      (error) =>
+        error instanceof client.LocalTaskApiError &&
+        error.code === "illegal_transition",
+      "网关拒了，客户端必须把拒绝原样抛出来，而不是回一个 cancelled",
+    );
+
+    // 反例二：网关只答应「已请求中止」，客户端不许升格成「已取消」。
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          task_id: "task-1",
+          status: "canceling",
+          cancel_requested_at: "2026-08-21T03:40:00Z",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const answered = await client.cancelLocalTask("task-1");
+    assert.equal(answered.status, "canceling");
+    assert.notEqual(answered.status, "cancelled");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 反例三：把 `canceling` 当终态就等于停在「已请求中止」，用户永远看不到
+  // 那台电脑最后到底停没停下来。它必须继续被轮询。
+  assert.equal(LOCAL_TASK_TERMINAL_STATUSES.has("canceling"), false);
+  assert.equal(localTaskCanBeCancelled("canceling"), false);
+  for (const status of LOCAL_TASK_STATUSES) {
+    if (LOCAL_TASK_TERMINAL_STATUSES.has(status)) {
+      assert.equal(
+        localTaskCanBeCancelled(status),
+        false,
+        `${status} 已经是终态，网关只会回 409`,
+      );
+    }
+  }
+
+  // 中止来晚了这件事不许消失：结局是「做完了」，但那次点击要留在界面上。
+  const tooLate = {
+    status: "succeeded",
+    cancelRequestedAt: "2026-08-21T03:40:00Z",
+    resultSummary: { bytes: 12 },
+  };
+  assert.match(localCancelArrivedTooLateNote(tooLate, "书房电脑"), /已经做完了/);
+  assert.match(localActionOutcomeText(tooLate, "书房电脑"), /你点过中止/);
+  assert.match(
+    render(LocalTaskProgress, {
+      taskId: "task-1",
+      deviceName: "书房电脑",
+      initialTask: tooLate,
+    }),
+    /data-local-task-cancel="too-late"/,
+  );
+  // 真的停下来了就不许再说这句 —— 那会把一次成功的中止说成没生效。
+  assert.equal(
+    localCancelArrivedTooLateNote(
+      { status: "cancelled", cancelRequestedAt: "2026-08-21T03:40:00Z" },
+      "书房电脑",
+    ),
+    "",
+  );
 });
 
 test("台账把审计指纹与「这里不是全部」一起摆出来", () => {

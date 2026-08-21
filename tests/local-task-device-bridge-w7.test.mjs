@@ -27,12 +27,11 @@ const launcherUrl = await compileModule("src/shell/LocalTaskLauncher.tsx", {
 const launcherModule = await import(launcherUrl);
 const { LocalTaskLauncher } = launcherModule;
 
-const progressClientStub = dataModule(`
-  export async function cancelLocalTask(){}
-  export function watchLocalTask(){ return () => {}; }
-`);
+// 手抄一份假客户端会跟真模块漂：进度组件多 import 一个符号，这份 stub 就整份
+// 挂掉，而挂掉的原因跟被测的行为毫无关系。静态渲染跑不到 useEffect，所以直接用
+// 真客户端（网关地址已经是假的），不需要假一个出来。
 const progressUrl = await compileModule("src/shell/LocalTaskProgress.tsx", {
-  "./local-task-client": progressClientStub,
+  "./local-task-client": clientUrl,
 });
 const { LocalTaskProgress } = await import(progressUrl);
 
@@ -191,24 +190,28 @@ test("all deny reasons render a human action on 那台电脑", () => {
 });
 
 test("every protocol status has a distinct progress rendering and terminals cannot cancel", () => {
-  const statuses = [
-    "queued",
-    "claimed",
-    "running",
-    "succeeded",
-    "failed",
-    "denied",
-    "expired",
-    "cancelled",
-  ];
-  for (const status of statuses) {
+  // A-24：状态表本身是唯一事实源，这里不再手抄第二份 —— 协议加了 `canceling`
+  // 而这份名单没跟上，正是「新状态没有渲染」这类漏检的来源。
+  for (const status of client.LOCAL_TASK_STATUSES) {
     const markup = render(LocalTaskProgress, {
       taskId: `task-${status}`,
       initialTask: { status },
     });
     assert.match(markup, new RegExp(`data-local-task-status="${status}"`));
-    if (["queued", "claimed"].includes(status)) assert.match(markup, /取消这一步/);
-    else assert.doesNotMatch(markup, /取消这一步/);
+    // 按钮只出现在网关真的受理的状态上，外加已经请求过的那一个（灰着的）。
+    const offersCancel = client.LOCAL_TASK_CANCELLABLE_STATUSES.has(status);
+    assert.equal(
+      /data-local-task-cancel-button="available"/.test(markup),
+      offersCancel,
+      `${status} 的中止按钮可用性与网关受理的状态对不上`,
+    );
+    if (client.LOCAL_TASK_TERMINAL_STATUSES.has(status)) {
+      assert.doesNotMatch(
+        markup,
+        /data-local-task-cancel-button/,
+        `${status} 已经结束，不许再给一个按了只会拿到 409 的按钮`,
+      );
+    }
   }
 });
 
@@ -279,7 +282,17 @@ test("client maps cloud task endpoints and preserves protocol error codes", asyn
   globalThis.fetch = async (url, init) => {
     requests.push({ url, init });
     if (String(url).endsWith("/cancel")) {
-      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+      // A-24：网关这一路回的是完整的 `_public_task`，与 GET 同一份投影。
+      // 以前这里是 `{}`，那是「取消不回话、界面自己写死 cancelled」的旧协议。
+      return new Response(
+        JSON.stringify({
+          task_id: "task/7",
+          status: "canceling",
+          action_kind: "shell.run",
+          cancel_requested_at: "2026-08-21T03:40:00Z",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
     }
     return new Response(
       JSON.stringify({ task_id: "task-7", status: "queued", device_offline: true }),
@@ -307,9 +320,14 @@ test("client maps cloud task endpoints and preserves protocol error codes", asyn
       action_payload: { path: "/allowed" },
     });
     assert.equal(requests[0].init.headers.Authorization, "Bearer session-token");
-    await client.cancelLocalTask("task/7");
+    const cancelled = await client.cancelLocalTask("task/7");
     assert.equal(requests[1].url, "https://api.example.test/v1/devices/tasks/task%2F7/cancel");
     assert.equal(requests[1].init.method, "POST");
+    // A-24：中止的答复是**网关说的**，不是界面自己写的。它说 `canceling`
+    // 就必须原样回到调用方，写成 `cancelled` 就是替那台电脑撒谎。
+    assert.equal(cancelled.status, "canceling");
+    assert.equal(cancelled.cancelRequestedAt, "2026-08-21T03:40:00Z");
+    assert.equal(cancelled.actionKind, "shell.run");
 
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: { code: "revoked" } }), {

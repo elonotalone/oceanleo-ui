@@ -355,10 +355,15 @@ function requestEcho(payload: unknown): { target?: string; command?: string } {
   };
 }
 
-export async function getLocalTask(taskId: string): Promise<LocalTask> {
-  const response = await request(
-    `/v1/devices/tasks/${encodeURIComponent(taskId)}`,
-  );
+/**
+ * The gateway answers `GET /tasks/{id}` and `POST /tasks/{id}/cancel` with the
+ * very same `_public_task` projection, so they get the very same parser. A
+ * second, thinner parser for the cancel answer is how the two drifted apart
+ * once already: the abort reply came back with only three fields, and every
+ * host that listened to it lost the audit fingerprint (`taskId`/`actionKind`/
+ * `target`/`command`) the moment the user pressed the button.
+ */
+function parseTask(response: unknown): LocalTask {
   const raw = isObject(response) && isObject(response.task) ? response.task : response;
   if (!isObject(raw) || !isStatus(raw.status)) {
     throw new LocalTaskApiError("invalid_response", 200);
@@ -392,20 +397,10 @@ export async function getLocalTask(taskId: string): Promise<LocalTask> {
   };
 }
 
-function readTask(response: unknown): LocalTask {
-  const raw = isObject(response) && isObject(response.task) ? response.task : response;
-  if (!isObject(raw) || !isStatus(raw.status)) {
-    throw new LocalTaskApiError("invalid_response", 200);
-  }
-  const finishedAt = stringField(raw.finished_at ?? raw.finishedAt);
-  const cancelRequestedAt = stringField(
-    raw.cancel_requested_at ?? raw.cancelRequestedAt,
+export async function getLocalTask(taskId: string): Promise<LocalTask> {
+  return parseTask(
+    await request(`/v1/devices/tasks/${encodeURIComponent(taskId)}`),
   );
-  return {
-    status: raw.status,
-    ...(finishedAt ? { finishedAt } : {}),
-    ...(cancelRequestedAt ? { cancelRequestedAt } : {}),
-  };
 }
 
 /**
@@ -416,11 +411,29 @@ function readTask(response: unknown): LocalTask {
  * 命令停了、文件没被写。所以这里把网关的真实答复原样交回去，由界面照着说。
  */
 export async function cancelLocalTask(taskId: string): Promise<LocalTask> {
-  const response = await request(
-    `/v1/devices/tasks/${encodeURIComponent(taskId)}/cancel`,
-    { method: "POST" },
+  return parseTask(
+    await request(`/v1/devices/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+    }),
   );
-  return readTask(response);
+}
+
+/**
+ * A-24：**按钮只在网关真的会受理的状态上出现。**
+ *
+ * 这三个状态逐字对应网关 `cancel_device_task` 的两个分支（`queued` 走真停，
+ * `claimed`/`running` 走「已请求中止」），别的一律 409 `illegal_transition`。
+ * 这张表是「不许只把按钮点亮而后端不认」这条红线在代码里的落点：想给哪个状态
+ * 加按钮，先去网关那一路把它加上，否则用户按下去只会拿到一句拒绝。
+ *
+ * `canceling` **不在**表里，但它不是「不能按」而是「已经按过了」——
+ * 网关对它是幂等的（原样回一份 `_public_task`），界面按已请求处理，不再重发。
+ */
+export const LOCAL_TASK_CANCELLABLE_STATUSES: ReadonlySet<LocalTaskStatus> =
+  new Set(["queued", "claimed", "running"]);
+
+export function localTaskCanBeCancelled(status: LocalTaskStatus): boolean {
+  return LOCAL_TASK_CANCELLABLE_STATUSES.has(status);
 }
 
 /**
@@ -834,17 +847,30 @@ export function describeLocalAction<K extends LocalActionKind>(
  * the whole point of the console is that a user can tell what went wrong
  * without walking to the other computer.
  */
+/**
+ * A-24：点过中止、结局却不是「已取消」⇒ 中止到得太晚。不说这一句，那次点击
+ * 在界面上就消失了，用户会以为它生效过 —— 一次 `file.write` 的差别就是
+ * 「文件没被动」和「文件已经被整份覆盖」。
+ *
+ * 进度块与历史台账都要说这句话，所以它只有一份。
+ */
+export function localCancelArrivedTooLateNote(
+  task: LocalTask,
+  deviceName = "这台电脑",
+): string {
+  if (!task.cancelRequestedAt) return "";
+  if (task.status === "cancelled" || task.status === "canceling") return "";
+  if (!LOCAL_TASK_TERMINAL_STATUSES.has(task.status)) return "";
+  return `你点过中止，但${deviceName}收到时这一步已经做完了。`;
+}
+
 export function localActionOutcomeText(
   task: LocalTask,
   deviceName = "这台电脑",
 ): string {
   const outcome = finishedOutcomeText(task, deviceName);
-  // A-24：点过中止、结局却不是「已取消」⇒ 中止到得太晚。不说这一句，那次点击
-  // 在界面上就消失了，用户会以为它生效过 —— 一次 `file.write` 的差别就是
-  // 「文件没被动」和「文件已经被整份覆盖」。
-  if (task.cancelRequestedAt && task.status !== "cancelled" && outcome) {
-    return `${outcome}（你点过中止，但${deviceName}收到时这一步已经做完了。）`;
-  }
+  const tooLate = localCancelArrivedTooLateNote(task, deviceName);
+  if (tooLate && outcome) return `${outcome}（${tooLate}）`;
   return outcome;
 }
 
