@@ -1,11 +1,13 @@
 // 货架按「行业 × 内容」出卡、风格收进卡里（`tasks/W05.md`）的契约。
-// 守五件事：
+// 守六件事：
 //   ① 带 `group:` 的多行收成一张卡，卡面是 `groupcover:1` 那一行；
 //   ② **没有 `group:` 的旧行逐字不变**——PPT / 图片 / 音频的货架不许被这一波动到；
-//   ③ 卡片标题不再带皮肤（皮肤是卡内的切换），但**保留页数**，
+//   ③ 卡片标题不再带皮肤（版本是卡内的切换），但**保留页数**，
 //      因为分组键含 shape，同一子类的 5 页版与 6 页版是两组两张卡；
 //   ④ 同一个标题不许在货架上出现两次——这就是这一波要消掉的毛病本身；
-//   ⑤ 筛选项的数字按组数，不是行数。
+//   ⑤ 筛选项的数字按组数，不是行数；
+//   ⑥ 组内变体的身份是**行**不是皮肤（`02-arbitration.md` A1）——
+//      实测有 15/403 组内部重复皮肤，按皮肤去重会把那些版本整行丢掉。
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -21,19 +23,20 @@ import {
 import {
   materialCatalogActiveRecord,
   materialCatalogActiveSkin,
+  materialCatalogActiveVariant,
   materialCatalogCardMatches,
   materialCatalogCardSkins,
   materialCatalogCards,
   materialCatalogEntries,
   materialCatalogFacetOptions,
-  materialCatalogSkinChips,
+  materialCatalogVariantChips,
 } from "../src/shell/material-catalog-group.ts";
 
 /**
  * `W01` 落盘前的自造 fixture，形状照合同接口 B：
  * `group:<appId>-<sub>-<shape>` + 每组恰一行 `groupcover:1` + `skin:<键>`。
  */
-function templateRow({ id, title, group, sub, shape, skin, cover }) {
+function templateRow({ id, title, group, sub, shape, skin, cover, tpl }) {
   return {
     id,
     title,
@@ -48,6 +51,8 @@ function templateRow({ id, title, group, sub, shape, skin, cover }) {
       `sub:${sub}`,
       `shape:${shape}`,
       `skin:${skin}`,
+      // 每一版有自己的模板键（实测 500 行 499 个不同 `tpl:`），它才是这一版的身份。
+      `tpl:${tpl || id}`,
       `group:${group}`,
       ...(cover ? ["groupcover:1"] : []),
     ],
@@ -159,8 +164,13 @@ test("同一 group 的多行收成一张卡，卡面是 groupcover:1 那一行",
   );
 });
 
-test("组内皮肤按声明序挂在卡上，默认选中组封面", () => {
+test("组封面是卡内的第一版，其余版本保持数据里的行序", () => {
   const [accountingS5] = shelfCards();
+  assert.deepEqual(
+    accountingS5.variants.map((variant) => variant.key),
+    // 数据行序是 glass → paper(封面) → navy；封面提到最前，其余不重排。
+    ["acct-s5-paper", "acct-s5-glass", "acct-s5-navy"],
+  );
   assert.deepEqual(materialCatalogCardSkins(accountingS5), [
     "paper",
     "navy",
@@ -169,6 +179,7 @@ test("组内皮肤按声明序挂在卡上，默认选中组封面", () => {
   for (const skin of materialCatalogCardSkins(accountingS5)) {
     assert.ok(MATERIAL_SKIN_ORDER.includes(skin));
   }
+  assert.equal(materialCatalogActiveVariant(accountingS5).cover, true);
   assert.equal(materialCatalogActiveSkin(accountingS5), "paper");
   assert.equal(
     materialCatalogActiveRecord(accountingS5).entry.id,
@@ -176,9 +187,9 @@ test("组内皮肤按声明序挂在卡上，默认选中组封面", () => {
   );
 });
 
-test("卡内换皮肤，封面图与点开落点跟着换", () => {
+test("卡内换一个版本，封面图与点开落点跟着换", () => {
   const [accountingS5] = shelfCards();
-  const choice = { perCard: { "agency-accounting-s5": "navy" } };
+  const choice = { perCard: { "agency-accounting-s5": "acct-s5-navy" } };
   const picked = materialCatalogActiveRecord(accountingS5, choice);
   assert.equal(picked.entry.id, "acct-s5-navy");
   assert.equal(picked.entry.thumbUrl, "https://assets.example/acct-s5-navy.webp");
@@ -187,28 +198,77 @@ test("卡内换皮肤，封面图与点开落点跟着换", () => {
   assert.equal(materialCatalogActiveSkin(accountingS6, choice), "paper");
 });
 
-test("只有一张皮的组不长切换条；多张皮的组给出该组实有的那几种", () => {
+test("组内重复皮肤的版本不许被丢掉（A1：变体的身份是行不是皮肤）", () => {
+  // `W01` 实测 15/403 组内部有重复皮肤：两版都是 paper，只是模板不同。
+  const twinSkins = [
+    { id: "loan-a", tpl: "biz-loan-0071", cover: true },
+    { id: "loan-b", tpl: "biz-loan-0209", cover: false },
+  ].map(({ id, tpl, cover }) =>
+    templateRow({
+      id,
+      tpl,
+      title: "理财贷款服务站",
+      group: "agency-loan-s5",
+      sub: "loan",
+      shape: "s5",
+      skin: "paper",
+      cover,
+    }),
+  );
+  const [card] = shelfCards(twinSkins);
+  assert.deepEqual(
+    card.variants.map((variant) => variant.key),
+    ["biz-loan-0071", "biz-loan-0209"],
+  );
+  // 风格标签这一层照旧去重：这一件只「能做成」一种风格。
+  assert.deepEqual(materialCatalogCardSkins(card), ["paper"]);
+  const chips = materialCatalogVariantChips(card);
+  assert.deepEqual(
+    chips.map((chip) => [chip.ordinal, chip.key]),
+    [
+      [1, "biz-loan-0071"],
+      [2, "biz-loan-0209"],
+    ],
+  );
+  assert.equal(
+    materialCatalogActiveRecord(card, {
+      perCard: { "agency-loan-s5": "biz-loan-0209" },
+    }).entry.id,
+    "loan-b",
+  );
+});
+
+test("只有一版的组不长切换条；多版的组按序号出格子，默认选中组封面", () => {
   const [accountingS5, , law] = shelfCards();
-  assert.deepEqual(materialCatalogSkinChips(law), []);
-  const chips = materialCatalogSkinChips(accountingS5);
+  assert.deepEqual(materialCatalogVariantChips(law), []);
+  const chips = materialCatalogVariantChips(accountingS5);
   assert.deepEqual(
-    chips.map((chip) => chip.skin),
-    ["paper", "navy", "glass"],
+    chips.map((chip) => chip.ordinal),
+    [1, 2, 3],
   );
   assert.deepEqual(
-    chips.map((chip) => chip.label),
-    ["素白", "深蓝", "玻璃"],
+    chips.map((chip) => chip.key),
+    ["acct-s5-paper", "acct-s5-glass", "acct-s5-navy"],
   );
+  // 皮肤名只是附注，不是这一版的名字——切换条的正式文案是「版本 n」，由组件走 i18n。
   for (const chip of chips) {
-    assert.equal(chip.label, MATERIAL_SKIN_LABELS[chip.skin]);
+    assert.equal(chip.skinLabel, MATERIAL_SKIN_LABELS[chip.skin]);
   }
   assert.deepEqual(
-    chips.filter((chip) => chip.selected).map((chip) => chip.skin),
-    ["paper"],
+    chips.filter((chip) => chip.selected).map((chip) => chip.ordinal),
+    [1],
   );
   assert.deepEqual(
-    chips.filter((chip) => chip.cover).map((chip) => chip.skin),
-    ["paper"],
+    chips.filter((chip) => chip.cover).map((chip) => chip.ordinal),
+    [1],
+  );
+  // 点了第二版之后，选中的就是第二版。
+  const switched = materialCatalogVariantChips(accountingS5, {
+    perCard: { "agency-accounting-s5": "acct-s5-glass" },
+  });
+  assert.deepEqual(
+    switched.filter((chip) => chip.selected).map((chip) => chip.ordinal),
+    [2],
   );
 });
 
@@ -226,9 +286,9 @@ test("分组卡标题不再带皮肤，页数保留", () => {
       );
     }
   }
-  // 换皮肤只换封面，不换标题——标题一变，同一件东西看起来又成了两件。
+  // 换版本只换封面，不换标题——标题一变，同一件东西看起来又成了两件。
   const swapped = materialCatalogEntries(shelfCards(), {
-    perCard: { "agency-accounting-s5": "glass" },
+    perCard: { "agency-accounting-s5": "acct-s5-glass" },
   });
   assert.equal(swapped[0].title, entries[0].title);
   assert.equal(swapped[0].id, "acct-s5-glass");

@@ -14,18 +14,25 @@ import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 /**
  * 货架的轴是「行业 × 内容」，风格是标签。
  *
- * 数据侧一件网站模板会铺成十行——同一个标题、同一套页面，只是配色不同。翻下去看到的
- * 就是同一个名字连着出现四五次。这一层把带 `group:` 的那些行收成**一张卡**：卡面是
- * `groupcover:1` 那一行，同组其余皮肤挂在卡内当切换项。
+ * 数据侧一件网站模板会铺成十行——同一个标题、同一个页数，翻下去看到的就是同一个名字
+ * 连着出现四五次。这一层把带 `group:` 的那些行收成**一张卡**：卡面是 `groupcover:1`
+ * 那一行，同组其余各行挂在卡内当「换一个版本」的切换项。
+ *
+ * 同组的多行**不是同一件东西的几种配色**：`tpl:` 实测 500 行有 499 个不同值，
+ * 且有 15/403 组内部出现重复皮肤，所以它们是同一「行业子类 × 内容形态 × 页数」下
+ * 各自独立的模板版本。因此**变体的身份是「行」而不是「皮肤」**——按皮肤去重会把
+ * 重复皮肤的那些版本整行丢掉。`skin:` 只继续充当筛选标签。
  *
  * **没有 `group:` 标签的行逐字不变，各自单独成卡。** 本波只重排网站货架；PPT、图片、
  * 音频那几类的货架必须一行一卡、标题一个字不改。这条是回归红线。
  */
 
 export interface MaterialCatalogVariant {
-  /** `skin:<键>` 的机读值。 */
+  /** 这一版在组里的稳定身份：模板键 `tpl:` 优先，缺了退回行 id。 */
+  key: string;
+  /** `skin:<键>` 的机读值。只用于筛选标签，不是这一版的身份。 */
   skin: string;
-  /** 这一张是不是 `groupcover:1`（组封面与默认皮肤）。 */
+  /** 这一版是不是 `groupcover:1`（组封面与默认版本）。 */
   cover: boolean;
   record: MaterialFacetRecord;
 }
@@ -38,15 +45,15 @@ export interface MaterialCatalogCard {
   grouped: boolean;
   /** 卡面默认展示的那一行。分组卡 = `groupcover:1`，未分组行 = 它自己。 */
   cover: MaterialFacetRecord;
-  /** 卡内可切换的皮肤。未分组行永远是空数组（卡里不长出切换条）。 */
+  /** 卡内可切换的版本，组封面排第一。未分组行永远是空数组（卡里不长出切换条）。 */
   variants: MaterialCatalogVariant[];
 }
 
-/** 卡内选了哪张皮肤：面板选的是全局标签，卡上点的是这一张卡的偏好。 */
-export interface MaterialCatalogSkinChoice {
+/** 卡面展示哪一版：面板选的是全局标签，卡上点的是这一张卡的偏好。 */
+export interface MaterialCatalogVariantChoice {
   /** 筛选面板选中的风格标签：有这张皮的组切过去，没有的组保持组封面。 */
   skin?: string;
-  /** 用户在某张卡里点过的皮肤，键是 `groupKey`。 */
+  /** 用户在某张卡里点过的那一版，键是 `groupKey`，值是 `MaterialCatalogVariant.key`。 */
   perCard?: Readonly<Record<string, string>>;
 }
 
@@ -63,6 +70,10 @@ function isGroupCover(record: MaterialFacetRecord): boolean {
 
 function skinOf(record: MaterialFacetRecord): string {
   return (record.facets.skin || "").trim();
+}
+
+function variantKeyOf(record: MaterialFacetRecord): string {
+  return (record.facets.tpl || "").trim() || String(record.entry.id);
 }
 
 /**
@@ -90,6 +101,7 @@ export function materialCatalogCards(
     }
     const seen = groupIndex.get(groupKey);
     const variant: MaterialCatalogVariant = {
+      key: variantKeyOf(record),
       skin: skinOf(record),
       cover: isGroupCover(record),
       record,
@@ -111,49 +123,66 @@ export function materialCatalogCards(
   });
   for (const card of cards) {
     if (!card.grouped) continue;
-    const bySkin = new Map<string, MaterialCatalogVariant>();
-    for (const variant of card.variants) {
-      if (!variant.skin || bySkin.has(variant.skin)) continue;
-      bySkin.set(variant.skin, variant);
-    }
-    card.variants = [...bySkin.values()].sort((left, right) => {
-      const leftRank = SKIN_RANK.get(left.skin) ?? Number.MAX_SAFE_INTEGER;
-      const rightRank = SKIN_RANK.get(right.skin) ?? Number.MAX_SAFE_INTEGER;
-      return leftRank - rightRank || left.skin.localeCompare(right.skin);
-    });
+    // 组封面排第一（它就是「版本 1」），其余保持数据里的行序：这一层不重排版本，
+    // 哪一行当封面是数据侧的裁定（`W01` 按实测皮肤分布 → 皮肤键 → position → id 定）。
+    const cover = card.variants.filter((variant) => variant.record === card.cover);
+    const rest = card.variants.filter((variant) => variant.record !== card.cover);
+    card.variants = [...cover, ...rest];
   }
   return cards;
 }
 
-/** 这张卡实际有哪几种皮肤（10 种里的子集）。未分组行返回空数组。 */
+/** 这张卡实际有哪几种皮肤（10 种里的子集，去重后按声明序）。未分组行返回空数组。 */
 export function materialCatalogCardSkins(card: MaterialCatalogCard): string[] {
-  return card.variants.map((variant) => variant.skin);
+  const skins = new Set<string>();
+  for (const variant of card.variants) {
+    if (variant.skin) skins.add(variant.skin);
+  }
+  return [...skins].sort((left, right) => {
+    const leftRank = SKIN_RANK.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = SKIN_RANK.get(right) ?? Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank || left.localeCompare(right);
+  });
 }
 
-/** 卡面此刻该显示哪张皮肤：卡内点过的 > 面板选的（该组有才算） > 组封面。 */
+/**
+ * 卡面此刻是哪一版：卡内点过的 > 面板选中的风格（该组有才算） > 组封面。
+ *
+ * 面板那一路只按 `skin` 找**第一版**匹配的：风格是标签，它回答的是「这一件也能做成
+ * 这个风格」，不是「这一件有几版」。
+ */
+export function materialCatalogActiveVariant(
+  card: MaterialCatalogCard,
+  choice: MaterialCatalogVariantChoice = {},
+): MaterialCatalogVariant | null {
+  if (!card.grouped || card.variants.length === 0) return null;
+  const picked = choice.perCard?.[card.groupKey];
+  const byKey = picked
+    ? card.variants.find((variant) => variant.key === picked)
+    : undefined;
+  if (byKey) return byKey;
+  const tagged = choice.skin
+    ? card.variants.find((variant) => variant.skin === choice.skin)
+    : undefined;
+  if (tagged) return tagged;
+  return card.variants.find((variant) => variant.cover) || card.variants[0];
+}
+
+/** 卡面此刻显示的那张皮肤。筛选面板与计数用它，卡内切换的身份不是它。 */
 export function materialCatalogActiveSkin(
   card: MaterialCatalogCard,
-  choice: MaterialCatalogSkinChoice = {},
+  choice: MaterialCatalogVariantChoice = {},
 ): string {
-  if (!card.grouped) return skinOf(card.cover);
-  const skins = new Set(materialCatalogCardSkins(card));
-  const picked = choice.perCard?.[card.groupKey];
-  if (picked && skins.has(picked)) return picked;
-  const tagged = choice.skin;
-  if (tagged && skins.has(tagged)) return tagged;
-  return skinOf(card.cover);
+  const variant = materialCatalogActiveVariant(card, choice);
+  return variant ? variant.skin : skinOf(card.cover);
 }
 
 /** 卡面此刻代表的那一行（点开、封面图都跟着它走）。 */
 export function materialCatalogActiveRecord(
   card: MaterialCatalogCard,
-  choice: MaterialCatalogSkinChoice = {},
+  choice: MaterialCatalogVariantChoice = {},
 ): MaterialFacetRecord {
-  if (!card.grouped) return card.cover;
-  const skin = materialCatalogActiveSkin(card, choice);
-  return (
-    card.variants.find((variant) => variant.skin === skin)?.record || card.cover
-  );
+  return materialCatalogActiveVariant(card, choice)?.record || card.cover;
 }
 
 /**
@@ -228,7 +257,7 @@ function disambiguated(title: string, suffix: string): string {
  */
 export function materialCatalogEntries(
   cards: readonly MaterialCatalogCard[],
-  choice: MaterialCatalogSkinChoice = {},
+  choice: MaterialCatalogVariantChoice = {},
 ): WorkspaceLibraryEntry[] {
   const entries = cards.map((card) =>
     materialFacetCardEntry(materialCatalogActiveRecord(card, choice), {
@@ -260,24 +289,35 @@ export function materialCatalogEntries(
   );
 }
 
-/** 卡内切换条的一格。展示词走 `MATERIAL_SKIN_LABELS`，不在组件里硬编中文。 */
-export interface MaterialCatalogSkinChip {
+/**
+ * 卡内切换条的一格 =「这一件的第 n 个版本」。
+ *
+ * 这里**不出中文**：序号交给组件走 i18n 拼成文案，`skinLabel` 只是给读者的一句附注
+ * （悬停/无障碍说明里用），既不是这一版的名字，也不代表「换个配色」。
+ */
+export interface MaterialCatalogVariantChip {
+  key: string;
+  /** 第几版，从 1 起。 */
+  ordinal: number;
   skin: string;
-  label: string;
+  skinLabel: string;
   selected: boolean;
   cover: boolean;
 }
 
-export function materialCatalogSkinChips(
+/** 只有一版的组不长切换条：一颗孤零零的按钮只会让人以为还有别的可点。 */
+export function materialCatalogVariantChips(
   card: MaterialCatalogCard,
-  choice: MaterialCatalogSkinChoice = {},
-): MaterialCatalogSkinChip[] {
+  choice: MaterialCatalogVariantChoice = {},
+): MaterialCatalogVariantChip[] {
   if (!card.grouped || card.variants.length < 2) return [];
-  const active = materialCatalogActiveSkin(card, choice);
-  return card.variants.map((variant) => ({
+  const active = materialCatalogActiveVariant(card, choice);
+  return card.variants.map((variant, index) => ({
+    key: variant.key,
+    ordinal: index + 1,
     skin: variant.skin,
-    label: MATERIAL_SKIN_LABELS[variant.skin] || variant.skin,
-    selected: variant.skin === active,
+    skinLabel: MATERIAL_SKIN_LABELS[variant.skin] || variant.skin,
+    selected: variant === active,
     cover: variant.cover,
   }));
 }
