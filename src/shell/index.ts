@@ -702,6 +702,9 @@ export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
 export { FileLibrary, LIBRARY_TABS, type FileLibraryProps, type SiteOption, type LibraryTab } from "./FileLibrary";
 export { LocalTaskLauncher } from './LocalTaskLauncher';
+// 手机上「发送到电脑」的落点选择器 —— 手机拍的照片、录的音落进那台电脑已授权的
+// 目录。浏览器里它渲染 `null`（这件事浏览器做不到，入口就不该出现）。
+export { LocalFileHandoffLauncher, type LocalFileHandoffLauncherProps } from './LocalTaskLauncher';
 export { LocalTaskProgress } from './LocalTaskProgress';
 // 本机能力的产品面（W09，2026-08-20）：文件树 + 统一动作台。六个动作的表单与状态只有
 // 这一份，站点两个入口（/devices、/library 的本地库插槽）只负责挂载。

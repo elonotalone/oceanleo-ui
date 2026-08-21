@@ -3697,6 +3697,12 @@
         },
         {
           "kind": "named",
+          "name": "LocalFileHandoffLauncher",
+          "importedName": "LocalFileHandoffLauncher",
+          "source": "./LocalTaskLauncher"
+        },
+        {
+          "kind": "named",
           "name": "LocalFileTree",
           "importedName": "LocalFileTree",
           "source": "./LocalFileTree"
@@ -5638,6 +5644,12 @@
           "name": "LocalActionConsoleProps",
           "importedName": "LocalActionConsoleProps",
           "source": "./LocalActionConsole"
+        },
+        {
+          "kind": "type",
+          "name": "LocalFileHandoffLauncherProps",
+          "importedName": "LocalFileHandoffLauncherProps",
+          "source": "./LocalTaskLauncher"
         },
         {
           "kind": "type",
