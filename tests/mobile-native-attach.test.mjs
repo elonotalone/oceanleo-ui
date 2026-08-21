@@ -27,7 +27,7 @@ import test from "node:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -100,6 +100,14 @@ const OVERRIDES = {
   "../i18n/ui/useUI": dataModule(
     "export function useUI(){ return (zh) => String(zh); }",
   ),
+  // 「发送到电脑」要问网关「我的哪几台电脑能收、各自授权了哪些文件夹」，所以登录
+  // 令牌要能由测试拨动。**只换 `accessToken` 这一个名字**，同一份模块里别人用的
+  // `browserClient` 等照旧走真源码（`export *` 会被下面这行同名声明盖住）。
+  // 网关地址不桩：断言只看路径与查询参数，跟真地址无关。
+  "../lib/auth/client": dataModule(
+    `export * from ${JSON.stringify(realModule("src/lib/auth/client.ts"))};\n` +
+      "export async function accessToken(){ return globalThis.__W06_TOKEN__ ?? null; }",
+  ),
   "next/navigation": dataModule(
     "export function useRouter(){ return { push(){}, replace(){}, refresh(){}, back(){} }; }\n" +
       "export function useSearchParams(){ return new URLSearchParams(); }\n" +
@@ -132,6 +140,8 @@ const NATIVE_MODULE_ABSENT = dataModule(`
   export function NativeAttachSheet(){ return null; }
   export function useNativeTaskNotifications(){}
   export function requestTaskNotificationsOnce(){}
+  export function useNativeHandoffEntry(){ return ABSENT_HANDOFF; }
+  const ABSENT_HANDOFF = { action: null, panel: null };
 `);
 
 async function load(file, extraOverrides = {}) {
@@ -192,14 +202,35 @@ function attachMenuButton(container) {
 
 const NATIVE_LABELS = ["拍照", "从相册选择", "选择文件"];
 
+/** 那台电脑心跳时报上来的授权目录 —— 落点列表只许从这里长出来。 */
+const DESKTOP_ROW = {
+  device_id: "dev-desktop",
+  device_name: "书房台式机",
+  platform: "windows",
+  online: true,
+  granted_roots: ["D:\\工作\\发票", "D:\\照片"],
+  granted_roots_source: "heartbeat",
+};
+
+/** 手机自己也在配对列表里 —— 它不该出现在「发到哪台电脑」的选项里。 */
+const PHONE_ROW = {
+  device_id: "dev-phone",
+  device_name: "我的手机",
+  platform: "android",
+  online: true,
+  granted_roots: ["/sdcard/DCIM"],
+  granted_roots_source: "heartbeat",
+};
+
 /** 伪造的 Capacitor 宿主 + 网站侧桥句柄（桥自己的行为由 mobile-bridge 那份测试守）。 */
-function installNativeHost() {
+function installNativeHost({ devices = [DESKTOP_ROW, PHONE_ROW] } = {}) {
   const seen = {
     scanWithCamera: 0,
     pickPhotos: 0,
     pickFiles: 0,
     ensureTaskNotifications: 0,
     notified: [],
+    deviceRequests: [],
   };
   window.Capacitor = {
     isNativePlatform: () => true,
@@ -240,18 +271,33 @@ function installNativeHost() {
   };
   // 原生选择器交回来的是 webview URL，页面得自己去取字节。
   const previousFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
-    async blob() {
-      const blob = new window.Blob(["bytes"], { type: "image/jpeg" });
-      blob.arrayBuffer ??= async () => new ArrayBuffer(5);
-      return blob;
-    },
-  });
+  globalThis.__W06_TOKEN__ = "w06-test-token";
+  globalThis.fetch = async (url, init) => {
+    const href = String(url ?? "");
+    if (href.includes("/v1/devices")) {
+      seen.deviceRequests.push({ href, headers: init?.headers ?? {} });
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return { devices };
+        },
+      };
+    }
+    return {
+      async blob() {
+        const blob = new window.Blob(["bytes"], { type: "image/jpeg" });
+        blob.arrayBuffer ??= async () => new ArrayBuffer(5);
+        return blob;
+      },
+    };
+  };
   return {
     seen,
     remove() {
       delete window.Capacitor;
       delete window.oceanleoMobile;
+      delete globalThis.__W06_TOKEN__;
       globalThis.fetch = previousFetch;
     },
   };
@@ -475,6 +521,244 @@ test("原生：InputCard 那颗上传按钮弹出三选一，按钮本身还是�
     await view.unmount();
   } finally {
     native.remove();
+  }
+});
+
+/* ================================================================== *
+ * 2.1 「发送到电脑」：手机拍的照片落进那台电脑的授权目录（A14 接线）
+ *
+ * 这一段守的是**可达性**：送达逻辑再对，没有一个入口能点到它，用户就还是
+ * 看不见这个功能。所以断言从「菜单里有那一行」一直走到「面板里出现的落点
+ * 逐字等于那台电脑上报的目录」。
+ * ================================================================== */
+
+const HANDOFF_LABEL = "发送到电脑";
+
+function handoffPanel(container) {
+  return container.querySelector("[data-native-handoff-panel]");
+}
+
+async function openHandoffFromMenu(view) {
+  await view.click(attachMenuButton(view.container));
+  const row = buttonLabelled(view.container, HANDOFF_LABEL);
+  assert.ok(row, `「＋」菜单里没有「${HANDOFF_LABEL}」这一行 —— 功能等于不存在`);
+  await view.click(row);
+  await act(async () => {});
+  await act(async () => {});
+  return row;
+}
+
+test("原生：「＋」菜单里三项旁边多一行「发送到电脑」，点开就是那台电脑的授权目录", async () => {
+  const native = installNativeHost();
+  try {
+    const view = await mount(composerReal.LeoComposer, COMPOSER_PROPS);
+    await openHandoffFromMenu(view);
+
+    const panel = handoffPanel(view.container);
+    assert.ok(panel, "点了「发送到电脑」却没有落点选择器 —— 这就是零调用方的样子");
+    assert.equal(
+      panel.getAttribute("data-native-handoff-panel"),
+      "ready",
+      "落点清单没取到（面板停在 loading/error）",
+    );
+
+    const folderSelect = panel.querySelector("[data-file-handoff-folder]");
+    assert.ok(folderSelect, "落点下拉框不见了");
+    assert.deepEqual(
+      [...folderSelect.querySelectorAll("option")].map((option) => option.value),
+      DESKTOP_ROW.granted_roots,
+      "落点选项必须逐字等于那台电脑心跳报上来的目录",
+    );
+
+    assert.ok(
+      buttonLabelled(panel, `发送到${DESKTOP_ROW.device_name}`),
+      "缺了那颗真正会发的按钮",
+    );
+    assert.equal(
+      panel.querySelectorAll("input, textarea, [contenteditable]").length,
+      0,
+      "面板里出现了能打字的框 —— 手敲的路径那台电脑一定会拒，等于先请用户瞄准再拒绝他",
+    );
+
+    assert.equal(native.seen.deviceRequests.length, 1, "没有去问那台电脑授权了哪些文件夹");
+    const request = native.seen.deviceRequests[0];
+    assert.match(request.href, /\/v1\/devices\?folders=true$/, "取落点清单的地址不对");
+    assert.match(
+      String(request.headers.Authorization ?? ""),
+      /^Bearer /,
+      "取落点清单没带登录令牌",
+    );
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("原生：手机自己不出现在「发到哪台电脑」里 —— 把照片发给自己没有意义", async () => {
+  const native = installNativeHost();
+  try {
+    const view = await mount(composerReal.LeoComposer, COMPOSER_PROPS);
+    await openHandoffFromMenu(view);
+
+    const panel = handoffPanel(view.container);
+    assert.doesNotMatch(panel.textContent, /我的手机/, "手机被列成了落点");
+    assert.equal(
+      panel.querySelector("[data-native-handoff-device]"),
+      null,
+      "只有一台电脑能收时不该多一个选电脑的下拉框",
+    );
+    assert.doesNotMatch(
+      panel.textContent,
+      /sdcard/,
+      "手机上的目录混进了那台电脑的落点列表",
+    );
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("原生：那台电脑一个文件夹都没授权时，发送键点不动，也不给手敲的框", async () => {
+  const native = installNativeHost({
+    devices: [
+      {
+        ...DESKTOP_ROW,
+        granted_roots: [],
+        granted_roots_source: "heartbeat",
+      },
+    ],
+  });
+  try {
+    const view = await mount(composerReal.LeoComposer, COMPOSER_PROPS);
+    await openHandoffFromMenu(view);
+
+    const panel = handoffPanel(view.container);
+    assert.equal(panel.querySelector("[data-file-handoff-folder]"), null, "空列表还给了下拉框");
+    const send = buttonLabelled(panel, `发送到${DESKTOP_ROW.device_name}`);
+    assert.ok(send, "按钮不该消失 —— 用户要看到它为什么不能点");
+    assert.equal(send.disabled, true, "没有落点却让人点得动，点了必然被拒");
+    assert.match(
+      panel.querySelector("[data-file-handoff-note]").textContent,
+      /授权/,
+      "没说清下一步是「去那台电脑上授权一个文件夹」",
+    );
+    assert.equal(
+      panel.querySelectorAll("input, textarea, [contenteditable]").length,
+      0,
+      "没有落点时更不许出现一个空框让人猜路径",
+    );
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("原生：两台电脑都能收时才出现「发到哪台电脑」，且换台电脑就换它自己的目录", async () => {
+  const secondDesktop = {
+    device_id: "dev-laptop",
+    device_name: "出差笔记本",
+    platform: "macos",
+    online: true,
+    granted_roots: ["/Users/me/Desktop"],
+    granted_roots_source: "heartbeat",
+  };
+  const native = installNativeHost({ devices: [DESKTOP_ROW, secondDesktop, PHONE_ROW] });
+  try {
+    const view = await mount(composerReal.LeoComposer, COMPOSER_PROPS);
+    await openHandoffFromMenu(view);
+
+    const panel = handoffPanel(view.container);
+    const deviceSelect = panel.querySelector("[data-native-handoff-device]");
+    assert.ok(deviceSelect, "两台电脑都能收，却没有地方选发给哪一台");
+    assert.deepEqual(
+      [...deviceSelect.querySelectorAll("option")].map((option) => option.value),
+      [DESKTOP_ROW.device_id, secondDesktop.device_id],
+      "选项必须是我自己那几台电脑，一台不多一台不少",
+    );
+
+    deviceSelect.value = secondDesktop.device_id;
+    await act(async () => {
+      deviceSelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+
+    assert.deepEqual(
+      [
+        ...handoffPanel(view.container)
+          .querySelector("[data-file-handoff-folder]")
+          .querySelectorAll("option"),
+      ].map((option) => option.value),
+      secondDesktop.granted_roots,
+      "换了电脑，落点却还是上一台的目录",
+    );
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("原生：InputCard 的三选一里也有「发送到电脑」，还是同一颗上传按钮", async () => {
+  const native = installNativeHost();
+  try {
+    const view = await mount(inputCardReal.InputCard, {
+      value: "",
+      onChange() {},
+      onSubmit() {},
+      onFiles() {},
+    });
+
+    const upload = buttonLabelled(view.container, "上传文件（可多选）");
+    await view.click(upload);
+    const row = buttonLabelled(view.container, HANDOFF_LABEL);
+    assert.ok(row, "InputCard 的三选一里缺了「发送到电脑」");
+    await view.click(row);
+    await act(async () => {});
+    await act(async () => {});
+
+    assert.ok(handoffPanel(view.container), "InputCard 上点了没有落点选择器");
+    assert.equal(
+      view.container.querySelectorAll('button[aria-label="收起"]').length,
+      1,
+      "面板被渲染了两份",
+    );
+
+    await view.unmount();
+  } finally {
+    native.remove();
+  }
+});
+
+test("浏览器：「发送到电脑」这一行不存在，也不去问网关我的电脑有哪些", async () => {
+  assert.equal(window.Capacitor, undefined, "这一节必须在没有原生宿主的窗口里跑");
+  const calls = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url ?? ""));
+    return { ok: true, status: 200, async json() { return { devices: [] }; } };
+  };
+  try {
+    const view = await mount(composerReal.LeoComposer, COMPOSER_PROPS);
+    await view.click(attachMenuButton(view.container));
+    await act(async () => {});
+
+    assert.equal(
+      buttonLabelled(view.container, HANDOFF_LABEL),
+      undefined,
+      "浏览器里出现了「发送到电脑」—— 它承诺的正是浏览器做不到的那件事",
+    );
+    assert.equal(handoffPanel(view.container), null, "浏览器里渲出了落点面板");
+    assert.equal(
+      calls.filter((href) => href.includes("/v1/devices")).length,
+      0,
+      "浏览器里为手机功能白问了一趟网关",
+    );
+
+    await view.unmount();
+  } finally {
+    globalThis.fetch = previousFetch;
   }
 });
 

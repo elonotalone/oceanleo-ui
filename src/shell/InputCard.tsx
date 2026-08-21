@@ -34,6 +34,7 @@ import { StudioSection } from "./StudioSection";
 import {
   NativeAttachSheet,
   useNativeAttachActions,
+  useNativeHandoffEntry,
 } from "./mobile-native-actions";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -128,6 +129,12 @@ export function InputCard({
   // 不多一颗按钮，也不为手机另开一套上传实现（三项照样回到下面的 onFiles）。
   // 普通浏览器里它恒为空数组：按钮照旧直接开文件选择器，DOM 一个字节不变。
   const nativeAttachActions = useNativeAttachActions({ onFiles, accept, multiple });
+  // 手机上多的第四项：「发送到电脑」——把刚拍的照片直接送进那台电脑已授权的目录。
+  // 它挂在同一张三选一里，不再多一颗按钮；浏览器里 action 与 panel 都是 null。
+  const nativeHandoff = useNativeHandoffEntry();
+  const nativeSheetActions = nativeHandoff.action
+    ? [...nativeAttachActions, nativeHandoff.action]
+    : nativeAttachActions;
   const [nativeSheetOpen, setNativeSheetOpen] = useState(false);
 
   const hasContent = Boolean(value.trim()) || (attachments?.length ?? 0) > 0;
@@ -212,16 +219,18 @@ export function InputCard({
       {belowComposer}
 
       <NativeAttachSheet
-        actions={nativeAttachActions}
+        actions={nativeSheetActions}
         open={nativeSheetOpen}
         onClose={() => setNativeSheetOpen(false)}
       />
+
+      {nativeHandoff.panel}
 
       {onFiles && (
         <button
           type="button"
           onClick={() =>
-            nativeAttachActions.length > 0
+            nativeSheetActions.length > 0
               ? setNativeSheetOpen((v) => !v)
               : fileRef.current?.click()
           }

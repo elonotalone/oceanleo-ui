@@ -18,6 +18,7 @@ import { useFillNonce, useFillTemplate } from "./guide-context";
 import {
   requestTaskNotificationsOnce,
   useNativeAttachActions,
+  useNativeHandoffEntry,
   useNativeTaskNotifications,
   type NativeAttachAction,
 } from "./mobile-native-actions";
@@ -241,6 +242,13 @@ export function LeoComposer({
     accept,
     multiple,
   });
+  // 手机上多的第四项：「发送到电脑」—— 刚拍的照片直接落进那台电脑已授权的目录，
+  // 不用先上传到网站再从电脑上下载。它挂在上面三项旁边（同一个「＋」菜单里），
+  // 展开的落点选择器渲染在工具条上方。浏览器里 action 与 panel 都是 null。
+  const nativeHandoff = useNativeHandoffEntry();
+  const menuNativeActions = nativeHandoff.action
+    ? [...nativeAttachActions, nativeHandoff.action]
+    : nativeAttachActions;
   // 任务跑完推一条系统通知（手机后台/息屏时才推）。浏览器里是空操作。
   useNativeTaskNotifications();
 
@@ -418,13 +426,18 @@ export function LeoComposer({
         </div>
       )}
 
+      {/* 「发送到电脑」的落点选择器。浏览器里 nativeHandoff.panel 恒为 null。 */}
+      {hasAttachMenu && nativeHandoff.panel && (
+        <div className="px-4 pb-2">{nativeHandoff.panel}</div>
+      )}
+
       <div className="flex items-center justify-between px-4 pb-3.5">
         <div className="flex flex-wrap items-center gap-2">
           {hasAttachMenu && (
             <AttachMenu
               onAttachFiles={onAttachFiles}
               openFilePicker={() => fileRef.current?.click()}
-              nativeActions={nativeAttachActions}
+              nativeActions={menuNativeActions}
               recentFiles={recentFiles}
               onPickRecent={onPickRecent}
               recentLoading={recentLoading}

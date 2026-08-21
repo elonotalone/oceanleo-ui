@@ -37,6 +37,10 @@ import {
   type MobileResult,
   type NativeHost,
 } from "./mobile-bridge";
+import { LocalFileHandoffLauncher } from "./LocalTaskLauncher";
+import { parseHandoffFolders, type HandoffFolders } from "./mobile-file-handoff";
+import { accessToken } from "../lib/auth/client";
+import { GATEWAY_BASE } from "../lib/auth/config";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 /** 站点在任务真的跑完时派发这个事件，手机上就会收到系统通知。 */
@@ -44,7 +48,7 @@ export const TASK_FINISHED_EVENT = "oceanleo:task-finished";
 
 /** 一项原生入口（「＋」菜单里的一行 / 上传按钮弹出的一项）。 */
 export interface NativeAttachAction {
-  id: "camera" | "photos" | "files";
+  id: "camera" | "photos" | "files" | "handoff";
   label: string;
   icon: ReactNode;
   onClick: () => void;
@@ -232,6 +236,231 @@ export function NativeAttachSheet({
 }
 
 /* ------------------------------------------------------------------ *
+ * 发送到电脑：手机拍的照片、录的音落进那台电脑已授权的目录
+ * ------------------------------------------------------------------ */
+
+/** 一台能接收文件的电脑（手机自己不算 —— 把照片发给手机自己没有意义）。 */
+export interface HandoffDevice {
+  deviceId: string;
+  deviceName: string;
+  online: boolean;
+  folders: HandoffFolders;
+}
+
+export type HandoffDevicesState =
+  | { status: "loading" }
+  | { status: "ready"; devices: HandoffDevice[] }
+  | { status: "error"; message: string };
+
+const HANDOFF_LOADING: HandoffDevicesState = { status: "loading" };
+
+/** 电脑才收得下文件。手机/平板配对进来的行不列进落点，免得用户发给自己。 */
+const DESKTOP_PLATFORMS: ReadonlySet<string> = new Set(["windows", "macos", "linux"]);
+
+/**
+ * 取「我的哪几台电脑能收、各自授权了哪些文件夹」。
+ *
+ * `folders=true` 是网关既有 `GET /v1/devices` 上的查询参数，默认不带 ⇒ 网站设备页的
+ * 成本一字节不变。**目录名只能来自这里**：界面上没有手敲路径的口子，因为手敲的路径
+ * 那台电脑一定会拒，让用户敲就是先请他瞄准再当面拒绝他。
+ */
+async function fetchHandoffDevices(): Promise<HandoffDevicesState> {
+  const token = await accessToken();
+  if (!token) {
+    return { status: "error", message: "登录后才能把文件发到你的电脑上。" };
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${GATEWAY_BASE}/v1/devices?folders=true`, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+  } catch {
+    return { status: "error", message: "网络断了，没能查到你的电脑。恢复后再试一次。" };
+  }
+  if (!response.ok) {
+    return {
+      status: "error",
+      message:
+        response.status === 401
+          ? "登录后才能把文件发到你的电脑上。"
+          : "暂时查不到你的电脑，稍后再试一次。",
+    };
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    return { status: "error", message: "暂时查不到你的电脑，稍后再试一次。" };
+  }
+  const rows =
+    payload && typeof payload === "object" && Array.isArray((payload as any).devices)
+      ? ((payload as any).devices as unknown[])
+      : [];
+  const devices: HandoffDevice[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const device = row as Record<string, unknown>;
+    const deviceId = String(device.device_id ?? "");
+    if (!deviceId) continue;
+    if (!DESKTOP_PLATFORMS.has(String(device.platform ?? ""))) continue;
+    devices.push({
+      deviceId,
+      deviceName: String(device.device_name || "这台电脑"),
+      online: device.online === true,
+      folders: parseHandoffFolders(device),
+    });
+  }
+  // 在线的排前面：离线的电脑收东西要等它上线，那是另一回事。
+  devices.sort((a, b) => Number(b.online) - Number(a.online));
+  return { status: "ready", devices };
+}
+
+export interface NativeHandoffEntry {
+  /** 「发送到电脑」那一行，挂在「拍照 / 从相册选择」旁边。浏览器里恒为 `null`。 */
+  action: NativeAttachAction | null;
+  /** 展开后的落点选择器。没展开、或不在原生宿主里，都是 `null`（浏览器零 DOM）。 */
+  panel: ReactNode;
+}
+
+/**
+ * 手机上那条「拍的照片直接落进那台电脑的授权目录」的入口。
+ *
+ * 送达本身、落点纪律、切片、失败文案都在 `mobile-file-handoff.ts` 与
+ * `LocalFileHandoffLauncher` 里，这里只做**接线**：多一行菜单项、展开时把
+ * 那台电脑与它上报的目录交给那个组件。
+ *
+ * 浏览器里 `useNativeHost()` 返回 `null` ⇒ 菜单项与面板都不存在。这不是保守，
+ * 是诚实：一个在浏览器里出现的「发送到电脑」承诺的正是浏览器做不到的事。
+ */
+export function useNativeHandoffEntry(): NativeHandoffEntry {
+  const tt = useUI();
+  const host = useNativeHost();
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<HandoffDevicesState>(HANDOFF_LOADING);
+  const [reloads, setReloads] = useState(0);
+  const [picked, setPicked] = useState("");
+
+  // 目录清单只在用户真的展开这个入口时才取一次：手机上每次打开输入框都去问一遍网关，
+  // 花的是用户的流量。
+  useEffect(() => {
+    if (!host || !open) return;
+    let alive = true;
+    setState(HANDOFF_LOADING);
+    void fetchHandoffDevices().then((next) => {
+      if (alive) setState(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [host, open, reloads]);
+
+  const action = useMemo<NativeAttachAction | null>(() => {
+    if (!host) return null;
+    return {
+      id: "handoff" as const,
+      label: tt("发送到电脑"),
+      icon: <DesktopGlyph />,
+      onClick: () => setOpen((value) => !value),
+    };
+  }, [host, tt]);
+
+  if (!host || !open) return { action, panel: null };
+
+  const devices = state.status === "ready" ? state.devices : [];
+  const target = devices.find((device) => device.deviceId === picked) || devices[0];
+
+  return {
+    action,
+    panel: (
+      <div
+        className="rounded-xl border border-neutral-200 bg-white p-3"
+        data-native-handoff-panel={state.status}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-medium text-neutral-800">
+            {tt("发送到电脑")}
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label={tt("收起")}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+          >
+            ×
+          </button>
+        </div>
+
+        {state.status === "loading" && (
+          <p className="text-[13px] text-neutral-500" role="status">
+            {tt("正在看你的哪几台电脑能收…")}
+          </p>
+        )}
+
+        {state.status === "error" && (
+          <div>
+            <p className="text-[13px] text-red-700" role="alert">
+              {state.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setReloads((value) => value + 1)}
+              className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-neutral-300 px-3 text-[13px] text-neutral-700"
+            >
+              {tt("重试")}
+            </button>
+          </div>
+        )}
+
+        {state.status === "ready" && devices.length === 0 && (
+          <div>
+            <p className="text-[13px] text-neutral-600">
+              {tt("你还没有一台配对好的电脑可以收东西。在那台电脑上装好 OceanLeo 并配对，这里就会出现它。")}
+            </p>
+            <a
+              href="/devices"
+              className="mt-2 inline-flex min-h-11 items-center rounded-lg bg-sky-600 px-4 text-[13px] font-medium text-white"
+            >
+              {tt("去连接一台电脑")}
+            </a>
+          </div>
+        )}
+
+        {target && (
+          <>
+            {devices.length > 1 && (
+              <label className="mb-2 block text-[13px] text-neutral-700">
+                {tt("发到哪台电脑")}
+                <select
+                  value={target.deviceId}
+                  onChange={(event) => setPicked(event.target.value)}
+                  className="mt-1 block w-full min-h-11 rounded-lg border border-neutral-300 px-3 py-2 text-[13px]"
+                  data-native-handoff-device
+                >
+                  {devices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.online
+                        ? device.deviceName
+                        : `${device.deviceName}（${tt("离线")}）`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <LocalFileHandoffLauncher
+              deviceId={target.deviceId}
+              deviceName={target.deviceName}
+              deviceOnline={target.online}
+              folders={target.folders}
+            />
+          </>
+        )}
+      </div>
+    ),
+  };
+}
+
+/* ------------------------------------------------------------------ *
  * 通知：只在第一次真的派活时要权限，只在用户没在看的时候推
  * ------------------------------------------------------------------ */
 
@@ -330,6 +559,15 @@ function AlbumGlyph() {
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <circle cx="8.5" cy="10" r="1.4" />
       <path d="M21 16l-5-5-8 8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DesktopGlyph() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M2 20h20" strokeLinecap="round" />
     </svg>
   );
 }
