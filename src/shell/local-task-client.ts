@@ -518,14 +518,95 @@ export const LOCAL_ACTION_LABELS: Record<LocalActionKind, string> = {
   "app.open": "在那台电脑上打开",
 };
 
+export interface LocalActionEffect {
+  /** 会改动那台电脑吗。协议 §4.1 只有三个动作是 true。 */
+  changesDevice: boolean;
+  /** 选中这个动作时先给一句话：它会做什么、改不改东西。 */
+  summary: string;
+}
+
+/**
+ * 每个动作**自己**声明它会不会改动那台电脑，以及一句话的影响。
+ *
+ * 为什么要有这张表：产品面对「会改东西的动作」处处都要另眼相待（预告块的警示色、
+ * 按钮从「发起」变成「确认并发起」、同意窗口的那句话）。这些判断以前散在两处：
+ * 一个只有动作名的集合，和组件里另写一份提示文案。两份各自演化就会出现
+ * 「按钮警示了、提示文案却说只读」这种自相矛盾的界面。现在只有这一张表。
+ */
+export const LOCAL_ACTION_EFFECTS: Record<LocalActionKind, LocalActionEffect> = {
+  "fs.list": {
+    changesDevice: false,
+    summary: "看看这个目录里有什么。只读，不会改动那台电脑。",
+  },
+  "fs.read_summary": {
+    changesDevice: false,
+    summary:
+      "看一个文件的结构：类型、大小，表格再看列名与行数。只读，不会改动那台电脑。",
+  },
+  "file.write": {
+    changesDevice: true,
+    summary: "把一段文本整份写进一个文件。会改动那台电脑：原内容被覆盖，且不自动备份。",
+  },
+  "python.run": {
+    changesDevice: true,
+    summary:
+      "用那台电脑自带的 Python 跑一段脚本处理已授权目录里的文件。会改动那台电脑：脚本能写文件、删文件。",
+  },
+  "shell.run": {
+    changesDevice: true,
+    summary:
+      "执行一条命令（不经过 shell，没有管道与重定向）。会改动那台电脑，而且每次都要在那台电脑上确认。",
+  },
+  "app.open": {
+    changesDevice: false,
+    summary: "让那台电脑用默认程序打开一个文件或应用。不改文件内容。",
+  },
+};
+
 /**
  * Protocol §4.1 marks `file.write` / `python.run` / `shell.run` as the actions
- * that change the machine. Everything the product face does differently for
- * them — the plan block, the consent sentence, the extra confirmation — hangs
- * off this one set, so the three can never drift apart.
+ * that change the machine. Derived from the table above so the set and the
+ * per-action copy can never disagree.
  */
 export const LOCAL_ACTIONS_THAT_CHANGE_THE_DEVICE: ReadonlySet<LocalActionKind> =
-  new Set(["file.write", "python.run", "shell.run"]);
+  new Set(
+    LOCAL_ACTION_KINDS.filter((kind) => LOCAL_ACTION_EFFECTS[kind].changesDevice),
+  );
+
+export function localActionChangesDevice(actionKind: LocalActionKind): boolean {
+  return LOCAL_ACTION_EFFECTS[actionKind]?.changesDevice ?? false;
+}
+
+/**
+ * 台账里那一行的状态。`undefined` 是「刚下单、还没有第一次轮询回来」，
+ * 它也要有话说 —— 一行没有状态的记录看起来就像丢了。
+ */
+export function localTaskStatusText(
+  status: LocalTaskStatus | undefined,
+  queuedOffline = false,
+): string {
+  if (!status) return queuedOffline ? "已排队（设备离线）" : "已排队";
+  switch (status) {
+    case "queued":
+      return queuedOffline ? "排队中（设备离线，上线后继续）" : "排队中";
+    case "claimed":
+      return "设备已领取";
+    case "running":
+      return "正在那台电脑上执行";
+    case "succeeded":
+      return "已完成";
+    case "failed":
+      return "执行失败";
+    case "denied":
+      return "被拒绝";
+    case "expired":
+      return "已过期";
+    case "cancelled":
+      return "已取消";
+    default:
+      return status;
+  }
+}
 
 /** Windows paths keep `\`; everything else joins with `/`. */
 export function localPathSeparator(path: string): "\\" | "/" {
@@ -610,7 +691,12 @@ export function describeLocalAction<K extends LocalActionKind>(
   const fields = (payload ?? {}) as Record<string, unknown>;
   const target = planTarget(fields);
   const scopeNote = `路径必须在${deviceName}上已经授权过的目录里；不在范围内的会被它当场拒绝，不会被悄悄执行。`;
-  const base = { actionKind, changesDevice: false, scopeNote };
+  // 「会不会改动那台电脑」只有一个出处：`LOCAL_ACTION_EFFECTS`。
+  const base = {
+    actionKind,
+    changesDevice: localActionChangesDevice(actionKind),
+    scopeNote,
+  };
 
   switch (actionKind) {
     case "fs.list":
@@ -642,7 +728,6 @@ export function describeLocalAction<K extends LocalActionKind>(
       const content = typeof fields.content_b64 === "string" ? fields.content_b64 : "";
       return {
         ...base,
-        changesDevice: true,
         title: `覆盖写入「${target}」`,
         facts: [
           { label: "目标文件", value: target },
@@ -658,7 +743,6 @@ export function describeLocalAction<K extends LocalActionKind>(
       const code = typeof fields.code === "string" ? fields.code : "";
       return {
         ...base,
-        changesDevice: true,
         title: `在「${target}」用${deviceName}自带的 Python 跑一段脚本`,
         facts: [
           { label: "工作目录", value: target },
@@ -674,7 +758,6 @@ export function describeLocalAction<K extends LocalActionKind>(
       const command = typeof fields.command === "string" ? fields.command : "";
       return {
         ...base,
-        changesDevice: true,
         title: `在「${target}」执行命令`,
         facts: [
           { label: "工作目录", value: target },

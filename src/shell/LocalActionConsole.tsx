@@ -13,8 +13,10 @@ import {
   isAbsoluteLocalPath,
   joinLocalPath,
   localActionOutcomeText,
+  localTaskStatusText,
   localTextToBase64,
   watchLocalTask,
+  LOCAL_ACTION_EFFECTS,
   LOCAL_ACTION_KINDS,
   LOCAL_ACTION_LABELS,
   LOCAL_ACTIONS_THAT_CHANGE_THE_DEVICE,
@@ -57,6 +59,8 @@ export interface LocalActionConsoleProps {
   devicesHref?: string;
   showFileTree?: boolean;
   className?: string;
+  /** 打开时先选中哪个动作。宿主想直接把用户送到某个动作上时用。 */
+  initialActionKind?: LocalActionKind;
   /** 测试缝；产品调用方一律不传。 */
   runAction?: StartLocalActionOptions;
   now?: () => number;
@@ -80,15 +84,6 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "cancelled",
 ]);
 
-const ACTION_HINTS: Record<LocalActionKind, string> = {
-  "fs.list": "看看这个目录里有什么。只读。",
-  "fs.read_summary": "看一个文件的结构：类型、大小，表格再看列名与行数。只读。",
-  "file.write": "把一段文本整份写进一个文件。会覆盖原内容。",
-  "python.run": "用那台电脑自带的 Python 跑一段脚本，处理已授权目录里的文件。",
-  "shell.run": "执行一条命令（不经过 shell，没有管道与重定向）。每次都要在那台电脑上确认。",
-  "app.open": "让那台电脑用默认程序打开一个文件或应用。",
-};
-
 function timeText(ms: number): string {
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return "时间未知";
@@ -96,28 +91,7 @@ function timeText(ms: number): string {
 }
 
 function statusText(record: ConsoleRecord): string {
-  const status = record.task?.status;
-  if (!status) return record.queuedOffline ? "已排队（设备离线）" : "已排队";
-  switch (status) {
-    case "queued":
-      return "排队中";
-    case "claimed":
-      return "设备已领取";
-    case "running":
-      return "正在那台电脑上执行";
-    case "succeeded":
-      return "已完成";
-    case "failed":
-      return "执行失败";
-    case "denied":
-      return "被拒绝";
-    case "expired":
-      return "已过期";
-    case "cancelled":
-      return "已取消";
-    default:
-      return status;
-  }
+  return localTaskStatusText(record.task?.status, record.queuedOffline);
 }
 
 /** 审计指纹的最后一格：结果要么是读数，要么是一句能看懂的拒绝理由。 */
@@ -165,11 +139,12 @@ export function LocalActionConsole({
   devicesHref = "/devices",
   showFileTree = true,
   className,
+  initialActionKind = "fs.list",
   runAction,
   now = Date.now,
 }: LocalActionConsoleProps) {
   const [pathDraft, setPathDraft] = useState("");
-  const [actionKind, setActionKind] = useState<LocalActionKind>("fs.list");
+  const [actionKind, setActionKind] = useState<LocalActionKind>(initialActionKind);
   const [targetDraft, setTargetDraft] = useState("");
   const [content, setContent] = useState("");
   const [code, setCode] = useState("");
@@ -412,7 +387,9 @@ export function LocalActionConsole({
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-stone-600">{ACTION_HINTS[actionKind]}</p>
+        <p className="mt-2 text-xs text-stone-600" data-local-action-summary={actionKind}>
+          {LOCAL_ACTION_EFFECTS[actionKind].summary}
+        </p>
 
         <div className="mt-3 space-y-3">
           {(actionKind === "fs.list" ||
