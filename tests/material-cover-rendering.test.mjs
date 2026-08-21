@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -374,15 +375,143 @@ test("名字自证的占位图判据只作用于图像形态的 rendition", () =
     width: null,
     height: null,
   };
-  assert.equal(coverEvidenceOf(realMp3), "real");
+  // 判据问的是「这份 rendition 能不能当图画进卡片」：mp3 不能，所以它不是 real —— 后端
+  // `cover_evidence_of` 对 audio/mpeg 给的也是 proven-placeholder（A-5/A-8 同一张白名单）。
+  const report = coverEvidenceReportOf(realMp3);
+  assert.equal(report.evidence, "proven-placeholder");
+  assert.equal(report.code, "non-image-cover");
+  // 真媒体不许因此被误杀：形态对上了渲染器，波形照出，封面判回 real。
+  const plan = workspaceCoverPlan({
+    item: audio,
+    kind: "audio",
+    url: realMp3.url,
+    rendition: realMp3,
+  });
+  assert.equal(plan.renderer, "audio");
+  assert.equal(plan.coverEvidence, "real");
+  assert.equal(plan.evidenceReason, "");
+  // 豁免的条件是**形态与渲染器对上**，不是「只要不是图片就放过」：同一份 mp3 挂到
+  // 图片卡上没有任何渲染器接得住，它就仍然是已证实的占位图。
+  const wrongSlot = workspaceCoverPlan({
+    item: normalizedItem("single_file_image"),
+    kind: "image",
+    url: realMp3.url,
+    rendition: realMp3,
+  });
+  assert.equal(wrongSlot.renderer, "unavailable");
+  assert.equal(wrongSlot.coverEvidence, "proven-placeholder");
+});
+
+// A-8：后端已把非图片封面判成 proven-placeholder，前端这半边过去在同一份 rendition 上
+// 返回 `REAL_COVER_EVIDENCE` —— 同一件素材，后端说假、前端说真，下游闸门失去判据。
+// 这一组把「能不能画出来」这个问题的答案钉成一处：一张白名单，两侧共用。
+test("A-8 缩略图白名单两侧同口径：前缀像图片但画不出来的一律占位图", () => {
+  const item = normalizedItem("model_3d");
+  const thumb = (mediaType, format) => ({
+    ...item.artifact.renditions.thumbnail,
+    url: `https://signed.test/model-cover.${format || "bin"}`,
+    mediaType,
+    format,
+    rendererVersion: "oceanleo-leoasset-carry-1",
+    byteSize: 262_144,
+    width: 1_024,
+    height: 1_024,
+  });
+
+  for (const [mediaType, format, note] of [
+    // 生产库实测：74 份 model_3d 的缩略图声明的就是这个，`startsWith("image/")`
+    // 过得去，浏览器一个像素都画不出来。
+    ["image/vnd.radiance", "hdr", "HDR 光照贴图"],
+    ["image/tiff", "tiff", "浏览器解不了的 tiff"],
+    ["image/x-icon", "ico", "图标容器"],
+    ["application/json", "website-source@1", "website 源码清单 500 份"],
+    [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "pptx",
+      "deck 原件 349 份",
+    ],
+    [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "docx",
+      "document 原件 1079 份",
+    ],
+    ["application/pdf", "pdf", "pdf 原件 83 份"],
+    ["audio/ogg", "ogg", "audio 原件 767 份"],
+    ["video/mp4", "mp4", "video 原件 115 份"],
+  ]) {
+    const rendition = thumb(mediaType, format);
+    const evidence = coverEvidenceReportOf(rendition);
+    assert.equal(evidence.evidence, "proven-placeholder", note);
+    assert.equal(evidence.code, "non-image-cover", note);
+    assert.notEqual(evidence.reason, "", note);
+    assert.equal(coverEvidenceOf(rendition), "proven-placeholder", note);
+    const plan = workspaceCoverPlan({
+      item,
+      kind: item.kind,
+      url: rendition.url,
+      rendition,
+    });
+    assert.equal(plan.renderer, "unavailable", note);
+    assert.equal(plan.coverEvidence, "proven-placeholder", note);
+  }
+
+  // 白名单本体逐字钉死（与后端 DISPLAYABLE_COVER_MEDIA_TYPES / _FORMATS 同一张表）。
+  for (const mediaType of [
+    "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+    "image/svg+xml",
+  ]) {
+    assert.equal(coverEvidenceOf(thumb(mediaType, "")), "real", mediaType);
+  }
+  for (const format of [
+    "png", "jpeg", "jpg", "webp", "gif", "svg", "svg+xml",
+  ]) {
+    assert.equal(coverEvidenceOf(thumb("", format)), "real", format);
+  }
+  // `; charset=` 之类的参数不改变结论。
+  assert.equal(coverEvidenceOf(thumb("image/svg+xml; charset=utf-8", "")), "real");
+  // 声明了 mediaType 就按 mediaType 判：投递路由的 Content-Type 取的是它，文件名
+  // 叫 .png 也不会让 octet-stream 变成图片。
   assert.equal(
-    workspaceCoverPlan({
-      item: audio,
-      kind: "audio",
-      url: realMp3.url,
-      rendition: realMp3,
-    }).renderer,
-    "audio",
+    coverEvidenceOf(thumb("application/octet-stream", "png")),
+    "proven-placeholder",
+  );
+  // 两者都没声明是「判不了」，不是「已证伪」——与后端 media-type-missing 同一口径。
+  const shapeless = coverEvidenceReportOf(thumb("", ""));
+  assert.equal(shapeless.evidence, "unknown-metadata");
+  assert.equal(shapeless.code, "media-type-missing");
+});
+
+// 上面那组钉的是本仓这一侧。白名单的另一份在 `oceanleo` 仓的后端里，两个仓的测试
+// 跑不到一起，所以后端文件可见时直接对着它逐字比；不可见（别的 checkout / CI）时
+// 明说跳过，不假装比过。
+test("白名单与后端 artifact_cover_gate.py 逐字相同（后端可见时）", () => {
+  const backendPath =
+    "/root/projects/oceanleo/backend/app/artifact_cover_gate.py";
+  if (!existsSync(backendPath)) {
+    assert.ok(true, "后端仓不在本 checkout 里，这条跳过（不构成通过）");
+    return;
+  }
+  const quoted = (text) =>
+    new Set([...text.matchAll(/"([^"]+)"/g)].map((match) => match[1]));
+  const block = (source, pattern) => {
+    const match = pattern.exec(source);
+    assert.ok(match, `没找到白名单定义：${pattern}`);
+    return quoted(match[1]);
+  };
+  const backend = readFileSync(backendPath, "utf8");
+  const front = readFileSync(
+    resolve(process.cwd(), "src/shell/workspace-library-cover.tsx"),
+    "utf8",
+  );
+  assert.deepEqual(
+    block(front, /const DISPLAYABLE_COVER_MEDIA_TYPES = new Set\(\[([^\]]*)\]/),
+    block(backend, /DISPLAYABLE_COVER_MEDIA_TYPES = frozenset\(\s*\{([^}]*)\}/),
+    "缩略图媒体类型白名单两侧不一致",
+  );
+  assert.deepEqual(
+    block(front, /const DISPLAYABLE_COVER_FORMATS = new Set\(\[([^\]]*)\]/),
+    block(backend, /DISPLAYABLE_COVER_FORMATS = frozenset\(\s*\{([^}]*)\}/),
+    "缩略图 format 白名单两侧不一致",
   );
 });
 

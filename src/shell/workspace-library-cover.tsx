@@ -41,9 +41,20 @@ const COVER_PURPOSES: readonly ArtifactRenditionPurpose[] = [
   "thumbnail", "preview", "full", "source",
 ];
 
-const IMAGE_FORMATS = new Set([
-  "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg",
-  "png", "svg", "svg+xml", "tif", "tiff", "webp",
+/**
+ * 一张白名单两侧共用：与后端 `artifact_cover_gate.DISPLAYABLE_COVER_MEDIA_TYPES`
+ * 及 `DISPLAYABLE_COVER_FORMATS` 逐字相同（format 只在「有 format 没 mediaType」时用）。
+ * `startsWith("image/")` 问的不是同一个问题：生产库 74 份 model_3d 缩略图声明
+ * `image/vnd.radiance`，前缀过得去而 `<img>` 一个像素都画不出来；tiff/heic/bmp 同理
+ * （`workbench-route-formats.ts` 已为编辑器入口写过同一条结论）。avif 浏览器画得出但
+ * 不在后端那张表里 —— 要加只能两侧同时加，单边放宽就是把「后端判假、前端判真」重犯一次。
+ */
+const DISPLAYABLE_COVER_MEDIA_TYPES = new Set([
+  "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+  "image/svg+xml",
+]);
+const DISPLAYABLE_COVER_FORMATS = new Set([
+  "png", "jpeg", "jpg", "webp", "gif", "svg", "svg+xml",
 ]);
 
 const VIDEO_FORMATS = new Set(["m4v", "mkv", "mov", "mp4", "ogv", "webm"]);
@@ -122,8 +133,13 @@ function renditionFormat(
   );
 }
 
+/**
+ * 声明了 mediaType 就只按它判，不拿 format 兜回来：rendition 投递路由的 HTTP
+ * `Content-Type` 取的正是 mediaType。顺序与后端 `cover_evidence_of` 一致。
+ */
 function isImage(mediaType: string, format: string): boolean {
-  return mediaType.startsWith("image/") || IMAGE_FORMATS.has(format);
+  if (mediaType) return DISPLAYABLE_COVER_MEDIA_TYPES.has(mediaType);
+  return DISPLAYABLE_COVER_FORMATS.has(format);
 }
 
 function isVideo(mediaType: string, format: string): boolean {
@@ -167,15 +183,18 @@ function proven(code: string, reason: string): CoverEvidenceReport {
 }
 
 /**
- * 按证据判封面，不按字节数猜。
- *
- * 字节数**不是**质量代理：2KB 的 SVG 是完整无损的真实图形，50,272 份矢量素材几乎全栽
- * 在旧的 4096 字节下限上；`dimensions` 为 null 也只说明入库时没记尺寸，7,013 份平均
- * 80KB 的 webp 缺的是元数据不是画面。能证实「是占位图」的只有三类：名字自证的货架填充
- * 产物、0 字节载荷、声明出来就承载不了画面的像素尺寸。其余一律不得判死。
+ * 按证据判封面，不按字节数猜。字节数**不是**质量代理：2KB 的 SVG 是完整无损的真实图形
+ * （50,272 份矢量素材几乎全栽在旧的 4096 字节下限上），`dimensions` 为 null 只说明入库时
+ * 没记尺寸（7,013 份平均 80KB 的 webp 缺的是元数据不是画面）。能证实「是占位图」的只有：
+ * 名字自证的货架填充产物、0 字节载荷、承载不了画面的像素尺寸、以及**不是图片**。
  *
  * 名字自证那条只在**证实是别的媒体形态**时豁免：同一批 `library-form-shelf-fill/*`
  * 也盖在真实音频 rendition 上，拿它判死一份 7MB 的 mp3 会把真媒体一起误杀。
+ *
+ * 本函数问的是「这份 rendition 能不能当图画进卡片」，所以非图片一律 proven-placeholder，
+ * 与后端 `artifact_cover_gate.cover_evidence_of` 同一口径；真媒体不会被误杀 ——
+ * `workspaceCoverPlan` 按形态挑对渲染器时会把这条唯一理由收回去（见 `mediaCoverEvidence`）。
+ * 两侧只有理由码优先级不同：这里名字自证在前（无形态的 shelf-fill 必须 fail-closed）。
  */
 export function coverEvidenceReportOf(
   rendition: ArtifactRendition | null | undefined,
@@ -203,7 +222,18 @@ export function coverEvidenceReportOf(
       "这份封面是货架填充生成的占位图，不是素材本身。",
     );
   }
-  if (!isImage(resolvedMedia, resolvedFormat)) return REAL_COVER_EVIDENCE;
+  // 什么都没声明 = 判不了，不是已证伪（后端同一口径）。上面名字自证那条已先把无形态的
+  // shelf-fill 拦下，所以这里放过去不会漏占位图。
+  if (!resolvedMedia && !resolvedFormat) {
+    const reason = "这份封面没声明媒体类型，无法判断能不能显示。";
+    return { evidence: "unknown-metadata", code: "media-type-missing", reason };
+  }
+  // 非图片一律占位图，绝不判 real：3343 条拿自己的 .pptx/.docx/JSON 源件当缩略图的
+  // revision 过去全被盖章 real，这比发出假图更坏 —— 下游闸门连判据都没有了。
+  if (!isImage(resolvedMedia, resolvedFormat)) {
+    const seen = resolvedMedia || resolvedFormat;
+    return proven("non-image-cover", `这份封面是 ${seen}，不是能显示的图片。`);
+  }
   if (rendition.byteSize === 0) {
     return proven("empty-payload", "封面文件是空的，没有可显示的画面。");
   }
@@ -310,12 +340,9 @@ function imageFit(
     return "cover";
   }
   if (!artifactType && (kind === "image" || kind === "video")) return "cover";
-  /**
-   * 地图与交互文档的封面是整幅渲出图：地图裁掉边就裁掉了图例与归属声明
-   * （`geo-map.md` §2.2 把图例与 28 px 归属条算进 1600×1000 画布，§8.2 要求
-   * `attribution.entries` 随产物走），交互文档裁掉边就裁掉了参数控件与结果卡。
-   * 两者与下面那批一样 **MUST** 整幅显示，这里显式写出来而不是靠兜底。
-   */
+  // 地图与交互文档的封面是整幅渲出图：地图裁边就裁掉图例与归属声明（`geo-map.md`
+  // §2.2 把图例与 28 px 归属条算进 1600×1000 画布，§8.2 要求 `attribution.entries`
+  // 随产物走），交互文档裁边就裁掉参数控件与结果卡。显式写出来，不靠兜底。
   if (artifactType === "geo_map" || artifactType === "interactive_doc") {
     return "contain";
   }
@@ -354,7 +381,6 @@ function supportsPdfCover(
 /**
  * UC-1 / UC-3 —— 免沙箱 PDF 封面 frame 的第一方主机白名单。
  * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1/§7.5/§8.1/§8.3。
- *
  * 与 `library-viewers.tsx` 同名判定逐字一致：本模块被渲染测试以 data: URL 加载，不能
  * 引入相对运行时依赖，只能复制；一致性由 untrusted-content-pdf-frame-host.test.mjs 锁死。
  *
@@ -362,14 +388,10 @@ function supportsPdfCover(
  * 沙箱。免沙箱 frame 读不到宿主 DOM，但读得到自己 origin 的 cookie，而会话 cookie 非
  * httpOnly，对 cookie 域内任意主机都是「自己的 cookie」。因此域内只放行写死的第一方
  * rendition 网关（响应带 CSP sandbox，落 opaque origin），域外主机与 UGC 域一律挡掉。
+ * 判定按「落在哪个 cookie 域里」逐个 host 走，不按页面属于哪个家族：这是**降权**判定，
+ * 多覆盖一个家族只会更严（`.oceanleo.cn` 与 leoapp.cn 由此从放行改为拒绝，`.com`
+ * 侧结论逐字不变）。
  */
-// 两个家族的网关都写在这里，判定按「落在哪个 cookie 域里」逐个 host 走，不按页面
-// 当前属于哪个家族 —— 这一层是**降权**判定，多覆盖一个家族只会更严：
-//   * `.oceanleo.cn` 下的主机以前落在「cookie 域外」，被当成对象存储放行；
-//     现在它落在 cn 家族的 cookie 域内，于是只有 cn 网关能放行，其余一律拒。
-//   * leoapp.cn 以前完全没被排除，现在与 oceanleo.app 同等挡掉。
-// 对 `.com` 主机的结论与本轮改动前逐字相同（`api.oceanleo.com` 放行，其余 cookie
-// 域内主机拒，域外对象存储放行）。
 const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = [
   "api.oceanleo.com",
   "api.oceanleo.cn",
@@ -419,15 +441,10 @@ function supportsWebsiteCover(
   artifactType: ArtifactType | undefined,
   kind: LibraryKind,
 ): boolean {
-  /**
-   * 两个新载体**显式**拒绝 HTML 封面通路。
-   *
-   * 它们的 `full` rendition 是 JSON 工程信封（`geo-map.md` §1.1、
-   * `interactive-doc.md` §1.1 都明令 `source_format` MUST NOT 取 `html`），
-   * 一旦上游把某条 rendition 的 media type 误标成 `text/html`，靠「不在下面
-   * 白名单里」这种默认行为挡不住 —— `kind` 只要漂成 `website` 就放行了。
-   * 所以这里按 artifact type 直接拒。
-   */
+  // 两个新载体**显式**拒绝 HTML 封面通路：它们的 `full` 是 JSON 工程信封
+  // （`geo-map.md` §1.1、`interactive-doc.md` §1.1 明令 `source_format` MUST NOT
+  // 取 `html`）。上游一旦把 media type 误标成 `text/html`，靠「不在白名单里」挡不住
+  // —— `kind` 漂成 `website` 就放行了，所以这里按 artifact type 直接拒。
   if (artifactType === "geo_map" || artifactType === "interactive_doc") {
     return false;
   }
@@ -474,7 +491,22 @@ export function workspaceCoverPlan({
     rendition?.purpose === "thumbnail" ||
     normalizedUrl === item?.thumbUrl ||
     assumeImage;
-  const evidence = coverEvidenceReportOf(rendition, mediaType, format);
+  const judged = coverEvidenceReportOf(rendition, mediaType, format);
+  /**
+   * 按形态挑对了渲染器的真媒体：视频封面就是那段视频、音频封面是从字节解出来的波形、
+   * PDF 与网页封面是首页本身。判据说它「不是图片」是对的，但画面是真的，所以这里
+   * 把**唯一那条理由**收回去。`synthetic-renderer`（名字自证的填充产物）、
+   * `empty-payload`、`degenerate-pixels` 一条都不豁免 —— 那些与形态无关。
+   */
+  const mediaCoverEvidence =
+    (isVideo(mediaType, format) && supportsVideoCover(artifactType, kind)) ||
+    (isAudio(mediaType, format) && supportsAudioCover(artifactType, kind)) ||
+    (isPdf(mediaType, format) && supportsPdfCover(artifactType, kind)) ||
+    (isHtml(mediaType, format) && supportsWebsiteCover(artifactType, kind));
+  const evidence =
+    mediaCoverEvidence && judged.code === "non-image-cover"
+      ? REAL_COVER_EVIDENCE
+      : judged;
   const planOf = (
     renderer: WorkspaceCoverRenderer,
     over: Partial<WorkspaceCoverPlan> = {},
@@ -580,21 +612,10 @@ function pdfFirstPageUrl(url: string): string {
 }
 
 function AudioCoverWaveform({
-  url,
-  alt,
-  className,
-  resourceKey,
-  mediaType,
-  onReady,
-  onError,
+  url, alt, className, resourceKey, mediaType, onReady, onError,
 }: {
-  url: string;
-  alt: string;
-  className: string;
-  resourceKey: string;
-  mediaType: string;
-  onReady: () => void;
-  onError: () => void;
+  url: string; alt: string; className: string; resourceKey: string;
+  mediaType: string; onReady: () => void; onError: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
