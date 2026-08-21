@@ -92,6 +92,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Revoked an API key",
     eventSpendBlocked: "Spending stopped by the daily limit",
     eventLogoutAll: "Signed out everywhere",
+    eventSessionRevoked: "Revoked one device",
     eventUnknown: "Other account activity",
     eventDenied: "Denied",
 
@@ -208,6 +209,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Einen API-Schlüssel widerrufen",
     eventSpendBlocked: "Ausgabe vom Tageslimit gestoppt",
     eventLogoutAll: "Überall abgemeldet",
+    eventSessionRevoked: "Ein Gerät abgemeldet",
     eventUnknown: "Andere Kontoaktivität",
     eventDenied: "Abgelehnt",
 
@@ -322,6 +324,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Revocó una clave de API",
     eventSpendBlocked: "Gasto detenido por el límite diario",
     eventLogoutAll: "Cerró la sesión en todos los dispositivos",
+    eventSessionRevoked: "Revocó un dispositivo",
     eventUnknown: "Otra actividad de la cuenta",
     eventDenied: "Denegado",
 
@@ -436,6 +439,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Revocó una clave de API",
     eventSpendBlocked: "Gasto detenido por el límite diario",
     eventLogoutAll: "Cerró la sesión en todos los dispositivos",
+    eventSessionRevoked: "Revocó un dispositivo",
     eventUnknown: "Otra actividad de la cuenta",
     eventDenied: "Rechazado",
 
@@ -550,6 +554,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "A révoqué une clé d'API",
     eventSpendBlocked: "Dépense bloquée par le plafond quotidien",
     eventLogoutAll: "S'est déconnecté partout",
+    eventSessionRevoked: "A révoqué un appareil",
     eventUnknown: "Autre activité du compte",
     eventDenied: "Refusé",
 
@@ -663,6 +668,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Ha revocato una chiave API",
     eventSpendBlocked: "Spesa fermata dal limite giornaliero",
     eventLogoutAll: "È uscito da tutti i dispositivi",
+    eventSessionRevoked: "Ha revocato un dispositivo",
     eventUnknown: "Altra attività dell'account",
     eventDenied: "Rifiutato",
 
@@ -775,6 +781,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Revogou uma chave de API",
     eventSpendBlocked: "Gasto barrado pelo limite diário",
     eventLogoutAll: "Saiu de todos os aparelhos",
+    eventSessionRevoked: "Revogou um aparelho",
     eventUnknown: "Outra atividade da conta",
     eventDenied: "Negado",
 
@@ -888,6 +895,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Revogou uma chave de API",
     eventSpendBlocked: "Despesa travada pelo limite diário",
     eventLogoutAll: "Terminou sessão em todos os dispositivos",
+    eventSessionRevoked: "Revogou um dispositivo",
     eventUnknown: "Outra actividade da conta",
     eventDenied: "Recusado",
 
@@ -999,6 +1007,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Đã thu hồi một khoá API",
     eventSpendBlocked: "Chi tiêu bị hạn mức mỗi ngày chặn lại",
     eventLogoutAll: "Đã đăng xuất mọi thiết bị",
+    eventSessionRevoked: "Đã thu hồi một thiết bị",
     eventUnknown: "Hoạt động khác của tài khoản",
     eventDenied: "Bị từ chối",
 
@@ -1110,6 +1119,7 @@ export const ACCOUNT_SECURITY_COPY_WESTERN = {
     eventKeyRevoked: "Bir API anahtarını iptal etti",
     eventSpendBlocked: "Harcama günlük limite takıldı",
     eventLogoutAll: "Tüm cihazlardan çıktı",
+    eventSessionRevoked: "Bir cihazı kaldırdı",
     eventUnknown: "Diğer hesap hareketi",
     eventDenied: "Reddedildi",
 

@@ -518,6 +518,36 @@ test("契约 §2 的 kind 全集都有对应的人话，且认不出来的落到
   assert.equal(securityEventCopy("something-w3-adds-later"), "其它账号操作");
 });
 
+test("撤掉一台设备不许说成「退出了所有设备」", () => {
+  // 后端一开始把两件事都记成 logout_all，真实范围藏在 detail.scope="single_session"
+  // 里。那样的话，用户撤掉一台旧手机、回到「最近活动」看到的是「退出了所有设备」——
+  // 一条会让人以为自己被踢了的假消息。父代理裁定加第 9 种 kind
+  // （backend/migrations/0207 + 契约 §2），这一条锁住那个裁定。
+  assert.ok(
+    SECURITY_EVENT_KINDS.includes("session_revoked"),
+    "session_revoked 不在 kind 全集里，取数层会把它归到 unknown，" +
+      "用户看到的就是「其它账号操作」",
+  );
+  const one = securityEventCopy("session_revoked");
+  const all = securityEventCopy("logout_all");
+  assert.notEqual(one, all, "撤一台和退全部必须是两句不同的话");
+  assert.equal(one, "撤销了一台设备");
+  assert.equal(all, "退出了所有设备");
+  // 17 语都要有，否则英文用户会看到一句中文。
+  for (const locale of TRANSLATED) {
+    const value = UI_MESSAGES[locale][one];
+    assert.equal(typeof value, "string", `${locale} 缺「${one}」`);
+    assert.notEqual(value.trim(), "", `${locale} 的「${one}」是空串`);
+  }
+  for (const locale of NON_CJK) {
+    assert.equal(
+      hasHan(UI_MESSAGES[locale][one]),
+      false,
+      `${locale} 的「${one}」残留汉字：${UI_MESSAGES[locale][one]}`,
+    );
+  }
+});
+
 test("取数失败的每个码都有人话，且每一句都在 17 语词典里", () => {
   const codes = [
     "signed_out",
@@ -654,9 +684,9 @@ test("历史缺口白名单只能变短：里面的 key 必须还在源码里，
  */
 const ZH_TW_SAME_AS_SOURCE = new Set(["例如 50", "元 / 天", "取消上限"]);
 
-test("本波新增的 90 条：zh 是 key===值，非 CJK 的 13 语零汉字，占位符逐一对齐", () => {
+test("本波新增的 91 条：zh 是 key===值，非 CJK 的 13 语零汉字，占位符逐一对齐", () => {
   const keys = Object.values(ACCOUNT_SECURITY_COPY_SOURCE);
-  assert.equal(keys.length, 90, "原文表条数变了，判据里的读数要跟着更新");
+  assert.equal(keys.length, 91, "原文表条数变了，判据里的读数要跟着更新");
   const placeholder = /\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|\?\?\?|机翻|待翻译|[Uu]ntranslated/;
 
   for (const key of keys) {

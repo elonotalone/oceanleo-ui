@@ -88,6 +88,11 @@ export function securityEventCopy(kind: SecurityEventKind): string {
       return "消费被每日上限拦下";
     case "logout_all":
       return "退出了所有设备";
+    // 撤掉「其中一台」设备和退出「所有」设备必须是两句话。以前后端把两者都记成
+    // logout_all（真实范围藏在 detail.scope 里），于是用户撤掉一台旧手机之后，
+    // 在这里看到的是「退出了所有设备」——一条会让人以为自己被踢了的假消息。
+    case "session_revoked":
+      return "撤销了一台设备";
     default:
       return "其它账号操作";
   }

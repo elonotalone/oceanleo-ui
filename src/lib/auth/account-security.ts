@@ -153,6 +153,7 @@ export const SECURITY_EVENT_KINDS = [
   "key_revoked",
   "spend_blocked",
   "logout_all",
+  "session_revoked",
 ] as const;
 
 export type SecurityEventKind = (typeof SECURITY_EVENT_KINDS)[number] | "unknown";

@@ -103,6 +103,7 @@ export const ACCOUNT_SECURITY_COPY_SOURCE = {
   eventKeyRevoked: "撤销了一个 API key",
   eventSpendBlocked: "消费被每日上限拦下",
   eventLogoutAll: "退出了所有设备",
+  eventSessionRevoked: "撤销了一台设备",
   eventUnknown: "其它账号操作",
   eventDenied: "被拒绝",
 

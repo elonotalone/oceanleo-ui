@@ -93,6 +93,7 @@ export const ACCOUNT_SECURITY_COPY_EASTERN = {
     eventKeyRevoked: "APIキーを失効",
     eventSpendBlocked: "1日の上限で支出を停止",
     eventLogoutAll: "すべての端末からログアウト",
+    eventSessionRevoked: "端末1台のアクセスを解除",
     eventUnknown: "その他のアカウント操作",
     eventDenied: "拒否されました",
 
@@ -202,6 +203,7 @@ export const ACCOUNT_SECURITY_COPY_EASTERN = {
     eventKeyRevoked: "API 키를 취소함",
     eventSpendBlocked: "일일 한도에 걸려 결제가 막힘",
     eventLogoutAll: "모든 기기에서 로그아웃함",
+    eventSessionRevoked: "기기 한 대를 해제함",
     eventUnknown: "그 밖의 계정 활동",
     eventDenied: "거부됨",
 
@@ -307,6 +309,7 @@ export const ACCOUNT_SECURITY_COPY_EASTERN = {
     eventKeyRevoked: "撤銷了一個 API key",
     eventSpendBlocked: "消費被每日上限擋下",
     eventLogoutAll: "登出了所有裝置",
+    eventSessionRevoked: "撤銷了一台裝置",
     eventUnknown: "其他帳號操作",
     eventDenied: "被拒絕",
 
@@ -416,6 +419,7 @@ export const ACCOUNT_SECURITY_COPY_EASTERN = {
     eventKeyRevoked: "ألغى مفتاح API",
     eventSpendBlocked: "أوقف الحد اليومي عملية الإنفاق",
     eventLogoutAll: "سجّل الخروج من كل الأجهزة",
+    eventSessionRevoked: "أبطل جهازًا واحدًا",
     eventUnknown: "نشاط آخر في الحساب",
     eventDenied: "مرفوض",
 
@@ -526,6 +530,7 @@ export const ACCOUNT_SECURITY_COPY_EASTERN = {
     eventKeyRevoked: "เพิกถอนคีย์ API หนึ่งอัน",
     eventSpendBlocked: "การใช้จ่ายถูกวงเงินต่อวันกั้นไว้",
     eventLogoutAll: "ออกจากระบบทุกอุปกรณ์",
+    eventSessionRevoked: "ยกเลิกอุปกรณ์หนึ่งเครื่อง",
     eventUnknown: "กิจกรรมอื่นของบัญชี",
     eventDenied: "ถูกปฏิเสธ",
 
@@ -636,6 +641,7 @@ export const ACCOUNT_SECURITY_COPY_EASTERN = {
     eventKeyRevoked: "एक API कुंजी रद्द की",
     eventSpendBlocked: "रोज़ की सीमा ने खर्च रोक दिया",
     eventLogoutAll: "सभी डिवाइस से साइन आउट किया",
+    eventSessionRevoked: "एक डिवाइस हटाया",
     eventUnknown: "अकाउंट की कोई और गतिविधि",
     eventDenied: "मना किया गया",
 
