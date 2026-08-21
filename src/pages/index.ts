@@ -17,6 +17,10 @@ export { PasswordResetPage, hasRecoveryParams } from "./PasswordResetPage";
 export type { PasswordResetPageProps } from "./PasswordResetPage";
 export { AccountPage } from "./AccountPage";
 export type { AccountPageProps, AccountMenuItem } from "./AccountPage";
+// 账号安全中心（W4）：最近活动 / 登录中的设备 / 两步验证 / 每日消费上限。
+// 消费契约 §2 的四个网关端点；端点没上线时那一块显示「还没上线」，不白屏。
+export { AccountSecurityPage, securityErrorCopy, securityEventCopy } from "./AccountSecurityPage";
+export type { AccountSecurityPageProps } from "./AccountSecurityPage";
 export { SettingsPage } from "./SettingsPage";
 export type { SettingsPageProps } from "./SettingsPage";
 export { GeneralPage } from "./GeneralPage";

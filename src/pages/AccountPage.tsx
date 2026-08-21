@@ -114,6 +114,12 @@ export function AccountPage({
       desc: tt("用量柱状图与每次调用的真实计费记录"),
     },
     { label: tt("账户设置"), href: "/settings", desc: tt("个人资料、用量与知识库") },
+    // W4（2026-08-21）：在这条之前，用户能对自己账号做的只有登录和退出所有设备。
+    {
+      label: tt("账号安全"),
+      href: "/account/security",
+      desc: tt("最近的登录与改动、还在登录状态的设备、每天最多能花多少"),
+    },
     {
       label: tt("插件与连接器"),
       href: "/plugins",
