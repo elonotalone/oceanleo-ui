@@ -137,6 +137,37 @@ export async function wechatLoginUrl(redirect?: string): Promise<{ url?: string;
   }
 }
 
+// --- Google / Apple（Supabase 内置 OAuth）------------------------------------
+// 未在项目里打开对应 provider 时，signInWithOAuth 会失败。调用方必须把错误
+// 翻成人话，不能把英文原文甩到登录门上。skipBrowserRedirect：拿到 url 再跳，
+// 和微信同一条「子站登录后回子站」的回跳（redirectTo = 当前页）。
+
+export type OauthProvider = "google" | "apple";
+
+export async function startOauthSignIn(
+  provider: OauthProvider,
+  redirect?: string,
+): Promise<{ url?: string; error?: string }> {
+  const c = browserClient();
+  if (!c) return { error: "Supabase not configured" };
+  const redirectTo =
+    (redirect || "").trim() || (typeof window !== "undefined" ? window.location.href : "");
+  try {
+    const { data, error } = await c.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: redirectTo || undefined,
+        skipBrowserRedirect: true,
+      },
+    });
+    if (error) return { error: error.message };
+    if (data?.url) return { url: data.url };
+    return { error: `${provider} 登录暂未开放` };
+  } catch {
+    return { error: "网络错误：无法连接到登录服务" };
+  }
+}
+
 // --- 找回密码 / 改密码 ---------------------------------------------------------
 // 2026-08-21 之前这个仓里一条都没有：忘了密码的用户永久进不来，被盗号的用户
 // 没有任何自救手段。下面三个封装是「自救」的全部实现，仍然只调 Supabase 已有能力。

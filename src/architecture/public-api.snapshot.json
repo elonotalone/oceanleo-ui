@@ -1111,6 +1111,10 @@
       "declarations": [
         {
           "kind": "star",
+          "source": "./account-security"
+        },
+        {
+          "kind": "star",
           "source": "./account"
         },
         {
@@ -1401,6 +1405,21 @@
         },
         {
           "kind": "named",
+          "name": "challengeAndVerify",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "currentAal",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "enrollTotp",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "getUserEmail",
           "source": ""
         },
@@ -1411,7 +1430,22 @@
         },
         {
           "kind": "named",
+          "name": "isPasswordResetLanding",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "isSignedIn",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "listMfaFactors",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "needsMfaChallenge",
           "source": ""
         },
         {
@@ -1423,6 +1457,26 @@
           "kind": "named",
           "name": "oceanleoConfigured",
           "importedName": "configured",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "PASSWORD_RESET_PATH",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "passwordResetRedirectTo",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "reauthenticate",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "sendPasswordReset",
           "source": ""
         },
         {
@@ -1442,12 +1496,52 @@
         },
         {
           "kind": "named",
+          "name": "startOauthSignIn",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "unenrollFactor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "updatePassword",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "verifyPhoneOtp",
           "source": ""
         },
         {
           "kind": "named",
           "name": "wechatLoginUrl",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AalState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "MfaFactor",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "OauthProvider",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "TotpEnrollment",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "UpdatePasswordOptions",
           "source": ""
         }
       ]
@@ -1905,6 +1999,18 @@
         },
         {
           "kind": "named",
+          "name": "AccountSecurityPage",
+          "importedName": "AccountSecurityPage",
+          "source": "./AccountSecurityPage"
+        },
+        {
+          "kind": "named",
+          "name": "AccountSecurityPageProps",
+          "importedName": "AccountSecurityPageProps",
+          "source": "./AccountSecurityPage"
+        },
+        {
+          "kind": "named",
           "name": "ApiGuidePage",
           "importedName": "ApiGuidePage",
           "source": "./ApiGuidePage"
@@ -1920,6 +2026,18 @@
           "name": "ApiPageProps",
           "importedName": "ApiPageProps",
           "source": "./ApiPage"
+        },
+        {
+          "kind": "named",
+          "name": "AUTH_METHODS_CN",
+          "importedName": "AUTH_METHODS_CN",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "AUTH_METHODS_INTL",
+          "importedName": "AUTH_METHODS_INTL",
+          "source": "./AuthDialog"
         },
         {
           "kind": "named",
@@ -1949,6 +2067,12 @@
           "kind": "named",
           "name": "AuthMethod",
           "importedName": "AuthMethod",
+          "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "authMethodsForFamily",
+          "importedName": "authMethodsForFamily",
           "source": "./AuthDialog"
         },
         {
@@ -1995,6 +2119,12 @@
         },
         {
           "kind": "named",
+          "name": "hasRecoveryParams",
+          "importedName": "hasRecoveryParams",
+          "source": "./PasswordResetPage"
+        },
+        {
+          "kind": "named",
           "name": "MyDatabasePage",
           "importedName": "MyDatabasePage",
           "source": "./MyDatabasePage"
@@ -2025,6 +2155,18 @@
         },
         {
           "kind": "named",
+          "name": "PasswordResetPage",
+          "importedName": "PasswordResetPage",
+          "source": "./PasswordResetPage"
+        },
+        {
+          "kind": "named",
+          "name": "PasswordResetPageProps",
+          "importedName": "PasswordResetPageProps",
+          "source": "./PasswordResetPage"
+        },
+        {
+          "kind": "named",
           "name": "PluginsPage",
           "importedName": "PluginsPage",
           "source": "./PluginsPage"
@@ -2037,6 +2179,18 @@
         },
         {
           "kind": "named",
+          "name": "securityErrorCopy",
+          "importedName": "securityErrorCopy",
+          "source": "./AccountSecurityPage"
+        },
+        {
+          "kind": "named",
+          "name": "securityEventCopy",
+          "importedName": "securityEventCopy",
+          "source": "./AccountSecurityPage"
+        },
+        {
+          "kind": "named",
           "name": "SettingsPage",
           "importedName": "SettingsPage",
           "source": "./SettingsPage"
@@ -2046,6 +2200,12 @@
           "name": "SettingsPageProps",
           "importedName": "SettingsPageProps",
           "source": "./SettingsPage"
+        },
+        {
+          "kind": "named",
+          "name": "totpErrorCopy",
+          "importedName": "totpErrorCopy",
+          "source": "./AuthDialog"
         },
         {
           "kind": "named",

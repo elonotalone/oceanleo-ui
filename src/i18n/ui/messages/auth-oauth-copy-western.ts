@@ -1,0 +1,87 @@
+import type { AuthOauthCopyMessages } from "./auth-oauth-copy-base";
+
+export const AUTH_OAUTH_COPY_WESTERN: Record<
+  "de" | "en" | "es" | "es-419" | "fr" | "it" | "pt-BR" | "pt-PT" | "vi" | "tr",
+  AuthOauthCopyMessages
+> = {
+  en: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continue with Google",
+    appleContinue: "Continue with Apple",
+    googleUnconfigured: "Google sign-in is not available yet. Please sign in with email.",
+    appleUnconfigured: "Apple sign-in is not available yet. Please sign in with email.",
+  },
+  de: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Mit Google fortfahren",
+    appleContinue: "Mit Apple fortfahren",
+    googleUnconfigured: "Google-Anmeldung ist noch nicht verfügbar. Bitte mit E-Mail anmelden.",
+    appleUnconfigured: "Apple-Anmeldung ist noch nicht verfügbar. Bitte mit E-Mail anmelden.",
+  },
+  fr: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continuer avec Google",
+    appleContinue: "Continuer avec Apple",
+    googleUnconfigured: "La connexion Google n'est pas encore disponible. Connectez-vous par e-mail.",
+    appleUnconfigured: "La connexion Apple n'est pas encore disponible. Connectez-vous par e-mail.",
+  },
+  es: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continuar con Google",
+    appleContinue: "Continuar con Apple",
+    googleUnconfigured: "El inicio de sesión con Google aún no está disponible. Usa el correo.",
+    appleUnconfigured: "El inicio de sesión con Apple aún no está disponible. Usa el correo.",
+  },
+  "es-419": {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continuar con Google",
+    appleContinue: "Continuar con Apple",
+    googleUnconfigured: "El inicio de sesión con Google todavía no está disponible. Entrá con tu correo.",
+    appleUnconfigured: "El inicio de sesión con Apple todavía no está disponible. Entrá con tu correo.",
+  },
+  it: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continua con Google",
+    appleContinue: "Continua con Apple",
+    googleUnconfigured: "L'accesso con Google non è ancora disponibile. Accedi con l'e-mail.",
+    appleUnconfigured: "L'accesso con Apple non è ancora disponibile. Accedi con l'e-mail.",
+  },
+  "pt-BR": {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continuar com o Google",
+    appleContinue: "Continuar com a Apple",
+    googleUnconfigured: "O login com Google ainda não está disponível. Entre com o e-mail.",
+    appleUnconfigured: "O login com Apple ainda não está disponível. Entre com o e-mail.",
+  },
+  "pt-PT": {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Continuar com o Google",
+    appleContinue: "Continuar com a Apple",
+    googleUnconfigured: "O início de sessão com Google ainda não está disponível. Use o e-mail.",
+    appleUnconfigured: "O início de sessão com Apple ainda não está disponível. Use o e-mail.",
+  },
+  vi: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Tiếp tục với Google",
+    appleContinue: "Tiếp tục với Apple",
+    googleUnconfigured: "Đăng nhập Google chưa mở. Vui lòng đăng nhập bằng email.",
+    appleUnconfigured: "Đăng nhập Apple chưa mở. Vui lòng đăng nhập bằng email.",
+  },
+  tr: {
+    google: "Google",
+    apple: "Apple",
+    googleContinue: "Google ile devam et",
+    appleContinue: "Apple ile devam et",
+    googleUnconfigured: "Google ile giriş henüz yok. Lütfen e-posta ile giriş yapın.",
+    appleUnconfigured: "Apple ile giriş henüz yok. Lütfen e-posta ile giriş yapın.",
+  },
+};

@@ -56,6 +56,7 @@ const authStubUrl = dataModule(`
   export const sendPhoneOtp = (...a) => g().sendPhoneOtp(...a);
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
+  export const startOauthSignIn = (...a) => g().startOauthSignIn(...a);
   export const normalizeCnPhone = (...a) => g().normalizeCnPhone(...a);
   export const sendPasswordReset = (...a) => g().sendPasswordReset(...a);
   export const currentAal = (...a) => g().currentAal(...a);
@@ -83,8 +84,17 @@ const realClientUrl = await compileModule("src/lib/auth/client.ts", {
   "react-dom": reactDomUrl,
 });
 
-const { AuthDialog, AuthPanel, AUTH_METHODS, AUTH_DIALOG_COPY, authErrorCopy, wechatRedirectTarget } =
-  await import(dialogUrl);
+const {
+  AuthDialog,
+  AuthPanel,
+  AUTH_METHODS,
+  AUTH_METHODS_CN,
+  AUTH_METHODS_INTL,
+  authMethodsForFamily,
+  AUTH_DIALOG_COPY,
+  authErrorCopy,
+  wechatRedirectTarget,
+} = await import(dialogUrl);
 const { normalizeCnPhone } = await import(realClientUrl);
 
 const dialogSource = await readFile(resolve("src/pages/AuthDialog.tsx"), "utf8");
@@ -135,6 +145,22 @@ test("authErrorCopy 把上游原始错误翻成能照做的中文（未配 ≠ �
     authErrorCopy("phone", "provider is not configured"),
     authErrorCopy("wechat", "provider is not configured"),
   );
+  assert.equal(
+    authErrorCopy("phone", "provider is not configured"),
+    "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。",
+  );
+  assert.equal(
+    authErrorCopy("wechat", "provider is not configured"),
+    "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。",
+  );
+  assert.equal(
+    authErrorCopy("google", "Unsupported provider: provider is not enabled"),
+    "Google 登录暂未开放：还没有配置，请改用邮箱登录。",
+  );
+  assert.equal(
+    authErrorCopy("apple", "provider is not configured"),
+    "Apple 登录暂未开放：还没有配置，请改用邮箱登录。",
+  );
   // client.ts 在 Supabase 未配时返回的原话。
   assert.equal(
     authErrorCopy("phone", "Supabase not configured"),
@@ -170,8 +196,12 @@ test("authErrorCopy 把上游原始错误翻成能照做的中文（未配 ≠ �
   assert.equal(authErrorCopy("email", "weird upstream detail"), "weird upstream detail");
 });
 
-test("AUTH_METHODS 顺序固定：邮箱 → 手机号 → 微信", () => {
-  assert.deepEqual([...AUTH_METHODS], ["email", "phone", "wechat"]);
+test("AUTH_METHODS 顺序固定：邮箱 → 手机号 → 微信 → Google → Apple", () => {
+  assert.deepEqual([...AUTH_METHODS], ["email", "phone", "wechat", "google", "apple"]);
+  assert.deepEqual([...AUTH_METHODS_CN], ["email", "phone", "wechat"]);
+  assert.deepEqual([...AUTH_METHODS_INTL], ["email", "google", "apple"]);
+  assert.deepEqual([...authMethodsForFamily("cn")], ["email", "phone", "wechat"]);
+  assert.deepEqual([...authMethodsForFamily("com")], ["email", "google", "apple"]);
 });
 
 // ————————————————————————————————————————————————————————————————
@@ -200,6 +230,10 @@ function defaultAuth() {
     async wechatLoginUrl(redirect) {
       this.calls.push(["wechatLoginUrl", redirect]);
       return { url: "https://open.weixin.qq.com/connect/qrconnect?x=1" };
+    },
+    async startOauthSignIn(provider, redirect) {
+      this.calls.push(["startOauthSignIn", provider, redirect]);
+      return { error: `Unsupported provider: ${provider} is not enabled` };
     },
     // W4：默认账号**没有**开两步验证（aal1 就是它该到的等级），所以密码过了
     // 就直接登录成功——上面每一条既有用例的期望都建立在这个默认之上。
@@ -316,9 +350,26 @@ async function withDom(run, { auth = defaultAuth(), url = SUBSITE_URL } = {}) {
 // 3. 三个 tab 真实可用
 // ————————————————————————————————————————————————————————————————
 
-test("三个 tab 都在，切换真的换表单", async () => {
+test("国外默认 tab：邮箱 / Google / Apple", async () => {
   await withDom(async ({ render, find, findAll, click }) => {
     await render(AuthPanel, { onClose() {} });
+    assert.deepEqual(
+      findAll("[data-auth-method-tab]").map((n) => n.getAttribute("data-auth-method-tab")),
+      ["email", "google", "apple"],
+    );
+    assert.ok(find('[data-auth-form="email"]'));
+    await click('[data-auth-method-tab="google"]');
+    assert.ok(find('[data-auth-form="google"]'));
+    await click('[data-auth-method-tab="apple"]');
+    assert.ok(find('[data-auth-form="apple"]'));
+    assert.equal(find('[data-auth-method-tab="wechat"]'), null);
+    assert.equal(find('[data-auth-method-tab="phone"]'), null);
+  });
+});
+
+test("国内 methods 子集：邮箱 / 手机号 / 微信", async () => {
+  await withDom(async ({ render, find, findAll, click }) => {
+    await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS_CN });
     assert.deepEqual(
       findAll("[data-auth-method-tab]").map((n) => n.getAttribute("data-auth-method-tab")),
       ["email", "phone", "wechat"],
@@ -383,7 +434,7 @@ test("手机号 OTP：格式先本地判（与 normalizeCnPhone 同源），有�
   const auth = defaultAuth();
   await withDom(
     async ({ render, click, type, submit, find }) => {
-      await render(AuthPanel, { onClose() {}, defaultMethod: "phone" });
+      await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS_CN, defaultMethod: "phone" });
       await type("#oceanleo-auth-phone", "12345");
       await submit('[data-auth-form="phone"]');
       assert.equal(find("[data-auth-error]").textContent, "请输入有效的中国大陆手机号。");
@@ -417,7 +468,7 @@ test("手机号 OTP：SMS provider 未配 → 可读降级提示而不是白屏"
   };
   await withDom(
     async ({ render, type, submit, find, text }) => {
-      await render(AuthPanel, { onClose() {}, defaultMethod: "phone" });
+      await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS_CN, defaultMethod: "phone" });
       await type("#oceanleo-auth-phone", "13800138000");
       await submit('[data-auth-form="phone"]');
       assert.equal(
@@ -436,7 +487,7 @@ test("微信：回跳地址就是当前子站页面，且真的发起跳转", as
   const auth = defaultAuth();
   await withDom(
     async ({ render, click, navigations, find }) => {
-      await render(AuthPanel, { onClose() {}, defaultMethod: "wechat" });
+      await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS_CN, defaultMethod: "wechat" });
       await click('[data-auth-form="wechat"] [data-auth-submit]');
       // ① 交给网关的 redirect 必须是**当前页**，不是门户首页。
       assert.deepEqual(auth.calls, [["wechatLoginUrl", SUBSITE_URL]]);
@@ -458,7 +509,7 @@ test("微信：显式 wechatRedirect 覆盖当前页", async () => {
     async ({ render, click }) => {
       await render(AuthPanel, {
         onClose() {},
-        defaultMethod: "wechat",
+        methods: AUTH_METHODS_CN, defaultMethod: "wechat",
         wechatRedirect: "https://converter.oceanleo.com/account",
       });
       await click('[data-auth-form="wechat"] [data-auth-submit]');
@@ -476,7 +527,7 @@ test("微信：key 未配（网关 501）→ 可读降级提示，按钮回到�
   };
   await withDom(
     async ({ render, click, find, navigations }) => {
-      await render(AuthPanel, { onClose() {}, defaultMethod: "wechat" });
+      await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS_CN, defaultMethod: "wechat" });
       await click('[data-auth-form="wechat"] [data-auth-submit]');
       assert.equal(
         find("[data-auth-error]").textContent,
@@ -489,14 +540,30 @@ test("微信：key 未配（网关 501）→ 可读降级提示，按钮回到�
   );
 });
 
+test("Google 未配：可读降级，不跳转", async () => {
+  const auth = defaultAuth();
+  await withDom(
+    async ({ render, find, click, navigations }) => {
+      await render(AuthPanel, { onClose() {}, defaultMethod: "google" });
+      await click('[data-auth-form="google"] [data-auth-submit]');
+      assert.equal(
+        find("[data-auth-error]").textContent,
+        "Google 登录暂未开放：还没有配置，请改用邮箱登录。",
+      );
+      assert.deepEqual(navigations, [], "拿不到 url 时不得跳转");
+    },
+    { auth },
+  );
+});
+
 // ————————————————————————————————————————————————————————————————
 // 4. 产品红线：无注册入口 / 未配置分支 / Modal 外壳
 // ————————————————————————————————————————————————————————————————
 
 test("不提供开放注册入口，底部固定「目前仅开放被邀请的账号登录。」", async () => {
   await withDom(async ({ render, find, text, click }) => {
-    await render(AuthPanel, { onClose() {} });
-    for (const method of ["email", "phone", "wechat"]) {
+    await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS });
+    for (const method of AUTH_METHODS) {
       if (method !== "email") await click(`[data-auth-method-tab="${method}"]`);
       assert.ok(
         find("[data-auth-invite-only]"),

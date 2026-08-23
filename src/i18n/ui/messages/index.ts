@@ -25,6 +25,7 @@ import { AGENT_PROGRESS_MESSAGES } from "./agent-progress-copy";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { SHARE_COPY_MESSAGES } from "./share-copy";
 import { ACCOUNT_SECURITY_MESSAGES } from "./account-security-copy";
+import { AUTH_OAUTH_MESSAGES } from "./auth-oauth-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -34,6 +35,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.zh,
     ...SHARE_COPY_MESSAGES.zh,
     ...ACCOUNT_SECURITY_MESSAGES.zh,
+    ...AUTH_OAUTH_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -42,6 +44,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.en,
     ...SHARE_COPY_MESSAGES.en,
     ...ACCOUNT_SECURITY_MESSAGES.en,
+    ...AUTH_OAUTH_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -50,6 +53,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.ja,
     ...SHARE_COPY_MESSAGES.ja,
     ...ACCOUNT_SECURITY_MESSAGES.ja,
+    ...AUTH_OAUTH_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -58,6 +62,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.ko,
     ...SHARE_COPY_MESSAGES.ko,
     ...ACCOUNT_SECURITY_MESSAGES.ko,
+    ...AUTH_OAUTH_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -66,6 +71,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.fr,
     ...SHARE_COPY_MESSAGES.fr,
     ...ACCOUNT_SECURITY_MESSAGES.fr,
+    ...AUTH_OAUTH_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -74,6 +80,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.de,
     ...SHARE_COPY_MESSAGES.de,
     ...ACCOUNT_SECURITY_MESSAGES.de,
+    ...AUTH_OAUTH_MESSAGES.de,
   },
   it: {
     ...it,
@@ -82,6 +89,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.it,
     ...SHARE_COPY_MESSAGES.it,
     ...ACCOUNT_SECURITY_MESSAGES.it,
+    ...AUTH_OAUTH_MESSAGES.it,
   },
   es: {
     ...es,
@@ -90,6 +98,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.es,
     ...SHARE_COPY_MESSAGES.es,
     ...ACCOUNT_SECURITY_MESSAGES.es,
+    ...AUTH_OAUTH_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -98,6 +107,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES["es-419"],
     ...SHARE_COPY_MESSAGES["es-419"],
     ...ACCOUNT_SECURITY_MESSAGES["es-419"],
+    ...AUTH_OAUTH_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -106,6 +116,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES["pt-BR"],
     ...SHARE_COPY_MESSAGES["pt-BR"],
     ...ACCOUNT_SECURITY_MESSAGES["pt-BR"],
+    ...AUTH_OAUTH_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -114,6 +125,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES["pt-PT"],
     ...SHARE_COPY_MESSAGES["pt-PT"],
     ...ACCOUNT_SECURITY_MESSAGES["pt-PT"],
+    ...AUTH_OAUTH_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -122,6 +134,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.vi,
     ...SHARE_COPY_MESSAGES.vi,
     ...ACCOUNT_SECURITY_MESSAGES.vi,
+    ...AUTH_OAUTH_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -130,6 +143,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.tr,
     ...SHARE_COPY_MESSAGES.tr,
     ...ACCOUNT_SECURITY_MESSAGES.tr,
+    ...AUTH_OAUTH_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -138,6 +152,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES["zh-TW"],
     ...SHARE_COPY_MESSAGES["zh-TW"],
     ...ACCOUNT_SECURITY_MESSAGES["zh-TW"],
+    ...AUTH_OAUTH_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -146,6 +161,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.ar,
     ...SHARE_COPY_MESSAGES.ar,
     ...ACCOUNT_SECURITY_MESSAGES.ar,
+    ...AUTH_OAUTH_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -154,6 +170,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.th,
     ...SHARE_COPY_MESSAGES.th,
     ...ACCOUNT_SECURITY_MESSAGES.th,
+    ...AUTH_OAUTH_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -162,5 +179,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...CLOUD_BROWSER_MESSAGES.hi,
     ...SHARE_COPY_MESSAGES.hi,
     ...ACCOUNT_SECURITY_MESSAGES.hi,
+    ...AUTH_OAUTH_MESSAGES.hi,
   },
 };

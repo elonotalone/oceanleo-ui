@@ -1,7 +1,10 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 全家桶统一登录 UI（邮箱密码 / 中国手机号短信 / 微信扫码）
+// @oceanleo/ui — 全家桶统一登录 UI
+// 国内默认：邮箱 / 中国手机号短信 / 微信扫码
+// 国外默认：邮箱 / Google / Apple
+// 五种方式都在 AUTH_METHODS 里；调用方可传 methods 取子集。
 // ----------------------------------------------------------------------------
 // 为什么在共享包里（附录 3 §3，2026-07-29）：此前 35 份分叉、七种命名散在 32 个站
 // 仓里，其中 33 份只有邮箱密码，微信只有门户有，11 份还是死代码。本组件是门户
@@ -10,7 +13,7 @@
 //
 // **不新写身份逻辑**：三种方式全部只调用 `src/lib/auth/client.ts` 已经导出的
 // `signIn` / `normalizeCnPhone` / `sendPhoneOtp` / `verifyPhoneOtp` /
-// `wechatLoginUrl`。会话 cookie 由 `cookieDomainFor()` 定在 `.oceanleo.com`，
+// `wechatLoginUrl` / `startOauthSignIn`。会话 cookie 由 `cookieDomainFor()` 定在 `.oceanleo.com`，
 // 所以在**任何**子站登录一次，全家桶都是登录态——这也是「每站都要能就地登录」
 // 成立的前提（docs/architecture/oceanleo-cross-subdomain-sso.md §3.3「对称式」）。
 //
@@ -47,16 +50,32 @@ import {
   sendPhoneOtp,
   signIn,
   verifyPhoneOtp,
+  startOauthSignIn,
   wechatLoginUrl,
 } from "../lib/auth/client";
 import { loginUnavailableNotice } from "../lib/auth/config";
+import { currentDomainFamily, type DomainFamily } from "../contracts/domain-family";
 import { ButtonSpinner, Modal } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
-export type AuthMethod = "email" | "phone" | "wechat";
+export type AuthMethod = "email" | "phone" | "wechat" | "google" | "apple";
 
-/** 登录方式的固定顺序。调用方可用 `methods` 取子集，但顺序由这里定。 */
-export const AUTH_METHODS: readonly AuthMethod[] = ["email", "phone", "wechat"];
+/** 全部登录方式的固定顺序。调用方可用 `methods` 取子集，但顺序由这里定。 */
+export const AUTH_METHODS: readonly AuthMethod[] = [
+  "email",
+  "phone",
+  "wechat",
+  "google",
+  "apple",
+];
+
+export const AUTH_METHODS_CN: readonly AuthMethod[] = ["email", "phone", "wechat"];
+export const AUTH_METHODS_INTL: readonly AuthMethod[] = ["email", "google", "apple"];
+
+/** 按域名家族选默认门面。境内不露 Google/Apple，国外不露微信/手机号。邮箱两边都留。 */
+export function authMethodsForFamily(family: DomainFamily | undefined): readonly AuthMethod[] {
+  return family === "cn" ? AUTH_METHODS_CN : AUTH_METHODS_INTL;
+}
 
 /** 重新获取验证码的冷却秒数（与门户一致）。 */
 const OTP_COOLDOWN_SECONDS = 60;
@@ -70,6 +89,8 @@ const OTP_COOLDOWN_SECONDS = 60;
 const ERROR_COPY = {
   smsUnconfigured: "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。",
   wechatUnconfigured: "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。",
+  googleUnconfigured: "Google 登录暂未开放：还没有配置，请改用邮箱登录。",
+  appleUnconfigured: "Apple 登录暂未开放：还没有配置，请改用邮箱登录。",
   network: "网络错误：无法连接到登录服务，请稍后重试。",
   badCredentials: "邮箱或密码不正确。",
   badOtp: "验证码不正确或已过期，请重新获取。",
@@ -87,6 +108,10 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "邮箱",
   "手机号",
   "微信",
+  "Google",
+  "Apple",
+  "使用 Google 继续",
+  "使用 Apple 继续",
   "密码",
   "至少 6 位",
   "登录",
@@ -162,7 +187,7 @@ const NETWORK_PATTERNS = [
  */
 const UNCONFIGURED_PATTERNS = [
   /unsupported\s+phone\s+provider/i,
-  /(sms|phone|otp|wechat|weixin)[^.]{0,40}(provider|service|login)[^.]{0,20}(not|isn't|is not)\s+(configured|enabled|supported|available)/i,
+  /(sms|phone|otp|wechat|weixin|google|apple)[^.]{0,40}(provider|service|login)[^.]{0,20}(not|isn't|is not)\s+(configured|enabled|supported|available)/i,
   /provider[^.]{0,20}(not enabled|is disabled|not configured|not supported)/i,
   /not implemented/i,
   /\b501\b/,
@@ -220,6 +245,8 @@ export function authErrorCopy(method: AuthMethod, raw?: string): string {
   if (NOT_CONFIGURED_CLIENT.test(text) || matchesAny(text, UNCONFIGURED_PATTERNS)) {
     if (method === "wechat") return ERROR_COPY.wechatUnconfigured;
     if (method === "phone") return ERROR_COPY.smsUnconfigured;
+    if (method === "google") return ERROR_COPY.googleUnconfigured;
+    if (method === "apple") return ERROR_COPY.appleUnconfigured;
     return ERROR_COPY.generic;
   }
   if (matchesAny(text, NOT_INVITED_PATTERNS)) return ERROR_COPY.notInvited;
@@ -302,7 +329,7 @@ export function AuthPanel({
   onClose,
   onSuccess,
   defaultMethod = "email",
-  methods = AUTH_METHODS,
+  methods,
   wechatRedirect,
   title,
   closeOnSuccess = true,
@@ -312,7 +339,8 @@ export function AuthPanel({
   const tt = useUI();
   const generatedId = useId();
   const titleId = providedTitleId || generatedId;
-  const available = AUTH_METHODS.filter((m) => methods.includes(m));
+  const requested = methods ?? authMethodsForFamily(currentDomainFamily());
+  const available = AUTH_METHODS.filter((m) => requested.includes(m));
   const enabled = available.length > 0 ? available : AUTH_METHODS;
   const initial = enabled.includes(defaultMethod) ? defaultMethod : enabled[0];
   const [method, setMethod] = useState<AuthMethod>(initial);
@@ -423,6 +451,12 @@ export function AuthPanel({
           )}
           {method === "phone" && <PhoneForm tt={tt} onDone={afterCredentials} />}
           {method === "wechat" && <WechatPanel tt={tt} redirect={wechatRedirect} />}
+          {method === "google" && (
+            <OauthPanel tt={tt} provider="google" redirect={wechatRedirect} />
+          )}
+          {method === "apple" && (
+            <OauthPanel tt={tt} provider="apple" redirect={wechatRedirect} />
+          )}
 
           <p className="mt-4 text-center text-[11px] leading-relaxed text-neutral-400">
             {tt("一次登录，全家桶所有 AI 应用通用。")}
@@ -443,7 +477,9 @@ export function AuthPanel({
 function methodLabel(method: AuthMethod): string {
   if (method === "email") return "邮箱";
   if (method === "phone") return "手机号";
-  return "微信";
+  if (method === "wechat") return "微信";
+  if (method === "google") return "Google";
+  return "Apple";
 }
 
 const FIELD_CLASS =
@@ -900,6 +936,56 @@ function WechatPanel({ tt, redirect }: { tt: UITranslate; redirect?: string }) {
         className="w-full rounded-lg bg-[#07c160] py-2.5 text-[14px] font-medium text-white transition hover:bg-[#06ad56] active:scale-[0.99] disabled:opacity-60"
       >
         {loading ? <ButtonSpinner label={tt("跳转中...")} /> : tt("微信登录")}
+      </button>
+    </div>
+  );
+}
+
+function OauthPanel({
+  tt,
+  provider,
+  redirect,
+}: {
+  tt: UITranslate;
+  provider: "google" | "apple";
+  redirect?: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const label = provider === "google" ? "使用 Google 继续" : "使用 Apple 继续";
+
+  async function go() {
+    setError("");
+    setLoading(true);
+    const r = await startOauthSignIn(provider, wechatRedirectTarget(redirect));
+    if (r.url) {
+      if (typeof window !== "undefined") window.location.href = r.url;
+      return;
+    }
+    setLoading(false);
+    setError(tt(authErrorCopy(provider, r.error)));
+  }
+
+  return (
+    <div className="space-y-4 text-center" data-auth-form={provider}>
+      <p className="text-[13px] text-neutral-500">{tt(label)}</p>
+      {error && (
+        <div
+          data-auth-error
+          role="alert"
+          className="v-fade-in rounded-lg bg-amber-50 px-3 py-2 text-left text-[13px] text-amber-700"
+        >
+          {error}
+        </div>
+      )}
+      <button
+        type="button"
+        data-auth-submit
+        onClick={() => void go()}
+        disabled={loading}
+        className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60"
+      >
+        {loading ? <ButtonSpinner label={tt("跳转中...")} /> : tt(label)}
       </button>
     </div>
   );
