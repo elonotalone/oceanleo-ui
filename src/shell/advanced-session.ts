@@ -42,6 +42,7 @@ const CANONICAL_ROUTE_TYPES = new Set<EditorRoute["type"]>([
   "grid",
   "deck",
   "threed",
+  "game",
   "embed",
   "none",
 ]);
@@ -61,6 +62,7 @@ const ITEM_KINDS = new Set<LibraryKind>([
   "audio",
   "xhs",
   "threed",
+  "game",
   "file",
 ]);
 /**

@@ -130,6 +130,22 @@ test("legacy Office sessions upgrade to typed lightweight routes only", () => {
       ),
     /Legacy office route/,
   );
+  assert.equal(
+    advancedSessionAppId(
+      {
+        key: "creation:gallery-game",
+        source: "creation",
+        id: "gallery-game",
+        title: "game",
+        kind: "game",
+        siteId: "plugin-gallery",
+        favorite: false,
+        meta: { advanced_editor_route: "game" },
+      },
+      "game",
+    ).startsWith("advanced:v2:game:"),
+    true,
+  );
   assert.match(source, /const legacyOfficeAppId =/);
   assert.match(
     source,

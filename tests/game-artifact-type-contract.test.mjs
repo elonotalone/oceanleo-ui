@@ -270,6 +270,8 @@ test("GameRoute rejects imported bundles and never renders its own iframe", () =
   assert.equal(/<iframe/i.test(gameRouteCode), false);
   assert.equal(/srcdoc/i.test(gameRouteCode), false);
   assert.ok(gameRouteCode.includes("registerGamePreviewHost"));
+  assert.ok(gameRouteCode.includes("useGamePreviewHost"));
+  assert.ok(gameRouteCode.includes("gamePreviewHostListeners"));
 });
 
 test("GameRoute remix reuses the existing artifact fork endpoint", () => {

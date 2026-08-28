@@ -58,6 +58,7 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(workbench, /PdfRoute/);
   assert.match(workbench, /Model3DRoute/);
   assert.match(workbench, /ChartRoute/);
+  assert.match(workbench, /GameRoute/);
   assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
   assert.match(routeAdapters, /AdvancedWorkbenchShell/);
   assert.match(shell, /data-inline-editor/);
@@ -78,6 +79,7 @@ test("typed routes render real content in the inline App-library editor shell", 
     "grid",
     "deck",
     "threed",
+    "game",
     "embed",
   ]) {
     assert.match(routes, new RegExp(`type: "${type}"`));
@@ -102,6 +104,10 @@ test("inline editing reuses App history while retired URLs only redirect", () =>
   const pages = source("../src/shell/AdvancedFeaturePages.tsx");
   assert.match(workbench, /if \(props\.embedded\)/);
   assert.match(workbench, /inheritedWorkspace/);
+  assert.match(
+    workbench,
+    /const appId = props.embedded\s*\n\s*\? props.appId \|\| "library"/,
+  );
   assert.match(workbench, /withInlineEditorHistoryHead/);
   assert.match(workbench, /workspace\.saveSnapshot/);
   assert.match(workbench, /onSavedItem/);

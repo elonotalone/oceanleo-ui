@@ -14,6 +14,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -111,6 +112,7 @@ export interface GamePreviewHostProps {
 export type GamePreviewHost = ComponentType<GamePreviewHostProps>;
 
 let gamePreviewHost: GamePreviewHost | null = null;
+const gamePreviewHostListeners = new Set<() => void>();
 
 /**
  * 由宿主站（game 仓）在模块初始化时注册 `UgcGameFrame`。
@@ -120,6 +122,22 @@ let gamePreviewHost: GamePreviewHost | null = null;
  */
 export function registerGamePreviewHost(host: GamePreviewHost | null): void {
   gamePreviewHost = host;
+  for (const listener of [...gamePreviewHostListeners]) listener();
+}
+
+function useGamePreviewHost(): GamePreviewHost | null {
+  const [host, setHost] = useState<GamePreviewHost | null>(
+    () => gamePreviewHost,
+  );
+  useEffect(() => {
+    const onChange = () => setHost(gamePreviewHost);
+    gamePreviewHostListeners.add(onChange);
+    onChange();
+    return () => {
+      gamePreviewHostListeners.delete(onChange);
+    };
+  }, []);
+  return host;
 }
 
 // ── 生成链注入契约（W10 侧实现） ───────────────────────────────────────────
@@ -152,27 +170,46 @@ export function registerGameIterationRunner(
 // ── Route ──────────────────────────────────────────────────────────────────
 
 function documentFromItem(item: LibraryItem): GameBundleDocument | null {
-  if (!isDurableLibraryItem(item)) return null;
-  const { renditions } = item.artifact;
-  const envelope = renditions.full || renditions.source;
-  const cover = renditions.preview;
-  const manifest = renditions.editor_manifest;
-  if (!envelope?.url || !envelope.digest) return null;
-  return {
-    envelopeUrl: envelope.url,
-    envelopeDigest: envelope.digest,
-    // 当前格式的 source 本身就是完整 HTML。忽略旧 metadata 里的 js 槽位提示，
-    // 否则新文档会被旧宿主解析器静默误归。
-    bundleFormat: "html",
-    coverUrl: cover?.url || "",
-    coverDigest: cover?.digest || "",
-    manifestUrl: manifest?.url || "",
-    manifestDigest: manifest?.digest || "",
-    engineApiVersion: String(item.meta.engine_api_version || ""),
-    skeletonVersion: String(item.meta.skeleton_version || ""),
-    prompt: String(item.meta.generation_prompt || ""),
-    origin: "ai",
-  };
+  if (isDurableLibraryItem(item)) {
+    const { renditions } = item.artifact;
+    const envelope = renditions.full || renditions.source;
+    const cover = renditions.preview;
+    const manifest = renditions.editor_manifest;
+    if (!envelope?.url || !envelope.digest) return null;
+    return {
+      envelopeUrl: envelope.url,
+      envelopeDigest: envelope.digest,
+      bundleFormat: "html",
+      coverUrl: cover?.url || "",
+      coverDigest: cover?.digest || "",
+      manifestUrl: manifest?.url || "",
+      manifestDigest: manifest?.digest || "",
+      engineApiVersion: String(item.meta.engine_api_version || ""),
+      skeletonVersion: String(item.meta.skeleton_version || ""),
+      prompt: String(item.meta.generation_prompt || ""),
+      origin: "ai",
+    };
+  }
+  const envelopeUrl = String(item.url || item.previewUrl || "").trim();
+  if (
+    envelopeUrl &&
+    (item.kind === "game" || item.meta.advanced_editor_route === "game")
+  ) {
+    return {
+      envelopeUrl,
+      envelopeDigest: String(item.meta.envelope_digest || "local"),
+      bundleFormat: "html",
+      coverUrl: "",
+      coverDigest: "",
+      manifestUrl: "",
+      manifestDigest: "",
+      engineApiVersion: "",
+      skeletonVersion: "",
+      prompt: "",
+      origin: "ai",
+    };
+  }
+  return null;
 }
 
 export function GameRoute({
@@ -375,7 +412,7 @@ export function GameRoute({
     }
   }, [item, session]);
 
-  const PreviewHost = gamePreviewHost;
+  const PreviewHost = useGamePreviewHost();
   const stage = useMemo(() => {
     if (!document_) {
       return (

@@ -176,8 +176,9 @@ function AdvancedContentWorkbenchMounted(
   const item = props.item;
   const route = editorRouteFor(props.item);
   const siteId = props.siteId || item.siteId || "oceanleo";
-  const appId =
-    props.initialSession?.app_id || advancedSessionAppId(item, route.type);
+  const appId = props.embedded
+    ? props.appId || "library"
+    : props.initialSession?.app_id || advancedSessionAppId(item, route.type);
   const feature = advancedFeatureForItem(item);
   const materialAppId = props.embedded
     ? inheritedWorkspace?.appId || props.appId || siteId
