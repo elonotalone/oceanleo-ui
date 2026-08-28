@@ -12,6 +12,8 @@ export function AdvancedWorkspaceActionBar({
   adapter,
   autoSaveState,
   activeLibraryPanelId,
+  showLibrary = true,
+  showBack = true,
   onBack,
   onOpenLibrary,
   onRetrySave,
@@ -23,6 +25,9 @@ export function AdvancedWorkspaceActionBar({
   /** @deprecated The shared selection bar is now the only tools launcher. */
   activeDrawerId?: string;
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
+  /** Plugin-gallery host has no OceanLeo library chrome. */
+  showLibrary?: boolean;
+  showBack?: boolean;
   onBack: () => void;
   /** @deprecated The shared selection bar is now the only tools launcher. */
   onOpenTools?: () => void;
@@ -75,15 +80,17 @@ export function AdvancedWorkspaceActionBar({
       className="flex h-8 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden bg-transparent"
     >
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto">
-        <button
-          type="button"
-          onClick={onBack}
-          className={iconButton}
-          aria-label={tt("返回库")}
-          title={tt("返回库")}
-        >
-          ←
-        </button>
+        {showBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className={iconButton}
+            aria-label={tt("返回库")}
+            title={tt("返回库")}
+          >
+            ←
+          </button>
+        ) : null}
         {adapter.history && (
           <>
             <button
@@ -108,33 +115,37 @@ export function AdvancedWorkspaceActionBar({
             </button>
           </>
         )}
-        <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-        <button
-          type="button"
-          onClick={() => onOpenLibrary("materials")}
-          className={`${libraryButton} ${
-            activeLibraryPanelId === "materials"
-              ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-              : "text-[var(--awb-text)] hover:bg-[var(--awb-hover)]"
-          }`}
-          aria-pressed={activeLibraryPanelId === "materials"}
-        >
-          <AdvancedEditorIcon name="materials" className="h-4 w-4" />
-          {tt("素材库")}
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpenLibrary("mine")}
-          className={`${libraryButton} ${
-            activeLibraryPanelId === "mine"
-              ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-              : "text-[var(--awb-text)] hover:bg-[var(--awb-hover)]"
-          }`}
-          aria-pressed={activeLibraryPanelId === "mine"}
-        >
-          <AdvancedEditorIcon name="library" className="h-4 w-4" />
-          {tt("我的库")}
-        </button>
+        {showLibrary ? (
+          <>
+            <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+            <button
+              type="button"
+              onClick={() => onOpenLibrary("materials")}
+              className={`${libraryButton} ${
+                activeLibraryPanelId === "materials"
+                  ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
+                  : "text-[var(--awb-text)] hover:bg-[var(--awb-hover)]"
+              }`}
+              aria-pressed={activeLibraryPanelId === "materials"}
+            >
+              <AdvancedEditorIcon name="materials" className="h-4 w-4" />
+              {tt("素材库")}
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenLibrary("mine")}
+              className={`${libraryButton} ${
+                activeLibraryPanelId === "mine"
+                  ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
+                  : "text-[var(--awb-text)] hover:bg-[var(--awb-hover)]"
+              }`}
+              aria-pressed={activeLibraryPanelId === "mine"}
+            >
+              <AdvancedEditorIcon name="library" className="h-4 w-4" />
+              {tt("我的库")}
+            </button>
+          </>
+        ) : null}
         <span className="min-w-4 flex-1" />
         {standaloneActions.map((action) => (
           <button

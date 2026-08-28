@@ -86,6 +86,15 @@ test("typed routes render real content in the inline App-library editor shell", 
   }
 });
 
+test("plugin-gallery host hides OceanLeo library chrome", () => {
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const bar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
+  assert.match(shell, /showLibrary=\{siteId !== "plugin-gallery"\}/);
+  assert.match(shell, /showBack=\{siteId !== "plugin-gallery"\}/);
+  assert.match(bar, /showLibrary = true/);
+  assert.match(bar, /showLibrary \? \(/);
+});
+
 test("inline editors reuse the current App Agent instead of mounting another chat", () => {
   const panel = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");

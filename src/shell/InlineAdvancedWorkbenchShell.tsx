@@ -429,6 +429,8 @@ export function InlineAdvancedWorkbenchShell({
         activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
         drawers={drawers}
         accent={accent}
+        showLibrary={siteId !== "plugin-gallery"}
+        showBack={siteId !== "plugin-gallery"}
         onBack={requestClose}
         onOpenDrawer={openDrawer}
         onCloseDrawer={closeDetail}
@@ -451,6 +453,7 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel,
       performUpload,
       requestClose,
+      siteId,
       workspacePane?.activeLibraryPanelId,
     ],
   );

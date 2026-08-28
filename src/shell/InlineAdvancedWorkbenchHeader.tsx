@@ -23,6 +23,8 @@ export function InlineAdvancedWorkbenchHeader({
   activeLibraryPanelId,
   drawers,
   accent,
+  showLibrary = true,
+  showBack = true,
   onBack,
   onOpenDrawer,
   onCloseDrawer,
@@ -37,6 +39,8 @@ export function InlineAdvancedWorkbenchHeader({
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
   drawers: readonly AdvancedWorkbenchDrawer[];
   accent: string;
+  showLibrary?: boolean;
+  showBack?: boolean;
   onBack: () => void;
   onOpenDrawer: (drawerId: string) => void;
   onCloseDrawer: () => void;
@@ -136,6 +140,8 @@ export function InlineAdvancedWorkbenchHeader({
       adapter={adapter}
       autoSaveState={autoSaveState}
       activeLibraryPanelId={activeLibraryPanelId}
+      showLibrary={showLibrary}
+      showBack={showBack}
       onBack={onBack}
       onOpenLibrary={onOpenLibrary}
       onRetrySave={onRetrySave}
