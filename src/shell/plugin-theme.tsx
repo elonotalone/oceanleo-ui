@@ -17,7 +17,9 @@
  */
 
 import {
+  createContext,
   useCallback,
+  useContext,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
@@ -259,7 +261,10 @@ export function pluginWorkbenchStyle(
       "--awb-hover": "rgba(0,0,0,.05)",
       "--awb-accent": accent,
       "--awb-accent-soft": soft,
+      // 实心 accent 底上的字色：light 档 accent 深 → 白字；dark 档 accent 亮 → 近黑字。
+      "--awb-on-accent": "#ffffff",
       "--awb-danger": "#dc2626",
+      "--awb-danger-soft": "color-mix(in srgb, #dc2626 10%, transparent)",
       "--awb-warn": "#d97706",
       "--awb-ok": "#059669",
       "--awb-shadow-floating": "0 8px 28px rgba(15,23,42,.12)",
@@ -304,7 +309,9 @@ export function pluginWorkbenchStyle(
     "--awb-hover": "rgba(255,255,255,.07)",
     "--awb-accent": accent,
     "--awb-accent-soft": soft,
+    "--awb-on-accent": "#151518",
     "--awb-danger": "#f87171",
+    "--awb-danger-soft": "color-mix(in srgb, #f87171 16%, transparent)",
     "--awb-warn": "#fbbf24",
     "--awb-ok": "#34d399",
     "--awb-shadow-floating": "0 8px 28px rgba(0,0,0,.5)",
@@ -338,6 +345,19 @@ export function pluginWorkbenchStyle(
 }
 
 /**
+ * React context 能穿透 createPortal（按渲染树而非 DOM 树传递）：外壳根与
+ * PluginThemeScope 提供，AnchoredPopover 消费——插件内任何 portal 弹层自动
+ * 重建 token 作用域，无需逐调用点接线。
+ */
+export const PluginThemePortalContext = createContext<PluginThemeId | null>(
+  null,
+);
+
+export function usePluginThemePortal(): PluginThemeId | null {
+  return useContext(PluginThemePortalContext);
+}
+
+/**
  * portal 内容（抽屉面板 / 弹层）DOM 在插件根之外，token 不继承——用本组件
  * 重建作用域。painted=false 时只下发变量不铺底（弹层面板自己画底时用）。
  */
@@ -355,18 +375,20 @@ export function PluginThemeScope({
   const { theme, accent } = usePluginTheme(pluginId);
   if (!theme || !accent) return <>{children}</>;
   return (
-    <div
-      data-plugin-theme={theme}
-      data-plugin-theme-scope={pluginId}
-      className={`${
-        painted
-          ? "min-h-full bg-[var(--awb-chrome-bg)] text-[var(--awb-text)]"
-          : ""
-      } ${className}`.trim()}
-      style={pluginWorkbenchStyle(theme, accent)}
-    >
-      {children}
-    </div>
+    <PluginThemePortalContext.Provider value={pluginId}>
+      <div
+        data-plugin-theme={theme}
+        data-plugin-theme-scope={pluginId}
+        className={`${
+          painted
+            ? "min-h-full bg-[var(--awb-chrome-bg)] text-[var(--awb-text)]"
+            : ""
+        } ${className}`.trim()}
+        style={pluginWorkbenchStyle(theme, accent)}
+      >
+        {children}
+      </div>
+    </PluginThemePortalContext.Provider>
   );
 }
 

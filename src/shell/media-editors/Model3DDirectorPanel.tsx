@@ -377,7 +377,7 @@ export function Model3DDirectorPanel({
         </button>
       </div>
       {!editor.directorPlayblastAvailability.enabled && (
-        <p className="text-[9px] leading-relaxed text-amber-600">
+        <p className="text-[9px] leading-relaxed text-[var(--awb-warn)]">
           {editor.directorPlayblastAvailability.reason}
         </p>
       )}
@@ -385,7 +385,7 @@ export function Model3DDirectorPanel({
         <button
           type="button"
           onClick={editor.cancelDirectorPrevis}
-          className="w-full rounded-md border border-amber-300 px-2 py-1.5 text-[10px] text-amber-700"
+          className="w-full rounded-md border border-[color-mix(in_srgb,var(--awb-warn)_45%,transparent)] px-2 py-1.5 text-[10px] text-[var(--awb-warn)]"
         >
           {tt("取消预演")}
         </button>

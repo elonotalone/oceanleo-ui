@@ -288,7 +288,7 @@ function PositionedSlideCanvas({
               }}
               className={`absolute overflow-visible text-left outline-none ${
                 selected
-                  ? "after:pointer-events-none after:absolute after:-inset-[2px] after:rounded-[inherit] after:border-2 after:border-[#8b5cf6]"
+                  ? "after:pointer-events-none after:absolute after:-inset-[2px] after:rounded-[inherit] after:border-2 after:border-[var(--awb-accent,#8b5cf6)]"
                   : ""
               } ${element.locked ? "cursor-default" : editing ? "cursor-text" : "cursor-move"}`}
               data-deck-element={element.id}
@@ -372,7 +372,7 @@ function PositionedSlideCanvas({
                       <span
                         role="status"
                         data-deck-edit-lock-reason
-                        className="pointer-events-none absolute left-1/2 top-[-72px] z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white shadow"
+                        className="pointer-events-none absolute left-1/2 top-[-72px] z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--awb-text,#0f172a)] px-2 py-1 text-[10px] text-[var(--awb-chrome-bg,#fff)] shadow"
                         style={{
                           transform: `translateX(-50%) rotate(${-rendered.rotation}deg)`,
                         }}
@@ -537,7 +537,7 @@ export function DeckStage({
               {!editor.loading && !editor.sourceFailed && editor.error && (
                 <div
                   role="alert"
-                  className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
+                  className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] px-3 py-2 text-[11px] text-[var(--awb-danger)] shadow-sm"
                 >
                   {tt(editor.error)}
                 </div>

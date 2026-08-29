@@ -155,7 +155,7 @@ export function ClipInspector({
               value={clip.text ?? ""}
               onChange={(event) => patch({ text: event.target.value })}
               rows={2}
-              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[12px] text-[var(--fg,#292524)] focus:border-[var(--accent,#7c3aed)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[12px] text-[var(--fg,#292524)] focus:border-[var(--awb-accent,#7c3aed)] focus:outline-none"
             />
           </label>
           <Row

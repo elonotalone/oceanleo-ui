@@ -44,7 +44,7 @@ export function RichDocStage({
           {!editor.loading && !editor.sourceFailed && editor.error && (
             <div
               role="alert"
-              className="absolute inset-x-6 top-4 z-20 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"
+              className="absolute inset-x-6 top-4 z-20 rounded-lg border border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] px-3 py-2 text-[11px] text-[var(--awb-danger)]"
             >
               {tt(editor.error)}
             </div>
@@ -75,7 +75,7 @@ export function RichDocStage({
         {!editor.sourceFailed && editor.error && (
           <span
             role="alert"
-            className="min-w-[120px] flex-1 truncate text-[10px] text-red-600"
+            className="min-w-[120px] flex-1 truncate text-[10px] text-[var(--awb-danger)]"
           >
             {tt(editor.error)}
           </span>

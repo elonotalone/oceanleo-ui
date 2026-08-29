@@ -23,7 +23,7 @@ function ActionButton({
       disabled={disabled}
       className={`rounded-lg border px-2.5 py-2 text-[11px] disabled:opacity-40 ${
         danger
-          ? "border-red-200 text-red-600 hover:bg-red-50"
+          ? "border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] text-[var(--awb-danger)] hover:bg-[var(--awb-danger-soft)]"
           : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
       }`}
     >
@@ -69,7 +69,7 @@ function TextureSlotInput({
             type="button"
             disabled={disabled}
             onClick={() => editor.clearMaterialTexture(slot)}
-            className="text-[10px] text-red-500 disabled:opacity-40"
+            className="text-[10px] text-[var(--awb-danger)] disabled:opacity-40"
           >
             清除
           </button>
@@ -160,7 +160,7 @@ export function Model3DControls({
                 onClick={() => editor.selectNode(node.id)}
                 className={`flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-[10px] disabled:cursor-default ${
                   editor.selectedNode?.id === node.id
-                    ? "bg-violet-500/10 text-violet-700"
+                    ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
                     : "text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
                 }`}
                 style={{ paddingLeft: `${6 + node.depth * 12}px` }}

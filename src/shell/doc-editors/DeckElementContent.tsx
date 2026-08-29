@@ -167,7 +167,7 @@ export function DeckElementContent({
                       }}
                       className={`overflow-hidden border border-[var(--divider,#d6d3d1)] px-[0.2em] ${
                         editing
-                          ? "cursor-text outline-none focus:bg-white/20 focus:ring-1 focus:ring-inset focus:ring-[var(--accent,#7c3aed)]"
+                          ? "cursor-text outline-none focus:bg-white/20 focus:ring-1 focus:ring-inset focus:ring-[var(--awb-accent,#7c3aed)]"
                           : ""
                       }`}
                       onPointerDown={(event) => {

@@ -81,7 +81,7 @@ function ColorRow({
         />
       ))}
       <label
-        className="grid h-7 w-7 cursor-pointer place-items-center rounded-full border border-[var(--border,#d6d3d1)] bg-white text-[11px]"
+        className="grid h-7 w-7 cursor-pointer place-items-center rounded-full border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] text-[11px]"
         title="自定义颜色"
       >
         +
@@ -134,8 +134,8 @@ export function DeckDrawPanel({
                 }}
                 className={`rounded-xl border px-3 py-3 text-left text-[11px] transition ${
                   active
-                    ? "border-[var(--accent,#7c3aed)] bg-[var(--accent,#7c3aed)]/8"
-                    : "border-[var(--border,#e7e5e4)] hover:bg-black/[.03]"
+                    ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--awb-accent,#7c3aed)]/8"
+                    : "border-[var(--border,#e7e5e4)] hover:bg-[var(--awb-hover)]"
                 }`}
               >
                 <span
@@ -222,7 +222,7 @@ export function DeckLinePanel({ editor }: { editor: DeckEditorState }) {
                   lineEnd: line.end,
                 })
               }
-              className="flex w-full items-center gap-3 rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-3 text-[11px] text-[var(--fg-2,#57534e)] transition hover:border-[var(--accent,#7c3aed)]/50 hover:bg-black/[.02]"
+              className="flex w-full items-center gap-3 rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-3 text-[11px] text-[var(--fg-2,#57534e)] transition hover:border-[var(--awb-accent,#7c3aed)]/50 hover:bg-[var(--awb-hover)]"
             >
               <svg viewBox="0 0 120 20" className="h-5 min-w-0 flex-1" aria-hidden>
                 <defs>
@@ -341,10 +341,10 @@ export function DeckTablePanel({ editor }: { editor: DeckEditorState }) {
                 className="h-6 w-6 rounded-[3px] border transition"
                 style={{
                   borderColor: active
-                    ? "var(--accent,#7c3aed)"
+                    ? "var(--awb-accent,#7c3aed)"
                     : "var(--border,#d6d3d1)",
                   background: active
-                    ? "color-mix(in srgb, var(--accent,#7c3aed) 22%, white)"
+                    ? "color-mix(in srgb, var(--awb-accent,#7c3aed) 22%, white)"
                     : "white",
                 }}
                 aria-label={`${row} × ${column}`}
@@ -430,7 +430,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
             type="color"
             value={color}
             onChange={(event) => setColor(event.target.value)}
-            className="h-9 w-10 cursor-pointer rounded-lg border border-[var(--border,#d6d3d1)] bg-white p-1"
+            className="h-9 w-10 cursor-pointer rounded-lg border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] p-1"
             aria-label={tt("签名颜色")}
           />
           <button
@@ -447,7 +447,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
               editor.addInkElement(strokes, style, "signature");
               setStrokes([]);
             }}
-            className="ml-auto rounded-lg bg-[var(--accent,#7c3aed)] px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-35"
+            className="ml-auto rounded-lg bg-[var(--awb-accent,#7c3aed)] px-3 py-2 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] disabled:opacity-35"
           >
             {tt("插入签名")}
           </button>
@@ -458,7 +458,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
           value={typedName}
           onChange={(event) => setTypedName(event.target.value)}
           placeholder={tt("输入姓名")}
-          className="w-full rounded-xl border border-[var(--border,#d6d3d1)] bg-white px-3 py-2.5 text-[20px] outline-none"
+          className="w-full rounded-xl border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] px-3 py-2.5 text-[20px] text-[var(--fg,#292524)] outline-none"
           style={{ fontFamily: "Segoe Script, Brush Script MT, cursive" }}
         />
         <button
@@ -476,7 +476,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
             });
             setTypedName("");
           }}
-          className="mt-2 w-full rounded-xl border border-[var(--accent,#7c3aed)] px-3 py-2 text-[11px] font-semibold text-[var(--accent,#7c3aed)] disabled:opacity-35"
+          className="mt-2 w-full rounded-xl border border-[var(--awb-accent,#7c3aed)] px-3 py-2 text-[11px] font-semibold text-[var(--awb-accent,#7c3aed)] disabled:opacity-35"
         >
           {tt("插入文字签名")}
         </button>

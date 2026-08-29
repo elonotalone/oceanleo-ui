@@ -79,7 +79,7 @@ function Range({
           onBegin?.();
           onChange(Number(event.target.value));
         }}
-        className="w-full accent-[var(--accent,#7c3aed)] disabled:opacity-40"
+        className="w-full accent-[var(--awb-accent,#7c3aed)] disabled:opacity-40"
       />
     </label>
   );
@@ -103,7 +103,7 @@ function ToolButton({
       onClick={onClick}
       className={`rounded-xl border px-2.5 py-2 text-[10px] font-medium transition hover:-translate-y-0.5 disabled:opacity-40 ${
         active
-          ? "border-[var(--accent,#7c3aed)] bg-[var(--accent,#7c3aed)] text-white shadow-sm"
+          ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--awb-accent,#7c3aed)] text-[var(--awb-on-accent,#fff)] shadow-sm"
           : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm"
       }`}
     >
@@ -150,7 +150,7 @@ export function FabricImageControls({
               onClick={() => editor.selectLayer(layer.id)}
               className={`flex w-full items-center gap-1 rounded-lg border px-2 py-1.5 text-left text-[10px] ${
                 layer.selected
-                  ? "border-[var(--accent,#7c3aed)] bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+                  ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--surface-hover,rgba(0,0,0,.04))]"
                   : "border-[var(--border,#e7e5e4)]"
               }`}
             >

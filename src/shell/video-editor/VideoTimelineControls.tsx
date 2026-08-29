@@ -84,7 +84,7 @@ export function VideoTimelineControls({
             type="button"
             disabled={state.addingMedia || state.loadingSource}
             onClick={() => fileInputRef.current?.click()}
-            className="rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+            className="rounded-lg px-2 py-1.5 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] disabled:opacity-50"
             style={{ background: accent }}
           >
             {state.addingMedia ? tt("添加中…") : tt("添加媒体")}
@@ -102,7 +102,7 @@ export function VideoTimelineControls({
               disabled={state.loadingSource}
               onChange={(event) => setUrlDraft(event.target.value)}
               placeholder="https://…"
-              className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] focus:border-[var(--accent,#7c3aed)] focus:outline-none"
+              className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] focus:border-[var(--awb-accent,#7c3aed)] focus:outline-none"
             />
             <ToolButton
               label={tt("添加")}
@@ -241,7 +241,7 @@ export function VideoTimelineControls({
           </p>
         )}
         {state.exportedUrl && (
-          <p className="break-all text-[10px] text-emerald-600">
+          <p className="break-all text-[10px] text-[var(--awb-ok)]">
             {tt("导出完成，已保存到我的库")}
           </p>
         )}

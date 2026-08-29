@@ -118,10 +118,10 @@ export function FabricImageBrushPanel({
                 style={
                   active
                     ? {
-                        borderColor: "var(--accent,#6d5dfc)",
+                        borderColor: "var(--awb-accent,#6d5dfc)",
                         background:
-                          "color-mix(in srgb, var(--accent,#6d5dfc) 9%, var(--card,#fff))",
-                        color: "var(--accent,#6d5dfc)",
+                          "color-mix(in srgb, var(--awb-accent,#6d5dfc) 9%, var(--card,#fff))",
+                        color: "var(--awb-accent,#6d5dfc)",
                       }
                     : { borderColor: "var(--border,#e7e5e4)" }
                 }
@@ -248,7 +248,7 @@ export function FabricImageNotePanel({
               key={color}
               type="button"
               onClick={() => editor.addStickyNote(color)}
-              className="aspect-square rounded-xl border border-black/10 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              className="aspect-square rounded-xl border border-[var(--awb-border)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
               style={{ background: color }}
               aria-label={tt("插入便签")}
             />
@@ -399,7 +399,7 @@ export function FabricImageSignaturePanel({
             type="button"
             disabled={!strokes.length}
             onClick={addDrawn}
-            className="ml-auto rounded-lg bg-[var(--accent,#6d5dfc)] px-3 text-[11px] font-semibold text-white disabled:opacity-35"
+            className="ml-auto rounded-lg bg-[var(--awb-accent,#6d5dfc)] px-3 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] disabled:opacity-35"
           >
             {tt("插入签名")}
           </button>
@@ -421,7 +421,7 @@ export function FabricImageSignaturePanel({
               editor.addSignature(typedName.trim(), color);
               setTypedName("");
             }}
-            className="rounded-xl bg-[var(--accent,#6d5dfc)] px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-35"
+            className="rounded-xl bg-[var(--awb-accent,#6d5dfc)] px-3 py-2 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] disabled:opacity-35"
           >
             {tt("插入文字签名")}
           </button>
@@ -480,10 +480,10 @@ export function FabricImageTablePanel({
                 className="h-7 w-7 rounded-[4px] border transition"
                 style={{
                   borderColor: active
-                    ? "var(--accent,#6d5dfc)"
+                    ? "var(--awb-accent,#6d5dfc)"
                     : "var(--border,#d6d3d1)",
                   background: active
-                    ? "color-mix(in srgb, var(--accent,#6d5dfc) 16%, var(--card,#fff))"
+                    ? "color-mix(in srgb, var(--awb-accent,#6d5dfc) 16%, var(--card,#fff))"
                     : "var(--card,#fff)",
                 }}
                 aria-label={`${row} × ${column}`}
@@ -529,10 +529,10 @@ export function FabricImageExportPanel({
                 style={
                   active
                     ? {
-                        borderColor: "var(--accent,#6d5dfc)",
+                        borderColor: "var(--awb-accent,#6d5dfc)",
                         background:
-                          "color-mix(in srgb, var(--accent,#6d5dfc) 9%, var(--card,#fff))",
-                        color: "var(--accent,#6d5dfc)",
+                          "color-mix(in srgb, var(--awb-accent,#6d5dfc) 9%, var(--card,#fff))",
+                        color: "var(--awb-accent,#6d5dfc)",
                       }
                     : { borderColor: "var(--border,#e7e5e4)" }
                 }
@@ -573,8 +573,8 @@ export function FabricImageExportPanel({
               style={
                 editor.exportScale === scale
                   ? {
-                      borderColor: "var(--accent,#6d5dfc)",
-                      color: "var(--accent,#6d5dfc)",
+                      borderColor: "var(--awb-accent,#6d5dfc)",
+                      color: "var(--awb-accent,#6d5dfc)",
                     }
                   : { borderColor: "var(--border,#e7e5e4)" }
               }
@@ -591,7 +591,7 @@ export function FabricImageExportPanel({
           type="button"
           onClick={editor.download}
           disabled={editor.loading || editor.saving}
-          className="mt-4 w-full rounded-xl bg-[var(--accent,#6d5dfc)] px-3 py-2.5 text-[11px] font-semibold text-white disabled:opacity-40"
+          className="mt-4 w-full rounded-xl bg-[var(--awb-accent,#6d5dfc)] px-3 py-2.5 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] disabled:opacity-40"
         >
           {tt("下载图片")}
         </button>

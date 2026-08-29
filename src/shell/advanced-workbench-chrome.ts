@@ -40,7 +40,10 @@ export function advancedWorkbenchStyle(accent: string): CSSProperties {
     "--awb-hover": "var(--surface-hover,rgba(0,0,0,.05))",
     "--awb-accent": accent,
     "--awb-accent-soft": `color-mix(in srgb, ${accent} 10%, transparent)`,
+    // 站点别名路径的 accent 由宿主给（历来是深色），实心底上维持白字。
+    "--awb-on-accent": "#ffffff",
     "--awb-danger": "var(--danger,#dc2626)",
+    "--awb-danger-soft": "color-mix(in srgb, var(--danger,#dc2626) 10%, transparent)",
     "--awb-warn": "#d97706",
     "--awb-ok": "#059669",
     "--awb-shadow-floating": "0 8px 28px rgba(15,23,42,.12)",

@@ -416,7 +416,7 @@ export function GameRoute({
   const stage = useMemo(() => {
     if (!document_) {
       return (
-        <div className="grid h-full place-items-center bg-stone-50 p-8 text-center text-sm text-stone-600">
+        <div className="grid h-full place-items-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-muted,#57534e)]">
           这个游戏还没有可玩产物；在左侧描述你想要的玩法来生成第一版。
         </div>
       );
@@ -425,7 +425,7 @@ export function GameRoute({
       return (
         <div
           role="alert"
-          className="grid h-full place-items-center bg-stone-50 p-8 text-center text-sm text-amber-700"
+          className="grid h-full place-items-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-warn,#b45309)]"
         >
           可玩预览需要宿主站注册沙箱容器（registerGamePreviewHost）。
           共享包不会自行渲染游戏 iframe，以免绕过沙箱域隔离。
@@ -449,7 +449,7 @@ export function GameRoute({
     () => (
       <div className="flex flex-col gap-3 p-3">
         <label
-          className="text-xs font-medium text-stone-600"
+          className="text-xs font-medium text-[var(--awb-muted,#57534e)]"
           htmlFor="game-prompt"
         >
           描述这一轮想要的玩法改动
@@ -461,19 +461,19 @@ export function GameRoute({
           rows={6}
           disabled={busy}
           placeholder="例：加入二段跳，被击中三次后结束并显示得分。"
-          className="w-full resize-y rounded-lg border border-stone-300 bg-white p-2 text-sm outline-none focus:border-stone-500"
+          className="w-full resize-y rounded-lg border border-[var(--awb-border,#d6d3d1)] bg-[var(--card,#fff)] p-2 text-sm text-[var(--awb-text,#292524)] outline-none focus:border-[var(--awb-accent,#57534e)]"
         />
         <button
           type="button"
           onClick={iterate}
           disabled={busy || !prompt.trim()}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--awb-on-accent,#fff)] disabled:opacity-50"
           style={{ background: accent }}
         >
           {busy ? "生成中…" : document_ ? "迭代这一版" : "生成第一版"}
         </button>
         {history.length > 0 ? (
-          <ol className="flex flex-col gap-1 text-xs text-stone-600">
+          <ol className="flex flex-col gap-1 text-xs text-[var(--awb-muted,#57534e)]">
             {history.map((entry, index) => (
               <li key={`${index}:${entry.envelopeDigest}`}>
                 <button
@@ -481,7 +481,9 @@ export function GameRoute({
                   onClick={() => setCursor(index)}
                   disabled={busy}
                   className={`w-full truncate rounded px-2 py-1 text-left ${
-                    index === cursor ? "bg-stone-200" : "hover:bg-stone-100"
+                    index === cursor
+                      ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
+                      : "hover:bg-[var(--awb-hover)]"
                   }`}
                 >
                   {`v${index + 1} · ${entry.prompt || "初始版本"}`}

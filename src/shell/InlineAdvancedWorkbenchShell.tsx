@@ -29,6 +29,7 @@ import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 import {
+  PluginThemePortalContext,
   PluginThemeScope,
   pluginThemeIdForAdapter,
   pluginWorkbenchStyle,
@@ -530,6 +531,7 @@ export function InlineAdvancedWorkbenchShell({
       ? workbenchMaterials.draggedItem.title
       : undefined;
   return (
+    <PluginThemePortalContext.Provider value={pluginThemeId}>
     <AdvancedLayoutContext.Provider value={layoutState}>
       {!editBarSuppressed && (
         <FloatingContextToolbar
@@ -628,5 +630,6 @@ export function InlineAdvancedWorkbenchShell({
         </div>
       </div>
     </AdvancedLayoutContext.Provider>
+    </PluginThemePortalContext.Provider>
   );
 }

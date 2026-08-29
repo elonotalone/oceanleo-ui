@@ -5,12 +5,7 @@ import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AnchoredPopover } from "./anchored-popover";
-import {
-  PluginThemeToggle,
-  pluginWorkbenchStyle,
-  usePluginTheme,
-  type PluginThemeId,
-} from "./plugin-theme";
+import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 
@@ -48,7 +43,6 @@ export function AdvancedWorkspaceActionBar({
   onUploadFiles: (files: File[]) => void;
 }) {
   const tt = useUI();
-  const pluginTheme = usePluginTheme(pluginThemeId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const downloadButtonRef = useRef<HTMLButtonElement>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
@@ -291,14 +285,7 @@ export function AdvancedWorkspaceActionBar({
               maxHeight={384}
               attributes={{
                 "data-workspace-download-menu": true,
-                "data-plugin-theme": pluginTheme.theme || undefined,
               }}
-              // 弹层 portal 到 body，token 不继承——插件主题在面板上重建作用域。
-              style={
-                pluginTheme.theme && pluginTheme.accent
-                  ? pluginWorkbenchStyle(pluginTheme.theme, pluginTheme.accent)
-                  : undefined
-              }
               className="z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl"
             >
               {downloadActions.map((action, index) => {

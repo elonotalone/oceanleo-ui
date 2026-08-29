@@ -204,7 +204,7 @@ export function GridStage({
               }
               className={`max-w-48 truncate text-[10px] ${
                 editor.selectedDisplayValue.startsWith("#")
-                  ? "text-red-600"
+                  ? "text-[var(--awb-danger)]"
                   : "text-[var(--muted,#78716c)]"
               }`}
             >
@@ -247,7 +247,7 @@ export function GridStage({
         {!editor.loading && !editor.sourceFailed && editor.error && (
           <div
             role="alert"
-            className="sticky left-1/2 top-3 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 shadow-sm"
+            className="sticky left-1/2 top-3 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] px-3 py-2 text-[11px] text-[var(--awb-danger)] shadow-sm"
           >
             {tt(editor.error)}
           </div>
@@ -476,7 +476,7 @@ export function GridStage({
           onClick={editor.deleteSheet}
           disabled={editor.sheets.length <= 1}
           aria-label={tt("删除工作表")}
-          className="w-8 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+          className="w-8 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-[var(--awb-danger-soft)] hover:text-[var(--awb-danger)] disabled:opacity-30"
         >
           ×
         </button>

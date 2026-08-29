@@ -167,11 +167,11 @@ export function Model3DStage({
             data-testid="model3d-load-error"
             className="pointer-events-none absolute inset-0 flex items-center justify-center p-6"
           >
-            <div className="max-w-md rounded-xl border border-red-200 bg-[var(--card,#fff)]/95 p-5 text-center shadow-sm">
-              <p className="text-[13px] font-semibold text-red-700">
+            <div className="max-w-md rounded-xl border border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--card,#fff)]/95 p-5 text-center shadow-sm">
+              <p className="text-[13px] font-semibold text-[var(--awb-danger)]">
                 {tt("无法显示 3D 模型")}
               </p>
-              <p className="mt-2 break-words text-[11px] leading-relaxed text-red-600">
+              <p className="mt-2 break-words text-[11px] leading-relaxed text-[var(--awb-danger)]">
                 {editor.error}
               </p>
             </div>
@@ -256,9 +256,9 @@ export function Model3DStage({
           aria-live="polite"
           className={`min-w-0 flex-1 truncate text-right text-[11px] ${
             editor.error
-              ? "text-red-600"
+              ? "text-[var(--awb-danger)]"
               : editor.notice
-                ? "text-emerald-600"
+                ? "text-[var(--awb-ok)]"
                 : "text-[var(--muted,#78716c)]"
           }`}
         >

@@ -112,7 +112,7 @@ function PdfFullTextSearch({ editor }: { editor: PdfWorkbenchState }) {
         onChange={(event) => setQuery(event.target.value)}
         placeholder={tt("全文检索")}
         aria-label={tt("全文检索")}
-        className="w-full rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 text-[11px] outline-none focus:border-[var(--accent,#7c3aed)]"
+        className="w-full rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 text-[11px] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
       />
       {query.trim() && hits.length === 0 ? (
         <p className="text-[10px] text-[var(--muted,#78716c)]">
@@ -171,7 +171,7 @@ function ControlButton({
         iconOnly ? "grid h-9 w-9 place-items-center p-0" : "px-2.5 py-2"
       } ${
         active
-          ? "border-[var(--accent,#7c3aed)] text-[var(--accent,#7c3aed)]"
+          ? "border-[var(--awb-accent,#7c3aed)] text-[var(--awb-accent,#7c3aed)]"
           : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)]"
       }`}
     >
@@ -271,7 +271,7 @@ export function PdfControls({
           onChange={(event) => editor.setAnnotationText(event.target.value)}
           placeholder={tt("批注内容")}
           aria-label={tt("批注内容")}
-          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)] disabled:opacity-40"
+          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)] disabled:opacity-40"
         />
         <div className="flex items-center gap-1.5">
           <ControlButton

@@ -260,14 +260,14 @@ export function VideoTimelineRoute({
         stage: sourcePending ? (
           <div
             role="status"
-            className="flex h-full items-center justify-center bg-stone-50 p-8 text-center text-sm text-stone-600"
+            className="flex h-full items-center justify-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-muted,#57534e)]"
           >
             正在验证时间线工程与媒体源…
           </div>
         ) : sourceStopped ? (
           <div
             role="alert"
-            className="flex h-full items-center justify-center bg-stone-50 p-8 text-center text-sm text-rose-700"
+            className="flex h-full items-center justify-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-danger,#be123c)]"
           >
             {editor.error ||
               "时间线源未成功载入，空回退工程已停止编辑与导出。可导入经过验证的媒体或恢复本地草稿。"}

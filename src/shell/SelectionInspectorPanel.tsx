@@ -177,7 +177,7 @@ function InspectorControl({
             onChange={(event) => update(Number(event.target.value))}
             onBlur={() => commit()}
             onKeyUp={keyboardCommit}
-            className="h-9 w-20 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 text-right font-semibold tabular-nums outline-none focus:ring-2 focus:ring-[var(--accent,#7c3aed)]/30"
+            className="h-9 w-20 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 text-right font-semibold tabular-nums outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
             aria-label={`${control.label}精确值`}
           />
         </div>
@@ -238,7 +238,7 @@ function InspectorControl({
               event.currentTarget.blur();
             }
           }}
-          className="min-h-24 w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[12px] font-normal leading-relaxed outline-none focus:ring-2 focus:ring-[var(--accent,#7c3aed)]/30"
+          className="min-h-24 w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[12px] font-normal leading-relaxed outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
         />
       </label>
     );
@@ -283,7 +283,7 @@ function InspectorControl({
                 event.currentTarget.blur();
               }
             }}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-3 font-mono uppercase outline-none focus:ring-2 focus:ring-[var(--accent,#7c3aed)]/30"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-3 font-mono uppercase outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
             aria-label={`${control.label} HEX`}
           />
         </div>
@@ -302,7 +302,7 @@ function InspectorControl({
                 draftRef.current = swatch;
                 emitInstant(swatch);
               }}
-              className="aspect-square rounded-lg border border-black/10 shadow-sm outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
+              className="aspect-square rounded-lg border border-[var(--awb-border)] shadow-sm outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
               style={{ background: swatch }}
             />
           ))}
@@ -330,7 +330,7 @@ function InspectorControl({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={`搜索${control.label}`}
             aria-label={`搜索${control.label}`}
-            className="h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 font-normal outline-none focus:ring-2 focus:ring-[var(--accent,#7c3aed)]/30"
+            className="h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 font-normal outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
           />
         )}
         <div className="grid grid-cols-2 gap-2">
@@ -348,9 +348,9 @@ function InspectorControl({
                   draftRef.current = option.value;
                   emitInstant(option.value);
                 }}
-                className={`min-h-11 rounded-xl border px-3 py-2 text-left text-[11px] outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/35 ${
+                className={`min-h-11 rounded-xl border px-3 py-2 text-left text-[11px] outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
                   active
-                    ? "border-transparent font-semibold text-white"
+                    ? "border-transparent font-semibold text-[var(--awb-on-accent,#fff)]"
                     : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
                 }`}
                 style={active ? { background: accent } : undefined}
@@ -382,7 +382,7 @@ function InspectorControl({
           onChange={(event) => update(Number(event.target.value))}
           onBlur={() => commit()}
           onKeyUp={keyboardCommit}
-          className="h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 outline-none focus:ring-2 focus:ring-[var(--accent,#7c3aed)]/30"
+          className="h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
         />
       </label>
     );
@@ -401,11 +401,11 @@ function InspectorControl({
         emitInstant(next);
       }}
       aria-label={control.label}
-      className={`flex h-10 w-full items-center justify-between rounded-xl border px-3 text-[12px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/35 ${
+      className={`flex h-10 w-full items-center justify-between rounded-xl border px-3 text-[12px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
         active
-          ? "border-transparent text-white"
+          ? "border-transparent text-[var(--awb-on-accent,#fff)]"
           : danger
-            ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+            ? "border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] text-[var(--awb-danger)] hover:bg-[color-mix(in_srgb,var(--awb-danger)_18%,transparent)]"
           : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg,#292524)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
       }`}
       style={active ? { background: accent } : undefined}

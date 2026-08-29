@@ -421,7 +421,7 @@ export function SelectionToolbar({
                 aria-haspopup="dialog"
                 aria-controls={morePanelId}
                 onClick={() => setMoreOpen((value) => !value)}
-                className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
+                className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
                 aria-label={moreDialogLabel}
                 title={moreDialogLabel}
               >

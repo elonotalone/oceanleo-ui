@@ -69,10 +69,10 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
       <div className="grid h-full min-h-[420px] place-items-center bg-[var(--surface,#f5f5f4)] p-6">
         <div
           role="alert"
-          className="max-w-lg rounded-xl border border-amber-200 bg-[var(--card,#fff)] p-5 text-center"
+          className="max-w-lg rounded-xl border border-[color-mix(in_srgb,var(--awb-warn)_40%,transparent)] bg-[var(--card,#fff)] p-5 text-center"
         >
-          <p className="font-semibold text-amber-800">{tt("图表编辑不可用")}</p>
-          <p className="mt-2 text-xs leading-relaxed text-amber-700">
+          <p className="font-semibold text-[var(--awb-warn)]">{tt("图表编辑不可用")}</p>
+          <p className="mt-2 text-xs leading-relaxed text-[var(--awb-warn)]">
             {editor.error}
           </p>
         </div>

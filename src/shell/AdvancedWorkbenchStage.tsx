@@ -110,7 +110,7 @@ export function AdvancedWorkbenchStage({
         >
           <div>
             <span
-              className="mx-auto grid h-14 w-14 place-items-center rounded-2xl text-white shadow-lg"
+              className="mx-auto grid h-14 w-14 place-items-center rounded-2xl text-[var(--awb-on-accent,#fff)] shadow-lg"
               style={{ background: accent }}
             >
               <AdvancedEditorIcon name="add" className="h-7 w-7" />
@@ -346,7 +346,7 @@ export function AdvancedWorkbenchBlankStage({
         style={{ borderColor: accent }}
       >
         <span
-          className="mx-auto grid h-14 w-14 place-items-center rounded-2xl text-white shadow-lg"
+          className="mx-auto grid h-14 w-14 place-items-center rounded-2xl text-[var(--awb-on-accent,#fff)] shadow-lg"
           style={{ background: accent }}
         >
           <AdvancedEditorIcon name="add" className="h-7 w-7" />
@@ -361,7 +361,7 @@ export function AdvancedWorkbenchBlankStage({
           type="button"
           disabled={Boolean(busy)}
           onClick={() => inputRef.current?.click()}
-          className="mt-5 inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold text-white shadow transition disabled:opacity-60"
+          className="mt-5 inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold text-[var(--awb-on-accent,#fff)] shadow transition disabled:opacity-60"
           style={{ background: accent }}
         >
           {busy ? tt("上传中…") : tt("上传文件")}

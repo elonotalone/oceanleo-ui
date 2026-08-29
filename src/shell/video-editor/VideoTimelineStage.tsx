@@ -121,9 +121,9 @@ export function VideoTimelineStage({
       className="flex h-full min-h-0 flex-col outline-none"
     >
       {/* 预览窗 */}
-      <div className="flex min-h-0 flex-[3] items-center justify-center bg-[#0c0a09] p-3">
+      <div className="flex min-h-0 flex-[3] items-center justify-center bg-[var(--awb-stage-bg,#0c0a09)] p-3">
         {state.loadingSource ? (
-          <p className="text-[12px] text-white/55">{tt("正在载入素材…")}</p>
+          <p className="text-[12px] text-[var(--awb-muted)]">{tt("正在载入素材…")}</p>
         ) : (
           <canvas
             ref={state.canvasRef}
@@ -145,7 +145,7 @@ export function VideoTimelineStage({
         <button
           type="button"
           onClick={state.togglePlay}
-          className="rounded-lg px-4 py-1.5 text-[12px] font-semibold text-white"
+          className="rounded-lg px-4 py-1.5 text-[12px] font-semibold text-[var(--awb-on-accent,#fff)]"
           style={{ background: accent }}
         >
           {state.playing ? tt("暂停") : tt("播放")}
@@ -164,7 +164,7 @@ export function VideoTimelineStage({
         </span>
         <span className="min-w-0 flex-1 truncate text-right text-[11px] text-[var(--muted,#78716c)]">
           {state.error ? (
-            <span className="text-red-500">{state.error}</span>
+            <span className="text-[var(--awb-danger)]">{state.error}</span>
           ) : (
             state.notice ||
             tt("空格播放 · S 分割 · Delete 删除 · Ctrl+Z 撤销 · Ctrl+滚轮缩放")

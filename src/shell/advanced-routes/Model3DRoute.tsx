@@ -150,7 +150,7 @@ export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
         role="alert"
         className="grid h-full min-h-[320px] place-items-center bg-[var(--surface,#f5f5f4)] p-6"
       >
-        <div className="max-w-md rounded-xl border border-amber-200 bg-[var(--card,#fff)] p-5 text-center text-sm text-amber-700">
+        <div className="max-w-md rounded-xl border border-[color-mix(in_srgb,var(--awb-warn)_40%,transparent)] bg-[var(--card,#fff)] p-5 text-center text-sm text-[var(--awb-warn)]">
           {subtype === "hdri"
             ? "HDRI 是环境光照素材，不能作为 3D 模型加载。"
             : subtype === "texture"

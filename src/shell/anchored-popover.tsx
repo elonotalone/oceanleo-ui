@@ -17,6 +17,11 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  pluginWorkbenchStyle,
+  usePluginTheme,
+  usePluginThemePortal,
+} from "./plugin-theme";
 
 export interface AnchoredPopoverRect {
   left: number;
@@ -204,6 +209,10 @@ export function AnchoredPopover({
 }: AnchoredPopoverProps) {
   const generatedId = useId().replace(/:/g, "");
   const popoverId = providedId || `anchored-popover-${generatedId}`;
+  // 插件内主题：portal 到 body 后 DOM 上不再继承插件根的 token，靠 React
+  // context（穿透 portal）拿到 pluginId，在面板自身重建作用域。
+  const portalPluginThemeId = usePluginThemePortal();
+  const portalPluginTheme = usePluginTheme(portalPluginThemeId);
   const parentLineage = useContext(AnchoredPopoverLineageContext);
   const lineage = [...parentLineage, popoverId];
   const internalPanelRef = useRef<HTMLElement | null>(null);
@@ -383,8 +392,15 @@ export function AnchoredPopover({
         data-anchored-popover-id={popoverId}
         data-anchored-popover-lineage={lineage.join(" ")}
         data-anchored-placement={position.placement}
+        data-plugin-theme={portalPluginTheme.theme || undefined}
         className={className}
         style={{
+          ...(portalPluginTheme.theme && portalPluginTheme.accent
+            ? pluginWorkbenchStyle(
+                portalPluginTheme.theme,
+                portalPluginTheme.accent,
+              )
+            : null),
           ...style,
           position: "fixed",
           boxSizing: "border-box",

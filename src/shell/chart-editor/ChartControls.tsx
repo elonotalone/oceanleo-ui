@@ -36,7 +36,7 @@ export function ChartControls({
           value={csv}
           onChange={(event) => setCsv(event.target.value)}
           aria-label={tt("图表 CSV 数据")}
-          className="h-56 w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5 font-mono text-[10px] leading-relaxed text-[var(--fg,#292524)] outline-none focus:border-[var(--accent,#7c3aed)]"
+          className="h-56 w-full resize-y rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2.5 font-mono text-[10px] leading-relaxed text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
         />
         <div className="grid grid-cols-2 gap-2">
           <label className="cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 text-center hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]">
@@ -71,7 +71,9 @@ export function ChartControls({
       {(editor.error || editor.notice) && (
         <p
           role={editor.error ? "alert" : "status"}
-          className={editor.error ? "text-rose-600" : "text-emerald-600"}
+          className={
+            editor.error ? "text-[var(--awb-danger)]" : "text-[var(--awb-ok)]"
+          }
         >
           {editor.error || editor.notice}
         </p>

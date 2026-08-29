@@ -60,7 +60,7 @@ export function SelectionToolbarButtonControl({
           activePanel ? "bg-[var(--surface-hover,rgba(0,0,0,.06))]" : ""
         } ${
           control.danger || control.tone === "danger"
-            ? "text-rose-600 hover:bg-rose-500/10"
+            ? "text-[var(--awb-danger)] hover:bg-[var(--awb-danger-soft)]"
             : ""
         }`}
         title={namedLabel}
@@ -102,7 +102,7 @@ export function SelectionToolbarButtonControl({
           onActivated?.();
         }}
         className={`${buttonClass} ${iconOnly ? "w-11 px-0" : ""} ${
-          active ? "text-white shadow-sm" : ""
+          active ? "text-[var(--awb-on-accent,#fff)] shadow-sm" : ""
         }`}
         style={active ? { background: accent } : undefined}
         title={namedLabel}
@@ -127,13 +127,13 @@ export function SelectionToolbarButtonControl({
       <label
         className={`${buttonClass} relative ${
           iconOnly ? "w-11 px-0" : ""
-        } focus-within:ring-2 focus-within:ring-[var(--accent,#7c3aed)]/40`}
+        } focus-within:ring-2 focus-within:ring-[var(--awb-accent,#7c3aed)]/40`}
         title={namedLabel}
       >
         <span className="relative grid h-5 w-5 place-items-center">
           {icon}
           <span
-            className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-full ring-1 ring-black/10"
+            className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-full ring-1 ring-[var(--awb-border)]"
             style={{ background: color }}
           />
         </span>

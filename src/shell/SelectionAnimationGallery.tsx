@@ -159,7 +159,7 @@ export function SelectionAnimationGallery({
         ref={launcherRef}
         type="button"
         disabled={control.disabled}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent,#7c3aed)]/40"
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
         aria-label={accessibleLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -194,7 +194,7 @@ export function SelectionAnimationGallery({
                 >
                   <button
                     type="button"
-                    className="grid min-h-16 place-items-center rounded-lg bg-[var(--surface-hover,rgba(0,0,0,.05))] px-2 text-center text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                    className="grid min-h-16 place-items-center rounded-lg bg-[var(--surface-hover,rgba(0,0,0,.05))] px-2 text-center text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/40"
                     aria-label={`应用${preset.label}`}
                     aria-pressed={preset.current || false}
                     onClick={() => emit(preset.applyCommandId, preset.id)}
@@ -208,7 +208,7 @@ export function SelectionAnimationGallery({
                     COMMAND_ID.test(preset.preview.commandId) && (
                       <button
                         type="button"
-                        className="min-h-11 rounded-lg px-2 text-[11px] outline-none hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+                        className="min-h-11 rounded-lg px-2 text-[11px] outline-none hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/40"
                         data-animation-preview-duration={
                           preset.preview.durationMs
                         }

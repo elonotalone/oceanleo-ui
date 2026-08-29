@@ -42,7 +42,7 @@ function AudioSlider({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-[var(--accent,#7c3aed)]"
+        className="w-full accent-[var(--awb-accent,#7c3aed)]"
       />
     </label>
   );
@@ -247,7 +247,7 @@ export function AudioStage({
             title={editor.playing ? tt("暂停") : tt("播放")}
             disabled={editor.loading || Boolean(editor.error)}
             onClick={editor.playPause}
-            className="absolute left-1/2 top-1/2 z-20 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-white shadow-lg transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40"
+            className="absolute left-1/2 top-1/2 z-20 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-[var(--awb-on-accent,#fff)] shadow-lg transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40"
             style={{ background: accent }}
           >
             {editor.playing ? (
@@ -272,7 +272,7 @@ export function AudioStage({
           </button>
         </div>
         {editor.error && (
-          <p className="mt-3 text-center text-[12px] text-red-600">
+          <p className="mt-3 text-center text-[12px] text-[var(--awb-danger)]">
             {editor.error}
           </p>
         )}

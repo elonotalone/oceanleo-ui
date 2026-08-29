@@ -102,7 +102,7 @@ export function DeckElementSelectionChrome({
           type="button"
           disabled={element.locked}
           onClick={onDelete}
-          className="grid h-7 w-7 place-items-center rounded-lg text-rose-600 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-35"
+          className="grid h-7 w-7 place-items-center rounded-lg text-[var(--awb-danger)] hover:bg-[var(--awb-danger-soft)] disabled:cursor-not-allowed disabled:opacity-35"
           title="删除"
           aria-label="删除"
         >
@@ -117,19 +117,19 @@ export function DeckElementSelectionChrome({
             onPointerDown={(event) =>
               onStartInteraction(event, element, "resize", handle.id)
             }
-            className={`absolute z-20 h-3 w-3 rounded-[3px] border-2 border-white bg-[#8b5cf6] shadow ${handle.className}`}
+            className={`absolute z-20 h-3 w-3 rounded-[3px] border-2 border-white bg-[var(--awb-accent,#8b5cf6)] shadow ${handle.className}`}
             style={{ cursor: handle.cursor }}
           />
         ))}
       {!element.locked && (
         <>
-          <span className="pointer-events-none absolute -bottom-7 left-1/2 h-7 w-px -translate-x-1/2 bg-[#8b5cf6]" />
+          <span className="pointer-events-none absolute -bottom-7 left-1/2 h-7 w-px -translate-x-1/2 bg-[var(--awb-accent,#8b5cf6)]" />
           <span
             role="presentation"
             onPointerDown={(event) =>
               onStartInteraction(event, element, "rotate")
             }
-            className="absolute -bottom-10 left-1/2 z-20 grid h-4 w-4 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-white bg-[#8b5cf6] shadow active:cursor-grabbing"
+            className="absolute -bottom-10 left-1/2 z-20 grid h-4 w-4 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-white bg-[var(--awb-accent,#8b5cf6)] shadow active:cursor-grabbing"
           />
         </>
       )}

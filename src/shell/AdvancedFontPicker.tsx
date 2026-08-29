@@ -105,7 +105,7 @@ export function AdvancedFontPicker({
           {tt("选择字体后立即应用到当前文字。")}
         </p>
       </div>
-      <label className="mt-3 flex h-10 items-center gap-2 rounded-xl border border-[var(--border,#dfe3ea)] bg-[var(--surface,#f8fafc)] px-3 transition focus-within:border-[var(--accent,#7c3aed)] focus-within:bg-[var(--card,#fff)] focus-within:ring-2 focus-within:ring-[var(--accent,#7c3aed)]/10">
+      <label className="mt-3 flex h-10 items-center gap-2 rounded-xl border border-[var(--border,#dfe3ea)] bg-[var(--surface,#f8fafc)] px-3 transition focus-within:border-[var(--awb-accent,#7c3aed)] focus-within:bg-[var(--card,#fff)] focus-within:ring-2 focus-within:ring-[var(--awb-accent,#7c3aed)]/10">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -144,7 +144,7 @@ export function AdvancedFontPicker({
               onClick={() => onSelect(font.family)}
               className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:opacity-40 ${
                 active
-                  ? "bg-[color-mix(in_srgb,var(--accent,#7c3aed)_10%,transparent)]"
+                  ? "bg-[color-mix(in_srgb,var(--awb-accent,#7c3aed)_10%,transparent)]"
                   : "hover:bg-[var(--surface-hover,#f1f5f9)]"
               }`}
             >
@@ -165,7 +165,7 @@ export function AdvancedFontPicker({
                 </span>
               </span>
               {active && (
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--accent,#7c3aed)] text-[11px] font-bold text-white">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--awb-accent,#7c3aed)] text-[11px] font-bold text-[var(--awb-on-accent,#fff)]">
                   ✓
                 </span>
               )}
