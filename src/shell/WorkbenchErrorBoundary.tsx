@@ -9,6 +9,9 @@ interface WorkbenchErrorBoundaryProps {
   children: ReactNode;
   item: LibraryItem;
   onClose: () => void;
+  /** Keep the fallback inside the editor pane. A body portal covers every
+   *  sibling editor that shares the document (plugin-gallery host). */
+  contained?: boolean;
 }
 
 interface WorkbenchErrorBoundaryState {
@@ -43,18 +46,22 @@ export class WorkbenchErrorBoundary extends Component<
   }
 
   render() {
-    const { children, item, onClose } = this.props;
+    const { children, item, onClose, contained } = this.props;
     const { error } = this.state;
     if (!error) return children;
     if (typeof document === "undefined") return null;
 
     const url = item.url || item.previewUrl || "";
-    return createPortal(
+    const fallback = (
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`${item.title} · 编辑器错误`}
-        className="fixed inset-0 z-[2147483000] grid min-h-[100dvh] place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
+        className={
+          contained
+            ? "absolute inset-0 z-10 grid place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
+            : "fixed inset-0 z-[2147483000] grid min-h-[100dvh] place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
+        }
       >
         <div className="w-full max-w-xl rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-6 shadow-xl">
           <p className="text-[15px] font-semibold">这个素材暂时无法载入编辑器</p>
@@ -91,8 +98,8 @@ export class WorkbenchErrorBoundary extends Component<
             </button>
           </div>
         </div>
-      </div>,
-      document.body,
+      </div>
     );
+    return contained ? fallback : createPortal(fallback, document.body);
   }
 }

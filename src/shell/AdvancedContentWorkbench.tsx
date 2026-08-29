@@ -546,6 +546,7 @@ function AdvancedContentWorkbenchRuntime(
         key={routeKey}
         item={props.item}
         onClose={props.onClose}
+        contained={editorHost.embedded}
       >
         {editor}
       </WorkbenchErrorBoundary>

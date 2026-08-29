@@ -86,6 +86,14 @@ test("typed routes render real content in the inline App-library editor shell", 
   }
 });
 
+test("embedded workbench keeps a crash fallback inside the pane", () => {
+  const boundary = source("../src/shell/WorkbenchErrorBoundary.tsx");
+  const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
+  assert.match(boundary, /contained\?: boolean/);
+  assert.match(boundary, /contained \? fallback : createPortal\(fallback, document\.body\)/);
+  assert.match(workbench, /contained=\{editorHost\.embedded\}/);
+});
+
 test("plugin-gallery host hides OceanLeo library chrome", () => {
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const bar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
