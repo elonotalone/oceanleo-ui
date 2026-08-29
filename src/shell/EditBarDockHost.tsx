@@ -3,6 +3,7 @@
 import type { CSSProperties, RefObject } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
+import { pluginWorkbenchStyle, type PluginThemeMode } from "./plugin-theme";
 import type { EditBarDockMode } from "./edit-bar-dock-state";
 
 export interface EditBarDockPresentation {
@@ -10,6 +11,8 @@ export interface EditBarDockPresentation {
   mode: EditBarDockMode;
   dropActive: boolean;
   accent: string;
+  /** 插件内主题档；null/缺省 = 非 10 件插件，沿用站点主题别名。 */
+  theme?: PluginThemeMode | null;
 }
 
 export function EditBarDockHost({
@@ -34,9 +37,12 @@ export function EditBarDockHost({
       role={collapsed ? undefined : "region"}
       aria-label={collapsed ? undefined : tt("编辑栏停靠区")}
       aria-hidden={collapsed || undefined}
+      data-plugin-theme={presentation?.theme || undefined}
       style={
         presentation
-          ? (advancedWorkbenchStyle(presentation.accent) as CSSProperties)
+          ? ((presentation.theme
+              ? pluginWorkbenchStyle(presentation.theme, presentation.accent)
+              : advancedWorkbenchStyle(presentation.accent)) as CSSProperties)
           : undefined
       }
       className={`relative min-w-0 max-w-full shrink-0 items-center justify-center ${
@@ -52,7 +58,7 @@ export function EditBarDockHost({
           ? "border-dashed border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
           : collapsed
             ? "bg-transparent"
-            : "border-stone-100 bg-transparent"
+            : "border-[var(--divider,#f5f5f4)] bg-transparent"
       } ${
         highlighted
           ? "ring-2 ring-inset ring-[var(--awb-accent)] bg-[var(--awb-accent-soft)]"

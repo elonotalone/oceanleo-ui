@@ -15,6 +15,7 @@ import {
 } from "./advanced-layout-context";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
+import type { PluginThemeId } from "./plugin-theme";
 
 export function InlineAdvancedWorkbenchHeader({
   adapter,
@@ -23,6 +24,7 @@ export function InlineAdvancedWorkbenchHeader({
   activeLibraryPanelId,
   drawers,
   accent,
+  pluginThemeId = null,
   showLibrary = true,
   showBack = true,
   onBack,
@@ -39,6 +41,8 @@ export function InlineAdvancedWorkbenchHeader({
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
   drawers: readonly AdvancedWorkbenchDrawer[];
   accent: string;
+  /** 插件内主题 id；null = 非 10 件插件，不渲染切换器。 */
+  pluginThemeId?: PluginThemeId | null;
   showLibrary?: boolean;
   showBack?: boolean;
   onBack: () => void;
@@ -140,6 +144,7 @@ export function InlineAdvancedWorkbenchHeader({
       adapter={adapter}
       autoSaveState={autoSaveState}
       activeLibraryPanelId={activeLibraryPanelId}
+      pluginThemeId={pluginThemeId}
       showLibrary={showLibrary}
       showBack={showBack}
       onBack={onBack}

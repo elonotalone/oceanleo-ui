@@ -28,6 +28,12 @@ import {
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
+import {
+  PluginThemeScope,
+  pluginThemeIdForAdapter,
+  pluginWorkbenchStyle,
+  usePluginTheme,
+} from "./plugin-theme";
 import type { LibraryItem } from "./library-data";
 import { InlineEditorMaterialPanel } from "./InlineEditorMaterialPanel";
 import {
@@ -62,6 +68,12 @@ export function InlineAdvancedWorkbenchShell({
   onClose,
 }: InlineAdvancedWorkbenchShellProps) {
   const tt = useUI();
+  // 插件内主题（10 件高级编辑器）：与站点 html.dark 完全解耦。非 10 件的
+  // adapter（website / design-canvas / video-canvas）pluginThemeId 为 null，
+  // 保持原站点主题别名路径不变。
+  const pluginThemeId = pluginThemeIdForAdapter(adapter.id);
+  const pluginTheme = usePluginTheme(pluginThemeId);
+  const effectiveAccent = pluginTheme.accent ?? accent;
   const workspacePane = useWorkspacePane();
   const rightPaneSlot = useRightPaneSlot();
   const workspaceDetail = workspacePane?.detail;
@@ -104,13 +116,15 @@ export function InlineAdvancedWorkbenchShell({
             ownerId: ownerIdRef.current,
             mode: floatingToolbar.mode,
             dropActive: floatingToolbar.dropActive,
-            accent,
+            accent: effectiveAccent,
+            theme: pluginTheme.theme,
           },
     [
-      accent,
+      effectiveAccent,
       editBarSuppressed,
       floatingToolbar.dropActive,
       floatingToolbar.mode,
+      pluginTheme.theme,
       rightPaneSlot,
     ],
   );
@@ -195,7 +209,7 @@ export function InlineAdvancedWorkbenchShell({
             item={item}
             taskId={taskId}
             siteId={siteId}
-            accent={accent}
+            accent={effectiveAccent}
             materials={workbenchMaterials}
             primaryMaterialAction={materialAction || activeMaterialAction}
           />
@@ -203,7 +217,7 @@ export function InlineAdvancedWorkbenchShell({
       };
     },
     [
-      accent,
+      effectiveAccent,
       activeMaterialAction,
       adapter.label,
       drawerById,
@@ -234,6 +248,20 @@ export function InlineAdvancedWorkbenchShell({
     );
   }, [liveDrawerDetail?.content, transientPanel]);
 
+  // 抽屉/工具面板经 showWorkspaceDetail 传送到工作区窗格，DOM 在插件根之外，
+  // 必须重建插件主题作用域，token 才能盖过站点 html.dark 的翻转。
+  const liveDetailNode = useMemo(
+    () =>
+      pluginThemeId ? (
+        <PluginThemeScope pluginId={pluginThemeId}>
+          <LiveReactNode store={liveDetailStoreRef.current} />
+        </PluginThemeScope>
+      ) : (
+        <LiveReactNode store={liveDetailStoreRef.current} />
+      ),
+    [pluginThemeId],
+  );
+
   const openDrawer = useCallback(
     (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
       transientPanelRef.current = null;
@@ -249,16 +277,16 @@ export function InlineAdvancedWorkbenchShell({
           ownerId: ownerIdRef.current,
           id: drawerId,
           label: next.label,
-          content: <LiveReactNode store={liveDetailStoreRef.current} />,
+          content: liveDetailNode,
         });
       } else {
         setFallbackDetail({
           label: next.label,
-          content: <LiveReactNode store={liveDetailStoreRef.current} />,
+          content: liveDetailNode,
         });
       }
     },
-    [panelFor, showWorkspaceDetail],
+    [liveDetailNode, panelFor, showWorkspaceDetail],
   );
 
   const openTransientPanel = useCallback(
@@ -274,16 +302,16 @@ export function InlineAdvancedWorkbenchShell({
           ownerId: ownerIdRef.current,
           id: panelId,
           label,
-          content: <LiveReactNode store={liveDetailStoreRef.current} />,
+          content: liveDetailNode,
         });
       } else {
         setFallbackDetail({
           label,
-          content: <LiveReactNode store={liveDetailStoreRef.current} />,
+          content: liveDetailNode,
         });
       }
     },
-    [showWorkspaceDetail],
+    [liveDetailNode, showWorkspaceDetail],
   );
   const updateTransientPanel = useCallback(
     (panelId: string, content: ReactNode) => {
@@ -428,7 +456,8 @@ export function InlineAdvancedWorkbenchShell({
         activeDrawerId={layoutState.activeDrawerId}
         activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
         drawers={drawers}
-        accent={accent}
+        accent={effectiveAccent}
+        pluginThemeId={pluginThemeId}
         showLibrary={siteId !== "plugin-gallery"}
         showBack={siteId !== "plugin-gallery"}
         onBack={requestClose}
@@ -442,7 +471,8 @@ export function InlineAdvancedWorkbenchShell({
     ),
     [
       adapter,
-      accent,
+      effectiveAccent,
+      pluginThemeId,
       autoSave.retry,
       autoSave.state,
       closeDetail,
@@ -477,15 +507,17 @@ export function InlineAdvancedWorkbenchShell({
       ownerId: ownerIdRef.current,
       mode: floatingToolbar.mode,
       dropActive: floatingToolbar.dropActive,
-      accent,
+      accent: effectiveAccent,
+      theme: pluginTheme.theme,
     });
     return () =>
       rightPaneSlot.clearEditBarDockPresentation(ownerIdRef.current);
   }, [
-    accent,
+    effectiveAccent,
     editBarSuppressed,
     floatingToolbar.dropActive,
     floatingToolbar.mode,
+    pluginTheme.theme,
     rightPaneSlot,
   ]);
 
@@ -500,15 +532,24 @@ export function InlineAdvancedWorkbenchShell({
   return (
     <AdvancedLayoutContext.Provider value={layoutState}>
       {!editBarSuppressed && (
-        <FloatingContextToolbar controller={floatingToolbar} accent={accent}>
+        <FloatingContextToolbar
+          controller={floatingToolbar}
+          accent={effectiveAccent}
+          theme={pluginTheme.theme}
+        >
           {contextToolbar}
         </FloatingContextToolbar>
       )}
       <div
         data-inline-editor
         data-editor-adapter={adapter.id}
+        data-plugin-theme={pluginTheme.theme || undefined}
         className="flex h-full min-h-0 min-w-0 overflow-hidden bg-[var(--awb-stage-bg)] text-[var(--awb-text)]"
-        style={advancedWorkbenchStyle(accent)}
+        style={
+          pluginTheme.theme
+            ? pluginWorkbenchStyle(pluginTheme.theme, effectiveAccent)
+            : advancedWorkbenchStyle(accent)
+        }
       >
         {fallbackDetail && (
           <aside
@@ -566,7 +607,7 @@ export function InlineAdvancedWorkbenchShell({
                 editorAvailable={editorAvailable}
                 editorStage={adapter.stage}
                 item={item}
-                accent={accent}
+                accent={effectiveAccent}
                 draggedTitle={draggedTitle}
                 acceptLocalFiles={Boolean(adapter.upload)}
                 dropMessage={dropMessage}
@@ -579,7 +620,7 @@ export function InlineAdvancedWorkbenchShell({
                 <AdvancedStageControls
                   fullscreenRef={workspacePane?.fullscreenRef || stageRef}
                   viewport={editorViewport}
-                  accent={accent}
+                  accent={effectiveAccent}
                 />
               </div>
             </div>

@@ -5,6 +5,12 @@ import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AnchoredPopover } from "./anchored-popover";
+import {
+  PluginThemeToggle,
+  pluginWorkbenchStyle,
+  usePluginTheme,
+  type PluginThemeId,
+} from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 
@@ -12,6 +18,7 @@ export function AdvancedWorkspaceActionBar({
   adapter,
   autoSaveState,
   activeLibraryPanelId,
+  pluginThemeId = null,
   showLibrary = true,
   showBack = true,
   onBack,
@@ -25,6 +32,8 @@ export function AdvancedWorkspaceActionBar({
   /** @deprecated The shared selection bar is now the only tools launcher. */
   activeDrawerId?: string;
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
+  /** 插件内主题 id；null = 非 10 件插件，不渲染主题切换器。 */
+  pluginThemeId?: PluginThemeId | null;
   /** Plugin-gallery host has no OceanLeo library chrome. */
   showLibrary?: boolean;
   showBack?: boolean;
@@ -39,6 +48,7 @@ export function AdvancedWorkspaceActionBar({
   onUploadFiles: (files: File[]) => void;
 }) {
   const tt = useUI();
+  const pluginTheme = usePluginTheme(pluginThemeId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const downloadButtonRef = useRef<HTMLButtonElement>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
@@ -158,7 +168,7 @@ export function AdvancedWorkspaceActionBar({
               action.variant === "primary"
                 ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
                 : action.variant === "danger"
-                  ? "text-red-600 hover:bg-red-50"
+                  ? "text-[var(--awb-danger,#dc2626)] hover:bg-[var(--awb-hover)]"
                   : ""
             }`}
             aria-pressed={
@@ -181,6 +191,7 @@ export function AdvancedWorkspaceActionBar({
         ))}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        {pluginThemeId ? <PluginThemeToggle pluginId={pluginThemeId} /> : null}
         {adapter.upload && (
           <>
             <button
@@ -209,7 +220,7 @@ export function AdvancedWorkspaceActionBar({
           <button
             type="button"
             onClick={() => setActionError("")}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 transition hover:bg-red-50"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-danger,#dc2626)] transition hover:bg-[var(--awb-hover)]"
             aria-label={tt(`操作失败：${actionError}；点击关闭提示`)}
             title={actionError}
           >
@@ -224,10 +235,10 @@ export function AdvancedWorkspaceActionBar({
           aria-disabled={autoSaveState !== "error"}
           className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--awb-hover)] ${
             autoSaveState === "error"
-              ? "text-red-600"
+              ? "text-[var(--awb-danger,#dc2626)]"
               : autoSaveState === "saving"
-                ? "text-amber-600"
-                : "text-emerald-600"
+                ? "text-[var(--awb-warn,#d97706)]"
+                : "text-[var(--awb-ok,#059669)]"
           }`}
           aria-live="polite"
           aria-label={tt(
@@ -280,7 +291,14 @@ export function AdvancedWorkspaceActionBar({
               maxHeight={384}
               attributes={{
                 "data-workspace-download-menu": true,
+                "data-plugin-theme": pluginTheme.theme || undefined,
               }}
+              // 弹层 portal 到 body，token 不继承——插件主题在面板上重建作用域。
+              style={
+                pluginTheme.theme && pluginTheme.accent
+                  ? pluginWorkbenchStyle(pluginTheme.theme, pluginTheme.accent)
+                  : undefined
+              }
               className="z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl"
             >
               {downloadActions.map((action, index) => {

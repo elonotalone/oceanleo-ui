@@ -41,6 +41,8 @@ export function advancedWorkbenchStyle(accent: string): CSSProperties {
     "--awb-accent": accent,
     "--awb-accent-soft": `color-mix(in srgb, ${accent} 10%, transparent)`,
     "--awb-danger": "var(--danger,#dc2626)",
+    "--awb-warn": "#d97706",
+    "--awb-ok": "#059669",
     "--awb-shadow-floating": "0 8px 28px rgba(15,23,42,.12)",
   } as CSSProperties;
 }

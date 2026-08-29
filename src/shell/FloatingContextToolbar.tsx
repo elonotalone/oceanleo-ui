@@ -3,6 +3,7 @@
 import { type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
+import { pluginWorkbenchStyle, type PluginThemeMode } from "./plugin-theme";
 import {
   useEditBarDockController,
   type EditBarDockController,
@@ -36,10 +37,13 @@ export function useFloatingContextToolbar({
 export function FloatingContextToolbar({
   controller,
   accent,
+  theme = null,
   children,
 }: {
   controller: FloatingContextToolbarController;
   accent: string;
+  /** 插件内主题档；null = 非 10 件插件，沿用站点主题别名。 */
+  theme?: PluginThemeMode | null;
   children?: ReactNode;
 }) {
   if (!children) return null;
@@ -63,9 +67,12 @@ export function FloatingContextToolbar({
           ref={controller.toolbarRef}
           data-advanced-context-row
           data-workspace-edit-bar-toolbar
+          data-plugin-theme={theme || undefined}
           className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
           style={{
-            ...advancedWorkbenchStyle(accent),
+            ...(theme
+              ? pluginWorkbenchStyle(theme, accent)
+              : advancedWorkbenchStyle(accent)),
             transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
           }}
         >
