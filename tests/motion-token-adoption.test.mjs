@@ -46,7 +46,8 @@ const ADOPTION_FLOOR = 409;
 const BARE_DEFAULT_CEILING = 11;
 
 /**
- * 显式豁免清单：允许继续携带**裸时长**（`duration-150` / `duration-[240ms]`）的文件。
+ * 显式豁免清单：允许继续携带**裸时长**的文件。（裸时长 = 时长工具类后面直接跟数字，
+ * 或方括号里以数字开头。本文件刻意不写出完整字面量，理由见末尾那条自查用例。）
  *
  * 判等用 `Set.has(整条相对路径)`，**不是 `includes`、不是裸正则**——
  * `W28` 的教训：子串匹配会把「文件改名」判成「它还在」，于是清单永远绿。
@@ -87,7 +88,7 @@ const TW_TRANSITION =
 /** 六档阶梯的 Tailwind 任意值写法，两种都认。 */
 const LADDER_DURATION =
   /^duration-(\[var\(--leo-dur-[1-6]\)\]|\(--leo-dur-[1-6]\))$/;
-/** 裸时长：`duration-150`、`duration-[240ms]`。 */
+/** 裸时长：时长工具类后面直接跟数字，或方括号里以数字开头。 */
 const RAW_DURATION = /^duration-(\[?[0-9])/;
 /** 同串里出现任意一个才认定这是 className 串，而不是自然语言或业务枚举值。 */
 const TW_COTOKEN =
@@ -175,9 +176,8 @@ function scan() {
       if (transitions.length === 0) continue;
       // 定档只看**无变体前缀**的时长。`active:duration-…` 说的是「按下时」那一档，
       // 它不能替基础态定档。
-      // 反面验证 ① 实测过这个洞：把基础态换回 `duration-200`，而同串里still有
-      // `active:duration-[var(--leo-dur-1)]`，早先的实现把整个站点判成「已接档」，
-      // 十条判据一条都没红。
+      // 反面验证 ① 实测过这个洞：把基础态换回裸值，而同串里仍带着按下态那一档的
+      // 阶梯值，早先的实现把整个站点判成「已接档」，十条判据一条都没红。
       const allDurations = tokens.filter((t) =>
         t.replace(/^([a-z-]+:)+/, "").startsWith("duration-"),
       );
@@ -294,8 +294,8 @@ test("判据 1b：仍跑 Tailwind 默认档的站点数只减不增", () => {
 // ---------------------------------------------------------------------------
 
 test("判据 2a：清单外不许出现裸时长", () => {
-  // 判的是 `rawTokens` 而不是 `kind === "raw"`：变体前缀上的裸时长
-  // （`hover:duration-300`）同样违规，但它不参与定档，落不进 `raw` 桶。
+  // 判的是 `rawTokens` 而不是 `kind === "raw"`：挂在变体前缀上的裸时长
+  // （悬停态写死毫秒那种）同样违规，但它不参与定档，落不进 `raw` 桶。
   const offenders = sites.filter(
     (s) => s.rawTokens.length > 0 && !RAW_DURATION_EXEMPT.has(s.file),
   );
@@ -374,6 +374,28 @@ test("判据 3b：载荷指示器四条**不**归零（归零会让用户以为�
       `--leo-loop-${name} 在 reduced-motion 下是 ${m[1].trim()}，不许归零`,
     );
   }
+});
+
+test("自查：本文件不许写出可被 Tailwind 提取的完整类名（连注释里也不许）", () => {
+  // Tailwind v4 的自动内容探测扫的是仓库根，`tests/` 也在里面。
+  // 本棒实测**三次**在产物 `src/theme/ui.css` 里凭空多出规则：
+  // 先是用例里的样例字面量，再是解释这件事的注释，第三次是另一条注释里举的例子。
+  // 每一次都让 31 个站白背几条死规则。⇒ 用这条自查钉住。
+  //
+  // 根治要改 `src/theme/_ui-input.css`（`source(none)` 或 `@source not`），
+  // 那不是 W30 的独占面，已写进 signals/W30-request.md。
+  const self = readFileSync(new URL(import.meta.url), "utf8");
+  const forbidden = new RegExp(
+    ["durat", "ion-"].join("") + "(\\[?\\d|\\(--leo|\\[var)|" + ["trans", "ition-none"].join(""),
+    "g",
+  );
+  const hits = self.match(forbidden) ?? [];
+  assert.equal(
+    hits.length,
+    0,
+    `本文件里有 ${hits.length} 处完整类名字面量（${[...new Set(hits)].join(", ")}），` +
+      `它们会被编进产物。请拆成拼接，或改用描述性说法。`,
+  );
 });
 
 test("判据 3c：产物不陈旧——源码引用的每一个阶梯工具类都已编译进 ui.css", () => {
