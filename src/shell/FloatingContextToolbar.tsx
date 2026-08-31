@@ -90,6 +90,7 @@ export function FloatingContextToolbar({
           onPointerDownCapture={controller.rootProps.onPointerDownCapture}
           onClickCapture={controller.rootProps.onClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
+          aria-keyshortcuts={controller.rootProps["aria-keyshortcuts"]}
           className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
           // transform 刻意不在这里写：位置由控制器的 paintMotion() 一处写入，
           // 否则每次重渲染都会把弹簧算出来的中间帧盖回去。

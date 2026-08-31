@@ -125,6 +125,11 @@ export interface EditBarDockController {
     onPointerDownCapture: (event: ReactPointerEvent<HTMLElement>) => void;
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+    /**
+     * 展开态的键盘广告位。手柄被删掉之前这条职责挂在手柄上，
+     * 手柄一没，展开态就一个 `aria-keyshortcuts` 都不剩了。
+     */
+    "aria-keyshortcuts": string;
   };
   /** 摊到收起圆上。圆只有一个控件，所以用经典的按住即拖 + 阈值内算点击。 */
   collapsedProps: {
@@ -1428,9 +1433,38 @@ export function useEditBarDockController({
     [],
   );
 
+  /**
+   * 广告位与实现的单一事实源：`onRootKeyDown` 认哪些组合键，这里就列哪些。
+   * `Alt+Enter` 只在真有停靠位时登场——没有 `dockRootRef` 时 `toggleDock()`
+   * 直接返回，广告一个按了没反应的键比不广告更糟。
+   * 收起圆不用这一串：它的 `moveByKeyboard` 收**裸**方向键（圆本身是按钮、
+   * 拿得到焦点，不必和条内的输入框抢键），广告位在 `EditBarDockControls.tsx`。
+   */
+  const rootKeyShortcuts = useMemo(
+    () =>
+      [
+        "Alt+ArrowLeft",
+        "Alt+ArrowRight",
+        "Alt+ArrowUp",
+        "Alt+ArrowDown",
+        "Alt+Home",
+        dockRootRef ? "Alt+Enter" : null,
+        "Control+.",
+        "Meta+.",
+      ]
+        .filter((key): key is string => key !== null)
+        .join(" "),
+    [dockRootRef],
+  );
+
   const rootProps = useMemo(
-    () => ({ onPointerDownCapture, onClickCapture, onKeyDown: onRootKeyDown }),
-    [onClickCapture, onPointerDownCapture, onRootKeyDown],
+    () => ({
+      onPointerDownCapture,
+      onClickCapture,
+      onKeyDown: onRootKeyDown,
+      "aria-keyshortcuts": rootKeyShortcuts,
+    }),
+    [onClickCapture, onPointerDownCapture, onRootKeyDown, rootKeyShortcuts],
   );
 
   return {

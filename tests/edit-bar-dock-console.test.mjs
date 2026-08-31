@@ -812,6 +812,137 @@ test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动�
   }
 });
 
+/**
+ * 手柄被删掉之前，键盘快捷键的**广告位**挂在手柄上，而且是被断言着的
+ * （旧断言 `/Enter.*ArrowLeft.*Home/`）。手柄一没，展开态就一个
+ * `aria-keyshortcuts` 都不剩——键盘与读屏用户从此看不到「这条能移动」。
+ *
+ * 这一条把广告位与实现**对钉**：广告里的每一个组合键都必须真的干活，
+ * 反过来能干活的也必须出现在广告里。只断言字符串等于某个常量是不够的——
+ * 那样把实现改坏、广告不动，测试照旧全绿。
+ */
+test("键盘快捷键的广告位与实现对得上（展开态用 Alt+，收起圆用裸方向键）", async () => {
+  const storageKey = "test:edit-bar-keyshortcuts";
+  window.localStorage.clear();
+  const mounted = await createMounted(DockHarness, { storageKey });
+  const bar = () =>
+    mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
+  const savedOffset = () =>
+    parseEditBarDockState(window.localStorage.getItem(storageKey)).offset;
+
+  /** 把 `Alt+ArrowLeft` / `Control+.` 这样的字符串打成一次真事件。 */
+  const chord = async (target, spec) => {
+    const parts = spec.split("+");
+    const value = parts.pop();
+    await act(async () => {
+      target.dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: value,
+          altKey: parts.includes("Alt"),
+          ctrlKey: parts.includes("Control"),
+          metaKey: parts.includes("Meta"),
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+  };
+
+  try {
+    // ── 展开态：广告位必须在，且内容与 onRootKeyDown 认的键一致 ──
+    const advertised = bar().getAttribute("aria-keyshortcuts");
+    assert.ok(
+      advertised,
+      "展开态的编辑栏必须有 aria-keyshortcuts —— 手柄没了，广告位得搬家",
+    );
+    assert.deepEqual(
+      advertised.split(" ").sort(),
+      [
+        "Alt+ArrowDown",
+        "Alt+ArrowLeft",
+        "Alt+ArrowRight",
+        "Alt+ArrowUp",
+        "Alt+Enter",
+        "Alt+Home",
+        "Control+.",
+        "Meta+.",
+      ].sort(),
+      `广告位与实现漂移了：${advertised}`,
+    );
+
+    // 广告里的四个方向键**逐个**都要真的移动这条，不是列着好看。
+    for (const [spec, axis, sign] of [
+      ["Alt+ArrowRight", "x", 1],
+      ["Alt+ArrowLeft", "x", -1],
+      ["Alt+ArrowDown", "y", 1],
+      ["Alt+ArrowUp", "y", -1],
+    ]) {
+      await chord(bar(), "Alt+Home");
+      assert.deepEqual(savedOffset(), { x: 0, y: 0 }, "Alt+Home 应当归位");
+      await chord(bar(), spec);
+      const moved = savedOffset();
+      assert.ok(
+        Math.sign(moved[axis]) === sign,
+        `${spec} 没有把 ${axis} 往 ${sign > 0 ? "正" : "负"}向移动：${JSON.stringify(moved)}`,
+      );
+    }
+
+    // Alt+Enter 切停靠：广告了就必须生效。
+    await chord(bar(), "Alt+Enter");
+    assert.ok(
+      mounted.container.querySelector("[data-workspace-docked-toolbar]"),
+      "Alt+Enter 应当把条停靠回去",
+    );
+
+    // Control+. 与 Meta+. 都收起，两个都广告了就两个都要能用。
+    for (const spec of ["Control+.", "Meta+."]) {
+      const root = mounted.container.querySelector(
+        "[data-edit-bar-presentation]",
+      );
+      if (root.dataset.editBarPresentation === "collapsed") {
+        await chord(bar(), spec);
+      }
+      await chord(bar(), spec);
+      assert.equal(
+        mounted.container.querySelector("[data-edit-bar-presentation]").dataset
+          .editBarPresentation,
+        "collapsed",
+        `${spec} 应当收起为圆`,
+      );
+      await chord(bar(), spec);
+    }
+
+    // ── 收起圆：它的广告位刻意**不带** Alt ──
+    // 圆本身是按钮、拿得到焦点，不必和条内的输入框抢方向键，
+    // 所以 moveByKeyboard 收裸键。这条防的是有人「顺手统一成 Alt+」。
+    await click(mounted.container.querySelector("[data-edit-bar-collapse]"));
+    const pill = mounted.container.querySelector(
+      "[data-edit-bar-collapsed-pill]",
+    );
+    assert.ok(pill, "收起后应当有圆");
+    const pillAd = pill.getAttribute("aria-keyshortcuts");
+    assert.ok(pillAd, "收起圆必须保留它的键盘广告位");
+    assert.ok(
+      !pillAd.includes("Alt+"),
+      `收起圆收的是裸方向键，广告位不该写 Alt+：${pillAd}`,
+    );
+
+    // 圆的键盘**移动行为**这里不断言，刻意的：`collapsedPosition` 存的是
+    // 夹取后的值（`setCollapsedPosition` → `positionForOffset` →
+    // `clampFloatingToolbarToBounds`），而本用例没装 rect 替身，
+    // jsdom 的 rect 全是 0 ⇒ 任何请求点都会被夹到同一个点，读到的永远是「没动」。
+    // 那是 harness 的假读数，不是实现坏了（实测两次读数都是 {x:8,y:8}）。
+    // 要断言圆的位移得先照抄上面那个用例的 rect 替身；本条只管**广告位形状**。
+    await key(pill, "ArrowRight");
+    assert.ok(
+      pill.isConnected,
+      "裸方向键不该把圆卸载掉（说明键落进了别的分支）",
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
 test("discrete overshoot past the dock band still flies open and redocks", async () => {
   // Mirrors V1 production failure: after undock, pointer jumps from below the
   // dock strip to chrome above it (y≈48) while the handle clamps in-band.
