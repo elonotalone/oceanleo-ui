@@ -147,8 +147,13 @@ test("切分无损：closed + open 逐字等于输入，前缀只增不改", () 
 test("未闭合的代码围栏整段留在尾巴里", () => {
   const partial = "开头一段。\n\n```js\nconst a = 1;\n";
   const { closed, open } = splitStreamingMarkdown(partial);
-  assert.equal(closed, "开头一段。\n\n");
-  assert.ok(open.startsWith("```js"), "围栏没闭合就不许并进前缀");
+  // 块间空行归**后一块**开头（理由见 `splitStreamingMarkdown` 的边界注释：
+  // 归前一块会让已经交出去的围栏块再长一个 "\n"，memo 当场落空）。
+  // 所以这里的前缀到「开头一段。\n」为止，那个空行排在尾巴最前面。
+  assert.equal(closed, "开头一段。\n");
+  assert.equal(closed + open, partial, "空行只是换了归属，一个字符都不许丢");
+  assert.ok(!closed.includes("```"), "围栏没闭合就不许并进前缀");
+  assert.ok(open.trimStart().startsWith("```js"), "整段围栏留在尾巴里");
   // 闭合之后（且后面还有内容确认这一行已经写完）才并进去。
   const done = "开头一段。\n\n```js\nconst a = 1;\n```\n\n后面。";
   assert.ok(
@@ -160,8 +165,10 @@ test("未闭合的代码围栏整段留在尾巴里", () => {
 test("表格在收齐之前留在尾巴里", () => {
   const partial = "前言\n\n| a | b |\n|---|---|\n| 1 | 2 |";
   const { closed, open } = splitStreamingMarkdown(partial);
-  assert.equal(closed, "前言\n\n");
-  assert.ok(open.startsWith("| a | b |"));
+  assert.equal(closed, "前言\n");
+  assert.equal(closed + open, partial, "空行只是换了归属，一个字符都不许丢");
+  assert.ok(!closed.includes("|"), "表格没收齐就不许并进前缀");
+  assert.ok(open.trimStart().startsWith("| a | b |"));
   const done = "前言\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n尾声";
   assert.ok(splitStreamingMarkdown(done).closed.includes("|---|---|"));
 });
@@ -180,8 +187,11 @@ test("单个空行不闭合列表——否则 tight/loose 一翻，每个 <li> �
 test("段落不因结尾换行就算闭合——下一个 token 可能是 setext 的 ===", () => {
   assert.equal(splitStreamingMarkdown("标题候选\n").closed, "");
   // 真的来了 ===，整段被追认成标题；如果之前就闭合成 <p>，这里就得推倒。
-  const { closed } = splitStreamingMarkdown("标题候选\n===\n\n正文");
-  assert.equal(closed, "标题候选\n===\n\n");
+  const source = "标题候选\n===\n\n正文";
+  const { closed, open } = splitStreamingMarkdown(source);
+  assert.equal(closed, "标题候选\n===\n");
+  assert.equal(closed + open, source, "空行只是换了归属，一个字符都不许丢");
+  assert.ok(closed.includes("==="), "=== 到齐，setext 标题这才定型并进前缀");
 });
 
 // ===========================================================================

@@ -167,30 +167,36 @@ export function splitStreamingMarkdown(
     : refLine >= 0
       ? Math.min(refLine, lastLine)
       : lastLine;
+  // 块的边界一律钉在**它自己最后一行内容**之后，块之间的空行归**后一块**开头。
+  //
+  // 反过来（空行归前一块）会让已经交出去的块再长大，而围栏是必然撞上的那一个：
+  // 它靠 ``` 自己闭合，不必等空行，于是在「后面还跟着几个空行」尚不可知时就切了出去；
+  // 下一个 token 确认了那个空行，这块的 `source` 就从 "```…```\n" 变成 "```…```\n\n"。
+  // source 一变 memo 当场落空，刚画好的 <pre> 被推倒重建、高亮器再跑第二遍——
+  // 正是这份活要消灭的东西。（`[实测]` 2026-08-31：`agent-composer-contract` 的
+  // 块稳定性判据就是撞在这里红的。）
+  //
+  // 「等空行数完了再切」不行：那会让每个块都推迟一个 token 才成形，标题会先以
+  // 字面量 `# 标题` 闪一下再变成 <h1>。空行归后一块则两头都要：块一闭合就成形，
+  // 且成形之后逐字不再变——CommonMark 里块开头的空行是无意义的，渲染结果不受影响。
   const cuts: number[] = [];
   let index = 0;
   let closedLine = 0;
   while (index < frontier) {
     if (lines[index].trim() === "") {
       index += 1;
-      closedLine = index;
       continue;
     }
     const end = blockEnd(lines, index, frontier);
     if (end < 0) break;
     index = end;
     closedLine = end;
-    // 块后面的空行归它自己，这样各块拼起来仍是原文。
-    while (index < frontier && lines[index].trim() === "") {
-      index += 1;
-      closedLine = index;
-    }
     cuts.push(offsetAt(closedLine));
   }
 
+  // `closedLine` 只在切出一块时前进，所以边界永远正好是最后一刀，
+  // 各块拼起来逐字等于 `closed`，剩下的空行留在尾巴里（显示前会被 trim 掉）。
   const boundary = offsetAt(closedLine);
-  // 只吃到空行、一个块都没闭合时，也要让各块拼回来等于 closed。
-  if (boundary > 0 && cuts[cuts.length - 1] !== boundary) cuts.push(boundary);
 
   const blocks: { key: string; source: string }[] = [];
   let previous = 0;
@@ -200,8 +206,11 @@ export function splitStreamingMarkdown(
   }
   // 收完流还剩一截，只可能是始终没闭合的东西（例如模型把 ``` 吐漏了）。
   // 它不会再变了，直接当最后一块，别留在尾巴里按纯文本显示。
+  // 纯空白的那一截除外：它渲染出来什么都不是，多切一块反而在块间多插一个分隔符，
+  // 让终态与一次性渲染分岔。
   if (complete && boundary < source.length) {
-    blocks.push({ key: String(blocks.length), source: source.slice(boundary) });
+    const rest = source.slice(boundary);
+    if (rest.trim()) blocks.push({ key: String(blocks.length), source: rest });
     return { blocks, closed: source, open: "" };
   }
   return {
