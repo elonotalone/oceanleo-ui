@@ -12,7 +12,7 @@
 //
 // 锁四件事，每一件都做过反面验证（把实现改回去当场红，见 verdicts/W09-delivery.md）：
 //   ① 失败后指数退避重试三次，延迟带抖动（不是固定值，也不是 0）；
-//   ② 每次重试都带 cache-busting 查询参数去探；
+//   ② 每次重试都带 cache-busting 查询参数去探，且**同一毫秒内**两次重试的 token 也不同；
 //   ③ 三次都失败 ⇒ 进失败态，且**渲染出来的不是 spinner**；
 //   ④ chunk 404 ⇒ 走「版本已更新，请刷新」，并且**不白等三轮退避**。
 //
@@ -152,6 +152,52 @@ test("重试三次之后成功：退避档位带抖动，每次都带 cache-bust
     assert.equal(event.detail.cacheBusted, true);
     assert.equal(event.detail.routeId, "threed");
   }
+});
+
+test("同一毫秒内的两次快速重试，token 仍然不同 —— cache-busting 不许靠时钟精度", async () => {
+  resetChunkRoutes();
+  collectTelemetry();
+  const { urls, probe } = recordingProbe(null);
+
+  // 上一条用例的 `new Set(urls).size === 3` 也在判 token 不同，但它默认依赖
+  // 「两次重试之间时钟恰好走了一格」这种运气。而 cache-busting 最需要生效的场合
+  // 恰恰是**时钟没动**的快速重试 —— 那正是当初那个 bug 的现场：token 落在同一毫秒
+  // ⇒ 缓存键没换 ⇒ 重试一次次命中同一条坏缓存，而那正是它要解决的问题。
+  // 这里把时钟与随机数同时钉死，token 里就只剩单调序号还会变。
+  const realNow = Date.now;
+  Date.now = () => 1767225600000;
+  let tokens;
+  try {
+    const outcome = await loadChunkWithRetry("threed", async () => { throw chunkError(); }, {
+      sleep: async () => {},
+      random: () => 0.5,
+      probe,
+      delays: [1, 1],
+    });
+    assert.equal(outcome.ok, false);
+    tokens = urls.map((url) => new URL(url).searchParams.get(CHUNK_CACHE_BUST_PARAM));
+  } finally {
+    Date.now = realNow;
+  }
+
+  // 首发 + 两次重试，每次失败都探一遍。
+  assert.equal(tokens.length, 3);
+  for (const token of tokens) assert.ok(token, "探测 URL 上没有 cache-busting token");
+
+  // token 的三段：毫秒 / 单调序号 / 随机段。
+  const segments = tokens.map((token) => token.split("-"));
+  // 判据自证：时钟与随机段真的被钉住了。这两条一旦松掉，下面那条「token 不同」
+  // 就可能因为时钟走了一格而假绿 —— 那样这条用例其实什么都没锁住。
+  assert.equal(new Set(segments.map((parts) => parts[0])).size, 1, "时钟没钉住，判据失效");
+  assert.equal(new Set(segments.map((parts) => parts[2])).size, 1, "随机段没钉住，判据失效");
+
+  // 判据本身：两次快速重试的 token 不同。唯一能让它成立的就是那个单调序号。
+  assert.equal(new Set(segments.map((parts) => parts[1])).size, 3, "单调序号没有递增");
+  assert.equal(
+    new Set(tokens).size,
+    3,
+    "同一毫秒内 token 撞了 ⇒ 缓存键没换，cache-busting 白做",
+  );
 });
 
 test("三次重试都失败：进可重试的失败态，而渲染出来的不是 spinner", async () => {
