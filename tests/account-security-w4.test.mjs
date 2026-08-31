@@ -64,6 +64,7 @@ const clientStubUrl = dataModule(`
   export const sendPhoneOtp = (...a) => g().sendPhoneOtp(...a);
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
+  export const startOauthSignIn = (...a) => g().startOauthSignIn(...a);
   export const normalizeCnPhone = (v) => (/^1[3-9]\\d{9}$/.test(String(v||"").replace(/\\s/g,"")) ? "+86" + String(v).replace(/\\s/g,"") : "");
   export const sendPasswordReset = (...a) => g().sendPasswordReset(...a);
   export const reauthenticate = (...a) => g().reauthenticate(...a);
@@ -118,6 +119,9 @@ function defaultAuth() {
     },
     async wechatLoginUrl() {
       return { url: "https://open.weixin.qq.com/x" };
+    },
+    async startOauthSignIn(provider) {
+      return { error: `${provider} 登录暂未开放` };
     },
     async sendPasswordReset(email) {
       this.calls.push(["sendPasswordReset", email]);

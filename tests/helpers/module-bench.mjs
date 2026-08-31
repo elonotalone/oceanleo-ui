@@ -87,6 +87,22 @@ export function dataModule(source) {
 }
 
 /**
+ * 只为副作用而 import 的样式表。打包器把它们抽成 CSS 产物，运行期的模块图里
+ * 本就没有这一条边，所以这里一律换成空模块。
+ *
+ * 顺着它走进去的后果不是「少一条边」而是**整份测试在加载期就炸掉**：编译台会把
+ * CSS 文本交给 TypeScript 剥类型，`AppShell.tsx` 的 `./phone-shell.css` 于是编成
+ * `var ;`，`app-shell-model-visibility` 与 `sidebar-scroll-scope` 两例一条断言都不执行。
+ * 换成让每份测试自己打这个桩就又回到了「维护清单」——那正是这份 helper 要消灭的东西。
+ */
+const SIDE_EFFECT_ONLY_EXTENSIONS = [".css", ".scss", ".sass", ".less"];
+const EMPTY_MODULE = dataModule("export {};");
+
+function isSideEffectOnlyAsset(specifier) {
+  return SIDE_EFFECT_ONLY_EXTENSIONS.some((extension) => specifier.endsWith(extension));
+}
+
+/**
  * 编译产物落成**临时真文件**，用 `file://` 引用，不把依赖的 URL 内联进导入者的源码。
  *
  * 内联在菱形依赖上是指数级的：素材库那一族里 view / effects / presentation 各自都拉
@@ -322,6 +338,10 @@ function analyzeGraph(ctx, entry) {
         ctx.forced.add(file); // 桩只有在这份文件被编译时才进得去
         continue;
       }
+      if (isSideEffectOnlyAsset(specifier)) {
+        ctx.forced.add(file); // 空模块同理：不编译这份文件就换不掉那条 specifier
+        continue;
+      }
       if (!specifier.startsWith(".")) continue;
       const target = resolveRelativeSpecifier(file, specifier);
       if (!target) {
@@ -393,7 +413,9 @@ async function compileFile(ctx, file, chain) {
     const stub = stubFor(ctx, file, specifier);
     let replacement = stub;
     if (replacement === undefined) {
-      if (specifier.startsWith(".")) {
+      if (isSideEffectOnlyAsset(specifier)) {
+        replacement = EMPTY_MODULE;
+      } else if (specifier.startsWith(".")) {
         const target = resolveRelativeSpecifier(file, specifier);
         if (!target) {
           throw new ModuleBenchError(
