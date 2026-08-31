@@ -56,6 +56,20 @@ const navigationStubUrl = dataModule(`
   export function useSearchParams() {
     return new URLSearchParams(search);
   }
+  // useRouteNavigation（1f88c0f）之后 AppShell 这条边就要 useRouter 了。
+  // push 直接落到同一份 pathname 上，这样这份桩的 setRoute/usePathname 语义不分叉。
+  export const pushed = [];
+  export function useRouter() {
+    return {
+      push(href) {
+        pushed.push(href);
+        const [nextPathname, nextSearch = ""] = String(href).split("?");
+        setRoute(nextPathname, nextSearch);
+      },
+      replace(href) { this.push(href); },
+      prefetch() {}, back() {}, forward() {}, refresh() {},
+    };
+  }
 `);
 const navigation = await import(navigationStubUrl);
 const linkStubUrl = dataModule(`

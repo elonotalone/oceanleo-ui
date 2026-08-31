@@ -34,6 +34,11 @@ const iconsStubUrl = dataModule(`
 const navigationStubUrl = dataModule(`
   export function usePathname(){ return "/"; }
   export function useSearchParams(){ return new URLSearchParams(""); }
+  // useRouteNavigation（1f88c0f）之后 AppShell 这条边就要 useRouter 了；
+  // 这份用例判的是侧栏结构，跳到哪儿无关，给个不动的替身即可。
+  export function useRouter(){
+    return { push(){}, replace(){}, prefetch(){}, back(){}, forward(){}, refresh(){} };
+  }
 `);
 const linkStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
