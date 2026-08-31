@@ -163,6 +163,9 @@ const AUGUST_31 = { at: "2026-08-31T00:00:00.000Z", seed: 12345 };
 const SEPTEMBER_1 = { at: "2026-09-01T00:00:00.000Z", seed: 12345 };
 const SERIAL_08_31 = gridDateToSerial(2026, 8, 31);
 const SERIAL_09_01 = gridDateToSerial(2026, 9, 1);
+/** 判据 3 的基线：必须离「今天」足够远，否则新旧戳算出同一个数，断言一致地绿。 */
+const LONG_AGO = { at: "2001-02-03T04:05:06.000Z", seed: 12345 };
+const SERIAL_LONG_AGO = gridDateToSerial(2001, 2, 3);
 
 /** A1 是 `=TODAY()`，B1 读 A1 —— 下游跟不跟着走也要判。 */
 function todaySheets() {
@@ -361,9 +364,12 @@ test("证伪：戳挪一天，屏幕上的数正好跟着走一天（说明真�
 
 test("判据 3：点「重新计算」铸出新戳，TODAY() 跟着走到今天", async () => {
   globalThis.__gridSaved.length = 0;
-  const mounted = await mountEditor(projectWith(AUGUST_31));
+  // 刻意用一个**很久以前**的戳，不用 AUGUST_31：这份测试今天跑在 2026-08-31，
+  // 拿当天的戳当基线的话，「没铸新戳」与「铸了新戳」算出来是同一个数，
+  // 屏幕那一半断言会一致地绿——那正是 W12 记下的「一致地坏也叫两次同值」陷阱。
+  const mounted = await mountEditor(projectWith(LONG_AGO));
   try {
-    assert.equal(await mounted.displayAt(0, 0), String(SERIAL_08_31));
+    assert.equal(await mounted.displayAt(0, 0), String(SERIAL_LONG_AGO));
 
     await mounted.run((editor) => editor.recalculate());
 
@@ -386,7 +392,7 @@ test("判据 3：点「重新计算」铸出新戳，TODAY() 跟着走到今天"
     assert.ok(saved, "重新计算之后存盘还是没写 recalc");
     assert.notEqual(
       saved.at,
-      AUGUST_31.at,
+      LONG_AGO.at,
       "「重新计算」没有铸新戳，把旧戳原样存了回去",
     );
     assert.match(saved.at, /Z$/);
