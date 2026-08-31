@@ -4,5 +4,11 @@
     "samples": 24,
     "recordedAt": "2026-08-31",
     "note": "Button secondary/lg 悬停样式重算 + 强制布局，24 样本，静态夹具，单 worker"
+  },
+  "button-focus-ring": {
+    "p95Ms": 2,
+    "samples": 24,
+    "recordedAt": "2026-08-31",
+    "note": "Button 焦点环绘制（focus + 强制布局），24 样本轮流打在**可聚焦**按钮上（disabled 不计，见上）"
   }
 }
