@@ -39,11 +39,26 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const TESTS = HERE;
 const FIXTURE = join(HERE, "fixtures", "manual-module-bench-anti-pattern.mjs");
 const GATE_FILE = "tests/module-bench-gate.test.mjs";
+
+/**
+ * 取 `PENDING_BUDGET` 与 `W28_CLEARED_FILES` 时所在的 commit。
+ * `3550ebc` = `W35` 接第二棒时的 `main`。
+ *
+ * ⚠️ 这道闸的扫描面是 `tests/`，而 `tests/` 在共享工作树上**常年挂着别人的在途文件**
+ * （W35 取值这一刻就有三份别人未提交的 `*.test.mjs` 躺在里面）。
+ * 于是它比一般的闸更需要这条自检，两个方向都有洞：
+ *   · 别人未提交的 WIP 里带一处手工编译台 ⇒ 本闸红在别人半成品上（撞 `_COMMON.md §8`）；
+ *   · 别人未提交的改动恰好抹掉一处 ⇒ 本闸绿，而 `HEAD` 上那处还在（`§7b⑪` 原病）。
+ * 末尾那条自检判的是 `BASELINE_COMMIT` 的树，**与谁的工作树都无关**。
+ */
+const BASELINE_COMMIT = "3550ebc255dd0b21bd97cff5cbed2f6e6042f9fa";
 
 /**
  * 欠账：迁不动的手工编译台。W28 交付时 44 份（外加 w27）已全部改走 helper，
@@ -56,7 +71,17 @@ const PENDING_MANUAL_BENCH = [];
 /** 今天 `tests/` 里真实剩余的欠账数。这个数只许改小。 */
 const PENDING_BUDGET = 0;
 
-/** W28 清干净的那批：谁把手工清单写回这些文件，立刻红。 */
+/**
+ * W28 清干净的那批：谁把手工清单写回这些文件，立刻红。
+ *
+ * `[实测]` W35 2026-08-31 用下面那条基线自检对账，摘掉了 4 条**死登记**——
+ * 文件早就不在 `tests/` 里了，那几条从此永远绿：
+ *   `plugin-export-ledger-button` / `plugin-instance-save-entry` /
+ *   `w26-plugin-instance-reopen` / `w27-session-plugin-identity`。
+ * `git log --diff-filter=D` 查明四份都是**删除**（`280e5c2` / `1d17586` 清插件时代残留），
+ * **不是改名**——现存 `tests/` 里没有任何近名替代。所以摘掉它们不削弱闸门：
+ * 不存在的文件本来就违规不了。改名的情形处理方式相反，见自检那条的报错文案。
+ */
 const W28_CLEARED_FILES = [
   "tests/account-page.test.mjs",
   "tests/advanced-editor-v8-shared-edit-bar.test.mjs",
@@ -88,8 +113,6 @@ const W28_CLEARED_FILES = [
   "tests/material-cover-rendering.test.mjs",
   "tests/material-library-download.test.mjs",
   "tests/material-library-template-edit.test.mjs",
-  "tests/plugin-export-ledger-button.test.mjs",
-  "tests/plugin-instance-save-entry.test.mjs",
   "tests/rendition-callback-identity.test.mjs",
   "tests/result-canvas-deeplink-priority.test.mjs",
   "tests/result-canvas-slot-keepalive.test.mjs",
@@ -100,13 +123,11 @@ const W28_CLEARED_FILES = [
   "tests/video-editor-v8.test.mjs",
   "tests/video-timeline-dom-gestures.test.mjs",
   "tests/w13-advanced-editor-resilience.test.mjs",
-  "tests/w26-plugin-instance-reopen.test.mjs",
-  "tests/w27-session-plugin-identity.test.mjs",
   "tests/workbench-toolbar-rendered.test.mjs",
 ];
 
-function repoPath(absolutePath) {
-  return relative(REPO, absolutePath).split("\\").join("/");
+function repoPath(absolutePath, repoRoot = REPO) {
+  return relative(repoRoot, absolutePath).split("\\").join("/");
 }
 
 function usesModuleBenchHelper(text) {
@@ -141,9 +162,9 @@ export function manualBenchShapes(text) {
   return shapes;
 }
 
-function scanTestFile(absolutePath) {
+function scanTestFile(absolutePath, repoRoot = REPO) {
   const text = readFileSync(absolutePath, "utf8");
-  const file = repoPath(absolutePath);
+  const file = repoPath(absolutePath, repoRoot);
   if (file === GATE_FILE) return null;
   if (usesModuleBenchHelper(text)) return null;
   const shapes = manualBenchShapes(text);
@@ -151,11 +172,24 @@ function scanTestFile(absolutePath) {
   return { file, shapes };
 }
 
-function listTestFiles() {
-  return readdirSync(TESTS)
+function listTestFiles(testsDir = TESTS) {
+  return readdirSync(testsDir)
     .filter((name) => name.endsWith(".test.mjs"))
-    .map((name) => join(TESTS, name))
+    .map((name) => join(testsDir, name))
     .sort();
+}
+
+/**
+ * 扫一棵 `tests/` 树。**按 root 参数化**，因为末尾那条基线自检要拿同一套口径去量
+ * `BASELINE_COMMIT` 解出来的另一棵树——两处口径分家的话自检就变成了自说自话。
+ */
+function scanTests(testsDir = TESTS, repoRoot = REPO) {
+  const files = listTestFiles(testsDir);
+  return {
+    present: new Set(files.map((file) => repoPath(file, repoRoot))),
+    scannedFiles: files.length,
+    violations: files.map((file) => scanTestFile(file, repoRoot)).filter(Boolean),
+  };
 }
 
 function registrationProblem(entry) {
@@ -168,9 +202,7 @@ function registrationProblem(entry) {
   return "";
 }
 
-const liveViolations = listTestFiles()
-  .map(scanTestFile)
-  .filter(Boolean);
+const liveViolations = scanTests().violations;
 
 const fixtureText = readFileSync(FIXTURE, "utf8");
 const fixtureShapes = manualBenchShapes(fixtureText);
@@ -237,6 +269,51 @@ test("反面夹具必须被判红：规则改松会让它漏网", () => {
   assert.ok(
     fixtureShapes.includes("object-entries-replaceAll-map"),
     `夹具应命中 object-entries-replaceAll-map，实际 ${fixtureShapes.join(",")}`,
+  );
+});
+
+test("基线自检：预算与 W28 清单在 BASELINE_COMMIT 那棵干净树上同样成立", () => {
+  const probe = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: ["tests"],
+    // 扫描面全在本仓 `tests/` 之内，解到 /tmp 不会塌（helper 头注释里那条跨仓警告
+    // 说的是 `i18n-tt-key-coverage` 那一类，本闸不适用）。
+    measure: (root) => scanTests(join(root, "tests"), root),
+  });
+  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
+  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
+
+  // 正对照：先证明我确实扫到了那棵树。零基线的闸尤其需要这一条——
+  // 空目录上「实测 0 处违规」与真值 0 长得一模一样。
+  assert.ok(
+    probe.value.scannedFiles >= 200,
+    `在 ${BASELINE_COMMIT.slice(0, 7)} 的树上只扫到 ${probe.value.scannedFiles} 份 *.test.mjs，` +
+      "本仓的规模应当在 300 上下——解包范围不对，这条自检等于没跑",
+  );
+
+  assert.deepEqual(
+    probe.value.violations.map((site) => `${site.file} [${site.shapes.join(",")}]`),
+    [],
+    `${BASELINE_COMMIT.slice(0, 7)} 的**干净检出**上还有手工编译台，而 PENDING_BUDGET 写着 ` +
+      `${PENDING_BUDGET}。\n` +
+      "上面那条业务断言是照工作树判的，绿只能说明「你这棵树上没有」——\n" +
+      "别人未提交的改动恰好抹掉一处，它就会替 HEAD 上真实存在的欠账背书（_COMMON.md §7b⑪）。",
+  );
+
+  // `W28_CLEARED_FILES` 声称「这批已改走 helper」。那句话必须在**干净检出**上成立，
+  // 而且这批文件得**真的还在**：文件一旦改名或删除，那条登记就永远绿，
+  // 等于清单上的橡皮图章（W28 自己在豁免清单上栽过同一跤，见它的整名匹配注释）。
+  // 判 `BASELINE_COMMIT` 的树而不是工作树——照工作树判，别人未提交的新增/删除
+  // 都会替这份清单说话。
+  const vanished = W28_CLEARED_FILES.filter((file) => !probe.value.present.has(file));
+  assert.deepEqual(
+    vanished,
+    [],
+    `这些文件已经不在 ${BASELINE_COMMIT.slice(0, 7)} 的 tests/ 里了，登记却还留着 ⇒ 永远绿。\n` +
+      "先用 `git log --diff-filter=D -- <路径>` 分清是哪一种：\n" +
+      "  · 删除（功能没了）⇒ 把这几条从清单里摘掉，它们已无可保护；\n" +
+      "  · 改名 ⇒ **保护是静默丢掉的**，把新名字换进来，别直接删。",
   );
 });
 
