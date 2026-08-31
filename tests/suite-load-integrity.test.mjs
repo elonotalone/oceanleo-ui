@@ -117,6 +117,39 @@ test("§7b⑫ 这一趟跑测试带齐了 package.json 里的 flag", () => {
   );
 });
 
+test("闸的注入位还在：test 脚本必须把带钩子的那份 --import 进去", () => {
+  // 上面那条比的是「跑的人有没有照 package.json 带齐 flag」，它的参照系就是
+  // package.json 自己 —— 于是有个洞：**把 `--import` 从 test 脚本里删掉，那条照样绿**
+  // （少带的 flag 集合是空的），而钩子从此静默消失，全仓再没有一条判据会红。
+  // 这条把注入位本身钉死，堵的就是那个洞。
+  const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
+  const script = pkg.scripts?.test ?? "";
+  const tokens = script.split(" ").filter(Boolean);
+
+  const imported = tokens.filter((token, at) => at > 0 && tokens[at - 1] === "--import");
+  assert.ok(
+    imported.length > 0,
+    `package.json 的 test 脚本里没有 --import —— 加载完整性钩子没有注入位了。\n` +
+      `  当前脚本：${script}`,
+  );
+
+  // 被 `--import` 进去的那些文件里，必须有一份把钩子拉进来。
+  const carriers = imported.filter((relative) => {
+    try {
+      return readFileSync(join(REPO, relative), "utf8").includes("suite-load-guard");
+    } catch {
+      return false;
+    }
+  });
+  assert.ok(
+    carriers.length > 0,
+    "`--import` 进去的文件里没有一份引 `suite-load-guard` —— 钩子已经从跑法里掉出去了。\n" +
+      `  被 --import 的是：${imported.join("、")}\n` +
+      "  钩子必须先于测试文件跑起来，否则加载期就炸的文件根本没机会挂它。\n" +
+      "  （`package.json` 是毒的、不许改（`§7b②`），所以它是搭 `assert-dom-guard` 的车进去的。）",
+  );
+});
+
 test("该响：三种加载期死法，闸每一种都指名道姓喊出来", () => {
   // 三份判据素材覆盖 `W34` 在 main 上实测到的三种形状：
   // 缺具名导出（`useRouter`、`startOauthSignIn`、`grid-model` 六个名字都是这一形状）、
