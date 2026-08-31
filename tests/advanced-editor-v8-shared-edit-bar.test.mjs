@@ -369,7 +369,10 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
       readFile(resolve("src/shell/InlineAdvancedWorkbenchHeader.tsx"), "utf8"),
     ]);
   const editBarSource = floatingSource + controllerSource + controlsSource;
-  assert.match(editBarSource, /data-floating-toolbar-handle/);
+  // 左右两个 ⠿ 手柄已取消：拖拽改为在条上双击进入移动模式。
+  assert.doesNotMatch(editBarSource, /data-floating-toolbar-handle/);
+  assert.match(editBarSource, /data-edit-bar-collapse/);
+  assert.match(editBarSource, /data-edit-bar-collapsed-pill/);
   assert.match(editBarSource, /event\.currentTarget\.focus\(\)/);
   assert.match(floatingSource, /overflow-visible/);
   assert.match(
@@ -380,7 +383,7 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
   assert.match(headerSource, /focusAdvancedToolsTrigger\(adapter\.id\)/);
 });
 
-test("both floating handles share pointer, keyboard, and reset state symmetrically", async () => {
+test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt 键盘移动、收起可拖可展开", async () => {
   const dockStateUrl = pathToFileURL(
     resolve("src/shell/edit-bar-dock-state.ts"),
   ).href;
@@ -412,18 +415,25 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
       "./edit-bar-dock-state": dockStateUrl,
     },
   );
+  let liveController = null;
   function Harness() {
     const stageRef = React.useRef(null);
     const controller = useFloatingContextToolbar({
       stageRef,
       resetKey: "selection:one",
     });
+    liveController = controller;
     return React.createElement(
       "div",
       { ref: stageRef, "data-handle-stage": true },
       React.createElement(
         "div",
-        { ref: controller.toolbarRef, "data-handle-toolbar": true },
+        {
+          ref: controller.toolbarRef,
+          "data-handle-toolbar": true,
+          "data-edit-bar-offset": `${controller.offset.x},${controller.offset.y}`,
+          ...controller.rootProps,
+        },
         controller.leading,
         controller.trailing,
       ),
@@ -448,82 +458,88 @@ test("both floating handles share pointer, keyboard, and reset state symmetrical
   };
 
   const mounted = await createMounted(Harness, {});
-  const handles = () => [
-    ...mounted.container.querySelectorAll("[data-floating-toolbar-handle]"),
-  ];
-  const offsets = () =>
-    handles().map((handle) =>
-      handle.getAttribute("data-floating-toolbar-offset"),
-    );
-  const key = async (handle, keyValue) => {
+  const bar = () => mounted.container.querySelector("[data-handle-toolbar]");
+  const offset = () => bar().getAttribute("data-edit-bar-offset");
+  const key = async (target, keyValue, init = {}) => {
     await act(async () => {
-      handle.dispatchEvent(
+      target.dispatchEvent(
         new window.KeyboardEvent("keydown", {
           key: keyValue,
           bubbles: true,
           cancelable: true,
+          ...init,
         }),
       );
     });
   };
-  const pointer = async (handle, type, values) => {
+  const pointer = async (target, type, values) => {
     await act(async () => {
       const event = new window.Event(type, { bubbles: true, cancelable: true });
       for (const [name, value] of Object.entries(values)) {
         Object.defineProperty(event, name, { configurable: true, value });
       }
-      handle.dispatchEvent(event);
+      target.dispatchEvent(event);
     });
   };
-  const reset = async (handle) => {
-    await act(async () => {
-      handle.dispatchEvent(
-        new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }),
-      );
-    });
-  };
+  const press = (clientX, clientY) => ({
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX,
+    clientY,
+  });
 
   try {
-    assert.equal(handles().length, 2);
-    assert.deepEqual(
-      handles().map((handle) =>
-        handle.getAttribute("data-floating-toolbar-handle"),
-      ),
-      ["left", "right"],
+    assert.equal(
+      mounted.container.querySelectorAll("[data-floating-toolbar-handle]").length,
+      0,
+      "拖拽手柄必须彻底消失",
     );
-    await key(handles()[0], "ArrowRight");
-    assert.deepEqual(offsets(), ["16,0", "16,0"]);
-    await key(handles()[1], "Home");
-    assert.deepEqual(offsets(), ["0,0", "0,0"]);
-    await key(handles()[1], "ArrowLeft");
-    assert.deepEqual(offsets(), ["0,0", "0,0"]);
-    await reset(handles()[0]);
-    assert.deepEqual(offsets(), ["0,0", "0,0"]);
+    assert.ok(mounted.container.querySelector("[data-edit-bar-collapse]"));
 
-    await pointer(handles()[0], "pointerdown", {
-      pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10,
-    });
-    await pointer(handles()[0], "pointermove", {
-      pointerId: 1, pointerType: "mouse", clientX: 30, clientY: 20,
-    });
-    await pointer(handles()[0], "pointerup", {
-      pointerId: 1, pointerType: "mouse", clientX: 30, clientY: 20,
-    });
-    assert.deepEqual(offsets(), ["20,10", "20,10"]);
-    await reset(handles()[1]);
+    // 键盘一律要 Alt 修饰：条里有数字输入框和下拉框，裸方向键会被抢走。
+    await key(bar(), "ArrowRight");
+    assert.equal(offset(), "0,0", "不带 Alt 的方向键不得移动编辑栏");
+    await key(bar(), "ArrowRight", { altKey: true });
+    assert.equal(offset(), "16,0");
+    await key(bar(), "ArrowRight", { altKey: true, shiftKey: true });
+    assert.equal(offset(), "64,0");
+    await key(bar(), "Home", { altKey: true });
+    assert.equal(offset(), "0,0");
 
-    await pointer(handles()[1], "pointerdown", {
-      pointerId: 2, pointerType: "touch", button: 0, clientX: 10, clientY: 10,
+    // 单次按下只是普通点击，不能启动拖拽。落点刻意远离下面那组双击，
+    // 否则它会和下一次按下凑成一对，把这条探针本身变成拖拽起手。
+    await pointer(bar(), "pointerdown", press(200, 200));
+    await pointer(window, "pointermove", {
+      pointerId: -1,
+      pointerType: "mouse",
+      clientX: 30,
+      clientY: 20,
     });
-    await pointer(handles()[1], "pointermove", {
-      pointerId: 2, pointerType: "touch", clientX: 30, clientY: 20,
+    assert.equal(offset(), "0,0", "单击后移动指针不得拖走编辑栏");
+
+    // 双击进入移动模式 → 跟随指针 → 再点一下落下。
+    await pointer(bar(), "pointerdown", press(10, 10));
+    await pointer(bar(), "pointerdown", press(10, 10));
+    assert.equal(liveController.moveMode, true);
+    await pointer(window, "pointermove", {
+      pointerId: -1,
+      pointerType: "mouse",
+      clientX: 30,
+      clientY: 20,
     });
-    await pointer(handles()[1], "pointerup", {
-      pointerId: 2, pointerType: "touch", clientX: 30, clientY: 20,
+    await pointer(window, "pointerdown", press(30, 20));
+    assert.equal(liveController.moveMode, false);
+    assert.equal(offset(), "20,10");
+
+    // 收起/展开：按钮与 ⌘. 走同一条状态。
+    await act(async () => {
+      liveController.collapse();
     });
-    assert.deepEqual(offsets(), ["20,10", "20,10"]);
-    await reset(handles()[1]);
-    assert.deepEqual(offsets(), ["0,0", "0,0"]);
+    assert.equal(liveController.collapsed, true);
+    await key(bar(), ".", { metaKey: true });
+    assert.equal(liveController.collapsed, false);
+    assert.equal(offset(), "20,10", "收起再展开不得丢掉展开态的位置");
   } finally {
     await mounted.unmount();
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;
