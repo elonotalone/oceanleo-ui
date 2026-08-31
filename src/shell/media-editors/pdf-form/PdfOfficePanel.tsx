@@ -6,6 +6,8 @@ import { PDF_READER_LAYOUT } from "../pdf-workbench-utils";
 import { PDF_FORM_NO_FIELDS_HINT } from "./acroform";
 import type { PdfOfficeWorkbenchState } from "./types";
 import { SIGNATURE_IMAGE_LABEL } from "./signature";
+import { REDACTION_IRREVERSIBLE } from "./redaction";
+import { ConfirmDialog } from "../../../ui";
 
 function SignatureSketchPad({
   disabled,
@@ -115,6 +117,7 @@ export function PdfOfficePanel({
   const busy = editor.loading || editor.processing || editor.saving;
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const [signatureLabel, setSignatureLabel] = useState(SIGNATURE_IMAGE_LABEL);
+  const [confirmingRedaction, setConfirmingRedaction] = useState(false);
 
   const pageMarks = editor.redactionMarks.filter(
     (mark) => mark.pageIndex === editor.pageNumber - 1,
@@ -387,11 +390,23 @@ export function PdfOfficePanel({
         <button
           type="button"
           disabled={busy || !editor.redactionMarks.length}
-          onClick={() => void editor.applyRedactions()}
+          onClick={() => setConfirmingRedaction(true)}
           className="w-full rounded-lg border border-red-300 px-2 py-1.5 text-[10px] font-medium text-red-700 disabled:opacity-40"
         >
           {tt("应用涂黑（不可撤销）")}
         </button>
+        {confirmingRedaction && (
+          <ConfirmDialog
+            title={REDACTION_IRREVERSIBLE}
+            confirmLabel={tt("确认")}
+            danger
+            onConfirm={async () => {
+              setConfirmingRedaction(false);
+              await editor.applyRedactions();
+            }}
+            onCancel={() => setConfirmingRedaction(false)}
+          />
+        )}
       </section>
     </div>
   );

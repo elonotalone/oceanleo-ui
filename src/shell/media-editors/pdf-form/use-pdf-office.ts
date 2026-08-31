@@ -21,7 +21,6 @@ import {
 import {
   applyPdfRedactions,
   REDACTION_BROADENED,
-  REDACTION_IRREVERSIBLE,
 } from "./redaction";
 import {
   createSavedSignature,
@@ -222,10 +221,9 @@ export function usePdfOffice({
       setError(tt("请先标记要涂黑的区域"));
       return;
     }
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(REDACTION_IRREVERSIBLE);
-      if (!ok) return;
-    }
+    // 「不可撤销」这一步的确认交给渲染层（`PdfOfficePanel` 的 ConfirmDialog）：
+    // 原生 confirm 会冻住主线程、样式不可控，而 hook 里也不该出现 window。
+    // 唯一调用方是那个按钮，确认发生在它按下之前。
     await runMutation(async (bytes) => {
       const outcome = await applyPdfRedactions(bytes, redactionMarks);
       const summary = tt("涂黑已应用：移除 {text} 处文字、{image} 处图像", {
