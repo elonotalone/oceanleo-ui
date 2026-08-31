@@ -279,6 +279,27 @@ test("--leo-ease-spring 是生成的：@supports 降级 + linear() 可现场复�
   }
 });
 
+test("globals.css 引用的每一条动效 token 都有定义，没有悬空 var()", () => {
+  // 建闸时实测出来的洞：从 motion.ts 删掉 --leo-dur-3 之后，手写段的
+  // `.v-scale-in { animation: v-scale-in var(--leo-dur-3) … }` 仍然指着它。
+  // CSS 对未定义变量是静默的——动画会在 31 个站上无声失效，没有任何报错。
+  // 上面的阶梯形状断言只护得住六档时长；这一条从消费侧兜住全部动效 token。
+  const defined = new Set([...baseProperties.keys()].filter((name) => MOTION_NAMESPACE.test(name)));
+  defined.add("--leo-ease-spring");
+
+  const referenced = new Set();
+  for (const match of stripComments(css).matchAll(/var\(\s*(--leo-[a-z0-9-]+)/gi)) {
+    if (MOTION_NAMESPACE.test(match[1])) referenced.add(match[1]);
+  }
+
+  assert.ok(referenced.size > 0, "一处 var(--leo-…) 都没找到，正则或取值范围可疑");
+  assert.deepEqual(
+    [...referenced].filter((name) => !defined.has(name)).sort(),
+    [],
+    "这些动效变量被引用了却没有定义；CSS 对未定义变量静默失效，31 个站上不会报错",
+  );
+});
+
 test("品牌曲线在 globals.css 里只剩一种写法（源码计数 = 1）", () => {
   const literal = BRAND_EMPHASIS_CURVE.replace(/[.()]/g, (char) => `\\${char}`);
   const occurrences = css.match(new RegExp(literal, "g")) ?? [];
