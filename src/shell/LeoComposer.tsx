@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -22,6 +23,15 @@ import {
   useNativeTaskNotifications,
   type NativeAttachAction,
 } from "./mobile-native-actions";
+import { filesFromTransfer } from "../lib/upload/intake";
+import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import {
+  AttachmentProgressChip,
+  CompressionNote,
+  liveProgress,
+  UploadProgressList,
+} from "../lib/upload/progress-view";
+import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 
@@ -78,6 +88,12 @@ export interface ComposerAttachment {
   name?: string;
   /** 仍在上传中：缩略条上显示转圈。 */
   uploading?: boolean;
+  /**
+   * 真读数（W08）。业务把 `uploadFile` 的进度填进来，缩略条就把那个不确定态
+   * 转圈换成真进度条。**不传时行为与今天逐字一致**——业务侧没接进度的站
+   * （目前是全部）照旧转圈，不会因为多了这个字段而变样。
+   */
+  progress?: UploadProgressSnapshot | null;
 }
 
 /** 「＋」菜单里调用方注入的额外项（如「使用技能」）。 */
@@ -234,11 +250,15 @@ export function LeoComposer({
   // 子元素间穿梭时反复触发的 enter/leave（只在真正离开卡片时收起）。
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
+  // 选择 / 拖拽 / 粘贴 / 手机拍照——四条来路进同一个 `emit`（W08 P3+P4）。
+  // 它顺带做两件本组件自己做不到的事：图片压缩，以及从进度总线上把「业务正在传
+  // 我刚交出去的那几个文件」的真读数捞回来（本组件按契约不负责上传）。
+  const intake = useAttachmentIntake(onAttachFiles);
   // 手机原生宿主下，「＋」菜单里的「从本地添加文件」换成「拍照 / 从相册选择 / 选择文件」
   // 三项；普通浏览器里它恒为空数组，菜单与今天逐字相同。拿到的文件走的是下面同一条
   // `onAttachFiles` 通路，附件缩略条 / 上传中转圈 / 发送键可用性全部照旧。
   const nativeAttachActions = useNativeAttachActions({
-    onFiles: onAttachFiles,
+    onFiles: onAttachFiles ? intake.emit : undefined,
     accept,
     multiple,
   });
@@ -260,6 +280,8 @@ export function LeoComposer({
   const canSend =
     Boolean(value.trim() || attachments?.length) &&
     !attachments?.some((attachment) => attachment.uploading) &&
+    // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
+    !intake.compressing &&
     !loading &&
     !disabled;
   const hasAttachMenu =
@@ -299,9 +321,7 @@ export function LeoComposer({
   }
 
   function emitFiles(list: FileList | null) {
-    if (!list || !onAttachFiles) return;
-    const files = Array.from(list);
-    if (files.length) onAttachFiles(files);
+    intake.emit(list);
   }
 
   // ── 拖拽上传（传了 onAttachFiles 才启用）：把文件拖到整个输入框卡片上，松手即上传。
@@ -331,7 +351,15 @@ export function LeoComposer({
     e.preventDefault();
     dragDepth.current = 0;
     setDragOver(false);
-    emitFiles(e.dataTransfer?.files || null);
+    // 拖拽与粘贴同一条提取器（P4）：不是两套。
+    intake.emit(filesFromTransfer(e.dataTransfer));
+  }
+  // 粘贴上传（P4）：截图后 Ctrl+V 直接落进输入框，不用先存成文件再拖进来。
+  // `handlePaste` 只在这次粘贴里**真有文件**时才 `preventDefault()`；
+  // 粘贴纯文本一律放过，照常插入。
+  function onPaste(e: ReactClipboardEvent) {
+    if (!dragEnabled) return;
+    intake.handlePaste(e);
   }
 
   if (onMeetingRecording && meetingOpen) {
@@ -355,6 +383,7 @@ export function LeoComposer({
       onDragOver={dragEnabled ? onDragOver : undefined}
       onDragLeave={dragEnabled ? onDragLeave : undefined}
       onDrop={dragEnabled ? onDrop : undefined}
+      onPaste={dragEnabled ? onPaste : undefined}
       className={`relative rounded-2xl border bg-white shadow-sm transition-all duration-200 focus-within:border-neutral-300 focus-within:shadow-md ${
         dragOver ? "border-indigo-400 ring-2 ring-indigo-200" : "border-neutral-200"
       } ${className}`}
@@ -410,7 +439,14 @@ export function LeoComposer({
                 </span>
               )}
               <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
-              {a.uploading && <span className="v-spinner text-[10px] text-neutral-400" />}
+              {/* 业务填了真读数就把那个不确定态转圈换掉；没填则逐字维持今天的样子。 */}
+              {liveProgress(a.progress) ? (
+                <AttachmentProgressChip snapshot={a.progress} tt={tt} />
+              ) : (
+                a.uploading && (
+                  <span className="v-spinner text-[10px] text-neutral-400" />
+                )
+              )}
               {onRemoveAttachment && !a.uploading && (
                 <button
                   type="button"
@@ -423,6 +459,37 @@ export function LeoComposer({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 进度总线（W08）：本组件不负责上传，但业务把 File 原样交给 `uploadFile`
+          （`useAttachments.ts:63`），总线按 File 对象身份挂键，所以这里订阅得到。
+          只有总线真报过数才渲染——宿主拿了文件却不传时，一行永远不动的进度比
+          没有更糟。业务侧零改动。 */}
+      {intake.inFlight.length > 0 && (
+        <div className="px-4 pb-2">
+          <UploadProgressList
+            entries={intake.inFlight}
+            accent={accentColor}
+            tt={tt}
+          />
+        </div>
+      )}
+
+      {intake.compressing && (
+        <p className="px-4 pb-2 text-[11px] text-neutral-500">
+          {tt("正在压缩图片…")}
+        </p>
+      )}
+
+      {intake.compression && (
+        <div className="px-4 pb-2">
+          <CompressionNote
+            summary={intake.compression}
+            accent={accentColor}
+            tt={tt}
+            onUseOriginals={intake.useOriginals}
+          />
         </div>
       )}
 

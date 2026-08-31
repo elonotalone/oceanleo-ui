@@ -36,6 +36,15 @@ import {
   useNativeAttachActions,
   useNativeHandoffEntry,
 } from "./mobile-native-actions";
+import { filesFromTransfer } from "../lib/upload/intake";
+import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import {
+  AttachmentProgressChip,
+  CompressionNote,
+  liveProgress,
+  UploadProgressList,
+} from "../lib/upload/progress-view";
+import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 
 /** 已选附件（业务上传后回传进来渲染缩略条；本组件不负责上传）。 */
@@ -47,6 +56,12 @@ export interface InputAttachment {
   name?: string;
   /** 仍在上传中：缩略条上显示转圈。 */
   uploading?: boolean;
+  /**
+   * 真读数（W08）。业务把 `uploadFile` 的进度填进来，缩略条就把那个不确定态
+   * 转圈换成真进度条。**不传时行为与今天逐字一致**——业务侧没接进度的站
+   * （目前是全部）照旧转圈，不会因为多了这个字段而变样。
+   */
+  progress?: UploadProgressSnapshot | null;
 }
 
 export interface InputCardProps {
@@ -125,10 +140,18 @@ export function InputCard({
   const uploadLabel = uploadLabelProp ?? tt("上传文件（可多选）");
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // 选择 / 拖拽 / 粘贴 / 手机拍照——四条来路进同一个 `emit`（W08 P3+P4）。
+  // 它顺带做两件本组件自己做不到的事：图片压缩，以及从进度总线上把「业务正在传
+  // 我刚交出去的那几个文件」的真读数捞回来（本组件按契约不负责上传）。
+  const intake = useAttachmentIntake(onFiles);
   // 手机原生宿主下，同一颗上传按钮改成展开「拍照 / 从相册选择 / 选择文件」——
   // 不多一颗按钮，也不为手机另开一套上传实现（三项照样回到下面的 onFiles）。
   // 普通浏览器里它恒为空数组：按钮照旧直接开文件选择器，DOM 一个字节不变。
-  const nativeAttachActions = useNativeAttachActions({ onFiles, accept, multiple });
+  const nativeAttachActions = useNativeAttachActions({
+    onFiles: onFiles ? intake.emit : undefined,
+    accept,
+    multiple,
+  });
   // 手机上多的第四项：「发送到电脑」——把刚拍的照片直接送进那台电脑已授权的目录。
   // 它挂在同一张三选一里，不再多一颗按钮；浏览器里 action 与 panel 都是 null。
   const nativeHandoff = useNativeHandoffEntry();
@@ -138,12 +161,12 @@ export function InputCard({
   const [nativeSheetOpen, setNativeSheetOpen] = useState(false);
 
   const hasContent = Boolean(value.trim()) || (attachments?.length ?? 0) > 0;
-  const disableSubmit = submitDisabled ?? (!hasContent || loading);
+  // 压缩期间禁用提交：那一刻文件还没交给业务，放行会把「没有附件」的请求发出去。
+  const disableSubmit =
+    submitDisabled ?? (!hasContent || loading || intake.compressing);
 
   function emitFiles(list: FileList | null) {
-    if (!list || !onFiles) return;
-    const files = Array.from(list);
-    if (files.length) onFiles(files);
+    intake.emit(list);
   }
 
   const body = (
@@ -162,10 +185,14 @@ export function InputCard({
           ? (e) => {
               e.preventDefault();
               setDragging(false);
-              emitFiles(e.dataTransfer.files);
+              // 拖拽与粘贴同一条提取器（P4）：不是两套。
+              intake.emit(filesFromTransfer(e.dataTransfer));
             }
           : undefined
       }
+      // 粘贴落在卡片内任何地方都算（textarea 在 LeoComposer 里，事件会冒上来）。
+      // 没有文件时 `handlePaste` 一个字都不拦，粘贴文字照常插入。
+      onPaste={onFiles ? intake.handlePaste : undefined}
       className="space-y-3"
     >
       <LeoComposer
@@ -200,7 +227,14 @@ export function InputCard({
                 </span>
               )}
               <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
-              {a.uploading && <span className="v-spinner text-[10px] text-stone-400" />}
+              {/* 业务填了真读数就把那个不确定态转圈换掉；没填则逐字维持今天的样子。 */}
+              {liveProgress(a.progress) ? (
+                <AttachmentProgressChip snapshot={a.progress} tt={tt} />
+              ) : (
+                a.uploading && (
+                  <span className="v-spinner text-[10px] text-stone-400" />
+                )
+              )}
               {onRemoveAttachment && (
                 <button
                   type="button"
@@ -215,6 +249,21 @@ export function InputCard({
           ))}
         </div>
       )}
+
+      {/* 进度总线（W08）：业务层什么都不回传也看得见进度。只有总线真报过数才
+          渲染——宿主拿了文件却不上传时，一行永远不动的进度比没有更糟。 */}
+      <UploadProgressList entries={intake.inFlight} accent={accent} tt={tt} />
+
+      {intake.compressing && (
+        <p className="text-[11px] text-stone-500">{tt("正在压缩图片…")}</p>
+      )}
+
+      <CompressionNote
+        summary={intake.compression}
+        accent={accent}
+        tt={tt}
+        onUseOriginals={intake.useOriginals}
+      />
 
       {belowComposer}
 
