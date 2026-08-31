@@ -22,8 +22,11 @@ import {
 import { artifactSaveStepMessage } from "./artifact-save-contract";
 import { renderGridPreviewPng } from "./editor-preview-raster";
 import {
+  GRID_MAX_COLS,
+  GRID_MAX_ROWS,
   buildGridWorkbookBlob,
   cloneGridSheets,
+  columnLabel,
   emptyGridSheet,
   gridCellFormat,
   gridCellValue,
@@ -43,11 +46,30 @@ import {
 import { resolveGridActiveSheetId } from "./grid-sheet-identity";
 import { notifyOfficeAccessDenied } from "./office-file";
 import {
+  GRID_COL_WIDTH_RANGE,
+  GRID_ROW_HEIGHT_RANGE,
+  buildGridClipboardPayload,
+  findGridMatches,
+  gridFillDownLength,
+  gridMergeAt,
+  gridPasteTruncationMessage,
+  measureGridAutoColumnWidth,
   mergeGridRange,
+  normalizeGridAxisSizes,
+  planGridFill,
+  planGridPaste,
+  planGridReplaceAll,
   rangesIntersect,
+  readGridClipboard,
   splitGridRange,
   transformGridRanges,
+  type GridAxisSizes,
+  type GridClipboardCell,
+  type GridClipboardMatrix,
   type GridConditionalFormat,
+  type GridMatch,
+  type GridRange,
+  type GridSearchScope,
 } from "./grid-structure";
 
 export interface GridSelection {
@@ -78,6 +100,17 @@ export interface GridEditorState {
   visibleRowIndexes: number[];
   filterQuery: string;
   headerRow: boolean;
+  /** 当前表的自定义行高/列宽（稀疏，只登记被改过的那几行几列）。 */
+  rowHeights: GridAxisSizes;
+  colWidths: GridAxisSizes;
+  findOpen: boolean;
+  findQuery: string;
+  findReplacement: string;
+  findScope: GridSearchScope;
+  findCaseSensitive: boolean;
+  findWholeWord: boolean;
+  findMatches: GridMatch[];
+  findActiveIndex: number;
   loading: boolean;
   importing: boolean;
   exporting: boolean;
@@ -99,6 +132,23 @@ export interface GridEditorState {
   setSelectedValue: (value: string) => void;
   setFilterQuery: (value: string) => void;
   setHeaderRow: (value: boolean) => void;
+  /** `true` = 这份剪贴板有表格语义，已经吃下；`false` = 交回浏览器默认行为。 */
+  pasteClipboard: (payload: { html?: string; text?: string }) => boolean;
+  copySelection: () => { text: string; html: string };
+  clearSelection: () => void;
+  fillFromSelection: (target: GridRange) => void;
+  autoFillDown: () => void;
+  setRowHeight: (row: number, height: number) => void;
+  setColumnWidth: (col: number, width: number) => void;
+  autoFitColumn: (col: number) => void;
+  setFindOpen: (open: boolean) => void;
+  setFindQuery: (value: string) => void;
+  setFindReplacement: (value: string) => void;
+  setFindScope: (scope: GridSearchScope) => void;
+  setFindCaseSensitive: (value: boolean) => void;
+  setFindWholeWord: (value: boolean) => void;
+  stepFindMatch: (step: number) => void;
+  replaceAll: () => { replaced: number; skippedFormulas: number };
   applyFormat: (patch: Partial<GridCellFormat>) => void;
   insertRow: (side: "before" | "after") => void;
   deleteRows: () => void;
@@ -188,6 +238,105 @@ interface GridProject {
   headerRow?: boolean;
   filterQuery?: string;
   filterColumn?: number;
+  /** 按 sheetId 分组的自定义行高/列宽；`GridSheet` 是 W12 的面，装不下它们。 */
+  rowHeights?: unknown;
+  colWidths?: unknown;
+}
+
+/** `{ sheetId: { 索引: 像素 } }`。 */
+export type GridSizeMap = Record<string, GridAxisSizes>;
+
+const EMPTY_AXIS_SIZES: GridAxisSizes = {};
+const EMPTY_MATCHES: GridMatch[] = [];
+
+function normalizeGridSizeMap(value: unknown, axis: "row" | "col"): GridSizeMap {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const [min, max] =
+    axis === "row" ? GRID_ROW_HEIGHT_RANGE : GRID_COL_WIDTH_RANGE;
+  const count = axis === "row" ? GRID_MAX_ROWS : GRID_MAX_COLS;
+  const result: GridSizeMap = {};
+  for (const [sheetId, sizes] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    const normalized = normalizeGridAxisSizes(sizes, { count, min, max });
+    if (Object.keys(normalized).length) result[sheetId] = normalized;
+  }
+  return result;
+}
+
+function clampAxisSize(pixels: number, axis: "row" | "col"): number {
+  const [min, max] =
+    axis === "row" ? GRID_ROW_HEIGHT_RANGE : GRID_COL_WIDTH_RANGE;
+  return Math.round(Math.max(min, Math.min(max, pixels)));
+}
+
+/**
+ * 值模式替换跳过公式格时的如实报数。这是本份活**刻意缩小的承诺**：
+ * 改公式算出来的「结果」做不到（那要反解公式），Excel 的 Values 档同样禁掉替换。
+ * 静默跳过比假装成功更坏，所以命中数与跳过数都摆出来，并指路公式模式。
+ */
+function gridReplaceSummary(
+  plan: { edits: readonly unknown[]; skippedFormulas: number },
+  translate: (value: string) => string,
+): string {
+  if (plan.skippedFormulas <= 0) return "";
+  return [
+    translate("已替换 "),
+    String(plan.edits.length),
+    translate(" 处；另有 "),
+    String(plan.skippedFormulas),
+    translate(" 处命中在公式格里。值模式改不了公式算出来的结果，已跳过；"),
+    translate("要在公式原文里批量改引用，把查找范围切到「公式」。"),
+  ].join("");
+}
+
+function gridRangeAddress(range: GridRange): string {
+  const head = `${columnLabel(range.firstCol)}${range.firstRow + 1}`;
+  const tail = `${columnLabel(range.lastCol)}${range.lastRow + 1}`;
+  return head === tail ? head : `${head}:${tail}`;
+}
+
+/**
+ * 选区 → 剪贴板矩阵。`value` 放**算出来的显示值**（Excel、邮件读到的是数字），
+ * 公式另挂 `formula`；`origin` 让粘回本编辑器时能按位移平移相对引用。
+ */
+function gridSelectionMatrix(
+  sheet: GridSheet,
+  range: GridSelectionRange,
+): GridClipboardMatrix {
+  const rows: GridClipboardCell[][] = [];
+  for (let row = range.firstRow; row <= range.lastRow; row += 1) {
+    const line: GridClipboardCell[] = [];
+    for (let col = range.firstCol; col <= range.lastCol; col += 1) {
+      const merge = gridMergeAt(sheet.merges, row, col);
+      if (merge && (merge.firstRow !== row || merge.firstCol !== col)) {
+        line.push({ value: "" });
+        continue;
+      }
+      const raw = gridCellValue(sheet, row, col);
+      const format = gridCellFormat(sheet, row, col);
+      const cell: GridClipboardCell = {
+        value: gridDisplayValue(sheet, row, col),
+      };
+      if (raw.startsWith("=")) cell.formula = raw;
+      if (Object.keys(format).length) cell.format = { ...format };
+      if (merge) {
+        // 跨出选区的合并按选区裁掉，否则粘贴方会收到一个撑破矩阵的跨度。
+        const rowSpan = Math.min(merge.lastRow, range.lastRow) - row + 1;
+        const colSpan = Math.min(merge.lastCol, range.lastCol) - col + 1;
+        if (rowSpan > 1) cell.rowSpan = rowSpan;
+        if (colSpan > 1) cell.colSpan = colSpan;
+      }
+      line.push(cell);
+    }
+    rows.push(line);
+  }
+  return {
+    rows,
+    height: rows.length,
+    width: range.lastCol - range.firstCol + 1,
+    origin: { row: range.firstRow, col: range.firstCol },
+  };
 }
 
 export function gridSelectionRange(
@@ -298,6 +447,15 @@ export function useGridEditor(
   const [filterQuery, setFilterQuery] = useState("");
   const [filterColumn, setFilterColumn] = useState(0);
   const [headerRow, setHeaderRow] = useState(true);
+  const [rowHeightMap, setRowHeightMap] = useState<GridSizeMap>({});
+  const [colWidthMap, setColWidthMap] = useState<GridSizeMap>({});
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findReplacement, setFindReplacement] = useState("");
+  const [findScope, setFindScope] = useState<GridSearchScope>("value");
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+  const [findWholeWord, setFindWholeWord] = useState(false);
+  const [findActiveIndex, setFindActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -459,6 +617,8 @@ export function useGridEditor(
             headerRow: project.headerRow !== false,
             filterQuery: String(project.filterQuery || "").slice(0, 500),
             filterColumn: Math.max(0, Number(project.filterColumn) || 0),
+            rowHeights: normalizeGridSizeMap(project.rowHeights, "row"),
+            colWidths: normalizeGridSizeMap(project.colWidths, "col"),
           };
         })
       : loadGridSheets(
@@ -471,6 +631,8 @@ export function useGridEditor(
           headerRow: true,
           filterQuery: "",
           filterColumn: 0,
+          rowHeights: {} as GridSizeMap,
+          colWidths: {} as GridSizeMap,
         }))
     )
       .then((loaded) => {
@@ -500,6 +662,8 @@ export function useGridEditor(
         setFilterQuery(loaded.filterQuery);
         setFilterColumn(loaded.filterColumn);
         setHeaderRow(loaded.headerRow);
+        setRowHeightMap(loaded.rowHeights);
+        setColWidthMap(loaded.colWidths);
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted || !mountedRef.current) return;
@@ -1065,6 +1229,8 @@ export function useGridEditor(
             headerRow,
             filterQuery,
             filterColumn,
+            rowHeights: rowHeightMap,
+            colWidths: colWidthMap,
           },
         },
         editorManifest: {
@@ -1137,7 +1303,16 @@ export function useGridEditor(
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
     }
-  }, [baseTitle, filterColumn, filterQuery, headerRow, siteId, tt]);
+  }, [
+    baseTitle,
+    colWidthMap,
+    filterColumn,
+    filterQuery,
+    headerRow,
+    rowHeightMap,
+    siteId,
+    tt,
+  ]);
 
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {
@@ -1156,6 +1331,8 @@ export function useGridEditor(
       setHeaderRow(project.headerRow !== false);
       setFilterQuery(String(project.filterQuery || "").slice(0, 500));
       setFilterColumn(Math.max(0, Number(project.filterColumn) || 0));
+      setRowHeightMap(normalizeGridSizeMap(project.rowHeights, "row"));
+      setColWidthMap(normalizeGridSizeMap(project.colWidths, "col"));
       setHasSelectedCell(false);
       revisionRef.current += 1;
       setDirty(true);
@@ -1164,6 +1341,267 @@ export function useGridEditor(
     },
     [applySnapshot],
   );
+
+
+  /* ══════════════════════ 剪贴板：粘贴、复制、剪切 ══════════════════════ */
+
+  const pasteClipboard = useCallback(
+    (payload: { html?: string; text?: string }): boolean => {
+      const matrix = readGridClipboard(payload);
+      if (!matrix || !matrix.rows.length) return false;
+      const plan = planGridPaste(matrix, gridSelectionRange(selection), {
+        maxRows: GRID_MAX_ROWS,
+        maxCols: GRID_MAX_COLS,
+      });
+      if (!plan.cells.length) return false;
+      // 一次 `mutate()` = 一条 undo 记录：整片粘贴一步撤回。
+      mutate((draft) => {
+        const sheet = draft.find((entry) => entry.id === activeRef.current);
+        if (!sheet) return;
+        // 落点上的旧合并先拆开，否则新内容会被残留的跨度盖住。
+        sheet.merges = splitGridRange(sheet.merges, plan.target);
+        for (const cell of plan.cells) {
+          setGridCell(sheet, cell.row, cell.col, cell.value);
+          const key = `${cell.row}:${cell.col}`;
+          if (cell.format) sheet.formats[key] = { ...cell.format };
+          else delete sheet.formats[key];
+        }
+        for (const merge of plan.merges) {
+          try {
+            sheet.merges = mergeGridRange(sheet.merges, merge);
+          } catch {
+            // 单个跨度落不下不该让整片粘贴失败——值已经写进去了。
+          }
+        }
+      });
+      setSelection({
+        anchor: { row: plan.target.firstRow, col: plan.target.firstCol },
+        focus: { row: plan.target.lastRow, col: plan.target.lastCol },
+      });
+      setHasSelectedCell(true);
+      setError(
+        plan.truncated
+          ? `${gridPasteTruncationMessage(plan, tt)}（${tt(
+              "已写入",
+            )} ${gridRangeAddress(plan.target)}）`
+          : "",
+      );
+      return true;
+    },
+    [mutate, selection, tt],
+  );
+
+  const copySelection = useCallback((): { text: string; html: string } => {
+    const sheet =
+      sheetsRef.current.find((entry) => entry.id === activeRef.current) ??
+      sheetsRef.current[0];
+    return buildGridClipboardPayload(
+      gridSelectionMatrix(sheet, gridSelectionRange(selection)),
+    );
+  }, [selection]);
+
+  /** 剪切的后半段：值、格式、合并一起清掉，同样只占一条 undo。 */
+  const clearSelection = useCallback(() => {
+    const selected = gridSelectionRange(selection);
+    mutate((draft) => {
+      const sheet = draft.find((entry) => entry.id === activeRef.current);
+      if (!sheet) return;
+      sheet.merges = splitGridRange(sheet.merges, selected);
+      for (let row = selected.firstRow; row <= selected.lastRow; row += 1) {
+        for (let col = selected.firstCol; col <= selected.lastCol; col += 1) {
+          setGridCell(sheet, row, col, "");
+          delete sheet.formats[`${row}:${col}`];
+        }
+      }
+    });
+  }, [mutate, selection]);
+
+  /* ══════════════════════════ 填充柄 ══════════════════════════ */
+
+  const fillFromSelection = useCallback(
+    (target: GridRange) => {
+      const source = gridSelectionRange(selection);
+      const downCount = Math.min(
+        Math.max(0, target.lastRow - source.lastRow),
+        GRID_MAX_ROWS - 1 - source.lastRow,
+      );
+      const rightCount = Math.min(
+        Math.max(0, target.lastCol - source.lastCol),
+        GRID_MAX_COLS - 1 - source.lastCol,
+      );
+      if (downCount <= 0 && rightCount <= 0) return;
+      // 一次拖拽只沿一个轴走（Excel 行为）；两个方向都拉时按拉得更远的那个。
+      const axis: "row" | "col" = downCount >= rightCount ? "row" : "col";
+      mutate((draft) => {
+        const sheet = draft.find((entry) => entry.id === activeRef.current);
+        if (!sheet) return;
+        if (axis === "row") {
+          for (let col = source.firstCol; col <= source.lastCol; col += 1) {
+            const column: string[] = [];
+            for (let row = source.firstRow; row <= source.lastRow; row += 1) {
+              column.push(gridCellValue(sheet, row, col));
+            }
+            planGridFill(column, downCount, { axis: "row" }).values.forEach(
+              (value, offset) =>
+                setGridCell(sheet, source.lastRow + 1 + offset, col, value),
+            );
+          }
+          return;
+        }
+        for (let row = source.firstRow; row <= source.lastRow; row += 1) {
+          const line: string[] = [];
+          for (let col = source.firstCol; col <= source.lastCol; col += 1) {
+            line.push(gridCellValue(sheet, row, col));
+          }
+          planGridFill(line, rightCount, { axis: "col" }).values.forEach(
+            (value, offset) =>
+              setGridCell(sheet, row, source.lastCol + 1 + offset, value),
+          );
+        }
+      });
+      setSelection({
+        anchor: { row: source.firstRow, col: source.firstCol },
+        focus: {
+          row: axis === "row" ? source.lastRow + downCount : source.lastRow,
+          col: axis === "col" ? source.lastCol + rightCount : source.lastCol,
+        },
+      });
+      setHasSelectedCell(true);
+    },
+    [mutate, selection],
+  );
+
+  const autoFillDown = useCallback(() => {
+    const sheet = sheetsRef.current.find(
+      (entry) => entry.id === activeRef.current,
+    );
+    if (!sheet) return;
+    const source = gridSelectionRange(selection);
+    const length = gridFillDownLength(sheet.rows, source);
+    // 0 = 两侧邻列都没数据。双击一个孤立格子不该凭空填出几千行。
+    if (!length) return;
+    fillFromSelection({ ...source, lastRow: source.lastRow + length });
+  }, [fillFromSelection, selection]);
+
+  /* ═══════════════════════ 行高与列宽 ═══════════════════════
+   *
+   * 尺寸不进 undo 栈：`commitSheets()` 的快照是 `GridSheet[]`，而尺寸按契约
+   * 挂在工程档顶层（`GridSheet` 是 W12 的面，装不下）。它跟 `filterQuery`
+   * / `headerRow` 同级，按同样的方式记脏。
+   */
+
+  const setRowHeight = useCallback((row: number, height: number) => {
+    setRowHeightMap((current) => ({
+      ...current,
+      [activeRef.current]: {
+        ...(current[activeRef.current] || {}),
+        [row]: clampAxisSize(height, "row"),
+      },
+    }));
+    revisionRef.current += 1;
+    setDirty(true);
+    setSavedUrl("");
+  }, []);
+
+  const setColumnWidth = useCallback((col: number, width: number) => {
+    setColWidthMap((current) => ({
+      ...current,
+      [activeRef.current]: {
+        ...(current[activeRef.current] || {}),
+        [col]: clampAxisSize(width, "col"),
+      },
+    }));
+    revisionRef.current += 1;
+    setDirty(true);
+    setSavedUrl("");
+  }, []);
+
+  const autoFitColumn = useCallback(
+    (col: number) => {
+      const sheet = sheetsRef.current.find(
+        (entry) => entry.id === activeRef.current,
+      );
+      if (!sheet) return;
+      // 量**显示值**而不是原文：用户看到的是 `¥1,200.00`，不是 `1200`。
+      const values = Array.from({ length: gridRowCount(sheet) }, (_, row) =>
+        gridDisplayValue(sheet, row, col),
+      );
+      setColumnWidth(col, measureGridAutoColumnWidth(values));
+    },
+    [setColumnWidth],
+  );
+
+  /* ═══════════════════════ 查找与替换 ═══════════════════════ */
+
+  const findOptions = useMemo(
+    () => ({
+      query: findQuery,
+      scope: findScope,
+      caseSensitive: findCaseSensitive,
+      wholeWord: findWholeWord,
+    }),
+    [findCaseSensitive, findQuery, findScope, findWholeWord],
+  );
+
+  const findMatches = useMemo(() => {
+    if (!findOpen || !findQuery) return EMPTY_MATCHES;
+    // 值模式按**显示值**找：用户看到「¥1,200.00」就该能搜到它，
+    // 而不是只能搜到底下那个裸 1200。
+    return findGridMatches(activeSheet.rows, findOptions, (row, col) =>
+      gridDisplayValue(activeSheet, row, col),
+    );
+  }, [activeSheet, findOpen, findOptions, findQuery]);
+
+  const updateFindQuery = useCallback((value: string) => {
+    setFindQuery(value.slice(0, 500));
+    setFindActiveIndex(0);
+  }, []);
+
+  const stepFindMatch = useCallback(
+    (step: number) => {
+      const total = findMatches.length;
+      if (!total) return;
+      const next = (((findActiveIndex + step) % total) + total) % total;
+      const match = findMatches[next];
+      setFindActiveIndex(next);
+      setSelection({
+        anchor: { row: match.row, col: match.col },
+        focus: { row: match.row, col: match.col },
+      });
+      setHasSelectedCell(true);
+    },
+    [findActiveIndex, findMatches],
+  );
+
+  const replaceAll = useCallback((): {
+    replaced: number;
+    skippedFormulas: number;
+  } => {
+    const sheet = sheetsRef.current.find(
+      (entry) => entry.id === activeRef.current,
+    );
+    if (!sheet || !findQuery) return { replaced: 0, skippedFormulas: 0 };
+    const plan = planGridReplaceAll(
+      sheet.rows,
+      { ...findOptions, replacement: findReplacement },
+      (row, col) => gridDisplayValue(sheet, row, col),
+    );
+    // 整份清单写在**一次** `mutate()` 里 ⇒ 撤一次回到替换前，不是撤两百次。
+    if (plan.edits.length) {
+      mutate((draft) => {
+        const target = draft.find((entry) => entry.id === activeRef.current);
+        if (!target) return;
+        for (const edit of plan.edits) {
+          setGridCell(target, edit.row, edit.col, edit.after);
+        }
+      });
+    }
+    setError(gridReplaceSummary(plan, tt));
+    return {
+      replaced: plan.edits.length,
+      skippedFormulas: plan.skippedFormulas,
+    };
+  }, [findOptions, findQuery, findReplacement, mutate, tt]);
 
   void historyRevision;
   return {
@@ -1181,6 +1619,16 @@ export function useGridEditor(
     visibleRowIndexes,
     filterQuery,
     headerRow,
+    rowHeights: rowHeightMap[activeSheetId] ?? EMPTY_AXIS_SIZES,
+    colWidths: colWidthMap[activeSheetId] ?? EMPTY_AXIS_SIZES,
+    findOpen,
+    findQuery,
+    findReplacement,
+    findScope,
+    findCaseSensitive,
+    findWholeWord,
+    findMatches,
+    findActiveIndex,
     loading,
     importing,
     exporting,
@@ -1202,6 +1650,22 @@ export function useGridEditor(
       setCellValue(selection.focus.row, selection.focus.col, value),
     setFilterQuery: updateFilterQuery,
     setHeaderRow: updateHeaderRow,
+    pasteClipboard,
+    copySelection,
+    clearSelection,
+    fillFromSelection,
+    autoFillDown,
+    setRowHeight,
+    setColumnWidth,
+    autoFitColumn,
+    setFindOpen,
+    setFindQuery: updateFindQuery,
+    setFindReplacement,
+    setFindScope,
+    setFindCaseSensitive,
+    setFindWholeWord,
+    stepFindMatch,
+    replaceAll,
     applyFormat,
     insertRow,
     deleteRows,

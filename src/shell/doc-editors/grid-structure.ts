@@ -881,6 +881,33 @@ export function planGridPaste(
   };
 }
 
+/**
+ * 截断的告知文案。任务书要的是「明确告知」，所以这里报**确切的行列数**：
+ * 一句「部分内容未粘贴」和静默丢数据对用户是一回事，他没法据此决定分几批。
+ *
+ * 住在这里而不是 `use-grid-editor.ts`，是为了能被 DOM-free 的测试直接拿到；
+ * 也因此它只认数字，不拼 A1 地址（拼地址要 `columnLabel`，而 `grid-structure.ts`
+ * 不许 import `grid-model` 的值——那会成环）。
+ */
+export function gridPasteTruncationMessage(
+  plan: Pick<GridPastePlan, "truncated" | "truncatedRows" | "truncatedCols">,
+  translate: (value: string) => string = (value) => value,
+): string {
+  if (!plan.truncated) return "";
+  const parts: string[] = [];
+  if (plan.truncatedRows > 0) {
+    parts.push(`${plan.truncatedRows} ${translate("行")}`);
+  }
+  if (plan.truncatedCols > 0) {
+    parts.push(`${plan.truncatedCols} ${translate("列")}`);
+  }
+  return [
+    translate("粘贴超出工作表上限，已截断："),
+    parts.join(translate("、")),
+    translate("；其余内容已写入，请分批粘贴。"),
+  ].join("");
+}
+
 function escapeHtmlText(value: string): string {
   return value
     .replace(/&/g, "&amp;")
