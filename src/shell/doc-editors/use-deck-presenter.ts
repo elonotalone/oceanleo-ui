@@ -110,10 +110,27 @@ export interface DeckPresenterFarewellMessage {
   kind: "farewell";
 }
 
+/**
+ * 讲者在自己那块屏上画的笔迹。
+ *
+ * 带 `slideId` 而不是下标：讲者画完就翻页时，这条消息可能比翻页那条晚到，
+ * 按下标收下就会把上一页的笔迹画到新一页上。收方拿自己当前那一页的 id 去比对，
+ * 对不上就丢掉，于是「翻页即清」在两块屏上都成立，不需要额外发一条清除消息。
+ *
+ * **笔迹永远不进 `DeckSlide`。** 它是讲这一场时的手势，不是文稿的一部分；
+ * 放映途中改用户的文稿是这份活的禁区。
+ */
+export interface DeckPresenterInkMessage {
+  kind: "ink";
+  slideId: string;
+  strokes: readonly string[];
+}
+
 export type DeckPresenterMessage =
   | DeckPresenterSyncMessage
   | DeckPresenterHelloMessage
-  | DeckPresenterFarewellMessage;
+  | DeckPresenterFarewellMessage
+  | DeckPresenterInkMessage;
 
 // ── 纯函数层 ─────────────────────────────────────────────────────────────────
 
@@ -435,6 +452,10 @@ export interface DeckPresenterController {
   linked: boolean;
   /** 对面走了。演讲者窗据此给提示而不是白屏。 */
   peerGone: boolean;
+  /** 当前这一页的笔迹（SVG path）。翻页后自然为空，不必手动清。 */
+  ink: readonly string[];
+  /** 覆盖当前页的笔迹并广播给对面。传空数组就是「擦掉」。 */
+  pushInk: (strokes: readonly string[]) => void;
   run: (command: PresenterCommand) => void;
   handleKey: (event: {
     key: string;
@@ -447,6 +468,9 @@ export interface DeckPresenterController {
   announceFarewell: () => void;
 }
 
+/** 同一个空数组常量，免得「这一页没笔迹」每渲染一次都换一个新引用。 */
+const EMPTY_INK: readonly string[] = [];
+
 export function useDeckPresenter({
   source,
   role,
@@ -457,7 +481,15 @@ export function useDeckPresenter({
   autoStartTimer = role === "presenter",
   tickMs = 250,
 }: UseDeckPresenterOptions): DeckPresenterController {
-  const clock = useCallback(() => (now ? now() : Date.now()), [now]);
+  // `now` 从 ref 里读，于是 `clock` 一次建成永不变。调用方几乎一定会传一个内联箭头
+  // 函数，把它放进依赖里会让下面那条建通道的 effect 每渲染一次就拆建一次——
+  // 通道拆建的代价不是性能，是**拆掉的那一瞬间对面发来的消息全部丢掉**。
+  const nowRef = useRef(now);
+  nowRef.current = now;
+  const clock = useCallback(
+    () => (nowRef.current ? nowRef.current() : Date.now()),
+    [],
+  );
   const slides = source.deck.slides;
   const slideIds = useMemo(() => slides.map((slide) => slide.id), [slides]);
   const slideIdsRef = useRef(slideIds);
@@ -470,6 +502,14 @@ export function useDeckPresenter({
     }),
   );
   const [peerGone, setPeerGone] = useState(false);
+  // 通道通没通是**渲染要用的**，不能只放在 ref 里：ref 是 effect 里才填上的，
+  // 首帧读到的永远是 false，界面会当场宣布「已降级」然后再也不改口
+  // （没有任何东西会触发第二次渲染）。P4 要求降级必须说出为什么，
+  // 那么「没降级」也必须说得准。
+  const [linked, setLinked] = useState(false);
+  const [ink, setInk] = useState<{ slideId: string; strokes: readonly string[] }>(
+    { slideId: "", strokes: [] },
+  );
   const [, forceTick] = useState(0);
   const linkRef = useRef<TabLink<DeckPresenterMessage> | null>(null);
   const stateRef = useRef(state);
@@ -527,16 +567,26 @@ export function useDeckPresenter({
           link.post(presenterSyncMessage(stateRef.current));
           return;
         }
+        if (message.kind === "ink") {
+          setInk({ slideId: message.slideId, strokes: message.strokes });
+          return;
+        }
         if (message.kind === "farewell") setPeerGone(true);
       },
     });
     linkRef.current = link;
+    setLinked(link.supported);
     if (link.supported && role === "presenter") link.post({ kind: "hello" });
     return () => {
+      // 告别必须在 `close()` 之前发，而且必须发在这里而不是调用方的 effect 清理里：
+      // hook 在组件顶上调用，它的清理**先于**组件自己的清理跑，
+      // 等调用方那一层收到通知时通道已经关了，那条告别永远发不出去。
+      if (link.supported && role === "stage") link.post({ kind: "farewell" });
       link.close();
       linkRef.current = null;
+      setLinked(false);
     };
-  }, [channelName, clock, linkFactory, role]);
+  }, [channelName, linkFactory, role]);
 
   // 本地产生的每一版都发出去；对面同步过来的那一版不再回发，否则两窗互相触发。
   useEffect(() => {
@@ -562,16 +612,32 @@ export function useDeckPresenter({
 
   const at = clock();
   const elapsedMs = presenterElapsedMs(state.timer, at);
+  const current = slides[state.index];
+  const currentId = current?.id ?? "";
+
+  const pushInk = useCallback(
+    (strokes: readonly string[]) => {
+      const slideId = slideIdsRef.current[stateRef.current.index] ?? "";
+      setInk({ slideId, strokes });
+      linkRef.current?.post({ kind: "ink", slideId, strokes });
+    },
+    [],
+  );
+
   return {
     state,
     slides,
-    current: slides[state.index],
+    current,
     next: slides[state.index + 1],
     count: slides.length,
     elapsedMs,
     slideElapsedMs: Math.max(0, elapsedMs - state.slideEnteredElapsedMs),
-    linked: Boolean(linkRef.current?.supported),
+    linked,
     peerGone,
+    // 笔迹**按当前页 id 过滤后**才交出去。清除不是一个动作，是「这一页没有笔迹」
+    // 这个事实的自然结果——于是翻页、跳页、对面翻页三条路径都不用各记一次清除。
+    ink: ink.slideId === currentId && currentId ? ink.strokes : EMPTY_INK,
+    pushInk,
     run,
     handleKey,
     rehearsal: () => deckRehearsalReport(stateRef.current, slides, clock()),
