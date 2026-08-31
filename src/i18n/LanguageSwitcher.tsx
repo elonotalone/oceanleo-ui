@@ -81,7 +81,7 @@ export function LanguageSwitcher({
         aria-expanded={open}
         aria-label="Switch language / 切换语言"
         title="切换语言 / Switch language"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-100 active:scale-95 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
       >
         <GlobeIcon />
         {compact ? (
@@ -110,11 +110,11 @@ export function LanguageSwitcher({
                 role="option"
                 aria-selected={on}
                 onClick={() => switchTo(loc)}
-                className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left text-[13px] transition ${
-                  on
-                    ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                    : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                }`}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+ : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+ }`}
               >
                 <span className="truncate">{LOCALE_LABELS[loc]}</span>
                 {on && <CheckIcon />}
@@ -139,7 +139,7 @@ function GlobeIcon() {
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
-      className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
+      className={`h-3 w-3 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${open ? "rotate-180" : ""}`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

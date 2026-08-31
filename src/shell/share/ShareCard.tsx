@@ -183,14 +183,14 @@ export function ShareCardPreview({
           <button
             type="button"
             onClick={() => downloadBlobs(images.blobs, fileBaseName)}
-            className="rounded-lg bg-white px-3 py-1.5 text-[13px] font-semibold text-stone-900 transition hover:bg-stone-100 active:scale-95"
+            className="rounded-lg bg-white px-3 py-1.5 text-[13px] font-semibold text-stone-900 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-100 active:scale-95"
           >
             {tt("下载")}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-white/40 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-white/10 active:scale-95"
+            className="rounded-lg border border-white/40 px-3 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-white/10 active:scale-95"
           >
             {tt("关闭")}
           </button>

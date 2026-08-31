@@ -116,7 +116,7 @@ export function ApiPage({
               <div className="flex items-center gap-2">
                 <a
                   href="/api/guide"
-                  className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50"
+                  className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                 >
                   {tt("指导文档")}
                 </a>
@@ -124,14 +124,14 @@ export function ApiPage({
                   <button
                     type="button"
                     onClick={onLogin}
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
                   >
                     {tt("登录 / 注册")}
                   </button>
                 ) : (
                   <a
                     href={billingHref}
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
                   >
                     {tt("充值")}
                   </a>
@@ -179,7 +179,7 @@ export function ApiPage({
                       href={pricingDocUrl(provider.id, kind)}
                       target={kind === "html" ? "_blank" : undefined}
                       rel={kind === "html" ? "noreferrer" : undefined}
-                      className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition hover:bg-neutral-50"
+                      className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                     >
                       {kind === "html" ? tt("在线查看") : kind === "source" ? tt("原始数据") : "PDF"}
                     </a>
@@ -189,7 +189,7 @@ export function ApiPage({
                       href={provider.source_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-neutral-50"
+                      className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                     >
                       {tt("官方页 ↗")}
                     </a>

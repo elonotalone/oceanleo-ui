@@ -36,11 +36,11 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled || busy}
       title={label}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${
-        primary
-          ? "bg-stone-900 text-white hover:bg-stone-800"
-          : "border border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
-      }`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${
+ primary
+ ? "bg-stone-900 text-white hover:bg-stone-800"
+ : "border border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
+ }`}
     >
       {busy ? <Spinner /> : icon}
       <span>{label}</span>
@@ -164,11 +164,11 @@ export function ShareCheckbox({
       aria-checked={checked}
       aria-label={label}
       onClick={onToggle}
-      className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition active:scale-90 ${
-        checked
-          ? "border-stone-900 bg-stone-900 text-white"
-          : "border-stone-300 bg-white text-transparent hover:border-stone-400"
-      }`}
+      className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-90 ${
+ checked
+ ? "border-stone-900 bg-stone-900 text-white"
+ : "border-stone-300 bg-white text-transparent hover:border-stone-400"
+ }`}
     >
       <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
         <path d="M5 12l4.5 4.5L19 7" strokeLinecap="round" strokeLinejoin="round" />
@@ -192,7 +192,7 @@ export function ShareEntryButton({
       onClick={onClick}
       title={tt("分享")}
       aria-label={tt("分享")}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50 active:scale-95 ${className}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-50 active:scale-95 ${className}`}
     >
       <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <circle cx="18" cy="5" r="3" />

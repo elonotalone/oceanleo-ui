@@ -207,7 +207,7 @@ export function PdfStage({
             width={editor.pageCount > 0 ? undefined : 0}
             height={editor.pageCount > 0 ? undefined : 0}
             aria-label={tt("PDF 第 {page} 页", { page: editor.pageNumber })}
-            className="block max-w-none origin-top-left transition-transform duration-75"
+            className="block max-w-none origin-top-left transition-transform duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)]"
             style={{
               transform: `scale(${visualScale})`,
               background: PDF_READER_PALETTE["reader.page"],

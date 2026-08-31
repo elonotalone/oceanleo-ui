@@ -60,7 +60,7 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={tt("搜索连接器 / MCP 服务器…")}
-          className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-[14px] outline-none transition focus:border-neutral-400"
+          className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-neutral-400"
         />
 
         {error ? (
@@ -81,7 +81,7 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
                 href={it.detail_url || "#"}
                 target={it.detail_url ? "_blank" : undefined}
                 rel="noreferrer"
-                className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+                className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-md"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-[14px] font-semibold text-neutral-900">{it.name || it.code}</span>

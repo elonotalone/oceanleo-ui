@@ -212,7 +212,7 @@ export function MyAppsRail({
             </a>
             <button
               aria-label={`${tt("从我的应用移除")}：${app.name}`}
-              className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md text-[14px] text-stone-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+              className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md text-[14px] text-stone-400 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
               data-my-apps-remove={app.app_id}
               onClick={() => setPendingRemoval(app)}
               title={tt("移除")}

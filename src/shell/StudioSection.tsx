@@ -41,7 +41,7 @@ export function StudioSection({
       >
         {index != null && (
           <span
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition-colors"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
             style={
               open
                 ? { background: accent, color: "#fff" }
@@ -58,7 +58,7 @@ export function StudioSection({
           )}
           <span className="text-stone-400">
             <svg
-              className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+              className={`h-4 w-4 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${open ? "rotate-180" : ""}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -71,9 +71,9 @@ export function StudioSection({
       </button>
 
       <div
-        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        }`}
+        className={`grid transition-[grid-template-rows] duration-[var(--leo-dur-3)] ease-out ${
+ open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+ }`}
       >
         <div className="overflow-hidden">
           <div className="border-t border-stone-100 px-4 py-4">{children}</div>

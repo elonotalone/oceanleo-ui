@@ -71,4 +71,4 @@ export const EDIT_BAR_DIVIDER_CLASS =
 
 /** 段内单个图标按钮。圆形 hover 与胶囊外形呼应。 */
 export const EDIT_BAR_BUTTON_CLASS =
-  "grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--pchrome-ink-mid,var(--awb-muted,#57534e))] outline-none transition hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] hover:text-[var(--pchrome-ink,var(--awb-text,#292524))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40";
+  "grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--pchrome-ink-mid,var(--awb-muted,#57534e))] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] hover:text-[var(--pchrome-ink,var(--awb-text,#292524))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40";

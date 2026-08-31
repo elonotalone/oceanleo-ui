@@ -63,7 +63,7 @@ function FallbackSelectionInspector({
           type="button"
           onClick={() => onClose()}
           aria-label="关闭属性面板"
-          className="grid h-8 w-8 place-items-center rounded-lg text-[var(--muted,#78716c)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+          className="grid h-8 w-8 place-items-center rounded-lg text-[var(--muted,#78716c)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
         >
           ×
         </button>

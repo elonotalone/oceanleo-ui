@@ -145,7 +145,7 @@ class PluginModuleErrorBoundary extends Component<
           <button
             type="button"
             onClick={this.props.onClose}
-            className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] text-stone-600 transition hover:bg-stone-50"
+            className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
           >
             返回
           </button>

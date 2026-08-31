@@ -397,9 +397,9 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         return (
           <div
             key={`${entry.kind}:${entry.id}`}
-            className={`group relative flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
-              on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
-            }`}
+            className={`group relative flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
+ }`}
             style={on ? { background: accent } : undefined}
           >
             {renaming ? (

@@ -62,7 +62,7 @@ export function AgentProgress({
     <div className="my-1 border-l border-stone-200 pl-3">
       {latestPlan && (
         <details className="group mb-1.5">
-          <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-[12px] text-stone-400 transition hover:text-stone-600">
+          <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-[12px] text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-stone-600">
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full"
               style={{ background: accent }}
@@ -128,7 +128,7 @@ function ProcessRow({
   }
   return (
     <details className="group">
-      <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-[12px] text-stone-400 transition hover:text-stone-600">
+      <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-[12px] text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-stone-600">
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full opacity-70"
           style={{ background: accent }}
@@ -148,7 +148,7 @@ function ProcessRow({
 function Chevron() {
   return (
     <svg
-      className="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+      className="h-3 w-3 shrink-0 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] group-open:rotate-90"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

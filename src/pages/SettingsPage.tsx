@@ -119,7 +119,7 @@ export function SettingsPage({ extraSections, knowledgeBaseLink = true }: Settin
               </p>
               <a
                 href={`${currentDomainProfile().portalOrigin}/settings`}
-                className="mt-3 inline-block rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
+                className="mt-3 inline-block rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
               >
                 {tt("前往主站管理知识库 →")}
               </a>
@@ -136,13 +136,13 @@ export function SettingsPage({ extraSections, knowledgeBaseLink = true }: Settin
           <div className="flex gap-2">
             <a
               href="/cost"
-              className="inline-flex items-center rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+              className="inline-flex items-center rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
             >
               {tt("前往 Cost 页 →")}
             </a>
             <a
               href="/api"
-              className="inline-flex items-center rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50"
+              className="inline-flex items-center rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
             >
               {tt("前往 AI 模型页 →")}
             </a>

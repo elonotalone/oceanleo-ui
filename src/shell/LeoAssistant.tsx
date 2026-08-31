@@ -475,7 +475,7 @@ export function LeoAssistant({
         <button
           onClick={() => openLeoAssistant()}
           aria-label={panelTitle}
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition hover:bg-slate-800"
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-slate-800"
         >
           <Sparkle />
           {panelTitle}
@@ -514,7 +514,7 @@ export function LeoAssistant({
             data-leo-no-drag
             onClick={() => setOpen(false)}
             aria-label={tt("关闭")}
-            className="text-slate-400 transition hover:text-slate-700"
+            className="text-slate-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-slate-700"
           >
             ✕
           </button>
@@ -635,7 +635,7 @@ function SelectionBubble() {
         setBubble(null);
         if (text) openLeoAssistant({ text, source: "selection" });
       }}
-      className="leo-pop-in fixed z-[60] flex items-center gap-1 rounded-full border border-indigo-200/70 bg-white/95 px-2.5 py-1 text-[12px] font-medium text-indigo-600 shadow-lg backdrop-blur-sm transition hover:bg-indigo-50"
+      className="leo-pop-in fixed z-[60] flex items-center gap-1 rounded-full border border-indigo-200/70 bg-white/95 px-2.5 py-1 text-[12px] font-medium text-indigo-600 shadow-lg backdrop-blur-sm transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-indigo-50"
       style={{ left: bubble.x, top: bubble.y }}
     >
       <Sparkle />
@@ -912,7 +912,7 @@ function Panel({
             </p>
             <button
               onClick={readHostInput}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
             >
               {tt("读取输入框内容")}
             </button>
@@ -949,7 +949,7 @@ function Panel({
                     disabled={!canUndo || Boolean(boardBusy)}
                     aria-label={tt("回退")}
                     title={tt("回退")}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <UndoGlyph />
                   </button>
@@ -958,7 +958,7 @@ function Panel({
                     disabled={!canRedo || Boolean(boardBusy)}
                     aria-label={tt("前进")}
                     title={tt("前进")}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <RedoGlyph />
                   </button>
@@ -970,7 +970,7 @@ function Panel({
                       setErr(null);
                     }}
                     disabled={Boolean(boardBusy)}
-                    className="ml-0.5 rounded-md px-1.5 text-[11px] text-slate-400 transition hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="ml-0.5 rounded-md px-1.5 text-[11px] text-slate-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     {tt("清除")}
                   </button>
@@ -999,7 +999,7 @@ function Panel({
                     key={v.id}
                     onClick={() => onVerb(v)}
                     disabled={Boolean(busy) || Boolean(boardBusy)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {tt(v.label)}
                   </button>
@@ -1024,7 +1024,7 @@ function Panel({
                     </div>
                     <button
                       onClick={() => void fetchQuestion(board)}
-                      className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                      className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                     >
                       {tt("换一个问题")}
                     </button>
@@ -1035,7 +1035,7 @@ function Panel({
                 {!question && (
                   <button
                     onClick={() => void fetchQuestion(board)}
-                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                   >
                     {tt("让 leo 提问")}
                   </button>
@@ -1050,7 +1050,7 @@ function Panel({
                         <button
                           key={`${opt}-${i}`}
                           onClick={() => void applyAnswer(opt)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
                         >
                           {opt}
                         </button>
@@ -1104,14 +1104,14 @@ function Panel({
                 ? tt("补充内容，leo 会合并进 leo board")
                 : tt("告诉 leo 你想怎么处理这段内容")
             }
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition focus:border-slate-400"
+            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-slate-400"
           />
           <button
             type="submit"
             disabled={
               Boolean(busy) || Boolean(boardBusy) || !input.trim() || (board == null && !hasContext)
             }
-            className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+            className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {busy || boardBusy ? "…" : tt("发送")}
           </button>
@@ -1146,7 +1146,7 @@ function BoardEditor({
       onChange={(e) => onChange(e.target.value)}
       rows={3}
       spellCheck={false}
-      className="w-full resize-none rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xs leading-relaxed text-slate-800 outline-none transition focus:border-indigo-200 focus:bg-white disabled:opacity-60"
+      className="w-full resize-none rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xs leading-relaxed text-slate-800 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-indigo-200 focus:bg-white disabled:opacity-60"
     />
   );
 }
@@ -1163,7 +1163,7 @@ function CopyButton({ text }: { text: string }) {
           setTimeout(() => setCopied(false), 1600);
         }
       }}
-      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
     >
       {copied ? tt("已复制") : tt("复制")}
     </button>
@@ -1181,7 +1181,7 @@ function ReplaceHostButton({ onReplace }: { onReplace: () => void }) {
         setReplaced(true);
         setTimeout(() => setReplaced(false), 1600);
       }}
-      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
     >
       {replaced ? tt("已替换") : tt("替换到输入框")}
     </button>
@@ -1199,7 +1199,7 @@ function ImportToInputButton({ onImport }: { onImport: () => void }) {
         setDone(true);
         setTimeout(() => setDone(false), 1600);
       }}
-      className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-500/20"
+      className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:bg-indigo-500/20"
     >
       <ImportGlyph />
       {done ? tt("已导入") : tt("导入到输入框")}
@@ -1257,7 +1257,7 @@ function ResultCard({
               setTimeout(() => setCopied(false), 1600);
             }
           }}
-          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
         >
           {copied ? tt("已复制") : tt("复制")}
         </button>
@@ -1268,7 +1268,7 @@ function ResultCard({
               setReplaced(true);
               setTimeout(() => setReplaced(false), 1600);
             }}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
           >
             {replaced ? tt("已替换") : tt("替换到输入框")}
           </button>
@@ -1276,7 +1276,7 @@ function ResultCard({
         {onContinue && (
           <button
             onClick={onContinue}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition hover:border-slate-400"
+            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
           >
             {tt("以此继续")}
           </button>

@@ -159,7 +159,7 @@ export function SelectionAnimationGallery({
         ref={launcherRef}
         type="button"
         disabled={control.disabled}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
         aria-label={accessibleLabel}
         aria-haspopup="dialog"
         aria-expanded={open}

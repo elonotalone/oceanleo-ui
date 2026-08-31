@@ -270,7 +270,7 @@ export function SkillPromptPanel({
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[13px] font-medium text-rose-600 transition hover:bg-rose-100 active:scale-[0.98]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[13px] font-medium text-rose-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-rose-100 active:scale-[0.98]"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
@@ -331,7 +331,7 @@ export function SkillPromptPanel({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+            className="shrink-0 rounded-lg p-1 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-600"
             title={tt("关闭")}
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -360,11 +360,11 @@ export function SkillPromptPanel({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] transition-all duration-200 active:scale-95 ${
-            overrideActive
-              ? "bg-violet-50 text-violet-700"
-              : "text-neutral-600 hover:bg-neutral-100"
-          }`}
+          className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
+ overrideActive
+ ? "bg-violet-50 text-violet-700"
+ : "text-neutral-600 hover:bg-neutral-100"
+ }`}
           title={tt("查看 / 编辑这个 agent 的 prompt（开源）")}
         >
           <PromptIcon />
@@ -425,11 +425,11 @@ function PanelBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`rounded-lg px-2.5 py-1 text-[12px] font-medium transition disabled:opacity-50 ${
-        primary
-          ? "text-white"
-          : "border border-stone-200 text-stone-600 hover:bg-stone-100"
-      }`}
+      className={`rounded-lg px-2.5 py-1 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50 ${
+ primary
+ ? "text-white"
+ : "border border-stone-200 text-stone-600 hover:bg-stone-100"
+ }`}
       style={primary ? { background: accent || "#7c3aed" } : undefined}
     >
       {children}

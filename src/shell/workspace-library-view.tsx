@@ -75,9 +75,9 @@ export function WorkspaceCard({
   return (
     <div
       {...dragProps}
-      className={`group relative overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-left transition hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm ${
-        dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
+      className={`group relative overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm ${
+ dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
+ }`}
     >
       <button
         type="button"
@@ -92,7 +92,7 @@ export function WorkspaceCard({
             alt={entry.title}
             kind={kind}
             accent={accent}
-            imageClassName="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+            imageClassName="h-full w-full object-cover transition duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.02]"
           />
         </div>
         <div className="p-2.5">
@@ -122,9 +122,9 @@ export function WorkspaceListRow({
   return (
     <div
       {...dragProps}
-      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
-        dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
+      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
+ dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
+ }`}
     >
       <button
         type="button"

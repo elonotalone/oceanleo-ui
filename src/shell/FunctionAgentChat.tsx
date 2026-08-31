@@ -336,7 +336,7 @@ export function EditorCommandCard({
           data-editor-command-action="confirm"
           disabled={busy}
           onClick={() => onConfirm(always)}
-          className="rounded-lg bg-amber-600 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-amber-700 disabled:opacity-60"
+          className="rounded-lg bg-amber-600 px-3 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-amber-700 disabled:opacity-60"
         >
           {busy ? tt("正在改…") : tt("就这么改")}
         </button>
@@ -345,7 +345,7 @@ export function EditorCommandCard({
           data-editor-command-action="decline"
           disabled={busy}
           onClick={onDecline}
-          className="rounded-lg border border-stone-300 px-3 py-1.5 text-[13px] text-stone-600 transition hover:bg-white disabled:opacity-60"
+          className="rounded-lg border border-stone-300 px-3 py-1.5 text-[13px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white disabled:opacity-60"
         >
           {tt("先别改")}
         </button>
@@ -1046,11 +1046,11 @@ export function FunctionAgentChat({
               title={title}
               aria-label={title}
               aria-pressed={selected}
-              className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all ${
-                selected
-                  ? "max-w-[6.5rem] px-2 text-white"
-                  : "w-7 px-0 text-stone-500 hover:bg-white/70 hover:text-stone-700"
-              }`}
+              className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ selected
+ ? "max-w-[6.5rem] px-2 text-white"
+ : "w-7 px-0 text-stone-500 hover:bg-white/70 hover:text-stone-700"
+ }`}
               style={selected ? { background: accent } : undefined}
             >
               {t === "ops" ? (
@@ -1081,13 +1081,13 @@ export function FunctionAgentChat({
               ? tt("把当前操作台的输入与备注保存为灵感，稍后可在右侧「灵感 · 我的」里一键复用")
               : saveLabel
           }
-          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition active:scale-95 disabled:opacity-60 ${
-            saveState === "saved"
-              ? "border-transparent text-white"
-              : saveState === "saving"
-                ? "border-amber-200 bg-amber-50 text-amber-600"
-                : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
-          }`}
+          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 disabled:opacity-60 ${
+ saveState === "saved"
+ ? "border-transparent text-white"
+ : saveState === "saving"
+ ? "border-amber-200 bg-amber-50 text-amber-600"
+ : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+ }`}
           style={saveState === "saved" ? { background: accent } : undefined}
         >
           <svg
@@ -1120,7 +1120,7 @@ export function FunctionAgentChat({
           onBeforeRestart={() => restartFlushRef.current()}
           label={tt("新建")}
           iconOnly
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-stone-200 text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-60"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-stone-200 text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-60"
         />
       )}
     </div>
@@ -1627,14 +1627,14 @@ export function FunctionAgentChat({
                   type="button"
                   onClick={() => void sendSuggestion(s)}
                   style={{ animationDelay: `${i * 130}ms` }}
-                  className="group v-fade-up flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[14px] text-stone-600 transition hover:bg-stone-100/70 hover:text-stone-900"
+                  className="group v-fade-up flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[14px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100/70 hover:text-stone-900"
                 >
                   <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <path d="M8 12h8M12 8v8" strokeLinecap="round" />
                     <circle cx="12" cy="12" r="9" />
                   </svg>
                   <span className="min-w-0 flex-1 truncate">{s}</span>
-                  <svg className="h-4 w-4 shrink-0 text-stone-300 transition group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg className="h-4 w-4 shrink-0 text-stone-300 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>

@@ -224,7 +224,7 @@ export function NativeAttachSheet({
             onClose();
             action.onClick();
           }}
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-neutral-700 transition hover:bg-neutral-100"
+          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100"
         >
           <span className="shrink-0 text-neutral-500">{action.icon}</span>
           <span className="flex-1">{action.label}</span>
@@ -409,7 +409,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={tt("收起")}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
           >
             ×
           </button>

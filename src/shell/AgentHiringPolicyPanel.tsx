@@ -223,15 +223,15 @@ export function AgentHiringPolicyPanel({
             onClick={() =>
               setPolicy((current) => ({ ...current, enabled: !current.enabled }))
             }
-            className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition ${
-              policy.enabled ? "" : "bg-stone-300"
-            }`}
+            className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ policy.enabled ? "" : "bg-stone-300"
+ }`}
             style={policy.enabled ? { background: accent } : undefined}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                policy.enabled ? "left-[1.375rem]" : "left-0.5"
-              }`}
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ policy.enabled ? "left-[1.375rem]" : "left-0.5"
+ }`}
             />
           </button>
         </div>
@@ -293,11 +293,11 @@ export function AgentHiringPolicyPanel({
                     type="button"
                     aria-pressed={on}
                     onClick={() => toggleCategory(item.slug)}
-                    className={`rounded-full border px-2.5 py-1 text-[12px] font-medium transition ${
-                      on
-                        ? "border-transparent text-white"
-                        : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                    }`}
+                    className={`rounded-full border px-2.5 py-1 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "border-transparent text-white"
+ : "border-stone-200 text-stone-600 hover:bg-stone-50"
+ }`}
                     style={on ? { background: accent } : undefined}
                   >
                     {item.name_zh || item.slug}
@@ -350,7 +350,7 @@ export function AgentHiringPolicyPanel({
             type="button"
             disabled={saving || !loaded}
             onClick={() => void save()}
-            className="rounded-xl px-3.5 py-1.5 text-[13px] font-semibold text-white transition disabled:opacity-50"
+            className="rounded-xl px-3.5 py-1.5 text-[13px] font-semibold text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50"
             style={{ background: accent }}
           >
             {saving ? tt("正在保存…") : tt("保存设置")}
@@ -417,7 +417,7 @@ export function AgentHiringPolicyPanel({
                         type="button"
                         disabled={busyEventId === event.id}
                         onClick={() => void override(event, "approve")}
-                        className="rounded-xl px-3 py-1 text-[12px] font-semibold text-white transition disabled:opacity-50"
+                        className="rounded-xl px-3 py-1 text-[12px] font-semibold text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50"
                         style={{ background: accent }}
                       >
                         {tt("同意这次请人")}
@@ -426,7 +426,7 @@ export function AgentHiringPolicyPanel({
                         type="button"
                         disabled={busyEventId === event.id}
                         onClick={() => void override(event, "reject")}
-                        className="rounded-xl border border-stone-200 px-3 py-1 text-[12px] font-medium text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+                        className="rounded-xl border border-stone-200 px-3 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50 disabled:opacity-50"
                       >
                         {tt("拒绝")}
                       </button>

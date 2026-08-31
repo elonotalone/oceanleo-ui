@@ -255,7 +255,7 @@ function TeamRosterModalInner({
                 return (
                   <li
                     key={m.agent_id}
-                    className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white/85 px-3 py-2.5 shadow-sm transition hover:border-stone-300"
+                    className="group flex items-center gap-3 rounded-xl border border-stone-200 bg-white/85 px-3 py-2.5 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300"
                   >
                     <span
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[15px]"
@@ -278,14 +278,14 @@ function TeamRosterModalInner({
                     <button
                       type="button"
                       onClick={() => setEditMember(m)}
-                      className="rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[12px] text-stone-600 opacity-0 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 group-hover:opacity-100"
+                      className="rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[12px] text-stone-600 opacity-0 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 group-hover:opacity-100"
                     >
                       {tt("查看 / 改 prompt")}
                     </button>
                     <button
                       type="button"
                       onClick={() => remove(m.agent_id)}
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-stone-200 bg-white text-stone-400 opacity-0 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-stone-200 bg-white text-stone-400 opacity-0 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
                       title={tt("移出团")}
                     >
                       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -301,7 +301,7 @@ function TeamRosterModalInner({
           <button
             type="button"
             onClick={() => setShowPicker(true)}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-stone-300 bg-white/60 py-3 text-[13px] text-stone-500 transition hover:border-stone-400 hover:text-stone-700"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-stone-300 bg-white/60 py-3 text-[13px] text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400 hover:text-stone-700"
             style={{ borderColor: `${accent}44` }}
           >
             <span className="text-[15px]">＋</span>
@@ -318,7 +318,7 @@ function TeamRosterModalInner({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-stone-200 bg-white px-4 py-1.5 text-[13px] text-stone-600 shadow-sm transition hover:bg-stone-50"
+              className="rounded-lg border border-stone-200 bg-white px-4 py-1.5 text-[13px] text-stone-600 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
             >
               {tt("取消")}
             </button>
@@ -326,7 +326,7 @@ function TeamRosterModalInner({
               type="button"
               onClick={save}
               disabled={saving || memberIds.length < 1}
-              className="rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: accent }}
             >
               {saving ? tt("保存中…") : tt("保存")}
@@ -468,7 +468,7 @@ function RosterErrorFallback({ onClose, accent = DEFAULT_ACCENT }: { onClose: ()
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition"
+          className="mt-5 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
           style={{ background: accent }}
         >
           {tt("关闭")}
@@ -491,7 +491,7 @@ function EmptyTeamModal({ onClose, accent = DEFAULT_ACCENT }: { onClose: () => v
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition"
+          className="mt-5 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
           style={{ background: accent }}
         >
           {tt("知道了")}
@@ -591,7 +591,7 @@ function AgentPickerModal({
                     <button
                       type="button"
                       onClick={() => onPick(a)}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-stone-50"
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
                     >
                       <span
                         className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[14px]"

@@ -179,9 +179,9 @@ export function EditBarCollapsedPill({
       onClick={onClick}
       onKeyDown={onKeyDown}
       style={editBarCollapsedStyle(dragging)}
-      className={`relative grid shrink-0 touch-none select-none place-items-center outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${
-        dragging ? "cursor-grabbing" : "cursor-grab"
-      }`}
+      className={`relative grid shrink-0 touch-none select-none place-items-center outline-none transition-shadow duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${
+ dragging ? "cursor-grabbing" : "cursor-grab"
+ }`}
       aria-label={label}
       aria-expanded={false}
       aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home"

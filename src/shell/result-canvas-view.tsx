@@ -65,11 +65,11 @@ export function FixedWorkspaceTabs({
             key={slot}
             type="button"
             onClick={() => onSelect(slot)}
-            className={`min-w-fit flex-1 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] font-medium transition-colors ${
-              active
-                ? "bg-white shadow-sm"
-                : "text-stone-500 hover:text-stone-700"
-            }`}
+            className={`min-w-fit flex-1 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ active
+ ? "bg-white shadow-sm"
+ : "text-stone-500 hover:text-stone-700"
+ }`}
             style={active ? { color: accent } : undefined}
           >
             {tt(WORKSPACE_SLOT_LABELS[slot])}
@@ -118,11 +118,11 @@ export function StandaloneWorkspaceFrame({
                 type="button"
                 onClick={() => onSelect(slot)}
                 aria-current={isActive ? "page" : undefined}
-                className={`relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition ${
-                  isActive
-                    ? "text-stone-900"
-                    : "text-stone-400 hover:text-stone-700"
-                }`}
+                className={`relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ isActive
+ ? "text-stone-900"
+ : "text-stone-400 hover:text-stone-700"
+ }`}
               >
                 {tt(WORKSPACE_SLOT_LABELS[slot])}
                 {isActive && (
@@ -167,11 +167,11 @@ export function CanvasSubTabs({
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              selected
-                ? "text-white"
-                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-            }`}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ selected
+ ? "text-white"
+ : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+ }`}
             style={selected ? { background: accent } : undefined}
           >
             {tt(tab.label)}

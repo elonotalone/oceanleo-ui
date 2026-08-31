@@ -101,11 +101,11 @@ function ToolButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-xl border px-2.5 py-2 text-[10px] font-medium transition hover:-translate-y-0.5 disabled:opacity-40 ${
-        active
-          ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--awb-accent,#7c3aed)] text-[var(--awb-on-accent,#fff)] shadow-sm"
-          : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm"
-      }`}
+      className={`rounded-xl border px-2.5 py-2 text-[10px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 disabled:opacity-40 ${
+ active
+ ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--awb-accent,#7c3aed)] text-[var(--awb-on-accent,#fff)] shadow-sm"
+ : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm"
+ }`}
     >
       {children}
     </button>
@@ -314,7 +314,7 @@ export function FabricImageFilterPanel({
         type="button"
         disabled={locked}
         onClick={editor.resetFilters}
-        className="mt-5 w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
+        className="mt-5 w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
       >
         {tt("重置调整")}
       </button>

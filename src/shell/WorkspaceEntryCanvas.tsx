@@ -22,7 +22,7 @@ export function WorkspaceEntryCanvas({
         <button
           type="button"
           onClick={onClose}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] transition hover:bg-[var(--surface-hover,#f5f5f4)] hover:text-[var(--fg,#292524)]"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#f5f5f4)] hover:text-[var(--fg,#292524)]"
           aria-label={tt("返回库")}
           title={tt("返回库")}
         >
@@ -43,7 +43,7 @@ export function WorkspaceEntryCanvas({
             href={entry.linkUrl}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium transition hover:bg-[var(--surface-hover,#f5f5f4)]"
+            className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#f5f5f4)]"
             style={{ color: accent }}
           >
             {tt("打开原始页面")}

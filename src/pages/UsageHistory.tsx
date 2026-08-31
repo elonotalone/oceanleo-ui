@@ -102,7 +102,7 @@ export function UsageHistory({
                 return (
                   <tr
                     key={ev.created_at || i}
-                    className="text-neutral-700 transition hover:bg-neutral-50"
+                    className="text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                   >
                     <td className="whitespace-nowrap px-3 py-2">
                       {ev.created_at
@@ -142,7 +142,7 @@ export function UsageHistory({
                         <button
                           type="button"
                           onClick={() => setAuditId(requestId)}
-                          className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition hover:bg-neutral-50"
+                          className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                         >
                           {tt("查看内容")}
                         </button>
@@ -206,7 +206,7 @@ function AuditModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-[18px] leading-none text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+            className="rounded-md px-2 py-1 text-[18px] leading-none text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
             aria-label={tt("关闭")}
           >
             ×

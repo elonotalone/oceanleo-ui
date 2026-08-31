@@ -86,7 +86,7 @@ export function ThemeSwitcher({ variant = "pill", className = "", labels }: Them
         onClick={() => setMode(next)}
         aria-label={`Theme: ${curLabel}`}
         title={curLabel}
-        className={`inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-100 active:scale-95 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${className}`}
+        className={`inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${className}`}
       >
         <ThemeIcon mode={mode} />
         {curLabel}
@@ -110,11 +110,11 @@ export function ThemeSwitcher({ variant = "pill", className = "", labels }: Them
             onClick={() => setMode(m)}
             aria-pressed={on}
             title={lbl}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition ${
-              on
-                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            }`}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+ : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+ }`}
           >
             <ThemeIcon mode={m} />
             <span className="hidden sm:inline">{lbl}</span>

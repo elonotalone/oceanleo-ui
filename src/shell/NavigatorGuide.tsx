@@ -307,7 +307,7 @@ function NavThumb({ it, accent, size }: { it: NavItem; accent: string; size: "gr
         loading="lazy"
         className={
           size === "grid"
-            ? "h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            ? "h-full w-full object-cover transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-105"
             : "h-full w-full rounded-lg object-cover"
         }
       />
@@ -334,8 +334,8 @@ function DeleteButton({ onDelete, tt, floating }: { onDelete: () => void; tt: TT
       aria-label={tt("删除")}
       className={
         floating
-          ? "absolute right-2 top-2 rounded-lg bg-white/85 p-1.5 text-neutral-400 opacity-0 backdrop-blur transition-all duration-150 hover:text-rose-500 active:scale-90 group-hover:opacity-100"
-          : "shrink-0 rounded-lg p-1.5 text-neutral-300 opacity-0 transition-all duration-150 hover:text-rose-500 active:scale-90 group-hover:opacity-100"
+          ? "absolute right-2 top-2 rounded-lg bg-white/85 p-1.5 text-neutral-400 opacity-0 backdrop-blur transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:text-rose-500 active:scale-90 group-hover:opacity-100"
+          : "shrink-0 rounded-lg p-1.5 text-neutral-300 opacity-0 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:text-rose-500 active:scale-90 group-hover:opacity-100"
       }
     >
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -348,7 +348,7 @@ function DeleteButton({ onDelete, tt, floating }: { onDelete: () => void; tt: TT
 function NavCard({ it, accent, tt }: { it: NavItem; accent: string; tt: TT }) {
   const second = [it.hint ? tt(it.hint) : "", it.meta].filter(Boolean).join(" · ");
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md">
+    <div className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md">
       <button type="button" onClick={it.onClick} className="w-full text-left">
         <span className="relative block w-full overflow-hidden" style={{ aspectRatio: "16 / 10", background: tintColor(accent) }}>
           <NavThumb it={it} accent={accent} size="grid" />
@@ -357,7 +357,7 @@ function NavCard({ it, accent, tt }: { it: NavItem; accent: string; tt: TT }) {
               {tt(it.badge)}
             </span>
           )}
-          <span className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/25 to-transparent p-1.5 opacity-0 transition group-hover:opacity-100">
+          <span className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/25 to-transparent p-1.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100">
             <span className="rounded-md bg-white/95 px-2 py-0.5 text-[11px] font-medium" style={{ color: accent }}>
               {tt("填入 →")}
             </span>
@@ -376,7 +376,7 @@ function NavCard({ it, accent, tt }: { it: NavItem; accent: string; tt: TT }) {
 function NavRow({ it, accent, tt }: { it: NavItem; accent: string; tt: TT }) {
   const second = [it.hint ? tt(it.hint) : "", it.meta].filter(Boolean).join(" · ");
   return (
-    <div className="group flex items-center gap-3 px-3 py-2.5 transition hover:bg-neutral-50">
+    <div className="group flex items-center gap-3 px-3 py-2.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50">
       <button type="button" onClick={it.onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"

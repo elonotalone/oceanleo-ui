@@ -433,7 +433,7 @@ function AppShellInner({
     );
     // leo-tap-row：手指设备上这一行不矮于 44px（原来 py-1.5 ≈ 30px）。
     const accountCls =
-      "leo-tap-row flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-neutral-200/50";
+      "leo-tap-row flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50";
     return onAccountClick ? (
       <button
         type="button"
@@ -514,11 +514,11 @@ function AppShellInner({
     /* 侧栏文字加深（操作员 2026-07-02：旧 text-neutral-600 太浅、观感廉价；
        对照 Manus 侧栏近黑文字）。深色下由 globals.css 全局重映射到 --leo-d-fg。 */
     // leo-tap-row：手指设备上这一行不矮于 44px（原来 px-3 py-2 ≈ 36px，要瞄准才点得中）。
-    const cls = `leo-tap-row group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150 ${
-      active
-        ? "bg-neutral-200/80 font-medium text-neutral-900"
-        : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
-    }`;
+    const cls = `leo-tap-row group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ active
+ ? "bg-neutral-200/80 font-medium text-neutral-900"
+ : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
+ }`;
     const style = active ? { boxShadow: `inset 3px 0 0 ${brand.accent}` } : undefined;
     const inner = (
       <>
@@ -529,9 +529,9 @@ function AppShellInner({
         {item.shortcut && <span className="text-[11px] text-neutral-400">{item.shortcut}</span>}
         {item.disclosure && (
           <svg
-            className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-150 ${
-              disclosureOpen ? "rotate-90" : ""
-            }`}
+            className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+ disclosureOpen ? "rotate-90" : ""
+ }`}
             viewBox="0 0 20 20"
             fill="none"
             stroke="currentColor"
@@ -605,11 +605,11 @@ function AppShellInner({
         {control}
         {item.disclosure && (
           <div
-            className={`grid transition-[grid-template-rows,opacity] duration-150 ${
-              disclosureOpen
-                ? "grid-rows-[1fr] opacity-100"
-                : "pointer-events-none grid-rows-[0fr] opacity-0"
-            }`}
+            className={`grid transition-[grid-template-rows,opacity] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+ disclosureOpen
+ ? "grid-rows-[1fr] opacity-100"
+ : "pointer-events-none grid-rows-[0fr] opacity-0"
+ }`}
           >
             <div className="min-h-0 overflow-hidden">
               <div className="ml-3 border-l border-neutral-200 py-1 pl-1">
@@ -661,7 +661,7 @@ function AppShellInner({
           <button
             type="button"
             onClick={() => setSearchOpen((v) => !v)}
-            className="leo-tap-icon rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
+            className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
             title={tt("搜索")}
           >
             <IconSearch />
@@ -673,7 +673,7 @@ function AppShellInner({
             toggleCollapsed(true);
             setMobileOpen(false);
           }}
-          className="leo-tap-icon rounded-md p-1.5 transition hover:bg-neutral-200/70 active:scale-95"
+          className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
           title={tt("收起侧栏")}
         >
           <IconPanel />
@@ -684,9 +684,9 @@ function AppShellInner({
 
   const searchPanel = onSearch ? (
     <div
-      className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-        searchOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-      }`}
+      className={`grid transition-[grid-template-rows] duration-[var(--leo-dur-3)] ease-out ${
+ searchOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+ }`}
     >
       <div className="overflow-hidden">
         <div className="px-3 pb-2">
@@ -866,9 +866,9 @@ function AppShellInner({
           两者宽度必须一起变。 */}
       <aside
         data-oceanleo-chrome
-        className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-200 ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${
-          collapsed ? "w-0 border-r-0" : "w-[256px]"
-        }`}
+        className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-[var(--leo-dur-5)] ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${
+ collapsed ? "w-0 border-r-0" : "w-[256px]"
+ }`}
       >
         <div className="leo-safe-sidebar flex h-full w-[256px] flex-col">
           {sidebarBody}
@@ -881,9 +881,9 @@ function AppShellInner({
         aria-hidden="true"
         data-oceanleo-chrome
         data-oceanleo-sidebar-spacer
-        className={`hidden shrink-0 transition-[width] duration-200 ease-out md:block ${
-          collapsed ? "w-0" : "w-[256px]"
-        }`}
+        className={`hidden shrink-0 transition-[width] duration-[var(--leo-dur-3)] ease-out md:block ${
+ collapsed ? "w-0" : "w-[256px]"
+ }`}
       />
 
       {/* mobile drawer */}
@@ -907,7 +907,7 @@ function AppShellInner({
             type="button"
             data-oceanleo-chrome
             onClick={() => toggleCollapsed(false)}
-            className="leo-chrome-topleft leo-tap-target fixed z-50 hidden items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:flex"
+            className="leo-chrome-topleft leo-tap-target fixed z-50 hidden items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-95 md:flex"
             title={tt("展开侧栏")}
           >
             <IconPanel />
@@ -917,7 +917,7 @@ function AppShellInner({
           type="button"
           data-oceanleo-chrome
           onClick={() => setMobileOpen(true)}
-          className="leo-chrome-topleft leo-tap-target fixed z-50 inline-flex items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition hover:bg-neutral-50 active:scale-95 md:hidden"
+          className="leo-chrome-topleft leo-tap-target fixed z-50 inline-flex items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-95 md:hidden"
           title={tt("打开菜单")}
         >
           <IconPanel />

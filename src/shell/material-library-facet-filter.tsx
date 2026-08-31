@@ -218,11 +218,11 @@ function MaterialVariantSwitch({
             n: chip.ordinal,
             total: chips.length,
           })}
-          className={`min-h-6 min-w-6 rounded-md border px-1.5 text-[10px] leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent,#4f46e5)] ${
-            chip.selected
-              ? "border-[var(--accent,#4f46e5)] bg-[var(--accent,#4f46e5)] text-white"
-              : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#f5f5f4)]"
-          }`}
+          className={`min-h-6 min-w-6 rounded-md border px-1.5 text-[10px] leading-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent,#4f46e5)] ${
+ chip.selected
+ ? "border-[var(--accent,#4f46e5)] bg-[var(--accent,#4f46e5)] text-white"
+ : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#f5f5f4)]"
+ }`}
         >
           {chip.ordinal}
         </button>

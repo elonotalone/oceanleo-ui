@@ -173,9 +173,9 @@ function LazyImage({ src, alt, className }: { src?: string; alt: string; classNa
         alt={alt}
         loading="lazy"
         onLoad={() => setLoaded(true)}
-        className={`h-full w-full object-cover transition-all duration-500 ${
-          loaded ? "scale-100 opacity-100 blur-0" : "scale-105 opacity-0 blur-md"
-        }`}
+        className={`h-full w-full object-cover transition-all duration-[var(--leo-dur-6)] ease-[var(--leo-ease-standard)] ${
+ loaded ? "scale-100 opacity-100 blur-0" : "scale-105 opacity-0 blur-md"
+ }`}
       />
     </div>
   );
@@ -514,7 +514,7 @@ function ArtifactLibraryLegacy({
             <button
               type="button"
               onClick={() => setSelectedIdx(null)}
-              className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
+              className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -541,7 +541,7 @@ function ArtifactLibraryLegacy({
                 type="button"
                 onClick={() => navigate(-1)}
                 aria-label={tt("上一项")}
-                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition hover:bg-white"
+                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -553,7 +553,7 @@ function ArtifactLibraryLegacy({
                 type="button"
                 onClick={() => navigate(1)}
                 aria-label={tt("下一项")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition hover:bg-white"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -578,7 +578,7 @@ function ArtifactLibraryLegacy({
                 onClick={() => navigate(-1)}
                 disabled={selectedIdx === 0}
                 aria-label={tt("上一项")}
-                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition hover:bg-neutral-50 disabled:opacity-30"
+                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-30"
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -589,7 +589,7 @@ function ArtifactLibraryLegacy({
                 onClick={() => navigate(1)}
                 disabled={selectedIdx === filtered.length - 1}
                 aria-label={tt("下一项")}
-                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition hover:bg-neutral-50 disabled:opacity-30"
+                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-30"
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -599,7 +599,7 @@ function ArtifactLibraryLegacy({
                 type="button"
                 onClick={() => setSelectedIdx(null)}
                 aria-label={tt("关闭")}
-                className="ml-1 rounded p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+                className="ml-1 rounded p-1.5 text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
               >
                 ✕
               </button>
@@ -699,7 +699,7 @@ function ArtifactLibraryLegacy({
       ) : view === "list" ? (
         <div className="v-fade-in mt-5 divide-y divide-neutral-100 rounded-xl border border-neutral-200">
           {filtered.map((a, idx) => (
-            <div key={a.id} className="group flex items-center gap-3 px-4 py-3 transition hover:bg-neutral-50">
+            <div key={a.id} className="group flex items-center gap-3 px-4 py-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50">
               <button
                 type="button"
                 onClick={() => setSelectedIdx(idx)}
@@ -726,7 +726,7 @@ function ArtifactLibraryLegacy({
           renderCard={(a, idx) => (
             <div
               key={a.id}
-              className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
+              className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
             >
               <button type="button" onClick={() => setSelectedIdx(idx)} className="w-full text-left">
                 <CardThumb a={a} kindLabel={kindLabel} />
@@ -753,7 +753,7 @@ function ArtifactLibraryLegacy({
             type="button"
             onClick={() => void loadMore()}
             disabled={loadingMore}
-            className="inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
+            className="inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
           >
             {tt(loadingMore ? "加载中…" : "继续加载")}
           </button>
@@ -786,7 +786,7 @@ function ArtifactPreview({
     <button
       type="button"
       onClick={() => onCopy(text)}
-      className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 transition hover:bg-neutral-50 active:scale-[0.98]"
+      className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-[0.98]"
     >
       {copied ? tt("已复制 ✓") : tt("复制链接")}
     </button>
@@ -803,7 +803,7 @@ function ArtifactPreview({
             download
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.98]"
           >
             {tt("下载图片")}
           </a>
@@ -823,7 +823,7 @@ function ArtifactPreview({
             download
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.98]"
           >
             {tt("下载视频")}
           </a>
@@ -850,7 +850,7 @@ function ArtifactPreview({
             download
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.98]"
           >
             {tt("下载音频")}
           </a>
@@ -873,7 +873,7 @@ function ArtifactPreview({
               href={a.url}
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.98]"
             >
               {tt("打开链接")}
             </a>
@@ -892,7 +892,7 @@ function ArtifactPreview({
         <button
           type="button"
           onClick={() => onCopy(a.content)}
-          className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98]"
+          className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.98]"
         >
           {copied ? tt("已复制 ✓") : tt("复制内容")}
         </button>
@@ -901,7 +901,7 @@ function ArtifactPreview({
             href={a.url}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 transition hover:bg-neutral-50 active:scale-[0.98]"
+            className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-[0.98]"
           >
             {tt("打开链接")}
           </a>
@@ -917,7 +917,7 @@ function CardThumb({ a, kindLabel }: { a: ArtifactItem; kindLabel: (k: string) =
   if (kind === "image") {
     return (
       <div className="aspect-video w-full overflow-hidden">
-        <div className="h-full w-full transition-transform duration-300 group-hover:scale-[1.04]">
+        <div className="h-full w-full transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.04]">
           <LazyImage src={a.url} alt={a.title} className="h-full w-full" />
         </div>
       </div>
@@ -986,12 +986,12 @@ function FavButton({
       aria-label={a.favorite ? tt("取消收藏") : tt("收藏")}
       className={
         floating
-          ? `absolute right-2 top-2 rounded-lg bg-white/80 p-1.5 backdrop-blur transition-all duration-150 hover:text-yellow-500 active:scale-90 ${
-              a.favorite ? "text-yellow-500 opacity-100" : "text-neutral-400 opacity-0 group-hover:opacity-100"
-            }`
-          : `shrink-0 rounded-lg p-1.5 transition-all duration-150 hover:text-yellow-500 active:scale-90 ${
-              a.favorite ? "text-yellow-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"
-            }`
+          ? `absolute right-2 top-2 rounded-lg bg-white/80 p-1.5 backdrop-blur transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:text-yellow-500 active:scale-90 ${
+ a.favorite ? "text-yellow-500 opacity-100" : "text-neutral-400 opacity-0 group-hover:opacity-100"
+ }`
+          : `shrink-0 rounded-lg p-1.5 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:text-yellow-500 active:scale-90 ${
+ a.favorite ? "text-yellow-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"
+ }`
       }
     >
       <svg

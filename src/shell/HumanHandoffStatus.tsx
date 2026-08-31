@@ -300,7 +300,7 @@ function HandoffContextRevokeDialog({
             type="button"
             aria-label={tt("关闭")}
             onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl leading-none text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
           >
             <span aria-hidden="true">×</span>
           </button>
@@ -326,9 +326,9 @@ function HandoffContextRevokeDialog({
                 return (
                   <label
                     key={key}
-                    className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition ${
-                      checked ? "bg-rose-50" : "hover:bg-stone-50"
-                    }`}
+                    className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ checked ? "bg-rose-50" : "hover:bg-stone-50"
+ }`}
                   >
                     <input
                       type="checkbox"
@@ -375,7 +375,7 @@ function HandoffContextRevokeDialog({
             type="button"
             disabled={busy || !items || items.length === 0}
             onClick={() => void revoke(true)}
-            className="rounded-xl border border-rose-200 px-3 py-1.5 text-[13px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+            className="rounded-xl border border-rose-200 px-3 py-1.5 text-[13px] font-medium text-rose-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-50 disabled:opacity-50"
           >
             {tt("全部收回")}
           </button>
@@ -383,7 +383,7 @@ function HandoffContextRevokeDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-stone-200 px-3 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50"
+              className="rounded-xl border border-stone-200 px-3 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
             >
               {tt("关闭")}
             </button>
@@ -391,7 +391,7 @@ function HandoffContextRevokeDialog({
               type="button"
               disabled={busy || selectedCount === 0}
               onClick={() => void revoke(false)}
-              className="rounded-xl px-3.5 py-1.5 text-[13px] font-semibold text-white transition disabled:opacity-50"
+              className="rounded-xl px-3.5 py-1.5 text-[13px] font-semibold text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50"
               style={{ background: accent }}
             >
               {busy

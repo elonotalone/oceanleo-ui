@@ -78,7 +78,7 @@ export function HomeAgentCards({
         <button
           type="button"
           onClick={() => setShowCreate(true)}
-          className="flex min-h-[86px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 px-3 py-3 text-stone-400 transition hover:border-stone-400 hover:text-stone-600"
+          className="flex min-h-[86px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 px-3 py-3 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400 hover:text-stone-600"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -103,9 +103,9 @@ export function HomeAgentCards({
                 if (e.key === "Enter")
                   onSelect(on ? null : { agentId: a.agent_id, name: a.name, icon: a.icon });
               }}
-              className={`group relative flex min-h-[86px] cursor-pointer flex-col rounded-xl border bg-white px-3.5 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${
-                on ? "" : "border-stone-200 hover:border-stone-300"
-              }`}
+              className={`group relative flex min-h-[86px] cursor-pointer flex-col rounded-xl border bg-white px-3.5 py-3 text-left shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow ${
+ on ? "" : "border-stone-200 hover:border-stone-300"
+ }`}
               style={on ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}` } : undefined}
             >
               <div className="flex items-center gap-1.5">
@@ -136,7 +136,7 @@ export function HomeAgentCards({
                 }}
                 title={tt("查看 / 编辑")}
                 aria-label={tt("查看 / 编辑")}
-                className="absolute right-1.5 top-1.5 rounded-md p-1 text-stone-300 opacity-0 transition hover:bg-stone-100 hover:text-stone-600 group-hover:opacity-100"
+                className="absolute right-1.5 top-1.5 rounded-md p-1 text-stone-300 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-600 group-hover:opacity-100"
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />

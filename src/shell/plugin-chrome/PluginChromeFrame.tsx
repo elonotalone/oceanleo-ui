@@ -53,10 +53,10 @@ export function usePluginChromePanelHost(): PluginChromePanelController {
 }
 
 const ACTION_CLASS =
-  "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-3 text-[11px] font-semibold text-[var(--pchrome-ink-mid)] shadow-sm transition hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-3 text-[11px] font-semibold text-[var(--pchrome-ink-mid)] shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
 const ICON_ACTION_CLASS =
-  "grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
+  "grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
 export interface PluginChromeFrameProps {
   /** 决定主题档与 accent 身份色。13 件插件都必须有值。 */
@@ -261,15 +261,15 @@ export function PluginChromeFrame({
                           : tt(view.label)
                     }
                     onClick={() => onViewChange?.(view.id)}
-                    className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition ${
-                      selected
-                        ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent-soft)] text-[var(--pchrome-accent)] shadow-sm"
-                        : `border-transparent hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] ${
-                            unavailable
-                              ? "cursor-not-allowed text-[var(--pchrome-ink-mid)] opacity-50"
-                              : "text-[var(--pchrome-ink-mid)]"
-                          }`
-                    }`}
+                    className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ selected
+ ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent-soft)] text-[var(--pchrome-accent)] shadow-sm"
+ : `border-transparent hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] ${
+ unavailable
+ ? "cursor-not-allowed text-[var(--pchrome-ink-mid)] opacity-50"
+ : "text-[var(--pchrome-ink-mid)]"
+ }`
+ }`}
                   >
                     <AdvancedEditorIcon name={view.icon} className="h-4 w-4" />
                     <span>{tt(view.label)}</span>

@@ -58,7 +58,7 @@ export function PluginChromeEditBarButton({
       {panelId && (
         <AdvancedEditorIcon
           name="chevron"
-          className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+          className={`h-3 w-3 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${expanded ? "rotate-180" : ""}`}
         />
       )}
     </Button>

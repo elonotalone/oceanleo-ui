@@ -188,7 +188,7 @@ function CustomPromptCard({
           onClick={() => onEdit(card)}
           title={tt("查看 / 编辑")}
           aria-label={tt("查看 / 编辑")}
-          className="absolute right-1.5 top-1.5 rounded-md bg-white/80 p-1 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-stone-600 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+          className="absolute right-1.5 top-1.5 rounded-md bg-white/80 p-1 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-stone-600 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path
@@ -303,9 +303,9 @@ export function HomeAppCards({
               key={g}
               type="button"
               onClick={() => setGroup(g)}
-              className={`relative px-3 pb-2 pt-1 text-[13px] transition ${
-                on ? "font-semibold text-stone-900" : "text-stone-500 hover:text-stone-700"
-              }`}
+              className={`relative px-3 pb-2 pt-1 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "font-semibold text-stone-900" : "text-stone-500 hover:text-stone-700"
+ }`}
             >
               {g === HOME_APP_ALL_GROUP ? tt("全部") : tt(g)}
               {on && (
@@ -337,7 +337,7 @@ export function HomeAppCards({
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="flex min-h-[100px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 px-3 py-3 text-stone-400 transition hover:border-stone-400 hover:text-stone-600"
+          className="flex min-h-[100px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 px-3 py-3 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400 hover:text-stone-600"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -349,7 +349,7 @@ export function HomeAppCards({
         <a
           data-home-app-see-all
           href={HOME_APP_SEE_ALL_HREF}
-          className="flex min-h-[100px] flex-col items-center justify-center gap-1 rounded-xl border border-stone-200 bg-white/70 px-3 py-3 text-[13px] font-medium text-stone-600 shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
+          className="flex min-h-[100px] flex-col items-center justify-center gap-1 rounded-xl border border-stone-200 bg-white/70 px-3 py-3 text-[13px] font-medium text-stone-600 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
         >
           {/* 只用 17 语已覆盖的 `查看全部`：副标题曾是一条未进词典的中文串（V1-verdict R1），
               i18n 词典是 W3 独占目录，故本侧改为不再产出未翻译文案。 */}

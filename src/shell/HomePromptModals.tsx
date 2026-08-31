@@ -109,7 +109,7 @@ export function AddPromptModal({
             type="button"
             onClick={onClose}
             aria-label={tt("关闭")}
-            className="rounded-md px-2 py-1 text-[18px] leading-none text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            className="rounded-md px-2 py-1 text-[18px] leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
           >
             ×
           </button>
@@ -127,9 +127,9 @@ export function AddPromptModal({
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
-                className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition ${
-                  on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
-                }`}
+                className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
+ }`}
                 style={on ? { background: accent } : undefined}
               >
                 {label}
@@ -177,11 +177,11 @@ export function AddPromptModal({
                       type="button"
                       disabled={already}
                       onClick={() => addPreset(c)}
-                      className={`mt-0.5 shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-medium transition ${
-                        already
-                          ? "cursor-default bg-stone-100 text-stone-400"
-                          : "text-white hover:opacity-90"
-                      }`}
+                      className={`mt-0.5 shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ already
+ ? "cursor-default bg-stone-100 text-stone-400"
+ : "text-white hover:opacity-90"
+ }`}
                       style={already ? undefined : { background: accent }}
                     >
                       {already ? tt("已添加") : tt("添加")}
@@ -249,14 +249,14 @@ export function AddPromptModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[12px] text-stone-600 transition hover:bg-stone-50"
+                className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[12px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
               >
                 {tt("取消")}
               </button>
               <button
                 type="button"
                 onClick={createNew}
-                className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition hover:opacity-90"
+                className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90"
                 style={{ background: accent }}
               >
                 {tt("保存")}
@@ -329,7 +329,7 @@ export function PromptCardModal({
             type="button"
             onClick={onClose}
             aria-label={tt("关闭")}
-            className="rounded-md px-2 py-1 text-[18px] leading-none text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            className="rounded-md px-2 py-1 text-[18px] leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
           >
             ×
           </button>
@@ -402,7 +402,7 @@ export function PromptCardModal({
               <button
                 type="button"
                 onClick={onDelete}
-                className="rounded-lg px-3 py-1.5 text-[12px] text-rose-500 transition hover:bg-rose-50"
+                className="rounded-lg px-3 py-1.5 text-[12px] text-rose-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-50"
               >
                 {tt("删除卡片")}
               </button>
@@ -415,7 +415,7 @@ export function PromptCardModal({
                   <button
                     type="button"
                     onClick={() => setEditing(false)}
-                    className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[12px] text-stone-600 transition hover:bg-stone-50"
+                    className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[12px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
                   >
                     {tt("取消")}
                   </button>
@@ -423,7 +423,7 @@ export function PromptCardModal({
                 <button
                   type="button"
                   onClick={save}
-                  className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition hover:opacity-90"
+                  className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90"
                   style={{ background: accent }}
                 >
                   {card.custom || isNew ? tt("保存") : tt("保存为我的卡片")}
@@ -434,14 +434,14 @@ export function PromptCardModal({
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[12px] text-stone-600 transition hover:bg-stone-50"
+                  className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[12px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
                 >
                   {tt("编辑")}
                 </button>
                 <button
                   type="button"
                   onClick={() => onUse(prompt)}
-                  className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition hover:opacity-90"
+                  className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90"
                   style={{ background: accent }}
                 >
                   {useLabel ?? tt("使用")}

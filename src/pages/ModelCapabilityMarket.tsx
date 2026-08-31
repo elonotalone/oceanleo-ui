@@ -338,11 +338,11 @@ export function ModelGroupManager({
               type="button"
               disabled={editing || !!busy}
               onClick={() => chooseGroup(item.key)}
-              className={`rounded-lg border px-3 py-1.5 text-[12px] font-medium transition disabled:cursor-default ${
-                item.key === group.key
-                  ? "border-neutral-900 bg-neutral-900 text-white"
-                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-              }`}
+              className={`rounded-lg border px-3 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-default ${
+ item.key === group.key
+ ? "border-neutral-900 bg-neutral-900 text-white"
+ : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+ }`}
             >
               {item.name}
               {item.kind === "custom" && (
@@ -359,7 +359,7 @@ export function ModelGroupManager({
                 setCreating(true);
                 setNewName("");
               }}
-              className="rounded-lg border border-dashed border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-800"
+              className="rounded-lg border border-dashed border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-400 hover:text-neutral-800"
             >
               {tt("+ 新建自定义组合")}
             </button>
@@ -409,9 +409,9 @@ export function ModelGroupManager({
                       setProvider(ALL_PROVIDERS);
                       setQuery("");
                     }}
-                    className={`flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition sm:w-full ${
-                      active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-200/60"
-                    }`}
+                    className={`flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] sm:w-full ${
+ active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-200/60"
+ }`}
                   >
                     <span>{tt(item.label)}</span>
                     <span className={active ? "text-[11px] text-white/65" : "text-[11px] text-neutral-400"}>✓{count}</span>
@@ -435,9 +435,9 @@ export function ModelGroupManager({
                       setProvider(ALL_PROVIDERS);
                       setQuery("");
                     }}
-                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition ${
-                      active ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-                    }`}
+                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ active ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+ }`}
                   >
                     {tt(item.label)}
                     <span className={active ? "ml-1 text-emerald-200" : "ml-1 text-emerald-600"}>✓{count}</span>
@@ -517,7 +517,7 @@ export function ModelGroupManager({
                   {allModels.map((model, index) => {
                     const selectedIndex = selectedKeys.indexOf(model.key);
                     return (
-                      <button key={model.key} type="button" onClick={() => toggleModel(model.key)} className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition hover:bg-neutral-50 ${index ? "border-t border-neutral-100" : ""}`}>
+                      <button key={model.key} type="button" onClick={() => toggleModel(model.key)} className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 ${index ? "border-t border-neutral-100" : ""}`}>
                         <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-[5px] border text-[10px] ${selectedIndex >= 0 ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 text-transparent"}`}>✓</span>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2">

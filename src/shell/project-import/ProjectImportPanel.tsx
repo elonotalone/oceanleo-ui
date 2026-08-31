@@ -219,11 +219,11 @@ export function ProjectImportPanel({
           if (dragDepth.current <= 0) setDragging(false);
         }}
         onDrop={onDrop}
-        className={`flex flex-col items-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
-          dragging
-            ? "border-sky-500 bg-sky-50 dark:bg-sky-950/30"
-            : "border-black/15 dark:border-white/15"
-        }`}
+        className={`flex flex-col items-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ dragging
+ ? "border-sky-500 bg-sky-50 dark:bg-sky-950/30"
+ : "border-black/15 dark:border-white/15"
+ }`}
       >
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           把项目的 zip 拖到这里
@@ -337,7 +337,7 @@ export function ProjectImportPanel({
           <p className="text-sm">正在上传…</p>
           <div className="h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
             <div
-              className="h-full rounded-full bg-sky-500 transition-[width]"
+              className="h-full rounded-full bg-sky-500 transition-[width] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)]"
               style={{ width: `${progress?.percent ?? 0}%` }}
             />
           </div>

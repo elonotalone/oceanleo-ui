@@ -52,7 +52,7 @@ export function LibraryToolbar({
       <label className="sr-only" htmlFor={searchId}>
         {placeholder}
       </label>
-      <div className="flex min-w-40 flex-1 items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm sm:max-w-64">
+      <div className="flex min-w-40 flex-1 items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm sm:max-w-64">
         <svg
           className="h-3.5 w-3.5 shrink-0 text-[var(--muted,#a3a3a3)]"
           viewBox="0 0 24 24"
@@ -80,7 +80,7 @@ export function LibraryToolbar({
             onClick={() => setSearch("")}
             aria-label={tt("清除搜索")}
             title={tt("清除搜索")}
-            className="shrink-0 text-[var(--muted,#a3a3a3)] transition hover:text-[var(--fg-2,#525252)]"
+            className="shrink-0 text-[var(--muted,#a3a3a3)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-[var(--fg-2,#525252)]"
           >
             ✕
           </button>
@@ -94,11 +94,11 @@ export function LibraryToolbar({
         <button
           type="button"
           onClick={() => setView("grid")}
-          className={`rounded-md p-1.5 transition-all duration-150 ${
-            view === "grid"
-              ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
-              : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
-          }`}
+          className={`rounded-md p-1.5 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ view === "grid"
+ ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
+ : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
+ }`}
           title={tt("网格视图")}
           aria-label={tt("网格视图")}
           aria-pressed={view === "grid"}
@@ -113,11 +113,11 @@ export function LibraryToolbar({
         <button
           type="button"
           onClick={() => setView("list")}
-          className={`rounded-md p-1.5 transition-all duration-150 ${
-            view === "list"
-              ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
-              : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
-          }`}
+          className={`rounded-md p-1.5 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ view === "list"
+ ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
+ : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
+ }`}
           title={tt("列表视图")}
           aria-label={tt("列表视图")}
           aria-pressed={view === "list"}
@@ -170,11 +170,11 @@ export function LibraryChips({
             type="button"
             onClick={() => onChange(c.id)}
             aria-pressed={on}
-            className={`rounded-full px-3.5 py-1.5 text-[13px] transition ${
-              on
-                ? "font-medium text-white"
-                : "bg-[var(--surface,#f5f5f4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#e7e5e4)]"
-            }`}
+            className={`rounded-full px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "font-medium text-white"
+ : "bg-[var(--surface,#f5f5f4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#e7e5e4)]"
+ }`}
             style={on ? { background: accent } : undefined}
           >
             {tt(c.label)}

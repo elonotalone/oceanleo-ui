@@ -147,7 +147,7 @@ export function Model3DStage({
           >
             <div className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-[var(--surface-hover,rgba(0,0,0,.08))]">
               <div
-                className="h-full rounded-full transition-[width]"
+                className="h-full rounded-full transition-[width] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)]"
                 style={{
                   background: accent,
                   width: `${progress > 0 ? progress : 8}%`,

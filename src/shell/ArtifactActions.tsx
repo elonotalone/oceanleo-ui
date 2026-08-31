@@ -711,9 +711,9 @@ export function ArtifactActionButtons({
       ],
     ),
   ].join(" · ");
-  const chipClass = `inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
-    compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
-  }`;
+  const chipClass = `inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
+ compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
+ }`;
   const chipStyle = (enabled: boolean) => ({
     borderColor: enabled ? `${accent}66` : "var(--border,#e7e5e4)",
     color: enabled ? accent : "var(--muted,#a8a29e)",

@@ -135,11 +135,11 @@ function ThemeGroup({
               onClick={() => setMode(p)}
               aria-pressed={on}
               title={tt(meta.label)}
-              className={`group relative overflow-hidden rounded-xl border text-left transition ${
-                on
-                  ? "border-neutral-900 ring-2 ring-neutral-900"
-                  : "border-neutral-200 hover:border-neutral-300 hover:shadow-sm"
-              }`}
+              className={`group relative overflow-hidden rounded-xl border text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "border-neutral-900 ring-2 ring-neutral-900"
+ : "border-neutral-200 hover:border-neutral-300 hover:shadow-sm"
+ }`}
             >
               <span className="block h-16 w-full" style={{ background: preview.bg }} aria-hidden>
                 <span
@@ -224,11 +224,11 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
                 onClick={() => setLangOpen((v) => !v)}
                 aria-haspopup="listbox"
                 aria-expanded={langOpen}
-                className="flex w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-left text-[14px] text-neutral-900 transition hover:border-neutral-300"
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-left text-[14px] text-neutral-900 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300"
               >
                 <span className="truncate">{LOCALE_LABELS[active]}</span>
                 <svg
-                  className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform ${langOpen ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${langOpen ? "rotate-180" : ""}`}
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -251,11 +251,11 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
                         role="option"
                         aria-selected={on}
                         onClick={() => switchLang(loc)}
-                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition ${
-                          on
-                            ? "bg-neutral-900 text-white"
-                            : "text-neutral-700 hover:bg-neutral-100"
-                        }`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "bg-neutral-900 text-white"
+ : "text-neutral-700 hover:bg-neutral-100"
+ }`}
                       >
                         <span className="truncate">{LOCALE_LABELS[loc]}</span>
                         {on && (
@@ -283,11 +283,11 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
                     type="button"
                     onClick={() => setMode(m)}
                     aria-pressed={on}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-xl border py-5 text-[13px] font-medium transition ${
-                      on
-                        ? "border-neutral-900 text-neutral-900 ring-1 ring-neutral-900"
-                        : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:text-neutral-700"
-                    }`}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-xl border py-5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "border-neutral-900 text-neutral-900 ring-1 ring-neutral-900"
+ : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:text-neutral-700"
+ }`}
                   >
                     <ThemeIcon mode={m} />
                     {baseLabel(m)}
@@ -334,14 +334,14 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
               role="switch"
               aria-checked={leoOn}
               onClick={() => setLeoEnabled(!leoOn)}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                leoOn ? "bg-neutral-900" : "bg-neutral-300"
-              }`}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ leoOn ? "bg-neutral-900" : "bg-neutral-300"
+ }`}
             >
               <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                  leoOn ? "left-[22px]" : "left-0.5"
-                }`}
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ leoOn ? "left-[22px]" : "left-0.5"
+ }`}
               />
             </button>
           </div>

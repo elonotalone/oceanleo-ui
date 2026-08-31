@@ -112,7 +112,7 @@ export function StorageCapacityStrip({
           {canBuy ? (
             <button
               type="button"
-              className="rounded-lg px-2.5 py-1 font-medium text-white transition disabled:opacity-60"
+              className="rounded-lg px-2.5 py-1 font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60"
               data-storage-buy-pack
               disabled={buying}
               onClick={() => void buyOnePack()}
@@ -131,7 +131,7 @@ export function StorageCapacityStrip({
         className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100"
       >
         <div
-          className="h-full rounded-full transition-[width] duration-300"
+          className="h-full rounded-full transition-[width] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)]"
           style={{
             width: `${Math.round(ratio * 100)}%`,
             background: ratio >= 0.95 ? "#dc2626" : accent,

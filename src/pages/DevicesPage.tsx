@@ -194,12 +194,12 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
                 setPairError(null);
               }}
               placeholder={tt("输入 8 位配对码")}
-              className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 font-mono text-[15px] tracking-[0.18em] text-neutral-900 outline-none transition focus:border-neutral-400"
+              className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 font-mono text-[15px] tracking-[0.18em] text-neutral-900 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-neutral-400"
             />
             <button
               type="submit"
               disabled={pairing || pairCode.trim().length !== 8}
-              className="rounded-xl bg-neutral-900 px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-neutral-900 px-5 py-2.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {pairing ? tt("正在配对…") : tt("连接设备")}
             </button>
@@ -296,14 +296,14 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
                       <button
                         type="button"
                         onClick={() => beginRename(device)}
-                        className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 transition hover:bg-neutral-50"
+                        className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                       >
                         {tt("改名")}
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmRevoke(device)}
-                        className="rounded-lg border border-red-200 px-3 py-1.5 text-[12px] text-red-600 transition hover:bg-red-50"
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-[12px] text-red-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-red-50"
                       >
                         {tt("撤销设备")}
                       </button>

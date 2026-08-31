@@ -165,7 +165,7 @@ export function ProjectWorkspaceFrame({
               aria-expanded={isDesktop || resolvedConfigOpen}
               aria-haspopup="dialog"
               data-project-config-trigger
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-sm font-medium text-[var(--fg,#292524)] transition hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] lg:hidden"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-sm font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] lg:hidden"
               onClick={() => changeConfigOpen(true)}
             >
               {mobileConfigLabel}
@@ -197,7 +197,7 @@ export function ProjectWorkspaceFrame({
               aria-label={closeConfigLabel}
               data-project-config-backdrop
               className={classNames(
-                "fixed inset-0 z-40 bg-black/40 transition-opacity lg:hidden",
+                "fixed inset-0 z-40 bg-black/40 transition-opacity duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] lg:hidden",
                 resolvedConfigOpen
                   ? "pointer-events-auto opacity-100"
                   : "pointer-events-none opacity-0",
@@ -217,7 +217,7 @@ export function ProjectWorkspaceFrame({
               data-project-workspace-config
               data-mobile-open={resolvedConfigOpen || undefined}
               className={classNames(
-                "fixed inset-y-0 right-0 z-50 flex w-[min(22.5rem,calc(100vw-2rem))] min-w-0 flex-col border-l border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-2xl transition-transform duration-200",
+                "fixed inset-y-0 right-0 z-50 flex w-[min(22.5rem,calc(100vw-2rem))] min-w-0 flex-col border-l border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-2xl transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)]",
                 resolvedConfigOpen
                   ? "translate-x-0"
                   : "translate-x-full",
@@ -234,7 +234,7 @@ export function ProjectWorkspaceFrame({
                   type="button"
                   aria-label={closeConfigLabel}
                   data-project-config-close
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
                   onClick={() => changeConfigOpen(false)}
                 >
                   <span aria-hidden="true">×</span>
@@ -361,7 +361,7 @@ export function ProjectTabNav<Value extends string = string>({
             disabled={tab.disabled}
             data-project-tab={tab.id}
             className={classNames(
-              "relative shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50",
+              "relative shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50",
               selected
                 ? "border-[var(--accent,#4f46e5)] text-[var(--fg,#292524)]"
                 : "border-transparent text-[var(--muted,#78716c)] hover:border-[var(--border,#e7e5e4)] hover:text-[var(--fg,#292524)]",
@@ -554,7 +554,7 @@ export function ProjectConfigCard({
             aria-label={addAction.ariaLabel}
             disabled={addAction.disabled}
             data-project-config-action="add"
-            className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-sm font-medium text-[var(--fg,#292524)] transition hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-sm font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={addAction.onClick}
           >
             {addAction.label}
@@ -568,7 +568,7 @@ export function ProjectConfigCard({
           aria-label={openAction.ariaLabel}
           disabled={openAction.disabled}
           data-project-config-action="open"
-          className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[var(--accent,#4f46e5)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[var(--accent,#4f46e5)] px-3 py-2 text-sm font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
           onClick={openAction.onClick}
         >
           {openAction.label}
@@ -630,7 +630,7 @@ export function ProjectModal({
             type="button"
             aria-label={closeLabel}
             data-project-modal-close
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
             onClick={onClose}
           >
             <span aria-hidden="true">×</span>

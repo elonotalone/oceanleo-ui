@@ -302,7 +302,7 @@ function InspectorControl({
                 draftRef.current = swatch;
                 emitInstant(swatch);
               }}
-              className="aspect-square rounded-lg border border-[var(--awb-border)] shadow-sm outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+              className="aspect-square rounded-lg border border-[var(--awb-border)] shadow-sm outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:scale-105 focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
               style={{ background: swatch }}
             />
           ))}
@@ -348,11 +348,11 @@ function InspectorControl({
                   draftRef.current = option.value;
                   emitInstant(option.value);
                 }}
-                className={`min-h-11 rounded-xl border px-3 py-2 text-left text-[11px] outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
-                  active
-                    ? "border-transparent font-semibold text-[var(--awb-on-accent,#fff)]"
-                    : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
-                }`}
+                className={`min-h-11 rounded-xl border px-3 py-2 text-left text-[11px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
+ active
+ ? "border-transparent font-semibold text-[var(--awb-on-accent,#fff)]"
+ : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
+ }`}
                 style={active ? { background: accent } : undefined}
               >
                 {option.label}
@@ -401,13 +401,13 @@ function InspectorControl({
         emitInstant(next);
       }}
       aria-label={control.label}
-      className={`flex h-10 w-full items-center justify-between rounded-xl border px-3 text-[12px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
-        active
-          ? "border-transparent text-[var(--awb-on-accent,#fff)]"
-          : danger
-            ? "border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] text-[var(--awb-danger)] hover:bg-[color-mix(in_srgb,var(--awb-danger)_18%,transparent)]"
-          : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg,#292524)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
-      }`}
+      className={`flex h-10 w-full items-center justify-between rounded-xl border px-3 text-[12px] font-medium outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
+ active
+ ? "border-transparent text-[var(--awb-on-accent,#fff)]"
+ : danger
+ ? "border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] text-[var(--awb-danger)] hover:bg-[color-mix(in_srgb,var(--awb-danger)_18%,transparent)]"
+ : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg,#292524)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))]"
+ }`}
       style={active ? { background: accent } : undefined}
     >
       <span className="flex items-center gap-2">

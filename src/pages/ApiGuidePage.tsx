@@ -135,7 +135,7 @@ export function ApiGuidePage() {
       <div className="flex items-center gap-3">
         <a
           href="/api"
-          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
+          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
         >
           {tt("← 返回 API")}
         </a>
@@ -190,7 +190,7 @@ export function ApiGuidePage() {
                 href={p.consoleUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-md bg-neutral-900 px-2.5 py-1 font-medium text-white transition hover:bg-neutral-800"
+                className="rounded-md bg-neutral-900 px-2.5 py-1 font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
               >
                 {tt("获取 API key ↗")}
               </a>
@@ -198,7 +198,7 @@ export function ApiGuidePage() {
                 href={p.pricingUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-md border border-neutral-200 px-2.5 py-1 text-neutral-600 transition hover:bg-neutral-50"
+                className="rounded-md border border-neutral-200 px-2.5 py-1 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
               >
                 {tt("价格说明 ↗")}
               </a>

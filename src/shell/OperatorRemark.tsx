@@ -108,7 +108,7 @@ export function OperatorRemarkField({
           placeholder={tt(
             "补充必须包含、需要避免、语气、受众或其它要求，生成时会一并交给 AI。",
           )}
-          className="block w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] leading-relaxed text-stone-800 outline-none transition placeholder:text-stone-300 focus:border-stone-400 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+          className="block w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] leading-relaxed text-stone-800 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-stone-300 focus:border-stone-400 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
         />
       </StudioSection>
     </div>

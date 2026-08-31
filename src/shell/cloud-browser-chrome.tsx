@@ -65,11 +65,11 @@ type BrowserSessionRowProps = {
 const VIEW_ONLY_LABEL = "只读";
 
 function buttonClass(enabled = true) {
-  return `h-8 shrink-0 rounded-lg border px-2.5 text-[10px] font-semibold outline-none transition motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-    enabled
-      ? "border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
-      : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-400"
-  }`;
+  return `h-8 shrink-0 rounded-lg border px-2.5 text-[10px] font-semibold outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+ enabled
+ ? "border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+ : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-400"
+ }`;
 }
 
 export function CloudBrowserChrome(props: BrowserSessionRowProps) {
@@ -172,15 +172,15 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
     <>
       {liveRequested && (
         <header
-          className={`z-30 shrink-0 border-t border-stone-200/90 bg-white/95 px-2 py-1.5 shadow-[0_-4px_18px_rgba(0,0,0,.08)] backdrop-blur transition duration-200 motion-reduce:transition-none ${
-            immersive
-              ? "absolute inset-x-0 bottom-0"
-              : "relative"
-          } ${
-            hiddenInImmersive
-              ? "translate-y-[calc(100%-4px)] opacity-20 hover:translate-y-0 hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100"
-              : "translate-y-0 opacity-100"
-          }`}
+          className={`z-30 shrink-0 border-t border-stone-200/90 bg-white/95 px-2 py-1.5 shadow-[0_-4px_18px_rgba(0,0,0,.08)] backdrop-blur transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] motion-reduce:transition-none ${
+ immersive
+ ? "absolute inset-x-0 bottom-0"
+ : "relative"
+ } ${
+ hiddenInImmersive
+ ? "translate-y-[calc(100%-4px)] opacity-20 hover:translate-y-0 hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100"
+ : "translate-y-0 opacity-100"
+ }`}
           data-cloud-browser-session-row
           data-cloud-browser-auto-hidden={
             hiddenInImmersive ? "true" : "false"

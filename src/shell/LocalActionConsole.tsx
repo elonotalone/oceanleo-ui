@@ -372,11 +372,11 @@ export function LocalActionConsole({
               aria-pressed={actionKind === kind}
               onClick={() => setActionKind(kind)}
               data-local-action-tab={kind}
-              className={`min-h-10 rounded-lg px-3 text-xs font-medium transition ${
-                actionKind === kind
-                  ? "bg-stone-900 text-white"
-                  : "border border-stone-200 text-stone-700 hover:bg-stone-50"
-              }`}
+              className={`min-h-10 rounded-lg px-3 text-xs font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ actionKind === kind
+ ? "bg-stone-900 text-white"
+ : "border border-stone-200 text-stone-700 hover:bg-stone-50"
+ }`}
             >
               {LOCAL_ACTION_LABELS[kind]}
               {LOCAL_ACTIONS_THAT_CHANGE_THE_DEVICE.has(kind) && (
@@ -679,11 +679,11 @@ export function MyDevicesActionConsole({
               type="button"
               aria-pressed={device.device_id === active.device_id}
               onClick={() => setActiveId(device.device_id)}
-              className={`min-h-10 rounded-lg px-3 text-xs font-medium transition ${
-                device.device_id === active.device_id
-                  ? "bg-stone-900 text-white"
-                  : "border border-stone-200 text-stone-700 hover:bg-stone-50"
-              }`}
+              className={`min-h-10 rounded-lg px-3 text-xs font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ device.device_id === active.device_id
+ ? "bg-stone-900 text-white"
+ : "border border-stone-200 text-stone-700 hover:bg-stone-50"
+ }`}
             >
               {device.device_name}
               {!device.online && <span className="ml-1 text-amber-700">（离线）</span>}

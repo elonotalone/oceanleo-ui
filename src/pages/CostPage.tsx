@@ -93,16 +93,16 @@ function UsageBarChart({ events }: { events: CreditEvent[] }) {
               >
                 {/* 悬停整列高亮的底轨 */}
                 <div
-                  className={`absolute inset-0 rounded transition ${on ? "bg-neutral-100" : ""}`}
+                  className={`absolute inset-0 rounded transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${on ? "bg-neutral-100" : ""}`}
                 />
                 <div
-                  className={`relative w-full rounded-t transition-colors ${
-                    b.total > 0
-                      ? on
-                        ? "bg-neutral-900"
-                        : "bg-neutral-400"
-                      : "bg-neutral-100"
-                  }`}
+                  className={`relative w-full rounded-t transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ b.total > 0
+ ? on
+ ? "bg-neutral-900"
+ : "bg-neutral-400"
+ : "bg-neutral-100"
+ }`}
                   style={{ height: b.total > 0 ? `${h}%` : "2px" }}
                 />
                 {/* 悬停 tooltip：当天各模型 token + 金额 */}

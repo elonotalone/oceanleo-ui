@@ -29,7 +29,7 @@ export const APP_CARD_GRID_CLASS = "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gri
 
 /** 卡片根的全部几何/描边/hover class。两个 variant 共用，不得按 variant 分叉。 */
 export const APP_CARD_FRAME_CLASS =
-  "group relative flex min-h-[100px] overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition duration-200 hover:z-10 hover:scale-105 hover:border-stone-300 hover:shadow-lg";
+  "group relative flex min-h-[100px] overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:z-10 hover:scale-105 hover:border-stone-300 hover:shadow-lg";
 
 /**
  * 「＋ 新建」这类**入口卡**的虚线描边修饰（W2-marker 的请求 W1-1）。
@@ -169,7 +169,7 @@ export function AppCardFrame({
           data-home-app-card-main={homeHook(variant)}
           onClick={onAction}
           aria-label={actionLabel}
-          className="absolute inset-0 cursor-pointer rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-500"
+          className="absolute inset-0 cursor-pointer rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-stone-500"
         />
       ) : null}
       {actions}
@@ -252,7 +252,7 @@ function AppCardFill({
     <span
       data-app-card-fill
       data-home-app-card-fill={homeHook(variant)}
-      className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+      className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] group-hover:opacity-100"
     >
       {image ? (
         /* eslint-disable-next-line @next/next/no-img-element */
@@ -287,13 +287,13 @@ function AppCardActionBar({
     <span
       data-app-card-actions
       data-home-app-card-actions={homeHook(variant)}
-      className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center gap-1.5 bg-gradient-to-t from-stone-900/70 to-transparent px-2 pb-2 pt-4 transition-transform duration-200 group-hover:translate-y-0 [@media(hover:none)]:translate-y-0 [@media(hover:none)]:justify-end [@media(hover:none)]:bg-none [@media(hover:none)]:pt-0"
+      className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center gap-1.5 bg-gradient-to-t from-stone-900/70 to-transparent px-2 pb-2 pt-4 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] group-hover:translate-y-0 [@media(hover:none)]:translate-y-0 [@media(hover:none)]:justify-end [@media(hover:none)]:bg-none [@media(hover:none)]:pt-0"
     >
       <button
         type="button"
         data-app-card-primary
         onClick={action.onClick}
-        className="pointer-events-auto rounded-lg px-3 py-1 text-[12px] font-medium text-white shadow-sm transition hover:opacity-90"
+        className="pointer-events-auto rounded-lg px-3 py-1 text-[12px] font-medium text-white shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90"
         style={{ background: accent }}
       >
         {action.label}

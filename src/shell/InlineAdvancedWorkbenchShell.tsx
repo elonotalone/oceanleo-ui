@@ -458,7 +458,7 @@ export function InlineAdvancedWorkbenchShell({
                 type="button"
                 onClick={closeDetail}
                 aria-label={tt("关闭详情")}
-                className="grid h-8 w-8 place-items-center rounded-lg outline-none transition hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
+                className="grid h-8 w-8 place-items-center rounded-lg outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
               >
                 ←
               </button>

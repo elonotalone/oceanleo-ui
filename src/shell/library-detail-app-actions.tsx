@@ -243,9 +243,9 @@ export function MaterialOwningAppEdit({
       data-material-edit-single="true"
       aria-label={tt(`在「${label}」里打开「${item.title}」的预览`)}
       title={tt(`前往「${label}」工作台，并在它的库里打开这份素材的预览`)}
-      className={`inline-flex min-h-8 min-w-11 shrink-0 items-center justify-center rounded-lg border font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
-        compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
-      }`}
+      className={`inline-flex min-h-8 min-w-11 shrink-0 items-center justify-center rounded-lg border font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+ compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
+ }`}
       style={{
         borderColor: `${accent}66`,
         color: accent,

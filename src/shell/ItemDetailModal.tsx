@@ -89,7 +89,7 @@ export function ItemDetailModal({
         <button
           type="button"
           onClick={onClose}
-          className="shrink-0 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+          className="shrink-0 rounded-lg p-1 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-600"
           title={tt("关闭")}
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -133,12 +133,12 @@ export function ItemDetailModal({
                   key={ex}
                   type="button"
                   onClick={() => onLaunch(ex)}
-                  className="group flex w-full items-center gap-2 rounded-xl border border-stone-200 bg-stone-50/60 px-3.5 py-3 text-left text-[13px] leading-relaxed text-stone-600 transition hover:border-stone-300 hover:bg-white"
+                  className="group flex w-full items-center gap-2 rounded-xl border border-stone-200 bg-stone-50/60 px-3.5 py-3 text-left text-[13px] leading-relaxed text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-white"
                 >
                   <span className="min-w-0 flex-1">{ex}</span>
                   <svg
                     viewBox="0 0 24 24"
-                    className="h-4 w-4 shrink-0 text-stone-400 transition-transform group-hover:translate-x-0.5"
+                    className="h-4 w-4 shrink-0 text-stone-400 transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:translate-x-0.5"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
@@ -157,7 +157,7 @@ export function ItemDetailModal({
         <button
           type="button"
           onClick={() => onLaunch()}
-          className="w-full rounded-xl bg-stone-900 px-4 py-3 text-[14px] font-semibold text-white shadow-sm transition hover:bg-stone-800 active:scale-[0.99]"
+          className="w-full rounded-xl bg-stone-900 px-4 py-3 text-[14px] font-semibold text-white shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-800 active:scale-[0.99]"
         >
           {launch} {name}
         </button>

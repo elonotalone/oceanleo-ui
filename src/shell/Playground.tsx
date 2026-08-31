@@ -451,7 +451,7 @@ export function PlaygroundDetail({
               type="button"
               onClick={addToWorkspace}
               disabled={saving}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium text-white shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: accent }}
               title={tt("把这个 app 加入「我的 app」，之后在工作台直接用")}
             >
@@ -809,9 +809,9 @@ function PlaygroundTabs({
           key={t.id}
           type="button"
           onClick={() => setTab(t.id)}
-          className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition ${
-            tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
-          }`}
+          className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+ }`}
         >
           {t.label}
         </button>
@@ -940,9 +940,9 @@ function PromptZone({ accent }: { accent: string }) {
                 key={c}
                 type="button"
                 onClick={() => setCat(c)}
-                className={`rounded-full px-3 py-1.5 text-[13px] transition ${
-                  on ? "font-medium text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
-                }`}
+                className={`rounded-full px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "font-medium text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
+ }`}
                 style={on ? { background: accent } : undefined}
               >
                 {c === "__all__" ? tt("全部") : c}
@@ -982,7 +982,7 @@ function PromptZone({ accent }: { accent: string }) {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed bg-white/70 px-4 py-4 text-stone-400 transition hover:border-solid hover:text-stone-600"
+          className="flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed bg-white/70 px-4 py-4 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-solid hover:text-stone-600"
           style={{ borderColor: `${accent}80` }}
         >
           <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1003,7 +1003,7 @@ function PromptZone({ accent }: { accent: string }) {
             onKeyDown={(e) => {
               if (e.key === "Enter") setModal({ card: c, isNew: false });
             }}
-            className="group relative flex min-h-[110px] cursor-pointer flex-col rounded-2xl border border-stone-200/80 bg-white/85 px-4 py-3.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
+            className="group relative flex min-h-[110px] cursor-pointer flex-col rounded-2xl border border-stone-200/80 bg-white/85 px-4 py-3.5 text-left shadow-sm transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
           >
             <div className="flex items-center gap-2">
               <span
@@ -1032,7 +1032,7 @@ function PromptZone({ accent }: { accent: string }) {
               }}
               title={tt("查看 / 编辑")}
               aria-label={tt("查看 / 编辑")}
-              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
+              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
@@ -1097,7 +1097,7 @@ export function BackButton({ onClick, label }: { onClick: () => void; label?: st
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50 active:scale-95"
+      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-50 active:scale-95"
       title={tt("返回选择页")}
     >
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

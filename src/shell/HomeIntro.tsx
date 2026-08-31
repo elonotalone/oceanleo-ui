@@ -282,7 +282,7 @@ export function HomeIntro({
               onClick={() => {
                 setValue(s);
               }}
-              className="rounded-full border border-stone-200 bg-white px-4 py-1.5 text-[13px] text-stone-600 transition hover:border-stone-300 hover:text-stone-800"
+              className="rounded-full border border-stone-200 bg-white px-4 py-1.5 text-[13px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:text-stone-800"
             >
               {s}
             </button>

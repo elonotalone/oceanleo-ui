@@ -484,7 +484,7 @@ export function AdvancedWorkbenchBlankStage({
           type="button"
           disabled={Boolean(busy)}
           onClick={() => inputRef.current?.click()}
-          className="mt-5 inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold text-[var(--awb-on-accent,#fff)] shadow transition disabled:opacity-60"
+          className="mt-5 inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold text-[var(--awb-on-accent,#fff)] shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60"
           style={{ background: accent }}
         >
           {busy ? tt("上传中…") : tt("上传文件")}
@@ -529,7 +529,7 @@ export function AdvancedWorkbenchBlankStage({
               setError("");
               setImportingProject(true);
             }}
-            className="mt-3 text-[12px] font-medium underline underline-offset-4 transition disabled:opacity-60"
+            className="mt-3 text-[12px] font-medium underline underline-offset-4 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60"
             style={{ color: accent }}
           >
             {tt("或者，把本地做好的整个项目（文件夹 / zip）搬上来")}

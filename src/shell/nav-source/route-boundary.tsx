@@ -108,7 +108,7 @@ export function RouteSegmentError({
         <button
           type="button"
           onClick={() => reset()}
-          className="mt-5 inline-flex rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800"
+          className="mt-5 inline-flex rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
         >
           {tt("重新加载")}
         </button>

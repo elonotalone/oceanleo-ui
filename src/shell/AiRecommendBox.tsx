@@ -73,11 +73,11 @@ export function AiRecommendBox({
 
   return (
     <section className="mx-auto mb-7 max-w-2xl">
-      <div className={`relative rounded-2xl transition-all ${loading ? "leo-glow" : ""}`}>
+      <div className={`relative rounded-2xl transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${loading ? "leo-glow" : ""}`}>
         <div
-          className={`relative overflow-hidden rounded-2xl border bg-white/90 shadow-sm transition-all ${
-            loading ? "border-indigo-200/70" : "border-stone-200/90"
-          }`}
+          className={`relative overflow-hidden rounded-2xl border bg-white/90 shadow-sm transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ loading ? "border-indigo-200/70" : "border-stone-200/90"
+ }`}
         >
           <textarea
             value={query}
@@ -101,7 +101,7 @@ export function AiRecommendBox({
                 <button
                   type="button"
                   onClick={clear}
-                  className="rounded-full px-3 py-1.5 text-xs font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                  className="rounded-full px-3 py-1.5 text-xs font-medium text-stone-500 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
                 >
                   {tt("清空")}
                 </button>
@@ -110,7 +110,7 @@ export function AiRecommendBox({
                 type="button"
                 onClick={() => void run(query)}
                 disabled={loading || !query.trim()}
-                className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? (
                   <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none">
@@ -139,7 +139,7 @@ export function AiRecommendBox({
                 setQuery(ex);
                 void run(ex);
               }}
-              className="rounded-full border border-stone-200/80 bg-white/70 px-3 py-1.5 text-xs text-stone-500 shadow-sm transition-colors hover:border-indigo-300 hover:text-indigo-700"
+              className="rounded-full border border-stone-200/80 bg-white/70 px-3 py-1.5 text-xs text-stone-500 shadow-sm transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:text-indigo-700"
             >
               {ex}
             </button>

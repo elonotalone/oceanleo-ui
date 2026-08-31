@@ -107,7 +107,7 @@ export function PasswordResetPage({
         if (onBackToSignIn) onBackToSignIn();
         else if (typeof window !== "undefined") window.location.href = "/";
       }}
-      className="mt-5 w-full rounded-xl border border-neutral-200 py-2.5 text-[13px] text-neutral-600 transition hover:bg-neutral-50 active:scale-[0.99]"
+      className="mt-5 w-full rounded-xl border border-neutral-200 py-2.5 text-[13px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-[0.99]"
     >
       {tt("返回登录")}
     </button>
@@ -179,7 +179,7 @@ export function PasswordResetPage({
             if (onDone) onDone();
             else if (typeof window !== "undefined") window.location.href = "/account";
           }}
-          className="mt-5 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99]"
+          className="mt-5 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99]"
         >
           {tt("账户")}
         </button>
@@ -208,7 +208,7 @@ export function PasswordResetPage({
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={6}
-            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             placeholder={tt("至少 6 位")}
           />
         </div>
@@ -227,7 +227,7 @@ export function PasswordResetPage({
             onChange={(e) => setAgain(e.target.value)}
             required
             minLength={6}
-            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             placeholder={tt("至少 6 位")}
           />
         </div>
@@ -244,7 +244,7 @@ export function PasswordResetPage({
           type="submit"
           disabled={loading}
           data-reset-submit
-          className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60"
+          className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60"
         >
           {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("保存新密码")}
         </button>

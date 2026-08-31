@@ -65,11 +65,11 @@ export function HistoryRowMenu({
     <button
       type="button"
       onClick={handler}
-      className={`flex w-full items-center px-3 py-1.5 text-left text-[12px] transition ${
-        danger
-          ? "text-rose-600 hover:bg-rose-50"
-          : "text-neutral-700 hover:bg-neutral-100"
-      }`}
+      className={`flex w-full items-center px-3 py-1.5 text-left text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ danger
+ ? "text-rose-600 hover:bg-rose-50"
+ : "text-neutral-700 hover:bg-neutral-100"
+ }`}
     >
       {label}
     </button>
@@ -81,11 +81,11 @@ export function HistoryRowMenu({
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-label={tt("更多操作")}
-        className={`rounded p-0.5 transition ${
-          active
-            ? "text-white/70 hover:bg-white/20 hover:text-white"
-            : "text-neutral-300 opacity-0 hover:bg-neutral-200 hover:text-neutral-600 group-hover:opacity-100"
-        } ${open ? "opacity-100" : ""}`}
+        className={`rounded p-0.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ active
+ ? "text-white/70 hover:bg-white/20 hover:text-white"
+ : "text-neutral-300 opacity-0 hover:bg-neutral-200 hover:text-neutral-600 group-hover:opacity-100"
+ } ${open ? "opacity-100" : ""}`}
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="5" cy="12" r="1.6" />
@@ -100,7 +100,7 @@ export function HistoryRowMenu({
             target="_blank"
             rel="noreferrer"
             onClick={() => onOpenChange(false)}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-neutral-700 transition hover:bg-neutral-100"
+            className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100"
           >
             {tt("在新标签打开")}
           </a>

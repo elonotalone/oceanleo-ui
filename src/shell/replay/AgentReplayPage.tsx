@@ -250,7 +250,7 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
                 type="button"
                 data-replay-control="skip"
                 onClick={skip}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-stone-500 transition hover:bg-stone-100"
+                className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100"
               >
                 {tt("跳过")}
               </button>
@@ -258,7 +258,7 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
                 type="button"
                 data-replay-control="result"
                 onClick={jumpToResult}
-                className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-neutral-700"
+                className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-700"
               >
                 {tt("结果")}
               </button>
@@ -268,7 +268,7 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
               type="button"
               data-replay-control="replay"
               onClick={restart}
-              className="shrink-0 rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-neutral-700"
+              className="shrink-0 rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[12px] font-semibold text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-700"
             >
               {tt("重播")}
             </button>
@@ -351,7 +351,7 @@ function ReplayStepCard({ step }: { step: ReplayStep }) {
           event.stopPropagation();
           setOpen((value) => !value);
         }}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-stone-50"
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
       >
         <span
           data-replay-action
@@ -374,9 +374,9 @@ function ReplayStepCard({ step }: { step: ReplayStep }) {
         )}
         <span
           aria-hidden
-          className={`ml-auto shrink-0 text-[11px] text-stone-400 transition ${
-            open ? "rotate-90" : ""
-          }`}
+          className={`ml-auto shrink-0 text-[11px] text-stone-400 transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+ open ? "rotate-90" : ""
+ }`}
         >
           ›
         </span>

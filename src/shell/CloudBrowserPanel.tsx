@@ -480,13 +480,13 @@ export function CloudBrowserPanel({
             onContextMenu={(event) => {
               if (transport.driving) event.preventDefault();
             }}
-            className={`absolute inset-0 block h-full w-full touch-none object-contain outline-none transition-opacity motion-reduce:transition-none ${
-              transport.hasCanvasFrame ? "opacity-100" : "opacity-0"
-            } ${
-              transport.driving
-                ? "cursor-default focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
-                : "cursor-not-allowed"
-            }`}
+            className={`absolute inset-0 block h-full w-full touch-none object-contain outline-none transition-opacity duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] motion-reduce:transition-none ${
+ transport.hasCanvasFrame ? "opacity-100" : "opacity-0"
+ } ${
+ transport.driving
+ ? "cursor-default focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+ : "cursor-not-allowed"
+ }`}
             data-cloud-browser-native-window
           />
         )}

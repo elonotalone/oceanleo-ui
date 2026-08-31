@@ -205,7 +205,7 @@ export function HumanHandoffDialog({
             type="button"
             aria-label={tt("关闭")}
             onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl leading-none text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
           >
             <span aria-hidden="true">×</span>
           </button>
@@ -240,9 +240,9 @@ export function HumanHandoffDialog({
                     return (
                       <label
                         key={key}
-                        className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition ${
-                          checked ? "bg-stone-100" : "hover:bg-stone-50"
-                        }`}
+                        className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ checked ? "bg-stone-100" : "hover:bg-stone-50"
+ }`}
                       >
                         <input
                           type="checkbox"
@@ -344,11 +344,11 @@ export function HumanHandoffDialog({
                   key={value}
                   type="button"
                   onClick={() => setMode(value)}
-                  className={`rounded-xl border px-3 py-1.5 text-[13px] font-medium transition ${
-                    mode === value
-                      ? "border-transparent text-white"
-                      : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                  }`}
+                  className={`rounded-xl border px-3 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ mode === value
+ ? "border-transparent text-white"
+ : "border-stone-200 text-stone-600 hover:bg-stone-50"
+ }`}
                   style={mode === value ? { background: accent } : undefined}
                 >
                   {label}
@@ -377,7 +377,7 @@ export function HumanHandoffDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-stone-200 px-3 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50"
+            className="rounded-xl border border-stone-200 px-3 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
           >
             {tt("取消")}
           </button>
@@ -385,7 +385,7 @@ export function HumanHandoffDialog({
             type="button"
             onClick={() => void submit()}
             disabled={!canSubmit}
-            className="rounded-xl px-3.5 py-1.5 text-[13px] font-semibold text-white transition disabled:opacity-50"
+            className="rounded-xl px-3.5 py-1.5 text-[13px] font-semibold text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50"
             style={{ background: accent }}
           >
             {busy ? tt("正在发起…") : tt("请真人接手")}

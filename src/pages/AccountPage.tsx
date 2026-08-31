@@ -255,7 +255,7 @@ export function AccountPage({
           <button
             type="button"
             onClick={onSignInClick ?? (() => setShowAuth(true))}
-            className="mt-6 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99]"
+            className="mt-6 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99]"
           >
             {tt("登录")}
           </button>
@@ -335,11 +335,11 @@ export function AccountPage({
                   <p className="text-[13px] font-medium text-neutral-900">{item.label}</p>
                   <p className="text-[12px] text-neutral-500">{item.desc}</p>
                 </div>
-                <IconChevronRight className="shrink-0 text-neutral-400 transition-transform group-hover:translate-x-0.5" />
+                <IconChevronRight className="shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:translate-x-0.5" />
               </>
             );
             const className =
-              "group flex items-center justify-between px-4 py-3.5 transition hover:bg-neutral-50";
+              "group flex items-center justify-between px-4 py-3.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
             if (item.expands) {
               const open = openPanel === item.expands;
               return (
@@ -384,7 +384,7 @@ export function AccountPage({
         <button
           type="button"
           onClick={() => setConfirmLogout(true)}
-          className="mt-6 w-full rounded-xl border border-neutral-200 py-2.5 text-[13px] text-red-600 transition hover:border-red-200 hover:bg-red-50 active:scale-[0.99]"
+          className="mt-6 w-full rounded-xl border border-neutral-200 py-2.5 text-[13px] text-red-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-red-200 hover:bg-red-50 active:scale-[0.99]"
         >
           {tt("退出登录")}
         </button>

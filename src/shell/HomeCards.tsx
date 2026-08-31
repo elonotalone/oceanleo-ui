@@ -105,9 +105,9 @@ export function HomePromptCards({
               key={c}
               type="button"
               onClick={() => setCat(c)}
-              className={`relative px-3 pb-2 pt-1 text-[13px] transition ${
-                on ? "font-semibold text-stone-900" : "text-stone-500 hover:text-stone-700"
-              }`}
+              className={`relative px-3 pb-2 pt-1 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "font-semibold text-stone-900" : "text-stone-500 hover:text-stone-700"
+ }`}
             >
               {c === "__all__" ? tt("全部") : tt(c)}
               {on && (
@@ -126,7 +126,7 @@ export function HomePromptCards({
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="flex min-h-[86px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 px-3 py-3 text-stone-400 transition hover:border-stone-400 hover:text-stone-600"
+          className="flex min-h-[86px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-white/60 px-3 py-3 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400 hover:text-stone-600"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -137,7 +137,7 @@ export function HomePromptCards({
         {shown.map((c) => (
           <div
             key={c.id}
-            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
+            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
             onClick={() => onPick(c.prompt)}
             role="button"
             tabIndex={0}
@@ -153,7 +153,7 @@ export function HomePromptCards({
                   src={c.thumb}
                   alt=""
                   loading="lazy"
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  className="h-full w-full object-cover transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-105"
                 />
               </span>
             )}
@@ -180,7 +180,7 @@ export function HomePromptCards({
               }}
               title={tt("查看 / 编辑")}
               aria-label={tt("查看 / 编辑")}
-              className="absolute right-1.5 top-1.5 rounded-md bg-white/80 p-1 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-stone-600 group-hover:opacity-100"
+              className="absolute right-1.5 top-1.5 rounded-md bg-white/80 p-1 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-stone-600 group-hover:opacity-100"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />

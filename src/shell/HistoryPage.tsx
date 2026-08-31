@@ -130,9 +130,9 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
               return (
                 <div
                   key={t.id}
-                  className={`group flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 transition hover:border-stone-300 hover:shadow-sm ${
-                    removing ? "opacity-50" : ""
-                  }`}
+                  className={`group flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:shadow-sm ${
+ removing ? "opacity-50" : ""
+ }`}
                 >
                   <button
                     type="button"
@@ -162,7 +162,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
                     disabled={removing}
                     title={tt("删除这个任务")}
                     aria-label={tt("删除")}
-                    className="shrink-0 rounded-lg p-1.5 text-stone-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
+                    className="shrink-0 rounded-lg p-1.5 text-stone-300 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-50 hover:text-rose-500 focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path

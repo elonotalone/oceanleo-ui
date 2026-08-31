@@ -312,7 +312,7 @@ export function TemplateShowcase({
   const moreTarget = exploreHref || (appId ? defaultExploreHref(appId) : "");
 
   const actionClass =
-    "rounded-lg px-3.5 py-2 text-center text-[12.5px] font-medium transition hover:opacity-90";
+    "rounded-lg px-3.5 py-2 text-center text-[12.5px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90";
   const ghostAction = `${actionClass} border border-stone-200 text-stone-700 hover:bg-stone-50`;
 
   const overlay = (
@@ -338,7 +338,7 @@ export function TemplateShowcase({
             type="button"
             onClick={onClose}
             aria-label={tt("关闭")}
-            className="rounded-md px-2 py-1 text-[18px] leading-none text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+            className="rounded-md px-2 py-1 text-[18px] leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
           >
             ×
           </button>
@@ -417,9 +417,9 @@ export function TemplateShowcase({
                       aria-pressed={active}
                       title={item.title || title}
                       onClick={() => setSelectedId(item.id)}
-                      className={`relative h-14 w-20 overflow-hidden rounded-lg border-2 bg-stone-100 transition ${
-                        active ? "border-stone-900" : "border-transparent hover:border-stone-300"
-                      }`}
+                      className={`relative h-14 w-20 overflow-hidden rounded-lg border-2 bg-stone-100 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ active ? "border-stone-900" : "border-transparent hover:border-stone-300"
+ }`}
                       style={active ? { borderColor: accent } : undefined}
                     >
                       {thumb ? (

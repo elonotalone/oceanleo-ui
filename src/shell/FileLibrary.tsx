@@ -120,9 +120,9 @@ export function FileLibrary({
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
-                tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
-              }`}
+              className={`rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
+ }`}
             >
               {tt(t.label)}
             </button>
@@ -273,7 +273,7 @@ function FilesPanel({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="mt-1 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white transition disabled:opacity-60"
+          className="mt-1 rounded-lg px-4 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60"
           style={{ background: accent }}
         >
           {uploading ? tt("上传中…") : tt("选择文件")}
@@ -336,14 +336,14 @@ function FileRow({
         href={f.url}
         target="_blank"
         rel="noreferrer"
-        className="rounded-lg px-2.5 py-1 text-[12px] text-stone-500 transition hover:bg-stone-100"
+        className="rounded-lg px-2.5 py-1 text-[12px] text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100"
       >
         {tt("打开")}
       </a>
       <button
         type="button"
         onClick={() => onDelete(f.id)}
-        className="text-stone-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500"
+        className="text-stone-300 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 hover:text-rose-500"
         aria-label={tt("删除")}
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -510,7 +510,7 @@ function KnowledgePanel({ accent }: { accent: string }) {
             type="button"
             onClick={save}
             disabled={saving || (!title.trim() && !content.trim())}
-            className="rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition disabled:opacity-50"
+            className="rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50"
             style={{ background: accent }}
           >
             {saving ? tt("保存中…") : tt("添加到知识库")}
@@ -535,7 +535,7 @@ function KnowledgePanel({ accent }: { accent: string }) {
                   setItems((xs) => xs.filter((x) => x.id !== k.id));
                   await deleteKnowledge(k.id);
                 }}
-                className="shrink-0 text-stone-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500"
+                className="shrink-0 text-stone-300 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 hover:text-rose-500"
                 aria-label={tt("删除")}
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -583,7 +583,7 @@ function MediaGrid({
               return (
                 <div
                   key={c.id}
-                  className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                  className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-sm transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-md"
                   title={c.title || (c as Creation).prompt || ""}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -592,7 +592,7 @@ function MediaGrid({
                     alt={c.title || ""}
                     loading="lazy"
                     onClick={() => setZoom(c.url)}
-                    className="h-full w-full cursor-zoom-in object-cover transition-transform duration-300 group-hover:scale-105"
+                    className="h-full w-full cursor-zoom-in object-cover transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-105"
                   />
                   {mt && (
                     <span className="absolute left-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
@@ -650,7 +650,7 @@ function PanelMessage({
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[13px] font-medium text-stone-600 transition hover:bg-stone-50"
+          className="rounded-lg border border-stone-200 px-3.5 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
         >
           {tt("重试")}
         </button>

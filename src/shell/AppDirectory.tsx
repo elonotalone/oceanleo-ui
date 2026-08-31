@@ -332,11 +332,11 @@ export function AppDirectory({
                 key={g.id}
                 type="button"
                 onClick={() => switchGroup(g.id)}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[14px] font-semibold transition ${
-                  on
-                    ? "text-white shadow-sm"
-                    : "bg-stone-100 text-stone-600 hover:bg-stone-200/70 hover:text-stone-800"
-                }`}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[14px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "text-white shadow-sm"
+ : "bg-stone-100 text-stone-600 hover:bg-stone-200/70 hover:text-stone-800"
+ }`}
                 style={on ? { background: accent } : undefined}
               >
                 {g.icon && <span className="text-[16px] leading-none">{g.icon}</span>}
@@ -366,11 +366,11 @@ export function AppDirectory({
                 key={m.id}
                 type="button"
                 onClick={() => switchMode(m.id)}
-                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition ${
-                  mode === m.id
-                    ? "bg-white text-stone-900 shadow-sm"
-                    : "text-stone-500 hover:text-stone-700"
-                }`}
+                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ mode === m.id
+ ? "bg-white text-stone-900 shadow-sm"
+ : "text-stone-500 hover:text-stone-700"
+ }`}
               >
                 {tt(m.label)}
               </button>
@@ -507,7 +507,7 @@ function DirectoryCard({
                 type="button"
                 onClick={() => onAdd(item)}
                 disabled={adding}
-                className={`pointer-events-auto rounded-md px-2 py-1 text-[11px] font-medium opacity-0 shadow-sm backdrop-blur-sm transition group-hover:opacity-100 disabled:opacity-50 [@media(hover:none)]:opacity-100 ${item.added ? "border border-stone-300 bg-white/90 text-stone-500" : "bg-white/90 text-stone-700 hover:bg-white"}`}
+                className={`pointer-events-auto rounded-md px-2 py-1 text-[11px] font-medium opacity-0 shadow-sm backdrop-blur-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 disabled:opacity-50 [@media(hover:none)]:opacity-100 ${item.added ? "border border-stone-300 bg-white/90 text-stone-500" : "bg-white/90 text-stone-700 hover:bg-white"}`}
               >
                 {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
               </button>
@@ -519,7 +519,7 @@ function DirectoryCard({
                 onClick={c.run}
                 title={c.label}
                 aria-label={c.label}
-                className={`pointer-events-auto grid h-6 w-6 place-items-center rounded-md bg-white/80 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:bg-white hover:text-stone-600"}`}
+                className={`pointer-events-auto grid h-6 w-6 place-items-center rounded-md bg-white/80 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:bg-white hover:text-stone-600"}`}
               >
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d={c.path} strokeLinecap="round" strokeLinejoin="round" />
@@ -572,9 +572,9 @@ function DirectoryListRow({
           onOpen(item);
         }
       }}
-      className={`group flex min-h-20 items-center gap-3 rounded-xl border border-stone-200/80 bg-white/80 p-3 transition hover:border-stone-300 hover:bg-white ${
-        onOpen ? "cursor-pointer" : ""
-      }`}
+      className={`group flex min-h-20 items-center gap-3 rounded-xl border border-stone-200/80 bg-white/80 p-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-white ${
+ onOpen ? "cursor-pointer" : ""
+ }`}
     >
       {rowImage ? (
         // eslint-disable-next-line @next/next/no-img-element

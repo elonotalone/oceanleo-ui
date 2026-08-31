@@ -950,7 +950,7 @@ export function DeckPresenterView({
             {noticeLine}
             {jumpHint}
           </div>
-          <div className="pointer-events-auto flex items-center gap-3 opacity-40 transition-opacity focus-within:opacity-100 hover:opacity-100">
+          <div className="pointer-events-auto flex items-center gap-3 opacity-40 transition-opacity duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-within:opacity-100 hover:opacity-100">
             {transportControls}
             {pageIndicator}
           </div>

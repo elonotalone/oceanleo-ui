@@ -110,9 +110,9 @@ export function WorkspaceShell({
                   key={a.agent_id}
                   type="button"
                   onClick={() => select(a.agent_id)}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                    on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
-                  }`}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
+ }`}
                   style={on ? { background: accent } : undefined}
                   title={a.tagline}
                 >
@@ -124,7 +124,7 @@ export function WorkspaceShell({
           {/* 最右：添加 app */}
           <a
             href={addAgentHref}
-            className="ml-auto flex items-center gap-1.5 rounded-xl border border-dashed border-stone-300 px-3 py-2 text-sm font-medium text-stone-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+            className="ml-auto flex items-center gap-1.5 rounded-xl border border-dashed border-stone-300 px-3 py-2 text-sm font-medium text-stone-500 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:text-indigo-600"
           >
             {tt("＋ 添加 app")}
           </a>

@@ -108,7 +108,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-neutral-800"
+            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
           >
             {open ? tt("取消") : tt("+ 添加 key")}
           </button>
@@ -199,7 +199,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                   type="button"
                   disabled={busy}
                   onClick={submit}
-                  className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                  className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
                 >
                   {busy ? tt("保存中…") : tt("保存 key")}
                 </button>
@@ -243,7 +243,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                         <button
                           type="button"
                           onClick={() => remove(k.id)}
-                          className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-rose-600 transition hover:bg-rose-50"
+                          className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-rose-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-50"
                         >
                           {tt("删除")}
                         </button>

@@ -112,9 +112,9 @@ export function MyDatabasePanel({
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
-                className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                  tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
-                }`}
+                className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ tab === t.id ? "bg-white text-stone-800 shadow-sm" : "text-stone-500 hover:text-stone-700"
+ }`}
               >
                 {tt(t.label)}
                 {n > 0 && <span className="ml-1 text-[11px] text-stone-400">{n}</span>}
@@ -229,7 +229,7 @@ function MediaGrid({
             return (
               <div
                 key={c.id}
-                className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50 shadow-sm transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-md"
                 title={c.title || (c as Creation).prompt || ""}
               >
                 {video && !c.thumb_url ? (
@@ -241,7 +241,7 @@ function MediaGrid({
                     alt={c.title || ""}
                     loading="lazy"
                     onClick={() => onZoom(c.url)}
-                    className="h-full w-full cursor-zoom-in object-cover transition-transform duration-300 group-hover:scale-105"
+                    className="h-full w-full cursor-zoom-in object-cover transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-105"
                   />
                 )}
                 {mt && (
@@ -327,7 +327,7 @@ function KnowledgeList({
             type="button"
             onClick={save}
             disabled={saving || (!title.trim() && !content.trim())}
-            className="rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition disabled:opacity-50"
+            className="rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-50"
             style={{ background: accent }}
           >
             {saving ? tt("保存中…") : tt("添加到知识库")}
@@ -348,7 +348,7 @@ function KnowledgeList({
               <button
                 type="button"
                 onClick={() => onDelete(k.id)}
-                className="shrink-0 text-stone-300 opacity-0 transition group-hover:opacity-100 hover:text-red-500"
+                className="shrink-0 text-stone-300 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 hover:text-red-500"
                 aria-label={tt("删除")}
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

@@ -46,7 +46,7 @@ export type RunCapabilityFn = (
 ) => Promise<CapabilityResult>;
 
 const inputCls =
-  "w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
+  "w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
 
 export interface AgentConsoleProps {
   /** 单 agent：一份 manifest。 */
@@ -133,9 +133,9 @@ export function AgentConsole({
               type="button"
               aria-selected={on}
               onClick={() => select(m.agent_id)}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
-              }`}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white shadow-sm" : "text-stone-600 hover:bg-stone-100"
+ }`}
               style={on ? { background: accent } : undefined}
             >
               {m.icon && <span className="shrink-0">{m.icon}</span>}
@@ -288,7 +288,7 @@ function ManifestPane({
           type="button"
           onClick={() => void runGenerate()}
           disabled={busy}
-          className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
+          className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-md transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 disabled:opacity-50"
           style={{ background: accent }}
         >
           {busy ? tt("生成中…") : `${con.action.label} ✦`}
@@ -408,9 +408,9 @@ function FieldControl({
               key={o.value}
               type="button"
               onClick={() => onChange(o.value)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                v === o.value ? "text-white" : "border border-stone-300 text-stone-600 hover:bg-stone-50"
-              }`}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ v === o.value ? "text-white" : "border border-stone-300 text-stone-600 hover:bg-stone-50"
+ }`}
               style={v === o.value ? { background: accent } : undefined}
             >
               {tt(o.label)}

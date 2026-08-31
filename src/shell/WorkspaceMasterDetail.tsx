@@ -63,9 +63,9 @@ export function ConsoleFnSubNav({
             key={f.id}
             type="button"
             onClick={() => setSel(f.id)}
-            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition ${
-              on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
-            }`}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
+ }`}
             style={on ? { background: accent } : undefined}
             title={tt(f.label)}
           >
@@ -135,9 +135,9 @@ export function WorkspaceSubNav({
         return (
           <div
             key={a.agent_id}
-            className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition ${
-              on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
-            }`}
+            className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
+ }`}
             style={on ? { background: accent } : undefined}
           >
             <button
@@ -158,11 +158,11 @@ export function WorkspaceSubNav({
               }}
               title={tt("从工作台移除")}
               aria-label={tt("移除")}
-              className={`shrink-0 rounded p-0.5 transition ${
-                on
-                  ? "text-white/70 hover:bg-white/20 hover:text-white"
-                  : "text-neutral-300 opacity-0 hover:text-rose-500 group-hover:opacity-100"
-              }`}
+              className={`shrink-0 rounded p-0.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on
+ ? "text-white/70 hover:bg-white/20 hover:text-white"
+ : "text-neutral-300 opacity-0 hover:text-rose-500 group-hover:opacity-100"
+ }`}
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m1 0v12a2 2 0 01-2 2H8a2 2 0 01-2-2V7" strokeLinecap="round" strokeLinejoin="round" />
@@ -175,7 +175,7 @@ export function WorkspaceSubNav({
 
       <a
         href={addAgentHref}
-        className="mt-1 flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-[13px] font-medium text-neutral-500 transition hover:border-sky-300 hover:text-sky-600"
+        className="mt-1 flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-[13px] font-medium text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-sky-300 hover:text-sky-600"
       >
         {tt("＋ 添加 app / agent")}
       </a>
@@ -277,11 +277,11 @@ export function WorkspaceDetail({
           key={t.id}
           type="button"
           onClick={() => setTab(t.id)}
-          className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition ${
-            tab === t.id
-              ? "bg-white text-neutral-900 shadow-sm"
-              : "text-neutral-500 hover:text-neutral-700"
-          }`}
+          className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ tab === t.id
+ ? "bg-white text-neutral-900 shadow-sm"
+ : "text-neutral-500 hover:text-neutral-700"
+ }`}
         >
           {t.label}
         </button>
@@ -412,7 +412,7 @@ export function WorkspaceDetail({
         </div>
         <a
           href={addAgentHref}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 px-3.5 py-2 text-[13px] font-medium text-neutral-600 transition hover:border-sky-300 hover:text-sky-600"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 px-3.5 py-2 text-[13px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-sky-300 hover:text-sky-600"
         >
           {tt("＋ 添加 app / agent")}
         </a>

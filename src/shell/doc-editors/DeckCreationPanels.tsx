@@ -68,7 +68,7 @@ function ColorRow({
           key={color}
           type="button"
           onClick={() => onChange(color)}
-          className="h-7 w-7 rounded-full border-2 shadow-sm transition hover:scale-110"
+          className="h-7 w-7 rounded-full border-2 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:scale-110"
           style={{
             background: color,
             borderColor: value === color ? "white" : "transparent",
@@ -132,11 +132,11 @@ export function DeckDrawPanel({
                   onStyleChange({ ...style, ...pen });
                   onToolChange("draw");
                 }}
-                className={`rounded-xl border px-3 py-3 text-left text-[11px] transition ${
-                  active
-                    ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--awb-accent,#7c3aed)]/8"
-                    : "border-[var(--border,#e7e5e4)] hover:bg-[var(--awb-hover)]"
-                }`}
+                className={`rounded-xl border px-3 py-3 text-left text-[11px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ active
+ ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--awb-accent,#7c3aed)]/8"
+ : "border-[var(--border,#e7e5e4)] hover:bg-[var(--awb-hover)]"
+ }`}
               >
                 <span
                   className="mb-2 block w-full rounded-full"
@@ -222,7 +222,7 @@ export function DeckLinePanel({ editor }: { editor: DeckEditorState }) {
                   lineEnd: line.end,
                 })
               }
-              className="flex w-full items-center gap-3 rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-3 text-[11px] text-[var(--fg-2,#57534e)] transition hover:border-[var(--awb-accent,#7c3aed)]/50 hover:bg-[var(--awb-hover)]"
+              className="flex w-full items-center gap-3 rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-3 text-[11px] text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--awb-accent,#7c3aed)]/50 hover:bg-[var(--awb-hover)]"
             >
               <svg viewBox="0 0 120 20" className="h-5 min-w-0 flex-1" aria-hidden>
                 <defs>
@@ -298,7 +298,7 @@ export function DeckNotesPanel({ editor }: { editor: DeckEditorState }) {
                   label: tt("便签 {number}", { number: index + 1 }),
                 })
               }
-              className="aspect-square rounded-sm p-3 text-left text-[10px] font-semibold shadow-md transition hover:-translate-y-1 hover:shadow-lg"
+              className="aspect-square rounded-sm p-3 text-left text-[10px] font-semibold shadow-md transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-1 hover:shadow-lg"
               style={{ background: fill, color }}
             >
               {tt("便签")}
@@ -338,7 +338,7 @@ export function DeckTablePanel({ editor }: { editor: DeckEditorState }) {
                 onMouseEnter={() => setHovered({ rows: row, columns: column })}
                 onFocus={() => setHovered({ rows: row, columns: column })}
                 onClick={() => editor.addTableElement(row, column)}
-                className="h-6 w-6 rounded-[3px] border transition"
+                className="h-6 w-6 rounded-[3px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={{
                   borderColor: active
                     ? "var(--awb-accent,#7c3aed)"

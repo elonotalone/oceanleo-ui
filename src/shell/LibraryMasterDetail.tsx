@@ -44,9 +44,9 @@ export function LibrarySubNav({ accent = "#0ea5e9" }: { accent?: string }) {
             key={f.id}
             type="button"
             onClick={() => setSel(f.id)}
-            className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition ${
-              on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
-            }`}
+            className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
+ }`}
             style={on ? { background: accent } : undefined}
           >
             {tt(f.label)}

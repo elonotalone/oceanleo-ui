@@ -103,16 +103,16 @@ export function OptionRow(props: OptionRowProps) {
             title={on ? tt("已选中，点一下取消") : undefined}
             className={
               size === "md"
-                ? `relative flex min-w-[64px] flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    on
-                      ? "border-transparent text-white shadow-sm"
-                      : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
-                  }`
-                : `relative inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    on
-                      ? "border-transparent text-white shadow-sm"
-                      : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
-                  }`
+                ? `relative flex min-w-[64px] flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-40 ${
+ on
+ ? "border-transparent text-white shadow-sm"
+ : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+ }`
+                : `relative inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-40 ${
+ on
+ ? "border-transparent text-white shadow-sm"
+ : "border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50"
+ }`
             }
             style={on ? { background: accent } : undefined}
           >

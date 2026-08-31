@@ -71,10 +71,10 @@ export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
   return (
     <div
       className={`group/message flex gap-2.5 ${
-        selectMode
-          ? "cursor-pointer rounded-xl px-1.5 py-1 transition hover:bg-stone-50"
-          : ""
-      } ${selected ? "bg-stone-100/70" : ""}`}
+ selectMode
+ ? "cursor-pointer rounded-xl px-1.5 py-1 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
+ : ""
+ } ${selected ? "bg-stone-100/70" : ""}`}
       onClick={selectMode ? onSelectToggle : undefined}
     >
       {selectMode && (
@@ -112,9 +112,9 @@ function MessageActions({
   const [copied, setCopied] = useState(false);
   const iconClass = "h-4 w-4";
   const buttonClass =
-    "inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] text-stone-400 transition hover:bg-stone-100 hover:text-stone-700";
+    "inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700";
   return (
-    <div className="mt-1 flex items-center gap-0.5 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100">
+    <div className="mt-1 flex items-center gap-0.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100">
       <button
         type="button"
         title={tt("复制")}
@@ -204,7 +204,7 @@ function TranscriptBody({
           <button
             type="button"
             onClick={onBranch}
-            className="px-1 text-[11px] text-stone-300 opacity-0 transition hover:text-stone-600 group-hover:opacity-100 focus:opacity-100"
+            className="px-1 text-[11px] text-stone-300 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-stone-600 group-hover:opacity-100 focus:opacity-100"
           >
             {tt("从这里重新开始")}
           </button>
@@ -261,7 +261,7 @@ function TranscriptBody({
         type="button"
         onClick={onArtifactOpen}
         disabled={!onArtifactOpen}
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
+        className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
       >
         <span className="min-w-0 truncate">{tt("实时预览已就绪")}</span>
         <span className="shrink-0 text-[11px] text-stone-400">
@@ -280,7 +280,7 @@ function TranscriptBody({
         type="button"
         onClick={onArtifactOpen}
         disabled={!onArtifactOpen}
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
+        className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
       >
         <span className="min-w-0 truncate">
           {tt("已生成「{label}」", { label })}

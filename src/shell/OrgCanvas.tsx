@@ -126,7 +126,7 @@ function AgentNode({ data, selected }: NodeProps) {
   const glow = d.justAdded;
   return (
     <div
-      className={`org-node rounded-xl border bg-white px-3 py-2 shadow-sm transition ${glow ? "org-node-glow" : ""}`}
+      className={`org-node rounded-xl border bg-white px-3 py-2 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${glow ? "org-node-glow" : ""}`}
       style={{
         borderColor: glow ? "#0ea5e9" : selected ? "#0ea5e9" : "#e2e8f0",
         boxShadow: glow

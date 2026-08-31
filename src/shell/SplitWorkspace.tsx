@@ -283,7 +283,7 @@ export function SplitWorkspace({
         title={tt("打开库")}
         className={
           library.buttonClassName ??
-          "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition active:scale-95"
+          "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95"
         }
         style={library.buttonClassName ? undefined : { background: accent }}
       >
@@ -536,9 +536,9 @@ export function SplitWorkspace({
       <button
         type="button"
         onClick={() => toggleMax(which)}
-        className={`inline-flex items-center justify-center rounded-lg p-1.5 transition-colors ${
-          on ? "text-white" : "text-stone-500 hover:bg-stone-100"
-        }`}
+        className={`inline-flex items-center justify-center rounded-lg p-1.5 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ on ? "text-white" : "text-stone-500 hover:bg-stone-100"
+ }`}
         style={on ? { background: accent } : undefined}
         title={label}
         aria-label={label}
@@ -606,7 +606,7 @@ export function SplitWorkspace({
           if (activeDetail) clearDetail(activeDetail.ownerId);
           else closeLibraryPanel();
         }}
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
         aria-label={tt("返回操作台")}
         title={tt("返回操作台")}
       >
@@ -691,7 +691,7 @@ export function SplitWorkspace({
                 setLibraryOpen(false);
               }}
               aria-label={tt("关闭")}
-              className="shrink-0 rounded p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+              className="shrink-0 rounded p-1 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
             >
               ✕
             </button>
@@ -732,7 +732,7 @@ export function SplitWorkspace({
       title={tt("拖动调整左右比例")}
     >
       <div
-        className="h-16 w-1 rounded-full bg-stone-300 transition-colors group-hover:bg-stone-400"
+        className="h-16 w-1 rounded-full bg-stone-300 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:bg-stone-400"
         style={dragging ? { background: accent } : undefined}
       />
     </div>

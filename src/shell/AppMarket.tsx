@@ -224,11 +224,11 @@ export function AppMarket({
               type="button"
               aria-pressed={selected}
               onClick={() => onSceneChange(selected ? "" : option.scene)}
-              className={`rounded-full px-3 py-1.5 text-[12px] transition ${
-                selected
-                  ? "font-medium text-white shadow-sm"
-                  : "bg-stone-100 text-stone-600 hover:bg-stone-200/80"
-              }`}
+              className={`rounded-full px-3 py-1.5 text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ selected
+ ? "font-medium text-white shadow-sm"
+ : "bg-stone-100 text-stone-600 hover:bg-stone-200/80"
+ }`}
               style={selected ? { background: accent } : undefined}
             >
               {option.scene} <span className={selected ? "text-white/75" : "text-stone-400"}>{option.count}</span>
@@ -325,7 +325,7 @@ export function AppMarket({
             <article
               key={app.app_id}
               data-market-app={app.app_id}
-              className="group relative flex min-h-48 flex-col rounded-2xl border border-stone-200/80 bg-white/85 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
+              className="group relative flex min-h-48 flex-col rounded-2xl border border-stone-200/80 bg-white/85 p-4 text-left shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
             >
               <button
                 type="button"
@@ -351,11 +351,11 @@ export function AppMarket({
                   data-market-app-install={app.app_id}
                   onClick={(event) => void toggleInstalled(event, app)}
                   disabled={pendingAppId === app.app_id}
-                  className={`relative z-[2] shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition disabled:cursor-wait disabled:opacity-60 ${
-                    app.installed
-                      ? "border border-stone-200 bg-white text-stone-600"
-                      : "text-white"
-                  }`}
+                  className={`relative z-[2] shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-wait disabled:opacity-60 ${
+ app.installed
+ ? "border border-stone-200 bg-white text-stone-600"
+ : "text-white"
+ }`}
                   style={!app.installed ? { background: accent } : undefined}
                 >
                   {pendingAppId === app.app_id

@@ -124,11 +124,11 @@ export function RestartDraftButton({
       }
       className={
         className ??
-        `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium transition ${
-          feedback
-            ? "bg-emerald-50 text-emerald-700"
-            : "text-stone-400 hover:bg-stone-100 hover:text-stone-600"
-        } disabled:opacity-50`
+        `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ feedback
+ ? "bg-emerald-50 text-emerald-700"
+ : "text-stone-400 hover:bg-stone-100 hover:text-stone-600"
+ } disabled:opacity-50`
       }
     >
       {iconOnly ? (

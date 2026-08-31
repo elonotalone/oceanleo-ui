@@ -8,9 +8,9 @@ import { DECK_THEMES, type DeckLayout } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 
 const inputClass =
-  "w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[12px] text-[var(--fg,#292524)] outline-none transition focus:border-[var(--awb-accent,#7c3aed)] focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/10";
+  "w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[12px] text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-[var(--awb-accent,#7c3aed)] focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/10";
 const buttonClass =
-  "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:shadow-sm disabled:opacity-35";
+  "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:shadow-sm disabled:opacity-35";
 /** deck-extension.md §4 L1–L16, plus the two legacy editor grammars. */
 const DECK_LAYOUTS: readonly { id: DeckLayout; label: string }[] = [
   { id: "title", label: "封面" },
@@ -101,7 +101,7 @@ export function DeckDesignPanel({
                 key={aspect}
                 type="button"
                 onClick={() => editor.setAspect(aspect)}
-                className="rounded-xl border px-2 py-2 text-[11px] font-semibold transition"
+                className="rounded-xl border px-2 py-2 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={
                   editor.deck.aspect === aspect
                     ? { borderColor: accent, color: accent, background: `${accent}0d` }
@@ -122,7 +122,7 @@ export function DeckDesignPanel({
                   key={layout.id}
                   type="button"
                   onClick={() => editor.applySlideLayout(layout.id)}
-                  className="rounded-xl border px-2.5 py-2 text-left text-[10px] font-medium transition hover:-translate-y-0.5 hover:shadow-sm"
+                  className="rounded-xl border px-2.5 py-2 text-left text-[10px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-sm"
                   style={
                     slide.layout === layout.id
                       ? {
@@ -155,7 +155,7 @@ export function DeckDesignPanel({
                 key={theme.id}
                 type="button"
                 onClick={() => editor.setTheme(theme.id)}
-                className="group flex min-h-16 items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-[11px] transition hover:-translate-y-0.5 hover:shadow-sm"
+                className="group flex min-h-16 items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-[11px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-sm"
                 style={
                   editor.deck.theme === theme.id
                     ? {
@@ -331,7 +331,7 @@ export function DeckTextPanel({ editor }: { editor: DeckEditorState }) {
                   height: preset.height,
                 })
               }
-              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-3 text-left transition hover:border-[var(--awb-accent,#7c3aed)]/40 hover:shadow-sm"
+              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-3 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--awb-accent,#7c3aed)]/40 hover:shadow-sm"
               style={{
                 fontSize: `${Math.min(24, Math.max(12, preset.size / 2.5))}px`,
                 fontWeight: preset.bold ? 700 : 400,
@@ -369,7 +369,7 @@ export function DeckUploadPanel({ editor }: { editor: DeckEditorState }) {
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--border,#e7e5e4)] text-[12px] font-medium text-[var(--fg-2,#57534e)] transition hover:border-[var(--awb-accent,#7c3aed)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+          className="flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--border,#e7e5e4)] text-[12px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--awb-accent,#7c3aed)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
         >
           <AdvancedEditorIcon name="uploads" className="h-7 w-7" />
           {tt("选择本地图片")}
@@ -430,7 +430,7 @@ export function DeckLayersPanel({
             .map((item) => (
               <div
                 key={item.id}
-                className="flex items-center gap-1 rounded-xl p-1 transition"
+                className="flex items-center gap-1 rounded-xl p-1 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={
                   item.id === editor.selectedElementId
                     ? { color: accent, background: `${accent}12` }

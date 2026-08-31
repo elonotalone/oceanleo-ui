@@ -142,11 +142,11 @@ export function ModelGroupPicker({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition ${
-          open
-            ? "border-neutral-300 bg-neutral-50 text-neutral-900"
-            : "border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-300 hover:bg-white"
-        }`}
+        className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ open
+ ? "border-neutral-300 bg-neutral-50 text-neutral-900"
+ : "border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-300 hover:bg-white"
+ }`}
         title={tt("选择全站通用的模型组合")}
       >
         <svg
@@ -166,9 +166,9 @@ export function ModelGroupPicker({
           {loading ? "…" : active?.name || "Pro"}
         </span>
         <span
-          className={`shrink-0 text-neutral-400 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+ open ? "rotate-180" : ""
+ }`}
         >
           <IconChevronDown className="h-3.5 w-3.5" />
         </span>
@@ -198,9 +198,9 @@ export function ModelGroupPicker({
                   type="button"
                   disabled={!payload || !!saving}
                   onClick={() => void activate(group)}
-                  className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition ${
-                    selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"
-                  } disabled:cursor-default disabled:opacity-60`}
+                  className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"
+ } disabled:cursor-default disabled:opacity-60`}
                 >
                   <span
                     className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-bold ${
@@ -242,7 +242,7 @@ export function ModelGroupPicker({
           )}
           <a
             href={apiHref}
-            className="block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-900"
+            className="block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 hover:text-neutral-900"
           >
             {tt("管理模型组合 →")}
           </a>

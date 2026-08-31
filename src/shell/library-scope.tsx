@@ -277,7 +277,7 @@ function LocalLibraryPanel({
               type="button"
               onClick={onRefresh}
               disabled={!canRefresh || loading}
-              className="shrink-0 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
+              className="shrink-0 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50 disabled:opacity-50"
             >
               {loading ? "正在刷新…" : "手动刷新"}
             </button>
@@ -445,11 +445,11 @@ export function LibraryScope({
           type="button"
           aria-pressed={activeScope === "cloud"}
           onClick={() => setActiveScope("cloud")}
-          className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
-            activeScope === "cloud"
-              ? "bg-white text-stone-900 shadow-sm"
-              : "text-stone-600 hover:bg-white/70"
-          }`}
+          className={`rounded-xl px-3 py-2 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ activeScope === "cloud"
+ ? "bg-white text-stone-900 shadow-sm"
+ : "text-stone-600 hover:bg-white/70"
+ }`}
         >
           云端库
         </button>
@@ -461,11 +461,11 @@ export function LibraryScope({
               type="button"
               aria-pressed={activeScope === scope}
               onClick={() => setActiveScope(scope)}
-              className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
-                activeScope === scope
-                  ? "bg-white text-stone-900 shadow-sm"
-                  : "text-stone-600 hover:bg-white/70"
-              }`}
+              className={`rounded-xl px-3 py-2 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ activeScope === scope
+ ? "bg-white text-stone-900 shadow-sm"
+ : "text-stone-600 hover:bg-white/70"
+ }`}
             >
               {device.device_name} · 本地库
               {!device.online && <span className="ml-1 text-xs text-amber-700">（离线）</span>}
@@ -477,11 +477,11 @@ export function LibraryScope({
             type="button"
             aria-pressed={activeScope === "local-empty"}
             onClick={() => setActiveScope("local-empty")}
-            className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
-              activeScope === "local-empty"
-                ? "bg-white text-stone-900 shadow-sm"
-                : "text-stone-600 hover:bg-white/70"
-            }`}
+            className={`rounded-xl px-3 py-2 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ activeScope === "local-empty"
+ ? "bg-white text-stone-900 shadow-sm"
+ : "text-stone-600 hover:bg-white/70"
+ }`}
           >
             本地库
           </button>

@@ -240,7 +240,7 @@ export function InputCard({
                   type="button"
                   onClick={() => onRemoveAttachment(a.id)}
                   aria-label={tt("移除")}
-                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
                 >
                   ×
                 </button>
@@ -283,11 +283,11 @@ export function InputCard({
               ? setNativeSheetOpen((v) => !v)
               : fileRef.current?.click()
           }
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-[13px] font-medium transition-colors ${
-            dragging
-              ? "border-stone-400 bg-stone-50 text-stone-700"
-              : "border-stone-300 text-stone-600 hover:border-stone-400 hover:bg-stone-50"
-          }`}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ dragging
+ ? "border-stone-400 bg-stone-50 text-stone-700"
+ : "border-stone-300 text-stone-600 hover:border-stone-400 hover:bg-stone-50"
+ }`}
         >
           <ImageGlyph />
           {uploadLabel}
@@ -310,7 +310,7 @@ export function InputCard({
           type="button"
           onClick={() => !disableSubmit && onSubmit()}
           disabled={disableSubmit}
-          className="w-full rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: accent }}
         >
           {loading ? <span className="v-spinner" /> : submitLabel}

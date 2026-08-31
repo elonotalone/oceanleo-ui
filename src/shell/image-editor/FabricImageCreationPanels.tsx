@@ -75,7 +75,7 @@ function Choice({
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-24 flex-col items-center justify-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,rgba(0,0,0,.035))] hover:shadow-sm"
+      className="group flex min-h-24 flex-col items-center justify-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,rgba(0,0,0,.035))] hover:shadow-sm"
     >
       <span className="grid h-12 w-16 place-items-center text-[var(--fg,#292524)]">
         {preview}
@@ -133,7 +133,7 @@ export function FabricImageBrushPanel({
                 type="button"
                 disabled={tool === "erase" && eraseBlocked}
                 onClick={() => editor.setActiveTool(tool)}
-                className="rounded-xl border px-3 py-2.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-xl border px-3 py-2.5 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-40"
                 title={
                   tool === "erase" && eraseBlocked
                     ? tt("请先解锁图层，再使用橡皮擦")
@@ -272,7 +272,7 @@ export function FabricImageNotePanel({
               key={color}
               type="button"
               onClick={() => editor.addStickyNote(color)}
-              className="aspect-square rounded-xl border border-[var(--awb-border)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              className="aspect-square rounded-xl border border-[var(--awb-border)] shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-md"
               style={{ background: color }}
               aria-label={tt("插入便签")}
             />
@@ -308,7 +308,7 @@ export function FabricImageTextPanel({
               key={preset}
               type="button"
               onClick={() => editor.addText(preset)}
-              className={`w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4 py-3 text-left text-[var(--fg,#292524)] transition hover:bg-[var(--surface-hover,rgba(0,0,0,.035))] ${sampleClass}`}
+              className={`w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4 py-3 text-left text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.035))] ${sampleClass}`}
             >
               {tt(label)}
             </button>
@@ -501,7 +501,7 @@ export function FabricImageTablePanel({
                 onMouseEnter={() => setHovered({ rows: row, columns: column })}
                 onFocus={() => setHovered({ rows: row, columns: column })}
                 onClick={() => editor.addTable(row, column)}
-                className="h-7 w-7 rounded-[4px] border transition"
+                className="h-7 w-7 rounded-[4px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={{
                   borderColor: active
                     ? "var(--awb-accent,#6d5dfc)"
@@ -549,7 +549,7 @@ export function FabricImageExportPanel({
                 key={value}
                 type="button"
                 onClick={() => editor.setExportFormat(value)}
-                className="rounded-xl border px-2 py-2.5 text-[11px] font-semibold transition"
+                className="rounded-xl border px-2 py-2.5 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={
                   active
                     ? {
@@ -593,7 +593,7 @@ export function FabricImageExportPanel({
               key={scale}
               type="button"
               onClick={() => editor.setExportScale(scale)}
-              className="rounded-xl border px-1 py-2 text-[11px] transition"
+              className="rounded-xl border px-1 py-2 text-[11px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
               style={
                 editor.exportScale === scale
                   ? {
@@ -1075,7 +1075,7 @@ export function FabricImageAiPanel({
             <button
               type="button"
               onClick={() => void panel.applyAsNewLayer()}
-              className="rounded-xl bg-[var(--awb-accent,#6d5dfc)] px-3 py-2.5 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] transition"
+              className="rounded-xl bg-[var(--awb-accent,#6d5dfc)] px-3 py-2.5 text-[11px] font-semibold text-[var(--awb-on-accent,#fff)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
               style={{
                 transitionDuration: "var(--leo-dur-2)",
                 transitionTimingFunction: "var(--leo-ease-standard)",
@@ -1086,7 +1086,7 @@ export function FabricImageAiPanel({
             <button
               type="button"
               onClick={panel.discard}
-              className="rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[11px] font-semibold transition"
+              className="rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
               style={{
                 transitionDuration: "var(--leo-dur-2)",
                 transitionTimingFunction: "var(--leo-ease-standard)",
@@ -1108,7 +1108,7 @@ export function FabricImageAiPanel({
                     title={tt(entry.label)}
                     aria-label={tt(entry.label)}
                     onClick={() => panel.swapBackgroundColor(entry.color)}
-                    className="aspect-square rounded-lg border border-[var(--border,#e7e5e4)] transition hover:-translate-y-0.5"
+                    className="aspect-square rounded-lg border border-[var(--border,#e7e5e4)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5"
                     style={{
                       background: entry.color,
                       transitionDuration: "var(--leo-dur-2)",
@@ -1155,7 +1155,7 @@ export function FabricImageAiPanel({
         <Panel title={tt(PHASE_LABELS[panel.phase])}>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover,rgba(0,0,0,.06))]">
             <div
-              className="h-full rounded-full bg-[var(--awb-accent,#6d5dfc)] transition-[width]"
+              className="h-full rounded-full bg-[var(--awb-accent,#6d5dfc)] transition-[width] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)]"
               style={{
                 width: `${Math.round(panel.progress * 100)}%`,
                 transitionDuration: "var(--leo-dur-3)",
@@ -1191,7 +1191,7 @@ export function FabricImageAiPanel({
                       key={value}
                       type="button"
                       onClick={() => setScale(value)}
-                      className="rounded-xl border px-3 py-2 text-[11px] font-semibold transition"
+                      className="rounded-xl border px-3 py-2 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                       style={{
                         transitionDuration: "var(--leo-dur-2)",
                         transitionTimingFunction: "var(--leo-ease-standard)",
@@ -1226,7 +1226,7 @@ export function FabricImageAiPanel({
                     key={entry.value}
                     type="button"
                     onClick={() => setDirection(entry.value)}
-                    className="rounded-lg border px-2 py-1.5 text-[10px] transition"
+                    className="rounded-lg border px-2 py-1.5 text-[10px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                     style={{
                       transitionDuration: "var(--leo-dur-2)",
                       transitionTimingFunction: "var(--leo-ease-standard)",
@@ -1251,7 +1251,7 @@ export function FabricImageAiPanel({
                     key={entry.value}
                     type="button"
                     onClick={() => setMargin(entry.value)}
-                    className="rounded-lg border px-2 py-1.5 text-[10px] transition"
+                    className="rounded-lg border px-2 py-1.5 text-[10px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                     style={{
                       transitionDuration: "var(--leo-dur-2)",
                       transitionTimingFunction: "var(--leo-ease-standard)",
@@ -1273,7 +1273,7 @@ export function FabricImageAiPanel({
               type="button"
               disabled={!view.enabled || busy || blocked}
               onClick={() => void panel.run(view, options)}
-              className="w-full rounded-xl px-3 py-2.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45"
+              className="w-full rounded-xl px-3 py-2.5 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-45"
               style={{
                 transitionDuration: "var(--leo-dur-2)",
                 transitionTimingFunction: "var(--leo-ease-standard)",

@@ -384,9 +384,9 @@ export function LeoComposer({
       onDragLeave={dragEnabled ? onDragLeave : undefined}
       onDrop={dragEnabled ? onDrop : undefined}
       onPaste={dragEnabled ? onPaste : undefined}
-      className={`relative rounded-2xl border bg-white shadow-sm transition-all duration-200 focus-within:border-neutral-300 focus-within:shadow-md ${
-        dragOver ? "border-indigo-400 ring-2 ring-indigo-200" : "border-neutral-200"
-      } ${className}`}
+      className={`relative rounded-2xl border bg-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] focus-within:border-neutral-300 focus-within:shadow-md ${
+ dragOver ? "border-indigo-400 ring-2 ring-indigo-200" : "border-neutral-200"
+ } ${className}`}
     >
       {/* 拖拽落区提示（覆盖整张卡片）——传了 onAttachFiles 才可能出现。 */}
       {dragOver && (
@@ -452,7 +452,7 @@ export function LeoComposer({
                   type="button"
                   onClick={() => onRemoveAttachment(a.id)}
                   aria-label={tt("移除")}
-                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
                 >
                   ×
                 </button>
@@ -516,7 +516,7 @@ export function LeoComposer({
             <button
               type="button"
               onClick={handleLeoSuggest}
-              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-200 hover:bg-neutral-100 active:scale-95"
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95"
               title={tt("让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）")}
             >
               <Sparkle />
@@ -534,7 +534,7 @@ export function LeoComposer({
               disabled={disabled}
               aria-label={tt("会议录音纪要")}
               title={tt("会议录音纪要")}
-              className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-150 hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
             >
               <MeetingGlyph />
             </button>
@@ -550,7 +550,7 @@ export function LeoComposer({
                 onClick={onStop}
                 aria-label={tt("停止")}
                 title={tt("停止")}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-200 hover:scale-105 hover:bg-neutral-800 active:scale-95"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:scale-105 hover:bg-neutral-800 active:scale-95"
               >
                 <StopGlyph />
               </button>
@@ -560,11 +560,11 @@ export function LeoComposer({
                 onClick={() => canSend && submitPrompt()}
                 disabled={!canSend}
                 aria-label={tt("发送")}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-200 ${
-                  canSend
-                    ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
-                    : "cursor-not-allowed bg-neutral-300"
-                }`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
+ canSend
+ ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
+ : "cursor-not-allowed bg-neutral-300"
+ }`}
               >
                 {loading ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
               </button>
@@ -636,11 +636,11 @@ function AttachMenu({
         onClick={() => setOpen((v) => !v)}
         aria-label={tt("添加附件")}
         aria-expanded={open}
-        className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-150 active:scale-95 ${
-          open
-            ? "border-neutral-300 bg-neutral-100 text-neutral-800"
-            : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
-        }`}
+        className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
+ open
+ ? "border-neutral-300 bg-neutral-100 text-neutral-800"
+ : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
+ }`}
       >
         <PlusGlyph />
       </button>
@@ -704,7 +704,7 @@ function AttachMenu({
                           setOpen(false);
                           setRecentOpen(false);
                         }}
-                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-neutral-700 transition hover:bg-neutral-100"
+                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100"
                       >
                         <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-100">
                           {f.previewUrl ? (
@@ -757,7 +757,7 @@ function MenuRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-neutral-700 transition hover:bg-neutral-100"
+      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100"
     >
       <span className="shrink-0 text-neutral-500">{icon}</span>
       <span className="flex-1">{label}</span>
@@ -843,11 +843,11 @@ function VoiceButton({
       aria-label={listening ? tt("停止语音输入") : tt("语音输入")}
       aria-pressed={listening}
       title={tt("语音输入")}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-150 active:scale-95 ${
-        listening
-          ? "bg-rose-100 text-rose-600"
-          : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-      }`}
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
+ listening
+ ? "bg-rose-100 text-rose-600"
+ : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+ }`}
     >
       {listening && (
         <span className="absolute h-8 w-8 animate-ping rounded-full bg-rose-300/40" />
@@ -1073,7 +1073,7 @@ function MeetingRecorderCard({
               type="button"
               onClick={discard}
               disabled={saving}
-              className="flex items-center gap-1.5 rounded-full border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-95 disabled:opacity-50"
             >
               <TrashGlyph />
               {tt("放弃")}
@@ -1082,7 +1082,7 @@ function MeetingRecorderCard({
               <button
                 type="button"
                 onClick={stopAndEmit}
-                className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-95"
+                className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-95"
               >
                 <StopGlyph />
                 {tt("停止")}
@@ -1092,7 +1092,7 @@ function MeetingRecorderCard({
                 type="button"
                 onClick={start}
                 disabled={saving}
-                className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-95 disabled:opacity-50"
               >
                 {saving ? <span className="v-spinner text-[12px]" /> : <RecordGlyph />}
                 {saving ? tt("处理中") : tt("开始")}
