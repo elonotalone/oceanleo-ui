@@ -12,6 +12,10 @@
  *    判据只能退化成源码文本断言。纯 TS 放这儿，测试可以**真的算一遍**。
  */
 
+// `import type` 而不是 `import`：`useUI.ts` 拖着 next-intl 与 `.tsx` 词典树，
+// 真导进来这个文件就在 node 里加载不动了，上面第 2 条理由（判据能真算一遍）当场作废。
+// 类型在编译/strip-types 时被整句擦掉，运行时一个字节都不引入。
+import type { UITranslate } from "../../i18n/ui/useUI";
 import {
   buildGridDependencyGraph,
   evaluateGridCellInWorkbook,
@@ -91,13 +95,36 @@ export function recalcGridSheets(
 }
 
 /**
+ * 不传 `translate` 时的兜底：只把插值位填上，不查词典。
+ *
+ * 判据（`grid-recalc-action.test.mjs`）就是这么调的——它要的是「算得对不对」，
+ * 不是「译得对不对」。但**兜底也必须填插值位**：否则那句回执会把
+ * `{cells}` 四个字原样印在屏幕上，比没有译文更难看。
+ */
+const interpolateOnly: UITranslate = (value, vars) =>
+  value.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    vars && name in vars ? String(vars[name]) : whole,
+  );
+
+/**
  * 说清楚刚才发生了什么。空计划**不是失败**，也不该假装成功：
  * 一份没有 `TODAY()`/`NOW()`/`RAND()` 的表格重算多少次结果都一样，
  * 告诉用户这件事比默默弹一句「已重新计算」诚实。
+ *
+ * ⚠️ `translate` 的类型是 `UITranslate`（带 `vars`），两个理由都硬：
+ *   1. 那句回执带 `{cells}`／`{formulas}` 两个插值位。**它原来是五个中文片段拼的**
+ *      （`translate("已按新的计算时刻重算 ") + n + translate(" 个格子（全表共 ")`…），
+ *      片段各自翻译在任何语序不同的语言里都拼不出通顺句子，所以合成了一整句。
+ *   2. `i18n-tt-key-coverage` 那道闸认翻译函数的办法是**看形参类型里有没有
+ *      `UITranslate`**（见该判据的 `translatorNames`）。原来这里写
+ *      `(value: string) => string`，于是这三句中文**对那道闸完全不可见**——
+ *      缺 16 语译文缺了很久，一条判据都看不见（`W32` 报过）。改成 `UITranslate`
+ *      之后它们进了扫描面：以后少一个语种当场红。译文在
+ *      `src/i18n/ui/messages/workbench-office-copy.ts`。
  */
 export function gridRecalcSummary(
   outcome: GridRecalcOutcome,
-  translate: (value: string) => string = (value) => value,
+  translate: UITranslate = interpolateOnly,
 ): string {
   if (outcome.patch.size === 0) {
     return outcome.formulaCells === 0
@@ -106,11 +133,8 @@ export function gridRecalcSummary(
           "这些公式的结果不随时间变（没有 TODAY / NOW / RAND 一类），重算后与原来相同。",
         );
   }
-  return [
-    translate("已按新的计算时刻重算 "),
-    String(outcome.patch.size),
-    translate(" 个格子（全表共 "),
-    String(outcome.formulaCells),
-    translate(" 条公式）。"),
-  ].join("");
+  return translate("已按新的计算时刻重算 {cells} 个格子（全表共 {formulas} 条公式）。", {
+    cells: outcome.patch.size,
+    formulas: outcome.formulaCells,
+  });
 }

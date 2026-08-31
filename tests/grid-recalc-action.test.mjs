@@ -90,9 +90,23 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 globalThis.__gridProject = null;
 globalThis.__gridSaved = [];
 
+// 这个替身要跟 `useUI()` 的真实契约一样：未命中回退中文原文，**并且把插值位填上**。
+//
+// 原来它是 `(value) => value`，只收一个入参。`UITranslate` 的第二个入参是可选的，
+// 所以少收一个在 TS 里**是合法赋值**，编译器一声不响；而 `gridRecalcSummary` 那句
+// 回执带 `{cells}`／`{formulas}`。于是这个替身比产品更宽松：真的把 `{cells}`
+// 四个字印到用户屏幕上，这份判据也照样绿。补上之后
+// 「重算 \d+ 个格子」那条断言才真的在验一个数字。
 const uiStubUrl = dataModule(`
   export function useUI() {
-    return (value) => value;
+    return (value, vars) => {
+      if (!vars) return value;
+      let out = value;
+      for (const [name, replacement] of Object.entries(vars)) {
+        out = out.split("{" + name + "}").join(String(replacement));
+      }
+      return out;
+    };
   }
 `);
 

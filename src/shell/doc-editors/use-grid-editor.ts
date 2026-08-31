@@ -617,8 +617,17 @@ export function useGridEditor(
   useEffect(() => {
     translateRef.current = tt;
   }, [tt]);
+  // 第二个入参必须转发：`gridRecalcSummary` 那句回执带 `{cells}`／`{formulas}`，
+  // 丢掉 `vars` 的话屏幕上会原样印出 `{cells}` 四个字。
+  //
+  // 这里**故意不把它标注成 `UITranslate`**：`i18n-tt-key-coverage` 认翻译函数是
+  // 按「类型文本里有没有 UITranslate」在**整份文件**里收名字的，一标注，本文件里
+  // 另外两处同名 `translate`（`gridReplaceSummary` 的片段拼句、源文件读失败那两句）
+  // 会一起被收进扫描面，而它们今天都还没有译文——那等于我把闸弄红。
+  // 那几条是既有欠账，见 `W37-request.md`，不在这一笔里顺手改。
   const translate = useCallback(
-    (value: string) => translateRef.current(value),
+    (value: string, vars?: Record<string, string | number>) =>
+      translateRef.current(value, vars),
     [],
   );
   const loadKey = useMemo(() => gridSourceLoadKey(item), [item]);

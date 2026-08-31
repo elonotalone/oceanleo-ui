@@ -526,9 +526,14 @@ export function InlineAdvancedWorkbenchShell({
       {askingLeave && (
         // 文案逐字沿用原生弹窗那一句（已有 16 语覆盖）：它已经说清了后果——
         // 改动留在编辑器里、只是没同步到云端，所以这一步不是 danger。
-        // 更精确的确认键「离开」眼下没有译文覆盖，记在 W05-request.md 的欠账清单里。
+        //
+        // 确认键从通用的「确认」换成「离开」（`W05-request.md` 的 A-11 D-1）：
+        // 16 语译文在 `src/i18n/ui/messages/workbench-office-copy.ts`。
+        // 传中文原文而不是 `tt("离开")`——`ConfirmDialog` 内部对 `confirmLabel`
+        // 自己过一次 `tt()`，外面再包一层就成了拿译文去查词典。
         <ConfirmDialog
           title={tt("修改仍安全保留在当前编辑器，但尚未同步到云端。仍要离开吗？")}
+          confirmLabel="离开"
           onConfirm={() => answerLeave(true)}
           onCancel={() => answerLeave(false)}
         />
