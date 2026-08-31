@@ -67,7 +67,33 @@ function buttonSizePx() {
   return table;
 }
 
+/**
+ * 原语不传 `size` 时用哪一档。判据必须知道这个默认值，否则「默认就是 44」这条
+ * 承诺在本锁里是空的：把 `BUTTON_DEFAULT_SIZE` 改成 `sm` 会让全仓每一处
+ * `<Button>` 悄悄缩到 36，而一处 `size=` 都没多写，纯看 `size` prop 的判据全绿。
+ */
+function buttonDefaultSize() {
+  const file = join(REPO, "src/ui/Button.tsx");
+  const sourceFile = ts.createSourceFile(
+    file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX,
+  );
+  let value = null;
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+      node.name.text === "BUTTON_DEFAULT_SIZE" && node.initializer &&
+      ts.isStringLiteral(node.initializer)
+    ) {
+      value = node.initializer.text;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return value;
+}
+
 const BUTTON_SIZE_PX = buttonSizePx();
+const BUTTON_DEFAULT_SIZE = buttonDefaultSize();
 
 // ---------------------------------------------------------------- 判据词汇
 
@@ -222,16 +248,20 @@ function scanSource(absolutePath) {
     const heightOk = minHeight !== null && minHeight >= MIN_HIT_TARGET_PX;
 
     if (PRIMITIVES.has(tag)) {
-      // 原语用法：`size` prop 说了算；`className` 里再写死一个小 `h-*` 也算破坏。
-      const declared = sizeProp && BUTTON_SIZE_PX[sizeProp] !== undefined
-        ? BUTTON_SIZE_PX[sizeProp]
+      // 原语用法：`size` prop 说了算，没写就是默认档；`className` 里再写死一个
+      // 小 `h-*` 也算破坏。默认档必须参与判定——否则改一行 BUTTON_DEFAULT_SIZE
+      // 就能让全仓每一处 <Button> 悄悄缩水，而本锁一片绿。
+      const effectiveSize = sizeProp ?? BUTTON_DEFAULT_SIZE;
+      const declared = effectiveSize && BUTTON_SIZE_PX[effectiveSize] !== undefined
+        ? BUTTON_SIZE_PX[effectiveSize]
         : null;
       const effective = height !== null && (declared === null || height < declared) ? height : declared;
       if (effective !== null && effective < MIN_HIT_TARGET_PX && !heightOk) {
-        sites.push({
-          file, line, tag, px: effective, kind: "primitive",
-          detail: sizeProp ? `size="${sizeProp}"` : `className h-${height / 4}`,
-        });
+        let detail;
+        if (sizeProp) detail = `size="${sizeProp}"`;
+        else if (height !== null && height === effective) detail = `className h=${height}px`;
+        else detail = `默认档 ${BUTTON_DEFAULT_SIZE}`;
+        sites.push({ file, line, tag, px: effective, kind: "primitive", detail });
       }
       return;
     }
@@ -381,6 +411,11 @@ test("原语的像素表读得到，且 lg 就是 44", () => {
   assert.equal(
     BUTTON_SIZE_PX.lg, MIN_HIT_TARGET_PX,
     "原语的 lg 与 EDIT_BAR_CONTROL_SIZE_PX 脱钩了：两套纪律又要开始漂移",
+  );
+  assert.equal(
+    BUTTON_DEFAULT_SIZE, "lg",
+    "默认档不再是 lg。这不只是原语自己的事：全仓每一处不写 size 的 <Button> 会一起缩水，"
+      + "而调用点一个字都没改。「让对的事成为默认值」就是靠这一行立住的。",
   );
 });
 
