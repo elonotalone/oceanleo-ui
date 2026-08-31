@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act, useRef, useState } from "react";
+import ts from "typescript";
 
 import { compileModule } from "./helpers/module-bench.mjs";
 
@@ -653,6 +654,19 @@ test("Modal 退场等过渡跑完才交还父级卸载，期间面板仍在 DOM 
     "../i18n/ui/useUI": `data:text/javascript;base64,${Buffer.from(
       "export const useUI = () => (zh) => zh;",
     ).toString("base64")}`,
+    // `src/ui/index.tsx` 与 `src/ui/Button.tsx` 互相引用（`Button.tsx:34` 取
+    // `ButtonSpinner`，本文件的 re-export 口反过来取 `Button`），而编译台的
+    // `data:` 模块表达不了环。替身把环剪断，且 Modal 这条链一个 Button 都不碰。
+    // 环本身是运行期安全的（`ButtonSpinner` 是提升过的函数声明，只在 render 里用），
+    // 剪断它要改 `Button.tsx` 的取数方向，那是 `W04` 的独占面 → 见 W03-request.md。
+    "./Button": `data:text/javascript;base64,${Buffer.from(
+      [
+        "export const BUTTON_DEFAULT_SIZE = 'lg';",
+        "export const BUTTON_SIZE_PX = { sm: 36, md: 40, lg: 44 };",
+        "export const Button = () => null;",
+        "export const IconButton = () => null;",
+      ].join("\n"),
+    ).toString("base64")}`,
   });
   const { Modal } = await import(modalUrl);
 
@@ -733,13 +747,79 @@ test("Modal 退场等过渡跑完才交还父级卸载，期间面板仍在 DOM 
   }
 });
 
-test("Modal 不再用与样式表脱钩的固定 setTimeout 关闭", async () => {
-  const source = await readFile(
-    new URL("../src/ui/index.tsx", import.meta.url),
-    "utf8",
+/**
+ * 取一份源码里 `setTimeout(…)` 的**调用**，以及真正出现过的标识符。
+ * **只读代码，不读注释**：这条判据要锁的反例就是 `setTimeout(onClose, 140)`，
+ * 而说清「原先错在哪」的唯一办法就是把它写进注释。拿正则扫全文，
+ * 判据会被自己的说明文字判红——这份判据第一次跑就是这么红的。
+ */
+function scanForTimers(text, path = "sample.tsx") {
+  const sourceFile = ts.createSourceFile(
+    path,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
   );
-  // 原文是 `setTimeout(onClose, 140)`：那个 140 与 CSS 各写各的。
-  assert.doesNotMatch(source, /setTimeout\(\s*onClose/);
-  assert.doesNotMatch(source, /setTimeout\([^)]*,\s*\d+\s*\)/);
-  assert.match(source, /runAfterOverlayExit/);
+  const timerCalls = [];
+  const identifiers = new Set();
+  const visit = (node) => {
+    if (ts.isIdentifier(node)) identifiers.add(node.text);
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "setTimeout"
+    ) {
+      const [handler, delay] = node.arguments;
+      timerCalls.push({
+        handlerText: handler ? handler.getText(sourceFile) : "",
+        literalDelay:
+          delay && ts.isNumericLiteral(delay) ? Number(delay.text) : null,
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return { timerCalls, identifiers };
+}
+
+test("Modal 不再用与样式表脱钩的固定 setTimeout 关闭", async () => {
+  const { timerCalls, identifiers } = scanForTimers(
+    await readFile(new URL("../src/ui/index.tsx", import.meta.url), "utf8"),
+    "src/ui/index.tsx",
+  );
+
+  // 原文是 `setTimeout(onClose, 140)`：那个 140 与样式表里的时长各写各的，
+  // 一边改了另一边不知道。两条各锁一半——定时器不许碰关闭回调，
+  // 也不许有任何裸毫秒当时长（红线 9）。
+  assert.deepEqual(
+    timerCalls.filter(({ handlerText }) => /onClose/.test(handlerText)),
+    [],
+  );
+  assert.deepEqual(
+    timerCalls.filter(({ literalDelay }) => literalDelay !== null),
+    [],
+  );
+  assert.ok(identifiers.has("runAfterOverlayExit"), "退场必须交给共享原语收尾");
+});
+
+test("反面用例：上面那条闸读的是代码不是注释，写回去当场红", () => {
+  const commentOnly = scanForTimers(
+    [
+      "// 原先是 setTimeout(onClose, 140)，与样式表脱钩。",
+      "/* 也不许写成 setTimeout(() => onClose(), 280) */",
+      "const runAfterOverlayExit = () => {};",
+      "export const ok = runAfterOverlayExit;",
+    ].join("\n"),
+  );
+  assert.deepEqual(commentOnly.timerCalls, []);
+  assert.ok(commentOnly.identifiers.has("runAfterOverlayExit"));
+
+  // 同一段真写成代码时两条都必须拦下——证明上面那条绿不是因为闸失灵。
+  const realCode = scanForTimers(
+    "function f(onClose){ setTimeout(onClose, 140); }",
+  );
+  assert.equal(realCode.timerCalls.length, 1);
+  assert.match(realCode.timerCalls[0].handlerText, /onClose/);
+  assert.equal(realCode.timerCalls[0].literalDelay, 140);
 });
