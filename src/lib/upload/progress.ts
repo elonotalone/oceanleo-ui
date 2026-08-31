@@ -333,6 +333,10 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
     if (options.onProgress) {
       const onProgress = options.onProgress;
       request.upload.onprogress = (event: ProgressEvent) => {
+        // 收口之后仍可能再来一发 progress：错误路径上 `onerror` 与 upload 事件流
+        // 之间没有顺序保证，实测能拿到「先 onerror、后一个 loaded=total」。
+        // 放它过去，进度条就会在错误提示旁边一路爬到 100%——比没有进度更糟。
+        if (finished) return;
         onProgress(event.loaded, event.lengthComputable ? event.total : 0);
       };
     }
