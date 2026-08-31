@@ -379,7 +379,9 @@ export function DeckRoute({
         actions: [
           {
             id: "deck-present",
-            label: presentation ? "退出放映" : "放映",
+            // 两个字面量都挑成 DeckPresenterView 里已经在用的 tt key
+            // （`:933` 的「放映」、`:771` 的「结束放映」），不新造待翻译串。
+            label: presentation ? "结束放映" : "放映",
             icon: "pages" as const,
             variant: presentation ? ("primary" as const) : undefined,
             disabled: editor.loading || !editor.deck.slides.length,
