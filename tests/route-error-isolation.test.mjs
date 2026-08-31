@@ -27,6 +27,7 @@
 // ============================================================================
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -406,4 +407,27 @@ test("同一次崩溃：事件里没有 error.message，窗格内给用户看的
     muted.restore();
     await mounted.unmount();
   }
+});
+
+test("接线本身也要锁：工作台里内层 route 边界真的在，不能只靠本文件的 Harness", async () => {
+  // 上面五条判的是边界组件**自己**的行为，挂的是本文件手搭的 Harness。
+  // Harness 与真实接线是两件事：把 `AdvancedContentWorkbench.tsx` 里的内层边界
+  // 整个删掉，上面那些照样全绿（W09 收尾时实测过，4/4 绿）。
+  // 也就是说，没有这一条，「一条崩不带走外壳」这句话在真实渲染树上是没有判据的。
+  const source = await readFile(
+    new URL("../src/shell/AdvancedContentWorkbench.tsx", import.meta.url),
+    "utf8",
+  );
+
+  // 外层（认 `contained`）里面套着内层，两个开标签。`</WorkbenchErrorBoundary>`
+  // 带斜杠，不会被误当成开标签，所以内层一旦删掉这里就匹配不上。
+  const nested =
+    /<WorkbenchErrorBoundary[^>]*contained=\{editorHost\.embedded\}[\s\S]{0,400}?<WorkbenchErrorBoundary([\s\S]{0,300}?)>/;
+  const match = nested.exec(source);
+  assert.ok(match, "两级边界的嵌套结构没了：一条路由崩溃会重新带走整个工作台");
+
+  const inner = match[1];
+  assert.match(inner, /scope="route"/, "内层不是 route 作用域 ⇒ 失败态会退回全视口遮罩");
+  assert.match(inner, /key=\{routeKey\}/, "内层的 key 没绑路由标识 ⇒ 切到别的素材时错误态会残留");
+  assert.match(inner, /routeId=\{route\.type\}/, "内层没告诉遥测崩的是哪条路由");
 });
