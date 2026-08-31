@@ -15,6 +15,22 @@
 
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
+// W08：上传进度 / 续传 / 同一性校验的原语。只有 `uploadFile` 用它们。
+import {
+  createProgressTracker,
+  publishUploadProgress,
+  xhrUpload,
+  xhrUploadAvailable,
+  type UploadProgressSnapshot,
+} from "./upload/progress";
+import {
+  deleteResumeTicket,
+  deriveUploadIdentity,
+  identityIsTrustworthy,
+  readResumeTicket,
+  writeResumeTicket,
+  type UploadResumeTicket,
+} from "./upload/chunked";
 
 export type MediaType =
   | "image"
@@ -382,16 +398,95 @@ export function listFiles(
   );
 }
 
-/** 上传到文件库：小文件 multipart，大文件 signed direct upload。跨站可见。 */
+/**
+ * `uploadFile` 的进度出口。把三件事收在一处：钉单调、回调调用方、发布到总线。
+ *
+ * 为什么要有总线（不只是回调）：三个消费点里有两个按契约不负责上传
+ * （`InputCard` / `LeoComposer` 的文件头写着「本组件不负责上传」），
+ * 业务层拿走 File 自己传，组件手里只有 File 对象。总线按 File 身份发布，
+ * 组件订阅自己刚交出去的那几个 File 就能看见进度，
+ * **不需要 31 个站改一行调用，也不需要给它们加「请把进度回传给我」的 prop。**
+ */
+function createUploadProgressReporter(
+  file: File,
+  opts: { onProgress?: (loaded: number, total: number) => void },
+) {
+  const tracker = createProgressTracker(file.size);
+  const emit = (snapshot: UploadProgressSnapshot) => {
+    publishUploadProgress(file, snapshot);
+    opts.onProgress?.(snapshot.loaded, snapshot.total);
+  };
+  return {
+    report(loaded: number) {
+      // 结束之后不再报数。P5 点名「失败时不再回调」，`finish`/`fail` 之后
+      // XHR 仍可能吐出一个迟到的 progress 事件，那一个必须被吃掉。
+      if (tracker.settled) return;
+      emit(tracker.report(loaded));
+    },
+    /** 传输段已完成（还没 finalize）。 */
+    finish() {
+      if (tracker.settled) return;
+      emit(tracker.finish());
+    },
+    fail() {
+      if (tracker.settled) return;
+      emit(tracker.fail());
+    },
+    /**
+     * 这一段不用传（命中续传 / 服务端说已完成）：直接把读数推到 100%。
+     * 不这样做的话，UI 会停在 0% 然后突然出现结果，用户以为卡住了。
+     */
+    skipToComplete() {
+      if (tracker.settled) return;
+      emit(tracker.finish());
+    },
+  };
+}
+
+type UploadProgressReporter = ReturnType<typeof createUploadProgressReporter>;
+
+export interface UploadFileOptions {
+  siteId?: string;
+  title?: string;
+  registerAsset?: boolean;
+  /**
+   * 显式幂等键。**不传时 `uploadFile` 自己推一个内容绑定的稳定键**
+   * （`upload/chunked.ts` 的 `deriveUploadIdentity`），那是续传成立的前提——
+   * 传空串时服务端会给每次上传发一个随机对象键，`bucket.exists()` 永远 miss。
+   * 传了就用你的，不覆盖调用方的判断。
+   */
+  idempotencyKey?: string;
+  /**
+   * 上传进度。`total` 为 0 表示这一段的长度不可知。
+   * 两条路径（网关 multipart / 直传 PUT）都会回调，形状相同。
+   */
+  onProgress?: (loaded: number, total: number) => void;
+  /** 取消上传。取消后返回 `ok:false` + `status:0`，不抛。 */
+  signal?: AbortSignal;
+  /**
+   * 关掉续传（默认开）。
+   * 只影响直传路：不再读写断点凭据，也不再推稳定幂等键。
+   */
+  disableResume?: boolean;
+}
+
+/**
+ * 上传到文件库：小文件 multipart，大文件 signed direct upload。跨站可见。
+ *
+ * W08 在这里加了三件，**两条路径的既有分支结构一个字没动**：
+ *   1. 进度：两条路都改走 `xhrUpload`（选型理由见 `upload/progress.ts` 文件头，
+ *      一句话是 fetch 的上传进度要 request streaming，Safari/Firefox 上会直接抛）。
+ *      同时按 File 对象身份发布到进度总线，好让不负责上传的组件也看得见。
+ *   2. 续传（整文件级，非分片）：直传路默认推一个内容绑定的稳定幂等键并把断点
+ *      凭据落进既有 IndexedDB。**网关不支持分片**，这是实测结论，
+ *      详见 `upload/chunked.ts` 文件头与 `signals/W08-request.md`。
+ *   3. 取消：`signal` 透到 XHR。
+ */
 export async function uploadFile(
   file: File,
-  opts: {
-    siteId?: string;
-    title?: string;
-    registerAsset?: boolean;
-    idempotencyKey?: string;
-  } = {},
+  opts: UploadFileOptions = {},
 ): Promise<Result<{ ok: boolean; file: FileItem }>> {
+  const progress = createUploadProgressReporter(file, opts);
   // FastAPI's small multipart path intentionally caps at 20 MB and buffers
   // bytes in the gateway. Large editor media goes browser → signed Supabase
   // URL directly, then the gateway verifies size/ownership and registers it.
@@ -421,14 +516,62 @@ export async function uploadFile(
     };
     const contentType =
       file.type || inferredType[extension] || "application/octet-stream";
+    const filename = file.name || "file";
+    const siteId = opts.siteId || "home";
+    const registerAsset = opts.registerAsset !== false;
+
+    // ── 续传凭据 ────────────────────────────────────────────────────────────
+    // 调用方给了自己的幂等键就用它（`doc-io.ts` 那一族已经在传内容绑定的键）。
+    // 没给才自己推：**这一步是续传成立的唯一前提**，因为服务端在
+    // `idempotency_key` 为空时给的是随机对象键（`media_proxy_router.py:359-365`），
+    // 随机键意味着 `bucket.exists()` 永远 miss，也就永远没有断点可续。
+    const resumeEnabled = opts.disableResume !== true;
+    let idempotencyKey = opts.idempotencyKey || "";
+    let resumeKey = "";
+    // 身份只算一次：`headDigest` 要读满 1MB 并做一次 SHA-256，
+    // 在 200MB 文件上重复算三遍是白花的钱。
+    let identity: Awaited<ReturnType<typeof deriveUploadIdentity>>["identity"] | null =
+      null;
+    if (resumeEnabled) {
+      const derived = await deriveUploadIdentity(file, {
+        filename,
+        contentType,
+        siteId,
+        registerAsset,
+      });
+      // 算不出内容指纹的环境（非安全上下文下 `crypto.subtle` 缺席）不参与续传：
+      // 没验过内容就认断点，等于可能把用户库里的旧文件当成这一次的结果。
+      if (identityIsTrustworthy(derived.identity)) {
+        if (!idempotencyKey) idempotencyKey = derived.idempotencyKey;
+        resumeKey = derived.idempotencyKey;
+        identity = derived.identity;
+        // 读凭据时会**再用当前文件的身份验一次**；换了个同名不同内容的文件
+        // 会在这里被判为不同一，旧凭据当场删掉、从头传（P5 的安全性判据）。
+        const existing = await readResumeTicket(resumeKey, derived.identity);
+        if (!existing) {
+          await writeResumeTicket({
+            idempotencyKey: derived.idempotencyKey,
+            path: "",
+            identity: derived.identity,
+            filename,
+            siteId,
+            bytes: file.size,
+            contentType,
+            uploaded: false,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+    }
+
     const common = {
-      filename: file.name || "file",
+      filename,
       content_type: contentType,
       bytes: file.size,
-      site_id: opts.siteId || "home",
-      title: opts.title || file.name || "file",
-      register_asset: opts.registerAsset !== false,
-      idempotency_key: opts.idempotencyKey || "",
+      site_id: siteId,
+      title: opts.title || filename,
+      register_asset: registerAsset,
+      idempotency_key: idempotencyKey,
     };
     const initialized = await authed<{
       ok: boolean;
@@ -446,6 +589,9 @@ export async function uploadFile(
       initialized.data?.already_finalized &&
       initialized.data.file
     ) {
+      // 上一次整条链都成了，只是前端没收到响应。一个字节都不用重传。
+      progress.skipToComplete();
+      if (resumeKey) await deleteResumeTicket(resumeKey);
       return {
         ok: true,
         data: { ok: true, file: initialized.data.file },
@@ -456,39 +602,126 @@ export async function uploadFile(
       (!initialized.data?.signed_url && !initialized.data?.upload_complete) ||
       !initialized.data.path
     ) {
+      progress.fail();
       return {
         ok: false,
         error: initialized.error || "创建大文件上传通道失败",
         status: initialized.status,
       };
     }
-    if (!initialized.data.upload_complete) {
-      let uploaded: Response;
-      try {
-        uploaded = await fetch(initialized.data.signed_url!, {
+    if (initialized.data.upload_complete) {
+      // 断点续传命中的**主要**一档：上次 PUT 传完了、finalize 之前崩掉。
+      // 服务端核对过对象大小与声明一致（`media_proxy_router.py:980-983`），
+      // 所以这里直接跳到 finalize。
+      progress.skipToComplete();
+    } else {
+      const signedUrl = initialized.data.signed_url!;
+      const ticketFor = (uploaded: boolean): UploadResumeTicket => ({
+        idempotencyKey,
+        path: initialized.data!.path,
+        identity: identity!,
+        filename,
+        siteId,
+        bytes: file.size,
+        contentType,
+        uploaded,
+        updatedAt: Date.now(),
+      });
+      // 传输开始前先把断点记下来（带上 `path`）。中断后 IndexedDB 里有记录，
+      // 这是 P5 那条「中断后 IndexedDB 里有断点记录」的判据。
+      if (resumeKey) await writeResumeTicket(ticketFor(false));
+      // 直传这一段是大文件的全部耗时所在，也是唯一值得报进度的一段。
+      // 走 XHR 而不是 fetch：理由见 `upload/progress.ts` 文件头。
+      if (xhrUploadAvailable()) {
+        const uploaded = await xhrUpload({
+          url: signedUrl,
           method: "PUT",
           headers: { "Content-Type": common.content_type },
           body: file,
+          onProgress: (loaded) => progress.report(loaded),
+          signal: opts.signal,
         });
-      } catch {
-        return {
-          ok: false,
-          error: "大文件直传失败：无法连接对象存储",
-          status: 0,
-        };
+        if (uploaded.aborted) {
+          progress.fail();
+          return { ok: false, error: "上传已取消", status: 0 };
+        }
+        if (uploaded.networkError) {
+          progress.fail();
+          return {
+            ok: false,
+            error: "大文件直传失败：无法连接对象存储",
+            status: 0,
+          };
+        }
+        if (!uploaded.ok) {
+          progress.fail();
+          return {
+            ok: false,
+            error: `大文件直传失败 HTTP ${uploaded.status}`,
+            status: uploaded.status,
+          };
+        }
+      } else {
+        // SSR / 没有 XHR 的运行时：保留原来的 fetch 路径，只是没有进度。
+        let uploaded: Response;
+        try {
+          uploaded = await fetch(signedUrl, {
+            method: "PUT",
+            headers: { "Content-Type": common.content_type },
+            body: file,
+            signal: opts.signal,
+          });
+        } catch {
+          progress.fail();
+          return {
+            ok: false,
+            error: "大文件直传失败：无法连接对象存储",
+            status: 0,
+          };
+        }
+        if (!uploaded.ok) {
+          progress.fail();
+          return {
+            ok: false,
+            error: `大文件直传失败 HTTP ${uploaded.status}`,
+            status: uploaded.status,
+          };
+        }
       }
-      if (!uploaded.ok) {
-        return {
-          ok: false,
-          error: `大文件直传失败 HTTP ${uploaded.status}`,
-          status: uploaded.status,
-        };
+      progress.finish();
+      // 字节已经进桶了。**这一条落盘是整个续传里最值钱的一次写**：
+      // 此刻到 finalize 返回之间崩掉（关标签页、断网、刷新）是最常见的丢失窗口，
+      // 而重开之后 `init` 会凭同一个幂等键回 `upload_complete: true`。
+      if (resumeKey) {
+        await writeResumeTicket({
+          idempotencyKey: idempotencyKey,
+          path: initialized.data.path,
+          identity: (await deriveUploadIdentity(file, {
+            filename,
+            contentType,
+            siteId,
+            registerAsset,
+          })).identity,
+          filename,
+          siteId,
+          bytes: file.size,
+          contentType,
+          uploaded: true,
+          updatedAt: Date.now(),
+        });
       }
     }
-    return authed<{ ok: boolean; file: FileItem }>("/v1/media/upload/finalize", {
-      method: "POST",
-      body: JSON.stringify({ ...common, path: initialized.data.path }),
-    });
+    const finalized = await authed<{ ok: boolean; file: FileItem }>(
+      "/v1/media/upload/finalize",
+      {
+        method: "POST",
+        body: JSON.stringify({ ...common, path: initialized.data.path }),
+      },
+    );
+    // 登记成了，凭据没用了。留着只会在库里躺到 7 天 TTL 到期。
+    // 失败则**刻意留着**：那正是下一次要续的那个断点。
+    if (finalized.ok && resumeKey) await deleteResumeTicket(resumeKey);
+    return finalized;
   }
 
   const token = await accessToken();
