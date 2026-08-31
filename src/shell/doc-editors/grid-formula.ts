@@ -272,7 +272,26 @@ export interface GridFormulaInspection {
   qualifiedReferences: string[];
   /** Bare identifiers that are not function calls — named-range candidates. */
   names: string[];
+  /**
+   * Volatile names this formula calls (§规范三). Non-empty means the answer is
+   * pinned to the document's recalc stamp rather than to the formula alone, so
+   * a caller re-stamping the document knows this cell has to be recomputed.
+   * Only populated when a stamp was in scope; with no stamp these same names
+   * are rejected instead, and show up in `violations`.
+   */
+  volatileFunctions: string[];
   violations: GridFormulaViolation[];
+}
+
+/** Options for {@link inspectGridFormula}. */
+export interface GridFormulaInspectOptions {
+  /**
+   * The document's recalc stamp. Its presence is the whole question: §规范三
+   * says a volatile name is allowed only against a document that carries one.
+   * Leave it out — as every caller that predates the stamp does — and volatile
+   * names keep being rejected, which is the fail-closed half of the rule.
+   */
+  recalc?: GridRecalcStamp;
 }
 
 /** Thrown by `assertGridFormulaAllowed`; carries the machine-readable code. */
@@ -2697,8 +2716,12 @@ function pushViolation(
  * Static §3.3 gate. Runs without a workbook, so the generator, the editor and
  * the import path can all reach the same verdict on one formula string.
  */
-export function inspectGridFormula(input: string): GridFormulaInspection {
+export function inspectGridFormula(
+  input: string,
+  options: GridFormulaInspectOptions = {},
+): GridFormulaInspection {
   const source = String(input ?? "").replace(/^=/, "").trim();
+  const stamped = Boolean(options.recalc);
   const violations: GridFormulaViolation[] = [];
   const functions: string[] = [];
   const references: string[] = [];
@@ -2706,6 +2729,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
   const ranges: string[] = [];
   const qualifiedReferences: string[] = [];
   const names: string[] = [];
+  const volatileFunctions: string[] = [];
   if (!source) {
     return {
       ok: false,
@@ -2716,6 +2740,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       ranges,
       qualifiedReferences,
       names,
+      volatileFunctions,
       violations: [
         { code: GRID_FORMULA_REJECTION_CODES.empty, detail: "公式为空" },
       ],
@@ -2741,6 +2766,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       ranges,
       qualifiedReferences,
       names,
+      volatileFunctions,
       violations: [
         ...violations,
         { code: GRID_FORMULA_REJECTION_CODES.syntax, detail: "无法词法解析" },
@@ -2793,11 +2819,24 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
           `${token.value}(…) 是宏调用，不是可求值的公式（§6）`,
         );
       } else if (nondeterministic.has(token.value)) {
-        pushViolation(
-          violations,
-          GRID_FORMULA_REJECTION_CODES.nondeterministic,
-          `${token.value}() 每次打开结果不同（§6 F6）`,
-        );
+        // §规范三: the verdict is conditional now. A stamp in scope means the
+        // answer is pinned to the document rather than to the host clock, so
+        // the name may run and is recorded for the recalc graph. No stamp is
+        // still a rejection — fail-closed, never a silent fall back to
+        // `Date.now()`. `RANDARRAY` is the exception that stays rejected
+        // whatever the stamp says: it returns a dynamic array, and the spill
+        // semantics that would need are not in this wave.
+        if (!stamped || SPILL_REQUIRED.has(token.value)) {
+          pushViolation(
+            violations,
+            GRID_FORMULA_REJECTION_CODES.nondeterministic,
+            stamped
+              ? `${token.value}() 要溢出区才盛得下，本波不做（§规范四）`
+              : `${token.value}() 每次打开结果不同，且文档没有 recalc 戳（§6 F6）`,
+          );
+        } else if (!volatileFunctions.includes(token.value)) {
+          volatileFunctions.push(token.value);
+        }
       } else if (unreachable.has(token.value)) {
         pushViolation(
           violations,
@@ -2901,6 +2940,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
     ranges,
     qualifiedReferences,
     names,
+    volatileFunctions,
     violations,
   };
 }
