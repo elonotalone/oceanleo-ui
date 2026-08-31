@@ -141,6 +141,7 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     select: "選取",
     explorer: "資源管理器",
     reloadSourceTree: "重新讀取原始碼樹",
+    websiteSourceView: "原始碼",
   },
   ja: {
     viewSwitcher: "ビューの切り替え",
@@ -287,6 +288,7 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     select: "選択",
     explorer: "エクスプローラー",
     reloadSourceTree: "ソースツリーを再読み込み",
+    websiteSourceView: "ソース",
   },
   ko: {
     viewSwitcher: "보기 전환",
@@ -431,6 +433,7 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     select: "선택",
     explorer: "탐색기",
     reloadSourceTree: "소스 트리 새로 읽기",
+    websiteSourceView: "소스",
   },
   ar: {
     viewSwitcher: "تبديل العرض",
@@ -577,6 +580,7 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     select: "تحديد",
     explorer: "مستعرض الملفات",
     reloadSourceTree: "إعادة قراءة شجرة المصدر",
+    websiteSourceView: "الشيفرة المصدرية",
   },
   th: {
     viewSwitcher: "สลับมุมมอง",
@@ -721,6 +725,7 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     select: "เลือก",
     explorer: "ตัวจัดการไฟล์",
     reloadSourceTree: "อ่านผังซอร์สโค้ดใหม่",
+    websiteSourceView: "ซอร์สโค้ด",
   },
   hi: {
     viewSwitcher: "व्यू बदलें",
@@ -867,5 +872,6 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     select: "चुनें",
     explorer: "एक्सप्लोरर",
     reloadSourceTree: "सोर्स ट्री फिर से पढ़ें",
+    websiteSourceView: "सोर्स कोड",
   },
 };

@@ -176,6 +176,11 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   // ---- extracted 插件②：网站编辑（website 仓）顶栏 ----
   explorer: "资源管理器",
   reloadSourceTree: "重新读取源码树",
+  // 顶栏三个视图里唯一缺译文的那一个（`W28` 报，`W37` 补）。相邻的「预览」「仪表盘」
+  // 早就 16 语齐全，只有它回退成中文原文 ⇒ 外国用户看到的是「Preview 源码 Dashboard」。
+  // 声明侧在 website 仓 `gallery-editor/src/website-views.ts`，渲染侧是
+  // `PluginChromeFrame` 的 `tt(view.label)`，与本册开头列的第一种情形同形。
+  websiteSourceView: "源码",
 } as const;
 
 export type PluginChromeCopyName = keyof typeof PLUGIN_CHROME_COPY_SOURCE;

@@ -149,6 +149,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Select",
     explorer: "Explorer",
     reloadSourceTree: "Reload source tree",
+    websiteSourceView: "Source",
   },
   de: {
     viewSwitcher: "Ansicht wechseln",
@@ -301,6 +302,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Auswählen",
     explorer: "Explorer",
     reloadSourceTree: "Quellbaum neu laden",
+    websiteSourceView: "Quellcode",
   },
   fr: {
     viewSwitcher: "Changer de vue",
@@ -456,6 +458,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Sélection",
     explorer: "Explorateur",
     reloadSourceTree: "Recharger l'arborescence des sources",
+    websiteSourceView: "Code source",
   },
   es: {
     viewSwitcher: "Cambiar de vista",
@@ -608,6 +611,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Seleccionar",
     explorer: "Explorador",
     reloadSourceTree: "Recargar el árbol de fuentes",
+    websiteSourceView: "Código fuente",
   },
   "es-419": {
     viewSwitcher: "Cambiar de vista",
@@ -760,6 +764,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Seleccionar",
     explorer: "Explorador",
     reloadSourceTree: "Recargar el árbol de fuentes",
+    websiteSourceView: "Código fuente",
   },
   it: {
     viewSwitcher: "Cambia vista",
@@ -912,6 +917,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Seleziona",
     explorer: "Esplora risorse",
     reloadSourceTree: "Ricarica l'albero dei sorgenti",
+    websiteSourceView: "Codice sorgente",
   },
   "pt-BR": {
     viewSwitcher: "Trocar de visão",
@@ -1064,6 +1070,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Selecionar",
     explorer: "Explorador",
     reloadSourceTree: "Recarregar a árvore de código",
+    websiteSourceView: "Código-fonte",
   },
   "pt-PT": {
     viewSwitcher: "Mudar de vista",
@@ -1219,6 +1226,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Selecionar",
     explorer: "Explorador",
     reloadSourceTree: "Recarregar a árvore de código",
+    websiteSourceView: "Código-fonte",
   },
   vi: {
     viewSwitcher: "Chuyển chế độ xem",
@@ -1368,6 +1376,7 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Chọn",
     explorer: "Trình quản lý tệp",
     reloadSourceTree: "Tải lại cây mã nguồn",
+    websiteSourceView: "Mã nguồn",
   },
   tr: {
     viewSwitcher: "Görünüm değiştir",
@@ -1520,5 +1529,6 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     select: "Seç",
     explorer: "Dosya gezgini",
     reloadSourceTree: "Kaynak ağacını yeniden yükle",
+    websiteSourceView: "Kaynak kodu",
   },
 };
