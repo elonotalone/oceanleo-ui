@@ -1,0 +1,332 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  buildGridClipboardPayload,
+  gridFormatFromNumberPattern,
+  normalizeGridPastedValue,
+  parseGridClipboardHtml,
+  parseGridClipboardText,
+  planGridPaste,
+  readGridClipboard,
+} from "../src/shell/doc-editors/grid-structure.ts";
+
+const GRID_MAX_ROWS = 10_000;
+const GRID_MAX_COLS = 256;
+
+/**
+ * 真 Excel 剪贴板片段（Office 365 / WPS 复制一片区域时写进 `text/html` 的形状）：
+ * `xmlns:x` 头、`<!--` 包住的 `<style>`、`class=xl68` 与内联样式并存、
+ * 属性不加引号、`mso-number-format` 用 `\0022` 与反斜杠转义。
+ * 这几样任缺一样都会让「照着文档写」的解析器在真实剪贴板上当场散架。
+ */
+const EXCEL_HTML = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta http-equiv=Content-Type content="text/html; charset=utf-8">
+<style><!--table
+	{mso-displayed-decimal-separator:"\\.";}
+.xl65 {font-weight:700;}
+--></style></head>
+<body link="#0563C1" vlink="#954F72">
+<table border=0 cellpadding=0 cellspacing=0 width=288 style='border-collapse:collapse;table-layout:fixed;width:216pt'>
+ <col width=96 span=3 style='width:72pt'>
+ <tr height=20 style='height:15.0pt'>
+  <td colspan=3 height=20 class=xl68 style='height:15.0pt;font-weight:700;text-align:center;background:#FFFF00'>2026 &#24180;&#39044;&#31639;</td>
+ </tr>
+ <tr height=20 style='height:15.0pt'>
+  <td height=20 class=xl65 style='height:15.0pt;font-weight:700'>&#31185;&#30446;</td>
+  <td class=xl65 style='font-weight:700;text-align:right'>金额</td>
+  <td class=xl65 style='font-weight:700;text-align:right'>占比</td>
+ </tr>
+ <tr height=20 style='height:15.0pt'>
+  <td height=20 class=xl66 style='height:15.0pt'><b>研发</b></td>
+  <td class=xl67 align=right style='mso-number-format:"\\0022¥\\0022\\#\\,\\#\\#0\\.00";color:#CF222E'>¥1,234.50</td>
+  <td class=xl69 align=right style='mso-number-format:"0\\.0%"'>45.0%</td>
+ </tr>
+</table>
+</body></html>`;
+
+test("Excel 的 text/html 片段逐项落位：合并、对齐、数字格式、粗体、背景色", () => {
+  const matrix = parseGridClipboardHtml(EXCEL_HTML);
+  assert.ok(matrix, "真 Excel 片段必须解析出表格");
+  assert.equal(matrix.height, 3);
+  assert.equal(matrix.width, 3);
+
+  // 合并：标题行 colspan=3，左上角带跨度，被盖住的两格补空串。
+  const title = matrix.rows[0][0];
+  assert.equal(title.value, "2026 年预算");
+  assert.equal(title.colSpan, 3);
+  assert.equal(matrix.rows[0][1].value, "");
+  assert.equal(matrix.rows[0][2].value, "");
+
+  // 基础样式：粗体（样式与 <b> 两条来源）、对齐、背景色。
+  assert.equal(title.format.bold, true);
+  assert.equal(title.format.align, "center");
+  assert.equal(title.format.background, "#ffff00");
+  assert.equal(matrix.rows[1][0].format.bold, true);
+  assert.equal(matrix.rows[1][1].format.align, "right");
+  assert.equal(matrix.rows[2][0].format.bold, true, "<b> 也要算粗体");
+  assert.equal(matrix.rows[2][0].value, "研发");
+
+  // 数字格式：货币与百分比各自的 type/decimals，且**值被还原成可求值的原始值**。
+  const money = matrix.rows[2][1];
+  assert.deepEqual(money.format, {
+    align: "right",
+    color: "#cf222e",
+    type: "currency",
+    decimals: 2,
+  });
+  assert.equal(money.value, "1234.50", "¥ 与千分位必须剥掉，否则 SUM 算出 0");
+
+  const ratio = matrix.rows[2][2];
+  assert.equal(ratio.format.type, "percent");
+  assert.equal(ratio.format.decimals, 1);
+  assert.equal(ratio.value, "45.0%");
+});
+
+test("数字格式串分类不会把 #,##0.00 当成日期", () => {
+  assert.deepEqual(gridFormatFromNumberPattern('"¥"#,##0.00'), {
+    type: "currency",
+    decimals: 2,
+  });
+  assert.deepEqual(gridFormatFromNumberPattern("#,##0.00"), {
+    type: "number",
+    decimals: 2,
+  });
+  assert.deepEqual(gridFormatFromNumberPattern("0.0%"), {
+    type: "percent",
+    decimals: 1,
+  });
+  assert.deepEqual(gridFormatFromNumberPattern("yyyy\\-mm\\-dd"), { type: "date" });
+  assert.deepEqual(gridFormatFromNumberPattern("[$-409]m/d/yy"), { type: "date" });
+  assert.deepEqual(gridFormatFromNumberPattern("Short Date"), { type: "date" });
+  assert.equal(gridFormatFromNumberPattern("General"), undefined);
+  assert.deepEqual(gridFormatFromNumberPattern("@"), { type: "text" });
+});
+
+test("负数与括号负数在货币格式下都还原成可求值的数", () => {
+  const currency = { type: "currency", decimals: 2 };
+  assert.equal(normalizeGridPastedValue("¥1,234.50", currency), "1234.50");
+  assert.equal(normalizeGridPastedValue("(1,234.50)", currency), "-1234.50");
+  assert.equal(normalizeGridPastedValue("-¥98", currency), "-98");
+  // 认不出就原样留着，不猜。
+  assert.equal(normalizeGridPastedValue("待定", currency), "待定");
+  assert.equal(normalizeGridPastedValue("2026-01-01", undefined), "2026-01-01");
+});
+
+test("text/plain 里带引号的字段含换行与制表符时不会错位", () => {
+  // Excel 对含换行的单元格加引号；按 \n split 再按 \t split 的写法会在这里散架。
+  const clipboard = [
+    "科目\t备注",
+    '研发\t"第一行\n第二行"',
+    '市场\t"含\t制表符"',
+    '财务\t"他说""好"""',
+    "",
+  ].join("\r\n");
+
+  const matrix = parseGridClipboardText(clipboard);
+  assert.equal(matrix.height, 4, "四行数据，末尾空行不算一行");
+  assert.equal(matrix.width, 2);
+  assert.equal(matrix.rows[1][1].value, "第一行\n第二行");
+  assert.equal(matrix.rows[2][1].value, "含\t制表符");
+  assert.equal(matrix.rows[3][1].value, '他说"好"');
+  assert.equal(matrix.rows[3][0].value, "财务");
+});
+
+test("没有 text/html 时回落 text/plain，有则优先 html", () => {
+  const plain = readGridClipboard({ text: "a\tb\nc\td" });
+  assert.equal(plain.width, 2);
+  assert.equal(plain.rows[1][1].value, "d");
+
+  const preferred = readGridClipboard({
+    html: EXCEL_HTML,
+    text: "2026 年预算\t\t\n科目\t金额\t占比",
+  });
+  assert.equal(
+    preferred.rows[0][0].colSpan,
+    3,
+    "两种格式都在时必须用 html，否则合并与格式全丢",
+  );
+
+  assert.equal(readGridClipboard({ html: "<p>不是表格</p>", text: "" }), null);
+  assert.equal(
+    readGridClipboard({ html: "<p>不是表格</p>", text: "回落\t到这里" }).rows[0][1]
+      .value,
+    "到这里",
+  );
+});
+
+test("三种选区语义：单格铺开、形状一致逐格、整数倍平铺", () => {
+  const matrix = parseGridClipboardText("1\t2\n3\t4");
+  const limits = { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS };
+  const valuesOf = (plan) =>
+    plan.cells.map((cell) => `${cell.row}:${cell.col}=${cell.value}`);
+
+  // 单格 → 以它为左上角铺开。
+  const spread = planGridPaste(
+    matrix,
+    { firstRow: 5, lastRow: 5, firstCol: 2, lastCol: 2 },
+    limits,
+  );
+  assert.equal(spread.repeatRows, 1);
+  assert.equal(spread.repeatCols, 1);
+  assert.deepEqual(valuesOf(spread), [
+    "5:2=1",
+    "5:3=2",
+    "6:2=3",
+    "6:3=4",
+  ]);
+
+  // 形状一致 → 逐格对应，不平铺。
+  const exact = planGridPaste(
+    matrix,
+    { firstRow: 0, lastRow: 1, firstCol: 0, lastCol: 1 },
+    limits,
+  );
+  assert.equal(exact.repeatRows, 1);
+  assert.equal(exact.repeatCols, 1);
+  assert.equal(exact.cells.length, 4);
+
+  // 整数倍 → 平铺重复（Excel 行为）。
+  const tiled = planGridPaste(
+    matrix,
+    { firstRow: 0, lastRow: 3, firstCol: 0, lastCol: 3 },
+    limits,
+  );
+  assert.equal(tiled.repeatRows, 2);
+  assert.equal(tiled.repeatCols, 2);
+  assert.equal(tiled.cells.length, 16);
+  assert.deepEqual(
+    valuesOf(tiled).filter((entry) => entry.startsWith("2:") || entry.startsWith("3:")),
+    ["2:0=1", "2:1=2", "2:2=1", "2:3=2", "3:0=3", "3:1=4", "3:2=3", "3:3=4"],
+  );
+
+  // 既不一致也不是整数倍 → 退回以左上角铺开，不静默丢数据。
+  const mismatched = planGridPaste(
+    matrix,
+    { firstRow: 0, lastRow: 2, firstCol: 0, lastCol: 2 },
+    limits,
+  );
+  assert.equal(mismatched.repeatRows, 1);
+  assert.equal(mismatched.cells.length, 4);
+  assert.equal(mismatched.truncated, false);
+});
+
+test("粘贴越界时截断并报出确切的截断行列数，不静默丢数据", () => {
+  const matrix = parseGridClipboardText("1\t2\t3\n4\t5\t6");
+  const plan = planGridPaste(
+    matrix,
+    {
+      firstRow: GRID_MAX_ROWS - 1,
+      lastRow: GRID_MAX_ROWS - 1,
+      firstCol: GRID_MAX_COLS - 2,
+      lastCol: GRID_MAX_COLS - 2,
+    },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+  assert.equal(plan.truncated, true);
+  assert.equal(plan.truncatedRows, 1, "两行只放得下一行");
+  assert.equal(plan.truncatedCols, 1, "三列只放得下两列");
+  assert.equal(plan.cells.length, 2);
+  assert.equal(plan.target.lastRow, GRID_MAX_ROWS - 1);
+  assert.equal(plan.target.lastCol, GRID_MAX_COLS - 1);
+
+  const fits = planGridPaste(
+    matrix,
+    { firstRow: 0, lastRow: 0, firstCol: 0, lastCol: 0 },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+  assert.equal(fits.truncated, false);
+  assert.equal(fits.truncatedRows, 0);
+  assert.equal(fits.truncatedCols, 0);
+});
+
+test("粘贴计划把 HTML 的合并跨度转成 GridRange，越界处收窄", () => {
+  const matrix = parseGridClipboardHtml(EXCEL_HTML);
+  const plan = planGridPaste(
+    matrix,
+    { firstRow: 2, lastRow: 2, firstCol: 1, lastCol: 1 },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+  assert.deepEqual(plan.merges, [
+    { firstRow: 2, lastRow: 2, firstCol: 1, lastCol: 3 },
+  ]);
+
+  const clipped = planGridPaste(
+    matrix,
+    { firstRow: 0, lastRow: 0, firstCol: GRID_MAX_COLS - 2, lastCol: GRID_MAX_COLS - 2 },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+  assert.deepEqual(clipped.merges, [
+    {
+      firstRow: 0,
+      lastRow: 0,
+      firstCol: GRID_MAX_COLS - 2,
+      lastCol: GRID_MAX_COLS - 1,
+    },
+  ]);
+});
+
+test("复制同时写 text/plain 与 text/html，粘回 Excel 不丢格式", () => {
+  const source = {
+    height: 2,
+    width: 2,
+    rows: [
+      [
+        {
+          value: "标题",
+          colSpan: 2,
+          format: { bold: true, align: "center", background: "#ffff00" },
+        },
+        { value: "" },
+      ],
+      [
+        { value: "1234.50", format: { type: "currency", decimals: 2 } },
+        { value: "含\t制表符\n与换行" },
+      ],
+    ],
+  };
+  const payload = buildGridClipboardPayload(source);
+
+  assert.equal(
+    payload.text,
+    ['标题\t', '1234.50\t"含\t制表符\n与换行"'].join("\r\n"),
+    "纯文本按 CSV 规则给含分隔符/换行的字段加引号",
+  );
+  assert.ok(payload.html.includes('colspan="2"'), "合并要写进 html");
+  assert.ok(payload.html.includes("font-weight:700"));
+  assert.ok(payload.html.includes("background:#ffff00"));
+  assert.ok(payload.html.includes('mso-number-format:"¥#,##0.00"'));
+  assert.ok(!payload.html.includes("<td></td><td>"), "被合并盖住的格子不再单独写一个 td");
+
+  // 往返：自己写出去的 html 自己读回来，结构与格式一致。
+  const roundTrip = parseGridClipboardHtml(payload.html);
+  assert.equal(roundTrip.width, 2);
+  assert.equal(roundTrip.rows[0][0].colSpan, 2);
+  assert.equal(roundTrip.rows[0][0].format.bold, true);
+  assert.equal(roundTrip.rows[0][0].format.background, "#ffff00");
+  assert.equal(roundTrip.rows[1][0].format.type, "currency");
+  assert.equal(roundTrip.rows[1][0].value, "1234.50");
+  assert.equal(roundTrip.rows[1][1].value, "含\t制表符\n与换行");
+});
+
+test("受限扫描器不吃任意 CSS，也不被脚本与注释带偏", () => {
+  const hostile = `<table>
+    <!-- <tr><td>注释里的行不算行</td></tr> -->
+    <tr><td style='content:">";font-weight:700;position:fixed;z-index:99'>A</td>
+        <td style='background:url(javascript:alert(1))'>B</td></tr>
+    <tr><td><script>document.title="x"</script>C</td><td>D</td></tr>
+  </table>`;
+  const matrix = parseGridClipboardHtml(hostile);
+  assert.equal(matrix.height, 2, "注释里的 tr 不能算一行");
+  assert.equal(matrix.rows[0][0].value, "A", "属性值里的 > 不能提前截断标签");
+  assert.equal(matrix.rows[0][0].format.bold, true);
+  assert.deepEqual(
+    Object.keys(matrix.rows[0][0].format),
+    ["bold"],
+    "position/z-index/content 这些不在白名单里的声明一个都不许进来",
+  );
+  assert.equal(matrix.rows[0][1].format, undefined, "认不出的颜色值直接丢弃");
+  assert.equal(matrix.rows[1][0].value, "C", "script 内容不进单元格");
+  assert.equal(matrix.rows[1][1].value, "D");
+});
