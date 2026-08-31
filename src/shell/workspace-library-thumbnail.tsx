@@ -5,6 +5,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { ensureDatabaseThumbnail } from "../lib/database";
 import { advancedLibraryReferenceFor } from "./advanced-features";
 import { useArtifactRendition } from "./ArtifactRendition";
+import { artifactMediaGeometry } from "./library-viewer-first-paint";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -296,6 +297,27 @@ export function WorkspaceThumbnail({
       : ready
         ? "ready"
         : "error";
+  /**
+   * 加载前就占好的那块地（W07 P1）。
+   *
+   * 比例**只从投影里取，绝不从 `artifactRendition` 的活状态取**：重签会换掉手里
+   * 那一份 rendition，而 `W06` 的虚拟化行高缓存要求卡片高度在整个生命周期里恒定。
+   * 从投影取则同一个 `identity` 下恒为同一个值，第一帧就已经算得出来。
+   *
+   * 宿主是 `h-full w-full`，所以在**已经定好高度**的容器里（今天两个调用点：
+   * 卡片的 `aspect-[4/3]` 与列表行的 `h-12 w-16`）`aspect-ratio` 按 CSS 定义是
+   * 惰性的——几何与本改动前逐字相同。它只在宿主被放进高度 auto 的容器时生效，
+   * 那正是「不许留 0 高度」要兜住的那一档。
+   */
+  const coverGeometry = artifactMediaGeometry({
+    rendition:
+      item?.artifact?.renditions.thumbnail ||
+      item?.artifact?.renditions.preview ||
+      item?.artifact?.renditions.full ||
+      null,
+    artifactType: item?.artifactType,
+    kind,
+  });
   return (
     <div
       ref={hostRef}
@@ -306,6 +328,20 @@ export function WorkspaceThumbnail({
       data-cover-source-aspect={
         plan.sourceAspectRatio?.toFixed(4) || undefined
       }
+      data-cover-aspect={coverGeometry.aspectRatio}
+      data-cover-aspect-measured={String(coverGeometry.measured)}
+      data-cover-failure-kind={artifactRendition.failure?.kind || undefined}
+      style={{
+        aspectRatio: coverGeometry.aspectRatio,
+        /**
+         * 第一级占位（LQIP）：digest 派生的稳定浅色，零请求零解码。
+         * 只在还没出画面时铺——真图上来之后这块颜色就退场，
+         * 于是**已加载态与本改动前逐字相同**。
+         */
+        ...(coverState === "ready"
+          ? {}
+          : { backgroundColor: coverGeometry.lqipColor }),
+      }}
     >
       {!failureMessage && plan.renderer !== "unavailable" && (
         <WorkspaceCoverResource

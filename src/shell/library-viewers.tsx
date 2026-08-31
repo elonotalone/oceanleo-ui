@@ -1705,6 +1705,7 @@ function LibraryItemViewerBody({
       <ArtifactRenditionFailure
         message={rendition.error || "当前 revision 没有可用 rendition。"}
         loading={rendition.loading}
+        failure={rendition.failure}
         onRetry={rendition.retry}
       />
     );
