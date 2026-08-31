@@ -13,9 +13,13 @@ import {
   usePluginTheme,
   type PluginThemeId,
 } from "../plugin-theme";
+import { PluginChromeEditBarGestureLayer } from "../PluginChromeEditBarGestureLayer";
 import { PLUGIN_AGENT_DRAWER_ID } from "./agent-drawer";
 import { createPluginAgentDrawer } from "./agent-drawer-panel";
-import { usePluginChromeLayout } from "./use-plugin-chrome-layout";
+import {
+  usePluginChromeEditBarGestures,
+  usePluginChromeLayout,
+} from "./use-plugin-chrome-layout";
 import { PluginChromeNotices } from "./PluginChromeNotices";
 import { PluginChromeStatus } from "./PluginChromeStatus";
 import {
@@ -147,6 +151,10 @@ export function PluginChromeFrame({
   const { activePanel, isOpen } = controller;
   const { layout, transientPanel, hostController } =
     usePluginChromeLayout(controller);
+  // 编辑栏手势（W31）：三根 ref 分别落在 frame 根 / edit bar 行 / 舞台上，
+  // 控制器与 10 件共享插件用的是同一份。为什么走这条路而不是把
+  // `contextBarLeading/Trailing` 填上，见 use-plugin-chrome-layout.tsx 那段注释。
+  const editBarGestures = usePluginChromeEditBarGestures(pluginId);
 
   const runAction = useCallback(
     (action: PluginChromeAction) => {
@@ -196,10 +204,12 @@ export function PluginChromeFrame({
     <AdvancedLayoutContext.Provider value={layout}>
     <PanelContext.Provider value={hostController}>
       <div
+        ref={editBarGestures.layerRef}
         data-plugin-chrome={pluginId}
         data-plugin-theme={theme || undefined}
         style={style}
-        className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--pchrome-canvas)] text-[var(--pchrome-ink)]"
+        // `relative`：编辑栏浮层是 `absolute inset-0` 的一层，需要这里当定位原点。
+        className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--pchrome-canvas)] text-[var(--pchrome-ink)]"
       >
         {/* ---------------------------------------------- 行 1：顶栏 */}
         <header
@@ -351,6 +361,7 @@ export function PluginChromeFrame({
           视图时 AI 键跟着消失——那正是本轮要修的缺陷本身，不能按视图复发。
         */}
         <div
+          ref={editBarGestures.dockRef}
           data-plugin-chrome-edit-bar
           data-empty={editBarHidden || !editBar || undefined}
           data-edit-bar-content-hidden={editBarHidden || undefined}
@@ -358,6 +369,17 @@ export function PluginChromeFrame({
           aria-label={tt("编辑栏")}
           className={`flex ${PLUGIN_CHROME_EDITBAR_MIN_H} shrink-0 items-center gap-1.5 border-b border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-2 py-1`}
         >
+          {/*
+            手势层（W31）。几何量得到时这一行的内容整体交给共享浮层，
+            行本身降级成停靠带（与 10 件共享插件那侧 EditBarDockHost 的分工相同），
+            于是「双击任意位置拖拽 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
+            量不到几何时内容原样留在行里——AI 键不许因为动效起不来而消失。
+          */}
+          <PluginChromeEditBarGestureLayer
+            bridge={editBarGestures}
+            accent={accent || "#4f46e5"}
+            theme={theme}
+          >
           {/*
             槽内显式**不**提供 AdvancedLayout。设计画布与视频画布都把
             SelectionToolbar 渲染在这个槽里；一旦它拿到 layout，会同时发生三件事：
@@ -405,6 +427,9 @@ export function PluginChromeFrame({
           >
             <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
           </button>
+          {/* 固定 / 收起为圆。停靠带在位时 trailing 里才有固定键。 */}
+          {editBarGestures.controller.trailing}
+          </PluginChromeEditBarGestureLayer>
         </div>
 
         <PluginChromeNotices notices={notices || []} />
@@ -454,6 +479,7 @@ export function PluginChromeFrame({
             往这里加任何遮挡都会当场红。
           */}
           <main
+            ref={editBarGestures.stageRef}
             data-plugin-chrome-stage
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--pchrome-stage)]"
           >

@@ -16,8 +16,10 @@
 //   - transient 面板优先于抽屉，`openDrawer` 会先把 transient 清掉。
 //   - `hostPanelVisible === editorToolActive`，都等于「左栏此刻有东西」。
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AdvancedLayoutState } from "../advanced-layout-context";
+import { useFloatingContextToolbar } from "../FloatingContextToolbar";
+import type { PluginChromeEditBarGestureBridge } from "../PluginChromeEditBarGestureLayer";
 import type { PluginChromePanelController } from "./use-plugin-chrome-panels";
 
 export interface PluginChromeTransientPanel {
@@ -125,6 +127,19 @@ export function usePluginChromeLayout(
       activeTransientPanelId: transientPanel ? transientPanel.id : "",
       // chrome 没有浮动上下文条这个概念（版式契约把它固化成 edit bar 行了），
       // 两个槽恒为 undefined。承诺缩小已写进契约说明。
+      //
+      // ⚠️ 后来者请勿「顺手把它们填上」（W31，2026-08-31）。
+      // 编辑栏的三条手势（双击拖拽 / 收起为圆 / 拖圆）此前在这三件 extracted
+      // 插件上一条都不成立，看上去正像是这两个槽写死 undefined 造成的。
+      // **不是。** 填上它们只会让 `SelectionToolbar` 在 edit bar 槽内拿到
+      // `AdvancedLayout`，当场长出第二个 AI 键、被强制翻成 floating 胶囊、
+      // 把选区检查器改道左抽屉（契约 §4-3 实测的三条副作用），
+      // 手势一条也不会多出来——真正的消费链在 `InlineAdvancedWorkbenchShell`
+      // 那侧，chrome 路径上根本没有那条链。
+      //
+      // 手势由 `usePluginChromeEditBarGestures()` + `PluginChromeEditBarGestureLayer`
+      // 从**另一条路**补齐：把整行交给共享浮层，行降级成停靠带。
+      // 那条路不需要这两个槽，所以这里维持 undefined 是正确的终局，不是欠账。
       contextBarLeading: undefined,
       contextBarTrailing: undefined,
       openDrawer,
@@ -143,4 +158,30 @@ export function usePluginChromeLayout(
   ]);
 
   return { layout, transientPanel, hostController };
+}
+
+/**
+ * chrome 路径上的编辑栏手势桥（W31）。
+ *
+ * 造出与 10 件共享插件**同一个**控制器，只是三根 ref 的落点换成 chrome 的
+ * 三个部件：frame 根当图层、edit bar 行当停靠带、舞台当默认停放参照。
+ * 控制器一份、行为一份——手势逻辑不许在 chrome 这侧另写一遍，
+ * 那正是本波要消灭的漂移形状（同一件事两套实现）。
+ *
+ * `storageKey` 按 `pluginId` 分区：设计画布把栏拖到左下角，不该连带把
+ * 网站编辑的栏也搬走。
+ */
+export function usePluginChromeEditBarGestures(
+  pluginId: string,
+): PluginChromeEditBarGestureBridge {
+  const layerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
+  const controller = useFloatingContextToolbar({
+    workspaceRootRef: layerRef,
+    stageRef,
+    dockRootRef: dockRef,
+    resetKey: `plugin-chrome:${pluginId}`,
+  });
+  return { layerRef, stageRef, dockRef, controller };
 }
