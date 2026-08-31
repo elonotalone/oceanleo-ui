@@ -7,7 +7,7 @@
 // 另有 15 处调用点。那个库在本包里是 **optional peer**——31 个租户站不一定装它，
 // 所以共享包里不许 import 它（依赖纪律见 `src/pages/AuthDialog.tsx:29`：
 // 「不 import 它（共享包里它是 optional peer，32 个站不一定装）」）。
-//    10|
+//
 // 于是桥的方向是**反过来的**：不是共享包去找宿主，而是宿主把自己的 toaster
 // 注册进来。
 //
@@ -18,7 +18,7 @@
 //
 // 这条契约是**厂商中立**的：注册进来的是什么实现，本包不需要知道，
 // 因此本包里永远搜不到任何第三方 toast 库的名字。宿主要接只需一次
-//    20// `registerToastHost({ show, update, dismiss })`，把三个回调转给它自己那套即可；
+// `registerToastHost({ show, update, dismiss })`，把三个回调转给它自己那套即可；
 // 本包不要求宿主改（不接就走第一方 viewport，行为完整）。
 //
 // 单例而不是 React context：注册方（宿主的根 layout）与消费方（共享包深处的
@@ -28,7 +28,7 @@
 /** `loading` 是长任务的中间态，可以原地转成三个终态之一。 */
 export type ToastKind = "success" | "error" | "info" | "loading";
 
-    30|export interface ToastPayload {
+export interface ToastPayload {
   id: string;
   kind: ToastKind;
   title: string;
@@ -39,7 +39,7 @@ export type ToastKind = "success" | "error" | "info" | "loading";
   count: number;
 }
 
-    40|/**
+/**
  * 宿主 toaster 的适配器。三个动作对应第一方 store 的三种状态变化；
  * `update` 会在同 id 合并计数、以及 `loading` 原地转终态时被调用。
  */
@@ -49,7 +49,7 @@ export interface ToastHostAdapter {
   dismiss(id: string): void;
 }
 
-    50|let host: ToastHostAdapter | null = null;
+let host: ToastHostAdapter | null = null;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -59,7 +59,7 @@ function notify(): void {
 /**
  * 宿主登记自己的 toaster。返回注销函数（`useEffect` 的清理里调用即可）。
  *
-    60| * 后注册的覆盖先注册的：宿主只该有一套 toaster，重复注册意味着换了一套，
+ * 后注册的覆盖先注册的：宿主只该有一套 toaster，重复注册意味着换了一套，
  * 而不是要两套同时收。
  */
 export function registerToastHost(adapter: ToastHostAdapter): () => void {
@@ -69,7 +69,7 @@ export function registerToastHost(adapter: ToastHostAdapter): () => void {
     // 只有还是自己那份时才摘，否则会把后来者的注册误摘掉。
     if (host !== adapter) return;
     host = null;
-    70|    notify();
+    notify();
   };
 }
 
@@ -79,7 +79,7 @@ export function currentToastHost(): ToastHostAdapter | null {
 }
 
 /** 宿主是否已接管。第一方 viewport 用它决定要不要渲染自己那一摞。 */
-    80|export function hasToastHost(): boolean {
+export function hasToastHost(): boolean {
   return host !== null;
 }
 
@@ -89,7 +89,7 @@ export function currentToastHost(): ToastHostAdapter | null {
  */
 export function subscribeToastHost(listener: () => void): () => void {
   listeners.add(listener);
-    90|  return () => {
+  return () => {
     listeners.delete(listener);
   };
 }
