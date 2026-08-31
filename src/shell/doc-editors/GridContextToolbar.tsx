@@ -17,7 +17,51 @@ import {
   rangesIntersect,
   type GridConditionalOperator,
 } from "./grid-structure";
+import { describeConditionalRule } from "./grid-format/conditional-format";
+import { NUMBER_FORMAT_PRESETS } from "./grid-format/number-format";
+import {
+  GRID_VALIDATION_KINDS,
+  type GridValidationKind,
+  type GridValidationOperator,
+} from "./grid-format/data-validation";
+import {
+  NUMFMT_MAX_LENGTH,
+  conditionalRuleOptions,
+  conditionalRulesFromSheet,
+  describeValidationDraft,
+  numberFormatPatternForPreset,
+  numberFormatPresetId,
+  numberFormatPreview,
+  runValidationCheck,
+  validationNeedsSecondBound,
+  validationRuleFromDraft,
+  type GridValidationDraft,
+} from "./grid-format/toolbar-bridge";
 import type { GridEditorState } from "./use-grid-editor";
+
+/**
+ * The operators the stored `GridConditionalFormat` can hold. The engine knows
+ * twelve; reading a rule back into the editable fields must not offer the
+ * seven the legacy store would silently drop on apply.
+ */
+const LEGACY_CONDITION_OPERATORS = new Set<string>([
+  "greater-than",
+  "less-than",
+  "equal",
+  "not-equal",
+  "contains",
+]);
+
+const VALIDATION_OPERATORS = new Set<string>([
+  "between",
+  "not-between",
+  "equal",
+  "not-equal",
+  "greater-than",
+  "less-than",
+  "greater-equal",
+  "less-equal",
+]);
 
 export function GridContextToolbar({
   editor,
@@ -48,12 +92,43 @@ export function GridContextToolbar({
     background: "#dcfce7",
     bold: true,
   });
+  const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [validation, setValidation] = useState<GridValidationDraft>({
+    kind: "list",
+    operator: "between",
+    value: "",
+    value2: "",
+    behavior: "warn",
+  });
+  const [validationReport, setValidationReport] = useState("");
   const hasMerge = editor.activeSheet.merges.some((merge) =>
     rangesIntersect(merge, range),
   );
-  const hasConditional = editor.activeSheet.conditionalFormats.some((rule) =>
+  // The stored five-operator rules lifted into the engine's shape purely so the
+  // reader can *see* them. Listing is the half of a rule manager the legacy
+  // store can back; editing one in place needs a write seam that
+  // `use-grid-editor` does not expose yet (signals/W13-request.md R4).
+  const conditionalRules = useMemo(
+    () => conditionalRulesFromSheet(editor.activeSheet.conditionalFormats),
+    [editor.activeSheet.conditionalFormats],
+  );
+  const rulesInSelection = conditionalRules.filter((rule) =>
     rangesIntersect(rule.range, range),
   );
+  const hasConditional = rulesInSelection.length > 0;
+  const inspectedRule =
+    conditionalRules.find((rule) => rule.id === selectedRuleId) || null;
+  const numberPattern = format.numFmt || "";
+  const numberPreview = numberFormatPreview(
+    editor.selectedValue,
+    numberPattern,
+  );
+  const activePreset = numberFormatPresetId(numberPattern);
+  const validationRule = useMemo(
+    () => validationRuleFromDraft(validation, range),
+    [range, validation],
+  );
+  const needsSecondBound = validationNeedsSecondBound(validation);
   const rowCount = gridRowCount(editor.activeSheet);
   const columnCount = gridColCount(editor.activeSheet);
   const wholeRows =
@@ -151,6 +226,47 @@ export function GridContextToolbar({
           value: format.decimals ?? 2,
           min: 0,
           max: 8,
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "grid-number-format",
+          inspectorLabel: tt("数字格式"),
+          inspectorIcon: "table",
+        },
+        {
+          id: "numfmt-preset",
+          kind: "select",
+          label: tt("格式预设"),
+          value: activePreset,
+          options: [
+            ...NUMBER_FORMAT_PRESETS.map((preset) => ({
+              value: preset.id,
+              label: preset.label,
+            })),
+            { value: "custom", label: tt("自定义") },
+          ],
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "grid-number-format",
+          inspectorLabel: tt("数字格式"),
+          inspectorIcon: "table",
+        },
+        {
+          id: "numfmt-pattern",
+          kind: "text",
+          label: tt("格式串"),
+          value: numberPattern,
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "grid-number-format",
+          inspectorLabel: tt("数字格式"),
+          inspectorIcon: "table",
+        },
+        {
+          id: "numfmt-preview",
+          kind: "text",
+          label: tt("预览"),
+          value: numberPreview,
+          disabled: true,
           placement: "more",
           slot: "inspector",
           inspectorGroup: "grid-number-format",
@@ -283,6 +399,28 @@ export function GridContextToolbar({
           inspectorIcon: "table",
         },
         {
+          id: "condition-rule",
+          kind: "select",
+          label: tt("本表规则"),
+          value: selectedRuleId,
+          options: conditionalRuleOptions(conditionalRules, tt("新建规则")),
+          slot: "inspector",
+          inspectorGroup: "grid-conditional",
+          inspectorLabel: tt("条件格式"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "condition-rule-detail",
+          kind: "text",
+          label: tt("规则说明"),
+          value: inspectedRule ? describeConditionalRule(inspectedRule) : "",
+          disabled: true,
+          slot: "inspector",
+          inspectorGroup: "grid-conditional",
+          inspectorLabel: tt("条件格式"),
+          inspectorIcon: "filter",
+        },
+        {
           id: "condition-operator",
           kind: "select",
           label: tt("条件"),
@@ -353,10 +491,115 @@ export function GridContextToolbar({
           id: "condition-clear",
           kind: "action",
           label: tt("清除所选区域规则"),
+          // The count is the difference between "clear" and "clear what?" —
+          // this button used to delete an unknown number of rules silently.
+          suffix: hasConditional ? String(rulesInSelection.length) : "",
+          danger: true,
           disabled: !hasConditional,
           slot: "inspector",
           inspectorGroup: "grid-conditional",
           inspectorLabel: tt("条件格式"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-kind",
+          kind: "select",
+          label: tt("验证类型"),
+          value: validation.kind,
+          options: [
+            { value: "list", label: tt("列表（下拉）") },
+            { value: "whole", label: tt("整数") },
+            { value: "decimal", label: tt("小数") },
+            { value: "date", label: tt("日期") },
+            { value: "text-length", label: tt("文本长度") },
+            { value: "custom", label: tt("自定义公式") },
+          ],
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-operator",
+          kind: "select",
+          label: tt("比较"),
+          value: validation.operator,
+          disabled:
+            validation.kind === "list" || validation.kind === "custom",
+          options: [
+            { value: "between", label: tt("介于") },
+            { value: "not-between", label: tt("不介于") },
+            { value: "equal", label: tt("等于") },
+            { value: "not-equal", label: tt("不等于") },
+            { value: "greater-than", label: tt("大于") },
+            { value: "less-than", label: tt("小于") },
+            { value: "greater-equal", label: tt("大于等于") },
+            { value: "less-equal", label: tt("小于等于") },
+          ],
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-value",
+          kind: "text",
+          label:
+            validation.kind === "list"
+              ? tt("候选项或区域引用")
+              : validation.kind === "custom"
+                ? tt("公式")
+                : tt("下限或值"),
+          value: validation.value,
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-value2",
+          kind: "text",
+          label: tt("上限"),
+          value: validation.value2,
+          disabled: !needsSecondBound,
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-behavior",
+          kind: "select",
+          label: tt("违规时"),
+          value: validation.behavior,
+          options: [
+            { value: "warn", label: tt("警告（仍可录入）") },
+            { value: "block", label: tt("阻止录入") },
+          ],
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-check",
+          kind: "action",
+          label: tt("圈出所选区域的无效数据"),
+          disabled: !validationRule,
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
+          inspectorIcon: "filter",
+        },
+        {
+          id: "validation-report",
+          kind: "text",
+          label: tt("检查结果"),
+          value: validationReport || describeValidationDraft(validationRule),
+          disabled: true,
+          slot: "inspector",
+          inspectorGroup: "grid-validation",
+          inspectorLabel: tt("数据验证"),
           inspectorIcon: "filter",
         },
       ],
@@ -369,11 +612,22 @@ export function GridContextToolbar({
       editor.headerRow,
       editor.activeSheet.conditionalFormats,
       editor.activeSheet.merges,
+      activePreset,
       condition,
+      conditionalRules,
       format,
       hasConditional,
       hasMerge,
+      inspectedRule,
+      needsSecondBound,
+      numberPattern,
+      numberPreview,
       range,
+      rulesInSelection,
+      selectedRuleId,
+      validation,
+      validationReport,
+      validationRule,
       wholeColumns,
       wholeRows,
       tt,
@@ -487,6 +741,91 @@ export function GridContextToolbar({
       case "condition-clear":
         editor.clearConditionalFormats();
         break;
+      case "numfmt-preset": {
+        // "custom" is not a preset: it means "leave the pattern box alone".
+        const pattern = numberFormatPatternForPreset(String(message.value));
+        if (pattern === null) break;
+        editor.applyFormat({ numFmt: pattern });
+        break;
+      }
+      case "numfmt-pattern":
+        editor.applyFormat({
+          numFmt: String(message.value || "").slice(0, NUMFMT_MAX_LENGTH),
+        });
+        break;
+      case "condition-rule": {
+        const id = String(message.value || "");
+        setSelectedRuleId(id);
+        const picked = conditionalRules.find((rule) => rule.id === id);
+        if (!picked) break;
+        // Loading a stored rule back into the fields is the only "edit" the
+        // legacy store supports: read it, tweak it, apply it to a selection.
+        if (picked.kind !== "cell-value" && picked.kind !== "text") break;
+        setCondition((current) => ({
+          operator: LEGACY_CONDITION_OPERATORS.has(picked.operator)
+            ? (picked.operator as GridConditionalOperator)
+            : current.operator,
+          value: picked.value,
+          color: picked.style.color || current.color,
+          background: picked.style.background || current.background,
+          bold: picked.style.bold === true,
+        }));
+        break;
+      }
+      case "validation-kind": {
+        const kind = String(message.value) as GridValidationKind;
+        if (!GRID_VALIDATION_KINDS.includes(kind)) break;
+        setValidation((current) => ({ ...current, kind }));
+        setValidationReport("");
+        break;
+      }
+      case "validation-operator": {
+        const operator = String(message.value);
+        if (!VALIDATION_OPERATORS.has(operator)) break;
+        setValidation((current) => ({
+          ...current,
+          operator: operator as GridValidationOperator,
+        }));
+        setValidationReport("");
+        break;
+      }
+      case "validation-value":
+        setValidation((current) => ({
+          ...current,
+          value: String(message.value || ""),
+        }));
+        setValidationReport("");
+        break;
+      case "validation-value2":
+        setValidation((current) => ({
+          ...current,
+          value2: String(message.value || ""),
+        }));
+        setValidationReport("");
+        break;
+      case "validation-behavior":
+        setValidation((current) => ({
+          ...current,
+          behavior: message.value === "block" ? "block" : "warn",
+        }));
+        break;
+      case "validation-check": {
+        const check = runValidationCheck(
+          validationRule,
+          {
+            rows: editor.activeSheet.rows,
+            sheetName: editor.activeSheet.name,
+            // Cross-sheet list sources (`=Sheet2!A1:A9`) resolve against the
+            // live workbook rather than being refused.
+            workbook: Object.fromEntries(
+              editor.sheets.map((sheet) => [sheet.name, sheet.rows]),
+            ),
+          },
+          tt("所选区域全部符合"),
+        );
+        setValidationReport(check.report);
+        break;
+      }
     }
   };
   return (

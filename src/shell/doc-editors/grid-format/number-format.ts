@@ -555,9 +555,12 @@ function renderDateSection(
 
 /* ----------------------------- number render ---------------------------- */
 
+/** The only tokens the digit ledgers below ever hold; `char` is theirs alone. */
+type DigitToken = Extract<SectionToken, { kind: "digit" }>;
+
 interface NumericLayout {
-  integerDigits: SectionToken[];
-  fractionDigits: SectionToken[];
+  integerDigits: DigitToken[];
+  fractionDigits: DigitToken[];
   grouped: boolean;
   scale: number;
   percent: number;
@@ -574,8 +577,8 @@ interface NumericLayout {
  */
 function measure(section: NumberFormatSection): NumericLayout {
   const tokens = section.tokens;
-  const integerDigits: SectionToken[] = [];
-  const fractionDigits: SectionToken[] = [];
+  const integerDigits: DigitToken[] = [];
+  const fractionDigits: DigitToken[] = [];
   const digitPositions: number[] = [];
   let pointPosition = -1;
   let percent = 0;
