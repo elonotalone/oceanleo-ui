@@ -2577,7 +2577,48 @@ export function evaluateGridCellTyped(
     };
   } catch (caught) {
     const code = caught instanceof FormulaError ? caught.code : "#VALUE!";
-    return { ok: false, value: code, code };
+    return { ok: false, value: excelErrorFor(code), code };
+  }
+}
+
+/** 一个格子里允许出现的全部错误值。Excel 只有这 7 种，多一种都读不懂。 */
+const EXCEL_ERROR_VALUES = new Set<string>([
+  "#DIV/0!",
+  "#N/A",
+  "#VALUE!",
+  "#REF!",
+  "#NAME?",
+  "#NUM!",
+  "#NULL!",
+]);
+
+/**
+ * 拒绝码 → Excel 错误值。
+ *
+ * `GRID_FORMULA_REJECTION_CODES` 是**检查器**的 lint 码，是给代码和日志看的；
+ * 它们不是 Excel 错误值，**不许出现在单元格里**。此前 `requireRecalc()` 抛的
+ * `grid-formula-nondeterministic` 被 catch 原样当成了格子的值，于是任何一份没有
+ * recalc 戳的旧文档一打开，`=TODAY()` 那一格就在用户屏幕上显示这行英文 lint 码
+ * （`V3` 裁决 §给 W12 的三条 · 第 2 条）。
+ *
+ * 机器可读的原因没有丢：它仍然原样留在 `GridFormulaResult.code` 上，
+ * 检查器与导出链读的是那个字段。变的只是**给人看的那一格**。
+ */
+function excelErrorFor(code: string): string {
+  if (EXCEL_ERROR_VALUES.has(code)) return code;
+  switch (code) {
+    // 「这个名字在这儿用不了」——与 Excel 对未知函数名的判法一致。
+    case GRID_FORMULA_REJECTION_CODES.nondeterministic:
+    case GRID_FORMULA_REJECTION_CODES.notWhitelisted:
+    case GRID_FORMULA_REJECTION_CODES.unreachable:
+    case GRID_FORMULA_REJECTION_CODES.macro:
+      return "#NAME?";
+    case GRID_FORMULA_REJECTION_CODES.externalWorkbook:
+      return "#REF!";
+    case GRID_FORMULA_REJECTION_CODES.unguardedDivision:
+      return "#DIV/0!";
+    default:
+      return "#VALUE!";
   }
 }
 

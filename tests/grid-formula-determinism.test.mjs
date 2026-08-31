@@ -58,10 +58,13 @@ test("没有 recalc 戳时 volatile 函数被拒，不回落系统时间", () =>
   }
 });
 
-test("缺戳时求值也拒绝，给的是拒绝码而不是一个算出来的数", () => {
+test("缺戳时求值也拒绝，给的是错误值而不是一个算出来的数", () => {
   const result = evaluateGridCellInWorkbookTyped(book([["=TODAY()"]]), "表一", 0, 0);
   assert.equal(result.ok, false);
-  assert.equal(result.value, GRID_FORMULA_REJECTION_CODES.nondeterministic);
+  // 拒绝的**理由**仍然逐字是那个拒绝码，一个字没少——只是它现在留在 code 上，
+  // 不再被当成格子的值端到用户面前（见本文件末「拒绝码不许泄漏到用户屏幕上」）。
+  assert.equal(result.code, GRID_FORMULA_REJECTION_CODES.nondeterministic);
+  assert.equal(result.value, "#NAME?");
   assert.notEqual(typeof result.value, "number");
 });
 
@@ -407,7 +410,7 @@ test("画布：文档带 recalc 戳时，TODAY() 在画布上算得出，且两�
 
   // 2026-08-31 的序列号，与 grid-formula-date-serial 的口径同源。
   assert.equal(first.today, "46265", "画布拿不到 recalc 戳，TODAY() 又被挡回去了");
-  assert.notEqual(first.rand, "grid-formula-nondeterministic");
+  assert.notEqual(first.rand, "#NAME?");
   assert.deepEqual(first, second, "同一份文档两次加载必须逐字相同");
 });
 
@@ -417,5 +420,136 @@ test("画布：文档没有 recalc 戳时，volatile 仍然 fail-closed（不许
   );
   const sheets = cloneGridSheets([sheet("s1", "表一", [["=TODAY()"]])]);
   bindGridWorkbook(sheets); // 登记了工作簿，但没有戳
-  assert.equal(gridDisplayValue(sheets[0], 0, 0), "grid-formula-nondeterministic");
+  // fail-closed 这条没变，变的只是**显示成什么**：见下一节。
+  assert.equal(gridDisplayValue(sheets[0], 0, 0), "#NAME?");
+});
+
+/* ------------- 拒绝码不许泄漏到用户屏幕上（V3 给 W12 的第 2 条） ------------- */
+
+/**
+ * `GRID_FORMULA_REJECTION_CODES` 是**检查器**的 lint 码。
+ * 此前 `requireRecalc()` 抛的 `grid-formula-nondeterministic` 被
+ * `evaluateGridCellTyped` 的 catch 原样当成了格子的值，于是**任何一份没有戳的
+ * 旧文档一打开，`=TODAY()` 那一格就在用户屏幕上显示这行英文 lint 码**。
+ *
+ * 现在格子里只许出现 7 种 Excel 错误值；机器可读的原因原样留在 `result.code` 上。
+ */
+test("求值失败时格子里只出现 Excel 错误值，lint 码留在 code 字段上", async () => {
+  const { evaluateGridCellTyped, GRID_FORMULA_REJECTION_CODES } = await import(
+    "../src/shell/doc-editors/grid-formula.ts"
+  );
+  const result = evaluateGridCellTyped([["=TODAY()"]], 0, 0);
+  assert.equal(result.ok, false);
+  // 给人看的那一格
+  assert.equal(result.value, "#NAME?");
+  assert.ok(
+    !String(result.value).startsWith("grid-formula-"),
+    "lint 码泄漏到了单元格里",
+  );
+  // 给机器看的那一份，一个字都不能少
+  assert.equal(result.code, GRID_FORMULA_REJECTION_CODES.nondeterministic);
+});
+
+test("九种拒绝码没有一种会以原样落进格子", async () => {
+  const { evaluateGridCellTyped, GRID_FORMULA_REJECTION_CODES } = await import(
+    "../src/shell/doc-editors/grid-formula.ts"
+  );
+  const excel = new Set([
+    "#DIV/0!",
+    "#N/A",
+    "#VALUE!",
+    "#REF!",
+    "#NAME?",
+    "#NUM!",
+    "#NULL!",
+  ]);
+  const probes = [
+    "=TODAY()",
+    "=RAND()",
+    '=INDIRECT("A1")',
+    "=OFFSET(A1,1,1)",
+    '=CALL("kernel32","Beep")',
+    "=[Book1.xlsx]Sheet1!A1",
+    "=XLOOKUP(A1,B1:B9,C1:C9)",
+  ];
+  const leaked = [];
+  for (const formula of probes) {
+    const { value } = evaluateGridCellTyped([[formula]], 0, 0);
+    if (typeof value === "string" && !excel.has(value)) {
+      leaked.push(`${formula} => ${value}`);
+    }
+  }
+  assert.deepEqual(leaked, []);
+  // 反向自验：这些码确实存在，否则上面的零命中是探针失效（§6）。
+  assert.equal(
+    GRID_FORMULA_REJECTION_CODES.nondeterministic,
+    "grid-formula-nondeterministic",
+  );
+});
+
+/* ---------- A3 最后一段：编辑器真实载入路径喂得进戳（V3 给 W12 的第 1 条） ---------- */
+
+/**
+ * `V3` 判 A3「部分红」，红的就是这一段：用户实际打开文档走
+ * `normalizeGridProjectSheetState`，而它签名里**没有放戳的位置**，
+ * 于是 `bindGridWorkbook(sheets)` 不带 options，画布拿不到戳。
+ * 供戳的 `gridIrToCarrierProject` 是另一条路，不是 hook 走的那条。
+ *
+ * 判据是操作员级的：**打开文档敲 `=TODAY()`，屏幕上出不出结果。**
+ */
+test("A3：编辑器载入路径带上戳，打开文档 =TODAY() 就算得出", async () => {
+  const { cloneGridSheets, gridDisplayValue, normalizeGridProjectSheetState } =
+    await import("../src/shell/doc-editors/grid-model.ts");
+
+  const projectSheets = [{ name: "Sheet1", rows: [["=TODAY()", "=RAND()"]] }];
+  const open = (recalc) => {
+    // use-grid-editor.ts:611 的原样调用，只多传第三个入参。
+    const normalized = normalizeGridProjectSheetState(projectSheets, "", { recalc });
+    const active = cloneGridSheets(normalized.sheets)[0];
+    return {
+      today: gridDisplayValue(active, 0, 0),
+      rand: gridDisplayValue(active, 0, 1),
+    };
+  };
+
+  const stamp = { at: "2026-08-31T00:00:00.000Z", seed: 12345 };
+  const first = open(stamp);
+  assert.equal(first.today, "46265", "打开文档后 TODAY() 仍然算不出来");
+  assert.deepEqual(open(stamp), first, "同一份文档两次打开必须逐字相同");
+
+  // 证伪：戳往后挪一天，结果必须恰好差 1 —— 证明真在读戳，不是巧合值。
+  const nextDay = open({ at: "2026-09-01T00:00:00.000Z", seed: 12345 });
+  assert.equal(Number(nextDay.today) - Number(first.today), 1);
+
+  // 不传戳时行为与从前逐字节相同：fail-closed。
+  assert.equal(
+    normalizeGridProjectSheetState(projectSheets, "").sheets.length,
+    1,
+    "省略第三个入参不许改变既有形状",
+  );
+});
+
+test("A3：形状不对的戳一律当作没有戳，不许把坏戳当好戳用", async () => {
+  const { cloneGridSheets, gridDisplayValue, normalizeGridProjectSheetState } =
+    await import("../src/shell/doc-editors/grid-model.ts");
+
+  const projectSheets = [{ name: "Sheet1", rows: [["=TODAY()"]] }];
+  const bad = [
+    { at: "2026-08-31T00:00:00.000Z" }, // 缺 seed
+    { at: "not-a-date", seed: 1 },
+    { at: "2026-08-31T00:00:00.000+08:00", seed: 1 }, // 不是 UTC
+    { at: "2026-08-31T00:00:00.000Z", seed: -1 }, // 不是 uint32
+    { at: "2026-08-31T00:00:00.000Z", seed: 1.5 },
+    "nonsense",
+    null,
+  ];
+  for (const recalc of bad) {
+    const normalized = normalizeGridProjectSheetState(projectSheets, "", { recalc });
+    const active = cloneGridSheets(normalized.sheets)[0];
+    assert.equal(
+      gridDisplayValue(active, 0, 0),
+      "#NAME?",
+      `坏戳 ${JSON.stringify(recalc)} 被当成好戳用了`,
+    );
+  }
 });

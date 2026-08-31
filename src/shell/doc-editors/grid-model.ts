@@ -343,9 +343,52 @@ function normalizeFormats(value: unknown): Record<string, GridCellFormat> {
   return result;
 }
 
+/**
+ * 把工程档里存的 `recalc` 收成一个可信的戳，收不成就给 `undefined`。
+ *
+ * 载入路径拿到的是 `unknown`（工程档是外部字节），所以这里**只放行形状完全对的**：
+ * `at` 必须是以 `Z` 结尾的 UTC ISO8601、`seed` 必须是 uint32。
+ * 收不成宁可给 `undefined` —— volatile 于是 fail-closed，
+ * 那正是「缺戳不许回落系统时间」要的那一侧，不是把坏戳当好戳用。
+ */
+export function normalizeGridRecalcStamp(
+  value: unknown,
+): GridRecalcStamp | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const at = record.at;
+  const seed = record.seed;
+  if (typeof at !== "string" || !at.endsWith("Z") || Number.isNaN(Date.parse(at))) {
+    return undefined;
+  }
+  if (
+    typeof seed !== "number" ||
+    !Number.isInteger(seed) ||
+    seed < 0 ||
+    seed > 0xff_ff_ff_ff
+  ) {
+    return undefined;
+  }
+  return { at, seed };
+}
+
+/**
+ * 编辑器载入路径。**第三个入参是 A3 最后一段缺的那个位置。**
+ *
+ * `V3` 裁决 §一 A3：引擎与绑定路径都绿了，但用户实际打开文档走的是这个函数，
+ * 而它**签名里根本没有放 recalc 戳的地方**——只有 `value` 与 `activeSheetId`，
+ * 于是它调 `bindGridWorkbook(sheets)` 时不带 options，画布拿不到戳，
+ * `=TODAY()` 在屏幕上出不来结果。供戳的 `gridIrToCarrierProject` 是另一条路
+ * （IR → carrier），不是 hook 走的那条。
+ *
+ * 现在这个位置开出来了：`options.recalc` 可以直接喂**未经校验的** `project.recalc`
+ * （内部走 `normalizeGridRecalcStamp`），所以调用方只需要多传一个字段，
+ * 不必自己判形状。省略它则行为与从前逐字节相同。
+ */
 export function normalizeGridProjectSheetState(
   value: unknown,
   activeSheetId: unknown = "",
+  options: { recalc?: unknown } = {},
 ): NormalizedGridProjectSheetState {
   const rawSheets = Array.isArray(value) ? value : [];
   const candidates = rawSheets.flatMap((raw, index) => {
@@ -384,7 +427,12 @@ export function normalizeGridProjectSheetState(
       GRID_MAX_COLS,
     ),
   }));
-  return { sheets: bindGridWorkbook(sheets), activeSheetId: identities.activeSheetId };
+  return {
+    sheets: bindGridWorkbook(sheets, {
+      recalc: normalizeGridRecalcStamp(options.recalc),
+    }),
+    activeSheetId: identities.activeSheetId,
+  };
 }
 
 export function normalizeGridProjectSheets(value: unknown): GridSheet[] {
