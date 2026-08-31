@@ -11,6 +11,7 @@ import type {
   ArtifactType,
 } from "./artifact-contract";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import { AudioCoverWaveform } from "./workspace-cover-waveform";
 import type {
   CoverEvidence,
   CoverEvidenceReport,
@@ -21,8 +22,7 @@ import type {
 } from "./workspace-cover-contract";
 
 // 六个公开类型移到 `workspace-cover-contract.ts`，此处原样转出：`index.ts` 与三个
-// 消费点的既有 import 路径逐字不变。`export type` 在 transpile 时被完整抹除，本模块
-// 因此仍是零相对运行时依赖（为什么必须如此，见下方 PDF 白名单那段注释）。
+// 消费点的既有 import 路径逐字不变。
 export type * from "./workspace-cover-contract";
 
 /**
@@ -381,8 +381,8 @@ function supportsPdfCover(
 /**
  * UC-1 / UC-3 —— 免沙箱 PDF 封面 frame 的第一方主机白名单。
  * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1/§7.5/§8.1/§8.3。
- * 与 `library-viewers.tsx` 同名判定逐字一致：本模块被渲染测试以 data: URL 加载，不能
- * 引入相对运行时依赖，只能复制；一致性由 untrusted-content-pdf-frame-host.test.mjs 锁死。
+ * 与 `library-viewers.tsx` 同名判定逐字一致：两侧各留一份，一致性由
+ * untrusted-content-pdf-frame-host.test.mjs 逐字锁死。改这里必须同时改那边，否则当场红。
  *
  * Chromium 内建 PDF 查看器加任何 sandbox 属性都不渲染（crbug 413851），PDF 封面只能免
  * 沙箱。免沙箱 frame 读不到宿主 DOM，但读得到自己 origin 的 cookie，而会话 cookie 非
@@ -609,100 +609,6 @@ function pdfFirstPageUrl(url: string): string {
   return url.includes("#")
     ? url
     : `${url}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
-}
-
-function AudioCoverWaveform({
-  url, alt, className, resourceKey, mediaType, onReady, onError,
-}: {
-  url: string; alt: string; className: string; resourceKey: string;
-  mediaType: string; onReady: () => void; onError: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    let alive = true;
-    const controller = new AbortController();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      onError();
-      return;
-    }
-    const width = 640;
-    const height = 360;
-    canvas.width = width;
-    canvas.height = height;
-
-    void (async () => {
-      try {
-        const response = await fetch(url, {
-          signal: controller.signal,
-          credentials: "omit",
-          mode: "cors",
-        });
-        if (!response.ok) throw new Error(`audio cover HTTP ${response.status}`);
-        const buffer = await response.arrayBuffer();
-        if (!alive) return;
-        const AudioCtx =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext?: typeof AudioContext })
-            .webkitAudioContext;
-        if (!AudioCtx) throw new Error("AudioContext unavailable");
-        const audioCtx = new AudioCtx();
-        try {
-          const decoded = await audioCtx.decodeAudioData(buffer.slice(0));
-          if (!alive) return;
-          const channel = decoded.getChannelData(0);
-          const bars = 64;
-          const samplesPerBar = Math.max(1, Math.floor(channel.length / bars));
-          const peaks: number[] = [];
-          for (let i = 0; i < bars; i += 1) {
-            let peak = 0;
-            const start = i * samplesPerBar;
-            const end = Math.min(channel.length, start + samplesPerBar);
-            for (let j = start; j < end; j += 1) {
-              peak = Math.max(peak, Math.abs(channel[j] || 0));
-            }
-            peaks.push(peak);
-          }
-          const maxPeak = Math.max(...peaks, 0.001);
-          ctx.fillStyle = "#1c1917";
-          ctx.fillRect(0, 0, width, height);
-          const barWidth = width / bars;
-          for (let i = 0; i < bars; i += 1) {
-            const amplitude = peaks[i] / maxPeak;
-            const barHeight = Math.max(4, amplitude * (height * 0.72));
-            const x = i * barWidth + barWidth * 0.18;
-            const y = (height - barHeight) / 2;
-            ctx.fillStyle = `hsl(${210 + amplitude * 40} 72% ${42 + amplitude * 28}%)`;
-            ctx.fillRect(x, y, barWidth * 0.64, barHeight);
-          }
-          onReady();
-        } finally {
-          void audioCtx.close();
-        }
-      } catch {
-        if (alive) onError();
-      }
-    })();
-
-    return () => {
-      alive = false;
-      controller.abort();
-    };
-  }, [mediaType, onError, onReady, resourceKey, url]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      data-cover-renderer="audio"
-      data-cover-fit="contain"
-      data-cover-media-type={mediaType}
-      role="img"
-      aria-label={alt}
-      className={className}
-    />
-  );
 }
 
 export function WorkspaceCoverResource({
