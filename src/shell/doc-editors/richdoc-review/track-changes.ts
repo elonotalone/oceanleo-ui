@@ -325,7 +325,9 @@ export function trackedFormat(
     const start = Math.max(pos, from);
     const end = Math.min(pos + node.nodeSize, to);
     if (end <= start) return true;
-    let after = node.marks.filter(
+    // `readonly`：`filter` 给的是 `Mark[]`，但 `addToSet` 回的是 `readonly Mark[]`，
+    // 不标这一下这行赋值过不了 tsc（TS4104）。ProseMirror 的 mark 集合本来就是不可变的。
+    let after: readonly Mark[] = node.marks.filter(
       (mark) => !removed.some((type) => type.name === mark.type.name),
     );
     for (const mark of added) after = mark.addToSet(after);
