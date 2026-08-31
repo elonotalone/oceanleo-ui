@@ -27,6 +27,14 @@
 //   · `next/dynamic` 不变 —— 真的只是包了一层，ssr:false / loading 都照旧；
 //   · 重试真的能重试     —— promise 没死，循环还在。
 //
+// 这一层是两个拼件，`dynamic()` 的调用夹在中间、留在调用方：
+//
+//     const Dynamic = dynamic(chunkRetryLoader(id, () => import("…")), { ssr:false, loading });
+//     export const Route = withChunkRetry(id, Dynamic, WorkbenchRouteChunkError);
+//
+// 这么切是刻意的：`src/lib` 不许 import `src/shell`，而失败态的长相属于 shell；
+// 同时 `import()` 字面量与 `{ ssr:false, loading }` 都留在看得见 11 条路由的地方。
+//
 // ----------------------------------------------------------------------------
 // cache-busting 到底 bust 了什么（承诺的边界，别高估）
 //
@@ -43,7 +51,6 @@
 // 还是它。要根治得在部署期换 URL，那不在本波范围内。这条边界写进交付说明。
 // ============================================================================
 
-import dynamic from "next/dynamic";
 import { createElement, useCallback, useSyncExternalStore, type ComponentType } from "react";
 
 import {
@@ -311,18 +318,23 @@ export interface ChunkErrorProps {
   onReload: () => void;
 }
 
-export interface LazyRouteOptions {
-  /** 加载中的占位。沿用调用方自己的 spinner，本层不规定长相。 */
-  loading: ComponentType;
-  /** 失败态。**不能是 spinner**，必须给用户下一步动作。 */
-  error: ComponentType<ChunkErrorProps>;
+function reloadPage(): void {
+  if (typeof window !== "undefined") window.location.reload();
 }
 
 /**
  * loader：退避重试 → 失败就发布状态并等人点重试 → 点了就再来一轮。
  * 永远不 reject，所以 `React.lazy` 不会被钉死在 Rejected。
+ *
+ * 交给 `dynamic()` 的就是它。**`dynamic()` 的调用留在调用方**
+ * （`AdvancedContentWorkbench.tsx`），不搬进这一层：那里的
+ * `import("./advanced-routes/XxxRoute")` 字面量是 webpack 切 chunk 的依据，
+ * 而 `{ ssr: false, loading }` 也该留在看得见路由的地方。
  */
-function retryingLoader<T>(routeId: string, load: () => Promise<T>): () => Promise<T> {
+export function chunkRetryLoader<T>(
+  routeId: string,
+  load: () => Promise<T>,
+): () => Promise<T> {
   return async () => {
     for (;;) {
       setRouteState(routeId, INITIAL_STATE);
@@ -340,28 +352,23 @@ function retryingLoader<T>(routeId: string, load: () => Promise<T>): () => Promi
   };
 }
 
-function reloadPage(): void {
-  if (typeof window !== "undefined") window.location.reload();
-}
-
 /**
- * 把一条 `import()` 包成带重试的路由组件。
+ * 给一个已经 `dynamic()` 出来的路由组件套上失败态的闸。
  *
- * `load` 必须**原样保留 `import("字面量")`**：webpack 是靠这个字面量切 chunk 的，
- * 换成变量就退回单块打包（`01-verified-facts.md` §1.7 记的那一轮代码分割会白做）。
+ * `Dynamic` 还在加载（或已成功）时原样渲染它；退避重试耗尽之后渲染 `Failure`，
+ * 并把「重试」接回还在 `await` 的那个 loader 循环。
+ *
+ * 这一层刻意**不自己调 `dynamic()`**：调用留在
+ * `AdvancedContentWorkbench.tsx`，那里的 `import("./advanced-routes/XxxRoute")`
+ * 字面量是 webpack 切 chunk 的唯一依据，搬到这儿会让 11 条路由退回单块打包
+ * （`01-verified-facts.md` §1.7 记的那一轮代码分割会白做）。
  */
-export function lazyRouteWithRetry<P extends object>(
+export function withChunkRetry<P extends object>(
   routeId: string,
-  load: () => Promise<ComponentType<P>>,
-  options: LazyRouteOptions,
+  Dynamic: ComponentType<P>,
+  Failure: ComponentType<ChunkErrorProps>,
 ): ComponentType<P> {
-  const Dynamic = dynamic<P>(retryingLoader(routeId, load), {
-    ssr: false,
-    loading: options.loading,
-  });
-  const Failure = options.error;
-
-  function LazyRoute(props: P) {
+  function ChunkRetryGate(props: P) {
     const state = useChunkRouteState(routeId);
     if (state.phase === "loading") return createElement(Dynamic, props);
     return createElement(Failure, {
@@ -371,6 +378,6 @@ export function lazyRouteWithRetry<P extends object>(
       onReload: reloadPage,
     });
   }
-  LazyRoute.displayName = `LazyRoute(${routeId})`;
-  return LazyRoute;
+  ChunkRetryGate.displayName = `ChunkRetryGate(${routeId})`;
+  return ChunkRetryGate;
 }

@@ -8,12 +8,18 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 import { AdvancedWorkbenchBlankStage } from "./AdvancedWorkbenchStage";
 import { UnsupportedRoute } from "./advanced-routes/UnsupportedRoute";
-import { WorkbenchRouteLoading } from "./advanced-routes/WorkbenchRouteLoading";
+import {
+  WorkbenchRouteChunkError,
+  WorkbenchRouteLoading,
+} from "./advanced-routes/WorkbenchRouteLoading";
+import { chunkRetryLoader, withChunkRetry } from "../lib/lazy-with-retry";
+import { reportAutosaveError } from "../lib/telemetry/errors";
 import { editorCapabilityFor, editorRouteFor } from "./workbench-routes";
 import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
 import {
@@ -46,82 +52,94 @@ import {
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 
-const VideoTimelineRoute = dynamic(
-  () =>
-    import("./advanced-routes/VideoTimelineRoute").then(
-      (module) => module.VideoTimelineRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+/**
+ * 自动保存失败的上报口（W09 的第三个错误来源）。
+ *
+ * 这些失败**不是异常**：`workspace.saveSnapshot` 返回 `{ ok: false }`，
+ * 所以在此之前它们一声不响地退化成「返回 false」，生产上完全看不见——
+ * 用户只知道「我改的东西好像没保存」，我们这边一条记录都没有。
+ *
+ * 刻意造一个 `Error` 只为拿到稳定的指纹：消息不会进事件，
+ * 遥测只带 errorName 与指纹（见 `lib/telemetry/errors.ts`）。
+ */
+function reportSaveFailure(stage: string, willRetry: boolean): void {
+  const error = new Error(`workspace snapshot rejected at ${stage}`);
+  error.name = "AutosaveRejected";
+  reportAutosaveError({ stage, error, willRetry });
+}
+
+/**
+ * 11 条编辑器路由的统一装载方式（W09）。
+ *
+ * 在此之前每条都是裸的
+ * `dynamic(() => import(…), { ssr: false, loading: WorkbenchRouteLoading })`，
+ * chunk 一挂**没有任何处理**——全仓搜 `ChunkLoadError` 零命中。后果就是操作员
+ * 贴出来的那一片：`Model3DRoute_tsx_….js` 撞上
+ * `ERR_SSL_VERSION_OR_CIPHER_MISMATCH` 之后，编辑器永远转圈。
+ *
+ * 现在夹了两层（都在 `lib/lazy-with-retry.tsx`）：
+ *
+ * - `chunkRetryLoader`：指数退避 + 抖动 + cache-busting 地重试，**永不 reject**。
+ *   不 reject 是关键：`React.lazy` 会把 rejected 的 promise 永久钉死，
+ *   那样任何「重试」按钮都不可能有用。
+ * - `withChunkRetry`：退避耗尽后渲染可操作的失败态，并把重试接回还在 await
+ *   的那个循环。失败态区分「网络问题，可重试」与「版本已更新，请刷新」——
+ *   后者的信号是 chunk 404，这时重试永远不会成功，只有刷新有用。
+ *
+ * `dynamic()` 的调用**留在这里**：`import("./advanced-routes/XxxRoute")` 这个
+ * 字面量是 webpack 切 chunk 的唯一依据（`01-verified-facts.md` §1.7），
+ * 搬进 helper 会让 11 条路由退回单块打包。
+ */
+function lazyRoute<P extends object>(
+  routeId: string,
+  load: () => Promise<ComponentType<P>>,
+): ComponentType<P> {
+  return withChunkRetry(
+    routeId,
+    dynamic<P>(chunkRetryLoader(routeId, load), {
+      ssr: false,
+      loading: WorkbenchRouteLoading,
+    }),
+    WorkbenchRouteChunkError,
+  );
+}
+
+const VideoTimelineRoute = lazyRoute("video-timeline", () =>
+  import("./advanced-routes/VideoTimelineRoute").then(
+    (module) => module.VideoTimelineRoute,
+  ),
 );
-const AudioRoute = dynamic(
-  () =>
-    import("./advanced-routes/AudioRoute").then(
-      (module) => module.AudioRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const AudioRoute = lazyRoute("audio", () =>
+  import("./advanced-routes/AudioRoute").then((module) => module.AudioRoute),
 );
-const ImageRoute = dynamic(
-  () =>
-    import("./advanced-routes/ImageRoute").then(
-      (module) => module.ImageRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const ImageRoute = lazyRoute("image", () =>
+  import("./advanced-routes/ImageRoute").then((module) => module.ImageRoute),
 );
-const PdfRoute = dynamic(
-  () =>
-    import("./advanced-routes/PdfRoute").then(
-      (module) => module.PdfRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const PdfRoute = lazyRoute("pdf", () =>
+  import("./advanced-routes/PdfRoute").then((module) => module.PdfRoute),
 );
-const Model3DRoute = dynamic(
-  () =>
-    import("./advanced-routes/Model3DRoute").then(
-      (module) => module.Model3DRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const Model3DRoute = lazyRoute("threed", () =>
+  import("./advanced-routes/Model3DRoute").then((module) => module.Model3DRoute),
 );
-const RichDocRoute = dynamic(
-  () =>
-    import("./advanced-routes/RichDocRoute").then(
-      (module) => module.RichDocRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const RichDocRoute = lazyRoute("richdoc", () =>
+  import("./advanced-routes/RichDocRoute").then((module) => module.RichDocRoute),
 );
-const GridRoute = dynamic(
-  () =>
-    import("./advanced-routes/GridRoute").then(
-      (module) => module.GridRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const GridRoute = lazyRoute("grid", () =>
+  import("./advanced-routes/GridRoute").then((module) => module.GridRoute),
 );
-const DeckRoute = dynamic(
-  () =>
-    import("./advanced-routes/DeckRoute").then(
-      (module) => module.DeckRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const DeckRoute = lazyRoute("deck", () =>
+  import("./advanced-routes/DeckRoute").then((module) => module.DeckRoute),
 );
-const EmbeddedRoute = dynamic(
-  () =>
-    import("./advanced-routes/EmbeddedRoute").then(
-      (module) => module.EmbeddedRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const EmbeddedRoute = lazyRoute("embed", () =>
+  import("./advanced-routes/EmbeddedRoute").then(
+    (module) => module.EmbeddedRoute,
+  ),
 );
-const ChartRoute = dynamic(
-  () =>
-    import("./advanced-routes/ChartRoute").then(
-      (module) => module.ChartRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const ChartRoute = lazyRoute("chart", () =>
+  import("./advanced-routes/ChartRoute").then((module) => module.ChartRoute),
 );
-const GameRoute = dynamic(
-  () =>
-    import("./advanced-routes/GameRoute").then(
-      (module) => module.GameRoute,
-    ),
-  { ssr: false, loading: WorkbenchRouteLoading },
+const GameRoute = lazyRoute("game", () =>
+  import("./advanced-routes/GameRoute").then((module) => module.GameRoute),
 );
 /**
  * 空件挂载（合同 §3.2）用的入参形态：`item` 可以先不给。
@@ -341,7 +359,11 @@ function AdvancedContentWorkbenchRuntime(
         ADVANCED_SESSION_SCHEMA_VERSION,
         { expectedSessionId: session.id, title: materialRef.current.title },
       );
-      return saved.ok ? saved.session || session : null;
+      if (!saved.ok) {
+        reportSaveFailure("ensure-snapshot", true);
+        return null;
+      }
+      return saved.session || session;
     },
     [editorHost.embedded, makeSnapshot, workspace],
   );
@@ -367,7 +389,10 @@ function AdvancedContentWorkbenchRuntime(
             title: active.title || savedItem.title,
           },
         );
-        if (!stored.ok) return false;
+        if (!stored.ok) {
+          reportSaveFailure("record-saved-item", true);
+          return false;
+        }
         // Keep the mounted editor runtime on its in-memory document. Replacing
         // its input URL here remounts the route and can discard edits made
         // while the save request was in flight.
@@ -388,6 +413,7 @@ function AdvancedContentWorkbenchRuntime(
         ADVANCED_SESSION_SCHEMA_VERSION,
         { expectedSessionId: session.id, title: savedItem.title },
       );
+      if (!saved.ok) reportSaveFailure("record-saved-item", true);
       return saved.ok;
     },
     [editorHost, makeSnapshot, route.type, workspace],
@@ -413,6 +439,7 @@ function AdvancedContentWorkbenchRuntime(
         ADVANCED_SESSION_SCHEMA_VERSION,
         { expectedSessionId: session.id, title: nextTitle },
       );
+      if (!saved.ok) reportSaveFailure("rename-title", true);
       return saved.ok;
     },
     [editorHost, makeSnapshot, workspace],
@@ -540,15 +567,30 @@ function AdvancedContentWorkbenchRuntime(
     return <WorkbenchRouteLoading />;
   }
 
+  // 两级错误边界（W09）。在此之前只有外面这一层，且它的失败态是
+  // `createPortal(fallback, document.body)` + `fixed inset-0 z-[2147483000]`
+  // ——一条路由崩溃就是一张 max-z 全视口遮罩，外壳、编辑栏、素材库全被盖掉。
+  //
+  // 内层是**路由级**的：`key` 绑到路由标识 + 素材身份，措辞与呈现都留在编辑器
+  // 窗格内。一条编辑器崩了，工作台之外的东西一个都不受影响，用户能直接切别的素材。
+  // 外层只接内层看不见的那部分——外壳自己的崩溃（会话 provider、上下文），
+  // 那时候窗格里已经没有可信的东西可显示，保留原来的整页接管才是对的。
   return (
     <AdvancedSessionContext.Provider value={sessionActions}>
       <WorkbenchErrorBoundary
-        key={routeKey}
         item={props.item}
         onClose={props.onClose}
         contained={editorHost.embedded}
       >
-        {editor}
+        <WorkbenchErrorBoundary
+          key={routeKey}
+          scope="route"
+          routeId={route.type}
+          item={props.item}
+          onClose={props.onClose}
+        >
+          {editor}
+        </WorkbenchErrorBoundary>
       </WorkbenchErrorBoundary>
     </AdvancedSessionContext.Provider>
   );
