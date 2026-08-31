@@ -89,12 +89,33 @@ test.describe("P3 · 交互延迟预算", () => {
     expectMotionSettled(settleReport);
     await expectSubjectPresent(page, "button");
 
+    /**
+     * ⚠️ `[实测] 2026-08-31 18:2x` **`:not([disabled])` 是补上去的，缺了它这条用例会挂死 60 秒。**
+     *
+     * 原先取的是 `[data-leo-slot] button` 全部 24 枚，而 W04 的矩阵里
+     * **五种状态包含 disabled**。对 disabled 元素调 `focus()` 是 no-op，
+     * `document.activeElement === target` 这个谓词于是**永远不成立**。
+     * `harness.js` 的 `waitFor` 有 5 秒上限（会 resolve(false) 而不是永久挂起），
+     * 所以不是死循环——但 24 个样本里只要轮到几枚 disabled，
+     * 每枚就白烧 5 秒，累计轻松超过 60 秒的用例上限。
+     * 实测表现就是 `page.evaluate` 处 `Test timeout of 60000ms exceeded`。
+     *
+     * **挂死比判红更糟**：判红会告诉你哪条不变量破了，挂死只烧掉一分钟、
+     * 什么读数都不留，还会让人以为是机器慢。
+     *
+     * 语义上也应该这么改：这条量的是「焦点环画出来要多久」，
+     * 而 disabled 按钮本来就不该拿到焦点（`w04-button-matrix.spec.ts` 里
+     * 「disabled 不靠 pointer-events 假装，而是真的 disabled」正是守这一条）。
+     * 把量不了的对象排除掉，不是放宽判据。
+     */
     const samples = await page.evaluate(async (count) => {
       const buttons = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-leo-slot] button"),
+        document.querySelectorAll<HTMLElement>(
+          "[data-leo-slot] button:not([disabled])",
+        ),
       );
       if (buttons.length === 0) return [];
-      const out: number[] = [];
+      const out: { duration: number; settled: boolean }[] = [];
       for (let i = 0; i < count; i += 1) {
         const target = buttons[i % buttons.length];
         const result = await (window as any).__leoVisual.measure(
@@ -105,18 +126,31 @@ test.describe("P3 · 交互延迟预算", () => {
           },
           () => document.activeElement === target,
         );
-        out.push(result.duration);
+        out.push({ duration: result.duration, settled: result.settled });
       }
       return out;
     }, SAMPLES);
 
     expect(samples.length, "一个样本都没取到").toBe(SAMPLES);
 
+    /**
+     * 没稳定下来的样本**不许混进 p95**。它的 duration 是 `waitFor` 的 5 秒上限，
+     * 不是真实的绘制耗时；混进去会把预算基线抬到一个假的高位，
+     * 而预算「只减不增」意味着那个假高位会**永久留在盘上**。
+     */
+    const unsettled = samples.filter((s) => !s.settled).length;
+    expect(
+      unsettled,
+      `${unsettled}/${samples.length} 个样本没等到 activeElement 落到目标上。\n  ` +
+        "这些样本的 duration 是 waitFor 的 5 秒上限而不是真实耗时；\n  " +
+        "让它们进 p95 会把预算基线钉在一个假的高位上，而预算只减不增 ⇒ 假高位会永久留下。",
+    ).toBe(0);
+
     report(
       judge(
         "button-focus-ring",
-        samples,
-        "Button 焦点环绘制（focus + 强制布局），24 样本轮流打在 24 枚按钮上",
+        samples.map((s) => s.duration),
+        "Button 焦点环绘制（focus + 强制布局），24 样本轮流打在**可聚焦**按钮上（disabled 不计，见上）",
       ),
     );
   });
