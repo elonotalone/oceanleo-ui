@@ -1,0 +1,6 @@
+# 运行产物。基线图（baselines/）与延迟预算（budgets/）是**要提交**的，
+# 这里只挡每次跑都变的东西：报告、trace、失败时的实际图与 diff 图。
+#
+# 刻意放在 tests/visual/ 内而不是仓根 .gitignore：仓根那份不在 W10 的独占面上
+# （`W10.md` §独占面），而 git 对每层目录的 .gitignore 一视同仁。
+.artifacts/

@@ -76,6 +76,13 @@ export default defineConfig({
     timezoneId: "Asia/Shanghai",
     // 动效本身是被测对象，所以默认不降级；reduced-motion 由 W01 那组用例单独开。
     reducedMotion: "no-preference",
+    /**
+     * 容器内是 root，chromium 的 setuid 沙箱在 root 下会拒绝启动。
+     * 关掉它是安全的，也不影响渲染：容器本身就是那层隔离，而 OS 沙箱不参与
+     * 光栅化，截图逐像素相同。**只在容器内关**——宿主上如果有人裸跑，
+     * 让它按正常方式启动，不给「宿主也能跑」制造错觉。
+     */
+    launchOptions: IN_CONTAINER ? { args: ["--no-sandbox"] } : {},
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
