@@ -152,13 +152,20 @@ async function blockChildren(
   docx: DocxModule,
   listPrefix = "",
   listLevel = 0,
+  inheritedPreset: RichDocNumberingPreset | null = null,
 ): Promise<unknown[]> {
   const output: unknown[] = [];
   for (let index = 0; index < nodes.length; index += 1) {
     const node = nodes[index];
     if (node.type === "bulletList" || node.type === "orderedList") {
       const ordered = node.type === "orderedList";
-      const preset = numberingPresetOf(node.attrs?.numbering);
+      // 编号格式**沿嵌套向下继承**。只有最外层那个 `ol` 带 `data-numbering`
+      // （用户是在最外层选的「公文」），不继承的话第二级就会退回 `1.`——
+      // 屏幕上是「（一）」导出后是「1.」，正是「做出来但导出丢失」那类失败。
+      const preset =
+        node.attrs?.numbering != null
+          ? numberingPresetOf(node.attrs.numbering)
+          : (inheritedPreset ?? "decimal");
       for (let itemIndex = 0; itemIndex < (node.content || []).length; itemIndex += 1) {
         const item = node.content?.[itemIndex];
         if (!item) continue;
@@ -170,6 +177,7 @@ async function blockChildren(
               ? `${richDocListMarker(preset, listLevel, itemIndex + 1)} `
               : "• ",
             listLevel + 1,
+            preset,
           )),
         );
       }

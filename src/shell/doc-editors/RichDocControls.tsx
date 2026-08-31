@@ -1,7 +1,19 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AdvancedFontPicker } from "../AdvancedFontPicker";
+import {
+  findEveryOccurrence,
+  replaceEveryOccurrence,
+} from "./doc-family-commands";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -34,6 +46,28 @@ function ToolButton({
   );
 }
 
+function CheckRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--fg-2,#57534e)]">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-3.5 accent-[var(--awb-accent,#7c3aed)]"
+      />
+      {label}
+    </label>
+  );
+}
+
 export function RichDocControls({
   editor: state,
 }: {
@@ -45,6 +79,45 @@ export function RichDocControls({
   const [imageInput, setImageInput] = useState("");
   const sourceFileRef = useRef<HTMLInputElement>(null);
   const imageFileRef = useRef<HTMLInputElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findText, setFindText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [matchCase, setMatchCase] = useState(true);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [replaceReport, setReplaceReport] = useState("");
+
+  // Ctrl/Cmd+F 打开面板。用捕获阶段接管浏览器自带的查找框——页面内的查找
+  // 才能替换，浏览器的那个只能看。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "f" && event.key !== "F") return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      event.preventDefault();
+      setFindOpen(true);
+      window.setTimeout(() => findInputRef.current?.focus(), 0);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
+  const matchCount =
+    findOpen && editor && findText
+      ? findEveryOccurrence(editor, findText, { matchCase, wholeWord }).length
+      : 0;
+
+  const runReplaceAll = useCallback(() => {
+    if (!editor || !findText) return;
+    const count = replaceEveryOccurrence(editor, findText, replaceText, {
+      matchCase,
+      wholeWord,
+    });
+    setReplaceReport(
+      count
+        ? tt("已替换 {n} 处，按一次撤销可以全部还原。", { n: count })
+        : tt("没有找到「{q}」。", { q: findText }),
+    );
+  }, [editor, findText, replaceText, matchCase, wholeWord, tt]);
 
   const onImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -78,6 +151,88 @@ export function RichDocControls({
         <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("选中文字后，排版与颜色会直接出现在内容上方。")}
         </p>
+      </Section>
+
+      <Section title={tt("查找和替换")}>
+        {findOpen ? (
+          <div className="space-y-2">
+            <input
+              ref={findInputRef}
+              value={findText}
+              onChange={(event) => {
+                setFindText(event.target.value);
+                setReplaceReport("");
+              }}
+              placeholder={tt("查找内容")}
+              aria-label={tt("查找内容")}
+              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+            />
+            <input
+              value={replaceText}
+              onChange={(event) => setReplaceText(event.target.value)}
+              placeholder={tt("替换为")}
+              aria-label={tt("替换为")}
+              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+            />
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <CheckRow
+                label={tt("区分大小写")}
+                checked={matchCase}
+                onChange={setMatchCase}
+              />
+              <CheckRow
+                label={tt("全字匹配")}
+                checked={wholeWord}
+                onChange={setWholeWord}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <ToolButton
+                label={tt("全部替换")}
+                disabled={!editor || !findText || matchCount === 0}
+                onClick={runReplaceAll}
+              />
+              <ToolButton
+                label={tt("关闭")}
+                onClick={() => {
+                  setFindOpen(false);
+                  setReplaceReport("");
+                }}
+              />
+            </div>
+            <p
+              aria-live="polite"
+              className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]"
+            >
+              {replaceReport ||
+                (findText
+                  ? tt("找到 {n} 处。", { n: matchCount })
+                  : tt("全部替换是一步操作，撤销一次就全部还原。"))}
+            </p>
+          </div>
+        ) : (
+          <ToolButton
+            label={tt("查找和替换（Ctrl/Cmd+F）")}
+            onClick={() => {
+              setFindOpen(true);
+              window.setTimeout(() => findInputRef.current?.focus(), 0);
+            }}
+          />
+        )}
+      </Section>
+
+      <Section title={tt("字体")}>
+        <div className="-mx-1 overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)]">
+          <AdvancedFontPicker
+            selectedFamily={String(
+              editor?.getAttributes("textStyle").fontFamily || "",
+            )}
+            disabled={!editor}
+            onSelect={(family) =>
+              editor?.chain().focus().setFontFamily(family).run()
+            }
+          />
+        </div>
       </Section>
 
       <Section title={tt("插入内容")}>

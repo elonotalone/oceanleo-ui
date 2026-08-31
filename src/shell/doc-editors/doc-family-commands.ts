@@ -341,20 +341,65 @@ function docEnd(editor: Editor): number {
   return editor.state.doc.content.size;
 }
 
-function replaceEveryOccurrence(
+/** 查找选项。默认值 = 本函数长出选项之前的行为（区分大小写、不限全字）。 */
+export interface RichDocFindOptions {
+  matchCase?: boolean;
+  wholeWord?: boolean;
+}
+
+/**
+ * 「全字匹配」的边界字符。中文没有词边界，`\p{L}` 会把「中文中文」判成一个词，
+ * 所以这条对 CJK 实际上等于不限制——这是正确的，不是漏洞：用户在中文里勾
+ * 「全字匹配」本来就没有可用的语义。
+ */
+function isWordChar(value: string | undefined): boolean {
+  return !!value && /[\p{L}\p{N}_]/u.test(value);
+}
+
+/**
+ * 全文找出 `needle` 的所有位置。**匹配不跨文本节点**：一段文字被加粗切成两个
+ * text node 时，跨着这条缝的词找不到。这是既有行为，UI 与命令共用同一份实现，
+ * 免得两处对「找到几处」给出不同答案。
+ */
+export function findEveryOccurrence(
   editor: Editor,
-  from: string,
-  to: string,
-): number {
+  needle: string,
+  options: RichDocFindOptions = {},
+): { start: number; end: number }[] {
+  if (!needle) return [];
+  const matchCase = options.matchCase ?? true;
+  const wholeWord = options.wholeWord ?? false;
+  const probe = matchCase ? needle : needle.toLowerCase();
   const matches: { start: number; end: number }[] = [];
   editor.state.doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
-    let index = node.text.indexOf(from);
+    const text = node.text;
+    const haystack = matchCase ? text : text.toLowerCase();
+    let index = haystack.indexOf(probe);
     while (index >= 0) {
-      matches.push({ start: pos + index, end: pos + index + from.length });
-      index = node.text.indexOf(from, index + from.length);
+      const boundaryOk =
+        !wholeWord ||
+        (!isWordChar(text[index - 1]) && !isWordChar(text[index + needle.length]));
+      if (boundaryOk) {
+        matches.push({ start: pos + index, end: pos + index + needle.length });
+      }
+      index = haystack.indexOf(probe, index + needle.length);
     }
   });
+  return matches;
+}
+
+/**
+ * 全部替换。**必须保持单事务**：一次 `dispatch` 才能一步撤销。
+ * 拆成逐个 dispatch，`tests/richdoc-find-replace.test.mjs` 的撤销用例当场红。
+ */
+export function replaceEveryOccurrence(
+  editor: Editor,
+  from: string,
+  to: string,
+  options: RichDocFindOptions = {},
+): number {
+  const matches = findEveryOccurrence(editor, from, options);
   if (!matches.length) return 0;
   const transaction = editor.state.tr;
   // 从后往前改，前面的位置就不会被前一次替换的长度差挪走。
@@ -1100,8 +1145,10 @@ export function buildPdfCommandSurface(
     };
     handlers["pdf.find-text"] = (values) => {
       if (!editor.textLayer.present) {
+        // 原文承诺「可以先做一次文字识别再来找」——全仓没有 OCR 能力，
+        // 那是一句办不到的话。只说事实 + 用户真的走得通的出路。
         return refuse(
-          "这份 PDF 是扫描件，没有可搜索的文字层；可以先做一次文字识别再来找。",
+          "这份 PDF 是扫描件，没有文字层，搜不了。请换一份带文字层的 PDF 重新上传。",
         );
       }
       const hits = editor.searchFullText(String(values.query));
