@@ -20,12 +20,24 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { dirtyAmong, measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
+
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const SRC = join(REPO, "src");
 
 // ---------------------------------------------------------------------------
-// 棘轮基线（2026-08-31 W30 实测冻结）
+// 棘轮基线（2026-08-31 W30 冻结，W33 在干净检出上重新标定）
+//
+// ⚠️ 下面两个数字与 `BASELINE_COMMIT` 是**一组**，改一个就要改另一个：
+// 末尾那条「基线自检」会把 `BASELINE_COMMIT` 的树解出来重量一遍，对不上当场红。
+// 理由见 `_COMMON.md §7b⑪`——`W30` 原先的 11 是在脏工作树上量的。
 // ---------------------------------------------------------------------------
+
+/**
+ * 取这两个数字时所在的 commit。**必须是一个真的 commit**，不是「我本机当时的样子」。
+ * `a498867` = `W32` 末次提交，`V1` 的 A 组复判也判在这个 commit 上。
+ */
+const BASELINE_COMMIT = "a4988677c825a17e499159b5d28cdceb6eabc45f";
 
 /**
  * 已接六档的站点数下限。往下掉 = 有人把 token 换回了裸值。
@@ -39,11 +51,31 @@ const ADOPTION_FLOOR = 409;
 
 /**
  * 仍跑 Tailwind 默认档（裸 `transition`，一个时长都没有）的站点数上限。只减不增。
- * 2026-08-31 W30 实测 11，全部在两个当时被别人改脏、我按 §3b 没碰的文件里
- * （`src/pages/AuthDialog.tsx` 10 处、`src/shell/plugin-theme.tsx` 1 处）。
+ *
+ * **2026-08-31 W33 在 `BASELINE_COMMIT` 的干净检出上实测 12**，分布：
+ * `src/pages/AuthDialog.tsx` 10 处、`src/shell/plugin-theme.tsx` 1 处、
+ * `src/shell/SelectionToolbar.tsx` 1 处。
+ *
+ * `W30` 原先冻的是 11，少的那一处是 `SelectionToolbar.tsx:424`（overflow「更多」键的
+ * 悬停过渡，`0432403` 08-29 入库，**早于 W30 冻结上限**）。它不是新增的倒退，是
+ * `W30` 量读数那一刻，并发同事对该文件的**未提交**改动恰好把它抹掉了 ⇒ 11 标定在一棵
+ * git 里并不存在的树上，任何人从干净检出跑都是红的（`V1` 复判 §3）。
+ *
+ * ⚠️ **12 里有一处是欠账，不是豁免**：`SelectionToolbar.tsx:424` 该接 `dur` 档而没接。
+ * 三个文件当下都带着并发同事的在途改动，按 `_COMMON.md §3b` 无人可碰；
+ * 清单见 `signals/W30-request.md ③` 与 `signals/W33-request.md`。
+ * 那三个文件一旦干净下来，这个上限就该往下拧。
+ *
  * 这一条与上一条互为镜像：只有下限会漏掉「新写一堆裸 transition」。
  */
-const BARE_DEFAULT_CEILING = 11;
+const BARE_DEFAULT_CEILING = 12;
+
+/** 上限里那 12 处**当前**分布在哪几个文件。只用于报错时把话说清楚，不参与判色。 */
+const BARE_DEFAULT_DEBT_FILES = Object.freeze([
+  "src/pages/AuthDialog.tsx",
+  "src/shell/plugin-theme.tsx",
+  "src/shell/SelectionToolbar.tsx",
+]);
 
 /**
  * 显式豁免清单：允许继续携带**裸时长**的文件。（裸时长 = 时长工具类后面直接跟数字，
@@ -159,12 +191,16 @@ function stringLiterals(source) {
   return out;
 }
 
-function scan() {
+/**
+ * @param root 仓库根。默认扫工作树；末尾那条基线自检传的是 `git archive` 解出来的
+ *             那棵**干净树**的根，用的是同一套扫描器，两边口径逐字相同。
+ */
+function scan(root = REPO) {
   const sites = [];
-  const files = walk(SRC);
+  const files = walk(join(root, "src"));
   let scannedFiles = 0;
   for (const abs of files) {
-    const rel = relative(REPO, abs).split("\\").join("/");
+    const rel = relative(root, abs).split("\\").join("/");
     if (EXCLUDED_DIRS.some((d) => rel === d || rel.startsWith(`${d}/`))) continue;
     scannedFiles++;
     const source = readFileSync(abs, "utf8");
@@ -271,10 +307,25 @@ test("正对照：分类规则对合成样本判得对（不是靠运气）", ()
 // 判据 1 · 覆盖率棘轮
 // ---------------------------------------------------------------------------
 
+/**
+ * 报错时补一句「你这棵树脏不脏」。`W30` 与 `W31` 当时缺的正是这句话：
+ * 两位都在并发同事的未提交改动上取了读数，而没有任何东西提醒他们（`_COMMON.md §7b⑪`）。
+ */
+function dirtyHint() {
+  const dirty = dirtyAmong(REPO, ["src"]);
+  if (dirty.length === 0) return "（当前工作树 src/ 干净，这条红是真的）";
+  return (
+    `⚠️ 当前工作树 src/ 下有 ${dirty.length} 个文件是脏的，这个读数不是干净树读数：\n` +
+    `   ${dirty.slice(0, 8).join(", ")}${dirty.length > 8 ? " …" : ""}\n` +
+    `   先在干净检出上重量一次（git worktree add --detach <dir> HEAD）再定责。`
+  );
+}
+
 test("判据 1a：已接六档的站点数只增不减", () => {
   assert.ok(
     ladder.length >= ADOPTION_FLOOR,
-    `接档站点从 ${ADOPTION_FLOOR} 掉到 ${ladder.length}——有人把 token 换回了裸值。${summary()}`,
+    `接档站点从 ${ADOPTION_FLOOR} 掉到 ${ladder.length}——有人把 token 换回了裸值。${summary()}\n` +
+      dirtyHint(),
   );
 });
 
@@ -285,7 +336,8 @@ test("判据 1b：仍跑 Tailwind 默认档的站点数只减不增", () => {
   assert.ok(
     bareDefault.length <= BARE_DEFAULT_CEILING,
     `裸默认档站点从 ${BARE_DEFAULT_CEILING} 涨到 ${bareDefault.length}。${summary()}\n` +
-      `命中最多的文件：${worst.map(([f, n]) => `${f}(${n})`).join(", ")}`,
+      `命中最多的文件：${worst.map(([f, n]) => `${f}(${n})`).join(", ")}\n` +
+      dirtyHint(),
   );
 });
 
@@ -416,5 +468,59 @@ test("判据 3c：产物不陈旧——源码引用的每一个阶梯工具类�
     `源码用了 --leo-dur-${missing.join("/")} 的 Tailwind 任意值，产物里却没有对应规则。\n` +
       `⇒ 改完源码没跑 \`npm run build:css\`（_COMMON.md §7b⑥，本波已复发两次）。\n` +
       `产物陈旧时六档时长会全部解析成 0s，界面看上去像动效被关掉了。`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 基线自检 · 上面两个棘轮数字必须是在**干净检出**上取的（`_COMMON.md §7b⑪`）
+// ---------------------------------------------------------------------------
+
+test("基线自检：两个棘轮数字与 BASELINE_COMMIT 那棵干净树逐字对得上", () => {
+  const probe = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: ["src"],
+    measure: (root) => {
+      const measured = scan(root);
+      return {
+        scannedFiles: measured.scannedFiles,
+        ladder: measured.sites.filter((s) => s.kind === "ladder").length,
+        bareDefault: measured.sites.filter((s) => s.kind === "bareDefault"),
+      };
+    },
+  });
+  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
+  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
+
+  // 正对照：先证明我确实扫到了那棵树，而不是在空目录上轻松通过。
+  assert.ok(
+    probe.value.scannedFiles >= 400,
+    `在 ${BASELINE_COMMIT.slice(0, 7)} 的树上只扫到 ${probe.value.scannedFiles} 个文件——` +
+      "解包范围不对，这条自检等于没跑",
+  );
+
+  const clean = probe.value.bareDefault.length;
+  const byFile = new Map();
+  for (const s of probe.value.bareDefault) byFile.set(s.file, (byFile.get(s.file) ?? 0) + 1);
+  assert.equal(
+    clean,
+    BARE_DEFAULT_CEILING,
+    `BARE_DEFAULT_CEILING 写的是 ${BARE_DEFAULT_CEILING}，但 ${BASELINE_COMMIT.slice(0, 7)} 的\n` +
+      `**干净检出**上实测 ${clean} 处（${[...byFile].map(([f, n]) => `${f}(${n})`).join(", ")}）。\n` +
+      "两种可能：(a) 这个上限是在脏工作树上量的——那就换一棵干净树重量；\n" +
+      "(b) 上限已经拧下去了但 BASELINE_COMMIT 没跟着换——两个要一起改。\n" +
+      "这条自检就是为了让 (a) 当场露出来，见 _COMMON.md §7b⑪。",
+  );
+  assert.equal(
+    probe.value.ladder,
+    ADOPTION_FLOOR,
+    `ADOPTION_FLOOR 写的是 ${ADOPTION_FLOOR}，${BASELINE_COMMIT.slice(0, 7)} 的干净检出上` +
+      `实测 ${probe.value.ladder}。下限与它的取值 commit 必须一起改。`,
+  );
+  // 欠账清单说的就是这 12 处落在哪几个文件，说错了等于把话说空。
+  assert.deepEqual(
+    [...byFile.keys()].sort(),
+    [...BARE_DEFAULT_DEBT_FILES].sort(),
+    "BARE_DEFAULT_DEBT_FILES 与干净检出上的实际分布对不上——注释在骗人",
   );
 });
