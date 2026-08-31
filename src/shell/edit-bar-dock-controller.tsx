@@ -824,11 +824,28 @@ export function useEditBarDockController({
     else collapse();
   }, [collapse, expand]);
 
+  /**
+   * 编辑栏真的消费掉这一次按键时，**顺手掐断冒泡**。
+   *
+   * 为什么必须有（W31，2026-08-31 实测）：收起圆收的是**裸**方向键，而设计画布
+   * 的画布快捷键（`design/…/editor/useCanvasShortcuts.ts:105-107`）也收裸方向键，
+   * 挂在 window 上、且**不看 `defaultPrevented`**。焦点在圆上按 ArrowLeft，
+   * 两边都会动：圆挪 16px，画布上选中的元素也跟着挪。`preventDefault()` 拦不住
+   * 这种事——它管的是浏览器默认行为，不是别人的监听器。
+   *
+   * 只在**已经决定要处理**的分支上掐：编辑栏不认的键照常冒泡出去，
+   * 插件自己的快捷键一个都不会被抢。
+   */
+  const consumeKey = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
   const moveByKeyboard = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === "Enter" || event.key === " ") {
         if (!dockRootRef || presentationRef.current === "collapsed") return;
-        event.preventDefault();
+        consumeKey(event);
         toggleDock();
         return;
       }
@@ -847,12 +864,12 @@ export function useEditBarDockController({
       } else if (event.key === "ArrowDown") {
         next = { ...origin, y: origin.y + distance };
       } else if (event.key === "Home") {
-        event.preventDefault();
+        consumeKey(event);
         resetPosition();
         return;
       }
       if (!next) return;
-      event.preventDefault();
+      consumeKey(event);
       if (collapsed) {
         setCollapsedPosition(next);
       } else if (modeRef.current === "docked") {
@@ -863,6 +880,7 @@ export function useEditBarDockController({
     },
     [
       applyModeAndOffset,
+      consumeKey,
       dockRootRef,
       resetPosition,
       setCollapsedPosition,
@@ -1144,14 +1162,14 @@ export function useEditBarDockController({
   const onRootKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if ((event.metaKey || event.ctrlKey) && event.key === ".") {
-        event.preventDefault();
+        consumeKey(event);
         toggleCollapsed();
         return;
       }
       if (!event.altKey) return;
       if (event.key === "Enter") {
         if (!dockRootRef) return;
-        event.preventDefault();
+        consumeKey(event);
         toggleDock();
         return;
       }
@@ -1167,17 +1185,18 @@ export function useEditBarDockController({
       } else if (event.key === "ArrowDown") {
         next = { ...origin, y: origin.y + distance };
       } else if (event.key === "Home") {
-        event.preventDefault();
+        consumeKey(event);
         resetPosition();
         return;
       }
       if (!next) return;
-      event.preventDefault();
+      consumeKey(event);
       if (modeRef.current === "docked") applyModeAndOffset("floating", next);
       else setSharedOffset(next);
     },
     [
       applyModeAndOffset,
+      consumeKey,
       dockRootRef,
       resetPosition,
       setSharedOffset,
