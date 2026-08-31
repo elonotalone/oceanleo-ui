@@ -66,6 +66,13 @@ import {
   type ArtifactMeta,
 } from "../lib/agent";
 import { deleteArtifact } from "../lib/database";
+import {
+  decodeChatFrame,
+  isSseError,
+  openSseStream,
+  type SseFailureReason,
+  type SseRequestInit,
+} from "../lib/sse";
 import { useAttachments } from "./useAttachments";
 import type { ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
@@ -109,14 +116,16 @@ export function orgStatusFromMessages(
 // ---------------------------------------------------------------------------
 // 轮询节奏
 // ---------------------------------------------------------------------------
-// 这里本该是 SSE。查证结论（W21 P2）：`/v1/agent/**` 全部 16 条路由没有一条流式，
-// 全网关唯一的浏览器向 SSE 是 `/v1/chat/stream`，那是无状态 LLM 透传，
+// 正文本该走 SSE，但网关**没有** agent 任务的流式端点：`/v1/agent/**` 全部 16 条
+// 路由无一流式，全网关唯一的浏览器向 SSE 是 `/v1/chat/stream`，那是无状态 LLM 透传，
 // 不跑规划循环、不产 artifact、不认 task——拿它顶 agent 对话是功能净损失。
-// 加端点是后端的活，本波禁区。详见 signals/W21-request.md。
+// 加端点是后端的活，本波禁区；前端这侧已经接好（见下方 consumeAgentStream 与
+// AgentChatProps.agentStreamEndpoint），端点落地后宿主传一个 prop 即可。
+// 详见 signals/W21-request.md。
 //
-// 所以退而求其次：把**固定 450ms** 换成随内容走的节奏。原来的问题不只是慢，
-// 是「快慢跟内容无关」——正在出字的时候和干等的时候一样慢，用户等首字要多等
-// 最多 450ms，而任务空转时又在白发请求。
+// 在那之前，轮询仍是正文的真源，于是先把**固定 450ms** 换成随内容走的节奏。
+// 原来的问题不只是慢，是「快慢跟内容无关」——正在出字的时候和干等的时候一样慢，
+// 用户等首字要多等最多 450ms，而任务空转时又在白发请求。
 const POLL_FIRST_MS = 120; // 刚发出去，首字最金贵
 const POLL_ACTIVE_MS = 200; // 上一轮拿到了新内容：正在出字，跟紧
 // 连续几轮没动静就一档档退。后端本来就有 ~330ms 写库节流，
@@ -126,6 +135,59 @@ const POLL_IDLE_LADDER_MS = [300, 500, 800, 1200];
 // 长任务用户十有八九会切走干别的，这一条把那段时间的请求全省了。
 const POLL_HIDDEN_RECHECK_MS = 1000;
 
+export interface PollCadenceInput {
+  /** 页面切到后台了吗？后台不发请求。 */
+  hidden: boolean;
+  /** 刚结束的那一轮有没有拿到服务端新内容？ */
+  changed: boolean;
+  /** 已经连续空转了几档（`-1` = 还没空转过）。 */
+  idleStep: number;
+}
+
+export interface PollCadence {
+  /** 距下一次动作要等多久。 */
+  delayMs: number;
+  /** 传回下一轮的空转档位。 */
+  idleStep: number;
+}
+
+/**
+ * 下一次轮询隔多久——**快慢跟着内容走**，这是这条改动的全部要点。
+ *
+ * 抽成纯函数是为了能被单测钉死：节奏策略藏在 effect 里就只能靠读代码相信它。
+ */
+export function nextPollCadence({
+  hidden,
+  changed,
+  idleStep,
+}: PollCadenceInput): PollCadence {
+  // 后台优先级最高：哪怕上一轮正在出字，用户看不见就不值得发请求。
+  if (hidden) return { delayMs: POLL_HIDDEN_RECHECK_MS, idleStep };
+  if (changed) return { delayMs: POLL_ACTIVE_MS, idleStep: -1 };
+  const step = Math.min(idleStep + 1, POLL_IDLE_LADDER_MS.length - 1);
+  return { delayMs: POLL_IDLE_LADDER_MS[step], idleStep: step };
+}
+
+/**
+ * 服务端状态与本地「已按过停止」的裁决。
+ *
+ * 停止请求发出后，服务端要过一会儿才把状态落成 stopped；这期间任何一次拉取都会把
+ * 状态写回 `running`，于是轮询重新起跑、「思考中」重新亮起——用户看到的是
+ * 「按下去停了半秒，它自己又活过来了」。本地判定优先，界面才不会自己复活。
+ */
+export function resolveTaskStatus(input: {
+  serverStatus: string;
+  taskId: string;
+  /** 用户按过停止的那个 task；空串 = 没按过。 */
+  stoppedTaskId: string;
+}): string {
+  const { serverStatus, taskId, stoppedTaskId } = input;
+  if (stoppedTaskId && stoppedTaskId === taskId && serverStatus === "running") {
+    return "stopped";
+  }
+  return serverStatus;
+}
+
 interface TaskPollResult {
   status: string;
   /** 这一轮有没有拿到服务端的新消息。 */
@@ -134,8 +196,27 @@ interface TaskPollResult {
 
 const IDLE_POLL_RESULT: TaskPollResult = { status: "", changed: false };
 
-/** 「粘底」判定阈值：离底不到这个距离就算用户still在追最新。 */
+/** 「粘底」判定阈值：离底不到这个距离就算用户还在追最新。 */
 const STICK_TO_BOTTOM_PX = 80;
+
+export interface ScrollMetrics {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}
+
+/**
+ * 用户此刻还在不在底部——**跟不跟随，只由这一个判断说了算**。
+ *
+ * 原实现里根本没有这个判断：`messages` 一变就无条件 `scrollTo(bottom)`。
+ * 用户往上翻看历史会被硬拽回去，而流式渲染下 `messages` 每几百毫秒变一次，
+ * 于是变成每秒好几次——想回头看一眼上文都做不到。
+ */
+export function isNearBottom(metrics: ScrollMetrics): boolean {
+  const distanceFromBottom =
+    metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight;
+  return distanceFromBottom <= STICK_TO_BOTTOM_PX;
+}
 
 function documentHidden(): boolean {
   return (
@@ -157,6 +238,101 @@ function scrollBehavior(): ScrollBehavior {
     return "auto";
   }
   return "smooth";
+}
+
+// ---------------------------------------------------------------------------
+// 流式正文（解析器用 W20 的 src/lib/sse.ts，本仓只有那一份）
+// ---------------------------------------------------------------------------
+
+export type AgentStreamOutcome =
+  /** 流自然读完。 */
+  | { kind: "complete"; text: string }
+  /** 用户按了停止；`text` 是断开前已经收到的部分。 */
+  | { kind: "stopped"; text: string }
+  /** 流开不起来或中途判坏——**调用方据此回落到轮询并告知用户**。 */
+  | {
+      kind: "unavailable";
+      text: string;
+      reason: SseFailureReason | "frame";
+      message: string;
+    };
+
+/**
+ * 把一条 SSE 流折成正文，边收边喂给 `onText`——**首字节到达即渲染，不等整段**。
+ *
+ * 三条纪律照 `signals/W20-request.md` §2.5，每条都有反直觉之处：
+ *  1. 读到 `[DONE]` **不许 break**：计费帧在它之后才发，break 就把它吞了；
+ *  2. `kind:"error"` 一律当失败，**哪怕 HTTP 是 200**——流一旦开始就改不了状态码，
+ *     内容审核拦截和 provider 不可达都只能以 data 帧送出；
+ *  3. 中途断开时**已收到的部分要保留**并标未完成，用户多半已经在读了。
+ */
+export async function consumeAgentStream(
+  init: SseRequestInit,
+  onText: (full: string) => void,
+): Promise<AgentStreamOutcome> {
+  let text = "";
+  try {
+    for await (const event of openSseStream(init)) {
+      const frame = decodeChatFrame(event.data);
+      if (!frame) continue;
+      if (frame.kind === "delta") {
+        // 只带 finish_reason 的收尾帧 text 是空串，那不是内容，也不是结束信号。
+        if (!frame.text) continue;
+        text += frame.text;
+        onText(text);
+        continue;
+      }
+      if (frame.kind === "error") {
+        return {
+          kind: "unavailable",
+          text,
+          reason: "frame",
+          message: frame.message,
+        };
+      }
+      // "done" / "charge" / "unknown" 一律继续读到流真正关闭（纪律 1）。
+    }
+    return { kind: "complete", text };
+  } catch (caught) {
+    // 取消不是错误：W20 让它照 Web 平台惯例抛 AbortError，全仓的既有判据一致。
+    if ((caught as { name?: string } | null)?.name === "AbortError") {
+      return { kind: "stopped", text };
+    }
+    if (isSseError(caught)) {
+      return {
+        kind: "unavailable",
+        text,
+        reason: caught.reason,
+        message: caught.message,
+      };
+    }
+    return {
+      kind: "unavailable",
+      text,
+      reason: "network",
+      message: caught instanceof Error ? caught.message : String(caught),
+    };
+  }
+}
+
+/**
+ * 尾部那条回答该显示哪份正文——**流比轮询早到时显示流的那份**，
+ * 这就是「首字节即渲染」落到屏幕上的地方。
+ *
+ * **只在流更长时才替换**：轮询是正文的真源，它把完整正文取回来之后就以它为准。
+ * 少了这个长度比较，流断在半截会让一段用户已经读到的完整回答当着他的面缩回去。
+ */
+export function streamedBubbleContent(input: {
+  /** 轮询取回的正文（真源）。 */
+  content: string;
+  /** 流已收到的正文；没接流时是空串。 */
+  streamText: string;
+  /** 只有尾部那条 assistant 消息才可能有流。 */
+  isLastAssistant: boolean;
+}): string {
+  const { content, streamText, isLastAssistant } = input;
+  if (!isLastAssistant) return content;
+  return streamText.length > content.length ? streamText : content;
 }
 
 export interface AgentChatProps {
@@ -282,6 +458,22 @@ export interface AgentChatProps {
    * 指令面读取器（合同 §3.1 的 `currentPluginCommandSurface`）。不传则读
    * `registerEditorCommandSurfaceReader()` 注册的那个模块级单例。 */
   editorCommandSurface?: EditorCommandSurfaceReader | null;
+  /**
+   * agent 任务的**流式正文端点**（SSE）。给了它 → 正文走流，首字节到达即渲染；
+   * 流开不起来或中途判坏 → **自动回落到轮询，并在对话底部说明这件事**。
+   * 不传 → 全程轮询，与接线之前逐字一致（31 个站的现状）。
+   *
+   * 为什么是可选而不是写死一个地址：网关**当前没有**这样的端点。
+   * `/v1/agent/**` 全部 16 条路由无一流式；唯一的 `/v1/chat/stream` 是无状态 LLM
+   * 透传，不跑规划循环、不产 artifact、不认 task，拿它顶 agent 对话是功能净损失。
+   * 加端点是后端的活（本波禁区），前端这侧已经按 `sse-contract@1` 接好，
+   * 端点落地后宿主传这一个 prop 就通。详见 `signals/W21-request.md`。
+   *
+   * 注意轮询**不会**因为传了它而停掉：messages / artifact / 状态机的真源始终是
+   * `GET /tasks/{id}`，流只负责让正文早一点出现。所以「回落」不需要额外动作，
+   * 只需要把话说清楚。
+   */
+  agentStreamEndpoint?: string;
 }
 
 /** agent 右栏多标签库配置（宗旨 v19）。 */
@@ -375,6 +567,7 @@ function AgentChatInner({
   startFreshSession = false,
   enableEditorCommands = true,
   editorCommandSurface,
+  agentStreamEndpoint,
 }: AgentChatInnerProps) {
   const tt = useUI();
   const ARTIFACT_LABEL = agentArtifactLabels(tt);
@@ -438,6 +631,12 @@ function AgentChatInner({
   // 有了它，本地判定优先，界面不会自己复活。
   const stoppedTaskRef = useRef("");
   const [stoppedTaskId, setStoppedTaskId] = useState("");
+  // 流式正文：只在宿主给了 agentStreamEndpoint 时才有值。轮询始终是真源，
+  // 这里存的是「比轮询更早到的那一段」，用来让正文提前出现。
+  const [streamText, setStreamText] = useState("");
+  const [streamNotice, setStreamNotice] = useState("");
+  // 停止键要真的把流掐掉，而不是丢弃结果——取消要省下的是上游的算力。
+  const streamAbortRef = useRef<AbortController | null>(null);
   const atts = useAttachments(siteId, setError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
   const editorCommands = useEditorCommandBridge({
@@ -485,11 +684,11 @@ function AgentChatInner({
       );
       // 用户已经按过停止：服务端还没跟上不代表它还在跑，本地判定优先。
       // 少了这一句，停止键按下去就是「界面停半秒又自己动起来」。
-      const serverStatus = r.data.task?.status || "";
-      const status =
-        stoppedTaskRef.current === id && serverStatus === "running"
-          ? "stopped"
-          : serverStatus;
+      const status = resolveTaskStatus({
+        serverStatus: r.data.task?.status || "",
+        taskId: id,
+        stoppedTaskId: stoppedTaskRef.current,
+      });
       setStatus(status);
       if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
       // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
@@ -560,22 +759,19 @@ function AgentChatInner({
 
     const poll = async () => {
       if (cancelled) return;
-      if (documentHidden()) {
-        // 后台不发请求，只是回来看看还在不在后台。
-        arm(POLL_HIDDEN_RECHECK_MS);
-        return;
-      }
-      const result = await refresh(taskId);
+      // 后台这一轮**不发请求**，只安排一次回来看看还在不在后台。
+      const hidden = documentHidden();
+      const result = hidden ? IDLE_POLL_RESULT : await refresh(taskId);
       if (cancelled) return;
       // 落到终态就收工；status 变了会让本 effect 重跑并在上面的守卫处停住。
       if (result.status && result.status !== "running") return;
-      if (result.changed) {
-        idleStep = -1;
-        arm(POLL_ACTIVE_MS);
-        return;
-      }
-      idleStep = Math.min(idleStep + 1, POLL_IDLE_LADDER_MS.length - 1);
-      arm(POLL_IDLE_LADDER_MS[idleStep]);
+      const cadence = nextPollCadence({
+        hidden,
+        changed: result.changed,
+        idleStep,
+      });
+      idleStep = cadence.idleStep;
+      arm(cadence.delayMs);
     };
 
     // 回到前台立刻补一次，不让用户为「刚才在后台」多等一个间隔。
@@ -598,6 +794,39 @@ function AgentChatInner({
       }
     };
   }, [taskId, status, refresh]);
+
+  // 流式正文（可选，见 AgentChatProps.agentStreamEndpoint）。
+  // 轮询在旁边照常跑，所以这条流唯一的职责是让正文**早一点**出现；
+  // 它挂了就只是回到轮询的节奏，不会少任何内容——因此回落不需要重试，只需要告知。
+  useEffect(() => {
+    if (!agentStreamEndpoint || !taskId) return;
+    if (status && status !== "running") return;
+    let cancelled = false;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    setStreamText("");
+    void (async () => {
+      const outcome = await consumeAgentStream(
+        {
+          url: agentStreamEndpoint,
+          body: { task_id: taskId },
+          signal: controller.signal,
+        },
+        (full) => {
+          if (!cancelled) setStreamText(full);
+        },
+      );
+      if (cancelled) return;
+      if (outcome.kind === "unavailable") {
+        setStreamNotice(tt("实时流不可用，已回落到轮询刷新。"));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      streamAbortRef.current = null;
+    };
+  }, [agentStreamEndpoint, taskId, status, tt]);
 
   // ---------------------------------------------------------------------
   // 粘底滚动
@@ -631,8 +860,11 @@ function AgentChatInner({
   const handleStreamScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = distanceFromBottom <= STICK_TO_BOTTOM_PX;
+    const atBottom = isNearBottom({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    });
     if (followingRef.current === atBottom) return;
     followingRef.current = atBottom;
     setFollowing(atBottom);
@@ -657,6 +889,8 @@ function AgentChatInner({
     serverMessagesRef.current = [];
     stoppedTaskRef.current = "";
     setStoppedTaskId("");
+    setStreamText("");
+    setStreamNotice("");
     seenMessageCountRef.current = 0;
     followingRef.current = true;
     setFollowing(true);
@@ -973,6 +1207,9 @@ function AgentChatInner({
       setBusy(false);
       return;
     }
+    // 真的把流掐断（AbortSignal 一路传到 fetch），不是拿到结果再丢掉。
+    // 已经收到的 streamText 原样留着——用户多半正在读它。
+    streamAbortRef.current?.abort();
     // 先落本地再等服务端。停止是用户唯一能踩的刹车，等一个来回（还可能失败）
     // 才有反应，按下去就是「没反应」。
     stoppedTaskRef.current = taskId;
@@ -1374,6 +1611,21 @@ function AgentChatInner({
       </button>
     ) : null;
 
+  /** 把上面那条裁决接到实际渲染的那条消息上。 */
+  const messageForBubble = (item: {
+    index: number;
+    message: AgentMessage;
+  }): AgentMessage => {
+    const content = streamedBubbleContent({
+      content: item.message.content,
+      streamText,
+      isLastAssistant: item.index === lastAssistantIdx,
+    });
+    return content === item.message.content
+      ? item.message
+      : { ...item.message, content };
+  };
+
   const stream = (
     <div className="flex h-full flex-col">
       {/* 相对定位容器：浮标贴着对话区底部，而不是贴着输入框或整页。 */}
@@ -1407,7 +1659,7 @@ function AgentChatInner({
             ) : (
               <AgentTranscriptBubble
                 key={item.key}
-                message={item.message}
+                message={messageForBubble(item)}
                 streaming={running && item.index === lastAssistantIdx}
                 stopped={
                   Boolean(stoppedTaskId) &&
@@ -1479,6 +1731,11 @@ function AgentChatInner({
           <EditorCommandNotes notes={editorCommands.notes} />
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
           <HumanHandoffStatus originRef={taskId || ""} accent={accent} />
+          {/* 流式回落的告知。正文仍会到齐（轮询始终是真源），所以这是一句说明、
+              不是报错——用 stone 而不是 rose，免得用户以为要重发一遍。 */}
+          {streamNotice && (
+            <p className="text-[13px] text-stone-400">{streamNotice}</p>
+          )}
           {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
         </div>
       </div>
