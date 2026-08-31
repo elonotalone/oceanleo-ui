@@ -131,7 +131,9 @@ export const GRID_CONSTANTS = {
   C8_minCellCount: 24,
   C9_minFormulaCells: 3,
   C10_minFormulaRatioPercent: 5,
-  C11_formulaWhitelistSize: 22,
+  // 22 → 114 (§规范二 批一 + 批二). Batch three is deliberately absent: its
+  // dynamic arrays need the spill semantics this wave does not ship.
+  C11_formulaWhitelistSize: 114,
   C12_maxFormulaLength: 500,
   C13_maxNamedRanges: 64,
   C14_maxReferenceDepth: 32,
@@ -541,7 +543,16 @@ export type GridWorkbookLike = readonly GridSheet[] | GridWorkbookContext;
  */
 export function gridWorkbookContext(
   sheets: readonly GridSheet[],
-  options: { namedRanges?: Readonly<Record<string, string>> } = {},
+  options: {
+    namedRanges?: Readonly<Record<string, string>>;
+    /**
+     * The document's `recalc` stamp (§规范三). Omit it and volatile functions
+     * fail closed, which is what every existing caller wants and gets: the
+     * stamp is a property of the saved project, not something this helper may
+     * invent from the host clock.
+     */
+    recalc?: GridRecalcStamp;
+  } = {},
 ): GridWorkbookContext {
   const rowsByRef = new Map<string, readonly GridRow[]>();
   for (const sheet of sheets) rowsByRef.set(sheet.id.toLowerCase(), sheet.rows);
@@ -555,6 +566,7 @@ export function gridWorkbookContext(
   return {
     sheetRows: (ref) => rowsByRef.get(String(ref).toLowerCase()),
     namedRange: (name) => named.get(String(name).toUpperCase()),
+    recalc: options.recalc,
   };
 }
 

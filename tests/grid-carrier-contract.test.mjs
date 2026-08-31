@@ -446,31 +446,133 @@ test("C-3 除零与错误值不进交付物（§5.3 / §6 F5）", () => {
 
 /* ----------------------------- C-4 公式 ------------------------------- */
 
-test("C-4 白名单恰好是 §3.3 点名的 22 个函数", () => {
+// 22 → 114：§规范二 批一批二真的落了地。判据仍是「逐名穷举」而不是「数一数个
+// 数」——放宽成长度断言就再也拦不住误加一个函数了。
+test("C-4 白名单恰好是 §规范二 点名的 114 个函数", () => {
   assert.equal(GRID_FORMULA_WHITELIST.length, GRID_CONSTANTS.C11_formulaWhitelistSize);
   assert.deepEqual([...GRID_FORMULA_WHITELIST], [
-    "SUM",
-    "AVERAGE",
-    "COUNT",
-    "COUNTA",
-    "MIN",
-    "MAX",
-    "ROUND",
-    "ROUNDUP",
-    "ROUNDDOWN",
-    "ABS",
+    // 逻辑
     "IF",
+    "IFS",
     "IFERROR",
+    "IFNA",
+    "SWITCH",
     "AND",
     "OR",
     "NOT",
+    "XOR",
+    "TRUE",
+    "FALSE",
+    // 数学
+    "SUM",
     "SUMIF",
+    "SUMIFS",
+    "SUMPRODUCT",
+    "PRODUCT",
+    "ABS",
+    "ROUND",
+    "ROUNDUP",
+    "ROUNDDOWN",
+    "MROUND",
+    "CEILING",
+    "FLOOR",
+    "INT",
+    "TRUNC",
+    "MOD",
+    "POWER",
+    "SQRT",
+    "SIGN",
+    // 统计
+    "COUNT",
+    "COUNTA",
+    "COUNTBLANK",
     "COUNTIF",
+    "COUNTIFS",
+    "AVERAGE",
+    "AVERAGEIF",
+    "AVERAGEIFS",
+    "MEDIAN",
+    "MIN",
+    "MAX",
+    "MINIFS",
+    "MAXIFS",
+    "LARGE",
+    "SMALL",
+    "RANK",
+    // 文本
+    "CONCAT",
+    "TEXTJOIN",
+    "LEFT",
+    "RIGHT",
+    "MID",
+    "LEN",
+    "FIND",
+    "SEARCH",
+    "SUBSTITUTE",
+    "REPLACE",
+    "TRIM",
+    "UPPER",
+    "LOWER",
+    "TEXT",
+    "VALUE",
+    "EXACT",
+    // 查找
     "VLOOKUP",
+    "HLOOKUP",
     "INDEX",
     "MATCH",
+    "CHOOSE",
+    "ROW",
+    "COLUMN",
+    "ROWS",
+    "COLUMNS",
+    // 日期
+    "DATE",
+    "YEAR",
+    "MONTH",
+    "DAY",
+    "HOUR",
+    "MINUTE",
+    "SECOND",
+    "WEEKDAY",
+    "WEEKNUM",
+    "EDATE",
+    "EOMONTH",
+    "DATEDIF",
+    "DAYS",
+    "NETWORKDAYS",
+    "WORKDAY",
+    "DATEVALUE",
+    "TIME",
+    // 财务
     "NPV",
     "IRR",
+    "XNPV",
+    "XIRR",
+    "PMT",
+    "IPMT",
+    "PPMT",
+    "PV",
+    "FV",
+    "RATE",
+    "NPER",
+    "SLN",
+    "DB",
+    "DDB",
+    "SYD",
+    // 信息
+    "ISBLANK",
+    "ISNUMBER",
+    "ISTEXT",
+    "ISERROR",
+    "ISERR",
+    "ISNA",
+    "ISLOGICAL",
+    "ISEVEN",
+    "ISODD",
+    "N",
+    "NA",
+    "TYPE",
   ]);
   for (const name of GRID_FORMULA_WHITELIST) {
     assert.equal(isGridFormulaFunctionAllowed(name), true, name);
@@ -478,7 +580,7 @@ test("C-4 白名单恰好是 §3.3 点名的 22 个函数", () => {
   }
 });
 
-test("C-4 白名单内 22 个函数逐个真的算得出来", () => {
+test("C-4 白名单内 114 个函数逐个真的算得出来", () => {
   const rows = [
     ["产品", "单价", "数量", "小计"],
     ["甲", "10", "3", "=B2*C2"],
@@ -486,35 +588,154 @@ test("C-4 白名单内 22 个函数逐个真的算得出来", () => {
     ["丙", "30", "0", "=B4*C4"],
   ];
   const probes = {
-    SUM: ["=SUM(D2:D4)", 110],
-    AVERAGE: ["=AVERAGE(B2:B4)", 20],
-    COUNT: ["=COUNT(B2:B4)", 3],
-    COUNTA: ["=COUNTA(A2:A4)", 3],
-    MIN: ["=MIN(B2:B4)", 10],
-    MAX: ["=MAX(B2:B4)", 30],
-    ROUND: ["=ROUND(10.567,2)", 10.57],
-    ROUNDUP: ["=ROUNDUP(1.01,0)", 2],
-    ROUNDDOWN: ["=ROUNDDOWN(1.99,0)", 1],
-    ABS: ["=ABS(0-3)", 3],
+    /* 逻辑 */
     IF: ['=IF(D2>20,"高","低")', "高"],
+    IFS: ['=IFS(B2>15,"贵",B2>5,"中")', "中"],
     IFERROR: ["=IFERROR(D4/C4,0)", 0],
+    IFNA: ['=IFNA(MATCH("丁",A2:A4,0),"无")', "无"],
+    SWITCH: ['=SWITCH(C2,3,"三",4,"四","其他")', "三"],
     AND: ["=AND(B2>0,C2>0)", true],
     OR: ["=OR(B2<0,C2>0)", true],
     NOT: ["=NOT(C4>0)", true],
+    XOR: ["=XOR(B2>0,C4>0)", true],
+    TRUE: ["=TRUE()", true],
+    FALSE: ["=FALSE()", false],
+
+    /* 数学 */
+    SUM: ["=SUM(D2:D4)", 110],
     SUMIF: ['=SUMIF(C2:C4,">0",D2:D4)', 110],
+    SUMIFS: ['=SUMIFS(D2:D4,C2:C4,">0",B2:B4,">5")', 110],
+    SUMPRODUCT: ["=SUMPRODUCT(B2:B4,C2:C4)", 110],
+    PRODUCT: ["=PRODUCT(B2:B3)", 200],
+    ABS: ["=ABS(0-3)", 3],
+    ROUND: ["=ROUND(10.567,2)", 10.57],
+    ROUNDUP: ["=ROUNDUP(1.01,0)", 2],
+    ROUNDDOWN: ["=ROUNDDOWN(1.99,0)", 1],
+    MROUND: ["=MROUND(23,5)", 25],
+    CEILING: ["=CEILING(23,5)", 25],
+    FLOOR: ["=FLOOR(23,5)", 20],
+    INT: ["=INT(1.9)", 1],
+    TRUNC: ["=TRUNC(1.99,1)", 1.9],
+    MOD: ["=MOD(10,3)", 1],
+    POWER: ["=POWER(2,10)", 1024],
+    SQRT: ["=SQRT(144)", 12],
+    SIGN: ["=SIGN(0-7)", -1],
+
+    /* 统计 */
+    COUNT: ["=COUNT(B2:B4)", 3],
+    COUNTA: ["=COUNTA(A2:A4)", 3],
+    COUNTBLANK: ["=COUNTBLANK(A1:E1)", 1],
     COUNTIF: ['=COUNTIF(C2:C4,">0")', 2],
+    COUNTIFS: ['=COUNTIFS(C2:C4,">0",B2:B4,">15")', 1],
+    AVERAGE: ["=AVERAGE(B2:B4)", 20],
+    AVERAGEIF: ['=AVERAGEIF(C2:C4,">0",B2:B4)', 15],
+    AVERAGEIFS: ['=AVERAGEIFS(B2:B4,C2:C4,">0")', 15],
+    MEDIAN: ["=MEDIAN(B2:B4)", 20],
+    MIN: ["=MIN(B2:B4)", 10],
+    MAX: ["=MAX(B2:B4)", 30],
+    MINIFS: ['=MINIFS(B2:B4,C2:C4,">0")', 10],
+    MAXIFS: ['=MAXIFS(B2:B4,C2:C4,">0")', 20],
+    LARGE: ["=LARGE(B2:B4,1)", 30],
+    SMALL: ["=SMALL(B2:B4,1)", 10],
+    RANK: ["=RANK(B3,B2:B4)", 2],
+
+    /* 文本 */
+    CONCAT: ["=CONCAT(A2,A3)", "甲乙"],
+    TEXTJOIN: ['=TEXTJOIN(",",TRUE,A2:A4)', "甲,乙,丙"],
+    LEFT: ['=LEFT("OceanLeo",5)', "Ocean"],
+    RIGHT: ['=RIGHT("OceanLeo",3)', "Leo"],
+    MID: ['=MID("OceanLeo",6,3)', "Leo"],
+    LEN: ['=LEN("OceanLeo")', 8],
+    FIND: ['=FIND("Leo","OceanLeo")', 6],
+    SEARCH: ['=SEARCH("leo","OceanLeo")', 6],
+    // 分隔符本身就是运算符字面量：办公里最常见的 `SUBSTITUTE(手机号,"-","")`。
+    SUBSTITUTE: ['=SUBSTITUTE("a-b-c","-","+")', "a+b+c"],
+    REPLACE: ['=REPLACE("OceanLeo",6,3,"Dino")', "OceanDino"],
+    TRIM: ['=TRIM("  a  b  ")', "a b"],
+    UPPER: ['=UPPER("leo")', "LEO"],
+    LOWER: ['=LOWER("LEO")', "leo"],
+    TEXT: ['=TEXT(0.5,"0.00%")', "50.00%"],
+    VALUE: ['=VALUE("12.5")', 12.5],
+    EXACT: ['=EXACT("Leo","Leo")', true],
+
+    /* 查找 */
     VLOOKUP: ['=VLOOKUP("乙",A2:D4,2,0)', 20],
+    HLOOKUP: ['=HLOOKUP("单价",B1:D2,2,0)', 10],
     INDEX: ["=INDEX(A2:D4,2,1)", "乙"],
     MATCH: ['=MATCH("丙",A2:A4,0)', 3],
+    CHOOSE: ['=CHOOSE(2,"一","二","三")', "二"],
+    // 探针写在 F1,所以 ROW()/COLUMN() 报的是 1 与 6。
+    ROW: ["=ROW()", 1],
+    COLUMN: ["=COLUMN()", 6],
+    ROWS: ["=ROWS(A2:D4)", 3],
+    COLUMNS: ["=COLUMNS(A2:D4)", 4],
+
+    /* 日期:序列号口径 1899-12-30 = 0,2026-08-31 = 46265 */
+    DATE: ["=DATE(2026,8,31)", 46265],
+    YEAR: ["=YEAR(46265)", 2026],
+    MONTH: ["=MONTH(46265)", 8],
+    DAY: ["=DAY(46265)", 31],
+    HOUR: ["=HOUR(0.5)", 12],
+    MINUTE: ["=MINUTE(0.53125)", 45],
+    SECOND: ["=SECOND(TIME(0,0,30))", 30],
+    // 2026-08-31 是周一,WEEKDAY 缺省口径周日为 1。
+    WEEKDAY: ["=WEEKDAY(46265)", 2],
+    WEEKNUM: ["=WEEKNUM(46265)", 36],
+    // 8/31 加一个月落在没有 31 号的 9 月,退到 9/30。
+    EDATE: ["=EDATE(46265,1)", 46295],
+    EOMONTH: ["=EOMONTH(46265,1)", 46295],
+    DATEDIF: ['=DATEDIF(DATE(2020,1,1),DATE(2026,8,31),"Y")', 6],
+    DAYS: ["=DAYS(46265,46023)", 242],
+    NETWORKDAYS: ["=NETWORKDAYS(DATE(2026,8,31),DATE(2026,9,4))", 5],
+    WORKDAY: ["=WORKDAY(DATE(2026,8,31),5)", 46272],
+    DATEVALUE: ['=DATEVALUE("2026-08-31")', 46265],
+    TIME: ["=TIME(12,0,0)", 0.5],
+
+    /* 财务 */
     NPV: ["=ROUND(NPV(0.1,B2,B3),4)", 25.6198],
     // 现金流 [-100, 70, 70]:令 x = 1/(1+r),7x² + 7x - 10 = 0 →
     // x = (-7 + √329)/14 = 0.795600 → r = 1/x - 1 = 0.256913 → 0.2569。
     IRR: ["=ROUND(IRR(E2:E4),4)", 0.2569],
+    // G 列是与 E 列现金流一一对应的日期序列号,整年间隔,所以 XIRR 与 IRR 同解。
+    XNPV: ["=ROUND(XNPV(0.1,E2:E4,G2:G4),2)", 21.49],
+    XIRR: ["=ROUND(XIRR(E2:E4,G2:G4),4)", 0.2569],
+    PMT: ["=ROUND(PMT(0.05/12,360,-200000),2)", 1073.64],
+    // IPMT + PPMT 必须等于 PMT:833.33 + 240.31 = 1073.64。
+    IPMT: ["=ROUND(IPMT(0.05/12,1,360,-200000),2)", 833.33],
+    PPMT: ["=ROUND(PPMT(0.05/12,1,360,-200000),2)", 240.31],
+    PV: ["=ROUND(PV(0.1,1,0,-110),2)", 100],
+    FV: ["=ROUND(FV(0.1,1,0,-100),2)", 110],
+    RATE: ["=ROUND(RATE(1,0,-100,110),4)", 0.1],
+    NPER: ["=ROUND(NPER(0.1,0,-100,110),4)", 1],
+    SLN: ["=SLN(10000,1000,5)", 1800],
+    DB: ["=ROUND(DB(10000,1000,5,1),2)", 3690],
+    DDB: ["=ROUND(DDB(10000,1000,5,1),2)", 4000],
+    SYD: ["=SYD(10000,1000,5,1)", 3000],
+
+    /* 信息 */
+    ISBLANK: ["=ISBLANK(E1)", true],
+    ISNUMBER: ["=ISNUMBER(B2)", true],
+    ISTEXT: ["=ISTEXT(A2)", true],
+    ISERROR: ["=ISERROR(D4/C4)", true],
+    ISERR: ["=ISERR(D4/C4)", true],
+    ISNA: ['=ISNA(MATCH("丁",A2:A4,0))', true],
+    ISLOGICAL: ["=ISLOGICAL(TRUE())", true],
+    ISEVEN: ["=ISEVEN(4)", true],
+    ISODD: ["=ISODD(3)", true],
+    N: ["=N(B2)", 10],
+    // NA() 本身就是 #N/A,只能隔着 ISNA 取证。
+    NA: ["=ISNA(NA())", true],
+    TYPE: ["=TYPE(B2)", 1],
   };
   const grid = rows.map((row) => [...row]);
+  grid[0][4] = "";
   grid[1][4] = "-100";
   grid[2][4] = "70";
   grid[3][4] = "70";
+  grid[0][6] = "";
+  grid[1][6] = "46023";
+  grid[2][6] = "46388";
+  grid[3][6] = "46753";
   assert.deepEqual(
     Object.keys(probes).sort(),
     [...GRID_FORMULA_WHITELIST].sort(),
@@ -532,7 +753,8 @@ test("C-4 白名单内 22 个函数逐个真的算得出来", () => {
 test("C-4 白名单外的公式受控拒绝，且错误码分类正确", () => {
   const cases = [
     ["=XLOOKUP(A1,B1:B9,C1:C9)", GRID_FORMULA_REJECTION_CODES.notWhitelisted],
-    ["=TEXTJOIN(\",\",TRUE,A1:A9)", GRID_FORMULA_REJECTION_CODES.notWhitelisted],
+    // TEXTJOIN 已随批一进白名单，换一个仍在表外的文本函数守同一条判据。
+    ["=TEXTSPLIT(A1,\",\")", GRID_FORMULA_REJECTION_CODES.notWhitelisted],
     ["=RAND()", GRID_FORMULA_REJECTION_CODES.nondeterministic],
     ["=RANDBETWEEN(1,9)", GRID_FORMULA_REJECTION_CODES.nondeterministic],
     ["=NOW()", GRID_FORMULA_REJECTION_CODES.nondeterministic],
@@ -624,7 +846,8 @@ test("C-5 §4 常量表 C1–C38 逐值照规格", () => {
     C8_minCellCount: 24,
     C9_minFormulaCells: 3,
     C10_minFormulaRatioPercent: 5,
-    C11_formulaWhitelistSize: 22,
+    // 22 → 114：§规范二 批一批二真的落了地，不是把判据改松。
+    C11_formulaWhitelistSize: 114,
     C12_maxFormulaLength: 500,
     C13_maxNamedRanges: 64,
     C14_maxReferenceDepth: 32,

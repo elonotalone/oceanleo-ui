@@ -2,14 +2,15 @@
  * `oceanleo.grid.v1` formula subset.
  *
  * Spec: `docs/specs/oceanleo-material-and-game-v1/L1-carriers/grid.md` §3.3.
- * The 22 names below are the whole allowed surface — every one of them is
+ * The names below are the whole allowed surface — every one of them is
  * spelled and behaves the same in Excel, WPS and LibreOffice Calc, which is
  * why a workbook that stays inside the list opens in all three without a
  * repair prompt (§5.4). Anything outside the list is rejected with a code by
  * `inspectGridFormula`; it is never silently dropped or passed through, because
- * a passed-through `RAND()` reproduces §6 F6 (the same material shows a
- * different number on every open) and a passed-through `INDIRECT()` reaches
- * outside the workbook.
+ * a passed-through `INDIRECT()` reaches outside the workbook. `RAND()` and the
+ * rest of `GRID_VOLATILE_FUNCTIONS` are the one conditional case: they run only
+ * against a document carrying a recalc stamp, so §6 F6 (the same material shows
+ * a different number on every open) still cannot happen.
  */
 
 export type GridFormulaValue = string | number;
@@ -17,30 +18,140 @@ export type GridFormulaValue = string | number;
 /** Typed evaluation result. The XLSX cache-value writer needs the real type. */
 export type GridFormulaScalar = string | number | boolean;
 
-/** §3.3 — the complete whitelist. §4 C11 pins its size at 22. */
+/**
+ * §3.3 / §规范二 — the functions that may run with nothing but the workbook.
+ *
+ * Batch one (office hit rate) and batch two (dates and finance) are both here;
+ * the volatile names live in `GRID_VOLATILE_FUNCTIONS` below because they need
+ * a recalc stamp before they are allowed to run at all. §4 C11 pins the size.
+ *
+ * Every name is spelled and behaves the same in Excel, WPS and LibreOffice
+ * Calc, which is what lets a workbook that stays inside the list open in all
+ * three without a repair prompt (§5.4).
+ */
 export const GRID_FORMULA_WHITELIST = [
-  "SUM",
-  "AVERAGE",
-  "COUNT",
-  "COUNTA",
-  "MIN",
-  "MAX",
-  "ROUND",
-  "ROUNDUP",
-  "ROUNDDOWN",
-  "ABS",
+  // 逻辑
   "IF",
+  "IFS",
   "IFERROR",
+  "IFNA",
+  "SWITCH",
   "AND",
   "OR",
   "NOT",
+  "XOR",
+  "TRUE",
+  "FALSE",
+  // 数学
+  "SUM",
   "SUMIF",
+  "SUMIFS",
+  "SUMPRODUCT",
+  "PRODUCT",
+  "ABS",
+  "ROUND",
+  "ROUNDUP",
+  "ROUNDDOWN",
+  "MROUND",
+  "CEILING",
+  "FLOOR",
+  "INT",
+  "TRUNC",
+  "MOD",
+  "POWER",
+  "SQRT",
+  "SIGN",
+  // 统计
+  "COUNT",
+  "COUNTA",
+  "COUNTBLANK",
   "COUNTIF",
+  "COUNTIFS",
+  "AVERAGE",
+  "AVERAGEIF",
+  "AVERAGEIFS",
+  "MEDIAN",
+  "MIN",
+  "MAX",
+  "MINIFS",
+  "MAXIFS",
+  "LARGE",
+  "SMALL",
+  "RANK",
+  // 文本
+  "CONCAT",
+  "TEXTJOIN",
+  "LEFT",
+  "RIGHT",
+  "MID",
+  "LEN",
+  "FIND",
+  "SEARCH",
+  "SUBSTITUTE",
+  "REPLACE",
+  "TRIM",
+  "UPPER",
+  "LOWER",
+  "TEXT",
+  "VALUE",
+  "EXACT",
+  // 查找
   "VLOOKUP",
+  "HLOOKUP",
   "INDEX",
   "MATCH",
+  "CHOOSE",
+  "ROW",
+  "COLUMN",
+  "ROWS",
+  "COLUMNS",
+  // 日期
+  "DATE",
+  "YEAR",
+  "MONTH",
+  "DAY",
+  "HOUR",
+  "MINUTE",
+  "SECOND",
+  "WEEKDAY",
+  "WEEKNUM",
+  "EDATE",
+  "EOMONTH",
+  "DATEDIF",
+  "DAYS",
+  "NETWORKDAYS",
+  "WORKDAY",
+  "DATEVALUE",
+  "TIME",
+  // 财务
   "NPV",
   "IRR",
+  "XNPV",
+  "XIRR",
+  "PMT",
+  "IPMT",
+  "PPMT",
+  "PV",
+  "FV",
+  "RATE",
+  "NPER",
+  "SLN",
+  "DB",
+  "DDB",
+  "SYD",
+  // 信息
+  "ISBLANK",
+  "ISNUMBER",
+  "ISTEXT",
+  "ISERROR",
+  "ISERR",
+  "ISNA",
+  "ISLOGICAL",
+  "ISEVEN",
+  "ISODD",
+  "N",
+  "NA",
+  "TYPE",
 ] as const;
 
 export type GridFormulaFunction = (typeof GRID_FORMULA_WHITELIST)[number];
@@ -48,17 +159,43 @@ export type GridFormulaFunction = (typeof GRID_FORMULA_WHITELIST)[number];
 const WHITELIST = new Set<string>(GRID_FORMULA_WHITELIST);
 
 /**
- * §3.3 second bullet / §6 F6. These are called out separately from the plain
- * "not on the list" case so a reviewer can tell reproducibility damage from an
- * ordinary typo.
+ * §规范三. Allowed, but only against a document that carries a
+ * {@link GridRecalcStamp} — they read the stamp, never the host clock or the
+ * platform RNG, so "same document bytes, same numbers" (§5.4 / §6 F6) still
+ * holds. With no stamp in scope they fail closed with the
+ * `grid-formula-nondeterministic` code, which is the behaviour a caller that
+ * passes no options has always seen.
+ *
+ * Renamed from `GRID_NONDETERMINISTIC_FUNCTIONS`: the old name described a
+ * verdict ("these are rejected"), and the verdict is now conditional.
  */
-export const GRID_NONDETERMINISTIC_FUNCTIONS = [
+export const GRID_VOLATILE_FUNCTIONS = [
   "RAND",
   "RANDBETWEEN",
   "RANDARRAY",
   "NOW",
   "TODAY",
 ] as const;
+
+/**
+ * @deprecated Use {@link GRID_VOLATILE_FUNCTIONS}. Kept as an alias because
+ * `GridWorkbookExport.ts` and `tests/grid-carrier-contract.test.mjs` import the
+ * old name, and neither is this task's to edit.
+ */
+export const GRID_NONDETERMINISTIC_FUNCTIONS = GRID_VOLATILE_FUNCTIONS;
+
+/**
+ * Volatile in name only: `RANDARRAY` returns a dynamic array, so it needs the
+ * §规范四 spill semantics that this wave deliberately does not ship (zero hits
+ * across the 456-workbook corpus; the spec itself says half a spill
+ * implementation is worse than none). It stays rejected as "not on the list"
+ * rather than half-working, and a recalc stamp does not unlock it.
+ */
+const SPILL_REQUIRED = new Set<string>(["RANDARRAY"]);
+
+const VOLATILE = new Set<string>(
+  GRID_VOLATILE_FUNCTIONS.filter((name) => !SPILL_REQUIRED.has(name)),
+);
 
 /**
  * §3.3 third bullet, "no `INDIRECT`" half: the argument is computed at open
@@ -121,6 +258,14 @@ export interface GridFormulaInspection {
   functions: string[];
   /** Same-sheet A1 references, deduplicated and in first-seen order. */
   references: string[];
+  /**
+   * The same references with their `$` markers intact, index-aligned with
+   * {@link references}. A fill handle has to know that `$A1` pins the column
+   * while `A1` travels, and `references` cannot say so because it drops the
+   * markers — a shape other editors already depend on, so the information is
+   * added alongside rather than folded in.
+   */
+  absoluteReferences: string[];
   /** `A1:B9` style ranges. */
   ranges: string[];
   /** `Sheet!A1` style qualified references. */
@@ -148,8 +293,9 @@ export class GridFormulaRejection extends Error {
 type Token =
   | { type: "number"; value: number }
   | { type: "string"; value: string }
-  | { type: "cell"; value: string }
-  | { type: "qualified"; value: string }
+  /** `raw` keeps the `$` markers `value` drops, for `absoluteReferences`. */
+  | { type: "cell"; value: string; raw: string }
+  | { type: "qualified"; value: string; raw: string }
   | { type: "name"; value: string }
   | { type: "operator"; value: string }
   | { type: "external"; value: string }
@@ -165,6 +311,16 @@ class FormulaError extends Error {
 }
 
 const OPERATORS = ["<>", ">=", "<=", "=", "<", ">", "+", "-", "*", "/", "^", "&"];
+
+/**
+ * Operators and punctuation are the only tokens whose spelling may be acted on.
+ * A string literal can spell anything: `SUBSTITUTE(A1,"-","")` is how a phone
+ * column loses its dashes, and matching on `value` alone read that `-` as a
+ * minus sign and failed the whole formula with `#VALUE!`.
+ */
+function isOperator(token: Token | undefined, value: string): boolean {
+  return token?.type === "operator" && token.value === value;
+}
 
 function tokenize(source: string): Token[] {
   const tokens: Token[] = [];
@@ -195,7 +351,11 @@ function tokenize(source: string): Token[] {
       /^(?:'[^'\[\]]+'|[A-Za-z0-9_\u4e00-\u9fff]+)!\$?[A-Za-z]{1,3}\$?\d{1,7}/,
     );
     if (qualified) {
-      tokens.push({ type: "qualified", value: qualified[0].replace(/\$/g, "") });
+      tokens.push({
+        type: "qualified",
+        value: qualified[0].replace(/\$/g, ""),
+        raw: qualified[0],
+      });
       index += qualified[0].length;
       continue;
     }
@@ -208,7 +368,7 @@ function tokenize(source: string): Token[] {
     // Cell before name: `A1` must not lex as the identifier `A1`.
     const cell = rest.match(/^\$?[A-Za-z]{1,3}\$?\d{1,7}(?![A-Za-z0-9_])/);
     if (cell) {
-      tokens.push({ type: "cell", value: cell[0].replace(/\$/g, "") });
+      tokens.push({ type: "cell", value: cell[0].replace(/\$/g, ""), raw: cell[0] });
       index += cell[0].length;
       continue;
     }
@@ -490,6 +650,19 @@ export interface GridFormulaContext {
   sheetResolver?: (name: string) => readonly GridRow[] | null;
   /** Lazy alternative to `namedRanges`, consulted first. */
   namedRangeResolver?: (name: string) => string | null;
+  /**
+   * Zero-based address of the cell being evaluated. `ROW()` / `COLUMN()` report
+   * it, and the `RAND` family mixes it into the seed so two cells sharing one
+   * document do not draw the same number.
+   */
+  cell?: { row: number; col: number };
+  /**
+   * How many volatile draws this cell has already made, held in a box so the
+   * count survives the context spread that nested evaluation performs. Without
+   * it `=RAND()+RAND()` would derive both halves from the same seed material
+   * and always come out an exact double.
+   */
+  volatileCalls?: { count: number };
 }
 
 /**
@@ -549,7 +722,7 @@ class Parser {
   }
 
   private accept(value: string): boolean {
-    if (this.peek().value !== value) return false;
+    if (!isOperator(this.peek(), value)) return false;
     this.position += 1;
     return true;
   }
@@ -588,7 +761,7 @@ class Parser {
 
   private concat(): GridFormulaScalar {
     let value = this.additive();
-    while (this.peek().value === "&") {
+    while (isOperator(this.peek(), "&")) {
       this.position += 1;
       value = `${stringify(value)}${stringify(this.additive())}`;
     }
@@ -597,7 +770,7 @@ class Parser {
 
   private additive(): GridFormulaScalar {
     let value = this.multiplicative();
-    while (this.peek().value === "+" || this.peek().value === "-") {
+    while (isOperator(this.peek(), "+") || isOperator(this.peek(), "-")) {
       const operator = this.take().value;
       const right = numeric(this.multiplicative());
       value = operator === "+" ? numeric(value) + right : numeric(value) - right;
@@ -607,7 +780,7 @@ class Parser {
 
   private multiplicative(): GridFormulaScalar {
     let value = this.power();
-    while (this.peek().value === "*" || this.peek().value === "/") {
+    while (isOperator(this.peek(), "*") || isOperator(this.peek(), "/")) {
       const operator = this.take().value;
       const right = numeric(this.power());
       if (operator === "/" && right === 0) throw new FormulaError("#DIV/0!");
@@ -643,7 +816,7 @@ class Parser {
     if (token.type === "qualified") return this.resolveQualified(token.value);
     if (token.type === "external") throw new FormulaError("#REF!");
     if (token.type === "name") {
-      if (this.peek().value === "(") return this.callFunction(token.value);
+      if (isOperator(this.peek(), "(")) return this.callFunction(token.value);
       if (token.value === "TRUE") return true;
       if (token.value === "FALSE") return false;
       return this.resolveName(token.value);
@@ -721,7 +894,15 @@ class Parser {
         raw.slice(1),
         rows,
         this.visiting,
-        { ...this.context, sheetName },
+        {
+          ...this.context,
+          sheetName,
+          // The referenced cell is the one `ROW()` and the RAND family are
+          // now standing in, and it gets its own draw counter so its value
+          // does not depend on how many draws the caller had already made.
+          cell: { row, col },
+          volatileCalls: { count: 0 },
+        },
         this.depth + 1,
       );
     } finally {
@@ -785,12 +966,12 @@ class Parser {
     for (;;) {
       const token = this.peek();
       if (token.type === "eof") return;
-      if (token.value === "(") depth += 1;
-      if (token.value === ")") {
+      if (isOperator(token, "(")) depth += 1;
+      if (isOperator(token, ")")) {
         if (depth === 0) return;
         depth -= 1;
       }
-      if (token.value === "," && depth === 0) return;
+      if (isOperator(token, ",") && depth === 0) return;
       this.position += 1;
     }
   }
@@ -799,7 +980,7 @@ class Parser {
     const first = this.peek();
     if (
       (first.type === "cell" || first.type === "qualified") &&
-      this.peek(1).value === ":" &&
+      isOperator(this.peek(1), ":") &&
       (this.peek(2).type === "cell" || this.peek(2).type === "qualified")
     ) {
       const start = String(this.take().value);
@@ -823,7 +1004,7 @@ class Parser {
         ),
       };
     }
-    if (first.type === "name" && this.peek(1).value !== "(") {
+    if (first.type === "name" && !isOperator(this.peek(1), "(")) {
       const target = this.namedRange(first.value);
       if (target && target.includes(":")) {
         this.position += 1;
@@ -835,20 +1016,174 @@ class Parser {
 
   private callFunction(name: string): GridFormulaScalar {
     this.expect("(");
+    // A volatile name is only callable against a document that carries a
+    // recalc stamp; with none in scope it fails closed rather than reading the
+    // host clock (§规范三). The evaluator agrees with the inspector: an
+    // off-list name is an error value, never a guess at what the author meant.
     if (!WHITELIST.has(name)) {
-      // The evaluator agrees with the inspector: an off-list name is an error
-      // value, never a best-effort guess at what the author meant.
-      throw new FormulaError("#NAME?");
+      if (!VOLATILE.has(name)) throw new FormulaError("#NAME?");
+      requireRecalc(this.context);
     }
-    if (name === "IF") return this.callIf();
-    if (name === "IFERROR") return this.callIfError();
+    switch (name) {
+      case "IF":
+        return this.callIf();
+      case "IFERROR":
+        return this.callIfError();
+      case "IFNA":
+        return this.callIfNa();
+      case "IFS":
+        return this.callIfs();
+      case "SWITCH":
+        return this.callSwitch();
+      case "CHOOSE":
+        return this.callChoose();
+      case "ROW":
+      case "COLUMN":
+        return this.callRowColumn(name);
+      case "ISERROR":
+      case "ISERR":
+      case "ISNA":
+        return this.callIsError(name);
+      default:
+        break;
+    }
     const args: Arg[] = [];
-    if (this.peek().value !== ")") {
+    if (!isOperator(this.peek(), ")")) {
       do args.push(this.argument());
       while (this.accept(",") || this.accept(";"));
     }
     this.expect(")");
-    return applyFunction(name as GridFormulaFunction, args);
+    return applyFunction(name as GridFormulaFunction, args, this.context);
+  }
+
+  /** Evaluate one argument, converting a thrown error into a value. */
+  private tryArgument():
+    | { ok: true; value: GridFormulaScalar }
+    | { ok: false; code: string } {
+    const start = this.position;
+    try {
+      const value = this.comparison();
+      // A cached error string reaches here through the range path; treat it
+      // the same as a thrown one so IS* and IFNA agree with IFERROR.
+      if (typeof value === "string" && /^#[A-Z0-9/!?]+$/.test(value)) {
+        return { ok: false, code: value };
+      }
+      return { ok: true, value };
+    } catch (caught) {
+      if (!(caught instanceof FormulaError)) throw caught;
+      this.position = start;
+      this.skipArgument();
+      return { ok: false, code: caught.code };
+    }
+  }
+
+  private callIfNa(): GridFormulaScalar {
+    const outcome = this.tryArgument();
+    this.expect(",");
+    if (!outcome.ok && outcome.code === "#N/A") {
+      const fallback = this.comparison();
+      this.expect(")");
+      return fallback;
+    }
+    this.skipArgument();
+    this.expect(")");
+    if (!outcome.ok) throw new FormulaError(outcome.code);
+    return outcome.value;
+  }
+
+  private callIfs(): GridFormulaScalar {
+    let chosen: GridFormulaScalar | null = null;
+    for (;;) {
+      if (chosen === null) {
+        const condition = truthy(this.comparison());
+        this.expect(",");
+        if (condition) chosen = this.comparison();
+        else this.skipArgument();
+      } else {
+        this.skipArgument();
+        this.expect(",");
+        this.skipArgument();
+      }
+      if (!this.accept(",")) break;
+    }
+    this.expect(")");
+    if (chosen === null) throw new FormulaError("#N/A");
+    return chosen;
+  }
+
+  private callSwitch(): GridFormulaScalar {
+    const subject = this.comparison();
+    this.expect(",");
+    let chosen: GridFormulaScalar | null = null;
+    let fallback: GridFormulaScalar | null = null;
+    for (;;) {
+      const candidate = this.comparison();
+      if (!this.accept(",")) {
+        // A trailing argument with no pair of its own is the default.
+        if (chosen === null) fallback = candidate;
+        break;
+      }
+      if (chosen === null && compareScalars(subject, candidate) === 0) {
+        chosen = this.comparison();
+      } else {
+        this.skipArgument();
+      }
+      if (!this.accept(",")) break;
+    }
+    this.expect(")");
+    if (chosen !== null) return chosen;
+    if (fallback !== null) return fallback;
+    throw new FormulaError("#N/A");
+  }
+
+  private callChoose(): GridFormulaScalar {
+    const which = Math.trunc(numeric(this.comparison()));
+    this.expect(",");
+    let chosen: GridFormulaScalar | null = null;
+    let position = 1;
+    for (;;) {
+      if (position === which) chosen = this.comparison();
+      else this.skipArgument();
+      position += 1;
+      if (!this.accept(",")) break;
+    }
+    this.expect(")");
+    if (chosen === null) throw new FormulaError("#VALUE!");
+    return chosen;
+  }
+
+  /**
+   * `ROW()` reports where the formula sits; `ROW(A5)` reports the address it
+   * was handed, not that cell's contents — which is why this cannot go through
+   * the ordinary argument path.
+   */
+  private callRowColumn(name: "ROW" | "COLUMN"): GridFormulaScalar {
+    if (this.accept(")")) {
+      const cell = this.context.cell;
+      if (!cell) throw new FormulaError("#REF!");
+      return name === "ROW" ? cell.row + 1 : cell.col + 1;
+    }
+    const token = this.peek();
+    if (token.type !== "cell" && token.type !== "qualified") {
+      throw new FormulaError("#VALUE!");
+    }
+    const raw = String(token.value);
+    const body = raw.includes("!") ? raw.slice(raw.indexOf("!") + 1) : raw;
+    const { row, col } = cellPosition(body.replace(/\$/g, ""));
+    this.skipArgument();
+    this.expect(")");
+    return name === "ROW" ? row + 1 : col + 1;
+  }
+
+  private callIsError(
+    name: "ISERROR" | "ISERR" | "ISNA",
+  ): GridFormulaScalar {
+    const outcome = this.tryArgument();
+    this.expect(")");
+    if (outcome.ok) return false;
+    if (name === "ISNA") return outcome.code === "#N/A";
+    if (name === "ISERR") return outcome.code !== "#N/A";
+    return true;
   }
 
   private callIf(): GridFormulaScalar {
@@ -903,29 +1238,463 @@ function stringify(value: GridFormulaScalar): string {
   return String(value);
 }
 
+/* --------------------------- 日期序列号（§规范二） --------------------------- */
+
+/**
+ * Days from 1970-01-01 for a proleptic-Gregorian date, by Howard Hinnant's
+ * `days_from_civil`. Written out in integer arithmetic rather than built on the
+ * host date type on purpose: the §5.4 invariant is that a document's numbers
+ * depend on its bytes and nothing else, and a host date type carries the
+ * machine's time zone into the answer.
+ */
+function daysFromCivil(year: number, month: number, day: number): number {
+  const shifted = year - (month <= 2 ? 1 : 0);
+  const era = Math.floor(shifted / 400);
+  const yearOfEra = shifted - era * 400;
+  const dayOfYear =
+    Math.floor((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5) + day - 1;
+  const dayOfEra =
+    yearOfEra * 365 +
+    Math.floor(yearOfEra / 4) -
+    Math.floor(yearOfEra / 100) +
+    dayOfYear;
+  return era * 146_097 + dayOfEra - 719_468;
+}
+
+/** Inverse of {@link daysFromCivil}. */
+function civilFromDays(days: number): {
+  year: number;
+  month: number;
+  day: number;
+} {
+  const shifted = days + 719_468;
+  const era = Math.floor(shifted / 146_097);
+  const dayOfEra = shifted - era * 146_097;
+  const yearOfEra = Math.floor(
+    (dayOfEra -
+      Math.floor(dayOfEra / 1460) +
+      Math.floor(dayOfEra / 36_524) -
+      Math.floor(dayOfEra / 146_096)) /
+      365,
+  );
+  const year = yearOfEra + era * 400;
+  const dayOfYear =
+    dayOfEra -
+    (365 * yearOfEra +
+      Math.floor(yearOfEra / 4) -
+      Math.floor(yearOfEra / 100));
+  const monthPrime = Math.floor((5 * dayOfYear + 2) / 153);
+  const day = dayOfYear - Math.floor((153 * monthPrime + 2) / 5) + 1;
+  const month = monthPrime + (monthPrime < 10 ? 3 : -9);
+  return { year: year + (month <= 2 ? 1 : 0), month, day };
+}
+
+/** Real days between 1899-12-30 and 1970-01-01, the serial-0 anchor. */
+const SERIAL_EPOCH_DAYS = daysFromCivil(1899, 12, 30);
+
+/**
+ * Serial 60 is 1900-02-29 — a date that never happened. Lotus 1-2-3 shipped the
+ * mistake, Excel kept it for file compatibility, and every serial at or below
+ * it is therefore one greater than the true day count. Dropping the quirk would
+ * make every pre-March-1900 date export one day off, which is exactly the
+ * silent corruption §规范二 asks to pin down with a test.
+ */
+const LEAP_BUG_SERIAL = 60;
+
+/** Largest serial the subset accepts: 9999-12-31, as in Excel. */
+const MAX_SERIAL = 2_958_465;
+
+export function gridDateToSerial(
+  year: number,
+  month: number,
+  day: number,
+): number {
+  const raw = daysFromCivil(year, month, day) - SERIAL_EPOCH_DAYS;
+  // Serial 0 is the 1899-12-30 anchor itself, so it is not one of the days the
+  // phantom 1900-02-29 pushed out of place; only the real days between the
+  // anchor and the phantom are, and those are the ones Excel numbers one lower
+  // than a straight day count would.
+  return raw >= 1 && raw <= LEAP_BUG_SERIAL ? raw - 1 : raw;
+}
+
+export function gridSerialToDate(serial: number): {
+  year: number;
+  month: number;
+  day: number;
+} {
+  const whole = Math.floor(serial);
+  if (whole === LEAP_BUG_SERIAL) return { year: 1900, month: 2, day: 29 };
+  const raw = whole >= 1 && whole < LEAP_BUG_SERIAL ? whole + 1 : whole;
+  return civilFromDays(raw + SERIAL_EPOCH_DAYS);
+}
+
+/** Reject a serial that no real date maps to, rather than wrapping silently. */
+function requireSerial(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > MAX_SERIAL) {
+    throw new FormulaError("#NUM!");
+  }
+  return value;
+}
+
+function serialDayFraction(serial: number): number {
+  const fraction = serial - Math.floor(serial);
+  return fraction < 0 ? fraction + 1 : fraction;
+}
+
+/** Sunday-based weekday index, 0..6, matching Excel's leap-bug-aware count. */
+function weekdayIndex(serial: number): number {
+  return (((Math.floor(serial) - 1) % 7) + 7) % 7;
+}
+
+/** Normalise an out-of-range month the way `DATE(2026,13,1)` expects. */
+function normalizedDateSerial(
+  year: number,
+  month: number,
+  day: number,
+): number {
+  const yearShift = Math.floor((month - 1) / 12);
+  return requireSerial(
+    gridDateToSerial(
+      year + yearShift + (year >= 0 && year <= 1899 ? 1900 : 0),
+      month - yearShift * 12,
+      day,
+    ),
+  );
+}
+
+const DATE_TEXT = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/;
+
+/** ISO8601 instant → serial, for `TODAY` / `NOW` reading `recalc.at`. */
+function serialFromIsoInstant(instant: string): number {
+  const parsed = instant.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/,
+  );
+  if (!parsed) throw new FormulaError("#VALUE!");
+  const days = gridDateToSerial(
+    Number(parsed[1]),
+    Number(parsed[2]),
+    Number(parsed[3]),
+  );
+  const seconds =
+    Number(parsed[4]) * 3600 + Number(parsed[5]) * 60 + Number(parsed[6]);
+  return days + seconds / 86_400;
+}
+
+/* ------------------------ volatile 的确定性来源（§规范三） ------------------------ */
+
+function mix32(value: number): number {
+  let state = value >>> 0;
+  state = Math.imul(state ^ (state >>> 16), 0x21f0_aaad) >>> 0;
+  state = Math.imul(state ^ (state >>> 15), 0x735a_2d97) >>> 0;
+  return (state ^ (state >>> 15)) >>> 0;
+}
+
+function textHash(text: string): number {
+  let hash = 0x811c_9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x0100_0193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/**
+ * The stamp, or a controlled rejection. Fail-closed is the whole point: a
+ * volatile function that quietly fell back to the host clock would make the
+ * same document bytes produce different numbers on the next open (§6 F6).
+ */
+function requireRecalc(context: GridFormulaContext): GridRecalcStamp {
+  const stamp = context.recalc;
+  if (!stamp) throw new FormulaError(GRID_FORMULA_REJECTION_CODES.nondeterministic);
+  return stamp;
+}
+
+/**
+ * One draw in `[0, 1)` from `hash(seed, sheetId, row, col, callIndex)`.
+ * Deterministic in the document, and distinct per cell and per call within a
+ * cell, so `=RAND()+RAND()` is not forced to be an exact doubling.
+ */
+function volatileDraw(context: GridFormulaContext): number {
+  const stamp = requireRecalc(context);
+  const box = context.volatileCalls ?? { count: 0 };
+  const callIndex = box.count;
+  box.count += 1;
+  const address = context.cell ?? { row: 0, col: 0 };
+  const sheet = textHash(context.sheetName ?? "");
+  let state = mix32(stamp.seed >>> 0);
+  state = mix32(state ^ sheet);
+  state = mix32(state ^ ((address.row + 1) * 0x0001_0001));
+  state = mix32(state ^ ((address.col + 1) * 0x0100_0001));
+  state = mix32(state ^ (callIndex + 0x9e37_79b9));
+  return state / 0x1_0000_0000;
+}
+
+/* ------------------------------ 文本与数值工具 ------------------------------ */
+
+function textOf(value: GridFormulaScalar): string {
+  return stringify(value);
+}
+
+function requireText(args: readonly Arg[], position: number): string {
+  return textOf(requireScalar(args, position));
+}
+
+function requirePositiveInteger(value: number): number {
+  const count = Math.trunc(value);
+  if (count < 0) throw new FormulaError("#VALUE!");
+  return count;
+}
+
+/** Excel's `?` / `*` wildcards, used by FIND-free matching in SEARCH. */
+function wildcardToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, (character) =>
+    character === "*" ? "[\\s\\S]*" : character === "?" ? "[\\s\\S]" : `\\${character}`,
+  );
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+/**
+ * A very small `TEXT()` / number-format subset: fixed decimals, thousands
+ * grouping, percent, and the three date shapes the corpus actually carries.
+ * An unrecognised format returns the value as plain text rather than guessing,
+ * because a wrong format silently changes what the reader sees.
+ */
+function formatByPattern(value: GridFormulaScalar, pattern: string): string {
+  const trimmed = pattern.trim();
+  if (/^[yYmMdD][-/.\syYmMdD]*$/.test(trimmed) && typeof value !== "string") {
+    const serial = requireSerial(numeric(value));
+    const { year, month, day } = gridSerialToDate(serial);
+    const pad = (input: number, width: number) =>
+      String(input).padStart(width, "0");
+    return trimmed
+      .replace(/yyyy/gi, String(year))
+      .replace(/yy/gi, pad(year % 100, 2))
+      .replace(/mm/g, pad(month, 2))
+      .replace(/dd/gi, pad(day, 2))
+      .replace(/(?<![a-z0-9])m(?![a-z0-9])/g, String(month))
+      .replace(/(?<![a-z0-9])d(?![a-z0-9])/gi, String(day));
+  }
+  const percent = trimmed.endsWith("%");
+  const body = percent ? trimmed.slice(0, -1) : trimmed;
+  const decimals = body.includes(".") ? body.split(".")[1].length : 0;
+  if (!/^[#,0]+(?:\.[0#]*)?$/.test(body)) return textOf(value);
+  const scaled = numeric(value) * (percent ? 100 : 1);
+  const fixed = roundTo(scaled, decimals, "half").toFixed(decimals);
+  const grouped = body.includes(",")
+    ? fixed.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+    : fixed;
+  return percent ? `${grouped}%` : grouped;
+}
+
+/* ------------------------------ 条件聚合工具 ------------------------------ */
+
+/** Positions in `range` that satisfy every `(range, criteria)` pair. */
+function matchingPositions(
+  pairs: readonly { range: GridFormulaScalar[][]; criteria: GridFormulaScalar }[],
+): number[] {
+  const first = pairs[0];
+  if (!first) return [];
+  const length = first.range.flat().length;
+  const positions: number[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const matched = pairs.every((pair) => {
+      const value = pair.range.flat()[index];
+      return value !== undefined && matchesCriteria(value, pair.criteria);
+    });
+    if (matched) positions.push(index);
+  }
+  return positions;
+}
+
+/** `SUMIFS`-shaped arguments: a target range then `(range, criteria)` pairs. */
+function criteriaPairs(
+  args: readonly Arg[],
+  start: number,
+): { range: GridFormulaScalar[][]; criteria: GridFormulaScalar }[] {
+  const pairs: { range: GridFormulaScalar[][]; criteria: GridFormulaScalar }[] =
+    [];
+  for (let index = start; index + 1 < args.length + 1; index += 2) {
+    if (!args[index] || !args[index + 1]) break;
+    pairs.push({
+      range: requireRange(args, index),
+      criteria: requireScalar(args, index + 1),
+    });
+  }
+  return pairs;
+}
+
+function finiteNumbers(values: readonly GridFormulaScalar[]): number[] {
+  const numbers: number[] = [];
+  for (const value of values) {
+    if (isBlank(value) || typeof value === "boolean") continue;
+    try {
+      numbers.push(numeric(value));
+    } catch (caught) {
+      if (caught instanceof FormulaError && caught.code === "#VALUE!") continue;
+      throw caught;
+    }
+  }
+  return numbers;
+}
+
+function averageOf(values: readonly number[]): number {
+  if (values.length === 0) throw new FormulaError("#DIV/0!");
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function medianOf(values: readonly number[]): number {
+  if (values.length === 0) throw new FormulaError("#NUM!");
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/* --------------------------------- 财务 --------------------------------- */
+
+/**
+ * The shared annuity identity behind PMT / PV / FV / NPER. `type` is 0 for
+ * payments at period end and 1 for the beginning, as in Excel.
+ */
+function annuityFactor(rate: number, periods: number, type: number): number {
+  if (rate === 0) return periods;
+  return ((1 - (1 + rate) ** -periods) / rate) * (1 + rate * type);
+}
+
+function paymentOf(
+  rate: number,
+  periods: number,
+  present: number,
+  future: number,
+  type: number,
+): number {
+  if (periods === 0) throw new FormulaError("#NUM!");
+  if (rate === 0) return -(present + future) / periods;
+  const growth = (1 + rate) ** periods;
+  return (
+    (-(present * growth + future) * rate) / ((growth - 1) * (1 + rate * type))
+  );
+}
+
+function futureValueOf(
+  rate: number,
+  periods: number,
+  payment: number,
+  present: number,
+  type: number,
+): number {
+  if (rate === 0) return -(present + payment * periods);
+  const growth = (1 + rate) ** periods;
+  return -(present * growth + payment * (1 + rate * type) * ((growth - 1) / rate));
+}
+
+/** Remaining balance after `period` payments — the base for IPMT / PPMT. */
+function balanceAfter(
+  rate: number,
+  period: number,
+  payment: number,
+  present: number,
+  type: number,
+): number {
+  return futureValueOf(rate, period, payment, present, type);
+}
+
+/** Bisection again, for the same reproducibility reason as {@link irr}. */
+function solveRate(
+  evaluate: (rate: number) => number,
+  low: number,
+  high: number,
+): number {
+  let lowRate = low;
+  let highRate = high;
+  let lowValue = evaluate(lowRate);
+  let highValue = evaluate(highRate);
+  if (!Number.isFinite(lowValue) || !Number.isFinite(highValue)) {
+    throw new FormulaError("#NUM!");
+  }
+  if (lowValue * highValue > 0) throw new FormulaError("#NUM!");
+  for (let step = 0; step < GRID_IRR_MAX_ITERATIONS; step += 1) {
+    const middle = (lowRate + highRate) / 2;
+    const value = evaluate(middle);
+    if (Math.abs(value) < 1e-10) return middle;
+    if (lowValue * value <= 0) {
+      highRate = middle;
+      highValue = value;
+    } else {
+      lowRate = middle;
+      lowValue = value;
+    }
+  }
+  void highValue;
+  return (lowRate + highRate) / 2;
+}
+
+function serialsFrom(args: readonly Arg[], position: number): number[] {
+  return requireRange(args, position)
+    .flat()
+    .filter((value) => !isBlank(value))
+    .map((value) => requireSerial(numeric(value)));
+}
+
 function applyFunction(
   name: GridFormulaFunction,
   args: readonly Arg[],
+  context: GridFormulaContext,
 ): GridFormulaScalar {
   switch (name) {
+    /* ------------------------------ 逻辑 ------------------------------ */
+    case "AND":
+      return flatten(args).every((value) => truthy(value));
+    case "OR":
+      return flatten(args).some((value) => truthy(value));
+    case "NOT":
+      return !truthy(flatten(args)[0] ?? "");
+    case "XOR":
+      return flatten(args).filter((value) => truthy(value)).length % 2 === 1;
+    case "TRUE":
+      return true;
+    case "FALSE":
+      return false;
+
+    /* ------------------------------ 数学 ------------------------------ */
     case "SUM":
       return numbersFrom(args).reduce((total, value) => total + value, 0);
-    case "COUNT":
-      return numbersFrom(args).length;
-    case "COUNTA":
-      return flatten(args).filter((value) => !isBlank(value)).length;
-    case "AVERAGE": {
-      const values = numbersFrom(args);
-      if (values.length === 0) throw new FormulaError("#DIV/0!");
-      return values.reduce((total, value) => total + value, 0) / values.length;
+    case "SUMIF":
+      return sumIf(args);
+    case "SUMIFS": {
+      const target = requireRange(args, 0).flat();
+      const pairs = criteriaPairs(args, 1);
+      return matchingPositions(pairs).reduce((total, position) => {
+        const value = target[position];
+        if (value === undefined || isBlank(value)) return total;
+        return total + finiteNumbers([value]).reduce((a, b) => a + b, 0);
+      }, 0);
     }
-    case "MIN": {
-      const values = numbersFrom(args);
-      return values.length ? Math.min(...values) : 0;
+    case "SUMPRODUCT": {
+      const columns = args.map((arg) =>
+        arg.kind === "range" ? arg.matrix.flat() : [arg.value],
+      );
+      const length = Math.max(...columns.map((column) => column.length), 0);
+      if (columns.some((column) => column.length !== length)) {
+        throw new FormulaError("#VALUE!");
+      }
+      let total = 0;
+      for (let index = 0; index < length; index += 1) {
+        let product = 1;
+        for (const column of columns) {
+          const value = column[index];
+          const [asNumber = 0] = finiteNumbers([value ?? ""]);
+          product *= asNumber;
+        }
+        total += product;
+      }
+      return total;
     }
-    case "MAX": {
+    case "PRODUCT": {
       const values = numbersFrom(args);
-      return values.length ? Math.max(...values) : 0;
+      return values.length
+        ? values.reduce((total, value) => total * value, 1)
+        : 0;
     }
     case "ABS":
       return Math.abs(scalarNumber(args, 0));
@@ -935,14 +1704,59 @@ function applyFunction(
       return roundTo(scalarNumber(args, 0), scalarNumber(args, 1, 0), "up");
     case "ROUNDDOWN":
       return roundTo(scalarNumber(args, 0), scalarNumber(args, 1, 0), "down");
-    case "AND":
-      return flatten(args).every((value) => truthy(value));
-    case "OR":
-      return flatten(args).some((value) => truthy(value));
-    case "NOT":
-      return !truthy(flatten(args)[0] ?? "");
-    case "SUMIF":
-      return sumIf(args);
+    case "MROUND": {
+      const multiple = scalarNumber(args, 1);
+      if (multiple === 0) return 0;
+      const value = scalarNumber(args, 0);
+      if (value * multiple < 0) throw new FormulaError("#NUM!");
+      return Math.round(value / multiple) * multiple;
+    }
+    case "CEILING": {
+      const value = scalarNumber(args, 0);
+      const significance = scalarNumber(args, 1, value < 0 ? -1 : 1);
+      if (significance === 0) return 0;
+      if (value * significance < 0) throw new FormulaError("#NUM!");
+      return Math.ceil(value / significance) * significance;
+    }
+    case "FLOOR": {
+      const value = scalarNumber(args, 0);
+      const significance = scalarNumber(args, 1, value < 0 ? -1 : 1);
+      if (significance === 0) throw new FormulaError("#DIV/0!");
+      if (value * significance < 0) throw new FormulaError("#NUM!");
+      return Math.floor(value / significance) * significance;
+    }
+    case "INT":
+      return Math.floor(scalarNumber(args, 0));
+    case "TRUNC":
+      return roundTo(scalarNumber(args, 0), scalarNumber(args, 1, 0), "down");
+    case "MOD": {
+      const divisor = scalarNumber(args, 1);
+      if (divisor === 0) throw new FormulaError("#DIV/0!");
+      const dividend = scalarNumber(args, 0);
+      return dividend - divisor * Math.floor(dividend / divisor);
+    }
+    case "POWER": {
+      const result = scalarNumber(args, 0) ** scalarNumber(args, 1);
+      if (!Number.isFinite(result)) throw new FormulaError("#NUM!");
+      return result;
+    }
+    case "SQRT": {
+      const value = scalarNumber(args, 0);
+      if (value < 0) throw new FormulaError("#NUM!");
+      return Math.sqrt(value);
+    }
+    case "SIGN":
+      return Math.sign(scalarNumber(args, 0));
+
+    /* ------------------------------ 统计 ------------------------------ */
+    case "COUNT":
+      return numbersFrom(args).length;
+    case "COUNTA":
+      return flatten(args).filter((value) => !isBlank(value)).length;
+    case "COUNTBLANK":
+      return requireRange(args, 0)
+        .flat()
+        .filter((value) => isBlank(value)).length;
     case "COUNTIF": {
       const range = requireRange(args, 0);
       const criteria = requireScalar(args, 1);
@@ -950,19 +1764,610 @@ function applyFunction(
         .flat()
         .filter((value) => matchesCriteria(value, criteria)).length;
     }
+    case "COUNTIFS":
+      return matchingPositions(criteriaPairs(args, 0)).length;
+    case "AVERAGE":
+      return averageOf(numbersFrom(args));
+    case "AVERAGEIF": {
+      const range = requireRange(args, 0).flat();
+      const criteria = requireScalar(args, 1);
+      const target = args[2] ? requireRange(args, 2).flat() : range;
+      const picked: GridFormulaScalar[] = [];
+      range.forEach((value, position) => {
+        if (!matchesCriteria(value, criteria)) return;
+        const candidate = target[position];
+        if (candidate !== undefined) picked.push(candidate);
+      });
+      return averageOf(finiteNumbers(picked));
+    }
+    case "AVERAGEIFS": {
+      const target = requireRange(args, 0).flat();
+      const positions = matchingPositions(criteriaPairs(args, 1));
+      return averageOf(
+        finiteNumbers(
+          positions
+            .map((position) => target[position])
+            .filter((value): value is GridFormulaScalar => value !== undefined),
+        ),
+      );
+    }
+    case "MEDIAN":
+      return medianOf(numbersFrom(args));
+    case "MIN": {
+      const values = numbersFrom(args);
+      return values.length ? Math.min(...values) : 0;
+    }
+    case "MAX": {
+      const values = numbersFrom(args);
+      return values.length ? Math.max(...values) : 0;
+    }
+    case "MINIFS":
+    case "MAXIFS": {
+      const target = requireRange(args, 0).flat();
+      const positions = matchingPositions(criteriaPairs(args, 1));
+      const values = finiteNumbers(
+        positions
+          .map((position) => target[position])
+          .filter((value): value is GridFormulaScalar => value !== undefined),
+      );
+      if (values.length === 0) return 0;
+      return name === "MINIFS" ? Math.min(...values) : Math.max(...values);
+    }
+    case "LARGE":
+    case "SMALL": {
+      const values = finiteNumbers(requireRange(args, 0).flat());
+      const k = Math.trunc(scalarNumber(args, 1));
+      if (k < 1 || k > values.length) throw new FormulaError("#NUM!");
+      const sorted = [...values].sort((left, right) =>
+        name === "LARGE" ? right - left : left - right,
+      );
+      return sorted[k - 1];
+    }
+    case "RANK": {
+      const needle = scalarNumber(args, 0);
+      const values = finiteNumbers(requireRange(args, 1).flat());
+      const ascending = args[2] ? truthy(requireScalar(args, 2)) : false;
+      const sorted = [...values].sort((left, right) =>
+        ascending ? left - right : right - left,
+      );
+      const position = sorted.findIndex((value) => value === needle);
+      if (position < 0) throw new FormulaError("#N/A");
+      return position + 1;
+    }
+
+    /* ------------------------------ 文本 ------------------------------ */
+    case "CONCAT":
+      return flatten(args).map(textOf).join("");
+    case "TEXTJOIN": {
+      const delimiter = requireText(args, 0);
+      const ignoreEmpty = truthy(requireScalar(args, 1));
+      const parts = flatten(args.slice(2)).map(textOf);
+      return (ignoreEmpty ? parts.filter((part) => part !== "") : parts).join(
+        delimiter,
+      );
+    }
+    case "LEFT": {
+      const text = requireText(args, 0);
+      return text.slice(0, requirePositiveInteger(scalarNumber(args, 1, 1)));
+    }
+    case "RIGHT": {
+      const text = requireText(args, 0);
+      const count = requirePositiveInteger(scalarNumber(args, 1, 1));
+      return count === 0 ? "" : text.slice(-count);
+    }
+    case "MID": {
+      const text = requireText(args, 0);
+      const start = Math.trunc(scalarNumber(args, 1));
+      if (start < 1) throw new FormulaError("#VALUE!");
+      const count = requirePositiveInteger(scalarNumber(args, 2));
+      return text.slice(start - 1, start - 1 + count);
+    }
+    case "LEN":
+      return requireText(args, 0).length;
+    case "FIND": {
+      const needle = requireText(args, 0);
+      const haystack = requireText(args, 1);
+      const start = Math.trunc(scalarNumber(args, 2, 1));
+      if (start < 1) throw new FormulaError("#VALUE!");
+      const position = haystack.indexOf(needle, start - 1);
+      if (position < 0) throw new FormulaError("#VALUE!");
+      return position + 1;
+    }
+    case "SEARCH": {
+      const needle = requireText(args, 0);
+      const haystack = requireText(args, 1);
+      const start = Math.trunc(scalarNumber(args, 2, 1));
+      if (start < 1) throw new FormulaError("#VALUE!");
+      if (needle.includes("*") || needle.includes("?")) {
+        const pattern = wildcardToRegExp(`*${needle}*`);
+        if (!pattern.test(haystack.slice(start - 1))) {
+          throw new FormulaError("#VALUE!");
+        }
+        return start;
+      }
+      const position = haystack
+        .toLowerCase()
+        .indexOf(needle.toLowerCase(), start - 1);
+      if (position < 0) throw new FormulaError("#VALUE!");
+      return position + 1;
+    }
+    case "SUBSTITUTE": {
+      const text = requireText(args, 0);
+      const target = requireText(args, 1);
+      const replacement = requireText(args, 2);
+      if (target === "") return text;
+      if (!args[3]) return text.split(target).join(replacement);
+      const instance = Math.trunc(scalarNumber(args, 3));
+      if (instance < 1) throw new FormulaError("#VALUE!");
+      let seen = 0;
+      let cursor = 0;
+      for (;;) {
+        const position = text.indexOf(target, cursor);
+        if (position < 0) return text;
+        seen += 1;
+        if (seen === instance) {
+          return (
+            text.slice(0, position) +
+            replacement +
+            text.slice(position + target.length)
+          );
+        }
+        cursor = position + target.length;
+      }
+    }
+    case "REPLACE": {
+      const text = requireText(args, 0);
+      const start = Math.trunc(scalarNumber(args, 1));
+      if (start < 1) throw new FormulaError("#VALUE!");
+      const count = requirePositiveInteger(scalarNumber(args, 2));
+      return (
+        text.slice(0, start - 1) +
+        requireText(args, 3) +
+        text.slice(start - 1 + count)
+      );
+    }
+    case "TRIM":
+      return requireText(args, 0).replace(/\s+/g, " ").trim();
+    case "UPPER":
+      return requireText(args, 0).toUpperCase();
+    case "LOWER":
+      return requireText(args, 0).toLowerCase();
+    case "TEXT":
+      return formatByPattern(requireScalar(args, 0), requireText(args, 1));
+    case "VALUE":
+      return numeric(requireScalar(args, 0));
+    case "EXACT":
+      return textOf(requireScalar(args, 0)) === textOf(requireScalar(args, 1));
+
+    /* ------------------------------ 查找 ------------------------------ */
     case "VLOOKUP":
       return vlookup(args);
+    case "HLOOKUP":
+      return hlookup(args);
     case "INDEX":
       return index(args);
     case "MATCH":
       return match(args);
+    case "ROWS":
+      return requireRange(args, 0).length;
+    case "COLUMNS":
+      return requireRange(args, 0)[0]?.length ?? 0;
+
+    /* ------------------------------ 日期 ------------------------------ */
+    case "DATE":
+      return normalizedDateSerial(
+        Math.trunc(scalarNumber(args, 0)),
+        Math.trunc(scalarNumber(args, 1)),
+        Math.trunc(scalarNumber(args, 2)),
+      );
+    case "YEAR":
+      return gridSerialToDate(requireSerial(scalarNumber(args, 0))).year;
+    case "MONTH":
+      return gridSerialToDate(requireSerial(scalarNumber(args, 0))).month;
+    case "DAY":
+      return gridSerialToDate(requireSerial(scalarNumber(args, 0))).day;
+    case "HOUR":
+      return Math.floor(
+        serialDayFraction(requireSerial(scalarNumber(args, 0))) * 24,
+      );
+    case "MINUTE":
+      return Math.floor(
+        (serialDayFraction(requireSerial(scalarNumber(args, 0))) * 1440) % 60,
+      );
+    case "SECOND":
+      return Math.round(
+        (serialDayFraction(requireSerial(scalarNumber(args, 0))) * 86_400) % 60,
+      );
+    case "WEEKDAY": {
+      const sunday = weekdayIndex(requireSerial(scalarNumber(args, 0)));
+      const type = Math.trunc(scalarNumber(args, 1, 1));
+      if (type === 1) return sunday + 1;
+      if (type === 2) return ((sunday + 6) % 7) + 1;
+      if (type === 3) return (sunday + 6) % 7;
+      throw new FormulaError("#NUM!");
+    }
+    case "WEEKNUM": {
+      const serial = requireSerial(scalarNumber(args, 0));
+      const type = Math.trunc(scalarNumber(args, 1, 1));
+      if (type !== 1 && type !== 2) throw new FormulaError("#NUM!");
+      const { year } = gridSerialToDate(serial);
+      const firstOfYear = gridDateToSerial(year, 1, 1);
+      const offset = type === 1 ? 0 : 6;
+      const firstIndex = (weekdayIndex(firstOfYear) + offset) % 7;
+      return (
+        Math.floor((Math.floor(serial) - firstOfYear + firstIndex) / 7) + 1
+      );
+    }
+    case "EDATE":
+    case "EOMONTH": {
+      const { year, month } = gridSerialToDate(
+        requireSerial(scalarNumber(args, 0)),
+      );
+      const day = gridSerialToDate(requireSerial(scalarNumber(args, 0))).day;
+      const shift = Math.trunc(scalarNumber(args, 1));
+      const total = year * 12 + (month - 1) + shift;
+      const targetYear = Math.floor(total / 12);
+      const targetMonth = total - targetYear * 12 + 1;
+      const lastDay =
+        daysFromCivil(
+          targetMonth === 12 ? targetYear + 1 : targetYear,
+          targetMonth === 12 ? 1 : targetMonth + 1,
+          1,
+        ) - daysFromCivil(targetYear, targetMonth, 1);
+      if (name === "EOMONTH") {
+        return requireSerial(gridDateToSerial(targetYear, targetMonth, lastDay));
+      }
+      return requireSerial(
+        gridDateToSerial(targetYear, targetMonth, Math.min(day, lastDay)),
+      );
+    }
+    case "DATEDIF": {
+      const start = gridSerialToDate(requireSerial(scalarNumber(args, 0)));
+      const endSerial = requireSerial(scalarNumber(args, 1));
+      const end = gridSerialToDate(endSerial);
+      const unit = requireText(args, 2).toUpperCase();
+      const startSerial = requireSerial(scalarNumber(args, 0));
+      if (endSerial < startSerial) throw new FormulaError("#NUM!");
+      const wholeMonths =
+        (end.year - start.year) * 12 +
+        (end.month - start.month) -
+        (end.day < start.day ? 1 : 0);
+      switch (unit) {
+        case "D":
+          return Math.floor(endSerial) - Math.floor(startSerial);
+        case "M":
+          return wholeMonths;
+        case "Y":
+          return Math.floor(wholeMonths / 12);
+        case "YM":
+          return wholeMonths % 12;
+        case "MD":
+          return end.day >= start.day
+            ? end.day - start.day
+            : end.day +
+                (daysFromCivil(
+                  end.month === 1 ? end.year - 1 : end.year,
+                  end.month === 1 ? 12 : end.month - 1,
+                  1,
+                ) === 0
+                  ? 0
+                  : daysFromCivil(end.year, end.month, 1) -
+                    daysFromCivil(
+                      end.month === 1 ? end.year - 1 : end.year,
+                      end.month === 1 ? 12 : end.month - 1,
+                      1,
+                    )) -
+                start.day;
+        case "YD":
+          return (
+            Math.floor(endSerial) -
+            gridDateToSerial(
+              end.year - (end.month < start.month ? 1 : 0),
+              start.month,
+              start.day,
+            )
+          );
+        default:
+          throw new FormulaError("#NUM!");
+      }
+    }
+    case "DAYS":
+      return (
+        Math.floor(requireSerial(scalarNumber(args, 0))) -
+        Math.floor(requireSerial(scalarNumber(args, 1)))
+      );
+    case "NETWORKDAYS": {
+      const start = Math.floor(requireSerial(scalarNumber(args, 0)));
+      const end = Math.floor(requireSerial(scalarNumber(args, 1)));
+      const holidays = new Set(
+        args[2] ? serialsFrom(args, 2).map((value) => Math.floor(value)) : [],
+      );
+      const step = end >= start ? 1 : -1;
+      let count = 0;
+      for (let serial = start; step > 0 ? serial <= end : serial >= end; serial += step) {
+        const weekday = weekdayIndex(serial);
+        if (weekday === 0 || weekday === 6) continue;
+        if (holidays.has(serial)) continue;
+        count += 1;
+      }
+      return step > 0 ? count : -count;
+    }
+    case "WORKDAY": {
+      let serial = Math.floor(requireSerial(scalarNumber(args, 0)));
+      let remaining = Math.trunc(scalarNumber(args, 1));
+      const holidays = new Set(
+        args[2] ? serialsFrom(args, 2).map((value) => Math.floor(value)) : [],
+      );
+      const step = remaining >= 0 ? 1 : -1;
+      remaining = Math.abs(remaining);
+      while (remaining > 0) {
+        serial += step;
+        const weekday = weekdayIndex(serial);
+        if (weekday === 0 || weekday === 6) continue;
+        if (holidays.has(serial)) continue;
+        remaining -= 1;
+      }
+      return requireSerial(serial);
+    }
+    case "DATEVALUE": {
+      const parsed = requireText(args, 0).trim().match(DATE_TEXT);
+      if (!parsed) throw new FormulaError("#VALUE!");
+      return requireSerial(
+        gridDateToSerial(
+          Number(parsed[1]),
+          Number(parsed[2]),
+          Number(parsed[3]),
+        ),
+      );
+    }
+    case "TIME": {
+      const seconds =
+        Math.trunc(scalarNumber(args, 0)) * 3600 +
+        Math.trunc(scalarNumber(args, 1)) * 60 +
+        Math.trunc(scalarNumber(args, 2));
+      return (((seconds % 86_400) + 86_400) % 86_400) / 86_400;
+    }
+
+    /* ------------------------------ 财务 ------------------------------ */
     case "NPV":
       return npv(scalarNumber(args, 0), numbersFrom(args.slice(1)));
     case "IRR":
       return irr(numbersFrom(args.slice(0, 1)), scalarNumber(args, 1, 0.1));
+    case "XNPV": {
+      const rate = scalarNumber(args, 0);
+      const values = finiteNumbers(requireRange(args, 1).flat());
+      const dates = serialsFrom(args, 2);
+      if (values.length !== dates.length || values.length === 0) {
+        throw new FormulaError("#NUM!");
+      }
+      return values.reduce(
+        (total, value, position) =>
+          total + value / (1 + rate) ** ((dates[position] - dates[0]) / 365),
+        0,
+      );
+    }
+    case "XIRR": {
+      const values = finiteNumbers(requireRange(args, 0).flat());
+      const dates = serialsFrom(args, 1);
+      if (values.length !== dates.length || values.length === 0) {
+        throw new FormulaError("#NUM!");
+      }
+      return solveRate(
+        (rate) =>
+          values.reduce(
+            (total, value, position) =>
+              total + value / (1 + rate) ** ((dates[position] - dates[0]) / 365),
+            0,
+          ),
+        -0.9999,
+        1000,
+      );
+    }
+    case "PMT":
+      return paymentOf(
+        scalarNumber(args, 0),
+        scalarNumber(args, 1),
+        scalarNumber(args, 2),
+        scalarNumber(args, 3, 0),
+        scalarNumber(args, 4, 0),
+      );
+    case "IPMT":
+    case "PPMT": {
+      const rate = scalarNumber(args, 0);
+      const period = Math.trunc(scalarNumber(args, 1));
+      const periods = scalarNumber(args, 2);
+      const present = scalarNumber(args, 3);
+      const future = scalarNumber(args, 4, 0);
+      const type = scalarNumber(args, 5, 0);
+      if (period < 1 || period > periods) throw new FormulaError("#NUM!");
+      const payment = paymentOf(rate, periods, present, future, type);
+      const opening = balanceAfter(rate, period - 1, payment, present, type);
+      // `balanceAfter` already reports the outstanding principal with Excel's
+      // sign flip applied, so the interest carries the same sign as the payment
+      // and `IPMT + PPMT = PMT` holds. Negating here made the two sides of that
+      // identity disagree while each still looked plausible on its own.
+      const interest = period === 1 && type === 1 ? 0 : opening * rate;
+      return name === "IPMT" ? interest : payment - interest;
+    }
+    case "PV": {
+      const rate = scalarNumber(args, 0);
+      const periods = scalarNumber(args, 1);
+      const payment = scalarNumber(args, 2);
+      const future = scalarNumber(args, 3, 0);
+      const type = scalarNumber(args, 4, 0);
+      if (rate === 0) return -(future + payment * periods);
+      return (
+        -(future + payment * annuityFactor(rate, periods, type) * (1 + rate) ** periods) /
+        (1 + rate) ** periods
+      );
+    }
+    case "FV":
+      return futureValueOf(
+        scalarNumber(args, 0),
+        scalarNumber(args, 1),
+        scalarNumber(args, 2),
+        scalarNumber(args, 3, 0),
+        scalarNumber(args, 4, 0),
+      );
+    case "RATE": {
+      const periods = scalarNumber(args, 0);
+      const payment = scalarNumber(args, 1);
+      const present = scalarNumber(args, 2);
+      const future = scalarNumber(args, 3, 0);
+      const type = scalarNumber(args, 4, 0);
+      return solveRate(
+        (rate) => futureValueOf(rate, periods, payment, present, type) - future,
+        -0.9999,
+        10,
+      );
+    }
+    case "NPER": {
+      const rate = scalarNumber(args, 0);
+      const payment = scalarNumber(args, 1);
+      const present = scalarNumber(args, 2);
+      const future = scalarNumber(args, 3, 0);
+      const type = scalarNumber(args, 4, 0);
+      if (rate === 0) {
+        if (payment === 0) throw new FormulaError("#NUM!");
+        return -(present + future) / payment;
+      }
+      const adjusted = payment * (1 + rate * type);
+      const ratio = (adjusted - future * rate) / (present * rate + adjusted);
+      if (!(ratio > 0)) throw new FormulaError("#NUM!");
+      return Math.log(ratio) / Math.log(1 + rate);
+    }
+    case "SLN": {
+      const life = scalarNumber(args, 2);
+      if (life === 0) throw new FormulaError("#DIV/0!");
+      return (scalarNumber(args, 0) - scalarNumber(args, 1)) / life;
+    }
+    case "SYD": {
+      const cost = scalarNumber(args, 0);
+      const salvage = scalarNumber(args, 1);
+      const life = scalarNumber(args, 2);
+      const period = scalarNumber(args, 3);
+      if (life <= 0) throw new FormulaError("#NUM!");
+      if (period < 1 || period > life) throw new FormulaError("#NUM!");
+      return (
+        ((cost - salvage) * (life - period + 1) * 2) / (life * (life + 1))
+      );
+    }
+    case "DDB": {
+      const cost = scalarNumber(args, 0);
+      const salvage = scalarNumber(args, 1);
+      const life = scalarNumber(args, 2);
+      const period = scalarNumber(args, 3);
+      const factor = scalarNumber(args, 4, 2);
+      if (life <= 0 || period < 1 || period > life) {
+        throw new FormulaError("#NUM!");
+      }
+      let accumulated = 0;
+      let amount = 0;
+      for (let step = 1; step <= period; step += 1) {
+        amount = Math.min(
+          ((cost - accumulated) * factor) / life,
+          Math.max(cost - salvage - accumulated, 0),
+        );
+        accumulated += amount;
+      }
+      return amount;
+    }
+    case "DB": {
+      const cost = scalarNumber(args, 0);
+      const salvage = scalarNumber(args, 1);
+      const life = scalarNumber(args, 2);
+      const period = scalarNumber(args, 3);
+      const months = scalarNumber(args, 4, 12);
+      if (life <= 0 || period < 1 || cost <= 0) {
+        throw new FormulaError("#NUM!");
+      }
+      const rate = roundTo(1 - (salvage / cost) ** (1 / life), 3, "half");
+      let accumulated = (cost * rate * months) / 12;
+      if (period === 1) return accumulated;
+      let amount = 0;
+      for (let step = 2; step <= period; step += 1) {
+        amount =
+          step === Math.ceil(life) + 1
+            ? ((cost - accumulated) * rate * (12 - months)) / 12
+            : (cost - accumulated) * rate;
+        accumulated += amount;
+      }
+      return amount;
+    }
+
+    /* ------------------------------ 信息 ------------------------------ */
+    case "ISBLANK":
+      return requireScalar(args, 0) === "";
+    case "ISNUMBER":
+      return typeof requireScalar(args, 0) === "number";
+    case "ISTEXT": {
+      const value = requireScalar(args, 0);
+      return typeof value === "string" && value !== "";
+    }
+    case "ISLOGICAL":
+      return typeof requireScalar(args, 0) === "boolean";
+    case "ISEVEN":
+      return Math.abs(Math.trunc(scalarNumber(args, 0))) % 2 === 0;
+    case "ISODD":
+      return Math.abs(Math.trunc(scalarNumber(args, 0))) % 2 === 1;
+    case "N": {
+      const value = requireScalar(args, 0);
+      if (typeof value === "number") return value;
+      if (typeof value === "boolean") return value ? 1 : 0;
+      return 0;
+    }
+    case "NA":
+      throw new FormulaError("#N/A");
+    case "TYPE": {
+      const value = requireScalar(args, 0);
+      if (typeof value === "number") return 1;
+      if (typeof value === "boolean") return 4;
+      return typeof value === "string" && /^#[A-Z0-9/!?]+$/.test(value) ? 16 : 2;
+    }
+
+    /* ---------------------- volatile（§规范三，需要戳） ---------------------- */
+    case "TODAY":
+      return Math.floor(serialFromIsoInstant(requireRecalc(context).at));
+    case "NOW":
+      return serialFromIsoInstant(requireRecalc(context).at);
+    case "RAND":
+      return volatileDraw(context);
+    case "RANDBETWEEN": {
+      const low = Math.trunc(scalarNumber(args, 0));
+      const high = Math.trunc(scalarNumber(args, 1));
+      if (high < low) throw new FormulaError("#NUM!");
+      return low + Math.floor(volatileDraw(context) * (high - low + 1));
+    }
+
     default:
       throw new FormulaError("#NAME?");
   }
+}
+
+function hlookup(args: readonly Arg[]): GridFormulaScalar {
+  const needle = requireScalar(args, 0);
+  const table = requireRange(args, 1);
+  const rowNumber = Math.trunc(scalarNumber(args, 2));
+  const approximate = args[3] ? truthy(requireScalar(args, 3)) : true;
+  if (rowNumber < 1) throw new FormulaError("#VALUE!");
+  const header = table[0] ?? [];
+  let best = -1;
+  for (let column = 0; column < header.length; column += 1) {
+    const compared = compareScalars(header[column], needle);
+    if (compared === 0) {
+      const row = table[rowNumber - 1];
+      const cell = row?.[column];
+      if (cell === undefined) throw new FormulaError("#REF!");
+      return cell;
+    }
+    if (approximate && compared < 0) best = column;
+  }
+  if (best >= 0) {
+    const cell = table[rowNumber - 1]?.[best];
+    if (cell === undefined) throw new FormulaError("#REF!");
+    return cell;
+  }
+  throw new FormulaError("#N/A");
 }
 
 function scalarNumber(
@@ -1122,7 +2527,13 @@ export function evaluateGridCellTyped(
   try {
     return {
       ok: true,
-      value: evaluateFormulaSource(raw.slice(1), rows, visiting, context, 0),
+      value: evaluateFormulaSource(
+        raw.slice(1),
+        rows,
+        visiting,
+        { ...context, cell: { row, col }, volatileCalls: { count: 0 } },
+        0,
+      ),
     };
   } catch (caught) {
     const code = caught instanceof FormulaError ? caught.code : "#VALUE!";
@@ -1221,11 +2632,11 @@ function firstArgumentTokens(
   let nested = 0;
   for (let index = open + 1; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (token.value === "(") nested += 1;
-    else if (token.value === ")") {
+    if (isOperator(token, "(")) nested += 1;
+    else if (isOperator(token, ")")) {
       if (nested === 0) break;
       nested -= 1;
-    } else if ((token.value === "," || token.value === ";") && nested === 0) {
+    } else if ((isOperator(token, ",") || isOperator(token, ";")) && nested === 0) {
       break;
     }
     argument.push(token);
@@ -1291,6 +2702,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
   const violations: GridFormulaViolation[] = [];
   const functions: string[] = [];
   const references: string[] = [];
+  const absoluteReferences: string[] = [];
   const ranges: string[] = [];
   const qualifiedReferences: string[] = [];
   const names: string[] = [];
@@ -1300,6 +2712,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       source,
       functions,
       references,
+      absoluteReferences,
       ranges,
       qualifiedReferences,
       names,
@@ -1324,6 +2737,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       source,
       functions,
       references,
+      absoluteReferences,
       ranges,
       qualifiedReferences,
       names,
@@ -1358,12 +2772,13 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
     }
     if (token.type === "cell" && !references.includes(token.value)) {
       references.push(token.value);
+      absoluteReferences.push(token.raw);
     }
     if (token.type === "qualified" && !qualifiedReferences.includes(token.value)) {
       qualifiedReferences.push(token.value);
     }
     if (token.type === "name") {
-      const isCall = tokens[position + 1]?.value === "(";
+      const isCall = isOperator(tokens[position + 1], "(");
       if (!isCall) {
         if (!["TRUE", "FALSE"].includes(token.value) && !names.includes(token.value)) {
           names.push(token.value);
@@ -1399,18 +2814,18 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       pending.push(token.value);
       return;
     }
-    if (token.value === "(") {
+    if (isOperator(token, "(")) {
       depth += 1;
       callStack.push({ name: pending.pop() ?? "", open: position });
       return;
     }
-    if (token.value === ")") {
+    if (isOperator(token, ")")) {
       depth -= 1;
       if (depth < 0) unbalanced = true;
       callStack.pop();
       return;
     }
-    if (token.value === "/") {
+    if (isOperator(token, "/")) {
       // §3.3 first bullet: a cell-reference denominator with nothing standing
       // between it and `#DIV/0!` is how the corpus ended up shipping the error.
       //
@@ -1424,7 +2839,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       const denominator =
         next?.type === "cell" ||
         next?.type === "qualified" ||
-        (next?.type === "name" && tokens[position + 2]?.value !== "(")
+        (next?.type === "name" && !isOperator(tokens[position + 2], "("))
           ? String(next.value)
           : null;
       const guarded =
@@ -1468,7 +2883,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
     if (
       (tokens[position].type === "cell" ||
         tokens[position].type === "qualified") &&
-      tokens[position + 1]?.value === ":" &&
+      isOperator(tokens[position + 1], ":") &&
       (tokens[position + 2]?.type === "cell" ||
         tokens[position + 2]?.type === "qualified")
     ) {
@@ -1482,6 +2897,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
     source,
     functions,
     references,
+    absoluteReferences,
     ranges,
     qualifiedReferences,
     names,
