@@ -692,24 +692,9 @@ export async function uploadFile(
       // 字节已经进桶了。**这一条落盘是整个续传里最值钱的一次写**：
       // 此刻到 finalize 返回之间崩掉（关标签页、断网、刷新）是最常见的丢失窗口，
       // 而重开之后 `init` 会凭同一个幂等键回 `upload_complete: true`。
-      if (resumeKey) {
-        await writeResumeTicket({
-          idempotencyKey: idempotencyKey,
-          path: initialized.data.path,
-          identity: (await deriveUploadIdentity(file, {
-            filename,
-            contentType,
-            siteId,
-            registerAsset,
-          })).identity,
-          filename,
-          siteId,
-          bytes: file.size,
-          contentType,
-          uploaded: true,
-          updatedAt: Date.now(),
-        });
-      }
+      // `ticketFor(true)` 复用上面算过的 `identity`：重新推导会再读 1MB 并再做一次
+      // SHA-256，在 200MB 文件上是白花的钱，而身份在这一次上传里不会变。
+      if (resumeKey) await writeResumeTicket(ticketFor(true));
     }
     const finalized = await authed<{ ok: boolean; file: FileItem }>(
       "/v1/media/upload/finalize",
@@ -724,23 +709,79 @@ export async function uploadFile(
     return finalized;
   }
 
+  // ── ≤8MB：网关 multipart ──────────────────────────────────────────────────
+  // 这条路**没有续传**：网关收的是一次 multipart POST，中断了就没有断点可言
+  // （对比直传路的整文件级续传，见上）。但它照样要报进度——小文件也不都是小的，
+  // 8MB 在慢网上要走十几秒，今天那十几秒里界面上什么都没有。
   const token = await accessToken();
-  if (!token) return { ok: false, error: "未登录", status: 401 };
+  if (!token) {
+    progress.fail();
+    return { ok: false, error: "未登录", status: 401 };
+  }
   const fd = new FormData();
   fd.append("file", file);
   if (opts.siteId) fd.append("site_id", opts.siteId);
   if (opts.title) fd.append("title", opts.title);
   if (opts.registerAsset === false) fd.append("register_asset", "false");
   if (opts.idempotencyKey) fd.append("idempotency_key", opts.idempotencyKey);
+
+  const uploadUrl = `${GATEWAY_BASE}/v1/database/upload`;
+  // 错误口径与改造前逐字一致：网关的 `detail` 优先，没有就 `HTTP <status>`。
+  const gatewayFailure = (
+    data: unknown,
+    status: number,
+  ): Result<{ ok: boolean; file: FileItem }> => ({
+    ok: false,
+    error: (data as { detail?: string } | null)?.detail || `HTTP ${status}`,
+    status,
+  });
+
+  if (xhrUploadAvailable()) {
+    const sent = await xhrUpload({
+      url: uploadUrl,
+      method: "POST",
+      // 只有 Authorization。**不许手写 `Content-Type`**：multipart 的 boundary
+      // 由浏览器在 send(FormData) 时生成，手写一个 header 会覆盖掉它，
+      // 网关拿不到 boundary，整个请求体解不出来（表现是 422，很难查）。
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+      onProgress: (loaded) => progress.report(loaded),
+      signal: opts.signal,
+    });
+    if (sent.aborted) {
+      progress.fail();
+      return { ok: false, error: "上传已取消", status: 0 };
+    }
+    if (sent.networkError) {
+      progress.fail();
+      return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
+    }
+    let data: unknown = null;
+    try {
+      data = JSON.parse(sent.responseText);
+    } catch {
+      /* non-JSON */
+    }
+    if (!sent.ok) {
+      progress.fail();
+      return gatewayFailure(data, sent.status);
+    }
+    progress.finish();
+    return { ok: true, data: data as { ok: boolean; file: FileItem } };
+  }
+
+  // 没有 XHR 的运行时（SSR / node）：原来的 fetch 路径原样保留，只是没有进度。
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}/v1/database/upload`, {
+    res = await fetch(uploadUrl, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: fd,
       cache: "no-store",
+      signal: opts.signal,
     });
   } catch {
+    progress.fail();
     return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
   }
   let data: unknown = null;
@@ -750,12 +791,10 @@ export async function uploadFile(
     /* non-JSON */
   }
   if (!res.ok) {
-    return {
-      ok: false,
-      error: (data as { detail?: string } | null)?.detail || `HTTP ${res.status}`,
-      status: res.status,
-    };
+    progress.fail();
+    return gatewayFailure(data, res.status);
   }
+  progress.finish();
   return { ok: true, data: data as { ok: boolean; file: FileItem } };
 }
 
