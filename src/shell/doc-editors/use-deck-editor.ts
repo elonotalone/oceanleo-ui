@@ -169,6 +169,27 @@ export interface DeckEditorState {
   restoreRecovery: (payload: unknown) => boolean;
 }
 
+/**
+ * 放映态看得到的全部东西。
+ *
+ * `DeckEditorState` 有 47 个成员，其中三十来个会改文档。演讲者模式一个都不需要：
+ * 它只读当前这份 deck，从哪一页开始。**窄到这个程度是判据，不是风格**——
+ * 放映视图拿不到写操作，就不可能在放映途中改坏用户的文稿。
+ *
+ * 翻页不在这里：那是放映自己的状态（`use-deck-presenter.ts`），
+ * 与编辑器选中哪一页是两件事。讲者跳到第 12 页不该把编辑器的选中跟着拖走。
+ */
+export interface DeckPresentationSource {
+  readonly deck: DeckDocument;
+  readonly startIndex: number;
+}
+
+export function deckPresentationSource(
+  editor: Pick<DeckEditorState, "deck" | "activeIndex">,
+): DeckPresentationSource {
+  return { deck: editor.deck, startIndex: editor.activeIndex };
+}
+
 const HISTORY_LIMIT = 60;
 export const DECK_PROJECT_SCHEMA = "oceanleo.deck.v1";
 export const DECK_SOURCE_FORMAT = "pptx";
