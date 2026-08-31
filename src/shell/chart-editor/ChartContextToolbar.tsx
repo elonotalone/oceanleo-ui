@@ -8,7 +8,12 @@ import type {
   SelectionContext,
   SelectionControl,
 } from "../selection-context";
-import type { ChartSeries, ChartSeriesType } from "./chart-schema";
+import {
+  chartSeriesTypePublishable,
+  chartYAxes,
+  type ChartSeries,
+  type ChartSeriesType,
+} from "./chart-schema";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
 import {
   applyChartAdvancedCommand,
@@ -23,6 +28,9 @@ const SERIES_OPTIONS: Array<{ value: ChartSeriesType; label: string }> = [
   { value: "scatter", label: "散点" },
   { value: "radar", label: "雷达" },
   { value: "funnel", label: "漏斗" },
+  { value: "heatmap", label: "热力" },
+  { value: "boxplot", label: "箱线" },
+  { value: "candlestick", label: "K 线" },
 ];
 
 export function ChartContextToolbar({
@@ -50,6 +58,8 @@ export function ChartContextToolbar({
   const activeSeries =
     option.series.find((series) => series.id === editor.activeSeriesId) ||
     option.series[0];
+  const yAxes = chartYAxes(option);
+  const primaryYAxis = yAxes[0];
   const context = useMemo<SelectionContext>(() => {
     const controls: SelectionControl[] = [
       {
@@ -124,8 +134,8 @@ export function ChartContextToolbar({
       {
         id: "y-name",
         kind: "text",
-        label: tt("Y 轴"),
-        value: option.yAxis.name,
+        label: yAxes.length > 1 ? tt("主 Y 轴（左）") : tt("Y 轴"),
+        value: primaryYAxis.name,
         placement: "more",
         slot: "inspector",
         inspectorGroup: "chart-axis",
@@ -146,7 +156,7 @@ export function ChartContextToolbar({
         id: "y-show",
         kind: "toggle",
         label: tt("显示 Y 轴"),
-        value: option.yAxis.show,
+        value: primaryYAxis.show,
         slot: "inspector",
         inspectorGroup: "chart-axis",
         inspectorLabel: tt("坐标轴"),
@@ -170,7 +180,7 @@ export function ChartContextToolbar({
         id: "y-type",
         kind: "select",
         label: tt("Y 轴类型"),
-        value: option.yAxis.type,
+        value: primaryYAxis.type,
         options: [
           { value: "category", label: tt("分类轴") },
           { value: "value", label: tt("数值轴") },
@@ -240,9 +250,13 @@ export function ChartContextToolbar({
           iconOnly: true,
           group: "series",
           value: series.type,
+          // 仪表与漏斗编辑器画得出来,但契约 §3.1 的图型枚举不收它们,落库会被判
+          // 不合规。与其让用户做完一张漏斗图再撞一句 enum 报错,不如在选项上直说。
           options: SERIES_OPTIONS.map((entry) => ({
             value: entry.value,
-            label: tt(entry.label),
+            label: chartSeriesTypePublishable(entry.value)
+              ? tt(entry.label)
+              : `${tt(entry.label)}（${tt("不可发布")}）`,
           })),
         },
         {
@@ -290,6 +304,8 @@ export function ChartContextToolbar({
     legendFontSize,
     legendTextStyle,
     option,
+    primaryYAxis,
+    yAxes,
     editor.editRevision,
     tt,
   ]);
@@ -303,7 +319,7 @@ export function ChartContextToolbar({
       return;
     }
     if (message.transactionId && message.phase !== "commit") return;
-    if (applyChartAdvancedCommand(editor, option, message)) return;
+    if (applyChartAdvancedCommand(editor, option, message, tt)) return;
     if (message.controlId === "title") {
       editor.setTitle(String(message.value ?? ""));
       return;

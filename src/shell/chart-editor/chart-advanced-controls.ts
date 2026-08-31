@@ -3,10 +3,15 @@ import type {
   SelectionCommand,
   SelectionControl,
 } from "../selection-context";
-import type {
-  ChartAxis,
-  ChartOption,
-  ChartSeries,
+import {
+  chartBandMarkArea,
+  chartStatMarkLine,
+  chartThresholdMarkLine,
+  chartYAxes,
+  type ChartAxis,
+  type ChartMarkPoint,
+  type ChartOption,
+  type ChartSeries,
 } from "./chart-schema";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
 
@@ -15,6 +20,40 @@ function optionalNumber(value: SelectionCommand["value"]): number | undefined {
   if (!text) return undefined;
   const number = Number(text);
   return Number.isFinite(number) ? number : undefined;
+}
+
+/**
+ * 当前系列上已有的标注,读回成三个人看得懂的量:有没有平均线、目标线画在几、
+ * 高亮带从几到几。工具栏据此回显,不然用户改一个字段会把另一个洗掉。
+ */
+function seriesMarks(series: ChartSeries): {
+  average: boolean;
+  target: number | undefined;
+  bandFrom: number | undefined;
+  bandTo: number | undefined;
+} {
+  const lines: ChartMarkPoint[] = series.markLine?.data || [];
+  const band = series.markArea?.data?.[0];
+  return {
+    average: lines.some((entry) => entry.type === "average"),
+    target: lines.find((entry) => typeof entry.yAxis === "number")?.yAxis,
+    bandFrom: band?.[0]?.yAxis,
+    bandTo: band?.[1]?.yAxis,
+  };
+}
+
+function markLinePatch(
+  average: boolean,
+  target: number | undefined,
+  tt: UITranslate,
+): Partial<ChartSeries> {
+  const stat = average
+    ? chartStatMarkLine(["average"], { average: tt("平均") })
+    : undefined;
+  const threshold =
+    target === undefined ? undefined : chartThresholdMarkLine(target, tt("目标"));
+  const data = [...(stat?.data || []), ...(threshold?.data || [])];
+  return { markLine: data.length ? { silent: true, data } : undefined };
 }
 
 function axisControls(
@@ -109,7 +148,9 @@ export function chartAdvancedControls(
   };
   const controls: SelectionControl[] = [
     ...axisControls("x", option.xAxis, tt),
-    ...axisControls("y", option.yAxis, tt),
+    // 副轴的细节控件要等 `ChartWorkbenchState.setAxis` 能带轴序号才接得上
+    // (见 `signals/W19-request.md`)。在此之前只列主轴,不摆一排改不动的控件。
+    ...axisControls("y", chartYAxes(option)[0], tt),
     {
       id: "tooltip-show",
       kind: "toggle",
@@ -233,6 +274,86 @@ export function chartAdvancedControls(
       ...labelGroup,
     },
   );
+
+  const axes = chartYAxes(option);
+  const shapeGroup = {
+    slot: "inspector" as const,
+    inspectorGroup: "chart-series-shape",
+    inspectorLabel: tt("这条系列怎么画"),
+    inspectorIcon: "shape" as const,
+  };
+  if (axes.length > 1) {
+    controls.push({
+      id: `series:${activeSeries.id}:axis`,
+      kind: "select",
+      label: tt("画在哪条 Y 轴"),
+      value: String(Number(activeSeries.yAxisIndex) || 0),
+      options: axes.map((axis, index) => ({
+        value: String(index),
+        label:
+          index === 0
+            ? axis.name || tt("主轴（左）")
+            : axis.name || tt("副轴（右）"),
+      })),
+      ...shapeGroup,
+    });
+  }
+  controls.push(
+    {
+      id: `series:${activeSeries.id}:stack`,
+      kind: "toggle",
+      label: tt("与同组系列堆叠"),
+      value: Boolean(activeSeries.stack),
+      ...shapeGroup,
+    },
+    {
+      id: `series:${activeSeries.id}:area`,
+      kind: "toggle",
+      label: tt("折线下方填充"),
+      value: Boolean(activeSeries.areaStyle),
+      // 面积只有折线画得出来。
+      disabled: activeSeries.type !== "line",
+      ...shapeGroup,
+    },
+  );
+
+  const marks = seriesMarks(activeSeries);
+  const markGroup = {
+    slot: "inspector" as const,
+    inspectorGroup: "chart-series-marks",
+    inspectorLabel: tt("标注与阈值线"),
+    inspectorIcon: "line" as const,
+  };
+  controls.push(
+    {
+      id: `series:${activeSeries.id}:mark-average`,
+      kind: "toggle",
+      label: tt("平均线"),
+      value: marks.average,
+      ...markGroup,
+    },
+    {
+      id: `series:${activeSeries.id}:mark-target`,
+      kind: "text",
+      label: tt("目标线数值（留空不画）"),
+      value: marks.target === undefined ? "" : String(marks.target),
+      ...markGroup,
+    },
+    {
+      id: `series:${activeSeries.id}:mark-band-from`,
+      kind: "text",
+      label: tt("高亮区间起点（留空不画）"),
+      value: marks.bandFrom === undefined ? "" : String(marks.bandFrom),
+      ...markGroup,
+    },
+    {
+      id: `series:${activeSeries.id}:mark-band-to`,
+      kind: "text",
+      label: tt("高亮区间终点"),
+      value: marks.bandTo === undefined ? "" : String(marks.bandTo),
+      ...markGroup,
+    },
+  );
   return controls;
 }
 
@@ -240,6 +361,7 @@ export function applyChartAdvancedCommand(
   editor: ChartWorkbenchState,
   option: ChartOption,
   message: SelectionCommand,
+  tt: UITranslate,
 ): boolean {
   const axisMatch = /^(x|y)-(min|max|interval|ticks|label-rotate|label-color|grid|grid-color)$/.exec(
     message.controlId,
@@ -248,7 +370,7 @@ export function applyChartAdvancedCommand(
     if (message.transactionId && message.phase !== "commit") return true;
     const axisKey = axisMatch[1] as "x" | "y";
     const field = axisMatch[2];
-    const axis = axisKey === "x" ? option.xAxis : option.yAxis;
+    const axis = axisKey === "x" ? option.xAxis : chartYAxes(option)[0];
     let patch: Partial<ChartAxis>;
     if (field === "min" || field === "max" || field === "interval") {
       patch = { [field]: optionalNumber(message.value) };
@@ -321,6 +443,66 @@ export function applyChartAdvancedCommand(
     } else if (field === "formatter") {
       editor.setTooltip({ formatter: String(message.value || "").slice(0, 500) });
     }
+    return true;
+  }
+
+  const shapeMatch = /^series:([^:]+):(axis|stack|area)$/.exec(message.controlId);
+  if (shapeMatch) {
+    if (message.transactionId && message.phase !== "commit") return true;
+    const [, id, field] = shapeMatch;
+    const series = option.series.find((entry) => entry.id === id);
+    if (!series) return true;
+    if (field === "axis") {
+      const index = Number(message.value);
+      const axes = chartYAxes(option);
+      if (!Number.isInteger(index) || index < 0 || index >= axes.length) {
+        return true;
+      }
+      editor.patchSeries(id, {
+        yAxisIndex: index === 0 ? undefined : index,
+      });
+      return true;
+    }
+    if (field === "stack") {
+      // 同一个组名的系列才会叠在一起;编辑器只提供一个组,够用且解释得清。
+      editor.patchSeries(id, {
+        stack: message.value === true ? "total" : undefined,
+      });
+      return true;
+    }
+    editor.patchSeries(id, {
+      areaStyle: message.value === true ? { opacity: 0.18 } : undefined,
+    });
+    return true;
+  }
+
+  const markMatch = /^series:([^:]+):mark-(average|target|band-from|band-to)$/.exec(
+    message.controlId,
+  );
+  if (markMatch) {
+    if (message.transactionId && message.phase !== "commit") return true;
+    const [, id, field] = markMatch;
+    const series = option.series.find((entry) => entry.id === id);
+    if (!series) return true;
+    const current = seriesMarks(series);
+    if (field === "average" || field === "target") {
+      const average =
+        field === "average" ? message.value === true : current.average;
+      const target =
+        field === "target" ? optionalNumber(message.value) : current.target;
+      editor.patchSeries(id, markLinePatch(average, target, tt));
+      return true;
+    }
+    const from =
+      field === "band-from" ? optionalNumber(message.value) : current.bandFrom;
+    const to =
+      field === "band-to" ? optionalNumber(message.value) : current.bandTo;
+    editor.patchSeries(id, {
+      markArea:
+        from === undefined || to === undefined
+          ? undefined
+          : chartBandMarkArea(from, to, tt("高亮区间")),
+    });
     return true;
   }
 
