@@ -1,0 +1,45 @@
+/* ===========================================================================
+   路由过渡（W24 2026-08-31，motion-system.md §规范四）
+   ---------------------------------------------------------------------------
+   为什么是 View Transitions 而不是一段入场动画：`AppShell.tsx:927-933` 的
+   route surface **刻意不重挂载** —— `/workspace → /workspace/<app>` 不许为了
+   重放动画把一个活着的 app 卸掉重建（那会丢掉它全部的编辑状态）。
+   View Transitions 只对变更前后两帧做快照再补间，DOM 只更新一次、组件不重挂。
+   所以这不是推翻那条决定，是用对的机制实现它当初想要的东西。
+
+   为什么只给默认的 `root` 过渡重定时、不自己命名一块区域：
+   命名一个子区域要求那个元素**生成 box**，而 route surface 是 `display: contents`
+   （它不生成 box，这正是它能「原地换内容」的原因之一）。改去给 `<main>` 另起一个
+   `view-transition-name` 会引入一层合成行为，而本波禁止用浏览器验收，我无法证明
+   它在 31 个站上都对。侧栏在路由前后两帧逐像素相同，root 交叉淡入在观感上**就是**
+   主区淡入 —— 用能证明的做法拿到同一个结果。
+
+   文件位置：与 `nav-source` 同目录，因为两者是同一件事的两半 ——
+   导航「跳到哪」与跳转「怎么发生」。`src/shell/*.css` 不在本轮的独占面上。
+   =========================================================================== */
+
+/* `@supports` 是硬闸，不是装饰：不支持 View Transitions 的浏览器一条规则都拿不到，
+   因此**不会**退化成任何会重挂载的 CSS 动画（那正是上面那条约束禁止的东西）。
+   降级形态 = 今天的行为：瞬时切换，无过渡。 */
+@supports (view-transition-name: none) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    /* 页面级 = 第 5 档（motion-system.md §token 表：`--leo-dur-5` = 380ms）。
+       **不配裸值 fallback**（红线 9）：`W01` 的 token 尚未落进 globals.css，
+       缺席时这条声明在计算值阶段失效、`animation-duration` 退回初始值 `0s`，
+       等于今天的瞬时切换 —— 不劣化；token 落地后自动生效，本文件一行不用改。 */
+    animation-duration: var(--leo-dur-5);
+    animation-timing-function: var(--leo-ease-standard);
+  }
+
+  /* reduced-motion：token 层落地后会把六档时长全部归零，但在那之前这里必须自己
+     关一次，否则浏览器默认那 250ms 交叉淡入照播 —— 对前庭敏感的人来说，
+     「系统里关了动效」必须当场生效，不能等另一个 owner 的活落地。
+     old/new 都 `animation: none` 时新快照直接盖住旧快照，过渡立即结束。 */
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation: none;
+    }
+  }
+}

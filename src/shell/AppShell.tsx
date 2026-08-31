@@ -39,6 +39,10 @@ import { MyAppsRail } from "./MyAppsRail";
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
 // 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
 import "./phone-shell.css";
+// 路由过渡（View Transitions）的全部 CSS。为什么是这套机制、为什么只重定时 root，
+// 见该文件顶部——它与下面的 `useRouteNavigation()` 是同一件事的两半。
+import "./nav-source/route-transition.css";
+import { useRouteNavigation } from "./nav-source/use-route-navigation";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
@@ -360,6 +364,13 @@ function AppShellInner({
   usePresenceHeartbeat(siteId);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // 路由跳转的两件事都在这个 hook 里：View Transitions 的快照过渡（不重挂载，
+  // 见下方 route surface 的注释）与 `useTransition` 的 pending 目标。
+  // 移动端抽屉在 push 之前先关，否则抽屉会盖着新页面淡入。
+  const { navigate: navigateRoute, pendingHref } = useRouteNavigation({
+    onNavigate: () => setMobileOpen(false),
+    stripLocale,
+  });
   const [searchOpen, setSearchOpen] = useState(false);
   useNativeShellFlag();
   const [term, setTerm] = useState("");
@@ -492,7 +503,10 @@ function AppShellInner({
   }
 
   function renderNavItem(item: ShellNavItem, idx: number): ReactNode {
-    const active = isActive(pathname, item);
+    // 即时反馈：跳转已经发起但路由还没落地时，把「点中的那一项」当成当前页来算
+    // 高亮。乐观路径喂给同一个 isActive()，所以 exact / 前缀 / 自定义 match
+    // 三种判定规则一个字都不用改，点中项亮起与其余项熄灭也必然是同一帧。
+    const active = isActive(pendingHref ?? pathname, item);
     const key = disclosureKey(item, idx);
     const disclosureOpen = item.disclosure
       ? disclosureIsOpen(item, idx)
@@ -559,10 +573,26 @@ function AppShellInner({
         </button>
       );
     } else {
+      // 仍然渲染成 <Link>：href 要留在 DOM 里，中键/新标签页打开与 RSC 预取
+      // 都靠它（预取正是 layout.tsx:18-22 那条性能警告要保住的东西）。
+      // navigate() 只接管「本窗普通左键」这一种，其余交还浏览器。
       control = (
         <Link
           href={item.href}
-          onClick={() => setMobileOpen(false)}
+          onClick={(event) => {
+            if (
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            ) {
+              setMobileOpen(false);
+              return;
+            }
+            navigateRoute(item.href as string, event);
+          }}
           className={cls}
           style={style}
         >
