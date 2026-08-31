@@ -515,6 +515,154 @@ for (const [label, Component, baseProps, target] of [
   });
 }
 
+// ---------------------------------------------------------------- 压缩（P3）
+//
+// 分两层钉，因为这两层在 node 里能验到的东西不一样：
+//
+//   · 真 `image-compress.ts`：它的**不变量**——永远同时带回原图、只碰该碰的、
+//     且在压不动的环境里绝不抛也绝不吞文件。jsdom 里 canvas 装不上，压缩必然走
+//     「压不动」那条路，而那恰好就是要钉的那条：压缩失败绝不能让上传失败。
+//   · 组件那一层：默认开、可一键改回原图、显示前后字节。这一层需要「压缩真的
+//     发生过」，所以在第二个编译上下文里把 `./image-compress` 换成一个必压的桩。
+//     换掉的是压缩本身，**不是**开关与回原图的逻辑——被测的正是后者。
+
+const { compressImageFile, compressImageFiles, savedBytes, isImageFile } = await load(
+  "src/lib/upload/image-compress.ts",
+);
+
+function imageFile(name, bytes, type = "image/png") {
+  return new File([new Uint8Array(bytes)], name, { type, lastModified: 1_700_000_000_000 });
+}
+
+test("压缩永远同时带回原图——没有「原图」这一份，「用原图」就无从谈起", async () => {
+  const png = imageFile("大图.png", 2 * 1024 * 1024);
+  const [outcome] = await compressImageFiles([png]);
+  assert.equal(outcome.original, png, "原图没带回来");
+  assert.ok(outcome.upload, "要传的那一份没给");
+  assert.equal(outcome.originalBytes, png.size);
+  // 这台机器上 canvas 装不上 ⇒ 压不动 ⇒ 必须原样放行，而不是抛或吞。
+  if (!outcome.compressed) {
+    assert.equal(outcome.upload, png, "压不动时没有原样放行——用户的文件被换掉了");
+    assert.ok(outcome.skippedReason, "压不动却没说为什么");
+  }
+});
+
+test("只碰该碰的：非图片、GIF、SVG、已经很小的，一律不动", async () => {
+  const cases = [
+    ["视频不碰", new File([new Uint8Array(4096)], "片子.mp4", { type: "video/mp4" })],
+    // GIF 走 canvas 只会拿到第一帧，压完动图就死了。
+    ["GIF 不碰", imageFile("动图.gif", 2 * 1024 * 1024, "image/gif")],
+    // SVG 是矢量，重编码只会变大；网关另有 sanitize_svg。
+    ["SVG 不碰", imageFile("图标.svg", 2 * 1024 * 1024, "image/svg+xml")],
+    ["小图不碰", imageFile("图标.png", 4096)],
+  ];
+  for (const [label, file] of cases) {
+    const outcome = await compressImageFile(file);
+    assert.equal(outcome.compressed, false, `${label}：不该压却压了`);
+    assert.equal(outcome.upload, file, `${label}：文件被换掉了`);
+    assert.equal(outcome.original, file, `${label}：原图没带回来`);
+    assert.ok(outcome.skippedReason, `${label}：跳过了却没说为什么`);
+  }
+  assert.equal(isImageFile(imageFile("a.png", 10)), true);
+  assert.equal(
+    isImageFile(new File([new Uint8Array(10)], "a.mp4", { type: "video/mp4" })),
+    false,
+  );
+});
+
+test("前后字节算得出来：一个都没压就是 0，不是 NaN", async () => {
+  assert.equal(savedBytes([]), 0);
+  assert.equal(
+    savedBytes([
+      { originalBytes: 4_200_000, uploadBytes: 900_000, compressed: true },
+      { originalBytes: 1000, uploadBytes: 1000, compressed: false },
+    ]),
+    3_300_000,
+  );
+});
+
+// 第二个编译上下文：压缩必成。被测的是开关与回原图，不是压缩算法。
+const compressStub = dataModule(`
+  export const DEFAULT_MAX_EDGE = 4096;
+  export const MIN_COMPRESS_BYTES = 512 * 1024;
+  export const DEFAULT_QUALITY = 0.82;
+  export function isImageFile(file){ return String(file?.type || "").startsWith("image/"); }
+  export function scaleToMaxEdge(width, height){ return { width, height }; }
+  export function savedBytes(outcomes){
+    return outcomes.reduce((n, o) => n + (o.originalBytes - o.uploadBytes), 0);
+  }
+  export async function compressImageFile(file){ return (await compressImageFiles([file]))[0]; }
+  export async function compressImageFiles(files){
+    return Array.from(files).map((file) => {
+      if (!String(file.type || "").startsWith("image/")) {
+        return { original: file, upload: file, compressed: false,
+                 originalBytes: file.size, uploadBytes: file.size, skippedReason: "not-image" };
+      }
+      const upload = new File([new Uint8Array(1024)], file.name,
+        { type: file.type, lastModified: file.lastModified });
+      return { original: file, upload, compressed: true,
+               originalBytes: file.size, uploadBytes: 1024, skippedReason: null };
+    });
+  }
+`);
+
+const loadCompressing = (path) =>
+  compileModule(path, { ...STUBS, "./image-compress": compressStub }, OPTIONS).then(
+    (url) => import(url),
+  );
+
+const squeezing = {
+  LeoComposer: (await loadCompressing("src/shell/LeoComposer.tsx")).LeoComposer,
+  InputCard: (await loadCompressing("src/shell/InputCard.tsx")).InputCard,
+};
+
+for (const [label, attachProp] of [
+  ["LeoComposer", "onAttachFiles"],
+  ["InputCard", "onFiles"],
+]) {
+  test(`压缩在 ${label} 上：默认开、显示前后字节、「用原图」一键改回`, async () => {
+    await withDom(async ({ window, render, find, html, paste }) => {
+      const batches = [];
+      await render(squeezing[label], {
+        value: "",
+        onChange() {},
+        [attachProp]: (files) => batches.push(files),
+      });
+
+      const original = imageFile("截图.png", 4096);
+      await paste("textarea", [original]);
+
+      // 默认开：交出去的是压过的那一份，不是原图。
+      assert.equal(batches.length, 1, "粘贴没把文件交给宿主");
+      assert.equal(batches[0].length, 1);
+      assert.notEqual(batches[0][0], original, "压缩默认开，交出去的却还是原图");
+      assert.equal(batches[0][0].size, 1024);
+
+      // 显示前后字节——P3 原话：这是用户信任这个功能的唯一方式。
+      const shown = html();
+      assert.match(shown, /data-upload-compression/, "没显示压缩摘要");
+      assert.match(shown, /4\.0 KB/, "没显示压缩前的字节");
+      assert.match(shown, /1\.0 KB/, "没显示压缩后的字节");
+
+      // 一键改回：原图重新交给宿主，摘要撤掉。
+      const revert = find("[data-upload-compression] button");
+      assert.ok(revert, "没有「用原图」的开关——那就是静默降质");
+      assert.match(revert.textContent, /用原图/);
+      await act(async () => {
+        revert.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+      assert.equal(batches.length, 2, "点了「用原图」却没把原图交回去");
+      assert.equal(batches[1][0], original, "交回去的不是原图本身");
+      assert.equal(/data-upload-compression/.test(html()), false, "改回原图后摘要没撤");
+
+      // 关掉之后就一直关着：再粘一张也不许偷偷再压。
+      await paste("textarea", [imageFile("第二张.png", 4096)]);
+      assert.equal(batches.length, 3);
+      assert.equal(batches[2][0].size, 4096, "用户说了用原图，却又压了一张");
+    });
+  });
+}
+
 // ---------------------------------------------------------------- 同一套字
 
 test("三个消费点共用同一套格式化：一处叫「4.0 KB」，别处就不许叫「4K」", () => {
