@@ -507,6 +507,22 @@ test("本波词典不许把中文原样抄进非中日语种", () => {
 /**
  * 开波之前就缺译文的 key。**这张表只能变短。**
  *
+ * ⚠️ **本闸刻意不接 `tests/helpers/clean-tree-baseline.mjs`**（`W35` 定夺，R5）。
+ * 别的冻了数字的闸都接了那个 helper 来自证「基线取自干净检出」，这一道不能接：
+ * `measureOnCommittedTree()` 把树 `git archive` 到 `os.tmpdir()`，而本闸的扫描面
+ * **跨出本仓**（五个同级仓）。解到 `/tmp` 之后邻居一个都不在场，扫描面会**静默塌掉**，
+ * 于是量出来的基线比真值小——接了反而会冻下一个错的数。
+ * `[实测]` 同一 commit `acd8192`：在仓真实位置判出 `website-views.ts` 的真缺口，
+ * 在 `/tmp/w35-clean` 的 worktree 上则塌到只剩 17 条 key、红在「取样失效」，
+ * 真缺口被挡在后面看不见。两处都红、条数还一样，光看条数发现不了。
+ *
+ * 替代保护（同样是机检，不靠纪律）：
+ *   · `SIBLING_ROOT` 按 `git rev-parse --git-common-dir` 推**主工作树**，
+ *     linked worktree 挪到哪里都找得回同级仓；
+ *   · 「跨仓扫描面没有因为换了目录而静默塌掉」那条用例——一个同级仓都不在场就判红；
+ *   · 「历史基线不许留死条目」那条——补齐了译文的 key 必须从这张表里删掉。
+ * 详见 helper 头部那段跨仓警告。
+ *
  * 它们几乎全在 `src/shell/` 的编辑器内部（media-editors / doc-editors / video-editor /
  * image-editor / chart-editor），是插件统一改造之前就欠下的；这一波只补统一外壳与
  * extracted 插件，不顺手翻完这一片。但新加的中文一律要有译文——**新键落不进这张表**，
