@@ -9,7 +9,7 @@
 //   - 摘掉关键实现时必须红（源码 Canary + 行为断言）
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -70,6 +70,47 @@ function source(relPath) {
   return readFileSync(resolve(relPath), "utf8");
 }
 
+/** `src/shell` 下所有 `.ts`/`.tsx`，仓内相对路径。 */
+function shellSources() {
+  return readdirSync(resolve("src/shell"), { recursive: true })
+    .map((entry) => String(entry).split("\\").join("/"))
+    .filter((rel) => /\.tsx?$/.test(rel))
+    .map((rel) => `src/shell/${rel}`);
+}
+
+/**
+ * 「抽屉开着（含 agent 正在生成）右侧照样收键鼠」这条承诺的运行期判据。
+ *
+ * 只查源码文本挡不住真正会发生的那种退化：往 stage 里塞一个
+ * `absolute inset-0` 的遮罩、或给某个祖先加 `inert`，源码正则都可能绕过去。
+ * 所以这里从 stage 一路走到 frame 根，逐个祖先查三样东西，
+ * 再核 stage 的子节点**只有插件传进来的那一个**（frame 不许注入兄弟遮罩）。
+ */
+function assertStageUnlocked(container, note) {
+  const stage = container.querySelector("[data-plugin-chrome-stage]");
+  assert.ok(stage, `${note}：stage 必须在`);
+  for (let node = stage; node && node !== container; node = node.parentElement) {
+    const where = `${note}：<${node.tagName.toLowerCase()}>`;
+    assert.equal(node.hasAttribute("inert"), false, `${where} 不许 inert`);
+    assert.notEqual(
+      node.getAttribute("aria-hidden"),
+      "true",
+      `${where} 不许 aria-hidden`,
+    );
+    assert.doesNotMatch(
+      String(node.className || ""),
+      /pointer-events-none/,
+      `${where} 不许关 pointer-events`,
+    );
+  }
+  assert.equal(
+    stage.children.length,
+    1,
+    `${note}：stage 里只该有插件传的那一个子节点，多出来的就是遮罩`,
+  );
+  return stage;
+}
+
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value, vars) =>
@@ -112,6 +153,48 @@ const pluginThemeStubUrl = dataModule(`
   }
 `);
 
+/**
+ * 会「进入生成态」的 agent 面板替身。P3 承诺的后半句是「生成期间不锁编辑器」，
+ * 而真实生成发生在 `FunctionAgentChat` 内部（frame 根本没有 generating 这个概念）。
+ * 要钉住的正是这一点：面板自己翻状态、frame 跟着重渲染时，右侧照样能用。
+ * 探针把 setter 挂在 globalThis 上，测试侧才有办法从外面把它推进生成态。
+ */
+const generatingAgentStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export const PLUGIN_AGENT_DRAWER_ID = "agent";
+  export const PLUGIN_AGENT_DRAWER_LABEL = "AI 助手";
+  function GeneratingProbe({ editorId }) {
+    const [generating, setGenerating] = React.useState(false);
+    React.useEffect(() => {
+      globalThis.__W22_AGENT_PROBE__ = setGenerating;
+      return () => {
+        if (globalThis.__W22_AGENT_PROBE__ === setGenerating) {
+          delete globalThis.__W22_AGENT_PROBE__;
+        }
+      };
+    }, []);
+    return React.createElement(
+      "div",
+      {
+        "data-plugin-agent-panel": editorId,
+        "data-agent-generating": generating ? "true" : "false",
+      },
+      generating ? "生成中" : "空闲",
+    );
+  }
+  export function createPluginAgentDrawer({ editorId }) {
+    return {
+      id: PLUGIN_AGENT_DRAWER_ID,
+      label: PLUGIN_AGENT_DRAWER_LABEL,
+      icon: "agent",
+      content: React.createElement(GeneratingProbe, { editorId }),
+    };
+  }
+  export function PluginAgentPanel({ editorId }) {
+    return React.createElement("div", { "data-plugin-agent-panel": editorId });
+  }
+`);
+
 const frameUrl = await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", {
   "../../i18n/ui/useUI": uiStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
@@ -120,6 +203,15 @@ const frameUrl = await compileModule("src/shell/plugin-chrome/PluginChromeFrame.
   "./PluginAgentPanel": agentPanelStubUrl,
 });
 const { PluginChromeFrame } = await import(frameUrl);
+const { PluginChromeFrame: GeneratingFrame } = await import(
+  await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", {
+    "../../i18n/ui/useUI": uiStubUrl,
+    "../AdvancedEditorIcon": iconStubUrl,
+    "../plugin-theme": pluginThemeStubUrl,
+    "./agent-drawer-panel": generatingAgentStubUrl,
+    "./PluginAgentPanel": generatingAgentStubUrl,
+  }),
+);
 const { PLUGIN_AGENT_DRAWER_ID } = await import(
   await compileModule("src/shell/plugin-chrome/agent-drawer.ts"),
 );
@@ -140,6 +232,35 @@ async function mountFrame(props) {
   });
   return {
     container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+/** 同上，但换成会进入生成态的面板替身，且留一个 `render()` 用来改 props 重渲染。 */
+async function mountGeneratingFrame(props) {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const render = async (extra) => {
+    await act(async () => {
+      root.render(
+        React.createElement(GeneratingFrame, {
+          pluginId: "design-canvas",
+          title: "设计画布",
+          ...props,
+          ...extra,
+        }),
+      );
+    });
+  };
+  await render({});
+  return {
+    container,
+    render,
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -204,6 +325,7 @@ test("抽屉打开时 stage 仍可交互", async () => {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
   assert.equal(input.value, "typed-while-agent-open");
   assert.equal(input.disabled, false);
+  assertStageUnlocked(container, "抽屉打开时");
   await unmount();
 });
 
@@ -258,6 +380,138 @@ test("plugin-chrome 内 agent 面板只经 createPluginAgentDrawer 工厂注册"
     /panel\.id !== PLUGIN_AGENT_DRAWER_ID/,
     "必须过滤插件传入的同 id 面板",
   );
+});
+
+test("agent 生成期间：右侧不锁、不重挂、抽屉不自己关（P3 后半句）", async () => {
+  let stageClicks = 0;
+  const stageChild = React.createElement(
+    "div",
+    { "data-test-stage": true },
+    React.createElement("input", {
+      "data-test-stage-input": true,
+      type: "text",
+      defaultValue: "",
+    }),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "data-test-stage-button": true,
+        onClick: () => {
+          stageClicks += 1;
+        },
+      },
+      "在舞台上点我",
+    ),
+  );
+  const { container, render, unmount } = await mountGeneratingFrame({
+    children: stageChild,
+    agentTaskId: null,
+  });
+
+  const agentBtn = container.querySelector("[data-edit-bar-agent]");
+  await act(async () => agentBtn.click());
+  const stageBefore = assertStageUnlocked(container, "抽屉刚打开");
+  const input = container.querySelector("[data-test-stage-input]");
+  input.value = "改到一半";
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await act(async () => container.querySelector("[data-test-stage-button]").click());
+  assert.equal(stageClicks, 1, "抽屉打开时 stage 就该能点");
+
+  // agent 开始生成。
+  assert.equal(
+    typeof globalThis.__W22_AGENT_PROBE__,
+    "function",
+    "生成探针应已挂上（否则下面几条什么都没验到）",
+  );
+  await act(async () => globalThis.__W22_AGENT_PROBE__(true));
+  assert.equal(
+    container
+      .querySelector("[data-agent-generating]")
+      .getAttribute("data-agent-generating"),
+    "true",
+    "面板应处于生成态",
+  );
+
+  // 生成中：右侧照样收键鼠，且 stage 与输入框都没被重挂——
+  // 重挂等于把用户改到一半的内容丢掉，那是比「锁住」更难查的一种锁。
+  assert.equal(
+    assertStageUnlocked(container, "生成中"),
+    stageBefore,
+    "stage 不许在生成时重挂",
+  );
+  assert.equal(
+    container.querySelector("[data-test-stage-input]"),
+    input,
+    "输入框不许重挂",
+  );
+  assert.equal(input.value, "改到一半", "用户改到一半的内容必须还在");
+  assert.equal(input.disabled, false, "生成期间不许禁用右侧");
+  await act(async () => container.querySelector("[data-test-stage-button]").click());
+  assert.equal(stageClicks, 2, "生成期间 stage 的按钮必须照样触发");
+
+  // 一轮会话开始会回吐 taskId，frame 于是重算 agentDrawer（useMemo 依赖 agentTaskId）。
+  // 抽屉不能被这一下关掉，右侧也不能因此重挂。
+  await render({ agentTaskId: "task-1" });
+  assert.ok(
+    container.querySelector(`[data-plugin-chrome-panel="${PLUGIN_AGENT_DRAWER_ID}"]`),
+    "taskId 变化不许关抽屉",
+  );
+  assert.equal(agentBtn.getAttribute("aria-pressed"), "true");
+  assert.equal(
+    container.querySelector("[data-test-stage-input]"),
+    input,
+    "taskId 变化不许重挂右侧",
+  );
+  assert.equal(input.value, "改到一半");
+  assert.equal(
+    container
+      .querySelector("[data-agent-generating]")
+      .getAttribute("data-agent-generating"),
+    "true",
+    "taskId 变化不许打断正在跑的生成（面板被重挂就会掉回空闲）",
+  );
+  assertStageUnlocked(container, "taskId 变化后");
+  await act(async () => container.querySelector("[data-test-stage-button]").click());
+  assert.equal(stageClicks, 3);
+  await unmount();
+});
+
+test("agent 抽屉的注册点全仓恰好两处，都在外壳侧", () => {
+  const files = shellSources();
+  // 正则自证（_COMMON.md §6）：先确认扫到的文件集合非空、且认得出已知那一处。
+  assert.ok(files.length > 20, `src/shell 只扫到 ${files.length} 份文件，扫描本身可疑`);
+  assert.ok(
+    files.includes("src/shell/plugin-chrome/agent-drawer-panel.tsx"),
+    "扫描漏了已知的工厂文件，判定不可信",
+  );
+
+  const registrars = files
+    .filter((rel) => /id:\s*PLUGIN_AGENT_DRAWER_ID/.test(source(rel)))
+    .sort();
+  assert.deepEqual(
+    registrars,
+    [
+      "src/shell/plugin-chrome/agent-drawer-panel.tsx",
+      "src/shell/use-inline-advanced-panels.tsx",
+    ],
+    "agent 抽屉只允许两个注册点：共享插件外壳一处、frame 的工厂一处。" +
+      "多出来的那一份就是任务书要消灭的第三种写法（视频画布的 CanvasAgentPanel 是第二种）。",
+  );
+
+  // 裸字面量绕道：`SiteCatalogConsole.tsx` 里的 `id: "agent"` 是目录页的 GoalApp 卡片，
+  // 与抽屉无关，所以这条只在 plugin-chrome 目录内查（定义字面量的那份除外）。
+  for (const rel of files.filter(
+    (candidate) =>
+      candidate.startsWith("src/shell/plugin-chrome/") &&
+      !candidate.endsWith("agent-drawer.ts"),
+  )) {
+    assert.doesNotMatch(
+      source(rel),
+      /id:\s*["']agent["']/,
+      `${rel} 不许用裸 "agent" 字面量注册面板，要从 agent-drawer.ts 取 PLUGIN_AGENT_DRAWER_ID`,
+    );
+  }
 });
 
 test("stage 不许加 inert 或 pointer-events-none（P3 结构性承诺）", () => {
