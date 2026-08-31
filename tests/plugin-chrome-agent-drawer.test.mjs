@@ -195,14 +195,23 @@ const generatingAgentStubUrl = dataModule(`
   }
 `);
 
-const frameUrl = await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", {
+const frameStubs = {
   "../../i18n/ui/useUI": uiStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
   "../plugin-theme": pluginThemeStubUrl,
   "./agent-drawer-panel": agentPanelStubUrl,
   "./PluginAgentPanel": agentPanelStubUrl,
-});
+};
+const frameUrl = await compileModule(
+  "src/shell/plugin-chrome/PluginChromeFrame.tsx",
+  frameStubs,
+);
 const { PluginChromeFrame } = await import(frameUrl);
+// 同一张桩表 ⇒ 同一个编译上下文 ⇒ 与 frame 拿到的是**同一份** context 实例。
+// 换一张桩表就会编出第二份，`useContext` 永远读不到 frame 提供的值。
+const { useAdvancedLayout } = await import(
+  await compileModule("src/shell/advanced-layout-context.tsx", frameStubs)
+);
 const { PluginChromeFrame: GeneratingFrame } = await import(
   await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", {
     "../../i18n/ui/useUI": uiStubUrl,
@@ -380,6 +389,113 @@ test("plugin-chrome 内 agent 面板只经 createPluginAgentDrawer 工厂注册"
     /panel\.id !== PLUGIN_AGENT_DRAWER_ID/,
     "必须过滤插件传入的同 id 面板",
   );
+});
+
+/**
+ * 装在舞台里的一个 `useAdvancedLayout()` 消费方。
+ * 兼容层（P1）的真正判据是「frame 里的组件能拿到 layout」，而不是源码里有那行
+ * Provider——所以这里从舞台内部读它，再从舞台内部去开抽屉。
+ */
+function LayoutProbe() {
+  const layout = useAdvancedLayout();
+  return React.createElement(
+    "div",
+    {
+      "data-test-layout": layout ? "yes" : "NO-CONTEXT",
+      "data-test-drawer": layout ? layout.activeDrawerId : "",
+      "data-test-host-visible": layout ? String(layout.hostPanelVisible) : "",
+      "data-test-tool-active": layout ? String(layout.editorToolActive) : "",
+      "data-test-context-bar": layout
+        ? String(
+            layout.contextBarLeading === undefined &&
+              layout.contextBarTrailing === undefined,
+          )
+        : "",
+    },
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "data-test-open-drawer": true,
+        onClick: () => layout?.openDrawer(PLUGIN_AGENT_DRAWER_ID),
+      },
+      "从舞台里开抽屉",
+    ),
+  );
+}
+
+test("兼容层：舞台内 useAdvancedLayout() 拿得到 layout，语义与基准一致（P1）", async () => {
+  const { container, unmount } = await mountFrame({
+    children: React.createElement(LayoutProbe),
+  });
+  const probe = container.querySelector("[data-test-layout]");
+  const agentBtn = container.querySelector("[data-edit-bar-agent]");
+  assert.equal(
+    probe.getAttribute("data-test-layout"),
+    "yes",
+    "frame 必须自己提供 AdvancedLayoutContext，否则 AI 键这一层的前提就不成立",
+  );
+  assert.equal(probe.getAttribute("data-test-drawer"), "", "首帧左栏是收起的");
+  assert.equal(probe.getAttribute("data-test-host-visible"), "false");
+  assert.equal(probe.getAttribute("data-test-tool-active"), "false");
+  assert.equal(
+    probe.getAttribute("data-test-context-bar"),
+    "true",
+    "契约 §9 的缩小承诺：frame 路径没有浮动 context bar 槽",
+  );
+
+  // 从舞台里开抽屉：edit bar 的 AI 键与 layout 是同一个状态，不是两份。
+  await act(async () =>
+    container.querySelector("[data-test-open-drawer]").click(),
+  );
+  assert.equal(
+    container.querySelector("[data-test-layout]").getAttribute("data-test-drawer"),
+    PLUGIN_AGENT_DRAWER_ID,
+  );
+  assert.equal(
+    agentBtn.getAttribute("aria-pressed"),
+    "true",
+    "aria-pressed 取值必须是 activeDrawerId === 'agent'（基准 SelectionToolbar.tsx:248）",
+  );
+  assert.ok(
+    container.querySelector(`[data-plugin-chrome-panel="${PLUGIN_AGENT_DRAWER_ID}"]`),
+  );
+  const opened = container.querySelector("[data-test-layout]");
+  assert.equal(opened.getAttribute("data-test-host-visible"), "true");
+  assert.equal(
+    opened.getAttribute("data-test-host-visible"),
+    opened.getAttribute("data-test-tool-active"),
+    "基准里 hostPanelVisible === editorToolActive（InlineAdvancedWorkbenchShell.tsx:205-206）",
+  );
+
+  // openDrawer 只开不切换、幂等（基准 use-inline-advanced-panels.tsx:185-207）。
+  // 写成 toggle 会让任何重复 open 变成关闭，这条必须钉住。
+  await act(async () =>
+    container.querySelector("[data-test-open-drawer]").click(),
+  );
+  assert.equal(
+    container.querySelector("[data-test-layout]").getAttribute("data-test-drawer"),
+    PLUGIN_AGENT_DRAWER_ID,
+    "openDrawer 幂等：再开一次仍是开着",
+  );
+  assert.equal(agentBtn.getAttribute("aria-pressed"), "true");
+
+  // 关闭走 closeDrawer，左栏整体收起、无兜底面板（基准 :239-248）。
+  await act(async () => agentBtn.click());
+  assert.equal(
+    container.querySelector("[data-test-layout]").getAttribute("data-test-drawer"),
+    "",
+  );
+  assert.equal(
+    container.querySelector(`[data-plugin-chrome-panel="${PLUGIN_AGENT_DRAWER_ID}"]`),
+    null,
+  );
+  assert.equal(
+    container.querySelector("aside[data-plugin-chrome-panel]"),
+    null,
+    "closeDrawer 后左栏不许留一个兜底面板",
+  );
+  await unmount();
 });
 
 test("agent 生成期间：右侧不锁、不重挂、抽屉不自己关（P3 后半句）", async () => {
