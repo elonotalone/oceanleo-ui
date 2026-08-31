@@ -1,3 +1,8 @@
+import {
+  gridColumnName,
+  inspectGridFormula,
+  parseGridReference,
+} from "./grid-formula";
 import type { GridCellFormat } from "./grid-model";
 
 export interface GridRange {
@@ -923,4 +928,306 @@ export function buildGridClipboardPayload(
   ].join("");
 
   return { text, html };
+}
+
+/* ══════════════════════════ 填充柄 ══════════════════════════
+ *
+ * 引用语义全部走 W12 的导出：`inspectGridFormula()` 说哪些 token 是引用，
+ * `parseGridReference()` 把 A1 解析成 row/col，`gridColumnName()` 再写回去。
+ * 这里只做两件 W12 没有也不该有的事：**位移算术**与**`$` 的保留**。
+ *
+ * 为什么 `$` 要单独处理：`grid-formula.ts:199,211` 的 tokenizer 对 cell 与
+ * qualified 两种 token 都做了 `.replace(/\$/g, "")`，所以 `inspection.references`
+ * 里根本没有绝对引用的信息。判断只能落在**原文的出现位置**上。
+ */
+
+export type GridFillKind = "copy" | "linear" | "date" | "formula" | "repeat";
+
+export interface GridFillSeries {
+  kind: "copy" | "linear" | "date";
+  /** linear：等差步长；date：步长个 unit。copy 恒为 0。 */
+  step: number;
+  unit?: "day" | "month";
+}
+
+const FILL_REFERENCE_PATTERN =
+  /(?<![A-Za-z0-9_.])(?:(?:'[^'[\]]+'|[A-Za-z0-9_\u4e00-\u9fff]+)!)?\$?[A-Za-z]{1,3}\$?\d{1,7}(?![A-Za-z0-9_])/g;
+
+function shiftReferenceToken(
+  token: string,
+  rowDelta: number,
+  colDelta: number,
+): string {
+  const bang = token.lastIndexOf("!");
+  const sheetPrefix = bang >= 0 ? token.slice(0, bang + 1) : "";
+  const parts = token
+    .slice(bang + 1)
+    .match(/^(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})$/);
+  if (!parts) return token;
+  const [, colMark, letters, rowMark, digits] = parts;
+  const position = parseGridReference(`${letters}${digits}`);
+  if (!position) return token;
+  const col = colMark ? position.col : position.col + colDelta;
+  const row = rowMark ? position.row : position.row + rowDelta;
+  // 平移出界是 Excel 的 `#REF!`，不是悄悄夹到 0——夹到 0 会让公式看着还在算，
+  // 算的却是另一个格子。
+  if (row < 0 || col < 0) return "#REF!";
+  return `${sheetPrefix}${colMark}${gridColumnName(col)}${rowMark}${row + 1}`;
+}
+
+/**
+ * 把一条公式按 (rowDelta, colDelta) 平移。相对引用跟着走，`$` 锁住的不动。
+ * 不是公式、解析不出引用、或位移为零，一律原样返回。
+ */
+export function translateGridFormula(
+  formula: string,
+  rowDelta: number,
+  colDelta: number,
+): string {
+  const text = String(formula ?? "");
+  if (!text.trimStart().startsWith("=")) return text;
+  if (rowDelta === 0 && colDelta === 0) return text;
+
+  const inspection = inspectGridFormula(text);
+  const known = new Set([
+    ...inspection.references,
+    ...inspection.qualifiedReferences,
+  ]);
+  // 词法解析失败时两个数组都是空的，这里同时兜住「没有引用可平移」与
+  // 「W12 认为这条公式根本读不出来」，两种情况都不许瞎改原文。
+  if (known.size === 0) return text;
+
+  const rewrite = (chunk: string): string =>
+    chunk.replace(FILL_REFERENCE_PATTERN, (token) =>
+      known.has(token.replace(/\$/g, ""))
+        ? shiftReferenceToken(token, rowDelta, colDelta)
+        : token,
+    );
+
+  let result = "";
+  let index = 0;
+  while (index < text.length) {
+    const quote = text.indexOf('"', index);
+    if (quote < 0) {
+      result += rewrite(text.slice(index));
+      break;
+    }
+    result += rewrite(text.slice(index, quote));
+    // 字符串字面量原样搬运：`="A1 合计"` 里的 A1 是文案，不是引用。
+    let cursor = quote + 1;
+    while (cursor < text.length) {
+      if (text[cursor] === '"') {
+        if (text[cursor + 1] === '"') {
+          cursor += 2;
+          continue;
+        }
+        cursor += 1;
+        break;
+      }
+      cursor += 1;
+    }
+    result += text.slice(quote, cursor);
+    index = cursor;
+  }
+  return result;
+}
+
+function parseFillNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const bare = trimmed.replace(/,/g, "").replace(/%$/, "");
+  if (!/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(bare)) return null;
+  return Number(bare);
+}
+
+interface FillDate {
+  year: number;
+  month: number;
+  day: number;
+  separator: string;
+  padded: boolean;
+}
+
+function parseFillDate(value: string): FillDate | null {
+  const match = value.trim().match(/^(\d{4})([-/.])(\d{1,2})\2(\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[3]);
+  const day = Number(match[4]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const utc = Date.UTC(year, month - 1, day);
+  const probe = new Date(utc);
+  if (probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
+  return {
+    year,
+    month,
+    day,
+    separator: match[2],
+    padded: match[3].length === 2 && match[4].length === 2,
+  };
+}
+
+function fillDateToUtc(date: FillDate): number {
+  return Date.UTC(date.year, date.month - 1, date.day);
+}
+
+function formatFillDate(utc: number, template: FillDate): string {
+  const date = new Date(utc);
+  const month = String(date.getUTCMonth() + 1);
+  const day = String(date.getUTCDate());
+  return [
+    String(date.getUTCFullYear()),
+    template.padded ? month.padStart(2, "0") : month,
+    template.padded ? day.padStart(2, "0") : day,
+  ].join(template.separator);
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * 两格及以上才谈序列——单格按任务书是「复制」。
+ * 等差要求相邻差值全部相同；日期优先认整月步长（1/31 → 2/28 这类月末对齐
+ * 用天数步长会走偏），否则按天。
+ */
+export function detectGridFillSeries(source: readonly string[]): GridFillSeries {
+  if (source.length < 2) return { kind: "copy", step: 0 };
+
+  const numbers = source.map(parseFillNumber);
+  if (numbers.every((value): value is number => value !== null)) {
+    const step = numbers[1] - numbers[0];
+    const constant = numbers.every(
+      (value, index) => index === 0 || Math.abs(value - numbers[index - 1] - step) < 1e-9,
+    );
+    if (constant) return { kind: "linear", step };
+    return { kind: "copy", step: 0 };
+  }
+
+  const dates = source.map(parseFillDate);
+  if (dates.every((value): value is FillDate => value !== null)) {
+    const monthStep =
+      (dates[1].year - dates[0].year) * 12 + (dates[1].month - dates[0].month);
+    const sameDay = dates.every((date) => date.day === dates[0].day);
+    const monthConstant = dates.every(
+      (date, index) =>
+        index === 0 ||
+        (date.year - dates[index - 1].year) * 12 +
+          (date.month - dates[index - 1].month) ===
+          monthStep,
+    );
+    if (sameDay && monthConstant && monthStep !== 0) {
+      return { kind: "date", step: monthStep, unit: "month" };
+    }
+    const dayStep = Math.round((fillDateToUtc(dates[1]) - fillDateToUtc(dates[0])) / DAY_MS);
+    const dayConstant = dates.every(
+      (date, index) =>
+        index === 0 ||
+        Math.round((fillDateToUtc(date) - fillDateToUtc(dates[index - 1])) / DAY_MS) ===
+          dayStep,
+    );
+    if (dayConstant && dayStep !== 0) return { kind: "date", step: dayStep, unit: "day" };
+  }
+
+  return { kind: "copy", step: 0 };
+}
+
+function decimalsOf(value: string): number {
+  const dot = value.trim().replace(/%$/, "").indexOf(".");
+  return dot < 0 ? 0 : value.trim().replace(/%$/, "").length - dot - 1;
+}
+
+/**
+ * 从 `source`（沿填充方向的原始块）往后再生成 `count` 个值。
+ *
+ * 四种行为：单格纯文本复制、单格/多格公式按位移平移、两格等差或日期序列、
+ * 其余按原块循环重复。公式无论落在哪种 kind 里都单独平移——一块里混着公式和
+ * 常量时，常量重复、公式仍然跟着走，这才是 Excel 的行为。
+ */
+export function planGridFill(
+  source: readonly string[],
+  count: number,
+  options: { axis: "row" | "col" },
+): { kind: GridFillKind; values: string[] } {
+  const length = source.length;
+  if (length === 0 || count <= 0) return { kind: "copy", values: [] };
+
+  const series = detectGridFillSeries(source);
+  const anyFormula = source.some((value) => value.trimStart().startsWith("="));
+  const first = parseFillNumber(source[0]);
+  const percent = source.every((value) => value.trim().endsWith("%"));
+  const decimals = Math.max(...source.map(decimalsOf));
+  const dateTemplate = series.unit ? parseFillDate(source[0]) : null;
+
+  const values = Array.from({ length: count }, (_, index) => {
+    const position = length + index;
+    const origin = position % length;
+    const raw = source[origin];
+    if (raw.trimStart().startsWith("=")) {
+      const delta = position - origin;
+      return translateGridFormula(
+        raw,
+        options.axis === "row" ? delta : 0,
+        options.axis === "col" ? delta : 0,
+      );
+    }
+    if (series.kind === "linear" && first !== null) {
+      const next = first + series.step * position;
+      return `${next.toFixed(decimals)}${percent ? "%" : ""}`;
+    }
+    if (series.kind === "date" && dateTemplate) {
+      if (series.unit === "month") {
+        const months = dateTemplate.month - 1 + series.step * position;
+        return formatFillDate(
+          Date.UTC(
+            dateTemplate.year + Math.floor(months / 12),
+            ((months % 12) + 12) % 12,
+            dateTemplate.day,
+          ),
+          dateTemplate,
+        );
+      }
+      return formatFillDate(
+        fillDateToUtc(dateTemplate) + series.step * position * DAY_MS,
+        dateTemplate,
+      );
+    }
+    return raw;
+  });
+
+  const kind: GridFillKind =
+    series.kind !== "copy"
+      ? series.kind
+      : anyFormula
+        ? "formula"
+        : length > 1
+          ? "repeat"
+          : "copy";
+  return { kind, values };
+}
+
+/**
+ * 双击填充柄能往下走多远：沿相邻列已有数据的长度。
+ * 先看左邻列（Excel 的优先级），左邻空了再看右邻。两边都空就是 0——
+ * 双击一个孤立格子不应该凭空填出几千行。
+ */
+export function gridFillDownLength(
+  rows: readonly (readonly string[])[],
+  range: GridRange,
+  limit = 10_000,
+): number {
+  const probeColumns = [range.firstCol - 1, range.lastCol + 1].filter(
+    (col) => col >= 0,
+  );
+  for (const col of probeColumns) {
+    let length = 0;
+    for (
+      let row = range.lastRow + 1;
+      row < rows.length && length < limit;
+      row += 1
+    ) {
+      if (String(rows[row]?.[col] ?? "").trim() === "") break;
+      length += 1;
+    }
+    if (length > 0) return length;
+  }
+  return 0;
 }
