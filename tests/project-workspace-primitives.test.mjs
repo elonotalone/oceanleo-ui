@@ -402,6 +402,28 @@ test("ProjectModal keeps title, close, footer, Escape, backdrop, and focus seman
     });
     assert.equal(closed, 1);
 
+  });
+});
+
+// 遮罩点击必须**在一份新开的弹窗上**验。原先这条接在 Escape 之后，拿同一个已经
+// 进入退场态的弹窗再点一次遮罩，然后断言 `closed === 2`——它验的其实是
+// 「onClose 能不能连响两次」，而不是「点遮罩关不关得掉」。
+// `Modal` 的 `closing` 是一次性闩（`requestClose` 只 `setClosing(true)`，
+// 第二次调用 state 不变、退场 effect 不重跑），所以那条断言从实现上就不可能成立，
+// 而真正要守的「点遮罩能关」反倒一直没被单独验过。拆开各验一次，覆盖面只增不减。
+test("ProjectModal closes on backdrop mousedown（独立一份，不与 Escape 串在一起）", async () => {
+  await withDom(async ({ window, renderRoot, find }) => {
+    let closed = 0;
+    await renderRoot(ProjectModal, {
+      title: "Automation",
+      closeLabel: "Close automation",
+      onClose: () => {
+        closed += 1;
+      },
+      children: React.createElement("input", { "aria-label": "Name" }),
+    });
+
+    const dialog = find('[role="dialog"][aria-modal="true"]');
     await act(async () => {
       dialog.dispatchEvent(
         new window.MouseEvent("mousedown", {
@@ -411,7 +433,40 @@ test("ProjectModal keeps title, close, footer, Escape, backdrop, and focus seman
       );
       await new Promise((resolveTimer) => setTimeout(resolveTimer, 170));
     });
-    assert.equal(closed, 2);
+    assert.equal(closed, 1, "点遮罩必须关掉弹窗");
+  });
+});
+
+// 必须**自己一个 withDom**：`Modal` 走 portal 挂在 document.body 上，同一个 DOM 里
+// render 第二份时，上一份的遮罩还在，`find()` 取到的是先挂的那一个——而它的 `closing`
+// 已经闩上，`requestClose` 再调也不会响，于是这条断言恒真。
+// （这个洞是反面验证抓出来的：把 `e.target === e.currentTarget` 拆掉本该当场红，
+// 结果它还是绿的。`_COMMON.md §7b⑨`：反面验证跑出 0 红先怀疑判据，不要庆祝。）
+test("ProjectModal 点弹窗内部不关闭（独立 DOM，避免取到上一份遮罩）", async () => {
+  await withDom(async ({ window, renderRoot, find }) => {
+    let innerClosed = 0;
+    await renderRoot(ProjectModal, {
+      title: "Automation",
+      onClose: () => {
+        innerClosed += 1;
+      },
+      children: React.createElement("input", { "aria-label": "Name" }),
+    });
+    const body = find("[data-project-modal-body]");
+    await act(async () => {
+      body.dispatchEvent(
+        new window.MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 170));
+    });
+    assert.equal(
+      innerClosed,
+      0,
+      "点弹窗内部不得关掉弹窗——否则用户在里面选个文字就把它关了",
+    );
   });
 });
 
