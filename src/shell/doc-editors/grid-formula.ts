@@ -177,6 +177,8 @@ export const GRID_VOLATILE_FUNCTIONS = [
   "TODAY",
 ] as const;
 
+export type GridVolatileFunction = (typeof GRID_VOLATILE_FUNCTIONS)[number];
+
 /**
  * @deprecated Use {@link GRID_VOLATILE_FUNCTIONS}. Kept as an alias because
  * `GridWorkbookExport.ts` and `tests/grid-carrier-contract.test.mjs` import the
@@ -1072,7 +1074,7 @@ class Parser {
       while (this.accept(",") || this.accept(";"));
     }
     this.expect(")");
-    return applyFunction(name as GridFormulaFunction, args, this.context);
+    return applyFunction(name as GridDispatchedFunction, args, this.context);
   }
 
   /** Evaluate one argument, converting a thrown error into a value. */
@@ -1655,8 +1657,16 @@ function serialsFrom(args: readonly Arg[], position: number): number[] {
     .map((value) => requireSerial(numeric(value)));
 }
 
+/**
+ * What the dispatcher may be handed. Wider than the whitelist because a
+ * volatile name is dispatched too — it is gated on the recalc stamp at the
+ * call site (§规范三) rather than by whitelist membership, so it reaches this
+ * switch with a stamp already required.
+ */
+type GridDispatchedFunction = GridFormulaFunction | GridVolatileFunction;
+
 function applyFunction(
-  name: GridFormulaFunction,
+  name: GridDispatchedFunction,
   args: readonly Arg[],
   context: GridFormulaContext,
 ): GridFormulaScalar {
@@ -2635,6 +2645,215 @@ export function evaluateGridCellInWorkbook(
   return scalarToValue(
     evaluateGridCellInWorkbookTyped(workbook, sheetRef, row, col).value,
   );
+}
+
+/* ------------------------- 增量重算（P4 / §规范五） ------------------------- */
+
+/** One cell, workbook-wide. */
+export interface GridCellRef {
+  sheet: string;
+  row: number;
+  col: number;
+}
+
+function cellKey(sheet: string, row: number, col: number): string {
+  return `${sheet.toLowerCase()}\u0000${row}\u0000${col}`;
+}
+
+interface RangeEdge {
+  sheet: string;
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+  dependent: string;
+}
+
+/**
+ * Who reads whom, so an edit can recompute the cells that actually depend on it
+ * instead of the whole sheet.
+ *
+ * Ranges are kept as rectangles rather than expanded into their member cells.
+ * A single `SUM(A1:A5000)` would otherwise put 5,000 entries in the index, and
+ * a sheet full of them turns graph construction into the very cost the
+ * incremental path exists to avoid.
+ */
+export interface GridDependencyGraph {
+  /** Every formula cell found, in row-major order per sheet. */
+  readonly formulaCells: readonly GridCellRef[];
+  /** Formula cells whose answer moves when the recalc stamp is re-issued. */
+  readonly volatileCells: readonly GridCellRef[];
+  /** Direct precedents of a formula cell, as recorded at build time. */
+  precedentsOf(ref: GridCellRef): readonly GridCellRef[];
+  /** Formula cells that read `ref`, directly. */
+  dependentsOf(ref: GridCellRef): readonly GridCellRef[];
+}
+
+function expandReference(
+  reference: string,
+  ownSheet: string,
+): { sheet: string; row: number; col: number } | null {
+  const separator = reference.indexOf("!");
+  const sheet =
+    separator >= 0
+      ? reference.slice(0, separator).replace(/^'|'$/g, "")
+      : ownSheet;
+  const body = separator >= 0 ? reference.slice(separator + 1) : reference;
+  const position = parseGridReference(body);
+  return position ? { sheet, ...position } : null;
+}
+
+/**
+ * Index one workbook's formulas. Cost is linear in the number of cells, paid
+ * once per structural change; an edit then costs only the subgraph it touches.
+ */
+export function buildGridDependencyGraph(
+  workbook: GridWorkbookContext,
+  sheetRefs: readonly string[],
+): GridDependencyGraph {
+  const formulaCells: GridCellRef[] = [];
+  const volatileCells: GridCellRef[] = [];
+  const precedents = new Map<string, GridCellRef[]>();
+  const cellEdges = new Map<string, string[]>();
+  const rangeEdges: RangeEdge[] = [];
+  const byKey = new Map<string, GridCellRef>();
+  const stamped = Boolean(workbook.recalc);
+
+  for (const sheetRef of sheetRefs) {
+    const rows = workbook.sheetRows(sheetRef);
+    if (!rows) continue;
+    for (let row = 0; row < rows.length; row += 1) {
+      const line = rows[row] ?? [];
+      for (let col = 0; col < line.length; col += 1) {
+        const raw = line[col];
+        if (typeof raw !== "string" || !raw.startsWith("=")) continue;
+        const self: GridCellRef = { sheet: sheetRef, row, col };
+        const key = cellKey(sheetRef, row, col);
+        formulaCells.push(self);
+        byKey.set(key, self);
+
+        const inspection = inspectGridFormula(
+          raw,
+          stamped ? { recalc: workbook.recalc } : {},
+        );
+        if (inspection.volatileFunctions.length > 0) volatileCells.push(self);
+
+        const mine: GridCellRef[] = [];
+        const addPoint = (reference: string) => {
+          const target = expandReference(reference, sheetRef);
+          if (!target) return;
+          mine.push(target);
+          const targetKey = cellKey(target.sheet, target.row, target.col);
+          const list = cellEdges.get(targetKey);
+          if (list) list.push(key);
+          else cellEdges.set(targetKey, [key]);
+        };
+        for (const reference of inspection.references) addPoint(reference);
+        for (const reference of inspection.qualifiedReferences) {
+          addPoint(reference);
+        }
+        for (const range of inspection.ranges) {
+          const [start, end] = range.split(":");
+          const from = expandReference(start ?? "", sheetRef);
+          const to = expandReference(end ?? "", from?.sheet ?? sheetRef);
+          if (!from || !to) continue;
+          rangeEdges.push({
+            sheet: from.sheet,
+            top: Math.min(from.row, to.row),
+            left: Math.min(from.col, to.col),
+            bottom: Math.max(from.row, to.row),
+            right: Math.max(from.col, to.col),
+            dependent: key,
+          });
+        }
+        precedents.set(key, mine);
+      }
+    }
+  }
+
+  const resolve = (keys: readonly string[]): GridCellRef[] => {
+    const out: GridCellRef[] = [];
+    for (const key of keys) {
+      const found = byKey.get(key);
+      if (found) out.push(found);
+    }
+    return out;
+  };
+
+  return {
+    formulaCells,
+    volatileCells,
+    precedentsOf: (ref) => precedents.get(cellKey(ref.sheet, ref.row, ref.col)) ?? [],
+    dependentsOf: (ref) => {
+      const key = cellKey(ref.sheet, ref.row, ref.col);
+      const keys = new Set(cellEdges.get(key) ?? []);
+      const sheet = ref.sheet.toLowerCase();
+      for (const edge of rangeEdges) {
+        if (edge.sheet.toLowerCase() !== sheet) continue;
+        if (ref.row < edge.top || ref.row > edge.bottom) continue;
+        if (ref.col < edge.left || ref.col > edge.right) continue;
+        keys.add(edge.dependent);
+      }
+      return resolve([...keys]);
+    },
+  };
+}
+
+/**
+ * The cells an edit forces to move, in an order where every cell comes after
+ * the precedents it shares the plan with.
+ *
+ * A cycle cannot be ordered; those cells are appended in discovery order and
+ * left for the evaluator, which already reports the cycle as an error value
+ * rather than spinning.
+ */
+export function planGridRecalc(
+  graph: GridDependencyGraph,
+  changed: readonly GridCellRef[],
+): GridCellRef[] {
+  const affected = new Map<string, GridCellRef>();
+  const queue = [...changed];
+  while (queue.length > 0) {
+    const current = queue.pop() as GridCellRef;
+    for (const dependent of graph.dependentsOf(current)) {
+      const key = cellKey(dependent.sheet, dependent.row, dependent.col);
+      if (affected.has(key)) continue;
+      affected.set(key, dependent);
+      queue.push(dependent);
+    }
+  }
+
+  const ordered: GridCellRef[] = [];
+  const state = new Map<string, "open" | "done">();
+  const visit = (ref: GridCellRef): void => {
+    const key = cellKey(ref.sheet, ref.row, ref.col);
+    if (!affected.has(key) || state.get(key)) return;
+    state.set(key, "open");
+    for (const precedent of graph.precedentsOf(ref)) visit(precedent);
+    state.set(key, "done");
+    ordered.push(ref);
+  };
+  for (const ref of affected.values()) visit(ref);
+  return ordered;
+}
+
+/**
+ * Recompute exactly {@link planGridRecalc}'s subgraph. Returns the new values
+ * keyed by `sheet!A1`-style address so a caller can patch its own store.
+ */
+export function recalcGridWorkbook(
+  workbook: GridWorkbookContext,
+  graph: GridDependencyGraph,
+  changed: readonly GridCellRef[],
+): Map<string, GridFormulaValue> {
+  const results = new Map<string, GridFormulaValue>();
+  for (const ref of planGridRecalc(graph, changed)) {
+    results.set(
+      `${ref.sheet}!${ref.row}:${ref.col}`,
+      evaluateGridCellInWorkbook(workbook, ref.sheet, ref.row, ref.col),
+    );
+  }
+  return results;
 }
 
 const ZERO_COMPARISONS = new Set(["=", "<>", ">", "<", ">=", "<="]);
