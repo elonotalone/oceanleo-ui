@@ -487,6 +487,24 @@ test("九种拒绝码没有一种会以原样落进格子", async () => {
   );
 });
 
+/**
+ * 这条是上一版翻译层的**回归位**。
+ *
+ * 第一版写成「只放行 7 种 Excel 错误值、其余一律钳成 `#VALUE!`」，当场把
+ * `#CYCLE!` 也钳掉了——循环引用是本引擎自己的哨兵值，本来就该原样落到格子里。
+ * 焦点测试没看见，是全量里 `grid-advanced-runtime` 抓到的。
+ * 改成「翻译已知的 9 个 lint 码、放行其余」之后才对。
+ */
+test("翻译层只翻译 lint 码，不误伤引擎自己的哨兵值（#CYCLE! 回归位）", async () => {
+  const { evaluateGridCellTyped } = await import(
+    "../src/shell/doc-editors/grid-formula.ts"
+  );
+  // A1 引用 B1、B1 引用 A1
+  const result = evaluateGridCellTyped([["=B1", "=A1"]], 0, 0);
+  assert.equal(result.ok, false);
+  assert.equal(result.value, "#CYCLE!", "循环引用的哨兵值被翻译层误伤了");
+});
+
 /* ---------- A3 最后一段：编辑器真实载入路径喂得进戳（V3 给 W12 的第 1 条） ---------- */
 
 /**

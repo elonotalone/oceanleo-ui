@@ -2581,31 +2581,24 @@ export function evaluateGridCellTyped(
   }
 }
 
-/** 一个格子里允许出现的全部错误值。Excel 只有这 7 种，多一种都读不懂。 */
-const EXCEL_ERROR_VALUES = new Set<string>([
-  "#DIV/0!",
-  "#N/A",
-  "#VALUE!",
-  "#REF!",
-  "#NAME?",
-  "#NUM!",
-  "#NULL!",
-]);
-
 /**
- * 拒绝码 → Excel 错误值。
+ * 拒绝码 → 错误值。**只翻译这 9 个 lint 码，其余一律原样放行。**
  *
  * `GRID_FORMULA_REJECTION_CODES` 是**检查器**的 lint 码，是给代码和日志看的；
- * 它们不是 Excel 错误值，**不许出现在单元格里**。此前 `requireRecalc()` 抛的
+ * 它们不是错误值，**不许出现在单元格里**。此前 `requireRecalc()` 抛的
  * `grid-formula-nondeterministic` 被 catch 原样当成了格子的值，于是任何一份没有
  * recalc 戳的旧文档一打开，`=TODAY()` 那一格就在用户屏幕上显示这行英文 lint 码
  * （`V3` 裁决 §给 W12 的三条 · 第 2 条）。
+ *
+ * ⚠️ 这里刻意**不是**「只放行 7 种 Excel 错误值、其余一律钳成 `#VALUE!`」。
+ * 那样写过一版，当场把 `#CYCLE!` 也钳掉了——循环引用是本引擎自己的哨兵值
+ * （`:920`），它本来就该原样落到格子里，`grid-advanced-runtime` 判据守着它。
+ * **翻译已知的、放行未知的**，才不会误伤将来新增的哨兵值。
  *
  * 机器可读的原因没有丢：它仍然原样留在 `GridFormulaResult.code` 上，
  * 检查器与导出链读的是那个字段。变的只是**给人看的那一格**。
  */
 function excelErrorFor(code: string): string {
-  if (EXCEL_ERROR_VALUES.has(code)) return code;
   switch (code) {
     // 「这个名字在这儿用不了」——与 Excel 对未知函数名的判法一致。
     case GRID_FORMULA_REJECTION_CODES.nondeterministic:
@@ -2617,8 +2610,12 @@ function excelErrorFor(code: string): string {
       return "#REF!";
     case GRID_FORMULA_REJECTION_CODES.unguardedDivision:
       return "#DIV/0!";
-    default:
+    case GRID_FORMULA_REJECTION_CODES.tooLong:
+    case GRID_FORMULA_REJECTION_CODES.empty:
+    case GRID_FORMULA_REJECTION_CODES.syntax:
       return "#VALUE!";
+    default:
+      return code;
   }
 }
 
