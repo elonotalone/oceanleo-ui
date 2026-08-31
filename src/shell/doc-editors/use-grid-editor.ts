@@ -21,9 +21,11 @@ import {
 } from "./doc-io";
 import { artifactSaveStepMessage } from "./artifact-save-contract";
 import { renderGridPreviewPng } from "./editor-preview-raster";
+import type { GridRecalcStamp } from "./grid-formula";
 import {
   GRID_MAX_COLS,
   GRID_MAX_ROWS,
+  bindGridWorkbook,
   buildGridWorkbookBlob,
   cloneGridSheets,
   columnLabel,
@@ -37,12 +39,18 @@ import {
   loadGridFile,
   loadGridSheets,
   normalizeGridProjectSheetState,
+  normalizeGridRecalcStamp,
   sanitizeSheetName,
   setGridCell,
   type GridCell,
   type GridCellFormat,
   type GridSheet,
 } from "./grid-model";
+import {
+  gridRecalcSummary,
+  mintGridRecalcStamp,
+  recalcGridSheets,
+} from "./grid-recalc-action";
 import { resolveGridActiveSheetId } from "./grid-sheet-identity";
 import { notifyOfficeAccessDenied } from "./office-file";
 import {
@@ -166,6 +174,13 @@ export interface GridEditorState {
   clearConditionalFormats: () => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * 「重新计算」：铸一枚新的重算戳存进工程档，把随戳变化的公式和它们的下游重算一遍。
+   * `TODAY()` 之类要能在屏幕上出结果，靠的就是这个动作——求值器自己永远不读时钟。
+   */
+  recalculate: () => void;
+  /** 上一次「重新计算」的如实报数（含「无事可算」）；没点过是空串。 */
+  recalcSummary: string;
   /** Re-run the source load for the same item after a failure. */
   reload: () => void;
   importSource: (file: File) => Promise<void>;
@@ -241,6 +256,17 @@ interface GridProject {
   /** 按 sheetId 分组的自定义行高/列宽；`GridSheet` 是 W12 的面，装不下它们。 */
   rowHeights?: unknown;
   colWidths?: unknown;
+  /**
+   * 这份工程档「按哪一刻算」（`{ at, seed }`，§规范三）。`TODAY()`/`NOW()`/`RAND()`
+   * 一族读它，没有它就 fail-closed。
+   *
+   * 类型写成 `unknown` 是刻意的：**2026-08-31 之前存下的工程档里根本没有这个字段**，
+   * 而磁盘上的 JSON 谁都可能写坏。判形状的活交给
+   * `normalizeGridRecalcStamp`（缺 `seed` / 不是以 `Z` 结尾的 UTC ISO8601 /
+   * `seed` 不是 uint32 一律当作**没有戳**），这里不预设它是对的，
+   * 更不为缺失的旧文档编一个出来。
+   */
+  recalc?: unknown;
 }
 
 /** `{ sheetId: { 索引: 像素 } }`。 */
@@ -465,11 +491,19 @@ export function useGridEditor(
   const [reloadNonce, setReloadNonce] = useState(0);
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [recalcSummary, setRecalcSummary] = useState("");
   const [historyRevision, setHistoryRevision] = useState(0);
   const sheetsRef = useRef(sheets);
   const activeRef = useRef(activeSheetId);
   const undoRef = useRef<GridSnapshot[]>([]);
   const redoRef = useRef<GridSnapshot[]>([]);
+  /**
+   * 这份文档的重算戳。它**不在 React state 里也不在 undo 栈里**，因为它不是格子内容：
+   * 求值时画布拿到它的途径是 `grid-model` 那张 `WeakMap` 登记表
+   * （`bindGridWorkbook` / `cloneGridSheets`）。这里留一份是为了存盘写得回去，
+   * 以及每次 `applySnapshot` 重新登记时有据可依。
+   */
+  const recalcRef = useRef<GridRecalcStamp | undefined>(undefined);
   const cellGestureRef = useRef<GridSnapshot | null>(null);
   const operationRef = useRef(0);
   const mountedRef = useRef(true);
@@ -487,6 +521,15 @@ export function useGridEditor(
 
   const applySnapshot = useCallback((snapshot: GridSnapshot) => {
     const next = cloneGridSheets(snapshot.sheets);
+    // `cloneGridSheets` 从来源那本工作簿继承戳，够用于「编辑之后戳还在」；
+    // 但 undo 栈里的快照是**盖新戳之前**克隆的，顺着继承走会让「撤销一步」
+    // 把重算时刻也一起退回去。戳是文档级属性，不该被 undo 栈支配，所以在这里
+    // 按当前这一枚重新登记一次。
+    // ⚠️ 这条路上命名区域恒为空：hook 只经 `normalizeGridProjectSheetState`
+    // 与 `readWorkbook`，两者都不带 `namedRanges`（带它的是 `gridIrToCarrierProject`，
+    // 那是 IR → carrier，不是 hook 的载入路径）。哪天 hook 也开始收命名区域，
+    // 这里要跟着一起传，否则会被这次重新登记抹掉。
+    if (recalcRef.current) bindGridWorkbook(next, { recalc: recalcRef.current });
     const active = resolveGridActiveSheetId(next, snapshot.activeSheetId);
     sheetsRef.current = next;
     activeRef.current = active;
@@ -592,6 +635,8 @@ export function useGridEditor(
     setDirty(false);
     setFilterQuery("");
     setFilterColumn(0);
+    setRecalcSummary("");
+    recalcRef.current = undefined;
     revisionRef.current = 0;
     persistedItemRef.current = source;
     preparedSaveRef.current = null;
@@ -611,6 +656,7 @@ export function useGridEditor(
           const normalized = normalizeGridProjectSheetState(
             project.sheets,
             project.activeSheetId,
+            { recalc: project.recalc },
           );
           return {
             ...normalized,
@@ -619,6 +665,9 @@ export function useGridEditor(
             filterColumn: Math.max(0, Number(project.filterColumn) || 0),
             rowHeights: normalizeGridSizeMap(project.rowHeights, "row"),
             colWidths: normalizeGridSizeMap(project.colWidths, "col"),
+            // 同一个 fail-closed 口径判两次：一次给画布（上面那个入参），
+            // 一次给存盘（下面这个）。坏戳两边都当作没有戳，绝不各判各的。
+            recalc: normalizeGridRecalcStamp(project.recalc),
           };
         })
       : loadGridSheets(
@@ -633,6 +682,8 @@ export function useGridEditor(
           filterColumn: 0,
           rowHeights: {} as GridSizeMap,
           colWidths: {} as GridSizeMap,
+          // 直接读 xlsx/csv 的那条路没有工程档，也就没有戳：无戳就是无戳。
+          recalc: undefined as GridRecalcStamp | undefined,
         }))
     )
       .then((loaded) => {
@@ -653,6 +704,8 @@ export function useGridEditor(
         undoRef.current = [];
         redoRef.current = [];
         cellGestureRef.current = null;
+        // 必须排在 `applySnapshot` 之前：它会按这一枚重新登记克隆出来的表。
+        recalcRef.current = loaded.recalc;
         applySnapshot({ sheets: next, activeSheetId: nextActive });
         setSelection({
           anchor: { row: 0, col: 0 },
@@ -1231,6 +1284,10 @@ export function useGridEditor(
             filterColumn,
             rowHeights: rowHeightMap,
             colWidths: colWidthMap,
+            // 戳不写进去，下次打开这份文档 `TODAY()` 又回到 fail-closed，
+            // 用户会以为「刚才点的重新计算白点了」。没有戳的文档照旧不写这个键，
+            // 不给旧文档凭空造一个。
+            ...(recalcRef.current ? { recalc: recalcRef.current } : {}),
           },
         },
         editorManifest: {
@@ -1321,12 +1378,14 @@ export function useGridEditor(
       const normalized = normalizeGridProjectSheetState(
         project.sheets,
         project.activeSheetId,
+        { recalc: project.recalc },
       );
       if (!normalized.sheets.length) return false;
       undoRef.current = [];
       redoRef.current = [];
       setSourceFailed(false);
       setError("");
+      recalcRef.current = normalizeGridRecalcStamp(project.recalc);
       applySnapshot(normalized);
       setHeaderRow(project.headerRow !== false);
       setFilterQuery(String(project.filterQuery || "").slice(0, 500));
@@ -1342,6 +1401,35 @@ export function useGridEditor(
     [applySnapshot],
   );
 
+  /**
+   * 「重新计算」。**A3 的铸戳点与 P4 增量重算的消费方是同一个动作**，就是这一个。
+   *
+   * 求值器不许读宿主时钟（`grid-formula.ts` 上钉着源码级判据），所以
+   * `=TODAY()` 想在屏幕上出结果，必须有人**把某一刻写进文档**——那个人就是这里。
+   * 戳一旦铸出来，同一份文档关掉重开、导出、重算多少次都给同一个数，
+   * 变的只有用户再点一次这个按钮的时候。
+   *
+   * 空计划不标脏：一份没有 volatile 公式的表格重算完逐格相同，
+   * 为它造一个新 revision 只会让「未保存」的红点说谎。这就是增量计划的用处——
+   * 它回答的不是「快不快」，而是「这次到底有没有事情发生」。
+   */
+  const recalculate = useCallback(() => {
+    const stamp = mintGridRecalcStamp();
+    const outcome = recalcGridSheets(sheetsRef.current, stamp);
+    setRecalcSummary(gridRecalcSummary(outcome, translate));
+    if (outcome.patch.size === 0) return;
+    // 先立戳再 applySnapshot：后者会拿 `recalcRef.current` 给克隆出来的表重新登记。
+    recalcRef.current = stamp;
+    applySnapshot({
+      sheets: sheetsRef.current,
+      activeSheetId: activeRef.current,
+    });
+    // 撤销栈里不留记录：戳不是格子内容，`applySnapshot` 又总按当前这一枚登记，
+    // 真压一条进去只会得到一个「按了没反应」的撤销。
+    revisionRef.current += 1;
+    setDirty(true);
+    setSavedUrl("");
+  }, [applySnapshot, translate]);
 
   /* ══════════════════════ 剪贴板：粘贴、复制、剪切 ══════════════════════ */
 
@@ -1681,6 +1769,8 @@ export function useGridEditor(
     clearConditionalFormats,
     undo,
     redo,
+    recalculate,
+    recalcSummary,
     reload,
     importSource,
     exportCsv,

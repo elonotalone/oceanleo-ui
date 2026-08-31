@@ -324,6 +324,15 @@ export function GridRoute({
           onTrigger: exportXlsx,
         },
         actions: [
+          // 「重新计算」。求值器永远不读宿主时钟，所以 `=TODAY()`/`NOW()`/`RAND()`
+          // 要在屏幕上出结果，得由用户显式指定「按哪一刻算」——这个按钮就是那一下。
+          // 它同时是增量重算（`recalcGridWorkbook`）在 `src/` 里的消费方。
+          {
+            id: "grid-recalculate",
+            label: "重新计算",
+            disabled: editor.loading,
+            onTrigger: editor.recalculate,
+          },
           ...(editor.sourceFailed
             ? [
                 {
@@ -365,6 +374,8 @@ export function GridRoute({
             Boolean(item.url || item.artifactId) &&
             officeSource.error) ||
           editor.error ||
+          // 重算的报数排在所有报错之后：它是一句回执，不该盖住真出了问题的那一条。
+          editor.recalcSummary ||
           (editor.loading || officeSource.loading ? "正在载入表格" : ""),
         persistence: {
           dirty: editor.dirty,
