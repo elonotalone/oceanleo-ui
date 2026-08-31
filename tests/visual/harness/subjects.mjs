@@ -166,10 +166,42 @@ export const SUBJECTS = {
   card: {
     owner: "W07",
     guards: "卡片加载前后几何不变",
-    module: "src/shell/MaterialLibrary.tsx",
-    exportName: "MaterialCard",
+    /**
+     * ⚠️ 这条 2026-08-31 17:5x 改过，**本套件第四次踩同一个坑**
+     * （前三次：`button` 指错桶文件、`toast` 找错导出名、`uploadProgress` 指错模块）。
+     *
+     * 原先 `module: "src/shell/MaterialLibrary.tsx"` + `exportName: "MaterialCard"`。
+     * `[实测]` 两截都不成立：
+     *   ① 标识符 `MaterialCard` 在**整个 `src/`** 下零命中（对照组：同一条正则
+     *      在同目录命中 `AppCardShell` / `SkeletonCard` / `WorkspaceCard` 等 29 处
+     *      导出，故正则可信，`_COMMON` §7b③）；
+     *   ② `MaterialLibrary.tsx` 确实在盘上，但它是个 454 字节的兼容立面，
+     *      自陈 "Compatibility facade"，只再导出 `MaterialLibrary` 与
+     *      `platformToEntry`——**它从来没有过一个叫 `MaterialCard` 的导出**。
+     * 照原样跑，这道闸会对一位已交卷的 owner 报「主体缺席」。
+     *
+     * `[实测]` W07 真正的产出见 `verdicts/W07-delivery.md` §1 落点表：
+     * 稳定宽高比落在 `src/shell/workspace-library-thumbnail.tsx` 的 `coverGeometry`，
+     * 导出件是 `WorkspaceThumbnail`（:57）。
+     *
+     * 分类给 `needs-client` 而不是 `ssr`，理由是实测的组件形状：
+     * `WorkspaceThumbnail` 同时调 `useUI()`（要 I18nProvider）与
+     * `useArtifactRendition()`（活状态钩子，:81），静态夹具两样都给不出。
+     * ⇒ 这条红归**本闸的覆盖边界**，不记 W07 人头。
+     *
+     * 【要紧的补充：这条不变量今天并非无人看守】
+     * W07 自己的 `tests/media-aspect-stability.test.mjs`（11 例，提交 `adcf5e6`）
+     * 已经机器化地锁住了它，判据比截图更锐利：`data-cover-aspect` 在 `<img>` 的
+     * `load` **和** `error` 前后逐字相等。所以本条解封的优先级低于其余几条——
+     * 补上只是多一层像素佐证，不是从零到一。
+     */
+    module: "src/shell/workspace-library-thumbnail.tsx",
+    exportName: "WorkspaceThumbnail",
     states: ["loading", "loaded"],
-    render: "ssr",
+    render: "needs-client",
+    renderNote:
+      "WorkspaceThumbnail 调 useUI()（要 I18nProvider）与 useArtifactRendition()（活状态钩子）；" +
+      "静态夹具两样都给不出。几何不变量已由 W07 的 media-aspect-stability.test.mjs 11 例守住。",
   },
 
   uploadProgress: {

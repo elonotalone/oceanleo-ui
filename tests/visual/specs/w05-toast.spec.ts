@@ -48,6 +48,22 @@ test.describe("W05 · Toast", () => {
     const { report, masks } = await openCase("toast");
     expectMotionSettled(report);
     await expectSubjectPresent(page, "toast");
+    /**
+     * `[实测] 2026-08-31 17:5x` **这一行是补上去的，缺了它就会造出一张假基线。**
+     *
+     * `toast` 是 `needs-client`：夹具页渲染的是 `[data-leo-needs-client]` 占位块，
+     * 不是四条真 toast。而 `expectSubjectPresent` 只查「导出还在不在」，**它会通过**。
+     * 于是 `--update-snapshots` 会把那块占位符当成基线写进盘，
+     * 此后这条用例**永远绿**——绿的是「占位符还长得跟上次一样」。
+     *
+     * 这正是本波最该防的那种假绿：`W10-state.md` 记过一次
+     * 「38 例全 skip / 零 error / 1.6s 却报成功」，那次是没跑；
+     * 这一种更隐蔽，因为它**真的跑了、真的生成了 png、真的会绿**。
+     *
+     * 所以规矩定成结构性的而不是靠记性：**凡 `toHaveScreenshot` 之前必有
+     * `expectSubjectCoverable`。** 够不着就红在这里，不许留下任何图。
+     */
+    await expectSubjectCoverable(page, "toast");
     await expect(page).toHaveScreenshot("w05-toast.png", {
       mask: masks,
       ...thresholdFor("w05-toast"),

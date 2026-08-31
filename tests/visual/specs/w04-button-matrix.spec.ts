@@ -230,6 +230,10 @@ test.describe("W04 · Button 矩阵", () => {
     const { report, masks } = await openCase("button");
     expectMotionSettled(report);
     await expectSubjectPresent(page, "button");
+    // `button` 今天是 `ssr`，所以这一行现在是空过的。留着是因为规矩要结构性成立：
+    // 凡 `toHaveScreenshot` 之前必有它（理由见 `w05-toast.spec.ts` 同一处）。
+    // 哪天有人把 `button` 改成 `needs-client`，这条会当场红，而不是悄悄换成占位符基线。
+    await expectSubjectCoverable(page, "button");
     await expect(page).toHaveScreenshot("w04-button-matrix.png", {
       mask: masks,
       ...thresholdFor("w04-button-matrix"),
