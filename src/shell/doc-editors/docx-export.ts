@@ -45,6 +45,50 @@ function imageType(contentType: string, url: string) {
   return "png" as const;
 }
 
+/**
+ * 图片节点 → 一个 docx run。**行内图与块级图共用这一份**：`inline` 一旦打开，
+ * 同一个 `image` 节点既可能挂在段落里，也可能独占一层，两条路必须给出同样的
+ * 字节，否则用户换一次环绕方式导出结果就变了。
+ */
+async function imageRun(
+  node: TiptapNode,
+  docx: DocxModule,
+): Promise<unknown> {
+  const src = String(node.attrs?.src || "");
+  if (!/^https?:\/\//i.test(src)) {
+    return new docx.TextRun({ text: String(node.attrs?.alt || "图片") });
+  }
+  try {
+    const response = await fetch(src, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const type = imageType(response.headers.get("content-type") || "", src);
+    const transformation = {
+      width: boundedNumber(node.attrs?.width, 560, 32, 1000),
+      height: boundedNumber(node.attrs?.height, 315, 24, 1000),
+    };
+    return new docx.ImageRun(
+      type === "svg"
+        ? {
+            data: bytes,
+            type,
+            transformation,
+            fallback: {
+              data: TRANSPARENT_PNG,
+              type: "png",
+            },
+          }
+        : { data: bytes, type, transformation },
+    );
+  } catch {
+    return new docx.TextRun({
+      text: String(node.attrs?.alt || "图片（导出时无法读取）"),
+      italics: true,
+      color: "78716C",
+    });
+  }
+}
+
 async function inlineChildren(
   node: TiptapNode,
   docx: DocxModule,
@@ -56,47 +100,7 @@ async function inlineChildren(
       continue;
     }
     if (child.type === "image") {
-      const src = String(child.attrs?.src || "");
-      if (!/^https?:\/\//i.test(src)) {
-        output.push(new docx.TextRun({ text: String(child.attrs?.alt || "图片") }));
-        continue;
-      }
-      try {
-        const response = await fetch(src, { cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        const type = imageType(
-          response.headers.get("content-type") || "",
-          src,
-        );
-        const transformation = {
-          width: boundedNumber(child.attrs?.width, 560, 32, 1000),
-          height: boundedNumber(child.attrs?.height, 315, 24, 1000),
-        };
-        output.push(
-          new docx.ImageRun(
-            type === "svg"
-              ? {
-                  data: bytes,
-                  type,
-                  transformation,
-                  fallback: {
-                    data: TRANSPARENT_PNG,
-                    type: "png",
-                  },
-                }
-              : { data: bytes, type, transformation },
-          ),
-        );
-      } catch {
-        output.push(
-          new docx.TextRun({
-            text: String(child.attrs?.alt || "图片（导出时无法读取）"),
-            italics: true,
-            color: "78716C",
-          }),
-        );
-      }
+      output.push(await imageRun(child, docx));
       continue;
     }
     if (child.type !== "text") {
@@ -203,6 +207,21 @@ async function blockChildren(
         new docx.Table({
           rows,
           width: { size: 100, type: docx.WidthType.PERCENTAGE },
+        }),
+      );
+      continue;
+    }
+    if (node.type === "image") {
+      // 块级图。**这条分支以前不存在**，图片会掉进下面的段落分支，而
+      // `inlineChildren` 只遍历 `node.content`——图片节点没有 content，
+      // 导出结果是一个空段落，整张图在 docx 里凭空消失。
+      // `Image.configure({ inline: false })` 当前就是这一档，也就是说
+      // **富文档里每一张图导出都丢**。「上下型（独占一行）」的 OOXML 表达
+      // 正是图片独占一个段落，所以这条分支同时把 P5 的环绕语义落到位。
+      output.push(
+        new docx.Paragraph({
+          children: [await imageRun(node, docx)] as never[],
+          spacing: { after: 120 },
         }),
       );
       continue;
