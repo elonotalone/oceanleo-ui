@@ -190,13 +190,33 @@ test.describe("W04 · Button 矩阵", () => {
      * 反面：鼠标按下**不该**出焦点环。
      * 这条常被写反——`:focus` 会在点击后留环，`:focus-visible` 不会。
      * 少了这条，「把 focus-visible 改回 focus」不会被任何判据抓住。
+     *
+     * ⚠️ `[实测] 2026-08-31 18:4x` **必须点一枚别的按钮，不能点上一步刚 Tab 到的那枚。**
+     * 焦点环状态只在**焦点发生移动**时重算。点击一枚已经聚焦的元素，焦点不动，
+     * 上一步键盘 Tab 留下的 `:focus-visible` 就被原样保留下来。
+     * 原先这里点的是 `first`（正是 Tab 聚焦的那枚），于是量到的根本不是
+     * 「鼠标聚焦会不会出环」，而是「焦点没动时状态保不保持」——
+     * 而后者的正确答案恰恰是「保持」。**这条断言因此在正确实现上也必然红**，
+     * 是本闸自己的判据挂错了对象，不是 W04 的缺陷。
+     *
+     * 判据的意图一个字没改弱：换成另一枚**未聚焦且可聚焦**的按钮之后，
+     * 「把 focus-visible 改回 focus」照样当场红（已做反面验证，见交付说明）。
+     * 取具名槽而不是 `.nth(1)`：槽序是 variant→size→state，`nth(1)` 恰好是
+     * `primary-sm-disabled`，disabled 元素点不动也拿不到焦点。
      */
-    await first.click();
-    const focusedByMouse = await first.evaluate((node) =>
-      node.matches(":focus-visible"),
-    );
+    const clickTarget = slot(page, "secondary-lg-rest");
+    await clickTarget.click();
+    const focusedByMouse = await clickTarget.evaluate((node) => ({
+      isActive: document.activeElement === node,
+      focusVisible: node.matches(":focus-visible"),
+    }));
     expect(
-      focusedByMouse,
+      focusedByMouse.isActive,
+      "点击后这枚按钮应当拿到焦点。拿不到就说明下面那条反面判据量了个空——\n  " +
+        "一个没聚焦的元素当然不命中 :focus-visible，那种绿是假绿。",
+    ).toBe(true);
+    expect(
+      focusedByMouse.focusVisible,
       "鼠标点击后**不该**命中 :focus-visible（那是 :focus 的行为）。\n  " +
         "点一下就留环会让界面看起来到处是选中框，这正是要用 focus-visible 的原因。",
     ).toBe(false);
