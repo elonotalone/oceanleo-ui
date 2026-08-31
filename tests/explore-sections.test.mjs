@@ -253,12 +253,26 @@ test("网格卡不挂下载：entryActions 根本没接线（D4）", () => {
   assert.doesNotMatch(html, /data-material-card-download/);
   assert.doesNotMatch(html, /data-entry-actions-wired="true"/);
   // 源码侧也不许再把下载渲染函数挂回 entryActions。
+  //
+  // 这个槽位后来被 W05（`cd5e997`）的「换一个版本」占了，「槽位空着」于是不再
+  // 等于「没挂下载」。判据因此从「槽位必须空」换成「钉住槽位里到底是谁」：
+  // 视图只许透传筛选层那一份，多接一处当场红；下载渲染函数则两层都不许出现。
   const source = readFileSync(
     new URL("../src/shell/material-library-view.tsx", import.meta.url),
     "utf8",
   );
-  assert.doesNotMatch(source, /entryActions=\{/);
-  assert.doesNotMatch(source, /materialEntryDownloadAction/);
+  const facets = readFileSync(
+    new URL("../src/shell/material-library-facet-filter.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.deepEqual(
+    [...source.matchAll(/entryActions=\{([^}]*)\}/g)].map(([, wired]) => wired),
+    ["facetShelf.entryActions"],
+  );
+  assert.doesNotMatch(
+    source + facets,
+    /materialEntryDownloadAction|material-library-download/,
+  );
 });
 
 test("缺 site key 时 fail-closed：不渲染货架，只留点名的错误", () => {

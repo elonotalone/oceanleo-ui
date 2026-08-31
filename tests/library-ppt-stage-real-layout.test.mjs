@@ -18,7 +18,7 @@ import test from "node:test";
 
 import React, { act } from "react";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
@@ -88,16 +88,11 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
   const purifierStubUrl = dataModule(`
     export default { sanitize(value) { return value; } };
   `);
-  const dataStubUrl = dataModule(`
-    export function isDurableLibraryItem() { return false; }
-    export function threeDSubtypeFor() { return ""; }
-  `);
   const firstPaintUrl = await compileModule(
     "src/shell/library-viewer-first-paint.tsx",
     {
       react: reactUrl,
       "../i18n/ui/useUI": uiStubUrl,
-      "./library-data": dataStubUrl,
     },
   );
   const renditionStubUrl = dataModule(`
@@ -130,13 +125,13 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     export function officePackageKindForItem() { return null; }
     export function officeViewerRenditionPurposes() { return ["full"]; }
   `);
+  // 只按住会出网的那一个入口，其余从真模块透出。逐个列举导出的桩会被图长大追上：
+  // 图里多一份模块引到这里要一个没列的名字，整份测试在加载期就炸，一条断言都不执行。
   const artifactClientStubUrl = dataModule(`
+    export * from ${JSON.stringify(realModule("src/shell/artifact-client.ts"))};
     export async function prepareArtifactForAction() {
       return { ok: true, data: null };
     }
-  `);
-  const artifactContractStubUrl = dataModule(`
-    export function isArtifactSourceTreeUrl() { return false; }
   `);
   const detailSlotStubUrl = dataModule(`
     export function useMaterialDetailTarget(item) {
@@ -194,10 +189,8 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     dompurify: purifierStubUrl,
     "./Markdown": markdownStubUrl,
     "../i18n/ui/useUI": uiStubUrl,
-    "./library-data": dataStubUrl,
     "./ArtifactRendition": renditionStubUrl,
     "./artifact-client": artifactClientStubUrl,
-    "./artifact-contract": artifactContractStubUrl,
     "./editor-sandbox-origin": sandboxOriginStubUrl,
     "./doc-editors/office-file": officeStubUrl,
     "./library-viewer-first-paint": firstPaintUrl,

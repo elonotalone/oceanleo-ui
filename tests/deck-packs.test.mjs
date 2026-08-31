@@ -13,12 +13,20 @@ import { buildDeckPptx } from "../src/shell/doc-editors/deck-ooxml-package.ts";
 // 那份 `REGISTERED` 里（与后端仓那两条同一档）；缺仓时下面那条用例自己 skip。
 const DNA_PATH = "/root/projects/asset/lib/template-dna.ts";
 /**
- * What the writer produced for `baselineProject()` before named packs existed,
- * verified by building the same fixture against `git show HEAD:` of the writer.
+ * What the writer produced for `baselineProject()` before named packs existed.
  * A change here means the no-`packId` path stopped being byte-for-byte the old
  * one, which is exactly what packs were not allowed to do.
+ *
+ * 这个数原来钉的是 `caaeebef…`，而那个值**没有任何一版写出器产出过**：本例自
+ * `a2f24bb`（钉进来的那一次）起就是红的，随后每一轮全量都带着它。上面那句
+ * “verified by building the same fixture against `git show HEAD:`” 当时并没有真做。
+ *
+ * 现在这个数是量出来的：在 `939af01`（具名装落地前的最后一版写出器）的 worktree 里
+ * 拿同一份 `baselineProject()` 建包，得到的就是它，与今天的写出器逐字节相同。
+ * 也就是说「默认路径字节不变」这条承诺本身一直成立，红的只是这个抄错的常量。
+ * 重算的办法照旧：`git worktree add <dir> 939af01`，用那份写出器建同一份夹具。
  */
-const BEFORE_SHA256 = "caaeebef5b0021b0062aa40cc8a688415be0d662c96974ba7d12a7fbc739059d";
+const BEFORE_SHA256 = "aa60868b5c364679b5fda9c0c29eaed656055ac5e51f071da9d721db25764bfd";
 
 const PNG = Uint8Array.from(
   Buffer.from(

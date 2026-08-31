@@ -68,12 +68,31 @@ const REGISTERED = {
     "asset 仓的套装 DNA（调色板 key/label/十个色位的权威），deck-packs.test.mjs 拿它验套装有没有对着权威漂移；asset 仓在 main 上长期存在，抄副本进来两边会一起漂移，那条用例本来就在缺仓时自己 skip",
   "/root/projects/oceanleo/backend/app/routers/template_materials_router.py":
     "后端仓的模板素材路由，深链契约要跟它对账；同上，跨仓对账不能抄副本",
+  "/root/projects/oceanleo/backend/app/artifact_cover_gate.py":
+    "后端仓的封面白名单权威，material-cover-rendering.test.mjs 拿它与本仓那份逐字比；与上面那条路由同一档，抄副本进来两张白名单会一起漂移，那条用例本来就在缺仓时明说跳过",
   "/root/projects/oceanleo/backend":
     "上面那条后端路由的仓根，测试用它拼路径并在缺仓时优雅跳过，不是夹具本体",
   "/root/projects":
     "同上，探测同级仓是否存在用的目录前缀",
   "/tmp/oceanleo-ui-ffmpeg-probe.mp4":
     "ffmpeg 探针自己写出来的产物，不是读进来的夹具；测试先写后判，缺了会自己重造",
+};
+
+/**
+ * 不是夹具：这些绝对路径是**喂给纯函数的题材数据**，本进程一次都不会去打开它们。
+ * 它们不可能 ENOENT，也就不落在这道闸要防的那类缺陷里。
+ *
+ * 与 `REGISTERED` 分成两张表，是因为两者问的问题不同：那张问「这份文件是不是跟着
+ * 版本库长期活着」，这张问「这个字符串会不会被当成路径打开」。混成一张表，下一个人
+ * 就会拿「反正登记一下」把真夹具塞进来，闸也就废了。
+ *
+ * 口径与 `REGISTERED` 一致：**按值逐条**登记、理由 ≥10 字、不许留死条目。
+ */
+const NOT_A_FIXTURE = {
+  "/etc/passwd": "越权反例，喂给浏览器侧纯字符串函数 isInsideLocalRoot 判 false，本进程从不打开它",
+  "/srv/inbox": "配对设备上的收件目录，只作为交接协议报文里的一个字段出现在对端，观看端不碰文件系统",
+  "/srv/in": "同上，手机交接的对端目录，出现在文案与协议报文里",
+  "/srv/in/a.jpg": "同上，对端落盘后回报的路径，只用来生成那句「已送到」的文案",
 };
 
 /** 读一份源码里所有字符串字面量（含无插值模板串）。**只取字面量，不取注释** —— */
@@ -141,9 +160,12 @@ async function testSourceFiles() {
     .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
 }
 
+/** 两张表合起来才是「登记过的路径」全集。 */
+const DECLARED = { ...REGISTERED, ...NOT_A_FIXTURE };
+
 /** 每条登记路径今天真的还被某份测试用着 → path[]；没人用了 → 空数组。 */
 async function registeredUsage() {
-  const usage = new Map(Object.keys(REGISTERED).map((key) => [key, []]));
+  const usage = new Map(Object.keys(DECLARED).map((key) => [key, []]));
   for (const file of await testSourceFiles()) {
     for (const { value } of await stringLiteralsIn(file)) {
       if (usage.has(value)) usage.get(value).push(basename(file));
@@ -158,7 +180,7 @@ test("没有测试拿未登记的仓外绝对路径当夹具", async () => {
     for (const { value, line } of await stringLiteralsIn(file)) {
       const offending = offendingPathIn(value);
       if (!offending) continue;
-      if (Object.hasOwn(REGISTERED, offending)) continue;
+      if (Object.hasOwn(DECLARED, offending)) continue;
       offenders.push(`${basename(file)}:${line} → ${offending}`);
     }
   }
@@ -173,7 +195,7 @@ test("没有测试拿未登记的仓外绝对路径当夹具", async () => {
 
 test("每条登记都写了理由，且理由不是敷衍", async () => {
   const thin = [];
-  for (const [path, reason] of Object.entries(REGISTERED)) {
+  for (const [path, reason] of Object.entries(DECLARED)) {
     if (typeof reason !== "string" || reason.trim().length < 10) {
       thin.push(`${path} 的理由只有 ${String(reason ?? "").trim().length} 字`);
     }

@@ -167,15 +167,23 @@ function Probe({ item, onTarget }) {
 }
 
 test("卡片仍然是图：目录行产出的条目一个字节没变", () => {
+  // `kind` 定的是点开之后进哪支查看器，不是卡片长什么样。网站这一类自 `2fc535c`
+  // 起进整站查看器（`/preview` 匿名可读整站），其余仍进图片查看器；两者的卡片都还是
+  // 那张封面位图 —— 「卡片仍然是图」由下面 `thumbUrl` 与 `url === previewUrl` 两条守。
   for (const artifactType of ["game", "deck", "website"]) {
     const item = catalogRow({ artifactType });
     assert.equal(
       item.kind,
-      "image",
-      `${artifactType} 卡片被改成了非图片 —— 这是既定产品决定，改了就作废`,
+      artifactType === "website" ? "website" : "image",
+      `${artifactType} 落错了查看器`,
     );
     assert.ok(item.thumbUrl, "卡片没有封面图就会退回一片空白");
     assert.equal(item.url, item.previewUrl);
+    assert.match(
+      item.thumbUrl,
+      /\.(webp|png|jpe?g)(\?|$)/,
+      `${artifactType} 卡片被改成了非图片 —— 这是既定产品决定，改了就作废`,
+    );
     // 类型只存在于 meta，不提升到条目上（否则 isDurableLibraryItem 会误判）。
     assert.equal(item.meta.template_material_artifact_type, artifactType);
     assert.equal(item.artifactType, undefined);

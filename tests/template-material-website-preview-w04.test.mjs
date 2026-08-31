@@ -54,7 +54,7 @@ function catalogRow(artifactType, overrides = {}) {
     title: `${artifactType} 模板`,
     summary: "",
     tags: [],
-    previewUrl: "image/gift-media-7.webp",
+    previewUrl: "image/gift-media-7",
     artifactId: `artifact-${artifactType}`,
     artifactType,
     siteKey: "website",
