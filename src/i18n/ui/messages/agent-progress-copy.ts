@@ -15,6 +15,12 @@ const sourceKeys = {
   preparingFirstStep: "正在分析任务并准备第一步…",
   executionStep: "执行步骤",
   viewAnalysisAndCode: "查看分析与代码",
+  // W21 的停止键 + 粘底滚动浮标（`3476d7d`）只写了中文原文，16 语全缺 ⇒
+  // `useUI()` 未命中回退中文，外国用户在会话页看到中英混排。与顶栏「源码」（`3550ebc`）同形。
+  backToLatest: "回到最新",
+  backToLatestUnread: "回到最新 · {count} 条新消息",
+  stoppedGenerating: "已停止生成",
+  stopTaskFailed: "没能停下这次任务，它可能仍在运行。",
 } as const;
 
 type MessageName = keyof typeof sourceKeys;
@@ -36,6 +42,11 @@ const translations = {
     preparingFirstStep: "Aufgabe wird analysiert und der erste Schritt vorbereitet…",
     executionStep: "Ausführungsschritt",
     viewAnalysisAndCode: "Analyse und Code anzeigen",
+    backToLatest: "Zurück zum Neuesten",
+    backToLatestUnread: "Zurück zum Neuesten · {count} neue Nachrichten",
+    stoppedGenerating: "Generierung gestoppt",
+    stopTaskFailed:
+      "Die Aufgabe konnte nicht gestoppt werden; sie läuft möglicherweise weiter.",
   },
   en: {
     previewReady: "Live preview is ready and displayed on the right.",
@@ -52,6 +63,10 @@ const translations = {
     preparingFirstStep: "Analyzing the task and preparing the first step…",
     executionStep: "Execution step",
     viewAnalysisAndCode: "View analysis and code",
+    backToLatest: "Back to latest",
+    backToLatestUnread: "Back to latest · {count} new messages",
+    stoppedGenerating: "Generation stopped",
+    stopTaskFailed: "Couldn’t stop this task; it may still be running.",
   },
   es: {
     previewReady: "La vista previa en directo está lista y se muestra a la derecha.",
@@ -68,6 +83,10 @@ const translations = {
     preparingFirstStep: "Analizando la tarea y preparando el primer paso…",
     executionStep: "Paso de ejecución",
     viewAnalysisAndCode: "Ver análisis y código",
+    backToLatest: "Volver a lo más reciente",
+    backToLatestUnread: "Volver a lo más reciente · {count} mensajes nuevos",
+    stoppedGenerating: "Generación detenida",
+    stopTaskFailed: "No se pudo detener esta tarea; puede que siga en ejecución.",
   },
   "es-419": {
     previewReady: "La vista previa en vivo está lista y se muestra a la derecha.",
@@ -84,6 +103,10 @@ const translations = {
     preparingFirstStep: "Analizando la tarea y preparando el primer paso…",
     executionStep: "Paso de ejecución",
     viewAnalysisAndCode: "Ver análisis y código",
+    backToLatest: "Volver a lo más reciente",
+    backToLatestUnread: "Volver a lo más reciente · {count} mensajes nuevos",
+    stoppedGenerating: "Generación detenida",
+    stopTaskFailed: "No se pudo detener esta tarea; puede que siga ejecutándose.",
   },
   fr: {
     previewReady: "L’aperçu en direct est prêt et s’affiche à droite.",
@@ -100,6 +123,11 @@ const translations = {
     preparingFirstStep: "Analyse de la tâche et préparation de la première étape…",
     executionStep: "Étape d’exécution",
     viewAnalysisAndCode: "Voir l’analyse et le code",
+    backToLatest: "Revenir au plus récent",
+    backToLatestUnread: "Revenir au plus récent · {count} nouveaux messages",
+    stoppedGenerating: "Génération arrêtée",
+    stopTaskFailed:
+      "Impossible d’arrêter cette tâche ; elle est peut-être toujours en cours.",
   },
   it: {
     previewReady: "L’anteprima live è pronta ed è mostrata a destra.",
@@ -116,6 +144,11 @@ const translations = {
     preparingFirstStep: "Analisi dell’attività e preparazione del primo passaggio…",
     executionStep: "Passaggio di esecuzione",
     viewAnalysisAndCode: "Mostra analisi e codice",
+    backToLatest: "Torna ai più recenti",
+    backToLatestUnread: "Torna ai più recenti · {count} nuovi messaggi",
+    stoppedGenerating: "Generazione interrotta",
+    stopTaskFailed:
+      "Non è stato possibile interrompere l’attività; potrebbe essere ancora in esecuzione.",
   },
   "pt-BR": {
     previewReady: "A prévia ao vivo está pronta e aparece à direita.",
@@ -132,6 +165,10 @@ const translations = {
     preparingFirstStep: "Analisando a tarefa e preparando a primeira etapa…",
     executionStep: "Etapa de execução",
     viewAnalysisAndCode: "Ver análise e código",
+    backToLatest: "Voltar para o mais recente",
+    backToLatestUnread: "Voltar para o mais recente · {count} novas mensagens",
+    stoppedGenerating: "Geração interrompida",
+    stopTaskFailed: "Não foi possível parar esta tarefa; ela ainda pode estar em execução.",
   },
   "pt-PT": {
     previewReady: "A pré-visualização em direto está pronta e aparece à direita.",
@@ -148,6 +185,10 @@ const translations = {
     preparingFirstStep: "A analisar a tarefa e a preparar o primeiro passo…",
     executionStep: "Passo de execução",
     viewAnalysisAndCode: "Ver análise e código",
+    backToLatest: "Voltar ao mais recente",
+    backToLatestUnread: "Voltar ao mais recente · {count} novas mensagens",
+    stoppedGenerating: "Geração interrompida",
+    stopTaskFailed: "Não foi possível parar esta tarefa; pode ainda estar em execução.",
   },
   vi: {
     previewReady: "Bản xem trước trực tiếp đã sẵn sàng và hiển thị ở bên phải.",
@@ -164,6 +205,10 @@ const translations = {
     preparingFirstStep: "Đang phân tích nhiệm vụ và chuẩn bị bước đầu tiên…",
     executionStep: "Bước thực hiện",
     viewAnalysisAndCode: "Xem phân tích và mã",
+    backToLatest: "Về mới nhất",
+    backToLatestUnread: "Về mới nhất · {count} tin nhắn mới",
+    stoppedGenerating: "Đã dừng tạo",
+    stopTaskFailed: "Không dừng được nhiệm vụ này; nó có thể vẫn đang chạy.",
   },
   tr: {
     previewReady: "Canlı önizleme hazır ve sağ tarafta gösteriliyor.",
@@ -180,6 +225,10 @@ const translations = {
     preparingFirstStep: "Görev analiz ediliyor ve ilk adım hazırlanıyor…",
     executionStep: "Yürütme adımı",
     viewAnalysisAndCode: "Analizi ve kodu göster",
+    backToLatest: "En yenilere dön",
+    backToLatestUnread: "En yenilere dön · {count} yeni mesaj",
+    stoppedGenerating: "Üretim durduruldu",
+    stopTaskFailed: "Bu görev durdurulamadı; hâlâ çalışıyor olabilir.",
   },
   zh: {
     previewReady: "实时预览已就绪，已显示在右侧。",
@@ -196,6 +245,10 @@ const translations = {
     preparingFirstStep: "正在分析任务并准备第一步…",
     executionStep: "执行步骤",
     viewAnalysisAndCode: "查看分析与代码",
+    backToLatest: "回到最新",
+    backToLatestUnread: "回到最新 · {count} 条新消息",
+    stoppedGenerating: "已停止生成",
+    stopTaskFailed: "没能停下这次任务，它可能仍在运行。",
   },
   "zh-TW": {
     previewReady: "即時預覽已就緒，已顯示於右側。",
@@ -212,6 +265,10 @@ const translations = {
     preparingFirstStep: "正在分析任務並準備第一步…",
     executionStep: "執行步驟",
     viewAnalysisAndCode: "查看分析與程式碼",
+    backToLatest: "回到最新",
+    backToLatestUnread: "回到最新 · {count} 則新訊息",
+    stoppedGenerating: "已停止生成",
+    stopTaskFailed: "沒能停下這次任務，它可能仍在執行。",
   },
   ja: {
     previewReady: "ライブプレビューの準備ができ、右側に表示されています。",
@@ -228,6 +285,10 @@ const translations = {
     preparingFirstStep: "タスクを分析し、最初のステップを準備しています…",
     executionStep: "実行ステップ",
     viewAnalysisAndCode: "分析とコードを表示",
+    backToLatest: "最新に戻る",
+    backToLatestUnread: "最新に戻る · 新着 {count} 件",
+    stoppedGenerating: "生成を停止しました",
+    stopTaskFailed: "このタスクを停止できませんでした。まだ実行中の可能性があります。",
   },
   ko: {
     previewReady: "실시간 미리보기가 준비되어 오른쪽에 표시됩니다.",
@@ -244,6 +305,10 @@ const translations = {
     preparingFirstStep: "작업을 분석하고 첫 단계를 준비하는 중…",
     executionStep: "실행 단계",
     viewAnalysisAndCode: "분석 및 코드 보기",
+    backToLatest: "최신으로 이동",
+    backToLatestUnread: "최신으로 이동 · 새 메시지 {count}개",
+    stoppedGenerating: "생성이 중지됨",
+    stopTaskFailed: "이 작업을 중지하지 못했습니다. 아직 실행 중일 수 있습니다.",
   },
   ar: {
     previewReady: "المعاينة المباشرة جاهزة وتظهر على اليمين.",
@@ -260,6 +325,10 @@ const translations = {
     preparingFirstStep: "جارٍ تحليل المهمة وإعداد الخطوة الأولى…",
     executionStep: "خطوة التنفيذ",
     viewAnalysisAndCode: "عرض التحليل والكود",
+    backToLatest: "العودة إلى الأحدث",
+    backToLatestUnread: "العودة إلى الأحدث · {count} رسائل جديدة",
+    stoppedGenerating: "تم إيقاف التوليد",
+    stopTaskFailed: "تعذّر إيقاف هذه المهمة، وقد تكون ما زالت قيد التشغيل.",
   },
   th: {
     previewReady: "ตัวอย่างแบบสดพร้อมแล้วและแสดงอยู่ทางขวา",
@@ -276,6 +345,10 @@ const translations = {
     preparingFirstStep: "กำลังวิเคราะห์งานและเตรียมขั้นตอนแรก…",
     executionStep: "ขั้นตอนการดำเนินงาน",
     viewAnalysisAndCode: "ดูการวิเคราะห์และโค้ด",
+    backToLatest: "กลับไปล่าสุด",
+    backToLatestUnread: "กลับไปล่าสุด · {count} ข้อความใหม่",
+    stoppedGenerating: "หยุดสร้างแล้ว",
+    stopTaskFailed: "ไม่สามารถหยุดงานนี้ได้ อาจยังทำงานอยู่",
   },
   hi: {
     previewReady: "लाइव प्रीव्यू तैयार है और दाईं ओर दिख रहा है।",
@@ -292,6 +365,10 @@ const translations = {
     preparingFirstStep: "कार्य का विश्लेषण और पहला चरण तैयार किया जा रहा है…",
     executionStep: "निष्पादन चरण",
     viewAnalysisAndCode: "विश्लेषण और कोड देखें",
+    backToLatest: "नवीनतम पर लौटें",
+    backToLatestUnread: "नवीनतम पर लौटें · {count} नए संदेश",
+    stoppedGenerating: "जनरेशन रोका गया",
+    stopTaskFailed: "यह कार्य रोका नहीं जा सका; यह अब भी चल रहा हो सकता है।",
   },
 } satisfies Record<Locale, LocaleMessages>;
 
