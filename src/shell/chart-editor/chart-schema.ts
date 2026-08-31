@@ -2391,6 +2391,27 @@ async function loadExcelJS(): Promise<ExcelJsModule> {
   return imported.Workbook ? imported : (imported.default ?? imported);
 }
 
+type ExcelJsWorkbook = InstanceType<ExcelJsModule["Workbook"]>;
+
+/**
+ * ExcelJS 把 `xlsx.load` 的入参声明成 Node 的 `Buffer`（`exceljs/index.d.ts:1490`），
+ * 但运行时它只是把入参原样转交 JSZip（`lib/xlsx/xlsx.js:262`），ArrayBuffer 与
+ * TypedArray 都收；而这个共享包跑在浏览器里，拿到的就是 ArrayBuffer。
+ * 所以这里按运行时的真实契约重述这一个方法的签名，而不是把入参断言成它并不是的
+ * `Buffer`——后者会掩盖「传错字节」这类真错。
+ */
+async function loadXlsxWorkbook(
+  input: ArrayBuffer | Uint8Array,
+): Promise<ExcelJsWorkbook> {
+  const ExcelJS = await loadExcelJS();
+  const workbook = new ExcelJS.Workbook();
+  const load = workbook.xlsx.load as (
+    data: ArrayBuffer | Uint8Array,
+  ) => Promise<unknown>;
+  await load.call(workbook.xlsx, input);
+  return workbook;
+}
+
 function columnLettersToIndex(letters: string): number {
   let index = 0;
   for (const char of letters.toUpperCase()) {
@@ -2503,9 +2524,7 @@ function xlsxMergedMasterOnly(
 export async function chartXlsxListSheets(
   input: ArrayBuffer | Uint8Array,
 ): Promise<string[]> {
-  const ExcelJS = await loadExcelJS();
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(input);
+  const workbook = await loadXlsxWorkbook(input);
   return workbook.worksheets.map((sheet) => sheet.name);
 }
 
@@ -2514,9 +2533,7 @@ export async function chartTableFromXlsx(
   input: ArrayBuffer | Uint8Array,
   options: ChartXlsxIngestOptions = {},
 ): Promise<ChartXlsxIngestResult> {
-  const ExcelJS = await loadExcelJS();
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(input);
+  const workbook = await loadXlsxWorkbook(input);
   const sheets = workbook.worksheets.map((sheet) => sheet.name);
   if (!sheets.length) throw new Error("Excel 文件里没有工作表");
   const sheetRef = options.sheet ?? sheets[0];
