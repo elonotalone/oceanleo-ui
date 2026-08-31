@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type DragEvent,
@@ -11,6 +12,25 @@ import {
 import { useUI } from "../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { uploadFile } from "../lib/database";
+// W08：上传进度 / 图片压缩 / 粘贴与拖拽的同一条入口。
+import {
+  formatBytes,
+  formatDuration,
+  progressPercent,
+  subscribeUploadProgress,
+  type UploadProgressSnapshot,
+} from "../lib/upload/progress";
+import {
+  MIN_COMPRESS_BYTES,
+  compressImageFile,
+  isImageFile,
+  type CompressionOutcome,
+} from "../lib/upload/image-compress";
+import {
+  filesFromPaste,
+  filesFromTransfer,
+  transferHasFiles,
+} from "../lib/upload/intake";
 import type { LibraryItem } from "./library-data";
 import { LibraryItemViewer } from "./library-viewers";
 import { WORKBENCH_MATERIAL_MIME } from "./workbench-material-provider";
@@ -177,17 +197,20 @@ function supportedFormatsText(): string {
 async function libraryItemFromLocalFile(
   file: File,
   siteId: string,
+  transfer: {
+    onProgress?: (loaded: number, total: number) => void;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<{ ok: true; item: LibraryItem } | { ok: false; error: string }> {
   const uploaded = await uploadFile(file, {
     siteId: siteId || "home",
     title: file.name,
-    idempotencyKey: [
-      "workbench-blank-upload-v1",
-      siteId || "home",
-      file.name,
-      file.size,
-      file.lastModified,
-    ].join(":"),
+    // 幂等键刻意**不再自己拼**。原来那把 `workbench-blank-upload-v1:<site>:<名字>:
+    // <大小>:<mtime>` 绑不住文件内容，而 `uploadFile` 推的那把绑了前 1MB 的哈希，
+    // 也绑齐了服务端重放时要比对的每一项（bytes/site_id/mime/filename/is_upload，
+    // 见 `media_proxy_router.py:946-957`）。少绑一项换来的不是「重传」而是 409。
+    onProgress: transfer.onProgress,
+    signal: transfer.signal,
   });
   if (!uploaded.ok || !uploaded.data?.file) {
     return {
@@ -276,12 +299,30 @@ export function AdvancedWorkbenchBlankStage({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [importingProject, setImportingProject] = useState(false);
+  // ── W08 ───────────────────────────────────────────────────────────────────
+  const [progress, setProgress] = useState<UploadProgressSnapshot | null>(null);
+  /** 这一次真压缩了才有值；UI 靠它显示前后字节并给出「用原图」。 */
+  const [compression, setCompression] = useState<CompressionOutcome | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  /**
+   * 「在传中」用 ref 而不是 `busy`：`busy` 是 state，闭包里读到的是上一轮的值，
+   * 而「用原图重来」恰恰要在上一次刚收尾的同一个 tick 里再起一次。
+   */
+  const inFlightRef = useRef(false);
+  /**
+   * 用户点了「用原图」：记下原图并取消在飞的那一次，让它在自己的 finally 里
+   * 把这一份接上去。直接递归调 `accept` 会撞上还没释放的在飞标记。
+   */
+  const retryWithOriginalRef = useRef<File | null>(null);
+  const acceptRef = useRef<
+    ((files: File[], preferOriginal?: boolean) => Promise<void>) | null
+  >(null);
 
-  const accept = useCallback(
-    async (files: File[]) => {
-      const file = files[0];
-      if (!file || busy) return;
+  const uploadOne = useCallback(
+    async (file: File, preferOriginal: boolean) => {
       setError("");
+      // 判型按**用户给的那个名字**来。压缩可能把 `.png` 写成 `.jpg`，
+      // 但「用户拖进来的是什么、能不能编」与「我们怎么存」是两件事。
       const judged = uploadEditorTargetForFileName(file.name);
       if (!judged.target) {
         // 手机照片、FBX 模型这类「用户真会拖、但确实转不了」的，给一句能照做的话；
@@ -301,6 +342,20 @@ export function AdvancedWorkbenchBlankStage({
         );
         return;
       }
+      // 压缩（P3）：默认开、只碰图片、永远留着原图。`compressImageFile` 对
+      // 非图片是一次同步判断就返回，所以这里不必先筛一遍类型。
+      let payload = file;
+      if (!preferOriginal) {
+        if (isImageFile(file) && file.size >= MIN_COMPRESS_BYTES) {
+          setBusy(tt("正在压缩图片…"));
+        }
+        const outcome = await compressImageFile(file);
+        payload = outcome.upload;
+        setCompression(outcome.compressed ? outcome : null);
+      } else {
+        setCompression(null);
+      }
+
       const note = judged.needsConversion
         ? uploadConversionNote(judged.target)
         : "";
@@ -309,19 +364,86 @@ export function AdvancedWorkbenchBlankStage({
           ? `${tt("正在上传，稍后会转成能编辑的格式…")}${note ? tt(note) : ""}`
           : tt("正在上传…"),
       );
+      const controller = new AbortController();
+      abortRef.current = controller;
+      // 进度从总线上取而不是从 `onProgress` 回调：总线送的是算好的整份读数
+      // （含已用时与剩余估算），回调只有 loaded/total，在组件里再算一遍 ETA
+      // 等于把 `createProgressTracker` 抄第二份。
+      const unsubscribe = subscribeUploadProgress(payload, setProgress);
       try {
-        const result = await libraryItemFromLocalFile(file, siteId);
+        const result = await libraryItemFromLocalFile(payload, siteId, {
+          signal: controller.signal,
+        });
+        // 这一次是被「用原图」按钮自己取消的，不是失败，不要报错。
+        if (retryWithOriginalRef.current) return;
         if (!result.ok) {
           setError(result.error);
           return;
         }
         onItemReady(result.item);
       } finally {
-        setBusy("");
+        unsubscribe();
       }
     },
-    [busy, onItemReady, siteId, tt],
+    [onItemReady, siteId, tt],
   );
+
+  const accept = useCallback(
+    async (files: File[], preferOriginal = false) => {
+      const file = files[0];
+      if (!file || inFlightRef.current) return;
+      inFlightRef.current = true;
+      try {
+        await uploadOne(file, preferOriginal);
+      } finally {
+        inFlightRef.current = false;
+        abortRef.current = null;
+        setBusy("");
+        setProgress(null);
+        const original = retryWithOriginalRef.current;
+        retryWithOriginalRef.current = null;
+        if (original) {
+          setCompression(null);
+          void acceptRef.current?.([original], true);
+        }
+      }
+    },
+    [uploadOne],
+  );
+  acceptRef.current = accept;
+
+  /** 「用原图」：取消在飞的那一次，让 `accept` 的 finally 用原图再起一次。 */
+  const useOriginalInstead = useCallback(() => {
+    const outcome = compression;
+    if (!outcome) return;
+    retryWithOriginalRef.current = outcome.original;
+    abortRef.current?.abort();
+  }, [compression]);
+
+  // 粘贴上传（P4）。空框本身不可聚焦——用户截完图直接按 Ctrl+V 时事件落在
+  // document 上，所以挂在 window，只在这一屏活着的时候有效。
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (inFlightRef.current) return;
+      const target = event.target as HTMLElement | null;
+      // 焦点在能输入的地方就让给它：用户是在打字，不是在传文件。
+      if (
+        target &&
+        (target.isContentEditable ||
+          /^(?:INPUT|TEXTAREA|SELECT)$/.test(target.tagName || ""))
+      ) {
+        return;
+      }
+      // 没有文件就一个字都不拦，粘贴文字必须照常。
+      if (!transferHasFiles(event.clipboardData)) return;
+      const files = filesFromPaste(event.clipboardData);
+      if (!files.length) return;
+      event.preventDefault();
+      void acceptRef.current?.(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
 
   return (
     <div
@@ -335,7 +457,8 @@ export function AdvancedWorkbenchBlankStage({
         event.dataTransfer.dropEffect = "copy";
       }}
       onDrop={(event) => {
-        const files = Array.from(event.dataTransfer.files || []);
+        // 拖拽与粘贴共用 `upload/intake.ts` 这一条提取器（P4），不是两套。
+        const files = filesFromTransfer(event.dataTransfer);
         if (!files.length) return;
         event.preventDefault();
         event.stopPropagation();
@@ -413,12 +536,71 @@ export function AdvancedWorkbenchBlankStage({
           </button>
         )}
         {busy && (
-          <p
-            role="status"
-            className="mt-4 text-[12px] text-[var(--muted,#78716c)]"
-          >
-            {busy}
-          </p>
+          <div role="status" data-upload-status className="mt-4 text-left">
+            <p className="text-[12px] text-[var(--muted,#78716c)]">{busy}</p>
+            {progress && (
+              <div data-upload-progress className="mt-2">
+                <div
+                  className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--awb-track,#e7e5e4)]"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercent(progress)}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${progressPercent(progress)}%`,
+                      background: accent,
+                      transitionProperty: "width",
+                      // 动效 token 不写 fallback（裁定 A-2）：W01 把它们生成进
+                      // CSS 之前这里解析失败即 0s，不会退化成一个裸时长。
+                      transitionDuration: "var(--leo-dur-2)",
+                      transitionTimingFunction: "var(--leo-ease-standard)",
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-3 text-[11px] tabular-nums text-[var(--muted,#78716c)]">
+                  <span>
+                    {progressPercent(progress)}% ·{" "}
+                    {formatBytes(progress.loaded)} /{" "}
+                    {formatBytes(progress.total)}
+                  </span>
+                  {/* 纯百分比在大文件上体感很差（P1）。剩余估不出来时**不显示**，
+                      假的剩余时间比没有更糟。 */}
+                  <span>
+                    {tt("已用 {elapsed}", {
+                      elapsed: formatDuration(progress.elapsedMs),
+                    })}
+                    {progress.remainingMs !== null
+                      ? ` · ${tt("剩余约 {remaining}", {
+                          remaining: formatDuration(progress.remainingMs),
+                        })}`
+                      : ""}
+                  </span>
+                </p>
+              </div>
+            )}
+            {compression && (
+              <p
+                data-upload-compression
+                className="mt-1.5 text-[11px] text-[var(--muted,#78716c)]"
+              >
+                {tt("已压缩：{before} → {after}", {
+                  before: formatBytes(compression.originalBytes),
+                  after: formatBytes(compression.uploadBytes),
+                })}{" "}
+                <button
+                  type="button"
+                  onClick={useOriginalInstead}
+                  className="font-medium underline underline-offset-2"
+                  style={{ color: accent }}
+                >
+                  {tt("用原图")}
+                </button>
+              </p>
+            )}
+          </div>
         )}
         {error && (
           <p
