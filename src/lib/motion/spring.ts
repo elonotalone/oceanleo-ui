@@ -42,6 +42,15 @@ export interface Spring2DValue {
   readonly velocity: { x: number; y: number };
   set(v: { x: number; y: number }): void;
   setTarget(v: { x: number; y: number }): void;
+  /**
+   * 外部注入初速度，与 1D 的同名方法同义。
+   *
+   * 规范 §规范二 的 API 表只给 1D 列了这一条，但它注明的用途
+   * （「例如从指针速度追踪器接管」）只可能发生在 2D 上——指针速度是二维的。
+   * 这是规范的遗漏，不是刻意的省略，所以这里补齐；差异记在
+   * `verdicts/W02-delivery.md` §2。
+   */
+  setVelocity(v: { x: number; y: number }): void;
   onChange(cb: (v: { x: number; y: number }) => void): () => void;
   stop(): void;
   jumpToRest(): void;
@@ -410,6 +419,23 @@ export function createSpring2D(
       axisX.accumulator = 0;
       axisY.accumulator = 0;
       joinDriver(entry);
+    },
+    setVelocity(v) {
+      axisX.velocity = v.x;
+      axisY.velocity = v.y;
+      axisX.lastSetMs = 0;
+      axisY.lastSetMs = 0;
+      if (reduced) return;
+      // 注入了真速度就该看得见运动，即便目标点没变（甩一下会过冲再回来）。
+      // 逐轴判：只朝 x 甩时 y 没有理由醒过来多跑一帧。
+      let woke = false;
+      for (const axis of [axisX, axisY]) {
+        if (Math.abs(axis.velocity) < resolved.restSpeed) continue;
+        axis.settled = false;
+        axis.accumulator = 0;
+        woke = true;
+      }
+      if (woke) joinDriver(entry);
     },
     onChange(cb) {
       listeners.add(cb);

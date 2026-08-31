@@ -967,6 +967,13 @@ export function useEditBarDockController({
       if (!drag.moved) return;
       // 逻辑态上面已经落定（mode 切换与落盘都不等动画）；这里只把**视觉态**
       // 交给弹簧，从松手时的位置带着松手时的速度收敛到最终落点。
+      //
+      // 初速度取**指针追踪器**的读数，不用 `set()` 内部那个墙钟估计：追踪器按
+      // 事件自带的 `timeStamp` 采样，而 `set()` 只能按处理器执行时的
+      // `performance.now()` 算。合并的指针事件与主线程卡顿都会把好几次 move 塞进
+      // 同一个任务，墙钟差落到 4ms 门槛以下就记成 0——恰恰是甩得最狠的时候没惯性。
+      // 没有速度样本时注入 0，弹簧不会醒，行为与接弹簧之前逐字相同。
+      positionSpringRef.current?.setVelocity(fling);
       springPositionTo(positionRef.current);
     },
     [
