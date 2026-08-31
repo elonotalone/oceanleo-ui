@@ -749,7 +749,7 @@ function normalizeSeries(
   const areaStyle = type === "line" ? asRecord(series.areaStyle) : null;
   const markLine = normalizeMarkLine(series.markLine);
   const markArea = normalizeMarkArea(series.markArea);
-  return {
+  const normalized: ChartSeries = {
     ...series,
     id: safeId(series.id, `series-${index + 1}`),
     name: boundedText(series.name, `系列 ${index + 1}`, 120),
@@ -789,6 +789,20 @@ function normalizeSeries(
       formatter: boundedText(label?.formatter, "{c}", 200),
     },
   };
+  // 上面五个字段必须能被「取消」:`...series` 会把旧值带过来,所以先显式写成
+  // undefined 盖掉。但**留着一个值为 undefined 的键不行**——在 `deepStrictEqual`
+  // 眼里它与「没有这个键」是两回事,而存读往返的另一侧来自 JSON(JSON 不存
+  // undefined),既有的 chart-editor 往返判据会当场红。所以覆盖完就把键删掉。
+  for (const key of [
+    "yAxisIndex",
+    "stack",
+    "areaStyle",
+    "markLine",
+    "markArea",
+  ] as const) {
+    if (normalized[key] === undefined) delete normalized[key];
+  }
+  return normalized;
 }
 
 function normalizeDataset(value: unknown): ChartDataset | undefined {
