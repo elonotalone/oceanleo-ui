@@ -173,15 +173,26 @@ function scan() {
       if (!tokens.some((t) => TW_COTOKEN.test(t))) continue;
       const transitions = tokens.filter((t) => TW_TRANSITION.test(t));
       if (transitions.length === 0) continue;
-      const durations = tokens.filter((t) => t.replace(/^[a-z-]+:/, "").startsWith("duration-"));
-      const bare = durations.map((d) => d.replace(/^[a-z-]+:/, ""));
-      const kind = bare.some((d) => LADDER_DURATION.test(d))
+      // 定档只看**无变体前缀**的时长。`active:duration-…` 说的是「按下时」那一档，
+      // 它不能替基础态定档。
+      // 反面验证 ① 实测过这个洞：把基础态换回 `duration-200`，而同串里still有
+      // `active:duration-[var(--leo-dur-1)]`，早先的实现把整个站点判成「已接档」，
+      // 十条判据一条都没红。
+      const allDurations = tokens.filter((t) =>
+        t.replace(/^([a-z-]+:)+/, "").startsWith("duration-"),
+      );
+      const baseDurations = allDurations.filter((t) => !/:/.test(t));
+      const kind = baseDurations.some((d) => LADDER_DURATION.test(d))
         ? "ladder"
-        : bare.some((d) => RAW_DURATION.test(d))
+        : baseDurations.some((d) => RAW_DURATION.test(d))
           ? "raw"
           : "bareDefault";
+      // 裸时长的判定与定档分开：**任何**位置（含变体前缀）的裸时长都算违规。
+      const rawTokens = allDurations.filter((t) =>
+        RAW_DURATION.test(t.replace(/^([a-z-]+:)+/, "")),
+      );
       for (const t of transitions) {
-        sites.push({ file: rel, line: lit.line, utility: t, kind, durations: bare });
+        sites.push({ file: rel, line: lit.line, utility: t, kind, durations: allDurations, rawTokens });
       }
     }
   }
@@ -218,13 +229,17 @@ test("正对照：分类规则对合成样本判得对（不是靠运气）", ()
     const tokens = text.split(/\s+/).filter(Boolean);
     if (!tokens.some((t) => TW_COTOKEN.test(t))) return "not-a-classname";
     if (!tokens.some((t) => TW_TRANSITION.test(t))) return "no-transition";
-    const bare = tokens
-      .filter((t) => t.replace(/^[a-z-]+:/, "").startsWith("duration-"))
-      .map((d) => d.replace(/^[a-z-]+:/, ""));
-    if (bare.some((d) => LADDER_DURATION.test(d))) return "ladder";
-    if (bare.some((d) => RAW_DURATION.test(d))) return "raw";
+    const all = tokens.filter((t) => t.replace(/^([a-z-]+:)+/, "").startsWith("duration-"));
+    const base = all.filter((t) => !/:/.test(t));
+    if (base.some((d) => LADDER_DURATION.test(d))) return "ladder";
+    if (base.some((d) => RAW_DURATION.test(d))) return "raw";
     return "bareDefault";
   };
+  const rawTokensOf = (text) =>
+    text
+      .split(/\s+/)
+      .filter((t) => t.replace(/^([a-z-]+:)+/, "").startsWith("duration-"))
+      .filter((t) => RAW_DURATION.test(t.replace(/^([a-z-]+:)+/, "")));
   // ⚠️ 样例一律用拼接，**不许在本文件里写出完整的类名字面量**。
   // Tailwind v4 的自动内容探测扫的是仓库根（不止 `@source` 那一行），`tests/` 也在里面。
   // 实测两次：先是样例里的类名字面量被编进了产物，改成拼接后又发现
@@ -241,6 +256,15 @@ test("正对照：分类规则对合成样本判得对（不是靠运气）", ()
   // 自然语言与业务枚举值不许被算成 CSS 站点
   assert.equal(classify("Effets sonores de transition"), "not-a-classname");
   assert.equal(classify("transition"), "not-a-classname");
+
+  // 反面验证 ① 抓到的洞：变体前缀上的阶梯值**不许**替基础态定档。
+  const masked = `rounded-lg transition ${D}20` + "0 " + `active:${D}[var(--leo-dur-1` + ")]";
+  assert.equal(classify(masked), "raw", "基础态是裸值就该判 raw，不许被 active: 那一档盖过去");
+  assert.equal(rawTokensOf(masked).length, 1);
+  // 反过来：变体前缀上的裸值也要被 2a 抓住，尽管它不参与定档
+  const variantRaw = `rounded-lg transition ${D}[var(--leo-dur-2` + ")] " + `hover:${D}30` + "0";
+  assert.equal(classify(variantRaw), "ladder");
+  assert.equal(rawTokensOf(variantRaw).length, 1, "hover: 上的裸时长同样违规");
 });
 
 // ---------------------------------------------------------------------------
@@ -270,17 +294,23 @@ test("判据 1b：仍跑 Tailwind 默认档的站点数只减不增", () => {
 // ---------------------------------------------------------------------------
 
 test("判据 2a：清单外不许出现裸时长", () => {
-  const offenders = raw.filter((s) => !RAW_DURATION_EXEMPT.has(s.file));
+  // 判的是 `rawTokens` 而不是 `kind === "raw"`：变体前缀上的裸时长
+  // （`hover:duration-300`）同样违规，但它不参与定档，落不进 `raw` 桶。
+  const offenders = sites.filter(
+    (s) => s.rawTokens.length > 0 && !RAW_DURATION_EXEMPT.has(s.file),
+  );
   assert.equal(
     offenders.length,
     0,
     `这些站点写了裸时长又不在豁免清单里（红线 9）：\n` +
-      offenders.map((s) => `  ${s.file}:${s.line} [${s.utility}] ${s.durations.join(",")}`).join("\n"),
+      offenders
+        .map((s) => `  ${s.file}:${s.line} [${s.utility}] ${s.rawTokens.join(",")}`)
+        .join("\n"),
   );
 });
 
 test("判据 2b：豁免清单里不许有死条目", () => {
-  const filesWithRaw = new Set(raw.map((s) => s.file));
+  const filesWithRaw = new Set(sites.filter((s) => s.rawTokens.length > 0).map((s) => s.file));
   const dead = [...RAW_DURATION_EXEMPT.keys()].filter((f) => !filesWithRaw.has(f));
   assert.equal(
     dead.length,
