@@ -162,6 +162,15 @@ export interface ChunkRetryRuntime {
   delays: readonly number[];
 }
 
+/**
+ * cache-busting token 的单调序号。
+ *
+ * 只靠 `Date.now()` + 随机数是不够的：退避很短或时钟精度不足时，两次重试可能落在
+ * **同一毫秒**，token 于是相同，缓存键没换 —— cache-busting 就白做了，
+ * 而这正是它要解决的那个问题（坏缓存被反复命中）。序号让同进程内不可能撞。
+ */
+let cacheBustSeq = 0;
+
 const DEFAULT_RUNTIME: ChunkRetryRuntime = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   random: Math.random,
@@ -215,7 +224,8 @@ export async function loadChunkWithRetry<T>(
       const url = chunkUrlFromError(error);
       if (url) {
         dropStaleChunkTags(url);
-        const token = `${Date.now().toString(36)}${Math.floor(
+        cacheBustSeq += 1;
+        const token = `${Date.now().toString(36)}-${cacheBustSeq.toString(36)}-${Math.floor(
           runtime.random() * 0xffffff,
         ).toString(36)}`;
         const probe = await runtime.probe(url, token);
@@ -334,11 +344,12 @@ function reloadPage(): void {
 export function chunkRetryLoader<T>(
   routeId: string,
   load: () => Promise<T>,
+  overrides: Partial<ChunkRetryRuntime> = {},
 ): () => Promise<T> {
   return async () => {
     for (;;) {
       setRouteState(routeId, INITIAL_STATE);
-      const outcome = await loadChunkWithRetry(routeId, load);
+      const outcome = await loadChunkWithRetry(routeId, load, overrides);
       if (outcome.ok) {
         setRouteState(routeId, { phase: "loading", attempts: outcome.attempts });
         return outcome.value;
