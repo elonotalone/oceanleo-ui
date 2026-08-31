@@ -197,8 +197,75 @@ export function emptyGridSheet(name = "Sheet1"): GridSheet {
   };
 }
 
+/**
+ * 每张表 → 它所属的那本工作簿（§规范一 的画布侧收口）。
+ *
+ * `evaluateGridCellInWorkbook` 早就能跨表求值了，但画布够不着：画布的调用点在
+ * `GridStage.tsx:679` 与 `use-grid-editor.ts` 上，按 `gridDisplayValue(sheet,
+ * row, col)` **三参数**调用，而 `workbook` 是可选参数——缺席就静默退化成
+ * 「只有当前这一张表、且没有 recalc 戳」的临时上下文。于是 `Sheet2!B3` 在画布上
+ * 给 `#REF!`（导出链同一个公式给 777），`TODAY()` 因缺戳 fail-closed。
+ * 两者是同一行代码的两个症状，实测见 `W12-journal.md` 第 8 棒。
+ *
+ * 那两个文件是 `W11` 的独占面，不许改，所以不能靠「让调用方多传一个参数」来修。
+ * 反过来做：**表自己记得它属于哪本工作簿。** 编辑器每一次状态提交都经过
+ * `cloneGridSheets`（`use-grid-editor.ts:489` 的 `applySnapshot` 是唯一漏斗），
+ * 在那里登记一次，画布随后拿到的 `activeSheet` 就一定在册。
+ *
+ * 用 `WeakMap` 而不是 `Map`：每次提交都产生一批新的表对象，旧的那批必须能被回收。
+ * 没登记过的表（比如测试里直接写的字面量）仍然按单表求值，旧行为一字不改。
+ */
+interface GridWorkbookBinding {
+  sheets: readonly GridSheet[];
+  namedRanges?: Readonly<Record<string, string>>;
+  recalc?: GridRecalcStamp;
+  /** 按需建一次。`sheets` 是不可变的，一本工作簿只需要一个上下文。 */
+  context?: GridWorkbookContext;
+}
+
+const workbookBindings = new WeakMap<GridSheet, GridWorkbookBinding>();
+
+/**
+ * 把 `sheets` 登记成一本工作簿，返回原数组（便于内联在 `return` 上）。
+ *
+ * 命名区域与 recalc 戳是**文档级**的，跟着工作簿走，不跟着单张表走。
+ */
+export function bindGridWorkbook<T extends readonly GridSheet[]>(
+  sheets: T,
+  options: {
+    namedRanges?: Readonly<Record<string, string>>;
+    recalc?: GridRecalcStamp;
+  } = {},
+): T {
+  const binding: GridWorkbookBinding = {
+    sheets,
+    namedRanges: options.namedRanges,
+    recalc: options.recalc,
+  };
+  for (const sheet of sheets) workbookBindings.set(sheet, binding);
+  return sheets;
+}
+
+/** 这张表登记在哪本工作簿名下；没登记过给 `undefined`。 */
+export function boundGridWorkbook(
+  sheet: GridSheet,
+): readonly GridSheet[] | undefined {
+  return workbookBindings.get(sheet)?.sheets;
+}
+
+/** 登记过就用它那本工作簿的上下文，没登记过就退化成单表。 */
+function contextForSheet(sheet: GridSheet): GridWorkbookContext {
+  const binding = workbookBindings.get(sheet);
+  if (!binding) return gridWorkbookContext([sheet]);
+  binding.context ??= gridWorkbookContext(binding.sheets, {
+    namedRanges: binding.namedRanges,
+    recalc: binding.recalc,
+  });
+  return binding.context;
+}
+
 export function cloneGridSheets(sheets: GridSheet[]): GridSheet[] {
-  return sheets.map((sheet) => ({
+  const next = sheets.map((sheet) => ({
     ...sheet,
     rows: sheet.rows.map((row) => [...row]),
     formats: Object.fromEntries(
@@ -213,6 +280,13 @@ export function cloneGridSheets(sheets: GridSheet[]): GridSheet[] {
       range: { ...rule.range },
     })),
   }));
+  // 复制出来的是一批新对象，登记必须跟着走一遍，否则画布在第一次编辑之后
+  // 就又退回单表了。戳与命名区域是文档级的，从原来那本继承。
+  const source = sheets.length ? workbookBindings.get(sheets[0]) : undefined;
+  return bindGridWorkbook(next, {
+    namedRanges: source?.namedRanges,
+    recalc: source?.recalc,
+  });
 }
 
 function normalizeRows(rows: unknown[][]): string[][] {
@@ -310,7 +384,7 @@ export function normalizeGridProjectSheetState(
       GRID_MAX_COLS,
     ),
   }));
-  return { sheets, activeSheetId: identities.activeSheetId };
+  return { sheets: bindGridWorkbook(sheets), activeSheetId: identities.activeSheetId };
 }
 
 export function normalizeGridProjectSheets(value: unknown): GridSheet[] {
@@ -338,7 +412,7 @@ async function readWorkbook(
     cellStyles: true,
   });
   const used = new Set<string>();
-  return workbook.SheetNames.map((name) => {
+  return bindGridWorkbook(workbook.SheetNames.map((name) => {
     const worksheet = workbook.Sheets[name];
     const rows: string[][] = [];
     const formats: Record<string, GridCellFormat> = {};
@@ -427,7 +501,7 @@ async function readWorkbook(
       ),
       conditionalFormats: [],
     };
-  });
+  }));
 }
 
 export async function loadGridSheets(
@@ -579,10 +653,11 @@ function asWorkbookContext(workbook: GridWorkbookLike): GridWorkbookContext {
 /**
  * Evaluate one cell of `sheet`.
  *
- * With no `workbook` the sheet stands alone and a cross-sheet reference still
- * reports `#REF!`, so every existing three-argument caller keeps its exact
- * present behaviour. A caller that does hold the sibling sheets passes them and
- * gets the right number instead.
+ * An explicit `workbook` always wins. Without one the sheet is looked up in the
+ * binding registry, so the canvas's three-argument call resolves against the
+ * workbook the sheet actually belongs to. A sheet that was never bound — a bare
+ * literal in a test, say — still stands alone and still reports `#REF!` for a
+ * cross-sheet reference, which is the pre-existing behaviour.
  */
 function evaluateIn(
   sheet: GridSheet,
@@ -590,9 +665,7 @@ function evaluateIn(
   col: number,
   workbook?: GridWorkbookLike,
 ): GridFormulaValue {
-  const context = workbook
-    ? asWorkbookContext(workbook)
-    : gridWorkbookContext([sheet]);
+  const context = workbook ? asWorkbookContext(workbook) : contextForSheet(sheet);
   return evaluateGridCellInWorkbook(context, sheet.name, row, col);
 }
 
@@ -705,9 +778,7 @@ export function gridSheetToCsv(
   workbook?: GridWorkbookLike,
 ): string {
   const bounds = usedBounds(sheet);
-  const context = workbook
-    ? asWorkbookContext(workbook)
-    : gridWorkbookContext([sheet]);
+  const context = workbook ? asWorkbookContext(workbook) : contextForSheet(sheet);
   return Array.from({ length: bounds.rows }, (_, row) =>
     Array.from({ length: bounds.cols }, (_, col) =>
       csvCell(
@@ -1868,6 +1939,15 @@ export function gridIrToCarrierProject(project: GridIrProject): GridCarrierProje
       merges: [],
       conditionalFormats: [],
     } satisfies GridSheet;
+  });
+  // 这是 IR → 编辑器状态的入口，也是文档级的 `recalc` 戳与命名区域唯一能进到
+  // 画布的地方：登记在这里，`TODAY()` 与 `=命名区域` 才在画布上算得出，而不是
+  // 只在导出链上算得出（§规范三 / §规范一）。戳缺席就照旧 fail-closed。
+  bindGridWorkbook(sheets, {
+    namedRanges: Object.fromEntries(
+      (project.namedRanges || []).map((entry) => [entry.name, entry.ref]),
+    ),
+    recalc: project.recalc,
   });
   return {
     sheets,
