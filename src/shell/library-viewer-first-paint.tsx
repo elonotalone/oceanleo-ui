@@ -16,7 +16,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { ArtifactRendition, ArtifactType } from "./artifact-contract";
-import { artifactTypeForLibraryKind, type LibraryItem } from "./library-data";
+import type { LibraryItem } from "./library-data";
 
 const HEAVY_LIBRARY_VIEWER_KINDS: readonly LibraryItem["kind"][] = [
   "website",
@@ -68,6 +68,38 @@ const DEFAULT_ARTIFACT_ASPECT_RATIO: Readonly<Record<string, number>> = {
 
 /** 认不出类型时的兜底。与货架卡片容器的 `aspect-[4/3]` 同一档，不引入第二种形状。 */
 const FALLBACK_ASPECT_RATIO = 4 / 3;
+
+/**
+ * viewer kind → artifact type。**这是 `library-data.ts` 的
+ * `artifactTypeForLibraryKind()` 的第二份副本，逐字一致由
+ * `tests/media-aspect-stability.test.mjs` 锁死**（改一边不改另一边当场红）。
+ *
+ * 为什么必须留副本而不是 import 那个函数：本模块在改动前对 `./library-data`
+ * **只有类型依赖**（transpile 时被抹掉，运行期模块图上没有这条边）。加一条值依赖会
+ * 让三份既有测试当场加载失败——`material-cover-rendering` 与 `artifact-surface-rendered`
+ * 都一边编译 `workspace-library-thumbnail.tsx`、一边把 `"./library-data"` 换成只导出
+ * `isDurableLibraryItem` 的桩，新增的这条边会去那个桩里找一个它没有的导出。
+ * 那三份测试不在本份活的独占面上，不许为了自己方便去改它们的桩。
+ */
+const KIND_TO_ARTIFACT_TYPE: Readonly<
+  Record<LibraryItem["kind"], ArtifactType>
+> = {
+  website: "website",
+  canvas: "workflow",
+  ppt: "deck",
+  sheet: "grid",
+  document: "document",
+  image: "single_file_image",
+  video: "video",
+  video_canvas: "workflow",
+  audio: "audio",
+  xhs: "document",
+  threed: "model_3d",
+  game: "game",
+  geo_map: "geo_map",
+  interactive_doc: "interactive_doc",
+  file: "document",
+};
 
 /** 没有 digest 可派生时的中性占位色。 */
 const NEUTRAL_LQIP_COLOR = "var(--surface, #f5f5f4)";
@@ -127,8 +159,7 @@ export function artifactMediaGeometry(input: {
     input.rendition?.height,
   );
   const artifactType =
-    input.artifactType ||
-    (input.kind ? artifactTypeForLibraryKind(input.kind) : "");
+    input.artifactType || (input.kind ? KIND_TO_ARTIFACT_TYPE[input.kind] : "");
   const ratio =
     measuredRatio ||
     DEFAULT_ARTIFACT_ASPECT_RATIO[String(artifactType || "")] ||
