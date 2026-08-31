@@ -32,15 +32,28 @@ import {
 
 /** CSS `repeat(auto-fill, minmax(min(minTrack, (100% - gap) / divisor), 1fr))`。 */
 export interface GridColumnRule {
-  /** `minmax()` 的下界，像素。 */
-  readonly minTrackPx: number;
   /** 列间距，像素。 */
   readonly gapPx: number;
+  /**
+   * `minmax()` 的下界，像素。
+   * 省略或 `<= 0` 表示这不是 `auto-fill` 网格（例如 Tailwind 的 `grid-cols-N`），
+   * 此时公式无解，回落到 `fallbackColumnCount`。
+   */
+  readonly minTrackPx?: number;
   /**
    * 窄容器上把下界再压到 `(100% - gap) / divisor`，保证至少排得下 `divisor` 列。
    * 0 表示不封顶（纯 `minmax(minTrack, 1fr)`）。
    */
   readonly narrowDivisor?: number;
+  /**
+   * 问不到 CSS 又没有 `auto-fill` 公式可算时按几列记账。
+   *
+   * 固定列数网格（`grid-cols-2 sm:grid-cols-3`）的列数由**视口断点**决定，
+   * 光看容器宽度算不出来；真列数由 `columnCountFromTemplate` 直接问 CSS 拿到，
+   * 这个数只是拿不到时的保守底。取小不取大：列数记少了每行装的条目变少、
+   * 一屏因此多挂几行，宁可多挂也不能少挂。
+   */
+  readonly fallbackColumnCount?: number;
 }
 
 /**
@@ -54,14 +67,30 @@ export function autoFillColumnCount(
   containerWidth: number,
   rule: GridColumnRule,
 ): number {
-  const { minTrackPx, gapPx, narrowDivisor = 0 } = rule;
-  if (!(containerWidth > 0) || !(minTrackPx > 0)) return 1;
+  const { minTrackPx = 0, gapPx, narrowDivisor = 0, fallbackColumnCount } = rule;
+  const fallback = Math.max(1, Math.floor(fallbackColumnCount || 1));
+  if (!(containerWidth > 0) || !(minTrackPx > 0)) return fallback;
   const narrowCap =
     narrowDivisor > 0
       ? Math.max(1, (containerWidth - gapPx) / narrowDivisor)
       : Number.POSITIVE_INFINITY;
   const track = Math.min(minTrackPx, narrowCap);
   return Math.max(1, Math.floor((containerWidth + gapPx) / (track + gapPx)));
+}
+
+/**
+ * 一个 `rem` 现在是多少像素。
+ *
+ * 消费方的列规则是拿 `rem` 写的（`min(12rem, …)`、`gap-2.5`），但本原语只认像素。
+ * 换算必须在运行时做：根字号是站点主题的一部分，31 个租户站不保证都是 16px。
+ * 服务端没有 `document`，返回浏览器默认值 16。
+ */
+export function pixelsPerRem(): number {
+  if (typeof window === "undefined" || typeof document === "undefined") return 16;
+  const size = parseFloat(
+    window.getComputedStyle(document.documentElement).fontSize,
+  );
+  return size > 0 ? size : 16;
 }
 
 /** 从 `getComputedStyle().gridTemplateColumns` 数出真列数。数不出来返回 0。 */
@@ -175,27 +204,27 @@ export function useVirtualGrid({
   estimatedRowHeight = 208,
   overscanScreens = 1,
 }: VirtualGridOptions): VirtualGridResult {
-  const [columnWidth, setColumnWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
   const [measuredColumns, setMeasuredColumns] = useState(0);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const pendingFocusRef = useRef<number | null>(null);
 
   const columnCount = Math.max(
     1,
-    measuredColumns || autoFillColumnCount(columnWidth, rule),
+    measuredColumns || autoFillColumnCount(containerWidth, rule),
   );
   const rowCount = Math.ceil(itemCount / columnCount);
 
   const estimate = useMemo(() => {
     if (typeof estimatedRowHeight === "function") {
       const width =
-        columnWidth > 0
-          ? (columnWidth - rule.gapPx * (columnCount - 1)) / columnCount
+        containerWidth > 0
+          ? (containerWidth - rule.gapPx * (columnCount - 1)) / columnCount
           : 0;
       return estimatedRowHeight(Math.max(0, width));
     }
     return estimatedRowHeight;
-  }, [columnCount, columnWidth, estimatedRowHeight, rule.gapPx]);
+  }, [columnCount, containerWidth, estimatedRowHeight, rule.gapPx]);
 
   /**
    * 渲染期写、layout effect 期读。测量回调必须是稳定引用（否则 `useVirtualList`
@@ -270,7 +299,7 @@ export function useVirtualGrid({
     if (!container || typeof window === "undefined") return;
     const read = () => {
       const width = container.clientWidth;
-      setColumnWidth(width);
+      setContainerWidth(width);
       setMeasuredColumns(
         columnCountFromTemplate(
           window.getComputedStyle(container).gridTemplateColumns,

@@ -15,8 +15,9 @@
 // 不再上提到侧栏。
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { browserClient } from "../lib/auth/client";
+import { pixelsPerRem, useVirtualGrid } from "../lib/virtual";
 import { Markdown } from "./Markdown";
 import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
@@ -64,6 +65,26 @@ const KIND_SETS: Record<string, string[]> = {
   audio: ["audio", "music", "voice"],
   threed: ["3d", "threed", "model", "mesh"],
 };
+
+/**
+ * 一页拉多少行。
+ *
+ * 改造前这里是一次 `.limit(500)`，而且 `select("*")` 连 markdown 正文一起拉——
+ * 库一大，首屏就要等一份几 MB 的响应，拿回来之后再全量渲染成 DOM。
+ * 只做虚拟化不改拉取，等于把浪费从渲染挪到网络（任务书 W06 §P2）。
+ *
+ * 60 是一屏 3 列 × 约 5 行的两倍多：第一页一定填满视口且还有富余，
+ * 用户不会一进来就看见「继续加载」。
+ */
+const ARTIFACT_PAGE_SIZE = 60;
+
+/**
+ * `%` 与 `_` 在 `ilike` 里是通配符。用户搜 `100%` 时不转义会把它当成
+ * 「100 后面跟任意字符」，搜出一堆无关的东西。
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
 
 /** 统一把 artifact 归一到一种可渲染的预览形态，避免出现空白卡片。 */
 type PreviewKind = "image" | "video" | "audio" | "text" | "link" | "file";

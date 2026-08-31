@@ -13,6 +13,11 @@ import {
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import {
+  pixelsPerRem,
+  useVirtualGrid,
+  type GridColumnRule,
+} from "../lib/virtual";
+import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
@@ -166,6 +171,107 @@ function isOfficialWebsiteTemplate(item: LibraryItem): boolean {
 }
 
 /**
+ * 货架网格的列宽规则。**这一行就是外观本身**：探索页整幅、编辑器窄抽屉、31 个
+ * 租户站的货架全靠它排版，所以它逐字不许动（下面 `VirtualCardGrid` 只往里塞
+ * 占位块，不碰它）。
+ *
+ * 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，也铺在
+ * 编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在抽屉里会判错。
+ * `min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按 12rem 起排（探索页因此从
+ * 写死的 3 列涨到 5 列以上，卡片不再被撑大），窄容器上列宽自动缩到半幅，
+ * **永远至少两列**，抽屉里的观感与过去一致。
+ * 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS 不依赖
+ * 任何一站的 Tailwind 版本或 CSS 重新生成。
+ */
+const CARD_GRID_STYLE = {
+  gridTemplateColumns:
+    "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
+} as const;
+
+/** `min(12rem, …)` 与 `gap-2.5`（0.625rem）换成像素，供列数公式回落时用。 */
+function cardGridRule(): GridColumnRule {
+  const rem = pixelsPerRem();
+  return { minTrackPx: 12 * rem, gapPx: 0.625 * rem, narrowDivisor: 2 };
+}
+
+/**
+ * 货架网格。**只决定挂多少张卡，不决定卡片长什么样。**
+ *
+ * 改造前这里是 `list.map(...)` 全量渲染：库里有多少件就有多少个 DOM 子树，
+ * 素材一多就掉帧。现在只挂视口内 ±1 屏，其余高度由两个跨列占位块顶着，
+ * 滚动条长度与手感和全量渲染时一致。
+ *
+ * **外观不变是结构性的，不是靠小心**：真正排版的仍然是 `CARD_GRID_STYLE` 那行
+ * CSS，本组件只是少挂几个子节点。量不到视口时（服务端渲染、没有布局引擎的环境）
+ * 占位块高度为 0、窗口覆盖全部条目，渲染结果与改造前逐字相同。
+ */
+function VirtualCardGrid({
+  entries,
+  scrollRef,
+  restoreEntryId,
+  onRestored,
+  renderCard,
+}: {
+  entries: readonly WorkspaceLibraryEntry[];
+  scrollRef: { current: HTMLElement | null };
+  /** 从详情返回时要滚回去的那一张。只在**挂载那一刻**取值一次。 */
+  restoreEntryId: string;
+  onRestored: () => void;
+  renderCard: (entry: WorkspaceLibraryEntry) => ReactNode;
+}) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const rule = useMemo(cardGridRule, []);
+  const grid = useVirtualGrid({
+    itemCount: entries.length,
+    containerRef: gridRef,
+    scrollRef,
+    rule,
+    // 卡片 = 4:3 缩略图 + 一行标题（`line-clamp-1`）+ `p-2.5`，再加一个行间距。
+    // 这只是量到真高之前的乐观估值，量到就回填。
+    estimatedRowHeight: (columnWidth) => columnWidth * 0.75 + 46,
+  });
+
+  // 「打开素材 → 返回列表」会把整个货架重新挂载，滚动位置归零：库一大，返回后
+  // 要重新滚很久才能找回刚才那一张。挂载时若带着待恢复的条目就把它滚回视口顶。
+  const restoreTargetRef = useRef(restoreEntryId);
+  const { scrollToIndex, windowed } = grid;
+  useEffect(() => {
+    const target = restoreTargetRef.current;
+    if (!target || !windowed) return;
+    restoreTargetRef.current = "";
+    const index = entries.findIndex((entry) => entry.id === target);
+    if (index >= 0) scrollToIndex(index, "start");
+    onRestored();
+  }, [entries, onRestored, scrollToIndex, windowed]);
+
+  return (
+    <div
+      ref={gridRef}
+      className="grid gap-2.5"
+      data-workspace-card-grid="auto-fill"
+      style={CARD_GRID_STYLE}
+      {...grid.containerProps}
+    >
+      {grid.spacerTop > 0 && (
+        <div
+          aria-hidden="true"
+          data-virtual-spacer="top"
+          style={{ gridColumn: "1 / -1", height: grid.spacerTop }}
+        />
+      )}
+      {entries.slice(grid.startIndex, grid.endIndex).map(renderCard)}
+      {grid.spacerBottom > 0 && (
+        <div
+          aria-hidden="true"
+          data-virtual-spacer="bottom"
+          style={{ gridColumn: "1 / -1", height: grid.spacerBottom }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Shared list/detail shell for Preview, Materials and My Library.
  * Those three areas intentionally share the exact same search, categories,
  * card density, detail header and viewer dispatch. Shelf cards show thumbnail,
@@ -228,7 +334,10 @@ export function WorkspaceLibrary({
   const [viewerNonce, setViewerNonce] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [materialActionState, setMaterialActionState] = useState("");
+  /** 详情返回后要滚回哪一张（虚拟化之后滚动位置不再由浏览器自己保住）。 */
+  const [restoreEntryId, setRestoreEntryId] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
+  const shelfScrollRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const materialActionPendingRef = useRef(false);
   /**
@@ -245,6 +354,8 @@ export function WorkspaceLibrary({
    */
   const [viewerHasZoomableContent, setViewerHasZoomableContent] =
     useState(false);
+
+  const clearRestoreEntry = useCallback(() => setRestoreEntryId(""), []);
 
   const openEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
@@ -370,6 +481,8 @@ export function WorkspaceLibrary({
   const activateEntry = (entry: WorkspaceLibraryEntry) => {
     // Primary card activation is quiet preview detail. Edit lives on the
     // detail header and must not be the card-click primary path.
+    // 记下这一张：详情占满整个组件，返回时货架是重新挂载的，不记就回到顶部。
+    setRestoreEntryId(entry.id);
     openEntry(entry);
   };
 
@@ -771,22 +884,12 @@ export function WorkspaceLibrary({
         ))}
       </div>
     ) : (
-      // 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，
-      // 也铺在编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在
-      // 抽屉里会判错。`min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按
-      // 12rem 起排（探索页因此从写死的 3 列涨到 5 列以上，卡片不再被撑大），
-      // 窄容器上列宽自动缩到半幅，**永远至少两列**，抽屉里的观感与过去一致。
-      // 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS
-      // 不依赖任何一站的 Tailwind 版本或 CSS 重新生成。
-      <div
-        className="grid gap-2.5"
-        data-workspace-card-grid="auto-fill"
-        style={{
-          gridTemplateColumns:
-            "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
-        }}
-      >
-        {list.map((entry) => (
+      <VirtualCardGrid
+        entries={list}
+        scrollRef={shelfScrollRef}
+        restoreEntryId={restoreEntryId}
+        onRestored={clearRestoreEntry}
+        renderCard={(entry) => (
           <WorkspaceCard
             key={entry.id}
             entry={entry}
@@ -795,8 +898,8 @@ export function WorkspaceLibrary({
             accent={accent}
             actions={entryActions?.(entry)}
           />
-        ))}
-      </div>
+        )}
+      />
     );
 
   return (
@@ -815,7 +918,7 @@ export function WorkspaceLibrary({
           {materialActionState}
         </p>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto pt-3">
+      <div ref={shelfScrollRef} className="min-h-0 flex-1 overflow-y-auto pt-3">
         {!hideCategoryChips && categories.length > 1 && (
           <LibraryChips
             chips={visibleCategories}

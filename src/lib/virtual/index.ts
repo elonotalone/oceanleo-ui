@@ -46,6 +46,7 @@ export {
   autoFillColumnCount,
   columnCountFromTemplate,
   nextGridIndex,
+  pixelsPerRem,
   spacerHeights,
   useVirtualGrid,
   type GridColumnRule,
