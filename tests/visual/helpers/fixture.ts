@@ -97,3 +97,29 @@ export async function expectSubjectPresent(
   const detail = (await missing.first().innerText()).trim();
   expect(count, detail).toBe(0);
 }
+
+/**
+ * 覆盖边界的判据。**与 `expectSubjectPresent` 分开是这套闸最要紧的一条纪律。**
+ *
+ * 两种红看起来都是红，但归属完全相反：
+ *
+ *   `expectSubjectPresent` 红 ⇒ owner 还没把主体交出来 ⇒ 记在 owner 头上；
+ *   `expectSubjectCoverable` 红 ⇒ 主体在位，是**这道闸**够不着 ⇒ 记在 W10 头上。
+ *
+ * 混成一条会直接违反 `_COMMON` §8「不许在别人半成品的工作树上给别人下判决」：
+ * W02/W03/W06 今天都**已经交了**，只是走 portal / 挂 effect，
+ * 静态夹具渲染不出。把这说成「W02 缺席」就是记错人头。
+ *
+ * 为什么仍然判红而不是 skip：skip 会从报表里消失，三个月后没人记得这九分之三
+ * 从来没被守过。红着才有人问，问了才会有人去补 hydration 那一步。
+ */
+export async function expectSubjectCoverable(
+  page: Page,
+  caseId: keyof typeof SUBJECTS,
+): Promise<void> {
+  const uncoverable = page.locator("[data-leo-needs-client]");
+  const count = await uncoverable.count();
+  if (count === 0) return;
+  const detail = (await uncoverable.first().innerText()).trim();
+  expect(count, detail).toBe(0);
+}

@@ -39,6 +39,14 @@ export function renderPage({ title, bodyHtml, caseId, owner }) {
     color: #b42318; background: #fef3f2; border: 1px dashed #f97066;
     padding: 12px 16px; border-radius: 8px; white-space: pre-wrap;
   }
+  /* 「在位但静态夹具渲染不出」。**刻意与缺席不同色**：红=owner 还没交，
+     琥珀=闸覆盖不到。两者在截图与人眼复核里都必须一眼分得开，
+     否则已经交卷的人会被当成欠账的人。 */
+  .leo-needs-client {
+    font: 600 13px/1.6 ${FONT_STACK};
+    color: #93370d; background: #fffaeb; border: 1px dashed #f79009;
+    padding: 12px 16px; border-radius: 8px; white-space: pre-wrap;
+  }
 </style>
 </head>
 <body data-leo-case="${escapeHtml(caseId)}" data-leo-owner="${escapeHtml(owner)}">

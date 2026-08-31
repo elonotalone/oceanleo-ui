@@ -14,9 +14,13 @@
 // ============================================================================
 
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { SUBJECTS, missingSubjectMessage } from "./subjects.mjs";
+import {
+  SUBJECTS,
+  missingSubjectMessage,
+  needsClientMessage,
+} from "./subjects.mjs";
 import { escapeHtml, renderPage } from "./page-template.mjs";
 
 const require = createRequire(import.meta.url);
@@ -31,9 +35,38 @@ let domReady = false;
 async function ensureDom() {
   if (domReady) return;
   const fabricRequire = createRequire(require.resolve("fabric/node"));
-  const { JSDOM } = await import(
-    pathToFileURL(fabricRequire.resolve("jsdom")).href
-  );
+
+  /**
+   * `[实测] 2026-08-31` 少了这一段，**九个主体会一起报「缺席」**——包括
+   * `Button` 这种明明就在仓里的。真正的错是
+   * `Cannot find module '../build/Release/canvas.node'`：
+   * `canvas@2.11.2` 装了，但原生绑定没编译过，而 jsdom 20 在
+   * `living/events/MouseEvent-impl.js` 里 `require("canvas")` **没有兜住**这个抛错。
+   *
+   * 于是 `ensureDom()` 抛 → 被 `renderBody` 的外层 catch 收成「主体缺席」→
+   * 一条环境问题伪装成九位 owner 集体没交卷。这正是本闸最不能犯的错。
+   *
+   * 解法照抄仓内既有做法（`tests/anchored-popover.test.mjs:14-26`）：
+   * 加载 jsdom 之前先把 `canvas` 在 require 缓存里替成空对象，加载完立刻还原。
+   * 不是新依赖、不是新技巧，就是这个仓已经在用的那一招。
+   */
+  const canvasEntry = fabricRequire.resolve("canvas");
+  const previousCanvasModule = require.cache[canvasEntry];
+  require.cache[canvasEntry] = {
+    id: canvasEntry,
+    filename: canvasEntry,
+    loaded: true,
+    exports: {},
+  };
+  let JSDOM;
+  try {
+    ({ JSDOM } = await import(
+      pathToFileURL(fabricRequire.resolve("jsdom")).href
+    ));
+  } finally {
+    if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+    else delete require.cache[canvasEntry];
+  }
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     pretendToBeVisual: true,
     url: "https://word.oceanleo.com/",
@@ -65,17 +98,78 @@ async function ensureDom() {
   domReady = true;
 }
 
-/** 解析一个主体的具名导出。模块在、导出不在 ⇒ 返回 null（不抛）。 */
+/**
+ * 源码层面确认某个导出**存在**（不加载，只读源）。
+ *
+ * 存在的理由：`compileModule()` 加载失败**不等于**导出不存在。实测到两种：
+ *   - `src/shell/FloatingContextToolbar.tsx` → `Cannot find module
+ *     '…/src/lib/motion/spring'`（相对 import 没带扩展名，module-bench 解析不到）；
+ *   - `src/shell/MaterialLibrary.tsx` → 落在一个跨 6 个文件的循环依赖里，
+ *     module-bench 的 `data:` 模块表达不了环（它自己的报错就是这么说的）。
+ * 两条**都是本闸这层的限制**，W02 与 W06 的组件明明都在仓里。
+ *
+ * 只靠 import 成败判断，就会把这两位已经交卷的 owner 报成「缺席」。
+ * 那种红比没有闸更坏：它会让人去追一个不存在的欠账。
+ *
+ * 覆盖两种写法（`_COMMON` §7b③：判「不存在」不能只靠一条正则）：
+ * 直接声明 `export const/function/class X`，以及再导出 `export { X } from "…"`。
+ * 再导出只跟一层——够用，且不会把自己变成一个小型打包器。
+ */
+async function sourceDeclaresExport(moduleRelPath, exportName) {
+  const { readFile } = await import("node:fs/promises");
+  const { join, dirname } = await import("node:path");
+  const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  let source;
+  try {
+    source = await readFile(join(REPO_ROOT, moduleRelPath), "utf8");
+  } catch {
+    return false;
+  }
+  const name = exportName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const direct = new RegExp(
+    `export\\s+(?:async\\s+)?(?:const|let|function|class)\\s+${name}\\b`,
+  );
+  if (direct.test(source)) return true;
+  // `export { X } from "./y"` / `export { X }`
+  const reexport = new RegExp(`export\\s*\\{[^}]*\\b${name}\\b[^}]*\\}`);
+  return reexport.test(source);
+}
+
+/**
+ * 解析一个主体的具名导出。
+ *
+ * 三种结局，**必须分得开**（见 `subjects.mjs` 抬头的 `render` 一栏）：
+ *   `{ kind: "ok" }`          拿到组件了；
+ *   `{ kind: "absent" }`      源码里确实没有这个导出 ⇒ owner 还没交；
+ *   `{ kind: "load-failed" }` 源码里有，但本闸加载不动 ⇒ 记闸的账，不记 owner 的。
+ */
 async function resolveSubject(key) {
   const subject = SUBJECTS[key];
-  if (!subject || !subject.module) return null;
-  const { compileModule } = await import("../../helpers/module-bench.mjs");
-  const url = await compileModule(subject.module);
-  const mod = await import(url);
-  const exported = mod?.[subject.exportName];
-  return typeof exported === "function" || typeof exported === "object"
-    ? exported
-    : null;
+  if (!subject || !subject.module) return { kind: "absent", error: null };
+  const declared = await sourceDeclaresExport(subject.module, subject.exportName);
+  try {
+    const { compileModule } = await import("../../helpers/module-bench.mjs");
+    const url = await compileModule(subject.module);
+    const mod = await import(url);
+    const exported = mod?.[subject.exportName];
+    if (typeof exported === "function" || typeof exported === "object") {
+      return { kind: "ok", component: exported, error: null };
+    }
+    return {
+      kind: declared ? "load-failed" : "absent",
+      component: null,
+      error: declared
+        ? `模块加载成功但取不到 \`${subject.exportName}\`（源码里声明了它）。`
+        : null,
+    };
+  } catch (error) {
+    const message = error?.message ?? String(error);
+    return {
+      kind: declared ? "load-failed" : "absent",
+      component: null,
+      error: message,
+    };
+  }
 }
 
 /**
@@ -100,6 +194,11 @@ const FIXTURE_PROPS = {
     open: state !== "exit",
     anchorRect: { top: 120, left: 200, width: 96, height: 32 },
   }),
+  /**
+   * `[实测]` 对着 `src/ui/Button.tsx:250-267` 的解构逐条核过：
+   * `variant` / `size` / `disabled` / `children` 都在 props 面上，拼写一致。
+   * 文案刻意写成 `variant/size` 而不是「按钮」：截图 diff 里能直接读出是哪一格漂了。
+   */
   button: ({ variant, size, state }) => ({
     variant,
     size,
@@ -109,7 +208,8 @@ const FIXTURE_PROPS = {
   }),
   toast: (kind) => ({ kind, "data-leo-state": kind, children: `${kind} message` }),
   materialGrid: () => ({
-    items: Array.from({ length: SUBJECTS.materialGrid.itemCount }, (_, i) => ({
+    // prop 名是 `materials`（`material-library-view.tsx:95`），不是 `items`。
+    materials: Array.from({ length: SUBJECTS.materialGrid.itemCount }, (_, i) => ({
       id: `m-${i}`,
       name: `素材 ${i}`,
     })),
@@ -120,7 +220,19 @@ const FIXTURE_PROPS = {
     status: state,
     progress: state === "uploading" ? 0.42 : 0,
   }),
-  chunkIsolation: () => ({}),
+  /**
+   * `[实测]` `WorkbenchRouteChunkError` 的 props 面是
+   * `{ kind, attempts, onRetry, onReload }`（`WorkbenchRouteLoading.tsx:38-43`）。
+   * 两个回调给成空函数：静态页点不动它们，但**不给就可能在渲染期解引用报错**，
+   * 那种错会被 try/catch 收成「主体缺席」，等于把 W09 冤枉成没交卷。
+   * `attempts` 给 3：失败态文案要显示重试了几次，给 0 看不出这条信息在不在。
+   */
+  chunkIsolation: (kind) => ({
+    kind,
+    attempts: 3,
+    onRetry: () => {},
+    onReload: () => {},
+  }),
 };
 
 function missingBlock(key, detail) {
@@ -128,6 +240,22 @@ function missingBlock(key, detail) {
     ? `${missingSubjectMessage(key)}\n  实际错误：${detail}`
     : missingSubjectMessage(key);
   return `<div class="leo-missing" data-leo-missing="${escapeHtml(
+    SUBJECTS[key]?.owner ?? "?",
+  )}">${escapeHtml(text)}</div>`;
+}
+
+/**
+ * `render:"needs-client"` 的占位块。
+ *
+ * 刻意用**另一个属性** `data-leo-needs-client`，不复用 `data-leo-missing`：
+ * 两者在报表里必须能分开数，否则「闸覆盖不到」会被当成「owner 没交」，
+ * 而那正是会让人被冤枉的那种错。
+ */
+function needsClientBlock(key, detail) {
+  const text = detail
+    ? `${needsClientMessage(key)}\n  本闸这边的实际拦路错：${detail}`
+    : needsClientMessage(key);
+  return `<div class="leo-needs-client" data-leo-needs-client="${escapeHtml(
     SUBJECTS[key]?.owner ?? "?",
   )}">${escapeHtml(text)}</div>`;
 }
@@ -141,9 +269,24 @@ async function renderBody(key) {
   }
   try {
     await ensureDom();
-    const Component = await resolveSubject(key);
-    if (!Component) return missingBlock(key);
+    const resolved = await resolveSubject(key);
 
+    // 源码里真的没有这个导出 ⇒ owner 还没交。这是唯一记 owner 头上的分支。
+    if (resolved.kind === "absent") return missingBlock(key, resolved.error);
+
+    // 源码里有、本闸加载不动 ⇒ 记闸的账。**绝不能和上一条混**。
+    if (resolved.kind === "load-failed") return needsClientBlock(key, resolved.error);
+
+    /**
+     * 顺序是刻意的：**先确认导出在不在，再谈渲染得出来渲染不出来**。
+     *
+     * 反过来写（一看见 needs-client 就直接返回占位）会让「W02 把组件删了」
+     * 和「W02 交了但本闸覆盖不到」长得一模一样——那样这条用例就永远是同一句话，
+     * 无论对面发生了什么。先解析导出，占位块才有资格说「主体**确实存在**」。
+     */
+    if (subject.render === "needs-client") return needsClientBlock(key, null);
+
+    const Component = resolved.component;
     const React = (await import("react")).default ?? (await import("react"));
     const { renderToStaticMarkup } = await import("react-dom/server");
 
@@ -167,10 +310,18 @@ function fixtureSlots(key) {
   const subject = SUBJECTS[key];
   switch (key) {
     case "button": {
+      /**
+       * 4 variant × 3 size × **2** propStates = 24 槽，不是 60。
+       *
+       * `hover` / `active` / `focus-visible` 刻意不铺槽：它们是浏览器级伪类，
+       * 由 `w04-button-matrix.spec.ts` 用 `locator.hover()` 与键盘 Tab **真实触发**。
+       * 铺一个 `data-leo-state="hover"` 的假槽，等于自己写一份长得像 hover 的 HTML
+       * 再去断言它长得像 hover —— 那守的是夹具自己，一文不值。
+       */
       const slots = [];
       for (const variant of subject.variants) {
         for (const size of subject.sizes) {
-          for (const state of subject.states) {
+          for (const state of subject.propStates) {
             slots.push({
               label: `${variant}-${size}-${state}`,
               props: FIXTURE_PROPS.button({ variant, size, state }),
@@ -181,12 +332,12 @@ function fixtureSlots(key) {
       return slots;
     }
     case "toast":
+    case "chunkIsolation":
       return subject.kinds.map((kind) => ({
         label: kind,
-        props: FIXTURE_PROPS.toast(kind),
+        props: FIXTURE_PROPS[key](kind),
       }));
     case "materialGrid":
-    case "chunkIsolation":
       return [{ label: "default", props: FIXTURE_PROPS[key]() }];
     default:
       return (subject.states ?? ["default"]).map((state) => ({
