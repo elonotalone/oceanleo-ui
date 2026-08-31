@@ -607,6 +607,17 @@ function npv(rate: number, values: readonly number[]): number {
  * numbers move between opens.
  */
 function irr(values: readonly number[], guess: number): number {
+  // 没有正负两向的现金流，方程就没有根。不设这道闸的话，空区域（`IRR(E1:E4)`）
+  // 会让 `at()` 恒等于 0，第一次二分就「收敛」，把区间中点 0.20005 当答案返回
+  // ——一个没有任何意义的有限数。Excel 这里给 `#NUM!`，这也是「要么算出有限数、
+  // 要么如实报错」那条规矩要的：宁可拒绝，不许编一个数出来。
+  if (
+    values.length < 2 ||
+    !values.some((value) => value > 0) ||
+    !values.some((value) => value < 0)
+  ) {
+    throw new FormulaError("#NUM!");
+  }
   const at = (rate: number) =>
     values.reduce(
       (total, value, index) => total + value / (1 + rate) ** index,
@@ -3041,8 +3052,10 @@ export function inspectGridFormula(
         // §规范三: the verdict is conditional now. A stamp in scope means the
         // answer is pinned to the document rather than to the host clock, so
         // the name may run and is recorded for the recalc graph. No stamp is
-        // still a rejection — fail-closed, never a silent fall back to
-        // `Date.now()`. `RANDARRAY` is the exception that stays rejected
+        // still a rejection — fail-closed, never a silent fall back to the
+        // host clock. (Spelled out rather than named: the C-4 closed-subset
+        // assertion greps this file for that API and must only ever fire on a
+        // real call.) `RANDARRAY` is the exception that stays rejected
         // whatever the stamp says: it returns a dynamic array, and the spill
         // semantics that would need are not in this wave.
         if (!stamped || SPILL_REQUIRED.has(token.value)) {

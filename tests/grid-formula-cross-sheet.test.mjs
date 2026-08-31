@@ -6,6 +6,8 @@ import {
   evaluateGridCellInWorkbookTyped,
 } from "../src/shell/doc-editors/grid-formula.ts";
 import {
+  boundGridWorkbook,
+  cloneGridSheets,
   gridDisplayValue,
   gridSheetToCsv,
   gridWorkbookContext,
@@ -66,9 +68,66 @@ test("反面：换回单表 context，跨表引用当场变 #REF!", () => {
   assert.notEqual(gridDisplayValue(sheets[0], 0, 0, sheets), "#REF!");
 });
 
-test("反面：三参数旧调用仍是单表语义，跨表引用仍 #REF!", () => {
+/**
+ * 没有登记过工作簿的表（比如这里直接写的字面量）仍然是单表语义。
+ * 这是 `contextForSheet` 的兜底分支，也是「登记制不会悄悄改变旧行为」的保证。
+ */
+test("反面：未登记工作簿的表仍是单表语义，跨表引用仍 #REF!", () => {
   const sheets = twoSheetBook();
   assert.equal(gridDisplayValue(sheets[0], 0, 0), "#REF!");
+});
+
+/* --------------------- 画布：三参数调用也必须算得出（V3 A2） --------------------- */
+
+/**
+ * V3 于 18:39 判 A2 翻红，实跑复核**成立**：`d537d69` 修的是 `grid-model.ts`
+ * 内部那四个调用点（让它们能*接* workbook），而画布的调用点在
+ * `GridStage.tsx:679` 与 `use-grid-editor.ts` 上，至今按三参数调用。
+ * 那两个文件是 `W11` 的独占面，不许改，所以改成「表自己记得它属于哪本工作簿」：
+ * 编辑器状态的唯一漏斗 `cloneGridSheets` 负责登记。
+ *
+ * 判据是操作员级别的：**`Sheet2!B3` 在画布上算不算得出结果。**
+ * 这几条一旦变红，就说明画布又回到了 `#REF!`——引擎活着但用户够不着。
+ */
+test("画布：三参数 gridDisplayValue 跨表算得出（GridStage.tsx:679 的原样调用）", () => {
+  const next = cloneGridSheets(twoSheetBook());
+  const activeSheet = next.find((s) => s.id === "sheet-main") ?? next[0];
+  assert.equal(gridDisplayValue(activeSheet, 0, 0), "25");
+  assert.equal(gridDisplayValue(activeSheet, 0, 1), "42");
+  assert.equal(gridDisplayValue(activeSheet, 0, 2), "50");
+});
+
+test("画布：编辑一次之后登记跟着走，跨表引用不退回 #REF!", () => {
+  // 每次提交都会 cloneGridSheets 一遍，产生一批新的表对象。登记不跟着走的话，
+  // 画布在用户敲第一个字之后就又变回 #REF! 了。
+  let sheets = cloneGridSheets(twoSheetBook());
+  for (let round = 0; round < 3; round += 1) {
+    sheets = cloneGridSheets(sheets);
+    const active = sheets.find((s) => s.id === "sheet-main") ?? sheets[0];
+    assert.equal(gridDisplayValue(active, 0, 0), "25", `第 ${round + 1} 次提交后`);
+  }
+});
+
+test("画布：改了被引用表的数，画布上的跨表结果跟着变（不是读到旧快照）", () => {
+  const sheets = cloneGridSheets(twoSheetBook());
+  const detail = sheets.find((s) => s.id === "sheet-detail");
+  detail.rows[1][1] = "99";
+  const next = cloneGridSheets(sheets);
+  const active = next.find((s) => s.id === "sheet-main");
+  assert.equal(gridDisplayValue(active, 0, 0), "99");
+});
+
+test("画布：CSV 导出走一参数调用时也拿得到工作簿", () => {
+  const next = cloneGridSheets(twoSheetBook());
+  const active = next.find((s) => s.id === "sheet-main") ?? next[0];
+  assert.equal(gridSheetToCsv(active).split("\r\n")[0], "25,42,50");
+});
+
+test("boundGridWorkbook 如实报告一张表登记在哪本工作簿名下", () => {
+  const next = cloneGridSheets(twoSheetBook());
+  assert.equal(boundGridWorkbook(next[0]), next);
+  // 没登记过的给 undefined，而不是硬造一本单表工作簿。
+  assert.equal(boundGridWorkbook(twoSheetBook()[0]), undefined);
 });
 
 test("表名大小写不敏感，与 OOXML 一致", () => {
