@@ -44,6 +44,8 @@ import test from "node:test";
 
 import ts from "typescript";
 
+import { measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const SRC = join(REPO, "src");
@@ -112,7 +114,12 @@ function stateWritesIn(node) {
  * 分开报是为了让下限判据能对着**整群**断言，而不是对着「还没被恒定包装的那一部分」——
  * 后者会被每一次正当的修复推低，逼人反复调小下限，下限也就不再证明任何事。
  */
-function scanSource(absolutePath) {
+/**
+ * `repoRoot` 参数化是给末尾那条基线自检用的：它要拿**同一套口径**去量
+ * `BASELINE_COMMIT` 解出来的另一棵树。登记键（`file`）必须相对各自的仓根算，
+ * 否则跨树对不上。
+ */
+function scanSource(absolutePath, repoRoot = REPO) {
   const text = readFileSync(absolutePath, "utf8");
   const sourceFile = ts.createSourceFile(
     absolutePath,
@@ -122,7 +129,7 @@ function scanSource(absolutePath) {
     ts.ScriptKind.TSX,
   );
   const stable = stableCallbackNames(sourceFile);
-  const file = relative(REPO, absolutePath).split("\\").join("/");
+  const file = relative(repoRoot, absolutePath).split("\\").join("/");
   const violations = [];
   const memoSites = [];
   const stableMemoSites = [];
@@ -170,17 +177,24 @@ function typeScriptFilesUnder(dir, out = []) {
   return out;
 }
 
-function scanTree(dir) {
+function scanTree(dir, repoRoot = REPO) {
   const violations = [];
   const memoSites = [];
   const stableMemoSites = [];
-  for (const file of typeScriptFilesUnder(dir).sort()) {
-    const found = scanSource(file);
+  const scanned = typeScriptFilesUnder(dir).sort();
+  for (const file of scanned) {
+    const found = scanSource(file, repoRoot);
     violations.push(...found.violations);
     memoSites.push(...found.memoSites);
     stableMemoSites.push(...found.stableMemoSites);
   }
-  return { violations, memoSites, stableMemoSites };
+  return {
+    violations,
+    memoSites,
+    stableMemoSites,
+    scannedFiles: scanned.length,
+    present: new Set(scanned.map((file) => relative(repoRoot, file).split("\\").join("/"))),
+  };
 }
 
 /** 登记键：文件 + 命中的 provider 依赖名。对行号漂移与改名重构免疫。 */
@@ -230,6 +244,26 @@ const PENDING_OTHER_OWNERS = [];
  * W20 交付时实测 11；W19 清掉 1 处、W25 清掉 10 处之后实测 0。
  */
 const PENDING_BUDGET = 0;
+
+/**
+ * 「这批现场扫描器都看见了」的取样下限。**刻意写成下限而不是等号**，理由见用到它的
+ * 那条用例——无关重构不该天天来改这个数。
+ *
+ * 但下限也是冻结的数字，所以末尾那条基线自检会确认它在 `BASELINE_COMMIT` 的干净树上
+ * **同样成立**（仍按下限判，不改成等号，免得跟那条设计意图打架）。
+ */
+const MEMO_SITE_FLOOR = 110;
+const MEMO_WRITING_FLOOR = 80;
+
+/**
+ * 取 `PENDING_BUDGET` / `W20_CLEARED_FILES` / 上面两个下限时所在的 commit。
+ * `3550ebc` = `W35` 接第二棒时的 `main`（`b43649c` 把 `AgentChat.tsx:873` 那处
+ * 新引信修掉之后，`main` 上这道闸的欠账才真的是 0）。
+ *
+ * ⚠️ 与那三样是**一组**，改一个就要改其余的：末尾那条自检会把这个 commit 的树
+ * 解出来重量一遍。理由见 `_COMMON.md §7b⑪`。
+ */
+const BASELINE_COMMIT = "3550ebc255dd0b21bd97cff5cbed2f6e6042f9fa";
 
 /** W20 本轮清干净的 11 个文件：谁把 tt 放回这些 effect 的依赖里，立刻红。 */
 const W20_CLEARED_FILES = [
@@ -350,10 +384,13 @@ test("正面用例：真实仓里那批 useMemo / useCallback 带 tt 全过", ()
   // 而不是把下限调小：下限要证明的是「这批现场扫描器都看见了」，
   // 不是「还有多少处没被修好」。
   assert.ok(
-    allMemoSites.length >= 110,
+    allMemoSites.length >= MEMO_SITE_FLOOR,
     `memo/callback 带 tt 只扫到 ${allMemoSites.length} 处`,
   );
-  assert.ok(writing.length >= 80, `其中体内写 state 的只扫到 ${writing.length} 处`);
+  assert.ok(
+    writing.length >= MEMO_WRITING_FLOOR,
+    `其中体内写 state 的只扫到 ${writing.length} 处`,
+  );
   // 恒定包装那一部分必须真的在：它既是 W13/W25 修法仍然活着的实证，也证明上面那条
   // 下限不是靠「把口径放宽到一个空集合」凑过去的。
   assert.ok(
@@ -362,6 +399,77 @@ test("正面用例：真实仓里那批 useMemo / useCallback 带 tt 全过", ()
   );
   const leaked = srcScan.violations.filter((site) => MEMO_HOOKS.has(site.hook));
   assert.deepEqual(leaked, [], "useMemo / useCallback 被当成 effect 判红了");
+});
+
+test("基线自检：预算、清单与取样下限在 BASELINE_COMMIT 那棵干净树上同样成立", () => {
+  const probe = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: ["src"],
+    // 扫描面全在本仓 `src/` 之内，解到 /tmp 不会塌（helper 头注释里那条跨仓警告
+    // 说的是 `i18n-tt-key-coverage` 那一类，本闸不适用）。
+    measure: (root) => {
+      const measured = scanTree(join(root, "src"), root);
+      const allMemoSites = [...measured.memoSites, ...measured.stableMemoSites];
+      return {
+        scannedFiles: measured.scannedFiles,
+        present: measured.present,
+        violations: measured.violations.map((s) => `${s.file}:${s.line} deps=[${s.providerDeps}]`),
+        memoSites: allMemoSites.length,
+        writing: allMemoSites.filter((s) => s.writes.length > 0).length,
+        stable: measured.stableMemoSites.length,
+      };
+    },
+  });
+  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
+  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
+
+  // 正对照：先证明我确实扫到了那棵树。零基线的闸尤其需要这一条——
+  // 空目录上「实测 0 处引信」与真值 0 长得一模一样。
+  assert.ok(
+    probe.value.scannedFiles >= 400,
+    `在 ${BASELINE_COMMIT.slice(0, 7)} 的树上只扫到 ${probe.value.scannedFiles} 个 ts/tsx，` +
+      "src/ 的规模应当在 600 上下——解包范围不对，这条自检等于没跑",
+  );
+
+  assert.deepEqual(
+    probe.value.violations,
+    [],
+    `${BASELINE_COMMIT.slice(0, 7)} 的**干净检出**上还有引信，而 PENDING_BUDGET 写着 ` +
+      `${PENDING_BUDGET}。\n` +
+      "上面那条业务断言是照工作树判的，绿只能说明「你这棵树上没有」——\n" +
+      "别人未提交的改动恰好抹掉一处，它就会替 HEAD 上真实存在的欠账背书（_COMMON.md §7b⑪）。",
+  );
+
+  // 两个下限**仍按下限判**（不改成等号，那会跟「不让无关重构天天改这个数」打架），
+  // 但必须在干净检出上也过得去：过不去说明它们当初是在别人的在途文件上量的。
+  assert.ok(
+    probe.value.memoSites >= MEMO_SITE_FLOOR,
+    `MEMO_SITE_FLOOR 写的是 ${MEMO_SITE_FLOOR}，但 ${BASELINE_COMMIT.slice(0, 7)} 的` +
+      `干净检出上只扫到 ${probe.value.memoSites} 处 ⇒ 这个下限取自脏工作树`,
+  );
+  assert.ok(
+    probe.value.writing >= MEMO_WRITING_FLOOR,
+    `MEMO_WRITING_FLOOR 写的是 ${MEMO_WRITING_FLOOR}，但 ${BASELINE_COMMIT.slice(0, 7)} 的` +
+      `干净检出上只扫到 ${probe.value.writing} 处 ⇒ 这个下限取自脏工作树`,
+  );
+  assert.ok(
+    probe.value.stable > 0,
+    "干净检出上一处恒定包装都没扫到：W13/W25 的修法要么被回退了，要么 stable 判定失灵",
+  );
+
+  // `W20_CLEARED_FILES` 声称「这 11 处已清干净」。文件一旦改名或删除，那条登记就
+  // 永远绿（`W35` 在 `module-bench-gate` 上刚逮到 4 条同类死登记）。判干净检出，
+  // 不判工作树——照工作树判，别人未提交的新增/删除都会替这份清单说话。
+  const stale = W20_CLEARED_FILES.filter((file) => !probe.value.present.has(file));
+  assert.deepEqual(
+    stale,
+    [],
+    `这些文件已经不在 ${BASELINE_COMMIT.slice(0, 7)} 里了，W20_CLEARED_FILES 却还留着 ⇒ 永远绿。\n` +
+      "先用 `git log --diff-filter=D -- <路径>` 分清是删除还是改名：\n" +
+      "  · 删除 ⇒ 摘掉这几条，它们已无可保护；\n" +
+      "  · 改名 ⇒ **保护是静默丢掉的**，把新名字换进来，别直接删。",
+  );
 });
 
 test("白名单确实能登记：登记后这一处不再判红，另一处照红", () => {
