@@ -1,11 +1,15 @@
 // ===========================================================================
-// gen-theme-css.mjs — 从 theme-config.ts 的令牌数据生成特色主题 CSS，写进 globals.css。
+// gen-theme-css.mjs — 从 theme-config.ts / motion.ts 的令牌数据生成 CSS，写进 globals.css。
 // ---------------------------------------------------------------------------
 // 主题体系 v3（数据驱动）：加/改一个特色主题 = 改 theme-config.ts 的 THEME_TOKENS 数据，
 // 然后跑本脚本重新生成 globals.css 里 THEME:GENERATED 标记区内的 `html.<slug>{…}` 段。
 // 决策见 oceandino repo docs/architecture/oceanleo-theme-two-tiers-data-driven.md。
 //
-// 机制：theme-config.ts 自包含（零 import），用 tsc 单文件编译成临时 ESM 后 import 取数据。
+// 动效 token（2026-08-31）挂在同一条管线上：数据源 src/theme/motion.ts，规范
+// docs/architecture/motion-system.md。规范明令「不新建第二个 CSS 文件」，所以动效
+// token 与配色块共用这一个标记区，动效在前、配色在后。
+//
+// 机制：两份数据源都自包含（零 import），用 tsc 单文件编译成临时 ESM 后 import 取数据。
 // 用法：node scripts/gen-theme-css.mjs   （由 package.json 的 build:themes 调用）
 // ===========================================================================
 import { execSync } from "node:child_process";
@@ -17,19 +21,21 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const CONFIG_TS = join(ROOT, "src/theme/theme-config.ts");
+const MOTION_TS = join(ROOT, "src/theme/motion.ts");
 const GLOBALS = join(ROOT, "src/theme/globals.css");
 const START = "/* THEME:GENERATED:START — do not edit by hand; run npm run build:themes */";
 const END = "/* THEME:GENERATED:END */";
 
-// 1) 单文件编译 theme-config.ts → 临时 ESM（它自包含、无 import，可独立编译）。
+// 1) 单文件编译两份数据源 → 临时 ESM（都自包含、无 import，可独立编译）。
 const tmp = mkdtempSync(join(tmpdir(), "leo-theme-"));
 const tsc = join(ROOT, "node_modules/.bin/tsc");
 execSync(
-  `"${tsc}" "${CONFIG_TS}" --module esnext --target es2020 --moduleResolution bundler --outDir "${tmp}"`,
+  `"${tsc}" "${CONFIG_TS}" "${MOTION_TS}" --module esnext --target es2020 --moduleResolution bundler --outDir "${tmp}"`,
   { stdio: "inherit" },
 );
 const mod = await import(pathToFileURL(join(tmp, "theme-config.js")).href);
 const { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, DARK_VARIANT_THEMES, LIGHT_VARIANT_THEMES } = mod;
+const motion = await import(pathToFileURL(join(tmp, "motion.js")).href);
 
 // 2) 生成器：深色配色包 → 一段 `html.<slug>`（复用 html.dark 覆盖层，只换 --leo-d-* 令牌）。
 function darkBlock(slug, t) {
@@ -188,10 +194,101 @@ function withAlpha(color, a) {
   return color;
 }
 
-// 3) 拼装：深色组 + 浅色组（顺序 = 登记顺序，稳定 diff）。
+// 动效 token 段（motion-system.md §规范一）。数据全部来自 src/theme/motion.ts。
+function declList(tokens, indent = "  ") {
+  const width = Math.max(...tokens.map((t) => t.name.length));
+  return tokens
+    .map((t) => `${indent}${(t.name + ":").padEnd(width + 2)}${t.value};`.padEnd(46) + ` /* ${t.use} */`)
+    .join("\n");
+}
+
+function motionBlock() {
+  const {
+    MOTION_DURATION_TOKENS,
+    MOTION_EASING_TOKENS,
+    MOTION_MOVE_TOKENS,
+    MOTION_STAGGER_TOKENS,
+    MOTION_LOOP_TOKENS,
+    MOTION_AMPLITUDE_TOKENS,
+    REDUCED_MOTION_ZEROED,
+    REDUCED_MOTION_LOOP,
+    SPRING_SOURCE,
+    springLinearStops,
+    createSpring,
+  } = motion;
+
+  const [idealMs] = createSpring(SPRING_SOURCE);
+
+  return `
+/* ── 动效 token（motion-system.md §规范一）──────────────────────────────────
+   数据源 src/theme/motion.ts；改值改那里再跑 npm run build:themes，手改本段无效。
+   靶子（01-verified-facts.md §2.3）：607 条裸 transition 对 62 条显式时长，约 90%
+   的动效跑在 Tailwind 默认的同一档上——同速同节奏、没有层级，这就是「死板」。
+   层级规则比数值本身重要：同一视觉层级用同一档，跨层级差【恰好一档】。 */
+:root {
+  /* 时长阶梯（六档） */
+${declList(MOTION_DURATION_TOKENS)}
+
+  /* 曲线（五条，第五条 --leo-ease-spring 见下方 @supports） */
+${declList(MOTION_EASING_TOKENS)}
+
+  /* 入场位移幅度 */
+${declList(MOTION_MOVE_TOKENS)}
+
+  /* 列表错峰 */
+${declList(MOTION_STAGGER_TOKENS)}
+
+  /* 循环动效周期。全部长于阶梯顶格 520ms，故不进六档阶梯，单列一组；
+     值逐字沿用 token 化之前 globals.css 里的现值。 */
+${declList(MOTION_LOOP_TOKENS)}
+
+  /* 载荷指示器的几何幅度——reduced-motion 下「降幅」降的就是这两个。 */
+${declList(MOTION_AMPLITUDE_TOKENS)}
+
+  /* --leo-ease-spring 的降级值：不支持 linear() 时退回品牌曲线。 */
+  --leo-ease-spring: var(--leo-ease-emphasis);
+}
+
+/* --leo-ease-spring —— 物理弹簧的 linear() 近似。
+   生成参数（motion-system.md §linear() 弹簧曲线的生成方式，原样留档供后人复算）：
+     stiffness: ${SPRING_SOURCE.stiffness}    damping: ${SPRING_SOURCE.damping}    mass: ${SPRING_SOURCE.mass}    velocity: ${SPRING_SOURCE.velocity}
+     简化 (RDP tolerance): ${SPRING_SOURCE.simplify}    舍入: ${SPRING_SOURCE.round} 位小数
+   这串数字**不是手写的**：算法与 Linear Easing Generator
+   (linear-easing-generator.netlify.app) 逐行一致，实现在 src/theme/motion.ts::
+   springLinearStops()，每次 npm run build:themes 重算。搬算法而不是贴产物，是为了
+   让参数改动在 CI 里可复算——贴一串数字做不到这件事。
+   该弹簧的理想时长 ${idealMs.toFixed(3)}ms（createSpring 的 duration 产物），供调用方参考。 */
+@supports (animation-timing-function: linear(0, 1)) {
+  :root {
+    --leo-ease-spring: linear(${springLinearStops(SPRING_SOURCE)});
+  }
+}
+
+/* ── reduced-motion：一次性全局降级（motion-system.md §reduced-motion）──────
+   token 化之前全仓 332,746 行里只有 2 处 prefers-reduced-motion，且只覆盖
+   v-fade/scale/pop 与 .v-page。降级放在 token 层，组件不必各自处理。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+${declList(REDUCED_MOTION_ZEROED, "    ")}
+  }
+
+  /* 载荷指示器例外：v-spin / v-shimmer / v-bounce-dot / v-pulse-dot 表达的是
+     「系统还在做事」。把它们归零，用户会以为界面卡死——那不是无障碍，那是故障。
+     所以这四条【保留动画，只放慢一倍并把几何幅度减半】，不归零。
+     转圈只放慢不降幅：它没有几何幅度，「降幅」对它等于停转。 */
+  :root {
+${declList(REDUCED_MOTION_LOOP, "    ")}
+  }
+}
+`;
+}
+
+// 3) 拼装：动效 token + 深色组 + 浅色组（顺序 = 登记顺序，稳定 diff）。
 let css = `${START}\n`;
-css += `/* 本区由 scripts/gen-theme-css.mjs 从 theme-config.ts 的 THEME_TOKENS 生成。 */\n`;
-css += `/* 深色特色主题（生效类名 dark <slug>，复用 html.dark 覆盖层，只换配色令牌）。 */\n`;
+css += `/* 本区由 scripts/gen-theme-css.mjs 生成：动效 token 来自 motion.ts，`;
+css += `配色来自 theme-config.ts 的 THEME_TOKENS。 */\n`;
+css += motionBlock();
+css += `\n/* 深色特色主题（生效类名 dark <slug>，复用 html.dark 覆盖层，只换配色令牌）。 */\n`;
 for (const slug of DARK_VARIANT_THEMES) css += darkBlock(slug, DARK_THEME_TOKENS[slug]);
 css += `\n/* 浅色特色主题（生效类名 <slug>，浅色基座，覆盖浅色语义令牌 + 浅底渐变）。 */\n`;
 for (const slug of LIGHT_VARIANT_THEMES) css += lightBlock(slug, LIGHT_THEME_TOKENS[slug]);
@@ -209,5 +306,5 @@ if (si !== -1 && ei !== -1) {
 writeFileSync(GLOBALS, globals);
 rmSync(tmp, { recursive: true, force: true });
 console.log(
-  `[gen-theme-css] wrote ${DARK_VARIANT_THEMES.length} dark + ${LIGHT_VARIANT_THEMES.length} light theme blocks into globals.css`,
+  `[gen-theme-css] wrote motion tokens + ${DARK_VARIANT_THEMES.length} dark + ${LIGHT_VARIANT_THEMES.length} light theme blocks into globals.css`,
 );

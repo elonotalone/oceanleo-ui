@@ -942,7 +942,103 @@ html.dark {
 }
 
 /* THEME:GENERATED:START — do not edit by hand; run npm run build:themes */
-/* 本区由 scripts/gen-theme-css.mjs 从 theme-config.ts 的 THEME_TOKENS 生成。 */
+/* 本区由 scripts/gen-theme-css.mjs 生成：动效 token 来自 motion.ts，配色来自 theme-config.ts 的 THEME_TOKENS。 */
+
+/* ── 动效 token（motion-system.md §规范一）──────────────────────────────────
+   数据源 src/theme/motion.ts；改值改那里再跑 npm run build:themes，手改本段无效。
+   靶子（01-verified-facts.md §2.3）：607 条裸 transition 对 62 条显式时长，约 90%
+   的动效跑在 Tailwind 默认的同一档上——同速同节奏、没有层级，这就是「死板」。
+   层级规则比数值本身重要：同一视觉层级用同一档，跨层级差【恰好一档】。 */
+:root {
+  /* 时长阶梯（六档） */
+  --leo-dur-1: 90ms;                           /* 即时反馈：按下、勾选、开关拨动 */
+  --leo-dur-2: 140ms;                          /* 状态变化：hover、颜色、边框 */
+  --leo-dur-3: 200ms;                          /* 小件进出场：tooltip、popover、菜单 */
+  --leo-dur-4: 280ms;                          /* 面板/对话框进场、抽屉 */
+  --leo-dur-5: 380ms;                          /* 页面级、大面形变 */
+  --leo-dur-6: 520ms;                          /* 大幅 morph、庆祝态 */
+
+  /* 曲线（五条，第五条 --leo-ease-spring 见下方 @supports） */
+  --leo-ease-standard:   cubic-bezier(0.2, 0, 0, 1); /* 默认；位置/尺寸变化 */
+  --leo-ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1); /* 入场（从无到有） */
+  --leo-ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15); /* 退场（从有到无） */
+  --leo-ease-emphasis:   cubic-bezier(0.21, 1.02, 0.73, 1); /* 既有品牌曲线，不许改值 */
+
+  /* 入场位移幅度 */
+  --leo-move-xs: 2px;                          /* 极小位移 */
+  --leo-move-sm: 6px;                          /* 入场位移；v-fade-up 沿用此值 */
+  --leo-move-md: 12px;                         /* 较大入场位移 */
+
+  /* 列表错峰 */
+  --leo-stagger:     55ms;                     /* 列表错峰步长；沿用 .v-page 现值 */
+  --leo-stagger-max: 320ms;                    /* 错峰封顶；沿用 .v-page 现值 */
+
+  /* 循环动效周期。全部长于阶梯顶格 520ms，故不进六档阶梯，单列一组；
+     值逐字沿用 token 化之前 globals.css 里的现值。 */
+  --leo-loop-spin:        0.7s;                /* v-spin 转圈一周（载荷指示器） */
+  --leo-loop-shimmer:     1.4s;                /* v-shimmer 骨架微光（载荷指示器） */
+  --leo-loop-bounce-dot:  1.2s;                /* v-bounce-dot 打字点（载荷指示器） */
+  --leo-loop-pulse-dot:   1.6s;                /* v-pulse-dot 状态脉冲（载荷指示器） */
+  --leo-loop-dot-stagger: 0.15s;               /* 打字三点之间的相位差 */
+  --leo-loop-blink:       0.9s;                /* v-blink 光标闪烁（非载荷指示器） */
+  --leo-loop-sheen:       1.8s;                /* v-sheen 掠光（非载荷指示器） */
+  --leo-loop-halo:        2.6s;                /* leo-halo-breathe 光晕呼吸（非载荷指示器） */
+
+  /* 载荷指示器的几何幅度——reduced-motion 下「降幅」降的就是这两个。 */
+  --leo-bounce-rise: 4px;                      /* v-bounce-dot 抬升幅度 */
+  --leo-pulse-ring:  4px;                      /* v-pulse-dot 外环扩散幅度 */
+
+  /* --leo-ease-spring 的降级值：不支持 linear() 时退回品牌曲线。 */
+  --leo-ease-spring: var(--leo-ease-emphasis);
+}
+
+/* --leo-ease-spring —— 物理弹簧的 linear() 近似。
+   生成参数（motion-system.md §linear() 弹簧曲线的生成方式，原样留档供后人复算）：
+     stiffness: 210    damping: 20    mass: 1    velocity: 0
+     简化 (RDP tolerance): 0.0017    舍入: 3 位小数
+   这串数字**不是手写的**：算法与 Linear Easing Generator
+   (linear-easing-generator.netlify.app) 逐行一致，实现在 src/theme/motion.ts::
+   springLinearStops()，每次 npm run build:themes 重算。搬算法而不是贴产物，是为了
+   让参数改动在 CI 里可复算——贴一串数字做不到这件事。
+   该弹簧的理想时长 833.333ms（createSpring 的 duration 产物），供调用方参考。 */
+@supports (animation-timing-function: linear(0, 1)) {
+  :root {
+    --leo-ease-spring: linear(0, 0.007, 0.027 2.1%, 0.111 4.4%, 0.602 13.7%, 0.711, 0.801, 0.877, 0.937, 0.984, 1.017 28.2%, 1.032, 1.043 31.9%, 1.048, 1.05 36.3%, 1.044 40.6%, 1.012 53.4%, 1.001 61.5%, 0.998 71.4%, 1);
+  }
+}
+
+/* ── reduced-motion：一次性全局降级（motion-system.md §reduced-motion）──────
+   token 化之前全仓 332,746 行里只有 2 处 prefers-reduced-motion，且只覆盖
+   v-fade/scale/pop 与 .v-page。降级放在 token 层，组件不必各自处理。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --leo-dur-1:       0ms;                    /* 即时反馈：按下、勾选、开关拨动 */
+    --leo-dur-2:       0ms;                    /* 状态变化：hover、颜色、边框 */
+    --leo-dur-3:       0ms;                    /* 小件进出场：tooltip、popover、菜单 */
+    --leo-dur-4:       0ms;                    /* 面板/对话框进场、抽屉 */
+    --leo-dur-5:       0ms;                    /* 页面级、大面形变 */
+    --leo-dur-6:       0ms;                    /* 大幅 morph、庆祝态 */
+    --leo-stagger:     0ms;                    /* 列表错峰步长；沿用 .v-page 现值 */
+    --leo-stagger-max: 0ms;                    /* 错峰封顶；沿用 .v-page 现值 */
+    --leo-move-xs:     0px;                    /* 极小位移 */
+    --leo-move-sm:     0px;                    /* 入场位移；v-fade-up 沿用此值 */
+    --leo-move-md:     0px;                    /* 较大入场位移 */
+  }
+
+  /* 载荷指示器例外：v-spin / v-shimmer / v-bounce-dot / v-pulse-dot 表达的是
+     「系统还在做事」。把它们归零，用户会以为界面卡死——那不是无障碍，那是故障。
+     所以这四条【保留动画，只放慢一倍并把几何幅度减半】，不归零。
+     转圈只放慢不降幅：它没有几何幅度，「降幅」对它等于停转。 */
+  :root {
+    --leo-loop-spin:       1.4s;               /* 放慢一倍 */
+    --leo-loop-shimmer:    2.8s;               /* 放慢一倍 */
+    --leo-loop-bounce-dot: 2.4s;               /* 放慢一倍 */
+    --leo-loop-pulse-dot:  3.2s;               /* 放慢一倍 */
+    --leo-bounce-rise:     2px;                /* 幅度减半 */
+    --leo-pulse-ring:      2px;                /* 幅度减半 */
+  }
+}
+
 /* 深色特色主题（生效类名 dark <slug>，复用 html.dark 覆盖层，只换配色令牌）。 */
 
 /* ── cyberpunk ─────────────────────────────────────────────────────────────── */
