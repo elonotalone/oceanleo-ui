@@ -7,6 +7,7 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
+import { RichDocCommentRail } from "../doc-editors/richdoc-review/RichDocCommentRail";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
@@ -285,11 +286,39 @@ export function RichDocRoute({
       adapter={{
         id: "richdoc",
         label: editorToolLabel({ type: "richdoc" }),
-        toolbox: {
-          label: "插入",
-          icon: "add",
-          content: <RichDocControls editor={editor} accent={accent} />,
-        },
+        // 申报了 `drawers` 之后 `resolveInlineAdvancedDrawers` 就直接返回它，
+        // `toolbox` 那条合成回落整段不再执行（`inline-advanced-shell-helpers.ts:22`）。
+        // 所以「插入」必须在这里原样重申一遍，漏了它插入面板当场从界面上消失。
+        drawers: [
+          {
+            id: "editor-global",
+            label: "插入",
+            icon: "add",
+            content: <RichDocControls editor={editor} accent={accent} />,
+          },
+          {
+            // 工具栏的「插入批注」只负责建，读/回复/解决三件事只有这条侧栏做得到。
+            id: "richdoc-review",
+            label: "批注",
+            icon: "note",
+            content: (
+              <RichDocCommentRail
+                comments={editor.review.comments}
+                changes={editor.review.changes}
+                activeCommentId={editor.review.activeCommentId}
+                trackChangesEnabled={editor.review.trackChangesEnabled}
+                onFocusComment={editor.review.focusComment}
+                onReply={editor.review.replyToComment}
+                onResolve={editor.review.resolveComment}
+                onRemove={editor.review.removeComment}
+                onAcceptChange={editor.review.acceptChange}
+                onRejectChange={editor.review.rejectChange}
+                onAcceptAll={editor.review.acceptAllChanges}
+                onRejectAll={editor.review.rejectAllChanges}
+              />
+            ),
+          },
+        ],
         contextToolbar: (
           <RichDocContextToolbar editor={editor} accent={accent} />
         ),
