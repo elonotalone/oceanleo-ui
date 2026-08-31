@@ -330,3 +330,110 @@ test("受限扫描器不吃任意 CSS，也不被脚本与注释带偏", () => {
   assert.equal(matrix.rows[1][0].value, "C", "script 内容不进单元格");
   assert.equal(matrix.rows[1][1].value, "D");
 });
+
+/**
+ * 复制方向的公式往返。两个读者，一份剪贴板：
+ * Excel / 邮件读 `<td>` 正文，拿到的是算好的显示值；本编辑器读
+ * `data-grid-formula`，拿回公式本身。`data-grid-origin` 让「粘到别处」
+ * 按位移平移相对引用——Excel 就是这么干的，不平移等于把公式指向旧格子。
+ */
+test("复制出去的公式：外部读到显示值，粘回本编辑器读到公式", () => {
+  const payload = buildGridClipboardPayload({
+    origin: { row: 0, col: 0 },
+    height: 1,
+    width: 2,
+    rows: [
+      [
+        { value: "3", formula: "=A1+1" },
+        { value: "¥1,234.50", format: { type: "currency", decimals: 2 } },
+      ],
+    ],
+  });
+
+  assert.match(payload.html, /data-grid-origin="0:0"/);
+  assert.match(
+    payload.html,
+    />3</,
+    "td 正文必须是显示值，Excel 读的就是这里",
+  );
+  assert.match(payload.html, /data-grid-formula="=A1\+1"/);
+  assert.equal(
+    payload.text,
+    "3\t¥1,234.50",
+    "text/plain 给的是显示值：粘进纯文本编辑器不该是一串公式",
+  );
+
+  const back = parseGridClipboardHtml(payload.html);
+  assert.deepEqual(back.origin, { row: 0, col: 0 });
+  assert.equal(back.rows[0][0].formula, "=A1+1");
+  assert.equal(
+    back.rows[0][1].value,
+    "1234.50",
+    "货币显示值粘回来要还原成可求值的数字，值与格式分开存",
+  );
+});
+
+test("粘到别处：相对引用按位移平移，$ 锁住的不动", () => {
+  const matrix = parseGridClipboardHtml(
+    buildGridClipboardPayload({
+      origin: { row: 0, col: 0 },
+      height: 1,
+      width: 1,
+      rows: [[{ value: "7", formula: "=A1+$B$2+C3" }]],
+    }).html,
+  );
+
+  const plan = planGridPaste(
+    matrix,
+    { firstRow: 2, lastRow: 2, firstCol: 1, lastCol: 1 },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+
+  assert.equal(
+    plan.cells[0].value,
+    "=B3+$B$2+D5",
+    "下移 2 行右移 1 列：A1→B3、C3→D5 跟着走，$B$2 一个字都不许动",
+  );
+});
+
+test("平铺重复时每一块按自己那一格的位移平移", () => {
+  const matrix = parseGridClipboardHtml(
+    buildGridClipboardPayload({
+      origin: { row: 0, col: 0 },
+      height: 2,
+      width: 1,
+      rows: [[{ value: "1", formula: "=A1" }], [{ value: "2", formula: "=A2" }]],
+    }).html,
+  );
+
+  const plan = planGridPaste(
+    matrix,
+    { firstRow: 0, lastRow: 3, firstCol: 0, lastCol: 0 },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+
+  assert.equal(plan.repeatRows, 2, "4 行选区装 2 行剪贴板 = 平铺两次");
+  assert.deepEqual(
+    plan.cells.map((cell) => cell.value),
+    ["=A1", "=A2", "=A3", "=A4"],
+    "第二块整体下移 2 行，不是两块都按同一个位移算",
+  );
+});
+
+test("外部来源没有 origin，公式原样落地不乱平移", () => {
+  const matrix = parseGridClipboardHtml(
+    `<table><tr><td data-grid-formula="=A1+1">3</td></tr></table>`,
+  );
+  assert.equal(matrix.origin, undefined);
+
+  const plan = planGridPaste(
+    matrix,
+    { firstRow: 5, lastRow: 5, firstCol: 5, lastCol: 5 },
+    { maxRows: GRID_MAX_ROWS, maxCols: GRID_MAX_COLS },
+  );
+  assert.equal(
+    plan.cells[0].value,
+    "=A1+1",
+    "不知道人家是从哪儿复制的，就不许猜位移",
+  );
+});

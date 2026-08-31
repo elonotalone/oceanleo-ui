@@ -295,6 +295,11 @@ export function conditionalGridStyle(
 export interface GridClipboardCell {
   value: string;
   format?: GridCellFormat;
+  /**
+   * 单元格原文是公式时的公式本身。`value` 存的是**算出来的显示值**：
+   * 外部应用（Excel、邮件）拿到的是数字，我们自己粘回来时优先用这条。
+   */
+  formula?: string;
   /** >1 表示这是一个合并区的左上角。被覆盖的格子值为空串。 */
   rowSpan?: number;
   colSpan?: number;
@@ -304,6 +309,11 @@ export interface GridClipboardMatrix {
   rows: GridClipboardCell[][];
   height: number;
   width: number;
+  /**
+   * 这块内容被复制时的左上角。只有我们自己写的剪贴板有它，
+   * 用来在粘贴到别处时按位移平移公式里的相对引用（Excel 行为）。
+   */
+  origin?: { row: number; col: number };
 }
 
 /** 一次粘贴要写的所有格子与合并，行列都已按上限截断。 */
@@ -505,7 +515,10 @@ function positiveSpan(value: string | undefined, limit: number): number {
  * 补空串。这与 `use-grid-editor.ts` 的 `mergeSelection()` 语义一致（合并只留
  * 左上角的值），所以粘进来的合并区和本地合并出来的完全同形。
  */
-function expandClipboardSpans(raw: RawClipboardCell[][]): GridClipboardMatrix {
+function expandClipboardSpans(
+  raw: RawClipboardCell[][],
+  origin?: { row: number; col: number },
+): GridClipboardMatrix {
   const placed: (GridClipboardCell | undefined)[][] = [];
   const occupied = new Set<string>();
   let width = 0;
@@ -524,6 +537,7 @@ function expandClipboardSpans(raw: RawClipboardCell[][]): GridClipboardMatrix {
       (placed[row] ||= [])[col] = {
         value: cell.value,
         ...(cell.format ? { format: cell.format } : {}),
+        ...(cell.formula ? { formula: cell.formula } : {}),
         ...(rowSpan > 1 ? { rowSpan } : {}),
         ...(colSpan > 1 ? { colSpan } : {}),
       };
@@ -540,7 +554,16 @@ function expandClipboardSpans(raw: RawClipboardCell[][]): GridClipboardMatrix {
       (_, col) => placed[row]?.[col] ?? { value: "" },
     ),
   );
-  return { rows, height, width };
+  return { rows, height, width, ...(origin ? { origin } : {}) };
+}
+
+/** `data-grid-origin="12:3"` → `{row:12,col:3}`。别人的 HTML 里没有这个属性。 */
+function parseClipboardOrigin(
+  value: string | undefined,
+): { row: number; col: number } | undefined {
+  const match = String(value ?? "").match(/^(\d{1,7}):(\d{1,7})$/);
+  if (!match) return undefined;
+  return { row: Number(match[1]), col: Number(match[2]) };
 }
 
 /**
@@ -559,6 +582,7 @@ export function parseGridClipboardHtml(html: string): GridClipboardMatrix | null
   let tableDepth = 0;
   let finished = false;
   let index = 0;
+  let origin: { row: number; col: number } | undefined;
 
   const closeCell = () => {
     if (!cell || !row) return;
@@ -568,9 +592,11 @@ export function parseGridClipboardHtml(html: string): GridClipboardMatrix | null
       .replace(/[ \t]{2,}/g, " ")
       .trim();
     const format = clipboardCellFormat(cell.attributes, cell.bold);
+    const formula = cell.attributes["data-grid-formula"] || "";
     row.push({
       value: normalizeGridPastedValue(text, format),
       ...(format ? { format } : {}),
+      ...(formula.startsWith("=") ? { formula } : {}),
       rowSpan: positiveSpan(cell.attributes.rowspan, CLIPBOARD_MAX_ROWS),
       colSpan: positiveSpan(cell.attributes.colspan, CLIPBOARD_MAX_COLS),
     });
@@ -640,6 +666,11 @@ export function parseGridClipboardHtml(html: string): GridClipboardMatrix | null
         if (tableDepth <= 0) finished = true;
       } else {
         tableDepth += 1;
+        if (tableDepth === 1) {
+          origin = parseClipboardOrigin(
+            parseTagAttributes(attributeSource)["data-grid-origin"],
+          );
+        }
       }
       continue;
     }
@@ -674,7 +705,7 @@ export function parseGridClipboardHtml(html: string): GridClipboardMatrix | null
   }
   closeRow();
 
-  const matrix = expandClipboardSpans(raw);
+  const matrix = expandClipboardSpans(raw, origin);
   return matrix.height > 0 && matrix.width > 0 ? matrix : null;
 }
 
@@ -769,6 +800,9 @@ export function readGridClipboard(payload: {
  * 三种选区语义（Excel 行为）：
  * 单格 → 以它为左上角铺开；形状一致 → 逐格对应；整数倍 → 平铺重复。
  * 都不是 → 退回「以左上角铺开」而不是报错：宁可多写也不静默丢数据。
+ *
+ * 带 `origin` 的矩阵（= 从本编辑器复制出去的）里的公式按落点位移平移相对引用，
+ * 平铺时每一块各按自己那一格的位移算。外部来源没有 origin，公式原样落地。
  */
 export function planGridPaste(
   matrix: GridClipboardMatrix,
@@ -797,14 +831,26 @@ export function planGridPaste(
   const merges: GridRange[] = [];
   for (let offsetRow = 0; offsetRow < allowedRows; offsetRow += 1) {
     for (let offsetCol = 0; offsetCol < allowedCols; offsetCol += 1) {
-      const source = matrix.rows[offsetRow % height]?.[offsetCol % width];
+      const sourceRow = offsetRow % height;
+      const sourceCol = offsetCol % width;
+      const source = matrix.rows[sourceRow]?.[sourceCol];
       if (!source) continue;
       const row = selection.firstRow + offsetRow;
       const col = selection.firstCol + offsetCol;
+      const origin = matrix.origin;
+      const value = source.formula
+        ? origin
+          ? translateGridFormula(
+              source.formula,
+              row - (origin.row + sourceRow),
+              col - (origin.col + sourceCol),
+            )
+          : source.formula
+        : source.value;
       cells.push({
         row,
         col,
-        value: source.value,
+        value,
         ...(source.format ? { format: source.format } : {}),
       });
       const rowSpan = source.rowSpan ?? 1;
@@ -905,7 +951,9 @@ export function buildGridClipboardPayload(
     .join("\r\n");
 
   const html = [
-    "<table>",
+    matrix.origin
+      ? `<table data-grid-origin="${matrix.origin.row}:${matrix.origin.col}">`
+      : "<table>",
     ...matrix.rows.map((cells, row) =>
       [
         "<tr>",
@@ -916,10 +964,15 @@ export function buildGridClipboardPayload(
           const spans = `${rowSpan > 1 ? ` rowspan="${rowSpan}"` : ""}${
             colSpan > 1 ? ` colspan="${colSpan}"` : ""
           }`;
+          // 公式挂在属性上、显示值留在正文：Excel 与邮件读到的是算好的数字，
+          // 粘回本编辑器时才还原成公式。
+          const formula = cell.formula
+            ? ` data-grid-formula="${escapeHtmlText(cell.formula)}"`
+            : "";
           return [
-            `<td${spans}${clipboardStyleAttribute(cell.format)}>${escapeHtmlText(
-              cell.value,
-            )}</td>`,
+            `<td${spans}${formula}${clipboardStyleAttribute(
+              cell.format,
+            )}>${escapeHtmlText(cell.value)}</td>`,
           ];
         }),
         "</tr>",
