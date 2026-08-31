@@ -465,6 +465,72 @@ export function RichDocContextToolbar({
               },
             ]
           : []),
+        // --- 批注与修订（W14-request.md §1，由 W15 合并进工具栏）-------------
+        {
+          // W14 给的是 `kind: "action"` 加一个弹出输入框拿正文（它的方案 ①）。
+          // 这里落成 `kind: "text"`：本工具栏已有的 `link` 就是这个形状，
+          // 属性面板会渲染成一格输入框，用户敲完回车即提交，不用再造一套弹层。
+          // 空正文的批注在侧栏是一张白卡片（W14 反对方案 ② 的理由），
+          // 所以空串不建批注。
+          id: "richdoc.add-comment",
+          kind: "text",
+          label: tt("插入批注"),
+          icon: "note",
+          // 没有选区时批注锚不上，建出来当场是孤儿。灰掉比建完再报错干脆，
+          // 也就不需要 W14 设想的那条 notify 通道。
+          disabled: !(state.review?.hasSelection ?? false),
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-review",
+          inspectorLabel: tt("批注与修订"),
+          inspectorIcon: "note",
+        },
+        {
+          id: "richdoc.toggle-track-changes",
+          kind: "toggle",
+          value: state.review?.trackChangesEnabled ?? false,
+          label: tt("修订模式"),
+          icon: "case",
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-review",
+          inspectorLabel: tt("批注与修订"),
+          inspectorIcon: "note",
+        },
+        {
+          id: "richdoc.delete-tracked",
+          kind: "action",
+          label: tt("删除（留痕）"),
+          icon: "case",
+          disabled: !(state.review?.hasSelection ?? false),
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-review",
+          inspectorLabel: tt("批注与修订"),
+          inspectorIcon: "note",
+        },
+        {
+          id: "richdoc.accept-all-changes",
+          kind: "action",
+          label: tt("全部接受修订"),
+          icon: "case",
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-review",
+          inspectorLabel: tt("批注与修订"),
+          inspectorIcon: "note",
+        },
+        {
+          id: "richdoc.reject-all-changes",
+          kind: "action",
+          label: tt("全部拒绝修订"),
+          icon: "case",
+          placement: "more",
+          slot: "inspector",
+          inspectorGroup: "richdoc-review",
+          inspectorLabel: tt("批注与修订"),
+          inspectorIcon: "note",
+        },
         ...(inTable
           ? [
               {
@@ -606,7 +672,17 @@ export function RichDocContextToolbar({
           : []),
           ],
     };
-  }, [editor, editor?.state, state.editRevision, tt]);
+    // `trackChangesEnabled` 是审阅 hook 里的 React state，它变的那一次
+    // `editor.state` 可能没动；不列进依赖，开关会一直显示上一次的值
+    // （W14-request.md §1 注意事项 2 点名的坑）。
+  }, [
+    editor,
+    editor?.state,
+    state.editRevision,
+    state.review?.hasSelection,
+    state.review?.trackChangesEnabled,
+    tt,
+  ]);
 
   if (!editor || !context) return null;
   const command = (message: SelectionCommand) => {
@@ -801,6 +877,27 @@ export function RichDocContextToolbar({
             wrap: String(message.value || "top-bottom"),
           })
           .run();
+        break;
+      // --- 批注与修订（W14-request.md §1）---------------------------------
+      // 审阅层自己开事务，这里不接 `chain`，纯转调 `RichDocReviewApi`。
+      case "richdoc.add-comment": {
+        const body = String(message.value || "").trim();
+        if (body) state.review?.addComment(body);
+        break;
+      }
+      case "richdoc.toggle-track-changes":
+        // 现取当前值再取反。关掉修订模式**不会**清除既有标记：
+        // 开关状态与「文档里有没有修订」是两件独立的事。
+        state.review?.setTrackChangesEnabled(!state.review.trackChangesEnabled);
+        break;
+      case "richdoc.delete-tracked":
+        state.review?.deleteSelectionTracked();
+        break;
+      case "richdoc.accept-all-changes":
+        state.review?.acceptAllChanges();
+        break;
+      case "richdoc.reject-all-changes":
+        state.review?.rejectAllChanges();
         break;
     }
   };

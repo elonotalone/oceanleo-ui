@@ -63,6 +63,7 @@ import {
 } from "./richdoc-review/review-types";
 import {
   applyRevisionExportChoice,
+  buildDocxCommentPayload,
   reviewExportBlockMessage,
   reviewExportCommentNotice,
   summarizeReviewForExport,
@@ -495,7 +496,13 @@ export function useRichDocEditor(
   const exportDoc = useCallback(
     async (choice?: RevisionExportChoice) => {
       if (!editor || !requireSourceReady()) return;
-      const summary = summarizeReviewForExport(editor.state.doc, reviewSidecar);
+      // 批注锚点是审阅 mark 的一种，`applyRevisionExportChoice()` 会把它一起摘掉
+      // （`review-marks.ts:36`）。所以**选了修订策略的那一次导出带不了批注**：
+      // 这里如实按这个条件报，而不是无条件宣称「批注已进 docx」。
+      const carriesComments = !choice;
+      const summary = summarizeReviewForExport(editor.state.doc, reviewSidecar, {
+        docxCommentsWired: carriesComments,
+      });
       // 任务书 P4 明文：有未处理修订而调用方没给策略时**拒绝导出**。
       // 「按当前显示状态导出」会把划掉的内容当正文写进 docx——
       // `docx-export.ts` 的白名单不认 `richdocDeletion`，那段字会以普通正文出现。
@@ -508,7 +515,11 @@ export function useRichDocEditor(
         const json = choice
           ? applyRevisionExportChoice(editor.getJSON(), choice)
           : editor.getJSON();
-        const blob = await tiptapJsonToDocxBlob(baseTitle, json);
+        const blob = await tiptapJsonToDocxBlob(baseTitle, json, {
+          comments: carriesComments
+            ? buildDocxCommentPayload(editor.state.doc, reviewSidecar).entries
+            : [],
+        });
         downloadBlob(`${baseTitle}.docx`, blob);
         // 批注进不了 docx 时明确告知，不静默丢（任务书 P4 的另一半）。
         const notice = reviewExportCommentNotice(summary);
