@@ -12,6 +12,7 @@ import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedFontPicker } from "../AdvancedFontPicker";
 import {
   findEveryOccurrence,
+  isRichDocFindShortcut,
   replaceEveryOccurrence,
 } from "./doc-family-commands";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
@@ -91,8 +92,7 @@ export function RichDocControls({
   // 才能替换，浏览器的那个只能看。
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "f" && event.key !== "F") return;
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (!isRichDocFindShortcut(event)) return;
       event.preventDefault();
       setFindOpen(true);
       window.setTimeout(() => findInputRef.current?.focus(), 0);

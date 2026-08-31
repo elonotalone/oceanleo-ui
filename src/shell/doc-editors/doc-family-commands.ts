@@ -341,6 +341,25 @@ function docEnd(editor: Editor): number {
   return editor.state.doc.content.size;
 }
 
+/**
+ * 这一下按键是不是「打开查找面板」（`Ctrl/Cmd+F`）。
+ *
+ * 抽成纯函数是为了能在**没有 DOM 的测试**里锁住这条绑定：仓里没装 jsdom，
+ * 红线 6 也不许为了测试引新依赖。`RichDocControls.tsx` 的键盘监听用的就是
+ * 这一份，测试与屏幕上的行为不会各说各话。
+ *
+ * `altKey` 要排掉：`Ctrl+Alt+F` 在多种输入法里是别的功能，抢过来会挡住用户。
+ */
+export function isRichDocFindShortcut(event: {
+  key: string;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+}): boolean {
+  if (event.key !== "f" && event.key !== "F") return false;
+  return Boolean(event.metaKey || event.ctrlKey) && !event.altKey;
+}
+
 /** 查找选项。默认值 = 本函数长出选项之前的行为（区分大小写、不限全字）。 */
 export interface RichDocFindOptions {
   matchCase?: boolean;
@@ -348,12 +367,21 @@ export interface RichDocFindOptions {
 }
 
 /**
- * 「全字匹配」的边界字符。中文没有词边界，`\p{L}` 会把「中文中文」判成一个词，
- * 所以这条对 CJK 实际上等于不限制——这是正确的，不是漏洞：用户在中文里勾
- * 「全字匹配」本来就没有可用的语义。
+ * 「全字匹配」的边界字符。
+ *
+ * **汉字与假名不算词内字符。** 这一条以前的注释写的是「对 CJK 等于不限制」，
+ * 但代码做的正相反：`\p{L}` 把汉字也算进词内字符，于是「合同编号与合同金额」
+ * 里搜「合同」两侧都是汉字，**两处全被边界判据滤掉，结果是零命中**——
+ * 中文文档里勾一下这个框，查找就再也找不到任何东西。
+ * 本波把行为改成注释原本承诺的那个：CJK 不设边界限制。
+ * 判据在 `tests/richdoc-find-replace.test.mjs`。
  */
 function isWordChar(value: string | undefined): boolean {
-  return !!value && /[\p{L}\p{N}_]/u.test(value);
+  if (!value) return false;
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value)) {
+    return false;
+  }
+  return /[\p{L}\p{N}_]/u.test(value);
 }
 
 /**
