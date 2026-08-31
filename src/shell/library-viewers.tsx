@@ -41,10 +41,13 @@ import {
   type DeckPreviewLogicalSize,
 } from "./doc-editors/DeckPreviewLayout";
 import {
+  FRAMED_MEDIA_STYLE,
   ProgressiveArtifactImage,
   ViewerParsingPoster,
   ViewerThumbPoster,
+  libraryMediaGeometry,
   libraryViewerIsHeavy,
+  mediaFrameStyle,
   useVisibleViewerGate,
 } from "./library-viewer-first-paint";
 import { WebsiteArtifactViewer } from "./WebsiteArtifactViewer";
@@ -1236,15 +1239,23 @@ function DocumentViewer({
   }, [isDocx]);
 
   if (isPdf && item.url && viewerMediaType.startsWith("image/")) {
+    const geometry = libraryMediaGeometry(item, item.url);
     return (
       <Center>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={item.url}
-          alt={item.title}
-          referrerPolicy="no-referrer"
-          className="max-h-[72vh] max-w-full rounded-xl object-contain shadow-sm"
-        />
+        <div
+          data-media-frame="pdf-page"
+          className="rounded-xl shadow-sm"
+          style={mediaFrameStyle(geometry, 72)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.url}
+            alt={item.title}
+            referrerPolicy="no-referrer"
+            className="rounded-xl"
+            style={FRAMED_MEDIA_STYLE}
+          />
+        </div>
       </Center>
     );
   }
@@ -1392,13 +1403,23 @@ function ThreeDViewer({
     return (
       <Center>
         {previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={previewUrl}
-            alt={item.title}
-            referrerPolicy="no-referrer"
-            className="max-h-[64vh] max-w-full rounded-xl object-contain shadow-sm"
-          />
+          <div
+            data-media-frame="threed-poster"
+            className="rounded-xl shadow-sm"
+            style={mediaFrameStyle(
+              libraryMediaGeometry(item, previewUrl),
+              64,
+            )}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewUrl}
+              alt={item.title}
+              referrerPolicy="no-referrer"
+              className="rounded-xl"
+              style={FRAMED_MEDIA_STYLE}
+            />
+          </div>
         ) : (
           <div className="rounded-xl border border-stone-200 bg-stone-50 px-6 py-10 text-sm text-stone-400">
             {tt("没有可显示的预览图。")}
@@ -1426,13 +1447,20 @@ function ThreeDViewer({
   if (subtype === "model" && !modelFormat && previewUrl) {
     return (
       <Center>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={previewUrl}
-          alt={item.title}
-          referrerPolicy="no-referrer"
-          className="max-h-[64vh] max-w-full rounded-xl object-contain shadow-sm"
-        />
+        <div
+          data-media-frame="threed-poster"
+          className="rounded-xl shadow-sm"
+          style={mediaFrameStyle(libraryMediaGeometry(item, previewUrl), 64)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt={item.title}
+            referrerPolicy="no-referrer"
+            className="rounded-xl"
+            style={FRAMED_MEDIA_STYLE}
+          />
+        </div>
         <p className="text-sm text-stone-500">
           {tt("当前展示已验证的模型预览；编辑时会加载固定 revision 的完整模型。")}
         </p>
@@ -1769,6 +1797,7 @@ function LibraryItemViewerBody({
           fullUrl={poster}
           alt={resolvedItem.title}
           onError={rendition.resourceFailed}
+          geometry={libraryMediaGeometry(resolvedItem, poster)}
         />
       </Center>
     ) : (
@@ -1790,6 +1819,7 @@ function LibraryItemViewerBody({
           fullUrl={url}
           alt={resolvedItem.title}
           onError={rendition.resourceFailed}
+          geometry={libraryMediaGeometry(resolvedItem, url)}
         />
       </Center>
     );
