@@ -21,6 +21,13 @@
 import assert, { AssertionError } from "node:assert/strict";
 import { isDeepStrictEqual } from "node:util";
 
+// 搭车挂上「整份文件没跑起来」的自报家门钩子（`_COMMON.md §7b⑩`）。
+// 那个钩子必须在**测试文件之前**跑起来，否则加载期就炸的文件根本没机会挂它；
+// 而 `--import` 是唯一的注入位，`package.json` 又是毒的、不许改（`§7b②`）。
+// 这份文件已经在 `--import` 上了，所以由它把钩子带进每个子进程。
+// 钩子正常跑时一个字节都不输出，只在文件整个死掉时喊话。
+import "./suite-load-guard.mjs";
+
 const NODE_NAMES = new Set(["nodeType", "nodeName"]);
 
 function isDomNode(value) {
