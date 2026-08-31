@@ -5,10 +5,11 @@ export {
   usePluginChromePanelHost,
   type PluginChromeFrameProps,
 } from "./PluginChromeFrame";
-export {
-  PluginChromeEditBarButton,
-  PluginChromeEditBarDivider,
-} from "./PluginChromeEditBarButton";
+// `PluginChromeEditBarButton` / `PluginChromeEditBarDivider` 的再导出**故意缺席**：
+// 那份文件归 W04（裁定见 _BATCH2-ADDENDUM.md §2），此刻在 git 里仍未跟踪，
+// 而这份 index 已经在 main 上——再导出一份不在库的文件，等于让从 main 新克的树
+// 解析不到这条 specifier（本机 typecheck 看不出来，文件在盘上）。
+// W04 提交那份文件时，把这两行与它同一个提交加回来：signals/W22-request.md §3。
 export { PluginChromeNotices } from "./PluginChromeNotices";
 export { PluginChromeStatus } from "./PluginChromeStatus";
 export {
