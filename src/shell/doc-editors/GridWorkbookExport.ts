@@ -29,6 +29,16 @@ import {
   parseGridReference,
   type GridFormulaScalar,
 } from "./grid-formula";
+import {
+  isGeneralNumberFormat,
+  legacyNumberFormatPattern,
+} from "./grid-format/number-format";
+import {
+  GridDxfTable,
+  buildSheetRuleXml,
+  type GridExportDegradation,
+  type GridSheetRules,
+} from "./grid-format/xlsx-round-trip";
 
 function usedBounds(sheet: GridSheet): { rows: number; cols: number } {
   let rows = sheet.rows.length;
@@ -73,6 +83,28 @@ function excelColor(value: string | undefined): { argb: string } | undefined {
 }
 
 /**
+ * The four `GridCellFormat.type` values this chain has always stamped a
+ * `numFmt` onto.
+ *
+ * `text` and `auto` are absent on purpose. `legacyNumberFormatPattern` maps
+ * them to `@` and `General`, and stamping either would change the numFmt of
+ * every cell in every workbook already in the library — the engine is here to
+ * let a reader ask for a pattern, not to retro-format their existing files.
+ */
+const LEGACY_NUMFMT_TYPES = new Set(["currency", "percent", "date", "number"]);
+
+/**
+ * The pattern a cell exports under: an explicit `numFmt` if the reader set
+ * one, otherwise the legacy type's shape, otherwise nothing at all.
+ */
+function exportNumberFormat(format: GridCellFormat): string {
+  const custom = format.numFmt?.trim();
+  if (custom) return isGeneralNumberFormat(custom) ? "" : custom;
+  if (!LEGACY_NUMFMT_TYPES.has(format.type ?? "")) return "";
+  return legacyNumberFormatPattern(format.type, format.decimals);
+}
+
+/**
  * Route-owned XLSX projection. The default/module interop is deliberate:
  * ExcelJS is CommonJS in Node smoke tests but exposed as a namespace by bundlers.
  */
@@ -108,16 +140,8 @@ export async function buildGridRouteWorkbookBlob(
         } else {
           target.value = exportValue(raw, format) as string | number | Date;
         }
-        const decimals = Math.max(0, Math.min(8, format.decimals ?? 2));
-        if (format.type === "currency") {
-          target.numFmt = `¥#,##0${decimals ? `.${"0".repeat(decimals)}` : ""}`;
-        } else if (format.type === "percent") {
-          target.numFmt = `0${decimals ? `.${"0".repeat(decimals)}` : ""}%`;
-        } else if (format.type === "date") {
-          target.numFmt = "yyyy-mm-dd";
-        } else if (format.type === "number") {
-          target.numFmt = `0${decimals ? `.${"0".repeat(decimals)}` : ""}`;
-        }
+        const pattern = exportNumberFormat(format);
+        if (pattern) target.numFmt = pattern;
         if (format.bold || format.color) {
           target.font = {
             bold: Boolean(format.bold),
@@ -828,7 +852,7 @@ type CellRole = "header" | "body" | "formula" | "total" | "negative" | "caption"
  * indexes 0 and 1 are reserved for `none` and `gray125` by the format, so
  * omitting them shifts every later index and Excel offers to repair the file.
  */
-function stylesXml(): string {
+function stylesXml(dxfs?: GridDxfTable): string {
   const fonts = [
     `<font><sz val="${pointSize(GRID_FONT_SCALE.cell)}"/><color rgb="FF${GRID_PALETTE.text.slice(1)}"/><name val="Calibri"/></font>`,
     `<font><b/><sz val="${pointSize(GRID_FONT_SCALE.header)}"/><color rgb="FF${GRID_PALETTE.headerText.slice(1)}"/><name val="Calibri"/></font>`,
@@ -885,11 +909,14 @@ function stylesXml(): string {
       }
     }
   }
+  // `<dxfs>` follows `<cellStyles>` in CT_Stylesheet and is omitted entirely
+  // when no conditional rule interned a style, so the part keeps its old bytes.
+  const dxfBlock = dxfs?.toXml() ?? "";
   return `${XML_HEAD}<styleSheet xmlns="${SPREADSHEET_NS}"><numFmts count="${NUMBER_FORMATS.length}">${NUMBER_FORMATS.map(
     (entry) => `<numFmt numFmtId="${entry.id}" formatCode="${entry.code}"/>`,
   ).join(
     "",
-  )}</numFmts><fonts count="${fonts.length}">${fonts.join("")}</fonts><fills count="${fills.length}">${fills.join("")}</fills><borders count="${borders.length}">${borders.join("")}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  )}</numFmts><fonts count="${fonts.length}">${fonts.join("")}</fonts><fills count="${fills.length}">${fills.join("")}</fills><borders count="${borders.length}">${borders.join("")}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>${dxfBlock}</styleSheet>`;
 }
 
 const ROLE_ORDER: readonly CellRole[] = [
@@ -956,7 +983,11 @@ function cellXml(
   return `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xmlText(cell)}</t></is></c>`;
 }
 
-function worksheetXml(sheet: GridIrSheet): string {
+function worksheetXml(
+  sheet: GridIrSheet,
+  dxfs?: GridDxfTable,
+  degradations?: GridExportDegradation[],
+): string {
   const offset = rowOffset(sheet);
   const totalRows = new Set(
     (sheet.emphasisRows || [])
@@ -1025,7 +1056,16 @@ function worksheetXml(sheet: GridIrSheet): string {
         `<col min="${index + 1}" max="${index + 1}" width="${columnWidthChars(column.widthPx ?? GRID_LAYOUT.defaultColumnWidthPx)}" customWidth="1"/>`,
     )
     .join("");
-  return `${XML_HEAD}<worksheet xmlns="${SPREADSHEET_NS}" xmlns:r="${RELATIONSHIP_NS}"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/></sheetPr><dimension ref="A1:${lastColumn}${Math.max(1, lastRow)}"/><sheetViews><sheetView workbookViewId="0"${sheet.headerRow ? ' tabSelected="0"' : ""}>${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="${pointSize(GRID_LAYOUT.rowHeightPx)}"/><cols>${cols}</cols><sheetData>${lines.join("")}</sheetData></worksheet>`;
+  // CT_Worksheet fixes this order: sheetData, then conditionalFormatting, then
+  // dataValidations. Both fragments are empty strings unless the sheet actually
+  // carries rules, which keeps a rule-free workbook byte-identical to before
+  // and clear of the §8.1 `grid-hollow` byte floor.
+  const rules = buildSheetRuleXml(
+    sheet as GridIrSheet & GridSheetRules,
+    dxfs ?? new GridDxfTable(),
+  );
+  if (degradations) degradations.push(...rules.degradations);
+  return `${XML_HEAD}<worksheet xmlns="${SPREADSHEET_NS}" xmlns:r="${RELATIONSHIP_NS}"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/></sheetPr><dimension ref="A1:${lastColumn}${Math.max(1, lastRow)}"/><sheetViews><sheetView workbookViewId="0"${sheet.headerRow ? ' tabSelected="0"' : ""}>${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="${pointSize(GRID_LAYOUT.rowHeightPx)}"/><cols>${cols}</cols><sheetData>${lines.join("")}</sheetData>${rules.conditionalXml}${rules.validationXml}</worksheet>`;
 }
 
 function attributionSheet(project: GridIrProject): GridIrSheet {
@@ -1104,7 +1144,16 @@ function appPropertiesXml(project: GridIrProject, sheetNames: string[]): string 
  * exactly what makes Excel show the "found unreadable content" prompt that §9
  * C-8 forbids.
  */
-export function buildGridXlsxParts(project: GridIrProject): GridXlsxEntry[] {
+export function buildGridXlsxParts(
+  project: GridIrProject,
+  degradations?: GridExportDegradation[],
+): GridXlsxEntry[] {
+  // One table for the whole package. A `dxfId` in a worksheet is an index into
+  // `styles.xml`, so a per-sheet table would have sheet 2's rules addressing
+  // sheet 1's colours — and a rule-bearing sheet built against a throwaway
+  // table points at a `<dxfs>` block that never gets written, which is the
+  // "found unreadable content" prompt §9 C-8 forbids.
+  const dxfs = new GridDxfTable();
   const sheets = [...project.sheets];
   if (sheets.length < GRID_CONSTANTS.C2_maxSheets) {
     sheets.push(attributionSheet(project));
@@ -1116,9 +1165,11 @@ export function buildGridXlsxParts(project: GridIrProject): GridXlsxEntry[] {
         `<definedName name="${xmlText(entry.name)}">${xmlText(entry.ref.replace(/^([A-Za-z0-9_]+)!/, "$1!$"))}</definedName>`,
     )
     .join("");
+  // Worksheets first: they are what interns styles into `dxfs`, and
+  // `styles.xml` below can only be written once that table is complete.
   const sheetParts = sheets.map((sheet, index) => ({
     name: `xl/worksheets/sheet${index + 1}.xml`,
-    data: worksheetXml(sheet),
+    data: worksheetXml(sheet, dxfs, degradations),
   }));
   const overrides = [
     '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
@@ -1166,9 +1217,23 @@ export function buildGridXlsxParts(project: GridIrProject): GridXlsxEntry[] {
         )
         .join("")}</sheets>${definedNames ? `<definedNames>${definedNames}</definedNames>` : ""}<calcPr calcId="0" fullCalcOnLoad="1"/></workbook>`,
     },
-    { name: "xl/styles.xml", data: stylesXml() },
+    { name: "xl/styles.xml", data: stylesXml(dxfs) },
     ...sheetParts,
   ];
+}
+
+/**
+ * What a workbook loses on the way to xlsx, ready to be shown to the reader.
+ *
+ * P4 forbids dropping anything silently, and the emit path itself has no way
+ * to talk to the UI, so the caller asks for the list and renders it.
+ */
+export function gridXlsxExportDegradations(
+  project: GridIrProject,
+): GridExportDegradation[] {
+  const sink: GridExportDegradation[] = [];
+  buildGridXlsxParts(project, sink);
+  return sink;
 }
 
 /** Fixed zip timestamp: identical input must produce identical bytes (§6 F7). */
