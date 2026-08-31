@@ -8,6 +8,12 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  ensureOverlayMotionStyles,
+  lockBodyScroll,
+  runAfterOverlayExit,
+  trapTabWithin,
+} from "../shell/anchored-popover";
 import { useUI } from "../i18n/ui/useUI";
 
 /* ---------- Modal: scale+fade in, Escape + backdrop close, focus trap ---------- */
@@ -30,17 +36,27 @@ export function Modal({
   // 变灰）。SSR 阶段 document 不存在 → 先不渲染，mount 后再 portal。
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    ensureOverlayMotionStyles();
     setMounted(true);
   }, []);
 
-  const requestClose = useCallback(() => {
-    setClosing(true);
-    setTimeout(onClose, 140);
-  }, [onClose]);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const requestClose = useCallback(() => setClosing(true), []);
+
+  // 退场由 CSS 说了算。原先是 `setTimeout(onClose, 140)`：那个 140 与样式表里的
+  // 时长各写各的，任何一边改了另一边不知道，动画要么被剪断要么留一段空白。
+  // 现在等面板那条过渡真的跑完（`--leo-dur-4`），并带超时兜底。
+  useEffect(() => {
+    if (!closing) return;
+    return runAfterOverlayExit(panelRef.current, () => onCloseRef.current());
+  }, [closing]);
 
   useEffect(() => {
+    // 必须等 portal 真渲染出来：mount 前 `panelRef.current` 还是 null，
+    // 初始聚焦与 Tab 循环会双双落空。
+    if (!mounted) return;
     const prev = document.activeElement as HTMLElement | null;
-    // focus first focusable element in the panel
     const panel = panelRef.current;
     if (panel) {
       const first = panel.querySelector<HTMLElement>(
@@ -55,40 +71,24 @@ export function Modal({
         requestClose();
         return;
       }
-      if (e.key === "Tab" && panel) {
-        const els = Array.from(
-          panel.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          )
-        ).filter((el) => !el.hasAttribute("disabled"));
-        if (els.length === 0) return;
-        const first = els[0];
-        const last = els[els.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
+      trapTabWithin(panel, e);
     }
     document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
+    const unlockScroll = lockBodyScroll();
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      unlockScroll();
       prev?.focus?.();
     };
-  }, [requestClose]);
+  }, [mounted, requestClose]);
 
   if (!mounted) return null;
 
+  const overlayState = closing ? "closed" : "open";
   return createPortal(
     <div
-      className={`fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 transition-opacity duration-150 ${
-        closing ? "opacity-0" : "v-fade-in"
-      }`}
+      className="leo-overlay-scrim fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
+      data-leo-overlay-state={overlayState}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
@@ -99,9 +99,8 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`w-full rounded-2xl border border-neutral-200 bg-white shadow-xl outline-none transition-all duration-150 ${
-          closing ? "scale-95 opacity-0" : "v-scale-in"
-        } ${className}`}
+        data-leo-overlay-state={overlayState}
+        className={`leo-overlay-panel w-full rounded-2xl border border-neutral-200 bg-white shadow-xl outline-none ${className}`}
       >
         {children}
       </div>
