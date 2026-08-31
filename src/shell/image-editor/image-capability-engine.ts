@@ -1035,3 +1035,412 @@ export async function executeImageAiCommand(
 ): Promise<Readonly<ImageAiRunReceipt>> {
   return startImageAiCommand(provider, command, input, options).result;
 }
+
+// ===========================================================================
+// 直连网关的图片操作 —— 与上面 11 条语义 recipe 命令平行的第二条腿
+// ---------------------------------------------------------------------------
+// 抠图 `/v1/images/remove-bg` 没有参数、只出一张图、不进 recipe 血缘，走不了
+// `ImageAiCommand` 那套。它**故意不进** `ImageAiCommandId`：那个联合同时是
+// `image-provider-mappings.ts` 里 `Record<ImageAiCommandId, …>` 的键源与
+// `buildOceanLeoImageAiRequests` 穷尽 switch 的判别源，往里加一条会让那个文件
+// 当场两处编译红，而它不在本 owner 的独占面上。
+// ===========================================================================
+
+/**
+ * 画布与导出共同的硬上限。fabric 控制器把文档尺寸夹在这个值内
+ * （`fabric-controller-core.ts:97-98`），导出前也按它缩放
+ * （`use-fabric-image-editor.ts:100`）。超分预检用的就是同一个数。
+ */
+export const IMAGE_MAX_DIMENSION = 8_192;
+
+export type ImageDirectCommandId = "remove-bg";
+
+/** 用户可见的全部图片能力：本地 + 语义 AI + 直连。 */
+export type ImageCapabilityId = ImageSemanticCommandId | ImageDirectCommandId;
+
+export interface ImageDirectCommandDescriptor
+  extends Omit<ImageCommandDescriptor, "id"> {
+  id: ImageDirectCommandId;
+  /** 网关路由，逐字等于 `backend/app/routers/images_router.py` 的注册值。 */
+  endpoint: string;
+  /** 结果是否带 alpha 通道（决定 UI 要不要画棋盘格背景）。 */
+  producesAlpha: boolean;
+}
+
+export const IMAGE_DIRECT_COMMAND_REGISTRY = Object.freeze([
+  Object.freeze({
+    id: "remove-bg",
+    execution: "provider",
+    billing: "provider",
+    outputCount: { minimum: 1, maximum: 1 },
+    preservesSourceBytes: true,
+    description: "Cut the subject onto a transparent background.",
+    endpoint: "/v1/images/remove-bg",
+    producesAlpha: true,
+  }),
+]) as readonly ImageDirectCommandDescriptor[];
+
+/**
+ * AI 结果的落点策略。**只有一个合法值**：结果一律加成新图层，永不覆盖背景。
+ * 用户要能反悔——这比让他去按撤销更直接（任务书 P1）。
+ * 既有的 `use-fabric-image-editor.ts:1183` `runAiEdit()` 走的是
+ * `replaceWithBackground()`，那条旧路径正是本轮要绕开的反面样本。
+ */
+export const IMAGE_AI_RESULT_PLACEMENT = "new-layer" as const;
+
+export type ImageAiResultPlacement = typeof IMAGE_AI_RESULT_PLACEMENT;
+
+export interface ImageAiPanelCapability {
+  id: ImageCapabilityId;
+  /** 中文名。不把 `inpaint` 这种词直接摆给用户看。 */
+  label: string;
+  /** 一句话说明这条能力对坐在屏幕前的人干了什么。 */
+  summary: string;
+  kind: "direct" | "semantic";
+  /** 一等公民：不埋进列表，编辑栏上有明位入口。 */
+  featured: boolean;
+  /** 需要用户先写一句话描述。 */
+  needsPrompt: boolean;
+}
+
+/**
+ * 面板真正接出来的能力。`multi-angle` / `grid-*` / `grid-split` 登记在引擎里但
+ * **刻意不接**：一次出 2–16 张（`grid-split` 上限 625 张）的拼版图不是办公场景
+ * 要的东西，接出来只会烧额度。理由写在 `verdicts/W18-delivery.md`。
+ */
+export const IMAGE_AI_PANEL_CAPABILITIES = Object.freeze([
+  Object.freeze({
+    id: "remove-bg",
+    label: "抠图",
+    summary: "把主体抠出来，背景变透明。证件照、产品图、PPT 配图都用得上。",
+    kind: "direct",
+    featured: true,
+    needsPrompt: false,
+  }),
+  Object.freeze({
+    id: "upscale",
+    label: "放大高清",
+    summary: "把图放大到 2 倍或 4 倍，同时补回细节。",
+    kind: "semantic",
+    featured: false,
+    needsPrompt: false,
+  }),
+  Object.freeze({
+    id: "portrait-quality",
+    label: "人像精修",
+    summary: "提亮肤色、去噪点，五官和表情保持原样。",
+    kind: "semantic",
+    featured: false,
+    needsPrompt: false,
+  }),
+  Object.freeze({
+    id: "relight",
+    label: "重新打光",
+    summary: "换一个光照方向，物体本身不变。",
+    kind: "semantic",
+    featured: false,
+    needsPrompt: false,
+  }),
+  Object.freeze({
+    id: "inpaint",
+    label: "局部重绘",
+    summary: "涂掉不想要的部分，用一句话说明补成什么。",
+    kind: "semantic",
+    featured: false,
+    needsPrompt: true,
+  }),
+  Object.freeze({
+    id: "outpaint",
+    label: "扩展画面",
+    summary: "往四周补出画面外的内容，原图一个像素都不动。",
+    kind: "semantic",
+    featured: false,
+    needsPrompt: false,
+  }),
+  Object.freeze({
+    id: "panorama",
+    label: "全景延展",
+    summary: "把这一张接成一整幅无缝全景。",
+    kind: "semantic",
+    featured: false,
+    needsPrompt: false,
+  }),
+]) as readonly ImageAiPanelCapability[];
+
+export interface ImageUpscalePreflight {
+  ok: boolean;
+  scale: 2 | 4;
+  sourceWidth: number;
+  sourceHeight: number;
+  /** 放大之后的尺寸，超限时也照实算出来给用户看。 */
+  width: number;
+  height: number;
+  limit: number;
+  reason?: string;
+}
+
+/**
+ * 超分预检：2× 之后到底多大、有没有越过 8192。**越了就在本地拦下**，
+ * 不把请求发出去等服务端退回来——那要等十几秒、还可能已经扣了额度（任务书 P3）。
+ */
+export function imageUpscalePreflight(
+  sourceWidth: number,
+  sourceHeight: number,
+  scale: 2 | 4,
+): Readonly<ImageUpscalePreflight> {
+  const width = Math.round(sourceWidth * scale);
+  const height = Math.round(sourceHeight * scale);
+  const longest = Math.max(width, height);
+  const base = {
+    scale,
+    sourceWidth: Math.round(sourceWidth),
+    sourceHeight: Math.round(sourceHeight),
+    width,
+    height,
+    limit: IMAGE_MAX_DIMENSION,
+  };
+  if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight)) {
+    return Object.freeze({
+      ...base,
+      ok: false,
+      reason: "画布尺寸还没读出来，稍后再试。",
+    });
+  }
+  if (longest > IMAGE_MAX_DIMENSION) {
+    return Object.freeze({
+      ...base,
+      ok: false,
+      reason:
+        `放大 ${scale} 倍后是 ${width}×${height}，超过 ${IMAGE_MAX_DIMENSION}px 上限。` +
+        `请换更小的倍数，或先把画布改小。`,
+    });
+  }
+  return Object.freeze({ ...base, ok: true });
+}
+
+export type ImageAiFailureKind =
+  | "quota"
+  | "unavailable"
+  | "too-large"
+  | "auth"
+  | "canceled"
+  | "unknown";
+
+export interface ImageAiFailure {
+  kind: ImageAiFailureKind;
+  /** 一行标题，直接摆在面板上。 */
+  title: string;
+  /** 具体到能让用户知道下一步干什么。 */
+  detail: string;
+  retryable: boolean;
+}
+
+const TOO_LARGE_PATTERN =
+  /too\s*large|payload|尺寸|过大|太大|max(?:imum)?\s*(?:size|dimension)|8192/i;
+const QUOTA_PATTERN =
+  /quota|credit|insufficient|balance|billing|额度|余额|欠费/i;
+
+/**
+ * 把网关抛出来的东西分成用户能据以行动的几类。任务书 P1 点名要分开说的三类是
+ * 额度不足 / 模型不可用 / 图太大——它们的下一步动作完全不同：
+ * 充值、等一会儿再试、把图改小。混成一句「AI 失败了」等于什么都没说。
+ */
+export function classifyImageAiFailure(caught: unknown): Readonly<ImageAiFailure> {
+  if (isAbort(caught)) {
+    return Object.freeze({
+      kind: "canceled",
+      title: "已取消",
+      detail: "这次处理已经停下，没有产生新图层。",
+      retryable: true,
+    });
+  }
+  const record =
+    caught && typeof caught === "object"
+      ? (caught as { code?: unknown; status?: unknown; retryable?: unknown })
+      : {};
+  const code = safeText(record.code, 100);
+  const status = Number(record.status);
+  const message =
+    caught instanceof Error ? caught.message : safeText(caught, 2_000);
+
+  if (status === 402 || code === "image-provider-billing" || QUOTA_PATTERN.test(message)) {
+    return Object.freeze({
+      kind: "quota",
+      title: "额度不足",
+      detail: message.trim() || "账户额度不够跑这次处理，充值后可以继续。",
+      retryable: false,
+    });
+  }
+  if (status === 413 || TOO_LARGE_PATTERN.test(message) || code === "image-too-large") {
+    return Object.freeze({
+      kind: "too-large",
+      title: "图太大",
+      detail:
+        message.trim() ||
+        `这张图超过了 ${IMAGE_MAX_DIMENSION}px 上限，先把画布改小再试。`,
+      retryable: false,
+    });
+  }
+  if (status === 401 || status === 403 || code === "image-provider-auth") {
+    return Object.freeze({
+      kind: "auth",
+      title: "需要重新登录",
+      detail: message.trim() || "登录状态已过期，重新登录后再试。",
+      retryable: false,
+    });
+  }
+  if (
+    code === "image-provider-unavailable" ||
+    code === "image-provider-not-configured" ||
+    code === "image-provider-network" ||
+    code === "image-provider-poll-network" ||
+    code === "image-provider-timeout" ||
+    code === "image-provider-throttled" ||
+    code === "image-provider-job-failed" ||
+    code === "image-provider-empty-output" ||
+    (Number.isFinite(status) && status >= 500) ||
+    status === 408 ||
+    status === 429
+  ) {
+    return Object.freeze({
+      kind: "unavailable",
+      title: "模型暂时不可用",
+      detail: message.trim() || "这条能力现在连不上，过一会儿再试。",
+      retryable: true,
+    });
+  }
+  return Object.freeze({
+    kind: "unknown",
+    title: "处理失败",
+    detail: message.trim() || "这次处理没能完成。",
+    retryable: record.retryable === true,
+  });
+}
+
+export interface ImageDirectRunInput {
+  /** 已经落到文件库、网关取得到的源图地址。 */
+  sourceUrl: string;
+  signal: AbortSignal;
+}
+
+/** 宿主注入的直连执行器：给源图地址，回结果图地址。 */
+export type ImageDirectExecutor = (
+  commandId: ImageDirectCommandId,
+  input: ImageDirectRunInput,
+) => Promise<string>;
+
+export interface ImageDirectRunResult {
+  commandId: ImageDirectCommandId;
+  status: "succeeded" | "failed" | "canceled" | "unsupported";
+  outputs: readonly Readonly<{ url: string; mimeType: string }>[];
+  failure?: Readonly<ImageAiFailure>;
+  disabledReason?: string;
+}
+
+export interface ImageDirectRunHandle {
+  result: Promise<Readonly<ImageDirectRunResult>>;
+  cancel: () => void;
+}
+
+/**
+ * 跑一条直连能力。可打断是硬要求：`cancel()` 当场 abort，
+ * 面板不必等网关回话（`_COMMON.md` §3「可打断」）。
+ */
+export function startImageDirectCommand(
+  executor: ImageDirectExecutor | null | undefined,
+  commandId: ImageDirectCommandId,
+  input: Omit<ImageDirectRunInput, "signal">,
+  options: {
+    availability?: Readonly<ImageCapabilityAvailability>;
+    onProgress?: (progress: Readonly<ImageProgressMetadata>) => void;
+  } = {},
+): ImageDirectRunHandle {
+  const controller = new AbortController();
+  const descriptor = IMAGE_DIRECT_COMMAND_REGISTRY.find(
+    (entry) => entry.id === commandId,
+  );
+  const disabledReason = !descriptor
+    ? `No direct image capability is registered for ${commandId}`
+    : !executor
+      ? `No image AI provider adapter is configured for ${commandId}`
+      : options.availability && options.availability.enabled === false
+        ? options.availability.reason ||
+          `${commandId} is unavailable on this account`
+        : "";
+  if (disabledReason) {
+    return {
+      result: Promise.resolve(
+        Object.freeze({
+          commandId,
+          status: "unsupported" as const,
+          outputs: Object.freeze([]),
+          disabledReason,
+        }),
+      ),
+      cancel: () => controller.abort(),
+    };
+  }
+  const run = executor as ImageDirectExecutor;
+  const emit = (phase: ImageProgressMetadata["phase"], progress: number) =>
+    options.onProgress?.(Object.freeze({ phase, progress }));
+  const result = (async (): Promise<Readonly<ImageDirectRunResult>> => {
+    emit("validating", 0);
+    try {
+      if (!safeUrl(input.sourceUrl)) {
+        throw new Error(`${commandId} requires a durable source URL`);
+      }
+      emit("processing", 0.35);
+      const url = safeUrl(
+        await run(commandId, {
+          sourceUrl: input.sourceUrl,
+          signal: controller.signal,
+        }),
+      );
+      if (controller.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (!url) throw new Error("抠图没有返回可用的结果图。");
+      emit("complete", 1);
+      return Object.freeze({
+        commandId,
+        status: "succeeded" as const,
+        outputs: Object.freeze([
+          Object.freeze({ url, mimeType: "image/png" }),
+        ]),
+      });
+    } catch (caught) {
+      const failure = classifyImageAiFailure(
+        controller.signal.aborted && !isAbort(caught)
+          ? new DOMException("Aborted", "AbortError")
+          : caught,
+      );
+      emit(failure.kind === "canceled" ? "canceling" : "complete", 1);
+      return Object.freeze({
+        commandId,
+        status: failure.kind === "canceled" ? ("canceled" as const) : ("failed" as const),
+        outputs: Object.freeze([]),
+        failure,
+      });
+    }
+  })();
+  return { result, cancel: () => controller.abort() };
+}
+
+/**
+ * 从一段字节算出引擎要的不可变源引用。语义命令的 `ImageAiExecutionInput.source`
+ * 要 SHA-256 摘要，画布这边只有 Blob，这里把两者接上。
+ */
+export async function imageSourceFromBytes(
+  bytes: ArrayBuffer,
+  reference: Omit<ImageSourceReference, "byteDigest" | "byteLength">,
+): Promise<Readonly<ImageSourceReference>> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const byteDigest = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return validateImageSourceReference({
+    ...reference,
+    byteDigest,
+    byteLength: bytes.byteLength,
+  });
+}
