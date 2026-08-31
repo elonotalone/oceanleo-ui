@@ -21,10 +21,16 @@
 //
 // 按钮文案取模块自己的中文名，名单来自模块自己的 placements 声明。
 // 本文件里没有任何站点名、app 名或工具名的硬编码。
+//
+// 命中区（W04，2026-08-31）：按键从约 28px 提到 44px，配色、字号与焦点环一并交给
+// `ui/Button` 原语，本文件不再自己拼类名。左栏是窄的，但这条按键条本来就按
+// `flex-wrap` 换行排布，变高只是可能多占一行，不会像横向滚动那样把后面几枚藏起来。
+// 所以**不要**为了塞回一行把尺寸调小——任务书写明：挤不下就换排列。
 // ============================================================================
 
 import type { ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { Button } from "../ui/Button";
 import type { AppCapabilityEntry } from "./app-capability-entry";
 
 /**
@@ -47,9 +53,6 @@ export interface AppCapabilityBarProps {
   accent?: string;
 }
 
-const BASE_BUTTON =
-  "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium transition";
-
 export function AppCapabilityBar({
   appLabel,
   appIcon,
@@ -65,20 +68,16 @@ export function AppCapabilityBar({
     <div
       data-console-function-bar
       data-console-function-placement="ops"
-      className="flex w-full shrink-0 flex-wrap items-center gap-1.5 rounded-xl border border-stone-200/80 bg-white/70 px-2 py-1.5"
+      className="flex w-full shrink-0 flex-wrap items-center gap-1.5 rounded-2xl border border-stone-200/80 bg-white/70 px-2 py-1.5"
     >
       {appLabel != null && appLabel !== "" && (
         <>
-          <button
-            type="button"
+          <Button
+            pill
+            variant={appActive ? "primary" : "ghost"}
             data-console-function-kind="app"
             aria-pressed={appActive}
             onClick={() => onSelect("")}
-            className={`${BASE_BUTTON} ${
-              appActive
-                ? "text-white"
-                : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
-            }`}
             style={appActive ? { background: accent } : undefined}
             title={appLabel}
           >
@@ -88,34 +87,30 @@ export function AppCapabilityBar({
               </span>
             )}
             <span className="max-w-[12rem] truncate">{appLabel}</span>
-          </button>
+          </Button>
           <span
             aria-hidden="true"
-            className="mx-1 h-4 w-px shrink-0 rounded bg-stone-200"
+            className="mx-1 h-6 w-px shrink-0 rounded bg-stone-200"
           />
         </>
       )}
       {entries.map((entry) => {
         const active = entry.id === activeFamily;
         return (
-          <button
+          <Button
             key={entry.id}
-            type="button"
+            pill
+            variant={active ? "primary" : "secondary"}
             data-console-function-kind="capability"
             data-capability-plugin={entry.id}
             aria-pressed={active}
             onClick={() => onSelect(active ? "" : entry.id)}
-            className={`${BASE_BUTTON} border ${
-              active
-                ? "border-transparent text-white"
-                : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:text-stone-900"
-            }`}
             style={active ? { background: accent } : undefined}
             title={tt(entry.label)}
           >
             <CapabilityGlyph />
             <span className="max-w-[10rem] truncate">{tt(entry.label)}</span>
-          </button>
+          </Button>
         );
       })}
     </div>

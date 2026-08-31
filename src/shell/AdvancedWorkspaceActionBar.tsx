@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { Button, IconButton } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AnchoredPopover } from "./anchored-popover";
@@ -57,10 +58,6 @@ export function AdvancedWorkspaceActionBar({
     ...actions.filter((action) => action.group === "download"),
   ];
   const downloadMenuId = `workspace-download-${useId().replace(/:/g, "")}`;
-  const iconButton =
-    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] hover:text-[var(--awb-text)] disabled:opacity-30";
-  const libraryButton =
-    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold transition";
 
   const triggerAction = async (
     action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
@@ -75,128 +72,93 @@ export function AdvancedWorkspaceActionBar({
     }
   };
 
+  // 条高 32 → 44（W04）：里面的键从 `h-8`(32) 提到 44，容器就得刚好装得下它们。
+  // 这里不套 `AdvancedStageControls` 的 56（44 + 2×6）——那条是有底色的浮动胶囊，
+  // 要留内缘白；这条 `bg-transparent`，贴着按钮走就行。
+  // 撑得下：`SplitWorkspace.tsx` 的 `[data-pane-header]` 是 `min-h-[2.5rem]`，
+  // 是**最小**高度不是固定高度（实测），所以 44 不会被裁。
   return (
     <div
       data-advanced-workspace-actions
       data-advanced-action-row
       role="toolbar"
       aria-label={tt("工作区操作")}
-      className="flex h-8 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden bg-transparent"
+      className="flex h-11 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden bg-transparent"
     >
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto">
         {showBack ? (
-          <button
-            type="button"
+          <IconButton
             onClick={onBack}
-            className={iconButton}
-            aria-label={tt("返回库")}
-            title={tt("返回库")}
-          >
-            ←
-          </button>
+            label={tt("返回库")}
+            icon={<span className="text-base leading-none">←</span>}
+          />
         ) : null}
-        {adapter.history && (
-          <>
-            <button
-              type="button"
-              onClick={adapter.history.undo}
-              disabled={!adapter.history.canUndo}
-              className={iconButton}
-              aria-label={tt("撤销")}
-              title={tt("撤销")}
-            >
-              <AdvancedEditorIcon name="undo" className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={adapter.history.redo}
-              disabled={!adapter.history.canRedo}
-              className={iconButton}
-              aria-label={tt("重做")}
-              title={tt("重做")}
-            >
-              <AdvancedEditorIcon name="redo" className="h-4 w-4" />
-            </button>
-          </>
-        )}
+        {/*
+          撤销/重做**不在这里**。它们改的是「这次改动」，归编辑栏管
+          （EditBarHistoryControls）；顶栏只留「这份文档」级别的动作：
+          返回、素材库、保存导出、全屏。这条分工是 13 件插件顶栏长得一样的前提，
+          由 tests/advanced-editor-v8-shared-edit-bar.test.mjs 锁住。
+        */}
         {showLibrary ? (
           <>
             <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              selected={activeLibraryPanelId === "materials"}
               onClick={() => onOpenLibrary("materials")}
-              className={`${libraryButton} ${
-                activeLibraryPanelId === "materials"
-                  ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-                  : "text-[var(--awb-text)] hover:bg-[var(--awb-hover)]"
-              }`}
               aria-pressed={activeLibraryPanelId === "materials"}
             >
               <AdvancedEditorIcon name="materials" className="h-4 w-4" />
               {tt("素材库")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
+              selected={activeLibraryPanelId === "mine"}
               onClick={() => onOpenLibrary("mine")}
-              className={`${libraryButton} ${
-                activeLibraryPanelId === "mine"
-                  ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-                  : "text-[var(--awb-text)] hover:bg-[var(--awb-hover)]"
-              }`}
               aria-pressed={activeLibraryPanelId === "mine"}
             >
               <AdvancedEditorIcon name="library" className="h-4 w-4" />
               {tt("我的库")}
-            </button>
+            </Button>
           </>
         ) : null}
         <span className="min-w-4 flex-1" />
         {standaloneActions.map((action) => (
-          <button
+          <IconButton
             key={action.id}
-            type="button"
             data-workspace-action-id={action.id}
             disabled={action.disabled || action.busy}
+            aria-busy={action.busy || undefined}
             onClick={() => void triggerAction(action)}
-            className={`${iconButton} ${
-              action.variant === "primary"
-                ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-                : action.variant === "danger"
-                  ? "text-[var(--awb-danger,#dc2626)] hover:bg-[var(--awb-hover)]"
-                  : ""
-            }`}
+            variant={action.variant === "danger" ? "danger" : "ghost"}
+            selected={action.variant === "primary"}
             aria-pressed={
               action.id.startsWith("project-view:")
                 ? action.variant === "primary"
                 : undefined
             }
-            aria-label={tt(
+            label={tt(
               action.busy && action.busyLabel ? action.busyLabel : action.label,
             )}
-            title={tt(
-              action.busy && action.busyLabel ? action.busyLabel : action.label,
-            )}
-          >
-            <AdvancedEditorIcon
-              name={action.icon || "download"}
-              className="h-4 w-4"
-            />
-          </button>
+            icon={
+              <AdvancedEditorIcon
+                name={action.icon || "download"}
+                className="h-4 w-4"
+              />
+            }
+          />
         ))}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {pluginThemeId ? <PluginThemeToggle pluginId={pluginThemeId} /> : null}
         {adapter.upload && (
           <>
-            <button
-              type="button"
+            <IconButton
               onClick={() => fileInputRef.current?.click()}
-              className={iconButton}
-              aria-label={tt("从本地添加到画布")}
+              label={tt("从本地添加到画布")}
               title={tt("从本地添加到画布，也可以直接拖放文件")}
-            >
-              <AdvancedEditorIcon name="uploads" className="h-4 w-4" />
-            </button>
+              icon={<AdvancedEditorIcon name="uploads" className="h-4 w-4" />}
+            />
             <input
               ref={fileInputRef}
               type="file"
@@ -211,31 +173,34 @@ export function AdvancedWorkspaceActionBar({
           </>
         )}
         {actionError && (
-          <button
-            type="button"
+          <IconButton
+            variant="danger"
             onClick={() => setActionError("")}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-danger,#dc2626)] transition hover:bg-[var(--awb-hover)]"
-            aria-label={tt(`操作失败：${actionError}；点击关闭提示`)}
+            label={tt(`操作失败：${actionError}；点击关闭提示`)}
             title={actionError}
-          >
-            !
-          </button>
+            icon={<span className="text-base leading-none">!</span>}
+          />
         )}
-        <button
-          type="button"
+        {/*
+          三档状态色走**内联 style**，不走 className。原语的变体已经带了自己的
+          `text-*`，再叠一个同类工具类，谁赢由样式表顺序决定而不是由这里的写法决定；
+          内联值没有这个歧义。（同一个理由让 `pill`/`selected`/`align` 成了 prop。）
+        */}
+        <IconButton
           onClick={() => {
             if (autoSaveState === "error") onRetrySave();
           }}
           aria-disabled={autoSaveState !== "error"}
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--awb-hover)] ${
-            autoSaveState === "error"
-              ? "text-[var(--awb-danger,#dc2626)]"
-              : autoSaveState === "saving"
-                ? "text-[var(--awb-warn,#d97706)]"
-                : "text-[var(--awb-ok,#059669)]"
-          }`}
           aria-live="polite"
-          aria-label={tt(
+          style={{
+            color:
+              autoSaveState === "error"
+                ? "var(--awb-danger,#dc2626)"
+                : autoSaveState === "saving"
+                  ? "var(--awb-warn,#d97706)"
+                  : "var(--awb-ok,#059669)",
+          }}
+          label={tt(
             autoSaveState === "saving"
               ? "正在自动保存"
               : autoSaveState === "error"
@@ -249,30 +214,28 @@ export function AdvancedWorkspaceActionBar({
                 ? "点击重试自动保存"
                 : "已保存",
           )}
-        >
-          <CloudAutoSaveIcon
-            state={autoSaveState}
-            className={`h-4 w-4 ${
-              autoSaveState === "saving" ? "animate-pulse" : ""
-            }`}
-          />
-        </button>
+          icon={
+            <CloudAutoSaveIcon
+              state={autoSaveState}
+              className={`h-4 w-4 ${
+                autoSaveState === "saving" ? "animate-pulse" : ""
+              }`}
+            />
+          }
+        />
         {downloadActions.length > 0 && (
           <>
-            <button
+            <IconButton
               ref={downloadButtonRef}
-              type="button"
+              variant="secondary"
               data-workspace-download-launcher
               onClick={() => setDownloadOpen((value) => !value)}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] text-[var(--awb-text)] transition hover:bg-[var(--awb-hover)]"
-              aria-label={tt("下载与导出")}
-              title={tt("下载与导出")}
+              label={tt("下载与导出")}
               aria-haspopup="menu"
               aria-expanded={downloadOpen}
               aria-controls={downloadMenuId}
-            >
-              <AdvancedEditorIcon name="download" className="h-4 w-4" />
-            </button>
+              icon={<AdvancedEditorIcon name="download" className="h-4 w-4" />}
+            />
             <AnchoredPopover
               open={downloadOpen}
               anchorRef={downloadButtonRef}
@@ -294,9 +257,11 @@ export function AdvancedWorkspaceActionBar({
                     ? action.busyLabel
                     : action.label;
                 return (
-                  <button
+                  <Button
                     key={action.id}
-                    type="button"
+                    variant="ghost"
+                    block
+                    align="start"
                     role="menuitem"
                     tabIndex={-1}
                     data-workspace-export-action-id={action.id}
@@ -314,7 +279,6 @@ export function AdvancedWorkspaceActionBar({
                       );
                       void triggerAction(action);
                     }}
-                    className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-medium outline-none transition hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35 disabled:pointer-events-none disabled:opacity-40"
                   >
                     <AdvancedEditorIcon
                       name={action.icon || "download"}
@@ -328,7 +292,7 @@ export function AdvancedWorkspaceActionBar({
                         {tt("默认")}
                       </span>
                     )}
-                  </button>
+                  </Button>
                 );
               })}
             </AnchoredPopover>
