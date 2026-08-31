@@ -334,10 +334,16 @@ export function springLinearStops(src: SpringSource = SPRING_SOURCE): string {
 //
 // 62 是 01-verified-facts.md §2.3 的数字，**未经本闸口径校准，实测不成立**：
 // 台账表内 duration-* 分档相加也只有 53，且它没排除编译产物、口径未写明。
-// 本闸口径实测 46 处（20 个文件）。
+// 本闸口径 2026-08-31 W01 实测 46 处（20 个文件）。
 // 另：src/ 内联 `transition: …ms`（非 CSS 文件）实测 0 处，不构成第二个计数源。
-// 2026-08-31 实测。
+//
+// 2026-08-31 W35 更新：**46 → 0**。W30 已把射程内那 46 处全部落档，
+// 调用点里如今一处裸时长都不剩（在干净检出 3550ebc 上实测 0），
+// 但没人回来收紧这个上限，于是棘轮空转了 46 格——谁塞 46 处 `duration-200` 都全绿。
+// 拧到 0 之后闸退化成最强形式：**调用点里一处裸时长都不许有**（红线 9 的本意）。
+// 这个数与 tests/motion-no-raw-duration.test.mjs 的 FROZEN_HIGH_WATER_MARK
+// ＋ BASELINE_COMMIT 是**一组**，那边有一条自检会把三者对齐，改一个就要改另外两个。
 // ===========================================================================
 
 /** 允许存在的裸 Tailwind 时长工具类（`duration-150` 之类）总数上限。 */
-export const PENDING_RAW_DURATION = 46;
+export const PENDING_RAW_DURATION = 0;

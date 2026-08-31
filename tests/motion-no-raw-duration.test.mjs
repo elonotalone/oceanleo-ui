@@ -4,15 +4,18 @@
 // 这道闸不负责改存量：那 47 处分散在十几位 owner 的独占面上。它只负责一件事——
 // **让新增当场红**。
 //
-// 棘轮由两条断言组成，缺一条闸门就是假的：
+// 棘轮由三条断言组成，缺一条闸门就是假的：
 //   A. 实测计数 <= PENDING_RAW_DURATION —— 挡新增。
-//   B. PENDING_RAW_DURATION <= 47      —— 挡「把预算锁的数字调大一位」。
-//      47 是 2026-08-31 实测冻结的高水位线，**写死在这里**。没有 B，任何人只要把
-//      motion.ts 里的数字改大，A 就永远绿——那样反面验证 ③ 是假的。
+//   B. PENDING_RAW_DURATION <= FROZEN_HIGH_WATER_MARK —— 挡「把预算锁的数字调大一位」。
+//      没有 B，任何人只要把 motion.ts 里的数字改大，A 就永远绿——那样反面验证 ③ 是假的。
+//   C. 基线自检（本文件末尾，W35 补）—— 高水位线必须与 `BASELINE_COMMIT` 那棵
+//      **干净检出**上的实测值逐字相等。没有 C，B 只挡得住「把数字调大」，
+//      挡不住「债早还完了、闸却还松着 46 格」——那正是 W35 逮到的现场。
 //
-// 为什么不做成精确相等：16 位 owner 同仓并发，别人降债（W04 正在把一批按钮迁到
-// 原语）会让精确相等无端变红，撞 _COMMON.md §8「不许在别人半成品的工作树上给别人
-// 下判决」。允许留松弛，闸门只管新增。债还完之后由后来人把 47 往下调。
+// 为什么 A/B 留不等号而 C 要精确相等：16 位 owner 同仓并发，别人降债会让 A 无端变红，
+// 撞 _COMMON.md §8「不许在别人半成品的工作树上给别人下判决」，所以 A/B 只管新增。
+// 但**松弛必须有人盯着**：C 把「今天的真值」钉在一个可复现的 commit 上，
+// 债还完而没人收紧闸的时候，由 C 当场判红。
 //
 // 计数口径（与 src/theme/motion.ts 的注释是同一套，改一边必须改另一边）：
 //   正则：\bduration-\[?[0-9]   覆盖 `duration-150` 与任意值 `duration-[240ms]`
@@ -26,7 +29,16 @@
 //   `duration-[240ms]` / `duration-200` 三个例子，计数当场从 47 涨到 50。
 //   把定义处排除掉是与另外两个文件同一条理由，不是为了让判据变绿：排除后实测
 //   46，比原基线还低一处；红线 9 管的是调用点，token 源码里根本不出 className。
-//   2026-08-31 实测：46 处 / 20 个文件；src/ 内联 transition: …ms（非 CSS）0 处。
+//   2026-08-31 W01 实测：46 处 / 20 个文件；src/ 内联 transition: …ms（非 CSS）0 处。
+//   2026-08-31 W35 在干净检出 3550ebc 上重量：**0 处**（W30 把那 46 处全落了档）。
+//
+// ⚠️ 这三个排除项现在还兜住了 `_COMMON.md §7b⑧` 那个洞（W37 实测）：Tailwind 的自动
+//   内容探测把**本文件的注释与正对照样本**编成了产物里的真规则——`src/theme/ui.css`
+//   里此刻就躺着 `.duration-150` / `.duration-200` / `.duration-\[240ms\]`，
+//   以及由上面那条正则字面量生成的 `.duration-\[0-9\]`。
+//   本闸排除了 ui.css，所以**不会**因此假绿；但那四条垃圾规则确实进了 31 个租户的产物。
+//   清掉它要动本文件的字面量，而已入库产物与 build:css 有逐字节比对闸（`1db443d`），
+//   两者必须同一笔改——跨到 W37 的面上了，已写进 `signals/W35-request.md`。
 //
 // _COMMON.md §7b③：计数类断言必须先验正则本身，工具错误在本波已经出现三次。
 // 下面第一条 test 就是那次验证，它跑在合成样本上，不依赖任何人的在途文件。
@@ -38,12 +50,41 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { PENDING_RAW_DURATION } from "../src/theme/motion.ts";
+import { measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
 
-/** 2026-08-31 冻结的高水位线。**只许往下调。** */
-const FROZEN_HIGH_WATER_MARK = 46;
-
+const REPO = fileURLToPath(new URL("../", import.meta.url));
 const SRC_ROOT = fileURLToPath(new URL("../src/", import.meta.url));
 const EXCLUDED = new Set(["theme/ui.css", "theme/globals.css", "theme/motion.ts"]);
+
+// ---------------------------------------------------------------------------
+// 棘轮基线（`_COMMON.md §7b⑪b`：冻数字必须写清取值那一刻的 commit）
+//
+// ⚠️ `FROZEN_HIGH_WATER_MARK` 与 `BASELINE_COMMIT` 是**一组**，改一个就要改另一个：
+// 末尾那条「基线自检」会把 `BASELINE_COMMIT` 的树解出来重量一遍，对不上当场红。
+// ---------------------------------------------------------------------------
+
+/**
+ * 取高水位线时所在的 commit。**必须是一个真的 commit**，不是「我本机当时的样子」。
+ * `3550ebc` = `W35` 接第二棒时的 `main`。
+ */
+const BASELINE_COMMIT = "3550ebc255dd0b21bd97cff5cbed2f6e6042f9fa";
+
+/**
+ * 高水位线。**只许往下调。**
+ *
+ * `[实测]` W35 2026-08-31 在 `BASELINE_COMMIT` 的**干净检出**上量：**0 处**。
+ *
+ * W01 P5 建闸时冻的是 46（当时确有 46 处存量），`W30` 把射程内那 46 处全部落了档
+ * （`motion-token-adoption` 的 `RAW_DURATION_EXEMPT` 空清单就是那件事的另一面），
+ * **但没人回来把这条高水位线往下拧**。于是它在「实测 0 / 上限 46」的状态下停了一整波：
+ * 断言 A 与断言 B 都绿，可谁往调用点里塞 46 处 `duration-200` 都照样全绿——
+ * 棘轮空转了 46 格。这正是 `_COMMON.md §7b⑪` 那个病的另一种发作方式：
+ * 数字本身没错过，**错在债还完了而闸没跟着收紧**。
+ *
+ * ⇒ 46 → 0。零基线让断言 A 退化成最强的形式：**调用点里一处裸时长都不许有**。
+ * 这与 `motion-token-adoption` 的空豁免清单口径完全一致，两道闸不再互相矛盾。
+ */
+const FROZEN_HIGH_WATER_MARK = 0;
 
 function rawDurationPattern() {
   return /\bduration-\[?[0-9]/g;
@@ -59,25 +100,35 @@ function walk(directory) {
   return files;
 }
 
-const scanned = walk(SRC_ROOT)
-  .map((absolute) => path.relative(SRC_ROOT, absolute).split(path.sep).join("/"))
-  .filter((relative) => !EXCLUDED.has(relative))
-  .sort();
+/**
+ * 扫一棵 `src/` 树。**按 root 参数化**，因为末尾那条基线自检要拿同一套口径去量
+ * `BASELINE_COMMIT` 解出来的另一棵树——两处口径分家的话，自检就变成了自说自话。
+ *
+ * 一次读盘同时喂两道闸（时长与曲线）。src/ 是 700 上下个文件，读两遍纯属浪费——
+ * _COMMON.md §7 的 IO 纪律对测试同样成立。
+ */
+function scanTree(srcRoot) {
+  const scanned = walk(srcRoot)
+    .map((absolute) => path.relative(srcRoot, absolute).split(path.sep).join("/"))
+    .filter((relative) => !EXCLUDED.has(relative))
+    .sort();
 
-// 一次读盘同时喂两道闸（时长与曲线）。src/ 是 627 个文件，读两遍纯属浪费——
-// _COMMON.md §7 的 IO 纪律对测试同样成立。
-const perFile = new Map();
-const rawCurveFiles = [];
-let total = 0;
-for (const relative of scanned) {
-  const source = readFileSync(path.join(SRC_ROOT, relative), "utf8");
-  const matches = source.match(rawDurationPattern());
-  if (matches?.length) {
-    perFile.set(relative, matches.length);
-    total += matches.length;
+  const perFile = new Map();
+  const rawCurveFiles = [];
+  let total = 0;
+  for (const relative of scanned) {
+    const source = readFileSync(path.join(srcRoot, relative), "utf8");
+    const matches = source.match(rawDurationPattern());
+    if (matches?.length) {
+      perFile.set(relative, matches.length);
+      total += matches.length;
+    }
+    if (!relative.startsWith("theme/") && source.includes("cubic-bezier")) rawCurveFiles.push(relative);
   }
-  if (!relative.startsWith("theme/") && source.includes("cubic-bezier")) rawCurveFiles.push(relative);
+  return { scanned, perFile, rawCurveFiles, total };
 }
+
+const { scanned, perFile, rawCurveFiles, total } = scanTree(SRC_ROOT);
 
 test("正对照：计数用的正则本身是对的", () => {
   // 合成样本，不依赖任何人的在途文件——正对照本身不该是别人改一行就变红的东西。
@@ -126,9 +177,9 @@ test("断言 A：裸时长只减不增", () => {
 test("断言 B：预算锁的数字只许往下调", () => {
   assert.ok(
     PENDING_RAW_DURATION <= FROZEN_HIGH_WATER_MARK,
-    `PENDING_RAW_DURATION = ${PENDING_RAW_DURATION}，高于 2026-08-31 冻结的高水位线 ` +
-      `${FROZEN_HIGH_WATER_MARK}。把预算调大等于拆掉闸门——要新增动效请改用 token；` +
-      "存量债还完之后，把 motion.ts 与这里的高水位线一起往下调。",
+    `PENDING_RAW_DURATION = ${PENDING_RAW_DURATION}，高于在 ${BASELINE_COMMIT.slice(0, 7)} ` +
+      `的干净检出上冻结的高水位线 ${FROZEN_HIGH_WATER_MARK}。` +
+      "把预算调大等于拆掉闸门——要新增动效请改用 token（红线 9）。",
   );
 });
 
@@ -141,5 +192,50 @@ test("裸曲线不许出现在 src/theme 之外（红线 9 的曲线一侧）", 
     rawCurveFiles,
     [],
     "这些文件里写了裸曲线，应当改用 --leo-ease-* token（值见 src/theme/motion.ts）",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 断言 C · 基线自检：高水位线必须取自**干净检出**（`_COMMON.md §7b⑪`）
+// ---------------------------------------------------------------------------
+
+test("基线自检：高水位线与 BASELINE_COMMIT 那棵干净树逐字对得上", () => {
+  const probe = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: ["src"],
+    // 扫描面全在本仓 `src/` 之内，解到 /tmp 不会塌（helper 头注释里那条跨仓警告
+    // 说的是 `i18n-tt-key-coverage` 那一类，本闸不适用）。
+    measure: (root) => {
+      const measured = scanTree(path.join(root, "src"));
+      return {
+        scannedFiles: measured.scanned.length,
+        total: measured.total,
+        worst: [...measured.perFile].sort((left, right) => right[1] - left[1]).slice(0, 5),
+      };
+    },
+  });
+  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
+  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
+
+  // 正对照：先证明我确实扫到了那棵树，而不是在空目录上轻松通过。
+  // 零基线的闸尤其需要这一条——空目录上「实测 0」与真值 0 长得一模一样。
+  assert.ok(
+    probe.value.scannedFiles >= 400,
+    `在 ${BASELINE_COMMIT.slice(0, 7)} 的树上只扫到 ${probe.value.scannedFiles} 个文件，` +
+      "src/ 的规模应当在 700 上下——解包范围不对，这条自检等于没跑",
+  );
+
+  assert.equal(
+    probe.value.total,
+    FROZEN_HIGH_WATER_MARK,
+    `FROZEN_HIGH_WATER_MARK 写的是 ${FROZEN_HIGH_WATER_MARK}，但 ` +
+      `${BASELINE_COMMIT.slice(0, 7)} 的**干净检出**上实测 ${probe.value.total} 处` +
+      `（${probe.value.worst.map(([f, n]) => `${f}(${n})`).join(", ") || "无"}）。\n` +
+      "三种可能：(a) 高水位线是在脏工作树上量的——换一棵干净树重量；\n" +
+      "(b) 存量债还完了，闸没跟着收紧——把 motion.ts 的 PENDING_RAW_DURATION 与\n" +
+      "    这里的高水位线一起拧到实测值，棘轮才不会空转（W35 逮到的就是这一种：\n" +
+      "    实测 0 而上限 46，谁塞 46 处裸时长都全绿）；\n" +
+      "(c) 线已经拧下去了但 BASELINE_COMMIT 没跟着换——两个要一起改。",
   );
 });
