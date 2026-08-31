@@ -309,7 +309,12 @@ test("hover = 整张卡片放大；「预览」按钮已删除；下缘只剩 pr
   assert.match(markup, /data-home-app-card="true"[^>]*hover:scale-105/);
   assert.match(markup, /data-home-app-card="true"[^>]*hover:z-10/);
   // 功能图仍在 hover 时淡入铺满整卡。
-  assert.match(markup, /data-home-app-card-fill[^>]*opacity-0 transition-opacity duration-200 group-hover:opacity-100/);
+  // W30 把这处接进六档阶梯：`--leo-dur-3` **就是 200ms**，淡入时长逐毫秒不变，
+  // 变的是它现在跟着 reduced-motion 一起降级。断言的强度没有变，只换了写法。
+  assert.match(
+    markup,
+    /data-home-app-card-fill[^>]*opacity-0 transition-opacity duration-\[var\(--leo-dur-3\)\] ease-\[var\(--leo-ease-standard\)\] group-hover:opacity-100/,
+  );
 
   // 「预览」按钮删除：既没有那一层，也没有那两个字（点卡片本身即预览）。
   assert.doesNotMatch(markup, /data-home-app-card-preview/);
@@ -670,7 +675,9 @@ test("首页卡片版式来自共享外壳，本文件不再持有第二份 clas
     /hover:scale-105/,
     /hover:z-10/,
     /min-h-\[100px\] overflow-hidden rounded-xl/,
-    /transition-opacity duration-200 group-hover:opacity-100/,
+    // 跟着上面那处一起换成阶梯写法。这条是 `doesNotMatch`：不换的话它照样绿，
+    // 但从此**匹配不到任何东西**，等于这道防抄闸悄悄失效了。
+    /transition-opacity duration-\[var\(--leo-dur-3\)\] ease-\[var\(--leo-ease-standard\)\] group-hover:opacity-100/,
     /\[@media\(hover:none\)\]:translate-y-0/,
     /\[@media\(hover:none\)\]:pb-8/,
   ]) {
