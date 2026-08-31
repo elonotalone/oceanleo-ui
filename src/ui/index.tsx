@@ -170,7 +170,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-neutral-200 px-3.5 py-1.5 text-[13px] text-neutral-700 transition hover:bg-neutral-50 active:scale-[0.98]"
+            className="rounded-lg border border-neutral-200 px-3.5 py-1.5 text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 active:scale-[0.98] active:duration-[var(--leo-dur-1)]"
           >
             {tt(cancelLabel)}
           </button>
@@ -181,7 +181,7 @@ export function ConfirmDialog({
               setBusy(true);
               await onConfirm();
             }}
-            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition active:scale-[0.98] disabled:opacity-60 ${
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-[0.98] active:duration-[var(--leo-dur-1)] disabled:opacity-60 ${
               danger ? "bg-red-600 hover:bg-red-500" : "bg-neutral-900 hover:bg-neutral-800"
             }`}
           >
@@ -215,12 +215,12 @@ export function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50 ${
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50 ${
         checked ? "bg-neutral-900" : "bg-neutral-300"
       }`}
     >
       <span
-        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)] ${
           checked ? "translate-x-[18px]" : "translate-x-[3px]"
         }`}
       />
@@ -256,7 +256,7 @@ export function Segmented<T extends string>({
           role="tab"
           aria-selected={value === opt.id}
           onClick={() => onChange(opt.id)}
-          className={`rounded-md px-2.5 py-1 transition-all duration-150 ${
+          className={`rounded-md px-2.5 py-1 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
             value === opt.id
               ? "bg-white font-medium text-neutral-900 shadow-sm"
               : "text-neutral-500 hover:text-neutral-700"
@@ -311,11 +311,13 @@ export function Select<T extends string>({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-[13px] text-neutral-800 transition hover:border-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-[13px] text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       >
         <span className="truncate">{current?.label ? tt(current.label) : tt("请选择")}</span>
+        {/* 箭头取 dur-3 而不是跟触发钮同档：它宣告的是下面那块 `v-scale-in` 面板
+            （globals.css 里也是 dur-3），同一层级必须同一档，否则箭头会先于面板到位。 */}
         <svg
-          className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-150 ${
+          className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
             open ? "rotate-180" : ""
           }`}
           viewBox="0 0 24 24"
@@ -341,7 +343,7 @@ export function Select<T extends string>({
                 onChange(opt.id);
                 setOpen(false);
               }}
-              className={`flex w-full items-center justify-between px-3 py-2 text-left text-[13px] transition hover:bg-neutral-50 ${
+              className={`flex w-full items-center justify-between px-3 py-2 text-left text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 ${
                 value === opt.id ? "font-medium text-neutral-900" : "text-neutral-600"
               }`}
             >
