@@ -215,11 +215,49 @@ const FIXTURE_PROPS = {
     })),
   }),
   card: (state) => ({ "data-leo-state": state, loading: state === "loading" }),
-  uploadProgress: (state) => ({
-    "data-leo-state": state,
-    status: state,
-    progress: state === "uploading" ? 0.42 : 0,
-  }),
+  /**
+   * `[实测] 2026-08-31 17:4x` 对着 `src/lib/upload/progress-view.tsx:122-132`
+   * 的解构逐条核过：`{ name, snapshot, accent?, tt }`。
+   *
+   * 每个数都写死，一个都不许来自时钟或随机数——这是本条能当基线的前提。
+   * 原先那份接线（`status` / `progress`）拼的是**另一个并不存在的组件**的 props 面，
+   * 见 `subjects.mjs` 里 `uploadProgress` 的改动说明。
+   *
+   * `remainingMs` 三态给的值不同，这是刻意的判据而不是凑数：
+   * `progressDetail()`（:51）在它为 `null` 时**整段不渲染**「剩余约 …」。
+   * W08 把这条写在文件头当设计约束（「假的剩余时间比没有更糟」），
+   * 所以 queued 与 failed 两态的基线图里**不该出现剩余时间**——
+   * 哪天有人给它补了个假 ETA，这两张图会当场红。
+   */
+  uploadProgress: (state) => {
+    const total = 18_600_000;
+    const uploading = state === "uploading";
+    const failed = state === "failed";
+    const loaded = state === "queued" ? 0 : 7_812_000;
+    return {
+      name: "季度汇报.pdf",
+      snapshot: {
+        loaded,
+        total,
+        ratio: loaded / total,
+        elapsedMs: state === "queued" ? 0 : 12_000,
+        // 只有正在传的那一态估得出剩余；其余两态必须是 null（见上）。
+        remainingMs: uploading ? 35_000 : null,
+        bytesPerSecond: uploading ? 651_000 : 0,
+        done: false,
+        failed,
+      },
+      // 翻译函数由调用方传入是 W08 刻意的设计（文件头：这一层要能在没有
+      // I18nProvider 的地方直接渲染）。夹具给一个不依赖 i18n 运行时的确定性实现。
+      tt: (zh, vars) =>
+        vars
+          ? zh.replace(/\{(\w+)\}/g, (whole, key) =>
+              key in vars ? String(vars[key]) : whole,
+            )
+          : zh,
+      "data-leo-state": state,
+    };
+  },
   /**
    * `[实测]` `WorkbenchRouteChunkError` 的 props 面是
    * `{ kind, attempts, onRetry, onReload }`（`WorkbenchRouteLoading.tsx:38-43`）。

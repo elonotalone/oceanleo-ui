@@ -116,14 +116,36 @@ export const SUBJECTS = {
   toast: {
     owner: "W05",
     guards: "Toast 四类型 + 队列上限",
-    // `[实测]` `src/ui/index.tsx:24` 是 W05 自己留的字条：
-    // 「待并入：`W05` 的 `Toast`——`src/ui/Toast.tsx` 到本轮为止还没落盘」。
-    // 所以这里指向那个**约定好的**落点，而不是桶文件：主体到位的当天这条自动转绿。
+    /**
+     * ⚠️ 这条 2026-08-31 17:4x 改过，**改的又是一条差点冤枉已交卷 owner 的假红**
+     * （与下面 `button` 那条同类，本套件至此第三次踩到，见 `uploadProgress`）。
+     *
+     * 原先 `exportName: "Toast"`，依据是 `src/ui/index.tsx:24` W05 自己留的字条
+     * 「`src/ui/Toast.tsx` 到本轮为止还没落盘」。**那句话今天已经过期**：
+     * `[实测]` W05 交卷了，`src/ui/Toast.tsx` 在盘上，但它导出的是
+     * `ToastViewport`（:595）/ `ToastProvider`（:698）/ `useToast`（:378），
+     * **没有一个叫 `Toast` 的导出**。照原样跑，这道闸会报「W05 主体缺席」——
+     * 一条指向不存在欠账的假红。
+     *
+     * 分类改成 `needs-client` 而不是 `ssr`，理由是实测的组件形状：
+     * `ToastViewport` 不吃 props，它的内容全部来自 `useSyncExternalStore`
+     * 订阅的模块级 store（:596）。SSR 走的是 `serverSnapshot` ⇒ **恒为空队列**，
+     * 静态夹具渲染出来的是四个空 viewport。
+     * 真正的表现件 `ToastItem`（:520）是**模块私有的，没有导出**。
+     *
+     * ⇒ 这条红归**本闸的覆盖边界**，不记 W05 人头。
+     * 解封有两条路，都不该在建闸这一棒里顺手做掉：
+     *   ① 夹具页加客户端 hydration，push 四条 toast 进 store 再截图；
+     *   ② 请 W05 导出 `ToastItem`（纯表现型，SSR 得出来）——已写进 `W10-request.md`。
+     */
     module: "src/ui/Toast.tsx",
-    exportName: "Toast",
+    exportName: "ToastViewport",
     // 红线 7：共享包里禁止 import `sonner`，W05 建的是第一方原语。
     kinds: ["success", "error", "warning", "info"],
-    render: "ssr",
+    render: "needs-client",
+    renderNote:
+      "ToastViewport 不吃 props，内容来自 useSyncExternalStore 的模块级 store；" +
+      "SSR 走 serverSnapshot ⇒ 恒为空队列。纯表现件 ToastItem 未导出。",
   },
 
   materialGrid: {
@@ -153,8 +175,32 @@ export const SUBJECTS = {
   uploadProgress: {
     owner: "W08",
     guards: "上传进度三态",
-    module: "src/shell/ArtifactActions.tsx",
-    exportName: "UploadProgress",
+    /**
+     * ⚠️ 这条 2026-08-31 17:4x 改过，**同样是一条会冤枉已交卷 owner 的假红**。
+     *
+     * 原先指着 `src/shell/ArtifactActions.tsx` 的 `UploadProgress`。
+     * `[实测]` 那个模块只导出 `artifactActionMatrix`（:311）与
+     * `ArtifactActionButtons`（:405）；标识符 `UploadProgress` 在**整个 `src/`**
+     * 下没有任何一处是组件导出（对照组：同一次搜索命中了
+     * `UploadProgressSnapshot` 类型与 `UploadProgressList`，故正则可信，
+     * `_COMMON` §7b③）。
+     *
+     * W08 真正的产出在 `src/lib/upload/progress-view.tsx`：
+     * `UploadProgressRow`（:122，一行完整读数）与 `UploadProgressList`（:154）。
+     *
+     * 取 `Row` 不取 `List` 是刻意的：`List` 吃的是 `UploadInFlight[]`，
+     * 每项都要一个真的 `File` 对象（:168 拿 `entry.file.size` /
+     * `entry.file.lastModified` 当 key），在 jsdom 夹具里造 `File` 属于给闸自己
+     * 加一层可以漂的东西；而 `Row` 吃的是 `{ name, snapshot, accent?, tt }`
+     * ——纯标量 + 一个翻译函数，**确定性天然成立**。
+     * 三态由 `snapshot` 的 `done`/`failed`/`ratio` 三个字段驱动，正是要守的那三态。
+     *
+     * 这个模块还有一个性质让它特别适合当被测主体，且是 W08 自己写在文件头的：
+     * 「这一层要能在没有 `I18nProvider` 的地方（测试、以及将来任何非 Next 宿主）
+     * 直接渲染」⇒ 翻译函数由调用方传入，本闸不必拖 i18n 运行时进来。
+     */
+    module: "src/lib/upload/progress-view.tsx",
+    exportName: "UploadProgressRow",
     states: ["queued", "uploading", "failed"],
     render: "ssr",
   },

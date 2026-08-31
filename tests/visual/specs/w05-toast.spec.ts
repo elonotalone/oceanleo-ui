@@ -1,15 +1,19 @@
 /**
  * 守的是 **W05 的「Toast 四类型 + 队列上限」**。
  *
- * 今天是**真缺席**（不是本闸够不着）：`src/ui/Toast.tsx` 不存在。
- * 依据不是猜的——`src/ui/index.tsx:24` 是 W05 自己留的字条：
- * 「待并入：`W05` 的 `Toast`——`src/ui/Toast.tsx` 到本轮为止还没落盘」。
- * 另按 `_COMMON` §7b③ 复核过零命中：标识符 `Toast` 在 `src/` 只有 3 处，
- * 全是注释，没有一处是组件导出。
+ * ⚠️ **本文件抬头 2026-08-31 17:4x 整段改写过，因为原文写的是一条已过期的事实。**
+ * 原文说「今天是真缺席：`src/ui/Toast.tsx` 不存在 ⇒ 这条红记在 W05 头上」，
+ * 依据是 `src/ui/index.tsx:24` W05 自己留的字条。
+ * `[实测]` **那份字条已经过期**：`src/ui/Toast.tsx` 在盘上，
+ * 导出 `ToastViewport`(:595) / `ToastProvider`(:698) / `useToast`(:378)。
  *
- * ⇒ 这条红**记在 W05 头上**，并写进 `signals/W10-request.md`。
- * 登记表刻意指向约定好的落点 `src/ui/Toast.tsx` 而不是桶文件：
- * 主体到位的当天这组用例自动转绿，不需要任何人回来改闸。
+ * 所以红的性质变了，**归属也跟着变**：不是「W05 没交」，而是
+ * **「W05 交了，但本闸这一层够不着」**——`ToastViewport` 不吃 props，
+ * 内容全部来自 `useSyncExternalStore` 的模块级 store，SSR 走 `serverSnapshot`
+ * ⇒ 恒为空队列；真正的表现件 `ToastItem`(:520) 是模块私有的。
+ * ⇒ 按 `_COMMON` §8，这条**不记 W05 人头**，记本闸的覆盖边界。
+ *
+ * 解封条件见 `subjects.mjs` 的 `toast` 条（夹具 hydration，或请 W05 导出 `ToastItem`）。
  */
 import { SUBJECTS } from "../harness/subjects.mjs";
 import {

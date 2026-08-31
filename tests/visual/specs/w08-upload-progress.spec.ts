@@ -1,12 +1,18 @@
 /**
  * 守的是 **W08 的「上传进度三态」**（queued / uploading / failed）。
  *
- * 今天是**真缺席**：`UploadProgress` 在 `src/` 零命中（标识符级别 0 处，
- * 零命中已按 `_COMMON` §7b③ 用同一条正则在已知存在的 `Button` 与
- * `MaterialLibrary` 上验过——直接声明与再导出两种写法都命中，所以正则可信）。
- * 登记表指向 `src/shell/ArtifactActions.tsx`，那份文件在位，
- * 今天导出的是 `artifactActionMatrix` 与 `ArtifactActionButtons`。
- * ⇒ 这条红记在 W08 头上。
+ * ⚠️ **本文件抬头 2026-08-31 17:4x 整段改写过，因为原文写的是一条假事实。**
+ * 原文说「今天是真缺席：`UploadProgress` 在 `src/` 零命中 ⇒ 这条红记在 W08 头上」。
+ * 零命中本身没错，**由它推出的结论错了**：W08 早已交卷，产出叫
+ * `UploadProgressRow` / `UploadProgressList`，落在
+ * `src/lib/upload/progress-view.tsx`，不在登记表指着的 `src/shell/ArtifactActions.tsx`。
+ * 照原样跑，这道闸会对一位已交卷的 owner 报「没交」。
+ *
+ * 这是本套件第三次踩同一个坑（前两次：`Button` 指错桶文件、`Toast` 找错导出名），
+ * 所以把教训再钉一次：**「我搜的那个名字零命中」不等于「那个东西不存在」。**
+ * 判缺席之前先问「我搜的名字对吗、我搜的模块对吗」，两条都要自证。
+ *
+ * 登记表已改指真身，详见 `subjects.mjs` 的 `uploadProgress` 条。
  */
 import { SUBJECTS } from "../harness/subjects.mjs";
 import {

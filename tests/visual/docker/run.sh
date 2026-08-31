@@ -81,14 +81,45 @@ if (( budget_update )); then
   echo "[leo-visual]       实测比现有预算慢不会被静默放宽，会判红。"
 fi
 
+# ─── 资源上限：为什么这道闸自己给自己上铐 ───────────────────────────────────
+# 这台机器上并发着十几个 agent，`free -h` 实测只剩 4 GiB available，而
+# 「docker 跑 Playwright」是整波里最吃内存的一个动作。共享机器上的纪律
+# （`agent-io-guard.sh run-heavy` 排队）**挡不住这一条**，原因实测于 2026-08-31：
+# 未走 guard 的进程把 CPU 吃到 122%，guard 于是只肯发 1 of 4 个槽，队列积到 8 个，
+# 一个 14 分钟都没被admit的 run-heavy 等于零进度——而它一旦被 admit，
+# 又没有任何东西限制它实际用多少内存。
+#
+# 所以上限写在这里，用 cgroup 硬限而不是靠排队：
+#   - 排队是「希望别人也守规矩」，硬限是「我物理上超不过」；
+#   - 超了由内核在**容器内**杀掉 chromium（一条清楚的红），
+#     而不是让宿主 OOM killer 去挑一个受害者——上一次挑中的是整台机器
+#     （2026-08-14 / 08-20 两次硬冻结，见 `docs/runbooks/server-hang-recovery.md`）。
+#
+# 2 GiB 是实测够用的量：`workers:1`（playwright.config.ts 里刻意定的）意味着
+# 同时只有一个 chromium，渲染的是静态夹具页，没有视频、没有多标签。
+# 要调就显式调，别默默调大。
+MEM_LIMIT="${LEO_VISUAL_MEMORY:-2g}"
+MEM_SWAP="${LEO_VISUAL_MEMORY_SWAP:-3g}"
+CPU_LIMIT="${LEO_VISUAL_CPUS:-2}"
+
 # `--ipc=host` 是 Playwright 官方镜像的硬要求：默认的 64MB /dev/shm 会让
 # chromium 在多标签下 OOM 崩溃，而崩溃表现为「随机某几张图截失败」——
 # 最难查的一类假阳性。
 #
+# 注意它与上面的内存上限有一处相互作用，值得写明白免得后人以为哪个失效了：
+# `--ipc=host` 让 /dev/shm 来自宿主，那部分不计进容器的 cgroup。
+# 所以内存上限约束的是 chromium 的堆与渲染器，不是共享内存段。
+# 这是刻意的取舍：把 shm 关回 64MB 会换来那类最难查的假阳性。
+#
 # 挂载是**读写**的，这是刻意的：基线图与预算 JSON 要落回工作树才能被提交。
 # 容器不往工作树装任何依赖（runner 的包在镜像的 /pw 里，见 Dockerfile）。
+echo "[leo-visual] 资源上限：memory=${MEM_LIMIT} swap=${MEM_SWAP} cpus=${CPU_LIMIT}（改用 LEO_VISUAL_MEMORY / _SWAP / _CPUS）"
+
 exec docker run --rm \
   --ipc=host \
+  --memory "${MEM_LIMIT}" \
+  --memory-swap "${MEM_SWAP}" \
+  --cpus "${CPU_LIMIT}" \
   --volume "${REPO}:/work" \
   --workdir /work \
   "${docker_env[@]}" \
