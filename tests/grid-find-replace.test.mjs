@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { evaluateGridCell } from "../src/shell/doc-editors/grid-formula.ts";
@@ -202,5 +203,82 @@ test("列宽区间与 grid-model 的 C19 常量同值（防止两处漂移）", 
   assert.deepEqual(
     [...GRID_COL_WIDTH_RANGE],
     GRID_CONSTANTS.C19_columnWidthRangePx,
+  );
+});
+
+/* ─────────────────── 一步撤销：钉在 hook 上，不是钉在模拟上 ───────────────────
+ *
+ * 上面那条「一份编辑清单 = 一步撤销」测的是 `planGridReplaceAll` 的形状：它自己
+ * 造了一个 undoStack 来演示。演示挡不住回归——把 `use-grid-editor.ts` 的
+ * `replaceAll` 改成每格一次 `mutate()`，上面那条照样绿，而用户按一次撤销只退回
+ * 一格。真正的承诺在 hook 里：一次 `mutate()` = 一次 `commitSheets()` = 一条
+ * undo 记录。
+ *
+ * `use-grid-editor.ts` 是 React hook 且背后拖着 i18n 的 `.tsx` 树，
+ * `--experimental-strip-types` 加载不了，所以按本仓既有做法
+ * （`grid-carrier-contract.test.mjs:59-64`）读源文本断言。
+ */
+const GRID_EDITOR_SOURCE = readFileSync(
+  new URL("../src/shell/doc-editors/use-grid-editor.ts", import.meta.url),
+  "utf8",
+);
+
+// 注释里写的 `mutate()` 不是一次调用。数调用之前先把注释摘掉，否则源码里一句
+// 解释性的注释就能让下面的计数假红——`replaceAll` 上方那条注释正好这样，
+// 它解释的恰恰是「只调一次 mutate()」这件事本身。
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+function hookCallbackBody(name) {
+  const start = GRID_EDITOR_SOURCE.indexOf(`const ${name} = useCallback(`);
+  assert.notEqual(start, -1, `use-grid-editor.ts 里找不到 ${name} 的 useCallback`);
+  const rest = GRID_EDITOR_SOURCE.slice(start);
+  // 下一个同级声明（行首两空格）就是本函数的尽头。
+  const end = rest.search(/\n {2}(?:const|function|return|void) /);
+  return stripComments(end === -1 ? rest : rest.slice(0, end));
+}
+
+test("hook 的 replaceAll 把整份清单写在一次 mutate() 里（一步撤销的真正出处）", () => {
+  const body = hookCallbackBody("replaceAll");
+
+  const mutateCalls = [...body.matchAll(/\bmutate\(/g)];
+  assert.equal(
+    mutateCalls.length,
+    1,
+    "replaceAll 只许调用一次 mutate()：一次 mutate = 一条 undo 记录，两次就是撤两回",
+  );
+
+  const mutateAt = body.indexOf("mutate(");
+  const loopAt = body.search(
+    /for \(const \w+ of plan\.edits\)|plan\.edits\.(?:forEach|map)\(/,
+  );
+  assert.notEqual(loopAt, -1, "replaceAll 必须真的遍历 plan.edits 写回去");
+  assert.ok(
+    loopAt > mutateAt,
+    "遍历 edits 必须在 mutate() 回调**内部**；挪到外面就是每格一条 undo 记录",
+  );
+});
+
+test("mutate 只经由 commitSheets 落一条 undo 记录（一步撤销的下半截）", () => {
+  // 上一条钉住「replaceAll 只调一次 mutate」，这一条钉住「一次 mutate 只压一条
+  // undo」。两条合起来才等于用户手里的「撤一次回到替换前」。
+  const mutateBody = hookCallbackBody("mutate");
+  assert.equal(
+    [...mutateBody.matchAll(/\bcommitSheets\(/g)].length,
+    1,
+    "mutate 只许收口到一次 commitSheets",
+  );
+
+  const commitBody = hookCallbackBody("commitSheets");
+  assert.equal(
+    [...commitBody.matchAll(/undoRef\.current = /g)].length,
+    1,
+    "commitSheets 每次调用只许往 undo 栈推一条快照",
+  );
+  assert.match(
+    commitBody,
+    /redoRef\.current = \[\]/,
+    "写入后 redo 栈要清空，否则撤销回去再重做会拿到替换前的陈旧分支",
   );
 });
