@@ -350,7 +350,14 @@ export function useEditBarDockController({
     [paintMotion],
   );
 
-  /** 视觉态立刻交还给逻辑态：取消、新手势接管、卸载都走这条。 */
+  /**
+   * 视觉态立刻交还给逻辑态：**撤销**（Esc 取消移动模式）与卸载走这条。
+   *
+   * ⚠️ 新手势接管**不**走这条。撤销的语义是「把这次手势当没发生过」，所以视觉
+   * 回到逻辑是对的；而接管的语义是「从条此刻所在的地方接着来」，把视觉拉回
+   * 逻辑会让屏幕上的条当场跳一下（跳变幅度 = 当帧过冲量，`V1` 实测 −57px）。
+   * 接管走 `adoptVisualPositionAsLogical()`，方向正好相反。
+   */
   const releasePositionSpring = useCallback(() => {
     positionAnimatingRef.current = false;
     positionSpringRef.current?.set(positionRef.current);
@@ -864,6 +871,39 @@ export function useEditBarDockController({
     ],
   );
 
+  /**
+   * 新手势接管在飞的动画（「可打断」）：把弹簧**当前的视觉位置**收编为逻辑位置。
+   *
+   * 收编的方向是本函数的全部内容。此前这里调的是 `releasePositionSpring()`，
+   * 方向反了——它把视觉拉回逻辑，于是甩出去的条在飞行途中被抓住时，会先往回
+   * 跳一个过冲量再跟手（`V1` 实测 −57px，`verdicts/V1-verdict.md` A2）。
+   * 用户看到的是「我明明抓住了它，它却先弹开一下」。
+   *
+   * 收编之后 `positionRef` 就是条此刻真正所在的地方，所以紧接着建立的
+   * `drag.originPosition` 也从那里起算——第一帧与后续每一帧都连续。
+   *
+   * 弹簧没在飞时（`positionAnimatingRef` 为假）视觉与逻辑本就重合，
+   * 走原来的对齐路径，行为逐字不变。
+   */
+  const adoptVisualPositionAsLogical = useCallback(() => {
+    const spring = positionSpringRef.current;
+    if (!spring || !positionAnimatingRef.current) {
+      releasePositionSpring();
+      return;
+    }
+    positionAnimatingRef.current = false;
+    // 走 `applyLivePosition` 而不是直接写 `positionRef`：逻辑态要经过边界夹取
+    // 与落盘口径（展开态写 offset、收起态写 collapsedPosition），
+    // 绕过去会留下一个夹不住、也存不回来的半截状态。
+    applyLivePosition(spring.current, false);
+    // 夹取真的改了值时，视觉跟着走到夹取后的位置——两者仍然重合，
+    // 只是那一点差值是「它本来就飘到了看不见的地方」，不是接管引入的跳变。
+    spring.set(positionRef.current);
+    positionTargetRef.current = positionRef.current;
+    visualPositionRef.current = positionRef.current;
+    paintMotion();
+  }, [applyLivePosition, paintMotion, releasePositionSpring]);
+
   const startDrag = useCallback(
     (
       kind: EditBarDrag["kind"],
@@ -872,9 +912,7 @@ export function useEditBarDockController({
       clientY: number,
     ) => {
       readDockTargetBounds();
-      // 新手势当场接管在飞的动画（「可打断」）：弹簧交还给逻辑态，
-      // 手势从条真正所在的位置起步，不会从某个中间帧跳一下。
-      releasePositionSpring();
+      adoptVisualPositionAsLogical();
       pointerVelocityRef.current?.reset();
       dragRef.current = {
         pointerId,
@@ -890,7 +928,7 @@ export function useEditBarDockController({
       };
       setDragging(true);
     },
-    [readDockTargetBounds, releasePositionSpring],
+    [adoptVisualPositionAsLogical, readDockTargetBounds],
   );
 
   const updateDrag = useCallback(
