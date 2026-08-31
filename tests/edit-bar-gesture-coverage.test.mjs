@@ -30,24 +30,40 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
 
+import { measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const SHELL = "src/shell";
+const REPO = fileURLToPath(new URL("..", import.meta.url));
+
+/**
+ * 冻结「13 件」这个数时所在的 commit。末尾那条基线自检会把这个 commit 的树解出来重量一遍。
+ * `W31` 原先的 13 是在脏工作树上量的，干净检出只有 10 ⇒ `V1` 判红（`_COMMON.md §7b⑪`）。
+ * **改上面任何一个冻结数字，都要连它一起改。**
+ */
+const BASELINE_COMMIT = "a4988677c825a17e499159b5d28cdceb6eabc45f";
 
 function read(relPath) {
   return readFileSync(resolve(relPath), "utf8");
 }
 
 /** 只看会跑的代码：注释里提到某个名字不算它还在。 */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+}
+
 function code(relPath) {
-  return read(relPath)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
+  return stripComments(read(relPath));
+}
+
+/** 同一套读法，但从别的一棵树的根读起（基线自检用）。 */
+function codeAt(root, relPath) {
+  return stripComments(readFileSync(resolve(root, relPath), "utf8"));
 }
 
 function escapeForRegExp(literal) {
@@ -98,11 +114,25 @@ function tableKeys(source, declaration) {
 const themeTable = code(`${SHELL}/plugin-theme.tsx`);
 const registry = code(`${SHELL}/workbench-capability-registry.ts`);
 
-const PLUGIN_IDS = tableKeys(themeTable, "export const PLUGIN_THEME_SPECS").keys;
+/**
+ * 权威清单取自**适配器表**，不是主题表。
+ *
+ * `W31` 原先取的是 `PLUGIN_THEME_SPECS`，`V1` 复判 §5.2 判红：那张表在 HEAD 上只有
+ * **10** 件，`design-canvas` / `website` / `video-canvas` 三个 id 只存在于并发同事对
+ * `plugin-theme.tsx` 的**未提交**改动里 ⇒ 「13 件」这个数标定在一棵 git 里并不存在的树上，
+ * 干净检出上这道闸必红，`逐件 ×13` 也缩成 `逐件 ×10`（`_COMMON.md §7b⑪`）。
+ *
+ * 适配器表才是这道闸真正要问的东西：**这一件归哪条外壳路径**（`toolbarOwnership`）。
+ * 它在干净 HEAD 上已经是 13 件且三件 extracted 的 ownership 已是 `native`。
+ * 主题表管的是插件内主题配色，与手势可达性无关——接错表，不是产品缺口。
+ */
 const { body: registryBody, keys: adapters } = tableKeys(
   registry,
   "const EDITOR_ADAPTER_RUNTIME",
 );
+/** 适配器键可能带版本后缀（`chart-editor@1`），插件 id 取 `@` 之前那一段。 */
+const PLUGIN_IDS = adapters.map((adapter) => adapter.split("@")[0]);
+const THEME_SPEC_IDS = tableKeys(themeTable, "export const PLUGIN_THEME_SPECS").keys;
 const OWNERSHIP = new Map();
 for (const adapter of adapters) {
   const entry = registryBody.match(
@@ -117,6 +147,24 @@ for (const adapter of adapters) {
   OWNERSHIP.set(adapter.split("@")[0], tier);
 }
 
+/**
+ * 主题表**尚未**登记、但适配器表已经有的插件 id（`BASELINE_COMMIT` 干净检出实测）。
+ *
+ * 这三件是并发同事正在往 `plugin-theme.tsx` 里补的（`git diff` 里 +63 行，本波在途）。
+ * 按 `_COMMON.md §8`「红在别人在途的文件里，标『在途』，不记人头」，这里显式登记而不判红。
+ *
+ * ⚠️ 这是**清单，不是豁免**：下面那条「死条目也红」会在同事提交之后当场红，
+ * 逼着把这里清空。形状抄 `motion-token-adoption` 的判据 2b——
+ * 留着不清的清单会把下一次真回归静静放过去。
+ */
+const THEME_SPEC_PENDING = Object.freeze(["design-canvas", "video-canvas", "website"]);
+
+/** 两张表的路径，`git archive` 只解这两个文件，不解整棵树。 */
+const TABLE_PATHS = [
+  `${SHELL}/plugin-theme.tsx`,
+  `${SHELL}/workbench-capability-registry.ts`,
+];
+
 test("清单本身：13 件，10 件走共享外壳、3 件走 chrome", () => {
   assert.equal(
     PLUGIN_IDS.length,
@@ -124,10 +172,11 @@ test("清单本身：13 件，10 件走共享外壳、3 件走 chrome", () => {
     `插件数从 13 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
       "改这个数字之前先确认新那件落在下面两条路径的哪一条",
   );
-  assert.deepEqual(
-    [...PLUGIN_IDS].sort(),
-    [...OWNERSHIP.keys()].sort(),
-    "主题表与适配器表对不齐，有插件问不出它归哪条外壳路径",
+  assert.equal(
+    new Set(PLUGIN_IDS).size,
+    PLUGIN_IDS.length,
+    `适配器表里有同一个插件的两条记录：${PLUGIN_IDS.join(", ")}。` +
+      "版本后缀被剥掉之后撞了名，逐件断言会有一件跑两遍、另一件不跑",
   );
   const native = PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "native");
   assert.deepEqual(
@@ -139,6 +188,55 @@ test("清单本身：13 件，10 件走共享外壳、3 件走 chrome", () => {
     PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "shared").length,
     10,
     "走共享外壳的必须是那十件",
+  );
+});
+
+/** 从一棵树的根上把两张表都读出来。工作树、任意 commit 的树，用的是同一段代码。 */
+function readTables(root) {
+  const adapterKeys = tableKeys(
+    codeAt(root, `${SHELL}/workbench-capability-registry.ts`),
+    "const EDITOR_ADAPTER_RUNTIME",
+  ).keys;
+  return {
+    pluginIds: adapterKeys.map((a) => a.split("@")[0]),
+    themeIds: tableKeys(
+      codeAt(root, `${SHELL}/plugin-theme.tsx`),
+      "export const PLUGIN_THEME_SPECS",
+    ).keys,
+  };
+}
+
+test("两表对齐：主题表不许出现适配器表没有的插件，缺的那几件必须显式登记", () => {
+  // ⚠️ 这一条判的是 **HEAD 上已入库的两张表**，不是工作树。
+  // 两张表当下都躺着并发同事的未提交改动；照工作树判，等于把别人的半成品当成已入库
+  // ——那正是 `V1` 判 `W31` 红的那个病（`_COMMON.md §7b⑪`）。
+  // 反过来，判 HEAD 意味着同事**一提交**，下面「死条目也红」就当场逼人来清清单。
+  const head = measureOnCommittedTree({ repo: REPO, commit: "HEAD", pathspecs: TABLE_PATHS, measure: readTables });
+  assert.ok(head.ok, `读不到 HEAD 上的两张表 ⇒ 这条对齐判据等于没跑。${head.reason}`);
+  const { pluginIds, themeIds } = head.value;
+
+  // 方向一（硬红）：主题表里冒出来一个适配器表没有的 id，说明它问不出归哪条外壳路径
+  // ⇒ 那件的用户双击不会有任何反应，而没有任何闸会响。这是真缺口，不是在途。
+  const adapterIds = new Set(pluginIds);
+  const orphan = themeIds.filter((id) => !adapterIds.has(id));
+  assert.deepEqual(
+    orphan,
+    [],
+    `主题表里这几件在适配器表上没有对应条目：${orphan.join(", ")}。` +
+      "它们归哪条外壳路径问不出来，三条手势一条都无从保证",
+  );
+
+  // 方向二：适配器表有、主题表还没有的，必须**逐个**写进 PENDING；
+  // 反过来，PENDING 里已经补上的是死条目，也红。
+  // 死条目留着不清，会让下一次真的缺失被静静放过（形状同 W30 判据 2b）。
+  const missing = pluginIds.filter((id) => !themeIds.includes(id)).sort();
+  assert.deepEqual(
+    missing,
+    [...THEME_SPEC_PENDING].sort(),
+    `HEAD 上主题表缺的是「${missing.join(", ") || "无"}」，` +
+      `THEME_SPEC_PENDING 写的是「${[...THEME_SPEC_PENDING].join(", ")}」，对不上。\n` +
+      "· 缺的比清单多 ⇒ 有新插件没登记，两表对齐进度必须是显式的；\n" +
+      "· 清单比缺的多 ⇒ 主题表已经补齐了，把清单里那几件删掉。",
   );
 });
 
@@ -615,5 +713,42 @@ test("整名匹配器本身：改名必须判成没了，同前缀的别名不�
     "<span data-plugin-chrome-stage-RENAMED />",
     /data-plugin-chrome-stage/,
     "裸正则在改名后照样命中——这就是不许用它的理由",
+  );
+});
+
+/* ===========================================================================
+ * 六 · 基线自检：上面那些冻结的数字必须是在**干净检出**上取的
+ *
+ * `V1` 复判抓到的两条新红同一个病根：`W30` 与 `W31` 都在并发同事的脏工作树上取了读数
+ * （`_COMMON.md §7b⑪`）。纪律守不住它，所以给它一个机检形状——
+ * 把 `BASELINE_COMMIT` 的树解出来重量一遍，对不上就红。
+ * 脏工作树上量出来的数字过不了这一关，因为那棵树 git 里没有。
+ * ========================================================================= */
+
+test("基线自检：13 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
+  const probe = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: TABLE_PATHS,
+    measure: readTables,
+  });
+  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
+  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
+
+  const short = BASELINE_COMMIT.slice(0, 7);
+  // 冻的是「13 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
+  assert.equal(
+    probe.value.pluginIds.length,
+    13,
+    `「13 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
+      `（${probe.value.pluginIds.join(", ")}）。\n` +
+      "`W31` 原先的 13 取自主题表、且量在脏工作树上，干净检出只有 10 ⇒ 闸必红。\n" +
+      "改冻结数字要连 BASELINE_COMMIT 一起改，两个是一组。",
+  );
+  assert.deepEqual(
+    probe.value.pluginIds.filter((id) => !probe.value.themeIds.includes(id)).sort(),
+    [...THEME_SPEC_PENDING].sort(),
+    `在 ${short} 的干净检出上，两表差集与 THEME_SPEC_PENDING 对不上。\n` +
+      "在途清单也必须按干净检出登记——照着脏树写，等于把同事的未提交改动当成已入库。",
   );
 });
