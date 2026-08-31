@@ -8,9 +8,16 @@ import {
   chartDocumentFromStructuredValue,
   chartRenderArtifactKind,
   chartSourceFormatIsForbidden,
+  chartTableFromXlsx,
+  chartXlsxListSheets,
   type ChartDocumentV1,
   type ChartStructuredSourceKind,
+  type ChartXlsxIngestOptions,
+  type ChartXlsxIngestResult,
 } from "./chart-schema";
+
+export type { ChartXlsxIngestOptions, ChartXlsxIngestResult };
+export { chartTableFromXlsx, chartXlsxListSheets };
 
 // env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
 // `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变）。
