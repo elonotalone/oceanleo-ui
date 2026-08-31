@@ -7,6 +7,7 @@ import {
   advancedSavedItem,
 } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { advancedEditorSourceFor } from "../advanced-features";
 import { usePluginCommandSurface } from "../plugin-command";
 import { createImageCommandSurface } from "../image-editor/image-command-surface";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
@@ -24,6 +25,7 @@ import {
   FabricImageFontPanel,
 } from "../image-editor/FabricImageControls";
 import {
+  FabricImageAiPanel,
   FabricImageBrushPanel,
   FabricImageExportPanel,
   FabricImageLinePanel,
@@ -32,7 +34,18 @@ import {
   FabricImageSignaturePanel,
   FabricImageTablePanel,
   FabricImageTextPanel,
+  type ImageAiPanelHost,
 } from "../image-editor/FabricImageCreationPanels";
+import {
+  imageSourceFromBytes,
+  type ImageDirectExecutor,
+} from "../image-editor/image-capability-engine";
+import {
+  ImageGatewayError,
+  createOceanLeoImageAiProvider,
+} from "../../lib/image-ai-edit";
+import { accessToken } from "../../lib/auth/client";
+import { GATEWAY_BASE } from "../../lib/auth/config";
 import { FabricImageStage } from "../image-editor/FabricImageStage";
 import { useFabricImageEditor } from "../image-editor/use-fabric-image-editor";
 import { editorToolLabel } from "../workbench-routes";
@@ -173,6 +186,115 @@ export function ImageRoute({
     },
     [editor.addImageFromFile],
   );
+
+  // ---- AI 能力接线 ----------------------------------------------------------
+  // 抠图直连 `/v1/images/remove-bg`：这一条没有参数、只出一张图、不进 recipe
+  // 血缘，走不了语义命令那套 provider（理由记在
+  // `image-capability-engine.ts` 的「直连网关的图片操作」一节）。
+  const removeBgExecutor = useMemo<ImageDirectExecutor>(
+    () => async (_commandId, input) => {
+      const token = await accessToken();
+      if (!token) {
+        throw new ImageGatewayError(
+          "image-provider-auth",
+          "登录状态已过期，重新登录后再试。",
+          { status: 401 },
+        );
+      }
+      const response = await fetch(`${GATEWAY_BASE}/v1/images/remove-bg`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          site_id: siteId || "image",
+          image_url: input.sourceUrl,
+          key_mode: "platform",
+        }),
+        cache: "no-store",
+        signal: input.signal,
+      });
+      let data: { image?: string; detail?: string } | null = null;
+      try {
+        data = (await response.json()) as { image?: string; detail?: string };
+      } catch {
+        /* 非 JSON 响应，按 HTTP 状态定性 */
+      }
+      if (!response.ok) {
+        const transient =
+          response.status >= 500 ||
+          response.status === 429 ||
+          response.status === 408;
+        throw new ImageGatewayError(
+          transient ? "image-provider-unavailable" : "image-provider-job-failed",
+          data?.detail || `抠图失败 HTTP ${response.status}`,
+          { status: response.status, retryable: transient },
+        );
+      }
+      // 这一条返回的是 `image` 单数，不是其余几条的 `images` 数组。
+      const url = data?.image || "";
+      if (!url) {
+        throw new ImageGatewayError(
+          "image-provider-empty-output",
+          "抠图没有返回结果图。",
+        );
+      }
+      return url;
+    },
+    [siteId],
+  );
+
+  // 网关只吃 URL 不吃字节，而 `FabricImageEditorState` 没有导出画布字节的方法
+  // （能导出的都在 `use-fabric-image-editor.ts` 内部，本波不改那个文件）。
+  // 所以「冻结画布」用状态面上已有的 durable 地址：脏了先存一次，干净就用上次那张。
+  const frozenCanvasUrl = useCallback(async () => {
+    if (editor.dirty) {
+      const saved = await editor.save();
+      if (saved?.url) return saved.url;
+    }
+    if (editor.savedUrl) return editor.savedUrl;
+    const source = advancedEditorSourceFor(item);
+    // structured 的 url 是 fabric 工程 JSON，不能当图片喂给网关。
+    if (source && !source.structured && source.url) return source.url;
+    throw new ImageGatewayError(
+      "image-source-unavailable",
+      editor.error || "这张画布还没有 AI 取得到的地址；先保存一次，再用 AI 能力。",
+    );
+  }, [editor.dirty, editor.error, editor.save, editor.savedUrl, item]);
+
+  const aiHost = useMemo<ImageAiPanelHost>(
+    () => ({
+      provider: createOceanLeoImageAiProvider({ siteId: siteId || "image" }),
+      directExecutor: removeBgExecutor,
+      freezeCanvas: async () => {
+        const url = await frozenCanvasUrl();
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new ImageGatewayError(
+            "image-source-unavailable",
+            `底图取不回来（HTTP ${response.status}），这次没有开始处理。`,
+            { status: response.status, retryable: true },
+          );
+        }
+        const declared = (response.headers.get("content-type") || "")
+          .split(";")[0]
+          .trim()
+          .toLowerCase();
+        return {
+          url,
+          source: await imageSourceFromBytes(await response.arrayBuffer(), {
+            mimeType: /^image\/[a-z0-9.+-]+$/.test(declared)
+              ? declared
+              : "image/png",
+            url,
+          }),
+        };
+      },
+    }),
+    [frozenCanvasUrl, removeBgExecutor, siteId],
+  );
+
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -183,6 +305,14 @@ export function ImageRoute({
         id: "image",
         label: editorToolLabel({ type: "image" }),
         drawers: [
+          // 明位（不 hiddenFromRail）：抠图/放大高清这些能力此前引擎和网关都通了，
+          // 界面上一个入口都没有，等于没做。
+          {
+            id: "image-ai",
+            label: "AI 能力",
+            icon: "ai",
+            content: <FabricImageAiPanel editor={editor} host={aiHost} />,
+          },
           {
             id: "image-brush",
             label: "画笔",
@@ -295,6 +425,16 @@ export function ImageRoute({
           onTrigger: editor.downloadDefaultPng,
         },
         actions: [
+          // P2：抠图是办公场景天天要用的那一条（证件照、产品图、PPT 配图），
+          // 所以它在工作区行上有自己的位置，不埋进 AI 列表里。
+          {
+            id: "image-cutout",
+            label: "抠图（背景变透明）",
+            icon: "ai",
+            variant: "primary",
+            panelId: "image-ai",
+            disabled: editor.loading,
+          },
           ...visualDownloadFormats("image")
             .slice(1)
             .map((entry) => ({
