@@ -5,6 +5,7 @@ import { urlExtension } from "./doc-io";
 import {
   evaluateGridCellInWorkbook,
   type GridFormulaValue,
+  type GridRecalcStamp,
   type GridRow,
   type GridWorkbookContext,
 } from "./grid-formula";
@@ -56,6 +57,15 @@ export interface GridCellFormat {
   align?: "left" | "center" | "right";
   color?: string;
   background?: string;
+  /**
+   * Excel number-format string (`#,##0.00`, `0.0%`, `yyyy-mm-dd`).
+   *
+   * Opened for the `grid-format/**` engine: `type` + `decimals` cannot express
+   * a custom format, so a workbook that arrives carrying one had nowhere to put
+   * it and lost it on save. Renderers that understand it should prefer it over
+   * `type`/`decimals`.
+   */
+  numFmt?: string;
 }
 
 export const GRID_MIN_ROWS = 20;
@@ -888,6 +898,22 @@ export interface GridIrNamedRange {
   ref: string;
 }
 
+/**
+ * Row heights and column widths, in px, grouped by sheet id and then by index.
+ *
+ * Grouped by sheet because a workbook may hold up to `C2_maxSheets` sheets and
+ * each sizes its own rows; a flat map could only ever describe one of them.
+ * Absent entries mean "the default in `GRID_LAYOUT`", so a document only pays
+ * for the rows the reader actually resized.
+ */
+export type GridIrSizeMap = Readonly<
+  Record<string, Readonly<Record<string, number>>>
+>;
+
+/** Row height bounds in px. Narrower than a row of text, or taller than a
+ * screen, is a corrupt document rather than a preference. */
+const ROW_HEIGHT_RANGE_PX = [8, 400] as const;
+
 export interface GridIrAttributionEntry {
   text: string;
   licenseCode: string;
@@ -900,6 +926,19 @@ export interface GridIrProject {
   title: string;
   sheets: GridIrSheet[];
   namedRanges?: GridIrNamedRange[];
+  /**
+   * The instant and seed volatile functions are evaluated against (§规范三).
+   *
+   * Absent means the document has never been recalculated, and a volatile
+   * formula fails closed rather than reading the clock — that is what keeps
+   * "same document bytes, same numbers" true. Opening a document does not
+   * refresh it; only an explicit recalculation does, as a new revision.
+   */
+  recalc?: GridRecalcStamp;
+  /** Per-sheet row heights in px; absent rows use the `GRID_LAYOUT` default. */
+  rowHeights?: GridIrSizeMap;
+  /** Per-sheet column widths in px; absent columns use the default. */
+  colWidths?: GridIrSizeMap;
   attribution: { entries: GridIrAttributionEntry[] };
 }
 
@@ -939,12 +978,21 @@ const SHEET_KEYS = new Set([
   "emphasisRows",
 ]);
 const COLUMN_KEYS = new Set(["name", "type", "unit", "widthPx", "precision"]);
+/**
+ * Every key the IR allows at the top level. A field that is not listed here is
+ * rejected as `additional-properties`, so adding a field to `GridIrProject`
+ * without adding it here makes the validator reject the very document this
+ * file just produced.
+ */
 const TOP_LEVEL_KEYS = new Set([
   "schema",
   "version",
   "title",
   "sheets",
   "namedRanges",
+  "recalc",
+  "rowHeights",
+  "colWidths",
   "attribution",
 ]);
 
@@ -1260,6 +1308,101 @@ function validateSheet(
 }
 
 /**
+ * §规范三. The stamp is the entire reason a volatile formula may run at all, so
+ * a malformed one is rejected rather than repaired: a document that claims to
+ * be reproducible and is not is worse than one that admits it cannot be.
+ */
+function validateRecalcStamp(
+  value: unknown,
+  errors: GridIrValidationError[],
+): void {
+  if (value === undefined) return;
+  const stamp = record(value);
+  if (!stamp) {
+    errors.push({
+      path: "/recalc",
+      code: "recalc-shape",
+      message: "recalc 必须是对象 { at, seed }",
+    });
+    return;
+  }
+  for (const key of extraKeys(stamp, new Set(["at", "seed"]))) {
+    errors.push({
+      path: `/recalc/${key}`,
+      code: "additional-properties",
+      message: `recalc 不允许字段 ${key}`,
+    });
+  }
+  if (
+    typeof stamp.at !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(stamp.at) ||
+    Number.isNaN(Date.parse(stamp.at))
+  ) {
+    errors.push({
+      path: "/recalc/at",
+      code: "recalc-at",
+      message: "recalc.at 必须是 UTC 的 ISO8601 时刻（以 Z 结尾）",
+    });
+  }
+  if (!integerInRange(stamp.seed, 0, 0xff_ff_ff_ff)) {
+    errors.push({
+      path: "/recalc/seed",
+      code: "recalc-seed",
+      message: "recalc.seed 必须是 uint32",
+    });
+  }
+}
+
+/** Shared by `rowHeights` and `colWidths`; see `GridIrSizeMap`. */
+function validateSizeMap(
+  value: unknown,
+  path: string,
+  range: readonly number[],
+  maxIndex: number,
+  errors: GridIrValidationError[],
+): void {
+  if (value === undefined) return;
+  const map = record(value);
+  if (!map) {
+    errors.push({
+      path,
+      code: "size-map-shape",
+      message: `${path} 必须是按 sheetId 分组的对象`,
+    });
+    return;
+  }
+  const [minimum, maximum] = range;
+  for (const [sheetId, sizes] of Object.entries(map)) {
+    const entries = record(sizes);
+    if (!entries) {
+      errors.push({
+        path: `${path}/${sheetId}`,
+        code: "size-map-shape",
+        message: "每个 sheetId 下必须是「下标 → px」的对象",
+      });
+      continue;
+    }
+    for (const [index, px] of Object.entries(entries)) {
+      const entryPath = `${path}/${sheetId}/${index}`;
+      if (!/^\d+$/.test(index) || Number(index) >= maxIndex) {
+        errors.push({
+          path: entryPath,
+          code: "size-map-index",
+          message: `下标必须是 0–${maxIndex - 1} 的整数`,
+        });
+      }
+      if (!integerInRange(px, minimum, maximum)) {
+        errors.push({
+          path: entryPath,
+          code: "size-map-range",
+          message: `尺寸必须是 ${minimum}–${maximum} px 的整数`,
+        });
+      }
+    }
+  }
+}
+
+/**
  * §3.1 structural validation. Rejects unknown keys (`additionalProperties`).
  *
  * 校验编辑器可保存、可重开的表格工程：schema、版本、未知字段、工作表与单元格
@@ -1367,6 +1510,21 @@ export function validateGridIrProject(
       }
     });
   }
+  validateRecalcStamp(document.recalc, errors);
+  validateSizeMap(
+    document.rowHeights,
+    "/rowHeights",
+    ROW_HEIGHT_RANGE_PX,
+    GRID_CONSTANTS.C7_maxDataRows,
+    errors,
+  );
+  validateSizeMap(
+    document.colWidths,
+    "/colWidths",
+    GRID_CONSTANTS.C19_columnWidthRangePx,
+    GRID_CONSTANTS.C5_maxColumns,
+    errors,
+  );
   const attribution = record(document.attribution);
   if (!attribution) {
     errors.push({
@@ -1509,6 +1667,11 @@ export function serializeGridIrProject(project: GridIrProject): string {
           })),
         }
       : {}),
+    ...(project.recalc
+      ? { recalc: { at: project.recalc.at, seed: project.recalc.seed } }
+      : {}),
+    ...sizeMapForSerialization("rowHeights", project.rowHeights),
+    ...sizeMapForSerialization("colWidths", project.colWidths),
     attribution: {
       entries: project.attribution.entries.map((entry) => ({
         text: entry.text,
@@ -1518,6 +1681,31 @@ export function serializeGridIrProject(project: GridIrProject): string {
     },
   };
   return `${JSON.stringify(ordered, null, 2)}\n`;
+}
+
+/**
+ * Emit a size map with sheet ids and indexes in a fixed order, and drop empty
+ * ones entirely.
+ *
+ * The serialized bytes are the document's identity (§5.4), so two projects that
+ * differ only in the order keys happened to be inserted must not serialize
+ * differently — otherwise a save that changed nothing still looks like an edit.
+ */
+function sizeMapForSerialization(
+  key: "rowHeights" | "colWidths",
+  map: GridIrSizeMap | undefined,
+): Record<string, unknown> {
+  if (!map) return {};
+  const ordered: Record<string, Record<string, number>> = {};
+  for (const sheetId of Object.keys(map).sort()) {
+    const sizes = map[sheetId];
+    const indexes = Object.keys(sizes).sort((a, b) => Number(a) - Number(b));
+    if (indexes.length === 0) continue;
+    const group: Record<string, number> = {};
+    for (const index of indexes) group[index] = sizes[index];
+    ordered[sheetId] = group;
+  }
+  return Object.keys(ordered).length ? { [key]: ordered } : {};
 }
 
 export function gridIrByteLength(project: GridIrProject): number {
