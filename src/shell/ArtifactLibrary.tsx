@@ -15,9 +15,20 @@
 // 不再上提到侧栏。
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { browserClient } from "../lib/auth/client";
-import { pixelsPerRem, useVirtualGrid } from "../lib/virtual";
+import {
+  pixelsPerRem,
+  useVirtualGrid,
+  type GridColumnRule,
+} from "../lib/virtual";
 import { Markdown } from "./Markdown";
 import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
@@ -238,6 +249,76 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   );
 }
 
+/**
+ * 素材网格。**只决定挂多少张卡，不决定卡片长什么样。**
+ *
+ * 改造前这里是 `filtered.map(...)`：一次拉回来多少件就挂多少个 DOM 子树，
+ * 每张卡还带一个 `aspect-video` 缩略图（图片/视频各自一个真元素）。现在只挂视口
+ * 内 ±1 屏，其余高度由两个跨列占位块顶着，滚动条长度与手感和全量渲染时一致。
+ *
+ * 单独成一个组件、而不是把 hook 提到 `ArtifactLibraryLegacy` 顶层：网格在「文件
+ * 点开」时整段不渲染（见下面 `selected && fill` 那段注释）。hook 留在父组件里的话，
+ * 窗口状态会跨着这次卸载活下来，而 `ResizeObserver` 观察的还是那个已经脱离文档的
+ * 旧容器——回到列表后网格再也不会重新量。跟着网格一起生灭最省心。
+ */
+function VirtualArtifactGrid({
+  items,
+  renderCard,
+}: {
+  items: readonly ArtifactItem[];
+  /** `index` 是**整份结果集**里的下标，不是本次窗口里的位置。 */
+  renderCard: (item: ArtifactItem, index: number) => ReactNode;
+}) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const rule = useMemo<GridColumnRule>(
+    () => ({
+      // `gap-4` = 1rem。这**不是** `auto-fill` 网格：`grid-cols-2 sm:grid-cols-3`
+      // 的列数由视口断点决定，光看容器宽度算不出来，所以不给 `minTrackPx`。
+      // 真列数由原语直接问 `getComputedStyle().gridTemplateColumns` 拿；
+      // 2 只是问不到时的保守底（宁可记少、多挂几行，不能记多、漏挂）。
+      gapPx: pixelsPerRem(),
+      fallbackColumnCount: 2,
+    }),
+    [],
+  );
+  const grid = useVirtualGrid({
+    itemCount: items.length,
+    containerRef: gridRef,
+    // 刻意**不传** `scrollRef`：本组件绝不自带 `overflow-y-auto`（双滚动条的病根，
+    // 见根容器那段注释），滚动容器是外层 ResultCanvas body，让原语自己往上找。
+    rule,
+    // `aspect-video` 缩略图（宽 × 9/16）+ `p-3` 里的标题与副标题两行 ≈ 56，
+    // 再加一个 16px 行间距。只是量到真高之前的乐观估值，量到就回填。
+    estimatedRowHeight: (columnWidth) => columnWidth * 0.5625 + 72,
+  });
+
+  return (
+    <div
+      ref={gridRef}
+      className="v-fade-in mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3"
+      {...grid.containerProps}
+    >
+      {grid.spacerTop > 0 && (
+        <div
+          aria-hidden="true"
+          data-virtual-spacer="top"
+          style={{ gridColumn: "1 / -1", height: grid.spacerTop }}
+        />
+      )}
+      {items
+        .slice(grid.startIndex, grid.endIndex)
+        .map((item, offset) => renderCard(item, grid.startIndex + offset))}
+      {grid.spacerBottom > 0 && (
+        <div
+          aria-hidden="true"
+          data-virtual-spacer="bottom"
+          style={{ gridColumn: "1 / -1", height: grid.spacerBottom }}
+        />
+      )}
+    </div>
+  );
+}
+
 function ArtifactLibraryLegacy({
   filter: controlledFilter,
   onFilterChange,
@@ -261,16 +342,47 @@ function ArtifactLibraryLegacy({
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 200);
     return () => clearTimeout(t);
   }, [search]);
 
-  // 只按 `filter` 起跑。`tt` 曾经也在依赖里，于是每次 locale provider 换身份就重新向
-  // Supabase 拉 500 行 `agent_artifacts`——而 `tt` 在这里只用来拼一句未登录提示。
-  // 语言切换**不应该**重新拉库存：库存与语言无关。所以提示只存中文原文（= 词典 key），
-  // 渲染时才翻译；换语言时这句话照样跟着变，但一次网络请求都不会多发。
+  /**
+   * 取一页。过滤条件先加、`order` 与 `range` 最后加——`range` 是对**最终结果集**
+   * 开的窗，排在过滤前面就会先切完整表再过滤，第二页开始整片错位。
+   *
+   * 多取一行（`ARTIFACT_PAGE_SIZE + 1`）而不是另发一次 count 查询：既省一次往返，
+   * 也不会在总数正好是整页倍数时谎报「还有下一页」。
+   */
+  const loadPage = useCallback(
+    async (from: number): Promise<{ rows: ArtifactItem[]; hasMore: boolean } | null> => {
+      const supabase = browserClient();
+      if (!supabase) return null;
+      let query = supabase.from("agent_artifacts").select("*");
+      if (filter === "favorites") query = query.eq("favorite", true);
+      else if (KIND_SETS[filter]) query = query.in("kind", KIND_SETS[filter]);
+      const trimmed = debounced.trim();
+      if (trimmed) query = query.ilike("title", `%${escapeLikePattern(trimmed)}%`);
+      const { data } = await query
+        .order("created_at", { ascending: false })
+        .range(from, from + ARTIFACT_PAGE_SIZE);
+      const rows = (data as ArtifactItem[]) || [];
+      return {
+        rows: rows.slice(0, ARTIFACT_PAGE_SIZE),
+        hasMore: rows.length > ARTIFACT_PAGE_SIZE,
+      };
+    },
+    [debounced, filter],
+  );
+
+  // 依赖只有 `loadPage`（= `filter` + `debounced`）。`tt` 曾经也在这里，于是每次
+  // locale provider 换身份就重新向 Supabase 拉一整份 `agent_artifacts`——而 `tt` 在
+  // 这里只用来拼一句未登录提示。语言切换**不应该**重新拉库存：库存与语言无关。
+  // 所以提示只存中文原文（= 词典 key），渲染时才翻译；换语言时这句话照样跟着变，
+  // 但一次网络请求都不会多发。
   useEffect(() => {
     const supabase = browserClient();
     if (!supabase) {
@@ -288,23 +400,37 @@ function ArtifactLibraryLegacy({
         return;
       }
       setAuthMsg(null);
-      let query = supabase
-        .from("agent_artifacts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (filter === "favorites") query = query.eq("favorite", true);
-      else if (KIND_SETS[filter]) query = query.in("kind", KIND_SETS[filter]);
-      const { data } = await query;
-      if (!cancelled) {
-        setArtifacts((data as ArtifactItem[]) || []);
-        setLoading(false);
-      }
+      const page = await loadPage(0);
+      if (cancelled || !page) return;
+      setArtifacts(page.rows);
+      setHasMore(page.hasMore);
+      // 结果集整个换掉了。`selectedIdx` 是 `filtered` 的下标，留着它会让「第 3 件」
+      // 忽然指向另一件东西——改分页之前换分区就已经有这个毛病，顺手修掉。
+      setSelectedIdx(null);
+      setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [filter]);
+  }, [loadPage]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await loadPage(artifacts.length);
+      if (!page) return;
+      setArtifacts((prev) => {
+        // 翻页期间库顶新增一件，第二页就会与第一页重叠一行。按 id 去重，
+        // 否则 React 会撞 key，那张卡还会在两处各画一遍。
+        const seen = new Set(prev.map((a) => a.id));
+        return [...prev, ...page.rows.filter((a) => !seen.has(a.id))];
+      });
+      setHasMore(page.hasMore);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [artifacts.length, loadPage, loadingMore]);
 
   async function toggleFavorite(id: string, cur: boolean) {
     const supabase = browserClient();
@@ -317,6 +443,9 @@ function ArtifactLibraryLegacy({
     }
   }
 
+  // 搜索现在由服务端 `ilike` 做，这一层是**同一条件的本地回声**：`debounced` 变了
+  // 到新一页回来之间隔着一次往返，这几百毫秒里屏幕上还挂着上一次的结果。留着它，
+  // 关键词一落地就先把对不上的收起来；服务端结果回来时两边判据一致，画面不会跳。
   const filtered = useMemo(
     () => artifacts.filter((a) => (a.title || "").toLowerCase().includes(debounced.toLowerCase())),
     [artifacts, debounced],
@@ -592,12 +721,12 @@ function ArtifactLibraryLegacy({
           ))}
         </div>
       ) : (
-        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
-          {filtered.map((a, idx) => (
+        <VirtualArtifactGrid
+          items={filtered}
+          renderCard={(a, idx) => (
             <div
               key={a.id}
               className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
-              style={{ animation: `v-fade-up 0.3s ease ${Math.min(idx * 40, 320)}ms both` }}
             >
               <button type="button" onClick={() => setSelectedIdx(idx)} className="w-full text-left">
                 <CardThumb a={a} kindLabel={kindLabel} />
@@ -612,7 +741,22 @@ function ArtifactLibraryLegacy({
               </button>
               <FavButton a={a} onToggle={toggleFavorite} tt={tt} floating />
             </div>
-          ))}
+          )}
+        />
+      )}
+
+      {/* 一页 60 件之后的入口。放在网格/列表**下方**（而不是 MyLibrary 那样放工具条）：
+          这里的滚动容器是外层 ResultCanvas body，看完一页往下滚，手已经在底部了。 */}
+      {!authMsg && !loading && hasMore && filtered.length > 0 && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
+          >
+            {tt(loadingMore ? "加载中…" : "继续加载")}
+          </button>
         </div>
       )}
         </>
