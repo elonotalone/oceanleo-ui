@@ -36,10 +36,23 @@ import test from "node:test";
 
 import ts from "typescript";
 
+import { measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const SRC = join(REPO, "src");
 const FIXTURE = join(HERE, "fixtures", "focus-ring-fixture.tsx");
+
+/**
+ * 取下面那三本冻结账（`PENDING_BUDGET` / `FILE_BUDGET` / `W04_CLEARED_FILES`）
+ * 时所在的 commit。**必须是一个真的 commit**，不是「我本机当时的样子」。
+ * `3550ebc` = `W35` 接第二棒时的 `main`。
+ *
+ * ⚠️ 这四样是**一组**，改一个就要改其余的：本文件末尾那条基线自检会把这个 commit
+ * 的树解出来重量一遍，三本账逐条对不上就当场红。理由见 `_COMMON.md §7b⑪`——
+ * `W04` 原先那 37 是在共享工作树上量的，那棵树 git 里并不存在。
+ */
+const BASELINE_COMMIT = "3550ebc255dd0b21bd97cff5cbed2f6e6042f9fa";
 
 // ---------------------------------------------------------------- 判据词汇
 
@@ -126,8 +139,14 @@ function tagNameOf(node) {
   return "?";
 }
 
-/** 扫一份源码：返回抑制了轮廓却没补回环的元素点位。 */
-function scanSource(absolutePath) {
+/**
+ * 扫一份源码：返回抑制了轮廓却没补回环的元素点位。
+ *
+ * `repoRoot` 参数化是给末尾那条基线自检用的：它要拿**同一套口径**去量
+ * `BASELINE_COMMIT` 解出来的另一棵树。两处口径分家的话自检就成了自说自话，
+ * 而登记键（`file`）必须相对各自的仓根算，否则跨树对不上。
+ */
+function scanSource(absolutePath, repoRoot = REPO) {
   const text = readFileSync(absolutePath, "utf8");
   // 便宜的预筛：整份源码里连抑制词都没有就不必建 AST（627 个文件，省下大半 CPU）。
   if (!/outline-none|outline-0|outline-hidden|ring-0|ring-transparent/.test(text)) return [];
@@ -136,7 +155,7 @@ function scanSource(absolutePath) {
     absolutePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX,
   );
   const constants = moduleConstants(sourceFile);
-  const file = relative(REPO, absolutePath).split("\\").join("/");
+  const file = relative(repoRoot, absolutePath).split("\\").join("/");
   const sites = [];
 
   const inspect = (tokens, tag, position) => {
@@ -192,10 +211,11 @@ function typeScriptFilesUnder(dir, out = []) {
   return out;
 }
 
-function scanTree(dir) {
+function scanTree(dir, repoRoot = REPO) {
+  const scannedFiles = typeScriptFilesUnder(dir).sort();
   const sites = [];
-  for (const file of typeScriptFilesUnder(dir).sort()) sites.push(...scanSource(file));
-  return sites;
+  for (const file of scannedFiles) sites.push(...scanSource(file, repoRoot));
+  return { sites, scannedFiles: scannedFiles.length };
 }
 
 // ---------------------------------------------------------------- 登记簿
@@ -293,7 +313,7 @@ const FILE_BUDGET = new Map([
 
 // ---------------------------------------------------------------- 用例
 
-const srcSites = scanTree(SRC);
+const { sites: srcSites } = scanTree(SRC);
 const fixtureSites = scanSource(FIXTURE);
 
 test("欠账只减不增：抑制了轮廓又没补回环的点位总数不得超过预算", () => {
@@ -403,6 +423,67 @@ test("反面用例：fixture 里该红的红、该绿的绿", () => {
       + "导出却没带补偿的类名常量。\n"
       + "该绿的三处：同串里补了 focus-visible:ring-2 的、补了 focus:ring-2 的、"
       + "环藏在模块常量里的。",
+  );
+});
+
+test("基线自检：三本冻结账与 BASELINE_COMMIT 那棵干净树逐字对得上", () => {
+  const probe = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: ["src"],
+    // 扫描面全在本仓 `src/` 之内，解到 /tmp 不会塌（helper 头注释里那条跨仓警告
+    // 说的是 `i18n-tt-key-coverage` 那一类，本闸不适用）。
+    measure: (root) => {
+      const measured = scanTree(join(root, "src"), root);
+      const byFile = new Map();
+      for (const site of measured.sites) byFile.set(site.file, (byFile.get(site.file) ?? 0) + 1);
+      return { total: measured.sites.length, scannedFiles: measured.scannedFiles, byFile };
+    },
+  });
+  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
+  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
+
+  // 正对照：先证明我确实扫到了那棵树，而不是在空目录上轻松通过。
+  assert.ok(
+    probe.value.scannedFiles >= 400,
+    `在 ${BASELINE_COMMIT.slice(0, 7)} 的树上只扫到 ${probe.value.scannedFiles} 个 ts/tsx，` +
+      "src/ 的规模应当在 600 上下——解包范围不对，这条自检等于没跑",
+  );
+
+  assert.equal(
+    probe.value.total,
+    PENDING_BUDGET,
+    `PENDING_BUDGET 写的是 ${PENDING_BUDGET}，但 ${BASELINE_COMMIT.slice(0, 7)} 的` +
+      `**干净检出**上实测 ${probe.value.total} 处。\n` +
+      "三种可能：(a) 这个预算是在脏工作树上量的——换一棵干净树重量；\n" +
+      "(b) 债还掉了而没人收紧预算——棘轮会空转，把预算拧到实测值；\n" +
+      "(c) 预算已经拧下去了但 BASELINE_COMMIT 没跟着换——两个要一起改。",
+  );
+
+  // `FILE_BUDGET` 是「不许内部对冲」那条的全部依据，它自己必须也取自干净检出：
+  // 逐文件对账，否则总数对得上而分布错了照样能糊过去。
+  const mismatched = [];
+  for (const [file, count] of [...probe.value.byFile].sort()) {
+    const budget = FILE_BUDGET.get(file);
+    if (budget !== count) mismatched.push(`${file}：干净检出 ${count} 处，登记 ${budget ?? "无"}`);
+  }
+  for (const file of [...FILE_BUDGET.keys()].sort()) {
+    if (!probe.value.byFile.has(file)) mismatched.push(`${file}：干净检出上已清零，登记还留着`);
+  }
+  assert.deepEqual(
+    mismatched,
+    [],
+    `FILE_BUDGET 与 ${BASELINE_COMMIT.slice(0, 7)} 的干净检出对不上。\n` +
+      "清零的文件要整条删掉，数变小的要改小；这本账只减不增。",
+  );
+
+  // `W04_CLEARED_FILES` 声称的是「这五个文件已经清干净」。那句话也得在干净检出上成立，
+  // 否则它保护的是一个只在某人工作树里存在过的状态。
+  const notActuallyClear = W04_CLEARED_FILES.filter((file) => probe.value.byFile.has(file));
+  assert.deepEqual(
+    notActuallyClear,
+    [],
+    "W04_CLEARED_FILES 里有文件在干净检出上其实还带着欠账 —— 这份清单当初是脏树读数",
   );
 });
 
