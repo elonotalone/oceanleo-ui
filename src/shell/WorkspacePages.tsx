@@ -14,6 +14,12 @@
 //   /library     我的库
 //   /history     我的任务（路径保留 history 兼容旧链接）
 // 也支持用查询参数单页切换（page=home|workspace|library|history），见 §1。
+// ----------------------------------------------------------------------------
+// W24 2026-08-31：本文件**不再自己持有那张表**。哪几页、什么次序、什么路由、
+// 什么图标、受哪个开关控制，全部来自 `./nav-source`——门户 `CloneShell` 与本文件
+// 派生自同一份数据，这是治「两套手写导航不同步」的唯一办法（`/explore` 页
+// 2026-07-27 上线、门户侧栏一个月没有入口，就是那个病的一次真实发作）。
+// **不要在本文件里再写第二张页面表。** 加一页请改 `nav-source/index.ts`。
 // ============================================================================
 
 import type { ReactNode } from "react";
@@ -24,6 +30,12 @@ import type {
   ShellSubNav,
 } from "./AppShell";
 import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles, IconExplore } from "./icons";
+import {
+  navEntries,
+  type NavIconId,
+  type NavPageId,
+  type NavResolveOptions,
+} from "./nav-source";
 
 export type WorkspacePage = "home" | "explore" | "workspace" | "library" | "history" | "playground";
 
@@ -47,6 +59,7 @@ export interface WorkspaceNavOptions {
   subNav?: Partial<Record<WorkspacePage, ShellSubNav>>;
 }
 
+/** 缺翻译时兜底的中文源串（**文案**兜底，不是页面表）。 */
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   home: "新建",
   explore: "探索",
@@ -56,23 +69,39 @@ const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   playground: "Playground",
 };
 
-const HREF: Record<WorkspacePage, string> = {
-  home: "/",
-  explore: "/explore",
-  workspace: "/workspace",
-  library: "/library",
-  history: "/history",
-  playground: "/playground",
-};
-
-const ICON: Record<WorkspacePage, ReactNode> = {
+/** 图标 id → 本包的图标节点。`nav-source` 只给 id（它必须零 JSX），节点在这里接。 */
+const ICON_BY_ID: Partial<Record<NavIconId, ReactNode>> = {
   home: <IconHome />,
   explore: <IconExplore />,
   workspace: <IconWorkspace />,
   library: <IconLibrary />,
   history: <IconHistory />,
-  playground: <IconSparkles />,
+  sparkles: <IconSparkles />,
 };
+
+/**
+ * 编译期对账：`WorkspacePage` 必须是 `nav-source` 里 `workspace` 那一套外壳的
+ * id 的子集。有人在这里加一个 `nav-source` 不认识的页，`tsc` 当场红。
+ */
+type _WorkspacePageIsNavPage = WorkspacePage extends NavPageId ? true : never;
+const _workspacePageIsNavPage: _WorkspacePageIsNavPage = true;
+void _workspacePageIsNavPage;
+
+/** 取「本外壳认识的全部页」时用：把所有可见性开关都打开。 */
+const ALL_WORKSPACE_PAGES_VISIBLE: NavResolveOptions = {
+  withExplore: true,
+  withWorkspace: true,
+  withPlayground: true,
+};
+
+/** 把 `WorkspaceNavOptions` 的三个开关翻成 `nav-source` 的可见性开关。 */
+function resolveOptions(opts: WorkspaceNavOptions): NavResolveOptions {
+  return {
+    withExplore: opts.withExplore,
+    withWorkspace: opts.withWorkspace,
+    withPlayground: opts.withPlayground,
+  };
+}
 
 /**
  * 全家桶子站四页 nav 的 i18n 标签（操作员 2026-07-01：一旦语言设置改了全局跟随）。
@@ -88,43 +117,34 @@ export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   //   - client（NextIntlClientProvider 未接同款 fallback）→ 完整 key，如 "nav.explore"。
   // 两种都不是给用户看的文案。用 safe() 统一判定：若返回值 == key / == "nav.<key>"
   // （即没命中真正翻译）就回退到 DEFAULT_LABELS 的中文（绝不显示 raw key）。
-  const safe = (key: WorkspacePage): string => {
+  const safe = (page: WorkspacePage, key: string): string => {
     let v: string;
     try {
       v = t(key);
     } catch {
-      return DEFAULT_LABELS[key];
+      return DEFAULT_LABELS[page];
     }
-    if (!v || v === key || v === `nav.${key}`) return DEFAULT_LABELS[key];
+    if (!v || v === key || v === `nav.${key}`) return DEFAULT_LABELS[page];
     return v;
   };
-  return {
-    home: safe("home"),
-    explore: safe("explore"),
-    workspace: safe("workspace"),
-    library: safe("library"),
-    history: safe("history"),
-    playground: safe("playground"),
-  };
+  // 有哪几页、各自的 i18n key 是什么，都问 nav-source 要；这里只负责取文案。
+  const labels = {} as Record<WorkspacePage, string>;
+  for (const entry of navEntries("workspace", ALL_WORKSPACE_PAGES_VISIBLE)) {
+    const page = entry.id as WorkspacePage;
+    labels[page] = safe(page, entry.labelKey);
+  }
+  return labels;
 }
 
 /** 构造 AppShell 的导航。顺序：首页 → 探索 → 工作台 → 我的库 → 我的任务 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };
-  const pages: WorkspacePage[] = [
-    "home",
-    // 宗旨 v19（操作员 2026-07-08）：「探索」恒在首页与工作台之间。默认开启（全家桶
-    // 每站都有本站相关素材浏览页）；个别站可传 withExplore:false 关闭。
-    ...(opts.withExplore === false ? [] : (["explore"] as WorkspacePage[])),
-    ...(opts.withWorkspace === false ? [] : (["workspace"] as WorkspacePage[])),
-    "library",
-    "history",
-    ...(opts.withPlayground ? (["playground"] as WorkspacePage[]) : []),
-  ];
-  return pages.map((p) => {
+  // 哪几页、什么次序、受哪个开关控制 —— 全部来自 nav-source，本文件不再自持。
+  return navEntries("workspace", resolveOptions(opts)).map((entry) => {
+    const p = entry.id as WorkspacePage;
     const legacyHistory =
-      p === "history" ? opts.subNav?.history : undefined;
+      entry.supportsDisclosure ? opts.subNav?.history : undefined;
     const disclosure =
       opts.disclosures?.[p] ??
       (legacyHistory
@@ -135,9 +155,9 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
         : undefined);
     return {
       label: labels[p],
-      href: `${base}${HREF[p]}`,
-      icon: ICON[p],
-      exact: p === "home",
+      href: `${base}${entry.href ?? "/"}`,
+      icon: ICON_BY_ID[entry.iconId],
+      exact: entry.exact,
       disclosure,
     };
   });
@@ -146,10 +166,10 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
 /** 从路径解析当前是哪一页（消费端可用来在单页模式下切换内容）。 */
 export function pageFromPath(pathname: string, basePath = ""): WorkspacePage {
   const p = (pathname || "/").slice(basePath.length) || "/";
-  if (p.startsWith("/explore")) return "explore";
-  if (p.startsWith("/workspace")) return "workspace";
-  if (p.startsWith("/library")) return "library";
-  if (p.startsWith("/history")) return "history";
-  if (p.startsWith("/playground")) return "playground";
+  // 路由前缀同样来自 nav-source：这里再写一张表就又是一个漂移源。
+  for (const entry of navEntries("workspace", ALL_WORKSPACE_PAGES_VISIBLE)) {
+    if (entry.exact || !entry.href) continue;
+    if (p.startsWith(entry.href)) return entry.id as WorkspacePage;
+  }
   return "home";
 }
