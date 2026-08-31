@@ -10,6 +10,10 @@ const workspacePages = readFileSync(
   new URL("../src/shell/WorkspacePages.tsx", import.meta.url),
   "utf8",
 );
+const navSource = readFileSync(
+  new URL("../src/shell/nav-source/index.ts", import.meta.url),
+  "utf8",
+);
 const artifactLibrary = readFileSync(
   new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url),
   "utf8",
@@ -45,11 +49,29 @@ test("nested page shells unwrap under one persistent layout shell", () => {
   assert.match(appShell, /if \(nested\) return <>\{props\.children\}<\/>/);
 });
 
+// 2026-09-01：`W24`（`576d226`）把「哪一页支持原地展开」从 `WorkspacePages` 里写死的
+// `p === "history"` 挪进了 `nav-source` 那张单一事实源表。原断言钉的是**那句字面量**，
+// 于是重构一落库它就恒红——判据过时，不是产品回归。
+//
+// 断言跟着挪，且**没有放宽**：拆成两半各钉一头，合起来仍然等价于原来那句话。
+//   ① `WorkspacePages` 必须照 `supportsDisclosure` 这面旗子接线（而不是又写死一个页面名）；
+//   ② `nav-source` 上**只有 `history` 竖着这面旗子**。
+// 少了②，别人把旗子挪到别的页上，「我的任务原地展开」会悄悄搬家而判据全绿。
 test("My Tasks is an inline disclosure and subsite home means New", () => {
   assert.match(workspacePages, /home: "新建"/);
-  assert.match(workspacePages, /p === "history" \? opts\.subNav\?\.history/);
+  assert.match(workspacePages, /entry\.supportsDisclosure \? opts\.subNav\?\.history/);
   assert.match(workspacePages, /defaultOpen: true/);
   assert.doesNotMatch(workspacePages, /subNav: opts\.subNav\?\.\[p\]/);
+
+  const disclosureIds = navSource
+    .split(/\n {2}\{\n/)
+    .filter((block) => /^\s*supportsDisclosure: true,\s*$/m.test(block))
+    .map((block) => /^\s*id: "([^"]+)",/m.exec(block)?.[1]);
+  assert.deepEqual(
+    disclosureIds,
+    ["history"],
+    "原地展开的旗子只该插在「我的任务」上：挪了它，侧栏里能原地展开的就换了一页。",
+  );
 });
 
 test("file categories and legacy tabs always render in the main page", () => {
