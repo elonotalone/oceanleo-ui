@@ -108,7 +108,8 @@ test("native Office editors keep compact top actions and durable receipts", () =
   const actionBar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(actionBar, /role="toolbar"/);
   assert.match(actionBar, /aria-label=\{tt\("工作区操作"\)\}/);
-  assert.match(actionBar, /className="flex h-8/);
+  // 32 → 44（W04）：仍锁「定高的紧凑顶栏」，只是命中区提到 44 之后定高值变了。
+  assert.match(actionBar, /className="flex h-11/);
   assert.match(actionBar, /autoSaveState === "saving"/);
   assert.match(actionBar, /adapter\.directDownload/);
 
@@ -173,4 +174,45 @@ test("lightweight stages announce loading, error and empty states accessibly", (
   assert.match(deckStage, /tabIndex=\{0\}/);
   assert.match(deckHook, /请转换为 PPTX 后重试/);
   assert.match(deckShortcuts, /scopeRef\.current\.contains\(target\)/);
+});
+
+test("CSV sheet items are not guessed as OOXML packages", async () => {
+  const { officePackageKindForItem } = await import(
+    "../src/shell/doc-editors/office-file.ts"
+  );
+  const csvSheet = {
+    key: "gallery:grid",
+    source: "creation",
+    id: "gallery-grid-editor",
+    title: "表格编辑",
+    kind: "sheet",
+    siteId: "plugin-gallery",
+    url: "/s/gallery/api/doc?path=samples/grid-editor.csv",
+    favorite: false,
+    meta: { mime: "text/csv" },
+  };
+  // `kind === "sheet"` 的兜底会把条目判成 xlsx，于是 CSV 地址被拿去过 OOXML 的
+  // 传输校验，报「XLSX 类型校验失败：服务器返回 Content-Type text/csv」。
+  // `text/csv` 必须能把那条兜底挡下来——本函数的契约就是「只认真正的 OOXML 包」。
+  assert.equal(officePackageKindForItem(csvSheet), null);
+  assert.equal(
+    officePackageKindForItem({ ...csvSheet, meta: { mime: "application/csv" } }),
+    null,
+  );
+  assert.equal(
+    officePackageKindForItem({
+      ...csvSheet,
+      meta: { mime: "text/tab-separated-values" },
+    }),
+    null,
+  );
+  // 真正的 XLSX 条目不受影响。
+  assert.equal(
+    officePackageKindForItem({
+      ...csvSheet,
+      url: "https://cdn.test/book.xlsx",
+      meta: {},
+    }),
+    "xlsx",
+  );
 });

@@ -104,7 +104,11 @@ test("plugin-gallery host hides OceanLeo library chrome", () => {
 });
 
 test("inline editors reuse the current App Agent instead of mounting another chat", () => {
-  const panel = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  // 面板投递已随左侧面板拆进 use-inline-advanced-panels；「不许另起一个聊天」
+  // 这条要同时管住两份，所以两份都读进来。
+  const panel =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/use-inline-advanced-panels.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");
   assert.doesNotMatch(panel, /AdvancedAgentPanel/);
   assert.doesNotMatch(panel, /LeoComposer/);
@@ -217,7 +221,11 @@ test("advanced material browsing never navigates out of the current workbench", 
 });
 
 test("advanced materials click to center and drag to the exact canvas point", () => {
-  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  // 素材面板的请求态（requestedMaterialAction）已随左侧面板拆进
+  // use-inline-advanced-panels，落点契约仍由这两份共同保证。
+  const shell =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/use-inline-advanced-panels.tsx");
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const provider = source("../src/shell/workbench-material-provider.tsx");
   const registry = source("../src/shell/workbench-material-registry.ts");
@@ -331,7 +339,9 @@ test("late catalog categories stay behind More and native Office routes use the 
     assert.doesNotMatch(contents, /nativeChrome/, route);
   }
   assert.match(actionBar, /role="toolbar"/);
-  assert.match(actionBar, /className="flex h-8/);
+  // 32 → 44（W04）：顶栏仍是一条**定高**的紧凑操作条，这才是本断言要锁的东西；
+  // 高度本身变了是因为里面的键提到了 44px 命中区，属于行为变更，不是判据让路。
+  assert.match(actionBar, /className="flex h-11/);
   assert.match(actionBar, /adapter\.directDownload/);
 });
 
