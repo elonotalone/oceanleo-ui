@@ -511,7 +511,19 @@ body {
   cursor: pointer;
 }
 
-/* ---------- account / settings / workbench motion primitives (v-*) ---------- */
+/* ---------- account / settings / workbench motion primitives (v-*) ----------
+ * 时长与曲线全部从动效 token 取（定义在本文件下方 THEME:GENERATED 区，数据源
+ * src/theme/motion.ts，规范 docs/architecture/motion-system.md）。
+ * **本段不许再出现裸时长与裸曲线**——`tests/motion-tokens.test.mjs` 逐条判红。
+ *
+ * 六档阶梯（90/140/200/280/380/520ms）与 token 化之前的字面值无一相等，故本段的
+ * 时长按【就近取档、平手取快】落到阶梯上：0.18→200、0.25/0.3→280、0.34/0.45→380、
+ * 0.5→520ms。keyframes 的几何（位移/缩放/透明度）、fill 模式、错峰节奏一字未改；
+ * 变的只有时长这一个标量，最大偏移 70ms（.leo-pop-in）。理由与逐条读数见
+ * oceandino repo docs/work-logs/2026-08/oceanleo-experience-upgrade/verdicts/W01-delivery.md §2。
+ *
+ * 循环类动效（spin / shimmer / blink / sheen / bounce-dot / pulse-dot / halo）
+ * 全部长于阶梯顶格 520ms，不进阶梯，用 --leo-loop-* 一组，值逐字沿用现值。 */
 
 @keyframes v-fade-in {
   from { opacity: 0; }
@@ -519,7 +531,7 @@ body {
 }
 
 @keyframes v-fade-up {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(var(--leo-move-sm)); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -536,7 +548,7 @@ body {
 
 @keyframes v-pulse-dot {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.45); }
-  50% { opacity: 0.75; box-shadow: 0 0 0 4px rgba(14, 165, 233, 0); }
+  50% { opacity: 0.75; box-shadow: 0 0 0 var(--leo-pulse-ring) rgba(14, 165, 233, 0); }
 }
 
 @keyframes v-shimmer {
@@ -553,25 +565,28 @@ body {
   to { transform: rotate(360deg); }
 }
 
-.v-fade-in { animation: v-fade-in 0.25s ease both; }
-.v-fade-up { animation: v-fade-up 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
-.v-scale-in { animation: v-scale-in 0.18s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
-.v-pop { animation: v-pop 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
-.v-pulse-dot { animation: v-pulse-dot 1.6s ease-in-out infinite; }
+.v-fade-in { animation: v-fade-in var(--leo-dur-4) var(--leo-ease-decelerate) both; }
+.v-fade-up { animation: v-fade-up var(--leo-dur-4) var(--leo-ease-emphasis) both; }
+.v-scale-in { animation: v-scale-in var(--leo-dur-3) var(--leo-ease-emphasis) both; }
+.v-pop { animation: v-pop var(--leo-dur-4) var(--leo-ease-emphasis) both; }
+.v-pulse-dot { animation: v-pulse-dot var(--leo-loop-pulse-dot) ease-in-out infinite; }
 
 /* ---------- unified page-open entrance (复刻 oceanleo.com/tasks/new) ----------
    每次进入/切换页面，主区内容做「从上而下」阶梯淡入。这是把主站 home-content.tsx
    手写的 v-fade-up + animationDelay(60/120/180ms) 模式做成全站可复用的单一事实源：
    AppShell 用 key={pathname} 的容器套上 .v-page，其直接子元素自动按出场顺序错峰
    淡入。各站无需逐页手写动画——bump 包版本即全站统一获得此入场体验。 */
-.v-page > * { animation: v-fade-up 0.34s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+/* 错峰步长与封顶从 --leo-stagger / --leo-stagger-max 取，两个 token 的值就是这里
+   原本写死的 55ms 与 320ms（规范 §位移幅度与错峰 明写「沿用 .v-page 现值」），
+   所以这一段的节奏逐帧不变。0ms 保持字面：零不表达任何设计档位，无从漂移。 */
+.v-page > * { animation: v-fade-up var(--leo-dur-5) var(--leo-ease-emphasis) both; }
 .v-page > *:nth-child(1) { animation-delay: 0ms; }
-.v-page > *:nth-child(2) { animation-delay: 55ms; }
-.v-page > *:nth-child(3) { animation-delay: 110ms; }
-.v-page > *:nth-child(4) { animation-delay: 165ms; }
-.v-page > *:nth-child(5) { animation-delay: 220ms; }
-.v-page > *:nth-child(6) { animation-delay: 275ms; }
-.v-page > *:nth-child(n + 7) { animation-delay: 320ms; }
+.v-page > *:nth-child(2) { animation-delay: var(--leo-stagger); }
+.v-page > *:nth-child(3) { animation-delay: calc(var(--leo-stagger) * 2); }
+.v-page > *:nth-child(4) { animation-delay: calc(var(--leo-stagger) * 3); }
+.v-page > *:nth-child(5) { animation-delay: calc(var(--leo-stagger) * 4); }
+.v-page > *:nth-child(6) { animation-delay: calc(var(--leo-stagger) * 5); }
+.v-page > *:nth-child(n + 7) { animation-delay: var(--leo-stagger-max); }
 
 .v-skeleton {
   background: linear-gradient(
@@ -581,7 +596,7 @@ body {
     rgba(0, 0, 0, 0.05) 63%
   );
   background-size: 400px 100%;
-  animation: v-shimmer 1.4s ease infinite;
+  animation: v-shimmer var(--leo-loop-shimmer) ease infinite;
 }
 
 .v-caret::after {
@@ -593,7 +608,7 @@ body {
   vertical-align: text-bottom;
   background: currentColor;
   border-radius: 1px;
-  animation: v-blink 0.9s steps(1) infinite;
+  animation: v-blink var(--leo-loop-blink) steps(1) infinite;
 }
 
 .v-spinner {
@@ -603,7 +618,7 @@ body {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 9999px;
-  animation: v-spin 0.7s linear infinite;
+  animation: v-spin var(--leo-loop-spin) linear infinite;
 }
 
 @keyframes v-sheen {
@@ -623,12 +638,12 @@ body {
     rgba(255, 255, 255, 0.55),
     transparent
   );
-  animation: v-sheen 1.8s ease-in-out infinite;
+  animation: v-sheen var(--leo-loop-sheen) ease-in-out infinite;
 }
 
 @keyframes v-bounce-dot {
   0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40% { transform: translateY(-4px); opacity: 1; }
+  40% { transform: translateY(calc(-1 * var(--leo-bounce-rise))); opacity: 1; }
 }
 
 .v-typing-dot {
@@ -637,10 +652,10 @@ body {
   height: 5px;
   border-radius: 9999px;
   background: currentColor;
-  animation: v-bounce-dot 1.2s ease-in-out infinite;
+  animation: v-bounce-dot var(--leo-loop-bounce-dot) ease-in-out infinite;
 }
-.v-typing-dot:nth-child(2) { animation-delay: 0.15s; }
-.v-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+.v-typing-dot:nth-child(2) { animation-delay: var(--leo-loop-dot-stagger); }
+.v-typing-dot:nth-child(3) { animation-delay: calc(var(--leo-loop-dot-stagger) * 2); }
 
 /* 滚动条：细一倍（6px → 3px）+ 颜色更浅（操作员 2026-07-03）。 */
 .v-scroll::-webkit-scrollbar { width: 3px; height: 3px; }
@@ -680,10 +695,14 @@ body {
 /* ---------- recommender / smart-search aura (leo-*) ---------- */
 
 @keyframes leo-pop-in {
-  0% { opacity: 0; transform: translateY(10px) scale(0.96); }
+  0% { opacity: 0; transform: translateY(var(--leo-move-md)) scale(0.96); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
-.leo-pop-in { animation: leo-pop-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* 曲线原为 cubic-bezier(0.22, 1, 0.36, 1) —— 一条不在规范五条曲线里的第六条。
+   它是无过冲的强 ease-out，形状最接近规范的入场曲线 --leo-ease-decelerate
+   (0.05, 0.7, 0.1, 1)，语义也正是「入场（从无到有）」，故并入后者，不再单列。
+   位移原为 10px，就近取档落到 --leo-move-md (12px)。 */
+.leo-pop-in { animation: leo-pop-in var(--leo-dur-5) var(--leo-ease-decelerate) both; }
 
 @keyframes leo-halo-breathe {
   0%, 100% {
@@ -697,13 +716,29 @@ body {
       0 0 22px 6px var(--leo-halo, rgba(99, 102, 241, 0.55));
   }
 }
-.leo-halo { animation: leo-halo-breathe 2.6s ease-in-out infinite; }
-.leo-card-move { transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+.leo-halo { animation: leo-halo-breathe var(--leo-loop-halo) ease-in-out infinite; }
+/* 位置/尺寸变化 → 规范指定的默认曲线 --leo-ease-standard（原为那条第六曲线）。 */
+.leo-card-move { transition: transform var(--leo-dur-6) var(--leo-ease-standard); }
 
+/* reduced-motion：本段只关「该整条停掉」的那几个。**六档时长、错峰、位移的归零
+   不在这里**，而在下方 THEME:GENERATED 区的 :root 里一次性做掉（规范要求降级发生
+   在 token 层，组件与原语不各自处理）。这里保留 animation:none 是因为它比 0ms 更
+   直接：0ms + fill:both 也落在终态，两者等效，留着更不易被误改。
+   载荷指示器四条（v-spin / v-shimmer / v-bounce-dot / v-pulse-dot）**刻意不在本
+   列表里**——它们表达「系统还在做事」，停掉会让用户以为卡死；它们的降级是放慢与
+   降幅，已由 token 层的 --leo-loop-* / --leo-bounce-rise / --leo-pulse-ring 完成。 */
 @media (prefers-reduced-motion: reduce) {
   .v-fade-in, .v-fade-up, .v-scale-in, .v-pop,
   .leo-pop-in, .leo-halo,
   .v-page > * { animation: none; }
+
+  /* 光标改为常亮：闪烁不承载「在做事」的语义，稳定可见的光标反而更好用。 */
+  .v-caret::after { animation: none; }
+
+  /* 掠光是装饰性反光，不是载荷指示器（载荷语义由 .v-running-pill 自身的文案/底色
+     承担）。这里整条移除而不是 animation:none —— 后者会把那道半透明白光冻在轨道
+     起点上，留下一块静止的亮斑。 */
+  .v-running-pill::after { animation: none; opacity: 0; }
 }
 
 /* ---------- dark 主题：滚动条 + skeleton 反色（作用域壳内） ---------- */
