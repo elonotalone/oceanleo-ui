@@ -128,8 +128,26 @@ export function orgStatusFromMessages(
 // 用户等首字要多等最多 450ms，而任务空转时又在白发请求。
 const POLL_FIRST_MS = 120; // 刚发出去，首字最金贵
 const POLL_ACTIVE_MS = 200; // 上一轮拿到了新内容：正在出字，跟紧
-// 连续几轮没动静就一档档退。后端本来就有 ~330ms 写库节流，
-// 空转时把间隔拉开不会让用户多等，只会少发请求。
+// 等首字的那几秒**不许退避**。
+//
+// 这一条是量出来的，不是想出来的。退避档原先从第一轮就开始爬，而「等首字」
+// 恰恰是一段没有新内容的时间 —— 于是用户盯着屏幕干等的那几秒被退避越拉越长。
+// 扫 `T_write`（后端首个 token 落库时刻）0–2000ms 共 201 点，对比改成自适应之前的
+// 固定 450ms：首字可见延迟均值 1217.0ms → **1390.6ms**、最坏 2370 → 2920ms，
+// 201 个点里 98 个比改之前更慢，最大一处多等 1000ms。
+// 「点了发送、界面呆住一秒多」正是任务书要消灭的那句体感，退避把它做得更糟了。
+//
+// 退避的方向没错，错在起点：它该在用户已经不指望立刻有反应之后才生效。
+// 所以首字窗口内走紧凑档，`POLL_FIRST_BYTE_WINDOW_MS` 之后再上梯子。
+//
+// 225ms = 改之前那个 450ms 的**一半**，这个取值是有讲究的：间隔整除 450，
+// 新时刻表就是老时刻表的**超集**（120,345,570,795,1020,… ⊇ 120,570,1020,…），
+// 于是「任何 `T_write` 都不会比改之前慢」是**结构上成立**的，不是扫出来碰巧。
+// 实测：均值 1217.0 → 1109.6ms、最坏 2370 → 2145ms、201 点里比改前慢的 **0** 个。
+const POLL_FIRST_BYTE_MS = 225;
+const POLL_FIRST_BYTE_WINDOW_MS = 2000;
+// 熬过首字窗口还没动静，才一档档退。这时用户已经知道这次要等一会儿了，
+// 后端本来又有 ~330ms 写库节流，把间隔拉开只会少发请求。
 const POLL_IDLE_LADDER_MS = [300, 500, 800, 1200];
 // 页面切到后台：**不发请求**，只留一个便宜的定时器等它回前台。
 // 长任务用户十有八九会切走干别的，这一条把那段时间的请求全省了。
@@ -142,6 +160,8 @@ export interface PollCadenceInput {
   changed: boolean;
   /** 已经连续空转了几档（`-1` = 还没空转过）。 */
   idleStep: number;
+  /** 上一次拿到新内容之后，已经干等了多久（ms）。拿到新内容就归零。 */
+  waitedMs: number;
 }
 
 export interface PollCadence {
@@ -149,10 +169,16 @@ export interface PollCadence {
   delayMs: number;
   /** 传回下一轮的空转档位。 */
   idleStep: number;
+  /** 传回下一轮的干等累计（= 本轮的 `waitedMs` 加上这次要等的 `delayMs`）。 */
+  waitedMs: number;
 }
 
 /**
  * 下一次轮询隔多久——**快慢跟着内容走**，这是这条改动的全部要点。
+ *
+ * 三档，优先级从上到下：正在出字 → 还在等首字 → 确实空转了。
+ * 中间那档是后补的，见上方 `POLL_FIRST_BYTE_MS` 的注释：少了它，退避会把
+ * 「点了发送界面呆住」这件事做得比改动之前更糟。
  *
  * 抽成纯函数是为了能被单测钉死：节奏策略藏在 effect 里就只能靠读代码相信它。
  */
@@ -160,12 +186,24 @@ export function nextPollCadence({
   hidden,
   changed,
   idleStep,
+  waitedMs,
 }: PollCadenceInput): PollCadence {
   // 后台优先级最高：哪怕上一轮正在出字，用户看不见就不值得发请求。
-  if (hidden) return { delayMs: POLL_HIDDEN_RECHECK_MS, idleStep };
-  if (changed) return { delayMs: POLL_ACTIVE_MS, idleStep: -1 };
+  // 干等累计原样带回来——回到前台时还在首字窗口里的，就该还按首字窗口的节奏走。
+  if (hidden) return { delayMs: POLL_HIDDEN_RECHECK_MS, idleStep, waitedMs };
+  if (changed) return { delayMs: POLL_ACTIVE_MS, idleStep: -1, waitedMs: 0 };
+  // 还在首字窗口里：不许退避，也不许把空转档位往上推（`idleStep` 留在 -1），
+  // 否则窗口一到期就直接从梯子中段起步。
+  if (waitedMs < POLL_FIRST_BYTE_WINDOW_MS) {
+    return {
+      delayMs: POLL_FIRST_BYTE_MS,
+      idleStep: -1,
+      waitedMs: waitedMs + POLL_FIRST_BYTE_MS,
+    };
+  }
   const step = Math.min(idleStep + 1, POLL_IDLE_LADDER_MS.length - 1);
-  return { delayMs: POLL_IDLE_LADDER_MS[step], idleStep: step };
+  const delayMs = POLL_IDLE_LADDER_MS[step];
+  return { delayMs, idleStep: step, waitedMs: waitedMs + delayMs };
 }
 
 /**
@@ -751,6 +789,8 @@ function AgentChatInner({
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let idleStep = -1;
+    // 这一轮之前已经干等了多久。`0` = 刚开跑，正处在最该跟紧的首字窗口里。
+    let waitedMs = 0;
 
     const arm = (delay: number) => {
       if (cancelled) return;
@@ -769,16 +809,20 @@ function AgentChatInner({
         hidden,
         changed: result.changed,
         idleStep,
+        waitedMs,
       });
       idleStep = cadence.idleStep;
+      waitedMs = cadence.waitedMs;
       arm(cadence.delayMs);
     };
 
     // 回到前台立刻补一次，不让用户为「刚才在后台」多等一个间隔。
+    // 干等累计也一并归零：他刚把页面切回来，此刻等的就是「第一眼」。
     const onVisibilityChange = () => {
       if (cancelled || documentHidden()) return;
       if (timer) clearTimeout(timer);
       idleStep = -1;
+      waitedMs = 0;
       arm(0);
     };
 

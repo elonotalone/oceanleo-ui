@@ -92,6 +92,12 @@ const source = await readFile(
   "utf8",
 );
 
+// 改成自适应之前的轮询节奏：首轮 120ms，其后固定 450ms
+// （`359739e` 的 `setTimeout(poll, 450)`）。轮询节奏的两组判据都拿它当基准线。
+const LEGACY_FIRST_MS = 120;
+const LEGACY_INTERVAL_MS = 450;
+const FIRST_BYTE_WINDOW_MS = 2000;
+
 // ---------------------------------------------------------------------------
 // 线格式（`signals/W20-request.md` §1.1 的四种载荷，逐字照抄后端的形状）
 // ---------------------------------------------------------------------------
@@ -472,20 +478,24 @@ test("回落不是重试：轮询始终在旁边跑，所以只需要把话说�
   // 正文的真源一直是 GET /tasks/{id}，流只负责让它早一点出现。
   // 于是「流挂了」这件事对内容零影响，节奏策略照旧生效。
   assert.deepEqual(
-    nextPollCadence({ hidden: false, changed: true, idleStep: 3 }),
-    { delayMs: 200, idleStep: -1 },
-    "拿到新内容就该跟紧，并把空转档位清零",
+    nextPollCadence({ hidden: false, changed: true, idleStep: 3, waitedMs: 9999 }),
+    { delayMs: 200, idleStep: -1, waitedMs: 0 },
+    "拿到新内容就该跟紧，并把空转档位和干等累计一起清零",
   );
 
+  // 梯子要从**首字窗口之外**起步（窗口内不许退避，见下一条判据）。
   let step = -1;
+  let waited = FIRST_BYTE_WINDOW_MS;
   const ladder = [];
   for (let i = 0; i < 6; i += 1) {
     const cadence = nextPollCadence({
       hidden: false,
       changed: false,
       idleStep: step,
+      waitedMs: waited,
     });
     step = cadence.idleStep;
+    waited = cadence.waitedMs;
     ladder.push(cadence.delayMs);
   }
   assert.deepEqual(
@@ -495,9 +505,139 @@ test("回落不是重试：轮询始终在旁边跑，所以只需要把话说�
   );
 
   assert.deepEqual(
-    nextPollCadence({ hidden: true, changed: true, idleStep: 2 }),
-    { delayMs: 1000, idleStep: 2 },
-    "页面在后台就不发请求，哪怕上一轮正在出字；档位要原样带回来",
+    nextPollCadence({ hidden: true, changed: true, idleStep: 2, waitedMs: 700 }),
+    { delayMs: 1000, idleStep: 2, waitedMs: 700 },
+    "页面在后台就不发请求，哪怕上一轮正在出字；档位与干等累计要原样带回来",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 3b. 等首字的那几秒不许退避
+// ---------------------------------------------------------------------------
+// 这条判据钉的是**产品判据本身**，不是实现：操作员的原话是「点了发送，界面呆住
+// 一秒多，然后整段文字啪一下出现」。退避档一旦从第一轮就开始爬，「呆住」这段
+// 会被拉得比改成自适应之前的固定 450ms **更长**——量出来是均值 1217.0 → 1390.6ms、
+// 最坏 2370 → 2920ms。所以首字窗口内的节奏必须锁住。
+
+/** 把真的 nextPollCadence 推成一张时刻表。`seesNew(t)` 决定那一轮 changed。 */
+function pollSchedule(seesNew, horizonMs) {
+  const times = [];
+  let t = LEGACY_FIRST_MS;
+  let idleStep = -1;
+  let waitedMs = 0;
+  while (t <= horizonMs) {
+    times.push(t);
+    const c = nextPollCadence({
+      hidden: false,
+      changed: seesNew(t),
+      idleStep,
+      waitedMs,
+    });
+    idleStep = c.idleStep;
+    waitedMs = c.waitedMs;
+    t += c.delayMs;
+  }
+  return times;
+}
+
+function legacySchedule(horizonMs) {
+  const times = [];
+  for (let t = LEGACY_FIRST_MS; t <= horizonMs; t += LEGACY_INTERVAL_MS) {
+    times.push(t);
+  }
+  return times;
+}
+
+const firstPollAtOrAfter = (times, t) =>
+  times.find((x) => x >= t) ?? Number.POSITIVE_INFINITY;
+
+test("等首字的那几秒不许退避：新时刻表是旧时刻表的超集，任何 T_write 都不会比改前慢", () => {
+  const horizon = 12000;
+  const sched = pollSchedule(() => false, horizon);
+
+  // ① 窗口内每一步都是紧凑档，且空转档位不许被推上去——
+  //    推上去的话窗口一到期就从梯子中段起步，等于偷偷退避。
+  let waited = 0;
+  let idleStep = -1;
+  const insideWindow = [];
+  while (waited < FIRST_BYTE_WINDOW_MS) {
+    const c = nextPollCadence({
+      hidden: false,
+      changed: false,
+      idleStep,
+      waitedMs: waited,
+    });
+    insideWindow.push(c.delayMs);
+    assert.equal(
+      c.idleStep,
+      -1,
+      "还在等首字就把空转档位往上推了——窗口一到期会直接从梯子中段起步",
+    );
+    idleStep = c.idleStep;
+    waited = c.waitedMs;
+  }
+  assert.ok(
+    insideWindow.every((d) => d === insideWindow[0]),
+    `首字窗口内的间隔必须恒定，实际拿到 ${JSON.stringify(insideWindow)}`,
+  );
+  assert.ok(
+    insideWindow[0] < LEGACY_INTERVAL_MS,
+    `首字窗口内的间隔 ${insideWindow[0]}ms 不比改之前的 ${LEGACY_INTERVAL_MS}ms 紧，那这次改动对「呆住」这条没有任何意义`,
+  );
+
+  // ② 结构判据：窗口内旧时刻表的每一个时刻，新时刻表都有。
+  //    有了这条，「任何 T_write 都不会比改前慢」是结构上成立的，不是扫出来碰巧。
+  for (const legacyTime of legacySchedule(FIRST_BYTE_WINDOW_MS)) {
+    assert.ok(
+      sched.includes(legacyTime),
+      `旧时刻表在 ${legacyTime}ms 有一次轮询，新时刻表没有——` +
+        `这个时刻附近的 T_write 会比改之前更晚看到首字。新表：${sched.slice(0, 12).join(",")}`,
+    );
+  }
+
+  // ③ 逐点扫 T_write：一个点都不许比改之前慢，且均值与最坏都要真的变好。
+  const legacy = legacySchedule(horizon);
+  let sumLegacy = 0;
+  let sumNext = 0;
+  let points = 0;
+  let worstLegacy = 0;
+  let worstNext = 0;
+  for (let tWrite = 0; tWrite <= FIRST_BYTE_WINDOW_MS; tWrite += 10) {
+    const l = firstPollAtOrAfter(legacy, tWrite);
+    const n = firstPollAtOrAfter(sched, tWrite);
+    assert.ok(
+      n <= l,
+      `T_write=${tWrite}ms 时首字要等到 ${n}ms，改之前只要 ${l}ms——退避又爬进首字窗口了`,
+    );
+    sumLegacy += l;
+    sumNext += n;
+    worstLegacy = Math.max(worstLegacy, l);
+    worstNext = Math.max(worstNext, n);
+    points += 1;
+  }
+  assert.ok(
+    sumNext / points < sumLegacy / points,
+    `首字可见延迟均值没有变好：改前 ${(sumLegacy / points).toFixed(1)}ms，现在 ${(sumNext / points).toFixed(1)}ms`,
+  );
+  assert.ok(
+    worstNext < worstLegacy,
+    `首字可见延迟最坏值没有变好：改前 ${worstLegacy}ms，现在 ${worstNext}ms`,
+  );
+
+  // ④ 退避本身不许被这条判据顺手废掉：熬过窗口还是要退，空转要真的省下请求。
+  const idle60 = pollSchedule(() => false, 60000).length;
+  const legacy60 = legacySchedule(60000).length;
+  assert.ok(
+    idle60 < legacy60 * 0.7,
+    `空转 60s 发了 ${idle60} 次请求，改之前是 ${legacy60} 次——退避没生效，紧凑档一路跑到底了`,
+  );
+
+  // ⑤ 出字期间仍是 200ms 稳态：首字这条不许把已经拿到的那半份好处退回去。
+  const streaming = pollSchedule(() => true, 3000);
+  assert.equal(
+    streaming[2] - streaming[1],
+    200,
+    "上一轮拿到了新内容就该按出字节奏跟紧",
   );
 });
 
