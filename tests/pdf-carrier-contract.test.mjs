@@ -172,9 +172,15 @@ test("C-4 §0.3: the two operation modules export exactly the surveyed API", asy
     "movePdfPage",
     "rotatePdfPage",
   ]);
+  // `W17`（`9edca72`）把批注从 2 种扩到 11 种标准 Annot 字典，随之多了两个**通用**入口：
+  // `appendPdfAnnotation`（按 draft 落一条）与 `addPdfAnnotation`（对外的那一层）。
+  // 原来那两个 `addPdfTextAnnotationAt` / `addPdfHighlightAnnotation` 现在是它们的特例。
+  // 清单锁照旧是全等——多一个少一个都红，只是把这次**有意的**扩面登记进来。
   assert.deepEqual(exported(annotations).sort(), [
+    "addPdfAnnotation",
     "addPdfHighlightAnnotation",
     "addPdfTextAnnotationAt",
+    "appendPdfAnnotation",
     "deletePdfAnnotation",
     "listPdfAnnotations",
     "movePdfAnnotation",
@@ -957,12 +963,37 @@ test("C-5 §2.1 / §2.4 SC 1.4.3+1.4.11: the palette meets every contrast floor 
   // Two alphas exist and both must clear the floor: the on-screen overlay
   // PdfStage paints, and the `CA` pdf-lib writes into the saved annotation.
   const stage = await source("src/shell/media-editors/PdfStage.tsx");
-  const overlayAlpha = Number.parseInt(
-    stage.match(/\$\{annotation\.color\}([0-9a-f]{2})/i)[1],
-    16,
-  ) / 255;
+  const overlayMatch = stage.match(/\$\{annotation\.color\}([0-9a-f]{2})/i);
+  assert.ok(overlayMatch, "PdfStage 里没找到叠加层的 alpha 后缀：判据取样口径漂了");
+  const overlayAlpha = Number.parseInt(overlayMatch[1], 16) / 255;
+
   const operations = await source("src/shell/media-editors/pdf-annotation-operations.ts");
-  const savedAlpha = Number.parseFloat(operations.match(/CA:\s*([0-9.]+)/)[1]);
+  // `CA` 从字面量变成了变量：`W17`（`9edca72`）把不透明度按批注类型分档，
+  // 现在写的是 `CA: opacity`，而 `opacity` 来自 `DEFAULT_OPACITY` 那张表。
+  // 上一版直接 `operations.match(/CA:\s*([0-9.]+)/)[1]` 取下标，表一改就 **TypeError**，
+  // 于是这条对比度判据从 `W17` 起就一次都没真的跑过（`§7b⑩` 同族：红是记了，
+  // 但记的是判据自己炸了，不是产品的读数）。
+  // 改成从表里取，并且**先断言取到了**再用（`§7b③`：零命中先验取样，别直接下标）。
+  assert.match(operations, /CA:\s*opacity/, "CA 不再由 opacity 变量喂，取样口径要重定");
+  assert.match(
+    operations,
+    /draft\.opacity \?\? DEFAULT_OPACITY\[draft\.kind\]/,
+    "opacity 不再兜底到 DEFAULT_OPACITY，这张表就不是事实源了",
+  );
+  const opacityTable = operations.match(/const DEFAULT_OPACITY[^=]*=\s*\{([^}]*)\}/);
+  assert.ok(opacityTable, "没找到 DEFAULT_OPACITY 表：判据取样口径漂了");
+  const defaultOpacity = Object.fromEntries(
+    [...opacityTable[1].matchAll(/(\w+):\s*([0-9.]+)/g)].map((entry) => [
+      entry[1],
+      Number.parseFloat(entry[2]),
+    ]),
+  );
+  // 只有 highlight 是半透明填充、压在正文上；其余几种是 alpha 1 的描边/记号。
+  const savedAlpha = defaultOpacity.highlight;
+  assert.ok(
+    Number.isFinite(savedAlpha),
+    `DEFAULT_OPACITY 里没有 highlight：取到的是 ${JSON.stringify(defaultOpacity)}`,
+  );
   assert.ok(overlayAlpha > 0 && overlayAlpha <= 0.5, `overlay alpha ${overlayAlpha}`);
   assert.ok(savedAlpha > 0 && savedAlpha <= 0.5, `saved alpha ${savedAlpha}`);
 
