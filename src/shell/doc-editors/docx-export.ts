@@ -1,3 +1,12 @@
+import {
+  RICHDOC_NUMBERING_PRESETS,
+  richDocDocxCellProperties,
+  richDocDocxParagraphProperties,
+  richDocDocxRowProperties,
+  richDocListMarker,
+  type RichDocNumberingPreset,
+} from "./rich-doc-model";
+
 interface TiptapNode {
   type?: string;
   text?: string;
@@ -123,16 +132,33 @@ async function inlineChildren(
   return output;
 }
 
+const NUMBERING_PRESET_VALUES = new Set<string>(
+  RICHDOC_NUMBERING_PRESETS.map((preset) => preset.value),
+);
+
+function numberingPresetOf(value: unknown): RichDocNumberingPreset {
+  const raw = String(value ?? "");
+  return NUMBERING_PRESET_VALUES.has(raw)
+    ? (raw as RichDocNumberingPreset)
+    : "decimal";
+}
+
+/**
+ * `listLevel` 是「外面套了几层列表」。它有两个用途：给多级编号挑这一级的
+ * 记号（`一、`→`（一）`→`1.`），以及让每级左缩进递进一个字符宽。
+ */
 async function blockChildren(
   nodes: TiptapNode[],
   docx: DocxModule,
   listPrefix = "",
+  listLevel = 0,
 ): Promise<unknown[]> {
   const output: unknown[] = [];
   for (let index = 0; index < nodes.length; index += 1) {
     const node = nodes[index];
     if (node.type === "bulletList" || node.type === "orderedList") {
       const ordered = node.type === "orderedList";
+      const preset = numberingPresetOf(node.attrs?.numbering);
       for (let itemIndex = 0; itemIndex < (node.content || []).length; itemIndex += 1) {
         const item = node.content?.[itemIndex];
         if (!item) continue;
@@ -140,7 +166,10 @@ async function blockChildren(
           ...(await blockChildren(
             item.content || [],
             docx,
-            ordered ? `${itemIndex + 1}. ` : "• ",
+            ordered
+              ? `${richDocListMarker(preset, listLevel, itemIndex + 1)} `
+              : "• ",
+            listLevel + 1,
           )),
         );
       }
@@ -148,15 +177,17 @@ async function blockChildren(
     }
     if (node.type === "table") {
       const rows = await Promise.all(
-        (node.content || []).map(async (row) =>
+        (node.content || []).map(async (row, rowIndex) =>
           new docx.TableRow({
             children: await Promise.all(
               (row.content || []).map(async (cell) =>
                 new docx.TableCell({
                   children: (await blockChildren(cell.content || [], docx)) as never[],
+                  ...richDocDocxCellProperties(cell.attrs),
                 }),
               ),
             ),
+            ...richDocDocxRowProperties(row, rowIndex === 0),
           }),
         ),
       );
@@ -183,13 +214,17 @@ async function blockChildren(
       );
       continue;
     }
+    // 用户设的排版属性优先于这里的默认值；没设的分支不会出现在 typography 里，
+    // 所以 spread 顺序保证「没设过 = 保持旧行为」。
+    const typography = richDocDocxParagraphProperties(node.attrs, listLevel);
     const paragraphOptions: Record<string, unknown> = {
       children: [
         ...(listPrefix ? [new docx.TextRun({ text: listPrefix, bold: true })] : []),
         ...(await inlineChildren(node, docx)),
       ],
-      spacing: { after: 120 },
+      spacing: { after: 120, ...typography.spacing },
     };
+    if (typography.indent) paragraphOptions.indent = { ...typography.indent };
     if (node.type === "heading") {
       const level = boundedNumber(node.attrs?.level, 1, 1, 6);
       paragraphOptions.heading = [
@@ -202,7 +237,11 @@ async function blockChildren(
       ][level - 1];
     }
     if (node.type === "blockquote") {
-      paragraphOptions.indent = { left: 480 };
+      // 引用块的 480 缇是叠加在用户左缩进之上的，不是覆盖掉它。
+      paragraphOptions.indent = {
+        ...typography.indent,
+        left: 480 + (typography.indent?.left ?? 0),
+      };
       paragraphOptions.border = {
         left: {
           color: "A8A29E",
