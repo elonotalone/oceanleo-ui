@@ -7,6 +7,7 @@ import {
   type MarketApp,
 } from "../lib/app-market";
 import { useUI } from "../i18n/ui/useUI";
+import { ConfirmDialog } from "../ui";
 
 /** “我的应用”统一回到主站应用市场，并直接表达要打开“我的”视图。 */
 export const MY_APPS_MARKET_HREF =
@@ -61,6 +62,9 @@ export function MyAppsRail({
   );
   const [reloadKey, setReloadKey] = useState(0);
   const [actionError, setActionError] = useState("");
+  // 等待确认的那一个应用。原生 confirm 会冻住主线程、样式不可控，移动端尤其糟；
+  // 换成 ConfirmDialog 后这一步变成普通的 React 状态。
+  const [pendingRemoval, setPendingRemoval] = useState<MarketApp | null>(null);
 
   useEffect(() => {
     if (signedIn === false) {
@@ -91,11 +95,6 @@ export function MyAppsRail({
   }, [reloadKey, signedIn]);
 
   async function removeApp(app: MarketApp) {
-    const confirmed = window.confirm(
-      `${tt("确定从「我的应用」移除")}「${app.name}」？`,
-    );
-    if (!confirmed) return;
-
     setActionError("");
     setApps((current) => current.filter((item) => item.app_id !== app.app_id));
     try {
@@ -215,7 +214,7 @@ export function MyAppsRail({
               aria-label={`${tt("从我的应用移除")}：${app.name}`}
               className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md text-[14px] text-stone-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
               data-my-apps-remove={app.app_id}
-              onClick={() => void removeApp(app)}
+              onClick={() => setPendingRemoval(app)}
               title={tt("移除")}
               type="button"
             >
@@ -233,6 +232,20 @@ export function MyAppsRail({
         >
           {tt("查看全部")}（{apps.length}）→
         </a>
+      )}
+
+      {pendingRemoval && (
+        <ConfirmDialog
+          title={`${tt("确定从「我的应用」移除")}「${pendingRemoval.name}」？`}
+          confirmLabel={tt("移除")}
+          danger
+          onConfirm={async () => {
+            const app = pendingRemoval;
+            setPendingRemoval(null);
+            await removeApp(app);
+          }}
+          onCancel={() => setPendingRemoval(null)}
+        />
       )}
     </section>
   );

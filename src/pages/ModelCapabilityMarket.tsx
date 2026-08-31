@@ -15,6 +15,7 @@ import {
   type ModelGroupsPayload,
 } from "../lib/auth";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import { ConfirmDialog } from "../ui";
 
 const ALL_PROVIDERS = "__all__";
 
@@ -96,6 +97,7 @@ export function ModelGroupManager({
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // 依赖里刻意没有 `tt`：模型组合与语言无关，换语言不该重新拉一次 `getModelGroups()`
   //（还会把 `viewKey` 打回服务端的 active 组，丢掉用户当前正在看的那一组）。
@@ -287,7 +289,6 @@ export function ModelGroupManager({
 
   async function removeGroup() {
     if (!group || group.kind !== "custom") return;
-    if (!window.confirm(tt("确定删除模型组合「{name}」吗？", { name: group.name }))) return;
     setBusy("delete");
     setError("");
     const result = await deleteModelGroup(group.id);
@@ -469,7 +470,19 @@ export function ModelGroupManager({
                   <>
                     <button type="button" onClick={() => { setRenaming(true); setRenameName(group.name); }} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50">{tt("改名")}</button>
                     <button type="button" onClick={beginEdit} className="rounded-lg bg-neutral-900 px-3 py-1 text-[11px] font-medium text-white">{tt("编辑组合")}</button>
-                    <button type="button" onClick={() => void removeGroup()} className="rounded-lg px-2 py-1 text-[11px] text-rose-500 hover:bg-rose-50">{tt("删除")}</button>
+                    <button type="button" onClick={() => setConfirmingDelete(true)} className="rounded-lg px-2 py-1 text-[11px] text-rose-500 hover:bg-rose-50">{tt("删除")}</button>
+                    {confirmingDelete && (
+                      <ConfirmDialog
+                        title={tt("确定删除模型组合「{name}」吗？", { name: group.name })}
+                        confirmLabel={tt("删除")}
+                        danger
+                        onConfirm={async () => {
+                          setConfirmingDelete(false);
+                          await removeGroup();
+                        }}
+                        onCancel={() => setConfirmingDelete(false)}
+                      />
+                    )}
                   </>
                 )}
               </div>
