@@ -308,10 +308,12 @@ test("侧栏展示服务端列表且限八个；移除立即生效并二次确�
     assert.match(seeAll.textContent, /查看全部/);
 
     const releaseUninstall = marketApi.__holdUninstall();
-    let confirmText = "";
-    window.confirm = (message) => {
-      confirmText = String(message);
-      return true;
+    // W05 把这一步从 window.confirm 换成了 ConfirmDialog（原生弹窗阻塞主线程、
+    // 样式不可控、移动端尤其糟）。二次确认这条**意图没变**，验法跟着机制变：
+    // 原来读被 stub 的 confirm 文案，现在读真的渲染出来的对话框。
+    // 顺手把「压根不许再调原生弹窗」钉死：调了就当场炸，不是静默走过去。
+    window.confirm = () => {
+      throw new Error("不许再调用 window.confirm（W05 已迁到 ConfirmDialog）");
     };
     const remove = container.querySelector(
       '[data-my-apps-remove="site.one"]',
@@ -320,7 +322,44 @@ test("侧栏展示服务端列表且限八个；移除立即生效并二次确�
       remove.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
-    assert.match(confirmText, /确定.*移除.*应用 one/);
+    await settle();
+
+    // 只点「移除」还什么都不该发生——这比原来那版更严：
+    // 原来 confirm 被 stub 成恒真，「没确认就不动手」其实没被验过。
+    assert.deepEqual(
+      marketApi.__uninstallCalls(),
+      [],
+      "还没确认就已经发了 DELETE",
+    );
+    assert.ok(
+      container.querySelector('[data-my-apps-item="site.one"]'),
+      "还没确认就已经把应用从列表里摘了",
+    );
+
+    // 对话框走 Modal 的 portal，挂在 document.body 上，不在 container 里。
+    const dialog = window.document.body.querySelector('[role="dialog"]');
+    assert.ok(dialog, "点「移除」没有弹出确认对话框");
+    assert.equal(dialog.getAttribute("aria-modal"), "true");
+    assert.match(dialog.textContent, /确定.*移除.*应用 one/);
+
+    const dialogButtons = [...dialog.querySelectorAll("button")];
+    const confirmButton = dialogButtons.find((button) =>
+      /移除/.test(button.textContent),
+    );
+    assert.ok(confirmButton, "确认键上没有「移除」字样");
+    assert.ok(
+      dialogButtons.some((button) => /取消/.test(button.textContent)),
+      "对话框没有给退路（取消键）",
+    );
+
+    await act(async () => {
+      confirmButton.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+    await settle();
+
     assert.deepEqual(marketApi.__uninstallCalls(), ["site.one"]);
     assert.equal(
       container.querySelector('[data-my-apps-item="site.one"]'),
