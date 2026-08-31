@@ -761,10 +761,14 @@ test("流的正文真的接进了气泡，回落告知真的渲染出来", () =>
     /\{streamNotice && \(/,
     "streamNotice 只有 setter 没有渲染点 —— 回落这件事用户看不到",
   );
+  // 意图是「回落告知必须过翻译函数」，不是「必须写成 tt(」这五个字符。
+  // W35 按 `effect-tt-dependency` 的判红，把这条 effect 里的 `tt` 换成了 W13 那套
+  // ref + 恒定身份（否则 provider 一换身份就 abort 重开一条流），调用点随之写成
+  // `translateRef.current(`。两种写法都过翻译函数，硬编码中文仍然过不去。
   assert.match(
     source,
-    /setStreamNotice\(tt\(/,
-    "回落告知要走 tt()，不许硬编码中文",
+    /setStreamNotice\((?:tt|translateRef\.current)\(/,
+    "回落告知要走翻译函数（tt() 或 W13 的 ref 恒定包装），不许硬编码中文",
   );
 });
 

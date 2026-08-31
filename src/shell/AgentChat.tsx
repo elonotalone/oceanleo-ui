@@ -608,6 +608,14 @@ function AgentChatInner({
   agentStreamEndpoint,
 }: AgentChatInnerProps) {
   const tt = useUI();
+  // `tt` 是 locale provider 所有的函数。它进下面那条 SSE effect 的依赖，会让
+  // provider 每换一次身份就 `controller.abort()` 再重开一条流——正文当场断一次，
+  // 而回落告知与语言无关。沿用 W13 在 `doc-editors/use-grid-editor.ts:410-419`
+  // 定下的 ref + 恒定身份写法（`cloud-browser-interaction.ts:183` 同形）。
+  const translateRef = useRef(tt);
+  useEffect(() => {
+    translateRef.current = tt;
+  }, [tt]);
   const ARTIFACT_LABEL = agentArtifactLabels(tt);
   const workspaceValue = useOptionalWorkspaceSession();
   const workspace =
@@ -862,7 +870,7 @@ function AgentChatInner({
       );
       if (cancelled) return;
       if (outcome.kind === "unavailable") {
-        setStreamNotice(tt("实时流不可用，已回落到轮询刷新。"));
+        setStreamNotice(translateRef.current("实时流不可用，已回落到轮询刷新。"));
       }
     })();
     return () => {
@@ -870,7 +878,7 @@ function AgentChatInner({
       controller.abort();
       streamAbortRef.current = null;
     };
-  }, [agentStreamEndpoint, taskId, status, tt]);
+  }, [agentStreamEndpoint, taskId, status]);
 
   // ---------------------------------------------------------------------
   // 粘底滚动
