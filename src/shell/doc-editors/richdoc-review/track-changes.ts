@@ -21,6 +21,7 @@
 // 既存在又不存在。做半套结构追踪比不做更危险：用户会以为它罩住了。
 // ============================================================================
 
+import { Extension } from "@tiptap/core";
 import {
   Fragment,
   Mark,
@@ -669,6 +670,23 @@ function markInsertedRange(
     attributionAttrs(attribution, changeId, at),
   );
   for (const span of spans) tr.addMark(span.from, span.to, mark);
+}
+
+/**
+ * 把录制插件包成 tiptap 扩展，好和四个 mark 一起进 `extensions` 数组。
+ *
+ * `options` 里的两个回调**必须是稳定引用**（调用方用 ref 兜住）：
+ * 扩展数组一旦变化 tiptap 会重建整个编辑器，正在编辑的人会丢掉光标与撤销栈。
+ */
+export function richDocTrackChangesExtension(
+  options: TrackChangesPluginOptions,
+) {
+  return Extension.create({
+    name: "richDocTrackChangesRecorder",
+    addProseMirrorPlugins() {
+      return [richDocTrackChangesPlugin(options)];
+    },
+  });
 }
 
 /** 三种修订 mark 的名字，导出给 UI 侧做筛选。 */

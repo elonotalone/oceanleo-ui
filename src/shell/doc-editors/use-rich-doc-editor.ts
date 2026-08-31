@@ -17,7 +17,12 @@ import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { Image } from "@tiptap/extension-image";
 import { TextAlign } from "@tiptap/extension-text-align";
-import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
+import {
+  Color,
+  FontFamily,
+  FontSize,
+  TextStyle,
+} from "@tiptap/extension-text-style";
 import { Highlight } from "@tiptap/extension-highlight";
 import type { LibraryItem } from "../library-data";
 import { uploadFile } from "../../lib/database";
@@ -46,9 +51,27 @@ import {
   htmlToMarkdown,
   loadRichDocFile,
   loadRichDocHtml,
+  RichDocTypography,
   type RichDocLoadResult,
   type RichDocSource,
 } from "./rich-doc-model";
+import { richDocReviewExtensions } from "./richdoc-review/review-marks";
+import { richDocTrackChangesExtension } from "./richdoc-review/track-changes";
+import {
+  attachReviewSidecar,
+  type RichDocAttribution,
+} from "./richdoc-review/review-types";
+import {
+  applyRevisionExportChoice,
+  reviewExportBlockMessage,
+  reviewExportCommentNotice,
+  summarizeReviewForExport,
+  type RevisionExportChoice,
+} from "./richdoc-review/review-export";
+import {
+  useRichDocReview,
+  type RichDocReviewApi,
+} from "./richdoc-review/use-richdoc-review";
 
 export interface RichDocEditorState {
   /** tiptap Editor 实例；immediatelyRender:false 下 SSR/首帧为 null。 */
@@ -74,8 +97,14 @@ export interface RichDocEditorState {
   save: () => Promise<PersistedEditorVersion | null>;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
-  exportDoc: () => Promise<void>;
+  /**
+   * 导出 DOCX。**有未处理修订时必须带上策略**——不带会被拒绝，
+   * 原因写进 `error`（任务书 P4：不许静默按当前显示状态导出）。
+   */
+  exportDoc: (choice?: RevisionExportChoice) => Promise<void>;
   exportText: () => void;
+  /** 审阅层：批注线程、修订列表与开关。工具栏与侧栏都从这里取。 */
+  review: RichDocReviewApi;
   /** Replace the active document with a local DOC/DOCX/HTML/Markdown/text file. */
   importSource: (file: File) => Promise<void>;
   /** 本地图片 → uploadFile → 光标处插入 img。 */
@@ -202,6 +231,8 @@ export function useRichDocEditor(
   item: LibraryItem,
   siteId = "",
   onSourceAccessError?: () => void,
+  /** 谁在审阅。缺省是本机匿名作者——没有登录态不该挡住批注。 */
+  author?: RichDocAttribution,
 ): RichDocEditorState {
   const tt = useUI();
   const [loading, setLoading] = useState(true);
@@ -215,6 +246,21 @@ export function useRichDocEditor(
   const [sourceReady, setSourceReady] = useState(false);
   const [loaded, setLoaded] = useState<RichDocLoadResult | null>(null);
   const [counts, setCounts] = useState({ words: 0, chars: 0 });
+  /**
+   * 与 `revisionRef` 并行的**可反应**计数：审阅侧栏的批注范围是每次现算的，
+   * 而 ref 的变化不会触发重渲染。选区变化也要计入——「光标停在批注上点亮侧栏
+   * 那一条」是选区事件，不是文档事件。
+   */
+  const [reviewRevision, setReviewRevision] = useState(0);
+  // 调用方多半每次渲染都给一个新字面量；按值 memo 住，
+  // 免得 attribution 的引用变化去推动下游的 effect。
+  const reviewAttribution = useMemo<RichDocAttribution>(
+    () => ({
+      author: author?.author || "local",
+      authorName: author?.authorName || "",
+    }),
+    [author?.author, author?.authorName],
+  );
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
   const sourceReadyRef = useRef(false);
@@ -227,6 +273,16 @@ export function useRichDocEditor(
     delivery?: PreparedDeliveryUpload;
     preview?: PreparedPreviewUpload;
   } | null>(null);
+
+  /**
+   * 修订录制器要读的两个值。走 ref 而不是进 `extensions` 的依赖数组：
+   * 扩展数组一变 tiptap 会重建整个编辑器，正在打字的人会丢光标与撤销栈。
+   */
+  const trackChangesEnabledRef = useRef(false);
+  const attributionRef = useRef<RichDocAttribution>({
+    author: "",
+    authorName: "",
+  });
 
   const extensions = useMemo(
     () => [
@@ -241,7 +297,22 @@ export function useRichDocEditor(
       // 字号是指令面里 agent 能下的一条命令（`richdoc.set-font-size`），
       // 没有这条扩展 `textStyle` 上就没有 fontSize 属性，改字号会静默丢掉。
       FontSize,
+      // W15 请求 1.2：`FontFamily` 就在已 import 的 text-style 包里，0 字节增量。
+      // 没有这行 `setFontFamily` 命令不存在，W15 已接好的字体选择器点了没反应。
+      FontFamily,
+      // W15 请求 1.1（裁定 A-10 解封）：行距、首行/悬挂缩进、段前段后、多级编号
+      // 全挂在 paragraph/heading 的 attrs 上，不注册这条扩展 schema 里就没有这些
+      // attr，`setContent` 会把它们静默丢掉——W15 那一层做得再全也是死的。
+      // 上一棒暂缓是对的：当时 `RichDocTypography` 全仓零命中，静态 import 一个
+      // 不存在的符号会当场断 typecheck 与 31 个站的构建。它现在在 `main` 上了。
+      RichDocTypography,
       Highlight.configure({ multicolor: true }),
+      // 审阅层：四个 mark + 修订录制器。
+      ...richDocReviewExtensions(),
+      richDocTrackChangesExtension({
+        isEnabled: () => trackChangesEnabledRef.current,
+        getAttribution: () => attributionRef.current,
+      }),
     ],
     [],
   );
@@ -267,10 +338,26 @@ export function useRichDocEditor(
       }
       setCounts(countText(instance.getText()));
       revisionRef.current += 1;
+      setReviewRevision((value) => value + 1);
       setDirty(true);
       setSavedUrl("");
     },
+    onSelectionUpdate: () => {
+      setReviewRevision((value) => value + 1);
+    },
   });
+
+  const review = useRichDocReview({
+    editor,
+    revision: reviewRevision,
+    attribution: reviewAttribution,
+  });
+  useEffect(() => {
+    trackChangesEnabledRef.current = review.trackChangesEnabled;
+  }, [review.trackChangesEnabled]);
+  useEffect(() => {
+    attributionRef.current = reviewAttribution;
+  }, [reviewAttribution]);
   const requireSourceReady = useCallback(() => {
     if (sourceReadyRef.current) return true;
     setError(tt("文档源尚未成功载入；请刷新源或导入文件后再操作"));
@@ -367,14 +454,19 @@ export function useRichDocEditor(
     setReloadNonce((value) => value + 1);
   }, []);
 
+  const hydrateReview = review.hydrateFromProject;
   useEffect(() => {
     if (!editor || !loaded) return;
     editor.commands.setContent(loaded.json || loaded.html, {
       emitUpdate: false,
     });
+    // 正文与 sidecar 是同一份工程档里的两个字段，必须同一时刻装上：
+    // 先装 sidecar 后装正文，第一次结算会把全部批注判成孤儿。
+    hydrateReview(loaded.json);
     setCounts(countText(editor.getText()));
+    setReviewRevision((value) => value + 1);
     setLoading(false);
-  }, [editor, loaded]);
+  }, [editor, hydrateReview, loaded]);
 
   const baseTitle = item.title || tt("文档");
 
@@ -399,17 +491,36 @@ export function useRichDocEditor(
     );
   }, [editor, baseTitle, requireSourceReady]);
 
-  const exportDoc = useCallback(async () => {
-    if (!editor || !requireSourceReady()) return;
-    try {
-      const blob = await tiptapJsonToDocxBlob(baseTitle, editor.getJSON());
-      downloadBlob(`${baseTitle}.docx`, blob);
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? tt(caught.message) : tt("导出 DOCX 失败"),
-      );
-    }
-  }, [editor, baseTitle, requireSourceReady, tt]);
+  const reviewSidecar = review.sidecar;
+  const exportDoc = useCallback(
+    async (choice?: RevisionExportChoice) => {
+      if (!editor || !requireSourceReady()) return;
+      const summary = summarizeReviewForExport(editor.state.doc, reviewSidecar);
+      // 任务书 P4 明文：有未处理修订而调用方没给策略时**拒绝导出**。
+      // 「按当前显示状态导出」会把划掉的内容当正文写进 docx——
+      // `docx-export.ts` 的白名单不认 `richdocDeletion`，那段字会以普通正文出现。
+      const blocked = reviewExportBlockMessage(summary, choice);
+      if (blocked) {
+        setError(tt(blocked));
+        return;
+      }
+      try {
+        const json = choice
+          ? applyRevisionExportChoice(editor.getJSON(), choice)
+          : editor.getJSON();
+        const blob = await tiptapJsonToDocxBlob(baseTitle, json);
+        downloadBlob(`${baseTitle}.docx`, blob);
+        // 批注进不了 docx 时明确告知，不静默丢（任务书 P4 的另一半）。
+        const notice = reviewExportCommentNotice(summary);
+        if (notice) setError(tt(notice));
+      } catch (caught) {
+        setError(
+          caught instanceof Error ? tt(caught.message) : tt("导出 DOCX 失败"),
+        );
+      }
+    },
+    [editor, baseTitle, requireSourceReady, reviewSidecar, tt],
+  );
 
   const exportText = useCallback(() => {
     if (!editor || !requireSourceReady()) return;
@@ -456,6 +567,16 @@ export function useRichDocEditor(
     }
     const savingRevision = revisionRef.current;
     const json = editor.getJSON();
+    /**
+     * 交付用的 docx **不能**拿带审阅 mark 的原始 json 去生成：
+     * `docx-export.ts` 的白名单不认 `richdocDeletion`，被划掉的文字会以
+     * **普通正文**出现在交付件里——正是任务书 P4 点名的那个坑。
+     *
+     * 但保存不是导出，不该把人拦在这里（`exportDoc` 才是要用户表态的地方）。
+     * 所以取三条策略里最保守的一条：keep-markup 把插入/删除翻成下划线/删除线，
+     * 拿到这份 docx 的人一眼看得出稿子还没定。
+     */
+    const deliveryJson = applyRevisionExportChoice(json, "keep-markup");
     const html = editor.getHTML();
     const baseItem = persistedItemRef.current;
     const baseRevision = String(
@@ -483,13 +604,13 @@ export function useRichDocEditor(
         siteId,
         fallbackSite: "word",
         createFile: async () => {
-          const delivery = await tiptapJsonToDocxBlob(baseTitle, json);
+          const delivery = await tiptapJsonToDocxBlob(baseTitle, deliveryJson);
           return new File([delivery], `${fileStem}.docx`, {
             type: RICHDOC_SOURCE_MEDIA_TYPE,
           });
         },
         // docx is never a displayable primary; ship a rendered cover with it.
-        createPreview: () => renderRichDocPreviewPng(json, baseTitle),
+        createPreview: () => renderRichDocPreviewPng(deliveryJson, baseTitle),
         sourceFormat: RICHDOC_SOURCE_FORMAT,
         sourceMediaType: RICHDOC_SOURCE_MEDIA_TYPE,
         title,
@@ -509,7 +630,11 @@ export function useRichDocEditor(
         },
         project: {
           schema: RICHDOC_PROJECT_SCHEMA,
-          data: json,
+          // sidecar 是**加字段**，不是换 schema：`Node.fromJSON` 忽略根对象上的
+          // 多余键，所以只认 `type`/`content` 的老读者读到的文档一模一样，
+          // `RICHDOC_PROJECT_SCHEMA` 的版本号因此不动（任务书禁区第 3 条）。
+          // 空 sidecar 原样剥离 ⇒ 没开审阅的文档零 diff。
+          data: attachReviewSidecar(json, reviewSidecar),
         },
         editorManifest: {
           id: RICHDOC_EDITOR_CAPABILITY,
@@ -573,7 +698,7 @@ export function useRichDocEditor(
       savingRef.current = false;
       setSaving(false);
     }
-  }, [editor, siteId, baseTitle, tt]);
+  }, [editor, siteId, baseTitle, reviewSidecar, tt]);
 
   const uploadImage = useCallback(
     async (file: File) => {
@@ -681,6 +806,7 @@ export function useRichDocEditor(
     exportHtml,
     exportDoc,
     exportText,
+    review,
     importSource,
     uploadImage,
     insertImageUrl,
