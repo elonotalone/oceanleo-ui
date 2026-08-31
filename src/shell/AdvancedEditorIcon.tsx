@@ -15,7 +15,20 @@ export type WorkbenchIconName =
   | "tasks"
   | "templates"
   | "timeline"
-  | "uploads";
+  | "uploads"
+  // 统一 chrome：视图切换与窗口控制。此前网站工作台用 ◉ </> ▦ ▤ ▱ ⚙ 这类
+  // 排版字符当图标，换字体就塌，且与其余插件的描边图标不是一套。
+  | "preview"
+  | "code"
+  | "dashboard"
+  | "database"
+  | "storage"
+  | "close"
+  | "fullscreen"
+  | "fullscreen-exit"
+  | "history"
+  | "panel"
+  | "chevron";
 
 const paths: Record<WorkbenchIconName, ReactNode> = {
   add: <path d="M12 5v14M5 12h14" />,
@@ -310,6 +323,51 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M4 14v7h16v-7" />
     </>
   ),
+  preview: (
+    <>
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" />
+      <circle cx="12" cy="12" r="2.6" />
+    </>
+  ),
+  code: <path d="M9 7l-5 5 5 5M15 7l5 5-5 5" />,
+  dashboard: (
+    <>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="4.5" rx="1.5" />
+      <rect x="13.5" y="12" width="7.5" height="9" rx="1.5" />
+      <rect x="3" y="14.5" width="7.5" height="6.5" rx="1.5" />
+    </>
+  ),
+  database: (
+    <>
+      <ellipse cx="12" cy="6" rx="8" ry="3" />
+      <path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+      <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+    </>
+  ),
+  storage: (
+    <>
+      <rect x="3" y="4" width="18" height="7" rx="2" />
+      <rect x="3" y="13" width="18" height="7" rx="2" />
+      <path d="M7 7.5h.01M7 16.5h.01" />
+    </>
+  ),
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  fullscreen: <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" />,
+  "fullscreen-exit": <path d="M3 9h6V3M21 9h-6V3M3 15h6v6M21 15h-6v6" />,
+  history: (
+    <>
+      <path d="M3 12a9 9 0 109-9 9 9 0 00-7.6 4.2M3 3v4.5h4.5" />
+      <path d="M12 7.5V12l3 2" />
+    </>
+  ),
+  panel: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </>
+  ),
+  chevron: <path d="M6 9l6 6 6-6" />,
 };
 
 export function AdvancedEditorIcon({
