@@ -10,6 +10,10 @@ import {
 } from "./edit-bar-dock-controller";
 import { EditBarCollapsedPill } from "./EditBarDockControls";
 import { editBarDockStorageKey } from "./edit-bar-dock-state";
+import {
+  editBarCollapsedStyle,
+  editBarPillStyle,
+} from "./edit-bar-surface";
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
 
 export type FloatingContextToolbarController = EditBarDockController;
@@ -87,25 +91,50 @@ export function FloatingContextToolbar({
           onClickCapture={controller.rootProps.onClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
           className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
-          style={{
-            ...(theme
+          // transform 刻意不在这里写：位置由控制器的 paintMotion() 一处写入，
+          // 否则每次重渲染都会把弹簧算出来的中间帧盖回去。
+          style={
+            theme
               ? pluginWorkbenchStyle(theme, accent)
-              : advancedWorkbenchStyle(accent)),
-            transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
-          }}
+              : advancedWorkbenchStyle(accent)
+          }
         >
-          {controller.collapsed ? (
-            <EditBarCollapsedPill
-              icon={collapsedIcon}
-              contextLabel={collapsedLabel}
-              busy={busy}
-              dirty={dirty}
-              dragging={controller.dragging}
-              {...controller.collapsedProps}
+          {controller.morphGhost && (
+            // 正在离开的那一形态，**永远只是一层画着它的惰性表面**，不是真内容：
+            // 点圆展开时真圆必须当场卸载（既有断言要求 `[data-edit-bar-collapsed-pill]`
+            // 立刻为 null），能留下来淡出的只能是这个 ghost。
+            <div
+              ref={controller.morphGhostRef}
+              aria-hidden="true"
+              data-edit-bar-morph-ghost
+              className="pointer-events-none absolute left-0 top-0 origin-top-left"
+              style={{
+                ...(controller.morphGhostKind === "collapsed"
+                  ? editBarCollapsedStyle()
+                  : editBarPillStyle()),
+                width: controller.morphGhost.width,
+                height: controller.morphGhost.height,
+              }}
             />
-          ) : (
-            children
           )}
+          <div
+            ref={controller.morphLiveRef}
+            data-edit-bar-morph-live
+            className="inline-flex origin-top-left"
+          >
+            {controller.collapsed ? (
+              <EditBarCollapsedPill
+                icon={collapsedIcon}
+                contextLabel={collapsedLabel}
+                busy={busy}
+                dirty={dirty}
+                dragging={controller.dragging}
+                {...controller.collapsedProps}
+              />
+            ) : (
+              children
+            )}
+          </div>
           {controller.moveMode && (
             // 移动模式下用一层透明罩盖住所有控件：任何一次点击都只用来落下，
             // 不会误触下面的按钮。同时给出「已拿起」的视觉与光标。

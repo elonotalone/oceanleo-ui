@@ -129,8 +129,12 @@ const floatingUrl = await compileModule(
   "src/shell/FloatingContextToolbar.tsx",
   {
     "react-dom": reactDomUrl,
+    "../i18n/ui/useUI": uiStubUrl,
     "./advanced-workbench-chrome": chromeStubUrl,
     "./edit-bar-dock-controller": controllerUrl,
+    // 收起圆现在由浮层直接渲染，这条边不钉住的话会把控件模块重编一份，
+    // 那一份拿不到 useUI 替身，运行期会撞进真 use-intl。
+    "./EditBarDockControls": controlsUrl,
     "./edit-bar-dock-state": stateUrl,
   },
 );
@@ -198,10 +202,18 @@ const shellLeafStubUrl = dataModule(`
   }
   export function LiveReactNode() { return null; }
 `);
+// agent 面板真身会拖进整个 FunctionAgentChat 依赖树；本文件测的是 dock 行为，
+// 只需要它作为抽屉存在，不需要它能对话。
+const agentPanelStubUrl = dataModule(`
+  export const PLUGIN_AGENT_DRAWER_ID = "agent";
+  export function PluginAgentPanel() { return null; }
+`);
 const inlineShellUrl = await compileModule(
   "src/shell/InlineAdvancedWorkbenchShell.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
+    "./plugin-chrome/PluginAgentPanel": agentPanelStubUrl,
+    "./plugin-chrome/agent-drawer": agentPanelStubUrl,
     "./advanced-layout-context": layoutContextStubUrl,
     "./AdvancedStageControls": inertComponentStubUrl,
     "./AdvancedWorkbenchStage": shellLeafStubUrl,
@@ -271,6 +283,53 @@ async function pointer(target, type, values) {
   });
 }
 
+// 左右两个 ⠿ 手柄已取消。新手势：在条上任意位置双击进入移动模式，
+// 条跟随指针，再点一下落下，Esc 还原。下面三个 helper 就是这套手势。
+async function grab(target, clientX, clientY) {
+  const press = {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX,
+    clientY,
+  };
+  await pointer(target, "pointerdown", press);
+  await pointer(target, "pointerdown", press);
+}
+
+async function moveTo(target, clientX, clientY) {
+  await pointer(target, "pointermove", {
+    pointerId: -1,
+    pointerType: "mouse",
+    clientX,
+    clientY,
+  });
+}
+
+async function drop(target, clientX, clientY) {
+  await pointer(target, "pointerdown", {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX,
+    clientY,
+  });
+}
+
+async function altKey(target, value, extra = {}) {
+  await act(async () => {
+    target.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: value,
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+        ...extra,
+      }),
+    );
+  });
+}
+
 function DockHarness({ storageKey }) {
   const rootRef = useRef(null);
   const dockRef = useRef(null);
@@ -319,11 +378,38 @@ function DockHarness({ storageKey }) {
 
 test("dock state is versioned, bounded, and isolated per workbench", () => {
   const state = {
-    version: 1,
+    version: 2,
     mode: "floating",
     offset: { x: 32, y: -48 },
+    presentation: "expanded",
+    collapsedPosition: null,
   };
   assert.deepEqual(parseEditBarDockState(serializeEditBarDockState(state)), state);
+  // 收起态与收起位置必须一起往返：小圆用图层绝对坐标，丢了就会跑回默认角落。
+  const collapsed = {
+    version: 2,
+    mode: "floating",
+    offset: { x: 0, y: 0 },
+    presentation: "collapsed",
+    collapsedPosition: { x: 640, y: 420 },
+  };
+  assert.deepEqual(
+    parseEditBarDockState(serializeEditBarDockState(collapsed)),
+    collapsed,
+  );
+  // v1 旧记录升级而非丢弃，否则所有既有用户的固定偏好会一次性归零。
+  assert.deepEqual(
+    parseEditBarDockState(
+      JSON.stringify({ version: 1, mode: "docked", offset: { x: 5, y: 6 } }),
+    ),
+    {
+      version: 2,
+      mode: "docked",
+      offset: { x: 5, y: 6 },
+      presentation: "expanded",
+      collapsedPosition: null,
+    },
+  );
   assert.equal(parseEditBarDockState("{broken"), null);
   assert.equal(
     parseEditBarDockState(
@@ -475,7 +561,7 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
   );
 });
 
-test("both end handles drag out and back with persistence, reset, and pin fallbacks", async () => {
+test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:dock-cycle";
   const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
@@ -526,35 +612,28 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
   const mounted = await createMounted(DockHarness, { storageKey });
   const dock = () =>
     mounted.container.querySelector("[data-workspace-edit-bar-dock]");
-  const handles = () => [
-    ...mounted.container.querySelectorAll("[data-floating-toolbar-handle]"),
-  ];
+  const bar = () =>
+    mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
   try {
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
     );
     assert.equal(
-      handles()[0]
-        .closest("[data-workspace-docked-toolbar]")
-        .getBoundingClientRect().width,
+      bar().closest("[data-workspace-docked-toolbar]").getBoundingClientRect()
+        .width,
       1000,
       "the docked sizing boundary must retain the shell width",
     );
+    assert.equal(bar().getBoundingClientRect().width, 300);
     assert.equal(
-      mounted.container
-        .querySelector("[data-workspace-edit-bar-toolbar]")
-        .getBoundingClientRect().width,
-      300,
+      mounted.container.querySelectorAll("[data-floating-toolbar-handle]")
+        .length,
+      0,
+      "左右两个 ⠿ 拖拽手柄必须彻底消失",
     );
-    assert.deepEqual(
-      handles().map((handle) =>
-        handle.getAttribute("data-floating-toolbar-handle"),
-      ),
-      ["left", "right"],
-    );
-    assert.match(
-      handles()[0].getAttribute("aria-keyshortcuts"),
-      /Enter.*ArrowLeft.*Home/,
+    assert.ok(
+      mounted.container.querySelector("[data-edit-bar-collapse]"),
+      "最右侧必须常驻一个收起按钮",
     );
     assert.equal(
       mounted.container
@@ -567,36 +646,18 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
       width: document.documentElement.scrollWidth,
       height: document.documentElement.scrollHeight,
     };
-    const firstGestureHandle = handles()[0];
-    await pointer(firstGestureHandle, "pointerdown", {
-      pointerId: 1,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 120,
-      clientY: 60,
-    });
-    await pointer(firstGestureHandle, "pointermove", {
-      pointerId: 1,
-      pointerType: "mouse",
-      clientX: 400,
-      clientY: 300,
-    });
+    await grab(bar(), 120, 60);
+    await moveTo(bar(), 400, 300);
     assert.ok(
       mounted.container.querySelector("[data-workspace-floating-toolbar]"),
-      "the first movement must undock and move the bar before pointerup",
+      "the first movement must undock and move the bar before the drop",
     );
     assert.equal(dock().dataset.editBarDockCollapsed, "true");
-    assert.equal(firstGestureHandle.isConnected, true);
-    assert.equal(handles()[0], firstGestureHandle);
-    const movedRect = mounted.container
-      .querySelector("[data-workspace-edit-bar-toolbar]")
-      .getBoundingClientRect();
+    const movedRect = bar().getBoundingClientRect();
     await act(async () => {
       window.dispatchEvent(new window.Event("resize"));
     });
-    const resizedRect = mounted.container
-      .querySelector("[data-workspace-edit-bar-toolbar]")
-      .getBoundingClientRect();
+    const resizedRect = bar().getBoundingClientRect();
     assert.deepEqual(
       { left: resizedRect.left, top: resizedRect.top },
       { left: movedRect.left, top: movedRect.top },
@@ -611,54 +672,24 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
       "the transformed overlay must not grow page scroll",
     );
 
-    await pointer(firstGestureHandle, "pointermove", {
-      pointerId: 1,
-      pointerType: "mouse",
-      clientX: 200,
-      clientY: 70,
-    });
+    await moveTo(bar(), 200, 70);
     assert.equal(dock().dataset.dropHighlight, "true");
     assert.equal(dock().dataset.editBarDockCollapsed, "false");
-    const crossingToolbar = mounted.container.querySelector(
-      "[data-workspace-edit-bar-toolbar]",
-    );
-    const crossingRect = crossingToolbar.getBoundingClientRect();
+    const crossingRect = bar().getBoundingClientRect();
     const dockRect = dock().getBoundingClientRect();
     assert.ok(
       crossingRect.top < dockRect.bottom && crossingRect.bottom > dockRect.top,
       "the moving bar must visibly cross the dock target",
     );
-    await pointer(firstGestureHandle, "pointerup", {
-      pointerId: 1,
-      pointerType: "mouse",
-      clientX: 200,
-      clientY: 70,
-    });
+    await drop(bar(), 200, 70);
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
-      "one release in the target must redock the first gesture",
+      "one click in the target must redock the first gesture",
     );
 
-    const leaveDockHandle = handles()[0];
-    await pointer(leaveDockHandle, "pointerdown", {
-      pointerId: 3,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 120,
-      clientY: 60,
-    });
-    await pointer(leaveDockHandle, "pointermove", {
-      pointerId: 3,
-      pointerType: "mouse",
-      clientX: 400,
-      clientY: 300,
-    });
-    await pointer(leaveDockHandle, "pointerup", {
-      pointerId: 3,
-      pointerType: "mouse",
-      clientX: 400,
-      clientY: 300,
-    });
+    await grab(bar(), 120, 60);
+    await moveTo(bar(), 400, 300);
+    await drop(bar(), 400, 300);
     assert.ok(
       mounted.container.querySelector("[data-workspace-floating-toolbar]"),
     );
@@ -667,50 +698,48 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
     assert.ok(dock().querySelector("[data-edit-bar-dock-sentinel]"));
     assert.equal(parseEditBarDockState(window.localStorage.getItem(storageKey)).mode, "floating");
 
-    const rightHandle = handles().find(
-      (handle) => handle.dataset.floatingToolbarHandle === "right",
-    );
-    await pointer(rightHandle, "pointerdown", {
-      pointerId: 2,
-      pointerType: "touch",
-      button: 0,
-      clientX: 400,
-      clientY: 300,
-    });
-    await pointer(rightHandle, "pointermove", {
-      pointerId: 2,
-      pointerType: "touch",
-      clientX: 200,
-      clientY: 70,
-    });
+    // 进出停靠带要反复切换高亮，而不是只在第一次进入时亮一下。
+    await grab(bar(), 400, 300);
+    await moveTo(bar(), 200, 70);
     assert.equal(dock().dataset.dropHighlight, "true");
     assert.equal(dock().dataset.editBarDockCollapsed, "false");
-    await pointer(rightHandle, "pointermove", {
-      pointerId: 2,
-      pointerType: "touch",
-      clientX: 960,
-      clientY: 300,
-    });
+    await moveTo(bar(), 960, 300);
     assert.equal(dock().dataset.dropHighlight, "false");
     assert.equal(dock().dataset.editBarDockCollapsed, "true");
-    await pointer(rightHandle, "pointermove", {
-      pointerId: 2,
-      pointerType: "touch",
-      clientX: 200,
-      clientY: 70,
-    });
+    await moveTo(bar(), 200, 70);
     assert.equal(dock().dataset.dropHighlight, "true");
-    assert.equal(dock().dataset.editBarDockCollapsed, "false");
-    await pointer(rightHandle, "pointerup", {
-      pointerId: 2,
-      pointerType: "touch",
-      clientX: 200,
-      clientY: 70,
-    });
+    await drop(bar(), 200, 70);
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
     );
     assert.equal(dock().dataset.dropHighlight, "false");
+
+    // Esc 必须能放弃一次移动并还原到原位，否则误触双击就回不去了。
+    //
+    // 吸附现在是**带初速度弹过去**而不是瞬移（W02），所以上一次 drop 之后
+    // 弹簧还在飞，此刻读到的 transform 是一个中间帧。先把全场弹簧按停再取基准，
+    // 断言的意图不变（Esc 还原到原位），比较的反而是真正的落定位置。
+    // `__leoMotionJumpAllToRest` 就是 `src/lib/motion` 为此暴露的钩子。
+    assert.equal(
+      typeof window.__leoMotionJumpAllToRest,
+      "function",
+      "动效测试钩子必须挂得上，否则这条断言测的是某个中间帧",
+    );
+    await act(async () => window.__leoMotionJumpAllToRest());
+    const beforeCancel = bar().style.transform;
+    await grab(bar(), 200, 70);
+    await moveTo(bar(), 700, 420);
+    assert.notEqual(bar().style.transform, beforeCancel);
+    await act(async () => {
+      window.dispatchEvent(
+        new window.KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    assert.equal(bar().style.transform, beforeCancel);
 
     await click(mounted.container.querySelector("[data-edit-bar-pin]"));
     assert.ok(
@@ -722,22 +751,61 @@ test("both end handles drag out and back with persistence, reset, and pin fallba
         .getAttribute("aria-pressed"),
       "false",
     );
-    await key(handles()[0], "Enter");
+    await altKey(bar(), "Enter");
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
     );
 
+    // 手柄取消后键盘仍要能移动：焦点在条内时 Alt+方向键生效。
     await click(mounted.container.querySelector("[data-edit-bar-pin]"));
-    await key(handles()[0], "ArrowRight");
+    await altKey(bar(), "ArrowRight");
     assert.notDeepEqual(
       parseEditBarDockState(window.localStorage.getItem(storageKey)).offset,
       { x: 0, y: 0 },
     );
-    await key(handles()[1], "Home");
+    await altKey(bar(), "Home");
     assert.deepEqual(
       parseEditBarDockState(window.localStorage.getItem(storageKey)).offset,
       { x: 0, y: 0 },
     );
+
+    // 收起为圆 → 拖动圆 → 再点圆展开。
+    await click(mounted.container.querySelector("[data-edit-bar-collapse]"));
+    const pill = () =>
+      mounted.container.querySelector("[data-edit-bar-collapsed-pill]");
+    assert.ok(pill(), "收起后应只剩一个圆");
+    assert.equal(
+      parseEditBarDockState(window.localStorage.getItem(storageKey))
+        .presentation,
+      "collapsed",
+    );
+    await pointer(pill(), "pointerdown", {
+      pointerId: 7,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 400,
+      clientY: 300,
+    });
+    await pointer(pill(), "pointermove", {
+      pointerId: 7,
+      pointerType: "mouse",
+      clientX: 520,
+      clientY: 380,
+    });
+    await pointer(pill(), "pointerup", {
+      pointerId: 7,
+      pointerType: "mouse",
+      clientX: 520,
+      clientY: 380,
+    });
+    assert.ok(pill(), "拖动小圆不应把它展开");
+    const parked = parseEditBarDockState(
+      window.localStorage.getItem(storageKey),
+    ).collapsedPosition;
+    assert.ok(parked, "收起位置必须落盘");
+    await click(pill());
+    assert.equal(pill(), null, "点击小圆应展开回胶囊");
+    assert.ok(bar().querySelector("[data-edit-bar-collapse]"));
   } finally {
     await mounted.unmount();
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;
@@ -801,72 +869,30 @@ test("discrete overshoot past the dock band still flies open and redocks", async
   const mounted = await createMounted(DockHarness, { storageKey });
   const dock = () =>
     mounted.container.querySelector("[data-workspace-edit-bar-dock]");
-  const handle = () =>
-    mounted.container.querySelector("[data-floating-toolbar-handle]");
+  const bar = () =>
+    mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
   try {
-    await pointer(handle(), "pointerdown", {
-      pointerId: 11,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 620,
-      clientY: 230,
-    });
-    await pointer(handle(), "pointermove", {
-      pointerId: 11,
-      pointerType: "mouse",
-      clientX: 801,
-      clientY: 450,
-    });
-    await pointer(handle(), "pointerup", {
-      pointerId: 11,
-      pointerType: "mouse",
-      clientX: 801,
-      clientY: 450,
-    });
+    await grab(bar(), 620, 230);
+    await moveTo(bar(), 801, 450);
+    await drop(bar(), 801, 450);
     assert.ok(
       mounted.container.querySelector("[data-workspace-floating-toolbar]"),
     );
     assert.equal(dock().dataset.editBarDockCollapsed, "true");
 
-    await pointer(handle(), "pointerdown", {
-      pointerId: 12,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 801,
-      clientY: 450,
-    });
-    await pointer(handle(), "pointermove", {
-      pointerId: 12,
-      pointerType: "mouse",
-      clientX: 801,
-      clientY: 330,
-    });
+    await grab(bar(), 801, 450);
+    await moveTo(bar(), 801, 330);
     // Discrete leap over the dock band into chrome above the strip.
-    await pointer(handle(), "pointermove", {
-      pointerId: 12,
-      pointerType: "mouse",
-      clientX: 840,
-      clientY: 48,
-    });
+    await moveTo(bar(), 840, 48);
     assert.equal(
       dock().dataset.dropHighlight,
       "true",
       "dock must expand/highlight when the clamped bar occupies the band",
     );
     assert.equal(dock().dataset.editBarDockCollapsed, "false");
-    await pointer(handle(), "pointermove", {
-      pointerId: 12,
-      pointerType: "mouse",
-      clientX: 900,
-      clientY: 56,
-    });
+    await moveTo(bar(), 900, 56);
     assert.equal(dock().dataset.dropHighlight, "true");
-    await pointer(handle(), "pointerup", {
-      pointerId: 12,
-      pointerType: "mouse",
-      clientX: 880,
-      clientY: 44,
-    });
+    await drop(bar(), 880, 44);
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
       "release after overshoot must redock on the same gesture",
@@ -893,9 +919,8 @@ test("saved floating state restores and malformed state resets to the dock", asy
       mounted.container.querySelector("[data-workspace-floating-toolbar]"),
     );
     assert.equal(
-      mounted.container
-        .querySelector("[data-floating-toolbar-handle]")
-        .dataset.floatingToolbarOffset,
+      mounted.container.querySelector("[data-workspace-edit-bar-toolbar]")
+        .dataset.editBarOffset,
       "33,44",
     );
   } finally {
@@ -1072,7 +1097,14 @@ test("dock follows the action row and showDetail reveals console without exiting
     new URL("../src/shell/InlineAdvancedWorkbenchShell.tsx", import.meta.url),
     "utf8",
   );
-  assert.equal((inline.match(/showWorkspaceDetail\(\{/g) || []).length, 2);
+  // 投递面板只有两处入口（抽屉、临时面板），第三处出现就意味着有人绕开了
+  // panelFor 自己拼内容。这两处已随左侧面板一起拆进 use-inline-advanced-panels。
+  const panels = await readFile(
+    new URL("../src/shell/use-inline-advanced-panels.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal((panels.match(/showWorkspaceDetail\(\{/g) || []).length, 2);
+  assert.equal((inline.match(/showWorkspaceDetail\(\{/g) || []).length, 0);
   // Standalone MaterialCatalog embeds must still own a dock host + pin path
   // and mark the fallback inspector as the left console for V3-09.
   assert.match(inline, /localEditBarDockRef/);

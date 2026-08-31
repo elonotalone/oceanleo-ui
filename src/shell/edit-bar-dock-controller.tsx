@@ -238,7 +238,9 @@ export function useEditBarDockController({
   const paintMotion = useCallback(() => {
     const container = toolbarRef.current;
     if (!container) return;
-    const point = positionRef.current;
+    const point = positionAnimatingRef.current
+      ? visualPositionRef.current
+      : positionRef.current;
     container.style.transform = `translate3d(${point.x}px, ${point.y}px, 0)`;
 
     const live = morphLiveRef.current;
@@ -317,6 +319,70 @@ export function useEditBarDockController({
     },
     [finishMorph],
   );
+
+  /**
+   * 把视觉位置交给弹簧。
+   *
+   * `from` **不传**时沿用弹簧当前的位置与**速度**——松手的惯性全靠这一条：
+   * 拖拽期间 `updateDrag` 每次 `set()` 都让原语内部记下瞬时速度，
+   * 松手只需 `setTarget()`，弹簧就从那个速度起算。这里若多此一举地
+   * 再 `set()` 一次，速度会被抹成 0，惯性也就没了。
+   *
+   * `from` 传了则先把弹簧摆过去（收起/展开要从按钮那一侧长出来，
+   * 而键盘移动等不走弹簧的路径会让弹簧的位置变陈旧，必须显式对齐）。
+   */
+  const springPositionTo = useCallback(
+    (to: FloatingToolbarPoint, from?: FloatingToolbarPoint) => {
+      const spring = positionSpringRef.current;
+      if (!spring) return;
+      if (from) spring.set(from);
+      positionTargetRef.current = to;
+      visualPositionRef.current = spring.current;
+      positionAnimatingRef.current = true;
+      spring.setTarget(to);
+      paintMotion();
+    },
+    [paintMotion],
+  );
+
+  /** 视觉态立刻交还给逻辑态：取消、新手势接管、卸载都走这条。 */
+  const releasePositionSpring = useCallback(() => {
+    positionAnimatingRef.current = false;
+    positionSpringRef.current?.set(positionRef.current);
+    positionTargetRef.current = positionRef.current;
+    paintMotion();
+  }, [paintMotion]);
+
+  // 订阅两个弹簧。mount-only：弹簧本身在渲染期就造好了，订阅关系不随渲染变。
+  useLayoutEffect(() => {
+    const position = positionSpringRef.current;
+    const morph = morphSpringRef.current;
+    if (!position || !morph) return;
+    const releasePosition = position.onChange((value) => {
+      visualPositionRef.current = value;
+      // 收敛的那一帧 `current` 被逐字赋成 `target`，所以相等就是 settled。
+      // （`Spring2DValue` 按规范没有 `settled`，1D 才有。）
+      const target = positionTargetRef.current;
+      if (value.x === target.x && value.y === target.y) {
+        positionAnimatingRef.current = false;
+      }
+      paintMotion();
+    });
+    const releaseMorph = morph.onChange((value) => {
+      morphRef.current = value;
+      paintMotion();
+      // progress 会过冲越过 1，所以判 `settled` 而不是判 `value >= 1`。
+      // `morphStartedRef` 挡住起跑那一次 `set(0)` 的同步回调，
+      // 否则形变会在开始的同一刻被判定为已结束。
+      if (morphStartedRef.current && morph.settled) finishMorph();
+    });
+    return () => {
+      releasePosition();
+      releaseMorph();
+      position.stop();
+      morph.stop();
+    };
+  }, [finishMorph, paintMotion]);
 
   const readLayerElement = useCallback(
     () =>
@@ -709,20 +775,37 @@ export function useEditBarDockController({
             Math.max(0, (toolbar.height - EDIT_BAR_COLLAPSED_SIZE_PX) / 2),
         }
       : origin;
+    // 形变：正在离开的胶囊留成一层惰性 ghost，内容层同时缩到 48 圆并淡入。
+    // 记住展开态的盒，展开时先按它起跑，量到真值再校正。
+    const from = readToolbarBox();
+    if (from.width > 0 && from.height > 0) expandedBoxRef.current = from;
+    planMorph("expanded", from, {
+      width: EDIT_BAR_COLLAPSED_SIZE_PX,
+      height: EDIT_BAR_COLLAPSED_SIZE_PX,
+    });
     presentationRef.current = "collapsed";
     setPresentation("collapsed");
     collapsedPositionRef.current = boundedEditBarDockOffset(target);
     commitPosition(collapsedPositionRef.current);
     persistState();
-  }, [commitPosition, persistState]);
+    // 位置也弹过去。终点是刚点下的那枚收起按钮，这就是「动效有来源」。
+    springPositionTo(collapsedPositionRef.current, origin);
+  }, [commitPosition, persistState, planMorph, readToolbarBox, springPositionTo]);
 
   const expand = useCallback(() => {
     if (presentationRef.current === "expanded") return;
+    // 目标盒传 null：胶囊还没进 DOM，尺寸要等它挂上去才量得到，
+    // 由文件末尾那个无依赖数组的 layout effect 补量并起跑。
+    planMorph(
+      "collapsed",
+      { width: EDIT_BAR_COLLAPSED_SIZE_PX, height: EDIT_BAR_COLLAPSED_SIZE_PX },
+      null,
+    );
     presentationRef.current = "expanded";
     setPresentation("expanded");
     persistState();
     // 位置在 DOM 换回胶囊后由 presentation 依赖的 layout effect 重算。
-  }, [persistState]);
+  }, [persistState, planMorph]);
 
   const toggleCollapsed = useCallback(() => {
     if (presentationRef.current === "collapsed") expand();
@@ -784,6 +867,10 @@ export function useEditBarDockController({
       clientY: number,
     ) => {
       readDockTargetBounds();
+      // 新手势当场接管在飞的动画（「可打断」）：弹簧交还给逻辑态，
+      // 手势从条真正所在的位置起步，不会从某个中间帧跳一下。
+      releasePositionSpring();
+      pointerVelocityRef.current?.reset();
       dragRef.current = {
         pointerId,
         kind,
@@ -798,13 +885,20 @@ export function useEditBarDockController({
       };
       setDragging(true);
     },
-    [readDockTargetBounds],
+    [readDockTargetBounds, releasePositionSpring],
   );
 
   const updateDrag = useCallback(
-    (pointerId: number, clientX: number, clientY: number) => {
+    (
+      pointerId: number,
+      clientX: number,
+      clientY: number,
+      timeStamp: number,
+    ) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== pointerId) return false;
+      // 阈值内的微动也采样：松手前最后那几毫秒决定甩出去的速度。
+      pointerVelocityRef.current?.sample(clientX, clientY, timeStamp);
       const deltaX = clientX - drag.startX;
       const deltaY = clientY - drag.startY;
       if (
@@ -830,6 +924,11 @@ export function useEditBarDockController({
         false,
       );
       drag.lastPosition = positionRef.current;
+      // 视觉态实时跟住真实落点（拖拽期间不许有延迟），同时让弹簧内部的
+      // 速度追踪器把每一段位移记下来——`settleDrag` 的惯性就是从这里来的。
+      positionAnimatingRef.current = false;
+      positionTargetRef.current = positionRef.current;
+      positionSpringRef.current?.set(positionRef.current);
       setDropActive(pointNearDock(clientX, clientY));
       return true;
     },
@@ -840,7 +939,16 @@ export function useEditBarDockController({
     (clientX: number, clientY: number) => {
       const drag = dragRef.current;
       if (!drag) return;
-      const overDock = pointNearDock(clientX, clientY);
+      // 吸附判定按松手速度外推一次：朝停靠带甩过去也算吸附意图，不必停在带内。
+      // 没有速度样本时投影**逐字等于**松手点，所以这只新增「甩得到」的情形，
+      // 不会改变任何一条既有的「停在带内」判定。
+      const fling = pointerVelocityRef.current?.velocity() || { x: 0, y: 0 };
+      const overDock =
+        pointNearDock(clientX, clientY) ||
+        pointNearDock(
+          clientX + fling.x * FLING_PROJECTION_SECONDS,
+          clientY + fling.y * FLING_PROJECTION_SECONDS,
+        );
       if (!drag.moved) {
         persistState();
       } else if (
@@ -856,6 +964,10 @@ export function useEditBarDockController({
         setMode("floating");
         setFloatingPosition(drag.lastPosition);
       }
+      if (!drag.moved) return;
+      // 逻辑态上面已经落定（mode 切换与落盘都不等动画）；这里只把**视觉态**
+      // 交给弹簧，从松手时的位置带着松手时的速度收敛到最终落点。
+      springPositionTo(positionRef.current);
     },
     [
       applyModeAndOffset,
@@ -864,6 +976,7 @@ export function useEditBarDockController({
       pointNearDock,
       setCollapsedPosition,
       setFloatingPosition,
+      springPositionTo,
     ],
   );
 
@@ -872,7 +985,11 @@ export function useEditBarDockController({
     if (!drag) return;
     collapsedPositionRef.current = drag.originCollapsedPosition;
     applyModeAndOffset(drag.originMode, drag.originOffset);
-  }, [applyModeAndOffset]);
+    // 取消保持**瞬时**，不接弹簧。取消是撤销不是松手：语义上没有「甩」这回事，
+    // 而且既有用例断言 Esc 之后 transform 逐字等于取消前的字符串
+    // （`tests/edit-bar-dock-console.test.mjs`），弹簧会把它变成某个中间帧。
+    releasePositionSpring();
+  }, [applyModeAndOffset, releasePositionSpring]);
 
   /**
    * 吞掉紧随其后的一次 click。进入移动模式的第二次按下、以及落下时的那一次
@@ -1023,7 +1140,7 @@ export function useEditBarDockController({
   useEffect(() => {
     if (!moveMode || typeof window === "undefined") return;
     const handleMove = (event: PointerEvent) => {
-      updateDrag(-1, event.clientX, event.clientY);
+      updateDrag(-1, event.clientX, event.clientY, event.timeStamp);
     };
     const handleDown = (event: PointerEvent) => {
       event.preventDefault();
@@ -1071,12 +1188,22 @@ export function useEditBarDockController({
         }
       },
       onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => {
-        updateDrag(event.pointerId, event.clientX, event.clientY);
+        updateDrag(
+          event.pointerId,
+          event.clientX,
+          event.clientY,
+          event.timeStamp,
+        );
       },
       onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => {
         const drag = dragRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
-        updateDrag(event.pointerId, event.clientX, event.clientY);
+        updateDrag(
+          event.pointerId,
+          event.clientX,
+          event.clientY,
+          event.timeStamp,
+        );
         const moved = dragRef.current?.moved;
         settleDrag(event.clientX, event.clientY);
         finishDrag(event.pointerId);
@@ -1256,6 +1383,36 @@ export function useEditBarDockController({
     setSharedOffset,
     stageRef,
   ]);
+
+  /**
+   * **无依赖数组是刻意的**：每次 commit 之后都重写一遍 transform / opacity。
+   * 浮层的 `style` 里已经不再有 transform，所以任何一次 React 重渲染都不会
+   * 把动效值盖掉——写入点自始至终只有 `paintMotion()` 一个。
+   *
+   * 顺带在这里补量展开态的目标盒：`expand()` 排形变时胶囊还没进 DOM，
+   * 只有等它挂上来才量得到真实尺寸。
+   */
+  useLayoutEffect(() => {
+    if (morphingRef.current && !morphStartedRef.current) {
+      if (!morphToRef.current) {
+        const measured = readToolbarBox();
+        morphToRef.current =
+          measured.width > 0 && measured.height > 0
+            ? measured
+            : expandedBoxRef.current;
+      }
+      const to = morphToRef.current;
+      if (!to || !(to.width > 0) || !(to.height > 0)) {
+        // 量不到就不假装形变，直接落终态：比放一段瞎猜尺寸的动画诚实。
+        finishMorph();
+      } else {
+        morphSpringRef.current?.set(0);
+        morphStartedRef.current = true;
+        morphSpringRef.current?.setTarget(1);
+      }
+    }
+    paintMotion();
+  });
 
   useEffect(
     () => () => {
