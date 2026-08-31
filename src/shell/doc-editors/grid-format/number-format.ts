@@ -563,41 +563,61 @@ interface NumericLayout {
   percent: number;
 }
 
+/**
+ * A comma means two different things and the position decides which.
+ *
+ * Between digit placeholders it is the thousands separator (`#,##0`). After the
+ * last placeholder it divides by a thousand per comma (`#,##0,` shows millions
+ * as thousands, `0.0,,` shows them as units) — and Excel counts those trailing
+ * commas whether or not a decimal point came first, which is why the scan below
+ * anchors on the last digit token rather than on the point.
+ */
 function measure(section: NumberFormatSection): NumericLayout {
+  const tokens = section.tokens;
   const integerDigits: SectionToken[] = [];
   const fractionDigits: SectionToken[] = [];
-  let seenPoint = false;
+  const digitPositions: number[] = [];
+  let pointPosition = -1;
   let percent = 0;
-  let grouped = false;
-  let trailingCommas = 0;
-  for (const token of section.tokens) {
+
+  tokens.forEach((token, position) => {
     if (token.kind === "point") {
-      seenPoint = true;
-      continue;
+      if (pointPosition < 0) pointPosition = position;
+      return;
     }
     if (token.kind === "percent") {
       percent += 1;
-      continue;
+      return;
     }
-    if (token.kind === "digit") {
-      if (seenPoint) fractionDigits.push(token);
-      else {
-        // A comma seen since the previous digit was a separator, not a scale.
-        if (trailingCommas > 0) grouped = true;
-        trailingCommas = 0;
-        integerDigits.push(token);
-      }
-      continue;
-    }
-    if (token.kind === "comma" && !seenPoint) trailingCommas += 1;
+    if (token.kind !== "digit") return;
+    digitPositions.push(position);
+    if (pointPosition >= 0) fractionDigits.push(token);
+    else integerDigits.push(token);
+  });
+
+  const integerPositions = digitPositions.filter(
+    (position) => pointPosition < 0 || position < pointPosition,
+  );
+  const grouped =
+    integerPositions.length >= 2 &&
+    tokens.some(
+      (token, position) =>
+        token.kind === "comma" &&
+        position > integerPositions[0] &&
+        position < integerPositions[integerPositions.length - 1],
+    );
+
+  let scale = 0;
+  for (
+    let position = (digitPositions[digitPositions.length - 1] ?? -1) + 1;
+    position < tokens.length;
+    position += 1
+  ) {
+    if (tokens[position].kind !== "comma") break;
+    scale += 1;
   }
-  return {
-    integerDigits,
-    fractionDigits,
-    grouped,
-    scale: trailingCommas,
-    percent,
-  };
+
+  return { integerDigits, fractionDigits, grouped, scale, percent };
 }
 
 function groupThousands(digits: string): string {
@@ -744,8 +764,14 @@ function selectSection(
   const numeric = numericValue(value);
 
   if (numeric === null) {
-    const text = sections.length >= 4 ? sections[3] : undefined;
-    if (text) return { section: text, magnitude: null };
+    // A four-section pattern reserves the last slot for text, so it wins.
+    if (sections.length >= 4) return { section: sections[3], magnitude: null };
+    // Otherwise an ISO-like string under a date pattern is still a date: it is
+    // orderable and renderable even though it is not a number.
+    const dateSection = sections.find((section) => section.kind === "date");
+    if (dateSection && parseGridDateValue(value) !== null) {
+      return { section: dateSection, magnitude: 0 };
+    }
     const only = sections.find((section) => section.kind === "text");
     return only ? { section: only, magnitude: null } : null;
   }
