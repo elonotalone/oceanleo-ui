@@ -372,6 +372,22 @@ export const EASE_TOKENS = [
 export const MOVE_TOKENS = ["--leo-move-xs", "--leo-move-sm", "--leo-move-md"];
 export const STAGGER_TOKENS = ["--leo-stagger", "--leo-stagger-max"];
 
+/**
+ * 载荷指示器的周期。**reduced-motion 下这四条刻意不归零**，
+ * 这正是 `W10.md` P1 要求单独验的那一条。
+ *
+ * 为什么不能归零：`v-spin` / `v-shimmer` / `v-bounce-dot` / `v-pulse-dot` 传达的是
+ * 「还在进行中」。把周期降成 0 会让转圈停住，而停住的转圈在语义上等于「卡死了」——
+ * 那是把无障碍降级做成了功能故障。reduced-motion 该降的是**位移与幅度**
+ * （`--leo-bounce-rise` / `--leo-pulse-ring`），不是「还在忙」这个信息本身。
+ */
+export const LOOP_TOKENS = [
+  "--leo-loop-spin",
+  "--leo-loop-shimmer",
+  "--leo-loop-bounce-dot",
+  "--leo-loop-pulse-dot",
+];
+
 function renderTokenProbes() {
   const probe = (token, property) =>
     `<div class="leo-case-slot" data-leo-token="${token}" style="${property}: var(${token});">${token}</div>`;
@@ -380,6 +396,8 @@ function renderTokenProbes() {
     ...EASE_TOKENS.map((t) => probe(t, "transition-timing-function")),
     ...MOVE_TOKENS.map((t) => probe(t, "margin-left")),
     ...STAGGER_TOKENS.map((t) => probe(t, "transition-delay")),
+    // 用 animation-duration 而不是 transition-duration：这四条量的是循环周期。
+    ...LOOP_TOKENS.map((t) => probe(t, "animation-duration")),
   ].join("\n");
 }
 

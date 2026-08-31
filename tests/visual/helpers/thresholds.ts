@@ -46,6 +46,14 @@ export const THRESHOLDS: Record<string, Threshold> = {
     maxDiffPixelRatio: 0.01,
     reason: "默认值。进度条是纯色矩形，但三态图里有文案。",
   },
+  "w09-chunk-error": {
+    // 失败态是两块纯色卡片 + 一枚按钮 + 两段文案，没有图片、没有渐变。
+    // 收到 0.004 是因为这张图要抓的退化很具体：按钮消失、文案被换、
+    // 或者有人把它改回 spinner。这三种都会远超 0.4% 的像素。
+    maxDiffPixelRatio: 0.004,
+    reason:
+      "纯色卡片 + 文案，无渐变无图片；要抓的退化（按钮消失/改回 spinner）像素占比都很大，可以收紧。",
+  },
 };
 
 export function thresholdFor(key: string): { maxDiffPixelRatio: number } {
