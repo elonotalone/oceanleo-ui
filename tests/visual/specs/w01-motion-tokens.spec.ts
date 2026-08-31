@@ -197,6 +197,40 @@ test.describe("W01 · 动效 token 阶梯", () => {
   test("token 阶梯截图", async ({ page, openCase }) => {
     const { report, masks } = await openCase("motionTokens");
     expectMotionSettled(report);
+
+    /**
+     * ⚠️ `[实测] 2026-08-31 18:5x` **这一步是防「把陈旧产物写成基线」的，别删。**
+     *
+     * 本套件已有一条结构性规矩：凡 `toHaveScreenshot` 之前必有
+     * `expectSubjectCoverable`，免得 `needs-client` 的琥珀色占位块被 `-u` 写成基线
+     * （见 `w05-toast.spec.ts` 同一处）。`motionTokens` 是 `cssOnly`，
+     * 夹具渲染的是探针块、永远不出占位符，那条判据在这一组是空转的——
+     * **但同一个口子在这里换了个样子，而且当天真的开着。**
+     *
+     * `ui.css` 陈旧时六档全部解析成 `0s`（不是空串：`transition-duration: var(--未定义)`
+     * 在计算值阶段失效，回落到初始值 `0s`），探针块于是渲染成一排「没有任何时长」的方块。
+     * `--update-snapshots` 会把这排方块逐字节写成基线，此后本条用例**永远绿**——
+     * 绿的是「产物还是跟上次一样旧」。
+     *
+     * 与占位符那条是同一种病：**闸给一个已知的退化状态盖了章。**
+     * 差别只在退化长什么样，一个是琥珀色占位块，一个是一排解析失败的探针。
+     * 盘上那张 `w01-token-ladder.png` 正是在产物陈旧时生成的，
+     * 所以它记录的就是退化状态——这道判据挡在它前面，它就没法被当成有效基线用。
+     *
+     * 不删那张图是刻意的：`build:css` 补跑之后这里会以「图不一致」判红，
+     * 那次 diff 恰好就是「产物补跑前后差在哪」的证据，比重新生成更有价值。
+     */
+    for (const token of DURATION_TOKENS) {
+      const raw = await readProbe(page, token, "transition-duration");
+      expect(
+        toMs(raw),
+        `${token} 解析成 ${raw}，六档没有真正落进产物。\n  ` +
+          "这道判据刻意挡在截图之前：放它过去，这排「没有任何时长」的探针就会被写成基线，\n  " +
+          "此后本条用例永远绿，而绿的是「产物还是跟上次一样旧」。" +
+          STALE_ARTIFACT_HINT,
+      ).toBeGreaterThan(0);
+    }
+
     await expect(page).toHaveScreenshot("w01-token-ladder.png", {
       mask: masks,
       ...thresholdFor("w01-token-ladder"),
