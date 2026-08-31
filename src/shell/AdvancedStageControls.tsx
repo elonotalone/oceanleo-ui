@@ -114,7 +114,10 @@ export function AdvancedStageControls({
               onPointerUp={flushZoom}
               onBlur={flushZoom}
               aria-label={tt("缩放")}
-              className="h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)] sm:w-32"
+              // 命中区 6 → 44（W04）：轨道**看起来**还是 6px，但可抓的是整条 44px。
+              // `py-[19px]` 把 44 的盒子留出 44−2×19=6 的内容区，`bg-clip-content`
+              // 让轨道底色只画在这 6px 里。滑块自己不必变粗，手指却不用再去瞄那一条线。
+              className="h-11 w-24 cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)] bg-clip-content py-[19px] sm:w-32"
               style={{ accentColor: accent }}
             />
             {viewport.fit ? (
