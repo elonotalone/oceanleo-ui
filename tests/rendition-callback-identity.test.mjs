@@ -151,6 +151,54 @@ const gridModelStubUrl = dataModule(`
   export function sanitizeSheetName(name) {
     return String(name || "Sheet");
   }
+  // ↓ 以下六个是 W11 / W32 之后 use-grid-editor.ts 与 grid-recalc-action.ts 新引的名字。
+  // 少任何一个，整份文件在加载期就炸、三条断言一条都不跑（_COMMON.md §7b⑩）。
+  // 都照 grid-model.ts 的真实现逐行抄，不是随手给个空壳——给空壳会让判据假绿。
+  export const GRID_MAX_ROWS = 10000;
+  export const GRID_MAX_COLS = 256;
+  export function columnLabel(index) {
+    let value = index + 1;
+    let label = "";
+    while (value > 0) {
+      value -= 1;
+      label = String.fromCharCode(65 + (value % 26)) + label;
+      value = Math.floor(value / 26);
+    }
+    return label;
+  }
+  const workbookBindings = new WeakMap();
+  export function bindGridWorkbook(sheets, options = {}) {
+    const binding = { sheets, namedRanges: options.namedRanges, recalc: options.recalc };
+    for (const sheet of sheets) workbookBindings.set(sheet, binding);
+    return sheets;
+  }
+  // fail-closed：坏戳一律当没戳，别把坏戳当好戳用。
+  export function normalizeGridRecalcStamp(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const at = value.at;
+    const seed = value.seed;
+    if (typeof at !== "string" || !at.endsWith("Z") || Number.isNaN(Date.parse(at))) {
+      return undefined;
+    }
+    if (typeof seed !== "number" || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+      return undefined;
+    }
+    return { at, seed };
+  }
+  export function gridWorkbookContext(sheets, options = {}) {
+    const rowsByRef = new Map();
+    for (const sheet of sheets) rowsByRef.set(String(sheet.id).toLowerCase(), sheet.rows);
+    for (const sheet of sheets) rowsByRef.set(String(sheet.name).toLowerCase(), sheet.rows);
+    const named = new Map();
+    for (const [name, ref] of Object.entries(options.namedRanges ?? {})) {
+      named.set(name.toUpperCase(), ref);
+    }
+    return {
+      sheetRows: (ref) => rowsByRef.get(String(ref).toLowerCase()),
+      namedRange: (name) => named.get(String(name).toUpperCase()),
+      recalc: options.recalc,
+    };
+  }
   // 保存那条路（W19 的面）不在本文件的判据里，但 import 必须解析得开。
   export function gridCarrierProjectToIr(input) {
     return input;
@@ -175,20 +223,11 @@ const officeFileStubUrl = dataModule(`
     if (String(reason && reason.message).includes("403")) onAccessDenied?.();
   }
 `);
-const gridStructureStubUrl = dataModule(`
-  export function mergeGridRange(merges) {
-    return merges;
-  }
-  export function rangesIntersect() {
-    return false;
-  }
-  export function splitGridRange(merges) {
-    return merges;
-  }
-  export function transformGridRanges(ranges) {
-    return ranges;
-  }
-`);
+// `grid-structure` 从前整表打桩，于是 use-grid-editor 每多引一个名字（W11 的行高列宽、
+// 查找替换、剪贴板那批）就漏一条边、整份测试再哑一次——本波已复发四次。
+// 它是纯函数模块（只引 grid-formula，全仓没有一处 navigator/fetch/document），
+// **没有任何打桩的理由**：交给 module-bench 自动解析成真模块，这条边从此不会再腐。
+// 顺带把判据判严了：合并/相交/变换从「原样返回」的假身换成真逻辑。
 const docIoStubUrl = dataModule(`
   export function downloadBlob() {}
   export function downloadText() {}
@@ -220,7 +259,6 @@ const gridEditorUrl = await compileModule(
     "./grid-model": gridModelStubUrl,
     "./grid-sheet-identity": gridSheetIdentityStubUrl,
     "./office-file": officeFileStubUrl,
-    "./grid-structure": gridStructureStubUrl,
     // 没列出来的（`../plugin-initial-state`、导出链那三份…）一律走真模块：
     // 保存对象与导出的判据是产品口径，桩一打就可能悄悄判反。
   },
