@@ -2,7 +2,12 @@
 
 import type { LibraryItem } from "../library-data";
 import { urlExtension } from "./doc-io";
-import { evaluateGridCell, type GridFormulaValue } from "./grid-formula";
+import {
+  evaluateGridCellInWorkbook,
+  type GridFormulaValue,
+  type GridRow,
+  type GridWorkbookContext,
+} from "./grid-formula";
 import { normalizeGridSheetIdentities } from "./grid-sheet-identity";
 import {
   fetchValidatedSpreadsheetSource,
@@ -510,10 +515,70 @@ export function gridCellFormat(
   return sheet.formats?.[cellKey(row, col)] ?? {};
 }
 
+/**
+ * Whatever a caller can hand the display helpers to mean "the whole workbook".
+ * Passing the `GridSheet[]` it already holds is the common case; passing a
+ * resolved context lets a caller that evaluates many cells build the name
+ * index once instead of per cell.
+ */
+export type GridWorkbookLike = readonly GridSheet[] | GridWorkbookContext;
+
+/**
+ * Index sheets by both name and id, so a qualified reference resolves whichever
+ * one the author wrote, case-insensitively as OOXML does. Names are indexed
+ * last and therefore win a collision: `Sheet2!B3` is written against the label
+ * on the tab, not against an internal id that happens to match.
+ */
+export function gridWorkbookContext(
+  sheets: readonly GridSheet[],
+  options: { namedRanges?: Readonly<Record<string, string>> } = {},
+): GridWorkbookContext {
+  const rowsByRef = new Map<string, readonly GridRow[]>();
+  for (const sheet of sheets) rowsByRef.set(sheet.id.toLowerCase(), sheet.rows);
+  for (const sheet of sheets) {
+    rowsByRef.set(sheet.name.toLowerCase(), sheet.rows);
+  }
+  const named = new Map<string, string>();
+  for (const [name, ref] of Object.entries(options.namedRanges ?? {})) {
+    named.set(name.toUpperCase(), ref);
+  }
+  return {
+    sheetRows: (ref) => rowsByRef.get(String(ref).toLowerCase()),
+    namedRange: (name) => named.get(String(name).toUpperCase()),
+  };
+}
+
+function asWorkbookContext(workbook: GridWorkbookLike): GridWorkbookContext {
+  return Array.isArray(workbook)
+    ? gridWorkbookContext(workbook as readonly GridSheet[])
+    : (workbook as GridWorkbookContext);
+}
+
+/**
+ * Evaluate one cell of `sheet`.
+ *
+ * With no `workbook` the sheet stands alone and a cross-sheet reference still
+ * reports `#REF!`, so every existing three-argument caller keeps its exact
+ * present behaviour. A caller that does hold the sibling sheets passes them and
+ * gets the right number instead.
+ */
+function evaluateIn(
+  sheet: GridSheet,
+  row: number,
+  col: number,
+  workbook?: GridWorkbookLike,
+): GridFormulaValue {
+  const context = workbook
+    ? asWorkbookContext(workbook)
+    : gridWorkbookContext([sheet]);
+  return evaluateGridCellInWorkbook(context, sheet.name, row, col);
+}
+
 export function gridDisplayFormat(
   sheet: GridSheet,
   row: number,
   col: number,
+  workbook?: GridWorkbookLike,
 ): GridCellFormat {
   return {
     ...gridCellFormat(sheet, row, col),
@@ -521,7 +586,7 @@ export function gridDisplayFormat(
       sheet.conditionalFormats,
       row,
       col,
-      evaluateGridCell(sheet.rows, row, col),
+      evaluateIn(sheet, row, col, workbook),
     ),
   };
 }
@@ -568,9 +633,10 @@ export function gridDisplayValue(
   sheet: GridSheet,
   row: number,
   col: number,
+  workbook?: GridWorkbookLike,
 ): string {
   return formatGridValue(
-    evaluateGridCell(sheet.rows, row, col),
+    evaluateIn(sheet, row, col, workbook),
     gridCellFormat(sheet, row, col),
   );
 }
@@ -612,11 +678,19 @@ function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-export function gridSheetToCsv(sheet: GridSheet): string {
+export function gridSheetToCsv(
+  sheet: GridSheet,
+  workbook?: GridWorkbookLike,
+): string {
   const bounds = usedBounds(sheet);
+  const context = workbook
+    ? asWorkbookContext(workbook)
+    : gridWorkbookContext([sheet]);
   return Array.from({ length: bounds.rows }, (_, row) =>
     Array.from({ length: bounds.cols }, (_, col) =>
-      csvCell(String(evaluateGridCell(sheet.rows, row, col))),
+      csvCell(
+        String(evaluateGridCellInWorkbook(context, sheet.name, row, col)),
+      ),
     ).join(","),
   ).join("\r\n");
 }
@@ -660,16 +734,25 @@ export async function buildGridWorkbookBlob(
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "OceanLeo";
   workbook.created = new Date();
+  // Built once for the whole export, and shared by every sheet: this is what
+  // lets an exported cross-sheet formula carry a correct cached `<v>` instead
+  // of the `#REF!` a single-sheet evaluation would have written.
+  const context = gridWorkbookContext(sheets);
   for (const source of sheets) {
     const bounds = usedBounds(source);
     const worksheet = workbook.addWorksheet(sanitizeSheetName(source.name));
     for (let row = 0; row < bounds.rows; row += 1) {
       for (let col = 0; col < bounds.cols; col += 1) {
         const raw = gridCellValue(source, row, col);
-        const format = gridDisplayFormat(source, row, col);
+        const format = gridDisplayFormat(source, row, col, context);
         const target = worksheet.getCell(row + 1, col + 1);
         if (raw.startsWith("=")) {
-          const result = evaluateGridCell(source.rows, row, col);
+          const result = evaluateGridCellInWorkbook(
+            context,
+            source.name,
+            row,
+            col,
+          );
           target.value = {
             formula: raw.slice(1),
             result:

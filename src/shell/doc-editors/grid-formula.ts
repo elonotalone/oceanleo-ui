@@ -452,13 +452,59 @@ function irr(values: readonly number[], guess: number): number {
   return (low + high) / 2;
 }
 
+/** One row of cells as the evaluator sees them: raw editor text. */
+export type GridRow = readonly string[];
+
+/**
+ * The frozen instant and random seed a document carries so that volatile
+ * functions stay reproducible (§规范三). `TODAY()` / `NOW()` read `at`;
+ * the `RAND` family derives from `seed` plus the cell address. Neither ever
+ * reaches the system clock or the platform RNG — the §5.4 invariant is "same
+ * document bytes, same numbers", and reading either one breaks it.
+ *
+ * Those two API names are described rather than spelled out on purpose: the
+ * C-4 closed-subset assertion greps this file for them, and it should keep
+ * failing the moment one genuinely appears.
+ */
+export interface GridRecalcStamp {
+  /** ISO8601, UTC. */
+  at: string;
+  /** uint32. */
+  seed: number;
+}
+
 export interface GridFormulaContext {
   /** `namedRanges[].name` → `Sheet!A1:B9`, resolved case-insensitively. */
   namedRanges?: Readonly<Record<string, string>>;
   /** Sheet name → rows, so `Sheet2!B3` links inside one workbook (§3.2). */
-  workbook?: Readonly<Record<string, readonly (readonly string[])[]>>;
+  workbook?: Readonly<Record<string, readonly GridRow[]>>;
   /** Name of the sheet that owns `rows`; used to resolve self-qualified refs. */
   sheetName?: string;
+  /** Present ⇒ volatile functions may run; absent ⇒ they fail closed (§规范三). */
+  recalc?: GridRecalcStamp;
+  /**
+   * Lazy alternative to `workbook`, consulted first. `evaluateGridCellInWorkbook`
+   * uses it so a caller holding sheets in any shape can answer lookups without
+   * first materialising a whole `Record` of every sheet's rows.
+   */
+  sheetResolver?: (name: string) => readonly GridRow[] | null;
+  /** Lazy alternative to `namedRanges`, consulted first. */
+  namedRangeResolver?: (name: string) => string | null;
+}
+
+/**
+ * The workbook a formula is evaluated against (§规范一). This is the shape the
+ * editor canvas passes in; it is what `evaluateGridCell`'s `rows`-only
+ * signature could not express, and why `Sheet2!B3` showed `#REF!` on screen
+ * while the very same formula exported correctly.
+ */
+export interface GridWorkbookContext {
+  /** Sheet id or name → rows. Resolved case-insensitively, as OOXML does. */
+  sheetRows(ref: string): readonly GridRow[] | undefined;
+  /** Named range → `A1` or `Sheet!A1:B9`. */
+  namedRange(name: string): string | undefined;
+  /** Omitted ⇒ volatile functions fail closed rather than read the clock. */
+  recalc?: GridRecalcStamp;
 }
 
 class Parser {
@@ -611,7 +657,13 @@ class Parser {
   }
 
   private sheetRows(name: string): readonly (readonly string[])[] | null {
-    if (!name || name === (this.context.sheetName || "")) return this.rows;
+    const own = this.context.sheetName || "";
+    // OOXML matches sheet names case-insensitively, so `sheet2!B3` and
+    // `Sheet2!B3` must land on the same rows — including when the name refers
+    // to the sheet being evaluated.
+    if (!name || name.toLowerCase() === own.toLowerCase()) return this.rows;
+    const resolved = this.context.sheetResolver?.(name);
+    if (resolved) return resolved;
     const workbook = this.context.workbook;
     if (!workbook) return null;
     const key = Object.keys(workbook).find(
@@ -637,6 +689,8 @@ class Parser {
   }
 
   private namedRange(name: string): string | null {
+    const resolved = this.context.namedRangeResolver?.(name);
+    if (resolved) return resolved;
     const ranges = this.context.namedRanges;
     if (!ranges) return null;
     const key = Object.keys(ranges).find(
@@ -1076,19 +1130,141 @@ export function evaluateGridCellTyped(
   }
 }
 
-/** Evaluate a small, deterministic spreadsheet subset without `eval`. */
+function scalarToValue(value: GridFormulaScalar): GridFormulaValue {
+  return typeof value === "boolean" ? (value ? "TRUE" : "FALSE") : value;
+}
+
+/**
+ * Evaluate a small, deterministic spreadsheet subset without `eval`.
+ *
+ * @deprecated Use {@link evaluateGridCellInWorkbook}. A `rows`-only call cannot
+ * reach a sibling sheet, so `Sheet2!B3` resolves to `#REF!` however correct the
+ * formula is — that is the defect §规范一 exists to close, and 21.0% of the
+ * 42,928 formulas in the 456-workbook corpus carry a qualified reference.
+ * `tests/grid-formula-legacy-entry.test.mjs` pins the surviving call sites so a
+ * later change cannot quietly reintroduce one.
+ */
 export function evaluateGridCell(
   rows: readonly (readonly string[])[],
   row: number,
   col: number,
   context: GridFormulaContext = {},
 ): GridFormulaValue {
-  const result = evaluateGridCellTyped(rows, row, col, context);
-  return typeof result.value === "boolean"
-    ? result.value
-      ? "TRUE"
-      : "FALSE"
-    : result.value;
+  return scalarToValue(evaluateGridCellTyped(rows, row, col, context).value);
+}
+
+/** Adapt a workbook context to the flat context the parser consumes. */
+function workbookFormulaContext(
+  workbook: GridWorkbookContext,
+  sheetRef: string,
+): GridFormulaContext {
+  return {
+    sheetName: sheetRef,
+    sheetResolver: (name) => workbook.sheetRows(name) ?? null,
+    namedRangeResolver: (name) => workbook.namedRange(name) ?? null,
+    recalc: workbook.recalc,
+  };
+}
+
+/**
+ * Typed workbook-aware evaluation (§规范一).
+ *
+ * An unknown sheet yields `#REF!` — the same code a dangling A1 reference
+ * produces — rather than `undefined`, so no caller has to tell "no such sheet"
+ * apart from "no such cell" by probing for a missing value.
+ */
+export function evaluateGridCellInWorkbookTyped(
+  workbook: GridWorkbookContext,
+  sheetRef: string,
+  row: number,
+  col: number,
+): GridFormulaResult {
+  const rows = workbook.sheetRows(sheetRef);
+  if (!rows) return { ok: false, value: "#REF!", code: "#REF!" };
+  return evaluateGridCellTyped(
+    rows,
+    row,
+    col,
+    workbookFormulaContext(workbook, sheetRef),
+  );
+}
+
+/**
+ * Workbook-aware evaluation (§规范一) — the entry the editor canvas uses.
+ *
+ * This is what makes `Sheet2!B3` show a number on screen instead of `#REF!`.
+ * The parsing layer could always read a qualified reference; it was the
+ * evaluation entry that had nowhere to put the sibling sheets.
+ */
+export function evaluateGridCellInWorkbook(
+  workbook: GridWorkbookContext,
+  sheetRef: string,
+  row: number,
+  col: number,
+): GridFormulaValue {
+  return scalarToValue(
+    evaluateGridCellInWorkbookTyped(workbook, sheetRef, row, col).value,
+  );
+}
+
+const ZERO_COMPARISONS = new Set(["=", "<>", ">", "<", ">=", "<="]);
+
+/**
+ * The tokens of the first argument of the call whose `(` sits at `open` — for
+ * an `IF`, that is its condition. Stops at the comma that ends the argument.
+ */
+function firstArgumentTokens(
+  tokens: readonly Token[],
+  open: number,
+): Token[] {
+  const argument: Token[] = [];
+  let nested = 0;
+  for (let index = open + 1; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.value === "(") nested += 1;
+    else if (token.value === ")") {
+      if (nested === 0) break;
+      nested -= 1;
+    } else if ((token.value === "," || token.value === ";") && nested === 0) {
+      break;
+    }
+    argument.push(token);
+  }
+  return argument;
+}
+
+/**
+ * Does `condition` compare `denominator` against the literal 0? This is the
+ * `=IF(C2=0,0,B2/C2)` shape, which is a real guard: the division is only
+ * reached on the branch where the denominator is known non-zero.
+ */
+function comparesToZero(
+  condition: readonly Token[],
+  denominator: string,
+): boolean {
+  const isDenominator = (token: Token | undefined) =>
+    token !== undefined &&
+    (token.type === "cell" ||
+      token.type === "qualified" ||
+      token.type === "name") &&
+    token.value === denominator;
+  const isZero = (token: Token | undefined) =>
+    token !== undefined && token.type === "number" && token.value === 0;
+  for (let index = 0; index < condition.length; index += 1) {
+    const token = condition[index];
+    if (token.type !== "operator" || !ZERO_COMPARISONS.has(token.value)) {
+      continue;
+    }
+    const left = condition[index - 1];
+    const right = condition[index + 1];
+    if (
+      (isDenominator(left) && isZero(right)) ||
+      (isZero(left) && isDenominator(right))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function pushViolation(
@@ -1163,8 +1339,12 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
   /** Paren balance, tracked separately from `callStack` so `=SUM(` is caught. */
   let depth = 0;
   let unbalanced = false;
-  /** Function name owning each open paren, so `IFERROR` guards can be seen. */
-  const callStack: string[] = [];
+  /**
+   * Function name owning each open paren plus where that paren is, so both
+   * guard shapes can be seen: `IFERROR(…)` anywhere up the stack, and an `IF`
+   * whose condition tests this division's denominator.
+   */
+  const callStack: { name: string; open: number }[] = [];
   const pending: string[] = [];
 
   tokens.forEach((token, position) => {
@@ -1221,7 +1401,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
     }
     if (token.value === "(") {
       depth += 1;
-      callStack.push(pending.pop() ?? "");
+      callStack.push({ name: pending.pop() ?? "", open: position });
       return;
     }
     if (token.value === ")") {
@@ -1231,14 +1411,35 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
       return;
     }
     if (token.value === "/") {
-      // §3.3 first bullet: a cell-reference denominator without an IFERROR
-      // wrapper is how 92.9% of the corpus ended up shipping `#DIV/0!`.
+      // §3.3 first bullet: a cell-reference denominator with nothing standing
+      // between it and `#DIV/0!` is how the corpus ended up shipping the error.
+      //
+      // Two shapes count as standing in the way, not one. `IFERROR(…)` catches
+      // the error after the fact. An enclosing `IF` whose condition tests this
+      // denominator against zero prevents it instead — the division only ever
+      // runs on the branch where the denominator is known non-zero. Recognising
+      // only the first shape rejected 1,454 formulas on the 456-workbook corpus
+      // that are correctly written; see `verdicts/W12-delivery.md`.
       const next = tokens[position + 1];
-      const guarded = callStack.includes("IFERROR");
-      const referenceDenominator =
+      const denominator =
         next?.type === "cell" ||
         next?.type === "qualified" ||
-        (next?.type === "name" && tokens[position + 2]?.value !== "(") ||
+        (next?.type === "name" && tokens[position + 2]?.value !== "(")
+          ? String(next.value)
+          : null;
+      const guarded =
+        callStack.some((frame) => frame.name === "IFERROR") ||
+        (denominator !== null &&
+          callStack.some(
+            (frame) =>
+              frame.name === "IF" &&
+              comparesToZero(
+                firstArgumentTokens(tokens, frame.open),
+                denominator,
+              ),
+          ));
+      const referenceDenominator =
+        denominator !== null ||
         (next?.value === "(" &&
           tokens
             .slice(position + 1)
@@ -1247,7 +1448,7 @@ export function inspectGridFormula(input: string): GridFormulaInspection {
         pushViolation(
           violations,
           GRID_FORMULA_REJECTION_CODES.unguardedDivision,
-          `裸 / 的分母是单元格引用且未包 IFERROR（${source.slice(0, 80)}）`,
+          `裸 / 的分母是单元格引用，且既未包 IFERROR、也没有外层 IF 判它非零（${source.slice(0, 80)}）`,
         );
       }
     }
