@@ -6,6 +6,19 @@ import test from "node:test";
 import ts from "typescript";
 
 
+/**
+ * 上传原语的桩：**被调用就炸**。
+ *
+ * 本文件四条用例走的都是 creations 路由，一条都不碰 `uploadFile`。给一个会炸的桩
+ * 而不是空实现，是为了让「上传路径悄悄跑进假实现」这件事不可能发生 —— 桩只负责
+ * 让模块加载得起来，不负责替产品干活。
+ */
+const notCalled =
+  (name) =>
+  () => {
+    throw new Error(`${name} 不应在 creations 路由用例里被调用`);
+  };
+
 function loadDatabase({ token = "token", fetchImpl }) {
   const filename = fileURLToPath(
     new URL("../src/lib/database.ts", import.meta.url),
@@ -32,6 +45,28 @@ function loadDatabase({ token = "token", fetchImpl }) {
       if (specifier === "./auth/config") {
         return { GATEWAY_BASE: "https://api.oceanleo.test" };
       }
+      // `database.ts` 自 `a7ca23b`（W08 给 uploadFile 接进度/取消/续传）起多了这两个
+      // 模块，而这份桩没跟上，于是本文件四条用例在 main 上**全军覆没**。脏工作树上
+      // 看不见，所以整波没人报过。
+      if (specifier === "./upload/progress") {
+        return {
+          createProgressTracker: notCalled("createProgressTracker"),
+          publishUploadProgress: notCalled("publishUploadProgress"),
+          xhrUpload: notCalled("xhrUpload"),
+          xhrUploadAvailable: notCalled("xhrUploadAvailable"),
+        };
+      }
+      if (specifier === "./upload/chunked") {
+        return {
+          deleteResumeTicket: notCalled("deleteResumeTicket"),
+          deriveUploadIdentity: notCalled("deriveUploadIdentity"),
+          identityIsTrustworthy: notCalled("identityIsTrustworthy"),
+          readResumeTicket: notCalled("readResumeTicket"),
+          writeResumeTicket: notCalled("writeResumeTicket"),
+        };
+      }
+      // 这条 throw 是刻意留着的：再有新 import 进来仍旧当场红，
+      // 而不是让这份桩慢慢漂成一个谁也不知道在测什么的假环境。
       throw new Error(`unexpected import: ${specifier}`);
     },
   };
