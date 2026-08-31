@@ -8,7 +8,7 @@
 //     Select/EmptyState/Skeleton*，**唯独没有 Button**；
 //   · `outline-none` 140 处对 `focus-visible` 61 处 —— 约一半的焦点抑制点没有把
 //     焦点环补回来，键盘用户会在页面上丢失位置。
-    10|//
+//
 // 所以这里有两条**结构性**的规矩，不是约定：
 //
 //   ① **焦点环内建且没有关掉它的 prop。** 这是本原语存在的主要理由之一。
@@ -18,7 +18,7 @@
 //      比 44 小必须显式要，且只有登记在 `tests/hit-target-budget.test.mjs`
 //      白名单里的密集工具条能要。让对的事成为默认值。
 //
-    20|// 尺寸与配色对齐 `shell/edit-bar-surface.ts` 的 `EDIT_BAR_BUTTON_CLASS`（既有的
+// 尺寸与配色对齐 `shell/edit-bar-surface.ts` 的 `EDIT_BAR_BUTTON_CLASS`（既有的
 // 44px 样板，本文件不改它、只照它）。动效只从 `--leo-*` token 取，不写裸时长
 // （红线 9）；W01 的 token 未落地时 `var(--leo-dur-1)` 计算为 `0s`＝退回今天的
 // 瞬时行为，不劣化。
@@ -28,7 +28,7 @@ import {
   forwardRef,
   type ButtonHTMLAttributes,
   type CSSProperties,
-    30|  type ReactNode,
+  type ReactNode,
 } from "react";
 
 import { ButtonSpinner } from "./index";
@@ -38,7 +38,7 @@ export type ButtonSize = "sm" | "md" | "lg";
 
 /**
  * 三档命中区的**像素事实**。`tests/hit-target-budget.test.mjs` 直接读这张表，
-    40| * 所以改这里的数字会立刻反映到预算锁上，不会出现「常量与判据各说各话」。
+ * 所以改这里的数字会立刻反映到预算锁上，不会出现「常量与判据各说各话」。
  * 44 与 `EDIT_BAR_CONTROL_SIZE_PX` 同源同值。
  */
 export const BUTTON_SIZE_PX: Record<ButtonSize, number> = {
@@ -48,7 +48,7 @@ export const BUTTON_SIZE_PX: Record<ButtonSize, number> = {
 };
 
 /** 默认档。改这一行等于改 31 个站的默认命中区，预算锁会当场拦住。 */
-    50|export const BUTTON_DEFAULT_SIZE: ButtonSize = "lg";
+export const BUTTON_DEFAULT_SIZE: ButtonSize = "lg";
 
 /** 十行的类名拼接。不引 clsx / cva / tailwind-merge（红线 6）。 */
 function cx(...parts: Array<string | false | null | undefined>): string {
@@ -60,7 +60,7 @@ function cx(...parts: Array<string | false | null | undefined>): string {
   return out.join(" ");
 }
 
-    60|/**
+/**
  * 调用方可以带布局类名进来，**不可以带焦点环的退出票**。
  * 「不可关闭」如果只写在文档里就不是不可关闭，所以在这里物理拦掉。
  */
@@ -70,7 +70,7 @@ const FOCUS_RING_OPT_OUT =
 function stripFocusRingOptOuts(className: string): string {
   return className
     .split(/\s+/)
-    70|    .filter((token) => token && !FOCUS_RING_OPT_OUT.test(token))
+    .filter((token) => token && !FOCUS_RING_OPT_OUT.test(token))
     .join(" ");
 }
 
@@ -80,7 +80,7 @@ function stripFocusRingOptOuts(className: string): string {
  * 环色沿用 `EDIT_BAR_BUTTON_CLASS` 的三级兜底（插件主题 → 工作台 → 站点语义）。
  */
 const FOCUS_RING =
-    80|  "outline-none focus-visible:ring-2 " +
+  "outline-none focus-visible:ring-2 " +
   "focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45";
 
 /**
@@ -90,7 +90,7 @@ const FOCUS_RING =
  * 退化方向是「不动」而不是「乱动」。
  */
 const MOTION_STYLE: CSSProperties = {
-    90|  transitionProperty:
+  transitionProperty:
     "background-color, border-color, color, box-shadow, opacity, transform",
   transitionDuration: "var(--leo-dur-1)",
   transitionTimingFunction: "var(--leo-ease-standard)",
@@ -100,7 +100,7 @@ const MOTION_STYLE: CSSProperties = {
  * 各档的高度与内边距。高度用 `h-*` 钉死，`shrink-0` 防止被 flex 压扁——
  * 命中区被父容器压小和一开始就写小，对用户是同一件事。
  */
-   100|const SIZE_CLASS: Record<ButtonSize, string> = {
+const SIZE_CLASS: Record<ButtonSize, string> = {
   sm: "h-9 min-w-9 gap-1.5 px-3 text-[12px]",
   md: "h-10 min-w-10 gap-2 px-3.5 text-[13px]",
   lg: "h-11 min-w-11 gap-2 px-4 text-[13px]",
@@ -110,7 +110,7 @@ const ICON_SIZE_CLASS: Record<ButtonSize, string> = {
   sm: "h-9 w-9",
   md: "h-10 w-10",
   lg: "h-11 w-11",
-   110|};
+};
 
 /**
  * 四个变体。全部走 CSS 变量的三级兜底，所以同一枚按钮在插件主题内、工作台 chrome 上
@@ -120,7 +120,7 @@ const ICON_SIZE_CLASS: Record<ButtonSize, string> = {
  * 本原语也**不把任何内容藏在 hover 后面**（图标与文案始终渲染），
  * 这就是任务书「`@media (hover: none)` 下不依赖 hover 才出现的内容」的落法。
  */
-   120|const VARIANT_CLASS: Record<ButtonVariant, string> = {
+const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary:
     "bg-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))] " +
     "text-white hover:brightness-110",
@@ -130,7 +130,7 @@ const ICON_SIZE_CLASS: Record<ButtonSize, string> = {
     "text-[var(--pchrome-ink,var(--awb-text,var(--fg,#292524)))] " +
     "hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))]",
   ghost:
-   130|    "text-[var(--pchrome-ink-mid,var(--awb-muted,var(--fg-2,#57534e)))] " +
+    "text-[var(--pchrome-ink-mid,var(--awb-muted,var(--fg-2,#57534e)))] " +
     "hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] " +
     "hover:text-[var(--pchrome-ink,var(--awb-text,var(--fg,#292524)))]",
   danger:
@@ -140,7 +140,7 @@ const ICON_SIZE_CLASS: Record<ButtonSize, string> = {
 
 const BASE_CLASS =
   "inline-flex shrink-0 select-none items-center justify-center rounded-lg " +
-   140|  "font-medium leading-none active:scale-[0.97] " +
+  "font-medium leading-none active:scale-[0.97] " +
   "disabled:pointer-events-none disabled:opacity-40 " +
   "aria-disabled:cursor-default aria-disabled:opacity-60";
 
@@ -150,7 +150,7 @@ interface ButtonOwnProps {
   /**
    * 载入中。**不设 `disabled` 属性**：禁用元素不可聚焦，正在等待的那一刻把焦点
    * 从用户脚下抽走，屏幕阅读器会丢失上下文。这里用 `aria-disabled` + 拦截激活，
-   150|   * 按钮保持可聚焦、`aria-busy` 为真，读屏能念出「忙」。
+   * 按钮保持可聚焦、`aria-busy` 为真，读屏能念出「忙」。
    */
   loading?: boolean;
   /** 载入中替换的文案（已翻译）。图标按钮不传，只出转圈。 */
@@ -160,7 +160,7 @@ interface ButtonOwnProps {
 }
 
 export type ButtonProps = ButtonOwnProps &
-   160|  ButtonHTMLAttributes<HTMLButtonElement>;
+  ButtonHTMLAttributes<HTMLButtonElement>;
 
 /**
  * 有文案的按钮。默认 `lg`(44) + `secondary`。
@@ -170,7 +170,7 @@ export type ButtonProps = ButtonOwnProps &
  * 出现任何形似关环的 prop 名当场判红。
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-   170|  function Button(
+  function Button(
     {
       variant = "secondary",
       size = BUTTON_DEFAULT_SIZE,
@@ -180,7 +180,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className = "",
       style,
       children,
-   180|      onClick,
+      onClick,
       type = "button",
       ...rest
     },
@@ -190,7 +190,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         {...rest}
         ref={ref}
-   190|        type={type}
+        type={type}
         onClick={loading ? undefined : onClick}
         aria-busy={loading || undefined}
         aria-disabled={loading || rest["aria-disabled"]}
@@ -200,7 +200,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={cx(
           BASE_CLASS,
           SIZE_CLASS[size],
-   200|          VARIANT_CLASS[variant],
+          VARIANT_CLASS[variant],
           block && "w-full",
           stripFocusRingOptOuts(className),
           FOCUS_RING,
@@ -211,7 +211,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     );
   },
 );
-   210|
+
 export interface IconButtonProps extends ButtonOwnProps,
   Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   /**
@@ -221,7 +221,7 @@ export interface IconButtonProps extends ButtonOwnProps,
    */
   label: string;
   /** 图标节点。始终渲染，不藏在 hover 后面。 */
-   220|  icon: ReactNode;
+  icon: ReactNode;
 }
 
 /**
@@ -231,7 +231,7 @@ export interface IconButtonProps extends ButtonOwnProps,
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   function IconButton(
     {
-   230|      label,
+      label,
       icon,
       variant = "ghost",
       size = BUTTON_DEFAULT_SIZE,
@@ -241,7 +241,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       className = "",
       style,
       onClick,
-   240|      title,
+      title,
       type = "button",
       ...rest
     },
@@ -251,7 +251,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       <button
         {...rest}
         ref={ref}
-   250|        type={type}
+        type={type}
         onClick={loading ? undefined : onClick}
         aria-label={label}
         title={title ?? label}
@@ -261,7 +261,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         data-leo-button-size={size}
         style={{ ...MOTION_STYLE, ...style }}
         className={cx(
-   260|          BASE_CLASS,
+          BASE_CLASS,
           "p-0",
           ICON_SIZE_CLASS[size],
           VARIANT_CLASS[variant],
@@ -271,7 +271,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         )}
       >
         {loading ? <ButtonSpinner label={loadingLabel ?? ""} /> : icon}
-   270|      </button>
+      </button>
     );
   },
 );
