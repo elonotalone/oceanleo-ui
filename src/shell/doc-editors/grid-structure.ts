@@ -1,4 +1,5 @@
 import {
+  evaluateGridCell,
   gridColumnName,
   inspectGridFormula,
   parseGridReference,
@@ -1230,4 +1231,327 @@ export function gridFillDownLength(
     if (length > 0) return length;
   }
   return 0;
+}
+
+/* ══════════════════════════ 行高与列宽 ══════════════════════════
+ *
+ * `GridSheet`（`grid-model.ts`，W12 独占）没有尺寸字段，所以尺寸不挂在表上，
+ * 挂在 `oceanleo.grid.v1` 工程档顶层、按 sheetId 分组，由 `use-grid-editor.ts`
+ * 读写。稀疏 map：只存被用户改过的那几行几列。
+ */
+
+/** 稀疏尺寸表：`{ 索引: 像素 }`，未登记的走默认值。 */
+export type GridAxisSizes = Record<number, number>;
+
+/** `GridStage` 原来写死的 `ROW_HEIGHT = 34`，现在只是默认值。 */
+export const GRID_DEFAULT_ROW_HEIGHT = 34;
+/** 与 `GridStage` 原来的 `min-w-28`（7rem = 112px）逐像素一致，改默认值会动 31 个站。 */
+export const GRID_DEFAULT_COL_WIDTH = 112;
+export const GRID_ROW_HEIGHT_RANGE: readonly [number, number] = [18, 400];
+/** 与 `grid-model.ts` 的 `GRID_CONSTANTS.C19_columnWidthRangePx` 同值（有测试锁）。 */
+export const GRID_COL_WIDTH_RANGE: readonly [number, number] = [48, 480];
+
+export function normalizeGridAxisSizes(
+  value: unknown,
+  options: { count: number; min: number; max: number },
+): GridAxisSizes {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const sizes: GridAxisSizes = {};
+  for (const [key, size] of Object.entries(value as Record<string, unknown>)) {
+    const index = Number(key);
+    const pixels = Number(size);
+    if (!Number.isInteger(index) || index < 0 || index >= options.count) continue;
+    if (!Number.isFinite(pixels)) continue;
+    sizes[index] = Math.round(
+      Math.max(options.min, Math.min(options.max, pixels)),
+    );
+  }
+  return sizes;
+}
+
+export function gridAxisSize(
+  sizes: GridAxisSizes | undefined,
+  index: number,
+  fallback: number,
+): number {
+  const size = sizes?.[index];
+  return typeof size === "number" && Number.isFinite(size) ? size : fallback;
+}
+
+/** `indexes` 中 `[from, to)` 一段的像素总高（下标是**行号**，不是位置）。 */
+export function gridAxisExtent(
+  indexes: readonly number[],
+  from: number,
+  to: number,
+  sizes: GridAxisSizes | undefined,
+  fallback: number,
+): number {
+  const start = Math.max(0, from);
+  const end = Math.min(indexes.length, to);
+  if (end <= start) return 0;
+  if (!sizes || Object.keys(sizes).length === 0) return (end - start) * fallback;
+  let total = 0;
+  for (let position = start; position < end; position += 1) {
+    total += gridAxisSize(sizes, indexes[position], fallback);
+  }
+  return total;
+}
+
+/**
+ * 粗窗口的定位。原来是 `floor(scrollTop / ROW_HEIGHT) - 8`，行高一旦可变这条
+ * 除法就不成立了；这里按累计高度走。没有任何自定义行高时仍然走那条除法快路，
+ * 一万行不必每次滚动都累加。
+ */
+export function gridRowWindowRange(
+  indexes: readonly number[],
+  options: {
+    scrollTop: number;
+    viewportHeight: number;
+    sizes?: GridAxisSizes;
+    defaultHeight: number;
+    overscan?: number;
+    maxWindow?: number;
+  },
+): { start: number; end: number } {
+  const overscan = options.overscan ?? 8;
+  const maxWindow = options.maxWindow ?? 500;
+  const height = Math.max(1, options.defaultHeight);
+  const scrollTop = Math.max(0, options.scrollTop);
+  const viewport = Math.max(height, options.viewportHeight);
+
+  if (!options.sizes || Object.keys(options.sizes).length === 0) {
+    const start = Math.max(0, Math.floor(scrollTop / height) - overscan);
+    const visible = Math.ceil(viewport / height) + overscan * 2;
+    return {
+      start: Math.min(start, indexes.length),
+      end: Math.min(indexes.length, start + Math.min(visible, maxWindow)),
+    };
+  }
+
+  let position = 0;
+  let offset = 0;
+  while (position < indexes.length) {
+    const size = gridAxisSize(options.sizes, indexes[position], height);
+    if (offset + size > scrollTop) break;
+    offset += size;
+    position += 1;
+  }
+  const start = Math.max(0, position - overscan);
+
+  let end = start;
+  let covered = 0;
+  const budget = viewport + (position - start) * height + overscan * height;
+  while (end < indexes.length && covered < budget && end - start < maxWindow) {
+    covered += gridAxisSize(options.sizes, indexes[end], height);
+    end += 1;
+  }
+  return { start, end: Math.max(end, Math.min(indexes.length, start + 1)) };
+}
+
+/**
+ * 窗口两端 spacer 的高度。**必须和最终的 start/end 一起算**：`GridStage` 会为
+ * 跨窗口的合并区把 start 往前、end 往后推，先算 spacer 再推窗口就会让滚动条
+ * 长度错——这正是行高可变之后最容易出的那个 bug。
+ */
+export function gridRowSpacer(
+  indexes: readonly number[],
+  options: {
+    start: number;
+    end: number;
+    sizes?: GridAxisSizes;
+    defaultHeight: number;
+  },
+): { leadingHeight: number; trailingHeight: number; totalHeight: number } {
+  const leadingHeight = gridAxisExtent(
+    indexes,
+    0,
+    options.start,
+    options.sizes,
+    options.defaultHeight,
+  );
+  const trailingHeight = gridAxisExtent(
+    indexes,
+    options.end,
+    indexes.length,
+    options.sizes,
+    options.defaultHeight,
+  );
+  const windowHeight = gridAxisExtent(
+    indexes,
+    options.start,
+    options.end,
+    options.sizes,
+    options.defaultHeight,
+  );
+  return {
+    leadingHeight,
+    trailingHeight,
+    totalHeight: leadingHeight + windowHeight + trailingHeight,
+  };
+}
+
+/**
+ * 双击列边界的自适应宽度。没有 DOM 可量，按字符宽度估：CJK 与全角算两个单位，
+ * 其余算一个。估宽比不能拖好得多，也比 `min-w-28` 一刀切好得多。
+ */
+export function measureGridAutoColumnWidth(
+  values: readonly string[],
+  options: {
+    min?: number;
+    max?: number;
+    unitPx?: number;
+    paddingPx?: number;
+  } = {},
+): number {
+  const min = options.min ?? GRID_COL_WIDTH_RANGE[0];
+  const max = options.max ?? GRID_COL_WIDTH_RANGE[1];
+  const unit = options.unitPx ?? 7;
+  const padding = options.paddingPx ?? 20;
+  let widest = 0;
+  for (const value of values) {
+    for (const line of String(value ?? "").split("\n")) {
+      let units = 0;
+      for (const character of line) {
+        const code = character.codePointAt(0) ?? 0;
+        units +=
+          (code >= 0x1100 && code <= 0x115f) ||
+          (code >= 0x2e80 && code <= 0xa4cf) ||
+          (code >= 0xac00 && code <= 0xd7a3) ||
+          (code >= 0xf900 && code <= 0xfaff) ||
+          (code >= 0xfe30 && code <= 0xfe6f) ||
+          (code >= 0xff00 && code <= 0xff60) ||
+          (code >= 0xffe0 && code <= 0xffe6)
+            ? 2
+            : 1;
+      }
+      widest = Math.max(widest, units);
+    }
+  }
+  return Math.round(Math.max(min, Math.min(max, widest * unit + padding)));
+}
+
+/* ══════════════════════════ 查找与替换 ══════════════════════════ */
+
+/** `value` = 在算出来的值里找；`formula` = 在单元格原文（含 `=…`）里找。 */
+export type GridSearchScope = "value" | "formula";
+
+export interface GridSearchOptions {
+  query: string;
+  scope: GridSearchScope;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+}
+
+export interface GridMatch {
+  row: number;
+  col: number;
+  /** 命中所在的那串文本：值模式是算出来的值，公式模式是原文。 */
+  text: string;
+}
+
+export interface GridReplaceEdit {
+  row: number;
+  col: number;
+  before: string;
+  after: string;
+}
+
+export interface GridReplacePlan {
+  edits: GridReplaceEdit[];
+  matched: number;
+  /**
+   * 值模式下命中、但因为原文是公式而没有改的格子数。
+   * 改公式的**结果**是做不到的事，静默跳过比假装成功更坏。
+   */
+  skippedFormulas: number;
+}
+
+function escapeSearchPattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function gridSearchPattern(options: GridSearchOptions): RegExp | null {
+  if (!options.query) return null;
+  const body = escapeSearchPattern(options.query);
+  // `\b` 对中文不成立（CJK 不是 `\w`），所以「全字匹配」定义为两侧不是
+  // 拉丁字母、数字或下划线。中文词天然满足，英文 `SUM` 不会命中 `SUMIF`。
+  const pattern = options.wholeWord
+    ? `(?<![A-Za-z0-9_])${body}(?![A-Za-z0-9_])`
+    : body;
+  return new RegExp(pattern, options.caseSensitive ? "g" : "gi");
+}
+
+function searchableText(
+  rows: readonly (readonly string[])[],
+  row: number,
+  col: number,
+  options: GridSearchOptions,
+  resolveValue: (row: number, col: number) => string,
+): string {
+  const raw = String(rows[row]?.[col] ?? "");
+  return options.scope === "formula" ? raw : resolveValue(row, col);
+}
+
+/**
+ * 逐格找。值模式默认用 W12 的 `evaluateGridCell()` 求值；调用方可以传
+ * `resolveValue` 换成带数字格式的显示值（`use-grid-editor.ts` 就是这么做的）。
+ */
+export function findGridMatches(
+  rows: readonly (readonly string[])[],
+  options: GridSearchOptions,
+  resolveValue: (row: number, col: number) => string = (row, col) =>
+    String(evaluateGridCell(rows as string[][], row, col)),
+): GridMatch[] {
+  const pattern = gridSearchPattern(options);
+  if (!pattern) return [];
+  const matches: GridMatch[] = [];
+  for (let row = 0; row < rows.length; row += 1) {
+    const width = rows[row]?.length ?? 0;
+    for (let col = 0; col < width; col += 1) {
+      const text = searchableText(rows, row, col, options, resolveValue);
+      if (!text) continue;
+      pattern.lastIndex = 0;
+      if (pattern.test(text)) matches.push({ row, col, text });
+    }
+  }
+  return matches;
+}
+
+/**
+ * 「替换全部」的完整编辑清单。返回清单而不是就地改，是为了让调用方把它
+ * **一次性**写进一个 `mutate()` ——一步撤销，不是撤两百次。
+ */
+export function planGridReplaceAll(
+  rows: readonly (readonly string[])[],
+  options: GridSearchOptions & { replacement: string },
+  resolveValue: (row: number, col: number) => string = (row, col) =>
+    String(evaluateGridCell(rows as string[][], row, col)),
+): GridReplacePlan {
+  const pattern = gridSearchPattern(options);
+  if (!pattern) return { edits: [], matched: 0, skippedFormulas: 0 };
+
+  const edits: GridReplaceEdit[] = [];
+  let matched = 0;
+  let skippedFormulas = 0;
+
+  for (let row = 0; row < rows.length; row += 1) {
+    const width = rows[row]?.length ?? 0;
+    for (let col = 0; col < width; col += 1) {
+      const raw = String(rows[row]?.[col] ?? "");
+      const text = searchableText(rows, row, col, options, resolveValue);
+      if (!text) continue;
+      pattern.lastIndex = 0;
+      if (!pattern.test(text)) continue;
+      matched += 1;
+      if (options.scope === "value" && raw.trimStart().startsWith("=")) {
+        skippedFormulas += 1;
+        continue;
+      }
+      pattern.lastIndex = 0;
+      // 替换永远写回**原文**：值模式下 raw 就是那串文本，公式模式下 raw 是公式。
+      const after = raw.replace(pattern, options.replacement);
+      if (after !== raw) edits.push({ row, col, before: raw, after });
+    }
+  }
+  return { edits, matched, skippedFormulas };
 }

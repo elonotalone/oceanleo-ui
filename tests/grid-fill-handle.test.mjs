@@ -3,8 +3,16 @@ import test from "node:test";
 
 import { evaluateGridCell } from "../src/shell/doc-editors/grid-formula.ts";
 import {
+  GRID_COL_WIDTH_RANGE,
+  GRID_DEFAULT_ROW_HEIGHT,
+  GRID_ROW_HEIGHT_RANGE,
   detectGridFillSeries,
+  gridAxisExtent,
   gridFillDownLength,
+  gridRowSpacer,
+  gridRowWindowRange,
+  measureGridAutoColumnWidth,
+  normalizeGridAxisSizes,
   planGridFill,
   translateGridFormula,
 } from "../src/shell/doc-editors/grid-structure.ts";
@@ -179,5 +187,124 @@ test("双击填充柄沿相邻列的数据长度决定填多远", () => {
       { firstRow: 0, lastRow: 0, firstCol: 0, lastCol: 0 },
     ),
     0,
+  );
+});
+
+/* ── 行高列宽：另一个拖拽手势，和填充柄同属直接操作 ─────────────────────── */
+
+test("尺寸表归一化：夹到区间、丢掉越界与非数", () => {
+  const sizes = normalizeGridAxisSizes(
+    { 0: 10, 1: 60, 2: 9999, 3: "abc", 99: 40, "-1": 40, x: 40 },
+    { count: 10, min: GRID_ROW_HEIGHT_RANGE[0], max: GRID_ROW_HEIGHT_RANGE[1] },
+  );
+  assert.deepEqual(sizes, {
+    0: GRID_ROW_HEIGHT_RANGE[0],
+    1: 60,
+    2: GRID_ROW_HEIGHT_RANGE[1],
+  });
+  assert.deepEqual(normalizeGridAxisSizes(null, { count: 5, min: 1, max: 9 }), {});
+  assert.deepEqual(normalizeGridAxisSizes([1, 2], { count: 5, min: 1, max: 9 }), {});
+});
+
+test("没有任何自定义行高时，窗口定位与改造前的除法逐格一致", () => {
+  const indexes = Array.from({ length: 1_000 }, (_, index) => index);
+  for (const scrollTop of [0, 33, 34, 500, 1_234, 20_000]) {
+    const { start } = gridRowWindowRange(indexes, {
+      scrollTop,
+      viewportHeight: 600,
+      defaultHeight: GRID_DEFAULT_ROW_HEIGHT,
+    });
+    // 改造前：`Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8)`
+    assert.equal(
+      start,
+      Math.max(0, Math.floor(scrollTop / GRID_DEFAULT_ROW_HEIGHT) - 8),
+      `scrollTop=${scrollTop} 的定位不许变`,
+    );
+  }
+});
+
+test("行高可变时 spacer 跟着变：三段之和恒等于全部行的真实总高", () => {
+  const indexes = Array.from({ length: 300 }, (_, index) => index);
+  const sizes = { 0: 120, 5: 80, 7: 200, 250: 60 };
+  const truth = indexes.reduce(
+    (total, row) => total + (sizes[row] ?? GRID_DEFAULT_ROW_HEIGHT),
+    0,
+  );
+
+  for (const scrollTop of [0, 150, 900, 5_000]) {
+    const range = gridRowWindowRange(indexes, {
+      scrollTop,
+      viewportHeight: 600,
+      sizes,
+      defaultHeight: GRID_DEFAULT_ROW_HEIGHT,
+    });
+    const spacer = gridRowSpacer(indexes, {
+      ...range,
+      sizes,
+      defaultHeight: GRID_DEFAULT_ROW_HEIGHT,
+    });
+    assert.equal(
+      spacer.totalHeight,
+      truth,
+      `scrollTop=${scrollTop}：spacer 三段之和必须等于真实总高，否则滚动条长度就是错的`,
+    );
+    assert.equal(
+      spacer.leadingHeight,
+      gridAxisExtent(indexes, 0, range.start, sizes, GRID_DEFAULT_ROW_HEIGHT),
+    );
+  }
+
+  // 合并区把窗口往两头撑开之后，spacer 必须按**撑开后**的 start/end 重算。
+  const range = gridRowWindowRange(indexes, {
+    scrollTop: 900,
+    viewportHeight: 600,
+    sizes,
+    defaultHeight: GRID_DEFAULT_ROW_HEIGHT,
+  });
+  const widened = gridRowSpacer(indexes, {
+    start: Math.max(0, range.start - 6),
+    end: Math.min(indexes.length, range.end + 9),
+    sizes,
+    defaultHeight: GRID_DEFAULT_ROW_HEIGHT,
+  });
+  assert.equal(widened.totalHeight, truth, "撑开窗口不改变总高");
+  assert.ok(
+    widened.leadingHeight <
+      gridAxisExtent(indexes, 0, range.start, sizes, GRID_DEFAULT_ROW_HEIGHT) + 1,
+    "start 前移，前 spacer 必须跟着变矮",
+  );
+});
+
+test("筛选后窗口按可见行算高，隐藏行不占滚动长度", () => {
+  // `visibleRowIndexes` 是筛选后的行号，不连续。
+  const indexes = [0, 3, 4, 9];
+  const sizes = { 3: 100 };
+  const spacer = gridRowSpacer(indexes, {
+    start: 0,
+    end: indexes.length,
+    sizes,
+    defaultHeight: GRID_DEFAULT_ROW_HEIGHT,
+  });
+  assert.equal(spacer.totalHeight, GRID_DEFAULT_ROW_HEIGHT * 3 + 100);
+  assert.equal(
+    gridAxisExtent(indexes, 1, 3, sizes, GRID_DEFAULT_ROW_HEIGHT),
+    100 + GRID_DEFAULT_ROW_HEIGHT,
+    "按位置切片、按行号取高",
+  );
+});
+
+test("双击自适应列宽：CJK 按两格算，结果夹在列宽区间内", () => {
+  const [min, max] = GRID_COL_WIDTH_RANGE;
+  assert.equal(measureGridAutoColumnWidth([""]), min, "空列取下限");
+  assert.ok(
+    measureGridAutoColumnWidth(["中文四个字"]) >
+      measureGridAutoColumnWidth(["12345"]),
+    "五个汉字必须比五个数字宽",
+  );
+  assert.equal(measureGridAutoColumnWidth(["x".repeat(500)]), max, "夹到上限");
+  // 多行取最宽的一行，不是整串长度。
+  assert.equal(
+    measureGridAutoColumnWidth(["短\n长得多的一行文字"]),
+    measureGridAutoColumnWidth(["长得多的一行文字"]),
   );
 });
