@@ -29,6 +29,7 @@
 // ============================================================================
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { register } from "node:module";
 import path from "node:path";
@@ -53,8 +54,46 @@ const { PLUGIN_CHROME_COPY_SOURCE } = await import(
 const TRANSLATED_LOCALES = LOCALES.filter((locale) => locale !== "zh");
 
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
-/** 同级仓的公共父目录。从仓根往上推，避免任何机器专属的绝对路径。 */
-const SIBLING_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+
+/**
+ * 同级仓的公共父目录。从仓根往上推，避免任何机器专属的绝对路径。
+ *
+ * ----------------------------------------------------------------------------
+ * W35 2026-08-31 `[实测]`：单靠「往上推一级」有一个洞，本波已经踩到了。
+ *
+ * `_COMMON.md §7b⑪` 要求「冻数字必须在干净检出上取」，于是大家都
+ * `git worktree add --detach /tmp/xxx` 出一棵干净树来跑。可 worktree 一挪到 `/tmp`，
+ * 这里推出来的 `SIBLING_ROOT` 就跟着变成 `/tmp/`，**五个同级仓一个都不在场**，
+ * 跨仓扫描面整个塌掉：
+ *
+ *   在 /root/projects/oceanleo-ui  →  五个同级仓全在场，判出真缺口
+ *                                     （website-views.ts 缺 16 语）
+ *   在 /tmp/w35-clean（同一 commit）→  一个都不在场，只剩本仓 plugin-chrome 的 17 条，
+ *                                     先撞上取样下限而红，**真缺口反而被挡在后面看不见**
+ *
+ * 两处都红，条数还一样，所以光看红的条数根本发现不了。
+ *
+ * ⇒ linked worktree 里要按**主工作树**的位置推同级仓，而不是按自己所在的目录。
+ *   `git rev-parse --git-common-dir` 指向主仓的 `.git`，它的上一级就是主仓根。
+ *   拿不到 git（浅解包、非 git 检出）就退回原来的推法。
+ */
+function resolveSiblingRoot() {
+  const fallback = fileURLToPath(new URL("../../", import.meta.url));
+  const probe = spawnSync(
+    "git",
+    ["-C", REPO_ROOT, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { encoding: "utf8" },
+  );
+  if (probe.status !== 0) return fallback;
+  const commonDir = probe.stdout.trim();
+  if (!commonDir) return fallback;
+  // `<主仓根>/.git` → 主仓根 → 它的父目录就是同级仓的公共父目录。
+  const mainRepoRoot = path.dirname(commonDir);
+  if (!mainRepoRoot || mainRepoRoot === ".") return fallback;
+  return path.join(mainRepoRoot, "..") + path.sep;
+}
+
+const SIBLING_ROOT = resolveSiblingRoot();
 
 const OWN_ROOTS = ["src"];
 
@@ -371,6 +410,26 @@ test("扫描面覆盖本仓与在场的同级仓，且真的扫到了东西", ()
   assert.ok(SCAN.aliases.has("tt"), "连约定名 tt 都没扫到，AST 走歪了");
 });
 
+test("跨仓扫描面没有因为换了目录而静默塌掉", () => {
+  // 为什么单立一条：上面那条取样下限今天**碰巧**拦住了塌掉的扫描面（本仓自己只有 17 条，
+  // 下限是 20）。这是运气，不是判据——`plugin-chrome/` 再多加四条 key，塌掉的扫描面
+  // 就能过下限，于是三个 extracted 插件一条都不扫、这道闸照样全绿。
+  // `[实测]` W35：同一 commit 在 /tmp 的 worktree 上跑，`website-views.ts` 缺 16 语
+  // 那条真缺口就是这么消失的。
+  //
+  // 判「在不在场」而不是判「有几个」：谁的机器上真没装某个同级仓，那是环境，跳过是对的；
+  // 但**一个都不在场**只可能是路径推歪了——本仓与 oceandino 是同一台机器上一起检出的。
+  const expected = SIBLING_ROOTS.map((relative) => path.join(SIBLING_ROOT, relative));
+  assert.ok(
+    PRESENT_SIBLINGS.length > 0,
+    "五个同级仓一个都不在场，跨仓扫描面塌了。\n"
+      + `推出来的公共父目录：${SIBLING_ROOT}\n`
+      + `按它找过：\n${expected.map((dir) => `  ${dir}`).join("\n")}\n`
+      + "最常见的原因是这棵树是 `git worktree add /tmp/...` 出来的：worktree 一挪走，"
+      + "「仓根往上一级」就推到 /tmp 去了。把 worktree 建在仓的同级目录再跑。",
+  );
+});
+
 test("声明侧的外壳契约标签也在扫描面里（顶栏中英混排就漏在这个缝）", () => {
   // `tt(view.label)` 在渲染处解不出字面量，必须从 PluginChromeView 的声明侧收。
   assert.ok(
@@ -395,7 +454,13 @@ test("统一外壳与在场同级插件用到的 tt() key，16 个语种一条�
     waveKeys.length > floor,
     `这一波只取到 ${waveKeys.length} 条 key，取样失效（在场同级仓：${
       PRESENT_SIBLINGS.join(", ") || "无"
-    }）`,
+    }）。同级仓的公共父目录推成了 ${SIBLING_ROOT}${
+      PRESENT_SIBLINGS.length
+        ? ""
+        : "——一个同级仓都不在场。若这是一棵 git worktree，先确认 " +
+          "`git rev-parse --git-common-dir` 指得对；再不行就把 worktree 建在仓的同级目录再跑，" +
+          "别放 /tmp（W35 2026-08-31 实测：放 /tmp 会让跨仓扫描面整个塌掉）"
+    }`,
   );
   const uncovered = waveKeys.filter(([key]) => missingLocalesFor(key).length > 0);
   assert.deepEqual(
