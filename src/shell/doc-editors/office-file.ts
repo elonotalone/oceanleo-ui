@@ -137,6 +137,13 @@ export function officePackageKindForItem(
         "application/vnd.oasis.opendocument.text",
         "application/vnd.oasis.opendocument.spreadsheet",
         "application/vnd.oasis.opendocument.presentation",
+        // 纯文本表格。少了这三条，`text/csv` 既配不上任何 OOXML 媒体类型、
+        // 又因为 `extensionHint("text/csv")` 取的是 URL 路径尾缀（这里是空）
+        // 而躲不进下面那张后缀表，最后被 `kind === "sheet"` 的兜底判成 XLSX，
+        // 拿 OOXML 的传输校验去查一个 CSV 地址（陈列馆 grid-editor 实测）。
+        "text/csv",
+        "application/csv",
+        "text/tab-separated-values",
       ].includes(normalizedMediaType(String(hint || ""))),
     ) ||
     hints.map((hint) => extensionHint(hint)).some((extension) =>
