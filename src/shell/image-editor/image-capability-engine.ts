@@ -1104,9 +1104,15 @@ export interface ImageAiPanelCapability {
 }
 
 /**
- * 面板真正接出来的能力。`multi-angle` / `grid-*` / `grid-split` 登记在引擎里但
- * **刻意不接**：一次出 2–16 张（`grid-split` 上限 625 张）的拼版图不是办公场景
- * 要的东西，接出来只会烧额度。理由写在 `verdicts/W18-delivery.md`。
+ * 面板真正接出来的能力。刻意不接的两类，理由都写在 `verdicts/W18-delivery.md`：
+ *
+ * - `multi-angle` / `grid-4` / `grid-9` / `grid-25` / `grid-split`：一次出
+ *   2–16 张（`grid-split` 上限 625 张）的拼版图不是办公场景要的东西，
+ *   接出来只会烧额度。
+ * - `inpaint`（局部重绘）：`validateImageAiCommand()` 要求 `maskUrl` 或二进制
+ *   蒙版，而画蒙版的地方在 `FabricImageStage` 与 fabric 控制器里——那是本任务书
+ *   的明文禁区。没有蒙版编写面就把按钮摆出来，等于摆一个必然报错的按钮。
+ *   已写 `signals/W18-request.md`。
  */
 export const IMAGE_AI_PANEL_CAPABILITIES = Object.freeze([
   Object.freeze({
@@ -1140,14 +1146,6 @@ export const IMAGE_AI_PANEL_CAPABILITIES = Object.freeze([
     kind: "semantic",
     featured: false,
     needsPrompt: false,
-  }),
-  Object.freeze({
-    id: "inpaint",
-    label: "局部重绘",
-    summary: "涂掉不想要的部分，用一句话说明补成什么。",
-    kind: "semantic",
-    featured: false,
-    needsPrompt: true,
   }),
   Object.freeze({
     id: "outpaint",
