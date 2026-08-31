@@ -106,6 +106,59 @@ export function orgStatusFromMessages(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// 轮询节奏
+// ---------------------------------------------------------------------------
+// 这里本该是 SSE。查证结论（W21 P2）：`/v1/agent/**` 全部 16 条路由没有一条流式，
+// 全网关唯一的浏览器向 SSE 是 `/v1/chat/stream`，那是无状态 LLM 透传，
+// 不跑规划循环、不产 artifact、不认 task——拿它顶 agent 对话是功能净损失。
+// 加端点是后端的活，本波禁区。详见 signals/W21-request.md。
+//
+// 所以退而求其次：把**固定 450ms** 换成随内容走的节奏。原来的问题不只是慢，
+// 是「快慢跟内容无关」——正在出字的时候和干等的时候一样慢，用户等首字要多等
+// 最多 450ms，而任务空转时又在白发请求。
+const POLL_FIRST_MS = 120; // 刚发出去，首字最金贵
+const POLL_ACTIVE_MS = 200; // 上一轮拿到了新内容：正在出字，跟紧
+// 连续几轮没动静就一档档退。后端本来就有 ~330ms 写库节流，
+// 空转时把间隔拉开不会让用户多等，只会少发请求。
+const POLL_IDLE_LADDER_MS = [300, 500, 800, 1200];
+// 页面切到后台：**不发请求**，只留一个便宜的定时器等它回前台。
+// 长任务用户十有八九会切走干别的，这一条把那段时间的请求全省了。
+const POLL_HIDDEN_RECHECK_MS = 1000;
+
+interface TaskPollResult {
+  status: string;
+  /** 这一轮有没有拿到服务端的新消息。 */
+  changed: boolean;
+}
+
+const IDLE_POLL_RESULT: TaskPollResult = { status: "", changed: false };
+
+/** 「粘底」判定阈值：离底不到这个距离就算用户still在追最新。 */
+const STICK_TO_BOTTOM_PX = 80;
+
+function documentHidden(): boolean {
+  return (
+    typeof document !== "undefined" && document.visibilityState === "hidden"
+  );
+}
+
+/**
+ * 只读一次的偏好查询（不订阅变化：滚动这种一次性行为读当下即可）。
+ * 动效 token 那边由 `globals.css` 的 `@media (prefers-reduced-motion)` 把时长归零，
+ * 但 `scrollTo({behavior:"smooth"})` 是 JS 行为、CSS 管不着，只能在这儿判一次。
+ */
+function scrollBehavior(): ScrollBehavior {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    return "auto";
+  }
+  return "smooth";
+}
+
 export interface AgentChatProps {
   /** 站点 id（驱动 per-site 工具 md + 计量）。 */
   siteId?: string;
@@ -376,6 +429,15 @@ function AgentChatInner({
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 服务端那份消息的上一次快照。用来判断「这一轮轮询有没有拿到新东西」——
+  // 轮询节奏据此收紧或退避。不能直接读 `messages`：本地乐观插入的用户消息
+  // 也会改它，那不是服务端的动静。
+  const serverMessagesRef = useRef<AgentMessage[]>([]);
+  // 用户按过停止的那个 task。服务端要过一会儿才把状态落成 stopped，
+  // 这期间任何一次 refresh 都会把 status 写回 running、把轮询和「思考中」放回来。
+  // 有了它，本地判定优先，界面不会自己复活。
+  const stoppedTaskRef = useRef("");
+  const [stoppedTaskId, setStoppedTaskId] = useState("");
   const atts = useAttachments(siteId, setError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
   const editorCommands = useEditorCommandBridge({
@@ -403,11 +465,17 @@ function AgentChatInner({
     setInput((v) => (v ? v + " " : "") + text);
   }, []);
 
-  const refresh = useCallback(async (id: string) => {
+  /**
+   * 拉一次任务。返回 `status` 与 `changed`（这一轮有没有拿到新消息）——
+   * `changed` 是轮询节奏的输入：还在出字就跟紧，没动静就退避。
+   */
+  const refresh = useCallback(async (id: string): Promise<TaskPollResult> => {
     const r = await getTask(id);
-    if (loadedTaskRef.current !== id) return "";
+    if (loadedTaskRef.current !== id) return IDLE_POLL_RESULT;
     if (r.ok && r.data) {
       const incoming = r.data.messages || [];
+      const changed = !sameAgentMessages(serverMessagesRef.current, incoming);
+      if (changed) serverMessagesRef.current = incoming;
       setMessagesTaskId(id);
       setMessages((current) =>
         sameAgentMessages(current, incoming) ? current : incoming,
@@ -415,13 +483,20 @@ function AgentChatInner({
       setActiveArtifactIds(
         new Set((r.data.artifacts || []).map((artifact) => String(artifact.id))),
       );
-      setStatus(r.data.task?.status || "");
+      // 用户已经按过停止：服务端还没跟上不代表它还在跑，本地判定优先。
+      // 少了这一句，停止键按下去就是「界面停半秒又自己动起来」。
+      const serverStatus = r.data.task?.status || "";
+      const status =
+        stoppedTaskRef.current === id && serverStatus === "running"
+          ? "stopped"
+          : serverStatus;
+      setStatus(status);
       if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
       // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
       if (r.data.task?.title) setTaskTitle(r.data.task.title);
-      return r.data.task?.status || "";
+      return { status, changed };
     }
-    return "";
+    return IDLE_POLL_RESULT;
   }, []);
 
   // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
@@ -470,29 +545,130 @@ function AgentChatInner({
     workspace?.taskId,
   ]);
 
-  // poll while running
+  // poll while running（节奏随内容走，见文件头 POLL_* 注释）
   useEffect(() => {
     if (!taskId) return;
     if (status && status !== "running") return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const poll = async () => {
-      const s = await refresh(taskId);
-      if (!cancelled && (!s || s === "running")) {
-        timer = setTimeout(poll, 450);
-      }
+    let idleStep = -1;
+
+    const arm = (delay: number) => {
+      if (cancelled) return;
+      timer = setTimeout(() => void poll(), delay);
     };
-    timer = setTimeout(poll, 120);
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (documentHidden()) {
+        // 后台不发请求，只是回来看看还在不在后台。
+        arm(POLL_HIDDEN_RECHECK_MS);
+        return;
+      }
+      const result = await refresh(taskId);
+      if (cancelled) return;
+      // 落到终态就收工；status 变了会让本 effect 重跑并在上面的守卫处停住。
+      if (result.status && result.status !== "running") return;
+      if (result.changed) {
+        idleStep = -1;
+        arm(POLL_ACTIVE_MS);
+        return;
+      }
+      idleStep = Math.min(idleStep + 1, POLL_IDLE_LADDER_MS.length - 1);
+      arm(POLL_IDLE_LADDER_MS[idleStep]);
+    };
+
+    // 回到前台立刻补一次，不让用户为「刚才在后台」多等一个间隔。
+    const onVisibilityChange = () => {
+      if (cancelled || documentHidden()) return;
+      if (timer) clearTimeout(timer);
+      idleStep = -1;
+      arm(0);
+    };
+
+    arm(POLL_FIRST_MS);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
     };
   }, [taskId, status, refresh]);
 
-  // keep the reasoning stream scrolled to bottom
+  // ---------------------------------------------------------------------
+  // 粘底滚动
+  // ---------------------------------------------------------------------
+  // 原实现是 `messages` 一变就 scrollTo(bottom)，**无条件**。用户往上翻看历史时
+  // 会被硬拽回底部；流式渲染下 `messages` 每几百毫秒变一次，于是变成每秒好几次
+  // ——想回头看一眼上文都做不到。
+  //
+  // 改成标准粘底：在底部附近才跟随；用户主动往上滚就交出控制权，只用一个浮标
+  // 告诉他「下面还有 N 条」，回不回去他自己决定。
+  const [following, setFollowing] = useState(true);
+  const [unread, setUnread] = useState(0);
+  // 跟随状态要在滚动回调里同步读写，state 的异步更新赶不上连续滚动事件。
+  const followingRef = useRef(true);
+  const seenMessageCountRef = useRef(0);
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  /** 回到跟随态：点浮标、以及自己发言时都走这里。 */
+  const resumeFollowing = useCallback(() => {
+    followingRef.current = true;
+    setFollowing(true);
+    setUnread(0);
+    scrollToLatest(scrollBehavior());
+  }, [scrollToLatest]);
+
+  const handleStreamScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceFromBottom <= STICK_TO_BOTTOM_PX;
+    if (followingRef.current === atBottom) return;
+    followingRef.current = atBottom;
+    setFollowing(atBottom);
+    if (atBottom) setUnread(0);
+  }, []);
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    // 未读记的是**新消息条数**，不是渲染次数：流式期间最后一条会一直长，
+    // 那是同一条在变，不该让计数一路往上跳。
+    const added = Math.max(0, messages.length - seenMessageCountRef.current);
+    seenMessageCountRef.current = messages.length;
+    if (followingRef.current) {
+      scrollToLatest(scrollBehavior());
+      return;
+    }
+    if (added > 0) setUnread((current) => current + added);
+  }, [messages, scrollToLatest]);
+
+  // 换对话：跟随、未读、停止判定、服务端快照全部归零，
+  // 免得把上一段对话的滚动位置和「已停止」标记带到新对话上。
+  useEffect(() => {
+    serverMessagesRef.current = [];
+    stoppedTaskRef.current = "";
+    setStoppedTaskId("");
+    seenMessageCountRef.current = 0;
+    followingRef.current = true;
+    setFollowing(true);
+    setUnread(0);
+  }, [taskId]);
+
+  /** 用户又开口了：清掉「已停止」，并回到跟随态。 */
+  const beginUserTurn = useCallback(() => {
+    stoppedTaskRef.current = "";
+    setStoppedTaskId("");
+    resumeFollowing();
+  }, [resumeFollowing]);
 
   // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
   // 手上的消息还属于上一段对话时先不看，免得把新对话的历史当成刚说的话。
@@ -510,6 +686,7 @@ function AgentChatInner({
       setBusy(true);
       setError(null);
       noteUserTurn();
+      beginUserTurn();
       setMessages([
         {
           id: -1,
@@ -588,6 +765,7 @@ function AgentChatInner({
     },
     [
       agentId,
+      beginUserTurn,
       editorContextFor,
       mode,
       noteOwnEditorTask,
@@ -617,6 +795,7 @@ function AgentChatInner({
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
       const optimisticMessageId = Date.now();
       noteUserTurn();
+      beginUserTurn();
       const editorContext = editorContextFor(effectivePrompt);
       setBusy(true);
       setError(null);
@@ -648,7 +827,15 @@ function AgentChatInner({
       onTaskCreated?.(id);
       void refresh(id);
     },
-    [editorContextFor, noteUserTurn, onTaskCreated, readOnly, refresh, tt],
+    [
+      beginUserTurn,
+      editorContextFor,
+      noteUserTurn,
+      onTaskCreated,
+      readOnly,
+      refresh,
+      tt,
+    ],
   );
 
   // initialPrompt 只能在 Provider 查完最近 session/task 后触发，避免加载中的空 task
@@ -703,6 +890,7 @@ function AgentChatInner({
     atts.clear();
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
     noteUserTurn();
+    beginUserTurn();
     const editorContext = editorContextFor(effectivePrompt);
     if (!taskId) {
       const started = await start(effectivePrompt, uploaded);
@@ -785,13 +973,25 @@ function AgentChatInner({
       setBusy(false);
       return;
     }
+    // 先落本地再等服务端。停止是用户唯一能踩的刹车，等一个来回（还可能失败）
+    // 才有反应，按下去就是「没反应」。
+    stoppedTaskRef.current = taskId;
+    setStoppedTaskId(taskId);
+    setStatus("stopped");
+    setBusy(false);
     const r = await stopTask(taskId);
     if (r.ok) {
-      setStatus("stopped");
-      setBusy(false);
+      // 停下之前那一小段已经写进库、还没被轮询取回的正文要补齐——用户读到一半
+      // 的东西不能因为他按了停止就丢。`refresh` 里的停止判定会挡住状态被写回 running。
       void refresh(taskId);
+      return;
     }
-  }, [readOnly, taskId, refresh]);
+    // 没停成就得说清楚，不能让界面显示「已停止」而后台还在烧钱。
+    stoppedTaskRef.current = "";
+    setStoppedTaskId("");
+    setError(r.error || tt("没能停下这次任务，它可能仍在运行。"));
+    void refresh(taskId);
+  }, [readOnly, taskId, refresh, tt]);
 
   // 启发式追问（后端在最终回答的 meta.suggestions 里给 3 个）——取最后一条 assistant
   // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
@@ -819,6 +1019,7 @@ function AgentChatInner({
     async (text: string) => {
       if (!taskId || busy || readOnly) return;
       noteUserTurn();
+      beginUserTurn();
       const editorContext = editorContextFor(text);
       setBusy(true);
       setMessages((m) => [
@@ -830,7 +1031,15 @@ function AgentChatInner({
       if (r.ok) setStatus("running");
       else setError(r.error || tt("发送失败"));
     },
-    [taskId, busy, readOnly, tt, editorContextFor, noteUserTurn],
+    [
+      taskId,
+      beginUserTurn,
+      busy,
+      readOnly,
+      tt,
+      editorContextFor,
+      noteUserTurn,
+    ],
   );
 
   // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
@@ -1140,9 +1349,40 @@ function AgentChatInner({
     [tt],
   );
 
+  // 用户往上翻看历史时的浮标：不把他拽回底部，只说明下面还有多少条没看。
+  // 动效走既有的 `.v-fade-up`（token 化，且 reduced-motion 下自动 animation:none），
+  // 不新写一条曲线。
+  const backToLatest =
+    !following && messages.length > 0 ? (
+      <button
+        type="button"
+        onClick={resumeFollowing}
+        className="v-fade-up absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-stone-200 bg-white/95 px-3 py-1.5 text-[12px] font-medium text-stone-600 shadow-lg backdrop-blur hover:bg-white"
+      >
+        <svg
+          className="h-3.5 w-3.5 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M12 5v14M6 13l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {unread > 0
+          ? tt("回到最新 · {count} 条新消息", { count: unread })
+          : tt("回到最新")}
+      </button>
+    ) : null;
+
   const stream = (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      {/* 相对定位容器：浮标贴着对话区底部，而不是贴着输入框或整页。 */}
+      <div className="relative min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        onScroll={handleStreamScroll}
+        className="h-full overflow-y-auto px-4 py-4"
+      >
         {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。 */}
         <div className="mx-auto w-full max-w-2xl space-y-3">
           {/* 右上角「分享」入口。有顶栏时它在顶栏里，这里就不再重复一个。 */}
@@ -1169,6 +1409,11 @@ function AgentChatInner({
                 key={item.key}
                 message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
+                stopped={
+                  Boolean(stoppedTaskId) &&
+                  stoppedTaskId === (taskId || "") &&
+                  item.index === lastAssistantIdx
+                }
                 onArtifactOpen={
                   item.message.meta?.artifact &&
                   visibleArtifactMessageIds.has(item.message.id)
@@ -1236,6 +1481,8 @@ function AgentChatInner({
           <HumanHandoffStatus originRef={taskId || ""} accent={accent} />
           {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
         </div>
+      </div>
+        {backToLatest}
       </div>
       <div className="shrink-0 border-t border-stone-100 px-3 py-3">
         {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，

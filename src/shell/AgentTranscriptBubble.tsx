@@ -25,6 +25,11 @@ export function agentArtifactLabels(
 export interface AgentTranscriptBubbleProps {
   message: AgentMessage;
   streaming?: boolean;
+  /**
+   * 这条回答是被用户按停止中断的。已经生成的部分照常显示（用户可能已经在读了），
+   * 只在末尾说明它没写完——不标的话，一段半截的话看起来就是模型答得莫名其妙。
+   */
+  stopped?: boolean;
   onBranch?: () => void;
   onArtifactOpen?: () => void;
   gateActive?: boolean;
@@ -166,6 +171,7 @@ function MessageActions({
 function TranscriptBody({
   message,
   streaming = false,
+  stopped = false,
   onBranch,
   onArtifactOpen,
   gateActive = false,
@@ -289,6 +295,14 @@ function TranscriptBody({
   return (
     <div className="max-w-full px-1 text-neutral-900">
       <TypewriterMarkdown content={message.content} active={streaming} />
+      {stopped && (
+        <p
+          data-testid="agent-stopped-note"
+          className="mt-1.5 text-[12px] text-stone-400"
+        >
+          {tt("已停止生成")}
+        </p>
+      )}
     </div>
   );
 }
