@@ -1902,7 +1902,8 @@ const tr: Record<string, string> = {
   "非财产类": "Mal varlığı dışı",
   "预计支付月数": "Öngörülen ödeme ayı",
   "首套普通住宅": "İlk normal konut",
-  "高": "Yüksek",
+  "宽": "Genişlik",
+  "高": "Yükseklik",
   "人": "kişi",
   "元": "CNY",
   "天": "gün",
@@ -6456,5 +6457,13 @@ const tr: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Tam bir mutlak yol yazın, örneğin /Users/you/Documents veya C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Bu adım tamamlanmadı. Daha sonra tekrar deneyin.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Buraya yalnızca tek bir komut yazılabilir ve komut bir kabuktan geçmez: ardışık düzen |, yönlendirme > <, zincirleme ; &&, ters tırnak ve $() desteklenmez.",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Düğüm grafiği",
+  "分镜": "Storyboard",
+  "导演台": "Yönetmen",
+  "时间线": "Zaman çizelgesi",
+  "添加媒体": "Medya ekle",
+  "保存快照": "Anlık görüntüyü kaydet",
+  "选中画布节点后在此编辑": "Burada düzenlemek için tuvalden bir düğüm seçin",
 };
 export default tr;

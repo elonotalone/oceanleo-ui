@@ -1946,7 +1946,7 @@ const en: Record<string, string> = {
   "非财产类": "Non-property",
   "预计支付月数": "Expected payment months",
   "首套普通住宅": "First ordinary home",
-  "高": "High",
+  "高": "Height",
   "人": "person(s)",
   "元": "CNY",
   "天": "day(s)",
@@ -6574,5 +6574,13 @@ const en: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Enter a full absolute path, for example /Users/you/Documents or C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "This step did not complete. Please try again later.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Only one command can go here, and it does not run through a shell: pipes |, redirects > <, chaining ; &&, backticks and $() are all unsupported.",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Node graph",
+  "分镜": "Storyboard",
+  "导演台": "Director",
+  "时间线": "Timeline",
+  "添加媒体": "Add media",
+  "保存快照": "Save snapshot",
+  "选中画布节点后在此编辑": "Select a canvas node to edit it here",
 };
 export default en;

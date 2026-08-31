@@ -1902,7 +1902,8 @@ const es419: Record<string, string> = {
   "非财产类": "No patrimonial",
   "预计支付月数": "Meses de pago previstos",
   "首套普通住宅": "Primera vivienda ordinaria",
-  "高": "Alta",
+  "宽": "Ancho",
+  "高": "Alto",
   "人": "persona(s)",
   "元": "CNY",
   "天": "día(s)",
@@ -6456,5 +6457,13 @@ const es419: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Escribe una ruta absoluta completa, por ejemplo /Users/you/Documents o C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Este paso no se completó. Inténtalo de nuevo más tarde.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Aquí solo puedes escribir un comando, y no pasa por un shell: no se admiten tuberías |, redirecciones > <, encadenamientos ; &&, comillas invertidas ni $().",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Grafo de nodos",
+  "分镜": "Guion gráfico",
+  "导演台": "Dirección",
+  "时间线": "Línea de tiempo",
+  "添加媒体": "Agregar medios",
+  "保存快照": "Guardar instantánea",
+  "选中画布节点后在此编辑": "Selecciona un nodo del lienzo para editarlo aquí",
 };
 export default es419;

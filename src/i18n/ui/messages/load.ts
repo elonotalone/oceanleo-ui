@@ -38,17 +38,27 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   const locale = normalizeLocale(rawLocale);
   if (locale === DEFAULT_LOCALE) return {};
 
-  const [base, recent, progress, share] = await Promise.all([
-    BASE_MESSAGE_LOADERS[locale](),
-    import("./recent-model-and-task-copy"),
-    import("./agent-progress-copy"),
-    import("./share-copy"),
-  ]);
+  // 这张清单必须与 ./index.ts 的 UI_MESSAGES 逐个分表对齐。两边漂过一次：账号安全
+  // 与登录门那两张表只进了 index.ts（测试读的是它，所以全绿），运行时读的是这里，
+  // 于是那两屏对 16 个语种全部回退成中文原文，谁也没发现。
+  const [base, recent, progress, share, accountSecurity, authOauth, pluginChrome] =
+    await Promise.all([
+      BASE_MESSAGE_LOADERS[locale](),
+      import("./recent-model-and-task-copy"),
+      import("./agent-progress-copy"),
+      import("./share-copy"),
+      import("./account-security-copy"),
+      import("./auth-oauth-copy"),
+      import("./plugin-chrome-copy"),
+    ]);
   return {
     ...base.default,
     ...recent.RECENT_MODEL_AND_TASK_MESSAGES[locale],
     ...progress.AGENT_PROGRESS_MESSAGES[locale],
     ...CLOUD_BROWSER_MESSAGES[locale],
     ...share.SHARE_COPY_MESSAGES[locale],
+    ...accountSecurity.ACCOUNT_SECURITY_MESSAGES[locale],
+    ...authOauth.AUTH_OAUTH_MESSAGES[locale],
+    ...pluginChrome.PLUGIN_CHROME_MESSAGES[locale],
   };
 };

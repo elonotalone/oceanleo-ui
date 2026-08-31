@@ -50,6 +50,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "Địa chỉ đã ẩn",
     "关键节点": "Thời điểm quan trọng",
     "重试连接": "Thử kết nối lại",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Lịch sử",
+    "新建": "Tạo mới",
+    "恢复": "Khôi phục",
   }),
   tr: cloudBrowserTranslated({
     "浏览记录": "Tarama geçmişi",
@@ -91,6 +96,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "Adres gizlendi",
     "关键节点": "Önemli an",
     "重试连接": "Bağlantıyı yeniden dene",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Geçmiş",
+    "新建": "Yeni",
+    "恢复": "Geri yükle",
   }),
   "zh-TW": cloudBrowserTranslated({
     "浏览记录": "瀏覽記錄",
@@ -170,6 +180,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "網址已隱藏",
     "关键节点": "關鍵節點",
     "重试连接": "重試連線",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "歷史",
+    "新建": "新增",
+    "恢复": "還原",
   }),
   ja: cloudBrowserTranslated({
     "浏览记录": "閲覧履歴",
@@ -211,6 +226,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "アドレスは非表示",
     "关键节点": "重要な時点",
     "重试连接": "再接続",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "履歴",
+    "新建": "新規",
+    "恢复": "元に戻す",
   }),
   ko: cloudBrowserTranslated({
     "浏览记录": "탐색 기록",
@@ -252,6 +272,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "주소 숨김",
     "关键节点": "중요 시점",
     "重试连接": "연결 다시 시도",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "기록",
+    "新建": "새로 만들기",
+    "恢复": "복원",
   }),
   ar: cloudBrowserTranslated({
     "浏览记录": "سجل التصفح",
@@ -293,6 +318,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "العنوان مخفي",
     "关键节点": "لحظة مهمة",
     "重试连接": "إعادة محاولة الاتصال",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "السجل",
+    "新建": "جديد",
+    "恢复": "استعادة",
   }),
   th: cloudBrowserTranslated({
     "浏览记录": "ประวัติการท่องเว็บ",
@@ -334,6 +364,11 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "ซ่อนที่อยู่แล้ว",
     "关键节点": "ช่วงเวลาสำคัญ",
     "重试连接": "ลองเชื่อมต่ออีกครั้ง",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "ประวัติ",
+    "新建": "สร้างใหม่",
+    "恢复": "กู้คืน",
   }),
   hi: cloudBrowserTranslated({
     "浏览记录": "ब्राउज़िंग इतिहास",
@@ -375,5 +410,10 @@ export const CLOUD_BROWSER_EASTERN: Record<
     "网址已隐藏": "पता छिपा है",
     "关键节点": "महत्वपूर्ण क्षण",
     "重试连接": "कनेक्शन फिर आज़माएँ",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "इतिहास",
+    "新建": "नया",
+    "恢复": "पुनर्स्थापित करें",
   }),
 };

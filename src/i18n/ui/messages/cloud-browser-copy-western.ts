@@ -50,6 +50,11 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Adresse ausgeblendet",
     "关键节点": "Schlüsselmoment",
     "重试连接": "Erneut verbinden",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Verlauf",
+    "新建": "Neu",
+    "恢复": "Wiederherstellen",
   }),
   es: cloudBrowserTranslated({
     "浏览记录": "Historial de navegación",
@@ -91,6 +96,11 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Dirección oculta",
     "关键节点": "Momento clave",
     "重试连接": "Reintentar conexión",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Historial",
+    "新建": "Nuevo",
+    "恢复": "Restaurar",
   }),
   "es-419": cloudBrowserTranslated({
     "浏览记录": "Historial de navegación",
@@ -132,6 +142,11 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Dirección oculta",
     "关键节点": "Momento clave",
     "重试连接": "Reintentar conexión",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Historial",
+    "新建": "Nuevo",
+    "恢复": "Restaurar",
   }),
   fr: cloudBrowserTranslated({
     "浏览记录": "Historique de navigation",
@@ -173,6 +188,11 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Adresse masquée",
     "关键节点": "Moment clé",
     "重试连接": "Réessayer la connexion",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Historique",
+    "新建": "Nouveau",
+    "恢复": "Restaurer",
   }),
   it: cloudBrowserTranslated({
     "浏览记录": "Cronologia di navigazione",
@@ -214,6 +234,11 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Indirizzo nascosto",
     "关键节点": "Momento chiave",
     "重试连接": "Riprova connessione",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Cronologia",
+    "新建": "Nuovo",
+    "恢复": "Ripristina",
   }),
   "pt-BR": cloudBrowserTranslated({
     "浏览记录": "Histórico de navegação",
@@ -255,6 +280,11 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Endereço oculto",
     "关键节点": "Momento importante",
     "重试连接": "Tentar conexão novamente",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Histórico",
+    "新建": "Novo",
+    "恢复": "Restaurar",
   }),
   "pt-PT": cloudBrowserTranslated({
     "浏览记录": "Histórico de navegação",
@@ -296,5 +326,10 @@ export const CLOUD_BROWSER_WESTERN: Record<
     "网址已隐藏": "Endereço oculto",
     "关键节点": "Momento importante",
     "重试连接": "Tentar novamente",
+    // 这三条是通用词，本表不写就会被 CLOUD_BROWSER_EN 的英文兜底盖掉本语种词典里
+    // 已有的译文（视频画布顶栏那排投影里孤零零一个 “History” 就是这么来的）。
+    "历史": "Histórico",
+    "新建": "Novo",
+    "恢复": "Restaurar",
   }),
 };

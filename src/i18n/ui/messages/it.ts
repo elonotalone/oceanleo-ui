@@ -1902,7 +1902,8 @@ const it: Record<string, string> = {
   "非财产类": "Non patrimoniale",
   "预计支付月数": "Mesi di pagamento previsti",
   "首套普通住宅": "Prima casa ordinaria",
-  "高": "Alta",
+  "宽": "Larghezza",
+  "高": "Altezza",
   "人": "persona/e",
   "元": "CNY",
   "天": "giorno/i",
@@ -6456,5 +6457,13 @@ const it: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Inserisci un percorso assoluto completo, ad esempio /Users/you/Documents oppure C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Questo passaggio non è stato completato. Riprova più tardi.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Qui puoi scrivere un solo comando, che non passa da una shell: pipe |, redirezioni > <, concatenazioni ; &&, apici inversi e $() non sono supportati.",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Grafo dei nodi",
+  "分镜": "Storyboard",
+  "导演台": "Regia",
+  "时间线": "Linea temporale",
+  "添加媒体": "Aggiungi media",
+  "保存快照": "Salva istantanea",
+  "选中画布节点后在此编辑": "Seleziona un nodo della tela per modificarlo qui",
 };
 export default it;

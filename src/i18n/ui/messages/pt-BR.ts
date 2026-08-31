@@ -1902,7 +1902,8 @@ const ptBR: Record<string, string> = {
   "非财产类": "Não patrimonial",
   "预计支付月数": "Meses de pagamento previstos",
   "首套普通住宅": "Primeiro imóvel comum",
-  "高": "Alta",
+  "宽": "Largura",
+  "高": "Altura",
   "人": "pessoa(s)",
   "元": "CNY",
   "天": "dia(s)",
@@ -6456,5 +6457,13 @@ const ptBR: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Informe um caminho absoluto completo, por exemplo /Users/you/Documents ou C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Esta etapa não foi concluída. Tente de novo mais tarde.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Aqui só cabe um comando, e ele não passa por um shell: pipes |, redirecionamentos > <, encadeamentos ; &&, acentos graves e $() não são aceitos.",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Grafo de nós",
+  "分镜": "Storyboard",
+  "导演台": "Direção",
+  "时间线": "Linha do tempo",
+  "添加媒体": "Adicionar mídia",
+  "保存快照": "Salvar instantâneo",
+  "选中画布节点后在此编辑": "Selecione um nó da tela para editá-lo aqui",
 };
 export default ptBR;

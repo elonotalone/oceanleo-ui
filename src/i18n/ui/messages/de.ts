@@ -1902,7 +1902,8 @@ const de: Record<string, string> = {
   "非财产类": "Nicht vermögensbezogen",
   "预计支付月数": "Voraussichtliche Zahlungsmonate",
   "首套普通住宅": "Erste normale Wohnung",
-  "高": "Hoch",
+  "宽": "Breite",
+  "高": "Höhe",
   "人": "Person(en)",
   "元": "CNY",
   "天": "Tag(e)",
@@ -6456,5 +6457,13 @@ const de: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Gib einen vollständigen absoluten Pfad an, zum Beispiel /Users/you/Documents oder C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Dieser Schritt wurde nicht abgeschlossen. Versuch es später noch einmal.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Hier ist nur ein einzelner Befehl möglich, und er läuft nicht über eine Shell: Pipes |, Umleitungen > <, Verkettungen ; &&, Backticks und $() werden alle nicht unterstützt.",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Knotengraph",
+  "分镜": "Storyboard",
+  "导演台": "Regie",
+  "时间线": "Zeitleiste",
+  "添加媒体": "Medien hinzufügen",
+  "保存快照": "Snapshot speichern",
+  "选中画布节点后在此编辑": "Wähle einen Canvas-Knoten, um ihn hier zu bearbeiten",
 };
 export default de;

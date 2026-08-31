@@ -1902,7 +1902,8 @@ const vi: Record<string, string> = {
   "非财产类": "Phi tài sản",
   "预计支付月数": "Số tháng dự kiến chi trả",
   "首套普通住宅": "Căn nhà phổ thông đầu tiên",
-  "高": "Cao",
+  "宽": "Chiều rộng",
+  "高": "Chiều cao",
   "人": "người",
   "元": "NDT",
   "天": "ngày",
@@ -6456,5 +6457,13 @@ const vi: Record<string, string> = {
   "请填写完整的绝对路径，例如 /Users/你/文档 或 C:\\Users\\你\\Documents。": "Hãy nhập đường dẫn tuyệt đối đầy đủ, ví dụ /Users/you/Documents hoặc C:\\Users\\you\\Documents.",
   "这一步没有完成，请稍后重试。": "Bước này chưa hoàn tất. Hãy thử lại sau.",
   "这里只能写一条命令，不经过 shell：管道 |、重定向 > <、串联 ; &&、反引号和 $() 都不支持。": "Ở đây chỉ viết được một lệnh và lệnh không đi qua shell: đường ống |, chuyển hướng > <, nối lệnh ; &&, dấu backtick và $() đều không được hỗ trợ.",
+  // —— 视频画布并入统一外壳：五个投影 + 顶栏动作 + 面板（2026-08-31）——
+  "节点图": "Sơ đồ nút",
+  "分镜": "Bảng phân cảnh",
+  "导演台": "Đạo diễn",
+  "时间线": "Dòng thời gian",
+  "添加媒体": "Thêm phương tiện",
+  "保存快照": "Lưu ảnh chụp",
+  "选中画布节点后在此编辑": "Chọn một nút trên canvas để chỉnh sửa tại đây",
 };
 export default vi;
