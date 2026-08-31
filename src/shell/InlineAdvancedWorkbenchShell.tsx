@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { ConfirmDialog } from "../ui";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import { AdvancedStageControls } from "./AdvancedStageControls";
@@ -21,26 +22,19 @@ import {
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import { flushAdvancedWorkBeforeLeave } from "./advanced-leave-flush";
-import {
-  resolveActiveMaterialAction,
-  resolveInlineAdvancedDrawers,
-} from "./inline-advanced-shell-helpers";
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
+import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
+import { EditBarHistoryControls } from "./EditBarDockControls";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 import {
   PluginThemePortalContext,
-  PluginThemeScope,
   pluginThemeIdForAdapter,
   pluginWorkbenchStyle,
   usePluginTheme,
 } from "./plugin-theme";
 import type { LibraryItem } from "./library-data";
-import { InlineEditorMaterialPanel } from "./InlineEditorMaterialPanel";
-import {
-  useWorkbenchMaterials,
-  type WorkbenchMaterialAction,
-} from "./workbench-material-provider";
+import { useWorkbenchMaterials } from "./workbench-material-provider";
 import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { editBarOwnershipForItem } from "./workbench-routes";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
@@ -129,7 +123,6 @@ export function InlineAdvancedWorkbenchShell({
       rightPaneSlot,
     ],
   );
-  const liveDetailStoreRef = useRef(createLiveReactNodeStore());
   const liveHeaderStoreRef = useRef(createLiveReactNodeStore());
   const liveHeaderNode = useMemo(
     () => <LiveReactNode store={liveHeaderStoreRef.current} />,
@@ -138,31 +131,29 @@ export function InlineAdvancedWorkbenchShell({
   const closingRef = useRef(false);
   const handledCloseRequestRef = useRef(adapter.closeRequestRevision || 0);
   const dirtyRecordedRef = useRef(false);
-  const [fallbackDetail, setFallbackDetail] = useState<{
-    label: ReactNode; content: ReactNode;
-  } | null>(null);
-  const [activeDrawerId, setActiveDrawerId] = useState("");
-  const [transientPanel, setTransientPanel] = useState<{
-    id: string;
-    label: ReactNode;
-  } | null>(null);
-  const transientPanelRef = useRef(transientPanel);
-  transientPanelRef.current = transientPanel;
-  const [requestedMaterialAction, setRequestedMaterialAction] =
-    useState<WorkbenchMaterialAction>();
+  const {
+    drawers,
+    activeDrawerId,
+    activeMaterialAction,
+    transientPanel,
+    fallbackDetail,
+    openDrawer,
+    openTransientPanel,
+    updateTransientPanel,
+    closeDetail,
+  } = useInlineAdvancedPanels({
+    adapter,
+    item,
+    taskId,
+    siteId,
+    accent: effectiveAccent,
+    ownerId: ownerIdRef.current,
+    pluginThemeId,
+    workbenchMaterials,
+    showWorkspaceDetail,
+    clearWorkspaceDetail,
+  });
 
-  const drawers = useMemo(
-    () => resolveInlineAdvancedDrawers(adapter),
-    [adapter.drawers, adapter.toolbox],
-  );
-  const drawerById = useMemo(
-    () => new Map(drawers.map((drawer) => [drawer.id, drawer])),
-    [drawers],
-  );
-  const activeMaterialAction = resolveActiveMaterialAction(
-    requestedMaterialAction,
-    workbenchMaterials?.actions,
-  );
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
   const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false;
@@ -192,145 +183,23 @@ export function InlineAdvancedWorkbenchShell({
     });
 
   const ownedDetail =
-    workspaceDetail?.ownerId === ownerIdRef.current
-      ? workspaceDetail
-      : null;
+    workspaceDetail?.ownerId === ownerIdRef.current ? workspaceDetail : null;
   const panelVisible = Boolean(ownedDetail || fallbackDetail);
-  const panelFor = useCallback(
-    (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
-      const drawer = drawerById.get(drawerId);
-      if (drawer) {
-        return { label: tt(drawer.label), content: drawer.content };
-      }
-      return {
-        label: tt(drawerId === "materials" ? "素材" : adapter.label),
-        content:
-          drawerId === "materials" ? (
-          <InlineEditorMaterialPanel
-            item={item}
-            taskId={taskId}
-            siteId={siteId}
-            accent={effectiveAccent}
-            materials={workbenchMaterials}
-            primaryMaterialAction={materialAction || activeMaterialAction}
-          />
-          ) : null,
-      };
-    },
-    [
-      effectiveAccent,
-      activeMaterialAction,
-      adapter.label,
-      drawerById,
-      item,
-      siteId,
-      taskId,
-      tt,
-      workbenchMaterials,
-    ],
-  );
-  const liveDrawerDetail = useMemo(
+
+  // 撤销/重做从顶栏搬到编辑栏最左段（见 EditBarHistoryControls 的注释）。
+  const history = adapter.history;
+  const historyControls = useMemo(
     () =>
-      !transientPanel && activeDrawerId
-        ? panelFor(activeDrawerId, requestedMaterialAction)
-        : null,
-    [
-      activeDrawerId,
-      panelFor,
-      requestedMaterialAction,
-      transientPanel,
-    ],
+      history ? (
+        <EditBarHistoryControls
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+          onUndo={history.undo}
+          onRedo={history.redo}
+        />
+      ) : null,
+    [history],
   );
-  useLayoutEffect(() => {
-    if (transientPanel) return;
-    publishLiveReactNode(
-      liveDetailStoreRef.current,
-      liveDrawerDetail?.content || null,
-    );
-  }, [liveDrawerDetail?.content, transientPanel]);
-
-  // 抽屉/工具面板经 showWorkspaceDetail 传送到工作区窗格，DOM 在插件根之外，
-  // 必须重建插件主题作用域，token 才能盖过站点 html.dark 的翻转。
-  const liveDetailNode = useMemo(
-    () =>
-      pluginThemeId ? (
-        <PluginThemeScope pluginId={pluginThemeId}>
-          <LiveReactNode store={liveDetailStoreRef.current} />
-        </PluginThemeScope>
-      ) : (
-        <LiveReactNode store={liveDetailStoreRef.current} />
-      ),
-    [pluginThemeId],
-  );
-
-  const openDrawer = useCallback(
-    (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
-      transientPanelRef.current = null;
-      setTransientPanel(null);
-      setActiveDrawerId(drawerId);
-      setRequestedMaterialAction(
-        drawerId === "materials" ? materialAction : undefined,
-      );
-      const next = panelFor(drawerId, materialAction);
-      publishLiveReactNode(liveDetailStoreRef.current, next.content);
-      if (showWorkspaceDetail) {
-        showWorkspaceDetail({
-          ownerId: ownerIdRef.current,
-          id: drawerId,
-          label: next.label,
-          content: liveDetailNode,
-        });
-      } else {
-        setFallbackDetail({
-          label: next.label,
-          content: liveDetailNode,
-        });
-      }
-    },
-    [liveDetailNode, panelFor, showWorkspaceDetail],
-  );
-
-  const openTransientPanel = useCallback(
-    (panelId: string, label: ReactNode, content: ReactNode) => {
-      const panel = { id: panelId, label };
-      transientPanelRef.current = panel;
-      setTransientPanel(panel);
-      setActiveDrawerId(panelId);
-      setRequestedMaterialAction(undefined);
-      publishLiveReactNode(liveDetailStoreRef.current, content);
-      if (showWorkspaceDetail) {
-        showWorkspaceDetail({
-          ownerId: ownerIdRef.current,
-          id: panelId,
-          label,
-          content: liveDetailNode,
-        });
-      } else {
-        setFallbackDetail({
-          label,
-          content: liveDetailNode,
-        });
-      }
-    },
-    [liveDetailNode, showWorkspaceDetail],
-  );
-  const updateTransientPanel = useCallback(
-    (panelId: string, content: ReactNode) => {
-      if (transientPanelRef.current?.id !== panelId) return;
-      publishLiveReactNode(liveDetailStoreRef.current, content);
-    },
-    [],
-  );
-
-  const closeDetail = useCallback(() => {
-    clearWorkspaceDetail?.(ownerIdRef.current);
-    setFallbackDetail(null);
-    setActiveDrawerId("");
-    transientPanelRef.current = null;
-    setTransientPanel(null);
-    setRequestedMaterialAction(undefined);
-    publishLiveReactNode(liveDetailStoreRef.current, null);
-  }, [clearWorkspaceDetail]);
 
   const layoutState = useMemo(
     () => ({
@@ -348,7 +217,14 @@ export function InlineAdvancedWorkbenchShell({
           : Boolean(fallbackDetail))
           ? transientPanel.id
           : "",
-      contextBarLeading: floatingToolbar.leading,
+      contextBarLeading: historyControls ? (
+        <>
+          {historyControls}
+          {floatingToolbar.leading}
+        </>
+      ) : (
+        floatingToolbar.leading
+      ),
       contextBarTrailing: floatingToolbar.trailing,
       openDrawer,
       openTransientPanel,
@@ -359,6 +235,7 @@ export function InlineAdvancedWorkbenchShell({
       activeDrawerId,
       floatingToolbar.leading,
       floatingToolbar.trailing,
+      historyControls,
       fallbackDetail,
       closeDetail,
       openDrawer,
@@ -373,18 +250,35 @@ export function InlineAdvancedWorkbenchShell({
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
+  // 离开确认。原生 window.confirm 冻住主线程、样式不可控、移动端尤其糟，
+  // 换成 ConfirmDialog 后它是异步的；用一道 promise 门把下面那段命令式流程接回来：
+  // requestClose 里 `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
+  const leaveResolveRef = useRef<((leave: boolean) => void) | null>(null);
+  const [askingLeave, setAskingLeave] = useState(false);
+  const confirmLeave = useCallback(
+    () =>
+      new Promise<boolean>((resolve) => {
+        leaveResolveRef.current = resolve;
+        setAskingLeave(true);
+      }),
+    [],
+  );
+  const answerLeave = useCallback((leave: boolean) => {
+    const resolve = leaveResolveRef.current;
+    leaveResolveRef.current = null;
+    setAskingLeave(false);
+    resolve?.(leave);
+  }, []);
+  // 卸载时把门放掉，否则 requestClose 里那个 await 会永远挂着。
+  useEffect(() => () => answerLeave(false), [answerLeave]);
+
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
     void (async () => {
       if (editorDirty || autoSave.state !== "saved") {
         const flushed = await flushAdvancedWorkBeforeLeave(autoSave);
-        if (
-          !flushed.ok &&
-          !window.confirm(
-            tt("修改仍安全保留在当前编辑器，但尚未同步到云端。仍要离开吗？"),
-          )
-        ) {
+        if (!flushed.ok && !(await confirmLeave())) {
           closingRef.current = false;
           return;
         }
@@ -397,9 +291,9 @@ export function InlineAdvancedWorkbenchShell({
     autoSave.flushLatest,
     autoSave.state,
     closeDetail,
+    confirmLeave,
     editorDirty,
     onClose,
-    tt,
   ]);
 
   useEffect(() => {
@@ -629,6 +523,16 @@ export function InlineAdvancedWorkbenchShell({
           </div>
         </div>
       </div>
+      {askingLeave && (
+        // 文案逐字沿用原生弹窗那一句（已有 16 语覆盖）：它已经说清了后果——
+        // 改动留在编辑器里、只是没同步到云端，所以这一步不是 danger。
+        // 更精确的确认键「离开」眼下没有译文覆盖，记在 W05-request.md 的欠账清单里。
+        <ConfirmDialog
+          title={tt("修改仍安全保留在当前编辑器，但尚未同步到云端。仍要离开吗？")}
+          onConfirm={() => answerLeave(true)}
+          onCancel={() => answerLeave(false)}
+        />
+      )}
     </AdvancedLayoutContext.Provider>
     </PluginThemePortalContext.Provider>
   );

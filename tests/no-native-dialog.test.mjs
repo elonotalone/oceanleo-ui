@@ -35,20 +35,14 @@ const NATIVE_DIALOGS = new Set(["confirm", "alert", "prompt"]);
 /**
  * 还没能迁走的原生弹窗。**每条都要写清为什么，以及解除条件。**
  *
- * `src/shell/InlineAdvancedWorkbenchShell.tsx`
- *   这一处（工作树 260 行附近，离开编辑器时提示「改动尚未同步」）本轮**故意没迁**。
- *   该文件此刻带着另一位 owner 未提交的重构（47 insertions / 171 deletions，抽出
- *   `useInlineAdvancedPanels`），而那次重构 import 的
- *   `src/shell/use-inline-advanced-panels.tsx` **在 git 里仍是未跟踪文件**。
- *   限定路径的提交挡不住这种情况：`git commit -- <该文件>` 提交的是工作树内容，
- *   于是 main 上会出现一条指向不存在模块的 import，31 个站的构建当场坏掉
- *   （与 `_COMMON.md` §7b② 记的 package.json exports 事故同一种）。
- *   ⇒ 解除条件：那次重构连同 `use-inline-advanced-panels.tsx` 一起进 main 之后，
- *     把这一处迁成 `ConfirmDialog` 并**从本清单删掉**（详见 signals/W05-request.md）。
+ * **现在是空的。** 上一棒在这里挂过一条
+ * `src/shell/InlineAdvancedWorkbenchShell.tsx`：当时那个文件带着另一位 owner
+ * 未提交的重构，而重构 import 的 `./use-inline-advanced-panels` 在 git 里仍未跟踪，
+ * 限定路径提交会让 main 出现一条指向不存在模块的 import（`_COMMON.md` §7b② 同型事故）。
+ * 该文件已由 `1586f15` 收进库，挡路的理由随之消失，这一处也就迁成了 `ConfirmDialog`
+ * ——于是按上面第 2 条规则把清单条目一并删掉，而不是留一条永远为真的例外。
  */
-const KNOWN_BLOCKED = Object.freeze({
-  "src/shell/InlineAdvancedWorkbenchShell.tsx": 1,
-});
+const KNOWN_BLOCKED = Object.freeze({});
 
 function scriptKindFor(file) {
   return file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
@@ -214,13 +208,13 @@ test("`src/` 下没有清单外的 window.confirm / alert / prompt", () => {
   }
 });
 
-test("清单只减不增：豁免不许长出第二条", () => {
+test("清单只减不增：豁免一条都不许长出来", () => {
   // 这一条是给未来的人看的：想加一条豁免，先在这里把数字改掉，
   // 于是「为什么又多了一处原生弹窗」必须在 diff 里被解释一次。
   assert.equal(
     Object.keys(KNOWN_BLOCKED).length,
-    1,
-    "原生弹窗的豁免清单变长了。W05 交卷时只剩 1 条（别人未提交重构挡住的那处），" +
+    0,
+    "原生弹窗的豁免清单变长了。W05 交卷时是空的（3 处全部迁成 ConfirmDialog），" +
       "新增任何一条都要在交付说明里定责。",
   );
 });

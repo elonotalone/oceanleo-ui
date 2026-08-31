@@ -21,8 +21,7 @@ import { useUI } from "../i18n/ui/useUI";
  * 露出来，否则消费方只能去引 `src/ui/Button` 这类内部路径，又是一次漂移。
  *
  * 已并入：`W04` 的 `Button` / `IconButton`（`src/ui/Button.tsx` 已落盘）。
- * 待并入：`W05` 的 `Toast`——`src/ui/Toast.tsx` 到本轮为止还没落盘，
- * 提前写这一行会让 `tsc` 解析不到模块而整包判红，所以留到文件在位后再加。
+ * 已并入：`W05` 的 `Toast`（`src/ui/Toast.tsx` 于 `4433e00` 落盘，模块在位才加的这一行）。
  */
 export {
   BUTTON_DEFAULT_SIZE,
@@ -34,6 +33,19 @@ export {
   type ButtonVariant,
   type IconButtonProps,
 } from "./Button";
+
+export {
+  TOAST_DWELL,
+  TOAST_MAX_VISIBLE,
+  ToastProvider,
+  ToastViewport,
+  ensureToastMotionStyles,
+  useToast,
+  type ToastApi,
+  type ToastEntry,
+  type ToastHandle,
+  type ToastInput,
+} from "./Toast";
 
 /* ---------- Modal: scale+fade in, Escape + backdrop close, focus trap ---------- */
 
