@@ -28,6 +28,8 @@ import test from "node:test";
 
 import ts from "typescript";
 
+import { dirtyAmong, measureOnCommittedTree } from "./helpers/clean-tree-baseline.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const SRC = join(REPO, "src");
@@ -204,7 +206,7 @@ function tally(sites) {
 
 const PREFILTER = /\b(?:h|size)-(?:\d|\[)|\bsize\s*=\s*["'{]|\bh-px\b/;
 
-function scanSource(absolutePath) {
+function scanSource(absolutePath, root = REPO) {
   const text = readFileSync(absolutePath, "utf8");
   if (!PREFILTER.test(text)) return [];
 
@@ -212,7 +214,7 @@ function scanSource(absolutePath) {
     absolutePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX,
   );
   const constants = moduleConstants(sourceFile);
-  const file = relative(REPO, absolutePath).split("\\").join("/");
+  const file = relative(root, absolutePath).split("\\").join("/");
   const sites = [];
 
   eachNode(sourceFile, (node) => {
@@ -287,9 +289,9 @@ function typeScriptFilesUnder(dir, out = []) {
   return out;
 }
 
-function scanTree(dir) {
+function scanTree(dir, root = REPO) {
   const sites = [];
-  for (const file of typeScriptFilesUnder(dir).sort()) sites.push(...scanSource(file));
+  for (const file of typeScriptFilesUnder(dir).sort()) sites.push(...scanSource(file, root));
   return sites;
 }
 
@@ -327,6 +329,18 @@ const SM_ALLOWED_FILES = [];
  *   · `sm`/`md` 只许出现在 `SM_ALLOWED_FILES` 里。
  */
 const PENDING_HIT_TARGET = 93;
+
+/**
+ * `_COMMON.md §7b⑪` / `W33 R5`：上面那个 93 是在**哪一棵树**上量的。
+ *
+ * `2227287`「W04 P4: 命中区预算锁（实测欠账 93 处 / 49 文件）」就是取值那一刻。
+ * 共享工作树上随时挂着别人未提交的改动，在那儿量出来的棘轮标定的是一棵 git 里
+ * 并不存在的树（`W30` / `W31` 都栽在这儿）。下面「基线自检」那条用例会把这个 commit
+ * 的 `src/` 解出来**用同一套扫描器**重量一遍，对不上就红。
+ *
+ * ⚠️ 拧这个棘轮的时候，**两个一起改**：数字和这个 commit。
+ */
+const BASELINE_COMMIT = "2227287";
 
 /**
  * W04 本轮负责的五个文件：**必须保持零**。
@@ -453,6 +467,35 @@ test("W04 迁过的四件 chrome 与原语必须从名单里消失（任务书 P
     regressed, [],
     "W04 迁过的工作台 chrome 里又出现了小于 44px 的命中区。"
       + "命中区变大导致条变宽变高是**预期的**（操作员要的就是不再挤），不要调回去。",
+  );
+});
+
+test("基线自检：PENDING_HIT_TARGET 的 93 是在 BASELINE_COMMIT 那棵干净树上量出来的", () => {
+  const measured = measureOnCommittedTree({
+    repo: REPO,
+    commit: BASELINE_COMMIT,
+    pathspecs: ["src"],
+    measure: (root) => {
+      const sites = scanTree(join(root, "src"), root);
+      return { total: sites.length, files: typeScriptFilesUnder(join(root, "src")).length };
+    },
+  });
+  assert.ok(measured.ok, `拿不到干净树读数就判红，不许跳过（§7b⑩）：${measured.reason}`);
+  // 正对照：解出来的得是一棵像样的树，别拿一棵空树凑过这一关。
+  assert.ok(
+    measured.value.files > 400,
+    `${BASELINE_COMMIT} 的 src/ 只解出 ${measured.value.files} 份源码，这棵树不对`,
+  );
+  assert.equal(
+    measured.value.total,
+    PENDING_HIT_TARGET,
+    `PENDING_HIT_TARGET 写的是 ${PENDING_HIT_TARGET}，但 ${BASELINE_COMMIT} 的`
+      + `**干净检出**上用同一套扫描器实测 ${measured.value.total} 处。\n`
+      + "两种可能：(a) 这个数是在脏工作树上量的——那就换一棵干净树重量；\n"
+      + "(b) 棘轮已经拧过了但 BASELINE_COMMIT 没跟着换——两个要一起改。"
+      + (dirtyAmong(REPO, ["src"]).length
+        ? "\n（另：你这棵工作树的 src/ 是脏的，但这条自检读的是 commit，不受它影响）"
+        : ""),
   );
 });
 
