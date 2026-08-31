@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -22,15 +22,22 @@ import {
   DeckUploadPanel,
 } from "../doc-editors/DeckControls";
 import { DeckFontPanel } from "../doc-editors/DeckFontPanel";
+import {
+  DeckPresenterView,
+  openDeckPresenterWindow,
+} from "../doc-editors/DeckPresenterView";
+import type { PresenterFallbackReason } from "../doc-editors/use-deck-presenter";
 import { DECK_PREVIEW_FIT_ZOOM_PERCENT } from "../doc-editors/deck-preview-geometry";
 import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
 import {
   buildDeckPptxBlob,
+  deckPresentationSource,
   deckSavedItemForHandoff,
   useDeckEditor,
 } from "../doc-editors/use-deck-editor";
+import { useUI } from "../../i18n/ui/useUI";
 import { useOfficeArtifactSource } from "../office-editor";
 import { editorToolLabel } from "../workbench-routes";
 import { buildDeckCommandSurface } from "../doc-editors/doc-family-commands";
@@ -70,6 +77,40 @@ export function DeckRoute({
     width: 2.5,
     opacity: 1,
   });
+  const tt = useUI();
+  const [presentation, setPresentation] = useState<{
+    surface: "stage-only" | "split-fallback";
+    reason: PresenterFallbackReason;
+  } | null>(null);
+  // 子窗的 dispose（先卸 root 再关窗）。退出放映时必须调，否则窗留在屏幕上。
+  const presenterDisposeRef = useRef<(() => void) | null>(null);
+  // 两个窗口必须同名才通道得上（W16-request §2）。
+  const presenterChannelName = `deck-${item.id}`;
+
+  const exitPresentation = useCallback(() => {
+    presenterDisposeRef.current?.();
+    presenterDisposeRef.current = null;
+    setPresentation(null);
+  }, []);
+
+  const startPresentation = useCallback(async () => {
+    // 🛑 这一句必须是本函数的第一个 await，前面不许再 await 别的（存盘、取数都不行）。
+    // openDeckPresenterWindow 在它自己的第一个 await 之前同步 window.open，
+    // 靠的就是还留在用户手势的调用栈里；一旦出栈，浏览器一律按程序自发弹窗拦掉——
+    // 不抛错、不提示，用户看到的就是点了没反应。
+    const outcome = await openDeckPresenterWindow({
+      source: deckPresentationSource(editor),
+      channelName: presenterChannelName,
+      translate: tt,
+    });
+    if (!outcome.ok) {
+      // 降级也要说清为什么，reason 不透进去界面只有一句通用话。
+      setPresentation({ surface: "split-fallback", reason: outcome.reason });
+      return;
+    }
+    presenterDisposeRef.current = outcome.dispose;
+    setPresentation({ surface: "stage-only", reason: "none" });
+  }, [editor, presenterChannelName, tt]);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "deck-elements@2",
@@ -336,6 +377,18 @@ export function DeckRoute({
           onTrigger: editor.exportPptx,
         },
         actions: [
+          {
+            id: "deck-present",
+            label: presentation ? "退出放映" : "放映",
+            icon: "pages" as const,
+            variant: presentation ? ("primary" as const) : undefined,
+            disabled: editor.loading || !editor.deck.slides.length,
+            // 直接把 async 函数交给 onTrigger：从 onClick 到这里全程同步
+            // （ActionBar:132 `void triggerAction(action)` → :67 `await onTriggerAction(...)`
+            // 的实参在挂起前同步求值 → InlineHeader:139 同步 `action.onTrigger?.()`），
+            // 手势栈没断，开窗才不会被拦。别在这里包一层先 await 的壳。
+            onTrigger: presentation ? exitPresentation : startPresentation,
+          },
           ...(editor.error || officeSource.error
             ? [
                 {
@@ -360,7 +413,16 @@ export function DeckRoute({
           multiple: true,
           onFiles: addLocalFiles,
         },
-        stage: (
+        stage: presentation ? (
+          <DeckPresenterView
+            source={deckPresentationSource(editor)}
+            surface={presentation.surface}
+            fallbackReason={presentation.reason}
+            channelName={presenterChannelName}
+            translate={tt}
+            onExit={exitPresentation}
+          />
+        ) : (
           <DeckStage
             editor={editor}
             accent={accent}
