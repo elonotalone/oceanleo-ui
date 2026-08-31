@@ -11,7 +11,6 @@ import {
 import {
   pdfPageGeometry,
   pdfRectToVisual,
-  visualRectToPdf,
   type PdfVisualRect,
 } from "../pdf-annotation-operations";
 import { loadPdfDocument, savePdfDocument } from "./pdf-document-io";
@@ -88,6 +87,13 @@ function widgetVisualRect(
 
 export const PDF_FORM_NO_FIELDS = "此 PDF 无表单域";
 
+/**
+ * Shown when a document carries no AcroForm. Saying so plainly beats drawing
+ * fake input boxes over a flat page.
+ */
+export const PDF_FORM_NO_FIELDS_HINT =
+  "此 PDF 无表单域。如需在页面上写字，请使用文字批注。";
+
 export async function listPdfFormFields(bytes: Uint8Array): Promise<PdfFormFieldView[]> {
   const document = await loadPdfDocument(bytes);
   const form = document.getForm();
@@ -102,9 +108,16 @@ export async function listPdfFormFields(bytes: Uint8Array): Promise<PdfFormField
       readOnly: field.isReadOnly(),
       value: readFieldValue(field),
       options: readOptions(field),
+      maxLength:
+        field instanceof PDFTextField ? (field.getMaxLength() ?? null) : null,
+      multiline: field instanceof PDFTextField ? field.isMultiline() : false,
     };
   });
 }
+
+export const PDF_FORM_REQUIRED = "此字段为必填项";
+export const PDF_FORM_BAD_EMAIL = "请输入有效的电子邮件地址";
+export const PDF_FORM_NOT_AN_OPTION = "请从该字段允许的选项中选择";
 
 export function validatePdfFormValues(
   fields: readonly PdfFormFieldView[],
@@ -114,21 +127,46 @@ export function validatePdfFormValues(
   for (const field of fields) {
     if (field.readOnly || field.kind === "signature") continue;
     const raw = values[field.name] ?? field.value;
-    if (!field.required) continue;
+
     if (field.kind === "checkbox") {
-      if (raw !== true) errors[field.name] = "此字段为必填项";
+      if (field.required && raw !== true) errors[field.name] = PDF_FORM_REQUIRED;
       continue;
     }
+
     if (field.kind === "option-list") {
       const selected = Array.isArray(raw) ? raw : [];
-      if (!selected.length) errors[field.name] = "此字段为必填项";
+      if (field.required && !selected.length) {
+        errors[field.name] = PDF_FORM_REQUIRED;
+      } else if (selected.some((entry) => !field.options.includes(entry))) {
+        errors[field.name] = PDF_FORM_NOT_AN_OPTION;
+      }
       continue;
     }
+
     const text = String(raw ?? "").trim();
-    if (!text) errors[field.name] = "此字段为必填项";
-    if (field.kind === "text" && field.name.toLowerCase().includes("email")) {
-      if (text && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
-        errors[field.name] = "请输入有效的电子邮件地址";
+
+    if (field.required && !text) {
+      errors[field.name] = PDF_FORM_REQUIRED;
+      continue;
+    }
+    if (!text) continue;
+
+    if (field.kind === "radio" || field.kind === "dropdown") {
+      // pdf-lib throws when selecting a value the field does not offer, so an
+      // unknown option has to be caught before the write, not after.
+      if (!field.options.includes(text)) {
+        errors[field.name] = PDF_FORM_NOT_AN_OPTION;
+      }
+      continue;
+    }
+
+    if (field.maxLength !== null && text.length > field.maxLength) {
+      errors[field.name] = `最多 ${field.maxLength} 个字符`;
+      continue;
+    }
+    if (field.name.toLowerCase().includes("email")) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+        errors[field.name] = PDF_FORM_BAD_EMAIL;
       }
     }
   }
@@ -188,10 +226,6 @@ export async function fillPdfForm(
   return savePdfDocument(document);
 }
 
-export function formFieldCount(bytes: Uint8Array): Promise<number> {
-  return listPdfFormFields(bytes).then((fields) => fields.length);
-}
-
 /** Whether the saved bytes still carry an interactive AcroForm dictionary. */
 export async function pdfHasInteractiveForm(bytes: Uint8Array): Promise<boolean> {
   const document = await loadPdfDocument(bytes);
@@ -200,16 +234,4 @@ export async function pdfHasInteractiveForm(bytes: Uint8Array): Promise<boolean>
   } catch {
     return false;
   }
-}
-
-export function visualRectForFormWidget(
-  bytes: Uint8Array,
-  pageIndex: number,
-  rect: PdfVisualRect,
-): Promise<PdfVisualRect> {
-  return loadPdfDocument(bytes).then((document) => {
-    pdfPageGeometry(document, pageIndex);
-    visualRectToPdf(rect, pdfPageGeometry(document, pageIndex));
-    return rect;
-  });
 }

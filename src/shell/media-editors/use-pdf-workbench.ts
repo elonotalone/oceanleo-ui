@@ -28,6 +28,9 @@ import {
 import { PDF_FAILURE_CODES } from "./pdf-manifest";
 import type { PdfWorkbenchState } from "./pdf-workbench-state";
 export type { PdfWorkbenchState } from "./pdf-workbench-state";
+import { usePdfOffice } from "./pdf-form/use-pdf-office";
+import type { PdfOfficeWorkbenchState } from "./pdf-form/types";
+export type { PdfOfficeWorkbenchState } from "./pdf-form/types";
 import { usePdfDocument } from "./use-pdf-document";
 import { usePdfPageActions } from "./use-pdf-page-actions";
 import { usePdfPreviewRender } from "./use-pdf-preview-render";
@@ -39,7 +42,7 @@ export function usePdfWorkbench(
   item: LibraryItem,
   siteId = "",
   onSaved?: (url: string) => void,
-): PdfWorkbenchState {
+): PdfOfficeWorkbenchState {
   const tt = useUI();
   // `tt` 是 i18n provider 所有的函数，进 effect 依赖就是 W13 在 `dcc0a7d` 里治掉的
   // 自锁引信。本文件有两笔账要一起还：
@@ -323,6 +326,19 @@ export function usePdfWorkbench(
     tt,
   });
 
+  // AcroForm filling, image signatures and redaction. Kept in its own hook so
+  // the office surface can grow without widening this file's state machine.
+  const office = usePdfOffice({
+    bytesRef,
+    pageNumber,
+    pageCount,
+    documentRevision,
+    runMutation,
+    setError,
+    setNotice,
+    tt,
+  });
+
   const restoreSnapshot = useCallback((snapshot: PdfSnapshot, noticeText: string) => {
     bytesRef.current = snapshot.bytes;
     revisionRef.current += 1;
@@ -593,5 +609,6 @@ export function usePdfWorkbench(
     saveCopy,
     captureRecovery,
     restoreRecovery,
+    ...office,
   };
 }

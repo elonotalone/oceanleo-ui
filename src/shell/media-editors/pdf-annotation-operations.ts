@@ -7,10 +7,30 @@ import {
   PDFHexString,
   PDFName,
   PDFNumber,
+  PDFObject,
   PDFRef,
   PDFString,
 } from "pdf-lib";
 import { PDF_READER_PALETTE } from "./pdf-workbench-utils";
+
+/**
+ * What `PDFContext.obj()` accepts. pdf-lib declares the equivalent `Literal`
+ * union internally but does not export it, and `unknown` will not do: nested
+ * dictionaries are the whole point of an annotation entry map.
+ */
+type PdfLiteral =
+  | PDFObject
+  | PdfLiteralObject
+  | PdfLiteral[]
+  | string
+  | number
+  | boolean
+  | null
+  | undefined;
+
+interface PdfLiteralObject {
+  [key: string]: PdfLiteral;
+}
 
 /**
  * Every kind below is written as a standard PDF annotation dictionary (PDF
@@ -623,6 +643,12 @@ export interface PdfAnnotationDraft {
   endpoints?: [PdfVisualPoint, PdfVisualPoint];
   stampName?: PdfStampName;
   stampImage?: PdfStampImage;
+  /**
+   * Sub-rectangle of the stamp image to show, in 0..1 image coordinates with
+   * the origin at the bottom left. Used by cross-page seals, where each page
+   * carries one vertical slice of a single seal.
+   */
+  stampImageCrop?: PdfVisualRect;
   author?: string;
 }
 
@@ -655,7 +681,7 @@ function appearanceRef(
   document: PDFDocument,
   box: PdfRect,
   operators: string,
-  resources: Record<string, unknown> = {},
+  resources: PdfLiteralObject = {},
 ): PDFRef {
   const stream = document.context.flateStream(operators, {
     Type: "XObject",
@@ -755,8 +781,8 @@ function arrowHeadPath(
 
 interface AnnotationShape {
   rect: PdfRect;
-  entries: Record<string, unknown>;
-  appearance?: { operators: string; resources?: Record<string, unknown> };
+  entries: PdfLiteralObject;
+  appearance?: { operators: string; resources?: PdfLiteralObject };
 }
 
 function buildQuadShape(
@@ -770,7 +796,7 @@ function buildQuadShape(
   const boxes = quadsToPdf(source, geometry);
   if (!boxes.length) throw new Error("批注区域无效");
   const rect = unionRect(boxes);
-  const entries: Record<string, unknown> = {
+  const entries: PdfLiteralObject = {
     QuadPoints: quadPointsArray(boxes),
   };
   let operators = "";
@@ -822,7 +848,7 @@ function buildShapeAnnotation(
     width: Math.max(0, box.width - width),
     height: Math.max(0, box.height - width),
   };
-  const entries: Record<string, unknown> = {
+  const entries: PdfLiteralObject = {
     BS: { W: width, S: PDFName.of("S") },
     RD: [width / 2, width / 2, width / 2, width / 2],
   };
@@ -869,7 +895,7 @@ function buildLineAnnotation(
     },
     width,
   );
-  const entries: Record<string, unknown> = {
+  const entries: PdfLiteralObject = {
     L: [from.x, from.y, to.x, to.y],
     LE: [
       PDFName.of("None"),
@@ -953,16 +979,28 @@ async function buildStampAnnotation(
       ? await document.embedJpg(draft.stampImage.bytes)
       : await document.embedPng(draft.stampImage.bytes);
   const n = formatNumber;
+  const crop = draft.stampImageCrop;
+  const placement =
+    crop && crop.width > 0 && crop.height > 0
+      ? (() => {
+          // Scale the whole image up so the crop window alone fills the box,
+          // then shift the window into place. The appearance BBox clips the
+          // rest away (PDF 32000-1 §12.5.5).
+          const scaleX = box.width / crop.width;
+          const scaleY = box.height / crop.height;
+          return [
+            `${n(box.x)} ${n(box.y)} ${n(box.width)} ${n(box.height)} re W n`,
+            `${n(scaleX)} 0 0 ${n(scaleY)} ${n(box.x - scaleX * crop.x)} ${n(
+              box.y - scaleY * crop.y,
+            )} cm`,
+          ];
+        })()
+      : [`${n(box.width)} 0 0 ${n(box.height)} ${n(box.x)} ${n(box.y)} cm`];
   return {
     rect: box,
     entries: draft.stampName ? { Name: PDFName.of(draft.stampName) } : {},
     appearance: {
-      operators: [
-        "q",
-        `${n(box.width)} 0 0 ${n(box.height)} ${n(box.x)} ${n(box.y)} cm`,
-        "/OceanLeoStamp Do",
-        "Q",
-      ].join("\n"),
+      operators: ["q", ...placement, "/OceanLeoStamp Do", "Q"].join("\n"),
       resources: { XObject: { OceanLeoStamp: image.ref } },
     },
   };
@@ -1053,7 +1091,7 @@ export async function appendPdfAnnotation(
     0,
     Math.min(1, draft.opacity ?? DEFAULT_OPACITY[draft.kind]),
   );
-  const entries: Record<string, unknown> = {
+  const entries: PdfLiteralObject = {
     Type: PDFName.of("Annot"),
     Subtype: PDFName.of(PDF_ANNOTATION_SUBTYPES[draft.kind]),
     Rect: [

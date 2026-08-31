@@ -73,7 +73,15 @@ export async function placeImageSignature(
   return savePdfDocument(document);
 }
 
-/** 骑缝章：跨页边缘各贴一条窄条图像签章。 */
+export const CROSS_PAGE_SEAL_LABEL = "骑缝图像签章";
+export const CROSS_PAGE_SEAL_NEEDS_PAGES = "骑缝章至少需要两页";
+
+/**
+ * 骑缝章：把一枚印章切成 N 条竖片，每页边缘贴一条。
+ *
+ * 每页拿到的是**不同的**一条（第 i 页得第 i 片），所以把纸摞齐时印章才能拼回
+ * 完整的一枚——这正是骑缝章防抽页的原理。每页盖同一枚完整印章不是骑缝章。
+ */
 export async function placeCrossPageSeal(
   bytes: Uint8Array,
   pngBytes: Uint8Array,
@@ -82,16 +90,23 @@ export async function placeCrossPageSeal(
   const document = await loadPdfDocument(bytes);
   const pageCount = document.getPageCount();
   if (pageCount < 2) {
-    throw new Error("骑缝章至少需要两页");
+    throw new Error(CROSS_PAGE_SEAL_NEEDS_PAGES);
   }
   const stripWidth = 0.04;
+  const sliceWidth = 1 / pageCount;
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
     const x = edge === "right" ? 1 - stripWidth : 0;
     await appendPdfAnnotation(document, pageIndex, {
       kind: "stamp",
       rect: { x, y: 0.35, width: stripWidth, height: 0.3 },
-      contents: SIGNATURE_IMAGE_LABEL,
+      contents: `${CROSS_PAGE_SEAL_LABEL} ${pageIndex + 1}/${pageCount}`,
       stampImage: { bytes: pngBytes, mediaType: "image/png" },
+      stampImageCrop: {
+        x: pageIndex * sliceWidth,
+        y: 0,
+        width: sliceWidth,
+        height: 1,
+      },
     });
   }
   return savePdfDocument(document);

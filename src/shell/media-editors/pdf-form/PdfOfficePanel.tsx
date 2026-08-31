@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { PDF_READER_LAYOUT } from "../pdf-workbench-utils";
+import { PDF_FORM_NO_FIELDS_HINT } from "./acroform";
 import type { PdfOfficeWorkbenchState } from "./types";
 import { SIGNATURE_IMAGE_LABEL } from "./signature";
 
@@ -127,7 +128,7 @@ export function PdfOfficePanel({
         </p>
         {!editor.formHasFields ? (
           <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
-            {tt("此 PDF 无表单域。如需在页面上写字，请使用文字批注。")}
+            {tt(PDF_FORM_NO_FIELDS_HINT)}
           </p>
         ) : (
           <>
@@ -166,15 +167,52 @@ export function PdfOfficePanel({
                         </option>
                       ))}
                     </select>
+                  ) : field.kind === "option-list" ? (
+                    <select
+                      multiple
+                      value={
+                        Array.isArray(editor.formValues[field.name])
+                          ? (editor.formValues[field.name] as string[])
+                          : []
+                      }
+                      disabled={busy || field.readOnly}
+                      onChange={(event) =>
+                        editor.setFormValue(
+                          field.name,
+                          Array.from(event.target.selectedOptions).map(
+                            (option) => option.value,
+                          ),
+                        )
+                      }
+                      className="w-full rounded-lg border px-2 py-1 text-[10px]"
+                    >
+                      {field.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   ) : field.kind === "signature" ? (
                     <p className="text-[10px] text-[var(--muted,#78716c)]">
                       {tt("PDF 签名字段（只读，本编辑器不做 PKI 签名）")}
                     </p>
+                  ) : field.multiline ? (
+                    <textarea
+                      rows={2}
+                      value={String(editor.formValues[field.name] ?? "")}
+                      disabled={busy || field.readOnly}
+                      maxLength={field.maxLength ?? undefined}
+                      onChange={(event) =>
+                        editor.setFormValue(field.name, event.target.value)
+                      }
+                      className="w-full rounded-lg border px-2 py-1 text-[10px]"
+                    />
                   ) : (
                     <input
                       type="text"
                       value={String(editor.formValues[field.name] ?? "")}
                       disabled={busy || field.readOnly}
+                      maxLength={field.maxLength ?? undefined}
                       onChange={(event) =>
                         editor.setFormValue(field.name, event.target.value)
                       }

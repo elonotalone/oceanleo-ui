@@ -12,14 +12,17 @@ import {
 } from "react";
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { PdfVisualRect } from "../pdf-annotation-operations";
-import { pdfErrorMessage } from "../pdf-workbench-utils";
 import type { PdfMutationRunner } from "../use-pdf-annotations";
 import {
   fillPdfForm,
   listPdfFormFields,
   validatePdfFormValues,
 } from "./acroform";
-import { applyPdfRedactions, REDACTION_IRREVERSIBLE } from "./redaction";
+import {
+  applyPdfRedactions,
+  REDACTION_BROADENED,
+  REDACTION_IRREVERSIBLE,
+} from "./redaction";
 import {
   createSavedSignature,
   loadSavedSignatures,
@@ -224,8 +227,17 @@ export function usePdfOffice({
       if (!ok) return;
     }
     await runMutation(async (bytes) => {
-      const next = await applyPdfRedactions(bytes, redactionMarks);
-      return { bytes: next, notice: tt("涂黑已应用，底层文字已移除") };
+      const outcome = await applyPdfRedactions(bytes, redactionMarks);
+      const summary = tt("涂黑已应用：移除 {text} 处文字、{image} 处图像", {
+        text: outcome.removedTextCount,
+        image: outcome.removedImageCount,
+      });
+      return {
+        bytes: outcome.bytes,
+        notice: outcome.broadenedPages.length
+          ? `${summary}。${tt(REDACTION_BROADENED)}`
+          : summary,
+      };
     });
     setRedactionMarks([]);
     setOfficeTool("none");
@@ -243,7 +255,12 @@ export function usePdfOffice({
     }
     await runMutation(async (bytes) => {
       const next = await placeCrossPageSeal(bytes, signaturePngBytes(entry));
-      return { bytes: next, notice: tt("已添加骑缝图像签章") };
+      return {
+        bytes: next,
+        notice: tt("已添加骑缝图像签章：印章已切成 {count} 片，每页一片", {
+          count: pageCount,
+        }),
+      };
     });
   }, [pageCount, pendingSignatureId, runMutation, savedSignatures, setError, tt]);
 

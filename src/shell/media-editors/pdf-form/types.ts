@@ -20,6 +20,9 @@ export interface PdfFormFieldView {
   readOnly: boolean;
   value: string | boolean | string[];
   options: string[];
+  /** `MaxLen` declared by the PDF itself, not a guess. Text fields only. */
+  maxLength: number | null;
+  multiline: boolean;
 }
 
 export type PdfOfficeTool = "none" | "signature" | "redaction";

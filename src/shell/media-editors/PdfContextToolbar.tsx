@@ -1,23 +1,29 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AnchoredPopover } from "../anchored-popover";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type {
   SelectionCommand,
   SelectionContext,
   SelectionControl,
 } from "../selection-context";
-import type { PdfWorkbenchState } from "./use-pdf-workbench";
+import { PdfOfficeOverlay, PdfOfficePanel } from "./pdf-form";
+import type { PdfOfficeWorkbenchState } from "./use-pdf-workbench";
+
+const PDF_OFFICE_PANEL_ID = "pdf-office-panel";
 
 export function PdfContextToolbar({
   editor,
   accent = "#4f46e5",
 }: {
-  editor: PdfWorkbenchState;
+  editor: PdfOfficeWorkbenchState;
   accent?: string;
 }) {
   const tt = useUI();
+  const [officeOpen, setOfficeOpen] = useState(false);
+  const officeAnchorRef = useRef<HTMLButtonElement | null>(null);
   const busy = editor.loading || editor.processing || editor.saving;
   const context = useMemo<SelectionContext>(() => {
     const selected = editor.selectedAnnotation;
@@ -211,10 +217,47 @@ export function PdfContextToolbar({
     }
   };
   return (
-    <SelectionToolbar
-      context={context}
-      onCommand={command}
-      accent={accent}
-    />
+    <>
+      <SelectionToolbar
+        context={context}
+        onCommand={command}
+        accent={accent}
+        trailing={
+          <>
+            <button
+              ref={officeAnchorRef}
+              type="button"
+              disabled={busy}
+              aria-expanded={officeOpen}
+              aria-haspopup="dialog"
+              aria-controls={PDF_OFFICE_PANEL_ID}
+              data-pdf-office-toggle
+              onClick={() => setOfficeOpen((open) => !open)}
+              className="rounded-lg border border-[var(--border,#e7e5e4)] px-2 py-1 text-[10px] font-medium disabled:opacity-40"
+              style={{
+                transitionProperty: "background-color, border-color",
+                transitionDuration: "var(--leo-dur-2)",
+                transitionTimingFunction: "var(--leo-ease-standard)",
+              }}
+            >
+              {tt("办公工具")}
+            </button>
+            <AnchoredPopover
+              open={officeOpen}
+              anchorRef={officeAnchorRef}
+              onClose={() => setOfficeOpen(false)}
+              id={PDF_OFFICE_PANEL_ID}
+              role="dialog"
+              ariaLabel={tt("PDF 办公工具")}
+              align="end"
+              className="w-72 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--bg,#fff)] p-3 shadow-xl"
+            >
+              <PdfOfficePanel editor={editor} />
+            </AnchoredPopover>
+          </>
+        }
+      />
+      <PdfOfficeOverlay editor={editor} />
+    </>
   );
 }
