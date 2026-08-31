@@ -323,11 +323,21 @@ export function springLinearStops(src: SpringSource = SPRING_SOURCE): string {
 // ===========================================================================
 // 存量裸时长预算锁（motion-system.md §Proof and acceptance / W01 P5）
 // ---------------------------------------------------------------------------
-// 01-verified-facts.md §2.3 实测：`src/` 下显式 `duration-*` 62 处。它们分散在别人
-// 的独占面上，W01 不改它们，只建这道闸：**只减不增**。
-// 数字由 tests/motion-no-raw-duration.test.mjs 用同一套正则实测校准，改动它要连同
-// 那份测试一起看——调大一位就等于把闸门拆了。
+// 存量裸时长分散在别人的独占面上，W01 不改它们，只建这道闸：**只减不增**。
+//
+// 口径（tests/motion-no-raw-duration.test.mjs 用的是同一套，改一边必须改另一边）：
+//   正则：\bduration-\[?[0-9]      —— 覆盖 `duration-150` 与任意值 `duration-[240ms]`
+//   范围：src/ 全部，排除三个非调用点的文件：ui.css（tailwind --minify 的编译产物）、
+//         globals.css（token 落地处）、以及本文件（token 数据源）
+//   下过正对照：rg -c "duration-200" src/shell/AppShell.tsx → 3，正则本身可用
+//               （_COMMON.md §7b③：零命中/计数类断言先验正则）
+//
+// 62 是 01-verified-facts.md §2.3 的数字，**未经本闸口径校准，实测不成立**：
+// 台账表内 duration-* 分档相加也只有 53，且它没排除编译产物、口径未写明。
+// 本闸口径实测 46 处（20 个文件）。
+// 另：src/ 内联 `transition: …ms`（非 CSS 文件）实测 0 处，不构成第二个计数源。
+// 2026-08-31 实测。
 // ===========================================================================
 
 /** 允许存在的裸 Tailwind 时长工具类（`duration-150` 之类）总数上限。 */
-export const PENDING_RAW_DURATION = 62;
+export const PENDING_RAW_DURATION = 46;
