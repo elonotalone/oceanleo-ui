@@ -88,8 +88,11 @@ test("all route components use the single typed adapter prop", () => {
 });
 
 test("shell geometry never scales editor chrome and every legacy toolbox gets a launcher", () => {
+  // 抽屉查表（drawerById）已随左侧面板拆进 use-inline-advanced-panels，
+  // 这三份合起来才是共享外壳。
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/use-inline-advanced-panels.tsx") +
     source("../src/shell/FloatingContextToolbar.tsx");
   const stage = source("../src/shell/AdvancedWorkbenchStage.tsx");
   assert.match(shell, /data-advanced-context-row/);

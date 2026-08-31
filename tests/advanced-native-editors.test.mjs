@@ -131,7 +131,11 @@ test("structured document editors cover rich text, workbooks and editable decks"
 });
 
 test("native editors preserve history and never clear newer unsaved revisions", () => {
-  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  // 抽屉状态（activeDrawerId 及其初值）已随左侧面板拆进
+  // use-inline-advanced-panels；保存与恢复仍在壳里。
+  const shell =
+    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/use-inline-advanced-panels.tsx");
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
   const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");

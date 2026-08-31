@@ -55,8 +55,11 @@ test("large Canva workbench components stay split below the frontend limit", () 
 test("creation drawers stay in fixed tools while object bars stay contextual", () => {
   const deck = source("../src/shell/advanced-routes/DeckRoute.tsx");
   const image = source("../src/shell/advanced-routes/ImageRoute.tsx");
+  // 抽屉的开合与投递已拆进 use-inline-advanced-panels：壳里剩生命周期与保存。
+  // 这三份合起来才是「共享外壳」，缺一份就会让下面的断言无从落脚。
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/use-inline-advanced-panels.tsx") +
     source("../src/shell/InlineAdvancedWorkbenchHeader.tsx");
   const deckToolbar = source(
     "../src/shell/doc-editors/DeckContextToolbar.tsx",

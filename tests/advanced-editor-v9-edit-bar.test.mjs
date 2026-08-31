@@ -353,7 +353,19 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     assert.match(source(path), /SelectionToolbar/, path);
   }
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
-  assert.match(shell, /contextBarLeading:\s*floatingToolbar\.leading/);
+  // 最左段现在是「撤销重做 + dock 控件」：撤销重做从顶栏搬进了编辑栏
+  // （见 EditBarHistoryControls 的注释）。dock 控件仍必须从同一处进来——
+  // 允许在它前面拼东西，但不允许另起一条来源。
+  assert.match(
+    shell,
+    /contextBarLeading:[\s\S]{0,240}floatingToolbar\.leading/,
+    "编辑栏最左段丢了 dock 控件来源",
+  );
+  assert.match(
+    shell,
+    /historyControls/,
+    "撤销重做要由壳统一注入编辑栏，不许各插件自己画",
+  );
   assert.match(shell, /contextBarTrailing:\s*floatingToolbar\.trailing/);
   assert.equal((shell.match(/<FloatingContextToolbar/g) || []).length, 1);
 });

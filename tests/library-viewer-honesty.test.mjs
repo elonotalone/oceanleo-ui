@@ -25,6 +25,7 @@ import test from "node:test";
 import React, { act } from "react";
 
 import {
+  WEBSITE_VIEWER_COPY,
   isDisplayableText,
   looksLikeHtmlDocument,
   websiteFrameAdmission,
@@ -135,6 +136,17 @@ function websiteItem() {
 
 // ── 判读层：纯函数，三档 + 那一屏乱码 ───────────────────────────────────────
 
+/**
+ * 判读结果自 `b1b6743` 起连「这一档要对用户说的那句话」一起给（`WEBSITE_VIEWER_COPY`
+ * 是那句话的唯一产地），所以对的是三元组而不是两元组。连话一起对，新分出一档却
+ * 忘了配文案时当场红 —— 那正是判读器与查看器各写一套文案时漏掉的那一步。
+ */
+const planOf = (surface, reason) => ({
+  surface,
+  reason,
+  notice: WEBSITE_VIEWER_COPY[reason],
+});
+
 test("W3/1 判读三档：自绘型进 frame、脚本引导型走说明、拿不到本体走空状态", () => {
   const shapeOf = (elementCount, textLength, scriptCount) => ({
     elementCount,
@@ -152,7 +164,7 @@ test("W3/1 判读三档：自绘型进 frame、脚本引导型走说明、拿不
         shape: shapeOf(240, 3800, 0),
       },
     }),
-    { surface: "page", reason: "self-painting" },
+    planOf("page", "self-painting"),
   );
 
   assert.deepEqual(
@@ -165,12 +177,12 @@ test("W3/1 判读三档：自绘型进 frame、脚本引导型走说明、拿不
         shape: shapeOf(1, 0, 1),
       },
     }),
-    { surface: "script-explainer", reason: "script-bootstrapped" },
+    planOf("script-explainer", "script-bootstrapped"),
   );
 
   assert.deepEqual(
     websiteViewerPlan({ hasUrl: false, body: { status: "unread" } }),
-    { surface: "unavailable", reason: "no-body" },
+    planOf("unavailable", "no-body"),
   );
   assert.deepEqual(
     websiteViewerPlan({
@@ -178,7 +190,7 @@ test("W3/1 判读三档：自绘型进 frame、脚本引导型走说明、拿不
       mediaType: "image/webp",
       body: { status: "unread" },
     }),
-    { surface: "unavailable", reason: "cover-image-only" },
+    planOf("unavailable", "cover-image-only"),
   );
 });
 
@@ -196,13 +208,19 @@ test("W3/2 打包字节永远进不了 frame —— 操作员截图那一屏的�
         mediaType,
         body: { status: "unread" },
       }),
-      { surface: "unavailable", reason: "opaque-bytes" },
+      planOf("unavailable", "opaque-bytes"),
       mediaType,
     );
   }
 
   // 来路二：媒体类型说自己是网页，正文却是打包字节。过去判读器会把它认成
   // 「自绘型」——因为 zip 读出来字很多，正好躲过「元素少 + 有脚本」那条判据。
+  //
+  // 这一格的档位在 `b1b6743` 之后细分了：正文取回来根本不是文字时先落
+  // `unreadable-bytes`（话说的是「预览件坏了，出路是重产」），只有读得出文字、
+  // 但不成其为网页文档的才落 `opaque-bytes`（话说的是「这是源码包，得先构建」）。
+  // 两档同为 `unavailable`，本例守的「打包字节进不了 frame」照旧成立；下面那条
+  // `isDisplayableText(ZIP_TEXT) === false` 正是分到这一档的依据。
   assert.deepEqual(
     websiteViewerPlan({
       hasUrl: true,
@@ -213,7 +231,7 @@ test("W3/2 打包字节永远进不了 frame —— 操作员截图那一屏的�
         shape: { elementCount: 0, textLength: ZIP_TEXT.length, scriptCount: 0 },
       },
     }),
-    { surface: "unavailable", reason: "opaque-bytes" },
+    planOf("unavailable", "unreadable-bytes"),
   );
 
   assert.equal(isDisplayableText(ZIP_TEXT), false);
@@ -235,7 +253,7 @@ test("W3/2 打包字节永远进不了 frame —— 操作员截图那一屏的�
         shape: { elementCount: 240, textLength: 3800, scriptCount: 0 },
       },
     }),
-    { surface: "page", reason: "self-painting" },
+    planOf("page", "self-painting"),
   );
 });
 
@@ -253,7 +271,7 @@ test("W3/7 没有媒体类型、正文又读不回来时不许赌一把", () => 
   for (const mediaType of [undefined, "", "   "]) {
     assert.deepEqual(
       websiteViewerPlan({ hasUrl: true, mediaType, body: { status: "unread" } }),
-      { surface: "unavailable", reason: "unverified" },
+      planOf("unavailable", "unverified"),
       `mediaType=${JSON.stringify(mediaType)}：没有证据就不许放行`,
     );
   }
@@ -263,7 +281,7 @@ test("W3/7 没有媒体类型、正文又读不回来时不许赌一把", () => 
   for (const mediaType of ["text/html", "text/html; charset=utf-8"]) {
     assert.deepEqual(
       websiteViewerPlan({ hasUrl: true, mediaType, body: { status: "unread" } }),
-      { surface: "page", reason: "self-painting" },
+      planOf("page", "self-painting"),
       mediaType,
     );
   }
