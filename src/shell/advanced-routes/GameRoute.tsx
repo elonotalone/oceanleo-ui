@@ -130,7 +130,10 @@ function useGamePreviewHost(): GamePreviewHost | null {
     () => gamePreviewHost,
   );
   useEffect(() => {
-    const onChange = () => setHost(gamePreviewHost);
+    // 宿主本身是个函数组件，直接 `setHost(host)` 会被 setState 当成 updater
+    // 调用掉：组件在 GameRoute 的 render 里被执行，它的 hooks 就串进本组件的
+    // 序列（"Should have a queue"）。两层箭头是必须的，不是多余的包装。
+    const onChange = () => setHost(() => gamePreviewHost);
     gamePreviewHostListeners.add(onChange);
     onChange();
     return () => {

@@ -274,6 +274,22 @@ test("GameRoute rejects imported bundles and never renders its own iframe", () =
   assert.ok(gameRouteCode.includes("gamePreviewHostListeners"));
 });
 
+test("useGamePreviewHost stores the host through a state updater", () => {
+  // 宿主是函数组件。`setHost(gamePreviewHost)` 会被 setState 当成 updater 调用，
+  // 于是宿主组件在 GameRoute 的 render 里执行、它的 hooks 串进 GameRoute 的序列，
+  // 报 "Should have a queue"。只有注册了宿主的站（陈列馆）会踩到，平台侧
+  // `gamePreviewHost` 恒为 null 所以一直没暴露。
+  assert.ok(
+    /setHost\(\(\)\s*=>\s*gamePreviewHost\)/.test(gameRouteCode),
+    "setHost 必须走 `() => gamePreviewHost` 这种 updater 形式",
+  );
+  assert.equal(
+    /setHost\(gamePreviewHost\)/.test(gameRouteCode),
+    false,
+    "不得把宿主组件直接交给 setHost",
+  );
+});
+
 test("GameRoute remix reuses the existing artifact fork endpoint", () => {
   // D7：血缘走 `POST /v1/artifacts/{id}:fork` 的 provenance.parent_revision_ids，
   // 不另建血缘表或第二套 remix 机制。
