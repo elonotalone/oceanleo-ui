@@ -322,6 +322,19 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   removeAppFromMyApps: "应用会从「我的应用」里消失，你随时可以从应用市场重新添加。",
   deleteModelGroupIrreversible: "组合里的模型搭配会被删除且无法恢复；已经跑过的任务不受影响。",
   leaveEditorLocalOnly: "改动留在这台设备的编辑器里，换台设备就打不开；回到编辑器可以再同步一次。",
+  // ==========================================================================
+  // 短 CJK 键人工复核（W43）
+  // `tt("中")` 全仓调用点都是对齐（左/中/右），旧表 en.ts 写成 Medium
+  // （计算器档位 低/中/高 的形容词）。本册 spread 在 en.ts 之后，这条压过它。
+  // `左`/`右`/`行`/`列` 旧表根本没有，英文界面上一直露着汉字。
+  // `高`/`宽` 已是 Height/Width 与 ja 高さ/幅，不改。
+  // `旋转` 既当工具动词又当检查器名词，拆开要改调用点，本笔不动。
+  // ==========================================================================
+  alignLeft: "左",
+  alignCenterShort: "中",
+  alignRight: "右",
+  tableRow: "行",
+  tableColumn: "列",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
