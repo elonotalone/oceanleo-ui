@@ -159,7 +159,12 @@ test("each media editor source file stays below the 600-line component limit", (
     "use-model3d-save.ts",
     "use-model3d-sidecar.ts",
     "use-model3d-workbench.ts",
+    // 这两份是 `dfe6e54` 从 `use-pdf-workbench.ts` 里拆出来的读路径与写路径。
+    // 不登记进来，「拆分」本身就成了绕过这道闸的通道：把超限的代码搬进一个
+    // 未登记的新文件，闸照样变绿（`_COMMON.md §7b⑪c` 的棘轮空转同族）。
+    "use-pdf-edit-engine.ts",
     "use-pdf-preview-render.ts",
+    "use-pdf-view-pipeline.ts",
     "use-pdf-workbench.ts",
   ]);
   for (const filename of readdirSync(directory)) {
