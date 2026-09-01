@@ -208,6 +208,50 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   startPresenting: "放映",
   presenterView: "演讲者视图",
   presentSingleWindowSplit: "放映（单窗口分屏）",
+
+  // ==========================================================================
+  // PDF 办公面板（PdfOfficePanel / use-pdf-office / PdfContextToolbar）
+  // 表单填写与扁平化定稿、手写签名画板、图像签章与骑缝章、涂黑。
+  // `涂黑` 是真的把底层文字删掉的 redaction，不是盖一个黑框 —— 译文必须把
+  // 「永久」「不可撤销」带出来，这是本册里后果最重的一条。
+  // `骑缝章` 是跨页盖章的中式公文做法：越南语有现成的 `dấu giáp lai`、
+  // 日文是 `契印`、韩文是 `간인`，其余语种按「跨页印章」意译，不留拼音。
+  // `签章` 一律不是 PKI 数字签名（`PDF 签名字段` 那条明确写了本编辑器不做 PKI），
+  // 所以各语种都用「印章／戳记」词族，不用 signature/firma digitale 那一族。
+  // ==========================================================================
+  signaturePad: "手写签名画板",
+  saveAsStampPreset: "保存为常用图像签章",
+  clearSignaturePad: "清空画板",
+  formFilling: "表单填写",
+  pdfSignatureFieldReadOnly: "PDF 签名字段（只读，本编辑器不做 PKI 签名）",
+  flattenOnSave: "保存时扁平化定稿（字段将不可再编辑）",
+  fillAndSaveToPdf: "填写并保存到 PDF",
+  imageStamp: "图像签章",
+  stampName: "签章名称",
+  uploadStampImage: "上传 PNG/JPEG 图像签章",
+  addSeamStamp: "添加骑缝图像签章（跨页）",
+  redact: "涂黑",
+  redactIsPermanent: "涂黑会永久删除区域内的底层文字，不是仅盖黑框。应用后无法撤销。",
+  markingRedactionAreas: "正在标记涂黑区域（在页面上拖画）",
+  markRedactionAreas: "标记涂黑区域",
+  redactionAreaIndex: "区域 {number}",
+  applyRedaction: "应用涂黑（不可撤销）",
+  fixFormErrorsFirst: "请先修正表单校验错误",
+  formFilledAndFlattened: "表单已填写并扁平化为定稿",
+  formFilledFieldsEditable: "表单已填写，字段仍可编辑",
+  stampPresetSaved: "已保存常用图像签章",
+  selectStampToPlaceFirst: "请先选择要放置的图像签章",
+  stampPlacedNotPki: "已放置图像签章（非 PKI 数字签名）",
+  redactionMarkedStillRemovable: "已标记涂黑区域，应用前仍可删除",
+  markRedactionAreaFirst: "请先标记要涂黑的区域",
+  redactionApplied: "涂黑已应用：移除 {text} 处文字、{image} 处图像",
+  selectSeamStampImageFirst: "请先选择骑缝章图像",
+  seamStampNeedsTwoPages: "骑缝章至少需要两页",
+  seamStampAdded: "已添加骑缝图像签章：印章已切成 {count} 片，每页一片",
+  dragOnPageToPlace: "在页面上拖画以放置「{label}」",
+  selectStampThenDragArea: "请选择图像签章后在页面上拖画区域",
+  officeTools: "办公工具",
+  pdfOfficeTools: "PDF 办公工具",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
