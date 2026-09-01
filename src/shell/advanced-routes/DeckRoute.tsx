@@ -26,7 +26,11 @@ import {
   DeckPresenterView,
   openDeckPresenterWindow,
 } from "../doc-editors/DeckPresenterView";
-import type { PresenterFallbackReason } from "../doc-editors/use-deck-presenter";
+import {
+  deckRehearsalNoteLine,
+  type DeckRehearsalRow,
+  type PresenterFallbackReason,
+} from "../doc-editors/use-deck-presenter";
 import { DECK_PREVIEW_FIT_ZOOM_PERCENT } from "../doc-editors/deck-preview-geometry";
 import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
@@ -92,6 +96,50 @@ export function DeckRoute({
     presenterDisposeRef.current = null;
     setPresentation(null);
   }, []);
+
+  /**
+   * 排练读数写回备注。放映视图拿不到写操作（刻意的），所以这一寸只能由集成方接。
+   *
+   * **追加，绝不覆盖。** `notes` 是用户手写的讲稿备注（`deck-schema.ts:123`），
+   * 换成 `notes: line` 就等于把人家写的东西删了——这是这条链上唯一能造成真实
+   * 损失的地方，`tests/deck-rehearsal-notes-append.test.mjs` 钉的就是它。
+   *
+   * 那行字用 `deckRehearsalNoteLine(row)` 的原件，不在这里重拼：措辞（讲多久算久
+   * 由讲者判断，报表不替他下结论）是 `use-deck-presenter` 的产品决定。
+   *
+   * 没讲到的页（一次都没停留过）不写：给它记一行「用时 00:00」不是读数，是噪音。
+   *
+   * 引擎的公开面只有「打当前页」的 `patchSlide`，所以逐页写要先 `selectSlide`
+   * （`use-deck-editor.ts:2621` 同步改 `activeRef`，紧接着的 `patchSlide` 就落在这一页）。
+   * 写完把选中页还回用户原来那一页——排练报表不该顺手把他的光标拖走。
+   */
+  const applyRehearsalNotes = useCallback(
+    (rows: DeckRehearsalRow[]) => {
+      const slideNotes = new Map(
+        editor.deck.slides.map((slide) => [slide.id, slide.notes]),
+      );
+      const restoreSlideId = editor.activeSlide.id;
+      let wrote = false;
+      for (const row of rows) {
+        if (row.visits <= 0 && row.totalMs <= 0) continue;
+        const existing = slideNotes.get(row.id);
+        if (existing === undefined) continue;
+        const line = deckRehearsalNoteLine(row);
+        editor.selectSlide(row.id);
+        editor.patchSlide({
+          notes: existing ? `${existing}\n${line}` : line,
+        });
+        wrote = true;
+      }
+      if (wrote) editor.selectSlide(restoreSlideId);
+    },
+    [
+      editor.activeSlide.id,
+      editor.deck.slides,
+      editor.patchSlide,
+      editor.selectSlide,
+    ],
+  );
 
   const startPresentation = useCallback(async () => {
     // 🛑 这一句必须是本函数的第一个 await，前面不许再 await 别的（存盘、取数都不行）。
@@ -382,7 +430,14 @@ export function DeckRoute({
             // 两个字面量都挑成 DeckPresenterView 里已经在用的 tt key
             // （`:933` 的「放映」、`:771` 的「结束放映」），不新造待翻译串。
             label: presentation ? "结束放映" : "放映",
-            icon: "pages" as const,
+            // `pages`（一摞纸）是 W29 当时的将就：`fullscreen` 这批名字那会儿只在
+            // 未提交的工作树里，用它会让 main 上指向一个还不存在的图标名。
+            // 那批图标已由 `acd8192` 入库（`AdvancedEditorIcon.tsx:27`），
+            // 换成真正对得上这个动作的那个：这个键是「把幻灯片铺满整块屏幕」，
+            // 放映中则是「收回来」——label 已经在这么换了，图标不跟着换就对不上。
+            icon: presentation
+              ? ("fullscreen-exit" as const)
+              : ("fullscreen" as const),
             variant: presentation ? ("primary" as const) : undefined,
             disabled: editor.loading || !editor.deck.slides.length,
             // 直接把 async 函数交给 onTrigger：从 onClick 到这里全程同步
@@ -423,6 +478,7 @@ export function DeckRoute({
             channelName={presenterChannelName}
             translate={tt}
             onExit={exitPresentation}
+            onApplyRehearsalNotes={applyRehearsalNotes}
           />
         ) : (
           <DeckStage
