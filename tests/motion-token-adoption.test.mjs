@@ -35,47 +35,60 @@ const SRC = join(REPO, "src");
 
 /**
  * 取这两个数字时所在的 commit。**必须是一个真的 commit**，不是「我本机当时的样子」。
- * `a498867` = `W32` 末次提交，`V1` 的 A 组复判也判在这个 commit 上。
+ *
+ * `690cd51` = 2026-09-01 收尾波，父 agent 在它的干净检出上重新标定
+ * （前一版是 `a498867` = `W32` 末次提交，`V1` 的 A 组复判判在那里）。
  */
-const BASELINE_COMMIT = "a4988677c825a17e499159b5d28cdceb6eabc45f";
+const BASELINE_COMMIT = "690cd516f9db0378433cf150231c43fdaaaa55ea";
 
 /**
  * 已接六档的站点数下限。往下掉 = 有人把 token 换回了裸值。
- * 2026-08-31 W30 实测达成 409（本棒之前是 0）。
+ *
+ * 2026-09-01 在 `BASELINE_COMMIT` 的干净检出上实测 **421**（`W30` 冻的是 409）。
+ * 涨的 12 处是欠账被还完：`W40` 接掉 `SelectionToolbar.tsx:424`，
+ * `W46` 手工接掉 `AuthDialog.tsx` 10 处与 `plugin-theme.tsx` 1 处。
  *
  * 用**绝对条数**而不是百分比：16 位 owner 同仓并发，别人新增一处站点会让百分比
  * 无端下滑，撞 `_COMMON.md §8`「不许在别人半成品的工作树上给别人下判决」。
  * 绝对条数只在「已接的被摘掉」时才红，那才是真倒退。
  */
-const ADOPTION_FLOOR = 409;
+const ADOPTION_FLOOR = 421;
 
 /**
  * 仍跑 Tailwind 默认档（裸 `transition`，一个时长都没有）的站点数上限。只减不增。
  *
- * **2026-08-31 W33 在 `BASELINE_COMMIT` 的干净检出上实测 12**，分布：
- * `src/pages/AuthDialog.tsx` 10 处、`src/shell/plugin-theme.tsx` 1 处、
- * `src/shell/SelectionToolbar.tsx` 1 处。
+ * **2026-09-01 收尾波：债已全部还完，上限拧到 0。**
+ * 在 `BASELINE_COMMIT` 的干净检出上实测 `bareDefault = 0`（`ladder = 421`）。
  *
- * `W30` 原先冻的是 11，少的那一处是 `SelectionToolbar.tsx:424`（overflow「更多」键的
- * 悬停过渡，`0432403` 08-29 入库，**早于 W30 冻结上限**）。它不是新增的倒退，是
- * `W30` 量读数那一刻，并发同事对该文件的**未提交**改动恰好把它抹掉了 ⇒ 11 标定在一棵
- * git 里并不存在的树上，任何人从干净检出跑都是红的（`V1` 复判 §3）。
+ * 这条路走了三棒才走完，中间两次都栽在同一个坑上，写下来免得第四次：
+ * - `W30` 冻的 11 是在**脏工作树**上量的：并发同事对 `SelectionToolbar.tsx` 的未提交
+ *   改动恰好抹掉了 `:424` 那一处 ⇒ 11 标定在一棵 git 里并不存在的树上，
+ *   任何人从干净检出跑都是红的（`V1` 复判 §3，`_COMMON.md §7b⑪`）。
+ * - `W33` 在干净检出上重标为 12，是对的；`W35` 复核后**拒绝**拧到 11，也是对的
+ *   （三个文件仍脏，工作树读数 11、干净检出读数 12，拧就又犯一次 ⑪）。
+ * - 12 处全部在 2026-09-01 落库：`W40` 接掉 `SelectionToolbar.tsx:424`，
+ *   `W46` 手工接掉 `AuthDialog.tsx` 10 处 + `plugin-theme.tsx` 1 处。
  *
- * ⚠️ **12 里有一处是欠账，不是豁免**：`SelectionToolbar.tsx:424` 该接 `dur` 档而没接。
- * 三个文件当下都带着并发同事的在途改动，按 `_COMMON.md §3b` 无人可碰；
- * 清单见 `signals/W30-request.md ③` 与 `signals/W33-request.md`。
- * 那三个文件一旦干净下来，这个上限就该往下拧。
+ * ⚠️ **上限是 0，意味着这道闸从「棘轮」变成了「零容忍」**：往任何组件里新写一处
+ * 裸 `transition` 都会当场红。这是刻意的——`_COMMON.md §7b⑪c` 记的「棘轮空转」
+ * （上限 46 而实测 0，于是塞回一处裸值照样全绿）就是留着余量的代价。
+ *
+ * ⚠️ 拧到 0 之前先修了扫描器的一个钝点（见 `stringLiterals` 的注释）：
+ * 它原先不认识正则字面量，`AuthDialog.tsx` 因此整片被折成一条「幽灵串」，
+ * 回退单处检测不出来。**不修就把 0 建在一个看不见倒退的判据上。**
+ * 父 agent 实测对照：同一棵只回退 1 处的树，旧扫描器 `ladder=421 bareDefault=0`（全瞎），
+ * 修后 `ladder=420 bareDefault=1`。
  *
  * 这一条与上一条互为镜像：只有下限会漏掉「新写一堆裸 transition」。
  */
-const BARE_DEFAULT_CEILING = 12;
+const BARE_DEFAULT_CEILING = 0;
 
-/** 上限里那 12 处**当前**分布在哪几个文件。只用于报错时把话说清楚，不参与判色。 */
-const BARE_DEFAULT_DEBT_FILES = Object.freeze([
-  "src/pages/AuthDialog.tsx",
-  "src/shell/plugin-theme.tsx",
-  "src/shell/SelectionToolbar.tsx",
-]);
+/**
+ * 上限里那些处**当前**分布在哪几个文件。只用于报错时把话说清楚，不参与判色。
+ * 债已还完 ⇒ 空清单。末尾那条基线自检会把它与干净检出上的实际分布逐条比对，
+ * 所以这里**不许**留旧文件名充数（`§7b⑪c` 的「死登记」形态）。
+ */
+const BARE_DEFAULT_DEBT_FILES = Object.freeze([]);
 
 /**
  * 显式豁免清单：允许继续携带**裸时长**的文件。（裸时长 = 时长工具类后面直接跟数字，
@@ -136,12 +149,32 @@ function walk(dir, out = []) {
 }
 
 /**
- * 抽出文件里所有字符串字面量的内容。跳过注释；模板插值 `${…}` 整体折成一个空格
- * ——插值里是表达式不是类名，但它两侧的类名仍属于同一个 className 串。
+ * 正则字面量**可以**出现在这些字符之后（此处刻意取保守集）。
+ *
+ * ⚠️ 刻意**不含** `}` 与 `)`：它们在 JSX 里满地都是（`<Foo bar={x} />`），
+ * 把 `/` 当成正则起点会一路吞到下一个 `/`，比不认正则更糟。
+ * 配合下面「正则必须在同一行闭合」那条兜底，误判的代价被压到零。
+ */
+const REGEX_MAY_FOLLOW = new Set(["(", ",", "=", ":", "[", "!", "&", "|", "?", ";"]);
+
+/**
+ * 抽出文件里所有字符串字面量的内容。跳过注释与**正则字面量**；模板插值 `${…}`
+ * 整体折成一个空格——插值里是表达式不是类名，但它两侧的类名仍属于同一个 className 串。
+ *
+ * ⚠️ **为什么必须跳过正则字面量**（`W46` 实测，`2026-09-01`）：
+ * `src/pages/AuthDialog.tsx:190` 的正则里有 `isn't` —— 那个**撇号**会被当成单引号串的
+ * 开头，一路吞到文件里下一个 `'`，实测吞出一个横跨 803 行、24,769 字符的「幽灵串」，
+ * 把该文件 10 处过渡全包进同一条字面量里。后果不是漏报而是**判色失真**：
+ * `kind` 按整串算，幽灵串里只要有**任意一处**带阶梯时长，同串 10 处就全被记成 `ladder`。
+ * `W46` 的反面验证坐实了这一点：11 处接完后**只回退 1 处**，判据仍报 `bareDefault=0`
+ * 一点红都没有；只有 10 处全回退才报 10。⇒ 那个「10」从来不是 10 次独立观测。
+ * 上限拧到 0 之后这道闸是全仓唯一的守卫，钝在这里等于没守。
  */
 function stringLiterals(source) {
   const out = [];
   let i = 0;
+  /** 上一个有意义的非空白字符，用来区分「除号」与「正则起点」。 */
+  let prev = "";
   while (i < source.length) {
     const c = source[i];
     if (c === "/" && source[i + 1] === "/") {
@@ -154,7 +187,37 @@ function stringLiterals(source) {
       i += 2;
       continue;
     }
+    if (c === "/" && (prev === "" || REGEX_MAY_FOLLOW.has(prev))) {
+      // 试着按正则字面量吃掉它：字符类 `[...]` 里的 `/` 不算结束，转义跳两格。
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < source.length && source[j] !== "\n") {
+        const d = source[j];
+        if (d === "\\") {
+          j += 2;
+          continue;
+        }
+        if (d === "[") inClass = true;
+        else if (d === "]") inClass = false;
+        else if (d === "/" && !inClass) {
+          closed = true;
+          j++;
+          break;
+        }
+        j++;
+      }
+      // 兜底：正则字面量不能跨行。同一行没闭合就说明这个 `/` 不是正则，
+      // 原样当除号处理——宁可少跳一个，也不吞掉半个文件。
+      if (closed) {
+        while (j < source.length && /[a-z]/.test(source[j])) j++; // 尾标志 gimsuy
+        i = j;
+        prev = "/";
+        continue;
+      }
+    }
     if (c !== '"' && c !== "'" && c !== "`") {
+      if (!/\s/.test(c)) prev = c;
       i++;
       continue;
     }
@@ -186,6 +249,7 @@ function stringLiterals(source) {
       text += d;
       i++;
     }
+    prev = quote;
     out.push({ text, line: source.slice(0, start).split("\n").length });
   }
   return out;
