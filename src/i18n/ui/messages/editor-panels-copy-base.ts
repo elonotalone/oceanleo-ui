@@ -280,6 +280,22 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   chartTypeCandlestick: "K 线",
   primaryYAxisLeft: "主 Y 轴（左）",
   notPublishable: "不可发布",
+
+  // ==========================================================================
+  // 上传进度与三条零散回执（progress-view / AdvancedWorkbenchStage / AgentChat / route-boundary）
+  // 上传进度那一行是拼出来的（`4.2 MB / 18.6 MB · 已用 0:12 · 剩余约 0:35`），
+  // 所以 `已用 {elapsed}` / `剩余约 {remaining}` 两条必须是能并排读的短片段，不要写成整句。
+  // `用原图` 是压缩回执旁边的**撤销按钮**：点它就改用未压缩的原图上传，不是「查看原图」。
+  // `实时流不可用，已回落到轮询刷新。` 说的是 SSE 断了改用轮询——用户要看懂的是
+  // 「还在更新，只是慢一点」，不要译成「加载失败」。
+  // ==========================================================================
+  uploadElapsed: "已用 {elapsed}",
+  uploadRemainingApprox: "剩余约 {remaining}",
+  compressedBeforeAfter: "已压缩：{before} → {after}",
+  useOriginalImages: "用原图",
+  compressingImages: "正在压缩图片…",
+  liveStreamFellBackToPolling: "实时流不可用，已回落到轮询刷新。",
+  tryAgainLater: "请稍后重试。",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
