@@ -28,6 +28,7 @@ import { ACCOUNT_SECURITY_MESSAGES } from "./account-security-copy";
 import { AUTH_OAUTH_MESSAGES } from "./auth-oauth-copy";
 import { PLUGIN_CHROME_MESSAGES } from "./plugin-chrome-copy";
 import { WORKBENCH_OFFICE_MESSAGES } from "./workbench-office-copy";
+import { EDITOR_PANELS_MESSAGES } from "./editor-panels-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -40,6 +41,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.zh,
     ...PLUGIN_CHROME_MESSAGES.zh,
     ...WORKBENCH_OFFICE_MESSAGES.zh,
+    ...EDITOR_PANELS_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -51,6 +53,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.en,
     ...PLUGIN_CHROME_MESSAGES.en,
     ...WORKBENCH_OFFICE_MESSAGES.en,
+    ...EDITOR_PANELS_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -62,6 +65,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.ja,
     ...PLUGIN_CHROME_MESSAGES.ja,
     ...WORKBENCH_OFFICE_MESSAGES.ja,
+    ...EDITOR_PANELS_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -73,6 +77,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.ko,
     ...PLUGIN_CHROME_MESSAGES.ko,
     ...WORKBENCH_OFFICE_MESSAGES.ko,
+    ...EDITOR_PANELS_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -84,6 +89,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.fr,
     ...PLUGIN_CHROME_MESSAGES.fr,
     ...WORKBENCH_OFFICE_MESSAGES.fr,
+    ...EDITOR_PANELS_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -95,6 +101,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.de,
     ...PLUGIN_CHROME_MESSAGES.de,
     ...WORKBENCH_OFFICE_MESSAGES.de,
+    ...EDITOR_PANELS_MESSAGES.de,
   },
   it: {
     ...it,
@@ -106,6 +113,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.it,
     ...PLUGIN_CHROME_MESSAGES.it,
     ...WORKBENCH_OFFICE_MESSAGES.it,
+    ...EDITOR_PANELS_MESSAGES.it,
   },
   es: {
     ...es,
@@ -117,6 +125,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.es,
     ...PLUGIN_CHROME_MESSAGES.es,
     ...WORKBENCH_OFFICE_MESSAGES.es,
+    ...EDITOR_PANELS_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -128,6 +137,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES["es-419"],
     ...PLUGIN_CHROME_MESSAGES["es-419"],
     ...WORKBENCH_OFFICE_MESSAGES["es-419"],
+    ...EDITOR_PANELS_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -139,6 +149,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES["pt-BR"],
     ...PLUGIN_CHROME_MESSAGES["pt-BR"],
     ...WORKBENCH_OFFICE_MESSAGES["pt-BR"],
+    ...EDITOR_PANELS_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -150,6 +161,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES["pt-PT"],
     ...PLUGIN_CHROME_MESSAGES["pt-PT"],
     ...WORKBENCH_OFFICE_MESSAGES["pt-PT"],
+    ...EDITOR_PANELS_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -161,6 +173,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.vi,
     ...PLUGIN_CHROME_MESSAGES.vi,
     ...WORKBENCH_OFFICE_MESSAGES.vi,
+    ...EDITOR_PANELS_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -172,6 +185,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.tr,
     ...PLUGIN_CHROME_MESSAGES.tr,
     ...WORKBENCH_OFFICE_MESSAGES.tr,
+    ...EDITOR_PANELS_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -183,6 +197,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES["zh-TW"],
     ...PLUGIN_CHROME_MESSAGES["zh-TW"],
     ...WORKBENCH_OFFICE_MESSAGES["zh-TW"],
+    ...EDITOR_PANELS_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -194,6 +209,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.ar,
     ...PLUGIN_CHROME_MESSAGES.ar,
     ...WORKBENCH_OFFICE_MESSAGES.ar,
+    ...EDITOR_PANELS_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -205,6 +221,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.th,
     ...PLUGIN_CHROME_MESSAGES.th,
     ...WORKBENCH_OFFICE_MESSAGES.th,
+    ...EDITOR_PANELS_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -216,5 +233,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...AUTH_OAUTH_MESSAGES.hi,
     ...PLUGIN_CHROME_MESSAGES.hi,
     ...WORKBENCH_OFFICE_MESSAGES.hi,
+    ...EDITOR_PANELS_MESSAGES.hi,
   },
 };
