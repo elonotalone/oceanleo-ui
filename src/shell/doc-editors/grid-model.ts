@@ -448,13 +448,52 @@ function structuredSheets(item: LibraryItem): GridSheet[] {
   return normalizeGridProjectSheets(rawSheets);
 }
 
+/**
+ * 二进制工作簿容器的魔数：ZIP（xlsx/xlsm/ods）与 OLE 复合文档（旧 xls）。
+ * 都不是，就是 CSV/TSV 这类纯文本。
+ */
+function isBinaryWorkbookContainer(bytes: Uint8Array): boolean {
+  if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b) return true;
+  return (
+    bytes.length >= 8 &&
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0
+  );
+}
+
+/**
+ * 纯文本表格必须自己按 UTF-8 解码后再交给读取器。
+ *
+ * 读取器拿到裸字节时会去猜代码页，猜的是 CP1252：`季度,销量,库存` 于是变成
+ * `å£åº¦,é??é??,å?"å?`（陈列馆 grid-editor 实测）。本地上传那条路径早就是对的
+ * ——`loadGridFile` 对 csv/tsv 走 `file.text()`——只有从地址取字节这条路漏了。
+ * 二进制容器（xlsx/ods/xls）不受影响：它们的编码写在自己的格式里。
+ */
+function decodeTextWorkbook(buffer: ArrayBuffer): string | null {
+  const bytes = new Uint8Array(buffer);
+  if (isBinaryWorkbookContainer(bytes)) return null;
+  // BOM 交给 TextDecoder 吞掉，否则它会变成第一个表头的一部分。
+  return new TextDecoder("utf-8", { ignoreBOM: false }).decode(bytes);
+}
+
 async function readWorkbook(
   source: ArrayBuffer | string,
   type: "array" | "string",
 ): Promise<GridSheet[]> {
   const XLSX = await import("xlsx");
-  const workbook = XLSX.read(source, {
-    type,
+  let input = source;
+  let mode = type;
+  if (mode === "array" && typeof input !== "string") {
+    const text = decodeTextWorkbook(input);
+    if (text !== null) {
+      input = text;
+      mode = "string";
+    }
+  }
+  const workbook = XLSX.read(input, {
+    type: mode,
     cellDates: true,
     cellFormula: true,
     cellStyles: true,

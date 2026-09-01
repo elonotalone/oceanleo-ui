@@ -1286,3 +1286,38 @@ test("C-7 A1/A10/A11/A12 的承担层记录在案", () => {
   const again = zipGridXlsxParts(buildGridXlsxParts(ready.computed));
   assert.deepEqual(Array.from(again), Array.from(ready.xlsxBytes));
 });
+
+test("CSV fetched by URL is decoded as UTF-8, not guessed as CP1252", async () => {
+  const { loadGridSheets } = await import(
+    "../src/shell/doc-editors/grid-model.ts"
+  );
+  const csv = "季度,销量,库存\nQ1,12,40\nQ2,20,35\n";
+  const bytes = new TextEncoder().encode(csv);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(bytes, {
+      status: 200,
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-length": String(bytes.byteLength),
+      },
+    });
+  try {
+    const sheets = await loadGridSheets({
+      key: "gallery:grid",
+      source: "creation",
+      id: "gallery-grid-editor",
+      title: "表格编辑",
+      kind: "sheet",
+      siteId: "plugin-gallery",
+      url: "https://cdn.test/samples/grid-editor.csv",
+      favorite: false,
+      meta: { mime: "text/csv" },
+    });
+    // 读取器拿裸字节时会猜 CP1252，表头会变成 `å£åº¦`。
+    assert.deepEqual(sheets[0].rows[0].slice(0, 3), ["季度", "销量", "库存"]);
+    assert.equal(sheets[0].rows[1][0], "Q1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
