@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
-import { AnchoredPopover } from "./anchored-popover";
+import { AnchoredPopover, runAfterOverlayExit } from "./anchored-popover";
 import {
   registerAdvancedToolsTrigger,
   useAdvancedLayout,
@@ -74,6 +74,7 @@ export function SelectionToolbar({
   layoutRef.current = layout;
   const toolsLauncher = layout?.toolsLauncher || null;
   const [moreOpen, setMoreOpen] = useState(false);
+  const [moreMounted, setMoreMounted] = useState(false);
   const [availableWidth, setAvailableWidth] = useState(
     Number.POSITIVE_INFINITY,
   );
@@ -213,6 +214,21 @@ export function SelectionToolbar({
     );
     (firstControl || panel)?.focus();
   }, [moreOpen, overflowIdentity]);
+  // 退场那一档要求元素先留在 DOM 里（`anchored-popover` §规范三），跑完必须真摘掉。
+  // 藏住已关面板的唯一规则是注入的 `[data-leo-overlay-state="closed"]`；面板自带
+  // Tailwind 的 `grid`，作者层 display 会压掉 `[hidden]`，那条规则一缺席（宿主 CSP
+  // 不给内联 style）关掉的「更多」就整块留在屏幕上。摘节点让隐藏不再只靠一张样式表。
+  useLayoutEffect(() => {
+    if (moreOpen) {
+      setMoreMounted(true);
+      return;
+    }
+    // 收尾时机交给共享原语：它自己处理「零预算」（reduced-motion、token 缺席）
+    // 与「`display` 这类离散过渡不算报到」，这里不许再写第二套计时（红线 9）。
+    return runAfterOverlayExit(morePanelRef.current, () =>
+      setMoreMounted(false),
+    );
+  }, [moreOpen]);
   const toolsLauncherId = toolsLauncher?.available
     ? toolsLauncher.id
     : undefined;
@@ -299,6 +315,15 @@ export function SelectionToolbar({
     control: SelectionControl,
     presentation: "compact" | "menu",
   ) => {
+    // 「执行了一个动作之后」才关 More。色板是连续取值：拖动取色器时每一次 onChange
+    // 都会走到这里，关掉面板等于把人手里的取色器抽走，所以它留在原地。
+    const closeMore =
+      presentation === "menu" && control.kind !== "color"
+        ? () => {
+            setMoreOpen(false);
+            if (control.kind !== "panel") moreButtonRef.current?.focus();
+          }
+        : undefined;
     return (
       <div
         key={`${identity}:${control.id}`}
@@ -327,16 +352,7 @@ export function SelectionToolbar({
               activePanelId === (control.panelId || control.id),
           )}
           presentation={presentation}
-          onActivated={
-            presentation === "menu"
-              ? () => {
-                  setMoreOpen(false);
-                  if (control.kind !== "panel") {
-                    moreButtonRef.current?.focus();
-                  }
-                }
-              : undefined
-          }
+          onActivated={closeMore}
         />
       </div>
     );
@@ -464,64 +480,66 @@ export function SelectionToolbar({
               >
                 <AdvancedEditorIcon name="more" />
               </button>
-              <AnchoredPopover
-                open={moreOpen}
-                anchorRef={moreButtonRef}
-                panelRef={morePanelRef}
-                onClose={(reason) => {
-                  if (reason === "outside") {
-                    restoreMoreFocusRef.current = false;
-                  }
-                  setMoreOpen(false);
-                }}
-                id={morePanelId}
-                role="dialog"
-                ariaLabel={moreDialogLabel}
-                ariaModal={false}
-                align="end"
-                maxHeight={512}
-                attributes={{
-                  "data-selection-overflow-live-capability":
-                    liveCapability?.id || undefined,
-                }}
-                className="z-[2147483500] grid w-72 max-w-[calc(100dvw-1rem)] gap-1 overflow-x-hidden overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              >
-                {liveCapability && (
-                  <div
-                    data-selection-overflow-capability-label
-                    className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
-                  >
-                    {liveCapability.label}
-                  </div>
-                )}
-                {overflowGroups.map((group, groupIndex) => (
-                  <div
-                    key={group.id}
-                    role="group"
-                    aria-labelledby={overflowGroupLabelId(
-                      group.id,
-                      groupIndex,
-                    )}
-                    data-selection-overflow-group={group.id}
-                    data-selection-overflow-group-label={group.label}
-                    className={`grid min-w-0 gap-0.5 ${
-                      groupIndex > 0
-                        ? "border-t border-[var(--divider,#e7e5e4)] pt-1"
-                        : ""
-                    }`}
-                  >
+              {(moreOpen || moreMounted) && (
+                <AnchoredPopover
+                  open={moreOpen}
+                  anchorRef={moreButtonRef}
+                  panelRef={morePanelRef}
+                  onClose={(reason) => {
+                    if (reason === "outside") {
+                      restoreMoreFocusRef.current = false;
+                    }
+                    setMoreOpen(false);
+                  }}
+                  id={morePanelId}
+                  role="dialog"
+                  ariaLabel={moreDialogLabel}
+                  ariaModal={false}
+                  align="end"
+                  maxHeight={512}
+                  attributes={{
+                    "data-selection-overflow-live-capability":
+                      liveCapability?.id || undefined,
+                  }}
+                  className="z-[2147483500] grid w-72 max-w-[calc(100dvw-1rem)] gap-1 overflow-x-hidden overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {liveCapability && (
                     <div
-                      id={overflowGroupLabelId(group.id, groupIndex)}
-                      className="truncate px-2.5 pb-0.5 pt-1 text-[10px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
+                      data-selection-overflow-capability-label
+                      className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
                     >
-                      {group.label}
+                      {liveCapability.label}
                     </div>
-                    {group.controls.map((control) =>
-                      renderControl(control, "menu"),
-                    )}
-                  </div>
-                ))}
-              </AnchoredPopover>
+                  )}
+                  {overflowGroups.map((group, groupIndex) => (
+                    <div
+                      key={group.id}
+                      role="group"
+                      aria-labelledby={overflowGroupLabelId(
+                        group.id,
+                        groupIndex,
+                      )}
+                      data-selection-overflow-group={group.id}
+                      data-selection-overflow-group-label={group.label}
+                      className={`grid min-w-0 gap-0.5 ${
+                        groupIndex > 0
+                          ? "border-t border-[var(--divider,#e7e5e4)] pt-1"
+                          : ""
+                      }`}
+                    >
+                      <div
+                        id={overflowGroupLabelId(group.id, groupIndex)}
+                        className="truncate px-2.5 pb-0.5 pt-1 text-[10px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
+                      >
+                        {group.label}
+                      </div>
+                      {group.controls.map((control) =>
+                        renderControl(control, "menu"),
+                      )}
+                    </div>
+                  ))}
+                </AnchoredPopover>
+              )}
             </div>
           )}
         </div>
@@ -532,9 +550,9 @@ export function SelectionToolbar({
           data-selection-toolbar-suffix
           className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--pchrome-line,var(--divider,#e7e5e4))]/60 pl-2"
         >
-          {agentButton}
           {trailing}
           {contextTrailing}
+          {agentButton}
         </div>
       )}
       {context && measurableControls.length > 0 && (
