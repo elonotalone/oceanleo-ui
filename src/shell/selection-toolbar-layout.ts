@@ -268,13 +268,28 @@ export function estimatedSelectionControlWidth(
     : 44;
 }
 
+/**
+ * 这些槽位另有自己的地盘：`stage` 画在舞台上，`inspector` 在属性面板里，
+ * `tools` 在固定工具栏。编辑栏跳过它们不是丢弃，是不重复。
+ *
+ * `context-menu` **不在**这张名单里了。它曾经在，理由是「右键菜单会渲染它们」
+ * ——设计画布的右键菜单删除之后这句话不再成立，而当时那批控件（复制样式、
+ * 粘贴样式、评论、链接、计时、替代文本、信息、隐藏、页面对齐）就此没有任何入口：
+ * 编辑栏跳过，右键没了，宿主菜单面在四个仓里都没人渲染。
+ * 现在它们进 More 溢出区——槽位名保留（宿主协议与既有契约测试都按它断言），
+ * 只是编辑栏不再假装有别人会管。
+ */
 function isDedicatedSelectionSurface(control: SelectionControl): boolean {
   return (
-    control.slot === "context-menu" ||
     control.slot === "stage" ||
     control.slot === "inspector" ||
     control.placement === "tools"
   );
+}
+
+/** 作者显式要求进溢出的，以及只剩溢出这一条路的 context-menu 控件。 */
+function belongsInAuthoredOverflow(control: SelectionControl): boolean {
+  return control.placement === "more" || control.slot === "context-menu";
 }
 
 function measuredSelectionControlWidth(
@@ -301,11 +316,9 @@ export function partitionSelectionControls(
     (control) => !isDedicatedSelectionSurface(control),
   );
   const compact = projected.filter(
-    (control) => control.placement !== "more",
+    (control) => !belongsInAuthoredOverflow(control),
   );
-  const authoredOverflow = projected.filter(
-    (control) => control.placement === "more",
-  );
+  const authoredOverflow = projected.filter(belongsInAuthoredOverflow);
   const normalizedAvailableWidth =
     Number.isFinite(availableWidth) && availableWidth >= 0
       ? availableWidth

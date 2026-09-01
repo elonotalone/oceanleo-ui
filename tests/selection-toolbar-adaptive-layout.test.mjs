@@ -191,9 +191,11 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
     exactFit.visible.map(({ id }) => id),
     ["ordinary-wide", "late-primary", "ordinary-small"],
   );
+  // context-menu 槽位的控件也进 More：设计画布的右键菜单删掉之后，
+  // 编辑栏是它们唯一的落点，再跳过就等于这些能力从界面上消失。
   assert.deepEqual(
     exactFit.overflow.map(({ id }) => id),
-    ["authored-more"],
+    ["authored-more", "context-only"],
   );
 
   const onePixelNarrower = partitionSelectionControls(controls, widths, 295);
@@ -203,7 +205,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
   );
   assert.deepEqual(
     onePixelNarrower.overflow.map(({ id }) => id),
-    ["authored-more", "ordinary-small"],
+    ["authored-more", "ordinary-small", "context-only"],
   );
 
   const priorityConstrained = partitionSelectionControls(
@@ -217,7 +219,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
   );
   assert.deepEqual(
     priorityConstrained.overflow.map(({ id }) => id),
-    ["ordinary-wide", "authored-more", "ordinary-small"],
+    ["ordinary-wide", "authored-more", "ordinary-small", "context-only"],
   );
   const widerPriorityProjection = partitionSelectionControls(
     controls,
@@ -234,15 +236,23 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
     ),
     "a wider toolbar must not evict a control that was already visible",
   );
+  // 属性面板、舞台、固定工具栏各有自己的地盘，编辑栏不重复它们。
+  // context-menu 不在此列——右键菜单已删，More 是它仅剩的入口。
   assert.equal(
     [...priorityConstrained.visible, ...priorityConstrained.overflow].some(
       ({ id }) =>
-        id === "inspector-only" ||
-        id === "stage-only" ||
-        id === "context-only" ||
-        id === "tools-only",
+        id === "inspector-only" || id === "stage-only" || id === "tools-only",
     ),
     false,
+  );
+  assert.ok(
+    priorityConstrained.overflow.some(({ id }) => id === "context-only"),
+    "context-menu 槽位的控件必须能在 More 里找到，否则它就没有入口了",
+  );
+  assert.equal(
+    priorityConstrained.visible.some(({ id }) => id === "context-only"),
+    false,
+    "但它不占编辑栏的明位：那里留给高频控件",
   );
   assert.deepEqual(
     groupSelectionOverflowControls(priorityConstrained.overflow).map(
@@ -251,7 +261,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
     [
       ["group:format", ["ordinary-wide"]],
       ["danger", ["authored-more"]],
-      ["actions", ["ordinary-small"]],
+      ["actions", ["ordinary-small", "context-only"]],
     ],
   );
 });
@@ -545,6 +555,16 @@ async function loadSelectionToolbar() {
   const animationStubUrl = dataModule(`
     export function SelectionAnimationGallery() { return null; }
   `);
+  // 编辑栏里的 AI 按钮带 aria-label 与 title，两者都要过 i18n。真 useUI 在
+  // 测试里没有 IntlProvider，会当场抛；这里给一个只做变量替换的替身。
+  const uiStubUrl = dataModule(`
+    export function useUI() {
+      return (value, vars) =>
+        value.replace(/\\{(\\w+)\\}/g, (match, key) =>
+          vars && key in vars ? String(vars[key]) : match
+        );
+    }
+  `);
   const advancedLayoutStubUrl = dataModule(`
     export function useAdvancedLayout() {
       return globalThis.__adaptiveToolbarLayout || null;
@@ -606,6 +626,7 @@ async function loadSelectionToolbar() {
   );
   const toolbarUrl = await compileModule("src/shell/SelectionToolbar.tsx", {
     react: reactUrl,
+    "../i18n/ui/useUI": uiStubUrl,
     "./AdvancedEditorIcon": iconStubUrl,
     "./SelectionAnimationGallery": animationStubUrl,
     "./advanced-layout-context": advancedLayoutStubUrl,

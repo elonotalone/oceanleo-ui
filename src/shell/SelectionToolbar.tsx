@@ -31,6 +31,13 @@ import {
   selectionMoreDialogLabel,
   SELECTION_TOOLBAR_VIEWPORT_MAX,
 } from "./selection-toolbar-layout";
+import { useUI } from "../i18n/ui/useUI";
+import {
+  EDIT_BAR_BUTTON_CLASS,
+  EDIT_BAR_DIVIDER_CLASS,
+  editBarPillStyle,
+} from "./edit-bar-surface";
+import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
 import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
 import { useSelectionInspectorHost } from "./selection-inspector-host";
 import {
@@ -61,6 +68,7 @@ export function SelectionToolbar({
   trailing,
   variant = "bar",
 }: SelectionToolbarProps) {
+  const tt = useUI();
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -235,8 +243,33 @@ export function SelectionToolbar({
   const contextLeading = layout?.contextBarLeading;
   const contextTrailing = layout?.contextBarTrailing;
   const toolsAvailable = Boolean(context && toolsLauncher?.available);
+  // AI 固定在右段，13 个插件同一个位置。点它把左侧操控台换成 agent 对话，
+  // 用户可以一边说一边改右边——所以这里只切抽屉，不抢舞台焦点。
+  const agentActive = layout?.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
+  const agentButton = layout ? (
+    <button
+      type="button"
+      data-edit-bar-agent
+      data-edit-bar-interactive
+      aria-pressed={agentActive}
+      onClick={() =>
+        agentActive
+          ? layout.closeDrawer()
+          : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
+      }
+      className={`${EDIT_BAR_BUTTON_CLASS} ${
+        agentActive
+          ? "bg-[var(--pchrome-accent,var(--awb-accent,#7c3aed))] text-[var(--pchrome-on-accent,#fff)] hover:bg-[var(--pchrome-accent,var(--awb-accent,#7c3aed))] hover:text-[var(--pchrome-on-accent,#fff)]"
+          : ""
+      }`}
+      aria-label={tt("AI 助手")}
+      title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
+    >
+      <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
+    </button>
+  ) : null;
   const prefixVisible = Boolean(contextLeading || leading || toolsAvailable);
-  const suffixVisible = Boolean(trailing || contextTrailing);
+  const suffixVisible = Boolean(agentButton || trailing || contextTrailing);
   useSelectionToolbarMeasure({
     toolbarRef,
     prefixRef,
@@ -270,6 +303,7 @@ export function SelectionToolbar({
       <div
         key={`${identity}:${control.id}`}
         data-selection-control-id={control.id}
+        data-edit-bar-interactive
         data-selection-overflow-control={
           presentation === "menu" ? true : undefined
         }
@@ -354,12 +388,14 @@ export function SelectionToolbar({
         .join(" ")}
       className={`pointer-events-auto relative flex min-w-0 flex-nowrap items-center gap-1 ${
         effectiveVariant === "floating"
-          ? "w-fit max-w-full rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/96 p-1.5 text-[var(--fg,#292524)] shadow-[0_10px_32px_rgba(15,23,42,.12)] backdrop-blur-xl"
+          ? "w-fit max-w-full"
           : "w-full max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
       } ${className}`}
       style={
         effectiveVariant === "floating"
           ? {
+              // 胶囊外观来自共享配方，插件不得在此处各自加圆角/阴影。
+              ...editBarPillStyle(),
               // Pixel remaining-strip ceiling beats 100dvw: the latter only
               // caps magnitude and still lets a translated bar grow past
               // innerWidth. Fall back to the viewport max before first measure.
@@ -387,7 +423,7 @@ export function SelectionToolbar({
           )}
           {(contextLeading || leading) &&
             (toolsAvailable || adaptiveRegionVisible) && (
-              <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+              <span className={EDIT_BAR_DIVIDER_CLASS} />
             )}
           {toolsAvailable && context && toolsLauncher && (
             <EditorToolsTrigger
@@ -398,7 +434,7 @@ export function SelectionToolbar({
             />
           )}
           {toolsAvailable && adaptiveRegionVisible && (
-            <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+            <span className={EDIT_BAR_DIVIDER_CLASS} />
           )}
         </div>
       )}
@@ -421,7 +457,8 @@ export function SelectionToolbar({
                 aria-haspopup="dialog"
                 aria-controls={morePanelId}
                 onClick={() => setMoreOpen((value) => !value)}
-                className="grid h-11 w-11 place-items-center rounded-xl text-[var(--fg-2,#57534e)] outline-none transition hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+                data-edit-bar-interactive
+                className={EDIT_BAR_BUTTON_CLASS}
                 aria-label={moreDialogLabel}
                 title={moreDialogLabel}
               >
@@ -493,8 +530,9 @@ export function SelectionToolbar({
         <div
           ref={suffixRef}
           data-selection-toolbar-suffix
-          className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--divider,#e7e5e4)] pl-2"
+          className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--pchrome-line,var(--divider,#e7e5e4))]/60 pl-2"
         >
+          {agentButton}
           {trailing}
           {contextTrailing}
         </div>

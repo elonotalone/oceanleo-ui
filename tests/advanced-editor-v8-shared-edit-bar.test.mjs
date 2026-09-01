@@ -203,6 +203,8 @@ test("measured width overflow preserves semantic placement without fixed truncat
         (_, index) => `compact-${index}`,
       ),
     );
+    // context-menu 槽位的控件跟着进 More：右键菜单删除之后，那是它们仅剩的入口。
+    // 固定工具栏（placement: "tools"）另有地盘，编辑栏照旧不重复它。
     assert.deepEqual(
       snapshot.overflow.map((control) => control.id),
       [
@@ -211,14 +213,19 @@ test("measured width overflow preserves semantic placement without fixed truncat
           (_, index) => `compact-${index + visibleCount}`,
         ),
         "hard-more",
+        "context-only",
       ],
     );
     assert.equal(
       [...snapshot.visible, ...snapshot.overflow].some(
-        (control) =>
-          control.id === "left-tool" || control.id === "context-only",
+        (control) => control.id === "left-tool",
       ),
       false,
+    );
+    assert.equal(
+      snapshot.visible.some((control) => control.id === "context-only"),
+      false,
+      "它进的是 More，不是编辑栏明位",
     );
   }
   assert.equal(selectionControlUsesIconOnly(controls[0]), true);
@@ -603,6 +610,7 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     "src/shell/SelectionToolbar.tsx",
     {
       react: reactUrl,
+      "../i18n/ui/useUI": uiStubUrl,
       "./AdvancedEditorIcon": iconStubUrl,
       "./SelectionAnimationGallery": animationGalleryStubUrl,
       "./advanced-layout-context": layoutStubUrl,
@@ -986,6 +994,132 @@ test("global action bar no longer renders a second pencil tools launcher", async
     assert.ok(materials);
     await click(materials);
     assert.equal(library, "materials");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+// AI 按钮是 13 个插件共用的契约位：位置固定在最右段、行为固定为切 agent 抽屉。
+// 断言「最后一个控件」而不是「存在一个 AI 按钮」，是因为漂移总是从位置开始：
+// 某个插件把自己的按钮塞到 AI 右边，用户就得在每个插件里重新找它。
+test("每个插件的 edit bar 最右侧都是 AI，点击切到左侧 agent 抽屉", async () => {
+  const { SelectionToolbar } = await loadTsx("src/shell/SelectionToolbar.tsx", {
+    react: reactUrl,
+    "../i18n/ui/useUI": uiStubUrl,
+    "./AdvancedEditorIcon": iconStubUrl,
+    "./SelectionAnimationGallery": animationGalleryStubUrl,
+    "./advanced-layout-context": layoutStubUrl,
+    "./selection-context": selectionContextStubUrl,
+    "./selection-inspector-host": inspectorHostStubUrl,
+  });
+  const drawerCalls = [];
+  const layout = {
+    hostPanelVisible: false,
+    editorToolActive: false,
+    activeDrawerId: "",
+    activeTransientPanelId: "",
+    openDrawer(id) {
+      drawerCalls.push(["open", id]);
+    },
+    closeDrawer() {
+      drawerCalls.push(["close"]);
+    },
+    openTransientPanel() {},
+    updateTransientPanel() {},
+  };
+  globalThis.__oceanleoV8Layout = layout;
+  const props = {
+    context: {
+      version: 1,
+      kind: "image-text",
+      id: "text:hero",
+      label: "Hero",
+      revision: 1,
+      controls: [{ id: "bold", kind: "toggle", label: "Bold", value: false }],
+    },
+    onCommand() {},
+  };
+  const mounted = await createMounted(SelectionToolbar, props);
+  try {
+    const suffix = mounted.container.querySelector(
+      "[data-selection-toolbar-suffix]",
+    );
+    assert.ok(suffix, "AI 按钮所在的右段必须渲染出来");
+    const agent = suffix.querySelector("[data-edit-bar-agent]");
+    assert.ok(agent, "每个插件的 edit bar 都要有 AI 按钮");
+    assert.equal(
+      agent.querySelector("[data-icon]")?.getAttribute("data-icon"),
+      "agent",
+    );
+    assert.equal(agent.getAttribute("aria-pressed"), "false");
+    // 双击拖动不能被 AI 按钮吞掉，所以它必须自报是可交互控件。
+    assert.ok(agent.hasAttribute("data-edit-bar-interactive"));
+
+    await click(agent);
+    assert.deepEqual(drawerCalls, [["open", "agent"]]);
+
+    globalThis.__oceanleoV8Layout = { ...layout, activeDrawerId: "agent" };
+    await mounted.render({ ...props, context: { ...props.context, revision: 2 } });
+    const active = mounted.container.querySelector("[data-edit-bar-agent]");
+    assert.equal(active.getAttribute("aria-pressed"), "true");
+    await click(active);
+    assert.deepEqual(drawerCalls, [["open", "agent"], ["close"]]);
+  } finally {
+    globalThis.__oceanleoV8Layout = null;
+    await mounted.unmount();
+  }
+});
+
+// 顶栏与编辑栏的分工：顶栏管「这份文档」（返回/素材库/保存导出/全屏），
+// 编辑栏管「这次改动」（撤销重做/工具/选区控件/AI）。撤销重做原先在顶栏最左，
+// 于是带 history 的插件顶栏比别的插件多两个按钮——13 件插件顶栏长得不一样就是
+// 这么来的。这条测试锁住它们**只在编辑栏出现一次**。
+test("撤销重做归编辑栏，顶栏不再有第二份", async () => {
+  const actionBarSource = await readFile(
+    new URL("../src/shell/AdvancedWorkspaceActionBar.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    !/AdvancedEditorIcon\s+name="undo"/.test(actionBarSource),
+    "顶栏又长出了撤销按钮：它属于编辑栏（EditBarHistoryControls）",
+  );
+  assert.ok(
+    !/AdvancedEditorIcon\s+name="redo"/.test(actionBarSource),
+    "顶栏又长出了重做按钮：它属于编辑栏（EditBarHistoryControls）",
+  );
+  assert.ok(
+    !/adapter\.history\.(undo|redo)/.test(actionBarSource),
+    "顶栏不该直接调 adapter.history",
+  );
+
+  const { EditBarHistoryControls } = await loadTsx(
+    "src/shell/EditBarDockControls.tsx",
+    {
+      react: reactUrl,
+      "../i18n/ui/useUI": uiStubUrl,
+      "./AdvancedEditorIcon": iconStubUrl,
+    },
+  );
+  const calls = [];
+  const mounted = await createMounted(EditBarHistoryControls, {
+    canUndo: true,
+    canRedo: false,
+    onUndo: () => calls.push("undo"),
+    onRedo: () => calls.push("redo"),
+  });
+  try {
+    const undo = mounted.container.querySelector("[data-edit-bar-history-undo]");
+    const redo = mounted.container.querySelector("[data-edit-bar-history-redo]");
+    assert.ok(undo && redo);
+    // 双击拖动不能被这两个按钮吞掉，所以它们必须自报可交互。
+    assert.ok(undo.hasAttribute("data-edit-bar-interactive"));
+    assert.ok(redo.hasAttribute("data-edit-bar-interactive"));
+    // 不可用时是禁用，不是消失：按钮位置恒定，用户才不用每次重新找。
+    assert.equal(undo.disabled, false);
+    assert.equal(redo.disabled, true);
+    await click(undo);
+    await click(redo);
+    assert.deepEqual(calls, ["undo"], "禁用的重做不该触发");
   } finally {
     await mounted.unmount();
   }
