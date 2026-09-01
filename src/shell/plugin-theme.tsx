@@ -38,7 +38,13 @@ export type PluginThemeId =
   | "audio"
   | "video-timeline"
   | "threed"
-  | "game";
+  | "game"
+  // 2026-08-30：三件 extracted 插件并入同一套主题。此前它们走站点主题别名，
+  // 于是同一个陈列馆里并存三套 token（--awb-* / --wb-* / 站点语义变量），
+  // 切插件会跳色。统一外壳要求 13 件同源，所以补进本表。
+  | "design-canvas"
+  | "website"
+  | "video-canvas";
 
 export interface PluginThemeSpec {
   /** 本命默认：原本暗的默认 dark，原本亮的默认 light。 */
@@ -93,7 +99,59 @@ export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
     defaultTheme: "dark",
     accent: { light: "#16a34a", dark: "#4ade80" },
   },
+  "design-canvas": {
+    defaultTheme: "light",
+    accent: { light: "#7c3aed", dark: "#a78bfa" },
+  },
+  website: {
+    // 本命默认 dark，两档 accent 抄 website 仓 globals.css 的 --wb-accent。
+    // 并入时这里一度写成 light + #fb923c，两处都是错的：工作台 v1 主题迁移的
+    // 交付就是「dark 本命默认」，而 #fb923c 是 dark 档的 --wb-accent-strong，
+    // 不是 accent 本身。两套值又共用同一个 localStorage key，于是同一页里
+    // 陈列馆插件与站点编辑器会各自认一个默认，切换还互不通知。
+    defaultTheme: "dark",
+    accent: { light: "#ea580c", dark: "#f97316" },
+  },
+  "video-canvas": {
+    defaultTheme: "dark",
+    accent: { light: "#0d9488", dark: "#2dd4bf" },
+  },
 };
+
+/**
+ * 认不出的 pluginId 一律退到这一档，**不抛异常**。
+ *
+ * 主题查表是装修，不是地基：查不到只该长得普通一点，不该把整个插件白屏。
+ * 2026-08-31 就是这么炸的——`PLUGIN_THEME_SPECS[pluginId].accent[theme]` 里
+ * 那次下标返回了 undefined（开发机上是 Turbopack 留了一份旧的 specs，
+ * 里面还没有新并进来的三件 extracted 插件），一个取色动作把整页掀了，
+ * 控制台只留下一句 `Cannot read properties of undefined (reading 'accent')`，
+ * 看不出跟主题有任何关系。
+ *
+ * 真正没登记的 id 也不该悄悄混过去，所以开发环境下点名警告一次。
+ */
+const FALLBACK_THEME_SPEC: PluginThemeSpec = {
+  defaultTheme: "light",
+  accent: { light: "#4f46e5", dark: "#818cf8" },
+};
+
+const warnedUnknownPluginIds = new Set<string>();
+
+function themeSpec(pluginId: PluginThemeId): PluginThemeSpec {
+  const spec = PLUGIN_THEME_SPECS[pluginId];
+  if (spec) return spec;
+  if (
+    process.env.NODE_ENV !== "production" &&
+    !warnedUnknownPluginIds.has(pluginId)
+  ) {
+    warnedUnknownPluginIds.add(pluginId);
+    console.warn(
+      `[plugin-theme] 认不出的 pluginId "${pluginId}"，本次用默认配色。` +
+        `要么把它登记进 PLUGIN_THEME_SPECS，要么传 null。`,
+    );
+  }
+  return FALLBACK_THEME_SPEC;
+}
 
 /**
  * adapter id → pluginId 归一化：注册表里 chart 的 adapter 是 "chart-editor@1"，
@@ -140,8 +198,7 @@ function ensureStorageListener() {
       return;
     }
     const id = pluginId as PluginThemeId;
-    const next =
-      parseMode(event.newValue) || PLUGIN_THEME_SPECS[id].defaultTheme;
+    const next = parseMode(event.newValue) || themeSpec(id).defaultTheme;
     if (themeCache.get(id) === next) return;
     themeCache.set(id, next);
     notify(id);
@@ -161,7 +218,7 @@ export function currentPluginTheme(pluginId: PluginThemeId): PluginThemeMode {
       stored = null;
     }
   }
-  const value = stored || PLUGIN_THEME_SPECS[pluginId].defaultTheme;
+  const value = stored || themeSpec(pluginId).defaultTheme;
   themeCache.set(pluginId, value);
   return value;
 }
@@ -212,7 +269,7 @@ export function usePluginTheme(
   const theme = useSyncExternalStore(
     subscribe,
     () => (pluginId ? currentPluginTheme(pluginId) : null),
-    () => (pluginId ? PLUGIN_THEME_SPECS[pluginId].defaultTheme : null),
+    () => (pluginId ? themeSpec(pluginId).defaultTheme : null),
   );
   const setTheme = useCallback(
     (mode: PluginThemeMode) => {
@@ -229,8 +286,7 @@ export function usePluginTheme(
   }, [pluginId]);
   return {
     theme,
-    accent:
-      pluginId && theme ? PLUGIN_THEME_SPECS[pluginId].accent[theme] : null,
+    accent: pluginId && theme ? themeSpec(pluginId).accent[theme] : null,
     setTheme,
     toggle,
   };
