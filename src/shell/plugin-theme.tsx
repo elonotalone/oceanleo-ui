@@ -462,7 +462,7 @@ export function PluginThemeToggle({ pluginId }: { pluginId: PluginThemeId }) {
       aria-pressed={dark}
       aria-label={tt(dark ? "切换到纯白主题" : "切换到暗黑主题")}
       title={tt(dark ? "切换到纯白主题" : "切换到暗黑主题")}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition hover:bg-[var(--awb-hover)] hover:text-[var(--awb-accent)]"
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--awb-hover)] hover:text-[var(--awb-accent)]"
     >
       {dark ? (
         <svg

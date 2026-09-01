@@ -387,7 +387,7 @@ export function AuthPanel({
             onClick={onClose}
             aria-label={tt("关闭")}
             data-auth-close
-            className="rounded p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+            className="rounded p-1 text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
           >
             ✕
           </button>
@@ -430,7 +430,7 @@ export function AuthPanel({
                   aria-selected={method === id}
                   data-auth-method-tab={id}
                   onClick={() => setMethod(id)}
-                  className={`flex-1 rounded-lg py-1.5 text-[13px] font-medium transition ${
+                  className={`flex-1 rounded-lg py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                     method === id
                       ? "bg-white text-neutral-900 shadow-sm"
                       : "text-neutral-500 hover:text-neutral-700"
@@ -483,9 +483,9 @@ function methodLabel(method: AuthMethod): string {
 }
 
 const FIELD_CLASS =
-  "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100";
+  "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100";
 const SUBMIT_CLASS =
-  "w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60";
+  "w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60";
 
 function ErrorNote({ text }: { text: string }) {
   return (
@@ -586,7 +586,7 @@ function EmailForm({
         type="button"
         data-auth-forgot
         onClick={onForgotPassword}
-        className="w-full text-center text-[12px] text-neutral-500 underline-offset-2 transition hover:text-neutral-800 hover:underline"
+        className="w-full text-center text-[12px] text-neutral-500 underline-offset-2 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-800 hover:underline"
       >
         {tt("忘记密码？")}
       </button>
@@ -640,7 +640,7 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
           type="button"
           data-auth-back
           onClick={onBack}
-          className="w-full rounded-lg border border-neutral-200 py-2.5 text-[13px] text-neutral-600 transition hover:bg-neutral-50"
+          className="w-full rounded-lg border border-neutral-200 py-2.5 text-[13px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
         >
           {tt("返回登录")}
         </button>
@@ -678,7 +678,7 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
         type="button"
         data-auth-back
         onClick={onBack}
-        className="w-full text-center text-[12px] text-neutral-500 transition hover:text-neutral-800"
+        className="w-full text-center text-[12px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-800"
       >
         {tt("返回登录")}
       </button>
@@ -873,7 +873,7 @@ function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: CredentialsDone })
               data-auth-resend
               onClick={() => void send()}
               disabled={cooldown > 0 || loading}
-              className="shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[13px] text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[13px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
             >
               {cooldown > 0 ? tt("重新发送（{seconds}s）", { seconds: cooldown }) : tt("重发")}
             </button>
@@ -933,7 +933,7 @@ function WechatPanel({ tt, redirect }: { tt: UITranslate; redirect?: string }) {
         data-auth-submit
         onClick={() => void go()}
         disabled={loading}
-        className="w-full rounded-lg bg-[#07c160] py-2.5 text-[14px] font-medium text-white transition hover:bg-[#06ad56] active:scale-[0.99] disabled:opacity-60"
+        className="w-full rounded-lg bg-[#07c160] py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-[#06ad56] active:scale-[0.99] disabled:opacity-60"
       >
         {loading ? <ButtonSpinner label={tt("跳转中...")} /> : tt("微信登录")}
       </button>
@@ -983,7 +983,7 @@ function OauthPanel({
         data-auth-submit
         onClick={() => void go()}
         disabled={loading}
-        className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60"
+        className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60"
       >
         {loading ? <ButtonSpinner label={tt("跳转中...")} /> : tt(label)}
       </button>
