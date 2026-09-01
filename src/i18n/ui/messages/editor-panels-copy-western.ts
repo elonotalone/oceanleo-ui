@@ -211,6 +211,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Please try again later.",
     boldWeight: "Bold",
     altText: "Alt text",
+    removeAppFromMyApps: "The app disappears from “My apps”. You can add it back from the app market at any time.",
+    deleteModelGroupIrreversible: "The model line-up in this group is deleted for good. Tasks you already ran with it are unaffected.",
+    leaveEditorLocalOnly: "Your edits stay in the editor on this device, so they won’t open anywhere else. Come back to the editor to sync again.",
   },
   de: {
     anonymous: "Anonym",
@@ -420,6 +423,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Bitte versuchen Sie es später erneut.",
     boldWeight: "Fett",
     altText: "Alternativtext",
+    removeAppFromMyApps: "Die App verschwindet aus „Meine Apps“. Du kannst sie jederzeit über den App-Markt wieder hinzufügen.",
+    deleteModelGroupIrreversible: "Die Modellzusammenstellung dieser Gruppe wird endgültig gelöscht. Bereits ausgeführte Aufgaben bleiben unberührt.",
+    leaveEditorLocalOnly: "Deine Änderungen bleiben im Editor auf diesem Gerät und lassen sich anderswo nicht öffnen. Komm zurück in den Editor, um erneut zu synchronisieren.",
   },
   fr: {
     anonymous: "Anonyme",
@@ -629,6 +635,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Veuillez réessayer plus tard.",
     boldWeight: "Gras",
     altText: "Texte alternatif",
+    removeAppFromMyApps: "L’application disparaît de « Mes applications ». Vous pouvez la rajouter depuis la marketplace à tout moment.",
+    deleteModelGroupIrreversible: "La combinaison de modèles de ce groupe est supprimée définitivement. Les tâches déjà exécutées ne sont pas affectées.",
+    leaveEditorLocalOnly: "Vos modifications restent dans l’éditeur de cet appareil et ne s’ouvriront pas ailleurs. Revenez dans l’éditeur pour relancer la synchronisation.",
   },
   it: {
     anonymous: "Anonimo",
@@ -838,6 +847,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Riprova più tardi.",
     boldWeight: "Grassetto",
     altText: "Testo alternativo",
+    removeAppFromMyApps: "L’app scompare da «Le mie app». Puoi riaggiungerla dal marketplace quando vuoi.",
+    deleteModelGroupIrreversible: "La combinazione di modelli di questo gruppo viene eliminata definitivamente. Le attività già eseguite non ne risentono.",
+    leaveEditorLocalOnly: "Le modifiche restano nell’editor di questo dispositivo e altrove non si aprono. Torna nell’editor per sincronizzare di nuovo.",
   },
   es: {
     anonymous: "Anónimo",
@@ -1046,6 +1058,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Vuelve a intentarlo más tarde.",
     boldWeight: "Negrita",
     altText: "Texto alternativo",
+    removeAppFromMyApps: "La aplicación desaparece de «Mis aplicaciones». Puedes volver a añadirla desde el mercado cuando quieras.",
+    deleteModelGroupIrreversible: "La combinación de modelos de este grupo se elimina de forma permanente. Las tareas ya ejecutadas no se ven afectadas.",
+    leaveEditorLocalOnly: "Tus cambios se quedan en el editor de este dispositivo y no se abrirán en otro. Vuelve al editor para sincronizar de nuevo.",
   },
   "es-419": {
     anonymous: "Anónimo",
@@ -1254,6 +1269,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Vuelve a intentarlo más tarde.",
     boldWeight: "Negrita",
     altText: "Texto alternativo",
+    removeAppFromMyApps: "La aplicación desaparece de «Mis aplicaciones». Puedes volver a agregarla desde el mercado cuando quieras.",
+    deleteModelGroupIrreversible: "La combinación de modelos de este grupo se elimina de forma permanente. Las tareas que ya ejecutaste no se ven afectadas.",
+    leaveEditorLocalOnly: "Tus cambios se quedan en el editor de este dispositivo y no se abrirán en otro. Vuelve al editor para sincronizar de nuevo.",
   },
   "pt-BR": {
     anonymous: "Anônimo",
@@ -1462,6 +1480,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Tente novamente mais tarde.",
     boldWeight: "Negrito",
     altText: "Texto alternativo",
+    removeAppFromMyApps: "O app some de “Meus aplicativos”. Você pode adicioná-lo de novo pelo mercado quando quiser.",
+    deleteModelGroupIrreversible: "A combinação de modelos deste grupo é excluída em definitivo. As tarefas já executadas não são afetadas.",
+    leaveEditorLocalOnly: "Suas alterações ficam no editor deste dispositivo e não abrem em outro. Volte ao editor para sincronizar de novo.",
   },
   "pt-PT": {
     anonymous: "Anónimo",
@@ -1670,6 +1691,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Tente novamente mais tarde.",
     boldWeight: "Negrito",
     altText: "Texto alternativo",
+    removeAppFromMyApps: "A aplicação desaparece de “As minhas aplicações”. Pode voltar a adicioná-la a partir do mercado quando quiser.",
+    deleteModelGroupIrreversible: "A combinação de modelos deste grupo é eliminada em definitivo. As tarefas já executadas não são afetadas.",
+    leaveEditorLocalOnly: "As suas alterações ficam no editor deste dispositivo e não abrem noutro. Volte ao editor para sincronizar novamente.",
   },
   vi: {
     anonymous: "Ẩn danh",
@@ -1879,6 +1903,9 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Vui lòng thử lại sau.",
     boldWeight: "Đậm",
     altText: "Văn bản thay thế",
+    removeAppFromMyApps: "Ứng dụng sẽ biến mất khỏi “Ứng dụng của tôi”. Bạn có thể thêm lại từ chợ ứng dụng bất cứ lúc nào.",
+    deleteModelGroupIrreversible: "Bộ mô hình trong nhóm này sẽ bị xoá vĩnh viễn. Các tác vụ đã chạy không bị ảnh hưởng.",
+    leaveEditorLocalOnly: "Thay đổi của bạn nằm trong trình chỉnh sửa trên thiết bị này nên không mở được ở nơi khác. Quay lại trình chỉnh sửa để đồng bộ lần nữa.",
   },
   tr: {
     anonymous: "Anonim",
@@ -2088,5 +2115,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     tryAgainLater: "Lütfen daha sonra tekrar deneyin.",
     boldWeight: "Kalın",
     altText: "Alternatif metin",
+    removeAppFromMyApps: "Uygulama “Uygulamalarım” listesinden kaybolur. İstediğin zaman uygulama pazarından yeniden ekleyebilirsin.",
+    deleteModelGroupIrreversible: "Bu gruptaki model bileşimi kalıcı olarak silinir. Daha önce çalıştırdığın görevler etkilenmez.",
+    leaveEditorLocalOnly: "Değişikliklerin bu cihazdaki düzenleyicide kalır, başka yerde açılmaz. Yeniden eşitlemek için düzenleyiciye dön.",
   },
 };

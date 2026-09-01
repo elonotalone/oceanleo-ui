@@ -211,6 +211,9 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     tryAgainLater: "請稍後重試。",
     boldWeight: "粗體",
     altText: "替代文字",
+    removeAppFromMyApps: "應用會從「我的應用」裡消失，你隨時可以從應用市集重新加入。",
+    deleteModelGroupIrreversible: "組合裡的模型搭配會被刪除且無法復原；已經跑過的任務不受影響。",
+    leaveEditorLocalOnly: "變動留在這台裝置的編輯器裡，換一台裝置就打不開；回到編輯器可以再同步一次。",
   },
   ja: {
     anonymous: "匿名",
@@ -420,6 +423,9 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     tryAgainLater: "しばらくしてからもう一度お試しください。",
     boldWeight: "太字",
     altText: "代替テキスト",
+    removeAppFromMyApps: "アプリは「マイアプリ」から消えます。アプリマーケットからいつでも追加し直せます。",
+    deleteModelGroupIrreversible: "このグループのモデル構成は完全に削除されます。すでに実行したタスクには影響しません。",
+    leaveEditorLocalOnly: "変更はこの端末のエディター内に残るため、他の端末では開けません。エディターに戻ればもう一度同期できます。",
   },
   ko: {
     anonymous: "익명",
@@ -629,6 +635,9 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     tryAgainLater: "잠시 후 다시 시도해 주세요.",
     boldWeight: "굵게",
     altText: "대체 텍스트",
+    removeAppFromMyApps: "앱이 ‘내 앱’에서 사라집니다. 앱 마켓에서 언제든 다시 추가할 수 있습니다.",
+    deleteModelGroupIrreversible: "이 조합의 모델 구성이 영구히 삭제됩니다. 이미 실행한 작업에는 영향이 없습니다.",
+    leaveEditorLocalOnly: "변경 사항은 이 기기의 편집기에만 남아 다른 기기에서는 열리지 않습니다. 편집기로 돌아오면 다시 동기화할 수 있습니다.",
   },
   ar: {
     anonymous: "مجهول",
@@ -837,6 +846,9 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     tryAgainLater: "يُرجى المحاولة مرة أخرى لاحقًا.",
     boldWeight: "عريض",
     altText: "نص بديل",
+    removeAppFromMyApps: "سيختفي التطبيق من «تطبيقاتي». يمكنك إضافته مرة أخرى من متجر التطبيقات في أي وقت.",
+    deleteModelGroupIrreversible: "سيتم حذف تركيبة النماذج في هذه المجموعة نهائيًا. لن تتأثر المهام التي شغّلتها بالفعل.",
+    leaveEditorLocalOnly: "تبقى تعديلاتك داخل المحرر على هذا الجهاز ولن تُفتح في مكان آخر. عُد إلى المحرر للمزامنة مرة أخرى.",
   },
   th: {
     anonymous: "ไม่ระบุชื่อ",
@@ -1046,6 +1058,9 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     tryAgainLater: "โปรดลองอีกครั้งภายหลัง",
     boldWeight: "ตัวหนา",
     altText: "ข้อความแทน",
+    removeAppFromMyApps: "แอปจะหายไปจาก “แอปของฉัน” คุณเพิ่มกลับจากตลาดแอปได้ทุกเมื่อ",
+    deleteModelGroupIrreversible: "ชุดโมเดลในกลุ่มนี้จะถูกลบถาวร งานที่รันไปแล้วไม่ได้รับผลกระทบ",
+    leaveEditorLocalOnly: "การแก้ไขจะอยู่ในตัวแก้ไขบนเครื่องนี้เท่านั้น เปิดที่เครื่องอื่นไม่ได้ กลับมาที่ตัวแก้ไขเพื่อซิงก์อีกครั้ง",
   },
   hi: {
     anonymous: "गुमनाम",
@@ -1254,5 +1269,8 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     tryAgainLater: "कृपया बाद में पुनः प्रयास करें।",
     boldWeight: "बोल्ड",
     altText: "वैकल्पिक पाठ",
+    removeAppFromMyApps: "ऐप “मेरे ऐप्स” से हट जाएगा। आप इसे ऐप मार्केट से कभी भी दोबारा जोड़ सकते हैं।",
+    deleteModelGroupIrreversible: "इस समूह का मॉडल संयोजन हमेशा के लिए मिट जाएगा। पहले चलाए गए कार्य प्रभावित नहीं होंगे।",
+    leaveEditorLocalOnly: "आपके बदलाव इसी डिवाइस के एडिटर में रहते हैं, कहीं और नहीं खुलेंगे। दोबारा सिंक करने के लिए एडिटर पर लौटें।",
   },
 };

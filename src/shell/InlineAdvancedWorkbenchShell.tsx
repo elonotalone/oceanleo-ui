@@ -531,8 +531,14 @@ export function InlineAdvancedWorkbenchShell({
         // 16 语译文在 `src/i18n/ui/messages/workbench-office-copy.ts`。
         // 传中文原文而不是 `tt("离开")`——`ConfirmDialog` 内部对 `confirmLabel`
         // 自己过一次 `tt()`，外面再包一层就成了拿译文去查词典。
+        //
+        // `body` 反过来，刻意包一层 `tt()`（W43 A-11 D-4）：`i18n-tt-key-coverage`
+        // 的 AST 扫的是 `tt()` 的字面量实参，包了这一层，词典条目哪天被删掉会当场判红；
+        // 传裸中文则一条判据都碰不到，16 语一起静默回落成中文。
+        // 代价只是内部那次 `tt()` 拿译文查一次词典、查不中原样返回。
         <ConfirmDialog
           title={tt("修改仍安全保留在当前编辑器，但尚未同步到云端。仍要离开吗？")}
+          body={tt("改动留在这台设备的编辑器里，换台设备就打不开；回到编辑器可以再同步一次。")}
           confirmLabel="离开"
           onConfirm={() => answerLeave(true)}
           onCancel={() => answerLeave(false)}

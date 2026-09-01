@@ -237,6 +237,7 @@ export function MyAppsRail({
       {pendingRemoval && (
         <ConfirmDialog
           title={`${tt("确定从「我的应用」移除")}「${pendingRemoval.name}」？`}
+          body={tt("应用会从「我的应用」里消失，你随时可以从应用市场重新添加。")}
           confirmLabel={tt("移除")}
           danger
           onConfirm={async () => {

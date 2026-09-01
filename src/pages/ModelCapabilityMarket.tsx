@@ -474,6 +474,7 @@ export function ModelGroupManager({
                     {confirmingDelete && (
                       <ConfirmDialog
                         title={tt("确定删除模型组合「{name}」吗？", { name: group.name })}
+                        body={tt("组合里的模型搭配会被删除且无法恢复；已经跑过的任务不受影响。")}
                         confirmLabel={tt("删除")}
                         danger
                         onConfirm={async () => {
