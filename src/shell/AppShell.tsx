@@ -27,6 +27,7 @@ import {
 } from "react";
 import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
 import type { PreferredModel } from "../lib/auth/account";
+import { ToastProvider } from "../ui";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
@@ -319,15 +320,23 @@ const AppShellPresence = createContext(false);
 
 // shared layout 可先挂一个持久 AppShell，而旧 page 里的 SiteShell 暂时仍可保留。
 // 内层 AppShell 自动退化为 children，避免双侧栏；外层在路由切换时保持挂载。
+//
+// `ToastProvider` 挂在**这一支**（非 nested）而不是 `AppShellInner` 里面：套几层
+// AppShell 都只有最外那一层走到这里，所以全应用恒定一个 viewport。没挂的话 toast
+// 照常进 store、没人渲染（`src/ui/Toast.tsx` 刻意如此，dev 下 warn 一次）——
+// 也就是说这一层缺席时，全站的 toast 一条都不会出现在屏幕上。
+// viewport 自己 `pointer-events: none`、`position: fixed`，包在最外面不挡任何点击。
 export function AppShell(props: AppShellProps) {
   const nested = useContext(AppShellPresence);
   if (nested) return <>{props.children}</>;
   return (
-    <AppShellPresence.Provider value>
-      <WorkspaceSelectionProvider>
-        <AppShellInner {...props} />
-      </WorkspaceSelectionProvider>
-    </AppShellPresence.Provider>
+    <ToastProvider>
+      <AppShellPresence.Provider value>
+        <WorkspaceSelectionProvider>
+          <AppShellInner {...props} />
+        </WorkspaceSelectionProvider>
+      </AppShellPresence.Provider>
+    </ToastProvider>
   );
 }
 
