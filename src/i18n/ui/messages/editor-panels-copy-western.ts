@@ -209,6 +209,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Compressing images…",
     liveStreamFellBackToPolling: "Live streaming is unavailable — updates are coming from periodic polling instead.",
     tryAgainLater: "Please try again later.",
+    boldWeight: "Bold",
+    altText: "Alt text",
   },
   de: {
     anonymous: "Anonym",
@@ -416,6 +418,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Bilder werden komprimiert …",
     liveStreamFellBackToPolling: "Der Live-Stream ist nicht verfügbar – die Aktualisierung läuft jetzt über regelmäßiges Abfragen.",
     tryAgainLater: "Bitte versuchen Sie es später erneut.",
+    boldWeight: "Fett",
+    altText: "Alternativtext",
   },
   fr: {
     anonymous: "Anonyme",
@@ -623,6 +627,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Compression des images…",
     liveStreamFellBackToPolling: "Le flux en direct est indisponible : la mise à jour se fait désormais par interrogation régulière.",
     tryAgainLater: "Veuillez réessayer plus tard.",
+    boldWeight: "Gras",
+    altText: "Texte alternatif",
   },
   it: {
     anonymous: "Anonimo",
@@ -830,6 +836,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Compressione delle immagini…",
     liveStreamFellBackToPolling: "Lo streaming in tempo reale non è disponibile: l'aggiornamento avviene con interrogazioni periodiche.",
     tryAgainLater: "Riprova più tardi.",
+    boldWeight: "Grassetto",
+    altText: "Testo alternativo",
   },
   es: {
     anonymous: "Anónimo",
@@ -1036,6 +1044,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Comprimiendo imágenes…",
     liveStreamFellBackToPolling: "La transmisión en directo no está disponible: la actualización se hace mediante sondeos periódicos.",
     tryAgainLater: "Vuelve a intentarlo más tarde.",
+    boldWeight: "Negrita",
+    altText: "Texto alternativo",
   },
   "es-419": {
     anonymous: "Anónimo",
@@ -1242,6 +1252,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Comprimiendo imágenes…",
     liveStreamFellBackToPolling: "La transmisión en vivo no está disponible: la actualización se hace mediante sondeos periódicos.",
     tryAgainLater: "Vuelve a intentarlo más tarde.",
+    boldWeight: "Negrita",
+    altText: "Texto alternativo",
   },
   "pt-BR": {
     anonymous: "Anônimo",
@@ -1448,6 +1460,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Comprimindo imagens…",
     liveStreamFellBackToPolling: "O streaming em tempo real não está disponível: as atualizações agora vêm de consultas periódicas.",
     tryAgainLater: "Tente novamente mais tarde.",
+    boldWeight: "Negrito",
+    altText: "Texto alternativo",
   },
   "pt-PT": {
     anonymous: "Anónimo",
@@ -1654,6 +1668,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "A comprimir imagens…",
     liveStreamFellBackToPolling: "A transmissão em tempo real não está disponível: as atualizações passam a vir de consultas periódicas.",
     tryAgainLater: "Tente novamente mais tarde.",
+    boldWeight: "Negrito",
+    altText: "Texto alternativo",
   },
   vi: {
     anonymous: "Ẩn danh",
@@ -1861,6 +1877,8 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Đang nén ảnh…",
     liveStreamFellBackToPolling: "Luồng trực tiếp không dùng được, hệ thống đã chuyển sang làm mới theo chu kỳ.",
     tryAgainLater: "Vui lòng thử lại sau.",
+    boldWeight: "Đậm",
+    altText: "Văn bản thay thế",
   },
   tr: {
     anonymous: "Anonim",
@@ -2068,5 +2086,7 @@ export const EDITOR_PANELS_COPY_WESTERN: Record<
     compressingImages: "Görseller sıkıştırılıyor…",
     liveStreamFellBackToPolling: "Canlı akış kullanılamıyor, güncellemeler artık düzenli sorgulama ile geliyor.",
     tryAgainLater: "Lütfen daha sonra tekrar deneyin.",
+    boldWeight: "Kalın",
+    altText: "Alternatif metin",
   },
 };

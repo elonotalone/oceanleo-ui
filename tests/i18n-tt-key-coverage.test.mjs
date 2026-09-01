@@ -49,6 +49,23 @@ const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 const { PLUGIN_CHROME_COPY_SOURCE } = await import(
   "../src/i18n/ui/messages/plugin-chrome-copy-base.ts"
 );
+const { EDITOR_PANELS_COPY_SOURCE } = await import(
+  "../src/i18n/ui/messages/editor-panels-copy-base.ts"
+);
+
+/**
+ * 本波自己落的词典。下面三条结构自检（16 语齐全 / key 等于值 / 占位符不丢 /
+ * 非中日韩 han=0）对**每一册**都跑一遍。
+ *
+ * `W43 2026-09-01 [实测]`：这三条原来只认 `plugin-chrome`，于是
+ * `editor-panels` 那 204 条新词典**一条结构自检都没过过**——它当时靠的全是
+ * `Record<Exclude<Locale,"zh">, …>` 那个类型和跑批脚本，判据这边是空的。
+ * 「按册名写死一个 import」就是这么漏的：加册的人不会想到回来改判据。
+ */
+const WAVE_DICTIONARIES = [
+  ["plugin-chrome", PLUGIN_CHROME_COPY_SOURCE],
+  ["editor-panels", EDITOR_PANELS_COPY_SOURCE],
+];
 
 /** zh 不算：中文站未命中时回退中文原文，本来就是对的，不构成缺口。 */
 const TRANSLATED_LOCALES = LOCALES.filter((locale) => locale !== "zh");
@@ -471,33 +488,79 @@ test("统一外壳与在场同级插件用到的 tt() key，16 个语种一条�
 });
 
 test("本波词典 16 语齐全、中文站 key 等于值、插值占位符不丢", () => {
-  for (const key of Object.values(PLUGIN_CHROME_COPY_SOURCE)) {
-    assert.equal(UI_MESSAGES.zh[key], key, `中文站 key 必须等于值（中文原文即 key）：${key}`);
-    const placeholders = [...key.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
-    for (const locale of TRANSLATED_LOCALES) {
-      const value = UI_MESSAGES[locale][key];
-      assert.ok(value, `${locale} 缺译文：${key}`);
-      assert.deepEqual(
-        [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort(),
-        placeholders,
-        `${locale} 的译文丢了插值占位符：${key}`,
+  for (const [册, source] of WAVE_DICTIONARIES) {
+    const keys = Object.values(source);
+    assert.ok(keys.length > 0, `${册} 一条 key 都没有，词典的 import 大概换了名字`);
+    for (const key of keys) {
+      assert.equal(
+        UI_MESSAGES.zh[key],
+        key,
+        `中文站 key 必须等于值（中文原文即 key）：${册} ${key}`,
       );
+      const placeholders = [...key.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+      for (const locale of TRANSLATED_LOCALES) {
+        const value = UI_MESSAGES[locale][key];
+        assert.ok(value, `${locale} 缺译文：${册} ${key}`);
+        assert.deepEqual(
+          [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort(),
+          placeholders,
+          `${locale} 的译文丢了插值占位符：${册} ${key}`,
+        );
+      }
     }
   }
 });
 
 test("本波词典不许把中文原样抄进非中日语种", () => {
-  // 繁体与日文允许出现汉字（「画板」「動画」这类简繁/中日同形才是对的），其余 14 语一个都不许有。
+  // 繁体与日文允许出现汉字（「画板」「動画」这类简繁/中日同形才是对的），其余 13 语一个都不许有。
   const HAN = /[\u4e00-\u9fff]/;
   const leaked = [];
-  for (const key of Object.values(PLUGIN_CHROME_COPY_SOURCE)) {
-    for (const locale of TRANSLATED_LOCALES) {
-      if (locale === "zh-TW" || locale === "ja" || locale === "ko") continue;
-      const value = UI_MESSAGES[locale][key];
-      if (HAN.test(value)) leaked.push(`${locale}: ${key} → ${value}`);
+  for (const [册, source] of WAVE_DICTIONARIES) {
+    for (const key of Object.values(source)) {
+      for (const locale of TRANSLATED_LOCALES) {
+        if (locale === "zh-TW" || locale === "ja" || locale === "ko") continue;
+        const value = UI_MESSAGES[locale][key];
+        if (HAN.test(value)) leaked.push(`${册} ${locale}: ${key} → ${value}`);
+      }
     }
   }
   assert.deepEqual(leaked.sort(), [], "非中日韩语种的译文里出现了汉字，等于没译");
+});
+
+/**
+ * `W43 2026-09-01 [实测]`：上面那条只拦「非中日韩档里出现汉字」，
+ * 拦不住**日韩档整条照抄中文原文**——`ja` 抄一整句中文，汉字检查是放过的，
+ * 而日文读者看到的就是一句中文。
+ *
+ * 短的共用汉字词是正常的，整句照抄不是：`平均` 在日文里就写作 `平均`，
+ * `主軸（左）` 也一样。判「短词」用两条：汉字 ≤6 个，且不含句子级标点。
+ *
+ * ⚠️ **`zh-TW` 刻意不在这条里面**，这是缩小后的承诺，不是漏掉：
+ * 简繁同形的整句太常见了——第一版把 `zh-TW` 也判进来，当场红在
+ * `plugin-chrome zh-TW: 正在解析 PSD…` 上，而 `正在解析` 四个字简繁**本来就同形**，
+ * 那是一条正确的繁体译文，不是充数。要真正验繁体，需要的是
+ * 「简体独有字符一个都不许出现」那种字表检查，跟这条不是同一条判据；
+ * 靠「整条相同」去猜只会制造假红，而假红比假绿更隐蔽（`_COMMON §7b⑪b`）。
+ */
+test("日韩档不许整条照抄中文原文（短的共用汉字词除外）", () => {
+  const HAN = /[\u4e00-\u9fff]/;
+  const SENTENCE_PUNCTUATION = /[，。、；：？！「」…]/;
+  const isSharedVocabulary = (text) =>
+    [...text].filter((ch) => HAN.test(ch)).length <= 6 && !SENTENCE_PUNCTUATION.test(text);
+  const copied = [];
+  for (const [册, source] of WAVE_DICTIONARIES) {
+    for (const key of Object.values(source)) {
+      if (isSharedVocabulary(key)) continue;
+      for (const locale of ["ja", "ko"]) {
+        if (UI_MESSAGES[locale][key] === key) copied.push(`${册} ${locale}: ${key}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    copied.sort(),
+    [],
+    "日韩档把整条中文原文照抄了一遍——那是充数，不是译文",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -767,10 +830,8 @@ const PRE_EXISTING_GAPS = new Set([
   "向上飞入",
   "向前移动",
   "向右推进",
-  "向右旋转",
   "向后移动",
   "向左推进",
-  "向左旋转",
   "含加量包",
   "启用阴影",
   "吸附",
@@ -813,7 +874,6 @@ const PRE_EXISTING_GAPS = new Set([
   "场景尚未绑定",
   "场景树",
   "坐标轴",
-  "垂直",
   "垂直环绕",
   "基底",
   "基底视频轨不能删除",
@@ -893,7 +953,6 @@ const PRE_EXISTING_GAPS = new Set([
   "左图右文",
   "左文右图",
   "已从「我的」移除。",
-  "已保存到我的库",
   "已保存模板",
   "已制定计划",
   "已加 100 GB，钱从钱包里扣。",
@@ -1111,7 +1170,6 @@ const PRE_EXISTING_GAPS = new Set([
   "暂时无法预览",
   "曝光",
   "更多操作",
-  "替代文字",
   "替换为",
   "替换模型",
   "最大值（留空自动）",
@@ -1128,7 +1186,6 @@ const PRE_EXISTING_GAPS = new Set([
   "材质纹理已替换",
   "条件",
   "条件格式",
-  "构图",
   "柱状",
   "标注",
   "标注内容",
@@ -1174,7 +1231,6 @@ const PRE_EXISTING_GAPS = new Set([
   "正在读取 Word 文档…",
   "正在读取…",
   "正在读取工作簿…",
-  "正在载入图片…",
   "正在载入完整 3D 模型…",
   "正在载入对象化图片画布…",
   "正在载入文档…",
@@ -1197,7 +1253,6 @@ const PRE_EXISTING_GAPS = new Set([
   "每天最多花多少",
   "每次请人都先问我",
   "比较值",
-  "水平",
   "水平环绕",
   "没有 3D 模型文件。",
   "没有匹配内容",
@@ -1244,7 +1299,6 @@ const PRE_EXISTING_GAPS = new Set([
   "演讲者备注",
   "灯光强度",
   "灯光颜色",
-  "灰度",
   "点光源",
   "点击后直接添加到当前页面中央。",
   "点击图表后，标题、坐标轴、系列类型和颜色会出现在图表上方。",
@@ -1315,7 +1369,6 @@ const PRE_EXISTING_GAPS = new Set([
   "签名板",
   "签名颜色",
   "管理已给出的内容",
-  "粗体",
   "粗糙度",
   "粗细",
   "粘贴 URL",
@@ -1351,7 +1404,6 @@ const PRE_EXISTING_GAPS = new Set([
   "绘制",
   "继续加载",
   "编号",
-  "编辑不会覆盖原素材",
   "编辑器相机",
   "编辑所选批注",
   "编辑版",
@@ -1512,7 +1564,6 @@ const PRE_EXISTING_GAPS = new Set([
   "重做失败",
   "重新核对",
   "重新载入",
-  "重置全部调整",
   "重置滤镜",
   "重置相机",
   "重置视角",
@@ -1610,5 +1661,50 @@ test("历史基线不许留死条目：已经补上译文的要从表里删掉",
     healed.sort(),
     [],
     "这些 key 已经 16 语齐全了，请从 PRE_EXISTING_GAPS 里删掉，别再给下一次留豁免",
+  );
+});
+
+/**
+ * 上面那条只抓「补好了却还留着豁免」的死条目，抓不到另一种：
+ * **key 本身已经没有任何 `tt()` 调用点了**，于是它永远不会进 `SCAN.keys`、
+ * 永远不参与判定，白白挂在表上抬着预算。`_COMMON §7b⑪c` 的「棘轮空转」同族。
+ *
+ * `W43 2026-09-01 [实测]`：这样的条目当时有 12 条。逐条查过之后**只摘了 10 条**，
+ * 因为两种情形处置相反（`§7b⑪c` 说的就是这个）：
+ *
+ *   · 10 条是**真删除**——全部随 `ec16165`「delete AdvancedImageEditor dead code」消失，
+ *     `git show --name-status --find-renames=40%` 显示该 commit 在 `src` 下只有一个
+ *     `D src/shell/AdvancedImageEditor.tsx`，没有改名。同族概念的新说法
+ *     （`顺时针旋转 90°` `逆时针旋转 90°` `黑白`）本来就各自登记着，摘掉不削弱闸门。
+ *   · 2 条**不是死的，是扫描面看不见**：`保存到我的库`（`doc-family-commands.ts` 三处
+ *     `label:` 字面量）与 `调整`（`selection-inspector-groups.ts:176` 三元表达式），
+ *     它们经 `tt(entry.label)` 在渲染时才进 `tt()`，AST 扫的是 `tt()` 的**字面量实参**，
+ *     所以扫不到。这两条**今天仍然印在用户脸上且仍然没译**，摘掉就是把已知欠账
+ *     从账本上擦掉。留着，并在这里写明为什么留。
+ *
+ * ⇒ 所以这条是棘轮而不是「必须为 0」：上限只许往下调。
+ *   下一个人把 `tt(x.label)` 那条间接引用也补上译文之后，回来把这两条一起摘掉、上限调到 0。
+ */
+const UNREFERENCED_GAP_CEILING = 2;
+const UNREFERENCED_GAP_KNOWN = [
+  // `tt(entry.label)` 间接引用，AST 扫不到；仍在屏幕上，仍缺译文。
+  "保存到我的库",
+  "调整",
+];
+
+test("历史基线不许挂着已经没有调用点的死登记（棘轮，只减不增）", () => {
+  const unreferenced = [...PRE_EXISTING_GAPS].filter((key) => !SCAN.keys.has(key)).sort();
+  assert.ok(
+    unreferenced.length <= UNREFERENCED_GAP_CEILING,
+    `PRE_EXISTING_GAPS 里有 ${unreferenced.length} 条已经没有任何 tt() 调用点（上限 ${UNREFERENCED_GAP_CEILING}）：\n` +
+      `${unreferenced.map((key) => `  ${key}`).join("\n")}\n` +
+      "摘之前逐条确认是**删除**还是**改名**：删除可以直接摘；" +
+      "改名要把登记换成新串，否则那处文案从此没人守。" +
+      "若它只是被 tt(x.label) 这类间接引用（扫描面看不见），别摘——把它加进 UNREFERENCED_GAP_KNOWN 并写明理由。",
+  );
+  assert.deepEqual(
+    unreferenced,
+    [...UNREFERENCED_GAP_KNOWN].sort(),
+    "已知的间接引用清单和实测对不上：要么有新的死登记长出来，要么这两条已经能被扫到了（那就把上限调到 0）",
   );
 });

@@ -209,6 +209,8 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     compressingImages: "正在壓縮圖片…",
     liveStreamFellBackToPolling: "即時串流不可用，已回落到輪詢重新整理。",
     tryAgainLater: "請稍後重試。",
+    boldWeight: "粗體",
+    altText: "替代文字",
   },
   ja: {
     anonymous: "匿名",
@@ -416,6 +418,8 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     compressingImages: "画像を圧縮しています…",
     liveStreamFellBackToPolling: "リアルタイム配信が使えないため、定期的な問い合わせによる更新に切り替えました。",
     tryAgainLater: "しばらくしてからもう一度お試しください。",
+    boldWeight: "太字",
+    altText: "代替テキスト",
   },
   ko: {
     anonymous: "익명",
@@ -623,6 +627,8 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     compressingImages: "이미지를 압축하는 중…",
     liveStreamFellBackToPolling: "실시간 스트림을 쓸 수 없어 주기적으로 조회해 갱신하는 방식으로 전환했습니다.",
     tryAgainLater: "잠시 후 다시 시도해 주세요.",
+    boldWeight: "굵게",
+    altText: "대체 텍스트",
   },
   ar: {
     anonymous: "مجهول",
@@ -829,6 +835,8 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     compressingImages: "جارٍ ضغط الصور…",
     liveStreamFellBackToPolling: "البث المباشر غير متاح، وأصبح التحديث يعتمد على الاستعلام الدوري.",
     tryAgainLater: "يُرجى المحاولة مرة أخرى لاحقًا.",
+    boldWeight: "عريض",
+    altText: "نص بديل",
   },
   th: {
     anonymous: "ไม่ระบุชื่อ",
@@ -1036,6 +1044,8 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     compressingImages: "กำลังบีบอัดรูปภาพ…",
     liveStreamFellBackToPolling: "สตรีมแบบเรียลไทม์ใช้ไม่ได้ จึงเปลี่ยนไปอัปเดตด้วยการสอบถามเป็นช่วง ๆ",
     tryAgainLater: "โปรดลองอีกครั้งภายหลัง",
+    boldWeight: "ตัวหนา",
+    altText: "ข้อความแทน",
   },
   hi: {
     anonymous: "गुमनाम",
@@ -1242,5 +1252,7 @@ export const EDITOR_PANELS_COPY_EASTERN: Record<
     compressingImages: "छवियाँ संपीड़ित की जा रही हैं…",
     liveStreamFellBackToPolling: "लाइव स्ट्रीम उपलब्ध नहीं है, अब समय-समय पर पूछकर अपडेट लिए जा रहे हैं।",
     tryAgainLater: "कृपया बाद में पुनः प्रयास करें।",
+    boldWeight: "बोल्ड",
+    altText: "वैकल्पिक पाठ",
   },
 };

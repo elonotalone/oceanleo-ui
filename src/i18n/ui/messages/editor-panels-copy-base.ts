@@ -296,6 +296,19 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   compressingImages: "正在压缩图片…",
   liveStreamFellBackToPolling: "实时流不可用，已回落到轮询刷新。",
   tryAgainLater: "请稍后重试。",
+
+  // ==========================================================================
+  // 补批 · 被 `W48` 的接线拉进零容忍集的两条（`粗体` / `替代文字`）
+  // `W43` 第三棒开工时这两条还只在 oceanleo-ui 内部，落在有基线豁免的那一档；
+  // `W48` 在 `website` 仓提了 `b5a006e`（网站编辑器选区检查器 16 条 label 接共享词典）之后，
+  // `site-editor/editor-controls.ts` 也开始 `tt()` 它们 —— 于是它们进了
+  // 「统一外壳 + 在场同级插件」那个**没有白名单**的集合，判据当场红。
+  // 扫描面跨五个同级仓，同级仓是各自独立的 git 仓：**oceanleo-ui 一行没动，红也会长出来。**
+  // `粗体` 是 font-weight 700 那一档的选项名（不是「加粗」这个动作）；
+  // `替代文字` 是 `<img alt>` 的输入框标签，各语一律用无障碍领域的既有说法。
+  // ==========================================================================
+  boldWeight: "粗体",
+  altText: "替代文字",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
