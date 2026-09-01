@@ -225,7 +225,7 @@ const BAD_CREDENTIALS_PATTERNS = [
   /密码.*(错误|不正确)/,
 ];
 
-const NOT_CONFIGURED_CLIENT = /supabase not configured/i;
+const NOT_CONFIGURED_CLIENT = /supabase not configured|登录服务尚未配置/i;
 
 function matchesAny(raw: string, patterns: readonly RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(raw));
@@ -357,8 +357,8 @@ export function AuthPanel({
    */
   const [view, setView] = useState<"credentials" | "forgot" | "mfa">("credentials");
 
-  // 站点没配 Supabase：不渲染任何表单——渲染了也只会在提交时报
-  // "Supabase not configured"，让用户白填一遍。
+  // 站点没接登录服务：不渲染任何表单。否则提交后只会得到「登录服务尚未配置」，
+  // 让用户白填一遍。境内未接上时走 loginUnavailableNotice，不提内部服务名。
   const configured = oceanleoConfigured();
 
   const finish = useCallback(() => {

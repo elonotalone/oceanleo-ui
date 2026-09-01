@@ -69,7 +69,7 @@ export async function getUserId(): Promise<string | null> {
 
 export async function signIn(email: string, password: string) {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const { data, error } = await c.auth.signInWithPassword({ email, password });
   _accessToken = data.session?.access_token ?? null;
   return { data, error: error?.message };
@@ -93,7 +93,7 @@ export function normalizeCnPhone(raw: string): string {
 /** 发送手机验证码。被邀请的新手机号也能注册（DB 触发器放行被邀请联系方式）。 */
 export async function sendPhoneOtp(phone: string) {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const e164 = normalizeCnPhone(phone);
   if (!e164) return { error: "请输入有效的中国大陆手机号" };
   const { error } = await c.auth.signInWithOtp({ phone: e164 });
@@ -103,7 +103,7 @@ export async function sendPhoneOtp(phone: string) {
 /** 校验手机验证码并登录。 */
 export async function verifyPhoneOtp(phone: string, token: string) {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const e164 = normalizeCnPhone(phone);
   if (!e164) return { error: "请输入有效的中国大陆手机号" };
   const { data, error } = await c.auth.verifyOtp({
@@ -149,7 +149,7 @@ export async function startOauthSignIn(
   redirect?: string,
 ): Promise<{ url?: string; error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const redirectTo =
     (redirect || "").trim() || (typeof window !== "undefined" ? window.location.href : "");
   try {
@@ -210,7 +210,7 @@ export async function sendPasswordReset(
   origin?: string,
 ): Promise<{ error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const target = (email || "").trim();
   if (!target) return { error: "请先填写邮箱地址。" };
   const redirectTo = passwordResetRedirectTo(origin);
@@ -228,7 +228,7 @@ export async function sendPasswordReset(
  */
 export async function reauthenticate(): Promise<{ error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const { error } = await c.auth.reauthenticate();
   return { error: error?.message };
 }
@@ -249,7 +249,7 @@ export async function updatePassword(
   options: UpdatePasswordOptions = {},
 ): Promise<{ error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const next = newPassword || "";
   if (next.length < 6) return { error: "密码至少 6 位。" };
   if (options.currentPassword) {
@@ -284,7 +284,7 @@ export interface MfaFactor {
 /** 已登记的 TOTP 因子。取不到时回空数组而不是抛——账号页不许因此白屏。 */
 export async function listMfaFactors(): Promise<{ factors: MfaFactor[]; error?: string }> {
   const c = browserClient();
-  if (!c) return { factors: [], error: "Supabase not configured" };
+  if (!c) return { factors: [], error: "登录服务尚未配置" };
   const { data, error } = await c.auth.mfa.listFactors();
   if (error) return { factors: [], error: error.message };
   const raw = [...(data?.totp || []), ...(data?.all || [])];
@@ -320,7 +320,7 @@ export async function enrollTotp(
   friendlyName?: string,
 ): Promise<{ enrollment?: TotpEnrollment; error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const name = (friendlyName || "").trim();
   const { data, error } = await c.auth.mfa.enroll({
     factorType: "totp",
@@ -346,7 +346,7 @@ export async function challengeAndVerify(
   code: string,
 ): Promise<{ error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const digits = (code || "").replace(/\s/g, "");
   if (!/^\d{6}$/.test(digits)) return { error: "验证码不对，或者已经过了它 30 秒的有效期。" };
   const { error } = await c.auth.mfa.challengeAndVerify({ factorId, code: digits });
@@ -359,7 +359,7 @@ export async function challengeAndVerify(
 /** 移除一个因子。调用方必须先让用户验一次身份，别让拿到会话的人一键关掉 2FA。 */
 export async function unenrollFactor(factorId: string): Promise<{ error?: string }> {
   const c = browserClient();
-  if (!c) return { error: "Supabase not configured" };
+  if (!c) return { error: "登录服务尚未配置" };
   const { error } = await c.auth.mfa.unenroll({ factorId });
   return { error: error?.message };
 }

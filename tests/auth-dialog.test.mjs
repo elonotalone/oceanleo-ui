@@ -93,6 +93,7 @@ const {
   authMethodsForFamily,
   AUTH_DIALOG_COPY,
   authErrorCopy,
+  totpErrorCopy,
   wechatRedirectTarget,
 } = await import(dialogUrl);
 const { normalizeCnPhone } = await import(realClientUrl);
@@ -161,9 +162,13 @@ test("authErrorCopy 把上游原始错误翻成能照做的中文（未配 ≠ �
     authErrorCopy("apple", "provider is not configured"),
     "Apple 登录暂未开放：还没有配置，请改用邮箱登录。",
   );
-  // client.ts 在 Supabase 未配时返回的原话。
+  // client.ts 在登录服务未接上时返回的原话（旧串仍要认得，避免线上旧包漏出来）。
   assert.equal(
     authErrorCopy("phone", "Supabase not configured"),
+    "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。",
+  );
+  assert.equal(
+    authErrorCopy("phone", "登录服务尚未配置"),
     "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。",
   );
 
@@ -194,6 +199,17 @@ test("authErrorCopy 把上游原始错误翻成能照做的中文（未配 ≠ �
   assert.equal(authErrorCopy("email", undefined), "登录失败，请稍后重试。");
   // 认不出来的错误原样透出（吞掉才是白屏）。
   assert.equal(authErrorCopy("email", "weird upstream detail"), "weird upstream detail");
+});
+
+test("totpErrorCopy 认得 client.ts 的未配串——两步验证那屏不许把裸串甩给用户", () => {
+  // 这里必须两串都断言，而且断言的是 totpErrorCopy 而不是 authErrorCopy。
+  // authErrorCopy 那条路上 UNCONFIGURED_PATTERNS 已经含「尚未配置」，
+  // 中文串不经 NOT_CONFIGURED_CLIENT 也能命中 ⇒ 在那里加断言是空转的。
+  // totpErrorCopy 只有 NOT_CONFIGURED_CLIENT 这一道、没有兜底，认不出就 `return text`：
+  // client.ts 改口说中文而这条正则没跟着改，用户在 6 位码那一屏看到的就是
+  //「登录服务尚未配置」这句裸串，而不是「两步验证现在开不了」。
+  assert.equal(totpErrorCopy("Supabase not configured"), "两步验证现在开不了，稍后再试。");
+  assert.equal(totpErrorCopy("登录服务尚未配置"), "两步验证现在开不了，稍后再试。");
 });
 
 test("AUTH_METHODS 顺序固定：邮箱 → 手机号 → 微信 → Google → Apple", () => {
@@ -587,7 +603,7 @@ test("oceanleoConfigured() 为假：明确的「登录服务尚未配置」分�
       assert.ok(find("[data-auth-unconfigured]"), "必须有独立的未配置分支");
       assert.ok(text().includes("登录服务尚未配置"));
       assert.ok(text().includes("本站还没有接入 OceanLeo 登录服务，请联系管理员。"));
-      // 渲染了也只会在提交时报 "Supabase not configured"，等于让用户白填一遍。
+      // 渲染了也只会在提交时报「登录服务尚未配置」，等于让用户白填一遍。
       assert.equal(find('[data-auth-form="email"]'), null);
       assert.equal(find("[data-auth-method-tab]"), null);
     },
