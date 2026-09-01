@@ -7,6 +7,14 @@
 //
 // 样式由本组件自带 `<style>` 注入（`RICHDOC_REVIEW_CSS`）——谁用谁带，
 // 不给没开审阅的站增加字节。过渡只引 `var(--leo-dur-2)`，不写裸时长（红线 9）。
+//
+// **按钮一律不传 `size`（W42，2026-09-01）。** 这里九个动作按钮原先写的是
+// `size="sm"`(36)，`W29` 把侧栏挂上之后它们才第一次真的出现在屏幕上——
+// 36px 在手机上点不中，而「解决 / 删除 / 全部拒绝」这一排里点错一个是要命的。
+// 回默认档 `lg`(44) 之后卡片会高一点，这是**预期的**：侧栏本来就是竖着滚的，
+// 换来的是三个动作之间不再互相误触（动作行的 gap 同时从 6px 抬到 8px）。
+// 宽度算得过来：`max-width:320px` 的侧栏减去两层内边距还剩 274px，
+// 三枚 44 高的两字按钮横排约 190px，不需要折行。
 // ============================================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -34,7 +42,7 @@ const RAIL_CSS = `
 .oleo-review-card__flag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:999px;background:var(--leo-review-del-bg,rgba(185,28,28,.12));color:var(--leo-review-del,#b91c1c)}
 .oleo-review-card__replies{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--leo-review-card-line,rgba(120,120,120,.28))}
 .oleo-review-card__reply{font-size:12px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
-.oleo-review-card__actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.oleo-review-card__actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .oleo-review-reply-form{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .oleo-review-reply-form textarea{width:100%;min-height:56px;resize:vertical;font:inherit;font-size:12px;padding:6px;border-radius:8px;border:1px solid var(--leo-review-card-line,rgba(120,120,120,.28));background:transparent;color:inherit}
 .oleo-review-change{display:flex;flex-direction:column;gap:6px}
@@ -153,7 +161,6 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
           onClick={(event) => event.stopPropagation()}
         >
           <Button
-            size="sm"
             variant="ghost"
             onClick={() => {
               setReplyingTo(replyingTo === view.id ? "" : view.id);
@@ -163,14 +170,12 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
             {tt("回复")}
           </Button>
           <Button
-            size="sm"
             variant="ghost"
             onClick={() => props.onResolve(view.id, !view.resolved)}
           >
             {view.resolved ? tt("重开") : tt("解决")}
           </Button>
           <Button
-            size="sm"
             variant="ghost"
             onClick={() => props.onRemove(view.id)}
           >
@@ -188,7 +193,6 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
               aria-label={tt("回复内容")}
             />
             <Button
-              size="sm"
               variant="primary"
               disabled={!replyDraft.trim()}
               onClick={() => {
@@ -224,7 +228,6 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
       {resolved.length ? (
         <div className="oleo-review-rail__group">
           <Button
-            size="sm"
             variant="ghost"
             onClick={() => setShowResolved((value) => !value)}
           >
@@ -245,10 +248,10 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
         {props.changes.length ? (
           <>
             <div className="oleo-review-card__actions">
-              <Button size="sm" variant="secondary" onClick={props.onAcceptAll}>
+              <Button variant="secondary" onClick={props.onAcceptAll}>
                 {tt("全部接受")}
               </Button>
-              <Button size="sm" variant="secondary" onClick={props.onRejectAll}>
+              <Button variant="secondary" onClick={props.onRejectAll}>
                 {tt("全部拒绝")}
               </Button>
             </div>
@@ -277,14 +280,12 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
                 ) : null}
                 <div className="oleo-review-card__actions">
                   <Button
-                    size="sm"
                     variant="ghost"
                     onClick={() => props.onAcceptChange(change.changeId)}
                   >
                     {tt("接受")}
                   </Button>
                   <Button
-                    size="sm"
                     variant="ghost"
                     onClick={() => props.onRejectChange(change.changeId)}
                   >

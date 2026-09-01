@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import {
@@ -33,6 +34,25 @@ interface AxisDrag {
   index: number;
   origin: number;
   size: number;
+}
+
+/**
+ * 三个拖拽把手（列宽、行高、填充柄）共用的按下入口（W42，2026-09-01）。
+ *
+ * 为什么从 `onMouseDown` 换成 `onPointerDown`：触摸设备**在拖动过程中不发兼容
+ * mouse 事件**（只有点一下松开才补发一串），所以这三个手势在手机上一个都拖不动。
+ * 这一条决定了「把把手放大到 44」不能单独做——只放大命中区，得到的是
+ * 「点得中了、但拖起来没反应」，比原样还糟。放大与改指针事件必须同一笔。
+ *
+ * `preventDefault` 只对鼠标发，这是刻意的：
+ *   · 鼠标：拦掉默认文本选择，并照旧抑制兼容 mousedown，行为与改造前逐字一致；
+ *   · 触摸：**不拦**，兼容 mousedown 照常冒泡到行头/列头，于是「点一下选整行」
+ *     在放大后的命中区上仍然成立，只有真的拖起来才改尺寸。
+ */
+function beginHandleDrag(event: ReactPointerEvent, start: () => void) {
+  if (event.pointerType === "mouse") event.preventDefault();
+  event.stopPropagation();
+  start();
 }
 
 function SheetNameInput({
@@ -224,7 +244,11 @@ export function GridStage({
       setFillFocus(null);
     };
     window.addEventListener("mouseup", finish);
-    return () => window.removeEventListener("mouseup", finish);
+    window.addEventListener("pointerup", finish);
+    return () => {
+      window.removeEventListener("mouseup", finish);
+      window.removeEventListener("pointerup", finish);
+    };
   }, [fillAnchor, fillFromSelection, fillRange]);
 
   useEffect(() => {
@@ -234,9 +258,13 @@ export function GridStage({
     const up = () => setColDrag(null);
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
     return () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
     };
   }, [colDrag, setColumnWidth]);
 
@@ -247,9 +275,13 @@ export function GridStage({
     const up = () => setRowDrag(null);
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
     return () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
     };
   }, [rowDrag, setRowHeight]);
 
@@ -374,14 +406,14 @@ export function GridStage({
             }}
             aria-label={tt("查找内容")}
             placeholder={tt("查找")}
-            className="h-7 w-36 min-w-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--fg,#292524)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+            className="h-11 w-40 min-w-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 text-[12px] text-[var(--fg,#292524)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
           />
           <input
             value={editor.findReplacement}
             onChange={(event) => editor.setFindReplacement(event.target.value)}
             aria-label={tt("替换为")}
             placeholder={tt("替换为")}
-            className="h-7 w-36 min-w-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 text-[11px] text-[var(--fg,#292524)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+            className="h-11 w-40 min-w-0 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 text-[12px] text-[var(--fg,#292524)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
           />
           <span
             role="status"
@@ -399,7 +431,7 @@ export function GridStage({
             onClick={() => editor.stepFindMatch(-1)}
             disabled={!editor.findMatches.length}
             aria-label={tt("上一个匹配")}
-            className="min-h-7 rounded-md border border-[var(--border,#e7e5e4)] px-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+            className="min-h-11 min-w-11 rounded-md border border-[var(--border,#e7e5e4)] px-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
           >
             ↑
           </button>
@@ -408,7 +440,7 @@ export function GridStage({
             onClick={() => editor.stepFindMatch(1)}
             disabled={!editor.findMatches.length}
             aria-label={tt("下一个匹配")}
-            className="min-h-7 rounded-md border border-[var(--border,#e7e5e4)] px-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+            className="min-h-11 min-w-11 rounded-md border border-[var(--border,#e7e5e4)] px-2 text-[11px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
           >
             ↓
           </button>
@@ -424,7 +456,7 @@ export function GridStage({
                 role="radio"
                 aria-checked={editor.findScope === scope}
                 onClick={() => editor.setFindScope(scope)}
-                className="min-h-7 px-2 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
+                className="min-h-11 px-3 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2"
                 style={
                   editor.findScope === scope
                     ? { background: `${accent}1a`, color: accent }
@@ -457,7 +489,7 @@ export function GridStage({
             type="button"
             onClick={() => editor.replaceAll()}
             disabled={!editor.findMatches.length}
-            className="min-h-7 rounded-md border border-[var(--border,#e7e5e4)] px-2 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+            className="min-h-11 rounded-md border border-[var(--border,#e7e5e4)] px-3 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
           >
             {tt("全部替换")}
           </button>
@@ -465,7 +497,7 @@ export function GridStage({
             type="button"
             onClick={() => editor.setFindOpen(false)}
             aria-label={tt("关闭查找")}
-            className="ml-auto min-h-7 w-7 rounded-md text-[13px] text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+            className="ml-auto min-h-11 w-11 rounded-md text-[13px] text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
           >
             ×
           </button>
@@ -522,7 +554,7 @@ export function GridStage({
             <button
               type="button"
               onClick={editor.reload}
-              className="min-h-9 rounded-lg border border-[var(--border,#e7e5e4)] px-3 text-[12px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="min-h-11 rounded-lg border border-[var(--border,#e7e5e4)] px-3 text-[12px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               {tt("重新载入")}
             </button>
@@ -550,7 +582,7 @@ export function GridStage({
         >
           <thead className="sticky top-0 z-30">
             <tr>
-              <th className="sticky left-0 z-40 h-8 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]">
+              <th className="sticky left-0 z-40 h-11 w-12 min-w-12 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)]">
                 <button
                   type="button"
                   aria-label={tt("选择整张工作表")}
@@ -578,7 +610,7 @@ export function GridStage({
                   <th
                     key={col}
                     style={{ width, minWidth: width }}
-                    className="relative h-8 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2 font-medium text-[var(--muted,#78716c)]"
+                    className="relative h-11 border-b border-r border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2 font-medium text-[var(--muted,#78716c)]"
                     onMouseDown={(event) => {
                       event.preventDefault();
                       selectRange(
@@ -593,21 +625,21 @@ export function GridStage({
                       aria-orientation="vertical"
                       aria-label={`${tt("调整列宽")} ${columnLabel(col)}`}
                       title={tt("拖动改列宽，双击按内容自适应")}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setColDrag({
-                          index: col,
-                          origin: event.clientX,
-                          size: width,
-                        });
-                      }}
+                      onPointerDown={(event) =>
+                        beginHandleDrag(event, () =>
+                          setColDrag({
+                            index: col,
+                            origin: event.clientX,
+                            size: width,
+                          }),
+                        )
+                      }
                       onDoubleClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
                         editor.autoFitColumn(col);
                       }}
-                      className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-[var(--muted,#78716c)]"
+                      className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-[var(--muted,#78716c)] pointer-coarse:-right-5 pointer-coarse:w-11"
                     />
                   </th>
                 );
@@ -648,16 +680,19 @@ export function GridStage({
                       aria-orientation="horizontal"
                       aria-label={`${tt("调整行高")} ${row + 1}`}
                       title={tt("拖动改行高")}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setRowDrag({
-                          index: row,
-                          origin: event.clientY,
-                          size: height,
-                        });
-                      }}
-                      className="absolute inset-x-0 bottom-0 z-10 h-1.5 cursor-row-resize hover:bg-[var(--muted,#78716c)]"
+                      onPointerDown={(event) =>
+                        beginHandleDrag(event, () =>
+                          setRowDrag({
+                            index: row,
+                            origin: event.clientY,
+                            size: height,
+                          }),
+                        )
+                      }
+                      // 细指针（鼠标）保持 6px 精确边线；粗指针（手指）换成
+                      // 44 高 × 24 宽的抓取沟——行头只有 48 宽，占左半边，
+                      // 右半边（行号所在处）留给「点一下选整行」，两个手势不打架。
+                      className="absolute bottom-0 left-0 z-10 h-1.5 w-full cursor-row-resize touch-none hover:bg-[var(--muted,#78716c)] pointer-coarse:-bottom-5 pointer-coarse:h-11 pointer-coarse:w-6"
                     />
                   </th>
                   {Array.from({ length: columnCount }, (_, col) => {
@@ -786,17 +821,20 @@ export function GridStage({
                           }}
                         />
                         {isFillOrigin && (
+                          // 命中盒与视觉点分成两层：鼠标下这两层重合，还是那颗
+                          // 8px 的小方点（放大它会吃掉右下相邻格子的点击）；
+                          // 手指下命中盒撑到 44×44、点子长到 14px，点得中也看得见。
                           <span
                             role="button"
                             tabIndex={-1}
                             aria-label={tt("填充柄")}
                             title={tt("拖动填充，双击沿相邻列向下填满")}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setFillAnchor(selectionRange);
-                              setFillFocus({ row, col });
-                            }}
+                            onPointerDown={(event) =>
+                              beginHandleDrag(event, () => {
+                                setFillAnchor(selectionRange);
+                                setFillFocus({ row, col });
+                              })
+                            }
                             onDoubleClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -804,9 +842,14 @@ export function GridStage({
                               setFillFocus(null);
                               editor.autoFillDown();
                             }}
-                            className="absolute -bottom-0.5 -right-0.5 z-20 h-2 w-2 cursor-crosshair rounded-[1px] border border-[var(--card,#fff)]"
-                            style={{ background: accent }}
-                          />
+                            className="absolute -bottom-0.5 -right-0.5 z-20 grid h-2 w-2 cursor-crosshair touch-none place-items-center pointer-coarse:-bottom-5 pointer-coarse:-right-5 pointer-coarse:h-11 pointer-coarse:w-11"
+                          >
+                            <span
+                              aria-hidden
+                              className="h-2 w-2 rounded-[1px] border border-[var(--card,#fff)] pointer-coarse:h-3.5 pointer-coarse:w-3.5"
+                              style={{ background: accent }}
+                            />
+                          </span>
                         )}
                       </td>
                     );
@@ -833,7 +876,7 @@ export function GridStage({
       <div
         role="tablist"
         aria-label={tt("工作表")}
-        className="flex h-9 shrink-0 items-stretch gap-0.5 overflow-x-auto border-t border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2"
+        className="flex h-11 shrink-0 items-stretch gap-0.5 overflow-x-auto border-t border-[var(--border,#e7e5e4)] bg-[var(--surface,#f5f5f4)] px-2"
       >
         {editor.sheets.map((sheet) =>
           sheet.id === editor.activeSheetId ? (
@@ -861,7 +904,7 @@ export function GridStage({
           type="button"
           onClick={editor.addSheet}
           aria-label={tt("新增工作表")}
-          className="w-8 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-[var(--card,#fff)]"
+          className="w-11 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-[var(--card,#fff)]"
         >
           +
         </button>
@@ -870,7 +913,7 @@ export function GridStage({
           onClick={editor.deleteSheet}
           disabled={editor.sheets.length <= 1}
           aria-label={tt("删除工作表")}
-          className="w-8 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-[var(--awb-danger-soft)] hover:text-[var(--awb-danger)] disabled:opacity-30"
+          className="w-11 shrink-0 text-sm text-[var(--muted,#78716c)] hover:bg-[var(--awb-danger-soft)] hover:text-[var(--awb-danger)] disabled:opacity-30"
         >
           ×
         </button>

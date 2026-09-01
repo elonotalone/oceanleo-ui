@@ -40,13 +40,24 @@ function ToolButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="min-h-9 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm disabled:opacity-35"
+      className="min-h-11 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm disabled:opacity-35"
     >
       {label}
     </button>
   );
 }
 
+/**
+ * 「区分大小写 / 全字匹配」这类开关。
+ *
+ * 原先是 `size-3.5` 的原生复选框——**14px，手指点不中**，而它旁边就挤着另一个开关，
+ * 点歪了会静默改掉查找口径（W42，2026-09-01 实测，`hit-target-budget` 记的就是这一处）。
+ * 把复选框撑到 44 会得到一个 44×44 的方块，那是把缺陷换成另一个缺陷；
+ * 所以这里**换排列**：整行变成一枚 `aria-pressed` 的切换按钮，
+ * 命中区就是那枚按钮本身（`min-h-11`），标签文字也一起可点。
+ * 这与查找框里「Match Case / Whole Word」的通行做法一致，读屏念得出按下/未按下。
+ * 皮沿用同一 Section 里的 `ToolButton`，面板不会出现第二套按钮长相。
+ */
 function CheckRow({
   label,
   checked,
@@ -56,16 +67,21 @@ function CheckRow({
   checked: boolean;
   onChange: (next: boolean) => void;
 }) {
+  // 选中态用三元式换整套配色，不用 `aria-pressed:` 变体：那个变体今天在产物
+  // (`src/theme/ui.css`) 里一条规则都没有，写了等于按下去没反应。
   return (
-    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--fg-2,#57534e)]">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="size-3.5 accent-[var(--awb-accent,#7c3aed)]"
-      />
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+      className={`min-h-11 rounded-xl border px-2.5 text-[11px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] ${
+        checked
+          ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--surface-hover,rgba(0,0,0,.04))] text-[var(--awb-accent,#7c3aed)]"
+          : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)]"
+      }`}
+    >
       {label}
-    </label>
+    </button>
   );
 }
 
@@ -165,14 +181,14 @@ export function RichDocControls({
               }}
               placeholder={tt("查找内容")}
               aria-label={tt("查找内容")}
-              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+              className="min-h-11 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
             />
             <input
               value={replaceText}
               onChange={(event) => setReplaceText(event.target.value)}
               placeholder={tt("替换为")}
               aria-label={tt("替换为")}
-              className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+              className="min-h-11 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
             />
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               <CheckRow
@@ -287,7 +303,7 @@ export function RichDocControls({
             }}
             placeholder={tt("粘贴图片 URL")}
             aria-label={tt("图片 URL")}
-            className="min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+            className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
           />
           <ToolButton
             label={tt("插入")}
