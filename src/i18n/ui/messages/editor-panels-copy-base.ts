@@ -92,6 +92,57 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   alignBottom: "底端",
   // 表格列宽输入框，后缀是 px —— 是**几何宽度**，不是「宽阔」。
   tableColumnWidth: "列宽",
+
+  // ==========================================================================
+  // 表格 · 数字格式 / 条件格式 / 数据验证（GridContextToolbar）
+  // 表格 · 查找替换与行列尺寸（GridStage、use-grid-editor）
+  // `上限`/`下限或值` 是数据验证的数值边界，不是「上面/下面」；
+  // `列宽`/`行高` 是几何尺寸；`已写入` 后面直接跟区域地址（「（已写入 A1:C10）」）。
+  // ==========================================================================
+  numberFormatPreset: "格式预设",
+  numberFormatPattern: "格式串",
+  sheetRules: "本表规则",
+  newRule: "新建规则",
+  ruleDescription: "规则说明",
+  validationKind: "验证类型",
+  validationList: "列表（下拉）",
+  validationWholeNumber: "整数",
+  validationDecimal: "小数",
+  validationTextLength: "文本长度",
+  validationCustomFormula: "自定义公式",
+  dataValidation: "数据验证",
+  comparison: "比较",
+  between: "介于",
+  notBetween: "不介于",
+  greaterOrEqual: "大于等于",
+  lessOrEqual: "小于等于",
+  validationListSource: "候选项或区域引用",
+  validationLowerBound: "下限或值",
+  validationUpperBound: "上限",
+  onInvalid: "违规时",
+  warnStillAllow: "警告（仍可录入）",
+  blockEntry: "阻止录入",
+  circleInvalidData: "圈出所选区域的无效数据",
+  validationCheckResult: "检查结果",
+  validationAllPass: "所选区域全部符合",
+  findAndReplace: "查找和替换",
+  findQueryLabel: "查找内容",
+  findNoResult: "无结果",
+  findPrevMatch: "上一个匹配",
+  findNextMatch: "下一个匹配",
+  findScope: "查找范围",
+  findInValues: "在值里找",
+  findInFormulas: "在公式里找",
+  matchCase: "区分大小写",
+  matchWholeWord: "全字匹配",
+  closeFind: "关闭查找",
+  resizeColumn: "调整列宽",
+  resizeColumnHint: "拖动改列宽，双击按内容自适应",
+  resizeRow: "调整行高",
+  resizeRowHint: "拖动改行高",
+  fillHandle: "填充柄",
+  fillHandleHint: "拖动填充，双击沿相邻列向下填满",
+  pasteWrittenTo: "已写入",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
