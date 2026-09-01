@@ -176,6 +176,38 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   extraNotesOptional: "补充说明（选填）",
   extraNotesHint: "想让 AI 特别注意什么，就写在这里；留空也能跑。",
   extraNotesPlaceholder: "例如：保留衣服上的纹理",
+
+  // ==========================================================================
+  // 演讲者视图 · 放映（DeckPresenterView）
+  // `W16` 把放映挂上之后这一片才第一次上屏：全屏失败的三条回执、跳页提示、
+  // 计时器、画笔与激光笔、排练用时表、以及三个入口按钮的 aria-label。
+  // `用时`/`占比` 是排练表的**列头**（时长 / 占总时长的百分比），不是动词。
+  // ==========================================================================
+  fullscreenApiMissingExit: "当前浏览器不支持全屏 API，请按 F11 退出全屏。",
+  fullscreenApiMissingEnter: "当前浏览器不支持全屏 API，可以按 F11 手动全屏。",
+  fullscreenRequestDenied: "浏览器拒绝了全屏请求，可以按 F11 手动全屏。",
+  jumpToSlidePrompt: "跳至第 {page} 页 · Enter 确认，Esc 取消",
+  pauseTimer: "暂停计时",
+  startTimer: "开始计时",
+  resetTimer: "重置计时",
+  collapsePen: "收起画笔",
+  collapseLaser: "收起激光笔",
+  laserPointer: "激光笔",
+  eraseInk: "擦除笔迹",
+  endPresenting: "结束放映",
+  thisSlideElapsed: "本页 {time}",
+  decreaseNotesFontSize: "缩小备注字号",
+  increaseNotesFontSize: "放大备注字号",
+  noNotesOnThisSlide: "这一页没有备注。",
+  alreadyLastSlide: "已经是最后一页。",
+  rehearsalTiming: "排练用时",
+  viewPerSlideTiming: "查看每页用时",
+  writeBackToNotes: "写回备注",
+  rehearsalElapsedColumn: "用时",
+  rehearsalShareColumn: "占比",
+  startPresenting: "放映",
+  presenterView: "演讲者视图",
+  presentSingleWindowSplit: "放映（单窗口分屏）",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
