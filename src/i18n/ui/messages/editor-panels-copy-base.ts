@@ -143,6 +143,39 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   fillHandle: "填充柄",
   fillHandleHint: "拖动填充，双击沿相邻列向下填满",
   pasteWrittenTo: "已写入",
+
+  // ==========================================================================
+  // 图片创作面板（FabricImageCreationPanels）
+  // 形状/箭头工具、重打光方向、外扩比例、背景色预设（证件照那几档）、
+  // 处理前后对比、以及「补充说明」这一组提示语。
+  // `白底`/`浅灰`/`证件蓝`/`证件红`/`绿幕` 是**背景色**预设，不是单纯的颜色名。
+  // ==========================================================================
+  shapeEllipse: "椭圆",
+  shapeHeart: "心形",
+  shapeCurve: "曲线",
+  shapeArrow: "单向箭头",
+  shapeElbowArrow: "折线箭头",
+  relightFront: "正面光",
+  relightLeft: "左侧光",
+  relightRight: "右侧光",
+  relightTop: "顶光",
+  relightBack: "逆光",
+  outpaintExpand25: "四周各扩 25%",
+  outpaintExpand50: "四周各扩 50%",
+  bgWhite: "白底",
+  bgLightGray: "浅灰",
+  bgIdBlue: "证件蓝",
+  bgIdRed: "证件红",
+  bgGreenScreen: "绿幕",
+  previewBefore: "处理前",
+  previewAfter: "处理后",
+  applyAddsNewLayer: "确认之后会加成新的一层，原来的画面一个像素都不动。",
+  applyAsNewLayer: "应用为新图层",
+  changeBackgroundNext: "接着换个背景",
+  replaceWithBackgroundImage: "换成背景图片",
+  extraNotesOptional: "补充说明（选填）",
+  extraNotesHint: "想让 AI 特别注意什么，就写在这里；留空也能跑。",
+  extraNotesPlaceholder: "例如：保留衣服上的纹理",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
