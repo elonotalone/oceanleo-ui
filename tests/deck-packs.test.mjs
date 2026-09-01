@@ -17,16 +17,27 @@ const DNA_PATH = "/root/projects/asset/lib/template-dna.ts";
  * A change here means the no-`packId` path stopped being byte-for-byte the old
  * one, which is exactly what packs were not allowed to do.
  *
- * 这个数原来钉的是 `caaeebef…`，而那个值**没有任何一版写出器产出过**：本例自
- * `a2f24bb`（钉进来的那一次）起就是红的，随后每一轮全量都带着它。上面那句
- * “verified by building the same fixture against `git show HEAD:`” 当时并没有真做。
+ * ⚠️ 这个常量被改错过一次，改回来花的代价远大于当初核一遍。写在这里免得再来一遍：
  *
- * 现在这个数是量出来的：在 `939af01`（具名装落地前的最后一版写出器）的 worktree 里
- * 拿同一份 `baselineProject()` 建包，得到的就是它，与今天的写出器逐字节相同。
- * 也就是说「默认路径字节不变」这条承诺本身一直成立，红的只是这个抄错的常量。
- * 重算的办法照旧：`git worktree add <dir> 939af01`，用那份写出器建同一份夹具。
+ * `139c44e` 把它从 `caaeebef…` 改成 `aa60868b…`，理由写的是「`caaeebef…` 没有任何
+ * 一版写出器产出过、本例自 `a2f24bb` 起就是红的」。**这两句都不成立**，`W49` 逐版实测：
+ *   - 这份判据在 `a2f24bb`（钉进来的那一次）、`2a0e9d9`、`8da3a9e`、`139c44e^`
+ *     四个版本上**都是绿的**——它是被 `139c44e` 改红的，不是本来就红；
+ *   - 同一份 `baselineProject()` 喂给 `939af01`（具名装落地前的最后一版写出器）、
+ *     `a2f24bb`、`2a0e9d9`、`8da3a9e`、`acd8192`、`f4996ba` 六版写出器，
+ *     产出的是**同一个 33,918 字节的包**（`caaeebef…`）：60 个部件、解包后逐文件
+ *     零差异、容器逐字节相同。`aa60868b…` 没有任何一版写出器产出过。
+ * ⇒「默认路径字节不变」这条承诺从来没有破过，破的只有这个常量本身。
+ *
+ * 要重算就照这个来，别只开个 worktree 就动手：
+ *   1. `git worktree add --detach <dir> 939af01` 并把 `node_modules` 软链进去；
+ *   2. 用**本文件当前的** `baselineProject()`（无 `packId`）喂 `<dir>` 那份
+ *      `buildDeckPptx`，取 sha256；
+ *   3. 与今天的写出器产出的包 `cmp` 一遍，不是只比哈希。
+ * `939af01` 是唯一合法的参照点：比它更早的写出器（`880dfd8` 及以前）会拿
+ * `deck-hollow` 直接拒收这份夹具（`no chart part`），压根建不出包来比。
  */
-const BEFORE_SHA256 = "aa60868b5c364679b5fda9c0c29eaed656055ac5e51f071da9d721db25764bfd";
+const BEFORE_SHA256 = "caaeebef5b0021b0062aa40cc8a688415be0d662c96974ba7d12a7fbc739059d";
 
 const PNG = Uint8Array.from(
   Buffer.from(
@@ -105,7 +116,20 @@ test("the registry is a frozen set of eleven whole packs covering the 33 measure
 
 // These values cross a repository boundary. As with the website appearance
 // preset drift test, a present asset checkout turns silent drift into failure.
-test("reused palette keys, labels and values still match the asset DNA", { skip: !existsSync(DNA_PATH) }, () => {
+//
+// ⚠️ `W49` 2026-09-01 实测：这条对账**已经空转**，而且不会自己恢复。
+// `asset` 仓还在，但 `lib/template-dna.ts` 在那边的 `29e4d21`（2026-08-26,
+// 「把 asset 站剥成纯素材下载站」）里被**删掉**了（502 行，非改名）。
+// 十个调色板 key（amber/crimson/mocha/paper/glacier/ocean/neon-violet/jade-gold/
+// gold/mauve）在被删的那一版里各有一条，在今天的 `asset` 仓里**一条都不剩**。
+// ⇒ 权威副本已不存在，`deck-packs.ts` 的调色板现在是这些色值的唯一出处，
+// 这条用例守不住任何东西了；`skip` 原来的语义是「仓没检出、暂时跳过」，
+// 现在它掩盖的是「对账对象被刻意删了」。把理由写进 `skip` 让 TAP 自己说出来，
+// 别再让它伪装成一次无害的跳过。恢复条件：`asset` 仓重新提供权威副本。
+const DNA_SKIP = existsSync(DNA_PATH)
+  ? false
+  : `asset 仓的 lib/template-dna.ts 已在 asset:29e4d21 (2026-08-26) 被删除，跨仓对账无对象；这不是「缺检出」，不要当无害跳过`;
+test("reused palette keys, labels and values still match the asset DNA", { skip: DNA_SKIP }, () => {
   const dna = readFileSync(DNA_PATH, "utf8");
   for (const pack of DECK_PACKS) {
     const line = dna
