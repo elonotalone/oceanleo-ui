@@ -45,8 +45,12 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
  * 冻结「13 件」这个数时所在的 commit。末尾那条基线自检会把这个 commit 的树解出来重量一遍。
  * `W31` 原先的 13 是在脏工作树上量的，干净检出只有 10 ⇒ `V1` 判红（`_COMMON.md §7b⑪`）。
  * **改上面任何一个冻结数字，都要连它一起改。**
+ *
+ * 2026-09-01 收尾波换成 `c672108`：`W46` 的 `eec927c` 把主题表补齐到 13 件之后，
+ * 两表差集在 HEAD 上变成空集，而 `a498867` 那棵树上差集仍是三件
+ * ⇒ 清单清空必须与这个 commit 同一笔改，否则末尾那条自检当场红。
  */
-const BASELINE_COMMIT = "a4988677c825a17e499159b5d28cdceb6eabc45f";
+const BASELINE_COMMIT = "c672108e829df2ae0a5b4510269dd1a7323827f7";
 
 function read(relPath) {
   return readFileSync(resolve(relPath), "utf8");
@@ -150,14 +154,20 @@ for (const adapter of adapters) {
 /**
  * 主题表**尚未**登记、但适配器表已经有的插件 id（`BASELINE_COMMIT` 干净检出实测）。
  *
- * 这三件是并发同事正在往 `plugin-theme.tsx` 里补的（`git diff` 里 +63 行，本波在途）。
- * 按 `_COMMON.md §8`「红在别人在途的文件里，标『在途』，不记人头」，这里显式登记而不判红。
+ * **2026-09-01 收尾波：已清空，两表对齐完成。**
+ * 原先登记的三件（`design-canvas` / `video-canvas` / `website`）是并发同事在途的改动，
+ * 按 `_COMMON.md §8`「红在别人在途的文件里，标『在途』，不记人头」显式登记而不判红；
+ * `W46` 的 `eec927c` 把它们补进主题表之后，下面那条「死条目也红」**当场红了**，
+ * 逼着来清这份清单——这正是当初写它时期望的走向。
  *
- * ⚠️ 这是**清单，不是豁免**：下面那条「死条目也红」会在同事提交之后当场红，
- * 逼着把这里清空。形状抄 `motion-token-adoption` 的判据 2b——
- * 留着不清的清单会把下一次真回归静静放过去。
+ * ⭐ 这是本波第三例「棘轮空转」（`_COMMON.md §7b⑪c`），也是**第一次由闸自己抓到**：
+ * 前两例（`motion-no-raw-duration` 空转 46 格、`module-bench-gate` 4 条死登记）
+ * 都是闸假绿、靠人翻出来的；这一次因为反向断言真的存在，债一还完它立刻就红。
+ * ⇒ 结论不是「清单危险」，而是**清单必须配一条反向断言**。
+ *
+ * ⚠️ 这是**清单，不是豁免**：留着不清的清单会把下一次真回归静静放过去。
  */
-const THEME_SPEC_PENDING = Object.freeze(["design-canvas", "video-canvas", "website"]);
+const THEME_SPEC_PENDING = Object.freeze([]);
 
 /** 两张表的路径，`git archive` 只解这两个文件，不解整棵树。 */
 const TABLE_PATHS = [
@@ -214,6 +224,20 @@ test("两表对齐：主题表不许出现适配器表没有的插件，缺的�
   const head = measureOnCommittedTree({ repo: REPO, commit: "HEAD", pathspecs: TABLE_PATHS, measure: readTables });
   assert.ok(head.ok, `读不到 HEAD 上的两张表 ⇒ 这条对齐判据等于没跑。${head.reason}`);
   const { pluginIds, themeIds } = head.value;
+
+  // 正对照：`THEME_SPEC_PENDING` 清空之后，下面两条都退化成 `deepEqual([], [])`
+  // ——解析器一旦失灵、两张表都读成空数组，它们会**双双通过**。
+  // 所以先证明「我确实读到了两张有内容的表」，再谈差集。
+  assert.equal(
+    pluginIds.length,
+    13,
+    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 13）。` +
+      "读不出内容时下面的差集判据会空转全绿，这条正对照就是为了让它当场露出来",
+  );
+  assert.ok(
+    themeIds.length >= 13,
+    `HEAD 上主题表只读出来 ${themeIds.length} 件（至少 13）。理由同上`,
+  );
 
   // 方向一（硬红）：主题表里冒出来一个适配器表没有的 id，说明它问不出归哪条外壳路径
   // ⇒ 那件的用户双击不会有任何反应，而没有任何闸会响。这是真缺口，不是在途。
