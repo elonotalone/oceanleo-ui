@@ -37,27 +37,10 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
 /**
  * 已入库、但**最新 tag 的 tarball 里没有**的 exports 子路径。
  *
- * `[实测 2026-09-01]` 最新 tag `v0.215.0` = `efde139`（08-19 13:35），
- * 本波全部工作都在它之后。这 12 条就是「下游今天装不到」的东西。
- *
- * ⚠️ 发版之后**必须把这张表清空**，否则下面那条反向断言会红。
- * 发版步骤见 `docs/work-logs/2026-08/oceanleo-experience-upgrade/04-release-checklist.md`，
- * 记得连 `version` 一起 bump ——只打 tag、不改版本号，下游不会重新取。
+ * `v0.216.0` 已追上树上的 exports。再有人在 tag 之后加子路径、忘了发版，
+ * 下面那条正向断言会把新路径报出来。
  */
-const UNRELEASED_EXPORTS = Object.freeze([
-  "./lib/motion",
-  "./shell/AdvancedContentWorkbench",
-  "./shell/advanced-routes/GameRoute",
-  "./shell/nav-source",
-  "./shell/nav-source/route-boundary",
-  "./shell/nav-source/route-transition.css",
-  "./shell/nav-source/use-route-navigation",
-  "./shell/plugin-ai",
-  "./shell/plugin-chrome",
-  "./shell/plugin-command",
-  "./shell/plugin-theme",
-  "./shell/replay",
-]);
+const UNRELEASED_EXPORTS = Object.freeze([]);
 
 function git(...args) {
   return execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();

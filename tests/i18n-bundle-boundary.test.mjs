@@ -30,6 +30,20 @@ test("request config loads the selected locale instead of the aggregate", () => 
   assert.doesNotMatch(loader, /from\s+["']\.\/index["']/);
 });
 
+test("运行时加载器与总表是同一套分册，缺一册会让非中文档回退成中文", async () => {
+  // 总表是测试在读的那份；请求路径走 loadUiMessages。两边漂过两次。
+  const { loadUiMessages } = await import("../src/i18n/ui/messages/load.ts");
+  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+  const runtime = await loadUiMessages("en");
+  const missing = Object.keys(UI_MESSAGES.en).filter((key) => !(key in runtime));
+  assert.deepEqual(
+    missing,
+    [],
+    `loadUiMessages("en") 缺 ${missing.length} 条（总表 ${Object.keys(UI_MESSAGES.en).length}）。` +
+      "缺的那一册只进了 index.ts，16 个非中文档会印中文原文。",
+  );
+});
+
 test("UI dictionary namespace extraction is safe and deterministic", () => {
   const dictionary = { 加载: "Loading" };
   assert.equal(
