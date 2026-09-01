@@ -22,14 +22,35 @@
 // ⚠️ 这不是「把失败标成环境问题了事」（红线 §2.7 禁止的那件事）。区别在于：
 //   · skip 的条件是**真探针探出来的**，不是写死的 `skip: true`；
 //   · 库一旦补上，探针立刻放行，两份测试照常跑、照常能红；
-//   · 探针只认「动态库加载失败」这一种形态。浏览器起得来之后再失败的，是真失败，
-//     一条都不会被 skip 掉。
+//   · 探针只认「浏览器压根起不来」这两种形态（缺动态库 / 二进制不在盘上）。
+//     浏览器起得来之后再失败的，是真失败，一条都不会被 skip 掉。
+//
+// ── 第二种形态（`W36` 实测，`W47` 补，2026-09-01）────────────────────────────
+//
+// 上面那一版只认「缺动态库」。`W36` 撞到的是另一种：**二进制根本不在盘上**——
+// `PLAYWRIGHT_BROWSERS_PATH` 指向一个不存在的目录（agent 沙箱里出现过），
+// `chromium.executablePath()` 照样**算得出**一条路径（它只做字符串拼接，不查盘），
+// 于是 `execFileSync` 炸的是 `ENOENT` 而不是 `error while loading shared libraries`，
+// 老探针落进「起不来但不是缺库 ⇒ 让它照常跑」那条分支，两份测试报**真红**。
+//
+// `[W36 实测]` 换成 `/root/.cache/ms-playwright` 后同样两份文件 9 例全绿；
+// `[W47 实测]` 同一棵干净检出上，`PLAYWRIGHT_BROWSERS_PATH` 指向不存在的目录时
+// 老探针给 `{available:true}`，不指时给 `{available:false, 缺 libglib-2.0.so.0}`。
+// ⇒ 这不是代码缺陷，但它**每次都会被记成缺陷**：本波已有两位把它写进红名单。
+// 所以这里把这一形态也认出来，并把**该 export 什么**直接写进 skip 消息里，
+// 不让下一个人再去翻 runbook 或重查一遍。
+//
+// ⚠️ 仍然不是「无条件 skip」：判据是**盘上有没有这个文件**（`existsSync`），
+// 二进制在位就照常跑、照常能红。
 // ============================================================================
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chromium } from "playwright-core";
 
 const RUNBOOK = "docs/runbooks/oceanleo-ui-browser-tests.md";
+/** 本机装好的那一份。沙箱里 `PLAYWRIGHT_BROWSERS_PATH` 被指飞过。 */
+const INSTALLED_BROWSERS_PATH = "/root/.cache/ms-playwright";
 
 /**
  * 真的把浏览器二进制拉起来问一句 `--version`。
@@ -43,6 +64,27 @@ function probeChromium() {
     return {
       available: false,
       skipReason: `playwright-core 报不出 chromium 路径（${caught.message}）；补法见 ${RUNBOOK}`,
+    };
+  }
+
+  // `executablePath()` 只拼字符串、不查盘：路径算得出来不等于文件在。
+  if (!existsSync(executable)) {
+    return {
+      available: false,
+      missingExecutable: executable,
+      skipReason:
+        `本机 chromium 二进制不在盘上：${executable} 这个文件不存在。` +
+        (process.env.PLAYWRIGHT_BROWSERS_PATH
+          ? `当前 PLAYWRIGHT_BROWSERS_PATH=${process.env.PLAYWRIGHT_BROWSERS_PATH}，` +
+            "它指到了一个没有浏览器的地方。"
+          : "") +
+        (existsSync(INSTALLED_BROWSERS_PATH)
+          ? `这台机器上装好的那一份在 ${INSTALLED_BROWSERS_PATH}，` +
+            `**跑之前 export PLAYWRIGHT_BROWSERS_PATH=${INSTALLED_BROWSERS_PATH}** ` +
+            "这两份测试就会自动恢复执行（不必改任何代码）。"
+          : `${INSTALLED_BROWSERS_PATH} 也是空的 ⇒ 这台机器上没装浏览器，` +
+            "先 npx playwright install chromium，或按 runbook 补。") +
+        `详情见 ${RUNBOOK}`,
     };
   }
 

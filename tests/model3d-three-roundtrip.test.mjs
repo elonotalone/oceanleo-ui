@@ -136,8 +136,10 @@ test("Three editor autosave uses the current annotation sidecar", () => {
   assert.equal("sourceUrl" in sidecar, false);
 });
 
-// 缺共享库时明确 skip 并说清缺什么、怎么补，而不是每次全量都红一条。
-// 条件由真探针给出（`./chromium-availability.mjs`），库补上就自动恢复执行。
+// 浏览器压根起不来时（缺共享库，或二进制不在盘上）明确 skip 并说清缺什么、
+// 怎么补——包括该 export 哪一行——而不是每次全量都红一条。
+// 条件由真探针给出（`./chromium-availability.mjs`），环境补好就自动恢复执行；
+// 浏览器在位时照常跑、照常能红（探针本身由 `./browser-probe-honesty.test.mjs` 双向钉住）。
 // 只跳这一格：本文件最后那条句柄泄漏判决不起浏览器，必须照常跑。
 test(
   "Three.js scene interactions survive a real exported GLB round trip",
