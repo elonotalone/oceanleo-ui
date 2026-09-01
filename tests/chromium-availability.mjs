@@ -46,11 +46,26 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir, platform } from "node:os";
+import { join } from "node:path";
 import { chromium } from "playwright-core";
 
 const RUNBOOK = "docs/runbooks/oceanleo-ui-browser-tests.md";
-/** 本机装好的那一份。沙箱里 `PLAYWRIGHT_BROWSERS_PATH` 被指飞过。 */
-const INSTALLED_BROWSERS_PATH = "/root/.cache/ms-playwright";
+
+/**
+ * playwright 默认把浏览器装在哪。**从 `homedir()` 现推，不写死绝对路径。**
+ *
+ * ⚠️ 别改回字面量：`W47` 第一版写死 `/root/.cache/ms-playwright`，
+ * 当场撞红 `w25-tests-out-of-repo-paths`（那道闸禁止测试源码里出现仓外绝对路径）。
+ * 而且按那道闸自己的登记口径，本机 playwright 缓存属于「只是我这台机器上现在有」，
+ * **不够格登记豁免**——现推才是正解：换台机器、换个用户、换成 macOS 都仍然对。
+ */
+function installedBrowsersPath() {
+  const home = homedir();
+  return platform() === "darwin"
+    ? join(home, "Library", "Caches", "ms-playwright")
+    : join(home, ".cache", "ms-playwright");
+}
 
 /**
  * 真的把浏览器二进制拉起来问一句 `--version`。
@@ -69,6 +84,7 @@ function probeChromium() {
 
   // `executablePath()` 只拼字符串、不查盘：路径算得出来不等于文件在。
   if (!existsSync(executable)) {
+    const installed = installedBrowsersPath();
     return {
       available: false,
       missingExecutable: executable,
@@ -78,11 +94,11 @@ function probeChromium() {
           ? `当前 PLAYWRIGHT_BROWSERS_PATH=${process.env.PLAYWRIGHT_BROWSERS_PATH}，` +
             "它指到了一个没有浏览器的地方。"
           : "") +
-        (existsSync(INSTALLED_BROWSERS_PATH)
-          ? `这台机器上装好的那一份在 ${INSTALLED_BROWSERS_PATH}，` +
-            `**跑之前 export PLAYWRIGHT_BROWSERS_PATH=${INSTALLED_BROWSERS_PATH}** ` +
+        (existsSync(installed)
+          ? `这台机器上装好的那一份在 ${installed}，` +
+            `**跑之前 export PLAYWRIGHT_BROWSERS_PATH=${installed}** ` +
             "这两份测试就会自动恢复执行（不必改任何代码）。"
-          : `${INSTALLED_BROWSERS_PATH} 也是空的 ⇒ 这台机器上没装浏览器，` +
+          : `${installed} 也是空的 ⇒ 这台机器上没装浏览器，` +
             "先 npx playwright install chromium，或按 runbook 补。") +
         `详情见 ${RUNBOOK}`,
     };
