@@ -18,15 +18,26 @@
     "./lib/auth/client": "./src/lib/auth/client.ts",
     "./lib/auth/config": "./src/lib/auth/config.ts",
     "./lib/auth/middleware": "./src/lib/auth/middleware.ts",
+    "./lib/motion": "./src/lib/motion/index.ts",
     "./library": "./src/facades/library.ts",
     "./manifest": "./src/contracts/site-manifest.ts",
     "./org-canvas": "./src/shell/OrgCanvas.tsx",
     "./pages": "./src/pages/index.ts",
     "./session": "./src/facades/session.ts",
     "./shell": "./src/shell/index.ts",
+    "./shell/advanced-routes/GameRoute": "./src/shell/advanced-routes/GameRoute.tsx",
+    "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
+    "./shell/nav-source": "./src/shell/nav-source/index.ts",
+    "./shell/nav-source/route-boundary": "./src/shell/nav-source/route-boundary.tsx",
+    "./shell/nav-source/route-transition.css": "./src/shell/nav-source/route-transition.css",
+    "./shell/nav-source/use-route-navigation": "./src/shell/nav-source/use-route-navigation.ts",
+    "./shell/plugin-ai": "./src/shell/plugin-ai/index.ts",
+    "./shell/plugin-chrome": "./src/shell/plugin-chrome/index.ts",
+    "./shell/plugin-command": "./src/shell/plugin-command/index.ts",
+    "./shell/plugin-theme": "./src/shell/plugin-theme.tsx",
     "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
     "./tailwind-preset": "./src/theme/tailwind-preset.ts",
@@ -1616,6 +1627,59 @@
         }
       ]
     },
+    "./lib/motion": {
+      "target": "./src/lib/motion/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "createPointerVelocityTracker",
+          "importedName": "createPointerVelocityTracker",
+          "source": "./pointer-velocity"
+        },
+        {
+          "kind": "named",
+          "name": "createSpring",
+          "importedName": "createSpring",
+          "source": "./spring"
+        },
+        {
+          "kind": "named",
+          "name": "createSpring2D",
+          "importedName": "createSpring2D",
+          "source": "./spring"
+        },
+        {
+          "kind": "named",
+          "name": "jumpAllSpringsToRest",
+          "importedName": "jumpAllSpringsToRest",
+          "source": "./spring"
+        },
+        {
+          "kind": "type",
+          "name": "PointerVelocityTracker",
+          "importedName": "PointerVelocityTracker",
+          "source": "./pointer-velocity"
+        },
+        {
+          "kind": "type",
+          "name": "Spring2DValue",
+          "importedName": "Spring2DValue",
+          "source": "./spring"
+        },
+        {
+          "kind": "type",
+          "name": "SpringConfig",
+          "importedName": "SpringConfig",
+          "source": "./spring"
+        },
+        {
+          "kind": "type",
+          "name": "SpringValue",
+          "importedName": "SpringValue",
+          "source": "./spring"
+        }
+      ]
+    },
     "./library": {
       "target": "./src/facades/library.ts",
       "declarations": [
@@ -3095,12 +3159,6 @@
         },
         {
           "kind": "named",
-          "name": "detectNativeHost",
-          "importedName": "detectNativeHost",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
           "name": "dispatchWorkspaceAction",
           "importedName": "dispatchWorkspaceAction",
           "source": "./workspace-actions"
@@ -4043,60 +4101,6 @@
         },
         {
           "kind": "named",
-          "name": "MOBILE_BRIDGE_GLOBAL",
-          "importedName": "MOBILE_BRIDGE_GLOBAL",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MOBILE_DEGRADATION",
-          "importedName": "MOBILE_DEGRADATION",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MOBILE_NOTICE_EVENT",
-          "importedName": "MOBILE_NOTICE_EVENT",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MOBILE_SHARE_EVENT",
-          "importedName": "MOBILE_SHARE_EVENT",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MOBILE_TRUSTED_ORIGIN",
-          "importedName": "TRUSTED_ORIGIN",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MobileBridgeHandle",
-          "importedName": "MobileBridgeHandle",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MobileBridgeOptions",
-          "importedName": "MobileBridgeOptions",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MobileCapability",
-          "importedName": "MobileCapability",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "MobileResult",
-          "importedName": "MobileResult",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
           "name": "ModelCategory",
           "importedName": "ModelCategory",
           "source": "./ModelPicker"
@@ -4139,18 +4143,6 @@
         },
         {
           "kind": "named",
-          "name": "NativeHost",
-          "importedName": "NativeHost",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "NativeMedia",
-          "importedName": "NativeMedia",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
           "name": "navigateToArtifactPlay",
           "importedName": "navigateToArtifactPlay",
           "source": "./explore-artifact-class"
@@ -4190,12 +4182,6 @@
           "name": "normalizeSelectionContext",
           "importedName": "normalizeSelectionContext",
           "source": "./selection-context"
-        },
-        {
-          "kind": "named",
-          "name": "normalizeTrustedDeepLink",
-          "importedName": "normalizeTrustedDeepLink",
-          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4298,24 +4284,6 @@
           "name": "partitionSelectionInspectorControls",
           "importedName": "partitionSelectionInspectorControls",
           "source": "./selection-inspector-groups"
-        },
-        {
-          "kind": "named",
-          "name": "pickFilesWithSystemPicker",
-          "importedName": "pickFilesWithSystemPicker",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "pickNativeMedia",
-          "importedName": "pickNativeMedia",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "pickPhotosWithSystemPicker",
-          "importedName": "pickPhotosWithSystemPicker",
-          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4547,18 +4515,6 @@
         },
         {
           "kind": "named",
-          "name": "queuedDeviceTaskMessage",
-          "importedName": "queuedDeviceTaskMessage",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "readNativeMediaUrl",
-          "importedName": "readNativeMediaUrl",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
           "name": "readPluginCommandState",
           "importedName": "readPluginCommandState",
           "source": "./plugin-command"
@@ -4706,12 +4662,6 @@
           "name": "SavedWorkflow",
           "importedName": "SavedWorkflow",
           "source": "./guide-context"
-        },
-        {
-          "kind": "named",
-          "name": "scanWithSystemCamera",
-          "importedName": "scanWithSystemCamera",
-          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -4883,18 +4833,6 @@
         },
         {
           "kind": "named",
-          "name": "SHARE_EVENT_NAME",
-          "importedName": "SHARE_EVENT_NAME",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
-          "name": "SHARE_LANDING_PATH",
-          "importedName": "SHARE_LANDING_PATH",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
           "name": "ShellChromeProvider",
           "importedName": "ShellChromeProvider",
           "source": "./ShellChrome"
@@ -4922,12 +4860,6 @@
           "name": "ShellSubNav",
           "importedName": "ShellSubNav",
           "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "showTaskNotification",
-          "importedName": "showTaskNotification",
-          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -5009,12 +4941,6 @@
         },
         {
           "kind": "named",
-          "name": "startMobileBridge",
-          "importedName": "startMobileBridge",
-          "source": "./mobile-bridge"
-        },
-        {
-          "kind": "named",
           "name": "StorageCapacityStrip",
           "importedName": "StorageCapacityStrip",
           "source": "./StorageCapacityStrip"
@@ -5042,12 +4968,6 @@
           "name": "subscribeSiteAppDirectories",
           "importedName": "subscribeSiteAppDirectories",
           "source": "./material-scene-axis"
-        },
-        {
-          "kind": "named",
-          "name": "TaskNotification",
-          "importedName": "TaskNotification",
-          "source": "./mobile-bridge"
         },
         {
           "kind": "named",
@@ -5629,6 +5549,10 @@
         },
         {
           "kind": "star",
+          "source": "./mobile-bridge-public"
+        },
+        {
+          "kind": "star",
           "source": "./video-editor/capabilities"
         },
         {
@@ -6005,6 +5929,117 @@
         }
       ]
     },
+    "./shell/advanced-routes/GameRoute": {
+      "target": "./src/shell/advanced-routes/GameRoute.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "GAME_EDITOR_CAPABILITY",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GAME_PROJECT_SCHEMA",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GAME_REVISION_ORIGINS",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GAME_SOURCE_FORMAT",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GAME_SOURCE_MEDIA_TYPE",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GameRoute",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isAllowedGameRevisionOrigin",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "registerGameIterationRunner",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "registerGamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameBundleDocument",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameBundleFormat",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameIterationRequest",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameIterationResult",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameIterationRunner",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GamePreviewHostProps",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameRevisionOrigin",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/AdvancedContentWorkbench": {
+      "target": "./src/shell/AdvancedContentWorkbench.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AdvancedContentWorkbench",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "AdvancedContentWorkbenchProps",
+          "importedName": "AdvancedContentWorkbenchProps",
+          "source": "./advanced-workbench-types"
+        },
+        {
+          "kind": "type",
+          "name": "AdvancedContentWorkbenchMountProps",
+          "source": ""
+        }
+      ]
+    },
     "./shell/ArtifactActions.js": {
       "target": "./src/shell/ArtifactActions.tsx",
       "declarations": [
@@ -6217,6 +6252,744 @@
           "name": "platformToEntry",
           "importedName": "platformToEntry",
           "source": "./material-library-controller"
+        }
+      ]
+    },
+    "./shell/nav-source": {
+      "target": "./src/shell/nav-source/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "NAV_SOURCE",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "navEntries",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "navEntryById",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "navIdsForScope",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavIconId",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavLabelSource",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavOption",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavPageId",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavPlacement",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavResolveOptions",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavScope",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavSection",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NavSourceEntry",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ResolvedNavEntry",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/nav-source/route-boundary": {
+      "target": "./src/shell/nav-source/route-boundary.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "RoutePageSkeleton",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "RouteSegmentError",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "RouteSkeletonVariant",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/nav-source/use-route-navigation": {
+      "target": "./src/shell/nav-source/use-route-navigation.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "useRouteNavigation",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "RouteNavigationOptions",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/plugin-ai": {
+      "target": "./src/shell/plugin-ai/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "AI_CAPABILITIES",
+          "importedName": "AI_CAPABILITIES",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "createGatewayAiTransport",
+          "importedName": "createGatewayAiTransport",
+          "source": "./transport"
+        },
+        {
+          "kind": "named",
+          "name": "createHostFetchJsonAiTransport",
+          "importedName": "createHostFetchJsonAiTransport",
+          "source": "./transport"
+        },
+        {
+          "kind": "named",
+          "name": "createPluginAiClient",
+          "importedName": "createPluginAiClient",
+          "source": "./client"
+        },
+        {
+          "kind": "named",
+          "name": "createUnavailableAiTransport",
+          "importedName": "createUnavailableAiTransport",
+          "source": "./transport"
+        },
+        {
+          "kind": "named",
+          "name": "isPluginAiError",
+          "importedName": "isPluginAiError",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_AI_LOGICAL_URLS",
+          "importedName": "PLUGIN_AI_LOGICAL_URLS",
+          "source": "./transport"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_AI_REQUEST_SCHEMA",
+          "importedName": "PLUGIN_AI_REQUEST_SCHEMA",
+          "source": "./transport"
+        },
+        {
+          "kind": "named",
+          "name": "PluginAiError",
+          "importedName": "PluginAiError",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiAspectRatio",
+          "importedName": "AiAspectRatio",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiBilling",
+          "importedName": "AiBilling",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiCapability",
+          "importedName": "AiCapability",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiCapabilityAvailability",
+          "importedName": "AiCapabilityAvailability",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiCapabilityIo",
+          "importedName": "AiCapabilityIo",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiCodeFile",
+          "importedName": "AiCodeFile",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiCodePatchInput",
+          "importedName": "AiCodePatchInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiCodePatchOutput",
+          "importedName": "AiCodePatchOutput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiDisposition",
+          "importedName": "AiDisposition",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageEditInput",
+          "importedName": "AiImageEditInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageGenerateInput",
+          "importedName": "AiImageGenerateInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageInpaintInput",
+          "importedName": "AiImageInpaintInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageOutput",
+          "importedName": "AiImageOutput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageOutputSet",
+          "importedName": "AiImageOutputSet",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageRef",
+          "importedName": "AiImageRef",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageRelightInput",
+          "importedName": "AiImageRelightInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiImageUpscaleInput",
+          "importedName": "AiImageUpscaleInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiInputFor",
+          "importedName": "AiInputFor",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiLightDirection",
+          "importedName": "AiLightDirection",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiOutputFor",
+          "importedName": "AiOutputFor",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiProgress",
+          "importedName": "AiProgress",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiProgressPhase",
+          "importedName": "AiProgressPhase",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiReceipt",
+          "importedName": "AiReceipt",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiRewriteAction",
+          "importedName": "AiRewriteAction",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiTextGenerateInput",
+          "importedName": "AiTextGenerateInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiTextOutput",
+          "importedName": "AiTextOutput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiTextRewriteInput",
+          "importedName": "AiTextRewriteInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiTextTranslateInput",
+          "importedName": "AiTextTranslateInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiTransport",
+          "importedName": "AiTransport",
+          "source": "./transport"
+        },
+        {
+          "kind": "type",
+          "name": "AiTransportContext",
+          "importedName": "AiTransportContext",
+          "source": "./transport"
+        },
+        {
+          "kind": "type",
+          "name": "AiTransportResult",
+          "importedName": "AiTransportResult",
+          "source": "./transport"
+        },
+        {
+          "kind": "type",
+          "name": "AiVideoGenerateInput",
+          "importedName": "AiVideoGenerateInput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiVideoOutput",
+          "importedName": "AiVideoOutput",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "AiVideoOutputSet",
+          "importedName": "AiVideoOutputSet",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "GatewayAiTransportOptions",
+          "importedName": "GatewayAiTransportOptions",
+          "source": "./transport"
+        },
+        {
+          "kind": "type",
+          "name": "HostFetchJsonAiTransportOptions",
+          "importedName": "HostFetchJsonAiTransportOptions",
+          "source": "./transport"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAiClient",
+          "importedName": "PluginAiClient",
+          "source": "./client"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAiClientOptions",
+          "importedName": "PluginAiClientOptions",
+          "source": "./client"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAiErrorOptions",
+          "importedName": "PluginAiErrorOptions",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAiFetchJson",
+          "importedName": "PluginAiFetchJson",
+          "source": "./transport"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAiRequest",
+          "importedName": "PluginAiRequest",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAiResult",
+          "importedName": "PluginAiResult",
+          "source": "./types"
+        }
+      ]
+    },
+    "./shell/plugin-chrome": {
+      "target": "./src/shell/plugin-chrome/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "PLUGIN_AGENT_DRAWER_ID",
+          "importedName": "PLUGIN_AGENT_DRAWER_ID",
+          "source": "./agent-drawer"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_CHROME_EDITBAR_MIN_H",
+          "importedName": "PLUGIN_CHROME_EDITBAR_MIN_H",
+          "source": "./tokens"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_CHROME_HEADER_H",
+          "importedName": "PLUGIN_CHROME_HEADER_H",
+          "source": "./tokens"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_CHROME_PANEL_DEFAULT_W",
+          "importedName": "PLUGIN_CHROME_PANEL_DEFAULT_W",
+          "source": "./tokens"
+        },
+        {
+          "kind": "named",
+          "name": "PluginAgentPanel",
+          "importedName": "PluginAgentPanel",
+          "source": "./PluginAgentPanel"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeAction",
+          "importedName": "PluginChromeAction",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeEditBarButton",
+          "importedName": "PluginChromeEditBarButton",
+          "source": "./PluginChromeEditBarButton"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeEditBarDivider",
+          "importedName": "PluginChromeEditBarDivider",
+          "source": "./PluginChromeEditBarButton"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeFrame",
+          "importedName": "PluginChromeFrame",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeNotice",
+          "importedName": "PluginChromeNotice",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeNotices",
+          "importedName": "PluginChromeNotices",
+          "source": "./PluginChromeNotices"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromePanel",
+          "importedName": "PluginChromePanel",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeSaveState",
+          "importedName": "PluginChromeSaveState",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeStatus",
+          "importedName": "PluginChromeStatus",
+          "source": "./PluginChromeStatus"
+        },
+        {
+          "kind": "named",
+          "name": "pluginChromeStyle",
+          "importedName": "pluginChromeStyle",
+          "source": "./tokens"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeView",
+          "importedName": "PluginChromeView",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeWindowActions",
+          "importedName": "PluginChromeWindowActions",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "usePluginChromePanelHost",
+          "importedName": "usePluginChromePanelHost",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "named",
+          "name": "usePluginChromePanels",
+          "importedName": "usePluginChromePanels",
+          "source": "./use-plugin-chrome-panels"
+        },
+        {
+          "kind": "type",
+          "name": "PluginAgentPanelProps",
+          "importedName": "PluginAgentPanelProps",
+          "source": "./PluginAgentPanel"
+        },
+        {
+          "kind": "type",
+          "name": "PluginChromeFrameProps",
+          "importedName": "PluginChromeFrameProps",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "type",
+          "name": "PluginChromePanelController",
+          "importedName": "PluginChromePanelController",
+          "source": "./use-plugin-chrome-panels"
+        }
+      ]
+    },
+    "./shell/plugin-command": {
+      "target": "./src/shell/plugin-command/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "currentPluginCommandSurface",
+          "importedName": "currentPluginCommandSurface",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "describePluginCommands",
+          "importedName": "describePluginCommands",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
+          "importedName": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_COMMAND_STATE_MAX_BYTES",
+          "importedName": "PLUGIN_COMMAND_STATE_MAX_BYTES",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandParam",
+          "importedName": "PluginCommandParam",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandResult",
+          "importedName": "PluginCommandResult",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandSpec",
+          "importedName": "PluginCommandSpec",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandStateSnapshot",
+          "importedName": "PluginCommandStateSnapshot",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandSurface",
+          "importedName": "PluginCommandSurface",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandSurfaceInput",
+          "importedName": "PluginCommandSurfaceInput",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "readPluginCommandState",
+          "importedName": "readPluginCommandState",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "registerPluginCommandSurface",
+          "importedName": "registerPluginCommandSurface",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "resetPluginCommandSurface",
+          "importedName": "resetPluginCommandSurface",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "runPluginCommand",
+          "importedName": "runPluginCommand",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "subscribePluginCommandSurface",
+          "importedName": "subscribePluginCommandSurface",
+          "source": "./registry"
+        },
+        {
+          "kind": "named",
+          "name": "usePluginCommandSurface",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/plugin-theme": {
+      "target": "./src/shell/plugin-theme.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "currentPluginTheme",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "PLUGIN_THEME_SPECS",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "pluginThemeIdForAdapter",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "PluginThemePortalContext",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "PluginThemeScope",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "pluginThemeStorageKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "PluginThemeToggle",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "pluginWorkbenchStyle",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "setPluginTheme",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "usePluginTheme",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "usePluginThemePortal",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PluginThemeHandle",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PluginThemeId",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PluginThemeMode",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PluginThemeSpec",
+          "source": ""
         }
       ]
     },
@@ -6798,6 +7571,24 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "BUTTON_DEFAULT_SIZE",
+          "importedName": "BUTTON_DEFAULT_SIZE",
+          "source": "./Button"
+        },
+        {
+          "kind": "named",
+          "name": "BUTTON_SIZE_PX",
+          "importedName": "BUTTON_SIZE_PX",
+          "source": "./Button"
+        },
+        {
+          "kind": "named",
+          "name": "Button",
+          "importedName": "Button",
+          "source": "./Button"
+        },
+        {
+          "kind": "named",
           "name": "ButtonSpinner",
           "source": ""
         },
@@ -6810,6 +7601,18 @@
           "kind": "named",
           "name": "EmptyState",
           "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "ensureToastMotionStyles",
+          "importedName": "ensureToastMotionStyles",
+          "source": "./Toast"
+        },
+        {
+          "kind": "named",
+          "name": "IconButton",
+          "importedName": "IconButton",
+          "source": "./Button"
         },
         {
           "kind": "named",
@@ -6845,6 +7648,84 @@
           "kind": "named",
           "name": "timeAgo",
           "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "TOAST_DWELL",
+          "importedName": "TOAST_DWELL",
+          "source": "./Toast"
+        },
+        {
+          "kind": "named",
+          "name": "TOAST_MAX_VISIBLE",
+          "importedName": "TOAST_MAX_VISIBLE",
+          "source": "./Toast"
+        },
+        {
+          "kind": "named",
+          "name": "ToastProvider",
+          "importedName": "ToastProvider",
+          "source": "./Toast"
+        },
+        {
+          "kind": "named",
+          "name": "ToastViewport",
+          "importedName": "ToastViewport",
+          "source": "./Toast"
+        },
+        {
+          "kind": "named",
+          "name": "useToast",
+          "importedName": "useToast",
+          "source": "./Toast"
+        },
+        {
+          "kind": "type",
+          "name": "ButtonProps",
+          "importedName": "ButtonProps",
+          "source": "./Button"
+        },
+        {
+          "kind": "type",
+          "name": "ButtonSize",
+          "importedName": "ButtonSize",
+          "source": "./Button"
+        },
+        {
+          "kind": "type",
+          "name": "ButtonVariant",
+          "importedName": "ButtonVariant",
+          "source": "./Button"
+        },
+        {
+          "kind": "type",
+          "name": "IconButtonProps",
+          "importedName": "IconButtonProps",
+          "source": "./Button"
+        },
+        {
+          "kind": "type",
+          "name": "ToastApi",
+          "importedName": "ToastApi",
+          "source": "./Toast"
+        },
+        {
+          "kind": "type",
+          "name": "ToastEntry",
+          "importedName": "ToastEntry",
+          "source": "./Toast"
+        },
+        {
+          "kind": "type",
+          "name": "ToastHandle",
+          "importedName": "ToastHandle",
+          "source": "./Toast"
+        },
+        {
+          "kind": "type",
+          "name": "ToastInput",
+          "importedName": "ToastInput",
+          "source": "./Toast"
         }
       ]
     },
