@@ -1037,6 +1037,13 @@ test("每个插件的 edit bar 最右侧都是 AI，点击切到左侧 agent 抽
       revision: 1,
       controls: [{ id: "bold", kind: "toggle", label: "Bold", value: false }],
     },
+    // PdfContextToolbar.tsx:225 真的传了 `trailing`，所以这里必须带一个：
+    // 不带就测不出「AI 在插件自己的按钮左边还是右边」，用例名会自己骗自己。
+    trailing: React.createElement(
+      "button",
+      { type: "button", "data-plugin-trailing": true },
+      "Export",
+    ),
     onCommand() {},
   };
   const mounted = await createMounted(SelectionToolbar, props);
@@ -1047,6 +1054,15 @@ test("每个插件的 edit bar 最右侧都是 AI，点击切到左侧 agent 抽
     assert.ok(suffix, "AI 按钮所在的右段必须渲染出来");
     const agent = suffix.querySelector("[data-edit-bar-agent]");
     assert.ok(agent, "每个插件的 edit bar 都要有 AI 按钮");
+    assert.ok(
+      suffix.querySelector("[data-plugin-trailing]"),
+      "插件自己的右段按钮也要在场，否则下一条断言无从落脚",
+    );
+    assert.equal(
+      suffix.lastElementChild,
+      agent,
+      "AI 必须是右段最后一个：插件把自己的按钮塞到它右边，用户就得在每个插件里重新找它",
+    );
     assert.equal(
       agent.querySelector("[data-icon]")?.getAttribute("data-icon"),
       "agent",
@@ -1121,6 +1137,170 @@ test("撤销重做归编辑栏，顶栏不再有第二份", async () => {
     await click(redo);
     assert.deepEqual(calls, ["undo"], "禁用的重做不该触发");
   } finally {
+    await mounted.unmount();
+  }
+});
+
+// 「更多」面板该在什么时候关：**执行完一个动作之后**，不是「点到什么都关」。
+//
+// 上面那条 More dialog 判据只钉住了「动作之后要关」这一半。另一半同样是用户体感：
+// 色板是连续取值，拖着取色器每挪一下就是一次 onChange，跟着关面板等于把人手里的
+// 取色器抽走。这条把两半一起钉住，免得下一个人图省事给所有控件都接上 onActivated。
+//
+// 还顺带钉住「关掉之后节点真的从 document 上摘掉」：藏住已关面板靠的是注入的
+// `[data-leo-overlay-state="closed"]` 那条规则，而面板自带 Tailwind 的 `grid`
+// 会压掉 `[hidden]`——只要那条规则缺席（宿主 CSP 不给内联 style），留在 DOM 里的
+// 面板就会整块留在屏幕上。所以判「摘掉」，不判「看不见」。
+test("More 面板：动作之后关并归还焦点，连续取值的色板留在原地", async () => {
+  const anchoredPopoverUrl = await compileModule(
+    "src/shell/anchored-popover.tsx",
+    {
+      react: reactUrl,
+      "react-dom": pathToFileURL(require.resolve("react-dom")).href,
+    },
+  );
+  const selectControlUrl = await compileModule(
+    "src/shell/SelectionToolbarSelectControl.tsx",
+    {
+      react: reactUrl,
+      "./AdvancedEditorIcon": iconStubUrl,
+      "./selection-context": selectionContextStubUrl,
+      "./anchored-popover": anchoredPopoverUrl,
+    },
+  );
+  const buttonControlUrl = await compileModule(
+    "src/shell/SelectionToolbarButtonControl.tsx",
+    { react: reactUrl },
+  );
+  const numberControlUrl = await compileModule(
+    "src/shell/SelectionToolbarNumberControl.tsx",
+    { react: reactUrl },
+  );
+  const toolbarControlUrl = await compileModule(
+    "src/shell/SelectionToolbarControl.tsx",
+    {
+      "./AdvancedEditorIcon": iconStubUrl,
+      "./SelectionAnimationGallery": animationGalleryStubUrl,
+      "./SelectionToolbarButtonControl": buttonControlUrl,
+      "./SelectionToolbarNumberControl": numberControlUrl,
+      "./SelectionToolbarSelectControl": selectControlUrl,
+      "./selection-context": selectionContextStubUrl,
+    },
+  );
+  const { SelectionToolbar } = await loadTsx("src/shell/SelectionToolbar.tsx", {
+    react: reactUrl,
+    "../i18n/ui/useUI": uiStubUrl,
+    "./AdvancedEditorIcon": iconStubUrl,
+    "./SelectionAnimationGallery": animationGalleryStubUrl,
+    "./advanced-layout-context": layoutStubUrl,
+    "./selection-context": selectionContextStubUrl,
+    "./selection-inspector-host": inspectorHostStubUrl,
+    "./anchored-popover": anchoredPopoverUrl,
+    "./SelectionToolbarControl": toolbarControlUrl,
+    "./SelectionToolbarSelectControl": selectControlUrl,
+    "./SelectionToolbarButtonControl": buttonControlUrl,
+    "./SelectionToolbarNumberControl": numberControlUrl,
+  });
+  const commands = [];
+  const props = {
+    context: {
+      version: 1,
+      kind: "image-text",
+      id: "text:hero",
+      label: "Hero",
+      revision: 3,
+      controls: [
+        { id: "bold", kind: "toggle", label: "Bold", value: false },
+        {
+          id: "text-color",
+          kind: "color",
+          label: "Text color",
+          value: "#112233",
+          placement: "more",
+        },
+        {
+          id: "duplicate",
+          kind: "action",
+          label: "Duplicate",
+          placement: "more",
+        },
+      ],
+    },
+    onCommand(command) {
+      commands.push(command);
+    },
+  };
+  const mounted = await createMounted(SelectionToolbar, props);
+  try {
+    const more = mounted.container.querySelector(
+      'button[aria-label="更多属性 · 图片"]',
+    );
+    assert.ok(more, "两个 placement:\"more\" 的控件必须撑出「更多」键");
+    await click(more);
+    const dialog = document.querySelector(
+      '[role="dialog"][aria-label="更多属性 · 图片"]',
+    );
+    assert.ok(dialog);
+
+    // ① 连续取值：拖动取色器时面板必须留在原地。
+    const color = dialog.querySelector('input[type="color"]');
+    assert.ok(color, "色板控件要在 More 面板里");
+    // 受控 input 直接赋 `.value` 会走 React 改写过的 setter，值追踪器同步更新、
+    // onChange 不再触发（本仓 `auth-dialog.test.mjs:337` 同一手法）。要拿原型上的
+    // 原生 setter 绕开追踪器，否则这一步是静默空转、下一条断言测不到任何东西。
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    ).set;
+    await act(async () => {
+      setNativeValue.call(color, "#ff8800");
+      color.dispatchEvent(
+        new window.Event("input", { bubbles: true, cancelable: true }),
+      );
+    });
+    assert.equal(
+      commands.at(-1)?.controlId,
+      "text-color",
+      "取色本身要照常提交，别把「不关面板」做成「不生效」",
+    );
+    assert.equal(
+      dialog.isConnected,
+      true,
+      "取色器还在人手里，面板不许消失",
+    );
+    assert.equal(dialog.getAttribute("data-leo-overlay-state"), "open");
+
+    // ② 执行完一个动作：面板关掉、节点摘掉、焦点回到「更多」。
+    const duplicate = dialog.querySelector('button[aria-label="Duplicate"]');
+    assert.ok(duplicate);
+    await click(duplicate);
+    assert.equal(commands.at(-1)?.controlId, "duplicate");
+    // 同步这一拍就要成立的两件事：翻成关闭态、焦点回到「更多」。
+    assert.equal(dialog.getAttribute("data-leo-overlay-state"), "closed");
+    assert.equal(document.activeElement, more, "焦点要回到「更多」按钮");
+
+    // 摘节点要等退场跑完，所以让出一拍再判。`runAfterOverlayExit` 的零预算档写明
+    // 「下一拍就回调」——jsdom 解析不了 `@starting-style`，预算恒为 0，走的就是这一档。
+    // 不让这一拍，判的就是 act 的调度运气：本文件全量实测 7 次里输过 1 次。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      dialog.isConnected,
+      false,
+      "动作做完了，面板必须从 document 上摘掉，而不是只靠一条样式规则藏起来",
+    );
+
+    // ③ 再开一次必须真能开：摘节点不许把「更多」键弄成一次性的。
+    await click(more);
+    assert.ok(
+      document.querySelector(
+        '[role="dialog"][aria-label="更多属性 · 图片"]',
+      ),
+      "「更多」键必须能重复打开",
+    );
+  } finally {
+    globalThis.__oceanleoV8Layout = null;
     await mounted.unmount();
   }
 });
