@@ -148,6 +148,17 @@ const STORE_TABLE = [
   },
 ];
 
+// 正对照：下面五条逐 store 的用例是按这张表注册的，表一空就静默少五条而全量全绿
+// （`_COMMON.md §7b⑫`）。判据见 `table-driven-registration-guard`。
+test("清单本身：三种 store 实现都在表里", () => {
+  assert.equal(
+    STORE_TABLE.length,
+    3,
+    `store 表从 3 种变成 ${STORE_TABLE.length} 种。契约的意义就是三种实现逐字同规矩，` +
+      "少一种等于只验了一部分",
+  );
+});
+
 for (const entry of STORE_TABLE) {
   test(`${entry.name}：写进去的字节能原样读回来`, async () => {
     const { store } = entry.make();

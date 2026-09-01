@@ -418,6 +418,18 @@ test("安全区四变量取自 env() 且回退 0px（宿主没开 viewport-fit=c
 
 /* ── 2. 无横向溢出 ─────────────────────────────────────────────────────── */
 
+// 正对照：下面两轮 `for` 各注册 N 条用例，`DEVICES` 一旦变空，
+// **这份文件会少 14 条用例而全量读数照样全绿**（`_COMMON.md §7b⑫` 的余量形态）。
+// 这一条把机型数钉死，表被清空/被误删当场红。判据见 `table-driven-registration-guard`。
+test("清单本身：三种机型都在表里", () => {
+  assert.equal(
+    DEVICES.length,
+    3,
+    `机型表从 3 种变成 ${DEVICES.length} 种。下面两轮逐机型断言是按这张表注册的，` +
+      "表短一行就少一批用例、且不会有任何闸响",
+  );
+});
+
 for (const device of DEVICES) {
   test(`无横向溢出：两种布局算下来都还剩一条可用正文（${device.name}）`, () => {
     for (const layout of ["sidebar", "topbar"]) {

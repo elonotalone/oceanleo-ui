@@ -176,6 +176,17 @@ const RULE_CASES = [
   },
 ];
 
+// 正对照：逐条危险构造的用例是按这张表注册的，表一空就静默少一批而全量全绿
+// （`_COMMON.md §7b⑫`）。判据见 `table-driven-registration-guard`。
+test("清单本身：每条剥离规则都有对应的题材", () => {
+  assert.equal(
+    RULE_CASES.length,
+    SVG_SANITIZE_RULES.length,
+    `题材表 ${RULE_CASES.length} 条、规则表 ${SVG_SANITIZE_RULES.length} 条，对不上。` +
+      "每条规则都必须有一条真 SVG 打上去，否则那条规则等于没验",
+  );
+});
+
 for (const testCase of RULE_CASES) {
   test(`§3.2 ${testCase.rule}:剥离危险构造且不铲平图形`, () => {
     const report = sanitizeSvg(testCase.svg);
@@ -593,6 +604,16 @@ const PATH_NORMALIZE_CASES = [
   ["超大数(序列化成指数写法后仍可回读)", "M 1e21 1 L 2 2 Z"],
   ["大小写命令混排", "M 0 0 l 5 0 L 10 10 z"],
 ];
+
+// 正对照，同上：幂等题材表一空，下面这批用例静默消失。
+test("清单本身：path 规范化题材覆盖十八种写法", () => {
+  assert.equal(
+    PATH_NORMALIZE_CASES.length,
+    18,
+    `题材从 18 种变成 ${PATH_NORMALIZE_CASES.length} 种。绝对/相对/隐式/指数/混排都要在，` +
+      "少一种就有一类 path 写法没人验幂等",
+  );
+});
 
 for (const [label, input] of PATH_NORMALIZE_CASES) {
   test(`§5.2 path 规范化幂等 · ${label}`, () => {
