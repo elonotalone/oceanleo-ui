@@ -328,19 +328,26 @@ const SM_ALLOWED_FILES = [];
  *   · 单个文件的点位数不许变多（`FILE_BUDGET`）；
  *   · `sm`/`md` 只许出现在 `SM_ALLOWED_FILES` 里。
  */
-const PENDING_HIT_TARGET = 93;
+const PENDING_HIT_TARGET = 92;
 
 /**
- * `_COMMON.md §7b⑪` / `W33 R5`：上面那个 93 是在**哪一棵树**上量的。
+ * `_COMMON.md §7b⑪` / `W33 R5`：上面那个 92 是在**哪一棵树**上量的。
  *
- * `2227287`「W04 P4: 命中区预算锁（实测欠账 93 处 / 49 文件）」就是取值那一刻。
+ * `e17f823`「手机上点得中：表格舞台与批注侧栏 15 处小命中区撑到 44」就是取值那一刻。
  * 共享工作树上随时挂着别人未提交的改动，在那儿量出来的棘轮标定的是一棵 git 里
  * 并不存在的树（`W30` / `W31` 都栽在这儿）。下面「基线自检」那条用例会把这个 commit
  * 的 `src/` 解出来**用同一套扫描器**重量一遍，对不上就红。
  *
  * ⚠️ 拧这个棘轮的时候，**两个一起改**：数字和这个 commit。
+ *
+ * 拧动史（`§7b⑪c`：还完债要回来收紧，否则棘轮空转）：
+ *   · `2227287` = 93 / 49 文件（`W04 P4` 立锁那一刻）；
+ *   · `e17f823` = 92 / 48 文件（`W42` 修完 `GridStage` 5 处 + `RichDocControls` 1 处
+ *     + `RichDocCommentRail` 9 处。其中 14 处是 `W11`/`W14`/`W15` 在 93 之后新欠的，
+ *     还掉它们只是回到 93；净减的这 1 格来自 `GridStage` 列头 `th`，
+ *     那是 93 里就有的老账，所以 `GridStage.tsx` 整条从 `FILE_BUDGET` 里删掉了）。
  */
-const BASELINE_COMMIT = "2227287";
+const BASELINE_COMMIT = "e17f823";
 
 /**
  * W04 本轮负责的五个文件：**必须保持零**。
@@ -356,7 +363,9 @@ const W04_CLEARED_FILES = [
 
 /**
  * 每个文件今天的点位数上限。只减不增。
- * `[实测]` W04 2026-08-31：**93 处，散在 49 个文件**。清空一个文件就把它整条删掉。
+ * `[实测]` W42 2026-09-01（干净检出 `e17f823`）：**92 处，散在 48 个文件**。
+ * 清空一个文件就把它整条删掉——`GridStage.tsx` 已经这样删掉了。
+ * `[实测]` W04 2026-08-31 立锁时是 93 处 / 49 文件。
  *
  * 密度最高的五处是本波下一批该迁的：`SelectionInspectorPanel`(7)、
  * `DeckElementSelectionChrome`(7)、`LeoComposer`(6)、`PluginChromeFrame`(6)、
@@ -398,7 +407,6 @@ const FILE_BUDGET = new Map([
   ["src/shell/doc-editors/DeckElementSelectionChrome.tsx", 7],
   ["src/shell/doc-editors/DeckSlideRail.tsx", 1],
   ["src/shell/doc-editors/DeckStage.tsx", 1],
-  ["src/shell/doc-editors/GridStage.tsx", 1],
   ["src/shell/image-editor/FabricImageCreationPanels.tsx", 3],
   ["src/shell/media-editors/AudioWorkbenchView.tsx", 1],
   ["src/shell/media-editors/PdfControls.tsx", 1],
@@ -470,7 +478,7 @@ test("W04 迁过的四件 chrome 与原语必须从名单里消失（任务书 P
   );
 });
 
-test("基线自检：PENDING_HIT_TARGET 的 93 是在 BASELINE_COMMIT 那棵干净树上量出来的", () => {
+test("基线自检：PENDING_HIT_TARGET 的 92 是在 BASELINE_COMMIT 那棵干净树上量出来的", () => {
   const measured = measureOnCommittedTree({
     repo: REPO,
     commit: BASELINE_COMMIT,
