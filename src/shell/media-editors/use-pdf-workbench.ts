@@ -7,11 +7,7 @@ import {
 } from "../library-data";
 import { saveFileToLibrary, type PersistedEditorVersion } from "../doc-editors/doc-io";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
-import { inspectPdf } from "./pdf-operations";
-import {
-  usePdfAnnotations,
-  type PdfMutationResult,
-} from "./use-pdf-annotations";
+import { usePdfAnnotations } from "./use-pdf-annotations";
 import { loadInitialPdfSource } from "./pdf-source";
 import { capturePdfRecovery, decodePdfRecovery } from "./pdf-recovery";
 import {
@@ -31,13 +27,13 @@ export type { PdfWorkbenchState } from "./pdf-workbench-state";
 import { usePdfOffice } from "./pdf-form/use-pdf-office";
 import type { PdfOfficeWorkbenchState } from "./pdf-form/types";
 export type { PdfOfficeWorkbenchState } from "./pdf-form/types";
-import { usePdfDocument } from "./use-pdf-document";
+import {
+  usePdfMutationRunner,
+  usePdfSnapshotRestore,
+} from "./use-pdf-edit-engine";
 import { usePdfPageActions } from "./use-pdf-page-actions";
-import { usePdfPreviewRender } from "./use-pdf-preview-render";
-import { usePdfReaderMachine } from "./use-pdf-reader-machine";
-import { usePdfTextLayer } from "./use-pdf-text-layer";
+import { usePdfViewPipeline } from "./use-pdf-view-pipeline";
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
-type PdfMutation = (bytes: Uint8Array) => Promise<PdfMutationResult>;
 export function usePdfWorkbench(
   item: LibraryItem,
   siteId = "",
@@ -98,45 +94,26 @@ export function usePdfWorkbench(
     setPageNumber((value) => clamp(value, 1, count || 1));
   }, []);
   const {
-    documentProxy,
-    previewRevision,
-    loading: previewLoading,
-  } = usePdfDocument({
-    bytesRef,
-    documentRevision,
-    translate,
-    setError,
-    onPageCount,
-  });
-  const {
+    previewLoading,
     rotation,
     rendering,
     renderedZoom,
     pageWidth,
     pageHeight,
     renderThumbnail,
-  } = usePdfPreviewRender({
+    textLayer,
+    machine,
+  } = usePdfViewPipeline({
+    bytesRef,
     canvas,
-    documentProxy,
+    documentRevision,
+    item,
     pageCount,
     pageNumber,
-    revision: previewRevision,
     rasterZoom,
     translate,
+    onPageCount,
     setError,
-  });
-  const textLayer = usePdfTextLayer({ documentProxy, revision: previewRevision });
-  const machine = usePdfReaderMachine({
-    pages: textLayer.pages,
-    textLayer,
-    annotatable: true,
-    provenance: {
-      channel: item.meta.provenance_channel,
-      licenseCode: item.meta.license_code,
-      licenseUrl: item.meta.license_url,
-      sourceUrl: item.meta.source_url,
-      attribution: item.meta.attribution,
-    },
   });
   const { advance, reportFailure, clearFailure } = machine;
 
@@ -258,63 +235,30 @@ export function usePdfWorkbench(
     };
   }, [zoom]);
 
-  const runMutation = useCallback(
-    async (
-      mutation: PdfMutation,
-    ): Promise<PdfMutationResult | null> => {
-      const current = bytesRef.current;
-      if (!current || processingRef.current) return null;
-      processingRef.current = true;
-      const processingToken = ++processingTokenRef.current;
-      setProcessing(true);
-      setError("");
-      setNotice("");
-      const generation = sourceGenerationRef.current;
-      const before: PdfSnapshot = {
-        bytes: Uint8Array.from(current),
-        pageNumber,
-        pageCount,
-      };
-      try {
-        const result = await mutation(Uint8Array.from(current));
-        const count = await inspectPdf(result.bytes);
-        if (!aliveRef.current || generation !== sourceGenerationRef.current) {
-          return null;
-        }
-        undoRef.current = appendPdfHistory(undoRef.current, before);
-        redoRef.current = [];
-        revisionRef.current += 1;
-        bytesRef.current = result.bytes;
-        setPageCount(count);
-        setPageNumber(clamp(result.pageNumber || pageNumber, 1, count));
-        setDirty(true);
-        setCanUndo(undoRef.current.length > 0);
-        setCanRedo(false);
-        setSavedUrl("");
-        setNotice(result.notice);
-        advance("annotation-edited");
-        setDocumentRevision((value) => value + 1);
-        return result;
-      } catch (caught) {
-        if (aliveRef.current && generation === sourceGenerationRef.current) {
-          setError(pdfErrorMessage(caught, tt("PDF 处理失败")));
-        }
-        return null;
-      } finally {
-        if (processingToken === processingTokenRef.current) {
-          processingRef.current = false;
-        }
-        if (
-          aliveRef.current &&
-          generation === sourceGenerationRef.current &&
-          processingToken === processingTokenRef.current
-        ) {
-          setProcessing(false);
-        }
-      }
-    },
-    [advance, pageCount, pageNumber, tt],
-  );
+  const runMutation = usePdfMutationRunner({
+    aliveRef,
+    bytesRef,
+    processingRef,
+    processingTokenRef,
+    redoRef,
+    revisionRef,
+    sourceGenerationRef,
+    undoRef,
+    pageCount,
+    pageNumber,
+    advance,
+    setCanRedo,
+    setCanUndo,
+    setDirty,
+    setDocumentRevision,
+    setError,
+    setNotice,
+    setPageCount,
+    setPageNumber,
+    setProcessing,
+    setSavedUrl,
+    tt,
+  });
   const annotation = usePdfAnnotations({
     bytesRef,
     pageNumber,
@@ -339,20 +283,22 @@ export function usePdfWorkbench(
     tt,
   });
 
-  const restoreSnapshot = useCallback((snapshot: PdfSnapshot, noticeText: string) => {
-    bytesRef.current = snapshot.bytes;
-    revisionRef.current += 1;
-    setPageCount(snapshot.pageCount);
-    setPageNumber(clamp(snapshot.pageNumber, 1, snapshot.pageCount));
-    setDirty(true);
-    setSavedUrl("");
-    setError("");
-    setNotice(noticeText);
-    annotation.clearSelection();
-    setCanUndo(undoRef.current.length > 0);
-    setCanRedo(redoRef.current.length > 0);
-    setDocumentRevision((value) => value + 1);
-  }, [annotation]);
+  const restoreSnapshot = usePdfSnapshotRestore({
+    annotation,
+    bytesRef,
+    redoRef,
+    revisionRef,
+    undoRef,
+    setCanRedo,
+    setCanUndo,
+    setDirty,
+    setDocumentRevision,
+    setError,
+    setNotice,
+    setPageCount,
+    setPageNumber,
+    setSavedUrl,
+  });
 
   const undo = useCallback(() => {
     const current = bytesRef.current;
