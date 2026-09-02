@@ -194,8 +194,8 @@ test("all five advanced editor paths enforce the shared source contract", async 
   assert.match(video, /assertBlobSource\(file, media\)/);
   assert.match(video, /assertBlobSource\(blob, "video-project"\)/);
   assert.match(video, /parseVideoProjectEnvelope/);
-  assert.match(video, /assertTimelineMediaSources\(normalized\)/);
-  assert.match(video, /if \(!probe\)[\s\S]*未加入时间线/);
+  assert.match(video, /assertTimelineMediaSources\(normalized, translate\)/);
+  assert.match(video, /if \(!probe\.ok\)[\s\S]*append/);
   const videoAutosave = video.slice(
     video.indexOf("const saveDraft"),
     video.indexOf("const exportVideo"),

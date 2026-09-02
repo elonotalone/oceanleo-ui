@@ -326,15 +326,16 @@ test("metadata probe reports duration and video dimensions and releases source",
   try {
     const { probeMediaSource } = await loadMediaProbe();
     assert.deepEqual(await probeMediaSource("https://cdn.example/x.mp4", "video"), {
+      ok: true,
       durationMs: 1_250,
       width: 640,
       height: 360,
     });
     media.videoWidth = 0;
     media.videoHeight = 0;
-    assert.equal(
+    assert.deepEqual(
       await probeMediaSource("https://cdn.example/audio-only.mp4", "video"),
-      null,
+      { ok: false, reason: "no-track" },
     );
     assert.equal(released, true);
   } finally {

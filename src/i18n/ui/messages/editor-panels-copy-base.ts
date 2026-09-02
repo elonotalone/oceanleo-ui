@@ -335,6 +335,20 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   alignRight: "右",
   tableRow: "行",
   tableColumn: "列",
+
+  // ==========================================================================
+  // 视频时间线 · 媒体探测失败（三种原因必须分开说，不许再把超时写成「无法解码」）
+  // ==========================================================================
+  videoSourceProbeTimeout:
+    "视频源 15 秒内没有响应，可能是网络或服务太慢，请重试",
+  videoSourceProbeError: "视频源加载失败（网络或地址不可达）",
+  videoSourceProbeNoTrack: "视频源没有可用的视频轨或时长为 0",
+  audioSourceProbeTimeout:
+    "音频源 15 秒内没有响应，可能是网络或服务太慢，请重试",
+  audioSourceProbeError: "音频源加载失败（网络或地址不可达）",
+  audioSourceProbeNoTrack: "音频源没有可用的音轨或时长为 0",
+  mediaProbeClipPrefix: "片段 {clipId}：{detail}",
+  mediaProbeAppendSuffix: "{detail}，未加入时间线",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;

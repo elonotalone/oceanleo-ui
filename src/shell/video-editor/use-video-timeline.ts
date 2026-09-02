@@ -29,7 +29,12 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "../library-data";
-import { guessFileKind, guessMediaKind, probeMediaSource } from "./media-probe";
+import {
+  guessFileKind,
+  guessMediaKind,
+  probeMediaSource,
+  translateMediaProbeFailure,
+} from "./media-probe";
 import {
   timelinePreviewRenditionPng,
   uploadCoverPng,
@@ -203,7 +208,10 @@ async function durableTimelineSources(
   return next;
 }
 
-async function assertTimelineMediaSources(doc: TimelineDoc): Promise<void> {
+async function assertTimelineMediaSources(
+  doc: TimelineDoc,
+  tt: UITranslate,
+): Promise<void> {
   const sources = new Map<
     string,
     { kind: "video" | "audio"; url: string; clipId: string }
@@ -224,11 +232,10 @@ async function assertTimelineMediaSources(doc: TimelineDoc): Promise<void> {
   }
   await Promise.all(
     [...sources.values()].map(async ({ kind, url, clipId }) => {
-      if (await probeMediaSource(url, kind)) return;
+      const probe = await probeMediaSource(url, kind);
+      if (probe.ok) return;
       throw new Error(
-        kind === "video"
-          ? `片段 ${clipId} 的源无法解码或没有真实视频轨`
-          : `片段 ${clipId} 的源无法解码为音频`,
+        translateMediaProbeFailure(tt, probe.reason, kind, "clip", clipId),
       );
     }),
   );
@@ -445,15 +452,17 @@ export function useVideoTimeline(
         const key = `${track.kind}:${sourceUrl}`;
         if (sourceProbeKeysRef.current.has(key)) continue;
         sourceProbeKeysRef.current.add(key);
-        void probeMediaSource(sourceUrl, track.kind)
+        const kind = track.kind;
+        void probeMediaSource(sourceUrl, kind)
           .then((probe) => {
             if (!mountedRef.current) return;
-            if (!probe) {
+            if (!probe.ok) {
               setError(
-                translate(
-                  track.kind === "video"
-                    ? "时间线中的视频源无法解码或没有真实视频轨"
-                    : "时间线中的音频源无法解码",
+                translateMediaProbeFailure(
+                  translate,
+                  probe.reason,
+                  kind,
+                  "timeline",
                 ),
               );
               return;
@@ -555,7 +564,7 @@ export function useVideoTimeline(
           item.title,
         );
         if (controller.signal.aborted) return;
-        await assertTimelineMediaSources(normalized);
+        await assertTimelineMediaSources(normalized, translate);
         if (controller.signal.aborted) return;
         docRef.current = normalized;
         setDocState(normalized);
@@ -620,7 +629,7 @@ export function useVideoTimeline(
         }
         const probe = await probeMediaSource(sourceUrl, seededKind);
         if (cancelled) return;
-        if (!probe) {
+        if (!probe.ok) {
           setDocState((current) => {
             const next = removeClipFrom(current, seededClipId);
             docRef.current = next;
@@ -628,11 +637,7 @@ export function useVideoTimeline(
           });
           setSelectedClipId("");
           throw new Error(
-            tt(
-              seededKind === "video"
-                ? "初始视频源无法解码或没有真实视频轨"
-                : "初始音频源无法解码",
-            ),
+            translateMediaProbeFailure(tt, probe.reason, seededKind, "initial"),
           );
         }
         setDocState((current) => {
@@ -993,13 +998,9 @@ export function useVideoTimeline(
       let sourceDurationMs: number | undefined;
       if (media !== "image") {
         const probe = await probeMediaSource(url, media);
-        if (!probe) {
+        if (!probe.ok) {
           throw new Error(
-            tt(
-              media === "video"
-                ? "视频源无法解码或没有真实视频轨，未加入时间线"
-                : "音频源无法解码，未加入时间线",
-            ),
+            translateMediaProbeFailure(tt, probe.reason, media, "append"),
           );
         }
         duration = probe.durationMs;
@@ -1222,7 +1223,7 @@ export function useVideoTimeline(
         siteId || "video",
         item.title,
       );
-      await assertTimelineMediaSources(snapshot);
+      await assertTimelineMediaSources(snapshot, tt);
       const title = `${item.title || tt("视频")}-${tt("时间线草稿")}`;
       const result = await uploadDraft(
         snapshot,

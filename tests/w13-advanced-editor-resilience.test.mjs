@@ -197,9 +197,9 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
   globalThis.window = { setTimeout, clearTimeout };
   try {
     const { probeMediaSource } = await loadProbeWithRejectedUrlPolicy();
-    assert.equal(
+    assert.deepEqual(
       await probeMediaSource("javascript:blocked", "video"),
-      null,
+      { ok: false, reason: "error" },
     );
     assert.equal(sourceRemoved, true);
     assert.equal(loadCalls, 1);
