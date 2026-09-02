@@ -104,3 +104,45 @@ export function editBarDockStorageKey(workbenchId: string): string {
   }
   return `oceanleo:edit-bar-dock:v1:${(hash >>> 0).toString(36)}`;
 }
+
+/**
+ * chrome 编辑栏要不要离开停靠行，只问「现在有没有可挂的宿主元素」。
+ *
+ * `controller.portalRoot` 是控制器 layout 之后抄的一份快照，第一帧、宿主晚挂、
+ * 控制器没重跑时会是 null。那份快照不能单独拿来关手势——关了 AI 键仍在行里，
+ * 但拖拽永远补不回来。活 ref 上已经有元素时必须用它。
+ */
+export type EditBarGestureSurfaceKind = "inline" | "floating";
+
+export interface EditBarGestureSurface<T = unknown> {
+  kind: EditBarGestureSurfaceKind;
+  portalRoot: T | null;
+}
+
+export interface EditBarPortalHostInput<T extends { parentElement?: T | null }> {
+  liveHost: T | null | undefined;
+  dockHost: T | null | undefined;
+  stageHost: T | null | undefined;
+  controllerPortalRoot: T | null | undefined;
+}
+
+export function readEditBarPortalHost<T extends { parentElement?: T | null }>(
+  input: EditBarPortalHostInput<T>,
+): T | null {
+  return (
+    input.liveHost ||
+    input.dockHost?.parentElement ||
+    input.stageHost ||
+    input.controllerPortalRoot ||
+    null
+  );
+}
+
+export function resolveEditBarGestureSurface<T>(
+  portalHost: T | null | undefined,
+): EditBarGestureSurface<T> {
+  if (!portalHost) {
+    return { kind: "inline", portalRoot: null };
+  }
+  return { kind: "floating", portalRoot: portalHost };
+}

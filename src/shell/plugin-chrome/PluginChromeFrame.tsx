@@ -370,10 +370,11 @@ export function PluginChromeFrame({
           className={`flex ${PLUGIN_CHROME_EDITBAR_MIN_H} shrink-0 items-center gap-1.5 border-b border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-2 py-1`}
         >
           {/*
-            手势层（W31）。几何量得到时这一行的内容整体交给共享浮层，
+            手势层（W31 / W4）。有可挂的宿主时这一行的内容整体交给共享浮层，
             行本身降级成停靠带（与 10 件共享插件那侧 EditBarDockHost 的分工相同），
             于是「双击任意位置拖拽 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
-            量不到几何时内容原样留在行里——AI 键不许因为动效起不来而消失。
+            还没有宿主时内容原样留在行里——AI 键不许因为动效起不来而消失。
+            宿主晚一拍挂上必须补装，不能把控制器 portalRoot 的空快照当成没有宿主。
           */}
           <PluginChromeEditBarGestureLayer
             bridge={editBarGestures}
