@@ -47,10 +47,12 @@ import {
 } from "../src/shell/image-editor/design-mode/ai-capability-entries.ts";
 import {
   IMAGE_DESIGN_L4_CHIPS,
+  IMAGE_DESIGN_MANIFEST_VERSION,
   L4_CHIP_LIMIT,
   chipsForMode,
   imageDesignChipManifestEntries,
 } from "../src/shell/image-editor/design-mode/l4-chips.ts";
+import { validAgentChips } from "../src/shell/editor-protocol-validation.mjs";
 import {
   FABRIC_CARRIER_CONSTANTS,
   fabricCarrierSkinDigest,
@@ -875,13 +877,49 @@ test("photo mode hides the artboard-only chips", () => {
   assert.equal(chipsForMode("design").length, L4_CHIP_LIMIT);
 });
 
-test("manifest entries carry the billable flag through", () => {
+test("the manifest payload passes W01's own chip validator", () => {
+  for (const mode of ["photo", "design"]) {
+    const entries = imageDesignChipManifestEntries(mode);
+    assert.equal(
+      validAgentChips(entries),
+      true,
+      `${mode} chips were rejected by the host validator`,
+    );
+  }
+  assert.equal(IMAGE_DESIGN_MANIFEST_VERSION, 2, "chips are only read when this is 2");
+});
+
+test("host-side fields stay out of the manifest payload", () => {
   const entries = imageDesignChipManifestEntries("design");
   assert.equal(entries.length, L4_CHIP_LIMIT);
   for (const entry of entries) {
     const chip = IMAGE_DESIGN_L4_CHIPS.find((candidate) => candidate.id === entry.id);
-    assert.equal(entry.billable, chip.billable);
-    assert.equal(entry.commandId, chip.commandId);
+    assert.equal(entry.label, chip.label);
+    assert.equal(entry.kind, chip.kind);
+    assert.equal(entry.prompt, chip.prompt);
+    assert.deepEqual(
+      Object.keys(entry).sort(),
+      ["appliesTo", "id", "kind", "label", "prompt"],
+      "an unknown field would make the validator reject all eight chips at once",
+    );
+  }
+});
+
+test("every chip prompt names a placeholder the host substitutes", () => {
+  for (const chip of IMAGE_DESIGN_L4_CHIPS) {
+    assert.match(
+      chip.prompt,
+      /\{selection\}|\{document\}/,
+      `chip ${chip.id} would send the agent a prompt with no context in it`,
+    );
+    // A chip that needs a selection must not claim to apply without one.
+    if (chip.prompt.includes("{selection}")) {
+      assert.equal(
+        chip.appliesTo.includes("*"),
+        false,
+        `chip ${chip.id} asks for {selection} but offers itself with no selection`,
+      );
+    }
   }
 });
 

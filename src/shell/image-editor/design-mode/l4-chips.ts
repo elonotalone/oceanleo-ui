@@ -6,12 +6,17 @@
  * that a test can compare them against the spec text; the spec caps chips at 8
  * (§2 table, L4 row) and that cap is asserted too.
  *
- * The `tools-manifest` v2 field names are still W01's to define
- * (`signals/W01-interface.md` has not landed). Rather than guess at that
- * shape — §10 rule 10 forbids inventing another owner's interface — the chips
- * are declared here in their own terms, and `imageDesignChipManifestEntries`
- * is the single place that will map them once the contract exists.
+ * `imageDesignChipManifestEntries` emits `EditorAgentChip` values for
+ * `tools-manifest` v2, per the contract W01 published in
+ * `signals/W01-interface.md` §3: `manifestVersion: 2` gates the `chips` field,
+ * `kind` comes from a closed set, and `appliesTo` lists the selection kinds a
+ * chip is offered for (`"*"` including no selection at all).
  */
+
+import type {
+  EditorAgentChip,
+  EditorAgentChipKind,
+} from "../../editor-protocol-types";
 
 export type L4ChipMode = "photo" | "design" | "both";
 
@@ -25,6 +30,12 @@ export interface L4Chip {
   mode: L4ChipMode;
   /** Spends a paid provider call, so the chip needs a confirmation step. */
   billable: boolean;
+  /** Contract closed set; the host picks icon and grouping from it. */
+  kind: EditorAgentChipKind;
+  /** Selection kinds this chip applies to; `["*"]` includes no selection. */
+  appliesTo: string[];
+  /** Prompt template; the host substitutes `{selection}` / `{document}`. */
+  prompt: string;
 }
 
 /** Five-layer spec §2: "chips ≤ 8". */
@@ -38,6 +49,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.ai.remove-bg",
     mode: "both",
     billable: true,
+    kind: "generate",
+    appliesTo: ["*"],
+    prompt: "把 {document} 的主体抠出来，换一张与主体光线一致的新背景。",
   },
   {
     id: "image.chip.outpaint-to-size",
@@ -46,6 +60,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.ai.outpaint",
     mode: "both",
     billable: true,
+    kind: "generate",
+    appliesTo: ["*"],
+    prompt: "把 {document} 扩展到目标尺寸，新增区域顺着原画面补齐，主体不要变形。",
   },
   {
     id: "image.chip.upscale",
@@ -54,6 +71,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.ai.upscale",
     mode: "both",
     billable: true,
+    kind: "generate",
+    appliesTo: ["*"],
+    prompt: "把 {document} 放大到 2 倍并补足细节，不要改变构图。",
   },
   {
     id: "image.chip.multi-size",
@@ -62,6 +82,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.design.generate-sizes",
     mode: "design",
     billable: false,
+    kind: "layout",
+    appliesTo: ["*"],
+    prompt: "按方图、竖屏、横幅三种尺寸各生成一块画板，{document} 的文字与主体都要完整可见。",
   },
   {
     id: "image.chip.recolor",
@@ -70,6 +93,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.design.apply-skin",
     mode: "design",
     billable: false,
+    kind: "restyle",
+    appliesTo: ["*"],
+    prompt: "只替换 {document} 的配色与装饰层，版面结构、文字内容与位置一律不动。",
   },
   {
     id: "image.chip.erase",
@@ -78,6 +104,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.ai.inpaint",
     mode: "both",
     billable: true,
+    kind: "cleanup",
+    appliesTo: ["image", "shape"],
+    prompt: "擦掉 {selection} 覆盖的内容，用周围画面补齐，不要留下痕迹。",
   },
   {
     id: "image.chip.generate-similar",
@@ -86,6 +115,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.design.generate-similar",
     mode: "design",
     billable: true,
+    kind: "generate",
+    appliesTo: ["*"],
+    prompt: "参照 {document} 的版面结构与风格，生成一版内容不同的同款设计。",
   },
   {
     id: "image.chip.export-all-sizes",
@@ -94,6 +126,9 @@ export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
     commandId: "image.design.export-artboards",
     mode: "design",
     billable: false,
+    kind: "export",
+    appliesTo: ["*"],
+    prompt: "把 {document} 的每一块画板按其自身尺寸各导出一张图。",
   },
 ]);
 
@@ -103,29 +138,25 @@ export function chipsForMode(mode: "photo" | "design"): readonly L4Chip[] {
   );
 }
 
-export interface L4ChipManifestEntry {
-  id: string;
-  label: string;
-  summary: string;
-  commandId: string;
-  billable: boolean;
-}
-
 /**
- * The payload the chips contribute to `tools-manifest` v2.
+ * The chips as `tools-manifest` v2 declares them.
  *
- * Deliberately shaped like the chips themselves: the wrapper exists so that
- * when W01 publishes the manifest schema, exactly one function changes rather
- * than every call site.
+ * `summary`, `commandId`, `mode` and `billable` stay on this side of the
+ * boundary: the contract has no room for them, and the host runs the chip by
+ * `id`. Sending fields the validator does not know about would be rejected
+ * wholesale, taking all eight chips down with it.
  */
 export function imageDesignChipManifestEntries(
   mode: "photo" | "design",
-): L4ChipManifestEntry[] {
+): EditorAgentChip[] {
   return chipsForMode(mode).map((chip) => ({
     id: chip.id,
     label: chip.label,
-    summary: chip.summary,
-    commandId: chip.commandId,
-    billable: chip.billable,
+    kind: chip.kind,
+    appliesTo: [...chip.appliesTo],
+    prompt: chip.prompt,
   }));
 }
+
+/** `manifestVersion` gates the `chips` field; without it the host ignores them. */
+export const IMAGE_DESIGN_MANIFEST_VERSION = 2 as const;
