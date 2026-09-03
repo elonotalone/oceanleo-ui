@@ -181,6 +181,9 @@ importers:
       '@univerjs/presets':
         specifier: 0.25.1
         version: 0.25.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rxjs@7.8.2)
+      ag-psd:
+        specifier: ^31.0.2
+        version: 31.0.2
       docx:
         specifier: ^9.7.1
         version: 9.7.1
@@ -3625,6 +3628,9 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
+  ag-psd@31.0.2:
+    resolution: {integrity: sha512-5s5PvqbomPIIJ9YjL6robz55rT4RYPiQkww4brisyZEb5jzlHB1EKh47IJg7gIFj0RUrD0cMgdntM907qaZjXA==}
+
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
     engines: {node: '>= 6.0.0'}
@@ -5788,6 +5794,9 @@ packages:
 
   pako@1.0.11:
     resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
+
+  pako@2.1.0:
+    resolution: {integrity: sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==}
 
   parse-entities@4.0.2:
     resolution: {integrity: sha512-GG2AQYWoLgL877gQIKeRPGO1xF9+eG1ujIb5soS5gPvLQ1y2o8FL90w2QWNdf9I361Mpp7726c+lj3U0qK1uGw==}
@@ -11646,6 +11655,11 @@ snapshots:
 
   acorn@8.17.0: {}
 
+  ag-psd@31.0.2:
+    dependencies:
+      base64-js: 1.5.1
+      pako: 2.1.0
+
   agent-base@6.0.2(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
@@ -14362,6 +14376,8 @@ snapshots:
   package-manager-detector@1.8.0: {}
 
   pako@1.0.11: {}
+
+  pako@2.1.0: {}
 
   parse-entities@4.0.2:
     dependencies:
