@@ -35,6 +35,10 @@ import {
   imageLockInteractionProps,
 } from "./image-mutation-policy";
 import { exportFrozenImageDocument } from "./image-document-contract";
+import {
+  FABRIC_CARRIER_SNAPSHOT_PROPS,
+  type FabricCarrierAxis,
+} from "./fabric-carrier-schema";
 import type { ImageSceneDependency } from "./image-scene-source";
 
 export type FabricNS = typeof import("fabric");
@@ -56,6 +60,12 @@ export interface EditorObjectProps {
   oceanleoTablePart?: "cell" | "text";
   /** Durable, content-addressed source for every external image layer. */
   oceanleoDependency?: ImageSceneDependency;
+  /** Back-reference to `slots[].slot_key` in `oceanleo.fabric-carrier.v1`. */
+  oceanleoSlotKey?: string;
+  /** Orthogonality axis; skin swaps replace only the `skin` side. */
+  oceanleoAxis?: FabricCarrierAxis;
+  /** Reference into the carrier's `fonts[]` table. */
+  oceanleoFontRef?: string;
 }
 
 export type EditorObject = FabricObject & EditorObjectProps;
@@ -76,6 +86,7 @@ export const SNAPSHOT_PROPS = [
   "oceanleoTableColumn",
   "oceanleoTablePart",
   "oceanleoDependency",
+  ...FABRIC_CARRIER_SNAPSHOT_PROPS,
 ];
 
 export function makeId(): string {
