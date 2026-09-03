@@ -839,11 +839,22 @@ test("every AI entry that spends money says so", () => {
 // L4 chips
 // --------------------------------------------------------------------------
 
-test("the eight chips match the five-layer spec row for image·design", () => {
-  const spec = readFileSync(
-    "/opt/cursor-workspaces/oceandino/docs/architecture/oceanleo-shell-spec-five-layers.md",
-    "utf8",
-  );
+const FIVE_LAYER_SPEC =
+  "/opt/cursor-workspaces/oceandino/docs/architecture/oceanleo-shell-spec-five-layers.md";
+
+test("the eight chips match the five-layer spec row for image·design", (t) => {
+  // Cross-repo reconciliation: the spec is the authority for these labels, and
+  // copying it in would let the two drift apart silently. Registered in
+  // `w25-tests-out-of-repo-paths.test.mjs`; skipped rather than thrown when the
+  // docs repo is not checked out, so a missing sibling repo cannot take the
+  // whole file down with an ENOENT at load time.
+  let spec;
+  try {
+    spec = readFileSync(FIVE_LAYER_SPEC, "utf8");
+  } catch {
+    t.skip("五层规范所在的 oceandino 仓不在本机，跳过跨仓对账");
+    return;
+  }
   const row = spec
     .split("\n")
     .find((line) => line.includes("图片·设计（合并 Fabric）"));

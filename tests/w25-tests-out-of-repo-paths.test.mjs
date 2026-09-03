@@ -76,6 +76,8 @@ const REGISTERED = {
     "同上，探测同级仓是否存在用的目录前缀",
   "/tmp/oceanleo-ui-ffmpeg-probe.mp4":
     "ffmpeg 探针自己写出来的产物，不是读进来的夹具；测试先写后判，缺了会自己重造",
+  "/opt/cursor-workspaces/oceandino/docs/architecture/oceanleo-shell-spec-five-layers.md":
+    "五层规范是 L4 chips 那八个标签的权威（§3 第 1 行），design-mode.test.mjs 拿它逐条对账；抄一份副本进来两边会各自漂移，而漂了就等于 chips 与规范不一致却没人发现。与上面几条跨仓对账同一档：oceandino 仓不在时那条用例自己 skip，不抛 ENOENT",
 };
 
 /**
