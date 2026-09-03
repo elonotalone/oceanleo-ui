@@ -14,6 +14,7 @@ import {
   type PluginThemeId,
 } from "../plugin-theme";
 import { PluginChromeEditBarGestureLayer } from "../PluginChromeEditBarGestureLayer";
+import { PluginModeToggle } from "./plugin-mode";
 import { PLUGIN_AGENT_DRAWER_ID } from "./agent-drawer";
 import { createPluginAgentDrawer } from "./agent-drawer-panel";
 import {
@@ -28,6 +29,7 @@ import {
   PLUGIN_CHROME_PANEL_DEFAULT_W,
   pluginChromeStyle,
 } from "./tokens";
+import type { EditorMode } from "../hosted-editor";
 import type {
   PluginChromeAction,
   PluginChromeNotice,
@@ -91,6 +93,14 @@ export interface PluginChromeFrameProps {
   editBarEmptyHint?: string;
 
   panels?: readonly PluginChromePanel[];
+  /**
+   * L0 专业模式开关（W01 判据 3 / R3）。**默认普通模式**，按用户 × 编辑器持久化。
+   * 不传 `onModeChange` 也会渲染开关并记住选择——记住是外壳的事，
+   * 把模式送给内核（Native 调 adapter.setMode / Hosted 发 `set-mode`）是插件的事。
+   */
+  onModeChange?: (mode: EditorMode) => void;
+  /** 这件不支持专业模式时写明原因：开关置灰但不消失，原因显示为 title。 */
+  proModeUnavailableReason?: string;
   saveState?: PluginChromeSaveState;
   notices?: readonly PluginChromeNotice[];
   window?: PluginChromeWindowActions;
@@ -115,6 +125,8 @@ export function PluginChromeFrame({
   editBarHidden = false,
   editBarEmptyHint,
   panels,
+  onModeChange,
+  proModeUnavailableReason,
   saveState,
   notices,
   window: windowActions,
@@ -320,6 +332,12 @@ export function PluginChromeFrame({
             })}
 
             {saveState && <PluginChromeStatus state={saveState} />}
+            {/* L0 专业模式开关（R3：默认普通模式）。恒在，不支持的件置灰并说明原因。 */}
+            <PluginModeToggle
+              pluginId={pluginId}
+              unavailableReason={proModeUnavailableReason}
+              onModeChange={onModeChange}
+            />
             <PluginThemeToggle pluginId={pluginId} />
 
             {windowActions?.onToggleFullscreen && (

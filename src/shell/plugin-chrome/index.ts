@@ -10,6 +10,21 @@ export {
   PluginChromeEditBarDivider,
 } from "./PluginChromeEditBarButton";
 export { PluginChromeNotices } from "./PluginChromeNotices";
+// L0 专业模式开关（W01 判据 3）。外壳恒出一个，插件**不要**自己再发明开关
+// （`_COMMON.md` §10 第 5 条：专业模式只能走 W01 契约的 set-mode / L0 开关）。
+export {
+  DEFAULT_PLUGIN_MODE,
+  currentPluginMode,
+  pluginModeStorageKey,
+  setPluginMode,
+  subscribePluginMode,
+} from "./plugin-mode-store";
+export {
+  PluginModeToggle,
+  usePluginMode,
+  type PluginModeHandle,
+  type PluginModeToggleProps,
+} from "./plugin-mode";
 export { PluginChromeStatus } from "./PluginChromeStatus";
 export {
   usePluginChromePanels,

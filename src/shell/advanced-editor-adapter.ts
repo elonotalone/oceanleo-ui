@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import type { EditorMode } from "./hosted-editor";
+
 import type { AdvancedFlushResult } from "./advanced-session-context";
 import type {
   AdvancedHistoryActions,
@@ -50,6 +52,22 @@ export interface AdvancedEditorNativeChrome {
   closeGuard?: boolean;
 }
 
+/**
+ * Native 件的专业模式面（W01 判据 3 / R3）。Hosted 件不用这个，改收 `set-mode`
+ * （契约 v2，见 `signals/W01-interface.md` §2.1）。
+ *
+ * **不实现 = 不支持专业模式**：L0 开关置灰并把 `unavailableReason` 显示为 title，
+ * 而不是让开关消失。用户看不见的能力和不存在的能力是两回事。
+ */
+export interface AdvancedEditorModeAdapter {
+  /** 当前模式。缺省视为 `normal`。 */
+  current?: EditorMode;
+  /** 宿主切模式时调它；编辑器自己决定露出/收起哪些内核 UI。 */
+  setMode?: (mode: EditorMode) => void;
+  /** 不支持时写明原因（会显示给用户，写人话）。 */
+  unavailableReason?: string;
+}
+
 export interface AdvancedEditorToolbox {
   label: string;
   icon: WorkbenchIconName;
@@ -96,6 +114,8 @@ export interface AdvancedEditorAdapter {
   history?: AdvancedHistoryActions;
   viewport?: AdvancedViewportActions;
   nativeChrome?: AdvancedEditorNativeChrome;
+  /** L3 专业模式（W01 判据 3）。不实现即视为不支持，L0 开关置灰。 */
+  mode?: AdvancedEditorModeAdapter;
   /** Canvas-owned local upload; the host exposes one button and the same drop path. */
   upload?: AdvancedEditorUploadAdapter;
   persistence?: AdvancedEditorPersistenceAdapter;
