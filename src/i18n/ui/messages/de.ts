@@ -3053,6 +3053,7 @@ const de: Record<string, string> = {
   "与已有人物关系（可选）": "Beziehung zu einer bestehenden Figur (optional)",
   "专业 · 标题/歌词": "Profi · Titel/Songtext",
   "专业模式": "Profi-Modus",
+  "退出专业模式": "Profi-Modus beenden",
   "专注模式": "Fokusmodus",
   "专项附加扣除": "Besondere Zusatzabzüge",
   "丢弃": "Verwerfen",

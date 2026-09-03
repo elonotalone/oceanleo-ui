@@ -3053,6 +3053,7 @@ const vi: Record<string, string> = {
   "与已有人物关系（可选）": "Mối quan hệ với nhân vật hiện có (tùy chọn)",
   "专业 · 标题/歌词": "Pro · tiêu đề/lời",
   "专业模式": "Chế độ chuyên nghiệp",
+  "退出专业模式": "Thoát chế độ chuyên nghiệp",
   "专注模式": "Chế độ tập trung",
   "专项附加扣除": "Các khoản giảm trừ bổ sung đặc biệt",
   "丢弃": "Bỏ",

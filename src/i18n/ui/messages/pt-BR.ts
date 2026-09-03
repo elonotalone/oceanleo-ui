@@ -3053,6 +3053,7 @@ const ptBR: Record<string, string> = {
   "与已有人物关系（可选）": "Relação com um personagem existente (opcional)",
   "专业 · 标题/歌词": "Pro · título/letra",
   "专业模式": "Modo pro",
+  "退出专业模式": "Sair do modo pro",
   "专注模式": "Modo de foco",
   "专项附加扣除": "Deduções adicionais especiais",
   "丢弃": "Descartar",

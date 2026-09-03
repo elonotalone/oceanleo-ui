@@ -3096,6 +3096,7 @@ const en: Record<string, string> = {
   "与已有人物关系（可选）": "Relationship to an existing character (optional)",
   "专业 · 标题/歌词": "Pro · title/lyrics",
   "专业模式": "Pro mode",
+  "退出专业模式": "Exit pro mode",
   "专注模式": "Focus mode",
   "专项附加扣除": "Special additional deductions",
   "丢弃": "Discard",

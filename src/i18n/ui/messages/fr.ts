@@ -3053,6 +3053,7 @@ const fr: Record<string, string> = {
   "与已有人物关系（可选）": "Relation avec un personnage existant (facultatif)",
   "专业 · 标题/歌词": "Pro · titre/paroles",
   "专业模式": "Mode pro",
+  "退出专业模式": "Quitter le mode pro",
   "专注模式": "Mode concentration",
   "专项附加扣除": "Déductions supplémentaires spéciales",
   "丢弃": "Abandonner",

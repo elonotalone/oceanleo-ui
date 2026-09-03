@@ -3053,6 +3053,7 @@ const tr: Record<string, string> = {
   "与已有人物关系（可选）": "Mevcut bir karakterle ilişki (isteğe bağlı)",
   "专业 · 标题/歌词": "Pro · başlık/söz",
   "专业模式": "Profesyonel mod",
+  "退出专业模式": "Profesyonel moddan çık",
   "专注模式": "Odak modu",
   "专项附加扣除": "Özel ek indirimler",
   "丢弃": "At",

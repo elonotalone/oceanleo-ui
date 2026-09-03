@@ -3053,6 +3053,7 @@ const es419: Record<string, string> = {
   "与已有人物关系（可选）": "Relación con un personaje existente (opcional)",
   "专业 · 标题/歌词": "Pro · título/letra",
   "专业模式": "Modo pro",
+  "退出专业模式": "Salir del modo pro",
   "专注模式": "Modo de concentración",
   "专项附加扣除": "Deducciones adicionales especiales",
   "丢弃": "Descartar",
