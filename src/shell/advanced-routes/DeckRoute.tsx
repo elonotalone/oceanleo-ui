@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { resolveEditorCore } from "../editor-core-flags";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -57,7 +58,35 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 
-export function DeckRoute({
+/**
+ * 双核 flag 的 `next` 分支：PPTist iframe 托管。**单独 lazy**，
+ * 这样翻 flag 之前它的模块图不会被拉进本 chunk（`editor-core-flags.ts` 纪律 1）。
+ */
+const DeckHostedRoute = lazy(() =>
+  import("./DeckHostedRoute").then((module) => ({
+    default: module.DeckHostedRoute,
+  })),
+);
+
+/**
+ * 双核分发口。**flag 只在这里判一次**，判完各走各的组件。
+ *
+ * 默认 `legacy`（`_COMMON.md` §10 第 3 条：换核期间旧核不删、默认旧核）。
+ * 验收绿之后由我翻 flag 并单独提交删除旧目录（message 以 `[core-swap:delete]` 开头）。
+ */
+export function DeckRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("deck") === "next") {
+    return (
+      <Suspense fallback={null}>
+        <DeckHostedRoute {...props} />
+      </Suspense>
+    );
+  }
+  return <DeckLegacyRoute {...props} />;
+}
+
+/** 自研 deck 引擎（旧核）。本波一个字未动，等 V1/V2 验收绿后整体删除。 */
+function DeckLegacyRoute({
   item,
   previewContent,
   linkUrl,
