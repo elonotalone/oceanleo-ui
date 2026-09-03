@@ -29,6 +29,16 @@ import {
   isHostedEditorOrigin,
 } from "../src/shell/hosted-editor-origins.ts";
 import {
+  HOSTED_EDITOR_EMBED_BASES,
+  TRUSTED_EMBED_EDITOR_SANDBOX,
+  UNTRUSTED_FRAME_SANDBOX,
+  embedEditorFrameSandbox,
+  isHostedEditorEmbedBase,
+  isTrustedEmbedEditorBase,
+  sandboxGrantsScriptedSameOrigin,
+} from "../src/shell/editor-sandbox-origin.ts";
+import { buildEditorEmbedUrl } from "../src/shell/editor-protocol.ts";
+import {
   HOSTED_EDITOR_CONTRACT_VERSION,
   buildHideChromeMessage,
   buildReviewDecisionMessage,
@@ -442,4 +452,62 @@ test("W18 R1：白名单没有放宽别的 origin 判定", () => {
   assert.equal(isTrustedEditorOrigin("https://preview.oceanleo.com"), false);
   assert.equal(isTrustedEditorOrigin("https://anything.leoapp.cn"), false);
   assert.equal(isTrustedEditorOrigin("https://evil.com"), false);
+});
+
+// ─── 7. A-24 / W07 R2：embed base 放行，但沙箱面**不给同源** ───────────────
+
+test("A-24：六件的 embed base 能拼出 URL", () => {
+  assert.equal(HOSTED_EDITOR_EMBED_BASES.length, 6);
+  for (const base of HOSTED_EDITOR_EMBED_BASES) {
+    assert.equal(isHostedEditorEmbedBase(base), true, base);
+    assert.equal(isTrustedEmbedEditorBase(base), true, base);
+    const url = buildEditorEmbedUrl(base, {
+      instanceId: "instance-1",
+      hostOrigin: "https://oceanleo.com",
+    });
+    assert.equal(new URL(url).origin, base, base);
+    assert.equal(new URL(url).searchParams.get("embed"), "1");
+  }
+});
+
+test("A-24 的要害：六件拿的是不可信沙箱，一个都不许拿到同源", () => {
+  for (const base of HOSTED_EDITOR_EMBED_BASES) {
+    const sandbox = embedEditorFrameSandbox(base);
+    assert.equal(sandbox, UNTRUSTED_FRAME_SANDBOX, base);
+    // 直说一遍为什么：allow-scripts + allow-same-origin 同时给 = 沙箱失效。
+    // 六件里四件是未修改的第三方整站应用（Langflow / microStudio …）。
+    assert.equal(
+      sandboxGrantsScriptedSameOrigin(sandbox),
+      false,
+      `${base} 拿到了同源沙箱`,
+    );
+  }
+  // 反过来，家族内第一方仍然拿同源——本条改动不许把既有能力也一起收走。
+  const firstParty = "https://design.oceanleo.com/embed/editor";
+  assert.equal(
+    embedEditorFrameSandbox(firstParty),
+    TRUSTED_EMBED_EDITOR_SANDBOX,
+  );
+  assert.equal(sandboxGrantsScriptedSameOrigin(TRUSTED_EMBED_EDITOR_SANDBOX), true);
+});
+
+test("A-24：近似 base 仍然拼不出 URL（全串，不做后缀推断）", () => {
+  for (const base of [
+    "https://slides.oceanleo.app/embed/attacker",
+    "https://slides.oceanleo.app.evil.com",
+    "https://xslides.oceanleo.app",
+    "http://slides.oceanleo.app",
+    "https://s-0123456789abcdef0123456789abcdef.oceanleo.app",
+  ]) {
+    assert.equal(isHostedEditorEmbedBase(base), false, base);
+    assert.throws(
+      () =>
+        buildEditorEmbedUrl(base, {
+          instanceId: "instance-1",
+          hostOrigin: "https://oceanleo.com",
+        }),
+      TypeError,
+      base,
+    );
+  }
 });

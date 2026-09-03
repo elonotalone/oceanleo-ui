@@ -16,6 +16,7 @@
 // 编译加载的模块，走 tests/helpers/module-bench.mjs 时相对依赖会被自动解析。
 // **不要**在这里再加别的依赖。
 
+import { HOSTED_EDITOR_ORIGINS } from "./hosted-editor-origins";
 import {
   UNTRUSTED_CONTENT_DOMAINS,
   currentDomainProfile,
@@ -121,6 +122,47 @@ const TRUSTED_EMBED_EDITOR_BASE_SET = new Set<string>(
   TRUSTED_EMBED_EDITOR_BASES,
 );
 
+/**
+ * 命名空间 E 的六件 Hosted 编辑器 base（W01 判据 3 / 仲裁 A-24 / W07 R2）。
+ *
+ * **与上面那张表并列，且刻意不合并**——两张表的语义不同：
+ *   · `TRUSTED_EMBED_EDITOR_BASES` = 家族内第一方子站，**拿 `allow-same-origin`**；
+ *   · 本表 = 独立可注册域 `oceanleo.app` 上的六件，**不拿同源**。
+ *
+ * 为什么不给同源：六件里 `audio` / `3d` / `game-ide` / `flow` 是**未修改的第三方
+ * 整站应用**（Langflow、microStudio 各带一整套上游 JS 与依赖树）。
+ * `allow-scripts` + `allow-same-origin` 同时给出去，沙箱就等于没有
+ * （`sandboxGrantsScriptedSameOrigin()` 判的就是这个组合）。
+ * 它们**不需要**同源：持久化全走 postMessage，宿主拿自己的凭据落库
+ * （`signals/W18-domains.md` §3 逐条论证）。
+ * ⇒ 加进本表只解开「拼得出 embed URL」，沙箱面维持不可信档。
+ *
+ * **cn 家族仍然 fail closed**（A-24 明写）：本表是六条写死的 `.app` 全串，
+ * 与家族无关，也**不随当前家族变化**——境内没有对应部署（`W18-domains.md` §2：
+ * `leoapp.cn` 无 ICP 备案、`*.oceanleo.cn` 无泛解析），所以境内页面拿到的是
+ * 同样六条 `.app` base，而它们在境内是否可达由网关决定，不由本表放宽。
+ *
+ * ⚠️ 往这张表加一行 = 允许宿主给那个 origin 拼 embed URL。加之前先问：
+ * 那个 origin 上跑的是不是我方可控代码？
+ */
+export const HOSTED_EDITOR_EMBED_BASES: readonly string[] = Object.freeze(
+  HOSTED_EDITOR_ORIGINS,
+);
+
+const HOSTED_EDITOR_EMBED_BASE_SET = new Set<string>(
+  HOSTED_EDITOR_EMBED_BASES,
+);
+
+/**
+ * 这个 base 是不是命名空间 E 的 Hosted 编辑器。
+ * 与 `isTrustedEmbedEditorBase()` 分开导出，是因为**沙箱面要区别对待**：
+ * 前者放行 URL 构造，本函数决定它**拿不到**同源。
+ */
+export function isHostedEditorEmbedBase(base: string): boolean {
+  const normalized = normalizedEmbedBase(base);
+  return Boolean(normalized) && HOSTED_EDITOR_EMBED_BASE_SET.has(normalized);
+}
+
 function normalizedEmbedBase(base: string): string {
   try {
     const url = new URL(base);
@@ -133,7 +175,12 @@ function normalizedEmbedBase(base: string): string {
 
 export function isTrustedEmbedEditorBase(base: string): boolean {
   const normalized = normalizedEmbedBase(base);
-  return Boolean(normalized) && TRUSTED_EMBED_EDITOR_BASE_SET.has(normalized);
+  if (!normalized) return false;
+  // 两张表都放行 URL 构造；沙箱档次的差别在 `embedEditorFrameSandbox()` 里。
+  return (
+    TRUSTED_EMBED_EDITOR_BASE_SET.has(normalized) ||
+    HOSTED_EDITOR_EMBED_BASE_SET.has(normalized)
+  );
 }
 
 /** 允许作为 postMessage targetOrigin / event.origin 的编辑器 origin。 */
@@ -178,6 +225,10 @@ export function sandboxGrantsScriptedSameOrigin(sandbox: string): boolean {
 }
 
 export function embedEditorFrameSandbox(editorBase: string): string {
+  // Hosted 六件**先判**：它们虽然能拼 embed URL，但拿的是不可信沙箱。
+  // 顺序反过来会让 `isTrustedEmbedEditorBase()` 先命中并发出同源沙箱——
+  // 那正是本函数要挡的事，四个第三方整站应用会当场拿到同源权限。
+  if (isHostedEditorEmbedBase(editorBase)) return UNTRUSTED_FRAME_SANDBOX;
   return isTrustedEmbedEditorBase(editorBase)
     ? TRUSTED_EMBED_EDITOR_SANDBOX
     : UNTRUSTED_FRAME_SANDBOX;
