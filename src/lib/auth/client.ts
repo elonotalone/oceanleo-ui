@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { authFetch } from "./auth-fetch";
 import {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
@@ -27,6 +28,7 @@ export function browserClient(): SupabaseClient | null {
   const host = typeof window !== "undefined" ? window.location.host : "";
   _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: cookieOptions(host),
+    global: { fetch: authFetch },
   });
   _client.auth.onAuthStateChange((_event, session) => {
     _accessToken = session?.access_token ?? null;

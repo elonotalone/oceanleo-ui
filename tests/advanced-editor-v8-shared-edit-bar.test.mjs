@@ -376,7 +376,7 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
       readFile(resolve("src/shell/InlineAdvancedWorkbenchHeader.tsx"), "utf8"),
     ]);
   const editBarSource = floatingSource + controllerSource + controlsSource;
-  // 左右两个 ⠿ 手柄已取消：拖拽改为在条上双击进入移动模式。
+  // 左右两个 ⠿ 手柄已取消：拖拽改为在条上双击并按住拖、松手落下。
   assert.doesNotMatch(editBarSource, /data-floating-toolbar-handle/);
   assert.match(editBarSource, /data-edit-bar-collapse/);
   assert.match(editBarSource, /data-edit-bar-collapsed-pill/);
@@ -518,24 +518,24 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     // 否则它会和下一次按下凑成一对，把这条探针本身变成拖拽起手。
     await pointer(bar(), "pointerdown", press(200, 200));
     await pointer(window, "pointermove", {
-      pointerId: -1,
+      pointerId: 1,
       pointerType: "mouse",
       clientX: 30,
       clientY: 20,
     });
     assert.equal(offset(), "0,0", "单击后移动指针不得拖走编辑栏");
 
-    // 双击进入移动模式 → 跟随指针 → 再点一下落下。
+    // 双击并按住 → 跟手 → 松手落下。
     await pointer(bar(), "pointerdown", press(10, 10));
     await pointer(bar(), "pointerdown", press(10, 10));
     assert.equal(liveController.moveMode, true);
     await pointer(window, "pointermove", {
-      pointerId: -1,
+      pointerId: 1,
       pointerType: "mouse",
       clientX: 30,
       clientY: 20,
     });
-    await pointer(window, "pointerdown", press(30, 20));
+    await pointer(window, "pointerup", press(30, 20));
     assert.equal(liveController.moveMode, false);
     assert.equal(offset(), "20,10");
 

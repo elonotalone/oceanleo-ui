@@ -265,11 +265,13 @@ export function SiteCatalogConsole({
       taskRouteInFlightRef.current = sessionId;
       const flushed = await beforeLeaveRef.current();
       if (flushed) {
-        router.replace(historySessionHref(sessionId, manifest?.workspace));
+        router.replace(
+          historySessionHref(sessionId, manifest?.workspace, pathname),
+        );
       }
       else taskRouteInFlightRef.current = "";
     },
-    [historySessionId, manifest?.workspace, router],
+    [historySessionId, manifest?.workspace, pathname, router],
   );
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const inheritedHistorySession =
@@ -486,6 +488,7 @@ export function SiteCatalogConsole({
         embed,
         historySessionId,
         route: manifest?.workspace,
+        pathname,
       });
       if (navigation.kind === "route") router.push(navigation.href);
     },
@@ -495,6 +498,7 @@ export function SiteCatalogConsole({
       onChange,
       historySessionId,
       manifest?.workspace,
+      pathname,
       router,
     ],
   );
@@ -592,7 +596,9 @@ export function SiteCatalogConsole({
           <button
             type="button"
             onClick={() =>
-              router.push(historySessionHref("", manifest?.workspace))
+              router.push(
+                historySessionHref("", manifest?.workspace, pathname),
+              )
             }
             className="mt-4 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white"
             style={{ background: accent }}
@@ -611,7 +617,9 @@ export function SiteCatalogConsole({
         appLabel={legacyHistoryTask.appLabel}
         accent={accent}
         onBack={() =>
-          router.push(historySessionHref("", manifest?.workspace))
+          router.push(
+            historySessionHref("", manifest?.workspace, pathname),
+          )
         }
       />
     );
@@ -653,7 +661,9 @@ export function SiteCatalogConsole({
           accent={accent}
           embedded
           onClose={() =>
-            router.push(historySessionHref("", manifest?.workspace))
+            router.push(
+              historySessionHref("", manifest?.workspace, pathname),
+            )
           }
         />
       </WorkspaceSessionProvider>
@@ -675,6 +685,7 @@ export function SiteCatalogConsole({
               const navigation = catalogNavigationForChange("", {
                 historySessionId,
                 route: manifest?.workspace,
+                pathname,
               });
               if (navigation.kind === "route") router.push(navigation.href);
             }}
@@ -701,7 +712,9 @@ export function SiteCatalogConsole({
         session={effectiveHistorySession}
         accent={accent}
         onBack={() =>
-          router.push(historySessionHref("", manifest?.workspace))
+          router.push(
+            historySessionHref("", manifest?.workspace, pathname),
+          )
         }
       />
     );

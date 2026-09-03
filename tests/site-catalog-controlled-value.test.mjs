@@ -43,6 +43,16 @@ test("目录选择 controller 区分宿主回调与 canonical route", () => {
       href: "/workspace/report",
     },
   );
+  assert.deepEqual(
+    catalogNavigationForChange("invitation", {
+      pathname: "/s/image/workspace",
+    }),
+    {
+      kind: "route",
+      appId: "invitation",
+      href: "/s/image/workspace/invitation",
+    },
+  );
 });
 
 test("旧 query 深链优先于本地受控选择并收敛到 canonical path", () => {
@@ -61,6 +71,23 @@ test("旧 query 深链优先于本地受控选择并收敛到 canonical path", (
       "?fn=old-report&keep=1",
     ),
     "/workspace/report?keep=1",
+  );
+});
+
+test("融合站 workspace 目录上的旧 query 收敛到带 /s/<key> 的 canonical path", () => {
+  const route = resolveSiteCatalogRoute({
+    pathname: "/s/image/workspace",
+    search: "?fn=invitation",
+    knownAppIds: new Set(["invitation"]),
+  });
+  assert.equal(route.requestedAppId, "invitation");
+  assert.equal(
+    catalogCanonicalRedirect(
+      route,
+      "/s/image/workspace",
+      "?fn=invitation",
+    ),
+    "/s/image/workspace/invitation",
   );
 });
 

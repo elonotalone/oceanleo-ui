@@ -65,6 +65,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { assetPreviewUrl, assetThumbUrl } from "../lib/asset-thumb";
 import { useUI } from "../i18n/ui/useUI";
@@ -73,6 +74,7 @@ import {
   exploreAppHref as defaultExploreHref,
   workspaceTemplatePreviewHref as defaultPreviewHref,
 } from "./site-catalog-controller";
+import { withFusionMountPrefix } from "./workspace-route";
 import {
   isWebsiteTemplateMaterial,
   listTemplateMaterials,
@@ -238,6 +240,7 @@ export function TemplateShowcase({
   onClose,
 }: TemplateShowcaseProps) {
   const tt = useUI();
+  const pathname = usePathname() || "";
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const list = useMemo(
@@ -292,10 +295,12 @@ export function TemplateShowcase({
   // 选中项缺 artifactId 时这条深链拼不出只读落点，宁可退回调用方给的兜底，也不产出
   // 一条点进去空转的链接。
   const previewArtifactId = (selected?.artifactId || "").trim();
-  const previewTarget =
+  const previewTarget = withFusionMountPrefix(
     appId && previewArtifactId
       ? (templatePreviewHref ?? defaultPreviewHref)(appId, previewArtifactId)
-      : editHref || "";
+      : editHref || "",
+    pathname,
+  );
   /**
    * 网站类模板的主预览 = **那个站本身**，不是封面大图（合同裁定 A11）。
    * 操作员原话第二条：「首页的 prompt 卡片打开后，没有显示真实的网站素材。」
@@ -307,9 +312,15 @@ export function TemplateShowcase({
     appId,
     artifactId: previewArtifactId,
   });
-  const similarTarget = promptText && fillHref ? fillHref : "";
+  const similarTarget =
+    promptText && fillHref
+      ? withFusionMountPrefix(fillHref, pathname)
+      : "";
   // 「更多」不依赖模板：素材还没补齐的 app 上它恰恰是最该在的那颗。
-  const moreTarget = exploreHref || (appId ? defaultExploreHref(appId) : "");
+  const moreTarget = withFusionMountPrefix(
+    exploreHref || (appId ? defaultExploreHref(appId) : ""),
+    pathname,
+  );
 
   const actionClass =
     "rounded-lg px-3.5 py-2 text-center text-[12.5px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90";

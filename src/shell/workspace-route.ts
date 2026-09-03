@@ -103,20 +103,70 @@ export function legacyWorkspaceAppId(
   return "";
 }
 
+/**
+ * LeoDev 融合站把消费站挂在 `/s/<siteKey>/…`。生产站没有这段前缀。
+ *
+ * 解析侧本来就能从 `/s/image/workspace/invitation` 认出 app id（`segmentAfterBase`
+ * 会在路径里找 `workspace` 段）；生成 href 时若仍写 `/workspace/invitation`，点
+ * Image 目录卡会落到融合站自己的工作台，角标变成 LeoDev、「这个 App 不存在」。
+ *
+ * 选这条：生成工作台/历史地址时按当前 pathname 自动加上 `/s/<key>`。生产站
+ * pathname 没有此外缀，行为不变。不改 37 个消费仓，也不给每个站手传
+ * `canonicalBasePath`。
+ */
+export function fusionMountPrefix(pathname: string): string {
+  const match = /^(\/s\/[a-z][0-9a-z_-]*)(?=\/|$|[?#])/i.exec(pathname || "");
+  return match ? match[1].toLowerCase() : "";
+}
+
+export function stripFusionMountPrefix(pathname: string): string {
+  const prefix = fusionMountPrefix(pathname);
+  if (!prefix) return pathname || "";
+  const rest = (pathname || "").slice(prefix.length);
+  return rest || "/";
+}
+
+export function withFusionMountPrefix(href: string, pathname: string): string {
+  const prefix = fusionMountPrefix(pathname);
+  if (!prefix) return href;
+  if (!href.startsWith("/") || href.startsWith("//") || href.startsWith("/_next")) {
+    return href;
+  }
+  if (
+    href === prefix ||
+    href.startsWith(`${prefix}/`) ||
+    href.startsWith(`${prefix}?`) ||
+    href.startsWith(`${prefix}#`)
+  ) {
+    return href;
+  }
+  if (/^\/s\/[a-z][0-9a-z_-]*/i.test(href)) return href;
+  if (href === "/") return prefix;
+  return `${prefix}${href}`;
+}
+
 export function workspaceAppHref(
   appId: string,
   route?: Pick<OceanLeoWorkspaceRouteContract, "canonicalBasePath">,
+  currentPathname = "",
 ): string {
   const id = (appId || "").trim();
-  const base = route?.canonicalBasePath || "/workspace";
+  const base = withFusionMountPrefix(
+    route?.canonicalBasePath || "/workspace",
+    currentPathname,
+  );
   return id ? `${base}/${encodeURIComponent(id)}` : base;
 }
 
 export function historySessionHref(
   sessionId: string,
   route?: Pick<OceanLeoWorkspaceRouteContract, "historyBasePath">,
+  currentPathname = "",
 ): string {
   const id = (sessionId || "").trim();
-  const base = route?.historyBasePath || "/history";
+  const base = withFusionMountPrefix(
+    route?.historyBasePath || "/history",
+    currentPathname,
+  );
   return id ? `${base}/${encodeURIComponent(id)}` : base;
 }

@@ -14,7 +14,7 @@ const providerSource = await readFile(
 test("我的任务详情新建时保存旧会话并切到新唯一 URL", () => {
   assert.match(source, /workspace\?\.mode === "history"/);
   assert.match(source, /workspace\.startNew\(/);
-  assert.match(source, /router\.replace\(historySessionHref\(next\.id\)\)/);
+  assert.match(source, /router\.replace\(historySessionHref\(next\.id, undefined, pathname\)\)/);
   assert.doesNotMatch(source, /workspaceAppHref/);
 });
 

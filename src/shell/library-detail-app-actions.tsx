@@ -18,6 +18,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
 import { getCurrentArtifactItem } from "./artifact-client";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
@@ -26,6 +27,7 @@ import {
   type MaterialAppAttribution,
 } from "./material-library-scope";
 import { workspaceTemplatePreviewHref } from "./site-catalog-controller";
+import { withFusionMountPrefix } from "./workspace-route";
 import {
   materialDeepLinkArtifactId,
   type WorkspaceLibraryEntry,
@@ -233,12 +235,16 @@ export function MaterialOwningAppEdit({
   compact?: boolean;
 }): ReactNode {
   const tt = useUI();
+  const pathname = usePathname() || "";
   const app = plan.editApp;
   if (!plan.routeEditByApp || !app) return null;
   const label = materialAppLabel(app);
   return (
     <a
-      href={workspaceTemplatePreviewHref(app.appId, plan.artifactId)}
+      href={withFusionMountPrefix(
+        workspaceTemplatePreviewHref(app.appId, plan.artifactId),
+        pathname,
+      )}
       data-material-edit-app={app.appId}
       data-material-edit-single="true"
       aria-label={tt(`在「${label}」里打开「${item.title}」的预览`)}

@@ -10,7 +10,7 @@
 // ============================================================================
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { historySessionHref } from "./workspace-route";
@@ -39,6 +39,7 @@ export function RestartDraftButton({
 }: RestartDraftButtonProps) {
   const tt = useUI();
   const router = useRouter();
+  const pathname = usePathname() || "";
   const workspace = useOptionalWorkspaceSession();
   const [busy, setBusy] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<
@@ -88,7 +89,7 @@ export function RestartDraftButton({
               });
               if (!next) return;
               await onRestart?.();
-              router.replace(historySessionHref(next.id));
+              router.replace(historySessionHref(next.id, undefined, pathname));
               setLocalFeedback("reset");
               timer.current = setTimeout(
                 () => setLocalFeedback(null),

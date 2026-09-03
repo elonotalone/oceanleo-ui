@@ -89,6 +89,7 @@ export function FloatingContextToolbar({
           data-edit-bar-offset={`${controller.offset.x},${controller.offset.y}`}
           onPointerDownCapture={controller.rootProps.onPointerDownCapture}
           onClickCapture={controller.rootProps.onClickCapture}
+          onDoubleClickCapture={controller.rootProps.onDoubleClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
           aria-keyshortcuts={controller.rootProps["aria-keyshortcuts"]}
           className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
@@ -137,8 +138,7 @@ export function FloatingContextToolbar({
             )}
           </div>
           {controller.moveMode && (
-            // 移动模式下用一层透明罩盖住所有控件：任何一次点击都只用来落下，
-            // 不会误触下面的按钮。同时给出「已拿起」的视觉与光标。
+            // 按住拖的这一段盖住控件：松手之前按钮不许被点到。
             <div
               aria-hidden="true"
               data-edit-bar-move-shield

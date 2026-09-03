@@ -9,9 +9,12 @@ import {
   useTransition,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { fusionMountPrefix } from "../workspace-route";
 
 function pathMatches(pathname: string, href: string, exact?: boolean): boolean {
-  if (exact || href === "/") return pathname === href;
+  if (exact || href === "/" || href === fusionMountPrefix(href)) {
+    return pathname === href;
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { authFetch } from "./auth-fetch";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, cookieOptions, configured } from "./config";
 import { isPrivateWorkspaceRuntime } from "./workspace-privacy";
 
@@ -49,6 +50,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: opts,
+    global: { fetch: authFetch },
     cookies: {
       getAll() {
         return request.cookies.getAll();

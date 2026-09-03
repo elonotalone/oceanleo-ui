@@ -48,6 +48,7 @@ import {
 import {
   historySessionHref,
   historySessionIdFromPath,
+  withFusionMountPrefix,
 } from "./workspace-route";
 import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
 import {
@@ -63,10 +64,13 @@ function fmtCost(t: AgentTask): string {
   return y > 0 ? `¥${y.toFixed(2)}` : "";
 }
 
-function historyHrefFor(entry: HistoryListEntry): string {
+function historyHrefFor(entry: HistoryListEntry, pathname = ""): string {
   return entry.kind === "session"
-    ? historySessionHref(entry.id)
-    : `/history?task=${encodeURIComponent(entry.id)}`;
+    ? historySessionHref(entry.id, undefined, pathname)
+    : withFusionMountPrefix(
+        `/history?task=${encodeURIComponent(entry.id)}`,
+        pathname,
+      );
 }
 
 function safeProjectHref(
@@ -432,7 +436,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 type="button"
                 onClick={() => {
                   setSel(entry.id);
-                  router.push(historyHrefFor(entry));
+                  router.push(historyHrefFor(entry, pathname));
                 }}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
@@ -474,7 +478,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 pinned={pinned}
                 favorite={favorite}
                 canDelete={canDeleteHistoryEntry(entry)}
-                href={historyHrefFor(entry)}
+                href={historyHrefFor(entry, pathname)}
                 onRename={() => {
                   setRenameDraft(title);
                   setRenameFor(entry.id);
@@ -852,8 +856,15 @@ export function HistoryDetail({
               setSelected(nextSelection);
               router.replace(
                 nextSessionId
-                  ? historySessionHref(nextSessionId)
-                  : `/history?task=${encodeURIComponent(nextTaskId)}`,
+                  ? historySessionHref(
+                      nextSessionId,
+                      undefined,
+                      detailPathname,
+                    )
+                  : withFusionMountPrefix(
+                      `/history?task=${encodeURIComponent(nextTaskId)}`,
+                      detailPathname,
+                    ),
               );
             }}
           />

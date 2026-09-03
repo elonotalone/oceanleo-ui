@@ -283,8 +283,8 @@ async function pointer(target, type, values) {
   });
 }
 
-// 左右两个 ⠿ 手柄已取消。新手势：在条上任意位置双击进入移动模式，
-// 条跟随指针，再点一下落下，Esc 还原。下面三个 helper 就是这套手势。
+// 左右两个 ⠿ 手柄已取消。新手势：在条上任意位置双击并按住拖，
+// 松手落下，Esc 还原。下面三个 helper 就是这套手势。
 async function grab(target, clientX, clientY) {
   const press = {
     pointerId: 1,
@@ -298,8 +298,8 @@ async function grab(target, clientX, clientY) {
 }
 
 async function moveTo(target, clientX, clientY) {
-  await pointer(target, "pointermove", {
-    pointerId: -1,
+  await pointer(window, "pointermove", {
+    pointerId: 1,
     pointerType: "mouse",
     clientX,
     clientY,
@@ -307,7 +307,7 @@ async function moveTo(target, clientX, clientY) {
 }
 
 async function drop(target, clientX, clientY) {
-  await pointer(target, "pointerdown", {
+  await pointer(window, "pointerup", {
     pointerId: 1,
     pointerType: "mouse",
     button: 0,
@@ -561,6 +561,39 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
   );
 });
 
+test("单击收起键：按下后要等过双击窗口才收成圆", async () => {
+  window.localStorage.clear();
+  const mounted = await createMounted(DockHarness, {
+    storageKey: "test:edit-bar:single-collapse",
+  });
+  try {
+    const collapse = mounted.container.querySelector("[data-edit-bar-collapse]");
+    assert.ok(collapse, "收起键必须在");
+    await pointer(collapse, "pointerdown", {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 380,
+      clientY: 70,
+    });
+    await click(collapse);
+    assert.equal(
+      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
+      null,
+      "双击窗口内单击不得立刻收成圆",
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    assert.ok(
+      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
+      "过了双击窗口，单击必须收成圆",
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
 test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:dock-cycle";
@@ -635,6 +668,26 @@ test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动�
       mounted.container.querySelector("[data-edit-bar-collapse]"),
       "最右侧必须常驻一个收起按钮",
     );
+
+    const collapse = () =>
+      mounted.container.querySelector("[data-edit-bar-collapse]");
+    const collapsePress = {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 380,
+      clientY: 70,
+    };
+    await pointer(collapse(), "pointerdown", collapsePress);
+    await click(collapse());
+    await pointer(collapse(), "pointerdown", collapsePress);
+    assert.equal(
+      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
+      null,
+      "双击落在收起键上不得把条收成圆",
+    );
+    await drop(bar(), 380, 70);
+
     assert.equal(
       mounted.container
         .querySelector("[data-edit-bar-pin]")
@@ -684,7 +737,7 @@ test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动�
     await drop(bar(), 200, 70);
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
-      "one click in the target must redock the first gesture",
+      "one release in the target must redock the first gesture",
     );
 
     await grab(bar(), 120, 60);

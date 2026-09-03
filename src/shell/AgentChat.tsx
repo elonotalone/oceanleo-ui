@@ -22,7 +22,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { type MaterialItem } from "./MaterialLibrary";
@@ -536,6 +536,7 @@ type AgentChatInnerProps = AgentChatProps & {
 export function AgentChat(props: AgentChatProps) {
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const router = useRouter();
+  const pathname = usePathname() || "";
   const startsFromHome =
     !inheritedWorkspace &&
     !props.taskId &&
@@ -547,10 +548,10 @@ export function AgentChat(props: AgentChatProps) {
     (taskId: string, sessionId?: string) => {
       props.onTaskCreated?.(taskId, sessionId);
       if (startsFromHome && sessionId) {
-        router.replace(historySessionHref(sessionId));
+        router.replace(historySessionHref(sessionId, undefined, pathname));
       }
     },
-    [props.onTaskCreated, router, startsFromHome],
+    [props.onTaskCreated, router, startsFromHome, pathname],
   );
   if (!startsFromHome) {
     return <AgentChatInner {...props} />;

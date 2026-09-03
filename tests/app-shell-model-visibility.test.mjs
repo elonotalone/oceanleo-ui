@@ -176,6 +176,8 @@ const visibilityCases = [
   ["/", "?solo", false, "bare solo runtime flag"],
   ["/advanced", "", false, "advanced editor entry"],
   ["/en/advanced/image_editing", "", false, "locale advanced editor"],
+  ["/s/image/workspace", "", true, "fusion-mounted workspace directory"],
+  ["/s/image/workspace/invitation", "", false, "fusion-mounted app runtime"],
   ["/apps/poster", "", false, "nested concrete app detail"],
 ];
 
@@ -250,4 +252,21 @@ test("hidden sidebar picker reserves no header-tools row", () => {
     hideHeader: true,
   });
   assert.doesNotMatch(topbarOverride, /data-oceanleo-model-picker-slot/);
+});
+
+test("fusion-mounted shell prefixes in-site nav hrefs and leaves production hrefs alone", () => {
+  const nav = [
+    { label: "工作台", href: "/workspace" },
+    { label: "我的库", href: "/library" },
+  ];
+  const mounted = renderShell("/s/image/workspace", "", "sidebar", { nav });
+  assert.match(mounted, /href="\/s\/image\/workspace"/);
+  assert.match(mounted, /href="\/s\/image\/library"/);
+  assert.doesNotMatch(mounted, /href="\/workspace"/);
+  assert.doesNotMatch(mounted, /href="\/library"/);
+
+  const production = renderShell("/workspace", "", "sidebar", { nav });
+  assert.match(production, /href="\/workspace"/);
+  assert.match(production, /href="\/library"/);
+  assert.doesNotMatch(production, /href="\/s\//);
 });

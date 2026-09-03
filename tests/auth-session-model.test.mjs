@@ -595,6 +595,13 @@ test("注释与实现一致：没有任何地方声称会话 cookie 是 httpOnly
 
 // UC-NONE：不对应 UC-1…UC-7 中的任何一条。
 // 判断依据：刷新 token 的响应被 CDN 缓存属会话缓存污染，UC-1…UC-7 无对应条款。已登记进 W25 的「无对应 UC 规则」清单。
+test("登录服务 5xx 不得经 middleware / 浏览器客户端原样重试 30 秒", () => {
+  assert.match(middlewareSource, /from "\.\/auth-fetch"/);
+  assert.match(middlewareSource, /fetch:\s*authFetch/);
+  assert.match(clientSource, /from "\.\/auth-fetch"/);
+  assert.match(clientSource, /fetch:\s*authFetch/);
+});
+
 test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头", () => {
   // 忽略 setAll 的第二个参数 = 刷新 token 的响应可能被 CDN 缓存，
   // 下一个访客拿到别人的 session。

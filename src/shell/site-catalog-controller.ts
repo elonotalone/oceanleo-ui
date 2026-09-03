@@ -19,6 +19,8 @@ import {
   historySessionIdFromPath,
   isLibraryDeepLinkSearch,
   legacyWorkspaceAppId,
+  stripFusionMountPrefix,
+  withFusionMountPrefix,
   workspaceAppHref,
   workspaceAppIdFromPath,
 } from "./workspace-route";
@@ -138,7 +140,7 @@ export function catalogCanonicalRedirect(
 ): string | null {
   const contract = activeRoute(route);
   const workspaceIndex =
-    pathname.replace(/\/+$/, "") ===
+    stripFusionMountPrefix(pathname).replace(/\/+$/, "") ===
     contract.canonicalBasePath.replace(/\/+$/, "");
   if (
     embed ||
@@ -149,11 +151,14 @@ export function catalogCanonicalRedirect(
   ) {
     return null;
   }
-  return canonicalCatalogAppHref(
-    state.activeAppId,
-    search,
-    true,
-    contract,
+  return withFusionMountPrefix(
+    canonicalCatalogAppHref(
+      state.activeAppId,
+      search,
+      true,
+      contract,
+    ),
+    pathname,
   );
 }
 
@@ -167,6 +172,7 @@ export function catalogNavigationForChange(
     embed?: boolean;
     historySessionId?: string;
     route?: OceanLeoWorkspaceRouteContract;
+    pathname?: string;
   } = {},
 ): SiteCatalogNavigation {
   if (options.embed) return { kind: "host", appId };
@@ -174,13 +180,21 @@ export function catalogNavigationForChange(
     return {
       kind: "route",
       appId,
-      href: historySessionHref("", activeRoute(options.route)),
+      href: historySessionHref(
+        "",
+        activeRoute(options.route),
+        options.pathname,
+      ),
     };
   }
   return {
     kind: "route",
     appId,
-    href: workspaceAppHref(appId, activeRoute(options.route)),
+    href: workspaceAppHref(
+      appId,
+      activeRoute(options.route),
+      options.pathname,
+    ),
   };
 }
 

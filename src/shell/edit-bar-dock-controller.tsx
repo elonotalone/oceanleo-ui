@@ -65,15 +65,14 @@ function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 /**
- * 双击进入移动模式的判定窗口。刻意自己判而不用 onDoubleClick：
- * 原生 dblclick 在两次 click 都派发完之后才触发，控件会被误触两次。
- * 在 pointerdown 的**捕获阶段**判定，才来得及吞掉第二次激活。
+ * 双击并按住才拖。刻意自己判而不用 onDoubleClick：原生 dblclick 在两次
+ * click 都派发完之后才触发，控件会被点两次。第一次 click 在窗口内先扣住，
+ * 确认不是双击再补发；第二次 pointerdown 在捕获阶段吞掉，按钮不会有反应。
  */
 const DOUBLE_PRESS_MS = 400;
 const DOUBLE_PRESS_SLOP_PX = 10;
 
 interface EditBarDrag {
-  /** 移动模式没有捕获指针，用 -1 占位。 */
   pointerId: number;
   kind: "press" | "move-mode";
   startX: number;
@@ -118,12 +117,13 @@ export interface EditBarDockController {
   position: FloatingToolbarPoint;
   presentation: EditBarPresentation;
   collapsed: boolean;
-  /** 移动模式：双击后条跟随指针，再点一下落下，Esc 取消。 */
+  /** 双击按住拖拽进行中：条子跟手，松手落下，Esc 取消。 */
   moveMode: boolean;
   /** 摊到浮层根节点上，实现「双击条上任意位置都能拖」。 */
   rootProps: {
     onPointerDownCapture: (event: ReactPointerEvent<HTMLElement>) => void;
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
+    onDoubleClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
     /**
      * 展开态的键盘广告位。手柄被删掉之前这条职责挂在手柄上，
@@ -170,6 +170,13 @@ export function useEditBarDockController({
   const lastPressRef = useRef<{ time: number; x: number; y: number } | null>(
     null,
   );
+  const pendingClickRef = useRef<{
+    target: EventTarget | null;
+    x: number;
+    y: number;
+    timer: number;
+  } | null>(null);
+  const replayingClickRef = useRef(false);
   const suppressClickRef = useRef<FloatingToolbarPoint | null>(null);
   const modeRef = useRef<EditBarDockMode>(defaultMode);
   const offsetRef = useRef<FloatingToolbarPoint>({ x: 0, y: 0 });
@@ -351,7 +358,7 @@ export function useEditBarDockController({
   );
 
   /**
-   * 视觉态立刻交还给逻辑态：**撤销**（Esc 取消移动模式）与卸载走这条。
+   * 视觉态立刻交还给逻辑态：**撤销**（Esc 取消这次拖拽）与卸载走这条。
    *
    * ⚠️ 新手势接管**不**走这条。撤销的语义是「把这次手势当没发生过」，所以视觉
    * 回到逻辑是对的；而接管的语义是「从条此刻所在的地方接着来」，把视觉拉回
@@ -1060,7 +1067,7 @@ export function useEditBarDockController({
   }, [applyModeAndOffset, releasePositionSpring]);
 
   /**
-   * 吞掉紧随其后的一次 click。进入移动模式的第二次按下、以及落下时的那一次
+   * 吞掉紧随其后的一次 click。双击第二次按下、以及松手落下时的那一次
    * 点击，都不应该穿透到控件或画布上。
    */
   const clickSwallowCleanupRef = useRef<(() => void) | null>(null);
@@ -1078,12 +1085,20 @@ export function useEditBarDockController({
     [],
   );
 
-  /** Esc 取消移动后必须立刻解除，否则紧接着的第一次真实点击会被白吞掉。 */
+  const cancelPendingClick = useCallback(() => {
+    const pending = pendingClickRef.current;
+    if (!pending) return;
+    if (typeof window !== "undefined") window.clearTimeout(pending.timer);
+    pendingClickRef.current = null;
+  }, []);
+
+  /** Esc 取消拖拽后必须立刻解除，否则紧接着的第一次真实点击会被白吞掉。 */
   const releaseClickSuppression = useCallback(() => {
     suppressClickRef.current = null;
     clickSwallowCleanupRef.current?.();
     clickSwallowCleanupRef.current = null;
-  }, []);
+    cancelPendingClick();
+  }, [cancelPendingClick]);
 
   const swallowNextClick = useCallback(
     (clientX: number, clientY: number) => {
@@ -1110,13 +1125,51 @@ export function useEditBarDockController({
     [shouldSwallowClick],
   );
 
-  const beginMoveMode = useCallback(
-    (clientX: number, clientY: number) => {
-      startDrag("move-mode", -1, clientX, clientY);
+  const armPendingClick = useCallback(
+    (target: EventTarget | null, clientX: number, clientY: number) => {
+      if (typeof window === "undefined") return;
+      cancelPendingClick();
+      const timer = window.setTimeout(() => {
+        pendingClickRef.current = null;
+        lastPressRef.current = null;
+        const node = target instanceof Element ? target : null;
+        const interactive = node?.closest(
+          "button,[role='button'],a,input,select,textarea",
+        );
+        const el =
+          (interactive instanceof HTMLElement ? interactive : null) ||
+          (node instanceof HTMLElement ? node : null);
+        if (!el) return;
+        replayingClickRef.current = true;
+        try {
+          el.click();
+        } finally {
+          replayingClickRef.current = false;
+        }
+      }, DOUBLE_PRESS_MS);
+      pendingClickRef.current = {
+        target,
+        x: clientX,
+        y: clientY,
+        timer,
+      };
+    },
+    [cancelPendingClick],
+  );
+
+  const beginHoldDrag = useCallback(
+    (pointerId: number, clientX: number, clientY: number) => {
+      cancelPendingClick();
+      startDrag("press", pointerId, clientX, clientY);
       setMoveMode(true);
       swallowNextClick(clientX, clientY);
+      try {
+        toolbarRef.current?.setPointerCapture?.(pointerId);
+      } catch {
+        // jsdom 与部分 webview 没有指针捕获。窗口监听仍然跟手。
+      }
     },
-    [startDrag, swallowNextClick],
+    [cancelPendingClick, startDrag, swallowNextClick],
   );
 
   const onPointerDownCapture = useCallback(
@@ -1136,22 +1189,48 @@ export function useEditBarDockController({
       lastPressRef.current = isDoublePress
         ? null
         : { time: now, x: event.clientX, y: event.clientY };
-      if (!isDoublePress) return;
-      // 捕获阶段吞掉，控件收不到这第二次按下，不会被二次激活。
+      if (!isDoublePress) {
+        // 第一下落在按钮上：先扣住 pointerdown，确认不是双击再靠补发 click 生效。
+        const node = event.target instanceof Element ? event.target : null;
+        if (node?.closest("button,[role='button'],a")) {
+          event.preventDefault();
+          event.stopPropagation();
+          armPendingClick(event.target, event.clientX, event.clientY);
+        }
+        return;
+      }
+      // 捕获阶段吞掉第二次按下：落在按钮上也不激活。
       event.preventDefault();
       event.stopPropagation();
-      beginMoveMode(event.clientX, event.clientY);
+      beginHoldDrag(event.pointerId, event.clientX, event.clientY);
     },
-    [beginMoveMode],
+    [armPendingClick, beginHoldDrag],
   );
 
   const onClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      if (!shouldSwallowClick(event.clientX, event.clientY)) return;
+      if (replayingClickRef.current) return;
+      if (shouldSwallowClick(event.clientX, event.clientY)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      // 第一次 click 先扣住：还可能是双击起手。确认是单击后再补发。
+      if (lastPressRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        armPendingClick(event.target, event.clientX, event.clientY);
+      }
+    },
+    [armPendingClick, shouldSwallowClick],
+  );
+
+  const onDoubleClickCapture = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
       event.preventDefault();
       event.stopPropagation();
     },
-    [shouldSwallowClick],
+    [],
   );
 
   /**
@@ -1205,33 +1284,64 @@ export function useEditBarDockController({
     ],
   );
 
-  // 移动模式：条跟随指针，任意位置再点一下落下，Esc 还原。
+  // 双击按住：条子跟手，松手落下，Esc 还原。不跟「没按住的指针」。
   useEffect(() => {
     if (!moveMode || typeof window === "undefined") return;
-    const handleMove = (event: PointerEvent) => {
-      updateDrag(-1, event.clientX, event.clientY, event.timeStamp);
+    const matching = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      return Boolean(drag && drag.pointerId === event.pointerId);
     };
-    const handleDown = (event: PointerEvent) => {
+    const handleMove = (event: PointerEvent) => {
+      if (!matching(event)) return;
+      updateDrag(
+        event.pointerId,
+        event.clientX,
+        event.clientY,
+        event.timeStamp,
+      );
+    };
+    const releaseCapture = (pointerId: number) => {
+      try {
+        toolbarRef.current?.releasePointerCapture?.(pointerId);
+      } catch {
+        // Capture may already be gone.
+      }
+    };
+    const handleUp = (event: PointerEvent) => {
+      if (!matching(event)) return;
       event.preventDefault();
       event.stopPropagation();
       settleDrag(event.clientX, event.clientY);
-      finishDrag();
+      const pointerId = event.pointerId;
+      finishDrag(pointerId);
       swallowNextClick(event.clientX, event.clientY);
+      releaseCapture(pointerId);
+    };
+    const handleCancel = (event: PointerEvent) => {
+      if (!matching(event)) return;
+      revertDrag();
+      finishDrag(event.pointerId);
+      releaseClickSuppression();
+      releaseCapture(event.pointerId);
     };
     const handleKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
+      const pointerId = dragRef.current?.pointerId;
       revertDrag();
       finishDrag();
       releaseClickSuppression();
+      if (pointerId !== undefined) releaseCapture(pointerId);
     };
     window.addEventListener("pointermove", handleMove, true);
-    window.addEventListener("pointerdown", handleDown, true);
+    window.addEventListener("pointerup", handleUp, true);
+    window.addEventListener("pointercancel", handleCancel, true);
     window.addEventListener("keydown", handleKey, true);
     return () => {
       window.removeEventListener("pointermove", handleMove, true);
-      window.removeEventListener("pointerdown", handleDown, true);
+      window.removeEventListener("pointerup", handleUp, true);
+      window.removeEventListener("pointercancel", handleCancel, true);
       window.removeEventListener("keydown", handleKey, true);
     };
   }, [
@@ -1486,6 +1596,11 @@ export function useEditBarDockController({
   useEffect(
     () => () => {
       dragRef.current = null;
+      const pending = pendingClickRef.current;
+      if (pending && typeof window !== "undefined") {
+        window.clearTimeout(pending.timer);
+      }
+      pendingClickRef.current = null;
     },
     [],
   );
@@ -1518,10 +1633,17 @@ export function useEditBarDockController({
     () => ({
       onPointerDownCapture,
       onClickCapture,
+      onDoubleClickCapture,
       onKeyDown: onRootKeyDown,
       "aria-keyshortcuts": rootKeyShortcuts,
     }),
-    [onClickCapture, onPointerDownCapture, onRootKeyDown, rootKeyShortcuts],
+    [
+      onClickCapture,
+      onDoubleClickCapture,
+      onPointerDownCapture,
+      onRootKeyDown,
+      rootKeyShortcuts,
+    ],
   );
 
   return {

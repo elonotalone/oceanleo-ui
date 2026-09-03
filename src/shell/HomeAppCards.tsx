@@ -30,6 +30,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   appTemplates,
   capabilityImageOf,
@@ -44,6 +45,7 @@ import {
   AppCardThumb,
 } from "./app-card-shell";
 import { workspaceAppFillHref } from "./site-catalog-controller";
+import { withFusionMountPrefix } from "./workspace-route";
 import {
   loadCustomPromptCards,
   promptCardsForSite,
@@ -238,6 +240,7 @@ export function HomeAppCards({
   onPick,
 }: HomeAppCardsProps) {
   const tt = useUI();
+  const pathname = usePathname() || "";
   const [group, setGroup] = useState<string>(HOME_APP_ALL_GROUP);
   const [custom, setCustom] = useState<PromptCard[]>([]);
   const [adding, setAdding] = useState(false);
@@ -348,7 +351,7 @@ export function HomeAppCards({
         {/* 网格末位：查看全部 → /workspace */}
         <a
           data-home-app-see-all
-          href={HOME_APP_SEE_ALL_HREF}
+          href={withFusionMountPrefix(HOME_APP_SEE_ALL_HREF, pathname)}
           className="flex min-h-[100px] flex-col items-center justify-center gap-1 rounded-xl border border-stone-200 bg-white/70 px-3 py-3 text-[13px] font-medium text-stone-600 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-stone-300 hover:shadow"
         >
           {/* 只用 17 语已覆盖的 `查看全部`：副标题曾是一条未进词典的中文串（V1-verdict R1），
@@ -375,7 +378,10 @@ export function HomeAppCards({
           fallbackIcon={opened.icon ?? "✨"}
           accent={accent}
           prompt={openedPrompt}
-          fillHref={workspaceAppFillHref(opened.id)}
+          fillHref={withFusionMountPrefix(
+            workspaceAppFillHref(opened.id),
+            pathname,
+          )}
           /* 「预览&编辑」与「更多」的目标**不在这里接线**：TemplateShowcase 默认就调
              `workspaceTemplatePreviewHref(appId, artifactId)` 与 `exploreAppHref(appId)`，
              在卡片侧转一手只会多一个能拼错的地方。

@@ -44,6 +44,11 @@ import "./phone-shell.css";
 // 见该文件顶部——它与下面的 `useRouteNavigation()` 是同一件事的两半。
 import "./nav-source/route-transition.css";
 import { useRouteNavigation } from "./nav-source/use-route-navigation";
+import {
+  fusionMountPrefix,
+  stripFusionMountPrefix,
+  withFusionMountPrefix,
+} from "./workspace-route";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
@@ -152,7 +157,13 @@ export interface AppShellBrand {
 function isActive(pathname: string, item: ShellNavItem): boolean {
   if (item.match) return item.match(pathname);
   if (!item.href) return false; // 纯动作项（搜索等）不高亮
-  if (item.exact || item.href === "/") return pathname === item.href;
+  if (
+    item.exact ||
+    item.href === "/" ||
+    item.href === fusionMountPrefix(item.href)
+  ) {
+    return pathname === item.href;
+  }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
@@ -189,7 +200,9 @@ function decodedRouteSegment(segment: string): string {
 }
 
 function logicalRouteSegments(pathname: string): string[] {
-  const pathOnly = (pathname || "/").split(/[?#]/, 1)[0];
+  const pathOnly = stripFusionMountPrefix(
+    (pathname || "/").split(/[?#]/, 1)[0],
+  );
   const segments = pathOnly
     .split("/")
     .filter(Boolean)
@@ -369,6 +382,9 @@ function AppShellInner({
   const rawPathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
+  const mountNavPath = fusionMountPrefix(rawPathname) ? rawPathname : pathname;
+  const shellHref = (href: string) =>
+    withFusionMountPrefix(href, rawPathname);
   // 在线心跳：登录用户每 60s ping 网关（admin「在线人数」曲线的数据源）。
   usePresenceHeartbeat(siteId);
   const [collapsed, setCollapsed] = useState(false);
@@ -455,7 +471,7 @@ function AppShellInner({
         {accountInner}
       </button>
     ) : (
-      <Link href={accountHref} className={accountCls}>
+      <Link href={shellHref(accountHref)} className={accountCls}>
         {accountInner}
       </Link>
     );
@@ -505,7 +521,7 @@ function AppShellInner({
         {brandInner}
       </button>
     ) : (
-      <Link href="/" className="leo-tap-row flex items-center gap-2 text-neutral-900">
+      <Link href={shellHref("/")} className="leo-tap-row flex items-center gap-2 text-neutral-900">
         {brandInner}
       </Link>
     );
@@ -515,7 +531,11 @@ function AppShellInner({
     // 即时反馈：跳转已经发起但路由还没落地时，把「点中的那一项」当成当前页来算
     // 高亮。乐观路径喂给同一个 isActive()，所以 exact / 前缀 / 自定义 match
     // 三种判定规则一个字都不用改，点中项亮起与其余项熄灭也必然是同一帧。
-    const active = isActive(pendingHref ?? pathname, item);
+    const navHref = item.href ? shellHref(item.href) : undefined;
+    const active = isActive(
+      pendingHref ?? mountNavPath,
+      navHref ? { ...item, href: navHref } : item,
+    );
     const key = disclosureKey(item, idx);
     const disclosureOpen = item.disclosure
       ? disclosureIsOpen(item, idx)
@@ -566,7 +586,7 @@ function AppShellInner({
           {inner}
         </button>
       );
-    } else if (!item.href || item.onClick) {
+    } else if (!navHref || item.onClick) {
       // 纯动作项（无 href）渲染为 button；有 href 渲染为 Link。
       control = (
         <button
@@ -587,7 +607,7 @@ function AppShellInner({
       // navigate() 只接管「本窗普通左键」这一种，其余交还浏览器。
       control = (
         <Link
-          href={item.href}
+          href={navHref}
           onClick={(event) => {
             if (
               event.defaultPrevented ||
@@ -600,7 +620,7 @@ function AppShellInner({
               setMobileOpen(false);
               return;
             }
-            navigateRoute(item.href as string, event);
+            navigateRoute(navHref, event);
           }}
           className={cls}
           style={style}
@@ -635,7 +655,7 @@ function AppShellInner({
     !hideHeader && shouldShowModelPicker(pathname, searchParams);
   const modelPickerSlot = showModelPicker ? (
     <div className="pointer-events-auto" data-oceanleo-model-picker-slot>
-      <ModelGroupPicker apiHref={apiHref} />
+      <ModelGroupPicker apiHref={shellHref(apiHref)} />
     </div>
   ) : null;
   const showHeaderTools =
@@ -658,7 +678,7 @@ function AppShellInner({
           <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
         </button>
       ) : (
-        <Link href="/" className="leo-tap-row flex items-center gap-2 text-neutral-900">
+        <Link href={shellHref("/")} className="leo-tap-row flex items-center gap-2 text-neutral-900">
           <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
             {brand.logo}
           </span>

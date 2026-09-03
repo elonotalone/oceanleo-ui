@@ -196,7 +196,7 @@ function renderCards(props = {}) {
   );
 }
 
-test("首页只放精选、按 group 出 tab、末位一张查看全部", () => {
+test("首页只放精选、按 group 出 tab、末位一张查看全部", async () => {
   assert.equal(HOME_APP_FEATURED_LIMIT, 12);
   assert.equal(HOME_APP_SEE_ALL_HREF, "/workspace");
   assert.deepEqual(homeAppGroups([POSTER, AMBIENT, HEADSHOT]), ["图像生成", "音频"]);
@@ -224,6 +224,15 @@ test("首页只放精选、按 group 出 tab、末位一张查看全部", () => 
   assert.match(markup, />全部</);
   assert.match(markup, />图像生成</);
   assert.match(markup, /data-home-app-see-all[^>]*href="\/workspace"/);
+  const homeSource = await readFile(
+    new URL("../src/shell/HomeAppCards.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    homeSource,
+    /withFusionMountPrefix\(HOME_APP_SEE_ALL_HREF,\s*pathname\)/,
+    "融合站首页「查看全部」必须带上 /s/<key>，不能写死 /workspace",
+  );
   assert.match(markup, /查看全部/);
   assert.match(markup, /添加 prompt/);
   // 「查看全部」在网格末位（在最后一张 app 卡之后）。

@@ -286,8 +286,23 @@ test("引擎：① 双击条上任意位置进入拖拽（不是只有手柄能�
   );
   assert.match(
     controllerSource,
-    /beginMoveMode\(event\.clientX,\s*event\.clientY\)/,
-    "双击不再进入移动模式",
+    /beginHoldDrag\(event\.pointerId,\s*event\.clientX,\s*event\.clientY\)/,
+    "双击不再进入按住拖拽",
+  );
+  assert.match(
+    controllerSource,
+    /armPendingClick\(event\.target,\s*event\.clientX,\s*event\.clientY\)/,
+    "第一次 click 不再扣住，双击会点到按钮",
+  );
+  assert.match(
+    controllerSource,
+    /onDoubleClickCapture/,
+    "双击的浏览器默认（选中文字）不再被扣住",
+  );
+  assert.match(
+    floatingSource,
+    /onDoubleClickCapture=\{controller\.rootProps\.onDoubleClickCapture\}/,
+    "浮层根没有扣住 dblclick",
   );
   assert.match(
     floatingSource,
@@ -629,14 +644,14 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
 
       for (const step of [0, 1]) {
         await pointer(anywhere, "pointerdown", {
-          pointerId: -1, pointerType: "mouse", button: 0,
+          pointerId: 1, pointerType: "mouse", button: 0,
           clientX: 400, clientY: 70, timeStamp: 1000 + step,
         });
       }
       await act(async () => {
         const move = new window.Event("pointermove", { bubbles: true });
         for (const [name, value] of Object.entries({
-          pointerId: -1, clientX: 520, clientY: 300, timeStamp: 1100,
+          pointerId: 1, clientX: 520, clientY: 300, timeStamp: 1100,
         })) {
           Object.defineProperty(move, name, { configurable: true, value });
         }
@@ -648,15 +663,15 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
         `双击之后拖不动：${JSON.stringify(before)} → ${JSON.stringify(dragged)}。` +
           "诉求原话是「双击 edit bar 任何位置都能拖拽」",
       );
-      // 落下，别把移动模式留给下一段。
+      // 松手落下，别把按住拖拽留给下一段。
       await act(async () => {
-        const down = new window.Event("pointerdown", { bubbles: true });
+        const up = new window.Event("pointerup", { bubbles: true });
         for (const [name, value] of Object.entries({
-          pointerId: -1, clientX: 520, clientY: 300, timeStamp: 1200,
+          pointerId: 1, clientX: 520, clientY: 300, timeStamp: 1200,
         })) {
-          Object.defineProperty(down, name, { configurable: true, value });
+          Object.defineProperty(up, name, { configurable: true, value });
         }
-        window.dispatchEvent(down);
+        window.dispatchEvent(up);
       });
 
       // ② 点击后缩为一个圆形
