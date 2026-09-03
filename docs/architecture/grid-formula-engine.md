@@ -1,5 +1,8 @@
 # 表格计算层选型（Grid Formula Engine）
 
+> **SUPERSEDED（2026-09-03，操作员裁定）**：本文「候选 A（自研扩展）」的选型已撤销。表格计算层改为 **Univer Sheets**（`@univerjs/presets@0.25.1`，Apache-2.0，原生 React 嵌入）；自研 `grid-formula.ts` / `grid-model.ts` 在 `editor-core-swap` 波 W03 验收绿后删除。理由与证据：`/opt/cursor-workspaces/oceandino/docs/architecture/oceanleo-editors-buy-vs-build-and-template-supply.md` §4.2、`docs/work-logs/2026-09/editor-core-swap/00-dispatch-contract.md`。本文保留作历史。
+
+
 Status: 操作员 2026-08-31 裁定两条前置约束后，选型定为候选 A（自研扩展）。
 
 ## 两条前置约束（操作员裁定，规范性）
