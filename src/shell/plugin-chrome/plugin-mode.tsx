@@ -7,6 +7,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 import { useUI } from "../../i18n/ui/useUI";
+import { Button } from "../../ui/Button";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import type { EditorMode } from "../hosted-editor";
 import type { PluginThemeId } from "../plugin-theme";
@@ -75,9 +76,14 @@ export function PluginModeToggle({
   const label = disabled
     ? `${tt("专业模式")}：${unavailableReason}`
     : tt(pro ? "退出专业模式" : "专业模式");
+  // 走 `Button` 原语而不是裸 `<button>`：默认档就是 44px 命中区，焦点环内建且
+  // 关不掉（`ui/Button.tsx` 文件头的两条结构性规矩）。顶栏 `h-14`(56px) 装得下。
+  // 旁边的主题键还是 32px，那是登记在 `hit-target-budget` 里的存量欠账——
+  // 新按钮没有理由跟着它一起欠。
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      selected={pro}
       data-plugin-mode-toggle={pluginId}
       data-plugin-mode={pro ? "pro" : "normal"}
       disabled={disabled}
@@ -90,14 +96,9 @@ export function PluginModeToggle({
         setPluginMode(pluginId, next);
         onModeChange?.(next);
       }}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:pointer-events-none disabled:opacity-40 ${
-        pro
-          ? "bg-[var(--pchrome-accent-soft)] text-[var(--pchrome-accent)]"
-          : "text-[var(--pchrome-ink-mid)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)]"
-      }`}
     >
       <AdvancedEditorIcon name="settings" className="h-4 w-4" />
       <span className="hidden sm:inline">{tt("专业模式")}</span>
-    </button>
+    </Button>
   );
 }

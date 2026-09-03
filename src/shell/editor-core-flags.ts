@@ -15,7 +15,9 @@
 //     `W01-deps.md` §4 那条「重内核只能出现在懒加载叶子里」就废了。
 //  2. **不要新增第四个取值。** `legacy | next` 两档。要「灰度 10%」写在
 //     `resolveEditorCore` 的 override 源里，不要在类型上开第三种状态。
-//  3. **删除旧目录单独成一个 commit**，message 以 `[core-swap:delete]` 开头（§10 第 12 条）。
+//  3. **删除旧目录单独成一个 commit**，message 以 core-swap:delete 前缀开头
+//     （§10 第 12 条；这里刻意不写方括号形态——Tailwind 的自动内容探测会把
+//     注释里的方括号 token 编成一条真 CSS 规则，`_COMMON.md` §7b⑧ 实测 37 条）。
 // ============================================================================
 
 import type { PluginThemeId } from "./plugin-theme";
