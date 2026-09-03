@@ -1,3 +1,26 @@
 allowBuilds:
   # Browser-only PDF rendering does not need node-canvas native install scripts.
   canvas: false
+  # 三条都是 2026-09-03 换核波预装依赖带进来的传递依赖的 postinstall。
+  # pnpm 首次遇到时写的是占位串 "set this to true or false"，那不是合法取值，必须定死。
+  # 全部 false：浏览器端一行都不需要它们的安装期脚本。
+  '@scarf/scarf': false # 遥测上报，明确关闭
+  es5-ext: false # postinstall 只打印赞助信息
+  protobufjs: false # CLI 用的代码生成，浏览器侧用不到
+
+# ── assistant-ui 冷却期钉（2026-09-03，W01） ─────────────────────────────────
+# pnpm 的 minimumReleaseAge 闸（24h）拦下了 assistant-ui 全家：它们在
+# 2026-09-03T14:24Z 发布，比本次安装早不到十分钟。pnpm 的默认反应是往
+# minimumReleaseAgeExclude 里自动写豁免——那等于把冷却期这道供应链闸直接绕开，
+# 而冷却期存在的理由正是「刚发布几分钟的包还没被任何人看过」。
+# 这里改成把 6 个包钉在 08-27 那一批（都满足 @assistant-ui/react@0.15.17 的 ^ 范围），
+# 于是 `pnpm install` 走的是正经的策略校验，不是豁免。
+# 过了冷却期（≥2026-09-04T14:24Z）任何人都可以删掉整段 overrides 重新解析；
+# 删之前请确认 `pnpm install` 仍然打印 "✓ Lockfile passes supply-chain policies"。
+overrides:
+  '@assistant-ui/core': 0.3.16
+  '@assistant-ui/store': 0.3.11
+  '@assistant-ui/tap': 0.9.15
+  assistant-cloud: 0.1.42
+  assistant-stream: 0.3.40
+  safe-content-frame: 0.0.28
