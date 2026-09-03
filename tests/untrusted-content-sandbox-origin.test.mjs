@@ -613,8 +613,54 @@ test("W8/3 协议指令集保持最小闭集", () => {
     assert.equal(EDITOR_TO_HOST_MESSAGE_TYPES.has(forbidden), false, forbidden);
     assert.equal(HOST_TO_EDITOR_MESSAGE_TYPES.has(forbidden), false, forbidden);
   }
-  assert.equal(EDITOR_TO_HOST_MESSAGE_TYPES.size, 17);
-  assert.equal(HOST_TO_EDITOR_MESSAGE_TYPES.size, 14);
+  // 2026-09-03 W01 契约 v2（editor-core-swap）：editor→host 17→18（+review-proposal）、
+  // host→editor 14→17（+set-mode / hide-chrome / review-decision）。
+  // **改数字不够**——数字相等而成员换人（删一条旧的、加一条新的）旧断言照样绿。
+  // 所以这里钉的是两张全集清单：以后加指令必须动清单本身，顺手加不进来。
+  // 四条新指令都不是通用代理形态：set-mode / hide-chrome 是两个布尔与一个闭集
+  // 枚举，review-proposal / review-decision 只描述一次待批改动，
+  // 都不带 URL、不带「代我调用」的动词（§7.3 判据）。
+  assert.deepEqual([...EDITOR_TO_HOST_MESSAGE_TYPES].sort(), [
+    "artifact-created",
+    "artifact-updated",
+    "close-request",
+    "dirty",
+    "error",
+    "export-result",
+    "history-changed",
+    "material-result",
+    "project-manifest",
+    "project-result",
+    "ready",
+    "recovery-result",
+    "recovery-snapshot",
+    "review-proposal",
+    "selection-changed",
+    "selection-result",
+    "tools-manifest",
+    "viewport-changed",
+  ]);
+  assert.deepEqual([...HOST_TO_EDITOR_MESSAGE_TYPES].sort(), [
+    "dispose",
+    "export-request",
+    "hide-chrome",
+    "init",
+    "material-insert",
+    "open-asset",
+    "project-action",
+    "project-view",
+    "recovery-capture",
+    "recovery-restore",
+    "review-decision",
+    "save-request",
+    "save-result",
+    "selection-command",
+    "set-host-layout",
+    "set-mode",
+    "viewport-command",
+  ]);
+  assert.equal(EDITOR_TO_HOST_MESSAGE_TYPES.size, 18);
+  assert.equal(HOST_TO_EDITOR_MESSAGE_TYPES.size, 17);
   // 白名单必须是入口处的 fail-closed 前置判断，而不是「逐类型校验碰巧兜住了」。
   const protocol = source("../src/shell/editor-protocol.ts");
   assert.ok(

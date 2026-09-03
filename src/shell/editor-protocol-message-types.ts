@@ -30,6 +30,9 @@ export const EDITOR_TO_HOST_MESSAGE_TYPES = new Set([
   "ready",
   "recovery-result",
   "recovery-snapshot",
+  // v2：agent 改动进 L4 审阅的提案。**不是**通用代理——它只描述一次待批改动，
+  // 不带任何 URL、不带任何「代我调用」的动词，落地仍要宿主发 review-decision。
+  "review-proposal",
   "selection-changed",
   "selection-result",
   "tools-manifest",
@@ -39,6 +42,8 @@ export const EDITOR_TO_HOST_MESSAGE_TYPES = new Set([
 export const HOST_TO_EDITOR_MESSAGE_TYPES = new Set([
   "dispose",
   "export-request",
+  // v2：L3 专业模式下收起/展开内核自带的工具栏与面板。
+  "hide-chrome",
   "init",
   "material-insert",
   "open-asset",
@@ -46,9 +51,14 @@ export const HOST_TO_EDITOR_MESSAGE_TYPES = new Set([
   "project-view",
   "recovery-capture",
   "recovery-restore",
+  // v2：用户在 L4 审阅面板上对某条提案的裁决。没有它，Hosted 件永远不知道
+  // 提案是被接受还是被拒绝，规范 §7 判据 3 就落不了地。
+  "review-decision",
   "save-request",
   "save-result",
   "selection-command",
+  // v2：L0 专业模式开关。默认 normal（R3）。
+  "set-mode",
   "set-host-layout",
   "viewport-command",
 ]);

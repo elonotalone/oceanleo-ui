@@ -13,9 +13,12 @@ import {
   isTrustedEmbedEditorBase,
   isUntrustedContentHostname,
 } from "./editor-sandbox-origin";
+import { isHostedEditorOrigin } from "./hosted-editor-origins";
 import {
   boundedRecord,
   boundedString,
+  contractV2EditorToHost,
+  contractV2HostToEditor,
   isEditorRecoverySnapshot,
   normalizeEditorHistory,
   recordValue,
@@ -24,7 +27,7 @@ import {
   validManifestId,
   validProjectManifest,
   validRevision,
-  validToolManifest,
+  validToolsManifestMessage,
 } from "./editor-protocol-validation.mjs";
 
 export type {
@@ -176,6 +179,9 @@ export function isTrustedEditorOrigin(origin: string): boolean {
     if (parsed.origin !== origin || parsed.username || parsed.password) {
       return false;
     }
+    // W18 R1 全串白名单。**必须排在下一行之前**（`*.oceanleo.app` 整域是
+    // 不可信内容域，排在后面就永远走不到）。论证见 hosted-editor-origins.ts。
+    if (isHostedEditorOrigin(origin)) return true;
     if (isUntrustedContentHostname(hostname)) return false;
     if (isLoopbackHostname(hostname)) {
       return (
@@ -259,10 +265,9 @@ export function asEditorToHostMessage(
       : null;
   }
   if (type === "tools-manifest") {
-    if (!validRevision(record.revision) || !validToolManifest(record.tools)) {
-      return null;
-    }
-    return record as unknown as EditorToHostMessage;
+    return validToolsManifestMessage(record)
+      ? (record as unknown as EditorToHostMessage)
+      : null;
   }
   if (type === "project-manifest") {
     return validProjectManifest(record.manifest)
@@ -390,7 +395,12 @@ export function asEditorToHostMessage(
   if (type === "ready" || type === "dirty" || type === "close-request") {
     return record as unknown as EditorToHostMessage;
   }
-  return null;
+  // v2 分支（住在 validation.mjs，因为本文件撞着 600 行拆分闸）。未知 type 回 null。
+  return contractV2EditorToHost(
+    type,
+    record,
+    normalizeSelectionContext,
+  ) as EditorToHostMessage | null;
 }
 
 export function asHostToEditorMessage(
@@ -530,7 +540,8 @@ export function asHostToEditorMessage(
     return record as unknown as HostToEditorMessage;
   }
   if (type === "init") return record as unknown as HostToEditorMessage;
-  return null;
+  // v2 分支（set-mode / hide-chrome / review-decision）。未知 type 回 null。
+  return contractV2HostToEditor(type, record) as HostToEditorMessage | null;
 }
 
 export function buildEditorEmbedUrl(

@@ -1,11 +1,16 @@
 import type {
+  EditorAgentChip,
   EditorAssetPayload,
   EditorDocumentRevision,
   EditorHistorySnapshot,
   EditorProjectManifest,
   EditorRecoverySnapshot,
+  EditorReviewProposal,
+  EditorToHostMessage,
   EditorToolManifestEntry,
+  HostToEditorMessage,
 } from "./editor-protocol-types";
+import type { SelectionContext } from "./selection-context";
 
 export function validAssetUrl(value: unknown): boolean;
 export function recordValue(
@@ -36,3 +41,24 @@ export function isEditorRecoverySnapshot(
 export function validAssetPayload(
   value: unknown,
 ): value is EditorAssetPayload;
+
+// ── 宿主契约 v2 ─────────────────────────────────────────────────────────────
+export const HOSTED_EDITOR_CONTRACT_VERSION: "2.0";
+export function validAgentChips(
+  value: unknown,
+): value is EditorAgentChip[] | undefined;
+export function validToolsManifestMessage(
+  record: Record<string, unknown>,
+): boolean;
+export function validReviewProposal(
+  value: unknown,
+): value is EditorReviewProposal;
+export function contractV2EditorToHost(
+  type: string,
+  record: Record<string, unknown>,
+  normalizeSelection: (value: unknown) => SelectionContext | null,
+): EditorToHostMessage | null;
+export function contractV2HostToEditor(
+  type: string,
+  record: Record<string, unknown>,
+): HostToEditorMessage | null;

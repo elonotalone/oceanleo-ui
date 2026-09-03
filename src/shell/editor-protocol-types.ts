@@ -105,6 +105,76 @@ export type EditorRecoveryValue =
   | EditorRecoveryValue[]
   | { [key: string]: EditorRecoveryValue };
 
+// ─── 宿主契约 v2（W01，2026-09-03，editor-core-swap）────────────────────────
+// **只加不减。** v1 的 17 条 editor→host 与 14 条 host→editor 一条没删、
+// 一个既有字段没改类型、没有任何字段从可选变必填。新增的是：
+//   host→editor  : set-mode / hide-chrome / review-decision
+//   editor→host  : review-proposal
+//   tools-manifest: 多两个**可选**字段（manifestVersion、chips）
+// ⇒ 只会说 v1 的编辑器不发 chips、不发 review-proposal，宿主照旧工作；
+//   只会读 v1 的宿主收到 v2 消息时走白名单前的 `has(type)` 直接丢弃，不会崩。
+//   这就是这里「向后兼容」的确切含义，`tests/hosted-editor-contract-v2.test.mjs` 钉住它。
+
+/** L3 专业模式开关的两个取值。默认 `normal`（R3：默认普通模式）。 */
+export type EditorMode = "normal" | "pro";
+
+/** L4 快捷动作 chip 的类别；闭集，宿主按它选图标与分组。 */
+export type EditorAgentChipKind =
+  | "analyze"
+  | "cleanup"
+  | "export"
+  | "extract"
+  | "generate"
+  | "layout"
+  | "restyle"
+  | "rewrite"
+  | "summarize"
+  | "translate";
+
+/** 一个 L4 快捷动作的声明（五层规范 §2：chips ≤ 8）。 */
+export interface EditorAgentChip {
+  id: string;
+  label: string;
+  kind: EditorAgentChipKind;
+  /** 对哪些选区类型（`SelectionContext.kind`）生效；`["*"]` = 任意，含无选区。 */
+  appliesTo: string[];
+  /** 送进 agent 的提示词模板；`{selection}` / `{document}` 由宿主替换。 */
+  prompt: string;
+  icon?: EditorProjectIcon;
+}
+
+export type EditorReviewChangeOp = "add" | "remove" | "update" | "move";
+
+/** 对象类编辑器（画布/幻灯片/表格）的逐项变更，替代文本 diff。 */
+export interface EditorReviewObjectChange {
+  id: string;
+  op: EditorReviewChangeOp;
+  label: string;
+  before?: string;
+  after?: string;
+}
+
+/**
+ * agent 改动进 L4 审阅的载荷。
+ *
+ * 规范 §7 判据 3「agent 改动 100% 进 L4 审阅；**接受前文档 revision 不前进**」
+ * ⇒ `revision` 必须是**提案尚未落地时**的当前 revision。宿主拿它做守卫：
+ * 收到 `review-proposal` 后若 revision 前进了，说明编辑器偷跑，判红。
+ */
+export interface EditorReviewProposal {
+  proposalId: string;
+  /** 落地时要执行的那一条命令——「一个命令一个执行器」（规范 §2.1 第 2 条）。 */
+  commandId: string;
+  summary: { before: string; after: string };
+  /** `diff` 与 `objects` **恰好给一个**：文本类给 diff，对象类给变更清单。 */
+  diff?: string;
+  objects?: EditorReviewObjectChange[];
+  targetSelection: SelectionContext | null;
+  revision: EditorDocumentRevision;
+}
+
+export type EditorReviewDecision = "accept" | "reject";
+
 export interface EditorRecoverySnapshot {
   revision: EditorDocumentRevision;
   confirmedRevision?: EditorDocumentRevision;
@@ -208,6 +278,27 @@ export type HostToEditorMessage =
       type: "dispose";
       instanceId: string;
       disposeId: string;
+    }
+  // ── v2 ───────────────────────────────────────────────────────────────────
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "set-mode";
+      instanceId: string;
+      mode: EditorMode;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "hide-chrome";
+      instanceId: string;
+      toolbar: boolean;
+      panels: boolean;
+    }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "review-decision";
+      instanceId: string;
+      proposalId: string;
+      decision: EditorReviewDecision;
     };
 
 export type EditorToHostMessage =
@@ -242,6 +333,10 @@ export type EditorToHostMessage =
       instanceId: string;
       revision: EditorDocumentRevision;
       tools: EditorToolManifestEntry[];
+      /** v2：缺省即 v1。给了就必须是 2，且 `chips` 才会被读。 */
+      manifestVersion?: 2;
+      /** v2：L4 快捷动作声明，≤ 8 条。v1 编辑器不发这个字段。 */
+      chips?: EditorAgentChip[];
     }
   | {
       protocol: typeof EDITOR_PROTOCOL;
@@ -332,4 +427,11 @@ export type EditorToHostMessage =
       protocol: typeof EDITOR_PROTOCOL;
       type: "close-request";
       instanceId: string;
+    }
+  // ── v2 ───────────────────────────────────────────────────────────────────
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "review-proposal";
+      instanceId: string;
+      proposal: EditorReviewProposal;
     };

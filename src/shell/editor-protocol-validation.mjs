@@ -357,3 +357,155 @@ export function validAssetPayload(value) {
       typeof asset.writable === "boolean",
   );
 }
+
+// ═══ 宿主契约 v2（W01，2026-09-03，editor-core-swap）══════════════════════
+// 校验器住在这里而不是 `editor-protocol.ts`，理由是硬的：那份文件撞着 600 行
+// 拆分闸（`tests/advanced-canva-interactions.test.mjs`），只剩十几行余量。
+// 指令白名单的 fail-closed 前置拦截**仍然留在** `editor-protocol.ts`
+// （`untrusted-content-sandbox-origin.test.mjs` 盯的就是那两句的字面），
+// 下面两个 dispatcher 只在过闸之后才被调用。
+
+/** 契约版本号。`tools-manifest.manifestVersion` 的 2 与它同源。 */
+export const HOSTED_EDITOR_CONTRACT_VERSION = "2.0";
+
+const EDITOR_MODES = new Set(["normal", "pro"]);
+const REVIEW_DECISIONS = new Set(["accept", "reject"]);
+const REVIEW_CHANGE_OPS = new Set(["add", "remove", "update", "move"]);
+const AGENT_CHIP_KINDS = new Set([
+  "analyze",
+  "cleanup",
+  "export",
+  "extract",
+  "generate",
+  "layout",
+  "restyle",
+  "rewrite",
+  "summarize",
+  "translate",
+]);
+// 与 `selection-context.ts` 的 KIND_RE 同形，另放行通配 `*`（任意选区）。
+const CHIP_SELECTION_KIND_RE = /^(?:\*|[a-z][a-z0-9_-]{0,47})$/i;
+
+/** `tools-manifest` v2 的 chips 字段。缺省 = v1 编辑器，直接放行。 */
+export function validAgentChips(value) {
+  if (value === undefined) return true;
+  // 五层规范 §2：chips ≤ 8。上限写在校验器里，免得每个编辑器各自解释。
+  if (!Array.isArray(value) || value.length > 8) return false;
+  const ids = new Set();
+  return value.every((candidate) => {
+    const chip = recordValue(candidate);
+    if (
+      !chip ||
+      !validManifestId(chip.id) ||
+      ids.has(chip.id) ||
+      !boundedString(chip.label, 120, true) ||
+      !AGENT_CHIP_KINDS.has(String(chip.kind)) ||
+      !boundedString(chip.prompt, 2_000, true) ||
+      !validProjectIcon(chip.icon) ||
+      !Array.isArray(chip.appliesTo) ||
+      chip.appliesTo.length === 0 ||
+      chip.appliesTo.length > 24 ||
+      !chip.appliesTo.every(
+        (kind) =>
+          typeof kind === "string" && CHIP_SELECTION_KIND_RE.test(kind),
+      )
+    ) {
+      return false;
+    }
+    ids.add(chip.id);
+    return true;
+  });
+}
+
+/**
+ * `tools-manifest` 整条消息的校验（revision + tools + v2 的两个可选字段）。
+ * 合成一个函数是为了给 `editor-protocol.ts` 省行——它离 600 行拆分闸只剩个位数。
+ * v1 编辑器不发 `manifestVersion` / `chips`，两条都走 undefined 直接放行。
+ */
+export function validToolsManifestMessage(record) {
+  return Boolean(
+    validRevision(record.revision) &&
+      validToolManifest(record.tools) &&
+      (record.manifestVersion === undefined || record.manifestVersion === 2) &&
+      validAgentChips(record.chips),
+  );
+}
+
+function validReviewObjectChanges(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 200) {
+    return false;
+  }
+  return value.every((candidate) => {
+    const change = recordValue(candidate);
+    return Boolean(
+      change &&
+        boundedString(change.id, 200, true) &&
+        REVIEW_CHANGE_OPS.has(String(change.op)) &&
+        boundedString(change.label, 200, true) &&
+        boundedString(change.before, 4_000) &&
+        boundedString(change.after, 4_000),
+    );
+  });
+}
+
+export function validReviewProposal(value) {
+  const proposal = recordValue(value);
+  if (!proposal) return false;
+  const summary = recordValue(proposal.summary);
+  const hasDiff = proposal.diff !== undefined;
+  const hasObjects = proposal.objects !== undefined;
+  if (
+    !boundedString(proposal.proposalId, 128, true) ||
+    !validManifestId(proposal.commandId) ||
+    !validRevision(proposal.revision) ||
+    !summary ||
+    !boundedString(summary.before, 2_000, true) ||
+    !boundedString(summary.after, 2_000, true) ||
+    // diff 与 objects **恰好给一个**：两个都给等于两份会互相矛盾的事实源，
+    // 审阅面板就得挑一份信，那时候挑错没人看得出来。
+    hasDiff === hasObjects ||
+    (hasDiff && !boundedString(proposal.diff, 200_000, true)) ||
+    (hasObjects && !validReviewObjectChanges(proposal.objects))
+  ) {
+    return false;
+  }
+  return boundedRecord(proposal, 400_000);
+}
+
+/**
+ * v2 的 editor→host 分支。未知 type 一律回 `null`——与它在
+ * `asEditorToHostMessage` 里替换掉的那句 `return null` 逐字等价。
+ */
+export function contractV2EditorToHost(type, record, normalizeSelection) {
+  if (type !== "review-proposal" || !validReviewProposal(record.proposal)) {
+    return null;
+  }
+  const target = record.proposal.targetSelection;
+  if (target === null) return record;
+  const selection = normalizeSelection(target);
+  if (!selection) return null;
+  return {
+    ...record,
+    proposal: { ...record.proposal, targetSelection: selection },
+  };
+}
+
+/** v2 的 host→editor 分支。同上，未知 type 回 `null`。 */
+export function contractV2HostToEditor(type, record) {
+  if (type === "set-mode") {
+    return EDITOR_MODES.has(String(record.mode)) ? record : null;
+  }
+  if (type === "hide-chrome") {
+    return typeof record.toolbar === "boolean" &&
+      typeof record.panels === "boolean"
+      ? record
+      : null;
+  }
+  if (type === "review-decision") {
+    return boundedString(record.proposalId, 128, true) &&
+      REVIEW_DECISIONS.has(String(record.decision))
+      ? record
+      : null;
+  }
+  return null;
+}
