@@ -40,6 +40,7 @@ import {
   type FabricCarrierAxis,
 } from "./fabric-carrier-schema";
 import type { ImageSceneDependency } from "./image-scene-source";
+import type { BarcodePayload } from "./design-mode/barcode";
 
 export type FabricNS = typeof import("fabric");
 
@@ -66,6 +67,11 @@ export interface EditorObjectProps {
   oceanleoAxis?: FabricCarrierAxis;
   /** Reference into the carrier's `fonts[]` table. */
   oceanleoFontRef?: string;
+  /**
+   * Payload of a QR/barcode image, kept so the symbol can be re-encoded at a
+   * new size without asking the user to retype it.
+   */
+  oceanleoBarcode?: BarcodePayload;
 }
 
 export type EditorObject = FabricObject & EditorObjectProps;
@@ -86,6 +92,7 @@ export const SNAPSHOT_PROPS = [
   "oceanleoTableColumn",
   "oceanleoTablePart",
   "oceanleoDependency",
+  "oceanleoBarcode",
   ...FABRIC_CARRIER_SNAPSHOT_PROPS,
 ];
 
