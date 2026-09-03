@@ -53,6 +53,17 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import {
+  DESIGN_MODE_INITIAL_STATE,
+  switchEditorMode,
+  type FabricEditorMode,
+} from "../image-editor/design-mode/design-mode-state";
+import {
+  IMAGE_DESIGN_MANIFEST_VERSION,
+  imageDesignChipManifestEntries,
+} from "../image-editor/design-mode/l4-chips";
+import type { AiCommandRunner } from "../image-editor/design-mode/image-ai-commands";
+import type { EditorMode } from "../editor-protocol-types";
 
 export function ImageRoute({
   item,
@@ -65,6 +76,28 @@ export function ImageRoute({
 }: AdvancedContentWorkbenchProps) {
   const editor = useFabricImageEditor(item, siteId);
   const [importNotice, setImportNotice] = useState("");
+  /**
+   * R2 merges the image editor and the design canvas: `photo` and `design` are
+   * two views of one document, so the mode lives in route state and the
+   * document is untouched by switching (pinned by `design-mode.test.mjs`).
+   */
+  const [designMode, setDesignMode] = useState(DESIGN_MODE_INITIAL_STATE);
+  const setEditorMode = useCallback((mode: FabricEditorMode) => {
+    setDesignMode((current) => switchEditorMode(current, mode));
+  }, []);
+  /**
+   * L3 professional mode is Photopea (R4). The iframe is built only once the
+   * user asks for it — the free tier is ad-supported and the task book forbids
+   * preloading it, so this flag stays false until `set-mode` says `pro`.
+   */
+  const [proModeOpen, setProModeOpen] = useState(false);
+  /**
+   * A request that passed the command surface's checks and is waiting for the
+   * user to confirm it in the AI panel, where progress and cost are visible.
+   */
+  const [pendingAiRequest, setPendingAiRequest] = useState<
+    Parameters<AiCommandRunner>[0] | null
+  >(null);
   // 菜单里的 jpg 与画布导出器的 "jpeg" 是同一件事；对用户只说 JPG。
   const deliver = useCallback(
     async (format: string, quality: number = editor.exportQuality) => {
@@ -129,7 +162,7 @@ export function ImageRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   usePluginCommandSurface(
     useMemo(
-      () => createImageCommandSurface({ editor, deliver }),
+      () => createImageCommandSurface({ editor, deliver, runAi }),
       [deliver, editor],
     ),
   );
@@ -263,6 +296,50 @@ export function ImageRoute({
     );
   }, [editor.dirty, editor.error, editor.save, editor.savedUrl, item]);
 
+  /**
+   * Lets the edit bar and the agent reach the same AI capabilities the panel
+   * has: the command surface owns parameter checking and refusals, and this
+   * runner is the one place that actually spends a provider call.
+   */
+  const runAi = useMemo<AiCommandRunner>(
+    () => async (request) => {
+      if (request.id === "remove-bg") {
+        // Cut-out is the one capability that goes straight to the gateway: no
+        // parameters, one image out, no recipe lineage. Everything else needs
+        // the panel's provider session.
+        const controller = new AbortController();
+        try {
+          const sourceUrl = await frozenCanvasUrl();
+          const resultUrl = await removeBgExecutor("remove-bg", {
+            sourceUrl,
+            signal: controller.signal,
+          });
+          await editor.addImageFromUrl(resultUrl);
+          return { ok: true, message: "已抠图，结果作为新图层放上来了。" };
+        } catch (caught) {
+          return {
+            ok: false,
+            message:
+              caught instanceof Error && caught.message.trim()
+                ? caught.message.trim()
+                : "抠图失败。",
+          };
+        }
+      }
+      // The other three run as tracked provider jobs: the panel owns the
+      // progress, the receipt and the billing lineage. The command's job is to
+      // be the entry point and to have already checked the parameters, so it
+      // hands a prefilled request over rather than opening a second, untracked
+      // execution path that would bill the user twice for one action.
+      setPendingAiRequest(request);
+      return {
+        ok: true,
+        message: "参数没问题，已在左侧「AI 能力」面板里排上，进度与用量都在那里。",
+      };
+    },
+    [editor.addImageFromUrl, frozenCanvasUrl, removeBgExecutor],
+  );
+
   const aiHost = useMemo<ImageAiPanelHost>(
     () => ({
       provider: createOceanLeoImageAiProvider({ siteId: siteId || "image" }),
@@ -304,6 +381,15 @@ export function ImageRoute({
       adapter={{
         id: "image",
         label: editorToolLabel({ type: "image" }),
+        /**
+         * L0 professional mode (W01 contract v2). Photopea is an external
+         * ad-supported iframe, so `setMode` is also the moment it is allowed
+         * to load: nothing about it exists while the mode is `normal`.
+         */
+        mode: {
+          current: proModeOpen ? ("pro" as EditorMode) : ("normal" as EditorMode),
+          setMode: (next: EditorMode) => setProModeOpen(next === "pro"),
+        },
         drawers: [
           // 明位（不 hiddenFromRail）：抠图/放大高清这些能力此前引擎和网关都通了，
           // 界面上一个入口都没有，等于没做。
