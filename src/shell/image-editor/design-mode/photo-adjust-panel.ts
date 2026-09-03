@@ -1,123 +1,174 @@
 /**
- * Filerobot-style photo adjustment definitions — criterion 3.
+ * Filerobot-style photo adjustment surface for photo mode (task criterion 3):
+ * crop, flip, rotate, colour, filters, annotation, watermark.
  *
- * Pure data: the adjustment presets, crop ratios, annotation tools, and
- * watermark config that drive the photo-mode L2 panels. No React here;
- * the TSX panels import these constants.
+ * Definitions only — no React and no Fabric. The panels render these and the
+ * controller applies them, which keeps "does the panel offer something the
+ * engine cannot do" answerable by a test.
+ *
+ * Every slider here maps onto a field of the existing `FilterSettings`
+ * (`types.ts`) that `buildFilters` (`editor-objects.ts`) already honours.
+ * That constraint is enforced by a test rather than by good intentions: a
+ * slider with no filter behind it looks broken to the user and is invisible to
+ * a reviewer reading only this file.
  */
 
-// ---------------------------------------------------------------------------
-// Crop presets (Filerobot convention)
-// ---------------------------------------------------------------------------
+import { INITIAL_FILTERS, type CropRatio, type FilterSettings } from "../types";
 
-export interface CropPreset {
-  id: string;
+export type PhotoAdjustGroup =
+  | "crop"
+  | "transform"
+  | "color"
+  | "filter"
+  | "annotate"
+  | "watermark";
+
+export const PHOTO_ADJUST_GROUPS: readonly PhotoAdjustGroup[] = Object.freeze([
+  "crop",
+  "transform",
+  "color",
+  "filter",
+  "annotate",
+  "watermark",
+]);
+
+export interface PhotoCropPreset {
+  id: CropRatio;
   label: string;
+  /** Width ÷ height; `null` means unconstrained. */
   ratio: number | null;
 }
 
-export const PHOTO_CROP_PRESETS: readonly CropPreset[] = Object.freeze([
+/**
+ * Crop presets reuse the editor's own `CropRatio` union rather than inventing
+ * ids. The existing crop command takes those values, so a preset that is not
+ * one of them could be shown but never executed.
+ */
+export const PHOTO_CROP_PRESETS: readonly PhotoCropPreset[] = Object.freeze([
   { id: "free", label: "自由裁剪", ratio: null },
-  { id: "1:1", label: "1:1 正方形", ratio: 1 },
-  { id: "4:3", label: "4:3 横版", ratio: 4 / 3 },
-  { id: "3:4", label: "3:4 竖版", ratio: 3 / 4 },
-  { id: "16:9", label: "16:9 宽屏", ratio: 16 / 9 },
-  { id: "9:16", label: "9:16 竖屏", ratio: 9 / 16 },
-  { id: "3:2", label: "3:2", ratio: 3 / 2 },
-  { id: "2:3", label: "2:3", ratio: 2 / 3 },
+  { id: "1:1", label: "正方形 1:1", ratio: 1 },
+  { id: "4:3", label: "横版 4:3", ratio: 4 / 3 },
+  { id: "16:9", label: "宽屏 16:9", ratio: 16 / 9 },
+  { id: "9:16", label: "竖屏 9:16", ratio: 9 / 16 },
 ]);
 
-// ---------------------------------------------------------------------------
-// Color adjustment sliders (maps to Fabric filters)
-// ---------------------------------------------------------------------------
+export type PhotoTransformAction =
+  | "rotate-left"
+  | "rotate-right"
+  | "flip-horizontal"
+  | "flip-vertical";
 
-export interface AdjustmentSlider {
-  id: string;
+export const PHOTO_TRANSFORM_ACTIONS: readonly {
+  id: PhotoTransformAction;
   label: string;
-  min: number;
-  max: number;
+}[] = Object.freeze([
+  { id: "rotate-left", label: "向左旋转 90°" },
+  { id: "rotate-right", label: "向右旋转 90°" },
+  { id: "flip-horizontal", label: "水平翻转" },
+  { id: "flip-vertical", label: "垂直翻转" },
+]);
+
+/** Numeric adjustments; `key` is the `FilterSettings` field each one drives. */
+export interface PhotoAdjustSlider {
+  key: Extract<
+    keyof FilterSettings,
+    "brightness" | "contrast" | "saturation" | "blur" | "pixelate"
+  >;
+  label: string;
+  minimum: number;
+  maximum: number;
   step: number;
-  defaultValue: number;
-  fabricFilter: string;
 }
 
-export const PHOTO_ADJUSTMENTS: readonly AdjustmentSlider[] = Object.freeze([
-  { id: "brightness", label: "亮度", min: -100, max: 100, step: 1, defaultValue: 0, fabricFilter: "Brightness" },
-  { id: "contrast", label: "对比度", min: -100, max: 100, step: 1, defaultValue: 0, fabricFilter: "Contrast" },
-  { id: "saturation", label: "饱和度", min: -100, max: 100, step: 1, defaultValue: 0, fabricFilter: "Saturation" },
-  { id: "hue", label: "色相", min: -180, max: 180, step: 1, defaultValue: 0, fabricFilter: "HueRotation" },
-  { id: "blur", label: "模糊", min: 0, max: 100, step: 1, defaultValue: 0, fabricFilter: "Blur" },
-  { id: "noise", label: "噪点", min: 0, max: 100, step: 1, defaultValue: 0, fabricFilter: "Noise" },
-  { id: "pixelate", label: "像素化", min: 1, max: 20, step: 1, defaultValue: 1, fabricFilter: "Pixelate" },
+export const PHOTO_ADJUST_SLIDERS: readonly PhotoAdjustSlider[] = Object.freeze([
+  { key: "brightness", label: "亮度", minimum: -100, maximum: 100, step: 1 },
+  { key: "contrast", label: "对比度", minimum: -100, maximum: 100, step: 1 },
+  { key: "saturation", label: "饱和度", minimum: -100, maximum: 100, step: 1 },
+  { key: "blur", label: "模糊", minimum: 0, maximum: 100, step: 1 },
+  { key: "pixelate", label: "像素化", minimum: 0, maximum: 40, step: 1 },
 ]);
 
-// ---------------------------------------------------------------------------
-// Filter presets (one-click looks)
-// ---------------------------------------------------------------------------
+/** On/off adjustments, same rule: each one is a real `FilterSettings` field. */
+export interface PhotoAdjustToggle {
+  key: Extract<keyof FilterSettings, "grayscale" | "sepia" | "invert">;
+  label: string;
+}
 
-export interface FilterPreset {
+export const PHOTO_ADJUST_TOGGLES: readonly PhotoAdjustToggle[] = Object.freeze([
+  { key: "grayscale", label: "黑白" },
+  { key: "sepia", label: "怀旧" },
+  { key: "invert", label: "反相" },
+]);
+
+export interface PhotoFilterPreset {
   id: string;
   label: string;
-  adjustments: Partial<Record<string, number | boolean>>;
+  settings: Partial<FilterSettings>;
 }
 
-export const PHOTO_FILTER_PRESETS: readonly FilterPreset[] = Object.freeze([
-  { id: "none", label: "无", adjustments: {} },
-  { id: "grayscale", label: "黑白", adjustments: { grayscale: true } },
-  { id: "sepia", label: "怀旧", adjustments: { sepia: true } },
-  { id: "warm", label: "暖色", adjustments: { brightness: 5, saturation: 15 } },
-  { id: "cool", label: "冷色", adjustments: { brightness: -5, hue: -15 } },
-  { id: "vivid", label: "鲜艳", adjustments: { contrast: 20, saturation: 30 } },
-  { id: "muted", label: "柔和", adjustments: { contrast: -15, saturation: -20 } },
-  { id: "vintage", label: "复古", adjustments: { contrast: -10, saturation: -30, brightness: 5, sepia: true } },
+/**
+ * One-click looks. Each is a partial `FilterSettings`, applied over the
+ * current values by `applyPhotoFilterPreset`, so presets compose with manual
+ * slider tweaks instead of silently discarding them.
+ */
+export const PHOTO_FILTER_PRESETS: readonly PhotoFilterPreset[] = Object.freeze([
+  { id: "none", label: "原图", settings: {} },
+  { id: "mono", label: "黑白", settings: { grayscale: true, sepia: false, invert: false } },
+  { id: "vintage", label: "复古", settings: { sepia: true, grayscale: false, contrast: -10, saturation: -30, brightness: 5 } },
+  { id: "vivid", label: "鲜艳", settings: { contrast: 20, saturation: 30, grayscale: false, sepia: false } },
+  { id: "soft", label: "柔和", settings: { contrast: -15, saturation: -20, blur: 4 } },
+  { id: "sharp-cool", label: "冷冽", settings: { contrast: 15, saturation: -10, brightness: -5 } },
 ]);
 
-// ---------------------------------------------------------------------------
-// Annotation tools
-// ---------------------------------------------------------------------------
+/**
+ * Applies a preset without dropping the fields it does not mention.
+ * `PHOTO_FILTER_PRESETS[none]` restores the editor's initial values, which is
+ * how "back to original" stays a preset rather than a special case.
+ */
+export function applyPhotoFilterPreset(
+  current: FilterSettings,
+  preset: PhotoFilterPreset,
+): FilterSettings {
+  if (preset.id === "none") return { ...INITIAL_FILTERS };
+  return { ...current, ...preset.settings };
+}
 
-export interface AnnotationTool {
+export interface PhotoAnnotationTool {
   id: string;
   label: string;
-  icon: string;
-  fabricType: "rect" | "circle" | "line" | "path" | "text" | "arrow";
+  /** Fabric object type the tool draws; `path` is the freehand brush. */
+  shape: "rect" | "circle" | "line" | "arrow" | "textbox" | "path";
 }
 
-export const ANNOTATION_TOOLS: readonly AnnotationTool[] = Object.freeze([
-  { id: "anno-rect", label: "矩形标注", icon: "shape", fabricType: "rect" },
-  { id: "anno-circle", label: "圆形标注", icon: "circle", fabricType: "circle" },
-  { id: "anno-arrow", label: "箭头", icon: "arrow", fabricType: "arrow" },
-  { id: "anno-line", label: "直线", icon: "line", fabricType: "line" },
-  { id: "anno-text", label: "文字标注", icon: "text", fabricType: "text" },
-  { id: "anno-draw", label: "自由画笔", icon: "draw", fabricType: "path" },
+export const PHOTO_ANNOTATION_TOOLS: readonly PhotoAnnotationTool[] = Object.freeze([
+  { id: "annotate-rect", label: "矩形", shape: "rect" },
+  { id: "annotate-circle", label: "圆形", shape: "circle" },
+  { id: "annotate-arrow", label: "箭头", shape: "arrow" },
+  { id: "annotate-line", label: "直线", shape: "line" },
+  { id: "annotate-text", label: "文字标注", shape: "textbox" },
+  { id: "annotate-draw", label: "画笔", shape: "path" },
 ]);
 
-// ---------------------------------------------------------------------------
-// Watermark placement
-// ---------------------------------------------------------------------------
-
-export type WatermarkPosition =
-  | "tile"
-  | "center"
-  | "bottom-right"
-  | "bottom-left"
-  | "top-right"
-  | "top-left";
-
-export interface WatermarkConfig {
-  text: string;
-  position: WatermarkPosition;
-  fontSize: number;
-  color: string;
-  opacity: number;
-  angle: number;
+export interface PhotoAdjustSection {
+  group: PhotoAdjustGroup;
+  label: string;
+  /** Photo mode is the point of this panel; design mode keeps colour work. */
+  availableInDesignMode: boolean;
 }
 
-export const DEFAULT_WATERMARK: Readonly<WatermarkConfig> = Object.freeze({
-  text: "",
-  position: "tile",
-  fontSize: 24,
-  color: "#000000",
-  opacity: 0.15,
-  angle: -30,
-});
+export const PHOTO_ADJUST_SECTIONS: readonly PhotoAdjustSection[] = Object.freeze([
+  { group: "crop", label: "裁剪", availableInDesignMode: false },
+  { group: "transform", label: "旋转与翻转", availableInDesignMode: true },
+  { group: "color", label: "调色", availableInDesignMode: true },
+  { group: "filter", label: "滤镜", availableInDesignMode: true },
+  { group: "annotate", label: "标注", availableInDesignMode: false },
+  { group: "watermark", label: "水印", availableInDesignMode: true },
+]);
+
+export function photoAdjustSectionsFor(
+  mode: "photo" | "design",
+): readonly PhotoAdjustSection[] {
+  return mode === "photo"
+    ? PHOTO_ADJUST_SECTIONS
+    : PHOTO_ADJUST_SECTIONS.filter((section) => section.availableInDesignMode);
+}

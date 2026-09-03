@@ -1,93 +1,132 @@
 /**
- * AI capability entry-point definitions for the merged image / design editor.
+ * Entry points for the four AI capabilities the engine already implements, plus
+ * "AI 重绘改字" as a text-object action (task criterion 4).
  *
- * Criterion 4: "已接引擎的 inpaint / outpaint / remove-bg / upscale 四个 AI
- * 能力在 edit bar / 左侧操控台有入口；AI 重绘改字（qwen-image-edit-plus）作为
- * 文字对象动作"
+ * The gap this closes is not the engine — `image-capability-engine.ts` has had
+ * `inpaint` / `outpaint` / `upscale` providers and a `remove-bg` direct command
+ * for a while, and the creation panel renders them. What was missing is an
+ * entry point on L1 (edit bar) and L2 (left console): reaching them meant
+ * knowing which panel to open. These definitions are what the command surface
+ * turns into commands.
  *
- * These are the command definitions that surface in L1 (edit bar) and L2
- * (left panel). The actual execution delegates to `image-capability-engine.ts`
- * which already has the provider plumbing; this file adds the missing UI
- * entry points.
+ * Ids are the engine's own ids, not new ones, so one action stays one command
+ * with one history entry (five-layer spec §2 rule 2).
  */
 
-import type { ImageAiCommandId } from "../image-capability-engine";
+import type {
+  ImageAiCommandId,
+  ImageDirectCommandId,
+} from "../image-capability-engine";
+
+/**
+ * Rewriting the pixels behind a text object with `qwen-image-edit-plus` is not
+ * one of the engine's provider commands: it takes a text object rather than the
+ * canvas, so it is named separately here and routed by the command surface.
+ */
+export const AI_REWRITE_TEXT_ID = "rewrite-text" as const;
+
+export type AiEntryId =
+  | ImageAiCommandId
+  | ImageDirectCommandId
+  | typeof AI_REWRITE_TEXT_ID;
 
 export interface AiCapabilityEntry {
-  id: ImageAiCommandId | "rewrite-text";
+  id: AiEntryId;
   label: string;
-  description: string;
-  icon: string;
+  summary: string;
+  /** Whether an object must be selected before the action means anything. */
   requiresSelection: boolean;
-  selectionKinds?: readonly string[];
-  editBarVisible: boolean;
-  panelSection: "ai" | "text";
+  /** Restricts the action to certain selected object types. */
+  selectionTypes?: readonly string[];
+  /** Shown directly on the edit bar (L1) rather than only in the panel (L2). */
+  onEditBar: boolean;
+  /** Which left-console section it belongs to (L2). */
+  section: "ai" | "text";
+  /** Costs a provider call, so it needs the confirm-and-receipt path. */
+  billable: boolean;
 }
 
 export const AI_CAPABILITY_ENTRIES: readonly AiCapabilityEntry[] = Object.freeze([
   {
+    id: "remove-bg",
+    label: "抠图",
+    summary: "去掉背景，只留主体，结果作为新图层放上来。",
+    requiresSelection: false,
+    onEditBar: true,
+    section: "ai",
+    billable: true,
+  },
+  {
     id: "inpaint",
     label: "AI 擦除 / 局部重绘",
-    description: "选区内的内容会被 AI 替换或填充，适合去水印、换物体。",
-    icon: "ai-inpaint",
+    summary: "把选中区域交给 AI 重画，用来去水印、去杂物或换掉一个物件。",
     requiresSelection: true,
-    selectionKinds: ["image"],
-    editBarVisible: true,
-    panelSection: "ai",
+    selectionTypes: ["image"],
+    onEditBar: true,
+    section: "ai",
+    billable: true,
   },
   {
     id: "outpaint",
     label: "AI 扩图",
-    description: "把画布向外延伸，AI 自动填充边缘内容。",
-    icon: "ai-outpaint",
+    summary: "把画面向外补出来，用于换尺寸时补足边缘。",
     requiresSelection: false,
-    editBarVisible: true,
-    panelSection: "ai",
+    onEditBar: true,
+    section: "ai",
+    billable: true,
   },
   {
     id: "upscale",
     label: "高清放大",
-    description: "把低分辨率图片放大 2–4 倍，细节更清晰。",
-    icon: "ai-upscale",
+    summary: "放大 2 倍或 4 倍并补细节，适合印刷前处理。",
     requiresSelection: false,
-    editBarVisible: true,
-    panelSection: "ai",
+    onEditBar: false,
+    section: "ai",
+    billable: true,
   },
   {
-    id: "rewrite-text" as ImageAiCommandId | "rewrite-text",
+    id: AI_REWRITE_TEXT_ID,
     label: "AI 重绘改字",
-    description: "对选中的文字对象用 qwen-image-edit-plus 重新生成带文字效果的图片。",
-    icon: "ai-rewrite",
+    summary: "改写选中文字，并用 qwen-image-edit-plus 重绘它所在的画面区域。",
     requiresSelection: true,
-    selectionKinds: ["text"],
-    editBarVisible: false,
-    panelSection: "text",
+    selectionTypes: ["textbox", "i-text", "text"],
+    onEditBar: true,
+    section: "text",
+    billable: true,
   },
 ]);
 
-/**
- * Filter capabilities to those applicable to the current selection state.
- * Used by both the edit bar (L1) and the AI panel (L2).
- */
-export function applicableAiCapabilities(
-  selectedKind: string | undefined,
-  hasSelection: boolean,
+export interface AiSelectionContext {
+  hasSelection: boolean;
+  /** Fabric `type` of the selected object, when exactly one is selected. */
+  selectedType?: string;
+}
+
+export function applicableAiEntries(
+  context: AiSelectionContext,
 ): readonly AiCapabilityEntry[] {
   return AI_CAPABILITY_ENTRIES.filter((entry) => {
-    if (entry.requiresSelection && !hasSelection) return false;
-    if (entry.selectionKinds && selectedKind && !entry.selectionKinds.includes(selectedKind)) return false;
-    return true;
+    if (entry.requiresSelection && !context.hasSelection) return false;
+    if (!entry.selectionTypes) return true;
+    // A selection-typed action with an unknown type stays hidden rather than
+    // being offered on a guess: running inpaint on a text object burns a paid
+    // provider call and returns something the user did not ask for.
+    if (!context.selectedType) return false;
+    return entry.selectionTypes.includes(context.selectedType);
   });
 }
 
-/**
- * Edit bar visible entries — the subset that appears directly on the
- * floating toolbar when an object is selected.
- */
+/** The L1 subset: what the edit bar shows for the current selection. */
 export function editBarAiEntries(
-  selectedKind: string | undefined,
+  context: AiSelectionContext,
 ): readonly AiCapabilityEntry[] {
-  return applicableAiCapabilities(selectedKind, true).filter(
-    (e) => e.editBarVisible,
-  );
+  return applicableAiEntries(context).filter((entry) => entry.onEditBar);
+}
+
+/** The L2 subset: the left console groups by section. */
+export function panelAiEntries(
+  context: AiSelectionContext,
+  section: AiCapabilityEntry["section"],
+): readonly AiCapabilityEntry[] {
+  return applicableAiEntries(context).filter((entry) => entry.section === section);
 }
