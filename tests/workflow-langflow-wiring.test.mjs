@@ -1,10 +1,12 @@
 /**
  * 工作流换核接线闸（W15）。
  *
- * 源码正则是辅闸。A-48：普通模式必须真挂画布槽且节点/连线在 DOM 里；
- * 专业模式必须真挂 <iframe>，src origin 是 https://flow.oceanleo.app，
- * sandbox 走 embedEditorFrameSandbox()。jsdom 没有 layout：可见性只钉
- * hidden / aria-hidden / 内联 style / 藏起 class。不许假装量像素。
+ * 源码正则是辅闸（A-48）。V7-red-2：包住 EmbeddedRoute 里那次
+ * <VideoCanvasRoute> 调用，正则仍绿——行为锁在本文件挂 EmbeddedRoute、
+ * 点专业模式后必须出现 Langflow iframe 的那一例。
+ * 普通模式必须真挂画布槽且节点/连线在 DOM 里；专业模式必须真挂 <iframe>，
+ * src origin 是 https://flow.oceanleo.app，sandbox 走 embedEditorFrameSandbox()。
+ * jsdom 没有 layout：可见性只钉 hidden / aria-hidden / 内联 style / 藏起 class。
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -103,7 +105,7 @@ test("chip routing is a pure function that defaults to review", () => {
   assert.equal(workflowToolsManifestChips().chips.length, 8);
 });
 
-test("A-65 工作台路由必须静态挂上 LangflowProStage，摘掉就红", () => {
+test("A-65 辅闸：工作台/EmbeddedRoute 源码仍挂 VideoCanvasRoute（行为锁在挂 EmbeddedRoute 那例）", () => {
   const canvasRouteCode = canvasRoute
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
@@ -221,6 +223,11 @@ const leafStubs = {
   "../workbench-embed": embedStubUrl,
 };
 
+/**
+ * 可达性闸的桩表。**故意不桩 `./VideoCanvasRoute`**：EmbeddedRoute 必须
+ * 解析到真叶子，否则又回到「只锁舞台、包住调用仍绿」（V7-red-2）。
+ */
+
 function sampleGraph() {
   return {
     nodes: [
@@ -261,6 +268,25 @@ function workflowItem() {
     siteId: "video",
     favorite: false,
     meta: { graph: sampleGraph() },
+  };
+}
+
+/**
+ * EmbeddedRoute 走 editorRouteFor(item)。kind: "canvas" 且没有
+ * meta.editor === "video-canvas" 会落到 design-canvas，进不了
+ * VideoCanvasRoute。这条用户入口必须是 video_canvas。
+ */
+function embeddedWorkflowItem() {
+  const item = workflowItem();
+  return {
+    ...item,
+    key: "wf-embed-gate",
+    id: "wf-embed-gate",
+    kind: "video_canvas",
+    meta: {
+      ...item.meta,
+      editor: "video-canvas",
+    },
   };
 }
 
@@ -308,6 +334,24 @@ function assertLiveLangflowIframe(iframe) {
   );
 }
 
+async function flushLazy(container, selector) {
+  // A-69：account-page.test.mjs:219-231 的空 act 冲刷。
+  // 样板：deck-core-swap 第 39 例、rich-doc-core-swap 第 16 例。
+  for (let i = 0; i < 6; i += 1) {
+    await act(async () => {});
+    if (selector && container && container.querySelector(selector)) return;
+  }
+  if (!selector || !container) return;
+  for (let i = 0; i < 40; i += 1) {
+    if (container.querySelector(selector)) return;
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 20);
+      });
+    });
+  }
+}
+
 async function mountCompiled(entry, stubs, element) {
   const url = await compileModule(entry, stubs);
   const mod = await import(url);
@@ -327,6 +371,29 @@ async function mountCompiled(entry, stubs, element) {
       container.remove();
     },
   };
+}
+
+function assertUserSeesWorkflowEditor(container) {
+  const iframe =
+    container.querySelector("[data-testid=workflow-langflow-frame]") ||
+    container.querySelector("iframe");
+  assert.ok(
+    iframe,
+    "从 EmbeddedRoute 走进去之后没有工作流编辑器（Langflow iframe），用户看不到工作流编辑器",
+  );
+  const src = iframe.getAttribute("src") || "";
+  let origin = "";
+  try {
+    origin = src ? new URL(src).origin : "";
+  } catch {
+    origin = "";
+  }
+  assert.equal(
+    origin,
+    FLOW_ORIGIN,
+    `从 EmbeddedRoute 走进去之后用户看到的不是工作流编辑器（iframe 在 ${origin || "空 src"}，不是 Langflow）`,
+  );
+  assertLiveLangflowIframe(iframe);
 }
 
 test("jsdom 挂上 LangflowHostedFrame 后，画布是真 iframe 而不是 fallback", async () => {
@@ -488,4 +555,38 @@ test("pro 计划在 src 算不出时不能假装挂了 iframe", () => {
   assert.equal(planned.showHostedEditor, true);
   assert.match(leaf, /workflow-pro-unavailable/);
   assert.match(leaf, /applied\.showHostedEditor && !hostedSrc/);
+});
+
+test("jsdom 挂上 EmbeddedRoute 点专业模式后，用户看见工作流编辑器", async () => {
+  resetAgentReviewInbox();
+  const mounted = await mountCompiled(
+    "src/shell/advanced-routes/EmbeddedRoute.tsx",
+    leafStubs,
+    (mod) =>
+      React.createElement(mod.EmbeddedRoute, {
+        item: embeddedWorkflowItem(),
+        onClose() {},
+      }),
+  );
+  try {
+    await flushLazy(mounted.container, "[data-testid=workflow-set-pro]");
+    const button = mounted.container.querySelector(
+      "[data-testid=workflow-set-pro]",
+    );
+    if (button) {
+      await act(async () => {
+        button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+      await flushLazy(
+        mounted.container,
+        "[data-testid=workflow-langflow-frame]",
+      );
+    } else {
+      await flushLazy(mounted.container, "iframe");
+    }
+    assertUserSeesWorkflowEditor(mounted.container);
+  } finally {
+    await mounted.unmount();
+    resetAgentReviewInbox();
+  }
 });
