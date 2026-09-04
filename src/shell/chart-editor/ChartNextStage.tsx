@@ -19,7 +19,7 @@ import { ChartControls } from "./ChartControls";
 import { ChartStage } from "./ChartStage";
 import { ChartOptionCodePanel } from "./ChartOptionCodePanel";
 import { chartExportOption } from "./chart-render";
-import { chartDocumentToJson, patchChartSeries, type ChartOption } from "./chart-schema";
+import { chartDocumentToJson, type ChartOption } from "./chart-schema";
 import {
   chartEditorManifest,
   useChartWorkbench,
@@ -354,23 +354,15 @@ export function ChartNextStage({
 
   const runAdvise = useCallback(async () => {
     setExportError("");
-    const { adviseChartFromTable, lintChartFromTable } = await import(
-      "./chart-next-ava-advisor"
-    );
+    const { adviseChartFromTable, lintChartFromTable, applyAvaAdviceToChartDocument } =
+      await import("./chart-next-ava-advisor");
     const advised = adviseChartFromTable(editor.table);
-    if (!advised.ok) {
-      setExportError(advised.reason);
+    const applied = applyAvaAdviceToChartDocument(editor.document, advised);
+    if (!applied.ok) {
+      setExportError(applied.reason);
       return;
     }
-    let next = editor.document;
-    for (const series of next.option.series) {
-      next = patchChartSeries(next, series.id, {
-        type: advised.best.mapping.type,
-        stack: advised.best.mapping.stack,
-        areaStyle: advised.best.mapping.areaStyle,
-      });
-    }
-    editor.loadDocument(next);
+    editor.loadDocument(applied.document);
     const linted = lintChartFromTable(editor.table);
     setCodeNotices(linted.notes.map((note) => note.message));
   }, [editor]);

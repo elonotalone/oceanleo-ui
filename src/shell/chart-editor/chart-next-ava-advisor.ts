@@ -4,15 +4,25 @@
  * 不自研推荐/检查引擎：只把表格行交给 `Advisor.advise` / `Advisor.lint`，
  * 再把 AVA 的 chart id 映射到本编辑器已经能画的 ECharts 系列类型。
  * 映射不上就说人话，不许静默改成柱状图。
+ * `percent_stacked_*` 要真画占比（数据归一成 0–100，轴标 %），
+ * 不许改写成和旁边 `stacked_*` 一样的绝对值堆叠还报「已按推荐画」。
  */
 import { Advisor, type Advice, type Lint } from "@antv/ava";
-import type {
-  ChartDataTable,
-  ChartRangeSnapshotV1,
-  ChartSeriesType,
+import {
+  chartYAxes,
+  chartYAxisCount,
+  patchChartAxis,
+  patchChartSeries,
+  type ChartDataTable,
+  type ChartDatum,
+  type ChartDocumentV1,
+  type ChartRangeSnapshotV1,
+  type ChartSeries,
+  type ChartSeriesType,
 } from "./chart-schema";
 import {
   chartTableToRowObjects,
+  chartTypedArtifactFromDocument,
   chartTypedArtifactFromRangeSnapshot,
   type ChartTypedArtifact,
 } from "./chart-next-artifact";
@@ -21,7 +31,17 @@ export interface ChartAvaMapping {
   type: ChartSeriesType;
   stack?: string;
   areaStyle?: Record<string, unknown>;
+  /** 为 true 时：系列归一成占比，数值轴锁 0–100% 并带 % 标签。 */
+  percentStack?: boolean;
 }
+
+export type ChartAvaApplyResult =
+  | { ok: true; document: ChartDocumentV1 }
+  | { ok: false; reason: string };
+
+/** 负数没法当「占多少」；拒绝时不许改图。 */
+export const CHART_PERCENT_STACK_NEGATIVE_REASON =
+  "数据里有负数，没法按占比堆叠（占比不能是负的），所以没有替你改图。";
 
 /** AVA CKB id → 本编辑器系列类型。未列出的 id 视为本版画不了。 */
 export const AVA_CHART_TO_SERIES: Record<string, ChartAvaMapping> = {
@@ -37,15 +57,24 @@ export const AVA_CHART_TO_SERIES: Record<string, ChartAvaMapping> = {
     type: "line",
     stack: "total",
     areaStyle: { opacity: 0.18 },
+    percentStack: true,
   },
   column_chart: { type: "bar" },
   grouped_column_chart: { type: "bar" },
   stacked_column_chart: { type: "bar", stack: "total" },
-  percent_stacked_column_chart: { type: "bar", stack: "total" },
+  percent_stacked_column_chart: {
+    type: "bar",
+    stack: "total",
+    percentStack: true,
+  },
   histogram: { type: "bar" },
   bar_chart: { type: "bar" },
   stacked_bar_chart: { type: "bar", stack: "total" },
-  percent_stacked_bar_chart: { type: "bar", stack: "total" },
+  percent_stacked_bar_chart: {
+    type: "bar",
+    stack: "total",
+    percentStack: true,
+  },
   grouped_bar_chart: { type: "bar" },
   pie_chart: { type: "pie" },
   donut_chart: { type: "pie" },
@@ -90,6 +119,163 @@ export function chartAvaAdvisor(): Advisor {
 
 export function mapAvaChartType(avaType: string): ChartAvaMapping | null {
   return AVA_CHART_TO_SERIES[avaType] || null;
+}
+
+function seriesScalar(datum: ChartDatum): number {
+  if (typeof datum === "number") {
+    return Number.isFinite(datum) ? datum : 0;
+  }
+  if (Array.isArray(datum)) {
+    const last = datum[datum.length - 1];
+    return typeof last === "number" && Number.isFinite(last) ? last : 0;
+  }
+  const raw = datum.value;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : 0;
+  }
+  const last = raw[raw.length - 1];
+  return typeof last === "number" && Number.isFinite(last) ? last : 0;
+}
+
+function replaceSeriesScalar(datum: ChartDatum, nextValue: number): ChartDatum {
+  if (typeof datum === "number") return nextValue;
+  if (Array.isArray(datum)) {
+    if (datum.length === 0) return [nextValue];
+    return [...datum.slice(0, -1), nextValue];
+  }
+  if (Array.isArray(datum.value)) {
+    const vector = datum.value;
+    const nextVector =
+      vector.length === 0 ? [nextValue] : [...vector.slice(0, -1), nextValue];
+    return { ...datum, value: nextVector };
+  }
+  return { ...datum, value: nextValue };
+}
+
+function sharesFromNonNegative(values: number[]): number[] {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total === 0) return values.map(() => 0);
+  const shares = values.map((value) => (value / total) * 100);
+  const drift = 100 - shares.reduce((sum, value) => sum + value, 0);
+  const lastIndex = shares.length - 1;
+  const lastShare = shares[lastIndex];
+  if (lastShare !== undefined) shares[lastIndex] = lastShare + drift;
+  return shares;
+}
+
+function percentStackSeriesData(
+  seriesList: ChartSeries[],
+): { ok: true; data: ChartDatum[][] } | { ok: false; reason: string } {
+  const width = seriesList.reduce(
+    (max, series) => Math.max(max, series.data.length),
+    0,
+  );
+  const columns: number[][] = seriesList.map((series) =>
+    Array.from({ length: width }, (_, index) => {
+      const datum = series.data[index];
+      return datum === undefined ? 0 : seriesScalar(datum);
+    }),
+  );
+  for (const row of columns) {
+    for (const value of row) {
+      if (value < 0) {
+        return { ok: false, reason: CHART_PERCENT_STACK_NEGATIVE_REASON };
+      }
+    }
+  }
+  const data: ChartDatum[][] = seriesList.map((series, seriesIndex) =>
+    Array.from({ length: width }, (_, categoryIndex) => {
+      const values = columns.map((column) => column[categoryIndex] ?? 0);
+      const shares = sharesFromNonNegative(values);
+      const original = series.data[categoryIndex];
+      const share = shares[seriesIndex] ?? 0;
+      return original === undefined
+        ? share
+        : replaceSeriesScalar(original, share);
+    }),
+  );
+  return { ok: true, data };
+}
+
+function patchValueAxesAsPercent(document: ChartDocumentV1): ChartDocumentV1 {
+  let next = document;
+  if (next.option.xAxis.type === "value") {
+    next = patchChartAxis(next, "x", {
+      min: 0,
+      max: 100,
+      axisLabel: {
+        ...next.option.xAxis.axisLabel,
+        formatter: "{value}%",
+      },
+    });
+  }
+  const count = chartYAxisCount(next.option);
+  for (let index = 0; index < count; index += 1) {
+    const axis = chartYAxes(next.option)[index];
+    if (!axis || axis.type !== "value") continue;
+    next = patchChartAxis(
+      next,
+      "y",
+      {
+        min: 0,
+        max: 100,
+        axisLabel: {
+          ...axis.axisLabel,
+          formatter: "{value}%",
+        },
+      },
+      index,
+    );
+  }
+  return next;
+}
+
+function seriesPatchFromMapping(
+  mapping: ChartAvaMapping,
+): Pick<ChartSeries, "type" | "stack" | "areaStyle"> {
+  return {
+    type: mapping.type,
+    stack: mapping.percentStack ? mapping.stack || "total" : mapping.stack,
+    areaStyle: mapping.areaStyle,
+  };
+}
+
+/**
+ * 把 AVA 映射落到文档上。百分比堆叠会改数据和轴；做不到就用人话拒绝、不改图。
+ */
+export function applyAvaMappingToChartDocument(
+  document: ChartDocumentV1,
+  mapping: ChartAvaMapping,
+): ChartAvaApplyResult {
+  const ids = document.option.series.map((series) => series.id);
+  if (mapping.percentStack) {
+    const prepared = percentStackSeriesData(document.option.series);
+    if (!prepared.ok) return prepared;
+    let next = document;
+    for (let index = 0; index < ids.length; index += 1) {
+      const id = ids[index];
+      const data = prepared.data[index];
+      if (id === undefined || data === undefined) continue;
+      next = patchChartSeries(next, id, {
+        ...seriesPatchFromMapping(mapping),
+        data,
+      });
+    }
+    return { ok: true, document: patchValueAxesAsPercent(next) };
+  }
+  let next = document;
+  for (const id of ids) {
+    next = patchChartSeries(next, id, seriesPatchFromMapping(mapping));
+  }
+  return { ok: true, document: next };
+}
+
+export function applyAvaAdviceToChartDocument(
+  document: ChartDocumentV1,
+  advised: ChartAvaAdviseResult,
+): ChartAvaApplyResult {
+  if (!advised.ok) return advised;
+  return applyAvaMappingToChartDocument(document, advised.best.mapping);
 }
 
 export function lintNoteFromAva(lint: Lint): ChartAvaLintNote {
@@ -201,13 +387,14 @@ export function adviseChartTypedArtifact(
   const baseline = chartTypedArtifactFromRangeSnapshot(snapshot, options);
   const advised = adviseChartFromTable(baseline.ingest.table);
   if (!advised.ok) return advised;
-  const built = chartTypedArtifactFromRangeSnapshot(snapshot, {
-    ...options,
-    type: advised.best.mapping.type,
-  });
+  const applied = applyAvaMappingToChartDocument(
+    baseline.document,
+    advised.best.mapping,
+  );
+  if (!applied.ok) return applied;
   return {
     ...advised,
-    artifact: built.artifact,
+    artifact: chartTypedArtifactFromDocument(applied.document),
     type: advised.best.mapping.type,
   };
 }
