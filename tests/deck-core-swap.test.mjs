@@ -17,8 +17,10 @@ import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
+  DEFAULT_EDITOR_CORE,
   EDITOR_CORE_SPECS,
   resolveEditorCore,
+  setEditorCoreOverride,
 } from "../src/shell/editor-core-flags.ts";
 import { isHostedEditorOrigin } from "../src/shell/hosted-editor-origins.ts";
 import {
@@ -119,6 +121,97 @@ const shellStubUrl = dataModule(`
 const routesStubUrl = dataModule(`
   export function editorToolLabel() { return "幻灯片"; }
 `);
+// DeckRoute 静态拉着整棵旧核。可达性例只走 next + lazy 叶子，旧核
+// import 换成空绑定，模块才能加载；叶子 DeckHostedRoute 仍是真组件。
+const deckLegacyStubUrl = dataModule(`
+  export function DeckContextToolbar() { return null; }
+  export function DeckDrawPanel() { return null; }
+  export function DeckLinePanel() { return null; }
+  export function DeckNotesPanel() { return null; }
+  export function DeckSignaturePanel() { return null; }
+  export function DeckTablePanel() { return null; }
+  export function DeckDesignPanel() { return null; }
+  export function DeckEffectsPanel() { return null; }
+  export function DeckElementsPanel() { return null; }
+  export function DeckLayersPanel() { return null; }
+  export function DeckTextPanel() { return null; }
+  export function DeckUploadPanel() { return null; }
+  export function DeckFontPanel() { return null; }
+  export function DeckPresenterView() { return null; }
+  export function DeckStage() { return null; }
+  export function openDeckPresenterWindow() {
+    return { ok: false, reason: "blocked" };
+  }
+  export function deckRehearsalNoteLine() { return ""; }
+  export const DECK_PREVIEW_FIT_ZOOM_PERCENT = 100;
+  export function useDeckEditor() {
+    return {
+      deck: { title: "", slides: [] },
+      activeSlide: { id: "" },
+      save: async () => null,
+      error: "",
+      notice: "",
+      loading: false,
+      dirty: false,
+      editRevision: 0,
+      canUndo: false,
+      canRedo: false,
+      undo() {},
+      redo() {},
+      selectSlide() {},
+      patchSlide() {},
+      insertImageElement() {},
+      importSource: async () => {},
+      exportPptx: async () => {},
+      downloadJson() {},
+      restoreRecovery() {},
+      exporting: false,
+    };
+  }
+  export function buildDeckPptxBlob() { return new Blob(); }
+  export function deckPresentationSource() { return {}; }
+  export function deckSavedItemForHandoff(item) { return item; }
+  export function useUI() { return (key) => key; }
+  export function useOfficeArtifactSource(item) {
+    return { item, resourceFailed: false, error: "", retry() {}, loading: false };
+  }
+  export function buildDeckCommandSurface() { return {}; }
+  export async function downloadConvertedCopy() { return ""; }
+  export function importDocFamilyFile() {
+    return { ok: false, message: "no" };
+  }
+  export const DOC_FAMILY_DOWNLOAD_FORMATS = {
+    deck: [{ extension: "pptx", label: "PPTX" }],
+  };
+  export function docFamilyAcceptAttribute() { return "*"; }
+  export function usePluginCommandSurface() {}
+  export function useWorkbenchMaterialAdapter() {}
+  export function advancedSavedItem(item, extra) {
+    return Object.assign({}, item, extra);
+  }
+`);
+const deckRouteStubs = {
+  "../AdvancedWorkbenchShell": shellStubUrl,
+  "../workbench-routes": routesStubUrl,
+  "../advanced-session": deckLegacyStubUrl,
+  "../doc-editors/DeckContextToolbar": deckLegacyStubUrl,
+  "../doc-editors/DeckCreationPanels": deckLegacyStubUrl,
+  "../doc-editors/DeckControls": deckLegacyStubUrl,
+  "../doc-editors/DeckFontPanel": deckLegacyStubUrl,
+  "../doc-editors/DeckPresenterView": deckLegacyStubUrl,
+  "../doc-editors/use-deck-presenter": deckLegacyStubUrl,
+  "../doc-editors/deck-preview-geometry": deckLegacyStubUrl,
+  "../doc-editors/DeckStage": deckLegacyStubUrl,
+  "../doc-editors/use-deck-editor": deckLegacyStubUrl,
+  "../doc-editors/doc-family-commands": deckLegacyStubUrl,
+  "../doc-editors/doc-family-download": deckLegacyStubUrl,
+  "../doc-editors/doc-family-formats": deckLegacyStubUrl,
+  "../doc-editors/doc-family-import": deckLegacyStubUrl,
+  "../../i18n/ui/useUI": deckLegacyStubUrl,
+  "../office-editor": deckLegacyStubUrl,
+  "../plugin-command": deckLegacyStubUrl,
+  "../workbench-material-provider": deckLegacyStubUrl,
+};
 
 let hostedRouteModule;
 async function loadHostedRoute() {
@@ -157,6 +250,124 @@ async function mountDeckHostedRoute() {
   await act(async () => {
     root.render(
       React.createElement(DeckHostedRoute, {
+        item: deckItem(),
+        onClose() {},
+      }),
+    );
+  });
+  return {
+    container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+let deckRouteModule;
+async function loadDeckRoute() {
+  if (!deckRouteModule) {
+    const url = await compileModule(
+      "src/shell/advanced-routes/DeckRoute.tsx",
+      deckRouteStubs,
+    );
+    deckRouteModule = await import(url);
+  }
+  return deckRouteModule;
+}
+
+function concealmentReason(node) {
+  let current = node;
+  while (current && current.nodeType === 1) {
+    if (current.hidden === true || current.hasAttribute("hidden")) return "hidden";
+    if (current.getAttribute("aria-hidden") === "true") return "aria-hidden";
+    const style = String(current.getAttribute("style") || "");
+    if (/display\s*:\s*none/i.test(style)) return "display:none";
+    const cls = String(current.getAttribute("class") || "");
+    if (/(?:^|\s)(?:hidden|invisible|sr-only)(?:\s|$)/.test(cls)) {
+      return `class ${cls}`;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function assertLivePptistIframe(iframe, where) {
+  assert.ok(iframe, `${where}没有 iframe 节点，用户看不到 PPTist 画布`);
+  assert.equal(
+    iframe.tagName,
+    "IFRAME",
+    `${where}画布节点不是 iframe（标签被换成别的了）`,
+  );
+  const src = iframe.getAttribute("src") || "";
+  assert.ok(src, `${where}iframe 的 src 是空的，用户看见的是无法构造嵌入地址`);
+  assert.equal(
+    new URL(src).origin,
+    "https://slides.oceanleo.app",
+    `${where}iframe src origin 不是 slides 托管域：${src}`,
+  );
+  const expectedSandbox = embedEditorFrameSandbox("https://slides.oceanleo.app");
+  assert.equal(
+    iframe.getAttribute("sandbox"),
+    expectedSandbox,
+    `${where}sandbox 没有走 embedEditorFrameSandbox()`,
+  );
+  assert.ok(
+    expectedSandbox.includes("allow-scripts"),
+    "生产函数给出的沙箱连脚本都不给",
+  );
+  assert.ok(
+    !expectedSandbox.includes("allow-same-origin"),
+    "生产函数给出的沙箱带了同源",
+  );
+  assert.equal(
+    String(iframe.getAttribute("sandbox") || "").includes("allow-same-origin"),
+    false,
+    `${where}iframe sandbox 含 allow-same-origin，不可信档被放开了`,
+  );
+  const hidden = concealmentReason(iframe);
+  assert.equal(
+    hidden,
+    null,
+    `${where}iframe 还在 DOM 里，但祖先带了藏起标记 ${hidden}。jsdom 没有 layout，这条钉的是 class / hidden / aria-hidden / 内联 style。`,
+  );
+}
+
+async function flushLazyRoute() {
+  // A-69：本仓 account-page.test.mjs:219-231 的手法。标准 React.lazy
+  // + Suspense fallback={null} 靠空 act 冲刷异步解析，不是豁免理由。
+  for (let i = 0; i < 6; i += 1) await act(async () => {});
+}
+
+async function waitForPptistIframe(container) {
+  await flushLazyRoute();
+  const deadline = Date.now() + 4000;
+  let last = "";
+  while (Date.now() < deadline) {
+    const iframe =
+      container.querySelector("iframe[title='OceanLeo Slides']") ||
+      container.querySelector("iframe");
+    if (iframe) return iframe;
+    last = (container.innerHTML || "").replace(/\s+/g, " ").slice(0, 360);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  assert.ok(
+    false,
+    `挂 DeckRoute 冲刷 lazy 后仍没有 PPTist iframe。当时 DOM：${last}`,
+  );
+}
+
+async function mountDeckRoute() {
+  const { DeckRoute } = await loadDeckRoute();
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      React.createElement(DeckRoute, {
         item: deckItem(),
         onClose() {},
       }),
@@ -378,4 +589,38 @@ test("新核分支里没有 PPTist 的源码痕迹（AGPL 红线）", () => {
   assert.doesNotMatch(hosted, /defineStore|storeToRefs/);
   // 正例：确认确实读到了内容（§6：零命中先验工具）。
   assert.ok(hosted.includes("DeckHostedRoute"));
+});
+
+// ── A-69 / A-65：闸必须挂路由，不许只挂舞台 ─────────────────────────────
+// V7 摘掉 DeckRoute 后原 14 例仍全绿。本例挂的是分发口，lazy 叶子用
+// account-page 那组空 act 冲刷。摘掉 / if(false) 包住 DeckHostedRoute、
+// iframe→div、sandbox 加 allow-same-origin，都必须红（A-61 样板刀）。
+
+test("挂 DeckRoute 翻到 next 后必须出现 PPTist iframe", async () => {
+  assert.equal(DEFAULT_EDITOR_CORE, "legacy");
+  setEditorCoreOverride("deck", "next");
+  try {
+    assert.equal(
+      resolveEditorCore("deck"),
+      "next",
+      "override 没写进 localStorage，分发口仍会走旧核",
+    );
+    const { container, unmount } = await mountDeckRoute();
+    try {
+      const iframe = await waitForPptistIframe(container);
+      assertLivePptistIframe(iframe, "从 DeckRoute 走进去之后");
+      const text = container.textContent || "";
+      assert.equal(
+        text.includes("无法构造"),
+        false,
+        "用户看见的是「无法构造嵌入地址」fallback，iframe 没挂上",
+      );
+    } finally {
+      await unmount();
+    }
+  } finally {
+    setEditorCoreOverride("deck", null);
+    assert.equal(resolveEditorCore("deck"), "legacy");
+    assert.equal(DEFAULT_EDITOR_CORE, "legacy");
+  }
 });
