@@ -678,11 +678,7 @@ test("不是插件的适配器：顶栏不出这个开关", async () => {
       ),
     );
     assert.ok(find("[data-advanced-workspace-actions]"), "顶栏本体没渲染出来");
-    assert.equal(
-      find("[data-plugin-mode-toggle]"),
-      null,
-      "pluginThemeId 为 null 也出开关 ⇒ 上面几条会变成恒真，锁不住任何东西",
-    );
+    assertNoL0Toggle(find, "Header 夹具 pluginThemeId=null");
   });
 });
 
@@ -692,6 +688,22 @@ test("不是插件的适配器：顶栏不出这个开关", async () => {
 // 「Header 里的 Toggle 被撤掉」，锁不住「壳根本不把 id 传下来」。
 // 下面挂的是 InlineAdvancedWorkbenchShell，id 只来自生产函数
 // pluginThemeIdForAdapter(adapter.id)。
+
+function assertNoL0Toggle(find, where) {
+  assert.equal(
+    find("[data-plugin-mode-toggle]"),
+    null,
+    `${where}：仍有 data-plugin-mode-toggle。pluginThemeId 为 null 也出开关 ⇒ 上面几条会变成恒真。`,
+  );
+  // `{true ? (` 仍会把 Toggle 画出来，只是 pluginId 是 null、数据属性被 React 丢掉。
+  // 人看见的是「专业模式」四个字，闸若只认 data 属性就会假绿（A-48 恒真分支）。
+  assert.equal(
+    find('[aria-label*="专业模式"]'),
+    null,
+    `${where}：没有 data 属性，但 aria-label 仍写着专业模式。` +
+      "把 `{pluginThemeId ?` 改成 `{true ?` 就是这样：标识符还在，用户不该看见的开关出现了。",
+  );
+}
 
 const CONCEAL_CLASS_TOKENS = new Set([
   "hidden",
@@ -870,11 +882,7 @@ test("壳遇到生产函数判为非插件的适配器：顶栏不出这个开�
       find("[data-advanced-workbench-header]"),
       "顶栏本体没渲染出来",
     );
-    assert.equal(
-      find("[data-plugin-mode-toggle]"),
-      null,
-      "生产函数判 null 的适配器也被壳出了开关 ⇒ 上面那条会变成恒真",
-    );
+    assertNoL0Toggle(find, "壳 + 生产函数判 null 的适配器");
   });
 });
 
