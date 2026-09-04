@@ -189,13 +189,19 @@ test("存储里的非法值不当成 pro", async () => {
 // 也就是说「顶栏真有开关」这条产品判据当时**没有任何守卫**：闸锁住的只是 store 的
 // 默认档，锁不住「用户看得见、点得动、点了内核会动」。
 //
-// 所以这里把共用顶栏在 jsdom 里挂起来：从 DOM 把开关找出来、真点一下，
-// 再看内核那一侧收到了什么。撤掉修复的任何一段，这一节都会当场红
-// （三条反面验证的实际输出贴在 `verdicts/W01-redfix.md`）。
+// 第 9–13 例继续直接挂 Header：撤掉 Header 里的 Toggle 必须当场红（V1-red-1，已绿）。
+// 后面另挂 `InlineAdvancedWorkbenchShell`：V1-red-3 证伪过，只挂 Header、测试自己塞
+// `pluginThemeId` 时，把壳里那一处改成 `pluginThemeId={null}`，13/13 仍绿，用户十件
+// 顶栏开关整组消失。壳那几例必须走生产 `pluginThemeIdForAdapter`，不许测试自己塞。
+//
+// jsdom 没有 layout，验「不许被藏 / 不许被挤成 0 宽」只钉 class token 与 hidden 属性，
+// **不读 getBoundingClientRect、不假装验了可见性**（A-48）。
 //
 // 注释里不举任何真实 CSS 类名（`_COMMON.md §7b⑧`：判据文件会被 Tailwind 扫进产物）。
 
 const require = createRequire(import.meta.url);
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 
 /**
  * `tt()` 的替身：原样返回并填占位符。
@@ -228,17 +234,133 @@ function loadHeader() {
  * 「共用顶栏要覆盖哪些件」这张清单从**生产代码的表**里取，不在判据里手抄一份
  * （`_COMMON.md §7b⑪b`：清单类判据手抄一份就会漂移）。
  */
-let themeIdsPromise;
-function loadPluginThemeIds() {
-  themeIdsPromise ??= (async () => {
-    const { PLUGIN_THEME_SPECS } = await import(
+let themeModPromise;
+function loadThemeMod() {
+  themeModPromise ??= (async () =>
+    import(
       await compileModule("src/shell/plugin-theme.tsx", {
         "../i18n/ui/useUI": ttStubUrl,
       })
-    );
-    return Object.keys(PLUGIN_THEME_SPECS);
-  })();
+    ))();
+  return themeModPromise;
+}
+
+let themeIdsPromise;
+function loadPluginThemeIds() {
+  themeIdsPromise ??= loadThemeMod().then((mod) =>
+    Object.keys(mod.PLUGIN_THEME_SPECS),
+  );
   return themeIdsPromise;
+}
+
+/**
+ * 十件共用壳。Header **不打桩**——打了就又变成「测试自己塞 pluginThemeId」
+ * （V1-red-3）。其余与开关无关的钩子才换成空实现，形状抄
+ * `tests/edit-bar-dock-console.test.mjs` 挂这只壳的那张桩表。
+ */
+let shellPromise;
+function loadShell() {
+  shellPromise ??= (async () => {
+    const layoutStubUrl = dataModule(`
+      import { createContext } from ${JSON.stringify(reactUrl)};
+      export const AdvancedLayoutContext = createContext(null);
+      export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
+      export function focusAdvancedToolsTrigger() {}
+      export function useAdvancedToolsLauncherRegistration() {}
+    `);
+    const chromeStubUrl = dataModule(`
+      export function advancedWorkbenchStyle(accent) {
+        return { "--awb-accent": accent };
+      }
+    `);
+    const confirmStubUrl = dataModule(`
+      export function ConfirmDialog() { return null; }
+    `);
+    const floatingStubUrl = dataModule(`
+      export function FloatingContextToolbar() { return null; }
+      export function useFloatingContextToolbar() {
+        return { mode: "docked", dropActive: false, leading: null, trailing: null };
+      }
+    `);
+    const panelsStubUrl = dataModule(`
+      export function useInlineAdvancedPanels() {
+        return {
+          drawers: [],
+          activeDrawerId: "",
+          activeMaterialAction: null,
+          transientPanel: null,
+          fallbackDetail: null,
+          openDrawer() {},
+          openTransientPanel() {},
+          updateTransientPanel() {},
+          closeDetail() {},
+        };
+      }
+    `);
+    const dropStubUrl = dataModule(`
+      export function useInlineAdvancedWorkbenchDrop() {
+        return { dropMessage: "", performUpload() {}, handleDrop() {} };
+      }
+    `);
+    const sessionStubUrl = dataModule(`
+      export function useAdvancedSession() { return null; }
+    `);
+    const materialsStubUrl = dataModule(`
+      export function useWorkbenchMaterials() { return null; }
+    `);
+    const splitStubUrl = dataModule(`
+      export function useRightPaneSlot() { return null; }
+      export function useWorkspacePane() { return null; }
+    `);
+    const autosaveStubUrl = dataModule(`
+      export function useAdvancedAutoSave() {
+        return {
+          state: "saved",
+          flushLatest: async () => ({ ok: true }),
+          retry: async () => {},
+        };
+      }
+    `);
+    const recoveryStubUrl = dataModule(`
+      export function useAdvancedRecovery() {}
+    `);
+    const leaveStubUrl = dataModule(`
+      export async function flushAdvancedWorkBeforeLeave() { return { ok: true }; }
+    `);
+    const routesStubUrl = dataModule(`
+      export function editBarOwnershipForItem() { return "host"; }
+    `);
+    const stageStubUrl = dataModule(`
+      import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+      export function AdvancedStageControls() { return null; }
+      export function AdvancedWorkbenchStage() {
+        return jsx("div", { "data-probe-stage": true });
+      }
+      export function EditBarDockHost() { return null; }
+    `);
+    return import(
+      await compileModule("src/shell/InlineAdvancedWorkbenchShell.tsx", {
+        "../i18n/ui/useUI": ttStubUrl,
+        "../ui": confirmStubUrl,
+        "./advanced-layout-context": layoutStubUrl,
+        "./AdvancedStageControls": stageStubUrl,
+        "./AdvancedWorkbenchStage": stageStubUrl,
+        "./FloatingContextToolbar": floatingStubUrl,
+        "./EditBarDockHost": stageStubUrl,
+        "./advanced-leave-flush": leaveStubUrl,
+        "./inline-advanced-workbench-drop": dropStubUrl,
+        "./use-inline-advanced-panels": panelsStubUrl,
+        "./advanced-session-context": sessionStubUrl,
+        "./advanced-workbench-chrome": chromeStubUrl,
+        "./workbench-material-provider": materialsStubUrl,
+        "./SplitWorkspace": splitStubUrl,
+        "./use-advanced-autosave": autosaveStubUrl,
+        "./use-advanced-recovery": recoveryStubUrl,
+        "./workbench-routes": routesStubUrl,
+      })
+    );
+  })();
+  return shellPromise;
 }
 
 /**
@@ -561,5 +683,225 @@ test("不是插件的适配器：顶栏不出这个开关", async () => {
       null,
       "pluginThemeId 为 null 也出开关 ⇒ 上面几条会变成恒真，锁不住任何东西",
     );
+  });
+});
+
+// ─── 判据 3c：闸必须走到十件壳的真实接线（V1-red-3 / A-48） ────────────────
+//
+// 上面第 9–13 例编译的是 Header、测试自己把 pluginThemeId 塞进去。那锁得住
+// 「Header 里的 Toggle 被撤掉」，锁不住「壳根本不把 id 传下来」。
+// 下面挂的是 InlineAdvancedWorkbenchShell，id 只来自生产函数
+// pluginThemeIdForAdapter(adapter.id)。
+
+const CONCEAL_CLASS_TOKENS = new Set([
+  "hidden",
+  "invisible",
+  "sr-only",
+  "opacity-0",
+  "w-0",
+  "h-0",
+  "max-w-0",
+  "max-h-0",
+]);
+const FLEX_NO_SHRINK_TOKEN = "shrink-0";
+
+function classTokenSet(node) {
+  const raw = node?.getAttribute?.("class") || "";
+  return new Set(String(raw).trim().split(/\s+/).filter(Boolean));
+}
+
+function concealmentOnAncestors(toggle, header) {
+  let node = toggle;
+  while (node) {
+    if (node.hidden || node.hasAttribute("hidden")) return "hidden-attr";
+    if (node.getAttribute("aria-hidden") === "true") return "aria-hidden";
+    const display = node.style?.display;
+    const visibility = node.style?.visibility;
+    const width = node.style?.width;
+    if (
+      display === "none" ||
+      visibility === "hidden" ||
+      width === "0" ||
+      width === "0px"
+    ) {
+      return "inline-style";
+    }
+    for (const token of classTokenSet(node)) {
+      if (CONCEAL_CLASS_TOKENS.has(token)) return token;
+    }
+    if (node === header) break;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function flexChildHolding(header, node) {
+  let current = node;
+  while (current.parentElement && current.parentElement !== header) {
+    current = current.parentElement;
+  }
+  return current;
+}
+
+function libraryItemFor(adapterId) {
+  return {
+    key: `creation:${adapterId}-1`,
+    source: "creation",
+    id: `${adapterId}-1`,
+    title: adapterId,
+    kind: "document",
+    siteId: "study",
+    favorite: false,
+    meta: {},
+  };
+}
+
+function shellHost(Shell, adapterId, calls) {
+  function Host() {
+    const [editorMode, setEditorMode] = React.useState("normal");
+    return React.createElement(Shell, {
+      item: libraryItemFor(adapterId),
+      adapter: {
+        id: adapterId,
+        label: adapterId,
+        stage: React.createElement("div"),
+        mode: {
+          current: editorMode,
+          setMode: (next) => {
+            calls.push(next);
+            setEditorMode(next);
+          },
+        },
+      },
+      onClose() {},
+    });
+  }
+  return React.createElement(Host);
+}
+
+function assertShellToggleVisible(find, adapterId, expectedThemeId) {
+  const header = find("[data-advanced-workbench-header]");
+  assert.ok(
+    header,
+    `${adapterId}：十件壳没把共用顶栏渲染出来（壳里那条 actionBar 被短路了）`,
+  );
+  const toggle = find(`[data-plugin-mode-toggle="${expectedThemeId}"]`);
+  assert.ok(
+    toggle,
+    `${adapterId}：壳没有把 pluginThemeIdForAdapter 的非空结果交给 Header。` +
+      `预期开关 id=${expectedThemeId}。V1-red-3 就是把壳里那一处改成` +
+      ` pluginThemeId={null}，用户十件顶栏开关整组消失，闸却 13/13 绿。`,
+  );
+  assert.equal(
+    toggle.tagName,
+    "BUTTON",
+    `${adapterId}：壳上的开关不是可点的按钮`,
+  );
+  const concealed = concealmentOnAncestors(toggle, header);
+  assert.equal(
+    concealed,
+    null,
+    `${adapterId}：开关还在 DOM 里，但祖先带了藏起标记 ${concealed}。` +
+      `jsdom 没有 layout，这条钉的是 class / hidden / aria-hidden / 内联 style，` +
+      `不是在假装量了可见像素。`,
+  );
+  const flexItem = flexChildHolding(header, toggle);
+  assert.equal(
+    flexItem.parentElement,
+    header,
+    `${adapterId}：开关不在顶栏的直接 flex 子项里`,
+  );
+  assert.ok(
+    classTokenSet(flexItem).has(FLEX_NO_SHRINK_TOKEN),
+    `${adapterId}：顶栏里装着开关的那一列可以收缩。` +
+      `本体拿 flex-1，窄屏被挤掉的必须是本体里那排键，不能是这个开关。` +
+      `按钮自己带不可收缩不够——列作为 flex 子项仍可被挤成 0 宽。` +
+      `jsdom 没有 layout，只钉这一列的 class token。`,
+  );
+  assert.ok(
+    header.contains(toggle),
+    `${adapterId}：开关渲染了，但不在共用顶栏里`,
+  );
+}
+
+test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏开关", async () => {
+  const { InlineAdvancedWorkbenchShell } = await loadShell();
+  const { pluginThemeIdForAdapter } = await loadThemeMod();
+  const pluginIds = await loadPluginThemeIds();
+  assert.ok(pluginIds.length >= 10, "主题表缩到 10 以下，这条会空转");
+
+  // 带版本后缀的 adapter id 必须归一化（生产函数的契约），不许只测裸名。
+  const adapterIds = [...pluginIds, "chart-editor@1"];
+
+  await withDom(async ({ render, find }) => {
+    const { resetPluginModeCache } = await import(
+      "../src/shell/plugin-chrome/plugin-mode-store.ts"
+    );
+    for (const adapterId of adapterIds) {
+      const expected = pluginThemeIdForAdapter(adapterId);
+      assert.ok(
+        expected,
+        `${adapterId}：生产函数应对主题表里的件给出非空 id（否则下面恒绿）`,
+      );
+      resetPluginModeCache();
+      await render(shellHost(InlineAdvancedWorkbenchShell, adapterId, []));
+      assertShellToggleVisible(find, adapterId, expected);
+    }
+  });
+});
+
+test("壳遇到生产函数判为非插件的适配器：顶栏不出这个开关", async () => {
+  const { InlineAdvancedWorkbenchShell } = await loadShell();
+  const { pluginThemeIdForAdapter } = await loadThemeMod();
+  const adapterId = "not-a-plugin-editor";
+  assert.equal(
+    pluginThemeIdForAdapter(adapterId),
+    null,
+    "这条的夹具必须是生产函数会判 null 的 id，否则在空转",
+  );
+
+  await withDom(async ({ render, find }) => {
+    const { resetPluginModeCache } = await import(
+      "../src/shell/plugin-chrome/plugin-mode-store.ts"
+    );
+    resetPluginModeCache();
+    await render(shellHost(InlineAdvancedWorkbenchShell, adapterId, []));
+    assert.ok(
+      find("[data-advanced-workbench-header]"),
+      "顶栏本体没渲染出来",
+    );
+    assert.equal(
+      find("[data-plugin-mode-toggle]"),
+      null,
+      "生产函数判 null 的适配器也被壳出了开关 ⇒ 上面那条会变成恒真",
+    );
+  });
+});
+
+test("从十件壳点开关：内核当场收到 setMode（不经 Header 夹具）", async () => {
+  const { InlineAdvancedWorkbenchShell } = await loadShell();
+  await withDom(async ({ render, find, click }) => {
+    const { currentPluginMode, resetPluginModeCache } = await import(
+      "../src/shell/plugin-chrome/plugin-mode-store.ts"
+    );
+    resetPluginModeCache();
+    const calls = [];
+    await render(shellHost(InlineAdvancedWorkbenchShell, "grid", calls));
+
+    const toggle = find('[data-plugin-mode-toggle="grid"]');
+    assert.ok(toggle, "壳上没有开关——接线断在 InlineAdvancedWorkbenchShell");
+    assert.deepEqual(calls, [], "刚打开、两边同档，不该推送");
+
+    await click(toggle);
+    assert.deepEqual(
+      calls,
+      ["pro"],
+      "从壳点了开关，内核没收到 setMode('pro')。" +
+        "Header 夹具那条能绿、这条红，说明桥只在测试自己塞的 Header 上活着。",
+    );
+    assert.equal(currentPluginMode("grid"), "pro");
+
+    await click(find('[data-plugin-mode-toggle="grid"]'));
+    assert.deepEqual(calls, ["pro", "normal"]);
   });
 });
