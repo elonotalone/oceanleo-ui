@@ -98,6 +98,34 @@ export function canBuildGameIdeEmbedUrl(base: string): boolean {
   return isTrustedEmbedEditorBase(base);
 }
 
+export type GameIdeEmbedSrcInput = {
+  embedBase: string;
+  instanceId: string;
+  hostOrigin: string;
+  assetTitle?: string;
+};
+
+/**
+ * 专业模式 iframe 真正挂上去的地址。抽成可调用的函数，是为了让闸能跑这条
+ * 计算，而不是只在源码里搜标签名——`useMemo` 开头 `return ""` 时标签还在、
+ * 用户已经看见「无法构造嵌入地址」。
+ */
+export function computeGameIdeHostedEmbedSrc(
+  input: GameIdeEmbedSrcInput,
+): string {
+  if (!input.embedBase || !canBuildGameIdeEmbedUrl(input.embedBase)) return "";
+  try {
+    return buildGameIdeEmbedUrl({
+      instanceId: input.instanceId,
+      hostOrigin: input.hostOrigin,
+      assetTitle: input.assetTitle,
+      base: input.embedBase,
+    });
+  } catch {
+    return "";
+  }
+}
+
 export function buildGameIdeEmbedUrl(opts: {
   instanceId: string;
   hostOrigin: string;

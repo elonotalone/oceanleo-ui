@@ -14,12 +14,11 @@
 
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
-  type ComponentType,
 } from "react";
+import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { createArtifactRevision, forkArtifact } from "../artifact-client";
 import { GAME_DOCUMENT_SOURCE_FORMAT } from "../artifact-contract";
@@ -32,15 +31,20 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
+import { resolveEditorCore } from "../editor-core-flags";
+import {
+  registerGamePreviewHost,
+  useGamePreviewHost,
+  type GameBundleFormat,
+  type GamePreviewHost,
+  type GamePreviewHostProps,
+} from "../game-editor/preview-host";
+
+export type { GameBundleFormat, GamePreviewHost, GamePreviewHostProps };
+export { registerGamePreviewHost };
 
 export const GAME_PROJECT_SCHEMA = GAME_DOCUMENT_SOURCE_FORMAT;
 export const GAME_EDITOR_CAPABILITY = "game-editor";
-
-/**
- * 宿主桥仍保留旧的二值类型，但新载体只会交出 `html`：`source` 已是一份完整文档，
- * 不再允许把当前格式误归成需要平台补骨架的 JS 槽位。
- */
-export type GameBundleFormat = "html" | "js";
 
 /**
  * artifact 的 source format 与 media type。
@@ -91,57 +95,7 @@ export interface GameBundleDocument {
   origin: GameRevisionOrigin;
 }
 
-// ── 沙箱宿主注入契约（W11 侧实现） ─────────────────────────────────────────
-
-export interface GamePreviewHostProps {
-  artifactId: string;
-  revisionId: string;
-  /**
-   * `oceanleo.game-document.v1` 信封的签名 URL（`full` rendition，application/json）。
-   * 宿主必须让沙箱域去取它并在那边装载完整文档，**不得**塞进 iframe 的 `srcdoc`
-   * —— `srcdoc` 文档继承父页面 origin，会让整个域隔离方案失效。
-   */
-  envelopeUrl: string;
-  bundleFormat: GameBundleFormat;
-  engineApiVersion: string;
-  title: string;
-  /** 沙箱回报的运行时错误，用于把「生成的东西跑不起来」显式暴露给用户。 */
-  onRuntimeError?: (message: string) => void;
-}
-
-export type GamePreviewHost = ComponentType<GamePreviewHostProps>;
-
-let gamePreviewHost: GamePreviewHost | null = null;
-const gamePreviewHostListeners = new Set<() => void>();
-
-/**
- * 由宿主站（game 仓）在模块初始化时注册 `UgcGameFrame`。
- *
- * 共享包**永远不会**自己渲染游戏 iframe：sandbox 属性、沙箱子域、
- * `postMessage` 双向 origin 校验全部是宿主的职责，放在这里会让隔离方案失效。
- */
-export function registerGamePreviewHost(host: GamePreviewHost | null): void {
-  gamePreviewHost = host;
-  for (const listener of [...gamePreviewHostListeners]) listener();
-}
-
-function useGamePreviewHost(): GamePreviewHost | null {
-  const [host, setHost] = useState<GamePreviewHost | null>(
-    () => gamePreviewHost,
-  );
-  useEffect(() => {
-    // 宿主本身是个函数组件，直接 `setHost(host)` 会被 setState 当成 updater
-    // 调用掉：组件在 GameRoute 的 render 里被执行，它的 hooks 就串进本组件的
-    // 序列（"Should have a queue"）。两层箭头是必须的，不是多余的包装。
-    const onChange = () => setHost(() => gamePreviewHost);
-    gamePreviewHostListeners.add(onChange);
-    onChange();
-    return () => {
-      gamePreviewHostListeners.delete(onChange);
-    };
-  }, []);
-  return host;
-}
+// 沙箱宿主槽位在 `../game-editor/preview-host.ts`：legacy 与 next 共用同一模块实例。
 
 // ── 生成链注入契约（W10 侧实现） ───────────────────────────────────────────
 
@@ -171,6 +125,26 @@ export function registerGameIterationRunner(
 }
 
 // ── Route ──────────────────────────────────────────────────────────────────
+
+const GameCodeStage = dynamic(
+  () =>
+    import("../game-editor/GameCodeStage").then(
+      (module) => module.GameCodeStage,
+    ),
+  { ssr: false, loading: () => null },
+);
+
+/**
+ * 双核分发口。flag 只在这里判一次，判完各走各的组件。
+ *
+ * 默认 `legacy`（`_COMMON.md` §10 第 3 条）。验收绿之后才翻 flag。
+ */
+export function GameRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("game") === "next") {
+    return <GameCodeStage {...props} />;
+  }
+  return <GameLegacyRoute {...props} />;
+}
 
 function documentFromItem(item: LibraryItem): GameBundleDocument | null {
   if (isDurableLibraryItem(item)) {
@@ -215,7 +189,7 @@ function documentFromItem(item: LibraryItem): GameBundleDocument | null {
   return null;
 }
 
-export function GameRoute({
+function GameLegacyRoute({
   item,
   taskId,
   siteId = "",

@@ -103,6 +103,19 @@ function mintApplyToken(commandId: string): string {
 }
 
 /**
+ * 令牌在不在、是不是这条命令的。只看不烧。
+ * 去向判定必须是纯函数，副作用（烧掉令牌）发生在 apply 分支里。
+ */
+export function peekGameApplyToken(
+  commandId: string,
+  params: Record<string, unknown> | undefined,
+): boolean {
+  const raw = params?.[GAME_APPLY_TOKEN_KEY];
+  if (typeof raw !== "string" || raw.length === 0) return false;
+  return liveTokens.get(raw) === commandId;
+}
+
+/**
  * 手上这批参数带的令牌，是不是**这条命令**的、且还没用过。
  *
  * 一次性：核过就删。不删的话，agent 只要把上一次接受时那次调用重放一遍，
@@ -112,11 +125,45 @@ export function consumeGameApplyToken(
   commandId: string,
   params: Record<string, unknown> | undefined,
 ): boolean {
+  if (!peekGameApplyToken(commandId, params)) return false;
   const raw = params?.[GAME_APPLY_TOKEN_KEY];
-  if (typeof raw !== "string" || raw.length === 0) return false;
-  if (liveTokens.get(raw) !== commandId) return false;
+  if (typeof raw !== "string") return false;
   liveTokens.delete(raw);
   return true;
+}
+
+/** agent 一条指令的去向。绕过必须拆掉 `review` 这支，结构上可检测（A-53）。 */
+export type GameAgentDisposition =
+  | { kind: "unknown"; message: string }
+  | { kind: "readonly"; commandId: string }
+  | { kind: "apply"; commandId: string }
+  | { kind: "review"; commandId: string };
+
+/**
+ * 写与不写由本函数一次性决定。
+ *
+ * **失败即关闭（A-49）**：会改源码的指令，默认送审；只有显式令牌才直行。
+ * 拿不到凭据就放行的写法（`tokenOk || true`、缺章即 execute）在这里没有落点。
+ */
+export function planGameAgentDisposition(input: {
+  commandId: string;
+  mutates: boolean;
+  tokenMatches: boolean;
+  known: boolean;
+}): GameAgentDisposition {
+  if (!input.known) {
+    return {
+      kind: "unknown",
+      message: `游戏编辑器没有「${input.commandId}」这条指令。`,
+    };
+  }
+  if (!input.mutates) {
+    return { kind: "readonly", commandId: input.commandId };
+  }
+  if (input.tokenMatches) {
+    return { kind: "apply", commandId: input.commandId };
+  }
+  return { kind: "review", commandId: input.commandId };
 }
 
 /** 只给测试用：清空令牌，让每个用例从零开始。 */
@@ -374,13 +421,20 @@ export async function runGameAgentCommand(
   params: Record<string, unknown> | undefined,
 ): Promise<PluginCommandResult> {
   const command = COMMAND_BY_ID.get(id);
-  if (!command) {
-    return { ok: false, message: `游戏编辑器没有「${id}」这条指令。` };
-  }
   const args = { ...(params || {}) };
   const revision = port.revision();
+  const route = planGameAgentDisposition({
+    commandId: id,
+    known: Boolean(command),
+    mutates: command ? gameCommandMutates(command) : false,
+    tokenMatches: peekGameApplyToken(id, args),
+  });
 
-  if (!gameCommandMutates(command)) {
+  if (route.kind === "unknown" || !command) {
+    return { ok: false, message: route.kind === "unknown" ? route.message : `游戏编辑器没有「${id}」这条指令。` };
+  }
+
+  if (route.kind === "readonly") {
     if (id === "game.read-source") {
       return {
         ok: true,
@@ -406,8 +460,10 @@ export async function runGameAgentCommand(
     return { ok: false, message: outcome.error };
   }
 
-  // ★ 唯一的写入分岔。持令牌 = 宿主已经把提案递给用户、用户点了接受。
-  if (consumeGameApplyToken(id, args)) {
+  if (route.kind === "apply") {
+    if (!consumeGameApplyToken(id, args)) {
+      return { ok: false, message: "审阅令牌无效，源码一个字没改。" };
+    }
     if ("after" in outcome) {
       port.writeSource(outcome.after);
       return { ok: true, message: "改动已写入草稿。", revision: revision + 1 };
@@ -417,6 +473,10 @@ export async function runGameAgentCommand(
     }
     port.writeParams(outcome.params);
     return { ok: true, message: "参数声明已写入草稿。", revision: revision + 1 };
+  }
+
+  if (route.kind !== "review") {
+    return { ok: false, message: "这条指令的去向无法处理，源码一个字没改。" };
   }
 
   // 没令牌 ⇒ 造提案、真交出去。**不写。**

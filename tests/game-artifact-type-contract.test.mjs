@@ -38,6 +38,12 @@ const gameRouteSource = readFileSync(
   ),
   "utf8",
 );
+const previewHostSource = readFileSync(
+  fileURLToPath(
+    new URL("../src/shell/game-editor/preview-host.ts", import.meta.url),
+  ),
+  "utf8",
+);
 
 /**
  * 注释里出现「不得塞进 iframe 的 srcdoc」这类说明是对的，不该让禁令断言变红。
@@ -271,7 +277,7 @@ test("GameRoute rejects imported bundles and never renders its own iframe", () =
   assert.equal(/srcdoc/i.test(gameRouteCode), false);
   assert.ok(gameRouteCode.includes("registerGamePreviewHost"));
   assert.ok(gameRouteCode.includes("useGamePreviewHost"));
-  assert.ok(gameRouteCode.includes("gamePreviewHostListeners"));
+  assert.ok(previewHostSource.includes("gamePreviewHostListeners"));
 });
 
 test("useGamePreviewHost stores the host through a state updater", () => {
@@ -279,12 +285,13 @@ test("useGamePreviewHost stores the host through a state updater", () => {
   // 于是宿主组件在 GameRoute 的 render 里执行、它的 hooks 串进 GameRoute 的序列，
   // 报 "Should have a queue"。只有注册了宿主的站（陈列馆）会踩到，平台侧
   // `gamePreviewHost` 恒为 null 所以一直没暴露。
+  // 槽位在 dual-core 之后搬到 preview-host.ts，断言跟着实现走，意图不变。
   assert.ok(
-    /setHost\(\(\)\s*=>\s*gamePreviewHost\)/.test(gameRouteCode),
+    /setHost\(\(\)\s*=>\s*gamePreviewHost\)/.test(previewHostSource),
     "setHost 必须走 `() => gamePreviewHost` 这种 updater 形式",
   );
   assert.equal(
-    /setHost\(gamePreviewHost\)/.test(gameRouteCode),
+    /setHost\(gamePreviewHost\)/.test(previewHostSource),
     false,
     "不得把宿主组件直接交给 setHost",
   );
