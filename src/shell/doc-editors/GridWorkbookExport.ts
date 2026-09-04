@@ -189,19 +189,10 @@ export async function buildGridRouteWorkbookBlob(
 }
 
 type GridCfRule = NonNullable<GridSheet["conditionalFormats"]>[number];
+type ExcelJsStyle = Partial<import("exceljs").Style>;
 
-const CF_EXCEL_OPERATOR: Record<
-  Exclude<GridCfRule["operator"], "contains">,
-  string
-> = {
-  "greater-than": "greaterThan",
-  "less-than": "lessThan",
-  equal: "equal",
-  "not-equal": "notEqual",
-};
-
-function excelConditionalStyle(rule: GridCfRule): Record<string, unknown> {
-  const style: Record<string, unknown> = {};
+function excelConditionalStyle(rule: GridCfRule): ExcelJsStyle {
+  const style: ExcelJsStyle = {};
   if (rule.bold || rule.color) {
     style.font = {
       bold: Boolean(rule.bold),
@@ -216,14 +207,30 @@ function excelConditionalStyle(rule: GridCfRule): Record<string, unknown> {
   return style;
 }
 
+function excelCfFormulaLiteral(value: string): string {
+  const trimmed = value.trim();
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(trimmed)) return trimmed;
+  return `"${trimmed.replace(/"/g, '""')}"`;
+}
+
+function excelCellIsOperator(
+  operator: Exclude<GridCfRule["operator"], "contains" | "not-equal">,
+): "greaterThan" | "lessThan" | "equal" {
+  if (operator === "greater-than") return "greaterThan";
+  if (operator === "less-than") return "lessThan";
+  return "equal";
+}
+
 /**
  * 把 `GridSheet.conditionalFormats` 写进 exceljs。新核导出走这条链，
  * XML 链里已经会写 `<conditionalFormatting>`；这里是把同一份五操作符
  * 能力搬过来，不是另造一套规则模型。
  *
- * 参数用 exceljs 自己的 Worksheet 方法签名，避免自造结构类型把真
- * Worksheet 因参数逆变挡在门外（TS2345）。`notEqual` 在运行期 exceljs
- * 认，类型联合里没有，下面那一处断言只为这一点。
+ * 规则对象按 exceljs 联合类型逐个构造（ContainsTextRuleType /
+ * CellIsRuleType / ExpressionRuleType），不把 rules 放宽成 Record。
+ * exceljs 的 `CellIsOperators` 没有 `notEqual`（OOXML 有）。不等于
+ * 改写 `expression`：`左上角单元格<>阈值`，用户看见的仍是「不等于」高亮，
+ * 不是静默丢。
  */
 export function applyGridConditionalFormats(
   worksheet: Pick<import("exceljs").Worksheet, "addConditionalFormatting">,
@@ -233,35 +240,34 @@ export function applyGridConditionalFormats(
   let priority = 1;
   for (const rule of rules) {
     const ref = rangeToSqref(rule.range);
-    const style = excelConditionalStyle(rule) as Partial<import("exceljs").Style>;
+    const style = excelConditionalStyle(rule);
     if (rule.operator === "contains") {
-      worksheet.addConditionalFormatting({
-        ref,
-        rules: [
-          {
-            type: "containsText",
-            operator: "containsText",
-            text: rule.value,
-            priority,
-            style,
-          },
-        ],
-      });
+      const cfRule: import("exceljs").ContainsTextRuleType = {
+        type: "containsText",
+        operator: "containsText",
+        text: rule.value,
+        priority,
+        style,
+      };
+      worksheet.addConditionalFormatting({ ref, rules: [cfRule] });
+    } else if (rule.operator === "not-equal") {
+      const origin = `${gridColumnName(rule.range.firstCol)}${rule.range.firstRow + 1}`;
+      const cfRule: import("exceljs").ExpressionRuleType = {
+        type: "expression",
+        formulae: [`${origin}<>${excelCfFormulaLiteral(rule.value)}`],
+        priority,
+        style,
+      };
+      worksheet.addConditionalFormatting({ ref, rules: [cfRule] });
     } else {
-      worksheet.addConditionalFormatting({
-        ref,
-        rules: [
-          {
-            type: "cellIs",
-            operator: CF_EXCEL_OPERATOR[
-              rule.operator
-            ] as import("exceljs").CellIsOperators,
-            formulae: [rule.value],
-            priority,
-            style,
-          },
-        ],
-      });
+      const cfRule: import("exceljs").CellIsRuleType = {
+        type: "cellIs",
+        operator: excelCellIsOperator(rule.operator),
+        formulae: [rule.value],
+        priority,
+        style,
+      };
+      worksheet.addConditionalFormatting({ ref, rules: [cfRule] });
     }
     priority += 1;
   }
