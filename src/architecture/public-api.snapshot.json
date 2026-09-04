@@ -3585,6 +3585,12 @@
         },
         {
           "kind": "named",
+          "name": "importWithChunkReload",
+          "importedName": "importWithChunkReload",
+          "source": "../lib/lazy-with-retry"
+        },
+        {
+          "kind": "named",
           "name": "inferLibraryKind",
           "importedName": "inferLibraryKind",
           "source": "./library-data"

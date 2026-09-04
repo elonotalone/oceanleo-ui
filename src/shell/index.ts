@@ -774,3 +774,6 @@ export { EXPLORE_FEED_PLAY_LINK_ATTR } from "./ExplorePlayableFeed";
 
 // 手机原生桥的公开面。整组挑选过的转出在那一份里，这里只把它接上门面。
 export * from "./mobile-bridge-public";
+// Dev / HMR：`next/dynamic` 拉共享 barrel 时旧 chunk hash 会 404。消费站用
+// `dynamic(() => importWithChunkReload(() => import("@oceanleo/ui/shell").then(…)))`。
+export { importWithChunkReload } from "../lib/lazy-with-retry";

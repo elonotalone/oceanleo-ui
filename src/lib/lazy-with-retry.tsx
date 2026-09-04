@@ -363,6 +363,76 @@ export function chunkRetryLoader<T>(
   };
 }
 
+export const CHUNK_RELOAD_STORAGE_KEY = "leo:chunk-load-reload";
+
+/**
+ * 整页刷新前的短重试间隔。HMR 换 hash 之后旧 URL 再等也不会变出来，
+ * 真正救命的是那一次 reload；这两档只覆盖「新 chunk 还在落盘」的窗口。
+ */
+export const CHUNK_IMPORT_RETRY_DELAYS_MS: readonly number[] = [200, 800];
+
+export interface ChunkReloadRuntime {
+  sleep(ms: number): Promise<void>;
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
+  reload?: () => void;
+}
+
+function defaultSessionStorage(): Pick<Storage, "getItem" | "setItem" | "removeItem"> | null {
+  try {
+    if (typeof sessionStorage === "undefined") return null;
+    return sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 包在 `dynamic(() => import(…))` 外面：`ChunkLoadError` / `Loading chunk … failed`
+ * 先有上限地重试，耗尽后 **整页刷新恰好一次**。
+ *
+ * `sessionStorage` 记下这次刷新。新文档仍然拉不下来就原样抛出，避免死循环。
+ * 非 chunk 错误不重试。加载成功会清掉刷新标记。
+ */
+export async function importWithChunkReload<T>(
+  load: () => Promise<T>,
+  overrides: Partial<ChunkReloadRuntime> = {},
+): Promise<T> {
+  const sleep =
+    overrides.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const storage = overrides.storage !== undefined ? overrides.storage : defaultSessionStorage();
+  const reload =
+    overrides.reload ??
+    (() => {
+      if (typeof window !== "undefined") window.location.reload();
+    });
+
+  let lastError: unknown;
+  const attempts = CHUNK_IMPORT_RETRY_DELAYS_MS.length + 1;
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const value = await load();
+      storage?.removeItem(CHUNK_RELOAD_STORAGE_KEY);
+      return value;
+    } catch (error) {
+      lastError = error;
+      if (!isChunkLoadError(error)) throw error;
+      if (index < CHUNK_IMPORT_RETRY_DELAYS_MS.length) {
+        await sleep(CHUNK_IMPORT_RETRY_DELAYS_MS[index]);
+      }
+    }
+  }
+
+  if (storage?.getItem(CHUNK_RELOAD_STORAGE_KEY) === "1") {
+    storage.removeItem(CHUNK_RELOAD_STORAGE_KEY);
+    throw lastError;
+  }
+  storage?.setItem(CHUNK_RELOAD_STORAGE_KEY, "1");
+  reload();
+  // Stay pending so `React.lazy` does not lock onto a rejected promise
+  // while the document is unloading.
+  return new Promise<T>(() => {});
+}
+
 /**
  * 给一个已经 `dynamic()` 出来的路由组件套上失败态的闸。
  *

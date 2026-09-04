@@ -31,10 +31,13 @@ import { compileModule } from "./helpers/module-bench.mjs";
 const retryUrl = await compileModule("src/lib/lazy-with-retry.tsx");
 const {
   CHUNK_CACHE_BUST_PARAM,
+  CHUNK_IMPORT_RETRY_DELAYS_MS,
+  CHUNK_RELOAD_STORAGE_KEY,
   CHUNK_RETRY_DELAYS_MS,
   chunkRetryLoader,
   chunkRouteState,
   chunkUrlFromError,
+  importWithChunkReload,
   isChunkLoadError,
   jitteredDelay,
   loadChunkWithRetry,
@@ -365,6 +368,123 @@ test("chunk 错误的几种形状都认得出，URL 两条路都抠得到", () =
   const bare = new Error(`Failed to fetch dynamically imported module: ${CHUNK_URL}`);
   assert.equal(chunkUrlFromError(bare), CHUNK_URL);
   assert.equal(chunkUrlFromError(new Error("no url here")), null);
+});
+
+function memoryStorage(initial = {}) {
+  const store = { ...initial };
+  return {
+    store,
+    getItem(key) {
+      return Object.hasOwn(store, key) ? store[key] : null;
+    },
+    setItem(key, value) {
+      store[key] = String(value);
+    },
+    removeItem(key) {
+      delete store[key];
+    },
+  };
+}
+
+test("importWithChunkReload：首发成功就清掉刷新标记，不 reload", async () => {
+  const storage = memoryStorage({ [CHUNK_RELOAD_STORAGE_KEY]: "1" });
+  const reloads = [];
+  const value = await importWithChunkReload(async () => ({ ok: true }), {
+    storage,
+    reload: () => reloads.push(1),
+    sleep: async () => {
+      throw new Error("成功路径不该 sleep");
+    },
+  });
+  assert.deepEqual(value, { ok: true });
+  assert.equal(storage.getItem(CHUNK_RELOAD_STORAGE_KEY), null);
+  assert.equal(reloads.length, 0);
+});
+
+test("importWithChunkReload：ChunkLoadError 后下一次成功，不 reload", async () => {
+  const storage = memoryStorage();
+  const sleeps = [];
+  let calls = 0;
+  const value = await importWithChunkReload(
+    async () => {
+      calls += 1;
+      if (calls === 1) throw chunkError();
+      return { ok: true };
+    },
+    {
+      storage,
+      reload: () => {
+        throw new Error("不该 reload");
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    },
+  );
+  assert.deepEqual(value, { ok: true });
+  assert.deepEqual(sleeps, [CHUNK_IMPORT_RETRY_DELAYS_MS[0]]);
+  assert.equal(calls, 2);
+  assert.equal(storage.getItem(CHUNK_RELOAD_STORAGE_KEY), null);
+});
+
+test("importWithChunkReload：重试耗尽后刷新恰好一次，promise 挂起", async () => {
+  const storage = memoryStorage();
+  const reloads = [];
+  const pending = importWithChunkReload(async () => {
+    throw chunkError();
+  }, {
+    storage,
+    reload: () => reloads.push(1),
+    sleep: async () => {},
+  });
+  const raced = await Promise.race([
+    pending.then(
+      () => "resolved",
+      () => "rejected",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("pending"), 20)),
+  ]);
+  assert.equal(raced, "pending");
+  assert.equal(reloads.length, 1);
+  assert.equal(storage.getItem(CHUNK_RELOAD_STORAGE_KEY), "1");
+});
+
+test("importWithChunkReload：已经刷新过还失败就抛出，不再 reload", async () => {
+  const storage = memoryStorage({ [CHUNK_RELOAD_STORAGE_KEY]: "1" });
+  const reloads = [];
+  await assert.rejects(
+    () =>
+      importWithChunkReload(async () => {
+        throw chunkError();
+      }, {
+        storage,
+        reload: () => reloads.push(1),
+        sleep: async () => {},
+      }),
+    (error) => error instanceof Error && error.name === "ChunkLoadError",
+  );
+  assert.equal(reloads.length, 0);
+  assert.equal(storage.getItem(CHUNK_RELOAD_STORAGE_KEY), null);
+});
+
+test("importWithChunkReload：非 chunk 错误立刻抛，不重试", async () => {
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      importWithChunkReload(async () => {
+        calls += 1;
+        throw new Error("字段校验没过");
+      }, {
+        sleep: async () => {
+          throw new Error("不该 sleep");
+        },
+        reload: () => {
+          throw new Error("不该 reload");
+        },
+      }),
+    /字段校验没过/,
+  );
+  assert.equal(calls, 1);
 });
 
 test("抖动区间：任何 random 取值都落在 [base/2, base] 且是整数毫秒", () => {

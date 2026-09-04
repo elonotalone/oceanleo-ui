@@ -1,5 +1,13 @@
+/// <reference path="./waveform-playlist.d.ts" />
 /**
  * 浏览器里真正拉起 waveform-playlist。测试不 import 本文件。
+ *
+ * 上面的三斜线引用不是装饰：`waveform-playlist` 没有类型，声明在旁边的
+ * ambient `.d.ts` 里。本仓 tsconfig `include: src/**` 能自己带上它，但消费站在
+ * LeoDev 预览里是把本仓**软链**进 node_modules 的，realpath 落在 node_modules 之外，
+ * TS 把这里当项目源码来查，而消费站的 include 不含本仓的 .d.ts —— 于是
+ * `next build` 在 travel 上报 TS7016（2026-09-04 实测）。显式引用让任何把本文件
+ * 拉进程序的 tsconfig 都能看到那份声明。
  */
 import { AUDIO_WAVE_PALETTE } from "./audio-project-carrier";
 import type { AudioPlaylistPort } from "./audio-playlist-engine";
