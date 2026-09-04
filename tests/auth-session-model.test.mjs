@@ -602,6 +602,8 @@ test("登录服务 5xx 不得经 middleware / 浏览器客户端原样重试 30 
   assert.match(clientSource, /fetch:\s*authFetch/);
 });
 
+// UC-NONE
+// 判断依据：Set-Cookie 响应缺 no-store 会被 CDN 缓存成别人的会话，属会话缓存污染；UC-1…UC-7 无对应条款。
 test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头", () => {
   // 忽略 setAll 的第二个参数 = 刷新 token 的响应可能被 CDN 缓存，
   // 下一个访客拿到别人的 session。

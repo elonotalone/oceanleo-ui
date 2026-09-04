@@ -19,6 +19,8 @@ const hosted = readFileSync(
   "utf8",
 );
 
+// UC-6 §8.6（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：宿主往 Hosted 框发 selection-command 却不盖人类来源章，编辑器会把点击当待审；这是 postMessage 命令白名单的来源校验。
 test("DeckHostedRoute 今天不发 selection-command；一旦发，信封必须带人类章", () => {
   const sends = [...hosted.matchAll(/type:\s*["']selection-command["']/g)];
   if (sends.length === 0) {
