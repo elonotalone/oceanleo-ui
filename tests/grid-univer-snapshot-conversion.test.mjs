@@ -306,3 +306,158 @@ test("空快照不炸——没有 sheets 就是零张表", () => {
   assert.deepEqual(univerSnapshotToGridSheets({}), []);
   assert.deepEqual(univerSnapshotToGridSheets({ sheets: {} }), []);
 });
+
+/**
+ * Univer `save()` 的活快照形状：公式格子同时带 `f` 和算好的 `v`，
+ * 样式在 `styles` 字典里、格子上只挂 id。导出链吃的就是这个，
+ * 不是 `gridSheetsToUniverSnapshot` 写出来的内联样式快照。
+ */
+function liveUniverWorkbook() {
+  return {
+    id: "wb",
+    name: "工作簿",
+    appVersion: GRID_UNIVER_APP_VERSION,
+    styles: {
+      heading: {
+        bl: 1,
+        ht: 2,
+        cl: { rgb: "#166534" },
+        bg: { rgb: "#fff3cd" },
+        n: { pattern: "#,##0.00" },
+      },
+    },
+    // 与对象插入顺序相反：先写 uid-detail，order 却要汇总在前。
+    sheetOrder: ["uid-summary", "uid-detail"],
+    sheets: {
+      "uid-detail": {
+        id: "uid-detail",
+        name: "明细",
+        rowCount: 40,
+        columnCount: 12,
+        cellData: {
+          0: { 0: { v: "后期插入的表", t: 1 } },
+        },
+        mergeData: [],
+      },
+      "uid-summary": {
+        id: "other-id",
+        name: "汇总",
+        rowCount: 24,
+        columnCount: 10,
+        cellData: {
+          0: {
+            0: { v: 12.5, t: 2 },
+            1: { f: "=A1*2", v: 25, t: 2, s: "heading" },
+            2: { v: "标题", t: 1, s: "heading" },
+          },
+        },
+        mergeData: [
+          { startRow: 2, endRow: 3, startColumn: 0, endColumn: 1 },
+        ],
+      },
+    },
+  };
+}
+
+test("导出：公式和算好的值同时在时，必须带走公式，不能退化成死数字", () => {
+  const [summary] = univerSnapshotToGridSheets(liveUniverWorkbook());
+  assert.equal(
+    summary.rows[0][1],
+    "=A1*2",
+    "用户在新核里写的公式，导出链看的是格子字符串。写成 25 的话 exceljs 会当死数字写进 xlsx，公式就没了。",
+  );
+  assert.notEqual(summary.rows[0][1], "25");
+  assert.equal(summary.rows[0][0], "12.5");
+});
+
+test("导出：xlsx 打开后公式还在，不是写死的数字", async () => {
+  const sheets = univerSnapshotToGridSheets(liveUniverWorkbook());
+  const { buildGridRouteWorkbookBlob } = await import(
+    "../src/shell/doc-editors/GridWorkbookExport.ts"
+  );
+  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: false });
+  const imported = await import("exceljs");
+  const ExcelJS = "Workbook" in imported ? imported : imported.default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await blob.arrayBuffer());
+  const exported = workbook.getWorksheet("汇总");
+  assert.ok(exported, "导出的工作簿里必须有用户起的表名「汇总」");
+  const formulaCell = exported.getCell("B1").value;
+  assert.equal(
+    typeof formulaCell === "object" && formulaCell ? formulaCell.formula : null,
+    "A1*2",
+    "用户打开导出的 xlsx，B1 必须还是公式。切掉 cell.f 的写出只会留下算好的 25。",
+  );
+  assert.notEqual(exported.getCell("B1").value, 25);
+});
+
+test("导出：工作表标签用的是表名，不是内部 id", () => {
+  const restored = univerSnapshotToGridSheets(liveUniverWorkbook());
+  assert.deepEqual(
+    restored.map((entry) => entry.name),
+    ["汇总", "明细"],
+    "exceljs 用 name 当 xlsx 的工作表标签。丢掉表名，用户打开文件看见的是 uid。",
+  );
+  assert.equal(restored[0].id, "other-id");
+});
+
+test("导出：多表顺序跟 sheetOrder 走，跟对象插入顺序无关", () => {
+  const restored = univerSnapshotToGridSheets(liveUniverWorkbook());
+  assert.deepEqual(
+    restored.map((entry) => entry.name),
+    ["汇总", "明细"],
+    "活快照的 sheets 对象插入顺序可以和 sheetOrder 相反。按 Object.keys 导出会把表页顺序弄反。",
+  );
+});
+
+test("导出：行列数按快照声明补齐——CSV 会把空行也写出去", () => {
+  const restored = univerSnapshotToGridSheets(liveUniverWorkbook());
+  const summary = restored[0];
+  const detail = restored[1];
+  assert.equal(summary.rows.length, 24);
+  assert.equal(summary.rows[0].length, 10);
+  assert.equal(detail.rows.length, 40);
+  assert.equal(detail.rows[0].length, 12);
+});
+
+test("导出：Univer 用样式 id 存的加粗/对齐/颜色/底色/数字格式必须带上", () => {
+  const [summary] = univerSnapshotToGridSheets(liveUniverWorkbook());
+  const formulaFormat = summary.formats["0:1"];
+  const titleFormat = summary.formats["0:2"];
+  assert.equal(formulaFormat?.bold, true, "加粗");
+  assert.equal(formulaFormat?.align, "center", "对齐");
+  assert.equal(formulaFormat?.color, "#166534", "字体颜色");
+  assert.equal(formulaFormat?.background, "#fff3cd", "底色");
+  assert.equal(formulaFormat?.numFmt, "#,##0.00", "数字格式");
+  assert.deepEqual(titleFormat, formulaFormat);
+});
+
+test("导出：合并区域要进 GridSheet，exceljs 才能合并格子", () => {
+  const [summary] = univerSnapshotToGridSheets(liveUniverWorkbook());
+  assert.deepEqual(summary.merges, [
+    { firstRow: 2, lastRow: 3, firstCol: 0, lastCol: 1 },
+  ]);
+});
+
+test("导出：xlsx 里的表名、合并、数字格式跟活快照一致", async () => {
+  const sheets = univerSnapshotToGridSheets(liveUniverWorkbook());
+  const { buildGridRouteWorkbookBlob } = await import(
+    "../src/shell/doc-editors/GridWorkbookExport.ts"
+  );
+  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: false });
+  const imported = await import("exceljs");
+  const ExcelJS = "Workbook" in imported ? imported : imported.default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await blob.arrayBuffer());
+  assert.deepEqual(
+    workbook.worksheets.map((entry) => entry.name),
+    ["汇总", "明细"],
+  );
+  const summary = workbook.getWorksheet("汇总");
+  assert.equal(summary.getCell("A3").isMerged, true);
+  assert.equal(summary.getCell("B1").numFmt, "#,##0.00");
+  assert.equal(summary.getCell("B1").font.bold, true);
+  assert.equal(summary.getCell("B1").font.color.argb, "FF166534");
+  assert.equal(summary.getCell("C1").fill.fgColor.argb, "FFFFF3CD");
+  assert.equal(summary.getCell("C1").alignment.horizontal, "center");
+});

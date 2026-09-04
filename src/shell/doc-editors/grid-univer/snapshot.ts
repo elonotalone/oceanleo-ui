@@ -172,6 +172,24 @@ function rangeToMerge(range: IRange): GridMerge {
 }
 
 /**
+ * Univer 活快照里 `cell.s` 经常是样式表 id，真样式在 `workbook.styles[id]`。
+ * `Workbook.save()` 只是深拷贝这份快照，不会把 id 展开成对象。
+ * 不查表的话，用户在新核里设的加粗 / 颜色 / 数字格式导出时会全部消失。
+ */
+function resolveUniverStyle(
+  ref: Nullable<IStyleData | string>,
+  catalog: IWorkbookData["styles"] | undefined,
+): IStyleData | null {
+  if (!ref) return null;
+  if (typeof ref === "string") {
+    const resolved = catalog?.[ref];
+    if (!resolved || typeof resolved === "string") return null;
+    return resolved;
+  }
+  return ref;
+}
+
+/**
  * `GridSheet[]` → Univer 快照。第二个返回值是报数（判据 5 要显示给用户）。
  */
 export function gridSheetsToUniverSnapshot(
@@ -319,7 +337,9 @@ export function univerSnapshotToGridSheets(
         else if (cell.v !== undefined && cell.v !== null) {
           rows[row][col] = String(cell.v);
         }
-        const format = univerStyleToGridFormat(cell.s);
+        const format = univerStyleToGridFormat(
+          resolveUniverStyle(cell.s, data?.styles),
+        );
         if (format) formats[`${row}:${col}`] = format;
       }
     }
