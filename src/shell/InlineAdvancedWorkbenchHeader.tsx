@@ -177,7 +177,10 @@ export function InlineAdvancedWorkbenchHeader({
         />
       </div>
       {pluginThemeId ? (
-        <>
+        // `shrink-0`：顶栏本体拿 `flex-1`，窄屏时该被挤的是它里面那排可横滚的键，
+        // 不是这个开关。开关被挤成 0 宽和「开关根本不在」对用户是同一件事，
+        // 而后者正是本次要修的那条红。
+        <div className="flex shrink-0 items-center gap-0.5">
           <PluginModeToggle
             pluginId={pluginThemeId}
             unavailableReason={modeUnavailableReason}
@@ -195,7 +198,7 @@ export function InlineAdvancedWorkbenchHeader({
             pluginId={pluginThemeId}
             mode={modeAdapter}
           />
-        </>
+        </div>
       ) : null}
     </div>
   );
