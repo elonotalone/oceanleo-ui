@@ -66,10 +66,10 @@ const RANGE = {
   ],
 };
 
-/** 直接读成品 option，按系列名取 data（不走 decode 往返）。 */
+/** 直接读成品 option（导出成品 / 代码模式 parse 结果），按系列名取 data，不走 decode 往返。 */
 function seriesDataFromFinishedOption(option, seriesName) {
   const item = option.series.find((entry) => entry.name === seriesName);
-  assert.ok(item, `导出成品 option 里必须有名为「${seriesName}」的系列`);
+  assert.ok(item, `成品 option 里必须有名为「${seriesName}」的系列`);
   return item.data;
 }
 
@@ -148,18 +148,44 @@ test("AVA refuses an empty table with a human reason", () => {
 });
 
 test("option JSON code mode parses, rejects broken JSON with a human reason", () => {
+  // 夹具按 A-103：两个系列、六个值互不相等，系列间对调 / 倒序 / 平移都看得见。
   const seed = normalizeChartDocument({
     schema: "oceanleo.chart.v1",
     option: {
       title: { text: "代码模式" },
-      xAxis: { type: "category", data: ["A"] },
+      xAxis: { type: "category", data: ["A", "B", "C"] },
       yAxis: { type: "value" },
-      series: [{ id: "s1", name: "系列", type: "bar", data: [1], label: { show: false } }],
+      series: [
+        { id: "s1", name: "收入", type: "bar", data: [3, 7, 11], label: { show: false } },
+        { id: "s2", name: "成本", type: "bar", data: [2, 5, 9], label: { show: false } },
+      ],
     },
   });
   const json = chartOptionJsonFromDocument(seed);
+  // 用户在代码模式看到的 JSON 文本里，柱子就是这六个数（字面量，不引用 seed）。
+  const shown = JSON.parse(json);
+  assert.deepEqual(seriesDataFromFinishedOption(shown, "收入"), [3, 7, 11]);
+  assert.deepEqual(seriesDataFromFinishedOption(shown, "成本"), [2, 5, 9]);
+
   const good = parseChartOptionJson(json, seed);
   assert.equal(good.ok, true);
+  assert.ok(good.ok);
+  // parse 成功还不够：Apply 后画布拿到的 series data 必须逐项等于用户写进 JSON 的那根数。
+  assert.equal(good.document.option.series.length, 2, "代码模式 Apply 后系列不能多也不能少");
+  assert.deepEqual(
+    seriesDataFromFinishedOption(good.document.option, "收入"),
+    [3, 7, 11],
+    "代码模式 Apply 后「收入」柱子高度不是用户写的那根数（JSON 里写的是 3/7/11）",
+  );
+  assert.deepEqual(
+    seriesDataFromFinishedOption(good.document.option, "成本"),
+    [2, 5, 9],
+    "代码模式 Apply 后「成本」柱子高度不是用户写的那根数（JSON 里写的是 2/5/9）",
+  );
+  // 返回的 option 与 document.option 是同一份成品，不许一边对一边错。
+  assert.deepEqual(seriesDataFromFinishedOption(good.option, "收入"), [3, 7, 11]);
+  assert.deepEqual(seriesDataFromFinishedOption(good.option, "成本"), [2, 5, 9]);
+
   const broken = parseChartOptionJson("{ not json", seed);
   assert.equal(broken.ok, false);
   if (!broken.ok) assert.match(broken.reason, /不是合法 JSON/);
