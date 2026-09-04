@@ -28,6 +28,7 @@ import {
   COVER_FRAME_SANDBOX,
   PDF_FRAME_SANDBOX_EXEMPTION,
   SANDBOX_ORIGIN_CONTRACT,
+  HOSTED_EDITOR_EMBED_BASES,
   TRUSTED_EMBED_EDITOR_BASES,
   TRUSTED_EMBED_EDITOR_ORIGINS,
   TRUSTED_EMBED_EDITOR_SANDBOX,
@@ -110,6 +111,25 @@ test("W8/1 workbench 嵌入：白名单 base 保留同源，任何其他 URL 立
       sandboxGrantsScriptedSameOrigin(embedEditorFrameSandbox(base)),
       false,
       base,
+    );
+  }
+});
+
+// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
+// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
+// sandbox 再重载。托管六件（AudioMass / three.js editor / Umo / PPTist /
+// microStudio / Langflow）虽然能拼 embed URL，但必须拿不可信沙箱常量，
+// 一个都不许落到第一方同源档。期望值是常量 UNTRUSTED_FRAME_SANDBOX，
+// 不许再调一次 embedEditorFrameSandbox() 当期望——函数改坏时期望会跟着坏。
+test("UC-3 托管六件每一条都拿不可信沙箱常量，且不得脚本加同源", () => {
+  assert.equal(HOSTED_EDITOR_EMBED_BASES.length, 6);
+  for (const base of HOSTED_EDITOR_EMBED_BASES) {
+    const sandbox = embedEditorFrameSandbox(base);
+    assert.equal(sandbox, UNTRUSTED_FRAME_SANDBOX, base);
+    assert.equal(
+      sandboxGrantsScriptedSameOrigin(sandbox),
+      false,
+      `${base} 拿到了同源沙箱`,
     );
   }
 });
