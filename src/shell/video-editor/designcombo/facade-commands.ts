@@ -29,12 +29,21 @@ export interface VideoFacadeArgs {
 /** L1/L2 点「画面裁切」但没框选时给人看的话。不许改成默默裁一圈。 */
 export const VIDEO_CROP_NEEDS_RECT =
   "请先框选要保留的区域，没有选区时不会裁切画面。";
+/** 有矩形但宽/高为 0、负数、或落到画面外成了空框。不许改成满幅或 5% 细条。 */
+export const VIDEO_CROP_EMPTY_RECT =
+  "裁切框没有可用面积，画面没有被裁切。";
 /** L1/L2 点「加字幕」但没正文时给人看的话。不许改成占位「字幕」。 */
 export const VIDEO_CAPTION_NEEDS_TEXT =
   "请先输入字幕正文，空的字幕不会加进成片。";
 /** L1/L2 点「关键帧」但没表时给人看的话。不许改成空的 0%/100% 动画。 */
 export const VIDEO_KEYFRAMES_NEED_TABLE =
   "请先给出关键帧，没有关键帧表时不会给片段加动画。";
+/** 点「音量」但没给出数值。不许当成 0（静音）并报成功。 */
+export const VIDEO_VOLUME_NEEDS_VALUE =
+  "请先给出音量，没有音量值时不会改变声音。";
+/** 点「速度」但没给出倍速。不许当成 1x 并报成功。 */
+export const VIDEO_SPEED_NEEDS_VALUE =
+  "请先选择倍速，没有速度值时不会改变播放速度。";
 
 function fail(reason: string): VideoFacadeResult {
   return { ok: false, reason };
@@ -56,6 +65,37 @@ function hasKeyframeTable(
   keyframes: VideoFacadeArgs["keyframes"],
 ): keyframes is Record<string, Record<string, number>> {
   return Boolean(keyframes && Object.keys(keyframes).length > 0);
+}
+
+function hasFiniteCommandNumber(value: VideoFacadeArgs["value"]): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string" && value.trim() !== "") {
+    return Number.isFinite(Number(value));
+  }
+  return false;
+}
+
+function parseUsableCropRect(crop: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): { x: number; y: number; width: number; height: number } | null {
+  const x0 = Number(crop.x);
+  const y0 = Number(crop.y);
+  const w0 = Number(crop.width);
+  const h0 = Number(crop.height);
+  if (![x0, y0, w0, h0].every((entry) => Number.isFinite(entry))) return null;
+  if (w0 <= 0 || h0 <= 0) return null;
+  const x = Math.min(1, Math.max(0, x0));
+  const y = Math.min(1, Math.max(0, y0));
+  const width = Math.min(1 - x, w0);
+  const height = Math.min(1 - y, h0);
+  if (width <= 0 || height <= 0) return null;
+  const widthOut = Math.min(1 - x, Math.max(0.05, width));
+  const heightOut = Math.min(1 - y, Math.max(0.05, height));
+  if (widthOut <= 0 || heightOut <= 0) return null;
+  return { x, y, width: widthOut, height: heightOut };
 }
 
 function withClip(
@@ -124,7 +164,10 @@ export function setOpenVideoVolume(
   volume: number,
 ): VideoFacadeResult {
   return withClip(project, clipId, (clip, next) => {
-    const nextVolume = Math.min(2, Math.max(0, Number(volume) || 0));
+    if (!Number.isFinite(Number(volume))) {
+      return fail(VIDEO_VOLUME_NEEDS_VALUE);
+    }
+    const nextVolume = Math.min(2, Math.max(0, Number(volume)));
     clip.volume = nextVolume;
     clip.muted = nextVolume === 0;
     return { ok: true, project: next };
@@ -150,7 +193,10 @@ export function setOpenVideoSpeed(
   speed: number,
 ): VideoFacadeResult {
   return withClip(project, clipId, (clip, next) => {
-    const playbackRate = Math.min(4, Math.max(0.25, Number(speed) || 1));
+    if (!Number.isFinite(Number(speed))) {
+      return fail(VIDEO_SPEED_NEEDS_VALUE);
+    }
+    const playbackRate = Math.min(4, Math.max(0.25, Number(speed)));
     clip.timing = { ...clip.timing, playbackRate };
     return { ok: true, project: next };
   });
@@ -162,18 +208,16 @@ export function cropOpenVideoClip(
   crop: { x: number; y: number; width: number; height: number },
 ): VideoFacadeResult {
   return withClip(project, clipId, (clip, next) => {
-    const x = Math.min(1, Math.max(0, Number(crop.x) || 0));
-    const y = Math.min(1, Math.max(0, Number(crop.y) || 0));
-    const width = Math.min(1 - x, Math.max(0.05, Number(crop.width) || 1));
-    const height = Math.min(1 - y, Math.max(0.05, Number(crop.height) || 1));
-    clip.crop = { x, y, width, height };
+    const rect = parseUsableCropRect(crop);
+    if (!rect) return fail(VIDEO_CROP_EMPTY_RECT);
+    clip.crop = rect;
     const canvasW = next.settings.width;
     const canvasH = next.settings.height;
     clip.transform = {
-      x: Math.round(x * canvasW),
-      y: Math.round(y * canvasH),
-      width: Math.round(width * canvasW),
-      height: Math.round(height * canvasH),
+      x: Math.round(rect.x * canvasW),
+      y: Math.round(rect.y * canvasH),
+      width: Math.round(rect.width * canvasW),
+      height: Math.round(rect.height * canvasH),
       angle: clip.transform?.angle ?? 0,
       opacity: clip.transform?.opacity ?? 1,
       zIndex: clip.transform?.zIndex ?? 10,
@@ -314,6 +358,9 @@ export function runVideoDesigncomboCommand(
     case "delete":
       return deleteOpenVideoClip(project, String(args.clipId || ""));
     case "volume":
+      if (!hasFiniteCommandNumber(args.value)) {
+        return fail(VIDEO_VOLUME_NEEDS_VALUE);
+      }
       return setOpenVideoVolume(
         project,
         String(args.clipId || ""),
@@ -322,7 +369,14 @@ export function runVideoDesigncomboCommand(
     case "muted":
       return setOpenVideoMuted(project, String(args.clipId || ""), args.value === true);
     case "speed":
-      return setOpenVideoSpeed(project, String(args.clipId || ""), Number(args.value) || 1);
+      if (!hasFiniteCommandNumber(args.value)) {
+        return fail(VIDEO_SPEED_NEEDS_VALUE);
+      }
+      return setOpenVideoSpeed(
+        project,
+        String(args.clipId || ""),
+        Number(args.value),
+      );
     case "crop-frame":
       if (!hasCropRect(args.crop)) return fail(VIDEO_CROP_NEEDS_RECT);
       return cropOpenVideoClip(project, String(args.clipId || ""), args.crop);
