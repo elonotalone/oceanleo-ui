@@ -385,6 +385,33 @@ test("host 往 Langflow 发消息必须钉死 flow origin，不许 *", async () 
   assert.notEqual(calls[1].origin, "*");
 });
 
+test("专业模式必须出现 Langflow iframe", async () => {
+  resetAgentReviewInbox();
+  const mounted = await mountCompiled(
+    "src/shell/advanced-routes/VideoCanvasRoute.tsx",
+    leafStubs,
+    (mod) =>
+      React.createElement(mod.VideoCanvasRoute, {
+        item: workflowItem(),
+        onClose() {},
+      }),
+  );
+  try {
+    const button = mounted.container.querySelector("[data-testid=workflow-set-pro]");
+    assert.ok(button, "壳桩没有把 adapter.mode.setMode 画成可点的专业模式按钮");
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {});
+    assertLiveLangflowIframe(
+      mounted.container.querySelector("[data-testid=workflow-langflow-frame]"),
+    );
+  } finally {
+    await mounted.unmount();
+    resetAgentReviewInbox();
+  }
+});
+
 test("普通模式真画节点和连线；专业模式才挂 Langflow iframe", async () => {
   resetAgentReviewInbox();
   const mounted = await mountCompiled(

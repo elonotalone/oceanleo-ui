@@ -78,23 +78,6 @@ const LANGFLOW_EXECUTION_INPUT_TYPES = ["Data", "JSON"] as const;
 /** Langflow 里 `œ` 代替 `"`。上游前端解码就是把它换回来再 `JSON.parse`。 */
 const HANDLE_QUOTE = "\u0153";
 
-/**
- * 端口数据类型 → Langflow `output_types` / `inputTypes` 的字面量。
- *
- * 两侧用**同一张表**，所以我们自己产出的边在 Langflow 前端的类型校验里天然成立。
- * 刻意不把六种全压成 `Data`：压平之后 Langflow 会允许把音频接进图像口，
- * 而那条连线取回来在 `linkGraphEdges()` 里才会被拒——错误离用户按下鼠标的时刻太远。
- */
-const PORT_TYPE_TO_LANGFLOW: Readonly<Record<VideoCanvasPortDataType, string>> =
-  Object.freeze({
-    video: "OceanLeoVideo",
-    audio: "OceanLeoAudio",
-    image: "OceanLeoImage",
-    text: "Message",
-    number: "OceanLeoNumber",
-    any: "Data",
-  });
-
 const NODE_KIND_SET: ReadonlySet<string> = new Set(VIDEO_CANVAS_NODE_KINDS);
 const PORT_DATA_TYPE_SET: ReadonlySet<string> = new Set(
   VIDEO_CANVAS_PORT_DATA_TYPES,
