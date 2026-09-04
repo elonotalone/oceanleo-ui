@@ -21,14 +21,20 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
+
+import React, { act } from "react";
 
 // 走子模块而不是 `agent-review/index.ts`：那个桶文件会把 `AgentReviewPanel.tsx`
 // 一起拖进来，测试链的 loader 不认 `.tsx`，整份文件会在加载期就死（§7b⑩）。
 import { submitRawReviewProposal } from "../src/shell/agent-review/inbox.ts";
 import { hostReviewSession } from "../src/shell/agent-review/session.ts";
+import { EDITOR_PROTOCOL as HOST_EDITOR_PROTOCOL } from "../src/shell/editor-protocol.ts";
 import { validReviewProposal } from "../src/shell/hosted-editor/index.ts";
 
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 import { HostBridge } from "/root/projects/umo-hosted/src/bridge/host-bridge.ts";
+import { routeHostedSelectionCommand } from "/root/projects/umo-hosted/src/bridge/hosted-selection-wire.ts";
 import { EDITOR_PROTOCOL } from "/root/projects/umo-hosted/src/bridge/protocol.ts";
 import { ReviewStore } from "/root/projects/umo-hosted/src/bridge/review.ts";
 import {
@@ -324,6 +330,49 @@ function calleeName(node) {
   return "";
 }
 
+function isFalseLiteral(node) {
+  return Boolean(
+    node &&
+      (node.kind === ts.SyntaxKind.FalseKeyword ||
+        (ts.isPrefixUnaryExpression(node) &&
+          node.operator === ts.SyntaxKind.ExclamationToken &&
+          node.operand.kind === ts.SyntaxKind.TrueKeyword)),
+  );
+}
+
+function isLiveCall(node) {
+  for (let cursor = node.parent; cursor; cursor = cursor.parent) {
+    if (
+      ts.isIfStatement(cursor) &&
+      isFalseLiteral(cursor.expression)
+    ) {
+      return false;
+    }
+    if (
+      ts.isBinaryExpression(cursor) &&
+      cursor.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+      isFalseLiteral(cursor.left)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function methodNamed(sf, name) {
+  let found = null;
+  walk(sf, (node) => {
+    if (
+      (ts.isMethodDeclaration(node) || ts.isPropertyAssignment(node)) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name
+    ) {
+      found = node;
+    }
+  });
+  return found;
+}
+
 function callSites(sourceFile, name) {
   const hits = [];
   walk(sourceFile, (node) => {
@@ -349,9 +398,33 @@ function enclosingPropertyNames(node) {
 
 test("App.vue 的 selection-command 接线交给审阅路由，不自己执行", () => {
   const sf = parseVueScript(appVue, "App.vue");
+  const wire = callSites(sf, "routeHostedSelectionCommand");
   assert.ok(
-    callSites(sf, "handleSelectionCommand").length >= 1,
-    "App.vue 没有调用 handleSelectionCommand —— 审阅路由被摘掉了",
+    wire.length >= 1,
+    "App.vue 没有调用 routeHostedSelectionCommand —— 审阅接线被摘掉了",
+  );
+  assert.ok(
+    wire.every(isLiveCall),
+    "routeHostedSelectionCommand 被 if (false) / false && 包死了，标识符还在但用户文档会被先落地",
+  );
+  const handler = methodNamed(sf, "onSelectionCommand");
+  assert.ok(handler, "找不到 onSelectionCommand");
+  const aliases = [];
+  walk(handler, (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      ts.isIdentifier(node.initializer) &&
+      node.initializer.text === "applySelectionCommand" &&
+      ts.isIdentifier(node.name)
+    ) {
+      aliases.push(node.name.text);
+    }
+  });
+  assert.equal(
+    aliases.length,
+    0,
+    `onSelectionCommand 把 applySelectionCommand 别名成 ${aliases.join(",")} 再先落地 —— V6 那一刀`,
   );
 });
 
@@ -422,8 +495,191 @@ test("宿主 RichDocHostedRoute 真的收提案、并把人的裁决回给编辑
     literals.includes("oceanleo-review-decision"),
     "宿主没听审阅面板的裁决事件",
   );
+  const ingest = callSites(sf, "ingestRichDocReviewProposal");
   assert.ok(
-    callSites(sf, "submitRawReviewProposal").length >= 1,
-    "提案没交给 L4 收件箱（W02-review-api.md），等于收下就扔",
+    ingest.length >= 1,
+    "提案没交给 ingestRichDocReviewProposal，等于收下就扔",
   );
+  assert.ok(
+    ingest.every(isLiveCall),
+    "ingestRichDocReviewProposal 被 if (false) / false && 包死，收件箱不会进提案",
+  );
+});
+
+test("routeHostedSelectionCommand 就是审阅路由，不许先落地", () => {
+  const { applied, proposals, review, deps } = harness(2);
+  const outcome = routeHostedSelectionCommand(boldCommand(), {}, deps);
+  assert.equal(outcome, "review");
+  assert.equal(applied.length, 0, "接线层先落地了 —— App.vue 那刀的产品面");
+  assert.equal(proposals.length, 1);
+  assert.equal(review.revision, 2);
+});
+
+function sampleProposal(revision = 0) {
+  return {
+    proposalId: "prop-gate-1",
+    commandId: "bold",
+    revision,
+    summary: { before: "第一季度", after: "第一季度（加粗）" },
+    objects: [
+      {
+        id: "bold:sel-abc123",
+        op: "update",
+        label: "加粗",
+        before: "paragraph",
+        after: "对当前选区应用「加粗」",
+      },
+    ],
+    targetSelection: null,
+  };
+}
+
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const HOST_PAGE = "https://oceanleo.com/workspace";
+const reviewDom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: HOST_PAGE,
+});
+const reviewWindow = reviewDom.window;
+for (const [name, value] of Object.entries({
+  window: reviewWindow,
+  document: reviewWindow.document,
+  navigator: reviewWindow.navigator,
+  HTMLElement: reviewWindow.HTMLElement,
+  HTMLIFrameElement: reviewWindow.HTMLIFrameElement,
+  Element: reviewWindow.Element,
+  Node: reviewWindow.Node,
+  Event: reviewWindow.Event,
+  CustomEvent: reviewWindow.CustomEvent,
+  MessageEvent: reviewWindow.MessageEvent,
+  localStorage: reviewWindow.localStorage,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.fetch = async () => {
+  throw new Error("RichDocHostedRoute 首屏不该发网络请求");
+};
+
+const reviewShellUrl = dataModule(`
+  import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AdvancedWorkbenchShell({ adapter }) {
+    return jsxs("div", {
+      "data-role": "richdoc-review-shell",
+      children: [adapter && adapter.stage ? adapter.stage : null],
+    });
+  }
+`);
+const reviewRoutesUrl = dataModule(`
+  export function editorToolLabel() { return "文档"; }
+`);
+
+let reviewHostedModule;
+async function loadReviewHostedRoute() {
+  if (!reviewHostedModule) {
+    const compiled = await compileModule(
+      "src/shell/advanced-routes/RichDocHostedRoute.tsx",
+      {
+        "../AdvancedWorkbenchShell": reviewShellUrl,
+        "../workbench-routes": reviewRoutesUrl,
+        "../agent-review": realModule("src/shell/agent-review/inbox.ts"),
+      },
+    );
+    reviewHostedModule = await import(compiled);
+  }
+  return reviewHostedModule;
+}
+
+test("ingestRichDocReviewProposal 真的把提案推进宿主收件箱", async () => {
+  hostReviewSession.markDiscarded();
+  const { ingestRichDocReviewProposal } = await loadReviewHostedRoute();
+  const verdict = ingestRichDocReviewProposal(sampleProposal(0), {
+    liveRevision: 0,
+    editorId: "richdoc",
+  });
+  assert.equal(verdict, "ok", "ingest 没把提案交进去（提前 return / 恒 ok）");
+  const snapshot = hostReviewSession.snapshot();
+  assert.equal(snapshot.status, "open");
+  assert.equal(snapshot.parked.proposal.proposalId, "prop-gate-1");
+  hostReviewSession.markDiscarded();
+});
+
+test("jsdom 把 review-proposal 丢进真路由后，宿主收件箱有一条", async () => {
+  hostReviewSession.markDiscarded();
+  const { RichDocHostedRoute } = await loadReviewHostedRoute();
+  const { createRoot } = await import("react-dom/client");
+  const container = reviewWindow.document.createElement("div");
+  reviewWindow.document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      React.createElement(RichDocHostedRoute, {
+        item: {
+          key: "rd-review-gate",
+          source: "artifact",
+          id: "rd-review-gate",
+          title: "审阅闸",
+          kind: "document",
+          siteId: "website",
+          favorite: false,
+          meta: {},
+        },
+        onClose() {},
+      }),
+    );
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  try {
+    const iframe = container.querySelector("iframe");
+    assert.ok(iframe, "宿主路由没挂 iframe，postMessage 无从投递");
+    const src = iframe.getAttribute("src") || "";
+    const instanceId = new URL(src).searchParams.get("instance");
+    assert.ok(instanceId, "iframe src 没有 instance，收信闸会丢掉提案");
+    const event = new reviewWindow.MessageEvent("message", {
+      data: {
+        protocol: HOST_EDITOR_PROTOCOL,
+        type: "review-proposal",
+        instanceId,
+        proposal: sampleProposal(0),
+      },
+      origin: "https://docs.oceanleo.app",
+      source: iframe.contentWindow,
+    });
+    await act(async () => {
+      reviewWindow.dispatchEvent(event);
+    });
+    const snapshot = hostReviewSession.snapshot();
+    assert.equal(
+      snapshot.status,
+      "open",
+      `review-proposal 分支提前 return 或 submit 恒 ok：收件箱 status=${snapshot.status}`,
+    );
+    assert.equal(snapshot.parked?.proposal?.proposalId, "prop-gate-1");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    hostReviewSession.markDiscarded();
+  }
 });

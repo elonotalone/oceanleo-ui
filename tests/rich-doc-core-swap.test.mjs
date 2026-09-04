@@ -8,14 +8,24 @@
  */
 
 import { strict as assert } from "node:assert";
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
+
+import React, { act } from "react";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 import {
   EDITOR_CORE_SPECS,
   resolveEditorCore,
+  setEditorCoreOverride,
 } from "../src/shell/editor-core-flags.ts";
-import { isTrustedEmbedEditorBase } from "../src/shell/editor-sandbox-origin.ts";
+import {
+  embedEditorFrameSandbox,
+  isTrustedEmbedEditorBase,
+} from "../src/shell/editor-sandbox-origin.ts";
 import { EDITOR_PROTOCOL } from "../src/shell/editor-protocol.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
 import {
@@ -143,4 +153,277 @@ test("init 信封是 oceanleo.editor.v1，带只读标记，没有第三种 mode
 
 test("Hosted 六件不拿同源沙箱（W08-request R2）", () => {
   assert.doesNotMatch(hosted, /allow-same-origin/);
+});
+
+// ── A-48：闸必须挂上路由看节点，不能只扫源码 token ─────────────────────
+const require = createRequire(import.meta.url);
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const HOST_PAGE = "https://oceanleo.com/workspace";
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: HOST_PAGE,
+});
+const { window } = dom;
+const { document } = window;
+for (const [name, value] of Object.entries({
+  window,
+  document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  HTMLIFrameElement: window.HTMLIFrameElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  localStorage: window.localStorage,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+globalThis.fetch = async () => {
+  throw new Error("RichDocHostedRoute 首屏不该发网络请求");
+};
+
+const shellStubUrl = dataModule(`
+  import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AdvancedWorkbenchShell({ adapter }) {
+    return jsxs("div", {
+      "data-role": "richdoc-hosted-shell",
+      children: [
+        adapter && adapter.stage ? adapter.stage : null,
+        adapter && adapter.status
+          ? jsx("div", { "data-role": "richdoc-hosted-status", children: adapter.status })
+          : null,
+      ],
+    });
+  }
+`);
+const routesStubUrl = dataModule(`
+  export function editorToolLabel() { return "文档"; }
+`);
+const hostedMarkerUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function RichDocHostedRoute(props) {
+    return jsx("div", {
+      "data-richdoc-hosted": "1",
+      "data-item-id": props.item && props.item.id ? props.item.id : "",
+    });
+  }
+  export default RichDocHostedRoute;
+`);
+const richdocEmptyUrl = dataModule(`
+  export function AdvancedWorkbenchShell() { return null; }
+  export function exportWechatFromTiptap() { return { html: "", warnings: [] }; }
+  export function RichDocContextToolbar() { return null; }
+  export function RichDocControls() { return null; }
+  export function RichDocCommentRail() { return null; }
+  export function EditorSourceFailurePanel() { return null; }
+  export function RichDocStage() { return null; }
+  export function downloadText() {}
+  export function artifactSaveStepMessage() { return ""; }
+  export function tiptapJsonToDocxBlob() { return new Blob(); }
+  export function buildRichDocCommandSurface() { return {}; }
+  export function downloadConvertedCopy() {}
+  export const DOC_FAMILY_DOWNLOAD_FORMATS = { richdoc: [] };
+  export function docFamilyAcceptAttribute() { return ""; }
+  export function importDocFamilyFile() { return Promise.resolve(null); }
+  export function usePluginCommandSurface() {}
+  export function useRichDocEditor() { return { loading: false }; }
+  export function richDocSavedItemForHandoff(item) { return item; }
+  export const RICHDOC_SOURCE_FORMAT = "richdoc";
+  export const RICHDOC_SOURCE_MEDIA_TYPE = "application/json";
+  export function isDurableLibraryItem() { return false; }
+  export function useOfficeArtifactSource() { return { loading: false, item: {} }; }
+  export function editorToolLabel() { return "文档"; }
+  export function useWorkbenchMaterialAdapter() { return {}; }
+  export function advancedSavedItem(item) { return item; }
+  export function advancedRecoveryKey() { return "k"; }
+`);
+
+function richDocItem() {
+  return {
+    key: "rd-gate",
+    source: "artifact",
+    id: "rd-gate",
+    title: "闸",
+    kind: "document",
+    siteId: "website",
+    favorite: false,
+    meta: {},
+  };
+}
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+let hostedRouteModule;
+async function loadHostedRoute() {
+  if (!hostedRouteModule) {
+    const url = await compileModule(
+      "src/shell/advanced-routes/RichDocHostedRoute.tsx",
+      {
+        "../AdvancedWorkbenchShell": shellStubUrl,
+        "../workbench-routes": routesStubUrl,
+      },
+    );
+    hostedRouteModule = await import(url);
+  }
+  return hostedRouteModule;
+}
+
+let richDocRouteModule;
+async function loadRichDocRoute() {
+  if (!richDocRouteModule) {
+    const url = await compileModule(
+      "src/shell/advanced-routes/RichDocRoute.tsx",
+      {
+        "./RichDocHostedRoute": hostedMarkerUrl,
+        "../AdvancedWorkbenchShell": richdocEmptyUrl,
+        "../advanced-session": richdocEmptyUrl,
+        "../advanced-recovery-store": richdocEmptyUrl,
+        "../doc-editors/rich-doc-wechat-export": richdocEmptyUrl,
+        "../doc-editors/RichDocContextToolbar": richdocEmptyUrl,
+        "../doc-editors/RichDocControls": richdocEmptyUrl,
+        "../doc-editors/richdoc-review/RichDocCommentRail": richdocEmptyUrl,
+        "../doc-editors/EditorSourceFailurePanel": richdocEmptyUrl,
+        "../doc-editors/RichDocStage": richdocEmptyUrl,
+        "../doc-editors/doc-io": richdocEmptyUrl,
+        "../doc-editors/artifact-save-contract": richdocEmptyUrl,
+        "../doc-editors/docx-export": richdocEmptyUrl,
+        "../doc-editors/doc-family-commands": richdocEmptyUrl,
+        "../doc-editors/doc-family-download": richdocEmptyUrl,
+        "../doc-editors/doc-family-formats": richdocEmptyUrl,
+        "../doc-editors/doc-family-import": richdocEmptyUrl,
+        "../plugin-command": richdocEmptyUrl,
+        "../doc-editors/use-rich-doc-editor": richdocEmptyUrl,
+        "../library-data": richdocEmptyUrl,
+        "../office-editor": richdocEmptyUrl,
+        "../workbench-routes": richdocEmptyUrl,
+        "../workbench-material-provider": richdocEmptyUrl,
+      },
+    );
+    richDocRouteModule = await import(url);
+  }
+  return richDocRouteModule;
+}
+
+async function mountRichDocHostedRoute() {
+  const { RichDocHostedRoute } = await loadHostedRoute();
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      React.createElement(RichDocHostedRoute, {
+        item: richDocItem(),
+        onClose() {},
+      }),
+    );
+  });
+  await flush();
+  return {
+    container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+test("src 计算函数给出 docs.oceanleo.app，空串就是用户看见无法构造", async () => {
+  const { computeRichDocHostedEmbedSrc } = await loadHostedRoute();
+  const computed = computeRichDocHostedEmbedSrc({
+    embedBase: richDocHostedEmbedBase(),
+    instanceId: "rd-gate",
+    hostOrigin: "https://oceanleo.com",
+    assetTitle: "闸",
+  });
+  assert.ok(computed, "src 计算函数给出空串，用户会看见无法构造嵌入地址");
+  assert.equal(new URL(computed).origin, RICHDOC_HOSTED_EMBED_ORIGIN);
+  assert.equal(new URL(computed).origin, "https://docs.oceanleo.app");
+});
+
+test("jsdom 挂上 RichDocHostedRoute 后，画布是真 iframe 而不是 fallback", async () => {
+  const { container, unmount } = await mountRichDocHostedRoute();
+  try {
+    const iframe = container.querySelector("iframe");
+    assert.ok(iframe, "挂起来之后没有 iframe 节点，用户看不到文档画布");
+    assert.equal(iframe.tagName, "IFRAME", "画布节点不是 iframe（标签被换成别的了）");
+
+    const src = iframe.getAttribute("src") || "";
+    assert.ok(src, "iframe 的 src 是空的，用户看见的是无法构造嵌入地址");
+    assert.equal(
+      new URL(src).origin,
+      "https://docs.oceanleo.app",
+      `iframe src origin 不是 docs 托管域：${src}`,
+    );
+
+    const expectedSandbox = embedEditorFrameSandbox("https://docs.oceanleo.app");
+    assert.equal(
+      iframe.getAttribute("sandbox"),
+      expectedSandbox,
+      "sandbox 没有走 embedEditorFrameSandbox()",
+    );
+    assert.equal(
+      new URL(src).searchParams.get("assetTitle"),
+      "闸",
+      "iframe src 没带 item.title。上层把 item 传成 null，用户看到无名画布",
+    );
+    assert.ok(expectedSandbox.includes("allow-scripts"));
+    assert.ok(!expectedSandbox.includes("allow-same-origin"));
+
+    const text = container.textContent || "";
+    assert.equal(
+      text.includes("无法构造"),
+      false,
+      "用户看见的是「无法构造嵌入地址」fallback，iframe 没挂上",
+    );
+  } finally {
+    await unmount();
+  }
+});
+
+test("RichDocRoute next 分支不许 return null / 恒假（辅闸；行为锁在上面 iframe 例）", () => {
+  const dispatch = route.slice(
+    route.indexOf("export function RichDocRoute("),
+    route.indexOf("function RichDocLegacyRoute("),
+  );
+  assert.match(dispatch, /if \(resolveEditorCore\("richdoc"\) === "next"\)/);
+  assert.doesNotMatch(
+    dispatch,
+    /if \(false && resolveEditorCore\("richdoc"\)/,
+    "分发口被改成恒假，翻 flag 仍走旧核",
+  );
+  assert.doesNotMatch(
+    dispatch,
+    /if \(resolveEditorCore\("richdoc"\) === "next"\) \{\s*return null/,
+    "if 行还在但函数体 return null，翻 flag 用户得到空白页",
+  );
+  assert.match(dispatch, /<RichDocHostedRoute \{\.\.\.props\} \/>/);
 });

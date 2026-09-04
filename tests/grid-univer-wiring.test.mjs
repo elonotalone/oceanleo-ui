@@ -9,10 +9,18 @@
 // 「真的画出一张 Univer 表」那半在浏览器里，归 V1（不许拿浏览器当验收）。
 
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
-import { DEFAULT_EDITOR_CORE } from "../src/shell/editor-core-flags.ts";
+import React, { act } from "react";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import {
+  DEFAULT_EDITOR_CORE,
+  setEditorCoreOverride,
+} from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
 import {
   gridAgentChipsAreValid,
@@ -51,14 +59,14 @@ const leafCode = leaf
   .replace(/\/\/.*$/gm, "");
 
 test("the dual-core flag is resolved once, at the top of the route", () => {
-  assert.match(route, /if \(resolveEditorCore\("grid"\) === "next"\)/);
+  assert.match(route, /resolveEditorCore\("grid"\)/);
+  assert.match(route, /renderGridNextOrLegacy\(/);
+  assert.match(route, /export async function loadGridUniverStage/);
   assert.doesNotMatch(route, /from "@univerjs\//);
-  assert.match(
-    route,
-    /dynamic\(\s*\(\) =>\s*import\("\.\.\/doc-editors\/GridUniverStage"\)/,
-  );
-  assert.match(route, /\{ ssr: false, loading: \(\) => null \}/);
-  assert.match(route, /<GridUniverStage \{\.\.\.props\} \/>/);
+  assert.match(route, /dynamic\(loadGridUniverStage,/);
+  assert.match(route, /import\("\.\.\/doc-editors\/GridUniverStage"\)/);
+  assert.match(route, /ssr:\s*false/);
+  assert.match(route, /loading:\s*\(\)\s*=>\s*null/);
   assert.match(route, /function GridLegacyRoute/);
   assert.match(route, /<GridStage editor=\{editor\} accent=\{accent\} \/>/);
   assert.match(route, /useGridEditor/);
@@ -309,4 +317,265 @@ test("the live facade port refuses to run without a workbook", () => {
   assert.equal(port.selection.startRow, 2);
   assert.equal(port.selection.startColumn, 3);
   assert.equal(port.selection.endColumn, 4);
+});
+
+// ── A-48：闸必须挂上分发口看节点，不能只扫 if 字面量 ─────────────────────
+const require = createRequire(import.meta.url);
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const HOST_PAGE = "https://oceanleo.com/workspace";
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: HOST_PAGE,
+});
+const { window } = dom;
+const { document } = window;
+for (const [name, value] of Object.entries({
+  window,
+  document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  localStorage: window.localStorage,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const nextMarkerUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function GridUniverStage(props) {
+    return jsx("div", {
+      "data-grid-univer-stage": "1",
+      "data-item-id": props.item && props.item.id ? props.item.id : "",
+    });
+  }
+`);
+const emptyFn = dataModule(`
+  export function AdvancedWorkbenchShell() { return null; }
+  export function GridContextToolbar() { return null; }
+  export function GridStage() { return null; }
+  export function downloadBlob() {}
+  export function fetchMediaBlob() { return Promise.resolve(null); }
+  export function captureGridRouteSnapshot() { return {}; }
+  export class GridRouteHistory {}
+  export function buildGridRouteWorkbookBlob() { return new Blob(); }
+  export function useGridEditor() { return { loading: false, sheets: [] }; }
+  export function gridSavedItemForHandoff(item) { return item; }
+  export const GRID_SOURCE_FORMAT = "grid";
+  export const GRID_SOURCE_MEDIA_TYPE = "application/json";
+  export function useOfficeArtifactSource() { return { loading: false, item: {} }; }
+  export function editorToolLabel() { return "表格"; }
+  export function buildGridCommandSurface() { return {}; }
+  export function downloadConvertedCopy() {}
+  export const DOC_FAMILY_DOWNLOAD_FORMATS = { grid: [] };
+  export function docFamilyAcceptAttribute() { return ""; }
+  export function importDocFamilyFile() { return Promise.resolve(null); }
+  export function usePluginCommandSurface() {}
+  export function useWorkbenchMaterialAdapter() { return {}; }
+  export function advancedSavedItem(item) { return item; }
+  export function advancedRecoveryKey() { return "k"; }
+`);
+const dynamicStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  import { useEffect, useState } from ${JSON.stringify(reactUrl)};
+  export default function dynamic(loader) {
+    const pending = Promise.resolve().then(() => loader()).then((loaded) => {
+      if (typeof loaded === "function") return loaded;
+      return loaded && loaded.default ? loaded.default : loaded;
+    });
+    return function DynamicLoaded(props) {
+      const [Comp, setComp] = useState(null);
+      useEffect(() => {
+        let cancelled = false;
+        pending.then((next) => {
+          if (!cancelled && next) setComp(() => next);
+        });
+        return () => { cancelled = true; };
+      }, []);
+      return Comp ? jsx(Comp, props) : null;
+    };
+  }
+`);
+
+function gridItem() {
+  return {
+    key: "grid-gate",
+    source: "artifact",
+    id: "grid-gate",
+    title: "闸",
+    kind: "sheet",
+    siteId: "website",
+    favorite: false,
+    meta: {},
+  };
+}
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+let dispatchModule;
+async function loadDispatch() {
+  if (!dispatchModule) {
+    const url = await compileModule(
+      "src/shell/doc-editors/grid-univer/route-dispatch.tsx",
+      {},
+    );
+    dispatchModule = await import(url);
+  }
+  return dispatchModule;
+}
+
+let routeModule;
+async function loadGridRoute() {
+  if (!routeModule) {
+    const url = await compileModule(
+      "src/shell/advanced-routes/GridRoute.tsx",
+      {
+        "next/dynamic": dynamicStubUrl,
+        "../doc-editors/GridUniverStage": nextMarkerUrl,
+        "../AdvancedWorkbenchShell": emptyFn,
+        "../../lib/media-proxy": emptyFn,
+        "../doc-editors/GridContextToolbar": emptyFn,
+        "../doc-editors/doc-io": emptyFn,
+        "../doc-editors/GridRouteHistory": emptyFn,
+        "../doc-editors/GridStage": emptyFn,
+        "../doc-editors/GridWorkbookExport": emptyFn,
+        "../doc-editors/use-grid-editor": emptyFn,
+        "../office-editor": emptyFn,
+        "../workbench-routes": emptyFn,
+        "../doc-editors/doc-family-commands": emptyFn,
+        "../doc-editors/doc-family-download": emptyFn,
+        "../doc-editors/doc-family-formats": emptyFn,
+        "../doc-editors/doc-family-import": emptyFn,
+        "../plugin-command": emptyFn,
+        "../workbench-material-provider": emptyFn,
+        "../advanced-session": emptyFn,
+        "../advanced-recovery-store": emptyFn,
+      },
+    );
+    routeModule = await import(url);
+  }
+  return routeModule;
+}
+
+function NextMarker(props) {
+  return React.createElement("div", {
+    "data-grid-univer-stage": "1",
+    "data-item-id": props.item?.id || "",
+  });
+}
+function LegacyMarker() {
+  return React.createElement("div", { "data-grid-legacy": "1" });
+}
+
+async function mountNode(node) {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(node);
+  });
+  await flush();
+  return {
+    container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+test("loadGridUniverStage 返回的是舞台组件，不是 null", async () => {
+  const { loadGridUniverStage } = await loadGridRoute();
+  const Stage = await loadGridUniverStage();
+  assert.equal(typeof Stage, "function", "next 舞台加载函数 return null，翻 flag 用户得到空白页");
+});
+
+test("flag=next 时分发口真的画出 next 舞台，并把 item 传下去", async () => {
+  const { renderGridNextOrLegacy } = await loadDispatch();
+  const item = gridItem();
+  const { container, unmount } = await mountNode(
+    renderGridNextOrLegacy("next", NextMarker, LegacyMarker, {
+      item,
+      onClose() {},
+    }),
+  );
+  try {
+    const next = container.querySelector("[data-grid-univer-stage]");
+    assert.ok(next, "core=next 时 next 舞台没挂上（return null / 分支恒假）");
+    assert.equal(
+      next.getAttribute("data-item-id"),
+      "grid-gate",
+      "上层没把 item 传给 next 舞台（传了 null）",
+    );
+    assert.equal(container.querySelector("[data-grid-legacy]"), null);
+  } finally {
+    await unmount();
+  }
+});
+
+test("flag=legacy 时分发口走旧核，不挂 next", async () => {
+  const { renderGridNextOrLegacy } = await loadDispatch();
+  const { container, unmount } = await mountNode(
+    renderGridNextOrLegacy("legacy", NextMarker, LegacyMarker, {
+      item: gridItem(),
+      onClose() {},
+    }),
+  );
+  try {
+    assert.ok(container.querySelector("[data-grid-legacy]"));
+    assert.equal(container.querySelector("[data-grid-univer-stage]"), null);
+  } finally {
+    await unmount();
+  }
+});
+
+test("jsdom 挂上 GridRoute 且本地翻 next 后，新核舞台在树上", async () => {
+  const { GridRoute } = await loadGridRoute();
+  setEditorCoreOverride("grid", "next");
+  try {
+    const { container, unmount } = await mountNode(
+      React.createElement(GridRoute, { item: gridItem(), onClose() {} }),
+    );
+    try {
+      const next = container.querySelector("[data-grid-univer-stage]");
+      assert.ok(
+        next,
+        "GridRoute 在 flag=next 时没有挂上 Univer 舞台。保留 if 行再 return null，用户翻专业核看见空白页。",
+      );
+      assert.equal(next.getAttribute("data-item-id"), "grid-gate");
+    } finally {
+      await unmount();
+    }
+  } finally {
+    setEditorCoreOverride("grid", null);
+  }
 });
