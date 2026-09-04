@@ -1442,6 +1442,17 @@ export function FunctionAgentChat({
     sendRef.current = send;
   });
 
+  useEffect(() => {
+    const onChip = (event: Event) => {
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (typeof prompt !== "string" || !prompt.trim()) return;
+      setTab("agent");
+      void sendRef.current(prompt);
+    };
+    window.addEventListener("oceanleo-l4-chip", onChip);
+    return () => window.removeEventListener("oceanleo-l4-chip", onChip);
+  }, []);
+
   const running = status === "running" || busy;
   const renderItems = buildAgentRenderItems(messages);
   const activeProgressKey = activeAgentProgressKey(renderItems, messages);
@@ -1517,7 +1528,7 @@ export function FunctionAgentChat({
   if (tab === "ops") {
     return (
       <FnAgentBridgeCtx.Provider value={bridge}>
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col" data-fn-agent-tab="ops">
           {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
           {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
           {/* 操作台形态也要能看到「保存工作流」的提示/报错（如「请先填写」）。 */}
@@ -1555,7 +1566,7 @@ export function FunctionAgentChat({
   // 排版对齐 agent.oceanleo.com 的 AgentChat（操作员 2026-07-01）：字体 15px、对话
   // 与输入框 max-w-2xl 居中、气泡不铺满整栏，读感与主 agent 站一致（不再是 13px + 拉满）。
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-fn-agent-tab="agent">
       {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
         <div className="mx-auto w-full max-w-2xl space-y-3">

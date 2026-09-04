@@ -115,6 +115,11 @@ test("FunctionAgentChat 自带审阅面板，并把选区块拼进上下文", ()
   assert.match(fnChat, /assembleAgentEditorContext\(/);
   assert.match(fnChat, /installAgentReviewGate\(\)/);
   assert.match(fnChat, /installSelectionBridge\(\)/);
+  assert.match(
+    fnChat,
+    /window\.addEventListener\("oceanleo-l4-chip"/,
+    "操作台形态下点 chip 必须有人收（R4）；源码命中只是辅闸，行为在 function-agent-l4-chip",
+  );
 });
 
 test("SelectionToolbar 选区变化时把 kind/id 送进 agent 收件箱（不改排布）", () => {
