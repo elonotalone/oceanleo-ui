@@ -161,15 +161,50 @@ export const GAME_IDE_PAYLOAD_KIND = "oceanleo.game-ide-source.v1";
 export const GAME_IDE_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 /**
+ * 导入前请先给这份代码起个文件名。不许改成默默编一个 `oceanleo-import.html`。
+ */
+export const GAME_IDE_IMPORT_NEEDS_FILENAME =
+  "导入前请先给这份代码起个文件名，没有文件名不会送进 microStudio。";
+
+export type GameIdeImportEnvelope = {
+  protocol: typeof EDITOR_PROTOCOL;
+  type: typeof GAME_IDE_IMPORT_MESSAGE_TYPE;
+  instanceId: string;
+  content: {
+    kind: typeof GAME_IDE_PAYLOAD_KIND;
+    source: string;
+    fileName: string;
+  };
+  readOnly: false;
+  title?: string;
+};
+
+export type GameIdeImportEnvelopeResult =
+  | { ok: true; envelope: GameIdeImportEnvelope }
+  | { ok: false; reason: string };
+
+function failImport(reason: string): GameIdeImportEnvelopeResult {
+  return { ok: false, reason };
+}
+
+/**
+ * 宿主把作者标题交给导入信封。没有标题就交空串，由
+ * `buildGameIdeImportEnvelope` 拒绝。不许在这里编 `oceanleo-import.html`。
+ */
+export function hostGameIdeImportFileName(title: string | undefined): string {
+  return String(title ?? "").trim();
+}
+
+/**
  * 导入信封（`init` 自由载荷）。
  *
  * `fileName` 由宿主定而不是让编辑器猜：作者在 microStudio 的文件树里要认得出
- * 「这就是我从 OceanLeo 带过来的那份」。
+ * 「这就是我从 OceanLeo 带过来的那份」。缺文件名就拒绝并告知，不许编一个。
  */
 export function buildGameIdeImportEnvelope(
   instanceId: string,
   payload: { source: string; title?: string; fileName?: string },
-): Record<string, unknown> {
+): GameIdeImportEnvelopeResult {
   if (!instanceId || instanceId.length > 128) {
     throw new TypeError("game-ide: instanceId 必须非空且 ≤128");
   }
@@ -180,18 +215,23 @@ export function buildGameIdeImportEnvelope(
   if (gameSourceByteLength(source) > GAME_IDE_MAX_SOURCE_BYTES) {
     throw new TypeError("game-ide: 源码超过单次搬运上限");
   }
-  return {
+  const fileName = hostGameIdeImportFileName(payload.fileName);
+  if (!fileName) {
+    return failImport(GAME_IDE_IMPORT_NEEDS_FILENAME);
+  }
+  const envelope: GameIdeImportEnvelope = {
     protocol: EDITOR_PROTOCOL,
     type: GAME_IDE_IMPORT_MESSAGE_TYPE,
     instanceId,
     content: {
       kind: GAME_IDE_PAYLOAD_KIND,
       source,
-      fileName: payload.fileName || "oceanleo-import.html",
+      fileName,
     },
     readOnly: false,
     ...(payload.title ? { title: payload.title } : {}),
   };
+  return { ok: true, envelope };
 }
 
 export type GameIdeExportRead =

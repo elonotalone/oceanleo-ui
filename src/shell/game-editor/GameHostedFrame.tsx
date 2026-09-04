@@ -18,9 +18,9 @@ import {
 import { embedEditorFrameSandbox } from "../editor-sandbox-origin";
 import {
   GAME_IDE_HOSTED_EMBED_ORIGIN,
-  buildGameIdeImportEnvelope,
   gameIdeHostedEmbedBase,
   readGameIdeExport,
+  type GameIdeImportEnvelope,
 } from "./game-microstudio-embed";
 
 export function GameHostedFrame({
@@ -108,7 +108,7 @@ export function GameHostedFrame({
 export function postGameIdeImport(
   frame: Window | null,
   instanceId: string,
-  envelope: ReturnType<typeof buildGameIdeImportEnvelope>,
+  envelope: GameIdeImportEnvelope,
 ): boolean {
   if (!frame || !isValidEditorTargetOrigin(GAME_IDE_HOSTED_EMBED_ORIGIN)) {
     return false;

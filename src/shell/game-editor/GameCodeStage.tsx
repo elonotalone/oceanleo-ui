@@ -58,6 +58,7 @@ import {
   buildGameIdeImportEnvelope,
   computeGameIdeHostedEmbedSrc,
   gameIdeHostedEmbedBase,
+  hostGameIdeImportFileName,
 } from "./game-microstudio-embed";
 import {
   GameHostedFrame,
@@ -226,15 +227,17 @@ export function GameCodeStage({
     const frame = iframeRef.current?.contentWindow || null;
     if (!frame || !sourceRef.current.trim()) return;
     try {
+      const built = buildGameIdeImportEnvelope(instanceId, {
+        source: sourceRef.current,
+        title: item.title,
+        fileName: hostGameIdeImportFileName(item.title),
+      });
+      if (!built.ok) {
+        setStatus(built.reason);
+        return;
+      }
       hostedSessionRef.current = true;
-      postGameIdeImport(
-        frame,
-        instanceId,
-        buildGameIdeImportEnvelope(instanceId, {
-          source: sourceRef.current,
-          title: item.title,
-        }),
-      );
+      postGameIdeImport(frame, instanceId, built.envelope);
     } catch (caught) {
       setStatus(
         caught instanceof Error ? caught.message : "没法把源码送进专业模式。",
@@ -516,6 +519,15 @@ export function GameCodeStage({
             data-game-preview-paused={String(playback.paused)}
             data-game-preview-reload={String(playback.reloadKey)}
           >
+            {status ? (
+              <div
+                role="alert"
+                data-game-ide-notice="true"
+                className="border-b border-[var(--awb-danger-line,#fecdd3)] bg-[var(--awb-danger-soft,#fff1f2)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-danger,#be123c)]"
+              >
+                {status}
+              </div>
+            ) : null}
             {showHosted ? (
               <GameHostedFrame
                 instanceId={instanceId}
