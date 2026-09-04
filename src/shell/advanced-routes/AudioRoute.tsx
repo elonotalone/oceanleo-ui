@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { resolveEditorCore } from "../editor-core-flags";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -30,7 +32,34 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 
-export function AudioRoute({
+/**
+ * 新核舞台的懒加载入口。
+ *
+ * `import()` 的字面量必须写在这一层：它是打包器切 chunk 的唯一依据。
+ * `ssr: false` 是硬要求——waveform-playlist 碰 AudioContext / canvas。
+ */
+const AudioPlaylistStage = dynamic(
+  () =>
+    import("../media-editors/AudioPlaylistStage").then(
+      (module) => module.AudioPlaylistStage,
+    ),
+  { ssr: false, loading: () => null },
+);
+
+/**
+ * 双核分发口。flag 只在这里判一次，判完各走各的组件。
+ *
+ * 默认 `legacy`（`_COMMON.md` §10 第 3 条）。验收绿之后才翻 flag，
+ * 删除旧核要单独成一个 commit，message 以 core-swap:delete 开头。
+ */
+export function AudioRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("audio") === "next") {
+    return <AudioPlaylistStage {...props} />;
+  }
+  return <AudioLegacyRoute {...props} />;
+}
+
+function AudioLegacyRoute({
   item,
   previewContent,
   linkUrl,
