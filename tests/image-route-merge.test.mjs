@@ -69,6 +69,22 @@ test("Photopea 只在用户切到专业模式后才可能装载（不预载广�
   assert.match(route, /setEditorMode = useCallback\(\(mode: EditorMode\)/);
   assert.match(route, /applyImageL0Mode\(mode\)\.mode/);
   assert.match(route, /data-editor-mode=\{pluginMode\}/);
+  assert.match(
+    route,
+    /<ImagePhotopeaHost showPhotopea=\{showPhotopea\}/,
+    "专业模式必须把 ImagePhotopeaHost 挂上舞台；只写 data-image-show-photopea 用户看不见",
+  );
+});
+
+test("画布内结构/皮肤入口走 applyCanvasViewClick，不占 L0", () => {
+  assert.match(route, /<ImageCanvasViewSwitch/);
+  assert.match(route, /applyCanvasViewClick\(/);
+  assert.match(route, /data-canvas-view=\{designMode\.mode\}/);
+  assert.equal(
+    /adapter\.mode[\s\S]{0,80}photo|setMode:[\s\S]{0,40}design/.test(route),
+    false,
+    "结构/皮肤不得写进 adapter.mode",
+  );
 });
 
 test("AI 能力接进命令面：edit bar 与 agent 走同一条命令", () => {

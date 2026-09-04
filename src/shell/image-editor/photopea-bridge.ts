@@ -178,3 +178,30 @@ export function photopeaBytesToDataUrl(
 ): string {
   return `data:image/vnd.adobe.photoshop;base64,${toBase64(new Uint8Array(bytes))}`;
 }
+
+/**
+ * UC-6：发给 Photopea 的 targetOrigin 必须是它自己的 origin，不许 `"*"`。
+ * 第三参对不上就拒发，避免调用方随手写通配符。
+ */
+export function postToPhotopea(
+  frame: { postMessage: (message: unknown, targetOrigin: string) => void } | null | undefined,
+  data: unknown,
+  targetOrigin: string,
+): boolean {
+  if (!frame) return false;
+  if (targetOrigin !== PHOTOPEA_ORIGIN) return false;
+  frame.postMessage(data, PHOTOPEA_ORIGIN);
+  return true;
+}
+
+/** UC-6：收信要比 origin，还要比 source 是我们挂的那扇 iframe。 */
+export function isPhotopeaFrameSource(
+  event: { origin?: string; source?: unknown },
+  frameWindow: unknown,
+): boolean {
+  return (
+    event.origin === PHOTOPEA_ORIGIN &&
+    frameWindow != null &&
+    event.source === frameWindow
+  );
+}

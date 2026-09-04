@@ -58,6 +58,10 @@ import {
   bindImageModeAdapter,
   rememberedImagePluginMode,
 } from "../image-editor/design-mode/image-plugin-mode";
+import { DESIGN_MODE_INITIAL_STATE } from "../image-editor/design-mode/design-mode-state";
+import { applyCanvasViewClick } from "../image-editor/design-mode/canvas-view-switch";
+import { ImageCanvasViewSwitch } from "../image-editor/ImageCanvasViewSwitch";
+import { ImagePhotopeaHost } from "../image-editor/ImagePhotopeaHost";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
   imageDesignChipManifestEntries,
@@ -88,6 +92,20 @@ export function ImageRoute({
     setPluginModeState(applyImageL0Mode(mode).mode);
   }, []);
   const { showPhotopea } = applyImageL0Mode(pluginMode);
+  /**
+   * 画布内结构 / 皮肤（photo | design）。不占 L0 槽。
+   * 点开关走 `applyCanvasViewClick` → `switchEditorMode` → `planEditorModeSwitch`。
+   */
+  const [designMode, setDesignMode] = useState(DESIGN_MODE_INITIAL_STATE);
+  const canvasDocument = useMemo(
+    () =>
+      Object.freeze({
+        revision: editor.editRevision,
+        width: editor.doc.width,
+        height: editor.doc.height,
+      }),
+    [editor.doc.height, editor.doc.width, editor.editRevision],
+  );
   /**
    * A request that passed the command surface's checks and is waiting for the
    * user to confirm it in the AI panel, where progress and cost are visible.
@@ -547,8 +565,24 @@ export function ImageRoute({
             className="flex h-full min-h-0 flex-col"
             data-editor-mode={pluginMode}
             data-image-show-photopea={showPhotopea ? "true" : "false"}
+            data-canvas-view={designMode.mode}
           >
-            <FabricImageStage editor={editor} accent={accent} />
+            <ImageCanvasViewSwitch
+              state={designMode}
+              document={canvasDocument}
+              onRoute={(route) => {
+                const applied = applyCanvasViewClick(
+                  designMode,
+                  route.state.mode,
+                  canvasDocument,
+                );
+                setDesignMode(applied.state);
+              }}
+            />
+            <div className="relative min-h-0 flex-1">
+              <FabricImageStage editor={editor} accent={accent} />
+              <ImagePhotopeaHost showPhotopea={showPhotopea} />
+            </div>
           </div>
         ),
         status:

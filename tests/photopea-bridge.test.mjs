@@ -9,10 +9,12 @@ import {
   PHOTOPEA_PRELOAD,
   buildPhotopeaConfig,
   classifyPhotopeaMessage,
+  isPhotopeaFrameSource,
   photopeaBytesToDataUrl,
   photopeaLaunchUrl,
   photopeaReducer,
   photopeaShouldMountFrame,
+  postToPhotopea,
 } from "../src/shell/image-editor/photopea-bridge.ts";
 
 const bytes = (values) => new Uint8Array(values).buffer;
@@ -169,4 +171,38 @@ test("PSD bytes go out under the Photoshop media type", () => {
   const toBase64 = (input) => Buffer.from(input).toString("base64");
   const dataUrl = photopeaBytesToDataUrl(bytes([0x38, 0x42, 0x50, 0x53]), toBase64);
   assert.equal(dataUrl, "data:image/vnd.adobe.photoshop;base64,OEJQUw==");
+});
+
+test("postToPhotopea refuses a wildcard targetOrigin", () => {
+  const sent = [];
+  const frame = {
+    postMessage(message, targetOrigin) {
+      sent.push([message, targetOrigin]);
+    },
+  };
+  assert.equal(postToPhotopea(frame, PHOTOPEA_EXPORT_SCRIPT, "*"), false);
+  assert.deepEqual(sent, [], "通配符不得发出去");
+  assert.equal(postToPhotopea(null, PHOTOPEA_EXPORT_SCRIPT, PHOTOPEA_ORIGIN), false);
+  assert.equal(postToPhotopea(frame, PHOTOPEA_EXPORT_SCRIPT, PHOTOPEA_ORIGIN), true);
+  assert.deepEqual(sent, [[PHOTOPEA_EXPORT_SCRIPT, PHOTOPEA_ORIGIN]]);
+});
+
+test("isPhotopeaFrameSource requires both origin and the iframe window", () => {
+  const frameWindow = { id: "pea" };
+  assert.equal(
+    isPhotopeaFrameSource({ origin: PHOTOPEA_ORIGIN, source: frameWindow }, frameWindow),
+    true,
+  );
+  assert.equal(
+    isPhotopeaFrameSource({ origin: PHOTOPEA_ORIGIN, source: frameWindow }, { id: "other" }),
+    false,
+  );
+  assert.equal(
+    isPhotopeaFrameSource({ origin: "https://www.photopea.com.evil.test", source: frameWindow }, frameWindow),
+    false,
+  );
+  assert.equal(
+    isPhotopeaFrameSource({ origin: PHOTOPEA_ORIGIN, source: frameWindow }, null),
+    false,
+  );
 });
