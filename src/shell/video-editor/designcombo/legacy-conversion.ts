@@ -22,6 +22,7 @@ import {
   type OpenVideoClipType,
   type OpenVideoProject,
   type OpenVideoTrackType,
+  type OpenVideoTransform,
 } from "./schema";
 
 export const VIDEO_LEGACY_READONLY_NOTICE =
@@ -72,6 +73,38 @@ const KIND_TO_CLIP: Record<TrackKind, OpenVideoClipType> = {
   image: "Image",
   text: "Caption",
 };
+
+/**
+ * 旧文字片段的画面位置在 `style.x` / `style.y`（0..1 中心点），大小在 `font_size`。
+ * 不许写死成 600×100 底栏字幕框：标题卡会从画面中央变成下方一条横条。
+ */
+function captionBoxFromLegacyText(
+  clip: TimelineClip,
+  canvasWidth: number,
+  canvasHeight: number,
+): OpenVideoTransform {
+  const fontSize = clip.style?.font_size ?? 64;
+  const lines = String(clip.text ?? "").split("\n");
+  const lineCount = Math.max(1, lines.length);
+  const longest = Math.max(1, ...lines.map((line) => line.length));
+  const width = Math.min(
+    canvasWidth,
+    Math.max(fontSize * 2, Math.round(longest * fontSize * 0.9)),
+  );
+  const height = Math.round(fontSize * 1.3 * lineCount);
+  const nx = clip.style?.x ?? 0.5;
+  const ny = clip.style?.y ?? 0.5;
+  return {
+    x: Math.round(nx * canvasWidth - width / 2),
+    y: Math.round(ny * canvasHeight - height / 2),
+    width,
+    height,
+    angle: clip.rotation ?? 0,
+    opacity: clip.opacity ?? 1,
+    zIndex: 20,
+    flip: { x: false, y: false },
+  };
+}
 
 export type VideoLegacyConversion =
   | { ok: true; data: OpenVideoProject; summary: string; dropped: string[] }
@@ -160,16 +193,11 @@ export function timelineDocToOpenVideo(doc: TimelineDoc): OpenVideoProject {
           align: clip.style?.align || "center",
           fontWeight: clip.style?.bold ? "700" : "400",
         };
-        ov.transform = {
-          x: Math.round((clip.style?.x ?? 0.5) * normalized.width - 300),
-          y: Math.round((clip.style?.y ?? 0.85) * normalized.height - 50),
-          width: 600,
-          height: 100,
-          angle: 0,
-          opacity: 1,
-          zIndex: 20,
-          flip: { x: false, y: false },
-        };
+        ov.transform = captionBoxFromLegacyText(
+          clip,
+          normalized.width,
+          normalized.height,
+        );
       }
       project.clips[id] = ov;
       target.clipIds.push(id);
@@ -221,6 +249,16 @@ export function planVideoLegacyConversion(
     }
   }
   const data = timelineDocToOpenVideo(doc);
+  for (const track of doc.tracks) {
+    if (track.kind !== "text") continue;
+    for (const clip of track.clips) {
+      if (!data.clips[clip.id]) {
+        dropped.push(
+          `文字片段「${clip.text || clip.id}」没有写进新时间线。`,
+        );
+      }
+    }
+  }
   return {
     ok: true,
     data,
