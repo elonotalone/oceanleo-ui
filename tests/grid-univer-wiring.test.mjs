@@ -155,7 +155,12 @@ test("the eight grid chips satisfy the contract validator", () => {
   assert.equal(fields.chips.length, 8);
   assert.equal(new Set(fields.chips.map((chip) => chip.id)).size, 8);
   assert.match(leaf, /gridToolsManifestChips/);
-  assert.match(leaf, /buildGridReviewProposal/);
+  // 原来这里断言的是 `buildGridReviewProposal` 出现在舞台里。V3-red-3 证明
+  // **那个断言拦不住它要拦的东西**：舞台确实造了提案，但从不交出去，唯一消费方
+  // 是 `Boolean(proposal)` —— 字符串在，产品是坏的。改成钉住真正决定成败的两处
+  // 接线：整条委派给 `runGridAgentCommand`，且提案交给宿主真收件箱。
+  assert.match(leaf, /runGridAgentCommand\(/);
+  assert.match(leaf, /submit:\s*submitAgentReviewProposal/);
 });
 
 test("L1/L2 facade control ids are wired into the Univer selection context", () => {
