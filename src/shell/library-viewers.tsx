@@ -1024,6 +1024,7 @@ function PptViewer({
     >
       <div
         className="relative h-full w-full overflow-hidden bg-white"
+        data-pptx-parse-state={state}
         data-pptx-first-paint-renders={firstPaintRenders}
         data-pptx-thumbnail-progress={`${renderedSlides.filter((slide) => slide.thumbnail).length}/${renderedSlides.length}`}
       >
