@@ -61,6 +61,16 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
       observe() {}
       disconnect() {}
     },
+    IntersectionObserver: class {
+      constructor(callback) {
+        this.callback = callback;
+      }
+      observe(node) {
+        this.callback([{ isIntersecting: true, target: node }], this);
+      }
+      unobserve() {}
+      disconnect() {}
+    },
   };
   for (const [name, value] of Object.entries(runtimeGlobals)) {
     previousGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
@@ -70,6 +80,9 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
       value,
     });
   }
+  // 可见性闸门读的是节点自己的 window，不是 globalThis。
+  dom.window.IntersectionObserver = runtimeGlobals.IntersectionObserver;
+  dom.window.ResizeObserver = runtimeGlobals.ResizeObserver;
   // JSDOM 没有 scrollIntoView，而页轨每次换页都会调它。
   dom.window.Element.prototype.scrollIntoView = function scrollIntoView() {};
   const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
@@ -212,17 +225,17 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     // 页轨只能退回 pptx 模型里的名字——而那个名字是内部路径。
     meta: {},
   };
-  const flush = async () => {
-    await act(async () => {
-      await new Promise((done) => setImmediate(done));
-    });
-  };
-  const waitFor = async (condition, message) => {
-    for (let index = 0; index < 40; index += 1) {
-      if (condition()) return;
-      await flush();
+  const waitForParseSettled = async () => {
+    const readState = () =>
+      container
+        .querySelector("[data-pptx-parse-state]")
+        ?.getAttribute("data-pptx-parse-state");
+    while (readState() !== "ready" && readState() !== "error") {
+      await act(async () => {
+        await new Promise((done) => setImmediate(done));
+      });
     }
-    assert.fail(message);
+    return readState();
   };
   // 舞台 = 用户眼睛落的那块。缩略图轨在 `<aside>` 里，不算数。
   const stageText = () =>
@@ -234,17 +247,26 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     await act(async () =>
       root.render(React.createElement(LibraryItemViewer, { item })),
     );
-    await waitFor(
-      () =>
-        container.querySelectorAll("[data-deck-thumbnail-rail] button")
-          .length === 2,
+    const parseState = await waitForParseSettled();
+    if (parseState === "error") {
+      const alertText = (
+        container.querySelector("[role=alert]")?.textContent || ""
+      ).trim();
+      assert.fail(
+        `PPT 解析失败，页轨不会有切片：${alertText || "无报错文案"}`,
+      );
+    }
+    assert.equal(parseState, "ready", "解析没有走到完成态");
+    assert.equal(
+      container.querySelectorAll("[data-deck-thumbnail-rail] button").length,
+      2,
       "解析出来的幻灯片没有进到共享页轨",
     );
 
     assert.match(
       stageText(),
       /real-slide-0/,
-      "刚打开时舞台是空的：pptx-preview 画进了一个已被 React 丢弃的旧节点",
+      "刚打开时舞台是空的：用户会一直停在「正在解析 PPT…」，页轨有切片但中间没内容",
     );
 
     const buttons = [
@@ -255,14 +277,14 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
         new dom.window.MouseEvent("click", { bubbles: true }),
       ),
     );
-    assert.match(stageText(), /real-slide-1/, "换页之后舞台没跟上");
+    assert.match(stageText(), /real-slide-1/, "换页之后舞台没跟上：用户仍停在「正在解析 PPT…」或看到空白页");
 
     await act(async () =>
       buttons[0].dispatchEvent(
         new dom.window.MouseEvent("click", { bubbles: true }),
       ),
     );
-    assert.match(stageText(), /real-slide-0/, "翻回第一页之后舞台没跟上");
+    assert.match(stageText(), /real-slide-0/, "翻回第一页之后舞台没跟上：用户仍停在「正在解析 PPT…」或看到空白页");
 
     // 页轨按钮的无障碍名不许是包内部件路径：屏幕阅读器会把那串原样念出来。
     // 没有结构化标题时该退回「第 N 页」。
