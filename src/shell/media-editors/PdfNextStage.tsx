@@ -138,10 +138,13 @@ function ProViewer({
     import("@embedpdf/react-pdf-viewer")
       .then((module) => {
         if (!alive) return;
+        // `setState(fn)` 会被当成 updater。查看器是函数组件，必须再包一层，
+        // 否则 React 会拿 null 去调它（读 props.config 当场炸），专业模式挂不上。
         setViewer(
-          module.PDFViewer as unknown as React.ComponentType<
-            Record<string, unknown>
-          >,
+          () =>
+            module.PDFViewer as unknown as React.ComponentType<
+              Record<string, unknown>
+            >,
         );
       })
       .catch((caught: unknown) => {
