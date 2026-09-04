@@ -5,6 +5,7 @@ import {
   addOpenVideoCaption,
   cropOpenVideoClip,
   deleteOpenVideoClip,
+  runVideoDesigncomboCommand,
   setOpenVideoKeyframes,
   setOpenVideoMuted,
   setOpenVideoSpeed,
@@ -101,6 +102,48 @@ test("bad split and empty caption return a reason a person can use", () => {
   const empty = addOpenVideoCaption(project, { text: "  ", fromMs: 0 });
   assert.equal(empty.ok, false);
   assert.match(empty.reason, /空的/);
+  const captions = Object.values(project.clips).filter((clip) => clip.type === "Caption");
+  assert.equal(captions.length, 0, "字幕正文为空时，轨道里不会落下占位文字");
+});
+
+test("crop-frame without a rect leaves the video untouched", () => {
+  const { project, id } = seeded();
+  const before = structuredClone(project);
+  const result = runVideoDesigncomboCommand("crop-frame", project, { clipId: id });
+  assert.equal(result.ok, false, "点裁切但没框选区域时，视频不会被改动");
+  assert.match(result.reason, /请先框选要保留的区域/);
+  assert.deepEqual(project, before, "点裁切但没框选区域时，视频不会被改动");
+  assert.equal(project.clips[id].crop, undefined, "点裁切但没框选区域时，视频不会被改动");
+  assert.equal(project.clips[id].transform.width, 1920, "点裁切但没框选区域时，视频不会被改动");
+});
+
+test("add-caption without body text does not plant 字幕", () => {
+  const { project } = seeded();
+  const result = runVideoDesigncomboCommand("add-caption", project, {
+    clipId: "clip_seed",
+    atUs: 0,
+  });
+  assert.equal(result.ok, false, "字幕正文为空时，轨道里不会落下占位文字");
+  assert.match(result.reason, /请先输入字幕正文/);
+  const captions = Object.values(project.clips).filter((clip) => clip.type === "Caption");
+  assert.equal(captions.length, 0, "字幕正文为空时，轨道里不会落下占位文字");
+  assert.equal(
+    captions.some((clip) => clip.text === "字幕"),
+    false,
+    "字幕正文为空时，轨道里不会落下占位文字",
+  );
+});
+
+test("keyframes without a table are not treated as an empty animation", () => {
+  const { project, id } = seeded();
+  const result = runVideoDesigncomboCommand("keyframes", project, { clipId: id });
+  assert.equal(result.ok, false, "关键帧缺失时，不会被当成有关键帧继续走");
+  assert.match(result.reason, /请先给出关键帧/);
+  assert.equal(
+    project.clips[id].animations,
+    undefined,
+    "关键帧缺失时，不会被当成有关键帧继续走",
+  );
 });
 
 void makeOpenVideoId;
