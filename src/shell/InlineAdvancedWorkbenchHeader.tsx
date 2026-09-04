@@ -15,7 +15,6 @@ import {
 } from "./advanced-layout-context";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
-import type { EditorMode } from "./hosted-editor";
 import {
   PluginModeAdapterBridge,
   PluginModeToggle,
@@ -144,15 +143,6 @@ export function InlineAdvancedWorkbenchHeader({
     return action.onTrigger?.();
   };
   const modeAdapter = adapter.mode;
-  const applyMode = useCallback(
-    (next: EditorMode) => {
-      // Native 件走这条：adapter 的 setMode 是编辑器自己露出/收起内核 UI 的入口。
-      // Hosted 件的 route 把这同一个 setMode 实现成发契约 `set-mode`
-      // （`RichDocHostedRoute` 就是这么接的），所以顶栏这边只有一条路。
-      adapter.mode?.setMode?.(next);
-    },
-    [adapter.mode],
-  );
   // 不声明 `mode` 就是不支持：开关置灰但不消失（`AdvancedEditorModeAdapter` 的约定）。
   // 原因写裸中文而不过 `tt()`，与 `PdfRoute` 已有的那条 reason 同一惯例；
   // 这一条的 16 语欠账记在 `signals/W01-request.md`。
@@ -191,11 +181,15 @@ export function InlineAdvancedWorkbenchHeader({
           <PluginModeToggle
             pluginId={pluginThemeId}
             unavailableReason={modeUnavailableReason}
-            onModeChange={applyMode}
           />
           {/*
-            打开编辑器时把上次记住的档位交给内核；渲染 null，只接线。
-            开关和它的接线放在同一处，是为了让同一条真渲染闸把两件事一起锁住。
+            开关本体只管改 L0 的档位；「把档位交到内核手里」这件事整条交给这座桥，
+            打开编辑器时推一次、之后每变一次推一次，都走它。
+            ⚠️ 这里**刻意不再给开关传 `onModeChange`**，虽然那样也能跑。
+            两条路说同一句话的后果是判据分不清哪条还活着：实测撤掉 `onModeChange`
+            之后这条闸 13/13 仍然全绿（桥替它把话说了），于是那条线等于没有守卫。
+            留一条路，闸才锁得住它。`PluginChromeFrame` 那边没有桥，仍然走
+            `onModeChange`，所以那个 prop 不删。
           */}
           <PluginModeAdapterBridge
             pluginId={pluginThemeId}
