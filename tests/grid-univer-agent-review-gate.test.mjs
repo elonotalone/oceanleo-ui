@@ -29,13 +29,18 @@ import {
   GRID_APPLY_TOKEN_KEY,
   GRID_NO_INVERSE,
   gridAgentCommandSpecs,
+  gridHostApplyInProgress,
   gridMutatingAgentCommandIds,
   resetGridApplyTokens,
   runGridAgentCommand,
 } from "../src/shell/doc-editors/grid-univer/agent-write-gate.ts";
 import { submitAgentReviewProposal } from "../src/shell/agent-review/inbox.ts";
 import { hostReviewSession } from "../src/shell/agent-review/session.ts";
-import { applyParkedReview } from "../src/shell/agent-review/gate.ts";
+import {
+  applyParkedReview,
+  gateSurfaceForAgent,
+  withReviewApply,
+} from "../src/shell/agent-review/gate.ts";
 
 const STAGE = "src/shell/doc-editors/GridUniverStage.tsx";
 
@@ -455,14 +460,18 @@ test("§3 伪造令牌写不进去，只会再排一次审阅", async () => {
 });
 
 test("§3 令牌一次性：同一份接受参数重放第二次不再写", async () => {
+  // 走直连路径，**不套 `applyParkedReview`** —— 那个包装会把宿主置于 apply 期，
+  // 那时放行是对的（§3b），验不出令牌本身是不是一次性的。
   const env = freshEnv();
   await env.surface.run("grid.set-cell", { row: 0, column: 0, value: "A" });
   const parked = hostReviewSession.snapshot().parked;
-  await applyParkedReview(env.surface, parked);
-  assert.equal(env.writes().length, 1);
+  const first = await env.surface.run("grid.set-cell", parked.params);
+  assert.equal(first.ok, true, first.message);
+  assert.equal(env.writes().length, 1, "第一次兑现令牌应当写一次");
   hostReviewSession.reset();
-  await applyParkedReview(env.surface, parked);
+  const second = await env.surface.run("grid.set-cell", parked.params);
   assert.equal(env.writes().length, 1, "同一张令牌被兑现了两次");
+  assert.match(second.message, /审阅/, "重放应当退回排队，而不是静默失败");
 });
 
 test("§3 令牌绑命令：拿「改一格」批下来的令牌调「删除所选行」无效", async () => {
@@ -503,6 +512,55 @@ test("§3 set-cell 的回滚写回原值，是真回滚", async () => {
   assert.equal(writes.length, 1);
   assert.equal(writes[0].name, "setValue");
   assert.deepEqual(writes[0].args, ["旧值"], "回滚要写回表里原来那个值");
+});
+
+// ── §3b 与 W02 宿主闸的交接：接受一次就要落地一次，不许再排一次队 ───────────
+
+test("§3b 宿主闸包在外面时，agent 那次调用根本到不了编辑器，Facade 零写入", async () => {
+  const env = freshEnv();
+  const gated = gateSurfaceForAgent(env.surface, hostReviewSession);
+  const result = await gated.run("grid.insert-row", { row: 0, count: 1 });
+  assert.equal(result.ok, true);
+  assert.equal(env.writes().length, 0);
+  const parked = hostReviewSession.snapshot().parked;
+  assert.ok(parked, "宿主闸应当自己 park 一份提案");
+  assert.equal(
+    parked.params[GRID_APPLY_TOKEN_KEY],
+    undefined,
+    "宿主 park 的提案里不会有我的令牌 —— §3b 下一条正是为这个而存在",
+  );
+});
+
+test("§3b 用户接受宿主 park 的提案，改动必须真的落地，而不是又排一次审阅", async () => {
+  const env = freshEnv();
+  const gated = gateSurfaceForAgent(env.surface, hostReviewSession);
+  await gated.run("grid.insert-row", { row: 0, count: 1 });
+  const parked = hostReviewSession.snapshot().parked;
+  hostReviewSession.acceptAll();
+  const applied = await applyParkedReview(env.surface, parked);
+  assert.equal(applied.ok, true, applied.message);
+  assert.ok(
+    !/送审阅/.test(applied.message),
+    `用户点了接受却又被告知「${applied.message}」= 点一百次都写不进去`,
+  );
+  const writes = env.writes();
+  assert.equal(writes.length, 1, "接受之后应当恰好写一次");
+  assert.equal(writes[0].name, "insertRowsBefore");
+});
+
+test("§3b 探针只在宿主 apply 期为真，平时为假（否则它等于没闸）", async () => {
+  assert.equal(
+    gridHostApplyInProgress(),
+    false,
+    "平时就为真的话，任何 agent 指令都能直接写表",
+  );
+  let inside = null;
+  await withReviewApply(() => {
+    inside = gridHostApplyInProgress();
+    return Promise.resolve(null);
+  });
+  assert.equal(inside, true, "宿主 apply 期探不到 ⇒ 接受了也落不了地");
+  assert.equal(gridHostApplyInProgress(), false, "apply 结束要退回假");
 });
 
 // ── §4 agent 看得见多少条指令 ───────────────────────────────────────────────

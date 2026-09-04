@@ -36,7 +36,11 @@
  * 猜不中就写不了；用一次就烧掉，同一份令牌重放第二次无效；令牌与 commandId 绑定，
  * 拿「改一格」批下来的令牌去调「删除所选行」同样无效。
  */
-import type { ParkedReview } from "../../agent-review/session";
+import { gateSurfaceForAgent } from "../../agent-review/gate";
+import {
+  createReviewSession,
+  type ParkedReview,
+} from "../../agent-review/session";
 import type {
   PluginCommandResult,
   PluginCommandSpec,
@@ -133,6 +137,70 @@ export function consumeGridApplyToken(
 /** 只给测试用：清空令牌，让每个用例从零开始。 */
 export function resetGridApplyTokens(): void {
   liveTokens.clear();
+}
+
+// ── 宿主正在落地一条已接受的审阅吗 ──────────────────────────────────────────
+
+/**
+ * 探针专用的隔离审阅会话：**绝不能是 `hostReviewSession`**，
+ * 否则探一次就往用户的审阅面板里塞一条假提案。
+ */
+const probeSession = createReviewSession();
+
+const PROBE_SPEC = {
+  id: "grid.apply-probe",
+  label: "探针",
+  summary: "探针",
+  mutates: true,
+} as const;
+
+/**
+ * 宿主此刻是不是正在把一条**用户已接受**的审阅落地。
+ *
+ * ## 为什么需要它
+ *
+ * 我的令牌管得住 agent 直接下的指令，但管不住另一条合法路径：W02 的宿主闸
+ * （`gateSurfaceForAgent`）包在我外面时，agent 那次调用**根本到不了我这里**
+ * ——宿主自己先 park 了一份提案。等用户点接受，宿主走
+ * `applyParkedReview(rawSurface, hostParked)`，这才第一次调到我，而
+ * `hostParked.params` 里当然没有我的令牌。
+ *
+ * 于是会出现一个很难查的产品故障：**用户点了接受，表格没变，审阅面板里又多出
+ * 一条一模一样的提案。** 点一百次都是这个结果。
+ *
+ * ## 为什么是探针而不是读一个变量
+ *
+ * 宿主的 apply 状态是 `gate.ts` 里的模块级 `applyDepth`，**没有导出读取口**，
+ * 而 `agent-review/*` 是 W02 的面，本批不许我改。所以这里用它**已经导出**的
+ * `gateSurfaceForAgent` 反推：闸在 `applyDepth > 0` 时会直接把 `run` 透传给
+ * 里层 surface，否则会去 park。拿一个隔离会话 + 一个一次性假 surface 走一遍，
+ * 看里层有没有被调到，就知道现在是不是 apply 期。
+ *
+ * 两点让这件事可以接受：
+ * - **无副作用**：假 surface 不碰真表格，提案落在 `probeSession` 而不是用户面板；
+ * - **失败朝安全一侧倒**：万一上游把那个分支改到 `await` 之后，探针会返回
+ *   `false`，结果是**多排一次审阅**，而不是多写一次表格。
+ *
+ * 正解仍然是宿主导出一个 `reviewApplyHeld()`，已写进 `signals/W03-request.md` R2；
+ * 那条落地后这个函数应当整个删掉。
+ */
+export function gridHostApplyInProgress(): boolean {
+  let passedThrough = false;
+  const probe = gateSurfaceForAgent(
+    {
+      editorId: "grid-apply-probe",
+      describe: () => [{ ...PROBE_SPEC }],
+      state: () => ({ revision: 0 }),
+      run: () => {
+        passedThrough = true;
+        return Promise.resolve({ ok: true, message: "" });
+      },
+    },
+    probeSession,
+  );
+  void probe.run(PROBE_SPEC.id, {});
+  if (!passedThrough) probeSession.markDiscarded();
+  return passedThrough;
 }
 
 // ── 命令分类 ────────────────────────────────────────────────────────────────
@@ -320,8 +388,9 @@ export function runGridAgentCommand(
     };
   }
 
-  // ④ 手持审阅令牌 = 用户点过接受，这才写。
-  if (consumeGridApplyToken(id, params)) {
+  // ④ 用户点过接受，这才写。两种形态都算数：我自己发的一次性令牌，
+  //    或者宿主闸正在落地一条它自己 park 的、已被接受的提案。
+  if (consumeGridApplyToken(id, params) || gridHostApplyInProgress()) {
     if (!port) return { ...NOT_READY, revision };
     const outcome = runGridUniverCommand(id, port, toCommandArgs(params));
     if (!outcome.ok) return { ok: false, message: outcome.reason, revision };
