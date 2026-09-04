@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
@@ -17,22 +18,25 @@ const DNA_PATH = "/root/projects/asset/lib/template-dna.ts";
  * A change here means the no-`packId` path stopped being byte-for-byte the old
  * one, which is exactly what packs were not allowed to do.
  *
- * ⚠️ 这个常量被改错过一次，改回来花的代价远大于当初核一遍。写在这里免得再来一遍：
+ * ⚠️ 这个常量被两个时区的人来回改过（`139c44e` 作者 +0800 钉成 `aa60868b…`，
+ * `ce94416` 作者 +0000 改回 `caaeebef…`），双方都写「对方那个 sha 没有任何一版
+ * 写出器产出过」。**两人都没错，也都没查到根因**（W34d / W38，2026-09-04）：
+ * 写出器把 `Date.UTC(1980,0,1)` 交给 fflate，而 fflate 0.8.3 用**本地时间**取值写
+ * zip 的 DOS mtime（`getHours()` 等），于是 +8 机器上 60 个部件 × 2 个头的 DOS 时间
+ * 高字节从 `0x00` 变 `0x40`（共 120 字节），sha 就从 `caaeebef…` 变成 `aa60868b…`；
+ * 格林尼治以西的机器则读成 1979-12-31，fflate 直接抛 `date not in range`。
+ * `caaeebef…` 是「DOS 时间 = 1980-01-01 00:00:00」这个本意对应的包；W38 把写出器的
+ * mtime 改成本地构造器 `new Date(1980, 0, 1)` 后，**这个 sha 在任意进程 TZ 下都应成立**。
  *
- * `139c44e` 把它从 `caaeebef…` 改成 `aa60868b…`，理由写的是「`caaeebef…` 没有任何
- * 一版写出器产出过、本例自 `a2f24bb` 起就是红的」。**这两句都不成立**，`W49` 逐版实测：
- *   - 这份判据在 `a2f24bb`（钉进来的那一次）、`2a0e9d9`、`8da3a9e`、`139c44e^`
- *     四个版本上**都是绿的**——它是被 `139c44e` 改红的，不是本来就红；
- *   - 同一份 `baselineProject()` 喂给 `939af01`（具名装落地前的最后一版写出器）、
- *     `a2f24bb`、`2a0e9d9`、`8da3a9e`、`acd8192`、`f4996ba` 六版写出器，
- *     产出的是**同一个 33,918 字节的包**（`caaeebef…`）：60 个部件、解包后逐文件
- *     零差异、容器逐字节相同。`aa60868b…` 没有任何一版写出器产出过。
- * ⇒「默认路径字节不变」这条承诺从来没有破过，破的只有这个常量本身。
+ * 所以：这条红了，先看下面那条时区无关性闸——
+ *   - 它也红 ⇒ 写出器的 mtime 又随时区漂了（有人改回 `Date.UTC` 或换了 zip 库）；
+ *   - 它绿、本条红 ⇒ 默认路径的字节真的变了。**别改这个常量**，先证明是有意的。
  *
  * 要重算就照这个来，别只开个 worktree 就动手：
  *   1. `git worktree add --detach <dir> 939af01` 并把 `node_modules` 软链进去；
  *   2. 用**本文件当前的** `baselineProject()`（无 `packId`）喂 `<dir>` 那份
- *      `buildDeckPptx`，取 sha256；
+ *      `buildDeckPptx`，取 sha256，**并且 `TZ=UTC` 跑**（老写出器只有在 UTC 下
+ *      才产出它本意的字节）；
  *   3. 与今天的写出器产出的包 `cmp` 一遍，不是只比哈希。
  * `939af01` 是唯一合法的参照点：比它更早的写出器（`880dfd8` 及以前）会拿
  * `deck-hollow` 直接拒收这份夹具（`no chart part`），压根建不出包来比。
@@ -154,6 +158,93 @@ test("omitting or missing packId preserves the pre-change PPTX bytes exactly", (
   assert.equal(sha256(unchanged), BEFORE_SHA256);
   const unknown = pptx(baselineProject("not-a-pack"));
   assert.deepEqual(unknown, unchanged);
+});
+
+// ——— 时区无关性 ———
+// 「导出可复现」是产品承诺：同一份稿在任何机器上导出的 pptx 逐字节相同。它曾在
+// 用户机器上不成立（见 BEFORE_SHA256 上方），所以这里在**子进程**里带明确的 `TZ=`
+// 各导一次再比。子进程自带 TZ，所以这条闸不依赖父进程当前处于哪个时区。
+
+const LOADER_URL = new URL("./ts-extension-loader.mjs", import.meta.url).href;
+const WRITER_URL = new URL("../src/shell/doc-editors/deck-ooxml-package.ts", import.meta.url).href;
+
+/** 在 `tz` 时区的子进程里，用同一份夹具、同一个写出器导出，拿回原始字节。 */
+function exportPptxInTimezone(tz) {
+  const probe = `
+    import { readFileSync } from "node:fs";
+    const { buildDeckPptx } = await import(${JSON.stringify(WRITER_URL)});
+    const { project, png } = JSON.parse(readFileSync(0, "utf8"));
+    const bytes = Uint8Array.from(Buffer.from(png, "base64"));
+    const out = buildDeckPptx(project, { assets: [{ id: "photo", bytes, width: 1, height: 1 }] }).bytes;
+    process.stdout.write(Buffer.from(out).toString("base64"));
+  `;
+  const child = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", "--no-warnings", "--experimental-loader", LOADER_URL, "--input-type=module", "-e", probe],
+    {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 16,
+      input: JSON.stringify({ project: baselineProject(), png: Buffer.from(PNG).toString("base64") }),
+      env: { ...process.env, TZ: tz },
+    },
+  );
+  // 子进程炸了（比如写出器在这个时区下抛 `date not in range`）必须红成断言，
+  // 不许两边都空字符串然后「相等」假绿。
+  assert.equal(child.status, 0, `TZ=${tz} 下导出进程非零退出：${child.stderr}`);
+  const bytes = Uint8Array.from(Buffer.from(child.stdout.trim(), "base64"));
+  assert.ok(bytes.length > 1024, `TZ=${tz} 下导出的包只有 ${bytes.length} 字节`);
+  return bytes;
+}
+
+/** 顺着 zip 的本地文件头走一遍，取出每个部件的 DOS 修改时间与日期两个 16 位字。 */
+function dosStampsOfLocalHeaders(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const stamps = [];
+  let offset = 0;
+  while (offset + 30 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
+    const time = view.getUint16(offset + 10, true);
+    const date = view.getUint16(offset + 12, true);
+    const compressedSize = view.getUint32(offset + 18, true);
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    stamps.push({ time, date });
+    offset += 30 + nameLength + extraLength + compressedSize;
+  }
+  return stamps;
+}
+
+test("the same deck exports byte-identical PPTX on machines in different timezones", () => {
+  const zones = [
+    { tz: "UTC", label: "UTC" },
+    { tz: "Asia/Shanghai", label: "+8" },
+    // 格林尼治以西：老写出器在这里把 1980-01-01 00:00Z 读成 1979-12-31，fflate 直接拒收。
+    { tz: "America/Los_Angeles", label: "−8" },
+    // 1980-01-01 正处夏令时（+11）：DST 地区也必须落到同一个 DOS 时间。
+    { tz: "Australia/Sydney", label: "+11（夏令时中）" },
+  ];
+  const exported = zones.map((zone) => ({ ...zone, bytes: exportPptxInTimezone(zone.tz) }));
+
+  for (const { tz, bytes } of exported) {
+    const stamps = dosStampsOfLocalHeaders(bytes);
+    // 走头的结果要和 fflate 自己解出的部件数对上，否则循环跑零次会假绿。
+    assert.equal(stamps.length, Object.keys(unzipSync(bytes)).length, `TZ=${tz} 下本地文件头数与部件数不符`);
+    assert.ok(stamps.length >= 2, `TZ=${tz} 下只有 ${stamps.length} 个部件，夹具太小`);
+    stamps.forEach(({ time, date }, index) => {
+      // DOS 日期 1980-01-01 = (年-1980)<<9 | 月<<5 | 日 = 0x0021；DOS 时间 00:00:00 = 0x0000。
+      assert.equal(date, 0x0021, `TZ=${tz} 下部件 ${index} 的 zip 修改日期不是 1980-01-01（0x${date.toString(16)}）`);
+      assert.equal(time, 0x0000, `TZ=${tz} 下部件 ${index} 的 zip 修改时间不是 00:00:00（0x${time.toString(16)}）`);
+    });
+  }
+
+  const [utc, ...others] = exported;
+  const utcSha = sha256(utc.bytes);
+  for (const { tz, label, bytes } of others) {
+    assert.equal(
+      sha256(bytes),
+      utcSha,
+      `同一份稿在 ${label} 机器和 UTC 机器导出的 PPTX 字节不同：TZ=${tz} ${sha256(bytes)} ≠ TZ=UTC ${utcSha}`,
+    );
+  }
 });
 
 test("a named pack writes a valid package with solid alpha bands and no shape gradients", () => {

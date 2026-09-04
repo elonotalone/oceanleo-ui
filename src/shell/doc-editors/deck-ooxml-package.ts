@@ -1839,8 +1839,25 @@ export function buildDeckOoxmlParts(
   };
 }
 
-/** The zip epoch floor; fflate rejects anything outside 1980–2099. */
-const DETERMINISTIC_MTIME = new Date(Date.UTC(1980, 0, 1, 0, 0, 0));
+/**
+ * The zip epoch floor, built so the archive bytes do not depend on the
+ * machine's timezone. fflate rejects anything outside 1980–2099.
+ *
+ * fflate 0.8.3 turns `mtime` into the DOS date/time field with the *local*
+ * getters (`getFullYear` / `getMonth` / `getDate` / `getHours` / …, see `wzh`
+ * in `fflate/esm/index.mjs`). A `Date` made from `Date.UTC(1980, 0, 1)` thus
+ * read 08:00 on a UTC+8 machine (60 parts × 2 headers = 120 differing bytes
+ * against a UTC machine) and 1979-12-31 anywhere west of Greenwich, where
+ * fflate refused the date and the export threw. The local-time constructor
+ * makes the local getters read 1980-01-01 00:00:00 in every zone, so the DOS
+ * field is always date 0x0021 / time 0x0000. DST cannot move it: both
+ * hemispheres switch in spring/autumn, never at New Year midnight, and no
+ * IANA zone has an offset transition at that local instant (W38 probed all
+ * 421 zones). Do not "fix" this back to `Date.UTC`; the process TZ must not
+ * be touched at runtime either — `tests/deck-packs.test.mjs` exports under
+ * several `TZ` values in child processes and requires identical bytes.
+ */
+const DETERMINISTIC_MTIME = new Date(1980, 0, 1, 0, 0, 0);
 
 /** Zip the built parts. Deterministic: fixed mtime, fixed compression level. */
 export function zipDeckOoxmlParts(build: DeckOoxmlBuild): Uint8Array {
