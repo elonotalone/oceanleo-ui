@@ -308,9 +308,16 @@ const workspaceSessionStubUrl = dataModule(`
     return globalThis.__workbenchToolbarWorkspace || null;
   }
 `);
+// 桩必须导全 `RestartDraftButton.tsx:13` 那一行 import 的每一个名字。少一个不是少一条
+// 断言：模块解析在测试结束之后才炸，走 uncaughtException，整份文件被记成一条红，
+// 而上面两条其实是绿的（`_COMMON.md` §7b⑩）。`3f90bd2` 已经因为同一族缺陷把这份
+// 测试从 4 条断言吃到 2 条一次了。
 const routerStubUrl = dataModule(`
   export function useRouter() {
     return { replace(value) { globalThis.__workbenchToolbarRoute = value; } };
+  }
+  export function usePathname() {
+    return globalThis.__workbenchToolbarPathname || "";
   }
 `);
 const routeStubUrl = dataModule(`
