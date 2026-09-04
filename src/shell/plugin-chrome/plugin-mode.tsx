@@ -4,10 +4,11 @@
 // 分文件的理由见那份文件头（判据只能 import 纯 TS，`.tsx` 里的 JSX 过不了
 // `--experimental-strip-types`）。
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { useUI } from "../../i18n/ui/useUI";
 import { Button } from "../../ui/Button";
+import type { AdvancedEditorModeAdapter } from "../advanced-editor-adapter";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import type { EditorMode } from "../hosted-editor";
 import type { PluginThemeId } from "../plugin-theme";
@@ -101,4 +102,36 @@ export function PluginModeToggle({
       <span className="hidden sm:inline">{tt("专业模式")}</span>
     </Button>
   );
+}
+
+export interface PluginModeAdapterBridgeProps {
+  pluginId: PluginThemeId;
+  /** 这件编辑器的 L3 模式面；`undefined` = 它没声明支持，桥什么都不做。 */
+  mode?: AdvancedEditorModeAdapter;
+}
+
+/**
+ * 把 L0 记住的档位交到内核手里。渲染 `null`，只做接线。
+ *
+ * 为什么必须有这一层：各编辑器的模式状态是自己的 `useState(DEFAULT_EDITOR_MODE)`，
+ * 打开时一律从普通模式起步。于是「按用户 × 编辑器记住」在没有这座桥的时候只是
+ * localStorage 里的一个值——用户上次选了专业模式，重新打开还是普通模式，
+ * 顶栏开关亮着 pro 而内核的 ribbon 不在，两边说的话不一样。
+ *
+ * 挂载时推一次（这就是「打开编辑器时用记住的档位初始化」），之后 store 每变一次
+ * 都推——换标签页里改的档位也经 storage 事件收敛到这里。
+ * 编辑器已经在那个档位时不推，所以不会和编辑器自己的 setState 打转。
+ */
+export function PluginModeAdapterBridge({
+  pluginId,
+  mode,
+}: PluginModeAdapterBridgeProps) {
+  const { mode: remembered } = usePluginMode(pluginId);
+  const setMode = mode?.setMode;
+  const editorMode = mode?.current ?? DEFAULT_PLUGIN_MODE;
+  useEffect(() => {
+    if (!setMode || editorMode === remembered) return;
+    setMode(remembered);
+  }, [editorMode, remembered, setMode]);
+  return null;
 }

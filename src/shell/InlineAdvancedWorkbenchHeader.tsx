@@ -15,6 +15,11 @@ import {
 } from "./advanced-layout-context";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
+import type { EditorMode } from "./hosted-editor";
+import {
+  PluginModeAdapterBridge,
+  PluginModeToggle,
+} from "./plugin-chrome/plugin-mode";
 import type { PluginThemeId } from "./plugin-theme";
 
 export function InlineAdvancedWorkbenchHeader({
@@ -138,20 +143,66 @@ export function InlineAdvancedWorkbenchHeader({
     }
     return action.onTrigger?.();
   };
+  const modeAdapter = adapter.mode;
+  const applyMode = useCallback(
+    (next: EditorMode) => {
+      // Native 件走这条：adapter 的 setMode 是编辑器自己露出/收起内核 UI 的入口。
+      // Hosted 件的 route 把这同一个 setMode 实现成发契约 `set-mode`
+      // （`RichDocHostedRoute` 就是这么接的），所以顶栏这边只有一条路。
+      adapter.mode?.setMode?.(next);
+    },
+    [adapter.mode],
+  );
+  // 不声明 `mode` 就是不支持：开关置灰但不消失（`AdvancedEditorModeAdapter` 的约定）。
+  // 原因写裸中文而不过 `tt()`，与 `PdfRoute` 已有的那条 reason 同一惯例；
+  // 这一条的 16 语欠账记在 `signals/W01-request.md`。
+  const modeUnavailableReason =
+    modeAdapter?.unavailableReason ??
+    (modeAdapter?.setMode
+      ? undefined
+      : "这件编辑器还没有专业模式；接上新内核之后这个开关就能用。");
 
+  // 顶栏本体（返回 / 素材库 / 保存 / 导出 / 主题）仍然整块交给
+  // `AdvancedWorkspaceActionBar`，一个字没动——它是十件共用的那条栏。
+  // L0 专业模式开关挂在它右边：这是十件唯一的入模式入口（`_COMMON` §10 第 5 条），
+  // 而在此之前它只画在 `PluginChromeFrame` 里，那条壳十件一个都不走。
   return (
-    <AdvancedWorkspaceActionBar
-      adapter={adapter}
-      autoSaveState={autoSaveState}
-      activeLibraryPanelId={activeLibraryPanelId}
-      pluginThemeId={pluginThemeId}
-      showLibrary={showLibrary}
-      showBack={showBack}
-      onBack={onBack}
-      onOpenLibrary={onOpenLibrary}
-      onRetrySave={onRetrySave}
-      onTriggerAction={triggerAction}
-      onUploadFiles={onUploadFiles}
-    />
+    <div
+      data-advanced-workbench-header
+      className="flex h-11 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden"
+    >
+      <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+        <AdvancedWorkspaceActionBar
+          adapter={adapter}
+          autoSaveState={autoSaveState}
+          activeLibraryPanelId={activeLibraryPanelId}
+          pluginThemeId={pluginThemeId}
+          showLibrary={showLibrary}
+          showBack={showBack}
+          onBack={onBack}
+          onOpenLibrary={onOpenLibrary}
+          onRetrySave={onRetrySave}
+          onTriggerAction={triggerAction}
+          onUploadFiles={onUploadFiles}
+        />
+      </div>
+      {pluginThemeId ? (
+        <>
+          <PluginModeToggle
+            pluginId={pluginThemeId}
+            unavailableReason={modeUnavailableReason}
+            onModeChange={applyMode}
+          />
+          {/*
+            打开编辑器时把上次记住的档位交给内核；渲染 null，只接线。
+            开关和它的接线放在同一处，是为了让同一条真渲染闸把两件事一起锁住。
+          */}
+          <PluginModeAdapterBridge
+            pluginId={pluginThemeId}
+            mode={modeAdapter}
+          />
+        </>
+      ) : null}
+    </div>
   );
 }

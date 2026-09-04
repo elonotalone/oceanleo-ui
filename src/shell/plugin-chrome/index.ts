@@ -20,8 +20,10 @@ export {
   subscribePluginMode,
 } from "./plugin-mode-store";
 export {
+  PluginModeAdapterBridge,
   PluginModeToggle,
   usePluginMode,
+  type PluginModeAdapterBridgeProps,
   type PluginModeHandle,
   type PluginModeToggleProps,
 } from "./plugin-mode";
