@@ -47,38 +47,58 @@ test("empty legacy timeline is a human-readable failure", () => {
 
 test("a clip-bearing timeline maps into OpenVideo JSON and back", () => {
   const doc = createEmptyDoc();
-  doc.tracks[0].clips.push({
-    id: "c1",
-    start_ms: 0,
-    duration_ms: 2000,
-    source_url: "https://example.com/a.mp4",
-    in_ms: 0,
-    source_duration_ms: 5000,
-    speed: 1,
-    volume: 1,
-  });
+  // 两段片子依次排在时间线上（PARENT-red-5 / A-105 第四档）：
+  // 起点 700 ms 与 3000 ms 非零且互不相等，时长 2000 / 1500 互不相等，
+  // 素材内起点 in_ms 250 / 1200 与 start_ms 互不相等——
+  // 单片子 + start_ms:0 的夹具分不清「起点算对了」和「起点被丢了」，
+  // 也分不清「拿的是 start_ms」还是「拿错成 in_ms」。
+  doc.tracks[0].clips.push(
+    {
+      id: "c1",
+      start_ms: 700,
+      duration_ms: 2000,
+      source_url: "https://example.com/a.mp4",
+      in_ms: 250,
+      source_duration_ms: 5000,
+      speed: 1,
+      volume: 1,
+    },
+    {
+      id: "c2",
+      start_ms: 3000,
+      duration_ms: 1500,
+      source_url: "https://example.com/b.mp4",
+      in_ms: 1200,
+      source_duration_ms: 4000,
+      speed: 1,
+      volume: 1,
+    },
+  );
   const planned = planVideoLegacyConversion({
     doc,
     schema: LEGACY_TIMELINE_SCHEMA,
   });
   assert.equal(planned.ok, true);
-  assert.ok(Object.keys(planned.data.clips).length >= 1);
+  assert.ok(Object.keys(planned.data.clips).length >= 2);
   const ovClip = planned.data.clips.c1;
+  const ovSecond = planned.data.clips.c2;
   assert.ok(ovClip, "转换后必须还能找到片子 c1");
+  assert.ok(ovSecond, "转换后必须还能找到片子 c2");
   assert.ok(ovClip.timing?.display, "新核片子必须带 display 时间");
-  // 2000 ms × 1000 = 2_000_000 µs. Literal, not msToUs(2000) (A-105).
+  assert.ok(ovSecond.timing?.display, "第二段片子在新核里必须带 display 时间");
+  // 全部字面量微秒，不走 msToUs(...)，也不拿夹具常量算（A-102 第三档 / A-105）。
   const displayFrom = ovClip.timing.display.from;
   const displayTo = ovClip.timing.display.to;
   const displaySpan = displayTo - displayFrom;
   assert.equal(
     displayFrom,
-    0,
-    `片子从时间线 0 起；起点写成 ${displayFrom} 等于整段被挪走`,
+    700_000,
+    `排在 0.7 秒的片子被挪到了 ${displayFrom / 1_000_000} 秒`,
   );
   assert.equal(
     displayTo,
-    2_000_000,
-    `2 秒的片子转过去变成了 ${displayTo / 1000} 毫秒`,
+    2_700_000,
+    `排在 0.7 秒、长 2 秒的片子该在 2.7 秒结束；实际 ${displayTo / 1_000_000} 秒`,
   );
   assert.equal(
     displaySpan,
@@ -90,11 +110,77 @@ test("a clip-bearing timeline maps into OpenVideo JSON and back", () => {
     2_000_000,
     `2 秒的片子在新核里写成了 ${ovClip.timing.duration / 1000} 毫秒，不是 2 秒`,
   );
+  assert.equal(
+    ovClip.timing.trim?.from,
+    250_000,
+    `第一段素材该从素材内 0.25 秒起用；实际 ${(ovClip.timing.trim?.from ?? NaN) / 1_000_000} 秒`,
+  );
+
+  const secondFrom = ovSecond.timing.display.from;
+  const secondTo = ovSecond.timing.display.to;
+  assert.equal(
+    secondFrom,
+    3_000_000,
+    `排在 3 秒的片子被挪到了 ${secondFrom / 1_000_000} 秒`,
+  );
+  assert.equal(
+    secondTo,
+    4_500_000,
+    `排在 3 秒、长 1.5 秒的片子该在 4.5 秒结束；实际 ${secondTo / 1_000_000} 秒`,
+  );
+  assert.equal(
+    ovSecond.timing.duration,
+    1_500_000,
+    `1.5 秒的片子在新核里写成了 ${ovSecond.timing.duration / 1000} 毫秒`,
+  );
+  assert.equal(
+    ovSecond.timing.trim?.from,
+    1_200_000,
+    `第二段素材该从素材内 1.2 秒起用；实际 ${(ovSecond.timing.trim?.from ?? NaN) / 1_000_000} 秒`,
+  );
+  assert.notEqual(
+    secondFrom,
+    displayFrom,
+    "两段依次排好的片子在新核里叠到了同一个起点",
+  );
+
+  // 往返回旧格式：每段的 start_ms / duration_ms / in_ms 都锁字面量毫秒，
+  // 只锁 duration_ms 抓不到「顺序永久丢失」。
   const round = openVideoToTimelineDoc(planned.data);
   const video = round.tracks.find((track) => track.kind === "video");
-  assert.equal(video.clips.length, 1);
-  assert.equal(video.clips[0].source_url, "https://example.com/a.mp4");
-  assert.equal(video.clips[0].duration_ms, 2000);
+  assert.equal(video.clips.length, 2, "两段片子往返后少了一段");
+  const backFirst = video.clips.find((clip) => clip.id === "c1");
+  const backSecond = video.clips.find((clip) => clip.id === "c2");
+  assert.ok(backFirst, "往返后必须还能按 id 找到 c1");
+  assert.ok(backSecond, "往返后必须还能按 id 找到 c2");
+  assert.equal(backFirst.source_url, "https://example.com/a.mp4");
+  assert.equal(backSecond.source_url, "https://example.com/b.mp4");
+  assert.equal(
+    backFirst.start_ms,
+    700,
+    `排在 0.7 秒的片子转回旧格式后起点成了 ${backFirst.start_ms} 毫秒`,
+  );
+  assert.equal(backFirst.duration_ms, 2000);
+  assert.equal(
+    backFirst.in_ms,
+    250,
+    `第一段素材内起点往返后成了 ${backFirst.in_ms} 毫秒，不是 250`,
+  );
+  assert.equal(
+    backSecond.start_ms,
+    3000,
+    `排在 3 秒的片子转回旧格式后起点成了 ${backSecond.start_ms} 毫秒，排好的顺序丢了`,
+  );
+  assert.equal(
+    backSecond.duration_ms,
+    1500,
+    `1.5 秒的片子往返后成了 ${backSecond.duration_ms} 毫秒`,
+  );
+  assert.equal(
+    backSecond.in_ms,
+    1200,
+    `第二段素材内起点往返后成了 ${backSecond.in_ms} 毫秒，不是 1200`,
+  );
 });
 
 test("one second on the old timeline is one million microseconds in the new core", () => {
