@@ -55,17 +55,15 @@ import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
 import { currentPluginCommandSurface } from "./plugin-command";
 import {
   AgentReviewPanel,
-  applyParkedReview,
   buildAgentSelectionBlock,
   createReviewGatedReader,
-  emitReviewDecision,
   hostReviewSession,
   installAgentReviewGate,
   installSelectionBridge,
   readAgentSelection,
   readMentionCatalog,
   refreshAgentSelectionFromDom,
-  revisionNumber,
+  useHostReviewActions,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffButton } from "./HumanHandoffButton";
@@ -735,7 +733,6 @@ function AgentChatInner({
     },
     [bridgeContextFor],
   );
-  const [reviewBusy, setReviewBusy] = useState(false);
   const confirmHostRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!editorCommands.pending || editorCommands.busy) return;
@@ -746,52 +743,9 @@ function AgentChatInner({
       button.click();
     }
   }, [editorCommands.pending, editorCommands.busy]);
-  const handleReviewAccept = useCallback(async () => {
-    const snap = hostReviewSession.snapshot();
-    if (!snap.parked || snap.status !== "open") return;
-    const surface = currentPluginCommandSurface();
-    if (!surface) return;
-    setReviewBusy(true);
-    const result = await applyParkedReview(surface, snap.parked);
-    setReviewBusy(false);
-    if (result.ok) {
-      hostReviewSession.markApplied(
-        typeof result.revision === "number"
-          ? result.revision
-          : snap.currentRevision,
-      );
-      emitReviewDecision({
-        proposalId: snap.parked.proposal.proposalId,
-        decision: "accept",
-        editorId: snap.parked.editorId,
-      });
-    }
-  }, []);
-  const handleReviewReject = useCallback(() => {
-    const snap = hostReviewSession.snapshot();
-    const proposalId = snap.parked?.proposal.proposalId;
-    const editorId = snap.parked?.editorId;
-    hostReviewSession.markDiscarded();
-    if (proposalId) {
-      emitReviewDecision({ proposalId, decision: "reject", editorId });
-    }
-  }, []);
-  const handleReviewRollback = useCallback(async () => {
-    const inverse = hostReviewSession.rollback();
-    if (!inverse) return;
-    const surface = currentPluginCommandSurface();
-    if (!surface) return;
-    setReviewBusy(true);
-    const result = await applyParkedReview(surface, inverse);
-    setReviewBusy(false);
-    if (result.ok) {
-      hostReviewSession.markApplied(
-        typeof result.revision === "number"
-          ? result.revision
-          : revisionNumber(inverse.proposal.revision),
-      );
-    }
-  }, []);
+  // 接受 / 拒绝 / 回滚只有一份实现（`agent-review/dock.tsx`），本文件与 AgentConsole
+  // 原来各抄了一遍。接受与回滚经 `applyParkedReview()` 带 apply token 写穿闸。
+  const review = useHostReviewActions();
   const noteUserTurn = editorCommands.noteUserTurn;
   const noteOwnEditorTask = editorCommands.noteOwnTask;
   const ingestEditorCommands = editorCommands.ingest;
@@ -1927,10 +1881,10 @@ function AgentChatInner({
           <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />
           <AgentReviewPanel
             session={hostReviewSession}
-            busy={reviewBusy}
-            onAccept={() => void handleReviewAccept()}
-            onReject={handleReviewReject}
-            onRollback={() => void handleReviewRollback()}
+            busy={review.busy}
+            onAccept={() => void review.accept()}
+            onReject={review.reject}
+            onRollback={() => void review.rollback()}
           />
           {/* 旧确认卡仍要挂上才能点「就这么改」把 mutates 送进闸；对用户隐藏。 */}
           <div ref={confirmHostRef} data-agent-review-host className="sr-only">

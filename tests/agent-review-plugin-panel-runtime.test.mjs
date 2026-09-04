@@ -276,10 +276,23 @@ test("取面处不许再出现「回落到没包闸的原始面」这条写法",
     new URL("../src/shell/FunctionAgentChat.tsx", import.meta.url),
     "utf8",
   );
-  // `currentPluginCommandSurface` 在这份文件里连名字都不该出现：它一出现就意味着
+  // `currentPluginCommandSurface` 在这份文件里连调用都不该出现：它一出现就意味着
   // 取面处又能拿到只包了参数校验的原始面。
-  assert.doesNotMatch(source, /currentPluginCommandSurface\s*\(/);
-  assert.doesNotMatch(source, /from "\.\/plugin-command"/);
+  // 断言只报命中的行，不把整份源码倒进 TAP 输出里。
+  const offending = source
+    .split("\n")
+    .map((line, index) => [index + 1, line])
+    .filter(
+      ([, line]) =>
+        /currentPluginCommandSurface\s*\(/.test(line) ||
+        /from "\.\/plugin-command"/.test(line),
+    )
+    .map(([lineNumber, line]) => `${lineNumber}: ${line.trim()}`);
+  assert.deepEqual(
+    offending,
+    [],
+    "取面处不许再引 W1 注册表的原始面（那是 PARENT-red-1 的失败即开放）",
+  );
   assert.equal(
     (source.match(/readAgentCommandSurface\(liveRef\.current\.surfaceReader\)/g) || [])
       .length,

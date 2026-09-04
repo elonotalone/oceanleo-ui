@@ -67,6 +67,8 @@ import {
 // 直接读 W1 注册表交出来的那份面只包了参数校验，agent 拿到它就能当场写文档
 // （`PARENT-red-1`：那条回落是失败即开放）——所以这份文件不再引它。
 import { readAgentCommandSurface } from "./agent-review/surface";
+// 停在闸里的改动要有地方给人看、给人点头 —— 宿主没挂审阅面板时由 dock 自带一份。
+import { AgentReviewDock } from "./agent-review/dock";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
@@ -1650,6 +1652,9 @@ export function FunctionAgentChat({
       </div>
       <div className="shrink-0 pt-3">
         <div className="mx-auto w-full max-w-2xl space-y-2">
+          {/* 停在闸里的改动：diff / 变更清单 + 逐条接受或拒绝 + 回滚。
+              宿主自己挂了面板（AgentConsole）时它自动让位，屏幕上只有一份。 */}
+          <AgentReviewDock />
           {/* 会改内容的指令：先问用户一句「要我改吗」。 */}
           {editorCommands.card}
           {branchFromMessageId && (

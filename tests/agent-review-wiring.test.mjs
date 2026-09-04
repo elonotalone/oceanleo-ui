@@ -19,7 +19,15 @@ test("AgentChat 挂了审阅面板、chips、选区桥与 agent 闸", () => {
   assert.match(chat, /AgentReviewPanel/);
   assert.match(chat, /QuickActionChips/);
   assert.match(chat, /buildAgentSelectionBlock/);
-  assert.match(chat, /applyParkedReview/);
+  // 接受/回滚的实现搬进 `agent-review/dock.tsx` 之后，宿主这一侧钉的是「用的是那一份」，
+  // 而带 apply token 写穿闸的 `applyParkedReview` 钉在 dock 上。
+  assert.match(chat, /useHostReviewActions\(\)/);
+  const dock = readFileSync(
+    new URL("../src/shell/agent-review/dock.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(dock, /applyParkedReview\(surface, snap\.parked\)/);
+  assert.match(dock, /applyParkedReview\(surface, inverse\)/);
   assert.doesNotMatch(chat, /@copilotkit/);
 });
 
@@ -49,4 +57,15 @@ test("AgentConsole 同样包闸并挂审阅与 chips", () => {
   assert.match(consoleSource, /installAgentReviewGate/);
   assert.match(consoleSource, /AgentReviewPanel/);
   assert.match(consoleSource, /QuickActionChips/);
+  assert.match(consoleSource, /useHostReviewActions\(\)/);
+  // 它自己挂了面板，所以要圈住子树让 FunctionAgentChat 里的 dock 让位（否则两份面板）。
+  assert.match(consoleSource, /<AgentReviewHostProvided>/);
+});
+
+test("FunctionAgentChat 自带审阅面板：插件抽屉那条路也有地方点头", () => {
+  const chat = readFileSync(
+    new URL("../src/shell/FunctionAgentChat.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(chat, /<AgentReviewDock \/>/);
 });

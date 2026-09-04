@@ -24,6 +24,12 @@ export {
 } from "./inbox";
 export { readAgentCommandSurface } from "./surface";
 export {
+  AgentReviewDock,
+  AgentReviewHostProvided,
+  useHostReviewActions,
+  type HostReviewActions,
+} from "./dock";
+export {
   gateSurfaceForAgent,
   isAgentGatedSurface,
   createReviewGatedReader,

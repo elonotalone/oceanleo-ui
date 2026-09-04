@@ -38,14 +38,13 @@ import type { Capability } from "../lib/manifest";
 import { useUI } from "../i18n/ui/useUI";
 import { currentPluginCommandSurface } from "./plugin-command";
 import {
+  AgentReviewHostProvided,
   AgentReviewPanel,
-  applyParkedReview,
   createReviewGatedReader,
-  emitReviewDecision,
   hostReviewSession,
   installAgentReviewGate,
   installSelectionBridge,
-  revisionNumber,
+  useHostReviewActions,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 
@@ -212,7 +211,7 @@ function ManifestPane({
   }, []);
 
   const schema = useMemo(() => manifestToOpsSchema(m.agent_id, con), [m.agent_id, con]);
-  const [reviewBusy, setReviewBusy] = useState(false);
+  // 右栏编辑器的指令面。宿主这一层先包一次闸（取面处还会兜一次，包闸是幂等的）。
   const gatedSurfaceReader = useMemo(
     () =>
       createReviewGatedReader(
@@ -225,53 +224,9 @@ function ManifestPane({
     installAgentReviewGate();
     installSelectionBridge();
   }, []);
-  const handleReviewAccept = useCallback(async () => {
-    const snap = hostReviewSession.snapshot();
-    if (!snap.parked || snap.status !== "open") return;
-    const surface = currentPluginCommandSurface();
-    if (!surface) return;
-    setReviewBusy(true);
-    const result = await applyParkedReview(surface, snap.parked);
-    setReviewBusy(false);
-    if (result.ok) {
-      hostReviewSession.markApplied(
-        typeof result.revision === "number"
-          ? result.revision
-          : snap.currentRevision,
-      );
-      emitReviewDecision({
-        proposalId: snap.parked.proposal.proposalId,
-        decision: "accept",
-        editorId: snap.parked.editorId,
-      });
-    }
-  }, []);
-  const handleReviewReject = useCallback(() => {
-    const snap = hostReviewSession.snapshot();
-    const proposalId = snap.parked?.proposal.proposalId;
-    const editorId = snap.parked?.editorId;
-    hostReviewSession.markDiscarded();
-    if (proposalId) {
-      emitReviewDecision({ proposalId, decision: "reject", editorId });
-    }
-  }, []);
-  const handleReviewRollback = useCallback(async () => {
-    const inverse = hostReviewSession.rollback();
-    if (!inverse) return;
-    const surface = currentPluginCommandSurface();
-    if (!surface) return;
-    setReviewBusy(true);
-    const result = await applyParkedReview(surface, inverse);
-    setReviewBusy(false);
-    if (result.ok) {
-      hostReviewSession.markApplied(
-        typeof result.revision === "number"
-          ? result.revision
-          : revisionNumber(inverse.proposal.revision),
-      );
-    }
-  }, []);
-
+  // 接受 / 拒绝 / 回滚只有一份实现（`agent-review/dock.tsx`）：接受与回滚经
+  // `applyParkedReview()` 带 apply token 写穿闸，agent 自己的 run() 永远拿不到它。
+  const review = useHostReviewActions();
   // 操作台「生成」：required 校验 → 经能力 SDK 出结果 → 写进结果字段（右栏显示）。
   const runGenerate = useCallback(async () => {
     if (!hasOpsForm) return;
@@ -389,39 +344,43 @@ function ManifestPane({
   // 左栏 = 操作台/agent 双形态（FunctionAgentChat），右栏 = 结果画布。两栏共用
   // Studio 的可拖动分栏骨架（与各站手写操作台版式完全一致）。
   const ops = (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 space-y-2 px-3 pt-3">
-        <QuickActionChips
-          onFire={(prompt) => {
-            window.dispatchEvent(
-              new CustomEvent("oceanleo-l4-chip", { detail: { prompt } }),
-            );
-          }}
-        />
-        <AgentReviewPanel
-          session={hostReviewSession}
-          busy={reviewBusy}
-          onAccept={() => void handleReviewAccept()}
-          onReject={handleReviewReject}
-          onRollback={() => void handleReviewRollback()}
-        />
+    // 本宿主自己在左栏顶部挂了审阅面板，圈住整棵子树让 FunctionAgentChat 里的 dock
+    // 让位 —— 同一屏永远只有一份审阅面板。
+    <AgentReviewHostProvided>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 space-y-2 px-3 pt-3">
+          <QuickActionChips
+            onFire={(prompt) => {
+              window.dispatchEvent(
+                new CustomEvent("oceanleo-l4-chip", { detail: { prompt } }),
+              );
+            }}
+          />
+          <AgentReviewPanel
+            session={hostReviewSession}
+            busy={review.busy}
+            onAccept={() => void review.accept()}
+            onReject={review.reject}
+            onRollback={() => void review.rollback()}
+          />
+        </div>
+        <div className="min-h-0 flex-1">
+          <FunctionAgentChat
+            agentId={m.agent_id}
+            siteId={siteId}
+            schema={schema}
+            accent={accent}
+            opsContent={opsContent}
+            showOps={hasOpsForm}
+            onArtifact={applyArtifact}
+            appLabel={m.name}
+            appIcon={typeof m.icon === "string" ? m.icon : undefined}
+            enableEditorCommands={enableEditorCommands}
+            editorCommandSurface={gatedSurfaceReader}
+          />
+        </div>
       </div>
-      <div className="min-h-0 flex-1">
-        <FunctionAgentChat
-          agentId={m.agent_id}
-          siteId={siteId}
-          schema={schema}
-          accent={accent}
-          opsContent={opsContent}
-          showOps={hasOpsForm}
-          onArtifact={applyArtifact}
-          appLabel={m.name}
-          appIcon={typeof m.icon === "string" ? m.icon : undefined}
-          enableEditorCommands={enableEditorCommands}
-          editorCommandSurface={gatedSurfaceReader}
-        />
-      </div>
-    </div>
+    </AgentReviewHostProvided>
   );
 
   return (
