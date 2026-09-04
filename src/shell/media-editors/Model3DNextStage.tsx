@@ -84,6 +84,27 @@ function recordOf(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * `Uint8Array.buffer` 的类型是 `ArrayBufferLike`（含 `SharedArrayBuffer`），
+ * `applyGltfBytes` 要的是 `ArrayBuffer`。不能 `as`：那是压掉类型，不是收窄。
+ *
+ * `base64ToBytes` 走 `new Uint8Array(n)`，背衬永远是独立的 `ArrayBuffer`，
+ * offset=0、长度等于整份缓冲。这一支直接交出去，不再 `.slice()`——
+ * 旧写法对大 glTF 多拷一整份。子视图才 slice；SAB（atob 路径到不了）才拷进新缓冲。
+ */
+function arrayBufferFromView(view: Uint8Array): ArrayBuffer {
+  const raw = view.buffer;
+  if (raw instanceof ArrayBuffer) {
+    if (view.byteOffset === 0 && view.byteLength === raw.byteLength) {
+      return raw;
+    }
+    return raw.slice(view.byteOffset, view.byteOffset + view.byteLength);
+  }
+  const copy = new ArrayBuffer(view.byteLength);
+  new Uint8Array(copy).set(view);
+  return copy;
+}
+
 export function Model3DNextStage({
   item,
   taskId,
@@ -519,13 +540,7 @@ export function Model3DNextStage({
                       }
                       if (!payload.ok || !payload.gltfBase64) return;
                       const bytes = base64ToBytes(payload.gltfBase64);
-                      applyGltfBytes(
-                        bytes.buffer.slice(
-                          bytes.byteOffset,
-                          bytes.byteOffset + bytes.byteLength,
-                        ),
-                        "glb",
-                      );
+                      applyGltfBytes(arrayBufferFromView(bytes), "glb");
                     }}
                     onError={setStatus}
                   />
