@@ -39,7 +39,7 @@ export function ChartOptionCodePanel({
         onChange={(event) => onChange(event.target.value)}
         spellCheck={false}
         aria-label="ECharts option JSON"
-        className="min-h-0 flex-1 resize-none bg-[var(--card,#fff)] p-3 font-mono text-[11px] leading-relaxed text-[var(--fg,#292524)] outline-none"
+        className="min-h-0 flex-1 resize-none bg-[var(--card,#fff)] p-3 font-mono text-[11px] leading-relaxed text-[var(--fg,#292524)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
       />
       {error ? (
         <p role="alert" className="px-3 py-2 text-[11px] text-[var(--awb-danger,#be123c)]">
