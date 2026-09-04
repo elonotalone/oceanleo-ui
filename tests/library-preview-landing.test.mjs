@@ -239,8 +239,11 @@ test("重型 viewer 等容器可见才挂载，首屏只画一张 thumb 海报",
   );
   assert.match(firstPaintSource, /IntersectionObserver/);
   assert.match(viewersSource, /<ViewerThumbPoster item=\{item\} containerRef=\{gate\.ref\}/);
-  // 闸门缺席时不许把预览卡死。
-  assert.match(firstPaintSource, /typeof IntersectionObserver !== "function"/);
+  // 闸门缺席时不许把预览卡死。观察器绑在节点自己的 window 上，
+  // 这样另一份文档换掉全局 IntersectionObserver 也不能把预览卡住。
+  assert.match(firstPaintSource, /ownerDocument\.defaultView/);
+  assert.match(firstPaintSource, /typeof Observer !== "function"/);
+  assert.match(firstPaintSource, /setVisible\(true\), 0\)/);
   // 重型分支的 hook（office 取包 / rendition 刷新）在 body 里，闸门没放行就不会跑。
   assert.match(
     viewersSource,

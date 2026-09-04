@@ -587,7 +587,7 @@ test("五种重型 kind 加上 game 都在延迟挂载闸内，轻量 kind 不�
 });
 
 test("闸门未放行前不挂载重型子树，进视口后才挂", async () => {
-  const { document } = await bootstrapDom();
+  const { document, window } = await bootstrapDom();
   const { createRoot } = await import("react-dom/client");
 
   const observers = [];
@@ -605,11 +605,7 @@ test("闸门未放行前不挂载重型子树，进视口后才挂", async () =>
       this.observed = [];
     }
   }
-  Object.defineProperty(globalThis, "IntersectionObserver", {
-    configurable: true,
-    writable: true,
-    value: FakeIntersectionObserver,
-  });
+  window.IntersectionObserver = FakeIntersectionObserver;
 
   let heavyMounts = 0;
   function HeavySubtree() {
@@ -658,13 +654,14 @@ test("闸门未放行前不挂载重型子树，进视口后才挂", async () =>
     assert.ok(container.querySelector('[data-heavy="mounted"]'));
   } finally {
     await act(async () => root.unmount());
-    delete globalThis.IntersectionObserver;
+    delete window.IntersectionObserver;
   }
 });
 
 test("没有 IntersectionObserver 的环境（SSR / 老浏览器）下一帧就放行，不把预览卡死", async () => {
-  const { document } = await bootstrapDom();
+  const { document, window } = await bootstrapDom();
   const { createRoot } = await import("react-dom/client");
+  delete window.IntersectionObserver;
   delete globalThis.IntersectionObserver;
 
   function Viewer() {
