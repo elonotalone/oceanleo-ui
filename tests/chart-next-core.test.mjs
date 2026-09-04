@@ -73,6 +73,24 @@ function seriesDataFromFinishedOption(option, seriesName) {
   return item.data;
 }
 
+/** 成品 option 的类目轴标签（单轴写法是对象；数组写法取第一条）。 */
+function categoryAxisLabels(option) {
+  const axis = Array.isArray(option.xAxis) ? option.xAxis[0] : option.xAxis;
+  assert.ok(axis && Array.isArray(axis.data), "成品 option 的 xAxis 必须带类目 data，否则柱子不知道站在哪个类目下");
+  return axis.data;
+}
+
+/**
+ * 柱子最终画在哪个类目下，只靠 xAxis.data[i] 与 series.data[i] 下标对齐。
+ * 按下标拼成 [类目, 值] 对，任一侧错位都会在这里露出来（PARENT-red-4）。
+ */
+function labelledBars(option, seriesName) {
+  const labels = categoryAxisLabels(option);
+  const data = seriesDataFromFinishedOption(option, seriesName);
+  assert.equal(labels.length, data.length, `「${seriesName}」的柱子数与类目数不等，必有柱子没有类目或类目没有柱子`);
+  return labels.map((label, index) => [label, data[index]]);
+}
+
 test("typed artifact is option + data, and HTML wrap is embeddable", () => {
   const { artifact, document, ingest } = chartTypedArtifactFromRangeSnapshot(RANGE);
   assert.equal(artifact.schema, CHART_TYPED_ARTIFACT_SCHEMA);
@@ -88,6 +106,36 @@ test("typed artifact is option + data, and HTML wrap is embeddable", () => {
     "导出 HTML 成品里「收入」三根柱必须是 100/120/140；若挂成 40/45/50，就是收入柱子画成了成本的高度",
   );
   assert.deepEqual(costInArtifact, [40, 45, 50]);
+
+  // 类目轴也要锁（PARENT-red-4）：系列的数对了，轴一转，华东的 100 就标成了华南。
+  assert.deepEqual(
+    categoryAxisLabels(artifact.option),
+    ["华东", "华南", "华北"],
+    "导出成品的类目轴必须是 华东/华南/华北 这个顺序；轴一转，华东的柱子就标成了华南",
+  );
+  // 更硬一档：锁对齐后的事实——哪根柱站在哪个地区下，两侧任一错位都红。
+  assert.deepEqual(
+    labelledBars(artifact.option, "收入"),
+    [["华东", 100], ["华南", 120], ["华北", 140]],
+    "导出成品里收入柱子与地区错位：华东的柱子标成了华南（应为 华东→100、华南→120、华北→140）",
+  );
+  assert.deepEqual(
+    labelledBars(artifact.option, "成本"),
+    [["华东", 40], ["华南", 45], ["华北", 50]],
+    "导出成品里成本柱子与地区错位（应为 华东→40、华南→45、华北→50）",
+  );
+  // 成品 data.source 是可编辑源：它的类目列必须和画出来的轴一致，否则「编辑器里对、导出 HTML 错」看不见。
+  const sourceCategories = artifact.data.source.slice(1).map((row) => row[0]);
+  assert.deepEqual(
+    sourceCategories,
+    ["华东", "华南", "华北"],
+    "导出成品 data.source 的类目列必须是 华东/华南/华北；改了它，再编辑这张图时地区就对不上柱子",
+  );
+  assert.deepEqual(
+    sourceCategories,
+    categoryAxisLabels(artifact.option),
+    "导出成品 data.source 的类目列与 xAxis 不一致：编辑器里的表对、导出画出来的轴错（或反过来）",
+  );
 
   const roundtrip = chartDocumentFromTypedArtifact(artifact);
   assert.equal(roundtrip.option.series[0].type, document.option.series[0].type);
@@ -108,6 +156,21 @@ test("typed artifact is option + data, and HTML wrap is embeddable", () => {
     "HTML 内嵌 JSON 里「收入」柱子不能画成成本的高度（应为 100/120/140）",
   );
   assert.deepEqual(costInHtml, [40, 45, 50]);
+  assert.deepEqual(
+    categoryAxisLabels(embedded.option),
+    ["华东", "华南", "华北"],
+    "HTML 内嵌 JSON 的类目轴必须是 华东/华南/华北；轴一转，嵌进 PPT 的图里华东的柱子就标成了华南",
+  );
+  assert.deepEqual(
+    labelledBars(embedded.option, "收入"),
+    [["华东", 100], ["华南", 120], ["华北", 140]],
+    "HTML 内嵌 JSON 里收入柱子与地区错位：华东的柱子标成了华南（应为 华东→100、华南→120、华北→140）",
+  );
+  assert.deepEqual(
+    embedded.data.source.slice(1).map((row) => row[0]),
+    ["华东", "华南", "华北"],
+    "HTML 内嵌 JSON 的 data.source 类目列必须是 华东/华南/华北",
+  );
 
   assert.equal(CHART_RENDITION_MIME.svg, "image/svg+xml;charset=utf-8");
   assert.equal(CHART_RENDITION_MIME.png, "image/png");
@@ -185,6 +248,24 @@ test("option JSON code mode parses, rejects broken JSON with a human reason", ()
   // 返回的 option 与 document.option 是同一份成品，不许一边对一边错。
   assert.deepEqual(seriesDataFromFinishedOption(good.option, "收入"), [3, 7, 11]);
   assert.deepEqual(seriesDataFromFinishedOption(good.option, "成本"), [2, 5, 9]);
+  // 类目轴与对齐（PARENT-red-4）：Apply 后 A 下面必须还是 3，不能轴一转让 A 标到 7 上。
+  assert.deepEqual(categoryAxisLabels(shown), ["A", "B", "C"]);
+  assert.deepEqual(
+    categoryAxisLabels(good.document.option),
+    ["A", "B", "C"],
+    "代码模式 Apply 后类目轴必须还是用户写的 A/B/C 这个顺序；轴一转，A 的柱子就标成了 B",
+  );
+  assert.deepEqual(
+    labelledBars(good.document.option, "收入"),
+    [["A", 3], ["B", 7], ["C", 11]],
+    "代码模式 Apply 后「收入」柱子与类目错位：A 的柱子标成了 B（应为 A→3、B→7、C→11）",
+  );
+  assert.deepEqual(
+    labelledBars(good.document.option, "成本"),
+    [["A", 2], ["B", 5], ["C", 9]],
+    "代码模式 Apply 后「成本」柱子与类目错位（应为 A→2、B→5、C→9）",
+  );
+  assert.deepEqual(labelledBars(good.option, "收入"), [["A", 3], ["B", 7], ["C", 11]]);
 
   const broken = parseChartOptionJson("{ not json", seed);
   assert.equal(broken.ok, false);
