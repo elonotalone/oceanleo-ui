@@ -66,6 +66,7 @@ test("professional mode is option JSON code mode, no postMessage, same instance"
 test("AVA is loaded only from the next-core leaf, via dynamic import", () => {
   assert.match(leaf, /chart-next-ava-advisor/);
   assert.match(leaf, /await import\(\s*"\.\/chart-next-ava-advisor"/);
+  assert.match(leaf, /applyAvaAdviceToChartDocument/);
   assert.doesNotMatch(route, /chart-next-ava-advisor/);
   const advisor = read("src/shell/chart-editor/chart-next-ava-advisor.ts");
   assert.match(advisor, /from "@antv\/ava"/);
