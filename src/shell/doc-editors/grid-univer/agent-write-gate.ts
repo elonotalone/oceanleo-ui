@@ -181,8 +181,8 @@ const PROBE_SPEC = {
  * - **失败朝安全一侧倒**：万一上游把那个分支改到 `await` 之后，探针会返回
  *   `false`，结果是**多排一次审阅**，而不是多写一次表格。
  *
- * 正解仍然是宿主导出一个 `reviewApplyHeld()`，已写进 `signals/W03-request.md` R2；
- * 那条落地后这个函数应当整个删掉。
+ * 正解仍然是宿主导出一个 `reviewApplyHeld()`，已写进 `signals/W03-request.md` R3；
+ * 那条落地后这个函数应当整个删掉，改成一行 import。
  */
 export function gridHostApplyInProgress(): boolean {
   let passedThrough = false;
