@@ -658,3 +658,72 @@ test("导出：色阶 / 数据条 / 图标集带不过去，但必须点名", ()
   assert.match(warning, /没有带过去/);
   assert.match(warning, /色阶/);
 });
+
+function sharedFormulaWorkbook() {
+  return {
+    id: "wb",
+    name: "wb",
+    appVersion: GRID_UNIVER_APP_VERSION,
+    sheetOrder: ["s1"],
+    styles: {},
+    sheets: {
+      s1: {
+        id: "s1",
+        name: "销售",
+        rowCount: 20,
+        columnCount: 8,
+        mergeData: [],
+        cellData: {
+          0: {
+            0: { v: 5, t: 2 },
+            1: { f: "=A1*2", si: "shared-1", v: 10, t: 2 },
+          },
+          1: {
+            0: { v: 7, t: 2 },
+            1: { si: "shared-1", v: 14, t: 2 },
+          },
+          2: {
+            0: { v: 9, t: 2 },
+            1: { f: "", si: "shared-1", v: 18, t: 2 },
+          },
+        },
+      },
+    },
+  };
+}
+
+test("导出：往下拖的从格只有 si、没有公式串，必须展开成相对公式，不能变成死数字", () => {
+  const sheets = univerSnapshotToGridSheets(sharedFormulaWorkbook());
+  assert.equal(sheets[0].rows[0][1], "=A1*2");
+  assert.equal(
+    sheets[0].rows[1][1],
+    "=A2*2",
+    "用户往下拖公式，B2 只有共享 id。写成 14 的话 exceljs 会当死数字写进 xlsx。",
+  );
+  assert.equal(
+    sheets[0].rows[2][1],
+    "=A3*2",
+    "Univer 从格会写成空 f 加 si。空串是假值，不能落到算出的 18。",
+  );
+  assert.notEqual(sheets[0].rows[1][1], "14");
+  assert.notEqual(sheets[0].rows[2][1], "18");
+});
+
+test("导出：xlsx 打开后从格还是公式，不是写死的数字", async () => {
+  const sheets = univerSnapshotToGridSheets(sharedFormulaWorkbook());
+  const workbook = await openRouteXlsx(sheets);
+  const ws = workbook.getWorksheet("销售");
+  const formulaOf = (addr) => {
+    const value = ws.getCell(addr).value;
+    return value && typeof value === "object" ? value.formula : null;
+  };
+  assert.equal(formulaOf("B1"), "A1*2");
+  assert.equal(
+    formulaOf("B2"),
+    "A2*2",
+    "用户打开导出的 xlsx，拖出来的那一列必须还能再算。切掉 si 展开只会留下 14。",
+  );
+  assert.equal(formulaOf("B3"), "A3*2");
+  assert.notEqual(ws.getCell("B2").value, 14);
+  assert.notEqual(ws.getCell("B2").value, "14");
+});

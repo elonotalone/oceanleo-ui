@@ -28,6 +28,7 @@ import type {
   GridMerge,
   GridRange,
 } from "../grid-structure";
+import { translateGridFormula } from "../grid-structure";
 
 /** Univer 空白表的最小尺寸；存量表比它小就补到这里，和旧核的空表观感一致。 */
 export const GRID_UNIVER_MIN_ROWS = 20;
@@ -513,6 +514,10 @@ export function univerSnapshotToGridSheets(
     >;
     let maxRow = 0;
     let maxCol = 0;
+    const sharedMasters = new Map<
+      string,
+      { formula: string; row: number; col: number }
+    >();
     for (const rowKey of Object.keys(cellData)) {
       const row = Number(rowKey);
       if (!Number.isInteger(row)) continue;
@@ -521,6 +526,14 @@ export function univerSnapshotToGridSheets(
         const col = Number(colKey);
         if (!Number.isInteger(col)) continue;
         maxCol = Math.max(maxCol, col + 1);
+        const probe = cellData[rowKey][colKey] || {};
+        const formula =
+          typeof probe.f === "string" ? probe.f.trim() : "";
+        const si = typeof probe.si === "string" ? probe.si : "";
+        // 空 `f` 是假值（Univer 0.25.1 公式引擎对从格写 `{ f:"", si }`）。
+        if (formula.startsWith("=") && formula.length > 1 && si && !sharedMasters.has(si)) {
+          sharedMasters.set(si, { formula, row, col });
+        }
       }
     }
     const rowCount = Math.max(
@@ -544,8 +557,21 @@ export function univerSnapshotToGridSheets(
         const col = Number(colKey);
         if (!Number.isInteger(col) || col < 0 || col >= colCount) continue;
         const cell = cellData[rowKey][colKey] || {};
-        if (cell.f) rows[row][col] = cell.f;
-        else if (cell.v !== undefined && cell.v !== null) {
+        const formula = typeof cell.f === "string" ? cell.f.trim() : "";
+        if (formula.startsWith("=") && formula.length > 1) {
+          rows[row][col] = formula;
+        } else if (typeof cell.si === "string" && cell.si) {
+          const master = sharedMasters.get(cell.si);
+          if (master) {
+            rows[row][col] = translateGridFormula(
+              master.formula,
+              row - master.row,
+              col - master.col,
+            );
+          } else if (cell.v !== undefined && cell.v !== null) {
+            rows[row][col] = String(cell.v);
+          }
+        } else if (cell.v !== undefined && cell.v !== null) {
           rows[row][col] = String(cell.v);
         }
         const format = univerStyleToGridFormat(
