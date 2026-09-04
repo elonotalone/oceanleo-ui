@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
 import {
   buildRichDocEmbedUrl,
@@ -218,13 +219,65 @@ export function RichDocHostedRoute({
         setDirty(false);
         return;
       }
+      if (message.type === "review-proposal") {
+        // 契约 v2 第 3 条的宿主一半：编辑器把 agent 改动挂起来交上来，
+        // 这里交给 L4 审阅收件箱（W02 的 `signals/W02-review-api.md`，只读消费，
+        // 校验器用 W01 那一份，不另造）。收不下就如实说，**不许静默丢**——
+        // 丢掉等于编辑器那边永远挂着一条没人处理的改动。
+        const verdict = submitRawReviewProposal(message.proposal, {
+          liveRevision: editRevision,
+          editorId: "richdoc",
+        });
+        setStatus(
+          verdict === "ok"
+            ? "有一处改动等你确认，接受之前不会动文档"
+            : verdict === "stale"
+              ? "这条改动是针对旧版本提的，已作废，请重新发起"
+              : "这条改动的描述不合法，已拒收，文档未改动",
+        );
+        if (verdict !== "ok") {
+          sendToEditor({
+            protocol: EDITOR_PROTOCOL,
+            type: "review-decision",
+            instanceId,
+            proposalId: message.proposal.proposalId,
+            decision: "reject",
+          });
+        }
+        return;
+      }
       if (message.type === "error" && typeof message.message === "string") {
         setStatus(message.message);
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [editRevision, editorOrigin, instanceId, pushInit]);
+  }, [editRevision, editorOrigin, instanceId, pushInit, sendToEditor]);
+
+  // 人在审阅面板上点了接受/拒绝 ⇒ 回一条 `review-decision`。没有这一段，
+  // 提案会永远停在「待审」，用户点了也没反应。
+  useEffect(() => {
+    const onDecision = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { proposalId?: unknown; decision?: unknown; editorId?: unknown }
+        | undefined;
+      if (!detail) return;
+      if (detail.editorId !== undefined && detail.editorId !== "richdoc") return;
+      const proposalId = String(detail.proposalId || "");
+      const decision = detail.decision === "accept" ? "accept" : "reject";
+      if (!proposalId) return;
+      sendToEditor({
+        protocol: EDITOR_PROTOCOL,
+        type: "review-decision",
+        instanceId,
+        proposalId,
+        decision,
+      });
+    };
+    window.addEventListener("oceanleo-review-decision", onDecision);
+    return () =>
+      window.removeEventListener("oceanleo-review-decision", onDecision);
+  }, [instanceId, sendToEditor]);
 
   useEffect(() => {
     if (!ready) return;
