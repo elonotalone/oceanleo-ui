@@ -534,9 +534,11 @@ test("普通模式有代码编辑器与预览槽；运行/停止/重载改的是
     const editor = mounted.container.querySelector("[data-testid=game-code-editor]");
     assert.ok(editor, "普通模式没有代码编辑器，用户改不了游戏");
     assert.equal(editor.tagName, "TEXTAREA");
+    assert.equal(concealmentReason(editor), null, "代码编辑器被藏起来了");
     const preview = mounted.container.querySelector("[data-testid=game-preview-frame]");
     assert.ok(preview, "普通模式没有沙箱预览 iframe，用户看不见游戏在跑");
     assert.equal(preview.tagName, "IFRAME");
+    assert.equal(concealmentReason(preview), null, "预览 iframe 被藏起来了");
     assert.equal(
       mounted.container.querySelector("[data-testid=game-hosted-frame]"),
       null,
@@ -606,8 +608,18 @@ test("有参数声明时参数面板真在，拖滑块会改预览宿主的 para
   try {
     const panel = mounted.container.querySelector("[data-testid=game-param-panel]");
     assert.ok(panel, "有 3 项参数声明时参数面板没画出来，用户调不了难度");
+    assert.equal(
+      concealmentReason(panel),
+      null,
+      "参数面板还在 DOM 里，但被 hidden / aria-hidden / display:none 藏起来了",
+    );
     const slider = mounted.container.querySelector("[data-testid=game-param-speed]");
     assert.ok(slider, "速度滑块不在，参数面板是空壳");
+    assert.equal(
+      concealmentReason(slider),
+      null,
+      "滑块被藏起来了，用户拖不到",
+    );
     const preview = mounted.container.querySelector("[data-testid=game-preview-frame]");
     assert.equal(
       preview.getAttribute("data-param-speed"),
