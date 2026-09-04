@@ -159,6 +159,13 @@ test("普通模式收起内核自带的工具栏与面板（R3：默认普通模
   assert.match(hosted, /next === "normal"/, "切模式时没有跟着重发 hide-chrome");
 });
 
+test("握手要发 init，否则编辑器一条能力都不报", () => {
+  // 只发 open-asset：文档进得去，但 tools-manifest / selection / history 都不来，
+  // agent 的接口面是空的。init 与 open-asset 两条缺一不可。
+  assert.match(hosted, /type: "init"/, "从不发 init ⇒ 编辑器不报 tools-manifest");
+  assert.match(hosted, /type: "open-asset"/, "从不发 open-asset ⇒ 打开的是空白演示");
+});
+
 test("agent 的改动要经过这一页点头才落地（契约 v2 §3.3）", () => {
   assert.match(
     hosted,

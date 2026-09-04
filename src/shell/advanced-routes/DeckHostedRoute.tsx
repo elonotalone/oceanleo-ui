@@ -188,6 +188,15 @@ export function DeckHostedRoute({
         panels: mode === "normal",
       }),
     );
+    // `init` 先发：编辑器收到它才会报 tools-manifest / selection / history。
+    // 只发 open-asset 的话文档进去了，但 agent 的接口面一条都没送上来。
+    sendToEditor({
+      protocol: EDITOR_PROTOCOL,
+      type: "init",
+      instanceId,
+      mode,
+      title: item.title || "演示文稿",
+    });
     sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "open-asset",
