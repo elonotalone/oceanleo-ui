@@ -1,12 +1,22 @@
 // 音频换核接线闸（W10 · editor-core-swap）。
 //
-// 读源码断言 + 真调用纯函数。真画出多轨波形归 V1（不许用浏览器验收）。
+// 源码正则是辅闸。A-48：专业模式必须真挂 <iframe>，src origin 是
+// https://audio.oceanleo.app，sandbox 走 embedEditorFrameSandbox()。
+// jsdom 没有 layout，可见性只钉 hidden / aria-hidden / 内联 style / 藏起 class。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
-import { DEFAULT_EDITOR_CORE } from "../src/shell/editor-core-flags.ts";
+import React, { act } from "react";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import {
+  DEFAULT_EDITOR_CORE,
+  setEditorCoreOverride,
+} from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
 import { UNTRUSTED_FRAME_SANDBOX, embedEditorFrameSandbox } from "../src/shell/editor-sandbox-origin.ts";
 import {
@@ -149,5 +159,383 @@ test("next-core sources do not embed a DashScope key", () => {
   for (const text of [leaf, frame, mount, route]) {
     assert.doesNotMatch(text, /sk-[a-zA-Z0-9]{8,}/);
     assert.doesNotMatch(text, /PLATFORM_DASHSCOPE_KEY\s*=\s*['"]/);
+  }
+});
+
+// ── A-48 行为闸：jsdom 真挂叶子，看节点，不扫 <iframe> 字符串 ─────────────
+const require = createRequire(import.meta.url);
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const AUDIO_ORIGIN = "https://audio.oceanleo.app";
+const HOST_PAGE = "https://oceanleo.com/workspace";
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: HOST_PAGE,
+});
+const { window } = dom;
+for (const [name, value] of Object.entries({
+  window,
+  document: window.document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  HTMLIFrameElement: window.HTMLIFrameElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  MouseEvent: window.MouseEvent,
+  localStorage: window.localStorage,
+  sessionStorage: window.sessionStorage,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+globalThis.fetch = async () => {
+  throw new Error("音频接线闸首屏不该发网络请求");
+};
+
+const shellStubUrl = dataModule(`
+  import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AdvancedWorkbenchShell({ adapter }) {
+    return jsxs("div", {
+      "data-role": "audio-next-shell",
+      children: [
+        adapter && adapter.mode
+          ? jsx("button", {
+              type: "button",
+              "data-testid": "audio-set-pro",
+              onClick: () => adapter.mode.setMode("pro"),
+              children: "专业模式",
+            })
+          : null,
+        adapter && adapter.stage ? adapter.stage : null,
+      ],
+    });
+  }
+`);
+const mediaStubUrl = dataModule(`
+  export async function fetchMediaBlob() {
+    throw new Error("音频叶子闸不该去拉媒体");
+  }
+`);
+const authStubUrl = dataModule(`
+  export async function accessToken() { return ""; }
+`);
+const configStubUrl = dataModule(`
+  export const GATEWAY_BASE = "https://api.oceanleo.com";
+`);
+const dbStubUrl = dataModule(`
+  export async function uploadFile() { return { url: "" }; }
+`);
+const ioStubUrl = dataModule(`
+  export async function saveFileToLibrary() { return { ok: false }; }
+`);
+const pluginStubUrl = dataModule(`
+  export function usePluginCommandSurface() {}
+`);
+const mountStubUrl = dataModule(`
+  export async function mountWaveformPlaylist() {
+    return {
+      emit() {},
+      getDuration: () => 0,
+      getCurrentTime: () => 0,
+      getTimeSelection: () => ({ start: 0, end: 0 }),
+      trackCount: () => 0,
+    };
+  }
+`);
+const panelStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AudioTranscriptPanel() { return jsx("div", { "data-role": "transcript-stub" }); }
+`);
+const toolbarStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AudioPlaylistToolbar() { return jsx("div", { "data-role": "toolbar-stub" }); }
+`);
+const nextStageMarkerUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AudioPlaylistStage(props) {
+    if (!props || !props.item) {
+      return jsx("div", { "data-testid": "audio-next-missing-item" });
+    }
+    return jsx("div", {
+      "data-testid": "audio-next-stage-loaded",
+      "data-item-id": String(props.item.id || ""),
+    });
+  }
+`);
+const dynamicStubUrl = dataModule(`
+  import { createElement, useEffect, useState } from ${JSON.stringify(reactUrl)};
+  export default function dynamic(loader) {
+    return function DynamicLoaded(props) {
+      const [C, setC] = useState(null);
+      useEffect(() => {
+        Promise.resolve(typeof loader === "function" ? loader() : loader).then((mod) => {
+          const resolved = typeof mod === "function" ? mod : mod && (mod.default || mod);
+          setC(() => resolved || null);
+        });
+      }, []);
+      return C ? createElement(C, props) : null;
+    };
+  }
+`);
+const audioWorkbenchStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function useAudioWorkbench() {
+    return { download() {} };
+  }
+  export function AudioControls() { return null; }
+  export function AudioStage() {
+    return jsx("div", { "data-testid": "audio-legacy-stage" });
+  }
+`);
+const emptyFnUrl = dataModule(`
+  export function createAudioCommandSurface() { return {}; }
+  export async function convertMediaBlob() { return new Blob(); }
+  export function downloadVisualBlob() {}
+  export function withExtension(name) { return name; }
+  export function normalizeVisualUploads(files) { return files; }
+  export function visualDownloadFormats() { return []; }
+  export function visualUploadAccept() { return "*"; }
+  export function AudioContextToolbar() { return null; }
+  export function useWorkbenchMaterialAdapter() { return null; }
+`);
+
+const leafStubs = {
+  "../AdvancedWorkbenchShell": shellStubUrl,
+  "../../lib/media-proxy": mediaStubUrl,
+  "../../lib/auth/client": authStubUrl,
+  "../../lib/auth/config": configStubUrl,
+  "../../lib/database": dbStubUrl,
+  "../doc-editors/doc-io": ioStubUrl,
+  "../plugin-command": pluginStubUrl,
+  "./audio-playlist-mount": mountStubUrl,
+  "./AudioTranscriptPanel": panelStubUrl,
+  "./AudioPlaylistToolbar": toolbarStubUrl,
+};
+
+const routeStubs = {
+  "next/dynamic": dynamicStubUrl,
+  "../media-editors/AudioPlaylistStage": nextStageMarkerUrl,
+  "../AdvancedWorkbenchShell": shellStubUrl,
+  "../../lib/media-proxy": mediaStubUrl,
+  "../plugin-command": pluginStubUrl,
+  "../media-editors/AudioWorkbench": audioWorkbenchStubUrl,
+  "../media-editors/audio-command-surface": emptyFnUrl,
+  "../media-editors/visual-convert-client": emptyFnUrl,
+  "../media-editors/visual-import-normalize": emptyFnUrl,
+  "../media-editors/visual-formats": emptyFnUrl,
+  "../media-editors/AudioContextToolbar": emptyFnUrl,
+  "../workbench-material-provider": emptyFnUrl,
+};
+
+function audioItem() {
+  return {
+    key: "aud-gate",
+    source: "artifact",
+    id: "aud-gate",
+    title: "闸",
+    kind: "audio",
+    siteId: "website",
+    favorite: false,
+    meta: {},
+  };
+}
+
+function concealmentReason(node) {
+  let current = node;
+  while (current && current.nodeType === 1) {
+    if (current.hasAttribute("hidden")) return "hidden";
+    if (current.getAttribute("aria-hidden") === "true") return "aria-hidden";
+    const style = String(current.getAttribute("style") || "");
+    if (/display\s*:\s*none/i.test(style)) return "display:none";
+    const cls = String(current.getAttribute("class") || "");
+    if (/(?:^|\s)(?:hidden|invisible|sr-only)(?:\s|$)/.test(cls)) {
+      return `class ${cls}`;
+    }
+    if (/(?:^|\s)h-0(?:\s|$)/.test(cls) && /(?:^|\s)w-0(?:\s|$)/.test(cls)) {
+      return "h-0 w-0";
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function assertLiveAudioIframe(iframe) {
+  assert.ok(iframe, "专业模式挂起来之后没有 iframe 节点，用户看不到 AudioMass");
+  assert.equal(iframe.tagName, "IFRAME", "画布节点不是 iframe（标签被换成别的了）");
+  const src = iframe.getAttribute("src") || "";
+  assert.ok(src, "iframe 的 src 是空的，用户看见的是无法构造嵌入地址");
+  assert.equal(
+    new URL(src).origin,
+    AUDIO_ORIGIN,
+    `iframe src origin 不是 audio 托管域：${src}`,
+  );
+  const expectedSandbox = embedEditorFrameSandbox(AUDIO_ORIGIN);
+  assert.equal(
+    iframe.getAttribute("sandbox"),
+    expectedSandbox,
+    "sandbox 没有走 embedEditorFrameSandbox()",
+  );
+  assert.equal(expectedSandbox.includes("allow-same-origin"), false);
+  const hidden = concealmentReason(iframe);
+  assert.equal(
+    hidden,
+    null,
+    `iframe 还在 DOM 里，但祖先带了藏起标记 ${hidden}。jsdom 没有 layout，这条钉的是 class / hidden / aria-hidden / 内联 style，不是在假装量了可见像素。`,
+  );
+}
+
+async function mountCompiled(entry, stubs, element) {
+  const url = await compileModule(entry, stubs);
+  const mod = await import(url);
+  const { createRoot } = await import("react-dom/client");
+  const container = window.document.createElement("div");
+  window.document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(element(mod));
+  });
+  await act(async () => {});
+  return {
+    container,
+    mod,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+test("jsdom 挂上 AudioHostedFrame 后，画布是真 iframe 而不是 fallback", async () => {
+  const { buildAudioEmbedUrl } = await import(
+    "../src/shell/media-editors/audio-hosted-embed.ts"
+  );
+  const src = buildAudioEmbedUrl({
+    instanceId: "aud-gate",
+    hostOrigin: "https://oceanleo.com",
+    assetTitle: "闸",
+  });
+  const mounted = await mountCompiled(
+    "src/shell/media-editors/AudioHostedFrame.tsx",
+    {},
+    (mod) =>
+      React.createElement(mod.AudioHostedFrame, {
+        instanceId: "aud-gate",
+        hostOrigin: "https://oceanleo.com",
+        src,
+        title: "AudioMass",
+        onReady() {},
+        onSnapshot() {},
+        onError() {},
+      }),
+  );
+  try {
+    assertLiveAudioIframe(mounted.container.querySelector("iframe"));
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("专业模式叶子真挂 AudioMass iframe，src 由生产函数算出", async () => {
+  const mounted = await mountCompiled(
+    "src/shell/media-editors/AudioPlaylistStage.tsx",
+    leafStubs,
+    (mod) =>
+      React.createElement(mod.AudioPlaylistStage, {
+        item: audioItem(),
+        onClose() {},
+      }),
+  );
+  try {
+    assert.equal(
+      mounted.container.querySelector("iframe"),
+      null,
+      "普通模式不该挂 AudioMass iframe",
+    );
+    const button = mounted.container.querySelector("[data-testid=audio-set-pro]");
+    assert.ok(button, "壳桩没有把 adapter.mode.setMode 画成可点的专业模式按钮");
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {});
+    assertLiveAudioIframe(mounted.container.querySelector("iframe"));
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("AudioRoute 翻到 next 时，加载函数真的交出叶子并带上 item", async () => {
+  setEditorCoreOverride("audio", "next");
+  try {
+    assert.equal(
+      (await import("../src/shell/editor-core-flags.ts")).resolveEditorCore("audio"),
+      "next",
+    );
+    const mounted = await mountCompiled(
+      "src/shell/advanced-routes/AudioRoute.tsx",
+      routeStubs,
+      (mod) =>
+        React.createElement(mod.AudioRoute, {
+          item: audioItem(),
+          onClose() {},
+        }),
+    );
+    try {
+      for (let i = 0; i < 8; i += 1) {
+        if (mounted.container.querySelector("[data-testid=audio-next-stage-loaded]")) {
+          break;
+        }
+        await act(async () => {});
+      }
+      const marker = mounted.container.querySelector(
+        "[data-testid=audio-next-stage-loaded]",
+      );
+      assert.ok(
+        marker,
+        "next 舞台加载函数没有交出 AudioPlaylistStage。保留 if 行再 return null、或 {false && next}、或不传 item，用户翻不到新核。DOM=" +
+          mounted.container.innerHTML.slice(0, 500),
+      );
+      assert.equal(marker.getAttribute("data-item-id"), "aud-gate");
+      assert.equal(
+        mounted.container.querySelector("[data-testid=audio-next-missing-item]"),
+        null,
+      );
+      assert.equal(
+        mounted.container.querySelector("[data-testid=audio-legacy-stage]"),
+        null,
+      );
+    } finally {
+      await mounted.unmount();
+    }
+  } finally {
+    setEditorCoreOverride("audio", null);
+    assert.equal(
+      (await import("../src/shell/editor-core-flags.ts")).resolveEditorCore("audio"),
+      "legacy",
+    );
+    assert.equal(DEFAULT_EDITOR_CORE, "legacy");
   }
 });
