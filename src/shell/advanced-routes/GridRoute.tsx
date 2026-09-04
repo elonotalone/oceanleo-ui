@@ -7,7 +7,9 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { resolveEditorCore } from "../editor-core-flags";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -41,6 +43,33 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+
+/**
+ * 新核舞台的懒加载入口。
+ *
+ * `import()` 的字面量必须写在这一层：它是打包器切 chunk 的唯一依据。
+ * `ssr: false` 是硬要求——Univer 碰 DOM / canvas，服务端渲染时不存在。
+ */
+const GridUniverStage = dynamic(
+  () =>
+    import("../doc-editors/GridUniverStage").then(
+      (module) => module.GridUniverStage,
+    ),
+  { ssr: false, loading: () => null },
+);
+
+/**
+ * 双核分发口。flag 只在这里判一次，判完各走各的组件。
+ *
+ * 默认 `legacy`（`_COMMON.md` §10 第 3 条）。验收绿之后才翻 flag，
+ * 删除旧核要单独成一个 commit，message 以 core-swap:delete 开头。
+ */
+export function GridRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("grid") === "next") {
+    return <GridUniverStage {...props} />;
+  }
+  return <GridLegacyRoute {...props} />;
+}
 
 function useGridDocumentHistory(editor: GridEditorState, itemId: string) {
   const historyRef = useRef(new GridRouteHistory());
@@ -131,7 +160,7 @@ function useGridDocumentHistory(editor: GridEditorState, itemId: string) {
   };
 }
 
-export function GridRoute({
+function GridLegacyRoute({
   item,
   previewContent,
   linkUrl,
