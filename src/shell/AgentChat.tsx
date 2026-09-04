@@ -52,6 +52,17 @@ import {
   useEditorCommandBridge,
 } from "./FunctionAgentChat";
 import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
+import { currentPluginCommandSurface } from "./plugin-command";
+import {
+  AgentReviewPanel,
+  applyParkedReview,
+  buildAgentSelectionBlock,
+  createReviewGatedReader,
+  hostReviewSession,
+  readAgentSelection,
+  readMentionCatalog,
+} from "./agent-review";
+import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffButton } from "./HumanHandoffButton";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import {
@@ -686,13 +697,80 @@ function AgentChatInner({
   const streamAbortRef = useRef<AbortController | null>(null);
   const atts = useAttachments(siteId, setError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
+  // mutates 的 run() 必须进审阅闸：allowAlways / 确认卡都不能直接写文档。
+  const gatedSurfaceReader = useMemo(
+    () =>
+      createReviewGatedReader(
+        editorCommandSurface,
+        currentPluginCommandSurface,
+      ),
+    [editorCommandSurface],
+  );
   const editorCommands = useEditorCommandBridge({
     enabled: enableEditorCommands,
-    surfaceReader: editorCommandSurface,
+    surfaceReader: gatedSurfaceReader,
     taskId,
     readOnly,
   });
-  const editorContextFor = editorCommands.contextFor;
+  const bridgeContextFor = editorCommands.contextFor;
+  const editorContextFor = useCallback(
+    (prompt: string) => {
+      const commandCtx = bridgeContextFor(prompt);
+      const selectionCtx = buildAgentSelectionBlock(
+        readAgentSelection(),
+        prompt,
+        readMentionCatalog(),
+      );
+      return [commandCtx, selectionCtx].filter(Boolean).join("\n\n");
+    },
+    [bridgeContextFor],
+  );
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const confirmHostRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editorCommands.pending || editorCommands.busy) return;
+    const button = confirmHostRef.current?.querySelector(
+      "[data-editor-command-action='confirm']",
+    );
+    if (button instanceof HTMLButtonElement && !button.disabled) {
+      button.click();
+    }
+  }, [editorCommands.pending, editorCommands.busy]);
+  const handleReviewAccept = useCallback(async () => {
+    const snap = hostReviewSession.snapshot();
+    if (!snap.parked || snap.status !== "open") return;
+    const surface = currentPluginCommandSurface();
+    if (!surface) return;
+    setReviewBusy(true);
+    const result = await applyParkedReview(surface, snap.parked);
+    setReviewBusy(false);
+    if (result.ok) {
+      hostReviewSession.markApplied(
+        typeof result.revision === "number"
+          ? result.revision
+          : snap.currentRevision,
+      );
+    }
+  }, []);
+  const handleReviewReject = useCallback(() => {
+    hostReviewSession.markDiscarded();
+  }, []);
+  const handleReviewRollback = useCallback(async () => {
+    const inverse = hostReviewSession.rollback();
+    if (!inverse) return;
+    const surface = currentPluginCommandSurface();
+    if (!surface) return;
+    setReviewBusy(true);
+    const result = await applyParkedReview(surface, inverse);
+    setReviewBusy(false);
+    if (result.ok) {
+      hostReviewSession.markApplied(
+        typeof result.revision === "number"
+          ? result.revision
+          : inverse.proposal.revision,
+      );
+    }
+  }, []);
   const noteUserTurn = editorCommands.noteUserTurn;
   const noteOwnEditorTask = editorCommands.noteOwnTask;
   const ingestEditorCommands = editorCommands.ingest;
@@ -1332,6 +1410,27 @@ function AgentChatInner({
     ],
   );
 
+  const fireAgentText = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || readOnly) return;
+      if (!taskId) {
+        await start(trimmed);
+        return;
+      }
+      await sendSuggestion(trimmed);
+    },
+    [readOnly, taskId, start, sendSuggestion],
+  );
+  useEffect(() => {
+    const onChip = (event: Event) => {
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (prompt) void fireAgentText(prompt);
+    };
+    window.addEventListener("oceanleo-l4-chip", onChip);
+    return () => window.removeEventListener("oceanleo-l4-chip", onChip);
+  }, [fireAgentText]);
+
   // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
   const share = useShareMode({
     messages,
@@ -1804,8 +1903,18 @@ function AgentChatInner({
           ) : (
             <>
           {composerHeader}
-          {/* 会改内容的指令：先问用户一句「要我改吗」。 */}
-          {editorCommands.card}
+          <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />
+          <AgentReviewPanel
+            session={hostReviewSession}
+            busy={reviewBusy}
+            onAccept={() => void handleReviewAccept()}
+            onReject={handleReviewReject}
+            onRollback={() => void handleReviewRollback()}
+          />
+          {/* 旧确认卡仍要挂上才能点「就这么改」把 mutates 送进闸；对用户隐藏。 */}
+          <div ref={confirmHostRef} data-agent-review-host className="sr-only">
+            {editorCommands.card}
+          </div>
           {branchFromMessageId && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
               <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>

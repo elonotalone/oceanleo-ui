@@ -36,6 +36,14 @@ import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
 import type { CapabilityResult } from "../lib/capabilities";
 import type { Capability } from "../lib/manifest";
 import { useUI } from "../i18n/ui/useUI";
+import { currentPluginCommandSurface } from "./plugin-command";
+import {
+  AgentReviewPanel,
+  applyParkedReview,
+  createReviewGatedReader,
+  hostReviewSession,
+} from "./agent-review";
+import { QuickActionChips } from "./quick-actions";
 
 // 能力执行器签名。宗旨 v10：操作台**直接生成**——主行动按钮点了就经此 SDK 出结果填
 // 进右栏（agent 形态另有自己的工具调用链路，与操作台独立）。
@@ -200,6 +208,50 @@ function ManifestPane({
   }, []);
 
   const schema = useMemo(() => manifestToOpsSchema(m.agent_id, con), [m.agent_id, con]);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const gatedSurfaceReader = useMemo(
+    () =>
+      createReviewGatedReader(
+        editorCommandSurface,
+        currentPluginCommandSurface,
+      ),
+    [editorCommandSurface],
+  );
+  const handleReviewAccept = useCallback(async () => {
+    const snap = hostReviewSession.snapshot();
+    if (!snap.parked || snap.status !== "open") return;
+    const surface = currentPluginCommandSurface();
+    if (!surface) return;
+    setReviewBusy(true);
+    const result = await applyParkedReview(surface, snap.parked);
+    setReviewBusy(false);
+    if (result.ok) {
+      hostReviewSession.markApplied(
+        typeof result.revision === "number"
+          ? result.revision
+          : snap.currentRevision,
+      );
+    }
+  }, []);
+  const handleReviewReject = useCallback(() => {
+    hostReviewSession.markDiscarded();
+  }, []);
+  const handleReviewRollback = useCallback(async () => {
+    const inverse = hostReviewSession.rollback();
+    if (!inverse) return;
+    const surface = currentPluginCommandSurface();
+    if (!surface) return;
+    setReviewBusy(true);
+    const result = await applyParkedReview(surface, inverse);
+    setReviewBusy(false);
+    if (result.ok) {
+      hostReviewSession.markApplied(
+        typeof result.revision === "number"
+          ? result.revision
+          : inverse.proposal.revision,
+      );
+    }
+  }, []);
 
   // 操作台「生成」：required 校验 → 经能力 SDK 出结果 → 写进结果字段（右栏显示）。
   const runGenerate = useCallback(async () => {
@@ -318,19 +370,39 @@ function ManifestPane({
   // 左栏 = 操作台/agent 双形态（FunctionAgentChat），右栏 = 结果画布。两栏共用
   // Studio 的可拖动分栏骨架（与各站手写操作台版式完全一致）。
   const ops = (
-    <FunctionAgentChat
-      agentId={m.agent_id}
-      siteId={siteId}
-      schema={schema}
-      accent={accent}
-      opsContent={opsContent}
-      showOps={hasOpsForm}
-      onArtifact={applyArtifact}
-      appLabel={m.name}
-      appIcon={typeof m.icon === "string" ? m.icon : undefined}
-      enableEditorCommands={enableEditorCommands}
-      editorCommandSurface={editorCommandSurface}
-    />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 space-y-2 px-3 pt-3">
+        <QuickActionChips
+          onFire={(prompt) => {
+            window.dispatchEvent(
+              new CustomEvent("oceanleo-l4-chip", { detail: { prompt } }),
+            );
+          }}
+        />
+        <AgentReviewPanel
+          session={hostReviewSession}
+          busy={reviewBusy}
+          onAccept={() => void handleReviewAccept()}
+          onReject={handleReviewReject}
+          onRollback={() => void handleReviewRollback()}
+        />
+      </div>
+      <div className="min-h-0 flex-1">
+        <FunctionAgentChat
+          agentId={m.agent_id}
+          siteId={siteId}
+          schema={schema}
+          accent={accent}
+          opsContent={opsContent}
+          showOps={hasOpsForm}
+          onArtifact={applyArtifact}
+          appLabel={m.name}
+          appIcon={typeof m.icon === "string" ? m.icon : undefined}
+          enableEditorCommands={enableEditorCommands}
+          editorCommandSurface={gatedSurfaceReader}
+        />
+      </div>
+    </div>
   );
 
   return (
