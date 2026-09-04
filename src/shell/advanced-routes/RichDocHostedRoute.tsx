@@ -1,0 +1,402 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { downloadText } from "../doc-editors/doc-io";
+import {
+  buildRichDocEmbedUrl,
+  buildRichDocInitEnvelope,
+  RICHDOC_HOSTED_EMBED_ORIGIN,
+  richDocHostedEmbedBase,
+} from "../doc-editors/rich-doc-hosted-embed";
+import {
+  convertRichDocToUmo,
+  inspectRichDocDocument,
+  type ConvertFailure,
+  type InspectResult,
+  type UmoDocument,
+} from "../doc-editors/rich-doc-umo-migration";
+import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
+import {
+  EDITOR_PROTOCOL,
+  acceptEditorFrameMessage,
+  asHostToEditorMessage,
+  isValidEditorTargetOrigin,
+} from "../editor-protocol";
+import {
+  embedEditorFrameSandbox,
+  isTrustedEmbedEditorBase,
+} from "../editor-sandbox-origin";
+import {
+  DEFAULT_EDITOR_MODE,
+  buildHideChromeMessage,
+  buildSetModeMessage,
+  type EditorMode,
+} from "../hosted-editor/index";
+import { editorToolLabel } from "../workbench-routes";
+
+function inlineSourceFromItem(item: AdvancedContentWorkbenchProps["item"]): unknown {
+  const raw = typeof item.content === "string" ? item.content.trim() : "";
+  if (raw) {
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  const meta = item.meta || {};
+  for (const key of ["tiptap", "project", "umo"] as const) {
+    const value = meta[key];
+    if (value && typeof value === "object") return value;
+    if (typeof value === "string" && value.trim()) {
+      try {
+        return JSON.parse(value) as unknown;
+      } catch {
+        /* next */
+      }
+    }
+  }
+  return null;
+}
+
+function emptyDoc(): { type: "doc"; content: { type: "paragraph" }[] } {
+  return { type: "doc", content: [{ type: "paragraph" }] };
+}
+
+/**
+ * 双核 `next` 分支：Umo 托管在 `docs.oceanleo.app`。
+ *
+ * 存量文档先只读打开，用户点「一键转换」才把 Tiptap JSON 变成 Umo 副本。
+ * iframe 内零凭据：保存走宿主 `save-request` → 编辑器回 `recovery-snapshot`。
+ */
+export function RichDocHostedRoute({
+  item,
+  taskId,
+  siteId = "",
+  accent = "#4f46e5",
+  onClose,
+}: AdvancedContentWorkbenchProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const instanceId = useRef(
+    `rd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+  ).current;
+  const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
+  const [ready, setReady] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [editRevision, setEditRevision] = useState(0);
+  const [status, setStatus] = useState("");
+  const [convertError, setConvertError] = useState("");
+  const [converted, setConverted] = useState<UmoDocument | null>(null);
+  const [snapshot, setSnapshot] = useState<unknown>(null);
+  const [inspect, setInspect] = useState<InspectResult | null>(null);
+  const [source, setSource] = useState<unknown>(null);
+  const [readOnly, setReadOnly] = useState(true);
+
+  useEffect(() => {
+    const inline = inlineSourceFromItem(item);
+    if (inline) {
+      const looked = inspectRichDocDocument(inline);
+      setSource(inline);
+      setInspect(looked);
+      setReadOnly(looked.kind !== "umo" && looked.differences.length > 0);
+      return;
+    }
+    const projectUrl = String(item.meta.editor_project_url || "").trim();
+    if (!projectUrl) {
+      setSource(emptyDoc());
+      setInspect(inspectRichDocDocument(emptyDoc()));
+      setReadOnly(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(projectUrl, { cache: "no-store", headers: { Accept: "application/json" } })
+      .then((response) => {
+        if (!response.ok) throw new Error(`工程档读取失败（HTTP ${response.status}）`);
+        return response.json() as Promise<unknown>;
+      })
+      .then((json) => {
+        if (cancelled) return;
+        const looked = inspectRichDocDocument(json);
+        setSource(json);
+        setInspect(looked);
+        setReadOnly(looked.kind !== "umo" && looked.differences.length > 0);
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) return;
+        setStatus(
+          caught instanceof Error ? caught.message : "工程档读取失败，已按空白文档打开。",
+        );
+        setSource(emptyDoc());
+        setInspect(inspectRichDocDocument(emptyDoc()));
+        setReadOnly(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item]);
+
+  const embedBase = richDocHostedEmbedBase();
+  const editorOrigin = RICHDOC_HOSTED_EMBED_ORIGIN;
+  const src = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    if (!isTrustedEmbedEditorBase(embedBase)) return "";
+    try {
+      return buildRichDocEmbedUrl({
+        instanceId,
+        hostOrigin: window.location.origin,
+        assetUrl: item.url || undefined,
+        assetTitle: item.title,
+        base: embedBase,
+      });
+    } catch {
+      return "";
+    }
+  }, [embedBase, instanceId, item.title, item.url]);
+
+  const sendToEditor = useCallback(
+    (message: Record<string, unknown>) => {
+      const frame = iframeRef.current?.contentWindow;
+      if (!frame || !isValidEditorTargetOrigin(editorOrigin)) return false;
+      const envelope = { ...message, protocol: EDITOR_PROTOCOL, instanceId };
+      if (!asHostToEditorMessage(envelope, instanceId)) return false;
+      try {
+        frame.postMessage(envelope, editorOrigin);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [editorOrigin, instanceId],
+  );
+
+  const pushInit = useCallback(() => {
+    sendToEditor(buildSetModeMessage(instanceId, DEFAULT_EDITOR_MODE));
+    sendToEditor(
+      buildHideChromeMessage(instanceId, {
+        toolbar: true,
+        panels: true,
+      }),
+    );
+    sendToEditor(
+      buildRichDocInitEnvelope(instanceId, {
+        content: converted?.content || source || emptyDoc(),
+        readOnly,
+        title: item.title,
+      }),
+    );
+  }, [converted, instanceId, item.title, readOnly, sendToEditor, source]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const message = acceptEditorFrameMessage(event, {
+        expectedOrigin: editorOrigin,
+        frameWindow: iframeRef.current?.contentWindow,
+        instanceId,
+      });
+      if (!message) return;
+      if (message.type === "ready") {
+        setReady(true);
+        pushInit();
+        return;
+      }
+      if (message.type === "dirty") {
+        setDirty(message.dirty === true);
+        if (message.revision !== undefined) {
+          const next =
+            typeof message.revision === "number"
+              ? message.revision
+              : editRevision + 1;
+          setEditRevision(next);
+        }
+        return;
+      }
+      if (message.type === "recovery-snapshot" && message.ok) {
+        // 契约快照是 `{ revision, payload }`；正文在 payload 里。
+        setSnapshot(message.snapshot?.payload ?? null);
+        setDirty(false);
+        return;
+      }
+      if (message.type === "error" && typeof message.message === "string") {
+        setStatus(message.message);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [editRevision, editorOrigin, instanceId, pushInit]);
+
+  useEffect(() => {
+    if (!ready) return;
+    pushInit();
+  }, [converted, pushInit, ready, readOnly, source]);
+
+  const convertNow = useCallback(() => {
+    setConvertError("");
+    const result = convertRichDocToUmo(source, { title: item.title });
+    if (!result.ok) {
+      const failure = result as ConvertFailure;
+      setConvertError(failure.reason);
+      return;
+    }
+    setConverted(result.document);
+    setReadOnly(false);
+    setStatus(
+      result.document.warnings.length > 0
+        ? `已转换。${result.document.warnings[0]}`
+        : "已转换成 Umo 文档，可以继续编辑。",
+    );
+  }, [item.title, source]);
+
+  const exportWechat = useCallback(() => {
+    const payload = snapshot || converted || source;
+    const result = exportWechatFromTiptap(payload, { title: item.title });
+    if (!result.html) {
+      setStatus(result.warnings[0] || "没有可导出的正文。");
+      return;
+    }
+    downloadText(
+      `${item.title || "document"}.wechat.html`,
+      result.html,
+      "text/html;charset=utf-8",
+    );
+    if (result.warnings.length > 0) setStatus(result.warnings[0]);
+  }, [converted, item.title, snapshot, source]);
+
+  const applyMode = useCallback(
+    (next: EditorMode) => {
+      setMode(next);
+      sendToEditor(buildSetModeMessage(instanceId, next));
+      sendToEditor(
+        buildHideChromeMessage(instanceId, {
+          toolbar: next === "normal",
+          panels: next === "normal",
+        }),
+      );
+    },
+    [instanceId, sendToEditor],
+  );
+
+  const flush = useCallback(async () => {
+    const saveId = `save-${Date.now().toString(36)}`;
+    const sent = sendToEditor({
+      protocol: EDITOR_PROTOCOL,
+      type: "save-request",
+      instanceId,
+      saveId,
+    });
+    sendToEditor({
+      protocol: EDITOR_PROTOCOL,
+      type: "recovery-capture",
+      instanceId,
+      recoveryId: saveId,
+    });
+    if (!sent) {
+      return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
+    }
+    return { ok: true as const, item };
+  }, [instanceId, item, sendToEditor]);
+
+  const banner =
+    inspect &&
+    inspect.kind === "richdoc" &&
+    inspect.differences.length > 0 &&
+    !converted;
+  const frameSandbox = embedEditorFrameSandbox(embedBase);
+
+  return (
+    <AdvancedWorkbenchShell
+      item={item}
+      taskId={taskId}
+      siteId={siteId}
+      accent={accent}
+      adapter={{
+        id: "richdoc",
+        label: editorToolLabel({ type: "richdoc" }),
+        available: true,
+        mode: {
+          current: mode,
+          setMode: applyMode,
+        },
+        actions: [
+          {
+            id: "richdoc-wechat-layout",
+            label: "转公众号排版",
+            group: "download",
+            onTrigger: exportWechat,
+          },
+        ],
+        stage: (
+          <div className="flex h-full min-h-0 flex-col">
+            {banner ? (
+              <div className="shrink-0 border-b border-[var(--border,#e7e5e4)] px-4 py-3 text-sm">
+                <p className="font-medium">这份文档按只读打开，原文没有改写</p>
+                <p className="mt-1 text-xs opacity-70">
+                  旧版富文档和 Umo 同源但扩展集不同。转换会列出每一处差异；失败会留下原因。
+                </p>
+                {inspect.differences.length > 0 ? (
+                  <ul className="mt-2 max-h-24 overflow-auto text-xs opacity-80">
+                    {inspect.differences.slice(0, 8).map((item) => (
+                      <li key={`${item.path}:${item.feature}`}>
+                        {item.feature} · {item.reason}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-2 rounded-md border px-3 py-1 text-xs"
+                  onClick={convertNow}
+                >
+                  一键转换为 Umo
+                </button>
+                {convertError ? (
+                  <p className="mt-2 text-xs text-red-600">{convertError}</p>
+                ) : null}
+              </div>
+            ) : null}
+            {src ? (
+              <iframe
+                ref={iframeRef}
+                title="Umo Editor"
+                src={src}
+                sandbox={frameSandbox}
+                referrerPolicy="no-referrer"
+                className="min-h-0 w-full flex-1 border-0"
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center p-8 text-center text-sm">
+                <p>
+                  无法构造 <code>{RICHDOC_HOSTED_EMBED_ORIGIN}</code> 的嵌入地址。
+                  把双核 flag 切回 <code>legacy</code> 可继续用现有编辑器。
+                </p>
+              </div>
+            )}
+          </div>
+        ),
+        status:
+          convertError ||
+          status ||
+          (!src
+            ? "托管地址未放行"
+            : ready
+              ? readOnly
+                ? "只读"
+                : ""
+              : "正在连接文档内核"),
+        persistence: {
+          dirty,
+          editRevision,
+          flush,
+          recovery: {
+            key: advancedRecoveryKey("richdoc", item),
+            ready,
+            capture: () => snapshot || converted || source,
+            restore: () => false,
+          },
+        },
+      }}
+      onClose={onClose}
+    />
+  );
+}

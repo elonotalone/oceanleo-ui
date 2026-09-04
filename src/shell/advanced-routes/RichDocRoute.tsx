@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { resolveEditorCore } from "../editor-core-flags";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocCommentRail } from "../doc-editors/richdoc-review/RichDocCommentRail";
@@ -35,7 +37,32 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 
-export function RichDocRoute({
+/**
+ * 双核 `next` 分支：Umo iframe 托管。**单独 lazy**，翻 flag 前不进本 chunk
+ * （`editor-core-flags.ts` 纪律 1）。
+ */
+const RichDocHostedRoute = lazy(() =>
+  import("./RichDocHostedRoute").then((module) => ({
+    default: module.RichDocHostedRoute,
+  })),
+);
+
+/**
+ * 双核分发口。**flag 只在这里判一次**。
+ * 默认 `legacy`（§10 第 3 条）。验收绿之后才翻 flag 并单独删旧目录。
+ */
+export function RichDocRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("richdoc") === "next") {
+    return (
+      <Suspense fallback={null}>
+        <RichDocHostedRoute {...props} />
+      </Suspense>
+    );
+  }
+  return <RichDocLegacyRoute {...props} />;
+}
+
+function RichDocLegacyRoute({
   item,
   previewContent,
   linkUrl,
@@ -204,6 +231,26 @@ export function RichDocRoute({
       );
     }
   }, [editor.editor, item.title]);
+  const exportWechat = useCallback(() => {
+    setExportError("");
+    if (!editor.editor) {
+      setExportError("文档尚未载入，不能转公众号排版。");
+      return;
+    }
+    const result = exportWechatFromTiptap(editor.editor.getJSON(), {
+      title: item.title,
+    });
+    if (!result.html) {
+      setExportError(result.warnings[0] || "没有可排版的正文。");
+      return;
+    }
+    downloadText(
+      `${item.title || "document"}.wechat.html`,
+      result.html,
+      "text/html;charset=utf-8",
+    );
+    if (result.warnings.length > 0) setExportError(result.warnings[0]);
+  }, [editor.editor, item.title]);
   /**
    * PDF 浏览器本地出不来，交给后端 `/v1/convert/office`：先用编辑器已有的 DOCX
    * 写入器出一份字节，再转一次。这样下载的 PDF 与下载的 DOCX 是同一份内容。
@@ -359,6 +406,13 @@ export function RichDocRoute({
               void downloadAs(format.extension);
             },
           })),
+          {
+            id: "richdoc-wechat-layout",
+            label: "转公众号排版",
+            group: "download" as const,
+            disabled: downloadDisabled,
+            onTrigger: exportWechat,
+          },
         ],
         upload: {
           accept: docFamilyAcceptAttribute("richdoc"),
