@@ -349,6 +349,32 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   audioSourceProbeNoTrack: "音频源没有可用的音轨或时长为 0",
   mediaProbeClipPrefix: "片段 {clipId}：{detail}",
   mediaProbeAppendSuffix: "{detail}，未加入时间线",
+
+  // 换核波新长出的指令/审阅/快捷动作文案（W26）
+  saveCopy: "保存副本",
+  fullTextSearch: "全文搜索",
+  secondaryYAxisRight: "副 Y 轴（右）",
+  dualYAxis: "双 Y 轴",
+  mergePdf: "合并 PDF",
+  revertToPreviousVersion: "回滚到上一版",
+  fillForm: "填写表单",
+  flattenAfterFill: "填完压平",
+  reviewChanges: "审阅改动",
+  quickActions: "快捷动作",
+  executeRedaction: "执行涂黑",
+  rejectThis: "拒绝这条",
+  acceptThis: "接受这条",
+  extractPages: "提取页",
+  insertBlankPage: "插入空白页",
+  placeSignature: "放置签名",
+  reviewStaleDocument: "文档已经变了，这条改动不能接受。",
+  rotatePage: "旋转页",
+  markRedactionArea: "标记涂黑区",
+  noPendingReviews: "没有待审阅的改动。",
+  moveAnnotation: "移动批注",
+  movePage: "移动页",
+  detectFormFields: "识别表单字段",
+  selectAnnotation: "选中批注",
 };
 
 export type EditorPanelsCopyName = keyof typeof EDITOR_PANELS_COPY_SOURCE;
