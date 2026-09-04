@@ -19,6 +19,7 @@ import { readAgentSelection } from "./inbox";
 import { refreshAgentSelectionFromDom } from "./selection-live";
 import {
   hostReviewSession,
+  revisionNumber,
   type ParkedReview,
   type ReviewSession,
 } from "./session";
@@ -209,7 +210,7 @@ export function gateSurfaceForAgent(
       }
       return {
         ...PARKED_OK,
-        revision: parked.proposal.revision,
+        revision: revisionNumber(parked.proposal.revision),
       };
     },
   };

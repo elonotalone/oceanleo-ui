@@ -65,6 +65,7 @@ import {
   readAgentSelection,
   readMentionCatalog,
   refreshAgentSelectionFromDom,
+  revisionNumber,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffButton } from "./HumanHandoffButton";
@@ -787,7 +788,7 @@ function AgentChatInner({
       hostReviewSession.markApplied(
         typeof result.revision === "number"
           ? result.revision
-          : inverse.proposal.revision,
+          : revisionNumber(inverse.proposal.revision),
       );
     }
   }, []);

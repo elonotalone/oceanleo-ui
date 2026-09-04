@@ -4,6 +4,7 @@ export {
   hostReviewSession,
   invertParked,
   proposalItemIds,
+  revisionNumber,
   type ParkedReview,
   type ReviewSession,
   type ReviewSnapshot,

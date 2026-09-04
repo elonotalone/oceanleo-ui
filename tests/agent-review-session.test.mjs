@@ -94,3 +94,12 @@ test("接受后 revision 才前进；回滚回到上一版", () => {
   assert.equal(inverse.proposal.objects[0].before, "2");
   assert.equal(inverse.proposal.objects[0].after, "1");
 });
+
+test("契约 revision 是字符串时仍能比大小（tsc：SelectionRevision = string|number）", () => {
+  const session = createReviewSession();
+  const proposal = objectProposal("3");
+  assert.equal(session.receive(parked(proposal), 4), "stale");
+  const ok = objectProposal("7");
+  assert.equal(session.receive(parked(ok), 7), "ok");
+  assert.equal(session.snapshot().currentRevision, 7);
+});

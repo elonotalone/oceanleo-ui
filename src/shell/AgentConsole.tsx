@@ -45,6 +45,7 @@ import {
   hostReviewSession,
   installAgentReviewGate,
   installSelectionBridge,
+  revisionNumber,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 
@@ -266,7 +267,7 @@ function ManifestPane({
       hostReviewSession.markApplied(
         typeof result.revision === "number"
           ? result.revision
-          : inverse.proposal.revision,
+          : revisionNumber(inverse.proposal.revision),
       );
     }
   }, []);

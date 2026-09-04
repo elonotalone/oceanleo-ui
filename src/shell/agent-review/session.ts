@@ -36,6 +36,16 @@ export interface ReviewSnapshot {
   staleReason: string;
 }
 
+/** 契约 revision 是 `string | number`；审阅守卫只比较数字。 */
+export function revisionNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
 export function proposalItemIds(proposal: EditorReviewProposal): string[] {
   if (proposal.objects && proposal.objects.length) {
     return proposal.objects.map((item) => item.id);
@@ -149,7 +159,8 @@ export function createReviewSession() {
     },
     receive(next: ParkedReview, liveRevision: number): "ok" | "invalid" | "stale" {
       if (!validReviewProposal(next.proposal)) return "invalid";
-      if (liveRevision > next.proposal.revision) {
+      const proposed = revisionNumber(next.proposal.revision);
+      if (liveRevision > proposed) {
         parked = next;
         status = "stale";
         staleReason = "提案到达前文档已经前进，编辑器偷跑了，这条改动不能接受。";
@@ -160,7 +171,7 @@ export function createReviewSession() {
       parked = next;
       status = "open";
       staleReason = "";
-      currentRevision = next.proposal.revision;
+      currentRevision = proposed;
       itemDecisions = Object.fromEntries(
         proposalItemIds(next.proposal).map((id) => [id, "pending" as ItemDecision]),
       );
