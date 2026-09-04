@@ -267,6 +267,8 @@ export function libraryMediaGeometry(
 /**
  * 「容器可见了吗」闸门。
  *
+ * 观察器必须绑在这个节点自己的 `window` 上：全局 `IntersectionObserver` 会被
+ * 另一份文档（或同一进程里另一份测试）换掉，预览就会永远停在海报上。
  * `IntersectionObserver` 缺席（SSR / 测试环境 / 老浏览器）时不许把预览卡死：
  * 下一帧直接放行。
  */
@@ -278,11 +280,15 @@ export function useVisibleViewerGate(ready: boolean): {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     if (ready || visible || !node) return;
-    if (typeof IntersectionObserver !== "function") {
-      const timer = setTimeout(() => setVisible(true), 0);
-      return () => clearTimeout(timer);
+    const view = node.ownerDocument.defaultView;
+    const Observer = view?.IntersectionObserver;
+    if (typeof Observer !== "function") {
+      const schedule = view?.setTimeout.bind(view) ?? setTimeout;
+      const cancel = view?.clearTimeout.bind(view) ?? clearTimeout;
+      const timer = schedule(() => setVisible(true), 0);
+      return () => cancel(timer);
     }
-    const observer = new IntersectionObserver(
+    const observer = new Observer(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
       },
