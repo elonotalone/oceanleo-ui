@@ -29,3 +29,9 @@
 
 文字轨刀 B 红在「横向中心 300 ≠ 960」，片段还在——闸锁的是位置不是个数。
 下一步：主树 tsc + 全量收口。
+
+## 2026-09-04 · 收口
+
+- 主树 tsc：`running: npx tsc --noEmit`，TSC-EXIT:0，error TS 0。
+- 全量 `npm test`（package.json 全参数）：**3785 / 3769 / 13 / 3**。13 条红与 W29 同名。本闸 `ok 1328`–`1331`、`ok 3390`–`3391`。
+- 交卷 `verdicts/W31-fabricated-name-and-text-track.md`。
