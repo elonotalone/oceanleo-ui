@@ -24,13 +24,9 @@ test("gltf roundtrip produces a real GLB and keeps name, translation, color", as
     "导出来的 GLB 必须还能被同一份 Loader 打开",
   );
   const { kept, dropped } = result.diff;
-  assert.equal(
-    kept.includes("materials[].pbrMetallicRoughness.baseColorFactor"),
-    true,
-    `kept=${kept.join(",")}`,
-  );
-  // 上面那条 kept 是产品 diffGltfInspect 自己算的（A-102 最弱档，nearlyEqual 的 epsilon
-  // 一放宽它就跟着绿）。这里逐通道锚在字面量上：夹具 RedMat 进去是 [0.9, 0.2, 0.4, 1]
+  // 颜色先用字面量逐通道锁，再看产品 diff 的 kept（下面那条）。
+  // kept 是产品 diffGltfInspect 自己算的（A-102 最弱档，nearlyEqual 的 epsilon 一放宽它就跟着绿）。
+  // 这里逐通道锚在字面量上：夹具 RedMat 进去是 [0.9, 0.2, 0.4, 1]
   // （四通道互不相等，A-103），证伪树实测 GLB 往返后逐位无损，故容差只给 1e-3。
   // 期望值不许写 result.inbound.baseColorFactors——那是被测模块算出来的。
   const outboundColor = result.outbound.baseColorFactors[0];
@@ -46,6 +42,11 @@ test("gltf roundtrip produces a real GLB and keeps name, translation, color", as
         `（整体进去 [0.9,0.2,0.4,1]，出来 ${JSON.stringify(outboundColor)}）`,
     );
   });
+  assert.equal(
+    kept.includes("materials[].pbrMetallicRoughness.baseColorFactor"),
+    true,
+    `产品 diff 没把 baseColorFactor 记成 kept：kept=${kept.join(",")}`,
+  );
   assert.equal(result.outbound.nodeNames.includes("RoundtripBox"), true);
   assert.equal(
     result.outbound.translations.some(
