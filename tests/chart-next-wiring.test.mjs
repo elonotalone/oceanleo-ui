@@ -8,8 +8,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { DEFAULT_EDITOR_CORE } from "../src/shell/editor-core-flags.ts";
+import { DEFAULT_EDITOR_CORE, setEditorCoreOverride } from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   CHART_NEXT_DEFAULT_MODE,
   applyChartNextMode,
@@ -124,4 +125,173 @@ test("create-from-range command uses typed artifact, not a grid import", () => {
   const controls = read("src/shell/chart-editor/ChartControls.tsx");
   assert.match(controls, /data-chart-xlsx-options/);
   assert.match(controls, /chartXlsxListSheets/);
+});
+
+// ---------------------------------------------------------------------------
+// A-48 行为闸（W09 代管 W12）：真调用 ChartRoute。源码正则是辅闸。
+// V6 批 2b：保留 if 行、函数体 return null，上面那些正则仍全绿。
+// jsdom 没有 layout —— 钉元素 type / 必需 prop。Native 件不承诺 iframe 刀。
+// ---------------------------------------------------------------------------
+const CHART_DYNAMIC_KEY = "__W09_CHART_DYNAMIC";
+
+function chartFnExports(names, extra = "") {
+  return dataModule(
+    `${names.map((name) => `export function ${name}(){ return null; }`).join("\n")}\n${extra}`,
+  );
+}
+
+const chartRouteStubs = {
+  "next/dynamic": dataModule(`
+    export default function dynamic(loader, opts) {
+      function ChartNextDynamic() { return null; }
+      ChartNextDynamic.displayName = "ChartNextDynamic";
+      globalThis.${CHART_DYNAMIC_KEY} = { loader, opts, Stage: ChartNextDynamic };
+      return ChartNextDynamic;
+    }
+  `),
+  "../chart-editor/ChartNextStage": dataModule(`
+    export function ChartNextStage() { return null; }
+  `),
+  "../AdvancedWorkbenchShell": chartFnExports(["AdvancedWorkbenchShell"]),
+  "../advanced-recovery-store": dataModule(
+    `export function advancedRecoveryKey(){ return ""; }`,
+  ),
+  "../advanced-session": dataModule(
+    `export function advancedSavedItem(){ return null; }`,
+  ),
+  "../workbench-routes": dataModule(
+    `export function editorRouteFor(){ return ""; }\nexport function editorToolLabel(){ return ""; }`,
+  ),
+  "../plugin-command": dataModule(
+    `export function usePluginCommandSurface(){ return {}; }`,
+  ),
+  "../chart-editor/ChartContextToolbar": chartFnExports(["ChartContextToolbar"]),
+  "../chart-editor/ChartControls": chartFnExports(["ChartControls"]),
+  "../chart-editor/ChartStage": chartFnExports(["ChartStage"]),
+  "../chart-editor/chart-render": dataModule(
+    `export function chartExportOption(){ return ""; }`,
+  ),
+  "../chart-editor/chart-schema": dataModule(
+    `export function chartDocumentToJson(){ return "{}"; }`,
+  ),
+  "../chart-editor/use-chart-workbench": dataModule(
+    `export function chartEditorManifest(){ return {}; }\nexport function useChartWorkbench(){ return {}; }`,
+  ),
+  "../doc-editors/doc-io": dataModule(
+    `export function downloadText(){}`,
+  ),
+  "../library-data": dataModule(
+    `export function libraryContentDescriptor(){ return {}; }`,
+  ),
+  "../chart-editor/chart-command-surface": dataModule(
+    `export function createChartCommandSurface(){ return {}; }`,
+  ),
+  "../media-editors/visual-formats": dataModule(
+    `export function visualImportPlan(){ return {}; }`,
+  ),
+};
+
+let chartRouteModPromise;
+
+function installChartFlagStorage() {
+  const map = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => (map.has(key) ? map.get(key) : null),
+      setItem: (key, value) => map.set(key, String(value)),
+      removeItem: (key) => map.delete(key),
+    },
+    addEventListener() {},
+  };
+}
+
+async function loadChartRoute() {
+  if (!chartRouteModPromise) {
+    chartRouteModPromise = compileModule(
+      "src/shell/advanced-routes/ChartRoute.tsx",
+      chartRouteStubs,
+    ).then((url) => import(url));
+  }
+  return chartRouteModPromise;
+}
+
+function chartWorkbenchProps() {
+  const item = {
+    key: "chart-wire",
+    source: "creation",
+    id: "chart-wire",
+    title: "gate",
+    kind: "image",
+    siteId: "site",
+    favorite: false,
+    meta: {},
+  };
+  const onClose = () => {};
+  return { item, onClose, siteId: "site", accent: "#4f46e5" };
+}
+
+function assertChartNextMounted(node, Stage, props) {
+  assert.ok(
+    node,
+    "翻到 next 档用户必须看到新核。把 if 体改成 return null、保留 if 那行，就是 V6 批 2b 那个洞。",
+  );
+  assert.equal(
+    node.type,
+    Stage,
+    "next 档必须挂 dynamic 叶子。改成恒假分支、换成 div、外包一层，用户仍停在旧核。",
+  );
+  assert.equal(
+    node.props.item,
+    props.item,
+    "上层必须把这份 item 交给新核。传 null 或不再展开 props，图对不上那份素材。",
+  );
+  assert.equal(
+    node.props.onClose,
+    props.onClose,
+    "上层必须把 onClose 交给新核。传 null 用户关不掉工作台。",
+  );
+  assert.notEqual(node.props.item, null);
+  assert.notEqual(node.props.onClose, null);
+  assert.notEqual(
+    node.props.hidden,
+    true,
+    "新核根节点不能带 hidden。jsdom 没有 layout，只钉属性，不假装量了可见像素。",
+  );
+  assert.notEqual(node.props["aria-hidden"], true);
+}
+
+test("next flag mounts the chart next leaf with required props", async () => {
+  const previousWindow = globalThis.window;
+  installChartFlagStorage();
+  try {
+    const { ChartRoute } = await loadChartRoute();
+    const captured = globalThis[CHART_DYNAMIC_KEY];
+    assert.ok(captured?.Stage, "next/dynamic 必须接到加载函数。");
+    assert.equal(captured.opts?.ssr, false);
+    const loaded = await captured.loader();
+    assert.equal(
+      typeof loaded,
+      "function",
+      "dynamic 加载函数必须给出 ChartNextStage，不能 return null。",
+    );
+    assert.equal(loaded.name, "ChartNextStage");
+
+    assert.equal(DEFAULT_EDITOR_CORE, "legacy");
+    const props = chartWorkbenchProps();
+    const legacyNode = ChartRoute(props);
+    assert.ok(legacyNode, "默认档必须仍是旧核，不能是空白。");
+    assert.notEqual(
+      legacyNode.type,
+      captured.Stage,
+      "默认档必须走旧核。修闸不是放行。",
+    );
+
+    setEditorCoreOverride("chart-editor", "next");
+    const nextNode = ChartRoute(props);
+    assertChartNextMounted(nextNode, captured.Stage, props);
+    setEditorCoreOverride("chart-editor", null);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });
