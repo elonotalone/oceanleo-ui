@@ -28,6 +28,8 @@ import { submitRawReviewProposal } from "../src/shell/agent-review/inbox.ts";
 import { hostReviewSession } from "../src/shell/agent-review/session.ts";
 import { validReviewProposal } from "../src/shell/hosted-editor/index.ts";
 
+import { HostBridge } from "/root/projects/umo-hosted/src/bridge/host-bridge.ts";
+import { EDITOR_PROTOCOL } from "/root/projects/umo-hosted/src/bridge/protocol.ts";
 import { ReviewStore } from "/root/projects/umo-hosted/src/bridge/review.ts";
 import {
   describeSelectionCommand,
@@ -231,6 +233,66 @@ test("审阅卡片说的是人话，且 diff/objects 恰好给一个", () => {
   assert.equal(parts.objects.length, 1);
   assert.equal(parts.objects[0].op, "update");
   assert.ok(parts.summary.before.length > 0 && parts.summary.after.length > 0);
+});
+
+test("整条收信链跑一遍：命令经真 HostBridge 进审阅，提案真的发回宿主", () => {
+  const posted = [];
+  const hostWindow = { postMessage: (data) => posted.push(data) };
+  let listener = null;
+  const target = {
+    addEventListener: (_type, fn) => {
+      listener = fn;
+    },
+    removeEventListener: () => {
+      listener = null;
+    },
+  };
+  const { applied, proposals, deps } = harness();
+  const bridge = new HostBridge(target, {
+    instanceId: "rd-test",
+    hostOrigin: "https://oceandino.com",
+    hostWindow,
+    handlers: {
+      onSelectionCommand: (command, envelope) =>
+        handleSelectionCommand(command, envelope, {
+          ...deps,
+          sendReviewProposal: (proposal) => {
+            proposals.push(proposal);
+            bridge.sendReviewProposal(proposal);
+          },
+        }),
+    },
+  });
+  bridge.start();
+
+  const deliver = (envelopeExtras) => {
+    listener({
+      origin: "https://oceandino.com",
+      source: hostWindow,
+      data: {
+        protocol: EDITOR_PROTOCOL,
+        instanceId: "rd-test",
+        type: "selection-command",
+        command: boldCommand(),
+        ...envelopeExtras,
+      },
+    });
+  };
+
+  deliver({});
+  assert.equal(applied.length, 0, "经桥进来的 agent 命令仍然当场改了稿");
+  assert.equal(proposals.length, 1);
+  assert.equal(
+    posted.filter((message) => message.type === "review-proposal").length,
+    1,
+    "提案没真的 postMessage 回宿主 —— 宿主收不到就等于没审阅",
+  );
+
+  // 章盖在信封顶层（宿主的 normalizeSelectionCommand 会剥掉 command 里的），
+  // 必须一路传到路由手上，否则 L1 的人类点击会被误判成 agent。
+  deliver({ origin: "user" });
+  assert.equal(applied.length, 1);
+  assert.equal(proposals.length, 1);
 });
 
 // ---------------------------------------------------------------------------
