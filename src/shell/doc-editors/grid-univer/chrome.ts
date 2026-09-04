@@ -11,7 +11,13 @@
  * 只有在能被断言的地方才守得住。写在 `createUniver({...})` 的参数字面量里，
  * 测试只能扫源码文本，扫不出「关了」和「有个叫 toolbar 的键」的区别。
  */
-import { DEFAULT_EDITOR_MODE, type EditorMode } from "../../hosted-editor";
+// `/index` 不是可省的装饰：目录 import 在 webpack 下解析得动，在 Node ESM 下是
+// `ERR_UNSUPPORTED_DIR_IMPORT`，而仓内测试入口跑的就是 Node ESM。
+// `ts-extension-loader` 只在 `ERR_MODULE_NOT_FOUND` 上补后缀，救不了目录 import
+// ⇒ 写成目录形式的后果是**整份测试文件加载期就炸、一条断言都不执行**
+// （`_COMMON.md` §7b⑩，本模块实测撞过）。取值 import 一律带 `/index`，
+// 与 `media-editors/pdf-agent-chips.ts` 同款。
+import { DEFAULT_EDITOR_MODE, type EditorMode } from "../../hosted-editor/index";
 
 /** 传给 `UniverSheetsCorePreset` 的那几个 UI 开关。 */
 export interface GridUniverChrome {

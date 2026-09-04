@@ -17,7 +17,8 @@ import {
   type EditorAgentChip,
   type EditorReviewObjectChange,
   type EditorReviewProposal,
-} from "../../hosted-editor";
+// 目录 import 在 Node ESM 下是 ERR_UNSUPPORTED_DIR_IMPORT（见 chrome.ts 同处注释）。
+} from "../../hosted-editor/index";
 import type { SelectionContext } from "../../selection-context-types";
 
 /** 表格会发出的五种选区 kind。 */
