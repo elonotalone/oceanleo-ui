@@ -9,8 +9,13 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
+import React, { act } from "react";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   EDITOR_CORE_SPECS,
   resolveEditorCore,
@@ -37,6 +42,133 @@ function hostedOriginFromSource() {
     /DECK_HOSTED_EMBED_ORIGIN\s*=\s*"(https:\/\/[a-z0-9.-]+)"/,
   );
   return match ? match[1] : "";
+}
+
+// ── V1-red-4 / A-48：闸必须挂上路由看节点，不能只扫源码 token ─────────────
+// jsdom 取自 fabric 依赖树（仓内不许为测试加 jsdom）。canvas 原生绑定在本
+// 容器里装不上，先拿空对象把 require 缓存顶掉，建完再还回去。
+// 壳本身不在本判据的锁里：桩只负责把 adapter.stage 画出来，iframe 仍是
+// DeckHostedRoute 的产品 JSX。
+
+const require = createRequire(import.meta.url);
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const HOST_PAGE = "https://oceanleo.com/workspace";
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: HOST_PAGE,
+});
+const { window } = dom;
+const { document } = window;
+for (const [name, value] of Object.entries({
+  window,
+  document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  HTMLIFrameElement: window.HTMLIFrameElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  MouseEvent: window.MouseEvent,
+  localStorage: window.localStorage,
+  sessionStorage: window.sessionStorage,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+globalThis.fetch = async () => {
+  throw new Error("DeckHostedRoute 首屏不该发网络请求");
+};
+
+const shellStubUrl = dataModule(`
+  import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function AdvancedWorkbenchShell({ adapter }) {
+    return jsxs("div", {
+      "data-role": "deck-hosted-shell",
+      children: [
+        adapter && adapter.stage ? adapter.stage : null,
+        adapter && adapter.status
+          ? jsx("div", { "data-role": "deck-hosted-status", children: adapter.status })
+          : null,
+      ],
+    });
+  }
+`);
+const routesStubUrl = dataModule(`
+  export function editorToolLabel() { return "幻灯片"; }
+`);
+
+let hostedRouteModule;
+async function loadHostedRoute() {
+  if (!hostedRouteModule) {
+    const url = await compileModule(
+      "src/shell/advanced-routes/DeckHostedRoute.tsx",
+      {
+        "../AdvancedWorkbenchShell": shellStubUrl,
+        "../workbench-routes": routesStubUrl,
+      },
+    );
+    hostedRouteModule = await import(url);
+  }
+  return hostedRouteModule;
+}
+
+function deckItem() {
+  return {
+    key: "deck-gate",
+    source: "artifact",
+    id: "deck-gate",
+    title: "闸",
+    kind: "ppt",
+    siteId: "website",
+    favorite: false,
+    meta: {},
+  };
+}
+
+async function mountDeckHostedRoute() {
+  const { DeckHostedRoute } = await loadHostedRoute();
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      React.createElement(DeckHostedRoute, {
+        item: deckItem(),
+        onClose() {},
+      }),
+    );
+  });
+  return {
+    container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
 }
 
 test("deck 在换核台账里登记的是 PPTist、owner 是 W07、iframe 托管", () => {
@@ -96,6 +228,8 @@ test("旧核代码保留，没被删（§10 第 3 条：换核期间旧核不删
 // **翻 flag 的人必须看见幻灯片画布，不是一段解释。**
 
 test("翻 flag 的人看见的是幻灯片画布：新核分支挂真 iframe", () => {
+  // 辅闸：标签改成 div 仍须红（V1-red-2 已绿，不撤）。
+  // 单靠这条锁不住 `return ""` / `{false && src ? (`，行为闸在下面那例。
   assert.match(hosted, /<iframe/, "新核分支没有 iframe，用户看不到画布");
   assert.match(
     hosted,
@@ -107,19 +241,21 @@ test("翻 flag 的人看见的是幻灯片画布：新核分支挂真 iframe", (
     /尚未放行/,
     "还在写「宿主尚未放行」，但生产函数说已经放行了",
   );
-  // iframe 的 src 必须来自构造出来的地址，不是写死的字符串。
   assert.match(hosted, /<iframe[\s\S]{0,400}?src=\{src\}/);
+  assert.match(
+    hosted,
+    /computeDeckHostedEmbedSrc\(/,
+    "src 不再走可调用的计算函数，闸又只能扫标签",
+  );
 });
 
-test("iframe 指向的 origin 过生产白名单（不自写解析器）", () => {
+test("iframe 指向的 origin 过生产白名单（不自写解析器）", async () => {
   const origin = hostedOriginFromSource();
   assert.equal(origin, "https://slides.oceanleo.app");
   assert.equal(isHostedEditorOrigin(origin), true);
   assert.equal(isTrustedEmbedEditorBase(origin), true);
-  // 反例走同一个生产函数，确认它不是恒真。
   assert.equal(isHostedEditorOrigin("https://evil.oceanleo.app"), false);
   assert.equal(isHostedEditorOrigin("https://slides.oceanleo.app.evil.com"), false);
-  // 地址真能拼出来，且 origin 没被拼歪。
   const url = new URL(
     buildEditorEmbedUrl(origin, {
       instanceId: "dk-gate",
@@ -130,6 +266,21 @@ test("iframe 指向的 origin 过生产白名单（不自写解析器）", () =>
   );
   assert.equal(url.origin, origin);
   assert.equal(url.searchParams.get("editor"), "1");
+
+  const {
+    computeDeckHostedEmbedSrc,
+    deckHostedEmbedBase,
+    DECK_HOSTED_EMBED_ORIGIN,
+  } = await loadHostedRoute();
+  const computed = computeDeckHostedEmbedSrc({
+    embedBase: deckHostedEmbedBase(),
+    instanceId: "dk-gate",
+    hostOrigin: "https://oceanleo.com",
+    assetTitle: "闸",
+  });
+  assert.ok(computed, "src 计算函数给出空串，用户会看见无法构造嵌入地址");
+  assert.equal(new URL(computed).origin, DECK_HOSTED_EMBED_ORIGIN);
+  assert.equal(new URL(computed).origin, "https://slides.oceanleo.app");
 });
 
 test("沙箱档次由生产函数决定，且不带同源权限", () => {
@@ -140,7 +291,6 @@ test("沙箱档次由生产函数决定，且不带同源权限", () => {
     !sandbox.includes("allow-same-origin"),
     "六件 Hosted 拿到了同源权限，域隔离白做了",
   );
-  // 源文件必须用那个函数算沙箱，不许自己写一串。
   assert.match(hosted, /embedEditorFrameSandbox\(/);
   assert.match(hosted, /<iframe[\s\S]{0,400}?sandbox=\{frameSandbox\}/);
   assert.doesNotMatch(
@@ -148,6 +298,52 @@ test("沙箱档次由生产函数决定，且不带同源权限", () => {
     /sandbox="[^"]*allow-same-origin/,
     "沙箱串被写死并放开了同源",
   );
+});
+
+test("jsdom 挂上 DeckHostedRoute 后，画布是真 iframe 而不是 fallback", async () => {
+  // A-48：把产品改坏成用户受损（src 恒空、条件恒假、标签换成 div），本例必须红。
+  const { container, unmount } = await mountDeckHostedRoute();
+  try {
+    const iframe = container.querySelector("iframe");
+    assert.ok(iframe, "挂起来之后没有 iframe 节点，用户看不到画布");
+    assert.equal(
+      iframe.tagName,
+      "IFRAME",
+      "画布节点不是 iframe（标签被换成别的了）",
+    );
+
+    const src = iframe.getAttribute("src") || "";
+    assert.ok(src, "iframe 的 src 是空的，用户看见的是无法构造嵌入地址");
+    assert.equal(
+      new URL(src).origin,
+      "https://slides.oceanleo.app",
+      `iframe src origin 不是 slides 托管域：${src}`,
+    );
+
+    const expectedSandbox = embedEditorFrameSandbox("https://slides.oceanleo.app");
+    assert.equal(
+      iframe.getAttribute("sandbox"),
+      expectedSandbox,
+      "sandbox 没有走 embedEditorFrameSandbox()",
+    );
+    assert.ok(
+      expectedSandbox.includes("allow-scripts"),
+      "生产函数给出的沙箱连脚本都不给",
+    );
+    assert.ok(
+      !expectedSandbox.includes("allow-same-origin"),
+      "生产函数给出的沙箱带了同源",
+    );
+
+    const text = container.textContent || "";
+    assert.equal(
+      text.includes("无法构造"),
+      false,
+      "用户看见的是「无法构造嵌入地址」fallback，iframe 没挂上",
+    );
+  } finally {
+    await unmount();
+  }
 });
 
 test("普通模式收起内核自带的工具栏与面板（R3：默认普通模式）", () => {

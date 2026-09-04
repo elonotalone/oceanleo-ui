@@ -53,6 +53,34 @@ export function deckHostedEmbedBase(): string {
   );
 }
 
+export type DeckHostedEmbedSrcInput = {
+  embedBase: string;
+  instanceId: string;
+  hostOrigin: string;
+  assetUrl?: string;
+  assetTitle: string;
+};
+
+/**
+ * 新核 iframe 真正挂上去的地址。抽成可调用的函数，是为了让闸能跑这条计算，
+ * 而不是只在源码里搜标签名——`useMemo` 开头 `return ""` 时标签还在、用户已经
+ * 看见「无法构造嵌入地址」。
+ */
+export function computeDeckHostedEmbedSrc(input: DeckHostedEmbedSrcInput): string {
+  if (!input.embedBase || !isTrustedEmbedEditorBase(input.embedBase)) return "";
+  try {
+    return buildEditorEmbedUrl(input.embedBase, {
+      instanceId: input.instanceId,
+      hostOrigin: input.hostOrigin,
+      assetUrl: input.assetUrl,
+      assetTitle: input.assetTitle,
+      assetKind: "deck",
+    });
+  } catch {
+    return "";
+  }
+}
+
 function inlineSourceFromItem(item: AdvancedContentWorkbenchProps["item"]): unknown {
   const raw = typeof item.content === "string" ? item.content.trim() : "";
   if (raw) {
@@ -150,18 +178,13 @@ export function DeckHostedRoute({
   const editorOrigin = DECK_HOSTED_EMBED_ORIGIN;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
-    if (!embedBase || !isTrustedEmbedEditorBase(embedBase)) return "";
-    try {
-      return buildEditorEmbedUrl(embedBase, {
-        instanceId,
-        hostOrigin: window.location.origin,
-        assetUrl: item.url || undefined,
-        assetTitle: item.title,
-        assetKind: "deck",
-      });
-    } catch {
-      return "";
-    }
+    return computeDeckHostedEmbedSrc({
+      embedBase,
+      instanceId,
+      hostOrigin: window.location.origin,
+      assetUrl: item.url || undefined,
+      assetTitle: item.title,
+    });
   }, [embedBase, instanceId, item.title, item.url]);
 
   const sendToEditor = useCallback(
