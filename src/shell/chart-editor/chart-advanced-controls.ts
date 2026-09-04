@@ -57,11 +57,11 @@ function markLinePatch(
 }
 
 function axisControls(
-  axisKey: "x" | "y",
+  axisKey: "x" | "y" | "y2",
   axis: ChartAxis,
   tt: UITranslate,
 ): SelectionControl[] {
-  const prefix = axisKey.toUpperCase();
+  const prefix = axisKey === "y2" ? "Y2" : axisKey.toUpperCase();
   const group = {
     slot: "inspector" as const,
     inspectorGroup: `chart-${axisKey}-axis`,
@@ -148,9 +148,10 @@ export function chartAdvancedControls(
   };
   const controls: SelectionControl[] = [
     ...axisControls("x", option.xAxis, tt),
-    // 副轴的细节控件要等 `ChartWorkbenchState.setAxis` 能带轴序号才接得上
-    // (见 `signals/W19-request.md`)。在此之前只列主轴,不摆一排改不动的控件。
     ...axisControls("y", chartYAxes(option)[0], tt),
+    ...(chartYAxes(option).length > 1
+      ? axisControls("y2", chartYAxes(option)[1], tt)
+      : []),
     {
       id: "tooltip-show",
       kind: "toggle",
@@ -363,14 +364,17 @@ export function applyChartAdvancedCommand(
   message: SelectionCommand,
   tt: UITranslate,
 ): boolean {
-  const axisMatch = /^(x|y)-(min|max|interval|ticks|label-rotate|label-color|grid|grid-color)$/.exec(
+  const axisMatch = /^(x|y|y2)-(min|max|interval|ticks|label-rotate|label-color|grid|grid-color)$/.exec(
     message.controlId,
   );
   if (axisMatch) {
     if (message.transactionId && message.phase !== "commit") return true;
-    const axisKey = axisMatch[1] as "x" | "y";
+    const axisIndex = axisMatch[1] === "y2" ? 1 : 0;
+    const axisKey = axisMatch[1] === "y2" ? "y" : (axisMatch[1] as "x" | "y");
     const field = axisMatch[2];
-    const axis = axisKey === "x" ? option.xAxis : chartYAxes(option)[0];
+    const axis =
+      axisKey === "x" ? option.xAxis : chartYAxes(option)[axisIndex];
+    if (!axis) return true;
     let patch: Partial<ChartAxis>;
     if (field === "min" || field === "max" || field === "interval") {
       patch = { [field]: optionalNumber(message.value) };
@@ -405,7 +409,7 @@ export function applyChartAdvancedCommand(
         },
       };
     }
-    editor.setAxis(axisKey, patch);
+    editor.setAxis(axisKey, patch, axisIndex);
     return true;
   }
 

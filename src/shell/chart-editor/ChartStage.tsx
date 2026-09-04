@@ -4,16 +4,25 @@ import { useEffect, useRef } from "react";
 import type { EChartsType } from "echarts";
 import { useUI } from "../../i18n/ui/useUI";
 import { chartRenderOption } from "./chart-render";
+import type { ChartOption } from "./chart-schema";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
 
-export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
+export function ChartStage({
+  editor,
+  optionOverride,
+}: {
+  editor: ChartWorkbenchState;
+  /** L3 代码模式：解析成功的 option 立刻画，不进撤销栈。 */
+  optionOverride?: ChartOption | null;
+}) {
   const tt = useUI();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
-  const optionRef = useRef(editor.document.option);
+  const option = optionOverride || editor.document.option;
+  const optionRef = useRef(option);
   const selectSeriesRef = useRef(editor.selectSeries);
   const blocked = editor.loading || Boolean(editor.error && !editor.dirty);
-  optionRef.current = editor.document.option;
+  optionRef.current = option;
   selectSeriesRef.current = editor.selectSeries;
 
   useEffect(() => {
@@ -51,11 +60,11 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
   }, [blocked]);
 
   useEffect(() => {
-    chartRef.current?.setOption(chartRenderOption(editor.document.option), {
+    chartRef.current?.setOption(chartRenderOption(option), {
       notMerge: true,
       lazyUpdate: true,
     });
-  }, [editor.document]);
+  }, [option]);
 
   if (editor.loading) {
     return (
@@ -80,7 +89,7 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
     );
   }
 
-  const title = editor.document.option.title.text || tt("图表预览");
+  const title = option.title.text || tt("图表预览");
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)] p-4">
       <div className="mx-auto flex h-full min-h-[420px] w-full max-w-6xl overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-sm">
@@ -89,6 +98,7 @@ export function ChartStage({ editor }: { editor: ChartWorkbenchState }) {
           role="img"
           aria-label={title}
           data-chart-engine="echarts"
+          data-chart-live-preview={optionOverride ? "1" : undefined}
           className="h-full min-h-[420px] w-full"
         />
       </div>

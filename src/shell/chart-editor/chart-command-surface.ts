@@ -14,7 +14,12 @@ import {
   type VisualCommandDefinition,
 } from "../media-editors/visual-command-kit";
 import { visualDownloadFormats } from "../media-editors/visual-formats";
-import type { ChartSeriesType } from "./chart-schema";
+import {
+  CHART_CREATE_FROM_RANGE_COMMAND,
+  type ChartSeriesType,
+} from "./chart-schema";
+import { chartTypedArtifactFromRangeSnapshot } from "./chart-next-artifact";
+import { chartToolsManifestChips } from "./chart-next-l4-chips";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
 
 const EDITOR_ID = "chart-editor@1";
@@ -27,6 +32,9 @@ const SERIES_TYPES: readonly { value: ChartSeriesType; label: string }[] = [
   { value: "radar", label: "雷达图" },
   { value: "funnel", label: "漏斗图" },
   { value: "gauge", label: "仪表盘" },
+  { value: "heatmap", label: "热力图" },
+  { value: "boxplot", label: "箱线图" },
+  { value: "candlestick", label: "K 线图" },
 ];
 
 /** "12, 20, 16" → [12,20,16]；有一格不是数字就整条不收。 */
@@ -285,6 +293,87 @@ export function chartCommandDefinitions(
     },
   });
 
+  definitions.push({
+    spec: {
+      id: CHART_CREATE_FROM_RANGE_COMMAND,
+      label: "从表格选区成图",
+      summary:
+        "把表格选区快照做成一张图；只交换 option + 数据，不 import 表格编辑器。",
+      mutates: true,
+      params: [
+        {
+          key: "snapshot",
+          label: "选区快照 JSON",
+          type: "string",
+          required: true,
+          hint: "oceanleo.chart.range-snapshot.v1",
+        },
+        {
+          key: "type",
+          label: "图型",
+          type: "enum",
+          enumValues: SERIES_TYPES,
+          hint: "不填则用图表侧已有推荐；推荐可被用户改掉",
+        },
+      ],
+    },
+    run: (params) => {
+      if (typeof editor.loadDocument !== "function") {
+        return fail("当前图表工作台还不能整份换文档。");
+      }
+      let snapshot: unknown;
+      try {
+        snapshot = JSON.parse(String(params.snapshot));
+      } catch {
+        return fail("选区快照不是合法 JSON。");
+      }
+      try {
+        const { document, ingest } = chartTypedArtifactFromRangeSnapshot(
+          snapshot,
+          {
+            ...(params.type ? { type: params.type as ChartSeriesType } : {}),
+          },
+        );
+        editor.loadDocument(document);
+        if (editor.error) return fail(editor.error);
+        const tip = ingest.notices.length ? ` ${ingest.notices.join(" ")}` : "";
+        return ok(
+          `已按${ingest.recommendation.type}成图：${ingest.recommendation.reason}${tip}`,
+          revision(),
+        );
+      } catch (caught) {
+        return fail(caught instanceof Error ? caught.message : "选区无法成图。");
+      }
+    },
+  });
+
+  definitions.push({
+    spec: {
+      id: "chart-editor@1.set-y-axis-count",
+      label: "单轴或双 Y 轴",
+      summary: "金额和增长率量纲差太远时改成双轴；切回单轴会清掉副轴绑定。",
+      mutates: true,
+      params: [
+        {
+          key: "count",
+          label: "Y 轴数量",
+          type: "enum",
+          required: true,
+          enumValues: [
+            { value: "1", label: "一条（左）" },
+            { value: "2", label: "两条（左+右）" },
+          ],
+        },
+      ],
+    },
+    run: (params) => {
+      const count = String(params.count) === "2" ? 2 : 1;
+      editor.setYAxisCount(count);
+      if (editor.error) return fail(editor.error);
+      return ok(count === 2 ? "已改成双 Y 轴。" : "已改回单 Y 轴。", revision());
+    },
+  });
+
   return definitions;
 }
 
@@ -309,6 +398,9 @@ export function chartCommandState(
     sourceReady: editor.sourceReady,
     carrierState: editor.carrierState,
     unsaved: editor.dirty,
+    yAxisCount: Array.isArray(option.yAxis) ? option.yAxis.length : 1,
+    chips: chartToolsManifestChips().chips.map((chip) => chip.id),
+    manifestVersion: 2,
   };
 }
 

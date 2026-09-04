@@ -163,6 +163,29 @@ export function ChartContextToolbar({
         inspectorIcon: "position",
       },
       {
+        id: "y-dual",
+        kind: "toggle",
+        label: "双 Y 轴",
+        value: yAxes.length > 1,
+        icon: "position",
+        group: "axis",
+      },
+      ...(yAxes.length > 1
+        ? [
+            {
+              id: "y2-name",
+              kind: "text" as const,
+              label: "副 Y 轴（右）",
+              value: yAxes[1]?.name || "",
+              placement: "more" as const,
+              slot: "inspector" as const,
+              inspectorGroup: "chart-axis",
+              inspectorLabel: tt("坐标轴"),
+              inspectorIcon: "position" as const,
+            },
+          ]
+        : []),
+      {
         id: "x-type",
         kind: "select",
         label: tt("X 轴类型"),
@@ -353,6 +376,14 @@ export function ChartContextToolbar({
       editor.setAxis(message.controlId[0] as "x" | "y", {
         name: String(message.value ?? ""),
       });
+      return;
+    }
+    if (message.controlId === "y-dual") {
+      editor.setYAxisCount(message.value === true ? 2 : 1);
+      return;
+    }
+    if (message.controlId === "y2-name") {
+      editor.setAxis("y", { name: String(message.value ?? "") }, 1);
       return;
     }
     if (message.controlId === "add-series") {

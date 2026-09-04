@@ -22,15 +22,18 @@ import {
   chartDataTable,
   chartDimensionBindingErrors,
   chartDocumentFromCsv,
+  chartTableFromXlsx,
   normalizeChartDocument,
   patchChartAxis,
   patchChartSeries,
   patchChartTooltip,
   replaceChartData,
+  setChartYAxisCount,
   type ChartAxis,
   type ChartDataTable,
   type ChartDocumentV1,
   type ChartSeries,
+  type ChartXlsxIngestOptions,
 } from "./chart-schema";
 import { ChartDocumentHistory } from "./chart-history";
 import {
@@ -84,12 +87,22 @@ export interface ChartWorkbenchState {
   setColors: (colors: string[]) => void;
   setLegend: (patch: Partial<ChartDocumentV1["option"]["legend"]>) => void;
   setTooltip: (patch: Partial<ChartDocumentV1["option"]["tooltip"]>) => void;
-  setAxis: (axis: "x" | "y", patch: Partial<ChartAxis>) => void;
+  setAxis: (
+    axis: "x" | "y",
+    patch: Partial<ChartAxis>,
+    axisIndex?: number,
+  ) => void;
+  setYAxisCount: (count: 1 | 2) => void;
+  loadDocument: (document: ChartDocumentV1) => void;
   patchSeries: (id: string, patch: Partial<ChartSeries>) => void;
   addSeries: (type?: ChartSeries["type"]) => void;
   removeSeries: (id: string) => void;
   replaceData: (table: ChartDataTable) => void;
   importCsv: (csv: string) => void;
+  importXlsx: (
+    bytes: ArrayBuffer | Uint8Array,
+    options?: ChartXlsxIngestOptions,
+  ) => Promise<void>;
   undo: () => void;
   redo: () => void;
   save: () => Promise<ChartSaveResult | null>;
@@ -472,8 +485,11 @@ export function useChartWorkbench(
           legend: { ...current.option.legend, ...patch },
         },
       })),
-    setAxis: (axis, patch) =>
-      mutate((current) => patchChartAxis(current, axis, patch)),
+    setAxis: (axis, patch, axisIndex = 0) =>
+      mutate((current) => patchChartAxis(current, axis, patch, axisIndex)),
+    setYAxisCount: (count) =>
+      mutate((current) => setChartYAxisCount(current, count)),
+    loadDocument: (nextDocument) => mutate(() => nextDocument),
     patchSeries: (id, patch) =>
       mutate((current) => patchChartSeries(current, id, patch)),
     addSeries: (type = "bar") =>
@@ -510,6 +526,19 @@ export function useChartWorkbench(
       mutate((current) => replaceChartData(current, table)),
     importCsv: (csv) =>
       mutate((current) => replaceChartData(current, chartDocumentFromCsv(csv))),
+    importXlsx: async (bytes, options) => {
+      if (!sourceReadyRef.current) {
+        setError(tt("图表源尚未成功载入；已阻止修改示例回退内容"));
+        return;
+      }
+      try {
+        const ingest = await chartTableFromXlsx(bytes, options);
+        mutate((current) => replaceChartData(current, ingest.table));
+        if (ingest.notices.length) setNotice(ingest.notices.join("；"));
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Excel 读取失败");
+      }
+    },
     undo,
     redo,
     save,
