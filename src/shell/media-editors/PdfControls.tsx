@@ -202,7 +202,10 @@ export function PdfControls({
             iconOnly
             title={tt("添加空白页")}
             disabled={busy}
-            onClick={() => void editor.addBlankPage()}
+            onClick={() => {
+              // 同上：新核档下这一下会被 facade 拒掉并把原因送到状态栏。
+              editor.addBlankPage().catch(() => {});
+            }}
           >
             {tt("添加空白页")}
           </ControlButton>

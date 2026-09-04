@@ -137,6 +137,20 @@ export interface PdfWorkbenchState {
     container: { width: number; height: number },
   ) => void;
   canvasRef: RefCallback<HTMLCanvasElement>;
+  /**
+   * 当前文档的字节，**取值器而不是字段**（W06，换核）。
+   *
+   * 新核（EmbedPDF）需要拿到同一份字节才能满足规范 §7 判据 1 的「同一文档实例」：
+   * 普通模式与专业模式共用它，切模式不重新载入、不丢改动。
+   *
+   * 为什么是函数：这份字节住在一个 ref 里（每次编辑原地替换，不进 React 状态——
+   * 一份几十 MB 的 `Uint8Array` 进状态会让每次批注都重渲整棵树）。暴露成字段就得
+   * 把它复制进状态，那正是当初把它放进 ref 要避免的事。
+   *
+   * 返回的是**同一个** `Uint8Array`，不是副本：调用方只读。要改的人走
+   * `addTextAnnotation` / `mergePdf` 那些命令，它们自己维护撤销栈。
+   */
+  currentBytes: () => Uint8Array | null;
   sourceUrl: string;
   pageNumber: number;
   pageCount: number;

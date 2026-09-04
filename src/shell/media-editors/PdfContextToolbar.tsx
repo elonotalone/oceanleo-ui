@@ -185,10 +185,12 @@ export function PdfContextToolbar({
     if (message.selectionId !== context.id) return;
     switch (message.controlId) {
       case "rotate-left":
-        void editor.rotateCurrentPage(-1);
+        // 拒绝的原因已经由 facade 送到宿主状态栏了（`pdf-next-facade.ts`），
+        // 这里接住是为了不留下一条未处理的 promise 拒绝。
+        editor.rotateCurrentPage(-1).catch(() => {});
         break;
       case "rotate-right":
-        void editor.rotateCurrentPage(1);
+        editor.rotateCurrentPage(1).catch(() => {});
         break;
       case "move-before":
         void editor.moveCurrentPage(-1);

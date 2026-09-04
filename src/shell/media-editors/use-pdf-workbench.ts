@@ -500,6 +500,7 @@ export function usePdfWorkbench(
       );
     },
     canvasRef,
+    currentBytes: () => bytesRef.current,
     sourceUrl,
     pageNumber,
     pageCount,
