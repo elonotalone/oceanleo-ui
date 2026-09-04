@@ -156,12 +156,11 @@ export interface LangflowRunnability {
  * Langflow 的执行引擎按 `data.edges` 的 source/target 建图，指向不存在节点的边
  * 会让整次运行在后端抛异常，用户看到的是一条读不懂的 500。
  *
- * ⚠️ **最后一条 blocker 是本件今天真实的欠账，写在代码里而不是藏在交付说明里**：
- * `toLangflowFlow()` 产出的节点类型是 `OceanLeoWorkflowNode`，它是我们自己的
- * 组件类型，**必须由容器侧注册**（`LANGFLOW_COMPONENTS_PATH` 挂进去的第一方组件包，
- * 见 `signals/W15-container.md`）。容器没注册它，Langflow 能打开、能编辑、能保存，
- * 但点运行会报「组件不存在」。`componentsInstalled` 传 `false` 就会把这句话
- * 显式说出来，而不是让用户自己撞上去。
+ * 容器要把 `OceanLeoWorkflowNode` 挂进 `LANGFLOW_COMPONENTS_PATH`（W19 已挂）。
+ * 另外，Langflow 1.12 实例化时会从节点 template 里 `pop("code")`：
+ * 转换器若不把组件源码写进每个节点，点运行仍会 KeyError，即使注册表里有这个类。
+ * `componentsInstalled` 传 `false` 会把「没挂包」说出来；缺 `template.code`
+ * 则无论挂没挂都会单列一条 blocker。
  */
 export function assessLangflowRunnability(
   flow: LangflowFlow | null | undefined,
@@ -194,6 +193,22 @@ export function assessLangflowRunnability(
         at: id,
         message: `节点「${id}」没有参数表（template），Langflow 无法实例化它。`,
       });
+    } else if (node?.data?.type === OCEANLEO_LANGFLOW_NODE_TYPE) {
+      const code = (node.data.node.template as { code?: { value?: unknown } | string })
+        .code;
+      const codeValue =
+        typeof code === "string"
+          ? code
+          : code && typeof code === "object"
+            ? code.value
+            : "";
+      if (!codeValue) {
+        blockers.push({
+          code: "flow-component-code-missing",
+          at: id,
+          message: `节点「${id}」没有组件源码（template.code）。Langflow 点运行会直接失败。`,
+        });
+      }
     }
   }
   for (const edge of Array.isArray(edges) ? edges : []) {

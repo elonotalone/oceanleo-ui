@@ -47,6 +47,7 @@ import {
   workflowToolsManifestChips,
 } from "./l4-chips";
 import { dispatchWorkflowAgentChip } from "./agent-route";
+import { EmbedEditorPane, embedEditorBase } from "../workbench-embed";
 
 function hostOriginNow(): string {
   if (typeof window === "undefined") return "https://oceanleo.com";
@@ -268,6 +269,7 @@ export function LangflowProStage({
 
   const showHosted = applied.showHostedEditor && Boolean(hostedSrc);
   const showCanvas = applied.showCanvas;
+  const liveCanvasBase = item ? embedEditorBase(item) : "";
 
   if (!item) {
     return <div data-testid="workflow-missing-item">没有打开的流程图。</div>;
@@ -321,7 +323,23 @@ export function LangflowProStage({
                 专业模式现在打不开：还没有可用的 Langflow 嵌入地址。
               </div>
             ) : null}
-            {showCanvas ? <WorkflowCanvasStandIn graph={graph} /> : null}
+            {showCanvas ? (
+              liveCanvasBase ? (
+                <div
+                  data-testid="workflow-react-flow-canvas"
+                  className="h-full min-h-[240px] w-full"
+                >
+                  <EmbedEditorPane
+                    item={item}
+                    editorBase={liveCanvasBase}
+                    mediaType="video_canvas"
+                    siteId={siteId}
+                  />
+                </div>
+              ) : (
+                <WorkflowCanvasStandIn graph={graph} />
+              )
+            ) : null}
           </div>
         ),
         status:

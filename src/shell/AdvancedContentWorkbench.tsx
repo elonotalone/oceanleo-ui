@@ -141,6 +141,11 @@ const ChartRoute = lazyRoute("chart", () =>
 const GameRoute = lazyRoute("game", () =>
   import("./advanced-routes/GameRoute").then((module) => module.GameRoute),
 );
+const VideoCanvasRoute = lazyRoute("video-canvas", () =>
+  import("./advanced-routes/VideoCanvasRoute").then(
+    (module) => module.VideoCanvasRoute,
+  ),
+);
 /**
  * 空件挂载（合同 §3.2）用的入参形态：`item` 可以先不给。
  *
@@ -524,7 +529,9 @@ function AdvancedContentWorkbenchRuntime(
       ? `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}`
       : `${capability.adapter}:${activeItem.kind}:${activeItem.id}:${activeItem.url || activeItem.previewUrl || ""}`;
   let editor: ReactNode;
-  if (capability.adapter === "chart-editor@1") {
+  if (capability.adapter === "video-canvas") {
+    editor = <VideoCanvasRoute {...activeProps} />;
+  } else if (capability.adapter === "chart-editor@1") {
     editor = <ChartRoute {...activeProps} />;
   } else switch (route.type) {
     case "video-timeline":

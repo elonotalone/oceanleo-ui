@@ -48,6 +48,7 @@ import {
   type VideoCanvasPort,
   type VideoCanvasPortDataType,
 } from "./video-canvas-schema";
+import { OCEANLEO_WORKFLOW_NODE_SOURCE } from "./oceanleo-workflow-node-source";
 
 /** 上游实测过的 flow 版本；写进 `last_tested_version`，出处见文件头。 */
 export const LANGFLOW_LAST_TESTED_VERSION = "1.8.0";
@@ -64,6 +65,15 @@ export const OCEANLEO_LANGFLOW_NODE_TYPE = "OceanLeoWorkflowNode";
 
 /** 原节点整条存在这个 template 字段里；`fromLangflowFlow()` 靠它判定来源。 */
 export const OCEANLEO_NODE_TEMPLATE_FIELD = "oceanleo_node";
+
+/**
+ * Langflow 执行面只认这一对口：组件的 `out` → 下游的 `upstream`。
+ * 画布上的 fromPort/toPort 走 `data.oceanleo` 旁挂，不写进 handle。
+ */
+const LANGFLOW_EXECUTION_OUTPUT = "out";
+const LANGFLOW_EXECUTION_INPUT = "upstream";
+const LANGFLOW_EXECUTION_OUTPUT_TYPES = ["JSON"] as const;
+const LANGFLOW_EXECUTION_INPUT_TYPES = ["Data", "JSON"] as const;
 
 /** Langflow 里 `œ` 代替 `"`。上游前端解码就是把它换回来再 `JSON.parse`。 */
 const HANDLE_QUOTE = "\u0153";
@@ -254,29 +264,20 @@ export function decodeLangflowHandle(
   }
 }
 
-function sourceHandleFor(
-  langflowNodeId: string,
-  kind: VideoCanvasNodeKind,
-  port: string,
-  dataType: VideoCanvasPortDataType,
-): LangflowHandleSource {
+function executionSourceHandle(langflowNodeId: string): LangflowHandleSource {
   return {
-    dataType: kind,
+    dataType: OCEANLEO_LANGFLOW_NODE_TYPE,
     id: langflowNodeId,
-    name: port,
-    output_types: [PORT_TYPE_TO_LANGFLOW[dataType]],
+    name: LANGFLOW_EXECUTION_OUTPUT,
+    output_types: [...LANGFLOW_EXECUTION_OUTPUT_TYPES],
   };
 }
 
-function targetHandleFor(
-  langflowNodeId: string,
-  port: string,
-  dataType: VideoCanvasPortDataType,
-): LangflowHandleTarget {
+function executionTargetHandle(langflowNodeId: string): LangflowHandleTarget {
   return {
-    fieldName: port,
+    fieldName: LANGFLOW_EXECUTION_INPUT,
     id: langflowNodeId,
-    inputTypes: [PORT_TYPE_TO_LANGFLOW[dataType]],
+    inputTypes: [...LANGFLOW_EXECUTION_INPUT_TYPES],
     type: "other",
   };
 }
@@ -303,46 +304,94 @@ function portsOf(node: VideoCanvasNode, side: "inputs" | "outputs"): VideoCanvas
   return Array.isArray(list) ? list : [];
 }
 
+function oceanLeoNodePayload(node: VideoCanvasNode): Record<string, unknown> {
+  return {
+    id: node.id,
+    kind: node.kind,
+    ...(node.label === undefined ? {} : { label: node.label }),
+    x: node.x,
+    y: node.y,
+    ...(node.params === undefined ? {} : { params: node.params }),
+    ...(node.assetId === undefined ? {} : { assetId: node.assetId }),
+    ports: {
+      inputs: portsOf(node, "inputs"),
+      outputs: portsOf(node, "outputs"),
+    },
+  };
+}
+
 function templateFieldFor(node: VideoCanvasNode): Record<string, unknown> {
   return {
+    _type: "Component",
+    // Langflow 1.12 `instantiate_class` 必 pop 这一项；缺了点运行就是 KeyError: code。
+    code: {
+      type: "code",
+      required: true,
+      show: true,
+      name: "code",
+      value: OCEANLEO_WORKFLOW_NODE_SOURCE,
+      advanced: true,
+      dynamic: true,
+      multiline: true,
+      list: false,
+      password: false,
+      load_from_db: false,
+      fileTypes: [],
+      file_path: "",
+      placeholder: "",
+      info: "",
+    },
     [OCEANLEO_NODE_TEMPLATE_FIELD]: {
       advanced: false,
       display_name: "OceanLeo node",
       dynamic: false,
-      info: "OceanLeo 节点图的原始节点。改这里等于改流程，请用画布而不是手编。",
+      info: "OceanLeo 节点图的原始节点（JSON）。改这里等于改流程，请用画布而不是手编。",
       list: false,
       name: OCEANLEO_NODE_TEMPLATE_FIELD,
       password: false,
       required: true,
       show: true,
-      type: "other",
-      // 整条原样存。取回时逐字读出来 ⇒ 往返无损，不靠「重建」。
-      value: {
-        id: node.id,
-        kind: node.kind,
-        ...(node.label === undefined ? {} : { label: node.label }),
-        x: node.x,
-        y: node.y,
-        ...(node.params === undefined ? {} : { params: node.params }),
-        ...(node.assetId === undefined ? {} : { assetId: node.assetId }),
-        ports: {
-          inputs: portsOf(node, "inputs"),
-          outputs: portsOf(node, "outputs"),
-        },
-      },
+      type: "str",
+      // MessageTextInput 只收字符串。取回时 JSON.parse。
+      value: JSON.stringify(oceanLeoNodePayload(node)),
     },
-    _type: "Component",
+    upstream: {
+      advanced: false,
+      display_name: "Upstream",
+      dynamic: false,
+      info: "上游节点传下来的值。没有上游时留空。",
+      list: true,
+      name: LANGFLOW_EXECUTION_INPUT,
+      required: false,
+      show: true,
+      type: "other",
+      value: "",
+      input_types: [...LANGFLOW_EXECUTION_INPUT_TYPES],
+    },
+    strict: {
+      advanced: false,
+      display_name: "Strict",
+      dynamic: false,
+      list: false,
+      name: "strict",
+      required: false,
+      show: true,
+      type: "bool",
+      value: true,
+    },
   };
 }
 
 function langflowNodeFor(node: VideoCanvasNode): LangflowNode {
   const langflowId = toLangflowNodeId(node.id);
-  const outputs = portsOf(node, "outputs").map((port) => ({
-    name: port.name,
-    display_name: port.name,
-    types: [PORT_TYPE_TO_LANGFLOW[port.dataType]],
-    method: `oceanleo_${node.kind.split("-").join("_")}`,
-  }));
+  const outputs = [
+    {
+      name: LANGFLOW_EXECUTION_OUTPUT,
+      display_name: "Node",
+      types: [...LANGFLOW_EXECUTION_OUTPUT_TYPES],
+      method: "build_node",
+    },
+  ];
   return {
     id: langflowId,
     type: "genericNode",
@@ -353,7 +402,7 @@ function langflowNodeFor(node: VideoCanvasNode): LangflowNode {
       node: {
         display_name: node.label || node.kind,
         description: `OceanLeo ${node.kind} 节点`,
-        base_classes: outputs.length > 0 ? [...new Set(outputs.flatMap((o) => o.types))] : [],
+        base_classes: [...LANGFLOW_EXECUTION_OUTPUT_TYPES],
         template: templateFieldFor(node),
         outputs,
         documentation: "",
@@ -391,8 +440,8 @@ function langflowEdgeFor(
   }
   const sourceId = toLangflowNodeId(edge.fromNodeId);
   const targetId = toLangflowNodeId(edge.toNodeId);
-  const sourceHandle = sourceHandleFor(sourceId, from.kind, outPort.name, outPort.dataType);
-  const targetHandle = targetHandleFor(targetId, inPort.name, inPort.dataType);
+  const sourceHandle = executionSourceHandle(sourceId);
+  const targetHandle = executionTargetHandle(targetId);
   return {
     // 紧凑形态嵌进 id、带空格形态放字段，逐字照上游（文件头实测第 2 条）。
     id: `reactflow__edge-${sourceId}${encodeLangflowHandle(
@@ -499,7 +548,16 @@ function readOceanLeoPayload(node: unknown): Record<string, unknown> | null {
     OCEANLEO_NODE_TEMPLATE_FIELD
   ];
   if (!field || typeof field !== "object") return null;
-  const value = (field as { value?: unknown }).value;
+  let value = (field as { value?: unknown }).value;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return null;
+    try {
+      value = JSON.parse(text) as unknown;
+    } catch {
+      return null;
+    }
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }

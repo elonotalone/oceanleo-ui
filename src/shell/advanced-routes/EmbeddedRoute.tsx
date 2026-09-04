@@ -55,6 +55,7 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { UnsupportedRoute } from "./UnsupportedRoute";
+import { VideoCanvasRoute } from "./VideoCanvasRoute";
 
 interface RemoteChoice {
   value: Exclude<SelectionCommand["value"], undefined>;
@@ -1382,6 +1383,21 @@ export function EmbeddedRoute({
   if (route.type !== "embed") {
     return (
       <UnsupportedRoute
+        item={item}
+        previewContent={previewContent}
+        linkUrl={linkUrl}
+        taskId={taskId}
+        siteId={siteId}
+        accent={accent}
+        onClose={onClose}
+      />
+    );
+  }
+  // A-65：工作流件必须从这条用户已经在走的 embed 路由能进专业模式。
+  // 钩子都跑完了才分岔，不提前 return。
+  if (embeddedAdapterId === "video-canvas") {
+    return (
+      <VideoCanvasRoute
         item={item}
         previewContent={previewContent}
         linkUrl={linkUrl}

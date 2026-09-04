@@ -43,6 +43,9 @@ const leaf = read("src/shell/workflow-carrier/langflow-pro-stage.tsx");
 const frame = read("src/shell/workflow-carrier/langflow-hosted-frame.tsx");
 const routeFn = read("src/shell/workflow-carrier/agent-route.ts");
 const modeFn = read("src/shell/workflow-carrier/langflow-mode.ts");
+const canvasRoute = read("src/shell/advanced-routes/VideoCanvasRoute.tsx");
+const workbench = read("src/shell/AdvancedContentWorkbench.tsx");
+const embeddedRoute = read("src/shell/advanced-routes/EmbeddedRoute.tsx");
 const strip = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const leafCode = strip(leaf);
@@ -98,6 +101,38 @@ test("chip routing is a pure function that defaults to review", () => {
   assert.match(leaf, /dispatchWorkflowAgentChip/);
   assert.match(leaf, /rememberEditorChips\("workflow"/);
   assert.equal(workflowToolsManifestChips().chips.length, 8);
+});
+
+test("A-65 工作台路由必须静态挂上 LangflowProStage，摘掉就红", () => {
+  const canvasRouteCode = canvasRoute
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  const workbenchCode = workbench
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  const embeddedCode = embeddedRoute
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  assert.match(canvasRoute, /export function VideoCanvasRoute/);
+  assert.match(canvasRoute, /<LangflowProStage \{\.\.\.props\} \/>/);
+  assert.doesNotMatch(canvasRouteCode, /false && <LangflowProStage/);
+  assert.doesNotMatch(canvasRouteCode, /\blazy\(/);
+  assert.doesNotMatch(canvasRouteCode, /\bdynamic\(/);
+  assert.match(workbench, /lazyRoute\("video-canvas"/);
+  assert.match(
+    workbench,
+    /if \(capability\.adapter === "video-canvas"\) \{\s*editor = <VideoCanvasRoute \{\.\.\.activeProps\} \/>;/,
+  );
+  assert.doesNotMatch(
+    workbenchCode,
+    /false && capability\.adapter === "video-canvas"/,
+  );
+  assert.match(embeddedRoute, /embeddedAdapterId === "video-canvas"/);
+  assert.match(embeddedRoute, /<VideoCanvasRoute/);
+  assert.doesNotMatch(
+    embeddedCode,
+    /false && embeddedAdapterId === "video-canvas"/,
+  );
 });
 
 const require = createRequire(import.meta.url);
@@ -175,10 +210,15 @@ const shellStubUrl = dataModule(`
 const pluginStubUrl = dataModule(`
   export function usePluginCommandSurface() {}
 `);
+const embedStubUrl = dataModule(`
+  export function embedEditorBase() { return ""; }
+  export function EmbedEditorPane() { return null; }
+`);
 
 const leafStubs = {
   "../AdvancedWorkbenchShell": shellStubUrl,
   "../plugin-command": pluginStubUrl,
+  "../workbench-embed": embedStubUrl,
 };
 
 function sampleGraph() {
@@ -348,17 +388,17 @@ test("host 往 Langflow 发消息必须钉死 flow origin，不许 *", async () 
 test("普通模式真画节点和连线；专业模式才挂 Langflow iframe", async () => {
   resetAgentReviewInbox();
   const mounted = await mountCompiled(
-    "src/shell/workflow-carrier/langflow-pro-stage.tsx",
+    "src/shell/advanced-routes/VideoCanvasRoute.tsx",
     leafStubs,
     (mod) =>
-      React.createElement(mod.LangflowProStage, {
+      React.createElement(mod.VideoCanvasRoute, {
         item: workflowItem(),
         onClose() {},
       }),
   );
   try {
     assert.equal(
-      mounted.container.querySelector("iframe"),
+      mounted.container.querySelector("[data-testid=workflow-langflow-frame]"),
       null,
       "普通模式不该挂 Langflow iframe",
     );
@@ -397,10 +437,10 @@ test("普通模式真画节点和连线；专业模式才挂 Langflow iframe", a
 
 test("少传 item 时舞台说出原因，而不是空白当成功", async () => {
   const mounted = await mountCompiled(
-    "src/shell/workflow-carrier/langflow-pro-stage.tsx",
+    "src/shell/advanced-routes/VideoCanvasRoute.tsx",
     leafStubs,
     (mod) =>
-      React.createElement(mod.LangflowProStage, {
+      React.createElement(mod.VideoCanvasRoute, {
         item: null,
         onClose() {},
       }),

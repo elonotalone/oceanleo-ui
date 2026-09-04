@@ -174,6 +174,25 @@ test("dangling edges and foreign nodes fail closed with a human reason", () => {
   assert.match(back.warnings[0], /Langflow 原生节点/);
 });
 
+test("converter nodes carry the Python component so Langflow can run them", () => {
+  const exported = toLangflowFlow(sampleGraph(), { flowId: "f", name: "f" });
+  assert.equal(exported.ok, true);
+  if (!exported.ok) return;
+  const node = exported.flow.data.nodes[0];
+  assert.match(
+    node.data.node.template.code.value,
+    /class OceanLeoWorkflowNode/,
+  );
+  assert.equal(node.data.node.outputs[0].method, "build_node");
+  assert.equal(node.data.node.outputs[0].name, "out");
+  assert.equal(typeof node.data.node.template.oceanleo_node.value, "string");
+  const edge = exported.flow.data.edges[0];
+  assert.equal(decodeLangflowHandle(edge.sourceHandle).name, "out");
+  assert.equal(decodeLangflowHandle(edge.targetHandle).fieldName, "upstream");
+  assert.equal(edge.data.oceanleo.fromPort, "out");
+  assert.equal(langflowRoundTripMatches(sampleGraph()), true);
+});
+
 test("runnability names the missing OceanLeo component package", () => {
   const exported = toLangflowFlow(sampleGraph(), { flowId: "f", name: "f" });
   assert.equal(exported.ok, true);
@@ -190,6 +209,30 @@ test("runnability names the missing OceanLeo component package", () => {
     componentsInstalled: true,
   });
   assert.equal(okRun.runnable, true);
+  const stripped = {
+    ...exported.flow,
+    data: {
+      ...exported.flow.data,
+      nodes: exported.flow.data.nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          node: {
+            ...node.data.node,
+            template: { ...node.data.node.template, code: { value: "" } },
+          },
+        },
+      })),
+    },
+  };
+  const missingCode = assessLangflowRunnability(stripped, {
+    componentsInstalled: true,
+  });
+  assert.equal(missingCode.runnable, false);
+  assert.equal(
+    missingCode.blockers.some((row) => row.code === "flow-component-code-missing"),
+    true,
+  );
 });
 
 test("init envelope carries flow, never a token, and starts in normal", () => {
