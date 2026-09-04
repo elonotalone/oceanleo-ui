@@ -624,6 +624,52 @@ test("导出：xlsx 打开后「包含」规则还在，不是写丢", async () 
   assert.deepEqual(notes.dropped, []);
 });
 
+test("导出：xlsx 打开后「不等于」仍是相对引用，整片不会跟着一格变色", async () => {
+  const notes = { dropped: [] };
+  const snap = salesWorkbookWithCf(
+    JSON.stringify({
+      s1: [
+        {
+          cfId: "cf-not-equal",
+          ranges: [{ startRow: 0, endRow: 9, startColumn: 1, endColumn: 1 }],
+          rule: {
+            type: "highlightCell",
+            subType: "number",
+            operator: "notEqual",
+            value: 100,
+            style: { bg: { rgb: "#ffebe9" } },
+          },
+        },
+      ],
+    }),
+  );
+  const sheets = univerSnapshotToGridSheets(snap, notes);
+  assert.equal(sheets[0].conditionalFormats[0].operator, "not-equal");
+  assert.equal(sheets[0].conditionalFormats[0].value, "100");
+  const workbook = await openRouteXlsx(sheets);
+  const ws = workbook.getWorksheet("销售");
+  const cfs = ws.conditionalFormattings || [];
+  assert.equal(
+    cfs.length,
+    1,
+    "用户设了「不等于 100 变色」，打开导出的 xlsx 必须还能看到这条规则。",
+  );
+  const rule = cfs[0]?.rules?.[0] || cfs[0];
+  assert.equal(rule?.type, "expression");
+  const formula = String(rule?.formulae?.[0] || "");
+  assert.equal(
+    formula.includes("$"),
+    false,
+    "整片区域会跟着一个格子一起变色。公式必须是相对引用（锚在区域左上角 B1），不能写成 $B$1 这种绝对引用。",
+  );
+  assert.equal(
+    formula,
+    "B1<>100",
+    "整片区域会跟着一个格子一起变色。exceljs 没有 notEqual，改写的 expression 必须以区域左上角的相对引用为锚，Excel 才会逐格判断。",
+  );
+  assert.deepEqual(notes.dropped, []);
+});
+
 test("导出：色阶 / 数据条 / 图标集带不过去，但必须点名", () => {
   const notes = { dropped: [] };
   const extra = [
