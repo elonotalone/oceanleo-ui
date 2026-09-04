@@ -413,7 +413,7 @@ function gameItem() {
 function concealmentReason(node) {
   let current = node;
   while (current && current.nodeType === 1) {
-    if (current.hasAttribute("hidden")) return "hidden";
+    if (current.hidden === true || current.hasAttribute("hidden")) return "hidden";
     if (current.getAttribute("aria-hidden") === "true") return "aria-hidden";
     const style = String(current.getAttribute("style") || "");
     if (/display\s*:\s*none/i.test(style)) return "display:none";
