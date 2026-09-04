@@ -374,6 +374,17 @@ test("§1 grid.set-cell 交的是带真原值的提案，不是空 before", asyn
   assert.equal(hostReviewSession.snapshot().status, "open");
 });
 
+test("§1 L1/L2 的提案要点名作用在哪一片选区，不能只写「加粗」两个字", async () => {
+  const env = freshEnv();
+  await env.surface.run("bold", { on: true });
+  const parked = hostReviewSession.snapshot().parked;
+  assert.match(
+    parked.proposal.summary.after,
+    /作用范围 A1/,
+    "面板上看不到范围，用户就不知道加粗会落在哪儿",
+  );
+});
+
 test("§1 只读指令不进审阅，当场执行", async () => {
   const env = freshEnv();
   const result = await env.surface.run("grid.read-cell", { row: 0, column: 0 });

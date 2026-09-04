@@ -302,6 +302,28 @@ function describeArgs(args: GridUniverCommandArgs): string {
   return parts.length ? `（${parts.join("，")}）` : "";
 }
 
+/**
+ * 选区的 A1 写法，给审阅面板上的人看：`A1` 或 `A1:C5`。
+ *
+ * L1/L2 的执行器作用在**选区**而不是参数里的行列（`port.range` / `port.selection`），
+ * 所以提案上必须写清楚它要动哪一片 —— 否则面板上只有「加粗」两个字，
+ * 用户根本不知道加粗会落在哪儿。
+ *
+ * ⚠️ **这句话解决的是「看得见」，不是「不会跑偏」**：真正落地时用的仍然是
+ * 那一刻的实时选区。用户在审阅期间挪了选区，接受后就会作用到新选区上。
+ * 这条残留缺口写在 `verdicts/W03-redfix.md` 的「还有什么没做到」里，没有粉饰。
+ */
+export function gridSelectionAddress(selection: {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+}): string {
+  const head = `${gridColumnLetter(selection.startColumn)}${selection.startRow + 1}`;
+  const tail = `${gridColumnLetter(selection.endColumn)}${selection.endRow + 1}`;
+  return head === tail ? head : `${head}:${tail}`;
+}
+
 /** 0 → `A`，25 → `Z`，26 → `AA`。审阅面板上给人看的地址。 */
 export function gridColumnLetter(index: number): string {
   let n = Math.max(0, Math.floor(index)) + 1;
@@ -436,12 +458,17 @@ function parkGridAgentChange(
       [GRID_APPLY_TOKEN_KEY]: mintApplyToken(id),
     };
   } else {
+    // L1/L2 的执行器作用在选区上，提案里必须点名是哪一片。
+    const scope =
+      command.layer === "L1" || command.layer === "L2"
+        ? `，作用范围 ${port ? gridSelectionAddress(port.selection) : "当前选区"}`
+        : "";
     proposal = buildGridStructureProposal({
       proposalId: `grid-cmd-${id}-${revision}-${forward.slice(-8)}`,
       commandId: id,
       label: command.label,
       before: `表格保持现状，「${command.label}」尚未执行。`,
-      after: `将执行「${command.label}」${describeArgs(args)}。`,
+      after: `将执行「${command.label}」${describeArgs(args)}${scope}。`,
       revision,
     });
     inverseParams = { ...args, [GRID_APPLY_TOKEN_KEY]: GRID_NO_INVERSE };
