@@ -89,15 +89,16 @@ import {
   gridSheetsToUniverSnapshot,
   univerSnapshotToGridSheets,
 } from "./grid-univer/snapshot";
-import {
-  GRID_UNIVER_COMMANDS,
-  runGridUniverCommand,
-} from "./grid-univer/facade-commands";
+import { runGridUniverCommand } from "./grid-univer/facade-commands";
 import {
   GRID_AGENT_CHIPS,
-  buildGridReviewProposal,
   gridToolsManifestChips,
 } from "./grid-univer/l4-chips";
+import {
+  gridAgentCommandSpecs,
+  runGridAgentCommand,
+} from "./grid-univer/agent-write-gate";
+import { submitAgentReviewProposal } from "../agent-review/inbox";
 import {
   GRID_UNIVER_DEFAULT_MODE,
   GRID_UNIVER_INSTANCE_ID,
@@ -124,17 +125,6 @@ type UniverHandle = {
 
 function emptySnapshot(title: string): Partial<IWorkbookData> {
   return gridSheetsToUniverSnapshot([emptyGridSheet()], { name: title }).data;
-}
-
-function columnLetter(index: number): string {
-  let n = index + 1;
-  let out = "";
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    out = String.fromCharCode(65 + rem) + out;
-    n = Math.floor((n - 1) / 26);
-  }
-  return out;
 }
 
 export function GridUniverStage({
@@ -608,17 +598,12 @@ export function GridUniverStage({
   );
   useWorkbenchMaterialAdapter(materialAdapter);
 
+  // agent 指令面：一条 `run` 一条路，写与不写的判断全在 `runGridAgentCommand`
+  // 里（V3-red-3）。这里不许再出现任何直接调 Facade 的分支——
+  // `tests/grid-univer-agent-review-gate.test.mjs` 会扫这段源码把它钉住。
   usePluginCommandSurface({
     editorId: "grid",
-    describe: () =>
-      GRID_UNIVER_COMMANDS.filter(
-        (command) => command.layer === "agent" && command.run,
-      ).map((command) => ({
-        id: command.id,
-        label: command.label,
-        summary: command.label,
-        mutates: command.id !== "grid.read-cell",
-      })),
+    describe: gridAgentCommandSpecs,
     state: () => ({
       mode,
       conversion,
@@ -626,49 +611,17 @@ export function GridUniverStage({
       chips: chipsManifest.chips.map((chip) => chip.id),
       chipCount: GRID_AGENT_CHIPS.length,
     }),
-    run: (id, params) => {
-      if (id === "grid.set-cell") {
-        const row = Number(params?.row ?? 0);
-        const column = Number(params?.column ?? 0);
-        const after = String(params?.value ?? "");
-        const address = `${columnLetter(column)}${row + 1}`;
-        const proposal = buildGridReviewProposal({
-          proposalId: `grid-review-${editRevision}-${address}`,
-          commandId: id,
-          changes: [{ address, before: "", after }],
-          revision: editRevision,
-        });
-        return {
-          ok: Boolean(proposal),
-          message: proposal
-            ? "改动已送审阅，接受前不会写入单元格。"
-            : "审阅提案没有通过契约校验，单元格未改。",
-          revision: editRevision,
-        };
-      }
-      if (readonly) {
-        return { ok: false, message: GRID_LEGACY_READONLY_NOTICE };
-      }
-      const port = livePort();
-      if (!port) return { ok: false, message: "表格内核还没准备好。" };
-      const args = Object.fromEntries(
-        Object.entries(params || {}).map(([key, value]) => [
-          key,
-          typeof value === "string" ||
-          typeof value === "number" ||
-          typeof value === "boolean"
-            ? value
-            : undefined,
-        ]),
-      );
-      const outcome = runGridUniverCommand(id, port, args);
-      if (outcome.ok) bumpHistory();
-      return {
-        ok: outcome.ok,
-        message: outcome.ok ? "已执行。" : outcome.reason,
+    run: (id, params) =>
+      runGridAgentCommand({
+        id,
+        params,
+        port: livePort(),
         revision: editRevision,
-      };
-    },
+        readonly,
+        readonlyNotice: GRID_LEGACY_READONLY_NOTICE,
+        submit: submitAgentReviewProposal,
+        onWrite: bumpHistory,
+      }),
   });
 
   const selectionContext = useMemo(

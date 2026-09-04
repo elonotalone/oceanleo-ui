@@ -178,3 +178,51 @@ export function buildGridReviewProposal(input: {
   } as EditorReviewProposal;
   return validReviewProposal(proposal) ? proposal : null;
 }
+
+/**
+ * 结构类改动（插入行/列、排序、加表、加粗、套格式…）的待审阅提案。
+ *
+ * 与 `buildGridReviewProposal` 分开，是因为这些改动**没有「哪一格从 A 变成 B」
+ * 这种落点**：插入一行动的是整张表的行号。硬塞进 `GridCellChange` 会让审阅面板
+ * 显示一条骗人的单元格 diff。这里给的是一条「要做什么、当前是什么样」的对象改动，
+ * 一条提案一条对象，人读得懂，机器也数得清。
+ *
+ * 契约同样只用宿主那一份 `validReviewProposal`，不复制校验。
+ */
+export function buildGridStructureProposal(input: {
+  proposalId: string;
+  commandId: string;
+  label: string;
+  before: string;
+  after: string;
+  revision: number;
+  targetSelection?: SelectionContext | null;
+}): EditorReviewProposal | null {
+  const label = clipText(input.label, 200);
+  if (!label) return null;
+  const proposal = {
+    proposalId: clipText(input.proposalId, 128),
+    commandId: input.commandId,
+    summary: {
+      before: clipText(input.before, 2_000) || `执行前：${label}`,
+      after: clipText(input.after, 2_000) || `将执行「${label}」`,
+    },
+    objects: [
+      {
+        id: clipText(input.commandId, 200),
+        op: "update",
+        label,
+        before: clipText(input.before, 4_000),
+        after: clipText(input.after, 4_000),
+      },
+    ],
+    targetSelection: input.targetSelection ?? null,
+    revision: input.revision,
+  } as EditorReviewProposal;
+  return validReviewProposal(proposal) ? proposal : null;
+}
+
+function clipText(value: string, max: number): string {
+  const text = String(value ?? "");
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
