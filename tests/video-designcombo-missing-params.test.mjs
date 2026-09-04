@@ -97,13 +97,23 @@ const toolbarStubUrl = dataModule(`
             "data-control-id": control.id,
             onClick: (event) => {
               const raw = event.currentTarget.getAttribute("data-test-value");
+              let value;
+              if (raw === null || raw === "") {
+                value = undefined;
+              } else if (raw === "true") {
+                value = true;
+              } else if (raw === "false") {
+                value = false;
+              } else if (Number.isFinite(Number(raw))) {
+                value = Number(raw);
+              } else {
+                value = raw;
+              }
               onCommand({
                 requestId: "w24-gate",
                 selectionId: (context && context.id) || "",
                 controlId: control.id,
-                ...(raw === null || raw === ""
-                  ? {}
-                  : { value: Number.isFinite(Number(raw)) ? Number(raw) : raw }),
+                ...(value === undefined ? {} : { value }),
               });
             },
           },
@@ -416,6 +426,36 @@ test("the inspector button named 写入默认关键帧 still writes the default 
     assert.equal(animation.type, "keyframes");
     assert.equal(animation.params["0%"].x, -40);
     assert.equal(animation.params["100%"].x, 0);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("clicking mute without a choice does not unmute, and the person sees why", async () => {
+  const mounted = await mountStage();
+  try {
+    await clickControl(mounted.container, "muted", true);
+    const silenced = videoClip(currentProject());
+    assert.equal(silenced.muted, true, "先静音，闸才对比得了被悄悄打开");
+    await clickControl(mounted.container, "muted");
+    const after = videoClip(currentProject());
+    assert.equal(after.muted, true, "缺静音选择时，不会把静音关掉");
+    assert.equal(after.volume, 0, "缺静音选择时，不会把静音关掉");
+    const notice = visibleNoticeText(mounted.container);
+    assert.match(notice, /没有明确选择时不会改变静音/);
+    assert.match(notice, /请先确认要不要静音/);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("clicking caption-style without a color does not pretend it worked, and the person sees why", async () => {
+  const mounted = await mountStage();
+  try {
+    await clickControl(mounted.container, "caption-style");
+    const notice = visibleNoticeText(mounted.container);
+    assert.match(notice, /没有颜色或字号时不会改字幕/);
+    assert.match(notice, /请先给出字幕样式/);
   } finally {
     await mounted.unmount();
   }

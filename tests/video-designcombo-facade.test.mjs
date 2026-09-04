@@ -6,9 +6,11 @@ import {
   cropOpenVideoClip,
   deleteOpenVideoClip,
   runVideoDesigncomboCommand,
+  setOpenVideoCaptionStyle,
   setOpenVideoKeyframes,
   setOpenVideoMuted,
   setOpenVideoSpeed,
+  setOpenVideoVolume,
   splitOpenVideoClip,
 } from "../src/shell/video-editor/designcombo/facade-commands.ts";
 import {
@@ -152,7 +154,7 @@ test("volume without a value does not mute the clip", () => {
   project.clips[id].muted = false;
   const before = structuredClone(project);
   const result = runVideoDesigncomboCommand("volume", project, { clipId: id });
-  assert.equal(result.ok, false, "缺音量值时，声音不会被改成静音");
+  assert.equal(result.ok, false, "缺参数时不许报成功");
   assert.match(result.reason, /没有音量值时不会改变声音/);
   assert.equal(result.reason, "请先给出音量，没有音量值时不会改变声音。");
   assert.deepEqual(project, before, "缺音量值时，声音不会被改成静音");
@@ -176,7 +178,7 @@ test("speed without a value does not reset a 2x clip to 1x", () => {
   project.clips[id].timing.playbackRate = 2;
   const before = structuredClone(project);
   const result = runVideoDesigncomboCommand("speed", project, { clipId: id });
-  assert.equal(result.ok, false, "缺速度值时，播放速度不会被改掉");
+  assert.equal(result.ok, false, "缺参数时不许报成功");
   assert.match(result.reason, /没有速度值时不会改变播放速度/);
   assert.equal(result.reason, "请先选择倍速，没有速度值时不会改变播放速度。");
   assert.deepEqual(project, before, "缺速度值时，播放速度不会被改掉");
@@ -195,7 +197,7 @@ test("a crop rect with no usable area does not become a full-frame crop", () => 
     width: 0,
     height: 0.5,
   });
-  assert.equal(widthZero.ok, false, "裁切宽为 0 时，画面不会被当成满幅");
+  assert.equal(widthZero.ok, false, "缺参数时不许报成功");
   assert.match(widthZero.reason, /没有可用面积/);
   assert.equal(widthZero.reason, "裁切框没有可用面积，画面没有被裁切。");
   assert.equal(project.clips[id].crop, undefined, "裁切宽为 0 时，画面不会被当成满幅");
@@ -249,6 +251,121 @@ test("a crop rect with no usable area does not become a full-frame crop", () => 
   assert.equal(viaCommand.ok, false, "裁切宽为 0 时，画面不会被当成满幅");
   assert.match(viaCommand.reason, /没有可用面积/);
   assert.equal(project.clips[id].transform.width, 1920, "裁切宽为 0 时，画面不会被当成满幅");
+});
+
+test("missing volume at the kernel is a failure with a readable reason, not a silent success", () => {
+  const { project, id } = seeded();
+  project.clips[id].volume = 0.8;
+  project.clips[id].muted = false;
+  const result = setOpenVideoVolume(project, id, Number("not-a-volume"));
+  assert.equal(result.ok, false, "缺参数时不许报成功");
+  assert.match(result.reason, /没有音量值时不会改变声音/);
+  assert.equal(result.reason, "请先给出音量，没有音量值时不会改变声音。");
+  assert.equal(project.clips[id].volume, 0.8, "缺音量值时，声音不会被改成静音");
+  assert.equal(project.clips[id].muted, false, "缺音量值时，声音不会被改成静音");
+});
+
+test("missing speed at the kernel is a failure with a readable reason, not a silent success", () => {
+  const { project, id } = seeded();
+  project.clips[id].timing.playbackRate = 2;
+  const result = setOpenVideoSpeed(project, id, Number("not-a-speed"));
+  assert.equal(result.ok, false, "缺参数时不许报成功");
+  assert.match(result.reason, /没有速度值时不会改变播放速度/);
+  assert.equal(result.reason, "请先选择倍速，没有速度值时不会改变播放速度。");
+  assert.equal(project.clips[id].timing.playbackRate, 2, "缺速度值时，播放速度不会被改掉");
+});
+
+test("muted without a boolean does not unmute the clip", () => {
+  const { project, id } = seeded();
+  project.clips[id].muted = true;
+  project.clips[id].volume = 0;
+  const viaCommand = runVideoDesigncomboCommand("muted", project, { clipId: id });
+  assert.equal(viaCommand.ok, false, "缺参数时不许报成功");
+  assert.match(viaCommand.reason, /没有明确选择时不会改变静音/);
+  assert.equal(viaCommand.reason, "请先确认要不要静音，没有明确选择时不会改变静音。");
+  assert.equal(project.clips[id].muted, true, "缺静音选择时，不会把静音关掉");
+  assert.equal(project.clips[id].volume, 0, "缺静音选择时，不会把静音关掉");
+
+  const viaKernel = setOpenVideoMuted(project, id, Number("not-a-flag"));
+  assert.equal(viaKernel.ok, false, "缺参数时不许报成功");
+  assert.match(viaKernel.reason, /没有明确选择时不会改变静音/);
+  assert.equal(project.clips[id].muted, true, "缺静音选择时，不会把静音关掉");
+});
+
+test("caption-style without a color or size is a failure, not a silent success", () => {
+  const { project } = seeded();
+  const captioned = addOpenVideoCaption(project, {
+    text: "hello",
+    fromMs: 1000,
+    durationMs: 1500,
+  });
+  assert.equal(captioned.ok, true);
+  const caption = Object.values(captioned.project.clips).find(
+    (clip) => clip.type === "Caption",
+  );
+  assert.ok(caption);
+  const beforeColor = caption.style?.color;
+  const viaCommand = runVideoDesigncomboCommand("caption-style", captioned.project, {
+    clipId: caption.id,
+  });
+  assert.equal(viaCommand.ok, false, "缺参数时不许报成功");
+  assert.match(viaCommand.reason, /没有颜色或字号时不会改字幕/);
+  assert.equal(
+    viaCommand.reason,
+    "请先给出字幕样式，没有颜色或字号时不会改字幕。",
+  );
+  assert.equal(
+    captioned.project.clips[caption.id].style?.color,
+    beforeColor,
+    "缺字幕样式时，字幕外观不会被改掉",
+  );
+
+  const viaKernel = setOpenVideoCaptionStyle(captioned.project, caption.id, {});
+  assert.equal(viaKernel.ok, false, "缺参数时不许报成功");
+  assert.match(viaKernel.reason, /没有颜色或字号时不会改字幕/);
+  assert.equal(
+    captioned.project.clips[caption.id].style?.color,
+    beforeColor,
+    "缺字幕样式时，字幕外观不会被改掉",
+  );
+});
+
+test("add-caption with body text but no time does not drop the caption at 0", () => {
+  const { project } = seeded();
+  const viaCommand = runVideoDesigncomboCommand("add-caption", project, {
+    text: "hello",
+  });
+  assert.equal(viaCommand.ok, false, "缺参数时不许报成功");
+  assert.match(viaCommand.reason, /没有时间点时不会把字幕加到片头/);
+  assert.equal(
+    viaCommand.reason,
+    "请先指定字幕出现的时间，没有时间点时不会把字幕加到片头。",
+  );
+  const captions = Object.values(project.clips).filter((clip) => clip.type === "Caption");
+  assert.equal(captions.length, 0, "缺时间点时，字幕不会被扔到片头");
+
+  const viaKernel = addOpenVideoCaption(project, {
+    text: "hello",
+    fromMs: Number("not-a-time"),
+  });
+  assert.equal(viaKernel.ok, false, "缺参数时不许报成功");
+  assert.match(viaKernel.reason, /没有时间点时不会把字幕加到片头/);
+  const stillNone = Object.values(project.clips).filter((clip) => clip.type === "Caption");
+  assert.equal(stillNone.length, 0, "缺时间点时，字幕不会被扔到片头");
+});
+
+test("add-caption at 0 stays at the start when the person asked for 0", () => {
+  const { project } = seeded();
+  const result = runVideoDesigncomboCommand("add-caption", project, {
+    text: "hello",
+    atUs: 0,
+  });
+  assert.equal(result.ok, true);
+  const captions = Object.values(result.project.clips).filter(
+    (clip) => clip.type === "Caption",
+  );
+  assert.equal(captions.length, 1);
+  assert.equal(captions[0].timing.display.from, 0);
 });
 
 void makeOpenVideoId;
