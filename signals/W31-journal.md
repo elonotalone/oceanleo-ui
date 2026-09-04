@@ -15,3 +15,17 @@
 - `224e448` 标题卡按 `style.x/y` 中心与字号换算进 caption 框，不再写死 600×100 底栏。
 - `cf4078b` 闸锁两条文字各自的中心点和高度，不靠 `clips.length`。
 - 下一步：四把刀（证伪树，tsc 先于读数）。
+
+## 2026-09-04 · 四把刀读数（刀未入库）
+
+证伪树 `/tmp/W31-knife-*` @ `080ff89`，软链主仓 `node_modules`，拆树前已 `rm -f` 软链。
+
+| 刀 | tsc | 闸文件 | 读数 |
+|---|---|---|---|
+| 文件名 A（stolen-name.js） | TSC-EXIT:0，有 `running: npx tsc` | `game-ide-import-filename.test.mjs` | 5 / 2 / **3** |
+| 文件名 B（拒绝但 reason 空串） | TSC-EXIT:0 | 同上 | 5 / 2 / **3** |
+| 文字轨 A（KIND_TO_TRACK.text="text"） | TSC-EXIT:0 | `video-designcombo-conversion.test.mjs` | 10 / 8 / **2** |
+| 文字轨 B（保留片段、位置写死 0,800 600×100） | TSC-EXIT:0 | 同上 | 10 / 8 / **2** |
+
+文字轨刀 B 红在「横向中心 300 ≠ 960」，片段还在——闸锁的是位置不是个数。
+下一步：主树 tsc + 全量收口。
