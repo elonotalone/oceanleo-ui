@@ -2,8 +2,9 @@
  * W28 / V9-red-5 / A-94：AVA 荐「百分比堆叠」必须真画占比，
  * 不许静默改成普通堆叠还报已按推荐画。
  *
- * 锁的是用户看见的图：轴 0–100% 且各类上各段相加为 100%。
- * 不锁映射表长什么样（把「写成 bar + stack:total」钉死会把缺陷写进契约）。
+ * 锁的是用户看见的图：轴 0–100%，**每一段与原值成比例**。
+ * 「各段加起来等于 100」不够——实现里的 drift 修正专职维持那个等式
+ * （A-97）。不锁映射表长什么样。
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -29,6 +30,9 @@ const STACKED_IDS = [
   "stacked_bar_chart",
 ];
 
+const SERIES_IDS = ["income", "cost", "profit", "tax"];
+const SERIES_NAMES = ["收入", "成本", "利润", "税"];
+
 function sampleDocument(seriesData) {
   return normalizeChartDocument({
     schema: "oceanleo.chart.v1",
@@ -37,8 +41,8 @@ function sampleDocument(seriesData) {
       xAxis: { type: "category", data: ["华东", "华南", "华北"] },
       yAxis: { type: "value" },
       series: seriesData.map((data, index) => ({
-        id: index === 0 ? "income" : "cost",
-        name: index === 0 ? "收入" : "成本",
+        id: SERIES_IDS[index] || `series-${index + 1}`,
+        name: SERIES_NAMES[index] || `系列 ${index + 1}`,
         type: "bar",
         data,
         label: { show: false },
@@ -66,6 +70,20 @@ function categorySum(document, index) {
   );
 }
 
+function originalAt(original, seriesIndex, categoryIndex) {
+  const datum = original.option.series[seriesIndex]?.data[categoryIndex];
+  return datum === undefined ? 0 : scalar(datum);
+}
+
+function actualAt(document, seriesIndex, categoryIndex) {
+  return scalar(document.option.series[seriesIndex].data[categoryIndex]);
+}
+
+/** 独立算出应占多少，不走产品的 drift。drift 只能吃掉浮点碎屑。 */
+function rawPercent(value, total) {
+  return total === 0 ? 0 : (value / total) * 100;
+}
+
 function assertPercentStackedDrawn(applied, original, label) {
   assert.equal(
     applied.ok,
@@ -85,24 +103,50 @@ function assertPercentStackedDrawn(applied, original, label) {
     "{value}%",
     `${label}：轴刻度没有 %。用户没法看出这是占比。`,
   );
+  const seriesCount = original.option.series.length;
   const width = Math.max(
     ...applied.document.option.series.map((series) => series.data.length),
     ...original.option.series.map((series) => series.data.length),
   );
   for (let index = 0; index < width; index += 1) {
-    const before = categorySum(original, index);
-    const after = categorySum(applied.document, index);
+    const originals = Array.from({ length: seriesCount }, (_, seriesIndex) =>
+      originalAt(original, seriesIndex, index),
+    );
+    const actuals = Array.from({ length: seriesCount }, (_, seriesIndex) =>
+      actualAt(applied.document, seriesIndex, index),
+    );
+    const before = originals.reduce((sum, value) => sum + value, 0);
+    const after = actuals.reduce((sum, value) => sum + value, 0);
     if (before === 0) {
-      assert.equal(
-        after,
-        0,
-        `${label}：第 ${index + 1} 类原来合计是 0，占比必须仍是 0，不能假装 100%。`,
-      );
+      for (let seriesIndex = 0; seriesIndex < seriesCount; seriesIndex += 1) {
+        const name = original.option.series[seriesIndex].name;
+        assert.equal(
+          actuals[seriesIndex],
+          0,
+          `${label}：第 ${index + 1} 类「${name}」原来是 0，必须仍是 0%，不能靠合计为 0 混过去。`,
+        );
+      }
       continue;
     }
     assert.ok(
       Math.abs(after - 100) < 1e-6,
       `${label}：第 ${index + 1} 类各段加起来是 ${after}，不是 100%。画的是绝对量堆叠，回答了用户没问的问题。`,
+    );
+    const raw = originals.map((value) => rawPercent(value, before));
+    for (let seriesIndex = 0; seriesIndex < seriesCount; seriesIndex += 1) {
+      const name = original.option.series[seriesIndex].name;
+      const expected = raw[seriesIndex];
+      const actual = actuals[seriesIndex];
+      assert.ok(
+        Math.abs(actual - expected) < 1e-6,
+        `${label}：第 ${index + 1} 类「${name}」应占 ${expected.toFixed(2)}%，实际 ${actual}%。占比算错了，用户会以为成本吃掉了全部。`,
+      );
+    }
+    const last = seriesCount - 1;
+    const driftApplied = actuals[last] - raw[last];
+    assert.ok(
+      Math.abs(driftApplied) < 1e-6,
+      `${label}：drift 修正把 ${driftApplied} 个百分点补给了最后一段「${original.option.series[last].name}」。超过浮点误差，说明占比根本没算对，却硬凑成了 100。用户会以为最后一项吃掉了全部。`,
     );
   }
 }
@@ -181,6 +225,58 @@ test("missing values (shorter series / empty cells already 0) take 0% and the re
   if (!applied.ok) return;
   assert.equal(scalar(applied.document.option.series[1].data[1]), 0);
   assert.equal(scalar(applied.document.option.series[0].data[1]), 100);
+});
+
+test("two equal series each take half, not 0.5% versus 99.5%", () => {
+  const original = sampleDocument([
+    [100, 120, 140],
+    [100, 120, 140],
+  ]);
+  const mapping = mapAvaChartType("percent_stacked_column_chart");
+  assert.ok(mapping);
+  const applied = applyAvaMappingToChartDocument(original, mapping);
+  assertPercentStackedDrawn(applied, original, "equal-split");
+  if (!applied.ok) return;
+  const income = scalar(applied.document.option.series[0].data[0]);
+  const cost = scalar(applied.document.option.series[1].data[0]);
+  assert.ok(
+    Math.abs(income - 50) < 1e-6 && Math.abs(cost - 50) < 1e-6,
+    `同样大的两项必须各占一半，不能一项 ${income}% 另一项 ${cost}%。占比算错了，用户会以为成本吃掉了全部。`,
+  );
+});
+
+test("three series in one category split 100:120:140 into about 27.78/33.33/38.89", () => {
+  const original = sampleDocument([[100], [120], [140]]);
+  const mapping = mapAvaChartType("percent_stacked_column_chart");
+  assert.ok(mapping);
+  const applied = applyAvaMappingToChartDocument(original, mapping);
+  assertPercentStackedDrawn(applied, original, "three-way");
+  if (!applied.ok) return;
+  const shares = applied.document.option.series.map((series) =>
+    scalar(series.data[0]),
+  );
+  const expected = [100 / 3.6, 120 / 3.6, 140 / 3.6];
+  for (let index = 0; index < 3; index += 1) {
+    assert.ok(
+      Math.abs(shares[index] - expected[index]) < 1e-6,
+      `「${original.option.series[index].name}」应约占 ${expected[index].toFixed(2)}%，实际 ${shares[index]}%。占比算错了，用户会以为成本吃掉了全部。`,
+    );
+  }
+});
+
+test("a segment three times the other must draw 75/25, not a stuffed 100", () => {
+  const original = sampleDocument([[300], [100]]);
+  const mapping = mapAvaChartType("percent_stacked_area_chart");
+  assert.ok(mapping);
+  const applied = applyAvaMappingToChartDocument(original, mapping);
+  assertPercentStackedDrawn(applied, original, "triple");
+  if (!applied.ok) return;
+  const income = scalar(applied.document.option.series[0].data[0]);
+  const cost = scalar(applied.document.option.series[1].data[0]);
+  assert.ok(
+    Math.abs(income - 75) < 1e-6 && Math.abs(cost - 25) < 1e-6,
+    `三倍大的那一项应占 75%、另一项 25%，实际 ${income}% / ${cost}%。占比算错了，用户会以为成本吃掉了全部。`,
+  );
 });
 
 test("negatives refuse with a human sentence and do not change the chart", () => {
