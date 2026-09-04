@@ -41,6 +41,10 @@ import { editorToolLabel } from "../workbench-routes";
  * iframe 内零凭据：文档随 `init` 进去、保存走 `recovery-snapshot` 回宿主落库。
  * agent 的改动不直接落地，编辑器先发 `review-proposal`，用户在本页点了才回
  * `review-decision: accept`（契约 v2 §3.3）。
+ *
+ * 本路由今天不发 `selection-command`。哪天接 L1 点击，必须在信封顶层盖
+ * `origin: "user"`（或 human/l1/l2）。编辑器侧缺章一律送审，不能假定裸 id
+ * 就是人点的（V3-red-7）。盖章位置见 `signals/W07-request.md` R5。
  */
 
 /** 六件里属于幻灯片的那一条。白名单是事实源，这里只做一次全串挑选。 */
