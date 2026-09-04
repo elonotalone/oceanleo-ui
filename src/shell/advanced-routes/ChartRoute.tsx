@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { resolveEditorCore } from "../editor-core-flags";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -22,7 +24,22 @@ import { usePluginCommandSurface } from "../plugin-command";
 import { createChartCommandSurface } from "../chart-editor/chart-command-surface";
 import { visualImportPlan } from "../media-editors/visual-formats";
 
-export function ChartRoute({
+const ChartNextStage = dynamic(
+  () =>
+    import("../chart-editor/ChartNextStage").then(
+      (module) => module.ChartNextStage,
+    ),
+  { ssr: false, loading: () => null },
+);
+
+export function ChartRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("chart-editor") === "next") {
+    return <ChartNextStage {...props} />;
+  }
+  return <ChartLegacyRoute {...props} />;
+}
+
+function ChartLegacyRoute({
   item,
   previewContent,
   linkUrl,
@@ -113,7 +130,16 @@ export function ChartRoute({
       const file = files[0];
       if (!file) return;
       setExportError("");
-      // 图表只读 CSV / TSV。丢进 xlsx 或别的东西时，说清该怎么办，别静默失败。
+      if (/\.xlsx$/i.test(file.name)) {
+        try {
+          await editor.importXlsx(await file.arrayBuffer());
+        } catch (caught) {
+          setExportError(
+            caught instanceof Error ? caught.message : "Excel 读取失败",
+          );
+        }
+        return;
+      }
       const plan = visualImportPlan("chart-editor@1", file.name);
       if (plan.action !== "accept") {
         setExportError(plan.message || `图表读不了 .${plan.extension} 文件。`);
@@ -127,7 +153,7 @@ export function ChartRoute({
         );
       }
     },
-    [editor.importCsv],
+    [editor.importCsv, editor.importXlsx],
   );
   const exportImage = useCallback(async (format: "png" | "svg") => {
     if (exportBusyRef.current) return;
@@ -235,6 +261,10 @@ export function ChartRoute({
           undo: editor.undo,
           redo: editor.redo,
         },
+        mode: {
+          unavailableReason:
+            "专业模式（直接编辑 ECharts option JSON）在新图表引擎打开后可用。现在用的是原来的图表编辑器。",
+        },
         directDownload: {
           id: "chart-download-png",
           label: "PNG 图片 (.png)",
@@ -264,7 +294,8 @@ export function ChartRoute({
           },
         ],
         upload: {
-          accept: ".csv,.tsv,text/csv,text/tab-separated-values",
+          accept:
+            ".csv,.tsv,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           onFiles: importLocalData,
         },
         stage:
