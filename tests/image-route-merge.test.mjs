@@ -28,8 +28,16 @@ test("the scan itself finds something known to be there", () => {
 
 test("专业模式经 W01 的 mode 适配器暴露，不是自造开关", () => {
   assert.match(adapter, /mode\?:\s*AdvancedEditorModeAdapter/, "适配器契约里应有 mode 字段");
-  assert.match(route, /mode:\s*\{/, "路由没有声明 mode，L0 开关就是灰的");
-  assert.match(route, /setMode:/);
+  assert.match(
+    route,
+    /mode:\s*bindImageModeAdapter\(pluginMode,\s*setEditorMode\)/,
+    "路由必须把 setEditorMode 交给 bindImageModeAdapter；缺 setMode 开关就灰了",
+  );
+  assert.equal(
+    /setMode:\s*undefined/.test(route),
+    false,
+    "adapter.mode.setMode 写成 undefined，顶栏开关置灰，用户切不了专业模式",
+  );
   // §10 第 5 条：不得各自发明开关。
   assert.equal(
     /setShowPhotopea|togglePro|proSwitch/.test(route),
@@ -38,16 +46,16 @@ test("专业模式经 W01 的 mode 适配器暴露，不是自造开关", () => 
   );
 });
 
-test("默认普通模式（R3）：pro 只能由 setMode 打开", () => {
+test("打开编辑器：用记住的档位初始化，不是一律普通模式", () => {
   assert.match(
     route,
-    /useState\(false\)/,
-    "proModeOpen 必须以 false 起步；默认露出内核完整 UI 违反 R3",
+    /rememberedImagePluginMode\(\)/,
+    "初始档位必须读 currentPluginMode(\"image\")。写死 false / normal，用户上次选的专业模式就丢了",
   );
-  assert.match(
-    route,
-    /current:\s*proModeOpen\s*\?\s*\("pro"[^)]*\)\s*:\s*\("normal"/,
-    "current 必须由 proModeOpen 推导，写死任一值都会让开关失灵",
+  assert.equal(
+    /useState<EditorMode>\(\s*"normal"\s*\)|useState\(false\)/.test(route),
+    false,
+    "初始档位写死普通模式，W01 第 11 例要的「记住的档位」就只是 localStorage 里的一个值",
   );
 });
 
@@ -58,7 +66,9 @@ test("Photopea 只在用户切到专业模式后才可能装载（不预载广�
     false,
     "路由里出现 Photopea 地址就意味着它可能在挂载期被拉起；地址只应存在于惰性桥里",
   );
-  assert.match(route, /setProModeOpen\(next === "pro"\)/);
+  assert.match(route, /setEditorMode = useCallback\(\(mode: EditorMode\)/);
+  assert.match(route, /applyImageL0Mode\(mode\)\.mode/);
+  assert.match(route, /data-editor-mode=\{pluginMode\}/);
 });
 
 test("AI 能力接进命令面：edit bar 与 agent 走同一条命令", () => {
@@ -94,22 +104,14 @@ test("付费能力不会被同一个动作跑两遍", () => {
   assert.match(route, /setPendingAiRequest\(request\)/);
 });
 
-test("两种模式共用一份文档：切模式只动路由状态", () => {
-  // 辅闸：路由必须把活文档交给产品入口，并只照 preserve-document 取 state。
-  // 主闸在 design-mode.test.mjs，锁的是函数吐出来的 document，不是这段源码。
-  assert.match(route, /switchEditorMode\(current,\s*mode,\s*liveDocument\)/);
-  assert.match(route, /route\.kind !== "preserve-document"/);
-  const switcher = route.slice(
-    route.indexOf("const setEditorMode"),
-    route.indexOf("const setEditorMode") + 700,
+test("两种模式共用一份文档：L0 不占 photo/design 那条轴", () => {
+  // photo/design 的主闸在 design-mode.test.mjs。L0 槽是 W01 的 normal|pro。
+  assert.match(route, /applyImageL0Mode/);
+  assert.equal(
+    /FabricEditorMode/.test(route),
+    false,
+    "把 photo|design 塞进 adapter.mode，顶栏专业模式开关就会切错轴",
   );
-  for (const forbidden of ["editor.save", "resizeDoc", "setCanvasBackground", "addImageFrom"]) {
-    assert.equal(
-      switcher.includes(forbidden),
-      false,
-      `切模式时调用 ${forbidden} 会改写文档，违反 R2「两种视图一份文件」`,
-    );
-  }
 });
 
 test("chips 按当前模式产出，不是写死一份", () => {

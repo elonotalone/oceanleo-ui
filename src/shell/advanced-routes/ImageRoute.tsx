@@ -54,10 +54,10 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import {
-  DESIGN_MODE_INITIAL_STATE,
-  switchEditorMode,
-  type FabricEditorMode,
-} from "../image-editor/design-mode/design-mode-state";
+  applyImageL0Mode,
+  bindImageModeAdapter,
+  rememberedImagePluginMode,
+} from "../image-editor/design-mode/image-plugin-mode";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
   imageDesignChipManifestEntries,
@@ -77,30 +77,17 @@ export function ImageRoute({
   const editor = useFabricImageEditor(item, siteId);
   const [importNotice, setImportNotice] = useState("");
   /**
-   * R2 merges the image editor and the design canvas: `photo` and `design` are
-   * two views of one document, so the mode lives in route state and the
-   * document is untouched by switching (pinned by `design-mode.test.mjs`).
+   * L0 专业模式（W01：`normal | pro`）。顶栏开关已经做好，这里只接内核：
+   * 打开时用 `currentPluginMode("image")` 记住的档位，之后只走 `setEditorMode`。
+   * photo / design 是另一条轴，不占这个槽（`switchEditorMode`）。
    */
-  const [designMode, setDesignMode] = useState(DESIGN_MODE_INITIAL_STATE);
-  const setEditorMode = useCallback((mode: FabricEditorMode) => {
-    setDesignMode((current) => {
-      // 图层表 + 画布尺寸是这张图此刻的文件。切模式必须把这份文件交进去，
-      // 也必须原样交还——去向由 `switchEditorMode` 的 tag 决定，路由只照
-      // tag 取 state，不在这里另写一份文档。
-      const liveDocument = { doc: editor.doc, layers: editor.layers };
-      const route = switchEditorMode(current, mode, liveDocument);
-      if (route.kind !== "preserve-document") {
-        throw new Error("切模式不得改写文档");
-      }
-      return route.state;
-    });
-  }, [editor.doc, editor.layers]);
-  /**
-   * L3 professional mode is Photopea (R4). The iframe is built only once the
-   * user asks for it — the free tier is ad-supported and the task book forbids
-   * preloading it, so this flag stays false until `set-mode` says `pro`.
-   */
-  const [proModeOpen, setProModeOpen] = useState(false);
+  const [pluginMode, setPluginModeState] = useState<EditorMode>(
+    () => rememberedImagePluginMode(),
+  );
+  const setEditorMode = useCallback((mode: EditorMode) => {
+    setPluginModeState(applyImageL0Mode(mode).mode);
+  }, []);
+  const { showPhotopea } = applyImageL0Mode(pluginMode);
   /**
    * A request that passed the command surface's checks and is waiting for the
    * user to confirm it in the AI panel, where progress and cost are visible.
@@ -392,14 +379,10 @@ export function ImageRoute({
         id: "image",
         label: editorToolLabel({ type: "image" }),
         /**
-         * L0 professional mode (W01 contract v2). Photopea is an external
-         * ad-supported iframe, so `setMode` is also the moment it is allowed
-         * to load: nothing about it exists while the mode is `normal`.
+         * L0 professional mode (W01 contract v2). The header toggle calls
+         * `setEditorMode`; Photopea may exist only after that returns `pro`.
          */
-        mode: {
-          current: proModeOpen ? ("pro" as EditorMode) : ("normal" as EditorMode),
-          setMode: (next: EditorMode) => setProModeOpen(next === "pro"),
-        },
+        mode: bindImageModeAdapter(pluginMode, setEditorMode),
         drawers: [
           // 明位（不 hiddenFromRail）：抠图/放大高清这些能力此前引擎和网关都通了，
           // 界面上一个入口都没有，等于没做。
@@ -559,7 +542,15 @@ export function ImageRoute({
           multiple: true,
           onFiles: addLocalImages,
         },
-        stage: <FabricImageStage editor={editor} accent={accent} />,
+        stage: (
+          <div
+            className="flex h-full min-h-0 flex-col"
+            data-editor-mode={pluginMode}
+            data-image-show-photopea={showPhotopea ? "true" : "false"}
+          >
+            <FabricImageStage editor={editor} accent={accent} />
+          </div>
+        ),
         status:
           editor.error ||
           importNotice ||
