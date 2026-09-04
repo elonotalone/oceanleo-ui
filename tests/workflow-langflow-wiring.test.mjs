@@ -27,6 +27,7 @@ import {
 } from "../src/shell/workflow-carrier/langflow-mode.ts";
 import {
   WORKFLOW_LANGFLOW_EMBED_ORIGIN,
+  buildWorkflowFlowInitEnvelope,
   buildWorkflowLangflowEmbedUrl,
   canBuildWorkflowLangflowEmbedUrl,
   workflowLangflowEmbedBase,
@@ -313,6 +314,35 @@ test("jsdom 挂上 LangflowHostedFrame 后，画布是真 iframe 而不是 fallb
   } finally {
     await mounted.unmount();
   }
+});
+
+test("host 往 Langflow 发消息必须钉死 flow origin，不许 *", async () => {
+  const url = await compileModule(
+    "src/shell/workflow-carrier/langflow-hosted-frame.tsx",
+    {},
+  );
+  const mod = await import(url);
+  const calls = [];
+  const frame = {
+    postMessage(data, origin) {
+      calls.push({ data, origin });
+    },
+  };
+  const envelope = buildWorkflowFlowInitEnvelope("wf-pm", {
+    flow: {
+      id: "wf-pm",
+      name: "闸",
+      data: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+    },
+    readOnly: false,
+  });
+  assert.equal(mod.postWorkflowInit(frame, "wf-pm", envelope), true);
+  assert.equal(mod.postWorkflowSetMode(frame, "wf-pm", "pro"), true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].origin, WORKFLOW_LANGFLOW_EMBED_ORIGIN);
+  assert.equal(calls[1].origin, WORKFLOW_LANGFLOW_EMBED_ORIGIN);
+  assert.notEqual(calls[0].origin, "*");
+  assert.notEqual(calls[1].origin, "*");
 });
 
 test("普通模式真画节点和连线；专业模式才挂 Langflow iframe", async () => {
