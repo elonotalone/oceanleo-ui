@@ -213,37 +213,39 @@ function dosStampsOfLocalHeaders(bytes) {
   return stamps;
 }
 
+/** 每个部件的 zip 修改时间都得是 1980-01-01 00:00:00——用户层面的事实，不引写出器常量。 */
+function assertEveryPartStampedAtZipEpoch(tz, bytes) {
+  const stamps = dosStampsOfLocalHeaders(bytes);
+  // 走头的结果要和 fflate 自己解出的部件数对上，否则循环跑零次会假绿。
+  assert.equal(stamps.length, Object.keys(unzipSync(bytes)).length, `TZ=${tz} 下本地文件头数与部件数不符`);
+  assert.ok(stamps.length >= 2, `TZ=${tz} 下只有 ${stamps.length} 个部件，夹具太小`);
+  stamps.forEach(({ time, date }, index) => {
+    // DOS 日期 1980-01-01 = (年-1980)<<9 | 月<<5 | 日 = 0x0021；DOS 时间 00:00:00 = 0x0000。
+    assert.equal(date, 0x0021, `TZ=${tz} 下部件 ${index} 的 zip 修改日期不是 1980-01-01（0x${date.toString(16)}）`);
+    assert.equal(time, 0x0000, `TZ=${tz} 下部件 ${index} 的 zip 修改时间不是 00:00:00（0x${time.toString(16)}）`);
+  });
+}
+
 test("the same deck exports byte-identical PPTX on machines in different timezones", () => {
+  const utc = exportPptxInTimezone("UTC");
+  const utcSha = sha256(utc);
+  assertEveryPartStampedAtZipEpoch("UTC", utc);
+
   const zones = [
-    { tz: "UTC", label: "UTC" },
     { tz: "Asia/Shanghai", label: "+8" },
     // 格林尼治以西：老写出器在这里把 1980-01-01 00:00Z 读成 1979-12-31，fflate 直接拒收。
     { tz: "America/Los_Angeles", label: "−8" },
     // 1980-01-01 正处夏令时（+11）：DST 地区也必须落到同一个 DOS 时间。
     { tz: "Australia/Sydney", label: "+11（夏令时中）" },
   ];
-  const exported = zones.map((zone) => ({ ...zone, bytes: exportPptxInTimezone(zone.tz) }));
-
-  for (const { tz, bytes } of exported) {
-    const stamps = dosStampsOfLocalHeaders(bytes);
-    // 走头的结果要和 fflate 自己解出的部件数对上，否则循环跑零次会假绿。
-    assert.equal(stamps.length, Object.keys(unzipSync(bytes)).length, `TZ=${tz} 下本地文件头数与部件数不符`);
-    assert.ok(stamps.length >= 2, `TZ=${tz} 下只有 ${stamps.length} 个部件，夹具太小`);
-    stamps.forEach(({ time, date }, index) => {
-      // DOS 日期 1980-01-01 = (年-1980)<<9 | 月<<5 | 日 = 0x0021；DOS 时间 00:00:00 = 0x0000。
-      assert.equal(date, 0x0021, `TZ=${tz} 下部件 ${index} 的 zip 修改日期不是 1980-01-01（0x${date.toString(16)}）`);
-      assert.equal(time, 0x0000, `TZ=${tz} 下部件 ${index} 的 zip 修改时间不是 00:00:00（0x${time.toString(16)}）`);
-    });
-  }
-
-  const [utc, ...others] = exported;
-  const utcSha = sha256(utc.bytes);
-  for (const { tz, label, bytes } of others) {
+  for (const { tz, label } of zones) {
+    const bytes = exportPptxInTimezone(tz);
     assert.equal(
       sha256(bytes),
       utcSha,
       `同一份稿在 ${label} 机器和 UTC 机器导出的 PPTX 字节不同：TZ=${tz} ${sha256(bytes)} ≠ TZ=UTC ${utcSha}`,
     );
+    assertEveryPartStampedAtZipEpoch(tz, bytes);
   }
 });
 
