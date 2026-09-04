@@ -58,9 +58,13 @@ import {
   applyParkedReview,
   buildAgentSelectionBlock,
   createReviewGatedReader,
+  emitReviewDecision,
   hostReviewSession,
+  installAgentReviewGate,
+  installSelectionBridge,
   readAgentSelection,
   readMentionCatalog,
+  refreshAgentSelectionFromDom,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffButton } from "./HumanHandoffButton";
@@ -706,6 +710,10 @@ function AgentChatInner({
       ),
     [editorCommandSurface],
   );
+  useEffect(() => {
+    installAgentReviewGate();
+    installSelectionBridge();
+  }, []);
   const editorCommands = useEditorCommandBridge({
     enabled: enableEditorCommands,
     surfaceReader: gatedSurfaceReader,
@@ -715,6 +723,7 @@ function AgentChatInner({
   const bridgeContextFor = editorCommands.contextFor;
   const editorContextFor = useCallback(
     (prompt: string) => {
+      refreshAgentSelectionFromDom();
       const commandCtx = bridgeContextFor(prompt);
       const selectionCtx = buildAgentSelectionBlock(
         readAgentSelection(),
@@ -750,10 +759,21 @@ function AgentChatInner({
           ? result.revision
           : snap.currentRevision,
       );
+      emitReviewDecision({
+        proposalId: snap.parked.proposal.proposalId,
+        decision: "accept",
+        editorId: snap.parked.editorId,
+      });
     }
   }, []);
   const handleReviewReject = useCallback(() => {
+    const snap = hostReviewSession.snapshot();
+    const proposalId = snap.parked?.proposal.proposalId;
+    const editorId = snap.parked?.editorId;
     hostReviewSession.markDiscarded();
+    if (proposalId) {
+      emitReviewDecision({ proposalId, decision: "reject", editorId });
+    }
   }, []);
   const handleReviewRollback = useCallback(async () => {
     const inverse = hostReviewSession.rollback();

@@ -38,3 +38,14 @@ export {
   type MentionHit,
 } from "./selection-bridge";
 export { AgentReviewPanel, ReviewPanelView } from "./AgentReviewPanel";
+export {
+  selectionFromToolbarAttrs,
+  refreshAgentSelectionFromDom,
+} from "./selection-live";
+export {
+  installAgentReviewGate,
+  uninstallAgentReviewGate,
+  installSelectionBridge,
+  uninstallSelectionBridge,
+  emitReviewDecision,
+} from "./install";

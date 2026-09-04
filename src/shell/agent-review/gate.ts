@@ -15,11 +15,43 @@ import {
 } from "../hosted-editor/index";
 import type { EditorCommandPending } from "../../lib/fn-agent";
 import { unifiedDiff } from "./diff";
+import { readAgentSelection } from "./inbox";
+import { refreshAgentSelectionFromDom } from "./selection-live";
 import {
   hostReviewSession,
   type ParkedReview,
   type ReviewSession,
 } from "./session";
+
+const STATE_BUDGET = 4_096;
+
+function stateForAgent(
+  surface: PluginCommandSurface,
+): Record<string, unknown> {
+  refreshAgentSelectionFromDom();
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = (surface.state() || {}) as Record<string, unknown>;
+  } catch {
+    raw = {};
+  }
+  const sel = readAgentSelection();
+  if (!sel) return raw;
+  const extra = {
+    agentSelection: {
+      kind: sel.kind,
+      id: sel.id,
+      summary: sel.summary.slice(0, 200),
+    },
+  };
+  const merged = { ...raw, ...extra };
+  try {
+    if (JSON.stringify(merged).length <= STATE_BUDGET) return merged;
+  } catch {
+    /* 宁可选区、不要一份会被上下文整段丢掉的大摘要 */
+  }
+  return extra;
+}
 
 let applyDepth = 0;
 
@@ -152,7 +184,7 @@ export function gateSurfaceForAgent(
   return {
     editorId: surface.editorId,
     describe: () => surface.describe(),
-    state: () => surface.state(),
+    state: () => stateForAgent(surface),
     async run(id, params) {
       if (applyDepth > 0) {
         return surface.run(id, params);

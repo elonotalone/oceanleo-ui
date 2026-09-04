@@ -15,10 +15,12 @@ test("AgentChat 挂了审阅面板、chips、选区桥与 agent 闸", () => {
   assert.match(chat, /from "\.\/agent-review"/);
   assert.match(chat, /from "\.\/quick-actions"/);
   assert.match(chat, /createReviewGatedReader/);
+  assert.match(chat, /installAgentReviewGate/);
   assert.match(chat, /AgentReviewPanel/);
   assert.match(chat, /QuickActionChips/);
   assert.match(chat, /buildAgentSelectionBlock/);
   assert.match(chat, /applyParkedReview/);
+  assert.doesNotMatch(chat, /@copilotkit/);
 });
 
 test("AgentChat 不再把会改文档的确认卡（含以后不用问我）直接露给用户", () => {
@@ -44,6 +46,7 @@ test("AgentConsole 同样包闸并挂审阅与 chips", () => {
   assert.match(consoleSource, /from "\.\/agent-review"/);
   assert.match(consoleSource, /from "\.\/quick-actions"/);
   assert.match(consoleSource, /createReviewGatedReader/);
+  assert.match(consoleSource, /installAgentReviewGate/);
   assert.match(consoleSource, /AgentReviewPanel/);
   assert.match(consoleSource, /QuickActionChips/);
 });

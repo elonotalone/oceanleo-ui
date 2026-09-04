@@ -16,7 +16,7 @@
 // 多 agent（一个站多个功能区）：传 manifests[] → 内部用 OperatorConsole 顶部按键切换。
 // ============================================================================
 
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Studio } from "./Studio";
 import { FunctionAgentChat } from "./FunctionAgentChat";
 import { StudioSection } from "./StudioSection";
@@ -41,7 +41,10 @@ import {
   AgentReviewPanel,
   applyParkedReview,
   createReviewGatedReader,
+  emitReviewDecision,
   hostReviewSession,
+  installAgentReviewGate,
+  installSelectionBridge,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 
@@ -217,6 +220,10 @@ function ManifestPane({
       ),
     [editorCommandSurface],
   );
+  useEffect(() => {
+    installAgentReviewGate();
+    installSelectionBridge();
+  }, []);
   const handleReviewAccept = useCallback(async () => {
     const snap = hostReviewSession.snapshot();
     if (!snap.parked || snap.status !== "open") return;
@@ -231,10 +238,21 @@ function ManifestPane({
           ? result.revision
           : snap.currentRevision,
       );
+      emitReviewDecision({
+        proposalId: snap.parked.proposal.proposalId,
+        decision: "accept",
+        editorId: snap.parked.editorId,
+      });
     }
   }, []);
   const handleReviewReject = useCallback(() => {
+    const snap = hostReviewSession.snapshot();
+    const proposalId = snap.parked?.proposal.proposalId;
+    const editorId = snap.parked?.editorId;
     hostReviewSession.markDiscarded();
+    if (proposalId) {
+      emitReviewDecision({ proposalId, decision: "reject", editorId });
+    }
   }, []);
   const handleReviewRollback = useCallback(async () => {
     const inverse = hostReviewSession.rollback();

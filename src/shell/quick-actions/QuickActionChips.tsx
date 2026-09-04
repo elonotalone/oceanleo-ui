@@ -8,6 +8,7 @@ import {
   subscribeAgentSelection,
   subscribeEditorChips,
 } from "../agent-review/inbox";
+import { refreshAgentSelectionFromDom } from "../agent-review/selection-live";
 import { currentPluginCommandSurface } from "../plugin-command";
 import { chipsForEditor, promptForChip } from "./catalog";
 
@@ -63,6 +64,7 @@ export function QuickActionChips({
   }, []);
   const surface = currentPluginCommandSurface();
   const resolved = editorId || surface?.editorId || "";
+  refreshAgentSelectionFromDom();
   const selection = readAgentSelection();
   const chips = chipsForEditor(resolved, selection?.kind ?? null);
   return (

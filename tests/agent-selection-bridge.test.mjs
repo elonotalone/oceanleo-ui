@@ -10,6 +10,7 @@ import {
   parseAtMentions,
   selectionToAgent,
 } from "../src/shell/agent-review/selection-bridge.ts";
+import { selectionFromToolbarAttrs } from "../src/shell/agent-review/selection-live.ts";
 import { askAiPrompt } from "../src/shell/quick-actions/ask-ai.ts";
 
 test("SelectionContext 投影出 kind/id/摘要", () => {
@@ -67,3 +68,21 @@ test("问 AI 指令默认带上当前选区", () => {
   assert.match(prompt, /kind=pdf-page/);
   assert.match(prompt, /摘要=封面/);
 });
+
+test("edit bar DOM 属性能投影出 kind/id/摘要", () => {
+  const sel = selectionFromToolbarAttrs({
+    kind: "grid-column",
+    id: "col-B",
+    label: "B 列",
+  });
+  assert.equal(sel.kind, "grid-column");
+  assert.equal(sel.id, "col-B");
+  assert.equal(sel.summary, "B 列");
+});
+
+test("反面：kind=none 或缺 id 不得当成选区", () => {
+  assert.equal(selectionFromToolbarAttrs({ kind: "none", id: "x", label: "x" }), null);
+  assert.equal(selectionFromToolbarAttrs({ kind: "grid-cell", id: "", label: "A1" }), null);
+  assert.equal(selectionFromToolbarAttrs({ kind: "", id: "A1", label: "A1" }), null);
+});
+
