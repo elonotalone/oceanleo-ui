@@ -44,6 +44,15 @@ export const VIDEO_VOLUME_NEEDS_VALUE =
 /** 点「速度」但没给出倍速。不许当成 1x 并报成功。 */
 export const VIDEO_SPEED_NEEDS_VALUE =
   "请先选择倍速，没有速度值时不会改变播放速度。";
+/** 点「静音」但没给出开或关。不许当成取消静音。 */
+export const VIDEO_MUTE_NEEDS_CHOICE =
+  "请先确认要不要静音，没有明确选择时不会改变静音。";
+/** 点「字幕样式」但没颜色/字号。不许空操作还报成功。 */
+export const VIDEO_CAPTION_STYLE_NEEDS_VALUE =
+  "请先给出字幕样式，没有颜色或字号时不会改字幕。";
+/** 加字幕有正文但没时间点。不许默默扔到片头。 */
+export const VIDEO_CAPTION_NEEDS_TIME =
+  "请先指定字幕出现的时间，没有时间点时不会把字幕加到片头。";
 
 function fail(reason: string): VideoFacadeResult {
   return { ok: false, reason };
@@ -72,6 +81,25 @@ function hasFiniteCommandNumber(value: VideoFacadeArgs["value"]): boolean {
   if (typeof value === "string" && value.trim() !== "") {
     return Number.isFinite(Number(value));
   }
+  return false;
+}
+
+function hasBooleanCommandValue(value: VideoFacadeArgs["value"]): value is boolean {
+  return typeof value === "boolean";
+}
+
+function hasFiniteTime(atUs: VideoFacadeArgs["atUs"]): atUs is number {
+  return typeof atUs === "number" && Number.isFinite(atUs);
+}
+
+function hasCaptionStylePatch(style: {
+  fontSize?: number;
+  color?: string;
+  align?: string;
+}): boolean {
+  if (typeof style.color === "string" && style.color.trim() !== "") return true;
+  if (typeof style.fontSize === "number" && Number.isFinite(style.fontSize)) return true;
+  if (typeof style.align === "string" && style.align.trim() !== "") return true;
   return false;
 }
 
@@ -180,6 +208,9 @@ export function setOpenVideoMuted(
   muted: boolean,
 ): VideoFacadeResult {
   return withClip(project, clipId, (clip, next) => {
+    if (typeof muted !== "boolean") {
+      return fail(VIDEO_MUTE_NEEDS_CHOICE);
+    }
     clip.muted = muted;
     if (muted) clip.volume = 0;
     else if (!clip.volume) clip.volume = 1;
@@ -262,6 +293,9 @@ export function addOpenVideoCaption(
   if (text.length > 200) {
     return fail("这一条字幕超过 200 个字。请拆成两句再加。");
   }
+  if (!Number.isFinite(Number(input.fromMs))) {
+    return fail(VIDEO_CAPTION_NEEDS_TIME);
+  }
   const next = cloneOpenVideoProject(project);
   let track = next.tracks.find((entry) => entry.type === "caption");
   if (!track) {
@@ -325,9 +359,14 @@ export function setOpenVideoCaptionStyle(
     if (String(clip.type).toLowerCase() !== "caption" && String(clip.type).toLowerCase() !== "text") {
       return fail("只有字幕/文字片段能改字幕样式。");
     }
+    if (!hasCaptionStylePatch(style)) {
+      return fail(VIDEO_CAPTION_STYLE_NEEDS_VALUE);
+    }
     clip.style = {
       ...(clip.style || {}),
-      ...(style.fontSize ? { fontSize: style.fontSize } : {}),
+      ...(typeof style.fontSize === "number" && Number.isFinite(style.fontSize)
+        ? { fontSize: style.fontSize }
+        : {}),
       ...(style.color ? { color: style.color } : {}),
       ...(style.align ? { align: style.align } : {}),
     };
@@ -367,7 +406,10 @@ export function runVideoDesigncomboCommand(
         Number(args.value) / (Number(args.value) > 2 ? 100 : 1),
       );
     case "muted":
-      return setOpenVideoMuted(project, String(args.clipId || ""), args.value === true);
+      if (!hasBooleanCommandValue(args.value)) {
+        return fail(VIDEO_MUTE_NEEDS_CHOICE);
+      }
+      return setOpenVideoMuted(project, String(args.clipId || ""), args.value);
     case "speed":
       if (!hasFiniteCommandNumber(args.value)) {
         return fail(VIDEO_SPEED_NEEDS_VALUE);
@@ -390,11 +432,25 @@ export function runVideoDesigncomboCommand(
         args.keyframes,
       );
     case "add-caption":
+      if (!hasFiniteTime(args.atUs)) {
+        const text = String(args.text || args.value || "").trim();
+        if (!text) return fail(VIDEO_CAPTION_NEEDS_TEXT);
+        return fail(VIDEO_CAPTION_NEEDS_TIME);
+      }
       return addOpenVideoCaption(project, {
         text: String(args.text || args.value || ""),
-        fromMs: usToMsSafe(Number(args.atUs) || 0),
+        fromMs: usToMsSafe(args.atUs),
       });
     case "caption-style":
+      if (typeof args.value !== "string" && typeof args.value !== "number") {
+        return fail(VIDEO_CAPTION_STYLE_NEEDS_VALUE);
+      }
+      if (typeof args.value === "string" && args.value.trim() === "") {
+        return fail(VIDEO_CAPTION_STYLE_NEEDS_VALUE);
+      }
+      if (typeof args.value === "number" && !Number.isFinite(args.value)) {
+        return fail(VIDEO_CAPTION_STYLE_NEEDS_VALUE);
+      }
       return setOpenVideoCaptionStyle(project, String(args.clipId || ""), {
         color: typeof args.value === "string" ? args.value : undefined,
         fontSize: typeof args.value === "number" ? args.value : undefined,
