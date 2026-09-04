@@ -641,7 +641,9 @@ export function AudioPlaylistStage({
                   onSnapshot={(payload) => {
                     if (!payload.audioBase64) return;
                     const bytes = base64ToBytes(payload.audioBase64);
-                    const blob = new Blob([bytes], {
+                    const copy = new ArrayBuffer(bytes.byteLength);
+                    new Uint8Array(copy).set(bytes);
+                    const blob = new Blob([copy], {
                       type: payload.mime || "audio/wav",
                     });
                     setSourceBlob(blob);
