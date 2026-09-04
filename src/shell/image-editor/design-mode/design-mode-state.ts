@@ -53,16 +53,49 @@ export const DESIGN_MODE_INITIAL_STATE: Readonly<DesignModeState> = Object.freez
 });
 
 /**
- * Rulers and artboard tabs belong to design mode; photo mode keeps the frame
- * clear. Guides that were placed in design mode are kept in state (just not
- * shown) so that switching back does not throw the user's work away.
+ * 切模式的唯一合法去向：同一份文件，换一种视图。
+ *
+ * 这个判断刻意**不写成「函数不收文档、调用方自己保证不改文件」**：那样闸
+ * 只能自比一份夹具，改 `switchEditorMode` 往文件里写一笔仍然全绿（V6-audit2 /
+ * A-56）。也不写成 `ImageRoute` 里的一个 `if`：写成 `if` 的话，一句
+ * `if (false)` 包住调用就能悄悄空转，而任何「文件里出现过 switchEditorMode」
+ * 形态的判据照样绿。
+ *
+ * 改成「纯函数必须收下文档并原样交还、去向用 tag 标出来」之后，绕过它必须
+ * 改返回值里的 `document` 或 `kind`，那是判据抓得住的形状（A-53）。
  */
-export function switchEditorMode(
+export type EditorModeSwitch<TDocument> = {
+  kind: "preserve-document";
+  state: DesignModeState;
+  document: TDocument;
+};
+
+export function planEditorModeSwitch<TDocument>(
   state: DesignModeState,
   mode: FabricEditorMode,
-): DesignModeState {
-  if (state.mode === mode) return state;
-  return { ...state, mode, rulerVisible: mode === "design" };
+  document: TDocument,
+): EditorModeSwitch<TDocument> {
+  const nextState =
+    state.mode === mode
+      ? state
+      : { ...state, mode, rulerVisible: mode === "design" };
+  return { kind: "preserve-document", state: nextState, document };
+}
+
+/**
+ * 产品入口。路由与闸都走这里：它必须调用 `planEditorModeSwitch`，没有
+ * 第二条实现。包住或删掉那次调用，函数交不出 route，闸当场红。
+ */
+export function switchEditorMode<TDocument>(
+  state: DesignModeState,
+  mode: FabricEditorMode,
+  document: TDocument,
+): EditorModeSwitch<TDocument> {
+  const route = planEditorModeSwitch(state, mode, document);
+  if (route.kind !== "preserve-document") {
+    throw new Error("切模式不得改写文档");
+  }
+  return route;
 }
 
 /** Modes are views, so nothing about the document may change when switching. */

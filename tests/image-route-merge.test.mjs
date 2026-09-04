@@ -95,11 +95,13 @@ test("付费能力不会被同一个动作跑两遍", () => {
 });
 
 test("两种模式共用一份文档：切模式只动路由状态", () => {
-  assert.match(route, /switchEditorMode\(current, mode\)/);
-  // 切模式的处理函数里不许出现任何写文档的调用。
+  // 辅闸：路由必须把活文档交给产品入口，并只照 preserve-document 取 state。
+  // 主闸在 design-mode.test.mjs，锁的是函数吐出来的 document，不是这段源码。
+  assert.match(route, /switchEditorMode\(current,\s*mode,\s*liveDocument\)/);
+  assert.match(route, /route\.kind !== "preserve-document"/);
   const switcher = route.slice(
     route.indexOf("const setEditorMode"),
-    route.indexOf("const setEditorMode") + 400,
+    route.indexOf("const setEditorMode") + 700,
   );
   for (const forbidden of ["editor.save", "resizeDoc", "setCanvasBackground", "addImageFrom"]) {
     assert.equal(

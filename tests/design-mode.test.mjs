@@ -24,6 +24,7 @@ import {
   findGroupTextTargets,
   loadCarrierFonts,
   modeSwitchPreservesCarrier,
+  planEditorModeSwitch,
   switchEditorMode,
   watermarkStamps,
 } from "../src/shell/image-editor/design-mode/design-mode-state.ts";
@@ -358,27 +359,50 @@ test("photo is the default mode and design turns the ruler on", () => {
   assert.equal(DESIGN_MODE_INITIAL_STATE.mode, "photo");
   assert.equal(DESIGN_MODE_INITIAL_STATE.rulerVisible, false);
 
-  const design = switchEditorMode(DESIGN_MODE_INITIAL_STATE, "design");
-  assert.equal(design.mode, "design");
-  assert.equal(design.rulerVisible, true);
+  const document = carrier();
+  const design = switchEditorMode(DESIGN_MODE_INITIAL_STATE, "design", document);
+  assert.equal(design.kind, "preserve-document");
+  assert.equal(design.state.mode, "design");
+  assert.equal(design.state.rulerVisible, true);
 
-  const back = switchEditorMode(design, "photo");
-  assert.equal(back.rulerVisible, false);
-  assert.equal(switchEditorMode(design, "design"), design, "same mode is identity");
+  const back = switchEditorMode(design.state, "photo", document);
+  assert.equal(back.state.rulerVisible, false);
+  assert.equal(
+    switchEditorMode(design.state, "design", document).state,
+    design.state,
+    "same mode is identity",
+  );
 });
 
 test("guides survive a round trip through photo mode", () => {
+  const document = carrier();
   const guides = [{ id: "g1", orientation: "vertical", position: 100, artboardId: "ab-01" }];
   const design = { ...DESIGN_MODE_INITIAL_STATE, mode: "design", guides };
-  const roundTrip = switchEditorMode(switchEditorMode(design, "photo"), "design");
-  assert.deepEqual(roundTrip.guides, guides);
+  const roundTrip = switchEditorMode(
+    switchEditorMode(design, "photo", document).state,
+    "design",
+    document,
+  );
+  assert.deepEqual(roundTrip.state.guides, guides);
 });
 
 test("switching modes does not touch the document (R2: two views, one file)", () => {
   const document = carrier();
   const before = JSON.parse(JSON.stringify(document));
-  switchEditorMode(DESIGN_MODE_INITIAL_STATE, "design");
-  assert.equal(modeSwitchPreservesCarrier(before, document), true);
+  const beforeStructure = fabricCarrierStructureDigest(document);
+  const beforeSkin = fabricCarrierSkinDigest(document);
+
+  const planned = planEditorModeSwitch(DESIGN_MODE_INITIAL_STATE, "design", document);
+  const route = switchEditorMode(DESIGN_MODE_INITIAL_STATE, "design", document);
+
+  assert.deepEqual(route, planned, "产品入口必须把 planEditorModeSwitch 的 route 原样交还");
+  assert.equal(route.kind, "preserve-document", "切模式的唯一去向是保留文档");
+  assert.equal(route.state.mode, "design", "模式必须真的切过去，空转不算切");
+  assert.deepEqual(route.document, before, "交还的必须是进函数时那份文件");
+  assert.deepEqual(document, before, "不得就地改传入的文档");
+  assert.equal(fabricCarrierStructureDigest(route.document), beforeStructure);
+  assert.equal(fabricCarrierSkinDigest(route.document), beforeSkin);
+  assert.equal(modeSwitchPreservesCarrier(before, route.document), true);
   assert.equal(
     modeSwitchPreservesCarrier(before, { ...document, title: "改过了" }),
     false,

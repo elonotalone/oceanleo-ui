@@ -83,8 +83,18 @@ export function ImageRoute({
    */
   const [designMode, setDesignMode] = useState(DESIGN_MODE_INITIAL_STATE);
   const setEditorMode = useCallback((mode: FabricEditorMode) => {
-    setDesignMode((current) => switchEditorMode(current, mode));
-  }, []);
+    setDesignMode((current) => {
+      // 图层表 + 画布尺寸是这张图此刻的文件。切模式必须把这份文件交进去，
+      // 也必须原样交还——去向由 `switchEditorMode` 的 tag 决定，路由只照
+      // tag 取 state，不在这里另写一份文档。
+      const liveDocument = { doc: editor.doc, layers: editor.layers };
+      const route = switchEditorMode(current, mode, liveDocument);
+      if (route.kind !== "preserve-document") {
+        throw new Error("切模式不得改写文档");
+      }
+      return route.state;
+    });
+  }, [editor.doc, editor.layers]);
   /**
    * L3 professional mode is Photopea (R4). The iframe is built only once the
    * user asks for it — the free tier is ad-supported and the task book forbids
