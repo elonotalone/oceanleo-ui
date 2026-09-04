@@ -22,7 +22,7 @@ export {
   subscribeEditorChips,
   resetAgentReviewInbox,
 } from "./inbox";
-export { readAgentCommandSurface } from "./surface";
+export { readAgentCommandSurface, resolveAgentSurfaceSource } from "./surface";
 export {
   AgentReviewDock,
   AgentReviewHostProvided,
@@ -37,12 +37,18 @@ export {
   parkedFromPending,
   parkedFromMutatingRun,
   withReviewApply,
+  reviewApplyHeld,
+  resetReviewApplyHolds,
+  routeAgentCommandRun,
+  type AgentCommandRunRoute,
+  type ReviewApplyHold,
 } from "./gate";
 export {
   selectionToAgent,
   formatSelectionContext,
   parseAtMentions,
   buildAgentSelectionBlock,
+  assembleAgentEditorContext,
   type AgentSelection,
   type MentionHit,
 } from "./selection-bridge";

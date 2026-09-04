@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -38,6 +39,7 @@ import {
   editBarPillStyle,
 } from "./edit-bar-surface";
 import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
+import { publishAgentSelection } from "./agent-review/inbox";
 import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
 import { useSelectionInspectorHost } from "./selection-inspector-host";
 import {
@@ -72,6 +74,9 @@ export function SelectionToolbar({
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  useEffect(() => {
+    publishAgentSelection(context);
+  }, [context]);
   const toolsLauncher = layout?.toolsLauncher || null;
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreMounted, setMoreMounted] = useState(false);

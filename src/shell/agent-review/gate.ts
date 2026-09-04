@@ -54,17 +54,85 @@ function stateForAgent(
   return extra;
 }
 
-let applyDepth = 0;
+/**
+ * 正在落地的「用户已点头」凭据。按 editorId 持有，禁止全局计数器
+ * （`V3-red-6`：接受 A 时 B 跟着被放行）。
+ *
+ * `editorId: "*"` 只给旧调用 `withReviewApply(fn)`（没说是哪件编辑器）用：
+ * `reviewApplyHeld("grid")` 会认它，但 `routeAgentCommandRun` **不**把它当成
+ * 对所有面的放行 —— 否则又变回失败即开放。
+ */
+export type ReviewApplyHold = {
+  editorId: string;
+  commandId?: string;
+  proposalId?: string;
+};
+
+const holds: ReviewApplyHold[] = [];
 
 export async function withReviewApply<T>(
   fn: () => Promise<T>,
+  hold?: ReviewApplyHold | null,
 ): Promise<T> {
-  applyDepth += 1;
+  holds.push(hold ?? { editorId: "*" });
   try {
     return await fn();
   } finally {
-    applyDepth -= 1;
+    holds.pop();
   }
+}
+
+/**
+ * 宿主此刻是不是正在把一条**用户已接受**的审阅落地。
+ *
+ * 不传 `editorId`：只要有持有就为真（W03 要的三行读取口）。
+ * 传了：只认这件编辑器，或旧的未指明持有（`*`）。
+ */
+export function reviewApplyHeld(editorId?: string): boolean {
+  if (holds.length === 0) return false;
+  if (!editorId) return true;
+  return holds.some((h) => h.editorId === "*" || h.editorId === editorId);
+}
+
+export function resetReviewApplyHolds(): void {
+  holds.length = 0;
+}
+
+export type AgentCommandRunRoute =
+  | { kind: "execute"; reason: "accepted-apply" | "readonly" }
+  | { kind: "review"; reason: "foreign-apply" | "untrusted-agent" };
+
+/**
+ * 一条 agent `run` 该走哪条路。
+ *
+ * 刻意不写在 `gateSurfaceForAgent` 的 `if` 里（A-53 / W07 样板）：写成 `if`
+ * 的话，一句 `if (false && route.kind === "review")` 就能悄悄绕过，而任何
+ * 「文件里出现过 gateSurfaceForAgent」形态的判据照样绿。绕过必须拆掉整支
+ * `review` 分支，那是判据抓得住的形状。
+ *
+ * 判定顺序照 A-59 的 `embedEditorFrameSandbox()`：
+ * 1. 别人的 apply 先判 —— 送审（不可信）。顺序反过来、改成「有持有就放行」
+ *    就是 `V3-red-6`：接受 A，B 跟着被放行。
+ * 2. 这件编辑器自己的 apply → 执行（用户点头的那一条）。
+ * 3. 明确只读 → 执行。
+ * 4. 其余一律送审（失败即关闭）。
+ */
+export function routeAgentCommandRun(input: {
+  surfaceEditorId: string;
+  commandId: string;
+  mutates: boolean | undefined;
+  holds?: readonly ReviewApplyHold[];
+}): AgentCommandRunRoute {
+  const live = input.holds ?? holds;
+  const matching = live.some((h) => h.editorId === input.surfaceEditorId);
+  const foreign = live.some(
+    (h) => h.editorId !== "*" && h.editorId !== input.surfaceEditorId,
+  );
+  if (foreign && !matching) return { kind: "review", reason: "foreign-apply" };
+  if (matching) return { kind: "execute", reason: "accepted-apply" };
+  // spec.mutates === false 才立刻执行；缺 spec 当会改文档（失败即关闭）。
+  if (input.mutates === false) return { kind: "execute", reason: "readonly" };
+  return { kind: "review", reason: "untrusted-agent" };
 }
 
 function clip(value: string, max: number): string {
@@ -200,11 +268,13 @@ export function gateSurfaceForAgent(
     describe: () => surface.describe(),
     state: () => stateForAgent(surface),
     async run(id, params) {
-      if (applyDepth > 0) {
-        return surface.run(id, params);
-      }
       const spec = specOf(surface, id);
-      if (spec && spec.mutates === false) {
+      const route = routeAgentCommandRun({
+        surfaceEditorId: surface.editorId,
+        commandId: id,
+        mutates: spec ? spec.mutates : undefined,
+      });
+      if (route.kind === "execute") {
         return surface.run(id, params);
       }
       const parked = parkedFromMutatingRun(surface, id, params);
@@ -235,7 +305,11 @@ export async function applyParkedReview(
   surface: PluginCommandSurface,
   parked: ParkedReview,
 ): Promise<PluginCommandResult> {
-  return withReviewApply(() => surface.run(parked.proposal.commandId, parked.params));
+  return withReviewApply(() => surface.run(parked.proposal.commandId, parked.params), {
+    editorId: parked.editorId,
+    commandId: parked.proposal.commandId,
+    proposalId: parked.proposal.proposalId,
+  });
 }
 
 export function createReviewGatedReader(
@@ -244,8 +318,10 @@ export function createReviewGatedReader(
   session: ReviewSession = hostReviewSession,
 ): () => PluginCommandSurface | null {
   return () => {
-    const real = (inner ? inner() : null) || fallback();
-    if (!real) return null;
-    return gateSurfaceForAgent(real, session);
+    const fromInner = inner ? inner() : null;
+    if (fromInner) return gateSurfaceForAgent(fromInner, session);
+    const fromFallback = fallback();
+    if (fromFallback) return gateSurfaceForAgent(fromFallback, session);
+    return null;
   };
 }

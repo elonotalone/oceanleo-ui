@@ -1,31 +1,80 @@
 /**
- * W02 接线：AgentChat / AgentConsole 必须挂审阅面板、chips、选区桥与闸。
+ * W02 接线闸：锁产品行为与去向纯函数，不只锁源码里出现过函数名。
+ *
+ * V6 原判（A-56）：`if (false) installAgentReviewGate()` 或只删调用，5/5 仍绿。
+ * 改法照 A-53：去向由 `routeAgentCommandRun` 返回 route，桥只照 tag 分发；
+ * 选区由 `assembleAgentEditorContext` 拼进上下文。绕过必须拆掉整支分支。
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { routeAgentCommandRun } from "../src/shell/agent-review/gate.ts";
+import { assembleAgentEditorContext } from "../src/shell/agent-review/selection-bridge.ts";
+
 const chat = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
+const fnChat = readFileSync(
+  new URL("../src/shell/FunctionAgentChat.tsx", import.meta.url),
+  "utf8",
+);
 const consoleSource = readFileSync(
   new URL("../src/shell/AgentConsole.tsx", import.meta.url),
   "utf8",
 );
+const gate = readFileSync(
+  new URL("../src/shell/agent-review/gate.ts", import.meta.url),
+  "utf8",
+);
+const toolbar = readFileSync(
+  new URL("../src/shell/SelectionToolbar.tsx", import.meta.url),
+  "utf8",
+);
+const dock = readFileSync(
+  new URL("../src/shell/agent-review/dock.tsx", import.meta.url),
+  "utf8",
+);
 
-test("AgentChat 挂了审阅面板、chips、选区桥与 agent 闸", () => {
+test("去向纯函数默认送审：不持 apply 的 mutates 不得执行", () => {
+  const route = routeAgentCommandRun({
+    surfaceEditorId: "grid",
+    commandId: "grid.set-cell",
+    mutates: true,
+    holds: [],
+  });
+  assert.equal(route.kind, "review");
+  const blocked = assembleAgentEditorContext("", "改短一点", null, []);
+  assert.equal(blocked, "");
+  const withSel = assembleAgentEditorContext("〔右边编辑器〕", "改 @B列", {
+    kind: "grid-column",
+    id: "col-B",
+    summary: "B 列",
+  }, [{ kind: "grid-column", id: "col-B", summary: "B 列销售额" }]);
+  assert.match(withSel, /〔当前选区〕/);
+  assert.match(withSel, /kind=grid-column/);
+  assert.match(withSel, /〔提到的对象〕/);
+});
+
+test("闸的 run 只照 route.kind 分发，review 分支必须在", () => {
+  assert.match(gate, /const route = routeAgentCommandRun\(/);
+  assert.match(gate, /if \(route\.kind === "execute"\)/);
+  assert.match(gate, /parkedFromMutatingRun/);
+  assert.doesNotMatch(
+    gate,
+    /if \(applyDepth\s*>\s*0\)/,
+    "全局 applyDepth 放行所有面 = V3-red-6",
+  );
+  assert.match(gate, /export function reviewApplyHeld/);
+});
+
+test("AgentChat 挂了审阅面板、chips、选区拼装与 agent 闸", () => {
   assert.match(chat, /from "\.\/agent-review"/);
   assert.match(chat, /from "\.\/quick-actions"/);
   assert.match(chat, /createReviewGatedReader/);
-  assert.match(chat, /installAgentReviewGate/);
+  assert.match(chat, /installAgentReviewGate\(\)/);
   assert.match(chat, /AgentReviewPanel/);
   assert.match(chat, /QuickActionChips/);
-  assert.match(chat, /buildAgentSelectionBlock/);
-  // 接受/回滚的实现搬进 `agent-review/dock.tsx` 之后，宿主这一侧钉的是「用的是那一份」，
-  // 而带 apply token 写穿闸的 `applyParkedReview` 钉在 dock 上。
+  assert.match(chat, /assembleAgentEditorContext\(/);
   assert.match(chat, /useHostReviewActions\(\)/);
-  const dock = readFileSync(
-    new URL("../src/shell/agent-review/dock.tsx", import.meta.url),
-    "utf8",
-  );
   assert.match(dock, /applyParkedReview\(surface, snap\.parked\)/);
   assert.match(dock, /applyParkedReview\(surface, inverse\)/);
   assert.doesNotMatch(chat, /@copilotkit/);
@@ -54,18 +103,22 @@ test("AgentConsole 同样包闸并挂审阅与 chips", () => {
   assert.match(consoleSource, /from "\.\/agent-review"/);
   assert.match(consoleSource, /from "\.\/quick-actions"/);
   assert.match(consoleSource, /createReviewGatedReader/);
-  assert.match(consoleSource, /installAgentReviewGate/);
+  assert.match(consoleSource, /installAgentReviewGate\(\)/);
   assert.match(consoleSource, /AgentReviewPanel/);
   assert.match(consoleSource, /QuickActionChips/);
   assert.match(consoleSource, /useHostReviewActions\(\)/);
-  // 它自己挂了面板，所以要圈住子树让 FunctionAgentChat 里的 dock 让位（否则两份面板）。
   assert.match(consoleSource, /<AgentReviewHostProvided>/);
 });
 
-test("FunctionAgentChat 自带审阅面板：插件抽屉那条路也有地方点头", () => {
-  const chat = readFileSync(
-    new URL("../src/shell/FunctionAgentChat.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(chat, /<AgentReviewDock \/>/);
+test("FunctionAgentChat 自带审阅面板，并把选区块拼进上下文", () => {
+  assert.match(fnChat, /<AgentReviewDock \/>/);
+  assert.match(fnChat, /assembleAgentEditorContext\(/);
+  assert.match(fnChat, /installAgentReviewGate\(\)/);
+  assert.match(fnChat, /installSelectionBridge\(\)/);
+});
+
+test("SelectionToolbar 选区变化时把 kind/id 送进 agent 收件箱（不改排布）", () => {
+  assert.match(toolbar, /publishAgentSelection\(context\)/);
+  assert.match(toolbar, /data-selection-kind=\{context\?\.kind/);
+  assert.match(toolbar, /data-selection-id=\{context\?\.id/);
 });

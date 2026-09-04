@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   buildAgentSelectionBlock,
+  assembleAgentEditorContext,
   formatSelectionContext,
   parseAtMentions,
   selectionToAgent,
@@ -56,6 +57,12 @@ test("拼进 agent 上下文的块同时含当前选区与 @ 对象", () => {
   assert.match(block, /kind=grid-cell/);
   assert.match(block, /〔提到的对象〕/);
   assert.match(block, /column col-B/);
+  const assembled = assembleAgentEditorContext("〔右边编辑器〕", "看 @B列", sel, [
+    { kind: "grid-column", id: "col-B", summary: "B 列" },
+  ]);
+  assert.match(assembled, /〔右边编辑器〕/);
+  assert.match(assembled, /〔当前选区〕/);
+  assert.match(assembled, /〔提到的对象〕/);
 });
 
 test("问 AI 指令默认带上当前选区", () => {

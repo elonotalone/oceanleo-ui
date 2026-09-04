@@ -145,6 +145,16 @@ export function parseAtMentions(
   return hits;
 }
 
+export function assembleAgentEditorContext(
+  commandContext: string,
+  prompt: string,
+  selection: AgentSelection | null,
+  catalog: readonly AgentSelection[] = [],
+): string {
+  const selectionCtx = buildAgentSelectionBlock(selection, prompt, catalog);
+  return [commandContext, selectionCtx].filter(Boolean).join("\n\n");
+}
+
 export function buildAgentSelectionBlock(
   sel: AgentSelection | null,
   prompt: string,

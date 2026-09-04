@@ -67,8 +67,15 @@ import {
 // 直接读 W1 注册表交出来的那份面只包了参数校验，agent 拿到它就能当场写文档
 // （`PARENT-red-1`：那条回落是失败即开放）——所以这份文件不再引它。
 import { readAgentCommandSurface } from "./agent-review/surface";
-// 停在闸里的改动要有地方给人看、给人点头 —— 宿主没挂审阅面板时由 dock 自带一份。
 import { AgentReviewDock } from "./agent-review/dock";
+export { AgentReviewDock };
+import { assembleAgentEditorContext } from "./agent-review/selection-bridge";
+import { readAgentSelection, readMentionCatalog } from "./agent-review/inbox";
+import { refreshAgentSelectionFromDom } from "./agent-review/selection-live";
+import {
+  installAgentReviewGate,
+  installSelectionBridge,
+} from "./agent-review/install";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
@@ -275,9 +282,16 @@ export function useEditorCommandBridge(opts: {
   const contextFor = useCallback(
     (prompt: string) => {
       if (!liveRef.current.enabled) return "";
-      return buildEditorCommandContext(
+      refreshAgentSelectionFromDom();
+      const commandCtx = buildEditorCommandContext(
         readAgentCommandSurface(liveRef.current.surfaceReader),
         { query: prompt },
+      );
+      return assembleAgentEditorContext(
+        commandCtx,
+        prompt,
+        readAgentSelection(),
+        readMentionCatalog(),
       );
     },
     [],
@@ -594,6 +608,10 @@ export function FunctionAgentChat({
     taskId,
     readOnly: sessionReadOnly,
   });
+  useEffect(() => {
+    installAgentReviewGate();
+    installSelectionBridge();
+  }, []);
   const ingestEditorCommands = editorCommands.ingest;
   // 与 HomeIntro / AgentChat 同名同义的开关（见 FunctionAgentChatProps）。默认 true，
   // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。

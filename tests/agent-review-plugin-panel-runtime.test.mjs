@@ -77,9 +77,16 @@ for (const [name, value] of Object.entries({
     value,
   });
 }
+// jsdom 没有这三个（对话区挂载时会滚到底）。
+window.Element.prototype.scrollTo = function () {};
+window.Element.prototype.scrollIntoView = function () {};
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+// 本判据整条路上一个网络请求都不该发（没有 taskId，就没有轮询）。
+globalThis.fetch = async () => {
+  throw new Error("这条路不该发网络请求");
+};
 
 /* ------------------------- 生产模块（jsdom 之后再拉） ------------------------ */
 
@@ -101,7 +108,7 @@ const chatUrl = await compileModule("src/shell/FunctionAgentChat.tsx", {
   // 类型剥离下加载不进来。本台架不渲染输入框，只渲染确认卡。
   "./LeoComposer": dataModule("export function LeoComposer(){ return null; }"),
 });
-const { useEditorCommandBridge } = await import(chatUrl);
+const { useEditorCommandBridge, AgentReviewDock } = await import(chatUrl);
 
 /* --------------------------------- 台架 ---------------------------------- */
 
@@ -146,7 +153,12 @@ const block = (payload) =>
 function PanelBed({ sink }) {
   const bridge = useEditorCommandBridge({ enabled: true, taskId: null });
   sink.bridge = bridge;
-  return React.createElement("div", { "data-bed": "plugin-agent-panel" }, bridge.card);
+  return React.createElement(
+    "div",
+    { "data-bed": "plugin-agent-panel" },
+    React.createElement(AgentReviewDock),
+    bridge.card,
+  );
 }
 
 async function mountPanel(sink) {
@@ -220,6 +232,10 @@ test("PluginAgentPanel 的处境（没人装闸）：agent 的 mutates 指令一
     const lastNote = sink.bridge.notes[sink.bridge.notes.length - 1];
     assert.ok(lastNote, "执行结果必须回写一句人话");
     assert.match(lastNote.text, /审阅/);
+    const accept = panel.container.querySelector(
+      '[data-agent-review-action="accept"]',
+    );
+    assert.ok(accept, "抽屉里必须出现审阅面板的接受按钮，人才能点头");
   } finally {
     await panel.unmount();
     unregister();
@@ -299,4 +315,36 @@ test("取面处不许再出现「回落到没包闸的原始面」这条写法",
     2,
     "执行路径（handleMessage）与上下文路径（contextFor）两处都要走同一个就地包闸的取面口",
   );
+  assert.match(
+    source,
+    /assembleAgentEditorContext\(/,
+    "PluginAgentPanel 主路径必须把选区块拼进 agent 上下文，不能只给指令清单",
+  );
+});
+
+test("PluginAgentPanel 路径：选区从 edit bar DOM 进上下文，测试自己不许 publish", async () => {
+  freshWorld();
+  const bar = document.createElement("div");
+  bar.setAttribute("data-selection-kind", "grid-column");
+  bar.setAttribute("data-selection-id", "col-B");
+  bar.setAttribute("aria-label", "B 列销售额");
+  document.body.append(bar);
+  const { surface } = stubSurface();
+  const unregister = registerPluginCommandSurface(surface);
+  const sink = {};
+  const panel = await mountPanel(sink);
+  try {
+    const ctx = sink.bridge.contextFor("请清洗 @B列");
+    assert.match(ctx, /〔当前选区〕/);
+    assert.match(ctx, /kind=grid-column/);
+    assert.match(ctx, /id=col-B/);
+    assert.match(ctx, /摘要=/);
+    assert.match(ctx, /〔提到的对象〕/);
+    assert.match(ctx, /col-B/);
+  } finally {
+    await panel.unmount();
+    unregister();
+    bar.remove();
+    freshWorld();
+  }
 });

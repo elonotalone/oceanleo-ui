@@ -55,7 +55,7 @@ import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
 import { currentPluginCommandSurface } from "./plugin-command";
 import {
   AgentReviewPanel,
-  buildAgentSelectionBlock,
+  assembleAgentEditorContext,
   createReviewGatedReader,
   hostReviewSession,
   installAgentReviewGate,
@@ -724,12 +724,12 @@ function AgentChatInner({
     (prompt: string) => {
       refreshAgentSelectionFromDom();
       const commandCtx = bridgeContextFor(prompt);
-      const selectionCtx = buildAgentSelectionBlock(
-        readAgentSelection(),
+      return assembleAgentEditorContext(
+        commandCtx,
         prompt,
+        readAgentSelection(),
         readMentionCatalog(),
       );
-      return [commandCtx, selectionCtx].filter(Boolean).join("\n\n");
     },
     [bridgeContextFor],
   );

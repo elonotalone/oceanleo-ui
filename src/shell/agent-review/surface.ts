@@ -1,19 +1,15 @@
 /**
  * agent 取指令面的**唯一**入口，语义是失败即关闭。
  *
- * 为什么要有这个函数（`PARENT-red-1`，2026-09-04）：
- * 调用点原来写的是
+ * 形状照 A-59 的 `embedEditorFrameSandbox()`：两条来源都先包审阅闸再交出去，
+ * 判定顺序本身有闸。`readEditorCommandSurface` 读不到时，旧写法用
+ * `|| currentPluginCommandSurface()` 兜到**没包闸**的原始面 —— 那是
+ * `PARENT-red-1` 的失败即开放。
  *
- *     readEditorCommandSurface(surfaceReader) || currentPluginCommandSurface()
- *
- * 而 `currentPluginCommandSurface()` 交出来的是 `guarded(surface)` —— 只有参数校验层，
- * **没有审阅闸**。于是「闸没装上」不是兜到「右边没开编辑器」，而是兜到一份能当场写文档
- * 的原始面：失败即开放。`PluginAgentPanel`（13 件编辑器共用的「AI 助手」抽屉）既不传
- * reader、也不调 `installAgentReviewGate()`，正好落在那条回落上。
- *
- * 所以取面这件事只有两种结果：**拿到包过闸的面，或者拿不到面**。
- * 不需要谁先把闸装好——闸就在取面处就地包上，`installAgentReviewGate()` 只是让别的
- * 调用方（直接读 `readEditorCommandSurface` 的宿主）也能拿到同一份包法。
+ * 两条 if 的顺序是命门：显式 reader（AgentChat 传下来的那份）必须优先于
+ * 注册表。对调之后，PluginAgentPanel 那种「不传 reader」不受影响，但
+ * AgentChat 传进来的面会被注册表顶掉，用户在全局对话里点头会作用到
+ * 另一件编辑器。
  */
 import {
   readEditorCommandSurface,
@@ -23,6 +19,27 @@ import { currentPluginCommandSurface } from "../plugin-command/registry";
 import type { PluginCommandSurface } from "../plugin-command/types";
 import { gateSurfaceForAgent } from "./gate";
 import { hostReviewSession, type ReviewSession } from "./session";
+
+export type AgentSurfaceSourceKind = "reader" | "registry" | "none";
+
+export type AgentSurfaceSource = {
+  source: AgentSurfaceSourceKind;
+  raw: PluginCommandSurface | null;
+};
+
+/**
+ * 取面来源。两条非空路径的 `raw` 都还没包闸 —— 调用方必须再走
+ * `gateSurfaceForAgent`。本函数不负责包闸，好让顺序闸能单独打「对调 if」那一刀。
+ */
+export function resolveAgentSurfaceSource(
+  explicit?: EditorCommandSurfaceReader | null,
+): AgentSurfaceSource {
+  const fromReader = readEditorCommandSurface(explicit);
+  if (fromReader) return { source: "reader", raw: fromReader };
+  const fromRegistry = currentPluginCommandSurface();
+  if (fromRegistry) return { source: "registry", raw: fromRegistry };
+  return { source: "none", raw: null };
+}
 
 /**
  * 读「agent 现在能操作的指令面」。
@@ -34,7 +51,7 @@ export function readAgentCommandSurface(
   explicit?: EditorCommandSurfaceReader | null,
   session: ReviewSession = hostReviewSession,
 ): PluginCommandSurface | null {
-  const real = readEditorCommandSurface(explicit) || currentPluginCommandSurface();
-  if (!real) return null;
-  return gateSurfaceForAgent(real, session);
+  const resolved = resolveAgentSurfaceSource(explicit);
+  if (!resolved.raw) return null;
+  return gateSurfaceForAgent(resolved.raw, session);
 }
