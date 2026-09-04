@@ -6,6 +6,8 @@ import {
   LEGACY_TIMELINE_SCHEMA,
   OPENVIDEO_PROJECT_SCHEMA,
   emptyOpenVideoProject,
+  msToUs,
+  usToMs,
 } from "../src/shell/video-editor/designcombo/schema.ts";
 import {
   VIDEO_LEGACY_READONLY_NOTICE,
@@ -61,11 +63,61 @@ test("a clip-bearing timeline maps into OpenVideo JSON and back", () => {
   });
   assert.equal(planned.ok, true);
   assert.ok(Object.keys(planned.data.clips).length >= 1);
+  const ovClip = planned.data.clips.c1;
+  assert.ok(ovClip, "转换后必须还能找到片子 c1");
+  assert.ok(ovClip.timing?.display, "新核片子必须带 display 时间");
+  // 2000 ms × 1000 = 2_000_000 µs. Literal, not msToUs(2000) (A-105).
+  const displayFrom = ovClip.timing.display.from;
+  const displayTo = ovClip.timing.display.to;
+  const displaySpan = displayTo - displayFrom;
+  assert.equal(
+    displayFrom,
+    0,
+    `片子从时间线 0 起；起点写成 ${displayFrom} 等于整段被挪走`,
+  );
+  assert.equal(
+    displayTo,
+    2_000_000,
+    `2 秒的片子转过去变成了 ${displayTo / 1000} 毫秒`,
+  );
+  assert.equal(
+    displaySpan,
+    2_000_000,
+    `2 秒的片子转过去变成了 ${displaySpan / 1000} 毫秒`,
+  );
+  assert.equal(
+    ovClip.timing.duration,
+    2_000_000,
+    `2 秒的片子在新核里写成了 ${ovClip.timing.duration / 1000} 毫秒，不是 2 秒`,
+  );
   const round = openVideoToTimelineDoc(planned.data);
   const video = round.tracks.find((track) => track.kind === "video");
   assert.equal(video.clips.length, 1);
   assert.equal(video.clips[0].source_url, "https://example.com/a.mp4");
   assert.equal(video.clips[0].duration_ms, 2000);
+});
+
+test("one second on the old timeline is one million microseconds in the new core", () => {
+  assert.equal(
+    msToUs(1000),
+    1_000_000,
+    "旧时间线 1 秒必须写成 1_000_000 微秒；写成 1000 微秒等于把 1 秒变成 1 毫秒",
+  );
+  assert.equal(
+    usToMs(1_000_000),
+    1000,
+    "新核里 1_000_000 微秒必须读回 1 秒；少除 1000 会把 1 秒读成 1000 秒",
+  );
+  assert.equal(
+    msToUs(2000),
+    2_000_000,
+    "2 秒必须是 2_000_000 微秒，不能因为往返还能解回 2000 毫秒就放过",
+  );
+  assert.equal(
+    usToMs(2_000_000),
+    2000,
+    "2_000_000 微秒必须读回 2 秒",
+  );
 });
 
 test("unknown payload explains why conversion cannot start", () => {
