@@ -26,8 +26,36 @@ export interface VideoFacadeArgs {
   keyframes?: Record<string, Record<string, number>>;
 }
 
+/** L1/L2 点「画面裁切」但没框选时给人看的话。不许改成默默裁一圈。 */
+export const VIDEO_CROP_NEEDS_RECT =
+  "请先框选要保留的区域，没有选区时不会裁切画面。";
+/** L1/L2 点「加字幕」但没正文时给人看的话。不许改成占位「字幕」。 */
+export const VIDEO_CAPTION_NEEDS_TEXT =
+  "请先输入字幕正文，空的字幕不会加进成片。";
+/** L1/L2 点「关键帧」但没表时给人看的话。不许改成空的 0%/100% 动画。 */
+export const VIDEO_KEYFRAMES_NEED_TABLE =
+  "请先给出关键帧，没有关键帧表时不会给片段加动画。";
+
 function fail(reason: string): VideoFacadeResult {
   return { ok: false, reason };
+}
+
+function hasCropRect(
+  crop: VideoFacadeArgs["crop"],
+): crop is { x: number; y: number; width: number; height: number } {
+  return Boolean(
+    crop &&
+      Number.isFinite(crop.x) &&
+      Number.isFinite(crop.y) &&
+      Number.isFinite(crop.width) &&
+      Number.isFinite(crop.height),
+  );
+}
+
+function hasKeyframeTable(
+  keyframes: VideoFacadeArgs["keyframes"],
+): keyframes is Record<string, Record<string, number>> {
+  return Boolean(keyframes && Object.keys(keyframes).length > 0);
 }
 
 function withClip(
@@ -163,7 +191,7 @@ export function setOpenVideoKeyframes(
   return withClip(project, clipId, (clip, next) => {
     const keys = Object.keys(params || {});
     if (!keys.includes("0%") || !keys.includes("100%")) {
-      return fail("关键帧必须包含 0% 和 100%（OpenVideo 动画参数表）。");
+      return fail("关键帧不完整：需要同时有 0% 和 100%，缺了不会给片段加动画。");
     }
     const animation: OpenVideoKeyframeAnimation = {
       type: "keyframes",
@@ -186,7 +214,7 @@ export function addOpenVideoCaption(
   input: { text: string; fromMs: number; durationMs?: number },
 ): VideoFacadeResult {
   const text = String(input.text || "").trim();
-  if (!text) return fail("字幕是空的，没有可以加上的字。");
+  if (!text) return fail(VIDEO_CAPTION_NEEDS_TEXT);
   if (text.length > 200) {
     return fail("这一条字幕超过 200 个字。请拆成两句再加。");
   }
@@ -296,13 +324,16 @@ export function runVideoDesigncomboCommand(
     case "speed":
       return setOpenVideoSpeed(project, String(args.clipId || ""), Number(args.value) || 1);
     case "crop-frame":
-      if (!args.crop) return fail("画面裁切需要 x/y/width/height（0..1）。");
+      if (!hasCropRect(args.crop)) return fail(VIDEO_CROP_NEEDS_RECT);
       return cropOpenVideoClip(project, String(args.clipId || ""), args.crop);
     case "keyframes":
+      if (!hasKeyframeTable(args.keyframes)) {
+        return fail(VIDEO_KEYFRAMES_NEED_TABLE);
+      }
       return setOpenVideoKeyframes(
         project,
         String(args.clipId || ""),
-        args.keyframes || { "0%": { x: 0 }, "100%": { x: 0 } },
+        args.keyframes,
       );
     case "add-caption":
       return addOpenVideoCaption(project, {

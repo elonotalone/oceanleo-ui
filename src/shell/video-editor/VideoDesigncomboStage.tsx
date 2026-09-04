@@ -305,31 +305,11 @@ export function VideoDesigncomboStage({
         command.value === null || command.value === undefined
           ? undefined
           : command.value;
-      let result = runVideoDesigncomboCommand(command.controlId, projectRef.current, {
+      const result = runVideoDesigncomboCommand(command.controlId, projectRef.current, {
         clipId: selectedClipId,
         atUs,
         value: controlValue,
       });
-      if (!result.ok && command.controlId === "crop-frame" && selectedClipId) {
-        result = cropOpenVideoClip(projectRef.current, selectedClipId, {
-          x: 0.1,
-          y: 0.1,
-          width: 0.8,
-          height: 0.8,
-        });
-      }
-      if (!result.ok && command.controlId === "keyframes" && selectedClipId) {
-        result = setOpenVideoKeyframes(projectRef.current, selectedClipId, {
-          "0%": { x: 0, opacity: 1 },
-          "100%": { x: 0, opacity: 1 },
-        });
-      }
-      if (!result.ok && command.controlId === "add-caption") {
-        result = addOpenVideoCaption(projectRef.current, {
-          text: "字幕",
-          fromMs: Math.round(playheadUs / 1000),
-        });
-      }
       if (result.ok) {
         commit(result.project);
         setStatus("");
@@ -578,6 +558,15 @@ export function VideoDesigncomboStage({
             {...{ [VIDEO_DESIGNCOMBO_STAGE_ATTR]: "true" }}
             {...{ [VIDEO_DESIGNCOMBO_MODE_ATTR]: mode }}
           >
+            {conversionNotice || status ? (
+              <div
+                role="alert"
+                data-video-designcombo-notice="true"
+                className="border-b border-[var(--awb-danger-line,#fecdd3)] bg-[var(--awb-danger-soft,#fff1f2)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-danger,#be123c)]"
+              >
+                {conversionNotice || status}
+              </div>
+            ) : null}
             <div
               {...{ [VIDEO_DESIGNCOMBO_CHROME_ATTRS.header]: "true" }}
               className="border-b px-3 py-1 text-[11px] text-[var(--muted,#78716c)]"
