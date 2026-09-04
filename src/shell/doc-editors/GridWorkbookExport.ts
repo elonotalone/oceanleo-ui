@@ -36,9 +36,11 @@ import {
 import {
   GridDxfTable,
   buildSheetRuleXml,
+  rangeToSqref,
   type GridExportDegradation,
   type GridSheetRules,
 } from "./grid-format/xlsx-round-trip";
+import type { GridConditionalFormat } from "./grid-structure";
 
 function usedBounds(sheet: GridSheet): { rows: number; cols: number } {
   let rows = sheet.rows.length;
@@ -102,6 +104,84 @@ function exportNumberFormat(format: GridCellFormat): string {
   if (custom) return isGeneralNumberFormat(custom) ? "" : custom;
   if (!LEGACY_NUMFMT_TYPES.has(format.type ?? "")) return "";
   return legacyNumberFormatPattern(format.type, format.decimals);
+}
+
+const CF_EXCEL_OPERATOR: Record<
+  Exclude<GridConditionalFormat["operator"], "contains">,
+  string
+> = {
+  "greater-than": "greaterThan",
+  "less-than": "lessThan",
+  equal: "equal",
+  "not-equal": "notEqual",
+};
+
+function excelConditionalStyle(
+  rule: GridConditionalFormat,
+): Record<string, unknown> {
+  const style: Record<string, unknown> = {};
+  if (rule.bold || rule.color) {
+    style.font = {
+      bold: Boolean(rule.bold),
+      ...(excelColor(rule.color) ? { color: excelColor(rule.color) } : {}),
+    };
+  }
+  const background = excelColor(rule.background);
+  if (background) {
+    // exceljs CF 示例用 bgColor；单元格填充才用 fgColor。
+    style.fill = { type: "pattern", pattern: "solid", bgColor: background };
+  }
+  return style;
+}
+
+/**
+ * 把 `GridSheet.conditionalFormats` 写进 exceljs。新核导出走这条链，
+ * XML 链里已经会写 `<conditionalFormatting>`；这里是把同一份五操作符
+ * 能力搬过来，不是另造一套规则模型。
+ */
+export function applyGridConditionalFormats(
+  worksheet: {
+    addConditionalFormatting: (cf: {
+      ref: string;
+      rules: Array<Record<string, unknown>>;
+    }) => void;
+  },
+  rules: readonly GridConditionalFormat[] | undefined,
+): void {
+  if (!rules || rules.length === 0) return;
+  let priority = 1;
+  for (const rule of rules) {
+    const ref = rangeToSqref(rule.range);
+    const style = excelConditionalStyle(rule);
+    if (rule.operator === "contains") {
+      worksheet.addConditionalFormatting({
+        ref,
+        rules: [
+          {
+            type: "containsText",
+            operator: "containsText",
+            text: rule.value,
+            priority,
+            style,
+          },
+        ],
+      });
+    } else {
+      worksheet.addConditionalFormatting({
+        ref,
+        rules: [
+          {
+            type: "cellIs",
+            operator: CF_EXCEL_OPERATOR[rule.operator],
+            formulae: [rule.value],
+            priority,
+            style,
+          },
+        ],
+      });
+    }
+    priority += 1;
+  }
 }
 
 /**
@@ -173,6 +253,7 @@ export async function buildGridRouteWorkbookBlob(
         merge.lastCol + 1,
       );
     }
+    applyGridConditionalFormats(worksheet, source.conditionalFormats);
     if (headerRow && bounds.cols > 0) {
       worksheet.autoFilter = {
         from: { row: 1, column: 1 },

@@ -88,6 +88,7 @@ import {
 import {
   gridSheetsToUniverSnapshot,
   univerSnapshotToGridSheets,
+  gridUniverOutboundWarning,
 } from "./grid-univer/snapshot";
 import { runGridUniverCommand } from "./grid-univer/facade-commands";
 import {
@@ -401,11 +402,12 @@ export function GridUniverStage({
   }, [bumpHistory]);
 
   const workbookBlob = useCallback(
-    () =>
-      buildGridRouteWorkbookBlob(
-        univerSnapshotToGridSheets(currentSnapshot()),
-        { headerRow: true },
-      ),
+    async () => {
+      const notes = { dropped: [] as string[] };
+      const sheets = univerSnapshotToGridSheets(currentSnapshot(), notes);
+      const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: true });
+      return { blob, warning: gridUniverOutboundWarning(notes) };
+    },
     [currentSnapshot],
   );
 
@@ -414,7 +416,9 @@ export function GridUniverStage({
     xlsxExportBusyRef.current = true;
     setXlsxExporting(true);
     try {
-      downloadBlob(`${item.title || "workbook"}.xlsx`, await workbookBlob());
+      const { blob, warning } = await workbookBlob();
+      downloadBlob(`${item.title || "workbook"}.xlsx`, blob);
+      setStatus(warning);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "导出 XLSX 失败");
     } finally {
@@ -443,14 +447,16 @@ export function GridUniverStage({
         }
         if (extension === "pdf") {
           const title = item.title || "workbook";
-          return (
+          const { blob, warning } = await workbookBlob();
+          const error =
             (await downloadConvertedCopy({
-              source: await workbookBlob(),
+              source: blob,
               sourceName: `${title}.xlsx`,
               target: "pdf",
               baseName: title,
-            })) || ""
-          );
+            })) || "";
+          if (!error && warning) setStatus(warning);
+          return error;
         }
         return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
       } catch (caught) {
@@ -467,7 +473,8 @@ export function GridUniverStage({
     }
     const snapshot = currentSnapshot();
     snapshotRef.current = snapshot;
-    const sheets = univerSnapshotToGridSheets(snapshot);
+    const notes = { dropped: [] as string[] };
+    const sheets = univerSnapshotToGridSheets(snapshot, notes);
     const title = `${item.title || "工作簿"}-编辑版`;
     const fileStem =
       title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "workbook";
@@ -507,6 +514,7 @@ export function GridUniverStage({
         return null;
       }
       setDirty(false);
+      setStatus(gridUniverOutboundWarning(notes));
       return result;
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "保存失败。");

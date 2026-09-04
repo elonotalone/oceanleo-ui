@@ -14,6 +14,7 @@ import {
   GRID_UNIVER_MIN_ROWS,
   gridFormatToUniverStyle,
   gridSheetsToUniverSnapshot,
+  gridUniverOutboundWarning,
   univerSnapshotToGridSheets,
   univerStyleToGridFormat,
 } from "../src/shell/doc-editors/grid-univer/snapshot.ts";
@@ -460,4 +461,200 @@ test("导出：xlsx 里的表名、合并、数字格式跟活快照一致", asy
   assert.equal(summary.getCell("B1").font.color.argb, "FF166534");
   assert.equal(summary.getCell("C1").fill.fgColor.argb, "FFFFF3CD");
   assert.equal(summary.getCell("C1").alignment.horizontal, "center");
+});
+
+async function openRouteXlsx(sheets) {
+  const { buildGridRouteWorkbookBlob } = await import(
+    "../src/shell/doc-editors/GridWorkbookExport.ts"
+  );
+  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: false });
+  const imported = await import("exceljs");
+  const ExcelJS = "Workbook" in imported ? imported : imported.default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await blob.arrayBuffer());
+  return workbook;
+}
+
+function greaterThanCfRule(overrides = {}) {
+  return {
+    cfId: "cf-greater-100",
+    ranges: [{ startRow: 0, endRow: 9, startColumn: 1, endColumn: 1 }],
+    stopIfTrue: false,
+    rule: {
+      type: "highlightCell",
+      subType: "number",
+      operator: "greaterThan",
+      value: 100,
+      style: { bl: 1, bg: { rgb: "#ffebe9" }, cl: { rgb: "#cf222e" } },
+    },
+    ...overrides,
+  };
+}
+
+function salesWorkbookWithCf(resourceData) {
+  return {
+    id: "wb",
+    name: "wb",
+    appVersion: GRID_UNIVER_APP_VERSION,
+    sheetOrder: ["s1"],
+    styles: {},
+    resources: [
+      {
+        name: "SHEET_CONDITIONAL_FORMATTING_PLUGIN",
+        data: resourceData,
+      },
+    ],
+    sheets: {
+      s1: {
+        id: "s1",
+        name: "销售",
+        rowCount: 20,
+        columnCount: 8,
+        mergeData: [],
+        cellData: {
+          0: { 0: { v: "金额", t: 1 }, 1: { v: 250, t: 2 } },
+        },
+      },
+    },
+  };
+}
+
+test("导出：活快照里的「金额 > 100 变红底」必须写进 GridSheet，不能恒写成空数组", () => {
+  const notes = { dropped: [] };
+  const sheets = univerSnapshotToGridSheets(
+    salesWorkbookWithCf(JSON.stringify({ s1: [greaterThanCfRule()] })),
+    notes,
+  );
+  assert.equal(sheets[0].conditionalFormats.length, 1);
+  const rule = sheets[0].conditionalFormats[0];
+  assert.equal(rule.operator, "greater-than");
+  assert.equal(rule.value, "100");
+  assert.equal(rule.background, "#ffebe9");
+  assert.equal(rule.color, "#cf222e");
+  assert.equal(rule.bold, true);
+  assert.deepEqual(rule.range, {
+    firstRow: 0,
+    lastRow: 9,
+    firstCol: 1,
+    lastCol: 1,
+  });
+  assert.deepEqual(notes.dropped, []);
+});
+
+test("导出：xlsx 打开后条件格式还在，金额 > 100 仍是一条规则", async () => {
+  const sheets = univerSnapshotToGridSheets(
+    salesWorkbookWithCf(JSON.stringify({ s1: [greaterThanCfRule()] })),
+  );
+  const workbook = await openRouteXlsx(sheets);
+  const ws = workbook.getWorksheet("销售");
+  assert.ok(ws, "导出的工作簿里必须有用户起的表名「销售」");
+  const cfs = ws.conditionalFormattings || [];
+  assert.equal(
+    cfs.length,
+    1,
+    "用户打开导出的 xlsx，必须还能看到「金额 > 100 变红底」。切掉 resources 映射或切掉 exceljs 写出都会变成 0 条。",
+  );
+  const first = cfs[0];
+  const rule = first.rules?.[0] || first;
+  assert.equal(rule.type, "cellIs");
+  assert.equal(rule.operator, "greaterThan");
+  const formulae = rule.formulae || [];
+  assert.equal(String(formulae[0]), "100");
+  assert.notEqual(ws.getCell("B1").value, undefined);
+});
+
+test("导出：GridSheet 上已有五操作符规则时，exceljs 链也必须写进 xlsx", async () => {
+  const sheets = [
+    sheet({
+      name: "销售",
+      rows: [["金额", "250"]],
+      conditionalFormats: [
+        {
+          id: "c1",
+          range: { firstRow: 0, lastRow: 9, firstCol: 1, lastCol: 1 },
+          operator: "greater-than",
+          value: "100",
+          background: "#ffebe9",
+          color: "#cf222e",
+          bold: true,
+        },
+      ],
+    }),
+  ];
+  const workbook = await openRouteXlsx(sheets);
+  const ws = workbook.getWorksheet("销售");
+  assert.equal(
+    (ws.conditionalFormattings || []).length,
+    1,
+    "即便跳过 snapshot 映射、直接把规则填进 GridSheet，新核这条 exceljs 链也要把规则写进文件。",
+  );
+});
+
+test("导出：xlsx 打开后「包含」规则还在，不是写丢", async () => {
+  const notes = { dropped: [] };
+  const snap = salesWorkbookWithCf(
+    JSON.stringify({
+      s1: [
+        {
+          cfId: "cf-contains",
+          ranges: [{ startRow: 0, endRow: 4, startColumn: 0, endColumn: 0 }],
+          rule: {
+            type: "highlightCell",
+            subType: "text",
+            operator: "containsText",
+            value: "逾期",
+            style: { bg: { rgb: "#fff3cd" } },
+          },
+        },
+      ],
+    }),
+  );
+  const sheets = univerSnapshotToGridSheets(snap, notes);
+  assert.equal(sheets[0].conditionalFormats[0].operator, "contains");
+  assert.equal(sheets[0].conditionalFormats[0].value, "逾期");
+  const workbook = await openRouteXlsx(sheets);
+  const rule = (workbook.getWorksheet("销售").conditionalFormattings || [])[0]
+    ?.rules?.[0];
+  assert.equal(rule?.type, "containsText");
+  assert.match(
+    String(rule?.formulae?.[0] || ""),
+    /逾期/,
+    "用户打开导出的 xlsx，「包含逾期」这条规则必须还在。exceljs 把比较词写进 SEARCH 公式。",
+  );
+  assert.deepEqual(notes.dropped, []);
+});
+
+test("导出：色阶 / 数据条 / 图标集带不过去，但必须点名", () => {
+  const notes = { dropped: [] };
+  const extra = [
+    greaterThanCfRule(),
+    {
+      cfId: "cf-scale",
+      ranges: [{ startRow: 0, endRow: 4, startColumn: 0, endColumn: 0 }],
+      rule: { type: "colorScale", config: [] },
+    },
+    {
+      cfId: "cf-bar",
+      ranges: [{ startRow: 0, endRow: 4, startColumn: 0, endColumn: 0 }],
+      rule: { type: "dataBar", isShowValue: true, config: {} },
+    },
+    {
+      cfId: "cf-icon",
+      ranges: [{ startRow: 0, endRow: 4, startColumn: 0, endColumn: 0 }],
+      rule: { type: "iconSet", isShowValue: true, config: [] },
+    },
+  ];
+  const sheets = univerSnapshotToGridSheets(
+    salesWorkbookWithCf(JSON.stringify({ s1: extra })),
+    notes,
+  );
+  assert.equal(sheets[0].conditionalFormats.length, 1);
+  assert.equal(sheets[0].conditionalFormats[0].operator, "greater-than");
+  assert.equal(notes.dropped.length, 3);
+  assert.match(notes.dropped.join("；"), /色阶/);
+  assert.match(notes.dropped.join("；"), /数据条/);
+  assert.match(notes.dropped.join("；"), /图标集/);
+  const warning = gridUniverOutboundWarning(notes);
+  assert.match(warning, /没有带过去/);
+  assert.match(warning, /色阶/);
 });

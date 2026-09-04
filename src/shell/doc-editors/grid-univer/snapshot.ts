@@ -22,7 +22,12 @@ import type {
   Nullable,
 } from "@univerjs/presets";
 import type { GridCellFormat, GridSheet } from "../grid-model";
-import type { GridMerge } from "../grid-structure";
+import type {
+  GridConditionalFormat,
+  GridConditionalOperator,
+  GridMerge,
+  GridRange,
+} from "../grid-structure";
 
 /** Univer 空白表的最小尺寸；存量表比它小就补到这里，和旧核的空表观感一致。 */
 export const GRID_UNIVER_MIN_ROWS = 20;
@@ -61,6 +66,210 @@ export interface GridUniverSnapshotOptions {
   /** 工作簿 id；不给就用第一张表的 id 派生，保证同一份文档反复转换得到同一个 id。 */
   id?: string;
   name?: string;
+}
+
+/**
+ * 读回（Univer → GridSheet）带不过去的东西。导出链没有 inbound 那份
+ * `report.dropped`，所以这里单独收：调用方（导出/另存）必须拿去显示，
+ * 否则色阶这类降级又会变成静默丢失。
+ */
+export interface GridUniverOutboundNotes {
+  dropped: string[];
+}
+
+/** Univer 条件格式插件写进 `workbook.resources` 的名字。实读 0.25.1 `toJson`。 */
+export const GRID_UNIVER_CF_PLUGIN = "SHEET_CONDITIONAL_FORMATTING_PLUGIN";
+
+const CF_NUMBER_OPERATOR: Record<string, GridConditionalOperator> = {
+  greaterThan: "greater-than",
+  lessThan: "less-than",
+  equal: "equal",
+  notEqual: "not-equal",
+};
+
+function rgbFromUniver(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const rgb = String((value as { rgb?: unknown }).rgb ?? "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(rgb)) return rgb;
+  if (/^[0-9a-f]{6}$/i.test(rgb)) return `#${rgb}`;
+  return undefined;
+}
+
+function univerRangeToGrid(range: unknown): GridRange | null {
+  if (!range || typeof range !== "object" || Array.isArray(range)) return null;
+  const source = range as Record<string, unknown>;
+  const firstRow = Number(source.startRow);
+  const lastRow = Number(source.endRow);
+  const firstCol = Number(source.startColumn);
+  const lastCol = Number(source.endColumn);
+  if (
+    ![firstRow, lastRow, firstCol, lastCol].every((value) =>
+      Number.isInteger(value),
+    )
+  ) {
+    return null;
+  }
+  return {
+    firstRow: Math.min(firstRow, lastRow),
+    lastRow: Math.max(firstRow, lastRow),
+    firstCol: Math.min(firstCol, lastCol),
+    lastCol: Math.max(firstCol, lastCol),
+  };
+}
+
+function parseUniverCfResource(data: unknown): Record<string, unknown[]> {
+  if (data == null) return {};
+  let parsed: unknown = data;
+  if (typeof data === "string") {
+    if (!data.trim()) return {};
+    try {
+      parsed = JSON.parse(data) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: Record<string, unknown[]> = {};
+  for (const [sheetId, rules] of Object.entries(
+    parsed as Record<string, unknown>,
+  )) {
+    out[sheetId] = Array.isArray(rules) ? rules : [];
+  }
+  return out;
+}
+
+function droppedCfLabel(rule: Record<string, unknown>): string {
+  const type = String(rule.type || "");
+  if (type === "colorScale") return "色阶";
+  if (type === "dataBar") return "数据条";
+  if (type === "iconSet") return "图标集";
+  const subType = String(rule.subType || "");
+  const operator = String(rule.operator || "");
+  if (subType === "uniqueValues") return "「唯一值」高亮";
+  if (subType === "duplicateValues") return "「重复值」高亮";
+  if (subType === "rank") return "「前/后 N」高亮";
+  if (subType === "timePeriod") return "「日期时段」高亮";
+  if (subType === "average") return "「高于/低于平均值」高亮";
+  if (subType === "formula") return "「公式」高亮";
+  if (subType === "text" && operator && operator !== "containsText") {
+    return `「文本 ${operator}」高亮`;
+  }
+  if (subType === "number" && operator && !(operator in CF_NUMBER_OPERATOR)) {
+    return `「数值 ${operator}」高亮`;
+  }
+  if (type === "highlightCell") return "其它高亮";
+  return type ? `「${type}」条件格式` : "未知条件格式";
+}
+
+function mapUniverCfRule(raw: unknown): {
+  mapped: GridConditionalFormat[];
+  dropped: string | null;
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { mapped: [], dropped: "未知条件格式" };
+  }
+  const entry = raw as Record<string, unknown>;
+  const spec =
+    entry.rule && typeof entry.rule === "object" && !Array.isArray(entry.rule)
+      ? (entry.rule as Record<string, unknown>)
+      : entry;
+  const type = String(spec.type || "");
+  const subType = String(spec.subType || "");
+  const operator = String(spec.operator || "");
+  const ranges = Array.isArray(entry.ranges) ? entry.ranges : [];
+  const gridRanges = ranges
+    .map(univerRangeToGrid)
+    .filter((range): range is GridRange => range !== null);
+  if (gridRanges.length === 0) {
+    return { mapped: [], dropped: droppedCfLabel(spec) };
+  }
+
+  let mappedOperator: GridConditionalOperator | null = null;
+  let mappedValue = "";
+  if (type === "highlightCell" && subType === "number") {
+    mappedOperator = CF_NUMBER_OPERATOR[operator] ?? null;
+    if (mappedOperator && spec.value !== undefined && spec.value !== null) {
+      mappedValue = String(spec.value);
+    } else {
+      mappedOperator = null;
+    }
+  } else if (
+    type === "highlightCell" &&
+    subType === "text" &&
+    operator === "containsText"
+  ) {
+    mappedOperator = "contains";
+    mappedValue = String(spec.value ?? "");
+  }
+
+  if (!mappedOperator) {
+    return { mapped: [], dropped: droppedCfLabel(spec) };
+  }
+
+  const style =
+    spec.style && typeof spec.style === "object" && !Array.isArray(spec.style)
+      ? (spec.style as Record<string, unknown>)
+      : {};
+  const color = rgbFromUniver(style.cl);
+  const background = rgbFromUniver(style.bg);
+  const baseId = String(entry.cfId || entry.id || "cf").slice(0, 80) || "cf";
+  return {
+    mapped: gridRanges.map((range, index) => ({
+      id: gridRanges.length === 1 ? baseId : `${baseId}:${index + 1}`,
+      range,
+      operator: mappedOperator,
+      value: mappedValue.slice(0, 240),
+      ...(color ? { color } : {}),
+      ...(background ? { background } : {}),
+      ...(style.bl ? { bold: true } : {}),
+    })),
+    dropped: null,
+  };
+}
+
+/**
+ * 从活快照 `resources` 里取出五操作符条件格式。色阶 / 数据条 / 图标集
+ * 以及其它高亮子类写进 `notes.dropped`，不许静默丢。
+ */
+export function readUniverConditionalFormats(
+  data: Partial<IWorkbookData> | null | undefined,
+  notes?: GridUniverOutboundNotes,
+): Map<string, GridConditionalFormat[]> {
+  const bySheet = new Map<string, GridConditionalFormat[]>();
+  const resources = Array.isArray(data?.resources) ? data.resources : [];
+  const plugin = resources.find((entry) => entry?.name === GRID_UNIVER_CF_PLUGIN);
+  const grouped = parseUniverCfResource(plugin?.data);
+  const droppedCounts = new Map<string, number>();
+  for (const [sheetId, rules] of Object.entries(grouped)) {
+    const mapped: GridConditionalFormat[] = [];
+    for (const rule of rules) {
+      const outcome = mapUniverCfRule(rule);
+      mapped.push(...outcome.mapped);
+      if (outcome.dropped) {
+        droppedCounts.set(
+          outcome.dropped,
+          (droppedCounts.get(outcome.dropped) || 0) + 1,
+        );
+      }
+    }
+    bySheet.set(sheetId, mapped);
+  }
+  if (notes) {
+    for (const [label, count] of droppedCounts) {
+      notes.dropped.push(
+        `${count} 条${label}没有带过去（导出只接大于/小于/等于/不等于/包含这五种高亮）`,
+      );
+    }
+  }
+  return bySheet;
+}
+
+/** 把读回降级说成人话。没有丢的时候是空串，调用方不要凭空弹一句。 */
+export function gridUniverOutboundWarning(
+  notes: GridUniverOutboundNotes,
+): string {
+  if (notes.dropped.length === 0) return "";
+  return `以下内容没有带过去：${notes.dropped.join("；")}。`;
 }
 
 function isFormula(value: string): boolean {
@@ -286,12 +495,14 @@ export function gridSheetsToUniverSnapshot(
  */
 export function univerSnapshotToGridSheets(
   data: Partial<IWorkbookData> | null | undefined,
+  notes?: GridUniverOutboundNotes,
 ): GridSheet[] {
   const sheets = data?.sheets || {};
   const order =
     data?.sheetOrder && data.sheetOrder.length > 0
       ? data.sheetOrder
       : Object.keys(sheets);
+  const cfBySheet = readUniverConditionalFormats(data, notes);
   const result: GridSheet[] = [];
   for (const sheetId of order) {
     const sheet = sheets[sheetId];
@@ -343,13 +554,17 @@ export function univerSnapshotToGridSheets(
         if (format) formats[`${row}:${col}`] = format;
       }
     }
+    const sheetKey = sheet.id || sheetId;
     result.push({
-      id: sheet.id || sheetId,
+      id: sheetKey,
       name: sheet.name || sheetId,
       rows,
       formats,
       merges: (sheet.mergeData || []).map(rangeToMerge),
-      conditionalFormats: [],
+      conditionalFormats:
+        cfBySheet.get(sheetKey) ||
+        cfBySheet.get(sheetId) ||
+        [],
     });
   }
   return result;
