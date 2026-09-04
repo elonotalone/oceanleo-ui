@@ -394,7 +394,10 @@ export function ChartNextStage({
     );
   }, [editor]);
 
-  const readonly = conversion === "readonly" || conversion === "failed";
+  const readonly =
+    conversion === "readonly" ||
+    conversion === "converting" ||
+    conversion === "failed";
 
   return (
     <AdvancedWorkbenchShell

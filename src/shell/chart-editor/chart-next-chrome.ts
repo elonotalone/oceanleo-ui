@@ -20,7 +20,7 @@ export function applyChartNextMode(
   mode: EditorMode,
 ): { mode: EditorMode; codeModeVisible: boolean } {
   const message = buildSetModeMessage(instanceId, mode);
-  const next = message.mode as EditorMode;
+  const next = message.type === "set-mode" ? message.mode : mode;
   return {
     mode: next,
     codeModeVisible: next === "pro",
