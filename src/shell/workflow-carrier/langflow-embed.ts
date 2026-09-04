@@ -134,6 +134,7 @@ export type LangflowRunBlockerCode =
   | "flow-edge-dangling"
   | "flow-node-id-duplicated"
   | "flow-node-template-missing"
+  | "flow-component-code-missing"
   | "flow-component-not-installed";
 
 export interface LangflowRunBlocker {
