@@ -55,12 +55,15 @@ function stateForAgent(
 }
 
 /**
- * 正在落地的「用户已点头」凭据。按 editorId 持有，禁止全局计数器
- * （`V3-red-6`：接受 A 时 B 跟着被放行）。
+ * 正在落地的「用户已点头」凭据。按 **proposalId** 持有。
  *
- * `editorId: "*"` 只给旧调用 `withReviewApply(fn)`（没说是哪件编辑器）用：
+ * `V3-red-6` 原告的是跨编辑器泄漏（接受表格放行图片）；按 editorId 已经把它
+ * 关掉。同一编辑器里两条待审提案时，按件持有仍会让接受 #1 的窗口放行 #2。
+ * 所以判定必须对上这一份提案（或它绑着的一次性令牌），对不上就送审。
+ *
+ * `editorId: "*"` 只给旧调用 `withReviewApply(fn)`（没说是哪件、哪份提案）用：
  * `reviewApplyHeld("grid")` 会认它，但 `routeAgentCommandRun` **不**把它当成
- * 对所有面的放行 —— 否则又变回失败即开放。
+ * 放行 —— 否则又变回失败即开放。
  */
 export type ReviewApplyHold = {
   editorId: string;
@@ -69,6 +72,83 @@ export type ReviewApplyHold = {
 };
 
 const holds: ReviewApplyHold[] = [];
+
+/** 审阅令牌在 `parked.params` 里的键名。宿主原样转发，agent 看不见。 */
+export const REVIEW_APPLY_TOKEN_KEY = "__reviewApply";
+
+type ReviewApplyToken = { proposalId: string; commandId: string };
+
+const liveTokens = new Map<string, ReviewApplyToken>();
+const MAX_LIVE_TOKENS = 8;
+
+function randomApplyToken(): string {
+  const webCrypto = (
+    globalThis as { crypto?: { randomUUID?: () => string } }
+  ).crypto;
+  if (typeof webCrypto?.randomUUID === "function") {
+    return `rat-${webCrypto.randomUUID()}`;
+  }
+  const bytes = (
+    globalThis as {
+      crypto?: { getRandomValues?: (array: Uint8Array) => Uint8Array };
+    }
+  ).crypto?.getRandomValues?.(new Uint8Array(16));
+  if (bytes) {
+    return `rat-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  }
+  return `rat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function mintReviewApplyToken(proposalId: string, commandId: string): string {
+  const token = randomApplyToken();
+  liveTokens.set(token, { proposalId, commandId });
+  while (liveTokens.size > MAX_LIVE_TOKENS) {
+    const oldest = liveTokens.keys().next().value;
+    if (oldest === undefined) break;
+    liveTokens.delete(oldest);
+  }
+  return token;
+}
+
+function proposalIdFromApplyToken(
+  params: Record<string, unknown> | undefined,
+): string | undefined {
+  const raw = params?.[REVIEW_APPLY_TOKEN_KEY];
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
+  return liveTokens.get(raw)?.proposalId;
+}
+
+function consumeReviewApplyToken(
+  commandId: string,
+  params: Record<string, unknown> | undefined,
+): boolean {
+  const raw = params?.[REVIEW_APPLY_TOKEN_KEY];
+  if (typeof raw !== "string" || raw.length === 0) return false;
+  const bound = liveTokens.get(raw);
+  if (!bound || bound.commandId !== commandId) return false;
+  liveTokens.delete(raw);
+  return true;
+}
+
+function stripReviewApplyToken(
+  params: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!params || !(REVIEW_APPLY_TOKEN_KEY in params)) return params;
+  const next = { ...params };
+  delete next[REVIEW_APPLY_TOKEN_KEY];
+  return next;
+}
+
+function withApplyToken(
+  params: Record<string, unknown>,
+  proposalId: string,
+  commandId: string,
+): Record<string, unknown> {
+  return {
+    ...params,
+    [REVIEW_APPLY_TOKEN_KEY]: mintReviewApplyToken(proposalId, commandId),
+  };
+}
 
 export async function withReviewApply<T>(
   fn: () => Promise<T>,
@@ -96,11 +176,15 @@ export function reviewApplyHeld(editorId?: string): boolean {
 
 export function resetReviewApplyHolds(): void {
   holds.length = 0;
+  liveTokens.clear();
 }
 
 export type AgentCommandRunRoute =
   | { kind: "execute"; reason: "accepted-apply" | "readonly" }
-  | { kind: "review"; reason: "foreign-apply" | "untrusted-agent" };
+  | {
+      kind: "review";
+      reason: "foreign-apply" | "untrusted-agent" | "sibling-apply";
+    };
 
 /**
  * 一条 agent `run` 该走哪条路。
@@ -113,7 +197,9 @@ export type AgentCommandRunRoute =
  * 判定顺序照 A-59 的 `embedEditorFrameSandbox()`：
  * 1. 别人的 apply 先判 —— 送审（不可信）。顺序反过来、改成「有持有就放行」
  *    就是 `V3-red-6`：接受 A，B 跟着被放行。
- * 2. 这件编辑器自己的 apply → 执行（用户点头的那一条）。
+ * 2. 这件编辑器自己的 apply，还得对上**这一份提案**才执行。只对上 editorId
+ *    或只对上 commandId，同一件里的另一条待审提案会写穿。缺 proposalId
+ *    或对不上 → 送审（`sibling-apply`）。两条兜底都指向安全。
  * 3. 明确只读 → 执行。
  * 4. 其余一律送审（失败即关闭）。
  */
@@ -121,15 +207,31 @@ export function routeAgentCommandRun(input: {
   surfaceEditorId: string;
   commandId: string;
   mutates: boolean | undefined;
+  proposalId?: string;
   holds?: readonly ReviewApplyHold[];
 }): AgentCommandRunRoute {
   const live = input.holds ?? holds;
-  const matching = live.some((h) => h.editorId === input.surfaceEditorId);
+  const own = live.filter((h) => h.editorId === input.surfaceEditorId);
   const foreign = live.some(
     (h) => h.editorId !== "*" && h.editorId !== input.surfaceEditorId,
   );
-  if (foreign && !matching) return { kind: "review", reason: "foreign-apply" };
-  if (matching) return { kind: "execute", reason: "accepted-apply" };
+  if (foreign && own.length === 0) {
+    return { kind: "review", reason: "foreign-apply" };
+  }
+  if (own.length > 0) {
+    const presented =
+      typeof input.proposalId === "string" && input.proposalId.length > 0
+        ? input.proposalId
+        : "";
+    const bound = own.some(
+      (h) =>
+        Boolean(h.proposalId) &&
+        h.proposalId === presented &&
+        (!h.commandId || h.commandId === input.commandId),
+    );
+    if (bound) return { kind: "execute", reason: "accepted-apply" };
+    return { kind: "review", reason: "sibling-apply" };
+  }
   // spec.mutates === false 才立刻执行；缺 spec 当会改文档（失败即关闭）。
   if (input.mutates === false) return { kind: "execute", reason: "readonly" };
   return { kind: "review", reason: "untrusted-agent" };
@@ -188,7 +290,7 @@ export function parkedFromPending(
     typeof pending.params.value === "string" ? "" : pending.params.value;
   return {
     proposal,
-    params: { ...pending.params },
+    params: withApplyToken({ ...pending.params }, proposal.proposalId, pending.spec.id),
     inverseParams: { ...pending.params, value: inverseValue },
     editorId: pending.editorId,
   };
@@ -235,7 +337,7 @@ export function parkedFromMutatingRun(
   if (!validReviewProposal(proposal)) return null;
   return {
     proposal,
-    params: { ...(params || {}) },
+    params: withApplyToken({ ...(params || {}) }, proposal.proposalId, id),
     inverseParams: { ...(params || {}) },
     editorId: surface.editorId,
   };
@@ -273,9 +375,13 @@ export function gateSurfaceForAgent(
         surfaceEditorId: surface.editorId,
         commandId: id,
         mutates: spec ? spec.mutates : undefined,
+        proposalId: proposalIdFromApplyToken(params),
       });
       if (route.kind === "execute") {
-        return surface.run(id, params);
+        if (route.reason === "accepted-apply") {
+          consumeReviewApplyToken(id, params);
+        }
+        return surface.run(id, stripReviewApplyToken(params));
       }
       const parked = parkedFromMutatingRun(surface, id, params);
       if (!parked) {
@@ -305,11 +411,21 @@ export async function applyParkedReview(
   surface: PluginCommandSurface,
   parked: ParkedReview,
 ): Promise<PluginCommandResult> {
-  return withReviewApply(() => surface.run(parked.proposal.commandId, parked.params), {
+  const hold: ReviewApplyHold = {
     editorId: parked.editorId,
     commandId: parked.proposal.commandId,
     proposalId: parked.proposal.proposalId,
-  });
+  };
+  return withReviewApply(async () => {
+    if (isAgentGatedSurface(surface)) {
+      return surface.run(parked.proposal.commandId, parked.params);
+    }
+    consumeReviewApplyToken(parked.proposal.commandId, parked.params);
+    return surface.run(
+      parked.proposal.commandId,
+      stripReviewApplyToken(parked.params),
+    );
+  }, hold);
 }
 
 export function createReviewGatedReader(

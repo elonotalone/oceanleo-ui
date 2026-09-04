@@ -40,6 +40,7 @@ export {
   reviewApplyHeld,
   resetReviewApplyHolds,
   routeAgentCommandRun,
+  REVIEW_APPLY_TOKEN_KEY,
   type AgentCommandRunRoute,
   type ReviewApplyHold,
 } from "./gate";
