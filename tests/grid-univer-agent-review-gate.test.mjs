@@ -309,8 +309,12 @@ test("§1 每一条会改表格的 agent 指令都只落成审阅提案，Facade
     ids.length >= 20,
     `只有 ${ids.length} 条会改文档的命令，命令表可疑`,
   );
+  // 逐条收齐再一次性断言：中途 `assert` 会让循环停在第一条坏命令上，
+  // 而下一个撞上这条闸的人最想知道的恰恰是**一共漏了哪几条**。
   const leaked = [];
   const unparked = [];
+  const notSent = [];
+  const bumped = [];
   for (const id of ids) {
     const env = freshEnv();
     const result = await env.surface.run(id, argsFor(id));
@@ -319,13 +323,10 @@ test("§1 每一条会改表格的 agent 指令都只落成审阅提案，Facade
     }
     const parked = hostReviewSession.snapshot().parked;
     if (!parked || parked.proposal.commandId !== id) unparked.push(id);
-    assert.equal(result.ok, true, `${id} 应当成功送审`);
-    assert.match(result.message, /审阅/, `${id} 的回执要告诉用户改动去了审阅`);
-    assert.equal(
-      result.revision,
-      3,
-      `${id} 接受前 revision 不许前进（规范 §7 判据 3）`,
-    );
+    if (!result.ok || !/审阅/.test(result.message)) {
+      notSent.push(`${id}（回执：${result.message}）`);
+    }
+    if (result.revision !== 3) bumped.push(`${id} → ${result.revision}`);
   }
   assert.deepEqual(
     leaked,
@@ -336,6 +337,16 @@ test("§1 每一条会改表格的 agent 指令都只落成审阅提案，Facade
     unparked,
     [],
     `这些指令没把提案交给宿主收件箱，审阅面板会是空的：${unparked.join(", ")}`,
+  );
+  assert.deepEqual(
+    notSent,
+    [],
+    `这些指令没告诉用户改动去了审阅：\n${notSent.join("\n")}`,
+  );
+  assert.deepEqual(
+    bumped,
+    [],
+    `接受前 revision 不许前进（规范 §7 判据 3）：${bumped.join(", ")}`,
   );
 });
 
