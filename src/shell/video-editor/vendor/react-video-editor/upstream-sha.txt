@@ -1,0 +1,7 @@
+repo=https://github.com/designcombo/react-video-editor
+commit=9a8c5296da4b258f66dfb7ad73de96be62478bca
+date=2026-06-29
+package=@openvideo/basic@0.1.6
+license=OpenVideo License (see LICENSE)
+engine=@openvideo/core@1.3.1 MIT + @openvideo/timeline@1.3.1 MIT + @openvideo/engine-pixi@1.3.1 MIT
+export=mediabunny (use-export.ts / engine-pixi Compositor); Remotion not in this commit
