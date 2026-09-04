@@ -9,10 +9,11 @@
  *   所以导出这一步仍然交给 `GridWorkbookExport.ts` 那条已经被 21 份测试守住的老路：
  *   Univer 快照 → `GridSheet[]` → 现有 exceljs 链。**换核不等于把导出保真度一起换掉。**
  *
- * 类型全部从 `@univerjs/presets` 以 `import type` 取（元包 re-export 了 `@univerjs/core`）。
- * 这是纯类型引用，编译后一个字节都不剩 —— 所以本模块**不是**重内核叶子，
- * 可以被测试直接加载，也不会把 Univer 拖进任何 chunk（`W01-deps.md` §4）。
+ * 类型从 `@univerjs/presets` 以 `import type` 取；运行时只从同一包拿
+ * `getPlainText`（A-64：不许自写 dataStream 切片器）。`@univerjs/core`
+ * 不是直接依赖，解析不到。本模块只被 Univer 叶子 `GridUniverStage` 与测试加载。
  */
+import { getPlainText } from "@univerjs/presets";
 import type {
   ICellData,
   IRange,
@@ -381,6 +382,29 @@ function rangeToMerge(range: IRange): GridMerge {
   };
 }
 
+function cellPlainTextFromDocument(cell: ICellData): string {
+  const dataStream = cell.p?.body?.dataStream;
+  if (typeof dataStream !== "string" || !dataStream) return "";
+  return getPlainText(dataStream);
+}
+
+function cellHasStyledRuns(cell: ICellData): boolean {
+  const runs = cell.p?.body?.textRuns;
+  if (!Array.isArray(runs)) return false;
+  return runs.some((run) => {
+    const ts =
+      run && typeof run === "object"
+        ? (run as { ts?: { bl?: unknown; cl?: unknown } }).ts
+        : undefined;
+    return Boolean(ts?.bl || ts?.cl);
+  });
+}
+
+function cellTextFallback(cell: ICellData): string {
+  if (cell.v !== undefined && cell.v !== null) return String(cell.v);
+  return cellPlainTextFromDocument(cell);
+}
+
 /**
  * Univer 活快照里 `cell.s` 经常是样式表 id，真样式在 `workbook.styles[id]`。
  * `Workbook.save()` 只是深拷贝这份快照，不会把 id 展开成对象。
@@ -550,6 +574,7 @@ export function univerSnapshotToGridSheets(
       Array<string>(colCount).fill(""),
     );
     const formats: Record<string, GridCellFormat> = {};
+    let richRunsDropped = 0;
     for (const rowKey of Object.keys(cellData)) {
       const row = Number(rowKey);
       if (!Number.isInteger(row) || row < 0 || row >= rowCount) continue;
@@ -568,12 +593,13 @@ export function univerSnapshotToGridSheets(
               row - master.row,
               col - master.col,
             );
-          } else if (cell.v !== undefined && cell.v !== null) {
-            rows[row][col] = String(cell.v);
+          } else {
+            rows[row][col] = cellTextFallback(cell);
           }
-        } else if (cell.v !== undefined && cell.v !== null) {
-          rows[row][col] = String(cell.v);
+        } else {
+          rows[row][col] = cellTextFallback(cell);
         }
+        if (cellHasStyledRuns(cell)) richRunsDropped += 1;
         const format = univerStyleToGridFormat(
           resolveUniverStyle(cell.s, data?.styles),
         );
@@ -592,6 +618,11 @@ export function univerSnapshotToGridSheets(
         cfBySheet.get(sheetId) ||
         [],
     });
+    if (notes && richRunsDropped > 0) {
+      notes.dropped.push(
+        `${richRunsDropped} 个格子的段内加粗/颜色没有带过去（一格一份格式装不下同一格里多段不同样式）`,
+      );
+    }
   }
   return result;
 }

@@ -727,3 +727,68 @@ test("导出：xlsx 打开后从格还是公式，不是写死的数字", async 
   assert.notEqual(ws.getCell("B2").value, 14);
   assert.notEqual(ws.getCell("B2").value, "14");
 });
+
+const richParagraph = {
+  id: "d1",
+  documentStyle: {},
+  body: {
+    dataStream: "加粗标题\r\n",
+    textRuns: [{ ts: { bl: 1, cl: { rgb: "#166534" } }, st: 0, ed: 4 }],
+  },
+};
+
+function richTextWorkbook() {
+  return {
+    id: "wb",
+    name: "wb",
+    appVersion: GRID_UNIVER_APP_VERSION,
+    sheetOrder: ["s1"],
+    styles: {},
+    sheets: {
+      s1: {
+        id: "s1",
+        name: "销售",
+        rowCount: 20,
+        columnCount: 8,
+        mergeData: [],
+        cellData: {
+          0: { 0: { p: richParagraph } },
+          1: { 0: { v: "纯值标题", t: 1, p: richParagraph } },
+          2: { 0: { v: "普通", t: 1 } },
+        },
+      },
+    },
+  };
+}
+
+test("导出：格子只有富文本 p、没有 v 时，字必须还在，不能导出成空格", () => {
+  const notes = { dropped: [] };
+  const sheets = univerSnapshotToGridSheets(richTextWorkbook(), notes);
+  assert.equal(
+    sheets[0].rows[0][0],
+    "加粗标题",
+    "用户在格子里写的字在 p.dataStream 里。不读 p，xlsx 那一格就是空的。",
+  );
+  assert.notEqual(sheets[0].rows[0][0], "");
+  assert.equal(sheets[0].rows[1][0], "纯值标题");
+  assert.equal(sheets[0].rows[2][0], "普通");
+  assert.match(
+    notes.dropped.join("；"),
+    /段内加粗\/颜色/,
+    "同一格里多段样式装不进 GridCellFormat，必须点名，不许假装现有字段能表达。",
+  );
+});
+
+test("导出：xlsx 打开后只有 p 的格子不是空的", async () => {
+  const sheets = univerSnapshotToGridSheets(richTextWorkbook());
+  const workbook = await openRouteXlsx(sheets);
+  const ws = workbook.getWorksheet("销售");
+  assert.equal(
+    ws.getCell("A1").value,
+    "加粗标题",
+    "用户打开导出的 xlsx，A1 必须还有字。切掉 getPlainText 只会留下空格。",
+  );
+  assert.notEqual(ws.getCell("A1").value, null);
+  assert.notEqual(ws.getCell("A1").value, "");
+  assert.equal(ws.getCell("A2").value, "纯值标题");
+});
