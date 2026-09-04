@@ -79,10 +79,11 @@ test("create-time chrome stays mounted: hide by display, do not dispose the proj
   };
   applyVideoDesigncomboChromeDom(root, chrome);
   assert.ok(hidden.length >= 3);
-  assert.doesNotMatch(leafCode, /engine\.dispose\(\);\s*engineRef/);
   assert.match(leaf, /engine\.dispose\(\)/);
   const disposeCount = leaf.split("engine.dispose(").length - 1;
   assert.equal(disposeCount, 1);
+  assert.doesNotMatch(leaf, /setMode[\s\S]{0,120}dispose/);
+  assert.match(leaf, /applyVideoDesigncomboChromeDom/);
 });
 
 test("legacy timeline UI is still in the tree", () => {
