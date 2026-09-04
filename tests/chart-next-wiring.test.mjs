@@ -107,7 +107,9 @@ test("dual-axis create entry and secondary-axis details are in the shared toolba
   const workbench = read("src/shell/chart-editor/use-chart-workbench.ts");
   assert.match(toolbar, /id: "y-dual"/);
   assert.match(toolbar, /editor\.setYAxisCount/);
-  assert.match(advanced, /y2-min/);
+  assert.match(advanced, /axisKey: "x" \| "y" \| "y2"/);
+  assert.match(advanced, /axisControls\("y2"/);
+  assert.match(advanced, /\$\{axisKey\}-min/);
   assert.match(advanced, /editor\.setAxis\(axisKey, patch, axisIndex\)/);
   assert.match(workbench, /setYAxisCount:/);
   assert.match(workbench, /loadDocument:/);
