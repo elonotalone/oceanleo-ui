@@ -233,15 +233,23 @@ const nextStageMarkerUrl = dataModule(`
 const dynamicStubUrl = dataModule(`
   import { createElement, useEffect, useState } from ${JSON.stringify(reactUrl)};
   export default function dynamic(loader) {
+    let resolved = null;
+    let err = null;
+    const pending = Promise.resolve(typeof loader === "function" ? loader() : loader)
+      .then((mod) => {
+        resolved = typeof mod === "function" ? mod : mod && (mod.default || mod);
+        return resolved;
+      })
+      .catch((error) => {
+        err = error;
+      });
     return function DynamicLoaded(props) {
-      const [C, setC] = useState(null);
+      const [, bump] = useState(0);
       useEffect(() => {
-        Promise.resolve(typeof loader === "function" ? loader() : loader).then((mod) => {
-          const resolved = typeof mod === "function" ? mod : mod && (mod.default || mod);
-          setC(() => resolved || null);
-        });
+        pending.then(() => bump((n) => n + 1));
       }, []);
-      return C ? createElement(C, props) : null;
+      if (err) throw err;
+      return resolved ? createElement(resolved, props) : null;
     };
   }
 `);
@@ -465,11 +473,13 @@ test("Model3DRoute 翻到 next 时，加载函数真的交出叶子并带上 ite
         }),
     );
     try {
-      for (let i = 0; i < 8; i += 1) {
+      for (let i = 0; i < 40; i += 1) {
         if (mounted.container.querySelector("[data-testid=model3d-next-stage-loaded]")) {
           break;
         }
-        await act(async () => {});
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        });
       }
       const marker = mounted.container.querySelector(
         "[data-testid=model3d-next-stage-loaded]",
