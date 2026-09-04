@@ -178,11 +178,24 @@ const PARKED_OK: PluginCommandResult = {
   message: "改动已送审阅，接受前不会写入文档。",
 };
 
+// 哪些面已经包过闸、包给了哪个会话。取面处就地包闸（`surface.ts`）之后，同一份面
+// 可能既被宿主的 reader 包过、又走一次就地包闸；套两层会让一条改动产出两份提案。
+const GATED_BY = new WeakMap<PluginCommandSurface, ReviewSession>();
+
+/** 这份面是否已经包给了这个审阅会话（包闸的幂等判据）。 */
+export function isAgentGatedSurface(
+  surface: PluginCommandSurface,
+  session: ReviewSession = hostReviewSession,
+): boolean {
+  return GATED_BY.get(surface) === session;
+}
+
 export function gateSurfaceForAgent(
   surface: PluginCommandSurface,
   session: ReviewSession = hostReviewSession,
 ): PluginCommandSurface {
-  return {
+  if (isAgentGatedSurface(surface, session)) return surface;
+  const gated: PluginCommandSurface = {
     editorId: surface.editorId,
     describe: () => surface.describe(),
     state: () => stateForAgent(surface),
@@ -214,6 +227,8 @@ export function gateSurfaceForAgent(
       };
     },
   };
+  GATED_BY.set(gated, session);
+  return gated;
 }
 
 export async function applyParkedReview(

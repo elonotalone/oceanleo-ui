@@ -56,15 +56,17 @@ import {
   buildEditorCommandContext,
   createEditorCommandIntake,
   createEditorCommandSession,
-  readEditorCommandSurface,
   takeFreshCommandMessages,
   type EditorCommandPending,
   type EditorCommandSurfaceReader,
   type OpsPatch,
   type OpsSchema,
 } from "../lib/fn-agent";
-// 只读 W1 的指令面单例（合同 §3.1）。这一面不实现指令、不注册指令，只调用。
-import { currentPluginCommandSurface } from "./plugin-command";
+// 只读 W1 的指令面（合同 §3.1）。这一面不实现指令、不注册指令，只调用。
+// 取面一律走 `readAgentCommandSurface`：它要么给一份包过审阅闸的面，要么给 null。
+// 直接读 W1 注册表交出来的那份面只包了参数校验，agent 拿到它就能当场写文档
+// （`PARENT-red-1`：那条回落是失败即开放）——所以这份文件不再引它。
+import { readAgentCommandSurface } from "./agent-review/surface";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
@@ -145,8 +147,9 @@ export function useEditorCommandBridge(opts: {
   /** 关掉就完全不看右边、也不解析指令（默认开）。 */
   enabled?: boolean;
   /**
-   * 指令面读取器。不传就读 W1 的模块级单例 `currentPluginCommandSurface()`；
-   * `registerEditorCommandSurfaceReader()` 注册过的会更优先（测试/特殊宿主用）。 */
+   * 指令面读取器。不传就读 W1 的模块级指令面注册表；
+   * `registerEditorCommandSurfaceReader()` 注册过的会更优先（测试/特殊宿主用）。
+   * 两条路都经 `readAgentCommandSurface()` 就地包审阅闸，读不到就是右边没开编辑器。 */
   surfaceReader?: EditorCommandSurfaceReader | null;
   /** 当前会话 id：执行结果会回报给它，好让 agent 接着走下一步。 */
   taskId?: string | null;
@@ -189,9 +192,8 @@ export function useEditorCommandBridge(opts: {
   const handleMessage = useCallback(
     async (messageId: number, content: string) => {
       const session = sessionRef.current;
-      const surface =
-        readEditorCommandSurface(liveRef.current.surfaceReader) ||
-        currentPluginCommandSurface();
+      // 拿不到面就是拿不到（`offer` 会告诉用户右边没开编辑器）；绝不回落到没包闸的原始面。
+      const surface = readAgentCommandSurface(liveRef.current.surfaceReader);
       const offer = await session.offer({ messageId, content, surface });
       if (offer.kind === "none") return;
       if (offer.kind === "reject") {
@@ -272,8 +274,7 @@ export function useEditorCommandBridge(opts: {
     (prompt: string) => {
       if (!liveRef.current.enabled) return "";
       return buildEditorCommandContext(
-        readEditorCommandSurface(liveRef.current.surfaceReader) ||
-          currentPluginCommandSurface(),
+        readAgentCommandSurface(liveRef.current.surfaceReader),
         { query: prompt },
       );
     },
@@ -493,8 +494,9 @@ export interface FunctionAgentChatProps {
    * 可解析，行为与接线之前逐字一致。传 `false` 彻底关掉这条通道。 */
   enableEditorCommands?: boolean;
   /**
-   * 指令面读取器（合同 §3.1 的 `currentPluginCommandSurface`）。不传则读
-   * `registerEditorCommandSurfaceReader()` 注册的那个模块级单例。 */
+   * 指令面读取器（合同 §3.1）。不传则读 `registerEditorCommandSurfaceReader()` 注册的
+   * 那个模块级单例，再退到 W1 的指令面注册表 —— 无论走哪一条，交到 agent 手上的都是
+   * 包过审阅闸的面。 */
   editorCommandSurface?: EditorCommandSurfaceReader | null;
 }
 

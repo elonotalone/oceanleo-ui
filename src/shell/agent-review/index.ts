@@ -22,8 +22,10 @@ export {
   subscribeEditorChips,
   resetAgentReviewInbox,
 } from "./inbox";
+export { readAgentCommandSurface } from "./surface";
 export {
   gateSurfaceForAgent,
+  isAgentGatedSurface,
   createReviewGatedReader,
   applyParkedReview,
   parkedFromPending,
