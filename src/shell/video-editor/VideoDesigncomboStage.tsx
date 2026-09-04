@@ -163,8 +163,9 @@ export function VideoDesigncomboStage({
           : null;
         if (schema === LEGACY_TIMELINE_SCHEMA || timelineDoc) {
           let doc: unknown = timelineDoc;
-          if (!doc && (projectUrl || item.url)) {
-            const blob = await fetchMediaBlob(projectUrl || item.url, {
+          const sourceUrl = projectUrl || item.url;
+          if (!doc && sourceUrl) {
+            const blob = await fetchMediaBlob(sourceUrl, {
               maxBytes: 20 * 1024 * 1024,
             });
             doc = parseEnvelope(await blob.text());
@@ -300,10 +301,14 @@ export function VideoDesigncomboStage({
         return;
       }
       const atUs = playheadUs;
+      const controlValue =
+        command.value === null || command.value === undefined
+          ? undefined
+          : command.value;
       let result = runVideoDesigncomboCommand(command.controlId, projectRef.current, {
         clipId: selectedClipId,
         atUs,
-        value: command.value,
+        value: controlValue,
       });
       if (!result.ok && command.controlId === "crop-frame" && selectedClipId) {
         result = cropOpenVideoClip(projectRef.current, selectedClipId, {
