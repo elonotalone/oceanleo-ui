@@ -29,6 +29,23 @@ test("gltf roundtrip produces a real GLB and keeps name, translation, color", as
     true,
     `kept=${kept.join(",")}`,
   );
+  // 上面那条 kept 是产品 diffGltfInspect 自己算的（A-102 最弱档，nearlyEqual 的 epsilon
+  // 一放宽它就跟着绿）。这里逐通道锚在字面量上：夹具 RedMat 进去是 [0.9, 0.2, 0.4, 1]
+  // （四通道互不相等，A-103），证伪树实测 GLB 往返后逐位无损，故容差只给 1e-3。
+  // 期望值不许写 result.inbound.baseColorFactors——那是被测模块算出来的。
+  const outboundColor = result.outbound.baseColorFactors[0];
+  const expectedColor = [0.9, 0.2, 0.4, 1];
+  assert.ok(
+    Array.isArray(outboundColor) && outboundColor.length === 4,
+    `玫红色模型导出后颜色丢了：进去 [0.9,0.2,0.4,1]，出来 ${JSON.stringify(outboundColor)}`,
+  );
+  ["R", "G", "B", "A"].forEach((channel, index) => {
+    assert.ok(
+      Math.abs(outboundColor[index] - expectedColor[index]) <= 1e-3,
+      `玫红色模型导出后变了色：${channel} 通道进去 ${expectedColor[index]}，出来 ${outboundColor[index]}` +
+        `（整体进去 [0.9,0.2,0.4,1]，出来 ${JSON.stringify(outboundColor)}）`,
+    );
+  });
   assert.equal(result.outbound.nodeNames.includes("RoundtripBox"), true);
   assert.equal(
     result.outbound.translations.some(
@@ -71,7 +88,8 @@ test("dropped extras stay named when the exporter strips them", () => {
     materials: [
       {
         name: "Red",
-        pbrMetallicRoughness: { baseColorFactor: [1, 0, 0, 1] },
+        // 四通道互不相等（A-103），与 roundtripFixtureGltf 同值
+        pbrMetallicRoughness: { baseColorFactor: [0.9, 0.2, 0.4, 1] },
       },
     ],
   });
@@ -83,7 +101,7 @@ test("dropped extras stay named when the exporter strips them", () => {
     materials: [
       {
         name: "Red",
-        pbrMetallicRoughness: { baseColorFactor: [1, 0, 0, 1] },
+        pbrMetallicRoughness: { baseColorFactor: [0.9, 0.2, 0.4, 1] },
       },
     ],
   });

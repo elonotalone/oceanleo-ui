@@ -183,7 +183,9 @@ export function roundtripFixtureGltf() {
       {
         name: "RedMat",
         pbrMetallicRoughness: {
-          baseColorFactor: [1, 0, 0, 1],
+          // 测试夹具（不是产品行为）。四通道故意互不相等（A-103）：
+          // 曾是 [1,0,0,1]，G、B 同为 0，G↔B 对调后逐字相同，闸看不见。
+          baseColorFactor: [0.9, 0.2, 0.4, 1],
           metallicFactor: 0,
           roughnessFactor: 0.5,
         },
