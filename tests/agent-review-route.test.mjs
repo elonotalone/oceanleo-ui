@@ -124,7 +124,11 @@ test("接受 A 正在落地时，B 的 mutates run 零写入（产品路径，�
   const gatedB = gateSurfaceForAgent(b.surface, sessionB);
   await withReviewApply(
     async () => {
-      assert.equal(reviewApplyHeld(), true);
+      assert.equal(
+        reviewApplyHeld(),
+        false,
+        "JS 裸调仍能传 undefined；必须失败即关闭，不能「任何一件在落地就真」",
+      );
       assert.equal(reviewApplyHeld("grid"), true);
       assert.equal(reviewApplyHeld("image"), false, "按件查询：图片不该看到表格的 apply");
       const sneak = await gatedB.run("image.paint", { value: "sneak" });
@@ -134,7 +138,8 @@ test("接受 A 正在落地时，B 的 mutates run 零写入（产品路径，�
     },
     { editorId: "grid", commandId: "grid.set-cell", proposalId: "p-a" },
   );
-  assert.equal(reviewApplyHeld(), false);
+  assert.equal(reviewApplyHeld("grid"), false);
+  assert.equal(reviewApplyHeld("image"), false);
   assert.equal(b.calls.length, 0);
 });
 
@@ -230,28 +235,35 @@ test("applyParkedReview 把持有绑在这份提案的 proposalId 上，旁路�
 
 test("reviewApplyHeld 已导出，且按件而不是全局一把钥匙", async () => {
   resetReviewApplyHolds();
-  assert.equal(reviewApplyHeld(), false);
+  assert.equal(reviewApplyHeld("grid"), false);
+  assert.equal(reviewApplyHeld("image"), false);
   await withReviewApply(
     async () => {
-      assert.equal(reviewApplyHeld(), true);
+      assert.equal(
+        reviewApplyHeld(),
+        false,
+        "裸调必须假，不能靠「有持有就真」解锁全部编辑器",
+      );
+      assert.equal(reviewApplyHeld(""), false, "空 editorId 失败即关闭");
       assert.equal(reviewApplyHeld("grid"), true);
       assert.equal(reviewApplyHeld("image"), false);
     },
-    { editorId: "grid" },
+    { editorId: "grid", commandId: "grid.set-cell", proposalId: "p-held" },
   );
 });
 
-test("未指明 editorId 的 withReviewApply（旧调用）不把所有面的门锁打开", async () => {
+test("漏传 withReviewApply 的 hold 必须当场抛，不许造出通配持有", async () => {
   resetReviewApplyHolds();
-  const b = stubSurface("image", "image.paint");
-  const sessionB = createReviewSession();
-  const gatedB = gateSurfaceForAgent(b.surface, sessionB);
-  await withReviewApply(async () => {
-    assert.equal(reviewApplyHeld("grid"), true, "查询口仍认旧调用，W03 探针测试不破");
-    const sneak = await gatedB.run("image.paint", { value: "open-all" });
-    assert.match(sneak.message, /审阅/);
-    assert.equal(b.calls.length, 0, "`*` 持有不得放行产品面");
-  });
+  await assert.rejects(
+    () => withReviewApply(async () => {}),
+    /必须传入/,
+  );
+  await assert.rejects(
+    () => withReviewApply(async () => {}, { editorId: "*" }),
+    /通配/,
+  );
+  assert.equal(reviewApplyHeld("grid"), false);
+  assert.equal(reviewApplyHeld("image"), false);
 });
 
 test("显式 reader 优先于注册表；两条非空路径都包闸", async () => {

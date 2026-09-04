@@ -64,6 +64,19 @@ test("闸的 run 只照 route.kind 分发，review 分支必须在", () => {
     "全局 applyDepth 放行所有面 = V3-red-6",
   );
   assert.match(gate, /export function reviewApplyHeld/);
+  assert.match(gate, /export function reviewApplyHeld\(\s*editorId: string/);
+  assert.doesNotMatch(
+    gate,
+    /if \(!editorId\) return true/,
+    "裸调 reviewApplyHeld() 返回真 = V3-red-6 潜伏口",
+  );
+  assert.doesNotMatch(
+    gate,
+    /hold \?\? \{ editorId: "\*" \}/,
+    "漏传 hold 造出 * 通配持有 = 潜伏失败即开放",
+  );
+  assert.doesNotMatch(gate, /hold\?: ReviewApplyHold/);
+  assert.doesNotMatch(gate, /editorId\?: string/);
 });
 
 test("AgentChat 挂了审阅面板、chips、选区拼装与 agent 闸", () => {

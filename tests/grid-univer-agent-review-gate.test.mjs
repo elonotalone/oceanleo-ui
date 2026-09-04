@@ -561,17 +561,64 @@ test("§3b 用户接受宿主 park 的提案，改动必须真的落地，而不
 
 test("§3b 探针只在宿主 apply 期为真，平时为假（否则它等于没闸）", async () => {
   assert.equal(
-    gridHostApplyInProgress(),
+    gridHostApplyInProgress("grid.insert-row"),
     false,
     "平时就为真的话，任何 agent 指令都能直接写表",
   );
   let inside = null;
-  await withReviewApply(() => {
-    inside = gridHostApplyInProgress();
-    return Promise.resolve(null);
-  });
+  let sibling = null;
+  await withReviewApply(
+    () => {
+      inside = gridHostApplyInProgress("grid.insert-row");
+      sibling = gridHostApplyInProgress("grid.set-cell");
+      return Promise.resolve(null);
+    },
+    {
+      editorId: "grid",
+      commandId: "grid.insert-row",
+      proposalId: "probe",
+    },
+  );
   assert.equal(inside, true, "宿主 apply 期探不到 ⇒ 接受了也落不了地");
-  assert.equal(gridHostApplyInProgress(), false, "apply 结束要退回假");
+  assert.equal(
+    sibling,
+    false,
+    "落地 insert-row 时 set-cell 必须探不到，否则第 2 条会写穿",
+  );
+  assert.equal(
+    gridHostApplyInProgress("grid.insert-row"),
+    false,
+    "apply 结束要退回假",
+  );
+});
+
+test("§3b 宿主落地第 1 条时，第 2 条 agent 指令不得写穿", async () => {
+  const env = freshEnv();
+  await env.surface.run("grid.set-cell", { row: 0, column: 0, value: "A" });
+  const parked = hostReviewSession.snapshot().parked;
+  assert.ok(parked);
+  assert.equal(parked.proposal.commandId, "grid.set-cell");
+  assert.equal(env.writes().length, 0);
+  await withReviewApply(
+    async () => {
+      const sneak = await env.surface.run("grid.insert-row", {
+        row: 0,
+        count: 1,
+      });
+      assert.match(sneak.message, /审阅/);
+      assert.equal(
+        env.writes().length,
+        0,
+        "落地 set-cell 的窗口里 insert-row 不得写进表格",
+      );
+    },
+    {
+      editorId: "grid",
+      commandId: parked.proposal.commandId,
+      proposalId: parked.proposal.proposalId,
+    },
+  );
+  assert.equal(env.writes().length, 0);
 });
 
 // ── §4 agent 看得见多少条指令 ───────────────────────────────────────────────

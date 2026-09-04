@@ -142,11 +142,13 @@ export function resetGridApplyTokens(): void {
 
 /**
  * 宿主此刻是不是正在把一条**用户已接受**的审阅落地。
- * 改读 W02 导出的 `reviewApplyHeld("grid")`（A-47）：按件查询，不再用假
- * surface 反推全局 `applyDepth`（那会让接受 A 时 B 也被当成正在落地）。
+ * 改读 W02 导出的 `reviewApplyHeld("grid", { commandId })`（A-68）：
+ * 按正在落地的那条命令查询。不传 `commandId` 一律假；落地 set-cell 时
+ * insert-row 探不到（否则接受第 1 条的窗口会放行第 2 条）。
  */
-export function gridHostApplyInProgress(): boolean {
-  return reviewApplyHeld("grid");
+export function gridHostApplyInProgress(commandId: string): boolean {
+  if (typeof commandId !== "string" || commandId.length === 0) return false;
+  return reviewApplyHeld("grid", { commandId });
 }
 
 // ── 命令分类 ────────────────────────────────────────────────────────────────
@@ -358,7 +360,7 @@ export function runGridAgentCommand(
 
   // ④ 用户点过接受，这才写。两种形态都算数：我自己发的一次性令牌，
   //    或者宿主闸正在落地一条它自己 park 的、已被接受的提案。
-  if (consumeGridApplyToken(id, params) || gridHostApplyInProgress()) {
+  if (consumeGridApplyToken(id, params) || gridHostApplyInProgress(id)) {
     if (!port) return { ...NOT_READY, revision };
     const outcome = runGridUniverCommand(id, port, toCommandArgs(params));
     if (!outcome.ok) return { ok: false, message: outcome.reason, revision };

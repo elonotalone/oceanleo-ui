@@ -61,9 +61,8 @@ function stateForAgent(
  * 关掉。同一编辑器里两条待审提案时，按件持有仍会让接受 #1 的窗口放行 #2。
  * 所以判定必须对上这一份提案（或它绑着的一次性令牌），对不上就送审。
  *
- * `editorId: "*"` 只给旧调用 `withReviewApply(fn)`（没说是哪件、哪份提案）用：
- * `reviewApplyHeld("grid")` 会认它，但 `routeAgentCommandRun` **不**把它当成
- * 放行 —— 否则又变回失败即开放。
+ * 没有通配档。漏传 `editorId` / `hold` 在类型上就过不了；运行时空字符串与
+ * `editorId: "*"` 一律失败即关闭（A-68：不许再由漏参隐式解锁全部编辑器）。
  */
 export type ReviewApplyHold = {
   editorId: string;
@@ -152,9 +151,17 @@ function withApplyToken(
 
 export async function withReviewApply<T>(
   fn: () => Promise<T>,
-  hold?: ReviewApplyHold | null,
+  hold: ReviewApplyHold,
 ): Promise<T> {
-  holds.push(hold ?? { editorId: "*" });
+  if (!hold || typeof hold.editorId !== "string" || hold.editorId.length === 0) {
+    throw new Error(
+      "withReviewApply 必须传入正在落地的那份提案（editorId 必填），不许靠漏参解锁全部编辑器。",
+    );
+  }
+  if (hold.editorId === "*") {
+    throw new Error('withReviewApply 不许使用 editorId "*" 通配持有。');
+  }
+  holds.push(hold);
   try {
     return await fn();
   } finally {
@@ -165,13 +172,24 @@ export async function withReviewApply<T>(
 /**
  * 宿主此刻是不是正在把一条**用户已接受**的审阅落地。
  *
- * 不传 `editorId`：只要有持有就为真（W03 要的三行读取口）。
- * 传了：只认这件编辑器，或旧的未指明持有（`*`）。
+ * `editorId` 必填：空字符串 / 漏传（JS 里仍是 `undefined`）一律假。
+ * 可选的 `match` 把查询收到命令或提案：对不上就假（失败即关闭）。
  */
-export function reviewApplyHeld(editorId?: string): boolean {
-  if (holds.length === 0) return false;
-  if (!editorId) return true;
-  return holds.some((h) => h.editorId === "*" || h.editorId === editorId);
+export function reviewApplyHeld(
+  editorId: string,
+  match?: { commandId?: string; proposalId?: string },
+): boolean {
+  if (typeof editorId !== "string" || editorId.length === 0) return false;
+  return holds.some((h) => {
+    if (h.editorId !== editorId) return false;
+    if (match?.proposalId) {
+      if (!h.proposalId || h.proposalId !== match.proposalId) return false;
+    }
+    if (match?.commandId) {
+      if (!h.commandId || h.commandId !== match.commandId) return false;
+    }
+    return true;
+  });
 }
 
 export function resetReviewApplyHolds(): void {
@@ -212,9 +230,7 @@ export function routeAgentCommandRun(input: {
 }): AgentCommandRunRoute {
   const live = input.holds ?? holds;
   const own = live.filter((h) => h.editorId === input.surfaceEditorId);
-  const foreign = live.some(
-    (h) => h.editorId !== "*" && h.editorId !== input.surfaceEditorId,
-  );
+  const foreign = live.some((h) => h.editorId !== input.surfaceEditorId);
   if (foreign && own.length === 0) {
     return { kind: "review", reason: "foreign-apply" };
   }
@@ -441,3 +457,21 @@ export function createReviewGatedReader(
     return null;
   };
 }
+
+/**
+ * 编译期闸（A-68 / A-53）：`editorId` / `hold` 若再变回可选，整树 `tsc` 失败。
+ * `undefined extends T` 在 T 含 undefined 时为真，于是类型塌成 `never`，
+ * 下面的字面量赋不上去。
+ */
+type ReviewApplyHeldEditorId = Parameters<typeof reviewApplyHeld>[0];
+export type ReviewApplyHeldEditorIdRequired =
+  undefined extends ReviewApplyHeldEditorId ? never : ReviewApplyHeldEditorId;
+export const reviewApplyHeldEditorIdIsRequired: ReviewApplyHeldEditorIdRequired =
+  "grid";
+
+type WithReviewApplyHoldArg = Parameters<typeof withReviewApply>[1];
+export type WithReviewApplyHoldRequired =
+  undefined extends WithReviewApplyHoldArg ? never : WithReviewApplyHoldArg;
+export const withReviewApplyHoldIsRequired: WithReviewApplyHoldRequired = {
+  editorId: "grid",
+};
