@@ -66,17 +66,49 @@ const RANGE = {
   ],
 };
 
+/** 直接读成品 option，按系列名取 data（不走 decode 往返）。 */
+function seriesDataFromFinishedOption(option, seriesName) {
+  const item = option.series.find((entry) => entry.name === seriesName);
+  assert.ok(item, `导出成品 option 里必须有名为「${seriesName}」的系列`);
+  return item.data;
+}
+
 test("typed artifact is option + data, and HTML wrap is embeddable", () => {
   const { artifact, document, ingest } = chartTypedArtifactFromRangeSnapshot(RANGE);
   assert.equal(artifact.schema, CHART_TYPED_ARTIFACT_SCHEMA);
   assert.ok(artifact.option.series.length >= 1);
   assert.ok(artifact.data.source.length >= 2);
   assert.equal(ingest.recommendation.type, "bar");
+
+  const revenueInArtifact = seriesDataFromFinishedOption(artifact.option, "收入");
+  const costInArtifact = seriesDataFromFinishedOption(artifact.option, "成本");
+  assert.deepEqual(
+    revenueInArtifact,
+    [100, 120, 140],
+    "导出 HTML 成品里「收入」三根柱必须是 100/120/140；若挂成 40/45/50，就是收入柱子画成了成本的高度",
+  );
+  assert.deepEqual(costInArtifact, [40, 45, 50]);
+
   const roundtrip = chartDocumentFromTypedArtifact(artifact);
   assert.equal(roundtrip.option.series[0].type, document.option.series[0].type);
+
   const html = wrapChartArtifactHtml(artifact, "<svg></svg>");
   assert.match(html, /data-oceanleo-chart="oceanleo.chart.artifact.v1"/);
   assert.match(html, /application\/json/);
+  const embeddedJson = html.match(
+    /<script type="application\/json">([\s\S]*?)<\/script>/,
+  );
+  assert.ok(embeddedJson, "HTML 成品必须内嵌 typed artifact JSON");
+  const embedded = JSON.parse(embeddedJson[1]);
+  const revenueInHtml = seriesDataFromFinishedOption(embedded.option, "收入");
+  const costInHtml = seriesDataFromFinishedOption(embedded.option, "成本");
+  assert.deepEqual(
+    revenueInHtml,
+    [100, 120, 140],
+    "HTML 内嵌 JSON 里「收入」柱子不能画成成本的高度（应为 100/120/140）",
+  );
+  assert.deepEqual(costInHtml, [40, 45, 50]);
+
   assert.equal(CHART_RENDITION_MIME.svg, "image/svg+xml;charset=utf-8");
   assert.equal(CHART_RENDITION_MIME.png, "image/png");
   assert.equal(CHART_RENDITION_MIME.html, "text/html;charset=utf-8");
