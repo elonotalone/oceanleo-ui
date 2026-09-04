@@ -19,7 +19,10 @@
  */
 
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
-import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
+import {
+  embedEditorFrameSandbox,
+  isTrustedEmbedEditorBase,
+} from "../editor-sandbox-origin";
 import { HOSTED_EDITOR_ORIGINS } from "../hosted-editor-origins";
 import { DEFAULT_EDITOR_MODE } from "../hosted-editor/index";
 import {
@@ -63,16 +66,28 @@ export function canBuildWorkflowLangflowEmbedUrl(base: string): boolean {
   return Boolean(base) && isTrustedEmbedEditorBase(base);
 }
 
+/** 专业模式 iframe 的 sandbox。必须走 W01 的函数，不许手写、不许加 same-origin。 */
+export function workflowLangflowFrameSandbox(base?: string): string {
+  return embedEditorFrameSandbox(workflowLangflowEmbedBase(base));
+}
+
 export function buildWorkflowLangflowEmbedUrl(opts: {
   instanceId: string;
   hostOrigin: string;
   assetUrl?: string;
   assetTitle?: string;
+  extra?: Record<string, string>;
   base?: string;
 }): string {
   const base = workflowLangflowEmbedBase(opts.base);
   if (!canBuildWorkflowLangflowEmbedUrl(base)) {
     throw new TypeError("flow.oceanleo.app 还不在宿主可信 embed 白名单里");
+  }
+  const extra = { ...(opts.extra || {}) };
+  for (const key of Object.keys(extra)) {
+    if (/(token|secret|key|password|cookie|authorization)/i.test(key)) {
+      throw new TypeError("工作流 iframe URL 不许携带凭据字段");
+    }
   }
   return buildEditorEmbedUrl(base, {
     instanceId: opts.instanceId,
@@ -80,6 +95,7 @@ export function buildWorkflowLangflowEmbedUrl(opts: {
     assetUrl: opts.assetUrl,
     assetTitle: opts.assetTitle,
     assetKind: "document",
+    extra,
   });
 }
 

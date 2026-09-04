@@ -144,8 +144,20 @@ export interface LangflowEdge {
   data: {
     sourceHandle: LangflowHandleSource;
     targetHandle: LangflowHandleTarget;
-    /** 本仓自有的旁挂字段：Langflow 原样保存不认识的键。 */
-    oceanleo?: { edgeId: string; condition?: string };
+    /**
+     * 本仓自有的旁挂字段：Langflow 原样保存它不认识的键（`[实测]` 1.12.0 存取无损）。
+     *
+     * **端口名也存在这里，而不是只存在 handle 串里。** 理由是容器侧的 adapter shim
+     * 为了让流程真的跑得起来，会按装在那台 Langflow 上的真组件描述符**重写 handle**
+     * （见 `signals/W15-container.md`：不重写就报「Edge … has no matched type」）。
+     * 只认 handle 的话，一次 rehydrate 就把端口名冲掉了，取回来的图会挂错线。
+     */
+    oceanleo?: {
+      edgeId: string;
+      fromPort: string;
+      toPort: string;
+      condition?: string;
+    };
   };
   animated?: boolean;
   className?: string;
@@ -403,6 +415,8 @@ function langflowEdgeFor(
       targetHandle,
       oceanleo: {
         edgeId: edge.id,
+        fromPort: outPort.name,
+        toPort: inPort.name,
         ...(edge.condition === undefined ? {} : { condition: edge.condition }),
       },
     },
@@ -693,23 +707,37 @@ export function fromLangflowFlow(
       droppedEdges += 1;
       continue;
     }
+    const side = (
+      record.data as
+        | {
+            oceanleo?: {
+              edgeId?: unknown;
+              fromPort?: unknown;
+              toPort?: unknown;
+              condition?: unknown;
+            };
+          }
+        | undefined
+    )?.oceanleo;
+    // 端口名优先取旁挂字段：容器侧 shim 为了让流程真跑得起来会重写 handle
+    // （见 `LangflowEdge.data.oceanleo` 的注释）。handle 只作回落。
     const source = decodeLangflowHandle(record.sourceHandle);
     const target = decodeLangflowHandle(record.targetHandle);
-    if (!source || !target) {
-      return {
-        ok: false,
-        code: "langflow-handle-unparsable",
-        at: String(record.id || ""),
-        message: "有一条连线的端口描述读不出来（专业模式的 handle 编码被改坏了）。你的原流程没有被改动。",
-      };
-    }
-    const fromPort = source.name;
-    const toPort = target.fieldName;
+    const fromPort =
+      typeof side?.fromPort === "string" && side.fromPort
+        ? side.fromPort
+        : source?.name;
+    const toPort =
+      typeof side?.toPort === "string" && side.toPort
+        ? side.toPort
+        : target?.fieldName;
     const fromNodeId = fromLangflowNodeId(sourceLangflowId);
     const toNodeId = fromLangflowNodeId(targetLangflowId);
     if (
       typeof fromPort !== "string" ||
+      !fromPort ||
       typeof toPort !== "string" ||
+      !toPort ||
       !fromNodeId ||
       !toNodeId
     ) {
@@ -717,11 +745,10 @@ export function fromLangflowFlow(
         ok: false,
         code: "langflow-handle-unparsable",
         at: String(record.id || ""),
-        message: "有一条连线指不出它接在哪个端口上。你的原流程没有被改动。",
+        message:
+          "有一条连线指不出它接在哪个端口上（端口描述既不在旁挂字段里，handle 也读不出来）。你的原流程没有被改动。",
       };
     }
-    const side = (record.data as { oceanleo?: { edgeId?: unknown; condition?: unknown } } | undefined)
-      ?.oceanleo;
     const edgeId =
       typeof side?.edgeId === "string" && side.edgeId
         ? side.edgeId
