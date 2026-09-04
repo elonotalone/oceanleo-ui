@@ -220,21 +220,20 @@ function excelConditionalStyle(rule: GridCfRule): Record<string, unknown> {
  * 把 `GridSheet.conditionalFormats` 写进 exceljs。新核导出走这条链，
  * XML 链里已经会写 `<conditionalFormatting>`；这里是把同一份五操作符
  * 能力搬过来，不是另造一套规则模型。
+ *
+ * 参数用 exceljs 自己的 Worksheet 方法签名，避免自造结构类型把真
+ * Worksheet 因参数逆变挡在门外（TS2345）。`notEqual` 在运行期 exceljs
+ * 认，类型联合里没有，下面那一处断言只为这一点。
  */
 export function applyGridConditionalFormats(
-  worksheet: {
-    addConditionalFormatting: (cf: {
-      ref: string;
-      rules: Array<Record<string, unknown>>;
-    }) => void;
-  },
+  worksheet: Pick<import("exceljs").Worksheet, "addConditionalFormatting">,
   rules: readonly GridCfRule[] | undefined,
 ): void {
   if (!rules || rules.length === 0) return;
   let priority = 1;
   for (const rule of rules) {
     const ref = rangeToSqref(rule.range);
-    const style = excelConditionalStyle(rule);
+    const style = excelConditionalStyle(rule) as Partial<import("exceljs").Style>;
     if (rule.operator === "contains") {
       worksheet.addConditionalFormatting({
         ref,
@@ -254,7 +253,9 @@ export function applyGridConditionalFormats(
         rules: [
           {
             type: "cellIs",
-            operator: CF_EXCEL_OPERATOR[rule.operator],
+            operator: CF_EXCEL_OPERATOR[
+              rule.operator
+            ] as import("exceljs").CellIsOperators,
             formulae: [rule.value],
             priority,
             style,
