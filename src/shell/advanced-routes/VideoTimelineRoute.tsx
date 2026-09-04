@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { resolveEditorCore } from "../editor-core-flags";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -26,6 +28,18 @@ import {
   type WorkbenchMaterialPlacement,
 } from "../workbench-material-provider";
 import { timelineMsAtClientPoint } from "../video-editor/timeline-viewport";
+
+/**
+ * Next-core leaf. The import() literal must stay in this file so the bundler
+ * splits OpenVideo/preview off the legacy route. ssr:false — canvas + media.
+ */
+const VideoDesigncomboStage = dynamic(
+  () =>
+    import("../video-editor/VideoDesigncomboStage").then(
+      (module) => module.VideoDesigncomboStage,
+    ),
+  { ssr: false, loading: () => null },
+);
 
 function timelineInsertionMs(
   placement: WorkbenchMaterialPlacement | undefined,
@@ -61,7 +75,14 @@ function timelineInsertionMs(
   );
 }
 
-export function VideoTimelineRoute({
+export function VideoTimelineRoute(props: AdvancedContentWorkbenchProps) {
+  if (resolveEditorCore("video-timeline") === "next") {
+    return <VideoDesigncomboStage {...props} />;
+  }
+  return <VideoTimelineLegacyRoute {...props} />;
+}
+
+function VideoTimelineLegacyRoute({
   item,
   previewContent,
   linkUrl,
