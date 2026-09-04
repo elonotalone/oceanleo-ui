@@ -45,6 +45,7 @@ import {
   applyAudioNextMode,
 } from "./audio-next-mode";
 import {
+  base64ToBytes,
   bytesToBase64,
   buildAudioEmbedUrl,
   buildAudioInitEnvelope,
@@ -129,6 +130,7 @@ export function AudioPlaylistStage({
   const [transcriptEstimated, setTranscriptEstimated] = useState(false);
   const [transcriptBusy, setTranscriptBusy] = useState(false);
   const [transcriptError, setTranscriptError] = useState("");
+  const hostedSessionRef = useRef(false);
   const chipsManifest = useMemo(() => audioToolsManifestChips(), []);
   const readonly = conversion === "readonly" || conversion === "converting";
   const applied = applyAudioNextMode(instanceId, mode);
@@ -210,6 +212,36 @@ export function AudioPlaylistStage({
       portRef.current = null;
     };
   }, [applied.showHostedEditor, item.title, sourceBlob]);
+
+  useEffect(() => {
+    if (!applied.showHostedEditor) {
+      setReady(false);
+      hostedSessionRef.current = false;
+    }
+  }, [applied.showHostedEditor]);
+
+  useEffect(() => {
+    if (!applied.showHostedEditor || !ready || hostedSessionRef.current) return;
+    const frame = iframeHolderRef.current?.contentWindow || null;
+    const buffer = bufferRef.current;
+    if (!frame || !buffer) return;
+    hostedSessionRef.current = true;
+    const wav = encodeWav(buffer);
+    void wav.arrayBuffer().then((bytes) => {
+      postAudioSetMode(frame, instanceId, "pro");
+      postAudioInit(
+        frame,
+        instanceId,
+        buildAudioInitEnvelope(instanceId, {
+          audioBase64: bytesToBase64(bytes),
+          mime: "audio/wav",
+          readOnly: readonly,
+          title: item.title,
+          trackCount: portRef.current?.trackCount() || 1,
+        }),
+      );
+    });
+  }, [applied.showHostedEditor, instanceId, item.title, ready, readonly]);
 
   const bump = useCallback(() => {
     setEditRevision((value) => value + 1);
@@ -608,14 +640,19 @@ export function AudioPlaylistStage({
                   onReady={() => setReady(true)}
                   onSnapshot={(payload) => {
                     if (!payload.audioBase64) return;
-                    const bytes = Uint8Array.from(
-                      atob(payload.audioBase64),
-                      (char) => char.charCodeAt(0),
-                    );
-                    setSourceBlob(
-                      new Blob([bytes], { type: payload.mime || "audio/wav" }),
-                    );
-                    bump();
+                    const bytes = base64ToBytes(payload.audioBase64);
+                    const blob = new Blob([bytes], {
+                      type: payload.mime || "audio/wav",
+                    });
+                    setSourceBlob(blob);
+                    void blob.arrayBuffer().then(async (buffer) => {
+                      const ctx = new AudioContext();
+                      const decoded = await ctx.decodeAudioData(buffer.slice(0));
+                      await ctx.close();
+                      bufferRef.current = decoded;
+                      setDuration(decoded.duration);
+                      bump();
+                    });
                   }}
                   onError={setStatus}
                 />

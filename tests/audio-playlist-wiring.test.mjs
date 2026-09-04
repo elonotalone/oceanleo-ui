@@ -62,6 +62,10 @@ test("professional mode uses buildSetModeMessage and only then shows AudioMass",
   assert.match(leaf, /applyAudioNextMode/);
   assert.match(leaf, /useState<EditorMode>\(DEFAULT_EDITOR_MODE\)/);
   assert.match(leaf, /mode: \{ current: mode, setMode: applyMode \}/);
+  assert.match(leaf, /postAudioInit/);
+  assert.match(leaf, /hostedSessionRef/);
+  assert.match(leaf, /base64ToBytes\(payload\.audioBase64\)/);
+  assert.match(leaf, /bufferRef\.current = decoded/);
   assert.doesNotMatch(routeCode, /postMessage/);
 
   const normal = applyAudioNextMode("oceanleo-audio-next", "normal");
