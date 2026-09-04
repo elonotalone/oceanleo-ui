@@ -7,7 +7,9 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { resolveEditorCore } from "../editor-core-flags";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -35,6 +37,42 @@ import {
 } from "../workbench-material-provider";
 
 type Model3DEditorState = ReturnType<typeof useModel3DWorkbench>;
+
+const Model3DNextStage = dynamic(
+  () =>
+    import("../media-editors/Model3DNextStage").then(
+      (module) => module.Model3DNextStage,
+    ),
+  { ssr: false, loading: () => null },
+);
+
+export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
+  const subtype = threeDSubtypeFor(props.item);
+  if (!isModel3DSourceItem(props.item)) {
+    return (
+      <div
+        role="alert"
+        className="grid h-full min-h-[320px] place-items-center bg-[var(--surface,#f5f5f4)] p-6"
+      >
+        <div className="max-w-md rounded-xl border border-[color-mix(in_srgb,var(--awb-warn)_40%,transparent)] bg-[var(--card,#fff)] p-5 text-center text-sm text-[var(--awb-warn)]">
+          {subtype === "hdri"
+            ? "HDRI 是环境光照素材，不能作为 3D 模型加载。"
+            : subtype === "texture"
+              ? "纹理是模型贴图素材，不能作为 3D 模型加载。"
+              : "这个条目没有可验证的 GLB 或 glTF 2.x 模型源。"}
+        </div>
+      </div>
+    );
+  }
+  if (resolveEditorCore("threed") === "next") {
+    return <Model3DNextStage {...props} />;
+  }
+  return <Model3DLegacyRoute {...props} />;
+}
+
+function Model3DLegacyRoute(props: AdvancedContentWorkbenchProps) {
+  return <Model3DModelRoute {...props} />;
+}
 
 function useModel3DDocumentHistory(
   editor: Model3DEditorState,
@@ -140,27 +178,6 @@ function useModel3DDocumentHistory(
     snapshot,
     error,
   };
-}
-
-export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
-  const subtype = threeDSubtypeFor(props.item);
-  if (!isModel3DSourceItem(props.item)) {
-    return (
-      <div
-        role="alert"
-        className="grid h-full min-h-[320px] place-items-center bg-[var(--surface,#f5f5f4)] p-6"
-      >
-        <div className="max-w-md rounded-xl border border-[color-mix(in_srgb,var(--awb-warn)_40%,transparent)] bg-[var(--card,#fff)] p-5 text-center text-sm text-[var(--awb-warn)]">
-          {subtype === "hdri"
-            ? "HDRI 是环境光照素材，不能作为 3D 模型加载。"
-            : subtype === "texture"
-              ? "纹理是模型贴图素材，不能作为 3D 模型加载。"
-              : "这个条目没有可验证的 GLB 或 glTF 2.x 模型源。"}
-        </div>
-      </div>
-    );
-  }
-  return <Model3DModelRoute {...props} />;
 }
 
 function Model3DModelRoute({
