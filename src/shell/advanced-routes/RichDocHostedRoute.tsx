@@ -35,6 +35,7 @@ import {
   buildHideChromeMessage,
   buildSetModeMessage,
   type EditorMode,
+  type EditorReviewProposal,
 } from "../hosted-editor/index";
 import { editorToolLabel } from "../workbench-routes";
 
@@ -64,6 +65,47 @@ function inlineSourceFromItem(item: AdvancedContentWorkbenchProps["item"]): unkn
 
 function emptyDoc(): { type: "doc"; content: { type: "paragraph" }[] } {
   return { type: "doc", content: [{ type: "paragraph" }] };
+}
+
+export type RichDocHostedEmbedSrcInput = {
+  embedBase: string;
+  instanceId: string;
+  hostOrigin: string;
+  assetUrl?: string;
+  assetTitle: string;
+};
+
+/**
+ * 新核 iframe 真正挂上去的地址。抽成可调用的函数，是为了让闸能跑这条计算，
+ * 而不是只在源码里搜标签名——`useMemo` 开头 `return ""` 时标签还在、用户已经
+ * 看见「无法构造嵌入地址」。
+ */
+export function computeRichDocHostedEmbedSrc(
+  input: RichDocHostedEmbedSrcInput,
+): string {
+  if (!input.embedBase || !isTrustedEmbedEditorBase(input.embedBase)) return "";
+  try {
+    return buildRichDocEmbedUrl({
+      instanceId: input.instanceId,
+      hostOrigin: input.hostOrigin,
+      assetUrl: input.assetUrl,
+      assetTitle: input.assetTitle,
+      base: input.embedBase,
+    });
+  } catch {
+    return "";
+  }
+}
+
+/** 宿主收下编辑器 `review-proposal` 的唯一入口。提前 return / 恒 ok 必须当场红。 */
+export function ingestRichDocReviewProposal(
+  proposal: EditorReviewProposal,
+  extras: { liveRevision: number; editorId?: string },
+): "ok" | "stale" | "invalid" {
+  return submitRawReviewProposal(proposal, {
+    liveRevision: extras.liveRevision,
+    editorId: extras.editorId ?? "richdoc",
+  });
 }
 
 /**
@@ -142,18 +184,13 @@ export function RichDocHostedRoute({
   const editorOrigin = RICHDOC_HOSTED_EMBED_ORIGIN;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
-    if (!isTrustedEmbedEditorBase(embedBase)) return "";
-    try {
-      return buildRichDocEmbedUrl({
-        instanceId,
-        hostOrigin: window.location.origin,
-        assetUrl: item.url || undefined,
-        assetTitle: item.title,
-        base: embedBase,
-      });
-    } catch {
-      return "";
-    }
+    return computeRichDocHostedEmbedSrc({
+      embedBase,
+      instanceId,
+      hostOrigin: window.location.origin,
+      assetUrl: item.url || undefined,
+      assetTitle: item.title,
+    });
   }, [embedBase, instanceId, item.title, item.url]);
 
   const sendToEditor = useCallback(
@@ -224,7 +261,7 @@ export function RichDocHostedRoute({
         // 这里交给 L4 审阅收件箱（W02 的 `signals/W02-review-api.md`，只读消费，
         // 校验器用 W01 那一份，不另造）。收不下就如实说，**不许静默丢**——
         // 丢掉等于编辑器那边永远挂着一条没人处理的改动。
-        const verdict = submitRawReviewProposal(message.proposal, {
+        const verdict = ingestRichDocReviewProposal(message.proposal, {
           liveRevision: editRevision,
           editorId: "richdoc",
         });
