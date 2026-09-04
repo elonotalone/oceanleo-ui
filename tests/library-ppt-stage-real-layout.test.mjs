@@ -160,10 +160,19 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
       return "allow-scripts allow-forms allow-popups allow-downloads";
     }
   `);
+  // 「解析库把模型交回来了」这件事由桩自己报出来（`parserHandedBackModel`），
+  // 不从产品状态倒推。等待锚在这个事实上，而不是锚在 `data-pptx-parse-state`
+  // 离开 loading：后者在产品卡死时会一直等到 node --test 的 test-timeout 把用例
+  // 掐掉，红成一句「test timed out」，说不出用户看到了什么。
+  // 产品 import 的是同一个 data: URL，ESM 按 URL 缓存，所以拿到的是同一份实例。
   // pptx-preview 的真实语义：`init(node)` 在 node 里建一个 wrapper，
   // 之后所有渲染都进 wrapper（`this.wrapper.append(slide)`），不再碰 node。
   // 这个桩照抄这一条，别的都不模仿。
   const pptxStubUrl = dataModule(`
+    let reportParsed = () => {};
+    export const parserHandedBackModel = new Promise((resolve) => {
+      reportParsed = resolve;
+    });
     export function init(node, options) {
       const wrapper = document.createElement("div");
       wrapper.className = "pptx-preview-wrapper";
@@ -176,7 +185,7 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
         },
         async load() {
           // 真 pptx 的 slide.name 就是包内部件路径，不是给人看的名字。
-          return {
+          const model = {
             width: 720,
             height: 540,
             slides: [
@@ -184,6 +193,8 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
               { name: "ppt/slides/slide2.xml" },
             ],
           };
+          reportParsed(model.slides.length);
+          return model;
         },
         renderSingleSlide(index) {
           wrapper.replaceChildren();
@@ -212,6 +223,7 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     "../../vendor/pptx-preview/pptx-preview.es.js": pptxStubUrl,
   });
   const { LibraryItemViewer } = await import(moduleUrl);
+  const { parserHandedBackModel } = await import(pptxStubUrl);
   const { createRoot } = await import("react-dom/client");
   const container = dom.window.document.createElement("div");
   dom.window.document.body.append(container);
@@ -225,17 +237,21 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     // 页轨只能退回 pptx 模型里的名字——而那个名字是内部路径。
     meta: {},
   };
-  const waitForParseSettled = async () => {
-    const readState = () =>
-      container
-        .querySelector("[data-pptx-parse-state]")
-        ?.getAttribute("data-pptx-parse-state");
-    while (readState() !== "ready" && readState() !== "error") {
-      await act(async () => {
-        await new Promise((done) => setImmediate(done));
-      });
-    }
-    return readState();
+  const readParseState = () =>
+    container
+      .querySelector("[data-pptx-parse-state]")
+      ?.getAttribute("data-pptx-parse-state");
+  // 等的是解析库交回模型这一个事实（取包 + 动态 import 解析库 + load，重活限速下
+  // 要多久就等多久，没有轮询上限）。模型交回之后产品到 `setState("ready")` 之间
+  // 只有同步代码（首帧只做一页的活，见 PptViewer 里的注释），一次 setImmediate
+  // 让那段续体与 React 的排程跑完即可——这不是超时，是一次确定性的让步。
+  const waitForParserThenSettle = async () => {
+    let slideCount = 0;
+    await act(async () => {
+      slideCount = await parserHandedBackModel;
+      await new Promise((done) => setImmediate(done));
+    });
+    return { slideCount, parseState: readParseState() };
   };
   // 舞台 = 用户眼睛落的那块。缩略图轨在 `<aside>` 里，不算数。
   const stageText = () =>
@@ -247,7 +263,7 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     await act(async () =>
       root.render(React.createElement(LibraryItemViewer, { item })),
     );
-    const parseState = await waitForParseSettled();
+    const { slideCount, parseState } = await waitForParserThenSettle();
     if (parseState === "error") {
       const alertText = (
         container.querySelector("[role=alert]")?.textContent || ""
@@ -256,11 +272,15 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
         `PPT 解析失败，页轨不会有切片：${alertText || "无报错文案"}`,
       );
     }
-    assert.equal(parseState, "ready", "解析没有走到完成态");
+    assert.equal(
+      parseState,
+      "ready",
+      `解析库已交回 ${slideCount} 页模型，PPT 视图却停在「${parseState}」：用户会一直停在「正在解析 PPT…」`,
+    );
     assert.equal(
       container.querySelectorAll("[data-deck-thumbnail-rail] button").length,
       2,
-      "解析出来的幻灯片没有进到共享页轨",
+      `解析出来的 ${slideCount} 页没有进到共享页轨：用户看不到缩略图、没法换页`,
     );
 
     assert.match(
