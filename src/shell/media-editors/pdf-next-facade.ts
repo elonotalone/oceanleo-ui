@@ -61,20 +61,22 @@ export function pdfNextBlockReason(commandId: string): string {
  * （§10 第 3 条），而「同一个对象」是这句话最强的形式——连引用相等都成立，
  * 于是任何依赖 `editor` 身份做记忆化的地方都不会因为多这一层而多渲染一次。
  */
-export function pdfNextEditorFacade(
-  editor: PdfWorkbenchState,
+export function pdfNextEditorFacade<T extends PdfWorkbenchState>(
+  editor: T,
   core: EditorCoreChoice,
   onUnsupported: (reason: string) => void,
-): PdfWorkbenchState {
+): T {
   if (core !== "next") return editor;
   const refuse = async (commandId: string): Promise<never> => {
     const reason = pdfNextBlockReason(commandId);
     onUnsupported(reason);
     throw new Error(reason);
   };
+  // 断言回 T：只换了两个方法的实现，其余字段（含 office 表单那 20 多个）原样铺开。
+  // 不写泛型的话，返回类型会收成 `PdfWorkbenchState`，L1 浮条要的 `PdfOfficeWorkbenchState` 对不上。
   return {
     ...editor,
     rotateCurrentPage: () => refuse("pdf.rotate-page"),
     addBlankPage: () => refuse("pdf.add-blank-page"),
-  };
+  } as T;
 }
