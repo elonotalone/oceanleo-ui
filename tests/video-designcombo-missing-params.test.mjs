@@ -95,12 +95,17 @@ const toolbarStubUrl = dataModule(`
           {
             type: "button",
             "data-control-id": control.id,
-            onClick: () =>
+            onClick: (event) => {
+              const raw = event.currentTarget.getAttribute("data-test-value");
               onCommand({
                 requestId: "w24-gate",
                 selectionId: (context && context.id) || "",
                 controlId: control.id,
-              }),
+                ...(raw === null || raw === ""
+                  ? {}
+                  : { value: Number.isFinite(Number(raw)) ? Number(raw) : raw }),
+              });
+            },
           },
           control.id,
         ),
@@ -212,10 +217,15 @@ async function waitForControl(container, controlId) {
   );
 }
 
-async function clickControl(container, controlId) {
+async function clickControl(container, controlId, value) {
   await waitForControl(container, controlId);
   const button = container.querySelector(`[data-control-id="${controlId}"]`);
   assert.ok(button, `编辑栏没有「${controlId}」按钮，用户点不到这条动作`);
+  if (value === undefined) {
+    button.removeAttribute("data-test-value");
+  } else {
+    button.setAttribute("data-test-value", String(value));
+  }
   await act(async () => {
     button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   });
@@ -348,3 +358,66 @@ test("clicking keyframes without a table does not attach an empty animation", as
     await mounted.unmount();
   }
 });
+
+test("clicking volume without a value does not mute the clip, and the person sees why", async () => {
+  const mounted = await mountStage();
+  try {
+    const before = videoClip(currentProject());
+    const beforeVolume = before.volume;
+    assert.equal(beforeVolume, 1, "种子片段应带着原音量，闸才对比得了静音");
+    await clickControl(mounted.container, "volume");
+    const after = videoClip(currentProject());
+    assert.equal(after.volume, beforeVolume, "缺音量值时，声音不会被改成静音");
+    assert.notEqual(after.volume, 0, "缺音量值时，声音不会被改成静音");
+    assert.equal(after.muted === true, false, "缺音量值时，声音不会被改成静音");
+    const notice = visibleNoticeText(mounted.container);
+    assert.match(notice, /没有音量值时不会改变声音/);
+    assert.match(notice, /请先给出音量/);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("clicking speed without a value does not reset 2x to 1x, and the person sees why", async () => {
+  const mounted = await mountStage();
+  try {
+    await clickControl(mounted.container, "speed", 2);
+    const sped = videoClip(currentProject());
+    assert.equal(sped.timing.playbackRate, 2, "先把片段设成 2x，闸才对比得了被改回 1x");
+    await clickControl(mounted.container, "speed");
+    const after = videoClip(currentProject());
+    assert.equal(
+      after.timing.playbackRate,
+      2,
+      "缺速度值时，播放速度不会被改掉",
+    );
+    const notice = visibleNoticeText(mounted.container);
+    assert.match(notice, /没有速度值时不会改变播放速度/);
+    assert.match(notice, /请先选择倍速/);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("the inspector button named 写入默认关键帧 still writes the default slide-in", async () => {
+  const mounted = await mountStage();
+  try {
+    const button = mounted.container.querySelector(
+      "[data-video-designcombo-keyframes]",
+    );
+    assert.ok(button, "检查器没有「写入默认关键帧」按钮");
+    assert.match(String(button.textContent || ""), /写入默认关键帧/);
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    const after = videoClip(currentProject());
+    const animation = (after.animations || [])[0];
+    assert.ok(animation, "点「写入默认关键帧」后片段上应有关键帧");
+    assert.equal(animation.type, "keyframes");
+    assert.equal(animation.params["0%"].x, -40);
+    assert.equal(animation.params["100%"].x, 0);
+  } finally {
+    await mounted.unmount();
+  }
+});
+

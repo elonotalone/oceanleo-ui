@@ -146,4 +146,109 @@ test("keyframes without a table are not treated as an empty animation", () => {
   );
 });
 
+test("volume without a value does not mute the clip", () => {
+  const { project, id } = seeded();
+  project.clips[id].volume = 0.8;
+  project.clips[id].muted = false;
+  const before = structuredClone(project);
+  const result = runVideoDesigncomboCommand("volume", project, { clipId: id });
+  assert.equal(result.ok, false, "缺音量值时，声音不会被改成静音");
+  assert.match(result.reason, /没有音量值时不会改变声音/);
+  assert.equal(result.reason, "请先给出音量，没有音量值时不会改变声音。");
+  assert.deepEqual(project, before, "缺音量值时，声音不会被改成静音");
+  assert.equal(project.clips[id].volume, 0.8, "缺音量值时，声音不会被改成静音");
+  assert.equal(project.clips[id].muted, false, "缺音量值时，声音不会被改成静音");
+});
+
+test("volume 0 is kept when the person actually asked for silence", () => {
+  const { project, id } = seeded();
+  const result = runVideoDesigncomboCommand("volume", project, {
+    clipId: id,
+    value: 0,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.project.clips[id].volume, 0);
+  assert.equal(result.project.clips[id].muted, true);
+});
+
+test("speed without a value does not reset a 2x clip to 1x", () => {
+  const { project, id } = seeded();
+  project.clips[id].timing.playbackRate = 2;
+  const before = structuredClone(project);
+  const result = runVideoDesigncomboCommand("speed", project, { clipId: id });
+  assert.equal(result.ok, false, "缺速度值时，播放速度不会被改掉");
+  assert.match(result.reason, /没有速度值时不会改变播放速度/);
+  assert.equal(result.reason, "请先选择倍速，没有速度值时不会改变播放速度。");
+  assert.deepEqual(project, before, "缺速度值时，播放速度不会被改掉");
+  assert.equal(
+    project.clips[id].timing.playbackRate,
+    2,
+    "缺速度值时，播放速度不会被改掉",
+  );
+});
+
+test("a crop rect with no usable area does not become a full-frame crop", () => {
+  const { project, id } = seeded();
+  const widthZero = cropOpenVideoClip(project, id, {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0.5,
+  });
+  assert.equal(widthZero.ok, false, "裁切宽为 0 时，画面不会被当成满幅");
+  assert.match(widthZero.reason, /没有可用面积/);
+  assert.equal(widthZero.reason, "裁切框没有可用面积，画面没有被裁切。");
+  assert.equal(project.clips[id].crop, undefined, "裁切宽为 0 时，画面不会被当成满幅");
+  assert.equal(project.clips[id].transform.width, 1920, "裁切宽为 0 时，画面不会被当成满幅");
+  assert.equal(project.clips[id].transform.height, 1080, "裁切宽为 0 时，画面不会被当成满幅");
+
+  const heightZero = cropOpenVideoClip(project, id, {
+    x: 0,
+    y: 0,
+    width: 0.5,
+    height: 0,
+  });
+  assert.equal(heightZero.ok, false, "裁切高为 0 时，画面不会被当成满幅");
+  assert.match(heightZero.reason, /没有可用面积/);
+  assert.equal(project.clips[id].crop, undefined, "裁切高为 0 时，画面不会被当成满幅");
+  assert.equal(project.clips[id].transform.height, 1080, "裁切高为 0 时，画面不会被当成满幅");
+
+  const negativeWidth = cropOpenVideoClip(project, id, {
+    x: 0,
+    y: 0,
+    width: -0.2,
+    height: 0.5,
+  });
+  assert.equal(negativeWidth.ok, false, "裁切宽为负数时，不会猜成一条细缝");
+  assert.equal(project.clips[id].crop, undefined, "裁切宽为负数时，不会猜成一条细缝");
+  assert.equal(project.clips[id].transform.width, 1920, "裁切宽为负数时，不会猜成一条细缝");
+
+  const negativeHeight = cropOpenVideoClip(project, id, {
+    x: 0,
+    y: 0,
+    width: 0.5,
+    height: -0.2,
+  });
+  assert.equal(negativeHeight.ok, false, "裁切高为负数时，不会猜成一条细缝");
+  assert.equal(project.clips[id].transform.height, 1080, "裁切高为负数时，不会猜成一条细缝");
+
+  const originAtEdge = cropOpenVideoClip(project, id, {
+    x: 1,
+    y: 0,
+    width: 0.5,
+    height: 0.5,
+  });
+  assert.equal(originAtEdge.ok, false, "裁切原点贴在画面外沿时，不会写出零宽画面");
+  assert.equal(project.clips[id].crop, undefined, "裁切原点贴在画面外沿时，不会写出零宽画面");
+  assert.equal(project.clips[id].transform.width, 1920, "裁切原点贴在画面外沿时，不会写出零宽画面");
+
+  const viaCommand = runVideoDesigncomboCommand("crop-frame", project, {
+    clipId: id,
+    crop: { x: 0, y: 0, width: 0, height: 0.8 },
+  });
+  assert.equal(viaCommand.ok, false, "裁切宽为 0 时，画面不会被当成满幅");
+  assert.match(viaCommand.reason, /没有可用面积/);
+  assert.equal(project.clips[id].transform.width, 1920, "裁切宽为 0 时，画面不会被当成满幅");
+});
+
 void makeOpenVideoId;
