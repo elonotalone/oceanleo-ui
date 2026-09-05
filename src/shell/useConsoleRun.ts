@@ -22,8 +22,8 @@
 //   };
 //
 // 关键点：
-//   - begin() 立刻建一条 status="running" 的历史（生成中在历史列表就能看到「进行中」点），
-//     返回 task_id。生成失败 → fail(taskId)；成功 → finish(taskId, {artifact,...})。
+//   - begin() 建一条 status="running" 的运行记录，但不建「我的任务」会话；
+//     第一份产物在 update/finish 落地时才建档。生成失败 → fail(taskId)；成功 → finish(...)。
 //   - 未登录（无 token）→ begin() 返回 ""，后续 update/finish 静默 no-op（不阻断生成）。
 //   - 产物默认【替换】（replaceArtifacts），使一条运行只保留最新一份大纲/成稿。
 // ============================================================================
@@ -35,6 +35,7 @@ import {
   type ConsoleArtifactInput,
 } from "../lib/agent";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import type { SessionCreateIntent } from "./workspace-session-model";
 
 export interface UseConsoleRunArgs {
   siteId: string;
@@ -99,7 +100,7 @@ export function useConsoleRun({
   // 记住已知失效的 taskId（begin 失败过就别再打 update/finish）。
   const deadRef = useRef<Set<string>>(new Set());
   const runContextRef = useRef<
-    Map<string, { appId?: string; schemaVersion: number }>
+    Map<string, { appId?: string; schemaVersion: number; sessionId: string }>
   >(new Map());
 
   const matchingWorkspace = useCallback(
@@ -117,6 +118,7 @@ export function useConsoleRun({
       appId?: string,
       version = schemaVersion,
       title?: string,
+      intent: SessionCreateIntent = "attach",
     ): Promise<string | null> => {
       const workspace = matchingWorkspace(appId);
       if (!workspace) return explicitSessionId || "";
@@ -125,6 +127,7 @@ export function useConsoleRun({
         const saved = await workspace.saveSnapshot(opsState, version, {
           title,
           expectedSessionId: workspace.session?.id,
+          intent,
         });
         if (!saved.ok) {
           return saved.unavailable ? explicitSessionId || "" : null;
@@ -151,12 +154,13 @@ export function useConsoleRun({
       if (!enabled || !siteId) return "";
       const workspace = matchingWorkspace(args.appId);
       if (workspace?.readOnly) return "";
-      // begin 本身就是有意义动作：先 ensure session，并尽可能原子写入首份 snapshot。
+      // 点「生成」只挂草稿：attach 拿不到 session 也照建运行，空串继续，null 才是真失败。
       const sessionId = await saveSessionSnapshot(
         args.opsState,
         args.appId,
         args.schemaVersion ?? schemaVersion,
         args.prompt,
+        "attach",
       );
       if (sessionId === null) return "";
       const runSchemaVersion = args.schemaVersion ?? schemaVersion;
@@ -176,6 +180,7 @@ export function useConsoleRun({
         runContextRef.current.set(r.data.task_id, {
           appId: runAppId,
           schemaVersion: runSchemaVersion,
+          sessionId: sessionId || "",
         });
         return r.data.task_id;
       }
@@ -204,18 +209,35 @@ export function useConsoleRun({
       if (!enabled || !taskId || deadRef.current.has(taskId)) return;
       const context = runContextRef.current.get(taskId);
       if (matchingWorkspace(context?.appId)?.readOnly) return;
+      let bindSessionId: string | undefined;
+      if (args.artifact) {
+        const previousSessionId = context?.sessionId || "";
+        const nextSessionId = await saveSessionSnapshot(
+          args.opsState,
+          context?.appId,
+          args.schemaVersion ?? context?.schemaVersion ?? schemaVersion,
+          undefined,
+          "output",
+        );
+        if (nextSessionId && context) context.sessionId = nextSessionId;
+        if (nextSessionId && !previousSessionId) bindSessionId = nextSessionId;
+      }
       const r = await updateConsoleRun(taskId, {
         opsState: args.opsState,
         artifact: args.artifact,
         replaceArtifacts: args.artifact ? !args.append : false,
+        sessionId: bindSessionId,
       });
       if (!r.ok) deadRef.current.add(taskId);
-      if (r.ok && args.opsState) {
-        await saveSessionSnapshot(
+      if (r.ok && args.opsState && !args.artifact) {
+        const nextSessionId = await saveSessionSnapshot(
           args.opsState,
           context?.appId,
           args.schemaVersion ?? context?.schemaVersion ?? schemaVersion,
+          undefined,
+          "attach",
         );
+        if (nextSessionId && context) context.sessionId = nextSessionId;
       }
     },
     [enabled, matchingWorkspace, saveSessionSnapshot, schemaVersion],
@@ -226,17 +248,33 @@ export function useConsoleRun({
       if (!enabled || !taskId || deadRef.current.has(taskId)) return;
       const context = runContextRef.current.get(taskId);
       if (matchingWorkspace(context?.appId)?.readOnly) return;
+      let bindSessionId: string | undefined;
+      if (args.artifact) {
+        const previousSessionId = context?.sessionId || "";
+        const nextSessionId = await saveSessionSnapshot(
+          args.opsState,
+          context?.appId,
+          args.schemaVersion ?? context?.schemaVersion ?? schemaVersion,
+          undefined,
+          "output",
+        );
+        if (nextSessionId && context) context.sessionId = nextSessionId;
+        if (nextSessionId && !previousSessionId) bindSessionId = nextSessionId;
+      }
       const r = await updateConsoleRun(taskId, {
         status: "done",
         opsState: args.opsState,
         artifact: args.artifact,
         replaceArtifacts: args.artifact ? !args.append : false,
+        sessionId: bindSessionId,
       });
-      if (r.ok && args.opsState) {
+      if (r.ok && args.opsState && !args.artifact) {
         await saveSessionSnapshot(
           args.opsState,
           context?.appId,
           args.schemaVersion ?? context?.schemaVersion ?? schemaVersion,
+          undefined,
+          "attach",
         );
       }
       if (r.ok) runContextRef.current.delete(taskId);

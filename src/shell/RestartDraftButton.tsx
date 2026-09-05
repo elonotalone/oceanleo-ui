@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useUI } from "../i18n/ui/useUI";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
-import { historySessionHref } from "./workspace-route";
+import { workspaceAppHref } from "./workspace-route";
 
 export interface RestartDraftButtonProps {
   /**
@@ -82,14 +82,19 @@ export function RestartDraftButton({
             // 先保存聚合会话，成功后才清宿主 state/旧草稿；这样刷新一定会
             // 建立新 live cache，而刚保存的任务保留在「我的任务」中。
             if (workspace?.mode === "history") {
-              const next = await workspace.startNew({
+              // 新会话不再在这里凭空建出来——它要等到真有产出才存在，所以这里没有
+              // 新的 /history/<id> 可去，直接回该 app 的 live 工作台。刚看的那条
+              // 已保存任务原样留在「我的任务」里。
+              await workspace.startNew({
                 title: workspace.appTitle,
                 snapshot: {},
                 schemaVersion: 1,
+                intent: "attach",
               });
-              if (!next) return;
               await onRestart?.();
-              router.replace(historySessionHref(next.id, undefined, pathname));
+              router.replace(
+                workspaceAppHref(workspace.appId, undefined, pathname),
+              );
               setLocalFeedback("reset");
               timer.current = setTimeout(
                 () => setLocalFeedback(null),
@@ -119,9 +124,11 @@ export function RestartDraftButton({
         })();
       }}
       title={
-        state === "idle"
-          ? tt("将当前工作保存到我的任务，并打开一个干净工作台")
-          : statusLabel
+        state !== "idle"
+          ? statusLabel
+          : workspace && !workspace.hasOutput
+            ? tt("这次还没有生成内容，点一下直接清空重来")
+            : tt("将当前工作保存到我的任务，并打开一个干净工作台")
       }
       className={
         className ??

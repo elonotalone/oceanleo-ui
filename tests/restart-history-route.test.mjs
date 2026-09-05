@@ -11,11 +11,18 @@ const providerSource = await readFile(
   "utf8",
 );
 
-test("我的任务详情新建时保存旧会话并切到新唯一 URL", () => {
+// 旧契约是「新建 → 立刻建出新 session → 跳它的 /history/<id>」。产出即建档之后，
+// 新会话要等真有产出才存在，这里没有新 id 可跳，于是回该 app 的 live 工作台。
+// 原本要保证的「离开旧任务的 URL、不在已保存任务上原地续写」照旧成立。
+test("我的任务详情新建时离开旧任务 URL 并回到干净工作台", () => {
   assert.match(source, /workspace\?\.mode === "history"/);
   assert.match(source, /workspace\.startNew\(/);
-  assert.match(source, /router\.replace\(historySessionHref\(next\.id, undefined, pathname\)\)/);
-  assert.doesNotMatch(source, /workspaceAppHref/);
+  assert.match(source, /intent: "attach"/);
+  assert.match(
+    source,
+    /router\.replace\(\s*workspaceAppHref\(workspace\.appId, undefined, pathname\),\s*\)/,
+  );
+  assert.doesNotMatch(source, /historySessionHref/);
 });
 
 test("新建单击保存且反馈进入我的任务", () => {

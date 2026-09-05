@@ -437,6 +437,7 @@ export function updateConsoleRun(
     opsState?: Record<string, unknown>;
     artifact?: ConsoleArtifactInput;
     replaceArtifacts?: boolean;
+    sessionId?: string;
   },
 ) {
   return authed<{ task_id: string; ok: boolean }>(
@@ -448,6 +449,7 @@ export function updateConsoleRun(
         ops_state: body.opsState ?? null,
         artifact: body.artifact || null,
         replace_artifacts: Boolean(body.replaceArtifacts),
+        session_id: body.sessionId || null,
       }),
     },
   );

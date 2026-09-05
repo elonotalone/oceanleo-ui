@@ -679,6 +679,8 @@ function AgentChatInner({
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
   const freshSessionStartedRef = useRef(false);
+  const outputRecordedTaskRef = useRef("");
+  const outputPromptRef = useRef("");
   const loadedTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
@@ -1017,6 +1019,27 @@ function AgentChatInner({
     ingestEditorCommands(messages, taskId || "");
   }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
 
+  // 第一句 AI 回答落地才建档：发送本身不配叫一条任务。
+  useEffect(() => {
+    if (!workspace || readOnly) return;
+    if (!taskId || messagesTaskId !== taskId) return;
+    if (outputRecordedTaskRef.current === taskId) return;
+    const hasAssistant = messages.some((message) => message.role === "assistant");
+    if (!hasAssistant) return;
+    outputRecordedTaskRef.current = taskId;
+    const title =
+      outputPromptRef.current ||
+      messages.find((message) => message.role === "user")?.content ||
+      "";
+    void (async () => {
+      const active = await workspace.ensureActive({
+        title,
+        intent: "output",
+      });
+      if (active) await workspace.bindTask(taskId, title);
+    })();
+  }, [messages, messagesTaskId, readOnly, taskId, workspace]);
+
   const start = useCallback(
     async (prompt: string, uploaded?: AgentAttachment[]) => {
       if (readOnly) {
@@ -1040,6 +1063,8 @@ function AgentChatInner({
         },
       ]);
 
+      outputPromptRef.current = prompt;
+
       let linkedSessionId = "";
       if (workspace) {
         let active = workspace.session;
@@ -1047,20 +1072,16 @@ function AgentChatInner({
           active = await workspace.startNew({
             title: prompt,
             remountRuntime: false,
+            intent: "attach",
           });
-          if (active) freshSessionStartedRef.current = true;
+          freshSessionStartedRef.current = true;
         } else if (!active) {
-          active = await workspace.ensureActive({ title: prompt });
+          active = await workspace.ensureActive({
+            title: prompt,
+            intent: "attach",
+          });
         }
         linkedSessionId = active?.id || workspace.sessionId || "";
-        if (!linkedSessionId) {
-          setBusy(false);
-          setError(workspace.error || tt("无法创建工作会话，请稍后重试。"));
-          setMessages((current) =>
-            current.filter((message) => message.id !== -1),
-          );
-          return false;
-        }
       }
 
       const result = await createTask({

@@ -34,6 +34,68 @@ export interface WorkspaceSessionConflict {
   latest: AppSession;
 }
 
+/**
+ * 建档意图。`app_sessions` 一行就是用户在「我的任务」里看到的一条任务，因此建行的
+ * 权力只交给「已经产生了一份重做要付出代价的产物」的调用方。
+ *
+ * - `"output"`：本次调用伴随真实产物（AI 产出、用户手工保存的文档、登记的素材）。
+ *   允许创建会话。
+ * - `"attach"`（默认）：只想拿到当前会话。没有就返回空，绝不创建。右栏页签、备注、
+ *   操作台输入这类「还没产出」的状态走这条路，落到 `agent_console_drafts` 草稿里。
+ */
+export type SessionCreateIntent = "output" | "attach";
+
+/** 未传视为 `"attach"`：只有明确伴随产物的调用才有权建档。 */
+export function isOutputCreateIntent(
+  intent?: SessionCreateIntent,
+): boolean {
+  return intent === "output";
+}
+
+/**
+ * 把草稿里攒下的输入并进本次快照。草稿是非空对象时展开，本次快照覆盖同名键；
+ * 没有草稿就原样返回本次快照。
+ */
+export function mergeDraftStateIntoSnapshot(
+  draftState: unknown,
+  snapshot?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (
+    draftState &&
+    typeof draftState === "object" &&
+    !Array.isArray(draftState) &&
+    Object.keys(draftState as Record<string, unknown>).length > 0
+  ) {
+    return {
+      ...(draftState as Record<string, unknown>),
+      ...(snapshot || {}),
+    };
+  }
+  return snapshot;
+}
+
+/**
+ * 这条会话是否已经产出过内容。
+ *
+ * 判定的是**三态**，不是真假：字段缺失与字段为 null 必须分开看。未产出的会话会被
+ * `archive` / `startNew` 直接 `DELETE`（后端级联删任务、消息与产物），所以只有服务端
+ * **明确说**没有产出时才可以丢弃。
+ *
+ * - 字段缺失（`undefined`）：后端还没有这一列，或这条响应没带上它。此时无从判断，
+ *   一律当作**已产出**——宁可多留一条空记录，也不能删掉用户真实的已保存任务。
+ *   迁移 `0208` 应用之前，线上每一行都走这条分支。
+ * - `null`：服务端明确表示这条只有输入、没有任何产出，可以丢弃。
+ * - 时间戳：已产出。
+ */
+export function sessionHasProducedOutput(
+  session: { first_output_at?: string | null } | null | undefined,
+): boolean {
+  if (!session) return false;
+  if (!("first_output_at" in session)) return true;
+  if (session.first_output_at === undefined) return true;
+  return Boolean(session.first_output_at);
+}
+
 export interface WorkspaceSnapshotSaveResult {
   ok: boolean;
   session?: AppSession;
@@ -43,6 +105,11 @@ export interface WorkspaceSnapshotSaveResult {
   readOnly?: boolean;
   /** 保存属于已经离开的 session；常见于 restart/切换时到达的卸载 flush。 */
   stale?: boolean;
+  /**
+   * 尚无会话且本次不是产出：快照已写进 `agent_console_drafts` 草稿，未建任务行。
+   * `ok` 仍为 true——用户的输入没有丢，只是还不配叫一条任务。
+   */
+  deferred?: boolean;
   error?: string;
 }
 
@@ -74,6 +141,8 @@ export interface EnsureWorkspaceSessionOptions {
   schemaVersion?: number;
   /** Keep the mounted runtime when the caller is already orchestrating its first run. */
   remountRuntime?: boolean;
+  /** 默认 `"attach"`：没有产物的调用方不得建档。 */
+  intent?: SessionCreateIntent;
 }
 
 export interface SaveWorkspaceSnapshotOptions {
@@ -83,6 +152,8 @@ export interface SaveWorkspaceSnapshotOptions {
    * 新 session 或覆盖新 session。
    */
   expectedSessionId?: string;
+  /** 默认 `"attach"`：自动保存永远不建档，只有伴随产物的保存才建。 */
+  intent?: SessionCreateIntent;
 }
 
 export interface WorkspaceSessionContextValue {
@@ -97,6 +168,11 @@ export interface WorkspaceSessionContextValue {
   taskId: string | null;
   /** 完整「我的任务」session 可续编；旧/错误路由仍可被标为只读。 */
   readOnly: boolean;
+  /**
+   * 这条会话是否已经产出过内容（服务端 `first_output_at`）。无会话时为 false。
+   * 未产出的会话不会出现在「我的任务」，restart 时直接丢弃而不是归档。
+   */
+  hasOutput: boolean;
   availability: WorkspaceSessionAvailability;
   error: string | null;
   conflict: WorkspaceSessionConflict | null;
@@ -182,6 +258,20 @@ export function workspaceSnapshotsEqual(a: unknown, b: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/** 建档合并草稿后，服务端快照是本次记录的超集，不得再用瘦快照覆盖。 */
+export function snapshotCoversRecord(
+  snapshot: unknown,
+  record: Record<string, unknown>,
+): boolean {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return false;
+  }
+  const held = snapshot as Record<string, unknown>;
+  return Object.keys(record).every((key) =>
+    workspaceSnapshotsEqual(held[key], record[key]),
+  );
 }
 
 export function workspaceSessionMatches(

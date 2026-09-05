@@ -10,22 +10,32 @@ import {
 } from "react";
 import {
   archiveAppSession,
+  deleteAppSession,
   ensureAppSession,
   getAppSession,
   listAppSessions,
   updateAppSession,
   type AppSession,
 } from "../lib/app-session";
+import {
+  clearConsoleDraft,
+  loadConsoleDraft,
+  saveConsoleDraft,
+} from "../lib/console-draft";
 import { WorkspaceSessionContext } from "./workspace-session-context";
 import { findLinkedAgentTaskId } from "./workspace-session-task";
 import {
   availabilityForSessionFailure,
   blockedSnapshotSave,
   isArchivedAppSession,
+  isOutputCreateIntent,
   isStaleSessionResponse,
   isWorkspaceSessionReadOnly,
   matchingInitialSession,
+  mergeDraftStateIntoSnapshot,
   changedDuringLoad,
+  sessionHasProducedOutput,
+  snapshotCoversRecord,
   snapshotTargetsCurrentSession,
   workspaceSessionMismatch,
   workspaceSnapshotsEqual,
@@ -286,6 +296,7 @@ export function WorkspaceSessionProvider({
         surface: sessionSurface,
         status: "active",
         includeArchived: false,
+        includeDraft: true,
         limit: 1,
       });
       if (!alive) return;
@@ -383,15 +394,27 @@ export function WorkspaceSessionProvider({
       // 绝不能在记录缺失或身份不匹配时 ensure 出另一条会话来伪装原任务。
       if (mode === "history") return null;
       if (!site || !app) return null;
+      // 没有产物就不得建档：右栏页签、自动保存走草稿，不是失败。
+      if (!isOutputCreateIntent(options.intent)) return null;
       if (ensurePromiseRef.current) return ensurePromiseRef.current;
 
       const pending = (async () => {
+        let snapshot = options.snapshot;
+        try {
+          const draft = await loadConsoleDraft(site, app);
+          snapshot = mergeDraftStateIntoSnapshot(
+            draft?.state,
+            options.snapshot,
+          );
+        } catch {
+          /* 读草稿失败不挡建档 */
+        }
         const result = await ensureAppSession({
           siteId: site,
           appId: app,
           surface: sessionSurface,
           title: options.title || appTitle,
-          snapshot: options.snapshot,
+          snapshot,
           schemaVersion: options.schemaVersion,
         });
         if (!result.ok || !result.data) {
@@ -406,6 +429,11 @@ export function WorkspaceSessionProvider({
           return null;
         }
         applySession(result.data);
+        try {
+          await clearConsoleDraft(site, app);
+        } catch {
+          /* 清草稿失败不让建档失败 */
+        }
         void hydrateLinkedTask(result.data);
         return result.data;
       })();
@@ -496,11 +524,20 @@ export function WorkspaceSessionProvider({
         }
         const queuedBlocked = blockedSnapshotSave(conflictRef.current);
         if (queuedBlocked) return queuedBlocked;
+        // 未建档的自动保存只写草稿，不发起 sessions 建行。
+        if (
+          !sessionRef.current &&
+          !isOutputCreateIntent(options.intent)
+        ) {
+          await saveConsoleDraft(site, app, recordSnapshot);
+          return { ok: true, deferred: true };
+        }
         const beforeEnsure = sessionRef.current;
         const active = await ensureActive({
           title: options.title,
           snapshot: recordSnapshot,
           schemaVersion,
+          intent: options.intent,
         });
         if (!active) {
           return {
@@ -523,7 +560,8 @@ export function WorkspaceSessionProvider({
         if (
           !beforeEnsure &&
           active.schema_version === schemaVersion &&
-          workspaceSnapshotsEqual(active.snapshot, recordSnapshot)
+          (workspaceSnapshotsEqual(active.snapshot, recordSnapshot) ||
+            snapshotCoversRecord(active.snapshot, recordSnapshot))
         ) {
           conflictRef.current = null;
           setConflict(null);
@@ -598,6 +636,8 @@ export function WorkspaceSessionProvider({
       reportFailure,
       mode,
       sessionSurface,
+      site,
+      app,
     ],
   );
 
@@ -607,6 +647,8 @@ export function WorkspaceSessionProvider({
         const current = sessionRef.current;
         if (mode === "history") return current;
         if (!site || !app) return null;
+        // 只刷新已有会话的 last_activity_at；没有会话时碰一下不建行。
+        if (!current) return null;
         const result = await ensureAppSession({
           siteId: site,
           appId: app,
@@ -683,7 +725,7 @@ export function WorkspaceSessionProvider({
   const artifactContext = useCallback(
     async (title?: string): Promise<WorkspaceSessionRecordContext | null> => {
       if (isWorkspaceSessionReadOnly(mode, sessionRef.current)) return null;
-      const active = await ensureActive({ title });
+      const active = await ensureActive({ title, intent: "output" });
       if (!active) return null;
       return {
         sessionId: active.id,
@@ -713,6 +755,23 @@ export function WorkspaceSessionProvider({
     [artifactContext, touch],
   );
 
+  const discardUnproducedSession = useCallback(
+    async (sessionId: string): Promise<boolean> => {
+      const deleted = await deleteAppSession(sessionId, sessionSurface);
+      if (!deleted.ok) {
+        reportFailure(deleted.status, deleted.error);
+        return false;
+      }
+      try {
+        await clearConsoleDraft(site, app);
+      } catch {
+        /* 清草稿失败不挡丢弃 */
+      }
+      return true;
+    },
+    [app, reportFailure, sessionSurface, site],
+  );
+
   const archive = useCallback(
     async (): Promise<false | "empty" | "archived"> =>
       enqueueMutation(async () => {
@@ -721,6 +780,13 @@ export function WorkspaceSessionProvider({
         if (mode === "history") return false;
         const active = sessionRef.current;
         if (!active) {
+          clearCurrent();
+          return "empty";
+        }
+        // 没有产出的会话不能进「我的任务」：丢弃而不是归档。
+        if (!sessionHasProducedOutput(active)) {
+          const discarded = await discardUnproducedSession(active.id);
+          if (!discarded) return false;
           clearCurrent();
           return "empty";
         }
@@ -739,7 +805,15 @@ export function WorkspaceSessionProvider({
         clearCurrent();
         return "archived";
       }),
-    [enqueueMutation, mode, clearCurrent, reload, reportFailure, sessionSurface],
+    [
+      enqueueMutation,
+      mode,
+      clearCurrent,
+      discardUnproducedSession,
+      reload,
+      reportFailure,
+      sessionSurface,
+    ],
   );
 
   const clearConflict = useCallback(() => {
@@ -778,6 +852,7 @@ export function WorkspaceSessionProvider({
         const current = sessionRef.current;
         let activeSessionId =
           current && !isArchivedAppSession(current) ? current.id : "";
+        let listed: AppSession | null = null;
         // `resumeLatest={false}` deliberately leaves the client empty, but the
         // server may still hold the previous active row for this app. A real
         // "new conversation" must archive that row before ensure_active, or
@@ -790,33 +865,53 @@ export function WorkspaceSessionProvider({
             surface: sessionSurface,
             status: "active",
             includeArchived: false,
+            includeDraft: true,
             limit: 1,
           });
           if (!existing.ok || !existing.data) {
             reportFailure(existing.status, existing.error);
             return null;
           }
-          activeSessionId = existing.data.items[0]?.id || "";
+          listed = existing.data.items[0] ?? null;
+          activeSessionId = listed?.id || "";
         }
         if (activeSessionId) {
-          const archived = await archiveAppSession(
-            activeSessionId,
-            sessionSurface,
-          );
-          if (!archived.ok) {
-            if (archived.status !== 409) {
-              reportFailure(archived.status, archived.error);
-              return null;
-            }
-            const latest = await getAppSession(
+          const known =
+            current && current.id === activeSessionId ? current : listed;
+          // 有产出才归档，没产出就丢弃。
+          if (known && !sessionHasProducedOutput(known)) {
+            const discarded = await discardUnproducedSession(activeSessionId);
+            if (!discarded) return null;
+          } else {
+            const archived = await archiveAppSession(
               activeSessionId,
               sessionSurface,
             );
-            if (!latest.ok || !isArchivedAppSession(latest.data)) {
-              reportFailure(latest.status, latest.error || archived.error);
-              return null;
+            if (!archived.ok) {
+              if (archived.status !== 409) {
+                reportFailure(archived.status, archived.error);
+                return null;
+              }
+              const latest = await getAppSession(
+                activeSessionId,
+                sessionSurface,
+              );
+              if (!latest.ok || !isArchivedAppSession(latest.data)) {
+                reportFailure(latest.status, latest.error || archived.error);
+                return null;
+              }
             }
           }
+        }
+        if (!isOutputCreateIntent(options.intent)) {
+          clearCurrent();
+          setLinkedTaskId(null);
+          conflictRef.current = null;
+          setConflict(null);
+          if (options.remountRuntime !== false) {
+            setRuntimeEpoch((value) => value + 1);
+          }
+          return null;
         }
         const result = await ensureAppSession({
           siteId: site,
@@ -846,6 +941,8 @@ export function WorkspaceSessionProvider({
       app,
       appTitle,
       applySession,
+      clearCurrent,
+      discardUnproducedSession,
       enqueueMutation,
       reportFailure,
       sessionSurface,
@@ -864,6 +961,7 @@ export function WorkspaceSessionProvider({
       session,
       taskId: linkedTaskId ?? session?.task_id ?? null,
       readOnly: isWorkspaceSessionReadOnly(mode, session),
+      hasOutput: sessionHasProducedOutput(session),
       availability,
       error,
       conflict,

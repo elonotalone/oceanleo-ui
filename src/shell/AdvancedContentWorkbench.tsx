@@ -339,6 +339,7 @@ function AdvancedContentWorkbenchRuntime(
           workspace.session ||
           (await workspace.ensureActive({
             title: materialRef.current.title,
+            intent: "attach",
           }));
         if (active && taskId && workspace.taskId !== taskId) {
           return workspace.bindTask(taskId, materialRef.current.title);
@@ -350,6 +351,7 @@ function AdvancedContentWorkbenchRuntime(
         title: materialRef.current.title,
         snapshot,
         schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+        intent: "attach",
       });
       if (!session) return null;
       if (taskId) {
@@ -378,7 +380,10 @@ function AdvancedContentWorkbenchRuntime(
       if (editorHost.embedded) {
         const active =
           workspace.session ||
-          (await workspace.ensureActive({ title: savedItem.title }));
+          (await workspace.ensureActive({
+            title: savedItem.title,
+            intent: "output",
+          }));
         if (!active) return false;
         const mergedSnapshot = withInlineEditorHistoryHead(
           active.snapshot,
@@ -411,6 +416,7 @@ function AdvancedContentWorkbenchRuntime(
         title: savedItem.title,
         snapshot,
         schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+        intent: "output",
       });
       if (!session) return false;
       const saved = await workspace.saveSnapshot(
@@ -437,6 +443,7 @@ function AdvancedContentWorkbenchRuntime(
         title: nextTitle,
         snapshot,
         schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+        intent: "attach",
       });
       if (!session) return false;
       const saved = await workspace.saveSnapshot(
@@ -458,6 +465,7 @@ function AdvancedContentWorkbenchRuntime(
       title: materialRef.current.title,
       snapshot: makeSnapshot(null),
       schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+      intent: "attach",
     });
     if (next && workspace.mode === "history") navigate(next.id);
     return next;
@@ -472,26 +480,6 @@ function AdvancedContentWorkbenchRuntime(
     },
     [],
   );
-  const firstUseEnsuredRef = useRef(false);
-  useEffect(() => {
-    if (
-      editorHost.embedded ||
-      workspace.availability !== "ready" ||
-      firstUseEnsuredRef.current ||
-      workspace.session ||
-      props.sessionId
-    ) {
-      return;
-    }
-    firstUseEnsuredRef.current = true;
-    void ensure(null);
-  }, [
-    ensure,
-    editorHost.embedded,
-    props.sessionId,
-    workspace.availability,
-    workspace.session,
-  ]);
   const sessionActions = useMemo(
     () => ({
       sessionId: workspace.sessionId,
@@ -570,9 +558,9 @@ function AdvancedContentWorkbenchRuntime(
       break;
   }
 
-  if (!editorHost.embedded && workspace.availability === "loading") {
-    return <WorkbenchRouteLoading />;
-  }
+  // Session hydration must not hide a canvas that already has material.
+  // Gallery embeds already skipped this gate; consumer /advanced and
+  // workspace mounts used to swap every plugin for a spinner on 503/SSL.
 
   // 两级错误边界（W09）。在此之前只有外面这一层，且它的失败态是
   // `createPortal(fallback, document.body)` + `fixed inset-0 z-[2147483000]`

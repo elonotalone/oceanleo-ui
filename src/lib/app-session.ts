@@ -47,6 +47,11 @@ export interface AppSession {
   /** AI history-title lifecycle: pending | generated | fallback. */
   title_status?: string | null;
   title_generated_at?: string | null;
+  /**
+   * 首次产出时间。为空表示这条会话只有用户输入、没有任何 AI 产出或保存的产物——
+   * 它是草稿，不是任务，「我的任务」不列它。
+   */
+  first_output_at?: string | null;
   status: AppSessionStatus;
   snapshot?: unknown;
   schema_version: number;
@@ -77,6 +82,11 @@ export interface ListAppSessionsOptions {
   projectScope?: ProjectScope;
   /** 「我的任务」需要包含 archived（已保存）会话；live 查活跃缓存时传 false。 */
   includeArchived?: boolean;
+  /**
+   * 是否连尚未产出的草稿会话一起返回。默认 false，「我的任务」因此只看得到真正
+   * 产出过内容的记录；只有 Provider 恢复上次未完成输入时才传 true。
+   */
+  includeDraft?: boolean;
 }
 
 export interface EnsureAppSessionInput {
@@ -208,6 +218,7 @@ export async function listAppSessions(
   if (options.status) params.set("status", options.status);
   else if (options.includeArchived === false) params.set("status", "active");
   if (options.projectScope === "all") params.set("project_scope", "all");
+  if (options.includeDraft === true) params.set("include_draft", "true");
   const result = await sessionRequest<SessionListEnvelope>(
     `?${params.toString()}`,
     undefined,

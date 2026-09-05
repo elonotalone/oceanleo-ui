@@ -605,6 +605,8 @@ export function FunctionAgentChat({
   const reportedArtifactIdsRef = useRef<Set<number>>(new Set());
   const seenWorkspaceActionIdsRef = useRef<Set<number>>(new Set());
   const loadedTaskRef = useRef("");
+  const outputRecordedTaskRef = useRef("");
+  const outputPromptRef = useRef("");
   const atts = useAttachments(siteId, setError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
   const editorCommands = useEditorCommandBridge({
@@ -1275,6 +1277,27 @@ export function FunctionAgentChat({
     ingestEditorCommands(messages, taskId || "");
   }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
 
+  // 第一句 AI 回答落地才建档：发送本身不配叫一条任务。
+  useEffect(() => {
+    if (!workspace || sessionReadOnly) return;
+    if (!taskId || messagesTaskId !== taskId) return;
+    if (outputRecordedTaskRef.current === taskId) return;
+    const hasAssistant = messages.some((message) => message.role === "assistant");
+    if (!hasAssistant) return;
+    outputRecordedTaskRef.current = taskId;
+    const title =
+      outputPromptRef.current ||
+      messages.find((message) => message.role === "user")?.content ||
+      "";
+    void (async () => {
+      const active = await workspace.ensureActive({
+        title,
+        intent: "output",
+      });
+      if (active) await workspace.bindTask(taskId, title);
+    })();
+  }, [messages, messagesTaskId, sessionReadOnly, taskId, workspace]);
+
   // 把 agent 线程里每个新 artifact（预览/图片/文档）按顺序回报给宿主 → 右侧结果画布显示。
   // 同一次轮询可能同时拿到 preview 和最终 markdown；不能只取 latest，否则预览会永久丢失。
   // 宗旨 v10：这是操作台与 agent 共用右栏结果区的机制（agent 不写操作台，但产物进
@@ -1347,6 +1370,7 @@ export function FunctionAgentChat({
       prompt || tt("请分析我上传的文件。"),
       operatorRemark,
     );
+    outputPromptRef.current = effectivePrompt;
     // 让模型看见右边现在开着什么、能做什么（只给模型看，不进用户可见对话）。
     // 右边没开编辑器时这段是空串。
     editorCommands.noteUserTurn();
@@ -1411,19 +1435,16 @@ export function FunctionAgentChat({
     if (!taskId) {
       setBusy(true);
       let linkedSessionId =
-        explicitSessionId || workspace?.sessionId || "";
+        explicitSessionId ||
+        workspace?.sessionId ||
+        workspace?.session?.id ||
+        "";
       if (!linkedSessionId && workspace) {
-        const context = await workspace.artifactContext(effectivePrompt);
-        linkedSessionId = context?.sessionId || "";
-      }
-      if (workspace && !linkedSessionId) {
-        setBusy(false);
-        setMessages((current) =>
-          current.filter((message) => message.id !== optimisticMessageId),
-        );
-        restoreSubmission();
-        setError(workspace.error || tt("无法创建工作会话，请稍后重试。"));
-        return;
+        const active = await workspace.ensureActive({
+          title: effectivePrompt,
+          intent: "attach",
+        });
+        linkedSessionId = active?.id || workspace.sessionId || "";
       }
       const r = await createTask({
         prompt: effectivePrompt,

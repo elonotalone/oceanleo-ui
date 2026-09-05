@@ -110,9 +110,14 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource,
     /explicitTaskId !== undefined[\s\S]*?workspace\?\.taskId \|\| localTaskId/,
   );
+  // 发送本身不建档：拿会话只能是 attach，建档要等第一句 AI 回答落地。
   assert.match(
     agentChatSource,
-    /await workspace\.ensureActive\(\{ title: prompt \}\)/,
+    /await workspace\.ensureActive\(\{\s*title: prompt,\s*intent: "attach",\s*\}\)/,
+  );
+  assert.match(
+    agentChatSource,
+    /await workspace\.ensureActive\(\{\s*title,\s*intent: "output",\s*\}\)/,
   );
   assert.match(
     agentChatSource,
@@ -140,7 +145,10 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     providerSource,
     /listAppSessions\(\{[\s\S]*?appId: app,[\s\S]*?surface: sessionSurface,[\s\S]*?status: "active"[\s\S]*?archiveAppSession\(\s*activeSessionId,\s*sessionSurface/,
   );
-  assert.match(agentChatSource, /router\.replace\(historySessionHref\(sessionId\)\)/);
+  assert.match(
+    agentChatSource,
+    /router\.replace\(historySessionHref\(sessionId, undefined, pathname\)\)/,
+  );
   assert.match(agentChatSource, /const \[rightOpen, setRightOpen\] = useState\(hasOrgPanel\)/);
   assert.match(agentChatSource, /open: rightOpen/);
   const artifactAutoStart = agentChatSource.indexOf(

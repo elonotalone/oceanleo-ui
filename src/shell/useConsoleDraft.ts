@@ -6,7 +6,7 @@
 // doctrine 2026-07-09（操作员拍板：默认自动恢复上次草稿）。站点在成品 app 的操作台
 // 页里调它一行，即获得：
 //   ① 有 AppSession 时恢复版本化 snapshot；旧后端/未登录才回退每-app 本地草稿。
-//   ② 用户改动后 debounce 保存；首次有效改动才建立 session，不因 mount 制造空历史。
+//   ② 用户改动后 debounce 保存；尚无产物时只写草稿，不因 mount 制造空任务。
 //   ③ restart() 归档真实 session，成功后才清草稿并复位。
 //
 // 关键设计（避免存/取回环）：
@@ -252,7 +252,7 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
             // 历史/归档只读是终态，不能回退写 localStorage 后伪装保存成功。
             persisted = true;
           } else {
-            // 尚无 session 时，初值本身不应制造一条空历史；首次非空改动才 ensure。
+            // 尚无 session 时，初值本身不应制造一条空历史；首次非空改动才写草稿。
             const meaningful = meaningfulRef.current
               ? meaningfulRef.current(currentState, initialRef.current)
               : !statesEqual(currentState, initialRef.current);
@@ -265,10 +265,12 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
                 {
                   title: titleRef.current,
                   expectedSessionId: currentWorkspace.session?.id,
+                  intent: "attach",
                 },
               );
               if (
                 result.ok ||
+                result.deferred ||
                 result.conflict ||
                 result.readOnly ||
                 result.stale
@@ -276,6 +278,7 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
                 persisted = true;
               } else if (
                 result.unavailable &&
+                !result.deferred &&
                 currentWorkspace.mode !== "history"
               ) {
                 await saveConsoleDraft(siteId, appId, currentState);
