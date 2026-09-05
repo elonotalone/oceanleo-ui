@@ -125,6 +125,7 @@ const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
 const {
   SplitWorkspace,
   useLeftPaneSlot,
+  useWorkspacePane,
 } = await import(splitUrl);
 
 test("3/7 PaneHeader keeps app identity before controls and pane actions", async () => {
@@ -136,8 +137,8 @@ test("3/7 PaneHeader keeps app identity before controls and pane actions", async
         { "data-test-toolbar-controls": true, className: "flex shrink-0" },
         React.createElement("button", { type: "button" }, "controls"),
       );
-      slot?.setLeftLabel(controls);
-      return () => slot?.setLeftLabel(null);
+      slot?.setLeftLabel("toolbar-controls", controls);
+      return () => slot?.setLeftLabel("toolbar-controls", null);
     }, [slot]);
     return React.createElement("div", { "data-left-body": true });
   }
@@ -255,6 +256,9 @@ const operatorUrl = await compileModule("src/shell/OperatorConsole.tsx", {
   "./app-capability-entry": capabilityEntryStubUrl,
   "./AppCapabilityBar": capabilityBarStubUrl,
   "./app-capability-context": capabilityContextStubUrl,
+  "../lib/app-icon-image": dataModule(
+    `export function appIconThumbSrc(){ return ""; }`,
+  ),
 });
 const { OperatorConsole } = await import(operatorUrl);
 
@@ -333,6 +337,10 @@ const paneSlotStubUrl = dataModule(`
   export function useLeftPaneSlot() {
     return globalThis.__workbenchToolbarSlot || null;
   }
+  export function useRegisterConsoleAgentFocus() {}
+  export function useConsoleAgentFocus() {
+    return null;
+  }
 `);
 const guideStubUrl = dataModule(`
   export function useRegisterOpsFiller() {}
@@ -392,26 +400,45 @@ const visualStubUrl = dataModule(`
   export function AgentProgress() { return null; }
   export function LeoComposer() { return jsx("div", { "data-composer": "true" }); }
 `);
+const agentReviewStubUrl = dataModule(`
+  export function readAgentCommandSurface() { return null; }
+  export function AgentReviewDock() { return null; }
+  export function assembleAgentEditorContext() { return null; }
+  export function readAgentSelection() { return null; }
+  export function readMentionCatalog() { return []; }
+  export function refreshAgentSelectionFromDom() {}
+  export function installAgentReviewGate() {}
+  export function installSelectionBridge() {}
+`);
+const functionAgentStubs = {
+  "./AgentTranscriptBubble": visualStubUrl,
+  "./AgentProgress": visualStubUrl,
+  "./LeoComposer": visualStubUrl,
+  "./icons": iconsStubUrl,
+  "./guide-context": guideStubUrl,
+  "./useAttachments": attachmentsStubUrl,
+  "../lib/agent": agentStubUrl,
+  "../i18n/ui/useUI": uiStubUrl,
+  "./WorkspaceSession": workspaceSessionStubUrl,
+  "./RestartDraftButton": restartUrl,
+  "./workspace-runtime-hydration": hydrationStubUrl,
+  "./workspace-actions": workspaceActionsStubUrl,
+  "./workspace-session-snapshot": snapshotStubUrl,
+  "./OperatorRemark": remarkStubUrl,
+  "../lib/operator-remark": appendRemarkStubUrl,
+  "../lib/agent-progress": agentProgressStubUrl,
+  "./agent-review/surface": agentReviewStubUrl,
+  "./agent-review/dock": agentReviewStubUrl,
+  "./agent-review/selection-bridge": agentReviewStubUrl,
+  "./agent-review/inbox": agentReviewStubUrl,
+  "./agent-review/selection-live": agentReviewStubUrl,
+  "./agent-review/install": agentReviewStubUrl,
+};
 const functionAgentUrl = await compileModule(
   "src/shell/FunctionAgentChat.tsx",
   {
-    "./AgentTranscriptBubble": visualStubUrl,
-    "./AgentProgress": visualStubUrl,
-    "./LeoComposer": visualStubUrl,
+    ...functionAgentStubs,
     "./SplitWorkspace": paneSlotStubUrl,
-    "./icons": iconsStubUrl,
-    "./guide-context": guideStubUrl,
-    "./useAttachments": attachmentsStubUrl,
-    "../lib/agent": agentStubUrl,
-    "../i18n/ui/useUI": uiStubUrl,
-    "./WorkspaceSession": workspaceSessionStubUrl,
-    "./RestartDraftButton": restartUrl,
-    "./workspace-runtime-hydration": hydrationStubUrl,
-    "./workspace-actions": workspaceActionsStubUrl,
-    "./workspace-session-snapshot": snapshotStubUrl,
-    "./OperatorRemark": remarkStubUrl,
-    "../lib/operator-remark": appendRemarkStubUrl,
-    "../lib/agent-progress": agentProgressStubUrl,
   },
 );
 const { FunctionAgentChat } = await import(functionAgentUrl);
@@ -446,7 +473,14 @@ test("mode widths swap with selection while Save and New stay icon-only", async 
 
   function Harness() {
     const [toolbar, setToolbar] = useState(null);
-    const slot = useMemo(() => ({ setLeftLabel: setToolbar }), []);
+    const slot = useMemo(
+      () => ({
+        setLeftLabel(_owner, node) {
+          setToolbar(node);
+        },
+      }),
+      [],
+    );
     globalThis.__workbenchToolbarSlot = slot;
     return React.createElement(
       React.Fragment,
@@ -565,4 +599,236 @@ test("narrow viewport contract never wraps chrome or sacrifices essential contro
   assert.match(splitSource, /data-workspace-split[\s\S]*?md:flex/);
   assert.match(chatSource, /data-workbench-primary-controls[\s\S]*?flex-nowrap/);
   assert.match(chatSource, /data-width=\{selected \? "selected" : "compact"\}/);
+  assert.match(splitSource, /setLeftLabel\(owner,/);
+  assert.match(splitSource, /ConsoleAgentFocusCtx/);
+  assert.match(splitSource, /focusAgent\(\)/);
+  assert.match(chatSource, /useRegisterConsoleAgentFocus\(showOps,/);
+});
+
+const functionAgentOnSplitUrl = await compileModule(
+  "src/shell/FunctionAgentChat.tsx",
+  {
+    ...functionAgentStubs,
+    "./SplitWorkspace": splitUrl,
+  },
+);
+const { FunctionAgentChat: FunctionAgentOnSplit } = await import(
+  functionAgentOnSplitUrl
+);
+
+const fallbackAgentPanelStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function PluginAgentPanel({ editorId }) {
+    return jsx("div", { "data-test-fallback-agent-panel": editorId });
+  }
+`);
+const panelsUrl = await compileModule("src/shell/use-inline-advanced-panels.tsx", {
+  "../i18n/ui/useUI": uiStubUrl,
+  "./SplitWorkspace": splitUrl,
+  "./plugin-chrome/PluginAgentPanel": fallbackAgentPanelStubUrl,
+  "./InlineEditorMaterialPanel": dataModule(
+    `export function InlineEditorMaterialPanel(){ return null; }`,
+  ),
+  "./plugin-theme": dataModule(`
+    export function PluginThemeScope({ children }) { return children; }
+  `),
+  "./inline-advanced-shell-helpers": dataModule(`
+    export function resolveInlineAdvancedDrawers() { return []; }
+    export function resolveActiveMaterialAction() { return undefined; }
+  `),
+});
+const { useInlineAdvancedPanels } = await import(panelsUrl);
+
+const deckItem = {
+  key: "deck-1",
+  source: "creation",
+  id: "deck-1",
+  title: "项目方案PPT",
+  kind: "deck",
+  siteId: "slides",
+  favorite: false,
+  meta: {},
+};
+const deckAdapter = {
+  id: "deck",
+  label: "PPT 生成",
+  stage: null,
+};
+
+function appIdentity() {
+  return React.createElement(
+    "div",
+    { "data-workbench-app-identity": true },
+    React.createElement(
+      "span",
+      { "data-workbench-app-title": true },
+      "项目方案PPT",
+    ),
+  );
+}
+
+function consoleChat(extra = {}) {
+  return React.createElement(FunctionAgentOnSplit, {
+    agentId: extra.agentId || "slides.deck",
+    siteId: "slides",
+    schema: {
+      agentId: extra.agentId || "slides.deck",
+      title: "PPT 生成",
+      fields: [{ key: "prompt", label: "提示词" }],
+      actions: [],
+    },
+    opsContent:
+      extra.opsContent === undefined
+        ? React.createElement("div", { "data-ops-body": true }, "ops body")
+        : extra.opsContent,
+    showOps: extra.showOps !== false,
+    defaultTab: extra.defaultTab || "ops",
+  });
+}
+
+function AgentOpenTrigger() {
+  const pane = useWorkspacePane();
+  const { openDrawer } = useInlineAdvancedPanels({
+    adapter: deckAdapter,
+    item: deckItem,
+    siteId: "slides",
+    accent: "#4f46e5",
+    ownerId: "test-inline",
+    pluginThemeId: null,
+    workbenchMaterials: null,
+    showWorkspaceDetail: pane?.showDetail,
+    clearWorkspaceDetail: pane?.clearDetail,
+  });
+  return React.createElement(
+    "div",
+    { "data-right-trigger": true },
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "data-test-open-agent": true,
+        onClick: () => openDrawer("agent"),
+      },
+      "open agent",
+    ),
+    pane?.detail
+      ? React.createElement("div", {
+          "data-test-active-detail": pane.detail.id,
+        })
+      : null,
+  );
+}
+
+test("openDrawer(agent) focuses the existing showOps console — no B/C second tree", async () => {
+  const mounted = await createMounted(SplitWorkspace, {
+    left: consoleChat(),
+    right: React.createElement(AgentOpenTrigger),
+    leftLabel: appIdentity(),
+    rightLabel: "结果",
+    headerHeight: 0,
+  });
+  try {
+    const leftPane = mounted.container.querySelector(
+      '[data-workspace-pane="left"]',
+    );
+    const openBtn = mounted.container.querySelector("[data-test-open-agent]");
+    assert.ok(leftPane.querySelector("[data-workbench-mode-switch]"));
+    await click(openBtn);
+    assert.equal(
+      mounted.container.querySelector("[data-test-active-detail]"),
+      null,
+      "有 handler 时不许产生 activeDetail（B）",
+    );
+    assert.equal(leftPane.getAttribute("data-left-panel"), "app");
+    assert.equal(
+      mounted.container.querySelector("[data-test-fallback-agent-panel]"),
+      null,
+    );
+    const modeSwitch = leftPane.querySelector("[data-workbench-mode-switch]");
+    assert.ok(modeSwitch, "header 切换键必须还在（C 不许发生）");
+    const agent = modeSwitch.querySelector('[data-workbench-mode="agent"]');
+    assert.equal(agent.getAttribute("data-selected"), "true");
+    assert.match(
+      leftPane.textContent,
+      /想自己精细操控/,
+      "操作台提示行必须还在",
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("drawer open/close cycle keeps [data-workbench-primary-controls] (slot owner)", async () => {
+  function CycleHarness({ showSecond }) {
+    return React.createElement(SplitWorkspace, {
+      left: React.createElement(
+        React.Fragment,
+        null,
+        consoleChat(),
+        showSecond
+          ? consoleChat({
+              agentId: "slides.deck-fallback",
+              showOps: false,
+              defaultTab: "agent",
+              opsContent: null,
+            })
+          : null,
+      ),
+      right: React.createElement("div", { "data-right-body": true }),
+      leftLabel: appIdentity(),
+      rightLabel: "结果",
+      headerHeight: 0,
+    });
+  }
+
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(CycleHarness, { showSecond: true }));
+    });
+    assert.ok(
+      container.querySelector("[data-workbench-primary-controls]"),
+      "第二棵 showOps=false 树不得清掉第一棵的 header 控件",
+    );
+    await act(async () => {
+      root.render(React.createElement(CycleHarness, { showSecond: false }));
+    });
+    assert.ok(
+      container.querySelector("[data-workbench-primary-controls]"),
+      "抽屉关上一轮之后 primary-controls 必须还在",
+    );
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("openDrawer(agent) without a focus handler still mounts a usable AI panel", async () => {
+  const mounted = await createMounted(SplitWorkspace, {
+    left: React.createElement("div", { "data-left-empty": true }),
+    right: React.createElement(AgentOpenTrigger),
+    leftLabel: appIdentity(),
+    rightLabel: "结果",
+    headerHeight: 0,
+  });
+  try {
+    await click(mounted.container.querySelector("[data-test-open-agent]"));
+    const detail = mounted.container.querySelector("[data-test-active-detail]");
+    assert.ok(detail, "没有 handler 时必须仍给出 AI 面板");
+    assert.equal(detail.getAttribute("data-test-active-detail"), "agent");
+    const leftPane = mounted.container.querySelector(
+      '[data-workspace-pane="left"]',
+    );
+    assert.equal(leftPane.getAttribute("data-left-panel"), "tool-detail");
+    assert.ok(
+      mounted.container.querySelector("[data-test-fallback-agent-panel]"),
+      "兜底内容必须是 PluginAgentPanel",
+    );
+    assert.match(leftPane.textContent, /AI 助手/);
+  } finally {
+    await mounted.unmount();
+  }
 });

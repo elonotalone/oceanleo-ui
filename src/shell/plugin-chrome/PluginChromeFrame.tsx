@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
 import { AdvancedLayoutContext } from "../advanced-layout-context";
+import { useConsoleAgentFocus } from "../SplitWorkspace";
 import {
   PluginThemeToggle,
   usePluginTheme,
@@ -99,7 +100,7 @@ export interface PluginChromeFrameProps {
    * 把模式送给内核（Native 调 adapter.setMode / Hosted 发 `set-mode`）是插件的事。
    */
   onModeChange?: (mode: EditorMode) => void;
-  /** 这件不支持专业模式时写明原因：开关置灰但不消失，原因显示为 title。 */
+  /** 说明性原因，只进 title。13 件开关必须能点，不再置灰。 */
   proModeUnavailableReason?: string;
   saveState?: PluginChromeSaveState;
   notices?: readonly PluginChromeNotice[];
@@ -161,8 +162,23 @@ export function PluginChromeFrame({
   );
   const controller = usePluginChromePanels(panelList);
   const { activePanel, isOpen } = controller;
-  const { layout, transientPanel, hostController } =
+  const { layout: chromeLayout, transientPanel, hostController } =
     usePluginChromeLayout(controller);
+  const consoleAgentFocus = useConsoleAgentFocus();
+  // 工作台左栏已有操控台时，AI 键切那一份，不再在 chrome 左栏再挂一棵 agent。
+  // 拿不到 handler（独立页 / gallery）仍走下面的内建抽屉。
+  const layout = useMemo(() => {
+    if (!consoleAgentFocus) return chromeLayout;
+    return {
+      ...chromeLayout,
+      openDrawer(drawerId, panelAction) {
+        if (drawerId === PLUGIN_AGENT_DRAWER_ID && consoleAgentFocus.focusAgent()) {
+          return;
+        }
+        chromeLayout.openDrawer(drawerId, panelAction);
+      },
+    };
+  }, [chromeLayout, consoleAgentFocus]);
   // 编辑栏手势（W31）：三根 ref 分别落在 frame 根 / edit bar 行 / 舞台上，
   // 控制器与 10 件共享插件用的是同一份。为什么走这条路而不是把
   // `contextBarLeading/Trailing` 填上，见 use-plugin-chrome-layout.tsx 那段注释。
@@ -332,7 +348,7 @@ export function PluginChromeFrame({
             })}
 
             {saveState && <PluginChromeStatus state={saveState} />}
-            {/* L0 专业模式开关（R3：默认普通模式）。恒在，不支持的件置灰并说明原因。 */}
+            {/* L0 专业模式开关（R3：默认普通模式）。13 件恒在且能点。 */}
             <PluginModeToggle
               pluginId={pluginId}
               unavailableReason={proModeUnavailableReason}
@@ -390,7 +406,7 @@ export function PluginChromeFrame({
           {/*
             手势层（W31 / W4）。有可挂的宿主时这一行的内容整体交给共享浮层，
             行本身降级成停靠带（与 10 件共享插件那侧 EditBarDockHost 的分工相同），
-            于是「双击任意位置拖拽 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
+            于是「双击条上任意位置（含按键）并按住拖 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
             还没有宿主时内容原样留在行里——AI 键不许因为动效起不来而消失。
             宿主晚一拍挂上必须补装，不能把控制器 portalRoot 的空快照当成没有宿主。
           */}

@@ -483,6 +483,7 @@ const ptPT: Record<string, string> = {
   "（或用 AI 智能推荐找站）、挑一个": " (ou usa a recomendação inteligente da IA para encontrar um site) e escolhe um",
   "（能填操作台、出产物）或": " (que preenche a consola e gera resultados) ou",
   "＋ 加入工作台": "＋ Adicionar à bancada",
+  "跨站搜索，找到后加入工作台。": "Pesquisa entre sites e adiciona à bancada.",
   "＋ 去 Playground 挑选": "＋ Escolher no Playground",
   "＋ 放入工作台": "＋ Colocar na bancada",
   "＋ 添加 app": "＋ Adicionar app",
@@ -6466,5 +6467,6 @@ const ptPT: Record<string, string> = {
   "添加媒体": "Adicionar multimédia",
   "保存快照": "Guardar instantâneo",
   "选中画布节点后在此编辑": "Selecione um nó da tela para o editar aqui",
+  "对象详情": "Detalhes do objeto",
 };
 export default ptPT;

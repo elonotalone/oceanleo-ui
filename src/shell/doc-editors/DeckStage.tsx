@@ -8,7 +8,6 @@ import {
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
-import { useAdvancedLayout } from "../advanced-layout-context";
 import {
   moveDeckElement,
   resizeDeckElement,
@@ -78,21 +77,16 @@ function PositionedSlideCanvas({
   inkStyle: DeckInkStyle;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const layout = useAdvancedLayout();
   const [interaction, setInteraction] = useState<ElementInteraction | null>(
     null,
   );
-  const [editingId, setEditingId] = useState("");
   const textSurfaceActivatedForSlide = useRef("");
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
   const master = deckMasterFor(editor.deck, slide);
   const primaryEditableText = deckPrimaryEditableTextElement(slide.elements);
-
-  const beginTextEditing = (elementId: string) => {
-    editor.selectElement(elementId);
-    setEditingId(elementId);
-  };
+  const editingId = editor.textEditingElementId;
+  const beginTextEditing = editor.beginTextEditing;
 
   useEffect(() => {
     editor.setCanvasElement(canvasRef.current);
@@ -105,9 +99,9 @@ function PositionedSlideCanvas({
         (element) => element.id === editingId && element.locked,
       )
     ) {
-      setEditingId("");
+      editor.endTextEditing();
     }
-  }, [editingId, slide.elements]);
+  }, [editingId, editor.endTextEditing, slide.elements]);
   // Surface a discoverable editable text target as soon as the slide opens so
   // production acceptance (and users) are not stuck on image-only selection chrome.
   useEffect(() => {
@@ -115,11 +109,10 @@ function PositionedSlideCanvas({
     if (!primaryEditableText) return;
     if (textSurfaceActivatedForSlide.current === slide.id) return;
     textSurfaceActivatedForSlide.current = slide.id;
-    editor.selectElement(primaryEditableText.id);
-    setEditingId(primaryEditableText.id);
+    editor.beginTextEditing(primaryEditableText.id);
   }, [
     activeTool,
-    editor.selectElement,
+    editor.beginTextEditing,
     primaryEditableText,
     slide.id,
   ]);
@@ -196,7 +189,7 @@ function PositionedSlideCanvas({
       }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) {
-          setEditingId("");
+          editor.endTextEditing();
           editor.selectElement("");
         }
       }}
@@ -215,17 +208,6 @@ function PositionedSlideCanvas({
           className="absolute left-3 right-3 top-3 z-40 resize-none overflow-hidden rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-2 py-1.5 text-[13px] font-semibold text-[var(--fg,#292524)] shadow-md outline-none placeholder:opacity-40"
           onPointerDown={(event) => event.stopPropagation()}
         />
-      )}
-      {primaryEditableText && !editingId && (
-        <button
-          type="button"
-          data-deck-edit-text
-          className="absolute left-3 top-3 z-40 rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2 py-1 text-[11px] font-medium text-[var(--fg,#292524)] shadow-md"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => beginTextEditing(primaryEditableText.id)}
-        >
-          编辑文字
-        </button>
       )}
       {[...slide.elements]
         .sort((left, right) => left.order - right.order)
@@ -336,9 +318,9 @@ function PositionedSlideCanvas({
                 <DeckElementContent
                   element={rendered}
                   editing={editing}
-                  onCancelEditing={() => setEditingId("")}
+                  onCancelEditing={() => editor.endTextEditing()}
                   onCommitText={(text) => {
-                    setEditingId("");
+                    editor.endTextEditing();
                     if (text !== element.text) {
                       editor.patchElement(element.id, { text });
                     }
@@ -357,15 +339,8 @@ function PositionedSlideCanvas({
                 <>
                   <DeckElementSelectionChrome
                     element={element}
-                    rendered={rendered}
-                    textEditability={textEditability}
                     resizeHandles={RESIZE_HANDLES}
                     onStartInteraction={startInteraction}
-                    onBeginTextEditing={beginTextEditing}
-                    onAskAi={() => layout?.openDrawer("agent")}
-                    onDuplicate={editor.duplicateElement}
-                    onToggleLock={editor.toggleElementLock}
-                    onDelete={editor.deleteElement}
                   />
                   {textEditability.textBearing &&
                     !textEditability.editable && (

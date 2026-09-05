@@ -29,6 +29,7 @@ import {
   type ArtifactType,
   type TransientGenerationResult,
 } from "./artifact-contract";
+import { publicWireUrlRefusal } from "./editor-working-head";
 import { isHumanReadableMessage } from "./human-error-message";
 import {
   artifactProjectionToLibraryItem,
@@ -611,7 +612,7 @@ function httpFailureMessage(status: number): string {
   if (status === 413) return "内容超出了单次请求的上限，请拆小后重试。";
   if (status === 429) return "请求太频繁了，缓一下再试。";
   if (status >= 500) return "素材服务暂时不可用，请稍后重试。";
-  return "素材请求没能完成，请稍后重试。";
+  return `素材请求没能完成（HTTP ${status}），请稍后重试。`;
 }
 
 /**
@@ -627,6 +628,23 @@ function httpFailureMessage(status: number): string {
  * 所以这里改成：服务端的话只有**写给人看的**才用，其余按状态码说我们自己的中文，
  * 原文交给 `diagnostic`。
  */
+function fastapiValidationSummary(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const detail = (value as Record<string, unknown>).detail;
+  if (!Array.isArray(detail) || detail.length === 0) return "";
+  const first = detail[0];
+  if (!first || typeof first !== "object") return "";
+  const record = first as Record<string, unknown>;
+  const loc = Array.isArray(record.loc)
+    ? record.loc
+        .filter((part) => part !== "body" && part !== "query")
+        .join(".")
+    : "";
+  const msg = typeof record.msg === "string" ? record.msg.trim() : "";
+  if (!msg) return "";
+  return loc ? `${loc}: ${msg}` : msg;
+}
+
 function serverMessage(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const raw = value as Record<string, unknown>;
@@ -640,6 +658,7 @@ function serverMessage(value: unknown): string {
     typeof raw.detail === "string" ? raw.detail : null,
     raw.message,
     raw.error,
+    fastapiValidationSummary(raw),
   ]) {
     if (
       (typeof candidate === "string" || typeof candidate === "number") &&
@@ -2868,6 +2887,20 @@ export async function createArtifactRevision(
   artifactId: string,
   commit: ArtifactRevisionCommit,
 ): Promise<ArtifactApiResult<LibraryItem>> {
+  const urlRefusal =
+    publicWireUrlRefusal(commit.source.url) ||
+    commit.renditions
+      .map((rendition) => publicWireUrlRefusal(rendition.url))
+      .find(Boolean);
+  if (urlRefusal) {
+    return {
+      ok: false,
+      error: urlRefusal,
+      code: "transient-persistence-failed",
+      status: 422,
+      retryable: false,
+    };
+  }
   if (
     commit.artifactType === "composite_image" &&
     (!commit.scene?.closureDigest ||

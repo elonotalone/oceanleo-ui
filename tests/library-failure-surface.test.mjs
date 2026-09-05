@@ -225,6 +225,131 @@ test("网关自己那句英文 message 也不许摆给用户", async () => {
   }
 });
 
+test("HTTP 422 的兜底必须带上状态码，不能只说稍后重试", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        code: "integrity-failed",
+        message:
+          "deck revision cannot use its full rendition as a cover: application/zip",
+        details: { receivedMediaType: "application/zip" },
+      }),
+    });
+    const client = await import(
+      await compileModule("src/shell/artifact-client.ts", {
+        "../lib/auth/client": dataModule(
+          `export async function accessToken(){ return "token"; }`,
+        ),
+        "../lib/auth/config": dataModule(
+          `export const GATEWAY_BASE = "https://api.oceanleo.com";`,
+        ),
+      })
+    );
+    const result = await client.getCurrentArtifactItem("artifact-1");
+    assert.equal(result.ok, false);
+    assert.match(result.error || "", /HTTP 422/);
+    assert.match(result.error || "", /[\u4e00-\u9fa5]/);
+    assert.doesNotMatch(result.error || "", /^素材请求没能完成，请稍后重试。$/);
+    assert.match(result.diagnostic || "", /application\/zip/);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("HTTP 422 若后端已给中文原因，用户看到的就是那句原因", async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: {
+          code: "integrity-failed",
+          message:
+            "保存被拒绝：deck 的 full 类型是 application/zip，和这类素材要求的格式不一致。请重新保存。",
+        },
+      }),
+    });
+    const client = await import(
+      await compileModule("src/shell/artifact-client.ts", {
+        "../lib/auth/client": dataModule(
+          `export async function accessToken(){ return "token"; }`,
+        ),
+        "../lib/auth/config": dataModule(
+          `export const GATEWAY_BASE = "https://api.oceanleo.com";`,
+        ),
+      })
+    );
+    const result = await client.createArtifactRevision("artifact-1", {
+      expectedRevisionId: "rev-1",
+      artifactType: "deck",
+      source: {
+        format: "pptx",
+        url: "https://cdn.oceanleo.com/deck.pptx",
+        digest: "a".repeat(64),
+      },
+      renditions: [
+        {
+          purpose: "full",
+          url: "https://cdn.oceanleo.com/deck.pptx",
+          digest: "a".repeat(64),
+        },
+      ],
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.error || "", /application\/zip/);
+    assert.match(result.error || "", /请重新保存/);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("提交新版本时 http 上传地址在本地挡住，不发请求", async () => {
+  const previousFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  try {
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    const client = await import(
+      await compileModule("src/shell/artifact-client.ts", {
+        "../lib/auth/client": dataModule(
+          `export async function accessToken(){ return "token"; }`,
+        ),
+        "../lib/auth/config": dataModule(
+          `export const GATEWAY_BASE = "https://api.oceanleo.com";`,
+        ),
+      })
+    );
+    const result = await client.createArtifactRevision("artifact-1", {
+      expectedRevisionId: "rev-1",
+      artifactType: "deck",
+      source: {
+        format: "pptx",
+        url: "http://127.0.0.1:9000/deck.pptx",
+        digest: "a".repeat(64),
+      },
+      renditions: [
+        {
+          purpose: "full",
+          url: "http://127.0.0.1:9000/deck.pptx",
+          digest: "a".repeat(64),
+        },
+      ],
+    });
+    assert.equal(result.ok, false);
+    assert.equal(fetchCalls, 0);
+    assert.match(result.error || "", /https/);
+    assert.equal(result.status, 422);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 // ── ②③ 详情动作条 ────────────────────────────────────────────────────────────
 
 const uiStubUrl = dataModule(`

@@ -12,6 +12,9 @@
 //
 // 分工同样固定：本面板**不做生成**（生成走 plugin-ai 的能力契约），
 // 它只做「对话 + 通过指令面改文档」。两件事混在一起正是此前漂移的起点。
+//
+// 工作台里已经挂着 showOps 操控台时，编辑栏 AI 键走 ConsoleAgentFocus，
+// 不会再挂这一份。只有独立页 / gallery / 左栏没有操控台时才落到这里。
 
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";

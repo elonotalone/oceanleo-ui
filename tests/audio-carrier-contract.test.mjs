@@ -218,8 +218,14 @@ test("§2.3 播放/暂停/跳转/音量四个操作各有键盘通路", async ()
     readFile(resolve("src/shell/media-editors/AudioWorkbench.tsx"), "utf8"),
     readFile(resolve("src/shell/media-editors/audio-workbench-state.ts"), "utf8"),
   ]);
-  // 播放/暂停：带 aria-label 的按钮（原生键盘可达）。
-  assert.match(view, /aria-label=\{editor\.playing \? tt\("暂停"\) : tt\("播放"\)\}/);
+  // 播放/暂停：带 aria-label 的原生按钮（键盘可达）。标签经 AudioIconButton
+  // 的 label 转成 aria-label，所以两头都要钉：调用处给的是播放/暂停文案，
+  // 而 AudioIconButton 必须把 label 落到 <button> 的 aria-label 上。
+  assert.match(view, /label=\{editor\.playing \? tt\("暂停"\) : tt\("播放"\)\}/);
+  assert.match(
+    view,
+    /function AudioIconButton\([\s\S]*?<button[\s\S]*?aria-label=\{label\}/,
+  );
   // 跳转与音量：range 控件原生支持方向键。
   assert.match(view, /label=\{tt\("播放位置"\)\}[\s\S]*onChange=\{editor\.seekTo\}/);
   assert.match(view, /label=\{tt\("音量"\)\}[\s\S]*onChange=\{editor\.setVolume\}/);

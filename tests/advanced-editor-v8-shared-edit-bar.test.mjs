@@ -423,6 +423,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     },
   );
   let liveController = null;
+  let toolClicks = 0;
   function Harness() {
     const stageRef = React.useRef(null);
     const controller = useFloatingContextToolbar({
@@ -441,6 +442,17 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
           "data-edit-bar-offset": `${controller.offset.x},${controller.offset.y}`,
           ...controller.rootProps,
         },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            "data-test-edit-bar-tool": true,
+            onClick() {
+              toolClicks += 1;
+            },
+          },
+          "工具",
+        ),
         controller.leading,
         controller.trailing,
       ),
@@ -514,8 +526,81 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await key(bar(), "Home", { altKey: true });
     assert.equal(offset(), "0,0");
 
-    // 单次按下只是普通点击，不能启动拖拽。落点刻意远离下面那组双击，
-    // 否则它会和下一次按下凑成一对，把这条探针本身变成拖拽起手。
+    // 从完全空闲态对一个按键做 down→up→down（间隔在双击窗口内）：
+    // 第二下立刻跟手；第一下 onClick 生效；松手不再多调一次。
+    const tool = mounted.container.querySelector("[data-test-edit-bar-tool]");
+    assert.ok(tool, "测试按键必须在条上");
+    const toolPress = (timeStamp) => ({
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 80,
+      clientY: 20,
+      timeStamp,
+    });
+    await pointer(tool, "pointerdown", toolPress(4000));
+    await pointer(tool, "pointerup", toolPress(4010));
+    await act(async () => {
+      tool.dispatchEvent(
+        new window.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 80,
+          clientY: 20,
+        }),
+      );
+    });
+    assert.equal(toolClicks, 1, "第一下按键 onClick 必须立刻生效");
+    assert.equal(liveController.selected, true);
+    assert.equal(liveController.moveMode, false, "第一次按下不得起拖");
+    await pointer(tool, "pointerdown", toolPress(4020));
+    assert.equal(
+      liveController.moveMode,
+      true,
+      "双击窗口内对按键第二次按下必须立刻起拖",
+    );
+    await pointer(window, "pointermove", {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 100,
+      clientY: 40,
+      timeStamp: 4100,
+    });
+    assert.equal(offset(), "20,20", "按键上双击起拖后 offset 必须跟手");
+    await pointer(window, "pointerup", {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 100,
+      clientY: 40,
+      timeStamp: 4200,
+    });
+    assert.equal(liveController.moveMode, false);
+    await act(async () => {
+      tool.dispatchEvent(
+        new window.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 100,
+          clientY: 40,
+        }),
+      );
+    });
+    assert.equal(toolClicks, 1, "起拖后松手不得再触发按键 onClick");
+
+    await key(bar(), "Home", { altKey: true });
+    assert.equal(offset(), "0,0");
+    await pointer(mounted.container.querySelector("[data-handle-stage]"), "pointerdown", {
+      pointerId: 2,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 900,
+      clientY: 500,
+      timeStamp: 5000,
+    });
+    assert.equal(liveController.selected, false, "条外按下必须取消选中");
+
+    // 单次按下只是选中，不能启动拖拽。
     await pointer(bar(), "pointerdown", press(200, 200));
     await pointer(window, "pointermove", {
       pointerId: 1,
@@ -523,10 +608,11 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       clientX: 30,
       clientY: 20,
     });
-    assert.equal(offset(), "0,0", "单击后移动指针不得拖走编辑栏");
+    assert.equal(offset(), "0,0", "第一次按下后移动指针不得拖走编辑栏");
+    await pointer(bar(), "pointerup", press(200, 200));
+    assert.equal(liveController.selected, true, "第一次点击后必须选中编辑栏");
 
-    // 双击并按住 → 跟手 → 松手落下。
-    await pointer(bar(), "pointerdown", press(10, 10));
+    // 选中后再按下 → 跟手 → 松手落下。
     await pointer(bar(), "pointerdown", press(10, 10));
     assert.equal(liveController.moveMode, true);
     await pointer(window, "pointermove", {

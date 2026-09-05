@@ -146,7 +146,7 @@ export function AudioControls({
         <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("播放")}
         </p>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" data-audio-transport>
           <AudioIconButton
             label={editor.playing ? tt("暂停") : tt("播放")}
             icon={editor.playing ? "pause" : "play"}
@@ -234,42 +234,16 @@ export function AudioStage({
               : tt("未选择区间")}
           </span>
         </div>
-        <div className="relative rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-6 shadow-sm">
+        <div
+          data-audio-waveform
+          className="relative rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-6 shadow-sm"
+        >
           {editor.loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#fff)]/80 text-[12px] text-[var(--muted,#78716c)]">
               {tt("正在处理音频…")}
             </div>
           )}
           <div ref={editor.containerRef} className="min-h-44 w-full" />
-          <button
-            type="button"
-            aria-label={editor.playing ? tt("暂停") : tt("播放")}
-            title={editor.playing ? tt("暂停") : tt("播放")}
-            disabled={editor.loading || Boolean(editor.error)}
-            onClick={editor.playPause}
-            className="absolute left-1/2 top-1/2 z-20 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-[var(--awb-on-accent,#fff)] shadow-lg transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: accent }}
-          >
-            {editor.playing ? (
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M6.5 5.5h4v13h-4zm7 0h4v13h-4z" />
-              </svg>
-            ) : (
-              <svg
-                viewBox="0 0 24 24"
-                className="ml-0.5 h-7 w-7"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M8 5.2v13.6L19 12z" />
-              </svg>
-            )}
-          </button>
         </div>
         {editor.error && (
           <p className="mt-3 text-center text-[12px] text-[var(--awb-danger)]">

@@ -19,6 +19,7 @@
 // ============================================================================
 
 import type { ArtifactType } from "../artifact-contract";
+import { publicWireUrlRefusal } from "../editor-working-head";
 
 /** 保存链路上每一个可以独立失败的步骤。 */
 export type ArtifactSaveStep =
@@ -75,6 +76,46 @@ export function isArtifactSaveStepMessage(value: unknown): boolean {
  * 用户可见的失败文案。必须点名是哪一步没有完成——「保存到我的库失败」这种说法
  * 对用户没有信息量，对排障也无从下手。
  */
+export function revisionPublishLocalRefusal(input: {
+  sourceUrl?: string;
+  renditionUrls?: readonly (string | undefined | null)[];
+  artifactType?: string;
+  itemArtifactType?: string;
+  editability?: string;
+  editorCapability?: string | null;
+}): { ok: true } | { ok: false; error: string; code: string } {
+  const editability = String(input.editability || "").trim();
+  if (editability === "view_only") {
+    return {
+      ok: false,
+      code: "missing-source",
+      error:
+        "这份素材是只读导入件，不能直接覆盖保存。请先转成可编辑副本。",
+    };
+  }
+  const itemType = String(input.itemArtifactType || "").trim();
+  const editorType = String(input.artifactType || "").trim();
+  if (itemType && editorType && itemType !== editorType) {
+    return {
+      ok: false,
+      code: "unsupported-type",
+      error: `这份素材在库里是「${itemType}」，编辑器按「${editorType}」保存对不上。请另存为可编辑副本。`,
+    };
+  }
+  const locators = [input.sourceUrl, ...(input.renditionUrls || [])];
+  for (const locator of locators) {
+    const refusal = publicWireUrlRefusal(locator);
+    if (refusal) {
+      return {
+        ok: false,
+        code: "transient-persistence-failed",
+        error: refusal,
+      };
+    }
+  }
+  return { ok: true };
+}
+
 export function artifactSaveStepMessage(
   step: ArtifactSaveStep,
   detail?: unknown,

@@ -506,8 +506,19 @@ export {
 export type { OpsFiller, SavedWorkflow, WorkflowDraft } from "./guide-context";
 // 可拖动两栏工作区（「一分为二」：左推导 / 右结果，竖线拖动 + 大屏）。
 // 宗旨 v11：useRightPaneSlot 让右栏内容（ResultCanvas 标签条）接管右栏标题位（去框中框）。
-export { SplitWorkspace, useLeftPaneSlot, useRightPaneSlot } from "./SplitWorkspace";
-export type { SplitWorkspaceProps, SplitLibraryConfig } from "./SplitWorkspace";
+export {
+  SplitWorkspace,
+  useLeftPaneSlot,
+  useRightPaneSlot,
+  useConsoleAgentFocus,
+  useRegisterConsoleAgentFocus,
+} from "./SplitWorkspace";
+export type {
+  SplitWorkspaceProps,
+  SplitLibraryConfig,
+  ConsoleAgentFocusApi,
+  ConsoleAgentFocusHandler,
+} from "./SplitWorkspace";
 // 极简 Markdown 渲染（零依赖）。
 export { Markdown } from "./Markdown";
 // 全站 agent 共用：规划 + 执行步骤 + 自动折叠分析/代码。
@@ -622,7 +633,8 @@ export {
   workspaceTemplateEditHref,
 } from "./site-catalog-controller";
 // 合同 2026-07-27 §3.1 的两条新深链 helper（W3 产出）：`workspaceTemplatePreviewHref`
-// 把**具体那份**模板素材落到库里的**只读预览页**（W4 的消费端路由认这个 query 形状），
+// 把**具体那份**模板素材落到 `/workspace/<appId>` 的只读预览页（query 只携带
+// tab/item/mode；app 在路径段，避免先画出目录再 replace），
 // `exploreAppHref` 落到本站探索页并锚定该 app（`/explore?app=<appId>`，W5 认这个 query）。
 // 旧落点 `workspaceTemplateEditHref`（直接把素材怼进编辑器）本轮全站废除，只为未迁移的
 // 调用方留着；新代码一律用上面这两条。

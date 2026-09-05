@@ -24,6 +24,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -44,15 +45,60 @@ import {
 // context 把模式与 app actions 装进标题位置。若宿主提供 ReactNode app 身份 label，
 // SplitWorkspace 会把「身份 + 控件」合成同一条不换行 toolbar；纯文字 label 保留旧的
 // replacement 行为，兼容直接使用 Studio 的消费端。
+//
+// 槽是有主的：只有当前 owner 能覆盖或清空。后来的 owner 接管后，前一个 owner 的
+// cleanup 不得把新 owner 的控件清掉（两棵 FunctionAgentChat 同挂时的 C 形态）。
 // ----------------------------------------------------------------------------
 interface LeftPaneSlot {
-  /** 设置左栏 PaneHeader 的交互控件。传 null 恢复宿主 label。 */
-  setLeftLabel: (node: ReactNode | null) => void;
+  /** 设置左栏 PaneHeader 的交互控件。传 null 只清自己那份。 */
+  setLeftLabel: (owner: string, node: ReactNode | null) => void;
 }
 const LeftPaneCtx = createContext<LeftPaneSlot | null>(null);
 /** 供 FunctionAgentChat 等左栏 body 后代使用：把模式与 app actions 装到 PaneHeader。 */
 export function useLeftPaneSlot(): LeftPaneSlot | null {
   return useContext(LeftPaneCtx);
+}
+
+// ----------------------------------------------------------------------------
+// 右栏 → 左栏操控台：把已经在那儿的 FunctionAgentChat 切到 agent 形态。
+// 跟 LeftPaneCtx 一样挂在 SplitWorkspace 上，左右两栏都能拿到，按工作台实例隔离。
+// 没有注册 handler（独立页 / gallery / 左栏没有 showOps 操控台）时 focusAgent
+// 返回 false，调用方走 PluginAgentPanel 兜底。
+// ----------------------------------------------------------------------------
+export type ConsoleAgentFocusHandler = () => void;
+
+export interface ConsoleAgentFocusApi {
+  /** 左栏有可切的操控台则切到 agent 并返回 true；否则 false。 */
+  focusAgent: () => boolean;
+}
+
+interface ConsoleAgentFocusSlot extends ConsoleAgentFocusApi {
+  register: (owner: string, handler: ConsoleAgentFocusHandler | null) => void;
+}
+
+const ConsoleAgentFocusCtx = createContext<ConsoleAgentFocusSlot | null>(null);
+
+/** 右栏插件外壳用来切左栏 agent 形态。不在 SplitWorkspace 内时为 null。 */
+export function useConsoleAgentFocus(): ConsoleAgentFocusApi | null {
+  return useContext(ConsoleAgentFocusCtx);
+}
+
+/** 左栏 showOps 操控台注册「切到 agent」。showOps=false 的实例不要调用。 */
+export function useRegisterConsoleAgentFocus(
+  enabled: boolean,
+  handler: ConsoleAgentFocusHandler,
+): void {
+  const slot = useContext(ConsoleAgentFocusCtx);
+  const owner = useId();
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  useLayoutEffect(() => {
+    if (!slot || !enabled) return;
+    slot.register(owner, () => {
+      handlerRef.current();
+    });
+    return () => slot.register(owner, null);
+  }, [enabled, owner, slot]);
 }
 
 // ----------------------------------------------------------------------------
@@ -237,8 +283,44 @@ export function SplitWorkspace({
   const [hydrated, setHydrated] = useState(false);
   // 左栏交互控件（FunctionAgentChat 通过 context 装入模式、保存和新建）。
   const [leftLabelOverride, setLeftLabelOverride] = useState<ReactNode | null>(null);
+  const leftLabelOwnerRef = useRef<string | null>(null);
   const slot = useMemo<LeftPaneSlot>(
-    () => ({ setLeftLabel: (node) => setLeftLabelOverride(node) }),
+    () => ({
+      setLeftLabel(owner, node) {
+        if (node != null) {
+          leftLabelOwnerRef.current = owner;
+          setLeftLabelOverride(node);
+          return;
+        }
+        if (leftLabelOwnerRef.current !== owner) return;
+        leftLabelOwnerRef.current = null;
+        setLeftLabelOverride(null);
+      },
+    }),
+    [],
+  );
+  const consoleAgentFocusHandlerRef = useRef<{
+    owner: string;
+    handler: ConsoleAgentFocusHandler;
+  } | null>(null);
+  const consoleAgentFocus = useMemo<ConsoleAgentFocusSlot>(
+    () => ({
+      register(owner, handler) {
+        if (handler) {
+          consoleAgentFocusHandlerRef.current = { owner, handler };
+          return;
+        }
+        if (consoleAgentFocusHandlerRef.current?.owner === owner) {
+          consoleAgentFocusHandlerRef.current = null;
+        }
+      },
+      focusAgent() {
+        const current = consoleAgentFocusHandlerRef.current;
+        if (!current) return false;
+        current.handler();
+        return true;
+      },
+    }),
     [],
   );
   const leftLabelIsPlain =
@@ -568,6 +650,7 @@ export function SplitWorkspace({
     return (
       <WorkspacePaneCtx.Provider value={paneController}>
       <LeftPaneCtx.Provider value={slot}>
+      <ConsoleAgentFocusCtx.Provider value={consoleAgentFocus}>
         <div
           className={`p-1.5 ${className}`}
           style={{ height: rootHeight }}
@@ -591,6 +674,7 @@ export function SplitWorkspace({
             </div>
           </div>
         </div>
+      </ConsoleAgentFocusCtx.Provider>
       </LeftPaneCtx.Provider>
       </WorkspacePaneCtx.Provider>
     );
@@ -741,6 +825,7 @@ export function SplitWorkspace({
   return (
     <WorkspacePaneCtx.Provider value={paneController}>
     <LeftPaneCtx.Provider value={slot}>
+    <ConsoleAgentFocusCtx.Provider value={consoleAgentFocus}>
     <RightPaneCtx.Provider value={rightSlot}>
     <div
       ref={wrapRef}
@@ -752,6 +837,7 @@ export function SplitWorkspace({
       {[appPane, divider, libraryPane]}
     </div>
     </RightPaneCtx.Provider>
+    </ConsoleAgentFocusCtx.Provider>
     </LeftPaneCtx.Provider>
     </WorkspacePaneCtx.Provider>
   );

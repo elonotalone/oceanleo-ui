@@ -10,6 +10,9 @@
 // 面板内容走 LiveReactNode 而不是直接塞进 showDetail：抽屉内容每帧都可能变
 // （比如 agent 面板在流式输出），而 showDetail 会把节点存进工作区的 state，
 // 直接塞进去意味着每一帧都要惊动整棵工作区树。
+//
+// agent 抽屉：拿得到 ConsoleAgentFocus handler 就切左栏形态，绝不推 detail；
+// 拿不到才挂 PluginAgentPanel（独立页 / gallery 兜底）。
 
 import {
   useCallback,
@@ -34,6 +37,7 @@ import {
 } from "./live-react-node";
 import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
 import { PluginAgentPanel } from "./plugin-chrome/PluginAgentPanel";
+import { useConsoleAgentFocus } from "./SplitWorkspace";
 import { PluginThemeScope, type PluginThemeId } from "./plugin-theme";
 import type {
   WorkbenchMaterialAction,
@@ -73,6 +77,7 @@ export function useInlineAdvancedPanels({
   clearWorkspaceDetail,
 }: InlineAdvancedPanelsInput) {
   const tt = useUI();
+  const consoleAgentFocus = useConsoleAgentFocus();
   const liveDetailStoreRef = useRef(createLiveReactNodeStore());
   const [fallbackDetail, setFallbackDetail] = useState<{
     label: ReactNode;
@@ -184,6 +189,11 @@ export function useInlineAdvancedPanels({
 
   const openDrawer = useCallback(
     (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
+      // 左栏已经挂着可切形态的操控台时，AI 键只切那一份，不再推第二棵 agent 树。
+      // 判定是「此刻有没有 handler」，不是某个 featureId。
+      if (drawerId === PLUGIN_AGENT_DRAWER_ID && consoleAgentFocus?.focusAgent()) {
+        return;
+      }
       transientPanelRef.current = null;
       setTransientPanel(null);
       setActiveDrawerId(drawerId);
@@ -203,7 +213,7 @@ export function useInlineAdvancedPanels({
         setFallbackDetail({ label: next.label, content: liveDetailNode });
       }
     },
-    [liveDetailNode, ownerId, panelFor, showWorkspaceDetail],
+    [consoleAgentFocus, liveDetailNode, ownerId, panelFor, showWorkspaceDetail],
   );
 
   const openTransientPanel = useCallback(

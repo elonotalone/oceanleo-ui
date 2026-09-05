@@ -170,6 +170,7 @@ const inertComponentStubUrl = dataModule(`
   export function useAdvancedSession() { return null; }
   export function useRightPaneSlot() { return null; }
   export function useWorkspacePane() { return null; }
+  export function useConsoleAgentFocus() { return null; }
   export function useAdvancedRecovery() {}
   export function useAdvancedAutoSave() {
     return {
@@ -283,9 +284,12 @@ async function pointer(target, type, values) {
   });
 }
 
-// 左右两个 ⠿ 手柄已取消。新手势：在条上任意位置双击并按住拖，
-// 松手落下，Esc 还原。下面三个 helper 就是这套手势。
+// 左右两个 ⠿ 手柄已取消。展开胶囊默认走双击路径：同一指针、同一落点、
+// 窗口内连续两次按下即跟手。第一次 down/up 仍选中；第二次 down 起拖。
+// 不延迟派发 click。老「选中后按空白」路见 grabAfterSelectOnBlank。
+let grabClock = 10_000;
 async function grab(target, clientX, clientY) {
+  const t0 = (grabClock += 1000);
   const press = {
     pointerId: 1,
     pointerType: "mouse",
@@ -293,8 +297,31 @@ async function grab(target, clientX, clientY) {
     clientX,
     clientY,
   };
-  await pointer(target, "pointerdown", press);
-  await pointer(target, "pointerdown", press);
+  await pointer(target, "pointerdown", { ...press, timeStamp: t0 });
+  await pointer(target, "pointerup", { ...press, timeStamp: t0 + 10 });
+  await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 20 });
+}
+
+/** 老路：第一次选中之后，窗口已过再按空白，不依赖双击。 */
+async function grabAfterSelectOnBlank(target, firstX, firstY, secondX, secondY) {
+  const t0 = (grabClock += 1000);
+  const first = {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX: firstX,
+    clientY: firstY,
+  };
+  await pointer(target, "pointerdown", { ...first, timeStamp: t0 });
+  await pointer(target, "pointerup", { ...first, timeStamp: t0 + 10 });
+  await pointer(target, "pointerdown", {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX: secondX,
+    clientY: secondY,
+    timeStamp: t0 + 400,
+  });
 }
 
 async function moveTo(target, clientX, clientY) {
@@ -561,42 +588,7 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
   );
 });
 
-test("单击收起键：按下后要等过双击窗口才收成圆", async () => {
-  window.localStorage.clear();
-  const mounted = await createMounted(DockHarness, {
-    storageKey: "test:edit-bar:single-collapse",
-  });
-  try {
-    const collapse = mounted.container.querySelector("[data-edit-bar-collapse]");
-    assert.ok(collapse, "收起键必须在");
-    await pointer(collapse, "pointerdown", {
-      pointerId: 1,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 380,
-      clientY: 70,
-    });
-    await click(collapse);
-    assert.equal(
-      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
-      null,
-      "双击窗口内单击不得立刻收成圆",
-    );
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 450));
-    });
-    assert.ok(
-      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
-      "过了双击窗口，单击必须收成圆",
-    );
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
-  window.localStorage.clear();
-  const storageKey = "test:edit-bar:dock-cycle";
+function installDockHarnessRects() {
   const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
   window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
     if (this.hasAttribute("data-edit-bar-test-root")) {
@@ -641,6 +633,64 @@ test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动�
     }
     return originalRect.call(this);
   };
+  return () => {
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+  };
+}
+
+test("已选中后按空白：双击窗口过了仍走老路起拖", async () => {
+  window.localStorage.clear();
+  const restoreRect = installDockHarnessRects();
+  const mounted = await createMounted(DockHarness, {
+    storageKey: "test:edit-bar:select-then-blank",
+  });
+  const bar = () =>
+    mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
+  try {
+    const before = bar().style.transform;
+    await grabAfterSelectOnBlank(bar(), 120, 60, 140, 80);
+    await moveTo(bar(), 400, 300);
+    assert.notEqual(
+      bar().style.transform,
+      before,
+      "选中后按空白（双击窗口已过）必须仍能跟手",
+    );
+    await drop(bar(), 400, 300);
+  } finally {
+    await mounted.unmount();
+    restoreRect();
+  }
+});
+
+test("单击收起键：第一次点击立刻收成圆", async () => {
+  window.localStorage.clear();
+  const mounted = await createMounted(DockHarness, {
+    storageKey: "test:edit-bar:single-collapse",
+  });
+  try {
+    const collapse = mounted.container.querySelector("[data-edit-bar-collapse]");
+    assert.ok(collapse, "收起键必须在");
+    await pointer(collapse, "pointerdown", {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 380,
+      clientY: 70,
+    });
+    await click(collapse);
+    assert.ok(
+      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
+      "第一次点击收起键必须立刻收成圆，不能再等双击窗口",
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("点一下选中再点一下进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
+  window.localStorage.clear();
+  const storageKey = "test:edit-bar:dock-cycle";
+  const restoreRect = installDockHarnessRects();
 
   const mounted = await createMounted(DockHarness, { storageKey });
   const dock = () =>
@@ -668,25 +718,6 @@ test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动�
       mounted.container.querySelector("[data-edit-bar-collapse]"),
       "最右侧必须常驻一个收起按钮",
     );
-
-    const collapse = () =>
-      mounted.container.querySelector("[data-edit-bar-collapse]");
-    const collapsePress = {
-      pointerId: 1,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 380,
-      clientY: 70,
-    };
-    await pointer(collapse(), "pointerdown", collapsePress);
-    await click(collapse());
-    await pointer(collapse(), "pointerdown", collapsePress);
-    assert.equal(
-      mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
-      null,
-      "双击落在收起键上不得把条收成圆",
-    );
-    await drop(bar(), 380, 70);
 
     assert.equal(
       mounted.container
@@ -861,7 +892,7 @@ test("双击进入移动模式：拖出、回停靠、Esc 取消、键盘移动�
     assert.ok(bar().querySelector("[data-edit-bar-collapse]"));
   } finally {
     await mounted.unmount();
-    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+    restoreRect();
   }
 });
 

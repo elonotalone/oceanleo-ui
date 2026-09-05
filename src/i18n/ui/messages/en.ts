@@ -485,6 +485,7 @@ const en: Record<string, string> = {
   "（或用 AI 智能推荐找站）、挑一个": "(or use AI smart recommendation to find a site), pick a",
   "（能填操作台、出产物）或": "(fills the console, produces results) or",
   "＋ 加入工作台": "＋ Add to workspace",
+  "跨站搜索，找到后加入工作台。": "Search across sites, then add to your workspace.",
   "＋ 去 Playground 挑选": "＋ Go pick in Playground",
   "＋ 放入工作台": "＋ Put in workspace",
   "＋ 添加 app": "＋ Add app",
@@ -6583,5 +6584,6 @@ const en: Record<string, string> = {
   "添加媒体": "Add media",
   "保存快照": "Save snapshot",
   "选中画布节点后在此编辑": "Select a canvas node to edit it here",
+  "对象详情": "Object details",
 };
 export default en;

@@ -195,12 +195,44 @@ const generatingAgentStubUrl = dataModule(`
   }
 `);
 
+const splitWorkspaceStubUrl = dataModule(`
+  export function useConsoleAgentFocus() {
+    return globalThis.__W5_CONSOLE_AGENT_FOCUS__ ?? null;
+  }
+  export function useRegisterConsoleAgentFocus() {}
+  export function useLeftPaneSlot() { return null; }
+  export function useRightPaneSlot() { return null; }
+  export function useWorkspacePane() { return null; }
+`);
+
+const gestureLayerStubUrl = dataModule(`
+  export function PluginChromeEditBarGestureLayer({ children }) {
+    return children;
+  }
+`);
+const floatingToolbarStubUrl = dataModule(`
+  export function useFloatingContextToolbar() {
+    return {
+      mode: "docked",
+      dropActive: false,
+      leading: null,
+      trailing: null,
+      portalRoot: null,
+    };
+  }
+  export function FloatingContextToolbar() { return null; }
+`);
+
 const frameStubs = {
   "../../i18n/ui/useUI": uiStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
   "../plugin-theme": pluginThemeStubUrl,
   "./agent-drawer-panel": agentPanelStubUrl,
   "./PluginAgentPanel": agentPanelStubUrl,
+  "../SplitWorkspace": splitWorkspaceStubUrl,
+  // W4 拥有 edit-bar-dock-controller / 手势层；本单元只测 AI 抽屉。
+  "../PluginChromeEditBarGestureLayer": gestureLayerStubUrl,
+  "../FloatingContextToolbar": floatingToolbarStubUrl,
 };
 const frameUrl = await compileModule(
   "src/shell/plugin-chrome/PluginChromeFrame.tsx",
@@ -219,6 +251,9 @@ const { PluginChromeFrame: GeneratingFrame } = await import(
     "../plugin-theme": pluginThemeStubUrl,
     "./agent-drawer-panel": generatingAgentStubUrl,
     "./PluginAgentPanel": generatingAgentStubUrl,
+    "../SplitWorkspace": splitWorkspaceStubUrl,
+    "../PluginChromeEditBarGestureLayer": gestureLayerStubUrl,
+    "../FloatingContextToolbar": floatingToolbarStubUrl,
   }),
 );
 const { PLUGIN_AGENT_DRAWER_ID } = await import(
@@ -287,7 +322,7 @@ test("frame edit bar 右段恒渲染 data-edit-bar-agent", async () => {
   await unmount();
 });
 
-test("点击 AI 键：左侧出现 agent 面板，再点关闭", async () => {
+test("没有 agent-focus handler 时，点击 AI 键仍给出可用的 AI 面板（兜底）", async () => {
   const { container, unmount } = await mountFrame({
     children: React.createElement("input", {
       "data-test-stage-input": true,
@@ -314,6 +349,35 @@ test("点击 AI 键：左侧出现 agent 面板，再点关闭", async () => {
     "再点应关闭",
   );
   await unmount();
+});
+
+test("有 agent-focus handler 时 AI 键不再推第二棵面板", async () => {
+  let focused = 0;
+  globalThis.__W5_CONSOLE_AGENT_FOCUS__ = {
+    focusAgent() {
+      focused += 1;
+      return true;
+    },
+  };
+  try {
+    const { container, unmount } = await mountFrame({
+      children: React.createElement("div", { "data-test-stage": true }),
+    });
+    const agentBtn = container.querySelector("[data-edit-bar-agent]");
+    await act(async () => agentBtn.click());
+    assert.equal(focused, 1, "必须把已经在那儿的操控台切到 agent");
+    assert.equal(agentBtn.getAttribute("aria-pressed"), "false");
+    assert.equal(
+      container.querySelector(
+        `[data-plugin-chrome-panel="${PLUGIN_AGENT_DRAWER_ID}"]`,
+      ),
+      null,
+      "有 handler 时不许再挂 chrome 左栏 agent 面板",
+    );
+    await unmount();
+  } finally {
+    delete globalThis.__W5_CONSOLE_AGENT_FOCUS__;
+  }
 });
 
 test("抽屉打开时 stage 仍可交互", async () => {
@@ -648,6 +712,9 @@ test("反面 Canary：无 data-edit-bar-agent 时必须红", () => {
   assert.match(frameSrc, /data-edit-bar-agent/);
   assert.match(frameSrc, /usePluginChromeLayout/);
   assert.match(frameSrc, /AdvancedLayoutContext\.Provider value=\{layout\}/);
+  assert.match(frameSrc, /useConsoleAgentFocus/);
+  const panelsSrc = source("src/shell/use-inline-advanced-panels.tsx");
+  assert.match(panelsSrc, /consoleAgentFocus\?\.focusAgent\(\)/);
 });
 
 test("反面 Canary：允许插件 override agent 面板时必须红", () => {

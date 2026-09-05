@@ -12,7 +12,27 @@ import { deckSlideSelectionContext } from "./deck-slide-selection-context";
 import { applyDeckToolbarCommand } from "./deck-toolbar-command";
 import { deckElementAnimationControls } from "./deck-element-animation-controls";
 import { deckToolbarControlAllowed } from "./DeckMutationPolicy";
+import { deckElementTextEditability } from "./deck-text-gesture";
+import type { DeckElement } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
+import type { UITranslate } from "../../i18n/ui/useUI";
+
+function deckObjectActions(
+  element: DeckElement | null,
+  tt: UITranslate,
+): SelectionControl[] {
+  const none = !element;
+  const locked = Boolean(element?.locked);
+  const canEditText = Boolean(
+    element && deckElementTextEditability(element).editable,
+  );
+  return [
+    { id: "edit-text", kind: "action", label: "编辑文字", icon: "case", iconOnly: true, group: "object", disabled: none || !canEditText },
+    { id: "lock", kind: "action", label: locked ? tt("解锁") : tt("锁定"), icon: locked ? "unlock" : "lock", iconOnly: true, group: "object", disabled: none },
+    { id: "duplicate", kind: "action", label: tt("复制"), icon: "duplicate", iconOnly: true, group: "object", disabled: none || locked },
+    { id: "delete", kind: "action", label: tt("删除"), icon: "delete", iconOnly: true, group: "object", danger: true, disabled: none || locked },
+  ];
+}
 
 export function DeckContextToolbar({
   editor,
@@ -25,7 +45,13 @@ export function DeckContextToolbar({
   const element = editor.selectedElement;
   const slide = editor.activeSlide;
   const context = useMemo<SelectionContext | null>(() => {
-    if (!element) return deckSlideSelectionContext(editor, tt);
+    if (!element) {
+      const slide = deckSlideSelectionContext(editor, tt);
+      return {
+        ...slide,
+        controls: [...slide.controls, ...deckObjectActions(null, tt)],
+      };
+    }
     const common = [
       {
         id: "opacity",
@@ -51,31 +77,7 @@ export function DeckContextToolbar({
         group: "layout",
         panelId: "deck-layers",
       },
-      {
-        id: "lock",
-        kind: "action" as const,
-        label: element.locked ? tt("解锁") : tt("锁定"),
-        icon: (element.locked ? "unlock" : "lock") as "unlock" | "lock",
-        iconOnly: true,
-        group: "object",
-      },
-      {
-        id: "duplicate",
-        kind: "action" as const,
-        label: tt("复制"),
-        icon: "duplicate" as const,
-        iconOnly: true,
-        group: "object",
-      },
-      {
-        id: "delete",
-        kind: "action" as const,
-        label: tt("删除"),
-        icon: "delete" as const,
-        iconOnly: true,
-        group: "object",
-        danger: true,
-      },
+      ...deckObjectActions(element, tt),
     ];
     return {
       version: 1,
@@ -571,6 +573,12 @@ export function DeckContextToolbar({
   const command = (message: SelectionCommand) => {
     if (!context || message.selectionId !== context.id) return;
     if (element && !deckToolbarControlAllowed(element, message.controlId)) {
+      return;
+    }
+    if (message.controlId === "edit-text") {
+      if (element && deckElementTextEditability(element).editable) {
+        editor.beginTextEditing(element.id);
+      }
       return;
     }
     applyDeckToolbarCommand(editor, element, message);

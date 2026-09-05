@@ -152,6 +152,10 @@ export interface DeckEditorState {
   deleteElement: () => void;
   moveElementLayer: (direction: -1 | 1) => void;
   toggleElementLock: () => void;
+  /** Canvas in-place text editing; not part of the save path. */
+  textEditingElementId: string;
+  beginTextEditing: (elementId: string) => void;
+  endTextEditing: () => void;
   setCanvasElement: (element: HTMLElement | null) => void;
   addSlide: () => void;
   duplicateSlide: () => void;
@@ -1598,6 +1602,7 @@ export function useDeckEditor(
   const [deck, setDeckState] = useState(initial);
   const [activeId, setActiveId] = useState(initial.slides[0].id);
   const [selectedElementId, setSelectedElementId] = useState("");
+  const [textEditingElementId, setTextEditingElementId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -1694,6 +1699,7 @@ export function useDeckEditor(
         setDeckState(next);
         setActiveId(next.slides[0].id);
         setSelectedElementId("");
+        setTextEditingElementId("");
         undoRef.current = [];
         redoRef.current = [];
         gestureRef.current = null;
@@ -1738,6 +1744,7 @@ export function useDeckEditor(
     setDeckState(next);
     setActiveId(value.activeId);
     setSelectedElementId(value.selectedElementId);
+    setTextEditingElementId("");
     setHistoryRevision((revision) => revision + 1);
   }, []);
 
@@ -1998,6 +2005,18 @@ export function useDeckEditor(
   const selectElement = useCallback((id: string) => {
     selectedElementRef.current = id;
     setSelectedElementId(id);
+    setTextEditingElementId((current) => (current === id ? current : ""));
+  }, []);
+
+  const beginTextEditing = useCallback((elementId: string) => {
+    if (!elementId) return;
+    selectedElementRef.current = elementId;
+    setSelectedElementId(elementId);
+    setTextEditingElementId(elementId);
+  }, []);
+
+  const endTextEditing = useCallback(() => {
+    setTextEditingElementId("");
   }, []);
 
   const patchElement = useCallback(
@@ -2268,6 +2287,7 @@ export function useDeckEditor(
     }));
     selectedElementRef.current = "";
     setSelectedElementId("");
+    setTextEditingElementId("");
   }, [commit]);
 
   const duplicateElement = useCallback(() => {
@@ -2538,6 +2558,8 @@ export function useDeckEditor(
           }
         : null;
     } catch (caught) {
+      // Keep the in-memory deck, dirty flag, and reusable upload receipts.
+      // A failed publish must not discard the page the user just edited.
       if (mountedRef.current) {
         setError(
           caught instanceof Error
@@ -2622,6 +2644,7 @@ export function useDeckEditor(
       setActiveId(id);
       selectedElementRef.current = "";
       setSelectedElementId("");
+      setTextEditingElementId("");
     },
     setTitle: (title) => commit((current) => ({ ...current, title })),
     setTitleTransient: (title) =>
@@ -2649,6 +2672,9 @@ export function useDeckEditor(
     deleteElement,
     moveElementLayer,
     toggleElementLock,
+    textEditingElementId,
+    beginTextEditing,
+    endTextEditing,
     setCanvasElement,
     addSlide: () => {
       const slide = {
@@ -2662,6 +2688,7 @@ export function useDeckEditor(
       }, slide.id);
       selectedElementRef.current = "";
       setSelectedElementId("");
+      setTextEditingElementId("");
     },
     duplicateSlide: () => {
       const copy: DeckSlide = {
@@ -2684,6 +2711,7 @@ export function useDeckEditor(
       }, copy.id);
       selectedElementRef.current = "";
       setSelectedElementId("");
+      setTextEditingElementId("");
     },
     deleteSlide: () => {
       if (deckRef.current.slides.length <= 1) return;
@@ -2699,6 +2727,7 @@ export function useDeckEditor(
       );
       selectedElementRef.current = "";
       setSelectedElementId("");
+      setTextEditingElementId("");
     },
     moveSlide: (direction) => {
       const target = activeIndex + direction;

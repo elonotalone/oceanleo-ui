@@ -60,17 +60,60 @@ const MORPH_SPRING = { stiffness: 190, damping: 24 };
  * 「甩得到」的情形，不会改变已有的「停在带内」判定。
  */
 const FLING_PROJECTION_SECONDS = 0.09;
+/**
+ * 展开态双击窗口：两次 pointerdown 的间隔上限。
+ * 单击按键仍立刻走它自己的 onClick，不靠延迟派发来等这个窗口。
+ */
+const DOUBLE_PRESS_MS = 320;
+/** 两次按下的落点容差。超过就当成另一次单击，不误触发拖。 */
+const DOUBLE_PRESS_SLOP_PX = 12;
 
 function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
+
+function isEditBarInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      "button,a,input,textarea,select,label,[role='button'],[role='slider'],[role='combobox'],[role='menuitem'],[role='option'],[data-edit-bar-collapse],[data-edit-bar-pin]",
+    ),
+  );
+}
+
+type EditBarPressStamp = {
+  pointerId: number;
+  x: number;
+  y: number;
+  time: number;
+};
+
 /**
- * 双击并按住才拖。刻意自己判而不用 onDoubleClick：原生 dblclick 在两次
- * click 都派发完之后才触发，控件会被点两次。第一次 click 在窗口内先扣住，
- * 确认不是双击再补发；第二次 pointerdown 在捕获阶段吞掉，按钮不会有反应。
+ * 同一指针、同一条、窗口内、落点靠近：第二次按下立刻起拖。
+ * 按键与空白共用这一条，不给某个键开小灶。
  */
-const DOUBLE_PRESS_MS = 400;
-const DOUBLE_PRESS_SLOP_PX = 10;
+function isEditBarDoublePress(
+  last: EditBarPressStamp | null,
+  pointerId: number,
+  clientX: number,
+  clientY: number,
+  time: number,
+): boolean {
+  if (!last || last.pointerId !== pointerId) return false;
+  if (time < last.time || time - last.time > DOUBLE_PRESS_MS) return false;
+  return (
+    Math.hypot(clientX - last.x, clientY - last.y) <= DOUBLE_PRESS_SLOP_PX
+  );
+}
+
+/**
+ * 展开胶囊手势：
+ * 第一次按下/松开照旧——按键立刻响应 onClick，条子进入选中（光晕是反馈，
+ * 不是拖拽门槛）。同一指针在 DOUBLE_PRESS_MS 内、落点在 DOUBLE_PRESS_SLOP_PX
+ * 内再按一次，无论落在按键还是空白，立刻 beginHoldDrag。
+ * 已选中后再按空白的老路保留。条外按下取消选中。收起圆仍是按下即拖。
+ * 不许延迟派发 click 来等双击窗口。
+ */
 
 interface EditBarDrag {
   pointerId: number;
@@ -117,11 +160,14 @@ export interface EditBarDockController {
   position: FloatingToolbarPoint;
   presentation: EditBarPresentation;
   collapsed: boolean;
-  /** 双击按住拖拽进行中：条子跟手，松手落下，Esc 取消。 */
+  /** 按住拖的进行中：条子跟手，松手落下，Esc 取消。 */
   moveMode: boolean;
-  /** 摊到浮层根节点上，实现「双击条上任意位置都能拖」。 */
+  /** 条子被点过之后的选中态。光晕是反馈，不再是拖拽的前置条件。 */
+  selected: boolean;
+  /** 摊到浮层根上：双击任意处（含按键）起拖；单击选中；已选中按空白也起拖。 */
   rootProps: {
     onPointerDownCapture: (event: ReactPointerEvent<HTMLElement>) => void;
+    onPointerUpCapture: (event: ReactPointerEvent<HTMLElement>) => void;
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
     onDoubleClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
@@ -167,16 +213,13 @@ export function useEditBarDockController({
   const dragRef = useRef<EditBarDrag | null>(null);
   const rememberedDockBoundsRef = useRef<FloatingToolbarBounds | null>(null);
   const hydratedStorageKeyRef = useRef("");
-  const lastPressRef = useRef<{ time: number; x: number; y: number } | null>(
-    null,
-  );
-  const pendingClickRef = useRef<{
-    target: EventTarget | null;
+  const selectedRef = useRef(false);
+  const pendingSelectRef = useRef<{
+    pointerId: number;
     x: number;
     y: number;
-    timer: number;
   } | null>(null);
-  const replayingClickRef = useRef(false);
+  const lastPressRef = useRef<EditBarPressStamp | null>(null);
   const suppressClickRef = useRef<FloatingToolbarPoint | null>(null);
   const modeRef = useRef<EditBarDockMode>(defaultMode);
   const offsetRef = useRef<FloatingToolbarPoint>({ x: 0, y: 0 });
@@ -192,7 +235,13 @@ export function useEditBarDockController({
     useState<EditBarPresentation>("expanded");
   const [dragging, setDragging] = useState(false);
   const [moveMode, setMoveMode] = useState(false);
+  const [selected, setSelected] = useState(false);
   const [dropActive, setDropActive] = useState(false);
+  const markSelected = useCallback((next: boolean) => {
+    selectedRef.current = next;
+    setSelected(next);
+    if (!next) pendingSelectRef.current = null;
+  }, []);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [dockRoot, setDockRoot] = useState<HTMLElement | null>(null);
 
@@ -804,12 +853,20 @@ export function useEditBarDockController({
     });
     presentationRef.current = "collapsed";
     setPresentation("collapsed");
+    markSelected(false);
     collapsedPositionRef.current = boundedEditBarDockOffset(target);
     commitPosition(collapsedPositionRef.current);
     persistState();
     // 位置也弹过去。终点是刚点下的那枚收起按钮，这就是「动效有来源」。
     springPositionTo(collapsedPositionRef.current, origin);
-  }, [commitPosition, persistState, planMorph, readToolbarBox, springPositionTo]);
+  }, [
+    commitPosition,
+    markSelected,
+    persistState,
+    planMorph,
+    readToolbarBox,
+    springPositionTo,
+  ]);
 
   const expand = useCallback(() => {
     if (presentationRef.current === "expanded") return;
@@ -1067,8 +1124,7 @@ export function useEditBarDockController({
   }, [applyModeAndOffset, releasePositionSpring]);
 
   /**
-   * 吞掉紧随其后的一次 click。双击第二次按下、以及松手落下时的那一次
-   * 点击，都不应该穿透到控件或画布上。
+   * 吞掉松手落下时的那一次点击，避免拖完立刻点到控件或画布。
    */
   const clickSwallowCleanupRef = useRef<(() => void) | null>(null);
 
@@ -1085,20 +1141,13 @@ export function useEditBarDockController({
     [],
   );
 
-  const cancelPendingClick = useCallback(() => {
-    const pending = pendingClickRef.current;
-    if (!pending) return;
-    if (typeof window !== "undefined") window.clearTimeout(pending.timer);
-    pendingClickRef.current = null;
-  }, []);
-
   /** Esc 取消拖拽后必须立刻解除，否则紧接着的第一次真实点击会被白吞掉。 */
   const releaseClickSuppression = useCallback(() => {
     suppressClickRef.current = null;
     clickSwallowCleanupRef.current?.();
     clickSwallowCleanupRef.current = null;
-    cancelPendingClick();
-  }, [cancelPendingClick]);
+    pendingSelectRef.current = null;
+  }, []);
 
   const swallowNextClick = useCallback(
     (clientX: number, clientY: number) => {
@@ -1125,41 +1174,10 @@ export function useEditBarDockController({
     [shouldSwallowClick],
   );
 
-  const armPendingClick = useCallback(
-    (target: EventTarget | null, clientX: number, clientY: number) => {
-      if (typeof window === "undefined") return;
-      cancelPendingClick();
-      const timer = window.setTimeout(() => {
-        pendingClickRef.current = null;
-        lastPressRef.current = null;
-        const node = target instanceof Element ? target : null;
-        const interactive = node?.closest(
-          "button,[role='button'],a,input,select,textarea",
-        );
-        const el =
-          (interactive instanceof HTMLElement ? interactive : null) ||
-          (node instanceof HTMLElement ? node : null);
-        if (!el) return;
-        replayingClickRef.current = true;
-        try {
-          el.click();
-        } finally {
-          replayingClickRef.current = false;
-        }
-      }, DOUBLE_PRESS_MS);
-      pendingClickRef.current = {
-        target,
-        x: clientX,
-        y: clientY,
-        timer,
-      };
-    },
-    [cancelPendingClick],
-  );
-
   const beginHoldDrag = useCallback(
     (pointerId: number, clientX: number, clientY: number) => {
-      cancelPendingClick();
+      pendingSelectRef.current = null;
+      lastPressRef.current = null;
       startDrag("press", pointerId, clientX, clientY);
       setMoveMode(true);
       swallowNextClick(clientX, clientY);
@@ -1169,7 +1187,7 @@ export function useEditBarDockController({
         // jsdom 与部分 webview 没有指针捕获。窗口监听仍然跟手。
       }
     },
-    [cancelPendingClick, startDrag, swallowNextClick],
+    [startDrag, swallowNextClick],
   );
 
   const onPointerDownCapture = useCallback(
@@ -1177,52 +1195,62 @@ export function useEditBarDockController({
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (presentationRef.current === "collapsed") return;
       if (dragRef.current) return;
-      const now =
-        typeof performance === "undefined" ? Date.now() : performance.now();
-      const previous = lastPressRef.current;
-      const isDoublePress = Boolean(
-        previous &&
-          now - previous.time <= DOUBLE_PRESS_MS &&
-          Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <=
-            DOUBLE_PRESS_SLOP_PX,
-      );
-      lastPressRef.current = isDoublePress
-        ? null
-        : { time: now, x: event.clientX, y: event.clientY };
-      if (!isDoublePress) {
-        // 第一下落在按钮上：先扣住 pointerdown，确认不是双击再靠补发 click 生效。
-        const node = event.target instanceof Element ? event.target : null;
-        if (node?.closest("button,[role='button'],a")) {
-          event.preventDefault();
-          event.stopPropagation();
-          armPendingClick(event.target, event.clientX, event.clientY);
-        }
+      const now = Number.isFinite(event.timeStamp) ? event.timeStamp : 0;
+      if (
+        isEditBarDoublePress(
+          lastPressRef.current,
+          event.pointerId,
+          event.clientX,
+          event.clientY,
+          now,
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        beginHoldDrag(event.pointerId, event.clientX, event.clientY);
         return;
       }
-      // 捕获阶段吞掉第二次按下：落在按钮上也不激活。
-      event.preventDefault();
-      event.stopPropagation();
-      beginHoldDrag(event.pointerId, event.clientX, event.clientY);
+      lastPressRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        time: now,
+      };
+      if (selectedRef.current) {
+        if (isEditBarInteractiveTarget(event.target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        beginHoldDrag(event.pointerId, event.clientX, event.clientY);
+        return;
+      }
+      pendingSelectRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
     },
-    [armPendingClick, beginHoldDrag],
+    [beginHoldDrag],
+  );
+
+  const onPointerUpCapture = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const pending = pendingSelectRef.current;
+      pendingSelectRef.current = null;
+      if (!pending || pending.pointerId !== event.pointerId) return;
+      if (dragRef.current) return;
+      markSelected(true);
+    },
+    [markSelected],
   );
 
   const onClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      if (replayingClickRef.current) return;
       if (shouldSwallowClick(event.clientX, event.clientY)) {
         event.preventDefault();
         event.stopPropagation();
-        return;
-      }
-      // 第一次 click 先扣住：还可能是双击起手。确认是单击后再补发。
-      if (lastPressRef.current) {
-        event.preventDefault();
-        event.stopPropagation();
-        armPendingClick(event.target, event.clientX, event.clientY);
       }
     },
-    [armPendingClick, shouldSwallowClick],
+    [shouldSwallowClick],
   );
 
   const onDoubleClickCapture = useCallback(
@@ -1284,7 +1312,20 @@ export function useEditBarDockController({
     ],
   );
 
-  // 双击按住：条子跟手，松手落下，Esc 还原。不跟「没按住的指针」。
+  useEffect(() => {
+    if (!selected || typeof window === "undefined") return;
+    const handleOutside = (event: PointerEvent) => {
+      if (dragRef.current) return;
+      const toolbar = toolbarRef.current;
+      if (toolbar?.contains(event.target as Node)) return;
+      lastPressRef.current = null;
+      markSelected(false);
+    };
+    window.addEventListener("pointerdown", handleOutside, true);
+    return () => window.removeEventListener("pointerdown", handleOutside, true);
+  }, [markSelected, selected]);
+
+  // 选中后再按下：条子跟手，松手落下，Esc 还原。不跟「没按住的指针」。
   useEffect(() => {
     if (!moveMode || typeof window === "undefined") return;
     const matching = (event: PointerEvent) => {
@@ -1596,11 +1637,8 @@ export function useEditBarDockController({
   useEffect(
     () => () => {
       dragRef.current = null;
-      const pending = pendingClickRef.current;
-      if (pending && typeof window !== "undefined") {
-        window.clearTimeout(pending.timer);
-      }
-      pendingClickRef.current = null;
+      pendingSelectRef.current = null;
+      lastPressRef.current = null;
     },
     [],
   );
@@ -1632,6 +1670,7 @@ export function useEditBarDockController({
   const rootProps = useMemo(
     () => ({
       onPointerDownCapture,
+      onPointerUpCapture,
       onClickCapture,
       onDoubleClickCapture,
       onKeyDown: onRootKeyDown,
@@ -1641,6 +1680,7 @@ export function useEditBarDockController({
       onClickCapture,
       onDoubleClickCapture,
       onPointerDownCapture,
+      onPointerUpCapture,
       onRootKeyDown,
       rootKeyShortcuts,
     ],
@@ -1665,6 +1705,7 @@ export function useEditBarDockController({
     presentation,
     collapsed: presentation === "collapsed",
     moveMode,
+    selected,
     rootProps,
     collapsedProps,
     collapse,

@@ -20,6 +20,7 @@ import type { ArtifactType } from "../artifact-contract";
 import {
   artifactSaveStepMessage,
   planArtifactSaveRenditions,
+  revisionPublishLocalRefusal,
   type ArtifactSaveStep,
 } from "./artifact-save-contract";
 import { EDITOR_PREVIEW_MEDIA_TYPE } from "./editor-preview-raster";
@@ -758,7 +759,19 @@ export async function saveFileToLibraryWithDependencies(
       identity.artifactType &&
       identity.artifactType !== input.artifactRevision.artifactType
     ) {
-      return fail("identity", "typed artifact 类型与编辑器不一致");
+      return fail(
+        "identity",
+        `这份素材在库里是「${identity.artifactType}」，编辑器按「${input.artifactRevision.artifactType}」保存对不上。请另存为可编辑副本。`,
+      );
+    }
+    const editability = String(
+      input.item.artifact?.editability || input.item.meta.editability || "",
+    );
+    if (editability === "view_only") {
+      return fail(
+        "identity",
+        "这份素材是只读导入件，不能直接覆盖保存。请先转成可编辑副本。",
+      );
     }
     /**
      * 这次 revision 的 `source` 用哪份字节。
@@ -883,6 +896,21 @@ export async function saveFileToLibraryWithDependencies(
         "contract",
         previewWarning ? `${plan.error}（${previewWarning}）` : plan.error,
       );
+    }
+    const localRefusal = revisionPublishLocalRefusal({
+      sourceUrl: commitSource.url,
+      renditionUrls: plan.renditions.map((rendition) => rendition.url),
+      artifactType: input.artifactRevision.artifactType,
+      itemArtifactType: identity.artifactType,
+      editability,
+      editorCapability:
+        input.item.artifact?.editorCapability ??
+        (typeof input.item.meta.editor_capability === "string"
+          ? input.item.meta.editor_capability
+          : null),
+    });
+    if (!localRefusal.ok) {
+      return fail("revision-publish", localRefusal.error);
     }
 
     let published: Awaited<ReturnType<typeof createArtifactRevision>>;

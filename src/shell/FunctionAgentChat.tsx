@@ -29,6 +29,8 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -37,7 +39,10 @@ import {
 import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer } from "./LeoComposer";
-import { useLeftPaneSlot } from "./SplitWorkspace";
+import {
+  useLeftPaneSlot,
+  useRegisterConsoleAgentFocus,
+} from "./SplitWorkspace";
 import { IconSparkles, IconWorkspace } from "./icons";
 import { useRegisterOpsFiller, useGuideWorkflows, FillNonceProvider } from "./guide-context";
 import { type WorkflowDraft } from "../lib/workflows";
@@ -474,8 +479,8 @@ export interface FunctionAgentChatProps {
    * 该功能区所属 app 的展示名（如「LeoImage」）。给了它，agent 页会在顶部显示
    * 「所属 app」的小标签，让用户知道当前 agent 隶属于哪个 app。 */
   appLabel?: string;
-  /** app 图标（emoji / 单字），与 appLabel 一起展示。 */
-  appIcon?: string;
+  /** app 图标（emoji / 节点），与 appLabel 一起展示。 */
+  appIcon?: ReactNode;
   /**
    * 宗旨 v12.1/v12.2：右栏「导航」示例被点击时的处理器。给了它 → 由站点决定怎么把示例
    * 灌进左栏（如 image 站按 opts.data 里的 sceneId 套用整套场景预设并切到「操作台」）。
@@ -635,6 +640,9 @@ export function FunctionAgentChat({
     if (workspace?.availability === "loading") {
       sessionSnapshotScopeRef.current = "";
       sessionSnapshotReadyRef.current = false;
+      // Session list/get is a background resume. Do not keep the operator
+      // console invisible while that network is in flight.
+      runtimeHydration?.markRuntimeReady();
       return;
     }
     if (runtimeHydration && !runtimeHydration.appInitialized) return;
@@ -768,6 +776,7 @@ export function FunctionAgentChat({
       {
         title: appLabel || workspace.appTitle || schema.title,
         expectedSessionId: workspace.session?.id,
+        intent: "attach",
       },
     );
     if (result.ok) {
@@ -845,6 +854,7 @@ export function FunctionAgentChat({
         {
           title: appLabel || workspace.appTitle || schema.title,
           expectedSessionId: workspace.session?.id,
+          intent: "attach",
         },
       );
       if (result.ok) {
@@ -1032,6 +1042,25 @@ export function FunctionAgentChat({
   // icon-only。SplitWorkspace 把这一组接在可截断 app 身份之后，并为 PaneHeader 的
   // fullscreen/right-pane control 留出独立的 shrink-0 位置。
   const slot = useLeftPaneSlot();
+  const leftPaneOwner = useId();
+  const composerWrapRef = useRef<HTMLDivElement>(null);
+  const requestAgentFocusRef = useRef(false);
+  const focusAgentConsole = useCallback(() => {
+    setTab("agent");
+    requestAgentFocusRef.current = true;
+  }, []);
+  useRegisterConsoleAgentFocus(showOps, focusAgentConsole);
+  useLayoutEffect(() => {
+    if (!requestAgentFocusRef.current || tab !== "agent") return;
+    requestAgentFocusRef.current = false;
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+    composerWrapRef.current
+      ?.querySelector<HTMLElement>("textarea, input, [contenteditable='true']")
+      ?.focus();
+  }, [tab]);
   const saveState = wfSaving ? "saving" : wfSaved ? "saved" : "idle";
   const saveLabel =
     saveState === "saving"
@@ -1151,10 +1180,11 @@ export function FunctionAgentChat({
   // 安装/更新左栏标题开关（toggle 节点选中态随 tab / 保存态变化）。卸载时清空，避免离开
   // 该功能区后残留旧开关。
   useEffect(() => {
-    slot?.setLeftLabel(toggle);
+    slot?.setLeftLabel(leftPaneOwner, toggle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     slot,
+    leftPaneOwner,
     tab,
     accent,
     opsLabel,
@@ -1166,8 +1196,8 @@ export function FunctionAgentChat({
     workspace?.appId,
   ]);
   useEffect(() => {
-    return () => slot?.setLeftLabel(null);
-  }, [slot]);
+    return () => slot?.setLeftLabel(leftPaneOwner, null);
+  }, [leftPaneOwner, slot]);
 
   const refresh = useCallback(async (id: string) => {
     const r = await getTask(id);
@@ -1574,7 +1604,11 @@ export function FunctionAgentChat({
             <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
               <span>{tt("所属 app")}</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">
-                {appIcon && <span className="text-[13px] leading-none">{appIcon}</span>}
+                {appIcon != null && appIcon !== false && (
+                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden text-[13px] leading-none">
+                    {appIcon}
+                  </span>
+                )}
                 {appLabel}
               </span>
             </div>
@@ -1680,7 +1714,10 @@ export function FunctionAgentChat({
         </div>
       </div>
       <div className="shrink-0 pt-3">
-        <div className="mx-auto w-full max-w-2xl space-y-2">
+        <div
+          ref={composerWrapRef}
+          className="mx-auto w-full max-w-2xl space-y-2"
+        >
           {/* 停在闸里的改动：diff / 变更清单 + 逐条接受或拒绝 + 回滚。
               宿主自己挂了面板（AgentConsole）时它自动让位，屏幕上只有一份。 */}
           <AgentReviewDock />

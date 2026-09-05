@@ -2,7 +2,7 @@
  * 编辑栏三条手势的**逐件**覆盖闸（W31）。
  *
  * 操作员原话三条：
- *   ① 双击 edit bar 任何位置都能拖拽
+ *   ① 点一下选中 edit bar，再点一下任何位置都能拖拽
  *   ② 点击后缩为一个圆形，再点击展开
  *   ③ 缩小版也可以拖拽到各个位置
  *
@@ -275,39 +275,68 @@ const controllerSource = code(`${SHELL}/edit-bar-dock-controller.tsx`);
 const controlsSource = code(`${SHELL}/EditBarDockControls.tsx`);
 const floatingSource = code(`${SHELL}/FloatingContextToolbar.tsx`);
 
-test("引擎：① 双击条上任意位置进入拖拽（不是只有手柄能拖）", () => {
-  // 判据落在「摊到浮层根节点上」这件事上：双击判定挂在根的捕获阶段，
-  // 所以条上任何一个位置（包括控件本身）双击都算。
-  // 挂在某个手柄上的实现会让「任何位置」变成「那一小块」。
+test("引擎：① 双击任意处（含按键）起拖；单击仍立即选中", () => {
+  // 判据落在「摊到浮层根节点上」这件事上：选中与第二次按下都挂在根的捕获阶段，
+  // 所以条上任何一个位置（包括控件本身）都算。
   assert.match(
     controllerSource,
     /onPointerDownCapture:\s*\(event/,
-    "双击判定不在捕获阶段了；第二次按下会先被控件吃掉，双击拖不起来",
+    "按下判定不在捕获阶段了；第二次按下会先被控件吃掉，拖不起来",
+  );
+  assert.match(
+    controllerSource,
+    /onPointerUpCapture:\s*\(event/,
+    "第一次松手不再把条子标成选中",
   );
   assert.match(
     controllerSource,
     /beginHoldDrag\(event\.pointerId,\s*event\.clientX,\s*event\.clientY\)/,
-    "双击不再进入按住拖拽",
+    "选中后按下不再进入拖拽",
   );
   assert.match(
     controllerSource,
-    /armPendingClick\(event\.target,\s*event\.clientX,\s*event\.clientY\)/,
-    "第一次 click 不再扣住，双击会点到按钮",
+    /markSelected\(true\)/,
+    "第一次点击后必须进入选中",
   );
   assert.match(
     controllerSource,
-    /onDoubleClickCapture/,
-    "双击的浏览器默认（选中文字）不再被扣住",
+    /const DOUBLE_PRESS_MS = 320/,
+    "双击窗口常量必须在，展开态靠它识别第二次按下",
+  );
+  assert.match(
+    controllerSource,
+    /const DOUBLE_PRESS_SLOP_PX = 12/,
+    "双击落点容差必须钉死，否则同指针微移会被当成另一次单击",
+  );
+  assert.match(
+    controllerSource,
+    /function isEditBarDoublePress\(/,
+    "双击判定必须是具名函数，按键与空白走同一条",
+  );
+  assert.match(
+    controllerSource,
+    /if \(\s*isEditBarDoublePress\([\s\S]*?beginHoldDrag\(event\.pointerId,\s*event\.clientX,\s*event\.clientY\)/,
+    "双击窗口内第二次按下必须立刻起拖，且不先问是不是按键",
+  );
+  assert.equal(
+    /armPendingClick/.test(controllerSource),
+    false,
+    "禁止延迟派发 click 来等双击窗口——单击按键必须立刻响应",
+  );
+  assert.match(
+    controllerSource,
+    /if \(isEditBarInteractiveTarget\(event\.target\)\) return;/,
+    "已选中后按在按键上（且不是双击）仍须把按下交给按键",
   );
   assert.match(
     floatingSource,
-    /onDoubleClickCapture=\{controller\.rootProps\.onDoubleClickCapture\}/,
-    "浮层根没有扣住 dblclick",
+    /onPointerUpCapture=\{controller\.rootProps\.onPointerUpCapture\}/,
+    "浮层根没有接上第一次松手",
   );
   assert.match(
     floatingSource,
     /onPointerDownCapture=\{controller\.rootProps\.onPointerDownCapture\}/,
-    "浮层根没有把双击判定摊上去——那就只有某一小块能拖了",
+    "浮层根没有把选中/拖拽判定摊上去——那就只有某一小块能拖了",
   );
 });
 
@@ -518,6 +547,11 @@ const pluginThemeStubUrl = dataModule(`
     return { "--awb-accent": accent };
   }
 `);
+const splitWorkspaceStubUrl = dataModule(`
+  export function useConsoleAgentFocus() {
+    return null;
+  }
+`);
 
 const frameUrl = await compileModule(
   "src/shell/plugin-chrome/PluginChromeFrame.tsx",
@@ -526,6 +560,7 @@ const frameUrl = await compileModule(
     "../../i18n/ui/useUI": uiStubUrl,
     "../AdvancedEditorIcon": iconStubUrl,
     "../plugin-theme": pluginThemeStubUrl,
+    "../SplitWorkspace": splitWorkspaceStubUrl,
     "./agent-drawer-panel": agentPanelStubUrl,
     "./PluginAgentPanel": agentPanelStubUrl,
   },
@@ -618,7 +653,7 @@ function translateOf(element) {
 
 /** 三件 extracted 插件走的是同一个 frame，逐件跑一遍才是「逐件可达」。 */
 for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
-  test(`真渲染 · ${pluginId}：双击拖得动、点得出圆、圆也拖得动`, async () => {
+  test(`真渲染 · ${pluginId}：点一下再点一下拖得动、点得出圆、圆也拖得动`, async () => {
     window.localStorage.clear();
     const restoreRect = installRectStub();
     const mounted = await mountFrame(pluginId);
@@ -635,19 +670,25 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
         "AI 键必须还在（契约 §9：接手势不许把它弄丢）",
       );
 
-      // ① 双击条上「任意位置」——这里刻意选插件填进来的那段内容，
+      // ① 点一下选中，再点条上「任意位置」拖——这里刻意选插件填进来的那段内容，
       //    而不是某个专用手柄，因为诉求原话就是「任何位置」。
       const anywhere = container.querySelector("[data-test-edit-bar]");
       assert.ok(anywhere, "插件填进来的 edit bar 内容不在");
       const before = translateOf(bar());
       assert.ok(before, "浮层没有位置——paintMotion 没写 transform");
 
-      for (const step of [0, 1]) {
-        await pointer(anywhere, "pointerdown", {
-          pointerId: 1, pointerType: "mouse", button: 0,
-          clientX: 400, clientY: 70, timeStamp: 1000 + step,
-        });
-      }
+      await pointer(anywhere, "pointerdown", {
+        pointerId: 1, pointerType: "mouse", button: 0,
+        clientX: 400, clientY: 70, timeStamp: 1000,
+      });
+      await pointer(anywhere, "pointerup", {
+        pointerId: 1, pointerType: "mouse", button: 0,
+        clientX: 400, clientY: 70, timeStamp: 1010,
+      });
+      await pointer(anywhere, "pointerdown", {
+        pointerId: 1, pointerType: "mouse", button: 0,
+        clientX: 400, clientY: 70, timeStamp: 1020,
+      });
       await act(async () => {
         const move = new window.Event("pointermove", { bubbles: true });
         for (const [name, value] of Object.entries({
@@ -660,8 +701,8 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
       const dragged = translateOf(bar());
       assert.ok(
         dragged && (dragged.x !== before.x || dragged.y !== before.y),
-        `双击之后拖不动：${JSON.stringify(before)} → ${JSON.stringify(dragged)}。` +
-          "诉求原话是「双击 edit bar 任何位置都能拖拽」",
+        `点一下再点一下之后拖不动：${JSON.stringify(before)} → ${JSON.stringify(dragged)}。` +
+          "诉求原话是「点击1次后，再点击一次即可拖拽」",
       );
       // 松手落下，别把按住拖拽留给下一段。
       await act(async () => {

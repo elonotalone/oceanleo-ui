@@ -483,6 +483,7 @@ const tr: Record<string, string> = {
   "（或用 AI 智能推荐找站）、挑一个": " (ya da yapay zeka akıllı önerisiyle site bul) ve bir tane seç",
   "（能填操作台、出产物）或": " (konsolu doldurup çıktı üretebilen) ya da",
   "＋ 加入工作台": "＋ Çalışma tezgahına ekle",
+  "跨站搜索，找到后加入工作台。": "Siteler arasında ara, sonra çalışma tezgahına ekle.",
   "＋ 去 Playground 挑选": "＋ Playground'dan seç",
   "＋ 放入工作台": "＋ Çalışma tezgahına koy",
   "＋ 添加 app": "＋ app ekle",
@@ -6466,5 +6467,6 @@ const tr: Record<string, string> = {
   "添加媒体": "Medya ekle",
   "保存快照": "Anlık görüntüyü kaydet",
   "选中画布节点后在此编辑": "Burada düzenlemek için tuvalden bir düğüm seçin",
+  "对象详情": "Nesne ayrıntıları",
 };
 export default tr;

@@ -12,6 +12,7 @@ import {
   artifactSaveStepMessage,
   isArtifactSaveStepMessage,
   planArtifactSaveRenditions,
+  revisionPublishLocalRefusal,
 } from "../src/shell/doc-editors/artifact-save-contract.ts";
 import { saveFileToLibraryWithDependencies } from "../src/shell/doc-editors/doc-io.ts";
 import {
@@ -45,6 +46,46 @@ test("native-cover types match matrix §3.2 exactly", () => {
     "website",
     "workflow",
   ]);
+});
+
+test("revision publish 在本地挡住只读、类型错位和 http 地址", () => {
+  const viewOnly = revisionPublishLocalRefusal({
+    artifactType: "deck",
+    itemArtifactType: "deck",
+    editability: "view_only",
+    sourceUrl: "https://cdn.oceanleo.com/deck.pptx",
+  });
+  assert.equal(viewOnly.ok, false);
+  assert.match(viewOnly.error, /只读导入件/);
+  assert.match(viewOnly.error, /可编辑副本/);
+
+  const typeMismatch = revisionPublishLocalRefusal({
+    artifactType: "deck",
+    itemArtifactType: "document",
+    editability: "native",
+    sourceUrl: "https://cdn.oceanleo.com/deck.pptx",
+  });
+  assert.equal(typeMismatch.ok, false);
+  assert.match(typeMismatch.error, /document/);
+  assert.match(typeMismatch.error, /可编辑副本/);
+
+  const httpUrl = revisionPublishLocalRefusal({
+    artifactType: "deck",
+    itemArtifactType: "deck",
+    editability: "native",
+    sourceUrl: "http://cdn.oceanleo.com/deck.pptx",
+  });
+  assert.equal(httpUrl.ok, false);
+  assert.match(httpUrl.error, /https/);
+
+  const ok = revisionPublishLocalRefusal({
+    artifactType: "deck",
+    itemArtifactType: "deck",
+    editability: "native",
+    sourceUrl: "https://cdn.oceanleo.com/deck.pptx",
+    renditionUrls: ["https://cdn.oceanleo.com/full.pptx"],
+  });
+  assert.equal(ok.ok, true);
 });
 
 test("office saves never publish an editor-manifest-only payload", () => {

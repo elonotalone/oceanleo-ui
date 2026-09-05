@@ -483,6 +483,7 @@ const fr: Record<string, string> = {
   "（或用 AI 智能推荐找站）、挑一个": "(ou utilisez la recommandation intelligente de l'IA pour trouver un site), choisissez un(e)",
   "（能填操作台、出产物）或": "(remplit la console, produit des résultats) ou",
   "＋ 加入工作台": "＋ Ajouter à l'espace de travail",
+  "跨站搜索，找到后加入工作台。": "Recherchez sur tous les sites, puis ajoutez à l'espace de travail.",
   "＋ 去 Playground 挑选": "＋ Aller choisir dans Playground",
   "＋ 放入工作台": "＋ Mettre dans l'espace de travail",
   "＋ 添加 app": "＋ Ajouter une app",
@@ -6466,5 +6467,6 @@ const fr: Record<string, string> = {
   "添加媒体": "Ajouter un média",
   "保存快照": "Enregistrer l'instantané",
   "选中画布节点后在此编辑": "Sélectionnez un nœud du canevas pour le modifier ici",
+  "对象详情": "Détails de l'objet",
 };
 export default fr;

@@ -483,6 +483,7 @@ const vi: Record<string, string> = {
   "（或用 AI 智能推荐找站）、挑一个": " (hoặc dùng gợi ý thông minh của AI để tìm trang), chọn một",
   "（能填操作台、出产物）或": " (điền được bảng điều khiển, tạo ra kết quả) hoặc",
   "＋ 加入工作台": "＋ Thêm vào bàn làm việc",
+  "跨站搜索，找到后加入工作台。": "Tìm kiếm xuyên site, rồi thêm vào bàn làm việc.",
   "＋ 去 Playground 挑选": "＋ Đến Playground để chọn",
   "＋ 放入工作台": "＋ Đưa vào bàn làm việc",
   "＋ 添加 app": "＋ Thêm app",
@@ -6466,5 +6467,6 @@ const vi: Record<string, string> = {
   "添加媒体": "Thêm phương tiện",
   "保存快照": "Lưu ảnh chụp",
   "选中画布节点后在此编辑": "Chọn một nút trên canvas để chỉnh sửa tại đây",
+  "对象详情": "Chi tiết đối tượng",
 };
 export default vi;
