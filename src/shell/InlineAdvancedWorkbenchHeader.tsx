@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type {
   AdvancedEditorAdapter,
   AdvancedWorkbenchDrawer,
 } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
-import { AdvancedWorkspaceActionBar } from "./AdvancedWorkspaceActionBar";
 import {
   ADVANCED_TOOLS_PANEL_ID,
   focusAdvancedToolsTrigger,
@@ -15,15 +14,17 @@ import {
 } from "./advanced-layout-context";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
-import {
-  PluginModeAdapterBridge,
-  PluginModeToggle,
-} from "./plugin-chrome/plugin-mode";
+import { PluginModeAdapterBridge } from "./plugin-chrome/plugin-mode";
+import { PluginGlobalRow } from "./plugin-chrome/PluginGlobalRow";
+import { PluginPageRow } from "./plugin-chrome/PluginPageRow";
+import { buildPluginPages } from "./plugin-chrome/plugin-pages";
+import { usePluginPage } from "./plugin-chrome/plugin-page-store";
 import type { PluginThemeId } from "./plugin-theme";
 
 export function InlineAdvancedWorkbenchHeader({
   adapter,
   autoSaveState,
+  autoSaveError,
   activeDrawerId,
   activeLibraryPanelId,
   drawers,
@@ -31,6 +32,7 @@ export function InlineAdvancedWorkbenchHeader({
   pluginThemeId = null,
   showLibrary = true,
   showBack = true,
+  showClose = true,
   onBack,
   onOpenDrawer,
   onCloseDrawer,
@@ -38,17 +40,19 @@ export function InlineAdvancedWorkbenchHeader({
   onOpenLibrary,
   onRetrySave,
   onUploadFiles,
+  onClose,
 }: {
   adapter: AdvancedEditorAdapter;
   autoSaveState: AdvancedAutoSaveState;
+  autoSaveError?: string;
   activeDrawerId: string;
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
   drawers: readonly AdvancedWorkbenchDrawer[];
   accent: string;
-  /** 插件内主题 id；null = 非 10 件插件，不渲染切换器。 */
   pluginThemeId?: PluginThemeId | null;
   showLibrary?: boolean;
   showBack?: boolean;
+  showClose?: boolean;
   onBack: () => void;
   onOpenDrawer: (drawerId: string) => void;
   onCloseDrawer: () => void;
@@ -60,8 +64,33 @@ export function InlineAdvancedWorkbenchHeader({
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
   onRetrySave: () => void;
   onUploadFiles: (files: File[]) => void;
+  onClose?: () => void;
 }) {
   const tt = useUI();
+  const pagePluginId = (pluginThemeId ??
+    adapter.id.split("@")[0]) as PluginThemeId;
+  const { pageId, setPage } = usePluginPage(pagePluginId);
+  const pages = useMemo(
+    () =>
+      buildPluginPages({
+        proLabel: adapter.pages?.proLabel,
+        proUnavailableReason:
+          adapter.pages?.proUnavailableReason ??
+          adapter.mode?.unavailableReason,
+        aux: adapter.pages?.aux,
+      }),
+    [
+      adapter.mode?.unavailableReason,
+      adapter.pages?.aux,
+      adapter.pages?.proLabel,
+      adapter.pages?.proUnavailableReason,
+    ],
+  );
+  useEffect(() => {
+    const reported = adapter.pages?.activePageId;
+    if (!reported || reported === pageId) return;
+    setPage(reported);
+  }, [adapter.pages?.activePageId, pageId, setPage]);
   const closeToolsAndRestoreFocus = useCallback(() => {
     onCloseDrawer();
     window.requestAnimationFrame(() => focusAdvancedToolsTrigger(adapter.id));
@@ -135,65 +164,39 @@ export function InlineAdvancedWorkbenchHeader({
     [activeDrawerId, adapter.id, adapter.label, drawers.length, openTools, tt],
   );
   useAdvancedToolsLauncherRegistration(toolsLauncher);
-  const triggerAction = (action: NonNullable<AdvancedEditorAdapter["actions"]>[number]) => {
-    if (action.panelId) {
-      onOpenDrawer(action.panelId);
-      return;
-    }
-    return action.onTrigger?.();
-  };
   const modeAdapter = adapter.mode;
-  // 13 件高级编辑器的专业模式开关必须能点。原因只作说明，不再置灰。
-  const modeUnavailableReason = modeAdapter?.unavailableReason;
 
-  // 顶栏本体（返回 / 素材库 / 保存 / 导出 / 主题）仍然整块交给
-  // `AdvancedWorkspaceActionBar`，一个字没动——它是十件共用的那条栏。
-  // L0 专业模式开关挂在它右边：这是十件唯一的入模式入口（`_COMMON` §10 第 5 条），
-  // 而在此之前它只画在 `PluginChromeFrame` 里，那条壳十件一个都不走。
   return (
     <div
       data-advanced-workbench-header
-      className="flex h-11 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden"
+      className="flex w-full min-w-0 flex-col overflow-hidden"
     >
-      <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-        <AdvancedWorkspaceActionBar
-          adapter={adapter}
-          autoSaveState={autoSaveState}
-          activeLibraryPanelId={activeLibraryPanelId}
-          pluginThemeId={pluginThemeId}
-          showLibrary={showLibrary}
-          showBack={showBack}
-          onBack={onBack}
-          onOpenLibrary={onOpenLibrary}
-          onRetrySave={onRetrySave}
-          onTriggerAction={triggerAction}
-          onUploadFiles={onUploadFiles}
-        />
-      </div>
-      {pluginThemeId ? (
-        // `shrink-0`：顶栏本体拿 `flex-1`，窄屏时该被挤的是它里面那排可横滚的键，
-        // 不是这个开关。开关被挤成 0 宽和「开关根本不在」对用户是同一件事，
-        // 而后者正是本次要修的那条红。
-        <div className="flex shrink-0 items-center gap-0.5">
-          <PluginModeToggle
-            pluginId={pluginThemeId}
-            unavailableReason={modeUnavailableReason}
-          />
-          {/*
-            开关本体只管改 L0 的档位；「把档位交到内核手里」这件事整条交给这座桥，
-            打开编辑器时推一次、之后每变一次推一次，都走它。
-            ⚠️ 这里**刻意不再给开关传 `onModeChange`**，虽然那样也能跑。
-            两条路说同一句话的后果是判据分不清哪条还活着：实测撤掉 `onModeChange`
-            之后这条闸 13/13 仍然全绿（桥替它把话说了），于是那条线等于没有守卫。
-            留一条路，闸才锁得住它。`PluginChromeFrame` 那边没有桥，仍然走
-            `onModeChange`，所以那个 prop 不删。
-          */}
-          <PluginModeAdapterBridge
-            pluginId={pluginThemeId}
-            mode={modeAdapter}
-          />
-        </div>
-      ) : null}
+      <PluginGlobalRow
+        adapter={adapter}
+        autoSaveState={autoSaveState}
+        autoSaveError={autoSaveError}
+        pluginThemeId={pluginThemeId}
+        showLibrary={showLibrary}
+        showBack={showBack}
+        showClose={showClose}
+        activeLibraryPanelId={activeLibraryPanelId}
+        onBack={onBack}
+        onOpenLibrary={onOpenLibrary}
+        onRetrySave={onRetrySave}
+        onClose={onClose}
+        onUploadFiles={onUploadFiles}
+      />
+      <PluginPageRow
+        pages={pages}
+        activePageId={pageId}
+        onSelectPage={(id) => {
+          const page = pages.find((entry) => entry.id === id);
+          if (page?.unavailableReason) return;
+          setPage(id);
+          if (page?.kind === "aux") adapter.pages?.onSelectPage?.(id);
+        }}
+      />
+      <PluginModeAdapterBridge pluginId={pagePluginId} mode={modeAdapter} />
     </div>
   );
 }

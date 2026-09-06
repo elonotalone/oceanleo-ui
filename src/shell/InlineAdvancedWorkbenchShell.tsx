@@ -27,11 +27,13 @@ import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
 import { EditBarHistoryControls } from "./EditBarDockControls";
 import { useAdvancedSession } from "./advanced-session-context";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
+import type { AdvancedWorkbenchAction } from "./advanced-workbench-chrome";
 import {
   PluginThemePortalContext,
   pluginThemeIdForAdapter,
   pluginWorkbenchStyle,
   usePluginTheme,
+  type PluginThemeId,
 } from "./plugin-theme";
 import type { LibraryItem } from "./library-data";
 import { useWorkbenchMaterials } from "./workbench-material-provider";
@@ -44,6 +46,12 @@ import {
   LiveReactNode,
   publishLiveReactNode,
 } from "./live-react-node";
+import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
+import {
+  buildPluginPages,
+  editBarVisibleOnPage,
+} from "./plugin-chrome/plugin-pages";
+import { usePluginPage } from "./plugin-chrome/plugin-page-store";
 
 export interface InlineAdvancedWorkbenchShellProps {
   item: LibraryItem;
@@ -67,6 +75,27 @@ export function InlineAdvancedWorkbenchShell({
   // adapter（website / design-canvas / video-canvas）pluginThemeId 为 null，
   // 保持原站点主题别名路径不变。
   const pluginThemeId = pluginThemeIdForAdapter(adapter.id);
+  const pagePluginId = (pluginThemeId ??
+    adapter.id.split("@")[0]) as PluginThemeId;
+  const { pageId } = usePluginPage(pagePluginId);
+  const pluginPages = useMemo(
+    () =>
+      buildPluginPages({
+        proLabel: adapter.pages?.proLabel,
+        proUnavailableReason:
+          adapter.pages?.proUnavailableReason ??
+          adapter.mode?.unavailableReason,
+        aux: adapter.pages?.aux,
+      }),
+    [
+      adapter.mode?.unavailableReason,
+      adapter.pages?.aux,
+      adapter.pages?.proLabel,
+      adapter.pages?.proUnavailableReason,
+    ],
+  );
+  const activePluginPage =
+    pluginPages.find((page) => page.id === pageId) ?? pluginPages[0];
   const pluginTheme = usePluginTheme(pluginThemeId);
   const effectiveAccent = pluginTheme.accent ?? accent;
   const workspacePane = useWorkspacePane();
@@ -103,9 +132,11 @@ export function InlineAdvancedWorkbenchShell({
    * 挂的是插件实例还是素材来判，不按适配器判（`grid` 两种身份共用一个适配器）。
    */
   const editBarSuppressed = editBarOwnershipForItem(item) === "none";
+  const showEditBar =
+    !editBarSuppressed && editBarVisibleOnPage(activePluginPage);
   const localDockPresentation = useMemo(
     () =>
-      rightPaneSlot || editBarSuppressed
+      rightPaneSlot || !showEditBar
         ? null
         : {
             ownerId: ownerIdRef.current,
@@ -116,7 +147,7 @@ export function InlineAdvancedWorkbenchShell({
           },
     [
       effectiveAccent,
-      editBarSuppressed,
+      showEditBar,
       floatingToolbar.dropActive,
       floatingToolbar.mode,
       pluginTheme.theme,
@@ -165,6 +196,34 @@ export function InlineAdvancedWorkbenchShell({
     flush: adapter.persistence?.flush,
     session: advancedSession,
   });
+  const { state: autoSaveState, errorMessage: autoSaveError } = autoSave as {
+    state: typeof autoSave.state;
+    errorMessage?: string;
+  };
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const documentActions = useMemo(() => {
+    const listed = (adapter.actions || []).filter(
+      (action) => action.group !== "download",
+    );
+    if (!adapter.upload) return listed;
+    const uploadAction: AdvancedWorkbenchAction = {
+      id: "local-upload",
+      label: "从本地添加到画布",
+      icon: "uploads",
+      onTrigger: () => uploadInputRef.current?.click(),
+    };
+    return [...listed, uploadAction];
+  }, [adapter.actions, adapter.upload]);
+  const triggerDocumentAction = useCallback(
+    (action: AdvancedWorkbenchAction) => {
+      if (action.panelId) {
+        openDrawer(action.panelId);
+        return;
+      }
+      return action.onTrigger?.();
+    },
+    [openDrawer],
+  );
   useAdvancedRecovery({
     editorId: adapter.id,
     revision: editRevision,
@@ -250,6 +309,7 @@ export function InlineAdvancedWorkbenchShell({
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
+  const editBarEmpty = !contextToolbar && documentActions.length === 0;
   // 离开确认。原生 window.confirm 冻住主线程、样式不可控、移动端尤其糟，
   // 换成 ConfirmDialog 后它是异步的；用一道 promise 门把下面那段命令式流程接回来：
   // requestClose 里 `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
@@ -347,7 +407,8 @@ export function InlineAdvancedWorkbenchShell({
     () => (
       <InlineAdvancedWorkbenchHeader
         adapter={adapter}
-        autoSaveState={autoSave.state}
+        autoSaveState={autoSaveState}
+        autoSaveError={autoSaveError}
         activeDrawerId={layoutState.activeDrawerId}
         activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
         drawers={drawers}
@@ -355,6 +416,7 @@ export function InlineAdvancedWorkbenchShell({
         pluginThemeId={pluginThemeId}
         showLibrary={siteId !== "plugin-gallery"}
         showBack={siteId !== "plugin-gallery"}
+        showClose
         onBack={requestClose}
         onOpenDrawer={openDrawer}
         onCloseDrawer={closeDetail}
@@ -362,6 +424,7 @@ export function InlineAdvancedWorkbenchShell({
         onOpenLibrary={openLibraryPanel}
         onRetrySave={() => void autoSave.retry()}
         onUploadFiles={(files) => void performUpload(files)}
+        onClose={requestClose}
       />
     ),
     [
@@ -369,7 +432,8 @@ export function InlineAdvancedWorkbenchShell({
       effectiveAccent,
       pluginThemeId,
       autoSave.retry,
-      autoSave.state,
+      autoSaveError,
+      autoSaveState,
       closeDetail,
       drawers,
       layoutState.activeDrawerId,
@@ -397,7 +461,7 @@ export function InlineAdvancedWorkbenchShell({
     };
   }, [liveHeaderNode, rightPaneSlot]);
   useLayoutEffect(() => {
-    if (!rightPaneSlot || editBarSuppressed) return;
+    if (!rightPaneSlot || !showEditBar) return;
     rightPaneSlot.setEditBarDockPresentation({
       ownerId: ownerIdRef.current,
       mode: floatingToolbar.mode,
@@ -409,7 +473,7 @@ export function InlineAdvancedWorkbenchShell({
       rightPaneSlot.clearEditBarDockPresentation(ownerIdRef.current);
   }, [
     effectiveAccent,
-    editBarSuppressed,
+    showEditBar,
     floatingToolbar.dropActive,
     floatingToolbar.mode,
     pluginTheme.theme,
@@ -427,13 +491,27 @@ export function InlineAdvancedWorkbenchShell({
   return (
     <PluginThemePortalContext.Provider value={pluginThemeId}>
     <AdvancedLayoutContext.Provider value={layoutState}>
-      {!editBarSuppressed && (
+      {showEditBar && (
         <FloatingContextToolbar
           controller={floatingToolbar}
           accent={effectiveAccent}
           theme={pluginTheme.theme}
         >
-          {contextToolbar}
+          <div
+            data-workspace-edit-bar
+            data-empty={editBarEmpty || undefined}
+          >
+            {contextToolbar}
+            <EditBarDocumentSegment
+              actions={documentActions}
+              onTrigger={triggerDocumentAction}
+              emptyHint={
+                contextToolbar
+                  ? undefined
+                  : "在画面里选中元素后，可在此编辑"
+              }
+            />
+          </div>
         </FloatingContextToolbar>
       )}
       <div
@@ -447,6 +525,19 @@ export function InlineAdvancedWorkbenchShell({
             : advancedWorkbenchStyle(accent)
         }
       >
+        {adapter.upload ? (
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept={adapter.upload.accept}
+            multiple={adapter.upload.multiple}
+            className="hidden"
+            onChange={(event) => {
+              void performUpload(Array.from(event.currentTarget.files || []));
+              event.currentTarget.value = "";
+            }}
+          />
+        ) : null}
         {fallbackDetail && (
           <aside
             data-workspace-pane="left"
@@ -483,7 +574,7 @@ export function InlineAdvancedWorkbenchShell({
               <div className="shrink-0 border-b border-[var(--awb-border)] px-2 py-1">
                 {actionBar}
               </div>
-              {!editBarSuppressed && (
+              {showEditBar && (
                 <EditBarDockHost
                   hostRef={localEditBarDockRef}
                   presentation={localDockPresentation}

@@ -87,7 +87,7 @@ test("本波不换核的件恒为 legacy —— 翻 flag 也没用", () => {
 
 test("换核的件：显式入参 > 本地覆盖 > 默认", () => {
   const swap = EDITOR_CORE_IDS.filter((id) => editorSwapsCore(id));
-  assert.ok(swap.length >= 12, "本波换核的件应有 12 件");
+  assert.ok(swap.length >= 11, "本波换核的件应有 11 件（game 不再换核）");
   const id = swap[0];
 
   assert.equal(resolveEditorCore(id), "legacy", "没存过就是默认档");
@@ -500,7 +500,7 @@ function modeHost(Header, pluginId, calls, extraProps = {}) {
   return React.createElement(ModeHost);
 }
 
-test("共用顶栏上真有 L0 专业模式开关，每一件都有", async () => {
+test("共用顶栏第二行有专业编辑页，每一件都有；第一行不再挂开关", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   const pluginIds = await loadPluginThemeIds();
   assert.ok(
@@ -513,80 +513,79 @@ test("共用顶栏上真有 L0 专业模式开关，每一件都有", async () =
     const { resetPluginModeCache } = await import(
       "../src/shell/plugin-chrome/plugin-mode-store.ts"
     );
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     for (const pluginId of pluginIds) {
       resetPluginModeCache();
+      resetPluginPageCache();
       await render(modeHost(InlineAdvancedWorkbenchHeader, pluginId, []));
 
-      const toggle = find(`[data-plugin-mode-toggle="${pluginId}"]`);
-      assert.ok(
-        toggle,
-        `${pluginId}：顶栏上没有 L0 专业模式开关。` +
-          "开关只画在 PluginChromeFrame 里、而这条壳不走 Frame，就是 V1-red-1。",
-      );
       assert.equal(
-        toggle.tagName,
-        "BUTTON",
-        `${pluginId}：开关不是可点的按钮（换成行内元素也能让读源码的闸变绿）`,
+        find(`[data-plugin-mode-toggle="${pluginId}"]`),
+        null,
+        `${pluginId}：第一行还挂着专业模式开关。产品规则已改成第二行「专业编辑」页。`,
       );
-      assert.equal(toggle.disabled, false, `${pluginId}：开关被置灰了`);
+      const pro = find('[data-plugin-page="pro"]');
+      assert.ok(
+        pro,
+        `${pluginId}：第二行没有「专业编辑」页签。` +
+          "页签只画在 PluginChromeFrame 里、而这条壳不走 Frame，就是同一类漏接。",
+      );
+      assert.equal(pro.tagName, "BUTTON", `${pluginId}：页签不是可点的按钮`);
       assert.match(
-        toggle.getAttribute("aria-label") || "",
-        /专业模式/,
-        `${pluginId}：开关没有可读的名字`,
+        pro.getAttribute("aria-label") || pro.textContent || "",
+        /专业编辑/,
+        `${pluginId}：页签没有可读的名字`,
       );
-      assert.equal(toggle.getAttribute("aria-pressed"), "false");
 
-      // 光「DOM 里存在」不够：它必须长在那条共用顶栏**里面**，
-      // 否则塞在一个没人渲染的角落也能骗过上面几条。
       const actionRow = find("[data-advanced-workspace-actions]");
+      const pageRow = find("[data-plugin-page-row]");
       const headerRoot = find("[data-advanced-workbench-header]");
-      assert.ok(actionRow, `${pluginId}：共用顶栏本体没渲染出来`);
+      assert.ok(actionRow, `${pluginId}：共用顶栏第一行没渲染出来`);
+      assert.ok(pageRow, `${pluginId}：共用顶栏第二行没渲染出来`);
       assert.ok(
-        headerRoot && headerRoot.contains(actionRow),
-        `${pluginId}：顶栏本体不在顶栏容器里`,
-      );
-      assert.ok(
-        headerRoot && headerRoot.contains(toggle),
-        `${pluginId}：开关渲染了，但不在共用顶栏里`,
+        headerRoot && headerRoot.contains(actionRow) && headerRoot.contains(pageRow),
+        `${pluginId}：两行不在顶栏容器里`,
       );
     }
   });
 });
 
-test("点顶栏开关：内核当场收到 setMode，档位也记住了", async () => {
+test("点专业编辑页：内核当场收到 setMode，档位也记住了", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   await withDom(async ({ render, find, click }) => {
     const { currentPluginMode, resetPluginModeCache } = await import(
       "../src/shell/plugin-chrome/plugin-mode-store.ts"
     );
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     resetPluginModeCache();
+    resetPluginPageCache();
     const calls = [];
     await render(modeHost(InlineAdvancedWorkbenchHeader, "grid", calls));
 
-    const toggle = find('[data-plugin-mode-toggle="grid"]');
-    assert.ok(toggle, "顶栏上没有开关");
+    const pro = find('[data-plugin-page="pro"]');
+    assert.ok(pro, "第二行没有专业编辑页签");
     assert.deepEqual(calls, [], "刚打开、两边同档，不该推送");
 
-    await click(toggle);
+    await click(pro);
     assert.deepEqual(
       calls,
       ["pro"],
-      "点了开关，内核没收到 setMode('pro')。" +
-        "顶栏只改 localStorage 而不通知内核，就是 V1-red-1 里那句「点了也没有用」。",
+      "点了专业编辑，内核没收到 setMode('pro')。" +
+        "页签只改 store 而不通知内核，用户看到的还是轻编辑。",
     );
     assert.equal(currentPluginMode("grid"), "pro", "档位没记住");
     assert.equal(
-      find('[data-plugin-mode-toggle="grid"]').getAttribute("aria-pressed"),
-      "true",
-      "开关自己没跟着变态（屏幕上看不出已经进了专业模式）",
-    );
-    assert.equal(
-      find('[data-plugin-mode-toggle="grid"]').getAttribute("data-plugin-mode"),
-      "pro",
+      find('[data-plugin-page="pro"]').getAttribute("aria-current"),
+      "page",
+      "页签自己没跟着变（屏幕上看不出已经进了专业编辑）",
     );
 
-    await click(find('[data-plugin-mode-toggle="grid"]'));
-    assert.deepEqual(calls, ["pro", "normal"], "退不出专业模式");
+    await click(find('[data-plugin-page="artifact"]'));
+    assert.deepEqual(calls, ["pro", "normal"], "退不出专业编辑");
     assert.equal(currentPluginMode("grid"), "normal");
   });
 });
@@ -596,7 +595,11 @@ test("重新打开编辑器：用记住的档位初始化内核，不是一律�
   await withDom(async ({ render, find }) => {
     const { currentPluginMode, resetPluginModeCache, setPluginMode } =
       await import("../src/shell/plugin-chrome/plugin-mode-store.ts");
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     resetPluginModeCache();
+    resetPluginPageCache();
     // 上一次这个用户在这件编辑器里选了专业模式。
     setPluginMode("pdf", "pro");
     assert.equal(currentPluginMode("pdf"), "pro");
@@ -609,11 +612,11 @@ test("重新打开编辑器：用记住的档位初始化内核，不是一律�
       ["pro"],
       "打开编辑器时没有把记住的档位交给内核。" +
         "少了这一步，「按用户 × 编辑器记住」就只是 localStorage 里的一个值：" +
-        "顶栏开关亮着专业模式，内核的完整 UI 却不在，两边说的话不一样。",
+        "页签停在专业编辑，内核的完整 UI 却不在，两边说的话不一样。",
     );
     assert.equal(
-      find('[data-plugin-mode-toggle="pdf"]').getAttribute("aria-pressed"),
-      "true",
+      find('[data-plugin-page="pro"]').getAttribute("aria-current"),
+      "page",
     );
 
     // 「另一件编辑器不受影响」在真渲染下再验一次：pdf 记住了 pro，grid 仍是普通模式。
@@ -621,8 +624,8 @@ test("重新打开编辑器：用记住的档位初始化内核，不是一律�
     await render(modeHost(InlineAdvancedWorkbenchHeader, "grid", gridCalls));
     assert.deepEqual(gridCalls, [], "别的编辑器被 pdf 的档位带跑了");
     assert.equal(
-      find('[data-plugin-mode-toggle="grid"]').getAttribute("aria-pressed"),
-      "false",
+      find('[data-plugin-page="artifact"]').getAttribute("aria-current"),
+      "page",
     );
   });
 });
@@ -633,7 +636,11 @@ test("编辑器没声明 mode：开关仍能点，点了就切档", async () => 
     const { currentPluginMode, resetPluginModeCache } = await import(
       "../src/shell/plugin-chrome/plugin-mode-store.ts"
     );
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     resetPluginModeCache();
+    resetPluginPageCache();
     await render(
       React.createElement(
         InlineAdvancedWorkbenchHeader,
@@ -644,17 +651,16 @@ test("编辑器没声明 mode：开关仍能点，点了就切档", async () => 
       ),
     );
 
-    const toggle = find('[data-plugin-mode-toggle="game"]');
-    assert.ok(toggle, "13 件高级编辑器的专业模式开关不能消失");
-    assert.equal(toggle.disabled, false, "没声明 mode 不该再把开关置灰");
+    const pro = find('[data-plugin-page="pro"]');
+    assert.ok(pro, "没声明 mode 也不该把专业编辑页签拿掉");
 
-    await click(toggle);
+    await click(pro);
     assert.equal(
       currentPluginMode("game"),
       "pro",
-      "点了专业模式，档位没有切到 pro",
+      "点了专业编辑，档位没有切到 pro",
     );
-    assert.equal(toggle.getAttribute("aria-pressed"), "true");
+    assert.equal(pro.getAttribute("aria-current"), "page");
   });
 });
 
@@ -781,52 +787,30 @@ function shellHost(Shell, adapterId, calls) {
   return React.createElement(Host);
 }
 
-function assertShellToggleVisible(find, adapterId, expectedThemeId) {
+function assertShellChromeVisible(find, adapterId, expectedThemeId) {
   const header = find("[data-advanced-workbench-header]");
   assert.ok(
     header,
     `${adapterId}：十件壳没把共用顶栏渲染出来（壳里那条 actionBar 被短路了）`,
   );
-  const toggle = find(`[data-plugin-mode-toggle="${expectedThemeId}"]`);
+  const theme = find(`[data-plugin-theme-toggle="${expectedThemeId}"]`);
   assert.ok(
-    toggle,
+    theme,
     `${adapterId}：壳没有把 pluginThemeIdForAdapter 的非空结果交给 Header。` +
-      `预期开关 id=${expectedThemeId}。V1-red-3 就是把壳里那一处改成` +
-      ` pluginThemeId={null}，用户十件顶栏开关整组消失，闸却 13/13 绿。`,
+      `预期主题键 id=${expectedThemeId}。`,
   );
-  assert.equal(
-    toggle.tagName,
-    "BUTTON",
-    `${adapterId}：壳上的开关不是可点的按钮`,
-  );
-  const concealed = concealmentOnAncestors(toggle, header);
+  const pro = find('[data-plugin-page="pro"]');
+  assert.ok(pro, `${adapterId}：壳上没有专业编辑页签`);
+  const concealed = concealmentOnAncestors(pro, header);
   assert.equal(
     concealed,
     null,
-    `${adapterId}：开关还在 DOM 里，但祖先带了藏起标记 ${concealed}。` +
-      `jsdom 没有 layout，这条钉的是 class / hidden / aria-hidden / 内联 style，` +
-      `不是在假装量了可见像素。`,
+    `${adapterId}：页签还在 DOM 里，但祖先带了藏起标记 ${concealed}。`,
   );
-  const flexItem = flexChildHolding(header, toggle);
-  assert.equal(
-    flexItem.parentElement,
-    header,
-    `${adapterId}：开关不在顶栏的直接 flex 子项里`,
-  );
-  assert.ok(
-    classTokenSet(flexItem).has(FLEX_NO_SHRINK_TOKEN),
-    `${adapterId}：顶栏里装着开关的那一列可以收缩。` +
-      `本体拿 flex-1，窄屏被挤掉的必须是本体里那排键，不能是这个开关。` +
-      `按钮自己带不可收缩不够——列作为 flex 子项仍可被挤成 0 宽。` +
-      `jsdom 没有 layout，只钉这一列的 class token。`,
-  );
-  assert.ok(
-    header.contains(toggle),
-    `${adapterId}：开关渲染了，但不在共用顶栏里`,
-  );
+  assert.ok(header.contains(pro), `${adapterId}：页签渲染了，但不在共用顶栏里`);
 }
 
-test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏开关", async () => {
+test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏", async () => {
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   const { pluginThemeIdForAdapter } = await loadThemeMod();
   const pluginIds = await loadPluginThemeIds();
@@ -839,6 +823,9 @@ test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏开关", a
     const { resetPluginModeCache } = await import(
       "../src/shell/plugin-chrome/plugin-mode-store.ts"
     );
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     for (const adapterId of adapterIds) {
       const expected = pluginThemeIdForAdapter(adapterId);
       assert.ok(
@@ -846,8 +833,9 @@ test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏开关", a
         `${adapterId}：生产函数应对主题表里的件给出非空 id（否则下面恒绿）`,
       );
       resetPluginModeCache();
+      resetPluginPageCache();
       await render(shellHost(InlineAdvancedWorkbenchShell, adapterId, []));
-      assertShellToggleVisible(find, adapterId, expected);
+      assertShellChromeVisible(find, adapterId, expected);
     }
   });
 });
@@ -866,7 +854,11 @@ test("壳遇到生产函数判为非插件的适配器：顶栏不出这个开�
     const { resetPluginModeCache } = await import(
       "../src/shell/plugin-chrome/plugin-mode-store.ts"
     );
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     resetPluginModeCache();
+    resetPluginPageCache();
     await render(shellHost(InlineAdvancedWorkbenchShell, adapterId, []));
     assert.ok(
       find("[data-advanced-workbench-header]"),
@@ -876,30 +868,34 @@ test("壳遇到生产函数判为非插件的适配器：顶栏不出这个开�
   });
 });
 
-test("从十件壳点开关：内核当场收到 setMode（不经 Header 夹具）", async () => {
+test("从十件壳点专业编辑页：内核当场收到 setMode（不经 Header 夹具）", async () => {
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   await withDom(async ({ render, find, click }) => {
     const { currentPluginMode, resetPluginModeCache } = await import(
       "../src/shell/plugin-chrome/plugin-mode-store.ts"
     );
+    const { resetPluginPageCache } = await import(
+      "../src/shell/plugin-chrome/plugin-page-store.ts"
+    );
     resetPluginModeCache();
+    resetPluginPageCache();
     const calls = [];
     await render(shellHost(InlineAdvancedWorkbenchShell, "grid", calls));
 
-    const toggle = find('[data-plugin-mode-toggle="grid"]');
-    assert.ok(toggle, "壳上没有开关——接线断在 InlineAdvancedWorkbenchShell");
+    const pro = find('[data-plugin-page="pro"]');
+    assert.ok(pro, "壳上没有专业编辑页签——接线断在 InlineAdvancedWorkbenchShell");
     assert.deepEqual(calls, [], "刚打开、两边同档，不该推送");
 
-    await click(toggle);
+    await click(pro);
     assert.deepEqual(
       calls,
       ["pro"],
-      "从壳点了开关，内核没收到 setMode('pro')。" +
+      "从壳点了专业编辑，内核没收到 setMode('pro')。" +
         "Header 夹具那条能绿、这条红，说明桥只在测试自己塞的 Header 上活着。",
     );
     assert.equal(currentPluginMode("grid"), "pro");
 
-    await click(find('[data-plugin-mode-toggle="grid"]'));
+    await click(find('[data-plugin-page="artifact"]'));
     assert.deepEqual(calls, ["pro", "normal"]);
   });
 });
