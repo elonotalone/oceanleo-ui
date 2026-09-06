@@ -69,7 +69,15 @@ test("预设只读，自定义组合可命名删除并按上下顺序兜底", ()
 
 test("每站右上角恢复全局模型组合切换器，不发送一次性模型覆盖", () => {
   assert.match(appShell, /<ModelGroupPicker apiHref=\{shellHref\(apiHref\)\}/);
-  assert.match(appShell, /shouldShowModelPicker\(pathname, searchParams\)/);
+  // X4（规范 v2 §5）：路由之外多一个事实源——工作台右栏 / 编辑器 / 详情面板在屏幕上
+  // （`workbenchOpen`，共享 store）时选择框整块让位，连 header 工具位一起收起，
+  // 不再压在面板页签上。路由规则本身不变（`model-picker-workbench-open` #2 钉住
+  // 「不传 context 时与旧签名逐字相同」）。
+  assert.match(
+    appShell,
+    /shouldShowModelPicker\(pathname, searchParams, \{ workbenchOpen \}\)/,
+  );
+  assert.match(appShell, /const workbenchOpen = useWorkbenchOpen\(\)/);
   assert.match(picker, /setActiveModelGroup\(group\.key\)/);
   assert.match(picker, /所有 OceanLeo 网站共用/);
   assert.doesNotMatch(picker, /tt\("平台只读组合"\)/);
