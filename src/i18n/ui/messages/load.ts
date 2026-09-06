@@ -42,6 +42,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 与登录门那两张表只进了 index.ts（测试读的是它，所以全绿），运行时读的是这里，
   // 于是那两屏对 16 个语种全部回退成中文原文，谁也没发现。
   // 2026-09-01 又漂了一次：editor-panels / workbench-office 只进了总表。
+  // 2026-09-06 X4：advanced-route 两边同时加。
   const [
     base,
     recent,
@@ -52,6 +53,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     pluginChrome,
     workbenchOffice,
     editorPanels,
+    advancedRoute,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -62,6 +64,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./plugin-chrome-copy"),
     import("./workbench-office-copy"),
     import("./editor-panels-copy"),
+    import("./advanced-route-copy"),
   ]);
   return {
     ...base.default,
@@ -74,5 +77,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...pluginChrome.PLUGIN_CHROME_MESSAGES[locale],
     ...workbenchOffice.WORKBENCH_OFFICE_MESSAGES[locale],
     ...editorPanels.EDITOR_PANELS_MESSAGES[locale],
+    ...advancedRoute.ADVANCED_ROUTE_MESSAGES[locale],
   };
 };

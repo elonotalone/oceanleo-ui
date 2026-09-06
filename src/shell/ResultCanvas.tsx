@@ -60,6 +60,7 @@ import {
   savedEditorRevisionTransition,
 } from "./advanced-session";
 import { useWorkbenchMaterialActions } from "./workbench-material-provider";
+import { useWorkbenchOpenClaim } from "./workbench-open-store";
 import {
   adaptLegacyWorkspaceSurfaceTabs,
   legacyWorkspaceEntry,
@@ -688,6 +689,12 @@ export function ResultCanvas({
       editorContent || viewerContent
     ));
   const foregroundVisible = Boolean(foregroundContent);
+  // 登记 workbenchOpen：右上角「模型组合」选择框据此让位，不再压在面板页签上。
+  //   - 前台一露出来（编辑器 / 详情预览 / 插件模块）就登记；编辑器自己也会登记一份
+  //     （AdvancedContentWorkbench），计数器语义下互不干扰，这里补的是详情预览与插件模块。
+  //   - 没有 SplitWorkspace 时本组件自带标签条（StandaloneWorkspaceFrame）正好顶在
+  //     右上角，同样是面板可见 → 登记。有 SplitWorkspace 时右栏显隐由它登记。
+  useWorkbenchOpenClaim(foregroundVisible || !rightSlot);
   const rightMainContent = (
     <div className="relative h-full min-h-0 overflow-hidden">
       <div

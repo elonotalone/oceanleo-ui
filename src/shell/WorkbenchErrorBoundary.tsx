@@ -1,8 +1,10 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, useMemo, type ErrorInfo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { useUiMessages } from "../i18n/ui/messages/context";
+import type { UITranslate } from "../i18n/ui/useUI";
 import { reportBoundaryError } from "../lib/telemetry/errors";
 import type { LibraryItem } from "./library-data";
 
@@ -99,94 +101,191 @@ export class WorkbenchErrorBoundary extends Component<
     // 于是既不需要「有定位的祖先」这个前提，也不必为此往 31 个站的 DOM 里
     // 多插一层 wrapper。
     if (scope === "route") {
-      return (
-        <div
-          role="alert"
-          data-workbench-route-error
-          data-chunk-failure-kind="crash"
-          className="grid h-full min-h-[18rem] w-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
-        >
-          <div className="w-full max-w-md text-center">
-            <p className="text-[15px] font-semibold">这个编辑器出错了</p>
-            <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-              素材本身没有被修改。可以重试，也可以直接在左侧切到别的素材继续工作。
-            </p>
-            <pre className="mx-auto mt-4 max-h-24 max-w-full overflow-auto rounded-xl bg-[var(--card,#fff)] p-3 text-left text-[11px] text-[var(--muted,#78716c)]">
-              {error.message || "Unknown editor error"}
-            </pre>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {url && (
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-                >
-                  打开原内容
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={retry}
-                data-chunk-action="retry"
-                className="rounded-xl bg-[var(--fg,#292524)] px-4 py-2 text-[12px] font-semibold text-[var(--card,#fff)]"
-              >
-                重新载入
-              </button>
-            </div>
-          </div>
-        </div>
-      );
+      return <RouteCrashFallback error={error} url={url} onRetry={retry} />;
     }
 
     const fallback = (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${item.title} · 编辑器错误`}
-        className={
-          contained
-            ? "absolute inset-0 z-10 grid place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
-            : "fixed inset-0 z-[2147483000] grid min-h-[100dvh] place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
-        }
-      >
-        <div className="w-full max-w-xl rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-6 shadow-xl">
-          <p className="text-[15px] font-semibold">这个素材暂时无法载入编辑器</p>
-          <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
-            素材本身没有被修改。可以关闭后重试，或先打开原内容确认文件仍然可用。
-          </p>
-          <pre className="mt-4 max-h-28 overflow-auto rounded-xl bg-[var(--surface,#f5f5f4)] p-3 text-[11px] text-[var(--muted,#78716c)]">
-            {error.message || "Unknown editor error"}
-          </pre>
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
-            {url && (
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-              >
-                打开原内容
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={retry}
-              className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-            >
-              重新载入
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl bg-[var(--fg,#292524)] px-4 py-2 text-[12px] font-semibold text-[var(--card,#fff)]"
-            >
-              关闭
-            </button>
-          </div>
-        </div>
-      </div>
+      <WorkbenchCrashFallback
+        error={error}
+        title={item.title}
+        url={url}
+        contained={Boolean(contained)}
+        onRetry={retry}
+        onClose={onClose}
+      />
     );
     return contained ? fallback : createPortal(fallback, document.body);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 失败态本体（X4，2026-09-06）：**人话**。
+//
+// 之前正文是「这个编辑器出错了」+ 一块 `<pre>` 直接印 `error.message`，用户看到的是
+// 「Minified React error #185; visit https://react.dev/errors/185 …」。
+// 现在先说三件事：发生了什么、你的东西有没有事、下一步点哪里；原始错误消息收进
+// 「技术细节」折叠里——**不吞错误**（`componentDidCatch` 的 console + telemetry 照旧，
+// 消息也仍在 DOM 里可展开），只是不再当正文。
+//
+// 类组件拿不到 hook，所以两块失败态各自是函数组件，在这里过 `tt()`；
+// 16 语译文在 `src/i18n/ui/messages/advanced-route-copy.ts`。
+//
+// 这里的 `tt` **不走 `useUI()`**：它内部的 `useLocale()` 在没有 intl provider 时
+// 会直接抛。崩溃边界的失败态是最后一道兜底，自己再抛一次就是双重故障——
+// 于是只读词典 context（缺 provider 时是空表，回退中文原文），不碰 locale。
+// 词典查找与插值口径同 `useUI()`；这几句里没有「灵感 / 我的库」那类改名逻辑要跑。
+// ---------------------------------------------------------------------------
+
+function useCrashCopy(): UITranslate {
+  const dict = useUiMessages();
+  return useMemo(
+    () => (zh: string, vars?: Record<string, string | number>) => {
+      const hit = dict[zh];
+      const text = hit != null && hit !== "" ? hit : zh;
+      if (!vars) return text;
+      return text.replace(/\{(\w+)\}/g, (match, key) =>
+        key in vars ? String(vars[key]) : match,
+      );
+    },
+    [dict],
+  );
+}
+
+function CrashTechnicalDetails({
+  error,
+  className = "",
+}: {
+  error: Error;
+  className?: string;
+}) {
+  const tt = useCrashCopy();
+  return (
+    <details
+      data-workbench-error-details
+      className={`text-left text-[11px] text-[var(--muted,#78716c)] ${className}`}
+    >
+      <summary className="cursor-pointer select-none">
+        {tt("技术细节（给开发者看）")}
+      </summary>
+      <pre className="mt-2 max-h-24 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--card,#fff)] p-3">
+        {error.message || error.name || "Unknown editor error"}
+      </pre>
+    </details>
+  );
+}
+
+function RouteCrashFallback({
+  error,
+  url,
+  onRetry,
+}: {
+  error: Error;
+  url: string;
+  onRetry: () => void;
+}) {
+  const tt = useCrashCopy();
+  return (
+    <div
+      role="alert"
+      data-workbench-route-error
+      data-chunk-failure-kind="crash"
+      className="grid h-full min-h-[18rem] w-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
+    >
+      <div className="w-full max-w-md text-center">
+        <p className="text-[15px] font-semibold">
+          {tt("编辑器刚才出了问题，已经停下")}
+        </p>
+        <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+          {tt("你的素材没有被改动。点「重新载入」再试一次；也可以在左侧切到别的素材继续。")}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+            >
+              {tt("打开原内容")}
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={onRetry}
+            data-chunk-action="retry"
+            className="rounded-xl bg-[var(--fg,#292524)] px-4 py-2 text-[12px] font-semibold text-[var(--card,#fff)]"
+          >
+            {tt("重新载入")}
+          </button>
+        </div>
+        <CrashTechnicalDetails error={error} className="mx-auto mt-4" />
+      </div>
+    </div>
+  );
+}
+
+function WorkbenchCrashFallback({
+  error,
+  title,
+  url,
+  contained,
+  onRetry,
+  onClose,
+}: {
+  error: Error;
+  title: string;
+  url: string;
+  contained: boolean;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const tt = useCrashCopy();
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={tt("{title} · 编辑器错误", { title })}
+      className={
+        contained
+          ? "absolute inset-0 z-10 grid place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
+          : "fixed inset-0 z-[2147483000] grid min-h-[100dvh] place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-[var(--fg,#292524)]"
+      }
+    >
+      <div className="w-full max-w-xl rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-6 shadow-xl">
+        <p className="text-[15px] font-semibold">
+          {tt("这件素材暂时打不开编辑器")}
+        </p>
+        <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+          {tt("素材本身没有被改动。可以点「重新载入」再试，或先打开原内容确认文件还能用。")}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+            >
+              {tt("打开原内容")}
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-xl border border-[var(--border,#e7e5e4)] px-4 py-2 text-[12px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+          >
+            {tt("重新载入")}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-[var(--fg,#292524)] px-4 py-2 text-[12px] font-semibold text-[var(--card,#fff)]"
+          >
+            {tt("关闭")}
+          </button>
+        </div>
+        <CrashTechnicalDetails error={error} className="mt-4" />
+      </div>
+    </div>
+  );
 }

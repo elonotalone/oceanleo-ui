@@ -29,6 +29,7 @@ import {
 } from "react";
 import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
 import { shouldShowModelPicker } from "./model-picker-visibility";
+import { useWorkbenchOpen } from "./workbench-open-store";
 import type { PreferredModel } from "../lib/auth/account";
 import { ToastProvider } from "../ui";
 import { IconGift, IconPanel, IconSearch } from "./icons";
@@ -617,8 +618,12 @@ function AppShellInner({
     );
   }
 
+  // 库里点开编辑器 / 详情面板时（workbenchOpen），选择框让位——它只属于纯对话页，
+  // 不能压在面板页签上（规范 v2 §1 / §5）。
+  const workbenchOpen = useWorkbenchOpen();
   const showModelPicker =
-    !hideHeader && shouldShowModelPicker(pathname, searchParams);
+    !hideHeader
+    && shouldShowModelPicker(pathname, searchParams, { workbenchOpen });
   const modelPickerSlot = showModelPicker ? (
     <div className="pointer-events-auto" data-oceanleo-model-picker-slot>
       <ModelGroupPicker apiHref={shellHref(apiHref)} />

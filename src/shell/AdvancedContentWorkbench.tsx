@@ -22,6 +22,7 @@ import { chunkRetryLoader, withChunkRetry } from "../lib/lazy-with-retry";
 import { reportAutosaveError } from "../lib/telemetry/errors";
 import { editorCapabilityFor, editorRouteFor } from "./workbench-routes";
 import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
+import { useWorkbenchOpenClaim } from "./workbench-open-store";
 import {
   WorkspaceSessionProvider,
   useOptionalWorkspaceSession,
@@ -168,6 +169,9 @@ export function AdvancedContentWorkbench(
   const [mounted, setMounted] = useState(false);
   const [droppedItem, setDroppedItem] = useState<LibraryItem | null>(null);
   useEffect(() => setMounted(true), []);
+  // 编辑器（含空框）挂着的整段时间登记 workbenchOpen：右上角「模型组合」据此让位。
+  // 不分入口——/advanced、工作台、/history 里的库、MyLibrary、素材库全走这一处。
+  useWorkbenchOpenClaim(mounted);
   if (!mounted) return null;
 
   const item = props.item || droppedItem;

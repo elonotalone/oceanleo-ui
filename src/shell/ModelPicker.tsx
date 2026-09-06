@@ -19,6 +19,7 @@ import {
 } from "../lib/auth/account";
 import { IconCheck, IconChevronDown } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
+import { useWorkbenchOpen } from "./workbench-open-store";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
 
@@ -54,7 +55,16 @@ export interface ModelPickerProps extends ModelGroupPickerProps {
   ) => void;
 }
 
-export function ModelGroupPicker({
+export function ModelGroupPicker(props: ModelGroupPickerProps) {
+  // 任一编辑器 / 详情面板开着时整个不渲染（规范 v2 §5）。`AppShell` 已经按同一开关
+  // 收起了槽位；这里再判一次是给不走 AppShell、直接挂 `ModelGroupPicker` 的宿主
+  // （oceanleo 门户 clone-shell 之类）——同一件事只有一个事实源。
+  const workbenchOpen = useWorkbenchOpen();
+  if (workbenchOpen) return null;
+  return <ModelGroupPickerBody {...props} />;
+}
+
+function ModelGroupPickerBody({
   apiHref = "/api",
   className = "",
   align = "right",

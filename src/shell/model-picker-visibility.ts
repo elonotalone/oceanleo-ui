@@ -59,14 +59,26 @@ function filledQuery(searchParams: ModelPickerSearchParams, key: string): boolea
   return (searchParams.get(key) || "").trim().length > 0;
 }
 
+export interface ModelPickerVisibilityContext {
+  /**
+   * 路由之外的覆盖层事实：任一编辑器 / 详情面板正开着（`workbench-open-store.ts`）。
+   * /history/<id> 按路由是对话页，但库里点开一件素材之后同一条路由上叠的是编辑器，
+   * 选择框再留着就压在面板页签上——所以它一律优先于路由规则。
+   */
+  workbenchOpen?: boolean;
+}
+
 /**
  * 首页（`/`、`/home`）和正在进行 / 历史任务对话页显示切换器。
  * 嵌入页、编辑器、工作台 app 运行时、项目和其他目录页都不显示。
+ * 任一编辑器 / 详情面板开着时（`context.workbenchOpen`）无论路由一律不显示。
  */
 export function shouldShowModelPicker(
   pathname: string,
   search: ModelPickerSearchInput = "",
+  context: ModelPickerVisibilityContext = {},
 ): boolean {
+  if (context.workbenchOpen) return false;
   const searchParams = searchParamReader(search);
   if (
     enabledQueryFlag(searchParams, "embed")

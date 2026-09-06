@@ -29,6 +29,7 @@ import { AUTH_OAUTH_MESSAGES } from "./auth-oauth-copy";
 import { PLUGIN_CHROME_MESSAGES } from "./plugin-chrome-copy";
 import { WORKBENCH_OFFICE_MESSAGES } from "./workbench-office-copy";
 import { EDITOR_PANELS_MESSAGES } from "./editor-panels-copy";
+import { ADVANCED_ROUTE_MESSAGES } from "./advanced-route-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -42,6 +43,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.zh,
     ...WORKBENCH_OFFICE_MESSAGES.zh,
     ...EDITOR_PANELS_MESSAGES.zh,
+    ...ADVANCED_ROUTE_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -54,6 +56,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.en,
     ...WORKBENCH_OFFICE_MESSAGES.en,
     ...EDITOR_PANELS_MESSAGES.en,
+    ...ADVANCED_ROUTE_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -66,6 +69,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.ja,
     ...WORKBENCH_OFFICE_MESSAGES.ja,
     ...EDITOR_PANELS_MESSAGES.ja,
+    ...ADVANCED_ROUTE_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -78,6 +82,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.ko,
     ...WORKBENCH_OFFICE_MESSAGES.ko,
     ...EDITOR_PANELS_MESSAGES.ko,
+    ...ADVANCED_ROUTE_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -90,6 +95,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.fr,
     ...WORKBENCH_OFFICE_MESSAGES.fr,
     ...EDITOR_PANELS_MESSAGES.fr,
+    ...ADVANCED_ROUTE_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -102,6 +108,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.de,
     ...WORKBENCH_OFFICE_MESSAGES.de,
     ...EDITOR_PANELS_MESSAGES.de,
+    ...ADVANCED_ROUTE_MESSAGES.de,
   },
   it: {
     ...it,
@@ -114,6 +121,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.it,
     ...WORKBENCH_OFFICE_MESSAGES.it,
     ...EDITOR_PANELS_MESSAGES.it,
+    ...ADVANCED_ROUTE_MESSAGES.it,
   },
   es: {
     ...es,
@@ -126,6 +134,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.es,
     ...WORKBENCH_OFFICE_MESSAGES.es,
     ...EDITOR_PANELS_MESSAGES.es,
+    ...ADVANCED_ROUTE_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -138,6 +147,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES["es-419"],
     ...WORKBENCH_OFFICE_MESSAGES["es-419"],
     ...EDITOR_PANELS_MESSAGES["es-419"],
+    ...ADVANCED_ROUTE_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -150,6 +160,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES["pt-BR"],
     ...WORKBENCH_OFFICE_MESSAGES["pt-BR"],
     ...EDITOR_PANELS_MESSAGES["pt-BR"],
+    ...ADVANCED_ROUTE_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -162,6 +173,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES["pt-PT"],
     ...WORKBENCH_OFFICE_MESSAGES["pt-PT"],
     ...EDITOR_PANELS_MESSAGES["pt-PT"],
+    ...ADVANCED_ROUTE_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -174,6 +186,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.vi,
     ...WORKBENCH_OFFICE_MESSAGES.vi,
     ...EDITOR_PANELS_MESSAGES.vi,
+    ...ADVANCED_ROUTE_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -186,6 +199,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.tr,
     ...WORKBENCH_OFFICE_MESSAGES.tr,
     ...EDITOR_PANELS_MESSAGES.tr,
+    ...ADVANCED_ROUTE_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -198,6 +212,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES["zh-TW"],
     ...WORKBENCH_OFFICE_MESSAGES["zh-TW"],
     ...EDITOR_PANELS_MESSAGES["zh-TW"],
+    ...ADVANCED_ROUTE_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -210,6 +225,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.ar,
     ...WORKBENCH_OFFICE_MESSAGES.ar,
     ...EDITOR_PANELS_MESSAGES.ar,
+    ...ADVANCED_ROUTE_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -222,6 +238,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.th,
     ...WORKBENCH_OFFICE_MESSAGES.th,
     ...EDITOR_PANELS_MESSAGES.th,
+    ...ADVANCED_ROUTE_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -234,5 +251,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PLUGIN_CHROME_MESSAGES.hi,
     ...WORKBENCH_OFFICE_MESSAGES.hi,
     ...EDITOR_PANELS_MESSAGES.hi,
+    ...ADVANCED_ROUTE_MESSAGES.hi,
   },
 };

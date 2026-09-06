@@ -94,7 +94,7 @@ function FeatureCard({
   return (
     <Link
       href={advancedFeatureHref(feature)}
-      className="group relative overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-5 transition hover:-translate-y-1 hover:border-[var(--muted,#d6d3d1)] hover:shadow-lg"
+      className="group relative overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-5 transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:-translate-y-1 hover:border-[var(--muted,#d6d3d1)] hover:shadow-lg"
     >
       <div
         className="absolute inset-x-0 top-0 h-1"
@@ -121,7 +121,7 @@ function FeatureCard({
       <div className="mt-5 flex items-center justify-between border-t border-[var(--divider,#f5f5f4)] pt-3">
         <span className="text-[10px] text-[var(--muted,#a8a29e)]">{feature.examples}</span>
         <span
-          className="text-[12px] font-semibold transition group-hover:translate-x-1"
+          className="text-[12px] font-semibold transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:translate-x-1"
           style={{ color: feature.accent }}
         >
           {tt("打开")} →
@@ -185,6 +185,8 @@ export function AdvancedFeatureRoute({
   const [loading, setLoading] = useState(
     Boolean(assetReference || requestedSessionId),
   );
+  // 错误串只存中文原文（词典 key）或服务端原话，渲染处 `tt(error)` 翻译。
+  // 依赖里刻意没有 `tt`：换语言不该把会话 / 库恢复重跑一遍（`effect-tt-dependency` 闸）。
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -208,8 +210,8 @@ export function AdvancedFeatureRoute({
         if (!result.ok || !result.data || !restored || !snapshot) {
           setError(
             result.status === 401
-              ? tt("登录后即可打开这条高级功能任务。")
-              : result.error || tt("高级功能任务不存在或已经删除。"),
+              ? "登录后即可打开这条高级功能任务。"
+              : result.error || "高级功能任务不存在或已经删除。",
           );
           setItem(blankItem);
           setLoading(false);
@@ -217,7 +219,7 @@ export function AdvancedFeatureRoute({
         }
         const restoredFeature = advancedFeatureById(snapshot.feature_id);
         if (!restoredFeature) {
-          setError(tt("这条任务没有可恢复的高级功能。"));
+          setError("这条任务没有可恢复的高级功能。");
           setItem(blankItem);
           setLoading(false);
           return;
@@ -239,7 +241,7 @@ export function AdvancedFeatureRoute({
       const recalled = recalledAdvancedLibraryItem(assetReference);
       const reference = parseAdvancedLibraryReference(assetReference);
       if (!reference) {
-        setError(tt("文件链接无效，请从我的库重新打开。"));
+        setError("文件链接无效，请从我的库重新打开。");
         setItem(blankItem);
         setLoading(false);
         return;
@@ -258,21 +260,21 @@ export function AdvancedFeatureRoute({
         } else if (!resolved) {
           setError(
             result.status === 401
-              ? tt("登录后即可打开这个文件。")
-              : result.error || tt("文件不存在或已经删除。"),
+              ? "登录后即可打开这个文件。"
+              : result.error || "文件不存在或已经删除。",
           );
         }
       }
       if (!alive) return;
       if (!resolved) {
-        setError((current) => current || tt("无法恢复这个文件，请从我的库重新打开。"));
+        setError((current) => current || "无法恢复这个文件，请从我的库重新打开。");
         setItem(blankItem);
         setLoading(false);
         return;
       }
       const resolvedFeature = advancedFeatureForItem(resolved);
       if (!resolvedFeature) {
-        setError(tt("这个文件目前没有可安全保存的高级编辑器。"));
+        setError("这个文件目前没有可安全保存的高级编辑器。");
         setItem(blankItem);
         setLoading(false);
         return;
@@ -293,7 +295,6 @@ export function AdvancedFeatureRoute({
     feature,
     requestedSessionId,
     router,
-    tt,
   ]);
 
   if (!feature) {
@@ -319,7 +320,7 @@ export function AdvancedFeatureRoute({
       <div className="flex h-dvh min-h-0 flex-col bg-[var(--surface,#fafaf9)]">
         {error ? (
           <div className="shrink-0 border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-[12px] text-amber-700">
-            {error}
+            {tt(error)}
             <button
               type="button"
               className="ml-3 font-semibold underline"
@@ -353,7 +354,7 @@ export function AdvancedFeatureRoute({
         <div className="mx-auto flex max-w-6xl items-center gap-4">
           <Link
             href="/advanced"
-            className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
+            className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)]"
             aria-label={tt("返回高级功能")}
           >
             ←
@@ -377,7 +378,7 @@ export function AdvancedFeatureRoute({
       </header>
       {error && (
         <div className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-6xl rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-600">
-          {error}
+          {tt(error)}
         </div>
       )}
       {loading ? (
@@ -388,7 +389,7 @@ export function AdvancedFeatureRoute({
         <div className="grid min-h-[55vh] flex-1 place-items-center p-8 text-center">
           <div className="max-w-md">
             <p className="text-sm text-[var(--muted,#78716c)]">
-              {error || tt("无法打开高级功能，请返回后重试。")}
+              {error ? tt(error) : tt("无法打开高级功能，请返回后重试。")}
             </p>
             <button
               type="button"

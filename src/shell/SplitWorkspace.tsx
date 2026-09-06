@@ -35,6 +35,7 @@ import {
 import { IconLibrary } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
 import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
+import { useWorkbenchOpenClaim } from "./workbench-open-store";
 import {
   EditBarDockHost,
   type EditBarDockPresentation,
@@ -276,6 +277,12 @@ export function SplitWorkspace({
   // 有 library 时：右版面显隐由 libraryOpen 决定（关→单栏，开→显示 right）。
   // 无 library 时：沿用旧逻辑（right 是否为 null 决定单/双栏）。
   const hasRight = library != null ? libraryOpen : right != null;
+  // 右栏（库 / 画布 / 编辑器）在屏幕上的整段时间登记 workbenchOpen（X4，规范 v2 §5）。
+  // 右上角「模型组合」是 AppShell 的绝对定位浮层，右栏标题行正好住在同一个角上：
+  // 操作员截图里它压住的就是这条标题行上的「我的库」页签——不需要等到编辑器打开。
+  // 普通 agent 对话页右栏默认收起（AgentChat `rightOpen` 初值 false），选择框照常在；
+  // 用户点开「库」它让位，点 ✕ 收起它回来。
+  useWorkbenchOpenClaim(hasRight);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(defaultRatio);
   const [maxed, setMaxed] = useState<Maxed>("none");
