@@ -3136,6 +3136,7 @@ const es: Record<string, string> = {
   "保存为新歌词版本": "Guardar como nueva versión de la letra",
   "保存版本": "Guardar versión",
   "保存设置": "Guardar configuración",
+  "正在保存…": "Guardando…",
   "保存这笔": "Guardar este registro",
   "候选品牌名会显示在这里": "Los nombres de marca candidatos aparecerán aquí",
   "元/月": "RMB/mes",

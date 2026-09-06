@@ -3136,6 +3136,7 @@ const vi: Record<string, string> = {
   "保存为新歌词版本": "Lưu thành phiên bản lời mới",
   "保存版本": "Lưu phiên bản",
   "保存设置": "Lưu cài đặt",
+  "正在保存…": "Đang lưu…",
   "保存这笔": "Lưu mục này",
   "候选品牌名会显示在这里": "Các tên thương hiệu ứng viên sẽ xuất hiện ở đây",
   "元/月": "NDT/tháng",

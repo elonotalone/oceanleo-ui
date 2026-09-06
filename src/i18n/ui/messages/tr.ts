@@ -3136,6 +3136,7 @@ const tr: Record<string, string> = {
   "保存为新歌词版本": "Yeni şarkı sözü sürümü olarak kaydet",
   "保存版本": "Sürümü kaydet",
   "保存设置": "Ayarları kaydet",
+  "正在保存…": "Kaydediliyor…",
   "保存这笔": "Bu kaydı kaydet",
   "候选品牌名会显示在这里": "Aday marka adları burada görünecek",
   "元/月": "RMB/ay",

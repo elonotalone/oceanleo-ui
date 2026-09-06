@@ -3136,6 +3136,7 @@ const ptBR: Record<string, string> = {
   "保存为新歌词版本": "Salvar como nova versão da letra",
   "保存版本": "Salvar versão",
   "保存设置": "Salvar configurações",
+  "正在保存…": "Salvando…",
   "保存这笔": "Salvar este lançamento",
   "候选品牌名会显示在这里": "Os nomes de marca candidatos aparecerão aqui",
   "元/月": "RMB/mês",

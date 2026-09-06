@@ -3179,6 +3179,7 @@ const en: Record<string, string> = {
   "保存为新歌词版本": "Save as a new lyrics version",
   "保存版本": "Save version",
   "保存设置": "Save settings",
+  "正在保存…": "Saving…",
   "保存这笔": "Save this entry",
   "候选品牌名会显示在这里": "Candidate brand names will appear here",
   "元/月": "RMB/month",

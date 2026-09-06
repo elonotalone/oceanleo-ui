@@ -312,10 +312,12 @@ const workspaceSessionStubUrl = dataModule(`
     return globalThis.__workbenchToolbarWorkspace || null;
   }
 `);
-// 桩必须导全 `RestartDraftButton.tsx:13` 那一行 import 的每一个名字。少一个不是少一条
+// 桩必须导全 `RestartDraftButton.tsx:16` 那一行 import 的每一个名字。少一个不是少一条
 // 断言：模块解析在测试结束之后才炸，走 uncaughtException，整份文件被记成一条红，
 // 而上面两条其实是绿的（`_COMMON.md` §7b⑩）。`3f90bd2` 已经因为同一族缺陷把这份
-// 测试从 4 条断言吃到 2 条一次了。
+// 测试从 4 条断言吃到 2 条一次了；`ba484b4` 把 import 从 `historySessionHref` 换成
+// `workspaceAppHref`（重开后回 app 的 live 工作台，不再凭空建 /history/<id>）又吃了
+// 一次——X4-b 对齐。桩的形状照真函数：`/workspace/<appId>`。
 const routerStubUrl = dataModule(`
   export function useRouter() {
     return { replace(value) { globalThis.__workbenchToolbarRoute = value; } };
@@ -325,7 +327,9 @@ const routerStubUrl = dataModule(`
   }
 `);
 const routeStubUrl = dataModule(`
-  export function historySessionHref(id) { return "/history/" + id; }
+  export function workspaceAppHref(appId, _route, _pathname) {
+    return appId ? "/workspace/" + encodeURIComponent(appId) : "/workspace";
+  }
 `);
 const restartUrl = await compileModule("src/shell/RestartDraftButton.tsx", {
   "next/navigation": routerStubUrl,
