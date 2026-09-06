@@ -56,6 +56,56 @@ import {
   takeGridLiveHandoff,
 } from "../doc-editors/grid-univer/live-handoff";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { ARTIFACT_PAGE_ID } from "../plugin-chrome/plugin-pages";
+import { usePluginPage } from "../plugin-chrome/plugin-page-store";
+import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
+
+/** 旧核编辑栏文档段：有 `recalculate` 就必须有「重新计算」。 */
+export type GridDocumentActionSource = {
+  recalculate?: () => void;
+  loading?: boolean;
+  sourceFailed?: boolean;
+  reload?: () => void;
+  error?: string;
+};
+
+export type GridDocumentActionExtras = {
+  officeError?: string;
+  retryOffice?: () => void;
+};
+
+export function buildGridDocumentActions(
+  editor: GridDocumentActionSource,
+  extras: GridDocumentActionExtras = {},
+): AdvancedWorkbenchAction[] {
+  const actions: AdvancedWorkbenchAction[] = [];
+  if (typeof editor.recalculate === "function") {
+    actions.push({
+      id: "grid-recalculate",
+      label: "重新计算",
+      disabled: Boolean(editor.loading),
+      onTrigger: editor.recalculate,
+    });
+  }
+  if (editor.sourceFailed && typeof editor.reload === "function") {
+    actions.push({
+      id: "grid-reload-source",
+      label: "重新载入表格",
+      onTrigger: editor.reload,
+    });
+  }
+  if (
+    (editor.error || extras.officeError) &&
+    typeof extras.retryOffice === "function"
+  ) {
+    actions.push({
+      id: "grid-refresh-office-source",
+      label: "刷新 source/full 后重试",
+      onTrigger: extras.retryOffice,
+    });
+  }
+  return actions;
+}
 
 /**
  * 新核舞台的懒加载入口。
@@ -96,6 +146,14 @@ function GridLegacyGate(props: AdvancedContentWorkbenchProps) {
     const want: "legacy" | "next" = pro ? "next" : "legacy";
     if (want === shown) return;
     let cancelled = false;
+    if (want === "legacy") {
+      // 切回普通页时，Univer 存盘不能挡住旧核重挂。页已经是「编辑」，
+      // 再等 flush 的那几秒编辑栏仍是 Univer 的文档段，没有「重新计算」。
+      // 会话交接已在内存里；存盘照常发起，只是不挡重挂。
+      void flushGridLiveDocument();
+      setShown("legacy");
+      return;
+    }
     void flushGridLiveDocument().finally(() => {
       if (!cancelled) setShown(want);
     });
@@ -225,6 +283,27 @@ function GridLegacyRoute({
   // 本组件只画「编辑」页。第二行切到「专业编辑」时宿主写 store，
   // GridLegacyGate 已有的 remount 会换成 Univer，这里不再另造 gate。
   const { setMode: setEditorMode } = usePluginMode("grid");
+  const { pageId } = usePluginPage("grid");
+  const [documentActionsEpoch, setDocumentActionsEpoch] = useState(0);
+  const documentActions = useMemo(
+    () =>
+      buildGridDocumentActions(editor, {
+        officeError: officeSource.error,
+        retryOffice: officeSource.retry,
+      }),
+    [
+      editor,
+      pageId,
+      officeSource.error,
+      officeSource.retry,
+      documentActionsEpoch,
+    ],
+  );
+  useEffect(() => {
+    if (pageId !== ARTIFACT_PAGE_ID) return;
+    if (editor.loading) return;
+    setDocumentActionsEpoch((value) => value + 1);
+  }, [editor.recalculate, pageId, editor.loading]);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "grid-materials@2",
@@ -433,30 +512,7 @@ function GridLegacyRoute({
           // 「重新计算」。求值器永远不读宿主时钟，所以 `=TODAY()`/`NOW()`/`RAND()`
           // 要在屏幕上出结果，得由用户显式指定「按哪一刻算」——这个按钮就是那一下。
           // 它同时是增量重算（`recalcGridWorkbook`）在 `src/` 里的消费方。
-          {
-            id: "grid-recalculate",
-            label: "重新计算",
-            disabled: editor.loading,
-            onTrigger: editor.recalculate,
-          },
-          ...(editor.sourceFailed
-            ? [
-                {
-                  id: "grid-reload-source",
-                  label: "重新载入表格",
-                  onTrigger: editor.reload,
-                },
-              ]
-            : []),
-          ...(editor.error || officeSource.error
-            ? [
-                {
-                  id: "grid-refresh-office-source",
-                  label: "刷新 source/full 后重试",
-                  onTrigger: officeSource.retry,
-                },
-              ]
-            : []),
+          ...documentActions,
           ...DOC_FAMILY_DOWNLOAD_FORMATS.grid.slice(1).map((format) => ({
             id: `grid-export-${format.extension}`,
             label: `下载 ${format.label}`,
