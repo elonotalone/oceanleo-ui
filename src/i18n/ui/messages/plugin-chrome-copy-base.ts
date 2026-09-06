@@ -192,6 +192,23 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   websiteViewportPhone: "手机",
   websiteViewportTablet: "平板",
   websiteViewportDesktop: "桌面",
+  // X5（2026-09-06）：站编辑器零自画 chrome 后仍留在 iframe 内的文案 —— manifest 的
+  // 保存槽动作（套用/放弃草稿及其 busy 态）、数据库/文件存储两个视图、独立打开时的极简栏
+  // （仅能改源码 / 打开网站 / 预览路由），以及死预览会话的「预览已停止」卡
+  // （`preview-liveness.ts`）。声明侧都在 website 仓 `components/site-editor/`。
+  websiteCodeEditsOnly: "仅能改源码",
+  websiteOpenSite: "打开网站",
+  websitePreviewRoute: "预览路由",
+  websiteApplyDraft: "套用草稿",
+  websiteDiscardDraft: "放弃草稿",
+  websiteApplyingDraft: "正在套用…",
+  websiteDiscardingDraft: "正在放弃…",
+  websiteDatabaseView: "数据库",
+  websiteStorageView: "文件存储",
+  websitePreviewStopped: "预览已停止",
+  websiteRestartPreview: "重新启动预览",
+  websitePreviewStoppedBody: "这个沙箱预览会话已经结束，页面里的内容不再可用。重新启动后会从当前源码重新生成预览。",
+  websitePreviewExpiredBody: "这条历史任务的预览已过期，重新生成即可。",
 } as const;
 
 export type PluginChromeCopyName = keyof typeof PLUGIN_CHROME_COPY_SOURCE;
