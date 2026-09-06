@@ -14,7 +14,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
@@ -272,6 +274,22 @@ export function PluginChromeFrame({
   // 控制器与 10 件共享插件用的是同一份。为什么走这条路而不是把
   // `contextBarLeading/Trailing` 填上，见 use-plugin-chrome-layout.tsx 那段注释。
   const editBarGestures = usePluginChromeEditBarGestures(pluginId);
+  const chromeRowsRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = chromeRowsRef.current;
+    if (!el) return;
+    const update = () => {
+      const height = el.getBoundingClientRect().height;
+      if (height > 0) {
+        el.style.setProperty("--plugin-chrome-rows-height", `${height}px`);
+      }
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const runAction = useCallback(
     (action: PluginChromeAction) => {
@@ -355,6 +373,12 @@ export function PluginChromeFrame({
         className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--pchrome-canvas)] text-[var(--pchrome-ink)]"
       >
         {/* ---------------------------------------------- 行 1：顶栏 */}
+        <div
+          ref={chromeRowsRef}
+          data-plugin-chrome-rows
+          className="relative shrink-0"
+          style={{ zIndex: 2_147_483_647 }}
+        >
         <header
           data-plugin-chrome-header
           className={`relative z-30 flex ${PLUGIN_CHROME_HEADER_H} shrink-0 items-center gap-3 border-b border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-3`}
@@ -502,6 +526,7 @@ export function PluginChromeFrame({
             )}
           </div>
         </header>
+        </div>
 
         {/* ---------------------------------------------- 行 2：edit bar */}
         {/*

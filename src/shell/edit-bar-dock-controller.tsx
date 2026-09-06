@@ -34,7 +34,6 @@ import {
 } from "./edit-bar-dock-state";
 import { EDIT_BAR_COLLAPSED_SIZE_PX } from "./edit-bar-surface";
 import {
-  clampFloatingToolbarToBounds,
   dockedFloatingToolbarPosition,
   isFloatingToolbarDockIntent,
   sameFloatingToolbarPoint,
@@ -72,6 +71,66 @@ const DOUBLE_PRESS_SLOP_PX = 12;
  * 超过才 beginHoldDrag。触控板双击常 >320ms，这条才是主路。
  */
 const ARMED_DRAG_THRESHOLD_PX = 6;
+
+/** 编辑栏可停靠区域从第二行页签底边再往下这么多。 */
+export const EDIT_BAR_BELOW_CHROME_GAP_PX = 8;
+
+/**
+ * 两行 chrome 的底边（视口坐标）。优先量页签行，其次量
+ * `data-plugin-chrome-rows` / `--plugin-chrome-rows-height`。
+ */
+export function readPluginChromeRowsBottom(
+  root?: ParentNode | null,
+): number | null {
+  const scope =
+    root && "querySelector" in root
+      ? root
+      : typeof document === "undefined"
+        ? null
+        : document;
+  if (!scope) return null;
+  const pageRow = scope.querySelector<HTMLElement>("[data-plugin-page-row]");
+  if (pageRow) {
+    const rect = pageRow.getBoundingClientRect();
+    if (Number.isFinite(rect.bottom) && rect.bottom > 0) return rect.bottom;
+  }
+  const rows = scope.querySelector<HTMLElement>("[data-plugin-chrome-rows]");
+  if (rows) {
+    const cssRaw =
+      rows.style.getPropertyValue("--plugin-chrome-rows-height") ||
+      (typeof getComputedStyle === "function"
+        ? getComputedStyle(rows).getPropertyValue("--plugin-chrome-rows-height")
+        : "");
+    const cssHeight = parseFloat(cssRaw);
+    const rect = rows.getBoundingClientRect();
+    if (Number.isFinite(cssHeight) && cssHeight > 0) {
+      return rect.top + cssHeight;
+    }
+    if (rect.height > 0) return rect.bottom;
+  }
+  return null;
+}
+
+/**
+ * 初始停靠、拖拽松手、窗口缩放共用的夹取：栏的 top 不得小于页签底边 + 8。
+ */
+export function clampEditBarBelowChrome(
+  point: FloatingToolbarPoint,
+  chromeBottom: number,
+  viewport: FloatingToolbarBounds,
+  toolbar: { width: number; height: number },
+  gapPx = EDIT_BAR_BELOW_CHROME_GAP_PX,
+): FloatingToolbarPoint {
+  const inset = 8;
+  const minTop = chromeBottom + gapPx;
+  const minX = viewport.left + inset;
+  const maxX = Math.max(minX, viewport.right - toolbar.width - inset);
+  const maxY = Math.max(minTop, viewport.bottom - toolbar.height - inset);
+  return {
+    x: Math.max(minX, Math.min(point.x, maxX)),
+    y: Math.max(minTop, Math.min(point.y, maxY)),
+  };
+}
 
 function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -592,33 +651,49 @@ export function useEditBarDockController({
         width: toolbar?.width || EDIT_BAR_COLLAPSED_SIZE_PX,
         height: toolbar?.height || EDIT_BAR_COLLAPSED_SIZE_PX,
       };
+      const layerEl = readLayerElement();
+      const layer = layerEl?.getBoundingClientRect();
+      const chromeBottomViewport = readPluginChromeRowsBottom(layerEl);
+      const chromeBottom =
+        chromeBottomViewport != null && layer
+          ? Math.max(bounds.top, chromeBottomViewport - layer.top)
+          : bounds.top;
+      if (layerEl && chromeBottomViewport != null) {
+        layerEl.style.setProperty(
+          "--plugin-chrome-rows-height",
+          `${Math.max(0, chromeBottom)}px`,
+        );
+      }
+      const finalize = (point: FloatingToolbarPoint): FloatingToolbarPoint =>
+        clampEditBarBelowChrome(point, chromeBottom, bounds, size);
       // 收起态先判：小圆用图层绝对坐标，既不跟选区锚点也不参与停靠。
       if (presentationRef.current === "collapsed") {
         const base = collapsedPositionRef.current || positionRef.current;
-        return clampFloatingToolbarToBounds(base, bounds, size);
+        return finalize(base);
       }
       const stage = stageRef.current?.getBoundingClientRect();
-      const layer = readLayerElement()?.getBoundingClientRect();
       const dockBounds = readDockTargetBounds();
       if (targetMode === "docked" && dockBounds && stage && layer && toolbar) {
         // Sit immediately above the stage/iframe. Vertical centering inside a
         // short dock sentinel let a taller SelectionToolbar chrome overlap the
         // website frame (V5 WEBSITE_EDIT_BAR_MISPLACED gap=-3).
-        return dockedFloatingToolbarPosition({
-          layerLeft: layer.left,
-          layerTop: layer.top,
-          dock: dockBounds,
-          stageTop: stage.top,
-          toolbar: { width: toolbar.width, height: toolbar.height },
-        });
+        // Chrome clamp still wins: a 102px bar must not cover the page row.
+        return finalize(
+          dockedFloatingToolbarPosition({
+            layerLeft: layer.left,
+            layerTop: layer.top,
+            dock: dockBounds,
+            stageTop: stage.top,
+            toolbar: { width: toolbar.width, height: toolbar.height },
+          }),
+        );
       }
       if (!toolbar) return positionRef.current;
       const anchor = defaultPosition();
-      return clampFloatingToolbarToBounds(
-        { x: anchor.x + nextOffset.x, y: anchor.y + nextOffset.y },
-        bounds,
-        size,
-      );
+      return finalize({
+        x: anchor.x + nextOffset.x,
+        y: anchor.y + nextOffset.y,
+      });
     },
     [
       defaultPosition,

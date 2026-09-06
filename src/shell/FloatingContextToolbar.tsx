@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, type RefObject } from "react";
+import { type ReactNode, type RefObject, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
 import { pluginWorkbenchStyle, type PluginThemeMode } from "./plugin-theme";
@@ -17,6 +17,38 @@ import {
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
 
 export type FloatingContextToolbarController = EditBarDockController;
+
+const PAGE_ROW_ABOVE_EDIT_BAR_Z = "2147483647";
+
+/** 页签必须永远能点：把两行 chrome 抬到编辑栏 overlay 之上。 */
+function raiseChromeRowsAboveEditBar(): () => void {
+  if (typeof document === "undefined") return () => {};
+  const nodes = document.querySelectorAll<HTMLElement>(
+    "[data-plugin-chrome-rows], [data-pane-header], [data-advanced-workbench-header], [data-plugin-page-row]",
+  );
+  const previous: Array<{
+    el: HTMLElement;
+    zIndex: string;
+    position: string;
+  }> = [];
+  for (const el of nodes) {
+    previous.push({
+      el,
+      zIndex: el.style.zIndex,
+      position: el.style.position,
+    });
+    el.style.zIndex = PAGE_ROW_ABOVE_EDIT_BAR_Z;
+    if (!el.style.position) {
+      el.style.position = "relative";
+    }
+  }
+  return () => {
+    for (const item of previous) {
+      item.el.style.zIndex = item.zIndex;
+      item.el.style.position = item.position;
+    }
+  };
+}
 
 export function useFloatingContextToolbar({
   workspaceRootRef,
@@ -61,6 +93,10 @@ export function FloatingContextToolbar({
   dirty?: boolean;
   children?: ReactNode;
 }) {
+  useLayoutEffect(
+    () => raiseChromeRowsAboveEditBar(),
+    [controller.portalRoot],
+  );
   if (!children) return null;
   if (!controller.portalRoot) return null;
   const docked = controller.mode === "docked" && !controller.collapsed;
