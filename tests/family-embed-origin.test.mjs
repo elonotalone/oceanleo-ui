@@ -214,7 +214,11 @@ test("构造器：生产宿主拒 LeoDev base，LeoDev 宿主可以构造", () =
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：覆盖若发生在白名单校验之前，未认证的 editorBase 也能被换成任意 origin。
 test("工作台在白名单校验之后才应用覆盖，生产路由表不被改写", () => {
-  const embed = source("../src/shell/workbench-embed.tsx");
+  // base 解析（白名单 → 覆盖 → 可加载性）住在 workbench-embed-base.ts（600 行拆分闸），
+  // 画格本体只消费它；契约按两份源码合起来看。
+  const embed =
+    source("../src/shell/workbench-embed.tsx") +
+    source("../src/shell/workbench-embed-base.ts");
   const routes = source("../src/shell/workbench-routes.ts");
   assert.match(embed, /isTrustedEmbedEditorBase\(editorBase\)/);
   assert.match(embed, /applyFamilyEmbedOriginOverride\(/);
