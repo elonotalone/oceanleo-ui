@@ -89,6 +89,7 @@ export function FloatingContextToolbar({
           data-edit-bar-mode={controller.mode}
           data-edit-bar-offset={`${controller.offset.x},${controller.offset.y}`}
           onPointerDownCapture={controller.rootProps.onPointerDownCapture}
+          onPointerMoveCapture={controller.rootProps.onPointerMoveCapture}
           onPointerUpCapture={controller.rootProps.onPointerUpCapture}
           onClickCapture={controller.rootProps.onClickCapture}
           onDoubleClickCapture={controller.rootProps.onDoubleClickCapture}

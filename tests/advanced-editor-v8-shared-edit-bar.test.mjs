@@ -612,15 +612,22 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await pointer(bar(), "pointerup", press(200, 200));
     assert.equal(liveController.selected, true, "第一次点击后必须选中编辑栏");
 
-    // 选中后再按下 → 跟手 → 松手落下。
+    // 选中后再按下：只待拖；移动超过 6px 才起拖。原断言是按下立刻
+    // moveMode=true（空白老路）。产品改为「第二次按下并移动才拖」，
+    // 这样落在按键上也走同一条，按键未移动时 click 仍触发。
     await pointer(bar(), "pointerdown", press(10, 10));
-    assert.equal(liveController.moveMode, true);
+    assert.equal(
+      liveController.moveMode,
+      false,
+      "已选中后按下未移动不得起拖",
+    );
     await pointer(window, "pointermove", {
       pointerId: 1,
       pointerType: "mouse",
       clientX: 30,
       clientY: 20,
     });
+    assert.equal(liveController.moveMode, true, "待拖后移动超过阈值必须起拖");
     await pointer(window, "pointerup", press(30, 20));
     assert.equal(liveController.moveMode, false);
     assert.equal(offset(), "20,10");

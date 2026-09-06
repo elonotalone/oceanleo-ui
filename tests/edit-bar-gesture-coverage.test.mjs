@@ -323,10 +323,26 @@ test("引擎：① 双击任意处（含按键）起拖；单击仍立即选中"
     false,
     "禁止延迟派发 click 来等双击窗口——单击按键必须立刻响应",
   );
+  // 原断言：`if (isEditBarInteractiveTarget(event.target)) return;`
+  // 新断言：已选中后任意落点进入 armedDrag；按键不再把第二次按下直接吞掉。
+  // 产品规则变了：第二次按下并移动才拖（含按键），否则 macOS 触控板间隔 >320ms
+  // 或第二下落在按键上时，用户要按第三下才能拖。
   assert.match(
     controllerSource,
-    /if \(isEditBarInteractiveTarget\(event\.target\)\) return;/,
-    "已选中后按在按键上（且不是双击）仍须把按下交给按键",
+    /const ARMED_DRAG_THRESHOLD_PX = 6/,
+    "已选中后的待拖阈值必须钉死，未超阈才能让按键 click 照常",
+  );
+  assert.match(
+    controllerSource,
+    /armedDragRef/,
+    "已选中后按下必须进入待拖，不能再对按键直接 return",
+  );
+  assert.equal(
+    /if \(isEditBarInteractiveTarget\(event\.target\)\) return;/.test(
+      controllerSource,
+    ),
+    false,
+    "已选中后按在按键上不得再 return——那是第三下才能拖的来源",
   );
   assert.match(
     floatingSource,
@@ -337,6 +353,11 @@ test("引擎：① 双击任意处（含按键）起拖；单击仍立即选中"
     floatingSource,
     /onPointerDownCapture=\{controller\.rootProps\.onPointerDownCapture\}/,
     "浮层根没有把选中/拖拽判定摊上去——那就只有某一小块能拖了",
+  );
+  assert.match(
+    floatingSource,
+    /onPointerMoveCapture=\{controller\.rootProps\.onPointerMoveCapture\}/,
+    "浮层根没接上待拖的移动——按键上第二次按下后拖不动",
   );
 });
 
@@ -602,7 +623,7 @@ function installRectStub() {
   };
 }
 
-async function mountFrame(pluginId) {
+async function mountFrame(pluginId, editBar) {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
@@ -612,7 +633,9 @@ async function mountFrame(pluginId) {
       React.createElement(PluginChromeFrame, {
         pluginId,
         title: pluginId,
-        editBar: React.createElement("div", { "data-test-edit-bar": true }, "工具条"),
+        editBar:
+          editBar ||
+          React.createElement("div", { "data-test-edit-bar": true }, "工具条"),
         children: React.createElement("div", { "data-test-stage": true }),
       }),
     );
@@ -767,6 +790,167 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
     }
   });
 }
+
+/* ===========================================================================
+ * 四 b · W04 场景 A/B/C：已选中后第二次按下再拖 60px
+ * ========================================================================= */
+
+async function moveWindow(values) {
+  await act(async () => {
+    const move = new window.Event("pointermove", { bubbles: true, cancelable: true });
+    for (const [name, value] of Object.entries(values)) {
+      Object.defineProperty(move, name, { configurable: true, value });
+    }
+    window.dispatchEvent(move);
+  });
+}
+
+async function upWindow(values) {
+  await act(async () => {
+    const up = new window.Event("pointerup", { bubbles: true, cancelable: true });
+    for (const [name, value] of Object.entries(values)) {
+      Object.defineProperty(up, name, { configurable: true, value });
+    }
+    window.dispatchEvent(up);
+  });
+}
+
+test("W04 场景 A：已选中后 400ms 再按按键并拖 60px，条子跟手", async () => {
+  window.localStorage.clear();
+  const restoreRect = installRectStub();
+  const mounted = await mountFrame(
+    "design-canvas",
+    React.createElement(
+      "button",
+      { type: "button", "data-test-edit-bar-btn": true },
+      "工具",
+    ),
+  );
+  try {
+    const btn = mounted.container.querySelector("[data-test-edit-bar-btn]");
+    const bar = () =>
+      mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
+    assert.ok(btn && bar(), "按键和浮层必须在");
+    const before = translateOf(bar());
+    await pointer(btn, "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 200, clientY: 70, timeStamp: 1000,
+    });
+    await pointer(btn, "pointerup", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 200, clientY: 70, timeStamp: 1010,
+    });
+    await pointer(btn, "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 200, clientY: 70, timeStamp: 1410,
+    });
+    await moveWindow({
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 1500,
+    });
+    const dragged = translateOf(bar());
+    assert.ok(before && dragged, "必须量得到位置");
+    assert.equal(
+      dragged.x - before.x,
+      60,
+      `场景 A 位移应 ≈60，实际 ${before.x} → ${dragged.x}`,
+    );
+    await upWindow({
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 1600,
+    });
+  } finally {
+    await mounted.unmount();
+    restoreRect();
+  }
+});
+
+test("W04 场景 B：已选中后 400ms 再按空白并拖 60px，条子跟手", async () => {
+  window.localStorage.clear();
+  const restoreRect = installRectStub();
+  const mounted = await mountFrame("design-canvas");
+  try {
+    const anywhere = mounted.container.querySelector("[data-test-edit-bar]");
+    const bar = () =>
+      mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
+    assert.ok(anywhere && bar(), "空白落点和浮层必须在");
+    const before = translateOf(bar());
+    await pointer(anywhere, "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 400, clientY: 70, timeStamp: 2000,
+    });
+    await pointer(anywhere, "pointerup", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 400, clientY: 70, timeStamp: 2010,
+    });
+    await pointer(anywhere, "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 400, clientY: 70, timeStamp: 2410,
+    });
+    await moveWindow({
+      pointerId: 1, clientX: 460, clientY: 70, timeStamp: 2500,
+    });
+    const dragged = translateOf(bar());
+    assert.ok(before && dragged, "必须量得到位置");
+    assert.equal(
+      dragged.x - before.x,
+      60,
+      `场景 B 位移应 ≈60，实际 ${before.x} → ${dragged.x}`,
+    );
+    await upWindow({
+      pointerId: 1, clientX: 460, clientY: 70, timeStamp: 2600,
+    });
+  } finally {
+    await mounted.unmount();
+    restoreRect();
+  }
+});
+
+test("W04 场景 C：按键上 150ms 内再按下并拖，快路仍跟手", async () => {
+  window.localStorage.clear();
+  const restoreRect = installRectStub();
+  const mounted = await mountFrame(
+    "design-canvas",
+    React.createElement(
+      "button",
+      { type: "button", "data-test-edit-bar-btn": true },
+      "工具",
+    ),
+  );
+  try {
+    const btn = mounted.container.querySelector("[data-test-edit-bar-btn]");
+    const bar = () =>
+      mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
+    assert.ok(btn && bar(), "按键和浮层必须在");
+    const before = translateOf(bar());
+    await pointer(btn, "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 200, clientY: 70, timeStamp: 3000,
+    });
+    await pointer(btn, "pointerup", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 200, clientY: 70, timeStamp: 3010,
+    });
+    await pointer(btn, "pointerdown", {
+      pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: 200, clientY: 70, timeStamp: 3150,
+    });
+    await moveWindow({
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 3200,
+    });
+    const dragged = translateOf(bar());
+    assert.ok(before && dragged, "必须量得到位置");
+    assert.equal(
+      dragged.x - before.x,
+      60,
+      `场景 C 位移应 ≈60，实际 ${before.x} → ${dragged.x}`,
+    );
+    await upWindow({
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 3300,
+    });
+  } finally {
+    await mounted.unmount();
+    restoreRect();
+  }
+});
 
 /* ===========================================================================
  * 五 · 匹配器自检：属性改个名，这份闸必须还抓得到
