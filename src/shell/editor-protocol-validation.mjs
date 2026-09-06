@@ -310,6 +310,18 @@ export function validProjectManifest(value) {
       );
       return false;
     }
+    if (
+      action.group !== undefined &&
+      action.group !== "edit" &&
+      action.group !== "save" &&
+      action.group !== "download"
+    ) {
+      console.error(
+        "[oceanleo.editor.v1] discard project-manifest: invalid action.group",
+        action.group,
+      );
+      return false;
+    }
     ids.add(action.id);
   }
   return true;
@@ -327,8 +339,26 @@ export function validHostInitChrome(record) {
 }
 
 /**
- * 已通过校验的 project-manifest → 宿主页面行 / 文档段 / 下载菜单切片。
- * role "artifact" 并进「编辑」；缺省 role 当 "page"；缺省 placement 当 "document"。
+ * 一条 manifest 动作最终归哪一组（规范 v2 §4）。显式 `group` 优先；
+ * 没写时由 `placement` 推：download → "download"，其余 → "edit"。
+ * 只看这两个字段，不看 label / id（下载菜单、保存菜单都不许按译文猜）。
+ */
+export function projectActionGroup(action) {
+  if (
+    action?.group === "edit" ||
+    action?.group === "save" ||
+    action?.group === "download"
+  ) {
+    return action.group;
+  }
+  return action?.placement === "download" ? "download" : "edit";
+}
+
+/**
+ * 已通过校验的 project-manifest → 宿主页面行 / 编辑栏 / 保存菜单 / 下载菜单切片。
+ * role "artifact" 并进「编辑」；缺省 role 当 "page"。
+ * 动作按 `projectActionGroup()` 分三组：`documentActions`（edit，进编辑栏）、
+ * `saveActions`（进第一行保存菜单）、`downloadActions`（进第一行下载菜单）。
  */
 export function classifyProjectManifest(manifest) {
   const views = Array.isArray(manifest?.views) ? manifest.views : [];
@@ -342,8 +372,15 @@ export function classifyProjectManifest(manifest) {
     artifactView,
     artifactViewId: artifactView?.id || views[0]?.id || null,
     activePageId: activeIsAux ? active.id : "artifact",
-    documentActions: actions.filter((action) => action.placement !== "download"),
-    downloadActions: actions.filter((action) => action.placement === "download"),
+    documentActions: actions.filter(
+      (action) => projectActionGroup(action) === "edit",
+    ),
+    saveActions: actions.filter(
+      (action) => projectActionGroup(action) === "save",
+    ),
+    downloadActions: actions.filter(
+      (action) => projectActionGroup(action) === "download",
+    ),
   };
 }
 

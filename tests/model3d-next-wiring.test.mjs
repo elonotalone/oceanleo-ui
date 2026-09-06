@@ -63,11 +63,15 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 
-test("第二行不报 aux；截图入库在 adapter.actions 里（编辑栏文档段）", () => {
+test("第二行不报 aux；截图入库在 adapter.actions 里且归 download 组（第一行下载菜单，不进编辑栏）", () => {
   assert.match(route, /pages:\s*\{\s*\}/);
   assert.doesNotMatch(route, /aux:\s*\[/);
   assert.match(route, /setMode:\s*setEditorMode/);
-  assert.match(route, /id:\s*"model3d-save-screenshot"/);
+  // 规范 v2 §6：model_3d 的「截图存入我的库」是导出类动作 → group "download"。
+  assert.match(
+    route,
+    /id:\s*"model3d-save-screenshot",[\s\S]{0,160}group:\s*"download"/,
+  );
 });
 
 test("legacy kernel remains in the same route file", () => {

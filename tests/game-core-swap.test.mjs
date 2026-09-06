@@ -94,6 +94,15 @@ test("hosted-pro files are gone; route declares Code page", () => {
   assert.equal(GAME_CODE_PAGE.label, "Code");
 });
 
+// 规范 v2 §6（plugin-chrome X3）：「另存为二创副本」是保存类动作，归 group "save"
+// → 第一行保存菜单；编辑栏里不得再出现它。
+test("remix action is declared as group save, never an edit-bar action", () => {
+  assert.match(
+    routeCode,
+    /id:\s*"game-remix",\s*label:\s*"另存为二创副本",\s*group:\s*"save"/,
+  );
+});
+
 test("professional editor never mounts a hosted frame", () => {
   assert.equal(GAME_NEXT_DEFAULT_MODE, "normal");
   assert.equal(DEFAULT_EDITOR_MODE, "normal");

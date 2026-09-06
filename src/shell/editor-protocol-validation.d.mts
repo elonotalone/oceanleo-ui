@@ -4,6 +4,7 @@ import type {
   EditorDocumentRevision,
   EditorHistorySnapshot,
   EditorProjectAction,
+  EditorProjectActionGroup,
   EditorProjectManifest,
   EditorProjectView,
   EditorRecoverySnapshot,
@@ -38,12 +39,19 @@ export function validProjectManifest(
   value: unknown,
 ): value is EditorProjectManifest;
 export function validHostInitChrome(record: Record<string, unknown>): boolean;
+export function projectActionGroup(
+  action: Pick<EditorProjectAction, "group" | "placement"> | null | undefined,
+): EditorProjectActionGroup;
 export function classifyProjectManifest(manifest: EditorProjectManifest): {
   auxViews: readonly EditorProjectView[];
   artifactView: EditorProjectView | null;
   artifactViewId: string | null;
   activePageId: string;
+  /** group === "edit"：进编辑栏文档段。 */
   documentActions: readonly EditorProjectAction[];
+  /** group === "save"：进第一行保存菜单。 */
+  saveActions: readonly EditorProjectAction[];
+  /** group === "download"：进第一行下载菜单。 */
   downloadActions: readonly EditorProjectAction[];
 };
 export function isEditorRecoverySnapshot(

@@ -20,7 +20,10 @@ import {
   type EditorToolManifestEntry,
   type EditorViewportSnapshot,
 } from "../editor-protocol";
-import { classifyProjectManifest } from "../editor-protocol-validation.mjs";
+import {
+  classifyProjectManifest,
+  projectActionGroup,
+} from "../editor-protocol-validation.mjs";
 import {
   ARTIFACT_PAGE_ID,
   PRO_PAGE_ID,
@@ -780,8 +783,12 @@ export function EmbeddedRoute({
   );
   const remoteActions = useMemo<AdvancedWorkbenchAction[]>(() => {
     if (projectManifest && classifiedManifest) {
+      // 规范 v2 §4：manifest 的 group / placement 原样透传给宿主分发——
+      // edit → 编辑栏；save（website 的 套用草稿 / 保存 / 放弃草稿 / 重新加载）→
+      // 第一行保存菜单；download → 第一行下载菜单。这里不按 label / id 猜。
       return [
         ...classifiedManifest.documentActions,
+        ...classifiedManifest.saveActions,
         ...classifiedManifest.downloadActions,
       ].map((action) => ({
         id: `project-action:${action.id}`,
@@ -791,7 +798,7 @@ export function EmbeddedRoute({
         variant: action.variant,
         disabled: action.disabled,
         busy: action.busy,
-        ...(action.placement === "download" ? { group: "download" as const } : {}),
+        group: projectActionGroup(action),
         onTrigger: () =>
           sendProjectCommand("action", action.id, projectManifest.revision),
       }));
@@ -802,6 +809,7 @@ export function EmbeddedRoute({
           id: "video-run-all",
           label: "运行全部",
           icon: "animate",
+          group: "edit",
           onTrigger: () => sendRemoteCommand("run-all"),
         },
       ];

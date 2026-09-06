@@ -9,7 +9,10 @@ import {
   isEditorRecoverySnapshot,
   isTrustedEditorOrigin,
 } from "../src/shell/editor-protocol.ts";
-import { classifyProjectManifest } from "../src/shell/editor-protocol-validation.mjs";
+import {
+  classifyProjectManifest,
+  projectActionGroup,
+} from "../src/shell/editor-protocol-validation.mjs";
 
 const instanceId = "embedded-v8-round-trip";
 const envelope = (message) => ({
@@ -259,12 +262,93 @@ test("manifest role/placement split pages.aux from document actions; first row h
   assert.match(route, /pages:\s*\{/);
   assert.match(route, /aux: remoteAuxPages/);
   assert.match(route, /onSelectPage: selectEmbeddedPage/);
-  assert.match(route, /group: "download"/);
+  assert.match(route, /group: projectActionGroup\(action\)/);
   assert.doesNotMatch(route, /project-view:/);
   assert.doesNotMatch(route, /website-refresh/);
   assert.match(route, /sendProjectCommand\(\s*"view"/);
   assert.match(host, /chrome: "host"/);
   assert.match(host, /type: "set-mode"/);
+});
+
+// 规范 v2 §4（plugin-chrome X3）：manifest 动作按 `group` 三分——edit 进编辑栏、
+// save 进第一行保存菜单、download 进第一行下载菜单。宿主只看 group / placement，
+// 不按 label / id 猜；不写 group 时由 placement 推（download → download，其余 → edit）。
+test("manifest action.group splits edit / save / download; save never reaches the edit bar", () => {
+  const classified = classifyProjectManifest({
+    revision: "project-r10",
+    views: [
+      { id: "preview", label: "编辑", role: "artifact", active: true },
+      { id: "code", label: "Code", role: "page", active: false },
+    ],
+    actions: [
+      { id: "device-mobile", label: "手机", group: "edit" },
+      { id: "device-desktop", label: "桌面" },
+      { id: "apply", label: "套用草稿", group: "save" },
+      { id: "save", label: "保存", group: "save", placement: "document" },
+      { id: "discard", label: "放弃草稿", group: "save" },
+      { id: "reload", label: "重新加载", group: "save" },
+      { id: "zip", label: "下载 ZIP", placement: "download" },
+      { id: "png", label: "下载截图", group: "download" },
+    ],
+  });
+  assert.deepEqual(
+    classified.documentActions.map((action) => action.id),
+    ["device-mobile", "device-desktop"],
+  );
+  assert.deepEqual(
+    classified.saveActions.map((action) => action.id),
+    ["apply", "save", "discard", "reload"],
+  );
+  assert.deepEqual(
+    classified.downloadActions.map((action) => action.id),
+    ["zip", "png"],
+  );
+  assert.equal(projectActionGroup({ group: "save", placement: "download" }), "save");
+  assert.equal(projectActionGroup({ placement: "download" }), "download");
+  assert.equal(projectActionGroup({}), "edit");
+  assert.equal(projectActionGroup(undefined), "edit");
+
+  // 合法 group 原样透传；非法 group 整条 manifest 丢掉。
+  const accepted = childRoundTrip({
+    type: "project-manifest",
+    manifest: {
+      revision: "project-r10",
+      views: [{ id: "preview", label: "编辑", role: "artifact", active: true }],
+      actions: [
+        { id: "apply", label: "套用草稿", group: "save" },
+        { id: "device-mobile", label: "手机", group: "edit" },
+      ],
+    },
+  });
+  assert.equal(accepted?.type, "project-manifest");
+  assert.equal(accepted?.manifest.actions[0].group, "save");
+  assert.equal(accepted?.manifest.actions[1].group, "edit");
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(" "));
+  try {
+    assert.equal(
+      childRoundTrip({
+        type: "project-manifest",
+        manifest: {
+          revision: "project-r10",
+          views: [{ id: "preview", label: "编辑", active: true }],
+          actions: [{ id: "publish", label: "Publish", group: "header" }],
+        },
+      }),
+      null,
+    );
+  } finally {
+    console.error = originalError;
+  }
+  assert.ok(errors.some((line) => line.includes("invalid action.group")));
+
+  // EmbeddedRoute 把三组都交给宿主，并把 group 写进每条 AdvancedWorkbenchAction；
+  // video_canvas 的「运行全部」显式 edit。
+  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  assert.match(route, /\.\.\.classifiedManifest\.saveActions/);
+  assert.match(route, /group: projectActionGroup\(action\)/);
+  assert.match(route, /id: "video-run-all",[\s\S]{0,120}group: "edit"/);
 });
 
 test("recovery capture and restore preserve a real unconfirmed revision", () => {

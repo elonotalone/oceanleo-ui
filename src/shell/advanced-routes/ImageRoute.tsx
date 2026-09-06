@@ -562,11 +562,17 @@ export function ImageRoute({
         },
         stage: (
           <div
-            className="flex h-full min-h-0 flex-col"
+            className="relative flex h-full min-h-0 flex-col"
             data-editor-mode={pluginMode}
             data-image-show-photopea={showPhotopea ? "true" : "false"}
             data-canvas-view={designMode.mode}
           >
+            <div className="relative min-h-0 flex-1">
+              <FabricImageStage editor={editor} accent={accent} />
+              <ImagePhotopeaHost showPhotopea={showPhotopea} />
+            </div>
+            {/* 结构 / 皮肤：画布右下角、与宿主缩放控件同组（规范 v2 §1），
+                顶部不再画通栏。 */}
             <ImageCanvasViewSwitch
               state={designMode}
               document={canvasDocument}
@@ -579,10 +585,6 @@ export function ImageRoute({
                 setDesignMode(applied.state);
               }}
             />
-            <div className="relative min-h-0 flex-1">
-              <FabricImageStage editor={editor} accent={accent} />
-              <ImagePhotopeaHost showPhotopea={showPhotopea} />
-            </div>
           </div>
         ),
         status:

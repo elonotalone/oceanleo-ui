@@ -75,6 +75,12 @@ export interface EditorToolManifestEntry {
 
 export type EditorProjectViewRole = "page" | "artifact";
 export type EditorProjectActionPlacement = "document" | "download";
+/**
+ * 规范 v2 §4 的动作分组（plugin-chrome X3）：edit → 编辑栏；save → 第一行
+ * 保存菜单；download → 第一行下载菜单。缺省由 `placement` 推：
+ * `download` → "download"，其余 → "edit"。宿主只按这个字段分发，不看 label / id。
+ */
+export type EditorProjectActionGroup = "edit" | "save" | "download";
 export type EditorHostChrome = "host";
 
 export interface EditorProjectView {
@@ -99,6 +105,12 @@ export interface EditorProjectAction {
   busy?: boolean;
   /** 缺省 "document" = 编辑栏文档段；"download" = 第一行下载菜单。 */
   placement?: EditorProjectActionPlacement;
+  /**
+   * 缺省按 `placement` 推（download → "download"，其余 → "edit"）。
+   * website 的 套用草稿 / 保存 / 放弃草稿 / 重新加载 声明 "save"，进第一行保存菜单，
+   * 永不进编辑栏。
+   */
+  group?: EditorProjectActionGroup;
 }
 
 export interface EditorProjectManifest {

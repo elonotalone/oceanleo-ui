@@ -435,9 +435,12 @@ function Model3DModelRoute({
             busy: editor.capturing,
             onTrigger: editor.downloadScreenshot,
           },
+          // 规范 v2 §6：截图存库是「导出类」动作，住第一行下载菜单，不进编辑栏。
           {
             id: "model3d-save-screenshot",
             label: "截图存入文件库",
+            icon: "download",
+            group: "download",
             disabled: !editor.modelLoaded || deliveryBusy,
             busy: editor.saving,
             onTrigger: editor.saveScreenshot,

@@ -499,12 +499,19 @@ test("C-3 §6: a failed load is surfaced, never left as a blank stage", async ()
   assert.match(stage, /editor\.readerState === "invalid"/);
   assert.match(stage, /role="alert"/);
   assert.match(stage, /data-pdf-failure-code=\{editor\.failure\?\.code\}/);
-  // §2.4 SC 1.4.5 / F2: a scan must say so.
-  assert.match(stage, /data-pdf-no-text-layer/);
-  assert.match(stage, /此文档无文本层/);
+  // §2.4 SC 1.4.5 / F2: a scan must say so. Since plugin-chrome v2 §1 the
+  // stage may not paint a top banner for it; the route hands the sentence to
+  // the host's PluginChromeNotices (bottom-left pill) via `adapter.notices`.
+  assert.doesNotMatch(stage, /data-pdf-no-text-layer/);
+  assert.doesNotMatch(stage, /tt\("此文档无文本层"\)/);
 
   const route = await source("src/shell/advanced-routes/PdfRoute.tsx");
   assert.match(route, /editor\.failure\?\.message/);
+  assert.match(
+    route,
+    /notices:\s*editor\.readerState === "image-only"[\s\S]{0,200}id: "pdf-no-text-layer"/,
+  );
+  assert.match(route, /此文档无文本层/);
 
   assert.deepEqual(Object.values(PDF_FAILURE_CODES), [
     "pdf-not-full-text",

@@ -9,6 +9,8 @@ export type {
   EditorMessageSeverity,
   EditorMode,
   EditorProjectAction,
+  EditorProjectActionGroup,
+  EditorProjectActionPlacement,
   EditorProjectIcon,
   EditorProjectManifest,
   EditorProjectView,

@@ -172,19 +172,8 @@ export function PdfStage({
         outlineColor: accent,
       }}
     >
-      {editor.readerState === "image-only" && (
-        <p
-          data-pdf-no-text-layer
-          role="status"
-          className="shrink-0 px-4 py-1.5 text-center text-[11px] text-white"
-          style={{ background: PDF_READER_PALETTE["reader.chrome"] }}
-        >
-          {tt("此文档无文本层")}
-          <span className="pl-2 text-white/60">
-            {tt("只能按页浏览与标注，无法全文检索或复制文字。")}
-          </span>
-        </p>
-      )}
+      {/* 「此文档无文本层」不再在画布顶部画通栏（规范 v2 §1）：由 PdfRoute 经
+          `adapter.notices` 交给宿主的 PluginChromeNotices，画在画布左下角小胶囊里。 */}
       <div
         ref={viewportRef}
         className="flex min-h-0 flex-1 overflow-auto"

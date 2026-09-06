@@ -80,9 +80,11 @@ export function buildGridDocumentActions(
 ): AdvancedWorkbenchAction[] {
   const actions: AdvancedWorkbenchAction[] = [];
   if (typeof editor.recalculate === "function") {
+    // 规范 v2 §6：表格的「重新计算」是编辑类动作，留在编辑栏。
     actions.push({
       id: "grid-recalculate",
       label: "重新计算",
+      group: "edit",
       disabled: Boolean(editor.loading),
       onTrigger: editor.recalculate,
     });

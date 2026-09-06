@@ -510,9 +510,11 @@ function GameLegacyRoute({
             setCursor((value) => Math.min(history.length - 1, value + 1)),
         },
         actions: [
+          // 规范 v2 §6：另存副本是「保存类」动作，住第一行保存菜单，不进编辑栏。
           {
             id: "game-remix",
             label: "另存为二创副本",
+            group: "save",
             disabled: busy || !isDurableLibraryItem(item),
             busy,
             onTrigger: remix,
