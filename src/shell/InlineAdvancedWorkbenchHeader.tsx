@@ -169,7 +169,7 @@ export function InlineAdvancedWorkbenchHeader({
   return (
     <div
       data-advanced-workbench-header
-      className="flex w-full min-w-0 flex-col overflow-hidden"
+      className="relative z-[2147483647] flex w-full min-w-0 flex-col overflow-hidden"
     >
       <PluginGlobalRow
         adapter={adapter}

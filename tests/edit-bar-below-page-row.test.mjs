@@ -88,6 +88,13 @@ test("chrome frame exposes a measurable two-row container", async () => {
     new URL("../src/shell/FloatingContextToolbar.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(toolbar, /raiseChromeRowsAboveEditBar/);
-  assert.match(toolbar, /data-plugin-page-row/);
+  // 页签压在 overlay 之上靠静态 className，不靠运行时写 style（合成器闸）。
+  assert.doesNotMatch(toolbar, /style\.zIndex\s*=/);
+  assert.doesNotMatch(toolbar, /style\.position\s*=/);
+  assert.match(frame, /relative z-\[2147483647\]/);
+  const header = await readFile(
+    new URL("../src/shell/InlineAdvancedWorkbenchHeader.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(header, /relative z-\[2147483647\]/);
 });

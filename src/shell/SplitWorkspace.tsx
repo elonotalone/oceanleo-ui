@@ -765,7 +765,7 @@ export function SplitWorkspace({
       {!rightFrameless && (library ? (
         <div
           data-pane-header
-          className="flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5"
+          className="relative z-[2147483647] flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5"
         >
           {!rightEditorHeader && (
             <button
@@ -851,7 +851,7 @@ function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNo
   return (
     <div
       data-pane-header
-      className="flex min-h-[2.5rem] min-w-0 shrink-0 flex-nowrap items-center justify-between gap-1 overflow-hidden border-b border-stone-100 px-3 py-1.5"
+      className="relative z-[2147483647] flex min-h-[2.5rem] min-w-0 shrink-0 flex-nowrap items-center justify-between gap-1 overflow-hidden border-b border-stone-100 px-3 py-1.5"
     >
       {isPlain ? (
         <span className="truncate text-[12px] font-medium text-stone-500">{label}</span>

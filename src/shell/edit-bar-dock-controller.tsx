@@ -658,12 +658,6 @@ export function useEditBarDockController({
         chromeBottomViewport != null && layer
           ? Math.max(bounds.top, chromeBottomViewport - layer.top)
           : bounds.top;
-      if (layerEl && chromeBottomViewport != null) {
-        layerEl.style.setProperty(
-          "--plugin-chrome-rows-height",
-          `${Math.max(0, chromeBottom)}px`,
-        );
-      }
       const finalize = (point: FloatingToolbarPoint): FloatingToolbarPoint =>
         clampEditBarBelowChrome(point, chromeBottom, bounds, size);
       // 收起态先判：小圆用图层绝对坐标，既不跟选区锚点也不参与停靠。

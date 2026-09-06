@@ -376,8 +376,7 @@ export function PluginChromeFrame({
         <div
           ref={chromeRowsRef}
           data-plugin-chrome-rows
-          className="relative shrink-0"
-          style={{ zIndex: 2_147_483_647 }}
+          className="relative z-[2147483647] shrink-0"
         >
         <header
           data-plugin-chrome-header

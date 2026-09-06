@@ -20,7 +20,7 @@ export function PluginPageRow({
     <div
       data-plugin-page-row
       role="tablist"
-      className="flex h-9 w-full min-w-0 items-center gap-0.5 overflow-x-auto"
+      className="relative z-[2147483647] flex h-9 w-full min-w-0 items-center gap-0.5 overflow-x-auto"
     >
       {pages.map((page) => {
         const active = page.id === activePageId;
