@@ -212,6 +212,8 @@ function VideoTimelineLegacyRoute({
     },
     [editor.addMediaFile],
   );
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，VideoTimelineLegacyGate remount 新核。
+  const { setMode: setEditorMode } = usePluginMode("video-timeline");
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -241,6 +243,11 @@ function VideoTimelineLegacyRoute({
             if (editor.sourceReady) editor.redo();
           },
         },
+        mode: {
+          current: "normal",
+          setMode: setEditorMode,
+        },
+        pages: {},
         directDownload: {
           id: "video-download-mp4",
           label: visualDownloadFormats("video-timeline")[0].label,

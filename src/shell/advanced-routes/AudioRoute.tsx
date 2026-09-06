@@ -176,6 +176,8 @@ function AudioLegacyRoute({
     },
     [editor.importSource],
   );
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，AudioLegacyGate remount 新核。
+  const { setMode: setEditorMode } = usePluginMode("audio");
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -207,6 +209,11 @@ function AudioLegacyRoute({
           setValue: (value) => editor.setWaveformZoom((value / 100) * 30),
           fit: () => editor.setWaveformZoom(30),
         },
+        mode: {
+          current: "normal",
+          setMode: setEditorMode,
+        },
+        pages: {},
         directDownload: {
           id: "audio-download-wav",
           label: visualDownloadFormats("audio")[0].label,

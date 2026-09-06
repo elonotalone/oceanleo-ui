@@ -120,6 +120,15 @@ test("默认普通模式，set-mode 是唯一开关", () => {
   assert.match(hosted, /buildSetModeMessage/);
 });
 
+test("第二行申报 Umo，不报 aux；mode.setMode 交给壳", () => {
+  assert.match(route, /pages:\s*\{\s*proLabel:\s*"Umo"\s*\}/);
+  assert.match(hosted, /pages:\s*\{\s*proLabel:\s*"Umo"\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.doesNotMatch(hosted, /aux:\s*\[/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+  assert.match(hosted, /setMode:\s*applyMode/);
+});
+
 test("docs.oceanleo.app 已在 embed 白名单，能拼出 URL", () => {
   assert.equal(RICHDOC_HOSTED_EMBED_ORIGIN, "https://docs.oceanleo.app");
   assert.equal(richDocHostedEmbedBase(), "https://docs.oceanleo.app");

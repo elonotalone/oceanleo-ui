@@ -373,6 +373,8 @@ function Model3DModelRoute({
     },
     [editor.importModel],
   );
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，Model3DLegacyRoute remount 新核。
+  const { setMode: setEditorMode } = usePluginMode("threed");
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -402,6 +404,11 @@ function Model3DModelRoute({
           undo: history.undo,
           redo: history.redo,
         },
+        mode: {
+          current: "normal",
+          setMode: setEditorMode,
+        },
+        pages: {},
         viewport: {
           value: editor.zoom,
           min: 20,

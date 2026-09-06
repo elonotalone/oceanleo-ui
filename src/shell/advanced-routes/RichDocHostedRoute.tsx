@@ -408,6 +408,7 @@ export function RichDocHostedRoute({
           current: mode,
           setMode: applyMode,
         },
+        pages: { proLabel: "Umo" },
         actions: [
           {
             id: "richdoc-wechat-layout",

@@ -31,12 +31,12 @@ test("专业模式经 W01 的 mode 适配器暴露，不是自造开关", () => 
   assert.match(
     route,
     /mode:\s*bindImageModeAdapter\(pluginMode,\s*setEditorMode\)/,
-    "路由必须把 setEditorMode 交给 bindImageModeAdapter；缺 setMode 开关就灰了",
+    "路由必须把 setEditorMode 交给 bindImageModeAdapter；缺 setMode，「专业编辑」页切不过去",
   );
   assert.equal(
     /setMode:\s*undefined/.test(route),
     false,
-    "adapter.mode.setMode 写成 undefined，顶栏开关置灰，用户切不了专业模式",
+    "adapter.mode.setMode 写成 undefined，「专业编辑」页切不过去",
   );
   // §10 第 5 条：不得各自发明开关。
   assert.equal(
@@ -131,8 +131,15 @@ test("两种模式共用一份文档：L0 不占 photo/design 那条轴", () => 
   assert.equal(
     /FabricEditorMode/.test(route),
     false,
-    "把 photo|design 塞进 adapter.mode，顶栏专业模式开关就会切错轴",
+    "把 photo|design 塞进 adapter.mode，「专业编辑」页就会切错轴",
   );
+});
+
+test("第二行申报 Photopea，不报 aux；抠图在 adapter.actions 里（编辑栏文档段）", () => {
+  assert.match(route, /pages:\s*\{\s*proLabel:\s*"Photopea"\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.match(route, /id:\s*"image-cutout"/);
+  assert.match(route, /label:\s*"抠图（背景变透明）"/);
 });
 
 test("chips 按当前模式产出，不是写死一份", () => {

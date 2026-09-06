@@ -349,6 +349,7 @@ export function DeckHostedRoute({
           current: mode,
           setMode: applyMode,
         },
+        pages: { proLabel: "PPTist" },
         stage: (
           <div className="flex h-full min-h-0 flex-col">
             {pending ? (

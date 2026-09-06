@@ -183,6 +183,7 @@ export function PdfRoute({
           current: mode,
           setMode,
         },
+        pages: {},
         // §2.3 / C20–C21: the reader's zoom range is 25 %–400 %. The shell
         // slider must not cap below the carrier contract.
         viewport: {

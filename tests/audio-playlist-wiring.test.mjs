@@ -66,6 +66,12 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 
+test("第二行不报 aux；mode.setMode 交给壳（专业编辑页）", () => {
+  assert.match(route, /pages:\s*\{\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+});
+
 test("professional mode uses buildSetModeMessage and only then shows AudioMass", () => {
   assert.equal(AUDIO_NEXT_DEFAULT_MODE, "normal");
   assert.equal(DEFAULT_EDITOR_MODE, "normal");
@@ -484,7 +490,7 @@ test("专业模式叶子真挂 AudioMass iframe，src 由生产函数算出", as
       "普通模式不该挂 AudioMass iframe",
     );
     const button = mounted.container.querySelector("[data-testid=audio-set-pro]");
-    assert.ok(button, "壳桩没有把 adapter.mode.setMode 画成可点的专业模式按钮");
+    assert.ok(button, "壳桩没有把 adapter.mode.setMode 交给可点入口，「专业编辑」页切不过去");
     await act(async () => {
       button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     });

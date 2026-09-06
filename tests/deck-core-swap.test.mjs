@@ -432,6 +432,16 @@ test("旧核代码保留，没被删（§10 第 3 条：换核期间旧核不删
   }
 });
 
+test("第二行申报 PPTist，不报 aux；放映在 adapter.actions 里（编辑栏文档段）", () => {
+  assert.match(route, /pages:\s*\{\s*proLabel:\s*"PPTist"\s*\}/);
+  assert.match(hosted, /pages:\s*\{\s*proLabel:\s*"PPTist"\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.doesNotMatch(hosted, /aux:\s*\[/);
+  assert.match(route, /id:\s*"deck-present"/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+  assert.match(hosted, /setMode:\s*applyMode/);
+});
+
 // ── 以下五条是 V1-red-2 的修复闸 ─────────────────────────────────────────
 // 这条闸原来钉的是「不许出现 iframe」，理由是宿主白名单没放行。
 // 白名单在 W01 `b0056b9` / A-24 就放行了（下面第一条用生产函数复核），

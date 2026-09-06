@@ -95,6 +95,8 @@ function RichDocLegacyRoute({
     officeSource.resourceFailed,
   );
   const [exportError, setExportError] = useState("");
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，RichDocLegacyGate remount 托管件。
+  const { setMode: setEditorMode } = usePluginMode("richdoc");
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "richdoc-materials@2",
@@ -392,6 +394,11 @@ function RichDocLegacyRoute({
             editor.editor?.chain().focus().redo().run();
           },
         },
+        mode: {
+          current: "normal",
+          setMode: setEditorMode,
+        },
+        pages: { proLabel: "Umo" },
         directDownload: {
           id: "richdoc-export-docx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label}`,

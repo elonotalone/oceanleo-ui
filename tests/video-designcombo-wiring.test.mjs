@@ -44,6 +44,12 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 
+test("第二行不报 aux；mode.setMode 交给壳（专业编辑页）", () => {
+  assert.match(route, /pages:\s*\{\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+});
+
 test("professional mode uses buildSetModeMessage without postMessage", () => {
   assert.equal(VIDEO_DESIGNCOMBO_DEFAULT_MODE, "normal");
   assert.equal(DEFAULT_EDITOR_MODE, "normal");

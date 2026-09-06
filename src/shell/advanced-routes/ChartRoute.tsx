@@ -63,6 +63,8 @@ function ChartLegacyBody({
     editor.loading ||
     !editor.sourceReady ||
     Boolean(editor.error && !editor.dirty);
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，ChartLegacyRoute remount 新核。
+  const { setMode: setEditorMode } = usePluginMode("chart-editor");
   const buildSavedItem = useCallback(
     (saved: ChartSaveResult): LibraryItem => {
       if (saved.item) {
@@ -270,8 +272,9 @@ function ChartLegacyBody({
         },
         mode: {
           current: "normal",
-          setMode: () => undefined,
+          setMode: setEditorMode,
         },
+        pages: {},
         directDownload: {
           id: "chart-download-png",
           label: "PNG 图片 (.png)",

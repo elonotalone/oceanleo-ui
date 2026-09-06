@@ -132,6 +132,8 @@ function DeckLegacyRoute({
   const presenterDisposeRef = useRef<(() => void) | null>(null);
   // 两个窗口必须同名才通道得上（W16-request §2）。
   const presenterChannelName = `deck-${item.id}`;
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，DeckLegacyGate remount 托管件。
+  const { setMode: setEditorMode } = usePluginMode("deck");
 
   const exitPresentation = useCallback(() => {
     presenterDisposeRef.current?.();
@@ -458,6 +460,11 @@ function DeckLegacyRoute({
           setValue: setZoom,
           fit: () => setZoom(DECK_PREVIEW_FIT_ZOOM_PERCENT),
         },
+        mode: {
+          current: "normal",
+          setMode: setEditorMode,
+        },
+        pages: { proLabel: "PPTist" },
         directDownload: {
           id: "deck-export-pptx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.deck[0].label}`,

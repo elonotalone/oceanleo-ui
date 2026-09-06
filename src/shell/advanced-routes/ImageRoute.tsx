@@ -81,7 +81,7 @@ export function ImageRoute({
   const editor = useFabricImageEditor(item, siteId);
   const [importNotice, setImportNotice] = useState("");
   /**
-   * L0 专业模式（W01：`normal | pro`）。顶栏开关已经做好，这里只接内核：
+   * L0 专业模式（W01：`normal | pro`）。第二行「专业编辑」页切到这里；
    * 打开时用 `currentPluginMode("image")` 记住的档位，之后只走 `setEditorMode`。
    * photo / design 是另一条轴，不占这个槽（`switchEditorMode`）。
    */
@@ -397,10 +397,11 @@ export function ImageRoute({
         id: "image",
         label: editorToolLabel({ type: "image" }),
         /**
-         * L0 professional mode (W01 contract v2). The header toggle calls
-         * `setEditorMode`; Photopea may exist only after that returns `pro`.
+         * L0 专业模式。第二行「专业编辑」页调用 `setEditorMode`；
+         * Photopea 只在返回 `pro` 之后才挂。
          */
         mode: bindImageModeAdapter(pluginMode, setEditorMode),
+        pages: { proLabel: "Photopea" },
         drawers: [
           // 明位（不 hiddenFromRail）：抠图/放大高清这些能力此前引擎和网关都通了，
           // 界面上一个入口都没有，等于没做。
@@ -522,8 +523,7 @@ export function ImageRoute({
           onTrigger: editor.downloadDefaultPng,
         },
         actions: [
-          // P2：抠图是办公场景天天要用的那一条（证件照、产品图、PPT 配图），
-          // 所以它在工作区行上有自己的位置，不埋进 AI 列表里。
+          // 抠图是办公天天要用的那一条，放在编辑栏文档段，不进第一行。
           {
             id: "image-cutout",
             label: "抠图（背景变透明）",

@@ -123,9 +123,11 @@ test("professional mode is the adapter's mode face, over the same bytes", () => 
   // Native 件走 adapter 的 mode 面，**不发 postMessage**（契约 v2 §4）。
   assert.doesNotMatch(routeCode, /postMessage|buildSetModeMessage/);
   assert.match(route, /mode: \{\s*\n\s*current: mode,/);
-  // 13 件都必须交出 setMode；旧核点专业模式切到同一份字节的新核查看器。
+  // 13 件都必须交出 setMode；旧核点专业编辑页切到同一份字节的新核查看器。
   assert.match(route, /setMode,/);
   assert.doesNotMatch(route, /setMode: core === "next"/);
+  assert.match(route, /pages:\s*\{\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
 
   // 同一文档实例：两个模式吃的是同一个取值器（facade 后的那一个，见下一条用例）。
   assert.match(route, /bytes=\{nextCoreEditor\.currentBytes\(\)\}/);
@@ -520,7 +522,7 @@ async function mountPdfRoute() {
       const button = await waitFor(
         container,
         "[data-role='pdf-set-pro']",
-        "专业模式按钮不在，adapter.mode.setMode 没交给壳",
+        "adapter.mode.setMode 没交给壳，「专业编辑」页切不过去",
       );
       await act(async () => {
         button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -575,12 +577,12 @@ test("默认档仍是 legacy：用户打开 PDF 看到的是旧舞台，不是 E
       assert.equal(container.querySelector("[data-embedpdf-viewer]"), null);
       assert.ok(
         container.querySelector("[data-role='pdf-set-pro']"),
-        "默认档也必须把专业模式 setMode 交给壳",
+        "默认档也必须把专业编辑页的 setMode 交给壳",
       );
       assert.equal(
         container.querySelector("[data-role='pdf-mode-unavailable']"),
         null,
-        "默认档把专业模式开关又藏成不可用了",
+        "默认档把专业编辑页又藏成不可用了",
       );
     } finally {
       await unmount();
@@ -677,7 +679,7 @@ test("默认档点专业模式：同一份字节上的即用查看器挂上来",
       const viewer = await waitFor(
         container,
         "[data-embedpdf-viewer]",
-        "默认档点了专业模式，查看器没挂上。setMode 没交出、或 stage 仍只看 flag。",
+        "默认档点了专业编辑页，查看器没挂上。setMode 没交出、或 stage 仍只看 flag。",
       );
       assert.equal(viewer.getAttribute("data-has-buffer"), "1");
       assert.equal(

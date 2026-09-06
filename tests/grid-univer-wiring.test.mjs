@@ -73,6 +73,14 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 
+test("编辑栏文档段有重新计算；第二行申报 Univer，不报 aux", () => {
+  assert.match(route, /id:\s*"grid-recalculate"/);
+  assert.match(route, /label:\s*"重新计算"/);
+  assert.match(route, /pages:\s*\{\s*proLabel:\s*"Univer"\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+});
+
 test("professional mode uses buildSetModeMessage without postMessage, and does not dispose", () => {
   assert.equal(GRID_UNIVER_DEFAULT_MODE, "normal");
   assert.equal(DEFAULT_EDITOR_MODE, "normal");

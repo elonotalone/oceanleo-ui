@@ -195,6 +195,9 @@ function GridLegacyRoute({
   const xlsxExportBusyRef = useRef(false);
   const [xlsxExporting, setXlsxExporting] = useState(false);
   const [xlsxExportError, setXlsxExportError] = useState("");
+  // 本组件只画「编辑」页。第二行切到「专业编辑」时宿主写 store，
+  // GridLegacyGate 已有的 remount 会换成 Univer，这里不再另造 gate。
+  const { setMode: setEditorMode } = usePluginMode("grid");
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "grid-materials@2",
@@ -356,6 +359,11 @@ function GridLegacyRoute({
           undo: history.undo,
           redo: history.redo,
         },
+        mode: {
+          current: "normal",
+          setMode: setEditorMode,
+        },
+        pages: { proLabel: "Univer" },
         directDownload: {
           id: "grid-export-xlsx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label}`,

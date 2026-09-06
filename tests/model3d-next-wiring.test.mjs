@@ -61,6 +61,13 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 
+test("第二行不报 aux；截图入库在 adapter.actions 里（编辑栏文档段）", () => {
+  assert.match(route, /pages:\s*\{\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+  assert.match(route, /id:\s*"model3d-save-screenshot"/);
+});
+
 test("legacy kernel remains in the same route file", () => {
   assert.match(route, /adapter=\{\{/);
   assert.match(route, /flush:/);
@@ -445,7 +452,7 @@ test("专业模式叶子真挂 three.js editor iframe，且槽位标记为可见
       "普通模式不该把托管槽标成可见",
     );
     const button = mounted.container.querySelector("[data-testid=model3d-set-pro]");
-    assert.ok(button, "壳桩没有把 adapter.mode.setMode 画成可点的专业模式按钮");
+    assert.ok(button, "壳桩没有把 adapter.mode.setMode 交给可点入口，「专业编辑」页切不过去");
     await act(async () => {
       button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     });

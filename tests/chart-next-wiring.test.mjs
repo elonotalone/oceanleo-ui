@@ -47,6 +47,13 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 
+test("第二行不报 aux；mode.setMode 写入 store 而不是空转", () => {
+  assert.match(route, /pages:\s*\{\s*\}/);
+  assert.doesNotMatch(route, /aux:\s*\[/);
+  assert.match(route, /setMode:\s*setEditorMode/);
+  assert.doesNotMatch(route, /setMode:\s*\(\)\s*=>\s*undefined/);
+});
+
 test("professional mode is option JSON code mode, no postMessage, same instance", () => {
   assert.equal(CHART_NEXT_DEFAULT_MODE, "normal");
   assert.equal(CHART_NEXT_DEFAULT_MODE, DEFAULT_EDITOR_MODE);
