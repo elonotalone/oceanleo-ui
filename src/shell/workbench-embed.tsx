@@ -19,6 +19,12 @@ import {
   embedEditorFrameSandbox,
   isTrustedEmbedEditorBase,
 } from "./editor-sandbox-origin";
+import {
+  applyFamilyEmbedOriginOverride,
+  canLoadFamilyEmbedBase,
+  familyEmbedFrameSandbox,
+  familyEmbedOverrideInputFromWindow,
+} from "./family-embed-origin";
 import type { SelectionContext } from "./selection-context";
 import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
@@ -38,7 +44,12 @@ export type { EmbedEditorPaneProps } from "./workbench-embed-types";
 /** 每类嵌入编辑器的地址；只列已实现 editor.v1 接收端的页面。 */
 export function embedEditorBase(item: LibraryItem): string {
   const route = editorRouteFor(item);
-  return route.type === "embed" ? route.base : "";
+  if (route.type !== "embed") return "";
+  if (typeof window === "undefined") return route.base;
+  return applyFamilyEmbedOriginOverride(
+    route.base,
+    familyEmbedOverrideInputFromWindow(),
+  );
 }
 
 export function EmbedEditorPane({
@@ -126,8 +137,15 @@ export function EmbedEditorPane({
     if (typeof window === "undefined") return "";
     // 只有 workbench-routes.ts 写死的白名单 base 能进这条 same-origin 沙箱路径。
     if (!isTrustedEmbedEditorBase(editorBase)) return "";
+    const resolved = applyFamilyEmbedOriginOverride(
+      editorBase,
+      familyEmbedOverrideInputFromWindow(),
+    );
+    const loadBase = canLoadFamilyEmbedBase(resolved, window.location.host)
+      ? resolved
+      : editorBase;
     try {
-      return buildEditorEmbedUrl(editorBase, {
+      return buildEditorEmbedUrl(loadBase, {
         instanceId,
         hostOrigin: window.location.origin,
         assetUrl: item.url || item.previewUrl || undefined,
@@ -155,17 +173,33 @@ export function EmbedEditorPane({
   const editorOrigin = useMemo(() => {
     if (!isTrustedEmbedEditorBase(editorBase)) return "";
     try {
-      const origin = new URL(editorBase).origin;
+      const resolved =
+        typeof window === "undefined"
+          ? editorBase
+          : applyFamilyEmbedOriginOverride(
+              editorBase,
+              familyEmbedOverrideInputFromWindow(),
+            );
+      const loadBase =
+        typeof window === "undefined" ||
+        !canLoadFamilyEmbedBase(resolved, window.location.host)
+          ? editorBase
+          : resolved;
+      const origin = new URL(loadBase).origin;
       return isValidEditorTargetOrigin(origin) ? origin : "";
     } catch {
       return "";
     }
   }, [editorBase]);
 
-  const frameSandbox = useMemo(
-    () => embedEditorFrameSandbox(editorBase),
-    [editorBase],
-  );
+  const frameSandbox = useMemo(() => {
+    if (typeof window === "undefined") return embedEditorFrameSandbox(editorBase);
+    const resolved = applyFamilyEmbedOriginOverride(
+      editorBase,
+      familyEmbedOverrideInputFromWindow(),
+    );
+    return familyEmbedFrameSandbox(resolved, window.location.host);
+  }, [editorBase]);
 
   const sendToEditor = useCallback(
     (message: Record<string, unknown>) => {

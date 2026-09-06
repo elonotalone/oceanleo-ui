@@ -13,6 +13,7 @@ import {
   isTrustedEmbedEditorBase,
   isUntrustedContentHostname,
 } from "./editor-sandbox-origin";
+import { canLoadFamilyEmbedBase } from "./family-embed-origin";
 import { isHostedEditorOrigin } from "./hosted-editor-origins";
 import {
   boundedRecord,
@@ -557,8 +558,17 @@ export function buildEditorEmbedUrl(
   },
 ): string {
   const url = new URL(base);
+  let hostName = "";
+  try {
+    hostName = new URL(opts.hostOrigin).hostname;
+  } catch {
+    hostName = "";
+  }
   if (
-    !isTrustedEmbedEditorBase(base) ||
+    !(
+      isTrustedEmbedEditorBase(base) ||
+      canLoadFamilyEmbedBase(base, hostName)
+    ) ||
     !isTrustedEditorOrigin(url.origin) ||
     !isTrustedEditorOrigin(opts.hostOrigin) ||
     !boundedString(opts.instanceId, 128, true) ||

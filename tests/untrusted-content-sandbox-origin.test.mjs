@@ -47,6 +47,11 @@ import {
 } from "../src/shell/editor-sandbox-origin.ts";
 import { currentDomainProfile } from "../src/contracts/domain-family.ts";
 import { editorCapabilityFor } from "../src/shell/workbench-routes.ts";
+import {
+  applyFamilyEmbedOriginOverride,
+  canLoadFamilyEmbedBase,
+  familyEmbedFrameSandbox,
+} from "../src/shell/family-embed-origin.ts";
 
 import { compileModule, realModule } from "./helpers/module-bench.mjs";
 
@@ -732,6 +737,22 @@ test("W8/3 嵌入 URL 构造只接受白名单 base", () => {
     { instanceId: "instance-1", hostOrigin: "https://oceanleo.com" },
   );
   assert.equal(new URL(url).origin, "https://design.oceanleo.com");
+  const leoDevHost = "p-07e5e1a19413945e8eecf1fec4877269.dev.oceanleo.com";
+  const leoDevBase = `https://${leoDevHost}/embed/site-editor`;
+  assert.throws(
+    () =>
+      buildEditorEmbedUrl(leoDevBase, {
+        instanceId: "instance-1",
+        hostOrigin: "https://website.oceanleo.com",
+      }),
+    /Untrusted/,
+    "生产宿主不得构造 LeoDev 覆盖 URL",
+  );
+  const leoDevUrl = buildEditorEmbedUrl(leoDevBase, {
+    instanceId: "instance-1",
+    hostOrigin: `https://${leoDevHost}`,
+  });
+  assert.equal(new URL(leoDevUrl).origin, `https://${leoDevHost}`);
   for (const base of [
     "https://website.oceanleo.com/embed/attacker",
     "https://p1-aaaa.oceanleo.app/embed/editor",
@@ -997,4 +1018,51 @@ test("W24/3 三处渲染面：iframe、sandbox 与 src 表达式集合相等且�
       "docs/architecture/oceanleo-untrusted-content-isolation.md §8.3",
     ),
   );
+});
+
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：生产宿主若认 `?embed_origin=`，分享链接就能把家族 iframe 指到
+// 攻击者 origin，且该 frame 仍可能拿到 allow-scripts + allow-same-origin。
+test("R8 生产宿主忽略嵌入源覆盖，LeoDev 槽位覆盖不得放宽 UGC", () => {
+  const productionBase = "https://website.oceanleo.com/embed/site-editor";
+  const slotHost = "p-07e5e1a19413945e8eecf1fec4877269.dev.oceanleo.com";
+  const slotOrigin = `https://${slotHost}`;
+  const attack = {
+    search: `?embed_origin=${encodeURIComponent(slotOrigin)}`,
+    cookieHeader: `embed_origin=${slotOrigin}`,
+    envValue: slotOrigin,
+  };
+  for (const host of [
+    "website.oceanleo.com",
+    "excel.oceanleo.com",
+    "oceanleo.com",
+  ]) {
+    assert.equal(
+      applyFamilyEmbedOriginOverride(productionBase, { host, ...attack }),
+      productionBase,
+      host,
+    );
+  }
+  assert.equal(
+    applyFamilyEmbedOriginOverride(productionBase, {
+      host: slotHost,
+      search: `?embed_origin=${encodeURIComponent("https://p1--base.oceanleo.app")}`,
+    }),
+    productionBase,
+  );
+  assert.equal(
+    applyFamilyEmbedOriginOverride(productionBase, {
+      host: slotHost,
+      search: `?embed_origin=${encodeURIComponent(slotOrigin)}`,
+    }),
+    `${slotOrigin}/embed/site-editor`,
+  );
+  assert.equal(canLoadFamilyEmbedBase(`${slotOrigin}/embed/site-editor`, "website.oceanleo.com"), false);
+  assert.equal(
+    familyEmbedFrameSandbox(`${slotOrigin}/embed/site-editor`, "website.oceanleo.com"),
+    UNTRUSTED_FRAME_SANDBOX,
+  );
+  const embed = source("../src/shell/workbench-embed.tsx");
+  assert.match(embed, /isTrustedEmbedEditorBase\(editorBase\)/);
+  assert.match(embed, /applyFamilyEmbedOriginOverride\(/);
 });
