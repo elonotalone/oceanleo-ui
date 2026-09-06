@@ -493,6 +493,7 @@ test("W18 R1：六个 Hosted origin 被信任", () => {
   }
 });
 
+// UC-3 / UC-6：宿主只对 HOSTED_EDITOR_ORIGINS 全串匹配放行同源沙箱与 postMessage 目标，近似 origin 一律拒绝。
 test("W18 R1：四类近似 origin 一律拒绝（全串匹配，不做后缀推断）", () => {
   for (const origin of [
     // ① 后缀挂靠：攻击者自己的可注册域，尾部长得像我们的主机
@@ -571,6 +572,7 @@ test("A-24 的要害：六件拿 HOSTED_EDITOR_SANDBOX；UGC / cover 仍无同�
   assert.equal(sandboxGrantsScriptedSameOrigin(TRUSTED_EMBED_EDITOR_SANDBOX), true);
 });
 
+// UC-3：嵌入地址只能由受信 base 拼出，近似 base 不得进入 iframe src。
 test("A-24：近似 base 仍然拼不出 URL（全串，不做后缀推断）", () => {
   for (const base of [
     "https://slides.oceanleo.app/embed/attacker",

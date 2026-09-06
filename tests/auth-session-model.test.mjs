@@ -637,6 +637,8 @@ test("LeoDev capability host may read family SSO but must never write it", () =>
   assert.match(clientSource, /never write family SSO from a capability hostname/);
 });
 
+// UC-NONE：不对应 UC-1…UC-7 中的任何一条。
+// 判断依据：这是会话响应的 CDN 缓存头，属于 token 生命周期，不是 cookie 域扩张（UC-7）。
 test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头", () => {
   // 忽略 setAll 的第二个参数 = 刷新 token 的响应可能被 CDN 缓存，
   // 下一个访客拿到别人的 session。
