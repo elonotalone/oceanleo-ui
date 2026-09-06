@@ -131,6 +131,9 @@ export function RichDocHostedRoute({
     `rd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
   ).current;
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
+  // pushInit 读 ref 而不是 state：init 会把正文整份重发，绝不能因为切页签就重跑。
+  const modeRef = useRef<EditorMode>(DEFAULT_EDITOR_MODE);
+  modeRef.current = mode;
   const [ready, setReady] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [editRevision, setEditRevision] = useState(0);
@@ -223,18 +226,24 @@ export function RichDocHostedRoute({
   );
 
   const pushInit = useCallback(() => {
-    sendToEditor(buildSetModeMessage(instanceId, DEFAULT_EDITOR_MODE));
-    sendToEditor(
-      buildHideChromeMessage(instanceId, {
-        toolbar: true,
-        panels: true,
-      }),
-    );
+    // 顺序有讲究：umo-hosted 收到 `init` 会把自己重置回默认普通模式（工具栏收起）。
+    // 之前是「set-mode → hide-chrome → init」，且模式写死 DEFAULT，结果用户在
+    // 「Umo」专业页看到的是一个没有顶部工具栏的 Umo（V2-P-tabs 第 5 条 FAIL）。
+    // 现在先 init，再按宿主当前页的 mode 发 set-mode / hide-chrome。
+    const current = modeRef.current;
     sendToEditor(
       buildRichDocInitEnvelope(instanceId, {
         content: converted?.content || source || emptyDoc(),
         readOnly,
         title: item.title,
+        mode: current,
+      }),
+    );
+    sendToEditor(buildSetModeMessage(instanceId, current));
+    sendToEditor(
+      buildHideChromeMessage(instanceId, {
+        toolbar: current === "normal",
+        panels: current === "normal",
       }),
     );
   }, [converted, instanceId, item.title, readOnly, sendToEditor, source]);

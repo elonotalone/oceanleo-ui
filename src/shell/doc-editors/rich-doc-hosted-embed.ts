@@ -58,11 +58,19 @@ export function buildRichDocEmbedUrl(opts: {
 
 /**
  * `init` 的扩展字段。契约把 `init` 当自由载荷，Umo 侧读 `content` / `readOnly`。
- * 默认普通模式由宿主随后发 `set-mode`，这里不另发明开关。
+ * `mode` 跟宿主当前页走：两行 chrome 之后，Umo iframe 只在「专业编辑」页上露面，
+ * 所以 `init` 里通常就是 `pro`。umo-hosted 收到 `init` 会把模式重置为默认普通，
+ * 因此宿主必须在 `init` **之后**再补一发 `set-mode`（见 RichDocHostedRoute.pushInit）；
+ * 这里带上 mode 只是让旧版 Umo 也能一步到位，不是替代那一发。
  */
 export function buildRichDocInitEnvelope(
   instanceId: string,
-  payload: { content: unknown; readOnly: boolean; title?: string },
+  payload: {
+    content: unknown;
+    readOnly: boolean;
+    title?: string;
+    mode?: EditorMode;
+  },
 ): Record<string, unknown> {
   if (!instanceId || instanceId.length > 128) {
     throw new TypeError("richdoc hosted: instanceId 必须非空且 ≤128");
@@ -73,7 +81,7 @@ export function buildRichDocInitEnvelope(
     instanceId,
     content: payload.content,
     readOnly: payload.readOnly === true,
-    mode: DEFAULT_EDITOR_MODE,
+    mode: payload.mode ?? DEFAULT_EDITOR_MODE,
     ...(payload.title ? { title: payload.title } : {}),
   };
 }
