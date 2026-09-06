@@ -1261,10 +1261,14 @@ test("grid toolbar aria-labels stay unique and measurement clones stay unnamed",
   }
 });
 
-test("floating medium width uses remaining viewport strip so the bar does not grow past the edge", async () => {
+test("floating capacity is the boundary width, never the strip left of the bar's own edge", async () => {
+  // X2（2026-09-06）改写。原断言：栏 translate 到 920 时容量 = 1200 − 920 − 16 = 264，
+  // 只剩 primary 可见，maxInlineSize = 272px。那条规则让容量依赖栏自己的位置，
+  // 而位置又由控制器按栏宽夹取——宽度→位置→宽度的反馈环正是 React #185 的根
+  // （tests/selection-toolbar-measure-feedback.test.mjs）。新规则：容量只看边界
+  // （overlay / 舞台可见宽度 − 16，再与视口 − 32 取小），栏在边界里的哪个位置都一样；
+  // 「不越出视口」由 edit-bar-dock-controller 在栏变宽时重新夹取 x 来保证。
   window.HTMLElement.prototype.getBoundingClientRect = toolbarRectMock;
-  // Medium acceptance viewport with the floating bar already translated near
-  // the right edge — full stage width would wrongly keep every control visible.
   visualViewport.width = 1_200;
   Object.defineProperty(window, "innerWidth", {
     configurable: true,
@@ -1311,6 +1315,35 @@ test("floating medium width uses remaining viewport strip so the bar does not gr
   try {
     const toolbar = mounted.host.querySelector('[role="toolbar"]');
     assert.ok(toolbar);
+    // 1100 边界 − 16 = 1084 容量：四个控件（400 + 12 间隙）全部可见，
+    // 与栏此刻 translate 到 920 无关。
+    assert.equal(
+      toolbar.getAttribute("data-selection-visible-controls"),
+      "primary cjk ordinary danger",
+    );
+    assert.equal(toolbar.getAttribute("data-selection-overflow-controls"), "");
+    const maxInline = toolbar.style.maxInlineSize;
+    assert.match(
+      maxInline,
+      /^1084px$/,
+      `boundary-derived maxInlineSize expected 1084px, got ${maxInline}`,
+    );
+    // 栏挪到最左：投影与上限一字不变——容量不看位置。
+    toolbarOffsetLeft = 0;
+    await act(async () => {
+      ToolbarResizeObserver.flush();
+    });
+    assert.equal(
+      toolbar.getAttribute("data-selection-visible-controls"),
+      "primary cjk ordinary danger",
+    );
+    assert.equal(toolbar.style.maxInlineSize, "1084px");
+    // 边界本身变窄（宿主面板收窄到 200）才折进 More：44 + 4 + 70 ≤ 184 < +4+160。
+    containerWidth = 200;
+    toolbarOffsetLeft = 920;
+    await act(async () => {
+      ToolbarResizeObserver.flush();
+    });
     assert.equal(
       toolbar.getAttribute("data-selection-visible-controls"),
       "primary",
@@ -1321,25 +1354,9 @@ test("floating medium width uses remaining viewport strip so the bar does not gr
     );
     assert.ok(
       mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
-      "remaining-width overflow must keep More reachable",
+      "narrow-boundary overflow must keep More reachable",
     );
-    const maxInline = toolbar.style.maxInlineSize;
-    assert.match(
-      maxInline,
-      /^272px$/,
-      `hard remaining-strip maxInlineSize expected 272px, got ${maxInline}`,
-    );
-    // Simulate the post-overflow intrinsic width under the hard cap.
-    containerWidth = 264;
-    await act(async () => {
-      ToolbarResizeObserver.flush();
-    });
-    const box = toolbar.getBoundingClientRect();
-    assert.ok(
-      box.right <= window.innerWidth + 2,
-      `toolbar.right ${box.right} must stay within innerWidth+2 (${window.innerWidth + 2})`,
-    );
-    assert.ok(box.left >= -2, `toolbar.left ${box.left} must stay >= -2`);
+    assert.equal(toolbar.style.maxInlineSize, "184px");
   } finally {
     await mounted.unmount();
     globalThis.__adaptiveToolbarLayout = null;

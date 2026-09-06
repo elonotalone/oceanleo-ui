@@ -17,9 +17,76 @@ import {
   toolbarContainerInlineSize,
   toolbarFloatingHost,
   toolbarFloatingTranslatedShell,
-  toolbarFloatingViewportMetrics,
   toolbarSizingBoundary,
 } from "./selection-toolbar-measure";
+
+/** 浮动编辑栏在容器两侧各留 .5rem（FloatingContextToolbar 的 `max-w-[calc(100%-1rem)]`）。 */
+const FLOATING_EDGE_RESERVE_PX = 16;
+/** SelectionToolbar 自己在视口两侧各留 1rem 可达空间。 */
+const VIEWPORT_REACHABLE_RESERVE_PX = 32;
+
+/**
+ * 浮动编辑栏的容量边界：只认**外部**盒子。
+ *
+ * 优先 `[data-workspace-floating-toolbar-overlay]`（FloatingContextToolbar 的
+ * inset-0 覆盖层，尺寸 = 舞台/图层），其次旧的 sizing boundary。
+ * **绝不**回到栏自己或它的 translate 外壳——那两个盒子的尺寸与位置都由
+ * 栏内容决定，拿它们算容量就是把自己的输出接回自己的输入（React #185 的根）。
+ */
+function floatingCapacityBoundary(toolbar: HTMLDivElement): HTMLElement | null {
+  const overlay = toolbar.closest<HTMLElement>(
+    "[data-workspace-floating-toolbar-overlay]",
+  );
+  if (overlay) return overlay;
+  return toolbarSizingBoundary(toolbar);
+}
+
+/** 边界与视口相交的可见宽度；边界不可量时返回 0。 */
+function visibleBoundaryWidth(boundary: HTMLElement | null): number {
+  if (!boundary || typeof window === "undefined") return 0;
+  const rect = boundary.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportLeft = viewport?.offsetLeft || 0;
+  const viewportRight = viewportLeft + (viewport?.width || window.innerWidth);
+  const width = Math.max(
+    0,
+    Math.min(rect.right, viewportRight) - Math.max(rect.left, viewportLeft),
+  );
+  return width > 0 ? width : Math.max(0, rect.width);
+}
+
+/**
+ * 单行编辑栏（`[data-workspace-edit-bar]`）里，SelectionToolbar 只是其中一段：
+ * 撤销重做 / 文档段 / AI 与固定柄都是它的兄弟。这些兄弟的宽度由各自内容决定，
+ * 与本栏无关，所以从容量里扣掉它们不会形成反馈。
+ */
+function rowSiblingsInlineSize(
+  toolbar: HTMLDivElement,
+  row: HTMLElement,
+): number {
+  const style = window.getComputedStyle(row);
+  let total =
+    cssPixelValue(style.paddingInlineStart) +
+    cssPixelValue(style.paddingInlineEnd) +
+    cssPixelValue(style.borderInlineStartWidth) +
+    cssPixelValue(style.borderInlineEndWidth);
+  const gap = cssPixelValue(style.columnGap);
+  let laidOut = 0;
+  for (const child of Array.from(row.children)) {
+    if (!(child instanceof HTMLElement)) continue;
+    if (child === toolbar || child.contains(toolbar)) {
+      laidOut += 1;
+      continue;
+    }
+    if (child.hidden || child.getAttribute("aria-hidden") === "true") continue;
+    const width = elementOuterInlineSize(child);
+    if (width <= 0) continue;
+    total += width;
+    laidOut += 1;
+  }
+  total += Math.max(0, laidOut - 1) * gap;
+  return total;
+}
 
 export function useSelectionToolbarMeasure({
   toolbarRef,
@@ -34,11 +101,6 @@ export function useSelectionToolbarMeasure({
   prefixVisible,
   suffixVisible,
   hasAdaptiveControls,
-  contextLeading,
-  contextTrailing,
-  leading,
-  trailing,
-  toolsLauncher,
   measurementIdentity,
   setMeasuredWidths,
   setAvailableWidth,
@@ -56,11 +118,12 @@ export function useSelectionToolbarMeasure({
   prefixVisible: boolean;
   suffixVisible: boolean;
   hasAdaptiveControls: boolean;
-  contextLeading: unknown;
-  contextTrailing: unknown;
-  leading: unknown;
-  trailing: unknown;
-  toolsLauncher: unknown;
+  /**
+   * 控件身份串（原始值）。**刻意不收 ReactNode**：宿主每次重渲染都会换新的
+   * leading / trailing 节点，把它们放进依赖会让本 effect 每个 commit 都重跑并在
+   * layout 阶段同步 setState——那正是 React #185 那条链的第一环。前后缀的宽度
+   * 变化由 ResizeObserver 异步接住。
+   */
   measurementIdentity: string;
   setMeasuredWidths: Dispatch<
     SetStateAction<ReadonlyMap<string, number>>
@@ -94,28 +157,43 @@ export function useSelectionToolbarMeasure({
           : nextMeasured,
       );
 
-      let containerWidth = toolbarContainerInlineSize(
-        toolbar,
-        effectiveVariant,
-      );
+      const row = toolbar.closest<HTMLElement>("[data-workspace-edit-bar]");
       const inFloatingChrome = Boolean(
         toolbarFloatingHost(toolbar) ||
           toolbarFloatingTranslatedShell(toolbar),
       );
-      if (effectiveVariant === "floating" && inFloatingChrome) {
-        const metrics = toolbarFloatingViewportMetrics(toolbar);
-        setFloatingMaxInlineSize((current) =>
-          current === metrics.maxInlineSize ? current : metrics.maxInlineSize,
-        );
-        // Prefer the hard remaining-strip ceiling when the viewport-capacity
-        // probe still resolves to nearly full 100dvw.
-        if (metrics.maxInlineSize > 0) {
-          containerWidth = Math.min(containerWidth, metrics.maxInlineSize);
-        } else {
-          containerWidth = 0;
+      const viewport =
+        typeof window === "undefined" ? null : window.visualViewport;
+      const viewportWidth =
+        viewport?.width ||
+        (typeof window === "undefined" ? 0 : window.innerWidth);
+
+      let containerWidth: number;
+      if (inFloatingChrome) {
+        // 容量 = 外部边界的可见宽度 − 两侧保留。与栏自己的位置/宽度无关。
+        let capacity =
+          visibleBoundaryWidth(floatingCapacityBoundary(toolbar)) -
+          FLOATING_EDGE_RESERVE_PX;
+        if (viewportWidth > 0) {
+          capacity = Math.min(
+            capacity,
+            viewportWidth - VIEWPORT_REACHABLE_RESERVE_PX,
+          );
         }
+        capacity = Math.max(0, capacity);
+        setFloatingMaxInlineSize((current) =>
+          current === capacity ? current : capacity,
+        );
+        containerWidth = capacity;
       } else {
         setFloatingMaxInlineSize((current) => (current === 0 ? current : 0));
+        containerWidth = toolbarContainerInlineSize(toolbar, effectiveVariant);
+      }
+      if (row && containerWidth > 0) {
+        containerWidth = Math.max(
+          0,
+          containerWidth - rowSiblingsInlineSize(toolbar, row),
+        );
       }
       const measuredViewportCapacity =
         effectiveVariant === "floating"
@@ -129,13 +207,12 @@ export function useSelectionToolbarMeasure({
       }
       if (!(containerWidth > 0)) {
         // Only collapse when we are actually inside the floating edit-bar
-        // chrome. Layout-context alone flips effectiveVariant to "floating"
-        // even in hermetic mounts without a translated shell; those must keep
-        // infinite capacity until a real boundary exists.
+        // chrome (or the single-row edit bar). Layout-context alone flips
+        // effectiveVariant to "floating" even in hermetic mounts without a
+        // translated shell; those must keep infinite capacity until a real
+        // boundary exists.
         setAvailableWidth(
-          effectiveVariant === "floating" && inFloatingChrome
-            ? 0
-            : Number.POSITIVE_INFINITY,
+          inFloatingChrome || row ? 0 : Number.POSITIVE_INFINITY,
         );
         return;
       }
@@ -161,20 +238,26 @@ export function useSelectionToolbarMeasure({
       );
     };
 
+    // 首次同步量一遍：依赖全是原始值，所以这里只在挂载 / 控件身份变化时跑，
+    // 而且容量不再依赖自身几何，最多带来一次嵌套更新。
     readLayout();
-    const boundary = toolbarSizingBoundary(toolbar);
-    const floatingHost = toolbarFloatingHost(toolbar);
-    const translatedShell = toolbarFloatingTranslatedShell(toolbar);
+
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(readLayout);
+    const boundary = toolbarFloatingHost(toolbar)
+      ? floatingCapacityBoundary(toolbar)
+      : toolbarSizingBoundary(toolbar);
     if (boundary) observer?.observe(boundary);
-    // Translated shell size/position and toolbar content both change the
-    // reachable strip; stage-boundary-only observation misses 860→1200
-    // recenters that keep the same overlay size.
-    if (translatedShell) observer?.observe(translatedShell);
-    observer?.observe(toolbar);
+    // **不**观察栏自己、不观察 translate 外壳：它们的尺寸是本 hook 的输出。
+    const row = toolbar.closest<HTMLElement>("[data-workspace-edit-bar]");
+    if (row) {
+      for (const child of Array.from(row.children)) {
+        if (child === toolbar || child.contains(toolbar)) continue;
+        observer?.observe(child);
+      }
+    }
     if (prefixRef.current) observer?.observe(prefixRef.current);
     if (suffixRef.current) observer?.observe(suffixRef.current);
     if (measurementRef.current) observer?.observe(measurementRef.current);
@@ -184,49 +267,31 @@ export function useSelectionToolbarMeasure({
     measurementRef.current
       ?.querySelectorAll<HTMLElement>("[data-selection-measure-control-id]")
       .forEach((node) => observer?.observe(node));
-    const mutationObserver =
-      typeof MutationObserver === "undefined"
-        ? null
-        : new MutationObserver(readLayout);
-    mutationObserver?.observe(toolbar, {
-      attributes: true,
-      attributeFilter: [
-        "data-selection-anchor-x",
-        "data-selection-anchor-y",
-        "data-selection-anchor-width",
-        "data-selection-anchor-height",
-        "style",
-        "class",
-      ],
-    });
-    if (translatedShell) {
-      mutationObserver?.observe(translatedShell, {
-        attributes: true,
-        attributeFilter: ["style", "class"],
-      });
-    }
-    if (floatingHost && floatingHost !== translatedShell) {
-      mutationObserver?.observe(floatingHost, {
-        attributes: true,
-        attributeFilter: ["style", "class", "data-edit-bar-mode"],
-      });
-    }
+    // 行里的兄弟节点增减（文档段折进/展开、固定柄出现）改变可用宽度。
+    const rowObserver =
+      row && typeof MutationObserver !== "undefined"
+        ? new MutationObserver(() => {
+            for (const child of Array.from(row.children)) {
+              if (child === toolbar || child.contains(toolbar)) continue;
+              observer?.observe(child);
+            }
+            readLayout();
+          })
+        : null;
+    if (row) rowObserver?.observe(row, { childList: true });
     window.addEventListener("resize", readLayout);
     window.visualViewport?.addEventListener("resize", readLayout);
     window.visualViewport?.addEventListener("scroll", readLayout);
     return () => {
       observer?.disconnect();
-      mutationObserver?.disconnect();
+      rowObserver?.disconnect();
       window.removeEventListener("resize", readLayout);
       window.visualViewport?.removeEventListener("resize", readLayout);
       window.visualViewport?.removeEventListener("scroll", readLayout);
     };
   }, [
-    contextLeading,
-    contextTrailing,
     effectiveVariant,
     hasAdaptiveControls,
-    leading,
     measurementIdentity,
     measurementRef,
     moreButtonRef,
@@ -239,9 +304,7 @@ export function useSelectionToolbarMeasure({
     setMeasuredWidths,
     suffixRef,
     suffixVisible,
-    toolsLauncher,
     toolbarRef,
-    trailing,
     viewportCapacityRef,
   ]);
 }
