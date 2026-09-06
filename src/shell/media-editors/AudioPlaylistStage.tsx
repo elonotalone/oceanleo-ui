@@ -547,6 +547,7 @@ export function AudioPlaylistStage({
         id: "audio",
         label: editorToolLabel({ type: "audio" }),
         mode: { current: mode, setMode: applyMode },
+        pages: { proLabel: "专业编辑" },
         contextToolbar: (
           <AudioPlaylistToolbar
             selection={selection}

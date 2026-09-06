@@ -426,6 +426,7 @@ export function ChartNextStage({
           current: chrome.mode,
           setMode,
         },
+        pages: { proLabel: "专业编辑" },
         directDownload: {
           id: "chart-download-png",
           label: "PNG 图片 (.png)",

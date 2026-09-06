@@ -76,7 +76,8 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
 test("编辑栏文档段有重新计算；第二行申报 Univer，不报 aux", () => {
   assert.match(route, /id:\s*"grid-recalculate"/);
   assert.match(route, /label:\s*"重新计算"/);
-  assert.match(route, /pages:\s*\{\s*proLabel:\s*"Univer"\s*\}/);
+  assert.match(route, /pages:\s*\{\s*proLabel:\s*GRID_PRO_LABEL\s*\}/);
+  assert.match(leaf, /pages:\s*\{\s*proLabel:\s*GRID_PRO_LABEL\s*\}/);
   assert.doesNotMatch(route, /aux:\s*\[/);
   assert.match(route, /setMode:\s*setEditorMode/);
 });
@@ -110,6 +111,11 @@ test("professional mode uses buildSetModeMessage without postMessage, and does n
 
   assert.equal((leaf.match(/univer\.dispose/g) || []).length, 1);
   assert.match(leaf, /return \(\) => \{\s*created\.univer\.dispose\(\);/);
+  assert.match(
+    leaf,
+    /replaceUniverWorkbookWithSnapshot/,
+    "preset 会先留下一张空表；必须先建带数据的那一本再卸空簿",
+  );
   assert.match(
     leaf,
     /\/\/ 切 mode 不许走进这个 effect：dispose 只发生在卸载。/,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useUI } from "../../i18n/ui/useUI";
-import { IconButton } from "../../ui/Button";
+import { Button } from "../../ui/Button";
 import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 
@@ -27,26 +27,28 @@ export function EditBarDocumentSegment({
   }
   return (
     <div data-edit-bar-document-segment className="flex items-center gap-0.5">
-      {actions.map((action) => (
-        <IconButton
-          key={action.id}
-          data-workspace-action-id={action.id}
-          disabled={action.disabled || action.busy}
-          aria-busy={action.busy || undefined}
-          onClick={() => onTrigger(action)}
-          variant={action.variant === "danger" ? "danger" : "ghost"}
-          selected={action.variant === "primary"}
-          label={tt(
-            action.busy && action.busyLabel ? action.busyLabel : action.label,
-          )}
-          icon={
-            <AdvancedEditorIcon
-              name={action.icon || "settings"}
-              className="h-4 w-4"
-            />
-          }
-        />
-      ))}
+      {actions.map((action) => {
+        const label = tt(
+          action.busy && action.busyLabel ? action.busyLabel : action.label,
+        );
+        return (
+          <Button
+            key={action.id}
+            data-workspace-action-id={action.id}
+            disabled={action.disabled || action.busy}
+            aria-busy={action.busy || undefined}
+            onClick={() => onTrigger(action)}
+            variant={action.variant === "danger" ? "danger" : "ghost"}
+            selected={action.variant === "primary"}
+            pill
+          >
+            {action.icon ? (
+              <AdvancedEditorIcon name={action.icon} className="h-4 w-4" />
+            ) : null}
+            <span>{label}</span>
+          </Button>
+        );
+      })}
     </div>
   );
 }

@@ -267,3 +267,41 @@ test("pro 不可用时 title 含原因，点击后仍停在编辑页", async () 
     );
   });
 });
+
+test("专业页签名在切页前后一致：两条 adapter 给同一个 proLabel", async () => {
+  const { InlineAdvancedWorkbenchHeader } = await loadHeader();
+  resetPluginModeCache();
+  resetPluginPageCache();
+
+  await withDom(async ({ render, find, click }) => {
+    function Host() {
+      const [editorMode, setEditorMode] = React.useState("normal");
+      return React.createElement(
+        InlineAdvancedWorkbenchHeader,
+        headerProps({
+          adapter: {
+            id: "grid",
+            label: "表格",
+            stage: null,
+            mode: {
+              current: editorMode,
+              setMode: (next) => setEditorMode(next),
+            },
+            pages: { proLabel: "Univer" },
+          },
+        }),
+      );
+    }
+    await render(React.createElement(Host));
+    assert.match(find('[data-plugin-page="pro"]').textContent || "", /Univer/);
+    await click(find('[data-plugin-page="pro"]'));
+    const after = find('[data-plugin-page="pro"]');
+    assert.match(after.textContent || "", /Univer/);
+    assert.equal(after.getAttribute("aria-current"), "page");
+    assert.equal(
+      /^\s*专业编辑\s*$/.test(after.textContent || ""),
+      false,
+      "切进专业页后页签掉回了缺省「专业编辑」",
+    );
+  });
+});

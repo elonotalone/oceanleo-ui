@@ -663,3 +663,13 @@ test("挂 DeckRoute 翻到 next 后必须出现 PPTist iframe", async () => {
     assert.equal(DEFAULT_EDITOR_CORE, "legacy");
   }
 });
+
+test("iframe load 之前不往 slides origin postMessage（W13）", () => {
+  assert.match(hosted, /export function hostedIframeReadyToPost\(loaded: boolean\)/);
+  assert.match(hosted, /return loaded === true/);
+  assert.match(hosted, /onLoad=/);
+  assert.match(
+    hosted,
+    /if \(!hostedIframeReadyToPost\(frameLoadedRef\.current\)\) return false/,
+  );
+});

@@ -114,6 +114,22 @@ import {
   univerFacadePortFromLive,
   type GridUniverLiveApi,
 } from "./grid-univer/stage-plan";
+import {
+  GRID_UNIVER_RECOVERY_EDITOR_ID,
+  isUniverWorkbookSnapshot,
+  shouldRestoreGridRecovery,
+} from "./grid-univer/live-handoff";
+import {
+  GRID_PRO_LABEL,
+  gridItemKey,
+  listUniverSnapshotValues,
+  peekGridLiveHandoff,
+  planGridSameDocumentOpen,
+  publishGridLiveHandoff,
+  registerGridLiveFlush,
+  replaceUniverWorkbookWithSnapshot,
+  sheetsFromLegacyProjectData,
+} from "./grid-univer/same-document";
 
 const GRID_SOURCE_FORMAT = "xlsx";
 const GRID_SOURCE_MEDIA_TYPE =
@@ -143,6 +159,8 @@ export function GridUniverStage({
     null,
   );
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
+  /** 本次打开是否由同会话交接供稿；是则崩溃草稿让路，见 `shouldRestoreGridRecovery`。 */
+  const openedFromHandoffRef = useRef(false);
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [conversion, setConversion] = useState<GridConversionState>("converted");
   const [conversionNotice, setConversionNotice] = useState("");
@@ -190,49 +208,79 @@ export function GridUniverStage({
       try {
         const schema = String(item.meta.editor_project_schema || "");
         const projectUrl = String(item.meta.editor_project_url || "");
-        if (schema === GRID_UNIVER_PROJECT_SCHEMA && projectUrl) {
-          const data = await loadEditorProject<Partial<IWorkbookData>>(
+        const itemKey = gridItemKey(item);
+        const handoff = peekGridLiveHandoff(itemKey);
+        openedFromHandoffRef.current = Boolean(handoff);
+        let univerSnapshot: Partial<IWorkbookData> | null = null;
+        let legacySheets: ReturnType<typeof sheetsFromLegacyProjectData> = null;
+        let officeSheets: ReturnType<typeof emptyGridSheet>[] | null = null;
+
+        if (
+          !handoff &&
+          schema === GRID_UNIVER_PROJECT_SCHEMA &&
+          projectUrl
+        ) {
+          univerSnapshot = await loadEditorProject<Partial<IWorkbookData>>(
             projectUrl,
             GRID_UNIVER_PROJECT_SCHEMA,
           );
-          if (cancelled) return;
-          snapshotRef.current = data;
-          legacySheetsRef.current = null;
-          setConversion("converted");
-          setConversionNotice("");
-          setSnapshotReady(true);
-          return;
+        } else if (
+          !handoff &&
+          projectUrl &&
+          schema !== GRID_UNIVER_PROJECT_SCHEMA
+        ) {
+          try {
+            const project = await loadEditorProject<unknown>(
+              projectUrl,
+              schema || GRID_LEGACY_PROJECT_SCHEMA,
+            );
+            legacySheets = sheetsFromLegacyProjectData(project);
+          } catch {
+            legacySheets = null;
+          }
         }
-        const sheets = await loadGridSheets(
-          officeSource.item,
-          undefined,
-          officeSource.resourceFailed,
-        );
+        if (!handoff && !univerSnapshot && !legacySheets) {
+          officeSheets = await loadGridSheets(
+            officeSource.item,
+            undefined,
+            officeSource.resourceFailed,
+          );
+        }
         if (cancelled) return;
-        const isStoredLegacy =
-          schema === GRID_LEGACY_PROJECT_SCHEMA ||
-          ((Boolean(item.url) || Boolean(item.artifactId)) &&
-            schema !== GRID_UNIVER_PROJECT_SCHEMA);
-        const planned = planGridLegacyConversion({
-          sheets,
-          schema: schema || (isStoredLegacy ? GRID_LEGACY_PROJECT_SCHEMA : ""),
+        const planned = planGridSameDocumentOpen({
+          itemKey,
+          schema,
           title,
+          handoff,
+          univerSnapshot,
+          legacySheets,
+          officeSheets,
         });
-        if (planned.ok) snapshotRef.current = planned.data;
-        else snapshotRef.current = emptySnapshot(title);
-        if (isStoredLegacy) {
-          legacySheetsRef.current = sheets;
+        snapshotRef.current = planned.snapshot || emptySnapshot(title);
+        if (planned.kind === "legacy-stored") {
+          legacySheetsRef.current = planned.sheets;
           setConversion("readonly");
           setConversionNotice(
-            planned.ok
+            planned.snapshot
               ? GRID_LEGACY_READONLY_NOTICE
-              : `${GRID_LEGACY_READONLY_NOTICE} ${planned.reason}`,
+              : `${GRID_LEGACY_READONLY_NOTICE} ${planned.reason || ""}`.trim(),
           );
         } else {
           legacySheetsRef.current = null;
           setConversion("converted");
-          setConversionNotice(planned.ok ? "" : planned.reason);
+          setConversionNotice("");
         }
+        publishGridLiveHandoff({
+          itemKey,
+          sheets:
+            planned.kind === "empty"
+              ? []
+              : planned.kind === "univer"
+                ? univerSnapshotToGridSheets(planned.snapshot)
+                : planned.sheets,
+          univerSnapshot: planned.snapshot,
+          source: "univer",
+        });
         setSnapshotReady(true);
       } catch (caught) {
         if (cancelled) return;
@@ -299,7 +347,21 @@ export function GridUniverStage({
       ],
     });
     const api = created.univerAPI as unknown as GridUniverLiveApi;
-    api.createWorkbook?.(snapshotRef.current || emptySnapshot(item.title || "工作簿"));
+    const snapshot = structuredClone(
+      snapshotRef.current || emptySnapshot(item.title || "工作簿"),
+    );
+    const painted = replaceUniverWorkbookWithSnapshot(api, snapshot);
+    const live = (
+      api.getActiveWorkbook?.() as { save?: () => unknown } | null
+    )?.save?.();
+    (
+      globalThis as typeof globalThis & {
+        __oceanleoGridUniverPaint?: unknown;
+      }
+    ).__oceanleoGridUniverPaint = {
+      ...painted,
+      liveCells: listUniverSnapshotValues(live),
+    };
     handleRef.current = { univer: created.univer, api };
     applyChrome(mode);
     const workbook = api.getActiveWorkbook?.();
@@ -537,10 +599,25 @@ export function GridUniverStage({
           source_format: saved.sourceFormat || GRID_SOURCE_FORMAT,
           source_media_type: saved.sourceMediaType || GRID_SOURCE_MEDIA_TYPE,
           editor_project_schema: GRID_UNIVER_PROJECT_SCHEMA,
+          editor_project_url: saved.projectUrl,
         },
       }),
     };
   }, [item, save, status]);
+  useEffect(() => {
+    registerGridLiveFlush(() => saveBeforeNewConversation());
+    return () => registerGridLiveFlush(null);
+  }, [saveBeforeNewConversation]);
+  useEffect(() => {
+    if (!snapshotReady || loading) return;
+    const snapshot = currentSnapshot();
+    publishGridLiveHandoff({
+      itemKey: gridItemKey(item),
+      sheets: univerSnapshotToGridSheets(snapshot),
+      univerSnapshot: snapshot,
+      source: "univer",
+    });
+  }, [currentSnapshot, editRevision, item, loading, snapshotReady]);
 
   const importLocalFile = useCallback(
     async (files: File[]) => {
@@ -668,6 +745,7 @@ export function GridUniverStage({
           current: mode,
           setMode,
         },
+        pages: { proLabel: GRID_PRO_LABEL },
         directDownload: {
           id: "grid-export-xlsx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label}`,
@@ -720,18 +798,23 @@ export function GridUniverStage({
           autoSave: !readonly,
           flush: saveBeforeNewConversation,
           recovery: {
-            key: advancedRecoveryKey("grid", item),
+            key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
             ready: snapshotReady && !loading,
             capture: () => currentSnapshot(),
             restore: (payload) => {
-              if (!payload || typeof payload !== "object") return false;
+              if (
+                !shouldRestoreGridRecovery({
+                  openedFromHandoff: openedFromHandoffRef.current,
+                  payload,
+                  accept: isUniverWorkbookSnapshot,
+                })
+              ) {
+                return false;
+              }
               const api = handleRef.current?.api;
-              const current = api?.getActiveWorkbook?.() as
-                | { getId?: () => string }
-                | null;
-              const unitId = current?.getId?.();
-              if (unitId) api?.disposeUnit?.(unitId);
-              api?.createWorkbook?.(payload);
+              if (!api) return false;
+              // 先建新簿再卸旧簿：先卸会让 Univer 空窗，新表常常不画。
+              replaceUniverWorkbookWithSnapshot(api, structuredClone(payload));
               snapshotRef.current = payload as Partial<IWorkbookData>;
               applyChrome(mode);
               return true;

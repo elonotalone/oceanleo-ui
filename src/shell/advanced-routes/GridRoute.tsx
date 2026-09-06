@@ -44,6 +44,17 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { renderGridNextOrLegacy } from "../doc-editors/grid-univer/route-dispatch";
+import {
+  GRID_PRO_LABEL,
+  flushGridLiveDocument,
+  gridItemKey,
+  itemWithoutUniverProjectPin,
+  peekGridLiveHandoff,
+  publishGridLiveHandoff,
+  registerGridLiveFlush,
+  shouldRestoreGridRecovery,
+  takeGridLiveHandoff,
+} from "../doc-editors/grid-univer/live-handoff";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 
 /**
@@ -80,7 +91,19 @@ export function GridRoute(props: AdvancedContentWorkbenchProps) {
 
 function GridLegacyGate(props: AdvancedContentWorkbenchProps) {
   const { pro } = usePluginMode("grid");
-  if (pro) return <GridUniverStage {...props} />;
+  const [shown, setShown] = useState<"legacy" | "next">(pro ? "next" : "legacy");
+  useEffect(() => {
+    const want: "legacy" | "next" = pro ? "next" : "legacy";
+    if (want === shown) return;
+    let cancelled = false;
+    void flushGridLiveDocument().finally(() => {
+      if (!cancelled) setShown(want);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pro, shown]);
+  if (shown === "next") return <GridUniverStage {...props} />;
   return <GridLegacyRoute {...props} />;
 }
 
@@ -183,8 +206,12 @@ function GridLegacyRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const officeSource = useOfficeArtifactSource(item);
+  const editorItem = useMemo(
+    () => itemWithoutUniverProjectPin(officeSource.item),
+    [officeSource.item],
+  );
   const editor = useGridEditor(
-    officeSource.item,
+    editorItem,
     siteId,
     officeSource.resourceFailed,
   );
@@ -260,6 +287,35 @@ function GridLegacyRoute({
       item: gridSavedItemForHandoff(saved.item || receipt || item, saved),
     };
   }, [editor.error, editor.save, item]);
+  const [pendingUniverHandoff] = useState(() => {
+    const handoff = peekGridLiveHandoff(gridItemKey(item));
+    if (handoff?.source !== "univer" || handoff.sheets.length === 0) return null;
+    return takeGridLiveHandoff(gridItemKey(item));
+  });
+  const pendingUniverHandoffRef = useRef(pendingUniverHandoff);
+  useEffect(() => {
+    registerGridLiveFlush(() => saveBeforeNewConversation());
+    return () => registerGridLiveFlush(null);
+  }, [saveBeforeNewConversation]);
+  useEffect(() => {
+    publishGridLiveHandoff({
+      itemKey: gridItemKey(item),
+      sheets: editor.sheets || [],
+      activeSheetId: editor.activeSheetId,
+      source: "legacy",
+    });
+  }, [editor.activeSheetId, editor.sheets, item]);
+  useEffect(() => {
+    if (editor.loading) return;
+    const handoff = pendingUniverHandoffRef.current;
+    pendingUniverHandoffRef.current = null;
+    if (!handoff || handoff.sheets.length === 0) return;
+    if (typeof editor.restoreRecovery !== "function") return;
+    editor.restoreRecovery({
+      sheets: handoff.sheets,
+      activeSheetId: handoff.activeSheetId,
+    });
+  }, [editor.loading, editor.restoreRecovery]);
   const [importError, setImportError] = useState("");
   /**
    * `.tsv` 过去在上传框里选得中、`loadGridFile` 当场拒（P1 实测）。现在先归一化
@@ -363,7 +419,7 @@ function GridLegacyRoute({
           current: "normal",
           setMode: setEditorMode,
         },
-        pages: { proLabel: "Univer" },
+        pages: { proLabel: GRID_PRO_LABEL },
         directDownload: {
           id: "grid-export-xlsx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label}`,
@@ -435,7 +491,13 @@ function GridLegacyRoute({
             key: advancedRecoveryKey("grid", item),
             ready: !editor.loading,
             capture: () => history.snapshot,
-            restore: editor.restoreRecovery,
+            // 刚从 Univer 页交接回来时，本地草稿不比交接新，不许盖掉交接内容。
+            restore: (payload) =>
+              shouldRestoreGridRecovery({
+                openedFromHandoff: Boolean(pendingUniverHandoff),
+                payload,
+                accept: editor.restoreRecovery,
+              }),
           },
         },
       }}

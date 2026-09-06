@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { readFileSync } from "node:fs";
+
 import { resetPluginModeCache } from "../src/shell/plugin-chrome/plugin-mode-store.ts";
 import { resetPluginPageCache } from "../src/shell/plugin-chrome/plugin-page-store.ts";
 
@@ -221,5 +223,64 @@ test("编辑栏只在编辑页存在：无选中也在；切 pro / aux 后消失
 
     await click(find('[data-plugin-page="artifact"]'));
     assert.ok(find("[data-workspace-edit-bar]"), "切回编辑页，编辑栏没回来");
+  });
+});
+
+test("文档段按钮有可见文字；没有 icon 的动作不画缺省齿轮", async () => {
+  const source = readFileSync(
+    "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
+    "utf8",
+  );
+  assert.doesNotMatch(source, /action\.icon \|\| ["']settings["']/);
+  assert.match(source, /from ["']\.\.\/\.\.\/ui\/Button["']/);
+  assert.match(source, /<Button[\s\S]*?<span>\{label\}<\/span>/);
+  assert.doesNotMatch(source, /<IconButton/);
+
+  const url = await compileModule(
+    "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
+    {
+      "../../i18n/ui/useUI": ttStubUrl,
+      "../../ui/Button": dataModule(`
+        import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+        export function Button({ children, ...rest }) {
+          return jsx("button", { ...rest, children });
+        }
+      `),
+      "../AdvancedEditorIcon": dataModule(`
+        import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+        export function AdvancedEditorIcon({ name }) {
+          return jsx("svg", { "data-icon": name });
+        }
+      `),
+    },
+  );
+  const { EditBarDocumentSegment } = await import(url);
+
+  await withDom(async ({ render, find }) => {
+    await render(
+      React.createElement(EditBarDocumentSegment, {
+        actions: [
+          { id: "grid-recalculate", label: "重新计算", onTrigger() {} },
+          {
+            id: "with-icon",
+            label: "带图标",
+            icon: "download",
+            onTrigger() {},
+          },
+        ],
+        onTrigger() {},
+      }),
+    );
+    const recalc = find('[data-workspace-action-id="grid-recalculate"]');
+    assert.ok(recalc, "重新计算按钮没画出来");
+    assert.match(recalc.textContent || "", /重新计算/);
+    assert.equal(
+      recalc.querySelector("[data-icon]"),
+      null,
+      "没有 icon 的动作不该画出缺省齿轮",
+    );
+    const withIcon = find('[data-workspace-action-id="with-icon"]');
+    assert.match(withIcon.textContent || "", /带图标/);
+    assert.equal(withIcon.querySelector("[data-icon]")?.getAttribute("data-icon"), "download");
   });
 });

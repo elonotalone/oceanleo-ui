@@ -80,6 +80,11 @@ export type RichDocHostedEmbedSrcInput = {
  * 而不是只在源码里搜标签名——`useMemo` 开头 `return ""` 时标签还在、用户已经
  * 看见「无法构造嵌入地址」。
  */
+/** iframe 还没 load 到编辑器 origin 时禁止 postMessage，否则目标对不上、宿主自己吃到红字。 */
+export function hostedIframeReadyToPost(loaded: boolean): boolean {
+  return loaded === true;
+}
+
 export function computeRichDocHostedEmbedSrc(
   input: RichDocHostedEmbedSrcInput,
 ): string {
@@ -136,6 +141,8 @@ export function RichDocHostedRoute({
   const [inspect, setInspect] = useState<InspectResult | null>(null);
   const [source, setSource] = useState<unknown>(null);
   const [readOnly, setReadOnly] = useState(true);
+  const frameLoadedRef = useRef(false);
+  const [frameLoaded, setFrameLoaded] = useState(false);
 
   useEffect(() => {
     const inline = inlineSourceFromItem(item);
@@ -193,8 +200,14 @@ export function RichDocHostedRoute({
     });
   }, [embedBase, instanceId, item.title, item.url]);
 
+  useEffect(() => {
+    frameLoadedRef.current = false;
+    setFrameLoaded(false);
+  }, [src]);
+
   const sendToEditor = useCallback(
     (message: Record<string, unknown>) => {
+      if (!hostedIframeReadyToPost(frameLoadedRef.current)) return false;
       const frame = iframeRef.current?.contentWindow;
       if (!frame || !isValidEditorTargetOrigin(editorOrigin)) return false;
       const envelope = { ...message, protocol: EDITOR_PROTOCOL, instanceId };
@@ -206,7 +219,7 @@ export function RichDocHostedRoute({
         return false;
       }
     },
-    [editorOrigin, instanceId],
+    [editorOrigin, frameLoaded, instanceId],
   );
 
   const pushInit = useCallback(() => {
@@ -235,6 +248,8 @@ export function RichDocHostedRoute({
       });
       if (!message) return;
       if (message.type === "ready") {
+        frameLoadedRef.current = true;
+        setFrameLoaded(true);
         setReady(true);
         pushInit();
         return;
@@ -454,6 +469,10 @@ export function RichDocHostedRoute({
                 sandbox={frameSandbox}
                 referrerPolicy="no-referrer"
                 className="min-h-0 w-full flex-1 border-0"
+                onLoad={() => {
+                  frameLoadedRef.current = true;
+                  setFrameLoaded(true);
+                }}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-8 text-center text-sm">

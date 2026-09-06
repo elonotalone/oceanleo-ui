@@ -601,3 +601,13 @@ test("RichDocRoute next 分支不许 return null / 恒假（辅闸；行为锁�
     "托管调用被 {false && …} 包死，翻 flag 用户仍停在旧核 / 空白页",
   );
 });
+
+test("iframe load 之前不往 docs origin postMessage（W13）", () => {
+  assert.match(hosted, /export function hostedIframeReadyToPost\(loaded: boolean\)/);
+  assert.match(hosted, /return loaded === true/);
+  assert.match(hosted, /onLoad=/);
+  assert.match(
+    hosted,
+    /if \(!hostedIframeReadyToPost\(frameLoadedRef\.current\)\) return false/,
+  );
+});

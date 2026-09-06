@@ -432,6 +432,7 @@ export function Model3DNextStage({
         id: "threed",
         label: editorToolLabel({ type: "threed" }),
         mode: { current: mode, setMode: applyMode },
+        pages: { proLabel: "专业编辑" },
         contextToolbar: (
           <Model3DNextToolbar
             view={view}

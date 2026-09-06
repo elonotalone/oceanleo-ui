@@ -528,6 +528,7 @@ export function VideoDesigncomboStage({
           current: mode,
           setMode,
         },
+        pages: { proLabel: "专业编辑" },
         directDownload: {
           id: "video-download-mp4",
           label: visualDownloadFormats("video-timeline")[0].label,
