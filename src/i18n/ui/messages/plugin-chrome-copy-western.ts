@@ -153,6 +153,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorer",
     reloadSourceTree: "Reload source tree",
     websiteSourceView: "Source",
+    websiteViewportPhone: "Phone",
+    websiteViewportTablet: "Tablet",
+    websiteViewportDesktop: "Desktop",
   },
   de: {
     viewSwitcher: "Ansicht wechseln",
@@ -310,6 +313,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorer",
     reloadSourceTree: "Quellbaum neu laden",
     websiteSourceView: "Quellcode",
+    websiteViewportPhone: "Handy",
+    websiteViewportTablet: "Tablet",
+    websiteViewportDesktop: "Desktop",
   },
   fr: {
     viewSwitcher: "Changer de vue",
@@ -470,6 +476,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorateur",
     reloadSourceTree: "Recharger l'arborescence des sources",
     websiteSourceView: "Code source",
+    websiteViewportPhone: "Téléphone",
+    websiteViewportTablet: "Tablette",
+    websiteViewportDesktop: "Ordinateur",
   },
   es: {
     viewSwitcher: "Cambiar de vista",
@@ -627,6 +636,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorador",
     reloadSourceTree: "Recargar el árbol de fuentes",
     websiteSourceView: "Código fuente",
+    websiteViewportPhone: "Teléfono",
+    websiteViewportTablet: "Tableta",
+    websiteViewportDesktop: "Escritorio",
   },
   "es-419": {
     viewSwitcher: "Cambiar de vista",
@@ -784,6 +796,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorador",
     reloadSourceTree: "Recargar el árbol de fuentes",
     websiteSourceView: "Código fuente",
+    websiteViewportPhone: "Teléfono",
+    websiteViewportTablet: "Tableta",
+    websiteViewportDesktop: "Escritorio",
   },
   it: {
     viewSwitcher: "Cambia vista",
@@ -941,6 +956,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Esplora risorse",
     reloadSourceTree: "Ricarica l'albero dei sorgenti",
     websiteSourceView: "Codice sorgente",
+    websiteViewportPhone: "Telefono",
+    websiteViewportTablet: "Tablet",
+    websiteViewportDesktop: "Desktop",
   },
   "pt-BR": {
     viewSwitcher: "Trocar de visão",
@@ -1097,6 +1115,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorador",
     reloadSourceTree: "Recarregar a árvore de código",
     websiteSourceView: "Código-fonte",
+    websiteViewportPhone: "Celular",
+    websiteViewportTablet: "Tablet",
+    websiteViewportDesktop: "Desktop",
   },
   "pt-PT": {
     viewSwitcher: "Mudar de vista",
@@ -1256,6 +1277,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Explorador",
     reloadSourceTree: "Recarregar a árvore de código",
     websiteSourceView: "Código-fonte",
+    websiteViewportPhone: "Telemóvel",
+    websiteViewportTablet: "Tablet",
+    websiteViewportDesktop: "Computador",
   },
   vi: {
     viewSwitcher: "Chuyển chế độ xem",
@@ -1410,6 +1434,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Trình quản lý tệp",
     reloadSourceTree: "Tải lại cây mã nguồn",
     websiteSourceView: "Mã nguồn",
+    websiteViewportPhone: "Điện thoại",
+    websiteViewportTablet: "Máy tính bảng",
+    websiteViewportDesktop: "Máy tính",
   },
   tr: {
     viewSwitcher: "Görünüm değiştir",
@@ -1566,5 +1593,8 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     explorer: "Dosya gezgini",
     reloadSourceTree: "Kaynak ağacını yeniden yükle",
     websiteSourceView: "Kaynak kodu",
+    websiteViewportPhone: "Telefon",
+    websiteViewportTablet: "Tablet",
+    websiteViewportDesktop: "Masaüstü",
   },
 };

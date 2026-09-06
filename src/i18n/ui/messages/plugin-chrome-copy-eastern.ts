@@ -145,6 +145,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     explorer: "資源管理器",
     reloadSourceTree: "重新讀取原始碼樹",
     websiteSourceView: "原始碼",
+    websiteViewportPhone: "手機",
+    websiteViewportTablet: "平板",
+    websiteViewportDesktop: "桌面",
   },
   ja: {
     viewSwitcher: "ビューの切り替え",
@@ -295,6 +298,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     explorer: "エクスプローラー",
     reloadSourceTree: "ソースツリーを再読み込み",
     websiteSourceView: "ソース",
+    websiteViewportPhone: "スマホ",
+    websiteViewportTablet: "タブレット",
+    websiteViewportDesktop: "デスクトップ",
   },
   ko: {
     viewSwitcher: "보기 전환",
@@ -444,6 +450,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     explorer: "탐색기",
     reloadSourceTree: "소스 트리 새로 읽기",
     websiteSourceView: "소스",
+    websiteViewportPhone: "휴대폰",
+    websiteViewportTablet: "태블릿",
+    websiteViewportDesktop: "데스크톱",
   },
   ar: {
     viewSwitcher: "تبديل العرض",
@@ -594,6 +603,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     explorer: "مستعرض الملفات",
     reloadSourceTree: "إعادة قراءة شجرة المصدر",
     websiteSourceView: "الشيفرة المصدرية",
+    websiteViewportPhone: "هاتف",
+    websiteViewportTablet: "جهاز لوحي",
+    websiteViewportDesktop: "سطح المكتب",
   },
   th: {
     viewSwitcher: "สลับมุมมอง",
@@ -742,6 +754,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     explorer: "ตัวจัดการไฟล์",
     reloadSourceTree: "อ่านผังซอร์สโค้ดใหม่",
     websiteSourceView: "ซอร์สโค้ด",
+    websiteViewportPhone: "มือถือ",
+    websiteViewportTablet: "แท็บเล็ต",
+    websiteViewportDesktop: "เดสก์ท็อป",
   },
   hi: {
     viewSwitcher: "व्यू बदलें",
@@ -892,5 +907,8 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     explorer: "एक्सप्लोरर",
     reloadSourceTree: "सोर्स ट्री फिर से पढ़ें",
     websiteSourceView: "सोर्स कोड",
+    websiteViewportPhone: "फ़ोन",
+    websiteViewportTablet: "टैबलेट",
+    websiteViewportDesktop: "डेस्कटॉप",
   },
 };

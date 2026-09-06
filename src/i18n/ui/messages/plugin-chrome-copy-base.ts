@@ -184,6 +184,10 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   // 声明侧在 website 仓 `gallery-editor/src/website-views.ts`，渲染侧是
   // `PluginChromeFrame` 的 `tt(view.label)`，与本册开头列的第一种情形同形。
   websiteSourceView: "源码",
+  // W05（2026-09-06）：预览视口三档，声明侧在 website 仓 `website-project-manifest.ts`。
+  websiteViewportPhone: "手机",
+  websiteViewportTablet: "平板",
+  websiteViewportDesktop: "桌面",
 } as const;
 
 export type PluginChromeCopyName = keyof typeof PLUGIN_CHROME_COPY_SOURCE;
