@@ -470,6 +470,14 @@ const CASES = [
   },
 ];
 
+test("清单自检：CASES 覆盖 13 件插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
+  // `table-driven-registration-guard` 判据 2：按命名表 for-of 注册的用例必须配长度正对照。
+  // 13 = ADVANCED_PLUGIN_FEATURE_IDS 的件数（advanced-plugin-open.test.mjs 钉的同一个数）。
+  assert.equal(CASES.length, 13, `CASES 夹具应覆盖 13 件插件，实测 ${CASES.length} 件`);
+  const editorIds = CASES.map((spec) => spec.editorId);
+  assert.equal(new Set(editorIds).size, editorIds.length, `CASES 里有重复的 editorId：${editorIds}`);
+});
+
 function concealmentReason(node) {
   let current = node;
   while (current && current.nodeType === 1) {

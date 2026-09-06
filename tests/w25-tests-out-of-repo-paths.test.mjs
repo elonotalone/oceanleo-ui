@@ -78,6 +78,25 @@ const REGISTERED = {
     "ffmpeg 探针自己写出来的产物，不是读进来的夹具；测试先写后判，缺了会自己重造",
   "/opt/cursor-workspaces/oceandino/docs/architecture/oceanleo-shell-spec-five-layers.md":
     "五层规范是 L4 chips 那八个标签的权威（§3 第 1 行），design-mode.test.mjs 拿它逐条对账；抄一份副本进来两边会各自漂移，而漂了就等于 chips 与规范不一致却没人发现。与上面几条跨仓对账同一档：oceandino 仓不在时那条用例自己 skip，不抛 ENOENT",
+  // ── X9 2026-09-06 登记的跨仓契约（三份测试早于本闸就在读这些路径，闸立起来后一直红）──
+  "/root/projects/oceandino/front/lib/editor-board-catalog.ts":
+    "oceandino 控制面的编辑器看板目录，advanced-plugin-open.test.mjs 拿它与本仓 ADVANCED_PLUGIN_FEATURE_IDS 对账 13 件插件是否同一张名单；控制面仓在 main 上长期存在（/root/projects/oceandino 是 /opt/cursor-workspaces/oceandino 的软链），抄副本进来两张名单会各自漂移",
+  "/root/projects/umo-hosted/src/bridge/tools-manifest.ts":
+    "umo-hosted 仓（富文本托管叶子）的 RICHDOC_CHIPS 权威，quick-actions-chips.test.mjs 拿它八个 label 与本仓 fallbackChipLabels 对账；跨仓契约不能抄副本，否则两边一起漂移却没人发现",
+  "/root/projects/umo-hosted/src/bridge/host-bridge.ts":
+    "umo-hosted 仓的宿主桥实现，rich-doc-hosted-review.test.mjs 直接驱动**对端真实代码**验「agent 改文档必须过审阅」（W08 闸①行为层）；复述件验不了对端接线，所以只能跨仓 import",
+  "/root/projects/umo-hosted/src/bridge/hosted-selection-wire.ts":
+    "同上，umo-hosted 侧的选区指令路由入口，rich-doc-hosted-review.test.mjs 跑真实路由而不是自写复述件",
+  "/root/projects/umo-hosted/src/bridge/protocol.ts":
+    "同上，umo-hosted 侧的 EDITOR_PROTOCOL 常量，rich-doc-hosted-review.test.mjs 拿它与本仓 editor-protocol.ts 逐字对账",
+  "/root/projects/umo-hosted/src/bridge/review.ts":
+    "同上，umo-hosted 侧的 ReviewStore，rich-doc-hosted-review.test.mjs 用真实审阅存储跑完整条提案路",
+  "/root/projects/umo-hosted/src/bridge/selection-command-route.ts":
+    "同上，umo-hosted 侧的 mutatesDocument / requiresReview 判定，rich-doc-hosted-review.test.mjs 验对端判定与本仓协议一致",
+  "/root/projects/umo-hosted/src/umo-commands.ts":
+    "同上，umo-hosted 侧 SUPPORTED_CONTROL_IDS 权威，rich-doc-hosted-review.test.mjs 拿它对账指令面",
+  "/root/projects/umo-hosted":
+    "上面几条 umo-hosted 路径的仓根，rich-doc-hosted-review.test.mjs 用它拼 App.vue 路径做结构层判据（闸②），不是夹具本体",
 };
 
 /**

@@ -327,6 +327,10 @@ test("会改文档的标 mutates:true，只读的标 false", () => {
     "chart-editor@1.toggle-legend": true,
     "chart-editor@1.add-series": true,
     "chart-editor@1.remove-series": true,
+    // 从表格选区快照整份换文档（editor.loadDocument）——改的是当前图表文档，mutates:true。
+    "chart-editor@1.create-from-range": true,
+    // 单轴 ↔ 双 Y 轴（editor.setYAxisCount），切回单轴还会清副轴绑定——改文档，mutates:true。
+    "chart-editor@1.set-y-axis-count": true,
     "chart-editor@1.export": false,
     "threed.describe-formats": false,
     "threed.set-view": true,

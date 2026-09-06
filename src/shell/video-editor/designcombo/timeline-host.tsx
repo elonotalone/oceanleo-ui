@@ -38,8 +38,10 @@ export function DesigncomboTimelineHost({
       {project.tracks.map((track) => (
         <div key={track.id} className="mb-2">
           <div className="mb-0.5 opacity-70">{track.name || track.type}</div>
+          {/* 轨道条与片段键都是可点的：命中区 ≥ 44px（hit-target-budget），
+              轨道 48 留 2px 内边距装 44 的片段键。 */}
           <div
-            className="relative h-8 rounded bg-black/40"
+            className="relative h-12 rounded bg-black/40"
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               const ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
@@ -58,7 +60,7 @@ export function DesigncomboTimelineHost({
                   type="button"
                   data-clip-id={id}
                   data-clip-type={clip.type}
-                  className="absolute top-0.5 h-7 overflow-hidden rounded px-1 text-left"
+                  className="absolute top-0.5 h-11 overflow-hidden rounded px-1 text-left"
                   style={{
                     left: `${left}%`,
                     width: `${Math.max(2, width)}%`,
