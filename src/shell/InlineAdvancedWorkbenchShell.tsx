@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
@@ -24,7 +16,14 @@ import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import { flushAdvancedWorkBeforeLeave } from "./advanced-leave-flush";
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
-import { EditBarHistoryControls } from "./EditBarDockControls";
+import {
+  HiddenUploadInput,
+  StageNoticeCorner,
+  useEditBarDockPresentation,
+  useHistoryControls,
+  useLeaveGate,
+  usePluginPagesForAdapter,
+} from "./inline-advanced-shell-parts";
 import { useAdvancedSession } from "./advanced-session-context";
 import {
   actionGroup,
@@ -50,11 +49,7 @@ import {
   publishLiveReactNode,
 } from "./live-react-node";
 import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
-import { PluginChromeNotices } from "./plugin-chrome/PluginChromeNotices";
-import {
-  buildPluginPages,
-  editBarVisibleOnPage,
-} from "./plugin-chrome/plugin-pages";
+import { editBarVisibleOnPage } from "./plugin-chrome/plugin-pages";
 import { usePluginPage } from "./plugin-chrome/plugin-page-store";
 
 export interface InlineAdvancedWorkbenchShellProps {
@@ -82,22 +77,7 @@ export function InlineAdvancedWorkbenchShell({
   const pagePluginId = (pluginThemeId ??
     adapter.id.split("@")[0]) as PluginThemeId;
   const { pageId } = usePluginPage(pagePluginId);
-  const pluginPages = useMemo(
-    () =>
-      buildPluginPages({
-        proLabel: adapter.pages?.proLabel,
-        proUnavailableReason:
-          adapter.pages?.proUnavailableReason ??
-          adapter.mode?.unavailableReason,
-        aux: adapter.pages?.aux,
-      }),
-    [
-      adapter.mode?.unavailableReason,
-      adapter.pages?.aux,
-      adapter.pages?.proLabel,
-      adapter.pages?.proUnavailableReason,
-    ],
-  );
+  const pluginPages = usePluginPagesForAdapter(adapter);
   const activePluginPage =
     pluginPages.find((page) => page.id === pageId) ?? pluginPages[0];
   const pluginTheme = usePluginTheme(pluginThemeId);
@@ -138,26 +118,15 @@ export function InlineAdvancedWorkbenchShell({
   const editBarSuppressed = editBarOwnershipForItem(item) === "none";
   const showEditBar =
     !editBarSuppressed && editBarVisibleOnPage(activePluginPage);
-  const localDockPresentation = useMemo(
-    () =>
-      rightPaneSlot || !showEditBar
-        ? null
-        : {
-            ownerId: ownerIdRef.current,
-            mode: floatingToolbar.mode,
-            dropActive: floatingToolbar.dropActive,
-            accent: effectiveAccent,
-            theme: pluginTheme.theme,
-          },
-    [
-      effectiveAccent,
-      showEditBar,
-      floatingToolbar.dropActive,
-      floatingToolbar.mode,
-      pluginTheme.theme,
-      rightPaneSlot,
-    ],
-  );
+  const localDockPresentation = useEditBarDockPresentation({
+    rightPaneSlot,
+    showEditBar,
+    ownerId: ownerIdRef.current,
+    mode: floatingToolbar.mode,
+    dropActive: floatingToolbar.dropActive,
+    accent: effectiveAccent,
+    theme: pluginTheme.theme,
+  });
   const liveHeaderStoreRef = useRef(createLiveReactNodeStore());
   const liveHeaderNode = useMemo(
     () => <LiveReactNode store={liveHeaderStoreRef.current} />,
@@ -255,19 +224,7 @@ export function InlineAdvancedWorkbenchShell({
   const panelVisible = Boolean(ownedDetail || fallbackDetail);
 
   // 撤销/重做从顶栏搬到编辑栏最左段（见 EditBarHistoryControls 的注释）。
-  const history = adapter.history;
-  const historyControls = useMemo(
-    () =>
-      history ? (
-        <EditBarHistoryControls
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-          onUndo={history.undo}
-          onRedo={history.redo}
-        />
-      ) : null,
-    [history],
-  );
+  const historyControls = useHistoryControls(adapter.history);
 
   const layoutState = useMemo(
     () => ({
@@ -320,27 +277,9 @@ export function InlineAdvancedWorkbenchShell({
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
-  // 离开确认。原生 window.confirm 冻住主线程、样式不可控、移动端尤其糟，
-  // 换成 ConfirmDialog 后它是异步的；用一道 promise 门把下面那段命令式流程接回来：
-  // requestClose 里 `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
-  const leaveResolveRef = useRef<((leave: boolean) => void) | null>(null);
-  const [askingLeave, setAskingLeave] = useState(false);
-  const confirmLeave = useCallback(
-    () =>
-      new Promise<boolean>((resolve) => {
-        leaveResolveRef.current = resolve;
-        setAskingLeave(true);
-      }),
-    [],
-  );
-  const answerLeave = useCallback((leave: boolean) => {
-    const resolve = leaveResolveRef.current;
-    leaveResolveRef.current = null;
-    setAskingLeave(false);
-    resolve?.(leave);
-  }, []);
-  // 卸载时把门放掉，否则 requestClose 里那个 await 会永远挂着。
-  useEffect(() => () => answerLeave(false), [answerLeave]);
+  // 离开确认走异步 ConfirmDialog（useLeaveGate 的注释）：requestClose 里
+  // `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
+  const { askingLeave, confirmLeave, answerLeave } = useLeaveGate();
 
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
@@ -485,25 +424,6 @@ export function InlineAdvancedWorkbenchShell({
       rightPaneSlot.setRightFrameless(false);
     };
   }, [liveHeaderNode, rightPaneSlot]);
-  useLayoutEffect(() => {
-    if (!rightPaneSlot || !showEditBar) return;
-    rightPaneSlot.setEditBarDockPresentation({
-      ownerId: ownerIdRef.current,
-      mode: floatingToolbar.mode,
-      dropActive: floatingToolbar.dropActive,
-      accent: effectiveAccent,
-      theme: pluginTheme.theme,
-    });
-    return () =>
-      rightPaneSlot.clearEditBarDockPresentation(ownerIdRef.current);
-  }, [
-    effectiveAccent,
-    showEditBar,
-    floatingToolbar.dropActive,
-    floatingToolbar.mode,
-    pluginTheme.theme,
-    rightPaneSlot,
-  ]);
 
   const editorViewport = adapter.nativeChrome?.viewport
     ? undefined
@@ -548,19 +468,11 @@ export function InlineAdvancedWorkbenchShell({
             : advancedWorkbenchStyle(accent)
         }
       >
-        {adapter.upload ? (
-          <input
-            ref={uploadInputRef}
-            type="file"
-            accept={adapter.upload.accept}
-            multiple={adapter.upload.multiple}
-            className="hidden"
-            onChange={(event) => {
-              void performUpload(Array.from(event.currentTarget.files || []));
-              event.currentTarget.value = "";
-            }}
-          />
-        ) : null}
+        <HiddenUploadInput
+          inputRef={uploadInputRef}
+          upload={adapter.upload}
+          onFiles={(files) => void performUpload(files)}
+        />
         {fallbackDetail && (
           <aside
             data-workspace-pane="left"
@@ -623,15 +535,8 @@ export function InlineAdvancedWorkbenchShell({
                 dropMessage={dropMessage}
                 onMaterialDrop={(event) => void handleDrop(event)}
               />
-              {adapter.notices?.length ? (
-                // 规范 v2 §1：提示是画布左下角的小胶囊，不是顶部通栏；与右下角缩放控件同高。
-                <div
-                  className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-7rem)]"
-                  style={{ zIndex: 2_147_483_010 }}
-                >
-                  <PluginChromeNotices notices={adapter.notices} />
-                </div>
-              ) : null}
+              {/* 规范 v2 §1：提示是画布左下角的小胶囊，不是顶部通栏；与右下角缩放控件同高。 */}
+              <StageNoticeCorner notices={adapter.notices} />
               <div
                 className="absolute bottom-3 right-3"
                 style={{ zIndex: 2_147_483_010 }}
