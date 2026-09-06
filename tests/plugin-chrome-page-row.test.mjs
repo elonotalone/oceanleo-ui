@@ -268,6 +268,79 @@ test("pro 不可用时 title 含原因，点击后仍停在编辑页", async () 
   });
 });
 
+// X1（规范 v2 §3）：页签行严格一行、固定 36px、不能上下滚、文字不裁。
+// JSDOM 不跑布局（scrollHeight / clientHeight 恒 0，量不出裁切），所以这里锁的是
+// **让浮层量得出那个结果的 CSS 契约**：容器 overflow-y-hidden + flex-nowrap + 固定高，
+// 页签 h-full + whitespace-nowrap 且不写死任何比行高大的 h-*。真实像素由
+// 浏览器探针（`signals/X1-journal.md` 判据 3）用 `scrollHeight <= clientHeight` 复测。
+test("页签行单行契约：固定 36px、不纵向滚、页签不换行、不写死比行高大的高度", async () => {
+  const { InlineAdvancedWorkbenchHeader } = await loadHeader();
+  resetPluginModeCache();
+  resetPluginPageCache();
+
+  await withDom(async ({ render, find, findAll }) => {
+    await render(
+      React.createElement(
+        InlineAdvancedWorkbenchHeader,
+        headerProps({
+          adapter: {
+            id: "website",
+            label: "网站",
+            stage: null,
+            mode: { current: "normal", setMode() {} },
+            pages: {
+              aux: [
+                { id: "code", label: "Code", kind: "aux" },
+                { id: "dashboard", label: "Dashboard", kind: "aux" },
+                { id: "database", label: "Database", kind: "aux" },
+                { id: "storage", label: "Storage", kind: "aux" },
+              ],
+            },
+          },
+          pluginThemeId: null,
+        }),
+      ),
+    );
+    const row = find("[data-plugin-page-row]");
+    assert.ok(row, "页面行没渲染出来");
+    const rowClass = row.className.split(/\s+/);
+    for (const required of ["flex", "flex-nowrap", "overflow-y-hidden", "overflow-x-auto"]) {
+      assert.ok(rowClass.includes(required), `页面行缺 ${required}：${row.className}`);
+    }
+    assert.equal(row.style.height, "36px", "页面行高度没钉死在 36px");
+    assert.equal(row.style.maxHeight, "36px", "页面行 max-height 没钉死在 36px");
+    assert.ok(
+      rowClass.some((token) => /scrollbar-width:none/.test(token)),
+      "横向溢出时应隐藏滚动条",
+    );
+
+    const tabs = findAll("[data-plugin-page]");
+    assert.equal(tabs.length, 6, "编辑 + 专业编辑 + 4 个 aux 页应该都在");
+    for (const tab of tabs) {
+      const tokens = tab.className.split(/\s+/);
+      assert.ok(tokens.includes("whitespace-nowrap"), `页签 ${tab.dataset.pluginPage} 可换行`);
+      assert.ok(tokens.includes("h-full"), `页签 ${tab.dataset.pluginPage} 没跟随行高`);
+      assert.ok(tokens.includes("shrink-0"), `页签 ${tab.dataset.pluginPage} 会被压扁`);
+      const pinned = tokens
+        .map((token) => /^h-(\d+)$/.exec(token))
+        .filter(Boolean)
+        .map((match) => Number(match[1]) * 4);
+      assert.deepEqual(
+        pinned.filter((px) => px > 36),
+        [],
+        `页签 ${tab.dataset.pluginPage} 写死了比 36px 高的高度：${tab.className}`,
+      );
+      assert.ok(
+        (tab.textContent || "").trim().length > 0 || tab.getAttribute("aria-label"),
+        "页签没有可见文字也没有 aria-label",
+      );
+      assert.equal(tab.getAttribute("role"), "tab");
+    }
+    // JSDOM 下两者都为 0；真浏览器里这条就是判据本身。留在这里让口径与探针一致。
+    assert.ok(row.scrollHeight <= row.clientHeight, "页签行能上下滚");
+  });
+});
+
 test("专业页签名在切页前后一致：两条 adapter 给同一个 proLabel", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   resetPluginModeCache();

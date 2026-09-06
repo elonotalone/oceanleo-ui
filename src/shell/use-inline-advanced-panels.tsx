@@ -23,7 +23,9 @@ import {
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { Button } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
+import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { InlineEditorMaterialPanel } from "./InlineEditorMaterialPanel";
 import {
   resolveActiveMaterialAction,
@@ -62,6 +64,11 @@ export interface InlineAdvancedPanelsInput {
   workbenchMaterials: WorkbenchMaterialContextValue | null;
   showWorkspaceDetail?: (detail: WorkspaceDetailRequest) => void;
   clearWorkspaceDetail?: (ownerId: string) => void;
+  /**
+   * 规范 v2 §2：上传住在素材库抽屉第一项，不再进编辑栏。宿主把隐藏的
+   * `<input type=file>` 的 click 接到这里；`adapter.upload` 缺席时不给这一项。
+   */
+  onLocalUpload?: () => void;
 }
 
 export function useInlineAdvancedPanels({
@@ -75,6 +82,7 @@ export function useInlineAdvancedPanels({
   workbenchMaterials,
   showWorkspaceDetail,
   clearWorkspaceDetail,
+  onLocalUpload,
 }: InlineAdvancedPanelsInput) {
   const tt = useUI();
   const consoleAgentFocus = useConsoleAgentFocus();
@@ -131,18 +139,41 @@ export function useInlineAdvancedPanels({
       if (drawer) {
         return { label: tt(drawer.label), content: drawer.content };
       }
+      const canUploadLocal = Boolean(adapter.upload && onLocalUpload);
       return {
         label: tt(drawerId === "materials" ? "素材" : adapter.label),
         content:
           drawerId === "materials" ? (
-            <InlineEditorMaterialPanel
-              item={item}
-              taskId={taskId}
-              siteId={siteId}
-              accent={accent}
-              materials={workbenchMaterials}
-              primaryMaterialAction={materialAction || activeMaterialAction}
-            />
+            <div className="flex h-full min-h-0 flex-col">
+              {canUploadLocal ? (
+                // 抽屉第一项永远是「从本地上传」（规范 v2 §2）。
+                <div className="shrink-0 border-b border-[var(--awb-border,var(--border,#e7e5e4))] p-2">
+                  <Button
+                    variant="secondary"
+                    block
+                    align="start"
+                    data-workspace-local-upload
+                    onClick={onLocalUpload}
+                    title={tt("从本地添加到画布，也可以直接拖放文件")}
+                  >
+                    <AdvancedEditorIcon name="uploads" className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {tt("从本地上传")}
+                    </span>
+                  </Button>
+                </div>
+              ) : null}
+              <div className="min-h-0 flex-1">
+                <InlineEditorMaterialPanel
+                  item={item}
+                  taskId={taskId}
+                  siteId={siteId}
+                  accent={accent}
+                  materials={workbenchMaterials}
+                  primaryMaterialAction={materialAction || activeMaterialAction}
+                />
+              </div>
+            </div>
           ) : null,
       };
     },
@@ -150,8 +181,10 @@ export function useInlineAdvancedPanels({
       accent,
       activeMaterialAction,
       adapter.label,
+      adapter.upload,
       drawerById,
       item,
+      onLocalUpload,
       siteId,
       taskId,
       tt,

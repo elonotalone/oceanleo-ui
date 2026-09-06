@@ -17,14 +17,29 @@ export interface AdvancedWorkbenchAction {
   icon?: WorkbenchIconName;
   variant?: "default" | "primary" | "danger" | "icon";
   /**
-   * Explicit semantic grouping for shared chrome. Download menus never infer
+   * Explicit semantic grouping for shared chrome. Menus never infer
    * membership from translated labels or route-specific ids.
+   *
+   * 规范 v2 §4：宿主按组分发，三者永不混住——
+   *   `"download"` → 第一行下载菜单；`"save"` → 第一行保存菜单；
+   *   `"edit"`（缺省，不写即是）→ 编辑栏文档段。
    */
-  group?: "download";
+  group?: "download" | "save" | "edit";
   disabled?: boolean;
   busy?: boolean;
   panelId?: string;
   onTrigger?: () => void | Promise<void>;
+}
+
+export type AdvancedWorkbenchActionGroup = NonNullable<
+  AdvancedWorkbenchAction["group"]
+>;
+
+/** 没写 `group` 的动作视为编辑类；宿主判组只走这里，不各自 `?? "edit"`。 */
+export function actionGroup(
+  action: Pick<AdvancedWorkbenchAction, "group">,
+): AdvancedWorkbenchActionGroup {
+  return action.group ?? "edit";
 }
 
 export function advancedWorkbenchStyle(accent: string): CSSProperties {

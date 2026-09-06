@@ -80,6 +80,18 @@ export interface AdvancedEditorUploadAdapter {
   onFiles: (files: File[]) => void | Promise<void>;
 }
 
+/**
+ * 画布提示（规范 v2 §1）：插件不再在画布顶部自画通栏（「此文档无文本层」之类），
+ * 改申报到这里，宿主用 `PluginChromeNotices` 画在画布左下角的小胶囊里，不遮内容。
+ */
+export interface AdvancedEditorNotice {
+  id: string;
+  /** 人话中文原文；宿主渲染时过 tt()。 */
+  text: string;
+  /** 缺省 "info"。 */
+  severity?: "info" | "warn";
+}
+
 export interface AdvancedContextToolbarHost {
   openDrawer: (
     drawerId: string,
@@ -107,11 +119,14 @@ export interface AdvancedEditorAdapter {
   /** Default deliverable shown first inside the shared download menu. */
   directDownload?: AdvancedWorkbenchAction;
   /**
-   * plugin-chrome-unification 之后：`group: "download"` 的动作进第一行的下载菜单；
-   * **其余动作一律不再画在第一行**，宿主把它们放进编辑栏的「文档段」
-   * （只在「编辑」页出现）。插件不必迁移字段，但应删掉冗余项。
+   * 规范 v2 §4：宿主按 `group` 分发——`"edit"`（缺省）进编辑栏文档段（只在「编辑」页）；
+   * `"save"` 进第一行保存菜单（套用草稿 / 保存 / 放弃草稿 / 重新加载 / 另存副本）；
+   * `"download"` 进第一行下载菜单（含「截图存入我的库」这类导出）。
+   * 编辑栏里**不允许**出现保存 / 上传 / 下载类动作；`upload` 走素材库抽屉。
    */
   actions?: readonly AdvancedWorkbenchAction[];
+  /** 画布左下角小胶囊提示；替代插件自画的顶部通栏。 */
+  notices?: readonly AdvancedEditorNotice[];
   history?: AdvancedHistoryActions;
   viewport?: AdvancedViewportActions;
   nativeChrome?: AdvancedEditorNativeChrome;

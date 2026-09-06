@@ -57,6 +57,10 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   downloadAndExport: "下载与导出",
   addFromLocal: "从本地添加到画布",
   addFromLocalHint: "从本地添加到画布，也可以直接拖放文件",
+  // X1（规范 v2）：上传住进素材库抽屉第一项；保存槽变成菜单，没有 save 动作时只列「立即保存」。
+  uploadFromLocal: "从本地上传",
+  saveNow: "立即保存",
+  saveProblem: "保存遇到问题",
   backToLibrary: "返回库",
   actionFailedRetry: "操作失败，请重试",
   autosaving: "正在自动保存",

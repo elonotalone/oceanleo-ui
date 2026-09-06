@@ -39,6 +39,7 @@ export function InlineAdvancedWorkbenchHeader({
   onOpenTransientPanel,
   onOpenLibrary,
   onRetrySave,
+  onSaveNow,
   onUploadFiles,
   onClose,
 }: {
@@ -63,6 +64,7 @@ export function InlineAdvancedWorkbenchHeader({
   ) => void;
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
   onRetrySave: () => void;
+  onSaveNow?: () => void | Promise<void>;
   onUploadFiles: (files: File[]) => void;
   onClose?: () => void;
 }) {
@@ -183,6 +185,7 @@ export function InlineAdvancedWorkbenchHeader({
         onBack={onBack}
         onOpenLibrary={onOpenLibrary}
         onRetrySave={onRetrySave}
+        onSaveNow={onSaveNow}
         onClose={onClose}
         onUploadFiles={onUploadFiles}
       />

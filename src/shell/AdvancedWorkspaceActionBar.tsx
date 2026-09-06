@@ -5,10 +5,17 @@ import { useUI } from "../i18n/ui/useUI";
 import { Button, IconButton } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import {
+  actionGroup,
+  type AdvancedWorkbenchAction,
+} from "./advanced-workbench-chrome";
 import { AnchoredPopover } from "./anchored-popover";
 import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
+
+/** 保存菜单里「立即保存」这一项的 id（无 save 组动作、但有 `persistence.flush` 时出现）。 */
+export const SAVE_NOW_ACTION_ID = "flush-now";
 
 export function AdvancedWorkspaceActionBar({
   adapter,
@@ -22,6 +29,7 @@ export function AdvancedWorkspaceActionBar({
   onBack,
   onOpenLibrary,
   onRetrySave,
+  onSaveNow,
   onClose,
   onTriggerAction,
 }: {
@@ -40,6 +48,8 @@ export function AdvancedWorkspaceActionBar({
   onOpenTools?: () => void;
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
   onRetrySave: () => void;
+  /** 「立即保存」：宿主把 `persistence.flush` 的最新一次刷盘接到这里。 */
+  onSaveNow?: () => void | Promise<void>;
   onClose?: () => void;
   onTriggerAction: (
     action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
@@ -50,18 +60,48 @@ export function AdvancedWorkspaceActionBar({
   const tt = useUI();
   const downloadButtonRef = useRef<HTMLButtonElement>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
   const [actionError, setActionError] = useState("");
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
   const actions = adapter.actions || [];
   const downloadActions = [
     ...(adapter.directDownload ? [adapter.directDownload] : []),
     ...actions.filter((action) => action.group === "download"),
   ];
-  const downloadMenuId = `workspace-download-${useId().replace(/:/g, "")}`;
+  // 保存菜单（规范 v2 §2）：有 save 组就列 save 组；没有且能刷盘就只列「立即保存」。
+  const declaredSaveActions = actions.filter(
+    (action) => actionGroup(action) === "save",
+  );
+  const saveActions: AdvancedWorkbenchAction[] =
+    declaredSaveActions.length > 0
+      ? declaredSaveActions
+      : adapter.persistence?.flush && onSaveNow
+        ? [
+            {
+              id: SAVE_NOW_ACTION_ID,
+              label: "立即保存",
+              icon: "file",
+              onTrigger: onSaveNow,
+            },
+          ]
+        : [];
+  const idBase = useId().replace(/:/g, "");
+  const downloadMenuId = `workspace-download-${idBase}`;
+  const saveMenuId = `workspace-save-${idBase}`;
+  const saveStateLabel = tt(
+    autoSaveState === "saving"
+      ? "正在自动保存"
+      : autoSaveState === "error"
+        ? "保存遇到问题"
+        : "已保存",
+  );
   const saveErrorTitle =
     autoSaveState === "error"
       ? autoSaveError || tt("保存失败，点击重试")
       : undefined;
+  const saveMenuAvailable = saveActions.length > 0 || autoSaveState === "error";
 
   const triggerAction = async (
     action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
@@ -123,12 +163,22 @@ export function AdvancedWorkspaceActionBar({
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         <div data-global-row-slot="save-state">
-          <IconButton
+          {/* 保存菜单：按钮本体只说状态；点开才有动作。无任何可点动作时它只是状态，不弹菜单。 */}
+          <Button
+            ref={saveButtonRef}
+            variant="ghost"
+            data-workspace-save-launcher
+            data-save-state={autoSaveState}
             onClick={() => {
-              if (autoSaveState === "error") onRetrySave();
+              if (!saveMenuAvailable) return;
+              setSaveOpen((value) => !value);
             }}
-            aria-disabled={autoSaveState !== "error"}
+            aria-disabled={!saveMenuAvailable || undefined}
+            aria-haspopup={saveMenuAvailable ? "menu" : undefined}
+            aria-expanded={saveMenuAvailable ? saveOpen : undefined}
+            aria-controls={saveMenuAvailable ? saveMenuId : undefined}
             aria-live="polite"
+            title={saveErrorTitle || saveStateLabel}
             style={{
               color:
                 autoSaveState === "error"
@@ -137,32 +187,94 @@ export function AdvancedWorkspaceActionBar({
                     ? "var(--awb-warn,#d97706)"
                     : "var(--awb-ok,#059669)",
             }}
-            label={tt(
-              autoSaveState === "saving"
-                ? "正在自动保存"
-                : autoSaveState === "error"
-                  ? "保存遇到问题，点击重试"
-                  : "已保存",
-            )}
-            title={
-              saveErrorTitle ||
-              tt(
-                autoSaveState === "saving"
-                  ? "正在自动保存"
-                  : autoSaveState === "error"
-                    ? "保存失败，点击重试"
-                    : "已保存",
-              )
-            }
-            icon={
-              <CloudAutoSaveIcon
-                state={autoSaveState}
-                className={`h-4 w-4 ${
-                  autoSaveState === "saving" ? "animate-pulse" : ""
-                }`}
+          >
+            <CloudAutoSaveIcon
+              state={autoSaveState}
+              className={`h-4 w-4 shrink-0 ${
+                autoSaveState === "saving" ? "animate-pulse" : ""
+              }`}
+            />
+            <span className="max-w-[9rem] truncate text-[12px]">
+              {saveStateLabel}
+            </span>
+            {saveMenuAvailable ? (
+              <AdvancedEditorIcon
+                name="chevron"
+                className="h-3 w-3 shrink-0 opacity-70"
               />
-            }
-          />
+            ) : null}
+          </Button>
+          {saveMenuAvailable ? (
+            <AnchoredPopover
+              open={saveOpen}
+              anchorRef={saveButtonRef}
+              panelRef={saveMenuRef}
+              onClose={() => setSaveOpen(false)}
+              id={saveMenuId}
+              role="menu"
+              ariaLabel={tt("保存")}
+              align="end"
+              maxHeight={384}
+              attributes={{ "data-workspace-save-menu": true }}
+              className="z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl"
+            >
+              {autoSaveState === "error" ? (
+                <Button
+                  variant="ghost"
+                  block
+                  align="start"
+                  role="menuitem"
+                  tabIndex={-1}
+                  data-workspace-save-action-id="retry"
+                  title={saveErrorTitle}
+                  onClick={() => {
+                    setSaveOpen(false);
+                    window.requestAnimationFrame(() =>
+                      saveButtonRef.current?.focus(),
+                    );
+                    onRetrySave();
+                  }}
+                >
+                  <CloudAutoSaveIcon state="error" className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {tt("保存失败，点击重试")}
+                  </span>
+                </Button>
+              ) : null}
+              {saveActions.map((action) => {
+                const label =
+                  action.busy && action.busyLabel
+                    ? action.busyLabel
+                    : action.label;
+                return (
+                  <Button
+                    key={action.id}
+                    variant={action.variant === "danger" ? "danger" : "ghost"}
+                    block
+                    align="start"
+                    role="menuitem"
+                    tabIndex={-1}
+                    data-workspace-save-action-id={action.id}
+                    disabled={action.disabled || action.busy}
+                    aria-busy={action.busy || undefined}
+                    onClick={() => {
+                      setSaveOpen(false);
+                      window.requestAnimationFrame(() =>
+                        saveButtonRef.current?.focus(),
+                      );
+                      void triggerAction(action);
+                    }}
+                  >
+                    <AdvancedEditorIcon
+                      name={action.icon || "file"}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 truncate">{tt(label)}</span>
+                  </Button>
+                );
+              })}
+            </AnchoredPopover>
+          ) : null}
         </div>
         <div data-global-row-slot="download">
           {downloadActions.length > 0 ? (

@@ -26,8 +26,11 @@ import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop
 import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
 import { EditBarHistoryControls } from "./EditBarDockControls";
 import { useAdvancedSession } from "./advanced-session-context";
-import { advancedWorkbenchStyle } from "./advanced-workbench-chrome";
-import type { AdvancedWorkbenchAction } from "./advanced-workbench-chrome";
+import {
+  actionGroup,
+  advancedWorkbenchStyle,
+  type AdvancedWorkbenchAction,
+} from "./advanced-workbench-chrome";
 import {
   PluginThemePortalContext,
   pluginThemeIdForAdapter,
@@ -47,6 +50,7 @@ import {
   publishLiveReactNode,
 } from "./live-react-node";
 import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
+import { PluginChromeNotices } from "./plugin-chrome/PluginChromeNotices";
 import {
   buildPluginPages,
   editBarVisibleOnPage,
@@ -162,6 +166,12 @@ export function InlineAdvancedWorkbenchShell({
   const closingRef = useRef(false);
   const handledCloseRequestRef = useRef(adapter.closeRequestRevision || 0);
   const dirtyRecordedRef = useRef(false);
+  // 隐藏的 <input type=file>：素材库抽屉第一项「从本地上传」与画布拖放共用同一条上传路径。
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const openLocalUpload = useCallback(
+    () => uploadInputRef.current?.click(),
+    [],
+  );
   const {
     drawers,
     activeDrawerId,
@@ -183,6 +193,7 @@ export function InlineAdvancedWorkbenchShell({
     workbenchMaterials,
     showWorkspaceDetail,
     clearWorkspaceDetail,
+    onLocalUpload: openLocalUpload,
   });
 
   const editorDirty = adapter.persistence?.dirty || false;
@@ -200,20 +211,18 @@ export function InlineAdvancedWorkbenchShell({
     state: typeof autoSave.state;
     errorMessage?: string;
   };
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  const documentActions = useMemo(() => {
-    const listed = (adapter.actions || []).filter(
-      (action) => action.group !== "download",
-    );
-    if (!adapter.upload) return listed;
-    const uploadAction: AdvancedWorkbenchAction = {
-      id: "local-upload",
-      label: "从本地添加到画布",
-      icon: "uploads",
-      onTrigger: () => uploadInputRef.current?.click(),
-    };
-    return [...listed, uploadAction];
-  }, [adapter.actions, adapter.upload]);
+  // 编辑栏文档段只收 edit 组（规范 v2 §4）。save 组进第一行保存菜单、download 组进
+  // 下载菜单、`adapter.upload` 进素材库抽屉——三者永不混住，这里不再往里塞任何一项。
+  const documentActions = useMemo(
+    () =>
+      (adapter.actions || []).filter(
+        (action) =>
+          action.group !== "download" &&
+          action.group !== "save" &&
+          actionGroup(action) === "edit",
+      ),
+    [adapter.actions],
+  );
   const triggerDocumentAction = useCallback(
     (action: AdvancedWorkbenchAction) => {
       if (action.panelId) {
@@ -399,9 +408,22 @@ export function InlineAdvancedWorkbenchShell({
   const openLibraryPanel = useCallback(
     (id: "materials" | "mine") => {
       closeDetail();
-      workspacePane?.openLibraryPanel(id);
+      // `/advanced/<featureId>` 与 MaterialCatalog 这类没有 SplitWorkspace 的承载里，
+      // 工作区窗格不存在（或没人登记库面板），第一行「素材库」以前点了没反应。
+      // 这时退到壳自己的素材抽屉——它的第一项就是「从本地上传」。
+      if (workspacePane?.openLibraryPanel(id)) return;
+      if (id === "materials") openDrawer("materials");
     },
-    [closeDetail, workspacePane],
+    [closeDetail, openDrawer, workspacePane],
+  );
+  const materialsDrawerOpen =
+    !transientPanel && activeDrawerId === "materials";
+  const activeLibraryPanelId =
+    workspacePane?.activeLibraryPanelId ||
+    (materialsDrawerOpen ? ("materials" as const) : null);
+  const saveNow = useCallback(
+    () => void autoSave.flushLatest(),
+    [autoSave.flushLatest],
   );
   const actionBar = useMemo(
     () => (
@@ -410,7 +432,7 @@ export function InlineAdvancedWorkbenchShell({
         autoSaveState={autoSaveState}
         autoSaveError={autoSaveError}
         activeDrawerId={layoutState.activeDrawerId}
-        activeLibraryPanelId={workspacePane?.activeLibraryPanelId || null}
+        activeLibraryPanelId={activeLibraryPanelId}
         drawers={drawers}
         accent={effectiveAccent}
         pluginThemeId={pluginThemeId}
@@ -423,11 +445,13 @@ export function InlineAdvancedWorkbenchShell({
         onOpenTransientPanel={openTransientPanel}
         onOpenLibrary={openLibraryPanel}
         onRetrySave={() => void autoSave.retry()}
+        onSaveNow={saveNow}
         onUploadFiles={(files) => void performUpload(files)}
         onClose={requestClose}
       />
     ),
     [
+      activeLibraryPanelId,
       adapter,
       effectiveAccent,
       pluginThemeId,
@@ -442,8 +466,8 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel,
       performUpload,
       requestClose,
+      saveNow,
       siteId,
-      workspacePane?.activeLibraryPanelId,
     ],
   );
   useLayoutEffect(() => {
@@ -600,6 +624,15 @@ export function InlineAdvancedWorkbenchShell({
                 dropMessage={dropMessage}
                 onMaterialDrop={(event) => void handleDrop(event)}
               />
+              {adapter.notices?.length ? (
+                // 规范 v2 §1：提示是画布左下角的小胶囊，不是顶部通栏；与右下角缩放控件同高。
+                <div
+                  className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-7rem)]"
+                  style={{ zIndex: 2_147_483_010 }}
+                >
+                  <PluginChromeNotices notices={adapter.notices} />
+                </div>
+              ) : null}
               <div
                 className="absolute bottom-3 right-3"
                 style={{ zIndex: 2_147_483_010 }}

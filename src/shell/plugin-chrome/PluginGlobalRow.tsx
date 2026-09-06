@@ -18,12 +18,15 @@ export interface PluginGlobalRowProps {
   onBack(): void;
   onOpenLibrary(id: WorkspaceLibraryPanelId): void;
   onRetrySave(): void;
+  /** 保存菜单「立即保存」（无 save 组动作时）。 */
+  onSaveNow?(): void | Promise<void>;
   onClose?(): void;
   onUploadFiles?(files: File[]): void;
 }
 
 export function PluginGlobalRow(props: PluginGlobalRowProps) {
-  const triggerDownload = (
+  // 第一行只承载 save / download 两个菜单里的动作；edit 组永远不到这里。
+  const triggerMenuAction = (
     action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
   ) => action.onTrigger?.();
   return (
@@ -40,8 +43,9 @@ export function PluginGlobalRow(props: PluginGlobalRowProps) {
         onBack={props.onBack}
         onOpenLibrary={props.onOpenLibrary}
         onRetrySave={props.onRetrySave}
+        onSaveNow={props.onSaveNow}
         onClose={props.onClose}
-        onTriggerAction={triggerDownload}
+        onTriggerAction={triggerMenuAction}
         onUploadFiles={props.onUploadFiles}
       />
     </div>
