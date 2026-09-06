@@ -9,6 +9,7 @@ import {
   isEditorRecoverySnapshot,
   isTrustedEditorOrigin,
 } from "../src/shell/editor-protocol.ts";
+import { classifyProjectManifest } from "../src/shell/editor-protocol-validation.mjs";
 
 const instanceId = "embedded-v8-round-trip";
 const envelope = (message) => ({
@@ -181,9 +182,89 @@ test("tools and six project views are validated and commandable both ways", () =
   assert.match(route, /value: "tablet", label: "平板"/);
   assert.match(route, /remoteSelectionRevision/);
   assert.doesNotMatch(route, /selection\.id === "design-canvas"/);
-  assert.match(route, /projectManifest\.views\.map/);
+  assert.match(route, /classifyProjectManifest/);
+  assert.match(route, /aux: remoteAuxPages/);
+  assert.doesNotMatch(route, /project-view:/);
   assert.match(host, /onProtocolReset\?\.\(\)/);
   assert.doesNotMatch(route, /nativeChrome:\s*\{\s*toolbar:\s*true/);
+});
+
+test("manifest role/placement split pages.aux from document actions; first row has no project-view buttons", () => {
+  const classified = classifyProjectManifest({
+    revision: "project-r9",
+    views: [
+      { id: "preview", label: "编辑", role: "artifact", active: true, icon: "pages" },
+      { id: "code", label: "Code", role: "page", active: false, icon: "file" },
+      { id: "database", label: "Database", role: "page", active: false, icon: "library" },
+      { id: "dashboard", label: "Dashboard", role: "page", active: false, icon: "tasks" },
+    ],
+    actions: [
+      { id: "reload", label: "重新加载", placement: "document" },
+      { id: "apply", label: "套用" },
+      { id: "zip", label: "下载 ZIP", placement: "download" },
+    ],
+  });
+  assert.deepEqual(
+    classified.auxViews.map((view) => view.id),
+    ["code", "database", "dashboard"],
+  );
+  assert.equal(classified.artifactViewId, "preview");
+  assert.equal(classified.activePageId, "artifact");
+  assert.deepEqual(
+    classified.documentActions.map((action) => action.id),
+    ["reload", "apply"],
+  );
+  assert.deepEqual(
+    classified.downloadActions.map((action) => action.id),
+    ["zip"],
+  );
+  assert.equal(
+    classifyProjectManifest({
+      revision: 1,
+      views: [
+        { id: "code", label: "Code", active: true },
+        { id: "preview", label: "编辑", role: "artifact", active: false },
+      ],
+      actions: [],
+    }).activePageId,
+    "code",
+  );
+
+  const accepted = childRoundTrip({
+    type: "project-manifest",
+    manifest: {
+      revision: "project-r9",
+      views: [
+        {
+          id: "preview",
+          label: "编辑",
+          icon: "pages",
+          active: true,
+          role: "artifact",
+        },
+        { id: "code", label: "Code", icon: "file", active: false, role: "page" },
+      ],
+      actions: [
+        { id: "reload", label: "重新加载", placement: "document" },
+        { id: "zip", label: "下载 ZIP", placement: "download" },
+      ],
+    },
+  });
+  assert.equal(accepted?.type, "project-manifest");
+  assert.equal(accepted?.manifest.views[0].role, "artifact");
+  assert.equal(accepted?.manifest.actions[1].placement, "download");
+
+  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  const host = source("../src/shell/workbench-embed.tsx");
+  assert.match(route, /pages:\s*\{/);
+  assert.match(route, /aux: remoteAuxPages/);
+  assert.match(route, /onSelectPage: selectEmbeddedPage/);
+  assert.match(route, /group: "download"/);
+  assert.doesNotMatch(route, /project-view:/);
+  assert.doesNotMatch(route, /website-refresh/);
+  assert.match(route, /sendProjectCommand\(\s*"view"/);
+  assert.match(host, /chrome: "host"/);
+  assert.match(host, /type: "set-mode"/);
 });
 
 test("recovery capture and restore preserve a real unconfirmed revision", () => {

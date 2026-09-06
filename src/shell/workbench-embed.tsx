@@ -269,7 +269,7 @@ export function EmbedEditorPane({
 
   useEffect(() => {
     if (phase !== "connecting" || !frameLoaded) return;
-    const init = () => sendToEditor({ type: "init" });
+    const init = () => sendToEditor({ type: "init", chrome: "host" });
     init();
     const interval = window.setInterval(init, 1_500);
     return () => window.clearInterval(interval);

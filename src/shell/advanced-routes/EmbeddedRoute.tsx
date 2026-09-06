@@ -20,6 +20,12 @@ import {
   type EditorToolManifestEntry,
   type EditorViewportSnapshot,
 } from "../editor-protocol";
+import { classifyProjectManifest } from "../editor-protocol-validation.mjs";
+import {
+  ARTIFACT_PAGE_ID,
+  PRO_PAGE_ID,
+  type PluginPage,
+} from "../plugin-chrome/plugin-pages";
 import { uploadFile } from "../../lib/database";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { SelectionToolbar } from "../SelectionToolbar";
@@ -56,6 +62,7 @@ import {
 } from "../workbench-material-provider";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { usePluginPage } from "../plugin-chrome/plugin-page-store";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 import { VideoCanvasRoute } from "./VideoCanvasRoute";
 
@@ -416,6 +423,7 @@ export function EmbeddedRoute({
         ? "video-canvas"
         : "design-canvas";
   const { mode: rememberedEditorMode } = usePluginMode(embeddedAdapterId);
+  const { pageId: storePageId } = usePluginPage(embeddedAdapterId);
   const [editorMode, setEditorMode] = useState<EditorMode>(
     DEFAULT_EDITOR_MODE,
   );
@@ -765,73 +773,92 @@ export function EmbeddedRoute({
     },
     [],
   );
-  const remoteActions = useMemo<AdvancedWorkbenchAction[]>(
-    () => {
-      if (projectManifest) {
-        return [
-          ...projectManifest.views.map(
-            (view): AdvancedWorkbenchAction => ({
-              id: `project-view:${view.id}`,
-              label: view.label,
-              icon: view.icon,
-              variant: view.active ? "primary" : "default",
-              disabled: view.disabled,
-              onTrigger: () =>
-                sendProjectCommand(
-                  "view",
-                  view.id,
-                  projectManifest.revision,
-                ),
-            }),
-          ),
-          ...projectManifest.actions.map(
-            (action): AdvancedWorkbenchAction => ({
-              id: `project-action:${action.id}`,
-              label: action.label,
-              busyLabel: action.busyLabel,
-              icon: action.icon,
-              variant: action.variant,
-              disabled: action.disabled,
-              busy: action.busy,
-              onTrigger: () =>
-                sendProjectCommand(
-                  "action",
-                  action.id,
-                  projectManifest.revision,
-                ),
-            }),
-          ),
-        ];
-      }
-      if (hostedMediaType === "video_canvas") {
-        return [
-          {
-            id: "video-run-all",
-            label: "运行全部",
-            icon: "animate",
-            onTrigger: () => sendRemoteCommand("run-all"),
-          },
-        ];
-      }
-      if (hostedMediaType === "website") {
-        return [
-          {
-            id: "website-refresh",
-            label: "刷新预览",
-            icon: "redo",
-            onTrigger: () => sendRemoteCommand("refresh-preview"),
-          },
-        ];
-      }
-      return [];
-    },
-    [
-      hostedMediaType,
-      projectManifest,
-      sendProjectCommand,
-      sendRemoteCommand,
-    ],
+  const classifiedManifest = useMemo(
+    () =>
+      projectManifest ? classifyProjectManifest(projectManifest) : null,
+    [projectManifest],
   );
+  const remoteActions = useMemo<AdvancedWorkbenchAction[]>(() => {
+    if (projectManifest && classifiedManifest) {
+      return [
+        ...classifiedManifest.documentActions,
+        ...classifiedManifest.downloadActions,
+      ].map((action) => ({
+        id: `project-action:${action.id}`,
+        label: action.label,
+        busyLabel: action.busyLabel,
+        icon: action.icon,
+        variant: action.variant,
+        disabled: action.disabled,
+        busy: action.busy,
+        ...(action.placement === "download" ? { group: "download" as const } : {}),
+        onTrigger: () =>
+          sendProjectCommand("action", action.id, projectManifest.revision),
+      }));
+    }
+    if (hostedMediaType === "video_canvas") {
+      return [
+        {
+          id: "video-run-all",
+          label: "运行全部",
+          icon: "animate",
+          onTrigger: () => sendRemoteCommand("run-all"),
+        },
+      ];
+    }
+    return [];
+  }, [
+    classifiedManifest,
+    hostedMediaType,
+    projectManifest,
+    sendProjectCommand,
+    sendRemoteCommand,
+  ]);
+  const remoteAuxPages = useMemo<PluginPage[]>(
+    () =>
+      (classifiedManifest?.auxViews || []).map((view) => ({
+        id: view.id,
+        label: view.label,
+        kind: "aux" as const,
+        icon: view.icon,
+        disabled: view.disabled,
+        unavailableReason: view.unavailableReason,
+      })),
+    [classifiedManifest],
+  );
+  const hostActivePageId =
+    rememberedEditorMode === "pro" || storePageId === PRO_PAGE_ID
+      ? PRO_PAGE_ID
+      : storePageId || classifiedManifest?.activePageId || ARTIFACT_PAGE_ID;
+  const lastDispatchedPageRef = useRef<string | null>(null);
+  const selectEmbeddedPage = useCallback(
+    (pageId: string) => {
+      const dispatchKey = `${pageId}::${classifiedManifest?.artifactViewId ?? ""}::${projectManifest?.revision ?? ""}`;
+      if (lastDispatchedPageRef.current === dispatchKey) return;
+      lastDispatchedPageRef.current = dispatchKey;
+      if (pageId === PRO_PAGE_ID) {
+        applyEditorMode("pro");
+        return;
+      }
+      applyEditorMode("normal");
+      if (!projectManifest || !classifiedManifest) return;
+      if (pageId === ARTIFACT_PAGE_ID) {
+        if (classifiedManifest.artifactViewId) {
+          sendProjectCommand(
+            "view",
+            classifiedManifest.artifactViewId,
+            projectManifest.revision,
+          );
+        }
+        return;
+      }
+      sendProjectCommand("view", pageId, projectManifest.revision);
+    },
+    [applyEditorMode, classifiedManifest, projectManifest, sendProjectCommand],
+  );
+  useEffect(() => {
+    selectEmbeddedPage(hostActivePageId);
+  }, [hostActivePageId, selectEmbeddedPage]);
   useEffect(() => {
     setSelection(null);
     setSelectionCommand(null);
@@ -841,6 +868,7 @@ export function EmbeddedRoute({
     setRemoteToolsManifest(null);
     setProjectManifest(null);
     setProjectCommand(null);
+    lastDispatchedPageRef.current = null;
     setRecoveryCaptureRequestId("");
     setRecoveryRestore(null);
     const pendingRestore = recoveryRestoreRef.current;
@@ -925,6 +953,7 @@ export function EmbeddedRoute({
     setRemoteToolsManifest(null);
     setProjectManifest(null);
     setProjectCommand(null);
+    lastDispatchedPageRef.current = null;
     setEmbeddedRecoveryReady(false);
     setDesignSourceReceipt(null);
     setDesignHandshakeGeneration((value) => value + 1);
@@ -1442,6 +1471,11 @@ export function EmbeddedRoute({
         mode: {
           current: editorMode,
           setMode: applyEditorMode,
+        },
+        pages: {
+          aux: remoteAuxPages,
+          activePageId: hostActivePageId,
+          onSelectPage: selectEmbeddedPage,
         },
         stage: carrierOpenRejection ? (
           <div

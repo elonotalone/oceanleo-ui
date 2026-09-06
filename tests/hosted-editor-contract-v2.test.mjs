@@ -105,6 +105,76 @@ test("v2 只加不减：v1 的全部指令仍在集合里", () => {
   assert.equal(HOSTED_EDITOR_CONTRACT_VERSION, "2.0");
 });
 
+test("plugin-chrome 可选字段：v1 project-manifest 不带 role/placement 照旧通过", () => {
+  const v1 = asEditorToHostMessage(
+    envelope("project-manifest", {
+      manifest: {
+        revision: 3,
+        views: [{ id: "preview", label: "Preview", active: true }],
+        actions: [{ id: "publish", label: "Publish" }],
+      },
+    }),
+    INSTANCE,
+  );
+  assert.ok(v1, "v1 project-manifest 必须仍然被接受");
+  assert.equal(v1.manifest.views[0].role, undefined);
+  assert.equal(v1.manifest.views[0].unavailableReason, undefined);
+  assert.equal(v1.manifest.actions[0].placement, undefined);
+  assert.ok(asHostToEditorMessage(envelope("init", {}), INSTANCE));
+  assert.ok(
+    asHostToEditorMessage(envelope("init", { chrome: "host" }), INSTANCE),
+  );
+});
+
+test("plugin-chrome 可选字段：非法 role/placement/chrome 整条丢掉", () => {
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => {
+    errors.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(
+      asEditorToHostMessage(
+        envelope("project-manifest", {
+          manifest: {
+            revision: 3,
+            views: [
+              { id: "preview", label: "Preview", active: true, role: "tab" },
+            ],
+            actions: [],
+          },
+        }),
+        INSTANCE,
+      ),
+      null,
+    );
+    assert.equal(
+      asEditorToHostMessage(
+        envelope("project-manifest", {
+          manifest: {
+            revision: 3,
+            views: [{ id: "preview", label: "Preview", active: true }],
+            actions: [
+              { id: "publish", label: "Publish", placement: "header" },
+            ],
+          },
+        }),
+        INSTANCE,
+      ),
+      null,
+    );
+    assert.equal(
+      asHostToEditorMessage(envelope("init", { chrome: "iframe" }), INSTANCE),
+      null,
+    );
+  } finally {
+    console.error = original;
+  }
+  assert.ok(errors.some((line) => line.includes("invalid view.role")));
+  assert.ok(errors.some((line) => line.includes("invalid action.placement")));
+  assert.ok(errors.some((line) => line.includes("invalid chrome")));
+});
+
 test("v2 只加不减：v1 形态的 tools-manifest（没有 manifestVersion/chips）照样通过", () => {
   const v1Manifest = envelope("tools-manifest", {
     revision: 7,

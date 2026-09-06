@@ -73,12 +73,20 @@ export interface EditorToolManifestEntry {
   choices: EditorToolChoice[];
 }
 
+export type EditorProjectViewRole = "page" | "artifact";
+export type EditorProjectActionPlacement = "document" | "download";
+export type EditorHostChrome = "host";
+
 export interface EditorProjectView {
   id: string;
   label: string;
   icon?: EditorProjectIcon;
   active: boolean;
   disabled?: boolean;
+  /** 缺省 "page" = 第二行附加页；"artifact" = 成品页，宿主映射到「编辑」。 */
+  role?: EditorProjectViewRole;
+  /** 不可用时的人话原因，透传到页签 title。 */
+  unavailableReason?: string;
 }
 
 export interface EditorProjectAction {
@@ -89,6 +97,8 @@ export interface EditorProjectAction {
   variant?: "default" | "primary" | "danger" | "icon";
   disabled?: boolean;
   busy?: boolean;
+  /** 缺省 "document" = 编辑栏文档段；"download" = 第一行下载菜单。 */
+  placement?: EditorProjectActionPlacement;
 }
 
 export interface EditorProjectManifest {
@@ -182,7 +192,13 @@ export interface EditorRecoverySnapshot {
 }
 
 export type HostToEditorMessage =
-  | { protocol: typeof EDITOR_PROTOCOL; type: "init"; instanceId: string }
+  | {
+      protocol: typeof EDITOR_PROTOCOL;
+      type: "init";
+      instanceId: string;
+      /** 宿主画两行 chrome。缺省 = 旧宿主未声明。 */
+      chrome?: EditorHostChrome;
+    }
   | {
       protocol: typeof EDITOR_PROTOCOL;
       type: "open-asset";

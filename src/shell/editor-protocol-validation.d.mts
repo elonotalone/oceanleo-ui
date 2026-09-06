@@ -3,7 +3,9 @@ import type {
   EditorAssetPayload,
   EditorDocumentRevision,
   EditorHistorySnapshot,
+  EditorProjectAction,
   EditorProjectManifest,
+  EditorProjectView,
   EditorRecoverySnapshot,
   EditorReviewProposal,
   EditorToHostMessage,
@@ -35,6 +37,15 @@ export function validToolManifest(
 export function validProjectManifest(
   value: unknown,
 ): value is EditorProjectManifest;
+export function validHostInitChrome(record: Record<string, unknown>): boolean;
+export function classifyProjectManifest(manifest: EditorProjectManifest): {
+  auxViews: readonly EditorProjectView[];
+  artifactView: EditorProjectView | null;
+  artifactViewId: string | null;
+  activePageId: string;
+  documentActions: readonly EditorProjectAction[];
+  downloadActions: readonly EditorProjectAction[];
+};
 export function isEditorRecoverySnapshot(
   value: unknown,
 ): value is EditorRecoverySnapshot;

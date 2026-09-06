@@ -25,6 +25,7 @@ import {
   validAssetPayload,
   validAssetUrl,
   validManifestId,
+  validHostInitChrome,
   validProjectManifest,
   validRevision,
   validToolsManifestMessage,
@@ -539,7 +540,7 @@ export function asHostToEditorMessage(
     if (!boundedString(record.disposeId, 128, true)) return null;
     return record as unknown as HostToEditorMessage;
   }
-  if (type === "init") return record as unknown as HostToEditorMessage;
+  if (type === "init") return validHostInitChrome(record) ? (record as unknown as HostToEditorMessage) : null;
   // v2 分支（set-mode / hide-chrome / review-decision）。未知 type 回 null。
   return contractV2HostToEditor(type, record) as HostToEditorMessage | null;
 }

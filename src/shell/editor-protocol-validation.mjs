@@ -263,6 +263,20 @@ export function validProjectManifest(value) {
     ) {
       return false;
     }
+    if (view.role !== undefined && view.role !== "page" && view.role !== "artifact") {
+      console.error(
+        "[oceanleo.editor.v1] discard project-manifest: invalid view.role",
+        view.role,
+      );
+      return false;
+    }
+    if (!boundedString(view.unavailableReason, 300)) {
+      console.error(
+        "[oceanleo.editor.v1] discard project-manifest: invalid view.unavailableReason",
+        view.unavailableReason,
+      );
+      return false;
+    }
     ids.add(view.id);
     if (view.active) activeViews += 1;
   }
@@ -285,9 +299,52 @@ export function validProjectManifest(value) {
     ) {
       return false;
     }
+    if (
+      action.placement !== undefined &&
+      action.placement !== "document" &&
+      action.placement !== "download"
+    ) {
+      console.error(
+        "[oceanleo.editor.v1] discard project-manifest: invalid action.placement",
+        action.placement,
+      );
+      return false;
+    }
     ids.add(action.id);
   }
   return true;
+}
+
+/** 既有 init 的可选 chrome 字段。缺省通过；非法值整条丢掉。 */
+export function validHostInitChrome(record) {
+  if (!record || record.chrome === undefined) return true;
+  if (record.chrome === "host") return true;
+  console.error(
+    "[oceanleo.editor.v1] discard init: invalid chrome",
+    record.chrome,
+  );
+  return false;
+}
+
+/**
+ * 已通过校验的 project-manifest → 宿主页面行 / 文档段 / 下载菜单切片。
+ * role "artifact" 并进「编辑」；缺省 role 当 "page"；缺省 placement 当 "document"。
+ */
+export function classifyProjectManifest(manifest) {
+  const views = Array.isArray(manifest?.views) ? manifest.views : [];
+  const actions = Array.isArray(manifest?.actions) ? manifest.actions : [];
+  const auxViews = views.filter((view) => view.role !== "artifact");
+  const artifactView = views.find((view) => view.role === "artifact") || null;
+  const active = views.find((view) => view.active) || null;
+  const activeIsAux = Boolean(active && active.role !== "artifact");
+  return {
+    auxViews,
+    artifactView,
+    artifactViewId: artifactView?.id || views[0]?.id || null,
+    activePageId: activeIsAux ? active.id : "artifact",
+    documentActions: actions.filter((action) => action.placement !== "download"),
+    downloadActions: actions.filter((action) => action.placement === "download"),
+  };
 }
 
 function validRecoveryValue(value, depth = 0, seen = new WeakSet()) {
