@@ -29,6 +29,7 @@ import {
   PDF_FRAME_SANDBOX_EXEMPTION,
   SANDBOX_ORIGIN_CONTRACT,
   HOSTED_EDITOR_EMBED_BASES,
+  HOSTED_EDITOR_SANDBOX,
   TRUSTED_EMBED_EDITOR_BASES,
   TRUSTED_EMBED_EDITOR_ORIGINS,
   TRUSTED_EMBED_EDITOR_SANDBOX,
@@ -78,7 +79,7 @@ test("W8/1 沙箱组合：不可信来源永不同时拿到 allow-scripts 与 al
   assert.ok(UNTRUSTED_FRAME_SANDBOX.includes("allow-scripts"));
   assert.equal(UNTRUSTED_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
-  // 只有第一方白名单来源才被明确允许同源（并被本断言锁死其定义）。
+  // 只有写死白名单来源才被明确允许同源（并被本断言锁死其定义）。
   assert.equal(
     sandboxGrantsScriptedSameOrigin(TRUSTED_EMBED_EDITOR_SANDBOX),
     true,
@@ -87,6 +88,12 @@ test("W8/1 沙箱组合：不可信来源永不同时拿到 allow-scripts 与 al
     sandboxGrantsScriptedSameOrigin(TRUSTED_INTERACTIVE_VIEWER_SANDBOX),
     true,
   );
+  // 2026-09-06 操作员裁定：隔离域我方部署编辑器单独命名，令牌串与第一方档相同。
+  assert.equal(
+    sandboxGrantsScriptedSameOrigin(HOSTED_EDITOR_SANDBOX),
+    true,
+  );
+  assert.equal(HOSTED_EDITOR_SANDBOX, TRUSTED_EMBED_EDITOR_SANDBOX);
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -115,23 +122,42 @@ test("W8/1 workbench 嵌入：白名单 base 保留同源，任何其他 URL 立
   }
 });
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。托管六件（AudioMass / three.js editor / Umo / PPTist /
-// microStudio / Langflow）虽然能拼 embed URL，但必须拿不可信沙箱常量，
-// 一个都不许落到第一方同源档。期望值是常量 UNTRUSTED_FRAME_SANDBOX，
-// 不许再调一次 embedEditorFrameSandbox() 当期望——函数改坏时期望会跟着坏。
-test("UC-3 托管六件每一条都拿不可信沙箱常量，且不得脚本加同源", () => {
+// UC-3 修订（2026-09-06 操作员裁定，见 isolation 文档「UC-3 修订」）：
+// 托管六件是我方部署在隔离域上的可控代码，拿 HOSTED_EDITOR_SANDBOX（含同源）。
+// 期望值是常量 HOSTED_EDITOR_SANDBOX，不许再调一次 embedEditorFrameSandbox()
+// 当期望——函数改坏时期望会跟着坏。真正的 UGC（p*--base.oceanleo.app、
+// cover frame、UNTRUSTED_FRAME_SANDBOX）仍不得脚本加同源。
+test("UC-3 托管六件每一条都拿 HOSTED_EDITOR_SANDBOX（隔离域同源）", () => {
   assert.equal(HOSTED_EDITOR_EMBED_BASES.length, 6);
+  assert.equal(
+    HOSTED_EDITOR_SANDBOX,
+    "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals",
+  );
   for (const base of HOSTED_EDITOR_EMBED_BASES) {
+    const sandbox = embedEditorFrameSandbox(base);
+    assert.equal(sandbox, HOSTED_EDITOR_SANDBOX, base);
+    assert.equal(
+      sandboxGrantsScriptedSameOrigin(sandbox),
+      true,
+      `${base} 必须拿到隔离域同源沙箱`,
+    );
+  }
+  const ugcPreviewBases = [
+    "https://p1--base.oceanleo.app",
+    "https://p123--deadbeef.oceanleo.app/",
+    `https://p8080-${"a".repeat(32)}.website.oceanleo.com/`,
+  ];
+  for (const base of ugcPreviewBases) {
     const sandbox = embedEditorFrameSandbox(base);
     assert.equal(sandbox, UNTRUSTED_FRAME_SANDBOX, base);
     assert.equal(
       sandboxGrantsScriptedSameOrigin(sandbox),
       false,
-      `${base} 拿到了同源沙箱`,
+      `${base} 是 UGC 预览，不得同源`,
     );
   }
+  assert.equal(sandboxGrantsScriptedSameOrigin(COVER_FRAME_SANDBOX), false);
+  assert.equal(sandboxGrantsScriptedSameOrigin(UNTRUSTED_FRAME_SANDBOX), false);
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）

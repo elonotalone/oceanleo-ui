@@ -15,8 +15,10 @@
 //  1. **全串匹配，不做任何后缀/前缀推断。** 下面是一个 origin 全串的 Set，
 //     `endsWith('.oceanleo.app')` 这类写法一次都不许出现——那正是本表要挡的东西。
 //  2. **只对编辑器通道生效。** 本表不放宽 `isUntrustedContentHostname()` 本身，
-//     也不碰 `domain-family.ts`（`_COMMON.md` §2 第 11 条）。别的 origin 判定
-//     （沙箱属性、素材域、预览域）看不到这张表，行为逐字不变。
+//     也不碰 `domain-family.ts`（`_COMMON.md` §2 第 11 条）。素材域、预览域、
+//     website 成品 / game 运行时看不到这张表。W07 起，本表成员在
+//     `embedEditorFrameSandbox()` 拿 `HOSTED_EDITOR_SANDBOX`（同源只给自己）；
+//     那是白名单成员资格，不是 `.oceanleo.app` 后缀推断。
 //  3. **零依赖。** `editor-protocol.ts` 会被 `tests/helpers/module-bench.mjs`
 //     以 data: URL 编译加载，多一条相对依赖就多一处解析风险。本文件只有常量。
 //
@@ -37,8 +39,8 @@ export const HOSTED_EDITOR_HOST_LABELS = Object.freeze([
   "docs", // Umo Editor（W08）
   "audio", // AudioMass（W10）
   "3d", // three.js editor（W11）
-  "game-ide", // microStudio（W14）
-  "flow", // Langflow（W15）
+  "game-ide", // microStudio（W14）。W08 后无消费者，待父 agent 清理——本波不删标签。
+  "flow", // Langflow（W15）。W08 后无消费者，待父 agent 清理——本波不删标签。
 ] as const);
 
 /**

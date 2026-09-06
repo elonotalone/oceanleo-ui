@@ -123,27 +123,35 @@ const TRUSTED_EMBED_EDITOR_BASE_SET = new Set<string>(
 );
 
 /**
- * 命名空间 E 的六件 Hosted 编辑器 base（W01 判据 3 / 仲裁 A-24 / W07 R2）。
+ * 命名空间 E 的六件 Hosted 编辑器 base（W01 判据 3 / 仲裁 A-24 /
+ * 2026-09-06 操作员裁定 · plugin-chrome W07）。
  *
  * **与上面那张表并列，且刻意不合并**——两张表的语义不同：
- *   · `TRUSTED_EMBED_EDITOR_BASES` = 家族内第一方子站，**拿 `allow-same-origin`**；
- *   · 本表 = 独立可注册域 `oceanleo.app` 上的六件，**不拿同源**。
+ *   · `TRUSTED_EMBED_EDITOR_BASES` = 家族内第一方子站（`.com` / `.cn`），
+ *     拿 `TRUSTED_EMBED_EDITOR_SANDBOX`（同源，因为它们本就在 SSO cookie 域）；
+ *   · 本表 = 我方部署、写死白名单的独立可注册域 `*.oceanleo.app` 编辑器，
+ *     拿 `HOSTED_EDITOR_SANDBOX`（同源只给它们自己的 origin）。
  *
- * 为什么不给同源：六件里 `audio` / `3d` / `game-ide` / `flow` 是**未修改的第三方
- * 整站应用**（Langflow、microStudio 各带一整套上游 JS 与依赖树）。
- * `allow-scripts` + `allow-same-origin` 同时给出去，沙箱就等于没有
- * （`sandboxGrantsScriptedSameOrigin()` 判的就是这个组合）。
- * 它们**不需要**同源：持久化全走 postMessage，宿主拿自己的凭据落库
- * （`signals/W18-domains.md` §3 逐条论证）。
- * ⇒ 加进本表只解开「拼得出 embed URL」，沙箱面维持不可信档。
+ * 为什么现在给同源（2026-09-06 操作员裁定）：这些 origin 是我方部署、
+ * 可控代码的独立可注册域。iframe 拿到 `allow-same-origin` 后 origin 是
+ * `https://slides.oceanleo.app` 自己，不是 `null`。宿主才能把
+ * `postMessage(envelope, "https://slides.oceanleo.app")` 投进去，静态资源
+ * 也不再以 `null` origin 撞 CORS。它们**拿不到**家族 cookie：
+ * `Domain=.oceanleo.com` 过不了 eTLD+1 边界（见 isolation 文档 UC-3 修订）。
+ *
+ * 真正的用户生成内容**不走本函数的 hosted 分支**：
+ *   · website 预览 `p*--base.oceanleo.app` / `p<port>-<hex>.website.oceanleo.com`
+ *   · game 运行时
+ *   · cover frame
+ * 这些继续 `UNTRUSTED_FRAME_SANDBOX` / `COVER_FRAME_SANDBOX`（无同源）。
  *
  * **cn 家族仍然 fail closed**（A-24 明写）：本表是六条写死的 `.app` 全串，
  * 与家族无关，也**不随当前家族变化**——境内没有对应部署（`W18-domains.md` §2：
  * `leoapp.cn` 无 ICP 备案、`*.oceanleo.cn` 无泛解析），所以境内页面拿到的是
  * 同样六条 `.app` base，而它们在境内是否可达由网关决定，不由本表放宽。
  *
- * ⚠️ 往这张表加一行 = 允许宿主给那个 origin 拼 embed URL。加之前先问：
- * 那个 origin 上跑的是不是我方可控代码？
+ * ⚠️ 往这张表加一行 = 允许宿主给那个 origin 拼 embed URL，并且给同源沙箱。
+ * 加之前先问：那个 origin 上跑的是不是我方可控代码？
  */
 export const HOSTED_EDITOR_EMBED_BASES: readonly string[] = Object.freeze(
   HOSTED_EDITOR_ORIGINS,
@@ -155,8 +163,9 @@ const HOSTED_EDITOR_EMBED_BASE_SET = new Set<string>(
 
 /**
  * 这个 base 是不是命名空间 E 的 Hosted 编辑器。
- * 与 `isTrustedEmbedEditorBase()` 分开导出，是因为**沙箱面要区别对待**：
- * 前者放行 URL 构造，本函数决定它**拿不到**同源。
+ * 与 `isTrustedEmbedEditorBase()` 分开导出，是因为**沙箱档位不同**：
+ * 前者也放行 URL 构造；本函数决定它拿 `HOSTED_EDITOR_SANDBOX`
+ * （我方部署、隔离域、同源只给自己），而不是家族第一方那档。
  */
 export function isHostedEditorEmbedBase(base: string): boolean {
   const normalized = normalizedEmbedBase(base);
@@ -210,6 +219,15 @@ export const PDF_FRAME_SANDBOX_EXEMPTION = "sandbox-exempt: pdf-plugin";
 export const TRUSTED_EMBED_EDITOR_SANDBOX =
   "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals";
 
+/**
+ * 我方部署在隔离域 `*.oceanleo.app` 上的 Hosted 编辑器沙箱。
+ * 令牌串与 `TRUSTED_EMBED_EDITOR_SANDBOX` 相同，但**单独命名**：
+ * 语义是「隔离域上的可控代码，同源只给它自己的 origin，拿不到家族 cookie」，
+ * 不是「家族第一方子站」。UGC 预览 / game 运行时不得引用本常量。
+ */
+export const HOSTED_EDITOR_SANDBOX =
+  "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals";
+
 /** 第一方交互式产物（video_workflow HTML）。 */
 export const TRUSTED_INTERACTIVE_VIEWER_SANDBOX =
   "allow-scripts allow-forms allow-popups allow-downloads allow-same-origin";
@@ -225,10 +243,11 @@ export function sandboxGrantsScriptedSameOrigin(sandbox: string): boolean {
 }
 
 export function embedEditorFrameSandbox(editorBase: string): string {
-  // Hosted 六件**先判**：它们虽然能拼 embed URL，但拿的是不可信沙箱。
-  // 顺序反过来会让 `isTrustedEmbedEditorBase()` 先命中并发出同源沙箱——
-  // 那正是本函数要挡的事，四个第三方整站应用会当场拿到同源权限。
-  if (isHostedEditorEmbedBase(editorBase)) return UNTRUSTED_FRAME_SANDBOX;
+  // Hosted 六件**先判**：命中白名单才给 `HOSTED_EDITOR_SANDBOX`。
+  // 顺序反过来会让 `isTrustedEmbedEditorBase()` 先命中并发出
+  // `TRUSTED_EMBED_EDITOR_SANDBOX`——令牌串相同，但语义档位错了
+  // （家族第一方 vs 隔离域我方部署）。UGC / 未知 URL 走不可信档。
+  if (isHostedEditorEmbedBase(editorBase)) return HOSTED_EDITOR_SANDBOX;
   return isTrustedEmbedEditorBase(editorBase)
     ? TRUSTED_EMBED_EDITOR_SANDBOX
     : UNTRUSTED_FRAME_SANDBOX;

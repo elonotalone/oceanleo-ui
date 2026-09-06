@@ -1,14 +1,15 @@
 /**
  * A-92 / A-95 第二条闸：托管编辑器 iframe 渲染层的 sandbox。
  *
- * UC-3: docs/architecture/oceanleo-untrusted-content-isolation.md §8.3
+ * UC-3 修订（2026-09-06 操作员裁定）：
+ * docs/architecture/oceanleo-untrusted-content-isolation.md 「UC-3 修订」
  *
  * 既有那条（`hosted-editor-contract-v2`「A-24 的要害」）是单元层：
  * 调 `embedEditorFrameSandbox()` 看返回字符串。函数返回对，不等于
  * 画出来的 iframe 上挂的就是那个值——中间还有一段传递。
  *
  * 本文件锁的事实：六件专业模式真挂起来之后，DOM 上那个 iframe
- * 的 sandbox 属性里没有 allow-same-origin。
+ * 的 sandbox 属性里**有** allow-same-origin（HOSTED_EDITOR_SANDBOX）。
  * 不拿 `embedEditorFrameSandbox()` 的返回值当期望：函数和消费组件一起
  * 被改坏时，对返回值的相等断言会双双变绿，本闸必须仍红。
  */
@@ -98,7 +99,7 @@ function sandboxTokens(sandbox) {
   return new Set(String(sandbox).toLowerCase().split(/\s+/).filter(Boolean));
 }
 
-function assertIframeDeniesSameOrigin(iframe, label) {
+function assertIframeGrantsHostedSameOrigin(iframe, label) {
   assert.ok(iframe, `${label}：专业模式挂起来之后没有 iframe 节点`);
   assert.equal(
     iframe.tagName,
@@ -112,15 +113,21 @@ function assertIframeDeniesSameOrigin(iframe, label) {
   );
   const sandbox = iframe.getAttribute("sandbox") || "";
   const tokens = sandboxTokens(sandbox);
+  // 字面量令牌，不拿 embedEditorFrameSandbox() 返回值当期望。
   assert.equal(
     tokens.has("allow-same-origin"),
-    false,
-    `${label}专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin`,
+    true,
+    `${label}专业模式的 iframe 上，实际挂的 sandbox 必须有 allow-same-origin`,
   );
   assert.equal(
-    tokens.has("allow-scripts") && tokens.has("allow-same-origin"),
-    false,
-    `${label}专业模式的 iframe 上，实际挂的 sandbox 同时给了脚本和同源，沙箱等于没有`,
+    tokens.has("allow-scripts"),
+    true,
+    `${label}专业模式的 iframe 上，实际挂的 sandbox 必须有 allow-scripts`,
+  );
+  assert.equal(
+    sandbox,
+    "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals",
+    `${label}：DOM sandbox 必须是 HOSTED_EDITOR_SANDBOX 令牌串`,
   );
 }
 
@@ -157,10 +164,8 @@ function workbenchItem(kind, id) {
   };
 }
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。
-test("音频专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin", async () => {
+// UC-3 修订（2026-09-06）：我方部署的 AudioMass 拿隔离域同源沙箱。
+test("音频专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/media-editors/AudioHostedFrame.tsx",
     {},
@@ -176,7 +181,7 @@ test("音频专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-sa
       }),
   );
   try {
-    assertIframeDeniesSameOrigin(
+    assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("[data-testid=audio-hosted-frame]"),
       "音频",
     );
@@ -185,10 +190,8 @@ test("音频专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-sa
   }
 });
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。
-test("3D 专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin", async () => {
+// UC-3 修订（2026-09-06）：我方部署的 three.js editor 拿隔离域同源沙箱。
+test("3D 专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/media-editors/Model3DHostedFrame.tsx",
     {},
@@ -204,7 +207,7 @@ test("3D 专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-
       }),
   );
   try {
-    assertIframeDeniesSameOrigin(
+    assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("[data-testid=model3d-hosted-frame]"),
       "3D",
     );
@@ -213,10 +216,8 @@ test("3D 专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-
   }
 });
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。
-test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin", async () => {
+// UC-3 修订（2026-09-06）：我方部署的 PPTist 拿隔离域同源沙箱。
+test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/advanced-routes/DeckHostedRoute.tsx",
     {
@@ -230,7 +231,7 @@ test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 里没有 allow
       }),
   );
   try {
-    assertIframeDeniesSameOrigin(
+    assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("iframe"),
       "幻灯片",
     );
@@ -239,10 +240,8 @@ test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 里没有 allow
   }
 });
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。
-test("文档专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin", async () => {
+// UC-3 修订（2026-09-06）：我方部署的 Umo 拿隔离域同源沙箱。
+test("文档专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/advanced-routes/RichDocHostedRoute.tsx",
     {
@@ -257,7 +256,7 @@ test("文档专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-sa
       }),
   );
   try {
-    assertIframeDeniesSameOrigin(
+    assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("iframe"),
       "文档",
     );
@@ -266,10 +265,8 @@ test("文档专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-sa
   }
 });
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。
-test("游戏专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin", async () => {
+// UC-3 修订（2026-09-06）：白名单仍含 game-ide；W08 后无消费者，沙箱档仍按 hosted。
+test("游戏专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/game-editor/GameHostedFrame.tsx",
     {},
@@ -285,7 +282,7 @@ test("游戏专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-sa
       }),
   );
   try {
-    assertIframeDeniesSameOrigin(
+    assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("[data-testid=game-hosted-frame]"),
       "游戏",
     );
@@ -294,10 +291,8 @@ test("游戏专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-sa
   }
 });
 
-// UC-3 (见 oceanleo-security-regression-matrix.md)：不可信 iframe 不许同时
-// 拿到 allow-scripts 与 allow-same-origin，否则框里的上游 JS 能自己拆掉
-// sandbox 再重载。
-test("工作流专业模式的 iframe 上，实际挂的 sandbox 里没有 allow-same-origin", async () => {
+// UC-3 修订（2026-09-06）：白名单仍含 flow；W08 后无消费者，沙箱档仍按 hosted。
+test("工作流专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/workflow-carrier/langflow-hosted-frame.tsx",
     {},
@@ -313,7 +308,7 @@ test("工作流专业模式的 iframe 上，实际挂的 sandbox 里没有 allow
       }),
   );
   try {
-    assertIframeDeniesSameOrigin(
+    assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("[data-testid=workflow-langflow-frame]"),
       "工作流",
     );
