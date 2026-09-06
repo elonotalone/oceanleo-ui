@@ -508,6 +508,7 @@ export type { OpsFiller, SavedWorkflow, WorkflowDraft } from "./guide-context";
 // 宗旨 v11：useRightPaneSlot 让右栏内容（ResultCanvas 标签条）接管右栏标题位（去框中框）。
 export {
   SplitWorkspace,
+  IconRightPanelToggle,
   useLeftPaneSlot,
   useRightPaneSlot,
   useConsoleAgentFocus,

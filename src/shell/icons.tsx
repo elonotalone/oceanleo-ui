@@ -232,3 +232,21 @@ export function IconCategory({ category, className = "h-4 w-4" }: { category: st
       );
   }
 }
+
+/** 右栏展开/收起图标（Squircle + 右侧竖线）。对应 69c30d84-image.png。 */
+export function IconRightPanelToggle({ className = "h-4 w-4" }: IconProps): ReactNode {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="M15 3v18" />
+    </svg>
+  );
+}

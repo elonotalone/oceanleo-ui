@@ -13,7 +13,7 @@
 // ============================================================================
 
 import { accessToken } from "../../lib/auth/client";
-import { GATEWAY_BASE } from "../../lib/auth/config";
+import { GATEWAY_BASE, isLeoDevPreviewHost } from "../../lib/auth/config";
 
 export const SHARE_TASK_PATH = "/v1/share/task";
 /** 分享页留在 `oceanleo.com`（合同 R7）：它渲染的是我方页面里的用户**文字**。 */
@@ -104,10 +104,17 @@ export async function createShareLink(
   if (input.messageIds && input.messageIds.length) {
     body.message_ids = [...input.messageIds];
   }
+  const gatewayBase =
+    input.origin ||
+    (typeof window !== "undefined" &&
+    (window.location.host.includes(".dev.oceanleo.com") ||
+      isLeoDevPreviewHost(window.location.host))
+      ? "https://api.dev.oceanleo.com"
+      : GATEWAY_BASE);
   const doFetch = input.fetchImpl || fetch;
   let response: Response;
   try {
-    response = await doFetch(`${GATEWAY_BASE}${SHARE_TASK_PATH}`, {
+    response = await doFetch(`${gatewayBase}${SHARE_TASK_PATH}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,

@@ -177,13 +177,15 @@ export function ShareCheckbox({
   );
 }
 
-/** 顶部「分享」入口图标：点它整页进入选段模式。 */
+/** 顶部「分享」入口图标：点它整页进入选段模式。对应 52e9f704-image.png / 3f9d0f8c-image.png。 */
 export function ShareEntryButton({
   onClick,
   className = "",
+  showLabel = false,
 }: {
   onClick: () => void;
   className?: string;
+  showLabel?: boolean;
 }) {
   const tt = useUI();
   return (
@@ -192,15 +194,12 @@ export function ShareEntryButton({
       onClick={onClick}
       title={tt("分享")}
       aria-label={tt("分享")}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-50 active:scale-95 ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg p-1.5 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 ${className}`}
     >
-      <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="18" cy="5" r="3" />
-        <circle cx="6" cy="12" r="3" />
-        <circle cx="18" cy="19" r="3" />
-        <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" strokeLinecap="round" />
+      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 12v-1a7 7 0 0 1 7-7h8m0 0-4-4m4 4-4 4" />
       </svg>
-      <span>{tt("分享")}</span>
+      {showLabel && <span className="text-[13px] font-medium">{tt("分享")}</span>}
     </button>
   );
 }

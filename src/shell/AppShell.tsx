@@ -417,14 +417,15 @@ function AppShellInner({
     );
   }
 
-  // 只读 token 余额胶囊——sidebar 与 topbar 共用。
+  // 只读 余额胶囊——sidebar 与 topbar 共用。
   function renderCredits(): ReactNode {
+    const balanceText = tt("token 余额").replace(/^token\s*/i, "").trim() || "余额";
     return (
       <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-1.5">
         <span style={{ color: brand.accent }}>
           <IconGift className="h-3.5 w-3.5" />
         </span>
-        <span className="text-[12px] text-neutral-600">{tt("token 余额")}</span>
+        <span className="text-[12px] text-neutral-600">{balanceText}</span>
         <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
           {credits != null ? `¥${credits.toFixed(2)}` : "…"}
         </span>
@@ -620,12 +621,14 @@ function AppShellInner({
 
   // 库里点开编辑器 / 详情面板时（workbenchOpen），选择框让位——它只属于纯对话页，
   // 不能压在面板页签上（规范 v2 §1 / §5）。
+  // 模型选择器新规范：对话交互主界面已迁移至输入框右下角紧凑模式；
+  // 顶栏槽位隐藏避免重复遮挡，同时保留槽位节点与可访问性契约。
   const workbenchOpen = useWorkbenchOpen();
   const showModelPicker =
     !hideHeader
     && shouldShowModelPicker(pathname, searchParams, { workbenchOpen });
   const modelPickerSlot = showModelPicker ? (
-    <div className="pointer-events-auto" data-oceanleo-model-picker-slot>
+    <div className="pointer-events-auto hidden" data-oceanleo-model-picker-slot>
       <ModelGroupPicker apiHref={shellHref(apiHref)} />
     </div>
   ) : null;
@@ -890,14 +893,15 @@ function AppShellInner({
     <div className="mt-3 px-2 pb-1">{recentSlot}</div>
   ) : null;
 
-  /* token 余额 —— 只读展示，不可点击（实时余额由各站传入）。 */
+  /* 余额 —— 只读展示，不可点击（实时余额由各站传入）。 */
+  const balanceText = tt("token 余额").replace(/^token\s*/i, "").trim() || "余额";
   const creditsCapsule = (
     <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2">
       <span className="flex items-center gap-2 text-[12px] text-neutral-600">
         <span style={{ color: brand.accent }}>
           <IconGift className="h-3.5 w-3.5" />
         </span>
-        {tt("token 余额")}
+        {balanceText}
       </span>
       <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
         {credits != null ? `¥${credits.toFixed(2)}` : "…"}

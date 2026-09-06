@@ -217,17 +217,19 @@ export interface SplitWorkspaceProps {
 }
 
 export interface SplitLibraryConfig {
-  /** 「库」按钮文案，默认「库」。 */
+  /** 「右栏」按钮文案，默认「预览」。 */
   label?: string;
+  /** 是否隐藏内部自绘的右栏开关按钮（由顶栏统一定制时使用）。 */
+  hideToggle?: boolean;
   /**
-   * 「库」按钮样式（关态）。主站传黑胶囊白字，子站可传自己的显眼样式（默认 accent 胶囊）。
-   * 传了它就整体覆盖按钮的 className（含开/关态由消费端自理则不建议——一般只需关态样式）。 */
+   * 「右栏」按钮样式（关态）。
+   * 传了它就整体覆盖按钮的 className。 */
   buttonClassName?: string;
   /** 受控：右版面是否打开。传了它就用受控模式（消费端持有 open 状态，如点素材要打开库）。 */
   open?: boolean;
   /** 受控：切换回调。 */
   onOpenChange?: (open: boolean) => void;
-  /** 右版面顶部居中标题，默认「库」。 */
+  /** 右版面顶部居中标题，默认「预览」。 */
   paneTitle?: ReactNode;
   /** @deprecated v23.2 起库固定在右侧，编辑器只通过顶部按钮在左栏打开内容。 */
   dock?: WorkspaceLibraryDock;
@@ -360,24 +362,21 @@ export function SplitWorkspace({
     ) : (
       leftLabelOverride ?? leftLabel
     );
-  // 「库」开关按钮（放左栏标题右侧）。默认关态；库【打开后此按钮隐藏】——避免出现两个
-  // 「库」（右版面顶栏已有居中「库」标题 + ✕ 关闭）。样式：主站黑胶囊白字，子站默认 accent
-  // 胶囊；消费端可用 library.buttonClassName 覆盖关态样式。
-  const libraryLabel = library?.label ?? tt("库");
+  // 右栏开关按钮（放左栏标题右侧）。使用统一 squircle+竖线 图标，不称「库」。
+  const libraryLabel = library?.label ?? tt("预览");
   const libraryToggle =
-    library && !libraryOpen ? (
+    library && !library.hideToggle ? (
       <button
         type="button"
-        onClick={() => setLibraryOpen(true)}
-        title={tt("打开库")}
+        onClick={() => setLibraryOpen(!libraryOpen)}
+        title={libraryOpen ? tt("收起") : tt("展开")}
+        aria-label={libraryOpen ? tt("收起") : tt("展开")}
         className={
           library.buttonClassName ??
-          "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95"
+          "inline-flex shrink-0 items-center justify-center rounded-lg p-1 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95"
         }
-        style={library.buttonClassName ? undefined : { background: accent }}
       >
-        <IconLibrary className="h-3.5 w-3.5" />
-        {libraryLabel}
+        <IconRightPanelToggle className="h-4 w-4" />
       </button>
     ) : null;
   // 左栏标题 = 原标题（纯字符串包成小灰标题）+ 右侧「库」开关。
@@ -867,6 +866,23 @@ function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNo
       )}
       <div className="flex shrink-0 items-center gap-1">{children}</div>
     </div>
+  );
+}
+
+export function IconRightPanelToggle({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="M15 3v18" />
+    </svg>
   );
 }
 

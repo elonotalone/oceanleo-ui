@@ -118,7 +118,7 @@ export function Modal({
   const overlayState = closing ? "closed" : "open";
   return createPortal(
     <div
-      className="leo-overlay-scrim fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
+      className="leo-overlay-scrim fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4"
       data-leo-overlay-state={overlayState}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
@@ -131,7 +131,7 @@ export function Modal({
         ref={panelRef}
         tabIndex={-1}
         data-leo-overlay-state={overlayState}
-        className={`leo-overlay-panel w-full rounded-2xl border border-neutral-200 bg-white shadow-xl outline-none ${className}`}
+        className={`leo-overlay-panel w-full rounded-2xl border border-neutral-200 bg-white shadow-2xl outline-none ${className}`}
       >
         {children}
       </div>

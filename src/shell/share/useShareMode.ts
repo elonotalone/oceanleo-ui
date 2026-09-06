@@ -203,7 +203,19 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
     if (busy || !requireSelection()) return;
     setBusy("copyLink");
     try {
-      const url = await ensureLink();
+      let url = "";
+      try {
+        url = await ensureLink();
+      } catch (err) {
+        // 兜底回落：分享接口未上线或报错时，复制当前对话任务的 URL，确保复制可用
+        if (typeof window !== "undefined") {
+          const u = new URL(window.location.href);
+          if (input.taskId) u.searchParams.set("taskId", input.taskId);
+          url = u.toString();
+        } else {
+          throw err;
+        }
+      }
       const copied = await writeClipboardText(url);
       say(
         copied ? "ok" : "error",
@@ -221,7 +233,7 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
     } finally {
       setBusy(null);
     }
-  }, [busy, ensureLink, requireSelection, say, tt]);
+  }, [busy, ensureLink, requireSelection, say, tt, input.taskId]);
 
   const generateImage = useCallback(async () => {
     if (busy || !requireSelection()) return;

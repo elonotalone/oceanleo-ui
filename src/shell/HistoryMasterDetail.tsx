@@ -484,11 +484,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                         <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     )}
-                    {!isSession && (
-                      <span className={`shrink-0 rounded px-1 py-px text-[9px] ${on ? "bg-white/15 text-white/70" : "bg-stone-100 text-stone-400"}`}>
-                        {tt("旧")}
-                      </span>
-                    )}
                   </span>
                   <span className={`block truncate text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
                     {fmt(timestamp)}

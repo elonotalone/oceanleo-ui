@@ -34,6 +34,7 @@ import {
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
+import { ModelGroupPicker } from "./ModelPicker";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -189,6 +190,11 @@ export interface LeoComposerProps {
   onMeetingRecording?: (file: File) => void;
   /** 录音时长上限（秒），默认 7200（2 小时）。到点自动停止并回调。 */
   meetingRecordingMaxSec?: number;
+
+  /**
+   * 是否在右下角（语音输入左侧）显示模型选择器（默认 true）。
+   */
+  showModelPicker?: boolean;
 }
 
 export function LeoComposer({
@@ -222,6 +228,7 @@ export function LeoComposer({
   voiceLang = "zh-CN",
   onMeetingRecording,
   meetingRecordingMaxSec = 7200,
+  showModelPicker = true,
 }: LeoComposerProps) {
   const tt = useUI();
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
@@ -527,6 +534,9 @@ export function LeoComposer({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {showModelPicker && (
+            <ModelGroupPicker compact placement="top" align="right" />
+          )}
           {onMeetingRecording && (
             <button
               type="button"

@@ -39,6 +39,10 @@ export interface ModelGroupPickerProps {
   apiHref?: string;
   className?: string;
   align?: "left" | "right";
+  /** 紧凑模式：放入输入框右下角等狭小空间 */
+  compact?: boolean;
+  /** 弹出方向，默认 bottom（向下）；输入框内传 top（向上） */
+  placement?: "top" | "bottom";
 }
 
 /**
@@ -56,11 +60,9 @@ export interface ModelPickerProps extends ModelGroupPickerProps {
 }
 
 export function ModelGroupPicker(props: ModelGroupPickerProps) {
-  // 任一编辑器 / 详情面板开着时整个不渲染（规范 v2 §5）。`AppShell` 已经按同一开关
-  // 收起了槽位；这里再判一次是给不走 AppShell、直接挂 `ModelGroupPicker` 的宿主
-  // （oceanleo 门户 clone-shell 之类）——同一件事只有一个事实源。
+  // 紧凑模式（挂在输入框内等）不受 workbenchOpen 隐藏影响；顶部独立条在面板打开时收起。
   const workbenchOpen = useWorkbenchOpen();
-  if (workbenchOpen) return null;
+  if (!props.compact && workbenchOpen) return null;
   return <ModelGroupPickerBody {...props} />;
 }
 
@@ -68,6 +70,8 @@ function ModelGroupPickerBody({
   apiHref = "/api",
   className = "",
   align = "right",
+  compact = false,
+  placement = "bottom",
 }: ModelGroupPickerProps) {
   const tt = useUI();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -149,44 +153,82 @@ function ModelGroupPickerBody({
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- open
- ? "border-neutral-300 bg-neutral-50 text-neutral-900"
- : "border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-300 hover:bg-white"
- }`}
-        title={tt("选择全站通用的模型组合")}
-      >
-        <svg
-          className="h-3.5 w-3.5 shrink-0 text-neutral-400"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
+      {compact ? (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-95 ${
+            open
+              ? "border-neutral-300 bg-neutral-100 text-neutral-900"
+              : "border-neutral-200/90 bg-stone-50/80 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-900"
+          }`}
+          title={active?.name ? `${tt("模型组合")} · ${active.name}` : tt("模型组合")}
         >
-          <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
-          <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
-          <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
-          <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
-        </svg>
-        <span className="shrink-0 text-neutral-500">{tt("模型组合")}</span>
-        <span className="truncate text-neutral-900">
-          {loading ? "…" : active?.name || "Pro"}
-        </span>
-        <span
-          className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
- open ? "rotate-180" : ""
- }`}
+          <svg
+            className="h-3 w-3 shrink-0 text-neutral-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
+            <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
+          </svg>
+          <span className="max-w-[70px] truncate">
+            {loading ? "…" : active?.name || "Pro"}
+          </span>
+          <span
+            className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+              open ? "rotate-180" : ""
+            }`}
+          >
+            <IconChevronDown className="h-3 w-3" />
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+            open
+              ? "border-neutral-300 bg-neutral-50 text-neutral-900"
+              : "border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-300 hover:bg-white"
+          }`}
+          title={tt("选择全站通用的模型组合")}
         >
-          <IconChevronDown className="h-3.5 w-3.5" />
-        </span>
-      </button>
+          <svg
+            className="h-3.5 w-3.5 shrink-0 text-neutral-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
+            <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
+          </svg>
+          <span className="shrink-0 text-neutral-500">{tt("模型组合")}</span>
+          <span className="truncate text-neutral-900">
+            {loading ? "…" : active?.name || "Pro"}
+          </span>
+          <span
+            className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+              open ? "rotate-180" : ""
+            }`}
+          >
+            <IconChevronDown className="h-3.5 w-3.5" />
+          </span>
+        </button>
+      )}
 
       {open && (
         <div
-          className={`v-scale-in absolute top-full z-50 mt-1.5 w-[min(22rem,88vw)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
+          className={`v-scale-in absolute z-50 w-[min(22rem,88vw)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
+            placement === "top" ? "bottom-full mb-2" : "top-full mt-1.5"
+          } ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >
