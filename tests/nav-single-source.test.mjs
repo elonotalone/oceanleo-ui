@@ -290,7 +290,9 @@ test("导航点击有第一帧即时反馈（useTransition 的 pending 目标驱
   );
   assert.match(
     appShellSource,
-    /isActive\(pendingHref \?\? pathname, item\)/,
+    // e56a68c 起当前路径由 mountNavPath（挂载时的 pathname 快照）提供；乐观的
+    // pendingHref 仍然排在最前，产品规则没变：点中项当帧亮起。
+    /isActive\(\s*pendingHref \?\? (?:pathname|mountNavPath),/,
     "高亮必须先看 pendingHref：不然点了要等路由落地才有反应",
   );
   const hook = src("shell/nav-source/use-route-navigation.ts");

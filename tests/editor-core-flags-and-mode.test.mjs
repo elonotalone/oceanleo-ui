@@ -272,6 +272,10 @@ function loadShell() {
       export function advancedWorkbenchStyle(accent) {
         return { "--awb-accent": accent };
       }
+      // X1 起 Shell 按组分发 adapter.actions（edit / save / download）；桩与真模块同形。
+      export function actionGroup(action) {
+        return action && action.group ? action.group : "edit";
+      }
     `);
     const confirmStubUrl = dataModule(`
       export function ConfirmDialog() { return null; }
