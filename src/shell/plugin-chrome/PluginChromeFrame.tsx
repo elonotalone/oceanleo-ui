@@ -2,8 +2,21 @@
 
 // 统一外壳的版式实现。插件只填槽，不再各自搭 header / toolbar / 左栏。
 // 行序契约见 ./types.ts，任何插件都不许调换或省略。
+//
+// chrome="host"：iframe 由宿主画两行，这里一行都不画，只交舞台。
+// chrome="self"：独立挂载，缺省保持旧顶栏。W01 PluginGlobalRow/PluginPageRow
+// 已落地，但不能换：website/front/tests/gallery-editor.test.mjs（非独占面）
+// 仍断言 data-plugin-chrome-view / data-plugin-chrome-status。video 的
+// VideoConsole overlay 与独立 /canvas-board 是 self 的生产消费者。
 
-import { createContext, useCallback, useContext, useMemo } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
@@ -43,6 +56,75 @@ import {
   usePluginChromePanels,
   type PluginChromePanelController,
 } from "./use-plugin-chrome-panels";
+
+
+export type PluginChromeOwner = "host" | "self";
+
+const EDITOR_V1 = "oceanleo.editor.v1";
+const EDITOR_V2 = "oceanleo.editor.v2";
+
+/** `?embed=1` 即嵌入。宿主 `buildEditorEmbedUrl` 对三家 iframe 都会写这个参数。 */
+export function readPluginChromeFromSearch(
+  search: string = typeof window === "undefined" ? "" : window.location.search,
+): PluginChromeOwner {
+  return new URLSearchParams(search).get("embed") === "1" ? "host" : "self";
+}
+
+/**
+ * W06 §2：init.chrome === "host"，或 set-host-layout.hostOwnsChrome === true。
+ * 不改协议文件。非法/缺席当没说。
+ */
+export function readPluginChromeFromHostMessage(
+  message: unknown,
+  instanceId: string,
+): PluginChromeOwner | null {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    return null;
+  }
+  const record = message as Record<string, unknown>;
+  if (record.protocol !== EDITOR_V1 && record.protocol !== EDITOR_V2) {
+    return null;
+  }
+  if (typeof record.instanceId === "string" && record.instanceId !== instanceId) {
+    return null;
+  }
+  if (record.chrome === "host" || record.hostOwnsChrome === true) return "host";
+  return null;
+}
+
+export function readHostSetMode(
+  message: unknown,
+  instanceId: string,
+): "normal" | "pro" | null {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    return null;
+  }
+  const record = message as Record<string, unknown>;
+  if (
+    (record.protocol !== EDITOR_V1 && record.protocol !== EDITOR_V2) ||
+    record.type !== "set-mode" ||
+    record.instanceId !== instanceId
+  ) {
+    return null;
+  }
+  return record.mode === "normal" || record.mode === "pro" ? record.mode : null;
+}
+
+/** 三个 gallery-editor 共用：URL 先判，再听宿主消息把 self 翻成 host。 */
+export function usePluginChromeOwner(): PluginChromeOwner {
+  const [owner, setOwner] = useState<PluginChromeOwner>(readPluginChromeFromSearch);
+  useEffect(() => {
+    const instanceId = new URLSearchParams(window.location.search).get("instance") || "";
+    const onMessage = (event: MessageEvent) => {
+      if (readPluginChromeFromHostMessage(event.data, instanceId) === "host") {
+        setOwner("host");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  return owner;
+}
 
 const PanelContext = createContext<PluginChromePanelController | null>(null);
 
@@ -106,6 +188,12 @@ export interface PluginChromeFrameProps {
   notices?: readonly PluginChromeNotice[];
   window?: PluginChromeWindowActions;
 
+  /**
+   * `"host"`：不画顶栏 / 页签 / 编辑栏 / 主题 / 全屏 / 关闭，只交 children。
+   * 缺省 `"self"` 保持旧行为。
+   */
+  chrome?: PluginChromeOwner;
+
   /** 舞台。 */
   children: ReactNode;
 }
@@ -131,6 +219,7 @@ export function PluginChromeFrame({
   saveState,
   notices,
   window: windowActions,
+  chrome = "self",
   children,
 }: PluginChromeFrameProps) {
   const tt = useUI();
@@ -228,12 +317,38 @@ export function PluginChromeFrame({
   // 所以没有选中对象时 AI 键也在。
   const agentActive = layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
 
+  if (chrome === "host") {
+    return (
+      <AdvancedLayoutContext.Provider value={layout}>
+        <PanelContext.Provider value={hostController}>
+          <div
+            ref={editBarGestures.layerRef}
+            data-plugin-chrome={pluginId}
+            data-plugin-chrome-owner="host"
+            data-plugin-theme={theme || undefined}
+            style={style}
+            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--pchrome-canvas)] text-[var(--pchrome-ink)]"
+          >
+            <main
+              ref={editBarGestures.stageRef}
+              data-plugin-chrome-stage
+              className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--pchrome-stage)]"
+            >
+              {children}
+            </main>
+          </div>
+        </PanelContext.Provider>
+      </AdvancedLayoutContext.Provider>
+    );
+  }
+
   return (
     <AdvancedLayoutContext.Provider value={layout}>
     <PanelContext.Provider value={hostController}>
       <div
         ref={editBarGestures.layerRef}
         data-plugin-chrome={pluginId}
+        data-plugin-chrome-owner="self"
         data-plugin-theme={theme || undefined}
         style={style}
         // `relative`：编辑栏浮层是 `absolute inset-0` 的一层，需要这里当定位原点。

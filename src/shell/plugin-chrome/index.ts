@@ -3,7 +3,12 @@
 export {
   PluginChromeFrame,
   usePluginChromePanelHost,
+  usePluginChromeOwner,
+  readPluginChromeFromSearch,
+  readPluginChromeFromHostMessage,
+  readHostSetMode,
   type PluginChromeFrameProps,
+  type PluginChromeOwner,
 } from "./PluginChromeFrame";
 export {
   PluginChromeEditBarButton,
