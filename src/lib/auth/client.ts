@@ -11,6 +11,7 @@ import {
   configured,
   isLeoDevPreviewHost,
 } from "./config";
+import { createLeoDevPreviewCookieJar } from "./preview-cookies";
 
 // Browser Supabase client for the OceanLeo shared identity. Stores the auth
 // session in a cookie scoped to .oceanleo.com (NOT localStorage), so a login on
@@ -28,38 +29,31 @@ export function browserClient(): SupabaseClient | null {
   if (_client) return _client;
   const host = typeof window !== "undefined" ? window.location.host : "";
   const preview = isLeoDevPreviewHost(host);
+  // Preview refreshes in this jar only. @supabase/ssr getItem re-reads
+  // cookies; a no-op setAll would leave getSession on the stale cookie.
+  const previewCookies = preview
+    ? createLeoDevPreviewCookieJar(() =>
+        typeof document === "undefined" ? "" : document.cookie,
+      )
+    : null;
   _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: cookieOptions(host),
     global: { fetch: authFetch },
     auth: {
-      // Preview must keep reading the family SSO cookie and must not
-      // persist a failed refresh back onto Domain=.oceanleo.com.
-      autoRefreshToken: !preview,
+      // Always refresh. Preview still must not persist the result onto
+      // Domain=.oceanleo.com — a failed refresh used to sign the operator
+      // out of every family site.
+      autoRefreshToken: true,
       detectSessionInUrl: !preview,
     },
-    ...(preview
+    ...(previewCookies
       ? {
           cookies: {
             getAll() {
-              if (typeof document === "undefined") return [];
-              return document.cookie
-                .split(";")
-                .map((part) => {
-                  const cut = part.indexOf("=");
-                  if (cut < 0) return { name: part.trim(), value: "" };
-                  const name = part.slice(0, cut).trim();
-                  const raw = part.slice(cut + 1).trim();
-                  let value = raw;
-                  try {
-                    value = decodeURIComponent(raw);
-                  } catch {
-                    /* keep raw */
-                  }
-                  return { name, value };
-                })
-                .filter((entry) => entry.name);
+              return previewCookies.getAll();
             },
-            setAll() {
+            setAll(cookiesToSet) {
+              previewCookies.setAll(cookiesToSet);
               /* never write family SSO from a capability hostname */
             },
           },

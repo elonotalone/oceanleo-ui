@@ -632,7 +632,8 @@ test("LeoDev capability host may read family SSO but must never write it", () =>
     /if \(isLeoDevPreviewHost\(host\)\) return;/,
   );
   assert.match(clientSource, /isLeoDevPreviewHost/);
-  assert.match(clientSource, /autoRefreshToken:\s*!preview/);
+  assert.match(clientSource, /autoRefreshToken:\s*true/);
+  assert.match(clientSource, /createLeoDevPreviewCookieJar/);
   assert.match(clientSource, /never write family SSO from a capability hostname/);
 });
 

@@ -7,7 +7,14 @@ import type { LibraryItem } from "./library-data";
 
 export type AdvancedFlushResult =
   | { ok: true; item?: LibraryItem }
-  | { ok: false; error?: string };
+  | {
+      ok: false;
+      error?: string;
+      /** HTTP status when the flush saw one (401/403/0/5xx). */
+      status?: number;
+      /** Fixed human sentence from `mapAutosaveErrorMessage`. */
+      errorMessage?: string;
+    };
 
 export interface AdvancedSessionActions {
   sessionId: string | null;
