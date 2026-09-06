@@ -51,8 +51,8 @@ export interface GameDraftSaveInput {
   engineApiVersion: string;
   /** 这一版声明的可调参数，写进信封 manifest 供沙箱读。 */
   paramDeclarations?: Record<string, unknown> | null;
-  /** 是谁改的：代码编辑器还是 microStudio 专业模式。 */
-  editedBy: "code-editor" | "microstudio-pro";
+  /** 是谁改的。专业托管编辑已拿掉，只剩代码编辑器。 */
+  editedBy: "code-editor";
   title: string;
 }
 

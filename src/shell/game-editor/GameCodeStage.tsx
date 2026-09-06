@@ -1,11 +1,8 @@
 "use client";
 
 /**
- * 游戏新核叶子。flag=`next` 时由 GameRoute 经 dynamic(..., { ssr: false }) 拉起。
- *
- * 普通模式：代码编辑器 + 沙箱预览 + 运行/停止/重载 + 参数面板。
- * 专业模式（L0 setMode）：microStudio hosted iframe。
- * agent 改源码的唯一入口是 `createGameAgentSurface`（默认送审）。
+ * 游戏 Code 页：代码编辑器 + 沙箱预览 + 运行/停止/重载 + 参数面板。
+ * 专业编辑不可用。agent 改源码的唯一入口是 `createGameAgentSurface`（默认送审）。
  */
 import {
   useCallback,
@@ -16,6 +13,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import type { AdvancedEditorPagesAdapter } from "../plugin-chrome/plugin-pages";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import {
@@ -29,7 +27,6 @@ import { uploadFile } from "../../lib/database";
 import { isDurableLibraryItem } from "../library-data";
 import { usePluginCommandSurface } from "../plugin-command";
 import { editorToolLabel } from "../workbench-routes";
-import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 import {
   createGameAgentSurface,
   type GameAgentEditorPort,
@@ -46,7 +43,6 @@ import { saveGameDraft, sha256Text } from "./game-draft-save";
 import {
   GAME_NEXT_MODE_ATTR,
   GAME_NEXT_STAGE_ATTR,
-  applyGameNextMode,
 } from "./game-next-mode";
 import {
   GAME_PREVIEW_INITIAL,
@@ -54,26 +50,11 @@ import {
   type GamePreviewPlayback,
 } from "./game-preview-controls";
 import { useGamePreviewHost } from "./preview-host";
-import {
-  buildGameIdeImportEnvelope,
-  computeGameIdeHostedEmbedSrc,
-  gameIdeHostedEmbedBase,
-  hostGameIdeImportFileName,
-} from "./game-microstudio-embed";
-import {
-  GameHostedFrame,
-  postGameIdeExportRequest,
-  postGameIdeImport,
-} from "./GameHostedFrame";
+import { gameModeUnavailable, gamePagesAdapter } from "./game-pages";
 
 const GAME_EDITOR_CAPABILITY = "game-editor";
 const EMPTY_DOC =
   "<!doctype html><html><body><script></script></body></html>";
-
-function hostOriginNow(): string {
-  if (typeof window === "undefined") return "https://oceanleo.com";
-  return window.location.origin || "https://oceanleo.com";
-}
 
 function envelopeUrlOf(
   item: AdvancedContentWorkbenchProps["item"],
@@ -103,12 +84,10 @@ export function GameCodeStage({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-}: AdvancedContentWorkbenchProps) {
-  const instanceId = useRef(
-    `gm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-  ).current;
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
+  pages,
+}: AdvancedContentWorkbenchProps & {
+  pages?: AdvancedEditorPagesAdapter;
+}) {
   const [source, setSource] = useState(EMPTY_DOC);
   const [origin, setOrigin] = useState("ai");
   const [prompt, setPrompt] = useState("");
@@ -123,12 +102,12 @@ export function GameCodeStage({
   const [editRevision, setEditRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState("");
-  const [ready, setReady] = useState(false);
-  const hostedSessionRef = useRef(false);
   const chipsManifest = useMemo(() => gameToolsManifestChips(), []);
-  const applied = applyGameNextMode(instanceId, mode);
   const PreviewHost = useGamePreviewHost();
   const inspection = useMemo(() => inspectGameDraft(source), [source]);
+  const chromePages =
+    pages ??
+    gamePagesAdapter("code", () => {});
 
   const sourceRef = useRef(source);
   sourceRef.current = source;
@@ -200,51 +179,6 @@ export function GameCodeStage({
     };
   }, [item]);
 
-  const hostedSrc = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return computeGameIdeHostedEmbedSrc({
-      embedBase: gameIdeHostedEmbedBase(),
-      instanceId,
-      hostOrigin: hostOriginNow(),
-      assetTitle: item.title,
-    });
-  }, [instanceId, item.title]);
-
-  const applyMode = useCallback(
-    (next: EditorMode) => {
-      const planned = applyGameNextMode(instanceId, next);
-      setMode(planned.mode);
-      if (!planned.showHostedEditor) {
-        setReady(false);
-        hostedSessionRef.current = false;
-      }
-    },
-    [instanceId],
-  );
-
-  useEffect(() => {
-    if (!applied.showHostedEditor || !ready || hostedSessionRef.current) return;
-    const frame = iframeRef.current?.contentWindow || null;
-    if (!frame || !sourceRef.current.trim()) return;
-    try {
-      const built = buildGameIdeImportEnvelope(instanceId, {
-        source: sourceRef.current,
-        title: item.title,
-        fileName: hostGameIdeImportFileName(item.title),
-      });
-      if (!built.ok) {
-        setStatus(built.reason);
-        return;
-      }
-      hostedSessionRef.current = true;
-      postGameIdeImport(frame, instanceId, built.envelope);
-    } catch (caught) {
-      setStatus(
-        caught instanceof Error ? caught.message : "没法把源码送进专业模式。",
-      );
-    }
-  }, [applied.showHostedEditor, instanceId, item.title, ready]);
-
   const bump = useCallback(() => {
     setEditRevision((value) => value + 1);
     setDirty(true);
@@ -294,15 +228,6 @@ export function GameCodeStage({
     [],
   );
 
-  const exportFromPro = useCallback(() => {
-    const frame = iframeRef.current?.contentWindow || null;
-    postGameIdeExportRequest(
-      frame,
-      instanceId,
-      `game-export-${Date.now().toString(36)}`,
-    );
-  }, [instanceId]);
-
   const flush = useCallback(async () => {
     if (!inspection.publishable) {
       return {
@@ -324,7 +249,7 @@ export function GameCodeStage({
         skeletonVersion,
         engineApiVersion,
         paramDeclarations,
-        editedBy: applied.showHostedEditor ? "microstudio-pro" : "code-editor",
+        editedBy: "code-editor",
         title: item.title || "game",
       },
       {
@@ -412,7 +337,6 @@ export function GameCodeStage({
     setDirty(false);
     return { ok: true as const, item: saved.item };
   }, [
-    applied.showHostedEditor,
     chipsManifest.chips,
     engineApiVersion,
     inspection.issues,
@@ -426,7 +350,6 @@ export function GameCodeStage({
     source,
   ]);
 
-  const showHosted = applied.showHostedEditor && Boolean(hostedSrc);
   const paramEntries = paramDeclarations
     ? Object.entries(paramDeclarations)
     : [];
@@ -440,7 +363,8 @@ export function GameCodeStage({
       adapter={{
         id: "game",
         label: editorToolLabel({ type: "game" }),
-        mode: { current: mode, setMode: applyMode },
+        mode: gameModeUnavailable(),
+        pages: chromePages,
         toolbox: {
           label: "运行",
           icon: "code",
@@ -497,16 +421,6 @@ export function GameCodeStage({
                   ))}
                 </div>
               ) : null}
-              {applied.showHostedEditor ? (
-                <button
-                  type="button"
-                  data-testid="game-pro-export"
-                  onClick={exportFromPro}
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  从专业模式导出
-                </button>
-              ) : null}
             </div>
           ),
         },
@@ -515,7 +429,7 @@ export function GameCodeStage({
           <div
             className="flex h-full min-h-0 flex-col"
             {...{ [GAME_NEXT_STAGE_ATTR]: "true" }}
-            {...{ [GAME_NEXT_MODE_ATTR]: mode }}
+            {...{ [GAME_NEXT_MODE_ATTR]: "normal" }}
             data-game-preview-paused={String(playback.paused)}
             data-game-preview-reload={String(playback.reloadKey)}
           >
@@ -528,71 +442,50 @@ export function GameCodeStage({
                 {status}
               </div>
             ) : null}
-            {showHosted ? (
-              <GameHostedFrame
-                instanceId={instanceId}
-                hostOrigin={hostOriginNow()}
-                src={hostedSrc}
-                title="microStudio"
-                iframeRef={iframeRef}
-                onReady={() => setReady(true)}
-                onExport={(next) => {
-                  setSource(next);
+            <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
+              <textarea
+                data-testid="game-code-editor"
+                value={source}
+                onChange={(event) => {
+                  setSource(event.target.value);
                   bump();
-                  setStatus("专业模式的导出已写进草稿，还没保存。");
                 }}
-                onError={setStatus}
+                onSelect={onCodeSelect}
+                spellCheck={false}
+                className="h-full min-h-[240px] resize-none border-r bg-[var(--card,#fff)] p-3 font-mono text-xs"
               />
-            ) : (
-              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
-                <textarea
-                  data-testid="game-code-editor"
-                  value={source}
-                  onChange={(event) => {
-                    setSource(event.target.value);
-                    bump();
-                  }}
-                  onSelect={onCodeSelect}
-                  spellCheck={false}
-                  className="h-full min-h-[240px] resize-none border-r bg-[var(--card,#fff)] p-3 font-mono text-xs"
-                />
-                <div data-testid="game-preview-slot" className="min-h-[240px]">
-                  {PreviewHost ? (
-                    <PreviewHost
-                      artifactId={item.artifactId || ""}
-                      revisionId={item.revisionId || ""}
-                      envelopeUrl={envelopeUrlOf(item)}
-                      bundleFormat="html"
-                      engineApiVersion={engineApiVersion}
-                      title={item.title}
-                      paused={playback.paused}
-                      reloadKey={playback.reloadKey}
-                      paramDeclarations={paramDeclarations || undefined}
-                      paramValues={paramValues}
-                      onRuntimeError={setStatus}
-                    />
-                  ) : (
-                    <div
-                      role="alert"
-                      className="grid h-full place-items-center p-8 text-center text-sm"
-                    >
-                      可玩预览需要宿主站注册沙箱容器（registerGamePreviewHost）。
-                    </div>
-                  )}
-                </div>
+              <div data-testid="game-preview-slot" className="min-h-[240px]">
+                {PreviewHost ? (
+                  <PreviewHost
+                    artifactId={item.artifactId || ""}
+                    revisionId={item.revisionId || ""}
+                    envelopeUrl={envelopeUrlOf(item)}
+                    bundleFormat="html"
+                    engineApiVersion={engineApiVersion}
+                    title={item.title}
+                    paused={playback.paused}
+                    reloadKey={playback.reloadKey}
+                    paramDeclarations={paramDeclarations || undefined}
+                    paramValues={paramValues}
+                    onRuntimeError={setStatus}
+                  />
+                ) : (
+                  <div
+                    role="alert"
+                    className="grid h-full place-items-center p-8 text-center text-sm"
+                  >
+                    可玩预览需要宿主站注册沙箱容器（registerGamePreviewHost）。
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         ),
         status:
           status ||
-          (!hostedSrc && applied.showHostedEditor
-            ? "托管地址未放行"
-            : inspection.publishable
-              ? ""
-              : inspection.issues
-                  .map((issue) => issue)
-                  .join("，")),
+          (inspection.publishable
+            ? ""
+            : inspection.issues.map((issue) => issue).join("，")),
         persistence: {
           dirty,
           editRevision,

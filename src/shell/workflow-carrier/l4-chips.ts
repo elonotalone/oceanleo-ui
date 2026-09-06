@@ -74,7 +74,7 @@ export const WORKFLOW_AGENT_CHIPS: readonly EditorAgentChip[] = [
     appliesTo: [CHIP_ANY_SELECTION],
     icon: "download",
     prompt:
-      "把当前流程图导出为 Langflow flow JSON。先复述节点数和边数，等确认再给文件。图：{document}",
+      "把当前流程图导出为节点图 JSON。先复述节点数和边数，等确认再给文件。图：{document}",
   },
   {
     id: "workflow.chip.simplify",

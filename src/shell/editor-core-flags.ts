@@ -64,8 +64,8 @@ export const EDITOR_CORE_SPECS: Record<EditorCoreId, EditorCoreSpec> = {
   threed: { nextCore: "three.js editor", owner: "W11", hosting: "hosted" },
   "chart-editor": { nextCore: "ECharts 6 + @antv/ava", owner: "W12", hosting: "native" },
   website: { nextCore: "Puck", owner: "W13", hosting: "native" },
-  game: { nextCore: "microStudio", owner: "W14", hosting: "hosted" },
-  // 视频画布走工作流那条线（W15 的 Langflow 是专业模式，画布本身保留 React Flow）。
+  game: { nextCore: null, owner: "W14", hosting: "none" },
+  // 视频画布：React Flow 是唯一编辑面；专业编辑不可用。
   "video-canvas": { nextCore: null, owner: "W15", hosting: "none" },
 };
 

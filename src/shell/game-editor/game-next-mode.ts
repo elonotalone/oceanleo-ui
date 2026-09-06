@@ -1,9 +1,8 @@
 /**
- * 游戏新核的 L0 模式。普通模式是代码编辑器 + 沙箱预览；
- * 专业模式才把 microStudio iframe 露出来，并向它发契约 v2 的 `set-mode`。
+ * 游戏编辑器的 L0 模式。专业编辑不可用：计划永远不挂第三方整站。
  *
- * 去向由本函数一次性算完（A-53）：调用方不许再写一个 `if (mode === "pro")`
- * 决定挂不挂 iframe——绕过必须改返回值，闸盯得住。
+ * 去向由本函数一次性算完：调用方不许再写一个 `if (mode === "pro")`
+ * 决定挂不挂托管框——绕过必须改返回值，闸盯得住。
  */
 import {
   DEFAULT_EDITOR_MODE,
@@ -19,7 +18,7 @@ export interface GameNextModeApplication {
   instanceId: string;
   message: ReturnType<typeof buildSetModeMessage>;
   mode: EditorMode;
-  /** 专业模式才挂 microStudio。普通模式不露第三方整站 UI。 */
+  /** 专业编辑已拿掉；恒为 false。 */
   showHostedEditor: boolean;
 }
 
@@ -33,7 +32,7 @@ export function applyGameNextMode(
     instanceId,
     message,
     mode: next,
-    showHostedEditor: next === "pro",
+    showHostedEditor: false,
   };
 }
 

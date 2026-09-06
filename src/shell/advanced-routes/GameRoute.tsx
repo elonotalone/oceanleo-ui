@@ -2,11 +2,8 @@
 
 // LeoPlay 的游戏编辑器 route。
 //
-// 编辑面只有三样东西：**prompt 迭代、可玩预览、保存 revision**。
-// 刻意缺席的两样（`01-decisions.md` D7/D8）：
-//   · 没有代码编辑面 —— 玩法由平台生成链按注入骨架产出，用户改的是 prompt 不是源码；
-//     给 `game` 复用 `website` 的源码工作台（CAS 源码树 + dev preview）是错的。
-//   · 没有上传入口 —— adapter 不声明 `upload`，也不接受任何 `origin: "import"` 的产物。
+// 编辑页：prompt 迭代、可玩预览、保存 revision。Code 页另挂代码舞台。
+// 专业编辑不可用。没有上传入口（D8）：adapter 不声明 `upload`。
 //
 // 沙箱宿主与生成链都不住在这个包里：宿主是 game 仓的 `components/UgcGameFrame.tsx`
 // （沙箱域 + iframe sandbox 属性由那边负责），生成链是 game 仓 + 后端 router。
@@ -31,8 +28,6 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
-import { resolveEditorCore } from "../editor-core-flags";
-import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import {
   registerGamePreviewHost,
   useGamePreviewHost,
@@ -40,6 +35,11 @@ import {
   type GamePreviewHost,
   type GamePreviewHostProps,
 } from "../game-editor/preview-host";
+import {
+  gameModeUnavailable,
+  gamePagesAdapter,
+} from "../game-editor/game-pages";
+import type { AdvancedEditorPagesAdapter } from "../plugin-chrome/plugin-pages";
 
 export type { GameBundleFormat, GamePreviewHost, GamePreviewHostProps };
 export { registerGamePreviewHost };
@@ -136,21 +136,23 @@ const GameCodeStage = dynamic(
 );
 
 /**
- * 双核分发口。flag 只在这里判一次，判完各走各的组件。
- *
- * 默认 `legacy`（`_COMMON.md` §10 第 3 条）。验收绿之后才翻 flag。
+ * 页面分发口。第二行：编辑 / 专业编辑（不可用）/ Code。
+ * Code 页挂代码舞台；编辑页是可玩预览 + 轻编辑。
  */
 export function GameRoute(props: AdvancedContentWorkbenchProps) {
-  if (resolveEditorCore("game") === "next") {
-    return <GameCodeStage {...props} />;
-  }
-  return <GameLegacyGate {...props} />;
+  return <GamePagesGate {...props} />;
 }
 
-function GameLegacyGate(props: AdvancedContentWorkbenchProps) {
-  const { pro } = usePluginMode("game");
-  if (pro) return <GameCodeStage {...props} />;
-  return <GameLegacyRoute {...props} />;
+function GamePagesGate(props: AdvancedContentWorkbenchProps) {
+  const [activePageId, setActivePageId] = useState("artifact");
+  const pages = useMemo(
+    () => gamePagesAdapter(activePageId, setActivePageId),
+    [activePageId],
+  );
+  if (activePageId === "code") {
+    return <GameCodeStage {...props} pages={pages} />;
+  }
+  return <GameLegacyRoute {...props} pages={pages} />;
 }
 
 function documentFromItem(item: LibraryItem): GameBundleDocument | null {
@@ -202,7 +204,10 @@ function GameLegacyRoute({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-}: AdvancedContentWorkbenchProps) {
+  pages,
+}: AdvancedContentWorkbenchProps & {
+  pages?: AdvancedEditorPagesAdapter;
+}) {
   const session = useAdvancedSession();
   const [history, setHistory] = useState<GameBundleDocument[]>(() => {
     const initial = documentFromItem(item);
@@ -490,6 +495,8 @@ function GameLegacyRoute({
       adapter={{
         id: "game",
         label: editorToolLabel({ type: "game" }),
+        mode: gameModeUnavailable(),
+        pages: pages ?? gamePagesAdapter("artifact", () => {}),
         toolbox: {
           label: "玩法",
           icon: "add",
