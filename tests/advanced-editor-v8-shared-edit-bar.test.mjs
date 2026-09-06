@@ -157,6 +157,25 @@ async function click(target) {
   });
 }
 
+/**
+ * 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆的入口是
+ * 浮层根上的 `Ctrl/⌘ + .`（edit-bar-dock-controller onRootKeyDown → toggleCollapsed）。
+ */
+async function collapseBar(container) {
+  const root = container.querySelector("[data-workspace-edit-bar-toolbar]");
+  assert.ok(root, "浮层根不在，收起无从谈起");
+  await act(async () => {
+    root.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: ".",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+}
+
 test("measured width overflow preserves semantic placement without fixed truncation", () => {
   const controls = [
     ...Array.from(
@@ -515,7 +534,11 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       0,
       "拖拽手柄必须彻底消失",
     );
-    assert.ok(mounted.container.querySelector("[data-edit-bar-collapse]"));
+    assert.equal(
+      mounted.container.querySelector("[data-edit-bar-collapse]"),
+      null,
+      "「收起编辑栏」按钮已删（规范 v2 §4）",
+    );
 
     // 键盘一律要 Alt 修饰：条里有数字输入框和下拉框，裸方向键会被抢走。
     await key(bar(), "ArrowRight");

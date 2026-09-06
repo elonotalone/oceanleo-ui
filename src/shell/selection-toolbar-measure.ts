@@ -58,6 +58,51 @@ export function toolbarDockedHost(toolbar: HTMLDivElement): HTMLElement | null {
   return toolbar.closest<HTMLElement>("[data-workspace-docked-toolbar]");
 }
 
+/** 浮动编辑栏在容器两侧各留 .5rem（FloatingContextToolbar 的 `max-w-[calc(100%-1rem)]`）。 */
+export const FLOATING_EDGE_RESERVE_PX = 16;
+/** SelectionToolbar 自己在视口两侧各留 1rem 可达空间。 */
+export const VIEWPORT_REACHABLE_RESERVE_PX = 32;
+
+/** 边界与视口相交的可见宽度；边界不可量时返回 0。 */
+export function visibleBoundaryWidth(boundary: HTMLElement | null): number {
+  if (!boundary || typeof window === "undefined") return 0;
+  const rect = boundary.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportLeft = viewport?.offsetLeft || 0;
+  const viewportRight = viewportLeft + (viewport?.width || window.innerWidth);
+  const width = Math.max(
+    0,
+    Math.min(rect.right, viewportRight) - Math.max(rect.left, viewportLeft),
+  );
+  return width > 0 ? width : Math.max(0, rect.width);
+}
+
+/**
+ * 单行编辑栏 `[data-workspace-edit-bar]` 的内容盒容量（px）。只认外部边界
+ * （`[data-workspace-floating-toolbar-overlay]`，其次行的父盒——行还留在停靠带里时），
+ * 再扣掉两侧保留与行自身的 padding/border。**不**读行自己的宽度——行的宽度
+ * 由内容决定，读它就是把输出接回输入。
+ */
+export function editBarRowCapacity(row: HTMLElement): number {
+  if (typeof window === "undefined") return 0;
+  const boundary =
+    row.closest<HTMLElement>("[data-workspace-floating-toolbar-overlay]") ||
+    row.parentElement;
+  let capacity = visibleBoundaryWidth(boundary) - FLOATING_EDGE_RESERVE_PX;
+  const viewport = window.visualViewport;
+  const viewportWidth = viewport?.width || window.innerWidth;
+  if (viewportWidth > 0) {
+    capacity = Math.min(capacity, viewportWidth - VIEWPORT_REACHABLE_RESERVE_PX);
+  }
+  const style = window.getComputedStyle(row);
+  capacity -=
+    cssPixelValue(style.paddingInlineStart) +
+    cssPixelValue(style.paddingInlineEnd) +
+    cssPixelValue(style.borderInlineStartWidth) +
+    cssPixelValue(style.borderInlineEndWidth);
+  return Math.max(0, capacity);
+}
+
 export function toolbarSizingBoundary(toolbar: HTMLDivElement): HTMLElement | null {
   const floatingHost = toolbarFloatingHost(toolbar);
   if (floatingHost) return floatingHost.parentElement;

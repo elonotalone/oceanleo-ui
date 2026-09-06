@@ -195,19 +195,34 @@ function FlightHarness({ storageKey }) {
   );
 }
 
+/**
+ * 舞台故意开到 2000 宽：默认停放现在是画布水平居中（X2，规范 v2 §4），
+ * 从居中点往右甩 200px 再加惯性，1000 宽的舞台会撞上右边界的夹取——
+ * 那时逻辑态被夹在边界、视觉态过冲在边界外，「抓取当帧跳回逻辑态」就成了
+ * 边界夹取的副作用，测的不再是这条用例要测的飞行途中抓取。
+ */
+const STAGE_WIDTH = 2000;
+
 function installRectStub() {
   const original = window.HTMLElement.prototype.getBoundingClientRect;
+  // 可见边界还会与 window.innerWidth 相交（readVisibleBounds），视口也要一起开宽。
+  const originalInnerWidth = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: STAGE_WIDTH,
+  });
   window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
     if (this.hasAttribute("data-edit-bar-test-root")) {
       return {
-        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
-        width: 1000, height: 600, toJSON() {},
+        x: 0, y: 0, left: 0, top: 0, right: STAGE_WIDTH, bottom: 600,
+        width: STAGE_WIDTH, height: 600, toJSON() {},
       };
     }
     if (this.hasAttribute("data-edit-bar-test-stage")) {
       return {
-        x: 0, y: 110, left: 0, top: 110, right: 1000, bottom: 600,
-        width: 1000, height: 490, toJSON() {},
+        x: 0, y: 110, left: 0, top: 110, right: STAGE_WIDTH, bottom: 600,
+        width: STAGE_WIDTH, height: 490, toJSON() {},
       };
     }
     if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
@@ -226,14 +241,19 @@ function installRectStub() {
       this.hasAttribute("data-workspace-floating-toolbar")
     ) {
       return {
-        x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600,
-        width: 1000, height: 600, toJSON() {},
+        x: 0, y: 0, left: 0, top: 0, right: STAGE_WIDTH, bottom: 600,
+        width: STAGE_WIDTH, height: 600, toJSON() {},
       };
     }
     return original.call(this);
   };
   return () => {
     window.HTMLElement.prototype.getBoundingClientRect = original;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: originalInnerWidth,
+    });
   };
 }
 
@@ -262,6 +282,25 @@ async function click(target) {
   });
 }
 
+/**
+ * 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆的入口是
+ * 浮层根上的 `Ctrl/⌘ + .`（edit-bar-dock-controller onRootKeyDown → toggleCollapsed）。
+ */
+async function collapseBar(container) {
+  const root = container.querySelector("[data-workspace-edit-bar-toolbar]");
+  assert.ok(root, "浮层根不在，收起无从谈起");
+  await act(async () => {
+    root.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: ".",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+}
+
 async function pointer(target, type, values) {
   await act(async () => {
     const event = new window.Event(type, { bubbles: true, cancelable: true });
@@ -285,7 +324,7 @@ function translateXOf(element) {
  * 与 `edit-bar-motion.test.mjs:443` 的惯性用例同一条路径。
  */
 async function flingAndFreezeMidFlight(container, frames, storageKey) {
-  await click(container.querySelector("[data-edit-bar-collapse]"));
+  await collapseBar(container);
   await frames.run(600);
   const pill = container.querySelector("[data-edit-bar-collapsed-pill]");
   assert.ok(pill, "收起圆没出现，后面的甩动无从谈起");

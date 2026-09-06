@@ -47,6 +47,7 @@ import {
   SelectionToolbarControl,
 } from "./SelectionToolbarControl";
 import { useSelectionToolbarMeasure } from "./useSelectionToolbarMeasure";
+import { useInsideEditBarRow } from "./edit-bar-row-context";
 
 
 export interface SelectionToolbarProps {
@@ -261,13 +262,17 @@ export function SelectionToolbar({
   }, [moreOpen, overflow.length]);
 
   const effectiveVariant = layout ? "floating" : variant;
-  const contextLeading = layout?.contextBarLeading;
-  const contextTrailing = layout?.contextBarTrailing;
+  // 在单行编辑栏（FloatingContextToolbar 的 EditBarRow）里，撤销重做 / 宿主后缀 /
+  // AI 助手 / 固定柄全部由行来画，本组件只剩「选中对象工具」这一段：不画胶囊、
+  // 不画自己的前后缀 chrome，否则同一行出现两个 AI 键、两层胶囊。
+  const insideRow = useInsideEditBarRow();
+  const contextLeading = insideRow ? undefined : layout?.contextBarLeading;
+  const contextTrailing = insideRow ? undefined : layout?.contextBarTrailing;
   const toolsAvailable = Boolean(context && toolsLauncher?.available);
   // AI 固定在右段，13 个插件同一个位置。点它把左侧操控台换成 agent 对话，
   // 用户可以一边说一边改右边——所以这里只切抽屉，不抢舞台焦点。
   const agentActive = layout?.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
-  const agentButton = layout ? (
+  const agentButton = layout && !insideRow ? (
     <button
       type="button"
       data-edit-bar-agent
@@ -408,7 +413,15 @@ export function SelectionToolbar({
           : "w-full max-w-full bg-transparent p-0 text-[var(--fg,#292524)]"
       } ${className}`}
       style={
-        effectiveVariant === "floating"
+        effectiveVariant === "floating" && insideRow
+          ? {
+              // 行是胶囊；这一段透明、无内边距，只保留像素上限防止溢出。
+              maxInlineSize:
+                floatingMaxInlineSize > 0
+                  ? `${floatingMaxInlineSize}px`
+                  : SELECTION_TOOLBAR_VIEWPORT_MAX,
+            }
+          : effectiveVariant === "floating"
           ? {
               // 胶囊外观来自共享配方，插件不得在此处各自加圆角/阴影。
               ...editBarPillStyle(),
@@ -422,7 +435,7 @@ export function SelectionToolbar({
             }
           : undefined
       }
-      role="toolbar"
+      role={insideRow ? "group" : "toolbar"}
       aria-label={context?.label || "编辑器工具栏"}
     >
       {prefixVisible && (

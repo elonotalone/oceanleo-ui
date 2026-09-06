@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   cssPixelValue,
+  editBarRowCapacity,
   elementInlineSize,
   elementOuterInlineSize,
   equalMeasuredWidths,
@@ -18,12 +19,10 @@ import {
   toolbarFloatingHost,
   toolbarFloatingTranslatedShell,
   toolbarSizingBoundary,
+  visibleBoundaryWidth,
+  FLOATING_EDGE_RESERVE_PX,
+  VIEWPORT_REACHABLE_RESERVE_PX,
 } from "./selection-toolbar-measure";
-
-/** 浮动编辑栏在容器两侧各留 .5rem（FloatingContextToolbar 的 `max-w-[calc(100%-1rem)]`）。 */
-const FLOATING_EDGE_RESERVE_PX = 16;
-/** SelectionToolbar 自己在视口两侧各留 1rem 可达空间。 */
-const VIEWPORT_REACHABLE_RESERVE_PX = 32;
 
 /**
  * 浮动编辑栏的容量边界：只认**外部**盒子。
@@ -39,20 +38,6 @@ function floatingCapacityBoundary(toolbar: HTMLDivElement): HTMLElement | null {
   );
   if (overlay) return overlay;
   return toolbarSizingBoundary(toolbar);
-}
-
-/** 边界与视口相交的可见宽度；边界不可量时返回 0。 */
-function visibleBoundaryWidth(boundary: HTMLElement | null): number {
-  if (!boundary || typeof window === "undefined") return 0;
-  const rect = boundary.getBoundingClientRect();
-  const viewport = window.visualViewport;
-  const viewportLeft = viewport?.offsetLeft || 0;
-  const viewportRight = viewportLeft + (viewport?.width || window.innerWidth);
-  const width = Math.max(
-    0,
-    Math.min(rect.right, viewportRight) - Math.max(rect.left, viewportLeft),
-  );
-  return width > 0 ? width : Math.max(0, rect.width);
 }
 
 /**
@@ -169,7 +154,20 @@ export function useSelectionToolbarMeasure({
         (typeof window === "undefined" ? 0 : window.innerWidth);
 
       let containerWidth: number;
-      if (inFloatingChrome) {
+      if (row) {
+        // 单行编辑栏：容量 = 行的外部边界（overlay / 行的父盒）− 两侧保留 − 行 padding，
+        // 再扣兄弟段；与本栏和行自己的宽度都无关。栏的像素上限也用扣完兄弟后的值，
+        // 这样栏本身永远塞得进行里，行永不换行。
+        const rowCapacity = editBarRowCapacity(row);
+        containerWidth = Math.max(
+          0,
+          rowCapacity - rowSiblingsInlineSize(toolbar, row),
+        );
+        const ceiling = containerWidth;
+        setFloatingMaxInlineSize((current) =>
+          current === ceiling ? current : ceiling,
+        );
+      } else if (inFloatingChrome) {
         // 容量 = 外部边界的可见宽度 − 两侧保留。与栏自己的位置/宽度无关。
         let capacity =
           visibleBoundaryWidth(floatingCapacityBoundary(toolbar)) -
@@ -188,12 +186,6 @@ export function useSelectionToolbarMeasure({
       } else {
         setFloatingMaxInlineSize((current) => (current === 0 ? current : 0));
         containerWidth = toolbarContainerInlineSize(toolbar, effectiveVariant);
-      }
-      if (row && containerWidth > 0) {
-        containerWidth = Math.max(
-          0,
-          containerWidth - rowSiblingsInlineSize(toolbar, row),
-        );
       }
       const measuredViewportCapacity =
         effectiveVariant === "floating"

@@ -553,6 +553,9 @@ export function PluginChromeFrame({
             bridge={editBarGestures}
             accent={accent || "#4f46e5"}
             theme={theme}
+            // AI 键由 frame 自己画（下方，tests/plugin-chrome-agent-drawer 钉死），
+            // 共享单行容器不再画第二个；固定柄由容器最右段统一画。
+            assistant={null}
           >
           {/*
             槽内显式**不**提供 AdvancedLayout。设计画布与视频画布都把
@@ -601,12 +604,8 @@ export function PluginChromeFrame({
           >
             <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
           </button>
-          {/* 固定 / 收起为圆。停靠带在位时 trailing 里才有固定键。 */}
-          {editBarGestures.controller.trailing}
           </PluginChromeEditBarGestureLayer>
         </div>
-
-        <PluginChromeNotices notices={notices || []} />
 
         {/* ---------------------------------------------- 行 3：左栏 + 舞台 */}
         <div className="flex min-h-0 flex-1">
@@ -658,6 +657,20 @@ export function PluginChromeFrame({
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--pchrome-stage)]"
           >
             {children}
+            {/*
+              通知胶囊列：规范 v2 §1 要它在画布左下角，不再夹在行 2 与行 3 之间撑出一行。
+              没有通知时连容器都不挂——舞台里除了插件自己的子节点不许多出任何东西
+              （tests/plugin-chrome-agent-drawer「stage 里只该有插件传的那一个子节点」）。
+            */}
+            {notices && notices.length > 0 && (
+              <div
+                // 只包住胶囊本身（w-max），不盖舞台：舞台里不许出现任何 pointer-events 遮挡。
+                className="absolute bottom-3 left-3 w-max max-w-[calc(100%-1.5rem)]"
+                style={{ zIndex: 2_147_483_010 }}
+              >
+                <PluginChromeNotices notices={notices} />
+              </div>
+            )}
           </main>
         </div>
       </div>

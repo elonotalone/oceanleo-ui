@@ -82,11 +82,19 @@ export function PluginChromeEditBarGestureLayer({
   accent,
   theme,
   children,
+  documentSegment,
+  trailing,
+  assistant,
 }: {
   bridge: PluginChromeEditBarGestureBridge;
   accent: string;
   theme: PluginThemeMode | null;
   children: ReactNode;
+  /** 透传给 FloatingContextToolbar（规范 v2 §4 单行四段）。 */
+  documentSegment?: ReactNode;
+  trailing?: ReactNode;
+  /** 见 FloatingContextToolbar.assistant：frame 自己画 AI 键时传 null。 */
+  assistant?: ReactNode | null;
 }) {
   const { controller } = bridge;
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
@@ -126,12 +134,24 @@ export function PluginChromeEditBarGestureLayer({
   });
 
   const surface = resolveEditBarGestureSurface(portalHost);
-  if (surface.kind === "inline") return <>{children}</>;
+  if (surface.kind === "inline") {
+    // 宿主还没挂上：内容原样留在行里，AI 键不许因为动效起不来而消失。
+    return (
+      <>
+        {children}
+        {documentSegment}
+        {trailing}
+      </>
+    );
+  }
   return (
     <FloatingContextToolbar
       controller={{ ...controller, portalRoot: surface.portalRoot }}
       accent={accent}
       theme={theme}
+      documentSegment={documentSegment}
+      trailing={trailing}
+      assistant={assistant}
     >
       {children}
     </FloatingContextToolbar>

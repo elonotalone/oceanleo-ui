@@ -293,7 +293,9 @@ export function InlineAdvancedWorkbenchShell({
       ) : (
         floatingToolbar.leading
       ),
-      contextBarTrailing: floatingToolbar.trailing,
+      // 固定柄由 FloatingContextToolbar 的单行容器自己画（controller.canDock），
+      // 这里不再透传，否则同一行出现两个固定键。
+      contextBarTrailing: undefined,
       openDrawer,
       openTransientPanel,
       updateTransientPanel,
@@ -318,7 +320,6 @@ export function InlineAdvancedWorkbenchShell({
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
-  const editBarEmpty = !contextToolbar && documentActions.length === 0;
   // 离开确认。原生 window.confirm 冻住主线程、样式不可控、移动端尤其糟，
   // 换成 ConfirmDialog 后它是异步的；用一道 promise 门把下面那段命令式流程接回来：
   // requestClose 里 `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
@@ -520,22 +521,20 @@ export function InlineAdvancedWorkbenchShell({
           controller={floatingToolbar}
           accent={effectiveAccent}
           theme={pluginTheme.theme}
+          // 单行容器 `[data-workspace-edit-bar]` 由 FloatingContextToolbar 自己画
+          // （signals/X2-interface.md）：撤销重做来自 layout.contextBarLeading，
+          // 文档段走 documentSegment，AI 助手与固定柄由容器最右段统一画。
+          documentSegment={
+            documentActions.length > 0 ? (
+              <EditBarDocumentSegment
+                actions={documentActions}
+                onTrigger={triggerDocumentAction}
+              />
+            ) : undefined
+          }
+          emptyHint="在画面里选中元素后，可在此编辑"
         >
-          <div
-            data-workspace-edit-bar
-            data-empty={editBarEmpty || undefined}
-          >
-            {contextToolbar}
-            <EditBarDocumentSegment
-              actions={documentActions}
-              onTrigger={triggerDocumentAction}
-              emptyHint={
-                contextToolbar
-                  ? undefined
-                  : "在画面里选中元素后，可在此编辑"
-              }
-            />
-          </div>
+          {contextToolbar}
         </FloatingContextToolbar>
       )}
       <div

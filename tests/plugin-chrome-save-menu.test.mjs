@@ -68,7 +68,10 @@ function loadShell() {
         }
       `),
       "./FloatingContextToolbar": dataModule(`
-        export function FloatingContextToolbar({ children }) { return children ?? null; }
+        import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+        export function FloatingContextToolbar({ children, documentSegment }) {
+          return jsxs("div", { "data-workspace-edit-bar": true, "data-empty": !children && !documentSegment ? true : undefined, children: [children ?? null, documentSegment ?? null] });
+        }
         export function useFloatingContextToolbar() {
           return { mode: "docked", dropActive: false, leading: null, trailing: null };
         }

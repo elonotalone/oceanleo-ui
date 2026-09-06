@@ -97,6 +97,7 @@ const chromeStubUrl = dataModule(`
   export function advancedWorkbenchStyle(accent) {
     return { "--awb-accent": accent, "--awb-accent-soft": accent + "18" };
   }
+  export function actionGroup(action) { return action.group || "edit"; }
 `);
 const iconsStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -258,6 +259,25 @@ async function click(target) {
   await act(async () => {
     target.dispatchEvent(
       new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+  });
+}
+
+/**
+ * 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆的入口是
+ * 浮层根上的 `Ctrl/⌘ + .`（edit-bar-dock-controller onRootKeyDown → toggleCollapsed）。
+ */
+async function collapseBar(container) {
+  const root = container.querySelector("[data-workspace-edit-bar-toolbar]");
+  assert.ok(root, "浮层根不在，收起无从谈起");
+  await act(async () => {
+    root.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: ".",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
     );
   });
 }
@@ -662,25 +682,21 @@ test("已选中后按空白：双击窗口过了仍走老路起拖", async () =>
   }
 });
 
-test("单击收起键：第一次点击立刻收成圆", async () => {
+test("Ctrl/⌘+. 收起：一次按键立刻收成圆；栏里没有「收起编辑栏」按钮", async () => {
   window.localStorage.clear();
   const mounted = await createMounted(DockHarness, {
     storageKey: "test:edit-bar:single-collapse",
   });
   try {
-    const collapse = mounted.container.querySelector("[data-edit-bar-collapse]");
-    assert.ok(collapse, "收起键必须在");
-    await pointer(collapse, "pointerdown", {
-      pointerId: 1,
-      pointerType: "mouse",
-      button: 0,
-      clientX: 380,
-      clientY: 70,
-    });
-    await click(collapse);
+    assert.equal(
+      mounted.container.querySelector("[data-edit-bar-collapse]"),
+      null,
+      "「收起编辑栏」按钮已删（规范 v2 §4），不许再长回来",
+    );
+    await collapseBar(mounted.container);
     assert.ok(
       mounted.container.querySelector("[data-edit-bar-collapsed-pill]"),
-      "第一次点击收起键必须立刻收成圆，不能再等双击窗口",
+      "Ctrl+. 必须立刻收成圆，不能再等双击窗口",
     );
   } finally {
     await mounted.unmount();
@@ -714,9 +730,10 @@ test("点一下选中再点一下进入移动模式：拖出、回停靠、Esc �
       0,
       "左右两个 ⠿ 拖拽手柄必须彻底消失",
     );
-    assert.ok(
+    assert.equal(
       mounted.container.querySelector("[data-edit-bar-collapse]"),
-      "最右侧必须常驻一个收起按钮",
+      null,
+      "「收起编辑栏」按钮已删（规范 v2 §4）",
     );
 
     assert.equal(
@@ -854,7 +871,7 @@ test("点一下选中再点一下进入移动模式：拖出、回停靠、Esc �
     );
 
     // 收起为圆 → 拖动圆 → 再点圆展开。
-    await click(mounted.container.querySelector("[data-edit-bar-collapse]"));
+    await collapseBar(mounted.container);
     const pill = () =>
       mounted.container.querySelector("[data-edit-bar-collapsed-pill]");
     assert.ok(pill(), "收起后应只剩一个圆");
@@ -889,7 +906,7 @@ test("点一下选中再点一下进入移动模式：拖出、回停靠、Esc �
     assert.ok(parked, "收起位置必须落盘");
     await click(pill());
     assert.equal(pill(), null, "点击小圆应展开回胶囊");
-    assert.ok(bar().querySelector("[data-edit-bar-collapse]"));
+    assert.ok(bar().querySelector("[data-workspace-edit-bar]"), "展开后应回到单行编辑栏");
   } finally {
     await mounted.unmount();
     restoreRect();
@@ -999,7 +1016,7 @@ test("键盘快捷键的广告位与实现对得上（展开态用 Alt+，收起
     // ── 收起圆：它的广告位刻意**不带** Alt ──
     // 圆本身是按钮、拿得到焦点，不必和条内的输入框抢方向键，
     // 所以 moveByKeyboard 收裸键。这条防的是有人「顺手统一成 Alt+」。
-    await click(mounted.container.querySelector("[data-edit-bar-collapse]"));
+    await collapseBar(mounted.container);
     const pill = mounted.container.querySelector(
       "[data-edit-bar-collapsed-pill]",
     );

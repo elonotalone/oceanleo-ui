@@ -3,7 +3,8 @@
 // 左右两个 ⠿ 拖拽手柄已移除：它们占掉两个控件位，且把「怎么移动这条」变成
 // 需要瞄准的操作。展开胶囊：双击条上任意位置（含按键）并按住拖、松手落下；
 // 第一次单击仍立即触发按键，不延迟。选中后按空白也能直接跟手。
-// 见 edit-bar-dock-controller。这里只剩三个常驻控件：固定、收起、以及收起后的圆。
+// 见 edit-bar-dock-controller。这里只剩两个常驻控件：固定、以及收起后的圆。
+// 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）；收起走 Ctrl/⌘+. 。
 
 import type {
   KeyboardEventHandler,
@@ -107,26 +108,6 @@ export function EditBarPinButton({
           strokeLinejoin="round"
         />
       </svg>
-    </button>
-  );
-}
-
-/** 胶囊最右侧的常驻按钮。13 个插件位置一致，用户在哪个插件里都在同一处找它。 */
-export function EditBarCollapseButton({ onCollapse }: { onCollapse: () => void }) {
-  const tt = useUI();
-  const label = tt("收起编辑栏");
-  return (
-    <button
-      type="button"
-      data-edit-bar-collapse
-      data-edit-bar-interactive
-      onClick={onCollapse}
-      className={EDIT_BAR_BUTTON_CLASS}
-      aria-label={label}
-      aria-expanded
-      title={tt("收起编辑栏；收起后仍可拖动")}
-    >
-      <AdvancedEditorIcon name="chevron" className="h-4 w-4 -rotate-90" />
     </button>
   );
 }

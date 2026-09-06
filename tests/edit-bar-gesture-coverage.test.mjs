@@ -362,7 +362,16 @@ test("引擎：① 双击任意处（含按键）起拖；单击仍立即选中"
 });
 
 test("引擎：② 收起为圆 / 再点展开，是形变不是瞬切", () => {
-  assert.match(controlsSource, wholeName("data-edit-bar-collapse"), "收起键没了（改名也算没了）");
+  assert.doesNotMatch(
+    controlsSource,
+    wholeName("data-edit-bar-collapse"),
+    "「收起编辑栏」按钮已删（规范 v2 §4），不许长回来",
+  );
+  assert.match(
+    controllerSource,
+    /event\.key === "\."/,
+    "收起为圆的入口 Ctrl/⌘+. 没了",
+  );
   assert.match(
     controlsSource,
     wholeName("data-edit-bar-collapsed-pill"),
@@ -567,6 +576,10 @@ const pluginThemeStubUrl = dataModule(`
   export function pluginWorkbenchStyle(_theme, accent) {
     return { "--awb-accent": accent };
   }
+  // FloatingContextToolbar 的文档段「更多」走 AnchoredPopover，它靠这个拿 portal 主题。
+  export function usePluginThemePortal() {
+    return null;
+  }
 `);
 const splitWorkspaceStubUrl = dataModule(`
   export function useConsoleAgentFocus() {
@@ -667,6 +680,25 @@ async function click(target) {
   });
 }
 
+/**
+ * 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆的入口是
+ * 浮层根上的 `Ctrl/⌘ + .`（edit-bar-dock-controller onRootKeyDown → toggleCollapsed）。
+ */
+async function collapseBar(container) {
+  const root = container.querySelector("[data-workspace-edit-bar-toolbar]");
+  assert.ok(root, "浮层根不在，收起无从谈起");
+  await act(async () => {
+    root.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: ".",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+}
+
 function translateOf(element) {
   const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(
     element?.style.transform || "",
@@ -738,10 +770,13 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
         window.dispatchEvent(up);
       });
 
-      // ② 点击后缩为一个圆形
-      const collapse = container.querySelector("[data-edit-bar-collapse]");
-      assert.ok(collapse, "收起键不在——「点击后缩为一个圆形」没有入口");
-      await click(collapse);
+      // ② Ctrl/⌘+. 后缩为一个圆形（「收起编辑栏」按钮已删，规范 v2 §4）
+      assert.equal(
+        container.querySelector("[data-edit-bar-collapse]"),
+        null,
+        "「收起编辑栏」按钮不许长回来",
+      );
+      await collapseBar(container);
       const pill = container.querySelector("[data-edit-bar-collapsed-pill]");
       assert.ok(pill, "点了收起却没有变成圆");
       assert.equal(

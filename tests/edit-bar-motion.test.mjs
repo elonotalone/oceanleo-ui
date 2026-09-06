@@ -269,6 +269,25 @@ async function click(target) {
   });
 }
 
+/**
+ * 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆的入口是
+ * 浮层根上的 `Ctrl/⌘ + .`（edit-bar-dock-controller onRootKeyDown → toggleCollapsed）。
+ */
+async function collapseBar(container) {
+  const root = container.querySelector("[data-workspace-edit-bar-toolbar]");
+  assert.ok(root, "浮层根不在，收起无从谈起");
+  await act(async () => {
+    root.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: ".",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+}
+
 async function pointer(target, type, values) {
   await act(async () => {
     const event = new window.Event(type, { bubbles: true, cancelable: true });
@@ -326,7 +345,7 @@ test("收缩是连续形变：中间帧的宽度既不是展开态也不是 48",
       "静止时不该有 ghost 层",
     );
 
-    await click(container.querySelector("[data-edit-bar-collapse]"));
+    await collapseBar(container);
 
     // 逻辑态**立刻**落定，不等动画：收起圆当场在，落盘也当场写。
     assert.ok(
@@ -391,7 +410,7 @@ test("展开是连续形变，且真圆当场卸载（淡出的只能是 ghost�
   });
   const container = mounted.container;
   try {
-    await click(container.querySelector("[data-edit-bar-collapse]"));
+    await collapseBar(container);
     await frames.run(600);
     const pill = container.querySelector("[data-edit-bar-collapsed-pill]");
     assert.ok(pill, "收起后应当有圆");
@@ -452,7 +471,7 @@ test("松手之后位置继续变化若干帧，且逻辑态早已落定", async
     container.querySelector("[data-workspace-edit-bar-toolbar]");
   try {
     // 收起成圆再拖它：圆的拖拽是经典的按住即拖，比移动模式好在这份 harness 里驱动。
-    await click(container.querySelector("[data-edit-bar-collapse]"));
+    await collapseBar(container);
     await frames.run(600);
     const pill = container.querySelector("[data-edit-bar-collapsed-pill]");
     assert.ok(pill);
@@ -534,7 +553,7 @@ test("__leoMotionJumpAllToRest 能把编辑栏的动效当场按停（W10 的视
       "钩子必须挂在 window 上，缺了它 W10 那道闸建不起来",
     );
 
-    await click(container.querySelector("[data-edit-bar-collapse]"));
+    await collapseBar(container);
     assert.ok(frames.pending, "形变应当已经排上了一帧");
 
     await act(async () => window.__leoMotionJumpAllToRest());

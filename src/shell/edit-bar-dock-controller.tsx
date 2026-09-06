@@ -21,10 +21,6 @@ import {
   type SpringValue,
 } from "../lib/motion";
 import {
-  EditBarCollapseButton,
-  EditBarPinButton,
-} from "./EditBarDockControls";
-import {
   boundedEditBarDockOffset,
   parseEditBarDockState,
   serializeEditBarDockState,
@@ -192,7 +188,14 @@ export interface EditBarMorphBox {
 
 export interface EditBarDockController {
   leading: ReactNode;
+  /**
+   * 恒为 null（保留字段只为兼容旧宿主的 `{controller.trailing}`）。固定柄由
+   * `FloatingContextToolbar` 的单行容器按 `canDock` 自己画在最右段；曾经通过
+   * `contextBarTrailing` 传给 SelectionToolbar 的那条路已收回，避免两个固定键。
+   */
   trailing: ReactNode;
+  /** 有停靠位（传了 dockRootRef）。 */
+  canDock: boolean;
   portalRoot: HTMLElement | null;
   dockRoot: HTMLElement | null;
   toolbarRef: RefObject<HTMLDivElement | null>;
@@ -249,6 +252,7 @@ export interface EditBarDockController {
   toggleCollapsed: () => void;
   dock: () => void;
   undock: () => void;
+  toggleDock: () => void;
   resetPosition: () => void;
 }
 
@@ -289,6 +293,12 @@ export function useEditBarDockController({
   const positionRef = useRef<FloatingToolbarPoint>({ x: 0, y: 0 });
   const presentationRef = useRef<EditBarPresentation>("expanded");
   const collapsedPositionRef = useRef<FloatingToolbarPoint | null>(null);
+  /**
+   * 展开态栏宽的最近一次实测。默认停放要水平居中，但 offset 是相对默认停放点
+   * 记的：锚点若跟着**当前**盒宽走，收起成 48px 圆的那一刻锚点就会右移半个栏宽，
+   * 飞行中抓取 / 展开 ↔ 收起换算全部跳变。所以只在展开态刷新，收起态沿用。
+   */
+  const expandedToolbarWidthRef = useRef(0);
   const [mode, setMode] = useState<EditBarDockMode>(defaultMode);
   const [offset, setOffset] = useState<FloatingToolbarPoint>(offsetRef.current);
   const [position, setPosition] = useState<FloatingToolbarPoint>(
@@ -560,7 +570,8 @@ export function useEditBarDockController({
 
   const defaultPosition = useCallback((): FloatingToolbarPoint => {
     const stage = stageRef.current?.getBoundingClientRect();
-    const layer = readLayerElement()?.getBoundingClientRect();
+    const layerEl = readLayerElement();
+    const layer = layerEl?.getBoundingClientRect();
     if (!stage || !layer) return { x: 0, y: 0 };
     const selection = toolbarRef.current?.querySelector<HTMLElement>(
       "[data-selection-anchor-x][data-selection-anchor-y]",
@@ -586,9 +597,20 @@ export function useEditBarDockController({
         };
       }
     }
+    // 没有选区锚点时的默认停放：页签行底边下 8px（finalize 的 clampEditBarBelowChrome
+    // 会再兜一次底）、画布水平居中——13 件插件打开时栏都在同一个位置。
+    if (presentationRef.current === "expanded") {
+      const measured = toolbarRef.current?.getBoundingClientRect().width || 0;
+      if (measured > 0) expandedToolbarWidthRef.current = measured;
+    }
+    const toolbarWidth = expandedToolbarWidthRef.current;
+    const chromeBottom = readPluginChromeRowsBottom(layerEl);
     return {
-      x: stage.left - layer.left + 8,
-      y: stage.top - layer.top + 8,
+      x: stage.left - layer.left + Math.max(0, (stage.width - toolbarWidth) / 2),
+      y:
+        chromeBottom != null && chromeBottom > 0
+          ? chromeBottom - layer.top + EDIT_BAR_BELOW_CHROME_GAP_PX
+          : stage.top - layer.top + 8,
     };
   }, [readLayerElement, stageRef]);
 
@@ -1621,25 +1643,12 @@ export function useEditBarDockController({
     ],
   );
 
-  const pinButton = useMemo(
-    () =>
-      dockRootRef ? (
-        <EditBarPinButton mode={mode} onToggle={toggleDock} />
-      ) : null,
-    [dockRootRef, mode, toggleDock],
-  );
-
   // 左侧不再有任何 chrome：拖拽手柄取消后前缀区应当彻底让位给插件控件。
   const leading = null;
-  const trailing = useMemo(
-    () => (
-      <>
-        {pinButton}
-        <EditBarCollapseButton onCollapse={collapse} />
-      </>
-    ),
-    [collapse, pinButton],
-  );
+  // 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆仍可用
+  // `Ctrl/⌘ + .`（onRootKeyDown → toggleCollapsed），圆本身点一下展开。
+  // 固定柄由 FloatingContextToolbar 的单行容器按 canDock 自己画，这里不再给。
+  const trailing: ReactNode = null;
 
   useLayoutEffect(() => {
     // Keep one shell-owned portal for docked and floating modes. React never
@@ -1848,6 +1857,7 @@ export function useEditBarDockController({
   return {
     leading,
     trailing,
+    canDock: Boolean(dockRootRef),
     portalRoot,
     dockRoot,
     toolbarRef,
@@ -1872,6 +1882,7 @@ export function useEditBarDockController({
     toggleCollapsed,
     dock,
     undock,
+    toggleDock,
     resetPosition,
   };
 }

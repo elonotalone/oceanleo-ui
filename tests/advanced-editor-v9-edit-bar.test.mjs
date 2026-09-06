@@ -366,6 +366,13 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     /historyControls/,
     "撤销重做要由壳统一注入编辑栏，不许各插件自己画",
   );
-  assert.match(shell, /contextBarTrailing:\s*floatingToolbar\.trailing/);
+  // 固定柄由 FloatingContextToolbar 的单行容器自己画（controller.canDock），
+  // 壳不再把 controller.trailing 透传进 contextBarTrailing——否则同一行两个固定键。
+  assert.match(shell, /contextBarTrailing:\s*undefined/);
+  assert.doesNotMatch(shell, /contextBarTrailing:\s*floatingToolbar\.trailing/);
   assert.equal((shell.match(/<FloatingContextToolbar/g) || []).length, 1);
+  // 文档段走 documentSegment prop（signals/X2-interface.md），不再由壳自己拼
+  // `[data-workspace-edit-bar]` 容器。
+  assert.match(shell, /documentSegment=\{/);
+  assert.doesNotMatch(shell, /<div\s[^>]*data-workspace-edit-bar/);
 });
