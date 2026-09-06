@@ -98,6 +98,64 @@ export function resolvePdfiumWasmUrl(
   };
 }
 
+/**
+ * 把打包器发出的根相对路径收成 blob worker 能 `fetch` 的绝对 URL。
+ *
+ * EmbedPDF 的 worker 是 `new Worker(blob:, {type:"module"})`。worker 里
+ * `fetch("/_next/static/media/pdfium.wasm")` 会按 blob: 基址解析，直接抛
+ * `Failed to parse URL`，而 `wasmError` 被 RemoteExecutor 丢掉——用户看见的
+ * 就是永远停在「Initializing plugins...」。有 scheme 的地址原样返回。
+ */
+export function absolutizePdfiumWasmUrl(
+  url: string,
+  origin?: string | null,
+): string {
+  const value = url.trim();
+  if (!value) return value;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) return value;
+  const base = (origin || "").trim();
+  if (!base) return value;
+  try {
+    return new URL(value, base).href;
+  } catch {
+    return value;
+  }
+}
+
+/** 专业查看器从挂上到插件就绪的上限。超时必须说原因，不许继续转圈。 */
+export const PDFIUM_INIT_TIMEOUT_MS = 15_000;
+
+export function pdfiumInitTimeoutMessage(detail?: string): string {
+  return detail
+    ? `内核加载失败：${detail}`
+    : `内核加载失败：PDFium 在 ${PDFIUM_INIT_TIMEOUT_MS / 1000} 秒内没有就绪。`;
+}
+
+export type PdfiumInitWatchStatus = "pending" | "ready" | "timeout";
+
+export interface PdfiumInitWatchInput {
+  startedAtMs: number;
+  nowMs: number;
+  ready: boolean;
+  timeoutMs?: number;
+  detail?: string;
+}
+
+/** 纯函数：初始化超时 → 报错态。不读 Date.now，好测。 */
+export function pdfiumInitWatch(
+  input: PdfiumInitWatchInput,
+): { status: PdfiumInitWatchStatus; message?: string } {
+  if (input.ready) return { status: "ready" };
+  const limit = input.timeoutMs ?? PDFIUM_INIT_TIMEOUT_MS;
+  if (input.nowMs - input.startedAtMs >= limit) {
+    return {
+      status: "timeout",
+      message: pdfiumInitTimeoutMessage(input.detail),
+    };
+  }
+  return { status: "pending" };
+}
+
 /** PDFium 认得的回退字体分组，与上游 `@embedpdf/fonts-*` 包名同名。 */
 export const PDFIUM_FONT_GROUPS = [
   "latin",

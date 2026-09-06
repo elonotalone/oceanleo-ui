@@ -27,12 +27,15 @@
  *   会立刻得到 Task 自己，于是「文档打开了」这件事永远不发生，而且不报错。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
 import {
   PDFIUM_FONT_BASE_ENV_KEY,
+  PDFIUM_INIT_TIMEOUT_MS,
   PDFIUM_WASM_ENV_KEY,
   PDF_VIEWER_NO_EXTERNAL_FONTS,
+  absolutizePdfiumWasmUrl,
+  pdfiumInitWatch,
   resolvePdfiumFontFallback,
   resolvePdfiumWasmUrl,
 } from "./pdf-next-runtime";
@@ -96,10 +99,18 @@ export function usePdfiumLoadPlan() {
       envUrl: envValue(PDFIUM_WASM_ENV_KEY),
       bundledUrl: bundledWasmUrl(),
     });
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+    const resolved = wasm.ok
+      ? {
+          ...wasm,
+          wasmUrl: absolutizePdfiumWasmUrl(wasm.wasmUrl, origin),
+        }
+      : wasm;
     const fontFallback = resolvePdfiumFontFallback(
       envValue(PDFIUM_FONT_BASE_ENV_KEY),
     );
-    return { wasm, fontFallback };
+    return { wasm: resolved, fontFallback };
   }, []);
 }
 
@@ -132,6 +143,8 @@ function ProViewer({
   const [Viewer, setViewer] = useState<React.ComponentType<
     Record<string, unknown>
   > | null>(null);
+  const [timeoutError, setTimeoutError] = useState("");
+  const pluginsReadyRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -160,19 +173,52 @@ function ProViewer({
     };
   }, [onFailure]);
 
+  useEffect(() => {
+    pluginsReadyRef.current = false;
+    const startedAtMs = Date.now();
+    const timer = window.setTimeout(() => {
+      const watch = pdfiumInitWatch({
+        startedAtMs,
+        nowMs: Date.now(),
+        ready: pluginsReadyRef.current,
+        timeoutMs: PDFIUM_INIT_TIMEOUT_MS,
+        detail:
+          "专业查看器插件没有在时限内就绪。PDFium worker 必须能 fetch 到绝对地址的 wasm。",
+      });
+      if (watch.status !== "timeout" || !watch.message) return;
+      setTimeoutError(watch.message);
+      onFailure(watch.message);
+    }, PDFIUM_INIT_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [onFailure]);
+
+  if (timeoutError) {
+    return (
+      <p role="alert" className="p-4 text-xs">
+        {timeoutError}
+      </p>
+    );
+  }
   if (!Viewer) return <p className="p-4 text-xs">正在载入专业模式…</p>;
   return (
-    <Viewer
-      style={{ width: "100%", height: "100%" }}
-      config={{
-        wasmUrl,
-        fontFallback: fontFallback ?? null,
-        fonts: PDF_VIEWER_NO_EXTERNAL_FONTS,
-        documentManager: {
-          initialDocuments: [{ buffer: pdfArrayBuffer(bytes), name }],
-        },
-      }}
-    />
+    <div className="h-full w-full" data-pdf-pro-stage="">
+      <Viewer
+        style={{ width: "100%", height: "100%" }}
+        config={{
+          wasmUrl,
+          fontFallback: fontFallback ?? null,
+          fonts: PDF_VIEWER_NO_EXTERNAL_FONTS,
+          documentManager: {
+            initialDocuments: [{ buffer: pdfArrayBuffer(bytes), name }],
+          },
+        }}
+        onReady={() => {
+          pluginsReadyRef.current = true;
+        }}
+      />
+    </div>
   );
 }
 
