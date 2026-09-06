@@ -11,6 +11,7 @@ import type {
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
 import type { SelectionPanelAction } from "./selection-context";
 import type { EditorAdapterId } from "./workbench-routes";
+import type { AdvancedEditorPagesAdapter } from "./plugin-chrome/plugin-pages";
 
 export interface AdvancedWorkbenchDrawer {
   id: string;
@@ -106,15 +107,24 @@ export interface AdvancedEditorAdapter {
   /** Default deliverable shown first inside the shared download menu. */
   directDownload?: AdvancedWorkbenchAction;
   /**
-   * Non-export actions stay in the workspace row. Secondary exports declare
-   * `group: "download"` and join directDownload in one anchored menu.
+   * plugin-chrome-unification 之后：`group: "download"` 的动作进第一行的下载菜单；
+   * **其余动作一律不再画在第一行**，宿主把它们放进编辑栏的「文档段」
+   * （只在「编辑」页出现）。插件不必迁移字段，但应删掉冗余项。
    */
   actions?: readonly AdvancedWorkbenchAction[];
   history?: AdvancedHistoryActions;
   viewport?: AdvancedViewportActions;
   nativeChrome?: AdvancedEditorNativeChrome;
-  /** L3 专业模式（W01 判据 3）。不实现即视为不支持，L0 开关置灰。 */
+  /**
+   * L3 专业模式。plugin-chrome-unification 之后它不再是第一行的开关，而是
+   * 第二行「专业编辑」页；宿主用 `pageToEditorMode()` 把页翻成这里的 setMode。
+   */
   mode?: AdvancedEditorModeAdapter;
+  /**
+   * 第二行页面申报（plugin-chrome-unification）。宿主自己补「编辑」「专业编辑」，
+   * 插件只报附加页（Code / Database / …）。见 `plugin-chrome/plugin-pages.ts`。
+   */
+  pages?: AdvancedEditorPagesAdapter;
   /** Canvas-owned local upload; the host exposes one button and the same drop path. */
   upload?: AdvancedEditorUploadAdapter;
   persistence?: AdvancedEditorPersistenceAdapter;
