@@ -85,6 +85,8 @@ export interface DirectoryItem {
   added?: boolean;
   /** 是否可删除（控制卡片右上角「删除」按钮是否出现）。需配合 AppDirectory.onDelete。 */
   deletable?: boolean;
+  /** playground 网站卡：图标不要色底。 */
+  plainThumb?: boolean;
 }
 
 export interface AppDirectoryProps {
@@ -493,6 +495,7 @@ function DirectoryCard({
       }}
       // 「＋ 新建」首卡没有功能图，也不该借用别人的图 → 虚线描边 + emoji tint 版式（W1-1）。
       dashed={isNew}
+      plainThumb={item.plainThumb}
       image={isNew ? undefined : capabilityImageThumbSrc(item.capabilityImage)}
       // 落点本身可选：没有 `onOpen` 时整枚覆盖按钮不渲染，而不是渲染一枚点了没反应、却能
       // 抢走焦点的按钮（W1-2）。卡片本体与右上角按钮照常在，不是死卡。
@@ -587,7 +590,11 @@ function DirectoryListRow({
       ) : (
         <span
           className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl"
-          style={{ background: tintOf(iconColor, 0.14), color: iconColor }}
+          style={
+            item.plainThumb
+              ? { color: iconColor }
+              : { background: tintOf(iconColor, 0.14), color: iconColor }
+          }
         >
           {item.icon || "✦"}
         </span>

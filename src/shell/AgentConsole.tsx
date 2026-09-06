@@ -374,7 +374,7 @@ function ManifestPane({
             showOps={hasOpsForm}
             onArtifact={applyArtifact}
             appLabel={m.name}
-            appIcon={typeof m.icon === "string" ? m.icon : undefined}
+            appIcon={m.icon}
             enableEditorCommands={enableEditorCommands}
             editorCommandSurface={gatedSurfaceReader}
           />

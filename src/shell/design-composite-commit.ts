@@ -797,6 +797,11 @@ function publishedPackageEvidence(source: JsonRecord): {
     }
     ids.add(id);
     if (type !== "image") continue;
+    const rawSrc = typeof props.src === "string" ? props.src : "";
+    // data: 图已经写在 published JSON 里，source digest 已经钉住整包。
+    // 它不是外部依赖，不能再要求独立 SHA-256；catalog 模板（如
+    // image-aruwn-1j）就是这种内嵌占位图。和 designImageDependency 同一条规则。
+    if (validInlineImageDataUrl(rawSrc)) continue;
     const path = text(props.src, MAX_DURABLE_MEDIA_URL_LENGTH);
     const digest = normalizedDigest(text(props.sha256, 100));
     const relativePackagePath =

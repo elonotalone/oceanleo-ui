@@ -94,6 +94,10 @@ export interface AppCardShellProps {
    */
   dashed?: boolean;
   /**
+   * 不要色底：有图铺原图，无图只出图标。playground 网站卡用。
+   */
+  plainThumb?: boolean;
+  /**
    * 主按钮之外的可点元素（如工作台的「＋ 加入工作台」、首页自建卡右上角那支笔）。
    *
    * 它是主按钮条的**兄弟节点，不在按钮条里面**，所以必须**自己定位**（典型写法
@@ -183,21 +187,27 @@ export function AppCardThumb({
   icon,
   color,
   alt,
+  plain,
 }: {
   image?: string;
   icon: ReactNode;
   color: string;
   alt: string;
+  plain?: boolean;
 }) {
   return (
-    <span className="relative block aspect-square w-[96px] shrink-0 overflow-hidden bg-stone-100">
+    <span
+      className={`relative block aspect-square w-[96px] shrink-0 overflow-hidden ${
+        image || plain ? "bg-transparent" : "bg-stone-100"
+      }`}
+    >
       {image ? (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img src={image} alt={alt} loading="lazy" className="h-full w-full object-cover" />
       ) : (
         <span
           className="grid h-full w-full place-items-center text-[26px] leading-none"
-          style={{ background: tintOf(color, 0.14), color }}
+          style={plain ? { color } : { background: tintOf(color, 0.14), color }}
         >
           {icon}
         </span>
@@ -242,11 +252,13 @@ function AppCardFill({
   icon,
   color,
   variant,
+  plain,
 }: {
   image?: string;
   icon: ReactNode;
   color: string;
   variant: AppCardVariant;
+  plain?: boolean;
 }) {
   return (
     <span
@@ -260,7 +272,7 @@ function AppCardFill({
       ) : (
         <span
           className="grid h-full w-full place-items-center text-[40px] leading-none"
-          style={{ background: tintOf(color, 0.18), color }}
+          style={plain ? { background: "#fff", color } : { background: tintOf(color, 0.18), color }}
         >
           {icon}
         </span>
@@ -318,11 +330,13 @@ export function AppCardShell({
   cardActionLabel,
   dashed,
   extraActions,
+  plainThumb,
 }: AppCardShellProps) {
   const tt = useUI();
   const color = app.logoColor || brandColorFor(app.id);
   const name = tt(app.name);
   const icon = app.icon ?? "✨";
+  const plain = Boolean(plainThumb || image);
 
   return (
     <AppCardFrame
@@ -331,7 +345,7 @@ export function AppCardShell({
       accent={accent}
       actionLabel={cardActionLabel ?? `${tt("查看")} ${name}`}
       onAction={onCardClick}
-      fill={<AppCardFill image={image} icon={icon} color={color} variant={variant} />}
+      fill={<AppCardFill image={image} icon={icon} color={color} variant={variant} plain={plain} />}
       actions={
         primaryAction || extraActions ? (
           <>
@@ -343,7 +357,7 @@ export function AppCardShell({
         ) : undefined
       }
     >
-      <AppCardThumb image={image} icon={icon} color={color} alt={name} />
+      <AppCardThumb image={image} icon={icon} color={color} alt={name} plain={plain} />
       <AppCardText
         name={name}
         tagline={app.tagline ? tt(app.tagline) : undefined}

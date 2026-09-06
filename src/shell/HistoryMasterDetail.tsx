@@ -39,6 +39,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import {
   canDeleteHistoryEntry,
+  historyPollDelayMs,
   isRestorableAppSession,
   mergeHistoryEntries,
   withLinkedAgentTask,
@@ -143,12 +144,13 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   const [error, setError] = useState<string | null>(null);
   const reloadGenerationRef = useRef(0);
   const deletingRef = useRef(new Set<string>());
+  const pollFailuresRef = useRef(0);
   // silent=true（轮询刷新）：不进「加载…」态、列表不变时不替换数组引用——杜绝左栏
   // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）才显示首次加载骨架。
   const reload = useCallback((silent = false) => {
     const generation = ++reloadGenerationRef.current;
     if (!silent) setLoading(true);
-    void Promise.all([
+    return Promise.all([
       listAppSessions({
         limit: 100,
         siteId,
@@ -158,7 +160,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }),
       listTasks(100, siteId, pending, "all"),
     ]).then(([sessionsResult, tasksResult]) => {
-      if (generation !== reloadGenerationRef.current) return;
+      if (generation !== reloadGenerationRef.current) return false;
       if (!silent) setLoading(false);
       const sessions = sessionsResult.ok
         ? (sessionsResult.data?.items || []).filter(
@@ -181,7 +183,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
               : sessionsResult.error || tasksResult.error || tt("加载失败"),
           );
         }
-        return;
+        return false;
       }
       setError(null);
       // session API 尚未部署时 sessions=null → 完整退回旧 task 列表。API 已部署时，
@@ -194,19 +196,47 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
       );
       setItems((prev) => (sameHistory(prev, next) ? prev : next));
+      return true;
     });
   }, [siteId, pending, authMessage, tt]);
-  useEffect(() => reload(false), [reload]);
   useEffect(() => {
-    const refresh = () => reload(true);
+    void reload(false);
+  }, [reload]);
+  useEffect(() => {
+    const refresh = () => {
+      void reload(true);
+    };
     window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
   }, [reload]);
   // 全部任务静默刷新：active 会话也必须在创建后进入「我的任务」，不能因为当前列表
   // 还没有 active 项就永远不再请求。sameHistory 保证无变化时不替换数组、不闪烁。
+  // Consecutive 503/SSL failures back off so the sidebar does not stampede
+  // the shared gateway (every plugin site mounts this list).
   useEffect(() => {
-    const t = setInterval(() => reload(true), 8000);
-    return () => clearInterval(t);
+    let cancelled = false;
+    let timer = 0;
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        void reload(true).then(
+          (ok) => {
+            if (cancelled) return;
+            pollFailuresRef.current = ok ? 0 : pollFailuresRef.current + 1;
+            schedule();
+          },
+          () => {
+            if (cancelled) return;
+            pollFailuresRef.current += 1;
+            schedule();
+          },
+        );
+      }, historyPollDelayMs(pollFailuresRef.current));
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [reload]);
   const hasPendingSessionTitle = items.some(
     (item) =>

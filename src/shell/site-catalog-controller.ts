@@ -493,7 +493,7 @@ export function warnPreviewDeepLinkWithoutApp(
   warnedPreviewAnchors.add(key);
   if (typeof console === "undefined") return;
   console.warn(
-    `[catalog-deeplink] 「预览&编辑」深链缺少 ?${CATALOG_APP_QUERY_KEY}= 锚点` +
+    `[catalog-deeplink] 「预览&编辑」深链缺少路径段或 ?${CATALOG_APP_QUERY_KEY}= 锚点` +
       `（item=${artifactId}，来自 ${context}）：库预览面板只存在于 app 操作台的右栏里，` +
       "没有 app 时右栏不挂载，这条链接无处落地。" +
       "请改用 workspaceTemplatePreviewHref(appId, artifactId) 生成带锚点的链接。",
@@ -512,7 +512,7 @@ export const LIBRARY_TAB_MATERIALS_VALUE = "materials";
 
 /**
  * 接口 A：「预览&编辑」落点 =
- * `/workspace?tab=materials&item=<artifactId>&mode=preview&app=<appId>`
+ * `/workspace/<appId>?tab=materials&item=<artifactId>&mode=preview`
  *
  * 入参是 **artifactId**（不是 `TemplateMaterial.id`）：库按 artifact 取数，而 template id
  * 只保证同 app 内唯一，拿它去库里定位会撞车。
@@ -520,6 +520,10 @@ export const LIBRARY_TAB_MATERIALS_VALUE = "materials";
  * 两个入参**都是必需**的，缺哪个都不产出半截深链：
  *   - 缺 artifact → 退回该 app 的 canonical 地址（再缺 app 才退回目录）；
  *   - 缺 app     → 退回目录并告警（见上方注释：没有 app 锚点的预览链接落不了地）。
+ *
+ * app 身份在路径段，不在 `?app=`。旧书签
+ * `/workspace?tab=materials&item=…&mode=preview&app=<id>` 仍由
+ * `catalogCanonicalRedirect` 收成这条路径，但新链接不得再先落到目录页。
  */
 export function workspaceTemplatePreviewHref(
   appId: string,
@@ -538,8 +542,7 @@ export function workspaceTemplatePreviewHref(
   query.set(LIBRARY_TAB_QUERY_KEY, LIBRARY_TAB_MATERIALS_VALUE);
   query.set(LIBRARY_ITEM_QUERY_KEY, artifact);
   query.set(LIBRARY_MODE_QUERY_KEY, LIBRARY_MODE_PREVIEW_VALUE);
-  query.set(CATALOG_APP_QUERY_KEY, id);
-  return `${contract.canonicalBasePath}?${query.toString()}`;
+  return `${workspaceAppHref(id, contract)}?${query.toString()}`;
 }
 
 /**

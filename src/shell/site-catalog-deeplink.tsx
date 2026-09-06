@@ -87,6 +87,11 @@ export function useCatalogDeepLinkFill(): CatalogDeepLinkFill | null {
 
 export interface CatalogDeepLinkInput {
   activeAppId: string;
+  /**
+   * 路径段或旧 `?app=` 已写出的 app id。校验完成前 `activeAppId` 可能仍是空串，
+   * 但只要 URL 里有锚点就不该把正常加载误判成「缺 app」。
+   */
+  requestedAppId?: string;
   apps: readonly GoalApp[];
   siteKey: string;
   locationSearch: string;
@@ -116,6 +121,7 @@ export interface CatalogDeepLinkState {
  */
 export function useCatalogDeepLink({
   activeAppId,
+  requestedAppId = "",
   apps,
   siteKey,
   locationSearch,
@@ -234,7 +240,7 @@ export function useCatalogDeepLink({
     clearDeepLinkQuery();
   }, [activeAppId, apps, clearDeepLinkQuery, deepLink, siteKey, templateId]);
 
-  // ── 「预览&编辑」深链：`?tab=materials&item=<artifactId>&mode=preview&app=<appId>` ──
+  // ── 「预览&编辑」深链：`/workspace/<appId>?tab=materials&item=<artifactId>&mode=preview` ──
   // 合同 §0.4 / §3.1。操作员的原话是「点击后不跳到编辑的页面，而是跳到库中的预览页面，
   // 防止用户在探索时误入重型功能」——在本 effect 落地之前，`libraryPreviewIntentFromSearch`
   // 与 `libraryPreviewIntentAction`（W4 产出）**一个调用者都没有**，只在 `index.ts` 里
@@ -261,8 +267,8 @@ export function useCatalogDeepLink({
   // 前者是永久性的（没写就永远不会有），后者只是加载中的一帧。合在一起看，就只能要么
   // 对正常加载刷告警，要么对坏链接保持静默——本轮之前选的正是后者。
   const previewAnchorAppId = useMemo(
-    () => catalogQueryAppId(locationSearch),
-    [locationSearch],
+    () => catalogQueryAppId(locationSearch) || String(requestedAppId || "").trim(),
+    [locationSearch, requestedAppId],
   );
   const previewLatchRef = useRef("");
   useEffect(() => {

@@ -94,6 +94,11 @@ test("AI 能力接进命令面：edit bar 与 agent 走同一条命令", () => {
     "不把 runAi 交给命令面，那五条 AI 命令就不会注册（判据 4 的入口又没了）",
   );
   assert.match(route, /const runAi = useMemo<AiCommandRunner>/);
+  assert.ok(
+    route.indexOf("const runAi = useMemo<AiCommandRunner>") <
+      route.indexOf("createImageCommandSurface({ editor, deliver, runAi })"),
+    "runAi 必须先声明再交给命令面；生产包会把「Cannot access 'q' before initialization」打成整页崩溃",
+  );
 });
 
 test("抠图按引擎的两参签名调用，且结果真的放回画布", () => {

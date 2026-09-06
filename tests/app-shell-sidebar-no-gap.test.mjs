@@ -16,7 +16,7 @@ import test from "node:test";
 
 const source = await readFile("src/shell/AppShell.tsx", "utf8");
 
-const asideAt = source.indexOf("data-oceanleo-chrome\n        className={`hidden h-screen");
+const asideAt = source.indexOf("data-oceanleo-sidebar-mode");
 const aside = source.slice(asideAt, source.indexOf("</aside>", asideAt));
 
 test("桌面侧栏钉在视口上，不再是 sticky", () => {
@@ -37,7 +37,7 @@ test("有同宽占位块，且与侧栏的收起/展开宽度一一对应", () =
   const spacer = source.slice(spacerAt - 200, spacerAt + 400);
 
   const widths = (block) => ({
-    collapsed: /collapsed \? "w-0/.test(block),
+    collapsed: /collapsed \? "w-14/.test(block),
     expanded: /w-\[256px\]/.test(block),
   });
   assert.deepEqual(widths(spacer), widths(aside), "占位块与侧栏必须同宽同步");

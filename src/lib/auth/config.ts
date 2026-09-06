@@ -84,6 +84,24 @@ const COOKIE_DOMAIN_ENV_PRESENT = Boolean(COOKIE_DOMAIN_ENV);
  * 判定入口只有 familyForHost() 一个，它对每个 host 至多给出一个家族，
  * 且没有「认不出来就当 .com」的回落 —— 那个回落正是家族串门的唯一可能来源。
  */
+/**
+ * Operator LeoDev capability host (`p-<32hex>.dev.oceanleo.com`).
+ * It is still first-party `*.oceanleo.com`, so the browser *sends* the
+ * family SSO cookie. The preview client/middleware must only *read* that
+ * cookie. A failed auth refresh here used to `Set-Cookie` an empty
+ * `Domain=.oceanleo.com` session and sign every OceanLeo site out.
+ */
+export function isLeoDevPreviewHost(
+  host: string | null | undefined,
+): boolean {
+  const h = String(host || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .split(":")[0];
+  return /^p-[0-9a-f]{32}\.dev\.oceanleo\.com$/.test(h);
+}
+
 export function cookieDomainFor(host: string | null | undefined): string | undefined {
   const family = familyForHost(host);
   if (!family) return undefined;

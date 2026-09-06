@@ -118,7 +118,7 @@ test("inline editors reuse the current App Agent instead of mounting another cha
   assert.match(canvas, /taskId=\{effectiveTaskId\}/);
 });
 
-test("inline editing reuses App history while retired URLs only redirect", () => {
+test("inline editing reuses App history while /advanced mounts a local canvas", () => {
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const history = source("../src/shell/HistoryMasterDetail.tsx");
@@ -134,16 +134,20 @@ test("inline editing reuses App history while retired URLs only redirect", () =>
   assert.match(workbench, /onSavedItem/);
   assert.doesNotMatch(shell, /startNew/);
   assert.doesNotMatch(shell, /新建任务/);
-  assert.match(pages, /router\.replace\("\/"\)/);
-  assert.match(history, /historySessionHref\(entry\.id\)/);
+  assert.match(pages, /blankAdvancedFeatureItem/);
+  assert.match(pages, /<AdvancedContentWorkbench/);
+  assert.doesNotMatch(pages, /router\.replace\("\/"\)/);
+  assert.match(history, /historySessionHref\(entry\.id/);
   assert.doesNotMatch(history, /advancedFeatureHref/);
 });
 
-test("retired direct advanced routes return to the App surface", () => {
+test("direct /advanced routes keep a local draft when session restore fails", () => {
   const pages = source("../src/shell/AdvancedFeaturePages.tsx");
   const exportedSurface = pages.split("function LegacyAdvancedFeatureRoute")[0];
-  assert.match(exportedSurface, /高级编辑已融入 App 的生成与库/);
-  assert.match(exportedSurface, /router\.replace\("\/"\)/);
+  assert.match(exportedSurface, /blankAdvancedFeatureItem/);
+  assert.match(exportedSurface, /<AdvancedContentWorkbench/);
+  assert.match(exportedSurface, /打开空白工作台/);
+  assert.doesNotMatch(exportedSurface, /router\.replace\("\/"\)/);
   assert.doesNotMatch(exportedSurface, /<MyLibrary/);
 });
 

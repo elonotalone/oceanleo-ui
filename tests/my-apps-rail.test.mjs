@@ -50,14 +50,31 @@ const marketStubUrl = dataModule(`
     uninstallCalls.push(appId);
     if (uninstallGate) await uninstallGate;
   }
+  export function sortMyApps(items) {
+    return items
+      .map((app, index) => ({ app, index }))
+      .sort((left, right) => left.app.sort_order - right.app.sort_order || left.index - right.index)
+      .map(({ app }) => app);
+  }
+  export function marketAppOpenUrl(app) {
+    const siteUrl = (app.site_url || "").trim();
+    const appKey = (app.app_key || "").trim();
+    const openPath = (app.open_path || "").trim() || (appKey ? "/workspace/" + appKey : "");
+    if (!openPath) return siteUrl;
+    return siteUrl.replace(/\\/+$/, "") + "/" + openPath.replace(/^\\/+/, "");
+  }
 `);
 
 const uiStubUrl = dataModule(
   "export function useUI(){ return (value) => value; }",
 );
+const iconStubUrl = dataModule(
+  "export function appIconThumbSrc(){ return \"\"; }",
+);
 const railUrl = await compileModule("src/shell/MyAppsRail.tsx", {
   "../lib/app-market": marketStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
+  "../lib/app-icon-image": iconStubUrl,
 });
 const {
   MY_APPS_MARKET_HREF,
@@ -213,44 +230,16 @@ test("首页不再有「我的应用」这一块", async () => {
   assert.equal(
     source.includes("MyAppsRail"),
     false,
-    "首页是办公站的门面，装过的应用只在侧边栏出现，首页不再留这一块",
+    "首页是办公站的门面，加入工作台的 app 不出现在首页也不出现在侧栏",
   );
 });
 
-test("AppShell 两种滚动范围都只为登录用户把我的应用接在导航与历史之间", async () => {
+test("AppShell 侧栏不再挂已加入的 app", async () => {
   const source = await readFile("src/shell/AppShell.tsx", "utf8");
-  assert.match(source, /import \{ MyAppsRail \} from "\.\/MyAppsRail"/);
-
-  const mount = "{userEmail ? <MyAppsRail signedIn /> : null}";
   assert.equal(
-    source.split(mount).length - 1,
-    2,
-    "whole 与 history 两条支路应各有一个受 userEmail 保护的侧栏入口",
-  );
-  assert.equal(
-    source.split("<MyAppsRail signedIn />").length - 1,
-    2,
-    "侧栏 MyAppsRail 不应出现在登录保护之外",
-  );
-
-  const wholeBranch = source.slice(
-    source.indexOf('data-oceanleo-sidebar-scroll="whole"'),
-    source.indexOf("data-oceanleo-pinned-account"),
-  );
-  assert.ok(
-    wholeBranch.indexOf("{navSection}") < wholeBranch.indexOf(mount) &&
-      wholeBranch.indexOf(mount) < wholeBranch.indexOf("{historySection}"),
-    "whole 支路必须按导航、我的应用、历史排列",
-  );
-
-  const historyBranch = source.slice(
-    source.indexOf('data-oceanleo-sidebar-scroll="history"'),
-    source.indexOf("// ── topbar 布局"),
-  );
-  assert.ok(
-    historyBranch.indexOf("{navSection}") < historyBranch.indexOf(mount) &&
-      historyBranch.indexOf(mount) < historyBranch.indexOf("{historySection}"),
-    "history 支路必须按导航、我的应用、历史排列",
+    source.includes("MyAppsRail"),
+    false,
+    "加入工作台的 app 只出现在主站工作台，不许再插进各站侧栏",
   );
 });
 

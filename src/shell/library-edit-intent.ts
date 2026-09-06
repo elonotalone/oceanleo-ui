@@ -116,8 +116,9 @@ export function libraryPreviewIntentArtifactId(
 }
 
 /**
- * 解析「预览&编辑」深链：`?tab=materials&item=<artifactId>&mode=preview&app=<appId>`
- * （形状由接口 A 锁死，`workspaceTemplatePreviewHref` 产出）。
+ * 解析「预览&编辑」深链：`/workspace/<appId>?tab=materials&item=<artifactId>&mode=preview`
+ * （形状由接口 A 锁死，`workspaceTemplatePreviewHref` 产出）。app 在路径段；
+ * query 只携带预览意图。旧书签若仍带 `?app=`，路由层会先规范化到路径段。
  *
  * `tab` 决定的是**落点归属**，不只是「是不是库链接」：官方模板素材写 `materials`，
  * 用户自有 artifact 写 `library`（`mine` 的别名）。历史链接一律是后者，语义原样不变。

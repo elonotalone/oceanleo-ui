@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   canDeleteHistoryEntry,
+  historyPollDelayMs,
   isRestorableAppSession,
   mergeHistoryEntries,
   withLinkedAgentTask,
@@ -27,6 +28,14 @@ const baseSession = {
   updated_at: "2026-07-10T02:00:00Z",
   last_activity_at: "2026-07-10T02:00:00Z",
 };
+
+test("history poll backs off on consecutive failures and caps at 60s", () => {
+  assert.equal(historyPollDelayMs(0), 8_000);
+  assert.equal(historyPollDelayMs(1), 16_000);
+  assert.equal(historyPollDelayMs(2), 32_000);
+  assert.equal(historyPollDelayMs(3), 60_000);
+  assert.equal(historyPollDelayMs(8), 60_000);
+});
 
 test("session 优先，已归属 session 的多次 run 不再重复成历史项", () => {
   const entries = mergeHistoryEntries(
@@ -195,10 +204,14 @@ test("我的任务包含 active 会话并实时接收新任务，离开历史页
   assert.match(historySource, /surface:\s*"all"/);
   assert.match(historySource, /listTasks\(100, siteId, pending, "all"\)/);
   assert.doesNotMatch(historySource, /tt\("高级任务"\)/);
-  assert.match(historySource, /historySessionHref\(entry\.id\)/);
+  assert.match(historySource, /historySessionHref\(entry\.id/);
   assert.doesNotMatch(historySource, /advancedFeatureHref/);
   assert.match(historySource, /HISTORY_CHANGED_EVENT/);
-  assert.match(historySource, /setInterval\(\(\) => reload\(true\), 8000\)/);
+  assert.match(historySource, /historyPollDelayMs\(pollFailuresRef\.current\)/);
+  assert.doesNotMatch(
+    historySource,
+    /setInterval\(\(\) => reload\(true\), 8000\)/,
+  );
   assert.doesNotMatch(
     historySource,
     /if \(!pending\) return;\s*const t = setInterval/,

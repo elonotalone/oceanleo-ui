@@ -8,6 +8,7 @@ import type {
   EditorToolManifestEntry,
   EditorViewportSnapshot,
 } from "./editor-protocol";
+import type { EditorMode } from "./hosted-editor";
 import type { LibraryItem } from "./library-data";
 import type { SelectionCommand, SelectionContext } from "./selection-context";
 
@@ -53,6 +54,7 @@ export interface EmbedEditorPaneProps {
     value?: number;
     fit?: boolean;
   } | null;
+  editorMode?: EditorMode;
   materialInsertion?: EditorMaterialInsertion | null;
   onMaterialResult?: (result: {
     commandId: string;

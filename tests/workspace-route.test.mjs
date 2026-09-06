@@ -63,6 +63,13 @@ test("fusion-station mount prefix is added to generated hrefs and ignored on pro
   );
   assert.equal(
     withFusionMountPrefix(
+      "/workspace/poster?tab=materials&item=art-a&mode=preview",
+      "/s/image/workspace",
+    ),
+    "/s/image/workspace/poster?tab=materials&item=art-a&mode=preview",
+  );
+  assert.equal(
+    withFusionMountPrefix(
       "/workspace?tab=materials&item=art-a&mode=preview&app=poster",
       "/s/image/workspace",
     ),

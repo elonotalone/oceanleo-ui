@@ -3,14 +3,12 @@
 // ============================================================================
 // @oceanleo/ui — 工作台 master-detail（doctrine v4，单一事实源）
 // ----------------------------------------------------------------------------
-// 「工作台」侧栏子栏（master）+ 主区详情（detail）：
-//   子栏 WorkspaceSubNav：列「我的 Agents」(= 功能区)，每项右侧带「删除」图标
-//     （从我的 Agents 移除，调 unsaveAgent）；底部「＋ 添加 agent」跳 /playground。
-//   主区 WorkspaceDetail：选中 agent → iframe 内嵌该子站功能区
-//     (/workspace?embed=1&solo=1&fn=&agent=)；未选 → 兜底对话 AgentChat。
-//
-// 取代旧 WorkspaceShell 的「顶部功能区按键条」——把它从主区顶栏上提到侧栏子栏。
-// 子栏与主区通过 useWorkspaceSelection("workspace") 共享选中态。
+// 主站 oceanleo.com/workspace：
+//   app 分区读 my_apps（与 playground「加入工作台」同一套），点开跳子站对应 app 页。
+//   旧「放入工作台」写进 my_agents 的功能区条目，若还没出现在 my_apps 里，仍并进
+//   同一张 app 目录，点开同样跳子站，不再 iframe。
+//   agent 分区只列 site_id=agent 的聊天体，点开才 iframe。
+// WorkspaceSubNav 仍给子站侧栏用，只列聊天 agent，不再把功能区 app 挂进侧栏。
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -25,7 +23,20 @@ import {
 } from "./Playground";
 import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import { listMyAgents, unsaveAgent, type AgentDef } from "../lib/agent";
+import {
+  listMyApps,
+  openMarketApp,
+  sortMyApps,
+  uninstallApp,
+  workspaceAppJumpUrl,
+  type MarketApp,
+} from "../lib/app-market";
+import { capabilityImageKey } from "../lib/app-capability-image";
 import { useUI } from "../i18n/ui/useUI";
+
+function isMarketAuthError(error: unknown): boolean {
+  return error instanceof Error && error.name === "MarketAuthError";
+}
 
 // ----------------------------------------------------------------------------
 // 子站工作台子栏：把站点自己的「功能区名称」（ConsoleFunction）列到侧栏。
@@ -103,8 +114,131 @@ function useMyAgents() {
   return { mine, loading, remove };
 }
 
+const SKILL_SITE_ID = "agent";
+
+/** 历史站 key → 今天 SITES 里的 key。没有 origin 就不要猜域名。 */
+const SITE_ORIGIN_ALIASES: Record<string, string> = {
+  money: "finance",
+};
+
+type WorkspaceAppKind = "market" | "agent";
+
+function resolveSiteOrigin(
+  siteId: string,
+  siteOrigin: Record<string, string>,
+): string {
+  const aliased = SITE_ORIGIN_ALIASES[siteId] || siteId;
+  return siteOrigin[aliased] || siteOrigin[siteId] || "";
+}
+
+function leftoverAgentHref(agent: AgentDef, siteOrigin: Record<string, string>): string {
+  return workspaceAppJumpUrl({
+    site_url: resolveSiteOrigin(agent.site_id || "", siteOrigin),
+    open_path: "",
+    app_key: agent.fn_id || "",
+  });
+}
+
+function useWorkspaceApps(siteOrigin: Record<string, string>) {
+  const { mine, loading: agentsLoading, remove: removeAgent } = useMyAgents();
+  const [marketApps, setMarketApps] = useState<MarketApp[]>([]);
+  const [marketLoading, setMarketLoading] = useState(true);
+  const [needsLogin, setNeedsLogin] = useState(false);
+
+  const reloadMarket = useCallback(async () => {
+    setMarketLoading(true);
+    try {
+      const items = await listMyApps();
+      setMarketApps(sortMyApps(items));
+      setNeedsLogin(false);
+    } catch (error) {
+      setMarketApps([]);
+      setNeedsLogin(isMarketAuthError(error));
+    } finally {
+      setMarketLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadMarket();
+  }, [reloadMarket]);
+
+  const marketIds = useMemo(
+    () => new Set(marketApps.map((app) => app.app_id)),
+    [marketApps],
+  );
+
+  const leftoverAgents = useMemo(
+    () =>
+      mine.filter((agent) => {
+        if ((agent.site_id || "") === SKILL_SITE_ID) return false;
+        const mapped = `${agent.site_id}.${agent.fn_id || ""}`;
+        return !marketIds.has(mapped) && !marketIds.has(agent.agent_id);
+      }),
+    [marketIds, mine],
+  );
+
+  const apps = useMemo(
+    () => [
+      ...marketApps.map((app) => ({
+        id: app.app_id,
+        kind: "market" as WorkspaceAppKind,
+        name: app.name,
+        tagline: app.tagline,
+        site_id: app.site_id,
+        app_key: app.app_key,
+        site_url: app.site_url,
+        open_path: app.open_path,
+        category: app.category,
+        icon: app.icon,
+        href: workspaceAppJumpUrl(app),
+        capabilityImage: capabilityImageKey(app.site_id, app.app_key),
+      })),
+      ...leftoverAgents.map((agent) => ({
+        id: agent.agent_id,
+        kind: "agent" as WorkspaceAppKind,
+        name: agent.name,
+        tagline: agent.tagline,
+        site_id: agent.site_id,
+        app_key: agent.fn_id || "",
+        site_url: resolveSiteOrigin(agent.site_id || "", siteOrigin),
+        open_path: "",
+        category: agent.category,
+        icon: agent.icon,
+        href: leftoverAgentHref(agent, siteOrigin),
+        capabilityImage: capabilityImageKey(agent.site_id, agent.fn_id || ""),
+      })),
+    ],
+    [leftoverAgents, marketApps, siteOrigin],
+  );
+
+  const removeApp = useCallback(
+    async (id: string, kind: WorkspaceAppKind) => {
+      if (kind === "market") {
+        setMarketApps((current) => current.filter((app) => app.app_id !== id));
+        try {
+          await uninstallApp(id);
+        } catch {
+          void reloadMarket();
+        }
+        return;
+      }
+      await removeAgent(id);
+    },
+    [reloadMarket, removeAgent],
+  );
+
+  return {
+    apps,
+    mine,
+    loading: agentsLoading || marketLoading,
+    needsLogin,
+    removeApp,
+  };
+}
+
 // ----------------------------------------------------------------------------
-// 侧栏子栏：我的 Agents（功能区）+ 删除图标 + ＋添加 agent
+// 侧栏子栏：只列聊天 agent。成品 app 在主站工作台 app 分区，不进各站侧栏。
 // ----------------------------------------------------------------------------
 export function WorkspaceSubNav({
   accent = "#0ea5e9",
@@ -116,21 +250,25 @@ export function WorkspaceSubNav({
   const tt = useUI();
   const { mine, loading, remove } = useMyAgents();
   const [sel, setSel] = useWorkspaceSelection("workspace");
+  const chatAgents = useMemo(
+    () => mine.filter((agent) => (agent.site_id || "") === SKILL_SITE_ID),
+    [mine],
+  );
 
-  // 默认选中第一个。
+  // 默认选中第一个聊天 agent。功能区条目已并进主站 app 目录，不在侧栏。
   useEffect(() => {
-    if (!sel && mine.length > 0) setSel(mine[0].agent_id);
-  }, [sel, mine, setSel]);
+    if (!sel && chatAgents.length > 0) setSel(chatAgents[0].agent_id);
+  }, [sel, chatAgents, setSel]);
 
   return (
     <div className="space-y-0.5">
       {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载 app / agent…")}</p>}
-      {!loading && mine.length === 0 && (
+      {!loading && chatAgents.length === 0 && (
         <p className="px-3 py-2 text-[12px] leading-relaxed text-neutral-400">
           {tt("还没有 app 或 agent。点下方「＋ 添加 app / agent」，到「Playground」里挑选 app（能干活）或 agent（纯聊天）。")}
         </p>
       )}
-      {mine.map((a) => {
+      {chatAgents.map((a) => {
         const on = a.agent_id === sel;
         return (
           <div
@@ -188,8 +326,6 @@ export function WorkspaceSubNav({
 // 在左侧窄侧栏。点一个 app/skill → 整页换成它的内嵌功能区 + 右上角「← 返回」回到目录；
 // 网站 tab 的卡片点击直接新开子站。
 // ----------------------------------------------------------------------------
-const SKILL_SITE_ID = "agent";
-
 export interface WorkspaceSiteItem {
   /** site_id（= AgentDef.site_id），用于跳子站。 */
   key: string;
@@ -238,12 +374,11 @@ export function WorkspaceDetail({
   renderSites?: () => ReactNode;
 }) {
   const tt = useUI();
-  const { mine, loading } = useMyAgents();
+  const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps(siteOrigin);
   const [sel, setSel] = useWorkspaceSelection("workspace");
   const [tab, setTab] = useState<WorkspaceTab>("app");
   const [boardEditing, setBoardEditing] = useState(false);
 
-  const myApps = useMemo(() => mine.filter((a) => (a.site_id || "") !== SKILL_SITE_ID), [mine]);
   const mySkills = useMemo(() => mine.filter((a) => (a.site_id || "") === SKILL_SITE_ID), [mine]);
 
   const active = useMemo(
@@ -289,9 +424,7 @@ export function WorkspaceDetail({
     </div>
   );
 
-  // ── 选中一个 app/agent：整页换成内嵌功能区 ──
-  //   顶部一行（操作员 2026-06-24）：左 = 返回 + app 名；右 = 模型选择（收成一个按键，
-  //   点开才弹出各模态 chip 面板）。保证最上方只有一行。
+  // ── 选中一个 agent：整页换成内嵌功能区。成品 app 不再走这条，点开直接跳子站。 ──
   if (active) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
@@ -365,11 +498,19 @@ export function WorkspaceDetail({
   // app / 网站 卡片优先用主站移植来的彩色几何站点图标 + 品牌色（按 site_id / s.key），
   // 替代 emoji/占位符；无对应站点图标的条目走原图标 + DirectoryCard 内置稳定色回退。
   // agent（skill）分区是 LeoAgent 聊天体，保留各自图标，不套站点图标。
-  const appItems: DirectoryItem[] = myApps.map((a) => ({
-    id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
-    icon: siteIconFor(a.site_id) ?? a.icon,
-    logoColor: siteBrandColorFor(a.site_id) ?? undefined,
-    accent, site_id: a.site_id, category: a.category, added: true,
+  const appItems: DirectoryItem[] = workspaceApps.map((app) => ({
+    id: app.id,
+    name: app.name,
+    tagline: app.tagline,
+    icon: siteIconFor(app.site_id) ?? app.icon,
+    logoColor: siteBrandColorFor(app.site_id) ?? undefined,
+    capabilityImage: app.capabilityImage,
+    accent,
+    site_id: app.site_id,
+    category: app.category,
+    added: true,
+    deletable: true,
+    plainThumb: true,
   }));
   const skillItems: DirectoryItem[] = mySkills.map((a) => ({
     id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
@@ -439,14 +580,23 @@ export function WorkspaceDetail({
       ) : tab === "app" ? (
         loading ? (
           <AppDirectory items={[]} loading accent={accent} />
-        ) : myApps.length === 0 ? (
+        ) : needsLogin ? (
+          emptyState(" app")
+        ) : workspaceApps.length === 0 ? (
           emptyState(" app")
         ) : (
           <AppDirectory
             items={appItems}
             accent={accent}
             openLabel={tt("打开")}
-            onOpen={(it) => setSel(it.id)}
+            onOpen={(it) => {
+              const app = workspaceApps.find((entry) => entry.id === it.id);
+              if (app?.href) openMarketApp(app);
+            }}
+            onDelete={(it) => {
+              const app = workspaceApps.find((entry) => entry.id === it.id);
+              if (app) void removeApp(app.id, app.kind);
+            }}
           />
         )
       ) : loading ? (

@@ -56,8 +56,7 @@ export interface AdvancedEditorNativeChrome {
  * Native 件的专业模式面（W01 判据 3 / R3）。Hosted 件不用这个，改收 `set-mode`
  * （契约 v2，见 `signals/W01-interface.md` §2.1）。
  *
- * **不实现 = 不支持专业模式**：L0 开关置灰并把 `unavailableReason` 显示为 title，
- * 而不是让开关消失。用户看不见的能力和不存在的能力是两回事。
+ * 13 件高级编辑器必须交出 `setMode`。`unavailableReason` 只进 title，不再置灰。
  */
 export interface AdvancedEditorModeAdapter {
   /** 当前模式。缺省视为 `normal`。 */

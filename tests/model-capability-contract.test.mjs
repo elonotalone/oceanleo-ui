@@ -68,7 +68,8 @@ test("预设只读，自定义组合可命名删除并按上下顺序兜底", ()
 });
 
 test("每站右上角恢复全局模型组合切换器，不发送一次性模型覆盖", () => {
-  assert.match(appShell, /<ModelGroupPicker apiHref=\{apiHref\}/);
+  assert.match(appShell, /<ModelGroupPicker apiHref=\{shellHref\(apiHref\)\}/);
+  assert.match(appShell, /shouldShowModelPicker\(pathname, searchParams\)/);
   assert.match(picker, /setActiveModelGroup\(group\.key\)/);
   assert.match(picker, /所有 OceanLeo 网站共用/);
   assert.doesNotMatch(picker, /tt\("平台只读组合"\)/);

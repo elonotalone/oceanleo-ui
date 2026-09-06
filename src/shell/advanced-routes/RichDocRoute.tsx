@@ -3,6 +3,7 @@
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -53,6 +54,18 @@ const RichDocHostedRoute = lazy(() =>
  */
 export function RichDocRoute(props: AdvancedContentWorkbenchProps) {
   if (resolveEditorCore("richdoc") === "next") {
+    return (
+      <Suspense fallback={null}>
+        <RichDocHostedRoute {...props} />
+      </Suspense>
+    );
+  }
+  return <RichDocLegacyGate {...props} />;
+}
+
+function RichDocLegacyGate(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("richdoc");
+  if (pro) {
     return (
       <Suspense fallback={null}>
         <RichDocHostedRoute {...props} />

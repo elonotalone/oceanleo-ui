@@ -9,6 +9,7 @@ import {
   GATEWAY_BASE,
   cookieOptions,
   configured,
+  isLeoDevPreviewHost,
 } from "./config";
 
 // Browser Supabase client for the OceanLeo shared identity. Stores the auth
@@ -26,9 +27,44 @@ export function browserClient(): SupabaseClient | null {
   if (!configured()) return null;
   if (_client) return _client;
   const host = typeof window !== "undefined" ? window.location.host : "";
+  const preview = isLeoDevPreviewHost(host);
   _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: cookieOptions(host),
     global: { fetch: authFetch },
+    auth: {
+      // Preview must keep reading the family SSO cookie and must not
+      // persist a failed refresh back onto Domain=.oceanleo.com.
+      autoRefreshToken: !preview,
+      detectSessionInUrl: !preview,
+    },
+    ...(preview
+      ? {
+          cookies: {
+            getAll() {
+              if (typeof document === "undefined") return [];
+              return document.cookie
+                .split(";")
+                .map((part) => {
+                  const cut = part.indexOf("=");
+                  if (cut < 0) return { name: part.trim(), value: "" };
+                  const name = part.slice(0, cut).trim();
+                  const raw = part.slice(cut + 1).trim();
+                  let value = raw;
+                  try {
+                    value = decodeURIComponent(raw);
+                  } catch {
+                    /* keep raw */
+                  }
+                  return { name, value };
+                })
+                .filter((entry) => entry.name);
+            },
+            setAll() {
+              /* never write family SSO from a capability hostname */
+            },
+          },
+        }
+      : {}),
   });
   _client.auth.onAuthStateChange((_event, session) => {
     _accessToken = session?.access_token ?? null;

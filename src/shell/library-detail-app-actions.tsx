@@ -217,7 +217,7 @@ export function useMaterialDetailAppPlan({
  * **素材包**回答（`W5-pack-model.md` §5.1）：素材在哪个包的上下文里被点开就落哪个包，
  * 所以按钮上不再需要挂 app 名做区分，也不再需要用户先做一次选择。
  *
- * 落点永远是 `workspaceTemplatePreviewHref`：`?app=<归属>` + `libraryTab=materials`
+ * 落点永远是 `workspaceTemplatePreviewHref`：`/workspace/<归属>` + `libraryTab=materials`
  * + `libraryItem=<id>` + `libraryMode=preview`。三件事都是操作员拍死的——落在归属
  * app（不是 agent 面板）、右栏是这份素材的预览（不是编辑器）、且这条路是纯读不 fork。
  *

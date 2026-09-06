@@ -23,6 +23,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { useGuideWorkflows } from "./guide-context";
 import { timeAgo } from "../ui";
 import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
+import { assetThumbUrl } from "../lib/asset-thumb";
 
 /** 一个示例「prompt」（可带图片，对应左栏图片输入）。 */
 export interface GuideExample {
@@ -181,7 +182,7 @@ export function NavigatorGuide({ guide, accent = "#4f46e5", onUseExample }: Navi
         key: `${idx}-${i}`,
         label: inspirationLabel(ex.label),
         hint: ex.hint ?? ex.prompt,
-        thumb: ex.thumb,
+        thumb: ex.thumb ? assetThumbUrl(ex.thumb) : ex.thumb,
         icon: ex.icon ?? "✦",
         badge: ex.badge,
         searchText: `${inspirationLabel(ex.label)} ${ex.hint ?? ""} ${ex.prompt}`.toLowerCase(),

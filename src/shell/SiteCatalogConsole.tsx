@@ -237,7 +237,9 @@ export function SiteCatalogConsole({
     pathname,
     manifest?.workspace,
   );
-  const [locationSearch, setLocationSearch] = useState("");
+  const [locationSearch, setLocationSearch] = useState(() =>
+    typeof window === "undefined" ? "" : window.location.search,
+  );
   const [historySession, setHistorySession] = useState<AppSession | null>(null);
   const [legacyHistoryTask, setLegacyHistoryTask] =
     useState<LegacyHistoryTaskRef | null>(null);
@@ -466,6 +468,7 @@ export function SiteCatalogConsole({
   // `site-catalog-deeplink.tsx`；本文件只做接线。
   const deepLink = useCatalogDeepLink({
     activeAppId,
+    requestedAppId,
     apps: allApps,
     siteKey: canonicalSiteKey,
     locationSearch,
@@ -517,6 +520,7 @@ export function SiteCatalogConsole({
             id: "agent",
             label: app.name,
             icon: app.icon,
+            iconImage: app.iconImage,
             tagline: app.tagline,
             scenes: app.scenes,
             agentId: cfg.agentId || `${canonicalSiteKey}.agent`,
@@ -550,6 +554,7 @@ export function SiteCatalogConsole({
           id: app.id,
           label: app.name,
           icon: app.icon,
+          iconImage: app.iconImage,
           // 合同 §0.3：工作台目录卡的缩略图与首页**同一个数据源** —— `capabilityImageOf()`
           // 的裁决（`capabilityImage` 优先、未迁移站回退 `thumb`）。这里刻意只透传**原始
           // 取值**，key→URL 的拼链留给 AppDirectory 那一层，两处各拼一次会拼成

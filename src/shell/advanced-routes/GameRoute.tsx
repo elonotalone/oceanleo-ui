@@ -32,6 +32,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
 import { resolveEditorCore } from "../editor-core-flags";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import {
   registerGamePreviewHost,
   useGamePreviewHost,
@@ -143,6 +144,12 @@ export function GameRoute(props: AdvancedContentWorkbenchProps) {
   if (resolveEditorCore("game") === "next") {
     return <GameCodeStage {...props} />;
   }
+  return <GameLegacyGate {...props} />;
+}
+
+function GameLegacyGate(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("game");
+  if (pro) return <GameCodeStage {...props} />;
   return <GameLegacyRoute {...props} />;
 }
 

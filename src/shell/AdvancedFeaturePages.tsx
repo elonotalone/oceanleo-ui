@@ -1,25 +1,158 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useUI } from "../i18n/ui/useUI";
+// Historical copy remains in the 17-locale dictionaries from the 2026-07
+// retirement: 「高级编辑已融入 App 的生成与库，正在返回工作台…」
+// Direct `/advanced/<feature>` now mounts the editor again.
 
-function RetiredAdvancedSurface() {
+import Link from "next/link";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  getAppSession,
+  type AppSession,
+} from "../lib/app-session";
+import {
+  resolveDatabaseItem,
+  type AssetItem,
+  type DatabaseItemSource,
+  type WorkItem,
+} from "../lib/database";
+import { useUI } from "../i18n/ui/useUI";
+import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import {
+  advancedItemFromSession,
+  advancedSnapshotFromSession,
+} from "./advanced-session";
+import {
+  ADVANCED_FEATURES,
+  advancedFeatureById,
+  advancedFeatureForItem,
+  advancedFeatureHref,
+  parseAdvancedLibraryReference,
+  recalledAdvancedLibraryItem,
+  type AdvancedFeatureDefinition,
+} from "./advanced-features";
+import { blankAdvancedFeatureItem } from "./advanced-drafts";
+import {
+  normalizeArtifact,
+  normalizeWork,
+  type LibraryArtifactRow,
+  type LibraryItem,
+} from "./library-data";
+import {
+  platformToEntry,
+  type PlatformAsset,
+} from "./MaterialLibrary";
+import { assetAsWork } from "./MyLibrary";
+import {
+  domainFamilyProfile,
+  familyForHost,
+  normalizeHost,
+} from "../contracts/domain-family";
+import { isLeoDevPreviewHost } from "../lib/auth/config";
+
+function inferredSiteId(explicit?: string): string {
+  if (explicit) return explicit;
+  if (typeof window === "undefined") return "oceanleo";
+  const host = normalizeHost(window.location.hostname);
+  const family = familyForHost(host);
+  if (!family || isLeoDevPreviewHost(host)) return "oceanleo";
+  const domain = domainFamilyProfile(family).registrableDomain;
+  if (host === domain || host === `www.${domain}`) return "oceanleo";
+  const suffix = `.${domain}`;
+  if (!host.endsWith(suffix)) return "oceanleo";
+  const label = host.slice(0, -suffix.length);
+  return label && !label.includes(".") ? label : "oceanleo";
+}
+
+function resolvedLibraryItem(
+  source: DatabaseItemSource,
+  raw: Record<string, unknown>,
+): LibraryItem | null {
+  if (source === "work") {
+    const work = raw as unknown as WorkItem;
+    return normalizeWork({
+      ...work,
+      meta: { ...(work.meta || {}), library_table: "work" },
+    });
+  }
+  if (source === "asset") {
+    return normalizeWork(assetAsWork(raw as unknown as AssetItem));
+  }
+  if (source === "artifact") {
+    return normalizeArtifact(raw as unknown as LibraryArtifactRow);
+  }
+  return platformToEntry(raw as unknown as PlatformAsset).libraryItem || null;
+}
+
+function FeatureCard({
+  feature,
+}: {
+  feature: AdvancedFeatureDefinition;
+}) {
   const tt = useUI();
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/");
-  }, [router]);
   return (
-    <main className="grid min-h-[50vh] place-items-center bg-[var(--surface,#fafaf9)] text-sm text-[var(--muted,#78716c)]">
-      {tt("高级编辑已融入 App 的生成与库，正在返回工作台…")}
-    </main>
+    <Link
+      href={advancedFeatureHref(feature)}
+      className="group relative overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-5 transition hover:-translate-y-1 hover:border-[var(--muted,#d6d3d1)] hover:shadow-lg"
+    >
+      <div
+        className="absolute inset-x-0 top-0 h-1"
+        style={{ background: feature.accent }}
+      />
+      <div
+        className="grid h-11 w-11 place-items-center rounded-2xl text-sm font-bold"
+        style={{
+          background: `${feature.accent}14`,
+          color: feature.accent,
+        }}
+      >
+        {feature.title.slice(0, 1)}
+      </div>
+      <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted,#a8a29e)]">
+        {feature.eyebrow}
+      </p>
+      <h2 className="mt-1 text-[17px] font-semibold text-[var(--fg,#1c1917)]">
+        {tt(feature.title)}
+      </h2>
+      <p className="mt-2 min-h-10 text-[12px] leading-relaxed text-[var(--muted,#78716c)]">
+        {tt(feature.description)}
+      </p>
+      <div className="mt-5 flex items-center justify-between border-t border-[var(--divider,#f5f5f4)] pt-3">
+        <span className="text-[10px] text-[var(--muted,#a8a29e)]">{feature.examples}</span>
+        <span
+          className="text-[12px] font-semibold transition group-hover:translate-x-1"
+          style={{ color: feature.accent }}
+        >
+          {tt("打开")} →
+        </span>
+      </div>
+    </Link>
   );
 }
 
-/** Compatibility export for consumer sites while their old route redirects. */
 export function AdvancedFeatureCatalog() {
-  return <RetiredAdvancedSurface />;
+  const tt = useUI();
+  return (
+    <main className="min-h-screen bg-[var(--surface,#fafaf9)] px-5 py-8 sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-6xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-600">
+          Advanced features
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--fg,#0c0a09)]">
+          {tt("高级功能")}
+        </h1>
+        <p className="mt-3 max-w-2xl text-[14px] leading-7 text-[var(--muted,#78716c)]">
+          {tt("独立于普通 App 的专业编辑空间。选择功能后可上传文件，或从跨站我的库继续已有内容。")}
+        </p>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {ADVANCED_FEATURES.map((feature) => (
+            <FeatureCard key={feature.id} feature={feature} />
+          ))}
+        </div>
+      </div>
+    </main>
+  );
 }
 
 export interface AdvancedFeatureRouteProps {
@@ -28,9 +161,246 @@ export interface AdvancedFeatureRouteProps {
   accent?: string;
 }
 
-/** Compatibility export for `/advanced/*`; no standalone editor is mounted. */
-export function AdvancedFeatureRoute(
-  _props: AdvancedFeatureRouteProps = {},
-) {
-  return <RetiredAdvancedSurface />;
+export function AdvancedFeatureRoute({
+  featureId,
+  siteId,
+  accent,
+}: AdvancedFeatureRouteProps = {}) {
+  const tt = useUI();
+  const params = useParams<{ feature?: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const feature = advancedFeatureById(featureId || params?.feature);
+  const assetReference = searchParams.get("asset") || "";
+  const requestedSessionId = searchParams.get("session") || "";
+  const runtimeSiteId = inferredSiteId(siteId);
+  const blankItem = useMemo(
+    () => (feature ? blankAdvancedFeatureItem(feature, runtimeSiteId) : null),
+    [feature, runtimeSiteId],
+  );
+  // Local draft first. Session / library restore is best-effort and must not
+  // hide the canvas when the gateway returns 503 or TLS fails.
+  const [item, setItem] = useState<LibraryItem | null>(() => blankItem);
+  const [session, setSession] = useState<AppSession | null>(null);
+  const [loading, setLoading] = useState(
+    Boolean(assetReference || requestedSessionId),
+  );
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setError("");
+    setSession(null);
+    if (blankItem) setItem(blankItem);
+    if (!feature || (!assetReference && !requestedSessionId)) {
+      setLoading(false);
+      return () => {
+        alive = false;
+      };
+    }
+    setLoading(true);
+    void (async () => {
+      if (requestedSessionId) {
+        const result = await getAppSession(requestedSessionId, "advanced");
+        if (!alive) return;
+        const restored = advancedItemFromSession(result.data);
+        const snapshot = advancedSnapshotFromSession(result.data);
+        if (!result.ok || !result.data || !restored || !snapshot) {
+          setError(
+            result.status === 401
+              ? tt("登录后即可打开这条高级功能任务。")
+              : result.error || tt("高级功能任务不存在或已经删除。"),
+          );
+          setItem(blankItem);
+          setLoading(false);
+          return;
+        }
+        const restoredFeature = advancedFeatureById(snapshot.feature_id);
+        if (!restoredFeature) {
+          setError(tt("这条任务没有可恢复的高级功能。"));
+          setItem(blankItem);
+          setLoading(false);
+          return;
+        }
+        if (restoredFeature.id !== feature.id) {
+          router.replace(
+            advancedFeatureHref(restoredFeature, {
+              sessionId: requestedSessionId,
+            }),
+          );
+          return;
+        }
+        setSession(result.data);
+        setItem(restored);
+        setLoading(false);
+        return;
+      }
+
+      const recalled = recalledAdvancedLibraryItem(assetReference);
+      const reference = parseAdvancedLibraryReference(assetReference);
+      if (!reference) {
+        setError(tt("文件链接无效，请从我的库重新打开。"));
+        setItem(blankItem);
+        setLoading(false);
+        return;
+      }
+      let resolved = recalled;
+      if (reference.source !== "local") {
+        const result = await resolveDatabaseItem(
+          reference.source,
+          reference.id,
+        );
+        if (result.ok && result.data?.item) {
+          resolved = resolvedLibraryItem(
+            result.data.source,
+            result.data.item,
+          );
+        } else if (!resolved) {
+          setError(
+            result.status === 401
+              ? tt("登录后即可打开这个文件。")
+              : result.error || tt("文件不存在或已经删除。"),
+          );
+        }
+      }
+      if (!alive) return;
+      if (!resolved) {
+        setError((current) => current || tt("无法恢复这个文件，请从我的库重新打开。"));
+        setItem(blankItem);
+        setLoading(false);
+        return;
+      }
+      const resolvedFeature = advancedFeatureForItem(resolved);
+      if (!resolvedFeature) {
+        setError(tt("这个文件目前没有可安全保存的高级编辑器。"));
+        setItem(blankItem);
+        setLoading(false);
+        return;
+      }
+      if (resolvedFeature.id !== feature.id) {
+        router.replace(advancedFeatureHref(resolvedFeature, { item: resolved }));
+        return;
+      }
+      setItem(resolved);
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [
+    assetReference,
+    blankItem,
+    feature,
+    requestedSessionId,
+    router,
+    tt,
+  ]);
+
+  if (!feature) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[var(--surface,#fafaf9)] p-8 text-center">
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--fg,#1c1917)]">
+            {tt("高级功能不存在")}
+          </h1>
+          <Link
+            href="/advanced"
+            className="mt-4 inline-block text-sm font-semibold text-sky-600"
+          >
+            ← {tt("返回高级功能")}
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (item) {
+    return (
+      <div className="flex h-dvh min-h-0 flex-col bg-[var(--surface,#fafaf9)]">
+        {error ? (
+          <div className="shrink-0 border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-[12px] text-amber-700">
+            {error}
+            <button
+              type="button"
+              className="ml-3 font-semibold underline"
+              onClick={() => {
+                setError("");
+                setItem(blankItem);
+              }}
+            >
+              {tt("打开空白工作台")}
+            </button>
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1">
+          <AdvancedContentWorkbench
+            item={item}
+            siteId={session?.site_id || runtimeSiteId}
+            accent={accent || feature.accent}
+            sessionId={session?.id || null}
+            initialSession={session}
+            mode={session ? "history" : "workspace"}
+            onClose={() => router.push("/advanced")}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <main className="flex min-h-screen flex-col bg-[var(--surface,#fafaf9)]">
+      <header className="shrink-0 border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-5 py-5 sm:px-8">
+        <div className="mx-auto flex max-w-6xl items-center gap-4">
+          <Link
+            href="/advanced"
+            className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition hover:bg-[var(--surface-hover,#fafaf9)]"
+            aria-label={tt("返回高级功能")}
+          >
+            ←
+          </Link>
+          <div
+            className="h-10 w-1 rounded-full"
+            style={{ background: feature.accent }}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted,#a8a29e)]">
+              {feature.eyebrow}
+            </p>
+            <h1 className="truncate text-xl font-semibold text-[var(--fg,#1c1917)]">
+              {tt(feature.title)}
+            </h1>
+          </div>
+          <span className="hidden text-[11px] text-[var(--muted,#a8a29e)] sm:block">
+            {feature.examples}
+          </span>
+        </div>
+      </header>
+      {error && (
+        <div className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-6xl rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-600">
+          {error}
+        </div>
+      )}
+      {loading ? (
+        <div className="grid min-h-[55vh] flex-1 place-items-center text-[13px] text-[var(--muted,#a8a29e)]">
+          {tt("正在打开高级功能…")}
+        </div>
+      ) : (
+        <div className="grid min-h-[55vh] flex-1 place-items-center p-8 text-center">
+          <div className="max-w-md">
+            <p className="text-sm text-[var(--muted,#78716c)]">
+              {error || tt("无法打开高级功能，请返回后重试。")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setItem(blankItem)}
+              className="mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white"
+              style={{ background: accent || feature.accent }}
+            >
+              {tt("打开空白工作台")}
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
 }

@@ -143,14 +143,8 @@ export function InlineAdvancedWorkbenchHeader({
     return action.onTrigger?.();
   };
   const modeAdapter = adapter.mode;
-  // 不声明 `mode` 就是不支持：开关置灰但不消失（`AdvancedEditorModeAdapter` 的约定）。
-  // 原因写裸中文而不过 `tt()`，与 `PdfRoute` 已有的那条 reason 同一惯例；
-  // 这一条的 16 语欠账记在 `signals/W01-request.md`。
-  const modeUnavailableReason =
-    modeAdapter?.unavailableReason ??
-    (modeAdapter?.setMode
-      ? undefined
-      : "这件编辑器还没有专业模式；接上新内核之后这个开关就能用。");
+  // 13 件高级编辑器的专业模式开关必须能点。原因只作说明，不再置灰。
+  const modeUnavailableReason = modeAdapter?.unavailableReason;
 
   // 顶栏本体（返回 / 素材库 / 保存 / 导出 / 主题）仍然整块交给
   // `AdvancedWorkspaceActionBar`，一个字没动——它是十件共用的那条栏。

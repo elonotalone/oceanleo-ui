@@ -76,8 +76,8 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   );
   // `ssr: false` 是硬要求：PDFium 是 WASM + blob worker，服务端两者都不存在。
   assert.match(route, /\{ ssr: false, loading: \(\) => null \}/);
-  // 舞台按 flag 分流，旧核那一支一行不动。
-  assert.match(route, /core === "next" \? \(\s*<PdfNextStage/);
+  // 舞台按 flag 或专业模式分流；旧核那一支仍在。
+  assert.match(route, /core === "next" \|\| mode === "pro" \? \(\s*<PdfNextStage/);
   assert.match(route, /<PdfStage editor=\{editor\} accent=\{accent\} \/>/);
 });
 
@@ -123,9 +123,9 @@ test("professional mode is the adapter's mode face, over the same bytes", () => 
   // Native 件走 adapter 的 mode 面，**不发 postMessage**（契约 v2 §4）。
   assert.doesNotMatch(routeCode, /postMessage|buildSetModeMessage/);
   assert.match(route, /mode: \{\s*\n\s*current: mode,/);
-  // 旧核档没有专业模式可去 ⇒ 置灰 + 写明原因，开关不许消失。
-  assert.match(route, /setMode: core === "next" \? setMode : undefined,/);
-  assert.match(route, /unavailableReason:/);
+  // 13 件都必须交出 setMode；旧核点专业模式切到同一份字节的新核查看器。
+  assert.match(route, /setMode,/);
+  assert.doesNotMatch(route, /setMode: core === "next"/);
 
   // 同一文档实例：两个模式吃的是同一个取值器（facade 后的那一个，见下一条用例）。
   assert.match(route, /bytes=\{nextCoreEditor\.currentBytes\(\)\}/);
@@ -574,8 +574,13 @@ test("默认档仍是 legacy：用户打开 PDF 看到的是旧舞台，不是 E
       );
       assert.equal(container.querySelector("[data-embedpdf-viewer]"), null);
       assert.ok(
+        container.querySelector("[data-role='pdf-set-pro']"),
+        "默认档也必须把专业模式 setMode 交给壳",
+      );
+      assert.equal(
         container.querySelector("[data-role='pdf-mode-unavailable']"),
-        "默认档不该把专业模式 setMode 交给壳",
+        null,
+        "默认档把专业模式开关又藏成不可用了",
       );
     } finally {
       await unmount();
@@ -654,4 +659,38 @@ test("flag=next 再切专业模式：即用查看器带着同一份字节挂上�
       `查看器还在 DOM 里，但祖先带了藏起标记 ${hidden}。jsdom 没有 layout，只钉 hidden / aria-hidden / 内联 style / class token。`,
     );
   });
+});
+
+test("默认档点专业模式：同一份字节上的即用查看器挂上来", async () => {
+  assert.equal(resolveEditorCore("pdf"), "legacy");
+  const previousWasm = process.env[PDFIUM_WASM_ENV_KEY];
+  process.env[PDFIUM_WASM_ENV_KEY] = SELF_HOSTED_WASM;
+  globalThis.__pdfiumEngineCalls = [];
+  try {
+    const { container, clickPro, unmount } = await mountPdfRoute();
+    try {
+      assert.ok(
+        container.querySelector("[data-pdf-legacy-stage]"),
+        "默认档开场应仍是旧舞台",
+      );
+      await clickPro();
+      const viewer = await waitFor(
+        container,
+        "[data-embedpdf-viewer]",
+        "默认档点了专业模式，查看器没挂上。setMode 没交出、或 stage 仍只看 flag。",
+      );
+      assert.equal(viewer.getAttribute("data-has-buffer"), "1");
+      assert.equal(
+        container.querySelector("[data-pdf-legacy-stage]"),
+        null,
+        "专业模式还停在旧舞台",
+      );
+    } finally {
+      await unmount();
+    }
+  } finally {
+    if (previousWasm === undefined) delete process.env[PDFIUM_WASM_ENV_KEY];
+    else process.env[PDFIUM_WASM_ENV_KEY] = previousWasm;
+    globalThis.__pdfiumEngineCalls = [];
+  }
 });

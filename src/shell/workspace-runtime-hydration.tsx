@@ -47,9 +47,8 @@ const RuntimeHydrationContext =
  * Coordinates the site-owned app reset with the shared session rehydrate.
  *
  * The live runtime stays mounted so its effects can run, but remains invisible
- * until CatalogOps has initialized the selected app and FunctionAgentChat has
- * restored that app's persisted snapshot. This prevents a previous app,
- * initial preset, or first catalog entry from painting for one frame.
+ * until CatalogOps has initialized the selected app. Session snapshot restore
+ * continues in the background and must not keep the console hidden.
  */
 export function WorkspaceRuntimeBoundary({
   children,
@@ -244,10 +243,10 @@ export function WorkspaceRuntimeBoundary({
     [onRegisterBeforeLeave],
   );
   useEffect(() => {
-    if (workspace.availability === "loading") return;
-    // App-owned hydration is best-effort. A broken child effect used to keep
-    // the whole workspace invisible forever even though its controls had
-    // already mounted. Reveal the runtime after a bounded grace period.
+    // CatalogOps marks initialized after onEnterApp. Session restore must
+    // not gate first paint: list/get can sit in `loading` for the 20s abort.
+    // Failsafe only covers a missed markAppInitialized (late app effects).
+    const delayMs = 1_500;
     const timer = window.setTimeout(() => {
       setState((previous) =>
         previous.identity === identity
@@ -258,9 +257,9 @@ export function WorkspaceRuntimeBoundary({
             }
           : previous,
       );
-    }, 8_000);
+    }, delayMs);
     return () => window.clearTimeout(timer);
-  }, [identity, workspace.availability]);
+  }, [identity]);
   const value = useMemo<RuntimeHydrationValue>(
     () => ({
       identity: current.identity,
@@ -295,10 +294,7 @@ export function WorkspaceRuntimeBoundary({
       registerBeforeLeave,
     ],
   );
-  const ready =
-    workspace.availability !== "loading" &&
-    current.appInitialized &&
-    current.runtimeReady;
+  const ready = current.appInitialized;
 
   return (
     <RuntimeHydrationContext.Provider value={value}>

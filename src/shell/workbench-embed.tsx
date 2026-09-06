@@ -63,6 +63,7 @@ export function EmbedEditorPane({
   saveRequestId = "",
   selectionCommand = null,
   viewportCommand = null,
+  editorMode,
   materialInsertion = null,
   onMaterialResult,
   exportRequestId = "",
@@ -448,6 +449,11 @@ export function EmbedEditorPane({
     if (phase !== "ready" || !viewportCommand) return;
     sendToEditor({ type: "viewport-command", ...viewportCommand });
   }, [phase, sendToEditor, viewportCommand]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !editorMode) return;
+    sendToEditor({ type: "set-mode", mode: editorMode });
+  }, [editorMode, phase, sendToEditor]);
 
   useEffect(() => {
     if (phase !== "ready" || !materialInsertion) return;

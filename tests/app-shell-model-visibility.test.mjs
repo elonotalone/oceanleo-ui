@@ -154,29 +154,43 @@ function modelPickerAccessibleName(markup) {
 const visibilityCases = [
   ["/", "", true, "site root"],
   ["/home", "", true, "home"],
-  ["/apps", "", true, "App card directory"],
-  ["/workspace", "", true, "workspace directory"],
-  ["/history", "?status=running", true, "history list filter"],
-  ["/library", "?fn=", true, "library with an empty fn selection"],
+  ["/", "?project_id=11", true, "home composer scoped to a project"],
   ["/", "?fn=%20", true, "root with a whitespace-only fn selection"],
-  ["/zh-TW/history", "?task=", true, "locale history with empty task"],
-  ["/pt-BR/workspace", "", true, "locale workspace directory"],
   ["/", "?embed=0&solo=false", true, "explicitly disabled embed flags"],
+  ["/tasks/start", "", true, "starting an agent task"],
+  ["/tasks/task-1", "", true, "ongoing agent task"],
+  ["/en/tasks/task-1", "", true, "locale ongoing agent task"],
+  ["/history", "?task=task-1", true, "legacy history task conversation"],
+  ["/history", "?session=session-1", true, "legacy history session conversation"],
+  ["/history/session-1", "", true, "canonical history conversation"],
+  ["/zh-TW/history/session-1", "", true, "locale history conversation"],
+  ["/s/image/history/session-1", "", true, "fusion-mounted history conversation"],
+  ["/s/image", "", true, "fusion-mounted site home"],
+  ["/apps", "", false, "App card directory"],
+  ["/workspace", "", false, "workspace directory"],
+  ["/projects", "", false, "project directory"],
+  ["/projects/11", "", false, "project workspace"],
+  ["/explore", "", false, "explore"],
+  ["/library", "", false, "library directory"],
+  ["/history", "", false, "history list"],
+  ["/history", "?status=running", false, "history list filter"],
+  ["/library", "?fn=", false, "library with an empty fn selection"],
+  ["/zh-TW/history", "?task=", false, "locale history with empty task"],
+  ["/pt-BR/workspace", "", false, "locale workspace directory"],
   ["/", "?fn=poster", false, "legacy root function runtime"],
   ["/", "?function=poster", false, "named function runtime"],
   ["/", "?mode=poster", false, "legacy mode function runtime"],
   ["/workspace/poster", "", false, "canonical app runtime"],
   ["/en/workspace/poster", "", false, "locale canonical app runtime"],
-  ["/history", "?task=task-1", false, "legacy history task detail"],
-  ["/history/session-1", "", false, "canonical history detail"],
   ["/library", "?session=session-1", false, "library session detail"],
   ["/workspace", "?app=poster", false, "workspace app selection"],
   ["/workspace", "?function=poster", false, "workspace function selection"],
+  ["/history/session-1", "?fn=poster", false, "history conversation overridden by function runtime"],
   ["/", "?embed=1", false, "embedded runtime"],
   ["/", "?solo", false, "bare solo runtime flag"],
   ["/advanced", "", false, "advanced editor entry"],
   ["/en/advanced/image_editing", "", false, "locale advanced editor"],
-  ["/s/image/workspace", "", true, "fusion-mounted workspace directory"],
+  ["/s/image/workspace", "", false, "fusion-mounted workspace directory"],
   ["/s/image/workspace/invitation", "", false, "fusion-mounted app runtime"],
   ["/apps/poster", "", false, "nested concrete app detail"],
 ];
@@ -191,13 +205,13 @@ test("model picker visibility is table-driven by route and search context", () =
   }
 });
 
-test("sidebar and topbar render one accessible picker only on directories", () => {
+test("sidebar and topbar render one accessible picker only on conversation surfaces", () => {
   for (const layout of ["sidebar", "topbar"]) {
-    const visible = renderShell("/workspace", "", layout);
+    const visible = renderShell("/history/session-1", "", layout);
     assert.equal(count(visible, "data-oceanleo-model-picker-slot"), 1);
     assert.match(modelPickerAccessibleName(visible), /模型组合/);
 
-    const hidden = renderShell("/workspace/poster", "", layout);
+    const hidden = renderShell("/projects/11", "", layout);
     assert.equal(count(hidden, "data-oceanleo-model-picker-slot"), 0);
     assert.doesNotMatch(hidden, /选择全站通用的模型组合/);
   }
@@ -220,7 +234,7 @@ test("nested AppShells preserve one route-aware picker owner", () => {
   assert.equal(count(visible, "data-oceanleo-model-picker-slot"), 1);
   assert.match(visible, /Nested body/);
 
-  navigation.setRoute("/history/task-1", "");
+  navigation.setRoute("/projects/11", "");
   const hidden = renderToStaticMarkup(
     React.createElement(
       AppShell,

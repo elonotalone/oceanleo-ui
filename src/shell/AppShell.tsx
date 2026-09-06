@@ -7,13 +7,15 @@
 //   左侧 248px 侧边栏：站点 Logo + 站名 / 搜索 / 收放键 / 主功能目录（高亮当前页）
 //                      / 可选「最近列表」插槽 / 底部 token 余额 / 账户按钮
 //   右侧主区：可选 headerRight 浮层 + main（各站业务内容 children）
-//   收起：w-[248px] → w-0 平滑动画 + 浮出展开键；移动端抽屉 + 汉堡键；状态存 localStorage
+//   收起：w-[256px] → w-14 图标轨（只收文字、栏目图标留着）；点「我的任务」自动展开
+//                      才能露出任务列表。移动端仍是抽屉 + 汉堡键；状态存 localStorage
 //
 // 「各站保留品牌色」：传 brand.accent。布局/交互/中性底色全站统一，只有 accent
 // 与目录项随站变化。改这里 = 改所有站的外壳，一处生效，永不漂移。
 // ----------------------------------------------------------------------------
 // 集成契约：各站把目录(nav)、品牌(brand)、当前用户(userEmail)、余额(credits)
-// 与退出(onSignOut)传进来即可。目录路由右上角统一切换全局模型组合，AI 模型页负责组合管理。
+// 与退出(onSignOut)传进来即可。首页与 agent 对话页右上角切换全局模型组合，
+// AI 模型页负责组合管理。
 // ============================================================================
 
 import Link from "next/link";
@@ -26,16 +28,15 @@ import {
   useState,
 } from "react";
 import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
+import { shouldShowModelPicker } from "./model-picker-visibility";
 import type { PreferredModel } from "../lib/auth/account";
 import { ToastProvider } from "../ui";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
-import { LOCALES } from "../i18n/config";
 import { useUI } from "../i18n/ui/useUI";
 import { usePresenceHeartbeat } from "../lib/presence";
-import { MyAppsRail } from "./MyAppsRail";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
 // 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
@@ -46,7 +47,6 @@ import "./nav-source/route-transition.css";
 import { useRouteNavigation } from "./nav-source/use-route-navigation";
 import {
   fusionMountPrefix,
-  stripFusionMountPrefix,
   withFusionMountPrefix,
 } from "./workspace-route";
 
@@ -58,11 +58,12 @@ import {
 export type AppShellLayout = "sidebar" | "topbar";
 
 /**
- * 侧栏里**哪一段跟着手指走**（操作员 2026-08-07 定的三类行为）。
+ * 侧栏里**哪一段跟着手指走**（操作员 2026-08-07 定的三类行为；2026-09-05 收紧第 2 类）。
  *
- * - `"history"`（默认）：导航键一个都不动，只有下方的历史 / 最近区滚动。
+ * - `"history"`（默认）：导航**标题行**钉死（新建任务 / 探索 / 工作台 / 我的库 /
+ *   我的任务），只有 disclosure 里的具体任务行与下方最近区滚动。
  *   这是除主站与 asset / aitools 之外所有 OceanLeo 系列站要的行为。
- * - `"whole"`：整条侧栏当成一整块一起滚（品牌、搜索、导航、余额全都跟着走），
+ * - `"whole"`：整条侧栏当成一整块一起滚（品牌、搜索、导航含展开体、余额全都跟着走），
  *   **只有左下角的账户按钮固定**。asset 与 aitools 要的是这一种：
  *   它们的左栏是一条很长的类型轴，分段滚反而让人找不到自己在哪。
  *
@@ -167,92 +168,7 @@ function isActive(pathname: string, item: ShellNavItem): boolean {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-type ModelPickerSearchParams = Pick<URLSearchParams, "get" | "has">;
-type ModelPickerSearchInput = string | ModelPickerSearchParams | null | undefined;
-
-const MODEL_PICKER_CONTEXT_PARAMS = [
-  "fn",
-  "function",
-  "app",
-  "task",
-  "session",
-  // SiteCatalogConsole still accepts this legacy function-selection key.
-  "mode",
-] as const;
-const LOCALE_PATH_PREFIXES = new Set(
-  LOCALES.map((locale) => locale.toLowerCase()),
-);
-const DISABLED_QUERY_FLAGS = new Set(["0", "false", "no", "off"]);
-
-function searchParamReader(search: ModelPickerSearchInput): ModelPickerSearchParams {
-  if (typeof search === "string") {
-    return new URLSearchParams(search.replace(/^\?/, ""));
-  }
-  return search ?? new URLSearchParams();
-}
-
-function decodedRouteSegment(segment: string): string {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return segment;
-  }
-}
-
-function logicalRouteSegments(pathname: string): string[] {
-  const pathOnly = stripFusionMountPrefix(
-    (pathname || "/").split(/[?#]/, 1)[0],
-  );
-  const segments = pathOnly
-    .split("/")
-    .filter(Boolean)
-    .map(decodedRouteSegment);
-  if (segments[0] && LOCALE_PATH_PREFIXES.has(segments[0].toLowerCase())) {
-    return segments.slice(1);
-  }
-  return segments;
-}
-
-function enabledQueryFlag(
-  searchParams: ModelPickerSearchParams,
-  key: "embed" | "solo",
-): boolean {
-  if (!searchParams.has(key)) return false;
-  const value = (searchParams.get(key) || "").trim().toLowerCase();
-  return !DISABLED_QUERY_FLAGS.has(value);
-}
-
-/**
- * The shared route-level source of truth for model-picker visibility.
- *
- * Root and one-segment routes are directory surfaces. Deeper routes are
- * concrete detail/runtime surfaces. Search params cover legacy root runtimes,
- * history details, and iframe/solo entry points before their canonical route
- * migration has completed.
- */
-export function shouldShowModelPicker(
-  pathname: string,
-  search: ModelPickerSearchInput = "",
-): boolean {
-  const searchParams = searchParamReader(search);
-  if (
-    enabledQueryFlag(searchParams, "embed")
-    || enabledQueryFlag(searchParams, "solo")
-  ) {
-    return false;
-  }
-  if (
-    MODEL_PICKER_CONTEXT_PARAMS.some(
-      (key) => (searchParams.get(key) || "").trim().length > 0,
-    )
-  ) {
-    return false;
-  }
-
-  const segments = logicalRouteSegments(pathname);
-  if (segments[0]?.toLowerCase() === "advanced") return false;
-  return segments.length <= 1;
-}
+export { shouldShowModelPicker } from "./model-picker-visibility";
 
 export interface AppShellProps {
   brand: AppShellBrand;
@@ -442,7 +358,9 @@ function AppShellInner({
   }
 
   // 账户按钮（头像 + 用户名）——sidebar 与 topbar 共用。退出登录统一在账户页内。
-  function renderAccountButton(): ReactNode {
+  // rail=true：图标轨只留头像，用户名用 title / aria-label 交代。
+  function renderAccountButton(rail = false): ReactNode {
+    const accountName = userEmail ? userEmail.split("@")[0] : tt("未登录");
     const accountInner = (
       <>
         <div
@@ -451,14 +369,17 @@ function AppShellInner({
         >
           {userEmail ? userEmail[0].toUpperCase() : "?"}
         </div>
-        <span className="max-w-[120px] flex-1 truncate text-[13px] font-medium text-neutral-800">
-          {userEmail ? userEmail.split("@")[0] : tt("未登录")}
-        </span>
+        {!rail && (
+          <span className="max-w-[120px] flex-1 truncate text-[13px] font-medium text-neutral-800">
+            {accountName}
+          </span>
+        )}
       </>
     );
     // leo-tap-row：手指设备上这一行不矮于 44px（原来 py-1.5 ≈ 30px）。
-    const accountCls =
-      "leo-tap-row flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50";
+    const accountCls = `leo-tap-row flex items-center rounded-lg text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 ${
+      rail ? "justify-center p-1.5" : "gap-2.5 px-2 py-1.5"
+    }`;
     return onAccountClick ? (
       <button
         type="button"
@@ -467,11 +388,18 @@ function AppShellInner({
           onAccountClick();
         }}
         className={accountCls}
+        title={rail ? accountName : undefined}
+        aria-label={rail ? accountName : undefined}
       >
         {accountInner}
       </button>
     ) : (
-      <Link href={shellHref(accountHref)} className={accountCls}>
+      <Link
+        href={shellHref(accountHref)}
+        className={accountCls}
+        title={rail ? accountName : undefined}
+        aria-label={rail ? accountName : undefined}
+      >
         {accountInner}
       </Link>
     );
@@ -527,7 +455,12 @@ function AppShellInner({
     );
   }
 
-  function renderNavItem(item: ShellNavItem, idx: number): ReactNode {
+  function renderNavItem(
+    item: ShellNavItem,
+    idx: number,
+    rail = false,
+    includeDisclosure = true,
+  ): ReactNode {
     // 即时反馈：跳转已经发起但路由还没落地时，把「点中的那一项」当成当前页来算
     // 高亮。乐观路径喂给同一个 isActive()，所以 exact / 前缀 / 自定义 match
     // 三种判定规则一个字都不用改，点中项亮起与其余项熄灭也必然是同一帧。
@@ -540,27 +473,42 @@ function AppShellInner({
     const disclosureOpen = item.disclosure
       ? disclosureIsOpen(item, idx)
       : false;
+    const labelText =
+      typeof item.label === "string" ? tt(item.label) : item.label;
+    const labelAttr = typeof labelText === "string" ? labelText : undefined;
     /* 侧栏文字加深（操作员 2026-07-02：旧 text-neutral-600 太浅、观感廉价；
        对照 Manus 侧栏近黑文字）。深色下由 globals.css 全局重映射到 --leo-d-fg。 */
     // leo-tap-row：手指设备上这一行不矮于 44px（原来 px-3 py-2 ≈ 36px，要瞄准才点得中）。
-    const cls = `leo-tap-row group/nav flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- active
- ? "bg-neutral-200/80 font-medium text-neutral-900"
- : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
- }`;
-    const style = active ? { boxShadow: `inset 3px 0 0 ${brand.accent}` } : undefined;
+    const cls = `leo-tap-row group/nav flex w-full items-center rounded-lg text-left text-[13px] transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+      rail ? "justify-center px-1 py-2" : "gap-2.5 px-3 py-2"
+    } ${
+      active
+        ? "bg-neutral-200/80 font-medium text-neutral-900"
+        : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
+    }`;
+    const style = !rail && active
+      ? { boxShadow: `inset 3px 0 0 ${brand.accent}` }
+      : undefined;
     const inner = (
       <>
-        <span className="transition-colors" style={{ color: active ? brand.accent : undefined }}>
+        <span
+          className="transition-colors"
+          style={{ color: active ? brand.accent : undefined }}
+          data-oceanleo-nav-icon
+        >
           {item.icon}
         </span>
-        <span className="flex-1 truncate">{typeof item.label === "string" ? tt(item.label) : item.label}</span>
-        {item.shortcut && <span className="text-[11px] text-neutral-400">{item.shortcut}</span>}
-        {item.disclosure && (
+        {!rail && (
+          <span className="flex-1 truncate">{labelText}</span>
+        )}
+        {!rail && item.shortcut && (
+          <span className="text-[11px] text-neutral-400">{item.shortcut}</span>
+        )}
+        {!rail && item.disclosure && (
           <svg
             className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
- disclosureOpen ? "rotate-90" : ""
- }`}
+              disclosureOpen ? "rotate-90" : ""
+            }`}
             viewBox="0 0 20 20"
             fill="none"
             stroke="currentColor"
@@ -575,13 +523,27 @@ function AppShellInner({
     let control: ReactNode;
     if (item.disclosure) {
       // 「我的任务」标题只负责原地展开/折叠；具体任务条目负责跳历史详情。
+      // 图标轨里点它必须先把侧栏展开，任务列表才有地方画。
       control = (
         <button
           type="button"
-          onClick={() => toggleDisclosure(item, idx)}
-          aria-expanded={disclosureOpen}
+          onClick={() => {
+            if (rail) {
+              toggleCollapsed(false);
+              setOpenDisclosures((current) => ({
+                ...current,
+                [key]: true,
+              }));
+              return;
+            }
+            toggleDisclosure(item, idx);
+          }}
+          aria-expanded={rail ? false : disclosureOpen}
+          aria-label={labelAttr}
+          title={labelAttr}
           className={cls}
           style={style}
+          data-oceanleo-nav-disclosure={rail ? "rail" : "expanded"}
         >
           {inner}
         </button>
@@ -595,6 +557,8 @@ function AppShellInner({
             setMobileOpen(false);
             item.onClick?.();
           }}
+          aria-label={rail ? labelAttr : undefined}
+          title={rail ? labelAttr : undefined}
           className={cls}
           style={style}
         >
@@ -622,6 +586,8 @@ function AppShellInner({
             }
             navigateRoute(navHref, event);
           }}
+          aria-label={rail ? labelAttr : undefined}
+          title={rail ? labelAttr : undefined}
           className={cls}
           style={style}
         >
@@ -632,13 +598,13 @@ function AppShellInner({
     return (
       <div key={key}>
         {control}
-        {item.disclosure && (
+        {!rail && includeDisclosure && item.disclosure && (
           <div
             className={`grid transition-[grid-template-rows,opacity] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
- disclosureOpen
- ? "grid-rows-[1fr] opacity-100"
- : "pointer-events-none grid-rows-[0fr] opacity-0"
- }`}
+              disclosureOpen
+                ? "grid-rows-[1fr] opacity-100"
+                : "pointer-events-none grid-rows-[0fr] opacity-0"
+            }`}
           >
             <div className="min-h-0 overflow-hidden">
               <div className="ml-3 border-l border-neutral-200 py-1 pl-1">
@@ -661,55 +627,105 @@ function AppShellInner({
   const showHeaderTools =
     !hideHeader && (showModelPicker || Boolean(headerRight));
 
-  const brandHeader = (
-    <div className="flex items-center justify-between px-4 pb-2 pt-4">
-      {onBrandClick ? (
-        <button
-          type="button"
-          onClick={() => {
-            setMobileOpen(false);
-            onBrandClick();
-          }}
-          className="leo-tap-row flex items-center gap-2 text-neutral-900"
-        >
-          <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
-            {brand.logo}
-          </span>
+  function renderBrandMark(rail = false): ReactNode {
+    const mark = (
+      <>
+        <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
+          {brand.logo}
+        </span>
+        {!rail && (
           <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
-        </button>
-      ) : (
-        <Link href={shellHref("/")} className="leo-tap-row flex items-center gap-2 text-neutral-900">
-          <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
-            {brand.logo}
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
-        </Link>
-      )}
-      <div className="flex items-center gap-1 text-neutral-600">
-        {onSearch && (
+        )}
+      </>
+    );
+    const markCls = `${
+      rail
+        ? "leo-tap-icon flex items-center justify-center rounded-md p-1.5"
+        : "leo-tap-row flex items-center gap-2"
+    } text-neutral-900`;
+    return onBrandClick ? (
+      <button
+        type="button"
+        onClick={() => {
+          setMobileOpen(false);
+          onBrandClick();
+        }}
+        className={markCls}
+        title={rail ? brand.name : undefined}
+        aria-label={rail ? brand.name : undefined}
+      >
+        {mark}
+      </button>
+    ) : (
+      <Link
+        href={shellHref("/")}
+        className={markCls}
+        title={rail ? brand.name : undefined}
+        aria-label={rail ? brand.name : undefined}
+      >
+        {mark}
+      </Link>
+    );
+  }
+
+  function renderBrandHeader(rail = false): ReactNode {
+    if (rail) {
+      return (
+        <div className="flex flex-col items-center gap-1 px-1 pb-2 pt-3">
+          {renderBrandMark(true)}
           <button
             type="button"
-            onClick={() => setSearchOpen((v) => !v)}
-            className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
-            title={tt("搜索")}
+            onClick={() => toggleCollapsed(false)}
+            className="leo-tap-icon rounded-md p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
+            title={tt("展开侧栏")}
           >
-            <IconSearch />
+            <IconPanel />
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            toggleCollapsed(true);
-            setMobileOpen(false);
-          }}
-          className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
-          title={tt("收起侧栏")}
-        >
-          <IconPanel />
-        </button>
+          {onSearch && (
+            <button
+              type="button"
+              onClick={() => {
+                toggleCollapsed(false);
+                setSearchOpen(true);
+              }}
+              className="leo-tap-icon rounded-md p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
+              title={tt("搜索")}
+            >
+              <IconSearch />
+            </button>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center justify-between px-4 pb-2 pt-4">
+        {renderBrandMark()}
+        <div className="flex items-center gap-1 text-neutral-600">
+          {onSearch && (
+            <button
+              type="button"
+              onClick={() => setSearchOpen((v) => !v)}
+              className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
+              title={tt("搜索")}
+            >
+              <IconSearch />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              toggleCollapsed(true);
+              setMobileOpen(false);
+            }}
+            className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
+            title={tt("收起侧栏")}
+          >
+            <IconPanel />
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const searchPanel = onSearch ? (
     <div
@@ -743,25 +759,128 @@ function AppShellInner({
     </div>
   ) : null;
 
-  /** 整份导航（含分组小标题）。两种滚动范围放的位置不同，内容逐字相同。 */
-  const navSection = (
-    <nav className="px-2 pb-1 pt-1">
-      {sourceNavGroups.map((group, gi) => (
-        <div key={group.heading ?? gi} className="mb-1">
-          {group.heading && (
-            <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">
-              {group.heading}
+  /** 整份导航（含分组小标题）。`"whole"` 仍画标题+展开体；`"history"` 钉住区只画标题行。 */
+  function renderNavSection(includeDisclosure = true): ReactNode {
+    return (
+      <nav className="px-2 pb-1 pt-1">
+        {sourceNavGroups.map((group, gi) => (
+          <div key={group.heading ?? gi} className="mb-1">
+            {group.heading && (
+              <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">
+                {group.heading}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item, ii) =>
+                renderNavItem(item, gi * 1000 + ii, false, includeDisclosure),
+              )}
             </div>
-          )}
-          <div className="space-y-0.5">
-            {group.items.map((item, ii) => renderNavItem(item, gi * 1000 + ii))}
           </div>
-        </div>
-      ))}
-    </nav>
-  );
+        ))}
+      </nav>
+    );
+  }
 
-  /** 「最近 / 历史」区：`"history"` 模式下唯一会跟着手指走的那一段。 */
+  /** `"whole"` 用：标题+展开体仍在同一个整体滚动容器里。 */
+  const navSection = renderNavSection(true);
+
+  /**
+   * `"history"` 滚动区：disclosure 展开体。收起时仍挂着（`grid-rows-0`），
+   * 不卸载任务列表，否则一折再开就要重拉、滚动位置也丢。
+   */
+  function renderDisclosureBodies(): ReactNode {
+    const bodies: ReactNode[] = [];
+    sourceNavGroups.forEach((group, gi) => {
+      group.items.forEach((item, ii) => {
+        if (!item.disclosure) return;
+        const idx = gi * 1000 + ii;
+        const disclosureOpen = disclosureIsOpen(item, idx);
+        bodies.push(
+          <div
+            key={disclosureKey(item, idx)}
+            data-oceanleo-nav-disclosure-body
+            className={`grid transition-[grid-template-rows,opacity] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+              disclosureOpen
+                ? "grid-rows-[1fr] opacity-100"
+                : "pointer-events-none grid-rows-[0fr] opacity-0"
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="ml-3 border-l border-neutral-200 py-1 pl-1">
+                {item.disclosure.render()}
+              </div>
+            </div>
+          </div>,
+        );
+      });
+    });
+    if (bodies.length === 0) return null;
+    return <div className="px-2 pb-1 pt-1">{bodies}</div>;
+  }
+
+  /** 把「我的任务」之后的项（少见的 Playground）留在滚动区下面，标题仍钉死。 */
+  function partitionHistoryNav(): {
+    leading: ShellNavGroup[];
+    trailing: ShellNavGroup[];
+  } {
+    const leading: ShellNavGroup[] = [];
+    const trailing: ShellNavGroup[] = [];
+    let seenDisclosure = false;
+    for (const group of sourceNavGroups) {
+      const leadItems: ShellNavItem[] = [];
+      const trailItems: ShellNavItem[] = [];
+      for (const item of group.items) {
+        if (item.disclosure) {
+          leadItems.push(item);
+          seenDisclosure = true;
+          continue;
+        }
+        if (seenDisclosure) trailItems.push(item);
+        else leadItems.push(item);
+      }
+      if (leadItems.length) {
+        leading.push({ heading: group.heading, items: leadItems });
+      }
+      if (trailItems.length) {
+        trailing.push({ items: trailItems });
+      }
+    }
+    return {
+      leading: leading.length ? leading : sourceNavGroups,
+      trailing,
+    };
+  }
+
+  function navItemSourceIndex(item: ShellNavItem): number {
+    for (let gi = 0; gi < sourceNavGroups.length; gi += 1) {
+      const ii = sourceNavGroups[gi].items.indexOf(item);
+      if (ii >= 0) return gi * 1000 + ii;
+    }
+    return 0;
+  }
+
+  function renderHistoryNavGroups(groups: ShellNavGroup[]): ReactNode {
+    return (
+      <nav className="px-2 pb-1 pt-1">
+        {groups.map((group, gi) => (
+          <div key={group.heading ?? `history-nav-${gi}`} className="mb-1">
+            {group.heading && (
+              <div className="px-3 pb-1 pt-3 text-[12px] text-neutral-600">
+                {group.heading}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item) =>
+                renderNavItem(item, navItemSourceIndex(item), false, false),
+              )}
+            </div>
+          </div>
+        ))}
+      </nav>
+    );
+  }
+
+  /** 「最近 / 历史」区：与打开的任务行一起在 `"history"` 滚动区里。 */
   const historySection = recentSlot ? (
     <div className="mt-3 px-2 pb-1">{recentSlot}</div>
   ) : null;
@@ -788,6 +907,8 @@ function AppShellInner({
     <div className="[&>a]:w-full [&>button]:w-full">{renderAccountButton()}</div>
   );
 
+  const historyNavParts = partitionHistoryNav();
+
   const sidebarBody = wholeSidebarScrolls ? (
     /* "whole"：品牌、搜索、导航、最近区、余额全在同一个滚动容器里一起走，
        左下角账户按钮留在容器外，因此滚多远它都不动（操作员点名的那一颗）。 */
@@ -797,10 +918,9 @@ function AppShellInner({
         data-oceanleo-scroll-nav
         data-oceanleo-sidebar-scroll="whole"
       >
-        {brandHeader}
+        {renderBrandHeader()}
         {searchPanel}
         {navSection}
-        {userEmail ? <MyAppsRail signedIn /> : null}
         {historySection}
         <div className="space-y-3 px-3 pb-3 pt-3">
           {renderSwitchers()}
@@ -816,32 +936,61 @@ function AppShellInner({
       </div>
     </>
   ) : (
-    /* "history"：导航键一个都不动，唯一的滚动区是下方的最近 / 历史区。 */
+    /* "history"：标题行钉死；只有 disclosure 任务行与最近区跟着手指走。
+       「我的任务」之后若还有项（Playground），放在滚动区下面，避免插到标题和任务中间。 */
     <>
-      {brandHeader}
+      {renderBrandHeader()}
       {searchPanel}
 
-      {/* 导航按自然高度铺开，不参与滚动。留 `overflow-y-auto` 只是兜底：视口矮到
-          连导航都放不下时，宁可让它自己能滚，也不要把导航项裁掉变成点不到。 */}
+      {/* 标题行按自然高度铺开。留 `overflow-y-auto` 只是兜底：视口矮到连标题
+          都放不下时，钉住区可以自己滚，但里面没有任务行。 */}
       <div
         className="mt-1 min-h-0 shrink overflow-y-auto"
         data-oceanleo-pinned-nav
         data-oceanleo-sidebar-scroll="history"
       >
-        {navSection}
+        {renderHistoryNavGroups(historyNavParts.leading)}
       </div>
-
-      {userEmail ? <MyAppsRail signedIn /> : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-oceanleo-scroll-nav>
+        {renderDisclosureBodies()}
         {historySection}
       </div>
+
+      {historyNavParts.trailing.length > 0 ? (
+        <div className="shrink-0" data-oceanleo-pinned-nav-tail>
+          {renderHistoryNavGroups(historyNavParts.trailing)}
+        </div>
+      ) : null}
 
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
         {/* 主题 + 语言切换器（全家桶壳内单一事实源，账户区上方） */}
         {renderSwitchers()}
         {creditsCapsule}
         {accountRow}
+      </div>
+    </>
+  );
+
+  // 桌面收起态：只画栏目图标。手机抽屉必须继续用上面那份完整 sidebarBody，
+  // 否则桌面收起后打开抽屉会变成一条窄轨。
+  const railBody = (
+    <>
+      {renderBrandHeader(true)}
+      <nav
+        className="min-h-0 flex-1 overflow-y-auto px-1 pb-1 pt-1"
+        data-oceanleo-sidebar-rail-nav
+      >
+        <div className="space-y-0.5">
+          {sourceNavGroups.flatMap((group, gi) =>
+            group.items.map((item, ii) =>
+              renderNavItem(item, gi * 1000 + ii, true),
+            ),
+          )}
+        </div>
+      </nav>
+      <div className="shrink-0 px-1 pb-3 pt-2">
+        <div className="flex justify-center">{renderAccountButton(true)}</div>
       </div>
     </>
   );
@@ -895,12 +1044,17 @@ function AppShellInner({
           两者宽度必须一起变。 */}
       <aside
         data-oceanleo-chrome
+        data-oceanleo-sidebar-mode={collapsed ? "rail" : "expanded"}
         className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[#f7f7f7]/85 backdrop-blur-sm transition-[width] duration-[var(--leo-dur-5)] ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${
- collapsed ? "w-0 border-r-0" : "w-[256px]"
- }`}
+          collapsed ? "w-14" : "w-[256px]"
+        }`}
       >
-        <div className="leo-safe-sidebar flex h-full w-[256px] flex-col">
-          {sidebarBody}
+        <div
+          className={`leo-safe-sidebar flex h-full flex-col ${
+            collapsed ? "w-14" : "w-[256px]"
+          }`}
+        >
+          {collapsed ? railBody : sidebarBody}
         </div>
       </aside>
       {/* 占位块也必须挂 data-oceanleo-chrome：内嵌（?embed=1）时 EmbedChrome 那段
@@ -911,8 +1065,8 @@ function AppShellInner({
         data-oceanleo-chrome
         data-oceanleo-sidebar-spacer
         className={`hidden shrink-0 transition-[width] duration-[var(--leo-dur-3)] ease-out md:block ${
- collapsed ? "w-0" : "w-[256px]"
- }`}
+          collapsed ? "w-14" : "w-[256px]"
+        }`}
       />
 
       {/* mobile drawer */}
@@ -931,17 +1085,6 @@ function AppShellInner({
       )}
 
       <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
-        {collapsed && (
-          <button
-            type="button"
-            data-oceanleo-chrome
-            onClick={() => toggleCollapsed(false)}
-            className="leo-chrome-topleft leo-tap-target fixed z-50 hidden items-center justify-center rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-95 md:flex"
-            title={tt("展开侧栏")}
-          >
-            <IconPanel />
-          </button>
-        )}
         <button
           type="button"
           data-oceanleo-chrome
@@ -970,9 +1113,9 @@ function AppShellInner({
         )}
 
         {/*
-          为浮出的「展开/汉堡」按钮预留左侧空间，避免它盖住页面左上角标题。
+          为浮出的汉堡键预留左侧空间，避免它盖住页面左上角标题。
           - 移动端：汉堡键常驻浮出 → 始终留 pl-14
-          - 桌面端：仅在侧栏收起时展开键浮出 → 收起留 md:pl-14，展开 md:pl-0
+          - 桌面端：侧栏（展开 256 / 收起图标轨 56）由占位块让位 → md:pl-0
           顶部工具已改为右上角浮层（不占行高），main 一律按「无 header」方式让位。
           这是按钮让位的「唯一事实源」。页面/组件内部不要再各自加让位内边距。
         */}
@@ -980,9 +1123,7 @@ function AppShellInner({
             leo-safe-main-top（A13）：这条主区头上没有顶栏，顶边也要让出刘海那一条，
             否则刘海机上首屏顶端压在状态栏区里。topbar 布局的主区**不挂**这个类 ——
             那边刘海已经被 .leo-safe-topbar 吃掉，再让一次会多出一条 47px 的空白。 */}
-        <main
-          className={`leo-safe-main leo-safe-main-top flex-1 pl-14 ${collapsed ? "md:pl-14" : "md:pl-0"}`}
-        >
+        <main className="leo-safe-main leo-safe-main-top flex-1 pl-14 md:pl-0">
           {/* Route changes update this stable surface in place. In particular,
               /workspace → /workspace/<app> must not remount a live app merely
               to replay a page animation; the app-level console owns its one

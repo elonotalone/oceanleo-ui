@@ -297,11 +297,11 @@ const previewSearch = new URL(
 test("深链形状：官方模板素材落素材库那一栏，item 是 artifactId", () => {
   assert.equal(
     workspaceTemplatePreviewHref(APP.id, ARTIFACT_ID),
-    `/workspace?tab=materials&item=${ARTIFACT_ID}&mode=preview&app=${APP.id}`,
+    `/workspace/${APP.id}?tab=materials&item=${ARTIFACT_ID}&mode=preview`,
   );
-  // app 锚点仍然承重：路由那一层要能从 `?app=` 认出 app，否则右栏根本不挂载。
+  // app 锚点仍然承重：现在在路径段。旧书签的 `?app=` 仍由 redirect 收。
   const route = resolveSiteCatalogRoute({
-    pathname: "/workspace",
+    pathname: `/workspace/${APP.id}`,
     search: previewSearch,
     knownAppIds: new Set([APP.id]),
   });

@@ -63,6 +63,7 @@ export function PdfRoute({
   // Native 件不发 postMessage —— 那是 Hosted 件的路（契约 v2 §4）。
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [nextCoreFailure, setNextCoreFailure] = useState("");
+  const effectiveCore = core === "next" || mode === "pro" ? "next" : "legacy";
   /**
    * 新核档下，`pdf.rotate-page`（写不进文件）与 `pdf.add-blank-page`（缺 API）
    * 换成「说明原因并失败」。包在 editor 这一层，是因为 L1 浮条、指令面、agent
@@ -70,8 +71,8 @@ export function PdfRoute({
    * `legacy` 档拿到的是**同一个对象**，旧核那条路一个字节不变。
    */
   const nextCoreEditor = useMemo(
-    () => pdfNextEditorFacade(editor, core, setNextCoreFailure),
-    [core, editor],
+    () => pdfNextEditorFacade(editor, effectiveCore, setNextCoreFailure),
+    [effectiveCore, editor],
   );
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
@@ -177,16 +178,10 @@ export function PdfRoute({
         // L3 专业模式 = EmbedPDF 的即用查看器（R4）。**同一个文档实例**：
         // 两个模式吃的是同一份 `editor.currentBytes()`，切换不重新载入、不丢改动。
         //
-        // 旧核那一档没有专业模式可去，所以按 adapter 的约定置灰并写明原因
-        // （`AdvancedEditorModeAdapter` 的注释：不实现 = 不支持，开关置灰不消失）。
-        // 用户看不见的能力和不存在的能力是两回事。
+        // 旧核档点专业模式也交出 setMode：切到同一份字节上的新核查看器。
         mode: {
           current: mode,
-          setMode: core === "next" ? setMode : undefined,
-          unavailableReason:
-            core === "next"
-              ? undefined
-              : "这份 PDF 还在用旧引擎打开；专业模式要等新引擎验收通过、翻开关之后才有。",
+          setMode,
         },
         // §2.3 / C20–C21: the reader's zoom range is 25 %–400 %. The shell
         // slider must not cap below the carrier contract.
@@ -210,10 +205,10 @@ export function PdfRoute({
           multiple: true,
           onFiles: mergeLocalFiles,
         },
-        // flag=`next` 走 EmbedPDF 叶子（普通模式我们自己画、专业模式换成上游
-        // 即用查看器，**同一份字节**），`legacy` 一行不动地走旧核。
+        // flag=`next` 或专业模式走 EmbedPDF 叶子（普通模式我们自己画、专业
+        // 模式换成上游即用查看器，**同一份字节**）。
         stage:
-          core === "next" ? (
+          core === "next" || mode === "pro" ? (
             <PdfNextStage
               bytes={nextCoreEditor.currentBytes()}
               name={`${item.title || "document"}.pdf`}

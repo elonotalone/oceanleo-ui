@@ -23,6 +23,7 @@ import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
 import { createChartCommandSurface } from "../chart-editor/chart-command-surface";
 import { visualImportPlan } from "../media-editors/visual-formats";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 
 const ChartNextStage = dynamic(
   () =>
@@ -39,7 +40,13 @@ export function ChartRoute(props: AdvancedContentWorkbenchProps) {
   return <ChartLegacyRoute {...props} />;
 }
 
-function ChartLegacyRoute({
+function ChartLegacyRoute(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("chart-editor");
+  if (pro) return <ChartNextStage {...props} />;
+  return <ChartLegacyBody {...props} />;
+}
+
+function ChartLegacyBody({
   item,
   previewContent,
   linkUrl,
@@ -262,8 +269,8 @@ function ChartLegacyRoute({
           redo: editor.redo,
         },
         mode: {
-          unavailableReason:
-            "专业模式（直接编辑 ECharts option JSON）在新图表引擎打开后可用。现在用的是原来的图表编辑器。",
+          current: "normal",
+          setMode: () => undefined,
         },
         directDownload: {
           id: "chart-download-png",

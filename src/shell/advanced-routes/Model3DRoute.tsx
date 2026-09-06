@@ -10,6 +10,7 @@ import {
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -71,6 +72,8 @@ export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
 }
 
 function Model3DLegacyRoute(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("threed");
+  if (pro) return <Model3DNextStage {...props} />;
   return <Model3DModelRoute {...props} />;
 }
 

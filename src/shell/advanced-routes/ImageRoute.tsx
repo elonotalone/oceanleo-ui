@@ -175,12 +175,6 @@ export function ImageRoute({
     [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  usePluginCommandSurface(
-    useMemo(
-      () => createImageCommandSurface({ editor, deliver, runAi }),
-      [deliver, editor],
-    ),
-  );
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
     if (!saved) {
@@ -353,6 +347,12 @@ export function ImageRoute({
       };
     },
     [editor.addImageFromUrl, frozenCanvasUrl, removeBgExecutor],
+  );
+  usePluginCommandSurface(
+    useMemo(
+      () => createImageCommandSurface({ editor, deliver, runAi }),
+      [deliver, editor, runAi],
+    ),
   );
 
   const aiHost = useMemo<ImageAiPanelHost>(

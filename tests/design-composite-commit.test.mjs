@@ -238,6 +238,52 @@ test("published composite package opens from server source-closure evidence", as
   assert.deepEqual(evidence.dependencyRevisionIds, [dependencyRevisionId]);
 });
 
+test("published package with embedded data: image opens without a separate SHA-256", async () => {
+  const pixel =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+3MxZ5wAAAABJRU5ErkJggg==";
+  const sourceText = `${JSON.stringify({
+    schema: "oceanleo.design-document.v1",
+    document: {
+      width: 1200,
+      height: 1600,
+      elements: [
+        {
+          id: "image-aruwn-1j",
+          type: "image",
+          props: { src: pixel, filter: "none" },
+        },
+      ],
+    },
+  })}\n`;
+  const sourceDigest = createHash("sha256")
+    .update(sourceText)
+    .digest("hex");
+  const closureDigest = "e".repeat(64);
+  const evidence = await validateDesignCompositeSource(
+    new Blob([sourceText], { type: "application/json" }),
+    item({
+      sourceDigest,
+      closureDigest,
+      sourceClosure: {
+        revisionId,
+        status: "complete",
+        digest: closureDigest,
+        sourceDigest,
+        dependencyDigests: [sourceDigest],
+        dependencyRevisionIds: [dependencyRevisionId],
+        firstParty: true,
+      },
+    }),
+    {
+      requireBaseIdentity: false,
+      requireBaseRevision: false,
+      validation: "open",
+    },
+  );
+  assert.equal(evidence.sourceKind, "published-package");
+  assert.equal(evidence.sourceDigest, sourceDigest);
+});
+
 test("published flat Design template normalizes structurally without weakening digest pin", async () => {
   const flatTemplate = {
     templateId: "promo-poster-1",

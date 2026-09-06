@@ -76,8 +76,9 @@ export function FloatingContextToolbar({
         data-workspace-floating-toolbar={!docked || undefined}
         data-edit-bar-mode={controller.mode}
         data-edit-bar-presentation={controller.presentation}
-        data-edit-bar-dragging={controller.dragging || undefined}
-        data-edit-bar-move-mode={controller.moveMode || undefined}
+          data-edit-bar-dragging={controller.dragging || undefined}
+          data-edit-bar-move-mode={controller.moveMode || undefined}
+          data-edit-bar-selected={controller.selected || undefined}
         className="pointer-events-none absolute inset-0 overflow-visible"
       >
         <div
@@ -88,6 +89,7 @@ export function FloatingContextToolbar({
           data-edit-bar-mode={controller.mode}
           data-edit-bar-offset={`${controller.offset.x},${controller.offset.y}`}
           onPointerDownCapture={controller.rootProps.onPointerDownCapture}
+          onPointerUpCapture={controller.rootProps.onPointerUpCapture}
           onClickCapture={controller.rootProps.onClickCapture}
           onDoubleClickCapture={controller.rootProps.onDoubleClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
@@ -137,6 +139,13 @@ export function FloatingContextToolbar({
               children
             )}
           </div>
+          {controller.selected && !controller.moveMode && (
+            <div
+              aria-hidden="true"
+              data-edit-bar-selected-ring
+              className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/45"
+            />
+          )}
           {controller.moveMode && (
             // 按住拖的这一段盖住控件：松手之前按钮不许被点到。
             <div

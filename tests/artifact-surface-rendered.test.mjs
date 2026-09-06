@@ -556,10 +556,11 @@ const catalogControllerStubUrl = dataModule(`
   export function workspaceTemplatePreviewHref(appId, artifactId) {
     globalThis.__previewHrefCalls?.push({ appId, artifactId });
     return (
-      "/workspace?tab=materials&item=" +
+      "/workspace/" +
+      encodeURIComponent(appId) +
+      "?tab=materials&item=" +
       encodeURIComponent(artifactId) +
-      "&mode=preview&app=" +
-      encodeURIComponent(appId)
+      "&mode=preview"
     );
   }
 `);
@@ -3728,12 +3729,12 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
     ];
     assert.equal(singles.length, 1, "一件素材只出一颗编辑入口");
     assert.equal(singles[0].getAttribute("data-material-edit-app"), "poster");
-    // 键名以 `site-catalog-controller.ts` 的常量为准（`tab` / `item` / `mode` / `app`），
-    // 不是这些常量的变量名。
+    // app 身份在路径段；query 只剩 tab / item / mode。
     const href = singles[0].getAttribute("href") || "";
+    assert.ok(href.includes("/workspace/poster"), `落点必须指名归属 app：${href}`);
     assert.ok(href.includes("mode=preview"), `落点必须是预览态：${href}`);
-    assert.ok(href.includes("app=poster"), `落点必须指名归属 app：${href}`);
     assert.ok(href.includes("tab=materials"), `落点必须是素材库标签页：${href}`);
+    assert.ok(!/[?&]app=/.test(href), `新深链不得再写 ?app=：${href}`);
   } finally {
     await crossApp.unmount();
   }

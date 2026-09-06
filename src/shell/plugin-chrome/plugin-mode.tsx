@@ -57,9 +57,7 @@ export function usePluginMode(pluginId: PluginThemeId): PluginModeHandle {
 export interface PluginModeToggleProps {
   pluginId: PluginThemeId;
   /**
-   * 这件编辑器支不支持专业模式。不支持时**开关置灰但不消失**，
-   * 并把原因显示为 title —— 与 `PluginChromeView.unavailableReason` 同一条产品
-   * 判断：「看不见的能力」和「不存在的能力」对用户是两回事。
+   * 说明性原因，只进 title。13 件高级编辑器的开关必须能点，不再置灰。
    */
   unavailableReason?: string;
   /** 模式变化时通知宿主：Native 件调 adapter 的 setMode，Hosted 件发 `set-mode`。 */
@@ -73,9 +71,8 @@ export function PluginModeToggle({
 }: PluginModeToggleProps) {
   const tt = useUI();
   const { pro } = usePluginMode(pluginId);
-  const disabled = Boolean(unavailableReason);
-  const label = disabled
-    ? `${tt("专业模式")}：${unavailableReason}`
+  const label = unavailableReason
+    ? `${tt(pro ? "退出专业模式" : "专业模式")}：${unavailableReason}`
     : tt(pro ? "退出专业模式" : "专业模式");
   // 走 `Button` 原语而不是裸 `<button>`：默认档就是 44px 命中区，焦点环内建且
   // 关不掉（`ui/Button.tsx` 文件头的两条结构性规矩）。顶栏 `h-14`(56px) 装得下。
@@ -87,12 +84,10 @@ export function PluginModeToggle({
       selected={pro}
       data-plugin-mode-toggle={pluginId}
       data-plugin-mode={pro ? "pro" : "normal"}
-      disabled={disabled}
       aria-pressed={pro}
       aria-label={label}
       title={label}
       onClick={() => {
-        if (disabled) return;
         const next: EditorMode = pro ? "normal" : "pro";
         setPluginMode(pluginId, next);
         onModeChange?.(next);

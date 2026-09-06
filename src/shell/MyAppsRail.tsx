@@ -3,11 +3,18 @@
 import { useEffect, useState } from "react";
 import {
   listMyApps,
+  marketAppOpenUrl,
+  sortMyApps,
   uninstallApp,
   type MarketApp,
 } from "../lib/app-market";
 import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
+import { appIconThumbSrc } from "../lib/app-icon-image";
+
+/** @deprecated 用 `marketAppOpenUrl`。侧栏不再挂已加入的 app。 */
+export const marketAppOpenHref = marketAppOpenUrl;
+export { sortMyApps };
 
 /** “我的应用”统一回到主站应用市场，并直接表达要打开“我的”视图。 */
 export const MY_APPS_MARKET_HREF =
@@ -17,27 +24,6 @@ const SIDEBAR_APP_LIMIT = 8;
 
 function isAuthError(error: unknown): boolean {
   return error instanceof Error && error.name === "MarketAuthError";
-}
-
-export function sortMyApps(apps: MarketApp[]): MarketApp[] {
-  return apps
-    .map((app, index) => ({ app, index }))
-    .sort(
-      (left, right) =>
-        left.app.sort_order - right.app.sort_order || left.index - right.index,
-    )
-    .map(({ app }) => app);
-}
-
-/** `site_url + open_path`，同时收掉两侧重复的斜杠。 */
-export function marketAppOpenHref(
-  app: Pick<MarketApp, "site_url" | "open_path">,
-): string {
-  const siteUrl = app.site_url.trim();
-  const openPath = app.open_path.trim();
-  if (!openPath) return siteUrl;
-  if (!siteUrl) return openPath;
-  return `${siteUrl.replace(/\/+$/, "")}/${openPath.replace(/^\/+/, "")}`;
 }
 
 export interface MyAppsRailProps {
@@ -202,7 +188,20 @@ export function MyAppsRail({
                 aria-hidden="true"
                 className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-stone-100 text-[14px]"
               >
-                {app.icon || "◻"}
+                {appIconThumbSrc(
+                  (app as MarketApp & { iconImage?: string }).iconImage,
+                ) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={appIconThumbSrc(
+                      (app as MarketApp & { iconImage?: string }).iconImage,
+                    )}
+                    alt=""
+                    className="h-5 w-5 rounded-md object-cover"
+                  />
+                ) : (
+                  app.icon || "◻"
+                )}
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[12px] font-medium text-stone-800">

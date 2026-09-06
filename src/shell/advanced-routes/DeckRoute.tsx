@@ -3,6 +3,7 @@
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -76,6 +77,18 @@ const DeckHostedRoute = lazy(() =>
  */
 export function DeckRoute(props: AdvancedContentWorkbenchProps) {
   if (resolveEditorCore("deck") === "next") {
+    return (
+      <Suspense fallback={null}>
+        <DeckHostedRoute {...props} />
+      </Suspense>
+    );
+  }
+  return <DeckLegacyGate {...props} />;
+}
+
+function DeckLegacyGate(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("deck");
+  if (pro) {
     return (
       <Suspense fallback={null}>
         <DeckHostedRoute {...props} />

@@ -236,10 +236,11 @@ const catalogControllerStubUrl = dataModule(`
   export function workspaceTemplatePreviewHref(appId, artifactId) {
     globalThis.__previewHrefCalls.push({ appId, artifactId });
     return (
-      "/workspace?tab=materials&item=" +
+      "/workspace/" +
+      encodeURIComponent(appId) +
+      "?tab=materials&item=" +
       encodeURIComponent(artifactId) +
-      "&mode=preview&app=" +
-      encodeURIComponent(appId)
+      "&mode=preview"
     );
   }
 `);
@@ -586,9 +587,9 @@ function editEntries(container) {
 }
 
 function previewHref(artifactId, appId) {
-  return `/workspace?tab=materials&item=${encodeURIComponent(
+  return `/workspace/${appId}?tab=materials&item=${encodeURIComponent(
     artifactId,
-  )}&mode=preview&app=${appId}`;
+  )}&mode=preview`;
 }
 
 test("跨 app 素材的浮层只出一颗编辑入口，不是一排", async () => {

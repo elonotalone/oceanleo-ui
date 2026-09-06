@@ -373,7 +373,6 @@ const DRAWER_CLASS = classAttr("leo-safe-drawer");
 const DRAWER_WRAP_CLASS = classAttr("z-[80]");
 const MAIN_CLASS = classAttr("leo-safe-main", "pl-14");
 const HAMBURGER_CLASS = classAttr("leo-chrome-topleft", "md:hidden");
-const EXPAND_CLASS = classAttr("leo-chrome-topleft", "md:flex");
 const TOPRIGHT_CLASS = classAttr("leo-chrome-topright");
 
 // 文档流里横向占掉的那些像素。固定定位的侧栏、抽屉、浮出键都逃出了文档流，
@@ -392,11 +391,15 @@ function inFlowChrome(device, { collapsed, layout = "sidebar" }) {
 
   assert.match(SIDEBAR_CLASS, /(^| )hidden( |$)/, "桌面侧栏必须默认 display:none");
   assert.match(SIDEBAR_CLASS, /md:fixed/, "桌面侧栏必须 fixed —— 它不该进文档流");
-  const spacer = md && !collapsed ? twPx("w-[256px]") : 0;
+  const spacer = md
+    ? collapsed
+      ? twPx("w-14")
+      : twPx("w-[256px]")
+    : 0;
 
   assert.match(SPACER_CLASS, /(^| )hidden( |$)/, "占位块在窄屏必须 display:none");
-  assert.match(MAIN_CLASS, /(^| )pl-14( |$)/, "主区常驻给浮出键留的那条左侧空位");
-  const mainPad = md ? (collapsed ? twPx("pl-14") : 0) : twPx("pl-14");
+  assert.match(MAIN_CLASS, /(^| )pl-14( |$)/, "主区常驻给汉堡键留的那条左侧空位");
+  const mainPad = md ? 0 : twPx("pl-14");
 
   return shellPad + spacer + mainPad;
 }
@@ -615,16 +618,10 @@ test("点击目标 ≥ 44×44（只在 pointer: coarse 下发生）", () => {
   // 汉堡键会在横屏手机上跟桌面侧栏一起冒出来。
   assert.deepEqual([...rule.decls.keys()].sort(), ["min-height", "min-width"]);
 
-  for (const [name, attr] of [
-    ["汉堡键", HAMBURGER_CLASS],
-    ["展开键", EXPAND_CLASS],
-  ]) {
-    assert.match(attr, /leo-tap-target/, `${name}必须挂 leo-tap-target`);
-    assert.match(attr, /items-center/, `${name}的图标要靠自身 flex 居中`);
-    assert.match(attr, /(inline-flex|md:flex)/, `${name}要保留自己的 display 工具类`);
-  }
+  assert.match(HAMBURGER_CLASS, /leo-tap-target/, "汉堡键必须挂 leo-tap-target");
+  assert.match(HAMBURGER_CLASS, /items-center/, "汉堡键的图标要靠自身 flex 居中");
+  assert.match(HAMBURGER_CLASS, /inline-flex/, "汉堡键要保留自己的 display 工具类");
   assert.match(HAMBURGER_CLASS, /md:hidden/, "汉堡键只在窄屏出现");
-  assert.match(EXPAND_CLASS, /(^| )hidden( |$)/, "展开键在窄屏不出现");
 });
 
 test("44×44 覆盖外壳里每一个可点目标，不只是那两颗浮出键", () => {
@@ -798,14 +795,12 @@ test("桌面浏览器逐像素等于改动前", () => {
   assert.equal(
     inFlowChrome(DESKTOP, { collapsed: true }),
     56,
-    "收起态：只留浮出键那条 pl-14",
+    "收起态：图标轨占位 w-14",
   );
   assert.equal(inFlowChrome(DESKTOP, { collapsed: false, layout: "topbar" }), 0);
 
   // 位置类被 CSS 接管后，元素上不许再留 top-3 / left-3，否则两边打架。
-  for (const attr of [HAMBURGER_CLASS, EXPAND_CLASS]) {
-    assert.doesNotMatch(attr, /(^| )(top|left)-3( |$)/);
-  }
+  assert.doesNotMatch(HAMBURGER_CLASS, /(^| )(top|left)-3( |$)/);
   assert.doesNotMatch(TOPRIGHT_CLASS, /(^| )top-3( |$)/);
 });
 

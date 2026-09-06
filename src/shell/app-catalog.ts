@@ -115,6 +115,11 @@ export interface GoalApp {
   /** 目录卡片图标（emoji / 单字）。 */
   icon?: ReactNode;
   /**
+   * 标题栏 / 侧栏小图标。裸 OSS key（`app-icon/<site>-<app>`）或完整 URL。
+   * 有则画 20px 圆角图，无则回退 `icon` emoji。拼链走 `appIconThumbSrc()`。
+   */
+  iconImage?: string;
+  /**
    * @deprecated 2026-07-26 起被 `capabilityImage` 取代，**新代码不要再写 `thumb`**。
    *
    * 目录卡片配图缩略图 URL（宗旨 v15）：图示卡片版式的顶部大图（AI 风格素材，来自

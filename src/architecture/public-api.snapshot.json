@@ -1037,6 +1037,14 @@
         },
         {
           "kind": "star",
+          "source": "./app-icon-image"
+        },
+        {
+          "kind": "star",
+          "source": "./app-market"
+        },
+        {
+          "kind": "star",
           "source": "./app-session"
         },
         {
@@ -1578,6 +1586,11 @@
         {
           "kind": "named",
           "name": "GATEWAY_BASE",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isLeoDevPreviewHost",
           "source": ""
         },
         {
@@ -5965,6 +5978,24 @@
         },
         {
           "kind": "named",
+          "name": "GameBundleFormat",
+          "importedName": "GameBundleFormat",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GamePreviewHost",
+          "importedName": "GamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GamePreviewHostProps",
+          "importedName": "GamePreviewHostProps",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "GameRoute",
           "source": ""
         },
@@ -5981,16 +6012,12 @@
         {
           "kind": "named",
           "name": "registerGamePreviewHost",
+          "importedName": "registerGamePreviewHost",
           "source": ""
         },
         {
           "kind": "type",
           "name": "GameBundleDocument",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameBundleFormat",
           "source": ""
         },
         {
@@ -6006,16 +6033,6 @@
         {
           "kind": "type",
           "name": "GameIterationRunner",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GamePreviewHost",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GamePreviewHostProps",
           "source": ""
         },
         {
@@ -6687,6 +6704,18 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "currentPluginMode",
+          "importedName": "currentPluginMode",
+          "source": "./plugin-mode-store"
+        },
+        {
+          "kind": "named",
+          "name": "DEFAULT_PLUGIN_MODE",
+          "importedName": "DEFAULT_PLUGIN_MODE",
+          "source": "./plugin-mode-store"
+        },
+        {
+          "kind": "named",
           "name": "PLUGIN_AGENT_DRAWER_ID",
           "importedName": "PLUGIN_AGENT_DRAWER_ID",
           "source": "./agent-drawer"
@@ -6789,6 +6818,36 @@
         },
         {
           "kind": "named",
+          "name": "PluginModeAdapterBridge",
+          "importedName": "PluginModeAdapterBridge",
+          "source": "./plugin-mode"
+        },
+        {
+          "kind": "named",
+          "name": "pluginModeStorageKey",
+          "importedName": "pluginModeStorageKey",
+          "source": "./plugin-mode-store"
+        },
+        {
+          "kind": "named",
+          "name": "PluginModeToggle",
+          "importedName": "PluginModeToggle",
+          "source": "./plugin-mode"
+        },
+        {
+          "kind": "named",
+          "name": "setPluginMode",
+          "importedName": "setPluginMode",
+          "source": "./plugin-mode-store"
+        },
+        {
+          "kind": "named",
+          "name": "subscribePluginMode",
+          "importedName": "subscribePluginMode",
+          "source": "./plugin-mode-store"
+        },
+        {
+          "kind": "named",
           "name": "usePluginChromePanelHost",
           "importedName": "usePluginChromePanelHost",
           "source": "./PluginChromeFrame"
@@ -6798,6 +6857,12 @@
           "name": "usePluginChromePanels",
           "importedName": "usePluginChromePanels",
           "source": "./use-plugin-chrome-panels"
+        },
+        {
+          "kind": "named",
+          "name": "usePluginMode",
+          "importedName": "usePluginMode",
+          "source": "./plugin-mode"
         },
         {
           "kind": "type",
@@ -6816,6 +6881,24 @@
           "name": "PluginChromePanelController",
           "importedName": "PluginChromePanelController",
           "source": "./use-plugin-chrome-panels"
+        },
+        {
+          "kind": "type",
+          "name": "PluginModeAdapterBridgeProps",
+          "importedName": "PluginModeAdapterBridgeProps",
+          "source": "./plugin-mode"
+        },
+        {
+          "kind": "type",
+          "name": "PluginModeHandle",
+          "importedName": "PluginModeHandle",
+          "source": "./plugin-mode"
+        },
+        {
+          "kind": "type",
+          "name": "PluginModeToggleProps",
+          "importedName": "PluginModeToggleProps",
+          "source": "./plugin-mode"
         }
       ]
     },

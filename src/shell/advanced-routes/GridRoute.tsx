@@ -44,6 +44,7 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { renderGridNextOrLegacy } from "../doc-editors/grid-univer/route-dispatch";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 
 /**
  * 新核舞台的懒加载入口。
@@ -72,9 +73,15 @@ export function GridRoute(props: AdvancedContentWorkbenchProps) {
   return renderGridNextOrLegacy(
     resolveEditorCore("grid"),
     GridUniverStage,
-    GridLegacyRoute,
+    GridLegacyGate,
     props,
   );
+}
+
+function GridLegacyGate(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("grid");
+  if (pro) return <GridUniverStage {...props} />;
+  return <GridLegacyRoute {...props} />;
 }
 
 function useGridDocumentHistory(editor: GridEditorState, itemId: string) {

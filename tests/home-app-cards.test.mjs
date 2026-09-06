@@ -40,6 +40,13 @@ const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
  */
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const linkStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export default function Link({ children, href, ...props }) {
+    return React.createElement("a", { ...props, href }, children);
+  }
+`);
 // 两个弹窗（AddPromptModal / PromptCardModal）由 HomePromptModals 独立测试面负责，
 // 这里只要它们不把 ../ui 的 portal Modal 链拖进来。
 const modalsStubUrl = dataModule(
@@ -84,6 +91,7 @@ const templateSourceStubUrl = dataModule(
 const OVERRIDES = {
   "../i18n/ui/useUI": uiStubUrl,
   "react-dom": reactDomUrl,
+  "next/link": linkStubUrl,
   "./HomePromptModals": modalsStubUrl,
   "../lib/auth/client": authClientStubUrl,
   "./library-data": libraryDataStubUrl,

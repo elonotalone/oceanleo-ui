@@ -8,12 +8,12 @@
 //          带 token 时逐条标注 installed）
 //   GET    /v1/apps/scenes                             → { items: [{scene,count}] }
 //   GET    /v1/apps/mine                               → { items }（需登录）
-//   POST   /v1/apps/mine       { app_id }              → 装到「我的」（需登录）
-//   DELETE /v1/apps/mine/{app_id}                      → 从「我的」卸掉（需登录）
+//   POST   /v1/apps/mine       { app_id }              → 加入工作台（需登录）
+//   DELETE /v1/apps/mine/{app_id}                      → 从工作台移除（需登录）
 //
 // 写法照 ./agent.ts 的 listAgents / authed（同一 GATEWAY_BASE、同一 token 取法），
 // 但返回形状不同：本模块**成功返回数据、失败抛异常**，因为调用方（AppMarket、
-// W04 的 MyAppsRail）要的是「装/卸失败就回滚 + 给一句人话」，异常比 result 对象
+// 主站工作台）要的是「加入/移除失败就回滚 + 给一句人话」，异常比 result 对象
 // 更难被忽略。
 //
 // 未登录的两种处理是分开的：
@@ -149,12 +149,67 @@ export async function listMarketScenes(): Promise<{ scene: string; count: number
     .filter((row) => Boolean(row.scene));
 }
 
-/** 「我的」里已装的 app。未登录抛 MarketAuthError。 */
+/** 工作台里已加入的 app。未登录抛 MarketAuthError。 */
 export async function listMyApps(): Promise<MarketApp[]> {
   const data = await authedRequest("/v1/apps/mine");
   if (!Array.isArray(data.items)) return [];
-  // 「我的」里的条目按定义就是装过的；后端漏标时不让 UI 显示成「未装」。
+  // 工作台里的条目按定义就是加入过的；后端漏标时不让 UI 显示成「未加入」。
   return data.items.map((raw) => ({ ...toMarketApp(raw), installed: true }));
+}
+
+export function sortMyApps(apps: MarketApp[]): MarketApp[] {
+  return apps
+    .map((app, index) => ({ app, index }))
+    .sort(
+      (left, right) =>
+        left.app.sort_order - right.app.sort_order || left.index - right.index,
+    )
+    .map(({ app }) => app);
+}
+
+/**
+ * 成品 app 的子站落点。`open_path` 为空时落到 `/workspace/<app_key>`，
+ * 不能只回站点首页——工作台「打开」必须进对应 app 页。
+ */
+export function marketAppOpenUrl(
+  app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
+): string {
+  const siteUrl = (app.site_url || "").trim();
+  const appKey = (app.app_key || "").trim();
+  const openPath = (app.open_path || "").trim() || (appKey ? `/workspace/${appKey}` : "");
+  if (!siteUrl) {
+    return openPath.startsWith("/") ? openPath : openPath ? `/${openPath}` : "";
+  }
+  if (!openPath) return siteUrl;
+  try {
+    const base = siteUrl.endsWith("/") ? siteUrl : `${siteUrl}/`;
+    return new URL(openPath, base).toString();
+  } catch {
+    return `${siteUrl.replace(/\/+$/, "")}/${openPath.replace(/^\/+/, "")}`;
+  }
+}
+
+/** 工作台点开必须是绝对子站地址。没有 site_url 时不要落到主站 `/workspace/<key>`。 */
+export function workspaceAppJumpUrl(
+  app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
+): string {
+  const href = marketAppOpenUrl(app);
+  try {
+    const url = new URL(href);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+export function openMarketApp(
+  app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
+): string {
+  const href = workspaceAppJumpUrl(app);
+  if (href && typeof window !== "undefined") {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+  return href;
 }
 
 export async function installApp(appId: string): Promise<void> {

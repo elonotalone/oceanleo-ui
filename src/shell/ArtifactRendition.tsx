@@ -387,11 +387,15 @@ export function useArtifactRendition(
 
   if (!durable) {
     const legacy = legacyUrl(item, requested);
+    const localDraft =
+      item.meta.draft === true || item.meta.blank === true;
     return {
       ...legacy,
       rendition: null,
       loading: false,
-      error: legacy.url ? "" : "这个条目没有可用 URL。",
+      // Local /advanced blanks have no URL on purpose. That is not a
+      // missing-source fault and must not surface "刷新 source/full".
+      error: legacy.url || localDraft ? "" : "这个条目没有可用 URL。",
       version: 0,
       failure: null,
       retry: NO_RENDITION_ACTION,

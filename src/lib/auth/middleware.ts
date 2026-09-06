@@ -1,7 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { authFetch } from "./auth-fetch";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, cookieOptions, configured } from "./config";
+import {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  cookieOptions,
+  configured,
+  isLeoDevPreviewHost,
+} from "./config";
 import { isPrivateWorkspaceRuntime } from "./workspace-privacy";
 
 type CookieToSet = {
@@ -56,6 +62,10 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
         return request.cookies.getAll();
       },
       setAll(cookiesToSet: CookieToSet[], headers: Record<string, string> = {}) {
+        // Preview capability hosts share the family cookie on the wire.
+        // Never write it back: a 401/timeout refresh here would sign the
+        // operator out of every *.oceanleo.com site.
+        if (isLeoDevPreviewHost(host)) return;
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, { ...options, ...opts });

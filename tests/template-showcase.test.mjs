@@ -3,7 +3,7 @@
 //   ① 左上主预览 + 左下缩略图条（≥2 份才出，0/1 份不出）+ 右侧标题/说明/标签的分栏版式；
 //   ② 右侧按钮**恰好三个**「预览&编辑」「生成类似」「更多」，顺序定死，且**没有下载**；
 //   ③ 两条深链 helper 的输出逐字符正确：
-//        `workspaceTemplatePreviewHref` → /workspace?tab=materials&item=…&mode=preview&app=…
+//        `workspaceTemplatePreviewHref` → /workspace/<appId>?tab=materials&item=…&mode=preview
 //        （`tab` 的取值归接口 A 定义，见 `W2-interface-A.md`：官方模板素材固定
 //         `materials`，`mine` 留给用户自有 artifact；`library` 作为历史别名归一化到 mine）
 //        `exploreAppHref`               → /explore?app=…
@@ -36,9 +36,20 @@ const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 
 // tt() 未命中词典时回退中文原文，测试里直接用恒等翻译。
 const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const linkStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export default function Link({ children, href, ...props }) {
+    return React.createElement("a", { ...props, href }, children);
+  }
+`);
 // `react-dom` 接真包：条件 portal 必须由**同一个** react-dom 实例创建，替身做不到
 // 「portal 出去的节点仍属于同一棵 React 树」这件事。
-const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl, "react-dom": reactDomUrl };
+const OVERRIDES = {
+  "../i18n/ui/useUI": uiStubUrl,
+  "react-dom": reactDomUrl,
+  "next/link": linkStubUrl,
+};
 
 // 两条深链接**真**控制器而不是替身：本测试断言的是用户最终点到的那条 URL，
 // 替身只会证明「组件调了个函数」。
@@ -189,21 +200,22 @@ async function withDom(run) {
 test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
   assert.equal(
     workspaceTemplatePreviewHref("poster", "art-a"),
-    "/workspace?tab=materials&item=art-a&mode=preview&app=poster",
+    "/workspace/poster?tab=materials&item=art-a&mode=preview",
   );
-  // 参数顺序也是契约的一部分：tab → item → mode → app。
+  // 参数顺序也是契约的一部分：tab → item → mode。app 在路径段，不在 query。
   assert.deepEqual(
     [...new URL(workspaceTemplatePreviewHref("poster", "art-a"), "https://x").searchParams.keys()],
-    ["tab", "item", "mode", "app"],
+    ["tab", "item", "mode"],
   );
   // `mode=preview` 是本轮的产品要害：落点必须是**只读预览**，不是编辑器。
   assert.match(workspaceTemplatePreviewHref("poster", "art-a"), /mode=preview/);
   assert.doesNotMatch(workspaceTemplatePreviewHref("poster", "art-a"), /open=(advanced|template)/);
+  assert.doesNotMatch(workspaceTemplatePreviewHref("poster", "art-a"), /[?&]app=/);
 
   // 需要转义的 id 走 URL 编码，不裸拼。
   assert.equal(
     workspaceTemplatePreviewHref("图片 生成", "art/b"),
-    "/workspace?tab=materials&item=art%2Fb&mode=preview&app=%E5%9B%BE%E7%89%87+%E7%94%9F%E6%88%90",
+    "/workspace/%E5%9B%BE%E7%89%87%20%E7%94%9F%E6%88%90?tab=materials&item=art%2Fb&mode=preview",
   );
 
   // 缺 artifact 就拼不出只读落点：退回该 app 的 canonical 地址，绝不产出半截深链。
@@ -222,7 +234,7 @@ test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
   // 站点可自定义 canonicalBasePath。
   assert.equal(
     workspaceTemplatePreviewHref("poster", "art-a", { canonicalBasePath: "/studio" }),
-    "/studio?tab=materials&item=art-a&mode=preview&app=poster",
+    "/studio/poster?tab=materials&item=art-a&mode=preview",
   );
 });
 
@@ -270,7 +282,8 @@ test("方向性：预览深链喂进 resolveSiteCatalogRoute 后仍指向同一�
   // 以及事故现场的那三个中间量：`preview` 不许再被当成 app id。
   assert.equal(state.legacyAppId, "");
   assert.equal(state.requestedAppId, appId);
-  assert.equal(state.queryAppId, appId);
+  assert.equal(state.pathAppId, appId);
+  assert.equal(state.queryAppId, "");
 });
 
 test("方向性：17 种 app id 形态逐个走完 helper → 路由解析器", () => {
@@ -294,24 +307,32 @@ test("方向性：app 真的不存在时才报「不存在」，且报的是 app
   assert.equal(state.activeAppId, "");
 });
 
-test("方向性：规范化重定向不得吃掉 mode=preview", () => {
+test("方向性：新预览深链已经是 canonical 路径，不再经过目录页", () => {
   const appId = "animal-model";
   const href = workspaceTemplatePreviewHref(appId, "art-1");
   const url = new URL(href, "https://image.oceanleo.com");
   const state = routeStateFor(href, [appId]);
   const redirect = catalogCanonicalRedirect(state, url.pathname, url.search);
 
-  // 规范化到 `/workspace/<appId>`，但**预览意图必须活下来**——被删掉的话预览页会退化
-  // 成普通库视图，用户点「预览&编辑」等于进了个半成品。
-  assert.equal(redirect, "/workspace/animal-model?tab=materials&item=art-1&mode=preview");
-  // `app=` 进了路径段，query 里那份重复项收走。
-  assert.doesNotMatch(redirect, /[?&]app=/);
+  assert.equal(href, "/workspace/animal-model?tab=materials&item=art-1&mode=preview");
+  assert.equal(redirect, null);
+  assert.equal(state.pathAppId, appId);
+  assert.doesNotMatch(href, /[?&]app=/);
+});
 
-  // 重定向之后再解析一次：必须稳定（不再重定向、app 仍然对）。
+test("方向性：旧 /workspace?app= 书签仍规范化到路径段且保住 mode=preview", () => {
+  const search = "?tab=materials&item=art-1&mode=preview&app=animal-model";
+  const state = resolveSiteCatalogRoute({
+    pathname: "/workspace",
+    search,
+    knownAppIds: new Set(["animal-model"]),
+  });
+  const redirect = catalogCanonicalRedirect(state, "/workspace", search);
+  assert.equal(redirect, "/workspace/animal-model?tab=materials&item=art-1&mode=preview");
+  assert.doesNotMatch(redirect, /[?&]app=/);
   const after = new URL(redirect, "https://image.oceanleo.com");
-  const settled = routeStateFor(redirect, [appId]);
-  assert.equal(settled.activeAppId, appId);
-  assert.equal(settled.invalidAppId, "");
+  const settled = routeStateFor(redirect, ["animal-model"]);
+  assert.equal(settled.activeAppId, "animal-model");
   assert.equal(catalogCanonicalRedirect(settled, after.pathname, after.search), null);
 });
 
@@ -439,7 +460,7 @@ test("三按钮目标：预览&编辑指向选中模板的只读预览页，更�
   // 预览&编辑 = 库里的只读预览（**不是**编辑器深链）。
   assert.match(
     html,
-    /data-showcase-action="preview"[^>]*href="\/workspace\?tab=materials&amp;item=art-a&amp;mode=preview&amp;app=poster"/,
+    /data-showcase-action="preview"[^>]*href="\/workspace\/poster\?tab=materials&amp;item=art-a&amp;mode=preview"/,
   );
   // 生成类似仍是 app 级 `?fill=preset`，行为不变。
   assert.match(html, /data-showcase-action="similar"[^>]*href="\/workspace\/poster\?fill=preset"/);
@@ -755,7 +776,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     // 浏览器里读到的是解码后的纯文本：`&` 就是 `&`，没有 `&amp;` 漏进正文。
     assert.deepEqual(first.actions.map((a) => a.text), ["预览&编辑", "生成类似", "更多"]);
     assert.deepEqual(first.actions.map((a) => a.tag), ["A", "A", "A"]);
-    assert.equal(first.actions[0].href, "/workspace?tab=materials&item=art-a&mode=preview&app=poster");
+    assert.equal(first.actions[0].href, "/workspace/poster?tab=materials&item=art-a&mode=preview");
     assert.equal(first.actions[1].href, "/workspace/poster?fill=preset");
     assert.equal(first.actions[2].href, "/explore?app=poster");
 
@@ -771,7 +792,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     assert.deepEqual(second.tags, ["新品", "长图"]);
     assert.match(second.preview, /image-poster-2\.webp$/);
     // 预览&编辑改指 B 的 artifact；生成类似与更多是 app 级，保持不变。
-    assert.equal(second.actions[0].href, "/workspace?tab=materials&item=art-b&mode=preview&app=poster");
+    assert.equal(second.actions[0].href, "/workspace/poster?tab=materials&item=art-b&mode=preview");
     assert.equal(second.actions[1].href, "/workspace/poster?fill=preset");
     assert.equal(second.actions[2].href, "/explore?app=poster");
 
@@ -780,7 +801,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     const back = read();
     assert.equal(back.active, "poster-a");
     assert.equal(back.title, "夏季促销海报");
-    assert.equal(back.actions[0].href, "/workspace?tab=materials&item=art-a&mode=preview&app=poster");
+    assert.equal(back.actions[0].href, "/workspace/poster?tab=materials&item=art-a&mode=preview");
 
     // Esc 关闭（自带键盘处理，不依赖 Modal）。
     await act(async () =>

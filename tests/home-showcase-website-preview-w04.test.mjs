@@ -126,6 +126,12 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 const uiStubUrl = dataModule(`
   export function useUI() { return (value) => value; }
 `);
+const linkStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export default function Link({ children, href, ...props }) {
+    return React.createElement("a", { ...props, href }, children);
+  }
+`);
 /**
  * 只把 rendition 与页面字节探针换成替身（首页这条路根本走不到它们，但 `TemplateShowcase`
  * 借用的是查看器里那份预览实现，图里带着它们）。网络一律走 `globalThis.fetch` 计数桩：
@@ -144,6 +150,7 @@ const mediaProxyStubUrl = dataModule(`
 `);
 const showcaseModuleUrl = await compileModule("src/shell/ImageLightbox.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
+  "next/link": linkStubUrl,
   "./ArtifactRendition": renditionStubUrl,
   "../lib/media-proxy": mediaProxyStubUrl,
 });

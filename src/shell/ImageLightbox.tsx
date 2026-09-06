@@ -65,6 +65,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { assetPreviewUrl, assetThumbUrl } from "../lib/asset-thumb";
@@ -491,24 +492,28 @@ export function TemplateShowcase({
                 各自的前提见文件头；缺前提的那颗整颗不渲染，不留死按钮。 */}
             <div className="mt-5 flex flex-col gap-2 md:mt-auto md:pt-5">
               {previewTarget ? (
-                <a
+                <Link
                   data-showcase-action="preview"
                   href={previewTarget}
                   className={`${actionClass} text-white`}
                   style={{ background: accent }}
                 >
                   {tt("预览&编辑")}
-                </a>
+                </Link>
               ) : null}
               {similarTarget ? (
-                <a data-showcase-action="similar" href={similarTarget} className={ghostAction}>
+                <Link
+                  data-showcase-action="similar"
+                  href={similarTarget}
+                  className={ghostAction}
+                >
                   {tt("生成类似")}
-                </a>
+                </Link>
               ) : null}
               {moreTarget ? (
-                <a data-showcase-action="more" href={moreTarget} className={ghostAction}>
+                <Link data-showcase-action="more" href={moreTarget} className={ghostAction}>
                   {tt("更多")}
-                </a>
+                </Link>
               ) : null}
             </div>
           </div>

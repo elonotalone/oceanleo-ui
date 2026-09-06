@@ -3,10 +3,15 @@
 import { useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import {
   installApp,
+  marketAppOpenUrl,
+  openMarketApp,
   uninstallApp,
   type MarketApp,
 } from "../lib/app-market";
+import { capabilityImageThumbUrl } from "../lib/app-capability-image";
 import { useUI } from "../i18n/ui/useUI";
+
+export { marketAppOpenUrl as appMarketOpenUrl };
 
 export type MarketScene = { scene: string; count: number };
 
@@ -33,18 +38,10 @@ function normalized(value: string): string {
   return value.trim().toLocaleLowerCase();
 }
 
-/** 卡片落点：open_path 为空时回到站点首页，非空时按 URL 规则与 site_url 拼接。 */
-export function appMarketOpenUrl(app: Pick<MarketApp, "site_url" | "open_path">): string {
-  const siteUrl = app.site_url.trim();
-  if (!siteUrl) return "";
-  const openPath = app.open_path.trim();
-  if (!openPath) return siteUrl;
-  try {
-    const base = siteUrl.endsWith("/") ? siteUrl : `${siteUrl}/`;
-    return new URL(openPath, base).toString();
-  } catch {
-    return `${siteUrl.replace(/\/+$/, "")}/${openPath.replace(/^\/+/, "")}`;
-  }
+function marketAppImage(app: MarketApp): string {
+  const icon = app.icon.trim();
+  if (/^https?:\/\//i.test(icon)) return icon;
+  return capabilityImageThumbUrl(app.site_id, app.app_key);
 }
 
 function matchesQuery(app: MarketApp, query: string): boolean {
@@ -56,18 +53,18 @@ function matchesQuery(app: MarketApp, query: string): boolean {
 }
 
 function MarketIcon({ app }: { app: MarketApp }) {
-  const icon = app.icon.trim();
-  if (/^https?:\/\//i.test(icon)) {
+  const image = marketAppImage(app);
+  if (image) {
     return (
       <img
-        src={icon}
+        src={image}
         alt=""
-        className="h-full w-full rounded-xl object-cover"
+        className="h-full w-full object-cover"
         loading="lazy"
       />
     );
   }
-  return <span aria-hidden="true">{icon || "✦"}</span>;
+  return <span aria-hidden="true">{app.icon.trim() || "✦"}</span>;
 }
 
 function MarketSkeleton() {
@@ -133,10 +130,7 @@ export function AppMarket({
   );
 
   function openApp(app: MarketApp) {
-    const href = appMarketOpenUrl(app);
-    if (href && typeof window !== "undefined") {
-      window.open(href, "_blank", "noopener,noreferrer");
-    }
+    openMarketApp(app);
   }
 
   async function toggleInstalled(event: MouseEvent<HTMLButtonElement>, app: MarketApp) {
@@ -147,7 +141,7 @@ export function AppMarket({
       setConfirmUninstallId(app.app_id);
       setNotice({
         kind: "success",
-        text: tt("再点一次「确认卸掉」，才会从「我的」移除。"),
+        text: tt("从工作台移除"),
       });
       return;
     }
@@ -163,23 +157,21 @@ export function AppMarket({
       setNotice({
         kind: "success",
         text: nextInstalled
-          ? tt("已经装到「我的」。")
-          : tt("已从「我的」移除。"),
+          ? tt("已放入工作台 ✓")
+          : tt("从工作台移除"),
       });
     } catch (requestError) {
       onInstalledChange(app.app_id, !nextInstalled);
       if (isMarketAuthError(requestError)) {
         setNotice({
           kind: "auth",
-          text: tt("登录后才能装到「我的」，请先登录。"),
+          text: tt("请先登录"),
         });
         onRequestLogin?.();
       } else {
         setNotice({
           kind: "error",
-          text: nextInstalled
-            ? tt("没装上，请稍后再试；刚才的状态已恢复。")
-            : tt("没能移除，请稍后再试；刚才的状态已恢复。"),
+          text: tt("操作失败"),
         });
       }
     } finally {
@@ -195,7 +187,7 @@ export function AppMarket({
             {tt("平台一共有 {count} 个现成的活", { count: total })}
           </h2>
           <p className="mt-1 text-[13px] text-stone-500">
-            {tt("跨站搜索，找到后直接装进「我的」。")}
+            {tt("跨站搜索，找到后加入工作台。")}
           </p>
         </div>
         <label className="flex min-w-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm sm:w-80">
@@ -336,10 +328,7 @@ export function AppMarket({
                 style={{ "--tw-ring-color": accent } as CSSProperties}
               />
               <div className="flex items-start gap-3">
-                <span
-                  className="pointer-events-none relative z-[1] grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl text-xl"
-                  style={{ background: `${accent}16`, color: accent }}
-                >
+                <span className="pointer-events-none relative z-[1] grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-transparent text-xl text-stone-500">
                   <MarketIcon app={app} />
                 </span>
                 <div className="pointer-events-none relative z-[1] min-w-0 flex-1">
@@ -361,10 +350,10 @@ export function AppMarket({
                   {pendingAppId === app.app_id
                     ? tt("处理中…")
                     : app.installed && confirmUninstallId === app.app_id
-                      ? tt("确认卸掉")
+                      ? tt("从工作台移除")
                       : app.installed
-                        ? tt("已装")
-                        : tt("装到我的")}
+                        ? tt("已在工作台 ✓")
+                        : tt("＋ 加入工作台")}
                 </button>
               </div>
               <p className="pointer-events-none relative z-[1] mt-3 line-clamp-2 text-[13px] leading-relaxed text-stone-500">

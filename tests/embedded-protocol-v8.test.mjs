@@ -503,3 +503,11 @@ test("selection and project failures become host-visible errors", () => {
   );
   assert.match(host, /status\.severity === "fatal" \? "alert" : "status"/);
 });
+
+test("内嵌编辑器专业模式经 set-mode 交给 iframe", () => {
+  const host = source("../src/shell/workbench-embed.tsx");
+  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
+  assert.match(host, /type: "set-mode"/);
+  assert.match(route, /setMode: applyEditorMode/);
+  assert.match(route, /editorMode=\{editorMode\}/);
+});

@@ -2,7 +2,7 @@
 //
 //   第 1 类 `oceanleo.com` 主站  —— 一行不改。它走自己的 clone-shell，
 //                                   根本不吃这个外壳，所以这份用例里没有它。
-//   第 2 类 其余 OceanLeo 系列站 —— 导航键一个都不动，只有下方历史区滚动。
+//   第 2 类 其余 OceanLeo 系列站 —— 导航标题行钉死，只有任务行与历史区滚动。
 //   第 3 类 asset / aitools      —— 整条侧栏一起滚，只有左下角账户按钮不动。
 //
 // 用例判的是**包含关系**而不是 class 字符串：滚不滚由「在不在那个滚动容器里」决定，
@@ -218,6 +218,93 @@ test("asset / aitools 不用改自己的接线就拿到整体滚动，其余站�
     renderShell({ siteId: "asset", sidebarScroll: "history" }).includes(
       'data-oceanleo-sidebar-scroll="history"',
     ),
+  );
+});
+
+test("第 2 类：标题行钉死，默认展开的任务行只在滚动区", () => {
+  const html = renderShell({
+    navGroups: undefined,
+    nav: [
+      { label: "新建任务", href: "/", icon: null },
+      { label: "探索", href: "/explore", icon: null },
+      { label: "工作台", href: "/workspace", icon: null },
+      { label: "我的库", href: "/library", icon: null },
+      {
+        label: "我的任务",
+        href: "/history",
+        icon: null,
+        disclosure: {
+          defaultOpen: true,
+          render: () =>
+            React.createElement(
+              "div",
+              { "data-test-task": "true" },
+              "任务甲",
+            ),
+        },
+      },
+    ],
+  });
+  const fixedNav = elementHtml(html, "data-oceanleo-pinned-nav");
+  const scrollArea = elementHtml(html, "data-oceanleo-scroll-nav");
+
+  for (const label of ["新建任务", "探索", "工作台", "我的库", "我的任务"]) {
+    assert.ok(fixedNav.includes(label), `标题「${label}」没有留在钉住区`);
+    assert.ok(
+      !scrollArea.includes(label),
+      `标题「${label}」还在滚动区里，会跟任务行一起走`,
+    );
+  }
+
+  assert.ok(
+    scrollArea.includes('data-test-task="true"'),
+    "展开的任务行没有进滚动区",
+  );
+  assert.ok(
+    !fixedNav.includes('data-test-task="true"'),
+    "任务行还在钉住区里，标题会被一起卷走",
+  );
+  assert.ok(!fixedNav.includes("任务甲"), "钉住区里出现了任务行文本");
+  assert.ok(
+    scrollArea.includes("data-oceanleo-nav-disclosure-body"),
+    "展开体没有包 data-oceanleo-nav-disclosure-body",
+  );
+});
+
+test("第 2 类：我的任务之后的项钉在滚动区下面，收起也不卸任务列表", () => {
+  const html = renderShell({
+    navGroups: undefined,
+    nav: [
+      { label: "新建任务", href: "/", icon: null },
+      {
+        label: "我的任务",
+        href: "/history",
+        icon: null,
+        disclosure: {
+          defaultOpen: false,
+          render: () =>
+            React.createElement(
+              "div",
+              { "data-test-task": "true" },
+              "任务甲",
+            ),
+        },
+      },
+      { label: "Playground", href: "/playground", icon: null },
+    ],
+  });
+  const fixedNav = elementHtml(html, "data-oceanleo-pinned-nav");
+  const scrollArea = elementHtml(html, "data-oceanleo-scroll-nav");
+  const tail = elementHtml(html, "data-oceanleo-pinned-nav-tail");
+
+  assert.ok(fixedNav.includes("新建任务"));
+  assert.ok(fixedNav.includes("我的任务"));
+  assert.ok(!fixedNav.includes("Playground"), "Playground 不能插到我的任务和任务行中间");
+  assert.ok(tail.includes("Playground"));
+  assert.ok(!scrollArea.includes("Playground"));
+  assert.ok(
+    scrollArea.includes('data-test-task="true"'),
+    "收起时也要把任务列表留在滚动区（只是叠成 0 高），不能卸掉重拉",
   );
 });
 

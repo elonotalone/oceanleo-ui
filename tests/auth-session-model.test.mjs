@@ -11,7 +11,11 @@ import { spawnSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
-import { cookieDomainFor, cookieOptions } from "../src/lib/auth/config.ts";
+import {
+  cookieDomainFor,
+  cookieOptions,
+  isLeoDevPreviewHost,
+} from "../src/lib/auth/config.ts";
 import { compileModule } from "./helpers/module-bench.mjs";
 
 const CONFIG_URL = new URL("../src/lib/auth/config.ts", import.meta.url);
@@ -31,6 +35,7 @@ test("真正的 oceanleo.com 子域才共享 SSO cookie", () => {
     "ppt.oceanleo.com",
     "website.oceanleo.com",
     "p8080-deadbeef.website.oceanleo.com",
+    "p-9817b57ea19b4977191526fb2ebf774c.dev.oceanleo.com",
     "PPT.OCEANLEO.COM",
     "ppt.oceanleo.com:3000",
     "ppt.oceanleo.com.", // 绝对域名写法
@@ -604,6 +609,33 @@ test("登录服务 5xx 不得经 middleware / 浏览器客户端原样重试 30 
 
 // UC-NONE
 // 判断依据：Set-Cookie 响应缺 no-store 会被 CDN 缓存成别人的会话，属会话缓存污染；UC-1…UC-7 无对应条款。
+test("LeoDev capability host may read family SSO but must never write it", () => {
+  assert.equal(
+    isLeoDevPreviewHost("p-9817b57ea19b4977191526fb2ebf774c.dev.oceanleo.com"),
+    true,
+  );
+  assert.equal(isLeoDevPreviewHost("slide.oceanleo.com"), false);
+  assert.equal(isLeoDevPreviewHost("p-nothex.dev.oceanleo.com"), false);
+  assert.equal(
+    cookieDomainFor("p-9817b57ea19b4977191526fb2ebf774c.dev.oceanleo.com"),
+    ".oceanleo.com",
+    "开发版必须继续读到家族 SSO，不能改成 host-only",
+  );
+  assert.match(configSource, /export function isLeoDevPreviewHost/);
+  assert.match(
+    configSource,
+    /\^p-\[0-9a-f\]\{32\}\\.dev\\.oceanleo\\.com\$/,
+  );
+  assert.match(middlewareSource, /isLeoDevPreviewHost\(host\)/);
+  assert.match(
+    middlewareSource,
+    /if \(isLeoDevPreviewHost\(host\)\) return;/,
+  );
+  assert.match(clientSource, /isLeoDevPreviewHost/);
+  assert.match(clientSource, /autoRefreshToken:\s*!preview/);
+  assert.match(clientSource, /never write family SSO from a capability hostname/);
+});
+
 test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头", () => {
   // 忽略 setAll 的第二个参数 = 刷新 token 的响应可能被 CDN 缓存，
   // 下一个访客拿到别人的 session。

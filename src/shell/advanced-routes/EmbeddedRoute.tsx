@@ -54,6 +54,8 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 import { VideoCanvasRoute } from "./VideoCanvasRoute";
 
@@ -413,6 +415,10 @@ export function EmbeddedRoute({
       : hostedMediaType === "video_canvas"
         ? "video-canvas"
         : "design-canvas";
+  const { mode: rememberedEditorMode } = usePluginMode(embeddedAdapterId);
+  const [editorMode, setEditorMode] = useState<EditorMode>(
+    DEFAULT_EDITOR_MODE,
+  );
   const designComposite =
     hostedMediaType === "canvas" &&
     isDurableLibraryItem(item) &&
@@ -663,6 +669,14 @@ export function EmbeddedRoute({
     },
     [],
   );
+  const applyEditorMode = useCallback((next: EditorMode) => {
+    setEditorMode(next);
+  }, []);
+  useEffect(() => {
+    if (rememberedEditorMode !== editorMode) {
+      setEditorMode(rememberedEditorMode);
+    }
+  }, [editorMode, rememberedEditorMode]);
   // Canvas/background selections used to be hidden because the leading icon
   // was only a static type badge. It is now the real tools launcher, so keep
   // those selections in the shared edit bar as well.
@@ -1425,6 +1439,10 @@ export function EmbeddedRoute({
       adapter={{
         id: embeddedAdapterId,
         label: editorToolLabel(route),
+        mode: {
+          current: editorMode,
+          setMode: applyEditorMode,
+        },
         stage: carrierOpenRejection ? (
           <div
             className="grid h-full place-items-center bg-[var(--surface,#f5f5f4)] p-6 text-center"
@@ -1482,6 +1500,7 @@ export function EmbeddedRoute({
                 onViewportChange={setRemoteViewport}
                 selectionCommand={selectionCommand}
                 viewportCommand={viewportCommand}
+                editorMode={editorMode}
                 materialInsertion={materialInsertion}
                 onMaterialResult={handleMaterialResult}
                 exportRequestId={exportRequestId}

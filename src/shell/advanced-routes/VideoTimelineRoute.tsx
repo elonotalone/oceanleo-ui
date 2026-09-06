@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { resolveEditorCore } from "../editor-core-flags";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -79,6 +80,12 @@ export function VideoTimelineRoute(props: AdvancedContentWorkbenchProps) {
   if (resolveEditorCore("video-timeline") === "next") {
     return <VideoDesigncomboStage {...props} />;
   }
+  return <VideoTimelineLegacyGate {...props} />;
+}
+
+function VideoTimelineLegacyGate(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("video-timeline");
+  if (pro) return <VideoDesigncomboStage {...props} />;
   return <VideoTimelineLegacyRoute {...props} />;
 }
 

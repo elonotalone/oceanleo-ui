@@ -45,6 +45,7 @@ const sourceKeys = {
   saveTemplateEmptyState:
     "在左侧「操作台」填好输入后，点标题栏的「保存此模板」，就会收藏到这里，随时一键复用。",
   saveAndOpenCleanConsole: "将当前工作保存到我的任务，并打开一个干净工作台",
+  discardUnproducedAndStartFresh: "这次还没有生成内容，点一下直接清空重来",
 } as const;
 
 type MessageName = keyof typeof sourceKeys;
@@ -104,6 +105,8 @@ const translations = {
       "Fülle das Bedienfeld links aus und klicke dann in der Titelleiste auf „Vorlage speichern“. Die Vorlage wird hier abgelegt und lässt sich jederzeit mit einem Klick wiederverwenden.",
     saveAndOpenCleanConsole:
       "Aktuelle Arbeit unter „Meine Aufgaben“ speichern und ein leeres Bedienfeld öffnen",
+    discardUnproducedAndStartFresh:
+      "Noch kein Inhalt erzeugt. Ein Klick leert alles und du fängst neu an.",
   },
   en: {
     loggedOutNamedGroups:
@@ -154,6 +157,8 @@ const translations = {
     saveTemplateEmptyState:
       "Fill in the console on the left, then click “Save template” in the title bar to save it here for one-click reuse anytime.",
     saveAndOpenCleanConsole: "Save the current work to My Tasks and open a clean console",
+    discardUnproducedAndStartFresh:
+      "Nothing has been generated yet. Click to clear and start over.",
   },
   es: {
     loggedOutNamedGroups:
@@ -207,6 +212,8 @@ const translations = {
       "Rellena el panel de control de la izquierda y pulsa «Guardar plantilla» en la barra de título; se guardará aquí para que puedas reutilizarla con un clic cuando quieras.",
     saveAndOpenCleanConsole:
       "Guardar el trabajo actual en Mis tareas y abrir un panel de control limpio",
+    discardUnproducedAndStartFresh:
+      "Todavía no se ha generado nada. Pulsa para vaciar y empezar de nuevo.",
   },
   "es-419": {
     loggedOutNamedGroups:
@@ -260,6 +267,8 @@ const translations = {
       "Completa el panel de control de la izquierda y haz clic en «Guardar plantilla» en la barra de título; se guardará aquí para que puedas reutilizarla con un clic cuando quieras.",
     saveAndOpenCleanConsole:
       "Guardar el trabajo actual en Mis tareas y abrir un panel de control limpio",
+    discardUnproducedAndStartFresh:
+      "Todavía no se ha generado nada. Haz clic para vaciar y empezar de nuevo.",
   },
   fr: {
     loggedOutNamedGroups:
@@ -314,6 +323,8 @@ const translations = {
       "Renseignez la console à gauche, puis cliquez sur « Enregistrer le modèle » dans la barre de titre ; il sera conservé ici et réutilisable à tout moment en un clic.",
     saveAndOpenCleanConsole:
       "Enregistrer le travail actuel dans Mes tâches et ouvrir une console vierge",
+    discardUnproducedAndStartFresh:
+      "Rien n’a encore été généré. Cliquez pour tout effacer et recommencer.",
   },
   it: {
     loggedOutNamedGroups:
@@ -368,6 +379,8 @@ const translations = {
       "Compila il pannello di controllo a sinistra, poi fai clic su «Salva modello» nella barra del titolo: verrà conservato qui e potrai riutilizzarlo con un clic in qualsiasi momento.",
     saveAndOpenCleanConsole:
       "Salva il lavoro corrente nelle mie attività e apri un pannello di controllo vuoto",
+    discardUnproducedAndStartFresh:
+      "Non è stato ancora generato nulla. Fai clic per svuotare e ricominciare.",
   },
   "pt-BR": {
     loggedOutNamedGroups:
@@ -422,6 +435,8 @@ const translations = {
       "Preencha o console à esquerda e clique em “Salvar modelo” na barra de título; ele ficará salvo aqui para ser reutilizado com um clique quando quiser.",
     saveAndOpenCleanConsole:
       "Salvar o trabalho atual em Minhas tarefas e abrir um console limpo",
+    discardUnproducedAndStartFresh:
+      "Nada foi gerado ainda. Clique para limpar e começar de novo.",
   },
   "pt-PT": {
     loggedOutNamedGroups:
@@ -476,6 +491,8 @@ const translations = {
       "Preencha a consola à esquerda e clique em «Guardar modelo» na barra de título; ficará guardado aqui para poder reutilizá-lo com um clique quando quiser.",
     saveAndOpenCleanConsole:
       "Guardar o trabalho atual nas minhas tarefas e abrir uma consola limpa",
+    discardUnproducedAndStartFresh:
+      "Ainda não foi gerado nada. Clique para limpar e recomeçar.",
   },
   vi: {
     loggedOutNamedGroups:
@@ -530,6 +547,8 @@ const translations = {
       "Điền nội dung vào bảng điều khiển bên trái rồi nhấp “Lưu mẫu” trên thanh tiêu đề; mẫu sẽ được lưu tại đây để bạn dùng lại bất cứ lúc nào chỉ với một lần nhấp.",
     saveAndOpenCleanConsole:
       "Lưu công việc hiện tại vào Nhiệm vụ của tôi và mở một bảng điều khiển trống",
+    discardUnproducedAndStartFresh:
+      "Chưa có nội dung nào được tạo. Bấm để xóa sạch và làm lại.",
   },
   tr: {
     loggedOutNamedGroups:
@@ -583,6 +602,8 @@ const translations = {
       "Soldaki konsolu doldurup başlık çubuğundaki “Şablonu kaydet” düğmesine tıklayın; şablon, istediğiniz zaman tek tıkla yeniden kullanabilmeniz için buraya kaydedilir.",
     saveAndOpenCleanConsole:
       "Geçerli çalışmayı Görevlerim’e kaydet ve temiz bir konsol aç",
+    discardUnproducedAndStartFresh:
+      "Henüz içerik üretilmedi. Temizlemek ve baştan başlamak için tıklayın.",
   },
   zh: {
     loggedOutNamedGroups: "登录后即可创建具名组合，并在全家桶按同一兜底顺序使用。",
@@ -629,6 +650,7 @@ const translations = {
     saveTemplateEmptyState:
       "在左侧「操作台」填好输入后，点标题栏的「保存此模板」，就会收藏到这里，随时一键复用。",
     saveAndOpenCleanConsole: "将当前工作保存到我的任务，并打开一个干净工作台",
+    discardUnproducedAndStartFresh: "这次还没有生成内容，点一下直接清空重来",
   },
   "zh-TW": {
     loggedOutNamedGroups:
@@ -681,6 +703,7 @@ const translations = {
       "在左側「操作台」填好輸入後，點選標題列的「儲存範本」，即可收藏於此，隨時一鍵重複使用。",
     saveAndOpenCleanConsole:
       "將目前工作儲存至我的任務，並開啟一個乾淨的操作台",
+    discardUnproducedAndStartFresh: "這次還沒有生成內容，點一下直接清空重來",
   },
   ja: {
     loggedOutNamedGroups:
@@ -736,6 +759,8 @@ const translations = {
       "左側の操作台に入力し、タイトルバーの「テンプレートを保存」をクリックすると、ここに保存され、いつでもワンクリックで再利用できます。",
     saveAndOpenCleanConsole:
       "現在の作業をマイタスクに保存し、新しい空の操作台を開く",
+    discardUnproducedAndStartFresh:
+      "まだ生成された内容はありません。クリックするとすべて消してやり直します。",
   },
   ko: {
     loggedOutNamedGroups:
@@ -788,6 +813,8 @@ const translations = {
     saveTemplateEmptyState:
       "왼쪽 조작대에 내용을 입력한 뒤 제목 표시줄의 ‘템플릿 저장’을 클릭하면 여기에 저장되어 언제든 클릭 한 번으로 다시 사용할 수 있습니다.",
     saveAndOpenCleanConsole: "현재 작업을 내 작업에 저장하고 빈 조작대 열기",
+    discardUnproducedAndStartFresh:
+      "아직 생성된 내용이 없습니다. 클릭하면 모두 지우고 처음부터 다시 시작합니다.",
   },
   ar: {
     loggedOutNamedGroups:
@@ -840,6 +867,8 @@ const translations = {
     saveTemplateEmptyState:
       "املأ لوحة التحكم على اليسار، ثم انقر على «حفظ القالب» في شريط العنوان؛ سيُحفظ هنا لتتمكن من إعادة استخدامه بنقرة واحدة في أي وقت.",
     saveAndOpenCleanConsole: "حفظ العمل الحالي في مهامي وفتح لوحة تحكم فارغة",
+    discardUnproducedAndStartFresh:
+      "لم يُنشأ أي محتوى بعد. انقر للمسح والبدء من جديد.",
   },
   th: {
     loggedOutNamedGroups:
@@ -894,6 +923,8 @@ const translations = {
       "กรอกข้อมูลในคอนโซลควบคุมด้านซ้าย แล้วคลิก “บันทึกเทมเพลต” บนแถบชื่อเรื่อง ระบบจะเก็บไว้ที่นี่เพื่อให้ใช้ซ้ำได้ทุกเมื่อในคลิกเดียว",
     saveAndOpenCleanConsole:
       "บันทึกงานปัจจุบันไปยังงานของฉันและเปิดคอนโซลควบคุมว่าง",
+    discardUnproducedAndStartFresh:
+      "ยังไม่มีเนื้อหาที่สร้างขึ้น คลิกเพื่อล้างแล้วเริ่มใหม่",
   },
   hi: {
     loggedOutNamedGroups:
@@ -948,6 +979,8 @@ const translations = {
       "बाईं ओर कंसोल में सामग्री भरें, फिर शीर्षक बार में “टेम्पलेट सहेजें” पर क्लिक करें; यह यहाँ सहेज दिया जाएगा, ताकि आप इसे कभी भी एक क्लिक में दोबारा इस्तेमाल कर सकें।",
     saveAndOpenCleanConsole:
       "मौजूदा काम को मेरे कार्य में सहेजें और एक खाली कंसोल खोलें",
+    discardUnproducedAndStartFresh:
+      "अभी कोई सामग्री नहीं बनी है। साफ़ करके फिर से शुरू करने के लिए क्लिक करें।",
   },
 } satisfies Record<Locale, LocaleMessages>;
 

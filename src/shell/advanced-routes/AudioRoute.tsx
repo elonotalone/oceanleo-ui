@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -56,6 +57,12 @@ export function AudioRoute(props: AdvancedContentWorkbenchProps) {
   if (resolveEditorCore("audio") === "next") {
     return <AudioPlaylistStage {...props} />;
   }
+  return <AudioLegacyGate {...props} />;
+}
+
+function AudioLegacyGate(props: AdvancedContentWorkbenchProps) {
+  const { pro } = usePluginMode("audio");
+  if (pro) return <AudioPlaylistStage {...props} />;
   return <AudioLegacyRoute {...props} />;
 }
 

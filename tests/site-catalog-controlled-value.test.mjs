@@ -126,10 +126,14 @@ test("受控目录只在 canonical value 到达后打开 app，不会先错画�
   );
 });
 
-test("app 初始化与 session 恢复完成前 runtime 保持不可见", () => {
+test("app 初始化完成即可露出 runtime，session 恢复不得挡住首屏", () => {
   assert.match(helperSource, /hydration\?\.markAppInitialized\(\)/);
-  assert.match(hydrationSource, /workspace\.availability !== "loading"/);
-  assert.match(hydrationSource, /current\.appInitialized[\s\S]*?current\.runtimeReady/);
+  assert.match(hydrationSource, /const delayMs = 1_500/);
+  assert.match(hydrationSource, /const ready = current\.appInitialized/);
+  assert.doesNotMatch(
+    hydrationSource,
+    /ready = current\.appInitialized && current\.runtimeReady/,
+  );
   assert.match(
     hydrationSource,
     /className=\{ready \? "h-full" : "invisible h-full"\}/,

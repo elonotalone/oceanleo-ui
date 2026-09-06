@@ -627,7 +627,7 @@ test("重新打开编辑器：用记住的档位初始化内核，不是一律�
   });
 });
 
-test("编辑器没声明 mode：开关置灰但不消失，并说明原因", async () => {
+test("编辑器没声明 mode：开关仍能点，点了就切档", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   await withDom(async ({ render, find, click }) => {
     const { currentPluginMode, resetPluginModeCache } = await import(
@@ -639,32 +639,22 @@ test("编辑器没声明 mode：开关置灰但不消失，并说明原因", asy
         InlineAdvancedWorkbenchHeader,
         headerProps({
           pluginThemeId: "game",
-          // 注意：没有 mode 面。按 AdvancedEditorModeAdapter 的约定，
-          // 这等于「不支持专业模式」。
           adapter: { id: "game", label: "游戏", stage: null },
         }),
       ),
     );
 
     const toggle = find('[data-plugin-mode-toggle="game"]');
-    assert.ok(
-      toggle,
-      "不支持专业模式的编辑器把开关整个藏了。" +
-        "看不见的能力和不存在的能力对用户是两回事，约定是置灰不消失。",
-    );
-    assert.equal(toggle.disabled, true, "不支持却还能点");
-    assert.match(
-      toggle.getAttribute("title") || "",
-      /专业模式：.+/,
-      "置灰了但没告诉用户为什么",
-    );
+    assert.ok(toggle, "13 件高级编辑器的专业模式开关不能消失");
+    assert.equal(toggle.disabled, false, "没声明 mode 不该再把开关置灰");
 
     await click(toggle);
     assert.equal(
       currentPluginMode("game"),
-      "normal",
-      "点了置灰的开关，档位居然还是被改了",
+      "pro",
+      "点了专业模式，档位没有切到 pro",
     );
+    assert.equal(toggle.getAttribute("aria-pressed"), "true");
   });
 });
 

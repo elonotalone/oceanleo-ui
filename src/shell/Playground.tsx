@@ -266,14 +266,11 @@ function useMarketApps(): MarketController {
 // doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（全家桶站卡片 + AI 智能推荐）
 //   并入 playground，成为第一个 tab。站点清单 + 推荐网关是消费端 lib/sites 的事，所以
 //   由消费端通过 renderSites 注入（与 renderBoard 同一范式），不把 SITES 耦合进本包。
-// doctrine v12（2026-06-30）：新增「客户端app」一级 tab（与网站/app/agent/organization/
-//   workflow 并列），原右下角「原生骨架预览」浮层升级而来。点进去先选客户端（哪个
-//   网站对应的 app），再看它有哪些 app。客户端清单 + 原生骨架预览是消费端的事，所以
-//   同样由消费端经 renderClientApps 注入（与 renderSites/renderBoard 同一范式）。
+// doctrine v12（2026-06-30）「客户端 app」一级 tab：已于 2026-09-05 删除，失真设备框预览不再提供。
 // 2026-07-02（操作员）：新增「prompt」专区 tab——全家桶 prompt 卡片库（分类 + 搜索 +
 //   「创建 prompt」首卡 + 每张卡片右上角预览/编辑/保存）。用户自建 prompt 持久化
 //   （localStorage，与子站首页「工作内容」卡片同一套 PromptCardModal / 存取助手）。
-type Tab = "site" | "app" | "skill" | "prompt" | "clientapp" | "organization" | "workflow";
+type Tab = "site" | "app" | "skill" | "prompt" | "organization" | "workflow";
 
 export type PlaygroundBoardKind = "organization" | "workflow";
 
@@ -295,7 +292,6 @@ export function PlaygroundDetail({
   accent = "#0ea5e9",
   renderBoard,
   renderSites,
-  renderClientApps,
   onRequestLogin,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
@@ -311,13 +307,7 @@ export function PlaygroundDetail({
    * （持有 lib/sites 站点清单 + /v1/recommend 网关）。不传 → 不显示「网站」tab。
    */
   renderSites?: () => ReactNode;
-  /**
-   * doctrine v12（2026-06-30）：渲染「客户端app」分区（选客户端 → 看它的 app +
-   * 原生骨架预览）。由消费端注入（持有客户端 app 注册表 + 5 系统骨架预览）。
-   * 不传 → 不显示「客户端app」tab。
-   */
-  renderClientApps?: () => ReactNode;
-  /** 市场里未登录用户点「装到我的」时打开消费端自己的登录入口。 */
+  /** 市场里未登录用户点「加入工作台」时打开消费端自己的登录入口。 */
   onRequestLogin?: () => void;
 }) {
   const tt = useUI();
@@ -455,7 +445,7 @@ export function PlaygroundDetail({
               style={{ background: accent }}
               title={tt("把这个 app 加入「我的 app」，之后在工作台直接用")}
             >
-              {tt("＋ 放入工作台")}
+              {tt("＋ 加入工作台")}
             </button>
             {savedMsg ? (
               <span className="truncate text-[12px] text-emerald-600">{savedMsg}</span>
@@ -503,32 +493,9 @@ export function PlaygroundDetail({
             setTab={setTab}
             hasSites={!!renderSites}
             hasBoard={!!renderBoard}
-            hasClientApps={!!renderClientApps}
           />
         </div>
         {renderSites()}
-      </div>
-    );
-  }
-
-  // ── 客户端app 分区（doctrine v12，2026-06-30）：选客户端 → 它的 app + 原生骨架
-  //   预览，由消费端 renderClientApps 注入。与其余分区同一套外层版式。
-  if (tab === "clientapp" && renderClientApps) {
-    return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="mb-5">
-          <PlaygroundHeader />
-        </div>
-        <div className="mb-6">
-          <PlaygroundTabs
-            tab={tab}
-            setTab={setTab}
-            hasSites={!!renderSites}
-            hasBoard={!!renderBoard}
-            hasClientApps={!!renderClientApps}
-          />
-        </div>
-        {renderClientApps()}
       </div>
     );
   }
@@ -547,7 +514,6 @@ export function PlaygroundDetail({
             setTab={setTab}
             hasSites={!!renderSites}
             hasBoard={!!renderBoard}
-            hasClientApps={!!renderClientApps}
           />
         </div>
         <PromptZone accent={accent} />
@@ -578,7 +544,7 @@ export function PlaygroundDetail({
             <PlaygroundHeader />
           </div>
           <div className="mb-6">
-            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
+            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
           </div>
           <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
             {tab === "organization" ? tt("组织编排") : tt("流程编排")}画布即将开放。
@@ -600,7 +566,7 @@ export function PlaygroundDetail({
               <PlaygroundHeader />
             </div>
             <div className="mb-6">
-              <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
+              <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
             </div>
           </>
         )}
@@ -626,7 +592,6 @@ export function PlaygroundDetail({
             setTab={setTab}
             hasSites={!!renderSites}
             hasBoard={!!renderBoard}
-            hasClientApps={!!renderClientApps}
           />
         </div>
         <AppMarket
@@ -659,7 +624,7 @@ export function PlaygroundDetail({
       </div>
 
       <div className="mb-6">
-        <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} hasClientApps={!!renderClientApps} />
+        <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
       </div>
 
       {/* doctrine v11：AI 智能推荐（按分区定制文案，候选 = 当前分区全部条目）。 */}
@@ -780,13 +745,11 @@ function PlaygroundTabs({
   setTab,
   hasSites,
   hasBoard,
-  hasClientApps,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
   hasSites?: boolean;
   hasBoard?: boolean;
-  hasClientApps?: boolean;
 }) {
   const tt = useUI();
   const tabs = [
@@ -794,7 +757,6 @@ function PlaygroundTabs({
     { id: "app" as Tab, label: "app" },
     // 宗旨 v12（2026-07-04）：删除 playground「agent」分区（与首页删 agent 卡片一致）。
     { id: "prompt" as Tab, label: "prompt" },
-    ...(hasClientApps ? [{ id: "clientapp" as Tab, label: tt("客户端app") }] : []),
     ...(hasBoard
       ? [
           { id: "organization" as Tab, label: "organization" },

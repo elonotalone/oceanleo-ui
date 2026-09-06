@@ -170,9 +170,9 @@ test("helper 产出的 envelope 足以让右栏切到「我的库」并被消费
   );
 });
 
-test("没有 app 段的预览深链同样要能解析（W3 的 href helper 会产出这种）", () => {
-  // `workspaceTemplatePreviewHref("", "art-a")` → `?tab=library&item=art-a&mode=preview`，
-  // 不带 `app=`。解析这一侧必须认，否则这类链接会静默什么都不发生。
+test("没有 app 段的预览深链同样要能解析（历史/手写链接）", () => {
+  // 生产侧已不再产出缺 app 的预览 href；解析侧仍须认这类历史链接，
+  // 否则收藏/手写的 `?tab=library&item=…&mode=preview` 会静默什么都不发生。
   const intent = libraryPreviewIntentFromSearch(
     "?tab=library&item=art-a&mode=preview",
   );

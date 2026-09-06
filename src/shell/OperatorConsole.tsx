@@ -24,6 +24,7 @@ import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { appCapabilityEntries } from "./app-capability-entry";
 import { AppCapabilityBar } from "./AppCapabilityBar";
 import { AppCapabilityEntryProvider } from "./app-capability-context";
+import { appIconThumbSrc } from "../lib/app-icon-image";
 
 export interface ConsoleFunction {
   /** 功能唯一 id（用于受控选中 / 深链 ?fn=<id>）。 */
@@ -32,6 +33,8 @@ export interface ConsoleFunction {
   label: string;
   /** 可选：按键左侧的小图标 / emoji。 */
   icon?: ReactNode;
+  /** 标题栏小图标（裸 OSS key 或 URL）。有则优先生效，无则回退 `icon`。 */
+  iconImage?: string;
   /** 可选：「热」「新」之类的小角标。 */
   badge?: string;
   /**
@@ -403,13 +406,22 @@ export function OperatorConsole({
           </svg>
         </button>
       )}
-      {active?.icon != null && (
+      {(appIconThumbSrc(active?.iconImage) || active?.icon != null) && (
         <span
           data-workbench-app-icon
           aria-hidden="true"
           className="shrink-0 text-[15px] leading-none"
         >
-          {active.icon}
+          {appIconThumbSrc(active?.iconImage) ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={appIconThumbSrc(active?.iconImage)}
+              alt=""
+              className="h-5 w-5 rounded-md object-cover"
+            />
+          ) : (
+            active.icon
+          )}
         </span>
       )}
       <span

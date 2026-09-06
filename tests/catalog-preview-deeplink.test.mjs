@@ -186,7 +186,7 @@ test("端到端：「预览&编辑」的 href 最终落到库只读预览，不�
   // 素材属于平台，永远不在「我的库」里，落 `mine` 得到的必然是一个空面板。
   assert.equal(
     href,
-    "/workspace?tab=materials&item=22a009ad-6c31-4f0e-b0d2-9e4f77a1c5bb&mode=preview&app=divorce-consult",
+    "/workspace/divorce-consult?tab=materials&item=22a009ad-6c31-4f0e-b0d2-9e4f77a1c5bb&mode=preview",
   );
   // BLOCKER-1 那一层仍然成立（app 认得出来，否则整条链根本不启动）。
   assert.equal(route.activeAppId, APP.id);
@@ -286,7 +286,7 @@ async function captureWarnings(run) {
   return warnings;
 }
 
-async function dispatchWithApp(activeAppId, search, artifactId = ARTIFACT.artifactId) {
+async function dispatchWithApp(activeAppId, search, artifactId = ARTIFACT.artifactId, requestedAppId = "") {
   const dispatched = [];
   const warnings = await captureWarnings(async () => {
     await withDom(`https://law.oceanleo.com/workspace${search}`, async ({ window, root }) => {
@@ -294,6 +294,7 @@ async function dispatchWithApp(activeAppId, search, artifactId = ARTIFACT.artifa
       function Sender({ appId }) {
         useCatalogDeepLink({
           activeAppId: appId,
+          requestedAppId,
           apps: [APP],
           siteKey: SITE_KEY,
           locationSearch: search,
@@ -314,7 +315,7 @@ test("① 有 app 锚点但尚未解析：安静等待，解析后正常派发�
     workspaceTemplatePreviewHref(APP.id, ARTIFACT.artifactId),
     "https://law.oceanleo.com",
   ).search;
-  const { dispatched, warnings } = await dispatchWithApp(APP.id, search);
+  const { dispatched, warnings } = await dispatchWithApp(APP.id, search, ARTIFACT.artifactId, APP.id);
 
   assert.equal(dispatched.length, 1, "app 解析出来之后必须派发，且只派发一次");
   assert.equal(dispatched[0].action.itemId, ARTIFACT.artifactId);
@@ -336,7 +337,7 @@ test("② 没有 app 锚点：不派发，但必须出声（不得静默失效�
   const warned = warnings.filter((line) => line.includes("[catalog-deeplink]"));
   assert.equal(warned.length, 1, "缺 app 锚点必须告警且只告一次");
   // 告警要能直接指导修复：说清缺什么、为什么落不了地、该怎么生成正确链接。
-  assert.match(warned[0], /缺少 \?app= 锚点/);
+  assert.match(warned[0], /缺少路径段或 \?app= 锚点/);
   assert.match(warned[0], new RegExp(ARTIFACT.artifactId));
   assert.match(warned[0], /右栏/);
   assert.match(warned[0], /workspaceTemplatePreviewHref/);

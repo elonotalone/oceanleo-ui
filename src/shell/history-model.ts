@@ -103,6 +103,16 @@ export function isRestorableAppSession(
   );
 }
 
+export const HISTORY_POLL_INTERVAL_MS = 8_000;
+export const HISTORY_POLL_MAX_INTERVAL_MS = 60_000;
+
+/** Silent history refresh backs off while the gateway is 503/SSL failing. */
+export function historyPollDelayMs(consecutiveFailures: number): number {
+  const failures = Math.max(0, Math.floor(consecutiveFailures));
+  const factor = 2 ** Math.min(failures, 3);
+  return Math.min(HISTORY_POLL_MAX_INTERVAL_MS, HISTORY_POLL_INTERVAL_MS * factor);
+}
+
 /** 迁移期 task 关系已存在但 session.task_id 尚未回填时，用真实关联补齐 agent runtime。 */
 export function withLinkedAgentTask(
   session: AppSession,

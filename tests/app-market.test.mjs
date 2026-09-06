@@ -33,12 +33,18 @@ const marketClientUrl = await compileModule("src/lib/app-market.ts", {
   "./auth/client": authStubUrl,
   "./auth/config": authConfigStubUrl,
 });
+const capImageStubUrl = dataModule(`
+  export function capabilityImageThumbUrl(siteId, appKey) {
+    return siteId && appKey ? \`https://img.test/\${siteId}-\${appKey}.webp\` : "";
+  }
+`);
 const marketComponentUrl = await compileModule("src/shell/AppMarket.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/app-market": marketClientUrl,
+  "../lib/app-capability-image": capImageStubUrl,
 });
 
-const { listMarketApps } = await import(marketClientUrl);
+const { listMarketApps, marketAppOpenUrl } = await import(marketClientUrl);
 const { AppMarket, appMarketOpenUrl } = await import(marketComponentUrl);
 
 const APPS = [
@@ -321,7 +327,7 @@ test("点装会 POST、立即变已装，且按钮不会顺带打开卡片", asy
     assert.equal(fetchCalls[0].init.headers.Authorization, "Bearer test-token");
     assert.equal(
       container.querySelector('[data-market-app-install="resume-maker"]').textContent,
-      "已装",
+      "已在工作台 ✓",
     );
     assert.equal(opened.length, 0, "装按钮必须 stopPropagation，不能打开 app");
   });
@@ -335,21 +341,32 @@ test("安装失败回滚成未装并给人话", async () => {
 
     assert.equal(
       container.querySelector('[data-market-app-install="resume-maker"]').textContent,
-      "装到我的",
+      "＋ 加入工作台",
     );
     assert.match(
       container.querySelector('[data-app-market-notice="error"]').textContent,
-      /状态已恢复/,
+      /操作失败/,
     );
   });
 });
 
-test("卡片打开 site_url + open_path；空 open_path 回站点首页", async () => {
+test("卡片打开 site_url + open_path；空 open_path 落到 /workspace/<app_key>", async () => {
   assert.equal(
     appMarketOpenUrl(APPS[0]),
     "https://resume.oceanleo.com/workspace?app=resume",
   );
-  assert.equal(appMarketOpenUrl(APPS[2]), "https://word.oceanleo.com");
+  assert.equal(
+    appMarketOpenUrl(APPS[2]),
+    "https://word.oceanleo.com/workspace/minutes",
+  );
+  assert.equal(
+    marketAppOpenUrl({
+      site_url: "https://image.oceanleo.com",
+      open_path: "",
+      app_key: "poster",
+    }),
+    "https://image.oceanleo.com/workspace/poster",
+  );
 
   await withDom(async ({ window, container, render, click }) => {
     const opened = [];
@@ -385,7 +402,7 @@ test("未登录点装不打网关，回滚并走登录引导", async () => {
     assert.equal(loginRequests, 1);
     assert.equal(
       container.querySelector('[data-market-app-install="resume-maker"]').textContent,
-      "装到我的",
+      "＋ 加入工作台",
     );
     assert.match(
       container.querySelector('[data-app-market-notice="auth"]').textContent,
@@ -401,7 +418,7 @@ test("已装 app 要二次确认才会 DELETE", async () => {
       '[data-market-app-install="meeting-notes"]',
     );
     await click(button);
-    assert.equal(button.textContent, "确认卸掉");
+    assert.equal(button.textContent, "从工作台移除");
     assert.equal(fetchCalls.length, 0);
     await click(button);
     assert.equal(fetchCalls.length, 1);
@@ -410,7 +427,7 @@ test("已装 app 要二次确认才会 DELETE", async () => {
       fetchCalls[0].url,
       "https://gateway.test/v1/apps/mine/meeting-notes",
     );
-    assert.equal(button.textContent, "装到我的");
+    assert.equal(button.textContent, "＋ 加入工作台");
   });
 });
 
