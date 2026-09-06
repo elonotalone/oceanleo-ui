@@ -32,13 +32,11 @@ import {
   selectionMoreDialogLabel,
   SELECTION_TOOLBAR_VIEWPORT_MAX,
 } from "./selection-toolbar-layout";
-import { useUI } from "../i18n/ui/useUI";
 import {
   EDIT_BAR_BUTTON_CLASS,
   EDIT_BAR_DIVIDER_CLASS,
   editBarPillStyle,
 } from "./edit-bar-surface";
-import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
 import { publishAgentSelection } from "./agent-review/inbox";
 import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
 import { useSelectionInspectorHost } from "./selection-inspector-host";
@@ -48,7 +46,11 @@ import {
 } from "./SelectionToolbarControl";
 import { useSelectionToolbarMeasure } from "./useSelectionToolbarMeasure";
 import { useInsideEditBarRow } from "./edit-bar-row-context";
-
+import {
+  SelectionOverflowGroups,
+  SelectionToolbarAgentButton,
+  SelectionToolbarViewportProbe,
+} from "./selection-toolbar-chrome";
 
 export interface SelectionToolbarProps {
   context: SelectionContext | null;
@@ -71,7 +73,6 @@ export function SelectionToolbar({
   trailing,
   variant = "bar",
 }: SelectionToolbarProps) {
-  const tt = useUI();
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -269,31 +270,11 @@ export function SelectionToolbar({
   const contextLeading = insideRow ? undefined : layout?.contextBarLeading;
   const contextTrailing = insideRow ? undefined : layout?.contextBarTrailing;
   const toolsAvailable = Boolean(context && toolsLauncher?.available);
-  // AI 固定在右段，13 个插件同一个位置。点它把左侧操控台换成 agent 对话，
-  // 用户可以一边说一边改右边——所以这里只切抽屉，不抢舞台焦点。
-  const agentActive = layout?.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
-  const agentButton = layout && !insideRow ? (
-    <button
-      type="button"
-      data-edit-bar-agent
-      data-edit-bar-interactive
-      aria-pressed={agentActive}
-      onClick={() =>
-        agentActive
-          ? layout.closeDrawer()
-          : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
-      }
-      className={`${EDIT_BAR_BUTTON_CLASS} ${
-        agentActive
-          ? "bg-[var(--pchrome-accent,var(--awb-accent,#7c3aed))] text-[var(--pchrome-on-accent,#fff)] hover:bg-[var(--pchrome-accent,var(--awb-accent,#7c3aed))] hover:text-[var(--pchrome-on-accent,#fff)]"
-          : ""
-      }`}
-      aria-label={tt("AI 助手")}
-      title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
-    >
-      <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
-    </button>
-  ) : null;
+  // AI 键：在单行编辑栏里由行画（见 selection-toolbar-chrome.tsx 注释）。
+  const agentButton =
+    layout && !insideRow ? (
+      <SelectionToolbarAgentButton layout={layout} />
+    ) : null;
   const prefixVisible = Boolean(contextLeading || leading || toolsAvailable);
   const suffixVisible = Boolean(agentButton || trailing || contextTrailing);
   useSelectionToolbarMeasure({
@@ -386,11 +367,6 @@ export function SelectionToolbar({
   const adaptiveRegionVisible = visible.length > 0 || overflow.length > 0;
   const liveCapability = selectionLiveCapability(context?.kind);
   const moreDialogLabel = selectionMoreDialogLabel(context?.kind);
-  const overflowGroupLabelId = (groupId: string, groupIndex: number) =>
-    `${morePanelId}-group-${groupIndex}-${groupId.replace(
-      /[^a-z0-9_-]/gi,
-      "-",
-    )}`;
   return (
     <div
       ref={toolbarRef}
@@ -516,41 +492,12 @@ export function SelectionToolbar({
                   }}
                   className="z-[2147483500] grid w-72 max-w-[calc(100dvw-1rem)] gap-1 overflow-x-hidden overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  {liveCapability && (
-                    <div
-                      data-selection-overflow-capability-label
-                      className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
-                    >
-                      {liveCapability.label}
-                    </div>
-                  )}
-                  {overflowGroups.map((group, groupIndex) => (
-                    <div
-                      key={group.id}
-                      role="group"
-                      aria-labelledby={overflowGroupLabelId(
-                        group.id,
-                        groupIndex,
-                      )}
-                      data-selection-overflow-group={group.id}
-                      data-selection-overflow-group-label={group.label}
-                      className={`grid min-w-0 gap-0.5 ${
-                        groupIndex > 0
-                          ? "border-t border-[var(--divider,#e7e5e4)] pt-1"
-                          : ""
-                      }`}
-                    >
-                      <div
-                        id={overflowGroupLabelId(group.id, groupIndex)}
-                        className="truncate px-2.5 pb-0.5 pt-1 text-[10px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
-                      >
-                        {group.label}
-                      </div>
-                      {group.controls.map((control) =>
-                        renderControl(control, "menu"),
-                      )}
-                    </div>
-                  ))}
+                  <SelectionOverflowGroups
+                    groups={overflowGroups}
+                    liveCapability={liveCapability}
+                    morePanelId={morePanelId}
+                    renderControl={(control) => renderControl(control, "menu")}
+                  />
                 </AnchoredPopover>
               )}
             </div>
@@ -581,17 +528,7 @@ export function SelectionToolbar({
         </div>
       )}
       {effectiveVariant === "floating" && (
-        <div
-          ref={viewportCapacityRef}
-          aria-hidden="true"
-          inert
-          data-selection-toolbar-viewport-capacity
-          className="pointer-events-none invisible fixed left-0 top-0 h-px"
-          style={{
-            contain: "strict",
-            inlineSize: SELECTION_TOOLBAR_VIEWPORT_MAX,
-          }}
-        />
+        <SelectionToolbarViewportProbe probeRef={viewportCapacityRef} />
       )}
       {!context && (
         <div
