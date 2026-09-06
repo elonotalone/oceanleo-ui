@@ -29,7 +29,9 @@ import {
   isHostedEditorOrigin,
 } from "../src/shell/hosted-editor-origins.ts";
 import {
+  COVER_FRAME_SANDBOX,
   HOSTED_EDITOR_EMBED_BASES,
+  HOSTED_EDITOR_SANDBOX,
   TRUSTED_EMBED_EDITOR_SANDBOX,
   UNTRUSTED_FRAME_SANDBOX,
   embedEditorFrameSandbox,
@@ -524,7 +526,7 @@ test("W18 R1：白名单没有放宽别的 origin 判定", () => {
   assert.equal(isTrustedEditorOrigin("https://evil.com"), false);
 });
 
-// ─── 7. A-24 / W07 R2：embed base 放行，但沙箱面**不给同源** ───────────────
+// ─── 7. A-24 / W07：embed base 放行；隔离域我方编辑器拿 HOSTED_EDITOR_SANDBOX ─
 
 test("A-24：六件的 embed base 能拼出 URL", () => {
   assert.equal(HOSTED_EDITOR_EMBED_BASES.length, 6);
@@ -540,18 +542,26 @@ test("A-24：六件的 embed base 能拼出 URL", () => {
   }
 });
 
-test("A-24 的要害：六件拿的是不可信沙箱，一个都不许拿到同源", () => {
+test("A-24 的要害：六件拿 HOSTED_EDITOR_SANDBOX；UGC / cover 仍无同源", () => {
+  // UC-3 §8.3.1（2026-09-06）：隔离域上我方部署的编辑器允许同源通信。
   for (const base of HOSTED_EDITOR_EMBED_BASES) {
     const sandbox = embedEditorFrameSandbox(base);
-    assert.equal(sandbox, UNTRUSTED_FRAME_SANDBOX, base);
-    // 直说一遍为什么：allow-scripts + allow-same-origin 同时给 = 沙箱失效。
-    // 六件里四件是未修改的第三方整站应用（Langflow / microStudio …）。
+    assert.equal(sandbox, HOSTED_EDITOR_SANDBOX, base);
     assert.equal(
       sandboxGrantsScriptedSameOrigin(sandbox),
-      false,
-      `${base} 拿到了同源沙箱`,
+      true,
+      `${base} 必须拿到隔离域同源沙箱`,
     );
   }
+  const ugc = embedEditorFrameSandbox("https://p1--base.oceanleo.app/");
+  assert.equal(ugc, UNTRUSTED_FRAME_SANDBOX);
+  assert.equal(
+    ugc.includes("allow-same-origin"),
+    false,
+    "UGC 预览主机不得同源",
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
+  assert.equal(sandboxGrantsScriptedSameOrigin(COVER_FRAME_SANDBOX), false);
   // 反过来，家族内第一方仍然拿同源——本条改动不许把既有能力也一起收走。
   const firstParty = "https://design.oceanleo.com/embed/editor";
   assert.equal(

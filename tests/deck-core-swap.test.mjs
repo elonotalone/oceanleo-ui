@@ -24,6 +24,8 @@ import {
 } from "../src/shell/editor-core-flags.ts";
 import { isHostedEditorOrigin } from "../src/shell/hosted-editor-origins.ts";
 import {
+  COVER_FRAME_SANDBOX,
+  HOSTED_EDITOR_SANDBOX,
   embedEditorFrameSandbox,
   isTrustedEmbedEditorBase,
 } from "../src/shell/editor-sandbox-origin.ts";
@@ -316,15 +318,24 @@ function assertLivePptistIframe(iframe, where) {
     expectedSandbox.includes("allow-scripts"),
     "生产函数给出的沙箱连脚本都不给",
   );
-  assert.ok(
-    !expectedSandbox.includes("allow-same-origin"),
-    "生产函数给出的沙箱带了同源",
+  assert.equal(
+    expectedSandbox,
+    HOSTED_EDITOR_SANDBOX,
+    "生产函数给出的沙箱不是 HOSTED_EDITOR_SANDBOX（§8.3.1）",
   );
   assert.equal(
-    String(iframe.getAttribute("sandbox") || "").includes("allow-same-origin"),
-    false,
-    `${where}iframe sandbox 含 allow-same-origin，不可信档被放开了`,
+    String(iframe.getAttribute("sandbox") || ""),
+    HOSTED_EDITOR_SANDBOX,
+    `${where}iframe sandbox 必须是 HOSTED_EDITOR_SANDBOX`,
   );
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+    "UGC 预览主机不得同源",
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   const hidden = concealmentReason(iframe);
   assert.equal(
     hidden,
@@ -504,20 +515,29 @@ test("iframe 指向的 origin 过生产白名单（不自写解析器）", async
   assert.equal(new URL(computed).origin, "https://slides.oceanleo.app");
 });
 
-test("沙箱档次由生产函数决定，且不带同源权限", () => {
+test("沙箱档次由生产函数决定，且拿 HOSTED_EDITOR_SANDBOX", () => {
   const origin = hostedOriginFromSource();
   const sandbox = embedEditorFrameSandbox(origin);
   assert.ok(sandbox.includes("allow-scripts"), "连脚本都不给，编辑器跑不起来");
-  assert.ok(
-    !sandbox.includes("allow-same-origin"),
-    "六件 Hosted 拿到了同源权限，域隔离白做了",
+  assert.equal(
+    sandbox,
+    HOSTED_EDITOR_SANDBOX,
+    "隔离域我方编辑器必须拿 HOSTED_EDITOR_SANDBOX（§8.3.1）",
   );
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+    "UGC 预览主机不得同源",
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.match(hosted, /embedEditorFrameSandbox\(/);
   assert.match(hosted, /<iframe[\s\S]{0,400}?sandbox=\{frameSandbox\}/);
   assert.doesNotMatch(
     hosted,
     /sandbox="[^"]*allow-same-origin/,
-    "沙箱串被写死并放开了同源",
+    "沙箱串被写死，必须走生产函数",
   );
 });
 
@@ -551,10 +571,19 @@ test("jsdom 挂上 DeckHostedRoute 后，画布是真 iframe 而不是 fallback"
       expectedSandbox.includes("allow-scripts"),
       "生产函数给出的沙箱连脚本都不给",
     );
-    assert.ok(
-      !expectedSandbox.includes("allow-same-origin"),
-      "生产函数给出的沙箱带了同源",
+    assert.equal(
+      expectedSandbox,
+      HOSTED_EDITOR_SANDBOX,
+      "生产函数给出的沙箱不是 HOSTED_EDITOR_SANDBOX（§8.3.1）",
     );
+    assert.equal(
+      embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+        "allow-same-origin",
+      ),
+      false,
+      "UGC 预览主机不得同源",
+    );
+    assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
 
     const text = container.textContent || "";
     assert.equal(
@@ -604,7 +633,7 @@ test("新核分支里没有 PPTist 的源码痕迹（AGPL 红线）", () => {
 // ── A-69 / A-65：闸必须挂路由，不许只挂舞台 ─────────────────────────────
 // V7 摘掉 DeckRoute 后原 14 例仍全绿。本例挂的是分发口，lazy 叶子用
 // account-page 那组空 act 冲刷。摘掉 / if(false) 包住 DeckHostedRoute、
-// iframe→div、sandbox 加 allow-same-origin，都必须红（A-61 样板刀）。
+// iframe→div、sandbox 拿掉 HOSTED_EDITOR_SANDBOX，都必须红（A-61 样板刀）。
 
 test("挂 DeckRoute 翻到 next 后必须出现 PPTist iframe", async () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");

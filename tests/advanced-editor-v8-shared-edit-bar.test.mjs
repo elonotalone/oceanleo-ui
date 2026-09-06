@@ -7,6 +7,7 @@ import test from "node:test";
 
 import React, { act } from "react";
 
+import { GLOBAL_ROW_SLOTS } from "../src/shell/plugin-chrome/plugin-pages.ts";
 import {
   groupSelectionOverflowControls,
   partitionSelectionControls,
@@ -958,7 +959,20 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
   }
 });
 
-test("global action bar no longer renders a second pencil tools launcher", async () => {
+test("第一行只留 GLOBAL_ROW_SLOTS，非 download 动作不在第一行", async () => {
+  const headerSource = await readFile(
+    new URL("../src/shell/InlineAdvancedWorkbenchHeader.tsx", import.meta.url),
+    "utf8",
+  );
+  const shellSource = await readFile(
+    new URL("../src/shell/InlineAdvancedWorkbenchShell.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(headerSource, /<PluginGlobalRow/);
+  assert.match(headerSource, /<PluginPageRow/);
+  assert.match(shellSource, /EditBarDocumentSegment/);
+  assert.match(shellSource, /action\.group !== "download"/);
+
   const anchoredPopoverUrl = await compileModule(
     "src/shell/anchored-popover.tsx",
     {
@@ -1034,21 +1048,47 @@ test("global action bar no longer renders a second pencil tools launcher", async
       mounted.container.querySelector('button[aria-label="编辑工具"]'),
       null,
     );
-    assert.ok(
+    assert.equal(
+      mounted.container.querySelector('button[aria-label="Retry source"]'),
+      null,
+      "非 download 动作还画在第一行",
+    );
+    assert.equal(
       mounted.container.querySelector(
-        'button[aria-label="Retry source"]',
+        '[data-workspace-action-id="retry-source"]',
       ),
+      null,
     );
     assert.equal(
       mounted.container.querySelector('button[aria-label="Secondary export"]'),
       null,
     );
     assert.equal(
-      mounted.container
-        .querySelector('[data-workspace-action-id="project-view:preview"]')
-        ?.getAttribute("aria-pressed"),
-      "true",
+      mounted.container.querySelector(
+        '[data-workspace-action-id="project-view:preview"]',
+      ),
+      null,
+      "页签/预览动作还画在第一行",
     );
+    const row = mounted.container.querySelector(
+      "[data-advanced-workspace-actions]",
+    );
+    assert.ok(row, "第一行没渲染出来");
+    const clickables = [
+      ...row.querySelectorAll("button, a, [role=button]"),
+    ];
+    assert.ok(clickables.length > 0, "第一行一个可点击元素都没有");
+    for (const node of clickables) {
+      const slot = node.closest("[data-global-row-slot]");
+      assert.ok(
+        slot,
+        `第一行有一个没有槽位的可点击元素：${node.getAttribute("aria-label") || node.textContent}`,
+      );
+      assert.ok(
+        GLOBAL_ROW_SLOTS.includes(slot.getAttribute("data-global-row-slot")),
+        `第一行槽位 ${slot.getAttribute("data-global-row-slot")} 不在 GLOBAL_ROW_SLOTS 里`,
+      );
+    }
     const downloadLauncher = mounted.container.querySelector(
       '[data-workspace-download-launcher]',
     );

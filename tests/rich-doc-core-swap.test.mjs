@@ -23,6 +23,8 @@ import {
   setEditorCoreOverride,
 } from "../src/shell/editor-core-flags.ts";
 import {
+  COVER_FRAME_SANDBOX,
+  HOSTED_EDITOR_SANDBOX,
   embedEditorFrameSandbox,
   isTrustedEmbedEditorBase,
 } from "../src/shell/editor-sandbox-origin.ts";
@@ -160,8 +162,21 @@ test("init 信封是 oceanleo.editor.v1，带只读标记，没有第三种 mode
   assert.equal(envelope.instanceId, "rd-test-1");
 });
 
-test("Hosted 六件不拿同源沙箱（W08-request R2）", () => {
+test("Hosted 文档走 HOSTED_EDITOR_SANDBOX；源码不写死同源令牌", () => {
+  // 源码必须调用生产函数，不得手写 sandbox 令牌。UGC 锁在下面两条。
   assert.doesNotMatch(hosted, /allow-same-origin/);
+  assert.match(hosted, /embedEditorFrameSandbox\(/);
+  assert.equal(
+    embedEditorFrameSandbox("https://docs.oceanleo.app"),
+    HOSTED_EDITOR_SANDBOX,
+  );
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
 });
 
 // ── A-48：闸必须挂上路由看节点，不能只扫源码 token ─────────────────────
@@ -401,15 +416,23 @@ function assertLiveUmoIframe(iframe, label) {
     `${label}：sandbox 没有走 embedEditorFrameSandbox()`,
   );
   assert.equal(
-    expectedSandbox.includes("allow-same-origin"),
-    false,
-    `${label}：生产 sandbox 函数自己带了 allow-same-origin`,
+    expectedSandbox,
+    HOSTED_EDITOR_SANDBOX,
+    `${label}：生产 sandbox 函数必须给出 HOSTED_EDITOR_SANDBOX（§8.3.1）`,
   );
   assert.equal(
-    String(iframe.getAttribute("sandbox") || "").includes("allow-same-origin"),
-    false,
-    `${label}：iframe sandbox 含 allow-same-origin（Hosted 六件不可信档被放宽）`,
+    String(iframe.getAttribute("sandbox") || ""),
+    HOSTED_EDITOR_SANDBOX,
+    `${label}：iframe sandbox 必须是 HOSTED_EDITOR_SANDBOX`,
   );
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+    `${label}：UGC 预览主机不得同源`,
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.equal(
     new URL(src).searchParams.get("assetTitle"),
     "闸",

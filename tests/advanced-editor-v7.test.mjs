@@ -277,18 +277,22 @@ test("material adapter runtime bridges right libraries to the mounted editor sco
   assert.match(stage, /event\.preventDefault\(\)/);
 });
 
-test("advanced action bar is native PaneHeader chrome with fixed direct download", () => {
+test("advanced first row is PluginGlobalRow chrome with fixed direct download", () => {
   const split = source("../src/shell/SplitWorkspace.tsx");
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  const header = source("../src/shell/InlineAdvancedWorkbenchHeader.tsx");
   const bar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(split, /setRightEditorHeader/);
   assert.match(shell, /rightPaneSlot\.setRightLabel\(liveHeaderNode\)/);
   assert.match(shell, /rightPaneSlot\.setRightEditorHeader\(true\)/);
   assert.doesNotMatch(shell, /absolute left-2 right-2 top-2/);
+  assert.match(header, /<PluginGlobalRow/);
+  assert.match(header, /<PluginPageRow/);
   assert.match(bar, /adapter\.directDownload/);
-  assert.match(bar, /standaloneActions\.map\(\(action\)/);
+  assert.doesNotMatch(bar, /standaloneActions\.map\(\(action\)/);
   assert.match(bar, /action\.group === "download"/);
   assert.match(bar, /data-workspace-download-menu/);
+  assert.match(bar, /data-global-row-slot="download"/);
 
   for (const route of [
     "AudioRoute",

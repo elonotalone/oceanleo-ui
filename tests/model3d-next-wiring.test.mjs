@@ -21,6 +21,8 @@ import {
 } from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
 import {
+  COVER_FRAME_SANDBOX,
+  HOSTED_EDITOR_SANDBOX,
   UNTRUSTED_FRAME_SANDBOX,
   embedEditorFrameSandbox,
 } from "../src/shell/editor-sandbox-origin.ts";
@@ -97,12 +99,19 @@ test("default mode is normal; hosted iframe only appears in pro", () => {
   assert.doesNotMatch(leafCode, /postMessage\(/);
 });
 
-test("hosted iframe sandbox is the untrusted hosted set, no same-origin", () => {
+test("hosted iframe sandbox is HOSTED_EDITOR_SANDBOX; UGC / cover stay locked", () => {
   assert.equal(
     embedEditorFrameSandbox("https://3d.oceanleo.app"),
-    UNTRUSTED_FRAME_SANDBOX,
+    HOSTED_EDITOR_SANDBOX,
   );
   assert.doesNotMatch(UNTRUSTED_FRAME_SANDBOX, /allow-same-origin/);
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.match(frame, /embedEditorFrameSandbox/);
   assert.match(frame, /asHostToEditorMessage/);
   assert.match(frame, /isValidEditorTargetOrigin/);
@@ -360,7 +369,14 @@ function assertLiveModel3DIframe(container) {
     expectedSandbox,
     "sandbox 没有走 embedEditorFrameSandbox()",
   );
-  assert.equal(expectedSandbox.includes("allow-same-origin"), false);
+  assert.equal(expectedSandbox, HOSTED_EDITOR_SANDBOX);
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   const slot = container.querySelector("[data-testid=model3d-hosted-slot]");
   assert.ok(slot, "专业模式槽位 data-testid=model3d-hosted-slot 不见了");
   assert.equal(

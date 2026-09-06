@@ -8,10 +8,15 @@
  * 调 `embedEditorFrameSandbox()` 看返回字符串。函数返回对，不等于
  * 画出来的 iframe 上挂的就是那个值——中间还有一段传递。
  *
- * 本文件锁的事实：六件专业模式真挂起来之后，DOM 上那个 iframe
- * 的 sandbox 属性里**有** allow-same-origin（HOSTED_EDITOR_SANDBOX）。
+ * 本文件锁的事实：仍在的四件专业模式（音频 / 3D / 幻灯 / 文档）真挂起来
+ * 之后，DOM 上那个 iframe 的 sandbox 属性里**有** allow-same-origin
+ * （HOSTED_EDITOR_SANDBOX）。
  * 不拿 `embedEditorFrameSandbox()` 的返回值当期望：函数和消费组件一起
  * 被改坏时，对返回值的相等断言会双双变绿，本闸必须仍红。
+ *
+ * 2026-09-06 W12：删除「游戏 / 工作流专业模式」两条。W08 已拆掉
+ * `GameHostedFrame.tsx` 与 `langflow-hosted-frame.tsx`，再挂这两件是
+ * 在断言一个已经不存在的产品面。
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -42,8 +47,6 @@ else delete require.cache[canvasEntry];
 const HOST_PAGE = "https://oceanleo.com/workspace";
 const AUDIO_ORIGIN = "https://audio.oceanleo.app";
 const MODEL3D_ORIGIN = "https://3d.oceanleo.app";
-const GAME_ORIGIN = "https://game-ide.oceanleo.app";
-const FLOW_ORIGIN = "https://flow.oceanleo.app";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -259,58 +262,6 @@ test("文档专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-ori
     assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("iframe"),
       "文档",
-    );
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-// UC-3 修订（2026-09-06）：白名单仍含 game-ide；W08 后无消费者，沙箱档仍按 hosted。
-test("游戏专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
-  const mounted = await mountCompiled(
-    "src/shell/game-editor/GameHostedFrame.tsx",
-    {},
-    (mod) =>
-      React.createElement(mod.GameHostedFrame, {
-        instanceId: "w30-game",
-        hostOrigin: "https://oceanleo.com",
-        src: `${GAME_ORIGIN}/?embed=1`,
-        title: "microStudio",
-        onReady() {},
-        onExport() {},
-        onError() {},
-      }),
-  );
-  try {
-    assertIframeGrantsHostedSameOrigin(
-      mounted.container.querySelector("[data-testid=game-hosted-frame]"),
-      "游戏",
-    );
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-// UC-3 修订（2026-09-06）：白名单仍含 flow；W08 后无消费者，沙箱档仍按 hosted。
-test("工作流专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
-  const mounted = await mountCompiled(
-    "src/shell/workflow-carrier/langflow-hosted-frame.tsx",
-    {},
-    (mod) =>
-      React.createElement(mod.LangflowHostedFrame, {
-        instanceId: "w30-flow",
-        hostOrigin: "https://oceanleo.com",
-        src: `${FLOW_ORIGIN}/?embed=1`,
-        title: "Langflow",
-        onReady() {},
-        onSnapshot() {},
-        onError() {},
-      }),
-  );
-  try {
-    assertIframeGrantsHostedSameOrigin(
-      mounted.container.querySelector("[data-testid=workflow-langflow-frame]"),
-      "工作流",
     );
   } finally {
     await mounted.unmount();

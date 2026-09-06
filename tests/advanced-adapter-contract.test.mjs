@@ -104,26 +104,29 @@ test("shell geometry never scales editor chrome and every legacy toolbox gets a 
   assert.doesNotMatch(shell, /editorContextualToolbarAnchor/);
 });
 
-test("fixed workspace row owns semantic actions outside the object edit bar", () => {
+test("fixed workspace row owns download only; semantic actions live in the edit bar", () => {
   const contract = source("../src/shell/advanced-workbench-chrome.ts");
-  const header =
-    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
-    source("../src/shell/InlineAdvancedWorkbenchHeader.tsx") +
-    source("../src/shell/FloatingContextToolbar.tsx");
+  const header = source("../src/shell/InlineAdvancedWorkbenchHeader.tsx");
+  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const actions = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
+  const editBar = source("../src/shell/plugin-chrome/EditBarDocumentSegment.tsx");
   assert.match(contract, /interface AdvancedWorkbenchAction/);
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);
-  assert.match(header, /<AdvancedWorkspaceActionBar/);
+  assert.match(header, /<PluginGlobalRow/);
+  assert.match(header, /<PluginPageRow/);
   assert.match(actions, /const actions = adapter\.actions \|\| \[\]/);
-  assert.match(actions, /standaloneActions\.map\(\(action\)/);
+  assert.doesNotMatch(actions, /standaloneActions\.map\(\(action\)/);
   assert.match(actions, /adapter\.directDownload/);
   assert.match(contract, /group\?: "download"/);
   assert.match(actions, /action\.group === "download"/);
   assert.match(actions, /data-workspace-download-launcher/);
   assert.match(actions, /data-workspace-download-menu/);
   assert.match(actions, /data-advanced-workspace-actions/);
-  assert.match(header, /data-advanced-context-row/);
-  assert.match(header, /action\.panelId/);
+  assert.match(actions, /data-global-row-slot="download"/);
+  assert.match(shell, /EditBarDocumentSegment/);
+  assert.match(shell, /action\.group !== "download"/);
+  assert.match(shell, /action\.panelId/);
+  assert.match(editBar, /data-workspace-action-id/);
   assert.doesNotMatch(header, /absolute left-2 right-2 top-2/);
 });
 

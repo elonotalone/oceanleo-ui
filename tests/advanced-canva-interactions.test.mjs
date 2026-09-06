@@ -90,8 +90,10 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
     assert.doesNotMatch(imageToolbar, new RegExp(`panelId: "${drawer}"`));
   }
   assert.match(shell, /drawers\.map\(\(drawer\) =>/);
-  assert.match(shell, /<AdvancedWorkspaceActionBar/);
+  assert.match(shell, /<PluginGlobalRow/);
+  assert.match(shell, /<PluginPageRow/);
   assert.doesNotMatch(deckToolbar, /deckQuickTools|applyDeckQuickTool/);
+
   assert.match(
     image,
     /id: "image-export"[\s\S]*?panelId: "image-export"/,

@@ -18,7 +18,12 @@ import {
   setEditorCoreOverride,
 } from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
-import { UNTRUSTED_FRAME_SANDBOX, embedEditorFrameSandbox } from "../src/shell/editor-sandbox-origin.ts";
+import {
+  COVER_FRAME_SANDBOX,
+  HOSTED_EDITOR_SANDBOX,
+  UNTRUSTED_FRAME_SANDBOX,
+  embedEditorFrameSandbox,
+} from "../src/shell/editor-sandbox-origin.ts";
 import {
   AUDIO_NEXT_DEFAULT_MODE,
   applyAudioNextMode,
@@ -95,12 +100,19 @@ test("professional mode uses buildSetModeMessage and only then shows AudioMass",
   assert.equal(pro.message.mode, "pro");
 });
 
-test("AudioMass iframe is untrusted: no allow-same-origin, exact targetOrigin", () => {
+test("AudioMass iframe 拿 HOSTED_EDITOR_SANDBOX；UGC / cover 仍无同源", () => {
   assert.equal(
     embedEditorFrameSandbox("https://audio.oceanleo.app"),
-    UNTRUSTED_FRAME_SANDBOX,
+    HOSTED_EDITOR_SANDBOX,
   );
   assert.equal(UNTRUSTED_FRAME_SANDBOX.includes("allow-same-origin"), false);
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.match(frame, /embedEditorFrameSandbox/);
   assert.match(frame, /referrerPolicy="no-referrer"/);
   assert.match(frame, /postMessage\(checked, AUDIO_HOSTED_EMBED_ORIGIN\)/);
@@ -413,7 +425,14 @@ function assertLiveAudioIframe(iframe) {
     expectedSandbox,
     "sandbox 没有走 embedEditorFrameSandbox()",
   );
-  assert.equal(expectedSandbox.includes("allow-same-origin"), false);
+  assert.equal(expectedSandbox, HOSTED_EDITOR_SANDBOX);
+  assert.equal(
+    embedEditorFrameSandbox("https://p1--base.oceanleo.app/").includes(
+      "allow-same-origin",
+    ),
+    false,
+  );
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   const hidden = concealmentReason(iframe);
   assert.equal(
     hidden,
