@@ -37,6 +37,7 @@
     "./shell/plugin-ai": "./src/shell/plugin-ai/index.ts",
     "./shell/plugin-chrome": "./src/shell/plugin-chrome/index.ts",
     "./shell/plugin-command": "./src/shell/plugin-command/index.ts",
+    "./shell/plugin-store": "./src/shell/plugin-store/index.ts",
     "./shell/plugin-theme": "./src/shell/plugin-theme.tsx",
     "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
@@ -7091,6 +7092,209 @@
           "kind": "named",
           "name": "usePluginCommandSurface",
           "source": ""
+        }
+      ]
+    },
+    "./shell/plugin-store": {
+      "target": "./src/shell/plugin-store/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "asPluginStoreError",
+          "importedName": "asPluginStoreError",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "blobDocument",
+          "importedName": "blobDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "createHostDocStore",
+          "importedName": "createHostDocStore",
+          "source": "./adapters/host-doc-store"
+        },
+        {
+          "kind": "named",
+          "name": "createMemoryStore",
+          "importedName": "createMemoryStore",
+          "source": "./adapters/memory-store"
+        },
+        {
+          "kind": "named",
+          "name": "isBlobDocument",
+          "importedName": "isBlobDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "isPluginStoreError",
+          "importedName": "isPluginStoreError",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "isTreeDocument",
+          "importedName": "isTreeDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "normalizePluginDocument",
+          "importedName": "normalizePluginDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "pluginStoreCacheKey",
+          "importedName": "pluginStoreCacheKey",
+          "source": "./decorators/with-local-cache"
+        },
+        {
+          "kind": "named",
+          "name": "PluginStoreError",
+          "importedName": "PluginStoreError",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "treeDocument",
+          "importedName": "treeDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "withLocalCache",
+          "importedName": "withLocalCache",
+          "source": "./decorators/with-local-cache"
+        },
+        {
+          "kind": "named",
+          "name": "withRecovery",
+          "importedName": "withRecovery",
+          "source": "./decorators/with-recovery"
+        },
+        {
+          "kind": "type",
+          "name": "HostDocStoreOptions",
+          "importedName": "HostDocStoreOptions",
+          "source": "./adapters/host-doc-store"
+        },
+        {
+          "kind": "type",
+          "name": "LocalCacheBackedStore",
+          "importedName": "LocalCacheBackedStore",
+          "source": "./decorators/with-local-cache"
+        },
+        {
+          "kind": "type",
+          "name": "MemoryDocumentStore",
+          "importedName": "MemoryDocumentStore",
+          "source": "./adapters/memory-store"
+        },
+        {
+          "kind": "type",
+          "name": "MemoryStoreOptions",
+          "importedName": "MemoryStoreOptions",
+          "source": "./adapters/memory-store"
+        },
+        {
+          "kind": "type",
+          "name": "PluginBlobDocument",
+          "importedName": "PluginBlobDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginDocHost",
+          "importedName": "PluginDocHost",
+          "source": "./adapters/host-doc-store"
+        },
+        {
+          "kind": "type",
+          "name": "PluginDocument",
+          "importedName": "PluginDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginDocumentFile",
+          "importedName": "PluginDocumentFile",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginDocumentStore",
+          "importedName": "PluginDocumentStore",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginRecoveredDraft",
+          "importedName": "PluginRecoveredDraft",
+          "source": "./decorators/with-recovery"
+        },
+        {
+          "kind": "type",
+          "name": "PluginStoreDisposition",
+          "importedName": "PluginStoreDisposition",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginStoreErrorOptions",
+          "importedName": "PluginStoreErrorOptions",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "PluginStoreLocalStorage",
+          "importedName": "PluginStoreLocalStorage",
+          "source": "./decorators/with-local-cache"
+        },
+        {
+          "kind": "type",
+          "name": "PluginTreeDocument",
+          "importedName": "PluginTreeDocument",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "RecoveryBackedStore",
+          "importedName": "RecoveryBackedStore",
+          "source": "./decorators/with-recovery"
+        },
+        {
+          "kind": "type",
+          "name": "StoreCapabilities",
+          "importedName": "StoreCapabilities",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "WithLocalCacheOptions",
+          "importedName": "WithLocalCacheOptions",
+          "source": "./decorators/with-local-cache"
+        },
+        {
+          "kind": "type",
+          "name": "WithRecoveryOptions",
+          "importedName": "WithRecoveryOptions",
+          "source": "./decorators/with-recovery"
+        },
+        {
+          "kind": "type",
+          "name": "WriteOptions",
+          "importedName": "WriteOptions",
+          "source": "./types"
+        },
+        {
+          "kind": "type",
+          "name": "WriteReceipt",
+          "importedName": "WriteReceipt",
+          "source": "./types"
         }
       ]
     },

@@ -313,15 +313,19 @@ export function MaterialLibrary({
     itemId: action?.action.itemId || "",
     types: selectedTypes,
   });
+  const fetchEnabled =
+    level === "primary" ? primaryFetchEnabled : Boolean(context.siteKey);
+  const contextMissing =
+    level === "primary" && (!context.contextId || !context.siteKey);
   // D5：首次请求 settle 之前只画骨架。`markSettled` 必须覆盖这条 effect 的**每一个**
   // 终点（不发请求、命中新鲜缓存、成功、失败），漏一个骨架就永远不消失。
   const shelfSettle = useMaterialShelfSettle(remoteRequestKey, {
-    initiallySettled: Boolean(initialCache),
+    initiallySettled: Boolean(initialCache) || !fetchEnabled || contextMissing,
   });
   const markSettled = shelfSettle.markSettled;
 
   useEffect(() => {
-    if (level === "primary" && (!context.contextId || !context.siteKey)) {
+    if (contextMissing) {
       markSettled(remoteRequestKey);
       loadMoreAbortRef.current?.abort();
       requestEpochRef.current += 1;
@@ -337,8 +341,6 @@ export function MaterialLibrary({
       setErrorStatus(undefined);
       return;
     }
-    const fetchEnabled =
-      level === "primary" ? primaryFetchEnabled : Boolean(context.siteKey);
     if (!fetchEnabled) {
       markSettled(remoteRequestKey);
       setRemote([]);
@@ -634,8 +636,6 @@ export function MaterialLibrary({
   const shelfLoading = loading || templateShelf.loading;
   const shelfSettled =
     shelfSettle.settled && !templateShelf.loading && dispatch.settled;
-  const contextMissing =
-    level === "primary" && (!context.contextId || !context.siteKey);
   const { error: effectiveError, status: effectiveErrorStatus } =
     materialShelfFailure(
       { deepLinkError, deepLinkStatus, error, errorStatus },
