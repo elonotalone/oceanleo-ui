@@ -14,6 +14,7 @@ import {
   type ModelGroup,
   type ModelGroupsPayload,
 } from "../lib/auth";
+import { currencySymbol } from "../lib/money";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 
@@ -59,15 +60,27 @@ function fmt(value: number) {
     .replace(/\.?0+$/, "");
 }
 
+/** `fmt` 去掉了尾零，所以符号在这里自己拼：符号 + 数字，不走 formatMoney 的定长小数。 */
+function money(value: number, currency: string) {
+  return `${currencySymbol(currency)}${fmt(value)}`;
+}
+
 function priceText(model: CatalogModel, tt: UITranslate) {
   if (model.unpriced) return tt("免费 / 未公布");
   if (!model.price) return "—";
+  // 价格所在货币由网关的 pricing 元数据决定（.cn = CNY、.com = USD）；没说就是 CNY。
+  const currency = model.price.currency || "CNY";
   if (model.price.billing === "job") {
-    const unit = (model.price.unit || "CNY/次").replace("CNY/", "/");
-    return `¥${fmt(num(model.price.price_cny_per_unit))} ${unit}`;
+    // 网关的单位标签形如 "USD/次" / "CNY/1M tokens"；货币码已由符号表达，这里只留 "/次"。
+    const unit = (model.price.unit || `${currency}/次`).replace(/^[A-Z]{3}\//, "/");
+    return `${money(num(model.price.price_per_unit ?? model.price.price_cny_per_unit), currency)} ${unit}`;
   }
-  return `输入 ¥${fmt(num(model.price.input_cny_per_m))} · 输出 ¥${fmt(
-    num(model.price.output_cny_per_m),
+  return `输入 ${money(
+    num(model.price.input_per_m ?? model.price.input_cny_per_m),
+    currency,
+  )} · 输出 ${money(
+    num(model.price.output_per_m ?? model.price.output_cny_per_m),
+    currency,
   )} / 百万 token`;
 }
 

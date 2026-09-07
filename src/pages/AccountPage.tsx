@@ -34,6 +34,7 @@ import {
   signOutEverywhere,
   isPasswordResetLanding,
 } from "../lib/auth";
+import { formatMoney, normalizeCurrency, type LedgerCurrency } from "../lib/money";
 import { ConfirmDialog } from "../ui";
 import { AuthDialog } from "./AuthDialog";
 import { AccountSecurityPage } from "./AccountSecurityPage";
@@ -148,6 +149,8 @@ export function AccountPage({
   const resetLanding = isPasswordResetLanding(href);
   const [email, setEmail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  // 账本货币由网关的钱包响应决定（.cn = CNY、.com = USD）；没说之前按 CNY，绝不猜美元。
+  const [currency, setCurrency] = useState<LedgerCurrency>("CNY");
   const [monthSpend, setMonthSpend] = useState<number | null>(null);
   const [requests, setRequests] = useState<number | null>(null);
   // 未配置 Supabase 时不会有任何会话查询回来，直接视为已检查，否则永远卡在空白。
@@ -166,19 +169,23 @@ export function AccountPage({
       setChecked(true);
       if (!e) return;
       const c = await getCredits();
-      if (c.ok && c.data) setCredits(c.data.balance_yuan);
+      if (c.ok && c.data) {
+        // 新键 `balance` 优先，旧网关只有 `balance_yuan`（同一个数）。
+        setCredits(Number(c.data.balance ?? c.data.balance_yuan ?? 0));
+        if (c.data.currency) setCurrency(normalizeCurrency(c.data.currency));
+      }
       const h = await getCreditHistory(200);
       if (h.ok && h.data) {
         const now = new Date();
         let spend = 0;
         for (const ev of h.data.events || []) {
-          const yuan = Number(ev.amount_yuan ?? 0);
+          const major = Number(ev.amount_major ?? ev.amount_yuan ?? 0);
           const d = ev.created_at ? new Date(ev.created_at) : null;
           const inMonth =
             d &&
             d.getUTCFullYear() === now.getUTCFullYear() &&
             d.getUTCMonth() === now.getUTCMonth();
-          if (inMonth && yuan < 0) spend += Math.abs(yuan);
+          if (inMonth && major < 0) spend += Math.abs(major);
         }
         setMonthSpend(spend);
       }
@@ -266,11 +273,11 @@ export function AccountPage({
 
   const stats = [
     {
-      value: credits !== null ? `¥${credits.toFixed(2)}` : "...",
+      value: credits !== null ? formatMoney(credits, currency, 2) : "...",
       label: tt("token 余额"),
     },
     {
-      value: monthSpend !== null ? `¥${monthSpend.toFixed(2)}` : "—",
+      value: monthSpend !== null ? formatMoney(monthSpend, currency, 2) : "—",
       label: tt("本月消耗"),
     },
     ...(showRequestStat

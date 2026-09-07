@@ -276,8 +276,12 @@ export interface AiProgress {
 
 export interface AiBilling {
   charged: boolean;
-  /** 不知道扣了多少就写 null，不要拿 0 冒充「免费」。 */
+  /** 不知道扣了多少就写 null，不要拿 0 冒充「免费」。金额是 `currency` 的主单位。 */
   amount: number | null;
+  /**
+   * 账本货币码：oceanleo.cn 是 "CNY"，oceanleo.com 是 "USD"。由网关回执决定，
+   * 插件不得自己猜、不得换算；展示用 `formatMoney(amount, currency)`。
+   */
   currency: string;
   estimated: boolean;
   quoteId?: string;

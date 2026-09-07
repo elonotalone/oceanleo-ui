@@ -417,10 +417,18 @@ export async function* openSseStream(
 export interface ChatStreamCharge {
   /** 服务端估算值（prompt 按 4 字符/token、completion 按 16 字符/token）。 */
   tokens: number;
+  /** 账本货币码（"CNY" / "USD"）；旧网关没给时按 CNY。 */
+  currency: string;
+  /** 本次真实成本，账本货币主单位（`price ?? price_cny`）。 */
+  price: number;
+  /** 扣费后余额，账本货币主单位（`balance ?? balance_yuan`）。 */
+  balance: number;
+  /** @deprecated 与 `price` 同一个数。 */
   priceCny: number;
   model: string;
   keyMode: string;
   requestId: string;
+  /** @deprecated 与 `balance` 同一个数。 */
   balanceYuan: number;
   /** 后端原样对象；将来加字段也不会在这一层丢掉。 */
   raw: Readonly<Record<string, unknown>>;
@@ -448,14 +456,31 @@ function asNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function firstNumber(...values: unknown[]): number {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
 function chargeFrom(raw: Record<string, unknown>): ChatStreamCharge {
+  // 账本货币契约（2026-09-07）：中性键 `price` / `balance` / `currency` 优先，
+  // 旧键 `price_cny` / `balance_yuan` 只在人民币账本上还会给。货币没说就是 CNY，绝不猜美元。
+  const price = firstNumber(raw.price, raw.price_cny);
+  const balance = firstNumber(raw.balance, raw.balance_yuan);
+  const currency = asText(raw.currency).trim().toUpperCase() || "CNY";
   return {
     tokens: asNumber(raw.tokens),
-    priceCny: asNumber(raw.price_cny),
+    currency,
+    price,
+    balance,
+    priceCny: price,
     model: asText(raw.model),
     keyMode: asText(raw.key_mode),
     requestId: asText(raw.request_id),
-    balanceYuan: asNumber(raw.balance_yuan),
+    balanceYuan: balance,
     raw,
   };
 }

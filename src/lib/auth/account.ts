@@ -7,6 +7,15 @@ import type {
   ModelTierId,
   ModelTierSelection,
 } from "../model-tier";
+import {
+  DEFAULT_LEDGER_CURRENCY,
+  ledgerCurrency,
+  majorToMinor,
+  minorToMajor,
+  normalizeCurrency,
+  rememberLedgerCurrency,
+  type LedgerCurrency,
+} from "../money";
 export type {
   CapabilitySelection,
   ModelTierId,
@@ -85,7 +94,11 @@ async function publicGet<T>(
   }
 }
 
-// --- Wallet (CNY) ----------------------------------------------------------
+// --- Wallet (ledger currency: .cn = CNY, .com = USD) -------------------------
+// 2026-09-07 账本货币契约：网关回 `currency` + 中性键（`balance` / `balance_minor` /
+// `amount_major` / `price` / `nano` / `input_per_m`…）；旧的 `*_yuan` / `*_fen` /
+// `*_cny_*` 只在人民币账本上还会给一个版本。这里两套都读，旧名字保留成可选字段
+// 让老消费站照常编译；展示一律走 `formatMoney(x, currency)`。
 
 export interface PricingMeta {
   markup_pct: number;
@@ -109,29 +122,56 @@ export function pricingDocUrl(
 }
 
 export interface WalletInfo {
-  balance_yuan: number;
-  balance_fen: number;
-  currency: string;
-  signup_grant_yuan: number;
+  /** 账本货币码："CNY" / "USD"。网关没给时按 CNY。 */
+  currency: LedgerCurrency;
+  /** 余额，主单位（元 / 美元）。 */
+  balance: number;
+  /** 余额，最小单位（分 / 美分）。 */
+  balance_minor: number;
+  /** 新用户体验金，主单位。 */
+  signup_grant: number;
   markup_pct: number;
   pricing: PricingMeta;
+  /** @deprecated 与 `balance` 同一个数；仅为老消费站保留一个版本。 */
+  balance_yuan: number;
+  /** @deprecated 与 `balance_minor` 同一个数。 */
+  balance_fen: number;
+  /** @deprecated 与 `signup_grant` 同一个数。 */
+  signup_grant_yuan: number;
+}
+
+function pick(...values: unknown[]): number {
+  for (const v of values) {
+    if (v === null || v === undefined || v === "") continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
 }
 
 function normalizeWallet(raw: Partial<WalletInfo> | null | undefined): WalletInfo {
   const r = raw || {};
   const p = r.pricing || ({} as Partial<PricingMeta>);
+  const currency = normalizeCurrency(r.currency || p.currency);
+  const balance = pick(r.balance, r.balance_yuan, minorToMajor(pick(r.balance_minor, r.balance_fen)));
+  const balanceMinor = pick(r.balance_minor, r.balance_fen, majorToMinor(balance));
+  const signupGrant = pick(r.signup_grant, r.signup_grant_yuan);
+  rememberLedgerCurrency(currency);
   return {
-    balance_yuan: num(r.balance_yuan),
-    balance_fen: num(r.balance_fen),
-    currency: r.currency || "CNY",
-    signup_grant_yuan: num(r.signup_grant_yuan),
+    currency,
+    balance,
+    balance_minor: balanceMinor,
+    signup_grant: signupGrant,
     markup_pct: num(r.markup_pct, 0),
     pricing: {
       markup_pct: num(p.markup_pct, num(r.markup_pct, 0)),
       source: p.source || "",
-      currency: p.currency || "CNY",
+      currency: normalizeCurrency(p.currency || currency),
       library: p.library || "",
     },
+    balance_yuan: balance,
+    balance_fen: balanceMinor,
+    signup_grant_yuan: signupGrant,
   };
 }
 
@@ -143,12 +183,41 @@ export async function getCredits() {
 
 export interface CreditEvent {
   kind: string;
-  amount: number; // fen (negative = spend)
-  amount_yuan: number;
+  amount: number; // minor units (negative = spend)
+  /** 账本货币码；旧网关没有时按 CNY。 */
+  currency?: LedgerCurrency;
+  /** 金额，主单位（负数 = 消费）。 */
+  amount_major?: number;
+  /** @deprecated 与 `amount_major` 同一个数；人民币账本上还会给一个版本。 */
+  amount_yuan?: number;
   site_id: string;
   endpoint: string;
+  /**
+   * 计费明细。中性键：`price`（主单位真实成本）、`nano`（1e-9 主单位）、`currency`；
+   * 旧键 `price_cny` / `nano_yuan` 只在人民币账本上还在。读法见 `creditEventCost()`。
+   */
   meta: Record<string, unknown>;
   created_at: string;
+}
+
+/** 一条账单事件的主单位金额（负数 = 消费）：新键优先，旧键回落。 */
+export function creditEventAmount(ev: Pick<CreditEvent, "amount_major" | "amount_yuan">): number {
+  return pick(ev.amount_major, ev.amount_yuan);
+}
+
+/** 一条账单事件的货币码：事件自带优先，否则网关最近说过的账本货币。 */
+export function creditEventCurrency(
+  ev: Pick<CreditEvent, "currency" | "meta"> | null | undefined,
+): LedgerCurrency {
+  const meta = (ev?.meta || {}) as Record<string, unknown>;
+  const raw = ev?.currency || meta.currency;
+  return raw ? normalizeCurrency(raw) : ledgerCurrency();
+}
+
+/** 一次调用的真实成本（主单位）：`meta.price ?? meta.price_cny`；BYOK 免费为 0。 */
+export function creditEventCost(meta: Record<string, unknown> | null | undefined): number {
+  const m = meta || {};
+  return pick(m.price, m.price_cny);
 }
 
 export function getCreditHistory(limit = 50) {
@@ -162,12 +231,25 @@ export interface SiteUsage {
   requests: number;
   prompt_tokens: number;
   completion_tokens: number;
-  spent_yuan: number;
+  /** 账本货币码；旧网关没有时按 CNY。 */
+  currency?: LedgerCurrency;
+  /** 花费，主单位。 */
+  spent_major?: number;
+  /** @deprecated 与 `spent_major` 同一个数。 */
+  spent_yuan?: number;
 }
 
 export interface UsageTotal extends SiteUsage {
   tokens: number;
-  spent_fen: number;
+  /** 花费，最小单位。 */
+  spent_minor?: number;
+  /** @deprecated 与 `spent_minor` 同一个数。 */
+  spent_fen?: number;
+}
+
+/** 某站 / 合计的花费，主单位：`spent_major ?? spent_yuan`。 */
+export function siteUsageSpent(usage: Pick<SiteUsage, "spent_major" | "spent_yuan"> | null | undefined): number {
+  return pick(usage?.spent_major, usage?.spent_yuan);
 }
 
 export function getUsageBySite(days = 30) {
@@ -181,11 +263,22 @@ export function getUsageBySite(days = 30) {
 export interface ModelPrice {
   billing: "token" | "job";
   markup_pct: number;
+  /** 计价单位标签，网关给的形如 "USD/1M tokens" / "CNY/次"。 */
   unit: string;
-  // token billing — RAW provider cost (NOT marked up):
+  /** 价格所在的账本货币码。 */
+  currency: LedgerCurrency;
+  // token billing — RAW provider cost (NOT marked up), per 1M tokens, ledger currency:
+  input_per_m?: number;
+  output_per_m?: number;
+  cache_hit_per_m?: number;
+  cache_write_per_m?: number;
+  // job/media billing — RAW provider cost per 张/秒/万字符/次, ledger currency:
+  price_per_unit?: number;
+  /** @deprecated 人民币账本上与 `input_per_m` 同一个数。 */
   input_cny_per_m?: number;
+  /** @deprecated 人民币账本上与 `output_per_m` 同一个数。 */
   output_cny_per_m?: number;
-  // job/media billing — RAW provider cost per 张/秒/万字符/次:
+  /** @deprecated 人民币账本上与 `price_per_unit` 同一个数。 */
   price_cny_per_unit?: number;
   // raw cell text from the official doc (audit/debug):
   raw_input?: string;
@@ -259,21 +352,37 @@ export interface ModelCatalog {
   model_count: number;
 }
 
-function normalizePrice(raw: Partial<ModelPrice> | null | undefined): ModelPrice {
+function normalizePrice(
+  raw: Partial<ModelPrice> | null | undefined,
+  fallbackCurrency: LedgerCurrency = DEFAULT_LEDGER_CURRENCY,
+): ModelPrice {
   const p = raw || {};
+  const inputPerM = pick(p.input_per_m, p.input_cny_per_m);
+  const outputPerM = pick(p.output_per_m, p.output_cny_per_m);
+  const pricePerUnit = pick(p.price_per_unit, p.price_cny_per_unit);
   return {
     billing: p.billing === "job" ? "job" : "token",
     markup_pct: num(p.markup_pct, 0),
     unit: p.unit || "",
-    input_cny_per_m: num(p.input_cny_per_m),
-    output_cny_per_m: num(p.output_cny_per_m),
-    price_cny_per_unit: num(p.price_cny_per_unit),
+    currency: normalizeCurrency(p.currency || fallbackCurrency),
+    input_per_m: inputPerM,
+    output_per_m: outputPerM,
+    cache_hit_per_m: pick(p.cache_hit_per_m),
+    cache_write_per_m: pick(p.cache_write_per_m),
+    price_per_unit: pricePerUnit,
+    input_cny_per_m: inputPerM,
+    output_cny_per_m: outputPerM,
+    price_cny_per_unit: pricePerUnit,
     raw_input: p.raw_input || "",
     raw_output: p.raw_output || "",
   };
 }
 
-function normalizeModel(m: Partial<CatalogModel> | null | undefined, fallbackCat = ""): CatalogModel {
+function normalizeModel(
+  m: Partial<CatalogModel> | null | undefined,
+  fallbackCat = "",
+  currency: LedgerCurrency = DEFAULT_LEDGER_CURRENCY,
+): CatalogModel {
   const x = m || {};
   const provider = x.provider || "";
   const id = x.id || "";
@@ -289,13 +398,14 @@ function normalizeModel(m: Partial<CatalogModel> | null | undefined, fallbackCat
     capabilities: Array.isArray(x.capabilities) ? x.capabilities : [],
     capability_labels: Array.isArray(x.capability_labels) ? x.capability_labels : [],
     unpriced: Boolean(x.unpriced),
-    price: normalizePrice(x.price),
+    price: normalizePrice(x.price, currency),
   };
 }
 
 function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelCatalog {
   const r = raw || {};
   const groups = Array.isArray(r.groups) ? r.groups : [];
+  const currency = normalizeCurrency(r.pricing?.currency);
   return {
     platform: r.platform || "阿里云百炼 · 火山方舟 · OpenRouter",
     providers: (Array.isArray(r.providers) ? r.providers : []).map((p) => ({
@@ -315,7 +425,7 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
         updated_at: pb?.updated_at || "",
         source_url: pb?.source_url || "",
         models: (Array.isArray(pb?.models) ? pb.models : []).map((m) =>
-          normalizeModel(m, g?.id || ""),
+          normalizeModel(m, g?.id || "", currency),
         ),
       })),
       capabilities: (Array.isArray(g?.capabilities) ? g.capabilities : []).map((cap) => ({
@@ -328,7 +438,7 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
           updated_at: pb?.updated_at || "",
           source_url: pb?.source_url || "",
           models: (Array.isArray(pb?.models) ? pb.models : []).map((m) =>
-            normalizeModel(m, g?.id || ""),
+            normalizeModel(m, g?.id || "", currency),
           ),
         })),
         model_count: num(cap?.model_count),
@@ -801,7 +911,12 @@ export interface AuditRecord {
   key_mode: string; // platform | byok
   request_json: Record<string, unknown>;
   response_json: Record<string, unknown>;
-  price_cny: number;
+  /** 账本货币码；旧网关没有时按 CNY。 */
+  currency?: LedgerCurrency;
+  /** 真实成本，主单位。 */
+  price?: number;
+  /** @deprecated 与 `price` 同一个数；人民币账本上还会给一个版本。 */
+  price_cny?: number;
   prompt_tokens: number;
   completion_tokens: number;
   created_at: string;

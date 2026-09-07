@@ -31,6 +31,7 @@ import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
 import { shouldShowModelPicker } from "./model-picker-visibility";
 import { useWorkbenchOpen } from "./workbench-open-store";
 import type { PreferredModel } from "../lib/auth/account";
+import { formatMoney, useLedgerCurrency } from "../lib/money";
 import { ToastProvider } from "../ui";
 import { IconGift, IconPanel, IconSearch } from "./icons";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
@@ -191,8 +192,14 @@ export interface AppShellProps {
   collapseKey?: string;
   /** 当前用户邮箱，无则显示「未登录」 */
   userEmail?: string | null;
-  /** 剩余 token（人民币元），null = 加载中 */
+  /** 余额，账本货币主单位（.cn 元 / .com 美元），null = 加载中 */
   credits?: number | null;
+  /**
+   * 余额的货币码（"CNY" / "USD"），来自站点自己的 `getCredits()` 响应。
+   * 不传时用网关最近告诉共享包的账本货币（`getCredits()` 归一化时记下），
+   * 从没记过就按 CNY —— 绝不猜美元。
+   */
+  creditsCurrency?: string | null;
   /** 侧栏搜索过滤回调；提供时右上角显示搜索按钮并展开输入框 */
   onSearch?: (term: string) => void;
   searchPlaceholder?: string;
@@ -281,6 +288,7 @@ function AppShellInner({
   collapseKey = "oceanleo_sidebar_collapsed",
   userEmail,
   credits,
+  creditsCurrency,
   onSearch,
   searchPlaceholder,
   recentSlot,
@@ -296,6 +304,9 @@ function AppShellInner({
   showLanguageSwitcher = false,
 }: AppShellProps) {
   const tt = useUI();
+  const ledger = useLedgerCurrency();
+  const balanceCurrency = creditsCurrency || ledger;
+  const creditsText = credits != null ? formatMoney(credits, balanceCurrency, 2) : "…";
   const rawPathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
@@ -427,7 +438,7 @@ function AppShellInner({
         </span>
         <span className="text-[12px] text-neutral-600">{balanceText}</span>
         <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
-          {credits != null ? `¥${credits.toFixed(2)}` : "…"}
+          {creditsText}
         </span>
       </div>
     );
@@ -904,7 +915,7 @@ function AppShellInner({
         {balanceText}
       </span>
       <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
-        {credits != null ? `¥${credits.toFixed(2)}` : "…"}
+        {creditsText}
       </span>
     </div>
   );

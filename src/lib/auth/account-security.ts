@@ -27,6 +27,7 @@
 
 import { accessToken } from "./client";
 import { GATEWAY_BASE } from "./config";
+import { ledgerCurrency, rememberLedgerCurrency, type LedgerCurrency } from "../money";
 
 /** 失败原因的码。句子在 `../../i18n/ui/messages/account-security-copy-base.ts`。 */
 export type SecurityApiCode =
@@ -268,10 +269,18 @@ export async function revokeSecuritySession(
 // ---------------------------------------------------------------------------
 
 export interface WalletLimit {
-  /** 每日上限，单位分；null = 不限。 */
+  /** 每日上限，账本货币最小单位（分 / 美分）；null = 不限。 */
   dailyFen: number | null;
-  /** 今天已花，单位分。 */
+  /** 今天已花，账本货币最小单位。 */
   spentTodayFen: number;
+  /** 账本货币码（"CNY" / "USD"）；旧网关没给时按 CNY。界面用它挑符号，自己不猜。 */
+  currency: LedgerCurrency;
+}
+
+/** 新键 `*_minor` 优先，旧键 `*_fen` 回落（同一个数）。 */
+function firstPresent(...values: unknown[]): unknown {
+  for (const v of values) if (v !== null && v !== undefined && v !== "") return v;
+  return values.length ? values[values.length - 1] : undefined;
 }
 
 function normalizeLimit(raw: unknown): number | null {
@@ -288,35 +297,49 @@ export async function getWalletLimit(): Promise<SecurityApiResult<WalletLimit>> 
     "not_available",
   );
   if (!res.ok) return { ...res, data: undefined };
+  const currency = rememberLedgerCurrency(res.data?.currency || ledgerCurrency());
   return {
     ok: true,
     status: res.status,
     data: {
-      dailyFen: normalizeLimit(res.data?.daily_fen),
-      spentTodayFen: Math.max(0, Math.floor(num(res.data?.spent_today_fen, 0))),
+      dailyFen: normalizeLimit(firstPresent(res.data?.daily_minor, res.data?.daily_fen)),
+      spentTodayFen: Math.max(
+        0,
+        Math.floor(num(firstPresent(res.data?.spent_today_minor, res.data?.spent_today_fen), 0)),
+      ),
+      currency,
     },
   };
 }
 
 export async function setWalletLimit(
   dailyFen: number | null,
-): Promise<SecurityApiResult<{ dailyFen: number | null }>> {
+): Promise<SecurityApiResult<{ dailyFen: number | null; currency: LedgerCurrency }>> {
   const value = dailyFen === null ? null : Math.max(0, Math.floor(num(dailyFen, 0)));
+  // 新网关读 `daily_minor`，旧网关只认 `daily_fen`；同一个数两把钥匙都给。
   const res = await call<Record<string, unknown>>(
     "/v1/account/security/wallet-limit",
-    { method: "PUT", body: JSON.stringify({ daily_fen: value }) },
+    { method: "PUT", body: JSON.stringify({ daily_minor: value, daily_fen: value }) },
     "not_available",
   );
   if (!res.ok) return { ...res, data: undefined };
-  return { ok: true, status: res.status, data: { dailyFen: normalizeLimit(res.data?.daily_fen) } };
+  const currency = rememberLedgerCurrency(res.data?.currency || ledgerCurrency());
+  return {
+    ok: true,
+    status: res.status,
+    data: {
+      dailyFen: normalizeLimit(firstPresent(res.data?.daily_minor, res.data?.daily_fen)),
+      currency,
+    },
+  };
 }
 
-/** 分 → 元，用于展示。整数分不许出现浮点尾巴。 */
+/** 最小单位（分 / 美分）→ 主单位数字文本（不带符号），用于输入框回填。整数分不许出现浮点尾巴。 */
 export function fenToYuan(fen: number): string {
   return (Math.round(num(fen, 0)) / 100).toFixed(2);
 }
 
-/** 用户输入的元 → 分。空 / 非法 → null（不限）。 */
+/** 用户输入的主单位金额 → 最小单位。空 / 非法 → null（不限）。 */
 export function yuanToFen(input: string): number | null {
   const text = (input || "").trim();
   if (!text) return null;

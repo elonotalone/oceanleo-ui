@@ -190,6 +190,7 @@ function signedInStub(overrides = {}) {
   return {
     configured: true,
     email: "designer@oceanleo.com",
+    // 旧网关的形状：只有 balance_yuan / amount_yuan、不说货币 → 页面按 CNY 显示 ¥。
     credits: { ok: true, data: { balance_yuan: 12.5 } },
     history: {
       ok: true,
@@ -253,6 +254,42 @@ test("三格统计的第三格是「近 30 天请求」，取 getUsageBySite(30)
   assert.equal(cards[1].textContent, "¥3.25本月消耗");
   assert.equal(cards[2].textContent, "1,234近 30 天请求");
   assert.equal(stub.usageDays, 30);
+  view.cleanup();
+});
+
+/* ---------- 账本货币契约（2026-09-07）：.com 站的钱包是美元 ---------- */
+
+test("网关说 currency=USD 且给新键 balance / amount_major 时，余额与本月消耗显示 $ 而不是 ¥", async () => {
+  const stub = signedInStub({
+    credits: {
+      ok: true,
+      data: { currency: "USD", balance: 0.7, balance_minor: 70, balance_yuan: 0.7 },
+    },
+    history: {
+      ok: true,
+      data: {
+        events: [
+          { currency: "USD", amount_major: -0.25, amount_yuan: -0.25, created_at: new Date().toISOString() },
+          { currency: "USD", amount_major: 5, amount_yuan: 5, created_at: new Date().toISOString() },
+        ],
+      },
+    },
+  });
+  const view = await render(React.createElement(AccountPage), stub);
+  const cards = [...view.host.querySelectorAll(".grid > div")];
+  assert.equal(cards[0].textContent, "$0.70token 余额");
+  assert.equal(cards[1].textContent, "$0.25本月消耗");
+  assert.equal(view.text().includes("¥"), false, "美元账本上不许再出现人民币符号");
+  view.cleanup();
+});
+
+test("网关不说货币时按 CNY（今天的行为），绝不猜成美元", async () => {
+  const stub = signedInStub({
+    credits: { ok: true, data: { balance: 3, balance_minor: 300 } },
+  });
+  const view = await render(React.createElement(AccountPage), stub);
+  const cards = [...view.host.querySelectorAll(".grid > div")];
+  assert.equal(cards[0].textContent, "¥3.00token 余额");
   view.cleanup();
 });
 

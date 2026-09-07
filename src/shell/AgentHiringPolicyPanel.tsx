@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { useLedgerCurrency } from "../lib/money";
 import {
   DEFAULT_AGENT_HIRING_POLICY,
   fenFromYuanInput,
@@ -79,6 +80,8 @@ export function AgentHiringPolicyPanel({
   eventLimit = EVENT_LIMIT_DEFAULT,
 }: AgentHiringPolicyPanelProps) {
   const tt = useUI();
+  // 上限的货币：策略自带 > 网关最近说过的账本货币（.cn = CNY、.com = USD）。
+  const ledger = useLedgerCurrency();
   // 挂载读取那条 effect 只能跑一次，所以它不能把 `tt` 写进依赖：`tt` 是 locale
   // provider 所有的函数，切一次语言就换一次身份，effect 重跑会拿服务端值把用户
   // 刚填进去的额度和白名单冲掉（而且一旦有站不记忆化 messages，它就是自锁循环）。
@@ -251,7 +254,7 @@ export function AgentHiringPolicyPanel({
             <span className="block text-[11px] text-stone-400">
               {draft.per_request_cap_fen > 0
                 ? tt("即 {amount}", {
-                    amount: formatFen(draft.per_request_cap_fen),
+                    amount: formatFen(draft.per_request_cap_fen, draft.currency || ledger),
                   })
                 : tt("留空或 0 = agent 请不动任何要花钱的人。")}
             </span>
@@ -269,7 +272,9 @@ export function AgentHiringPolicyPanel({
             />
             <span className="block text-[11px] text-stone-400">
               {draft.daily_cap_fen > 0
-                ? tt("即 {amount}", { amount: formatFen(draft.daily_cap_fen) })
+                ? tt("即 {amount}", {
+                    amount: formatFen(draft.daily_cap_fen, draft.currency || ledger),
+                  })
                 : tt("留空或 0 = 今天一次都不许自动请人。")}
             </span>
           </label>

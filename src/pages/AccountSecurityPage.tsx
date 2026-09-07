@@ -46,6 +46,7 @@ import {
   type SecuritySession,
 } from "../lib/auth/account-security";
 import { oceanleoConfigured, loginUnavailableNotice } from "../lib/auth";
+import { currencySymbol, formatMinor, type LedgerCurrency } from "../lib/money";
 import { ButtonSpinner, ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
@@ -796,6 +797,8 @@ function ActiveDevicesBlock({ tt, onSignedOutAll }: { tt: UITranslate; onSignedO
 function DailyLimitBlock({ tt }: { tt: UITranslate }) {
   const [dailyFen, setDailyFen] = useState<number | null>(null);
   const [spentFen, setSpentFen] = useState(0);
+  // 账本货币由网关说（.cn = CNY、.com = USD）；没说之前按 CNY。
+  const [currency, setCurrency] = useState<LedgerCurrency>("CNY");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -813,6 +816,7 @@ function DailyLimitBlock({ tt }: { tt: UITranslate }) {
     setError("");
     setDailyFen(result.data.dailyFen);
     setSpentFen(result.data.spentTodayFen);
+    if (result.data.currency) setCurrency(result.data.currency);
     setInput(result.data.dailyFen === null ? "" : fenToYuan(result.data.dailyFen));
   }, [tt]);
 
@@ -831,6 +835,7 @@ function DailyLimitBlock({ tt }: { tt: UITranslate }) {
       return;
     }
     setDailyFen(result.data.dailyFen);
+    if (result.data.currency) setCurrency(result.data.currency);
     setInput(result.data.dailyFen === null ? "" : fenToYuan(result.data.dailyFen));
     setOk(tt("上限已保存。"));
   }
@@ -858,8 +863,8 @@ function DailyLimitBlock({ tt }: { tt: UITranslate }) {
           <p className="text-[13px] text-neutral-700" data-security-limit-state>
             {dailyFen === null
               ? tt("现在不限。")
-              : tt("现在是每天 {yuan} 元。", { yuan: fenToYuan(dailyFen) })}{" "}
-            {tt("今天已经花了 {yuan} 元。", { yuan: fenToYuan(spentFen) })}
+              : tt("现在是每天 {amount}。", { amount: formatMinor(dailyFen, currency) })}{" "}
+            {tt("今天已经花了 {amount}。", { amount: formatMinor(spentFen, currency) })}
           </p>
           <div className="flex items-center gap-2">
             <input
@@ -872,7 +877,9 @@ function DailyLimitBlock({ tt }: { tt: UITranslate }) {
               placeholder={tt("例如 50")}
               aria-label={tt("每日消费上限")}
             />
-            <span className="shrink-0 text-[12px] text-neutral-500">{tt("元 / 天")}</span>
+            <span className="shrink-0 text-[12px] text-neutral-500">
+              {tt("{cur} / 天", { cur: currencySymbol(currency) })}
+            </span>
           </div>
           {ok && <Note kind="ok" text={ok} />}
           <div className="flex gap-2">

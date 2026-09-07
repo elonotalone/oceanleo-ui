@@ -4,7 +4,7 @@
 // @oceanleo/ui — 统一「Cost」页（单一事实源，2026-07-02）
 // ----------------------------------------------------------------------------
 // 操作员定稿：账户中心新增独立 Cost 页（/cost）。
-//   上半：用量柱状图 —— 纵轴金额（¥），横轴时间（按天，近 30 天）。悬停某柱显示
+//   上半：用量柱状图 —— 纵轴金额（账本货币：.cn ¥ / .com $），横轴时间（按天，近 30 天）。悬停某柱显示
 //         该天用了哪些模型、各自 token 消耗量与金额。
 //   下半：用量记录明细表（UsageHistory，从 settings / api 页迁来，此后只在这里
 //         显示）。列表内部滚动，不再占满整页。
@@ -12,6 +12,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getCreditHistory, type CreditEvent } from "../lib/auth";
+import {
+  formatMoney,
+  normalizeCurrency,
+  useLedgerCurrency,
+  type LedgerCurrency,
+} from "../lib/money";
 import { UsageHistory } from "./UsageHistory";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
@@ -21,12 +27,28 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** 新键优先、旧键回落（`price ?? price_cny`、`amount_major ?? amount_yuan`）。 */
+function firstNum(...values: unknown[]): number {
+  for (const v of values) {
+    if (v === null || v === undefined || v === "") continue;
+    return toNum(v);
+  }
+  return 0;
+}
+
+/** 账单事件说的账本货币；旧网关的事件没有这一项。 */
+function eventCurrency(ev: CreditEvent): LedgerCurrency | null {
+  const meta = (ev.meta || {}) as Record<string, unknown>;
+  const raw = ev.currency || meta.currency;
+  return raw ? normalizeCurrency(raw) : null;
+}
+
 interface DayBucket {
   /** "MM-DD" 展示标签 */
   label: string;
-  /** 当天消费总额（元，正数） */
+  /** 当天消费总额（账本货币主单位，正数） */
   total: number;
-  /** 模型 → {tokens, yuan} */
+  /** 模型 → {tokens, yuan}（yuan = 账本货币主单位金额，字段名沿用） */
   models: Record<string, { tokens: number; yuan: number }>;
 }
 
@@ -50,8 +72,10 @@ function bucketByDay(events: CreditEvent[], days: number): DayBucket[] {
     const bucket = map.get(key);
     if (!bucket) continue;
     const meta = (ev.meta || {}) as Record<string, unknown>;
-    // 真实成本：meta.price_cny（BYOK 免费为 0）；回退 |amount_yuan|。
-    const yuan = toNum(meta.price_cny) || Math.abs(toNum(ev.amount_yuan));
+    // 真实成本：meta.price（旧键 price_cny；BYOK 免费为 0）；回退 |amount_major ?? amount_yuan|。
+    const yuan =
+      firstNum(meta.price, meta.price_cny) ||
+      Math.abs(firstNum(ev.amount_major, ev.amount_yuan));
     const tokens =
       toNum(meta.prompt_tokens) + toNum(meta.completion_tokens) || toNum(meta.tokens);
     const model = String(meta.model || "") || "unknown";
@@ -66,16 +90,25 @@ function bucketByDay(events: CreditEvent[], days: number): DayBucket[] {
 
 function UsageBarChart({ events }: { events: CreditEvent[] }) {
   const tt = useUI();
+  const ledger = useLedgerCurrency();
   const [hover, setHover] = useState<number | null>(null);
   const buckets = useMemo(() => bucketByDay(events, 30), [events]);
   const max = Math.max(...buckets.map((b) => b.total), 0.000001);
+  // 整张图是一个账本：取第一条带货币的事件；都没带就用网关记住的（未知 = CNY）。
+  const currency = useMemo<LedgerCurrency>(() => {
+    for (const ev of events) {
+      const c = eventCurrency(ev);
+      if (c) return c;
+    }
+    return ledger;
+  }, [events, ledger]);
 
   return (
     <div className="rounded-2xl border border-neutral-200 p-5">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-[14px] font-semibold text-neutral-900">{tt("近 30 天消费")}</h2>
         <span className="text-[12px] tabular-nums text-neutral-500">
-          {tt("合计")} ¥{buckets.reduce((s, b) => s + b.total, 0).toFixed(4)}
+          {tt("合计")} {formatMoney(buckets.reduce((s, b) => s + b.total, 0), currency, 4)}
         </span>
       </div>
       <div className="relative">
@@ -114,7 +147,7 @@ function UsageBarChart({ events }: { events: CreditEvent[] }) {
                   >
                     <p className="mb-1 flex items-baseline justify-between gap-4 text-[12px] font-semibold text-neutral-900">
                       <span>{b.label}</span>
-                      <span className="tabular-nums">¥{b.total.toFixed(4)}</span>
+                      <span className="tabular-nums">{formatMoney(b.total, currency, 4)}</span>
                     </p>
                     {Object.keys(b.models).length === 0 ? (
                       <p className="text-[11px] text-neutral-400">{tt("当天无消费")}</p>
@@ -126,7 +159,8 @@ function UsageBarChart({ events }: { events: CreditEvent[] }) {
                             <div key={model} className="flex items-baseline justify-between gap-3 text-[11px]">
                               <span className="max-w-[140px] truncate text-neutral-600">{model}</span>
                               <span className="shrink-0 tabular-nums text-neutral-500">
-                                {v.tokens > 0 ? `${v.tokens.toLocaleString()} tok · ` : ""}¥{v.yuan.toFixed(4)}
+                                {v.tokens > 0 ? `${v.tokens.toLocaleString()} tok · ` : ""}
+                                {formatMoney(v.yuan, currency, 4)}
                               </span>
                             </div>
                           ))}

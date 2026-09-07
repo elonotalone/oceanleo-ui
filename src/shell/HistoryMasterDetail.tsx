@@ -52,6 +52,7 @@ import {
   withFusionMountPrefix,
 } from "./workspace-route";
 import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
+import { formatMoney, useLedgerCurrency } from "../lib/money";
 import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
@@ -59,10 +60,13 @@ import {
 
 export type { RestorableAppSession } from "./history-model";
 
-/** 任务花费 → 「¥x.xx」展示（精确口径）。0 / 无花费返回空串。 */
-function fmtCost(t: AgentTask): string {
+/**
+ * 任务花费 → 「¥x.xx」/「$x.xx」展示（精确口径）。0 / 无花费返回空串。
+ * 货币是网关最近告诉共享包的账本货币（.cn = CNY、.com = USD；未知 = CNY）。
+ */
+function fmtCost(t: AgentTask, currency: string): string {
   const y = taskCostYuan(t);
-  return y > 0 ? `¥${y.toFixed(2)}` : "";
+  return y > 0 ? formatMoney(y, currency, 2) : "";
 }
 
 function historyHrefFor(entry: HistoryListEntry, pathname = ""): string {
@@ -396,6 +400,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
+  const ledger = useLedgerCurrency();
   const { items, loading, error, remove, mutate } = useHistory(siteId);
   const [sel, setSel] = useWorkspaceSelection("history");
   const pathname = usePathname() || "";
@@ -467,7 +472,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           ? entry.session.last_activity_at
           : entry.task.created_at;
         const recordSite = record.site_id;
-        const cost = isSession ? "" : fmtCost(entry.task);
+        const cost = isSession ? "" : fmtCost(entry.task, ledger);
         const pinned = isSession
           ? Boolean(entry.session.pinned)
           : Boolean(entry.task.pinned);

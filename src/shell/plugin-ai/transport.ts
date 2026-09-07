@@ -314,9 +314,10 @@ function textOutputFrom(data: unknown, streamed: boolean): AiTextOutput {
 function billingFromCharge(charge: ChatStreamCharge | null): AiBilling | undefined {
   if (!charge) return undefined;
   return {
-    charged: charge.keyMode === "platform" && charge.priceCny > 0,
-    amount: charge.priceCny,
-    currency: "CNY",
+    charged: charge.keyMode === "platform" && charge.price > 0,
+    amount: charge.price,
+    // 账本货币由网关的回执说（.cn = CNY、.com = USD）；旧网关没说就是 CNY。
+    currency: charge.currency || "CNY",
     estimated: true,
   };
 }
@@ -325,12 +326,14 @@ function billingFromCharge(charge: ChatStreamCharge | null): AiBilling | undefin
 function billingFromResponse(data: unknown): AiBilling | undefined {
   const charge = record(record(data).charge);
   if (!Object.keys(charge).length) return undefined;
-  const price = Number(charge.price_cny);
+  // 中性键 `price` 优先，旧键 `price_cny` 只在人民币账本上还会给。
+  const rawPrice = charge.price ?? charge.price_cny;
+  const price = Number(rawPrice);
   const keyMode = text(charge.key_mode);
   return {
     charged: keyMode === "platform" && Number.isFinite(price) && price > 0,
     amount: Number.isFinite(price) ? price : null,
-    currency: "CNY",
+    currency: text(charge.currency).trim().toUpperCase() || "CNY",
     estimated: true,
   };
 }

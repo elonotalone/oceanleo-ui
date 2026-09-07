@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Modal } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
+import { useLedgerCurrency } from "../lib/money";
 import {
   HANDOFF_BRIEF_MAX_LENGTH,
   HANDOFF_CONTEXT_MAX_ITEMS,
@@ -70,6 +71,8 @@ export function HumanHandoffDialog({
   onCreated,
 }: HumanHandoffDialogProps) {
   const tt = useUI();
+  // 用户填的预算是账本货币的主单位；符号跟网关最近说过的账本货币走（未知 = CNY）。
+  const ledger = useLedgerCurrency();
   const titleId = useId();
   // 默认全不选：这个空 Set 就是本屏的产品判据，任何「顺手先帮用户勾上」都是回归。
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -323,7 +326,7 @@ export function HumanHandoffDialog({
               />
               <span className="text-[12px] text-stone-400">
                 {budgetFen > 0
-                  ? tt("即 {amount}", { amount: formatFen(budgetFen) })
+                  ? tt("即 {amount}", { amount: formatFen(budgetFen, ledger) })
                   : tt("不填就是面议，接手的人可以跟你谈。")}
               </span>
             </div>

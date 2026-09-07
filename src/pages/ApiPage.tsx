@@ -12,6 +12,7 @@ import {
   type ModelCatalog,
   type WalletInfo,
 } from "../lib/auth";
+import { formatMoney } from "../lib/money";
 import { useUI } from "../i18n/ui/useUI";
 import { currentDomainProfile } from "../contracts/domain-family";
 import { ByokKeys } from "./ByokKeys";
@@ -107,7 +108,7 @@ export function ApiPage({
                 <p className="text-[12px] text-neutral-500">{tt("token 余额")}</p>
                 <p className="mt-1 text-[26px] font-semibold tabular-nums text-neutral-900">
                   {wallet
-                    ? `¥${num(wallet.balance_yuan).toFixed(4)}`
+                    ? formatMoney(num(wallet.balance ?? wallet.balance_yuan), wallet.currency, 4)
                     : checked && !user
                       ? tt("登录后查看")
                       : "…"}

@@ -1,4 +1,6 @@
 export * from "./auth";
+// 2026-09-07 账本货币契约：钱包 / AI 费用文案的唯一格式化入口（$0.70 / ¥5.00）。
+export * from "./money";
 export * from "./database";
 export * from "./agent";
 export * from "./agent-progress";

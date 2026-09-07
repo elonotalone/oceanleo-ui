@@ -20,6 +20,7 @@
 // ============================================================================
 
 import { authed, type AgentApiResult } from "../lib/agent";
+import { formatMoney, ledgerCurrency } from "../lib/money";
 
 /** 合同 §3：分页响应恒为 {items, next_cursor}。 */
 export interface TalentPage<T> {
@@ -49,7 +50,10 @@ export interface Handoff {
   origin_ref: string;
   category: string;
   brief: string;
+  /** 预算，账本货币最小单位（分 / 美分）；0 = 面议。 */
   budget_fen: number;
+  /** 账本货币码；旧网关没给时按当前账本（未知 = CNY）。 */
+  currency?: string;
   mode: HandoffMode;
   invited_user_id: string | null;
   state: HandoffState;
@@ -125,10 +129,13 @@ export type AgentHiringDecision =
 
 export interface AgentHiringPolicy {
   enabled: boolean;
+  /** 上限，账本货币最小单位（分 / 美分）。 */
   per_request_cap_fen: number;
   daily_cap_fen: number;
   allowed_categories: string[];
   require_confirmation: boolean;
+  /** 账本货币码；旧网关没给时按当前账本（未知 = CNY）。 */
+  currency?: string;
 }
 
 export interface AgentHiringEvent {
@@ -368,6 +375,10 @@ export function normalizeAgentHiringPolicy(
     typeof value === "number" && Number.isSafeInteger(value) && value > 0
       ? value
       : 0;
+  const currency =
+    typeof policy?.currency === "string" && policy.currency.trim()
+      ? policy.currency.trim().toUpperCase()
+      : undefined;
   return {
     enabled: policy?.enabled === true,
     per_request_cap_fen: cap(policy?.per_request_cap_fen),
@@ -376,6 +387,7 @@ export function normalizeAgentHiringPolicy(
       ? trimmedRefs(policy.allowed_categories as string[])
       : [],
     require_confirmation: policy?.require_confirmation !== false,
+    ...(currency ? { currency } : {}),
   };
 }
 
@@ -413,19 +425,25 @@ export function overrideAgentHiringEvent(
   );
 }
 
-/** fen → 「¥12.34」。整数元不拖两位小数。金额单位在传输层恒为 fen。 */
-export function formatFen(fen: number): string {
+/**
+ * 最小单位（分 / 美分）→ 「¥12.34」/「$12.34」。整数主单位不拖两位小数。
+ * 金额单位在传输层恒为账本货币的最小单位；货币码来自 handoff / policy 载荷的
+ * `currency`，没有就用网关最近告诉我们的账本货币（未知 = CNY）。
+ */
+export function formatFen(fen: number, currency?: string | null): string {
   const value = Number.isFinite(fen) ? Math.max(0, Math.trunc(fen)) : 0;
-  const yuan = value / 100;
-  return `¥${
-    Number.isInteger(yuan) ? String(yuan) : yuan.toFixed(2)
-  }`;
+  const major = value / 100;
+  return formatMoney(
+    major,
+    currency || ledgerCurrency(),
+    Number.isInteger(major) ? 0 : 2,
+  );
 }
 
-/** 界面里用户填的是元；空 / 脏值一律 0 = 面议。 */
+/** 界面里用户填的是主单位（元 / 美元）；空 / 脏值一律 0 = 面议。 */
 export function fenFromYuanInput(input: string): number {
   const raw = String(input || "").trim();
-  // 负号是脏值，不是「负预算」。先剥非数字再 parse 会把 "-3" 变成 ¥3 ——
+  // 负号是脏值，不是「负预算」。先剥非数字再 parse 会把 "-3" 变成 3 元 ——
   // 那是给出一个用户没打算给的价，比认成面议糟得多。
   if (raw.includes("-")) return 0;
   const parsed = Number.parseFloat(raw.replace(/[^\d.]/g, ""));

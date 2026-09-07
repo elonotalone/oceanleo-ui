@@ -17,11 +17,35 @@ import {
   type AuditRecord,
   type AuditMedia,
 } from "../lib/auth";
+import {
+  currencySymbol,
+  formatMoney,
+  normalizeCurrency,
+  useLedgerCurrency,
+  type LedgerCurrency,
+} from "../lib/money";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
 function toNum(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** 新键优先、旧键回落：`amount_major ?? amount_yuan`、`meta.price ?? meta.price_cny`。 */
+function firstNum(...values: unknown[]): number {
+  for (const v of values) {
+    if (v === null || v === undefined || v === "") continue;
+    const n = toNum(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+/** 一条账单事件的货币：事件自带 > meta 里的 > 网关最近说过的账本货币。 */
+function eventCurrency(ev: CreditEvent, fallback: LedgerCurrency): LedgerCurrency {
+  const meta = (ev.meta || {}) as Record<string, unknown>;
+  const raw = ev.currency || meta.currency;
+  return raw ? normalizeCurrency(raw) : fallback;
 }
 
 function eventLabel(ev: CreditEvent, tt: UITranslate): string {
@@ -49,6 +73,7 @@ export function UsageHistory({
   maxHeight?: string;
 } = {}) {
   const tt = useUI();
+  const ledger = useLedgerCurrency();
   const [history, setHistory] = useState<CreditEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [auditId, setAuditId] = useState<string>("");
@@ -60,11 +85,14 @@ export function UsageHistory({
     });
   }, [limit]);
 
+  // 表头的货币符号：整张表是一个账本，取第一条事件说的货币；没有事件就用网关记住的。
+  const tableCurrency = history.length ? eventCurrency(history[0], ledger) : ledger;
+
   return (
     <section className="v-fade-up" style={{ animationDelay: "60ms" }}>
       <h2 className="mb-1 text-[14px] font-semibold text-neutral-900">{tt("用量记录")}</h2>
       <p className="mb-3 text-[12px] leading-relaxed text-neutral-500">
-        {tt("每一次调用的真实计费：输入 token / 输出 token / 模型 / 本次成本价（人民币）。\n        费用即为该模型对应厂商的 token 市场价，OceanLeo 不加价。点「查看内容」可审计\n        本次发给模型与模型返回的全部内容（含系统提示词、图片），仅保留 24 小时、仅你本人可见。")}
+        {tt("每一次调用的真实计费：输入 token / 输出 token / 模型 / 本次成本价（{cur}）。\n        费用即为该模型对应厂商的 token 市场价，OceanLeo 不加价。点「查看内容」可审计\n        本次发给模型与模型返回的全部内容（含系统提示词、图片），仅保留 24 小时、仅你本人可见。", { cur: tableCurrency })}
       </p>
       {loaded && history.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-300 p-6 text-center">
@@ -83,7 +111,9 @@ export function UsageHistory({
                 <th className="px-3 py-2 font-medium">{tt("模型")}</th>
                 <th className="px-3 py-2 text-right font-medium">{tt("输入 token")}</th>
                 <th className="px-3 py-2 text-right font-medium">{tt("输出 token")}</th>
-                <th className="px-3 py-2 text-right font-medium">{tt("费用(¥)")}</th>
+                <th className="px-3 py-2 text-right font-medium">
+                  {tt("费用({cur})", { cur: currencySymbol(tableCurrency) })}
+                </th>
                 <th className="px-3 py-2 text-right font-medium">{tt("内容")}</th>
               </tr>
             </thead>
@@ -94,9 +124,9 @@ export function UsageHistory({
                 const completionTokens = toNum(meta.completion_tokens);
                 const totalTokens = toNum(meta.tokens);
                 const model = String(meta.model || "");
-                const yuan = toNum(ev.amount_yuan);
+                const yuan = firstNum(ev.amount_major, ev.amount_yuan);
                 const isUsage = ev.kind === "usage";
-                const realCny = toNum(meta.price_cny);
+                const realCny = firstNum(meta.price, meta.price_cny);
                 const requestId = String(meta.request_id || "");
                 const isByok = String(meta.key_mode || "") === "byok";
                 return (
@@ -233,6 +263,7 @@ function AuditModal({
 
 function AuditBody({ record }: { record: AuditRecord }) {
   const tt = useUI();
+  const ledger = useLedgerCurrency();
   const req = record.request_json || {};
   const resp = record.response_json || {};
   const messages = Array.isArray((req as { messages?: unknown }).messages)
@@ -260,7 +291,11 @@ function AuditBody({ record }: { record: AuditRecord }) {
           value={
             record.key_mode === "byok"
               ? tt("免费")
-              : `¥${toNum(record.price_cny).toFixed(6)}`
+              : formatMoney(
+                  firstNum(record.price, record.price_cny),
+                  record.currency || ledger,
+                  6,
+                )
           }
         />
       </div>

@@ -10,8 +10,19 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getMcpCatalog, type McpItem } from "../lib/database";
+import { currencySymbol } from "../lib/money";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
+
+/**
+ * 插件目录的 `currency` 历史上既可能是货币码（"CNY" / "USD"）也可能直接是符号（"¥"）。
+ * 码走共享符号表；已经是符号的原样用；空的按账本默认（CNY → ¥），不猜美元。
+ */
+function pluginPriceSymbol(currency: string | undefined): string {
+  const raw = (currency || "").trim();
+  if (raw && !/^[A-Za-z]{3}$/.test(raw)) return raw;
+  return currencySymbol(raw);
+}
 
 export interface PluginsPageProps {
   accent?: string;
@@ -89,7 +100,7 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
                     <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">{tt("免费")}</span>
                   ) : it.price != null && it.price !== "" ? (
                     <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: `${accent}1a`, color: accent }}>
-                      {it.currency || "¥"}{it.price}/{it.unit || tt("次")}
+                      {pluginPriceSymbol(it.currency)}{it.price}/{it.unit || tt("次")}
                     </span>
                   ) : null}
                 </div>

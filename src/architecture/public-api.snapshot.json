@@ -1101,6 +1101,10 @@
         },
         {
           "kind": "star",
+          "source": "./money"
+        },
+        {
+          "kind": "star",
           "source": "./operator-remark"
         },
         {
@@ -1138,11 +1142,19 @@
         },
         {
           "kind": "star",
+          "source": "./autosave-error-message"
+        },
+        {
+          "kind": "star",
           "source": "./client"
         },
         {
           "kind": "star",
           "source": "./config"
+        },
+        {
+          "kind": "star",
+          "source": "./preview-cookies"
         }
       ]
     },
@@ -1163,6 +1175,21 @@
         {
           "kind": "named",
           "name": "createModelGroup",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "creditEventAmount",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "creditEventCost",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "creditEventCurrency",
           "source": ""
         },
         {
@@ -1280,6 +1307,11 @@
         {
           "kind": "named",
           "name": "setModelTier",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "siteUsageSpent",
           "source": ""
         },
         {
@@ -3070,6 +3102,18 @@
         },
         {
           "kind": "named",
+          "name": "ConsoleAgentFocusApi",
+          "importedName": "ConsoleAgentFocusApi",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
+          "name": "ConsoleAgentFocusHandler",
+          "importedName": "ConsoleAgentFocusHandler",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
           "name": "ConsoleFnItem",
           "importedName": "ConsoleFnItem",
           "source": "./WorkspaceMasterDetail"
@@ -3571,6 +3615,12 @@
           "name": "humanizeGrantedKinds",
           "importedName": "humanizeGrantedKinds",
           "source": "./LocalFileTree"
+        },
+        {
+          "kind": "named",
+          "name": "IconRightPanelToggle",
+          "importedName": "IconRightPanelToggle",
+          "source": "./SplitWorkspace"
         },
         {
           "kind": "named",
@@ -5128,6 +5178,12 @@
         },
         {
           "kind": "named",
+          "name": "useConsoleAgentFocus",
+          "importedName": "useConsoleAgentFocus",
+          "source": "./SplitWorkspace"
+        },
+        {
+          "kind": "named",
           "name": "useConsoleDraft",
           "importedName": "useConsoleDraft",
           "source": "./useConsoleDraft"
@@ -5209,6 +5265,12 @@
           "name": "usePluginCommandSurface",
           "importedName": "usePluginCommandSurface",
           "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "useRegisterConsoleAgentFocus",
+          "importedName": "useRegisterConsoleAgentFocus",
+          "source": "./SplitWorkspace"
         },
         {
           "kind": "named",
@@ -6836,6 +6898,24 @@
         },
         {
           "kind": "named",
+          "name": "readHostSetMode",
+          "importedName": "readHostSetMode",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "named",
+          "name": "readPluginChromeFromHostMessage",
+          "importedName": "readPluginChromeFromHostMessage",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "named",
+          "name": "readPluginChromeFromSearch",
+          "importedName": "readPluginChromeFromSearch",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "named",
           "name": "setPluginMode",
           "importedName": "setPluginMode",
           "source": "./plugin-mode-store"
@@ -6845,6 +6925,12 @@
           "name": "subscribePluginMode",
           "importedName": "subscribePluginMode",
           "source": "./plugin-mode-store"
+        },
+        {
+          "kind": "named",
+          "name": "usePluginChromeOwner",
+          "importedName": "usePluginChromeOwner",
+          "source": "./PluginChromeFrame"
         },
         {
           "kind": "named",
@@ -6874,6 +6960,12 @@
           "kind": "type",
           "name": "PluginChromeFrameProps",
           "importedName": "PluginChromeFrameProps",
+          "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "type",
+          "name": "PluginChromeOwner",
+          "importedName": "PluginChromeOwner",
           "source": "./PluginChromeFrame"
         },
         {

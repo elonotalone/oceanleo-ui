@@ -21,8 +21,22 @@ import {
   type StorageUsage,
 } from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
+import { formatMoney, useLedgerCurrency } from "../lib/money";
 
 const BUY_HINT_RATIO = 0.75;
+
+/**
+ * 加量包价格来自 `/v1/storage/usage`。账本货币契约（2026-09-07）：新键 `pack_price`
+ * （账本货币主单位）+ `currency`；旧键 `pack_price_cny` 只在人民币账本上还会给。
+ * `StorageUsage` 归 database.ts（不在本波改动范围），新键在这里按可选字段读。
+ */
+type StorageUsageMoney = StorageUsage & { pack_price?: number; currency?: string };
+
+function packPrice(usage: StorageUsageMoney): number | undefined {
+  const raw = usage.pack_price ?? usage.pack_price_cny;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export interface StorageCapacityStripProps {
   /** 强调色，跟随所在页面。 */
@@ -38,6 +52,8 @@ export function StorageCapacityStrip({
   accent = "#4f46e5",
 }: StorageCapacityStripProps) {
   const tt = useUI();
+  // 加量包价格的货币：用量响应自带 > 网关最近说过的账本货币（未知 = CNY）。
+  const ledger = useLedgerCurrency();
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [checking, setChecking] = useState(false);
   const [buying, setBuying] = useState(false);
@@ -77,7 +93,8 @@ export function StorageCapacityStrip({
 
   const ratio = ratioOf(usage);
   const nearlyFull = ratio >= BUY_HINT_RATIO;
-  const price = usage.pack_price_cny;
+  const price = packPrice(usage as StorageUsageMoney);
+  const currency = (usage as StorageUsageMoney).currency || ledger;
   const packs = usage.packs || 0;
   const maxedOut = usage.max_packs !== undefined && packs >= usage.max_packs;
   const canBuy = nearlyFull && Boolean(price) && !maxedOut;
@@ -120,7 +137,7 @@ export function StorageCapacityStrip({
             >
               {buying
                 ? tt("正在扣款…")
-                : `${tt("加 100 GB")}（¥${price}/${tt("月")}）`}
+                : `${tt("加 100 GB")}（${formatMoney(price, currency, Number.isInteger(price) ? 0 : 2)}/${tt("月")}）`}
             </button>
           ) : null}
         </div>

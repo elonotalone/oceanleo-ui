@@ -284,7 +284,7 @@ export interface AgentTask {
   rating?: number | null;
   /** 旧口径：整分累加（每次调用 ceil 到 ≥1 分，会虚高）。展示请优先用 nano_spent。 */
   credits_spent?: number;
-  /** 精确花费（nano-yuan, 1e-9 CNY）== 钱包真实扣款口径。展示口径的单一事实源。 */
+  /** 精确花费（nano，1e-9 账本货币主单位：.cn 元 / .com 美元）== 钱包真实扣款口径。展示口径的单一事实源。 */
   nano_spent?: number;
   /** 「待处理」语义：用户是否已查看过此任务（打开任务详情即置 true）。 */
   seen?: boolean;
@@ -304,7 +304,10 @@ export interface AgentTask {
   updated_at?: string;
 }
 
-/** 任务花费 → 元（精确口径单一事实源）：优先 nano_spent，回退旧的整分 credits_spent。 */
+/**
+ * 任务花费 → 账本货币主单位（精确口径单一事实源）：优先 nano_spent，回退旧的整分 credits_spent。
+ * 名字里的 yuan 是历史；数值是账本货币（.cn 元 / .com 美元），展示用 `formatMoney(x, currency)`。
+ */
 export function taskCostYuan(t: { nano_spent?: number; credits_spent?: number }): number {
   if (typeof t.nano_spent === "number" && t.nano_spent > 0) {
     return t.nano_spent / 1_000_000_000;

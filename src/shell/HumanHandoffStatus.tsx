@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Modal } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
+import { useLedgerCurrency } from "../lib/money";
 import {
   cancelHandoff,
   formatFen,
@@ -60,6 +61,8 @@ export function HumanHandoffStatus({
   className,
 }: HumanHandoffStatusProps) {
   const tt = useUI();
+  // 预算的货币：handoff 自带 > 网关最近说过的账本货币（.cn = CNY、.com = USD）。
+  const ledger = useLedgerCurrency();
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [revoking, setRevoking] = useState<Handoff | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -164,7 +167,7 @@ export function HumanHandoffStatus({
                   <span aria-hidden="true">·</span>
                   <span>
                     {handoff.budget_fen > 0
-                      ? formatFen(handoff.budget_fen)
+                      ? formatFen(handoff.budget_fen, handoff.currency || ledger)
                       : tt("预算面议")}
                   </span>
                   {waiting && (
