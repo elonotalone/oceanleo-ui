@@ -508,9 +508,9 @@ test("grid 的失败态是本波真正交付的那一份：文案与按钮两边
     /重新载入表格/,
   );
   // 按钮文案与承诺同字：按钮叫「重新载入表格」，文案也让用户点「重新载入表格」。
-  assert.match(actions, /label: "重新载入表格"/);
+  assert.match(actions, /label: tt\("重新载入表格"\)/);
   // 舞台真把失败文案送上状态栏、把 retry 接到按钮。
-  assert.match(stage, /gridSourceFailureMessage\(officeSource\.error\)/);
+  assert.match(stage, /gridSourceFailureMessage\(officeSource\.error, tt\)/);
   assert.match(stage, /reload: officeSource\.retry/);
 
   const { buildGridDocumentActions, gridSourceFailureMessage } = await import(

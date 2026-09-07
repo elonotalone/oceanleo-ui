@@ -199,6 +199,16 @@ stubs["../lib/auth/client"] = dataModule(`
 stubs["../../lib/media-proxy"] = dataModule(`
   export async function fetchMediaBlob() { throw new Error("测试不取网"); }
 `);
+// 文案：舞台的 `useUI()` 需要 locale provider；这里原文照出（判据不看文案，
+// 16 语齐全由 `tests/i18n-tt-key-coverage.test.mjs` 守）。
+stubs["../../i18n/ui/useUI"] = dataModule(`
+  export function useUI() {
+    return (zh, vars) =>
+      vars
+        ? String(zh).replace(/\\{(\\w+)\\}/g, (_, k) => (k in vars ? String(vars[k]) : "{" + k + "}"))
+        : zh;
+  }
+`);
 // 外壳：只把 `adapter.stage` 与文档动作画出来，chrome 的判据全在 stage 容器上。
 stubs["../AdvancedWorkbenchShell"] = dataModule(`
   import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -356,9 +366,13 @@ test("(b) 关掉文档：卸载当下 dispose 仍是 0，下一个宏任务里�
   assert.equal(counters.createUniver, 1);
   assert.equal(counters.dispose, 0);
 
-  await act(async () => mounted.root.unmount());
-  // React 的 cleanup 已经跑完（act 同步冲 passive effects），但 dispose 还没发生：
-  // 它不许在 React 提交里同步卸另一个 root。
+  // 同步版 act：回调不是 async，act 在返回前就把 unmount 与 passive cleanup 冲完，
+  // 中间不让出事件循环——否则并行跑整套测试时机器一慢，`setTimeout(…,0)` 的 dispose
+  // 会在 `await act(async …)` 让出的那一拍里先到，把「cleanup 里没同步 dispose」判成假红。
+  act(() => {
+    mounted.root.unmount();
+  });
+  // React 的 cleanup 已经跑完，但 dispose 还没发生：它不许在 React 提交里同步卸另一个 root。
   assert.equal(counters.dispose, 0, "cleanup 里不许同步 dispose");
   await nextMacrotask();
   assert.equal(counters.dispose, 1, "下一个宏任务里 dispose 恰好一次");

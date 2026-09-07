@@ -14,6 +14,7 @@
  */
 import { numberFormatPatternForPreset } from "../grid-format/toolbar-bridge";
 import type { GridCellType } from "../grid-model";
+import type { UITranslate } from "../../../i18n/ui/useUI";
 
 // ── 端口 ────────────────────────────────────────────────────────────────────
 
@@ -263,6 +264,21 @@ export interface GridUniverCommand {
   /** `shell` 层的命令没有执行器，写明它去哪儿了。 */
   delegatedTo?: string;
   run?: (port: GridFacadePort, args: GridUniverCommandArgs) => unknown;
+}
+
+/**
+ * 命令表里的 `label` 是**中文原文即 key**：上屏前一律经这里过 `tt()`。
+ *
+ * 表本身保持纯数据（不持有 `tt`，也不 import React）；舞台在建浮条 / 检查器 /
+ * 审阅提案文案时把 `useUI()` 的 `tt` 递进来。`tests/i18n-tt-key-coverage.test.mjs`
+ * 靠这处 `tt(command.label)` 认出本文件是「声明侧」，于是表里每一条 `label:`
+ * 都进 16 语齐全的判据——少一条译文当场红，不靠人记得补。
+ */
+export function gridUniverCommandLabel(
+  command: Pick<GridUniverCommand, "label">,
+  tt: UITranslate,
+): string {
+  return tt(command.label);
 }
 
 function str(args: GridUniverCommandArgs, key: string, fallback = ""): string {

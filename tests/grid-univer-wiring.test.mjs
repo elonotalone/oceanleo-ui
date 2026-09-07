@@ -80,7 +80,7 @@ test("路由只剩一条路：懒加载 Univer 叶子，不判 flag、不留旧�
 test("编辑栏文档段有重新计算；第二行申报 Univer，不报 aux", () => {
   const actions = read("src/shell/doc-editors/grid-univer/document-actions.ts");
   assert.match(actions, /id:\s*"grid-recalculate"/);
-  assert.match(actions, /label:\s*"重新计算"/);
+  assert.match(actions, /label:\s*tt\("重新计算"\)/);
   assert.match(leaf, /buildGridDocumentActions\(/);
   assert.match(leaf, /\.\.\.documentActions,/);
   // Univer 侧「重新计算」= 公式引擎强制全量重算。

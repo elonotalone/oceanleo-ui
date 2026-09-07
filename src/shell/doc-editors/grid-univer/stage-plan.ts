@@ -16,6 +16,7 @@ import {
 } from "./chrome";
 import {
   GRID_UNIVER_COMMANDS,
+  gridUniverCommandLabel,
   type GridFacadeApi,
   type GridFacadePort,
   type GridFacadeWorkbook,
@@ -25,6 +26,10 @@ import {
 } from "./facade-commands";
 import { UNIVER_SHEETS_OSS_PRESETS } from "./presets";
 import type { SelectionContext, SelectionControl } from "../../selection-context-types";
+import type { UITranslate } from "../../../i18n/ui/useUI";
+
+/** 没递 `tt` 时原文照出（纯模块测试、中文站）；舞台永远递 `useUI()` 的那一个。 */
+const passthrough: UITranslate = (zh) => zh;
 
 /** 契约 v2 `set-mode` 的 instanceId；Native 件只用来通过 builder 校验，不发消息。 */
 export const GRID_UNIVER_INSTANCE_ID = "oceanleo-grid-univer";
@@ -354,10 +359,36 @@ const SELECT_OPTIONS: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
+/**
+ * L2 结构命令进检查器时的分组，沿用旧 GridContextToolbar 的组 id：
+ * `selection-inspector-groups.ts` 给这几个 id 配了图标与 `grid-properties` 溢出组，
+ * 检查器面板标题用的是那边的 presentation label（行操作 / 列操作 / 排序与筛选 /
+ * 条件格式 / 数据验证），这里的 `inspectorLabel` 是没有 presentation 时的兜底。
+ * 两处都要有 16 语译文，判据见 `tests/i18n-tt-key-coverage.test.mjs`。
+ */
+function inspectorGroupForStructureCommand(
+  id: string,
+  tt: UITranslate,
+): { id: string; label: string } {
+  if (id.startsWith("row-")) return { id: "grid-rows", label: tt("行") };
+  if (id.startsWith("column-")) return { id: "grid-columns", label: tt("列") };
+  if (id.startsWith("condition-")) {
+    return { id: "grid-conditional", label: tt("条件格式") };
+  }
+  if (id.startsWith("validation-")) {
+    return { id: "grid-validation", label: tt("数据验证") };
+  }
+  if (id.startsWith("numfmt-")) {
+    return { id: "grid-number-format", label: tt("数字格式") };
+  }
+  return { id: "grid-data", label: tt("排序与筛选") };
+}
+
 function controlForCommand(
   id: string,
   label: string,
   layer: string,
+  tt: UITranslate,
 ): SelectionControl {
   if (id === "bold") {
     return {
@@ -379,7 +410,10 @@ function controlForCommand(
       iconOnly: true,
       group: "format",
       value: id === "align" ? "left" : "auto",
-      options: SELECT_OPTIONS[id],
+      options: SELECT_OPTIONS[id].map((option) => ({
+        value: option.value,
+        label: tt(option.label),
+      })),
     };
   }
   if (id === "color" || id === "background") {
@@ -405,10 +439,11 @@ function controlForCommand(
       slot: "inspector",
       inspectorGroup: "grid-number-format",
       // 检查器里每组要有人看得懂的组名（`tests/route-context-editors.test.mjs`）。
-      inspectorLabel: "数字格式",
+      inspectorLabel: tt("数字格式"),
     };
   }
   if (layer === "L2") {
+    const group = inspectorGroupForStructureCommand(id, tt);
     return {
       id,
       kind: "action",
@@ -416,8 +451,8 @@ function controlForCommand(
       iconOnly: true,
       group: "structure",
       slot: "inspector",
-      inspectorGroup: "grid-structure",
-      inspectorLabel: "行列与表",
+      inspectorGroup: group.id,
+      inspectorLabel: group.label,
       placement: "more",
     };
   }
@@ -447,14 +482,26 @@ export function gridUniverSelectionContext(input: {
   revision?: number;
   sheetId?: string;
   kind?: string;
+  /**
+   * 控件 label / 选项 / 检查器组名上屏前过的翻译函数。外壳的
+   * `SelectionToolbarButtonControl` 原样渲染 `control.label`，不再翻一次，
+   * 所以中文原文必须在**这里**换成用户的语言（旧 GridContextToolbar 也是在建控件前 `tt()`）。
+   */
+  tt?: UITranslate;
 } = {}): SelectionContext {
+  const tt = input.tt || passthrough;
   const selection = input.selection || GRID_UNIVER_EMPTY_SELECTION;
   const address = `${selection.startRow}:${selection.startColumn}`;
   const controls = GRID_UNIVER_COMMANDS.filter(
     (command) =>
       (command.layer === "L1" || command.layer === "L2") && command.run,
   ).map((command) =>
-    controlForCommand(command.id, command.label, command.layer),
+    controlForCommand(
+      command.id,
+      gridUniverCommandLabel(command, tt),
+      command.layer,
+      tt,
+    ),
   );
   return {
     version: 1,

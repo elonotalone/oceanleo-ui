@@ -76,6 +76,7 @@ import {
 } from "./doc-family-formats";
 import { importDocFamilyFile } from "./doc-family-import";
 import { useOfficeArtifactSource } from "../office-editor";
+import { useUI } from "../../i18n/ui/useUI";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
 import {
@@ -172,6 +173,13 @@ export function GridUniverStage({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const officeSource = useOfficeArtifactSource(item);
+  const tt = useUI();
+  /**
+   * effect 体内用的翻译函数走 ref：`tt` 是 locale provider 所有的函数，进了加载 /
+   * 挂载 effect 的依赖数组就是 `tests/effect-tt-dependency.test.mjs` 拦的那条引信。
+   */
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
   const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<UniverHandle | null>(null);
   const parkedRef = useRef<ParkedUniver | null>(null);
@@ -255,13 +263,13 @@ export function GridUniverStage({
   useEffect(() => {
     if (waitingForSource) {
       setLoading(true);
-      setStatus("正在载入表格");
+      setStatus(ttRef.current("正在载入表格"));
       return;
     }
     let cancelled = false;
-    const title = item.title || "工作簿";
+    const title = item.title || ttRef.current("工作簿");
     setLoading(true);
-    setStatus("正在载入表格");
+    setStatus(ttRef.current("正在载入表格"));
     (async () => {
       try {
         const schema = projectSchema;
@@ -315,8 +323,8 @@ export function GridUniverStage({
           setConversion("readonly");
           setConversionNotice(
             planned.snapshot
-              ? GRID_LEGACY_READONLY_NOTICE
-              : `${GRID_LEGACY_READONLY_NOTICE} ${planned.reason || ""}`.trim(),
+              ? ttRef.current(GRID_LEGACY_READONLY_NOTICE)
+              : `${ttRef.current(GRID_LEGACY_READONLY_NOTICE)} ${planned.reason || ""}`.trim(),
           );
         } else {
           legacySheetsRef.current = null;
@@ -329,7 +337,9 @@ export function GridUniverStage({
         snapshotRef.current = emptySnapshot(title);
         setConversion("converted");
         setConversionNotice(
-          caught instanceof Error ? caught.message : "表格载入失败。",
+          caught instanceof Error
+            ? caught.message
+            : ttRef.current("表格载入失败。"),
         );
         setSnapshotReady(true);
       } finally {
@@ -393,7 +403,7 @@ export function GridUniverStage({
     });
     const api = created.univerAPI as unknown as GridUniverLiveApi;
     const snapshot = structuredClone(
-      snapshotRef.current || emptySnapshot(item.title || "工作簿"),
+      snapshotRef.current || emptySnapshot(item.title || ttRef.current("工作簿")),
     );
     const painted = replaceUniverWorkbookWithSnapshot(api, snapshot);
     const live = (
@@ -480,13 +490,13 @@ export function GridUniverStage({
     const sheets = legacySheetsRef.current;
     if (!sheets || sheets.length === 0) {
       setConversion((state) => nextGridConversionState(state, { type: "reject" }));
-      setConversionNotice("找不到可以转换的旧表格。");
+      setConversionNotice(tt("找不到可以转换的旧表格。"));
       return;
     }
     const planned = planGridLegacyConversion({
       sheets,
       schema: GRID_LEGACY_PROJECT_SCHEMA,
-      title: item.title || "工作簿",
+      title: item.title || tt("工作簿"),
     });
     if (!planned.ok) {
       setConversion((state) => nextGridConversionState(state, { type: "reject" }));
@@ -501,17 +511,17 @@ export function GridUniverStage({
     setConversion((state) => nextGridConversionState(state, { type: "resolve" }));
     setConversionNotice(planned.summary);
     bumpHistory();
-  }, [bumpHistory, item.title]);
+  }, [bumpHistory, item.title, tt]);
 
   const runControl = useCallback(
     (command: SelectionCommand) => {
       if (readonly) {
-        setStatus(GRID_LEGACY_READONLY_NOTICE);
+        setStatus(tt(GRID_LEGACY_READONLY_NOTICE));
         return;
       }
       const port = livePort();
       if (!port) {
-        setStatus("表格内核还没准备好。");
+        setStatus(tt("表格内核还没准备好。"));
         return;
       }
       const outcome = runGridUniverCommand(
@@ -562,12 +572,12 @@ export function GridUniverStage({
       downloadBlob(`${item.title || "workbook"}.xlsx`, blob);
       setStatus(warning);
     } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : "导出 XLSX 失败");
+      setStatus(caught instanceof Error ? caught.message : tt("导出 XLSX 失败"));
     } finally {
       xlsxExportBusyRef.current = false;
       setXlsxExporting(false);
     }
-  }, [item.title, workbookBlob]);
+  }, [item.title, tt, workbookBlob]);
 
   const downloadAs = useCallback(
     async (extension: string): Promise<string> => {
@@ -579,7 +589,7 @@ export function GridUniverStage({
         if (extension === "csv") {
           const sheets = univerSnapshotToGridSheets(currentSnapshot());
           const first = sheets[0];
-          if (!first) return "没有可导出的工作表。";
+          if (!first) return tt("没有可导出的工作表。");
           const rows = first.rows.map((row) => row.join(",")).join("\n");
           downloadBlob(
             `${item.title || "workbook"}.csv`,
@@ -600,24 +610,24 @@ export function GridUniverStage({
           if (!error && warning) setStatus(warning);
           return error;
         }
-        return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
+        return tt("这里没有 {ext} 这个下载格式。", { ext: extension.toUpperCase() });
       } catch (caught) {
-        return caught instanceof Error ? caught.message : "导出失败。";
+        return caught instanceof Error ? caught.message : tt("导出失败。");
       }
     },
-    [currentSnapshot, exportXlsx, item.title, workbookBlob],
+    [currentSnapshot, exportXlsx, item.title, tt, workbookBlob],
   );
 
   const save = useCallback(async () => {
     if (readonly) {
-      setStatus(GRID_LEGACY_READONLY_NOTICE);
+      setStatus(tt(GRID_LEGACY_READONLY_NOTICE));
       return null;
     }
     const snapshot = currentSnapshot();
     snapshotRef.current = snapshot;
     const notes = { dropped: [] as string[] };
     const sheets = univerSnapshotToGridSheets(snapshot, notes);
-    const title = `${item.title || "工作簿"}-编辑版`;
+    const title = `${item.title || tt("工作簿")}-${tt("编辑版")}`;
     const fileStem =
       title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "workbook";
     try {
@@ -669,17 +679,17 @@ export function GridUniverStage({
         },
       });
       if (!result.ok) {
-        setStatus(result.error || "保存失败。");
+        setStatus(result.error || tt("保存失败"));
         return null;
       }
       setDirty(false);
       setStatus(gridUniverOutboundWarning(notes));
       return result;
     } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : "保存失败。");
+      setStatus(caught instanceof Error ? caught.message : tt("保存失败"));
       return null;
     }
-  }, [chipsManifest.chips, currentSnapshot, editRevision, item, readonly, siteId]);
+  }, [chipsManifest.chips, currentSnapshot, editRevision, item, readonly, siteId, tt]);
 
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await save();
@@ -711,13 +721,13 @@ export function GridUniverStage({
     const api = handleRef.current?.api;
     const formula = api?.getFormula?.();
     if (!formula?.executeCalculation) {
-      setStatus("表格内核还没准备好。");
+      setStatus(tt("表格内核还没准备好。"));
       return;
     }
     formula.executeCalculation();
-    setStatus("已重新计算全部公式。");
+    setStatus(tt("已重新计算全部公式。"));
     bumpHistory();
-  }, [bumpHistory]);
+  }, [bumpHistory, tt]);
 
   /**
    * 源文件拿不到（签名 403 / rendition 解析失败）只给**一个**按钮「重新载入表格」，
@@ -727,13 +737,16 @@ export function GridUniverStage({
    */
   const documentActions = useMemo(
     () =>
-      buildGridDocumentActions({
-        recalculate,
-        loading: loading || !snapshotReady,
-        readonly,
-        sourceFailed: Boolean(officeSource.error),
-        reload: officeSource.retry,
-      }),
+      buildGridDocumentActions(
+        {
+          recalculate,
+          loading: loading || !snapshotReady,
+          readonly,
+          sourceFailed: Boolean(officeSource.error),
+          reload: officeSource.retry,
+        },
+        tt,
+      ),
     [
       loading,
       officeSource.error,
@@ -741,6 +754,7 @@ export function GridUniverStage({
       readonly,
       recalculate,
       snapshotReady,
+      tt,
     ],
   );
 
@@ -791,7 +805,7 @@ export function GridUniverStage({
       },
       mutate: async (_action, material) => {
         const url = material.url || material.previewUrl || "";
-        if (!url) throw new Error("这个表格素材没有可用地址。");
+        if (!url) throw new Error(tt("这个表格素材没有可用地址。"));
         const blob = await fetchMediaBlob(url, { maxBytes: 64 * 1024 * 1024 });
         const extension =
           String(material.meta.format || "").toLowerCase() ||
@@ -828,7 +842,7 @@ export function GridUniverStage({
         port: livePort(),
         revision: editRevision,
         readonly,
-        readonlyNotice: GRID_LEGACY_READONLY_NOTICE,
+        readonlyNotice: tt(GRID_LEGACY_READONLY_NOTICE),
         submit: submitAgentReviewProposal,
         onWrite: bumpHistory,
       }),
@@ -839,8 +853,9 @@ export function GridUniverStage({
       gridUniverSelectionContext({
         revision: editRevision + toolbarEpoch,
         kind: "grid-cell",
+        tt,
       }),
-    [editRevision, toolbarEpoch],
+    [editRevision, toolbarEpoch, tt],
   );
 
   return (
@@ -873,9 +888,9 @@ export function GridUniverStage({
         pages: { proLabel: GRID_PRO_LABEL },
         directDownload: {
           id: "grid-export-xlsx",
-          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label}`,
+          label: tt("直接下载 {fmt}", { fmt: DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label }),
           icon: "download",
-          busyLabel: "导出中…",
+          busyLabel: tt("导出中…"),
           busy: xlsxExporting,
           disabled: loading || xlsxExporting || readonly,
           onTrigger: exportXlsx,
@@ -887,7 +902,7 @@ export function GridUniverStage({
             ? [
                 {
                   id: "grid-convert-legacy",
-                  label: "转换为新表格",
+                  label: tt("转换为新表格"),
                   disabled: conversion === "converting",
                   onTrigger: convertLegacy,
                 },
@@ -895,7 +910,7 @@ export function GridUniverStage({
             : []),
           ...DOC_FAMILY_DOWNLOAD_FORMATS.grid.slice(1).map((format) => ({
             id: `grid-export-${format.extension}`,
-            label: `下载 ${format.label}`,
+            label: tt("下载 {fmt}", { fmt: format.label }),
             group: "download" as const,
             disabled: loading || xlsxExporting || readonly,
             onTrigger: () => {
@@ -933,10 +948,10 @@ export function GridUniverStage({
         status:
           conversionNotice ||
           (officeSource.error
-            ? gridSourceFailureMessage(officeSource.error)
+            ? gridSourceFailureMessage(officeSource.error, tt)
             : "") ||
           status ||
-          (loading || officeSource.loading ? "正在载入表格" : ""),
+          (loading || officeSource.loading ? tt("正在载入表格") : ""),
         persistence: {
           dirty,
           editRevision,
