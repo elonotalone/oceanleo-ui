@@ -543,6 +543,10 @@ const zh: Record<string, string> = {
   "点一个选项，或在下方输入，leo 会把它合并进 leo board": "点一个选项，或在下方输入，leo 会把它合并进 leo board",
   "补充内容，leo 会合并进 leo board": "补充内容，leo 会合并进 leo board",
   "启用 leo": "启用 leo",
+  "停用": "停用",
+  "启用": "启用",
+  "停用 leo（选中文本后不再显示气泡）": "停用 leo（选中文本后不再显示气泡）",
+  "启用 leo 功能": "启用 leo 功能",
   "在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。": "在输入框旁与划词时提供 leo 入口，帮你扩充、精简、总结、翻译内容。",
   "平台仅按用户在 OceanLeo 平台使用 AI token 的": "平台仅按用户在 OceanLeo 平台使用 AI token 的",
   // —— HomeCards 卡片库 + 分类 + 文件库/Cost 文案（人工翻译，2026-07-03）——

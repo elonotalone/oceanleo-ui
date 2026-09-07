@@ -195,7 +195,14 @@ export interface LeoComposerProps {
    * 是否在右下角（语音输入左侧）显示模型选择器（默认 true）。
    */
   showModelPicker?: boolean;
+  /** 点击插件按钮的回调；不传时默认跳转 /plugins */
+  onOpenPlugins?: () => void;
+  /** 是否显示插件按钮（默认 true）。传 false 时隐藏。 */
+  showPlugins?: boolean;
 }
+
+const PLUGIN_ICON_SRC =
+  "data:image/png;base64,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";
 
 export function LeoComposer({
   value,
@@ -229,6 +236,8 @@ export function LeoComposer({
   onMeetingRecording,
   meetingRecordingMaxSec = 7200,
   showModelPicker = true,
+  showPlugins = true,
+  onOpenPlugins,
 }: LeoComposerProps) {
   const tt = useUI();
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
@@ -324,7 +333,17 @@ export function LeoComposer({
     const el = currentTextarea();
     el?.setAttribute("data-ai-assistant-target", "");
     el?.focus();
-    openLeoAssistant();
+    openLeoAssistant({ toggle: true, source: "input" });
+  }
+
+  function handlePluginsClick() {
+    if (onOpenPlugins) {
+      onOpenPlugins();
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.location.href = "/plugins";
+    }
   }
 
   function emitFiles(list: FileList | null) {
@@ -518,8 +537,24 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
+          {showPlugins && (
+            <button
+              type="button"
+              onClick={handlePluginsClick}
+              aria-label={tt("插件与连接器")}
+              title={tt("插件与连接器")}
+              className="flex items-center justify-center rounded-full border border-neutral-200 p-1 text-neutral-500 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700 active:scale-95"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={PLUGIN_ICON_SRC}
+                alt={tt("插件与连接器")}
+                className="h-5 w-5 object-contain"
+              />
+            </button>
+          )}
           {leftSlot}
-          {leoSuggest && leoEnabled && (
+          {leoSuggest && (
             <button
               type="button"
               onClick={handleLeoSuggest}

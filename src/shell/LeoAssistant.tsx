@@ -118,6 +118,8 @@ export interface OpenLeoDetail {
   /** 直接把一段文本送进 leo（页面划词等）。不传则读取宿主输入框内容。 */
   text?: string;
   source?: "input" | "selection";
+  /** 是否切换开关（已打开则关闭）。输入框 leo 图标点击时传 true。 */
+  toggle?: boolean;
 }
 
 /** 任意位置调用即可打开 leo 助手浮窗（按钮、快捷键、划词气泡等）。 */
@@ -371,12 +373,22 @@ export function LeoAssistant({
   // 同一段文本重复打开不 bump——leo board 要留存（宗旨 v12 规则 5）。
   const [ctxEpoch, setCtxEpoch] = useState(0);
   const ctxTextRef = useRef<string>("");
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   // 打开事件：detail.text（划词）优先；否则读宿主输入框。
   useEffect(() => {
     const onOpen = (e: Event) => {
-      if (!isLeoEnabled()) return;
       const detail = (e as CustomEvent<OpenLeoDetail>).detail;
+      // 划词触发在停用时直接忽略
+      if (detail?.source === "selection" && !isLeoEnabled()) return;
+      // toggle 模式（输入框中点击 leo 图标）：已打开则关闭
+      if (detail?.toggle && openRef.current) {
+        setOpen(false);
+        return;
+      }
       let next: LeoContext | null = null;
       if (detail?.text && detail.text.trim()) {
         next = { text: detail.text.trim(), source: detail.source || "selection" };
@@ -465,15 +477,14 @@ export function LeoAssistant({
     setContext(c);
   }, []);
 
-  // leo 总开关关闭：入口（按钮/气泡）与面板全部不渲染。
-  if (!enabled) return null;
+  // leo 总开关关闭：划词气泡不渲染；面板仍可通过输入框图标或显式事件唤起。
 
   return (
     <div data-ai-assistant-root>
-      {enableSelection && <SelectionBubble />}
-      {!open && !hideFloatingButton && (
+      {enabled && enableSelection && <SelectionBubble />}
+      {enabled && !open && !hideFloatingButton && (
         <button
-          onClick={() => openLeoAssistant()}
+          onClick={() => openLeoAssistant({ toggle: true })}
           aria-label={panelTitle}
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-slate-800"
         >
@@ -510,14 +521,34 @@ export function LeoAssistant({
             {panelTitle}
             <DragDots />
           </div>
-          <button
-            data-leo-no-drag
-            onClick={() => setOpen(false)}
-            aria-label={tt("关闭")}
-            className="text-slate-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-slate-700"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              data-leo-no-drag
+              type="button"
+              onClick={() => {
+                if (enabled) {
+                  setLeoEnabled(false);
+                  setOpen(false);
+                } else {
+                  setLeoEnabled(true);
+                }
+              }}
+              aria-label={enabled ? tt("停用") : tt("启用")}
+              title={enabled ? tt("停用 leo（选中文本后不再显示气泡）") : tt("启用 leo")}
+              className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+            >
+              {enabled ? tt("停用") : tt("启用")}
+            </button>
+            <button
+              data-leo-no-drag
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label={tt("关闭")}
+              className="text-slate-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-slate-700"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <Panel
@@ -549,6 +580,10 @@ function SelectionBubble() {
     let raf = 0;
     const update = () => {
       raf = 0;
+      if (!isLeoEnabled()) {
+        setBubble(null);
+        return;
+      }
       const active = document.activeElement;
       // ① 输入框内部选区（textarea / text input）。
       if (
