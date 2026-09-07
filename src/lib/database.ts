@@ -205,6 +205,9 @@ export interface StorageUsage {
   cached?: boolean;
   /** 已买的加量包数（老后端没有这些字段时按 0 / 缺失处理）。 */
   packs?: number;
+  /** 单包月价（账本货币主单位）+ 货币码；`pack_price_cny` 是旧网关（仅 CNY 账本）的别名。 */
+  pack_price?: number;
+  currency?: string;
   pack_price_cny?: number;
   pack_bytes?: number;
   max_packs?: number;
@@ -232,6 +235,10 @@ export function changeStoragePacks(packs: number) {
     ok: boolean;
     packs: number;
     limit_bytes: number;
+    currency?: string;
+    charged_minor?: number;
+    balance_minor?: number;
+    /** 旧网关字段名（同一个数，最小单位）。 */
     charged_fen?: number;
     balance_fen?: number;
     message?: string;
