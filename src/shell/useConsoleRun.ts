@@ -35,7 +35,10 @@ import {
   type ConsoleArtifactInput,
 } from "../lib/agent";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
-import type { SessionCreateIntent } from "./workspace-session-model";
+import {
+  canCreateSessionWithIntent,
+  type SessionCreateIntent,
+} from "./workspace-session-intent";
 
 export interface UseConsoleRunArgs {
   siteId: string;
@@ -139,6 +142,12 @@ export function useConsoleRun({
           explicitSessionId ||
           ""
         );
+      }
+      // 没带 opsState 也一样守建档规则：attach 只拿现有会话（没有就空串继续），
+      // 只有伴随产物的调用才走 artifactContext 建档。
+      if (!canCreateSessionWithIntent(intent)) {
+        const active = await workspace.ensureActive({ title, intent });
+        return active?.id || workspace.sessionId || "";
       }
       const context = await workspace.artifactContext(title);
       if (context) return context.sessionId;
