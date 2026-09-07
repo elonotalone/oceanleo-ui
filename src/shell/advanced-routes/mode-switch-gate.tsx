@@ -41,6 +41,8 @@ import {
 import { createPortal } from "react-dom";
 
 import { useUI } from "../../i18n/ui/useUI";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import type { PluginThemeId } from "../plugin-theme";
 
 export type ModeSwitchFace = "normal" | "pro";
 
@@ -192,6 +194,25 @@ export function ModeSwitchGate({
         (overlayHost ? createPortal(overlay, overlayHost) : overlay)}
     </div>
   );
+}
+
+export interface PluginModeSwitchGateProps
+  extends Omit<ModeSwitchGateProps, "pro"> {
+  /** 读哪个插件的 L0 模式（`usePluginMode(pluginId).pro`）。 */
+  pluginId: PluginThemeId;
+}
+
+/**
+ * 按插件 L0 模式开关驱动的门：6 个双核路由（Audio / Chart / Deck / Model3D / RichDoc /
+ * VideoTimeline）以前各写一个旧式 gate 函数读 `usePluginMode(id).pro` 再在两棵树间
+ * remount，现在都换成这一个。PdfRoute 的模式住在路由自己的 state 里，直接用 `ModeSwitchGate`。
+ */
+export function PluginModeSwitchGate({
+  pluginId,
+  ...rest
+}: PluginModeSwitchGateProps) {
+  const { pro } = usePluginMode(pluginId);
+  return <ModeSwitchGate pro={pro} {...rest} />;
 }
 
 function ModeSwitchFaceSlot({

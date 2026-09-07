@@ -24,6 +24,7 @@ import { usePluginCommandSurface } from "../plugin-command";
 import { createChartCommandSurface } from "../chart-editor/chart-command-surface";
 import { visualImportPlan } from "../media-editors/visual-formats";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 
 const ChartNextStage = dynamic(
   () =>
@@ -40,10 +41,15 @@ export function ChartRoute(props: AdvancedContentWorkbenchProps) {
   return <ChartLegacyRoute {...props} />;
 }
 
+/** 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。 */
 function ChartLegacyRoute(props: AdvancedContentWorkbenchProps) {
-  const { pro } = usePluginMode("chart-editor");
-  if (pro) return <ChartNextStage {...props} />;
-  return <ChartLegacyBody {...props} />;
+  return (
+    <PluginModeSwitchGate
+      pluginId="chart-editor"
+      renderNormal={() => <ChartLegacyBody {...props} />}
+      renderPro={() => <ChartNextStage {...props} />}
+    />
+  );
 }
 
 function ChartLegacyBody({
@@ -63,8 +69,10 @@ function ChartLegacyBody({
     editor.loading ||
     !editor.sourceReady ||
     Boolean(editor.error && !editor.dirty);
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，ChartLegacyRoute remount 新核。
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂新核。
   const { setMode: setEditorMode } = usePluginMode("chart-editor");
+  // 切回「编辑」时的 ready 信号：图表源载入完（成功或已判定失败）就算首帧可见。
+  useModeSwitchReady(!editor.loading);
   const buildSavedItem = useCallback(
     (saved: ChartSaveResult): LibraryItem => {
       if (saved.item) {

@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -134,6 +135,8 @@ export function AudioPlaylistStage({
   const chipsManifest = useMemo(() => audioToolsManifestChips(), []);
   const readonly = conversion === "readonly" || conversion === "converting";
   const applied = applyAudioNextMode(instanceId, mode);
+  // 过渡门的 ready 信号（plugin-ui U4）：专业面等 AudioMass 的协议 ready，普通面等音频载入完。
+  useModeSwitchReady(mode === "pro" ? ready : !loading);
 
   useEffect(() => {
     try {

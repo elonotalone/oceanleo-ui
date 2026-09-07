@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useModeSwitchReady } from "./mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import {
@@ -152,6 +153,8 @@ export function DeckHostedRoute({
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  // 过渡门的 ready 信号（plugin-ui U4）：PPTist 的协议 ready 到达即首帧可见。
+  useModeSwitchReady(ready);
 
   useEffect(() => {
     const inline = inlineSourceFromItem(item);

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -57,13 +58,14 @@ export function AudioRoute(props: AdvancedContentWorkbenchProps) {
   if (resolveEditorCore("audio") === "next") {
     return <AudioPlaylistStage {...props} />;
   }
-  return <AudioLegacyGate {...props} />;
-}
-
-function AudioLegacyGate(props: AdvancedContentWorkbenchProps) {
-  const { pro } = usePluginMode("audio");
-  if (pro) return <AudioPlaylistStage {...props} />;
-  return <AudioLegacyRoute {...props} />;
+  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
+  return (
+    <PluginModeSwitchGate
+      pluginId="audio"
+      renderNormal={() => <AudioLegacyRoute {...props} />}
+      renderPro={() => <AudioPlaylistStage {...props} />}
+    />
+  );
 }
 
 function AudioLegacyRoute({
@@ -176,8 +178,10 @@ function AudioLegacyRoute({
     },
     [editor.importSource],
   );
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，AudioLegacyGate remount 新核。
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂新核。
   const { setMode: setEditorMode } = usePluginMode("audio");
+  // 切回「编辑」时的 ready 信号：音频载入完就算首帧可见。
+  useModeSwitchReady(!editor.loading);
   return (
     <AdvancedWorkbenchShell
       item={item}

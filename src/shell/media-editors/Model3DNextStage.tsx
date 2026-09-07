@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -139,6 +140,8 @@ export function Model3DNextStage({
   const readonly = conversion === "readonly" || conversion === "converting";
   const applied = applyModel3DNextMode(instanceId, mode);
   const showHosted = applied.showHostedEditor && Boolean(hostedSrc) && frameMounted;
+  // 过渡门的 ready 信号（plugin-ui U4）：专业面等 three.js editor 的协议 ready，普通面等模型 URL 就位。
+  useModeSwitchReady(mode === "pro" ? ready : Boolean(objectUrl));
 
   useEffect(() => {
     rememberEditorChips("threed", MODEL3D_AGENT_CHIPS);

@@ -13,7 +13,11 @@ import { fetchMediaBlob } from "../../lib/media-proxy";
 import { PdfContextToolbar } from "../media-editors/PdfContextToolbar";
 import { PdfControls } from "../media-editors/PdfControls";
 import { PdfStage } from "../media-editors/PdfStage";
-import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
+import {
+  usePdfWorkbench,
+  type PdfWorkbenchState,
+} from "../media-editors/use-pdf-workbench";
+import { ModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 import {
   PDF_MAX_ZOOM,
   PDF_MIN_ZOOM,
@@ -45,6 +49,18 @@ const PdfNextStage = dynamic(
     ),
   { ssr: false, loading: () => null },
 );
+
+/** 旧核舞台 + 切回「编辑」时的 ready 信号：页数解析出来就算首帧可见。 */
+function PdfLegacyFace({
+  editor,
+  accent,
+}: {
+  editor: PdfWorkbenchState;
+  accent: string;
+}) {
+  useModeSwitchReady(!editor.loading && editor.pageCount > 0);
+  return <PdfStage editor={editor} accent={accent} />;
+}
 
 export function PdfRoute({
   item,
@@ -220,18 +236,24 @@ export function PdfRoute({
               ]
             : undefined,
         // flag=`next` 或专业模式走 EmbedPDF 叶子（普通模式我们自己画、专业
-        // 模式换成上游即用查看器，**同一份字节**）。
-        stage:
-          core === "next" || mode === "pro" ? (
-            <PdfNextStage
-              bytes={nextCoreEditor.currentBytes()}
-              name={`${item.title || "document"}.pdf`}
-              mode={mode}
-              onFailure={setNextCoreFailure}
-            />
-          ) : (
-            <PdfStage editor={editor} accent={accent} />
-          ),
+        // 模式换成上游即用查看器，**同一份字节**）。`effectiveCore` 判定保留，
+        // 两面之间经同一个过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
+        stage: (
+          <ModeSwitchGate
+            pro={effectiveCore === "next"}
+            renderNormal={() => (
+              <PdfLegacyFace editor={editor} accent={accent} />
+            )}
+            renderPro={() => (
+              <PdfNextStage
+                bytes={nextCoreEditor.currentBytes()}
+                name={`${item.title || "document"}.pdf`}
+                mode={mode}
+                onFailure={setNextCoreFailure}
+              />
+            )}
+          />
+        ),
         // §6: a failed load reaches the shell status bar with its code, so the
         // route never presents an empty stage with no stated reason.
         status:

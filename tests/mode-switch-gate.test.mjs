@@ -62,16 +62,36 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// L0 模式 store 的可控替身：PluginModeSwitchGate 例用它翻 pro。同一 data: URL
+// 只实例化一次，所以下面 `import(pluginModeStub)` 拿到的就是门里那一份。
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const pluginModeStub = dataModule(`
+  import { useSyncExternalStore } from ${JSON.stringify(reactUrl)};
+  let mode = "normal";
+  const listeners = new Set();
+  export function __setPluginMode(next) { mode = next; for (const l of listeners) l(); }
+  export function usePluginMode(pluginId) {
+    const current = useSyncExternalStore(
+      (l) => { listeners.add(l); return () => listeners.delete(l); },
+      () => mode,
+      () => "normal",
+    );
+    return { mode: current, pro: current === "pro", pluginId, setMode: __setPluginMode, toggle() {} };
+  }
+`);
 const gateUrl = await compileModule(
   "src/shell/advanced-routes/mode-switch-gate.tsx",
   {
     "../../i18n/ui/useUI": dataModule(
       `export function useUI() { return (key) => key; }`,
     ),
+    "../plugin-chrome/plugin-mode": pluginModeStub,
   },
 );
+const { __setPluginMode } = await import(pluginModeStub);
 const {
   ModeSwitchGate,
+  PluginModeSwitchGate,
   useModeSwitchReady,
   MODE_SWITCH_FALLBACK_MS,
 } = await import(gateUrl);
@@ -343,6 +363,45 @@ test("beforeEnterPro reject 不卡门：照样挂专业面", async () => {
     assert.ok(m.q("[data-face=pro]"));
   } finally {
     await m.unmount();
+  }
+});
+
+test("PluginModeSwitchGate：由 usePluginMode(id).pro 驱动，语义与 ModeSwitchGate 一致", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const q = (selector) => container.querySelector(selector);
+  let setProReady = null;
+  function PluginHost() {
+    const [proReady, setReady] = useState(false);
+    setProReady = setReady;
+    return h(PluginModeSwitchGate, {
+      pluginId: "audio",
+      renderNormal: () => h(Face, { name: "normal", ready: true }),
+      renderPro: () => h(Face, { name: "pro", ready: proReady }),
+    });
+  }
+  try {
+    await act(async () => {
+      __setPluginMode("normal");
+      root.render(h(PluginHost));
+    });
+    assert.ok(q("[data-face=normal]"));
+    assert.equal(q("[data-face=pro]"), null);
+
+    await act(async () => __setPluginMode("pro"));
+    assert.ok(q("[data-face=normal]"), "store 翻 pro 后旧面被先卸了");
+    assert.ok(q("[data-mode-switch-pending]"));
+    assert.equal(isHiddenPending(q("[data-face=pro]")), true);
+
+    await act(async () => setProReady(true));
+    assert.equal(q("[data-face=normal]"), null);
+    assert.equal(q("[data-mode-switch-pending]"), null);
+    assert.equal(q("[data-mode-switch-gate]").getAttribute("data-mode-switch-shown"), "pro");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    __setPluginMode("normal");
   }
 });
 

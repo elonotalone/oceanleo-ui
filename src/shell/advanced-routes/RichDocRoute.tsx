@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -60,19 +61,18 @@ export function RichDocRoute(props: AdvancedContentWorkbenchProps) {
       </Suspense>
     );
   }
-  return <RichDocLegacyGate {...props} />;
-}
-
-function RichDocLegacyGate(props: AdvancedContentWorkbenchProps) {
-  const { pro } = usePluginMode("richdoc");
-  if (pro) {
-    return (
-      <Suspense fallback={null}>
-        <RichDocHostedRoute {...props} />
-      </Suspense>
-    );
-  }
-  return <RichDocLegacyRoute {...props} />;
+  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到 Umo 发 ready，中间是舞台内的切换覆盖层。
+  return (
+    <PluginModeSwitchGate
+      pluginId="richdoc"
+      renderNormal={() => <RichDocLegacyRoute {...props} />}
+      renderPro={() => (
+        <Suspense fallback={null}>
+          <RichDocHostedRoute {...props} />
+        </Suspense>
+      )}
+    />
+  );
 }
 
 function RichDocLegacyRoute({
@@ -95,8 +95,10 @@ function RichDocLegacyRoute({
     officeSource.resourceFailed,
   );
   const [exportError, setExportError] = useState("");
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，RichDocLegacyGate remount 托管件。
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
   const { setMode: setEditorMode } = usePluginMode("richdoc");
+  // 切回「编辑」时的 ready 信号：文档载入完就算首帧可见。
+  useModeSwitchReady(!editor.loading && !officeSource.loading);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "richdoc-materials@2",

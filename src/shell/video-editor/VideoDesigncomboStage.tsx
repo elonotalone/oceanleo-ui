@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -107,6 +108,8 @@ export function VideoDesigncomboStage({
   const [exporting, setExporting] = useState(false);
   const [legacyDoc, setLegacyDoc] = useState<unknown>(null);
   const chipsManifest = useMemo(() => videoToolsManifestChips(), []);
+  // 过渡门的 ready 信号（plugin-ui U4）：工程载入结束就算首帧可见。
+  useModeSwitchReady(!loading);
   const readonly =
     conversion === "readonly" ||
     conversion === "converting" ||

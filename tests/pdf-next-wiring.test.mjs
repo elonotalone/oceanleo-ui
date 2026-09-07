@@ -76,8 +76,12 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   );
   // `ssr: false` 是硬要求：PDFium 是 WASM + blob worker，服务端两者都不存在。
   assert.match(route, /\{ ssr: false, loading: \(\) => null \}/);
-  // 舞台按 flag 或专业模式分流；旧核那一支仍在。
-  assert.match(route, /core === "next" \|\| mode === "pro" \? \(\s*<PdfNextStage/);
+  // 舞台按 flag 或专业模式分流，但两面之间经 ModeSwitchGate（plugin-ui U4）：
+  // 切模式时旧面留到新面 ready，不再是三元式立即换树。旧核那一支仍在。
+  assert.match(route, /const effectiveCore = core === "next" \|\| mode === "pro" \? "next" : "legacy";/);
+  assert.match(route, /<ModeSwitchGate\s+pro=\{effectiveCore === "next"\}/);
+  assert.match(route, /renderPro=\{\(\) => \(\s*<PdfNextStage/);
+  assert.doesNotMatch(route, /core === "next" \|\| mode === "pro" \? \(\s*<PdfNextStage/);
   assert.match(route, /<PdfStage editor=\{editor\} accent=\{accent\} \/>/);
 });
 
@@ -389,6 +393,9 @@ const viewerStubUrl = dataModule(`
     const docs = (cfg.documentManager && cfg.documentManager.initialDocuments) || [];
     const first = docs[0] || {};
     const hasBuffer = Boolean(first.buffer && first.buffer.byteLength > 0);
+    // 上游查看器的 onReady（插件就绪）由测试手动触发：ModeSwitchGate 例要先看到
+    // 「旧面仍在 + 覆盖层」，再放 ready。
+    globalThis.__pdfViewerOnReady = props.onReady;
     return jsx("div", {
       "data-embedpdf-viewer": "",
       "data-wasm-url": String(cfg.wasmUrl || ""),
@@ -429,6 +436,10 @@ const routeStubs = {
   ),
   "@embedpdf/engines/react": pdfiumStubUrl,
   "@embedpdf/react-pdf-viewer": viewerStubUrl,
+  // ModeSwitchGate 的覆盖层文案走 tt()；这里没有 IntlProvider，key 原样回显。
+  "../../i18n/ui/useUI": dataModule(
+    `export function useUI() { return (key) => key; }`,
+  ),
 };
 
 let routeModule;
@@ -663,11 +674,12 @@ test("flag=next 再切专业模式：即用查看器带着同一份字节挂上�
   });
 });
 
-test("默认档点专业模式：同一份字节上的即用查看器挂上来", async () => {
+test("默认档点专业模式：旧舞台留到查看器 ready，中间是舞台内覆盖层；ready 后换成同一份字节上的即用查看器", async () => {
   assert.equal(resolveEditorCore("pdf"), "legacy");
   const previousWasm = process.env[PDFIUM_WASM_ENV_KEY];
   process.env[PDFIUM_WASM_ENV_KEY] = SELF_HOSTED_WASM;
   globalThis.__pdfiumEngineCalls = [];
+  globalThis.__pdfViewerOnReady = null;
   try {
     const { container, clickPro, unmount } = await mountPdfRoute();
     try {
@@ -675,6 +687,7 @@ test("默认档点专业模式：同一份字节上的即用查看器挂上来",
         container.querySelector("[data-pdf-legacy-stage]"),
         "默认档开场应仍是旧舞台",
       );
+      assert.equal(container.querySelector("[data-mode-switch-pending]"), null);
       await clickPro();
       const viewer = await waitFor(
         container,
@@ -682,15 +695,46 @@ test("默认档点专业模式：同一份字节上的即用查看器挂上来",
         "默认档点了专业编辑页，查看器没挂上。setMode 没交出、或 stage 仍只看 flag。",
       );
       assert.equal(viewer.getAttribute("data-has-buffer"), "1");
+      // plugin-ui U4 新语义：查看器 ready 之前旧舞台**还在**，舞台上有切换覆盖层，
+      // 新面在覆盖层之下 visibility:hidden 预挂（不是 display:none / aria-hidden）。
+      assert.ok(
+        container.querySelector("[data-pdf-legacy-stage]"),
+        "查看器还没 ready 就卸了旧舞台——这就是用户看到的留白",
+      );
+      const overlay = container.querySelector("[data-mode-switch-pending='pro']");
+      assert.ok(overlay, "切专业模式时没有 data-mode-switch-pending 覆盖层");
+      assert.equal(overlay.parentElement, container.querySelector("[data-mode-switch-gate]"));
+      const pendingSlot = viewer.closest("[data-mode-switch-face='pro']");
+      assert.equal(pendingSlot.getAttribute("data-mode-switch-face-state"), "pending");
+      assert.match(pendingSlot.getAttribute("style") || "", /visibility:\s*hidden/i);
+      assert.equal(findHiddenAncestor(viewer), null, "待命面只许 visibility:hidden");
+
+      assert.equal(typeof globalThis.__pdfViewerOnReady, "function", "ProViewer 没把 onReady 交给查看器");
+      await act(async () => {
+        globalThis.__pdfViewerOnReady();
+      });
+      await settle();
       assert.equal(
         container.querySelector("[data-pdf-legacy-stage]"),
         null,
-        "专业模式还停在旧舞台",
+        "查看器 ready 之后旧舞台还在",
+      );
+      assert.equal(container.querySelector("[data-mode-switch-pending]"), null, "ready 之后覆盖层还在");
+      const shownViewer = container.querySelector("[data-embedpdf-viewer]");
+      assert.ok(shownViewer);
+      assert.equal(
+        shownViewer.closest("[data-mode-switch-face='pro']").getAttribute("data-mode-switch-face-state"),
+        "shown",
+      );
+      assert.doesNotMatch(
+        shownViewer.closest("[data-mode-switch-face='pro']").getAttribute("style") || "",
+        /visibility/i,
       );
     } finally {
       await unmount();
     }
   } finally {
+    globalThis.__pdfViewerOnReady = null;
     if (previousWasm === undefined) delete process.env[PDFIUM_WASM_ENV_KEY];
     else process.env[PDFIUM_WASM_ENV_KEY] = previousWasm;
     globalThis.__pdfiumEngineCalls = [];

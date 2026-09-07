@@ -40,6 +40,7 @@ import {
   resolvePdfiumWasmUrl,
 } from "./pdf-next-runtime";
 import type { EditorMode } from "../hosted-editor";
+import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 
 export interface PdfNextStageProps {
   /** 当前文档字节。两个模式共用这一份 —— 同一文档实例（规范 §7 判据 1）。 */
@@ -145,6 +146,8 @@ function ProViewer({
   > | null>(null);
   const [timeoutError, setTimeoutError] = useState("");
   const pluginsReadyRef = useRef(false);
+  // 过渡门的 ready 信号（plugin-ui U4）：查看器插件就绪（下面 onReady）即首帧可见。
+  const markModeSwitchReady = useModeSwitchReady();
 
   useEffect(() => {
     let alive = true;
@@ -216,6 +219,7 @@ function ProViewer({
         }}
         onReady={() => {
           pluginsReadyRef.current = true;
+          markModeSwitchReady();
         }}
       />
     </div>

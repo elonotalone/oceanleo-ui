@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -66,6 +67,8 @@ export function ChartNextStage({
   const toolsManifest = useMemo(() => chartToolsManifestChips(), []);
   const [mode, setModeState] = useState<EditorMode>(CHART_NEXT_DEFAULT_MODE);
   const chrome = applyChartNextMode(CHART_NEXT_INSTANCE_ID, mode);
+  // 过渡门的 ready 信号（plugin-ui U4）：图表源载入结束就算首帧可见。
+  useModeSwitchReady(!editor.loading);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const exportBusyRef = useRef(false);

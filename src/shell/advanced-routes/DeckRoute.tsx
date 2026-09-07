@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -83,19 +84,18 @@ export function DeckRoute(props: AdvancedContentWorkbenchProps) {
       </Suspense>
     );
   }
-  return <DeckLegacyGate {...props} />;
-}
-
-function DeckLegacyGate(props: AdvancedContentWorkbenchProps) {
-  const { pro } = usePluginMode("deck");
-  if (pro) {
-    return (
-      <Suspense fallback={null}>
-        <DeckHostedRoute {...props} />
-      </Suspense>
-    );
-  }
-  return <DeckLegacyRoute {...props} />;
+  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到 PPTist 发 ready，中间是舞台内的切换覆盖层。
+  return (
+    <PluginModeSwitchGate
+      pluginId="deck"
+      renderNormal={() => <DeckLegacyRoute {...props} />}
+      renderPro={() => (
+        <Suspense fallback={null}>
+          <DeckHostedRoute {...props} />
+        </Suspense>
+      )}
+    />
+  );
 }
 
 /** 自研 deck 引擎（旧核）。本波一个字未动，等 V1/V2 验收绿后整体删除。 */
@@ -132,8 +132,10 @@ function DeckLegacyRoute({
   const presenterDisposeRef = useRef<(() => void) | null>(null);
   // 两个窗口必须同名才通道得上（W16-request §2）。
   const presenterChannelName = `deck-${item.id}`;
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，DeckLegacyGate remount 托管件。
+  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
   const { setMode: setEditorMode } = usePluginMode("deck");
+  // 切回「编辑」时的 ready 信号：演示文稿载入完就算首帧可见。
+  useModeSwitchReady(!editor.loading && !officeSource.loading);
 
   const exitPresentation = useCallback(() => {
     presenterDisposeRef.current?.();

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useModeSwitchReady } from "./mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
@@ -146,6 +147,8 @@ export function RichDocHostedRoute({
   const [readOnly, setReadOnly] = useState(true);
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  // 过渡门的 ready 信号（plugin-ui U4）：Umo 的协议 ready 到达即首帧可见。
+  useModeSwitchReady(ready);
 
   useEffect(() => {
     const inline = inlineSourceFromItem(item);
