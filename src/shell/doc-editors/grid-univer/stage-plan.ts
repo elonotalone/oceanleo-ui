@@ -234,6 +234,8 @@ export interface GridUniverLiveApi {
   redo?: () => unknown;
   createWorkbook?: (data: unknown) => unknown;
   disposeUnit?: (unitId: string) => unknown;
+  /** `FUniver.getFormula()`：编辑栏「重新计算」走它的 `executeCalculation()`（强制全量）。 */
+  getFormula?: () => { executeCalculation?: () => unknown } | null | undefined;
 }
 
 export interface GridUniverFacadeRangeLike {

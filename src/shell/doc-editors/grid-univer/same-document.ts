@@ -1,6 +1,10 @@
 /**
- * 打开专业页时读哪一份：交接 → Univer 工程 → legacy 工程 → office xlsx → 空表。
- * 会话交接的存储在 `live-handoff.ts`，本文件只做打开计划，供 Univer 舞台使用。
+ * 打开表格时读哪一份：Univer 工程 → legacy 工程 → office xlsx → 空表。
+ *
+ * 2026-09-07 前这里还有第一优先级「会话交接」（`live-handoff.ts`）：旧核「编辑」页
+ * 与 Univer「专业」页是两棵组件树，切页要靠 globalThis 上的交接把内存里的表带过去。
+ * 旧核删掉后（core-swap:delete grid）两种模式是同一个 Univer 实例切 chrome，
+ * 没有第二棵树要接，交接连同 flush 登记一起删了。
  */
 
 import type { IWorkbookData } from "@univerjs/presets";
@@ -10,24 +14,26 @@ import {
   GRID_UNIVER_PROJECT_SCHEMA,
   planGridLegacyConversion,
 } from "./legacy-conversion";
-import { type GridLiveHandoff } from "./live-handoff";
 import { gridSheetsToUniverSnapshot } from "./snapshot";
 
-export {
-  GRID_PRO_LABEL,
-  GRID_UNIVER_PROJECT_SCHEMA_ID,
-  clearGridLiveHandoff,
-  flushGridLiveDocument,
-  gridItemKey,
-  itemWithoutUniverProjectPin,
-  peekGridLiveHandoff,
-  publishGridLiveHandoff,
-  registerGridLiveFlush,
-  takeGridLiveHandoff,
-  type GridLiveFlushResult,
-  type GridLiveHandoff,
-  type GridLiveHandoffSource,
-} from "./live-handoff";
+/** 第二行「专业编辑」页在表格件上的名字。 */
+export const GRID_PRO_LABEL = "Univer";
+
+/**
+ * 崩溃恢复键。旧核记 `grid:*`，Univer 记 `grid-univer:*`——
+ * 旧核已删，但库里可能还躺着旧核写下的 `grid:*` 草稿（形状是 `{sheets:[…]}`），
+ * 同一把键会让它被当成工作簿快照灌进 Univer，Univer 另起一本空簿，用户看见白画布。
+ * 键名不同 + `isUniverWorkbookSnapshot` 双保险。
+ */
+export const GRID_UNIVER_RECOVERY_EDITOR_ID = "grid-univer";
+
+/** 只认 Univer 工作簿快照：`sheets` 是对象（不是数组）且至少一张表。 */
+export function isUniverWorkbookSnapshot(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const sheets = (payload as { sheets?: unknown }).sheets;
+  if (!sheets || typeof sheets !== "object" || Array.isArray(sheets)) return false;
+  return Object.keys(sheets as Record<string, unknown>).length > 0;
+}
 
 export function sheetsFromLegacyProjectData(data: unknown): GridSheet[] | null {
   if (!data || typeof data !== "object") return null;
@@ -39,12 +45,6 @@ export function sheetsFromLegacyProjectData(data: unknown): GridSheet[] | null {
 export type GridSameDocumentPlan =
   | {
       kind: "univer";
-      snapshot: Partial<IWorkbookData>;
-      editable: true;
-    }
-  | {
-      kind: "legacy-live";
-      sheets: GridSheet[];
       snapshot: Partial<IWorkbookData>;
       editable: true;
     }
@@ -81,39 +81,14 @@ function emptyWorkbookSnapshot(title: string): Partial<IWorkbookData> {
 }
 
 export function planGridSameDocumentOpen(input: {
-  itemKey: string;
   schema?: string;
   title?: string;
-  handoff?: GridLiveHandoff | null;
   univerSnapshot?: Partial<IWorkbookData> | null;
   legacySheets?: GridSheet[] | null;
   officeSheets?: GridSheet[] | null;
 }): GridSameDocumentPlan {
   const title = input.title || "工作簿";
   const schema = String(input.schema || "");
-  const handoff =
-    input.handoff &&
-    (!input.handoff.itemKey ||
-      !input.itemKey ||
-      input.handoff.itemKey === input.itemKey)
-      ? input.handoff
-      : null;
-
-  if (handoff) {
-    const snapshot = handoff.univerSnapshot as Partial<IWorkbookData> | null;
-    if (snapshot && typeof snapshot === "object" && Object.keys(snapshot).length > 0) {
-      return { kind: "univer", snapshot, editable: true };
-    }
-    const sheets = (handoff.sheets || []) as GridSheet[];
-    if (sheets.length > 0) {
-      return {
-        kind: "legacy-live",
-        sheets,
-        snapshot: snapshotFromSheets(sheets, title),
-        editable: true,
-      };
-    }
-  }
 
   if (schema === GRID_UNIVER_PROJECT_SCHEMA && input.univerSnapshot) {
     return {

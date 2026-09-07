@@ -27,7 +27,7 @@ import { PLUGIN_COMMAND_PARAM_MAX_BYTES } from "../plugin-command/types";
 import type { PdfWorkbenchState } from "../media-editors/pdf-workbench-state";
 import { DECK_IR_LAYOUTS } from "./deck-layout-grid";
 import type { DeckEditorState } from "./use-deck-editor";
-import type { GridEditorState } from "./use-grid-editor";
+import type { GridCommandEditorState } from "./grid-shared";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
 import {
   DOC_FAMILY_DOWNLOAD_FORMATS,
@@ -683,7 +683,7 @@ const GRID_SPECS: readonly PluginCommandSpec[] = [
   },
 ];
 
-function gridBounds(editor: GridEditorState): { rows: number; columns: number } {
+function gridBounds(editor: GridCommandEditorState): { rows: number; columns: number } {
   const rows = editor.activeSheet?.rows || [];
   return {
     rows: rows.length,
@@ -692,7 +692,7 @@ function gridBounds(editor: GridEditorState): { rows: number; columns: number } 
 }
 
 export function buildGridCommandSurface(
-  editor: GridEditorState,
+  editor: GridCommandEditorState,
   deps: DocFamilyCommandDeps,
 ): PluginCommandSurfaceInput {
   const ready = !editor.loading;

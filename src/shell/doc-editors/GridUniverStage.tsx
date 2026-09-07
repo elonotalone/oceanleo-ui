@@ -1,18 +1,29 @@
 "use client";
 
 /**
- * 表格新核（Univer Sheets 0.25.1）的叶子 —— flag=`next` 时才被 `GridRoute`
- * 经 `dynamic(..., { ssr: false })` 拉起。
+ * 表格件的唯一舞台（Univer Sheets 0.25.1），由 `GridRoute` 经
+ * `dynamic(..., { ssr: false })` 拉起。自研旧表格已删（core-swap:delete grid）。
  *
  * 本文件是唯一 `createUniver` / `@univerjs/preset-sheets-*` 运行时 import 的地方
  * （`W01-deps.md` §4）。判定、chrome、命令端口全在 `grid-univer/stage-plan.ts`，
  * 那些测试能直接跑；这里只负责挂载。
  *
- * 专业模式：`applyGridUniverMode` 走 `buildSetModeMessage` 校验闭集，再
- * `setUIVisible` + DOM `display:none`。不 `postMessage`，不 `dispose` 重建。
+ * 两种模式、一个实例：普通 = 这个 Univer 关掉 ribbon / 公式栏，专业 = 打开它们。
+ * 模式直接读 L0 store（`usePluginMode("grid")`），页面行点「Univer」→ store 变 →
+ * `useLayoutEffect` 里 `applyChrome` 在同一帧内落到 DOM。`applyGridUniverMode`
+ * 走 `buildSetModeMessage` 校验闭集，再 `setUIVisible` + DOM `display:none`。
+ * 不 `postMessage`，不 `dispose` 重建。`dispose` 只在卸载时跑，而且推到 React
+ * 提交之外（见挂载 effect 的 cleanup 注释）。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createUniver, LocaleType, mergeLocales } from "@univerjs/presets";
 import { UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
 import UniverPresetSheetsCoreZhCN from "@univerjs/preset-sheets-core/locales/zh-CN";
@@ -72,11 +83,11 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { SelectionToolbar } from "../SelectionToolbar";
-import {
-  DEFAULT_EDITOR_MODE,
-  type EditorMode,
-} from "../hosted-editor/index";
+import type { EditorMode } from "../hosted-editor/index";
 import type { SelectionCommand } from "../selection-context";
+import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { WorkbenchRouteLoading } from "../advanced-routes/WorkbenchRouteLoading";
+import { buildGridDocumentActions } from "./grid-univer/document-actions";
 import {
   GRID_LEGACY_PROJECT_SCHEMA,
   GRID_LEGACY_READONLY_NOTICE,
@@ -115,18 +126,11 @@ import {
   type GridUniverLiveApi,
 } from "./grid-univer/stage-plan";
 import {
+  GRID_PRO_LABEL,
   GRID_UNIVER_RECOVERY_EDITOR_ID,
   isUniverWorkbookSnapshot,
-  shouldRestoreGridRecovery,
-} from "./grid-univer/live-handoff";
-import {
-  GRID_PRO_LABEL,
-  gridItemKey,
   listUniverSnapshotValues,
-  peekGridLiveHandoff,
   planGridSameDocumentOpen,
-  publishGridLiveHandoff,
-  registerGridLiveFlush,
   replaceUniverWorkbookWithSnapshot,
   sheetsFromLegacyProjectData,
 } from "./grid-univer/same-document";
@@ -138,6 +142,18 @@ const GRID_SOURCE_MEDIA_TYPE =
 type UniverHandle = {
   univer: { dispose: () => void };
   api: GridUniverLiveApi;
+};
+
+/**
+ * 卸载时「停在路边」的实例：`dispose` 已排进下一个宏任务，但还没跑。
+ * 同一次提交里若紧接着又挂载（React 开发态 StrictMode 会把 effect 跑两遍：
+ * 挂 → 卸 → 挂），第二次挂载**收回**这台实例而不是再造一台——Univer 的 UI 层按
+ * 容器元素缓存 React root（`preset-sheets-core` 里的 WeakMap），同一容器上造第二台
+ * 会复用第一台的 root，随后第一台的 `dispose` 把第二台的 UI 一并卸掉。
+ */
+type ParkedUniver = {
+  handle: UniverHandle;
+  timer: ReturnType<typeof setTimeout>;
 };
 
 function emptySnapshot(title: string): Partial<IWorkbookData> {
@@ -154,13 +170,18 @@ export function GridUniverStage({
   const officeSource = useOfficeArtifactSource(item);
   const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<UniverHandle | null>(null);
+  const parkedRef = useRef<ParkedUniver | null>(null);
   const snapshotRef = useRef<Partial<IWorkbookData> | null>(null);
   const legacySheetsRef = useRef<ReturnType<typeof emptyGridSheet>[] | null>(
     null,
   );
-  const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
-  /** 本次打开是否由同会话交接供稿；是则崩溃草稿让路，见 `shouldRestoreGridRecovery`。 */
-  const openedFromHandoffRef = useRef(false);
+  /**
+   * 模式直接来自 L0 store：页面行、刷新后的记忆、别的标签页改的档位，
+   * 全部经同一个 `useSyncExternalStore` 收敛到这里。舞台自己不另存一份 mode。
+   */
+  const { mode, setMode } = usePluginMode("grid");
+  const modeRef = useRef<EditorMode>(mode);
+  modeRef.current = mode;
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [conversion, setConversion] = useState<GridConversionState>("converted");
   const [conversionNotice, setConversionNotice] = useState("");
@@ -208,27 +229,18 @@ export function GridUniverStage({
       try {
         const schema = String(item.meta.editor_project_schema || "");
         const projectUrl = String(item.meta.editor_project_url || "");
-        const itemKey = gridItemKey(item);
-        const handoff = peekGridLiveHandoff(itemKey);
-        openedFromHandoffRef.current = Boolean(handoff);
         let univerSnapshot: Partial<IWorkbookData> | null = null;
         let legacySheets: ReturnType<typeof sheetsFromLegacyProjectData> = null;
         let officeSheets: ReturnType<typeof emptyGridSheet>[] | null = null;
 
-        if (
-          !handoff &&
-          schema === GRID_UNIVER_PROJECT_SCHEMA &&
-          projectUrl
-        ) {
+        if (schema === GRID_UNIVER_PROJECT_SCHEMA && projectUrl) {
           univerSnapshot = await loadEditorProject<Partial<IWorkbookData>>(
             projectUrl,
             GRID_UNIVER_PROJECT_SCHEMA,
           );
-        } else if (
-          !handoff &&
-          projectUrl &&
-          schema !== GRID_UNIVER_PROJECT_SCHEMA
-        ) {
+        } else if (projectUrl && schema !== GRID_UNIVER_PROJECT_SCHEMA) {
+          // 存量用户的旧核工程档（`oceanleo.grid.v1`）：读进来、转成快照、只读打开。
+          // 这是旧文档进新核的入口，旧核运行时删了它也必须在。
           try {
             const project = await loadEditorProject<unknown>(
               projectUrl,
@@ -239,7 +251,7 @@ export function GridUniverStage({
             legacySheets = null;
           }
         }
-        if (!handoff && !univerSnapshot && !legacySheets) {
+        if (!univerSnapshot && !legacySheets) {
           officeSheets = await loadGridSheets(
             officeSource.item,
             undefined,
@@ -248,10 +260,8 @@ export function GridUniverStage({
         }
         if (cancelled) return;
         const planned = planGridSameDocumentOpen({
-          itemKey,
           schema,
           title,
-          handoff,
           univerSnapshot,
           legacySheets,
           officeSheets,
@@ -270,17 +280,6 @@ export function GridUniverStage({
           setConversion("converted");
           setConversionNotice("");
         }
-        publishGridLiveHandoff({
-          itemKey,
-          sheets:
-            planned.kind === "empty"
-              ? []
-              : planned.kind === "univer"
-                ? univerSnapshotToGridSheets(planned.snapshot)
-                : planned.sheets,
-          univerSnapshot: planned.snapshot,
-          source: "univer",
-        });
         setSnapshotReady(true);
       } catch (caught) {
         if (cancelled) return;
@@ -314,6 +313,15 @@ export function GridUniverStage({
     const container = containerRef.current;
     if (!container || !snapshotReady) return;
     if (handleRef.current) return;
+    const parked = parkedRef.current;
+    if (parked) {
+      // 同一次提交里卸了又挂（StrictMode 双跑）：收回停在路边的那台，不再造。
+      clearTimeout(parked.timer);
+      parkedRef.current = null;
+      handleRef.current = parked.handle;
+      applyChrome(modeRef.current);
+      return parkForDispose;
+    }
     const preset = gridUniverCorePresetConfig(GRID_UNIVER_DEFAULT_MODE, container);
     const created = createUniver({
       locale: LocaleType.ZH_CN,
@@ -363,19 +371,54 @@ export function GridUniverStage({
       liveCells: listUniverSnapshotValues(live),
     };
     handleRef.current = { univer: created.univer, api };
-    applyChrome(mode);
+    // 首帧就按当前档位收 chrome：普通档 ribbon / 公式栏在 Univer 画出来之前就是 off。
+    applyChrome(modeRef.current);
     const workbook = api.getActiveWorkbook?.();
     (workbook as { setEditable?: (value: boolean) => void } | null)?.setEditable?.(
       !readonly,
     );
-    return () => {
-      created.univer.dispose();
+    return parkForDispose;
+
+    /**
+     * 卸载 cleanup：`dispose` **只**在这里，而且推到下一个宏任务。
+     *
+     * 为什么不能同步：Univer 的 UI 层自建了一个 React root（`createRoot(container)`），
+     * `dispose()` 里同步 `root.unmount()`。我们这个 cleanup 跑在 React 的
+     * `flushPassiveEffects` 里，此时 React 的 executionContext 带着 CommitContext，
+     * 在里面同步卸另一个 root 就是控制台那条
+     * `Attempted to synchronously unmount a root while React was already rendering`。
+     *
+     * 为什么是 `setTimeout(…, 0)` 而不是 `queueMicrotask`：React 18 自己也用微任务
+     * （`scheduleMicrotask(flushSyncCallbacks)`）冲 sync lane，我们排的微任务与它的
+     * 先后取决于谁先入队，不能证明一定落在提交之外；宏任务开的是一个新的 task，
+     * 调用栈为空，React 不可能正处于渲染或提交中。
+     *
+     * 闪烁：舞台卸载时 React 已把容器 `<div>` 从 DOM 摘掉，Univer 的画布随容器一起
+     * 消失；随后的 `dispose` 作用在已分离的节点上，屏幕上没有第二次变化。
+     * `handleRef.current = null` 仍同步置空——卸载后任何路径都不该再拿到活句柄。
+     */
+    function parkForDispose() {
+      const live = handleRef.current;
       handleRef.current = null;
-    };
+      if (!live) return;
+      const parked: ParkedUniver = {
+        handle: live,
+        timer: setTimeout(() => {
+          if (parkedRef.current === parked) parkedRef.current = null;
+          live.univer.dispose();
+        }, 0),
+      };
+      parkedRef.current = parked;
+    }
     // 切 mode 不许走进这个 effect：dispose 只发生在卸载。
   }, [snapshotReady]);
 
-  useEffect(() => {
+  /**
+   * 模式 → chrome，同一帧内可见：`useLayoutEffect` 在 DOM 提交后、浏览器绘制前
+   * 同步跑，页面行点「Univer」这一下与 ribbon 出现在同一帧。
+   * 这里只切显示/隐藏，不碰实例：没有 `createUniver`、没有 `dispose`、没有 flush。
+   */
+  useLayoutEffect(() => {
     if (!handleRef.current) return;
     applyChrome(mode);
   }, [applyChrome, mode]);
@@ -604,20 +647,48 @@ export function GridUniverStage({
       }),
     };
   }, [item, save, status]);
-  useEffect(() => {
-    registerGridLiveFlush(() => saveBeforeNewConversation());
-    return () => registerGridLiveFlush(null);
-  }, [saveBeforeNewConversation]);
-  useEffect(() => {
-    if (!snapshotReady || loading) return;
-    const snapshot = currentSnapshot();
-    publishGridLiveHandoff({
-      itemKey: gridItemKey(item),
-      sheets: univerSnapshotToGridSheets(snapshot),
-      univerSnapshot: snapshot,
-      source: "univer",
-    });
-  }, [currentSnapshot, editRevision, item, loading, snapshotReady]);
+
+  /**
+   * 「重新计算」（规范 v2 §6 grid 行）。Univer 的公式引擎自己会算，但 `TODAY()` /
+   * `NOW()` / `RAND()` 这类易变函数要刷新，得有人显式要求一次全量重算——
+   * 这就是编辑栏上那一下：`getFormula().executeCalculation()`（forceCalculation）。
+   */
+  const recalculate = useCallback(() => {
+    const api = handleRef.current?.api;
+    const formula = api?.getFormula?.();
+    if (!formula?.executeCalculation) {
+      setStatus("表格内核还没准备好。");
+      return;
+    }
+    formula.executeCalculation();
+    setStatus("已重新计算全部公式。");
+    bumpHistory();
+  }, [bumpHistory]);
+
+  /**
+   * 源文件拿不到（签名 403 / rendition 解析失败）只给**一个**按钮「重新载入表格」，
+   * 走 `officeSource.retry`：它换一版 rendition → `officeSource.item` 变 → 载入 effect
+   * 重跑。不再同时给「刷新 source/full 后重试」——那是旧核为两条失败路径各配一个
+   * 按钮的遗留，这里两条路径汇成一个 retry，两个按钮就是重复。
+   */
+  const documentActions = useMemo(
+    () =>
+      buildGridDocumentActions({
+        recalculate,
+        loading: loading || !snapshotReady,
+        readonly,
+        sourceFailed: Boolean(officeSource.error),
+        reload: officeSource.retry,
+      }),
+    [
+      loading,
+      officeSource.error,
+      officeSource.retry,
+      readonly,
+      recalculate,
+      snapshotReady,
+    ],
+  );
 
   const importLocalFile = useCallback(
     async (files: File[]) => {
@@ -756,6 +827,8 @@ export function GridUniverStage({
           onTrigger: exportXlsx,
         },
         actions: [
+          // 文档段：「重新计算」在最前（规范 v2 §6 grid 行），其后是失败时的重载/重试。
+          ...documentActions,
           ...(readonly
             ? [
                 {
@@ -781,12 +854,27 @@ export function GridUniverStage({
           onFiles: importLocalFile,
         },
         stage: (
-          <div
-            ref={containerRef}
-            className="h-full w-full"
-            {...{ [GRID_UNIVER_STAGE_ATTR]: "true" }}
-            {...{ [GRID_UNIVER_MODE_ATTR]: mode }}
-          />
+          <div className="relative h-full w-full">
+            {/*
+              容器永远在树上：Univer 只认这个元素，加载态不能替换它，
+              否则 snapshot 就位时 `containerRef.current` 还是 null。
+            */}
+            <div
+              ref={containerRef}
+              className="h-full w-full"
+              {...{ [GRID_UNIVER_STAGE_ATTR]: "true" }}
+              {...{ [GRID_UNIVER_MODE_ATTR]: mode }}
+            />
+            {!snapshotReady && (
+              // 首次载入（读工程档 / xlsx、建实例之前）舞台不留白。
+              <div
+                className="absolute inset-0"
+                data-grid-univer-loading="true"
+              >
+                <WorkbenchRouteLoading />
+              </div>
+            )}
+          </div>
         ),
         status:
           conversionNotice ||
@@ -802,15 +890,8 @@ export function GridUniverStage({
             ready: snapshotReady && !loading,
             capture: () => currentSnapshot(),
             restore: (payload) => {
-              if (
-                !shouldRestoreGridRecovery({
-                  openedFromHandoff: openedFromHandoffRef.current,
-                  payload,
-                  accept: isUniverWorkbookSnapshot,
-                })
-              ) {
-                return false;
-              }
+              // 只认 Univer 工作簿快照：旧核写下的 `{sheets:[…]}` 草稿被拒，不灌进 Univer。
+              if (!isUniverWorkbookSnapshot(payload)) return false;
               const api = handleRef.current?.api;
               if (!api) return false;
               // 先建新簿再卸旧簿：先卸会让 Univer 空窗，新表常常不画。

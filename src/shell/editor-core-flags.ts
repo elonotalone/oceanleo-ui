@@ -9,6 +9,11 @@
 // 就会把新核推给全部站点。默认旧核 = 换核出问题时用户侧零影响，翻 flag 是一个
 // 显式动作、有人签字。反过来默认新核，「忘了关」和「决定要开」在代码上长得一样。
 //
+// 翻过 flag 的件（2026-09-07 起）：**grid** —— 台账里 `defaultChoice: "next"`，
+// 自研旧表格已按 `core-swap:delete grid` 删除，`resolveEditorCore("grid")` 无覆盖
+// 时返回 `next`。这就是「有人签字」的形状：默认档写在台账那一行，而不是改全局常量。
+// 其余 12 件仍走 `DEFAULT_EDITOR_CORE`（legacy）。
+//
 // ── 三条使用纪律 ────────────────────────────────────────────────────────────
 //  1. **不要把 flag 判定写在组件里。** 在 `advanced-routes/XxxRoute.tsx` 顶层判一次，
 //     然后 `dynamic()` 拉起两个之一。写在组件里等于两套核的模块图都进同一个 chunk，
@@ -42,6 +47,12 @@ export interface EditorCoreSpec {
   owner: string;
   /** 新核是 iframe 托管还是原生 React 组件。 */
   hosting: "native" | "hosted" | "none";
+  /**
+   * 这一件翻过 flag 之后的默认档。**缺省 = `DEFAULT_EDITOR_CORE`（legacy）**。
+   * 只有旧核已经删掉的件才写 `"next"`——旧核不在了，默认 legacy 就是渲染一个
+   * 不存在的组件。按件写而不是改全局常量，是为了让「哪几件翻了」一眼可查。
+   */
+  defaultChoice?: EditorCoreChoice;
 }
 
 /**
@@ -49,7 +60,13 @@ export interface EditorCoreSpec {
  * V4 的行数台账与 V1 的逐件验收都从这里对齐。
  */
 export const EDITOR_CORE_SPECS: Record<EditorCoreId, EditorCoreSpec> = {
-  grid: { nextCore: "Univer Sheets", owner: "W03", hosting: "native" },
+  // 2026-09-07 翻 flag：自研旧表格已删（core-swap:delete grid），只剩 Univer 一条路。
+  grid: {
+    nextCore: "Univer Sheets",
+    owner: "W03",
+    hosting: "native",
+    defaultChoice: "next",
+  },
   image: { nextCore: "Fabric 6（图片·设计合并）", owner: "W04", hosting: "native" },
   "design-canvas": { nextCore: "Fabric 6（同上）", owner: "W05", hosting: "native" },
   pdf: { nextCore: "EmbedPDF", owner: "W06", hosting: "native" },
@@ -72,8 +89,18 @@ export const EDITOR_CORE_SPECS: Record<EditorCoreId, EditorCoreSpec> = {
 /** 全部编辑器 id，顺序即上表顺序。 */
 export const EDITOR_CORE_IDS = Object.keys(EDITOR_CORE_SPECS) as EditorCoreId[];
 
-/** 默认档。**13 件全部 `legacy`**，`_COMMON.md` §10 第 3 条。 */
+/**
+ * 全局默认档：`legacy`（`_COMMON.md` §10 第 3 条）。
+ * 按件的例外写在 `EDITOR_CORE_SPECS[id].defaultChoice`，用 `editorCoreDefault(id)` 读。
+ */
 export const DEFAULT_EDITOR_CORE: EditorCoreChoice = "legacy";
+
+/** 这一件无覆盖时的默认档：台账写了 `defaultChoice` 就用它，否则全局默认。 */
+export function editorCoreDefault(editorId: EditorCoreId): EditorCoreChoice {
+  const spec = EDITOR_CORE_SPECS[editorId];
+  if (!spec?.nextCore) return "legacy";
+  return spec.defaultChoice || DEFAULT_EDITOR_CORE;
+}
 
 function storageKey(editorId: EditorCoreId): string {
   return `oceanleo.editor-core.${editorId}`;
@@ -110,7 +137,7 @@ function envOverrides(): Partial<Record<EditorCoreId, EditorCoreChoice>> {
 /**
  * 这件编辑器该用哪个核。
  *
- * 优先级：**显式入参 > 用户本地覆盖 > 环境变量 > `legacy`**。
+ * 优先级：**显式入参 > 用户本地覆盖 > 环境变量 > 台账按件默认 > `legacy`**。
  * 「显式入参最高」是为了让测试与路由能直接指定，不受宿主环境影响。
  *
  * 本波不换核的那几件（`nextCore === null`）**恒为 `legacy`**：
@@ -133,7 +160,7 @@ export function resolveEditorCore(
       /* 私密模式等存储不可用时按默认档走，不抛。 */
     }
   }
-  return envOverrides()[editorId] || DEFAULT_EDITOR_CORE;
+  return envOverrides()[editorId] || editorCoreDefault(editorId);
 }
 
 /**
