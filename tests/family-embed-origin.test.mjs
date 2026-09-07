@@ -15,6 +15,8 @@ import { HOSTED_EDITOR_ORIGINS } from "../src/shell/hosted-editor-origins.ts";
 import { TRUSTED_EMBED_EDITOR_SANDBOX, UNTRUSTED_FRAME_SANDBOX } from "../src/shell/editor-sandbox-origin.ts";
 import { isLeoDevPreviewHost } from "../src/lib/auth/config.ts";
 import {
+  FAMILY_EMBED_ORIGIN_ENV_ENTRY_SEPARATOR,
+  FAMILY_EMBED_ORIGIN_ENV_KEY_SEPARATOR,
   FAMILY_EMBED_PATHS,
   applyFamilyEmbedOriginOverride,
   canLoadFamilyEmbedBase,
@@ -22,6 +24,7 @@ import {
   isAllowedFamilyEmbedOverrideOrigin,
   isFamilyEmbedOverrideHost,
   isLeoDevFamilyEmbedBase,
+  parseFamilyEmbedOriginEnv,
 } from "../src/shell/family-embed-origin.ts";
 
 function source(relativePath) {
@@ -169,6 +172,99 @@ test("分站 query 优先于通用 embed_origin；Hosted 编辑器 origin 可被
     }),
     `${HOSTED_EDITOR_ORIGINS[0]}/embed/site-editor`,
   );
+});
+
+// U1 plugin-ui-overhaul：dev-preview-service 按 `website=…;design=…;video=…`
+// 注入 env，让每个子站 iframe 指到自己的槽。分隔符是契约的一部分。
+// 违反后果：映射解析错一位，网站/设计/视频三件在 dev 槽里又回到生产构建。
+test("env 映射形态：分隔符固定；每个子站取各自槽，缺项回落生产 base", () => {
+  assert.equal(FAMILY_EMBED_ORIGIN_ENV_ENTRY_SEPARATOR, ";");
+  assert.equal(FAMILY_EMBED_ORIGIN_ENV_KEY_SEPARATOR, "=");
+  const SLOT_B_ORIGIN = `https://${SLOT_B}`;
+  const envValue = `website=${SLOT_ORIGIN};design=${SLOT_B_ORIGIN}`;
+  assert.deepEqual(parseFamilyEmbedOriginEnv(envValue), {
+    single: "",
+    bySubsite: { website: SLOT_ORIGIN, design: SLOT_B_ORIGIN },
+  });
+  assert.equal(apply(WEBSITE_BASE, SLOT, { envValue }), SLOT_WEBSITE);
+  assert.equal(apply(DESIGN_BASE, SLOT, { envValue }), `${SLOT_B_ORIGIN}/embed/editor`);
+  // video 不在映射里 → 生产 base 一字不动
+  assert.equal(apply(VIDEO_BASE, SLOT, { envValue }), VIDEO_BASE);
+  // 空白 / 尾分号 / 顺序无关
+  assert.equal(
+    apply(VIDEO_BASE, SLOT, { envValue: ` video = ${SLOT_B_ORIGIN} ; website=${SLOT_ORIGIN};` }),
+    `${SLOT_B_ORIGIN}/canvas-board`,
+  );
+  // query / cookie 仍压过 env 映射
+  assert.equal(
+    apply(WEBSITE_BASE, SLOT, {
+      envValue,
+      search: `?website_embed_origin=${encodeURIComponent(SLOT_B_ORIGIN)}`,
+    }),
+    `${SLOT_B_ORIGIN}/embed/site-editor`,
+  );
+});
+
+// 违反后果：单值形态一旦失效，手工 `NEXT_PUBLIC_FAMILY_EMBED_ORIGIN=<槽>` 的老用法全断。
+test("env 单值形态保持兼容：一个 origin 给三条路径", () => {
+  assert.deepEqual(parseFamilyEmbedOriginEnv(SLOT_ORIGIN), {
+    single: SLOT_ORIGIN,
+    bySubsite: {},
+  });
+  assert.deepEqual(parseFamilyEmbedOriginEnv(""), { single: "", bySubsite: {} });
+  assert.deepEqual(parseFamilyEmbedOriginEnv(undefined), { single: "", bySubsite: {} });
+  for (const [base, path] of [
+    [WEBSITE_BASE, "/embed/site-editor"],
+    [DESIGN_BASE, "/embed/editor"],
+    [VIDEO_BASE, "/canvas-board"],
+  ]) {
+    assert.equal(apply(base, SLOT, { envValue: SLOT_ORIGIN }), `${SLOT_ORIGIN}${path}`);
+  }
+});
+
+// UC-3 §8.3：映射里每一条都要过 isAllowedFamilyEmbedOverrideOrigin。
+// 违反后果：映射形态成为绕过白名单的侧门。
+test("env 映射：非法目标逐条丢弃，不拖累合法条目；未知键忽略", () => {
+  const envValue = [
+    "website=https://evil.com",
+    `design=${SLOT_ORIGIN}`,
+    "video=https://p1--base.oceanleo.app",
+    `excel=${SLOT_ORIGIN}`,
+    "=https://nokey.example",
+    `website=${SLOT_ORIGIN}`, // 同键第二条：第一条已非法被丢，这条成为有效值
+    `design=https://${SLOT_B}`, // 同键重复：第一条有效者胜
+  ].join(";");
+  assert.deepEqual(parseFamilyEmbedOriginEnv(envValue), {
+    single: "",
+    bySubsite: { website: SLOT_ORIGIN, design: SLOT_ORIGIN },
+  });
+  assert.equal(apply(VIDEO_BASE, SLOT, { envValue }), VIDEO_BASE);
+  for (const bad of [
+    "website=http://p-07e5e1a19413945e8eecf1fec4877269.dev.oceanleo.com",
+    "website=https://p-07e5e1a19413945e8eecf1fec4877269.dev.oceanleo.com:444",
+    "website=https://evil.dev.oceanleo.com",
+    "website=javascript:alert(1)",
+    "https://evil.com",
+    "https://evil.com;https://also.evil",
+  ]) {
+    assert.equal(apply(WEBSITE_BASE, SLOT, { envValue: bad }), WEBSITE_BASE, bad);
+  }
+  // Hosted 编辑器 origin 在映射里同样可接受
+  assert.equal(
+    apply(WEBSITE_BASE, SLOT, { envValue: `website=${HOSTED_EDITOR_ORIGINS[0]}` }),
+    `${HOSTED_EDITOR_ORIGINS[0]}/embed/site-editor`,
+  );
+});
+
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：生产宿主认 env 映射，Vercel 上一条误配 env 就把生产 iframe 指到槽。
+test("生产宿主不读 env 映射，正式域一字不动", () => {
+  const envValue = `website=${SLOT_ORIGIN};design=${SLOT_ORIGIN};video=${SLOT_ORIGIN}`;
+  for (const host of PRODUCTION_HOSTS) {
+    assert.equal(apply(WEBSITE_BASE, host, { envValue }), WEBSITE_BASE, host);
+    assert.equal(apply(DESIGN_BASE, host, { envValue }), DESIGN_BASE, host);
+    assert.equal(apply(VIDEO_BASE, host, { envValue }), VIDEO_BASE, host);
+  }
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）

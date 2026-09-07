@@ -37,7 +37,18 @@ export const FAMILY_EMBED_ORIGIN_QUERY_BY_SUBSITE = {
   video: "video_embed_origin",
 } as const;
 export const FAMILY_EMBED_ORIGIN_COOKIE = "embed_origin";
+/**
+ * 两种形态，均只在 LeoDev 宿主上生效：
+ *   · 单 origin：`https://p-<32hex>.dev.oceanleo.com` —— 三条路径共用；
+ *   · 映射：`website=https://p-…;design=https://p-…;video=https://p-…`
+ *     —— 条目用 `;` 分隔，键与 origin 用第一个 `=` 分隔；键只认
+ *     website / design / video；映射里没有的子站回落默认生产 base；
+ *     非法条目单独丢弃，不拖累其它条目。
+ * dev-preview-service 起槽时按第二种形态注入（每个子站指向自己的槽）。
+ */
 export const FAMILY_EMBED_ORIGIN_ENV = "NEXT_PUBLIC_FAMILY_EMBED_ORIGIN";
+export const FAMILY_EMBED_ORIGIN_ENV_ENTRY_SEPARATOR = ";";
+export const FAMILY_EMBED_ORIGIN_ENV_KEY_SEPARATOR = "=";
 
 const LEO_DEV_HOST = /^p-[0-9a-f]{32}\.dev\.oceanleo\.com$/;
 const FAMILY_EMBED_PATH_SET = new Set<string>(Object.values(FAMILY_EMBED_PATHS));
@@ -129,6 +140,61 @@ function firstNonEmpty(...values: Array<string | undefined>): string {
   return "";
 }
 
+function isFamilyEmbedSubsite(value: string): value is FamilyEmbedSubsite {
+  return Object.prototype.hasOwnProperty.call(FAMILY_EMBED_PATHS, value);
+}
+
+/**
+ * 解析 `NEXT_PUBLIC_FAMILY_EMBED_ORIGIN`（见常量注释）。
+ * 单值形态返回 `{ single }`；映射形态返回 `{ bySubsite }`，只保留
+ * 通过 `isAllowedFamilyEmbedOverrideOrigin` 的条目。空 / 全非法 → 两者皆空。
+ */
+export function parseFamilyEmbedOriginEnv(envValue: string | undefined): {
+  single: string;
+  bySubsite: Partial<Record<FamilyEmbedSubsite, string>>;
+} {
+  const raw = String(envValue || "").trim();
+  const bySubsite: Partial<Record<FamilyEmbedSubsite, string>> = {};
+  if (!raw) return { single: "", bySubsite };
+  const entries = raw
+    .split(FAMILY_EMBED_ORIGIN_ENV_ENTRY_SEPARATOR)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const looksLikeMap = entries.some((entry) => {
+    const cut = entry.indexOf(FAMILY_EMBED_ORIGIN_ENV_KEY_SEPARATOR);
+    return cut > 0 && isFamilyEmbedSubsite(entry.slice(0, cut).trim());
+  });
+  if (!looksLikeMap) {
+    // 单值：整串就是一个 origin（多条无键条目不是合法形态，按单值只看第一条）。
+    const single = parseHttpsOrigin(entries[0] || "");
+    return {
+      single: single && isAllowedFamilyEmbedOverrideOrigin(single) ? single : "",
+      bySubsite,
+    };
+  }
+  for (const entry of entries) {
+    const cut = entry.indexOf(FAMILY_EMBED_ORIGIN_ENV_KEY_SEPARATOR);
+    if (cut <= 0) continue;
+    const key = entry.slice(0, cut).trim();
+    if (!isFamilyEmbedSubsite(key)) continue;
+    const origin = parseHttpsOrigin(entry.slice(cut + 1).trim());
+    if (!origin || !isAllowedFamilyEmbedOverrideOrigin(origin)) continue;
+    if (bySubsite[key]) continue; // 同键重复：第一条有效者胜
+    bySubsite[key] = origin;
+  }
+  return { single: "", bySubsite };
+}
+
+function envOverrideForSubsite(
+  envValue: string | undefined,
+  subsite: FamilyEmbedSubsite | "",
+): string {
+  const parsed = parseFamilyEmbedOriginEnv(envValue);
+  if (parsed.single) return parsed.single;
+  if (!subsite) return "";
+  return parsed.bySubsite[subsite] || "";
+}
+
 function overrideRawForBase(
   defaultBase: string,
   input: FamilyEmbedOverrideInput,
@@ -151,7 +217,7 @@ function overrideRawForBase(
     perSubsite,
     params.get(FAMILY_EMBED_ORIGIN_QUERY) || "",
     readCookieValue(input.cookieHeader || "", FAMILY_EMBED_ORIGIN_COOKIE),
-    input.envValue,
+    envOverrideForSubsite(input.envValue, subsite),
   );
 }
 
