@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -556,12 +557,19 @@ export interface AgentLibraryTabs {
 type AgentChatInnerProps = AgentChatProps & {
   /** Homepage launches archive any previous rolling home-agent session first. */
   startFreshSession?: boolean;
+  /**
+   * initialPrompt 只自动发送一次的记号，由 Provider 外层的 AgentChat 持有：
+   * WorkspaceSessionProvider 用 `key={runtimeEpoch}` 重挂载 Inner（「新建」会这样），
+   * Inner 自己的 ref 会跟着归零，原来的首条提示词就会被再发一遍、凭空多出一条任务。
+   */
+  launchOnceRef?: MutableRefObject<boolean>;
 };
 
 export function AgentChat(props: AgentChatProps) {
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const router = useRouter();
   const pathname = usePathname() || "";
+  const launchOnceRef = useRef(false);
   const startsFromHome =
     !inheritedWorkspace &&
     !props.taskId &&
@@ -595,6 +603,7 @@ export function AgentChat(props: AgentChatProps) {
         {...props}
         onTaskCreated={onTaskCreated}
         startFreshSession
+        launchOnceRef={launchOnceRef}
       />
     </WorkspaceSessionProvider>
   );
@@ -630,6 +639,7 @@ function AgentChatInner({
   mentionMembers,
   renderOrgPanel,
   startFreshSession = false,
+  launchOnceRef,
   enableEditorCommands = true,
   editorCommandSurface,
   agentStreamEndpoint,
@@ -846,11 +856,31 @@ function AgentChatInner({
     void refresh(taskId);
   }, [hasOrgPanel, taskId, refresh]);
 
+  // Provider 算出的 task_id 只在**有值**时接管本地 task。
+  // 操作员 2026-09-07 图 f2dde413（LeoSheet 首页）：发完 hi、回答已出现，几秒后整块对话
+  // 变成「新任务 / 在下方输入…」。服务端日志：task 出生时没绑上会话（startNew 没返回
+  // 会话），3 秒后 home-agent 会话才建出来、task_id=null → provider 的 context 值一变，
+  // 这里原来无条件 `setLocalTaskId(workspace.taskId)` 把活着的 task 覆盖成 null，
+  // 上面「!taskId → 清消息」那条 effect 就把正文全清了。
+  // 现在：provider 给了别的 task 才切；给 null 时保留本地 task，并把它绑到刚出现的
+  // 会话上（补上 createTask 时没绑成的那一下）。「新建」走 runtimeEpoch 重挂载清空，
+  // 不依赖这里。
+  const boundSessionRef = useRef("");
   useEffect(() => {
     if (explicitTaskId !== undefined || !workspace) return;
-    setLocalTaskId(workspace.taskId);
+    if (workspace.taskId) {
+      setLocalTaskId(workspace.taskId);
+      return;
+    }
+    const local = localTaskId;
+    const sessionId = workspace.sessionId || "";
+    if (!local || !sessionId || workspace.readOnly) return;
+    if (boundSessionRef.current === sessionId) return;
+    boundSessionRef.current = sessionId;
+    void workspace.bindTask(local);
   }, [
     explicitTaskId,
+    localTaskId,
     workspace,
     workspace?.sessionId,
     workspace?.taskId,
@@ -1062,13 +1092,22 @@ function AgentChatInner({
         if (startFreshSession && !freshSessionStartedRef.current) {
           // 刚开口的 agent 线程：建会话让 task 出生就绑上；服务端记下第一条回答前
           // 它仍是「我的任务」看不见的草稿。
+          freshSessionStartedRef.current = true;
           active = await workspace.startNew({
             title: prompt,
             remountRuntime: false,
             intent: "thread",
           });
-          freshSessionStartedRef.current = true;
         } else if (!active) {
+          active = await workspace.ensureActive({
+            title: prompt,
+            intent: "thread",
+          });
+        }
+        if (!active && !workspace.sessionId) {
+          // startNew / ensureActive 没给出会话（接口失败、并发被丢弃……）时再补一次
+          // ensureActive，而不是让 task 无会话出生：无会话的 task 在「我的任务」里点开
+          // 就是 404，之后会话补建出来又会把这条对话冲掉（见 2026-09-07 图 f2dde413）。
           active = await workspace.ensureActive({
             title: prompt,
             intent: "thread",
@@ -1198,6 +1237,9 @@ function AgentChatInner({
     if (startedRef.current) return;
     if (workspace?.availability === "loading") return;
     startedRef.current = true;
+    // Provider 用 runtimeEpoch 重挂载过本组件（「新建」）：首条提示词已经发过，不再重发。
+    if (launchOnceRef?.current) return;
+    if (launchOnceRef) launchOnceRef.current = true;
     const hasInitial =
       Boolean(initialPrompt?.trim()) || Boolean(initialAtts && initialAtts.length);
     if (!hasInitial) return;

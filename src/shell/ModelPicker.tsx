@@ -8,7 +8,7 @@
 // 运行。组合内每项能力的模型从上到下依次兜底。
 // ============================================================================
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   getModelGroups,
   MODEL_GROUP_CHANGED_EVENT,
@@ -33,6 +33,45 @@ const FALLBACK_GROUPS: ModelGroup[] = (["lite", "pro", "max"] as const).map(
     selection: {},
   }),
 );
+
+/** 弹层最高多少；再多就在条目区里滚。 */
+export const POPOVER_MAX_HEIGHT = 360;
+/** 弹层与视口边缘至少留这么多。 */
+export const POPOVER_VIEWPORT_GUTTER = 8;
+/** 低于这个高度的空间视为「放不下」，转去另一侧。 */
+export const POPOVER_MIN_HEIGHT = 200;
+
+/**
+ * 决定弹层往哪侧弹、最多多高。纯函数，便于单测。
+ * - 首选侧空间够（≥ POPOVER_MIN_HEIGHT）就用首选侧；
+ * - 不够就看另一侧够不够；
+ * - 两侧都不够取空间大的一侧；
+ * - 高度 = min(POPOVER_MAX_HEIGHT, 该侧空间 - gutter)，但不低于一个可用下限。
+ */
+export function resolvePopoverLayout({
+  preferred,
+  spaceAbove,
+  spaceBelow,
+}: {
+  preferred: "top" | "bottom";
+  spaceAbove: number;
+  spaceBelow: number;
+}): { side: "top" | "bottom"; maxHeight: number } {
+  const usable = (space: number) =>
+    Math.max(0, space - POPOVER_VIEWPORT_GUTTER);
+  const above = usable(spaceAbove);
+  const below = usable(spaceBelow);
+  const preferredSpace = preferred === "top" ? above : below;
+  const otherSide: "top" | "bottom" = preferred === "top" ? "bottom" : "top";
+  const otherSpace = preferred === "top" ? below : above;
+  let side: "top" | "bottom";
+  if (preferredSpace >= POPOVER_MIN_HEIGHT) side = preferred;
+  else if (otherSpace >= POPOVER_MIN_HEIGHT) side = otherSide;
+  else side = preferredSpace >= otherSpace ? preferred : otherSide;
+  const space = side === "top" ? above : below;
+  const maxHeight = Math.max(120, Math.min(POPOVER_MAX_HEIGHT, space));
+  return { side, maxHeight };
+}
 
 export interface ModelGroupPickerProps {
   /** AI 模型管理页。 */
@@ -115,6 +154,38 @@ function ModelGroupPickerBody({
       window.removeEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
     };
   }, []);
+
+  // 弹层实际落在哪一侧、最多能多高——按打开那一刻触发键到视口上下边的空间算。
+  // 操作员 2026-09-07 图 b32891f2：主站首页输入框在页面上部，写死「向上弹」就飞出
+  // 页面顶端、被浏览器切掉，Lite/Pro/Max 只剩下半截。现在：哪侧空间够就往哪侧弹；
+  // 两侧都不够时取大的一侧，并把整块弹层的高度钉在那段空间内，条目区自己滚动。
+  const [layout, setLayout] = useState<{ side: "top" | "bottom"; maxHeight: number }>({
+    side: placement,
+    maxHeight: POPOVER_MAX_HEIGHT,
+  });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      const viewportHeight =
+        typeof window !== "undefined" ? window.innerHeight : 0;
+      if (!rect || !viewportHeight) return;
+      setLayout(
+        resolvePopoverLayout({
+          preferred: placement,
+          spaceAbove: rect.top,
+          spaceBelow: viewportHeight - rect.bottom,
+        }),
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open, placement]);
 
   useEffect(() => {
     if (!open) return;
@@ -226,21 +297,44 @@ function ModelGroupPickerBody({
 
       {open && (
         <div
-          className={`v-scale-in absolute z-50 w-[min(22rem,88vw)] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
-            placement === "top" ? "bottom-full mb-2" : "top-full mt-1.5"
+          data-model-picker-popover
+          data-side={layout.side}
+          role="listbox"
+          aria-label={tt("全站模型组合")}
+          style={{ maxHeight: layout.maxHeight }}
+          className={`v-scale-in absolute z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
+            compact ? "w-[min(15rem,88vw)]" : "w-[min(22rem,88vw)]"
+          } ${
+            layout.side === "top" ? "bottom-full mb-2" : "top-full mt-1.5"
           } ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >
-          <div className="border-b border-neutral-100 px-3.5 py-3">
-            <p className="text-[12px] font-semibold text-neutral-800">
+          <div
+            className={`shrink-0 border-b border-neutral-100 ${
+              compact ? "px-3 py-2" : "px-3.5 py-3"
+            }`}
+          >
+            <p
+              className={`font-semibold text-neutral-800 ${
+                compact ? "text-[11px]" : "text-[12px]"
+              }`}
+            >
               {tt("全站模型组合")}
             </p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-400">
-              {tt("所有 OceanLeo 网站共用；组合内模型从上到下依次兜底。")}
-            </p>
+            {!compact && (
+              <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-400">
+                {tt("所有 OceanLeo 网站共用；组合内模型从上到下依次兜底。")}
+              </p>
+            )}
           </div>
-          <div className="max-h-[360px] overflow-y-auto py-1.5">
+          {/* 条目区：弹层高度被钉在视口内时，这里自己滚，滚动条可见。 */}
+          <div
+            data-model-picker-list
+            className={`min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin] ${
+              compact ? "py-1" : "py-1.5"
+            }`}
+          >
             {groups.map((group) => {
               const selected = group.key === activeKey;
               const busy = group.key === saving;
@@ -248,14 +342,20 @@ function ModelGroupPickerBody({
                 <button
                   key={group.key}
                   type="button"
+                  role="option"
+                  aria-selected={selected}
                   disabled={!payload || !!saving}
                   onClick={() => void activate(group)}
-                  className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"
- } disabled:cursor-default disabled:opacity-60`}
+                  className={`flex w-full items-center text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                    compact ? "gap-2 px-3 py-1.5" : "gap-3 px-3.5 py-2.5"
+                  } ${
+                    selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"
+                  } disabled:cursor-default disabled:opacity-60`}
                 >
                   <span
-                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-bold ${
+                    className={`grid shrink-0 place-items-center rounded-lg font-bold ${
+                      compact ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-[11px]"
+                    } ${
                       group.kind === "preset"
                         ? "bg-neutral-900 text-white"
                         : "bg-indigo-50 text-indigo-600"
@@ -266,35 +366,49 @@ function ModelGroupPickerBody({
                       : "自"}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-neutral-900">
+                    <span
+                      className={`block truncate font-medium text-neutral-900 ${
+                        compact ? "text-[12px]" : "text-[13px]"
+                      }`}
+                    >
                       {busy ? tt("切换中…") : group.name}
                     </span>
                     {group.kind === "custom" && (
-                      <span className="mt-0.5 block text-[11px] text-neutral-400">
+                      <span
+                        className={`block text-neutral-400 ${
+                          compact ? "text-[10px]" : "mt-0.5 text-[11px]"
+                        }`}
+                      >
                         {tt("我的自定义组合")}
                       </span>
                     )}
                   </span>
                   {selected && (
-                    <IconCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <IconCheck
+                      className={`shrink-0 text-emerald-600 ${
+                        compact ? "h-3.5 w-3.5" : "h-4 w-4"
+                      }`}
+                    />
                   )}
                 </button>
               );
             })}
           </div>
           {error && (
-            <p className="border-t border-rose-100 bg-rose-50 px-3.5 py-2 text-[11px] text-rose-600">
+            <p className="shrink-0 border-t border-rose-100 bg-rose-50 px-3.5 py-2 text-[11px] text-rose-600">
               {tt(error)}
             </p>
           )}
           {!payload && !loading && !error && (
-            <p className="border-t border-neutral-100 px-3.5 py-2 text-[11px] text-neutral-400">
+            <p className="shrink-0 border-t border-neutral-100 px-3.5 py-2 text-[11px] text-neutral-400">
               {tt("登录后可切换并使用自定义模型组合。")}
             </p>
           )}
           <a
             href={apiHref}
-            className="block border-t border-neutral-100 px-3.5 py-2.5 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 hover:text-neutral-900"
+            className={`block shrink-0 border-t border-neutral-100 font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 hover:text-neutral-900 ${
+              compact ? "px-3 py-2 text-[11px]" : "px-3.5 py-2.5 text-[12px]"
+            }`}
           >
             {tt("管理模型组合 →")}
           </a>

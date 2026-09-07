@@ -766,11 +766,12 @@ export function WorkspaceSessionProvider({
         reportFailure(deleted.status, deleted.error);
         return false;
       }
-      try {
-        await clearConsoleDraft(site, app);
-      } catch {
+      // 清草稿是直连 Supabase 的一趟，真机上要 3-4 秒（2026-09-07 网关日志：DELETE 与
+      // 随后的 POST /sessions 之间空等 3.0-4.6 秒）。它既不影响新会话能不能建，也
+      // 不影响结果，不必让首条消息为它等着。
+      void clearConsoleDraft(site, app).catch(() => {
         /* 清草稿失败不挡丢弃 */
-      }
+      });
       return true;
     },
     [app, reportFailure, sessionSurface, site],
