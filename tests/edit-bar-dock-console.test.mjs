@@ -304,9 +304,9 @@ async function pointer(target, type, values) {
   });
 }
 
-// 左右两个 ⠿ 手柄已取消。展开胶囊默认走双击路径：同一指针、同一落点、
-// 窗口内连续两次按下即跟手。第一次 down/up 仍选中；第二次 down 起拖。
-// 不延迟派发 click。老「选中后按空白」路见 grabAfterSelectOnBlank。
+// 左右两个 ⠿ 手柄已取消。展开胶囊只有一条拖拽规则：同一落点、400ms 窗口内
+// 连续两次按下即跟手。第一次 down/up 不改任何状态；第二次 down 起拖。
+// 不延迟派发 click。没有「选中」、没有「待拖」。
 let grabClock = 10_000;
 async function grab(target, clientX, clientY) {
   const t0 = (grabClock += 1000);
@@ -322,26 +322,19 @@ async function grab(target, clientX, clientY) {
   await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 20 });
 }
 
-/** 老路：第一次选中之后，窗口已过再按空白，不依赖双击。 */
-async function grabAfterSelectOnBlank(target, firstX, firstY, secondX, secondY) {
+/** 反例：两次按下间隔超过 400ms 窗口（401ms）。第二下**不许**起拖。 */
+async function pressTwiceOutsideWindow(target, clientX, clientY) {
   const t0 = (grabClock += 1000);
-  const first = {
+  const press = {
     pointerId: 1,
     pointerType: "mouse",
     button: 0,
-    clientX: firstX,
-    clientY: firstY,
+    clientX,
+    clientY,
   };
-  await pointer(target, "pointerdown", { ...first, timeStamp: t0 });
-  await pointer(target, "pointerup", { ...first, timeStamp: t0 + 10 });
-  await pointer(target, "pointerdown", {
-    pointerId: 1,
-    pointerType: "mouse",
-    button: 0,
-    clientX: secondX,
-    clientY: secondY,
-    timeStamp: t0 + 400,
-  });
+  await pointer(target, "pointerdown", { ...press, timeStamp: t0 });
+  await pointer(target, "pointerup", { ...press, timeStamp: t0 + 10 });
+  await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 401 });
 }
 
 async function moveTo(target, clientX, clientY) {
@@ -658,24 +651,37 @@ function installDockHarnessRects() {
   };
 }
 
-test("已选中后按空白：双击窗口过了仍走老路起拖", async () => {
+test("两次按下间隔 >400ms：不起拖；DOM 里没有选中态", async () => {
   window.localStorage.clear();
   const restoreRect = installDockHarnessRects();
   const mounted = await createMounted(DockHarness, {
-    storageKey: "test:edit-bar:select-then-blank",
+    storageKey: "test:edit-bar:press-outside-window",
   });
   const bar = () =>
     mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
   try {
     const before = bar().style.transform;
-    await grabAfterSelectOnBlank(bar(), 120, 60, 140, 80);
+    await pressTwiceOutsideWindow(bar(), 120, 60);
+    assert.equal(
+      mounted.container.querySelector("[data-edit-bar-move-mode]"),
+      null,
+      "间隔 401ms 的第二次按下不得起拖",
+    );
     await moveTo(bar(), 400, 300);
-    assert.notEqual(
+    assert.equal(
       bar().style.transform,
       before,
-      "选中后按空白（双击窗口已过）必须仍能跟手",
+      "窗口外的第二次按下再移动，条子不许跟手（没有「待拖」）",
+    );
+    assert.equal(
+      mounted.container.querySelector(
+        "[data-edit-bar-selected], [data-edit-bar-selected-ring]",
+      ),
+      null,
+      "DOM 里不许出现选中态属性——这个概念已删",
     );
     await drop(bar(), 400, 300);
+    assert.equal(bar().style.transform, before, "松手后仍在原位");
   } finally {
     await mounted.unmount();
     restoreRect();
@@ -703,7 +709,7 @@ test("Ctrl/⌘+. 收起：一次按键立刻收成圆；栏里没有「收起编
   }
 });
 
-test("点一下选中再点一下进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
+test("第二次按下进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:dock-cycle";
   const restoreRect = installDockHarnessRects();

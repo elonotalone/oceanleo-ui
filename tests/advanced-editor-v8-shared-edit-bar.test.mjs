@@ -575,8 +575,14 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       );
     });
     assert.equal(toolClicks, 1, "第一下按键 onClick 必须立刻生效");
-    assert.equal(liveController.selected, true);
+    assert.equal(
+      "selected" in liveController,
+      false,
+      "控制器不再有 selected 字段——「第一下选中」这个概念已删",
+    );
     assert.equal(liveController.moveMode, false, "第一次按下不得起拖");
+    assert.equal(liveController.dragging, false, "第一次按下不得改任何拖拽状态");
+    assert.equal(offset(), "0,0", "第一次按下抬起不得改位置");
     await pointer(tool, "pointerdown", toolPress(4020));
     assert.equal(
       liveController.moveMode,
@@ -614,45 +620,84 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
 
     await key(bar(), "Home", { altKey: true });
     assert.equal(offset(), "0,0");
+
+    // 第二次按下抬起不移动：落回原位，第二下的 click 被吞。
+    await pointer(tool, "pointerdown", toolPress(4500));
+    await pointer(tool, "pointerup", toolPress(4510));
+    await pointer(tool, "pointerdown", toolPress(4600));
+    assert.equal(liveController.moveMode, true, "第二次按下必须立刻起拖");
+    await pointer(window, "pointerup", { ...toolPress(4650) });
+    assert.equal(liveController.moveMode, false, "松手必须结束拖拽");
+    assert.equal(offset(), "0,0", "第二次按下未移动就松手，条子必须落回原位");
+    await act(async () => {
+      tool.dispatchEvent(
+        new window.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 80,
+          clientY: 20,
+        }),
+      );
+    });
+    assert.equal(toolClicks, 1, "第二下的 click 必须被吞，按键不得二次触发");
+
+    // 条外按下清掉双按戳：条上按一下、去点画布、再回来按一下，不算「两次按下」。
+    await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 5000 });
+    await pointer(bar(), "pointerup", { ...press(200, 200), timeStamp: 5010 });
     await pointer(mounted.container.querySelector("[data-handle-stage]"), "pointerdown", {
       pointerId: 2,
       pointerType: "mouse",
       button: 0,
       clientX: 900,
       clientY: 500,
-      timeStamp: 5000,
+      timeStamp: 5020,
     });
-    assert.equal(liveController.selected, false, "条外按下必须取消选中");
+    await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 5100 });
+    assert.equal(liveController.moveMode, false, "条外按过之后回来按第一下不得起拖");
+    await pointer(bar(), "pointerup", { ...press(200, 200), timeStamp: 5110 });
 
-    // 单次按下只是选中，不能启动拖拽。
-    await pointer(bar(), "pointerdown", press(200, 200));
+    // 单次按下再移动，不能启动拖拽（没有「待拖」）。
+    await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 6000 });
     await pointer(window, "pointermove", {
       pointerId: 1,
       pointerType: "mouse",
-      clientX: 30,
-      clientY: 20,
+      clientX: 230,
+      clientY: 220,
+      timeStamp: 6050,
     });
     assert.equal(offset(), "0,0", "第一次按下后移动指针不得拖走编辑栏");
-    await pointer(bar(), "pointerup", press(200, 200));
-    assert.equal(liveController.selected, true, "第一次点击后必须选中编辑栏");
+    assert.equal(liveController.moveMode, false, "单次按下移动也不得进入移动模式");
+    await pointer(window, "pointerup", { ...press(230, 220), timeStamp: 6100 });
 
-    // 选中后再按下：只待拖；移动超过 6px 才起拖。原断言是按下立刻
-    // moveMode=true（空白老路）。产品改为「第二次按下并移动才拖」，
-    // 这样落在按键上也走同一条，按键未移动时 click 仍触发。
-    await pointer(bar(), "pointerdown", press(10, 10));
-    assert.equal(
-      liveController.moveMode,
-      false,
-      "已选中后按下未移动不得起拖",
-    );
-    await pointer(window, "pointermove", {
-      pointerId: 1,
-      pointerType: "mouse",
-      clientX: 30,
-      clientY: 20,
+    // 两次按下间隔 >400ms：不起拖。
+    await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 7000 });
+    await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 7010 });
+    await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 7401 });
+    assert.equal(liveController.moveMode, false, "间隔 401ms 的第二次按下不得起拖");
+    await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 7410 });
+
+    // 触控：两次 pointerId 不同也算同一条上的两次按下。
+    await pointer(bar(), "pointerdown", {
+      pointerId: 11, pointerType: "touch", clientX: 10, clientY: 10, timeStamp: 8000,
     });
-    assert.equal(liveController.moveMode, true, "待拖后移动超过阈值必须起拖");
-    await pointer(window, "pointerup", press(30, 20));
+    await pointer(bar(), "pointerup", {
+      pointerId: 11, pointerType: "touch", clientX: 10, clientY: 10, timeStamp: 8010,
+    });
+    await pointer(bar(), "pointerdown", {
+      pointerId: 12, pointerType: "touch", clientX: 12, clientY: 10, timeStamp: 8200,
+    });
+    assert.equal(liveController.moveMode, true, "触控第二次按下（pointerId 不同）必须起拖");
+    await pointer(window, "pointermove", {
+      pointerId: 12,
+      pointerType: "touch",
+      clientX: 32,
+      clientY: 20,
+      timeStamp: 8250,
+    });
+    assert.equal(offset(), "20,10", "触控第二次按下后跟手");
+    await pointer(window, "pointerup", {
+      pointerId: 12, pointerType: "touch", clientX: 32, clientY: 20, timeStamp: 8300,
+    });
     assert.equal(liveController.moveMode, false);
     assert.equal(offset(), "20,10");
 
