@@ -691,8 +691,6 @@ function AgentChatInner({
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
   const freshSessionStartedRef = useRef(false);
-  const outputRecordedTaskRef = useRef("");
-  const outputPromptRef = useRef("");
   const loadedTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
@@ -1031,26 +1029,9 @@ function AgentChatInner({
     ingestEditorCommands(messages, taskId || "");
   }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
 
-  // 第一句 AI 回答落地才建档：发送本身不配叫一条任务。
-  useEffect(() => {
-    if (!workspace || readOnly) return;
-    if (!taskId || messagesTaskId !== taskId) return;
-    if (outputRecordedTaskRef.current === taskId) return;
-    const hasAssistant = messages.some((message) => message.role === "assistant");
-    if (!hasAssistant) return;
-    outputRecordedTaskRef.current = taskId;
-    const title =
-      outputPromptRef.current ||
-      messages.find((message) => message.role === "user")?.content ||
-      "";
-    void (async () => {
-      const active = await workspace.ensureActive({
-        title,
-        intent: "output",
-      });
-      if (active) await workspace.bindTask(taskId, title);
-    })();
-  }, [messages, messagesTaskId, readOnly, taskId, workspace]);
+  // 「我的任务」何时出现这条会话由服务端决定：task 出生时已绑在会话上，第一条 AI
+  // 回答落地时服务端盖 `first_output_at`。不再"看到 assistant 消息就建档"：恢复一段
+  // 旧对话（刷新、切页签回来）时那会凭空 ensure 出一条没人干活的新会话。
 
   const start = useCallback(
     async (prompt: string, uploaded?: AgentAttachment[]) => {
@@ -1075,22 +1056,22 @@ function AgentChatInner({
         },
       ]);
 
-      outputPromptRef.current = prompt;
-
       let linkedSessionId = "";
       if (workspace) {
         let active = workspace.session;
         if (startFreshSession && !freshSessionStartedRef.current) {
+          // 刚开口的 agent 线程：建会话让 task 出生就绑上；服务端记下第一条回答前
+          // 它仍是「我的任务」看不见的草稿。
           active = await workspace.startNew({
             title: prompt,
             remountRuntime: false,
-            intent: "attach",
+            intent: "thread",
           });
           freshSessionStartedRef.current = true;
         } else if (!active) {
           active = await workspace.ensureActive({
             title: prompt,
-            intent: "attach",
+            intent: "thread",
           });
         }
         linkedSessionId = active?.id || workspace.sessionId || "";

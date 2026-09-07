@@ -110,14 +110,15 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource,
     /explicitTaskId !== undefined[\s\S]*?workspace\?\.taskId \|\| localTaskId/,
   );
-  // 发送本身不建档：拿会话只能是 attach，建档要等第一句 AI 回答落地。
+  // 开口即建线程会话（服务端盖 first_output_at 前仍是草稿），让 task 出生就绑上；
+  // 不允许再有"看到 assistant 消息就 ensureActive(output)"的事后建档。
   assert.match(
     agentChatSource,
-    /await workspace\.ensureActive\(\{\s*title: prompt,\s*intent: "attach",\s*\}\)/,
+    /await workspace\.ensureActive\(\{\s*title: prompt,\s*intent: "thread",\s*\}\)/,
   );
-  assert.match(
+  assert.doesNotMatch(
     agentChatSource,
-    /await workspace\.ensureActive\(\{\s*title,\s*intent: "output",\s*\}\)/,
+    /message\.role === "assistant"[\s\S]*?ensureActive\(\{[\s\S]*?intent: "output"/,
   );
   assert.match(
     agentChatSource,

@@ -241,6 +241,9 @@ function makeWorkspace(saveImpl) {
       if (options?.intent === "output") {
         return { id: "sess-output" };
       }
+      if (options?.intent === "thread") {
+        return { id: "sess-thread" };
+      }
       return null;
     },
     async artifactContext(title) {
@@ -513,11 +516,13 @@ function AgentSendBed() {
 function sessionCreatePosts(workspace) {
   return [
     ...workspace.artifactContextCalls,
-    ...workspace.ensureActiveCalls.filter((call) => call?.intent === "output"),
+    ...workspace.ensureActiveCalls.filter(
+      (call) => call?.intent === "output" || call?.intent === "thread",
+    ),
   ];
 }
 
-test("发出第一句时不产生 POST /v1/agent/sessions", async () => {
+test("发出第一句时以 thread 建一次会话并把 session_id 交给 createTask", async () => {
   globalThis.__agentCreateTaskCalls = [];
   globalThis.__agentCreateTask = async () => ({
     ok: true,
@@ -547,20 +552,20 @@ test("发出第一句时不产生 POST /v1/agent/sessions", async () => {
     await settle(250);
 
     assert.equal(globalThis.__agentCreateTaskCalls.length, 1, "必须真的发出去");
-    assert.equal(
-      globalThis.__agentCreateTaskCalls[0].sessionId,
-      undefined,
-      "没有会话时 createTask 以 undefined 发送",
-    );
     assert.equal(workspace.artifactContextCalls.length, 0);
     assert.deepEqual(
-      workspace.ensureActiveCalls.map((call) => call?.intent),
-      ["attach"],
+      workspace.ensureActiveCalls.map((call) => [call?.intent, call?.title]),
+      [["thread", CHIP]],
+      "开口即建 thread 会话（服务端盖 first_output_at 前仍是草稿）",
     );
     assert.equal(
-      sessionCreatePosts(workspace).length,
-      0,
-      "发出第一句不得走 artifactContext / output，即不产生 POST /v1/agent/sessions",
+      globalThis.__agentCreateTaskCalls[0].sessionId,
+      "sess-thread",
+      "task 出生时就绑在这条会话上，服务端才能在首条回答时盖章",
+    );
+    assert.deepEqual(
+      workspace.bindTaskCalls.map((call) => call.taskId),
+      ["task-1"],
     );
   } finally {
     await panel.unmount();
@@ -572,7 +577,7 @@ test("发出第一句时不产生 POST /v1/agent/sessions", async () => {
   }
 });
 
-test("首条 assistant 消息到达后产生且只产生一次建档", async () => {
+test("assistant 消息到达不再触发任何建档：开口那一次就是全部", async () => {
   globalThis.__agentCreateTaskCalls = [];
   let phase = "user";
   const userMessage = { id: 1, role: "user", kind: "text", content: CHIP };
@@ -618,29 +623,72 @@ test("首条 assistant 消息到达后产生且只产生一次建档", async () 
       );
     });
     await settle(250);
-    assert.equal(sessionCreatePosts(workspace).length, 0);
+    assert.equal(sessionCreatePosts(workspace).length, 1);
 
     phase = "first-assistant";
     await settle(600);
-    const outputCalls = workspace.ensureActiveCalls.filter(
-      (call) => call?.intent === "output",
-    );
-    assert.equal(outputCalls.length, 1, "首条 assistant 到达后只建档一次");
-    assert.equal(outputCalls[0].title, CHIP);
-
     phase = "second-assistant";
     await settle(600);
-    assert.equal(
-      workspace.ensureActiveCalls.filter((call) => call?.intent === "output")
-        .length,
-      1,
-      "同一 task 后续 assistant 不得再建档",
+    assert.deepEqual(
+      workspace.ensureActiveCalls.map((call) => call?.intent),
+      ["thread"],
+      "首条/后续 assistant 都不得再 ensureActive(output)",
     );
   } finally {
     await panel.unmount();
     delete globalThis.__rightTabWorkspace;
     delete globalThis.__rightTabHydration;
     delete globalThis.__agentCreateTask;
+    delete globalThis.__agentGetTask;
+    globalThis.__agentCreateTaskCalls = [];
+  }
+});
+
+test("runtime 只是恢复了一段带回答的旧对话：切页签、刷新都不建会话", async () => {
+  // 这正是"没触发 agent 却多出一条我的任务"的来源：以前一看到 assistant 消息就
+  // ensureActive(output)，哪怕这段对话是从 task 缓存里恢复出来、当前没人干活。
+  globalThis.__agentCreateTaskCalls = [];
+  globalThis.__agentGetTask = async () => ({
+    ok: true,
+    data: {
+      task: { status: "done" },
+      messages: [
+        { id: 1, role: "user", kind: "text", content: CHIP },
+        { id: 2, role: "assistant", kind: "text", content: "已完成。" },
+      ],
+    },
+  });
+
+  const { workspace } = makeWorkspace();
+  globalThis.__rightTabWorkspace = workspace;
+  globalThis.__rightTabHydration = makeHydration();
+  globalThis.__rightTab = "template";
+
+  const panel = await mount(
+    React.createElement(FunctionAgentChat, {
+      agentId: "image.poster",
+      siteId: "image",
+      schema,
+      opsContent: React.createElement("div", { "data-ops": "1" }, "ops"),
+      showOps: true,
+      defaultTab: "agent",
+      enableEditorCommands: false,
+      manageSessionSnapshot: false,
+      appLabel: "海报生成",
+      taskId: "task-old",
+    }),
+  );
+  try {
+    await settle(600);
+    globalThis.__rightTab = "preview";
+    await settle(600);
+    assert.equal(globalThis.__agentCreateTaskCalls.length, 0);
+    assert.deepEqual(sessionCreatePosts(workspace), []);
+    assert.deepEqual(workspace.bindTaskCalls, []);
+  } finally {
+    await panel.unmount();
+    delete globalThis.__rightTabWorkspace;
+    delete globalThis.__rightTabHydration;
     delete globalThis.__agentGetTask;
     globalThis.__agentCreateTaskCalls = [];
   }

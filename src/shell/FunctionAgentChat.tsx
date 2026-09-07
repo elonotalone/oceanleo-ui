@@ -605,8 +605,6 @@ export function FunctionAgentChat({
   const reportedArtifactIdsRef = useRef<Set<number>>(new Set());
   const seenWorkspaceActionIdsRef = useRef<Set<number>>(new Set());
   const loadedTaskRef = useRef("");
-  const outputRecordedTaskRef = useRef("");
-  const outputPromptRef = useRef("");
   const atts = useAttachments(siteId, setError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
   const editorCommands = useEditorCommandBridge({
@@ -1277,26 +1275,10 @@ export function FunctionAgentChat({
     ingestEditorCommands(messages, taskId || "");
   }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
 
-  // 第一句 AI 回答落地才建档：发送本身不配叫一条任务。
-  useEffect(() => {
-    if (!workspace || sessionReadOnly) return;
-    if (!taskId || messagesTaskId !== taskId) return;
-    if (outputRecordedTaskRef.current === taskId) return;
-    const hasAssistant = messages.some((message) => message.role === "assistant");
-    if (!hasAssistant) return;
-    outputRecordedTaskRef.current = taskId;
-    const title =
-      outputPromptRef.current ||
-      messages.find((message) => message.role === "user")?.content ||
-      "";
-    void (async () => {
-      const active = await workspace.ensureActive({
-        title,
-        intent: "output",
-      });
-      if (active) await workspace.bindTask(taskId, title);
-    })();
-  }, [messages, messagesTaskId, sessionReadOnly, taskId, workspace]);
+  // 「我的任务」何时出现这条会话，由服务端决定：task 出生时已绑在会话上，第一条
+  // AI 回答落地时服务端盖 `first_output_at`。这里不再"看到 assistant 消息就建档"——
+  // 那条逻辑会在 runtime 只是恢复了一段旧对话（换页签、刷新、切 app 回来）时，
+  // 凭空 ensure 出一条谁都没干活的新会话。
 
   // 把 agent 线程里每个新 artifact（预览/图片/文档）按顺序回报给宿主 → 右侧结果画布显示。
   // 同一次轮询可能同时拿到 preview 和最终 markdown；不能只取 latest，否则预览会永久丢失。
@@ -1370,7 +1352,6 @@ export function FunctionAgentChat({
       prompt || tt("请分析我上传的文件。"),
       operatorRemark,
     );
-    outputPromptRef.current = effectivePrompt;
     // 让模型看见右边现在开着什么、能做什么（只给模型看，不进用户可见对话）。
     // 右边没开编辑器时这段是空串。
     editorCommands.noteUserTurn();
@@ -1440,9 +1421,12 @@ export function FunctionAgentChat({
         workspace?.session?.id ||
         "";
       if (!linkedSessionId && workspace) {
+        // agent 线程一开口就建会话，让 task 在服务端出生时就绑上它：第一条 AI 回答
+        // 落地由服务端盖 `first_output_at`，这条会话才进「我的任务」。发出去没回答，
+        // 它就一直是看不见的草稿。事后在客户端 bindTask 绑不回服务端的 task，行不通。
         const active = await workspace.ensureActive({
           title: effectivePrompt,
-          intent: "attach",
+          intent: "thread",
         });
         linkedSessionId = active?.id || workspace.sessionId || "";
       }

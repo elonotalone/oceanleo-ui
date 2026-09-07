@@ -136,20 +136,46 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
   return true;
 }
 
+/**
+ * 上一次成功拉到的列表，按站点缓存在模块里。左栏（`HistoryInlineList`）会因为
+ * 侧栏收成 rail、布局重挂等原因重新 mount；重挂时先拿这份继续显示，再静默刷新，
+ * 用户就不会看到列表被「加载…」清空一下又回来。
+ */
+const historyListCache = new Map<string, HistoryListEntry[]>();
+
+function historyCacheKey(siteId?: string, pending = false): string {
+  return `${siteId || ""}|${pending ? "pending" : "all"}`;
+}
+
 function useHistory(siteId?: string, pending = false, authMsg?: string) {
   const tt = useUI();
   const authMessage = authMsg ?? tt("登录后即可查看我的任务。");
-  const [items, setItems] = useState<HistoryListEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = historyCacheKey(siteId, pending);
+  const [items, setItems] = useState<HistoryListEntry[]>(
+    () => historyListCache.get(cacheKey) ?? [],
+  );
+  // 「加载…」只在这份列表从未拿到过数据时出现。之后无论站点切换、翻译字典换了
+  // 引用、事件触发的刷新，都只在后台更新，不再把已有列表换成「加载…」。
+  const [loading, setLoading] = useState(
+    () => !historyListCache.has(cacheKey),
+  );
+  const loadedOnceRef = useRef(historyListCache.has(cacheKey));
   const [error, setError] = useState<string | null>(null);
   const reloadGenerationRef = useRef(0);
   const deletingRef = useRef(new Set<string>());
   const pollFailuresRef = useRef(0);
+  // 文案函数与登录提示走 ref：它们的引用变化（词典对象换了、父级重渲染）不得
+  // 重建 reload、进而触发首屏式的非静默重拉。
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
+  const authMessageRef = useRef(authMessage);
+  authMessageRef.current = authMessage;
   // silent=true（轮询刷新）：不进「加载…」态、列表不变时不替换数组引用——杜绝左栏
-  // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）才显示首次加载骨架。
+  // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）只在还没有任何数据时
+  // 显示首次加载骨架。
   const reload = useCallback((silent = false) => {
     const generation = ++reloadGenerationRef.current;
-    if (!silent) setLoading(true);
+    if (!silent && !loadedOnceRef.current) setLoading(true);
     return Promise.all([
       listAppSessions({
         limit: 100,
@@ -161,7 +187,6 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       listTasks(100, siteId, pending, "all"),
     ]).then(([sessionsResult, tasksResult]) => {
       if (generation !== reloadGenerationRef.current) return false;
-      if (!silent) setLoading(false);
       const sessions = sessionsResult.ok
         ? (sessionsResult.data?.items || []).filter(
             (session) => session.project_id == null,
@@ -175,16 +200,21 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       if (sessions === null && tasks === null) {
         // 静默轮询失败不打断已有列表（只在首次加载时报错）。
         if (!silent) {
+          setLoading(false);
           const signedOut =
             sessionsResult.status === 401 || tasksResult.status === 401;
           setError(
             signedOut
-              ? authMessage
-              : sessionsResult.error || tasksResult.error || tt("加载失败"),
+              ? authMessageRef.current
+              : sessionsResult.error ||
+                  tasksResult.error ||
+                  ttRef.current("加载失败"),
           );
         }
         return false;
       }
+      loadedOnceRef.current = true;
+      setLoading(false);
       setError(null);
       // session API 尚未部署时 sessions=null → 完整退回旧 task 列表。API 已部署时，
       // session 置顶，并只保留未绑定 session 的旧 task。
@@ -195,13 +225,30 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }).filter(
         (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
       );
+      historyListCache.set(cacheKey, next);
       setItems((prev) => (sameHistory(prev, next) ? prev : next));
       return true;
     });
-  }, [siteId, pending, authMessage, tt]);
+  }, [cacheKey, siteId, pending]);
+  // 乐观删除/重命名后的列表也进缓存，重挂时不会先闪回已删掉的那行。
+  const mountedKeyRef = useRef(cacheKey);
   useEffect(() => {
+    // 换站点那一轮 items 还是上一站的，不能写进新站点的缓存。
+    if (loadedOnceRef.current && mountedKeyRef.current === cacheKey) {
+      historyListCache.set(cacheKey, items);
+    }
+  }, [cacheKey, items]);
+  useEffect(() => {
+    if (mountedKeyRef.current !== cacheKey) {
+      // 真换了站点：换成那个站点的缓存（没有就回到首屏骨架），不沿用上一站的列表。
+      mountedKeyRef.current = cacheKey;
+      const cached = historyListCache.get(cacheKey);
+      loadedOnceRef.current = cached !== undefined;
+      setItems(cached ?? []);
+      setLoading(cached === undefined);
+    }
     void reload(false);
-  }, [reload]);
+  }, [cacheKey, reload]);
   useEffect(() => {
     const refresh = () => {
       void reload(true);

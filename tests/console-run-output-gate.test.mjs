@@ -299,19 +299,20 @@ const workbenchSource = await readFile(
   "utf8",
 );
 
-test("AgentChat 发送只 attach，首条 assistant 才 output", () => {
+test("AgentChat 开口即建 thread 会话，不再事后看 assistant 消息建档", () => {
   assert.match(
     agentChatSource,
-    /startNew\(\{[\s\S]*?intent: "attach"/,
+    /startNew\(\{[\s\S]*?intent: "thread"/,
   );
   assert.match(
     agentChatSource,
-    /ensureActive\(\{[\s\S]*?intent: "attach"/,
+    /ensureActive\(\{[\s\S]*?intent: "thread"/,
   );
-  assert.match(
+  assert.doesNotMatch(
     agentChatSource,
     /message\.role === "assistant"[\s\S]*?ensureActive\(\{[\s\S]*?intent: "output"/,
   );
+  assert.doesNotMatch(agentChatSource, /intent: "output"/);
   assert.doesNotMatch(
     agentChatSource,
     /无法创建工作会话，请稍后重试/,

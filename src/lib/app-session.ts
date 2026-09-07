@@ -108,6 +108,11 @@ export interface UpdateAppSessionInput {
   schemaVersion: number;
   title?: string;
   artifactRefs?: AppSessionArtifactPin[];
+  /**
+   * false = 只回写界面状态（右栏页签、未发送的输入），不算在这条任务上干活：
+   * 服务端不推进 `last_activity_at`，「我的任务」的排序和时间都不动。默认 true。
+   */
+  activity?: boolean;
 }
 
 export interface ArchiveAppSessionResult {
@@ -298,6 +303,7 @@ export async function updateAppSession(
     schema_version: input.schemaVersion,
   };
   if (input.title !== undefined) payload.title = input.title;
+  if (input.activity === false) payload.activity = false;
   if (input.artifactRefs !== undefined) {
     payload.artifact_refs = normalizeAppSessionArtifactPins(
       input.artifactRefs,

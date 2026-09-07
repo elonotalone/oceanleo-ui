@@ -112,6 +112,7 @@ const appSessionStub = dataModule(`
       method: "PUT",
       url: "/v1/agent/sessions/" + id + "/snapshot",
       snapshot: input.snapshot,
+      activity: input.activity,
     });
     return {
       ok: true,
@@ -340,6 +341,66 @@ test("已产出会话 archive 走 POST archive 并返回 archived", async () => 
       assert.equal(result, "archived");
       assert.equal(archivePosts().length, 1);
       assert.equal(deletes().length, 0);
+    },
+  );
+});
+
+function snapshotPuts() {
+  return globalThis.__oceanleoSessionGate.requests.filter(
+    (entry) => entry.method === "PUT",
+  );
+}
+
+test("无会话时 ensureActive 带 intent thread 会建会话（agent 刚开口）", async () => {
+  await withWorkspace({}, async (workspace) => {
+    let attached;
+    let thread;
+    await act(async () => {
+      attached = await workspace.ensureActive({
+        title: "只是切了页签",
+        intent: "attach",
+      });
+    });
+    assert.equal(attached, null);
+    assert.equal(postsToCreate().length, 0);
+    await act(async () => {
+      thread = await workspace.ensureActive({
+        title: "帮我写一份提案",
+        intent: "thread",
+      });
+    });
+    assert.equal(thread?.id, "sess-1");
+    assert.equal(postsToCreate().length, 1);
+  });
+});
+
+test("已有会话时 attach 保存只回写快照：PUT 带 activity:false，不算这条任务有新动作", async () => {
+  await withWorkspace(
+    { initialSession: sessionRecord({ first_output_at: "2026-09-05T01:00:00Z" }) },
+    async (workspace) => {
+      await act(async () => {
+        await workspace.saveSnapshot(
+          { topic: "draft", __oceanleo_ui: { right_tab: "preview" } },
+          1,
+        );
+      });
+      assert.equal(snapshotPuts().length, 1);
+      assert.equal(snapshotPuts()[0].activity, false);
+    },
+  );
+});
+
+test("已有会话时 output 保存推进活动时间：PUT 不带 activity:false", async () => {
+  await withWorkspace(
+    { initialSession: sessionRecord({ first_output_at: "2026-09-05T01:00:00Z" }) },
+    async (workspace) => {
+      await act(async () => {
+        await workspace.saveSnapshot({ topic: "生成了新版本" }, 1, {
+          intent: "output",
+        });
+      });
+      assert.equal(snapshotPuts().length, 1);
+      assert.equal(snapshotPuts()[0].activity, true);
     },
   );
 });

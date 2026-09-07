@@ -28,7 +28,8 @@ import {
   availabilityForSessionFailure,
   blockedSnapshotSave,
   isArchivedAppSession,
-  isOutputCreateIntent,
+  canCreateSessionWithIntent,
+  snapshotSaveCountsAsActivity,
   isStaleSessionResponse,
   isWorkspaceSessionReadOnly,
   matchingInitialSession,
@@ -394,8 +395,9 @@ export function WorkspaceSessionProvider({
       // 绝不能在记录缺失或身份不匹配时 ensure 出另一条会话来伪装原任务。
       if (mode === "history") return null;
       if (!site || !app) return null;
-      // 没有产物就不得建档：右栏页签、自动保存走草稿，不是失败。
-      if (!isOutputCreateIntent(options.intent)) return null;
+      // 没有产物、也不是刚开口的 agent 线程，就不得建档：右栏页签、自动保存走草稿，
+      // 不是失败。
+      if (!canCreateSessionWithIntent(options.intent)) return null;
       if (ensurePromiseRef.current) return ensurePromiseRef.current;
 
       const pending = (async () => {
@@ -527,7 +529,7 @@ export function WorkspaceSessionProvider({
         // 未建档的自动保存只写草稿，不发起 sessions 建行。
         if (
           !sessionRef.current &&
-          !isOutputCreateIntent(options.intent)
+          !canCreateSessionWithIntent(options.intent)
         ) {
           await saveConsoleDraft(site, app, recordSnapshot);
           return { ok: true, deferred: true };
@@ -575,6 +577,8 @@ export function WorkspaceSessionProvider({
             snapshot: recordSnapshot,
             schemaVersion,
             title: options.title,
+            // 切页签、改备注、敲输入只回写状态；只有伴随产物的保存才算这条任务有新动作。
+            activity: snapshotSaveCountsAsActivity(options.intent),
           },
           sessionSurface,
         );
@@ -903,7 +907,7 @@ export function WorkspaceSessionProvider({
             }
           }
         }
-        if (!isOutputCreateIntent(options.intent)) {
+        if (!canCreateSessionWithIntent(options.intent)) {
           clearCurrent();
           setLinkedTaskId(null);
           conflictRef.current = null;
