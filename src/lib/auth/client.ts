@@ -52,7 +52,7 @@ export function browserClient(): SupabaseClient | null {
             getAll() {
               return previewCookies.getAll();
             },
-            setAll(cookiesToSet) {
+            setAll(cookiesToSet: ReadonlyArray<{ name: string; value: string }>) {
               previewCookies.setAll(cookiesToSet);
               /* never write family SSO from a capability hostname */
             },

@@ -102,8 +102,18 @@ function renamePromptTemplateTerm(value: string, locale: Locale): string {
  * 「加载…」抽动的根因就在这。
  */
 export function useUI(): UITranslate {
-  const locale = normalizeLocale(useLocale());
-  const dict = useUiMessages();
+  let locale: Locale = "zh";
+  try {
+    locale = normalizeLocale(useLocale());
+  } catch {
+    locale = "zh";
+  }
+  let dict: Record<string, string> = {};
+  try {
+    dict = useUiMessages();
+  } catch {
+    dict = {};
+  }
   return useMemo(() => {
     return (zh: string, vars?: Record<string, string | number>) => {
       // “文件库”已并入异构“我的库”。不仅收敛单独标签，也收敛提示、toast 等

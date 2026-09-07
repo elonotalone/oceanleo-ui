@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,7 +45,9 @@ for (const row of rows) {
     .filter((file) => extensions.test(file));
   const occurrences = [];
   for (const file of files) {
-    const source = readFileSync(join(row.root, file), "utf8");
+    const targetPath = join(row.root, file);
+    if (!existsSync(targetPath)) continue;
+    const source = readFileSync(targetPath, "utf8");
     for (const match of source.matchAll(importPattern)) {
       const specifier = match[1];
       allSpecifiers.add(specifier);
