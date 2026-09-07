@@ -53,6 +53,10 @@ export function classifyProjectManifest(manifest: EditorProjectManifest): {
   saveActions: readonly EditorProjectAction[];
   /** group === "download"：进第一行下载菜单。 */
   downloadActions: readonly EditorProjectAction[];
+  /** `manifest.pro.label`（≤ 200 字非空字符串）；否则 undefined。 */
+  proLabel: string | undefined;
+  /** `manifest.pro.unavailableReason`（≤ 200 字非空字符串）；否则 undefined。 */
+  proUnavailableReason: string | undefined;
 };
 export function isEditorRecoverySnapshot(
   value: unknown,

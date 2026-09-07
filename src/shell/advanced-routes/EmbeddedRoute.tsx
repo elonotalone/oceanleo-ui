@@ -1484,6 +1484,10 @@ export function EmbeddedRoute({
           aux: remoteAuxPages,
           activePageId: hostActivePageId,
           onSelectPage: selectEmbeddedPage,
+          // plugin-ui U5：iframe 件经 manifest.pro 申报专业页签名与不可用原因
+          //（网站：有 siteConfig 时 "Puck"；源码工程时给人话原因，页签不隐藏）。
+          proLabel: classifiedManifest?.proLabel,
+          proUnavailableReason: classifiedManifest?.proUnavailableReason,
         },
         stage: carrierOpenRejection ? (
           <div

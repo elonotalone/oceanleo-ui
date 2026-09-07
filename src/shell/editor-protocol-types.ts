@@ -117,6 +117,16 @@ export interface EditorProjectManifest {
   revision: EditorDocumentRevision;
   views: EditorProjectView[];
   actions: EditorProjectAction[];
+  /**
+   * 第二行「专业编辑」页签的可选申报（plugin-ui U5，只加不减）。
+   * `label`：内核名（网站 = "Puck"）；缺省宿主画「专业编辑」。
+   * `unavailableReason`：给人话原因写进页签 title，页签**不隐藏**（规范 v2 §3）。
+   * 两者都是 ≤ 200 字的字符串；非法或缺省视为没说，旧宿主收到直接忽略。
+   */
+  pro?: {
+    label?: string;
+    unavailableReason?: string;
+  };
 }
 
 export type EditorRecoveryValue =

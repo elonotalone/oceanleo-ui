@@ -359,6 +359,8 @@ export function projectActionGroup(action) {
  * role "artifact" 并进「编辑」；缺省 role 当 "page"。
  * 动作按 `projectActionGroup()` 分三组：`documentActions`（edit，进编辑栏）、
  * `saveActions`（进第一行保存菜单）、`downloadActions`（进第一行下载菜单）。
+ * `pro`（可选）→ `proLabel` / `proUnavailableReason`：只认 ≤ 200 字的非空字符串，
+ * 其余（缺省、非字符串、超长、空串）一律当没说 = `undefined`。
  */
 export function classifyProjectManifest(manifest) {
   const views = Array.isArray(manifest?.views) ? manifest.views : [];
@@ -367,11 +369,14 @@ export function classifyProjectManifest(manifest) {
   const artifactView = views.find((view) => view.role === "artifact") || null;
   const active = views.find((view) => view.active) || null;
   const activeIsAux = Boolean(active && active.role !== "artifact");
+  const pro = recordValue(manifest?.pro);
   return {
     auxViews,
     artifactView,
     artifactViewId: artifactView?.id || views[0]?.id || null,
     activePageId: activeIsAux ? active.id : "artifact",
+    proLabel: proManifestString(pro?.label),
+    proUnavailableReason: proManifestString(pro?.unavailableReason),
     documentActions: actions.filter(
       (action) => projectActionGroup(action) === "edit",
     ),
@@ -382,6 +387,16 @@ export function classifyProjectManifest(manifest) {
       (action) => projectActionGroup(action) === "download",
     ),
   };
+}
+
+const PRO_MANIFEST_STRING_MAX = 200;
+
+function proManifestString(value) {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= PRO_MANIFEST_STRING_MAX
+    ? value
+    : undefined;
 }
 
 function validRecoveryValue(value, depth = 0, seen = new WeakSet()) {

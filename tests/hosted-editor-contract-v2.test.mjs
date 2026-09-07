@@ -40,6 +40,7 @@ import {
   sandboxGrantsScriptedSameOrigin,
 } from "../src/shell/editor-sandbox-origin.ts";
 import { buildEditorEmbedUrl } from "../src/shell/editor-protocol.ts";
+import { classifyProjectManifest } from "../src/shell/editor-protocol-validation.mjs";
 import {
   HOSTED_EDITOR_CONTRACT_VERSION,
   buildHideChromeMessage,
@@ -175,6 +176,94 @@ test("plugin-chrome 可选字段：非法 role/placement/chrome 整条丢掉", (
   assert.ok(errors.some((line) => line.includes("invalid view.role")));
   assert.ok(errors.some((line) => line.includes("invalid action.placement")));
   assert.ok(errors.some((line) => line.includes("invalid chrome")));
+});
+
+// ─── 1b. project-manifest.pro（plugin-ui U5，只加不减）──────────────────────
+
+const PRO_VIEWS = [
+  { id: "preview", label: "编辑", active: true, role: "artifact" },
+  { id: "code", label: "源码", active: false, role: "page" },
+];
+
+test("project-manifest 带 pro：旧宿主校验照过，classify 透出 proLabel / proUnavailableReason", () => {
+  const withLabel = asEditorToHostMessage(
+    envelope("project-manifest", {
+      manifest: {
+        revision: "website:1",
+        views: PRO_VIEWS,
+        actions: [],
+        pro: { label: "Puck" },
+      },
+    }),
+    INSTANCE,
+  );
+  assert.ok(withLabel, "带 pro 的 manifest 必须仍然被接受（只加不减）");
+  const labelled = classifyProjectManifest(withLabel.manifest);
+  assert.equal(labelled.proLabel, "Puck");
+  assert.equal(labelled.proUnavailableReason, undefined);
+  assert.equal(labelled.artifactViewId, "preview");
+  assert.equal(labelled.auxViews.length, 1);
+
+  const reason = "此网站是源码工程，专业编辑用于三轴模板站；改源码请用「源码」页";
+  const withReason = asEditorToHostMessage(
+    envelope("project-manifest", {
+      manifest: {
+        revision: "website:2",
+        views: PRO_VIEWS,
+        actions: [],
+        pro: { unavailableReason: reason },
+      },
+    }),
+    INSTANCE,
+  );
+  assert.ok(withReason);
+  const unavailable = classifyProjectManifest(withReason.manifest);
+  assert.equal(unavailable.proLabel, undefined);
+  assert.equal(unavailable.proUnavailableReason, reason);
+});
+
+test("project-manifest 不带 pro：classify 两个字段都是 undefined；非法 pro 当没说，整条不丢", () => {
+  const plain = asEditorToHostMessage(
+    envelope("project-manifest", {
+      manifest: { revision: 1, views: PRO_VIEWS, actions: [] },
+    }),
+    INSTANCE,
+  );
+  assert.ok(plain);
+  const classified = classifyProjectManifest(plain.manifest);
+  assert.equal(classified.proLabel, undefined);
+  assert.equal(classified.proUnavailableReason, undefined);
+  assert.equal("proLabel" in classified, true, "字段必须存在，宿主直接解构");
+
+  for (const bad of [
+    "Puck",
+    42,
+    null,
+    [],
+    { label: 7, unavailableReason: false },
+    { label: "", unavailableReason: "x".repeat(201) },
+  ]) {
+    const message = asEditorToHostMessage(
+      envelope("project-manifest", {
+        manifest: { revision: 1, views: PRO_VIEWS, actions: [], pro: bad },
+      }),
+      INSTANCE,
+    );
+    assert.ok(message, `非法 pro ${JSON.stringify(bad)} 不得让整条 manifest 被丢`);
+    const result = classifyProjectManifest(message.manifest);
+    assert.equal(result.proLabel, undefined);
+    assert.equal(result.proUnavailableReason, undefined);
+  }
+  assert.equal(
+    classifyProjectManifest({
+      revision: 1,
+      views: [],
+      actions: [],
+      pro: { label: "x".repeat(200) },
+    }).proLabel.length,
+    200,
+    "200 字是上限本身，允许",
+  );
 });
 
 test("v2 只加不减：v1 形态的 tools-manifest（没有 manifestVersion/chips）照样通过", () => {
