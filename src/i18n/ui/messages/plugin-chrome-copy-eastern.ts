@@ -164,6 +164,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     websiteRestartPreview: "重新啟動預覽",
     websitePreviewStoppedBody: "這個沙箱預覽會話已經結束，頁面裡的內容不再可用。重新啟動後會從目前原始碼重新產生預覽。",
     websitePreviewExpiredBody: "這條歷史任務的預覽已過期，重新產生即可。",
+    websiteInsertBlock: "插入區塊",
+    websitePageAppearance: "頁面外觀",
+    websiteProUnavailableSourceProject: "此網站是原始碼專案，專業編輯用於三軸範本站；改原始碼請用「原始碼」頁",
   },
   ja: {
     viewSwitcher: "ビューの切り替え",
@@ -333,6 +336,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     websiteRestartPreview: "プレビューを再起動",
     websitePreviewStoppedBody: "このサンドボックスのプレビューセッションは終了し、ページ内容は利用できません。再起動すると現在のソースからプレビューを再生成します。",
     websitePreviewExpiredBody: "この過去タスクのプレビューは期限切れです。再生成してください。",
+    websiteInsertBlock: "ブロックを挿入",
+    websitePageAppearance: "ページの外観",
+    websiteProUnavailableSourceProject: "このサイトはソースコードのプロジェクトです。プロ編集は三軸テンプレートサイト向けです。ソースを変更するには「ソース」ページをご利用ください",
   },
   ko: {
     viewSwitcher: "보기 전환",
@@ -501,6 +507,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     websiteRestartPreview: "미리보기 다시 시작",
     websitePreviewStoppedBody: "이 샌드박스 미리보기 세션이 종료되어 페이지 내용을 더 이상 사용할 수 없습니다. 다시 시작하면 현재 소스에서 미리보기를 다시 생성합니다.",
     websitePreviewExpiredBody: "이 과거 작업의 미리보기가 만료되었습니다. 다시 생성하면 됩니다.",
+    websiteInsertBlock: "블록 삽입",
+    websitePageAppearance: "페이지 외관",
+    websiteProUnavailableSourceProject: "이 사이트는 소스 코드 프로젝트입니다. 전문 편집은 3축 템플릿 사이트용입니다. 소스를 수정하려면 「소스」 페이지를 이용하세요",
   },
   ar: {
     viewSwitcher: "تبديل العرض",
@@ -670,6 +679,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     websiteRestartPreview: "إعادة تشغيل المعاينة",
     websitePreviewStoppedBody: "انتهت جلسة معاينة الصندوق الرملي هذه ولم يعد محتوى الصفحة متاحًا. عند إعادة التشغيل سيتم إنشاء المعاينة من جديد من الشيفرة المصدرية الحالية.",
     websitePreviewExpiredBody: "انتهت صلاحية معاينة هذه المهمة السابقة؛ يكفي إعادة إنشائها.",
+    websiteInsertBlock: "إدراج قالب",
+    websitePageAppearance: "مظهر الصفحة",
+    websiteProUnavailableSourceProject: "هذا الموقع مشروع بشيفرة مصدرية؛ التحرير الاحترافي مخصص لمواقع القوالب ثلاثية المحاور. لتعديل الشيفرة استخدم صفحة «الشيفرة»",
   },
   th: {
     viewSwitcher: "สลับมุมมอง",
@@ -837,6 +849,9 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     websiteRestartPreview: "เริ่มพรีวิวใหม่",
     websitePreviewStoppedBody: "เซสชันพรีวิวแซนด์บ็อกซ์นี้สิ้นสุดแล้ว เนื้อหาในหน้าใช้ไม่ได้อีกต่อไป เมื่อเริ่มใหม่จะสร้างพรีวิวจากซอร์สโค้ดปัจจุบันอีกครั้ง",
     websitePreviewExpiredBody: "พรีวิวของงานเก่านี้หมดอายุแล้ว เพียงสร้างใหม่ก็พอ",
+    websiteInsertBlock: "แทรกบล็อก",
+    websitePageAppearance: "รูปลักษณ์หน้า",
+    websiteProUnavailableSourceProject: "เว็บไซต์นี้เป็นโปรเจกต์ซอร์สโค้ด การแก้ไขระดับมืออาชีพใช้กับไซต์เทมเพลตสามแกน หากต้องการแก้ซอร์สโปรดใช้หน้า「ซอร์ส」",
   },
   hi: {
     viewSwitcher: "व्यू बदलें",
@@ -1006,5 +1021,8 @@ export const PLUGIN_CHROME_COPY_EASTERN: Record<
     websiteRestartPreview: "प्रीव्यू फिर से शुरू करें",
     websitePreviewStoppedBody: "यह सैंडबॉक्स प्रीव्यू सत्र समाप्त हो गया है और पृष्ठ की सामग्री अब उपलब्ध नहीं है। फिर से शुरू करने पर वर्तमान सोर्स से प्रीव्यू दोबारा बनेगा।",
     websitePreviewExpiredBody: "इस पुराने कार्य का प्रीव्यू समाप्त हो गया है; बस इसे दोबारा बनाएँ।",
+    websiteInsertBlock: "ब्लॉक डालें",
+    websitePageAppearance: "पेज का रूप",
+    websiteProUnavailableSourceProject: "यह साइट एक सोर्स-कोड प्रोजेक्ट है; प्रो संपादन तीन-अक्ष टेम्पलेट साइटों के लिए है। सोर्स बदलने के लिए 「सोर्स」 पेज का उपयोग करें",
   },
 };

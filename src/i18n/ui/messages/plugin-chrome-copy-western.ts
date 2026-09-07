@@ -172,6 +172,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Restart preview",
     websitePreviewStoppedBody: "This sandbox preview session has ended and its content is no longer available. Restarting will regenerate the preview from the current source.",
     websitePreviewExpiredBody: "This historical task's preview has expired; regenerate it to view it again.",
+    websiteInsertBlock: "Insert block",
+    websitePageAppearance: "Page appearance",
+    websiteProUnavailableSourceProject: "This site is a source-code project; Pro editing is for three-axis template sites. To change the source, use the Source page",
   },
   de: {
     viewSwitcher: "Ansicht wechseln",
@@ -348,6 +351,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Vorschau neu starten",
     websitePreviewStoppedBody: "Diese Sandbox-Vorschausitzung ist beendet und ihr Inhalt ist nicht mehr verfügbar. Beim Neustart wird die Vorschau aus dem aktuellen Quellcode neu erzeugt.",
     websitePreviewExpiredBody: "Die Vorschau dieser früheren Aufgabe ist abgelaufen; erzeugen Sie sie einfach neu.",
+    websiteInsertBlock: "Block einfügen",
+    websitePageAppearance: "Seitenerscheinungsbild",
+    websiteProUnavailableSourceProject: "Diese Website ist ein Quellcode-Projekt; die Profi-Bearbeitung ist für Drei-Achsen-Vorlagenseiten. Zum Ändern des Quellcodes die Seite „Quellcode“ verwenden",
   },
   fr: {
     viewSwitcher: "Changer de vue",
@@ -527,6 +533,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Redémarrer l'aperçu",
     websitePreviewStoppedBody: "Cette session d'aperçu sandbox est terminée et son contenu n'est plus disponible. Le redémarrage régénérera l'aperçu à partir du code source actuel.",
     websitePreviewExpiredBody: "L'aperçu de cette tâche passée a expiré ; il suffit de le régénérer.",
+    websiteInsertBlock: "Insérer un bloc",
+    websitePageAppearance: "Apparence de la page",
+    websiteProUnavailableSourceProject: "Ce site est un projet en code source ; l'édition Pro est réservée aux sites modèles à trois axes. Pour modifier le code, utilisez la page « Code source »",
   },
   es: {
     viewSwitcher: "Cambiar de vista",
@@ -703,6 +712,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Reiniciar vista previa",
     websitePreviewStoppedBody: "Esta sesión de vista previa en sandbox ha terminado y su contenido ya no está disponible. Al reiniciar se regenerará la vista previa desde el código fuente actual.",
     websitePreviewExpiredBody: "La vista previa de esta tarea antigua ha caducado; basta con regenerarla.",
+    websiteInsertBlock: "Insertar bloque",
+    websitePageAppearance: "Apariencia de la página",
+    websiteProUnavailableSourceProject: "Este sitio es un proyecto de código fuente; la edición Pro es para sitios de plantilla de tres ejes. Para cambiar el código, usa la página «Código fuente»",
   },
   "es-419": {
     viewSwitcher: "Cambiar de vista",
@@ -879,6 +891,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Reiniciar vista previa",
     websitePreviewStoppedBody: "Esta sesión de vista previa en sandbox terminó y su contenido ya no está disponible. Al reiniciar se regenerará la vista previa desde el código fuente actual.",
     websitePreviewExpiredBody: "La vista previa de esta tarea anterior expiró; solo hay que regenerarla.",
+    websiteInsertBlock: "Insertar bloque",
+    websitePageAppearance: "Apariencia de la página",
+    websiteProUnavailableSourceProject: "Este sitio es un proyecto de código fuente; la edición Pro es para sitios de plantilla de tres ejes. Para cambiar el código, usa la página «Código fuente»",
   },
   it: {
     viewSwitcher: "Cambia vista",
@@ -1055,6 +1070,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Riavvia anteprima",
     websitePreviewStoppedBody: "Questa sessione di anteprima sandbox è terminata e il suo contenuto non è più disponibile. Riavviandola, l'anteprima verrà rigenerata dal codice sorgente attuale.",
     websitePreviewExpiredBody: "L'anteprima di questa attività passata è scaduta; basta rigenerarla.",
+    websiteInsertBlock: "Inserisci blocco",
+    websitePageAppearance: "Aspetto della pagina",
+    websiteProUnavailableSourceProject: "Questo sito è un progetto in codice sorgente; la modifica Pro è per i siti modello a tre assi. Per cambiare il codice usa la pagina «Codice sorgente»",
   },
   "pt-BR": {
     viewSwitcher: "Trocar de visão",
@@ -1230,6 +1248,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Reiniciar prévia",
     websitePreviewStoppedBody: "Esta sessão de prévia em sandbox foi encerrada e seu conteúdo não está mais disponível. Ao reiniciar, a prévia será gerada novamente a partir do código-fonte atual.",
     websitePreviewExpiredBody: "A prévia desta tarefa antiga expirou; basta gerá-la novamente.",
+    websiteInsertBlock: "Inserir bloco",
+    websitePageAppearance: "Aparência da página",
+    websiteProUnavailableSourceProject: "Este site é um projeto de código-fonte; a edição Pro é para sites de modelo de três eixos. Para alterar o código, use a página “Código-fonte”",
   },
   "pt-PT": {
     viewSwitcher: "Mudar de vista",
@@ -1408,6 +1429,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Reiniciar pré-visualização",
     websitePreviewStoppedBody: "Esta sessão de pré-visualização em sandbox terminou e o seu conteúdo já não está disponível. Ao reiniciar, a pré-visualização será gerada de novo a partir do código-fonte atual.",
     websitePreviewExpiredBody: "A pré-visualização desta tarefa antiga expirou; basta gerá-la de novo.",
+    websiteInsertBlock: "Inserir bloco",
+    websitePageAppearance: "Aspeto da página",
+    websiteProUnavailableSourceProject: "Este site é um projeto de código-fonte; a edição Pro destina-se a sites de modelo de três eixos. Para alterar o código, use a página «Código-fonte»",
   },
   vi: {
     viewSwitcher: "Chuyển chế độ xem",
@@ -1581,6 +1605,9 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Khởi động lại bản xem trước",
     websitePreviewStoppedBody: "Phiên xem trước sandbox này đã kết thúc và nội dung trong trang không còn dùng được. Khởi động lại sẽ tạo lại bản xem trước từ mã nguồn hiện tại.",
     websitePreviewExpiredBody: "Bản xem trước của tác vụ cũ này đã hết hạn; chỉ cần tạo lại.",
+    websiteInsertBlock: "Chèn khối",
+    websitePageAppearance: "Giao diện trang",
+    websiteProUnavailableSourceProject: "Trang này là dự án mã nguồn; chỉnh sửa Pro dành cho trang mẫu ba trục. Để sửa mã nguồn, dùng trang「Mã nguồn」",
   },
   tr: {
     viewSwitcher: "Görünüm değiştir",
@@ -1756,5 +1783,8 @@ export const PLUGIN_CHROME_COPY_WESTERN: Record<
     websiteRestartPreview: "Önizlemeyi yeniden başlat",
     websitePreviewStoppedBody: "Bu sandbox önizleme oturumu sona erdi ve içeriği artık kullanılamıyor. Yeniden başlatınca önizleme mevcut kaynak koddan yeniden oluşturulur.",
     websitePreviewExpiredBody: "Bu eski görevin önizlemesi süresi doldu; yeniden oluşturmanız yeter.",
+    websiteInsertBlock: "Blok ekle",
+    websitePageAppearance: "Sayfa görünümü",
+    websiteProUnavailableSourceProject: "Bu site bir kaynak kodu projesidir; Pro düzenleme üç eksenli şablon siteler içindir. Kaynağı değiştirmek için „Kaynak“ sayfasını kullanın",
   },
 };

@@ -209,6 +209,13 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   websiteRestartPreview: "重新启动预览",
   websitePreviewStoppedBody: "这个沙箱预览会话已经结束，页面里的内容不再可用。重新启动后会从当前源码重新生成预览。",
   websitePreviewExpiredBody: "这条历史任务的预览已过期，重新生成即可。",
+  // U5（2026-09-07）：右侧面板拆进编辑栏后新增的三条 —— 文档级选区的「页面外观」轴、
+  // 区块选区的「插入区块」动作（`edit-bar-capabilities.ts`），以及源码工程下专业编辑页签
+  // 的不可用原因（manifest `pro.unavailableReason`，`website-project-manifest.ts`）。
+  websiteInsertBlock: "插入区块",
+  websitePageAppearance: "页面外观",
+  websiteProUnavailableSourceProject:
+    "此网站是源码工程，专业编辑用于三轴模板站；改源码请用「源码」页",
 } as const;
 
 export type PluginChromeCopyName = keyof typeof PLUGIN_CHROME_COPY_SOURCE;
