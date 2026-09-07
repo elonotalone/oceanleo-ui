@@ -35,6 +35,7 @@
     "./shell/plugin-chrome": "./src/shell/plugin-chrome/index.ts",
     "./shell/plugin-theme": "./src/shell/plugin-theme.tsx",
     "./shell/plugin-ai": "./src/shell/plugin-ai/index.ts",
+    "./shell/plugin-store": "./src/shell/plugin-store/index.ts",
     "./shell/advanced-routes/GameRoute": "./src/shell/advanced-routes/GameRoute.tsx",
     "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
