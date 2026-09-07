@@ -47,22 +47,25 @@ test("appliesTo 只许写表格真的会发出的那五种 kind（写错一个�
   }
 });
 
-test("那五种 kind 与 GridContextToolbar 在 HEAD 上真的发出去的逐字一致", () => {
-  // 清单类判据判 HEAD 而不是工作树（`_COMMON.md` §7b⑪b）：共享树上同事的在途
-  // 改动会让这份清单一会儿多一会儿少。
-  const source = execFileSync(
+test("那五种 kind 与旧核工具条最后一版真的发出去的逐字一致；Univer 舞台今天发 grid-cell", () => {
+  // 旧核工具条已删（core-swap:delete grid，2026-09-07）。它最后一版
+  // （`git show 2a4f7d9:src/shell/doc-editors/GridContextToolbar.tsx`）发出的五种
+  // kind 逐字冻结在这里：chip 的 appliesTo 写的就是这五个字，改一个字 chip 就永远不出现。
+  const emittedByLegacy = ["grid-cell", "grid-column", "grid-range", "grid-row", "grid-sheet"];
+  assert.deepEqual(emittedByLegacy, [...GRID_SELECTION_KINDS].sort());
+  // Univer 舞台今天只发 grid-cell（选区上下文的 kind 缺省）；发别的 kind 也必须在这五个里。
+  const leaf = execFileSync(
     "git",
-    ["show", "HEAD:src/shell/doc-editors/GridContextToolbar.tsx"],
+    ["show", "HEAD:src/shell/doc-editors/GridUniverStage.tsx"],
     { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
   );
-  const emitted = [
-    ...new Set([...source.matchAll(/"(grid-(?:cell|range|row|column|sheet))"/g)].map(
-      (match) => match[1],
-    )),
-  ].sort();
-  // 先验正则本身：抓不到就是工具错了，不是「表格不发选区」。
-  assert.ok(emitted.length > 0, "扫不到任何 grid-* 选区 kind ⇒ 正则可疑");
-  assert.deepEqual(emitted, [...GRID_SELECTION_KINDS].sort());
+  const emittedNow = [
+    ...new Set([...leaf.matchAll(/kind:\s*"(grid-[a-z]+)"/g)].map((match) => match[1])),
+  ];
+  assert.ok(emittedNow.length > 0, "Univer 舞台没有给选区上下文写 kind");
+  for (const kind of emittedNow) {
+    assert.ok(GRID_SELECTION_KINDS.includes(kind), `${kind} 不在五种之内，chip 永远不出现`);
+  }
 });
 
 test("每个选区形态下至少有一个 chip 可用——否则那个形态的 L4 是空的", () => {

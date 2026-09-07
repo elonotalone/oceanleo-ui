@@ -9,6 +9,8 @@ import {
   PDFName,
 } from "pdf-lib";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
+import { gridUniverSelectionContext } from "../src/shell/doc-editors/grid-univer/stage-plan.ts";
+import { GRID_UNIVER_COMMANDS } from "../src/shell/doc-editors/grid-univer/facade-commands.ts";
 import {
   addPdfTextAnnotation,
   createBlankPdf,
@@ -119,22 +121,25 @@ test("route toolbars put continuous and long-form controls in semantic inspector
       "y-type",
     ],
   );
-  assertInspectorControls(
-    "../src/shell/doc-editors/GridContextToolbar.tsx",
-    [
-      "decimals",
-      "row-before",
-      "row-after",
-      "row-delete",
-      "column-before",
-      "column-after",
-      "column-delete",
-      "sort-asc",
-      "sort-desc",
-      "header-row",
-      "filter-query",
-    ],
-  );
+  // 表格只剩 Univer 舞台（core-swap:delete grid）：选区控件不是 JSX 字面量，
+  // 而是 `gridUniverSelectionContext()` 从命令表算出来的，直接对着运行期结果判。
+  const gridControls = gridUniverSelectionContext().controls;
+  assert.ok(gridControls.length >= 10, "Univer 选区控件表空了");
+  const gridInspector = gridControls.filter((control) => control.slot === "inspector");
+  assert.ok(gridInspector.some((control) => control.id === "decimals"));
+  assert.ok(gridInspector.some((control) => control.id === "row-before"));
+  assert.ok(gridInspector.some((control) => control.id === "sort-asc"));
+  for (const control of gridInspector) {
+    assert.ok(control.inspectorGroup, `${control.id} needs a semantic group`);
+    assert.ok(control.inspectorLabel, `${control.id} needs a visible group label`);
+    assert.equal(control.placement, "more", `${control.id} must be inspector-only`);
+  }
+  // 连续量 / 长表单控件（数字输入）不许直接摆在浮条上。
+  for (const control of gridControls) {
+    if (control.kind === "number") {
+      assert.equal(control.slot, "inspector", `${control.id} must be inspector-only`);
+    }
+  }
   assertInspectorControls(
     "../src/shell/doc-editors/deck-slide-selection-context.ts",
     ["transition-duration", "title", "body", "notes"],
@@ -275,25 +280,24 @@ test("route toolbar controls are backed by concrete persistent editor commands",
     /editor\.importCsv\(csv\)/,
   );
 
-  const grid = source("../src/shell/doc-editors/GridContextToolbar.tsx");
-  for (const command of [
-    "applyFormat",
-    "insertRow",
-    "deleteRows",
-    "insertColumn",
-    "deleteColumns",
-    "sort",
-    "setFilterQuery",
-    "mergeSelection",
-    "splitSelection",
-    "addConditionalFormat",
-    "clearConditionalFormats",
+  // 表格：每个浮条控件都要有一条真的进 Univer Facade 的命令（`run`），
+  // 不许只有一个 id 摆在那里。旧核的 editor.xxx() 那套已随 core-swap:delete grid 删除。
+  const gridControlIds = gridUniverSelectionContext().controls.map((control) => control.id);
+  for (const id of [
+    "bold",
+    "row-before",
+    "row-delete",
+    "column-before",
+    "column-delete",
+    "sort-asc",
+    "sort-desc",
+    "merge-cells",
+    "split-cells",
   ]) {
-    assert.match(grid, new RegExp(`editor\\.${command}\\(`));
+    assert.ok(gridControlIds.includes(id), `grid 浮条少了 ${id}`);
+    const command = GRID_UNIVER_COMMANDS.find((each) => each.id === id);
+    assert.equal(typeof command?.run, "function", `${id} 没有 Facade 执行器`);
   }
-  const gridState = source("../src/shell/doc-editors/use-grid-editor.ts");
-  assert.match(gridState, /filterQuery,[\s\S]*?filterColumn,/);
-  assert.match(gridState, /setHeaderRow: updateHeaderRow/);
 
   const deck = source("../src/shell/doc-editors/deck-toolbar-command.ts");
   assert.match(deck, /case "transition"/);

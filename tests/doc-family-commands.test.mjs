@@ -729,7 +729,6 @@ test("四条路由的指令面都能被 currentPluginCommandSurface() 读到", a
 test("四条路由源码真的把指令面挂上去了", () => {
   const wiring = [
     ["RichDocRoute.tsx", "buildRichDocCommandSurface"],
-    ["GridRoute.tsx", "buildGridCommandSurface"],
     ["DeckRoute.tsx", "buildDeckCommandSurface"],
     ["PdfRoute.tsx", "buildPdfCommandSurface"],
   ];
@@ -741,6 +740,15 @@ test("四条路由源码真的把指令面挂上去了", () => {
       `${file} 没有用 usePluginCommandSurface(${builder}(…)) 挂上指令面`,
     );
   }
+  // 表格只剩 Univer 舞台（core-swap:delete grid）：它的指令面是 agent 写门
+  // （`grid-univer/agent-write-gate.ts` 的 gridAgentCommandSpecs / runGridAgentCommand），
+  // 由 `tests/grid-univer-agent-review-gate.test.mjs` 钉住；这里只验它真的挂上了。
+  const leaf = readFileSync(
+    join(REPO, "src", "shell", "doc-editors", "GridUniverStage.tsx"),
+    "utf8",
+  );
+  assert.match(leaf, /usePluginCommandSurface\(\{\s*editorId:\s*"grid",\s*describe:\s*gridAgentCommandSpecs,/);
+  assert.match(leaf, /run:\s*\(id, params\) =>\s*runGridAgentCommand\(/);
 });
 
 // ---------------------------------------------------------------------------

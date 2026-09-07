@@ -35,7 +35,8 @@ test("typed routes render real content in the inline App-library editor shell", 
     source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
     source("../src/shell/advanced-routes/EmbeddedRoute.tsx"),
     source("../src/shell/advanced-routes/ImageRoute.tsx"),
-    source("../src/shell/advanced-routes/GridRoute.tsx"),
+    // grid 的 adapter 长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）。
+    source("../src/shell/doc-editors/GridUniverStage.tsx"),
     source("../src/shell/advanced-routes/DeckRoute.tsx"),
     source("../src/shell/advanced-routes/PdfRoute.tsx"),
     source("../src/shell/advanced-routes/Model3DRoute.tsx"),
@@ -334,7 +335,11 @@ test("late catalog categories stay behind More and native Office routes use the 
   assert.match(officeClient, /lightweightOfficeRouteForExtension/);
   assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
   for (const route of ["RichDocRoute", "GridRoute", "DeckRoute"]) {
-    const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
+    const contents = source(
+      route === "GridRoute"
+        ? "../src/shell/doc-editors/GridUniverStage.tsx"
+        : `../src/shell/advanced-routes/${route}.tsx`,
+    );
     assert.match(
       contents,
       /useOfficeArtifactSource\((?:item|openedItemRef\.current)\)/,

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -439,146 +438,10 @@ test("外部来源没有 origin，公式原样落地不乱平移", () => {
   );
 });
 
-/* ═══════════════ 接线：把判据从纯函数往上挪一层 ═══════════════
+/* ═══════════════ 接线段已删（core-swap:delete grid，2026-09-07）═══════════════
  *
- * 上面十四条测的全是 `grid-structure.ts` 的纯函数。**纯函数全绿并不等于用户拿到
- * 了东西**：事件没挂上去，屏幕前的人看到的仍然是 S10 那个「一坨文本落进一个
- * 格子」，而上面每一条照样绿。真正的承诺落在两处接线上——
- * `GridStage.tsx` 把三个事件挂在滚动容器上、两种格式都读也都写；
- * `use-grid-editor.ts` 把 `readGridClipboard → planGridPaste` 收进**一次**
- * `mutate()`，并在截断时如实报数。
- *
- * 两份源码都带 JSX / React hook，`--experimental-strip-types` 加载不了，
- * 所以按本仓既有做法（`grid-carrier-contract.test.mjs:59-64`）读源文本断言。
+ * 这份文件原来还有一段读 `GridStage.tsx` / `use-grid-editor.ts` 源码的接线判据。
+ * 自研旧表格已删，剪贴板复制 / 粘贴 / 剪切在 Univer 内核里是原生能力
+ * （preset-sheets-core 自带 clipboard），不再有宿主侧接线可判。上面的纯函数判据保留：
+ * `grid-structure.ts` 仍被 Univer 快照转换与 xlsx 往返用着。
  */
-const GRID_STAGE_SOURCE = readFileSync(
-  new URL("../src/shell/doc-editors/GridStage.tsx", import.meta.url),
-  "utf8",
-);
-const GRID_EDITOR_SOURCE = readFileSync(
-  new URL("../src/shell/doc-editors/use-grid-editor.ts", import.meta.url),
-  "utf8",
-);
-
-// 注释里写的 `mutate()` 不是一次调用；数调用之前先摘注释。
-function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "");
-}
-
-/** 取 JSX 上 `onX={(event) => { … }}` 整个处理器的源文本（花括号配对，不靠缩进）。 */
-function jsxHandlerBody(name) {
-  const marker = `${name}={(event) => {`;
-  const start = GRID_STAGE_SOURCE.indexOf(marker);
-  assert.notEqual(start, -1, `GridStage.tsx 里找不到 ${name} 处理器`);
-  let depth = 0;
-  for (let i = start + marker.length - 2; i < GRID_STAGE_SOURCE.length; i += 1) {
-    const ch = GRID_STAGE_SOURCE[i];
-    if (ch === "{") depth += 1;
-    else if (ch === "}" && (depth -= 1) === 0) {
-      return stripComments(GRID_STAGE_SOURCE.slice(start, i + 1));
-    }
-  }
-  return assert.fail(`${name} 处理器的花括号没有闭合`);
-}
-
-function hookCallbackBody(name) {
-  const start = GRID_EDITOR_SOURCE.indexOf(`const ${name} = useCallback(`);
-  assert.notEqual(start, -1, `use-grid-editor.ts 里找不到 ${name} 的 useCallback`);
-  const rest = GRID_EDITOR_SOURCE.slice(start);
-  const end = rest.search(/\n {2}(?:const|function|return|void) /);
-  return stripComments(end === -1 ? rest : rest.slice(0, end));
-}
-
-test("GridStage 把 paste/copy/cut 挂在滚动容器上（没有这三行，上面十四条全是空转）", () => {
-  const paste = jsxHandlerBody("onPaste");
-  assert.match(
-    paste,
-    /getData\("text\/html"\)/,
-    "不读 text/html 就等于回到 S10：Excel 的合并与格式全丢",
-  );
-  assert.match(paste, /getData\("text\/plain"\)/, "plain 是回落，也必须读");
-  assert.match(
-    paste,
-    /pasteClipboard\(\{\s*html,\s*text\s*\}\)/,
-    "两种格式都要交给 hook，由 readGridClipboard 决定优先级",
-  );
-  assert.match(
-    paste,
-    /preventDefault\(\)/,
-    "接管成功必须挡掉浏览器默认粘贴，否则表格内容与一坨文本会同时落进去",
-  );
-
-  for (const name of ["onCopy", "onCut"]) {
-    const body = jsxHandlerBody(name);
-    assert.match(
-      body,
-      /setData\("text\/plain",/,
-      `${name} 要写 text/plain：粘进纯文本编辑器不该是一堆标签`,
-    );
-    assert.match(
-      body,
-      /setData\("text\/html",/,
-      `${name} 要写 text/html：这是「粘回 Excel 不丢格式」的唯一出处`,
-    );
-    assert.match(body, /preventDefault\(\)/);
-  }
-  assert.match(
-    jsxHandlerBody("onCut"),
-    /clearSelection\(\)/,
-    "剪切要真的清掉原区域，否则它只是复制",
-  );
-});
-
-test("带 <table> 的粘贴一定走表格通道，不被单值快路吞掉", () => {
-  // `isSingleValuePaste` 是让「在格子里编辑时粘一个词」保持浏览器原生行为的快路。
-  // 它一旦忘了先看 html 里有没有 <table>，Excel 复制来的整片区域就会从这条快路
-  // 溜走，重新变成一坨文本——S10 原样复发，而纯函数层测不到。
-  const guard = GRID_STAGE_SOURCE.slice(
-    GRID_STAGE_SOURCE.indexOf("function isSingleValuePaste"),
-  ).slice(0, 200);
-  assert.match(
-    guard,
-    /if \(html && \/<table\/i\.test\(html\)\) return false;/,
-    "html 里有 <table> 就必须判定为表格粘贴",
-  );
-  assert.match(
-    guard,
-    /return !\/\[\\t\\r\\n\]\/\.test\(text\)/,
-    "没有 html 时，带制表符或换行的纯文本同样是表格，不能当单值",
-  );
-  assert.ok(
-    jsxHandlerBody("onPaste").indexOf("isSingleValuePaste") <
-      jsxHandlerBody("onPaste").indexOf("pasteClipboard"),
-    "快路判断要在调用 hook 之前",
-  );
-});
-
-test("hook 的 pasteClipboard：一次 mutate 写完整片，截断如实报数不静默丢", () => {
-  const body = hookCallbackBody("pasteClipboard");
-
-  assert.match(body, /readGridClipboard\(payload\)/, "html 优先/plain 回落的唯一入口");
-  assert.match(body, /planGridPaste\(/);
-  assert.match(
-    body,
-    /maxRows: GRID_MAX_ROWS/,
-    "上限必须由 hook 传进纯函数层（grid-structure 不许 import grid-model 的值）",
-  );
-
-  assert.equal(
-    [...body.matchAll(/\bmutate\(/g)].length,
-    1,
-    "整片粘贴只许一次 mutate()：撤一次回到粘贴前，不是一格一格撤",
-  );
-
-  assert.match(
-    body,
-    /plan\.truncated\s*\?/,
-    "截断必须走到一条真的消息上；删掉这个分支就是静默丢数据",
-  );
-  assert.match(body, /gridPasteTruncationMessage\(plan, tt\)/);
-  assert.match(
-    body,
-    /gridRangeAddress\(plan\.target\)/,
-    "报截断要连「到底写进了哪个区域」一起给，否则用户不知道该去哪儿检查",
-  );
-});

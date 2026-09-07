@@ -185,19 +185,16 @@ test("all spreadsheet formats use the lightweight Grid route", () => {
     { type: "grid" },
   );
 
+  // 自研旧表格已删（core-swap:delete grid）：路由只懒加载 Univer 叶子，
+  // 选区控件由共用 SelectionToolbar 经 facade 命令表供给，只读旧档不出编辑栏。
   const route = source("../src/shell/advanced-routes/GridRoute.tsx");
-  const stage = source("../src/shell/doc-editors/GridStage.tsx");
-  const contextToolbar = source(
-    "../src/shell/doc-editors/GridContextToolbar.tsx",
-  );
-  const state = source("../src/shell/doc-editors/use-grid-editor.ts");
-  assert.match(route, /contextToolbar: editor\.selectedCell \?/);
-  assert.match(state, /selectedCell: hasSelectedCell \? selection\.focus : null/);
-  assert.match(stage, /\{editor\.selectedCell && \(/);
-  assert.match(stage, /role="tablist"/);
-  assert.doesNotMatch(stage, /筛选当前列/);
-  assert.match(contextToolbar, /id: "filter-query"/);
-  assert.match(contextToolbar, /id: "header-row"/);
+  const leaf = source("../src/shell/doc-editors/GridUniverStage.tsx");
+  assert.match(route, /dynamic\(loadGridUniverStage,/);
+  assert.doesNotMatch(route, /GridStage|GridLegacy|useGridEditor/);
+  assert.match(leaf, /contextToolbar:\s*\n?\s*readonly \? null : \(/);
+  assert.match(leaf, /<SelectionToolbar/);
+  assert.match(leaf, /runGridUniverCommand\(/);
+  assert.doesNotMatch(leaf, /筛选当前列/);
 });
 
 test("material adapter runtime bridges right libraries to the mounted editor scope", async () => {
@@ -306,11 +303,12 @@ test("advanced first row is PluginGlobalRow chrome with fixed direct download", 
     "VideoTimelineRoute",
     "EmbeddedRoute",
   ]) {
-    assert.match(
-      source(`../src/shell/advanced-routes/${route}.tsx`),
-      /directDownload:/,
-      route,
-    );
+    // grid 的 adapter 长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）。
+    const path =
+      route === "GridRoute"
+        ? "../src/shell/doc-editors/GridUniverStage.tsx"
+        : `../src/shell/advanced-routes/${route}.tsx`;
+    assert.match(source(path), /directDownload:/, route);
   }
 });
 

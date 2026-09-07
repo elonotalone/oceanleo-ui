@@ -5,6 +5,10 @@
  * 纯函数、零 React：`tests/grid-document-actions.test.mjs` 直接调用它断言
  * 「有 recalculate 能力就一定有重新计算」。旧核删掉后它从 `GridRoute.tsx` 搬到
  * 这里，Univer 舞台是唯一消费方。
+ *
+ * 失败时只给**一个**「重新载入表格」：旧核为两条失败路径各配一个按钮
+ * （「重新载入表格」「刷新 source/full 后重试」），Univer 侧两条路径都汇成
+ * `officeSource.retry`，第二个按钮就是重复（派活合同第 5 条）。
  */
 import type { AdvancedWorkbenchAction } from "../../advanced-workbench-chrome";
 
@@ -14,19 +18,13 @@ export type GridDocumentActionSource = {
   loading?: boolean;
   /** 只读打开的旧档：重新计算仍在，但不可点。 */
   readonly?: boolean;
+  /** 源文件拿不到（签名 403 / rendition 解析失败）。 */
   sourceFailed?: boolean;
   reload?: () => void;
-  error?: string;
-};
-
-export type GridDocumentActionExtras = {
-  officeError?: string;
-  retryOffice?: () => void;
 };
 
 export function buildGridDocumentActions(
   editor: GridDocumentActionSource,
-  extras: GridDocumentActionExtras = {},
 ): AdvancedWorkbenchAction[] {
   const actions: AdvancedWorkbenchAction[] = [];
   if (typeof editor.recalculate === "function") {
@@ -44,16 +42,6 @@ export function buildGridDocumentActions(
       id: "grid-reload-source",
       label: "重新载入表格",
       onTrigger: editor.reload,
-    });
-  }
-  if (
-    (editor.error || extras.officeError) &&
-    typeof extras.retryOffice === "function"
-  ) {
-    actions.push({
-      id: "grid-refresh-office-source",
-      label: "刷新 source/full 后重试",
-      onTrigger: extras.retryOffice,
     });
   }
   return actions;

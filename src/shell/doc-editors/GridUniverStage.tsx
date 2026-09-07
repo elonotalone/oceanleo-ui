@@ -89,6 +89,11 @@ import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { WorkbenchRouteLoading } from "../advanced-routes/WorkbenchRouteLoading";
 import { buildGridDocumentActions } from "./grid-univer/document-actions";
 import {
+  GRID_EDITOR_CAPABILITY,
+  GRID_SOURCE_FORMAT,
+  GRID_SOURCE_MEDIA_TYPE,
+} from "./grid-shared";
+import {
   GRID_LEGACY_PROJECT_SCHEMA,
   GRID_LEGACY_READONLY_NOTICE,
   GRID_UNIVER_PROJECT_SCHEMA,
@@ -134,10 +139,6 @@ import {
   replaceUniverWorkbookWithSnapshot,
   sheetsFromLegacyProjectData,
 } from "./grid-univer/same-document";
-
-const GRID_SOURCE_FORMAT = "xlsx";
-const GRID_SOURCE_MEDIA_TYPE =
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 type UniverHandle = {
   univer: { dispose: () => void };
@@ -605,13 +606,30 @@ export function GridUniverStage({
         kind: "sheet",
         meta: {
           editor: "grid-univer",
+          editor_capability: GRID_EDITOR_CAPABILITY,
           content_type: "grid",
+          sheet_count: sheets.length,
+          sheet_names: sheets.map((sheet) => sheet.name),
           delivery_format: GRID_SOURCE_FORMAT,
           chips: chipsManifest.chips.map((chip) => chip.id).join(","),
         },
         project: {
           schema: GRID_UNIVER_PROJECT_SCHEMA,
           data: snapshot,
+        },
+        editorManifest: {
+          id: GRID_EDITOR_CAPABILITY,
+          format: GRID_UNIVER_PROJECT_SCHEMA,
+        },
+        // 带 artifact identity 的素材保存成**同一件的新 revision**，不是另起一个 creation
+        // （W2 保存契约；`tests/w2-editor-save-contract.test.mjs`）。旧核就是这么存的，
+        // 旧核删掉后这条契约归 Univer 舞台。
+        artifactRevision: {
+          artifactType: "grid",
+          provenance: {
+            editorRevision: editRevision,
+            sheetCount: sheets.length,
+          },
         },
       });
       if (!result.ok) {

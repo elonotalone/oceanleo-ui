@@ -404,6 +404,21 @@ function controlForCommand(
       placement: "more",
       slot: "inspector",
       inspectorGroup: "grid-number-format",
+      // 检查器里每组要有人看得懂的组名（`tests/route-context-editors.test.mjs`）。
+      inspectorLabel: "数字格式",
+    };
+  }
+  if (layer === "L2") {
+    return {
+      id,
+      kind: "action",
+      label,
+      iconOnly: true,
+      group: "structure",
+      slot: "inspector",
+      inspectorGroup: "grid-structure",
+      inspectorLabel: "行列与表",
+      placement: "more",
     };
   }
   return {
@@ -411,10 +426,7 @@ function controlForCommand(
     kind: "action",
     label,
     iconOnly: true,
-    group: layer === "L2" ? "structure" : "format",
-    slot: layer === "L2" ? "inspector" : undefined,
-    inspectorGroup: layer === "L2" ? "grid-structure" : undefined,
-    placement: layer === "L2" ? "more" : undefined,
+    group: "format",
   };
 }
 

@@ -42,7 +42,8 @@ test("三个文档编辑器的外壳：sourceFailed 一成立就渲染失败面�
   for (const [name, stagePath] of [
     ["deck", "../src/shell/doc-editors/DeckStage.tsx"],
     ["rich-doc", "../src/shell/doc-editors/RichDocStage.tsx"],
-    ["grid", "../src/shell/doc-editors/GridStage.tsx"],
+    // grid 的自研舞台已删（core-swap:delete grid）：Univer 舞台取源失败走编辑栏的
+    // 「重新载入表格」（grid-univer/document-actions.ts），不画自研失败面板。
   ]) {
     const stage = source(stagePath);
     const block = failurePanelBlock(stage);
@@ -72,7 +73,6 @@ test("取源失败时顶掉舞台的路由，必须自己带上重试入口", ()
   for (const [name, routePath, hookPath] of [
     ["rich-doc", "../src/shell/advanced-routes/RichDocRoute.tsx", "../src/shell/doc-editors/use-rich-doc-editor.ts"],
     ["deck", "../src/shell/advanced-routes/DeckRoute.tsx", "../src/shell/doc-editors/use-deck-editor.ts"],
-    ["grid", "../src/shell/advanced-routes/GridRoute.tsx", "../src/shell/doc-editors/use-grid-editor.ts"],
     ["chart", "../src/shell/advanced-routes/ChartRoute.tsx", "../src/shell/chart-editor/use-chart-workbench.ts"],
   ]) {
     const route = source(routePath);

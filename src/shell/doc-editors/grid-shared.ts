@@ -8,6 +8,16 @@
 import type { LibraryItem } from "../library-data";
 import type { GridCell, GridSheet } from "./grid-model";
 
+/**
+ * grid carrier 落库四元组的三个常量（`docs/specs/.../L1-carriers/grid.md` §1.1，
+ * `tests/grid-carrier-contract.test.mjs` C-1）。第四个 `GRID_LEGACY_PROJECT_SCHEMA`
+ * 在 `grid-univer/legacy-conversion.ts`。原来长在旧核 hook 里，旧核删了常量留下。
+ */
+export const GRID_SOURCE_FORMAT = "xlsx";
+export const GRID_SOURCE_MEDIA_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export const GRID_EDITOR_CAPABILITY = "grid-editor";
+
 export interface GridSelection {
   anchor: GridCell;
   focus: GridCell;

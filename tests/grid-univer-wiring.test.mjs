@@ -1,9 +1,11 @@
-// 表格换核的接线闸（W03 · editor-core-swap）。
+// 表格换核的接线闸（W03 · editor-core-swap；2026-09-07 core-swap:delete grid 后只剩 Univer）。
 //
 // 四份 `grid-univer-*.test.mjs` 判的是纯模块内容（preset 水印、chrome、命令表、
 // 快照转换、L4 chips）。这一份判的是**接线**：那些模块有没有真被路由用上、
-// 双核 flag 有没有在顶层判一次、专业模式走的是不是 `buildSetModeMessage` 校验
-// 后的 chrome，而不是 postMessage。
+// 路由是不是只剩懒加载 Univer 这一条路、专业模式走的是不是 `buildSetModeMessage`
+// 校验后的 chrome，而不是 postMessage、不是 dispose 重建。
+// 一个实例两种 chrome 的运行期判据（切模式不 dispose、卸载后才 dispose、页签
+// 切换同步 applyChrome、首帧无 ribbon）在 `tests/grid-univer-stage-mode.test.mjs`。
 //
 // 为什么是读源码断言 + 真调用纯函数：接线错了的编辑器在单测里长得和接对了一样。
 // 「真的画出一张 Univer 表」那半在浏览器里，归 V1（不许拿浏览器当验收）。
@@ -19,7 +21,7 @@ import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   DEFAULT_EDITOR_CORE,
-  setEditorCoreOverride,
+  resolveEditorCore,
 } from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
 import {
@@ -58,28 +60,37 @@ const leafCode = leaf
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/\/\/.*$/gm, "");
 
-test("the dual-core flag is resolved once, at the top of the route", () => {
-  assert.match(route, /resolveEditorCore\("grid"\)/);
-  assert.match(route, /renderGridNextOrLegacy\(/);
+test("路由只剩一条路：懒加载 Univer 叶子，不判 flag、不留旧核", () => {
+  // grid 已翻 flag（台账 defaultChoice），路由不再自己判核。
+  assert.equal(resolveEditorCore("grid"), "next");
+  assert.equal(DEFAULT_EDITOR_CORE, "legacy", "全局默认仍 legacy，只有 grid 翻了");
+  assert.doesNotMatch(routeCode, /resolveEditorCore/);
+  assert.doesNotMatch(routeCode, /renderGridNextOrLegacy|GridLegacy|GridStage|useGridEditor/);
   assert.match(route, /export async function loadGridUniverStage/);
-  assert.doesNotMatch(route, /from "@univerjs\//);
+  assert.doesNotMatch(route, /from "@univerjs\//, "重内核只能在懒加载叶子里");
   assert.match(route, /dynamic\(loadGridUniverStage,/);
   assert.match(route, /import\("\.\.\/doc-editors\/GridUniverStage"\)/);
   assert.match(route, /ssr:\s*false/);
-  assert.match(route, /loading:\s*\(\)\s*=>\s*null/);
-  assert.match(route, /function GridLegacyRoute/);
-  assert.match(route, /<GridStage editor=\{editor\} accent=\{accent\} \/>/);
-  assert.match(route, /useGridEditor/);
-  assert.equal(DEFAULT_EDITOR_CORE, "legacy");
+  // chunk 没到之前舞台不能留白。
+  assert.match(route, /loading:\s*\(\)\s*=>\s*<WorkbenchRouteLoading \/>/);
+  assert.doesNotMatch(route, /loading:\s*\(\)\s*=>\s*null/);
+  assert.match(routeCode, /return <GridUniverStage \{\.\.\.props\} \/>;/);
 });
 
 test("编辑栏文档段有重新计算；第二行申报 Univer，不报 aux", () => {
-  assert.match(route, /id:\s*"grid-recalculate"/);
-  assert.match(route, /label:\s*"重新计算"/);
-  assert.match(route, /pages:\s*\{\s*proLabel:\s*GRID_PRO_LABEL\s*\}/);
+  const actions = read("src/shell/doc-editors/grid-univer/document-actions.ts");
+  assert.match(actions, /id:\s*"grid-recalculate"/);
+  assert.match(actions, /label:\s*"重新计算"/);
+  assert.match(leaf, /buildGridDocumentActions\(/);
+  assert.match(leaf, /\.\.\.documentActions,/);
+  // Univer 侧「重新计算」= 公式引擎强制全量重算。
+  assert.match(leaf, /getFormula\?\.\(\)/);
+  assert.match(leaf, /executeCalculation\(\)/);
   assert.match(leaf, /pages:\s*\{\s*proLabel:\s*GRID_PRO_LABEL\s*\}/);
-  assert.doesNotMatch(route, /aux:\s*\[/);
-  assert.match(route, /setMode:\s*setEditorMode/);
+  assert.doesNotMatch(leaf, /aux:\s*\[/);
+  // 模式直接来自 L0 store，舞台不另存一份。
+  assert.match(leaf, /const \{ mode, setMode \} = usePluginMode\("grid"\)/);
+  assert.doesNotMatch(leafCode, /useState<EditorMode>/);
 });
 
 test("professional mode uses buildSetModeMessage without postMessage, and does not dispose", () => {
@@ -87,7 +98,6 @@ test("professional mode uses buildSetModeMessage without postMessage, and does n
   assert.equal(DEFAULT_EDITOR_MODE, "normal");
   assert.match(plan, /buildSetModeMessage/);
   assert.match(leaf, /applyGridUniverMode/);
-  assert.match(leaf, /useState<EditorMode>\(DEFAULT_EDITOR_MODE\)/);
   assert.match(leaf, /mode: \{\s*\n\s*current: mode,/);
   assert.doesNotMatch(routeCode, /postMessage/);
   assert.doesNotMatch(leafCode, /postMessage/);
@@ -109,8 +119,16 @@ test("professional mode uses buildSetModeMessage without postMessage, and does n
   assert.equal(pro.chrome.formulaBar, true);
   assert.deepEqual(pro.chrome, gridUniverChrome("pro"));
 
-  assert.equal((leaf.match(/univer\.dispose/g) || []).length, 1);
-  assert.match(leaf, /return \(\) => \{\s*created\.univer\.dispose\(\);/);
+  // dispose 只有一处，且不在 cleanup 里同步跑：排进下一个宏任务（React 提交之外）。
+  assert.equal((leafCode.match(/univer\.dispose\(\)/g) || []).length, 1);
+  assert.doesNotMatch(leafCode, /return \(\) => \{\s*created\.univer\.dispose\(\);/);
+  assert.match(leafCode, /setTimeout\(\(\) => \{[\s\S]{0,200}live\.univer\.dispose\(\);[\s\S]{0,40}\}, 0\)/);
+  // 模式 → chrome 走 useLayoutEffect（同一帧），且这条 effect 里没有实例生命周期。
+  const modeEffect = leafCode.match(
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\}, \[applyChrome, mode\]\);/,
+  );
+  assert.ok(modeEffect, "模式 → chrome 的 useLayoutEffect 不在了");
+  assert.doesNotMatch(modeEffect[1], /dispose|createUniver|flush/);
   assert.match(
     leaf,
     /replaceUniverWorkbookWithSnapshot/,
@@ -387,30 +405,11 @@ const nextMarkerUrl = dataModule(`
     });
   }
 `);
-const emptyFn = dataModule(`
-  export function AdvancedWorkbenchShell() { return null; }
-  export function GridContextToolbar() { return null; }
-  export function GridStage() { return null; }
-  export function downloadBlob() {}
-  export function fetchMediaBlob() { return Promise.resolve(null); }
-  export function captureGridRouteSnapshot() { return {}; }
-  export class GridRouteHistory {}
-  export function buildGridRouteWorkbookBlob() { return new Blob(); }
-  export function useGridEditor() { return { loading: false, sheets: [] }; }
-  export function gridSavedItemForHandoff(item) { return item; }
-  export const GRID_SOURCE_FORMAT = "grid";
-  export const GRID_SOURCE_MEDIA_TYPE = "application/json";
-  export function useOfficeArtifactSource() { return { loading: false, item: {} }; }
-  export function editorToolLabel() { return "表格"; }
-  export function buildGridCommandSurface() { return {}; }
-  export function downloadConvertedCopy() {}
-  export const DOC_FAMILY_DOWNLOAD_FORMATS = { grid: [] };
-  export function docFamilyAcceptAttribute() { return ""; }
-  export function importDocFamilyFile() { return Promise.resolve(null); }
-  export function usePluginCommandSurface() {}
-  export function useWorkbenchMaterialAdapter() { return {}; }
-  export function advancedSavedItem(item) { return item; }
-  export function advancedRecoveryKey() { return "k"; }
+const loadingStubUrl = dataModule(`
+  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function WorkbenchRouteLoading() {
+    return jsx("div", { "data-grid-route-loading": "1" });
+  }
 `);
 const dynamicStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -454,18 +453,6 @@ async function flush() {
   });
 }
 
-let dispatchModule;
-async function loadDispatch() {
-  if (!dispatchModule) {
-    const url = await compileModule(
-      "src/shell/doc-editors/grid-univer/route-dispatch.tsx",
-      {},
-    );
-    dispatchModule = await import(url);
-  }
-  return dispatchModule;
-}
-
 let routeModule;
 async function loadGridRoute() {
   if (!routeModule) {
@@ -474,39 +461,12 @@ async function loadGridRoute() {
       {
         "next/dynamic": dynamicStubUrl,
         "../doc-editors/GridUniverStage": nextMarkerUrl,
-        "../AdvancedWorkbenchShell": emptyFn,
-        "../../lib/media-proxy": emptyFn,
-        "../doc-editors/GridContextToolbar": emptyFn,
-        "../doc-editors/doc-io": emptyFn,
-        "../doc-editors/GridRouteHistory": emptyFn,
-        "../doc-editors/GridStage": emptyFn,
-        "../doc-editors/GridWorkbookExport": emptyFn,
-        "../doc-editors/use-grid-editor": emptyFn,
-        "../office-editor": emptyFn,
-        "../workbench-routes": emptyFn,
-        "../doc-editors/doc-family-commands": emptyFn,
-        "../doc-editors/doc-family-download": emptyFn,
-        "../doc-editors/doc-family-formats": emptyFn,
-        "../doc-editors/doc-family-import": emptyFn,
-        "../plugin-command": emptyFn,
-        "../workbench-material-provider": emptyFn,
-        "../advanced-session": emptyFn,
-        "../advanced-recovery-store": emptyFn,
+        "./WorkbenchRouteLoading": loadingStubUrl,
       },
     );
     routeModule = await import(url);
   }
   return routeModule;
-}
-
-function NextMarker(props) {
-  return React.createElement("div", {
-    "data-grid-univer-stage": "1",
-    "data-item-id": props.item?.id || "",
-  });
-}
-function LegacyMarker() {
-  return React.createElement("div", { "data-grid-legacy": "1" });
 }
 
 async function mountNode(node) {
@@ -533,63 +493,20 @@ test("loadGridUniverStage 返回的是舞台组件，不是 null", async () => {
   assert.equal(typeof Stage, "function", "next 舞台加载函数 return null，翻 flag 用户得到空白页");
 });
 
-test("flag=next 时分发口真的画出 next 舞台，并把 item 传下去", async () => {
-  const { renderGridNextOrLegacy } = await loadDispatch();
-  const item = gridItem();
+test("jsdom 挂上 GridRoute：不翻任何 flag，Univer 舞台就在树上并拿到 item", async () => {
+  const { GridRoute } = await loadGridRoute();
   const { container, unmount } = await mountNode(
-    renderGridNextOrLegacy("next", NextMarker, LegacyMarker, {
-      item,
-      onClose() {},
-    }),
+    React.createElement(GridRoute, { item: gridItem(), onClose() {} }),
   );
   try {
     const next = container.querySelector("[data-grid-univer-stage]");
-    assert.ok(next, "core=next 时 next 舞台没挂上（return null / 分支恒假）");
-    assert.equal(
-      next.getAttribute("data-item-id"),
-      "grid-gate",
-      "上层没把 item 传给 next 舞台（传了 null）",
+    assert.ok(
+      next,
+      "GridRoute 没有挂上 Univer 舞台。旧核已删，这里 return null 用户就是空白页。",
     );
+    assert.equal(next.getAttribute("data-item-id"), "grid-gate");
     assert.equal(container.querySelector("[data-grid-legacy]"), null);
   } finally {
     await unmount();
-  }
-});
-
-test("flag=legacy 时分发口走旧核，不挂 next", async () => {
-  const { renderGridNextOrLegacy } = await loadDispatch();
-  const { container, unmount } = await mountNode(
-    renderGridNextOrLegacy("legacy", NextMarker, LegacyMarker, {
-      item: gridItem(),
-      onClose() {},
-    }),
-  );
-  try {
-    assert.ok(container.querySelector("[data-grid-legacy]"));
-    assert.equal(container.querySelector("[data-grid-univer-stage]"), null);
-  } finally {
-    await unmount();
-  }
-});
-
-test("jsdom 挂上 GridRoute 且本地翻 next 后，新核舞台在树上", async () => {
-  const { GridRoute } = await loadGridRoute();
-  setEditorCoreOverride("grid", "next");
-  try {
-    const { container, unmount } = await mountNode(
-      React.createElement(GridRoute, { item: gridItem(), onClose() {} }),
-    );
-    try {
-      const next = container.querySelector("[data-grid-univer-stage]");
-      assert.ok(
-        next,
-        "GridRoute 在 flag=next 时没有挂上 Univer 舞台。保留 if 行再 return null，用户翻专业核看见空白页。",
-      );
-      assert.equal(next.getAttribute("data-item-id"), "grid-gate");
-    } finally {
-      await unmount();
-    }
-  } finally {
-    setEditorCoreOverride("grid", null);
   }
 });

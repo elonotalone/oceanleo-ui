@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { evaluateGridCell } from "../src/shell/doc-editors/grid-formula.ts";
@@ -310,91 +309,10 @@ test("双击自适应列宽：CJK 按两格算，结果夹在列宽区间内", (
   );
 });
 
-/* ═══════════════ 接线：拖得动、算得对、存得住 ═══════════════
+/* ═══════════════ 接线段已删（core-swap:delete grid，2026-09-07）═══════════════
  *
- * 上面测的是纯函数。行高列宽这件事有三段承诺，只有第一段在纯函数里：
- * ① 算得对（`gridRowSpacer` / `gridAxisSize`）——上面已锁；
- * ② 拖得动（`GridStage` 的表头把手接到 `setRowHeight/setColumnWidth`）；
- * ③ 存得住（工程档三处读写点都带上尺寸，刷新回来还在）。
- * ②③ 掉了用户当场就发现，而纯函数层一条都不会红。
+ * 这份文件原来还有一段读 `GridStage.tsx` / `use-grid-editor.ts` 源码的接线判据。
+ * 自研旧表格已删，行高列宽拖拽与持久化在 Univer 内核里是原生能力
+ * （行高列宽随工作簿快照 `rowData` / `columnData` 存取），不再有宿主侧接线可判。上面的纯函数判据保留：
+ * `grid-structure.ts` 仍被 Univer 快照转换与 xlsx 往返用着。
  */
-const GRID_STAGE_SOURCE = readFileSync(
-  new URL("../src/shell/doc-editors/GridStage.tsx", import.meta.url),
-  "utf8",
-);
-const GRID_EDITOR_SOURCE = readFileSync(
-  new URL("../src/shell/doc-editors/use-grid-editor.ts", import.meta.url),
-  "utf8",
-);
-
-test("两处 spacer 都吃 gridRowSpacer 的结果，行数×34 的老写法必须绝迹", () => {
-  assert.match(
-    GRID_STAGE_SOURCE,
-    /style=\{\{ height: spacer\.leadingHeight \}\}/,
-    "前 spacer 要用累计高度",
-  );
-  assert.match(
-    GRID_STAGE_SOURCE,
-    /style=\{\{ height: spacer\.trailingHeight \}\}/,
-    "后 spacer 要用累计高度",
-  );
-
-  // 改造前是 `start * ROW_HEIGHT` 与 `(rows.length - end) * ROW_HEIGHT`。
-  // 只要有一处漏改，行高一变滚动条长度就错，而且是那种「滚到底还有半屏」的错。
-  assert.doesNotMatch(GRID_STAGE_SOURCE, /height: start \* /);
-  assert.doesNotMatch(GRID_STAGE_SOURCE, /\(rows\.length - end\) \* /);
-
-  assert.match(
-    GRID_STAGE_SOURCE,
-    /gridRowWindowRange\(rows, \{[\s\S]*?sizes: rowHeights,/,
-    "窗口定位也要吃自定义行高，否则滚动位置和渲染出来的行对不上",
-  );
-
-  // spacer 必须用**合并区撑开之后**的 start/end 算。源码顺序就是证据：
-  // `const end =` 在前、`gridRowSpacer` 在后。反过来写，测试 12 锁的那条就破了。
-  assert.ok(
-    GRID_STAGE_SOURCE.indexOf("const end = Math.min(") <
-      GRID_STAGE_SOURCE.indexOf("gridRowSpacer(rows, {"),
-    "先撑开窗口，再算 spacer",
-  );
-});
-
-test("表头把手真的接到 setRowHeight / setColumnWidth，双击接到 autoFitColumn", () => {
-  assert.match(
-    GRID_STAGE_SOURCE,
-    /setColumnWidth\(colDrag\.index, colDrag\.size \+ \(event\.clientX - colDrag\.origin\)\)/,
-    "列宽跟着横向位移走",
-  );
-  assert.match(
-    GRID_STAGE_SOURCE,
-    /setRowHeight\(rowDrag\.index, rowDrag\.size \+ \(event\.clientY - rowDrag\.origin\)\)/,
-    "行高跟着纵向位移走",
-  );
-  // 拖拽期间鼠标会滑出把手，监听必须挂在 window 上，并且松手就摘掉。
-  for (const source of ["colDrag", "rowDrag"]) {
-    const effect = GRID_STAGE_SOURCE.slice(
-      GRID_STAGE_SOURCE.indexOf(`if (!${source}) return;`),
-    ).slice(0, 600);
-    assert.match(effect, /window\.addEventListener\("mousemove", move\)/);
-    assert.match(effect, /window\.removeEventListener\("mousemove", move\)/);
-  }
-  assert.match(GRID_STAGE_SOURCE, /editor\.autoFitColumn\(col\)/, "双击自适应列宽");
-});
-
-test("尺寸在工程档三处读写点都在场（刷新回来还在，才叫可持久化）", () => {
-  const points = [
-    ["loadEditorProject", /rowHeights: normalizeGridSizeMap\(project\.rowHeights, "row"\)/],
-    ["restoreRecovery", /colWidths: normalizeGridSizeMap\(project\.colWidths, "col"\)/],
-    ["写回 project.data", /rowHeights: rowHeightMap,\n\s*colWidths: colWidthMap,/],
-  ];
-  for (const [what, pattern] of points) {
-    assert.match(GRID_EDITOR_SOURCE, pattern, `${what} 少了尺寸字段`);
-  }
-
-  // 读进来一律过归一化：工程档是用户能手改的文件，越界值不许直接进 state。
-  assert.equal(
-    [...GRID_EDITOR_SOURCE.matchAll(/normalizeGridSizeMap\(project\./g)].length,
-    4,
-    "两个读入点 × 行高/列宽 = 4 次归一化，少一次就是一条没设防的入口",
-  );
-});

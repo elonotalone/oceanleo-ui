@@ -3,7 +3,9 @@
 //
 // 锁的是两条产品承诺，不是实现细节：
 //   1. **默认普通模式**（R3）：没存过就是 normal；开关点一次记住，按用户 × 编辑器分开记。
-//   2. **默认旧核**（§10 第 3 条）：13 件 flag 全部 legacy；本波不换核的那几件翻了也没用。
+//   2. **默认旧核**（§10 第 3 条）：全局默认 legacy；本波不换核的那几件翻了也没用。
+//      例外按件写在台账 `defaultChoice`：grid 自 2026-09-07（core-swap:delete grid）
+//      起默认 next，其余 12 件仍 legacy。
 //
 // 反面验证见 verdicts/W01-delivery.md：把默认档改成 pro / next，这里当场红。
 // 注释里不举任何真实 CSS 类名（_COMMON §7b⑧：判据文件会被 Tailwind 扫进产物）。
@@ -22,6 +24,7 @@ import {
   DEFAULT_EDITOR_CORE,
   EDITOR_CORE_IDS,
   EDITOR_CORE_SPECS,
+  editorCoreDefault,
   editorSwapsCore,
   resolveEditorCore,
   setEditorCoreOverride,
@@ -47,12 +50,30 @@ beforeEach(() => {
 
 // ─── 判据 4：双核 flag ──────────────────────────────────────────────────────
 
-test("13 件编辑器每件一个 flag，默认全部 legacy", () => {
-  assert.equal(DEFAULT_EDITOR_CORE, "legacy");
+test("13 件编辑器每件一个 flag；grid 已翻成 next，其余 12 件默认 legacy", () => {
+  assert.equal(DEFAULT_EDITOR_CORE, "legacy", "全局默认档仍是 legacy");
   assert.equal(EDITOR_CORE_IDS.length, 13, "13 件，一件不少");
-  for (const id of EDITOR_CORE_IDS) {
+  // 2026-09-07 core-swap:delete grid：自研旧表格已删，grid 无覆盖时必须是 next——
+  // 默认 legacy 就是渲染一个不存在的组件。签字写在台账那一行，不是改全局常量。
+  assert.equal(EDITOR_CORE_SPECS.grid.defaultChoice, "next", "台账 grid 行没写 defaultChoice");
+  assert.equal(editorCoreDefault("grid"), "next");
+  assert.equal(resolveEditorCore("grid"), "next", "grid 无覆盖时必须是 next");
+  const others = EDITOR_CORE_IDS.filter((id) => id !== "grid");
+  assert.equal(others.length, 12);
+  for (const id of others) {
+    assert.equal(EDITOR_CORE_SPECS[id].defaultChoice, undefined, `${id} 不该翻 flag`);
     assert.equal(resolveEditorCore(id), "legacy", id);
   }
+});
+
+test("grid 的 next 默认只是默认：本地覆盖仍能压回 legacy 档位值（flag 机制未被绕开）", () => {
+  installStorage();
+  assert.equal(resolveEditorCore("grid"), "next", "没存过就是台账默认");
+  assert.equal(resolveEditorCore("grid", "legacy"), "legacy", "显式入参最高");
+  setEditorCoreOverride("grid", "legacy");
+  assert.equal(resolveEditorCore("grid"), "legacy", "本地覆盖生效");
+  setEditorCoreOverride("grid", null);
+  assert.equal(resolveEditorCore("grid"), "next", "清掉覆盖回台账默认，不是回全局 legacy");
 });
 
 test("台账每件都指得回一个 owner 与一个接法", () => {
@@ -88,7 +109,9 @@ test("本波不换核的件恒为 legacy —— 翻 flag 也没用", () => {
 test("换核的件：显式入参 > 本地覆盖 > 默认", () => {
   const swap = EDITOR_CORE_IDS.filter((id) => editorSwapsCore(id));
   assert.ok(swap.length >= 11, "本波换核的件应有 11 件（game 不再换核）");
-  const id = swap[0];
+  // 取一件台账默认仍是 legacy 的（grid 已翻 next，另有专门一例）。
+  const id = swap.find((each) => editorCoreDefault(each) === "legacy");
+  assert.ok(id, "换核且默认 legacy 的件一件都没有，这条在空转");
 
   assert.equal(resolveEditorCore(id), "legacy", "没存过就是默认档");
   assert.equal(resolveEditorCore(id, "next"), "next", "显式入参生效");
@@ -106,7 +129,9 @@ test("换核的件：显式入参 > 本地覆盖 > 默认", () => {
 });
 
 test("非法档位不生效，回默认档（不是抛错，也不是当成 next）", () => {
-  const id = EDITOR_CORE_IDS.find((each) => editorSwapsCore(each));
+  const id = EDITOR_CORE_IDS.find(
+    (each) => editorSwapsCore(each) && editorCoreDefault(each) === "legacy",
+  );
   const map = installStorage();
   map.set(`oceanleo.editor-core.${id}`, "NEXT");
   assert.equal(resolveEditorCore(id), "legacy");
@@ -129,7 +154,9 @@ test("localStorage 抛异常时不炸，按默认档走", () => {
     },
     addEventListener() {},
   };
-  const id = EDITOR_CORE_IDS.find((each) => editorSwapsCore(each));
+  const id = EDITOR_CORE_IDS.find(
+    (each) => editorSwapsCore(each) && editorCoreDefault(each) === "legacy",
+  );
   assert.equal(resolveEditorCore(id), "legacy");
   assert.doesNotThrow(() => setEditorCoreOverride(id, "next"));
 });

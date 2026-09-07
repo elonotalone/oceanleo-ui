@@ -8,6 +8,16 @@ import { TRUSTED_EDITOR_REGISTRY } from "../src/shell/workbench-routes.ts";
 const source = (path) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 
+/**
+ * grid 只剩 Univer 一条路（core-swap:delete grid，2026-09-07）：路由文件只做
+ * `dynamic()` 懒加载，adapter / recovery 长在懒加载叶子 `GridUniverStage.tsx` 里。
+ */
+const ROUTE_LEAF = {
+  GridRoute: "../src/shell/doc-editors/GridUniverStage.tsx",
+};
+const routeSource = (route) =>
+  source(ROUTE_LEAF[route] || `../src/shell/advanced-routes/${route}.tsx`);
+
 // 已发货的适配器实得 14 条：13 个可路由适配器 + `office` 拒收哨兵。
 //
 // 这两个数原来钉的是 16 / 15，多出来的那两条是 `geo-map` 与 `interactive-doc`：
@@ -73,7 +83,7 @@ test("all route components use the single typed adapter prop", () => {
     "UnsupportedRoute",
   ];
   for (const route of routes) {
-    const text = source(`../src/shell/advanced-routes/${route}.tsx`);
+    const text = routeSource(route);
     assert.match(text, /adapter=\{\{/, route);
     assert.doesNotMatch(
       text,
@@ -194,11 +204,7 @@ test("mutable native editors keep an independent local recovery log", () => {
     "RichDocRoute",
     "VideoTimelineRoute",
   ]) {
-    assert.match(
-      source(`../src/shell/advanced-routes/${route}.tsx`),
-      /recovery: \{/,
-      route,
-    );
+    assert.match(routeSource(route), /recovery: \{/, route);
   }
   const image = source(
     "../src/shell/image-editor/editor-persistence.ts",

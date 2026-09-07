@@ -1,13 +1,16 @@
 /**
  * W03 判据 2 —— 「一个命令一个执行器」的覆盖闸 + 两处上游语义陷阱 + 执行器行为。
  *
- * 覆盖闸的形状（为什么不是手写一张清单）：把 `GridContextToolbar.tsx` 里真实
- * 声明的控件 id 全扫出来，逐个要求命令表里有一行。手写清单会在别人加控件的那天
- * 静默过期，而扫源码会当场红——**这道闸的价值全在这里**。
+ * 覆盖闸原来的形状：把 `GridContextToolbar.tsx` 里真实声明的控件 id 全扫出来，
+ * 逐个要求命令表里有一行。2026-09-07 `core-swap:delete grid` 把旧核连同那张工具条
+ * 一起删了，扫源码没有对象可扫；这里改成**冻结在删除那一刻的清单**
+ * （`git show 2a4f7d9:src/shell/doc-editors/GridContextToolbar.tsx` 抓出的 38 个 id）：
+ * 它锁的是「换核不许丢能力」——旧表格用户能按到的每个控件，Univer 下都必须有执行器。
+ * 新增控件不经这张表（`gridUniverSelectionContext` 直接从 `GRID_UNIVER_COMMANDS` 出），
+ * 所以它不会静默过期，只会在有人删命令时红。
  *
- * ⚠️ 判 `HEAD` 而不是工作树（`_COMMON.md` §7b⑪b/⑪）：共享树上挂着十几位同事的
- * 在途改动，照工作树扫会把别人的半成品当成已入库的控件，也会把同事刚删掉的控件
- * 当成还在。清单类判据一律用 `git show HEAD:<path>`。
+ * ⚠️ agent 面那条仍判 `HEAD` 而不是工作树（`_COMMON.md` §7b⑪b/⑪）：共享树上挂着
+ * 同事的在途改动，照工作树扫会把半成品当成已入库。清单类判据一律用 `git show HEAD:<path>`。
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -23,8 +26,22 @@ import {
   runGridUniverCommand,
 } from "../src/shell/doc-editors/grid-univer/facade-commands.ts";
 
-const TOOLBAR = "src/shell/doc-editors/GridContextToolbar.tsx";
 const AGENT_SURFACE = "src/shell/doc-editors/doc-family-commands.ts";
+
+/** 旧核工具条（已删）在最后一个含它的 commit 上声明的全部控件 id，逐字冻结。 */
+const LEGACY_TOOLBAR_CONTROL_IDS = [
+  "type", "bold", "align", "color", "background", "decimals",
+  "numfmt-preset", "numfmt-pattern", "numfmt-preview",
+  "row-before", "row-after", "row-delete",
+  "column-before", "column-after", "column-delete",
+  "sort-asc", "sort-desc", "header-row", "filter-query",
+  "merge-cells", "split-cells",
+  "condition-rule", "condition-rule-detail", "condition-operator", "condition-value",
+  "condition-color", "condition-background", "condition-bold",
+  "condition-apply", "condition-clear",
+  "validation-kind", "validation-operator", "validation-value", "validation-value2",
+  "validation-behavior", "validation-check", "validation-report",
+];
 
 function headSource(path) {
   return execFileSync("git", ["show", `HEAD:${path}`], {
@@ -33,26 +50,20 @@ function headSource(path) {
   });
 }
 
-/** 控件 id 的声明形状：`id: "…"`，与 `kind:` 同在一个控件字面量里。 */
-function toolbarControlIds(source) {
-  const ids = [];
-  for (const match of source.matchAll(/\bid:\s*"([a-z0-9-]+)"/g)) {
-    ids.push(match[1]);
-  }
-  return [...new Set(ids)];
-}
-
 // ── 先验正则本身（`_COMMON.md` §6/§7b③：零命中是最贵的一类断言）─────────────
 
-test("自检：控件 id 的扫描正则在 HEAD 上确实抓得到东西", () => {
-  const ids = toolbarControlIds(headSource(TOOLBAR));
-  // 用一个我确定存在的 id 验正则本身；抓不到说明是工具错了，不是事实。
-  assert.ok(ids.includes("bold"), "扫不到 bold ⇒ 正则错了，不是控件没了");
-  assert.ok(ids.length >= 30, `只扫到 ${ids.length} 个 id，正则可疑`);
+test("自检：冻结清单本身没缩水，旧核工具条源码已不在 HEAD 上", () => {
+  assert.ok(LEGACY_TOOLBAR_CONTROL_IDS.includes("bold"));
+  assert.ok(LEGACY_TOOLBAR_CONTROL_IDS.length >= 30, "清单被人删短了");
+  assert.equal(new Set(LEGACY_TOOLBAR_CONTROL_IDS).size, LEGACY_TOOLBAR_CONTROL_IDS.length);
+  assert.throws(
+    () => headSource("src/shell/doc-editors/GridContextToolbar.tsx"),
+    "旧核工具条回来了？core-swap:delete grid 之后它不该在 HEAD 上",
+  );
 });
 
-test("判据 2：HEAD 上每一个表格控件都有一行命令，一个都不许漏", () => {
-  const ids = toolbarControlIds(headSource(TOOLBAR));
+test("判据 2：旧核用户按得到的每一个控件，Univer 下都有一行命令，一个都不许漏", () => {
+  const ids = LEGACY_TOOLBAR_CONTROL_IDS;
   const missing = ids.filter((id) => !gridUniverCommand(id));
   assert.deepEqual(
     missing,

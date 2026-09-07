@@ -1,64 +1,15 @@
+// 表格编辑栏文档段（规范 v2 §6 grid 行）：有 recalculate 能力就必须有「重新计算」。
+//
+// 旧核删掉（core-swap:delete grid，2026-09-07）之后，`buildGridDocumentActions` 从
+// `GridRoute.tsx` 搬到 `grid-univer/document-actions.ts`，零 React，这里直接 import。
+// 唯一消费方是 `GridUniverStage`：Univer 的「重新计算」= `getFormula().executeCalculation()`。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { buildGridDocumentActions } from "../src/shell/doc-editors/grid-univer/document-actions.ts";
 
-const emptyFn = dataModule(`
-  export default function empty() { return null; }
-  export function AdvancedWorkbenchShell() { return null; }
-  export function GridContextToolbar() { return null; }
-  export function GridStage() { return null; }
-  export function downloadBlob() {}
-  export function captureGridRouteSnapshot() { return {}; }
-  export class GridRouteHistory {}
-  export function buildGridRouteWorkbookBlob() { return new Blob(); }
-  export function useGridEditor() { return { recalculate() {}, loading: false }; }
-  export function useOfficeArtifactSource() { return { item: {}, error: "", retry() {} }; }
-  export function editorToolLabel() { return "表格"; }
-  export function buildGridCommandSurface() { return {}; }
-  export function downloadConvertedCopy() { return ""; }
-  export const DOC_FAMILY_DOWNLOAD_FORMATS = { grid: [{ extension: "xlsx", label: "XLSX" }] };
-  export function docFamilyAcceptAttribute() { return ""; }
-  export function importDocFamilyFile() { return { ok: false }; }
-  export function usePluginCommandSurface() {}
-  export function useWorkbenchMaterialAdapter() {}
-  export function advancedSavedItem() { return {}; }
-  export function advancedRecoveryKey() { return "grid"; }
-  export function fetchMediaBlob() { return new Blob(); }
-  export const GRID_SOURCE_FORMAT = "xlsx";
-  export const GRID_SOURCE_MEDIA_TYPE = "application/vnd.ms-excel";
-  export function gridSavedItemForHandoff(item) { return item; }
-`);
-
-const { buildGridDocumentActions } = await import(
-  await compileModule("src/shell/advanced-routes/GridRoute.tsx", {
-    "next/dynamic": dataModule(`
-      export default function dynamic() {
-        return function GridUniverStageStub() { return null; }
-      }
-    `),
-    "../AdvancedWorkbenchShell": emptyFn,
-    "../../lib/media-proxy": emptyFn,
-    "../doc-editors/GridContextToolbar": emptyFn,
-    "../doc-editors/doc-io": emptyFn,
-    "../doc-editors/GridRouteHistory": emptyFn,
-    "../doc-editors/GridStage": emptyFn,
-    "../doc-editors/GridWorkbookExport": emptyFn,
-    "../doc-editors/use-grid-editor": emptyFn,
-    "../office-editor": emptyFn,
-    "../workbench-routes": emptyFn,
-    "../doc-editors/doc-family-commands": emptyFn,
-    "../doc-editors/doc-family-download": emptyFn,
-    "../doc-editors/doc-family-formats": emptyFn,
-    "../doc-editors/doc-family-import": emptyFn,
-    "../plugin-command": emptyFn,
-    "../workbench-material-provider": emptyFn,
-    "../advanced-session": emptyFn,
-    "../advanced-recovery-store": emptyFn,
-  })
-);
-
+const leaf = readFileSync("src/shell/doc-editors/GridUniverStage.tsx", "utf8");
 const route = readFileSync("src/shell/advanced-routes/GridRoute.tsx", "utf8");
 
 test("有 recalculate 时必含 grid-recalculate", () => {
@@ -70,18 +21,22 @@ test("有 recalculate 时必含 grid-recalculate", () => {
   const found = actions.find((action) => action.id === "grid-recalculate");
   assert.ok(found, "有 recalculate 能力却没给出「重新计算」");
   assert.equal(found.label, "重新计算");
+  assert.equal(found.group, "edit", "重新计算是编辑类动作，留在编辑栏");
   assert.equal(found.disabled, false);
   assert.equal(found.onTrigger, recalculate);
 });
 
-test("载入中时重新计算仍在，只是不可点", () => {
-  const actions = buildGridDocumentActions({
-    recalculate() {},
-    loading: true,
-  });
-  const found = actions.find((action) => action.id === "grid-recalculate");
-  assert.ok(found);
-  assert.equal(found.disabled, true);
+test("载入中 / 只读旧档时重新计算仍在，只是不可点", () => {
+  const loading = buildGridDocumentActions({ recalculate() {}, loading: true });
+  assert.equal(
+    loading.find((action) => action.id === "grid-recalculate")?.disabled,
+    true,
+  );
+  const readonly = buildGridDocumentActions({ recalculate() {}, readonly: true });
+  assert.equal(
+    readonly.find((action) => action.id === "grid-recalculate")?.disabled,
+    true,
+  );
 });
 
 test("没有 recalculate 能力时不含 grid-recalculate", () => {
@@ -92,32 +47,36 @@ test("没有 recalculate 能力时不含 grid-recalculate", () => {
   );
 });
 
-test("sourceFailed 才给出重新载入；office 错才给出重试", () => {
+test("sourceFailed 才给出重新载入，且只有这一个失败按钮", () => {
   const reload = () => {};
-  const retryOffice = () => {};
   const bare = buildGridDocumentActions({ recalculate() {} });
   assert.deepEqual(
     bare.map((action) => action.id),
     ["grid-recalculate"],
   );
-  const failed = buildGridDocumentActions(
-    { recalculate() {}, sourceFailed: true, reload, error: "断了" },
-    { officeError: "source 404", retryOffice },
-  );
+  const failed = buildGridDocumentActions({
+    recalculate() {},
+    sourceFailed: true,
+    reload,
+  });
   assert.deepEqual(
     failed.map((action) => action.id),
-    [
-      "grid-recalculate",
-      "grid-reload-source",
-      "grid-refresh-office-source",
-    ],
+    ["grid-recalculate", "grid-reload-source"],
+  );
+  assert.equal(failed[1].onTrigger, reload);
+  // 旧核那第二个失败按钮（刷新 source/full 后重试）不许回来：两条失败路径同一个 retry。
+  assert.equal(
+    failed.some((action) => action.id === "grid-refresh-office-source"),
+    false,
   );
 });
 
-test("登记随 editor 与当前页重算，切回普通页不把旧核重挂挂在 flush 后面", () => {
-  assert.match(route, /buildGridDocumentActions\(editor/);
-  assert.match(route, /pageId/);
-  assert.match(route, /documentActionsEpoch/);
-  assert.match(route, /usePluginPage\("grid"\)/);
-  assert.match(route, /want === "legacy"[\s\S]*setShown\("legacy"\)/);
+test("Univer 舞台是唯一消费方：文档段排在 actions 最前，重新计算接公式引擎", () => {
+  assert.match(leaf, /buildGridDocumentActions\(\{/);
+  assert.match(leaf, /actions:\s*\[\s*(?:\/\/[^\n]*\n\s*)*\.\.\.documentActions,/);
+  assert.match(leaf, /sourceFailed:\s*Boolean\(officeSource\.error\)/);
+  assert.match(leaf, /reload:\s*officeSource\.retry/);
+  assert.match(leaf, /getFormula\?\.\(\)/);
+  assert.match(leaf, /executeCalculation\(\)/);
+  assert.doesNotMatch(route, /buildGridDocumentActions|documentActionsEpoch|usePluginPage/);
 });

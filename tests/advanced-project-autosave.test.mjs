@@ -236,9 +236,10 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
       "pptx",
     ],
     [
-      "../src/shell/doc-editors/use-grid-editor.ts",
-      "const restoreRecovery = useCallback",
-      "buildGridWorkbookBlob",
+      // 表格只剩 Univer 舞台（core-swap:delete grid）。
+      "../src/shell/doc-editors/GridUniverStage.tsx",
+      "const saveBeforeNewConversation = useCallback",
+      "buildGridRouteWorkbookBlob",
       "xlsx",
     ],
     [
@@ -292,11 +293,11 @@ test("delivery renderers remain attached to explicit export and download actions
   );
   assert.match(
     section(
-      "../src/shell/doc-editors/use-grid-editor.ts",
-      "const exportXlsx = useCallback",
+      "../src/shell/doc-editors/GridUniverStage.tsx",
+      "const workbookBlob = useCallback",
       "const save = useCallback",
     ),
-    /buildGridWorkbookBlob/,
+    /buildGridRouteWorkbookBlob/,
   );
   assert.match(
     section(

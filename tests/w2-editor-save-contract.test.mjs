@@ -265,7 +265,7 @@ test("every save failure names the step that broke", () => {
 
 test("no editor falls back to the unattributed 「保存到我的库失败」 copy", () => {
   for (const path of [
-    "../src/shell/doc-editors/use-grid-editor.ts",
+    "../src/shell/doc-editors/GridUniverStage.tsx",
     "../src/shell/doc-editors/use-deck-editor.ts",
     "../src/shell/doc-editors/use-rich-doc-editor.ts",
     "../src/shell/doc-editors/doc-io.ts",
@@ -309,11 +309,12 @@ test("rich doc cover extracts visible paragraph and heading text", () => {
 });
 
 test("grid save submits a typed artifact revision instead of a creation", () => {
-  const save = source("../src/shell/doc-editors/use-grid-editor.ts");
+  // 表格只剩 Univer 舞台（core-swap:delete grid）；这条契约随之归它。
+  const save = source("../src/shell/doc-editors/GridUniverStage.tsx");
   assert.match(save, /artifactRevision: \{\s*artifactType: "grid"/);
-  assert.match(save, /editorManifest: \{/);
+  assert.match(save, /editorManifest: \{\s*id: GRID_EDITOR_CAPABILITY,\s*format: GRID_UNIVER_PROJECT_SCHEMA/);
+  assert.match(save, /editor_capability: GRID_EDITOR_CAPABILITY/);
   assert.match(save, /createPreview: \(\) =>\s*renderGridPreviewPng/);
-  assert.match(save, /gridSavedItemForHandoff/);
 });
 
 test("RichDocRoute no longer hand-builds a docx-as-full rendition", () => {

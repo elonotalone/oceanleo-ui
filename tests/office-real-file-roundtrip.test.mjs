@@ -224,14 +224,29 @@ test("preview and native Office routes consume only refreshable source/full inpu
   assert.match(officeSource, /rendition\.purpose === "full"/);
   assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
   for (const route of ["DeckRoute", "GridRoute", "RichDocRoute"]) {
-    const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
+    // grid 的取源与重试长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）；
+    // Univer 侧两条失败路径汇成一个 `officeSource.retry`，按钮只有「重新载入表格」。
+    const isGrid = route === "GridRoute";
+    const contents = source(
+      isGrid
+        ? "../src/shell/doc-editors/GridUniverStage.tsx"
+        : `../src/shell/advanced-routes/${route}.tsx`,
+    );
     assert.match(
       contents,
       /useOfficeArtifactSource\((?:item|openedItemRef\.current)\)/,
       route,
     );
     assert.match(contents, /resourceFailed/, route);
-    assert.match(contents, /刷新 source\/full 后重试/, route);
+    if (isGrid) {
+      assert.match(contents, /reload:\s*officeSource\.retry/, route);
+      assert.match(
+        source("../src/shell/doc-editors/grid-univer/document-actions.ts"),
+        /重新载入表格/,
+      );
+    } else {
+      assert.match(contents, /刷新 source\/full 后重试/, route);
+    }
   }
 });
 

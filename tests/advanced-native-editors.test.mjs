@@ -66,7 +66,8 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
 
 test("structured document editors cover rich text, workbooks and editable decks", () => {
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
-  const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
+  // 表格只剩 Univer 舞台（core-swap:delete grid）；存盘走同一个 saveFileToLibrary。
+  const grid = source("../src/shell/doc-editors/GridUniverStage.tsx");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
   const deckLayout = source(
@@ -90,9 +91,9 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
   assert.match(rich, /tiptapJsonToDocxBlob/);
   assert.match(rich, /saveFileToLibrary/);
-  assert.match(grid, /buildGridWorkbookBlob/);
+  assert.match(grid, /buildGridRouteWorkbookBlob/);
   assert.match(grid, /saveFileToLibrary/);
-  assert.match(grid, /gridSelectionRange/);
+  assert.match(grid, /univerSnapshotToGridSheets/);
   assert.match(deck, /pptxgenjs/);
   assert.match(deck, /saveFileToLibrary/);
   assert.match(deck, /importPptxDeck/);
@@ -137,7 +138,6 @@ test("native editors preserve history and never clear newer unsaved revisions", 
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
     source("../src/shell/use-inline-advanced-panels.tsx");
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
-  const grid = source("../src/shell/doc-editors/use-grid-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const image = source("../src/shell/image-editor/use-fabric-image-editor.ts");
   const audio =
@@ -155,7 +155,8 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   assert.match(shell, /useAdvancedRecovery/);
   for (const [name, editor] of [
     ["richdoc", rich],
-    ["grid", grid],
+    // grid：Univer 自带撤销/重做与修订，宿主侧只记 editRevision/dirty，
+    // 不再有 revisionRef/savingRevision 那套自研并发保护（旧核已删）。
     ["deck", deck],
     ["image", image],
     ["audio", audio],

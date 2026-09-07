@@ -1,8 +1,10 @@
 /**
- * W13：表格「编辑」与「专业编辑」是同一份文档。
+ * W13 → 2026-09-07：表格两种模式是**同一个 Univer 实例**的同一份文档。
  *
- * 钉住的是打开优先级和会话交接，不是 Univer 画布本身。
- * 画布那半在浏览器里验。
+ * 旧核删掉（core-swap:delete grid）之前这里还钉「会话交接」：旧核「编辑」页与
+ * Univer「专业」页是两棵树，切页靠 globalThis 上的交接把内存里的表带过去。
+ * 现在没有第二棵树，交接连同 flush 登记一起删了，这份只钉打开优先级、
+ * 快照灌画布、崩溃恢复只认 Univer 快照。画布那半在浏览器里验。
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -14,23 +16,21 @@ import {
 } from "../src/shell/doc-editors/grid-univer/legacy-conversion.ts";
 import {
   GRID_PRO_LABEL,
-  clearGridLiveHandoff,
-  flushGridLiveDocument,
-  gridItemKey,
-  itemWithoutUniverProjectPin,
-  peekGridLiveHandoff,
+  GRID_UNIVER_RECOVERY_EDITOR_ID,
+  isUniverWorkbookSnapshot,
   paintUniverWorkbookFromSnapshot,
   planGridSameDocumentOpen,
-  publishGridLiveHandoff,
-  registerGridLiveFlush,
   listUniverSnapshotValues,
   replaceUniverWorkbookWithSnapshot,
   sheetsFromLegacyProjectData,
-  takeGridLiveHandoff,
 } from "../src/shell/doc-editors/grid-univer/same-document.ts";
 
 const route = readFileSync("src/shell/advanced-routes/GridRoute.tsx", "utf8");
 const leaf = readFileSync("src/shell/doc-editors/GridUniverStage.tsx", "utf8");
+const sameDocument = readFileSync(
+  "src/shell/doc-editors/grid-univer/same-document.ts",
+  "utf8",
+);
 
 function sheet(cell) {
   return {
@@ -43,55 +43,27 @@ function sheet(cell) {
   };
 }
 
-test("live-handoff 用 globalThis 而不是模块 let，避免 dynamic chunk 各持一份", () => {
-  const source = readFileSync(
-    "src/shell/doc-editors/grid-univer/live-handoff.ts",
-    "utf8",
+test("会话交接已随旧核一起删：没有 handoff / flush 登记，路由不再 flush", () => {
+  const sameDocumentCode = sameDocument
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(
+    sameDocumentCode,
+    /Handoff\b|registerGridLiveFlush|flushGridLiveDocument|from "\.\/live-handoff"/,
   );
-  assert.match(source, /__oceanleoGridLiveHandoff/);
-  assert.match(source, /globalThis/);
-  assert.doesNotMatch(source, /^let liveHandoff/m);
+  assert.doesNotMatch(leaf, /Handoff\b|registerGridLiveFlush|flushGridLiveDocument/);
+  assert.doesNotMatch(route, /flushGridLiveDocument|GridLegacyGate/);
 });
 
-test("专业页签名字由同一常量给出，舞台和路由都用它", () => {
+test("专业页签名字由同一常量给出，舞台用它；路由不再自己拼 adapter", () => {
   assert.equal(GRID_PRO_LABEL, "Univer");
-  assert.match(route, /proLabel:\s*GRID_PRO_LABEL/);
   assert.match(leaf, /proLabel:\s*GRID_PRO_LABEL/);
-  assert.match(route, /flushGridLiveDocument/);
   assert.match(leaf, /planGridSameDocumentOpen/);
+  assert.doesNotMatch(route, /proLabel/);
 });
 
-test("会话交接优先于空的 office 表：刚打的格子不会变成空表", () => {
-  clearGridLiveHandoff();
-  const live = [sheet("agent-test-w13-cell")];
+test("库存旧档只读打开，不静默改写", () => {
   const plan = planGridSameDocumentOpen({
-    itemKey: "grid-1",
-    schema: GRID_LEGACY_PROJECT_SCHEMA,
-    title: "表",
-    handoff: {
-      itemKey: "grid-1",
-      sheets: live,
-      source: "legacy",
-    },
-    officeSheets: [
-      {
-        id: "empty",
-        name: "Sheet1",
-        rows: [[""]],
-        formats: {},
-        merges: [],
-        conditionalFormats: [],
-      },
-    ],
-  });
-  assert.equal(plan.kind, "legacy-live");
-  assert.equal(plan.editable, true);
-  assert.equal(plan.sheets[0].rows[0][1], "agent-test-w13-cell");
-});
-
-test("库存旧档、没有交接时仍只读，不静默改写", () => {
-  const plan = planGridSameDocumentOpen({
-    itemKey: "grid-old",
     schema: GRID_LEGACY_PROJECT_SCHEMA,
     title: "旧表",
     legacySheets: [sheet("库存")],
@@ -103,7 +75,6 @@ test("库存旧档、没有交接时仍只读，不静默改写", () => {
 
 test("Univer 工程档优先于 office xlsx", () => {
   const plan = planGridSameDocumentOpen({
-    itemKey: "grid-u",
     schema: GRID_UNIVER_PROJECT_SCHEMA,
     title: "新表",
     univerSnapshot: { id: "wb-univer", name: "新表" },
@@ -114,81 +85,22 @@ test("Univer 工程档优先于 office xlsx", () => {
   assert.equal(plan.snapshot.id, "wb-univer");
 });
 
-test("另一份文档的交接不会串过来", () => {
-  const plan = planGridSameDocumentOpen({
-    itemKey: "grid-b",
+test("office xlsx 可编辑打开；什么都没有就是空表", () => {
+  const office = planGridSameDocumentOpen({
     title: "B",
-    handoff: {
-      itemKey: "grid-a",
-      sheets: [sheet("A的格子")],
-      source: "legacy",
-    },
     officeSheets: [sheet("B自己的")],
   });
-  assert.equal(plan.kind, "office");
-  assert.equal(plan.sheets[0].rows[0][1], "B自己的");
-});
+  assert.equal(office.kind, "office");
+  assert.equal(office.editable, true);
+  assert.equal(office.sheets[0].rows[0][1], "B自己的");
+  assert.ok(
+    listUniverSnapshotValues(office.snapshot).some((cell) => cell.value === "B自己的"),
+  );
 
-test("交接挂在 globalThis 上，两个 chunk 读的是同一份", () => {
-  clearGridLiveHandoff();
-  publishGridLiveHandoff({
-    itemKey: "shared",
-    sheets: [sheet("跨chunk")],
-    source: "legacy",
-  });
-  const store = globalThis.__oceanleoGridLiveHandoff;
-  assert.ok(store);
-  assert.equal(store.handoff.sheets[0].rows[0][1], "跨chunk");
-  assert.equal(peekGridLiveHandoff("shared")?.sheets[0].rows[0][1], "跨chunk");
-});
-
-test("publish / peek / take 按文档钥匙隔离", () => {
-  clearGridLiveHandoff();
-  publishGridLiveHandoff({
-    itemKey: "k1",
-    sheets: [sheet("一")],
-    source: "legacy",
-  });
-  assert.equal(peekGridLiveHandoff("k2"), null);
-  assert.equal(peekGridLiveHandoff("k1")?.sheets[0].rows[0][1], "一");
-  assert.equal(takeGridLiveHandoff("k1")?.source, "legacy");
-  assert.equal(peekGridLiveHandoff("k1"), null);
-});
-
-test("切页前登记的 flush 真的会被叫到", async () => {
-  let calls = 0;
-  registerGridLiveFlush(async () => {
-    calls += 1;
-    return { ok: true };
-  });
-  const result = await flushGridLiveDocument();
-  assert.equal(result.ok, true);
-  assert.equal(calls, 1);
-  registerGridLiveFlush(null);
-  const skipped = await flushGridLiveDocument();
-  assert.equal(skipped.ok, true);
-  assert.equal(calls, 1);
-});
-
-test("旧核打开 Univer 存档时摘掉工程 pin，避免 schema 对不上落到空表", () => {
-  const item = {
-    id: "g1",
-    meta: {
-      editor_project_schema: GRID_UNIVER_PROJECT_SCHEMA,
-      editor_project_url: "https://example.test/proj.json",
-    },
-  };
-  const stripped = itemWithoutUniverProjectPin(item);
-  assert.equal(stripped.meta.editor_project_url, "");
-  assert.equal(stripped.meta.editor_project_schema, "");
-  const legacy = {
-    id: "g2",
-    meta: {
-      editor_project_schema: GRID_LEGACY_PROJECT_SCHEMA,
-      editor_project_url: "https://example.test/old.json",
-    },
-  };
-  assert.equal(itemWithoutUniverProjectPin(legacy), legacy);
+  const empty = planGridSameDocumentOpen({ title: "空" });
+  assert.equal(empty.kind, "empty");
+  assert.equal(empty.editable, true);
+  assert.ok(empty.snapshot && typeof empty.snapshot === "object");
 });
 
 test("legacy 工程档的 data.sheets 能抽出来", () => {
@@ -199,20 +111,10 @@ test("legacy 工程档的 data.sheets 能抽出来", () => {
   );
 });
 
-test("gridItemKey 认 key 再认 id", () => {
-  assert.equal(gridItemKey({ key: "creation:1", id: "1" }), "creation:1");
-  assert.equal(gridItemKey({ id: "only" }), "only");
-});
-
 test("快照里的格子能列出来，并写到当前可见工作簿", () => {
   const plan = planGridSameDocumentOpen({
-    itemKey: "grid-paint",
     title: "表",
-    handoff: {
-      itemKey: "grid-paint",
-      sheets: [sheet("agent-test-w13-paint")],
-      source: "legacy",
-    },
+    officeSheets: [sheet("agent-test-w13-paint")],
   });
   const cells = listUniverSnapshotValues(plan.snapshot);
   assert.ok(cells.some((cell) => cell.value === "agent-test-w13-paint"));
@@ -276,23 +178,15 @@ test("换核先建带数据的表再卸空簿；快照格子补上 p 才能画�
   assert.ok(received.sheets.s1.cellData[0][1].p.body.dataStream.includes("agent-test-w13-cell"));
 });
 
-// ---- 崩溃恢复与交接的先后（父 agent 收尾 W13 时补，浏览器实测：同键互灌导致 Univer 白画布） ----
-import {
-  GRID_UNIVER_RECOVERY_EDITOR_ID,
-  isUniverWorkbookSnapshot,
-  shouldRestoreGridRecovery,
-} from "../src/shell/doc-editors/grid-univer/live-handoff.ts";
+// ---- 崩溃恢复（父 agent 收尾 W13 时补，浏览器实测：同键互灌导致 Univer 白画布） ----
 
-test("两页崩溃恢复键不同名：旧核 grid、Univer grid-univer", () => {
+test("Univer 崩溃恢复键是 grid-univer：库里旧核留下的 grid:* 草稿不会被灌进来", () => {
   assert.equal(GRID_UNIVER_RECOVERY_EDITOR_ID, "grid-univer");
   assert.ok(
     leaf.includes("advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item)"),
     "Univer 舞台必须用自己的恢复键",
   );
-  assert.ok(
-    route.includes('advancedRecoveryKey("grid", item)'),
-    "旧核保持 grid 键",
-  );
+  assert.ok(!route.includes("advancedRecoveryKey("), "路由不再自己挂恢复");
 });
 
 test("Univer 只认工作簿快照：旧核 {sheets:[…]} 草稿被拒", () => {
@@ -302,27 +196,10 @@ test("Univer 只认工作簿快照：旧核 {sheets:[…]} 草稿被拒", () => 
   assert.equal(isUniverWorkbookSnapshot({ sheets: { s1: { cellData: {} } } }), true);
 });
 
-test("刚从交接打开时，崩溃草稿让路，不会盖掉交接内容", () => {
-  let called = 0;
-  const accept = () => {
-    called += 1;
-    return true;
-  };
-  assert.equal(
-    shouldRestoreGridRecovery({ openedFromHandoff: true, payload: { sheets: { s1: {} } }, accept }),
-    false,
+test("恢复路径先过 isUniverWorkbookSnapshot，再先建后卸", () => {
+  assert.ok(leaf.includes("if (!isUniverWorkbookSnapshot(payload)) return false;"));
+  assert.ok(
+    !leaf.includes("if (unitId) api?.disposeUnit?.(unitId);\n              api?.createWorkbook?.(payload);"),
+    "恢复不再先卸后建",
   );
-  assert.equal(called, 0);
-  assert.equal(
-    shouldRestoreGridRecovery({ openedFromHandoff: false, payload: { sheets: { s1: {} } }, accept }),
-    true,
-  );
-  assert.equal(called, 1);
-});
-
-test("两条路由都经 shouldRestoreGridRecovery 再恢复", () => {
-  assert.ok(leaf.includes("shouldRestoreGridRecovery({"));
-  assert.ok(route.includes("shouldRestoreGridRecovery({"));
-  assert.ok(route.includes("openedFromHandoff: Boolean(pendingUniverHandoff)"));
-  assert.ok(!leaf.includes("if (unitId) api?.disposeUnit?.(unitId);\n              api?.createWorkbook?.(payload);"), "恢复不再先卸后建");
 });
