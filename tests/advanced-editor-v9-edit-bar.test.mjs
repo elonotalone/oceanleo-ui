@@ -342,7 +342,7 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
-    "../src/shell/doc-editors/GridContextToolbar.tsx",
+    "../src/shell/doc-editors/GridUniverStage.tsx",
     "../src/shell/media-editors/PdfContextToolbar.tsx",
     "../src/shell/media-editors/AudioContextToolbar.tsx",
     "../src/shell/video-editor/VideoTimelineContextToolbar.tsx",
