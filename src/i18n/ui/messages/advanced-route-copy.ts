@@ -49,6 +49,9 @@ export const ADVANCED_ROUTE_COPY_SOURCE = {
   openOriginal: "打开原内容",
   reload: "重新载入",
   editorErrorDialog: "{title} · 编辑器错误",
+  // ---- 模式切换过渡门（ModeSwitchGate，plugin-ui U4） ----
+  switchingToPro: "正在切换到专业编辑…",
+  switchingToEdit: "正在切换到编辑…",
 };
 
 export type AdvancedRouteCopyName = keyof typeof ADVANCED_ROUTE_COPY_SOURCE;
@@ -86,6 +89,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Open original",
     reload: "Reload",
     editorErrorDialog: "{title} · Editor error",
+    switchingToPro: "Switching to Pro edit…",
+    switchingToEdit: "Switching to Edit…",
   },
   de: {
     title: "Erweiterte Werkzeuge",
@@ -114,6 +119,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Original öffnen",
     reload: "Neu laden",
     editorErrorDialog: "{title} · Editor-Fehler",
+    switchingToPro: "Wechsel zur Profi-Bearbeitung…",
+    switchingToEdit: "Wechsel zur Bearbeitung…",
   },
   fr: {
     title: "Outils avancés",
@@ -142,6 +149,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Ouvrir l'original",
     reload: "Recharger",
     editorErrorDialog: "{title} · Erreur de l'éditeur",
+    switchingToPro: "Passage à l'édition pro…",
+    switchingToEdit: "Passage à l'édition…",
   },
   it: {
     title: "Strumenti avanzati",
@@ -170,6 +179,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Apri l'originale",
     reload: "Ricarica",
     editorErrorDialog: "{title} · Errore dell'editor",
+    switchingToPro: "Passaggio alla modifica pro…",
+    switchingToEdit: "Passaggio alla modifica…",
   },
   es: {
     title: "Herramientas avanzadas",
@@ -198,6 +209,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Abrir original",
     reload: "Recargar",
     editorErrorDialog: "{title} · Error del editor",
+    switchingToPro: "Cambiando a edición pro…",
+    switchingToEdit: "Cambiando a edición…",
   },
   "es-419": {
     title: "Herramientas avanzadas",
@@ -226,6 +239,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Abrir original",
     reload: "Recargar",
     editorErrorDialog: "{title} · Error del editor",
+    switchingToPro: "Cambiando a edición pro…",
+    switchingToEdit: "Cambiando a edición…",
   },
   "pt-BR": {
     title: "Ferramentas avançadas",
@@ -254,6 +269,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Abrir original",
     reload: "Recarregar",
     editorErrorDialog: "{title} · Erro do editor",
+    switchingToPro: "Mudando para edição pro…",
+    switchingToEdit: "Mudando para edição…",
   },
   "pt-PT": {
     title: "Ferramentas avançadas",
@@ -282,6 +299,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Abrir original",
     reload: "Recarregar",
     editorErrorDialog: "{title} · Erro do editor",
+    switchingToPro: "A mudar para edição pro…",
+    switchingToEdit: "A mudar para edição…",
   },
   vi: {
     title: "Công cụ nâng cao",
@@ -310,6 +329,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Mở bản gốc",
     reload: "Tải lại",
     editorErrorDialog: "{title} · Lỗi trình chỉnh sửa",
+    switchingToPro: "Đang chuyển sang chỉnh sửa chuyên nghiệp…",
+    switchingToEdit: "Đang chuyển sang chỉnh sửa…",
   },
   tr: {
     title: "Gelişmiş araçlar",
@@ -338,6 +359,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "Orijinali aç",
     reload: "Yeniden yükle",
     editorErrorDialog: "{title} · Düzenleyici hatası",
+    switchingToPro: "Pro düzenlemeye geçiliyor…",
+    switchingToEdit: "Düzenlemeye geçiliyor…",
   },
   "zh-TW": {
     title: "進階功能",
@@ -366,6 +389,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "開啟原內容",
     reload: "重新載入",
     editorErrorDialog: "{title} · 編輯器錯誤",
+    switchingToPro: "正在切換到專業編輯…",
+    switchingToEdit: "正在切換到編輯…",
   },
   ja: {
     title: "高度なツール",
@@ -394,6 +419,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "元の内容を開く",
     reload: "再読み込み",
     editorErrorDialog: "{title} · エディターのエラー",
+    switchingToPro: "プロ編集に切り替えています…",
+    switchingToEdit: "編集に切り替えています…",
   },
   ko: {
     title: "고급 도구",
@@ -422,6 +449,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "원본 열기",
     reload: "다시 불러오기",
     editorErrorDialog: "{title} · 편집기 오류",
+    switchingToPro: "프로 편집으로 전환 중…",
+    switchingToEdit: "편집으로 전환 중…",
   },
   ar: {
     title: "الأدوات المتقدمة",
@@ -450,6 +479,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "فتح الأصل",
     reload: "إعادة التحميل",
     editorErrorDialog: "{title} · خطأ في المحرر",
+    switchingToPro: "جارٍ التبديل إلى التحرير الاحترافي…",
+    switchingToEdit: "جارٍ التبديل إلى التحرير…",
   },
   th: {
     title: "เครื่องมือขั้นสูง",
@@ -478,6 +509,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "เปิดต้นฉบับ",
     reload: "โหลดใหม่",
     editorErrorDialog: "{title} · ข้อผิดพลาดของตัวแก้ไข",
+    switchingToPro: "กำลังสลับไปแก้ไขระดับโปร…",
+    switchingToEdit: "กำลังสลับไปแก้ไข…",
   },
   hi: {
     title: "उन्नत टूल",
@@ -506,6 +539,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     openOriginal: "मूल खोलें",
     reload: "फिर से लोड करें",
     editorErrorDialog: "{title} · एडिटर त्रुटि",
+    switchingToPro: "प्रो संपादन पर स्विच हो रहा है…",
+    switchingToEdit: "संपादन पर स्विच हो रहा है…",
   },
 };
 
