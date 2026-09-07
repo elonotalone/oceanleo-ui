@@ -3,14 +3,18 @@
 // ----------------------------------------------------------------------------
 // 闭环原样：ArtifactRendition 的非 durable 早退分支每次渲染新建
 // `retry` / `resourceFailed` 两个函数字面量 → useOfficeArtifactSource →
-// GridRoute → useGridEditor 的 onSourceAccessError 形参 → 加载 effect 的依赖数组。
-// 于是每渲染一次就重跑一次加载，遮罩再也下不来。
+// 表格舞台的加载 effect 依赖数组。于是每渲染一次就重跑一次加载，遮罩再也下不来。
 //
-// 三条断言分别对应根因、自保闸、诚实的失败态：
+// 2026-09-07（core-swap:delete grid）：自研旧核 `use-grid-editor.ts` 删了，表格只剩
+// `GridUniverStage.tsx` 一条路。原本对着旧 hook 跑的 P2/P3（重复渲染只加载一次、
+// 失败态归位可重试）随 hook 一起撤；同一条不变量改由第 4 条的 AST 检查盯着
+// Univer 舞台的加载 effect：只按 `loadKey` 起跑、回调收进 ref、显式重试走
+// `officeSource.version` 进 key。
+//
+// 断言分别对应根因、结构闸、诚实的失败态：
 //   1. 非 durable / 不可见两个早退分支的回调，两次渲染之间引用相等；
-//   2. 调用方每次渲染都递新回调，加载也只跑一次，loading 必定归位；
-//   3. 取不到源时 loading 归位、进入可读的失败态，重试入口真能再跑一次。
-// 第 4 条用 AST 检查三个编辑器的加载 effect 依赖数组，防止同一个模式第四次复发。
+//   4. 三个编辑器的加载 effect 依赖数组不再含调用方递进来的对象与回调；
+//   5–6. 失败文案承诺的每一条出路界面真的支持。
 // ============================================================================
 
 import assert from "node:assert/strict";
@@ -83,187 +87,6 @@ const artifactRenditionUrl = await compileModule(
 );
 const { useArtifactRendition } = await import(artifactRenditionUrl);
 
-/* ------------------------------ use-grid-editor -------------------------- */
-
-const uiStubUrl = dataModule(`
-  export function useUI() {
-    return (value) => value;
-  }
-`);
-const gridModelStubUrl = dataModule(`
-  let serial = 0;
-  export function emptyGridSheet(name = "Sheet1") {
-    serial += 1;
-    return {
-      id: "sheet-" + serial,
-      name,
-      rows: [[""]],
-      formats: {},
-      merges: [],
-      conditionalFormats: [],
-    };
-  }
-  export function cloneGridSheets(sheets) {
-    return structuredClone(sheets);
-  }
-  export async function loadGridSheets(item) {
-    globalThis.__gridLoads.push(item.id);
-    if (globalThis.__gridLoads.length > 8) {
-      throw new Error(
-        "加载 effect 自激了：loadGridSheets 被反复调用 " +
-          globalThis.__gridLoads.length +
-          " 次",
-      );
-    }
-    if (globalThis.__gridLoadFails) {
-      throw new Error("签名地址已过期（HTTP 403）");
-    }
-    return [emptyGridSheet("载入的工作表")];
-  }
-  export async function loadGridFile() {
-    return [emptyGridSheet("导入的工作表")];
-  }
-  export function normalizeGridProjectSheetState(sheets, activeSheetId) {
-    return { sheets: sheets || [], activeSheetId: activeSheetId || "" };
-  }
-  export async function buildGridWorkbookBlob() {
-    return new Blob([""]);
-  }
-  export function gridSheetToCsv() {
-    return "";
-  }
-  export function gridCellValue() {
-    return "";
-  }
-  export function gridDisplayValue() {
-    return "";
-  }
-  export function gridCellFormat() {
-    return {};
-  }
-  export function gridRowCount(sheet) {
-    return sheet ? sheet.rows.length : 0;
-  }
-  export function gridColCount() {
-    return 1;
-  }
-  export function setGridCell() {}
-  export function sanitizeSheetName(name) {
-    return String(name || "Sheet");
-  }
-  // ↓ 以下六个是 W11 / W32 之后 use-grid-editor.ts 与 grid-recalc-action.ts 新引的名字。
-  // 少任何一个，整份文件在加载期就炸、三条断言一条都不跑（_COMMON.md §7b⑩）。
-  // 都照 grid-model.ts 的真实现逐行抄，不是随手给个空壳——给空壳会让判据假绿。
-  export const GRID_MAX_ROWS = 10000;
-  export const GRID_MAX_COLS = 256;
-  export function columnLabel(index) {
-    let value = index + 1;
-    let label = "";
-    while (value > 0) {
-      value -= 1;
-      label = String.fromCharCode(65 + (value % 26)) + label;
-      value = Math.floor(value / 26);
-    }
-    return label;
-  }
-  const workbookBindings = new WeakMap();
-  export function bindGridWorkbook(sheets, options = {}) {
-    const binding = { sheets, namedRanges: options.namedRanges, recalc: options.recalc };
-    for (const sheet of sheets) workbookBindings.set(sheet, binding);
-    return sheets;
-  }
-  // fail-closed：坏戳一律当没戳，别把坏戳当好戳用。
-  export function normalizeGridRecalcStamp(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-    const at = value.at;
-    const seed = value.seed;
-    if (typeof at !== "string" || !at.endsWith("Z") || Number.isNaN(Date.parse(at))) {
-      return undefined;
-    }
-    if (typeof seed !== "number" || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
-      return undefined;
-    }
-    return { at, seed };
-  }
-  export function gridWorkbookContext(sheets, options = {}) {
-    const rowsByRef = new Map();
-    for (const sheet of sheets) rowsByRef.set(String(sheet.id).toLowerCase(), sheet.rows);
-    for (const sheet of sheets) rowsByRef.set(String(sheet.name).toLowerCase(), sheet.rows);
-    const named = new Map();
-    for (const [name, ref] of Object.entries(options.namedRanges ?? {})) {
-      named.set(name.toUpperCase(), ref);
-    }
-    return {
-      sheetRows: (ref) => rowsByRef.get(String(ref).toLowerCase()),
-      namedRange: (name) => named.get(String(name).toUpperCase()),
-      recalc: options.recalc,
-    };
-  }
-  // 保存那条路（W19 的面）不在本文件的判据里，但 import 必须解析得开。
-  export function gridCarrierProjectToIr(input) {
-    return input;
-  }
-  export function serializeGridIrProject(project) {
-    return JSON.stringify(project);
-  }
-  export function validateGridIrProject(project) {
-    return { ok: true, project, errors: [] };
-  }
-`);
-const gridSheetIdentityStubUrl = dataModule(`
-  export function resolveGridActiveSheetId(sheets, requested) {
-    if (requested && sheets.some((sheet) => sheet.id === requested)) {
-      return requested;
-    }
-    return sheets[0] ? sheets[0].id : "";
-  }
-`);
-const officeFileStubUrl = dataModule(`
-  export function notifyOfficeAccessDenied(reason, onAccessDenied) {
-    if (String(reason && reason.message).includes("403")) onAccessDenied?.();
-  }
-`);
-// `grid-structure` 从前整表打桩，于是 use-grid-editor 每多引一个名字（W11 的行高列宽、
-// 查找替换、剪贴板那批）就漏一条边、整份测试再哑一次——本波已复发四次。
-// 它是纯函数模块（只引 grid-formula，全仓没有一处 navigator/fetch/document），
-// **没有任何打桩的理由**：交给 module-bench 自动解析成真模块，这条边从此不会再腐。
-// 顺带把判据判严了：合并/相交/变换从「原样返回」的假身换成真逻辑。
-const docIoStubUrl = dataModule(`
-  export function downloadBlob() {}
-  export function downloadText() {}
-  export async function loadEditorProject() {
-    throw new Error("测试没有可编辑工程");
-  }
-  export async function saveFileToLibrary() {
-    return { ok: false, error: "测试不落库" };
-  }
-`);
-const saveContractStubUrl = dataModule(`
-  export function artifactSaveStepMessage(step, detail) {
-    return step + ":" + String(detail || "");
-  }
-`);
-const previewRasterStubUrl = dataModule(`
-  export async function renderGridPreviewPng() {
-    return null;
-  }
-`);
-
-const gridEditorUrl = await compileModule(
-  "src/shell/doc-editors/use-grid-editor.ts",
-  {
-    "../../i18n/ui/useUI": uiStubUrl,
-    "./doc-io": docIoStubUrl,
-    "./artifact-save-contract": saveContractStubUrl,
-    "./editor-preview-raster": previewRasterStubUrl,
-    "./grid-model": gridModelStubUrl,
-    "./grid-sheet-identity": gridSheetIdentityStubUrl,
-    "./office-file": officeFileStubUrl,
-    // 没列出来的（`../plugin-initial-state`、导出链那三份…）一律走真模块：
-    // 保存对象与导出的判据是产品口径，桩一打就可能悄悄判反。
-  },
-);
-const { useGridEditor } = await import(gridEditorUrl);
 
 /* --------------------------------- fixtures ------------------------------ */
 
@@ -363,92 +186,6 @@ test("非 durable 与不可见早退分支的 retry / resourceFailed 跨渲染�
   }
 });
 
-/* ------------------------------- P2 自保闸 -------------------------------- */
-
-test("调用方每次渲染都递新回调，工作簿加载仍只跑一次且遮罩必定落下", async () => {
-  globalThis.__gridLoads = [];
-  globalThis.__gridLoadFails = false;
-  let rerender = () => {};
-  let latest = null;
-
-  function Probe({ item }) {
-    const [, setTick] = React.useState(0);
-    rerender = () => setTick((value) => value + 1);
-    // 每次渲染新建的回调 —— 修复前的 ArtifactRendition 就是这么递进来的。
-    latest = useGridEditor(item, "excel", () => undefined);
-    return null;
-  }
-
-  const mounted = await mount(
-    React.createElement(Probe, { item: blankStarterItem() }),
-  );
-  try {
-    assert.equal(latest.loading, false, "首次加载结束后遮罩应当落下");
-    assert.deepEqual(globalThis.__gridLoads, ["blank-grid-starter"]);
-
-    for (let round = 0; round < 5; round += 1) {
-      await act(async () => rerender());
-    }
-    assert.deepEqual(
-      globalThis.__gridLoads,
-      ["blank-grid-starter"],
-      "重复渲染不许重新起跑加载",
-    );
-    assert.equal(latest.loading, false, "重复渲染之后遮罩仍然是落下的");
-    assert.equal(latest.error, "");
-    assert.equal(latest.sourceFailed, false);
-  } finally {
-    await mounted.unmount();
-    delete globalThis.__gridLoads;
-    delete globalThis.__gridLoadFails;
-  }
-});
-
-/* ----------------------------- P3 诚实的失败态 ---------------------------- */
-
-test("取不到源时 loading 归位、失败文案说清缘由，重试入口真的再跑一次", async () => {
-  globalThis.__gridLoads = [];
-  globalThis.__gridLoadFails = true;
-  let rerender = () => {};
-  let latest = null;
-
-  function Probe({ item }) {
-    const [, setTick] = React.useState(0);
-    rerender = () => setTick((value) => value + 1);
-    latest = useGridEditor(item, "excel", () => undefined);
-    return null;
-  }
-
-  const mounted = await mount(
-    React.createElement(Probe, { item: blankStarterItem() }),
-  );
-  try {
-    assert.equal(latest.loading, false, "取不到源也必须停止转圈");
-    assert.equal(latest.sourceFailed, true);
-    assert.match(latest.error, /没能读到这份表格的源文件/);
-    assert.match(latest.error, /HTTP 403/, "失败文案要带上真实原因");
-    assert.match(latest.error, /重新载入/, "失败文案要指出重试入口");
-    assert.notEqual(latest.error, "工作簿加载失败");
-    assert.equal(globalThis.__gridLoads.length, 1);
-
-    // 失败态下的重复渲染同样不许自激。
-    await act(async () => rerender());
-    await act(async () => rerender());
-    assert.equal(globalThis.__gridLoads.length, 1);
-
-    globalThis.__gridLoadFails = false;
-    await act(async () => latest.reload());
-    assert.equal(globalThis.__gridLoads.length, 2, "重试入口要真的再跑一次");
-    assert.equal(latest.loading, false);
-    assert.equal(latest.sourceFailed, false);
-    assert.equal(latest.error, "");
-  } finally {
-    await mounted.unmount();
-    delete globalThis.__gridLoads;
-    delete globalThis.__gridLoadFails;
-  }
-});
-
 /* --------------------- 三个编辑器的加载 effect 依赖数组 -------------------- */
 
 function loadEffectDependencies(relativePath, marker, sourceText) {
@@ -483,21 +220,37 @@ function loadEffectDependencies(relativePath, marker, sourceText) {
 test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象与回调", async () => {
   // `tt` belongs on this list too: it is provider-owned, and an unmemoized
   // locale provider re-arms exactly the same loop as an unmemoized callback.
-  for (const [path, marker, forbidden] of [
+  //
+  // grid 行是 Univer 舞台：它没有 `reloadNonce`，显式重试走 `officeSource.retry`
+  // → rendition 换版 → `officeSource.version` 进 `loadKey` → effect 再跑一次。
+  for (const [path, marker, forbidden, refPattern, retryKey] of [
     [
-      "src/shell/doc-editors/use-grid-editor.ts",
+      "src/shell/doc-editors/GridUniverStage.tsx",
       "loadGridSheets(",
-      ["item", "onSourceAccessError", "tt"],
+      [
+        "item",
+        "officeSource",
+        "officeSource.item",
+        "officeSource.resourceFailed",
+        "officeSource.retry",
+        "tt",
+      ],
+      /resourceFailedRef\.current\?\.\(\)/,
+      "officeSource.version",
     ],
     [
       "src/shell/doc-editors/use-deck-editor.ts",
       "loadDeck(",
       ["item", "onSourceAccessError", "previewContent", "tt"],
+      /sourceAccessErrorRef\.current\?\.\(\)/,
+      "reloadNonce",
     ],
     [
       "src/shell/doc-editors/use-rich-doc-editor.ts",
       "loadRichDocHtml(",
       ["item", "onSourceAccessError", "tt"],
+      /sourceAccessErrorRef\.current\?\.\(\)/,
+      "reloadNonce",
     ],
   ]) {
     const text = await readFile(resolve(path), "utf8");
@@ -512,16 +265,46 @@ test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象
       dependencies.includes("loadKey"),
       `${path} 的加载 effect 应当按值 key 起跑，而不是按对象身份`,
     );
-    assert.ok(
-      dependencies.includes("reloadNonce"),
-      `${path} 的加载 effect 缺少显式重试入口`,
-    );
-    assert.match(
-      text,
-      /sourceAccessErrorRef\.current\?\.\(\)/,
-      `${path} 没有把回调形参收进 ref`,
-    );
+    if (retryKey === "reloadNonce") {
+      assert.ok(
+        dependencies.includes("reloadNonce"),
+        `${path} 的加载 effect 缺少显式重试入口`,
+      );
+    } else {
+      const loadKeyText = text.match(/const loadKey = \[([\s\S]*?)\]\.join\(/);
+      assert.ok(loadKeyText, `${path} 里找不到 loadKey 的组成`);
+      assert.match(
+        loadKeyText[1],
+        new RegExp(retryKey.replace(/\./g, "\\.")),
+        `${path} 的 loadKey 没把 ${retryKey} 算进去：重试换版后加载不会再跑`,
+      );
+    }
+    assert.match(text, refPattern, `${path} 没有把回调形参收进 ref`);
   }
+});
+
+// Univer 舞台的加载 effect 除了不自激，还要能在实例已在时**就地重画**：
+// 长期库件的签名源晚到、或重试换了一版，都不该重建 Univer，也不该把新快照丢掉。
+test("Univer 舞台：源晚到 / 换版时就地重画，不重建实例；源还在解析时不先开空表", async () => {
+  const text = await readFile(
+    resolve("src/shell/doc-editors/GridUniverStage.tsx"),
+    "utf8",
+  );
+  const effectStart = text.indexOf("useEffect(() => {\n    if (waitingForSource)");
+  assert.ok(effectStart > 0, "加载 effect 应先判 waitingForSource");
+  const effectEnd = text.indexOf("}, [loadKey]);", effectStart);
+  assert.ok(effectEnd > effectStart);
+  const effect = text.slice(effectStart, effectEnd);
+  assert.match(
+    effect,
+    /if \(handleRef\.current\) \{\s*replaceUniverWorkbookWithSnapshot\(/,
+    "实例已在时应当 replaceUniverWorkbookWithSnapshot，而不是等待重建",
+  );
+  assert.match(
+    text,
+    /const waitingForSource =\s*!projectUrl && officeSource\.loading && !officeSource\.url;/,
+    "没有工程档、rendition 还在转圈且 url 为空时应当等源，不先开空表",
+  );
 });
 
 /* ---------------- 失败文案承诺的动作，界面必须真的允许 -------------------- */
@@ -630,8 +413,14 @@ const PROMISED_WAYS_OUT = [
     id: "reload-button",
     matches: /重新载入/,
     available: ({ stage, route }) =>
-      /editor\.reload/.test(stage) || /editor\.reload/.test(route),
-    missing: "文案让用户点「重新载入」，但 stage / route 都没渲染 editor.reload",
+      /editor\.reload/.test(stage) ||
+      /editor\.reload/.test(route) ||
+      // Univer 舞台：按钮由 buildGridDocumentActions 造，reload 接 officeSource.retry。
+      (/reload:\s*officeSource\.retry/.test(stage) &&
+        /sourceFailed:\s*Boolean\(officeSource\.error\)/.test(stage)),
+    missing:
+      "文案让用户点「重新载入」，但 stage / route 既没渲染 editor.reload，" +
+      "也没把 officeSource.retry 接进 buildGridDocumentActions",
   },
   {
     id: "local-upload",
@@ -653,10 +442,12 @@ const PROMISED_WAYS_OUT = [
 test("失败文案里承诺的每一条出路，界面都必须真的支持", async () => {
   const cases = [
     {
-      hookPath: "src/shell/doc-editors/use-grid-editor.ts",
+      // grid：文案与「重新载入表格」按钮都在 Univer 的 document-actions 里，
+      // 舞台把 `officeSource.error` 喂给文案、`officeSource.retry` 喂给按钮。
+      hookPath: "src/shell/doc-editors/grid-univer/document-actions.ts",
       fn: "gridSourceFailureMessage",
-      stagePath: "src/shell/doc-editors/GridStage.tsx",
-      routePath: "src/shell/advanced-routes/GridRoute.tsx",
+      stagePath: "src/shell/doc-editors/GridUniverStage.tsx",
+      routePath: "src/shell/doc-editors/GridUniverStage.tsx",
     },
     {
       hookPath: "src/shell/doc-editors/use-deck-editor.ts",
@@ -701,20 +492,52 @@ test("失败文案里承诺的每一条出路，界面都必须真的支持", as
 });
 
 test("grid 的失败态是本波真正交付的那一份：文案与按钮两边都在", async () => {
-  const [hook, stage] = await Promise.all([
-    readFile(resolve("src/shell/doc-editors/use-grid-editor.ts"), "utf8"),
-    readFile(resolve("src/shell/doc-editors/GridStage.tsx"), "utf8"),
+  const [actions, stage] = await Promise.all([
+    readFile(
+      resolve("src/shell/doc-editors/grid-univer/document-actions.ts"),
+      "utf8",
+    ),
+    readFile(resolve("src/shell/doc-editors/GridUniverStage.tsx"), "utf8"),
   ]);
   assert.match(
     failureMessageTail(
-      "src/shell/doc-editors/use-grid-editor.ts",
+      "src/shell/doc-editors/grid-univer/document-actions.ts",
       "gridSourceFailureMessage",
-      hook,
+      actions,
     ),
-    /重新载入/,
+    /重新载入表格/,
   );
-  assert.match(stage, /editor\.reload/);
-  assert.match(stage, /重新载入/);
+  // 按钮文案与承诺同字：按钮叫「重新载入表格」，文案也让用户点「重新载入表格」。
+  assert.match(actions, /label: "重新载入表格"/);
+  // 舞台真把失败文案送上状态栏、把 retry 接到按钮。
+  assert.match(stage, /gridSourceFailureMessage\(officeSource\.error\)/);
+  assert.match(stage, /reload: officeSource\.retry/);
+
+  const { buildGridDocumentActions, gridSourceFailureMessage } = await import(
+    pathToFileURL(
+      resolve("src/shell/doc-editors/grid-univer/document-actions.ts"),
+    ).href
+  );
+  const message = gridSourceFailureMessage("签名地址已过期（HTTP 403）");
+  assert.match(message, /没能读到这份表格的源文件/);
+  assert.match(message, /HTTP 403/, "失败文案要带上真实原因");
+  assert.match(message, /重新载入/, "失败文案要指出重试入口");
+  let reloaded = 0;
+  const failed = buildGridDocumentActions({
+    sourceFailed: true,
+    reload: () => {
+      reloaded += 1;
+    },
+  });
+  const button = failed.find((action) => action.id === "grid-reload-source");
+  assert.ok(button, "失败时要有「重新载入表格」按钮");
+  button.onTrigger();
+  assert.equal(reloaded, 1, "按钮真的触发重试");
+  assert.equal(
+    buildGridDocumentActions({ sourceFailed: false, reload: () => {} }).length,
+    0,
+    "没失败时不摆重试按钮",
+  );
 });
 
 // 上面那句「文案让用户上传本地表格」的后盾，落到最实的一层：

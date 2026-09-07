@@ -52,29 +52,23 @@ import {
   runGridEmitPipeline,
   zipGridXlsxParts,
 } from "../src/shell/doc-editors/GridWorkbookExport.ts";
+import {
+  GRID_EDITOR_CAPABILITY,
+  GRID_SOURCE_FORMAT,
+  GRID_SOURCE_MEDIA_TYPE,
+} from "../src/shell/doc-editors/grid-shared.ts";
+import { GRID_LEGACY_PROJECT_SCHEMA } from "../src/shell/doc-editors/grid-univer/legacy-conversion.ts";
 const source = (relative) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
 /**
- * `use-grid-editor.ts` is a React hook module and pulls the i18n `.tsx` tree in
- * behind it, which `--experimental-strip-types` cannot load. Its exported
- * constants are read out of the source text instead, the same way the other
- * advanced-editor tests inspect route modules.
+ * 落库四元组的常量。旧核 hook（`use-grid-editor.ts`）已随 core-swap:delete grid 删除，
+ * 三个常量搬到零依赖的 `grid-shared.ts`，工程档 schema 在 `grid-univer/legacy-conversion.ts`
+ * （`oceanleo.grid.v1` 是存量文档进 Univer 的入口，必须留着）。都是纯模块，直接 import。
+ * 存盘侧的消费者是 `GridUniverStage.tsx`（带 JSX，只能读源文本）。
  */
-const GRID_EDITOR_SOURCE = source("../src/shell/doc-editors/use-grid-editor.ts");
-
-function exportedConstant(name) {
-  const match = GRID_EDITOR_SOURCE.match(
-    new RegExp(`export const ${name}\\s*(?::[^=]*)?=\\s*\\n?\\s*"([^"]+)"`),
-  );
-  assert.ok(match, `use-grid-editor.ts 没有导出 ${name}`);
-  return match[1];
-}
-
-const GRID_SOURCE_FORMAT = exportedConstant("GRID_SOURCE_FORMAT");
-const GRID_SOURCE_MEDIA_TYPE = exportedConstant("GRID_SOURCE_MEDIA_TYPE");
-const GRID_EDITOR_CAPABILITY = exportedConstant("GRID_EDITOR_CAPABILITY");
-const GRID_PROJECT_SCHEMA = exportedConstant("GRID_PROJECT_SCHEMA");
+const GRID_EDITOR_SOURCE = source("../src/shell/doc-editors/GridUniverStage.tsx");
+const GRID_PROJECT_SCHEMA = GRID_LEGACY_PROJECT_SCHEMA;
 
 /**
  * A realistic three-statement style model rather than a toy table: §8.1 puts
@@ -192,18 +186,17 @@ test("C-1 落库四元组与 §1.1 逐字相同", () => {
   assert.equal(GRID_IR_VERSION, 1);
   assert.equal(GRID_XLSX_MEDIA_TYPE, GRID_SOURCE_MEDIA_TYPE);
   assert.match(GRID_EDITOR_SOURCE, /artifactType:\s*"grid"/);
-  // `adapter` 是路由侧的字段，不在 hook 里：§1.1 的 adapter = grid 由 GridRoute
-  // 交给 AdvancedWorkbenchShell 的 `adapter.id` 钉死。
-  const route = source("../src/shell/advanced-routes/GridRoute.tsx");
-  assert.match(route, /adapter=\{\{\s*\n?\s*id: "grid"/);
-  assert.match(route, /editorToolLabel\(\{ type: "grid" \}\)/);
+  assert.match(GRID_EDITOR_SOURCE, /editor_capability:\s*GRID_EDITOR_CAPABILITY/);
+  // `adapter` 是舞台侧的字段：§1.1 的 adapter = grid 由 GridUniverStage
+  // 交给 AdvancedWorkbenchShell 的 `adapter.id` 钉死（路由只剩 dynamic 懒加载）。
+  assert.match(GRID_EDITOR_SOURCE, /adapter=\{\{\s*\n?\s*id: "grid"/);
+  assert.match(GRID_EDITOR_SOURCE, /editorToolLabel\(\{ type: "grid" \}\)/);
 });
 
 test("C-1 csv MUST NOT 落 native（§1.1 / §6 F8）", () => {
-  const editor = source("../src/shell/doc-editors/use-grid-editor.ts");
   // The save path pins `xlsx` unconditionally, so a csv import can never
   // publish itself as the native source format.
-  assert.match(editor, /sourceFormat: GRID_SOURCE_FORMAT/);
+  assert.match(GRID_EDITOR_SOURCE, /sourceFormat: GRID_SOURCE_FORMAT/);
   assert.equal(GRID_SOURCE_FORMAT, "xlsx");
 });
 
@@ -1275,7 +1268,7 @@ test("C-7 §2.4 负值不得只用颜色表达", () => {
 
 test("C-7 A1/A10/A11/A12 的承担层记录在案", () => {
   // 这四条要落库后的只读 SQL 或全语料两两比对才成立，编辑器侧只能保证输入面:
-  // A1 四元组由 use-grid-editor 的 save() 钉死（见 C-1）；
+  // A1 四元组由 GridUniverStage 的 save() 钉死（见 C-1）；
   // A10 需要 platform_assets 的 source + oss_key 查询（后端 W2 / V1）；
   // A11/A12 需要同族与全语料 Jaccard（6 号批产侧）。
   const ready = runGridEmitPipeline(carrierFixture());

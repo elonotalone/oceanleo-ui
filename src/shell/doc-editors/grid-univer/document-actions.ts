@@ -23,6 +23,20 @@ export type GridDocumentActionSource = {
   reload?: () => void;
 };
 
+/**
+ * 源文件取不到时状态栏上那句话。`head` 说现状、带真实原因；`tail` 只承诺界面
+ * 真做得到的出路——「重新载入表格」就是上面那个按钮
+ * （`tests/rendition-callback-identity.test.mjs` 逐句核对承诺与按钮）。
+ */
+export function gridSourceFailureMessage(reason: string): string {
+  const detail = String(reason || "").trim();
+  const head = detail
+    ? `没能读到这份表格的源文件（${detail}）。`
+    : "没能读到这份表格的源文件。";
+  const tail = "点「重新载入表格」再试一次，或者关掉这份文档重新打开。";
+  return `${head}${tail}`;
+}
+
 export function buildGridDocumentActions(
   editor: GridDocumentActionSource,
 ): AdvancedWorkbenchAction[] {

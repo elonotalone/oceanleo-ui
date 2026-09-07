@@ -87,7 +87,10 @@ import type { EditorMode } from "../hosted-editor/index";
 import type { SelectionCommand } from "../selection-context";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { WorkbenchRouteLoading } from "../advanced-routes/WorkbenchRouteLoading";
-import { buildGridDocumentActions } from "./grid-univer/document-actions";
+import {
+  buildGridDocumentActions,
+  gridSourceFailureMessage,
+} from "./grid-univer/document-actions";
 import {
   GRID_EDITOR_CAPABILITY,
   GRID_SOURCE_FORMAT,
@@ -221,15 +224,47 @@ export function GridUniverStage({
     setToolbarEpoch((value) => value + 1);
   }, []);
 
+  /**
+   * 取源那两样东西走 ref，不进加载 effect 的依赖数组。
+   *
+   * 台账「正在读取工作簿…」永不消失的那条闭环（`tests/rendition-callback-identity.test.mjs`）：
+   * rendition 层每渲染新建一个 `resourceFailed` 回调 → 进依赖数组 → 每渲染重跑一次加载 →
+   * 遮罩再也下不来。加载只按**值**起跑（item 的 id / url / 工程档 pin、rendition 的
+   * url / version），回调与派生对象从 ref 里现取。
+   */
+  const officeItemRef = useRef(officeSource.item);
+  officeItemRef.current = officeSource.item;
+  const resourceFailedRef = useRef(officeSource.resourceFailed);
+  resourceFailedRef.current = officeSource.resourceFailed;
+  const projectSchema = String(item.meta.editor_project_schema || "");
+  const projectUrl = String(item.meta.editor_project_url || "");
+  // 长期库件还在解析签名源（rendition 转圈、url 还是空）时不要先开一张空表：
+  // 等 url 到了再起跑一次。有工程档的不等——工程档本身就是源。
+  const waitingForSource =
+    !projectUrl && officeSource.loading && !officeSource.url;
+  const loadKey = [
+    item.artifactId || "",
+    item.url || "",
+    projectSchema,
+    projectUrl,
+    officeSource.url || "",
+    String(officeSource.version ?? ""),
+    waitingForSource ? "wait" : "go",
+  ].join("\u0000");
+
   useEffect(() => {
+    if (waitingForSource) {
+      setLoading(true);
+      setStatus("正在载入表格");
+      return;
+    }
     let cancelled = false;
     const title = item.title || "工作簿";
     setLoading(true);
     setStatus("正在载入表格");
     (async () => {
       try {
-        const schema = String(item.meta.editor_project_schema || "");
-        const projectUrl = String(item.meta.editor_project_url || "");
+        const schema = projectSchema;
         let univerSnapshot: Partial<IWorkbookData> | null = null;
         let legacySheets: ReturnType<typeof sheetsFromLegacyProjectData> = null;
         let officeSheets: ReturnType<typeof emptyGridSheet>[] | null = null;
@@ -254,9 +289,9 @@ export function GridUniverStage({
         }
         if (!univerSnapshot && !legacySheets) {
           officeSheets = await loadGridSheets(
-            officeSource.item,
+            officeItemRef.current,
             undefined,
-            officeSource.resourceFailed,
+            () => resourceFailedRef.current?.(),
           );
         }
         if (cancelled) return;
@@ -268,6 +303,13 @@ export function GridUniverStage({
           officeSheets,
         });
         snapshotRef.current = planned.snapshot || emptySnapshot(title);
+        // 实例已在（源晚到、或换了签名版本）：就地重画，不重建 Univer。
+        if (handleRef.current) {
+          replaceUniverWorkbookWithSnapshot(
+            handleRef.current.api,
+            structuredClone(snapshotRef.current),
+          );
+        }
         if (planned.kind === "legacy-stored") {
           legacySheetsRef.current = planned.sheets;
           setConversion("readonly");
@@ -300,15 +342,9 @@ export function GridUniverStage({
     return () => {
       cancelled = true;
     };
-  }, [
-    item.artifactId,
-    item.meta.editor_project_schema,
-    item.meta.editor_project_url,
-    item.title,
-    item.url,
-    officeSource.item,
-    officeSource.resourceFailed,
-  ]);
+    // 只按值 key 起跑；`item` / `officeSource.*` 对象与回调不进依赖数组（见 loadKey 注释）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadKey]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -896,6 +932,9 @@ export function GridUniverStage({
         ),
         status:
           conversionNotice ||
+          (officeSource.error
+            ? gridSourceFailureMessage(officeSource.error)
+            : "") ||
           status ||
           (loading || officeSource.loading ? "正在载入表格" : ""),
         persistence: {

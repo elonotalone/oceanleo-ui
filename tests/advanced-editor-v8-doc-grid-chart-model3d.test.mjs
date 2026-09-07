@@ -17,10 +17,6 @@ import {
   chartExportOption,
   chartRenderOption,
 } from "../src/shell/chart-editor/chart-render.ts";
-import {
-  GridRouteHistory,
-  captureGridRouteSnapshot,
-} from "../src/shell/doc-editors/GridRouteHistory.ts";
 import { tiptapJsonToDocxBlob } from "../src/shell/doc-editors/docx-export.ts";
 import {
   Model3DRouteHistory,
@@ -36,14 +32,12 @@ const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("v8 routes expose one real global history and semantic compact controls", () => {
   const richRoute = source("../src/shell/advanced-routes/RichDocRoute.tsx");
-  const gridRoute = source("../src/shell/advanced-routes/GridRoute.tsx");
+  // 表格只剩 Univer 舞台（core-swap:delete grid）：adapter 长在懒加载叶子里。
+  const gridRoute = source("../src/shell/doc-editors/GridUniverStage.tsx");
   const chartRoute = source("../src/shell/advanced-routes/ChartRoute.tsx");
   const modelRoute = source("../src/shell/advanced-routes/Model3DRoute.tsx");
   const richToolbar = source(
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
-  );
-  const gridToolbar = source(
-    "../src/shell/doc-editors/GridContextToolbar.tsx",
   );
   const chartToolbar = source(
     "../src/shell/chart-editor/ChartContextToolbar.tsx",
@@ -72,7 +66,9 @@ test("v8 routes expose one real global history and semantic compact controls", (
   assert.match(modelRoute, /model_dependency_base_url/);
   assert.match(modelRoute, /model_source_identity/);
 
-  for (const toolbar of [richToolbar, gridToolbar, chartToolbar, modelToolbar]) {
+  // grid 的浮条控件由 `gridUniverSelectionContext` 从命令表算出（stage-plan.ts），
+  // 不是 JSX 字面量；它的 iconOnly / revision 语义由 grid-univer-wiring 判据钉住。
+  for (const toolbar of [richToolbar, chartToolbar, modelToolbar]) {
     assert.match(toolbar, /iconOnly: true/);
     assert.match(toolbar, /selectionRevision/);
     assert.match(toolbar, /editRevision/);
@@ -80,8 +76,6 @@ test("v8 routes expose one real global history and semantic compact controls", (
   assert.match(richToolbar, /"embedded-object"/);
   assert.match(richToolbar, /id: "link"/);
   assert.match(richToolbar, /id: "row-add"/);
-  assert.match(gridToolbar, /"grid-row"/);
-  assert.match(gridToolbar, /"grid-column"/);
   assert.match(chartToolbar, /"chart-series"/);
   assert.match(modelToolbar, /placement: "more"/);
 });
@@ -232,7 +226,7 @@ test("RichDoc table, link and inline formats survive a real DOCX package", async
   assert.match(relationships, /https:\/\/oceanleo\.com\/docs/);
 });
 
-test("Grid formulas, formats, merges and sheets survive XLSX plus route undo", async () => {
+test("Grid formulas, formats, merges and sheets survive XLSX", async () => {
   const sheets = [
     {
       id: "budget",
@@ -283,26 +277,8 @@ test("Grid formulas, formats, merges and sheets survive XLSX plus route undo", a
   assert.equal(budget.getCell("A1").isMerged, true);
   assert.equal(budget.getCell("A1").value, "项目");
   assert.ok(budget.autoFilter);
-
-  const editorState = {
-    sheets,
-    activeSheetId: "budget",
-    headerRow: true,
-    filterQuery: "",
-    selection: { anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } },
-  };
-  const before = captureGridRouteSnapshot(editorState);
-  const after = {
-    ...before,
-    headerRow: false,
-    sheets: JSON.parse(JSON.stringify(before.sheets)),
-  };
-  after.sheets[0].rows.splice(1, 0, ["成本", "40", "=B2*1.13"]);
-  const history = new GridRouteHistory();
-  history.reset(0, before);
-  assert.equal(history.observe(1, after), true);
-  assert.equal(history.undo(after).headerRow, true);
-  assert.equal(history.redo(before).sheets[0].rows.length, 3);
+  // 路由级 undo/redo（GridRouteHistory）已随旧核删除：Univer 自带撤销栈，
+  // 宿主只转发 `api.undo()` / `api.redo()`（GridUniverStage）。
 });
 
 test("Model3D authored state history preserves viewport while undoing scene state", () => {
