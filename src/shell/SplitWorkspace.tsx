@@ -9,14 +9,16 @@
 //
 //   ┌──────────────┊──────────────────────────────┐
 //   │ 左（默认 1/3）  ┊ 右（默认 2/3）                 │
-//   │  [大屏]        ┊  [大屏]                       │
+//   │  标题行 … [▯]   ┊  ✕ 标题                        │
 //   └──────────────┊──────────────────────────────┘
 //                  ↑ 中间竖线，左右拖动改比例（localStorage 记忆）
 //
 // - 默认左 1/3、右 2/3；拖动竖线改比例，按 storageKey 记进 localStorage。
-// - 左右各有「大屏」按钮：点击 → 该栏独占全宽（再点恢复）。
-// - 移动端（< md）：上下堆叠，竖线/拖动隐藏；大屏按钮改为「只看这栏」切换。
+// - 移动端（< md）：上下堆叠，竖线/拖动隐藏。
 // - 框架无关：左右内容都由消费端传入。
+// - 2026-09-07（操作员，agent 顶栏统一）：两栏标题上原有的「这一栏切大屏 / 恢复双栏」
+//   全屏键（IconExpand/IconCompress）连同其 maxed 状态一并删除——右版面的显隐由
+//   左栏标题右侧的 IconRightPanelToggle 一个键负责，不再有第三个图标。
 // ============================================================================
 
 import {
@@ -178,11 +180,11 @@ export interface SplitWorkspaceProps {
   defaultRatio?: number;
   /** 比例记忆 key（按站 + 形态区分），如 "ui_agent_split"。不传则不持久化。 */
   storageKey?: string;
-  /** 左栏标题（大屏按钮旁的小标签）。 */
+  /** 左栏标题（右栏开关旁的小标签）。 */
   leftLabel?: ReactNode;
   /** 右栏标题。 */
   rightLabel?: ReactNode;
-  /** 强调色（拖动条 hover / 大屏激活态），默认 indigo。 */
+  /** 强调色（拖动条拖动中），默认 indigo。 */
   accent?: string;
   /** 顶部 header 高度（px），用于算可视高度，默认 56。 */
   headerHeight?: number;
@@ -210,7 +212,7 @@ export interface SplitWorkspaceProps {
    *
    * 给了 library：
    *   - 关（默认）：右版面不渲染 → 单栏（左栏占满）。左栏标题右侧出现「库」按钮（黑/accent）。
-   *   - 开：右版面渲染 `right`，其顶栏 = ✕(左，关闭右版面) / 「库」标题(居中) / 大屏(右)。
+   *   - 开：右版面渲染 `right`，其顶栏 = ✕(左，关闭右版面) / 「预览」标题。
    *     左栏那枚「库」按钮此时【隐藏】（避免出现两个「库」）。
    * 不传 library：右版面按 `right` 是否为 null 决定单/双栏（旧行为，无「库」按钮）。 */
   library?: SplitLibraryConfig;
@@ -238,8 +240,6 @@ export interface SplitLibraryConfig {
   /** @deprecated 不再读取库停靠偏好。 */
   dockStorageKey?: string;
 }
-
-type Maxed = "none" | "app" | "library";
 
 const MIN_RATIO = 0.18;
 const MAX_RATIO = 0.82;
@@ -270,7 +270,6 @@ export function SplitWorkspace({
   const libraryOpen = library != null && (libraryControlled ? Boolean(library.open) : internalOpen);
   const setLibraryOpen = useCallback(
     (v: boolean) => {
-      if (!v) setMaxed("none");
       if (!libraryControlled) setInternalOpen(v);
       library?.onOpenChange?.(v);
     },
@@ -287,7 +286,6 @@ export function SplitWorkspace({
   useWorkbenchOpenClaim(hasRight);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(defaultRatio);
-  const [maxed, setMaxed] = useState<Maxed>("none");
   const [dragging, setDragging] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   // 左栏交互控件（FunctionAgentChat 通过 context 装入模式、保存和新建）。
@@ -440,10 +438,9 @@ export function SplitWorkspace({
     }
   }, [hasRight]);
   const showDetail = useCallback((next: WorkspacePaneDetail) => {
-    // Selection drawers live in the semantic left operation pane. If the
-    // library/editor was maximized, reveal that pane without leaving browser
-    // fullscreen so the edit-bar action is never opened into a hidden console.
-    setMaxed("none");
+    // Selection drawers live in the semantic left operation pane. Revealing
+    // them must never leave browser fullscreen (that is `fullscreenRef`'s
+    // business, not ours), so this only swaps which left layer is visible.
     setActiveLibraryPanelId(null);
     setDetail(next);
   }, []);
@@ -482,7 +479,6 @@ export function SplitWorkspace({
       if (!libraryPanels[id]) return false;
       setDetail(null);
       setActiveLibraryPanelId(id);
-      setMaxed("none");
       return true;
     },
     [libraryPanels],
@@ -598,44 +594,9 @@ export function SplitWorkspace({
     };
   }, [dragging, persist]);
 
-  const toggleMax = (which: "app" | "library") =>
-    setMaxed((m) => (m === which ? "none" : which));
-
   // Ratio always means the physical left semantic pane.
-  const appBasis = !hasRight
-    ? "100%"
-    : maxed === "app"
-      ? "100%"
-      : maxed === "library"
-        ? "0%"
-        : `${ratio * 100}%`;
-  const libraryBasis = !hasRight
-    ? "0%"
-    : maxed === "library"
-      ? "100%"
-      : maxed === "app"
-        ? "0%"
-        : `${(1 - ratio) * 100}%`;
-
-  function MaxButton({ which }: { which: "app" | "library" }) {
-    const on = maxed === which;
-    const label = on ? tt("恢复双栏") : tt("这一栏切大屏");
-    return (
-      <button
-        type="button"
-        onClick={() => toggleMax(which)}
-        className={`inline-flex items-center justify-center rounded-lg p-1.5 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- on ? "text-white" : "text-stone-500 hover:bg-stone-100"
- }`}
-        style={on ? { background: accent } : undefined}
-        title={label}
-        aria-label={label}
-      aria-pressed={on}
-      >
-        {on ? <IconCompress /> : <IconExpand />}
-      </button>
-    );
-  }
+  const appBasis = !hasRight ? "100%" : `${ratio * 100}%`;
+  const libraryBasis = !hasRight ? "0%" : `${(1 - ratio) * 100}%`;
 
   // The pane body fills remaining height as a flex column and forces its single
   // child to fill + manage its own overflow. This lets BOTH usage shapes work
@@ -715,9 +676,7 @@ export function SplitWorkspace({
       data-left-panel={
         activeDetail ? "tool-detail" : activeLibraryPanel ? "library" : "app"
       }
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${
-        maxed === "library" ? "hidden" : "flex"
-      }`}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70"
       style={
         hydrated || !hasRight
           ? { flexBasis: appBasis, flexGrow: 0, flexShrink: 0 }
@@ -728,11 +687,7 @@ export function SplitWorkspace({
             }
       }
     >
-      {detailLabel != null && (
-        <PaneHeader label={detailLabel}>
-          <MaxButton which="app" />
-        </PaneHeader>
-      )}
+      {detailLabel != null && <PaneHeader label={detailLabel} />}
       <div className={bodyClass}>
         {/* Keep every left-panel runtime mounted while another semantic layer is visible. */}
         <div className={`${activeLeftPanel ? "hidden" : "flex"} h-full min-h-0 flex-col`}>
@@ -756,7 +711,7 @@ export function SplitWorkspace({
       data-workspace-pane="main"
       data-library-dock="right"
       className={`relative mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
-        !hasRight || maxed === "app" ? "hidden" : "flex"
+        !hasRight ? "hidden" : "flex"
       }`}
       style={
         hydrated || !hasRight
@@ -795,14 +750,9 @@ export function SplitWorkspace({
               </span>
             )}
           </div>
-          <div className="shrink-0">
-            <MaxButton which="library" />
-          </div>
         </div>
       ) : (
-        <PaneHeader label={effectiveRightLabel}>
-          <MaxButton which="library" />
-        </PaneHeader>
+        <PaneHeader label={effectiveRightLabel} />
       ))}
       <EditBarDockHost
         hostRef={editBarDockRef}
@@ -812,7 +762,7 @@ export function SplitWorkspace({
     </section>
   );
 
-  const divider = hasRight && maxed === "none" ? (
+  const divider = hasRight ? (
     <div
       key="workspace-divider"
       role="separator"
@@ -836,7 +786,6 @@ export function SplitWorkspace({
     <div
       ref={wrapRef}
       data-workspace-split
-      data-workspace-maximized={maxed}
       className={`relative gap-0 bg-[var(--bg,#f7f7f5)] p-1.5 ${className} md:flex`}
       style={{ height: rootHeight, backgroundColor: "var(--bg,#f7f7f5)" }}
     >
@@ -853,10 +802,13 @@ function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNo
   if (!label && !children) return null;
   // label 可以是纯文字（默认「操作台 / 结果」），也可以是一个交互节点（如功能区
   // 的「操作台 | agent」开关）。纯字符串时套灰色小标题样式；节点时原样渲染。
+  // `data-oceanleo-pane-header`：AgentChat 的对话区只许有这一行顶栏（2026-09-07），
+  // 测试按它计数；`data-pane-header` 是工作台既有的定位钩子，两者并存。
   const isPlain = typeof label === "string" || typeof label === "number";
   return (
     <div
       data-pane-header
+      data-oceanleo-pane-header
       className="relative z-[2147483647] flex min-h-[2.5rem] min-w-0 shrink-0 flex-nowrap items-center justify-between gap-1 overflow-hidden border-b border-stone-100 px-3 py-1.5"
     >
       {isPlain ? (
@@ -882,22 +834,6 @@ export function IconRightPanelToggle({ className = "h-4 w-4" }: { className?: st
     >
       <rect x="3" y="3" width="18" height="18" rx="4" />
       <path d="M15 3v18" />
-    </svg>
-  );
-}
-
-function IconExpand() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M4 14v6h6M20 10V4h-6M14 4h6v6M10 20H4v-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconCompress() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M9 9H4M9 9V4M15 9h5M15 9V4M9 15H4M9 15v5M15 15h5M15 15v5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

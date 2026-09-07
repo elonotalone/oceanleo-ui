@@ -6469,5 +6469,7 @@ const fr: Record<string, string> = {
   "保存快照": "Enregistrer l'instantané",
   "选中画布节点后在此编辑": "Sélectionnez un nœud du canevas pour le modifier ici",
   "对象详情": "Détails de l'objet",
+  "新任务": "Nouvelle tâche",
+  "搜索对话": "Rechercher dans la conversation",
 };
 export default fr;

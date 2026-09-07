@@ -1281,9 +1281,10 @@ test("dock follows the action row and showDetail reveals console without exiting
     assert.equal(dock.getAttribute("aria-label"), "编辑栏停靠区");
     assert.equal(dock.dataset.editBarDockState, "docked");
     assert.equal(dock.hidden, false);
-    assert.ok(
-      header.querySelector('button[aria-label="这一栏切大屏"]'),
-    );
+    // 2026-09-07 操作员：两栏标题上的「这一栏切大屏 / 恢复双栏」全屏键已删，
+    // 右栏标题只剩 ✕ 与标题。浏览器级全屏（fullscreenRef）不受影响，下面照样守。
+    assert.equal(header.querySelector('button[aria-label="这一栏切大屏"]'), null);
+    assert.equal(root.dataset.workspaceMaximized, undefined);
 
     await click(rightPane.querySelector("[data-highlight-dock]"));
     assert.equal(dock.dataset.editBarDockState, "floating");
@@ -1293,25 +1294,11 @@ test("dock follows the action row and showDetail reveals console without exiting
       "松开以固定编辑栏",
     );
 
-    const maxButton = header.querySelector(
-      'button[aria-label="这一栏切大屏"]',
-    );
-    await click(maxButton);
-    assert.equal(root.dataset.workspaceMaximized, "library");
-    assert.equal(leftPane.classList.contains("hidden"), true);
-    assert.equal(
-      rightPane
-        .querySelector('button[aria-label="恢复双栏"]')
-        .getAttribute("aria-pressed"),
-      "true",
-    );
-
     Object.defineProperty(document, "fullscreenElement", {
       configurable: true,
       value: root,
     });
     await click(rightPane.querySelector("[data-open-selection-detail]"));
-    assert.equal(root.dataset.workspaceMaximized, "none");
     assert.equal(leftPane.classList.contains("hidden"), false);
     assert.equal(leftPane.dataset.leftPanel, "tool-detail");
     assert.ok(leftPane.querySelector("[data-selection-detail]"));

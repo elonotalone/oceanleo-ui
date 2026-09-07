@@ -6469,5 +6469,7 @@ const it: Record<string, string> = {
   "保存快照": "Salva istantanea",
   "选中画布节点后在此编辑": "Seleziona un nodo della tela per modificarlo qui",
   "对象详情": "Dettagli oggetto",
+  "新任务": "Nuova attività",
+  "搜索对话": "Cerca nella conversazione",
 };
 export default it;

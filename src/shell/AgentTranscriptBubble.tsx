@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
-import { Markdown, TypewriterMarkdown } from "./Markdown";
+import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
 
@@ -42,6 +42,11 @@ export interface AgentTranscriptBubbleProps {
   /** 普通模式下每条回答底下那排小图标。 */
   onRegenerate?: () => void;
   onShare?: () => void;
+  /**
+   * 对话内搜索的当前搜索词。非空时正文里每一处大小写不敏感的纯文本命中都包成
+   * `<mark data-leo-search-hit>`，搜索控件据此计数、标当前项、滚动定位。
+   */
+  highlightQuery?: string;
 }
 
 /**
@@ -177,6 +182,7 @@ function TranscriptBody({
   gateActive = false,
   gateBusy = false,
   onGate,
+  highlightQuery,
 }: AgentTranscriptBubbleProps) {
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
@@ -197,7 +203,7 @@ function TranscriptBody({
         )}
         {message.content && (
           <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900">
-            {message.content}
+            <HighlightedText text={message.content} query={highlightQuery} />
           </div>
         )}
         {onBranch && (
@@ -221,6 +227,7 @@ function TranscriptBody({
         active={gateActive}
         busy={gateBusy}
         onGate={onGate}
+        highlightQuery={highlightQuery}
       />
     );
   }
@@ -229,26 +236,31 @@ function TranscriptBody({
     // 不再是一整块灰底圆角卡片。
     return (
       <div className="border-l-2 border-stone-200 pl-3">
-        <Markdown className="text-[14px] leading-relaxed text-stone-500">
+        <Markdown
+          className="text-[14px] leading-relaxed text-stone-500"
+          highlightQuery={highlightQuery}
+        >
           {message.content}
         </Markdown>
       </div>
     );
   }
   if (message.kind === "report") {
-    return <WorkerReportBubble message={message} />;
+    return (
+      <WorkerReportBubble message={message} highlightQuery={highlightQuery} />
+    );
   }
   if (message.kind === "step") {
     return (
       <div className="px-1 text-[13px] font-medium text-stone-500">
-        {message.content}
+        <HighlightedText text={message.content} query={highlightQuery} />
       </div>
     );
   }
   if (message.kind === "error") {
     return (
       <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">
-        {message.content}
+        <HighlightedText text={message.content} query={highlightQuery} />
       </div>
     );
   }
@@ -283,7 +295,10 @@ function TranscriptBody({
         className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-[13px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 disabled:cursor-default"
       >
         <span className="min-w-0 truncate">
-          {tt("已生成「{label}」", { label })}
+          <HighlightedText
+            text={tt("已生成「{label}」", { label })}
+            query={highlightQuery}
+          />
         </span>
         <span className="shrink-0 text-[11px] text-stone-400">
           {tt("在右侧打开")}
@@ -294,7 +309,11 @@ function TranscriptBody({
 
   return (
     <div className="max-w-full px-1 text-neutral-900">
-      <TypewriterMarkdown content={message.content} active={streaming} />
+      <TypewriterMarkdown
+        content={message.content}
+        active={streaming}
+        highlightQuery={highlightQuery}
+      />
       {stopped && (
         <p
           data-testid="agent-stopped-note"
@@ -312,11 +331,13 @@ function GateBubble({
   active,
   busy,
   onGate,
+  highlightQuery,
 }: {
   message: AgentMessage;
   active: boolean;
   busy: boolean;
   onGate?: (decision: "approve" | "reject", feedback: string) => void;
+  highlightQuery?: string;
 }) {
   const tt = useUI();
   const [feedback, setFeedback] = useState("");
@@ -330,7 +351,7 @@ function GateBubble({
         {active ? tt("需要你确认") : tt("已处理的确认")}
       </p>
       <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
-        {prompt}
+        <HighlightedText text={prompt} query={highlightQuery} />
       </p>
       {active && onGate && (
         <div className="mt-3 space-y-2">
@@ -365,7 +386,13 @@ function GateBubble({
   );
 }
 
-function WorkerReportBubble({ message }: { message: AgentMessage }) {
+function WorkerReportBubble({
+  message,
+  highlightQuery,
+}: {
+  message: AgentMessage;
+  highlightQuery?: string;
+}) {
   const tt = useUI();
   const name =
     (message.meta?.worker_name as string) ||
@@ -381,7 +408,10 @@ function WorkerReportBubble({ message }: { message: AgentMessage }) {
           {tt("成员回答")}
         </span>
       </div>
-      <Markdown className="text-[14px] leading-relaxed text-neutral-800">
+      <Markdown
+        className="text-[14px] leading-relaxed text-neutral-800"
+        highlightQuery={highlightQuery}
+      >
         {message.content}
       </Markdown>
     </div>

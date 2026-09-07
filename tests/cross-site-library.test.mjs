@@ -154,7 +154,8 @@ test("closing a configured library keeps the app runtime mounted", () => {
     "utf8",
   );
   assert.match(source, /if \(!hasRight && !library\)/);
-  assert.match(source, /!hasRight \|\| maxed === "app" \? "hidden" : "flex"/);
+  // 2026-09-07 全屏键（maxed）已删：右版面只按 hasRight 显隐。
+  assert.match(source, /!hasRight \? "hidden" : "flex"/);
   assert.match(source, /Keep every left-panel runtime mounted/);
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
 });

@@ -270,6 +270,158 @@ function markdownWrapperClass(className: string) {
   return `${hasSize ? "" : "text-[13px]"} min-w-0 break-words ${className}`;
 }
 
+// ---------------------------------------------------------------------------
+// 对话内搜索的命中高亮
+// ---------------------------------------------------------------------------
+// 搜索框（AgentChat 顶栏）把当前搜索词透传到每条气泡，这里只负责把正文里的每一处
+// 命中包成 `<mark data-leo-search-hit>`；计数、当前项（`data-active="true"`）、
+// 滚动定位都由搜索控件在 DOM 上做。当前项的底色靠 `data-[active=true]:` 变体切换。
+//
+// 匹配是**纯文本、大小写不敏感**的：用户敲的是字，不是正则，特殊字符一律转义。
+// 只在**文本节点**上拆分，所以链接、行内代码、代码块里的命中同样会亮，而元素结构
+// 一个不动；跨节点的命中（`**粗** 体` 搜「粗 体」）不在这一层的能力之内。
+
+/** 命中高亮的样式；`data-active="true"`（当前项）时换成更深的一档。 */
+export const SEARCH_HIT_CLASS =
+  "rounded bg-emerald-200/80 px-0.5 text-inherit data-[active=true]:bg-emerald-400/90";
+
+export interface HighlightSegment {
+  text: string;
+  hit: boolean;
+}
+
+/** 空串或全空白都视为「没在搜」：这时渲染必须与不传搜索词逐字节相同。 */
+export function normalizeHighlightQuery(query: string | null | undefined): string {
+  return query && query.trim() ? query : "";
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 把一段纯文本按搜索词切成「命中 / 非命中」交替的片段；各片段拼回来逐字等于输入。
+ * 没有命中（或搜索词为空）时只返回一个非命中片段。
+ */
+export function splitHighlights(
+  text: string,
+  query: string | null | undefined,
+): HighlightSegment[] {
+  const needle = normalizeHighlightQuery(query);
+  if (!needle || !text) return [{ text, hit: false }];
+  const pattern = new RegExp(escapeRegExp(needle), "gi");
+  const segments: HighlightSegment[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    if (end === start) continue;
+    if (start > cursor) segments.push({ text: text.slice(cursor, start), hit: false });
+    segments.push({ text: text.slice(start, end), hit: true });
+    cursor = end;
+  }
+  if (segments.length === 0) return [{ text, hit: false }];
+  if (cursor < text.length) segments.push({ text: text.slice(cursor), hit: false });
+  return segments;
+}
+
+function hasHit(segments: HighlightSegment[]): boolean {
+  return segments.length > 1 || segments[0].hit;
+}
+
+/**
+ * 直接输出纯文本的地方（用户气泡、步骤、报错、流式尾巴）用它代替 `{text}`：
+ * 没有命中时原样返回字符串本身，不多出任何包裹节点。
+ */
+export function HighlightedText({
+  text,
+  query,
+}: {
+  text: string;
+  query?: string | null;
+}) {
+  const segments = useMemo(() => splitHighlights(text, query), [text, query]);
+  if (!hasHit(segments)) return <>{text}</>;
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.hit ? (
+          <mark key={index} data-leo-search-hit="" className={SEARCH_HIT_CLASS}>
+            {segment.text}
+          </mark>
+        ) : (
+          <Fragment key={index}>{segment.text}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+// 下面是 rehype 侧的同一件事：react-markdown 没有「文本节点」这一级的 components
+// 覆盖点，要在不破坏元素结构的前提下只包文本，就得在 hast 树上做。
+// 类型只写用到的那几个字段，免得把 `hast` 的类型包拉进公开 API。
+type HastText = { type: "text"; value: string };
+type HastElement = {
+  type: "element";
+  tagName: string;
+  properties?: Record<string, unknown>;
+  children: HastNode[];
+};
+type HastParent = { type: string; children?: HastNode[] };
+type HastNode = HastText | HastElement | HastParent;
+
+function isKatexElement(node: HastElement): boolean {
+  const className = node.properties?.className;
+  const names = Array.isArray(className)
+    ? className
+    : typeof className === "string"
+      ? className.split(/\s+/)
+      : [];
+  return names.some((name) => typeof name === "string" && /^katex(?:-|$)/.test(name));
+}
+
+function highlightHastTree(node: HastParent, query: string) {
+  const children = node.children;
+  if (!children) return;
+  // 倒着走：拆分后原地 splice，前面的下标不受影响，新插入的 <mark> 也不会被再走一遍。
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const child = children[index];
+    if (child.type === "text") {
+      const segments = splitHighlights((child as HastText).value, query);
+      if (!hasHit(segments)) continue;
+      children.splice(
+        index,
+        1,
+        ...segments.map<HastNode>((segment) =>
+          segment.hit
+            ? {
+                type: "element",
+                tagName: "mark",
+                properties: {
+                  dataLeoSearchHit: "",
+                  className: SEARCH_HIT_CLASS.split(" "),
+                },
+                children: [{ type: "text", value: segment.text }],
+              }
+            : { type: "text", value: segment.text },
+        ),
+      );
+      continue;
+    }
+    if (child.type === "element" && isKatexElement(child as HastElement)) {
+      // 公式是 KaTeX 排好的一整棵 span 树，往里塞 <mark> 会把字形错位；公式不参与命中。
+      continue;
+    }
+    highlightHastTree(child as HastParent, query);
+  }
+}
+
+function rehypeSearchHighlight(query: string): Plugins[number] {
+  return () => (tree: unknown) => {
+    highlightHastTree(tree as HastParent, query);
+  };
+}
+
 /**
  * 只有正文，没有外层包装。抽出来是为了让「一次性渲染」与「流式渲染」共用
  * **同一份** components 配置——两条路径若各写一份，迟早会长歪。
@@ -277,15 +429,24 @@ function markdownWrapperClass(className: string) {
 function MarkdownBody({
   source,
   math,
+  highlightQuery,
 }: {
   source: string;
   math: MathPlugins | null;
+  highlightQuery?: string;
 }) {
+  // 没在搜时 rehypePlugins 与从前**同一个值**（math 的那组或 undefined），
+  // 输出因此逐字节不变；只有搜索词非空才多挂一个高亮插件。
+  const rehypePlugins = useMemo(() => {
+    const query = normalizeHighlightQuery(highlightQuery);
+    if (!query) return math ? math.rehype : undefined;
+    return [...(math ? math.rehype : []), rehypeSearchHighlight(query)] as Plugins;
+  }, [math, highlightQuery]);
   return (
     <>
       <ReactMarkdown
         remarkPlugins={math ? [remarkGfm, ...math.remark] : [remarkGfm]}
-        rehypePlugins={math ? math.rehype : undefined}
+        rehypePlugins={rehypePlugins}
         skipHtml
         components={{
           h1: ({ children: value }) => (
@@ -415,14 +576,21 @@ const StableMarkdownBody = memo(MarkdownBody);
 export function Markdown({
   children,
   className = "",
+  highlightQuery,
 }: {
   children: string;
   className?: string;
+  /** 对话内搜索的当前搜索词；每处命中包成 `<mark data-leo-search-hit>`。 */
+  highlightQuery?: string;
 }) {
   const math = useMathPlugins(children);
   return (
     <div className={markdownWrapperClass(className)}>
-      <MarkdownBody source={children} math={math} />
+      <MarkdownBody
+        source={children}
+        math={math}
+        highlightQuery={highlightQuery}
+      />
     </div>
   );
 }
@@ -431,10 +599,13 @@ export function TypewriterMarkdown({
   content,
   active,
   className = "text-[15px] leading-relaxed",
+  highlightQuery,
 }: {
   content: string;
   active: boolean;
   className?: string;
+  /** 对话内搜索的当前搜索词；每处命中包成 `<mark data-leo-search-hit>`。 */
+  highlightQuery?: string;
 }) {
   const math = useMathPlugins(content);
   // 当初 `void active;` 关掉打字机是对的：那时的做法是逐帧把**整段**重切片重解析，
@@ -468,12 +639,16 @@ export function TypewriterMarkdown({
         // 一次性渲染**逐字**相同（块内部的分隔符由该块自己的解析器负责）。
         <Fragment key={block.key}>
           {index > 0 ? "\n" : null}
-          <StableMarkdownBody source={block.source} math={math} />
+          <StableMarkdownBody
+            source={block.source}
+            math={math}
+            highlightQuery={highlightQuery}
+          />
         </Fragment>
       ))}
       {tail ? (
         <p className="my-1.5 whitespace-pre-wrap leading-relaxed text-stone-700">
-          {tail}
+          <HighlightedText text={tail} query={highlightQuery} />
         </p>
       ) : null}
     </div>

@@ -13,7 +13,9 @@ const transcript = readFileSync(
 
 test("history-reopened chat fills its constrained parent instead of recounting 100dvh", () => {
   assert.match(agentChat, /<SplitWorkspace[\s\S]*?\bfillParent\b/);
-  assert.match(agentChat, /if \(!topBar\) return split/);
+  // 2026-09-07 顶栏收成一行：不再有 `topBar`，无 onBack 时仍直接返回 fillParent 的分栏骨架。
+  assert.match(agentChat, /if \(!onBack\) return split/);
+  assert.doesNotMatch(agentChat, /\btopBar\b|TOPBAR_H/);
 });
 
 test("assistant prose stays plain while every structured artifact is a card", () => {

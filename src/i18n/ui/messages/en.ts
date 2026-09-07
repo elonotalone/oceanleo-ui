@@ -6586,5 +6586,7 @@ const en: Record<string, string> = {
   "保存快照": "Save snapshot",
   "选中画布节点后在此编辑": "Select a canvas node to edit it here",
   "对象详情": "Object details",
+  "新任务": "New task",
+  "搜索对话": "Search conversation",
 };
 export default en;

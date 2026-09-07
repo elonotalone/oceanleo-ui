@@ -33,10 +33,8 @@ test("one app-level owner controls entrance animation without nested remounts", 
 
 test("configured library visibility never swaps out the left runtime tree", () => {
   assert.match(splitWorkspace, /if \(!hasRight && !library\)/);
-  assert.match(
-    splitWorkspace,
-    /!hasRight \|\| maxed === "app" \? "hidden" : "flex"/,
-  );
+  // 2026-09-07 全屏键（maxed）已删：右版面只按 hasRight 显隐。
+  assert.match(splitWorkspace, /!hasRight \? "hidden" : "flex"/);
   assert.match(splitWorkspace, /Keep every left-panel runtime mounted/);
   assert.match(splitWorkspace, /\{left\}/);
 });

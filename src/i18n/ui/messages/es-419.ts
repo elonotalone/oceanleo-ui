@@ -6469,5 +6469,7 @@ const es419: Record<string, string> = {
   "保存快照": "Guardar instantánea",
   "选中画布节点后在此编辑": "Selecciona un nodo del lienzo para editarlo aquí",
   "对象详情": "Detalles del objeto",
+  "新任务": "Nueva tarea",
+  "搜索对话": "Buscar en la conversación",
 };
 export default es419;

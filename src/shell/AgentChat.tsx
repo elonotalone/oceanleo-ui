@@ -11,7 +11,7 @@
 // 真实后端：createTask → 轮询 getTask → 渲染 messages + 取最新 artifact。
 //
 // 与「工作台」的区别：AgentChat 左栏以对话为主；工作台左栏以固定模板操控为主。
-// 两者共用 SplitWorkspace 分栏骨架（可拖 + 大屏）。
+// 两者共用 SplitWorkspace 分栏骨架（可拖；2026-09-07 起没有单栏全屏键）。
 // ============================================================================
 
 import {
@@ -24,6 +24,7 @@ import {
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
+import { IconSearch } from "./icons";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { type MaterialItem } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
@@ -250,6 +251,14 @@ const IDLE_POLL_RESULT: TaskPollResult = { status: "", changed: false };
 
 /** 「粘底」判定阈值：离底不到这个距离就算用户还在追最新。 */
 const STICK_TO_BOTTOM_PX = 80;
+
+/**
+ * 单行顶栏上的图标键（返回 / 搜索 / 上一项 / 下一项 / 关闭 / 右栏开关）共用一套尺寸：
+ * `p-1.5` + 16px 图标 = 28px，与既有的 `ShareEntryButton` 同款，靠内边距撑而不写死
+ * `h-*`（命中区预算锁 `hit-target-budget` 只认写死的高度；这里不新增欠账）。
+ */
+const HEADER_ICON_BUTTON_CLASS =
+  "inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
 
 export interface ScrollMetrics {
   scrollTop: number;
@@ -482,15 +491,17 @@ export interface AgentChatProps {
   /** 空态提示（还没消息且未运行时显示，默认「在下方输入，开始与 agent 对话。」）。 */
   emptyHint?: React.ReactNode;
   /**
-   * 顶栏「返回」按钮回调（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole 顶栏）。
-   * 给了它 → agent 界面【最上面那一行】变成一条横栏：左「‹ 返回」pill + 本次对话总结
-   * （= 后端自动生成的 task.title），右「模型选择 ▾」。此时会通知 AppShell 隐藏它 header
-   * 里的模型选择（否则模型选择在上、返回在下 = 两行浪费空间）。点击「返回」【只调用本回调】
-   * （不动任务、不 stopTask），让宿主在**不中止对话**的前提下退回上一层（如首页）。宿主自行
-   * 决定卸载还是隐藏本组件——想保留对话请隐藏而非卸载（见 word app/page.tsx）。 */
+   * 「返回」回调（操作员 2026-07-06；2026-09-07 收进单行顶栏）。给了它 → 对话区那**唯一
+   * 一行**顶栏最左出现一枚「‹」图标键（title = backLabel ?? 「返回」）。不再另起一行。
+   * 点击【只调用本回调】（不动任务、不 stopTask），让宿主在**不中止对话**的前提下退回
+   * 上一层（如首页）。宿主自行决定卸载还是隐藏本组件——想保留对话请隐藏而非卸载。 */
   onBack?: () => void;
-  /** 返回按钮文案，默认「返回」。 */
+  /** 返回键的 title / aria-label，默认「返回」。 */
   backLabel?: string;
+  /**
+   * 顶栏右侧、搜索图标之前的宿主自定义节点（2026-09-07）。主站 `/tasks/[id]` 用它放
+   * 任务状态胶囊与评分星星，从而删掉自带的那条页头，与子站共用同一行。 */
+  headerExtra?: ReactNode;
   /** 工作流人工确认门；主站任务页传入 resumeWorkflow。 */
   onGate?: (
     decision: "approve" | "reject",
@@ -613,6 +624,7 @@ function AgentChatInner({
   emptyHint,
   onBack,
   backLabel,
+  headerExtra,
   onGate,
   libraryTabs,
   mentionMembers,
@@ -1436,6 +1448,65 @@ function AgentChatInner({
       appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined,
   });
 
+  // ---------------------------------------------------------------------
+  // 对话内搜索（操作员 2026-09-07，图 662b8bb0）
+  // ---------------------------------------------------------------------
+  // 点顶栏 🔍 → 同一行右侧原地展开 [🔍 输入框] n/N [▲][▼][✕]。当前词以
+  // `highlightQuery` 透传给每条气泡，气泡把命中包成 `<mark data-leo-search-hit>`
+  // （渲染在 AgentTranscriptBubble / Markdown 里）；这里只负责计数与导航：在消息滚动
+  // 容器上 querySelectorAll，给当前项置 data-active 并滚到视口中央。
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState(0);
+  const [searchHitCount, setSearchHitCount] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // 上一次真的滚过去的是哪一条（query + index），流式期间气泡反复重渲不该再拽视口。
+  const searchScrolledRef = useRef("");
+  const highlightQuery = searchOpen ? searchQuery.trim() : "";
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchIndex(0);
+    setSearchHitCount(0);
+    searchScrolledRef.current = "";
+  }, []);
+  const stepSearch = useCallback((delta: 1 | -1) => {
+    setSearchIndex((current) => {
+      if (searchHitCount <= 0) return 0;
+      return (current + delta + searchHitCount) % searchHitCount;
+    });
+  }, [searchHitCount]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const hits = highlightQuery
+      ? container.querySelectorAll<HTMLElement>("[data-leo-search-hit]")
+      : ([] as HTMLElement[]);
+    const total = hits.length;
+    if (total !== searchHitCount) setSearchHitCount(total);
+    const active = total > 0 ? Math.min(searchIndex, total - 1) : 0;
+    if (active !== searchIndex) setSearchIndex(active);
+    hits.forEach((hit, i) => {
+      if (i === active) hit.setAttribute("data-active", "true");
+      else hit.removeAttribute("data-active");
+    });
+    if (total === 0) {
+      searchScrolledRef.current = "";
+      return;
+    }
+    const key = `${highlightQuery}\u0000${active}`;
+    if (searchScrolledRef.current === key) return;
+    searchScrolledRef.current = key;
+    const target = hits[active];
+    if (typeof target?.scrollIntoView === "function") {
+      target.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    }
+    // `messages` / `streamText` 在依赖里：气泡重渲后命中集合会变，要重数。
+  }, [searchOpen, highlightQuery, searchIndex, searchHitCount, messages, streamText]);
+
   /** 「重做」：把上一句用户的话原样再问一遍，让 agent 重新作答。 */
   const regenerateFrom = useCallback(
     (messageId: number) => {
@@ -1595,88 +1666,173 @@ function AgentChatInner({
     }
   }, [hasOrgPanel]);
 
-  // 「库」= 右版面显隐开关（受控）。显式 false 关按钮。否则默认启用。
+  // 右版面显隐开关（受控）。显式 false 关按钮。否则默认启用。右栏一律叫「预览」，
+  // 不再出现「库」字样（操作员 2026-09-07）。开关键样式与顶栏其余图标键同一套。
   const effectiveLibrary: SplitLibraryConfig | undefined =
     library === false
       ? undefined
       : {
-          label: tt("库"),
+          label: tt("预览"),
           open: rightOpen,
           onOpenChange: setRightOpen,
-          paneTitle: tt("库"),
+          paneTitle: tt("预览"),
+          buttonClassName: HEADER_ICON_BUTTON_CLASS,
           ...(library || {}),
         };
 
   // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
   const resolvedApp =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "");
-  // 左栏标题：「agent」+（有 app 时）所属 app 小标签。（「返回」+ 本次对话总结改到
-  // 顶栏，见下方 topBar，对齐 OperatorConsole 顶栏 / 操作员 2026-07-06 参考图。）
-  const agentIdentityLabel = resolvedApp ? (
-    <span className="flex items-center gap-2">
-      <span className="text-[12px] font-medium text-stone-500">agent</span>
-      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-        {tt("所属 app · {app}", { app: resolvedApp })}
-      </span>
+
+  // 本次对话「总结」= 后端自动生成的 task.title（agent_engine._finalize_extras：首轮
+  // 收尾时 AI 概括≤14 字会话标题，存 agent_tasks.title；getTask 已带回）。全 OceanLeo
+  // 系列 agent 都走同一后端，故任何站的对话都有这个总结——它就是这一行顶栏的标题。
+  const convoSummary = (taskTitle || "").trim();
+
+  // ---------------------------------------------------------------------
+  // 单行顶栏（操作员 2026-09-07：图 466f833a 布局 + 3f9d0f8c 图标 + 662b8bb0 搜索态）
+  // ---------------------------------------------------------------------
+  // 对话区**只有这一行**——它就是 SplitWorkspace 左栏的 PaneHeader：
+  //   [‹ 仅 onBack] [对话总结 | 正在总结… | 新任务] [所属 app] [新建] …… [headerExtra] [🔍] [↪] [▯]
+  // 最右的 [▯] 右栏开关由 SplitWorkspace 接在本节点之后渲染。原来 onBack 时多出来的那条
+  // 原先独立的「‹ 返回 + 总结 + 分享」那一行与正文区浮着的分享键都已并入此处，不再有两行。
+  const backTitle = backLabel ?? tt("返回");
+  const summaryNode = convoSummary ? (
+    <span
+      className="min-w-0 flex-1 truncate text-[13px] font-medium text-stone-700"
+      title={convoSummary}
+    >
+      {convoSummary}
     </span>
   ) : (
-    "agent"
+    <span className="min-w-0 flex-1 truncate text-[13px] text-stone-400">
+      {messages.length > 0 ? tt("正在总结本次对话…") : tt("新任务")}
+    </span>
   );
-  const leftLabelNode = workspace ? (
-    <span className="flex min-w-0 items-center gap-2">
-      {agentIdentityLabel}
-      {workspace.mode !== "history" && (
+  const searchControl = searchOpen ? (
+    <div
+      data-agent-chat-search
+      role="search"
+      className="flex shrink-0 items-center gap-0.5"
+    >
+      <span className="relative inline-flex items-center">
+        <IconSearch className="pointer-events-none absolute left-1.5 h-3.5 w-3.5 text-stone-400" />
+        <input
+          ref={searchInputRef}
+          autoFocus
+          type="text"
+          value={searchQuery}
+          onChange={(event) => {
+            setSearchQuery(event.target.value);
+            setSearchIndex(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              closeSearch();
+              return;
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              stepSearch(event.shiftKey ? -1 : 1);
+            }
+          }}
+          placeholder={tt("搜索对话")}
+          aria-label={tt("搜索对话")}
+          className="w-32 min-w-0 rounded-lg border border-stone-200 bg-white py-1 pl-6 pr-1.5 text-[12px] text-stone-700 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-stone-400 focus:border-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300/70"
+        />
+      </span>
+      <span
+        data-agent-chat-search-count
+        className="shrink-0 px-0.5 text-[11px] tabular-nums text-stone-500"
+      >
+        {searchHitCount > 0 ? `${searchIndex + 1}/${searchHitCount}` : "0/0"}
+      </span>
+      <button
+        type="button"
+        onClick={() => stepSearch(-1)}
+        disabled={searchHitCount === 0}
+        title={tt("上一项")}
+        aria-label={tt("上一项")}
+        className={HEADER_ICON_BUTTON_CLASS}
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M6 15l6-6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => stepSearch(1)}
+        disabled={searchHitCount === 0}
+        title={tt("下一项")}
+        aria-label={tt("下一项")}
+        className={HEADER_ICON_BUTTON_CLASS}
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={closeSearch}
+        title={tt("关闭")}
+        aria-label={tt("关闭")}
+        className={HEADER_ICON_BUTTON_CLASS}
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+        </svg>
+      </button>
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={() => setSearchOpen(true)}
+      title={tt("搜索")}
+      aria-label={tt("搜索")}
+      className={HEADER_ICON_BUTTON_CLASS}
+    >
+      <IconSearch className="h-4 w-4" />
+    </button>
+  );
+  const headerNode = (
+    <div
+      data-agent-chat-header
+      className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+    >
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          title={backTitle}
+          aria-label={backTitle}
+          className={HEADER_ICON_BUTTON_CLASS}
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+      {summaryNode}
+      {resolvedApp && (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+          {tt("所属 app · {app}", { app: resolvedApp })}
+        </span>
+      )}
+      {workspace && workspace.mode !== "history" && (
         <RestartDraftButton
           label={tt("新建")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}
-    </span>
-  ) : (
-    agentIdentityLabel
-  );
-
-  // 本次对话「总结」= 后端自动生成的 task.title（agent_engine._finalize_extras：首轮
-  // 收尾时 AI 概括≤14 字会话标题，存 agent_tasks.title；getTask 已带回）。全 OceanLeo
-  // 系列 agent 都走同一后端，故任何站的对话都有这个总结——这里在顶栏「返回」右侧显示它。
-  const convoSummary = (taskTitle || "").trim();
-
-  const topBarActive = Boolean(onBack);
-
-  // 顶栏（操作员 2026-07-06，对齐参考图 bc92f732 + OperatorConsole.topBar 样式）：
-  // 一行搞定 —— 左「‹ 返回」pill + 本次对话总结。给了 onBack 才渲染。
-  const TOPBAR_H = 52;
-  const topBar = topBarActive ? (
-    <div className="flex shrink-0 items-center gap-3 px-4 py-2.5" style={{ minHeight: TOPBAR_H }}>
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-50 active:scale-95"
-        title={backLabel ?? tt("返回")}
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {backLabel ?? tt("返回")}
-      </button>
-      {/* 本次对话总结（task.title）。生成前先留空白/占位，避免抖动。 */}
-      {convoSummary ? (
-        <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-stone-700" title={convoSummary}>
-          {convoSummary}
-        </span>
-      ) : messages.length > 0 ? (
-        <span className="min-w-0 flex-1 truncate text-[13px] text-stone-400">
-          {tt("正在总结本次对话…")}
-        </span>
-      ) : (
-        <span className="min-w-0 flex-1" />
-      )}
-      {/* 右上角「分享」：点它整页进入选段模式（对标 Kimi）。 */}
+      {headerExtra}
+      {searchControl}
+      {/* 「分享」：点它整页进入选段模式（对标 Kimi）。只在这里出现一次。 */}
       {!share.active && share.selectable.length > 0 && (
         <ShareEntryButton onClick={() => share.enter()} />
       )}
     </div>
-  ) : null;
+  );
 
   // @成员选择器（doctrine 2026-07-09）：把「@名字 」插进输入框。与站点原有的
   // composerInlineSlot（如专家团 roster 按钮）拼在同一行。
@@ -1785,12 +1941,6 @@ function AgentChatInner({
       >
         {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。 */}
         <div className="mx-auto w-full max-w-2xl space-y-3">
-          {/* 右上角「分享」入口。有顶栏时它在顶栏里，这里就不再重复一个。 */}
-          {!topBarActive && !share.active && share.selectable.length > 0 && (
-            <div className="sticky top-0 z-10 flex justify-end">
-              <ShareEntryButton onClick={() => share.enter()} />
-            </div>
-          )}
           {messages.length === 0 && !running && (
             <div className="py-10 text-center text-[15px] text-stone-400">
               {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
@@ -1843,6 +1993,7 @@ function AgentChatInner({
                     : undefined
                 }
                 onShare={() => share.enter(item.message.id)}
+                highlightQuery={highlightQuery || undefined}
               />
             ),
           )}
@@ -2022,23 +2173,21 @@ function AgentChatInner({
     />
   );
 
-  // 高度账：有返回顶栏时它是页面最上面一行；无顶栏时沿用调用方传入的外层占高。
-  // SplitWorkspace body 高 = 100dvh - 其 headerHeight 参数；令其 body = 可用高 - TOPBAR_H。
-  const availOffset = topBar ? 0 : headerHeight;
+  // 高度账（2026-09-07 顶栏收成一行之后）：对话区不再有自己的返回行，唯一的一行顶栏
+  // 就在 SplitWorkspace 左栏里，所以 SplitWorkspace 永远 fillParent 填满宿主给的高度。
   const split = (
     <SplitWorkspace
       left={stream}
       right={right}
-      leftLabel={leftLabelNode}
+      leftLabel={headerNode}
       rightLabel={tt("预览")}
       defaultRatio={0.46}
       storageKey={siteId ? `oceanleo_agent_split:${siteId}` : "oceanleo_agent_split"}
       accent={accent}
-      headerHeight={topBar ? availOffset + TOPBAR_H : headerHeight}
-      // 有顶栏时：外层 flex 列自己算高（下方 return），SplitWorkspace 用 fillParent 填满剩余。
-      // 无顶栏时（宿主如主站 tasks 页已用 <header>+<main flex-1> 约束高度）：也用 fillParent
-      // 填满父容器，杜绝「相对 100dvh 记账 → 比父容器高一截 → 从历史重开输入框上移、上面
-      // 内容被挤出」（操作员 2026-07-12）。
+      headerHeight={headerHeight}
+      // 宿主（如主站 tasks 页）已用 <header>+<main flex-1> 约束高度时 fillParent 填满父容器，
+      // 杜绝「相对 100dvh 记账 → 比父容器高一截 → 从历史重开输入框上移、上面内容被挤出」
+      // （操作员 2026-07-12）。onBack 场景下方另给一个 100dvh 的外框。
       fillParent
       // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
@@ -2046,17 +2195,13 @@ function AgentChatInner({
     />
   );
 
-  // 无顶栏（未给 onBack）：宿主已约束高度，直接返回分栏骨架（fillParent 填满宿主容器）。
-  if (!topBar) return split;
+  // 未给 onBack（主站 tasks 页 / 子站 history 回看）：宿主已约束高度，直接返回分栏骨架。
+  if (!onBack) return split;
 
-  // 有顶栏：外层 flex 列 = 顶栏（返回 + 总结）+ 分栏骨架。整列高 = 可用高，顶栏占
-  // TOPBAR_H，分栏占剩余（其 body 自算 = 100dvh-(availOffset+TOPBAR_H) = 可用高-TOPBAR_H，对齐不溢出）。
+  // 给了 onBack（子站首页进入的 agent 界面）：本组件是页面最上面的一块，沿用旧账自己占满
+  // 100dvh（原先是 `calc(100dvh - 0px)` 的外框 + 52px 返回行；返回行没了，外框照旧）。
   return (
-    <div
-      className="flex min-h-0 flex-col"
-      style={{ height: `calc(100dvh - ${availOffset}px)` }}
-    >
-      {topBar}
+    <div className="flex min-h-0 flex-col" style={{ height: "100dvh" }}>
       <div className="min-h-0 flex-1">{split}</div>
     </div>
   );

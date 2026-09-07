@@ -375,10 +375,11 @@ test("左栏原有的 app 身份、返回键与操作流没被按键条挤掉", 
       identity.querySelector("[data-workbench-app-title]").textContent,
       "行程定制方案",
     );
+    // 2026-09-07 操作员：左栏标题上的「大屏」全屏键已删，这里只守身份、返回键与操作流。
     assert.equal(
       header.querySelectorAll('button[aria-label="这一栏切大屏"]').length,
-      1,
-      "左栏「大屏」按钮不许被挤掉",
+      0,
+      "全屏键已删除，不该再渲染",
     );
     assert.ok(leftPane.querySelector("[data-ops]"), "操作流必须还在");
     // 按键条排在操作流之前（它是操控台正文的第一块）。

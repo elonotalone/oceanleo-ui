@@ -6469,5 +6469,7 @@ const vi: Record<string, string> = {
   "保存快照": "Lưu ảnh chụp",
   "选中画布节点后在此编辑": "Chọn một nút trên canvas để chỉnh sửa tại đây",
   "对象详情": "Chi tiết đối tượng",
+  "新任务": "Nhiệm vụ mới",
+  "搜索对话": "Tìm trong cuộc trò chuyện",
 };
 export default vi;

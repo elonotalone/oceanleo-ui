@@ -219,7 +219,7 @@ export function OperatorConsole({
       ? undefined
       : library
         ? library
-        : { label: tt("库") };
+        : { label: tt("预览") };
   const first = functions[0]?.id ?? "";
   const [internal, setInternal] = useState(defaultValue ?? first);
   const controlled = value !== undefined;

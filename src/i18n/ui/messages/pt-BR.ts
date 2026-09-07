@@ -6469,5 +6469,7 @@ const ptBR: Record<string, string> = {
   "保存快照": "Salvar instantâneo",
   "选中画布节点后在此编辑": "Selecione um nó da tela para editá-lo aqui",
   "对象详情": "Detalhes do objeto",
+  "新任务": "Nova tarefa",
+  "搜索对话": "Pesquisar na conversa",
 };
 export default ptBR;

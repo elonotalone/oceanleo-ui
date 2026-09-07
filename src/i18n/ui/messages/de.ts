@@ -6469,5 +6469,7 @@ const de: Record<string, string> = {
   "保存快照": "Snapshot speichern",
   "选中画布节点后在此编辑": "Wähle einen Canvas-Knoten, um ihn hier zu bearbeiten",
   "对象详情": "Objektdetails",
+  "新任务": "Neue Aufgabe",
+  "搜索对话": "Unterhaltung durchsuchen",
 };
 export default de;

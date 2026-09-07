@@ -6469,5 +6469,7 @@ const tr: Record<string, string> = {
   "保存快照": "Anlık görüntüyü kaydet",
   "选中画布节点后在此编辑": "Burada düzenlemek için tuvalden bir düğüm seçin",
   "对象详情": "Nesne ayrıntıları",
+  "新任务": "Yeni görev",
+  "搜索对话": "Sohbette ara",
 };
 export default tr;

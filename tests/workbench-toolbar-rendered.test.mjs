@@ -193,13 +193,14 @@ test("3/7 PaneHeader keeps app identity before controls and pane actions", async
     assert.match(header.className, /\bflex-nowrap\b/);
     assert.match(header.className, /\boverflow-hidden\b/);
     assert.ok(Math.abs(Number.parseFloat(leftPane.style.flexBasis) - (300 / 7)) < 0.001);
+    // 2026-09-07 操作员：两栏标题上的「这一栏切大屏」全屏键删掉，不再渲染第三个图标。
     assert.equal(
       leftPane.querySelectorAll('button[aria-label="这一栏切大屏"]').length,
-      1,
+      0,
     );
     assert.equal(
       rightPane.querySelectorAll('button[aria-label="这一栏切大屏"]').length,
-      1,
+      0,
     );
   } finally {
     await mounted.unmount();
