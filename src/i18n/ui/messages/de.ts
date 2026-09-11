@@ -6476,5 +6476,6 @@ const de: Record<string, string> = {
   "对象详情": "Objektdetails",
   "新任务": "Neue Aufgabe",
   "搜索对话": "Unterhaltung durchsuchen",
+  "帮助与反馈": "Hilfe & Feedback",
 };
 export default de;

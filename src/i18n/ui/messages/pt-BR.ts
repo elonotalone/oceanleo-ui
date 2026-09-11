@@ -6476,5 +6476,6 @@ const ptBR: Record<string, string> = {
   "对象详情": "Detalhes do objeto",
   "新任务": "Nova tarefa",
   "搜索对话": "Pesquisar na conversa",
+  "帮助与反馈": "Ajuda e feedback",
 };
 export default ptBR;

@@ -6476,5 +6476,6 @@ const hi: Record<string, string> = {
   "对象详情": "ऑब्जेक्ट विवरण",
   "新任务": "नया कार्य",
   "搜索对话": "बातचीत में खोजें",
+  "帮助与反馈": "Help & feedback",
 };
 export default hi;

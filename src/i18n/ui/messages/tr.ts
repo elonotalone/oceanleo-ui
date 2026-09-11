@@ -6476,5 +6476,6 @@ const tr: Record<string, string> = {
   "对象详情": "Nesne ayrıntıları",
   "新任务": "Yeni görev",
   "搜索对话": "Sohbette ara",
+  "帮助与反馈": "Yardım ve geri bildirim",
 };
 export default tr;

@@ -38,6 +38,7 @@ import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useUI } from "../i18n/ui/useUI";
+import { HelpLink } from "./HelpLink";
 import { usePresenceHeartbeat } from "../lib/presence";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
@@ -225,6 +226,15 @@ export interface AppShellProps {
   accountHref?: string;
   /** 账户按钮点击回调（i18n 站用自己的 router 做 locale-aware 跳转）；传了则覆盖 accountHref 的 Link。 */
   onAccountClick?: () => void;
+  /**
+   * 「帮助与反馈」入口。`null` = 隐藏；字符串 = 覆盖 href；未传 = 按当前 host
+   * 自动指向 help.oceanleo.com / help.oceanleo.cn。
+   */
+  helpHref?: string | null;
+  /**
+   * 帮助中心 `?site=` 参数。不传时回退已有的 `siteId`（各站心跳标识）。
+   */
+  siteKey?: string;
   /** @deprecated 模型统一在「AI 模型」页管理；保留字段仅兼容旧消费端。 */
   apiHref?: string;
   /** @deprecated 顶部模型选择已下线；保留字段仅兼容旧消费端。 */
@@ -296,6 +306,8 @@ function AppShellInner({
   onSignOut,
   accountHref = "/account",
   onAccountClick,
+  helpHref,
+  siteKey,
   apiHref = "/api",
   siteId = "default",
   headerRight,
@@ -307,6 +319,9 @@ function AppShellInner({
   const ledger = useLedgerCurrency();
   const balanceCurrency = creditsCurrency || ledger;
   const creditsText = credits != null ? formatMoney(credits, balanceCurrency, 2) : "…";
+  const helpSiteKey =
+    (siteKey || (siteId !== "default" ? siteId : "")).trim() || undefined;
+  const showHelp = helpHref !== null;
   const rawPathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
@@ -924,7 +939,12 @@ function AppShellInner({
      独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
      i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/
   const accountRow = (
-    <div className="[&>a]:w-full [&>button]:w-full">{renderAccountButton()}</div>
+    <div className="flex items-center gap-1.5">
+      <div className="min-w-0 flex-1 [&>a]:w-full [&>button]:w-full">
+        {renderAccountButton()}
+      </div>
+      {showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}
+    </div>
   );
 
   const historyNavParts = partitionHistoryNav();
@@ -1035,6 +1055,7 @@ function AppShellInner({
             {renderSwitchers()}
             {modelPickerSlot}
             {headerRight}
+            {showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}
             {renderCredits()}
             {renderAccountButton()}
           </div>

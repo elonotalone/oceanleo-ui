@@ -6418,5 +6418,6 @@ const zh: Record<string, string> = {
   "替换": "替换",
   "新任务": "新任务",
   "搜索对话": "搜索对话",
+  "帮助与反馈": "帮助与反馈",
 };
 export default zh;

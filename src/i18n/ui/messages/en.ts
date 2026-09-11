@@ -6594,5 +6594,6 @@ const en: Record<string, string> = {
   "对象详情": "Object details",
   "新任务": "New task",
   "搜索对话": "Search conversation",
+  "帮助与反馈": "Help & feedback",
 };
 export default en;

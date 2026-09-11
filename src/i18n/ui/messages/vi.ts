@@ -6476,5 +6476,6 @@ const vi: Record<string, string> = {
   "对象详情": "Chi tiết đối tượng",
   "新任务": "Nhiệm vụ mới",
   "搜索对话": "Tìm trong cuộc trò chuyện",
+  "帮助与反馈": "Trợ giúp & phản hồi",
 };
 export default vi;

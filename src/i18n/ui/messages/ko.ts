@@ -6476,5 +6476,6 @@ const ko: Record<string, string> = {
   "对象详情": "개체 세부 정보",
   "新任务": "새 작업",
   "搜索对话": "대화 검색",
+  "帮助与反馈": "도움말 및 피드백",
 };
 export default ko;

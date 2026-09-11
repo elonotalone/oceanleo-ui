@@ -6433,5 +6433,6 @@ const zhTW: Record<string, string> = {
   "对象详情": "物件詳情",
   "新任务": "新任務",
   "搜索对话": "搜尋對話",
+  "帮助与反馈": "說明與意見回饋",
 };
 export default zhTW;
