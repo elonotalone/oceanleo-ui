@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { helpCenterUrl } from "../src/lib/help-url.ts";
+import { helpCenterUrl, isHelpCenterHost } from "../src/lib/help-url.ts";
 
 test(".com 子站 → help.oceanleo.com", () => {
   assert.equal(
@@ -61,7 +61,24 @@ test("path=/chat", () => {
   );
 });
 
+test("isHelpCenterHost: help.com / help.cn 隐藏；design.com 与本机开发 host 不隐藏", () => {
+  assert.equal(isHelpCenterHost("help.oceanleo.com"), true);
+  assert.equal(isHelpCenterHost("help.oceanleo.cn"), true);
+  assert.equal(isHelpCenterHost("www.help.oceanleo.com"), true);
+  assert.equal(isHelpCenterHost("www.help.oceanleo.cn"), true);
+  assert.equal(isHelpCenterHost("HELP.oceanleo.com:443"), true);
+  assert.equal(isHelpCenterHost("design.oceanleo.com"), false);
+  assert.equal(isHelpCenterHost("localhost"), false);
+  assert.equal(isHelpCenterHost("localhost:3000"), false);
+});
+
 const appShell = await readFile("src/shell/AppShell.tsx", "utf8");
+const helpLinkSrc = await readFile("src/shell/HelpLink.tsx", "utf8");
+
+test("HelpLink 在 help host 上 return null；AppShell 两处仍调用", () => {
+  assert.match(helpLinkSrc, /isHelpCenterHost/);
+  assert.match(helpLinkSrc, /if \(hidden\) return null/);
+});
 
 test("AppShell 声明 helpHref，并在 sidebar 与 topbar 各渲染一次 HelpLink", () => {
   assert.match(appShell, /helpHref\?: string \| null/);

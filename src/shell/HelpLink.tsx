@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { helpCenterUrl } from "../lib/help-url";
+import { helpCenterUrl, isHelpCenterHost } from "../lib/help-url";
 
 export function HelpLink({
   href,
@@ -19,8 +19,14 @@ export function HelpLink({
       href ??
       helpCenterUrl({ host: "oceanleo.com", siteKey, path: "/chat" }),
   );
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
+    if (isHelpCenterHost(window.location.host)) {
+      setHidden(true);
+      return;
+    }
+    setHidden(false);
     if (href) {
       setUrl(href);
       return;
@@ -34,6 +40,8 @@ export function HelpLink({
       }),
     );
   }, [href, siteKey]);
+
+  if (hidden) return null;
 
   return (
     <a

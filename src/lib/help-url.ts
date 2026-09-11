@@ -1,4 +1,23 @@
-import { familyForHost } from "../contracts/domain-family";
+import { familyForHost, normalizeHost } from "../contracts/domain-family";
+
+const HELP_CENTER_HOSTS = new Set([
+  "help.oceanleo.com",
+  "www.help.oceanleo.com",
+  "help.oceanleo.cn",
+  "www.help.oceanleo.cn",
+]);
+
+/**
+ * True when this host *is* the help center. The shell 「帮助与反馈」
+ * control must not render there (it would point at the same site).
+ *
+ * Apex + `www.` on both families. Port / case / trailing-dot stripped
+ * via `normalizeHost`. Pure function; no DOM.
+ */
+export function isHelpCenterHost(host?: string | null): boolean {
+  const h = normalizeHost(host);
+  return h.length > 0 && HELP_CENTER_HOSTS.has(h);
+}
 
 /**
  * Help-center origin + query for the shell 「帮助与反馈」link.
