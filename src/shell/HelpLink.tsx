@@ -42,7 +42,7 @@ export function HelpLink({
       rel="noopener noreferrer"
       title={label}
       aria-label={label}
-      className="leo-tap-target inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      className="leo-tap-target inline-flex shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
     >
       <QuestionMarkIcon />
     </a>

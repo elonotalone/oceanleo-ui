@@ -5,7 +5,7 @@ import { familyForHost } from "../contracts/domain-family";
  *
  * Family comes from the same `familyForHost()` table as `cookieDomainFor()`:
  * only `oceanleo.cn` / `*.oceanleo.cn` resolve to the .cn help host.
- * localhost, LeoDev preview (`p-<32hex>.dev.oceanleo.com`), `.oceanleo.com`,
+ * LeoDev preview (`p-<32hex>.dev.oceanleo.com`), `.oceanleo.com`,
  * and anything unrecognized all go to `.com`. Pure function; no DOM.
  */
 export function helpCenterUrl(input: {
