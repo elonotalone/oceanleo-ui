@@ -75,6 +75,19 @@ const clientStubUrl = dataModule(`
   export const challengeAndVerify = (...a) => g().challengeAndVerify(...a);
   export const unenrollFactor = (...a) => g().unenrollFactor(...a);
   export const signOutEverywhere = (...a) => g().signOutEverywhere(...a);
+  export const requestPhoneChange = (...a) => g().requestPhoneChange?.(...a) ?? {};
+  export const verifyPhoneChange = (...a) => g().verifyPhoneChange?.(...a) ?? {};
+  export const getAuthPhoneUser = (...a) => g().getAuthPhoneUser?.(...a) ?? { user: null };
+  export const maskCnPhone = (p) => {
+    const s = String(p || "").replace(/\\s/g, "");
+    return s.length >= 11 ? s.slice(0, 3) + "****" + s.slice(-4) : "****";
+  };
+  export const cnPhoneIsBound = (u) => Boolean(u && u.phone && u.phone_confirmed_at);
+  export const PHONE_REQUIRED_EVENT = "oceanleo:phone-required";
+  export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+  export function announcePhoneRequired() {
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("oceanleo:phone-required"));
+  }
   export function needsMfaChallenge(aal) {
     if (!aal || !aal.current || !aal.next) return false;
     return aal.current === "aal1" && aal.next === "aal2";

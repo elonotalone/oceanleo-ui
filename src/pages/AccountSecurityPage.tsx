@@ -22,9 +22,12 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   challengeAndVerify,
+  cnPhoneIsBound,
   currentAal,
   enrollTotp,
+  getAuthPhoneUser,
   listMfaFactors,
+  maskCnPhone,
   reauthenticate,
   signOutEverywhere,
   unenrollFactor,
@@ -32,6 +35,8 @@ import {
   type MfaFactor,
   type TotpEnrollment,
 } from "../lib/auth/client";
+import { currentDomainFamily } from "../contracts/domain-family";
+import { PhoneBindForm } from "./PhoneBindGate";
 import {
   fenToYuan,
   getSecurityEvents,
@@ -181,6 +186,111 @@ function WhereLine({
       {" · "}
       {ipMasked || tt("地址未知")}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 0 手机号（仅国内版）
+// ---------------------------------------------------------------------------
+
+function PhoneBlock({ tt }: { tt: UITranslate }) {
+  const [phone, setPhone] = useState("");
+  const [bound, setBound] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [mode, setMode] = useState<"idle" | "bind" | "verify-current" | "verify-new">("idle");
+  const [ok, setOk] = useState("");
+
+  const reload = useCallback(async () => {
+    const { user } = await getAuthPhoneUser();
+    const nextBound = cnPhoneIsBound(user);
+    setBound(nextBound);
+    setPhone(user?.phone || "");
+    setLoaded(true);
+    if (!nextBound) setMode("bind");
+    else setMode("idle");
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  return (
+    <Section
+      slot="phone"
+      title={tt("手机号")}
+      desc={tt("国内版账号必须绑一个已验证的中国大陆手机号。")}
+    >
+      {!loaded && <p className="text-[13px] text-neutral-500">{tt("加载中…")}</p>}
+      {loaded && bound && mode === "idle" && (
+        <div data-security-phone-bound>
+          <p className="text-[13px] text-neutral-800">
+            {tt("当前号码 {phone}", { phone: maskCnPhone(phone) })}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
+            {tt("换绑要先验证当前号码，再验证新号码。两轮都会发短信。")}
+          </p>
+          <button
+            type="button"
+            data-security-change-phone
+            onClick={() => {
+              setOk("");
+              setMode("verify-current");
+            }}
+            className={`${PRIMARY} mt-3`}
+          >
+            {tt("换绑")}
+          </button>
+        </div>
+      )}
+      {loaded && mode === "bind" && (
+        <PhoneBindForm
+          tt={tt}
+          submitLabel={tt("验证并绑定")}
+          onSuccess={() => {
+            setOk(tt("手机号已经绑到当前账号。"));
+            void reload();
+          }}
+        />
+      )}
+      {loaded && mode === "verify-current" && (
+        <div data-security-phone-verify-current>
+          <p className="mb-3 text-[13px] text-neutral-700">{tt("验证当前号码")}</p>
+          <PhoneBindForm
+            tt={tt}
+            lockedPhone={phone}
+            submitLabel={tt("验证当前号码")}
+            onSuccess={() => {
+              setOk("");
+              setMode("verify-new");
+            }}
+          />
+        </div>
+      )}
+      {loaded && mode === "verify-new" && (
+        <div data-security-phone-verify-new>
+          <p className="mb-3 text-[13px] text-neutral-700">
+            {tt("当前号码已验证。请输入新的中国大陆手机号。")}
+          </p>
+          <PhoneBindForm
+            tt={tt}
+            submitLabel={tt("验证并绑定")}
+            onSuccess={() => {
+              setOk(tt("手机号已经换绑。"));
+              void reload();
+            }}
+          />
+        </div>
+      )}
+      {ok && <div className="mt-3"><Note kind="ok" text={ok} /></div>}
+      <div className="mt-5 rounded-lg bg-neutral-50 p-3" data-security-lost-phone>
+        <p className="text-[12px] font-medium text-neutral-700">{tt("手机号丢了怎么办")}</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
+          {tt(
+            "手机丢了或者换不了号，写信到 support@oceanleo.com，我们人工核实身份之后帮你换绑。",
+          )}
+        </p>
+      </div>
+    </Section>
   );
 }
 
@@ -972,6 +1082,7 @@ export function AccountSecurityPage({ onSignedOutAll, embedded }: AccountSecurit
         </>
       )}
       <div className={embedded ? "v-fade-up" : "v-fade-up mx-auto mt-6 max-w-lg pb-10"}>
+        {currentDomainFamily() === "cn" ? <PhoneBlock tt={tt} /> : null}
         <TwoStepBlock tt={tt} />
         <ChangePasswordBlock tt={tt} />
         <ActiveDevicesBlock tt={tt} onSignedOutAll={onSignedOutAll} />

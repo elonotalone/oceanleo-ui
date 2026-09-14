@@ -29,6 +29,8 @@ export type { AccountPageProps, AccountMenuItem } from "./AccountPage";
 // 消费契约 §2 的四个网关端点；端点没上线时那一块显示「还没上线」，不白屏。
 export { AccountSecurityPage, securityErrorCopy, securityEventCopy } from "./AccountSecurityPage";
 export type { AccountSecurityPageProps } from "./AccountSecurityPage";
+export { PhoneBindGate, PhoneBindForm, PHONE_BIND_OTP_COOLDOWN_SECONDS } from "./PhoneBindGate";
+export type { PhoneBindFormProps } from "./PhoneBindGate";
 export { SettingsPage } from "./SettingsPage";
 export type { SettingsPageProps } from "./SettingsPage";
 export { GeneralPage } from "./GeneralPage";

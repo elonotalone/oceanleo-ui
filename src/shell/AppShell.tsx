@@ -40,6 +40,7 @@ import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useUI } from "../i18n/ui/useUI";
 import { HelpLink } from "./HelpLink";
 import { usePresenceHeartbeat } from "../lib/presence";
+import { PhoneBindGate } from "../pages/PhoneBindGate";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
 // 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
@@ -1066,6 +1067,7 @@ function AppShellInner({
             {children}
           </div>
         </main>
+        <PhoneBindGate />
       </div>
     );
   }
@@ -1174,6 +1176,7 @@ function AppShellInner({
           </div>
         </main>
       </div>
+      <PhoneBindGate />
     </div>
   );
 }

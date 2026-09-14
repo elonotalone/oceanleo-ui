@@ -63,6 +63,9 @@ export function browserClient(): SupabaseClient | null {
   });
   _client.auth.onAuthStateChange((_event, session) => {
     _accessToken = session?.access_token ?? null;
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AUTH_STATE_EVENT));
+    }
   });
   return _client;
 }
@@ -162,6 +165,147 @@ export async function verifyPhoneOtp(phone: string, token: string) {
   });
   _accessToken = data.session?.access_token ?? null;
   return { data, error: mapCaptchaError(error?.message) };
+}
+
+// --- 国内版绑手机 / 换绑（当前账号上的 phone_change，不是登录 OTP）--------------
+// 登录 tab 的 `sendPhoneOtp` / `verifyPhoneOtp` 走 `signInWithOtp`，会登成**另一个**
+// 账号。这里必须绑在**已经登录的**这条会话上：`updateUser({ phone })` 发短信，
+// `verifyOtp({ type: "phone_change" })` 确认。冷却秒数与 AuthDialog 的
+// `OTP_COOLDOWN_SECONDS` 同为 60。
+
+/** 登录态变化。国内版绑卡听这个，登录成功后同一块卡盖住，不在 AuthDialog 里另写一套。 */
+export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+
+/** 网关 403 `detail.code === "phone_required"`。与 BYOK 的 `reauth_required` 同一形状。 */
+export const PHONE_REQUIRED_EVENT = "oceanleo:phone-required";
+
+export function announcePhoneRequired(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(PHONE_REQUIRED_EVENT));
+}
+
+export interface AuthPhoneUser {
+  id?: string | null;
+  phone?: string | null;
+  phone_confirmed_at?: string | null;
+}
+
+/** 已绑 = 当前用户有号码，并且这条号码已经验证过。 */
+export function cnPhoneIsBound(
+  user: AuthPhoneUser | null | undefined,
+): boolean {
+  if (!user) return false;
+  const phone = String(user.phone || "").trim();
+  const confirmed = String(user.phone_confirmed_at || "").trim();
+  return Boolean(phone && confirmed);
+}
+
+/** 打码展示：138****8000。格式无效时只给 ****，绝不把完整号摆出来。 */
+export function maskCnPhone(phone: string): string {
+  const normalized = normalizeCnPhone(phone);
+  const digits = (normalized || (phone || "").replace(/[\s\-()]/g, "")).replace(
+    /^\+86/,
+    "",
+  );
+  if (!/^1[3-9]\d{9}$/.test(digits)) return "****";
+  return `${digits.slice(0, 3)}****${digits.slice(7)}`;
+}
+
+function asPhoneUser(
+  user: {
+    id?: string | null;
+    phone?: string | null;
+    phone_confirmed_at?: string | null;
+  } | null | undefined,
+): AuthPhoneUser | null {
+  if (!user) return null;
+  return {
+    id: user.id ?? null,
+    phone: user.phone ?? null,
+    phone_confirmed_at: user.phone_confirmed_at ?? null,
+  };
+}
+
+/** 当前会话用户的手机字段。优先 `getUser()`，拿不到再读 session。 */
+export async function getAuthPhoneUser(): Promise<{
+  user: AuthPhoneUser | null;
+  error?: string;
+}> {
+  const c = browserClient();
+  if (!c) return { user: null, error: "登录服务尚未配置" };
+  const { data, error } = await c.auth.getUser();
+  if (!error && data.user) return { user: asPhoneUser(data.user) };
+  const session = await c.auth.getSession();
+  return {
+    user: asPhoneUser(session.data.session?.user),
+    error: error?.message,
+  };
+}
+
+function mapPhoneChangeError(raw?: string | null): string | undefined {
+  const mapped = mapCaptchaError(raw);
+  if (!mapped) return undefined;
+  if (
+    /unsupported\s+phone\s+provider/i.test(mapped) ||
+    /sms provider/i.test(mapped)
+  ) {
+    return "短信服务尚未配置，请稍后再试。";
+  }
+  if (
+    /rate\s*limit/i.test(mapped) ||
+    /too many requests/i.test(mapped) ||
+    /over_sms_send_rate_limit/i.test(mapped) ||
+    mapped.includes("过于频繁")
+  ) {
+    return "操作过于频繁，请稍后再试。";
+  }
+  if (
+    /token has expired or is invalid/i.test(mapped) ||
+    /invalid[^.]{0,20}(otp|token|code)/i.test(mapped) ||
+    /otp_expired/i.test(mapped)
+  ) {
+    return "验证码不正确或已过期，请重新获取。";
+  }
+  return mapped;
+}
+
+/**
+ * 向**当前账号**发换号 / 绑号短信。禁止改成 `signInWithOtp`：那会登成另一个用户。
+ */
+export async function requestPhoneChange(phone: string): Promise<{ error?: string }> {
+  const e164 = normalizeCnPhone(phone);
+  if (!e164) return { error: "请输入有效的中国大陆手机号。" };
+  const c = browserClient();
+  if (!c) return { error: "登录服务尚未配置" };
+  const { error } = await c.auth.updateUser({ phone: e164 });
+  return { error: mapPhoneChangeError(error?.message) };
+}
+
+/** 用 6 位码确认绑号 / 换绑，然后刷新会话，让 `phone_confirmed_at` 立刻可读。 */
+export async function verifyPhoneChange(
+  phone: string,
+  token: string,
+): Promise<{ error?: string }> {
+  const e164 = normalizeCnPhone(phone);
+  if (!e164) return { error: "请输入有效的中国大陆手机号。" };
+  const digits = (token || "").trim();
+  if (!/^\d{6}$/.test(digits)) {
+    return { error: "验证码不正确或已过期，请重新获取。" };
+  }
+  const c = browserClient();
+  if (!c) return { error: "登录服务尚未配置" };
+  const { data, error } = await c.auth.verifyOtp({
+    phone: e164,
+    token: digits,
+    type: "phone_change",
+  });
+  if (error) return { error: mapPhoneChangeError(error.message) };
+  const refreshed = await c.auth.refreshSession();
+  _accessToken =
+    refreshed.data.session?.access_token ??
+    data.session?.access_token ??
+    _accessToken;
+  return {};
 }
 
 // --- 微信登录（扫码）---------------------------------------------------------

@@ -1,6 +1,6 @@
 "use client";
 
-import { accessToken } from "./client";
+import { accessToken, announcePhoneRequired } from "./client";
 import { GATEWAY_BASE } from "./config";
 import type {
   CapabilitySelection,
@@ -78,6 +78,8 @@ async function authed<T>(
           ? rec.message
           : "";
       // BYOK 写钥匙：网关 403 detail.code === "reauth_required"
+      // 国内版未绑手机：网关 403 detail.code === "phone_required"（W9，形状相同）
+      if (code === "phone_required") announcePhoneRequired();
       return {
         ok: false,
         error: message || `HTTP ${res.status}`,
