@@ -143,6 +143,8 @@ export function ApiPage({
               {tt("计费规则：你支付的费用 = 该模型对应厂商的官方 token 市场价。")}
               <span className="font-semibold">{tt("OceanLeo 不加价、不抽成")}</span>
               {tt("。每笔调用都可审计；使用自己的厂商 API key（BYOK）则不扣钱包。")}
+              {" "}
+              {tt("密钥只以加密形式保存在你这台设备的浏览器里，OceanLeo 服务器不保存。")}
             </div>
           </div>
         </section>

@@ -54,6 +54,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     workbenchOffice,
     editorPanels,
     advancedRoute,
+    byok,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -65,6 +66,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./workbench-office-copy"),
     import("./editor-panels-copy"),
     import("./advanced-route-copy"),
+    import("./byok-copy"),
   ]);
   return {
     ...base.default,
@@ -78,5 +80,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...workbenchOffice.WORKBENCH_OFFICE_MESSAGES[locale],
     ...editorPanels.EDITOR_PANELS_MESSAGES[locale],
     ...advancedRoute.ADVANCED_ROUTE_MESSAGES[locale],
+    ...byok.BYOK_COPY_MESSAGES[locale],
   };
 };

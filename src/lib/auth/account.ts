@@ -57,6 +57,7 @@ async function authed<T>(
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
@@ -842,11 +843,10 @@ export async function getPreferredModel(
 }
 
 // ---------------------------------------------------------------------------
-// BYOK — 自带 API key（厂商元数据 + key 增删查）
+// BYOK — 自带 API key（厂商元数据 + 密封 cookie 增删查）
 // ---------------------------------------------------------------------------
-// 用户在「账户 → API」页填自己的厂商 key，即可免费使用全家桶服务（用自己的 key、
-// 自己的成本）。明文 key 经 AES-256-GCM 加密存储，前端只拿得到指纹（sk-…ab3f），
-// 绝不回显明文。一个厂商一把 active key。
+// 用户在「AI 模型」页填自己的厂商 key。明文只在这台设备的浏览器里以加密 cookie
+// 保存；OceanLeo 服务器不落库。前端只拿得到指纹（sk-…ab3f），绝不回显明文。
 
 export interface ProviderMetaBYOK {
   id: string;
@@ -857,40 +857,81 @@ export interface ProviderMetaBYOK {
   capabilities: string[]; // text / image / video / audio / threed
   key_help_url: string;
   key_prefix: string;
+  base_url?: string;
 }
+
+export type KeyProvider = ProviderMetaBYOK;
 
 export function getKeyProviders() {
-  return publicGet<{ providers: ProviderMetaBYOK[] }>("/v1/keys/providers");
+  return publicGet<{ providers: KeyProvider[] }>("/v1/keys/providers");
 }
 
-export interface UserKey {
-  id: string;
+export type ByokCap = "tools" | "vision" | "reasoning";
+
+export type ByokProviderView = {
   provider: string;
-  label: string;
-  fingerprint: string; // 安全展示用：sk-…ab3f
-  base_url: string | null;
-  is_active: boolean;
-  created_at: string;
+  name: string;
+  fingerprint: string;
+  base_url: string;
+  model: string;
+  caps: ByokCap[];
+  added_at: number;
+};
+
+export type ByokStatus = {
+  enabled: boolean;
+  providers: ByokProviderView[];
+  limits: { max_providers: number };
+};
+
+export async function getByok(): Promise<{
+  ok: boolean;
+  data?: ByokStatus;
+  error?: string;
+  status?: number;
+}> {
+  return authed<ByokStatus>("/v1/byok");
 }
 
-export function listUserKeys() {
-  return authed<{ keys: UserKey[] }>("/v1/keys");
-}
-
-export function addUserKey(input: {
-  provider: string;
-  api_key: string;
-  label?: string;
-  base_url?: string;
-}) {
-  return authed<{ key: UserKey }>("/v1/keys", {
-    method: "POST",
-    body: JSON.stringify(input),
+export async function putByok(
+  provider: string,
+  body: {
+    api_key: string;
+    base_url?: string;
+    model?: string;
+    caps?: ByokCap[];
+  },
+) {
+  return authed<ByokStatus>(`/v1/byok/${encodeURIComponent(provider)}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }
 
-export function deleteUserKey(keyId: string) {
-  return authed<{ ok: boolean }>(`/v1/keys/${keyId}`, { method: "DELETE" });
+export async function deleteByok(provider: string) {
+  return authed<ByokStatus>(`/v1/byok/${encodeURIComponent(provider)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearByok() {
+  return authed<{ ok: boolean }>("/v1/byok", { method: "DELETE" });
+}
+
+export async function probeByok(body: {
+  provider: string;
+  base_url?: string;
+  api_key?: string;
+}): Promise<{
+  ok: boolean;
+  data?: { models: string[]; count: number };
+  error?: string;
+  status?: number;
+}> {
+  return authed<{ models: string[]; count: number }>("/v1/byok/probe", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 // ---------------------------------------------------------------------------

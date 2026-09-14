@@ -146,7 +146,8 @@ export function ApiGuidePage() {
 
       <div className="mx-auto mt-6 max-w-3xl space-y-6">
         <div className="rounded-2xl border border-neutral-200 bg-neutral-50/60 p-5 text-[13px] leading-relaxed text-neutral-600">
-          {tt("OceanLeo 全家桶支持")} <span className="font-semibold text-neutral-900">{tt("BYOK（自带 API key）")}</span>{tt("：\n          你在各厂商平台买好 API、拿到 token，填进 OceanLeo 的「AI 模型」页，即可用自己的 key\n          免费使用全家桶的全部能力（用自己的 key、自己的成本，OceanLeo 不扣你的钱包）。\n          下面是 6 家主流平台的购买与取 token 步骤。")}
+          {tt("OceanLeo 全家桶支持")} <span className="font-semibold text-neutral-900">{tt("BYOK（自带 API key）")}</span>{tt("：\n          你在各厂商平台买好 API、拿到 token，填进 OceanLeo 的「AI 模型」页，即可用自己的 key\n          免费使用全家桶的全部能力（用自己的 key、自己的成本，OceanLeo 不扣你的钱包）。\n          下面是 6 家主流平台的购买与取 token 步骤。")}{" "}
+          {tt("密钥只以加密形式保存在你这台设备的浏览器里，OceanLeo 服务器不保存。")}
         </div>
 
         {PLATFORMS.map((p) => (

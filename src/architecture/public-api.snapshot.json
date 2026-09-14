@@ -1164,14 +1164,14 @@
       "declarations": [
         {
           "kind": "named",
-          "name": "addUserKey",
-          "source": ""
-        },
-        {
-          "kind": "named",
           "name": "CapabilitySelection",
           "importedName": "CapabilitySelection",
           "source": "../model-tier"
+        },
+        {
+          "kind": "named",
+          "name": "clearByok",
+          "source": ""
         },
         {
           "kind": "named",
@@ -1195,17 +1195,22 @@
         },
         {
           "kind": "named",
+          "name": "deleteByok",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "deleteModelGroup",
           "source": ""
         },
         {
           "kind": "named",
-          "name": "deleteUserKey",
+          "name": "getAudit",
           "source": ""
         },
         {
           "kind": "named",
-          "name": "getAudit",
+          "name": "getByok",
           "source": ""
         },
         {
@@ -1270,11 +1275,6 @@
         },
         {
           "kind": "named",
-          "name": "listUserKeys",
-          "source": ""
-        },
-        {
-          "kind": "named",
           "name": "MODEL_GROUP_CHANGED_EVENT",
           "source": ""
         },
@@ -1293,6 +1293,16 @@
         {
           "kind": "named",
           "name": "pricingDocUrl",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "probeByok",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "putByok",
           "source": ""
         },
         {
@@ -1332,6 +1342,21 @@
         },
         {
           "kind": "type",
+          "name": "ByokCap",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ByokProviderView",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ByokStatus",
+          "source": ""
+        },
+        {
+          "kind": "type",
           "name": "CatalogCapability",
           "source": ""
         },
@@ -1353,6 +1378,11 @@
         {
           "kind": "type",
           "name": "CreditEvent",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "KeyProvider",
           "source": ""
         },
         {
@@ -1423,11 +1453,6 @@
         {
           "kind": "type",
           "name": "UsageTotal",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "UserKey",
           "source": ""
         },
         {
