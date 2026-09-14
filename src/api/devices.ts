@@ -118,6 +118,7 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "network_error", status: 0 };

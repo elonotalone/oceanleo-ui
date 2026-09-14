@@ -6477,5 +6477,8 @@ const vi: Record<string, string> = {
   "新任务": "Nhiệm vụ mới",
   "搜索对话": "Tìm trong cuộc trò chuyện",
   "帮助与反馈": "Trợ giúp & phản hồi",
+  "我的模型 · 自带 key · 优先使用（免费）": "Mô hình của tôi · dùng key riêng · ưu tiên (miễn phí)",
+  "已配置 {n} 家：{names}": "Đã cấu hình {n} nhà: {names}",
+  "管理 →": "Quản lý →",
 };
 export default vi;

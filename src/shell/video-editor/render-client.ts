@@ -60,6 +60,7 @@ export async function submitRenderJob(
       body: JSON.stringify(timelineRenderRequestBody(payload, requestId)),
       cache: "no-store",
       signal,
+      credentials: "include",
     });
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === "AbortError") throw caught;
@@ -92,7 +93,7 @@ export async function getRenderJob(
   try {
     res = await fetch(
       `${GATEWAY_BASE}/v1/video/render-timeline/${encodeURIComponent(jobId)}`,
-      { headers, cache: "no-store", signal },
+      { headers, cache: "no-store", signal, credentials: "include" },
     );
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === "AbortError") throw caught;
@@ -125,6 +126,7 @@ export async function cancelRenderJob(jobId: string): Promise<void> {
         method: "DELETE",
         headers,
         cache: "no-store",
+        credentials: "include",
       },
     );
   } catch {

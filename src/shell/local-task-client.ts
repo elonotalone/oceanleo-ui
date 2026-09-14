@@ -182,6 +182,7 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
         ...(init.headers || {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     throw new LocalTaskApiError("network_error", 0);

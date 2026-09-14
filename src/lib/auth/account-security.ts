@@ -118,6 +118,7 @@ async function call<T>(
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, code: "offline", status: 0 };

@@ -194,6 +194,7 @@ export async function authed<T>(
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
@@ -494,6 +495,7 @@ export async function listAgents(
     res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误", status: 0 };
@@ -637,6 +639,7 @@ export async function listTeams(
     res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误", status: 0 };
@@ -658,6 +661,7 @@ export async function getTeam(teamId: string): Promise<AgentApiResult<{ team: Te
     res = await fetch(`${GATEWAY_BASE}/v1/agent-teams/${encodeURIComponent(teamId)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误", status: 0 };

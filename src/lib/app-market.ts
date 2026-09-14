@@ -91,6 +91,7 @@ async function request(
         ...(init.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     throw new Error("网络错误：连不上应用市场");

@@ -159,7 +159,7 @@ export async function wechatLoginUrl(redirect?: string): Promise<{ url?: string;
   try {
     const res = await fetch(
       `${GATEWAY_BASE}/v1/auth/wechat/qrconnect?redirect=${encodeURIComponent(back)}`,
-      { cache: "no-store" },
+      { cache: "no-store", credentials: "include" },
     );
     const data = await res.json().catch(() => null);
     if (!res.ok) return { error: (data as { detail?: string })?.detail || "微信登录暂未开放" };

@@ -86,6 +86,7 @@ export async function convertOfficeBlob(
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: form,
+      credentials: "include",
     });
   } catch {
     throw new OfficeConvertError("网络不通，没能把文件送到转换服务。", 0);

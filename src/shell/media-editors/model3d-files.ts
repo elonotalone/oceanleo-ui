@@ -141,6 +141,7 @@ async function requestModelGrant(
     },
     cache: "no-store",
     signal,
+    credentials: "include",
   });
   let payload: unknown = null;
   try {
@@ -179,6 +180,7 @@ async function fetchGrantedModelBlob(
       : undefined,
     cache: "no-store",
     signal,
+    ...(sendAuthorization ? { credentials: "include" as const } : {}),
   });
   if (!response.ok) {
     throw new Error(`3D 素材加载失败 HTTP ${response.status}`);

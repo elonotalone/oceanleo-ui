@@ -34,6 +34,7 @@ async function ping(siteId: string): Promise<void> {
       body: JSON.stringify({ site_id: siteId }),
       cache: "no-store",
       keepalive: true,
+      credentials: "include",
     });
   } catch {
     /* 心跳失败静默 */

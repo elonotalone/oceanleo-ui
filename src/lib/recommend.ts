@@ -44,6 +44,7 @@ export async function recommendItems(
     const res = await fetch(`${GATEWAY_BASE}/v1/recommend/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         query: v,
         kind,

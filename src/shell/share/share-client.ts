@@ -122,6 +122,7 @@ export async function createShareLink(
       },
       body: JSON.stringify(body),
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     throw new ShareLinkError(shareFailureMessage(0, ""), 0);

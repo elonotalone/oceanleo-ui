@@ -54,6 +54,7 @@ export async function aiEditImage(
     }),
     cache: "no-store",
     signal: opts.signal,
+    credentials: "include",
   });
   let data: { images?: string[]; detail?: string } | null = null;
   try {

@@ -192,6 +192,7 @@ async function convertViaBackend(
       headers: { Authorization: `Bearer ${token}` },
       body: form,
       signal,
+      credentials: "include",
     });
   } catch {
     return unchanged(

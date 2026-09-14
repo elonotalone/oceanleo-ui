@@ -89,6 +89,7 @@ async function postGatewayJson(path: string, body: unknown): Promise<unknown> {
     },
     body: JSON.stringify(body),
     cache: "no-store",
+    credentials: "include",
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

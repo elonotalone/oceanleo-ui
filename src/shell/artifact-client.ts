@@ -733,6 +733,7 @@ async function artifactRequest<T>(
       },
       cache: "no-store",
       signal: controller.signal,
+      credentials: "include",
     });
     let payload: unknown = null;
     try {

@@ -103,6 +103,7 @@ export async function previewProjectImport(
         "Content-Type": "application/json",
       },
       cache: "no-store",
+      credentials: "include",
       body: JSON.stringify({
         entries: entries.map((item) => ({
           path: item.path,
@@ -154,6 +155,7 @@ function uploadWithProgress(
   return new Promise((resolve) => {
     const request = new XMLHttpRequest();
     request.open("POST", url, true);
+    request.withCredentials = true;
     request.setRequestHeader("Authorization", `Bearer ${token}`);
     // Content-Type is deliberately not set: the browser has to add the multipart
     // boundary, and setting it by hand produces a body the server cannot parse.

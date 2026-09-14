@@ -6595,5 +6595,8 @@ const en: Record<string, string> = {
   "新任务": "New task",
   "搜索对话": "Search conversation",
   "帮助与反馈": "Help & feedback",
+  "我的模型 · 自带 key · 优先使用（免费）": "My models · your own key · used first (free)",
+  "已配置 {n} 家：{names}": "{n} configured: {names}",
+  "管理 →": "Manage →",
 };
 export default en;

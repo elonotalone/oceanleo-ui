@@ -6477,5 +6477,8 @@ const fr: Record<string, string> = {
   "新任务": "Nouvelle tâche",
   "搜索对话": "Rechercher dans la conversation",
   "帮助与反馈": "Aide et commentaires",
+  "我的模型 · 自带 key · 优先使用（免费）": "Mes modèles · clé perso · en priorité (gratuit)",
+  "已配置 {n} 家：{names}": "{n} configurés : {names}",
+  "管理 →": "Gérer →",
 };
 export default fr;

@@ -53,6 +53,7 @@ async function post(path: string, body: unknown): Promise<{ ok: boolean; status:
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
+      credentials: "include",
     });
   } catch {
     return { ok: false, status: 0, data: { detail: "网络错误：无法连接 AI 网关。" } };
@@ -69,6 +70,7 @@ async function get(path: string): Promise<{ ok: boolean; status: number; data: a
     res = await fetch(`${GATEWAY_BASE}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, status: 0, data: {} };

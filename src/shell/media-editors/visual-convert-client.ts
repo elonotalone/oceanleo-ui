@@ -74,6 +74,7 @@ async function postConvert(
       headers: { Authorization: `Bearer ${token}` },
       body,
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     throw new Error("网络不通，格式转换没有做成。");

@@ -741,6 +741,7 @@ export async function cloudBrowserScreenshot(
       {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
+        credentials: "include",
       },
     );
     if (!response.ok) {

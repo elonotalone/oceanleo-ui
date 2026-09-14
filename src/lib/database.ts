@@ -150,6 +150,7 @@ async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
@@ -786,6 +787,7 @@ export async function uploadFile(
       body: fd,
       cache: "no-store",
       signal: opts.signal,
+      credentials: "include",
     });
   } catch {
     progress.fail();
@@ -853,7 +855,9 @@ export interface McpItem {
 
 export async function getMcpCatalog(): Promise<Result<{ items: McpItem[] }>> {
   try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/catalog`);
+    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/catalog`, {
+      credentials: "include",
+    });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, status: res.status };
     const data = await res.json();
     return { ok: true, data: data as { items: McpItem[] } };

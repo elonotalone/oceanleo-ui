@@ -6477,5 +6477,8 @@ const ptPT: Record<string, string> = {
   "新任务": "Nova tarefa",
   "搜索对话": "Pesquisar na conversa",
   "帮助与反馈": "Help & feedback",
+  "我的模型 · 自带 key · 优先使用（免费）": "Os meus modelos · chave própria · prioridade (grátis)",
+  "已配置 {n} 家：{names}": "{n} configurados: {names}",
+  "管理 →": "Gerir →",
 };
 export default ptPT;

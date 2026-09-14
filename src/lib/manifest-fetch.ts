@@ -43,7 +43,7 @@ export async function fetchManifest(
   try {
     res = await fetch(
       `${GATEWAY_BASE}/v1/agents/${encodeURIComponent(agentId)}/manifest?channel=${channel}`,
-      { headers, cache: "no-store" },
+      { headers, cache: "no-store", credentials: "include" },
     );
   } catch {
     return hit?.manifest ?? null; // 网络挂了回退旧缓存
@@ -68,6 +68,7 @@ export async function saveDraftManifest(
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(patch),
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误", status: 0 };
@@ -91,6 +92,7 @@ export async function publishManifest(
     res = await fetch(`${GATEWAY_BASE}/v1/agents/${encodeURIComponent(agentId)}/publish`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
   } catch {
     return { ok: false, error: "网络错误", status: 0 };

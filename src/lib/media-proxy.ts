@@ -213,6 +213,7 @@ export async function importMediaAsset(
     },
     body: JSON.stringify(payload),
     cache: "no-store",
+    credentials: "include",
   });
   let data: MediaImportResponse | null = null;
   try {

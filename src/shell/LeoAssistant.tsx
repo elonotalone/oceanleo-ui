@@ -185,6 +185,7 @@ async function boardCall(input: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+      credentials: "include",
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: data?.detail || `HTTP ${res.status}` };
@@ -206,6 +207,7 @@ async function transform(input: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+      credentials: "include",
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: data?.detail || `HTTP ${res.status}` };

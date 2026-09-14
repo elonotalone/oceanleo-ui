@@ -19,6 +19,7 @@ import {
 } from "../lib/auth/account";
 import { IconCheck, IconChevronDown } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
+import { fetchByokStatusLite, type ByokStatusLite } from "./byok-status";
 import { useWorkbenchOpen } from "./workbench-open-store";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
@@ -119,6 +120,7 @@ function ModelGroupPickerBody({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
+  const [byok, setByok] = useState<ByokStatusLite | null>(null);
   const groups = payload?.groups?.length ? payload.groups : FALLBACK_GROUPS;
   const activeKey = payload?.active_group_key || "preset:pro";
   const active =
@@ -186,6 +188,17 @@ function ModelGroupPickerBody({
       window.removeEventListener("scroll", measure, true);
     };
   }, [open, placement]);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void fetchByokStatusLite().then((status) => {
+      if (alive) setByok(status);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -328,6 +341,43 @@ function ModelGroupPickerBody({
               </p>
             )}
           </div>
+          {byok && byok.count > 0 && (
+            <div
+              className={`shrink-0 border-b border-neutral-100 ${
+                compact ? "px-3 py-2" : "px-3.5 py-2.5"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`font-medium text-neutral-900 ${
+                      compact ? "text-[12px]" : "text-[13px]"
+                    }`}
+                  >
+                    {tt("我的模型 · 自带 key · 优先使用（免费）")}
+                  </p>
+                  <p
+                    className={`text-neutral-400 ${
+                      compact ? "text-[10px]" : "mt-0.5 text-[11px]"
+                    }`}
+                  >
+                    {tt("已配置 {n} 家：{names}", {
+                      n: byok.count,
+                      names: byok.providers.join("、"),
+                    })}
+                  </p>
+                </div>
+                <a
+                  href={apiHref}
+                  className={`shrink-0 font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-900 ${
+                    compact ? "text-[11px]" : "text-[12px]"
+                  }`}
+                >
+                  {tt("管理 →")}
+                </a>
+              </div>
+            </div>
+          )}
           {/* 条目区：弹层高度被钉在视口内时，这里自己滚，滚动条可见。 */}
           <div
             data-model-picker-list

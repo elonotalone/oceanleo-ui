@@ -596,7 +596,9 @@ export function createGatewayAiTransport(
   options: GatewayAiTransportOptions = {},
 ): AiTransport {
   const provider = options.provider?.trim() || "oceanleo-gateway";
-  const fetcher = options.fetcher || fetch;
+  const rawFetcher = options.fetcher || fetch;
+  const fetcher: typeof fetch = (input, init) =>
+    rawFetcher(input, { ...init, credentials: "include" });
   const getToken = options.getAccessToken || accessToken;
   const defaultSiteId = options.siteId?.trim() || "oceanleo";
   const pollIntervalMs = Math.max(250, options.pollIntervalMs || 2_500);
@@ -644,6 +646,7 @@ export function createGatewayAiTransport(
           : { body: JSON.stringify(call_.body) }),
         cache: "no-store",
         signal: context.signal,
+        credentials: "include",
       });
     } catch (caught) {
       if (isAbortError(caught)) throwIfCancelled(context);

@@ -256,6 +256,7 @@ export function ImageRoute({
         }),
         cache: "no-store",
         signal: input.signal,
+        credentials: "include",
       });
       let data: { image?: string; detail?: string } | null = null;
       try {
