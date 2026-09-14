@@ -44,6 +44,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-09-01 又漂了一次：editor-panels / workbench-office 只进了总表。
   // 2026-09-06 X4：advanced-route 两边同时加。
   // 2026-09-14 W4：auth-captcha 两边同时加。
+  // 2026-09-14 W4：byok-reauth（W5 申请的两条）两边同时加。
   const [
     base,
     recent,
@@ -57,6 +58,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     advancedRoute,
     byok,
     authCaptcha,
+    byokReauth,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -70,6 +72,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./advanced-route-copy"),
     import("./byok-copy"),
     import("./auth-captcha-copy"),
+    import("./byok-reauth-copy"),
   ]);
   return {
     ...base.default,
@@ -85,5 +88,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...advancedRoute.ADVANCED_ROUTE_MESSAGES[locale],
     ...byok.BYOK_COPY_MESSAGES[locale],
     ...authCaptcha.AUTH_CAPTCHA_MESSAGES[locale],
+    ...byokReauth.BYOK_REAUTH_MESSAGES[locale],
   };
 };
