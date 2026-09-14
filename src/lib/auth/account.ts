@@ -44,7 +44,7 @@ function num(v: unknown, fallback = 0): number {
 async function authed<T>(
   path: string,
   init?: RequestInit,
-): Promise<{ ok: boolean; data?: T; error?: string; status?: number }> {
+): Promise<{ ok: boolean; data?: T; error?: string; status?: number; code?: string }> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
@@ -69,9 +69,25 @@ async function authed<T>(
     /* non-JSON */
   }
   if (!res.ok) {
+    const detail = (data as { detail?: unknown } | null)?.detail;
+    if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+      const rec = detail as { code?: unknown; message?: unknown };
+      const code = typeof rec.code === "string" ? rec.code : undefined;
+      const message =
+        typeof rec.message === "string" && rec.message.trim()
+          ? rec.message
+          : "";
+      // BYOK 写钥匙：网关 403 detail.code === "reauth_required"
+      return {
+        ok: false,
+        error: message || `HTTP ${res.status}`,
+        status: res.status,
+        code,
+      };
+    }
     return {
       ok: false,
-      error: (data as { detail?: string } | null)?.detail || `HTTP ${res.status}`,
+      error: typeof detail === "string" && detail ? detail : `HTTP ${res.status}`,
       status: res.status,
     };
   }
@@ -892,6 +908,7 @@ export async function getByok(): Promise<{
   data?: ByokStatus;
   error?: string;
   status?: number;
+  code?: string;
 }> {
   return authed<ByokStatus>("/v1/byok");
 }
@@ -930,6 +947,7 @@ export async function probeByok(body: {
   data?: { models: string[]; count: number };
   error?: string;
   status?: number;
+  code?: string;
 }> {
   return authed<{ models: string[]; count: number }>("/v1/byok/probe", {
     method: "POST",
