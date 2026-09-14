@@ -753,6 +753,7 @@ export async function uploadFile(
       // 网关拿不到 boundary，整个请求体解不出来（表现是 422，很难查）。
       headers: { Authorization: `Bearer ${token}` },
       body: fd,
+      withCredentials: true,
       onProgress: (loaded) => progress.report(loaded),
       signal: opts.signal,
     });

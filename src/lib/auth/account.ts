@@ -85,7 +85,10 @@ async function publicGet<T>(
   path: string,
 ): Promise<{ ok: boolean; data?: T; error?: string }> {
   try {
-    const res = await fetch(`${GATEWAY_BASE}${path}`, { cache: "default" });
+    const res = await fetch(`${GATEWAY_BASE}${path}`, {
+      cache: "default",
+      credentials: "include",
+    });
     const data = await res.json().catch(() => null);
     if (!res.ok)
       return { ok: false, error: (data as { detail?: string })?.detail || `HTTP ${res.status}` };

@@ -97,9 +97,9 @@ function gatewayFetchCalls(filePath) {
 test("S10 every GATEWAY_BASE fetch includes credentials", () => {
   // account.ts is owned by a concurrent unit (F1). Its `authed()` already
   // sends credentials; `publicGet()` is still theirs to finish.
-  const hits = listSourceFiles(SRC_ROOT)
-    .filter((file) => !file.endsWith(`${path.sep}lib${path.sep}auth${path.sep}account.ts`))
-    .flatMap(gatewayFetchCalls);
+  // account.ts is covered too: its `authed()` wrapper is the single fetch every
+  // account/BYOK call goes through, so it must carry the cookie as well.
+  const hits = listSourceFiles(SRC_ROOT).flatMap(gatewayFetchCalls);
   assert.ok(hits.length > 0, "expected at least one GATEWAY_BASE fetch()");
   const missing = hits.filter((hit) => !hit.ok);
   assert.deepEqual(

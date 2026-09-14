@@ -268,6 +268,11 @@ export interface XhrUploadOptions {
   onProgress?: (loaded: number, total: number) => void;
   /** 外部取消。取消后 promise 以 `aborted: true` 结束，不抛。 */
   signal?: AbortSignal;
+  /**
+   * 发往 OceanLeo 网关时置 true（等价于 fetch 的 `credentials: "include"`），
+   * 让 BYOK 密封 cookie 随请求走；直传对象存储的签名 URL 不要开。
+   */
+  withCredentials?: boolean;
 }
 
 export interface XhrUploadResult {
@@ -326,6 +331,7 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
     }
 
     request.open(options.method, options.url, true);
+    if (options.withCredentials) request.withCredentials = true;
     for (const [name, value] of Object.entries(options.headers || {})) {
       request.setRequestHeader(name, value);
     }
