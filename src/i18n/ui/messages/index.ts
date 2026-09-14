@@ -31,6 +31,7 @@ import { WORKBENCH_OFFICE_MESSAGES } from "./workbench-office-copy";
 import { EDITOR_PANELS_MESSAGES } from "./editor-panels-copy";
 import { ADVANCED_ROUTE_MESSAGES } from "./advanced-route-copy";
 import { BYOK_COPY_MESSAGES } from "./byok-copy";
+import { AUTH_CAPTCHA_MESSAGES } from "./auth-captcha-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -46,6 +47,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.zh,
     ...ADVANCED_ROUTE_MESSAGES.zh,
     ...BYOK_COPY_MESSAGES.zh,
+    ...AUTH_CAPTCHA_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -60,6 +62,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.en,
     ...ADVANCED_ROUTE_MESSAGES.en,
     ...BYOK_COPY_MESSAGES.en,
+    ...AUTH_CAPTCHA_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -74,6 +77,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.ja,
     ...ADVANCED_ROUTE_MESSAGES.ja,
     ...BYOK_COPY_MESSAGES.ja,
+    ...AUTH_CAPTCHA_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -88,6 +92,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.ko,
     ...ADVANCED_ROUTE_MESSAGES.ko,
     ...BYOK_COPY_MESSAGES.ko,
+    ...AUTH_CAPTCHA_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -102,6 +107,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.fr,
     ...ADVANCED_ROUTE_MESSAGES.fr,
     ...BYOK_COPY_MESSAGES.fr,
+    ...AUTH_CAPTCHA_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -116,6 +122,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.de,
     ...ADVANCED_ROUTE_MESSAGES.de,
     ...BYOK_COPY_MESSAGES.de,
+    ...AUTH_CAPTCHA_MESSAGES.de,
   },
   it: {
     ...it,
@@ -130,6 +137,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.it,
     ...ADVANCED_ROUTE_MESSAGES.it,
     ...BYOK_COPY_MESSAGES.it,
+    ...AUTH_CAPTCHA_MESSAGES.it,
   },
   es: {
     ...es,
@@ -144,6 +152,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.es,
     ...ADVANCED_ROUTE_MESSAGES.es,
     ...BYOK_COPY_MESSAGES.es,
+    ...AUTH_CAPTCHA_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -158,6 +167,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES["es-419"],
     ...ADVANCED_ROUTE_MESSAGES["es-419"],
     ...BYOK_COPY_MESSAGES["es-419"],
+    ...AUTH_CAPTCHA_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -172,6 +182,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES["pt-BR"],
     ...ADVANCED_ROUTE_MESSAGES["pt-BR"],
     ...BYOK_COPY_MESSAGES["pt-BR"],
+    ...AUTH_CAPTCHA_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -186,6 +197,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES["pt-PT"],
     ...ADVANCED_ROUTE_MESSAGES["pt-PT"],
     ...BYOK_COPY_MESSAGES["pt-PT"],
+    ...AUTH_CAPTCHA_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -200,6 +212,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.vi,
     ...ADVANCED_ROUTE_MESSAGES.vi,
     ...BYOK_COPY_MESSAGES.vi,
+    ...AUTH_CAPTCHA_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -214,6 +227,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.tr,
     ...ADVANCED_ROUTE_MESSAGES.tr,
     ...BYOK_COPY_MESSAGES.tr,
+    ...AUTH_CAPTCHA_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -228,6 +242,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES["zh-TW"],
     ...ADVANCED_ROUTE_MESSAGES["zh-TW"],
     ...BYOK_COPY_MESSAGES["zh-TW"],
+    ...AUTH_CAPTCHA_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -242,6 +257,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.ar,
     ...ADVANCED_ROUTE_MESSAGES.ar,
     ...BYOK_COPY_MESSAGES.ar,
+    ...AUTH_CAPTCHA_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -256,6 +272,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.th,
     ...ADVANCED_ROUTE_MESSAGES.th,
     ...BYOK_COPY_MESSAGES.th,
+    ...AUTH_CAPTCHA_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -270,5 +287,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_PANELS_MESSAGES.hi,
     ...ADVANCED_ROUTE_MESSAGES.hi,
     ...BYOK_COPY_MESSAGES.hi,
+    ...AUTH_CAPTCHA_MESSAGES.hi,
   },
 };

@@ -57,6 +57,12 @@ import { loginUnavailableNotice } from "../lib/auth/config";
 import { currentDomainFamily, type DomainFamily } from "../contracts/domain-family";
 import { ButtonSpinner, Modal } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import {
+  CAPTCHA_FAILED_MESSAGE,
+  CAPTCHA_LOAD_FAILED_MESSAGE,
+  CAPTCHA_VERIFYING_MESSAGE,
+  isCaptchaConfigured,
+} from "../lib/auth/captcha";
 
 export type AuthMethod = "email" | "phone" | "wechat" | "google" | "apple";
 
@@ -98,6 +104,8 @@ const ERROR_COPY = {
   badPhone: "请输入有效的中国大陆手机号。",
   rateLimited: "操作过于频繁，请稍后再试。",
   generic: "登录失败，请稍后重试。",
+  captchaFailed: CAPTCHA_FAILED_MESSAGE,
+  captchaLoadFailed: CAPTCHA_LOAD_FAILED_MESSAGE,
 } as const;
 
 /** 本组件用到的全部中文文案（含 tt() 字面量与错误表）。17 语守卫的清单。 */
@@ -148,6 +156,7 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "6 位数字",
   "验证码不对，或者已经过了它 30 秒的有效期。",
   "两步验证现在开不了，稍后再试。",
+  CAPTCHA_VERIFYING_MESSAGE,
   ...Object.values(ERROR_COPY),
 ];
 
@@ -225,6 +234,12 @@ const BAD_CREDENTIALS_PATTERNS = [
   /密码.*(错误|不正确)/,
 ];
 
+const CAPTCHA_PATTERNS = [
+  /captcha/i,
+  /安全验证没有通过/,
+  /安全验证组件加载失败/,
+];
+
 const NOT_CONFIGURED_CLIENT = /supabase not configured|登录服务尚未配置/i;
 
 function matchesAny(raw: string, patterns: readonly RegExp[]): boolean {
@@ -241,6 +256,10 @@ function matchesAny(raw: string, patterns: readonly RegExp[]): boolean {
 export function authErrorCopy(method: AuthMethod, raw?: string): string {
   const text = (raw || "").trim();
   if (!text) return ERROR_COPY.generic;
+  if (matchesAny(text, CAPTCHA_PATTERNS)) {
+    if (/load|script|组件加载失败/i.test(text)) return ERROR_COPY.captchaLoadFailed;
+    return ERROR_COPY.captchaFailed;
+  }
   if (matchesAny(text, NETWORK_PATTERNS)) return ERROR_COPY.network;
   if (NOT_CONFIGURED_CLIENT.test(text) || matchesAny(text, UNCONFIGURED_PATTERNS)) {
     if (method === "wechat") return ERROR_COPY.wechatUnconfigured;
@@ -511,6 +530,14 @@ function Notice({ text }: { text: string }) {
   );
 }
 
+function CaptchaBusyLabel({ tt }: { tt: UITranslate }) {
+  return (
+    <ButtonSpinner
+      label={tt(isCaptchaConfigured() ? CAPTCHA_VERIFYING_MESSAGE : "处理中...")}
+    />
+  );
+}
+
 /** 凭据通过后的回调。可能要 await（要先问一次会话等级够不够）。 */
 type CredentialsDone = () => void | Promise<void>;
 
@@ -579,7 +606,7 @@ function EmailForm({
       {error && <ErrorNote text={error} />}
       {done && <Notice text={tt("登录成功")} />}
       <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
-        {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("登录")}
+        {loading ? <CaptchaBusyLabel tt={tt} /> : tt("登录")}
       </button>
       {/* 忘了密码在这之前是绝路：整个共享登录组件里没有任何找回入口。 */}
       <button
@@ -672,7 +699,7 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
       </div>
       {error && <ErrorNote text={error} />}
       <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
-        {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("发送重置链接")}
+        {loading ? <CaptchaBusyLabel tt={tt} /> : tt("发送重置链接")}
       </button>
       <button
         type="button"
@@ -884,7 +911,7 @@ function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: CredentialsDone })
       {!error && notice && <Notice text={notice} />}
       <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
         {loading ? (
-          <ButtonSpinner label={tt("处理中...")} />
+          <CaptchaBusyLabel tt={tt} />
         ) : sent ? (
           tt("验证并登录")
         ) : (

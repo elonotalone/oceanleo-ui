@@ -43,6 +43,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 于是那两屏对 16 个语种全部回退成中文原文，谁也没发现。
   // 2026-09-01 又漂了一次：editor-panels / workbench-office 只进了总表。
   // 2026-09-06 X4：advanced-route 两边同时加。
+  // 2026-09-14 W4：auth-captcha 两边同时加。
   const [
     base,
     recent,
@@ -55,6 +56,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     editorPanels,
     advancedRoute,
     byok,
+    authCaptcha,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -67,6 +69,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./editor-panels-copy"),
     import("./advanced-route-copy"),
     import("./byok-copy"),
+    import("./auth-captcha-copy"),
   ]);
   return {
     ...base.default,
@@ -81,5 +84,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...editorPanels.EDITOR_PANELS_MESSAGES[locale],
     ...advancedRoute.ADVANCED_ROUTE_MESSAGES[locale],
     ...byok.BYOK_COPY_MESSAGES[locale],
+    ...authCaptcha.AUTH_CAPTCHA_MESSAGES[locale],
   };
 };

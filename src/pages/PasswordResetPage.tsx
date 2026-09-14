@@ -20,6 +20,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { accessToken, updatePassword } from "../lib/auth/client";
+import { mapCaptchaError } from "../lib/auth/captcha";
 import { oceanleoConfigured, loginUnavailableNotice } from "../lib/auth";
 import { ButtonSpinner } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
@@ -93,7 +94,7 @@ export function PasswordResetPage({
     const result = await updatePassword(password);
     setLoading(false);
     if (result.error) {
-      setError(tt(result.error));
+      setError(tt(mapCaptchaError(result.error) || result.error));
       return;
     }
     setPhase("saved");

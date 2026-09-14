@@ -12,6 +12,7 @@ import {
   isLeoDevPreviewHost,
 } from "./config";
 import { createLeoDevPreviewCookieJar } from "./preview-cookies";
+import { getCaptchaToken, mapCaptchaError } from "./captcha";
 
 // Browser Supabase client for the OceanLeo shared identity. Stores the auth
 // session in a cookie scoped to .oceanleo.com (NOT localStorage), so a login on
@@ -99,12 +100,22 @@ export async function getUserId(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+async function captchaOptions(): Promise<{ captchaToken?: string }> {
+  const captchaToken = await getCaptchaToken();
+  return captchaToken ? { captchaToken } : {};
+}
+
 export async function signIn(email: string, password: string) {
   const c = browserClient();
   if (!c) return { error: "登录服务尚未配置" };
-  const { data, error } = await c.auth.signInWithPassword({ email, password });
+  const captcha = await captchaOptions();
+  const { data, error } = await c.auth.signInWithPassword({
+    email,
+    password,
+    ...(captcha.captchaToken ? { options: captcha } : {}),
+  });
   _accessToken = data.session?.access_token ?? null;
-  return { data, error: error?.message };
+  return { data, error: mapCaptchaError(error?.message) };
 }
 
 // --- 中国手机号登录（短信验证码 OTP）-----------------------------------------
@@ -128,8 +139,12 @@ export async function sendPhoneOtp(phone: string) {
   if (!c) return { error: "登录服务尚未配置" };
   const e164 = normalizeCnPhone(phone);
   if (!e164) return { error: "请输入有效的中国大陆手机号" };
-  const { error } = await c.auth.signInWithOtp({ phone: e164 });
-  return { error: error?.message };
+  const captcha = await captchaOptions();
+  const { error } = await c.auth.signInWithOtp({
+    phone: e164,
+    ...(captcha.captchaToken ? { options: captcha } : {}),
+  });
+  return { error: mapCaptchaError(error?.message) };
 }
 
 /** 校验手机验证码并登录。 */
@@ -138,13 +153,15 @@ export async function verifyPhoneOtp(phone: string, token: string) {
   if (!c) return { error: "登录服务尚未配置" };
   const e164 = normalizeCnPhone(phone);
   if (!e164) return { error: "请输入有效的中国大陆手机号" };
+  const captcha = await captchaOptions();
   const { data, error } = await c.auth.verifyOtp({
     phone: e164,
     token: (token || "").trim(),
     type: "sms",
+    ...(captcha.captchaToken ? { options: captcha } : {}),
   });
   _accessToken = data.session?.access_token ?? null;
-  return { data, error: error?.message };
+  return { data, error: mapCaptchaError(error?.message) };
 }
 
 // --- 微信登录（扫码）---------------------------------------------------------
@@ -246,11 +263,16 @@ export async function sendPasswordReset(
   const target = (email || "").trim();
   if (!target) return { error: "请先填写邮箱地址。" };
   const redirectTo = passwordResetRedirectTo(origin);
+  const captcha = await captchaOptions();
+  const resetOpts = {
+    ...(redirectTo ? { redirectTo } : {}),
+    ...captcha,
+  };
   const { error } = await c.auth.resetPasswordForEmail(
     target,
-    redirectTo ? { redirectTo } : undefined,
+    Object.keys(resetOpts).length ? resetOpts : undefined,
   );
-  return { error: error?.message };
+  return { error: mapCaptchaError(error?.message) };
 }
 
 /**
@@ -287,11 +309,18 @@ export async function updatePassword(
   if (options.currentPassword) {
     const email = await getUserEmail();
     if (!email) return { error: "登录状态失效了，请重新登录。" };
+    const captcha = await captchaOptions();
     const check = await c.auth.signInWithPassword({
       email,
       password: options.currentPassword,
+      ...(captcha.captchaToken ? { options: captcha } : {}),
     });
-    if (check.error) return { error: "原密码不正确。" };
+    if (check.error) {
+      if (/captcha/i.test(check.error.message || "")) {
+        return { error: mapCaptchaError(check.error.message) };
+      }
+      return { error: "原密码不正确。" };
+    }
   }
   const { error } = await c.auth.updateUser({
     password: next,
