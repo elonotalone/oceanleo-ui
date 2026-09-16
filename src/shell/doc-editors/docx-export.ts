@@ -1,4 +1,9 @@
 import {
+  AIGC_TEXT_NOTICE,
+  aigcLabelActive,
+  aigcMetadata,
+} from "../../contracts/aigc-label";
+import {
   RICHDOC_NUMBERING_PRESETS,
   richDocDocxCellProperties,
   richDocDocxParagraphProperties,
@@ -28,6 +33,8 @@ export interface DocxExportOptions {
    * 与接线前的行为一字不差——批注是加法，不改既有导出的任何字节。
    */
   comments?: readonly DocxCommentEntry[];
+  /** 文档/工件 id，写入自定义属性 ContentID；开关开且未提供时用 crypto.randomUUID()。 */
+  contentId?: string;
 }
 
 /** 正文里认锚点的 mark 名（`richdocComment`），不硬编码字符串。 */
@@ -407,10 +414,15 @@ export async function tiptapJsonToDocxBlob(
     docx,
     commentIdIndex(entries),
   );
+  const aigcOn = aigcLabelActive();
+  const contentId =
+    String(options.contentId || "").trim() ||
+    (aigcOn ? crypto.randomUUID() : "");
+  const meta = aigcOn ? aigcMetadata(contentId) : null;
   const document = new docx.Document({
     creator: "OceanLeo",
     title,
-    description: "Created in OceanLeo Advanced Workbench",
+    description: aigcOn ? AIGC_TEXT_NOTICE : "Created in OceanLeo Advanced Workbench",
     // `docx@9.7.1` 的 `comments.children` 吃的是 **`ICommentOptions` 纯对象**，
     // 不是 `new Comment(...)` 实例（`dist/index.d.ts:1022`）。传实例过不了类型。
     ...(entries.length
@@ -426,6 +438,16 @@ export async function tiptapJsonToDocxBlob(
               ),
             })),
           },
+        }
+      : {}),
+    ...(meta
+      ? {
+          customProperties: [
+            { name: "AIGC", value: meta.AIGC },
+            { name: "ServiceProvider", value: meta.ServiceProvider },
+            { name: "ContentID", value: meta.ContentID },
+            { name: "ProducedAt", value: meta.ProducedAt },
+          ],
         }
       : {}),
     sections: [

@@ -29,6 +29,14 @@ export {
   sharedCookieDomainFor,
 } from "./domain-family";
 export type { DomainFamily, DomainFamilyProfile } from "./domain-family";
+export {
+  AIGC_LABEL_TEXT,
+  AIGC_SERVICE_PROVIDER,
+  AIGC_TEXT_NOTICE,
+  aigcLabelActive,
+  aigcMetadata,
+  withAigcTextNotice,
+} from "./aigc-label";
 export type {
   OceanLeoAppContext,
   OceanLeoAuthContract,

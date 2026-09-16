@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
+import {
+  AIGC_LABEL_TEXT,
+  aigcLabelActive,
+  withAigcTextNotice,
+} from "../contracts/aigc-label";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
@@ -115,18 +120,21 @@ function MessageActions({
 }) {
   const tt = useUI();
   const [copied, setCopied] = useState(false);
+  const showAigc = aigcLabelActive();
   const iconClass = "h-4 w-4";
   const buttonClass =
     "inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700";
-  return (
-    <div className="mt-1 flex items-center gap-0.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100">
+  const actionsClass =
+    "mt-1 flex items-center gap-0.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100";
+  const buttons = (
+    <>
       <button
         type="button"
         title={tt("复制")}
         aria-label={tt("复制")}
         className={buttonClass}
         onClick={() => {
-          void writeClipboardText(content).then((ok) => {
+          void writeClipboardText(withAigcTextNotice(content)).then((ok) => {
             if (!ok) return;
             setCopied(true);
             setTimeout(() => setCopied(false), 1600);
@@ -169,6 +177,23 @@ function MessageActions({
           </svg>
         </button>
       )}
+    </>
+  );
+  // 开关关：根节点 class 与今天的 MessageActions 逐字相同，不多一层包裹。
+  if (!showAigc) {
+    return <div className={actionsClass}>{buttons}</div>;
+  }
+  return (
+    <div className="mt-1 flex items-center gap-0.5">
+      <span
+        data-testid="aigc-label"
+        className="text-[11px] rounded px-1.5 py-0.5 border border-stone-200 text-stone-500"
+      >
+        {AIGC_LABEL_TEXT}
+      </span>
+      <div className="flex items-center gap-0.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100">
+        {buttons}
+      </div>
     </div>
   );
 }

@@ -529,6 +529,36 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "AIGC_LABEL_TEXT",
+          "importedName": "AIGC_LABEL_TEXT",
+          "source": "./aigc-label"
+        },
+        {
+          "kind": "named",
+          "name": "AIGC_SERVICE_PROVIDER",
+          "importedName": "AIGC_SERVICE_PROVIDER",
+          "source": "./aigc-label"
+        },
+        {
+          "kind": "named",
+          "name": "AIGC_TEXT_NOTICE",
+          "importedName": "AIGC_TEXT_NOTICE",
+          "source": "./aigc-label"
+        },
+        {
+          "kind": "named",
+          "name": "aigcLabelActive",
+          "importedName": "aigcLabelActive",
+          "source": "./aigc-label"
+        },
+        {
+          "kind": "named",
+          "name": "aigcMetadata",
+          "importedName": "aigcMetadata",
+          "source": "./aigc-label"
+        },
+        {
+          "kind": "named",
           "name": "canonicalOceanLeoSiteKey",
           "importedName": "canonicalOceanLeoSiteKey",
           "source": "./site-manifest"
@@ -742,6 +772,12 @@
           "name": "siteManifestMatches",
           "importedName": "siteManifestMatches",
           "source": "./site-manifest"
+        },
+        {
+          "kind": "named",
+          "name": "withAigcTextNotice",
+          "importedName": "withAigcTextNotice",
+          "source": "./aigc-label"
         }
       ]
     },
@@ -1472,6 +1508,16 @@
         },
         {
           "kind": "named",
+          "name": "announcePhoneRequired",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "AUTH_STATE_EVENT",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "browserClient",
           "source": ""
         },
@@ -1487,12 +1533,22 @@
         },
         {
           "kind": "named",
+          "name": "cnPhoneIsBound",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "currentAal",
           "source": ""
         },
         {
           "kind": "named",
           "name": "enrollTotp",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getAuthPhoneUser",
           "source": ""
         },
         {
@@ -1518,6 +1574,11 @@
         {
           "kind": "named",
           "name": "listMfaFactors",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "maskCnPhone",
           "source": ""
         },
         {
@@ -1548,7 +1609,17 @@
         },
         {
           "kind": "named",
+          "name": "PHONE_REQUIRED_EVENT",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "reauthenticate",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "requestPhoneChange",
           "source": ""
         },
         {
@@ -1588,6 +1659,11 @@
         },
         {
           "kind": "named",
+          "name": "verifyPhoneChange",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "verifyPhoneOtp",
           "source": ""
         },
@@ -1599,6 +1675,11 @@
         {
           "kind": "type",
           "name": "AalState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AuthPhoneUser",
           "source": ""
         },
         {
@@ -2299,6 +2380,30 @@
           "name": "PasswordResetPageProps",
           "importedName": "PasswordResetPageProps",
           "source": "./PasswordResetPage"
+        },
+        {
+          "kind": "named",
+          "name": "PHONE_BIND_OTP_COOLDOWN_SECONDS",
+          "importedName": "PHONE_BIND_OTP_COOLDOWN_SECONDS",
+          "source": "./PhoneBindGate"
+        },
+        {
+          "kind": "named",
+          "name": "PhoneBindForm",
+          "importedName": "PhoneBindForm",
+          "source": "./PhoneBindGate"
+        },
+        {
+          "kind": "named",
+          "name": "PhoneBindFormProps",
+          "importedName": "PhoneBindFormProps",
+          "source": "./PhoneBindGate"
+        },
+        {
+          "kind": "named",
+          "name": "PhoneBindGate",
+          "importedName": "PhoneBindGate",
+          "source": "./PhoneBindGate"
         },
         {
           "kind": "named",
