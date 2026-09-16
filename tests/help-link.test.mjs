@@ -80,6 +80,12 @@ test("HelpLink 在 help host 上 return null；AppShell 两处仍调用", () => 
   assert.match(helpLinkSrc, /if \(hidden\) return null/);
 });
 
+test("HelpLink 首帧按构建期家族取帮助域，不写死 help.oceanleo.com", () => {
+  assert.match(helpLinkSrc, /currentDomainFamily/);
+  assert.match(helpLinkSrc, /familyHelpHost/);
+  assert.doesNotMatch(helpLinkSrc, /host:\s*"oceanleo\.com"/);
+});
+
 test("AppShell 声明 helpHref，并在 sidebar 与 topbar 各渲染一次 HelpLink", () => {
   assert.match(appShell, /helpHref\?: string \| null/);
   assert.match(appShell, /siteKey\?: string/);

@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { currentDomainFamily } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { helpCenterUrl, isHelpCenterHost } from "../lib/help-url";
+
+/** SSR 首帧用构建期家族，不能写死 .com：境内镜像冒烟会把 HTML 里的 .oceanleo.com 当做出境。 */
+function familyHelpHost(): string {
+  return currentDomainFamily() === "cn" ? "oceanleo.cn" : "oceanleo.com";
+}
 
 export function HelpLink({
   href,
@@ -17,7 +23,7 @@ export function HelpLink({
   const [url, setUrl] = useState(
     () =>
       href ??
-      helpCenterUrl({ host: "oceanleo.com", siteKey, path: "/chat" }),
+      helpCenterUrl({ host: familyHelpHost(), siteKey, path: "/chat" }),
   );
   const [hidden, setHidden] = useState(false);
 
