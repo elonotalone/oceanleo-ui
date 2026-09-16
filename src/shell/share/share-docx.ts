@@ -14,6 +14,11 @@
 //   - 页眉页脚 → 标题 + 品牌行 + 页码域。
 // ============================================================================
 
+import {
+  AIGC_TEXT_NOTICE,
+  aigcLabelActive,
+  aigcMetadata,
+} from "../../contracts/aigc-label";
 import type { ShareBlock, ShareInline } from "./share-blocks";
 import { inlinesToPlainText } from "./share-blocks";
 
@@ -32,6 +37,8 @@ export interface ShareDocxInput {
   /** 页脚上的来源链接（有就写一行）。 */
   linkText?: string;
   messages: readonly ShareDocxMessage[];
+  /** 会话/工件 id，写入自定义属性 ContentID；开关开且未提供时用 crypto.randomUUID()。 */
+  contentId?: string;
 }
 
 const ORDERED_REFERENCE = "oceanleo-share-ordered";
@@ -423,10 +430,26 @@ export async function shareMessagesToDocxBlob(
     }
   }
 
+  // 生成合成内容制作要素：与 doc-editors/docx-export.ts 同一套四项自定义属性。
+  // 开关关（.com 且未设 env）时这段不产生任何字节。
+  const aigcOn = aigcLabelActive();
+  const aigcMeta = aigcOn
+    ? aigcMetadata(String(input.contentId || "").trim() || crypto.randomUUID())
+    : null;
   const document = new docx.Document({
     creator: "OceanLeo",
     title: input.title || input.brand,
-    description: input.brand,
+    description: aigcOn ? `${AIGC_TEXT_NOTICE} · ${input.brand}` : input.brand,
+    ...(aigcMeta
+      ? {
+          customProperties: [
+            { name: "AIGC", value: aigcMeta.AIGC },
+            { name: "ServiceProvider", value: aigcMeta.ServiceProvider },
+            { name: "ContentID", value: aigcMeta.ContentID },
+            { name: "ProducedAt", value: aigcMeta.ProducedAt },
+          ],
+        }
+      : {}),
     styles: documentStyles(docx) as never,
     numbering: numbering(docx) as never,
     sections: [
