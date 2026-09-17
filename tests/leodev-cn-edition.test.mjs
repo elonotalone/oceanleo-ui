@@ -67,7 +67,10 @@ function probe(code, extraEnv = {}) {
   return JSON.parse(child.stdout);
 }
 
-test("default env: production .com / LeoDev host behaviour is unchanged", () => {
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：无家族 overlay 时 LeoDev 仍必须写 Domain=.oceanleo.com；cookie 边界跟 host，不跟 env。
+// UC-3 §8.3：LeoDev 第一方只认 p-<32hex>.dev.oceanleo.com；oceanleo.app / leoapp.cn 仍不是第一方。
+test("UC-7 + UC-3: default env: production .com / LeoDev host behaviour is unchanged", () => {
   const clean = probe(
     `
     const family = await import(${JSON.stringify(FAMILY_URL)});
@@ -230,7 +233,9 @@ test("LeoDev embed fallback keeps the caller family base; override still only ex
   assert.equal(isAllowedFamilyEmbedOverrideOrigin("https://evil.dev.oceanleo.com"), false);
 });
 
-test("preview cookie jar is name-agnostic for sb-id-cn-auth-token and never writes document.cookie", () => {
+// UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：LeoDev 预览往 document.cookie 写 sb-id-cn-auth-token，境内会话落到 Domain=.oceanleo.com。
+test("UC-7: preview cookie jar is name-agnostic for sb-id-cn-auth-token and never writes document.cookie", () => {
   const raw = "sb-id-cn-auth-token=cn-session; other=1";
   let writes = 0;
   const jar = createLeoDevPreviewCookieJar(() => {
