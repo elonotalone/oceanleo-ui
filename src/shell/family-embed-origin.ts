@@ -246,6 +246,12 @@ export function isLeoDevFamilyEmbedBase(base: string): boolean {
   }
 }
 
+/**
+ * LeoDev only: swap the embed origin, keep the path. No override → `defaultBase`.
+ * Callers must pass the **current family** production base
+ * (`currentFamilySubsiteOrigin`, `.oceanleo.cn` on a cn slot). This function
+ * does not re-derive family from the preview hostname.
+ */
 export function applyFamilyEmbedOriginOverride(
   defaultBase: string,
   input: FamilyEmbedOverrideInput,

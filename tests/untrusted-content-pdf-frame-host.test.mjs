@@ -60,6 +60,9 @@ const ALLOWED_PDF_URLS = [
   "https://api.oceanleo.com/v1/media/proxy?url=x",
   // C5：境内家族的 rendition 网关，与 .com 那条同一档。
   "https://api.oceanleo.cn/v1/artifact-renditions/access/abc123",
+  // LeoDev 两版共用 `*.dev.oceanleo.com` 网关主机，仍是第一方 rendition 网关。
+  "https://api.dev.oceanleo.com/v1/artifact-renditions/access/abc123",
+  "https://api-cn.dev.oceanleo.com/v1/artifact-renditions/access/abc123",
   // cookie 域外的对象存储主机：读不到会话 cookie。
   "https://kvrtcumcmhyqhmawpzyc.supabase.co/storage/v1/object/public/media-uploads/u/a/b.pdf",
   "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/a/b.pdf",
@@ -74,6 +77,7 @@ const BLOCKED_PDF_URLS = [
   "https://ppt.oceanleo.com/x.pdf",
   // 迁移期仍留在 .oceanleo.com 下的预览/UGC 主机。
   `https://p8080-${"a".repeat(32)}.website.oceanleo.com/x.pdf`,
+  `https://p-${"0".repeat(32)}.dev.oceanleo.com/x.pdf`,
   "https://anything.preview.oceanleo.com/x.pdf",
   "https://x.usercontent.oceanleo.com/x.pdf",
   // 用户内容可注册域：即使在 cookie 域外，免沙箱 frame 仍可顶层导航/弹窗/下载。
@@ -201,7 +205,9 @@ test("W19/2 两处 PDF frame 都在渲染前过白名单，且两份实现逐字
   // C5：两个家族的网关都在表内。这不是放宽 —— `api.oceanleo.cn` 本来就因为
   // 「不在 .com 的 cookie 域内」而被放行（当对象存储处理），现在它改为按 cn 家族
   // 的 cookie 域内网关放行，而 `.oceanleo.cn` 下的**其余**主机从「放行」变成「拒绝」。
-  assert.deepEqual(gatewayHosts, ['\n  "api.oceanleo.com",\n  "api.oceanleo.cn",\n']);
+  assert.deepEqual(gatewayHosts, [
+    '\n  "api.oceanleo.com",\n  "api.oceanleo.cn",\n  "api.dev.oceanleo.com",\n  "api-cn.dev.oceanleo.com",\n',
+  ]);
   assert.deepEqual(
     [...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS],
     ["oceanleo.app", "leoapp.cn"],

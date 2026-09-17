@@ -13,7 +13,7 @@
 // ============================================================================
 
 import { accessToken } from "../../lib/auth/client";
-import { GATEWAY_BASE, isLeoDevPreviewHost } from "../../lib/auth/config";
+import { GATEWAY_BASE } from "../../lib/auth/config";
 
 export const SHARE_TASK_PATH = "/v1/share/task";
 /** 分享页留在 `oceanleo.com`（合同 R7）：它渲染的是我方页面里的用户**文字**。 */
@@ -104,13 +104,11 @@ export async function createShareLink(
   if (input.messageIds && input.messageIds.length) {
     body.message_ids = [...input.messageIds];
   }
-  const gatewayBase =
-    input.origin ||
-    (typeof window !== "undefined" &&
-    (window.location.host.includes(".dev.oceanleo.com") ||
-      isLeoDevPreviewHost(window.location.host))
-      ? "https://api.dev.oceanleo.com"
-      : GATEWAY_BASE);
+  // Gateway is the configured edition origin (`GATEWAY_BASE` already prefers
+  // `NEXT_PUBLIC_OCEANLEO_GATEWAY_URL`). Never infer the overseas LeoDev API
+  // host from the preview hostname — a cn slot lives on the same
+  // `p-<32hex>.dev.oceanleo.com` page host and must hit the cn gateway env.
+  const gatewayBase = GATEWAY_BASE;
   const doFetch = input.fetchImpl || fetch;
   let response: Response;
   try {

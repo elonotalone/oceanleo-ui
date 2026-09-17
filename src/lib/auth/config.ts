@@ -36,6 +36,7 @@
 // 用户内容域（oceanleo.app / leoapp.cn）不属于任何家族，一律 host-only。
 
 import {
+  CONFIGURED_DOMAIN_FAMILY,
   currentDomainFamily,
   currentDomainProfile,
   domainProfileForHost,
@@ -105,6 +106,11 @@ export function isLeoDevPreviewHost(
 export function cookieDomainFor(host: string | null | undefined): string | undefined {
   const family = familyForHost(host);
   if (!family) return undefined;
+  // Edition is env, cookie Domain is host. A cn slot on
+  // `p-<32hex>.dev.oceanleo.com` must never Set-Cookie `Domain=.oceanleo.com`.
+  if (CONFIGURED_DOMAIN_FAMILY && CONFIGURED_DOMAIN_FAMILY !== family) {
+    return undefined;
+  }
   if (COOKIE_DOMAIN_ENV_PRESENT && !COOKIE_DOMAIN_OVERRIDE) return undefined;
   if (!COOKIE_DOMAIN_OVERRIDE) return domainProfileForHost(host).cookieDomain;
   // 纵深防御：env 覆盖必须落在**这个 host 自己的家族**里。指到别的家族时浏览器

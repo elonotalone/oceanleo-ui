@@ -1,4 +1,9 @@
-import { familyForHost, normalizeHost } from "../contracts/domain-family";
+import {
+  CONFIGURED_DOMAIN_FAMILY,
+  familyForHost,
+  normalizeHost,
+  type DomainFamily,
+} from "../contracts/domain-family";
 
 const HELP_CENTER_HOSTS = new Set([
   "help.oceanleo.com",
@@ -20,12 +25,22 @@ export function isHelpCenterHost(host?: string | null): boolean {
 }
 
 /**
+ * Help-center family: configured edition first, then the request host.
+ * Cookie Domain stays host-derived; help links must follow the slot edition so
+ * a cn LeoDev page on `p-<32hex>.dev.oceanleo.com` still opens help.oceanleo.cn.
+ */
+function helpFamilyFor(host?: string | null): DomainFamily {
+  if (CONFIGURED_DOMAIN_FAMILY) return CONFIGURED_DOMAIN_FAMILY;
+  return familyForHost(host) === "cn" ? "cn" : "com";
+}
+
+/**
  * Help-center origin + query for the shell 「帮助与反馈」link.
  *
- * Family comes from the same `familyForHost()` table as `cookieDomainFor()`:
- * only `oceanleo.cn` / `*.oceanleo.cn` resolve to the .cn help host.
- * LeoDev preview (`p-<32hex>.dev.oceanleo.com`), `.oceanleo.com`,
- * and anything unrecognized all go to `.com`. Pure function; no DOM.
+ * Family comes from `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY` when set, else the
+ * same `familyForHost()` table as production hosts. Unrecognized hosts and
+ * LeoDev preview without a configured family still go to `.com`. Pure
+ * function; no DOM.
  */
 export function helpCenterUrl(input: {
   host?: string | null;
@@ -34,7 +49,7 @@ export function helpCenterUrl(input: {
   path?: string;
 }): string {
   const origin =
-    familyForHost(input.host) === "cn"
+    helpFamilyFor(input.host) === "cn"
       ? "https://help.oceanleo.cn"
       : "https://help.oceanleo.com";
   let path = input.path ?? "/";

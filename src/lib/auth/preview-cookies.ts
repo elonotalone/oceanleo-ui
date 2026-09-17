@@ -25,6 +25,10 @@ export function parseDocumentCookies(raw: string): CookieNameValue[] {
  * but must never write `document.cookie`. `@supabase/ssr` storage `getItem`
  * re-reads via `getAll`; a no-op `setAll` alone would leave getItem on
  * the stale cookie. This jar overlays the refreshed chunks.
+ *
+ * Cookie names are opaque. `@supabase/ssr` derives `sb-<ref>-auth-token` from
+ * the identity URL first label, so a cn slot (`id-cn.dev.oceanleo.com`) is
+ * `sb-id-cn-auth-token`. The jar reads whatever is already on the host.
  */
 export function createLeoDevPreviewCookieJar(readRawCookie: () => string) {
   let overlay: CookieNameValue[] | null = null;

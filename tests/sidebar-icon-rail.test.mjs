@@ -88,7 +88,8 @@ test("收起后真画出图标轨，点「我的任务」会展开并露出任�
     "../i18n/ui/useUI": uiStubUrl,
     "../lib/presence": dataModule("export function usePresenceHeartbeat(){}"),
     "../ui": dataModule(
-      "export function ToastProvider({ children }){ return children; }",
+      "export function ToastProvider({ children }){ return children; }\n" +
+        "export function ButtonSpinner({ label }){ return label ?? null; }",
     ),
     "./MyAppsRail": dataModule("export function MyAppsRail(){ return null; }"),
   });

@@ -250,11 +250,27 @@ export function isUntrustedContentDomainHost(
 }
 
 /**
+ * Operator LeoDev capability host (`p-<32hex>.dev.oceanleo.com`).
+ * Same regex as `lib/auth/config.ts` `isLeoDevPreviewHost`. Kept here so the
+ * first-party check does not import auth config (that module imports this one).
+ */
+const LEO_DEV_PREVIEW_HOST = /^p-[0-9a-f]{32}\.dev\.oceanleo\.com$/;
+
+function isLeoDevCapabilityHost(host: string): boolean {
+  return LEO_DEV_PREVIEW_HOST.test(host);
+}
+
+/**
  * `host` 是否是 `family` 的第一方主机。
  *
  * 两个条件同时成立才算：属于该家族、且不是任何家族的用户内容域。
  * 家族不匹配一律 false —— **`.com` 页面不信 `.cn` 主机，`.cn` 页面不信 `.com` 主机**。
  * 这不是洁癖：境内页面去嵌一个 `.com` 主机就是把境内用户的请求送出境。
+ *
+ * 唯一显式例外：LeoDev 槽主机 `p-<32hex>.dev.oceanleo.com` 两版共用、不新开
+ * `.dev.oceanleo.cn`。境内槽把 `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=cn` 打在这台
+ * `.com` 主机上，postMessage / 内嵌 / 分享必须仍把它当第一方。例外只认这条正则，
+ * 不得放宽到 `*.dev.oceanleo.com`、`oceanleo.app`、`leoapp.cn`。
  */
 export function isFirstPartyHostOf(
   host: string | null | undefined,
@@ -263,6 +279,7 @@ export function isFirstPartyHostOf(
   const h = normalizeHost(host);
   if (!h) return false;
   if (isUntrustedContentDomainHost(h)) return false;
+  if (isLeoDevCapabilityHost(h)) return true;
   return familyForHost(h) === (family ?? DEFAULT_DOMAIN_FAMILY);
 }
 
@@ -296,9 +313,35 @@ export function currentDomainFamily(): DomainFamily {
   return DEFAULT_DOMAIN_FAMILY;
 }
 
+/**
+ * Build-time / slot gateway overlay. Empty or invalid → no overlay (production
+ * `.com` / `.cn` rows stay the frozen table). Never accepts the user-content
+ * registrable domains.
+ */
+function configuredGatewayOrigin(): string | undefined {
+  const raw = (
+    process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
+    process.env.NEXT_PUBLIC_GATEWAY_URL ||
+    ""
+  ).trim();
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return undefined;
+    if (url.username || url.password) return undefined;
+    if (isUntrustedContentDomainHost(url.hostname)) return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 当前家族的档案。运行时 URL（网关、素材、门户链接）从这里取。 */
 export function currentDomainProfile(): DomainFamilyProfile {
-  return domainFamilyProfile(currentDomainFamily());
+  const base = domainFamilyProfile(currentDomainFamily());
+  const gatewayOrigin = configuredGatewayOrigin();
+  if (!gatewayOrigin || gatewayOrigin === base.gatewayOrigin) return base;
+  return { ...base, gatewayOrigin };
 }
 
 /**

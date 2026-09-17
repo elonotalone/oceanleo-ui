@@ -63,7 +63,8 @@ import { currentDomainProfile } from "../contracts/domain-family";
 // `.cn` 站解析成 https://api.oceanleo.cn —— 境内页面不会把请求发到境外网关。
 const GATEWAY_BASE =
   (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_GATEWAY_URL ||
+    (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
+      process.env.NEXT_PUBLIC_GATEWAY_URL ||
       process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY)) ||
   currentDomainProfile().gatewayOrigin;
 

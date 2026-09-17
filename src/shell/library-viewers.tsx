@@ -94,6 +94,8 @@ function extension(url?: string): string {
 const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = [
   "api.oceanleo.com",
   "api.oceanleo.cn",
+  "api.dev.oceanleo.com",
+  "api-cn.dev.oceanleo.com",
 ];
 const PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS: readonly string[] = [
   "oceanleo.app",

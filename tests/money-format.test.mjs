@@ -106,7 +106,10 @@ test("记住的账本货币：默认 CNY，网关说了才变，变了才通知�
 
 const account = await import(
   await compileModule("src/lib/auth/account.ts", {
-    "./client": dataModule(`export async function accessToken() { return "test-token"; }`),
+    "./client": dataModule(`
+      export async function accessToken() { return "test-token"; }
+      export function announcePhoneRequired() {}
+    `),
   })
 );
 

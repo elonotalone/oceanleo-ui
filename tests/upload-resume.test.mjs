@@ -43,6 +43,14 @@ const STUBS = {
     export function normalizeCnPhone(raw){ return String(raw); }
     export async function sendPhoneOtp(){ return {}; }
     export async function verifyPhoneOtp(){ return {}; }
+    export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+    export const PHONE_REQUIRED_EVENT = "oceanleo:phone-required";
+    export function announcePhoneRequired(){}
+    export function cnPhoneIsBound(){ return false; }
+    export function maskCnPhone(){ return "****"; }
+    export async function getAuthPhoneUser(){ return { user: null }; }
+    export async function requestPhoneChange(){ return {}; }
+    export async function verifyPhoneChange(){ return {}; }
     export async function wechatLoginUrl(){ return {}; }
     export async function startOauthSignIn(){ return {}; }
     export const PASSWORD_RESET_PATH = "/account?reset=1";
