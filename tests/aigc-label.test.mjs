@@ -54,6 +54,11 @@ function resetSwitch() {
   setHost("agent.oceanleo.com");
 }
 
+test("显式标识文案含生成提示与仅供参考", () => {
+  assert.equal(AIGC_LABEL_TEXT, "AI生成，内容仅供参考");
+  assert.equal(AIGC_TEXT_NOTICE, "本内容由人工智能生成，仅供参考");
+});
+
 resetSwitch();
 
 const uiStub = dataModule(`

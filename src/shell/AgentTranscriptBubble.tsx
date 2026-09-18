@@ -187,7 +187,7 @@ function MessageActions({
     <div className="mt-1 flex items-center gap-0.5">
       <span
         data-testid="aigc-label"
-        className="text-[11px] rounded px-1.5 py-0.5 border border-stone-200 text-stone-500"
+        className="text-[11px] rounded px-1.5 py-0.5 border border-stone-200 text-stone-500 whitespace-nowrap shrink-0"
       >
         {AIGC_LABEL_TEXT}
       </span>

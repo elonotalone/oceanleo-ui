@@ -6,10 +6,10 @@
 import { currentDomainFamily } from "./domain-family";
 
 /** 画面/界面上的显式标识文字。 */
-export const AIGC_LABEL_TEXT = "AI生成";
+export const AIGC_LABEL_TEXT = "AI生成，内容仅供参考";
 
 /** 复制/导出文本时写在起始处的提示语。 */
-export const AIGC_TEXT_NOTICE = "本内容由人工智能生成";
+export const AIGC_TEXT_NOTICE = "本内容由人工智能生成，仅供参考";
 
 /** 服务提供者名称或编码（统一社会信用代码写在名称后）。 */
 export const AIGC_SERVICE_PROVIDER =
