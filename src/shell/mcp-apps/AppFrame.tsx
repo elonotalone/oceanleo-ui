@@ -12,7 +12,7 @@
 //     → 渲染 `toolResult` 的纯文本（`plainTextOfToolResult`），不白屏、不弹窗。
 //     **本轮白名单为空**，所以这一层今天恒走纯文本；那是设计好的默认。
 //
-//  2. **沙箱**：iframe 写**字面** `sandbox="allow-scripts allow-forms"`
+//  2. **沙箱**：iframe 的 sandbox 属性写**字面串** allow-scripts allow-forms
 //     （= `MCP_APP_FRAME_SANDBOX`，由测试锁两者相等）。没有 `allow-same-origin`
 //     ⇒ frame 是 opaque origin ⇒ 拿不到家族 cookie，也不能被宿主用具体
 //     targetOrigin 投消息。扫描器规则要求字面串而不是变量（计算值会记

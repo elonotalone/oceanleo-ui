@@ -475,6 +475,7 @@ export function buildAppFrameCsp(csp?: AppUiMeta["csp"]): string {
 
 /** `tools/call` 结果压成一段纯文本——降级路径与「没有界面」的工具走同一条。 */
 export function plainTextOfToolResult(result: unknown): string {
+  if (result === undefined || result === null) return "";
   const record = recordValue(result);
   const content = record ? record.content : undefined;
   if (Array.isArray(content)) {
