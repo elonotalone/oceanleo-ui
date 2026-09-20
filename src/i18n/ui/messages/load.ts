@@ -46,6 +46,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-09-14 W4：auth-captcha 两边同时加。
   // 2026-09-14 W4：byok-reauth（W5 申请的两条）两边同时加。
   // 2026-09-14 W8：国内版绑手机文案两边同时加。
+  // 2026-09-20 W19：企业版 + MCP 能力面文案两边同时加。
   const [
     base,
     recent,
@@ -60,6 +61,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     byok,
     authCaptcha,
     byokReauth,
+    enterprise,
     phoneBind,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
@@ -75,6 +77,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./byok-copy"),
     import("./auth-captcha-copy"),
     import("./byok-reauth-copy"),
+    import("./enterprise-copy"),
     import("./phone-bind-copy"),
   ]);
   return {
@@ -92,6 +95,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...byok.BYOK_COPY_MESSAGES[locale],
     ...authCaptcha.AUTH_CAPTCHA_MESSAGES[locale],
     ...byokReauth.BYOK_REAUTH_MESSAGES[locale],
+    ...enterprise.ENTERPRISE_COPY_MESSAGES[locale],
     ...phoneBind.PHONE_BIND_MESSAGES[locale],
   };
 };

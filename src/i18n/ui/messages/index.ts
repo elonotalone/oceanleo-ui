@@ -33,6 +33,7 @@ import { ADVANCED_ROUTE_MESSAGES } from "./advanced-route-copy";
 import { BYOK_COPY_MESSAGES } from "./byok-copy";
 import { AUTH_CAPTCHA_MESSAGES } from "./auth-captcha-copy";
 import { BYOK_REAUTH_MESSAGES } from "./byok-reauth-copy";
+import { ENTERPRISE_COPY_MESSAGES } from "./enterprise-copy";
 import { PHONE_BIND_MESSAGES } from "./phone-bind-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
@@ -51,6 +52,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.zh,
     ...AUTH_CAPTCHA_MESSAGES.zh,
     ...BYOK_REAUTH_MESSAGES.zh,
+    ...ENTERPRISE_COPY_MESSAGES.zh,
     ...PHONE_BIND_MESSAGES.zh,
   },
   en: {
@@ -68,6 +70,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.en,
     ...AUTH_CAPTCHA_MESSAGES.en,
     ...BYOK_REAUTH_MESSAGES.en,
+    ...ENTERPRISE_COPY_MESSAGES.en,
     ...PHONE_BIND_MESSAGES.en,
   },
   ja: {
@@ -85,6 +88,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.ja,
     ...AUTH_CAPTCHA_MESSAGES.ja,
     ...BYOK_REAUTH_MESSAGES.ja,
+    ...ENTERPRISE_COPY_MESSAGES.ja,
     ...PHONE_BIND_MESSAGES.ja,
   },
   ko: {
@@ -102,6 +106,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.ko,
     ...AUTH_CAPTCHA_MESSAGES.ko,
     ...BYOK_REAUTH_MESSAGES.ko,
+    ...ENTERPRISE_COPY_MESSAGES.ko,
     ...PHONE_BIND_MESSAGES.ko,
   },
   fr: {
@@ -119,6 +124,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.fr,
     ...AUTH_CAPTCHA_MESSAGES.fr,
     ...BYOK_REAUTH_MESSAGES.fr,
+    ...ENTERPRISE_COPY_MESSAGES.fr,
     ...PHONE_BIND_MESSAGES.fr,
   },
   de: {
@@ -136,6 +142,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.de,
     ...AUTH_CAPTCHA_MESSAGES.de,
     ...BYOK_REAUTH_MESSAGES.de,
+    ...ENTERPRISE_COPY_MESSAGES.de,
     ...PHONE_BIND_MESSAGES.de,
   },
   it: {
@@ -153,6 +160,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.it,
     ...AUTH_CAPTCHA_MESSAGES.it,
     ...BYOK_REAUTH_MESSAGES.it,
+    ...ENTERPRISE_COPY_MESSAGES.it,
     ...PHONE_BIND_MESSAGES.it,
   },
   es: {
@@ -170,6 +178,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.es,
     ...AUTH_CAPTCHA_MESSAGES.es,
     ...BYOK_REAUTH_MESSAGES.es,
+    ...ENTERPRISE_COPY_MESSAGES.es,
     ...PHONE_BIND_MESSAGES.es,
   },
   "es-419": {
@@ -187,6 +196,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES["es-419"],
     ...AUTH_CAPTCHA_MESSAGES["es-419"],
     ...BYOK_REAUTH_MESSAGES["es-419"],
+    ...ENTERPRISE_COPY_MESSAGES["es-419"],
     ...PHONE_BIND_MESSAGES["es-419"],
   },
   "pt-BR": {
@@ -204,6 +214,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES["pt-BR"],
     ...AUTH_CAPTCHA_MESSAGES["pt-BR"],
     ...BYOK_REAUTH_MESSAGES["pt-BR"],
+    ...ENTERPRISE_COPY_MESSAGES["pt-BR"],
     ...PHONE_BIND_MESSAGES["pt-BR"],
   },
   "pt-PT": {
@@ -221,6 +232,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES["pt-PT"],
     ...AUTH_CAPTCHA_MESSAGES["pt-PT"],
     ...BYOK_REAUTH_MESSAGES["pt-PT"],
+    ...ENTERPRISE_COPY_MESSAGES["pt-PT"],
     ...PHONE_BIND_MESSAGES["pt-PT"],
   },
   vi: {
@@ -238,6 +250,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.vi,
     ...AUTH_CAPTCHA_MESSAGES.vi,
     ...BYOK_REAUTH_MESSAGES.vi,
+    ...ENTERPRISE_COPY_MESSAGES.vi,
     ...PHONE_BIND_MESSAGES.vi,
   },
   tr: {
@@ -255,6 +268,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.tr,
     ...AUTH_CAPTCHA_MESSAGES.tr,
     ...BYOK_REAUTH_MESSAGES.tr,
+    ...ENTERPRISE_COPY_MESSAGES.tr,
     ...PHONE_BIND_MESSAGES.tr,
   },
   "zh-TW": {
@@ -272,6 +286,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES["zh-TW"],
     ...AUTH_CAPTCHA_MESSAGES["zh-TW"],
     ...BYOK_REAUTH_MESSAGES["zh-TW"],
+    ...ENTERPRISE_COPY_MESSAGES["zh-TW"],
     ...PHONE_BIND_MESSAGES["zh-TW"],
   },
   ar: {
@@ -289,6 +304,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.ar,
     ...AUTH_CAPTCHA_MESSAGES.ar,
     ...BYOK_REAUTH_MESSAGES.ar,
+    ...ENTERPRISE_COPY_MESSAGES.ar,
     ...PHONE_BIND_MESSAGES.ar,
   },
   th: {
@@ -306,6 +322,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.th,
     ...AUTH_CAPTCHA_MESSAGES.th,
     ...BYOK_REAUTH_MESSAGES.th,
+    ...ENTERPRISE_COPY_MESSAGES.th,
     ...PHONE_BIND_MESSAGES.th,
   },
   hi: {
@@ -323,6 +340,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_COPY_MESSAGES.hi,
     ...AUTH_CAPTCHA_MESSAGES.hi,
     ...BYOK_REAUTH_MESSAGES.hi,
+    ...ENTERPRISE_COPY_MESSAGES.hi,
     ...PHONE_BIND_MESSAGES.hi,
   },
 };
