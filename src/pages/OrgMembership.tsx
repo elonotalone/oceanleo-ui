@@ -14,11 +14,11 @@
 // 让无组织用户的账户页与今天逐字节一致）、以及组织页（W11 的 OrgPage 可直接嵌）。
 //
 // 取数只走 `../lib/org-api`（W11，全波唯一的 /v1/orgs 出口，`_COMMON §3.8`）。
-// 两处契约还在路上，所以做成**可注入**：
-//   · `loadMyUsage`   —— 默认调 `getMyOrgUsage(orgId)`（A2 裁定；W11 r2 在加）。
-//   · `loadInvitePreview` —— §3.8 还没有邀请码公开预览的导出（已申报父 agent 仲裁）；
-//     默认不预览，申请成功后用 `requestJoin` 回的 `orgName` 补上。
-// 这两个口子只是让「谁先落地」不阻塞谁；填默认实现只需改这一个文件的一处。
+// 两处契约与本文件并行落地，所以做成**可注入**，默认实现都指向 `org-api.ts`：
+//   · `loadMyUsage`       —— 默认调 `getMyOrgUsage(orgId)`（裁定 A2，已在 org-api.ts）。
+//   · `loadInvitePreview` —— 默认调 `getInvitePreview(code)`（裁定 A13，W11 r3 在加）；
+//     还没落地时不预览，申请成功后用 `requestJoin` 回的 `orgName` 补上。
+// 这两个口子只是让「谁先落地」不阻塞谁；测试也靠它们注入替身。
 //
 // 失败只显示 `orgErrorCopy(code)` 的人话；`not_available`（路由还没 include 进来）
 // 显示「还没上线」而不是「你没权限」（`org-api.ts` 纪律 2）。
@@ -165,17 +165,23 @@ export function inviteCodeFromHref(href: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// 默认取数（A2 裁定：`loadMyUsage` 默认调 `getMyOrgUsage`）
+// 默认取数（A2：`loadMyUsage` → `getMyOrgUsage`；A13：`loadInvitePreview` → `getInvitePreview`）
 // ---------------------------------------------------------------------------
 
 /**
- * 用命名空间取而不是具名 import：W11 r2 把 `getMyOrgUsage` 加进 `org-api.ts` 之前，
+ * 两个默认实现都用命名空间取而不是具名 import：W11 把对应导出加进 `org-api.ts` 之前，
  * 具名 import 会让**任何**编到本文件的模块在加载期就 SyntaxError（连账户页一起打哑）；
  * 命名空间取到的是 undefined，这里判一下就走「还没上线」分支。W11 落地后这段判断
- * 永远为假，不需要再改。typecheck 在 W11 落地前会红在这一行，那是等它，不是我这边的错。
+ * 永远为假，不需要再改。经 `unknown` 断言是为了在导出还不存在时也能过 typecheck。
  */
+type OrgApiOptional = Partial<{
+  getMyOrgUsage: (orgId: string) => Promise<MyOrgUsage>;
+  getInvitePreview: (code: string) => Promise<InvitePreview>;
+}>;
+const orgApiOptional = orgApi as unknown as OrgApiOptional;
+
 async function defaultLoadMyUsage(orgId: string): Promise<MyOrgUsage> {
-  const fn = (orgApi as { getMyOrgUsage?: (id: string) => Promise<MyOrgUsage> }).getMyOrgUsage;
+  const fn = orgApiOptional.getMyOrgUsage;
   if (typeof fn !== "function") throw new OrgApiError("not_available", 404);
   const raw = await fn(orgId);
   const monthly = Number(raw?.monthlyMinor);
@@ -186,6 +192,21 @@ async function defaultLoadMyUsage(orgId: string): Promise<MyOrgUsage> {
       cap === null || cap === undefined || !Number.isFinite(Number(cap))
         ? null
         : Math.max(0, Math.floor(Number(cap))),
+  };
+}
+
+/**
+ * 邀请码公开预览（A13：W02 的 `GET /v1/orgs/invites/{code}`，只回组织名与是否需审批）。
+ * 导出还没落地时抛 `not_available`；面板对预览失败的处理是**静默不显示**（申请照常可点），
+ * 所以这一条永远不会挡住申请入组。
+ */
+async function defaultLoadInvitePreview(code: string): Promise<InvitePreview> {
+  const fn = orgApiOptional.getInvitePreview;
+  if (typeof fn !== "function") throw new OrgApiError("not_available", 404);
+  const raw = await fn(code);
+  return {
+    orgName: String(raw?.orgName ?? "").trim(),
+    requireApproval: raw?.requireApproval !== false,
   };
 }
 
@@ -207,7 +228,7 @@ export interface OrgMembershipProps {
   onJoined?: (orgName: string) => void;
   /** 成员自查用量。默认 `getMyOrgUsage(orgId)`（A2）。 */
   loadMyUsage?: (orgId: string) => Promise<MyOrgUsage>;
-  /** 邀请码公开预览。默认不预览（契约缺口已申报；填上就在申请前显示组织名）。 */
+  /** 邀请码公开预览。默认 `getInvitePreview(code)`（A13）；申请前显示组织名与是否需审批。 */
   loadInvitePreview?: (code: string) => Promise<InvitePreview>;
   /** 嵌在别的页里时不带整页的大标题。 */
   embedded?: boolean;
@@ -235,7 +256,7 @@ export function OrgMembership({
   onVisibilityChange,
   onJoined,
   loadMyUsage = defaultLoadMyUsage,
-  loadInvitePreview,
+  loadInvitePreview = defaultLoadInvitePreview,
   embedded = false,
   only,
   className = "",
