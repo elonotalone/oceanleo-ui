@@ -39,6 +39,7 @@ import { ConfirmDialog } from "../ui";
 import { AuthDialog } from "./AuthDialog";
 import { AccountSecurityPage } from "./AccountSecurityPage";
 import { PasswordResetPage } from "./PasswordResetPage";
+import { OrgMembership } from "./OrgMembership";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface AccountMenuItem {
@@ -158,6 +159,20 @@ export function AccountPage({
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [openPanel, setOpenPanel] = useState<AccountMenuItem["expands"]>(undefined);
+  // 企业版成员侧（W13）：此人至少属于一个组织、或手里有一条可申请的邀请码时，菜单里多一条
+  // 「我的组织」指向 /org，菜单下方多一块 <OrgMembership>。两个条件都不满足时面板渲染为
+  // null、这个标记保持 false ——无组织用户的账户页与加这段之前逐字节一致。
+  const [orgVisible, setOrgVisible] = useState(false);
+  const menu: AccountMenuItem[] = orgVisible
+    ? [
+        ...resolvedMenu,
+        {
+          label: tt("我的组织"),
+          href: "/org",
+          desc: tt("你所在的组织、本月在每个组织花了多少、谁看过你的任务"),
+        },
+      ]
+    : resolvedMenu;
 
   useEffect(() => {
     if (!configured) return;
@@ -335,7 +350,7 @@ export function AccountPage({
         </div>
 
         <div className="mt-6 divide-y divide-neutral-100 rounded-xl border border-neutral-200">
-          {resolvedMenu.map((item) => {
+          {menu.map((item) => {
             const body = (
               <>
                 <div>
@@ -385,6 +400,8 @@ export function AccountPage({
             );
           })}
         </div>
+
+        <OrgMembership embedded hideWhenEmpty onVisibilityChange={setOrgVisible} />
 
         {extraSections}
 
