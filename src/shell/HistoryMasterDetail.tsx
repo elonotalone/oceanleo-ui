@@ -58,7 +58,6 @@ import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
 } from "./HistoryRowActions";
-import { PublishToOrgButton } from "./PublishToOrgButton";
 
 export type { RestorableAppSession } from "./history-model";
 
@@ -101,45 +100,50 @@ function pushHistoryPublishItem(
   into.push({ kind, title, url, sourceRef });
 }
 
-function historyPublishItems(
-  loaded:
-    | { kind: "task"; detail: TaskDetail }
-    | { kind: "session"; fallbackTask?: TaskDetail }
-    | { kind: string },
-): HistoryPublishItem[] {
+function historyPublishItems(detail?: TaskDetail): HistoryPublishItem[] {
   const into: HistoryPublishItem[] = [];
   const seen = new Set<string>();
-  const fromTask = (detail?: TaskDetail) => {
-    if (!detail) return;
-    for (const artifact of detail.artifacts || []) {
-      pushHistoryPublishItem(
-        into,
-        seen,
-        artifact.kind || "",
-        artifact.title || "",
-        artifact.url || "",
-        artifact.id,
-      );
-    }
-    for (const message of detail.messages || []) {
-      const artifact = (message as AgentMessage).meta?.artifact;
-      if (!artifact) continue;
-      pushHistoryPublishItem(
-        into,
-        seen,
-        artifact.type || "",
-        artifact.title || "",
-        artifact.url || "",
-        artifact.id || String(message.id),
-      );
-    }
-  };
-  if (loaded.kind === "task") fromTask(loaded.detail);
-  if (loaded.kind === "session") fromTask(loaded.fallbackTask);
+  if (!detail) return into;
+  for (const artifact of detail.artifacts || []) {
+    pushHistoryPublishItem(
+      into,
+      seen,
+      artifact.kind || "",
+      artifact.title || "",
+      artifact.url || "",
+      artifact.id,
+    );
+  }
+  for (const message of detail.messages || []) {
+    const artifact = (message as AgentMessage).meta?.artifact;
+    if (!artifact) continue;
+    pushHistoryPublishItem(
+      into,
+      seen,
+      artifact.type || "",
+      artifact.title || "",
+      artifact.url || "",
+      artifact.id || String(message.id),
+    );
+  }
   return into;
 }
 
 function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) {
+  const [Button, setButton] = useState<
+    ((props: { kind: string; title: string; url: string; sourceRef?: string }) => ReactNode) | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("./PublishToOrgButton").then((mod) => {
+      if (!cancelled) setButton(() => mod.PublishToOrgButton);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (!items.length) return null;
   return (
     <ul
@@ -155,12 +159,14 @@ function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) 
           <span className="min-w-0 truncate text-[12px] text-neutral-700">
             {item.title || item.kind}
           </span>
-          <PublishToOrgButton
-            kind={item.kind}
-            title={item.title}
-            url={item.url}
-            sourceRef={item.sourceRef}
-          />
+          {Button ? (
+            <Button
+              kind={item.kind}
+              title={item.title}
+              url={item.url}
+              sourceRef={item.sourceRef}
+            />
+          ) : null}
         </li>
       ))}
     </ul>
@@ -962,7 +968,13 @@ export function HistoryDetail({
           loaded.fallbackTask?.task.id,
         )
       : null;
-  const publishItems = historyPublishItems(loaded);
+  const publishItems = historyPublishItems(
+    loaded.kind === "task"
+      ? loaded.detail
+      : loaded.kind === "session"
+        ? loaded.fallbackTask
+        : undefined,
+  );
   if (runtimeSession && isRestorableAppSession(runtimeSession)) {
     const currentSession = runtimeSession;
     if (!renderWorkspace) {
