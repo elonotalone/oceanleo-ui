@@ -21,18 +21,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrg, listMyOrgs, type OrgSummary } from "../lib/org-api";
 import { formatMinor } from "../lib/money";
+import {
+  PAYER_LAST_KEY,
+  PERSONAL_PAYER,
+  persistPayerOrgId,
+  persistedPayerOrgId,
+} from "../lib/payer";
 import { IconChevronDown } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
 import { useToast } from "../ui/Toast";
 
-/**
- * 上次选的付费主体。存的是 `org_id`；个人钱包**不写**这个键（直接删掉），
- * 所以「从没选过组织」与「选过组织又切回个人」在下次打开时是同一个结果：个人。
- */
-export const PAYER_LAST_KEY = "oceanleo.payer.last";
-
-/** 个人钱包的哨兵值。空串就是 `org_id` 在网关那边的「个人」含义，不另起一套。 */
-export const PERSONAL_PAYER = "";
+export { PAYER_LAST_KEY, PERSONAL_PAYER };
 
 export interface PayerSelectorProps {
   /** 当前付费主体的 `org_id`；空串 = 个人钱包。 */
@@ -40,27 +39,6 @@ export interface PayerSelectorProps {
   /** 用户改选、或组织失效被强制回落时触发。参数即要随请求发出的 `org_id`。 */
   onChange: (orgId: string) => void;
   className?: string;
-}
-
-function readLastPayer(): string {
-  if (typeof window === "undefined") return PERSONAL_PAYER;
-  try {
-    return window.localStorage.getItem(PAYER_LAST_KEY) || PERSONAL_PAYER;
-  } catch {
-    // 隐私模式 / 第三方 cookie 被禁时 localStorage 会抛。记不住不是错误，
-    // 回落成「这次选个人」即可，不该把输入框连累崩掉。
-    return PERSONAL_PAYER;
-  }
-}
-
-function writeLastPayer(orgId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (orgId) window.localStorage.setItem(PAYER_LAST_KEY, orgId);
-    else window.localStorage.removeItem(PAYER_LAST_KEY);
-  } catch {
-    // 同上：记不住就下次重选，不影响这次派活。
-  }
 }
 
 /**
@@ -114,15 +92,15 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
           tt("之前选的组织已停用，或你已不在该组织里。"),
         );
       }
-      writeLastPayer(PERSONAL_PAYER);
+      persistPayerOrgId(PERSONAL_PAYER);
       onChange(PERSONAL_PAYER);
       return;
     }
 
     if (!value) {
-      const remembered = readLastPayer();
+      const remembered = persistedPayerOrgId();
       if (remembered && known.has(remembered)) onChange(remembered);
-      else if (remembered) writeLastPayer(PERSONAL_PAYER); // 记的那个已失效，别留着下次再弹
+      else if (remembered) persistPayerOrgId(PERSONAL_PAYER); // 记的那个已失效，别留着下次再弹
     }
     // `toast` / `tt` 是稳定引用（模块级 store / context），不进依赖表以免每次渲染重跑。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,7 +132,7 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
 
   const handleChange = useCallback(
     (next: string) => {
-      writeLastPayer(next);
+      persistPayerOrgId(next);
       onChange(next);
     },
     [onChange],
