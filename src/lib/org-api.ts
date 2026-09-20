@@ -728,3 +728,165 @@ export async function getOrgUsage(orgId: string, days: number): Promise<unknown>
   });
   return usage;
 }
+
+// ---------------------------------------------------------------------------
+// 5 成员自查（裁定 A2，W04 的 `GET /v1/orgs/{org}/caps/me`）
+// ---------------------------------------------------------------------------
+
+/**
+ * 「我这个月在这家公司花了多少、我的上限是多少」（任何活跃成员可读）。
+ *
+ * 这一条与 `listMembers()` 是两个面：那条是管理员面（普通成员会 403），这条是
+ * 成员自己的。W13 的 `OrgMembership` 默认 `loadMyUsage` 就是它。
+ * `capMinor === null` = 没设上限（不是 0）。
+ */
+export async function getMyOrgUsage(
+  orgId: string,
+): Promise<{ monthlyMinor: number; capMinor: number | null }> {
+  if (!orgId) throw new OrgApiError("not_found", 404);
+  const row = record(await must<unknown>(orgPath(orgId, "/caps/me")));
+  return {
+    monthlyMinor: num(
+      firstPresent(row.monthly_minor, row.monthlyMinor, row.spent_minor, row.month_minor, row.spent),
+      0,
+    ),
+    capMinor: minorOrNull(firstPresent(row.cap_minor, row.capMinor, row.monthly_cap_minor, row.cap)),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 6 组织级 MCP 连接（裁定 A3，W08 的 `ent_org_mcp_router.py`）
+// ---------------------------------------------------------------------------
+
+/**
+ * 一条组织级 MCP 连接（无密文 —— 凭据只在网关里，前端永远拿不到）。
+ * 字段名与 W15 已落的 `PluginsPage.tsx` 那份归一化一致，换成 import 时渲染层不动。
+ */
+export interface OrgMcpConnectionRow {
+  orgId: string;
+  orgName: string;
+  connectorId: string;
+  label: string;
+  icon: string;
+  toolsCount: number;
+  enabled: boolean;
+  /** 管理员可以把一条连接对普通成员隐藏；成员视角拿到的永远是 true。 */
+  memberVisible: boolean;
+}
+
+/** 网关的 `{connections:[...]}` → 行。认不出 `connector_id` 的条目直接丢，不抛。 */
+export function normalizeOrgMcpConnectionRows(
+  value: unknown,
+  fallback: { orgId?: string; orgName?: string } = {},
+): OrgMcpConnectionRow[] {
+  const rows: OrgMcpConnectionRow[] = [];
+  for (const raw of rowsOf(value, "connections")) {
+    const row = record(raw);
+    const connectorId = str(firstPresent(row.connector_id, row.connectorId, row.id));
+    if (!connectorId) continue;
+    rows.push({
+      orgId: str(firstPresent(row.org_id, row.orgId)) || fallback.orgId || "",
+      orgName: str(firstPresent(row.org_name, row.orgName)) || fallback.orgName || "",
+      connectorId,
+      label: str(firstPresent(row.label, row.name)) || connectorId,
+      icon: str(row.icon) || "🔌",
+      toolsCount: num(firstPresent(row.tools_count, row.toolsCount), 0),
+      enabled: row.enabled !== false,
+      memberVisible: firstPresent(row.member_visible, row.memberVisible) !== false,
+    });
+  }
+  return rows;
+}
+
+/**
+ * 我从所在公司继承到的连接（`GET /v1/orgs/mcp/available`，可能来自多家公司，每行带
+ * `orgId`）。插件页据此显示「由公司提供，无需填 key」。
+ */
+export async function listInheritedMcp(): Promise<OrgMcpConnectionRow[]> {
+  return normalizeOrgMcpConnectionRows(await must<unknown>("/v1/orgs/mcp/available"));
+}
+
+/**
+ * 一家公司连过的服务器（`GET /v1/orgs/{org}/mcp/connections`）。管理员看全部；
+ * 能看组织页的普通成员只看到 `member_visible` 的那几台（过滤在网关做）。
+ */
+export async function listOrgMcpConnections(orgId: string): Promise<OrgMcpConnectionRow[]> {
+  if (!orgId) throw new OrgApiError("not_found", 404);
+  return normalizeOrgMcpConnectionRows(await must<unknown>(orgPath(orgId, "/mcp/connections")), {
+    orgId,
+  });
+}
+
+/** `POST /v1/orgs/{org}/mcp/connections` 的 body（W08 的 `OrgConnectBody`）。 */
+export interface OrgMcpConnectBody {
+  connectorId: string;
+  token?: string;
+  endpoint?: string;
+  label?: string;
+  memberVisible?: boolean;
+}
+
+/**
+ * 为组织连一台 MCP 服务器（网关先 `tools/list` 探测一次，通了才落库）。
+ * 返回落库后的那一行 + 探测到的工具数。需要 `manage_members`。
+ */
+export async function upsertOrgMcpConnection(
+  orgId: string,
+  body: OrgMcpConnectBody,
+): Promise<{ connection: OrgMcpConnectionRow | null; toolsCount: number }> {
+  if (!orgId) throw new OrgApiError("not_found", 404);
+  const connectorId = str(body.connectorId).trim();
+  if (!connectorId) throw new OrgApiError("unknown", 400);
+  const data = record(
+    await must<unknown>(
+      orgPath(orgId, "/mcp/connections"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          connector_id: connectorId,
+          token: str(body.token).trim(),
+          endpoint: str(body.endpoint).trim(),
+          label: str(body.label).trim() || connectorId,
+          member_visible: body.memberVisible !== false,
+        }),
+      },
+      "not_available",
+    ),
+  );
+  const [connection = null] = normalizeOrgMcpConnectionRows(
+    data.connection ? [data.connection] : [],
+    { orgId },
+  );
+  return { connection, toolsCount: num(data.tools_count, connection?.toolsCount ?? 0) };
+}
+
+/**
+ * 停用 / 启用，或改「普通成员能不能用」（`PATCH …/mcp/connections/{connector}`）。
+ * 两个都没给时网关回 400，这里先本地挡下，不发一次注定失败的往返。
+ */
+export async function patchOrgMcpConnection(
+  orgId: string,
+  connectorId: string,
+  patch: { enabled?: boolean; memberVisible?: boolean },
+): Promise<void> {
+  if (!orgId || !connectorId) throw new OrgApiError("not_found", 404);
+  const body: Record<string, boolean> = {};
+  if (typeof patch.enabled === "boolean") body.enabled = patch.enabled;
+  if (typeof patch.memberVisible === "boolean") body.member_visible = patch.memberVisible;
+  if (!Object.keys(body).length) return;
+  await must<unknown>(
+    orgPath(orgId, `/mcp/connections/${encodeURIComponent(connectorId)}`),
+    { method: "PATCH", body: JSON.stringify(body) },
+    "not_found",
+  );
+}
+
+/** 断开（`DELETE …/mcp/connections/{connector}`）。密文行一并删掉。 */
+export async function deleteOrgMcpConnection(orgId: string, connectorId: string): Promise<void> {
+  if (!orgId || !connectorId) throw new OrgApiError("not_found", 404);
+  await must<unknown>(
+    orgPath(orgId, `/mcp/connections/${encodeURIComponent(connectorId)}`),
+    { method: "DELETE" },
+    "not_found",
+  );
+}
