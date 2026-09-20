@@ -171,8 +171,13 @@ export function gatewayTransport(deps: {
   async function request(path: string, init?: { method?: string; body?: unknown }): Promise<unknown> {
     if (!doFetch) throw new Error("fetch unavailable");
     const bearer = await token();
-    const headers: Record<string, string> = { accept: "application/json" };
-    if (bearer) headers.authorization = `Bearer ${bearer}`;
+    // 没登录就不打：MCP 连接是按人的，网关对匿名请求只会回 401。这也让没配
+    // Supabase 的环境（测试台、静态构建）一次网络请求都不发。
+    if (!bearer) throw new Error("signed_out");
+    const headers: Record<string, string> = {
+      accept: "application/json",
+      authorization: `Bearer ${bearer}`,
+    };
     if (init?.body !== undefined) headers["content-type"] = "application/json";
     const res = await doFetch(`${baseUrl}${path}`, {
       method: init?.method ?? "GET",
