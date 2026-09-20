@@ -68,6 +68,13 @@ export const UI_METHODS = Object.freeze({
   UPDATE_MODEL_CONTEXT: "ui/update-model-context",
   /** app → host（notification）：界面想要的尺寸。 */
   SIZE_CHANGED: "ui/notifications/size-changed",
+  /**
+   * host → sandbox-proxy（notification，**本宿主私有**，不在 MCP Apps 规范里）：
+   * 端口握手之后宿主把 `ui://` HTML 与算好的 CSP 交给 `oceanleo.app` 上的
+   * proxy 页，proxy 再用 `srcdoc` + `MCP_APP_FRAME_SANDBOX` 装它。proxy 页
+   * 自己是 opaque origin、没有任何凭据，HTML 只能由宿主经端口递进去。
+   */
+  SANDBOX_LOAD: "ui/notifications/sandbox-load",
 } as const);
 
 /**
@@ -87,6 +94,7 @@ export const APP_TO_HOST_METHODS: ReadonlySet<string> = new Set<string>([
 export const HOST_TO_APP_METHODS: ReadonlySet<string> = new Set<string>([
   UI_METHODS.TOOL_INPUT,
   UI_METHODS.TOOL_RESULT,
+  UI_METHODS.SANDBOX_LOAD,
 ]);
 
 // ── 沙箱 ─────────────────────────────────────────────────────────────────────
@@ -349,6 +357,32 @@ export function hostNotification(
   if (!HOST_TO_APP_METHODS.has(method)) return null;
   const message: JsonRpcNotification = { jsonrpc: "2.0", method, params };
   return withinBudget(message) ? message : null;
+}
+
+/** `ui://` HTML 的体积上限。一段聊天框下的界面不该有 1 MB。 */
+export const MAX_APP_HTML_BYTES = 1_000_000;
+
+/**
+ * 握手后宿主递给 proxy 的那一条：HTML + 已算好的 CSP 串 + 资源 uri。
+ * 不走 `hostNotification()` 的 200 KB 消息预算（HTML 单独按 `MAX_APP_HTML_BYTES`
+ * 卡），但方法名同样必须在 `HOST_TO_APP_METHODS` 里。CSP 必须由
+ * `buildAppFrameCsp()` 算出来再传进来：这里不接受任意串，形状对不上就拒。
+ */
+export function sandboxLoadNotification(input: {
+  html: string;
+  csp: string;
+  resourceUri: string;
+}): JsonRpcNotification | null {
+  if (typeof input.html !== "string" || !input.html || input.html.length > MAX_APP_HTML_BYTES) {
+    return null;
+  }
+  if (!isUiResourceUri(input.resourceUri)) return null;
+  if (typeof input.csp !== "string" || !input.csp.startsWith("default-src 'none'")) return null;
+  return {
+    jsonrpc: "2.0",
+    method: UI_METHODS.SANDBOX_LOAD,
+    params: { html: input.html, csp: input.csp, resourceUri: input.resourceUri },
+  };
 }
 
 // ── 资源与 CSP ───────────────────────────────────────────────────────────────
