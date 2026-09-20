@@ -2323,6 +2323,12 @@
         },
         {
           "kind": "named",
+          "name": "ENTERPRISE_AGREEMENT_SECTIONS",
+          "importedName": "ENTERPRISE_AGREEMENT_SECTIONS",
+          "source": "./OrgAgreement"
+        },
+        {
+          "kind": "named",
           "name": "forgetInviteCode",
           "importedName": "forgetInviteCode",
           "source": "./OrgMembership"
@@ -2410,6 +2416,24 @@
           "name": "ORG_JOIN_DISCLOSURE",
           "importedName": "ORG_JOIN_DISCLOSURE",
           "source": "./OrgMembership"
+        },
+        {
+          "kind": "named",
+          "name": "OrgAgreement",
+          "importedName": "OrgAgreement",
+          "source": "./OrgAgreement"
+        },
+        {
+          "kind": "named",
+          "name": "OrgAgreementProps",
+          "importedName": "OrgAgreementProps",
+          "source": "./OrgAgreement"
+        },
+        {
+          "kind": "named",
+          "name": "OrgAgreementSection",
+          "importedName": "OrgAgreementSection",
+          "source": "./OrgAgreement"
         },
         {
           "kind": "named",

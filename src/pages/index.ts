@@ -55,3 +55,5 @@ export {
   forgetInviteCode,
 } from "./OrgMembership";
 export type { OrgMembershipProps, MyOrgUsage, InvitePreview, JoinState } from "./OrgMembership";
+export { OrgAgreement, ENTERPRISE_AGREEMENT_SECTIONS } from "./OrgAgreement";
+export type { OrgAgreementProps, OrgAgreementSection } from "./OrgAgreement";
