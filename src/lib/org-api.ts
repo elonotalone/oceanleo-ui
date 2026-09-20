@@ -601,12 +601,60 @@ export function inviteUrlFor(code: string): string {
 }
 
 /**
+ * 邀请码公开预览（`GET /v1/orgs/invites/{code}`，W02；裁定 A13）。
+ *
+ * 员工点开链接、还没决定申请之前，先看到「这是哪家公司、进去要不要审批」。
+ * 链接不能用时网关按原因回 404 / 410 / 409（`detail.code` 是
+ * `invite_not_found` / `invite_expired` / `invite_revoked` / `invite_exhausted` /
+ * `org_suspended`），这里原样抛 `OrgApiError`，`status` 保真，W13 的
+ * `joinOutcomeOf()` 按 HTTP 语义映射成五种入组状态。
+ *
+ * 网关这条路允许未登录读；但 `call()` 没 token 会先回 `signed_out`，所以这里**不经过**
+ * `call()` 的 token 前置判断 —— 未登录的员工也应看到组织名，然后再去登录。
+ */
+export async function getInvitePreview(
+  code: string,
+): Promise<{ orgName: string; requireApproval: boolean }> {
+  const trimmed = str(code).trim();
+  if (!trimmed) throw new OrgApiError("not_found", 404);
+  const token = await accessToken();
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_BASE}/v1/orgs/invites/${encodeURIComponent(trimmed)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+      credentials: "include",
+    });
+  } catch {
+    throw new OrgApiError("offline", 0);
+  }
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    /* 非 JSON：按状态码分流 */
+  }
+  if (!res.ok) throw new OrgApiError(codeForStatus(res.status, "not_found"), res.status);
+  const row = record(body);
+  return {
+    orgName: str(firstPresent(row.orgName, row.org_name, row.name)),
+    // 网关没说就按「需审批」算：宁可多提示一句「需负责人通过」，不许把要审批的说成立即加入。
+    requireApproval: firstPresent(row.requireApproval, row.require_approval) !== false,
+  };
+}
+
+/** `requestJoin()` 回的三档（裁定 A13：`rejected` 透传给 W13 的五态映射）。 */
+export type OrgJoinStatus = "pending" | "joined" | "rejected";
+
+/**
  * 拿邀请码申请入组（`POST /v1/orgs/invites/{code}:request`）。
- * 组织的 `require_approval = false` 时后端直接放人进去，于是 status 是 `joined`。
+ * 组织的 `require_approval = false` 时后端直接放人进去，于是 status 是 `joined`；
+ * 已经在组织里的人后端也回 `joined`。负责人驳回过、且组织不许再申请时后端回
+ * `rejected`（或 HTTP 403 —— 那条路走抛，`status` 保真给 `joinOutcomeOf()`）。
  */
 export async function requestJoin(
   code: string,
-): Promise<{ status: "pending" | "joined"; orgName: string }> {
+): Promise<{ status: OrgJoinStatus; orgName: string }> {
   if (!code) throw new OrgApiError("not_found", 404);
   const data = await must<unknown>(
     `/v1/orgs/invites/${encodeURIComponent(code)}:request`,
@@ -615,8 +663,11 @@ export async function requestJoin(
   );
   const row = record(data);
   const status = str(firstPresent(row.status, row.state)).toLowerCase();
+  let normalized: OrgJoinStatus = "pending";
+  if (status === "joined" || status === "approved" || status === "active") normalized = "joined";
+  else if (status === "rejected" || status === "denied" || status === "declined") normalized = "rejected";
   return {
-    status: status === "joined" || status === "approved" || status === "active" ? "joined" : "pending",
+    status: normalized,
     orgName: str(firstPresent(row.org_name, row.orgName, row.name)),
   };
 }
