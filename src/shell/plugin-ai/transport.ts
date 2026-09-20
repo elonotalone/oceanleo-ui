@@ -29,6 +29,7 @@
 
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
+import { payerRequestFields } from "../../lib/payer";
 import {
   decodeChatFrame,
   isSseError,
@@ -542,6 +543,7 @@ function buildGatewayChatBody(
       ? {}
       : { temperature: input.temperature }),
     ...(modelOf(context) ? { model: modelOf(context) } : {}),
+    ...payerRequestFields(),
   };
 }
 
@@ -643,7 +645,18 @@ export function createGatewayAiTransport(
         },
         ...(call_.body === undefined
           ? {}
-          : { body: JSON.stringify(call_.body) }),
+          : {
+              body: JSON.stringify(
+                call_.body &&
+                  typeof call_.body === "object" &&
+                  !Array.isArray(call_.body)
+                  ? {
+                      ...(call_.body as Record<string, unknown>),
+                      ...payerRequestFields(),
+                    }
+                  : call_.body,
+              ),
+            }),
         cache: "no-store",
         signal: context.signal,
         credentials: "include",

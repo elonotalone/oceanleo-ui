@@ -10,6 +10,7 @@
 
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
+import { payerRequestFields } from "../../lib/payer";
 import {
   timelineRenderRequestBody,
   type TimelineRenderRequest,
@@ -57,7 +58,10 @@ export async function submitRenderJob(
     res = await fetch(`${GATEWAY_BASE}/v1/video/render-timeline`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(timelineRenderRequestBody(payload, requestId)),
+      body: JSON.stringify({
+        ...timelineRenderRequestBody(payload, requestId),
+        ...payerRequestFields(),
+      }),
       cache: "no-store",
       signal,
       credentials: "include",

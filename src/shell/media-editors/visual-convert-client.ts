@@ -11,6 +11,7 @@
 
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
+import { payerRequestFields } from "../../lib/payer";
 import {
   DEFAULT_LOSSY_QUALITY,
   clampLossyQuality,
@@ -66,7 +67,10 @@ async function postConvert(
   if (!token) throw new Error("请先登录再做格式转换。");
   const body = new FormData();
   body.append("file", file, fileName);
-  for (const [key, value] of Object.entries(fields)) body.append(key, value);
+  for (const [key, value] of Object.entries({
+    ...fields,
+    ...payerRequestFields(),
+  })) body.append(key, value);
   let response: Response;
   try {
     response = await fetch(`${GATEWAY_BASE}${path}`, {

@@ -15,6 +15,7 @@
 
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
+import { payerRequestFields } from "../lib/payer";
 import { isHumanReadableMessage } from "./human-error-message";
 
 /** 后端既有的三个转换端点（合同 §1）。前端不新增端点。 */
@@ -182,6 +183,7 @@ async function convertViaBackend(
   const form = new FormData();
   form.append("file", file, file.name || `file.${extension}`);
   form.append("target", rule.to);
+  form.append("org_id", payerRequestFields().org_id);
   if (rule.endpoint === "image" && typeof rule.quality === "number") {
     form.append("quality", String(Math.round(rule.quality)));
   }

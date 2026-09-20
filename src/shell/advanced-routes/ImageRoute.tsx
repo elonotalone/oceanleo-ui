@@ -46,6 +46,7 @@ import {
 } from "../../lib/image-ai-edit";
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
+import { payerRequestFields } from "../../lib/payer";
 import { FabricImageStage } from "../image-editor/FabricImageStage";
 import { useFabricImageEditor } from "../image-editor/use-fabric-image-editor";
 import { editorToolLabel } from "../workbench-routes";
@@ -253,6 +254,7 @@ export function ImageRoute({
           site_id: siteId || "image",
           image_url: input.sourceUrl,
           key_mode: "platform",
+          ...payerRequestFields(),
         }),
         cache: "no-store",
         signal: input.signal,

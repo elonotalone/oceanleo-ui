@@ -12,6 +12,7 @@
 
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
+import { payerRequestFields } from "../../lib/payer";
 
 export const OFFICE_CONVERT_PATH = "/v1/convert/office";
 
@@ -80,6 +81,7 @@ export async function convertOfficeBlob(
   const form = new FormData();
   form.append("file", input, fileName);
   form.append("target", target);
+  form.append("org_id", payerRequestFields().org_id);
   let response: Response;
   try {
     response = await fetch(`${GATEWAY_BASE}${OFFICE_CONVERT_PATH}`, {

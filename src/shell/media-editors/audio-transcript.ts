@@ -4,6 +4,7 @@
  * 真转写走既有网关 `POST /v1/audio/asr`（key 在服务端 resolve_key 现取现用）。
  * 本模块不读、不写、不缓存任何 API key。
  */
+import { payerRequestFields } from "../../lib/payer";
 import { keepWindowsAfterCut } from "./audio-playlist-engine";
 
 export interface AudioTranscriptSentence {
@@ -143,6 +144,7 @@ export async function submitBailianAsr(
       site_id: input.siteId || "",
       file_urls: urls.slice(0, 5),
       key_mode: "platform",
+      ...payerRequestFields(),
     }),
   );
   const taskId = String(data?.task_id || "").trim();
