@@ -64,6 +64,83 @@ function endpointOf(provider: KeyProvider | undefined): string {
   return KNOWN_BASE_URL[provider.id] || "";
 }
 
+// ---------------------------------------------------------------------------
+// Cursor（编码 agent）—— 不是聊天厂商，走自己的 /v1/cursor 端点（W17）
+// ---------------------------------------------------------------------------
+// key 与其它厂商一样只进这台设备的密封 cookie；写入口是 PUT /v1/cursor/key
+// （/v1/byok/cursor 故意不收，因为 cursor 不是聊天模型厂商），撤销复用
+// DELETE /v1/byok/cursor（下面表格的「删除」）。运行时的选择只留在组件 state：
+// 这一页的规矩是不往任何浏览器存储写东西。
+// `../lib/auth` 与 `../lib/auth/client` 在既有测试里被替身成极少几个导出，
+// 所以这里的网关请求用运行时 import() 取 accessToken / GATEWAY_BASE，不加静态命名导入。
+const CURSOR_PROVIDER = "cursor";
+const CURSOR_KEY_PREFIX = "crsr_";
+type CursorRuntime = "cloud" | "local";
+
+type CursorResult<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+  status?: number;
+  code?: string;
+};
+
+async function cursorRequest<T>(path: string, init?: RequestInit): Promise<CursorResult<T>> {
+  let token: string | null = null;
+  let base = "";
+  try {
+    const client = await import("../lib/auth/client");
+    const config = await import("../lib/auth/config");
+    token = typeof client.accessToken === "function" ? await client.accessToken() : null;
+    base = typeof config.GATEWAY_BASE === "string" ? config.GATEWAY_BASE : "";
+  } catch {
+    return { ok: false, error: "未登录", status: 401 };
+  }
+  if (!token) return { ok: false, error: "未登录", status: 401 };
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.headers || {}),
+        Authorization: `Bearer ${token}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+      cache: "no-store",
+      credentials: "include",
+    });
+  } catch {
+    return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
+  }
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* non-JSON */
+  }
+  if (!res.ok) {
+    const detail = (data as { detail?: unknown } | null)?.detail;
+    if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+      const rec = detail as { code?: unknown; message?: unknown };
+      return {
+        ok: false,
+        status: res.status,
+        code: typeof rec.code === "string" ? rec.code : undefined,
+        error:
+          typeof rec.message === "string" && rec.message.trim()
+            ? rec.message
+            : `HTTP ${res.status}`,
+      };
+    }
+    return {
+      ok: false,
+      status: res.status,
+      error: typeof detail === "string" && detail ? detail : `HTTP ${res.status}`,
+    };
+  }
+  return { ok: true, data: data as T };
+}
+
 export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   const tt = useUI();
   const [status, setStatus] = useState<ByokStatus | null>(null);
@@ -75,6 +152,17 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   const [error, setError] = useState("");
   const [authDenied, setAuthDenied] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
+
+  // Cursor 段（独立于上面的聊天厂商表单）
+  const [cursorKey, setCursorKey] = useState("");
+  const [cursorBusy, setCursorBusy] = useState(false);
+  const [cursorError, setCursorError] = useState("");
+  const [cursorReauth, setCursorReauth] = useState(false);
+  const [cursorVerified, setCursorVerified] = useState<{ name: string; email: string } | null>(
+    null,
+  );
+  const [cursorRuntime, setCursorRuntime] = useState<CursorRuntime>("cloud");
+  const cursorSaved = !!status?.providers?.some((row) => row.provider === CURSOR_PROVIDER);
 
   const selected = useMemo(
     () => providers.find((provider) => provider.id === form.provider),
@@ -218,9 +306,87 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     if (result.ok) {
       if (result.data) setStatus(result.data);
       else await refreshStatus();
+      if (provider === CURSOR_PROVIDER) {
+        setCursorVerified(null);
+        setCursorError("");
+      }
       return;
     }
     setError(result.error || tt("添加失败"));
+  }
+
+  // --- Cursor ---------------------------------------------------------------
+  function cursorFailureText(result: CursorResult<unknown>): string {
+    switch (result.code) {
+      case "invalid_key":
+        return tt("Cursor 拒绝了这把 key（无效或已撤销），请重新生成后再保存。");
+      case "github_not_connected":
+        return tt("你的 Cursor 账号还没有连通 GitHub：请在 Cursor Dashboard → Integrations 里连接后重试。");
+      case "quota":
+        return tt("Cursor 额度或频率受限，请稍后再试。");
+      case "timeout":
+        return tt("连接 Cursor 超时，请稍后再试。");
+      case "cursor_key_invalid":
+        return result.error || tt("这不是 Cursor 的 API Key（应以 crsr_ 开头）。");
+      default:
+        return result.error || tt("操作失败");
+    }
+  }
+
+  async function onCursorVerify(): Promise<boolean> {
+    const result = await cursorRequest<{ ok: boolean; name: string; email: string }>(
+      "/v1/cursor/verify",
+      { method: "POST" },
+    );
+    if (!result.ok) {
+      setCursorVerified(null);
+      setCursorError(cursorFailureText(result));
+      return false;
+    }
+    setCursorVerified({ name: result.data?.name || "", email: result.data?.email || "" });
+    return true;
+  }
+
+  async function onCursorSave() {
+    setCursorError("");
+    setCursorReauth(false);
+    const key = cursorKey.trim();
+    if (!key) {
+      setCursorError(tt("请填入 Cursor API key"));
+      return;
+    }
+    if (!key.startsWith(CURSOR_KEY_PREFIX)) {
+      setCursorError(tt("这不是 Cursor 的 API Key（应以 crsr_ 开头）。"));
+      return;
+    }
+    setCursorBusy(true);
+    const put = await cursorRequest<ByokStatus>("/v1/cursor/key", {
+      method: "PUT",
+      body: JSON.stringify({ api_key: key }),
+    });
+    if (!put.ok) {
+      setCursorBusy(false);
+      if (put.status === 403 && put.code === "reauth_required") {
+        setCursorReauth(true);
+        setCursorError(put.error || "为了保护你的钥匙，请重新登录后再添加");
+        return;
+      }
+      setCursorError(cursorFailureText(put));
+      return;
+    }
+    // key 已密封进 cookie；输入框立刻清空，不在内存里多留一刻。
+    setCursorKey("");
+    if (put.data) setStatus(put.data);
+    else await refreshStatus();
+    await onCursorVerify();
+    setCursorBusy(false);
+  }
+
+  async function onCursorRecheck() {
+    setCursorError("");
+    setCursorBusy(true);
+    await onCursorVerify();
+    setCursorBusy(false);
   }
 
   const inputClass =
@@ -411,6 +577,139 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             </button>
           </fieldset>
 
+          <fieldset
+            disabled={!status?.enabled || cursorBusy}
+            className="mb-3 space-y-3 rounded-2xl border border-neutral-200 p-4"
+          >
+            <div>
+              <h3 className="text-[13px] font-semibold text-neutral-800">
+                Cursor
+                <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
+                  {tt("编码 agent，不是聊天模型")}
+                </span>
+              </h3>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-500">
+                {tt(
+                  "这把 key 只用来在 OceanLeo 里启动、追问、查看和取消你自己的 Cursor 编码 agent，花的是你自己的 Cursor 额度，OceanLeo 不扣钱包。它和上面的 key 一样只以加密形式保存在这台设备的浏览器里，服务器不保存、不写日志、响应里也不会出现；要撤销，删掉下方表格里的 Cursor 一行即可。",
+                )}
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
+                Cursor API Key
+              </label>
+              <input
+                type="password"
+                value={cursorKey}
+                onChange={(event) => setCursorKey(event.target.value)}
+                placeholder={tt("粘贴 crsr_ 开头的 key")}
+                autoComplete="off"
+                className={inputClass}
+              />
+              <a
+                href="https://cursor.com/dashboard?tab=integrations"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block text-[11px] text-blue-600 hover:underline"
+              >
+                {tt("去 Cursor Dashboard → Integrations → User API Keys 生成 →")}
+              </a>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
+                {tt("在哪里跑")}
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-[13px] text-neutral-700">
+                  <input
+                    type="radio"
+                    name="cursor-runtime"
+                    checked={cursorRuntime === "cloud"}
+                    onChange={() => setCursorRuntime("cloud")}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">{tt("云端（Cursor 的机器）")}</span>
+                    <span className="block text-[11px] text-neutral-500">
+                      {tt(
+                        "Cursor 开一台云端机器克隆你的 GitHub 仓库、跑完可自动开 PR。需要你的 Cursor 账号已连通 GitHub 并授权该仓库，否则会被 Cursor 拒绝（ERROR_GITHUB_NO_USER_CREDENTIALS）。",
+                      )}
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[13px] text-neutral-700">
+                  <input
+                    type="radio"
+                    name="cursor-runtime"
+                    checked={cursorRuntime === "local"}
+                    onChange={() => setCursorRuntime("local")}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">{tt("本机（你已配对的电脑）")}</span>
+                    <span className="block text-[11px] text-neutral-500">
+                      {tt(
+                        "通过设备桥在你自己的电脑上跑，文件不离开本机。那台电脑要先装好 Cursor CLI 并登录；这里的 key 不会下发到那台机器。",
+                      )}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {cursorSaved ? (
+              <p className="text-[12px] text-neutral-600">
+                {cursorVerified ? (
+                  <>
+                    {tt("已校验：")}
+                    <span className="font-medium text-neutral-900">
+                      {cursorVerified.name || tt("（未命名 key）")}
+                    </span>
+                    {cursorVerified.email ? (
+                      <span className="text-neutral-500">{` · ${cursorVerified.email}`}</span>
+                    ) : null}
+                  </>
+                ) : (
+                  tt("Cursor key 已保存在这台设备。")
+                )}
+              </p>
+            ) : null}
+
+            {cursorError ? <p className="text-[12px] text-rose-600">{cursorError}</p> : null}
+            {cursorReauth ? (
+              <button
+                type="button"
+                onClick={onReauth}
+                className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
+              >
+                {tt("重新登录")}
+              </button>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!status?.enabled || cursorBusy}
+                onClick={onCursorSave}
+                className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {cursorBusy ? tt("保存中…") : tt("保存并校验")}
+              </button>
+              {cursorSaved ? (
+                <button
+                  type="button"
+                  disabled={!status?.enabled || cursorBusy}
+                  onClick={onCursorRecheck}
+                  className="rounded-lg border border-neutral-200 px-3 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  {tt("重新校验")}
+                </button>
+              ) : null}
+            </div>
+          </fieldset>
+
           <div>
             <h3 className="mb-2 text-[13px] font-semibold text-neutral-800">
               {tt("已配置的厂商")}
@@ -441,7 +740,11 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                           {row.fingerprint}
                         </td>
                         <td className="px-3 py-2.5 text-neutral-500">
-                          {row.model ? row.model : tt("厂商默认")}
+                          {row.provider === CURSOR_PROVIDER
+                            ? tt("编码 agent（不用于聊天）")
+                            : row.model
+                              ? row.model
+                              : tt("厂商默认")}
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex flex-wrap gap-1">
