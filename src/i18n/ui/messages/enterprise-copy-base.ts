@@ -135,6 +135,37 @@ export const ENTERPRISE_COPY_SOURCE = {
   // --- AccountPage ---
   myOrgsMenuDesc: "你所在的组织、本月在每个组织花了多少、谁看过你的任务",
   myOrgs: "我的组织",
+
+  // --- W24 OrgMembership / org-api ---
+  orgGone: "这个组织已经不在了。",
+  agreeRequired: "请先阅读并勾选《OceanLeo 企业服务协议》。",
+  joinDisclosurePaid:
+    "用组织钱包付费的任务，组织管理员可以查看全部内容；用你个人钱包付费的任务，组织永远看不到。",
+  joinDisclosureAudit: "每次查看都会留下记录，你可以在下面看到谁看过。",
+  joinPending:
+    "申请已提交，等负责人通过。通过后这里会出现这个组织，你也会收到一条站内通知。",
+  joinJoined: "已加入「{org}」。现在可以在发任务时选择用这个组织的钱包付费。",
+  joinRejected:
+    "申请没有通过。负责人驳回了你的申请，或这个组织暂停了加入；有疑问请直接联系负责人。",
+  joinExpired: "这条邀请链接已经过期或被撤销了。请负责人重新生成一条再发给你。",
+  joinAlreadyMember: "你已经在这个组织里了，不需要再申请。",
+  createOrg: "创建组织",
+  iHaveReadAndAgree: "我已阅读并同意",
+  enterpriseAgreementLink: "《OceanLeo 企业服务协议》",
+  orgMemberRole: "组织成员",
+
+  // --- W25 PluginsPage ---
+  forwardMemberIdentity: "把成员身份转给这台服务器",
+  forwardMemberIdentityHint:
+    "开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本组织。",
+
+  // --- W23 OrgPage / PublishToOrgButton ---
+  withdrawAsset: "撤回",
+  orgLibrary: "组织库",
+  orgLibraryEmpty: "组织库还是空的。成员可以从工作台把成果发布进来。",
+  publishToOrg: "发布到组织",
+  alreadyInNamedOrgLibrary: "已在 {name} 组织库",
+  alreadyInNOrgLibraries: "已在 {n} 个组织库",
 } as const;
 
 export type EnterpriseCopyName = keyof typeof ENTERPRISE_COPY_SOURCE;

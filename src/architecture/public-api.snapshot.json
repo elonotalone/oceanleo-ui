@@ -4823,6 +4823,12 @@
         },
         {
           "kind": "named",
+          "name": "PublishToOrgButton",
+          "importedName": "PublishToOrgButton",
+          "source": "./PublishToOrgButton"
+        },
+        {
+          "kind": "named",
           "name": "readPluginCommandState",
           "importedName": "readPluginCommandState",
           "source": "./plugin-command"

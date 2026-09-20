@@ -1,4 +1,5 @@
 // W19 —— 企业版 + MCP 能力面文案：16 语齐全、无中文残留、key ⊆ 七个 .tsx 的 tt() 字面。
+// W24 把 orgErrorCopy 的 tt("…") 放进 org-api.ts，扫描面加这一份（仍不扫别人的独占文件）。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -28,6 +29,8 @@ const TT_PAGES = [
   "src/pages/PluginsPage.tsx",
   "src/shell/PayerSelector.tsx",
   "src/shell/mcp-apps/ComposerAppsBar.tsx",
+  "src/lib/org-api.ts",
+  "src/shell/PublishToOrgButton.tsx",
 ];
 
 /** 七个页面里 `tt("…")` 的双引号字面（含换行折行）。 */
@@ -84,7 +87,7 @@ test("非中文语种不含 CJK；zh-TW/ja/ko 允许 CJK 但不得与简体原�
   assert.deepEqual(copied.sort(), [], "zh-TW/ja/ko 把中文原文逐字抄了一遍");
 });
 
-test("ENTERPRISE_COPY_KEYS ⊆ 七个 .tsx 里的 tt() 字面", () => {
+test("ENTERPRISE_COPY_KEYS ⊆ 企业版页面与 org-api 里的 tt() 字面", () => {
   const literals = sevenPageTtLiterals();
   const extra = ENTERPRISE_COPY_KEYS.filter((key) => !literals.has(key));
   assert.deepEqual(
