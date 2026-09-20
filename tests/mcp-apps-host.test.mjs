@@ -362,11 +362,23 @@ test("tools/call 代理：带连接 id 回网关；超时抛错而不是挂死",
 // ————————————————————————————————————————————————————————————————
 
 const uiStub = dataModule("export function useUI(){ return (zh) => zh; }");
-const authClientStub = dataModule("export async function accessToken(){ return null; }");
+// host.ts 只要 accessToken；LeoComposer → guide-context → workflows 还要
+// browserClient。同一份桩按解析后的路径套到整张图上，缺一个具名导出就会在
+// 加载期打哑后面所有 DOM 例（父 agent 实测 15 里那 1 红就是这条）。
+const authClientStub = dataModule(`
+  export async function accessToken(){ return null; }
+  export function browserClient(){ return null; }
+  export function cachedAccessToken(){ return null; }
+  export async function isSignedIn(){ return false; }
+  export async function getUserId(){ return null; }
+  export async function getUserEmail(){ return null; }
+  export function oceanleoConfigured(){ return false; }
+`);
 const OVERRIDES = {
   "../../i18n/ui/useUI": uiStub,
   "../i18n/ui/useUI": uiStub,
   "../../lib/auth/client": authClientStub,
+  "../lib/auth/client": authClientStub,
   "../lib/org-api": dataModule(
     "export async function listMyOrgs(){ return []; }\nexport async function getOrg(){ throw new Error('no'); }",
   ),
