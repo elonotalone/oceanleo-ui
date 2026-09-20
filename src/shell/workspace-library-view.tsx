@@ -6,11 +6,28 @@ import type {
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryItemViewer } from "./library-viewers";
+import { PublishToOrgButton } from "./PublishToOrgButton";
 import {
   WORKSPACE_KIND_LABELS,
   type WorkspaceLibraryEntry,
 } from "./workspace-library-model";
 import { WorkspaceThumbnail } from "./workspace-library-thumbnail";
+
+/** 素材货架不是「我的成果」——官方模板不得出现发布钮。 */
+function publishPropsFromEntry(entry: WorkspaceLibraryEntry) {
+  const item = entry.libraryItem;
+  if (!item) return null;
+  if (item.meta?.workspace_library_surface === "materials") return null;
+  const sourceRef = String(item.artifactId || item.id || "").trim();
+  const url = String(item.url || item.previewUrl || entry.externalUrl || "").trim();
+  if (!sourceRef && !url) return null;
+  return {
+    kind: String(entry.kind || item.kind || "file"),
+    title: entry.title || item.title || "",
+    url,
+    sourceRef: sourceRef || undefined,
+  };
+}
 
 export function WorkspaceLibraryEntryViewer({
   entry,
@@ -72,6 +89,7 @@ export function WorkspaceCard({
 }: WorkspaceRowProps & { accent: string }) {
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
+  const publish = publishPropsFromEntry(entry);
   return (
     <div
       {...dragProps}
@@ -101,9 +119,13 @@ export function WorkspaceCard({
           </p>
         </div>
       </button>
-      {actions && (
-        <div className="border-t border-[var(--border,#e7e5e4)] px-2 py-2">
+      {(actions || publish) && (
+        <div
+          className="flex flex-wrap items-center gap-1.5 border-t border-[var(--border,#e7e5e4)] px-2 py-2"
+          onClick={(event) => event.stopPropagation()}
+        >
           {actions}
+          {publish ? <PublishToOrgButton {...publish} /> : null}
         </div>
       )}
     </div>
@@ -119,6 +141,7 @@ export function WorkspaceListRow({
   const tt = useUI();
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   const showDescription = showsSecondaryDescription(entry);
+  const publish = publishPropsFromEntry(entry);
   return (
     <div
       {...dragProps}
@@ -173,7 +196,12 @@ export function WorkspaceListRow({
           />
         </svg>
       </button>
-      {actions && <div className="mr-2 py-1">{actions}</div>}
+      {(actions || publish) && (
+        <div className="mr-2 flex flex-wrap items-center gap-1 py-1" onClick={(event) => event.stopPropagation()}>
+          {actions}
+          {publish ? <PublishToOrgButton {...publish} /> : null}
+        </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import {
   getTask,
   taskCostYuan,
   type AgentTask,
+  type AgentMessage,
   type ArtifactMeta,
   type TaskDetail,
 } from "../lib/agent";
@@ -57,6 +58,7 @@ import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
 } from "./HistoryRowActions";
+import { PublishToOrgButton } from "./PublishToOrgButton";
 
 export type { RestorableAppSession } from "./history-model";
 
@@ -76,6 +78,93 @@ function historyHrefFor(entry: HistoryListEntry, pathname = ""): string {
         `/history?task=${encodeURIComponent(entry.id)}`,
         pathname,
       );
+}
+
+type HistoryPublishItem = {
+  kind: string;
+  title: string;
+  url: string;
+  sourceRef: string;
+};
+
+function pushHistoryPublishItem(
+  into: HistoryPublishItem[],
+  seen: Set<string>,
+  kind: string,
+  title: string,
+  url: string,
+  sourceRef: string,
+) {
+  const key = sourceRef || url || title;
+  if (!key || seen.has(key)) return;
+  seen.add(key);
+  into.push({ kind, title, url, sourceRef });
+}
+
+function historyPublishItems(
+  loaded:
+    | { kind: "task"; detail: TaskDetail }
+    | { kind: "session"; fallbackTask?: TaskDetail }
+    | { kind: string },
+): HistoryPublishItem[] {
+  const into: HistoryPublishItem[] = [];
+  const seen = new Set<string>();
+  const fromTask = (detail?: TaskDetail) => {
+    if (!detail) return;
+    for (const artifact of detail.artifacts || []) {
+      pushHistoryPublishItem(
+        into,
+        seen,
+        artifact.kind || "",
+        artifact.title || "",
+        artifact.url || "",
+        artifact.id,
+      );
+    }
+    for (const message of detail.messages || []) {
+      const artifact = (message as AgentMessage).meta?.artifact;
+      if (!artifact) continue;
+      pushHistoryPublishItem(
+        into,
+        seen,
+        artifact.type || "",
+        artifact.title || "",
+        artifact.url || "",
+        artifact.id || String(message.id),
+      );
+    }
+  };
+  if (loaded.kind === "task") fromTask(loaded.detail);
+  if (loaded.kind === "session") fromTask(loaded.fallbackTask);
+  return into;
+}
+
+function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) {
+  if (!items.length) return null;
+  return (
+    <ul
+      className="shrink-0 space-y-1 border-b border-neutral-100 px-3 py-2"
+      data-history-artifact-publish="1"
+    >
+      {items.map((item) => (
+        <li
+          key={item.sourceRef || item.url || item.title}
+          className="flex items-center justify-between gap-2"
+          data-history-artifact-row={item.sourceRef || item.url}
+        >
+          <span className="min-w-0 truncate text-[12px] text-neutral-700">
+            {item.title || item.kind}
+          </span>
+          <PublishToOrgButton
+            kind={item.kind}
+            title={item.title}
+            url={item.url}
+            sourceRef={item.sourceRef}
+          />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function safeProjectHref(
@@ -873,6 +962,7 @@ export function HistoryDetail({
           loaded.fallbackTask?.task.id,
         )
       : null;
+  const publishItems = historyPublishItems(loaded);
   if (runtimeSession && isRestorableAppSession(runtimeSession)) {
     const currentSession = runtimeSession;
     if (!renderWorkspace) {
@@ -893,17 +983,22 @@ export function HistoryDetail({
       );
     }
     return (
-      <WorkspaceSessionProvider
-        key={currentSession.id}
-        siteId={currentSession.site_id}
-        appId={currentSession.app_id}
-        sessionId={currentSession.id}
-        initialSession={currentSession}
-        mode="history"
-        resumeLatest={false}
-      >
-        {renderWorkspace(currentSession)}
-      </WorkspaceSessionProvider>
+      <div className="flex h-[calc(100dvh-1px)] flex-col">
+        <HistoryArtifactPublishRows items={publishItems} />
+        <div className="min-h-0 flex-1">
+          <WorkspaceSessionProvider
+            key={currentSession.id}
+            siteId={currentSession.site_id}
+            appId={currentSession.app_id}
+            sessionId={currentSession.id}
+            initialSession={currentSession}
+            mode="history"
+            resumeLatest={false}
+          >
+            {renderWorkspace(currentSession)}
+          </WorkspaceSessionProvider>
+        </div>
+      </div>
     );
   }
 
@@ -917,6 +1012,7 @@ export function HistoryDetail({
       : loaded.session.site_id || siteId;
   return (
     <div className="flex h-[calc(100dvh-1px)] flex-col">
+      <HistoryArtifactPublishRows items={publishItems} />
       <div className="min-h-0 flex-1">
         {fallbackTaskId ? (
           <AgentChat
