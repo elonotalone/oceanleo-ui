@@ -70,6 +70,7 @@ export type OrgApiCode =
   | "offline"
   | "rate_limited"
   | "server_error"
+  | "agreement_required"
   | "unknown";
 
 /** 取数失败时抛的东西。`§3.8` 的签名返回的是裸数据，所以失败只能靠抛。 */
@@ -108,6 +109,8 @@ export function orgErrorCopy(code: OrgApiCode | undefined): string {
       return "操作太频繁了，缓一会儿再试。";
     case "server_error":
       return "服务器出了点问题，稍后再试。";
+    case "agreement_required":
+      return "请先阅读并勾选《OceanLeo 企业服务协议》。";
     default:
       return "这一步没有完成，请稍后重试。";
   }
@@ -233,7 +236,12 @@ async function call<T>(
     /* 非 JSON（网关 502 的 HTML 之类）：当空响应，按状态码分流 */
   }
   if (res.ok) return { ok: true, data: (body ?? {}) as T, status: res.status };
-  return { ok: false, code: codeForStatus(res.status, notFoundMeans), status: res.status };
+  return {
+    ok: false,
+    code: codeForStatus(res.status, notFoundMeans),
+    status: res.status,
+    data: (body ?? undefined) as T | undefined,
+  };
 }
 
 /** 失败就抛。主请求用这个；补充请求用 `call()` 自己吞掉失败。 */
@@ -1027,4 +1035,188 @@ export async function deleteOrgMcpConnection(orgId: string, connectorId: string)
     { method: "DELETE" },
     "not_found",
   );
+}
+
+// ---------------------------------------------------------------------------
+// 7 企业版第二波（`_COMMON-r5.md` §3.3 / §3.4）
+// ---------------------------------------------------------------------------
+// 请求体字段名以后端 router 为准：资产是 camelCase（`PublishBody` / `GrantBody`），
+// MCP 补丁是 snake_case（`forward_member_identity`），建组织现有字段是 camelCase，
+// 协议版本按 §3.4 发 `agreement_version`（W28 落库），并兼发 `agreementVersion`。
+
+/** 企业服务协议当前版本。建组织必须勾选并带上这个字符串。 */
+export const ENTERPRISE_AGREEMENT_VERSION = "2026-09-20";
+
+function agreementRequiredOf(body: unknown): boolean {
+  const row = record(body);
+  const detailRaw = row.detail;
+  const detail = record(typeof detailRaw === "object" ? detailRaw : row);
+  return str(firstPresent(detail.code, row.code)) === "agreement_required";
+}
+
+/**
+ * 发布一件成果到组织库（`POST /v1/orgs/{org}/assets`）。
+ *
+ * 前端签名是 `{ kind, title, url, sourceRef? }`；网关 `PublishBody` 要的是
+ * `assetKind` + `assetRef`（`sourceRef` 优先，否则用 `url`）。
+ */
+export async function publishOrgAsset(
+  orgId: string,
+  body: { kind: string; title: string; url: string; sourceRef?: string },
+): Promise<{ id: string }> {
+  if (!orgId) throw new OrgApiError("not_found", 404);
+  const kind = str(body.kind).trim();
+  const title = str(body.title).trim();
+  const url = str(body.url).trim();
+  const assetRef = str(body.sourceRef).trim() || url;
+  if (!kind || !assetRef) throw new OrgApiError("unknown", 400);
+  const data = record(
+    await must<unknown>(
+      orgPath(orgId, "/assets"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          assetKind: kind,
+          assetRef,
+          title,
+          summary: url && url !== assetRef ? url : "",
+        }),
+      },
+      "not_available",
+    ),
+  );
+  const id = str(firstPresent(data.id, data.assetId, data.asset_id));
+  if (!id) throw new OrgApiError("unknown", 500);
+  return { id };
+}
+
+/** 从组织库撤下（`DELETE /v1/orgs/{org}/assets/{asset}`）。不删源文件。 */
+export async function revokeOrgAsset(orgId: string, assetId: string): Promise<void> {
+  if (!orgId || !assetId) throw new OrgApiError("not_found", 404);
+  await must<unknown>(
+    orgPath(orgId, `/assets/${encodeURIComponent(assetId)}`),
+    { method: "DELETE" },
+    "not_found",
+  );
+}
+
+/**
+ * 把一件组织成果授权给某个成员读（`POST …/assets/{asset}/grants`）。
+ * `GrantBody` 要 `subjectKind` / `subjectId` / `capability`；本导出只暴露成员 + 读。
+ */
+export async function grantOrgAsset(orgId: string, assetId: string, userId: string): Promise<void> {
+  if (!orgId || !assetId || !userId) throw new OrgApiError("not_found", 404);
+  await must<unknown>(
+    orgPath(orgId, `/assets/${encodeURIComponent(assetId)}/grants`),
+    {
+      method: "POST",
+      body: JSON.stringify({
+        subjectKind: "member",
+        subjectId: userId,
+        capability: "read",
+      }),
+    },
+    "not_found",
+  );
+}
+
+/**
+ * 这件成果开过的成员授权（`GET …/assets/{asset}/grants`）。
+ * 网关行没有 email 时给空串 —— 调用方用 `userId` 对成员表。
+ */
+export async function listOrgAssetGrants(
+  orgId: string,
+  assetId: string,
+): Promise<{ userId: string; email: string }[]> {
+  if (!orgId || !assetId) throw new OrgApiError("not_found", 404);
+  const data = await must<unknown>(
+    orgPath(orgId, `/assets/${encodeURIComponent(assetId)}/grants`),
+    undefined,
+    "not_found",
+  );
+  return rowsOf(data, "grants")
+    .map((raw) => {
+      const row = record(raw);
+      const kind = str(firstPresent(row.subjectKind, row.subject_kind)).toLowerCase();
+      if (kind && kind !== "member") return { userId: "", email: "" };
+      return {
+        userId: str(firstPresent(row.subjectId, row.subject_id, row.userId, row.user_id)),
+        email: str(firstPresent(row.email, row.user_email)),
+      };
+    })
+    .filter((row) => Boolean(row.userId));
+}
+
+/** 收回一名成员对这件成果的读授权（`DELETE …/grants?subjectKind=member&…`）。 */
+export async function revokeOrgAssetGrant(
+  orgId: string,
+  assetId: string,
+  userId: string,
+): Promise<void> {
+  if (!orgId || !assetId || !userId) throw new OrgApiError("not_found", 404);
+  const query = new URLSearchParams({
+    subjectKind: "member",
+    subjectId: userId,
+    capability: "read",
+  });
+  await must<unknown>(
+    orgPath(orgId, `/assets/${encodeURIComponent(assetId)}/grants?${query.toString()}`),
+    { method: "DELETE" },
+    "not_found",
+  );
+}
+
+/**
+ * 是否把成员身份转发给这台组织 MCP（`PATCH …/mcp/connections/{connector}`）。
+ * 默认关；管理员显式打开才转发（A14）。
+ */
+export async function setOrgMcpForwardIdentity(
+  orgId: string,
+  connectorId: string,
+  forward: boolean,
+): Promise<void> {
+  if (!orgId || !connectorId) throw new OrgApiError("not_found", 404);
+  await must<unknown>(
+    orgPath(orgId, `/mcp/connections/${encodeURIComponent(connectorId)}`),
+    { method: "PATCH", body: JSON.stringify({ forward_member_identity: Boolean(forward) }) },
+    "not_found",
+  );
+}
+
+/**
+ * 建组织（`POST /v1/orgs`）。`agreementVersion` 必须等于 `ENTERPRISE_AGREEMENT_VERSION`；
+ * 网关 422 `agreement_required` 时抛 `OrgApiError`，码就是 `agreement_required`。
+ */
+export async function createOrg(body: {
+  name: string;
+  legalName?: string;
+  taxId?: string;
+  agreementVersion: string;
+}): Promise<{ id: string }> {
+  const name = str(body.name).trim();
+  if (!name) throw new OrgApiError("unknown", 400);
+  const agreementVersion = str(body.agreementVersion).trim();
+  const res = await call<unknown>(
+    "/v1/orgs",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        legalName: str(body.legalName).trim(),
+        taxId: str(body.taxId).trim(),
+        agreement_version: agreementVersion,
+        agreementVersion,
+      }),
+    },
+    "not_available",
+  );
+  if (!res.ok) {
+    if (res.status === 422 && agreementRequiredOf(res.data)) {
+      throw new OrgApiError("agreement_required", 422);
+    }
+    throw new OrgApiError(res.code || "unknown", res.status);
+  }
+  const id = str(firstPresent(record(res.data).id, record(res.data).org_id));
+  if (!id) throw new OrgApiError("unknown", res.status);
+  return { id };
 }
