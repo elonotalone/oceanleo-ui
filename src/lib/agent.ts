@@ -17,6 +17,7 @@ import { accessToken, cachedAccessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
+import { computerIdRequestField } from "./cloud-computer-api";
 import { payerRequestFields } from "./payer";
 
 export type AgentApiDiagnosticValue = string | number | boolean;
@@ -364,6 +365,8 @@ export function createTask(body: {
    * 请求体字段名固定 `org_id`，空串 = 个人钱包。
    */
   orgId?: string;
+  /** 挂载的云电脑；不传则读 localStorage['oceanleo.cc.mounted']。 */
+  computerId?: string;
 }) {
   return authed<{
     task_id: string;
@@ -389,6 +392,7 @@ export function createTask(body: {
         prompt_override: body.promptOverride || "",
         attachments: body.attachments || [],
         ...payerRequestFields(body.orgId),
+        ...computerIdRequestField(body.computerId),
       }),
     },
   ).then((result) => {
@@ -707,6 +711,7 @@ export function followUp(
   attachments?: AgentAttachment[],
   hiddenContext = "",
   orgId?: string,
+  computerId?: string,
 ) {
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`,
@@ -717,6 +722,7 @@ export function followUp(
         hidden_context: hiddenContext,
         attachments: attachments || [],
         ...payerRequestFields(orgId),
+        ...computerIdRequestField(computerId),
       }),
     },
   ).then((result) => {
@@ -724,6 +730,9 @@ export function followUp(
     return result;
   });
 }
+
+/** 任务书用名；实现就是 `followUp`。 */
+export const followupTask = followUp;
 
 /**
  * 把「右边编辑器刚刚执行完的一条指令」的结果告诉 agent，让它接着走下一步。

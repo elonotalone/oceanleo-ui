@@ -384,14 +384,23 @@ function ManifestPane({
   );
 
   return (
-    <Studio
-      ops={ops}
-      canvas={canvas}
-      opsWidth={460}
-      accent={accent}
-      headerHeight={headerHeight}
-      storageKey={`agentconsole:${m.agent_id}`}
-    />
+    <div className="flex h-full min-h-0 flex-col" data-oceanleo-cc-console>
+      <div className="min-h-0 flex-1">
+        <Studio
+          ops={ops}
+          canvas={canvas}
+          opsWidth={460}
+          accent={accent}
+          headerHeight={headerHeight}
+          storageKey={`agentconsole:${m.agent_id}`}
+        />
+      </div>
+      <div
+        id="oceanleo-cc-terminal-slot"
+        data-oceanleo-cc-terminal-slot
+        className="shrink-0"
+      />
+    </div>
   );
 }
 

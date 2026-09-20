@@ -1,0 +1,166 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import test from "node:test";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+const require = createRequire(import.meta.url);
+
+const { CloudComputerError, listComputers, createAliyunComputer, createByoComputer, getCatalog, getComputer, renameComputer, stopComputer, startComputer, deleteComputer, listComputerEvents, refreshEnrollToken, listTerminals, openTerminal, closeTerminal, getUsage, getUsageSummary, terminalWsUrl, nodeWsUrl, nodeInstallScriptUrl, nodeDownloadUrl, getNodeInstallScript } =
+  await import(
+    await compileModule("src/lib/cloud-computer-api.ts", {
+      "./auth/client": dataModule(`
+        export async function accessToken() { return "tok_test"; }
+      `),
+      "./auth/config": dataModule(`
+        export const GATEWAY_BASE = "https://api.example.test";
+      `),
+    })
+  );
+
+function installFetch(handler) {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return handler(url, init, calls);
+  };
+  return calls;
+}
+
+function jsonResponse(status, body) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  };
+}
+
+test("listComputers 打 GET /v1/computers 并带 Bearer", async () => {
+  const calls = installFetch(() =>
+    jsonResponse(200, { items: [{ id: "cc_1", name: "a", node_online: false }] }),
+  );
+  const data = await listComputers();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.example.test/v1/computers");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer tok_test");
+  assert.equal(data.items[0].id, "cc_1");
+});
+
+test("createAliyunComputer 请求体是 name/tier_id/disk_gb", async () => {
+  const calls = installFetch(() => jsonResponse(200, { id: "cc_2", name: "sg" }));
+  await createAliyunComputer({ name: "sg", tier_id: "ecs.e-c1m2.large", disk_gb: 40 });
+  assert.match(calls[0].url, /\/v1\/computers\/aliyun$/);
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    name: "sg",
+    tier_id: "ecs.e-c1m2.large",
+    disk_gb: 40,
+  });
+});
+
+test("createByoComputer / catalog / 详情 / 改名 / 停机开机 / 删除 / 事件 / enroll / 终端 / 用量", async () => {
+  const calls = installFetch((url) => {
+    if (String(url).endsWith("/byo")) {
+      return jsonResponse(200, {
+        computer: { id: "cc_byo" },
+        install_command: "curl x | sudo bash",
+        enroll_expires_at: "2026-09-21T00:00:00Z",
+      });
+    }
+    if (String(url).endsWith("/catalog")) return jsonResponse(200, { regions: [], tiers: [] });
+    if (String(url).includes("/events")) return jsonResponse(200, { items: [] });
+    if (String(url).includes("/enroll-token")) {
+      return jsonResponse(200, { computer: { id: "cc_byo" }, install_command: "curl y", enroll_expires_at: "t" });
+    }
+    if (String(url).includes("/terminals/") && String(url).includes("sid1")) {
+      return jsonResponse(200, { ok: true });
+    }
+    if (String(url).endsWith("/terminals")) {
+      return jsonResponse(200, { sessions: [] , id: "sid1" });
+    }
+    if (String(url).includes("/usage/summary")) return jsonResponse(200, { total: { amount_minor: 0, currency: "USD" } });
+    if (String(url).includes("/usage")) {
+      return jsonResponse(200, { items: [], total: { amount_minor: 0, currency: "USD" }, hourly_now: { amount_minor: 0, currency: "USD" } });
+    }
+    return jsonResponse(200, { id: "cc_1", name: "n" });
+  });
+  await createByoComputer({ name: "home" });
+  await getCatalog();
+  await getComputer("cc_1");
+  await renameComputer("cc_1", "new");
+  await stopComputer("cc_1");
+  await startComputer("cc_1");
+  await deleteComputer("cc_1");
+  await listComputerEvents("cc_1", 20);
+  await refreshEnrollToken("cc_1");
+  await listTerminals("cc_1");
+  await openTerminal("cc_1", { cols: 80, rows: 24 });
+  await closeTerminal("cc_1", "sid1");
+  await getUsage("cc_1", 7);
+  await getUsageSummary();
+  const urls = calls.map((call) => call.url);
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/byo")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/catalog")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/stop")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/start")));
+  assert.ok(urls.some((url) => url.includes("/v1/computers/cc_1/events?limit=20")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/enroll-token")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/terminals")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/terminals/sid1")));
+  assert.ok(urls.some((url) => url.includes("/v1/computers/cc_1/usage?days=7")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/usage/summary")));
+  const patch = calls.find((call) => call.init.method === "PATCH");
+  assert.deepEqual(JSON.parse(patch.init.body), { name: "new" });
+});
+
+test("错误从 detail.code 映射为 CloudComputerError", async () => {
+  installFetch(() =>
+    jsonResponse(409, {
+      detail: { code: "insufficient_balance", message: "need 1200 minor" },
+    }),
+  );
+  await assert.rejects(
+    () => createAliyunComputer({ name: "x", tier_id: "t", disk_gb: 40 }),
+    (err) => {
+      assert.ok(err instanceof CloudComputerError);
+      assert.equal(err.code, "insufficient_balance");
+      assert.equal(err.message, "need 1200 minor");
+      assert.equal(err.status, 409);
+      return true;
+    },
+  );
+});
+
+test("terminalWsUrl 拼 wss 路径与 session_id/token 查询串", () => {
+  const url = terminalWsUrl("cc_ab", "sid-9", "tok space");
+  assert.equal(
+    url,
+    "wss://api.example.test/v1/computers/cc_ab/terminal?session_id=sid-9&token=tok+space",
+  );
+});
+
+test("节点安装与下载 URL", () => {
+  assert.equal(
+    nodeInstallScriptUrl("cct_1"),
+    "https://api.example.test/v1/computers/node/install.sh?token=cct_1",
+  );
+  assert.equal(
+    nodeDownloadUrl("linux", "amd64"),
+    "https://api.example.test/v1/computers/node/download/linux-amd64",
+  );
+  assert.equal(nodeWsUrl(), "wss://api.example.test/v1/computers/node/ws");
+});
+
+test("getNodeInstallScript 走 install.sh?token=", async () => {
+  const calls = installFetch(() => jsonResponse(200, "#!/bin/bash"));
+  await getNodeInstallScript("cct_x");
+  assert.equal(
+    calls[0].url,
+    "https://api.example.test/v1/computers/node/install.sh?token=cct_x",
+  );
+});
+
+void pathToFileURL;
+void require;

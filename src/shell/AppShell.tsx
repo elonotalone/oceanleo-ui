@@ -25,6 +25,7 @@ import {
   createContext,
   useContext,
   useLayoutEffect,
+  useMemo,
   useState,
 } from "react";
 import { ModelGroupPicker, type ModelCategory } from "./ModelPicker";
@@ -41,6 +42,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { HelpLink } from "./HelpLink";
 import { usePresenceHeartbeat } from "../lib/presence";
 import { PhoneBindGate } from "../pages/PhoneBindGate";
+import { currentDomainFamily } from "../contracts/domain-family";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
 // 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
@@ -288,6 +290,24 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
+function CloudComputerNavIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="12" rx="2" />
+      <path d="M8 19h8M12 17v2" />
+    </svg>
+  );
+}
+
 function AppShellInner({
   brand,
   layout = "sidebar",
@@ -344,9 +364,28 @@ function AppShellInner({
   useNativeShellFlag();
   const [term, setTerm] = useState("");
 
-  const sourceNavGroups: ShellNavGroup[] = navGroups?.length
-    ? navGroups
-    : [{ items: nav ?? [] }];
+  const sourceNavGroups: ShellNavGroup[] = useMemo(() => {
+    const groups = navGroups?.length ? navGroups : [{ items: nav ?? [] }];
+    const oceanleoSite = siteId === "oceanleo" || siteKey === "oceanleo";
+    if (!oceanleoSite || currentDomainFamily() === "cn") return groups;
+    const already = groups.some((group) =>
+      group.items.some(
+        (item) => item.href === "/computers" || item.href?.endsWith("/computers"),
+      ),
+    );
+    if (already) return groups;
+    const extra: ShellNavItem = {
+      label: tt("云电脑"),
+      href: "/computers",
+      icon: <CloudComputerNavIcon />,
+    };
+    if (groups.length === 0) return [{ items: [extra] }];
+    return groups.map((group, index) =>
+      index === groups.length - 1
+        ? { ...group, items: [...group.items, extra] }
+        : group,
+    );
+  }, [nav, navGroups, siteId, siteKey, tt]);
   const scrollScope: ShellSidebarScroll =
     sidebarScroll ??
     (WHOLE_SCROLL_SIDEBAR_SITES.has(siteId) ? "whole" : "history");

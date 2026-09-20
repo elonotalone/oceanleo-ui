@@ -37,6 +37,7 @@ import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { ModelGroupPicker } from "./ModelPicker";
 import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
+import { ComputerDock } from "./cloud-computer/ComputerDock";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -231,6 +232,12 @@ export interface LeoComposerProps {
   showAppsBar?: boolean;
   /** 注入 MCP Apps 宿主（测试 / 站点自定义传输层）；不传用共享包缺省宿主。 */
   appsHost?: McpAppsHost;
+
+  /**
+   * 聊天框下方「电脑」入口。默认开；`.cn` 由 ComputerDock 自己隐藏。
+   * 传 false 可在非 OceanLeo 宿主关掉。
+   */
+  showComputerDock?: boolean;
 }
 
 const PLUGIN_ICON_SRC =
@@ -271,6 +278,7 @@ export function LeoComposer({
   showPlugins = true,
   showPayerSelector = true,
   showAppsBar = true,
+  showComputerDock = true,
   appsHost,
   onOpenPlugins,
 }: LeoComposerProps) {
@@ -591,6 +599,7 @@ export function LeoComposer({
             </button>
           )}
           {leftSlot}
+          {showComputerDock && <ComputerDock />}
           {leoSuggest && (
             <button
               type="button"
