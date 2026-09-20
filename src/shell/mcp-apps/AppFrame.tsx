@@ -10,7 +10,7 @@
 //     `oceanleo.app` 上的 sandbox-proxy 页，全串白名单 `MCP_APPS_SANDBOX_ORIGINS`），
 //     且 (c) 宿主页自己在第一方 https 主机上，三者同时成立才出 iframe。缺任何一条
 //     → 渲染 `toolResult` 的纯文本（`plainTextOfToolResult`），不白屏、不弹窗。
-//     **本轮白名单为空**，所以这一层今天恒走纯文本；那是设计好的默认。
+//     生产白名单恰一项 `https://mcp-apps.oceanleo.app`（2026-09-20 操作员批准）。
 //
 //  2. **沙箱**：iframe 的 sandbox 属性写**字面串** allow-scripts allow-forms
 //     （= `MCP_APP_FRAME_SANDBOX`，由测试锁两者相等）。没有 `allow-same-origin`

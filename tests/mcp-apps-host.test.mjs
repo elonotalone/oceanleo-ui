@@ -5,7 +5,7 @@
 //   2. origin 双向校验：hello 三段闸（source / origin / 信封）缺一不可；
 //      `targetOrigin` 永不为 `*`；宿主对 frame 一次也不调 `window.postMessage`；
 //   3. `oceanleo.com`（任何第一方主机）永远不是可信渲染域——写进白名单也拒；
-//   4. 降级：网关没端点 / 资源取不到 / 白名单为空 → 纯文本，不白屏、不弹窗；
+//   4. 降级：网关没端点 / 资源取不到 / 注入空白名单 → 纯文本，不白屏、不弹窗；
 //      零可用 App 时 `ComposerAppsBar` 一个字节都不渲染，`LeoComposer` 那一排逐字不变；
 //   5. 资源缓存：同一 `ui://` 只取一次（并发也只打一枪）。
 //
@@ -65,7 +65,7 @@ const MCP_APPS_SOURCES = Object.fromEntries(
     .map((name) => [name, readFileSync(`${MCP_APPS_DIR}${name}`, "utf8")]),
 );
 
-/** 一个允许的承载面（**测试注入**；生产表 `MCP_APPS_SANDBOX_ORIGINS` 本轮为空）。 */
+/** 一个允许的承载面（**测试注入**；生产表恰为 `https://mcp-apps.oceanleo.app`）。 */
 const PROXY = "https://apps.oceanleo.app";
 const ALLOWED = Object.freeze([PROXY]);
 const HOST_ORIGIN = "https://chat.oceanleo.com";
@@ -115,7 +115,12 @@ test("UC-6 targetOrigin：`*` 恒拒；第一方拒；只有白名单里的 ocea
   assert.equal(isValidAppTargetOrigin("", ALLOWED), false);
   assert.equal(isValidAppTargetOrigin("/", ALLOWED), false);
   assert.equal(isValidAppTargetOrigin(PROXY, ALLOWED), true);
-  assert.equal(isValidAppTargetOrigin(PROXY), false, "生产表为空 → 拒（fail closed）");
+  assert.equal(isValidAppTargetOrigin(PROXY), false, "非白名单成员拒（全串匹配）");
+  assert.equal(
+    isValidAppTargetOrigin("https://mcp-apps.oceanleo.app"),
+    true,
+    "2026-09-20 操作员批准放行",
+  );
   assert.equal(isValidAppTargetOrigin("https://other.oceanleo.app", ALLOWED), false, "全串匹配，不按后缀推断");
   assert.equal(isValidAppTargetOrigin("http://apps.oceanleo.app", ALLOWED), false, "不接受明文");
   assert.equal(isValidAppTargetOrigin("https://apps.oceanleo.app:8443", ALLOWED), false, "不接受端口");
@@ -190,8 +195,13 @@ test("§3.10 第一方主机永远不是 App 承载面，写进白名单也拒�
   assert.equal(isValidAppSandboxOrigin("https://x.leoapp.cn", ["https://x.leoapp.cn"]), true, "境内不可信域同理");
 });
 
-test("§3.10 本轮承载面白名单为空：AppFrame 恒 fail closed；加一行 = 操作员批准", () => {
-  assert.deepEqual([...MCP_APPS_SANDBOX_ORIGINS], [], "MCP_APPS_SANDBOX_ORIGINS 本轮必须为空表");
+test("§3.10 承载面白名单恰为 mcp-apps.oceanleo.app：2026-09-20 操作员批准放行", () => {
+  // 2026-09-20 操作员批准放行
+  assert.deepEqual(
+    [...MCP_APPS_SANDBOX_ORIGINS],
+    ["https://mcp-apps.oceanleo.app"],
+    "MCP_APPS_SANDBOX_ORIGINS 恰一项",
+  );
   assert.ok(Object.isFrozen(MCP_APPS_SANDBOX_ORIGINS));
 });
 
@@ -303,7 +313,17 @@ test("降级：网关没端点（404 / 网络错）→ 零可用；不抛", asyn
   const tool = appToolsFrom([TOOL_ROW])[0];
   assert.equal(await gone.readAppResource(tool), null);
   assert.equal(gone.renderModeFor(null), "text");
-  assert.equal(gone.sandboxOrigin(), "", "生产表为空 → 没有承载面");
+  assert.equal(gone.sandboxOrigin(), "https://mcp-apps.oceanleo.app", "2026-09-20 操作员批准放行");
+  const empty = createMcpAppsHost({
+    allowedOrigins: [],
+    transport: {
+      listTools: async () => [],
+      readResource: async () => null,
+      callTool: async () => null,
+    },
+  });
+  assert.equal(empty.sandboxOrigin(), "", "注入空表仍无承载面");
+  assert.equal(empty.renderModeFor({ uri: "ui://charts/main", html: "<p>x</p>" }), "text");
 });
 
 test("resources/read：MIME 必须恰是 text/html;profile=mcp-app，否则当没有界面", () => {
@@ -518,7 +538,7 @@ test("AppFrame 降级：没有 HTML → 纯文本结果，没有 iframe，不白
   });
 });
 
-test("AppFrame 降级：有 HTML 但白名单为空（本轮生产态）→ 仍是纯文本，fail closed", async () => {
+test("AppFrame 降级：有 HTML 但注入空白名单 → 仍是纯文本，fail closed", async () => {
   await withDom(async ({ render, find, container }) => {
     await render(AppFrame, {
       resourceUri: "ui://charts/main",
@@ -526,10 +546,26 @@ test("AppFrame 降级：有 HTML 但白名单为空（本轮生产态）→ 仍�
       toolResult: "text only",
       onToolCall: noopToolCall,
       hostOrigin: HOST_ORIGIN,
+      allowedOrigins: [],
     });
     assert.equal(find("iframe"), null, "空白名单不许出 iframe");
     assert.match(container.textContent, /text only/);
     assert.doesNotMatch(container.innerHTML, /<script/, "第三方 HTML 一个字节都不进宿主 DOM");
+  });
+});
+
+test("AppFrame 生产白名单：有 HTML + 第一方宿主 → iframe 指向 mcp-apps.oceanleo.app", async () => {
+  await withDom(async ({ render, find }) => {
+    await render(AppFrame, {
+      resourceUri: "ui://charts/main",
+      html: "<!doctype html><p>chart</p>",
+      onToolCall: noopToolCall,
+      hostOrigin: HOST_ORIGIN,
+    });
+    const iframe = find("iframe");
+    assert.ok(iframe, "2026-09-20 操作员批准放行后生产态出 iframe");
+    assert.ok(iframe.getAttribute("src").startsWith("https://mcp-apps.oceanleo.app/mcp-app#"));
+    assert.equal(iframe.getAttribute("sandbox"), MCP_APP_FRAME_SANDBOX);
   });
 });
 

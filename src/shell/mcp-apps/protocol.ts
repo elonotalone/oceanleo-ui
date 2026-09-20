@@ -114,13 +114,13 @@ export const MCP_APP_FRAME_OPAQUE_ORIGIN = "null";
  * 允许承载 MCP App 的 sandbox-proxy origin **全串**白名单（形状照
  * `hosted-editor-origins.ts`：写死完整 `https://host`，不做后缀推断）。
  *
- * **本轮为空。** 往这里加一行 = 允许宿主把一个 `oceanleo.app` 上的页面当作
- * MCP App 的承载面并给它拼 src；那个页面必须是我方部署的 sandbox-proxy
- * （它再用 `srcdoc` + `MCP_APP_FRAME_SANDBOX` 装第三方 HTML）。加之前要操作员
- * 批准（`_COMMON.md §2.3` / 任务书「禁区」）。空表 = `AppFrame` fail closed，
- * 恒走纯文本降级——这是设计好的默认，不是缺陷。
+ * 2026-09-20 操作员批准放行恰一项：我方部署在 `mcp-apps.oceanleo.app` 的
+ * sandbox-proxy（它再用 `srcdoc` + `MCP_APP_FRAME_SANDBOX` 装第三方 HTML）。
+ * 全串匹配，不做后缀推断；第一方主机写进来也会被 `isValidAppSandboxOrigin` 拒。
  */
-export const MCP_APPS_SANDBOX_ORIGINS: readonly string[] = Object.freeze([]);
+export const MCP_APPS_SANDBOX_ORIGINS: readonly string[] = Object.freeze([
+  "https://mcp-apps.oceanleo.app",
+]);
 
 function canonicalHttpsOrigin(origin: string): URL | null {
   try {
