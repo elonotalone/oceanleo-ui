@@ -20,6 +20,7 @@ import {
   listMyOrgs,
   listOrgMcpConnections,
   patchOrgMcpConnection,
+  setOrgMcpForwardIdentity,
   upsertOrgMcpConnection,
   type OrgRole,
   type OrgSummary,
@@ -50,6 +51,8 @@ export interface OrgMcpConnection {
   enabled: boolean;
   /** 管理员可以把一条连接对成员隐藏；成员视角拿到的永远是 true。 */
   memberVisible: boolean;
+  /** 默认关。开了以后这台服务器会收到是哪位成员在操作。 */
+  forwardMemberIdentity: boolean;
 }
 
 /**
@@ -105,6 +108,7 @@ export function normalizeOrgMcpConnections(
       toolsCount: Number(row.tools_count ?? row.toolsCount ?? 0) || 0,
       enabled: row.enabled !== false,
       memberVisible: (row.member_visible ?? row.memberVisible) !== false,
+      forwardMemberIdentity: (row.forward_member_identity ?? row.forwardMemberIdentity) === true,
     });
   }
   return rows;
@@ -177,8 +181,7 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
    * `/v1/orgs/{id}/mcp/connections`（含对成员隐藏的那些）。同一条连接以管理员那份为准。
    */
   const loadOrgConnections = useCallback(async (list: OrgSummary[]) => {
-    // 网关 `/v1/orgs/mcp/available` 的行只带 `org_id`，不带组织名（实测 W08 `_inherited_row`）；
-    // 「由组织 X 提供」的 X 从 listMyOrgs 的结果按 id 补。
+    // 行上的 `org_name` 优先（W25 起 available 会带）；没有再按 org_id 从 listMyOrgs 补。
     const nameOf = new Map(list.map((org) => [org.id, org.name]));
     const withName = (c: OrgMcpConnection): OrgMcpConnection =>
       c.orgName ? c : { ...c, orgName: nameOf.get(c.orgId) || "" };
@@ -236,6 +239,13 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
   async function removeConnection(row: OrgMcpConnection) {
     setBusyConnector(row.connectorId);
     await quiet(() => deleteOrgMcpConnection(row.orgId, row.connectorId));
+    await refreshOrgConnections();
+    setBusyConnector("");
+  }
+
+  async function setForwardIdentity(row: OrgMcpConnection, forward: boolean) {
+    setBusyConnector(row.connectorId);
+    await quiet(() => setOrgMcpForwardIdentity(row.orgId, row.connectorId, forward));
     await refreshOrgConnections();
     setBusyConnector("");
   }
@@ -330,6 +340,24 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
                           >
                             {tt("成员可见")}
                           </button>
+                          <label
+                            data-org-mcp-forward-identity
+                            className="flex max-w-full items-start gap-2 text-[12px] text-neutral-700"
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={busy}
+                              checked={row.forwardMemberIdentity}
+                              onChange={(e) => void setForwardIdentity(row, e.target.checked)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <span className="block">{tt("把成员身份转给这台服务器")}</span>
+                              <span className="mt-0.5 block text-[11px] text-neutral-500">
+                                {tt("开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本组织。")}
+                              </span>
+                            </span>
+                          </label>
                           <button
                             type="button"
                             disabled={busy}

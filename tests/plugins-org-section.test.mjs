@@ -50,6 +50,7 @@ const orgApiStub = dataModule(`
   export async function upsertOrgMcpConnection(orgId, body) { count("upsertOrgMcpConnection:" + orgId); return g().upsertOrgMcpConnection(orgId, body); }
   export async function patchOrgMcpConnection(orgId, connectorId, patch) { count("patchOrgMcpConnection:" + orgId + ":" + connectorId + ":" + JSON.stringify(patch)); return g().patchOrgMcpConnection(orgId, connectorId, patch); }
   export async function deleteOrgMcpConnection(orgId, connectorId) { count("deleteOrgMcpConnection:" + orgId + ":" + connectorId); return g().deleteOrgMcpConnection(orgId, connectorId); }
+  export async function setOrgMcpForwardIdentity(orgId, connectorId, forward) { count("setOrgMcpForwardIdentity:" + orgId + ":" + connectorId + ":" + JSON.stringify(forward)); return g().setOrgMcpForwardIdentity(orgId, connectorId, forward); }
 `);
 
 const databaseStub = dataModule(`
@@ -173,6 +174,7 @@ async function withDom(run, { orgApi = {} } = {}) {
     upsertOrgMcpConnection: async () => ({ ok: true }),
     patchOrgMcpConnection: async () => ({ ok: true }),
     deleteOrgMcpConnection: async () => ({ ok: true }),
+    setOrgMcpForwardIdentity: async () => ({ ok: true }),
     ...orgApi,
   };
 
@@ -241,6 +243,7 @@ test("normalizeOrgMcpConnections：认 W08 的 {connections:[snake_case]}，也�
     toolsCount: 7,
     enabled: true,
     memberVisible: true,
+    forwardMemberIdentity: false,
   });
   assert.equal(normalizeOrgMcpConnections({ items: [{ connectorId: "x" }] })[0].connectorId, "x");
   assert.equal(normalizeOrgMcpConnections([{ id: "y" }], { orgId: "o2", orgName: "蓝鲸" })[0].orgName, "蓝鲸");
@@ -447,6 +450,87 @@ test("多组织管理员：「为组织连接」对话框出「连给哪个组�
     {
       orgApi: {
         listMyOrgs: async () => [org("o1", "海狮科技", "owner"), org("o2", "蓝鲸传媒", "admin"), org("o3", "小虾", "member")],
+      },
+    },
+  );
+});
+
+// ————————————————————————————————————————————————————————————————
+// 5. W25：转发成员身份开关 + org_name 优先于按 id 补名
+// ————————————————————————————————————————————————————————————————
+
+test("管理员视角：每条组织连接有「把成员身份转给这台服务器」开关，默认关", async () => {
+  await withDom(
+    async ({ render, find }) => {
+      await render();
+      const sw = find("[data-org-mcp-forward-identity] input");
+      assert.ok(sw, "管理员要看到转发身份开关");
+      assert.equal(sw.checked, false, "默认关");
+      assert.ok(find("[data-org-mcp-forward-identity]").textContent.includes("把成员身份转给这台服务器"));
+      assert.ok(
+        find("[data-org-mcp-forward-identity]").textContent.includes("开了以后服务器知道是哪位成员在操作"),
+      );
+    },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
+        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+        listOrgMcpConnections: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+      },
+    },
+  );
+});
+
+test("成员视角：没有转发身份开关", async () => {
+  await withDom(
+    async ({ render, find }) => {
+      await render();
+      assert.ok(find("[data-org-mcp-row]"));
+      assert.equal(find("[data-org-mcp-forward-identity]"), null);
+    },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "member")],
+        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+      },
+    },
+  );
+});
+
+test("点转发身份开关：调用 setOrgMcpForwardIdentity(orgId, connectorId, true)，不碰 fetch", async () => {
+  await withDom(
+    async ({ render, find, click, settle, calls, fetchCalls }) => {
+      await render();
+      const sw = find("[data-org-mcp-forward-identity] input");
+      await click(sw);
+      await settle();
+      assert.ok(
+        calls().includes("setOrgMcpForwardIdentity:o1:amap:true"),
+        `要点开关走 setOrgMcpForwardIdentity，实际：${calls().join(" | ")}`,
+      );
+      assert.equal(fetchCalls(), 0, "插件页自己不许 fetch（A3）");
+    },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
+        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+        listOrgMcpConnections: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+      },
+    },
+  );
+});
+
+test("org_name 优先于 listMyOrgs 按 id 补的名字", async () => {
+  await withDom(
+    async ({ render, text }) => {
+      await render();
+      assert.ok(text().includes("由组织 极目野光 提供"), `行上的 org_name 必须赢，实际：${text()}`);
+      assert.ok(!text().includes("由组织 海狮科技 提供"), "不许退回去用 listMyOrgs 的名字");
+    },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "member")],
+        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "极目野光", "amap")] }),
       },
     },
   );
