@@ -35,6 +35,7 @@ import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { ModelGroupPicker } from "./ModelPicker";
+import { PayerSelector } from "./PayerSelector";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -105,11 +106,24 @@ export interface ComposerMenuItem {
   onClick: () => void;
 }
 
+/**
+ * 这次派活谁付钱（企业版，2026-09-20）。字段名 `org_id` 是网关认的那个
+ * （`resolve_payer(user_id, requested_org_id=...)`），**空串 = 个人钱包**。
+ * 调用方原样塞进请求体即可，不要改名、不要在空串时省略它。
+ */
+export interface ComposerPayer {
+  org_id: string;
+}
+
 export interface LeoComposerProps {
   value: string;
   onChange: (value: string) => void;
-  /** 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键。参数是已去掉占位 token 的 prompt。 */
-  onSubmit?: (cleanValue?: string) => void;
+  /**
+   * 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键。参数是已去掉占位 token 的 prompt。
+   * 第二个参数是付费主体，**恒有值**，没进过组织的用户拿到的是 `{ org_id: "" }`
+   * ——与不带这个字段发出去的请求在网关侧是同一条路径。
+   */
+  onSubmit?: (cleanValue?: string, payer?: ComposerPayer) => void;
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
@@ -199,6 +213,12 @@ export interface LeoComposerProps {
   onOpenPlugins?: () => void;
   /** 是否显示插件按钮（默认 true）。传 false 时隐藏。 */
   showPlugins?: boolean;
+
+  /**
+   * 是否挂「这次谁付钱」选择器（默认 true）。默认开是安全的：**此人没进过任何组织时
+   * `PayerSelector` 返回 null**，这一排的渲染结果与企业版之前逐字相同。
+   */
+  showPayerSelector?: boolean;
 }
 
 const PLUGIN_ICON_SRC =
@@ -237,6 +257,7 @@ export function LeoComposer({
   meetingRecordingMaxSec = 7200,
   showModelPicker = true,
   showPlugins = true,
+  showPayerSelector = true,
   onOpenPlugins,
 }: LeoComposerProps) {
   const tt = useUI();
@@ -287,6 +308,8 @@ export function LeoComposer({
     : nativeAttachActions;
   // 任务跑完推一条系统通知（手机后台/息屏时才推）。浏览器里是空操作。
   useNativeTaskNotifications();
+  // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
+  const [payerOrgId, setPayerOrgId] = useState("");
 
   // 自增高由编辑器自身 CSS 处理（min-height + max-height + overflow-y:auto），LeoComposer 不再管。
   useEffect(() => {
@@ -321,7 +344,7 @@ export function LeoComposer({
   // app 会被直接拒掉，而拒绝是永久的。浏览器里这一行是空操作。
   function submitPrompt() {
     requestTaskNotificationsOnce();
-    onSubmit?.(cleanPromptValue());
+    onSubmit?.(cleanPromptValue(), { org_id: payerOrgId });
   }
 
   function cleanPromptValue(): string {
@@ -566,6 +589,12 @@ export function LeoComposer({
             </button>
           )}
           {inlineSlot}
+          {/* 「这次谁付钱」。进了组织才渲染，否则这里是 null，整排与企业版之前逐字相同。
+              挂在左组而不是右组：左组本来就 flex-wrap，窄屏时它换行，
+              右组那颗 shrink-0 的发送键因此永远挤不掉（P3）。 */}
+          {showPayerSelector && (
+            <PayerSelector value={payerOrgId} onChange={setPayerOrgId} />
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
