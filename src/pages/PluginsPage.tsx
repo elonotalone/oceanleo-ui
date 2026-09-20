@@ -217,9 +217,10 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
   const manageableOrgs = orgs.filter((org) => canManageOrgMcp(org.role));
   const showOrgSection = shouldRenderOrgSection({ orgs, connections: orgConnections });
 
+  /** `patch` 是 org-api 的 camelCase 形状（它自己转成网关的 `member_visible`）。 */
   async function patchConnection(
     row: OrgMcpConnection,
-    patch: { enabled?: boolean; member_visible?: boolean },
+    patch: { enabled?: boolean; memberVisible?: boolean },
   ) {
     setBusyConnector(row.connectorId);
     await quiet(() => patchOrgMcpConnection(row.orgId, row.connectorId, patch));
@@ -319,7 +320,7 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
                             type="button"
                             disabled={busy}
                             aria-pressed={row.memberVisible}
-                            onClick={() => void patchConnection(row, { member_visible: !row.memberVisible })}
+                            onClick={() => void patchConnection(row, { memberVisible: !row.memberVisible })}
                             className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
                           >
                             {tt("成员可见")}
@@ -434,13 +435,14 @@ function OrgConnectDialog({
     if (!connectorId.trim()) return;
     setSubmitting(true);
     setFailed(false);
+    // body 是 org-api 的 `OrgMcpConnectBody`（camelCase）；snake_case 转换在 org-api 里做。
     const res = await quiet(() =>
       upsertOrgMcpConnection(orgId, {
-        connector_id: connectorId.trim(),
+        connectorId: connectorId.trim(),
         endpoint: endpoint.trim(),
         token: token.trim(),
         label: label.trim() || connectorId.trim(),
-        member_visible: memberVisible,
+        memberVisible,
       }),
     );
     setSubmitting(false);
