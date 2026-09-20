@@ -36,6 +36,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { ModelGroupPicker } from "./ModelPicker";
 import { PayerSelector } from "./PayerSelector";
+import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -219,6 +220,15 @@ export interface LeoComposerProps {
    * `PayerSelector` 返回 null**，这一排的渲染结果与企业版之前逐字相同。
    */
   showPayerSelector?: boolean;
+
+  /**
+   * 是否挂 MCP Apps 的「应用」入口（默认 true；W14 / A6，2026-09-20）。默认开同样是
+   * 安全的：**此人没有任何带界面的 MCP 工具时 `ComposerAppsBar` 返回 null**（今天
+   * 全部用户都如此——网关还没有 MCP Apps 端点），这一排的渲染结果逐字不变。
+   */
+  showAppsBar?: boolean;
+  /** 注入 MCP Apps 宿主（测试 / 站点自定义传输层）；不传用共享包缺省宿主。 */
+  appsHost?: McpAppsHost;
 }
 
 const PLUGIN_ICON_SRC =
@@ -258,6 +268,8 @@ export function LeoComposer({
   showModelPicker = true,
   showPlugins = true,
   showPayerSelector = true,
+  showAppsBar = true,
+  appsHost,
   onOpenPlugins,
 }: LeoComposerProps) {
   const tt = useUI();
@@ -594,6 +606,14 @@ export function LeoComposer({
               右组那颗 shrink-0 的发送键因此永远挤不掉（P3）。 */}
           {showPayerSelector && (
             <PayerSelector value={payerOrgId} onChange={setPayerOrgId} />
+          )}
+          {/* MCP Apps「应用」入口（A6）。此人没有带界面的 MCP 工具时它是 null，
+              这一排逐字不变。界面 `ui/message` 的那句话追加进输入框，不自动发送。 */}
+          {showAppsBar && (
+            <ComposerAppsBar
+              host={appsHost}
+              onInsertText={(text) => onChange(value ? `${value}\n${text}` : text)}
+            />
           )}
         </div>
 
