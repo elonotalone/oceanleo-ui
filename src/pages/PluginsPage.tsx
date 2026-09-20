@@ -12,11 +12,18 @@
 // ============================================================================
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { accessToken } from "../lib/auth/client";
-import { GATEWAY_BASE } from "../lib/auth/config";
 import { getMcpCatalog, type McpItem } from "../lib/database";
 import { currencySymbol } from "../lib/money";
-import { listMyOrgs, type OrgRole, type OrgSummary } from "../lib/org-api";
+import {
+  deleteOrgMcpConnection,
+  listInheritedMcp,
+  listMyOrgs,
+  listOrgMcpConnections,
+  patchOrgMcpConnection,
+  upsertOrgMcpConnection,
+  type OrgRole,
+  type OrgSummary,
+} from "../lib/org-api";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -119,31 +126,14 @@ export function shouldRenderOrgSection(input: {
   return input.orgs.some((org) => canManageOrgMcp(org.role));
 }
 
-/** 组织端点整条路都可能还没上线：任何非 2xx、任何异常一律当成「没有」。 */
-async function orgMcpRequest(
-  path: string,
-  init?: { method?: string; body?: unknown },
-): Promise<unknown | null> {
-  let token: string | null = null;
+/**
+ * 组织侧请求全部走 `../lib/org-api`（A3：全波 `/v1/orgs` 只有一个出口）。
+ * org-api 的纪律是失败**抛** `OrgApiError`；这一块的产品承诺是「没有就不出现」，
+ * 所以每处调用都在这里吞成 `null` —— 端点没上线、掉登录、断网，对插件页都是同一件事。
+ */
+async function quiet<T>(run: () => Promise<T>): Promise<T | null> {
   try {
-    token = await accessToken();
-  } catch {
-    return null;
-  }
-  if (!token) return null;
-  try {
-    const res = await fetch(`${GATEWAY_BASE}${path}`, {
-      method: init?.method || "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
-      cache: "no-store",
-      credentials: "include",
-    });
-    if (!res.ok) return null;
-    return await res.json().catch(() => null);
+    return await run();
   } catch {
     return null;
   }
@@ -187,12 +177,12 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
    * `/v1/orgs/{id}/mcp/connections`（含对成员隐藏的那些）。同一条连接以管理员那份为准。
    */
   const loadOrgConnections = useCallback(async (list: OrgSummary[]) => {
-    const inherited = normalizeOrgMcpConnections(await orgMcpRequest("/v1/orgs/mcp/available"));
+    const inherited = normalizeOrgMcpConnections(await quiet(() => listInheritedMcp()));
     const byKey = new Map(inherited.map((c) => [`${c.orgId}:${c.connectorId}`, c]));
     for (const org of list) {
       if (!canManageOrgMcp(org.role)) continue;
       const owned = normalizeOrgMcpConnections(
-        await orgMcpRequest(`/v1/orgs/${encodeURIComponent(org.id)}/mcp/connections`),
+        await quiet(() => listOrgMcpConnections(org.id)),
         { orgId: org.id, orgName: org.name },
       );
       for (const c of owned) byKey.set(`${c.orgId}:${c.connectorId}`, c);
@@ -229,23 +219,17 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
 
   async function patchConnection(
     row: OrgMcpConnection,
-    body: Record<string, unknown>,
+    patch: { enabled?: boolean; member_visible?: boolean },
   ) {
     setBusyConnector(row.connectorId);
-    await orgMcpRequest(
-      `/v1/orgs/${encodeURIComponent(row.orgId)}/mcp/connections/${encodeURIComponent(row.connectorId)}`,
-      { method: "PATCH", body },
-    );
+    await quiet(() => patchOrgMcpConnection(row.orgId, row.connectorId, patch));
     await refreshOrgConnections();
     setBusyConnector("");
   }
 
   async function removeConnection(row: OrgMcpConnection) {
     setBusyConnector(row.connectorId);
-    await orgMcpRequest(
-      `/v1/orgs/${encodeURIComponent(row.orgId)}/mcp/connections/${encodeURIComponent(row.connectorId)}`,
-      { method: "DELETE" },
-    );
+    await quiet(() => deleteOrgMcpConnection(row.orgId, row.connectorId));
     await refreshOrgConnections();
     setBusyConnector("");
   }
@@ -450,16 +434,15 @@ function OrgConnectDialog({
     if (!connectorId.trim()) return;
     setSubmitting(true);
     setFailed(false);
-    const res = await orgMcpRequest(`/v1/orgs/${encodeURIComponent(orgId)}/mcp/connections`, {
-      method: "POST",
-      body: {
+    const res = await quiet(() =>
+      upsertOrgMcpConnection(orgId, {
         connector_id: connectorId.trim(),
         endpoint: endpoint.trim(),
         token: token.trim(),
         label: label.trim() || connectorId.trim(),
         member_visible: memberVisible,
-      },
-    });
+      }),
+    );
     setSubmitting(false);
     if (res === null) {
       setFailed(true);
