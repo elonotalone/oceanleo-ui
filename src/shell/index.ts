@@ -269,6 +269,7 @@ export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
 export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
+export { PublishToOrgButton } from "./PublishToOrgButton";
 export { AdvancedContentWorkbench, type AdvancedContentWorkbenchProps } from "./AdvancedContentWorkbench";
 // 空件挂载（合同 §3.2）：`item` 可以先不给，工作台先给空框，第一件素材落成后再挂编辑器。
 export type { AdvancedContentWorkbenchMountProps } from "./AdvancedContentWorkbench";
