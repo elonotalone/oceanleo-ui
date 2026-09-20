@@ -7,6 +7,7 @@
 import { uploadFile } from "./database";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
+import { payerRequestFields } from "./payer";
 import type {
   ImageAiCommand,
   ImageAiCommandId,
@@ -51,6 +52,7 @@ export async function aiEditImage(
       image_url: uploaded.data.file.url,
       prompt,
       n: 1,
+      ...payerRequestFields(),
     }),
     cache: "no-store",
     signal: opts.signal,
@@ -805,6 +807,7 @@ export function createGatewayImageAiProvider(
               ...command.params,
               ...(maskUrl ? { mask_url: maskUrl } : {}),
             },
+            ...payerRequestFields(),
           },
           token,
           signal: context.signal,
@@ -855,7 +858,11 @@ export function createGatewayImageAiProvider(
 }
 
 function requestBody(request: Readonly<OceanLeoImageGatewayRequest>): unknown {
-  return request.body;
+  if (request.endpoint === "local-grid-split") return request.body;
+  return {
+    ...(request.body as Record<string, unknown>),
+    ...payerRequestFields(),
+  };
 }
 
 /**

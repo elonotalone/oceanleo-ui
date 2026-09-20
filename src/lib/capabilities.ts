@@ -15,6 +15,7 @@
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { Capability, ResultRender } from "./manifest";
+import { payerRequestFields } from "./payer";
 
 export interface CapabilityResult {
   ok: boolean;
@@ -52,7 +53,11 @@ async function post(path: string, body: unknown): Promise<{ ok: boolean; status:
     res = await fetch(`${GATEWAY_BASE}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        body && typeof body === "object" && !Array.isArray(body)
+          ? { ...(body as Record<string, unknown>), ...payerRequestFields() }
+          : body,
+      ),
       credentials: "include",
     });
   } catch {
