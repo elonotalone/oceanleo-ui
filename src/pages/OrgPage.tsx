@@ -39,6 +39,7 @@ import {
   normalizeOrgUsage,
   orgApiCode,
   orgErrorCopy,
+  OrgApiError,
   setMemberCap,
   setMemberPermission,
   updateOrg,
@@ -132,6 +133,87 @@ export function trendHeights(points: readonly { minor: number }[]): number[] {
   return points.map((p) => Math.round((Math.max(0, p.minor) / max) * 100));
 }
 
+type OrgLibraryRow = {
+  id: string;
+  kind: string;
+  title: string;
+  url: string;
+  userId: string;
+  email: string;
+  createdAt: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asText(value: unknown): string {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+/** listOrgAssets 的 unknown[] → 行。兼认 W07 的 assetKind / assetRef / publishedBy。 */
+function coerceAssetRows(value: unknown): OrgLibraryRow[] {
+  const list = Array.isArray(value)
+    ? value
+    : Array.isArray(asRecord(value).assets)
+      ? (asRecord(value).assets as unknown[])
+      : [];
+  return list.map((raw) => {
+    const row = asRecord(raw);
+    return {
+      id: asText(row.id || row.asset_id),
+      kind: asText(row.kind || row.assetKind || row.asset_kind || row.type),
+      title: asText(row.title || row.name),
+      url: asText(row.url || row.assetRef || row.asset_ref || row.public_url),
+      userId: asText(row.userId || row.user_id || row.publishedBy || row.published_by),
+      email: asText(row.email || row.user_email),
+      createdAt: asText(row.createdAt || row.created_at),
+    };
+  }).filter((row) => Boolean(row.id));
+}
+
+function assetOpenHref(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? trimmed : "";
+  } catch {
+    return "";
+  }
+}
+
+function kindLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    website: "网站",
+    ppt: "PPT",
+    document: "文档",
+    image: "图片",
+    video: "视频",
+    audio: "音频",
+    file: "文件",
+    canvas: "画布",
+    sheet: "表格",
+    game: "游戏",
+  };
+  return labels[kind] || kind || "—";
+}
+
+type OrgLibraryApi = {
+  listOrgAssets?: (orgId: string) => Promise<unknown>;
+  revokeOrgAsset?: (orgId: string, assetId: string) => Promise<void>;
+  grantOrgAsset?: (orgId: string, assetId: string, userId: string) => Promise<void>;
+  listOrgAssetGrants?: (orgId: string, assetId: string) => Promise<{ userId: string; email: string }[]>;
+  revokeOrgAssetGrant?: (orgId: string, assetId: string, userId: string) => Promise<void>;
+};
+
+async function loadOrgLibraryApi(): Promise<OrgLibraryApi> {
+  return (await import("../lib/org-api")) as OrgLibraryApi;
+}
+
 // ---------------------------------------------------------------------------
 // 组件
 // ---------------------------------------------------------------------------
@@ -177,6 +259,10 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
   const [requests, setRequests] = useState<Loaded<OrgJoinRequestRow[]>>({ status: "loading" });
   const [days, setDays] = useState<number>(30);
   const [usage, setUsage] = useState<Loaded<OrgUsage>>({ status: "loading" });
+  const [library, setLibrary] = useState<Loaded<OrgLibraryRow[]>>({ status: "loading" });
+  const [grantAssetId, setGrantAssetId] = useState("");
+  const [grants, setGrants] = useState<Loaded<{ userId: string; email: string }[]>>({ status: "loading" });
+  const [grantUserId, setGrantUserId] = useState("");
 
   const [invite, setInvite] = useState<{ url: string; expiresAt: string; copied: boolean } | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -252,19 +338,36 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
     }
   }, []);
 
+  const reloadLibrary = useCallback(async (id: string) => {
+    try {
+      const api = await loadOrgLibraryApi();
+      if (typeof api.listOrgAssets !== "function") {
+        setLibrary({ status: "error", code: "not_available" });
+        return;
+      }
+      setLibrary({ status: "ok", data: coerceAssetRows(await api.listOrgAssets(id)) });
+    } catch (error) {
+      setLibrary({ status: "error", code: orgApiCode(error) });
+    }
+  }, []);
+
   // ②③ 组织详情 / 成员 / 待审批 —— 只在有权限时发。没权限的人一条请求都不发。
   useEffect(() => {
     if (!currentId || !allowed) return;
     setDetail({ status: "loading" });
     setMembers({ status: "loading" });
     setRequests({ status: "loading" });
+    setLibrary({ status: "loading" });
+    setGrantAssetId("");
+    setGrants({ status: "loading" });
     setInvite(null);
     setNotice(null);
     setEditing(false);
     void reloadDetail(currentId);
     void reloadMembers(currentId);
+    void reloadLibrary(currentId);
     if (manageMembers) void reloadRequests(currentId);
-  }, [currentId, allowed, manageMembers, reloadDetail, reloadMembers, reloadRequests]);
+  }, [currentId, allowed, manageMembers, reloadDetail, reloadMembers, reloadRequests, reloadLibrary]);
 
   // ④ 用量（窗口切换时重取）
   useEffect(() => {
@@ -350,6 +453,53 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
       setNotice({ tone: "error", text: tt("复制失败，请手动选中链接复制。") });
     }
   }
+
+  const revokeLibraryAsset = (row: OrgLibraryRow) =>
+    run(`lib-revoke:${row.id}`, async () => {
+      const api = await loadOrgLibraryApi();
+      if (typeof api.revokeOrgAsset !== "function") throw new OrgApiError("not_available", 404);
+      await api.revokeOrgAsset(currentId, row.id);
+      await reloadLibrary(currentId);
+      if (grantAssetId === row.id) setGrantAssetId("");
+    }, tt("已保存"));
+
+  async function openGrants(row: OrgLibraryRow) {
+    if (grantAssetId === row.id) {
+      setGrantAssetId("");
+      return;
+    }
+    setGrantAssetId(row.id);
+    setGrantUserId("");
+    setGrants({ status: "loading" });
+    try {
+      const api = await loadOrgLibraryApi();
+      if (typeof api.listOrgAssetGrants !== "function") {
+        setGrants({ status: "error", code: "not_available" });
+        return;
+      }
+      setGrants({ status: "ok", data: await api.listOrgAssetGrants(currentId, row.id) });
+    } catch (error) {
+      setGrants({ status: "error", code: orgApiCode(error) });
+    }
+  }
+
+  const grantLibraryAsset = (row: OrgLibraryRow) =>
+    run(`lib-grant:${row.id}`, async () => {
+      if (!grantUserId) return;
+      const api = await loadOrgLibraryApi();
+      if (typeof api.grantOrgAsset !== "function") throw new OrgApiError("not_available", 404);
+      await api.grantOrgAsset(currentId, row.id, grantUserId);
+      setGrantUserId("");
+      setGrants({ status: "ok", data: await api.listOrgAssetGrants?.(currentId, row.id) || [] });
+    }, tt("已保存"));
+
+  const revokeLibraryGrant = (row: OrgLibraryRow, userId: string) =>
+    run(`lib-ungrant:${row.id}:${userId}`, async () => {
+      const api = await loadOrgLibraryApi();
+      if (typeof api.revokeOrgAssetGrant !== "function") throw new OrgApiError("not_available", 404);
+      await api.revokeOrgAssetGrant(currentId, row.id, userId);
+      setGrants({ status: "ok", data: await api.listOrgAssetGrants?.(currentId, row.id) || [] });
+    }, tt("已保存"));
 
   const sectionClass = "mt-6 rounded-xl border border-neutral-200 p-4";
   const titleClass = "text-[13px] font-semibold text-neutral-900";
@@ -610,6 +760,144 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                               </label>
                             </td>
                           )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* 组织库：成员发布进来的成果。发布者或负责人可撤；负责人可授权给成员。 */}
+          <div className={sectionClass} data-org-section="library">
+            <p className={titleClass}>{tt("组织库")}</p>
+            {library.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
+            {library.status === "error" && (
+              <p className={`mt-2 ${subtleClass}`}>{tt(orgErrorCopy(library.code))}</p>
+            )}
+            {library.status === "ok" && library.data.length === 0 && (
+              <p className={`mt-2 ${subtleClass}`} data-org-library-empty="1">
+                {tt("组织库还是空的。成员可以从工作台把成果发布进来。")}
+              </p>
+            )}
+            {library.status === "ok" && library.data.length > 0 && (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full text-left text-[12px]" data-org-library-table="1">
+                  <thead className="text-neutral-500">
+                    <tr>
+                      <th className="py-1.5 pr-3 font-medium">{tt("成果")}</th>
+                      <th className="py-1.5 pr-3 font-medium">{tt("成员")}</th>
+                      <th className="py-1.5 pr-3 font-medium">{tt("最后活跃")}</th>
+                      <th className="py-1.5 pr-3 font-medium">{tt("权限")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100 text-neutral-900">
+                    {library.data.map((row) => {
+                      const href = assetOpenHref(row.url);
+                      const canRevoke = manageMembers || Boolean(row.userId);
+                      return (
+                        <tr key={row.id} data-org-library-row={row.id}>
+                          <td className="py-2 pr-3">
+                            <span className="block max-w-[240px] truncate">{row.title || row.id}</span>
+                            {row.kind ? <span className={subtleClass}>{tt(kindLabel(row.kind))}</span> : null}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span className="block max-w-[220px] truncate">{row.email || row.userId || "—"}</span>
+                          </td>
+                          <td className="py-2 pr-3 tabular-nums">{whenCopy(row.createdAt || null)}</td>
+                          <td className="py-2 pr-3">
+                            <span className="flex flex-wrap items-center gap-1">
+                              {href ? (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={buttonClass}
+                                  data-org-library-open={row.id}
+                                >
+                                  {tt("打开")}
+                                </a>
+                              ) : (
+                                <span className={subtleClass}>{tt("还没上线")}</span>
+                              )}
+                              {canRevoke && (
+                                <button
+                                  type="button"
+                                  className={buttonClass}
+                                  disabled={busy === `lib-revoke:${row.id}`}
+                                  data-org-library-revoke={row.id}
+                                  onClick={() => void revokeLibraryAsset(row)}
+                                >
+                                  {tt("撤回")}
+                                </button>
+                              )}
+                              {manageMembers && (
+                                <button
+                                  type="button"
+                                  className={buttonClass}
+                                  data-org-library-grant={row.id}
+                                  onClick={() => void openGrants(row)}
+                                >
+                                  {tt("授权")}
+                                </button>
+                              )}
+                            </span>
+                            {manageMembers && grantAssetId === row.id && (
+                              <div className="mt-2 rounded-lg border border-neutral-100 p-2" data-org-library-grants={row.id}>
+                                {grants.status === "loading" && <p className={subtleClass}>…</p>}
+                                {grants.status === "error" && (
+                                  <p className={subtleClass}>{tt(orgErrorCopy(grants.code))}</p>
+                                )}
+                                {grants.status === "ok" && grants.data.length > 0 && (
+                                  <ul className="mb-2 space-y-1">
+                                    {grants.data.map((grant) => (
+                                      <li key={grant.userId} className="flex items-center justify-between gap-2">
+                                        <span className="truncate">{grant.email || grant.userId}</span>
+                                        <button
+                                          type="button"
+                                          className={buttonClass}
+                                          disabled={busy === `lib-ungrant:${row.id}:${grant.userId}`}
+                                          data-org-library-ungrant={grant.userId}
+                                          onClick={() => void revokeLibraryGrant(row, grant.userId)}
+                                        >
+                                          {tt("删除")}
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {members.status === "ok" && (
+                                  <span className="flex flex-wrap items-center gap-1">
+                                    <select
+                                      className={inputClass}
+                                      value={grantUserId}
+                                      onChange={(e) => setGrantUserId(e.target.value)}
+                                      data-org-library-grant-user=""
+                                    >
+                                      <option value="">{tt("成员")}</option>
+                                      {members.data
+                                        .filter((member) => member.role !== "owner")
+                                        .map((member) => (
+                                          <option key={member.userId} value={member.userId}>
+                                            {member.email || member.userId}
+                                          </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className={primaryClass}
+                                      disabled={!grantUserId || busy === `lib-grant:${row.id}`}
+                                      data-org-library-grant-save=""
+                                      onClick={() => void grantLibraryAsset(row)}
+                                    >
+                                      {tt("保存")}
+                                    </button>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
