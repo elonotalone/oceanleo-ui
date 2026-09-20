@@ -196,3 +196,59 @@ test("挂载电脑离线时新建 Shell 不可点", async () => {
   assert.equal(newShellEnabled(pc({ node_online: false })), false);
   view.cleanup();
 });
+
+test("多台：下拉三项、localStorage 上次选择、切换后新建 Shell 随在线变", async () => {
+  storedMounted = "cc_b";
+  const items = [
+    pc({ id: "cc_a", name: "甲机", node_online: true }),
+    pc({ id: "cc_b", name: "乙机", node_online: true }),
+    pc({ id: "cc_c", name: "丙机", node_online: false, status: "stopped" }),
+  ];
+  const view = await render(items);
+  const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.ok(mounted);
+  assert.match((mounted.textContent || "").trim(), /乙机/);
+  const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
+  assert.ok(shell);
+  assert.equal(shell.disabled, false);
+
+  await act(async () => {
+    mounted.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  const switchItems = [
+    ...view.host.querySelectorAll("[data-oceanleo-cc-switch-item]"),
+  ];
+  assert.equal(switchItems.length, 3);
+  assert.equal(
+    switchItems.map((node) => node.getAttribute("data-oceanleo-cc-switch-item")).sort().join(","),
+    "cc_a,cc_b,cc_c",
+  );
+
+  const offline = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_c"]');
+  assert.ok(offline);
+  await act(async () => {
+    offline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  const shellOffline = view.host.querySelector("[data-oceanleo-cc-new-shell]");
+  assert.ok(shellOffline);
+  assert.equal(shellOffline.disabled, true);
+  const mountedOffline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.match((mountedOffline.textContent || "").trim(), /丙机/);
+
+  await act(async () => {
+    mountedOffline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  const onlineA = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_a"]');
+  assert.ok(onlineA);
+  await act(async () => {
+    onlineA.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  const shellOnline = view.host.querySelector("[data-oceanleo-cc-new-shell]");
+  assert.ok(shellOnline);
+  assert.equal(shellOnline.disabled, false);
+  const mountedOnline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.match((mountedOnline.textContent || "").trim(), /甲机/);
+  view.cleanup();
+});

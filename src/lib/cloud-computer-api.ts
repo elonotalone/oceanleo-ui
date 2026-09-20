@@ -159,7 +159,7 @@ function errorFromPayload(status: number, payload: unknown): CloudComputerError 
   const codeRaw = detail && typeof detail.code === "string" ? detail.code.trim() : "";
   const messageRaw =
     detail && typeof detail.message === "string" ? detail.message.trim() : "";
-  const code = codeRaw || `http_${status}`;
+  const code = codeRaw || `client_http_${status}`;
   const message = messageRaw || code;
   return new CloudComputerError(code, message, status);
 }
@@ -167,7 +167,7 @@ function errorFromPayload(status: number, payload: unknown): CloudComputerError 
 async function ccRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await accessToken();
   if (!token) {
-    throw new CloudComputerError("unauthorized", "未登录", 401);
+    throw new CloudComputerError("client_unauthorized", "未登录", 401);
   }
   let res: Response;
   try {
@@ -182,7 +182,7 @@ async function ccRequest<T>(path: string, init?: RequestInit): Promise<T> {
       credentials: "include",
     });
   } catch {
-    throw new CloudComputerError("network_error", "网络错误：无法连接到网关。", 0);
+    throw new CloudComputerError("client_network_error", "网络错误：无法连接到网关。", 0);
   }
   let payload: unknown = null;
   try {

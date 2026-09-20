@@ -119,11 +119,15 @@ export function ComputerDock({
             </span>
           </button>
           {switchOpen && (
-            <div className="absolute bottom-9 left-0 z-50 min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
+            <div
+              className="absolute bottom-9 left-0 z-50 min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
+              data-oceanleo-cc-switch-list
+            >
               {computers.map((item) => (
                 <button
                   key={item.id}
                   type="button"
+                  data-oceanleo-cc-switch-item={item.id}
                   className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50 ${
                     item.id === mountedId ? "font-medium" : ""
                   }`}

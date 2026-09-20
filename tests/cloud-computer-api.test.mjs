@@ -133,6 +133,57 @@ test("错误从 detail.code 映射为 CloudComputerError", async () => {
   );
 });
 
+test("未登录映射 client_unauthorized", async () => {
+  const { listComputers: listWithoutToken, CloudComputerError: NoAuthError } =
+    await import(
+      await compileModule("src/lib/cloud-computer-api.ts", {
+        "./auth/client": dataModule(`
+          export async function accessToken() { return ""; }
+        `),
+        "./auth/config": dataModule(`
+          export const GATEWAY_BASE = "https://api.example.test";
+        `),
+      })
+    );
+  await assert.rejects(
+    () => listWithoutToken(),
+    (err) => {
+      assert.ok(err instanceof NoAuthError);
+      assert.equal(err.code, "client_unauthorized");
+      assert.equal(err.status, 401);
+      return true;
+    },
+  );
+});
+
+test("断网映射 client_network_error", async () => {
+  installFetch(() => {
+    throw new Error("offline");
+  });
+  await assert.rejects(
+    () => listComputers(),
+    (err) => {
+      assert.ok(err instanceof CloudComputerError);
+      assert.equal(err.code, "client_network_error");
+      assert.equal(err.status, 0);
+      return true;
+    },
+  );
+});
+
+test("无 detail.code 时映射 client_http_status", async () => {
+  installFetch(() => jsonResponse(502, { oops: true }));
+  await assert.rejects(
+    () => listComputers(),
+    (err) => {
+      assert.ok(err instanceof CloudComputerError);
+      assert.equal(err.code, "client_http_502");
+      assert.equal(err.status, 502);
+      return true;
+    },
+  );
+});
+
 test("terminalWsUrl 拼 wss 路径与 session_id/token 查询串", () => {
   const url = terminalWsUrl("cc_ab", "sid-9", "tok space");
   assert.equal(

@@ -134,7 +134,7 @@ export function TerminalPanel({
       ]);
       await import("@xterm/xterm/css/xterm.css");
       if (disposed || !hostRef.current) return;
-      hostRef.current.innerHTML = "";
+      hostRef.current.replaceChildren();
       const term = new Terminal({
         convertEol: true,
         fontSize: 13,
