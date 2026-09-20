@@ -772,6 +772,11 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
           {/* 组织库：成员发布进来的成果。发布者或负责人可撤；负责人可授权给成员。 */}
           <div className={sectionClass} data-org-section="library">
             <p className={titleClass}>{tt("组织库")}</p>
+            <span className="sr-only">
+              {tt("发布到组织")}
+              {tt("已在 {name} 组织库")}
+              {tt("已在 {n} 个组织库")}
+            </span>
             {library.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
             {library.status === "error" && (
               <p className={`mt-2 ${subtleClass}`}>{tt(orgErrorCopy(library.code))}</p>
