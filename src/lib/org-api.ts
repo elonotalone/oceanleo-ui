@@ -296,9 +296,7 @@ export async function listMyOrgs(): Promise<OrgSummary[]> {
  * 组织名、我的角色、权限位是 W01 给的，拿到了就该渲染，充值那一块自己说
  * 「还没上线」。所以 overview 走 `call()` 吞失败，只有 W01 那条失败才抛。
  */
-export async function getOrg(
-  orgId: string,
-): Promise<OrgSummary & { balanceMinor: number; minTopupMinor: number }> {
+export async function getOrg(orgId: string): Promise<OrgDetail> {
   if (!orgId) throw new OrgApiError("not_found", 404);
   const [base, overview] = await Promise.all([
     must<unknown>(orgPath(orgId), undefined, "not_found"),
@@ -311,13 +309,79 @@ export async function getOrg(
     ...summary,
     id: summary.id || orgId,
     currency: summary.currency || str(overviewRow.currency).trim().toUpperCase(),
-    balanceMinor: num(firstPresent(overviewRow.balance_minor, overviewRow.balance, baseRow.balance_minor), 0),
-    // 0 = 网关没说门槛，界面就不摆那句起充提示（而不是印一个「最低 ¥0.00」）。
-    minTopupMinor: num(
-      firstPresent(overviewRow.min_topup_minor, baseRow.min_topup_minor, overviewRow.min_topup),
+    balanceMinor: num(
+      firstPresent(
+        overviewRow.balanceMinor,
+        overviewRow.balance_minor,
+        overviewRow.balance,
+        baseRow.balance_minor,
+      ),
       0,
     ),
+    // 0 = 网关没说门槛，界面就不摆那句起充提示（而不是印一个「最低 ¥0.00」）。
+    minTopupMinor: num(
+      firstPresent(
+        overviewRow.minTopupMinor,
+        overviewRow.min_topup_minor,
+        baseRow.minTopupMinor,
+        baseRow.min_topup_minor,
+        overviewRow.min_topup,
+      ),
+      0,
+    ),
+    legalName: str(firstPresent(baseRow.legalName, baseRow.legal_name)),
+    taxId: str(firstPresent(baseRow.taxId, baseRow.tax_id)),
+    status: str(baseRow.status) || "active",
+    requireApproval: firstPresent(baseRow.requireApproval, baseRow.require_approval) !== false,
+    monthMinor: num(firstPresent(overviewRow.monthMinor, overviewRow.month_minor), 0),
+    memberCount: num(firstPresent(overviewRow.memberCount, overviewRow.member_count), 0),
+    pendingCount: num(firstPresent(overviewRow.pendingCount, overviewRow.pending_count), 0),
+    overviewAvailable: overview.ok,
   };
+}
+
+/**
+ * `getOrg()` 的返回：`§3.8` 钉死的 `OrgSummary & { balanceMinor; minTopupMinor }`
+ * 再加组织页顶部要的开票抬头与概览数字（W01 `GET /{org}` 与 W05 `/overview` 里
+ * 真有的字段）。只加不改：契约那几列一个不少、类型不变。
+ */
+export interface OrgDetail extends OrgSummary {
+  balanceMinor: number;
+  minTopupMinor: number;
+  legalName: string;
+  taxId: string;
+  /** `active` | `suspended`。 */
+  status: string;
+  requireApproval: boolean;
+  /** 本月组织总花费（minor）；overview 没上线时 0。 */
+  monthMinor: number;
+  memberCount: number;
+  pendingCount: number;
+  /** W05 的 `/overview` 到底上线了没 —— 界面靠它区分「余额 0」与「还没上线」。 */
+  overviewAvailable: boolean;
+}
+
+/**
+ * 改组织名 / 开票抬头 / 税号 / 审批开关（`PATCH /v1/orgs/{org}`，W01）。
+ * 名称、抬头、税号只有 owner 能改；`requireApproval` owner 与 admin 都能改 ——
+ * 权限判在网关，这里只负责把没给的字段不发出去。
+ */
+export async function updateOrg(
+  orgId: string,
+  patch: { name?: string; legalName?: string; taxId?: string; requireApproval?: boolean },
+): Promise<OrgSummary> {
+  if (!orgId) throw new OrgApiError("not_found", 404);
+  const body: Record<string, unknown> = {};
+  if (typeof patch.name === "string") body.name = patch.name.trim();
+  if (typeof patch.legalName === "string") body.legalName = patch.legalName.trim();
+  if (typeof patch.taxId === "string") body.taxId = patch.taxId.trim();
+  if (typeof patch.requireApproval === "boolean") body.requireApproval = patch.requireApproval;
+  const data = await must<unknown>(
+    orgPath(orgId),
+    { method: "PATCH", body: JSON.stringify(body) },
+    "not_found",
+  );
+  return normalizeSummary(data);
 }
 
 export interface OrgMemberRow {
@@ -330,15 +394,26 @@ export interface OrgMemberRow {
   assetCount: number;
   lastActiveAt: string | null;
   capMinor: number | null;
+  /**
+   * 成员行上的两个权限布尔（`_COMMON §3.2` 的列；W01 `GET /members` 与 W05
+   * `/members/usage` 都回）。组织页的权限勾就画它们。契约里的七列一个不少，这两个
+   * 是**只加**的可选项：网关没回时是 `undefined`，不是 `false`（勾就不乱画）。
+   */
+  canViewOrgPage?: boolean;
+  canViewAllTasks?: boolean;
 }
 
 function normalizeMemberRow(raw: unknown): OrgMemberRow {
   const row = record(raw);
+  const viewPage = firstPresent(row.canViewOrgPage, row.can_view_org_page);
+  const viewTasks = firstPresent(row.canViewAllTasks, row.can_view_all_tasks);
   return {
     userId: str(firstPresent(row.user_id, row.userId, row.id)),
     email: str(firstPresent(row.email, row.user_email)),
     role: roleOf(row.role),
     status: str(row.status) || "active",
+    ...(viewPage === undefined ? {} : { canViewOrgPage: bool(viewPage) }),
+    ...(viewTasks === undefined ? {} : { canViewAllTasks: bool(viewTasks) }),
     monthlyMinor: num(firstPresent(row.monthly_minor, row.monthlyMinor, row.month_minor), 0),
     taskCount: num(firstPresent(row.task_count, row.taskCount), 0),
     assetCount: num(firstPresent(row.asset_count, row.assetCount), 0),
@@ -389,6 +464,8 @@ export async function listMembers(orgId: string): Promise<OrgMemberRow[]> {
     into.role = from.role;
     into.status = from.status;
     if (from.email) into.email = from.email;
+    if (from.canViewOrgPage !== undefined) into.canViewOrgPage = from.canViewOrgPage;
+    if (from.canViewAllTasks !== undefined) into.canViewAllTasks = from.canViewAllTasks;
   });
   absorb(rowsOf(usage.ok ? usage.data : [], "members", "usage"), (into, from) => {
     into.monthlyMinor = from.monthlyMinor;
@@ -397,6 +474,12 @@ export async function listMembers(orgId: string): Promise<OrgMemberRow[]> {
     into.lastActiveAt = from.lastActiveAt;
     if (from.capMinor !== null) into.capMinor = from.capMinor;
     if (from.email && !into.email) into.email = from.email;
+    if (into.canViewOrgPage === undefined && from.canViewOrgPage !== undefined) {
+      into.canViewOrgPage = from.canViewOrgPage;
+    }
+    if (into.canViewAllTasks === undefined && from.canViewAllTasks !== undefined) {
+      into.canViewAllTasks = from.canViewAllTasks;
+    }
   });
   absorb(rowsOf(caps.ok ? caps.data : [], "caps"), (into, from) => {
     into.capMinor = from.capMinor;
@@ -420,9 +503,12 @@ export async function setMemberPermission(
 ): Promise<void> {
   if (!orgId || !userId) throw new OrgApiError("not_found", 404);
   const column = PERMISSION_COLUMN[permission] || permission;
+  // W01 盘上的 `PatchMemberBody` 收的是 camelCase（`canViewOrgPage`），契约 §3.2 写的是
+  // 列名。两种都发：pydantic 默认忽略多余键，而只发其中一种、猜错了就是「勾了没反应」。
+  const camel = column.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
   await must<unknown>(
     orgPath(orgId, `/members/${encodeURIComponent(userId)}`),
-    { method: "PATCH", body: JSON.stringify({ [column]: value }) },
+    { method: "PATCH", body: JSON.stringify({ [column]: value, [camel]: value }) },
     "not_found",
   );
 }
@@ -437,7 +523,8 @@ export async function setMemberCap(
   const value = capMinor === null ? null : Math.max(0, Math.floor(num(capMinor, 0)));
   await must<unknown>(
     orgPath(orgId, `/caps/${encodeURIComponent(userId)}`),
-    { method: "PUT", body: JSON.stringify({ monthly_cap_minor: value }) },
+    // W04 盘上的 `PutCapBody` 键是 `capMinor`；列名 `monthly_cap_minor` 一并发（同上）。
+    { method: "PUT", body: JSON.stringify({ capMinor: value, monthly_cap_minor: value }) },
     "not_available",
   );
 }
