@@ -87,6 +87,34 @@ export const JOIN_STATE_COPY: Record<Exclude<JoinState, "idle" | "submitting" | 
   already_member: "你已经在这个组织里了，不需要再申请。",
 };
 
+type CopyFn = (zh: string, vars?: Record<string, string | number>) => string;
+
+/** 入组状态人话；内部 `tt("…")` 让静态扫描看见字面。 */
+export function joinStateCopy(
+  state: Exclude<JoinState, "idle" | "submitting" | "error">,
+  tt: CopyFn,
+  vars?: Record<string, string | number>,
+): string {
+  switch (state) {
+    case "pending":
+      return tt(
+        "申请已提交，等负责人通过。通过后这里会出现这个组织，你也会收到一条站内通知。",
+        vars,
+      );
+    case "joined":
+      return tt("已加入「{org}」。现在可以在发任务时选择用这个组织的钱包付费。", vars);
+    case "rejected":
+      return tt(
+        "申请没有通过。负责人驳回了你的申请，或这个组织暂停了加入；有疑问请直接联系负责人。",
+        vars,
+      );
+    case "expired":
+      return tt("这条邀请链接已经过期或被撤销了。请负责人重新生成一条再发给你。", vars);
+    case "already_member":
+      return tt("你已经在这个组织里了，不需要再申请。", vars);
+  }
+}
+
 /**
  * `requestJoin()` 的结果或抛出的错误 → 五种状态之一。
  *
@@ -265,10 +293,10 @@ export interface OrgMembershipProps {
 
 type Loaded<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; code: OrgApiCode };
 
-function roleCopy(role: OrgRole): string {
-  if (role === "owner") return "负责人";
-  if (role === "admin") return "管理员";
-  return "成员";
+function roleCopy(role: OrgRole, tt: CopyFn = (zh) => zh): string {
+  if (role === "owner") return tt("负责人");
+  if (role === "admin") return tt("管理员");
+  return tt("组织成员");
 }
 
 function whenCopy(iso: string): string {
@@ -461,7 +489,7 @@ export function OrgMembership({
           <p className={titleClass}>{tt("我的组织")}</p>
           {orgs.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
           {orgs.status === "error" && (
-            <p className={`mt-2 ${subtleClass}`}>{tt(orgErrorCopy(orgs.code))}</p>
+            <p className={`mt-2 ${subtleClass}`}>{orgErrorCopy(orgs.code, tt)}</p>
           )}
           {orgs.status === "ok" && !hasOrgs && (
             <p className={`mt-2 ${subtleClass}`}>{tt("你还不属于任何组织。拿到负责人发的邀请链接后，在下面申请加入。")}</p>
@@ -488,7 +516,7 @@ export function OrgMembership({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-[13px] font-medium text-neutral-900">{org.name || org.id}</p>
-                      <p className={subtleClass}>{tt(roleCopy(org.role))}</p>
+                      <p className={subtleClass}>{roleCopy(org.role, tt)}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-[13px] tabular-nums text-neutral-900" data-org-usage={org.id}>
@@ -500,7 +528,7 @@ export function OrgMembership({
                         <span data-org-status={reached ? "capped" : "active"}>
                           {reached ? tt("已达上限") : tt("正常")}
                         </span>
-                        {u?.status === "error" && <> · {tt(orgErrorCopy(u.code))}</>}
+                        {u?.status === "error" && <> · {orgErrorCopy(u.code, tt)}</>}
                       </p>
                     </div>
                   </li>
@@ -558,7 +586,7 @@ export function OrgMembership({
               </button>
               {createError && (
                 <p className="mt-2 text-[13px] text-rose-700" role="status" data-org-create-error="1">
-                  {tt(orgErrorCopy(createError))}
+                  {orgErrorCopy(createError, tt)}
                 </p>
               )}
             </form>
@@ -610,7 +638,10 @@ export function OrgMembership({
             data-org-disclosure="1"
           >
             <p className="font-medium">{tt("加入后这个组织能看到什么")}</p>
-            <p className="mt-1">{ORG_JOIN_DISCLOSURE.map((sentence) => tt(sentence)).join("")}</p>
+            <p className="mt-1">
+              {tt("用组织钱包付费的任务，组织管理员可以查看全部内容；用你个人钱包付费的任务，组织永远看不到。")}
+              {tt("每次查看都会留下记录，你可以在下面看到谁看过。")}
+            </p>
           </div>
 
           {join.state !== "idle" && join.state !== "submitting" && (
@@ -626,8 +657,8 @@ export function OrgMembership({
               data-org-join-state={join.state}
             >
               {join.state === "error"
-                ? tt(orgErrorCopy(join.code))
-                : tt(JOIN_STATE_COPY[join.state], { org: join.orgName || tt("这个组织") })}
+                ? orgErrorCopy(join.code, tt)
+                : joinStateCopy(join.state, tt, { org: join.orgName || tt("这个组织") })}
             </p>
           )}
         </div>
@@ -642,7 +673,7 @@ export function OrgMembership({
           </p>
           {views.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
           {views.status === "error" && (
-            <p className={`mt-2 ${subtleClass}`}>{tt(orgErrorCopy(views.code))}</p>
+            <p className={`mt-2 ${subtleClass}`}>{orgErrorCopy(views.code, tt)}</p>
           )}
           {views.status === "ok" && views.data.length === 0 && (
             <p className={`mt-2 ${subtleClass}`} data-org-views-empty="1">

@@ -92,27 +92,30 @@ export function orgApiCode(error: unknown): OrgApiCode {
   return "offline";
 }
 
-/** 码 → 中文原文（词典 key）。渲染处 `tt()` 一下就是当前语言。 */
-export function orgErrorCopy(code: OrgApiCode | undefined): string {
+/** 码 → 中文原文（词典 key）。传入 `tt` 时内部 `tt("…")`，静态扫描能看见字面。 */
+export function orgErrorCopy(
+  code: OrgApiCode | undefined,
+  tt: (zh: string) => string = (zh) => zh,
+): string {
   switch (code) {
     case "signed_out":
-      return "登录状态失效了，请重新登录。";
+      return tt("登录状态失效了，请重新登录。");
     case "forbidden":
-      return "你没有查看这个组织的权限。";
+      return tt("你没有查看这个组织的权限。");
     case "not_available":
-      return "这一块还没上线，过些天再来看。";
+      return tt("这一块还没上线，过些天再来看。");
     case "not_found":
-      return "这个组织已经不在了。";
+      return tt("这个组织已经不在了。");
     case "offline":
-      return "连不上服务器，检查一下网络再试。";
+      return tt("连不上服务器，检查一下网络再试。");
     case "rate_limited":
-      return "操作太频繁了，缓一会儿再试。";
+      return tt("操作太频繁了，缓一会儿再试。");
     case "server_error":
-      return "服务器出了点问题，稍后再试。";
+      return tt("服务器出了点问题，稍后再试。");
     case "agreement_required":
-      return "请先阅读并勾选《OceanLeo 企业服务协议》。";
+      return tt("请先阅读并勾选《OceanLeo 企业服务协议》。");
     default:
-      return "这一步没有完成，请稍后重试。";
+      return tt("这一步没有完成，请稍后重试。");
   }
 }
 
@@ -918,6 +921,11 @@ export interface OrgMcpConnectionRow {
   enabled: boolean;
   /** 管理员可以把一条连接对普通成员隐藏；成员视角拿到的永远是 true。 */
   memberVisible: boolean;
+  /**
+   * 是否把成员身份转发给这台 MCP（A14，默认 false）。
+   * W25 插件页开关认这个键；网关字段 `forward_member_identity`。
+   */
+  forwardMemberIdentity: boolean;
 }
 
 /** 网关的 `{connections:[...]}` → 行。认不出 `connector_id` 的条目直接丢，不抛。 */
@@ -939,6 +947,7 @@ export function normalizeOrgMcpConnectionRows(
       toolsCount: num(firstPresent(row.tools_count, row.toolsCount), 0),
       enabled: row.enabled !== false,
       memberVisible: firstPresent(row.member_visible, row.memberVisible) !== false,
+      forwardMemberIdentity: firstPresent(row.forward_member_identity, row.forwardMemberIdentity) === true,
     });
   }
   return rows;
