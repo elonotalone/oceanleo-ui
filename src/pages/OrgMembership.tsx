@@ -485,7 +485,7 @@ export function OrgMembership({
               type="button"
               onClick={submitJoin}
               disabled={!hasCode || join.state === "submitting"}
-              className="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+              className="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
             >
               {join.state === "submitting" ? tt("申请中…") : tt("申请加入")}
             </button>

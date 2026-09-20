@@ -134,13 +134,19 @@ export function ComposerAppsBar({
         aria-label={label}
         title={label}
         aria-expanded={open}
-        className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
-          open
-            ? "border-neutral-300 bg-neutral-100 text-neutral-800"
-            : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
-        }`}
+        // 命中区 44px（min-h-11/min-w-11），负外边距让它在 28px 高的工具排里不撑行；圆形视觉在内层 span。
+        className="group -m-2 flex min-h-11 min-w-11 items-center justify-center"
       >
-        <GridGlyph />
+        <span
+          aria-hidden="true"
+          className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-active:duration-[var(--leo-dur-1)] group-active:scale-95 ${
+            open
+              ? "border-neutral-300 bg-neutral-100 text-neutral-800"
+              : "border-neutral-200 text-neutral-500 group-hover:border-neutral-300 group-hover:bg-neutral-50 group-hover:text-neutral-700"
+          }`}
+        >
+          <GridGlyph />
+        </span>
       </button>
 
       {open && !active && (
@@ -192,7 +198,7 @@ export function ComposerAppsBar({
                 setOpen(false);
               }}
               aria-label={tt("关闭")}
-              className="flex h-5 w-5 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+              className="-m-2 flex min-h-11 min-w-11 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
             >
               ×
             </button>

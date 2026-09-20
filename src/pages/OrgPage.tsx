@@ -355,9 +355,9 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
   const titleClass = "text-[13px] font-semibold text-neutral-900";
   const subtleClass = "text-[12px] text-neutral-500";
   const buttonClass =
-    "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50";
+    "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-800 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50";
   const primaryClass =
-    "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50";
+    "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50";
   const inputClass =
     "rounded-lg border border-neutral-200 px-2.5 py-1.5 text-[13px] text-neutral-900 outline-none focus:border-neutral-400";
 
