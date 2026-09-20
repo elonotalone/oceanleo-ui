@@ -631,7 +631,9 @@ export function FunctionAgentChat({
   const restartFlushRef = useRef<() => Promise<boolean>>(
     async () => true,
   );
-  const sendRef = useRef<(override?: string) => Promise<void>>(async () => {});
+  const sendRef = useRef<(override?: string, orgId?: string) => Promise<void>>(
+    async () => {},
+  );
 
   // 同一个真实 runtime 同时服务 live `/workspace/<appId>` 与
   // `/history/<sessionId>`：Provider 给身份，这里把各站已经存在的
@@ -1324,7 +1326,7 @@ export function FunctionAgentChat({
     }
   }, [messages, messagesTaskId, taskId]);
 
-  async function send(override?: string) {
+  async function send(override?: string, orgId?: string) {
     // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。
     const prompt = (override ?? input).trim();
     // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
@@ -1364,6 +1366,7 @@ export function FunctionAgentChat({
         branchFromMessageId,
         effectivePrompt,
         uploaded,
+        orgId,
       );
       setBusy(false);
       if (!result.ok || !result.data) {
@@ -1438,6 +1441,7 @@ export function FunctionAgentChat({
         agentId,
         sessionId: linkedSessionId || undefined,
         attachments: uploaded,
+        orgId,
         // 宗旨 v10：agent 独立于操作台——不带 opsState（不读操作台 state）。
       });
       setBusy(false);
@@ -1462,7 +1466,7 @@ export function FunctionAgentChat({
       return;
     }
     setBusy(true);
-    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext);
+    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext, orgId);
     setBusy(false);
     if (r.ok) setStatus("running");
     else {
@@ -1743,7 +1747,7 @@ export function FunctionAgentChat({
           <LeoComposer
             value={input}
             onChange={setInput}
-            onSubmit={() => void send()}
+            onSubmit={(_, payer) => void send(undefined, payer?.org_id)}
             loading={running}
             onStop={() => void stop()}
             disabled={sessionReadOnly}

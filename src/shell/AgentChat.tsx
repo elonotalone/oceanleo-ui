@@ -1064,7 +1064,7 @@ function AgentChatInner({
   // 旧对话（刷新、切页签回来）时那会凭空 ensure 出一条没人干活的新会话。
 
   const start = useCallback(
-    async (prompt: string, uploaded?: AgentAttachment[]) => {
+    async (prompt: string, uploaded?: AgentAttachment[], orgId?: string) => {
       if (readOnly) {
         setError(tt("当前会话为只读状态。"));
         return false;
@@ -1127,6 +1127,7 @@ function AgentChatInner({
         attachments: uploaded,
         promptOverride: promptOverride || undefined,
         sessionId: linkedSessionId || undefined,
+        orgId,
       });
       setBusy(false);
       if (!result.ok || !result.data) {
@@ -1263,7 +1264,7 @@ function AgentChatInner({
     workspace?.availability,
   ]);
 
-  async function send() {
+  async function send(orgId?: string) {
     const prompt = input.trim();
     // Allow send when there's an attachment even if the text is empty. But block
     // while any attachment is still uploading.
@@ -1289,7 +1290,7 @@ function AgentChatInner({
     beginUserTurn();
     const editorContext = editorContextFor(effectivePrompt);
     if (!taskId) {
-      const started = await start(effectivePrompt, uploaded);
+      const started = await start(effectivePrompt, uploaded, orgId);
       if (!started) restoreSubmission();
       return;
     }
@@ -1300,6 +1301,7 @@ function AgentChatInner({
         branchFromMessageId,
         effectivePrompt,
         uploaded,
+        orgId,
       );
       setBusy(false);
       if (!result.ok || !result.data) {
@@ -1350,7 +1352,7 @@ function AgentChatInner({
       { id: optimisticMessageId, role: "user", kind: "text", content: effectivePrompt,
         meta: uploaded.length ? { attachments: uploaded } : undefined },
     ]);
-    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext);
+    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext, orgId);
     setBusy(false);
     if (r.ok) setStatus("running");
     else {
@@ -2109,7 +2111,7 @@ function AgentChatInner({
           <LeoComposer
             value={input}
             onChange={setInput}
-            onSubmit={() => void send()}
+            onSubmit={(_, payer) => void send(payer?.org_id)}
             loading={running}
             onStop={() => void stop()}
             disabled={readOnly}

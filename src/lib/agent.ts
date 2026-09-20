@@ -17,6 +17,7 @@ import { accessToken, cachedAccessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
+import { payerRequestFields } from "./payer";
 
 export type AgentApiDiagnosticValue = string | number | boolean;
 
@@ -358,6 +359,11 @@ export function createTask(body: {
   promptOverride?: string;
   /** 用户上传的附件（文件/图片/语音的公网 url）。 */
   attachments?: AgentAttachment[];
+  /**
+   * 这次谁付钱。显式传了（含 `""`）用显式；没传则读 PayerSelector 持久化的选择。
+   * 请求体字段名固定 `org_id`，空串 = 个人钱包。
+   */
+  orgId?: string;
 }) {
   return authed<{
     task_id: string;
@@ -382,6 +388,7 @@ export function createTask(body: {
         team_id: body.teamId || "",
         prompt_override: body.promptOverride || "",
         attachments: body.attachments || [],
+        ...payerRequestFields(body.orgId),
       }),
     },
   ).then((result) => {
@@ -699,6 +706,7 @@ export function followUp(
   prompt: string,
   attachments?: AgentAttachment[],
   hiddenContext = "",
+  orgId?: string,
 ) {
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`,
@@ -708,6 +716,7 @@ export function followUp(
         prompt,
         hidden_context: hiddenContext,
         attachments: attachments || [],
+        ...payerRequestFields(orgId),
       }),
     },
   ).then((result) => {
@@ -739,6 +748,7 @@ export function branchTask(
   fromMessageId: number,
   prompt: string,
   attachments?: AgentAttachment[],
+  orgId?: string,
 ) {
   return authed<{
     task_id: string;
@@ -752,6 +762,7 @@ export function branchTask(
       from_message_id: fromMessageId,
       prompt,
       attachments: attachments || [],
+      ...payerRequestFields(orgId),
     }),
   }).then((result) => {
     if (result.ok) notifyHistoryChanged();

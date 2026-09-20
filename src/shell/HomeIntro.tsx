@@ -28,7 +28,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { LeoComposer, type ComposerRecentFile } from "./LeoComposer";
+import { LeoComposer, type ComposerPayer, type ComposerRecentFile } from "./LeoComposer";
 import { HomePromptCards } from "./HomeCards";
 import { HomeAppCards, HOME_APP_FEATURED_LIMIT } from "./HomeAppCards";
 import { type GoalApp } from "./app-catalog";
@@ -205,7 +205,10 @@ export function HomeIntro({
     setHighlightTemplate(null);
   }, []);
 
-  const submit = (cleanValue?: string) => {
+  const submit = (cleanValue?: string, _payer?: ComposerPayer) => {
+    // 第二参留在类型上，不转给 onStart（宿主面不改）。
+    // createTask 未传 orgId 时读 PayerSelector 已写入的持久化选择。
+    void _payer;
     const p = (cleanValue ?? value).trim();
     const uploaded = toolsOn ? atts.ready() : [];
     // 有附件时允许空文字提交（与 AgentChat 一致）。

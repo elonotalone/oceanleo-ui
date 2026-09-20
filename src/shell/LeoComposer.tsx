@@ -123,6 +123,8 @@ export interface LeoComposerProps {
    * 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键。参数是已去掉占位 token 的 prompt。
    * 第二个参数是付费主体，**恒有值**，没进过组织的用户拿到的是 `{ org_id: "" }`
    * ——与不带这个字段发出去的请求在网关侧是同一条路径。
+   * AgentChat / FunctionAgentChat 必须把 `payer.org_id` 交给 `send`；HomeIntro 的
+   * `onStart` 不加第三参（宿主不改），靠 `createTask` 读持久化选择。
    */
   onSubmit?: (cleanValue?: string, payer?: ComposerPayer) => void;
   placeholder?: string;

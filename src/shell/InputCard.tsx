@@ -29,7 +29,7 @@
 // ============================================================================
 
 import { type ReactNode, useRef, useState } from "react";
-import { LeoComposer } from "./LeoComposer";
+import { LeoComposer, type ComposerPayer } from "./LeoComposer";
 import { StudioSection } from "./StudioSection";
 import {
   NativeAttachSheet,
@@ -38,6 +38,7 @@ import {
 } from "./mobile-native-actions";
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import { persistedPayerOrgId } from "../lib/payer";
 import {
   AttachmentProgressChip,
   CompressionNote,
@@ -67,8 +68,8 @@ export interface InputAttachment {
 export interface InputCardProps {
   value: string;
   onChange: (value: string) => void;
-  /** 回车 / 点发送 / 点底部主按钮触发。 */
-  onSubmit?: () => void;
+  /** 回车 / 点发送 / 点底部主按钮触发。第二参是付费主体，恒有值；没进过组织是 `{ org_id: "" }`。 */
+  onSubmit?: (cleanValue?: string, payer?: ComposerPayer) => void;
   placeholder?: string;
   /** 提交中：发送键 + 主按钮转圈禁用。 */
   loading?: boolean;
@@ -308,7 +309,10 @@ export function InputCard({
       {submitLabel && onSubmit && (
         <button
           type="button"
-          onClick={() => !disableSubmit && onSubmit()}
+          onClick={() =>
+            !disableSubmit &&
+            onSubmit(undefined, { org_id: persistedPayerOrgId() })
+          }
           disabled={disableSubmit}
           className="w-full rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: accent }}
