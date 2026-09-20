@@ -6,11 +6,17 @@
 // 技能、连接器与 MCP 服务器。目录来自网关 /v1/mcp/catalog（阿里云市场 MCP 快照，
 // 公开只读）。全 OceanLeo 系列共享同一份目录。各站把它包进自己的 <AppShell>，
 // 放在 /plugins 路由。
+//
+// 企业版（2026-09）在目录之上多一块「组织提供」：管理员在组织里连一次，成员这里
+// 自动出现，成员不填凭证也删不掉。没有组织的人看到的页面与今天逐像素一致。
 // ============================================================================
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { accessToken } from "../lib/auth/client";
+import { GATEWAY_BASE } from "../lib/auth/config";
 import { getMcpCatalog, type McpItem } from "../lib/database";
 import { currencySymbol } from "../lib/money";
+import { listMyOrgs, type OrgRole, type OrgSummary } from "../lib/org-api";
 import { PageHeader } from "./PageHeader";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -24,6 +30,125 @@ function pluginPriceSymbol(currency: string | undefined): string {
   return currencySymbol(raw);
 }
 
+// --- 组织提供的 MCP 连接 -----------------------------------------------------
+
+/** 一条「组织连给我的」MCP 连接。组织侧的连接凭证只在网关里，这里永远拿不到。 */
+export interface OrgMcpConnection {
+  orgId: string;
+  orgName: string;
+  connectorId: string;
+  label: string;
+  icon: string;
+  toolsCount: number;
+  enabled: boolean;
+  /** 管理员可以把一条连接对成员隐藏；成员视角拿到的永远是 true。 */
+  memberVisible: boolean;
+}
+
+/**
+ * 谁能管组织的 MCP 连接。owner / admin 能连能停能断，member 只能看和用。
+ * 主站 `oceanleo/app/plugins/page.tsx` 自绘的那份必须与这里同判定。
+ */
+export function canManageOrgMcp(role: OrgRole | string): boolean {
+  return role === "owner" || role === "admin";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function text(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
+}
+
+/**
+ * 网关的连接列表 → 页面用的行。
+ *
+ * 形状按 `/v1/mcp/connections`（`connections` 数组 + snake_case）写，同时认 `items`：
+ * W08 落地时哪一种都不至于让整块静默变空。认不出来的条目直接丢，不抛错 ——
+ * 这一块的产品承诺是「没有就不出现」，不是「坏了就报错」。
+ */
+export function normalizeOrgMcpConnections(
+  payload: unknown,
+  fallback: { orgId?: string; orgName?: string } = {},
+): OrgMcpConnection[] {
+  const root = asRecord(payload);
+  const raw = Array.isArray(root.connections)
+    ? root.connections
+    : Array.isArray(root.items)
+      ? root.items
+      : Array.isArray(payload)
+        ? payload
+        : [];
+  const rows: OrgMcpConnection[] = [];
+  for (const entry of raw) {
+    const row = asRecord(entry);
+    const connectorId = text(row, "connector_id", "connectorId", "id");
+    if (!connectorId) continue;
+    rows.push({
+      orgId: text(row, "org_id", "orgId") || fallback.orgId || "",
+      orgName: text(row, "org_name", "orgName") || fallback.orgName || "",
+      connectorId,
+      label: text(row, "label", "name") || connectorId,
+      icon: text(row, "icon") || "🔌",
+      toolsCount: Number(row.tools_count ?? row.toolsCount ?? 0) || 0,
+      enabled: row.enabled !== false,
+      memberVisible: (row.member_visible ?? row.memberVisible) !== false,
+    });
+  }
+  return rows;
+}
+
+/**
+ * 这一块出不出现。
+ *
+ * 任务书写的是「零组织或零组织连接时整块不渲染」，理由是**没有组织的人看到的页面
+ * 与今天完全一致**。照字面还会多挡掉一种人：组织刚建好、一条连接都还没有的管理员
+ * —— 那样「为组织连接」这个入口永远点不到，整个功能不可达。所以判定分两半：
+ * 有连接就渲染；没有连接时只给管得了事的人渲染那个入口。普通用户两条都不满足。
+ */
+export function shouldRenderOrgSection(input: {
+  orgs: OrgSummary[];
+  connections: OrgMcpConnection[];
+}): boolean {
+  if (input.connections.length > 0) return true;
+  return input.orgs.some((org) => canManageOrgMcp(org.role));
+}
+
+/** 组织端点整条路都可能还没上线：任何非 2xx、任何异常一律当成「没有」。 */
+async function orgMcpRequest(
+  path: string,
+  init?: { method?: string; body?: unknown },
+): Promise<unknown | null> {
+  let token: string | null = null;
+  try {
+    token = await accessToken();
+  } catch {
+    return null;
+  }
+  if (!token) return null;
+  try {
+    const res = await fetch(`${GATEWAY_BASE}${path}`, {
+      method: init?.method || "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(init?.body ? { body: JSON.stringify(init.body) } : {}),
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
 export interface PluginsPageProps {
   accent?: string;
   title?: ReactNode;
@@ -35,6 +160,10 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
+  const [orgConnections, setOrgConnections] = useState<OrgMcpConnection[]>([]);
+  const [connectForOrg, setConnectForOrg] = useState<string | null>(null);
+  const [busyConnector, setBusyConnector] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -53,6 +182,74 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
     };
   }, []);
 
+  /**
+   * 成员看 `/v1/orgs/mcp/available`（我从各组织继承到的），管理员再按组织补一遍
+   * `/v1/orgs/{id}/mcp/connections`（含对成员隐藏的那些）。同一条连接以管理员那份为准。
+   */
+  const loadOrgConnections = useCallback(async (list: OrgSummary[]) => {
+    const inherited = normalizeOrgMcpConnections(await orgMcpRequest("/v1/orgs/mcp/available"));
+    const byKey = new Map(inherited.map((c) => [`${c.orgId}:${c.connectorId}`, c]));
+    for (const org of list) {
+      if (!canManageOrgMcp(org.role)) continue;
+      const owned = normalizeOrgMcpConnections(
+        await orgMcpRequest(`/v1/orgs/${encodeURIComponent(org.id)}/mcp/connections`),
+        { orgId: org.id, orgName: org.name },
+      );
+      for (const c of owned) byKey.set(`${c.orgId}:${c.connectorId}`, c);
+    }
+    return [...byKey.values()];
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      let list: OrgSummary[] = [];
+      try {
+        list = await listMyOrgs();
+      } catch {
+        return; // 组织 API 还没上线：这一块就当不存在
+      }
+      if (!alive || !Array.isArray(list) || list.length === 0) return;
+      const rows = await loadOrgConnections(list);
+      if (!alive) return;
+      setOrgs(list);
+      setOrgConnections(rows);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [loadOrgConnections]);
+
+  const refreshOrgConnections = useCallback(async () => {
+    setOrgConnections(await loadOrgConnections(orgs));
+  }, [loadOrgConnections, orgs]);
+
+  const manageableOrgs = orgs.filter((org) => canManageOrgMcp(org.role));
+  const showOrgSection = shouldRenderOrgSection({ orgs, connections: orgConnections });
+
+  async function patchConnection(
+    row: OrgMcpConnection,
+    body: Record<string, unknown>,
+  ) {
+    setBusyConnector(row.connectorId);
+    await orgMcpRequest(
+      `/v1/orgs/${encodeURIComponent(row.orgId)}/mcp/connections/${encodeURIComponent(row.connectorId)}`,
+      { method: "PATCH", body },
+    );
+    await refreshOrgConnections();
+    setBusyConnector("");
+  }
+
+  async function removeConnection(row: OrgMcpConnection) {
+    setBusyConnector(row.connectorId);
+    await orgMcpRequest(
+      `/v1/orgs/${encodeURIComponent(row.orgId)}/mcp/connections/${encodeURIComponent(row.connectorId)}`,
+      { method: "DELETE" },
+    );
+    await refreshOrgConnections();
+    setBusyConnector("");
+  }
+
   const filtered = q.trim()
     ? items.filter((it) =>
         `${it.name || ""}${it.vendor || ""}${it.description || ""}`
@@ -67,6 +264,100 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
       <p className="mt-1 text-center text-[13px] text-neutral-500">{tt("技能、连接器与 MCP 服务器，接入后即可在全 OceanLeo 系列中调用。")}</p>
 
       <div className="mx-auto mt-6 max-w-3xl">
+        {showOrgSection && (
+          <section data-org-mcp-section className="mb-8">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-[15px] font-semibold text-neutral-900">{tt("组织提供")}</h2>
+              {manageableOrgs.length > 0 && (
+                <button
+                  type="button"
+                  data-org-mcp-connect-entry
+                  onClick={() => setConnectForOrg(manageableOrgs[0].id)}
+                  className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800"
+                >
+                  {tt("为组织连接")}
+                </button>
+              )}
+            </div>
+            <p className="mb-3 mt-0.5 text-[12px] text-neutral-500">
+              {manageableOrgs.length > 0
+                ? tt("在组织里连一次，组织成员的插件页会自动出现这条连接，成员不用各自填凭证。")
+                : tt("组织提供的连接由管理员统一管理，你可以直接使用，不需要填凭证。")}
+            </p>
+            {orgConnections.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-neutral-300 p-6 text-center">
+                <p className="text-[13px] text-neutral-500">{tt("这个组织还没有连接任何 MCP 服务器。")}</p>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {orgConnections.map((row) => {
+                  const manageable = manageableOrgs.some((org) => org.id === row.orgId);
+                  const busy = busyConnector === row.connectorId;
+                  return (
+                    <div
+                      key={`${row.orgId}:${row.connectorId}`}
+                      data-org-mcp-row={row.connectorId}
+                      className="rounded-2xl border border-neutral-200 bg-white p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-lg">
+                          {row.icon}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-[14px] font-semibold text-neutral-900">{row.label}</span>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                row.enabled ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-500"
+                              }`}
+                            >
+                              {row.enabled ? tt("已启用") : tt("已停用")}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-[12px] text-neutral-500">
+                            {tt("由组织 {name} 提供", { name: row.orgName })}
+                            {" · "}
+                            {tt("{n} 个工具", { n: row.toolsCount })}
+                          </p>
+                        </div>
+                      </div>
+                      {manageable && (
+                        <div data-org-mcp-manage className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void patchConnection(row, { enabled: !row.enabled })}
+                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+                          >
+                            {row.enabled ? tt("停用") : tt("启用")}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-pressed={row.memberVisible}
+                            onClick={() => void patchConnection(row, { member_visible: !row.memberVisible })}
+                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+                          >
+                            {tt("成员可见")}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void removeConnection(row)}
+                            className="rounded-lg px-3 py-1.5 text-[12px] text-red-600 hover:bg-red-50 disabled:opacity-60"
+                          >
+                            {tt("断开")}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -110,6 +401,165 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
             ))}
           </div>
         )}
+      </div>
+
+      {connectForOrg !== null && (
+        <OrgConnectDialog
+          orgs={manageableOrgs}
+          initialOrgId={connectForOrg}
+          onClose={() => setConnectForOrg(null)}
+          onConnected={async () => {
+            setConnectForOrg(null);
+            await refreshOrgConnections();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 「为组织连接」对话框。
+ *
+ * 共享页这一份历史上没有个人连接对话框（个人连接在主站自绘那份里），所以这里按
+ * 主站同一组字段自建一份最小的：连接器、服务地址、凭证、名称。凭证只往网关送一次，
+ * 之后连管理员自己也读不回来。
+ */
+function OrgConnectDialog({
+  orgs,
+  initialOrgId,
+  onClose,
+  onConnected,
+}: {
+  orgs: OrgSummary[];
+  initialOrgId: string;
+  onClose: () => void;
+  onConnected: () => void | Promise<void>;
+}) {
+  const tt = useUI();
+  const [orgId, setOrgId] = useState(initialOrgId);
+  const [connectorId, setConnectorId] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [token, setToken] = useState("");
+  const [label, setLabel] = useState("");
+  const [memberVisible, setMemberVisible] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function submit() {
+    if (!connectorId.trim()) return;
+    setSubmitting(true);
+    setFailed(false);
+    const res = await orgMcpRequest(`/v1/orgs/${encodeURIComponent(orgId)}/mcp/connections`, {
+      method: "POST",
+      body: {
+        connector_id: connectorId.trim(),
+        endpoint: endpoint.trim(),
+        token: token.trim(),
+        label: label.trim() || connectorId.trim(),
+        member_visible: memberVisible,
+      },
+    });
+    setSubmitting(false);
+    if (res === null) {
+      setFailed(true);
+      return;
+    }
+    await onConnected();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+      <div data-org-mcp-dialog className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-[16px] font-semibold text-neutral-900">{tt("为组织连接 MCP")}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="space-y-3">
+          {orgs.length > 1 && (
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("连给哪个组织")}</label>
+              <select
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+              >
+                {orgs.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("连接器标识")}</label>
+            <input
+              value={connectorId}
+              onChange={(e) => setConnectorId(e.target.value)}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("MCP 服务地址（你的专属 URL）")}</label>
+            <input
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">Token / API Key</label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("名称")}</label>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-[13px] text-neutral-700">
+            <input
+              type="checkbox"
+              checked={memberVisible}
+              onChange={(e) => setMemberVisible(e.target.checked)}
+            />
+            {tt("成员可见")}
+          </label>
+          {failed && (
+            <p className="text-[12px] text-red-600">{tt("连接失败，请检查地址与凭证后重试。")}</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              disabled={submitting || !connectorId.trim()}
+              onClick={() => void submit()}
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+            >
+              {submitting ? tt("连接中…") : tt("连接并验证")}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50"
+            >
+              {tt("取消")}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
