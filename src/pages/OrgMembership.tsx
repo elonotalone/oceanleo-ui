@@ -177,8 +177,20 @@ export function inviteCodeFromHref(href: string): string {
 type OrgApiOptional = Partial<{
   getMyOrgUsage: (orgId: string) => Promise<MyOrgUsage>;
   getInvitePreview: (code: string) => Promise<InvitePreview>;
+  createOrg: (body: {
+    name: string;
+    legalName?: string;
+    taxId?: string;
+    agreementVersion: string;
+  }) => Promise<{ id: string }>;
 }>;
 const orgApiOptional = orgApi as unknown as OrgApiOptional;
+
+/** 协议版本与 `org-api.ts` 同源；替身没导出时用契约字面，避免成员面板加载期炸掉。 */
+const AGREEMENT_VERSION =
+  String(
+    (orgApi as unknown as { ENTERPRISE_AGREEMENT_VERSION?: string }).ENTERPRISE_AGREEMENT_VERSION || "",
+  ).trim() || "2026-09-20";
 
 async function defaultLoadMyUsage(orgId: string): Promise<MyOrgUsage> {
   const fn = orgApiOptional.getMyOrgUsage;
@@ -208,6 +220,20 @@ async function defaultLoadInvitePreview(code: string): Promise<InvitePreview> {
     orgName: String(raw?.orgName ?? "").trim(),
     requireApproval: raw?.requireApproval !== false,
   };
+}
+
+async function defaultCreateOrg(body: {
+  name: string;
+  legalName?: string;
+  taxId?: string;
+  agreementVersion: string;
+}): Promise<{ id: string }> {
+  const fn = orgApiOptional.createOrg;
+  if (typeof fn !== "function") throw new OrgApiError("not_available", 404);
+  const raw = await fn(body);
+  const id = String(raw?.id ?? "").trim();
+  if (!id) throw new OrgApiError("unknown", 500);
+  return { id };
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +299,11 @@ export function OrgMembership({
     state: "idle",
     orgName: "",
   });
+
+  const [createName, setCreateName] = useState("");
+  const [createAgreed, setCreateAgreed] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<OrgApiCode | undefined>(undefined);
 
   // 链接带来的码：预填 + 记进会话（账户页据此显示入口）。
   useEffect(() => {
@@ -355,9 +386,9 @@ export function OrgMembership({
   const orgRows = orgs.status === "ok" ? orgs.data : [];
   const hasOrgs = orgRows.length > 0;
   const hasCode = Boolean(code.trim());
-  // 「有东西可看」= 至少一个组织，或手里有一条可申请的邀请码。加载完之前按「没有」算，
-  // 免得账户页先闪出一块再消失。
-  const visible = orgs.status === "loading" ? false : hasOrgs || hasCode;
+  // 网关已上线就可以建组织（空列表也要露出勾协议的表单）。加载中先藏，避免账户页闪一下；
+  // 整条 /v1/orgs 还没上线（error）时仍按「没有」算，与第一波无组织零差异一致。
+  const visible = orgs.status === "loading" ? false : hasOrgs || hasCode || orgs.status === "ok";
 
   useEffect(() => {
     onVisibilityChange?.(visible);
@@ -388,6 +419,26 @@ export function OrgMembership({
       const orgName = preview?.status === "ok" ? preview.data.orgName : "";
       setJoin({ state: outcome.state, orgName, code: outcome.code });
       if (outcome.state === "already_member" || outcome.state === "expired") forgetInviteCode();
+    }
+  }
+
+  async function submitCreate() {
+    const name = createName.trim();
+    if (!name || !createAgreed || createBusy) return;
+    setCreateBusy(true);
+    setCreateError(undefined);
+    try {
+      await defaultCreateOrg({
+        name,
+        agreementVersion: AGREEMENT_VERSION,
+      });
+      setCreateName("");
+      setCreateAgreed(false);
+      await reloadOrgs();
+    } catch (error) {
+      setCreateError(orgApiCode(error));
+    } finally {
+      setCreateBusy(false);
     }
   }
 
@@ -456,6 +507,61 @@ export function OrgMembership({
                 );
               })}
             </ul>
+          )}
+          {orgs.status === "ok" && (
+            <form
+              className="mt-4 border-t border-neutral-100 pt-4"
+              data-org-create="1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitCreate();
+              }}
+            >
+              <p className={titleClass}>{tt("创建组织")}</p>
+              <input
+                type="text"
+                value={createName}
+                onChange={(e) => {
+                  setCreateName(e.target.value);
+                  if (createError) setCreateError(undefined);
+                }}
+                placeholder={tt("组织名")}
+                aria-label={tt("组织名")}
+                autoComplete="organization"
+                className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
+              />
+              <label className="mt-3 flex items-start gap-2 text-[12px] leading-relaxed text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={createAgreed}
+                  onChange={(e) => setCreateAgreed(e.target.checked)}
+                  data-org-create-agree="1"
+                  className="mt-0.5"
+                />
+                <span>
+                  {tt("我已阅读并同意")}
+                  <a
+                    href="/org/agreement"
+                    className="mx-0.5 text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-700"
+                  >
+                    {tt("《OceanLeo 企业服务协议》")}
+                  </a>
+                </span>
+              </label>
+              <button
+                type="submit"
+                data-org-create-submit="1"
+                disabled={!createName.trim() || !createAgreed || createBusy}
+                className="mt-3 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {createBusy ? tt("创建中…") : tt("创建")}
+              </button>
+              {createError && (
+                <p className="mt-2 text-[13px] text-rose-700" role="status" data-org-create-error="1">
+                  {tt(orgErrorCopy(createError))}
+                </p>
+              )}
+            </form>
           )}
         </div>
       )}

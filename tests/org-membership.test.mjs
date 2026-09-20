@@ -96,13 +96,16 @@ const orgApiStub = (withPreview) =>
       case "not_available": return "这一块还没上线，过些天再来看。";
       case "forbidden": return "你没有查看这个组织的权限。";
       case "offline": return "连不上服务器，检查一下网络再试。";
+      case "agreement_required": return "请先阅读并勾选《OceanLeo 企业服务协议》。";
       default: return "这一步没有完成，请稍后重试。";
     }
   }
+  export const ENTERPRISE_AGREEMENT_VERSION = "2026-09-20";
   export async function listMyOrgs() { count("listMyOrgs"); return g().listMyOrgs(); }
   export async function listViewsOfMe() { count("listViewsOfMe"); return g().listViewsOfMe(); }
   export async function requestJoin(code) { count("requestJoin:" + code); return g().requestJoin(code); }
   export async function getMyOrgUsage(orgId) { count("getMyOrgUsage:" + orgId); return g().getMyOrgUsage(orgId); }
+  export async function createOrg(body) { count("createOrg:" + (body && body.name || "") + ":" + (body && body.agreementVersion || "")); return g().createOrg(body); }
   ${withPreview ? `export async function getInvitePreview(code) { count("getInvitePreview:" + code); return g().getInvitePreview(code); }` : ""}
 `);
 
@@ -135,6 +138,7 @@ function scenario(overrides = {}) {
     requestJoin: async () => ({ status: "pending", orgName: "海狮设计" }),
     getMyOrgUsage: async () => ({ monthlyMinor: 0, capMinor: null }),
     getInvitePreview: async () => ({ orgName: "海狮设计", requireApproval: true }),
+    createOrg: async () => ({ id: "org-new" }),
     ...overrides,
   };
 }
@@ -429,24 +433,33 @@ test("A13：org-api 还没有 getInvitePreview 导出时（W11 未落地）不�
 
 /* ---------- ⑥ hideWhenEmpty ---------- */
 
-test("hideWhenEmpty：无组织且无邀请码 → 渲染 null，onVisibilityChange(false)；有组织 → 可见", async () => {
+test("hideWhenEmpty：网关已上线但还没有组织 → 露出建组织表单；整条路由挂了仍渲染 null", async () => {
   const seen = [];
   const empty = await render(
     React.createElement(OrgMembership, { hideWhenEmpty: true, onVisibilityChange: (v) => seen.push(v) }),
     scenario(),
   );
-  assert.equal(empty.host.innerHTML, "");
-  assert.ok(seen.length > 0 && seen.every((v) => v === false));
+  assert.ok(empty.q('[data-org-membership="1"]'), "已上线的空列表要能建组织");
+  assert.ok(empty.q('[data-org-create="1"]'));
+  assert.equal(seen.at(-1), true);
   empty.cleanup();
 
-  const seen2 = [];
-  const withOrg = await render(
-    React.createElement(OrgMembership, { hideWhenEmpty: true, onVisibilityChange: (v) => seen2.push(v) }),
-    scenario({ listMyOrgs: async () => [ORG_A] }),
+  const { OrgApiError } = await import(orgApiWithPreview);
+  const seenDown = [];
+  const down = await render(
+    React.createElement(OrgMembership, { hideWhenEmpty: true, onVisibilityChange: (v) => seenDown.push(v) }),
+    scenario({
+      listMyOrgs: async () => {
+        throw new OrgApiError("not_available", 404);
+      },
+      listViewsOfMe: async () => {
+        throw new OrgApiError("not_available", 404);
+      },
+    }),
   );
-  assert.ok(withOrg.q('[data-org-membership="1"]'));
-  assert.equal(seen2.at(-1), true);
-  withOrg.cleanup();
+  assert.equal(down.host.innerHTML, "", "路由未上线时账户页仍为零差异");
+  assert.ok(seenDown.length > 0 && seenDown.every((v) => v === false));
+  down.cleanup();
 });
 
 test("hideWhenEmpty：无组织但会话里有邀请码 → 面板出现（账户页据此给入口）", async () => {
@@ -464,6 +477,48 @@ test("hideWhenEmpty：无组织但会话里有邀请码 → 面板出现（账�
   act(() => root.unmount());
   host.remove();
   window.sessionStorage.clear();
+});
+
+/* ---------- 建组织：勾选协议 + 422 ---------- */
+
+test("建组织：不勾协议时提交按钮灰；勾了并填了名字才能点；请求带 agreementVersion", async () => {
+  const s = scenario();
+  const view = await render(React.createElement(OrgMembership), s);
+  const form = view.q('[data-org-create="1"]');
+  assert.ok(form, "缺建组织表单");
+  const link = form.querySelector('a[href="/org/agreement"]');
+  assert.ok(link, "协议链接必须指向 /org/agreement");
+  assert.ok((link.textContent || "").includes("OceanLeo 企业服务协议"));
+  const name = form.querySelector('input[aria-label="组织名"]');
+  const agree = form.querySelector('[data-org-create-agree="1"]');
+  const submit = form.querySelector('[data-org-create-submit="1"]');
+  assert.ok(name && agree && submit);
+  assert.equal(submit.disabled, true, "空表单不能提交");
+  await view.type(name, "海狮设计");
+  assert.equal(submit.disabled, true, "没勾协议不能提交");
+  await view.click(agree);
+  assert.equal(submit.disabled, false);
+  await view.click(submit);
+  assert.ok(s.calls.some((c) => c === "createOrg:海狮设计:2026-09-20"), `实际 calls=${JSON.stringify(s.calls)}`);
+  view.cleanup();
+});
+
+test("建组织：422 agreement_required 显示人话", async () => {
+  const { OrgApiError } = await import(orgApiWithPreview);
+  const s = scenario({
+    createOrg: async () => {
+      throw new OrgApiError("agreement_required", 422);
+    },
+  });
+  const view = await render(React.createElement(OrgMembership), s);
+  const form = view.q('[data-org-create="1"]');
+  await view.type(form.querySelector('input[aria-label="组织名"]'), "Leo Labs");
+  await view.click(form.querySelector('[data-org-create-agree="1"]'));
+  await view.click(form.querySelector('[data-org-create-submit="1"]'));
+  const err = view.q('[data-org-create-error="1"]');
+  assert.ok(err, "缺 422 人话");
+  assert.ok(err.textContent.includes("请先阅读并勾选《OceanLeo 企业服务协议》"));
+  view.cleanup();
 });
 
 /* ---------- ⑦ AccountPage 无组织零差异 ---------- */
@@ -517,22 +572,22 @@ function accountAuthStub() {
   };
 }
 
-test("AccountPage：无组织时没有「我的组织」菜单项，也没有组织面板；有组织时两者都出现", async () => {
+test("AccountPage：无组织但网关已上线时出现「我的组织」与建组织表单；路由 404 仍为零差异", async () => {
   globalThis.__authStub = accountAuthStub();
   const none = await render(React.createElement(AccountPage), scenario());
-  assert.equal(none.q('a[href="/org"]'), null, "无组织不许出现「我的组织」菜单项");
-  assert.ok(!none.text().includes("我的组织"));
-  assert.equal(none.q('[data-org-membership="1"]'), null, "无组织不许渲染组织面板");
+  const link = none.q('a[href="/org"]');
+  assert.ok(link, "可以建组织时账户页要有「我的组织」入口");
+  assert.ok(link.textContent.includes("我的组织"));
+  assert.ok(none.q('[data-org-membership="1"]'));
+  assert.ok(none.q('[data-org-create="1"]'));
   assert.equal(none.qa(".grid > div").length, 3, "三格统计原样");
   none.cleanup();
 
   globalThis.__authStub = accountAuthStub();
   const some = await render(React.createElement(AccountPage), scenario({ listMyOrgs: async () => [ORG_A] }));
-  const link = some.q('a[href="/org"]');
-  assert.ok(link, "有组织要出现「我的组织」菜单项");
-  assert.ok(link.textContent.includes("我的组织"));
+  assert.ok(some.q('a[href="/org"]'));
   assert.ok(some.q('[data-org-membership="1"]'));
-  assert.equal(some.qa(".grid > div").length, 3, "三格统计不受影响");
+  assert.ok(some.q('[data-org-create="1"]'), "已有组织也能再创建一家");
   some.cleanup();
 });
 
