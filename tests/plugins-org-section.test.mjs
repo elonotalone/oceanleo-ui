@@ -349,6 +349,22 @@ test("成员视角：有「由组织 海狮科技 提供」，没有断开 / 管
   );
 });
 
+test("成员视角：网关 available 行只带 org_id 不带 org_name（W08 实测形状）时，组织名从 listMyOrgs 按 id 补", async () => {
+  await withDom(
+    async ({ render, text }) => {
+      await render();
+      assert.ok(text().includes("由组织 海狮科技 提供"), `组织名必须按 org_id 补出来，实际：${text()}`);
+      assert.ok(!text().includes("由组织  提供"), "不许出现空组织名");
+    },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "member")],
+        listInheritedMcp: async () => ({ connections: [{ ...inheritedRow("o1", "", "amap"), org_name: undefined }] }),
+      },
+    },
+  );
+});
+
 // ————————————————————————————————————————————————————————————————
 // 4. 判据④⑥：管理员视角有控件；控件只走 org-api
 // ————————————————————————————————————————————————————————————————

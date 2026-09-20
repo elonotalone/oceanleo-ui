@@ -177,7 +177,12 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
    * `/v1/orgs/{id}/mcp/connections`（含对成员隐藏的那些）。同一条连接以管理员那份为准。
    */
   const loadOrgConnections = useCallback(async (list: OrgSummary[]) => {
-    const inherited = normalizeOrgMcpConnections(await quiet(() => listInheritedMcp()));
+    // 网关 `/v1/orgs/mcp/available` 的行只带 `org_id`，不带组织名（实测 W08 `_inherited_row`）；
+    // 「由组织 X 提供」的 X 从 listMyOrgs 的结果按 id 补。
+    const nameOf = new Map(list.map((org) => [org.id, org.name]));
+    const withName = (c: OrgMcpConnection): OrgMcpConnection =>
+      c.orgName ? c : { ...c, orgName: nameOf.get(c.orgId) || "" };
+    const inherited = normalizeOrgMcpConnections(await quiet(() => listInheritedMcp())).map(withName);
     const byKey = new Map(inherited.map((c) => [`${c.orgId}:${c.connectorId}`, c]));
     for (const org of list) {
       if (!canManageOrgMcp(org.role)) continue;
@@ -185,7 +190,7 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
         await quiet(() => listOrgMcpConnections(org.id)),
         { orgId: org.id, orgName: org.name },
       );
-      for (const c of owned) byKey.set(`${c.orgId}:${c.connectorId}`, c);
+      for (const c of owned) byKey.set(`${c.orgId}:${c.connectorId}`, withName(c));
     }
     return [...byKey.values()];
   }, []);
