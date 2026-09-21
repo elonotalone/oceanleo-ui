@@ -372,3 +372,17 @@ test("命令框文本不含 token=", async () => {
   assert.equal(view.text().includes("token="), false);
   view.cleanup();
 });
+
+test("active 且从未 enrolled 的自有行重开到安装命令步", async () => {
+  const resume = baseComputer({
+    id: "cc_legacy",
+    status: "active",
+    enrolled_at: null,
+    confirmed_at: null,
+  });
+  const client = makeClient();
+  const view = await render({ client, resumeComputer: resume });
+  assert.equal(view.step(), "command");
+  assert.deepEqual(client.log.regenerate, ["cc_legacy"]);
+  view.cleanup();
+});

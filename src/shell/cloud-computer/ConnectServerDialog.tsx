@@ -96,6 +96,21 @@ function initialState(resume: Computer | null | undefined): WizardState {
   };
 }
 
+function initialStateWithStep(
+  resume: Computer | null | undefined,
+  forced?: ConnectStep,
+): WizardState {
+  const base = initialState(resume);
+  if (!forced || forced === base.step) return base;
+  if ((forced === "confirm" || forced === "command") && resume) {
+    return { ...base, step: forced, computer: resume, name: resume.name };
+  }
+  if (forced === "consent" || forced === "name") {
+    return { ...base, step: forced };
+  }
+  return base;
+}
+
 function reducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case "set_name":
@@ -186,19 +201,7 @@ export function ConnectServerDialog({
   const [state, dispatch] = useReducer(
     reducer,
     resumeComputer,
-    (resume) => {
-      if (resumeStep === "command" || resumeStep === "confirm" || resumeStep === "consent" || resumeStep === "name") {
-        const inferred = initialState(resume);
-        if (resumeStep === inferred.step) return inferred;
-        if (resumeStep === "confirm" && resume) {
-          return { ...initialState(resume), step: "confirm", computer: resume, name: resume.name };
-        }
-        if (resumeStep === "command" && resume) {
-          return { ...initialState(resume), step: "command", computer: resume, name: resume.name };
-        }
-      }
-      return initialState(resume);
-    },
+    (resume) => initialStateWithStep(resume, resumeStep),
   );
   const [now, setNow] = useState(() => Date.now());
   const nameRef = useRef<HTMLInputElement>(null);

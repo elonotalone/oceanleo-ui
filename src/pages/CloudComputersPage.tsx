@@ -116,7 +116,10 @@ export function CloudComputersSection({
 
   useEffect(() => {
     if (!autoFocus) return;
-    sectionRef.current?.scrollIntoView({ block: "start" });
+    const node = sectionRef.current;
+    if (node && typeof node.scrollIntoView === "function") {
+      node.scrollIntoView({ block: "start" });
+    }
   }, [autoFocus]);
 
   useEffect(() => {
@@ -224,7 +227,6 @@ export function CloudComputersSection({
           client={api}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
-            setCreateOpen(false);
             void refresh();
           }}
         />
@@ -602,7 +604,7 @@ export function CloudComputersPage({
     <div className="px-8 py-6">
       <PageHeader title={tt("云电脑")} backHref="/" />
       <div className="mx-auto mt-7 max-w-4xl">
-        <CloudComputersSection client={client} />
+        <CloudComputersSection client={client} autoFocus />
       </div>
     </div>
   );
