@@ -103,7 +103,12 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function MoveTaskProjectDialog(){ return null; }
   `),
   "../ui": dataModule(`export function ConfirmDialog(){ return null; }`),
-  "../lib/auth/client": dataModule(`export function browserClient(){ return null; }`),
+  // HistoryDetail 现在会为 mode=shell 的任务渲染 ShellTaskView，其 cloud-computer-api
+  // 依赖还从这里取 accessToken；bench 补上这个导出，历史列表本身不碰它。
+  "../lib/auth/client": dataModule(`
+    export function browserClient(){ return null; }
+    export async function accessToken(){ return null; }
+  `),
   "../lib/agent": dataModule(`
     export async function listTasks(){ return { ok: true, data: { items: [] } }; }
     export async function deleteTask(){ return { ok: true }; }

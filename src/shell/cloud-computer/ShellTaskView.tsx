@@ -86,19 +86,28 @@ export function ShellTaskView({
     onEnded?.();
   }, [client, computerId, onEnded, sessionId]);
 
+  const [reopenError, setReopenError] = useState<string | null>(null);
   const reopen = useCallback(async () => {
-    const opened = await client.openTerminal(computerId, {
-      cols: 80,
-      rows: 24,
-      as_task: true,
-    });
+    setReopenError(null);
+    let opened: { task_id?: string };
+    try {
+      opened = await client.openTerminal(computerId, {
+        cols: 80,
+        rows: 24,
+        as_task: true,
+      });
+    } catch {
+      // 机器此刻离线/停机时网关会拒绝；告诉用户去哪里看，而不是静默失败。
+      setReopenError(tt("云电脑离线，先到我的设备里检查节点"));
+      return;
+    }
     if (!opened.task_id) return;
     if (onReopened) {
       onReopened(opened.task_id);
       return;
     }
     router.push(`/history?task=${encodeURIComponent(opened.task_id)}`);
-  }, [client, computerId, onReopened, router]);
+  }, [client, computerId, onReopened, router, tt]);
 
   const state = computer ? computerDisplayState(computer) : null;
   const name = computer?.name || computerName || tt("接入云电脑");
@@ -139,6 +148,11 @@ export function ShellTaskView({
             >
               {tt("在同一台电脑再开一个")}
             </button>
+          ) : null}
+          {reopenError ? (
+            <p className="mt-2 text-[12px] text-rose-300" data-oceanleo-cc-reopen-error>
+              {reopenError}
+            </p>
           ) : null}
         </div>
       ) : (

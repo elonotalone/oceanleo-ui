@@ -7,6 +7,7 @@ import { SHELL_OVERHAUL_DEVICES_MESSAGES } from "./shell-overhaul-devices-copy";
 import { SHELL_OVERHAUL_SETTINGS_MESSAGES } from "./shell-overhaul-settings-copy";
 import { SHELL_OVERHAUL_FOOTER_MESSAGES } from "./shell-overhaul-footer-copy";
 import { SHELL_OVERHAUL_PLUGINS_MESSAGES } from "./shell-overhaul-plugins-copy";
+import { SHELL_OVERHAUL_LEGACY_MESSAGES } from "./shell-overhaul-legacy-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -14,6 +15,7 @@ const PARTS = [
   SHELL_OVERHAUL_SETTINGS_MESSAGES,
   SHELL_OVERHAUL_FOOTER_MESSAGES,
   SHELL_OVERHAUL_PLUGINS_MESSAGES,
+  SHELL_OVERHAUL_LEGACY_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
