@@ -44,6 +44,10 @@ export {
   CloudComputersPage,
   type CloudComputersPageProps,
 } from "./CloudComputersPage";
+export {
+  CloudComputersSection,
+  type CloudComputersSectionProps,
+} from "./CloudComputersPage";
 // 企业版（2026-09，W11）：组织页（负责人看板；被授予 view_org_page 的成员也能进）。
 // 取数只走 lib/org-api。成员侧面板 OrgMembership 在下面（W13）。
 export { OrgPage } from "./OrgPage";

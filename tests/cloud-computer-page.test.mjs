@@ -82,7 +82,7 @@ const dialogStubUrl = dataModule(`
   export function ConnectServerDialog() { return null; }
 `);
 
-const { CloudComputersPage } = await import(
+const { CloudComputersPage, CloudComputersSection } = await import(
   await compileModule("src/pages/CloudComputersPage.tsx", {
     "../i18n/ui/useUI": uiTextStubUrl,
     "../ui": confirmDialogStubUrl,
@@ -101,6 +101,8 @@ function pc(overrides = {}) {
     edition: "com",
     public_ip: "1.2.3.4",
     node_online: true,
+    enrolled_at: "2026-09-20T00:00:00Z",
+    confirmed_at: "2026-09-20T00:00:00Z",
     cost_to_date: { amount_minor: 120, currency: "USD" },
     created_at: "2026-09-20T00:00:00Z",
     updated_at: "2026-09-20T00:00:00Z",
@@ -162,34 +164,38 @@ async function render(client) {
   };
 }
 
-test("空态直接放创建云电脑和接入我的服务器两个入口", async () => {
+test("空态直接放购买云电脑和连接我的服务器两个入口", async () => {
   const view = await render(makeClient([]));
   assert.ok(view.host.querySelector("[data-oceanleo-cc-empty]"));
   assert.ok(view.text().includes("还没有云电脑"));
-  assert.ok(view.button("创建云电脑"));
-  assert.ok(view.button("接入我的服务器"));
+  assert.ok(view.button("购买云电脑"));
+  assert.ok(view.button("连接我的服务器"));
   view.cleanup();
 });
 
-test("列表卡片渲染名字、来源、状态、公网 IP、节点、费用", async () => {
+test("已接入卡片渲染名字、来源、在线芯片、公网 IP、费用", async () => {
   const view = await render(makeClient([pc()]));
+  const card = view.host.querySelector('[data-oceanleo-cc-card="cc_1"]');
+  assert.ok(card);
+  assert.equal(card.getAttribute("data-oceanleo-cc-card-kind"), "connected");
+  assert.equal(card.getAttribute("data-oceanleo-cc-display-state"), "ready");
   const text = view.text();
   assert.ok(text.includes("新加坡一号"));
   assert.ok(text.includes("阿里云"));
-  assert.ok(text.includes("运行中"));
-  assert.ok(text.includes("1.2.3.4"));
   assert.ok(text.includes("在线"));
-  assert.ok(view.host.querySelector('[data-oceanleo-cc-card="cc_1"]'));
+  assert.ok(text.includes("1.2.3.4"));
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-pending-list]"), null);
   view.cleanup();
 });
 
-test("pending/enrolled/active 三种卡片的标记与按钮", async () => {
+test("接入中与资产卡按 computerDisplayState 拆开，gone 不渲染", async () => {
   const items = [
     pc({
       id: "cc_p",
       name: "待装",
       source: "byo",
       status: "pending",
+      enrolled_at: null,
       confirmed_at: null,
       node_online: false,
       public_ip: null,
@@ -199,6 +205,7 @@ test("pending/enrolled/active 三种卡片的标记与按钮", async () => {
       name: "待确认机",
       source: "byo",
       status: "enrolled",
+      enrolled_at: "t",
       confirmed_at: null,
       node_online: true,
       node_fingerprint: "SHA256:ffffeeee",
@@ -208,33 +215,109 @@ test("pending/enrolled/active 三种卡片的标记与按钮", async () => {
       name: "在用机",
       source: "byo",
       status: "active",
+      enrolled_at: "t",
       confirmed_at: "t",
       node_online: true,
       node_fingerprint: "SHA256:aaaabbbb",
       node_run_as: "oceanleo",
     }),
+    pc({
+      id: "cc_legacy",
+      name: "elon",
+      source: "byo",
+      status: "active",
+      enrolled_at: null,
+      confirmed_at: null,
+      node_online: false,
+    }),
+    pc({
+      id: "cc_gone",
+      name: "已删",
+      source: "byo",
+      status: "removed",
+      enrolled_at: "t",
+      confirmed_at: "t",
+    }),
+    pc({
+      id: "cc_released",
+      name: "已释放",
+      source: "aliyun",
+      status: "released",
+    }),
+    pc({
+      id: "cc_off",
+      name: "离线机",
+      source: "aliyun",
+      status: "running",
+      node_online: false,
+      enrolled_at: "t",
+      confirmed_at: "t",
+    }),
   ];
   const view = await render(makeClient(items));
-  const pending = view.host.querySelector('[data-oceanleo-cc-card="cc_p"]');
-  const enrolled = view.host.querySelector('[data-oceanleo-cc-card="cc_e"]');
+  const pendingInstall = view.host.querySelector('[data-oceanleo-cc-card="cc_p"]');
+  const pendingConfirm = view.host.querySelector('[data-oceanleo-cc-card="cc_e"]');
+  const legacy = view.host.querySelector('[data-oceanleo-cc-card="cc_legacy"]');
   const active = view.host.querySelector('[data-oceanleo-cc-card="cc_a"]');
-  assert.ok(pending);
-  assert.ok(enrolled);
+  const offline = view.host.querySelector('[data-oceanleo-cc-card="cc_off"]');
+  assert.ok(pendingInstall);
+  assert.ok(pendingConfirm);
+  assert.ok(legacy);
   assert.ok(active);
-  assert.equal(pending.getAttribute("data-oceanleo-cc-card-status"), "pending");
-  assert.equal(enrolled.getAttribute("data-oceanleo-cc-card-status"), "enrolled");
-  assert.equal(active.getAttribute("data-oceanleo-cc-card-status"), "active");
-  assert.ok((pending.textContent || "").includes("等待安装"));
-  assert.ok(pending.querySelector("[data-oceanleo-cc-view-command]"));
-  assert.match(pending.querySelector("[data-oceanleo-cc-view-command]").textContent || "", /查看命令/);
-  assert.ok((enrolled.textContent || "").includes("待确认"));
-  assert.ok((enrolled.textContent || "").includes("SHA256:ffffeeee"));
-  assert.ok(enrolled.querySelector("[data-oceanleo-cc-confirm-open]"));
-  assert.equal(
-    (enrolled.querySelector("[data-oceanleo-cc-confirm-open]").textContent || "").trim(),
-    "确认",
+  assert.ok(offline);
+  assert.equal(pendingInstall.getAttribute("data-oceanleo-cc-card-kind"), "pending");
+  assert.equal(pendingInstall.getAttribute("data-oceanleo-cc-display-state"), "pending_install");
+  assert.equal(legacy.getAttribute("data-oceanleo-cc-card-kind"), "pending");
+  assert.equal(legacy.getAttribute("data-oceanleo-cc-display-state"), "pending_install");
+  assert.equal(pendingConfirm.getAttribute("data-oceanleo-cc-display-state"), "pending_confirm");
+  assert.equal(active.getAttribute("data-oceanleo-cc-card-kind"), "connected");
+  assert.equal(active.getAttribute("data-oceanleo-cc-display-state"), "ready");
+  assert.equal(offline.getAttribute("data-oceanleo-cc-card-kind"), "connected");
+  assert.equal(offline.getAttribute("data-oceanleo-cc-display-state"), "offline");
+  assert.ok((pendingInstall.textContent || "").includes("安装命令还没在服务器上运行"));
+  assert.ok(pendingInstall.querySelector("[data-oceanleo-cc-view-command]"));
+  assert.match(
+    pendingInstall.querySelector("[data-oceanleo-cc-view-command]").textContent || "",
+    /查看安装命令/,
   );
-  assert.ok((active.textContent || "").includes("SHA256:aaaabbbb"));
-  assert.ok((active.textContent || "").includes("oceanleo"));
+  assert.ok((pendingConfirm.textContent || "").includes("节点已上线，请核对指纹后确认"));
+  assert.equal(
+    (pendingConfirm.querySelector("[data-oceanleo-cc-confirm-open]").textContent || "").trim(),
+    "核对并确认",
+  );
+  assert.ok((offline.textContent || "").includes("离线"));
+  assert.equal(view.host.querySelector('[data-oceanleo-cc-card="cc_gone"]'), null);
+  assert.equal(view.host.querySelector('[data-oceanleo-cc-card="cc_released"]'), null);
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-pending-list]"));
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-connected-list]"));
   view.cleanup();
+});
+
+test("CloudComputersSection 单独渲染时同样拆开接入中与资产卡", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(
+      React.createElement(CloudComputersSection, {
+        client: makeClient([
+          pc({
+            id: "cc_legacy",
+            name: "elon",
+            source: "byo",
+            status: "active",
+            enrolled_at: null,
+            confirmed_at: null,
+          }),
+        ]),
+      }),
+    );
+  });
+  for (let i = 0; i < 6; i += 1) await act(async () => {});
+  const card = host.querySelector('[data-oceanleo-cc-card="cc_legacy"]');
+  assert.ok(card);
+  assert.equal(card.getAttribute("data-oceanleo-cc-card-kind"), "pending");
+  assert.equal(host.querySelector("[data-oceanleo-cc-connected-list]"), null);
+  act(() => root.unmount());
+  host.remove();
 });

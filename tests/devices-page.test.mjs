@@ -81,6 +81,15 @@ const confirmDialogStubUrl = dataModule(`
 const facadeStubUrl = dataModule(`
   export const devicesFacade = globalThis.__defaultDevicesClient;
 `);
+const cloudSectionStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function CloudComputersSection() {
+    return React.createElement("div", { "data-oceanleo-cc-section-stub": "1" });
+  }
+  export function CloudComputersPage() {
+    return null;
+  }
+`);
 
 const { DevicesPage } = await import(
   await compileModule("src/pages/DevicesPage.tsx", {
@@ -88,6 +97,7 @@ const { DevicesPage } = await import(
     "../i18n/ui/useUI": uiTextStubUrl,
     "../ui": confirmDialogStubUrl,
     "./PageHeader": pageHeaderStubUrl,
+    "./CloudComputersPage": cloudSectionStubUrl,
   })
 );
 

@@ -11,6 +11,7 @@ import {
 } from "../../lib/cloud-computer-api";
 import { useUI } from "../../i18n/ui/useUI";
 import { Modal } from "../../ui";
+import { computerDisplayState } from "./computer-state";
 
 export type ConnectStep = "consent" | "name" | "command" | "confirm";
 
@@ -47,8 +48,18 @@ type WizardAction =
     }
   | { type: "show_confirm"; computer: Computer };
 
+function resumeConnectStep(resume: Computer | null | undefined): ConnectStep | null {
+  if (!resume) return null;
+  if (resume.status === "enrolled") return "confirm";
+  const state = computerDisplayState(resume);
+  if (state === "pending_confirm") return "confirm";
+  if (state === "pending_install" || resume.status === "pending") return "command";
+  return null;
+}
+
 function initialState(resume: Computer | null | undefined): WizardState {
-  if (resume?.status === "enrolled") {
+  const step = resumeConnectStep(resume);
+  if (step === "confirm" && resume) {
     return {
       step: "confirm",
       name: resume.name,
@@ -60,7 +71,7 @@ function initialState(resume: Computer | null | undefined): WizardState {
       copied: false,
     };
   }
-  if (resume?.status === "pending") {
+  if (step === "command" && resume) {
     const cached = wizardCache.get(resume.id);
     return {
       step: "command",
@@ -161,24 +172,40 @@ export function ConnectServerDialog({
   onClose,
   onCreated,
   resumeComputer,
+  resumeStep,
   pollIntervalMs = CONNECT_POLL_MS,
 }: {
   client: CloudComputerClient;
   onClose: () => void;
   onCreated: () => void;
   resumeComputer?: Computer | null;
+  resumeStep?: ConnectStep;
   pollIntervalMs?: number;
 }) {
   const tt = useUI();
   const [state, dispatch] = useReducer(
     reducer,
     resumeComputer,
-    initialState,
+    (resume) => {
+      if (resumeStep === "command" || resumeStep === "confirm" || resumeStep === "consent" || resumeStep === "name") {
+        const inferred = initialState(resume);
+        if (resumeStep === inferred.step) return inferred;
+        if (resumeStep === "confirm" && resume) {
+          return { ...initialState(resume), step: "confirm", computer: resume, name: resume.name };
+        }
+        if (resumeStep === "command" && resume) {
+          return { ...initialState(resume), step: "command", computer: resume, name: resume.name };
+        }
+      }
+      return initialState(resume);
+    },
   );
   const [now, setNow] = useState(() => Date.now());
   const nameRef = useRef<HTMLInputElement>(null);
   const resumeId = resumeComputer?.id;
-  const resumeStatus = resumeComputer?.status;
+  const resumeCommand =
+    (resumeStep === "command" || resumeConnectStep(resumeComputer) === "command") &&
+    Boolean(resumeId);
   const amd64Url = nodeDownloadUrl("linux", "amd64");
   const arm64Url = nodeDownloadUrl("linux", "arm64");
   const sumsUrl = nodeSha256SumsUrl();
@@ -186,7 +213,7 @@ export function ConnectServerDialog({
   const pollMs = pollIntervalMs > 0 ? pollIntervalMs : CONNECT_POLL_MS;
 
   useEffect(() => {
-    if (resumeStatus !== "pending" || !resumeId || !resumeComputer) return;
+    if (!resumeCommand || !resumeId || !resumeComputer) return;
     const resume = resumeComputer;
     let cancelled = false;
     dispatch({ type: "busy", busy: true });
@@ -212,7 +239,7 @@ export function ConnectServerDialog({
     return () => {
       cancelled = true;
     };
-  }, [client, resumeComputer, resumeId, resumeStatus]);
+  }, [client, resumeComputer, resumeId, resumeCommand]);
 
   useEffect(() => {
     if (state.step !== "command" || !state.computer) return;
@@ -223,7 +250,7 @@ export function ConnectServerDialog({
       try {
         const row = await client.getComputer(id);
         if (cancelled) return;
-        if (row.status === "enrolled") {
+        if (row.status === "enrolled" || computerDisplayState(row) === "pending_confirm") {
           dispatch({ type: "show_confirm", computer: row });
         }
       } catch {

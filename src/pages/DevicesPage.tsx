@@ -9,12 +9,32 @@ import {
   type DevicePlatform,
   type DevicesFacade,
 } from "../facades/devices";
+import type { CloudComputerClient } from "../lib/cloud-computer-api";
+import { currentDomainFamily } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
+import { CloudComputersSection } from "./CloudComputersPage";
 import { PageHeader } from "./PageHeader";
+
+export type DevicesPageTab = "devices" | "cloud";
 
 export interface DevicesPageProps {
   client?: DevicesFacade;
+  cloudClient?: CloudComputerClient;
+  initialTab?: DevicesPageTab;
+}
+
+function resolveDevicesTab(initialTab?: DevicesPageTab): DevicesPageTab {
+  if (initialTab === "cloud" || initialTab === "devices") return initialTab;
+  if (typeof window === "undefined") return "devices";
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "cloud") return "cloud";
+    if (window.location.hash === "#cloud") return "cloud";
+  } catch {
+    /* ignore */
+  }
+  return "devices";
 }
 
 const PLATFORM_LABELS: Record<DevicePlatform, string> = {
@@ -56,8 +76,14 @@ function actionErrorCopy(code?: string, limit?: number): string {
   return deviceErrorCopy(code, { limit });
 }
 
-export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
+export function DevicesPage({
+  client = devicesFacade,
+  cloudClient,
+  initialTab,
+}: DevicesPageProps) {
   const tt = useUI();
+  const cn = currentDomainFamily() === "cn";
+  const tab = resolveDevicesTab(initialTab);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -162,8 +188,8 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
   const allOffline = devices.length > 0 && devices.every((device) => !device.online);
 
   return (
-    <div className="px-8 py-6">
-      <PageHeader title={tt("设备")} />
+    <div className="px-8 py-6" data-oceanleo-devices-page>
+      <PageHeader title={tt("我的设备")} />
 
       {confirmRevoke && (
         <ConfirmDialog
@@ -177,7 +203,10 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
       )}
 
       <div className="mx-auto mt-7 max-w-3xl space-y-6">
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <section
+          className="rounded-2xl border border-neutral-200 bg-white p-5"
+          data-oceanleo-devices-phones
+        >
           <h2 className="text-[15px] font-semibold text-neutral-900">{tt("连接一台电脑")}</h2>
           <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
             {tt("下载客户端后，客户端会显示一个配对码。请在下面输入该 8 位配对码。")}
@@ -209,7 +238,9 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold text-neutral-900">{tt("我的设备")}</h2>
+            <h2 className="text-[15px] font-semibold text-neutral-900">
+              {tt("我的电脑与手机")}
+            </h2>
             {!loading && devices.length > 0 && (
               <span className="text-[12px] text-neutral-400">
                 {tt(`${devices.filter((device) => device.online).length} 台在线`)}
@@ -344,6 +375,13 @@ export function DevicesPage({ client = devicesFacade }: DevicesPageProps) {
             </div>
           )}
         </section>
+
+        {!cn && (
+          <CloudComputersSection
+            {...(cloudClient ? { client: cloudClient } : {})}
+            autoFocus={tab === "cloud"}
+          />
+        )}
 
         <details className="rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4">
           <summary className="cursor-pointer text-[13px] font-medium text-neutral-800">
