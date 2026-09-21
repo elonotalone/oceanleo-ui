@@ -60,6 +60,8 @@ const ALLOWED_PDF_URLS = [
   "https://api.oceanleo.com/v1/media/proxy?url=x",
   // C5：境内家族的 rendition 网关，与 .com 那条同一档。
   "https://api.oceanleo.cn/v1/artifact-renditions/access/abc123",
+  // ws（分身）：分身自己的 rendition 网关，与 .com / .cn 同一档。
+  "https://api.oceanbizs.com/v1/artifact-renditions/access/abc123",
   // LeoDev 两版共用 `*.dev.oceanleo.com` 网关主机，仍是第一方 rendition 网关。
   "https://api.dev.oceanleo.com/v1/artifact-renditions/access/abc123",
   "https://api-cn.dev.oceanleo.com/v1/artifact-renditions/access/abc123",
@@ -91,6 +93,14 @@ const BLOCKED_PDF_URLS = [
   "https://asset.oceanleo.cn/x.pdf",
   "https://website.oceanleo.cn/x.pdf",
   "http://api.oceanleo.cn/x.pdf",
+  // ws（分身）收紧：`.oceanbizs.com` 落在 ws 的 cookie 域内，非网关主机一律拒；
+  // `ws.oceanleo.app` 是分身用户内容域。
+  "https://oceanbizs.com/x.pdf",
+  "https://www.oceanbizs.com/x.pdf",
+  "https://anything.oceanbizs.com/x.pdf",
+  "http://api.oceanbizs.com/x.pdf",
+  "https://ws.oceanleo.app/x.pdf",
+  `https://p8080-${"a".repeat(32)}.ws.oceanleo.app/x.pdf`,
   // 协议 / 端口 / 凭据 / 相对地址一律 fail closed。
   "http://api.oceanleo.com/x.pdf",
   "https://api.oceanleo.com:8443/x.pdf",
@@ -205,13 +215,25 @@ test("W19/2 两处 PDF frame 都在渲染前过白名单，且两份实现逐字
   // C5：两个家族的网关都在表内。这不是放宽 —— `api.oceanleo.cn` 本来就因为
   // 「不在 .com 的 cookie 域内」而被放行（当对象存储处理），现在它改为按 cn 家族
   // 的 cookie 域内网关放行，而 `.oceanleo.cn` 下的**其余**主机从「放行」变成「拒绝」。
-  assert.deepEqual(gatewayHosts, [
-    '\n  "api.oceanleo.com",\n  "api.oceanleo.cn",\n  "api.dev.oceanleo.com",\n  "api-cn.dev.oceanleo.com",\n',
+  // ws（2026-09-21，分身 oceanbizs.com）：第三个家族的网关 `api.oceanbizs.com` 同一档；
+  // `oceanbizs.com` 同时进 SSO cookie 域表，所以 `.oceanbizs.com` 下其余主机是拒绝。
+  const gatewayHostList = gatewayHosts
+    .join("")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('"'))
+    .map((line) => line.replace(/[",]/g, ""));
+  assert.deepEqual(gatewayHostList, [
+    "api.oceanleo.com",
+    "api.oceanleo.cn",
+    "api.oceanbizs.com",
+    "api.dev.oceanleo.com",
+    "api-cn.dev.oceanleo.com",
   ]);
   assert.deepEqual(
     [...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS],
-    ["oceanleo.app", "leoapp.cn"],
-    "两个家族的用户内容域都必须在不可信集合里（只增不减）",
+    ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
+    "三个家族的用户内容域都必须在不可信集合里（只增不减）",
   );
   for (const [name, text] of [
     ["library-viewers.tsx", viewers],

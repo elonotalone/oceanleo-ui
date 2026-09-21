@@ -395,16 +395,22 @@ function supportsPdfCover(
 const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = [
   "api.oceanleo.com",
   "api.oceanleo.cn",
+  // ws（分身 oceanbizs.com，2026-09-21）：分身自己的 rendition 网关，与 .com / .cn
+  // 那两条同一档；`.oceanbizs.com` 下其余主机同样落入 cookie 域内 → 拒绝。
+  "api.oceanbizs.com",
   "api.dev.oceanleo.com",
   "api-cn.dev.oceanleo.com",
 ];
 const PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS: readonly string[] = [
   "oceanleo.app",
   "leoapp.cn",
+  // 分身用户内容域（oceanleo.app 的子区，上一行已覆盖；显式列出与家族表同源）。
+  "ws.oceanleo.app",
 ];
 const SSO_COOKIE_REGISTRABLE_DOMAINS: readonly string[] = [
   "oceanleo.com",
   "oceanleo.cn",
+  "oceanbizs.com",
 ];
 
 /** 判定 host 是否落在**任一家族**的共享 cookie 域内。这是降权判定，不是授信判定。 */

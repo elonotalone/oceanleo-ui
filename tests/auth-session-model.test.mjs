@@ -175,6 +175,17 @@ test("C5/1+2 家族内：.com host 只拿 .oceanleo.com，.cn host 只拿 .ocean
   ]) {
     assert.equal(cookieDomainFor(host), ".oceanleo.cn", host);
   }
+  // ws（分身 oceanbizs.com，2026-09-21）：第三族，同样只拿自己的 eTLD+1。
+  for (const host of [
+    "oceanbizs.com",
+    "www.oceanbizs.com",
+    "api.oceanbizs.com",
+    "OCEANBIZS.COM",
+    "www.oceanbizs.com:3000",
+    "www.oceanbizs.com.",
+  ]) {
+    assert.equal(cookieDomainFor(host), ".oceanbizs.com", host);
+  }
 });
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -184,20 +195,26 @@ test("C5/3 家族之间没有任何一条互相拿到对方 cookie 域的路径"
   const byFamily = {
     ".oceanleo.com": ["oceanleo.com", "a.oceanleo.com", "a.b.oceanleo.com"],
     ".oceanleo.cn": ["oceanleo.cn", "a.oceanleo.cn", "a.b.oceanleo.cn"],
+    ".oceanbizs.com": ["oceanbizs.com", "a.oceanbizs.com", "a.b.oceanbizs.com"],
   };
+  const allDomains = Object.keys(byFamily).map((d) => d.slice(1));
   for (const [expected, hosts] of Object.entries(byFamily)) {
     for (const host of hosts) {
       const got = cookieDomainFor(host);
       assert.equal(got, expected, host);
       // 反向断言：结果里绝不能出现另一族的可注册域。
-      const other = expected === ".oceanleo.com" ? "oceanleo.cn" : "oceanleo.com";
-      assert.equal(String(got).includes(other), false, `${host} 串到了 ${other}`);
+      for (const other of allDomains) {
+        if (`.${other}` === expected) continue;
+        assert.equal(String(got).includes(other), false, `${host} 串到了 ${other}`);
+      }
     }
   }
   // 同一个字符串里同时含两族片段的 host 不属于任何一族。
   for (const host of [
     "oceanleo.cn.oceanleo.com.evil.test",
     "oceanleo.com.oceanleo.cn.evil.test",
+    "oceanbizs.com.oceanleo.com.evil.test",
+    "oceanleo.com.oceanbizs.com.evil.test",
   ]) {
     assert.equal(cookieDomainFor(host), undefined, host);
   }
@@ -205,7 +222,7 @@ test("C5/3 家族之间没有任何一条互相拿到对方 cookie 域的路径"
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：用户内容域上跑的是用户自己的代码；把它纳入共享 cookie 域，那段代码就能直接读走 access token 和 refresh token（§7.5）。leoapp.cn 是境内版的同一个角色，漏掉它等于境内重演一次同样的事故。
-test("C5/4 两个用户内容域 oceanleo.app 与 leoapp.cn 都必须是 host-only", () => {
+test("C5/4 用户内容域 oceanleo.app、leoapp.cn、ws.oceanleo.app 都必须是 host-only", () => {
   for (const host of [
     "oceanleo.app",
     "www.oceanleo.app",
@@ -215,6 +232,11 @@ test("C5/4 两个用户内容域 oceanleo.app 与 leoapp.cn 都必须是 host-on
     "www.leoapp.cn",
     "p8080-deadbeef.leoapp.cn",
     "preview.website.leoapp.cn",
+    // ws 分身的用户内容区（oceanleo.app 的子区）：编辑器与预览主机同样 host-only。
+    "ws.oceanleo.app",
+    "slides.ws.oceanleo.app",
+    "mcp-apps.ws.oceanleo.app",
+    "p8080-deadbeef.ws.oceanleo.app",
   ]) {
     assert.equal(
       cookieDomainFor(host),
@@ -243,6 +265,11 @@ test("C5/5 形似域与本地/预览域一律 fail closed 到 host-only", () => 
     "oceanleo.cn.evil.com",
     "oceanleo.cn.attacker.net",
     "x.oceanleo.app.attacker.com",
+    // ws 侧的形似域
+    "notoceanbizs.com",
+    "evil-oceanbizs.com",
+    "oceanbizs.com.attacker.net",
+    "oceanbizs.cn",
     // 别的 .cn 可注册域
     "oceanleo.com.cn",
     "leo.cn",
@@ -272,6 +299,8 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
       cn: m.cookieDomainFor("ppt.oceanleo.cn") ?? null,
       app: m.cookieDomainFor("x.oceanleo.app") ?? null,
       leoapp: m.cookieDomainFor("x.leoapp.cn") ?? null,
+      ws: m.cookieDomainFor("www.oceanbizs.com") ?? null,
+      wsapp: m.cookieDomainFor("x.ws.oceanleo.app") ?? null,
     }));
   `;
   const run = (cookieDomain) => {
@@ -301,13 +330,17 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
     cn: ".oceanleo.cn",
     app: null,
     leoapp: null,
+    ws: ".oceanbizs.com",
+    wsapp: null,
   });
-  // env 指向 .com：.com host 照旧，.cn host **拿不到任何东西**（不是回落到 .com）。
+  // env 指向 .com：.com host 照旧，.cn / ws host **拿不到任何东西**（不是回落到 .com）。
   assert.deepEqual(run(".oceanleo.com"), {
     com: ".oceanleo.com",
     cn: null,
     app: null,
     leoapp: null,
+    ws: null,
+    wsapp: null,
   });
   // env 指向 .cn：镜像成立。
   assert.deepEqual(run(".oceanleo.cn"), {
@@ -315,12 +348,30 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
     cn: ".oceanleo.cn",
     app: null,
     leoapp: null,
+    ws: null,
+    wsapp: null,
+  });
+  // env 指向 ws 的 .oceanbizs.com：只有 ws host 拿到，其余全空。
+  assert.deepEqual(run(".oceanbizs.com"), {
+    com: null,
+    cn: null,
+    app: null,
+    leoapp: null,
+    ws: ".oceanbizs.com",
+    wsapp: null,
   });
   // env 指向任一用户内容域：全线 fail closed。
-  for (const bad of [".oceanleo.app", "oceanleo.app", ".leoapp.cn", "leoapp.cn"]) {
+  for (const bad of [
+    ".oceanleo.app",
+    "oceanleo.app",
+    ".leoapp.cn",
+    "leoapp.cn",
+    ".ws.oceanleo.app",
+    "ws.oceanleo.app",
+  ]) {
     assert.deepEqual(
       run(bad),
-      { com: null, cn: null, app: null, leoapp: null },
+      { com: null, cn: null, app: null, leoapp: null, ws: null, wsapp: null },
       bad,
     );
   }
@@ -330,6 +381,8 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
     cn: null,
     app: null,
     leoapp: null,
+    ws: null,
+    wsapp: null,
   });
 });
 
@@ -406,7 +459,7 @@ test("C5/3 全包扫描：除家族表外不存在第二条 cookie 域产出路�
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：家族表是这条红线的唯一事实源；有人在别处再写一份 host 判定或让家族由任意域名字符串拼出来，隔离就只剩这份测试在纸上成立。
-test("C5 家族表是写死的两行，且不接受任意域名字符串", async () => {
+test("C5 家族表是写死的三行，且不接受任意域名字符串", async () => {
   const familyModule = await import("../src/contracts/domain-family.ts");
   const {
     DOMAIN_FAMILIES,
@@ -414,23 +467,62 @@ test("C5 家族表是写死的两行，且不接受任意域名字符串", async
     UNTRUSTED_CONTENT_DOMAINS,
     familyForHost,
     isFirstPartyHostOf,
+    sharedCookieDomainFor,
+    domainFamilyProfile,
   } = familyModule;
-  assert.deepEqual([...DOMAIN_FAMILIES], ["com", "cn"]);
+  // 2026-09-21：第三行 ws = 主站分身 oceanbizs.com（oceandino
+  // docs/architecture/oceanleo-workstation.md §3）。
+  assert.deepEqual([...DOMAIN_FAMILIES], ["com", "cn", "ws"]);
   // 缺省必须是 com：认不出来的 host 解析结果要与境内版落地之前逐字相同。
   assert.equal(DEFAULT_DOMAIN_FAMILY, "com");
-  assert.deepEqual([...UNTRUSTED_CONTENT_DOMAINS], ["oceanleo.app", "leoapp.cn"]);
+  assert.deepEqual(
+    [...UNTRUSTED_CONTENT_DOMAINS],
+    ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
+  );
   assert.equal(familyForHost("ppt.oceanleo.com"), "com");
   assert.equal(familyForHost("ppt.oceanleo.cn"), "cn");
-  for (const host of ["oceanleo.app", "leoapp.cn", "evil-oceanleo.cn", ""]) {
+  assert.equal(familyForHost("oceanbizs.com"), "ws");
+  assert.equal(familyForHost("x.oceanbizs.com"), "ws");
+  assert.equal(familyForHost("api.oceanbizs.com:443"), "ws");
+  for (const host of [
+    "oceanleo.app",
+    "leoapp.cn",
+    "evil-oceanleo.cn",
+    "ws.oceanleo.app",
+    "a.ws.oceanleo.app",
+    "notoceanbizs.com",
+    "oceanbizs.com.evil.test",
+    "",
+  ]) {
     assert.equal(familyForHost(host), undefined, host);
   }
-  // 第一方判定按族分：.com 页面不信 .cn 主机，反之亦然。
+  // ws 家族的档案：cookie 域是自己的 eTLD+1，用户内容域是 oceanleo.app 的子区。
+  assert.equal(domainFamilyProfile("ws").cookieDomain, ".oceanbizs.com");
+  assert.equal(domainFamilyProfile("ws").untrustedContentDomain, "ws.oceanleo.app");
+  assert.equal(sharedCookieDomainFor("oceanbizs.com"), ".oceanbizs.com");
+  assert.equal(sharedCookieDomainFor("app.oceanbizs.com"), ".oceanbizs.com");
+  assert.equal(sharedCookieDomainFor("ws.oceanleo.app"), undefined);
+  assert.equal(sharedCookieDomainFor("x.ws.oceanleo.app"), undefined);
+  // 第一方判定按族分：.com 页面不信 .cn 主机，反之亦然；ws 与二者互不信。
   assert.equal(isFirstPartyHostOf("api.oceanleo.com", "com"), true);
   assert.equal(isFirstPartyHostOf("api.oceanleo.cn", "com"), false);
   assert.equal(isFirstPartyHostOf("api.oceanleo.cn", "cn"), true);
   assert.equal(isFirstPartyHostOf("api.oceanleo.com", "cn"), false);
-  for (const family of ["com", "cn"]) {
-    for (const host of ["oceanleo.app", "leoapp.cn", "x.oceanleo.app", "x.leoapp.cn"]) {
+  assert.equal(isFirstPartyHostOf("api.oceanbizs.com", "ws"), true);
+  assert.equal(isFirstPartyHostOf("api.oceanbizs.com", "com"), false);
+  assert.equal(isFirstPartyHostOf("api.oceanbizs.com", "cn"), false);
+  assert.equal(isFirstPartyHostOf("api.oceanleo.com", "ws"), false);
+  assert.equal(isFirstPartyHostOf("api.oceanleo.cn", "ws"), false);
+  for (const family of ["com", "cn", "ws"]) {
+    for (const host of [
+      "oceanleo.app",
+      "leoapp.cn",
+      "x.oceanleo.app",
+      "x.leoapp.cn",
+      "ws.oceanleo.app",
+      "x.ws.oceanleo.app",
+      "slides.ws.oceanleo.app",
+    ]) {
       assert.equal(isFirstPartyHostOf(host, family), false, `${host}@${family}`);
     }
   }
@@ -457,12 +549,18 @@ test("C5 非会话 cookie（主题/语言）与会话走同一条家族边界", 
   for (const host of ["oceanleo.cn", "ppt.oceanleo.cn", "PPT.OCEANLEO.CN"]) {
     assert.equal(sharedCookieDomainFor(host), ".oceanleo.cn", host);
   }
+  for (const host of ["oceanbizs.com", "ppt.oceanbizs.com", "PPT.OCEANBIZS.COM"]) {
+    assert.equal(sharedCookieDomainFor(host), ".oceanbizs.com", host);
+  }
   // 用户内容域与形似域：非会话 cookie 也一样 host-only，不许因为「只是主题」而放宽。
   for (const host of [
     "oceanleo.app",
     "x.oceanleo.app",
     "leoapp.cn",
     "x.leoapp.cn",
+    "ws.oceanleo.app",
+    "x.ws.oceanleo.app",
+    "notoceanbizs.com",
     "notoceanleo.com",
     "evil-oceanleo.cn",
     "oceanleo.cn.evil.com",
@@ -524,6 +622,7 @@ test("C5 ThemeScript 内联脚本按家族清影子 cookie（实际执行，不�
     .replace(/<\/script>$/, "");
   assert.ok(inline.includes("oceanleo.com"), "内联脚本必须带上 .com 可注册域");
   assert.ok(inline.includes("oceanleo.cn"), "内联脚本必须带上 .cn 可注册域");
+  assert.ok(inline.includes("oceanbizs.com"), "内联脚本必须带上 ws 家族的可注册域");
   // 历史写法：写死长度 13 的 slice。它一旦回来，加第三个家族时就会静默失效。
   assert.equal(inline.includes("slice(-13)"), false, "不得写死后缀长度");
 
@@ -557,7 +656,14 @@ test("C5 ThemeScript 内联脚本按家族清影子 cookie（实际执行，不�
     );
 
   // 两族的第一方 host 都要清影子（境内站也需要这条跨站跟随的修复）。
-  for (const host of ["oceanleo.com", "ppt.oceanleo.com", "oceanleo.cn", "ppt.oceanleo.cn"]) {
+  for (const host of [
+    "oceanleo.com",
+    "ppt.oceanleo.com",
+    "oceanleo.cn",
+    "ppt.oceanleo.cn",
+    "oceanbizs.com",
+    "www.oceanbizs.com",
+  ]) {
     assert.equal(clearsShadow(host), true, `${host} 应当清 host-only 影子 cookie`);
   }
   // 拿不到家族的 host 一律不动 cookie：那里的 host-only cookie 就是唯一事实源。
@@ -566,6 +672,8 @@ test("C5 ThemeScript 内联脚本按家族清影子 cookie（实际执行，不�
     "x.oceanleo.app",
     "leoapp.cn",
     "x.leoapp.cn",
+    "ws.oceanleo.app",
+    "x.ws.oceanleo.app",
     "notoceanleo.com",
     "evil-oceanleo.cn",
     "oceanleo.cn.evil.com",

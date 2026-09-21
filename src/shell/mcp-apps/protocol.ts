@@ -38,7 +38,10 @@ import {
   sandboxGrantsScriptedSameOrigin,
   sandboxTokens,
 } from "../editor-sandbox-origin";
-import { isCurrentFamilyFirstPartyHost } from "../../contracts/domain-family";
+import {
+  currentDomainProfile,
+  isCurrentFamilyFirstPartyHost,
+} from "../../contracts/domain-family";
 
 export const MCP_APPS_PROTOCOL = "oceanleo.mcp-apps.v1";
 
@@ -117,9 +120,13 @@ export const MCP_APP_FRAME_OPAQUE_ORIGIN = "null";
  * 2026-09-20 操作员批准放行恰一项：我方部署在 `mcp-apps.oceanleo.app` 的
  * sandbox-proxy（它再用 `srcdoc` + `MCP_APP_FRAME_SANDBOX` 装第三方 HTML）。
  * 全串匹配，不做后缀推断；第一方主机写进来也会被 `isValidAppSandboxOrigin` 拒。
+ *
+ * 2026-09-21：主机域按**当前家族**的 `hostedEditorDomain` 取——com / cn 解析
+ * 出来仍是恰一项 `https://mcp-apps.oceanleo.app`（逐字不变），分身家族 ws 是
+ * `https://mcp-apps.ws.oceanleo.app`（分身自己部署的 sandbox-proxy）。仍是恰一项。
  */
 export const MCP_APPS_SANDBOX_ORIGINS: readonly string[] = Object.freeze([
-  "https://mcp-apps.oceanleo.app",
+  `https://mcp-apps.${currentDomainProfile().hostedEditorDomain}`,
 ]);
 
 function canonicalHttpsOrigin(origin: string): URL | null {

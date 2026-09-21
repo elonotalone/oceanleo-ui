@@ -18,6 +18,7 @@
  * 本模块是纯函数、无 React，货架与动作条共用它，聚焦测试可以直接 import 断言。
  */
 
+import { currentDomainProfile } from "../contracts/domain-family";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { DECK_IR_SCHEMA } from "./doc-editors/deck-ir";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
@@ -76,8 +77,16 @@ export const DECK_HTML_RUNTIME_META_KEYS = [
 const RUNTIME_ENVELOPE_KEYS = ["active_runtime", "activeRuntime"] as const;
 const RUNTIME_ENVELOPE_URL_KEYS = ["entryUrl", "entry_url", "url"] as const;
 
-/** F9 计算出来的隔离域：`s-<32hex>.oceanleo.app`，逐字与 asset 侧同一条判据。 */
-export const DECK_HTML_RUNTIME_HOST = /^s-[0-9a-f]{32}\.oceanleo\.app$/;
+/**
+ * F9 计算出来的隔离域：`s-<32hex>.<当前家族的用户内容域>`，与 asset 侧
+ * （backend `template_materials_router._RUNTIME_URL`，由 `OCEANLEO_USER_CONTENT_DOMAIN`
+ * 决定）同一条判据。com 解析出来仍是 `s-<32hex>.oceanleo.app`（逐字不变）；
+ * 分身家族 ws 是 `s-<32hex>.ws.oceanleo.app`。这是「认出一个不可信 runtime 主机」
+ * 的判据，不是授信：命中的地址只会进无同源的不可信 frame。
+ */
+export const DECK_HTML_RUNTIME_HOST = new RegExp(
+  `^s-[0-9a-f]{32}\\.${currentDomainProfile().untrustedContentDomain.replace(/\./g, "\\.")}$`,
+);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)

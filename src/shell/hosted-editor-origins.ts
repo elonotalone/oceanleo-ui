@@ -19,15 +19,28 @@
 //     website 成品 / game 运行时看不到这张表。W07 起，本表成员在
 //     `embedEditorFrameSandbox()` 拿 `HOSTED_EDITOR_SANDBOX`（同源只给自己）；
 //     那是白名单成员资格，不是 `.oceanleo.app` 后缀推断。
-//  3. **零依赖。** `editor-protocol.ts` 会被 `tests/helpers/module-bench.mjs`
-//     以 data: URL 编译加载，多一条相对依赖就多一处解析风险。本文件只有常量。
+//  3. **只依赖 contracts/domain-family。** `editor-protocol.ts` 会被
+//     `tests/helpers/module-bench.mjs` 以 data: URL 编译加载，而它本就引着
+//     `domain-family`（零依赖、纯常量表），所以这里多引同一个模块不新增解析风险。
+//     不要再加第二个依赖。
 //
 // ⚠️ 往这张表里加一行 = 授予一个 origin「可信编辑器」权限。加之前先问：
 // 那个 origin 上跑的是不是我方可控代码？它会不会转手 iframe 别人？
 // ============================================================================
 
-/** 承载六件 Hosted 编辑器的可注册域。**不是**家族域，收不到 SSO cookie。 */
-const HOSTED_EDITOR_REGISTRABLE_DOMAIN = "oceanleo.app";
+import { currentDomainProfile } from "../contracts/domain-family";
+
+/**
+ * 承载六件 Hosted 编辑器的隔离域。**不是**家族域，收不到 SSO cookie。
+ *
+ * 2026-09-21 起按**当前家族**从家族表取（`hostedEditorDomain`）：com / cn 仍是
+ * 生产的 `oceanleo.app`（六条全串与改动前逐字相同），分身家族 ws 是
+ * `ws.oceanleo.app`（分身自己部署的 slides. / docs. / audio. …）。
+ * 家族是写死表里的一行，不是 env 里的任意字符串；本表仍是六条全串，
+ * 与「是不是 `.oceanleo.app` 后缀」无关。
+ */
+const HOSTED_EDITOR_REGISTRABLE_DOMAIN =
+  currentDomainProfile().hostedEditorDomain;
 
 /**
  * 六个子域标签，与 `signals/W18-domains.md` §1 的表逐字对应，

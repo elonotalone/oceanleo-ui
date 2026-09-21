@@ -26,9 +26,22 @@
 // 会话 cookie 不是 HttpOnly（见 lib/auth/config.ts 顶部 SESSION MODEL），
 // 把用户内容域纳入共享域等于把全家桶身份直接交给不可信页面。
 //
+// ---------------------------------------------------------------------------
+// 第三个家族 `ws`（2026-09-21，操作员决策：主站的分身 / 工作站）
+// ---------------------------------------------------------------------------
+// `oceanbizs.com` 是 oceanleo.com 的 1:1 分身：同一份门户代码（Vercel 同项目、
+// `main` 分支）、同一个 Supabase，后端在两台新加坡机器上。它是独立的可注册域，
+// 所以是独立家族：`.oceanbizs.com` 的登录态与 `.oceanleo.com` 永不串门。
+// 用户内容域用生产 `oceanleo.app` 的一个子区 `ws.oceanleo.app`：它仍在
+// `oceanleo.app` 之下，所以对 com 家族天然就是不可信；这里再显式列一次，
+// 让「明确属于用户内容域」那一道也能挡住它。姐妹站分身不部署，
+// `availableSubsites` 为空 —— 分身页面拿不到姐妹站链接，也拿不到内嵌编辑器
+// 白名单（fail closed），不会去嵌一个不存在的 `x.oceanbizs.com`。
+// 事实源：oceandino `docs/architecture/oceanleo-workstation.md` §3。
+//
 // 本模块零运行时依赖：iframe 渲染面与安全判定面都要能引它。
 
-export type DomainFamily = "com" | "cn";
+export type DomainFamily = "com" | "cn" | "ws";
 
 export interface DomainFamilyProfile {
   family: DomainFamily;
@@ -44,6 +57,16 @@ export interface DomainFamilyProfile {
   assetOrigin: string;
   /** 本家族的用户生成内容域。永远不属于本家族，永远不可信。 */
   untrustedContentDomain: string;
+  /**
+   * 承载我方部署的 Hosted 编辑器（slides / docs / audio / 3d …）与 MCP App
+   * sandbox-proxy（mcp-apps）的隔离域。**不是**家族域、收不到 SSO cookie，
+   * `familyForHost()` 对它给 undefined、`isUntrustedContentDomainHost()` 给 true ——
+   * 这两条判定不因本字段放宽。信任只由 `hosted-editor-origins.ts` /
+   * `mcp-apps/protocol.ts` 的**全串**白名单成员资格决定，本字段只决定那些全串
+   * 拼在哪个域上：com / cn 都是生产的 `oceanleo.app`（A-24：境内无对应部署，
+   * 拿同样六条 `.app` 全串），ws 是分身自己的 `ws.oceanleo.app`。
+   */
+  hostedEditorDomain: string;
   /**
    * 本家族**确实存在**的子站（子域标签 / 站 key）。
    *
@@ -70,6 +93,7 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     gatewayOrigin: "https://api.oceanleo.com",
     assetOrigin: "https://asset.oceanleo.com",
     untrustedContentDomain: "oceanleo.app",
+    hostedEditorDomain: "oceanleo.app",
     // 海外版是产品全集：35 个子站都在，链接与内嵌白名单与改动前逐字相同。
     availableSubsites: "all",
   },
@@ -81,6 +105,9 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     gatewayOrigin: "https://api.oceanleo.cn",
     assetOrigin: "https://asset.oceanleo.cn",
     untrustedContentDomain: "leoapp.cn",
+    // A-24（editor-core-swap）：境内没有 Hosted 编辑器部署，拿与海外相同的六条
+    // `.app` 全串；在境内是否可达由网关决定，不由本表放宽。
+    hostedEditorDomain: "oceanleo.app",
     // 境内子站清单。**这张表的每一行都必须对应广州机上一个真在跑的容器**：
     // 它同时驱动子站链接和内嵌编辑器白名单，填一个没部署的站等于给用户一个
     // 打不开的链接，并给一个不存在的主机发第一方信任。
@@ -128,6 +155,24 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
       "word",
     ],
   },
+  ws: {
+    family: "ws",
+    // 分身域（操作员 2026-09-21 决定）。独立 eTLD+1，与 oceanleo.com 不共享 cookie。
+    registrableDomain: "oceanbizs.com",
+    cookieDomain: ".oceanbizs.com",
+    portalOrigin: "https://oceanbizs.com",
+    gatewayOrigin: "https://api.oceanbizs.com",
+    // 公开只读素材库与生产共用，不带登录态，所以指向生产主机不是跨族串门。
+    assetOrigin: "https://asset.oceanleo.com",
+    // 生产用户内容域 oceanleo.app 的子区。仍是 oceanleo.app 之下 ⇒ 对每个家族都
+    // 不可信；分身自己的预览 / 成品 / 编辑器都落在这一区里。
+    untrustedContentDomain: "ws.oceanleo.app",
+    // 分身自己的 Hosted 编辑器 / MCP App 承载面：slides. docs. audio. mcp-apps.ws.oceanleo.app。
+    hostedEditorDomain: "ws.oceanleo.app",
+    // 姐妹站分身不部署（架构文档 §3）。空清单 = 没有姐妹站链接、没有家族内嵌
+    // 编辑器白名单；宁可少功能，也不嵌一个不存在的 `website.oceanbizs.com`。
+    availableSubsites: [],
+  },
 };
 
 export const DOMAIN_FAMILIES = Object.keys(FAMILIES) as readonly DomainFamily[];
@@ -160,14 +205,21 @@ export function registrableDomainsOfAllFamilies(): readonly string[] {
 }
 
 /**
- * 用户生成内容的独立可注册域，**两个家族的都在这里**。
- * 与家族无关：`.com` 页面要挡 `leoapp.cn`，`.cn` 页面要挡 `oceanleo.app`，
- * 任何一侧漏掉都是把不可信页面当第一方。
+ * 用户生成内容的独立可注册域，**每个家族的都在这里**（按家族表逐行推导，
+ * 新增家族不可能漏）。与家族无关：`.com` 页面要挡 `leoapp.cn`，`.cn` 页面要挡
+ * `oceanleo.app`，三个家族都要挡 `ws.oceanleo.app`，任何一侧漏掉都是把不可信
+ * 页面当第一方。`ws.oceanleo.app` 已被 `oceanleo.app` 那一行覆盖，仍显式列出：
+ * 两道判定各自成立，删掉任何一道都不行。
  */
-export const UNTRUSTED_CONTENT_DOMAINS: readonly string[] = Object.freeze([
-  FAMILIES.com.untrustedContentDomain,
-  FAMILIES.cn.untrustedContentDomain,
-]);
+export const UNTRUSTED_CONTENT_DOMAINS: readonly string[] = Object.freeze(
+  Array.from(
+    new Set(
+      (Object.keys(FAMILIES) as DomainFamily[]).map(
+        (family) => FAMILIES[family].untrustedContentDomain,
+      ),
+    ),
+  ),
+);
 
 /** `Host:` 头 / `location.host` → 可比较的裸主机名。端口、大小写、末尾点都去掉。 */
 export function normalizeHost(host: string | null | undefined): string {

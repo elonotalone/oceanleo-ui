@@ -322,16 +322,27 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：依据域名后缀授信会把未来任何新开的子域自动纳入可信集合（§7.5），预览/UGC 域首当其冲。
 test("W8/2 预览与 UGC 域不因域名后缀获得信任", () => {
-  // C5：不可信集合只增不减 —— 境内用户内容域 leoapp.cn 与海外的 oceanleo.app 同级。
+  // C5：不可信集合只增不减 —— 境内用户内容域 leoapp.cn 与海外的 oceanleo.app 同级；
+  // 2026-09-21 ws 分身的用户内容区 ws.oceanleo.app 显式加入（它本就在 oceanleo.app 之下）。
   assert.deepEqual(
     [...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS],
-    ["oceanleo.app", "leoapp.cn"],
+    ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
   );
   for (const host of [
     "oceanleo.app",
     "www.oceanleo.app",
     "p1-abc.oceanleo.app",
     PREVIEW_HOST,
+    // ws 分身：用户内容区、编辑器与 MCP App 承载面主机在 `.com` 页面上一律不可信，
+    // 且对任何家族都不是第一方（信任只由全串白名单成员资格给出，不由后缀）。
+    "ws.oceanleo.app",
+    "p1-abc.ws.oceanleo.app",
+    `p8080-${"a".repeat(32)}.ws.oceanleo.app`,
+    "slides.ws.oceanleo.app",
+    "mcp-apps.ws.oceanleo.app",
+    "anything.website.oceanbizs.com",
+    "preview.oceanbizs.com",
+    "x.sandbox.oceanbizs.com",
     "anything.website.oceanleo.com",
     "preview.oceanleo.com",
     "x.sandbox.oceanleo.com",
@@ -377,6 +388,10 @@ test("W8/2 预览与 UGC 域不因域名后缀获得信任", () => {
     "api.oceanleo.cn",
     "asset.oceanleo.cn",
     "design.oceanleo.cn",
+    // ws 分身家族的第一方主机：在 com 页面上同样不互信。
+    "oceanbizs.com",
+    "api.oceanbizs.com",
+    "www.oceanbizs.com",
   ]) {
     assert.equal(isUntrustedContentHostname(host), false, host);
     assert.equal(isTrustedEditorOrigin(`https://${host}`), false, host);
