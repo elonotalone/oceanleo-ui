@@ -737,6 +737,7 @@ export { ArtifactLibrary, ARTIFACT_FILTERS } from "./ArtifactLibrary";
 export type { ArtifactLibraryProps, ArtifactFilter, ArtifactItem } from "./ArtifactLibrary";
 // 历史记录页。
 export { HistoryPage, type HistoryPageProps } from "./HistoryPage";
+export { ShellTaskView, type ShellTaskViewProps } from "./cloud-computer/ShellTaskView";
 // 站级四页范式帮助器（首页/工作台/文件库/历史记录 的 nav + 路由）。
 export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
