@@ -12,6 +12,7 @@ const SOURCE = {
   org: "组织",
   more: "更多",
   contentSamples: "内容示例",
+  memory: "记忆",
 } as const;
 
 export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
@@ -24,6 +25,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organization",
     more: "More",
     contentSamples: "Content samples",
+    memory: "Memory",
   },
   de: {
     usageAndBilling: "Nutzung & Abrechnung",
@@ -34,6 +36,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organisation",
     more: "Mehr",
     contentSamples: "Inhaltsbeispiele",
+    memory: "Gedächtnis",
   },
   es: {
     usageAndBilling: "Uso y facturación",
@@ -44,6 +47,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organización",
     more: "Más",
     contentSamples: "Ejemplos de contenido",
+    memory: "Memoria",
   },
   "es-419": {
     usageAndBilling: "Uso y facturación",
@@ -54,6 +58,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organización",
     more: "Más",
     contentSamples: "Ejemplos de contenido",
+    memory: "Memoria",
   },
   fr: {
     usageAndBilling: "Usage et facturation",
@@ -64,6 +69,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organisation",
     more: "Plus",
     contentSamples: "Exemples de contenu",
+    memory: "Mémoire",
   },
   it: {
     usageAndBilling: "Utilizzo e fatturazione",
@@ -74,6 +80,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organizzazione",
     more: "Altro",
     contentSamples: "Esempi di contenuto",
+    memory: "Memoria",
   },
   "pt-BR": {
     usageAndBilling: "Uso e faturamento",
@@ -84,6 +91,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organização",
     more: "Mais",
     contentSamples: "Exemplos de conteúdo",
+    memory: "Memória",
   },
   "pt-PT": {
     usageAndBilling: "Utilização e faturação",
@@ -94,6 +102,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Organização",
     more: "Mais",
     contentSamples: "Exemplos de conteúdo",
+    memory: "Memória",
   },
   vi: {
     usageAndBilling: "Sử dụng & thanh toán",
@@ -104,6 +113,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Tổ chức",
     more: "Thêm",
     contentSamples: "Mẫu nội dung",
+    memory: "Trí nhớ",
   },
   tr: {
     usageAndBilling: "Kullanım ve faturalama",
@@ -114,6 +124,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "Kuruluş",
     more: "Daha fazla",
     contentSamples: "İçerik örnekleri",
+    memory: "Bellek",
   },
   "zh-TW": {
     usageAndBilling: "用量與帳單",
@@ -124,6 +135,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "組織",
     more: "更多",
     contentSamples: "內容示例",
+    memory: "記憶",
   },
   ja: {
     usageAndBilling: "利用状況と請求",
@@ -134,6 +146,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "組織",
     more: "その他",
     contentSamples: "コンテンツ例",
+    memory: "記憶",
   },
   ko: {
     usageAndBilling: "사용량 및 결제",
@@ -144,6 +157,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "조직",
     more: "더보기",
     contentSamples: "콘텐츠 예시",
+    memory: "기억",
   },
   ar: {
     usageAndBilling: "الاستخدام والفوترة",
@@ -154,6 +168,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "المنظمة",
     more: "المزيد",
     contentSamples: "أمثلة المحتوى",
+    memory: "الذاكرة",
   },
   th: {
     usageAndBilling: "การใช้งานและการเรียกเก็บเงิน",
@@ -164,6 +179,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "องค์กร",
     more: "เพิ่มเติม",
     contentSamples: "ตัวอย่างเนื้อหา",
+    memory: "ความจำ",
   },
   hi: {
     usageAndBilling: "उपयोग और बिलिंग",
@@ -174,5 +190,6 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     org: "संगठन",
     more: "और",
     contentSamples: "सामग्री उदाहरण",
+    memory: "स्मृति",
   },
 });
