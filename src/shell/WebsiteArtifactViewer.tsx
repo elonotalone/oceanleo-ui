@@ -462,7 +462,7 @@ export function TemplateMaterialPreview({
       <p className="shrink-0 border-t border-stone-200 bg-white px-3 py-2 text-[12px] leading-relaxed text-stone-500">
         {tt(PREVIEW_BOUNDARY)}{" "}
         <a
-          href="/account"
+          href="/settings"
           className="font-medium text-stone-700 underline decoration-stone-300 underline-offset-2 hover:text-stone-900"
         >
           {tt("登录")}

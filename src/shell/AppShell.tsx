@@ -42,7 +42,6 @@ import { useUI } from "../i18n/ui/useUI";
 import { HelpLink } from "./HelpLink";
 import { usePresenceHeartbeat } from "../lib/presence";
 import { PhoneBindGate } from "../pages/PhoneBindGate";
-import { currentDomainFamily } from "../contracts/domain-family";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
 // 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
@@ -225,7 +224,7 @@ export interface AppShellProps {
   pinnedNavCount?: number;
   /** 账户区点击退出 */
   onSignOut?: () => void;
-  /** 左下角账户按钮跳转路由（默认 /account） */
+  /** 左下角账户按钮跳转路由（默认 /settings） */
   accountHref?: string;
   /** 账户按钮点击回调（i18n 站用自己的 router 做 locale-aware 跳转）；传了则覆盖 accountHref 的 Link。 */
   onAccountClick?: () => void;
@@ -290,24 +289,6 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
-function CloudComputerNavIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="5" width="18" height="12" rx="2" />
-      <path d="M8 19h8M12 17v2" />
-    </svg>
-  );
-}
-
 function AppShellInner({
   brand,
   layout = "sidebar",
@@ -325,7 +306,7 @@ function AppShellInner({
   recentSlot,
   sidebarScroll,
   onSignOut,
-  accountHref = "/account",
+  accountHref = "/settings",
   onAccountClick,
   helpHref,
   siteKey,
@@ -365,27 +346,8 @@ function AppShellInner({
   const [term, setTerm] = useState("");
 
   const sourceNavGroups: ShellNavGroup[] = useMemo(() => {
-    const groups = navGroups?.length ? navGroups : [{ items: nav ?? [] }];
-    const oceanleoSite = siteId === "oceanleo" || siteKey === "oceanleo";
-    if (!oceanleoSite || currentDomainFamily() === "cn") return groups;
-    const already = groups.some((group) =>
-      group.items.some(
-        (item) => item.href === "/computers" || item.href?.endsWith("/computers"),
-      ),
-    );
-    if (already) return groups;
-    const extra: ShellNavItem = {
-      label: tt("云电脑"),
-      href: "/computers",
-      icon: <CloudComputerNavIcon />,
-    };
-    if (groups.length === 0) return [{ items: [extra] }];
-    return groups.map((group, index) =>
-      index === groups.length - 1
-        ? { ...group, items: [...group.items, extra] }
-        : group,
-    );
-  }, [nav, navGroups, siteId, siteKey, tt]);
+    return navGroups?.length ? navGroups : [{ items: nav ?? [] }];
+  }, [nav, navGroups]);
   const scrollScope: ShellSidebarScroll =
     sidebarScroll ??
     (WHOLE_SCROLL_SIDEBAR_SITES.has(siteId) ? "whole" : "history");
@@ -975,7 +937,7 @@ function AppShellInner({
     </div>
   );
 
-  /* 账户按钮 —— 进入账户管理页。退出登录统一移到 /account 页内，侧栏不放
+  /* 账户按钮 —— 进入设置中心。退出登录统一移到 /settings?tab=account 页内，侧栏不放
      独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
      i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/
   const accountRow = (

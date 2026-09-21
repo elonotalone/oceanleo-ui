@@ -284,3 +284,15 @@ test("fusion-mounted shell prefixes in-site nav hrefs and leaves production href
   assert.match(production, /href="\/library"/);
   assert.doesNotMatch(production, /href="\/s\//);
 });
+
+test("account button defaults to /settings and oceanleo nav has no cloud computer item", () => {
+  const markup = renderShell("/", "", "sidebar", {
+    siteId: "oceanleo",
+    siteKey: "oceanleo",
+    userEmail: "op@oceanleo.com",
+    nav: [{ label: "工作台", href: "/workspace" }],
+  });
+  assert.match(markup, /href="\/settings"/);
+  assert.doesNotMatch(markup, /云电脑/);
+  assert.doesNotMatch(markup, /href="\/computers"/);
+});

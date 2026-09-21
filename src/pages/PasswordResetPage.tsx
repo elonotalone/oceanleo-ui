@@ -178,7 +178,7 @@ export function PasswordResetPage({
           data-reset-done
           onClick={() => {
             if (onDone) onDone();
-            else if (typeof window !== "undefined") window.location.href = "/account";
+            else if (typeof window !== "undefined") window.location.href = "/settings?tab=account";
           }}
           className="mt-5 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99]"
         >

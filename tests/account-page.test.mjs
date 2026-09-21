@@ -168,10 +168,53 @@ const resetStubUrl = dataModule(`
   }
 `);
 
+const navigationStubUrl = dataModule(`
+  export function useRouter() {
+    return {
+      replace(href) {
+        if (typeof window === "undefined") return;
+        const url = new URL(String(href), window.location.origin);
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      },
+      push() {},
+      refresh() {},
+      back() {},
+      prefetch() {},
+    };
+  }
+`);
+
+const generalStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function GeneralSettingsBody() {
+    return React.createElement("div", { "data-testid": "general-body" }, "语言与主题");
+  }
+  export function GeneralPage() {
+    return React.createElement("div", { "data-testid": "general-page" }, "通用页");
+  }
+`);
+
+const orgStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function OrgMembership({ hideWhenEmpty }) {
+    if (hideWhenEmpty) return null;
+    return React.createElement(
+      "div",
+      { "data-testid": "org-membership" },
+      "你还没有加入任何组织",
+      "创建组织",
+      "我已阅读并同意《OceanLeo 企业服务协议》",
+    );
+  }
+`);
+
 const COMPONENT_STUBS = {
   "next/link": linkStubUrl,
+  "next/navigation": navigationStubUrl,
   "./AccountSecurityPage": securityStubUrl,
   "./PasswordResetPage": resetStubUrl,
+  "./GeneralPage": generalStubUrl,
+  "./OrgMembership": orgStubUrl,
   "../lib/auth": authStubUrl,
   "../ui": confirmStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
@@ -214,6 +257,7 @@ function signedInStub(overrides = {}) {
 async function render(element, stub) {
   globalThis.__authStub = stub;
   globalThis.__authDialogMounts = 0;
+  window.history.replaceState(null, "", "/account");
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -248,6 +292,7 @@ async function render(element, stub) {
 test("三格统计的第三格是「近 30 天请求」，取 getUsageBySite(30) 的真实值", async () => {
   const stub = signedInStub();
   const view = await render(React.createElement(AccountPage), stub);
+  await view.click(view.host.querySelector("[data-settings-item=billing]"));
   const cards = [...view.host.querySelectorAll(".grid > div")];
   assert.equal(cards.length, 3);
   assert.equal(cards[0].textContent, "¥12.50token 余额");
@@ -276,6 +321,7 @@ test("网关说 currency=USD 且给新键 balance / amount_major 时，余额与
     },
   });
   const view = await render(React.createElement(AccountPage), stub);
+  await view.click(view.host.querySelector("[data-settings-item=billing]"));
   const cards = [...view.host.querySelectorAll(".grid > div")];
   assert.equal(cards[0].textContent, "$0.70token 余额");
   assert.equal(cards[1].textContent, "$0.25本月消耗");
@@ -288,6 +334,7 @@ test("网关不说货币时按 CNY（今天的行为），绝不猜成美元", a
     credits: { ok: true, data: { balance: 3, balance_minor: 300 } },
   });
   const view = await render(React.createElement(AccountPage), stub);
+  await view.click(view.host.querySelector("[data-settings-item=billing]"));
   const cards = [...view.host.querySelectorAll(".grid > div")];
   assert.equal(cards[0].textContent, "¥3.00token 余额");
   view.cleanup();
@@ -302,6 +349,7 @@ test("showRequestStat=false 时第三格让位给 extraStats（主站的「任�
     }),
     stub,
   );
+  await view.click(view.host.querySelector("[data-settings-item=billing]"));
   const cards = [...view.host.querySelectorAll(".grid > div")];
   assert.equal(cards.length, 3);
   assert.equal(cards[2].textContent, "42任务数");
@@ -332,7 +380,7 @@ test("菜单项 external 走原生 <a target=_blank>，内链走 next/link", asy
   const view = await render(
     React.createElement(AccountPage, {
       menuItems: [
-        { label: "账户设置", href: "/settings", desc: "个人资料" },
+        { label: "自定义页", href: "/workspace", desc: "工作台" },
         {
           label: "插件与连接器",
           href: "https://oceanleo.com/plugins",
@@ -343,7 +391,7 @@ test("菜单项 external 走原生 <a target=_blank>，内链走 next/link", asy
     }),
     signedInStub(),
   );
-  const internal = view.host.querySelector('a[href="/settings"]');
+  const internal = view.host.querySelector('a[href="/workspace"]');
   const external = view.host.querySelector('a[href="https://oceanleo.com/plugins"]');
   assert.equal(internal.getAttribute("data-next-link"), "1");
   assert.equal(internal.getAttribute("target"), null);
@@ -361,7 +409,6 @@ test("「账号安全」不是链接：共享包没有路由，写成 href 就�
   const stub = signedInStub();
   const view = await render(React.createElement(AccountPage), stub);
   const links = [...view.host.querySelectorAll("a[data-next-link], a[target=_blank]")];
-  // 菜单里每一条链接都必须指向一个真实存在的路径；空 href 会把人送回站点根。
   for (const a of links) {
     assert.ok((a.getAttribute("href") || "").length > 1, `空链接：${a.textContent}`);
   }
@@ -373,23 +420,16 @@ test("「账号安全」不是链接：共享包没有路由，写成 href 就�
   view.cleanup();
 });
 
-test("点「账号安全」就地展开安全中心，再点收起——不跳走，也不需要消费站改代码", async () => {
+test("AccountPage 默认打开账户栏：安全中心与退出在场，组织文案不在", async () => {
   const stub = signedInStub();
   const view = await render(React.createElement(AccountPage), stub);
-  const entry = view.host.querySelector("button[data-account-expands=security]");
-  assert.ok(entry, "账号安全那一条没有渲染成可展开的按钮");
-  assert.equal(view.host.querySelector("[data-testid=security-panel]"), null);
-  assert.equal(entry.getAttribute("aria-expanded"), "false");
-
-  await view.click(entry);
   const panel = view.host.querySelector("[data-testid=security-panel]");
-  assert.ok(panel, "点了没有展开");
-  // embedded：嵌进来的那一份不再自带整页的标题与外边距。
+  assert.ok(panel, "默认账户栏没有渲染安全中心");
   assert.equal(panel.getAttribute("data-embedded"), "true");
-  assert.equal(entry.getAttribute("aria-expanded"), "true");
-
-  await view.click(entry);
-  assert.equal(view.host.querySelector("[data-testid=security-panel]"), null, "再点没收起");
+  assert.ok(view.buttonByText("退出登录"));
+  assert.equal(view.text().includes("创建组织"), false);
+  assert.equal(view.text().includes("企业服务协议"), false);
+  assert.equal(view.host.querySelector("[data-testid=org-membership]"), null);
   view.cleanup();
 });
 
@@ -545,8 +585,10 @@ test("SettingsPage 未登录时给明确提示，而不是一张邮箱为「—�
 
 test("SettingsPage 默认带「知识库」入口，knowledgeBaseLink=false 时让位给 extraSections", async () => {
   const withLink = await render(React.createElement(SettingsPage), signedInStub());
+  const knowledgeItem = withLink.host.querySelector("[data-settings-item=knowledge-link]");
+  assert.ok(knowledgeItem, "知识库入口没有出现在数据分组");
+  await withLink.click(knowledgeItem);
   assert.ok(withLink.text().includes("前往主站管理知识库 →"));
-  assert.ok(withLink.text().includes("designer@oceanleo.com"));
   withLink.cleanup();
 
   const own = await render(
@@ -556,9 +598,21 @@ test("SettingsPage 默认带「知识库」入口，knowledgeBaseLink=false 时�
     }),
     signedInStub(),
   );
+  assert.ok(!own.host.querySelector("[data-settings-item=knowledge-link]"));
+  await own.click(own.host.querySelector("[data-settings-item=extras]"));
   assert.ok(!own.text().includes("前往主站管理知识库 →"));
   assert.ok(own.text().includes("主站真·知识库"));
   own.cleanup();
+});
+
+test("tab=org 才出现组织栏，创建组织与企业服务协议只在这里", async () => {
+  const view = await render(React.createElement(AccountPage), signedInStub());
+  assert.equal(view.text().includes("创建组织"), false);
+  await view.click(view.host.querySelector("[data-settings-item=org]"));
+  assert.ok(view.host.querySelector("[data-testid=org-membership]"));
+  assert.ok(view.text().includes("创建组织"));
+  assert.ok(view.text().includes("《OceanLeo 企业服务协议》"));
+  view.cleanup();
 });
 
 // ---------------------------------------------------------------------------

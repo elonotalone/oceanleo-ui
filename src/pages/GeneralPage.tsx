@@ -167,7 +167,9 @@ function ThemeGroup({
   );
 }
 
-export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
+export type GeneralSettingsBodyProps = Omit<GeneralPageProps, "title">;
+
+export function GeneralSettingsBody({ themeLabels, labels }: GeneralSettingsBodyProps) {
   const router = useRouter();
   const tt = useUI();
   const active = normalizeLocale(useLocale());
@@ -189,7 +191,6 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
     language: labels?.language ?? tt("语言"),
     theme: labels?.theme ?? tt("主题"),
   };
-  const pageTitle = title ?? tt("通用");
 
   useEffect(() => {
     if (!langOpen) return;
@@ -204,14 +205,15 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
     setLangOpen(false);
     if (next === active) return;
     setLocaleCookie(next);
-    router.refresh();
+    try {
+      router.refresh();
+    } catch {
+      if (typeof window !== "undefined") window.location.reload();
+    }
   }
 
   return (
-    <div className="px-8 py-6">
-      <PageHeader title={pageTitle} />
-
-      <div className="mx-auto mt-8 max-w-xl">
+    <>
         <section className="v-fade-up">
           <h2 className="mb-4 text-[15px] font-semibold text-neutral-900">{L.appearance}</h2>
 
@@ -346,6 +348,18 @@ export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
             </button>
           </div>
         </section>
+    </>
+  );
+}
+
+export function GeneralPage({ title, themeLabels, labels }: GeneralPageProps) {
+  const tt = useUI();
+  const pageTitle = title ?? tt("通用");
+  return (
+    <div className="px-8 py-6">
+      <PageHeader title={pageTitle} />
+      <div className="mx-auto mt-8 max-w-xl">
+        <GeneralSettingsBody themeLabels={themeLabels} labels={labels} />
       </div>
     </div>
   );

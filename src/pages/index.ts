@@ -33,6 +33,8 @@ export { PhoneBindGate, PhoneBindForm, PHONE_BIND_OTP_COOLDOWN_SECONDS } from ".
 export type { PhoneBindFormProps } from "./PhoneBindGate";
 export { SettingsPage } from "./SettingsPage";
 export type { SettingsPageProps } from "./SettingsPage";
+export { SettingsHub } from "./settings/SettingsHub";
+export type { SettingsHubProps, SettingsSection } from "./settings/SettingsHub";
 export { GeneralPage } from "./GeneralPage";
 export type { GeneralPageProps } from "./GeneralPage";
 export { MyDatabasePage, MyDatabasePanel } from "./MyDatabasePage";
