@@ -9,3 +9,10 @@ export {
   isOnlineComputer,
   isAliveComputer,
 } from "./useCloudComputers";
+export {
+  computerDisplayState,
+  isConnectedComputer,
+  isPendingComputer,
+  canOpenShell,
+  type ComputerDisplayState,
+} from "./computer-state";

@@ -35,6 +35,7 @@ import { AUTH_CAPTCHA_MESSAGES } from "./auth-captcha-copy";
 import { BYOK_REAUTH_MESSAGES } from "./byok-reauth-copy";
 import { ENTERPRISE_COPY_MESSAGES } from "./enterprise-copy";
 import { PHONE_BIND_MESSAGES } from "./phone-bind-copy";
+import { SHELL_OVERHAUL_MESSAGES } from "./shell-overhaul-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -54,6 +55,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.zh,
     ...ENTERPRISE_COPY_MESSAGES.zh,
     ...PHONE_BIND_MESSAGES.zh,
+    ...SHELL_OVERHAUL_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -72,6 +74,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.en,
     ...ENTERPRISE_COPY_MESSAGES.en,
     ...PHONE_BIND_MESSAGES.en,
+    ...SHELL_OVERHAUL_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -90,6 +93,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.ja,
     ...ENTERPRISE_COPY_MESSAGES.ja,
     ...PHONE_BIND_MESSAGES.ja,
+    ...SHELL_OVERHAUL_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -108,6 +112,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.ko,
     ...ENTERPRISE_COPY_MESSAGES.ko,
     ...PHONE_BIND_MESSAGES.ko,
+    ...SHELL_OVERHAUL_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -126,6 +131,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.fr,
     ...ENTERPRISE_COPY_MESSAGES.fr,
     ...PHONE_BIND_MESSAGES.fr,
+    ...SHELL_OVERHAUL_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -144,6 +150,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.de,
     ...ENTERPRISE_COPY_MESSAGES.de,
     ...PHONE_BIND_MESSAGES.de,
+    ...SHELL_OVERHAUL_MESSAGES.de,
   },
   it: {
     ...it,
@@ -162,6 +169,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.it,
     ...ENTERPRISE_COPY_MESSAGES.it,
     ...PHONE_BIND_MESSAGES.it,
+    ...SHELL_OVERHAUL_MESSAGES.it,
   },
   es: {
     ...es,
@@ -180,6 +188,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.es,
     ...ENTERPRISE_COPY_MESSAGES.es,
     ...PHONE_BIND_MESSAGES.es,
+    ...SHELL_OVERHAUL_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -198,6 +207,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES["es-419"],
     ...ENTERPRISE_COPY_MESSAGES["es-419"],
     ...PHONE_BIND_MESSAGES["es-419"],
+    ...SHELL_OVERHAUL_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -216,6 +226,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES["pt-BR"],
     ...ENTERPRISE_COPY_MESSAGES["pt-BR"],
     ...PHONE_BIND_MESSAGES["pt-BR"],
+    ...SHELL_OVERHAUL_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -234,6 +245,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES["pt-PT"],
     ...ENTERPRISE_COPY_MESSAGES["pt-PT"],
     ...PHONE_BIND_MESSAGES["pt-PT"],
+    ...SHELL_OVERHAUL_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -252,6 +264,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.vi,
     ...ENTERPRISE_COPY_MESSAGES.vi,
     ...PHONE_BIND_MESSAGES.vi,
+    ...SHELL_OVERHAUL_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -270,6 +283,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.tr,
     ...ENTERPRISE_COPY_MESSAGES.tr,
     ...PHONE_BIND_MESSAGES.tr,
+    ...SHELL_OVERHAUL_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -288,6 +302,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES["zh-TW"],
     ...ENTERPRISE_COPY_MESSAGES["zh-TW"],
     ...PHONE_BIND_MESSAGES["zh-TW"],
+    ...SHELL_OVERHAUL_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -306,6 +321,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.ar,
     ...ENTERPRISE_COPY_MESSAGES.ar,
     ...PHONE_BIND_MESSAGES.ar,
+    ...SHELL_OVERHAUL_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -324,6 +340,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.th,
     ...ENTERPRISE_COPY_MESSAGES.th,
     ...PHONE_BIND_MESSAGES.th,
+    ...SHELL_OVERHAUL_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -342,5 +359,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...BYOK_REAUTH_MESSAGES.hi,
     ...ENTERPRISE_COPY_MESSAGES.hi,
     ...PHONE_BIND_MESSAGES.hi,
+    ...SHELL_OVERHAUL_MESSAGES.hi,
   },
 };

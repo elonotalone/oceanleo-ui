@@ -63,6 +63,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     byokReauth,
     enterprise,
     phoneBind,
+    shellOverhaul,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -79,6 +80,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./byok-reauth-copy"),
     import("./enterprise-copy"),
     import("./phone-bind-copy"),
+    import("./shell-overhaul-copy"),
   ]);
   return {
     ...base.default,
@@ -97,5 +99,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...byokReauth.BYOK_REAUTH_MESSAGES[locale],
     ...enterprise.ENTERPRISE_COPY_MESSAGES[locale],
     ...phoneBind.PHONE_BIND_MESSAGES[locale],
+    ...shellOverhaul.SHELL_OVERHAUL_MESSAGES[locale],
   };
 };
