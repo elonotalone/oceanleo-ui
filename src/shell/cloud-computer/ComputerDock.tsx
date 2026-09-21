@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
   type CloudComputerClient,
@@ -8,13 +9,43 @@ import {
 } from "../../lib/cloud-computer-api";
 import { currentDomainFamily } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
+import { AnchoredPopover } from "../anchored-popover";
 import { ConnectServerDialog } from "./ConnectServerDialog";
 import { CreateComputerDialog } from "./CreateComputerDialog";
-import { TerminalPanel } from "./TerminalPanel";
+import {
+  canOpenShell,
+  computerDisplayState,
+  isConnectedComputer,
+  isPendingComputer,
+  type ComputerDisplayState,
+} from "./computer-state";
 import {
   newShellEnabled,
   useCloudComputers,
 } from "./useCloudComputers";
+
+function statusWord(state: ComputerDisplayState, tt: (zh: string) => string): string {
+  if (state === "ready") return tt("在线");
+  if (state === "offline") return tt("离线");
+  if (state === "stopped") return tt("已停机");
+  if (state === "unpaid") return tt("欠费");
+  return "";
+}
+
+function statusDotClass(state: ComputerDisplayState): string {
+  if (state === "ready") return "bg-emerald-500";
+  if (state === "unpaid") return "bg-rose-500";
+  return "bg-neutral-300";
+}
+
+function newShellTitle(computer: Computer | null, tt: (zh: string) => string): string | undefined {
+  if (!computer || canOpenShell(computer)) return undefined;
+  const state = computerDisplayState(computer);
+  if (state === "offline") return tt("云电脑离线，先到我的设备里检查节点");
+  if (state === "stopped") return tt("先开机");
+  if (state === "unpaid") return tt("先充值");
+  return undefined;
+}
 
 export function ComputerDock({
   client = cloudComputerApi,
@@ -24,6 +55,7 @@ export function ComputerDock({
   computers?: Computer[];
 }) {
   const tt = useUI();
+  const router = useRouter();
   const hidden = currentDomainFamily() === "cn";
   const { computers, mounted, mountedId, setMountedId, refresh } =
     useCloudComputers({ client, computers: computersProp });
@@ -31,146 +63,171 @@ export function ComputerDock({
   const [createOpen, setCreateOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [switchOpen, setSwitchOpen] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalCollapsed, setTerminalCollapsed] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen && !switchOpen) return;
-    function onDoc(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-        setSwitchOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [menuOpen, switchOpen]);
+  const connectBtnRef = useRef<HTMLButtonElement>(null);
+  const connectPanelRef = useRef<HTMLDivElement>(null);
+  const switchBtnRef = useRef<HTMLButtonElement>(null);
+  const switchPanelRef = useRef<HTMLDivElement>(null);
 
   if (hidden) return null;
 
-  const empty = computers.length === 0;
+  const connected = computers.filter(isConnectedComputer);
+  const pending = computers.filter(isPendingComputer);
+  const empty = connected.length === 0;
   const shellOn = newShellEnabled(mounted);
-  const pendingCount = computers.filter(
-    (item) => item.status === "pending" || item.status === "enrolled",
-  ).length;
+  const mountedState = mounted ? computerDisplayState(mounted) : null;
 
   async function openNewShell() {
     if (!mounted || !shellOn) return;
-    setTerminalOpen(true);
-    setTerminalCollapsed(false);
-    await client.openTerminal(mounted.id, { cols: 80, rows: 24 });
+    const opened = await client.openTerminal(mounted.id, {
+      cols: 80,
+      rows: 24,
+      as_task: true,
+    });
     await refresh();
+    if (opened.task_id) {
+      router.push(`/history?task=${encodeURIComponent(opened.task_id)}`);
+    }
   }
 
   return (
-    <div ref={rootRef} className="relative" data-oceanleo-cc-dock>
+    <div className="relative" data-oceanleo-cc-dock>
       {empty ? (
         <>
           <button
+            ref={connectBtnRef}
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
-            aria-label={tt("电脑")}
+            aria-label={tt("接入云电脑")}
             data-oceanleo-cc-dock-empty
           >
             <ComputerGlyph />
-            {tt("电脑")}
+            {tt("接入云电脑")}
           </button>
-          {menuOpen && (
-            <div className="absolute bottom-9 left-0 z-50 min-w-[180px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
-              <button
-                type="button"
-                className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setCreateOpen(true);
-                }}
+          <AnchoredPopover
+            open={menuOpen}
+            anchorRef={connectBtnRef}
+            panelRef={connectPanelRef}
+            onClose={() => setMenuOpen(false)}
+            align="start"
+            role="menu"
+            ariaLabel={tt("接入云电脑")}
+            className="z-[80] min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
+              onClick={() => {
+                setMenuOpen(false);
+                setCreateOpen(true);
+              }}
+            >
+              {tt("购买云电脑")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
+              onClick={() => {
+                setMenuOpen(false);
+                setConnectOpen(true);
+              }}
+            >
+              {tt("连接我的服务器")}
+            </button>
+            {pending.length > 0 && (
+              <a
+                href="/devices?tab=cloud"
+                role="menuitem"
+                className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
+                data-oceanleo-cc-dock-pending-progress
+                onClick={() => setMenuOpen(false)}
               >
-                {tt("创建云电脑")}
-              </button>
-              <button
-                type="button"
-                className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setConnectOpen(true);
-                }}
-              >
-                {tt("接入我的服务器")}
-              </button>
-            </div>
-          )}
+                {tt("接入进行中 · 查看进度")}
+              </a>
+            )}
+          </AnchoredPopover>
         </>
       ) : (
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setSwitchOpen((open) => !open)}
+          <a
+            href="/devices?tab=cloud"
             className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
             data-oceanleo-cc-dock-mounted
-            aria-label={mounted?.name || tt("电脑")}
+            data-oceanleo-cc-status={mountedState || ""}
+            aria-label={mounted?.name || tt("接入云电脑")}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                mounted?.node_online ? "bg-emerald-500" : "bg-neutral-300"
+                mountedState ? statusDotClass(mountedState) : "bg-neutral-300"
               }`}
-              data-oceanleo-cc-online={mounted?.node_online ? "1" : "0"}
+              data-oceanleo-cc-online={mountedState === "ready" ? "1" : "0"}
             />
             <span className="max-w-[120px] truncate">
-              {mounted?.name || tt("电脑")}
+              {mounted?.name || tt("接入云电脑")}
             </span>
-          </button>
-          {switchOpen && (
-            <div
-              className="absolute bottom-9 left-0 z-50 min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
-              data-oceanleo-cc-switch-list
-            >
-              {computers.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-oceanleo-cc-switch-item={item.id}
-                  className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50 ${
-                    item.id === mountedId ? "font-medium" : ""
-                  }`}
-                  onClick={() => {
-                    setMountedId(item.id);
-                    setSwitchOpen(false);
-                  }}
-                >
-                  {item.name}
-                  {item.node_online ? ` · ${tt("在线")}` : ""}
-                </button>
-              ))}
-            </div>
+            {mountedState ? (
+              <span className="text-neutral-500">{statusWord(mountedState, tt)}</span>
+            ) : null}
+          </a>
+          {connected.length > 1 && (
+            <>
+              <button
+                ref={switchBtnRef}
+                type="button"
+                onClick={() => setSwitchOpen((open) => !open)}
+                className="rounded-lg px-1 py-1 text-neutral-500 hover:bg-neutral-100"
+                aria-label={tt("接入云电脑")}
+                data-oceanleo-cc-switch-toggle
+              >
+                <CaretGlyph />
+              </button>
+              <AnchoredPopover
+                open={switchOpen}
+                anchorRef={switchBtnRef}
+                panelRef={switchPanelRef}
+                onClose={() => setSwitchOpen(false)}
+                align="start"
+                role="menu"
+                className="z-[80] min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
+                attributes={{ "data-oceanleo-cc-switch-list": "" }}
+              >
+                {connected.map((item) => {
+                  const state = computerDisplayState(item);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="menuitem"
+                      data-oceanleo-cc-switch-item={item.id}
+                      className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50 ${
+                        item.id === mountedId ? "font-medium" : ""
+                      }`}
+                      onClick={() => {
+                        setMountedId(item.id);
+                        setSwitchOpen(false);
+                      }}
+                    >
+                      {item.name}
+                      {statusWord(state, tt) ? ` · ${statusWord(state, tt)}` : ""}
+                    </button>
+                  );
+                })}
+              </AnchoredPopover>
+            </>
           )}
           <button
             type="button"
             onClick={() => void openNewShell()}
             disabled={!shellOn}
+            title={newShellTitle(mounted, tt)}
             data-oceanleo-cc-new-shell
             aria-label={tt("新建 Shell")}
             className="rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-300"
           >
             {tt("新建 Shell")}
           </button>
-          {pendingCount > 0 && (
-            <a
-              href="/computers"
-              className="rounded-lg px-2 py-1 text-[12px] text-amber-700 hover:bg-amber-50"
-              data-oceanleo-cc-dock-pending
-            >
-              {tt(`${pendingCount} 台待确认`)}
-            </a>
-          )}
-          <a
-            href="/computers"
-            className="rounded-lg px-2 py-1 text-[12px] text-neutral-500 hover:bg-neutral-100"
-            data-oceanleo-cc-manage
-          >
-            {tt("管理")}
-          </a>
         </div>
       )}
       {createOpen && (
@@ -193,14 +250,6 @@ export function ComputerDock({
           }}
         />
       )}
-      {terminalOpen && mounted && (
-        <TerminalPanel
-          computerId={mounted.id}
-          client={client}
-          collapsed={terminalCollapsed}
-          onCollapsedChange={setTerminalCollapsed}
-        />
-      )}
     </div>
   );
 }
@@ -217,6 +266,19 @@ function ComputerGlyph() {
     >
       <rect x="3" y="5" width="18" height="12" rx="2" />
       <path d="M8 19h8M12 17v2" />
+    </svg>
+  );
+}
+
+function CaretGlyph() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className="h-3.5 w-3.5"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M5.5 7.5 L10 12 L14.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }

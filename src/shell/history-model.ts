@@ -124,3 +124,42 @@ export function withLinkedAgentTask(
     ? { ...session, task_id: linkedTaskId }
     : session;
 }
+
+export type ShellPlan = {
+  computer_id?: string;
+  session_id?: string;
+  computer_name?: string;
+};
+
+export function isShellTask(task: Pick<AgentTask, "mode"> | null | undefined): boolean {
+  return task?.mode === "shell";
+}
+
+export function shellPlanOf(task: Pick<AgentTask, "plan"> | null | undefined): ShellPlan | null {
+  const plan = task?.plan;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return null;
+  const shell = (plan as { shell?: unknown }).shell;
+  if (!shell || typeof shell !== "object" || Array.isArray(shell)) return null;
+  const row = shell as Record<string, unknown>;
+  return {
+    computer_id: typeof row.computer_id === "string" ? row.computer_id : undefined,
+    session_id: typeof row.session_id === "string" ? row.session_id : undefined,
+    computer_name:
+      typeof row.computer_name === "string" ? row.computer_name : undefined,
+  };
+}
+
+export function shellSessionFromTask(
+  task: AgentTask,
+): { computerId: string; sessionId: string; computerName?: string } | null {
+  if (!isShellTask(task)) return null;
+  const shell = shellPlanOf(task);
+  const computerId = String(shell?.computer_id || task.computer_id || "");
+  const sessionId = String(shell?.session_id || "");
+  if (!computerId || !sessionId) return null;
+  return {
+    computerId,
+    sessionId,
+    computerName: shell?.computer_name,
+  };
+}

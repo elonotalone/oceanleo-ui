@@ -397,9 +397,9 @@ export function listTerminals(computerId: string) {
 
 export function openTerminal(
   computerId: string,
-  body: { cols: number; rows: number; title?: string },
+  body: { cols: number; rows: number; title?: string; as_task?: boolean },
 ) {
-  return ccRequest<{ id: string }>(
+  return ccRequest<{ id: string; task_id?: string }>(
     `/v1/computers/${encodeURIComponent(computerId)}/terminals`,
     { method: "POST", body: JSON.stringify(body) },
   );

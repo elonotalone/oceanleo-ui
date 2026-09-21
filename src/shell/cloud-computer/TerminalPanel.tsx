@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { accessToken } from "../../lib/auth/client";
 import {
@@ -24,9 +24,158 @@ export function decodeTermB64(dataB64: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+export type ComputerTerminalStatus = "live" | "exit" | "error";
+
+export type ComputerTerminalHandle = {
+  hostRef: RefObject<HTMLDivElement | null>;
+  ready: boolean;
+  status: ComputerTerminalStatus;
+  detail?: string;
+};
+
+/**
+ * xterm + WebSocket for one cloud-computer session. Shared by the AgentConsole
+ * drawer (`TerminalPanel`) and the full-page `ShellTaskView`.
+ */
+export function useComputerTerminal({
+  computerId,
+  sessionId,
+  enabled = true,
+}: {
+  computerId: string;
+  sessionId: string | null;
+  enabled?: boolean;
+}): ComputerTerminalHandle {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const termRef = useRef<{
+    dispose: () => void;
+    write: (data: string) => void;
+    focus: () => void;
+    fit: () => void;
+    cols: number;
+    rows: number;
+  } | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const fitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<ComputerTerminalStatus>("live");
+  const [detail, setDetail] = useState<string | undefined>();
+
+  const attachSocket = useCallback(
+    async (sid: string) => {
+      socketRef.current?.close();
+      socketRef.current = null;
+      const token = await accessToken();
+      if (!token) return;
+      const url = terminalWsUrl(computerId, sid, token);
+      const socket = new WebSocket(url);
+      socketRef.current = socket;
+      socket.addEventListener("message", (event) => {
+        let frame: {
+          t?: string;
+          data_b64?: string;
+          exit_code?: number;
+          code?: string;
+        } = {};
+        try {
+          frame = JSON.parse(String(event.data)) as typeof frame;
+        } catch {
+          return;
+        }
+        if (frame.t === "out" && frame.data_b64) {
+          termRef.current?.write(decodeTermB64(frame.data_b64));
+        } else if (frame.t === "exit") {
+          setStatus("exit");
+          setDetail(String(frame.exit_code ?? ""));
+        } else if (frame.t === "error") {
+          setStatus("error");
+          setDetail(frame.code || "error");
+        }
+      });
+    },
+    [computerId],
+  );
+
+  useEffect(() => {
+    if (!enabled || !sessionId) return;
+    let disposed = false;
+    let removeResize: (() => void) | undefined;
+    setReady(false);
+    setStatus("live");
+    setDetail(undefined);
+    void (async () => {
+      const [{ Terminal }, { FitAddon }] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+      ]);
+      await import("@xterm/xterm/css/xterm.css");
+      if (disposed || !hostRef.current) return;
+      hostRef.current.replaceChildren();
+      const term = new Terminal({
+        convertEol: true,
+        fontSize: 13,
+        theme: { background: "#0a0a0a", foreground: "#e5e5e5" },
+      });
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(hostRef.current);
+      fit.fit();
+      const dims = () => fit.proposeDimensions() || { cols: term.cols, rows: term.rows };
+      termRef.current = {
+        dispose: () => term.dispose(),
+        write: (data) => term.write(data),
+        focus: () => term.focus(),
+        fit: () => fit.fit(),
+        get cols() {
+          return dims().cols;
+        },
+        get rows() {
+          return dims().rows;
+        },
+      };
+      term.onData((data) => {
+        const socket = socketRef.current;
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ t: "in", data_b64: encodeTermText(data) }));
+      });
+      setReady(true);
+      await attachSocket(sessionId);
+      if (disposed) return;
+      const sendResize = () => {
+        fit.fit();
+        const size = dims();
+        const socket = socketRef.current;
+        if (!size || !socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(
+          JSON.stringify({ t: "resize", cols: size.cols, rows: size.rows }),
+        );
+      };
+      const onResize = () => {
+        if (fitTimer.current) clearTimeout(fitTimer.current);
+        fitTimer.current = setTimeout(sendResize, 200);
+      };
+      window.addEventListener("resize", onResize);
+      removeResize = () => window.removeEventListener("resize", onResize);
+      sendResize();
+      term.focus();
+    })();
+    return () => {
+      disposed = true;
+      removeResize?.();
+      if (fitTimer.current) clearTimeout(fitTimer.current);
+      socketRef.current?.close();
+      socketRef.current = null;
+      termRef.current?.dispose();
+      termRef.current = null;
+    };
+  }, [attachSocket, enabled, sessionId]);
+
+  return { hostRef, ready, status, detail };
+}
+
 type TabState = {
   session: TerminalSession;
-  status: "live" | "exit" | "error";
+  status: ComputerTerminalStatus;
   detail?: string;
 };
 
@@ -44,16 +193,11 @@ export function TerminalPanel({
   const tt = useUI();
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<{
-    dispose: () => void;
-    write: (data: string) => void;
-    focus: () => void;
-    fit: () => void;
-  } | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  const fitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const terminal = useComputerTerminal({
+    computerId,
+    sessionId: collapsed ? null : activeId,
+    enabled: !collapsed,
+  });
 
   const refreshSessions = useCallback(async () => {
     const data = await client.listTerminals(computerId);
@@ -83,109 +227,16 @@ export function TerminalPanel({
     });
   }, [refreshSessions]);
 
-  const attachSocket = useCallback(
-    async (sessionId: string) => {
-      socketRef.current?.close();
-      socketRef.current = null;
-      const token = await accessToken();
-      if (!token) return;
-      const url = terminalWsUrl(computerId, sessionId, token);
-      const socket = new WebSocket(url);
-      socketRef.current = socket;
-      socket.addEventListener("message", (event) => {
-        let frame: { t?: string; data_b64?: string; exit_code?: number; code?: string } = {};
-        try {
-          frame = JSON.parse(String(event.data)) as typeof frame;
-        } catch {
-          return;
-        }
-        if (frame.t === "out" && frame.data_b64) {
-          termRef.current?.write(decodeTermB64(frame.data_b64));
-        } else if (frame.t === "exit") {
-          setTabs((current) =>
-            current.map((tab) =>
-              tab.session.id === sessionId
-                ? { ...tab, status: "exit", detail: String(frame.exit_code ?? "") }
-                : tab,
-            ),
-          );
-        } else if (frame.t === "error") {
-          setTabs((current) =>
-            current.map((tab) =>
-              tab.session.id === sessionId
-                ? { ...tab, status: "error", detail: frame.code || "error" }
-                : tab,
-            ),
-          );
-        }
-      });
-    },
-    [computerId],
-  );
-
   useEffect(() => {
-    if (collapsed || !activeId) return;
-    let disposed = false;
-    let removeResize: (() => void) | undefined;
-    void (async () => {
-      const [{ Terminal }, { FitAddon }] = await Promise.all([
-        import("@xterm/xterm"),
-        import("@xterm/addon-fit"),
-      ]);
-      await import("@xterm/xterm/css/xterm.css");
-      if (disposed || !hostRef.current) return;
-      hostRef.current.replaceChildren();
-      const term = new Terminal({
-        convertEol: true,
-        fontSize: 13,
-        theme: { background: "#0a0a0a", foreground: "#e5e5e5" },
-      });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      term.open(hostRef.current);
-      fit.fit();
-      termRef.current = {
-        dispose: () => term.dispose(),
-        write: (data) => term.write(data),
-        focus: () => term.focus(),
-        fit: () => fit.fit(),
-      };
-      term.onData((data) => {
-        const socket = socketRef.current;
-        if (!socket || socket.readyState !== WebSocket.OPEN) return;
-        socket.send(JSON.stringify({ t: "in", data_b64: encodeTermText(data) }));
-      });
-      setReady(true);
-      await attachSocket(activeId);
-      if (disposed) return;
-      const sendResize = () => {
-        const dims = fit.proposeDimensions();
-        const socket = socketRef.current;
-        if (!dims || !socket || socket.readyState !== WebSocket.OPEN) return;
-        socket.send(JSON.stringify({ t: "resize", cols: dims.cols, rows: dims.rows }));
-      };
-      const onResize = () => {
-        if (fitTimer.current) clearTimeout(fitTimer.current);
-        fitTimer.current = setTimeout(() => {
-          fit.fit();
-          sendResize();
-        }, 200);
-      };
-      window.addEventListener("resize", onResize);
-      removeResize = () => window.removeEventListener("resize", onResize);
-      sendResize();
-      term.focus();
-    })();
-    return () => {
-      disposed = true;
-      removeResize?.();
-      if (fitTimer.current) clearTimeout(fitTimer.current);
-      socketRef.current?.close();
-      socketRef.current = null;
-      termRef.current?.dispose();
-      termRef.current = null;
-    };
-  }, [activeId, attachSocket, collapsed]);
+    if (!activeId) return;
+    setTabs((current) =>
+      current.map((tab) =>
+        tab.session.id === activeId
+          ? { ...tab, status: terminal.status, detail: terminal.detail }
+          : tab,
+      ),
+    );
+  }, [activeId, terminal.detail, terminal.status]);
 
   async function addSession() {
     const opened = await client.openTerminal(computerId, { cols: 80, rows: 24 });
@@ -252,12 +303,12 @@ export function TerminalPanel({
           </button>
         )}
         <span className="ml-auto text-[10px] text-neutral-500">
-          {ready ? "" : tt("终端加载中")}
+          {terminal.ready ? "" : tt("终端加载中")}
         </span>
       </div>
       {!collapsed && (
         <div
-          ref={hostRef}
+          ref={terminal.hostRef}
           className="h-56 w-full px-2 py-1"
           data-oceanleo-cc-xterm
         />

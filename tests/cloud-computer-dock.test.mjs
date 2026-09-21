@@ -64,11 +64,17 @@ const dialogStubUrl = dataModule(`
   export function CreateComputerDialog() { return null; }
   export function ConnectServerDialog() { return null; }
 `);
-const terminalStubUrl = dataModule(`
+const popoverStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function TerminalPanel() { return React.createElement("div", { "data-testid": "term" }); }
-  export function encodeTermText(t) { return t; }
-  export function decodeTermB64(t) { return t; }
+  export function AnchoredPopover({ open, children, attributes }) {
+    if (!open) return null;
+    return React.createElement("div", { ...(attributes || {}), "data-anchored-popover": "1" }, children);
+  }
+`);
+const navStubUrl = dataModule(`
+  export function useRouter() {
+    return globalThis.__ccRouter || { push() {}, replace() {}, refresh() {}, back() {} };
+  }
 `);
 
 let storedMounted = "";
@@ -88,7 +94,8 @@ const { ComputerDock } = await import(
     "../../lib/cloud-computer-api": apiStubUrl,
     "./CreateComputerDialog": dialogStubUrl,
     "./ConnectServerDialog": dialogStubUrl,
-    "./TerminalPanel": terminalStubUrl,
+    "../anchored-popover": popoverStubUrl,
+    "next/navigation": navStubUrl,
   })
 );
 
@@ -106,6 +113,7 @@ function pc(overrides = {}) {
     status: "running",
     edition: "com",
     node_online: true,
+    enrolled_at: "2026-09-20T00:00:00Z",
     confirmed_at: "2026-09-20T00:00:00Z",
     created_at: "2026-09-20T00:00:00Z",
     updated_at: "2026-09-20T00:00:00Z",
@@ -113,13 +121,14 @@ function pc(overrides = {}) {
   };
 }
 
-function makeClient(items) {
+function makeClient(items, openImpl) {
   return {
     async listComputers() {
       return { items: items.map((item) => ({ ...item })) };
     },
-    async openTerminal() {
-      return { id: "sid_1" };
+    async openTerminal(id, body) {
+      if (openImpl) return openImpl(id, body);
+      return { id: "sid_1", task_id: "task_1" };
     },
   };
 }
@@ -131,6 +140,9 @@ async function flush(count = 6) {
 async function render(computers, client = makeClient(computers)) {
   globalThis.__ccApi = client;
   globalThis.__ccMounted = storedMounted;
+  if (!globalThis.__ccRouter) {
+    globalThis.__ccRouter = { push() {}, replace() {}, refresh() {}, back() {} };
+  }
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -153,18 +165,25 @@ async function render(computers, client = makeClient(computers)) {
   };
 }
 
-test("pickMountedId：零台 → 未挂载", () => {
+test("pickMountedId：零台已接入 → 未挂载", () => {
   assert.equal(pickMountedId([], "cc_1"), null);
   assert.equal(pickMountedId([pc({ status: "released" })], null), null);
+  assert.equal(
+    pickMountedId(
+      [pc({ status: "enrolled", confirmed_at: null, enrolled_at: "t" })],
+      null,
+    ),
+    null,
+  );
 });
 
-test("pickMountedId：恰一台在线 → 自动挂那台", () => {
+test("pickMountedId：恰一台 ready → 自动挂那台", () => {
   const a = pc({ id: "cc_a", node_online: true });
   const b = pc({ id: "cc_b", node_online: false });
   assert.equal(pickMountedId([a, b], "cc_b"), "cc_a");
 });
 
-test("pickMountedId：多台在线 → 上次选择，没有则第一台在线", () => {
+test("pickMountedId：多台 ready → 上次选择，没有则第一台 ready", () => {
   const a = pc({ id: "cc_a", node_online: true });
   const b = pc({ id: "cc_b", node_online: true });
   assert.equal(pickMountedId([a, b], "cc_b"), "cc_b");
@@ -172,53 +191,110 @@ test("pickMountedId：多台在线 → 上次选择，没有则第一台在线",
   assert.equal(pickMountedId([a, b], "missing"), "cc_a");
 });
 
-test("零台时显示电脑入口，没有新建 Shell", async () => {
+test("无已接入机器：只渲染接入云电脑，无管理、无待确认角标、无新建 Shell", async () => {
   storedMounted = "";
   const view = await render([]);
   assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-empty]"));
-  assert.equal(view.button("电脑")?.textContent.trim(), "电脑");
+  assert.equal(view.button("接入云电脑")?.textContent.trim(), "接入云电脑");
   assert.equal(view.button("新建 Shell"), undefined);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-manage]"), null);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-pending]"), null);
   view.cleanup();
 });
 
-test("一台在线时显示名字，新建 Shell 可点", async () => {
+test("pending / enrolled / active 未 enrolled 的行不上坞", async () => {
+  storedMounted = "";
+  const pending = pc({
+    id: "cc_p",
+    name: "开通中",
+    status: "provisioning",
+    enrolled_at: null,
+    confirmed_at: null,
+    node_online: false,
+  });
+  const enrolled = pc({
+    id: "cc_e",
+    name: "待确认机",
+    source: "byo",
+    status: "enrolled",
+    confirmed_at: null,
+    node_online: true,
+  });
+  const leftover = pc({
+    id: "cc_legacy",
+    name: "遗留",
+    source: "byo",
+    status: "active",
+    enrolled_at: null,
+    confirmed_at: null,
+    node_online: false,
+  });
+  assert.equal(pickMountedId([pending, enrolled, leftover], null), null);
+  const view = await render([pending, enrolled, leftover]);
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-empty]"));
+  assert.equal(view.text().includes("开通中"), false);
+  assert.equal(view.text().includes("待确认机"), false);
+  assert.equal(view.text().includes("遗留"), false);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-manage]"), null);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-pending]"), null);
+  await act(async () => {
+    view.button("接入云电脑").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-pending-progress]"));
+  assert.match(view.text(), /接入进行中/);
+  view.cleanup();
+});
+
+test("ready 机器：芯片 + 可点新建 Shell，无管理", async () => {
   storedMounted = "";
   const view = await render([pc({ name: "新加坡一号" })]);
   assert.ok(view.text().includes("新加坡一号"));
+  assert.ok(view.text().includes("在线"));
   const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
   assert.ok(shell);
   assert.equal(shell.disabled, false);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-manage]"), null);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-empty]"), null);
   view.cleanup();
 });
 
-test("挂载电脑离线时新建 Shell 不可点", async () => {
+test("offline 时新建 Shell 不可点", async () => {
   storedMounted = "cc_1";
-  const view = await render([pc({ node_online: false, status: "stopped" })]);
+  const view = await render([pc({ node_online: false })]);
   const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
   assert.ok(shell);
   assert.equal(shell.disabled, true);
+  assert.equal(shell.getAttribute("title"), "云电脑离线，先到我的设备里检查节点");
   assert.equal(newShellEnabled(pc({ node_online: false })), false);
   view.cleanup();
 });
 
-test("多台：下拉三项、localStorage 上次选择、切换后新建 Shell 随在线变", async () => {
+test("多台已接入：箭头切换只列出已接入，切换后新建 Shell 随 ready 变", async () => {
   storedMounted = "cc_b";
   const items = [
     pc({ id: "cc_a", name: "甲机", node_online: true }),
     pc({ id: "cc_b", name: "乙机", node_online: true }),
     pc({ id: "cc_c", name: "丙机", node_online: false, status: "stopped" }),
+    pc({
+      id: "cc_pending",
+      name: "不该出现",
+      source: "byo",
+      status: "enrolled",
+      confirmed_at: null,
+      node_online: true,
+    }),
   ];
   const view = await render(items);
   const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
   assert.ok(mounted);
   assert.match((mounted.textContent || "").trim(), /乙机/);
-  const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
-  assert.ok(shell);
-  assert.equal(shell.disabled, false);
-
+  const toggle = view.host.querySelector("[data-oceanleo-cc-switch-toggle]");
+  assert.ok(toggle);
   await act(async () => {
-    mounted.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await flush();
   const switchItems = [
     ...view.host.querySelectorAll("[data-oceanleo-cc-switch-item]"),
   ];
@@ -227,6 +303,7 @@ test("多台：下拉三项、localStorage 上次选择、切换后新建 Shell 
     switchItems.map((node) => node.getAttribute("data-oceanleo-cc-switch-item")).sort().join(","),
     "cc_a,cc_b,cc_c",
   );
+  assert.equal(view.text().includes("不该出现"), false);
 
   const offline = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_c"]');
   assert.ok(offline);
@@ -239,41 +316,34 @@ test("多台：下拉三项、localStorage 上次选择、切换后新建 Shell 
   assert.equal(shellOffline.disabled, true);
   const mountedOffline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
   assert.match((mountedOffline.textContent || "").trim(), /丙机/);
-
-  await act(async () => {
-    mountedOffline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  const onlineA = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_a"]');
-  assert.ok(onlineA);
-  await act(async () => {
-    onlineA.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  const shellOnline = view.host.querySelector("[data-oceanleo-cc-new-shell]");
-  assert.ok(shellOnline);
-  assert.equal(shellOnline.disabled, false);
-  const mountedOnline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
-  assert.match((mountedOnline.textContent || "").trim(), /甲机/);
   view.cleanup();
 });
 
-test("enrolled 机器不可挂载、出现 data-oceanleo-cc-dock-pending", async () => {
+test("openTerminal 带 as_task: true，成功后 push /history?task=", async () => {
   storedMounted = "";
-  const enrolled = pc({
-    id: "cc_e",
-    name: "待确认机",
-    source: "byo",
-    status: "enrolled",
-    confirmed_at: null,
-    node_online: true,
+  const pushes = [];
+  globalThis.__ccRouter = {
+    push(href) {
+      pushes.push(href);
+    },
+    replace() {},
+    refresh() {},
+    back() {},
+  };
+  let opened = null;
+  const client = makeClient([pc({ name: "新加坡一号" })], async (id, body) => {
+    opened = { id, body };
+    return { id: "sid_9", task_id: "task-shell-1" };
   });
-  assert.equal(pickMountedId([enrolled], null), null);
-  const view = await render([enrolled]);
-  const pending = view.host.querySelector("[data-oceanleo-cc-dock-pending]");
-  assert.ok(pending);
-  assert.match(pending.textContent || "", /1 台待确认/);
+  const view = await render([pc({ name: "新加坡一号" })], client);
   const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
   assert.ok(shell);
-  assert.equal(shell.disabled, true);
+  await act(async () => {
+    shell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush(12);
+  assert.ok(opened);
+  assert.equal(opened.body.as_task, true);
+  assert.deepEqual(pushes, ["/history?task=task-shell-1"]);
   view.cleanup();
 });

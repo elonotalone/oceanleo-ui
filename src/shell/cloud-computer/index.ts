@@ -1,5 +1,7 @@
 export { ComputerDock } from "./ComputerDock";
-export { TerminalPanel, encodeTermText, decodeTermB64 } from "./TerminalPanel";
+export { TerminalPanel, encodeTermText, decodeTermB64, useComputerTerminal } from "./TerminalPanel";
+export type { ComputerTerminalHandle, ComputerTerminalStatus } from "./TerminalPanel";
+export { ShellTaskView, type ShellTaskViewProps } from "./ShellTaskView";
 export { CreateComputerDialog } from "./CreateComputerDialog";
 export { ConnectServerDialog } from "./ConnectServerDialog";
 export {

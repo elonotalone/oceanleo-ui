@@ -295,5 +295,19 @@ test("isMountable 四种组合", () => {
   assert.equal(COMPUTER_STATUS_LABEL.removed, "已移除");
 });
 
+test("openTerminal 把 as_task 放进 POST body 并读回 task_id", async () => {
+  const calls = installFetch(() =>
+    jsonResponse(200, { id: "sid_9", task_id: "task-shell-1", alive: true }),
+  );
+  const opened = await openTerminal("cc_1", { cols: 80, rows: 24, as_task: true });
+  assert.equal(opened.task_id, "task-shell-1");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    cols: 80,
+    rows: 24,
+    as_task: true,
+  });
+});
+
 void pathToFileURL;
 void require;

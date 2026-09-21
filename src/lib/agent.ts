@@ -297,6 +297,8 @@ export interface AgentTask {
   session_id?: string | null;
   /** Ordinary app task or advanced-workbench task. */
   surface?: "app" | "advanced" | string;
+  /** Cloud-computer id when this task is a Shell session (`mode === "shell"`). */
+  computer_id?: string | null;
   /** 成品 app 身份；旧 task 可能缺失。 */
   app_id?: string | null;
   parent_task_id?: string | null;
