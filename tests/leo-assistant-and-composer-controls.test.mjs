@@ -22,6 +22,7 @@ const OVERRIDES = {
   "./ResultCanvas": dataModule("export function ResultCanvas(){ return null; }"),
   "./ArtifactRenderer": dataModule("export function ArtifactRenderer(){ return null; }"),
   "./ModelGroupPicker": dataModule("export function ModelGroupPicker(){ return null; }"),
+  "./PluginsPopover": dataModule("export function PluginsPopover(){ return null; }"),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";
     export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){

@@ -1,10 +1,144 @@
 // 输入框插件浮层 / 模型组浮层（单元 5：composer-plugins）。
-// 只有该单元改这张表。写法见 shell-overhaul-copy-shared.ts：
-//   const SOURCE = { key: "中文原文" } as const;
-//   export const SHELL_OVERHAUL_PLUGINS_MESSAGES = assembleCopy(SOURCE, { en: {...}, de: {...}, ... 16 个语种 });
-// 还没有文案时保持 emptyCopy()。
+// 只有该单元改这张表。写法见 shell-overhaul-copy-shared.ts。
 
-import { emptyCopy } from "./shell-overhaul-copy-shared";
-import type { Locale } from "../../config";
+import { assembleCopy } from "./shell-overhaul-copy-shared";
 
-export const SHELL_OVERHAUL_PLUGINS_MESSAGES: Record<Locale, Record<string, string>> = emptyCopy();
+const SOURCE = {
+  connect: "连接",
+  connected: "已连接",
+  addConnectors: "添加连接器",
+  emptyConnectors: "还没有可用的连接器",
+  signInToUse: "登录后可用",
+  catalogLoadFailed: "连接器加载失败",
+} as const;
+
+export const SHELL_OVERHAUL_PLUGINS_MESSAGES = assembleCopy(SOURCE, {
+  en: {
+    connect: "Connect",
+    connected: "Connected",
+    addConnectors: "Add connectors",
+    emptyConnectors: "No connectors yet",
+    signInToUse: "Sign in to use",
+    catalogLoadFailed: "Couldn't load connectors",
+  },
+  de: {
+    connect: "Verbinden",
+    connected: "Verbunden",
+    addConnectors: "Konnektoren hinzufügen",
+    emptyConnectors: "Noch keine Konnektoren",
+    signInToUse: "Nach der Anmeldung verfügbar",
+    catalogLoadFailed: "Konnektoren konnten nicht geladen werden",
+  },
+  es: {
+    connect: "Conectar",
+    connected: "Conectado",
+    addConnectors: "Añadir conectores",
+    emptyConnectors: "Aún no hay conectores",
+    signInToUse: "Disponible tras iniciar sesión",
+    catalogLoadFailed: "No se pudieron cargar los conectores",
+  },
+  "es-419": {
+    connect: "Conectar",
+    connected: "Conectado",
+    addConnectors: "Agregar conectores",
+    emptyConnectors: "Todavía no hay conectores",
+    signInToUse: "Disponible al iniciar sesión",
+    catalogLoadFailed: "No se pudieron cargar los conectores",
+  },
+  fr: {
+    connect: "Connecter",
+    connected: "Connecté",
+    addConnectors: "Ajouter des connecteurs",
+    emptyConnectors: "Aucun connecteur pour l’instant",
+    signInToUse: "Disponible après connexion",
+    catalogLoadFailed: "Impossible de charger les connecteurs",
+  },
+  it: {
+    connect: "Connetti",
+    connected: "Connesso",
+    addConnectors: "Aggiungi connettori",
+    emptyConnectors: "Nessun connettore ancora",
+    signInToUse: "Disponibile dopo l’accesso",
+    catalogLoadFailed: "Impossibile caricare i connettori",
+  },
+  "pt-BR": {
+    connect: "Conectar",
+    connected: "Conectado",
+    addConnectors: "Adicionar conectores",
+    emptyConnectors: "Ainda não há conectores",
+    signInToUse: "Disponível após entrar",
+    catalogLoadFailed: "Não foi possível carregar os conectores",
+  },
+  "pt-PT": {
+    connect: "Ligar",
+    connected: "Ligado",
+    addConnectors: "Adicionar conectores",
+    emptyConnectors: "Ainda não há conectores",
+    signInToUse: "Disponível após iniciar sessão",
+    catalogLoadFailed: "Não foi possível carregar os conectores",
+  },
+  vi: {
+    connect: "Kết nối",
+    connected: "Đã kết nối",
+    addConnectors: "Thêm trình kết nối",
+    emptyConnectors: "Chưa có trình kết nối",
+    signInToUse: "Dùng được sau khi đăng nhập",
+    catalogLoadFailed: "Không tải được trình kết nối",
+  },
+  tr: {
+    connect: "Bağlan",
+    connected: "Bağlı",
+    addConnectors: "Bağlayıcı ekle",
+    emptyConnectors: "Henüz bağlayıcı yok",
+    signInToUse: "Giriş yaptıktan sonra kullanılabilir",
+    catalogLoadFailed: "Bağlayıcılar yüklenemedi",
+  },
+  "zh-TW": {
+    connect: "連接",
+    connected: "已連接",
+    addConnectors: "新增連接器",
+    emptyConnectors: "還沒有可用的連接器",
+    signInToUse: "登入後可用",
+    catalogLoadFailed: "連接器載入失敗",
+  },
+  ja: {
+    connect: "接続",
+    connected: "接続済み",
+    addConnectors: "コネクターを追加",
+    emptyConnectors: "利用できるコネクターはまだありません",
+    signInToUse: "ログイン後に利用できます",
+    catalogLoadFailed: "コネクターを読み込めませんでした",
+  },
+  ko: {
+    connect: "연결",
+    connected: "연결됨",
+    addConnectors: "커넥터 추가",
+    emptyConnectors: "아직 사용할 커넥터가 없습니다",
+    signInToUse: "로그인한 뒤에 사용할 수 있습니다",
+    catalogLoadFailed: "커넥터를 불러오지 못했습니다",
+  },
+  ar: {
+    connect: "توصيل",
+    connected: "موصّل",
+    addConnectors: "إضافة موصّلات",
+    emptyConnectors: "لا توجد موصّلات بعد",
+    signInToUse: "متاح بعد تسجيل الدخول",
+    catalogLoadFailed: "تعذر تحميل الموصّلات",
+  },
+  th: {
+    connect: "เชื่อมต่อ",
+    connected: "เชื่อมต่อแล้ว",
+    addConnectors: "เพิ่มตัวเชื่อมต่อ",
+    emptyConnectors: "ยังไม่มีตัวเชื่อมต่อ",
+    signInToUse: "ใช้ได้หลังเข้าสู่ระบบ",
+    catalogLoadFailed: "โหลดตัวเชื่อมต่อไม่สำเร็จ",
+  },
+  hi: {
+    connect: "कनेक्ट करें",
+    connected: "कनेक्टेड",
+    addConnectors: "कनेक्टर जोड़ें",
+    emptyConnectors: "अभी कोई कनेक्टर नहीं है",
+    signInToUse: "साइन इन के बाद उपलब्ध",
+    catalogLoadFailed: "कनेक्टर लोड नहीं हो सके",
+  },
+});

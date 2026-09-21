@@ -35,6 +35,7 @@ import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { ModelGroupPicker } from "./ModelPicker";
+import { PluginsPopover } from "./PluginsPopover";
 import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
@@ -213,7 +214,7 @@ export interface LeoComposerProps {
    * 是否在右下角（语音输入左侧）显示模型选择器（默认 true）。
    */
   showModelPicker?: boolean;
-  /** 点击插件按钮的回调；不传时默认跳转 /plugins */
+  /** 点击插件按钮的回调；不传时打开连接器浮层（不再整页跳 /plugins） */
   onOpenPlugins?: () => void;
   /** 是否显示插件按钮（默认 true）。传 false 时隐藏。 */
   showPlugins?: boolean;
@@ -322,6 +323,8 @@ export function LeoComposer({
     [],
   );
   const fileRef = useRef<HTMLInputElement>(null);
+  const pluginsAnchorRef = useRef<HTMLButtonElement>(null);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   // 会议录音卡片是否展开（覆盖在 textarea 区域之上）。
   const [meetingOpen, setMeetingOpen] = useState(false);
   // 拖拽上传：文件被拖到输入框卡片上方（显示虚线落区）。dragDepth 抵消
@@ -405,9 +408,7 @@ export function LeoComposer({
       onOpenPlugins();
       return;
     }
-    if (typeof window !== "undefined") {
-      window.location.href = "/plugins";
-    }
+    setPluginsOpen((open) => !open);
   }
 
   function emitFiles(list: FileList | null) {
@@ -602,16 +603,28 @@ export function LeoComposer({
             />
           )}
           {showPlugins && (
+            <>
             <button
+              ref={pluginsAnchorRef}
               type="button"
               onClick={handlePluginsClick}
               data-composer-plugins-button
+              aria-expanded={onOpenPlugins ? undefined : pluginsOpen}
+              aria-haspopup={onOpenPlugins ? undefined : "dialog"}
               aria-label={tt("插件与连接器")}
               title={tt("插件与连接器")}
               className="flex items-center justify-center rounded-full border border-neutral-200 p-1 text-neutral-500 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700 active:scale-95"
             >
               <PluginConnectorIcon />
             </button>
+            {!onOpenPlugins && (
+              <PluginsPopover
+                open={pluginsOpen}
+                onClose={() => setPluginsOpen(false)}
+                anchorRef={pluginsAnchorRef}
+              />
+            )}
+            </>
           )}
           {leftSlot}
           {showComputerDock && <ComputerDock />}

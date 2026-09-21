@@ -99,6 +99,7 @@ export {
 } from "./LeoAssistant";
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";
 export { LeoComposer } from "./LeoComposer";
+export { PluginsPopover } from "./PluginsPopover";
 export type {
   LeoComposerProps,
   ComposerRecentFile,
