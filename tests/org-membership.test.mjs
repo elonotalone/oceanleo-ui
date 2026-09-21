@@ -572,26 +572,32 @@ function accountAuthStub() {
   };
 }
 
-test("AccountPage：无组织但网关已上线时出现「我的组织」与建组织表单；路由 404 仍为零差异", async () => {
+// 2026-09-21 操作员定案：组织内容不许直接暴露在账户默认视图里；账户页变成设置中心，
+// 组织只在「组织」栏出现。下面两条按新契约写：默认栏零组织内容，组织栏才有。
+test("AccountPage：默认（账户）栏不暴露组织内容；切到组织栏才出现「我的组织」与建组织表单", async () => {
   globalThis.__authStub = accountAuthStub();
   const none = await render(React.createElement(AccountPage), scenario());
-  const link = none.q('a[href="/org"]');
-  assert.ok(link, "可以建组织时账户页要有「我的组织」入口");
-  assert.ok(link.textContent.includes("我的组织"));
-  assert.ok(none.q('[data-org-membership="1"]'));
-  assert.ok(none.q('[data-org-create="1"]'));
-  assert.equal(none.qa(".grid > div").length, 3, "三格统计原样");
+  assert.ok(none.q("[data-settings-hub]"), "账户页应是设置中心");
+  assert.ok(none.q('[data-settings-item="account"][aria-current="page"]'), "默认落在账户栏");
+  assert.equal(none.q('[data-org-membership="1"]'), null, "账户栏不许直接摆组织内容");
+  assert.equal(none.q('[data-org-create="1"]'), null, "账户栏不许直接摆建组织表单");
+  const orgTab = none.q('[data-settings-item="org"]');
+  assert.ok(orgTab, "左栏要有「组织」项");
+  await none.click(orgTab);
+  assert.ok(none.q('[data-settings-pane="org"]'), "点组织栏后右侧是组织面板");
+  assert.ok(none.q('[data-org-membership="1"]'), "网关已上线：组织栏里有我的组织");
+  assert.ok(none.q('[data-org-create="1"]'), "网关已上线：组织栏里能建组织");
   none.cleanup();
 
   globalThis.__authStub = accountAuthStub();
   const some = await render(React.createElement(AccountPage), scenario({ listMyOrgs: async () => [ORG_A] }));
-  assert.ok(some.q('a[href="/org"]'));
+  await some.click(some.q('[data-settings-item="org"]'));
   assert.ok(some.q('[data-org-membership="1"]'));
   assert.ok(some.q('[data-org-create="1"]'), "已有组织也能再创建一家");
   some.cleanup();
 });
 
-test("AccountPage：org-api 整条路 404（路由未上线）时与无组织完全一致，不报错", async () => {
+test("AccountPage：org-api 整条路 404（路由未上线）时组织栏安静，不报错", async () => {
   const { OrgApiError } = await import(orgApiWithPreview);
   globalThis.__authStub = accountAuthStub();
   const down = scenario({
@@ -603,8 +609,9 @@ test("AccountPage：org-api 整条路 404（路由未上线）时与无组织完
     },
   });
   const view = await render(React.createElement(AccountPage), down);
-  assert.equal(view.q('a[href="/org"]'), null);
   assert.equal(view.q('[data-org-membership="1"]'), null);
+  await view.click(view.q('[data-settings-item="org"]'));
+  assert.equal(view.q('[data-org-membership="1"]'), null, "路由未上线：组织栏不摆半成品");
   assert.ok(!view.text().includes("还没上线"));
   view.cleanup();
 });

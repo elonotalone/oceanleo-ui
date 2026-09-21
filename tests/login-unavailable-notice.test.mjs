@@ -53,9 +53,9 @@ test("配好了就不出提示", () => {
 });
 
 test("四处登不上的界面都走同一个判据，没有第五份文案", async () => {
+  // 2026-09-21 起 AccountPage / SettingsPage 都变薄成 SettingsHub 的壳，判据只在 hub 里走一次。
   const files = [
-    "src/pages/AccountPage.tsx",
-    "src/pages/SettingsPage.tsx",
+    "src/pages/settings/SettingsHub.tsx",
     "src/pages/ApiPage.tsx",
     "src/pages/AuthDialog.tsx",
   ];
@@ -66,10 +66,17 @@ test("四处登不上的界面都走同一个判据，没有第五份文案", as
       /loginUnavailableNotice\(\)/,
       `${file} 没走统一判据`,
     );
+  }
+  for (const file of [...files, "src/pages/AccountPage.tsx", "src/pages/SettingsPage.tsx"]) {
+    const source = await readFile(file, "utf8");
     assert.equal(
       source.includes("登录服务尚未配置（缺少 Supabase 环境变量）。"),
       false,
       `${file} 还在把「缺少 Supabase 环境变量」甩给用户`,
     );
+  }
+  for (const file of ["src/pages/AccountPage.tsx", "src/pages/SettingsPage.tsx"]) {
+    const source = await readFile(file, "utf8");
+    assert.match(source, /<SettingsHub/, `${file} 应只是 SettingsHub 的壳`);
   }
 });

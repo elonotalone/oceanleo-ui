@@ -187,15 +187,21 @@ export function PluginsPopover({
                             enabled: !linked.enabled,
                           })
                         }
-                        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60 ${
-                          linked.enabled ? "bg-neutral-900" : "bg-neutral-200"
-                        }`}
+                        // 命中区 44px（min-h-11 / w-11），视觉轨道仍是 20×36 的小开关。
+                        className="flex min-h-11 w-11 shrink-0 items-center justify-center disabled:opacity-60"
                       >
                         <span
-                          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                            linked.enabled ? "left-4" : "left-0.5"
+                          aria-hidden="true"
+                          className={`relative block h-5 w-9 rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                            linked.enabled ? "bg-neutral-900" : "bg-neutral-200"
                           }`}
-                        />
+                        >
+                          <span
+                            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                              linked.enabled ? "left-4" : "left-0.5"
+                            }`}
+                          />
+                        </span>
                       </button>
                     )}
                     {row.kind === "connected" && (

@@ -250,7 +250,7 @@ test("W04/H1 首页点开网站模板：主预览是那个站本身，不是封�
       `${PREVIEW_BASE}/about`,
     );
     assert.match(stage.textContent, /翻页看完整个站/);
-    assert.ok(stage.querySelector('a[href="/account"]'), "界线说明要给登录入口");
+    assert.ok(stage.querySelector('a[href="/settings"]'), "界线说明要给登录入口");
   } finally {
     await mounted.unmount();
   }

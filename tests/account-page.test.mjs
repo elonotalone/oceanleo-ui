@@ -196,8 +196,9 @@ const generalStubUrl = dataModule(`
 
 const orgStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function OrgMembership({ hideWhenEmpty }) {
-    if (hideWhenEmpty) return null;
+  // 真组件在网关已上线时无论 hideWhenEmpty 都可见（visible = orgs.status === "ok"）；
+  // hideWhenEmpty 只在 org-api 404 且没有组织/邀请码时隐藏，这一路由 org-membership.test 覆盖。
+  export function OrgMembership() {
     return React.createElement(
       "div",
       { "data-testid": "org-membership" },

@@ -10,8 +10,9 @@ const page = await readFile(
   new URL("../src/pages/ApiPage.tsx", import.meta.url),
   "utf8",
 );
+// 2026-09-21：账户菜单从 AccountPage 搬进 SettingsHub（AccountPage 只剩壳）。
 const accountPage = await readFile(
-  new URL("../src/pages/AccountPage.tsx", import.meta.url),
+  new URL("../src/pages/settings/SettingsHub.tsx", import.meta.url),
   "utf8",
 );
 const manager = await readFile(
@@ -88,7 +89,7 @@ test("每站右上角恢复全局模型组合切换器，不发送一次性模�
 
 test("AI 模型页删除用量记录与独立市场，价格来源位于组合管理之后", () => {
   assert.match(page, /title=\{tt\("AI 模型"\)\}/);
-  assert.match(accountPage, /label: tt\("AI 模型"\), href: "\/api"/);
+  assert.match(accountPage, /label: tt\("AI 模型"\),\s*href: "\/api"/);
   assert.doesNotMatch(accountPage, /label: "API", href: "\/api"/);
   assert.doesNotMatch(page, /用量记录|前往 Cost 页/);
   const managerIndex = page.indexOf("<ModelGroupManager");

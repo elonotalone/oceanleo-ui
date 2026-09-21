@@ -25,6 +25,8 @@ const TT_PAGES = [
   "src/pages/OrgPage.tsx",
   "src/pages/OrgMembership.tsx",
   "src/pages/AccountPage.tsx",
+  // 2026-09-21：账户页的组织栏搬进设置中心的 OrgSection。
+  "src/pages/settings/sections/OrgSection.tsx",
   "src/pages/ByokKeys.tsx",
   "src/pages/PluginsPage.tsx",
   "src/shell/PayerSelector.tsx",

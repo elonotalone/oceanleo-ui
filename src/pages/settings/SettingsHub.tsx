@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import {
   browserClient,
   oceanleoConfigured,
@@ -61,16 +60,13 @@ function tabFromLocation(fallback: string): string {
   return tab && tab.trim() ? tab.trim() : fallback;
 }
 
-function writeTab(replace: (href: string) => void, tab: string) {
+// 只改 `?tab=`，不换页面：走 history.replaceState 即可，不依赖 next/navigation 的
+// app router（AccountPage 会被 36 个站在各种壳里渲染，测试里也常没有 router）。
+function writeTab(tab: string) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   url.searchParams.set("tab", tab);
-  const href = `${url.pathname}${url.search}${url.hash}`;
-  try {
-    replace(href);
-  } catch {
-    window.history.replaceState(null, "", href);
-  }
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 export function SettingsHub({
@@ -88,7 +84,6 @@ export function SettingsHub({
   guestPrompt = "auth",
 }: SettingsHubProps) {
   const tt = useUI();
-  const router = useRouter();
   const configured = oceanleoConfigured();
   const href = currentHref ?? (typeof window !== "undefined" ? window.location.href : "");
   const resetLanding = isPasswordResetLanding(href);
@@ -262,7 +257,7 @@ export function SettingsHub({
 
   function selectTab(id: string) {
     setTab(id);
-    writeTab((hrefNext) => router.replace(hrefNext), id);
+    writeTab(id);
   }
 
   function handleSignedIn() {

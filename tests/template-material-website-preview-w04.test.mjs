@@ -489,7 +489,7 @@ test("W04/8 界线说明是内容下面的一行常驻文字，不是弹窗、�
     const text = mounted.container.textContent;
     assert.match(text, /翻页看完整个站/, "先说清能看什么");
     assert.match(text, /下载源码|复制到工作台/, "再说清什么要登录");
-    const signIn = mounted.container.querySelector('a[href="/account"]');
+    const signIn = mounted.container.querySelector('a[href="/settings"]');
     assert.ok(signIn, "要给登录入口");
     assert.match(signIn.textContent, /登录/);
     // 不弹窗、不遮内容：既没有对话框角色，也没有覆盖层定位。
@@ -524,7 +524,7 @@ test("W04/9 登录态不退化：拿得到可读页面 rendition 就走原路，
       [],
       "原路上不该多出一次预览端点请求",
     );
-    assert.equal(mounted.container.querySelector('a[href="/account"]'), null);
+    assert.equal(mounted.container.querySelector('a[href="/settings"]'), null);
   } finally {
     await mounted.unmount();
   }
