@@ -64,8 +64,10 @@ test("LeoComposer：在上传按键右侧渲染插件按键（带有指定的插
   assert.match(html, /aria-label="添加附件"/);
   // 2. 包含插件按键
   assert.match(html, /aria-label="插件与连接器"/);
-  // 3. 插件按键使用 data:image/png;base64 作为图标
-  assert.match(html, /<img[^>]*src="data:image\/png;base64,[^"]*"[^>]*alt="插件与连接器"/);
+  // 3. 插件按键使用内联 SVG 线框图标，不再用糊掉的 base64 PNG
+  assert.match(html, /<svg[^>]*viewBox="0 0 24 24"/);
+  assert.doesNotMatch(html, /<img[^>]*src="data:image\/png/);
+  assert.doesNotMatch(html, /PLUGIN_ICON_SRC|data:image\/png;base64/);
   // 4. 插件按键在上传按键之后、leo 建议按键之前
   const attachIdx = html.indexOf('aria-label="添加附件"');
   const pluginIdx = html.indexOf('aria-label="插件与连接器"');

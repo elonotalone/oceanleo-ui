@@ -76,18 +76,25 @@ test("首选向下、下方够：不翻转", () => {
   assert.equal(r.side, "bottom");
 });
 
-test("源码契约：弹层 flex-col + maxHeight 内联、条目区可滚、紧凑模式更窄更小", async () => {
+test("源码契约：弹层走 AnchoredPopover（portal + fixed），条目区可滚、紧凑模式更窄更小", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile(new URL("../src/shell/ModelPicker.tsx", import.meta.url), "utf8");
   assert.match(src, /data-model-picker-popover/);
-  assert.match(src, /style=\{\{ maxHeight: layout\.maxHeight \}\}/);
+  assert.match(src, /<AnchoredPopover/);
+  assert.match(src, /preferredPlacement=\{placement === "top" \? "above" : "below"\}/);
+  assert.match(src, /maxHeight=\{POPOVER_MAX_HEIGHT\}/);
   assert.match(src, /flex flex-col overflow-hidden/);
   assert.match(src, /data-model-picker-list[\s\S]{0,200}min-h-0 flex-1 overflow-y-auto/);
   assert.match(src, /compact \? "w-\[min\(15rem,88vw\)\]" : "w-\[min\(22rem,88vw\)\]"/);
   assert.match(src, /compact \? "gap-2 px-3 py-1\.5" : "gap-3 px-3\.5 py-2\.5"/);
   assert.doesNotMatch(
     src,
+    /absolute z-50/,
+    "不许再写 absolute 内联浮层，必须 portal 到 body",
+  );
+  assert.doesNotMatch(
+    src,
     /placement === "top" \? "bottom-full mb-2"/,
-    "不许再按 prop 写死方向，必须用量出来的 layout.side",
+    "不许再按 prop 写死方向，必须用量出来的 placement",
   );
 });

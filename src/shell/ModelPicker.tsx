@@ -8,7 +8,7 @@
 // 运行。组合内每项能力的模型从上到下依次兜底。
 // ============================================================================
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getModelGroups,
   MODEL_GROUP_CHANGED_EVENT,
@@ -21,6 +21,7 @@ import { IconCheck, IconChevronDown } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
 import { fetchByokStatusLite, type ByokStatusLite } from "./byok-status";
 import { useWorkbenchOpen } from "./workbench-open-store";
+import { AnchoredPopover } from "./anchored-popover";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
 
@@ -114,7 +115,7 @@ function ModelGroupPickerBody({
   placement = "bottom",
 }: ModelGroupPickerProps) {
   const tt = useUI();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [payload, setPayload] = useState<ModelGroupsPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,38 +158,6 @@ function ModelGroupPickerBody({
     };
   }, []);
 
-  // 弹层实际落在哪一侧、最多能多高——按打开那一刻触发键到视口上下边的空间算。
-  // 操作员 2026-09-07 图 b32891f2：主站首页输入框在页面上部，写死「向上弹」就飞出
-  // 页面顶端、被浏览器切掉，Lite/Pro/Max 只剩下半截。现在：哪侧空间够就往哪侧弹；
-  // 两侧都不够时取大的一侧，并把整块弹层的高度钉在那段空间内，条目区自己滚动。
-  const [layout, setLayout] = useState<{ side: "top" | "bottom"; maxHeight: number }>({
-    side: placement,
-    maxHeight: POPOVER_MAX_HEIGHT,
-  });
-  useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      const rect = rootRef.current?.getBoundingClientRect();
-      const viewportHeight =
-        typeof window !== "undefined" ? window.innerHeight : 0;
-      if (!rect || !viewportHeight) return;
-      setLayout(
-        resolvePopoverLayout({
-          preferred: placement,
-          spaceAbove: rect.top,
-          spaceBelow: viewportHeight - rect.bottom,
-        }),
-      );
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
-    };
-  }, [open, placement]);
-
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -197,24 +166,6 @@ function ModelGroupPickerBody({
     });
     return () => {
       alive = false;
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
@@ -236,9 +187,10 @@ function ModelGroupPickerBody({
   }
 
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
+    <div className={className}>
       {compact ? (
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen((value) => !value)}
           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-95 ${
@@ -273,6 +225,7 @@ function ModelGroupPickerBody({
         </button>
       ) : (
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen((value) => !value)}
           className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
@@ -308,21 +261,20 @@ function ModelGroupPickerBody({
         </button>
       )}
 
-      {open && (
-        <div
-          data-model-picker-popover
-          data-side={layout.side}
-          role="listbox"
-          aria-label={tt("全站模型组合")}
-          style={{ maxHeight: layout.maxHeight }}
-          className={`v-scale-in absolute z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
-            compact ? "w-[min(15rem,88vw)]" : "w-[min(22rem,88vw)]"
-          } ${
-            layout.side === "top" ? "bottom-full mb-2" : "top-full mt-1.5"
-          } ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
-        >
+      <AnchoredPopover
+        open={open}
+        anchorRef={triggerRef}
+        onClose={() => setOpen(false)}
+        align={align === "right" ? "end" : "start"}
+        preferredPlacement={placement === "top" ? "above" : "below"}
+        maxHeight={POPOVER_MAX_HEIGHT}
+        role="listbox"
+        ariaLabel={tt("全站模型组合")}
+        className={`z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
+          compact ? "w-[min(15rem,88vw)]" : "w-[min(22rem,88vw)]"
+        }`}
+        attributes={{ "data-model-picker-popover": true }}
+      >
           <div
             className={`shrink-0 border-b border-neutral-100 ${
               compact ? "px-3 py-2" : "px-3.5 py-3"
@@ -462,8 +414,7 @@ function ModelGroupPickerBody({
           >
             {tt("管理模型组合 →")}
           </a>
-        </div>
-      )}
+      </AnchoredPopover>
     </div>
   );
 }
