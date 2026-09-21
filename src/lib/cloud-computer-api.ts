@@ -31,6 +31,43 @@ export type MoneyAmount = {
 
 export type ComputerSource = "aliyun" | "byo";
 
+export type ComputerStatus =
+  | "pending"
+  | "enrolled"
+  | "active"
+  | "removed"
+  | "provisioning"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "starting"
+  | "releasing"
+  | "released"
+  | "error";
+
+export const COMPUTER_STATUS_LABEL: Record<string, string> = {
+  pending: "等待安装",
+  enrolled: "待确认",
+  active: "已接入",
+  removed: "已移除",
+  provisioning: "开通中",
+  running: "运行中",
+  stopping: "停机中",
+  stopped: "已停机",
+  starting: "开机中",
+  releasing: "释放中",
+  released: "已释放",
+  error: "出错",
+};
+
+export const COMPUTER_EVENT_KIND_LABEL: Record<string, string> = {
+  "node.enrolled": "节点已注册",
+  "node.confirmed": "主人已确认",
+  "node.rejected": "已拒绝这台机器",
+  "node.cert_renewed": "主机证书已续期",
+  "node.auth_failed": "节点认证失败",
+};
+
 export type Computer = {
   id: string;
   name: string;
@@ -58,11 +95,28 @@ export type Computer = {
   node_hostname?: string | null;
   node_online: boolean;
   node_last_seen_at?: string | null;
+  node_fingerprint?: string | null;
+  node_kernel?: string | null;
+  node_cpus?: number | null;
+  node_mem_bytes?: number | null;
+  node_run_as?: string | null;
+  node_public_ip?: string | null;
+  enrolled_at?: string | null;
+  confirmed_at?: string | null;
+  host_cert_expires_at?: string | null;
   created_at: string;
   updated_at: string;
   released_at?: string | null;
   cost_to_date?: MoneyAmount | null;
 };
+
+/** Dock / pickMountedId：自有 active 或阿里云 running，且主人已确认。 */
+export function isMountable(computer: Computer): boolean {
+  return (
+    (computer.status === "active" || computer.status === "running") &&
+    Boolean(computer.confirmed_at)
+  );
+}
 
 export type CatalogRegion = {
   id: string;
@@ -137,10 +191,13 @@ export type TerminalSession = {
   alive?: boolean;
 };
 
-export type ByoCreateResponse = {
-  computer: Computer;
+export type InstallCommandResponse = {
   install_command: string;
   enroll_expires_at: string;
+};
+
+export type ByoCreateResponse = InstallCommandResponse & {
+  computer: Computer;
 };
 
 function detailRecord(payload: unknown): Record<string, unknown> | null {
@@ -240,13 +297,16 @@ export function nodeWsUrl(): string {
   return `${wsBase}/v1/computers/node/ws`;
 }
 
-export function nodeInstallScriptUrl(token: string): string {
-  const query = new URLSearchParams({ token });
-  return `${GATEWAY_BASE}/v1/computers/node/install.sh?${query.toString()}`;
+export function nodeInstallScriptUrl(): string {
+  return `${GATEWAY_BASE}/v1/computers/node/install.sh`;
 }
 
 export function nodeDownloadUrl(os: "linux", arch: "amd64" | "arm64"): string {
   return `${GATEWAY_BASE}/v1/computers/node/download/${os}-${arch}`;
+}
+
+export function nodeSha256SumsUrl(): string {
+  return `${GATEWAY_BASE}/v1/computers/node/download/SHA256SUMS`;
 }
 
 export function listComputers() {
@@ -311,17 +371,22 @@ export function listComputerEvents(id: string, limit = 50) {
   );
 }
 
-export function refreshEnrollToken(id: string) {
-  return ccRequest<ByoCreateResponse>(
-    `/v1/computers/${encodeURIComponent(id)}/enroll-token`,
+export function regenerateInstallCommand(id: string) {
+  return ccRequest<InstallCommandResponse>(
+    `/v1/computers/${encodeURIComponent(id)}/install-command`,
     { method: "POST" },
   );
 }
 
-export function getNodeInstallScript(token: string) {
-  return ccRequest<string>(
-    `/v1/computers/node/install.sh?${new URLSearchParams({ token }).toString()}`,
+export function confirmComputer(id: string) {
+  return ccRequest<Computer>(
+    `/v1/computers/${encodeURIComponent(id)}/confirm`,
+    { method: "POST" },
   );
+}
+
+export function getNodeInstallScript() {
+  return ccRequest<string>("/v1/computers/node/install.sh");
 }
 
 export function listTerminals(computerId: string) {
@@ -369,7 +434,8 @@ export type CloudComputerClient = {
   startComputer: typeof startComputer;
   deleteComputer: typeof deleteComputer;
   listComputerEvents: typeof listComputerEvents;
-  refreshEnrollToken: typeof refreshEnrollToken;
+  regenerateInstallCommand: typeof regenerateInstallCommand;
+  confirmComputer: typeof confirmComputer;
   listTerminals: typeof listTerminals;
   openTerminal: typeof openTerminal;
   closeTerminal: typeof closeTerminal;
@@ -388,7 +454,8 @@ export const cloudComputerApi: CloudComputerClient = {
   startComputer,
   deleteComputer,
   listComputerEvents,
-  refreshEnrollToken,
+  regenerateInstallCommand,
+  confirmComputer,
   listTerminals,
   openTerminal,
   closeTerminal,

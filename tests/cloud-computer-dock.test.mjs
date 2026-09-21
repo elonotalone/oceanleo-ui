@@ -76,6 +76,9 @@ const apiStubUrl = dataModule(`
   export const cloudComputerApi = globalThis.__ccApi;
   export function readMountedComputerId() { return globalThis.__ccMounted || ""; }
   export function writeMountedComputerId(id) { globalThis.__ccMounted = id || ""; }
+  export function isMountable(computer) {
+    return (computer.status === "active" || computer.status === "running") && Boolean(computer.confirmed_at);
+  }
 `);
 
 const { ComputerDock } = await import(
@@ -103,6 +106,7 @@ function pc(overrides = {}) {
     status: "running",
     edition: "com",
     node_online: true,
+    confirmed_at: "2026-09-20T00:00:00Z",
     created_at: "2026-09-20T00:00:00Z",
     updated_at: "2026-09-20T00:00:00Z",
     ...overrides,
@@ -250,5 +254,26 @@ test("多台：下拉三项、localStorage 上次选择、切换后新建 Shell 
   assert.equal(shellOnline.disabled, false);
   const mountedOnline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
   assert.match((mountedOnline.textContent || "").trim(), /甲机/);
+  view.cleanup();
+});
+
+test("enrolled 机器不可挂载、出现 data-oceanleo-cc-dock-pending", async () => {
+  storedMounted = "";
+  const enrolled = pc({
+    id: "cc_e",
+    name: "待确认机",
+    source: "byo",
+    status: "enrolled",
+    confirmed_at: null,
+    node_online: true,
+  });
+  assert.equal(pickMountedId([enrolled], null), null);
+  const view = await render([enrolled]);
+  const pending = view.host.querySelector("[data-oceanleo-cc-dock-pending]");
+  assert.ok(pending);
+  assert.match(pending.textContent || "", /1 台待确认/);
+  const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
+  assert.ok(shell);
+  assert.equal(shell.disabled, true);
   view.cleanup();
 });

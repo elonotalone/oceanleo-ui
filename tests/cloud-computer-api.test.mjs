@@ -7,7 +7,7 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 
-const { CloudComputerError, listComputers, createAliyunComputer, createByoComputer, getCatalog, getComputer, renameComputer, stopComputer, startComputer, deleteComputer, listComputerEvents, refreshEnrollToken, listTerminals, openTerminal, closeTerminal, getUsage, getUsageSummary, terminalWsUrl, nodeWsUrl, nodeInstallScriptUrl, nodeDownloadUrl, getNodeInstallScript } =
+const { CloudComputerError, listComputers, createAliyunComputer, createByoComputer, getCatalog, getComputer, renameComputer, stopComputer, startComputer, deleteComputer, listComputerEvents, regenerateInstallCommand, confirmComputer, listTerminals, openTerminal, closeTerminal, getUsage, getUsageSummary, terminalWsUrl, nodeWsUrl, nodeInstallScriptUrl, nodeDownloadUrl, nodeSha256SumsUrl, getNodeInstallScript, isMountable, COMPUTER_STATUS_LABEL } =
   await import(
     await compileModule("src/lib/cloud-computer-api.ts", {
       "./auth/client": dataModule(`
@@ -70,8 +70,11 @@ test("createByoComputer / catalog / 详情 / 改名 / 停机开机 / 删除 / �
     }
     if (String(url).endsWith("/catalog")) return jsonResponse(200, { regions: [], tiers: [] });
     if (String(url).includes("/events")) return jsonResponse(200, { items: [] });
-    if (String(url).includes("/enroll-token")) {
-      return jsonResponse(200, { computer: { id: "cc_byo" }, install_command: "curl y", enroll_expires_at: "t" });
+    if (String(url).includes("/install-command")) {
+      return jsonResponse(200, { install_command: "curl y", enroll_expires_at: "t" });
+    }
+    if (String(url).endsWith("/confirm")) {
+      return jsonResponse(200, { id: "cc_1", status: "active", confirmed_at: "t" });
     }
     if (String(url).includes("/terminals/") && String(url).includes("sid1")) {
       return jsonResponse(200, { ok: true });
@@ -93,7 +96,8 @@ test("createByoComputer / catalog / 详情 / 改名 / 停机开机 / 删除 / �
   await startComputer("cc_1");
   await deleteComputer("cc_1");
   await listComputerEvents("cc_1", 20);
-  await refreshEnrollToken("cc_1");
+  await regenerateInstallCommand("cc_1");
+  await confirmComputer("cc_1");
   await listTerminals("cc_1");
   await openTerminal("cc_1", { cols: 80, rows: 24 });
   await closeTerminal("cc_1", "sid1");
@@ -106,7 +110,8 @@ test("createByoComputer / catalog / 详情 / 改名 / 停机开机 / 删除 / �
   assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/stop")));
   assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/start")));
   assert.ok(urls.some((url) => url.includes("/v1/computers/cc_1/events?limit=20")));
-  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/enroll-token")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/install-command")));
+  assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/confirm")));
   assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/terminals")));
   assert.ok(urls.some((url) => url.endsWith("/v1/computers/cc_1/terminals/sid1")));
   assert.ok(urls.some((url) => url.includes("/v1/computers/cc_1/usage?days=7")));
@@ -192,25 +197,102 @@ test("terminalWsUrl 拼 wss 路径与 session_id/token 查询串", () => {
   );
 });
 
-test("节点安装与下载 URL", () => {
+test("节点安装与下载 URL 不含 token 查询串", () => {
   assert.equal(
-    nodeInstallScriptUrl("cct_1"),
-    "https://api.example.test/v1/computers/node/install.sh?token=cct_1",
+    nodeInstallScriptUrl(),
+    "https://api.example.test/v1/computers/node/install.sh",
   );
   assert.equal(
     nodeDownloadUrl("linux", "amd64"),
     "https://api.example.test/v1/computers/node/download/linux-amd64",
   );
+  assert.equal(
+    nodeSha256SumsUrl(),
+    "https://api.example.test/v1/computers/node/download/SHA256SUMS",
+  );
   assert.equal(nodeWsUrl(), "wss://api.example.test/v1/computers/node/ws");
 });
 
-test("getNodeInstallScript 走 install.sh?token=", async () => {
+test("getNodeInstallScript 走无参数 install.sh", async () => {
   const calls = installFetch(() => jsonResponse(200, "#!/bin/bash"));
-  await getNodeInstallScript("cct_x");
+  await getNodeInstallScript();
   assert.equal(
     calls[0].url,
-    "https://api.example.test/v1/computers/node/install.sh?token=cct_x",
+    "https://api.example.test/v1/computers/node/install.sh",
   );
+});
+
+test("新字段从 listComputers 透传", async () => {
+  installFetch(() =>
+    jsonResponse(200, {
+      items: [
+        {
+          id: "cc_1",
+          node_fingerprint: "SHA256:abcd",
+          node_kernel: "6.8.0",
+          node_cpus: 4,
+          node_mem_bytes: 8589934592,
+          node_run_as: "oceanleo",
+          node_public_ip: "203.0.113.9",
+          enrolled_at: "t-enroll",
+          confirmed_at: "t-confirm",
+          host_cert_expires_at: "t-cert",
+        },
+      ],
+    }),
+  );
+  const data = await listComputers();
+  const row = data.items[0];
+  assert.equal(row.node_fingerprint, "SHA256:abcd");
+  assert.equal(row.node_kernel, "6.8.0");
+  assert.equal(row.node_cpus, 4);
+  assert.equal(row.node_mem_bytes, 8589934592);
+  assert.equal(row.node_run_as, "oceanleo");
+  assert.equal(row.node_public_ip, "203.0.113.9");
+  assert.equal(row.enrolled_at, "t-enroll");
+  assert.equal(row.confirmed_at, "t-confirm");
+  assert.equal(row.host_cert_expires_at, "t-cert");
+});
+
+test("regenerateInstallCommand / confirmComputer 的路径与方法", async () => {
+  const calls = installFetch((url) => {
+    if (String(url).includes("/install-command")) {
+      return jsonResponse(200, {
+        install_command: "curl -fsSL https://gw/v1/computers/node/install.sh | sudo bash -s -- --code cce_1",
+        enroll_expires_at: "2026-09-21T00:15:00Z",
+      });
+    }
+    return jsonResponse(200, { id: "cc_1", status: "active", confirmed_at: "now" });
+  });
+  await regenerateInstallCommand("cc_9");
+  await confirmComputer("cc_9");
+  assert.equal(calls[0].url, "https://api.example.test/v1/computers/cc_9/install-command");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[1].url, "https://api.example.test/v1/computers/cc_9/confirm");
+  assert.equal(calls[1].init.method, "POST");
+});
+
+test("isMountable 四种组合", () => {
+  assert.equal(
+    isMountable({ status: "active", confirmed_at: "t", node_online: true }),
+    true,
+  );
+  assert.equal(
+    isMountable({ status: "running", confirmed_at: "t", node_online: true }),
+    true,
+  );
+  assert.equal(
+    isMountable({ status: "enrolled", confirmed_at: "t", node_online: true }),
+    false,
+  );
+  assert.equal(
+    isMountable({ status: "running", confirmed_at: null, node_online: true }),
+    false,
+  );
+  assert.equal(COMPUTER_STATUS_LABEL.pending, "等待安装");
+  assert.equal(COMPUTER_STATUS_LABEL.enrolled, "待确认");
+  assert.equal(COMPUTER_STATUS_LABEL.active, "已接入");
+  assert.equal(COMPUTER_STATUS_LABEL.removed, "已移除");
 });
 
 void pathToFileURL;

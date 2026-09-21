@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
+  COMPUTER_EVENT_KIND_LABEL,
+  COMPUTER_STATUS_LABEL,
   CloudComputerError,
   cloudComputerApi,
   type CloudComputerClient,
@@ -22,21 +24,23 @@ export interface CloudComputersPageProps {
 }
 
 function statusLabel(computer: Computer): string {
-  if (computer.source === "byo") {
-    if (computer.status === "removed") return "已移除";
-    return computer.node_online ? "在线" : "离线";
+  return COMPUTER_STATUS_LABEL[computer.status] || computer.status;
+}
+
+function formatMemBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "—";
+  const gib = bytes / 1073741824;
+  if (gib >= 1) {
+    const rounded = Math.round(gib * 10) / 10;
+    return `${rounded} GiB`;
   }
-  const map: Record<string, string> = {
-    provisioning: "开通中",
-    running: "运行中",
-    stopping: "停机中",
-    stopped: "已停机",
-    starting: "开机中",
-    releasing: "释放中",
-    released: "已释放",
-    error: "出错",
-  };
-  return map[computer.status] || computer.status;
+  const mib = bytes / 1048576;
+  if (mib >= 1) return `${Math.round(mib)} MiB`;
+  return `${Math.round(bytes)} B`;
+}
+
+function eventKindLabel(kind: string): string {
+  return COMPUTER_EVENT_KIND_LABEL[kind] || kind;
 }
 
 export function CloudComputersPage({
@@ -52,10 +56,10 @@ export function CloudComputersPage({
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [connectResume, setConnectResume] = useState<Computer | null>(null);
   const [confirmRelease, setConfirmRelease] = useState<Computer | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [installCommand, setInstallCommand] = useState<string | null>(null);
 
   async function refresh() {
     const data = await client.listComputers();
@@ -87,6 +91,9 @@ export function CloudComputersPage({
   }, [client]);
 
   const selected = computers.find((item) => item.id === selectedId) ?? null;
+  const visibleComputers = computers.filter(
+    (item) => item.status !== "removed" && item.status !== "released",
+  );
 
   useEffect(() => {
     if (!selected) {
@@ -121,16 +128,12 @@ export function CloudComputersPage({
 
   async function act(
     computer: Computer,
-    op: "start" | "stop" | "delete" | "enroll",
+    op: "start" | "stop" | "delete",
   ) {
     try {
       if (op === "start") await client.startComputer(computer.id);
       if (op === "stop") await client.stopComputer(computer.id);
       if (op === "delete") await client.deleteComputer(computer.id);
-      if (op === "enroll") {
-        const result = await client.refreshEnrollToken(computer.id);
-        setInstallCommand(result.install_command);
-      }
       setConfirmRelease(null);
       const items = await refresh();
       if (op === "delete") {
@@ -141,6 +144,11 @@ export function CloudComputersPage({
         err instanceof CloudComputerError ? err.message : String(err),
       );
     }
+  }
+
+  function openConnect(resume: Computer | null) {
+    setConnectResume(resume);
+    setConnectOpen(true);
   }
 
   return (
@@ -169,8 +177,13 @@ export function CloudComputersPage({
       )}
       {connectOpen && (
         <ConnectServerDialog
+          key={connectResume?.id ?? "new"}
           client={client}
-          onClose={() => setConnectOpen(false)}
+          resumeComputer={connectResume}
+          onClose={() => {
+            setConnectOpen(false);
+            setConnectResume(null);
+          }}
           onCreated={() => {
             void refresh();
           }}
@@ -188,7 +201,7 @@ export function CloudComputersPage({
         )}
         {loading ? (
           <p className="text-[13px] text-neutral-500">{tt("加载中…")}</p>
-        ) : computers.length === 0 ? (
+        ) : visibleComputers.length === 0 ? (
           <section
             className="rounded-2xl border border-neutral-200 bg-white p-6"
             data-oceanleo-cc-empty
@@ -211,7 +224,7 @@ export function CloudComputersPage({
               )}
               <button
                 type="button"
-                onClick={() => setConnectOpen(true)}
+                onClick={() => openConnect(null)}
                 className="rounded-lg border border-neutral-200 px-3.5 py-2 text-[13px]"
               >
                 {tt("接入我的服务器")}
@@ -232,30 +245,44 @@ export function CloudComputersPage({
               )}
               <button
                 type="button"
-                onClick={() => setConnectOpen(true)}
+                onClick={() => openConnect(null)}
                 className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
               >
                 {tt("接入我的服务器")}
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {computers.map((computer) => (
-                <button
+              {visibleComputers.map((computer) => (
+                <div
                   key={computer.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(computer.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedId(computer.id);
+                    }
+                  }}
                   data-oceanleo-cc-card={computer.id}
+                  data-oceanleo-cc-card-status={computer.status}
                   className={`rounded-2xl border p-4 text-left ${
                     selectedId === computer.id
                       ? "border-neutral-900"
                       : "border-neutral-200 bg-white"
-                  }`}
+                  } ${computer.status === "enrolled" ? "border-amber-400 bg-amber-50" : ""}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[14px] font-medium text-neutral-900">
                       {computer.name}
                     </span>
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] ${
+                        computer.status === "enrolled"
+                          ? "bg-amber-200 text-amber-900"
+                          : "bg-neutral-100 text-neutral-600"
+                      }`}
+                    >
                       {tt(statusLabel(computer))}
                     </span>
                   </div>
@@ -266,12 +293,31 @@ export function CloudComputersPage({
                         : tt("自有")}
                     </div>
                     <div>
-                      {tt("公网 IP")} {computer.public_ip || tt("暂无")}
+                      {tt("公网 IP")}{" "}
+                      {computer.node_public_ip ||
+                        computer.public_ip ||
+                        tt("暂无")}
                     </div>
                     <div>
                       {tt("节点")}{" "}
                       {computer.node_online ? tt("在线") : tt("离线")}
                     </div>
+                    {computer.node_fingerprint && (
+                      <div>
+                        {tt("指纹")}{" "}
+                        <span
+                          className="break-all font-mono text-[12px] text-neutral-800"
+                          data-oceanleo-cc-fingerprint
+                        >
+                          {computer.node_fingerprint}
+                        </span>
+                      </div>
+                    )}
+                    {computer.status === "active" && computer.node_run_as && (
+                      <div data-oceanleo-cc-run-as>
+                        {tt("运行身份")} {computer.node_run_as}
+                      </div>
+                    )}
                     <div>
                       {tt("到目前费用")}{" "}
                       {computer.cost_to_date
@@ -282,7 +328,33 @@ export function CloudComputersPage({
                         : tt("暂无")}
                     </div>
                   </div>
-                </button>
+                  {computer.status === "pending" && (
+                    <button
+                      type="button"
+                      className="mt-3 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
+                      data-oceanleo-cc-view-command
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openConnect(computer);
+                      }}
+                    >
+                      {tt("等待安装 · 查看命令")}
+                    </button>
+                  )}
+                  {computer.status === "enrolled" && (
+                    <button
+                      type="button"
+                      className="mt-3 rounded-lg bg-amber-900 px-3 py-1.5 text-[12px] font-medium text-white"
+                      data-oceanleo-cc-confirm-open
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openConnect(computer);
+                      }}
+                    >
+                      {tt("确认")}
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </>
@@ -358,13 +430,24 @@ export function CloudComputersPage({
               )}
               {selected.source === "byo" && (
                 <>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
-                    onClick={() => void act(selected, "enroll")}
-                  >
-                    {tt("重发安装命令")}
-                  </button>
+                  {selected.status === "pending" && (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
+                      onClick={() => openConnect(selected)}
+                    >
+                      {tt("等待安装 · 查看命令")}
+                    </button>
+                  )}
+                  {selected.status === "enrolled" && (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-amber-900 px-3 py-1.5 text-[12px] font-medium text-white"
+                      onClick={() => openConnect(selected)}
+                    >
+                      {tt("确认")}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="rounded-lg border border-rose-200 px-3 py-1.5 text-[12px] text-rose-700"
@@ -375,10 +458,18 @@ export function CloudComputersPage({
                 </>
               )}
             </div>
-            {installCommand && (
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-neutral-950 px-3 py-2 text-[11px] text-neutral-100">
-                {installCommand}
-              </pre>
+            {selected.node_fingerprint && (
+              <p className="mt-3 break-all font-mono text-[13px] text-neutral-800">
+                {tt("指纹")} {selected.node_fingerprint}
+              </p>
+            )}
+            {selected.node_run_as && (
+              <p className="mt-1 text-[12px] text-neutral-600">
+                {tt("运行身份")} {selected.node_run_as}
+                {selected.node_cpus != null || selected.node_mem_bytes
+                  ? ` · ${selected.node_cpus ?? "—"} / ${formatMemBytes(selected.node_mem_bytes)}`
+                  : ""}
+              </p>
             )}
             {usage && (
               <div className="mt-4 text-[12px] text-neutral-600">
@@ -396,7 +487,7 @@ export function CloudComputersPage({
               {events.map((event) => (
                 <li key={event.id} className="text-[12px] text-neutral-500">
                   <span className="text-neutral-400">{event.created_at}</span>{" "}
-                  {event.kind}
+                  {tt(eventKindLabel(event.kind))}
                 </li>
               ))}
               {events.length === 0 && (

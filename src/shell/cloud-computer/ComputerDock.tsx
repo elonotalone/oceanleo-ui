@@ -51,6 +51,9 @@ export function ComputerDock({
 
   const empty = computers.length === 0;
   const shellOn = newShellEnabled(mounted);
+  const pendingCount = computers.filter(
+    (item) => item.status === "pending" || item.status === "enrolled",
+  ).length;
 
   async function openNewShell() {
     if (!mounted || !shellOn) return;
@@ -152,6 +155,15 @@ export function ComputerDock({
           >
             {tt("新建 Shell")}
           </button>
+          {pendingCount > 0 && (
+            <a
+              href="/computers"
+              className="rounded-lg px-2 py-1 text-[12px] text-amber-700 hover:bg-amber-50"
+              data-oceanleo-cc-dock-pending
+            >
+              {tt(`${pendingCount} 台待确认`)}
+            </a>
+          )}
           <a
             href="/computers"
             className="rounded-lg px-2 py-1 text-[12px] text-neutral-500 hover:bg-neutral-100"
@@ -173,6 +185,7 @@ export function ComputerDock({
       )}
       {connectOpen && (
         <ConnectServerDialog
+          key="new"
           client={client}
           onClose={() => setConnectOpen(false)}
           onCreated={() => {

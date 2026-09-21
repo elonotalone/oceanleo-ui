@@ -182,3 +182,59 @@ test("列表卡片渲染名字、来源、状态、公网 IP、节点、费用",
   assert.ok(view.host.querySelector('[data-oceanleo-cc-card="cc_1"]'));
   view.cleanup();
 });
+
+test("pending/enrolled/active 三种卡片的标记与按钮", async () => {
+  const items = [
+    pc({
+      id: "cc_p",
+      name: "待装",
+      source: "byo",
+      status: "pending",
+      confirmed_at: null,
+      node_online: false,
+      public_ip: null,
+    }),
+    pc({
+      id: "cc_e",
+      name: "待确认机",
+      source: "byo",
+      status: "enrolled",
+      confirmed_at: null,
+      node_online: true,
+      node_fingerprint: "SHA256:ffffeeee",
+    }),
+    pc({
+      id: "cc_a",
+      name: "在用机",
+      source: "byo",
+      status: "active",
+      confirmed_at: "t",
+      node_online: true,
+      node_fingerprint: "SHA256:aaaabbbb",
+      node_run_as: "oceanleo",
+    }),
+  ];
+  const view = await render(makeClient(items));
+  const pending = view.host.querySelector('[data-oceanleo-cc-card="cc_p"]');
+  const enrolled = view.host.querySelector('[data-oceanleo-cc-card="cc_e"]');
+  const active = view.host.querySelector('[data-oceanleo-cc-card="cc_a"]');
+  assert.ok(pending);
+  assert.ok(enrolled);
+  assert.ok(active);
+  assert.equal(pending.getAttribute("data-oceanleo-cc-card-status"), "pending");
+  assert.equal(enrolled.getAttribute("data-oceanleo-cc-card-status"), "enrolled");
+  assert.equal(active.getAttribute("data-oceanleo-cc-card-status"), "active");
+  assert.ok((pending.textContent || "").includes("等待安装"));
+  assert.ok(pending.querySelector("[data-oceanleo-cc-view-command]"));
+  assert.match(pending.querySelector("[data-oceanleo-cc-view-command]").textContent || "", /查看命令/);
+  assert.ok((enrolled.textContent || "").includes("待确认"));
+  assert.ok((enrolled.textContent || "").includes("SHA256:ffffeeee"));
+  assert.ok(enrolled.querySelector("[data-oceanleo-cc-confirm-open]"));
+  assert.equal(
+    (enrolled.querySelector("[data-oceanleo-cc-confirm-open]").textContent || "").trim(),
+    "确认",
+  );
+  assert.ok((active.textContent || "").includes("SHA256:aaaabbbb"));
+  assert.ok((active.textContent || "").includes("oceanleo"));
+  view.cleanup();
+});

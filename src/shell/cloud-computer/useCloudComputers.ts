@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cloudComputerApi,
+  isMountable,
   readMountedComputerId,
   writeMountedComputerId,
   type CloudComputerClient,
   type Computer,
 } from "../../lib/cloud-computer-api";
+
+export { isMountable };
 
 export const CC_POLL_MS = 15_000;
 
@@ -20,30 +23,31 @@ export function isOnlineComputer(computer: Computer): boolean {
 }
 
 /**
- * 挂载规则（任务书 P2）：
- * 恰一台在线 → 自动挂那台；
- * 多台在线 → 上次选择仍在线则沿用，否则第一台在线；
- * 零台在线但还有机器 → 上次选择仍在列表则沿用，否则第一台未释放的；
- * 零台 → 未挂载。
+ * 挂载规则（《契约》§7）：
+ * 只把 isMountable 的机器当候选（active/running 且 confirmed_at 非空）；
+ * 恰一台在线可挂载 → 自动挂那台；
+ * 多台在线可挂载 → 上次选择仍在线则沿用，否则第一台在线；
+ * 零台在线但还有可挂载 → 上次选择仍在候选则沿用，否则第一台；
+ * 零台可挂载 → 未挂载。
  */
 export function pickMountedId(
   items: Computer[],
   stored: string | null,
 ): string | null {
-  const alive = items.filter(isAliveComputer);
-  if (alive.length === 0) return null;
-  const online = alive.filter(isOnlineComputer);
+  const mountable = items.filter(isMountable);
+  if (mountable.length === 0) return null;
+  const online = mountable.filter((item) => item.node_online === true);
   if (online.length === 1) return online[0].id;
   if (online.length > 1) {
     if (stored && online.some((item) => item.id === stored)) return stored;
     return online[0].id;
   }
-  if (stored && alive.some((item) => item.id === stored)) return stored;
-  return alive[0].id;
+  if (stored && mountable.some((item) => item.id === stored)) return stored;
+  return mountable[0].id;
 }
 
 export function newShellEnabled(computer: Computer | null | undefined): boolean {
-  return Boolean(computer && isOnlineComputer(computer));
+  return Boolean(computer && isMountable(computer) && computer.node_online === true);
 }
 
 export function useCloudComputers(options?: {
