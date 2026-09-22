@@ -117,16 +117,40 @@ export function useLeoEnabled(): boolean {
   return on;
 }
 
+/**
+ * leo 面板上下文（合同 I5）：打开方告诉 leo「这句话来自哪个页面」。
+ * Shell 页带 computerId / shellSessionId，leo 建的任务挂到那台电脑上。
+ * computerName 仅用于放大态标题栏展示「这台电脑：<名字>」，不带则不显示。
+ */
+export type LeoContext = {
+  page: "home" | "task" | "shell" | "other";
+  taskId?: string;
+  computerId?: string;
+  shellSessionId?: string;
+  computerName?: string;
+};
+
 export interface OpenLeoDetail {
   /** 直接把一段文本送进 leo（页面划词等）。不传则读取宿主输入框内容。 */
   text?: string;
-  source?: "input" | "selection";
+  source?: "input" | "selection" | "button";
   /** 是否切换开关（已打开则关闭）。输入框 leo 图标点击时传 true。 */
   toggle?: boolean;
+  /** 入口按钮的视口位置：面板从按钮上方弹出，底边在 anchor 上方 8px，右对齐。 */
+  anchor?: DOMRect | null;
+  /** 页面上下文（合同 I5）；缺省视为 { page: "other" }。 */
+  context?: LeoContext;
 }
+
+/** 最近一次 openLeoAssistant 带来的页面上下文（模块状态，合同 I5）。 */
+let lastLeoContext: LeoContext | null = null;
+/** 最近一次 openLeoAssistant 带来的锚点（模块状态）。 */
+let lastLeoAnchor: DOMRect | null = null;
 
 /** 任意位置调用即可打开 leo 助手浮窗（按钮、快捷键、划词气泡等）。 */
 export function openLeoAssistant(detail?: OpenLeoDetail): void {
+  if (detail?.context) lastLeoContext = detail.context;
+  if (detail && "anchor" in detail) lastLeoAnchor = detail.anchor ?? null;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent<OpenLeoDetail>(OPEN_LEO_EVENT, { detail }));
   }
@@ -315,11 +339,6 @@ export interface LeoAssistantProps {
   docType?: string;
   title?: string;
   /**
-   * 右下角常驻浮窗触发按钮。**默认隐藏**（操作员 2026-07-02 重申：不要常驻悬浮球，
-   * 入口只有两个——输入框旁的「leo」按钮 + 页面划词气泡）。
-   */
-  hideFloatingButton?: boolean;
-  /**
    * 页面划词气泡（宗旨 v11）。默认开启：选中页面文本 → 选区旁浮出 leo 气泡 →
    * 点击把选中文本送进 leo 面板。传 false 关闭（如与站内自有划词功能冲突时）。
    */
@@ -384,7 +403,8 @@ function clampPos(p: Pos): Pos {
   };
 }
 
-interface LeoContext {
+/** 面板工作文本（leo board）的来源上下文——与 I5 的 LeoContext（页面上下文）是两回事。 */
+interface LeoBoardContext {
   text: string;
   source: "input" | "selection";
 }
@@ -393,7 +413,6 @@ export function LeoAssistant({
   siteId,
   docType = "doc",
   title,
-  hideFloatingButton = true,
   enableSelection = true,
 }: LeoAssistantProps) {
   const tt = useUI();
@@ -401,7 +420,7 @@ export function LeoAssistant({
   const enabled = useLeoEnabled();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [context, setContext] = useState<LeoContext | null>(null);
+  const [context, setContext] = useState<LeoBoardContext | null>(null);
   const { resolve } = useHostInput();
   // 面板带【内容变化的】新上下文打开时 +1，让 Panel 重置瞬态（board / 问答流）。
   // 同一段文本重复打开不 bump——leo board 要留存（宗旨 v12 规则 5）。
@@ -411,6 +430,9 @@ export function LeoAssistant({
   useEffect(() => {
     openRef.current = open;
   }, [open]);
+  // 合同 I5：最近一次打开的页面上下文与锚点（P1 先存，P2 起用于定位与 leo-turn）。
+  const pageContextRef = useRef<LeoContext | null>(null);
+  const anchorRef = useRef<DOMRect | null>(null);
 
   // 打开事件：detail.text（划词）优先；否则读宿主输入框。
   useEffect(() => {
@@ -418,14 +440,19 @@ export function LeoAssistant({
       const detail = (e as CustomEvent<OpenLeoDetail>).detail;
       // 划词触发在停用时直接忽略
       if (detail?.source === "selection" && !isLeoEnabled()) return;
+      pageContextRef.current = detail?.context ?? lastLeoContext;
+      anchorRef.current = detail?.anchor ?? lastLeoAnchor;
       // toggle 模式（输入框中点击 leo 图标）：已打开则关闭
       if (detail?.toggle && openRef.current) {
         setOpen(false);
         return;
       }
-      let next: LeoContext | null = null;
+      let next: LeoBoardContext | null = null;
       if (detail?.text && detail.text.trim()) {
-        next = { text: detail.text.trim(), source: detail.source || "selection" };
+        next = {
+          text: detail.text.trim(),
+          source: detail.source === "input" ? "input" : "selection",
+        };
       } else {
         const v = getHostText(resolve());
         if (v) next = { text: v, source: "input" };
@@ -506,7 +533,7 @@ export function LeoAssistant({
 
   // Panel 内部改上下文（清除 / 读取输入框 / 以此继续）时同步 ctxTextRef，
   // 保证下次 OPEN_LEO_EVENT 的「同文本不重置」判断准确。
-  const handleContextChange = useCallback((c: LeoContext | null) => {
+  const handleContextChange = useCallback((c: LeoBoardContext | null) => {
     ctxTextRef.current = c?.text || "";
     setContext(c);
   }, []);
@@ -516,16 +543,6 @@ export function LeoAssistant({
   return (
     <div data-ai-assistant-root>
       {enabled && enableSelection && <SelectionBubble />}
-      {enabled && !open && !hideFloatingButton && (
-        <button
-          onClick={() => openLeoAssistant({ toggle: true })}
-          aria-label={panelTitle}
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-slate-800"
-        >
-          <Sparkle />
-          {panelTitle}
-        </button>
-      )}
       {/* 面板隐藏而非卸载——leo board 在关闭/重开之间留存（宗旨 v12 规则 5）。 */}
       <div
         data-leo-panel
@@ -891,9 +908,9 @@ function Panel({
 }: {
   siteId: string;
   docType: string;
-  context: LeoContext | null;
+  context: LeoBoardContext | null;
   expanded: boolean;
-  onContextChange: (c: LeoContext | null) => void;
+  onContextChange: (c: LeoBoardContext | null) => void;
   resolveHost: () => HostTarget | null;
 }) {
   const tt = useUI();
