@@ -319,6 +319,105 @@ test("多台已接入：箭头切换只列出已接入，切换后新建 Shell �
   view.cleanup();
 });
 
+async function renderLive(client) {
+  globalThis.__ccApi = client;
+  globalThis.__ccMounted = storedMounted;
+  if (!globalThis.__ccRouter) {
+    globalThis.__ccRouter = { push() {}, replace() {}, refresh() {}, back() {} };
+  }
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(React.createElement(ComputerDock, { client }));
+  });
+  await flush();
+  return {
+    host,
+    text: () => host.textContent || "",
+    button(label) {
+      return [...host.querySelectorAll("button")].find(
+        (node) => (node.textContent || "").trim() === label,
+      );
+    },
+    cleanup() {
+      act(() => root.unmount());
+      host.remove();
+    },
+  };
+}
+
+test("loading 且本地有上次电脑：不出现接入云电脑；名单返回后显示电脑名和在线", async () => {
+  storedMounted = "cc_saved";
+  let resolveList = null;
+  const client = {
+    listComputers() {
+      return new Promise((resolve) => {
+        resolveList = resolve;
+      });
+    },
+    async openTerminal() {
+      return { id: "sid", task_id: "t" };
+    },
+  };
+  const view = await renderLive(client);
+  try {
+    assert.equal(view.text().includes("接入云电脑"), false);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-empty]"), null);
+    assert.equal(view.host.querySelector("[aria-label='接入云电脑']"), null);
+    const waiting = view.host.querySelector("[data-oceanleo-cc-dock-waiting]");
+    assert.ok(waiting);
+    assert.equal(waiting.getAttribute("data-oceanleo-cc-dock-waiting"), "remembered");
+    assert.equal(view.text().includes("…"), true);
+
+    await act(async () => {
+      resolveList({
+        items: [pc({ id: "cc_saved", name: "新加坡一号", node_online: true })],
+      });
+    });
+    await flush();
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-waiting]"), null);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-empty]"), null);
+    const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+    assert.ok(mounted);
+    assert.match(mounted.textContent || "", /新加坡一号/);
+    assert.match(mounted.textContent || "", /在线/);
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-cc-online]")?.getAttribute("data-oceanleo-cc-online"),
+      "1",
+    );
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("名单返回且一台都没有：才显示接入云电脑", async () => {
+  storedMounted = "cc_gone";
+  let resolveList = null;
+  const client = {
+    listComputers() {
+      return new Promise((resolve) => {
+        resolveList = resolve;
+      });
+    },
+    async openTerminal() {
+      return { id: "sid" };
+    },
+  };
+  const view = await renderLive(client);
+  try {
+    assert.equal(view.text().includes("接入云电脑"), false);
+    await act(async () => {
+      resolveList({ items: [] });
+    });
+    await flush();
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-empty]"));
+    assert.equal(view.button("接入云电脑")?.textContent.trim(), "接入云电脑");
+  } finally {
+    view.cleanup();
+  }
+});
+
 test("openTerminal 带 as_task: true，成功后 push /history?task=", async () => {
   storedMounted = "";
   const pushes = [];

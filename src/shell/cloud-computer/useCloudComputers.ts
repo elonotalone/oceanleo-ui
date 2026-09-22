@@ -64,6 +64,7 @@ export function useCloudComputers(options?: {
     options?.computers ?? [],
   );
   const [mountedId, setMountedIdState] = useState<string | null>(null);
+  const [rememberedId, setRememberedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(!options?.computers);
   const [error, setError] = useState<string | null>(null);
   const computersRef = useRef(computers);
@@ -92,6 +93,10 @@ export function useCloudComputers(options?: {
       setLoading(false);
     }
   }, [applyList, client, options?.computers]);
+
+  useEffect(() => {
+    setRememberedId(readMountedComputerId() || null);
+  }, []);
 
   useEffect(() => {
     if (options?.computers) {
@@ -165,6 +170,7 @@ export function useCloudComputers(options?: {
     computers,
     mounted,
     mountedId,
+    rememberedId,
     setMountedId,
     loading,
     error,

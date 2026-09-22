@@ -57,7 +57,7 @@ export function ComputerDock({
   const tt = useUI();
   const router = useRouter();
   const hidden = currentDomainFamily() === "cn";
-  const { computers, mounted, mountedId, setMountedId, refresh } =
+  const { computers, mounted, mountedId, rememberedId, setMountedId, refresh, loading } =
     useCloudComputers({ client, computers: computersProp });
   const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -87,6 +87,21 @@ export function ComputerDock({
     if (opened.task_id) {
       router.push(`/history?task=${encodeURIComponent(opened.task_id)}`);
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="relative" data-oceanleo-cc-dock>
+        <div
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-400"
+          data-oceanleo-cc-dock-waiting={rememberedId ? "remembered" : "pending"}
+          aria-busy="true"
+        >
+          <ComputerGlyph />
+          <span>…</span>
+        </div>
+      </div>
+    );
   }
 
   return (
