@@ -302,15 +302,31 @@ function onDone(state: DialogState, frame: Record<string, unknown>): DialogState
   return { ...state, messages, busy: false, agentBusy: false };
 }
 
+function storedNoticeText(message: AgentDialogMessage): string {
+  if (message.kind !== "notice") return "";
+  const raw = (message as { text?: unknown }).text;
+  return typeof raw === "string" ? raw : "";
+}
+
 function onError(state: DialogState, frame: Record<string, unknown>): DialogState {
   const code = str(frame.code) || "node_error";
   const program = str(frame.program);
+  const text = str(frame.text).trim();
+  const last = state.messages[state.messages.length - 1];
+  const same =
+    last !== undefined &&
+    last.kind === "notice" &&
+    last.code === code &&
+    last.program === program &&
+    storedNoticeText(last) === text;
+  const base = { kind: "notice" as const, id: nextId(), code, program };
+  const notice = text ? { ...base, text } : base;
   return {
     ...state,
     busy: false,
     agentBusy: code === "agent_busy",
     offline: code === "computer_offline" ? true : state.offline,
-    messages: pushNotice(state.messages, code, program),
+    messages: same ? state.messages : [...state.messages, notice],
   };
 }
 

@@ -7,6 +7,7 @@ import {
   type CloudComputerClient,
   type Computer,
 } from "../../lib/cloud-computer-api";
+import * as ccApi from "../../lib/cloud-computer-api";
 import { currentDomainFamily } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { AnchoredPopover } from "../anchored-popover";
@@ -90,6 +91,8 @@ export function ComputerDock({
   }
 
   if (loading) {
+    const rememberedName =
+      typeof ccApi.readMountedComputerName === "function" ? ccApi.readMountedComputerName() : "";
     return (
       <div className="relative" data-oceanleo-cc-dock>
         <div
@@ -98,7 +101,7 @@ export function ComputerDock({
           aria-busy="true"
         >
           <ComputerGlyph />
-          <span>…</span>
+          <span className="max-w-[120px] truncate">{rememberedName || "…"}</span>
         </div>
       </div>
     );

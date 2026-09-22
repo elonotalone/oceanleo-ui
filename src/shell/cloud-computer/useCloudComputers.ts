@@ -9,12 +9,18 @@ import {
   type CloudComputerClient,
   type Computer,
 } from "../../lib/cloud-computer-api";
+import * as ccApi from "../../lib/cloud-computer-api";
 import {
   canOpenShell,
   isConnectedComputer,
 } from "./computer-state";
 
 export { isMountable, canOpenShell, isConnectedComputer };
+
+function rememberMountedComputerName(name: string | null): void {
+  const write = ccApi.writeMountedComputerName;
+  if (typeof write === "function") write(name);
+}
 
 export const CC_POLL_MS = 15_000;
 
@@ -75,6 +81,8 @@ export function useCloudComputers(options?: {
     const next = pickMountedId(items, readMountedComputerId() || null);
     setMountedIdState(next);
     writeMountedComputerId(next);
+    const chosen = next ? items.find((item) => item.id === next) : undefined;
+    rememberMountedComputerName(chosen?.name ? chosen.name : null);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -161,6 +169,12 @@ export function useCloudComputers(options?: {
   const setMountedId = useCallback((id: string | null) => {
     setMountedIdState(id);
     writeMountedComputerId(id);
+    if (!id) {
+      rememberMountedComputerName(null);
+      return;
+    }
+    const chosen = computersRef.current.find((item) => item.id === id);
+    if (chosen) rememberMountedComputerName(chosen.name || null);
   }, []);
 
   const mounted =

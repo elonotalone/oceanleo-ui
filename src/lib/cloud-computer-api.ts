@@ -11,6 +11,7 @@ import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 
 export const MOUNTED_COMPUTER_STORAGE_KEY = "oceanleo.cc.mounted";
+export const MOUNTED_COMPUTER_NAME_STORAGE_KEY = "oceanleo.cc.mounted.name";
 
 export class CloudComputerError extends Error {
   readonly code: string;
@@ -267,6 +268,26 @@ export function writeMountedComputerId(id: string | null): void {
   try {
     if (!id) window.localStorage.removeItem(MOUNTED_COMPUTER_STORAGE_KEY);
     else window.localStorage.setItem(MOUNTED_COMPUTER_STORAGE_KEY, id);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function readMountedComputerName(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return (window.localStorage.getItem(MOUNTED_COMPUTER_NAME_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+export function writeMountedComputerName(name: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    const shown = (name || "").trim();
+    if (!shown) window.localStorage.removeItem(MOUNTED_COMPUTER_NAME_STORAGE_KEY);
+    else window.localStorage.setItem(MOUNTED_COMPUTER_NAME_STORAGE_KEY, shown);
   } catch {
     /* quota / private mode */
   }

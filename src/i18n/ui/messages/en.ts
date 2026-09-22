@@ -6599,5 +6599,8 @@ const en: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · the main agent uses your quota",
   "已配置 {n} 家：{names}": "{n} configured: {names}",
   "管理 →": "Manage →",
+  // 对话起不来时的黄字（2026-09-22）。没有具体原因时用这句。
+  "对话组件没有启动。请再发一次。": "The dialog did not start.",
+  "对话没有启动。": "The dialog did not start.",
 };
 export default en;

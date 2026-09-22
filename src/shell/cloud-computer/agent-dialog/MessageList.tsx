@@ -331,6 +331,13 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
   );
 }
 
+function noticeFrameText(
+  message: Extract<AgentDialogMessage, { kind: "notice" }>,
+): string {
+  const raw = (message as { text?: unknown }).text;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
 function NoticeView({
   message,
   dialog,
@@ -352,9 +359,10 @@ function NoticeView({
   const row = program ? dialog.programs.find((item) => item.id === program) : undefined;
   const installed = finishedHere ? true : row ? row.installed : null;
   const action = noticeAction(message.code, installed);
+  const spoken = noticeFrameText(message);
   return (
     <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-200">
-      <p>{noticeCopy(tt, message.code, installed)}</p>
+      <p>{spoken || noticeCopy(tt, message.code, installed)}</p>
       {action === "login" && program ? (
         <button
           type="button"

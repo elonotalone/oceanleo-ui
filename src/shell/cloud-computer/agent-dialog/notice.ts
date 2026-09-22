@@ -2,7 +2,7 @@
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
 
-const DIALOG_DID_NOT_START = "对话组件没有启动。请再发一次。";
+const DIALOG_DID_NOT_START = "对话没有启动。";
 
 export function noticeCopy(tt: Translate, code: string, installed: boolean | null = null): string {
   switch (code) {
