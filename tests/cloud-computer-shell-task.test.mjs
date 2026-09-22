@@ -73,11 +73,32 @@ const apiStubUrl = dataModule(`
 const terminalStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function useComputerTerminal() {
-    return { hostRef: { current: null }, ready: true, status: "live", detail: undefined };
+    return {
+      hostRef: { current: null },
+      ready: true,
+      status: "live",
+      detail: undefined,
+      sendText() {},
+      tail() { return ""; },
+    };
   }
   export function encodeTermText(t) { return t; }
   export function decodeTermB64(t) { return t; }
   export function TerminalPanel() { return null; }
+`);
+const leoApiStubUrl = dataModule(`
+  async function skip() { return { ok: false, error: "skip" }; }
+  export const getLeoState = skip;
+  export const putLeoState = skip;
+  export const postLeoNote = skip;
+  export const deleteLeoNote = skip;
+  export const postLeoTurn = skip;
+  export const getLeoWatches = skip;
+  export const postLeoWatch = skip;
+  export const deleteLeoWatch = skip;
+  export const listLeoNotifications = skip;
+  export const markNotificationsRead = skip;
+  export const getTask = skip;
 `);
 const stateStubUrl = dataModule(`
   export function computerDisplayState(computer) {
@@ -96,6 +117,7 @@ const { ShellTaskView } = await import(
     "../../lib/cloud-computer-api": apiStubUrl,
     "./TerminalPanel": terminalStubUrl,
     "./computer-state": stateStubUrl,
+    "../../lib/cloud-computer-leo-api": leoApiStubUrl,
     "next/navigation": navStubUrl,
   })
 );
@@ -258,5 +280,44 @@ test("再开一个会带 as_task 并 push /history?task=", async () => {
   await flush();
   assert.equal(globalThis.__shellOpenBody.as_task, true);
   assert.deepEqual(pushes, ["/history?task=task-new"]);
+  view.cleanup();
+});
+
+test("顶栏 OceanLeo agent：点开卡片，放大，Esc 回到卡片", async () => {
+  const view = await render({});
+  const toggle = view.host.querySelector("[data-oceanleo-cc-leo-toggle]");
+  assert.ok(toggle);
+  const end = view.host.querySelector("[data-oceanleo-cc-end-shell]");
+  assert.ok(end);
+  assert.equal(
+    Boolean(toggle.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING),
+    true,
+  );
+  await act(async () => {
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  assert.equal(
+    view.host.querySelector("[data-oceanleo-cc-leo-form]")?.getAttribute("data-oceanleo-cc-leo-form"),
+    "card",
+  );
+  const enlarge = view.host.querySelector("[data-oceanleo-cc-leo-enlarge]");
+  assert.ok(enlarge);
+  await act(async () => {
+    enlarge.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  assert.equal(
+    view.host.querySelector("[data-oceanleo-cc-leo-form]")?.getAttribute("data-oceanleo-cc-leo-form"),
+    "large",
+  );
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  await flush();
+  assert.equal(
+    view.host.querySelector("[data-oceanleo-cc-leo-form]")?.getAttribute("data-oceanleo-cc-leo-form"),
+    "card",
+  );
   view.cleanup();
 });

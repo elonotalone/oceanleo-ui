@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
@@ -14,7 +14,8 @@ import {
   type ComputerDisplayState,
 } from "./computer-state";
 import { useComputerTerminal } from "./TerminalPanel";
-import { AgentDialogPane, useAgentDialog } from "./useAgentDialog";
+import { AgentDialogPane, useAgentDialog, type AgentDialogController } from "./useAgentDialog";
+import { LeoAgentPanel, type LeoAgentControl } from "./leo-agent/LeoAgentPanel";
 
 export type ShellTaskViewProps = {
   taskId: string;
@@ -25,6 +26,13 @@ export type ShellTaskViewProps = {
   onEnded?: () => void;
   onReopened?: (taskId: string) => void;
 };
+
+// W3 拥有 AgentDialogPane。onOpenLeo 已在合同里，类型还没落到那份文件时用断言传入。
+const DialogPane = AgentDialogPane as (props: {
+  dialog: AgentDialogController;
+  onBack: () => void;
+  onOpenLeo?: () => void;
+}) => ReturnType<typeof AgentDialogPane>;
 
 function statusDotClass(state: ComputerDisplayState | null): string {
   if (state === "ready") return "bg-emerald-500";
@@ -95,6 +103,23 @@ export function ShellTaskView({
   }, [client, computerId, onEnded, sessionId]);
 
   const [reopenError, setReopenError] = useState<string | null>(null);
+  const [leoControl, setLeoControl] = useState<LeoAgentControl | null>(null);
+  const leoRef = useRef<LeoAgentControl | null>(null);
+  const onLeoControl = useCallback((control: LeoAgentControl) => {
+    leoRef.current = control;
+    setLeoControl((prev) => {
+      if (
+        prev &&
+        prev.form === control.form &&
+        prev.alert === control.alert &&
+        prev.toggleFromBar === control.toggleFromBar &&
+        prev.openLarge === control.openLarge
+      ) {
+        return prev;
+      }
+      return control;
+    });
+  }, []);
   const reopen = useCallback(async () => {
     setReopenError(null);
     let opened: { task_id?: string };
@@ -123,7 +148,7 @@ export function ShellTaskView({
 
   return (
     <div
-      className="flex h-full min-h-[60vh] flex-col bg-neutral-950 text-neutral-100"
+      className="relative flex h-full min-h-[60vh] flex-col bg-neutral-950 text-neutral-100"
       data-oceanleo-cc-shell-task={taskId}
       data-ended={showEnded ? "1" : "0"}
     >
@@ -143,6 +168,19 @@ export function ShellTaskView({
             {tt("用对话界面继续")}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => leoRef.current?.toggleFromBar()}
+          data-oceanleo-cc-leo-toggle
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${leoControl?.alert ? "bg-emerald-400" : "bg-neutral-600"}`}
+            data-oceanleo-cc-leo-dot=""
+            data-lit={leoControl?.alert ? "1" : "0"}
+          />
+          {tt("OceanLeo agent")}
+        </button>
         {!showEnded && (
           <button
             type="button"
@@ -182,12 +220,28 @@ export function ShellTaskView({
             aria-hidden={dialogOpen || undefined}
           />
           {dialogOpen ? (
-            <div className="absolute inset-0 flex min-h-0 flex-col bg-neutral-950">
-              <AgentDialogPane dialog={dialog} onBack={() => setDialogOpen(false)} />
+            <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-neutral-950">
+              <DialogPane
+                dialog={dialog}
+                onBack={() => setDialogOpen(false)}
+                onOpenLeo={() => leoRef.current?.openLarge()}
+              />
             </div>
           ) : null}
         </div>
       )}
+      <LeoAgentPanel
+        computerId={computerId}
+        sessionId={shellLive ? sessionId : null}
+        computer={computer}
+        client={client}
+        terminal={{
+          sendText: (text) => terminal.sendText(text),
+          tail: () => terminal.tail(),
+          ready: shellLive && terminal.ready,
+        }}
+        onControl={onLeoControl}
+      />
     </div>
   );
 }

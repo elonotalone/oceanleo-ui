@@ -24,6 +24,23 @@ export function decodeTermB64(dataB64: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+const TERMINAL_TAIL_LIMIT = 4000;
+
+/** 终端尾巴给 agent 当上下文：只要屏幕上的字，不要颜色控制码。 */
+export function stripTerminalAnsi(text: string): string {
+  return text
+    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b[@-Z\\-_]/g, "")
+    .replace(/\u009b[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function pushPlainTail(current: string, chunk: string): string {
+  const plain = stripTerminalAnsi(chunk).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!plain) return current;
+  return (current + plain).slice(-TERMINAL_TAIL_LIMIT);
+}
+
 export type ComputerTerminalStatus = "live" | "exit" | "error";
 
 export type ComputerTerminalHandle = {
@@ -31,6 +48,10 @@ export type ComputerTerminalHandle = {
   ready: boolean;
   status: ComputerTerminalStatus;
   detail?: string;
+  /** 写到现有的 WS 输入通道，不加回车。 */
+  sendText: (text: string) => void;
+  /** 最近 4000 字纯文本输出。 */
+  tail: () => string;
 };
 
 /**
@@ -60,6 +81,15 @@ export function useComputerTerminal({
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<ComputerTerminalStatus>("live");
   const [detail, setDetail] = useState<string | undefined>();
+  const tailRef = useRef("");
+
+  const sendText = useCallback((text: string) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ t: "in", data_b64: encodeTermText(text) }));
+  }, []);
+
+  const tail = useCallback(() => tailRef.current, []);
 
   const attachSocket = useCallback(
     async (sid: string) => {
@@ -98,11 +128,13 @@ export function useComputerTerminal({
 
   useEffect(() => {
     if (!enabled || !sessionId) return;
+    tailRef.current = "";
     let disposed = false;
     let removeResize: (() => void) | undefined;
     setReady(false);
     setStatus("live");
     setDetail(undefined);
+    let pendingWrite = "";
     void (async () => {
       const [{ Terminal }, { FitAddon }] = await Promise.all([
         import("@xterm/xterm"),
@@ -123,7 +155,10 @@ export function useComputerTerminal({
       const dims = () => fit.proposeDimensions() || { cols: term.cols, rows: term.rows };
       termRef.current = {
         dispose: () => term.dispose(),
-        write: (data) => term.write(data),
+        write: (data) => {
+          pendingWrite += data;
+          term.write(data);
+        },
         focus: () => term.focus(),
         fit: () => fit.fit(),
         get cols() {
@@ -133,10 +168,15 @@ export function useComputerTerminal({
           return dims().rows;
         },
       };
+      // 输出在 xterm 解析后落成纯文本。onData 仍只负责把按键送进同一条 WS。
+      term.onWriteParsed(() => {
+        if (!pendingWrite) return;
+        const chunk = pendingWrite;
+        pendingWrite = "";
+        tailRef.current = pushPlainTail(tailRef.current, chunk);
+      });
       term.onData((data) => {
-        const socket = socketRef.current;
-        if (!socket || socket.readyState !== WebSocket.OPEN) return;
-        socket.send(JSON.stringify({ t: "in", data_b64: encodeTermText(data) }));
+        sendText(data);
       });
       setReady(true);
       await attachSocket(sessionId);
@@ -161,6 +201,10 @@ export function useComputerTerminal({
     })();
     return () => {
       disposed = true;
+      if (pendingWrite) {
+        tailRef.current = pushPlainTail(tailRef.current, pendingWrite);
+        pendingWrite = "";
+      }
       removeResize?.();
       if (fitTimer.current) clearTimeout(fitTimer.current);
       socketRef.current?.close();
@@ -168,9 +212,9 @@ export function useComputerTerminal({
       termRef.current?.dispose();
       termRef.current = null;
     };
-  }, [attachSocket, enabled, sessionId]);
+  }, [attachSocket, enabled, sendText, sessionId]);
 
-  return { hostRef, ready, status, detail };
+  return { hostRef, ready, status, detail, sendText, tail };
 }
 
 type TabState = {
