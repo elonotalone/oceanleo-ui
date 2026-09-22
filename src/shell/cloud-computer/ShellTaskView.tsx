@@ -27,9 +27,12 @@ export type ShellTaskViewProps = {
   onReopened?: (taskId: string) => void;
 };
 
+// 结束只认两种服务端真相（合同 I2）：exit 帧（进程真退出）与
+// session_not_found（节点说会话没了）；加上用户自己点「结束 Shell」的 closed。
+// 管道断了不是结束：reconnecting 给细提示，60 s 没接回来给「连接断了」+ 重试。
 type ShellEnd =
   | { kind: "exit"; code: string }
-  | { kind: "error"; code: string }
+  | { kind: "gone" }
   | { kind: "closed" };
 
 function statusDotClass(state: ComputerDisplayState | null): string {
@@ -76,8 +79,8 @@ export function ShellTaskView({
   useEffect(() => {
     if (terminal.status === "exit") {
       setEnd({ kind: "exit", code: terminal.detail ?? "" });
-    } else if (terminal.status === "error") {
-      setEnd({ kind: "error", code: terminal.detail ?? "" });
+    } else if (terminal.status === "gone") {
+      setEnd({ kind: "gone" });
     }
   }, [terminal.detail, terminal.status]);
 
@@ -135,8 +138,8 @@ export function ShellTaskView({
     ? tt(SHELL_ENDED_ZH.missingSession)
     : end?.kind === "exit"
       ? tt(SHELL_ENDED_ZH.endedExit, { code: end.code })
-      : end?.kind === "error"
-        ? tt(SHELL_ENDED_ZH.endedError, { code: end.code })
+      : end?.kind === "gone"
+        ? tt(SHELL_ENDED_ZH.endedGone)
         : tt("这个 Shell 已结束");
 
   return (
@@ -145,7 +148,7 @@ export function ShellTaskView({
       data-oceanleo-cc-shell-task={taskId}
       data-ended={showEnded ? "1" : "0"}
     >
-      <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2 text-[12px]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-3 py-2 text-[12px]">
         <span
           className={`h-1.5 w-1.5 rounded-full ${statusDotClass(state)}`}
           data-oceanleo-cc-online={state === "ready" ? "1" : "0"}
@@ -197,18 +200,44 @@ export function ShellTaskView({
           ) : null}
         </div>
       ) : (
-        <div className="relative min-h-0 flex-1">
-          <div
-            ref={terminal.hostRef}
-            className={`h-full min-h-0 px-2 py-1 ${dialogOpen ? "invisible" : ""}`}
-            data-oceanleo-cc-xterm
-            aria-hidden={dialogOpen || undefined}
-          />
-          {dialogOpen ? (
-            <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-neutral-950">
-              <AgentDialogPane dialog={dialog} onBack={() => setDialogOpen(false)} />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {terminal.status === "reconnecting" ? (
+            <div
+              className="border-b border-neutral-800 bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400"
+              data-oceanleo-cc-reconnecting
+            >
+              {tt(SHELL_ENDED_ZH.reconnecting)}
             </div>
           ) : null}
+          {terminal.status === "error" ? (
+            <div
+              className="flex flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-1 text-[11px] text-neutral-300"
+              data-oceanleo-cc-connection-lost
+            >
+              <span>{tt(SHELL_ENDED_ZH.connectionLost)}</span>
+              <button
+                type="button"
+                onClick={() => terminal.retry()}
+                data-oceanleo-cc-retry-connection
+                className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-100 hover:bg-neutral-700"
+              >
+                {tt(SHELL_ENDED_ZH.retryConnection)}
+              </button>
+            </div>
+          ) : null}
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={terminal.hostRef}
+              className={`h-full min-h-0 px-2 py-1 ${dialogOpen ? "invisible" : ""}`}
+              data-oceanleo-cc-xterm
+              aria-hidden={dialogOpen || undefined}
+            />
+            {dialogOpen ? (
+              <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-neutral-950">
+                <AgentDialogPane dialog={dialog} onBack={() => setDialogOpen(false)} />
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

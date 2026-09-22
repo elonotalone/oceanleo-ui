@@ -9,6 +9,14 @@ import {
   type TerminalSession,
 } from "../../lib/cloud-computer-api";
 import { useUI } from "../../i18n/ui/useUI";
+import { SHELL_ENDED_ZH } from "../../i18n/ui/messages/shell-ended-copy";
+import {
+  nextTerminalState,
+  RECONNECT_BUDGET_MS,
+  type TerminalConnState,
+  type TerminalEvent,
+  type TerminalFrameLike,
+} from "./terminal-status";
 
 export function encodeTermText(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -41,52 +49,15 @@ function pushPlainTail(current: string, chunk: string): string {
   return (current + plain).slice(-TERMINAL_TAIL_LIMIT);
 }
 
-export type ComputerTerminalStatus = "live" | "exit" | "error";
-
-export type TerminalInboundFrame = {
-  t?: string;
-  data_b64?: string;
-  exit_code?: number;
-  code?: string;
-};
-
-export type TerminalFrameEffect =
-  | { kind: "output"; dataB64: string }
-  | { kind: "exit"; code: string }
-  | { kind: "reconnect" }
-  | { kind: "error"; code: string }
-  | { kind: "ignore" };
-
 /**
- * `error` 先再连一次。同一条连接上的第二次 `error` 才结束，并把错误码交出去。
- * `exit` 直接结束，退出码原样变成字符串（0 也保留）。
+ * 连接状态（合同 I2）：
+ * - live         管道活着；
+ * - reconnecting 管道断了（detached 帧 / WS 非正常关闭），退避重连中，屏幕内容保留；
+ * - exit         服务端 exit 帧，进程真退出，detail 是退出码（"0" 也是真退出码）；
+ * - gone         服务端 error 帧 code=session_not_found，节点说会话没了；
+ * - error        重连 60 s 预算耗尽（detail="connection_lost"），界面给「重试」。
  */
-export function effectOfTerminalFrame(
-  frame: TerminalInboundFrame,
-  errorReconnectsUsed: number,
-): { effect: TerminalFrameEffect; errorReconnectsUsed: number } {
-  if (frame.t === "out" && frame.data_b64) {
-    return {
-      effect: { kind: "output", dataB64: frame.data_b64 },
-      errorReconnectsUsed,
-    };
-  }
-  if (frame.t === "exit") {
-    const code = frame.exit_code == null ? "" : String(frame.exit_code);
-    return { effect: { kind: "exit", code }, errorReconnectsUsed };
-  }
-  if (frame.t === "error") {
-    const code = frame.code ? frame.code : "error";
-    if (errorReconnectsUsed < 1) {
-      return {
-        effect: { kind: "reconnect" },
-        errorReconnectsUsed: errorReconnectsUsed + 1,
-      };
-    }
-    return { effect: { kind: "error", code }, errorReconnectsUsed };
-  }
-  return { effect: { kind: "ignore" }, errorReconnectsUsed };
-}
+export type ComputerTerminalStatus = "live" | "reconnecting" | "exit" | "gone" | "error";
 
 export type ComputerTerminalHandle = {
   hostRef: RefObject<HTMLDivElement | null>;
@@ -97,11 +68,27 @@ export type ComputerTerminalHandle = {
   sendText: (text: string) => void;
   /** 最近 4000 字纯文本输出。 */
   tail: () => string;
+  /** 「连接断了」后的手动重试：从头起退避，复用同一 session_id，不新建会话。 */
+  retry: () => void;
+};
+
+type TermHandle = {
+  dispose: () => void;
+  write: (data: string) => void;
+  focus: () => void;
+  fit: () => void;
+  /** 重连成功后清屏，再接受节点回放。 */
+  reset: () => void;
+  cols: number;
+  rows: number;
 };
 
 /**
  * xterm + WebSocket for one cloud-computer session. Shared by the AgentConsole
  * drawer (`TerminalPanel`) and the full-page `ShellTaskView`.
+ *
+ * 断线语义全部在 `./terminal-status` 的纯状态机里；这里只负责执行它给出的
+ * effect（排重连定时器、清屏）与维护 60 s 总预算的 give_up 计时。
  */
 export function useComputerTerminal({
   computerId,
@@ -113,22 +100,18 @@ export function useComputerTerminal({
   enabled?: boolean;
 }): ComputerTerminalHandle {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const termRef = useRef<{
-    dispose: () => void;
-    write: (data: string) => void;
-    focus: () => void;
-    fit: () => void;
-    cols: number;
-    rows: number;
-  } | null>(null);
+  const termRef = useRef<TermHandle | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const fitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const giveUpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<ComputerTerminalStatus>("live");
   const [detail, setDetail] = useState<string | undefined>();
   const tailRef = useRef("");
-  const errorReconnects = useRef(0);
   const life = useRef(0);
+  const connRef = useRef<TerminalConnState>({ kind: "live" });
+  const ctxRef = useRef<{ sid: string; lifeToken: number } | null>(null);
 
   const sendText = useCallback((text: string) => {
     const socket = socketRef.current;
@@ -138,11 +121,84 @@ export function useComputerTerminal({
 
   const tail = useCallback(() => tailRef.current, []);
 
+  const clearConnTimers = useCallback(() => {
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
+    if (giveUpTimer.current) {
+      clearTimeout(giveUpTimer.current);
+      giveUpTimer.current = null;
+    }
+  }, []);
+
+  /** 重算尺寸并通知节点；重连成功后也要做一次（节点侧 PTY 需要新尺寸）。 */
+  const announceSize = useCallback(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.fit();
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ t: "resize", cols: term.cols, rows: term.rows }));
+  }, []);
+
+  const attachSocketRef = useRef<(sid: string, lifeToken: number) => Promise<boolean>>(
+    async () => false,
+  );
+  const applyConnEventRef = useRef<(event: TerminalEvent) => void>(() => {});
+
+  const applyConnEvent = useCallback(
+    (event: TerminalEvent) => {
+      const ctx = ctxRef.current;
+      if (!ctx) return;
+      const prev = connRef.current;
+      const applied = nextTerminalState(prev, event);
+      connRef.current = applied.state;
+      const kind = applied.state.kind;
+      setStatus(kind);
+      setDetail(kind === "exit" || kind === "error" ? applied.state.code : undefined);
+      if (kind === "exit" || kind === "gone" || kind === "error") {
+        // 终局与「连接断了」都不再有未决的重连计时。
+        clearConnTimers();
+      }
+      if (applied.effect.type === "schedule_reconnect") {
+        if (prev.kind !== "reconnecting") {
+          // 第一次进入重连（含用户在「连接断了」后点重试）：60 s 总预算从这里起算。
+          if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+          giveUpTimer.current = setTimeout(() => {
+            giveUpTimer.current = null;
+            applyConnEventRef.current({ type: "give_up" });
+          }, RECONNECT_BUDGET_MS);
+        }
+        if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = setTimeout(() => {
+          reconnectTimer.current = null;
+          // 复用同一 session_id 新开 WS；不重复 POST /terminals。
+          void attachSocketRef.current(ctx.sid, ctx.lifeToken).then((opened) => {
+            if (life.current !== ctx.lifeToken) return;
+            if (!opened) applyConnEventRef.current({ type: "reconnect_failed" });
+            // opened=true 时不直接算成功：等 socket 的 open 事件发 reconnect_ok，
+            // 连不上会以 close 事件落成 reconnect_failed，退避不被重置。
+          });
+        }, applied.effect.waitMs);
+      }
+      if (applied.effect.type === "reset_screen") {
+        // 重连成功：清屏、重算尺寸并通知节点，然后接受节点回放。
+        clearConnTimers();
+        termRef.current?.reset();
+        announceSize();
+      }
+    },
+    [announceSize, clearConnTimers],
+  );
+  applyConnEventRef.current = applyConnEvent;
+
   const attachSocket = useCallback(
     async (sid: string, lifeToken: number): Promise<boolean> => {
       if (life.current !== lifeToken) return false;
-      socketRef.current?.close();
+      const previous = socketRef.current;
       socketRef.current = null;
+      previous?.close();
       const token = await accessToken();
       if (life.current !== lifeToken) return false;
       if (!token) return false;
@@ -157,49 +213,60 @@ export function useComputerTerminal({
         return false;
       }
       socketRef.current = socket;
-      let retired = false;
+      const isCurrent = () => life.current === lifeToken && socketRef.current === socket;
+      socket.addEventListener("open", () => {
+        if (!isCurrent()) return;
+        applyConnEventRef.current({ type: "reconnect_ok" });
+      });
       socket.addEventListener("message", (event) => {
-        if (retired || life.current !== lifeToken) return;
-        let frame: TerminalInboundFrame = {};
+        if (!isCurrent()) return;
+        let frame: TerminalFrameLike = {};
         try {
-          frame = JSON.parse(String(event.data)) as TerminalInboundFrame;
+          frame = JSON.parse(String(event.data)) as TerminalFrameLike;
         } catch {
           return;
         }
-        const applied = effectOfTerminalFrame(frame, errorReconnects.current);
-        errorReconnects.current = applied.errorReconnectsUsed;
-        if (applied.effect.kind === "output") {
-          termRef.current?.write(decodeTermB64(applied.effect.dataB64));
-        } else if (applied.effect.kind === "exit") {
-          setStatus("exit");
-          setDetail(applied.effect.code);
-        } else if (applied.effect.kind === "reconnect") {
-          retired = true;
-          const code = frame.code ? frame.code : "error";
-          void attachSocket(sid, lifeToken).then((opened) => {
-            if (life.current !== lifeToken) return;
-            if (!opened) {
-              setStatus("error");
-              setDetail(code);
-            }
-          });
-        } else if (applied.effect.kind === "error") {
-          setStatus("error");
-          setDetail(applied.effect.code);
+        if (frame.t === "out" && frame.data_b64) {
+          termRef.current?.write(decodeTermB64(frame.data_b64));
         }
+        applyConnEventRef.current({ type: "frame", frame });
       });
+      socket.addEventListener("close", () => {
+        if (!isCurrent()) return;
+        socketRef.current = null;
+        // 重连尝试中的关闭 = 这次没连上（退避继续）；live 时的关闭 = 管道断了（起退避）。
+        applyConnEventRef.current(
+          connRef.current.kind === "reconnecting"
+            ? { type: "reconnect_failed" }
+            : { type: "socket_closed" },
+        );
+      });
+      if (socket.readyState === WebSocket.OPEN) {
+        // 同步就绪的套接字（测试桩）没有 open 事件，补一次。
+        queueMicrotask(() => {
+          if (isCurrent()) applyConnEventRef.current({ type: "reconnect_ok" });
+        });
+      }
       return true;
     },
     [computerId],
   );
+  attachSocketRef.current = attachSocket;
+
+  const retry = useCallback(() => {
+    if (connRef.current.kind !== "error") return;
+    applyConnEventRef.current({ type: "socket_closed" });
+  }, []);
 
   useEffect(() => {
     if (!enabled || !sessionId) return;
     const lifeToken = ++life.current;
-    errorReconnects.current = 0;
+    connRef.current = { kind: "live" };
+    ctxRef.current = { sid: sessionId, lifeToken };
     tailRef.current = "";
     let disposed = false;
     let removeResize: (() => void) | undefined;
+    clearConnTimers();
     setReady(false);
     setStatus("live");
     setDetail(undefined);
@@ -230,6 +297,7 @@ export function useComputerTerminal({
         },
         focus: () => term.focus(),
         fit: () => fit.fit(),
+        reset: () => term.reset(),
         get cols() {
           return dims().cols;
         },
@@ -248,43 +316,42 @@ export function useComputerTerminal({
         sendText(data);
       });
       setReady(true);
-      await attachSocket(sessionId, lifeToken);
+      const opened = await attachSocket(sessionId, lifeToken);
       if (disposed) return;
-      const sendResize = () => {
-        fit.fit();
-        const size = dims();
-        const socket = socketRef.current;
-        if (!size || !socket || socket.readyState !== WebSocket.OPEN) return;
-        socket.send(
-          JSON.stringify({ t: "resize", cols: size.cols, rows: size.rows }),
-        );
-      };
+      if (!opened) {
+        // 第一次就 attach 不上（没令牌 / 构造失败）：按管道断了处理，起退避而不是黑屏装活。
+        applyConnEventRef.current({ type: "socket_closed" });
+      }
       const onResize = () => {
         if (fitTimer.current) clearTimeout(fitTimer.current);
-        fitTimer.current = setTimeout(sendResize, 200);
+        fitTimer.current = setTimeout(announceSize, 200);
       };
       window.addEventListener("resize", onResize);
       removeResize = () => window.removeEventListener("resize", onResize);
-      sendResize();
+      announceSize();
       term.focus();
     })();
     return () => {
       disposed = true;
       life.current += 1;
+      ctxRef.current = null;
+      connRef.current = { kind: "live" };
       if (pendingWrite) {
         tailRef.current = pushPlainTail(tailRef.current, pendingWrite);
         pendingWrite = "";
       }
+      clearConnTimers();
       removeResize?.();
       if (fitTimer.current) clearTimeout(fitTimer.current);
-      socketRef.current?.close();
+      const socket = socketRef.current;
       socketRef.current = null;
+      socket?.close();
       termRef.current?.dispose();
       termRef.current = null;
     };
-  }, [attachSocket, enabled, sendText, sessionId]);
+  }, [announceSize, attachSocket, clearConnTimers, enabled, sendText, sessionId]);
 
-  return { hostRef, ready, status, detail, sendText, tail };
+  return { hostRef, ready, status, detail, sendText, tail, retry };
 }
 
 type TabState = {
@@ -369,10 +436,10 @@ export function TerminalPanel({
       data-oceanleo-cc-terminal-drawer
       data-collapsed={collapsed ? "1" : "0"}
     >
-      <div className="flex items-center gap-1 border-b border-neutral-800 px-2 py-1">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-neutral-800 px-2 py-1">
         <button
           type="button"
-          className="rounded px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800"
+          className="shrink-0 rounded px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800"
           onClick={() => onCollapsedChange?.(!collapsed)}
         >
           {collapsed ? tt("展开终端") : tt("收起终端")}
@@ -385,7 +452,7 @@ export function TerminalPanel({
               onClick={() => setActiveId(tab.session.id)}
               data-oceanleo-cc-term-tab={tab.session.id}
               data-status={tab.status}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${
+              className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] ${
                 tab.session.id === activeId
                   ? "bg-neutral-800 text-white"
                   : "text-neutral-400 hover:bg-neutral-900"
@@ -411,13 +478,17 @@ export function TerminalPanel({
             type="button"
             onClick={() => void addSession()}
             aria-label={tt("新建 Shell")}
-            className="rounded px-2 py-1 text-[12px] text-neutral-300 hover:bg-neutral-800"
+            className="shrink-0 rounded px-2 py-1 text-[12px] text-neutral-300 hover:bg-neutral-800"
           >
             +
           </button>
         )}
-        <span className="ml-auto text-[10px] text-neutral-500">
-          {terminal.ready ? "" : tt("终端加载中")}
+        <span className="ml-auto shrink-0 text-[10px] text-neutral-500">
+          {terminal.status === "reconnecting"
+            ? tt(SHELL_ENDED_ZH.reconnecting)
+            : terminal.ready
+              ? ""
+              : tt("终端加载中")}
         </span>
       </div>
       {!collapsed && (
