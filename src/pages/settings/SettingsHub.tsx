@@ -54,6 +54,17 @@ export type SettingsHubProps = {
 
 const SKIP_MENU_HREFS = new Set(["/general", "/settings", "/cost", "/org", "/account", ""]);
 
+function SettingsHomeLink({ label }: { label: string }) {
+  return (
+    <a
+      href="/"
+      className="mb-3 inline-block text-[13px] font-medium text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline"
+    >
+      {label}
+    </a>
+  );
+}
+
 function tabFromLocation(fallback: string): string {
   if (typeof window === "undefined") return fallback;
   const tab = new URLSearchParams(window.location.search).get("tab");
@@ -267,13 +278,19 @@ export function SettingsHub({
   }
 
   if (resetLanding) {
-    return <PasswordResetPage currentHref={href} onDone={onSignedIn} />;
+    return (
+      <div className="px-8 py-6">
+        <SettingsHomeLink label={tt("回到首页")} />
+        <PasswordResetPage currentHref={href} onDone={onSignedIn} />
+      </div>
+    );
   }
 
   if (!configured) {
     const notice = loginUnavailableNotice();
     return (
       <div className="px-8 py-6">
+        <SettingsHomeLink label={tt("回到首页")} />
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
           {tt("设置")}
         </h1>
@@ -291,6 +308,7 @@ export function SettingsHub({
     if (guestPrompt === "notice") {
       return (
         <div className="px-8 py-6">
+          <SettingsHomeLink label={tt("回到首页")} />
           <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
             {tt("设置")}
           </h1>
@@ -305,6 +323,7 @@ export function SettingsHub({
         {showAuth && (
           <AuthDialog onClose={() => setShowAuth(false)} onSuccess={handleSignedIn} />
         )}
+        <SettingsHomeLink label={tt("回到首页")} />
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
           {tt("设置")}
         </h1>
@@ -332,6 +351,7 @@ export function SettingsHub({
 
   return (
     <div className="px-6 py-6 md:px-8" data-settings-hub>
+      <SettingsHomeLink label={tt("回到首页")} />
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("设置")}</h1>
       <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-start">
         <SettingsNav
