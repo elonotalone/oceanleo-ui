@@ -156,7 +156,8 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
 test("navEntries: 分区隔离——footer 项不会漏进主导航", () => {
   const primary = navEntries("portal", {}, "primary").map((e) => e.id);
   const footer = navEntries("portal", {}, "footer").map((e) => e.id);
-  assert.deepEqual(footer, ["devices", "download"]);
+  assert.deepEqual(footer, ["download"]);
+  assert.ok(!footer.includes("devices"), "设备页从账号旁的图标进，footer 不再放一行");
   for (const id of footer) {
     assert.ok(!primary.includes(id), `${id} 同时出现在主导航与 footer`);
   }
