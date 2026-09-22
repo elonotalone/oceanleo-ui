@@ -12,7 +12,7 @@
 // master-detail 形态供 doctrine v4 覆盖式子栏使用。
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
@@ -208,6 +208,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     const x = a[i];
     const y = b[i];
     if (x.kind !== y.kind || x.id !== y.id) return false;
+    if ((x.created_by ?? null) !== (y.created_by ?? null)) return false;
     if (x.kind === "session" && y.kind === "session") {
       if (
         x.session.revision !== y.session.revision ||
@@ -215,6 +216,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
         x.session.title !== y.session.title ||
         x.session.title_status !== y.session.title_status ||
         x.session.last_activity_at !== y.session.last_activity_at ||
+        (x.session.created_by ?? null) !== (y.session.created_by ?? null) ||
         Boolean(x.session.pinned) !== Boolean(y.session.pinned) ||
         Boolean(x.session.favorite) !== Boolean(y.session.favorite) ||
         (x.session.project_id ?? null) !== (y.session.project_id ?? null)
@@ -225,6 +227,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
       if (
         x.task.status !== y.task.status ||
         x.task.title !== y.task.title ||
+        (x.task.created_by ?? null) !== (y.task.created_by ?? null) ||
         Boolean(x.task.pinned) !== Boolean(y.task.pinned) ||
         Boolean(x.task.favorite) !== Boolean(y.task.favorite) ||
         (x.task.project_id ?? null) !== (y.task.project_id ?? null) ||
@@ -493,6 +496,36 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   return { items, loading, error, remove, mutate, reload };
 }
 
+function LeoCreatedMark() {
+  const gid = `leo-created-spark-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-3 w-3 shrink-0"
+      role="img"
+      aria-label="leo"
+      data-oceanleo-leo-created=""
+    >
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="24" y2="24">
+          <stop offset="0%" stopColor="#818cf8" />
+          <stop offset="100%" stopColor="#c084fc" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"
+        fill={`url(#${gid})`}
+      />
+      <path
+        d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z"
+        fill={`url(#${gid})`}
+        opacity="0.65"
+      />
+    </svg>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // 主侧栏内联区：我的任务列表（可删除）。v5 起不再覆盖主导航。
 // ----------------------------------------------------------------------------
@@ -629,6 +662,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                       </svg>
                     )}
                     <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
+                    {entry.created_by === "leo" && <LeoCreatedMark />}
                     {!isSession && isShellTask(entry.task) && (
                       <span
                         className={`shrink-0 rounded px-1 text-[10px] ${

@@ -296,6 +296,11 @@ export interface AgentTask {
   site_id?: string;
   /** 工作会话聚合根；旧 task / 旧后端没有此字段。 */
   session_id?: string | null;
+  /**
+   * 谁创建的。唯一表示 leo 创建的值是 `"leo"`；空字符串或省略表示不是。
+   * 列表与详情都以这个顶层字段返回。
+   */
+  created_by?: string | null;
   /** Ordinary app task or advanced-workbench task. */
   surface?: "app" | "advanced" | string;
   /** Cloud-computer id when this task is a Shell session (`mode === "shell"`). */
@@ -370,6 +375,8 @@ export function createTask(body: {
   orgId?: string;
   /** 挂载的云电脑；不传则读 localStorage['oceanleo.cc.mounted']。 */
   computerId?: string;
+  /** 仅 `"leo"` 表示这条任务由 leo 创建。不传则请求体不含该字段。 */
+  created_by?: string;
 }) {
   return authed<{
     task_id: string;
@@ -396,6 +403,9 @@ export function createTask(body: {
         attachments: body.attachments || [],
         ...payerRequestFields(body.orgId),
         ...computerIdRequestField(body.computerId),
+        ...(typeof body.created_by === "string"
+          ? { created_by: body.created_by }
+          : {}),
       }),
     },
   ).then((result) => {

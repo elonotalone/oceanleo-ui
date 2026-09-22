@@ -2,8 +2,19 @@ import type { AgentTask } from "../lib/agent";
 import type { AppSession } from "../lib/app-session";
 
 export type HistoryListEntry =
-  | { kind: "session"; id: string; session: AppSession }
-  | { kind: "task"; id: string; task: AgentTask };
+  | {
+      kind: "session";
+      id: string;
+      session: AppSession & { created_by?: string | null };
+      created_by?: string | null;
+    }
+  | { kind: "task"; id: string; task: AgentTask; created_by?: string | null };
+
+function readCreatedBy(record: object): string | null | undefined {
+  const value = (record as { created_by?: unknown }).created_by;
+  if (typeof value === "string" || value === null) return value;
+  return undefined;
+}
 
 type SnapshotRestorableAppSession = AppSession & {
   site_id: string;
@@ -42,6 +53,10 @@ export function mergeHistoryEntries(
   tasks: AgentTask[],
   options: MergeHistoryEntriesOptions = {},
 ): HistoryListEntry[] {
+  const leoSessionIds = new Set<string>();
+  for (const task of tasks) {
+    if (task.session_id && task.created_by === "leo") leoSessionIds.add(task.session_id);
+  }
   const orderedSessions = [...sessions].sort((a, b) =>
     newestFirst(a.last_activity_at || a.updated_at, b.last_activity_at || b.updated_at),
   );
@@ -51,15 +66,27 @@ export function mergeHistoryEntries(
       newestFirst(a.updated_at || a.created_at, b.updated_at || b.created_at),
     );
   const entries: HistoryListEntry[] = [
-    ...orderedSessions.map(
-      (session): HistoryListEntry => ({
+    ...orderedSessions.map((session): HistoryListEntry => {
+      const own = readCreatedBy(session);
+      const created_by =
+        own === "leo" || leoSessionIds.has(session.id) ? "leo" : own;
+      return {
         kind: "session",
         id: session.id,
-        session,
-      }),
-    ),
+        session:
+          created_by === "leo" && own !== "leo"
+            ? { ...session, created_by: "leo" }
+            : session,
+        created_by,
+      };
+    }),
     ...legacyTasks.map(
-      (task): HistoryListEntry => ({ kind: "task", id: task.id, task }),
+      (task): HistoryListEntry => ({
+        kind: "task",
+        id: task.id,
+        task,
+        created_by: task.created_by,
+      }),
     ),
   ];
   return entries.sort((a, b) => {
