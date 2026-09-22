@@ -6478,6 +6478,7 @@ const es: Record<string, string> = {
   "搜索对话": "Buscar en la conversación",
   "帮助与反馈": "Ayuda y comentarios",
   "我的模型 · 自带 key · 优先使用（免费）": "Mis modelos · clave propia · prioridad (gratis)",
+  "Cursor · 主 agent 用你的额度": "Cursor · el agente principal usa tu cupo",
   "已配置 {n} 家：{names}": "{n} configurados: {names}",
   "管理 →": "Gestionar →",
 };

@@ -18,6 +18,7 @@ import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
 import { computerIdRequestField } from "./cloud-computer-api";
+import { createBackboneField, followUpBackboneField } from "./cursor-model-choice";
 import { payerRequestFields } from "./payer";
 
 export type AgentApiDiagnosticValue = string | number | boolean;
@@ -384,7 +385,7 @@ export function createTask(body: {
         hidden_context: body.hiddenContext || "",
         mode: body.mode || "agent",
         site_id: body.siteId || "",
-        agent_model: body.agentModel || "",
+        agent_model: body.agentModel || createBackboneField(),
         model_selection: body.modelSelection || {},
         project_id: body.projectId || null,
         agent_id: body.agentId || "",
@@ -715,6 +716,7 @@ export function followUp(
   orgId?: string,
   computerId?: string,
 ) {
+  const backbone = followUpBackboneField();
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`,
     {
@@ -723,6 +725,7 @@ export function followUp(
         prompt,
         hidden_context: hiddenContext,
         attachments: attachments || [],
+        ...(backbone ? { agent_model: backbone } : {}),
         ...payerRequestFields(orgId),
         ...computerIdRequestField(computerId),
       }),

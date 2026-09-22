@@ -6435,6 +6435,7 @@ const zhTW: Record<string, string> = {
   "搜索对话": "搜尋對話",
   "帮助与反馈": "說明與意見回饋",
   "我的模型 · 自带 key · 优先使用（免费）": "我的模型 · 自帶 key · 優先使用（免費）",
+  "Cursor · 主 agent 用你的额度": "Cursor · 主 agent 用你的額度",
   "已配置 {n} 家：{names}": "已設定 {n} 家：{names}",
   "管理 →": "管理 →",
 };

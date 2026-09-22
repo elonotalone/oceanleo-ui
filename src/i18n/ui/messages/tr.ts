@@ -6478,6 +6478,7 @@ const tr: Record<string, string> = {
   "搜索对话": "Sohbette ara",
   "帮助与反馈": "Yardım ve geri bildirim",
   "我的模型 · 自带 key · 优先使用（免费）": "Modellerim · kendi anahtarın · öncelikli (ücretsiz)",
+  "Cursor · 主 agent 用你的额度": "Cursor · ana agent senin kotanı kullanır",
   "已配置 {n} 家：{names}": "{n} yapılandırıldı: {names}",
   "管理 →": "Yönet →",
 };
