@@ -394,7 +394,11 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.socket().server({ t: "turn_start", program: "cursor", acp_session: "s1" });
       view.socket().server({ t: "thought", program: "cursor", text: "hmm" });
       view.socket().server({ t: "delta", program: "cursor", text: "see `<img onerror=alert(1)>` " });
-      view.socket().server({ t: "delta", program: "cursor", text: "<img src=x onerror=alert(1)>" });
+      view.socket().server({
+        t: "delta",
+        program: "cursor",
+        text: "<img src=x onerror=alert(1)><script>alert(1)</script>",
+      });
       view.socket().server({ t: "tool", program: "cursor", id: "t1", kind: "edit", title: "Edit file", status: "in_progress", content: [], locations: [] });
       view.socket().server({
         t: "tool",
@@ -425,7 +429,9 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.socket().server({ t: "question", program: "cursor", id: "q1", title: "确认", questions: { weird: true } });
     });
     assert.equal(view.host.querySelector("img"), null);
-    assert.match(view.host.textContent || "", /<img/);
+    assert.equal(view.host.querySelector("script"), null);
+    assert.match(view.host.textContent || "", /<img onerror/);
+    assert.match(view.host.textContent || "", /<script>/);
     assert.equal(view.host.querySelectorAll('[data-oceanleo-cc-tool="t1"]').length, 1);
     assert.match(view.host.textContent || "", /Edit file/);
     assert.match(view.host.textContent || "", /用量 25%/);
@@ -458,6 +464,12 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.socket().sent.find((frame) => frame.t === "cancel"),
       { t: "cancel", program: "cursor" },
     );
+    await click(view.host.querySelector('[data-oceanleo-cc-close-session="cursor"]'));
+    assert.deepEqual(
+      view.socket().sent.find((frame) => frame.t === "close"),
+      { t: "close", program: "cursor" },
+    );
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-close-session="cursor"]'), null);
 
     await act(async () => {
       view.socket().server({ t: "models", program: "cursor", source: "none", models: [] });

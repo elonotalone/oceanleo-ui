@@ -3,6 +3,7 @@
 import { DEFAULT_INSTALL_DIR } from "./install-dir";
 import {
   asRecord,
+  isWsProgram,
   parseCommands,
   parseCost,
   parseMode,
@@ -70,6 +71,7 @@ export function initialDialogState(): DialogState {
     selectedMode: "",
     install: blankInstall(),
     login: blankLogin(),
+    opened: [],
   };
 }
 
@@ -93,7 +95,8 @@ export type DialogEvent =
   | { type: "open-login"; program: WsProgram }
   | { type: "close-login" }
   | { type: "permission-chose"; id: string; name: string }
-  | { type: "question-submitted"; id: string };
+  | { type: "question-submitted"; id: string }
+  | { type: "close-session"; program: WsProgram };
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -133,21 +136,30 @@ function mapOpenTurn(
   return { ...state, messages: [...messages, turn] };
 }
 
+function rememberSession(state: DialogState, frame: Record<string, unknown>): DialogState {
+  const named = str(frame.program);
+  const id = isWsProgram(named) ? named : state.program;
+  if (!id || !isWsProgram(id) || state.opened.includes(id)) return state;
+  return { ...state, opened: [...state.opened, id] };
+}
+
 function onTurnStart(state: DialogState, frame: Record<string, unknown>): DialogState {
   const acpSession = str(frame.acp_session);
   const last = state.messages[state.messages.length - 1];
-  if (last && last.kind === "turn" && !last.stop && last.acpSession === "") {
-    const messages = state.messages.slice();
-    messages[messages.length - 1] = { ...last, acpSession };
-    return { ...state, messages };
-  }
-  return {
-    ...state,
-    messages: [
-      ...state.messages,
-      { kind: "turn", id: nextId(), acpSession, stop: "", items: [] },
-    ],
-  };
+  const base =
+    last && last.kind === "turn" && !last.stop && last.acpSession === ""
+      ? {
+          ...state,
+          messages: state.messages.slice(0, -1).concat({ ...last, acpSession }),
+        }
+      : {
+          ...state,
+          messages: [
+            ...state.messages,
+            { kind: "turn" as const, id: nextId(), acpSession, stop: "", items: [] },
+          ],
+        };
+  return rememberSession(base, frame);
 }
 
 function appendText(
@@ -491,6 +503,16 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
             }),
           };
         }),
+      };
+    case "close-session":
+      return {
+        ...state,
+        opened: state.opened.filter((id) => id !== event.program),
+        programs: state.programs.map((row) =>
+          row.id === event.program ? { ...row, running: false } : row,
+        ),
+        busy: state.program === event.program ? false : state.busy,
+        agentBusy: state.program === event.program ? false : state.agentBusy,
       };
     case "question-submitted":
       return {

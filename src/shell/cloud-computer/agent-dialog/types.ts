@@ -156,6 +156,7 @@ export type DialogState = {
   selectedMode: string;
   install: InstallState;
   login: LoginState;
+  opened: WsProgram[];
 };
 
 export type AgentDialogController = {
@@ -187,6 +188,8 @@ export type AgentDialogController = {
   closeLogin: () => void;
   answerPermission: (id: string, option: string, name: string) => void;
   answerQuestion: (id: string, values: Record<string, string>) => void;
+  openedPrograms: WsProgram[];
+  closeProgram: (program: WsProgram) => void;
   retryConnect: () => void;
   offline: boolean;
   agentBusy: boolean;

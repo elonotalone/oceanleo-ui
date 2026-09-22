@@ -78,6 +78,16 @@ export function ProgramRow({
                 {tt("安装")}
               </button>
             ) : null}
+            {row?.running || dialog.openedPrograms.includes(id) ? (
+              <button
+                type="button"
+                data-oceanleo-cc-close-session={id}
+                onClick={() => dialog.closeProgram(id)}
+                className="px-1 text-[11px] text-neutral-400 underline"
+              >
+                {tt("关掉会话")}
+              </button>
+            ) : null}
             {row && row.installed && row.logged_in === false && isWsProgram(id) ? (
               <button
                 type="button"

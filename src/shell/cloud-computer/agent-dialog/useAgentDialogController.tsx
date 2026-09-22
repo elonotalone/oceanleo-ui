@@ -271,6 +271,16 @@ export function useAgentDialog({
     dispatch({ type: "cancel-local" });
   }, []);
 
+  const closeProgram = useCallback((program: WsProgram) => {
+    const sent = sendJson(socketRef.current, { t: "close", program });
+    dispatch({ type: "close-session", program });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "close", program });
+    })();
+  }, [ensureOpen]);
+
   const openInstall = useCallback((program: WsProgram) => {
     dispatch({ type: "open-install", program });
   }, []);
@@ -396,6 +406,8 @@ export function useAgentDialog({
     closeLogin,
     answerPermission,
     answerQuestion,
+    openedPrograms: state.opened,
+    closeProgram,
     retryConnect,
     offline: state.offline,
     agentBusy: state.agentBusy,

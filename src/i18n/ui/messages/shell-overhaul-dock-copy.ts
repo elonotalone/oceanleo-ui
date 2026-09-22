@@ -63,6 +63,7 @@ const SOURCE = {
   questionNeedsAnswer: "需要你回答",
   openingLogin: "正在打开登录",
   answerSubmitted: "已经提交",
+  closeSession: "关掉会话",
 } as const;
 
 export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
@@ -125,6 +126,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "This needs your answer",
     openingLogin: "Opening sign-in",
     answerSubmitted: "Submitted",
+    closeSession: "Close the session",
   },
   de: {
     connectCloud: "Cloud-Computer verbinden",
@@ -185,6 +187,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Das braucht Ihre Antwort",
     openingLogin: "Anmeldung wird geöffnet",
     answerSubmitted: "Gesendet",
+    closeSession: "Sitzung schließen",
   },
   es: {
     connectCloud: "Conectar un ordenador en la nube",
@@ -245,6 +248,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Hace falta tu respuesta",
     openingLogin: "Abriendo el inicio de sesión",
     answerSubmitted: "Enviado",
+    closeSession: "Cerrar la sesión",
   },
   "es-419": {
     connectCloud: "Conectar una computadora en la nube",
@@ -305,6 +309,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Hace falta tu respuesta",
     openingLogin: "Abriendo el inicio de sesión",
     answerSubmitted: "Enviado",
+    closeSession: "Cerrar la sesión",
   },
   fr: {
     connectCloud: "Connecter un ordinateur cloud",
@@ -365,6 +370,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Il faut votre réponse",
     openingLogin: "Ouverture de la connexion",
     answerSubmitted: "Envoyé",
+    closeSession: "Fermer la session",
   },
   it: {
     connectCloud: "Collega un computer cloud",
@@ -425,6 +431,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Serve la tua risposta",
     openingLogin: "Apertura dell’accesso",
     answerSubmitted: "Inviato",
+    closeSession: "Chiudi la sessione",
   },
   "pt-BR": {
     connectCloud: "Conectar um computador na nuvem",
@@ -485,6 +492,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Precisa da sua resposta",
     openingLogin: "Abrindo o login",
     answerSubmitted: "Enviado",
+    closeSession: "Fechar a sessão",
   },
   "pt-PT": {
     connectCloud: "Ligar um computador na nuvem",
@@ -545,6 +553,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Precisa da sua resposta",
     openingLogin: "A abrir o início de sessão",
     answerSubmitted: "Enviado",
+    closeSession: "Fechar a sessão",
   },
   vi: {
     connectCloud: "Kết nối máy tính đám mây",
@@ -605,6 +614,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Cần bạn trả lời",
     openingLogin: "Đang mở đăng nhập",
     answerSubmitted: "Đã gửi",
+    closeSession: "Đóng phiên",
   },
   tr: {
     connectCloud: "Bir bulut bilgisayar bağla",
@@ -665,6 +675,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "Yanıtınız gerekiyor",
     openingLogin: "Giriş açılıyor",
     answerSubmitted: "Gönderildi",
+    closeSession: "Oturumu kapat",
   },
   "zh-TW": {
     connectCloud: "接入雲電腦",
@@ -725,6 +736,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "需要你回答",
     openingLogin: "正在打開登入",
     answerSubmitted: "已經提交",
+    closeSession: "關掉會話",
   },
   ja: {
     connectCloud: "クラウドパソコンを接続",
@@ -785,6 +797,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "回答が必要です",
     openingLogin: "ログインを開いています",
     answerSubmitted: "送信しました",
+    closeSession: "セッションを閉じる",
   },
   ko: {
     connectCloud: "클라우드 컴퓨터 연결",
@@ -845,6 +858,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "답이 필요합니다",
     openingLogin: "로그인을 여는 중",
     answerSubmitted: "제출했습니다",
+    closeSession: "세션 닫기",
   },
   ar: {
     connectCloud: "توصيل حاسوب سحابي",
@@ -905,6 +919,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "هذا يحتاج إجابتك",
     openingLogin: "جارٍ فتح تسجيل الدخول",
     answerSubmitted: "تم الإرسال",
+    closeSession: "إغلاق الجلسة",
   },
   th: {
     connectCloud: "เชื่อมต่อคอมพิวเตอร์คลาวด์",
@@ -965,6 +980,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "ต้องการคำตอบจากคุณ",
     openingLogin: "กำลังเปิดหน้าเข้าสู่ระบบ",
     answerSubmitted: "ส่งแล้ว",
+    closeSession: "ปิดเซสชัน",
   },
   hi: {
     connectCloud: "क्लाउड कंप्यूटर जोड़ें",
@@ -1025,5 +1041,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     questionNeedsAnswer: "आपका जवाब चाहिए",
     openingLogin: "लॉग इन खोला जा रहा है",
     answerSubmitted: "भेज दिया गया",
+    closeSession: "सत्र बंद करें",
   },
 });
