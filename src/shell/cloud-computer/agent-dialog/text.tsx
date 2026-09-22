@@ -1,0 +1,29 @@
+"use client";
+
+// 正文只走文本节点。行内代码用 <code> 包文本，不解析 HTML。
+
+export function AgentText({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const parts = text.split(/(`[^`\n]+`)/g);
+  return (
+    <p className={className ?? "whitespace-pre-wrap text-[13px] text-neutral-200"}>
+      {parts.map((part, index) =>
+        part.startsWith("`") && part.endsWith("`") && part.length >= 2 ? (
+          <code
+            key={index}
+            className="rounded bg-neutral-800 px-1 font-mono text-[12px] text-neutral-100"
+          >
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </p>
+  );
+}
