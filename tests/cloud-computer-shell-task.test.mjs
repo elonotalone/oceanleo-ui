@@ -119,6 +119,18 @@ const { ShellTaskView } = await import(
     "./computer-state": stateStubUrl,
     "../../lib/cloud-computer-leo-api": leoApiStubUrl,
     "next/navigation": navStubUrl,
+    "../LeoAssistant": dataModule(`
+      export function openLeoAssistant(detail) {
+        globalThis.__openLeoDetail = detail;
+      }
+    `),
+    "../../i18n/ui/messages/shell-ended-copy": dataModule(`
+      export const SHELL_ENDED_ZH = {
+        missingSession: "缺少会话，这个 Shell 没有开始。",
+        endedExit: "这个 Shell 已结束，退出码 {code}。",
+        endedError: "这个 Shell 已结束，错误码 {code}。",
+      };
+    `),
   })
 );
 
@@ -212,9 +224,10 @@ test("shellPlanOf / shellSessionFromTask：缺字段视为已结束", () => {
   );
 });
 
-test("缺 sessionId 时显示这个 Shell 已结束", async () => {
+test("缺 sessionId 时说明缺少会话，不用正常结束那一句", async () => {
   const view = await render({ sessionId: "" });
-  assert.match(view.text(), /这个 Shell 已结束/);
+  assert.match(view.text(), /缺少会话/);
+  assert.equal(view.text().includes("这个 Shell 已结束"), false);
   assert.ok(view.host.querySelector("[data-oceanleo-cc-reopen-shell]"));
   assert.equal(view.host.querySelector("[data-oceanleo-cc-end-shell]"), null);
   view.cleanup();
@@ -283,10 +296,16 @@ test("再开一个会带 as_task 并 push /history?task=", async () => {
   view.cleanup();
 });
 
-test("顶栏 OceanLeo agent：点开卡片，放大，Esc 回到卡片", async () => {
+test("顶栏是火花和 leo，点击打开原来的面板", async () => {
+  globalThis.__openLeoDetail = null;
   const view = await render({});
   const toggle = view.host.querySelector("[data-oceanleo-cc-leo-toggle]");
   assert.ok(toggle);
+  assert.ok(toggle.querySelector("svg"));
+  assert.match(toggle.textContent || "", /leo/);
+  assert.equal((view.text() || "").includes("OceanLeo agent"), false);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-form]"), null);
+  assert.equal((view.text() || "").includes("缩到气泡"), false);
   const end = view.host.querySelector("[data-oceanleo-cc-end-shell]");
   assert.ok(end);
   assert.equal(
@@ -297,27 +316,6 @@ test("顶栏 OceanLeo agent：点开卡片，放大，Esc 回到卡片", async (
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await flush();
-  assert.equal(
-    view.host.querySelector("[data-oceanleo-cc-leo-form]")?.getAttribute("data-oceanleo-cc-leo-form"),
-    "card",
-  );
-  const enlarge = view.host.querySelector("[data-oceanleo-cc-leo-enlarge]");
-  assert.ok(enlarge);
-  await act(async () => {
-    enlarge.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  assert.equal(
-    view.host.querySelector("[data-oceanleo-cc-leo-form]")?.getAttribute("data-oceanleo-cc-leo-form"),
-    "large",
-  );
-  await act(async () => {
-    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  });
-  await flush();
-  assert.equal(
-    view.host.querySelector("[data-oceanleo-cc-leo-form]")?.getAttribute("data-oceanleo-cc-leo-form"),
-    "card",
-  );
+  assert.deepEqual(globalThis.__openLeoDetail, { toggle: true });
   view.cleanup();
 });

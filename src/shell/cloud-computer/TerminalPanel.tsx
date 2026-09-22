@@ -43,6 +43,51 @@ function pushPlainTail(current: string, chunk: string): string {
 
 export type ComputerTerminalStatus = "live" | "exit" | "error";
 
+export type TerminalInboundFrame = {
+  t?: string;
+  data_b64?: string;
+  exit_code?: number;
+  code?: string;
+};
+
+export type TerminalFrameEffect =
+  | { kind: "output"; dataB64: string }
+  | { kind: "exit"; code: string }
+  | { kind: "reconnect" }
+  | { kind: "error"; code: string }
+  | { kind: "ignore" };
+
+/**
+ * `error` 先再连一次。同一条连接上的第二次 `error` 才结束，并把错误码交出去。
+ * `exit` 直接结束，退出码原样变成字符串（0 也保留）。
+ */
+export function effectOfTerminalFrame(
+  frame: TerminalInboundFrame,
+  errorReconnectsUsed: number,
+): { effect: TerminalFrameEffect; errorReconnectsUsed: number } {
+  if (frame.t === "out" && frame.data_b64) {
+    return {
+      effect: { kind: "output", dataB64: frame.data_b64 },
+      errorReconnectsUsed,
+    };
+  }
+  if (frame.t === "exit") {
+    const code = frame.exit_code == null ? "" : String(frame.exit_code);
+    return { effect: { kind: "exit", code }, errorReconnectsUsed };
+  }
+  if (frame.t === "error") {
+    const code = frame.code ? frame.code : "error";
+    if (errorReconnectsUsed < 1) {
+      return {
+        effect: { kind: "reconnect" },
+        errorReconnectsUsed: errorReconnectsUsed + 1,
+      };
+    }
+    return { effect: { kind: "error", code }, errorReconnectsUsed };
+  }
+  return { effect: { kind: "ignore" }, errorReconnectsUsed };
+}
+
 export type ComputerTerminalHandle = {
   hostRef: RefObject<HTMLDivElement | null>;
   ready: boolean;
@@ -82,6 +127,8 @@ export function useComputerTerminal({
   const [status, setStatus] = useState<ComputerTerminalStatus>("live");
   const [detail, setDetail] = useState<string | undefined>();
   const tailRef = useRef("");
+  const errorReconnects = useRef(0);
+  const life = useRef(0);
 
   const sendText = useCallback((text: string) => {
     const socket = socketRef.current;
@@ -92,42 +139,64 @@ export function useComputerTerminal({
   const tail = useCallback(() => tailRef.current, []);
 
   const attachSocket = useCallback(
-    async (sid: string) => {
+    async (sid: string, lifeToken: number): Promise<boolean> => {
+      if (life.current !== lifeToken) return false;
       socketRef.current?.close();
       socketRef.current = null;
       const token = await accessToken();
-      if (!token) return;
-      const url = terminalWsUrl(computerId, sid, token);
-      const socket = new WebSocket(url);
+      if (life.current !== lifeToken) return false;
+      if (!token) return false;
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(terminalWsUrl(computerId, sid, token));
+      } catch {
+        return false;
+      }
+      if (life.current !== lifeToken) {
+        socket.close();
+        return false;
+      }
       socketRef.current = socket;
+      let retired = false;
       socket.addEventListener("message", (event) => {
-        let frame: {
-          t?: string;
-          data_b64?: string;
-          exit_code?: number;
-          code?: string;
-        } = {};
+        if (retired || life.current !== lifeToken) return;
+        let frame: TerminalInboundFrame = {};
         try {
-          frame = JSON.parse(String(event.data)) as typeof frame;
+          frame = JSON.parse(String(event.data)) as TerminalInboundFrame;
         } catch {
           return;
         }
-        if (frame.t === "out" && frame.data_b64) {
-          termRef.current?.write(decodeTermB64(frame.data_b64));
-        } else if (frame.t === "exit") {
+        const applied = effectOfTerminalFrame(frame, errorReconnects.current);
+        errorReconnects.current = applied.errorReconnectsUsed;
+        if (applied.effect.kind === "output") {
+          termRef.current?.write(decodeTermB64(applied.effect.dataB64));
+        } else if (applied.effect.kind === "exit") {
           setStatus("exit");
-          setDetail(String(frame.exit_code ?? ""));
-        } else if (frame.t === "error") {
+          setDetail(applied.effect.code);
+        } else if (applied.effect.kind === "reconnect") {
+          retired = true;
+          const code = frame.code ? frame.code : "error";
+          void attachSocket(sid, lifeToken).then((opened) => {
+            if (life.current !== lifeToken) return;
+            if (!opened) {
+              setStatus("error");
+              setDetail(code);
+            }
+          });
+        } else if (applied.effect.kind === "error") {
           setStatus("error");
-          setDetail(frame.code || "error");
+          setDetail(applied.effect.code);
         }
       });
+      return true;
     },
     [computerId],
   );
 
   useEffect(() => {
     if (!enabled || !sessionId) return;
+    const lifeToken = ++life.current;
+    errorReconnects.current = 0;
     tailRef.current = "";
     let disposed = false;
     let removeResize: (() => void) | undefined;
@@ -179,7 +248,7 @@ export function useComputerTerminal({
         sendText(data);
       });
       setReady(true);
-      await attachSocket(sessionId);
+      await attachSocket(sessionId, lifeToken);
       if (disposed) return;
       const sendResize = () => {
         fit.fit();
@@ -201,6 +270,7 @@ export function useComputerTerminal({
     })();
     return () => {
       disposed = true;
+      life.current += 1;
       if (pendingWrite) {
         tailRef.current = pushPlainTail(tailRef.current, pendingWrite);
         pendingWrite = "";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
@@ -8,14 +8,15 @@ import {
   type Computer,
 } from "../../lib/cloud-computer-api";
 import { useUI } from "../../i18n/ui/useUI";
+import { SHELL_ENDED_ZH } from "../../i18n/ui/messages/shell-ended-copy";
+import { openLeoAssistant } from "../LeoAssistant";
 import {
   canOpenShell,
   computerDisplayState,
   type ComputerDisplayState,
 } from "./computer-state";
 import { useComputerTerminal } from "./TerminalPanel";
-import { AgentDialogPane, useAgentDialog, type AgentDialogController } from "./useAgentDialog";
-import { LeoAgentPanel, type LeoAgentControl } from "./leo-agent/LeoAgentPanel";
+import { AgentDialogPane, useAgentDialog } from "./useAgentDialog";
 
 export type ShellTaskViewProps = {
   taskId: string;
@@ -27,12 +28,10 @@ export type ShellTaskViewProps = {
   onReopened?: (taskId: string) => void;
 };
 
-// W3 拥有 AgentDialogPane。onOpenLeo 已在合同里，类型还没落到那份文件时用断言传入。
-const DialogPane = AgentDialogPane as (props: {
-  dialog: AgentDialogController;
-  onBack: () => void;
-  onOpenLeo?: () => void;
-}) => ReturnType<typeof AgentDialogPane>;
+type ShellEnd =
+  | { kind: "exit"; code: string }
+  | { kind: "error"; code: string }
+  | { kind: "closed" };
 
 function statusDotClass(state: ComputerDisplayState | null): string {
   if (state === "ready") return "bg-emerald-500";
@@ -52,10 +51,17 @@ export function ShellTaskView({
   const tt = useUI();
   const router = useRouter();
   const missing = !computerId || !sessionId;
-  const [ended, setEnded] = useState(missing);
+  const sessionKey = `${computerId}\0${sessionId}`;
+  const [sessionKeySeen, setSessionKeySeen] = useState(sessionKey);
+  const [end, setEnd] = useState<ShellEnd | null>(null);
+  if (sessionKeySeen !== sessionKey) {
+    setSessionKeySeen(sessionKey);
+    setEnd(null);
+  }
   const [computer, setComputer] = useState<Computer | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const shellLive = !ended && !missing;
+  const showEnded = missing || end !== null;
+  const shellLive = !showEnded;
 
   const terminal = useComputerTerminal({
     computerId,
@@ -69,13 +75,12 @@ export function ShellTaskView({
   });
 
   useEffect(() => {
-    if (
-      terminal.status === "exit" ||
-      terminal.status === "error"
-    ) {
-      setEnded(true);
+    if (terminal.status === "exit") {
+      setEnd({ kind: "exit", code: terminal.detail ?? "" });
+    } else if (terminal.status === "error") {
+      setEnd({ kind: "error", code: terminal.detail ?? "" });
     }
-  }, [terminal.status]);
+  }, [terminal.detail, terminal.status]);
 
   useEffect(() => {
     let alive = true;
@@ -98,28 +103,11 @@ export function ShellTaskView({
     } catch {
       /* session may already be gone on the node */
     }
-    setEnded(true);
+    setEnd({ kind: "closed" });
     onEnded?.();
   }, [client, computerId, onEnded, sessionId]);
 
   const [reopenError, setReopenError] = useState<string | null>(null);
-  const [leoControl, setLeoControl] = useState<LeoAgentControl | null>(null);
-  const leoRef = useRef<LeoAgentControl | null>(null);
-  const onLeoControl = useCallback((control: LeoAgentControl) => {
-    leoRef.current = control;
-    setLeoControl((prev) => {
-      if (
-        prev &&
-        prev.form === control.form &&
-        prev.alert === control.alert &&
-        prev.toggleFromBar === control.toggleFromBar &&
-        prev.openLarge === control.openLarge
-      ) {
-        return prev;
-      }
-      return control;
-    });
-  }, []);
   const reopen = useCallback(async () => {
     setReopenError(null);
     let opened: { task_id?: string };
@@ -144,7 +132,13 @@ export function ShellTaskView({
 
   const state = computer ? computerDisplayState(computer) : null;
   const name = computer?.name || computerName || tt("接入云电脑");
-  const showEnded = ended || missing;
+  const endedSentence = missing
+    ? tt(SHELL_ENDED_ZH.missingSession)
+    : end?.kind === "exit"
+      ? tt(SHELL_ENDED_ZH.endedExit, { code: end.code })
+      : end?.kind === "error"
+        ? tt(SHELL_ENDED_ZH.endedError, { code: end.code })
+        : tt("这个 Shell 已结束");
 
   return (
     <div
@@ -170,16 +164,12 @@ export function ShellTaskView({
         )}
         <button
           type="button"
-          onClick={() => leoRef.current?.toggleFromBar()}
+          onClick={() => openLeoAssistant({ toggle: true })}
           data-oceanleo-cc-leo-toggle
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+          className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95"
         >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${leoControl?.alert ? "bg-emerald-400" : "bg-neutral-600"}`}
-            data-oceanleo-cc-leo-dot=""
-            data-lit={leoControl?.alert ? "1" : "0"}
-          />
-          {tt("OceanLeo agent")}
+          <ShellLeoSpark />
+          leo
         </button>
         {!showEnded && (
           <button
@@ -194,7 +184,12 @@ export function ShellTaskView({
       </div>
       {showEnded ? (
         <div className="grid flex-1 place-items-center p-8 text-center">
-          <p className="text-[14px] text-neutral-200">{tt("这个 Shell 已结束")}</p>
+          <p
+            className="text-[14px] text-neutral-200"
+            data-oceanleo-cc-shell-end={missing ? "missing" : end?.kind}
+          >
+            {endedSentence}
+          </p>
           {canOpenShell(computer) || computerId ? (
             <button
               type="button"
@@ -221,27 +216,33 @@ export function ShellTaskView({
           />
           {dialogOpen ? (
             <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-neutral-950">
-              <DialogPane
-                dialog={dialog}
-                onBack={() => setDialogOpen(false)}
-                onOpenLeo={() => leoRef.current?.openLarge()}
-              />
+              <AgentDialogPane dialog={dialog} onBack={() => setDialogOpen(false)} />
             </div>
           ) : null}
         </div>
       )}
-      <LeoAgentPanel
-        computerId={computerId}
-        sessionId={shellLive ? sessionId : null}
-        computer={computer}
-        client={client}
-        terminal={{
-          sendText: (text) => terminal.sendText(text),
-          tail: () => terminal.tail(),
-          ready: shellLive && terminal.ready,
-        }}
-        onControl={onLeoControl}
-      />
     </div>
+  );
+}
+
+function ShellLeoSpark() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+      <defs>
+        <linearGradient id="leo-shell-sparkle-g" x1="0" y1="0" x2="24" y2="24">
+          <stop offset="0%" stopColor="#818cf8" />
+          <stop offset="100%" stopColor="#c084fc" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"
+        fill="url(#leo-shell-sparkle-g)"
+      />
+      <path
+        d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z"
+        fill="url(#leo-shell-sparkle-g)"
+        opacity="0.65"
+      />
+    </svg>
   );
 }
