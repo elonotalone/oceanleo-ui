@@ -52,6 +52,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
+const reactUrl = pathToFileURL(require.resolve("react")).href;
 const uiStubUrl = dataModule(`
   export function useUI() {
     return (value, vars) => {
@@ -84,6 +85,9 @@ const terminalStubUrl = dataModule(`
       detail: snap.detail,
       sendText() {},
       tail() { return ""; },
+      retry() {
+        globalThis.__terminalRetryCalls = (globalThis.__terminalRetryCalls || 0) + 1;
+      },
     };
   }
 `);
@@ -97,9 +101,14 @@ const stateStubUrl = dataModule(`
     return Boolean(computer && computer.node_online);
   }
 `);
-const leoStubUrl = dataModule(`
-  export function openLeoAssistant(detail) {
-    globalThis.__openLeoDetail = detail;
+// 隔离 W6A 在途的 agent-dialog：ShellTaskView 只负责挂 pane，不管 pane 里面。
+const agentDialogStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function useAgentDialog() {
+    return { messages: [], busy: false };
+  }
+  export function AgentDialogPane() {
+    return React.createElement("div", { "data-oceanleo-cc-agent-dialog-pane": "1" });
   }
 `);
 const authStubUrl = dataModule(`
@@ -116,13 +125,21 @@ const xtermStubUrl = dataModule(`
     constructor() {
       this.cols = 80;
       this.rows = 24;
+      this.writes = [];
+      this.resetCount = 0;
+      globalThis.__termInstances = globalThis.__termInstances || [];
+      globalThis.__termInstances.push(this);
     }
     loadAddon() {}
     open() {}
-    write() {}
+    write(data) { this.writes.push(data); }
     onWriteParsed() {}
     onData() {}
     focus() {}
+    reset() {
+      this.resetCount += 1;
+      globalThis.__termResetCount = (globalThis.__termResetCount || 0) + 1;
+    }
     dispose() {}
   }
 `);
@@ -134,6 +151,16 @@ const fitStubUrl = dataModule(`
     }
   }
 `);
+const endedCopyStubUrl = dataModule(`
+  export const SHELL_ENDED_ZH = {
+    missingSession: "缺少会话，这个 Shell 没有开始。",
+    endedExit: "这个 Shell 已结束，退出码 {code}。",
+    endedGone: "这个 Shell 已经不存在了。",
+    reconnecting: "重新连接中…",
+    connectionLost: "连接断了。",
+    retryConnection: "重新连接",
+  };
+`);
 
 const { ShellTaskView } = await import(
   await compileModule("src/shell/cloud-computer/ShellTaskView.tsx", {
@@ -141,16 +168,17 @@ const { ShellTaskView } = await import(
     "../../lib/cloud-computer-api": apiStubUrl,
     "./TerminalPanel": terminalStubUrl,
     "./computer-state": stateStubUrl,
+    "./useAgentDialog": agentDialogStubUrl,
     "next/navigation": navStubUrl,
-    "../LeoAssistant": leoStubUrl,
   })
 );
 
-const { effectOfTerminalFrame, useComputerTerminal } = await import(
+const { useComputerTerminal } = await import(
   await compileModule("src/shell/cloud-computer/TerminalPanel.tsx", {
     "../../i18n/ui/useUI": uiStubUrl,
     "../../lib/cloud-computer-api": apiStubUrl,
     "../../lib/auth/client": authStubUrl,
+    "../../i18n/ui/messages/shell-ended-copy": endedCopyStubUrl,
     "@xterm/xterm": xtermStubUrl,
     "@xterm/addon-fit": fitStubUrl,
     "@xterm/xterm/css/xterm.css": dataModule("export {};"),
@@ -183,6 +211,9 @@ class FakeSocket {
     const event = { data: JSON.stringify(payload) };
     for (const fn of this.listeners.get("message") || []) fn(event);
   }
+  emitClose() {
+    for (const fn of this.listeners.get("close") || []) fn({ code: 1006, wasClean: false });
+  }
 }
 
 function makeClient() {
@@ -213,9 +244,29 @@ async function until(pred) {
   return Boolean(pred());
 }
 
+/** 真实时间轮询：重连退避是真实 setTimeout（1s 起），得真等。 */
+async function untilReal(pred, budgetMs = 3000) {
+  const start = Date.now();
+  while (Date.now() - start < budgetMs) {
+    if (pred()) return true;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+  }
+  return Boolean(pred());
+}
+
+async function sleepReal(ms) {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+}
+
 async function mountTerminal(sessionId) {
   FakeSocket.instances = [];
   globalThis.__terminalTokenCalls = 0;
+  globalThis.__termInstances = [];
+  globalThis.__termResetCount = 0;
   globalThis.WebSocket = FakeSocket;
   window.WebSocket = FakeSocket;
   const host = document.createElement("div");
@@ -243,6 +294,12 @@ async function mountTerminal(sessionId) {
     async emit(index, payload) {
       await act(async () => {
         FakeSocket.instances[index].emit(payload);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    },
+    async emitClose(index) {
+      await act(async () => {
+        FakeSocket.instances[index].emitClose();
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     },
@@ -292,46 +349,7 @@ async function render(props = {}) {
   };
 }
 
-test("error 先再连一次，第二次才带错误码结束；exit 带退出码", () => {
-  const first = effectOfTerminalFrame({ t: "error", code: "acp_start_failed" }, 0);
-  assert.equal(first.effect.kind, "reconnect");
-  assert.equal(first.errorReconnectsUsed, 1);
-  const second = effectOfTerminalFrame(
-    { t: "error", code: "acp_start_failed" },
-    first.errorReconnectsUsed,
-  );
-  assert.deepEqual(second.effect, { kind: "error", code: "acp_start_failed" });
-  assert.equal(second.errorReconnectsUsed, 1);
-  const exit = effectOfTerminalFrame({ t: "exit", exit_code: 0 }, 0);
-  assert.deepEqual(exit.effect, { kind: "exit", code: "0" });
-  const blank = effectOfTerminalFrame({ t: "error", code: "" }, 1);
-  assert.deepEqual(blank.effect, { kind: "error", code: "error" });
-});
-
-test("套接字收到 error 会再开一条连接，仍失败才写入错误码", async () => {
-  globalThis.__terminalTokenMode = "ok";
-  const view = await mountTerminal("sid_1");
-  await view.emit(0, { t: "error", code: "acp_start_failed" });
-  assert.equal(await until(() => FakeSocket.instances.length === 2), true);
-  assert.equal(view.probe().getAttribute("data-status"), "live");
-  await view.emit(1, { t: "error", code: "acp_start_failed" });
-  assert.equal(await until(() => view.probe().getAttribute("data-status") === "error"), true);
-  assert.equal(view.probe().getAttribute("data-detail"), "acp_start_failed");
-  assert.equal(FakeSocket.instances.length, 2);
-  await view.cleanup();
-});
-
-test("再连接拿不到令牌时，用第一次的错误码结束", async () => {
-  globalThis.__terminalTokenMode = "second-fails";
-  const view = await mountTerminal("sid_9");
-  await view.emit(0, { t: "error", code: "socket_lost" });
-  assert.equal(await until(() => view.probe().getAttribute("data-status") === "error"), true);
-  assert.equal(view.probe().getAttribute("data-detail"), "socket_lost");
-  assert.equal(FakeSocket.instances.length, 1);
-  await view.cleanup();
-});
-
-test("exit 帧把退出码写进 detail", async () => {
+test("exit 帧把退出码写进 detail，0 也是真退出码", async () => {
   globalThis.__terminalTokenMode = "ok";
   const view = await mountTerminal("sid_exit");
   await view.emit(0, { t: "exit", exit_code: 0 });
@@ -340,16 +358,56 @@ test("exit 帧把退出码写进 detail", async () => {
   await view.cleanup();
 });
 
-test("结束句写出错误码、退出码，缺会话不用同一句", async () => {
-  globalThis.__endedTerminal = { status: "error", detail: "acp_start_failed" };
-  const errored = await render({});
-  assert.match(errored.text(), /错误码 acp_start_failed/);
+test("detached 帧不结束：进入 reconnecting，1s 后用同一 session 重连，成功后清屏回 live", async () => {
+  globalThis.__terminalTokenMode = "ok";
+  const view = await mountTerminal("sid_1");
+  await view.emit(0, { t: "out", data_b64: Buffer.from("hello").toString("base64") });
+  await view.emit(0, { t: "detached", reason: "transport" });
+  assert.equal(view.probe().getAttribute("data-status"), "reconnecting");
+  // 退避 1s 后新开一条 WS，复用同一 session_id（不重复 POST /terminals）。
+  assert.equal(await untilReal(() => FakeSocket.instances.length === 2), true);
+  assert.match(FakeSocket.instances[1].url, /\/sid_1$/);
+  // 新 socket 就绪（桩同步 OPEN，补的 microtask 发 reconnect_ok）→ live + term.reset()。
   assert.equal(
-    errored.host.querySelector("[data-oceanleo-cc-shell-end]")?.getAttribute("data-oceanleo-cc-shell-end"),
-    "error",
+  await untilReal(() => view.probe().getAttribute("data-status") === "live"),
+    true,
   );
-  errored.cleanup();
+  assert.equal(globalThis.__termResetCount, 1);
+  // 断线前的输出还在（清屏只发生在重连成功那一刻，且由节点回放补上）。
+  assert.equal(globalThis.__termInstances[0].writes.length, 1);
+  await view.cleanup();
+});
 
+test("WS 非正常关闭也走 reconnecting，不冒充退出", async () => {
+  globalThis.__terminalTokenMode = "ok";
+  const view = await mountTerminal("sid_2");
+  await view.emitClose(0);
+  assert.equal(view.probe().getAttribute("data-status"), "reconnecting");
+  assert.equal(view.probe().getAttribute("data-detail"), "");
+  await view.cleanup();
+});
+
+test("error session_not_found → gone（节点说会话没了）", async () => {
+  globalThis.__terminalTokenMode = "ok";
+  const view = await mountTerminal("sid_3");
+  await view.emit(0, { t: "error", code: "session_not_found" });
+  assert.equal(await until(() => view.probe().getAttribute("data-status") === "gone"), true);
+  await view.cleanup();
+});
+
+test("重连时拿不到令牌：保持 reconnecting，不谎报结束也不黑屏装活", async () => {
+  globalThis.__terminalTokenMode = "second-fails";
+  const view = await mountTerminal("sid_9");
+  await view.emit(0, { t: "detached", reason: "transport" });
+  assert.equal(view.probe().getAttribute("data-status"), "reconnecting");
+  // 1s 退避到期后尝试重连，令牌拿不到 → reconnect_failed → 继续退避，仍 reconnecting。
+  await sleepReal(1400);
+  assert.equal(FakeSocket.instances.length, 1);
+  assert.equal(view.probe().getAttribute("data-status"), "reconnecting");
+  await view.cleanup();
+});
+
+test("结束句只在 exit/gone/缺会话；退出码只在 exit 帧后出现", async () => {
   globalThis.__endedTerminal = { status: "exit", detail: "7" };
   const exited = await render({});
   assert.match(exited.text(), /退出码 7/);
@@ -358,6 +416,16 @@ test("结束句写出错误码、退出码，缺会话不用同一句", async ()
     "exit",
   );
   exited.cleanup();
+
+  globalThis.__endedTerminal = { status: "gone", detail: "" };
+  const gone = await render({});
+  assert.match(gone.text(), /这个 Shell 已经不存在了/);
+  assert.equal(gone.text().includes("退出码"), false);
+  assert.equal(
+    gone.host.querySelector("[data-oceanleo-cc-shell-end]")?.getAttribute("data-oceanleo-cc-shell-end"),
+    "gone",
+  );
+  gone.cleanup();
 
   globalThis.__endedTerminal = { status: "live", detail: "" };
   const missingComputer = await render({ computerId: "" });
@@ -375,54 +443,88 @@ test("结束句写出错误码、退出码，缺会话不用同一句", async ()
   missingSession.cleanup();
 });
 
-test("顶栏只有火花和 leo，没有新面板，也没有右下角覆盖", async () => {
-  globalThis.__endedTerminal = { status: "live", detail: "" };
-  globalThis.__openLeoDetail = null;
+test("reconnecting 只是终端上方一条细提示，页面不进入结束态", async () => {
+  globalThis.__endedTerminal = { status: "reconnecting", detail: "" };
   const view = await render({});
-  const toggle = view.host.querySelector("[data-oceanleo-cc-leo-toggle]");
-  assert.ok(toggle);
-  assert.equal(toggle.textContent, "leo");
-  assert.ok(toggle.querySelector("svg"));
-  const composer = readFileSync(resolve(repo, "src/shell/LeoComposer.tsx"), "utf8");
-  const buttonClass =
-    "flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95";
-  assert.equal(composer.includes(`className="${buttonClass}"`), true);
-  assert.equal(toggle.className, buttonClass);
-  assert.equal(view.text().includes("OceanLeo agent"), false);
-  assert.equal(view.text().includes("缩到气泡"), false);
+  assert.equal(
+    view.host.querySelector("[data-oceanleo-cc-shell-task]")?.getAttribute("data-ended"),
+    "0",
+  );
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-reconnecting]"));
+  assert.match(view.text(), /重新连接中…/);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-shell-end]"), null);
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-end-shell]"));
+  view.cleanup();
+});
+
+test("60s 没接回来：显示「连接断了」+「重新连接」按钮，点了触发 retry，不算结束", async () => {
+  globalThis.__endedTerminal = { status: "error", detail: "connection_lost" };
+  globalThis.__terminalRetryCalls = 0;
+  const view = await render({});
+  assert.equal(
+    view.host.querySelector("[data-oceanleo-cc-shell-task]")?.getAttribute("data-ended"),
+    "0",
+  );
+  assert.match(view.text(), /连接断了/);
+  assert.equal(view.text().includes("这个 Shell 已结束"), false);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-shell-end]"), null);
+  const retry = view.host.querySelector("[data-oceanleo-cc-retry-connection]");
+  assert.ok(retry);
+  await act(async () => {
+    retry.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(globalThis.__terminalRetryCalls, 1);
+  view.cleanup();
+});
+
+test("顶栏没有 leo 旧入口：无 toggle、无悬浮覆盖，源码不再出现 onOpenLeo/LeoAgentPanel", async () => {
+  globalThis.__endedTerminal = { status: "live", detail: "" };
+  const view = await render({});
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-toggle]"), null);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-form]"), null);
   const overlay = [...view.host.querySelectorAll("div")].find((el) => {
     const className = String(el.className || "");
     return className.includes("bottom-3") && className.includes("right-3");
   });
   assert.equal(overlay, undefined);
-  await act(async () => {
-    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  assert.deepEqual(globalThis.__openLeoDetail, { toggle: true });
   const source = readFileSync(resolve(repo, "src/shell/cloud-computer/ShellTaskView.tsx"), "utf8");
+  assert.equal(source.includes("data-oceanleo-cc-leo-toggle"), false);
+  assert.equal(source.includes("onOpenLeo"), false);
   assert.equal(source.includes("LeoAgentPanel"), false);
-  assert.equal(source.includes("OceanLeo agent"), false);
+  assert.equal(source.includes("openLeoAssistant"), false);
   view.cleanup();
 });
 
-test("结束句接进外壳词典，17 个语种都有错误码占位", () => {
+test("结束与断线句接进外壳词典，17 个语种全 key", () => {
   const aggregator = readFileSync(
     resolve(repo, "src/i18n/ui/messages/shell-overhaul-copy.ts"),
     "utf8",
   );
   assert.equal(aggregator.includes('from "./shell-ended-copy"'), true);
   assert.equal(aggregator.includes("SHELL_ENDED_MESSAGES"), true);
-  assert.equal(SHELL_ENDED_MESSAGES.zh[SHELL_ENDED_ZH.endedError].includes("{code}"), true);
-  assert.equal(
-    SHELL_ENDED_MESSAGES.en[SHELL_ENDED_ZH.endedError],
-    "This Shell has ended. Error code {code}.",
-  );
-  assert.notEqual(SHELL_ENDED_ZH.missingSession, "这个 Shell 已结束");
-  for (const locale of Object.keys(SHELL_ENDED_MESSAGES)) {
+  const keys = [
+    "missingSession",
+    "endedExit",
+    "endedGone",
+    "reconnecting",
+    "connectionLost",
+    "retryConnection",
+  ];
+  const locales = Object.keys(SHELL_ENDED_MESSAGES);
+  assert.equal(locales.length, 17);
+  for (const locale of locales) {
     const table = SHELL_ENDED_MESSAGES[locale];
-    assert.equal(table[SHELL_ENDED_ZH.endedError].includes("{code}"), true);
+    for (const key of keys) {
+      const zh = SHELL_ENDED_ZH[key];
+      assert.equal(typeof table[zh], "string", `${locale} 缺 ${key}`);
+      assert.notEqual(table[zh].length, 0, `${locale} 的 ${key} 是空串`);
+    }
     assert.equal(table[SHELL_ENDED_ZH.endedExit].includes("{code}"), true);
     assert.notEqual(table[SHELL_ENDED_ZH.missingSession], table[SHELL_ENDED_ZH.endedExit]);
+    assert.notEqual(table[SHELL_ENDED_ZH.endedGone], table[SHELL_ENDED_ZH.endedExit]);
   }
+  assert.equal(
+    SHELL_ENDED_MESSAGES.en[SHELL_ENDED_ZH.endedGone],
+    "This Shell no longer exists.",
+  );
 });

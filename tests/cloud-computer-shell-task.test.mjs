@@ -86,19 +86,15 @@ const terminalStubUrl = dataModule(`
   export function decodeTermB64(t) { return t; }
   export function TerminalPanel() { return null; }
 `);
-const leoApiStubUrl = dataModule(`
-  async function skip() { return { ok: false, error: "skip" }; }
-  export const getLeoState = skip;
-  export const putLeoState = skip;
-  export const postLeoNote = skip;
-  export const deleteLeoNote = skip;
-  export const postLeoTurn = skip;
-  export const getLeoWatches = skip;
-  export const postLeoWatch = skip;
-  export const deleteLeoWatch = skip;
-  export const listLeoNotifications = skip;
-  export const markNotificationsRead = skip;
-  export const getTask = skip;
+// 隔离 W6A 在途的 agent-dialog：这份测试只管 ShellTaskView 自己的外壳行为。
+const agentDialogStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function useAgentDialog() {
+    return { messages: [], busy: false };
+  }
+  export function AgentDialogPane() {
+    return React.createElement("div", { "data-oceanleo-cc-agent-dialog-pane": "1" });
+  }
 `);
 const stateStubUrl = dataModule(`
   export function computerDisplayState(computer) {
@@ -117,18 +113,16 @@ const { ShellTaskView } = await import(
     "../../lib/cloud-computer-api": apiStubUrl,
     "./TerminalPanel": terminalStubUrl,
     "./computer-state": stateStubUrl,
-    "../../lib/cloud-computer-leo-api": leoApiStubUrl,
+    "./useAgentDialog": agentDialogStubUrl,
     "next/navigation": navStubUrl,
-    "../LeoAssistant": dataModule(`
-      export function openLeoAssistant(detail) {
-        globalThis.__openLeoDetail = detail;
-      }
-    `),
     "../../i18n/ui/messages/shell-ended-copy": dataModule(`
       export const SHELL_ENDED_ZH = {
         missingSession: "缺少会话，这个 Shell 没有开始。",
         endedExit: "这个 Shell 已结束，退出码 {code}。",
-        endedError: "这个 Shell 已结束，错误码 {code}。",
+        endedGone: "这个 Shell 已经不存在了。",
+        reconnecting: "重新连接中…",
+        connectionLost: "连接断了。",
+        retryConnection: "重新连接",
       };
     `),
   })
@@ -264,13 +258,8 @@ test("进行中的 Shell 能改用对话界面，终端节点仍留在页面上"
     open.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await flush();
-  const cursor = view.host.querySelector("[data-oceanleo-cc-dialog-cursor]");
-  assert.ok(cursor);
-  await act(async () => {
-    cursor.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-dialog-input]"));
+  // pane 里面是 W6A 的面（这里打桩）；ShellTaskView 负责挂上 pane 且终端不卸载。
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-agent-dialog-pane]"));
   assert.ok(view.host.querySelector("[data-oceanleo-cc-xterm]"));
   view.cleanup();
 });
@@ -296,26 +285,12 @@ test("再开一个会带 as_task 并 push /history?task=", async () => {
   view.cleanup();
 });
 
-test("顶栏是火花和 leo，点击打开原来的面板", async () => {
-  globalThis.__openLeoDetail = null;
+test("顶栏不再有 leo 入口（入口统一进对话框输入框，合同 §2.1）", async () => {
   const view = await render({});
-  const toggle = view.host.querySelector("[data-oceanleo-cc-leo-toggle]");
-  assert.ok(toggle);
-  assert.ok(toggle.querySelector("svg"));
-  assert.match(toggle.textContent || "", /leo/);
-  assert.equal((view.text() || "").includes("OceanLeo agent"), false);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-toggle]"), null);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-form]"), null);
   assert.equal((view.text() || "").includes("缩到气泡"), false);
-  const end = view.host.querySelector("[data-oceanleo-cc-end-shell]");
-  assert.ok(end);
-  assert.equal(
-    Boolean(toggle.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING),
-    true,
-  );
-  await act(async () => {
-    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  assert.deepEqual(globalThis.__openLeoDetail, { toggle: true });
+  // 顶栏仍有结束按钮，Shell 自己的操作不丢。
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-end-shell]"));
   view.cleanup();
 });
