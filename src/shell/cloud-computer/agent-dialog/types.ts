@@ -16,11 +16,17 @@ export const PROGRAM_LABEL: Record<AgentProgram, string> = {
 
 export type DirCapability = "full" | "link_only" | "none";
 
+// 认证真相只有这一种：login=浏览器登录确认、key=贴了 key、none=确认没登录、
+// unknown=探针没结论、malformed=存的登录材料坏了（网关会幂等修复后再探）。
+// logged_in 只是 auth ∈ {login,key} 的派生，不再单独解析。
+export type ProgramAuth = "login" | "key" | "none" | "unknown" | "malformed";
+
 export type ProgramStatus = {
   id: WsProgram;
   installed: boolean;
   path: string;
   version: string;
+  auth: ProgramAuth;
   logged_in: boolean | null;
   dir_capability: DirCapability;
   running: boolean;
@@ -132,11 +138,19 @@ export type InstallState = {
   failedText: string;
 };
 
+// 登录卡的相位：idle=没开；opening=已发 login 帧、等 login_url；waiting=链接已出、
+// 等浏览器完成（needsCode 时还要贴码）；done=探针确认已认证，亮绿一秒自动收起；
+// failed=有明确原因（failed 字段是合同 I3 的 code）。
+export type LoginPhase = "idle" | "opening" | "waiting" | "done" | "failed";
+
 export type LoginState = {
   open: boolean;
   program: WsProgram | null;
+  phase: LoginPhase;
   url: string;
   code: string;
+  needsCode: boolean;
+  codeDraft: string;
   hint: string;
   failed: string;
   pending: boolean;
@@ -186,6 +200,8 @@ export type AgentDialogController = {
   login: LoginState;
   openLogin: (program: WsProgram) => void;
   closeLogin: () => void;
+  submitLoginCode: (program: WsProgram, code: string) => void;
+  cancelLogin: (program: WsProgram) => void;
   answerPermission: (id: string, option: string, name: string) => void;
   answerQuestion: (id: string, values: Record<string, string>) => void;
   openedPrograms: WsProgram[];

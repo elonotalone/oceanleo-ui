@@ -6,6 +6,7 @@ import type {
   ModeOption,
   PermissionOption,
   PlanEntry,
+  ProgramAuth,
   ProgramStatus,
   ToolCard,
   ToolContent,
@@ -44,6 +45,24 @@ const TOOL_KINDS = new Set<ToolKind>([
 
 const TOOL_STATUSES = new Set<ToolStatus>(["pending", "in_progress", "completed", "failed"]);
 
+const PROGRAM_AUTHS = new Set<ProgramAuth>(["login", "key", "none", "unknown", "malformed"]);
+
+// auth 是服务端探针结论；老帧没有 auth 字段时按 logged_in 退化（true→login、false→none、
+// 缺→unknown），不向用户假装有结论。
+export function parseProgramAuth(row: Record<string, unknown>): ProgramAuth {
+  const raw = str(row.auth);
+  if (PROGRAM_AUTHS.has(raw as ProgramAuth)) return raw as ProgramAuth;
+  if (row.logged_in === true) return "login";
+  if (row.logged_in === false) return "none";
+  return "unknown";
+}
+
+export function loggedInOf(auth: ProgramAuth): boolean | null {
+  if (auth === "login" || auth === "key") return true;
+  if (auth === "none" || auth === "malformed") return false;
+  return null;
+}
+
 export function parsePrograms(raw: unknown): ProgramStatus[] {
   if (!Array.isArray(raw)) return [];
   const out: ProgramStatus[] = [];
@@ -53,12 +72,14 @@ export function parsePrograms(raw: unknown): ProgramStatus[] {
     const cap = row.dir_capability;
     const dir_capability: DirCapability =
       cap === "link_only" || cap === "none" ? cap : "full";
+    const auth = parseProgramAuth(row);
     out.push({
       id: row.id as WsProgram,
       installed: row.installed === true,
       path: str(row.path),
       version: str(row.version),
-      logged_in: row.logged_in === true ? true : row.logged_in === false ? false : null,
+      auth,
+      logged_in: loggedInOf(auth),
       dir_capability,
       running: row.running === true,
     });
