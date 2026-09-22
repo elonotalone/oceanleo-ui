@@ -105,7 +105,14 @@ function jsonResponse(status, body) {
   };
 }
 
-function installFetch({ leoStatus = 200, leoBody = { reply: "在的。", task: null } } = {}) {
+const ANCHOR = { left: 460, top: 600, right: 500, bottom: 628, width: 40, height: 28 };
+
+function installFetch({
+  leoStatus = 200,
+  leoBody = { reply: "在的。", action: "reply", entries: null, task: null, error: "" },
+  transcriptStatus = 200,
+  transcriptEntries = [],
+} = {}) {
   calls.length = 0;
   globalThis.fetch = async (url, init = {}) => {
     const call = {
@@ -116,7 +123,20 @@ function installFetch({ leoStatus = 200, leoBody = { reply: "在的。", task: n
     calls.push(call);
     if (call.url.includes("/v1/assistant/leo-turn")) {
       if (leoStatus !== 200) return jsonResponse(leoStatus, { detail: "no" });
-      return jsonResponse(200, leoBody);
+      const body = { ...leoBody };
+      if (!Array.isArray(body.entries)) {
+        // 默认照合同 I4：entries 是这一轮新增的两条（用户 + leo）。
+        body.entries = [
+          { id: `srv-u-${calls.length}`, role: "user", text: call.body?.text ?? "" },
+          { id: `srv-l-${calls.length}`, role: "leo", text: body.reply ?? "", task: body.task ?? null },
+        ];
+      }
+      return jsonResponse(200, body);
+    }
+    if (call.url.includes("/v1/assistant/leo-transcript")) {
+      if (call.method === "DELETE") return jsonResponse(200, { ok: true });
+      if (transcriptStatus !== 200) return jsonResponse(transcriptStatus, { detail: "no" });
+      return jsonResponse(200, { entries: transcriptEntries });
     }
     if (call.url.includes("/v1/agent/tasks")) {
       return jsonResponse(500, { detail: "card must not create tasks" });
@@ -137,8 +157,7 @@ async function settle() {
   }
 }
 
-async function renderAssistant({ resetTranscript = true } = {}) {
-  if (resetTranscript) window.localStorage.removeItem("oceanleo:leo-transcript:v1");
+async function renderAssistant() {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -157,21 +176,19 @@ async function renderAssistant({ resetTranscript = true } = {}) {
   };
 }
 
-async function openWithText(text) {
+async function openPanel(detail = { text: "一段需要处理的原文", source: "selection" }) {
   await act(async () => {
-    window.dispatchEvent(
-      new CustomEvent("oceanleo:open-leo", {
-        detail: { text, source: "selection" },
-      }),
-    );
+    window.dispatchEvent(new CustomEvent("oceanleo:open-leo", { detail }));
   });
   await settle();
 }
 
 async function typeAndSend(host, value) {
-  const input = host.querySelector('input[type="text"]');
-  const send = host.querySelector('button[type="submit"]');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  const input = host.querySelector("textarea[data-leo-composer]");
+  const send = [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "发送");
+  assert.ok(input, "composer textarea");
+  assert.ok(send, "send button");
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
   await act(async () => {
     setter.call(input, value);
     input.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -181,6 +198,22 @@ async function typeAndSend(host, value) {
     send.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await settle();
+}
+
+function historyPings() {
+  let count = 0;
+  const onHistory = () => {
+    count += 1;
+  };
+  window.addEventListener("oceanleo:history-changed", onHistory);
+  return {
+    get count() {
+      return count;
+    },
+    stop() {
+      window.removeEventListener("oceanleo:history-changed", onHistory);
+    },
+  };
 }
 
 test("输入分界：五类和现有快捷动作留在面板，其他句子不留", () => {
@@ -210,119 +243,184 @@ test("输入分界：五类和现有快捷动作留在面板，其他句子不�
   }
 });
 
-test("放大后面板是四边各 3% 的矩形，再按一次回到原来的宽高", async () => {
+test("带锚点打开：面板底边在锚点之上 8px、右对齐，发送键不被盖住", async () => {
+  installFetch();
   const view = await renderAssistant();
   try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
     const frame = view.host.querySelector("[data-leo-panel]");
-    const grow = view.host.querySelector('[aria-label="放大"]');
-    assert.equal(frame.getAttribute("data-leo-shape"), "rect");
     assert.equal(frame.getAttribute("data-leo-expanded"), "0");
-    assert.equal(frame.style.width, "384px");
-    assert.equal(frame.style.height, "560px");
-    assert.equal(view.host.querySelector("button.fixed.bottom-5"), null);
-    assert.match(frame.querySelector(".font-semibold").textContent, /\bleo\b/);
-    assert.doesNotMatch(view.host.textContent, /OceanLeo agent/);
-
-    await act(async () => {
-      grow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(frame.getAttribute("data-leo-expanded"), "1");
-    assert.equal(frame.getAttribute("data-leo-shape"), "rect");
-    assert.equal(frame.style.left, "3%");
-    assert.equal(frame.style.top, "3%");
-    assert.equal(frame.style.width, "94%");
-    assert.equal(frame.style.height, "94%");
-    assert.equal(frame.style.right, "");
-    assert.equal(frame.style.bottom, "");
-    assert.match(frame.className, /rounded-2xl/);
-    assert.doesNotMatch(frame.className, /rounded-full/);
-    assert.equal(view.host.querySelector("button.fixed.bottom-5"), null);
-    assert.equal((grow.textContent || "").trim(), "放大");
-
-    await act(async () => {
-      grow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(frame.getAttribute("data-leo-expanded"), "0");
-    assert.equal(frame.style.width, "384px");
-    assert.equal(frame.style.height, "560px");
-    assert.equal(frame.getAttribute("data-leo-shape"), "rect");
-    assert.equal(view.host.querySelector("button.fixed.bottom-5"), null);
+    const left = parseFloat(frame.style.left);
+    const top = parseFloat(frame.style.top);
+    const width = parseFloat(frame.style.width);
+    const height = parseFloat(frame.style.height);
+    assert.equal(left + width, ANCHOR.right);
+    assert.equal(ANCHOR.top - (top + height), 8);
+    // 发送键（锚点所在输入框那一行）在面板底边之下 → 不被盖住。
+    const send = [...view.host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "发送");
+    assert.ok(send);
+    assert.ok(top + height <= ANCHOR.top);
   } finally {
     await view.cleanup();
   }
 });
 
-function historyPings() {
-  let count = 0;
-  const onHistory = () => {
-    count += 1;
-  };
-  window.addEventListener("oceanleo:history-changed", onHistory);
-  return {
-    get count() {
-      return count;
-    },
-    stop() {
-      window.removeEventListener("oceanleo:history-changed", onHistory);
-    },
-  };
-}
+test("紧凑态标题栏拖拽改变 left/top；放大到 94vw×90vh 居中，再按一次回到紧凑", async () => {
+  installFetch();
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    const frame = view.host.querySelector("[data-leo-panel]");
+    const titlebar = frame.querySelector(".cursor-move");
+    assert.ok(titlebar, "title bar");
+    const beforeLeft = parseFloat(frame.style.left);
+    const beforeTop = parseFloat(frame.style.top);
 
-test("输入「你好」走 leo-turn，不建任务，也不说已经放进「我的任务」", async () => {
-  installFetch({ leoBody: { reply: "在的。", task: null } });
+    const down = new window.MouseEvent("pointerdown", { bubbles: true, clientX: beforeLeft + 50, clientY: beforeTop + 10 });
+    await act(async () => {
+      titlebar.dispatchEvent(down);
+    });
+    await act(async () => {
+      titlebar.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true, clientX: beforeLeft + 150, clientY: beforeTop + 70 }));
+    });
+    await act(async () => {
+      titlebar.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, clientX: beforeLeft + 150, clientY: beforeTop + 70 }));
+    });
+    assert.equal(parseFloat(frame.style.left), beforeLeft + 100);
+    assert.equal(parseFloat(frame.style.top), beforeTop + 60);
+
+    const grow = view.host.querySelector('[aria-label="放大"]');
+    await act(async () => {
+      grow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(frame.getAttribute("data-leo-expanded"), "1");
+    const width = Math.round(window.innerWidth * 0.94);
+    const height = Math.round(window.innerHeight * 0.9);
+    assert.equal(frame.style.width, `${width}px`);
+    assert.equal(frame.style.height, `${height}px`);
+    assert.equal(frame.style.left, `${Math.round((window.innerWidth - width) / 2)}px`);
+    assert.equal(frame.style.top, `${Math.round((window.innerHeight - height) / 2)}px`);
+
+    await act(async () => {
+      grow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(frame.getAttribute("data-leo-expanded"), "0");
+    assert.equal(frame.style.width, "384px");
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test("打开面板即拉服务端记录，紧凑态就显示；重开再拉一次（记录存服务器）", async () => {
+  installFetch({
+    transcriptEntries: [
+      { id: "e1", role: "user", text: "之前的问题" },
+      { id: "e2", role: "leo", text: "之前的回答", task: null },
+    ],
+  });
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    const list = view.host.querySelector("[data-leo-transcript]");
+    assert.ok(list, "紧凑态也渲染记录");
+    assert.match(list.textContent, /之前的问题/);
+    assert.match(list.textContent, /之前的回答/);
+    const gets = calls.filter((c) => c.url.includes("/v1/assistant/leo-transcript") && c.method === "GET");
+    assert.ok(gets.length >= 1);
+    assert.match(gets[0].url, /limit=100/);
+    // 没有放大也看得见——不需要点「放大」。
+    assert.equal(view.host.querySelector("[data-leo-panel]").getAttribute("data-leo-expanded"), "0");
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test("未登录：记录区显示「登录后 leo 才能记住对话」", async () => {
+  installFetch({ transcriptStatus: 401 });
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    assert.ok(view.host.querySelector("[data-leo-transcript-anonymous]"));
+    assert.match(view.host.textContent, /登录后 leo 才能记住对话/);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test("输入「你好」走 leo-turn（带 context、不带 history），不建任务", async () => {
+  installFetch({ leoBody: { reply: "在的。", action: "reply", entries: null, task: null, error: "" } });
   const view = await renderAssistant();
   const history = historyPings();
   try {
+    await openPanel({
+      toggle: true,
+      source: "input",
+      anchor: ANCHOR,
+      context: { page: "shell", computerId: "c1", shellSessionId: "s1", computerName: "新加坡" },
+    });
     await typeAndSend(view.host, "你好");
     const turns = postsTo("/v1/assistant/leo-turn");
     assert.equal(turns.length, 1);
     assert.equal(turns[0].body.site_id, "test-site");
     assert.equal(turns[0].body.text, "你好");
-    assert.equal(turns[0].body.board_text, "");
-    assert.deepEqual(turns[0].body.history, []);
+    assert.equal(typeof turns[0].body.board_text, "string");
+    assert.deepEqual(turns[0].body.context, {
+      page: "shell",
+      computer_id: "c1",
+      shell_session_id: "s1",
+    });
+    assert.equal("history" in turns[0].body, false);
     assert.equal(postsTo("/v1/agent/tasks").length, 0);
     assert.match(view.host.textContent, /在的。/);
-    assert.doesNotMatch(view.host.textContent, /已经放进「我的任务」/);
     assert.equal(history.count, 0);
-    assert.equal(view.host.querySelector('a[href*="/history?task="]'), null);
 
-    await typeAndSend(view.host, "在吗");
-    const again = postsTo("/v1/assistant/leo-turn");
-    assert.equal(again.length, 2);
-    assert.equal(again[1].body.history.length, 2);
-    assert.equal(again[1].body.history[0].role, "user");
-    assert.equal(again[1].body.history[0].content, "你好");
-    assert.equal(again[1].body.history[1].role, "leo");
-    assert.equal(again[1].body.history[1].content, "在的。");
-    assert.equal(postsTo("/v1/agent/tasks").length, 0);
+    // 放大态显示「这台电脑：新加坡」（来自 context，不发请求）。
+    const grow = view.host.querySelector('[aria-label="放大"]');
+    await act(async () => {
+      grow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const line = view.host.querySelector("[data-leo-computer-line]");
+    assert.ok(line);
+    assert.match(line.textContent, /这台电脑/);
+    assert.match(line.textContent, /新加坡/);
   } finally {
     history.stop();
     await view.cleanup();
   }
 });
 
-test("leo-turn 带回 task_id 时，卡片里是任务标题链接，不展开执行过程", async () => {
+test("leo-turn 带回任务时，那句带任务卡片（标题 + 「打开任务」链接），不展开执行过程", async () => {
   installFetch({
     leoBody: {
-      reply: "已经交给 OceanLeo agent。",
-      task: {
-        task_id: "task_abc",
-        title: "产品介绍网站",
-        href: "/history?task=task_abc",
-      },
+      reply: "已经建成任务。",
+      action: "task",
+      entries: [
+        { id: "u1", role: "user", text: "帮我做一个产品介绍网站" },
+        {
+          id: "l1",
+          role: "leo",
+          text: "已经建成任务。",
+          task: { task_id: "task_abc", title: "产品介绍网站", href: "/history?task=task_abc" },
+        },
+      ],
+      task: { task_id: "task_abc", title: "产品介绍网站", href: "/history?task=task_abc" },
+      error: "",
     },
   });
   const view = await renderAssistant();
   const history = historyPings();
   try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
     await typeAndSend(view.host, "帮我做一个产品介绍网站");
     assert.equal(postsTo("/v1/assistant/leo-turn").length, 1);
     assert.equal(postsTo("/v1/agent/tasks").length, 0);
-    const link = view.host.querySelector('a[href*="/history?task="]');
+    const card = view.host.querySelector("[data-leo-task-card]");
+    assert.ok(card, "任务卡片");
+    assert.match(card.textContent, /产品介绍网站/);
+    const link = card.querySelector('a[href*="/history?task="]');
     assert.ok(link);
     assert.equal(link.getAttribute("href"), "/history?task=task_abc");
-    assert.equal((link.textContent || "").trim(), "产品介绍网站");
-    assert.equal(link.getAttribute("target"), null);
+    assert.equal((link.textContent || "").trim(), "打开任务");
     assert.equal(history.count, 1);
     assert.equal(view.host.querySelector("[data-task-messages]"), null);
   } finally {
@@ -335,7 +433,7 @@ test("输入「翻译」且板上有字时，不请求 leo-turn，也不建任�
   installFetch();
   const view = await renderAssistant();
   try {
-    await openWithText("一段需要处理的原文");
+    await openPanel({ text: "一段需要处理的原文", source: "selection" });
     await typeAndSend(view.host, "翻译");
     assert.equal(postsTo("/v1/assistant/leo-turn").length, 0);
     assert.equal(postsTo("/v1/agent/tasks").length, 0);
@@ -344,21 +442,21 @@ test("输入「翻译」且板上有字时，不请求 leo-turn，也不建任�
         (call) => call.url.includes("/v1/assistant/transform") && call.body?.action === "translate",
       ),
     );
-    assert.doesNotMatch(view.host.textContent, /已经放进「我的任务」/);
   } finally {
     await view.cleanup();
   }
 });
 
-test("leo-turn 失败时说没说成，不说已经放进「我的任务」", async () => {
+test("leo-turn HTTP 失败：乐观句撤掉、明说没发出去，不假装已交办", async () => {
   installFetch({ leoStatus: 500 });
   const view = await renderAssistant();
   const history = historyPings();
   try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
     await typeAndSend(view.host, "帮我做一个产品介绍网站");
     assert.equal(postsTo("/v1/assistant/leo-turn").length, 1);
     assert.equal(postsTo("/v1/agent/tasks").length, 0);
-    assert.match(view.host.textContent, /没说成。/);
+    assert.ok(view.host.querySelector("[data-leo-turn-error]"));
     assert.doesNotMatch(view.host.textContent, /已经放进「我的任务」/);
     assert.equal(history.count, 0);
   } finally {
@@ -367,93 +465,99 @@ test("leo-turn 失败时说没说成，不说已经放进「我的任务」", as
   }
 });
 
-test("收起只留最新一句 leo，放大后能翻到前面的话和链接，刷新后还在", async () => {
-  let replyCount = 0;
+test("中文输入法候选态按 Enter 不发送；候选结束后 Enter 才发送", async () => {
   installFetch();
-  globalThis.fetch = async (url, init = {}) => {
-    const call = {
-      url: String(url),
-      method: String(init.method || "GET").toUpperCase(),
-      body: typeof init.body === "string" ? JSON.parse(init.body) : null,
-    };
-    calls.push(call);
-    replyCount += 1;
-    if (replyCount === 1) {
-      return jsonResponse(200, { reply: "第一句", task: null });
-    }
-    return jsonResponse(200, {
-      reply: "第二句",
-      task: { task_id: "task_2", title: "后面的任务", href: "/history?task=task_2" },
-    });
-  };
-  const first = await renderAssistant();
+  const view = await renderAssistant();
   try {
-    await typeAndSend(first.host, "你好");
-    calls.length = 0;
-    await typeAndSend(first.host, "帮我做一个产品介绍网站");
-    assert.match(first.host.textContent, /第二句/);
-    assert.doesNotMatch(first.host.textContent, /第一句/);
-    assert.equal(first.host.querySelector("[data-leo-transcript]"), null);
-    const collapsedLink = first.host.querySelector('a[href="/history?task=task_2"]');
-    assert.ok(collapsedLink);
-    assert.equal((collapsedLink.textContent || "").trim(), "后面的任务");
-
-    const grow = first.host.querySelector('[aria-label="放大"]');
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    const input = view.host.querySelector("textarea[data-leo-composer]");
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
     await act(async () => {
-      grow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      setter.call(input, "你好");
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
-    const list = first.host.querySelector("[data-leo-transcript]");
-    assert.ok(list);
-    assert.match(list.textContent, /你好/);
-    assert.match(list.textContent, /第一句/);
-    assert.match(list.textContent, /第二句/);
-    assert.match(list.textContent, /后面的任务/);
-  } finally {
-    await first.cleanup();
-  }
+    const composing = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+    Object.defineProperty(composing, "isComposing", { value: true });
+    await act(async () => {
+      input.dispatchEvent(composing);
+    });
+    await settle();
+    assert.equal(postsTo("/v1/assistant/leo-turn").length, 0);
+    assert.equal(input.value, "你好", "候选态 Enter 不清输入");
 
-  const second = await renderAssistant({ resetTranscript: false });
-  try {
-    assert.match(second.host.textContent, /第二句/);
-    assert.doesNotMatch(second.host.textContent, /第一句/);
-    const saved = JSON.parse(window.localStorage.getItem("oceanleo:leo-transcript:v1"));
-    assert.equal(saved.length, 4);
-    assert.equal(saved[0].role, "user");
-    assert.equal(saved[3].role, "leo");
-    assert.equal(saved[3].task.href, "/history?task=task_2");
+    const done = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+    Object.defineProperty(done, "isComposing", { value: false });
+    await act(async () => {
+      input.dispatchEvent(done);
+    });
+    await settle();
+    assert.equal(postsTo("/v1/assistant/leo-turn").length, 1);
   } finally {
-    await second.cleanup();
+    await view.cleanup();
   }
 });
 
-test("Shell 顶栏不再有第二颗 leo，门户用 launcher，首页隐藏浮动按钮", () => {
+test("Esc 关闭面板；打开时焦点进输入框", async () => {
+  installFetch();
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    const frame = view.host.querySelector("[data-leo-panel]");
+    assert.match(frame.className, /flex/);
+    assert.equal(document.activeElement, view.host.querySelector("textarea[data-leo-composer]"));
+    await act(async () => {
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    assert.match(frame.className, /hidden/);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test("清空记录走 DELETE，面板清空", async () => {
+  installFetch({
+    transcriptEntries: [
+      { id: "e1", role: "user", text: "之前的问题" },
+      { id: "e2", role: "leo", text: "之前的回答", task: null },
+    ],
+  });
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    assert.match(view.host.textContent, /之前的回答/);
+    const clear = [...view.host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "清空记录");
+    assert.ok(clear, "清空记录按钮");
+    await act(async () => {
+      clear.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    assert.ok(calls.some((c) => c.url.includes("/v1/assistant/leo-transcript") && c.method === "DELETE"));
+    assert.doesNotMatch(view.host.textContent, /之前的回答/);
+    assert.match(view.host.textContent, /还没有对话，开始第一句吧。/);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test("全站无悬浮气泡；门户 launcher 只挂一次 LeoAssistant，无 hideFloatingButton", () => {
+  const assistant = readFileSync(
+    "/root/projects/oceanleo-ui/src/shell/LeoAssistant.tsx",
+    "utf8",
+  );
+  assert.equal(assistant.includes("data-oceanleo-leo-fab"), false);
+  assert.equal(assistant.includes("hideFloatingButton"), false);
+
   const shell = readFileSync(
     "/root/projects/oceanleo-ui/src/shell/cloud-computer/ShellTaskView.tsx",
     "utf8",
   );
   assert.equal(shell.includes("data-oceanleo-cc-leo-toggle"), false);
-  assert.match(shell, /用对话界面继续/);
-  assert.match(shell, /结束 Shell/);
-
-  const chrome = readFileSync("/root/projects/oceanleo/app/_components/root-chrome.tsx", "utf8");
-  assert.match(chrome, /leo-launcher/);
-  assert.doesNotMatch(chrome, /siteId="home"/);
-  assert.doesNotMatch(chrome, /<LeoAssistant/);
 
   const launcher = readFileSync("/root/projects/oceanleo/app/_components/leo-launcher.tsx", "utf8");
   assert.match(launcher, /siteId="oceanleo"/);
   assert.match(launcher, /docType="doc"/);
-  assert.match(launcher, /hideFloatingButton=\{leoFloatingButtonHidden\(pathname\)\}/);
+  // 属性与按路径判断函数都已不再使用（注释里提到名字不算）。
+  assert.doesNotMatch(launcher, /hideFloatingButton\s*=/);
+  assert.doesNotMatch(launcher, /leoFloatingButtonHidden\s*\(/);
   assert.doesNotMatch(launcher, /OceanLeo agent/);
-  const hidden = leoFloatingButtonHiddenFrom(launcher);
-  assert.equal(hidden("/"), true);
-  assert.equal(hidden("/settings"), false);
 });
-
-function leoFloatingButtonHiddenFrom(source) {
-  const match = source.match(
-    /export function leoFloatingButtonHidden\(pathname: string \| null\): boolean \{\r?\n([\s\S]*?)\r?\n\}/,
-  );
-  assert.ok(match, "leoFloatingButtonHidden");
-  return new Function("pathname", match[1]);
-}

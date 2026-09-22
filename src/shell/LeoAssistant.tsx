@@ -1,81 +1,46 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { currentDomainProfile } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
-import { authed } from "../lib/agent";
 import { notifyHistoryChanged } from "../lib/history-events";
+import {
+  LeoBoard,
+  leoTypedWorkStaysInPanel,
+  matchLeoPanelLocalAction,
+  type LeoBoardApi,
+  type LeoBoardContext,
+} from "./leo/LeoBoard";
+import { LeoPanelComposer } from "./leo/LeoPanelComposer";
+import { LeoTranscript, useLeoTranscript } from "./leo/LeoTranscript";
+import { leoTurn, type LeoTurnWireContext } from "./leo/leo-api";
+import { panelBox, type LeoPanelAnchor, type LeoPanelViewport } from "./leo/leo-position";
+import { getHostText, isEditableInput, type HostTarget } from "./leo/host-input";
 
 // ============================================================================
-// @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
+// @oceanleo/ui — leo 助手浮窗（全家桶单一事实源，2026-09-22 重做）
 // ----------------------------------------------------------------------------
-// 宗旨 v12（操作员 2026-07-02，leo board）：docs/architecture/oceanleo-leo-board.md
-// 在 v11（oceanleo-leo-copilot-and-dark-theme.md）基础上重做「扩充」：
+// 合同 §2.1（leo-and-shell-rebuild 00-CONTRACT.md）：
+//   · 入口只有输入框左下角的 ✦ leo 按钮（LeoEntryButton，W5B）与页面划词气泡；
+//     任何页面都没有悬浮气泡。
+//   · 面板从按钮上方弹出（底边 = 锚点上 8px，右对齐按钮），永不盖住发送键；
+//     标题栏可拖（pointer 事件）；「放大」= 94vw × 90vh 居中；Esc / ✕ 关闭。
+//   · 面板主体就是对话记录（紧凑态也显示），记录存服务器（合同 I4），跨页面
+//     跨设备同一份；leo 建了任务的那句带任务卡片（标题 + 「打开任务」链接）。
+//   · 顶部保留「面板上的文字」（leo board）与动词（扩充/精简/总结/解释/翻译/
+//     润色），逻辑照宗旨 v12 不变（见 leo/LeoBoard.tsx）。
+//   · 底部输入 + 发送；中文输入法候选态按 Enter 不发送（isComposing）。
 //
-//   ┌─ [可拖动标题栏] leo ───────────────────────────── ✕ ┐
-//   │  （无内容时：空态引导 + [读取输入框内容]）             │
-//   │  对于这些内容，我可以帮你：                            │
-//   │  [扩充] [精简] [总结] [解释] [翻译] [润色]             │
-//   │  ┌ leo board ──────────── [↩ 回退] [↪ 前进] [清除] ┐ │
-//   │  │ <可直接编辑的工作文本，一有上下文即常驻显示>    │   │
-//   │  │ [复制] [导入到输入框]                          │   │
-//   │  └───────────────────────────────────────────────┘   │
-//   │  （问答区还没提问时：[让 leo 提问]；提问后旁边：[换一个问题]）│
-//   │  「请问这份内容的目标读者是谁？」  [换一个问题]        │
-//   │  [教师] [职场人士] [学生] …（选项可以很多，用词简洁）  │
-//   │  （transform 结果卡：复制 / 替换到输入框 / 以此继续）  │
-//   │  [补充内容，leo 会合并进 leo board…       ] [发送]   │
-//   │  · 不再单列「来自输入框/来自页面划词」只读卡——内容    │
-//   │    统一进上面这块常驻可编辑的 leo board（2026-07-06）。│
-//   └────────────────────────────────────────────────────┘
-//
-// leo board 规则（操作员 2026-07-02 拍板，2026-07-06 修正「扩充」语义）：
-//   0. 一有上下文，board 初始内容 = 用户原文【原样】，零 LLM 改写常驻显示。
-//   1. 【动词一键改写 board】：点「扩充/精简/总结/解释/翻译/润色」= 一下就地在当前 board
-//      内容上执行、结果直接替换回 board（可回退）。**「扩充」= 把这段 prompt 扩充成更完整/
-//      更好的一段 prompt**（后端 expand 指令保证输出仍是 prompt，不是成稿/回答——操作员
-//      2026-07-06 截图纠正：点扩充直接吐一整篇回答=错）。
-//   2. board 常驻显示、可直接编辑、可回退/前进（快照历史栈）。
-//   3. 【可选的问答区】（与动词独立）：点「让 leo 提问」→ leo 基于 board 出一个方向的问题
-//      + 简洁选项；提问后旁边显示「换一个问题」。点选项 / 底部输入框自由文本 → 后端
-//      【保守合并】进 board（只写用户给的事实）。这是想让 leo 帮着一问一答打磨时才用，
-//      **不是**「扩充」按键的行为。
-//   4. 面板关闭再打开，board 留存（面板隐藏而非卸载）。
-//
-// v11 三条非协商原则继续有效：
-//   1. 打开浮窗【不自动】发任何请求——用户点了动词才动。
-//   2. 结果【永不自动写回】宿主输入框——只手动「替换到输入框」。
-//   3. 内容来源显式化——上下文卡永远告诉用户「leo 现在看到的是哪段文字」。
-//
-// 内容来源两个：
-//   a. 输入框：点输入框旁的「leo」按钮（LeoComposer 派发 OPEN_LEO_EVENT）。
-//   b. 页面划词：选中页面任意文本 → 选区旁浮出 leo 小气泡 → 点气泡送入面板
-//      （SelectionBubble，选中即缓存、点击才发送，不做被动监视）。
-//
-// 动词（扩充/精简/总结/解释/翻译/润色）+ 自由指令走 /v1/assistant/transform（一键改写 board）；
-// 「让 leo 提问」问答区走 /v1/assistant/board（合并 + 出题）。公开 + 操作员买单，posture 同
-// /v1/recommend。（2026-07-06：扩充从 board 流改回 transform——它是一键扩充，不是问答。）
-//
-// leo 总开关（宗旨 v12）：/general 页可开关 leo（默认开启），localStorage
-// `oceanleo:leo-enabled`，关闭时输入框按钮 / 划词气泡 / 面板全部不出现。
+// 本文件只剩壳：挂载一次、监听 open 事件、定位/拖拽/放大/关闭、组合
+// LeoBoard（顶部）+ LeoTranscript（主体）+ LeoPanelComposer（底部）。
+// 接口实现分别在 leo/leo-api.ts（I4）与 leo/leo-position.ts（定位纯函数）。
 // ============================================================================
 
-// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
-// `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变），
-// `.cn` 站解析成 https://api.oceanleo.cn —— 境内页面不会把请求发到境外网关。
-const GATEWAY_BASE =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY)) ||
-  currentDomainProfile().gatewayOrigin;
-
-/** 触发打开 leo 助手浮窗的全局事件名。LeoComposer 的「leo」按钮派发它。 */
+/** 触发打开 leo 助手浮窗的全局事件名。LeoEntryButton / 划词气泡派发它。 */
 export const OPEN_LEO_EVENT = "oceanleo:open-leo";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// leo 总开关（宗旨 v12）：/general 页可开关，默认开启。localStorage 持久化，
-// 同页内用自定义事件同步（storage 事件只跨标签页触发）。
+// leo 总开关（宗旨 v12）：/general 页可开关 leo（默认开启），localStorage
+// `oceanleo:leo-enabled`，关闭时输入框按钮 / 划词气泡 / 面板全部不出现。
 // ─────────────────────────────────────────────────────────────────────────────
 export const LEO_ENABLED_KEY = "oceanleo:leo-enabled";
 export const LEO_ENABLED_EVENT = "oceanleo:leo-enabled-change";
@@ -100,7 +65,7 @@ export function setLeoEnabled(on: boolean): void {
   }
 }
 
-/** 响应式读取 leo 开关（LeoAssistant / LeoComposer / GeneralPage 共用）。 */
+/** 响应式读取 leo 开关（LeoAssistant / LeoEntryButton / GeneralPage 共用）。 */
 export function useLeoEnabled(): boolean {
   // SSR/首帧默认 true（与「默认开启」一致），mount 后同步真实值，避免水合闪烁。
   const [on, setOn] = useState(true);
@@ -169,131 +134,9 @@ export async function runLeoQuickSuggest(opts: {
   return { ok: true, prompt: base };
 }
 
-type HostInput = HTMLTextAreaElement | HTMLInputElement;
-
-// 主输入框现在是 Tiptap 编辑器（contentEditable div，带 data-oc-slot-editor + 读写桥），
-// 不再是 textarea/input。leo 要能同时处理「编辑器 div」和旧式「textarea/input」。
-interface OcEditorBridge {
-  __ocGetText?: () => string;
-  __ocSetText?: (v: string) => void;
-}
-type HostTarget = HostInput | HTMLElement;
-
-/** 是否是我们的 Tiptap 主编辑器（带桥）。 */
-function isSlotEditor(el: Element | null): el is HTMLElement & OcEditorBridge {
-  return !!el && el instanceof HTMLElement && el.hasAttribute("data-oc-slot-editor");
-}
-
-/** 读宿主输入内容：编辑器走桥的 __ocGetText，textarea/input 走 .value。 */
-function getHostText(el: HostTarget | null): string {
-  if (!el) return "";
-  if (isSlotEditor(el)) return (el.__ocGetText?.() || "").trim();
-  return ((el as HostInput).value || "").trim();
-}
-
-interface BoardResult {
-  board: string;
-  question: string;
-  options: string[];
-  insufficient?: boolean;
-  fallback?: boolean;
-}
-
-/** /v1/assistant/board（宗旨 v12）：保守合并回答 + 基于 board 出下一题。 */
-async function boardCall(input: {
-  site_id: string;
-  doc_type?: string;
-  board_text: string;
-  question?: string;
-  user_answer?: string;
-}): Promise<{ ok: boolean; data?: BoardResult; error?: string }> {
-  try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/assistant/board`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      credentials: "include",
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, error: data?.detail || `HTTP ${res.status}` };
-    return { ok: true, data: data as BoardResult };
-  } catch {
-    return { ok: false, error: "网络错误，请稍后再试。" };
-  }
-}
-
-async function transform(input: {
-  site_id: string;
-  action: string;
-  text: string;
-  instruction?: string;
-  target_lang?: string;
-}): Promise<{ ok: boolean; result?: string; error?: string }> {
-  try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/assistant/transform`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      credentials: "include",
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, error: data?.detail || `HTTP ${res.status}` };
-    return { ok: true, result: String(data?.result || "") };
-  } catch {
-    return { ok: false, error: "网络错误，请稍后再试。" };
-  }
-}
-
-function isEditableInput(el: Element | null): el is HostTarget {
-  if (!el) return false;
-  if (el.closest("[data-ai-assistant-root]")) return false; // ignore our own UI
-  if (isSlotEditor(el)) return true; // Tiptap 主编辑器
-  if (el.tagName === "TEXTAREA") return true;
-  if (el.tagName === "INPUT") {
-    const t = (el as HTMLInputElement).type;
-    return t === "" || t === "text" || t === "search";
-  }
-  return false;
-}
-
-// 写回宿主输入。编辑器走桥的 __ocSetText（作为普通文本、进 undo）；textarea/input 用原生
-// setter 绕过 React 内部 value 追踪 + 派发 input 事件让受控组件 onChange 收到变化。
-function setHostValue(el: HostTarget, value: string) {
-  if (isSlotEditor(el)) {
-    el.__ocSetText?.(value);
-    return;
-  }
-  const input = el as HostInput;
-  const proto =
-    input.tagName === "TEXTAREA"
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-  if (setter) setter.call(input, value);
-  else input.value = value;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      return ok;
-    } catch {
-      return false;
-    }
-  }
-}
+// 输入框打出来的动词留在面板执行（leo board），其余的话走 leo-turn。
+// 从 leo/LeoBoard.tsx 再导出，旧 import 路径不断。
+export { leoTypedWorkStaysInPanel, matchLeoPanelLocalAction };
 
 /** Track the editor / textarea / text input the user is (or was last) working in. */
 function useHostInput() {
@@ -309,7 +152,7 @@ function useHostInput() {
     const editor = document.querySelector<HTMLElement>("[data-oc-slot-editor]");
     if (editor && editor.offsetParent !== null) return editor;
     // 4. Explicitly-tagged primary input.
-    const tagged = document.querySelector<HostInput>(
+    const tagged = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
       "textarea[data-ai-assistant-target], input[data-ai-assistant-target]",
     );
     if (tagged) return tagged;
@@ -345,69 +188,41 @@ export interface LeoAssistantProps {
   enableSelection?: boolean;
 }
 
-// 浮窗尺寸（拖动边界计算用）。放大再按一次回到这两个数，不缩成右下角气泡。
-const PANEL_W = 384;
-const PANEL_H = 560;
 const POS_KEY = "oceanleo:leo-assistant-pos";
-
-/** 放大后视口四边各留 3%：left/top 为 3%，宽高为 94%。 */
-function leoPanelBox(expanded: boolean, pos: Pos | null): React.CSSProperties {
-  if (expanded) {
-    return {
-      left: "3%",
-      top: "3%",
-      width: "94%",
-      height: "94%",
-      right: undefined,
-      bottom: undefined,
-      maxWidth: "none",
-      maxHeight: "none",
-      boxSizing: "border-box",
-    };
-  }
-  return {
-    left: pos ? pos.left : undefined,
-    top: pos ? pos.top : undefined,
-    width: PANEL_W,
-    height: PANEL_H,
-    maxWidth: "92vw",
-    maxHeight: "90vh",
-    right: pos ? undefined : 20,
-    bottom: pos ? undefined : 20,
-    boxSizing: "border-box",
-  };
-}
+const LEO_TURN_TEXT_MAX = 8000;
 
 interface Pos {
   left: number;
   top: number;
 }
 
-/** 默认位置：右下角。 */
-function defaultPos(): Pos {
-  if (typeof window === "undefined") return { left: 0, top: 0 };
-  const margin = 20;
-  return {
-    left: Math.max(margin, window.innerWidth - PANEL_W - margin),
-    top: Math.max(margin, window.innerHeight - PANEL_H - margin),
-  };
+/** SSR / 首帧占位视口；面板打开那一帧会用真实视口重算。 */
+const FALLBACK_VIEWPORT: LeoPanelViewport = { width: 1280, height: 800 };
+
+function readSavedPos(): Pos | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as Pos;
+    if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) return saved;
+  } catch {
+    /* noop */
+  }
+  return null;
 }
 
-function clampPos(p: Pos): Pos {
-  if (typeof window === "undefined") return p;
-  const maxLeft = Math.max(0, window.innerWidth - PANEL_W);
-  const maxTop = Math.max(0, window.innerHeight - PANEL_H);
-  return {
-    left: Math.min(Math.max(0, p.left), maxLeft),
-    top: Math.min(Math.max(0, p.top), maxTop),
-  };
+/** I5 的 LeoContext → I4 线上形状（蛇形；computerName 只用于展示，不上行）。 */
+function toWireContext(ctx: LeoContext | null): LeoTurnWireContext {
+  if (!ctx) return { page: "other" };
+  const wire: LeoTurnWireContext = { page: ctx.page };
+  if (ctx.taskId) wire.task_id = ctx.taskId;
+  if (ctx.computerId) wire.computer_id = ctx.computerId;
+  if (ctx.shellSessionId) wire.shell_session_id = ctx.shellSessionId;
+  return wire;
 }
 
-/** 面板工作文本（leo board）的来源上下文——与 I5 的 LeoContext（页面上下文）是两回事。 */
-interface LeoBoardContext {
-  text: string;
-  source: "input" | "selection";
-}
+let localEntrySeq = 0;
 
 export function LeoAssistant({
   siteId,
@@ -422,7 +237,7 @@ export function LeoAssistant({
   const [expanded, setExpanded] = useState(false);
   const [context, setContext] = useState<LeoBoardContext | null>(null);
   const { resolve } = useHostInput();
-  // 面板带【内容变化的】新上下文打开时 +1，让 Panel 重置瞬态（board / 问答流）。
+  // 面板带【内容变化的】新上下文打开时 +1，让 LeoBoard 重置瞬态（board / 问答流）。
   // 同一段文本重复打开不 bump——leo board 要留存（宗旨 v12 规则 5）。
   const [ctxEpoch, setCtxEpoch] = useState(0);
   const ctxTextRef = useRef<string>("");
@@ -430,9 +245,18 @@ export function LeoAssistant({
   useEffect(() => {
     openRef.current = open;
   }, [open]);
-  // 合同 I5：最近一次打开的页面上下文与锚点（P1 先存，P2 起用于定位与 leo-turn）。
+  // 合同 I5：最近一次打开的页面上下文（每轮 leo-turn 带上）与锚点（定位用）。
   const pageContextRef = useRef<LeoContext | null>(null);
-  const anchorRef = useRef<DOMRect | null>(null);
+  const [pageContext, setPageContext] = useState<LeoContext | null>(null);
+  const [anchor, setAnchor] = useState<LeoPanelAnchor | null>(null);
+  const [dragged, setDragged] = useState<Pos | null>(null);
+  const [viewport, setViewport] = useState<LeoPanelViewport>(FALLBACK_VIEWPORT);
+  const [turnBusy, setTurnBusy] = useState(false);
+  const [boardBusy, setBoardBusy] = useState(false);
+  const [turnErr, setTurnErr] = useState<string | null>(null);
+  const turnLock = useRef(false);
+  const boardApiRef = useRef<LeoBoardApi | null>(null);
+  const transcript = useLeoTranscript({ open });
 
   // 打开事件：detail.text（划词）优先；否则读宿主输入框。
   useEffect(() => {
@@ -440,8 +264,13 @@ export function LeoAssistant({
       const detail = (e as CustomEvent<OpenLeoDetail>).detail;
       // 划词触发在停用时直接忽略
       if (detail?.source === "selection" && !isLeoEnabled()) return;
-      pageContextRef.current = detail?.context ?? lastLeoContext;
-      anchorRef.current = detail?.anchor ?? lastLeoAnchor;
+      const nextPageContext = detail?.context ?? lastLeoContext;
+      pageContextRef.current = nextPageContext;
+      setPageContext(nextPageContext);
+      const nextAnchor = (detail?.anchor ?? lastLeoAnchor) as LeoPanelAnchor | null;
+      setAnchor(nextAnchor ?? null);
+      // 带锚点打开 = 面板跟回按钮上方（判据：底边在锚点输入框之上）；拖拽位让路。
+      if (nextAnchor) setDragged(null);
       // toggle 模式（输入框中点击 leo 图标）：已打开则关闭
       if (detail?.toggle && openRef.current) {
         setOpen(false);
@@ -466,60 +295,58 @@ export function LeoAssistant({
         ctxTextRef.current = nextText;
         setContext(next);
       }
+      setTurnErr(null);
       setOpen(true);
     };
     window.addEventListener(OPEN_LEO_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_LEO_EVENT, onOpen);
   }, [resolve]);
 
-  // ── 拖动 ────────────────────────────────────────────────────────────────
-  const [pos, setPos] = useState<Pos | null>(null);
+  // 面板打开期间跟踪视口（定位纯函数 panelBox 的入参；resize 时重算夹紧）。
+  useEffect(() => {
+    if (!open) return;
+    const update = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open]);
+
+  // Esc 关闭（P6）。
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // ── 拖动（pointer 事件 + setPointerCapture；放大态固定居中不可拖）────────
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    let initial = defaultPos();
-    try {
-      const raw = localStorage.getItem(POS_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as Pos;
-        if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) initial = saved;
-      }
-    } catch {
-      /* noop */
-    }
-    setPos(clampPos(initial));
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onResize = () => setPos((p) => (p ? clampPos(p) : p));
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [open]);
 
   const onDragStart = useCallback(
     (e: React.PointerEvent) => {
-      if (expanded || !pos) return;
+      if (expanded) return;
       if ((e.target as HTMLElement).closest("[data-leo-no-drag]")) return;
       e.preventDefault();
-      dragRef.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top };
+      const box = panelBox({ anchor, viewport, dragged, expanded });
+      dragRef.current = { dx: e.clientX - box.left, dy: e.clientY - box.top };
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     },
-    [expanded, pos],
+    [expanded, anchor, viewport, dragged],
   );
 
   const onDragMove = useCallback((e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
-    setPos(clampPos({ left: e.clientX - d.dx, top: e.clientY - d.dy }));
+    setDragged({ left: e.clientX - d.dx, top: e.clientY - d.dy });
   }, []);
 
   const onDragEnd = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current) return;
     dragRef.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    setPos((p) => {
+    setDragged((p) => {
       if (p) {
         try {
           localStorage.setItem(POS_KEY, JSON.stringify(p));
@@ -531,19 +358,102 @@ export function LeoAssistant({
     });
   }, []);
 
-  // Panel 内部改上下文（清除 / 读取输入框 / 以此继续）时同步 ctxTextRef，
+  // 无锚点打开（快捷键 / 程序化调用）：沿用上次拖拽位。
+  useEffect(() => {
+    if (open && !anchor && !dragged) setDragged(readSavedPos());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // LeoBoard 内部改上下文（清除 / 读取输入框）时同步 ctxTextRef，
   // 保证下次 OPEN_LEO_EVENT 的「同文本不重置」判断准确。
   const handleContextChange = useCallback((c: LeoBoardContext | null) => {
     ctxTextRef.current = c?.text || "";
     setContext(c);
   }, []);
 
+  // ── 发送（合同 I4）：动词留在面板（leo board），其余原话走 leo-turn。 ─────
+  const sendLeoTurn = useCallback(
+    async (raw: string) => {
+      if (turnLock.current) return;
+      turnLock.current = true;
+      setTurnBusy(true);
+      setTurnErr(null);
+      const text = raw.trim().slice(0, LEO_TURN_TEXT_MAX);
+      // 发送前把用户句乐观追加；响应到了用服务端 entries 替换（按 id 合并去重）。
+      const tempId = transcript.appendOptimistic(text);
+      try {
+        const res = await leoTurn({
+          site_id: siteId,
+          text,
+          board_text: boardApiRef.current?.getText() ?? "",
+          context: toWireContext(pageContextRef.current),
+        });
+        if (!res.ok) {
+          transcript.dropOptimistic(tempId, res.error);
+          if (res.error === "network") setTurnErr(tt("网络错误，请稍后再试。"));
+          else if (res.error !== "anonymous") setTurnErr(tt("记录暂时不可用，稍后再试。"));
+          return;
+        }
+        let entries = res.data.entries;
+        if (entries.length === 0 && res.data.reply.trim()) {
+          // 服务端没回 entries（旧版网关）：用 reply 就地补两条，面板不空转。
+          localEntrySeq += 1;
+          entries = [
+            { id: `leo-local-${localEntrySeq}-user`, role: "user", text },
+            {
+              id: `leo-local-${localEntrySeq}-leo`,
+              role: "leo",
+              text: res.data.reply,
+              task: res.data.task,
+            },
+          ];
+        }
+        if (entries.length === 0) {
+          transcript.dropOptimistic(tempId, "unavailable");
+          setTurnErr(tt("记录暂时不可用，稍后再试。"));
+          return;
+        }
+        transcript.applyTurn(tempId, entries);
+        if (res.data.task?.task_id) notifyHistoryChanged();
+      } catch {
+        transcript.dropOptimistic(tempId, "network");
+        setTurnErr(tt("网络错误，请稍后再试。"));
+      } finally {
+        turnLock.current = false;
+        setTurnBusy(false);
+      }
+    },
+    [siteId, transcript, tt],
+  );
+
+  const send = useCallback(
+    (raw: string) => {
+      if (turnLock.current || boardApiRef.current?.isBusy()) return;
+      const local = matchLeoPanelLocalAction(raw);
+      if (local) {
+        const boardText = boardApiRef.current?.getText() ?? "";
+        if (!boardText.trim()) {
+          setTurnErr(tt("先有一段文字，才能在面板里做。"));
+          return;
+        }
+        boardApiRef.current?.runTransform(local.action, tt(local.label), local.instruction);
+        return;
+      }
+      void sendLeoTurn(raw);
+    },
+    [sendLeoTurn, tt],
+  );
+
   // leo 总开关关闭：划词气泡不渲染；面板仍可通过输入框图标或显式事件唤起。
+  const box = panelBox({ anchor, viewport, dragged, expanded });
+  const computerName =
+    pageContext?.page === "shell" ? pageContext.computerName?.trim() : "";
 
   return (
     <div data-ai-assistant-root>
       {enabled && enableSelection && <SelectionBubble />}
-      {/* 面板隐藏而非卸载——leo board 在关闭/重开之间留存（宗旨 v12 规则 5）。 */}
+      {/* 面板隐藏而非卸载——leo board 在关闭/重开之间留存（宗旨 v12 规则 5）。
+          z-50：高于 Shell 页对话框（z-40），低于全局 modal（z-80+）。 */}
       <div
         data-leo-panel
         data-leo-shape="rect"
@@ -551,7 +461,13 @@ export function LeoAssistant({
         className={`fixed z-50 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${
           open ? "flex" : "hidden"
         }`}
-        style={leoPanelBox(expanded, pos)}
+        style={{
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          boxSizing: "border-box",
+        }}
       >
         {/* 可拖动标题栏 */}
         <div
@@ -607,15 +523,36 @@ export function LeoAssistant({
           </div>
         </div>
 
-        <Panel
+        {/* 放大态：Shell 页打开时显示「这台电脑：<名字>」（context 不带则不显示，不再发请求）。 */}
+        {expanded && computerName && (
+          <p data-leo-computer-line className="border-b border-slate-100 px-4 py-1.5 text-[11px] text-slate-400">
+            {tt("这台电脑")}：{computerName}
+          </p>
+        )}
+
+        {/* 顶部：面板上的文字（leo board）+ 动词（宗旨 v12，逻辑不变）。 */}
+        <LeoBoard
           key={ctxEpoch}
           siteId={siteId}
           docType={docType}
           context={context}
-          expanded={expanded}
           onContextChange={handleContextChange}
           resolveHost={resolve}
+          apiRef={boardApiRef}
+          onBusyChange={setBoardBusy}
         />
+
+        {/* 主体：对话记录（紧凑态也显示；存服务器，跨页面跨设备同一份）。 */}
+        <LeoTranscript state={transcript} />
+
+        {turnErr && (
+          <p data-leo-turn-error className="mx-3 mb-1 rounded-xl bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-600">
+            {turnErr}
+          </p>
+        )}
+
+        {/* 底部输入 + 发送（Enter 发送、Shift+Enter 换行、IME 候选态不发）。 */}
+        <LeoPanelComposer busy={turnBusy || boardBusy} visible={open} onSend={send} />
       </div>
     </div>
   );
@@ -628,10 +565,12 @@ export function LeoAssistant({
 //   · 选区可能在点击气泡瞬间被浏览器清掉，所以文本在 selectionchange 时就缓存。
 //   · 排除 leo 自己的面板（data-ai-assistant-root）与密码等敏感输入。
 //   · 也支持 textarea / text input 内部的选区（selectionStart/End）。
+//   · 点击走同一个 openLeoAssistant（source:"selection"，带选区矩形作 anchor）。
 // ─────────────────────────────────────────────────────────────────────────────
 function SelectionBubble() {
   const [bubble, setBubble] = useState<{ x: number; y: number } | null>(null);
   const textRef = useRef("");
+  const rectRef = useRef<DOMRect | null>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -653,13 +592,14 @@ function SelectionBubble() {
           setBubble(null);
           return;
         }
-        const el = active as HostInput;
+        const el = active as HTMLTextAreaElement | HTMLInputElement;
         const start = el.selectionStart ?? 0;
         const end = el.selectionEnd ?? 0;
         const text = (el.value || "").substring(start, end).trim();
         if (text.length >= 2) {
           textRef.current = text;
           const r = el.getBoundingClientRect();
+          rectRef.current = r;
           setBubble({ x: Math.min(r.right - 8, window.innerWidth - 60), y: Math.max(8, r.top - 34) });
         } else {
           setBubble(null);
@@ -672,9 +612,9 @@ function SelectionBubble() {
         setBubble(null);
         return;
       }
-      const anchor = sel.anchorNode;
+      const anchorNode = sel.anchorNode;
       const anchorEl =
-        anchor && (anchor.nodeType === 1 ? (anchor as Element) : anchor.parentElement);
+        anchorNode && (anchorNode.nodeType === 1 ? (anchorNode as Element) : anchorNode.parentElement);
       if (anchorEl && anchorEl.closest("[data-ai-assistant-root]")) {
         setBubble(null);
         return;
@@ -695,6 +635,7 @@ function SelectionBubble() {
         setBubble(null);
         return;
       }
+      rectRef.current = rect;
       setBubble({
         x: Math.min(Math.max(8, rect.left + rect.width / 2 - 26), window.innerWidth - 70),
         y: Math.max(8, rect.top - 38),
@@ -724,8 +665,9 @@ function SelectionBubble() {
         e.preventDefault();
         e.stopPropagation();
         const text = textRef.current;
+        const rect = rectRef.current;
         setBubble(null);
-        if (text) openLeoAssistant({ text, source: "selection" });
+        if (text) openLeoAssistant({ text, source: "selection", anchor: rect });
       }}
       className="leo-pop-in fixed z-[60] flex items-center gap-1 rounded-full border border-indigo-200/70 bg-white/95 px-2.5 py-1 text-[12px] font-medium text-indigo-600 shadow-lg backdrop-blur-sm transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-indigo-50"
       style={{ left: bubble.x, top: bubble.y }}
@@ -733,909 +675,6 @@ function SelectionBubble() {
       <Sparkle />
       leo
     </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 面板主体：上下文卡 + 动词按键 + leo board（问答打磨）/ 结果区 + 输入框。
-// ─────────────────────────────────────────────────────────────────────────────
-
-type VerbId = "expand" | "condense" | "summarize" | "explain" | "translate" | "polish";
-
-const VERBS: { id: VerbId; label: string }[] = [
-  { id: "expand", label: "扩充" },
-  { id: "condense", label: "精简" },
-  { id: "summarize", label: "总结" },
-  { id: "explain", label: "解释" },
-  { id: "translate", label: "翻译" },
-  { id: "polish", label: "润色" },
-];
-
-/**
- * 改写动词（翻译、精简、总结、解释、改写、扩充、润色）且板上有文字：走 transform。
- * 其余的话 POST /v1/assistant/leo-turn。leo 只回答；要交出一份还能回来看的工作时，
- * 响应里带任务链接。卡片不执行，也不渲染任务过程。
- */
-const PANEL_LOCAL_ACTIONS: { verb: string; action: string; label: string }[] = [
-  { verb: "翻译", action: "translate", label: "翻译" },
-  { verb: "精简", action: "condense", label: "精简" },
-  { verb: "总结", action: "summarize", label: "总结" },
-  { verb: "解释", action: "explain", label: "解释" },
-  { verb: "改写", action: "custom", label: "改写" },
-  { verb: "扩充", action: "expand", label: "扩充" },
-  { verb: "润色", action: "polish", label: "润色" },
-];
-
-const PANEL_LOCAL_PREFIX =
-  /^(?:请你|请|帮我|帮忙|麻烦你|麻烦|给我|把这段文字|把这段内容|把上面这段|把上面的文字|把上面的内容|把上面的|把上面|把这段|将这段文字|将这段内容|将这段)\s*/;
-
-const PANEL_LOCAL_TAIL_PART =
-  /^(?:一下|一遍|这段文字|这段内容|这段|上文|上面的文字|上面的内容|上面|成\s*[\u4e00-\u9fffA-Za-z]{0,16}|为\s*[\u4e00-\u9fffA-Za-z]{0,16}|得\s*[\u4e00-\u9fffA-Za-z]{0,16})/;
-
-function isPanelLocalTail(rest: string): boolean {
-  let left = rest.trim();
-  if (!left) return true;
-  for (let i = 0; i < 4 && left; i += 1) {
-    const match = left.match(PANEL_LOCAL_TAIL_PART);
-    if (!match) return false;
-    left = left.slice(match[0].length).trim();
-  }
-  return left.length === 0;
-}
-
-function matchLeoPanelLocalAction(raw: string): {
-  action: string;
-  label: string;
-  instruction?: string;
-} | null {
-  let text = raw.trim().replace(/[。！!？?…\s]+$/g, "").trim();
-  if (!text) return null;
-  for (let i = 0; i < 4 && PANEL_LOCAL_PREFIX.test(text); i += 1) {
-    text = text.replace(PANEL_LOCAL_PREFIX, "").trim();
-  }
-  if (!text) return null;
-  for (const item of PANEL_LOCAL_ACTIONS) {
-    if (text !== item.verb && !text.startsWith(item.verb)) continue;
-    const rest = text.slice(item.verb.length).trim();
-    if (!isPanelLocalTail(rest)) continue;
-    return {
-      action: item.action,
-      label: item.label,
-      ...(item.action === "custom" || rest ? { instruction: raw.trim() } : {}),
-    };
-  }
-  return null;
-}
-
-export function leoTypedWorkStaysInPanel(raw: string): boolean {
-  return matchLeoPanelLocalAction(raw) != null;
-}
-
-const LEO_TRANSCRIPT_KEY = "oceanleo:leo-transcript:v1";
-const LEO_TRANSCRIPT_MAX = 80;
-const LEO_HISTORY_MAX = 20;
-const LEO_TURN_TEXT_MAX = 8000;
-const LEO_HISTORY_CONTENT_MAX = 2000;
-const LEO_MISSED = "没说成。";
-
-interface LeoTranscriptTask {
-  task_id: string;
-  title: string;
-  href: string;
-}
-
-interface LeoTranscriptEntry {
-  id: string;
-  role: "user" | "leo";
-  text: string;
-  task?: LeoTranscriptTask;
-}
-
-interface LeoTurnResponse {
-  reply?: string;
-  task?: {
-    task_id?: string;
-    title?: string;
-    href?: string;
-  } | null;
-}
-
-let transcriptSeq = 0;
-
-function nextTranscriptId(): string {
-  transcriptSeq += 1;
-  return `leo-turn-${transcriptSeq}`;
-}
-
-function normalizeStoredTask(value: unknown): LeoTranscriptTask | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const task = value as Partial<LeoTranscriptTask>;
-  if (typeof task.task_id !== "string" || !task.task_id.trim()) return undefined;
-  if (typeof task.href !== "string" || !task.href.trim()) return undefined;
-  return {
-    task_id: task.task_id,
-    title: typeof task.title === "string" ? task.title : "",
-    href: task.href,
-  };
-}
-
-function loadLeoTranscript(): LeoTranscriptEntry[] {
-  if (typeof localStorage === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(LEO_TRANSCRIPT_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    const rows: LeoTranscriptEntry[] = [];
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") continue;
-      const row = item as Partial<LeoTranscriptEntry>;
-      if ((row.role !== "user" && row.role !== "leo") || typeof row.text !== "string") continue;
-      const id = typeof row.id === "string" && row.id ? row.id : nextTranscriptId();
-      const task = row.role === "leo" ? normalizeStoredTask(row.task) : undefined;
-      rows.push(task ? { id, role: row.role, text: row.text, task } : { id, role: row.role, text: row.text });
-    }
-    return rows.slice(-LEO_TRANSCRIPT_MAX);
-  } catch {
-    return [];
-  }
-}
-
-function saveLeoTranscript(entries: LeoTranscriptEntry[]): void {
-  try {
-    localStorage.setItem(LEO_TRANSCRIPT_KEY, JSON.stringify(entries.slice(-LEO_TRANSCRIPT_MAX)));
-  } catch {
-    /* 写入失败就只留在内存里，不抛到页面上。 */
-  }
-}
-
-interface LeoResult {
-  id: number;
-  label: string;
-  text: string;
-}
-
-// board 历史栈上限（回退/前进）。
-const BOARD_HISTORY_MAX = 60;
-
-function Panel({
-  siteId,
-  docType,
-  context,
-  expanded,
-  onContextChange,
-  resolveHost,
-}: {
-  siteId: string;
-  docType: string;
-  context: LeoBoardContext | null;
-  expanded: boolean;
-  onContextChange: (c: LeoBoardContext | null) => void;
-  resolveHost: () => HostTarget | null;
-}) {
-  const tt = useUI();
-  const [busy, setBusy] = useState<string | null>(null); // 正在跑的 transform 动词 label
-  const [err, setErr] = useState<string | null>(null);
-  const [leoSays, setLeoSays] = useState<string | null>(null); // leo 的追问/提示
-  const [turnBusy, setTurnBusy] = useState(false);
-  const turnLock = useRef(false);
-  const [transcript, setTranscript] = useState<LeoTranscriptEntry[]>(() => loadLeoTranscript());
-  const transcriptRef = useRef<LeoTranscriptEntry[]>(transcript);
-  const [results, setResults] = useState<LeoResult[]>([]);
-  const [input, setInput] = useState("");
-  const idRef = useRef(0);
-
-  useEffect(() => {
-    if (transcriptRef.current.length > 0) return;
-    const loaded = loadLeoTranscript();
-    if (loaded.length === 0) return;
-    transcriptRef.current = loaded;
-    setTranscript(loaded);
-  }, []);
-
-  const persistTranscript = (next: LeoTranscriptEntry[]) => {
-    const capped = next.slice(-LEO_TRANSCRIPT_MAX);
-    transcriptRef.current = capped;
-    setTranscript(capped);
-    saveLeoTranscript(capped);
-  };
-
-  const rememberMiss = () => {
-    persistTranscript([
-      ...transcriptRef.current,
-      { id: nextTranscriptId(), role: "leo", text: LEO_MISSED },
-    ]);
-  };
-
-  // ── leo board 状态（宗旨 v12） ──────────────────────────────────────────
-  const [board, setBoard] = useState<string | null>(null); // null = board 未激活
-  const [history, setHistory] = useState<string[]>([]);
-  const [histIdx, setHistIdx] = useState(-1);
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState<string[]>([]);
-  // boardBusy："question"=出题中，"merge"=合并回答中。
-  const [boardBusy, setBoardBusy] = useState<"question" | "merge" | null>(null);
-  const editTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // leo board 常驻可编辑（操作员 2026-07-06）：一有上下文就把 board 初始化为**原文原样**
-  // （零 LLM 改写，符合 v12 规则1），用户可直接编辑/一键导入输入框——**不**自动出题/请求
-  // （出题=LLM 调用，仍只在点「扩充」时发，守住 v11 规则1「打开不自动请求」）。Panel 按
-  // ctxEpoch 重挂，故这里每次新上下文只跑一次。
-  useEffect(() => {
-    const text = context?.text || "";
-    if (text && board == null) {
-      setBoard(text);
-      setHistory([text]);
-      setHistIdx(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context?.text]);
-
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const scrollTop = () => {
-    requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
-  };
-
-  const pushResult = (label: string, text: string) => {
-    idRef.current += 1;
-    setResults((rs) => [{ id: idRef.current, label, text }, ...rs].slice(0, 8));
-    scrollTop();
-  };
-
-  /** 把新 board 内容提交进历史栈（截断前进分支，封顶 BOARD_HISTORY_MAX）。 */
-  const commitBoard = useCallback(
-    (next: string) => {
-      setBoard(next);
-      setHistory((h) => {
-        const cut = h.slice(0, histIdx + 1);
-        if (cut[cut.length - 1] === next) return cut;
-        const merged = [...cut, next].slice(-BOARD_HISTORY_MAX);
-        setHistIdx(merged.length - 1);
-        return merged;
-      });
-    },
-    [histIdx],
-  );
-
-  /** 出题：基于当前 board 内容取下一个问题（board 不动）。 */
-  const fetchQuestion = useCallback(
-    async (text: string) => {
-      setBoardBusy("question");
-      setErr(null);
-      const res = await boardCall({ site_id: siteId, doc_type: docType, board_text: text });
-      setBoardBusy(null);
-      if (!res.ok || !res.data) {
-        setErr(res.error || tt("请求失败，请稍后再试。"));
-        return;
-      }
-      if (res.data.insufficient) {
-        setLeoSays(res.data.question || tt("我还看不出你想做什么——用一句话告诉我你的目标？"));
-        setQuestion("");
-        setOptions([]);
-        return;
-      }
-      setQuestion(res.data.question || "");
-      setOptions(res.data.options || []);
-    },
-    [siteId, docType, tt],
-  );
-
-  /** 「扩充」：在当前 board 内容（用户可能已手改）上取第一题。board 现在一有上下文就已
-   * 常驻（见上方 seed effect），故这里**不**重置 board/历史，只发出题请求。 */
-  const startBoard = useCallback(() => {
-    const text = board ?? context?.text ?? "";
-    if (!text) return;
-    setLeoSays(null);
-    if (board == null) {
-      setBoard(text);
-      setHistory([text]);
-      setHistIdx(0);
-    }
-    setQuestion("");
-    setOptions([]);
-    void fetchQuestion(text);
-  }, [board, context, fetchQuestion]);
-
-  /** 合并回答：点选项 / 输入框自由文本 → 后端保守合并进 board + 出下一题。 */
-  const applyAnswer = useCallback(
-    async (answer: string) => {
-      const cur = board ?? "";
-      if (!answer.trim() || boardBusy) return;
-      setBoardBusy("merge");
-      setErr(null);
-      setLeoSays(null);
-      const res = await boardCall({
-        site_id: siteId,
-        doc_type: docType,
-        board_text: cur,
-        question,
-        user_answer: answer.trim(),
-      });
-      setBoardBusy(null);
-      if (!res.ok || !res.data) {
-        setErr(res.error || tt("请求失败，请稍后再试。"));
-        return;
-      }
-      commitBoard(res.data.board || cur);
-      setQuestion(res.data.question || "");
-      setOptions(res.data.options || []);
-    },
-    [board, boardBusy, siteId, docType, question, commitBoard, tt],
-  );
-
-  /** 用户直接在 board 里编辑：立即生效，防抖入历史栈。 */
-  const onBoardEdit = (next: string) => {
-    setBoard(next);
-    if (editTimer.current) clearTimeout(editTimer.current);
-    editTimer.current = setTimeout(() => {
-      setHistory((h) => {
-        const cut = h.slice(0, histIdx + 1);
-        if (cut[cut.length - 1] === next) return cut;
-        const merged = [...cut, next].slice(-BOARD_HISTORY_MAX);
-        setHistIdx(merged.length - 1);
-        return merged;
-      });
-    }, 800);
-  };
-  useEffect(() => () => {
-    if (editTimer.current) clearTimeout(editTimer.current);
-  }, []);
-
-  const canUndo = histIdx > 0;
-  const canRedo = histIdx >= 0 && histIdx < history.length - 1;
-  const undo = () => {
-    if (!canUndo) return;
-    const i = histIdx - 1;
-    setHistIdx(i);
-    setBoard(history[i]);
-  };
-  const redo = () => {
-    if (!canRedo) return;
-    const i = histIdx + 1;
-    setHistIdx(i);
-    setBoard(history[i]);
-  };
-
-  const clearBoard = () => {
-    setBoard(null);
-    setHistory([]);
-    setHistIdx(-1);
-    setQuestion("");
-    setOptions([]);
-  };
-
-  // ── 动词 transform（扩充/精简/总结/解释/翻译/润色）+ 自由指令：一律在**当前 leo board
-  //    内容**上一键执行，结果**直接写回 board**（替换原内容、进 undo 历史）。
-  //    「扩充」= 一下把这段 prompt 扩充成更完整/更好的 prompt（后端 expand 指令保证输出仍是
-  //    prompt 而非成稿/答案）——不问问题、不给回答（操作员 2026-07-06 截图纠正）。
-  const runTransform = async (action: string, label: string, instruction?: string) => {
-    const text = (board ?? context?.text ?? "").trim();
-    if (!text) return;
-    setBusy(label);
-    setErr(null);
-    setLeoSays(null);
-    const res = await transform({
-      site_id: siteId,
-      action,
-      text,
-      instruction,
-    });
-    setBusy(null);
-    if (!res.ok || !res.result) {
-      setErr(res.error || tt("请求失败，请稍后再试。"));
-      return;
-    }
-    commitBoard(res.result); // 替换 board 内容（可回退）
-  };
-
-  // 所有动词（扩充/精简/总结/解释/翻译/润色）= 一键 transform：就地在**当前 leo board
-  // 内容**上执行，结果直接写回 board（可回退）。操作员 2026-07-06：点「扩充」就是**一下
-  // 自动把这段 prompt 扩充成更好的 prompt**——不问问题、不给回答/成稿（后端 expand 指令
-  // 已改为「扩充 prompt 本身」而非「写成成稿」）。
-  const onVerb = (v: { id: VerbId; label: string }) => {
-    if (busy || boardBusy || turnBusy || !(board ?? context?.text)) return;
-    void runTransform(v.id, tt(v.label));
-  };
-
-  const sendLeoTurn = async (raw: string) => {
-    if (turnLock.current) return;
-    turnLock.current = true;
-    setTurnBusy(true);
-    setErr(null);
-    const text = raw.trim().slice(0, LEO_TURN_TEXT_MAX);
-    const history = transcriptRef.current.slice(-LEO_HISTORY_MAX).map((entry) => ({
-      role: entry.role,
-      content: entry.text.slice(0, LEO_HISTORY_CONTENT_MAX),
-    }));
-    persistTranscript([
-      ...transcriptRef.current,
-      { id: nextTranscriptId(), role: "user", text },
-    ]);
-    try {
-      const res = await authed<LeoTurnResponse>("/v1/assistant/leo-turn", {
-        method: "POST",
-        body: JSON.stringify({
-          site_id: siteId,
-          text,
-          board_text: board ?? "",
-          history,
-        }),
-      });
-      const reply = res.ok && res.data ? String(res.data.reply ?? "") : "";
-      if (!reply.trim()) {
-        rememberMiss();
-        return;
-      }
-      const task = res.data?.task;
-      const taskId = task && typeof task.task_id === "string" ? task.task_id.trim() : "";
-      const href = task && typeof task.href === "string" ? task.href.trim() : "";
-      const linked = taskId
-        ? {
-            task_id: taskId,
-            title:
-              task && typeof task.title === "string" && task.title.trim()
-                ? task.title.trim().slice(0, 48)
-                : text.slice(0, 48),
-            href,
-          }
-        : undefined;
-      persistTranscript([
-        ...transcriptRef.current,
-        {
-          id: nextTranscriptId(),
-          role: "leo",
-          text: reply,
-          ...(linked && linked.href ? { task: linked } : {}),
-        },
-      ]);
-      if (taskId) notifyHistoryChanged();
-    } catch {
-      rememberMiss();
-    } finally {
-      turnLock.current = false;
-      setTurnBusy(false);
-    }
-  };
-
-  const send = () => {
-    const q = input.trim();
-    if (!q || busy || boardBusy || turnBusy || turnLock.current) return;
-    setInput("");
-    const local = matchLeoPanelLocalAction(q);
-    if (local) {
-      const text = (board ?? context?.text ?? "").trim();
-      if (!text) {
-        setErr(tt("先有一段文字，才能在面板里做。"));
-        return;
-      }
-      void runTransform(local.action, tt(local.label), local.instruction);
-      return;
-    }
-    void sendLeoTurn(q);
-  };
-
-  const readHostInput = () => {
-    const v = getHostText(resolveHost());
-    if (v) onContextChange({ text: v, source: "input" });
-  };
-
-  const hasContext = Boolean(context?.text);
-  const latestLeo = [...transcript].reverse().find((entry) => entry.role === "leo") ?? null;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={bodyRef} className="v-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {expanded && transcript.length > 0 && (
-          <div
-            data-leo-transcript
-            className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2"
-          >
-            {transcript.map((entry) => (
-              <TranscriptEntryView key={entry.id} entry={entry} />
-            ))}
-          </div>
-        )}
-        {/* 无上下文时的空态引导；有上下文时**不再**单列只读「来自输入框/来自页面划词」卡——
-            内容统一进下方常驻可编辑的「leo board」（操作员 2026-07-06）。 */}
-        {!hasContext && (
-          <div className="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center">
-            <p className="text-xs leading-relaxed text-slate-500">
-              {tt("先选中页面上的文字，或在输入框写点内容，再来找 leo。")}
-            </p>
-            <button
-              onClick={readHostInput}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
-            >
-              {tt("读取输入框内容")}
-            </button>
-          </div>
-        )}
-
-        {err && (
-          <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-600">{tt(err)}</p>
-        )}
-        {!expanded && latestLeo && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <TranscriptEntryView entry={latestLeo} />
-          </div>
-        )}
-        {leoSays && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
-            {leoSays}
-          </div>
-        )}
-        {busy && (
-          <p className="flex items-center gap-2 text-xs text-slate-400">
-            <Spinner />
-            {tt("leo 正在{action}…", { action: busy })}
-          </p>
-        )}
-
-        {/* leo board：常驻可编辑工作文本 + 回退/前进 + 单方向问答（宗旨 v12） */}
-        {board != null && (
-          <div className="space-y-2">
-            <div className="v-fade-up rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-500">
-                  <Sparkle />
-                  leo board
-                </span>
-                <span className="flex items-center gap-0.5">
-                  <button
-                    onClick={undo}
-                    disabled={!canUndo || Boolean(boardBusy)}
-                    aria-label={tt("回退")}
-                    title={tt("回退")}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <UndoGlyph />
-                  </button>
-                  <button
-                    onClick={redo}
-                    disabled={!canRedo || Boolean(boardBusy)}
-                    aria-label={tt("前进")}
-                    title={tt("前进")}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <RedoGlyph />
-                  </button>
-                  <button
-                    onClick={() => {
-                      onContextChange(null);
-                      clearBoard();
-                      setLeoSays(null);
-                      setErr(null);
-                    }}
-                    disabled={Boolean(boardBusy)}
-                    className="ml-0.5 rounded-md px-1.5 text-[11px] text-slate-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    {tt("清除")}
-                  </button>
-                </span>
-              </div>
-              <BoardEditor value={board} onChange={onBoardEdit} disabled={boardBusy === "merge"} />
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <CopyButton text={board} />
-                {/* 一键把 leo board 内容导入主输入框（任意来源，操作员 2026-07-06）。 */}
-                <ImportToInputButton
-                  onImport={() => {
-                    const target = resolveHost();
-                    if (target) setHostValue(target, board);
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* 动词按键（在 leo board 下方，操作员 2026-07-06）：点击即在当前 board 内容上
-                执行，结果直接替换回 board。 */}
-            <div>
-              <p className="mb-1.5 text-[11px] text-slate-400">{tt("对于这些内容，我可以帮你：")}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {VERBS.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => onVerb(v)}
-                    disabled={Boolean(busy) || Boolean(boardBusy)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {tt(v.label)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 问答区：每次只问一个方向；选项可以很多；随时「换一个问题」。 */}
-            {boardBusy ? (
-              <p className="flex items-center gap-2 text-xs text-slate-400">
-                <Spinner />
-                {boardBusy === "merge"
-                  ? tt("leo 正在把你的回答合并进 leo board…")
-                  : tt("leo 正在想下一个问题…")}
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {question && (
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="inline-block rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
-                      {question}
-                    </div>
-                    <button
-                      onClick={() => void fetchQuestion(board)}
-                      className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
-                    >
-                      {tt("换一个问题")}
-                    </button>
-                  </div>
-                )}
-                {/* 初始阶段（还没提出任何问题）：CTA 文案是「让 leo 提问」；
-                    一旦提出了问题，上方问题卡旁才显示「换一个问题」（操作员 2026-07-06）。 */}
-                {!question && (
-                  <button
-                    onClick={() => void fetchQuestion(board)}
-                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
-                  >
-                    {tt("让 leo 提问")}
-                  </button>
-                )}
-                {question && options.length > 0 && (
-                  <>
-                    <p className="text-[11px] text-slate-400">
-                      {tt("点一个选项，或在下方输入，leo 会把它合并进 leo board")}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {options.map((opt, i) => (
-                        <button
-                          key={`${opt}-${i}`}
-                          onClick={() => void applyAnswer(opt)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 变换结果（最新在上） */}
-        {results.map((r) => (
-          <ResultCard
-            key={r.id}
-            label={r.label}
-            text={r.text}
-            source={context?.source}
-            onReplaceHost={
-              context?.source === "input"
-                ? () => {
-                    const target = resolveHost();
-                    if (target) setHostValue(target, r.text);
-                  }
-                : undefined
-            }
-            onContinue={() => {
-              onContextChange({ text: r.text, source: context?.source || "selection" });
-              setResults([]);
-            }}
-          />
-        ))}
-      </div>
-
-      {/* 底部输入：改写动词留在面板；其余原话 POST /v1/assistant/leo-turn。不把这句话合并进 board。 */}
-      <div className="border-t border-slate-100 px-3 py-3">
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            send();
-          }}
-        >
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={tt("跟 leo 说")}
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-slate-400"
-          />
-          <button
-            type="submit"
-            disabled={Boolean(busy) || Boolean(boardBusy) || turnBusy || !input.trim()}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {busy || boardBusy || turnBusy ? "…" : tt("发送")}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function TranscriptEntryView({ entry }: { entry: LeoTranscriptEntry }) {
-  return (
-    <div data-leo-turn={entry.role} className="space-y-1">
-      <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800">{entry.text}</p>
-      {entry.role === "leo" && entry.task?.task_id && entry.task.href ? (
-        <a href={entry.task.href} className="inline-block text-xs font-medium text-indigo-600 underline">
-          {entry.task.title}
-        </a>
-      ) : null}
-    </div>
-  );
-}
-
-/** leo board 的可编辑文本区：自动增高（封顶后内部滚动）。 */
-function BoardEditor({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 240) + "px";
-  }, [value]);
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      rows={3}
-      spellCheck={false}
-      className="w-full resize-none rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xs leading-relaxed text-slate-800 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-indigo-200 focus:bg-white disabled:opacity-60"
-    />
-  );
-}
-
-/** 「复制」小按钮（board 与结果卡共用样式）。 */
-function CopyButton({ text }: { text: string }) {
-  const tt = useUI();
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={async () => {
-        if (await copyText(text)) {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1600);
-        }
-      }}
-      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
-    >
-      {copied ? tt("已复制") : tt("复制")}
-    </button>
-  );
-}
-
-/** 「替换到输入框」小按钮（仅上下文来自输入框时出现，手动写回）。 */
-function ReplaceHostButton({ onReplace }: { onReplace: () => void }) {
-  const tt = useUI();
-  const [replaced, setReplaced] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        onReplace();
-        setReplaced(true);
-        setTimeout(() => setReplaced(false), 1600);
-      }}
-      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
-    >
-      {replaced ? tt("已替换") : tt("替换到输入框")}
-    </button>
-  );
-}
-
-/** 「导入到输入框」小按钮（任意来源常驻，手动把 leo board 内容写进主输入框）。 */
-function ImportToInputButton({ onImport }: { onImport: () => void }) {
-  const tt = useUI();
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        onImport();
-        setDone(true);
-        setTimeout(() => setDone(false), 1600);
-      }}
-      className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-indigo-300 hover:bg-indigo-500/20"
-    >
-      <ImportGlyph />
-      {done ? tt("已导入") : tt("导入到输入框")}
-    </button>
-  );
-}
-
-function ImportGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** 结果卡：结果只展示在 leo 面板里——复制 / （输入框来源时）替换到输入框 / 继续处理。 */
-function ResultCard({
-  label,
-  text,
-  onReplaceHost,
-  onContinue,
-}: {
-  label: string;
-  text: string;
-  source?: "input" | "selection";
-  onReplaceHost?: () => void;
-  onContinue?: () => void;
-}) {
-  const tt = useUI();
-  const [copied, setCopied] = useState(false);
-  const [replaced, setReplaced] = useState(false);
-
-  return (
-    <div className="v-fade-up rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-500">
-          <Sparkle />
-          {label}
-        </span>
-      </div>
-      <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-800">
-        {text}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={async () => {
-            if (await copyText(text)) {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1600);
-            }
-          }}
-          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
-        >
-          {copied ? tt("已复制") : tt("复制")}
-        </button>
-        {onReplaceHost && (
-          <button
-            onClick={() => {
-              onReplaceHost();
-              setReplaced(true);
-              setTimeout(() => setReplaced(false), 1600);
-            }}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
-          >
-            {replaced ? tt("已替换") : tt("替换到输入框")}
-          </button>
-        )}
-        {onContinue && (
-          <button
-            onClick={onContinue}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-400"
-          >
-            {tt("以此继续")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -1657,25 +696,6 @@ function Sparkle() {
         fill="url(#leo-sparkle-g)"
         opacity="0.65"
       />
-    </svg>
-  );
-}
-
-// leo board 回退 / 前进箭头。
-function UndoGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M9 14L4 9l5-5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 9h9a7 7 0 017 7v1" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function RedoGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M15 14l5-5-5-5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M20 9h-9a7 7 0 00-7 7v1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
