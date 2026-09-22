@@ -11,7 +11,7 @@ export const PROGRAM_LABEL: Record<AgentProgram, string> = {
   hermes: "Hermes",
   claude: "Claude Code",
   codex: "Codex",
-  oceanleo: "OceanLeo",
+  oceanleo: "OceanLeo agent",
 };
 
 export type DirCapability = "full" | "link_only" | "none";

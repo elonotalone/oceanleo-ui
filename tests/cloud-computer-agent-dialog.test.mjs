@@ -126,6 +126,10 @@ const apiStub = dataModule(`
 `);
 const authStub = dataModule(`
   export async function accessToken() { return "tok"; }
+  export function cachedAccessToken() { return "tok"; }
+`);
+const agentStub = dataModule(`
+  export async function getTask() { return { ok: false, data: null }; }
 `);
 
 const { useAgentDialog, AgentDialogPane } = await import(
@@ -133,6 +137,7 @@ const { useAgentDialog, AgentDialogPane } = await import(
     "../../i18n/ui/useUI": uiStub,
     "../../lib/cloud-computer-api": apiStub,
     "../../lib/auth/client": authStub,
+    "../../../lib/agent": agentStub,
   })
 );
 
@@ -147,12 +152,11 @@ const STATUS = {
   ],
 };
 
-function Harness({ leo }) {
+function Harness() {
   const dialog = useAgentDialog({ computerId: "cc_1", sessionId: "sid_1", enabled: true });
   return React.createElement(AgentDialogPane, {
     dialog,
     onBack() {},
-    onOpenLeo: leo ? () => { globalThis.__leoClicks += 1; } : undefined,
   });
 }
 
@@ -205,14 +209,13 @@ async function pressEnter(element, shift = false) {
   });
 }
 
-async function boot(leo = true) {
+async function boot() {
   FakeSocket.sockets.length = 0;
-  globalThis.__leoClicks = 0;
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(Harness, { leo }));
+    root.render(React.createElement(Harness));
   });
   await until(() => FakeSocket.sockets.some((socket) => socket.sent.some((frame) => frame.t === "status")), "status frame");
   const socket = openSocket();
@@ -269,10 +272,13 @@ test("重连间隔、安装目录、提问退化和行级 diff", () => {
 });
 
 test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", async () => {
-  const view = await boot(true);
+  const view = await boot();
   try {
     const text = view.host.textContent || "";
-    assert.match(text, /Cursor[\s\S]*Hermes[\s\S]*Claude Code[\s\S]*Codex[\s\S]*OceanLeo/);
+    assert.match(text, /OceanLeo agent[\s\S]*Cursor[\s\S]*Hermes[\s\S]*Claude Code[\s\S]*Codex/);
+    assert.ok(view.host.querySelector('[data-oceanleo-cc-program="oceanleo"] [data-oceanleo-cc-dot="green"]'));
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-program="oceanleo"] [data-oceanleo-cc-login]'), null);
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-program="oceanleo"] [data-oceanleo-cc-install]'), null);
     assert.ok(view.host.querySelector('[data-oceanleo-cc-program="cursor"] [data-oceanleo-cc-dot="green"]'));
     assert.ok(view.host.querySelector('[data-oceanleo-cc-program="cursor"] [data-oceanleo-cc-running="1"]'));
     assert.ok(view.host.querySelector('[data-oceanleo-cc-program="hermes"] [data-oceanleo-cc-dot="yellow"]'));
@@ -282,7 +288,6 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     assert.equal(view.host.querySelector("[data-oceanleo-cc-dialog-input]"), null);
 
     await click(view.host.querySelector("[data-oceanleo-cc-dialog-oceanleo]"));
-    assert.equal(globalThis.__leoClicks, 1);
     assert.equal(view.socket().sent.some((frame) => frame.program === "oceanleo"), false);
 
     await click(view.host.querySelector('[data-oceanleo-cc-install="claude"]'));
@@ -499,10 +504,11 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
   }
 });
 
-test("没传 onOpenLeo 时不渲染 OceanLeo", async () => {
-  const view = await boot(false);
+test("OceanLeo agent 恒在程序行第一项", async () => {
+  const view = await boot();
   try {
-    assert.equal(view.host.querySelector("[data-oceanleo-cc-dialog-oceanleo]"), null);
+    const first = view.host.querySelector("[data-oceanleo-cc-program]");
+    assert.equal(first.getAttribute("data-oceanleo-cc-program"), "oceanleo");
     assert.ok(view.host.querySelector("[data-oceanleo-cc-dialog-cursor]"));
   } finally {
     view.cleanup();

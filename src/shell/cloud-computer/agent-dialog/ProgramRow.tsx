@@ -37,30 +37,36 @@ const DOT_CLASS = {
 
 export function ProgramRow({
   dialog,
-  onOpenLeo,
 }: {
   dialog: AgentDialogController;
-  onOpenLeo?: () => void;
 }) {
   const tt = useUI();
   const [cursorKeyOpen, setCursorKeyOpen] = useState(false);
   const [cursorComputerId, setCursorComputerId] = useState("");
-  const ids: AgentProgram[] = onOpenLeo ? [...WS_PROGRAMS, "oceanleo"] : [...WS_PROGRAMS];
+  const ids: AgentProgram[] = ["oceanleo", ...WS_PROGRAMS];
   return (
     <>
       <div className="flex flex-wrap gap-2 border-b border-neutral-800 px-3 py-2">
       {ids.map((id) => {
         if (id === "oceanleo") {
+          const selected = dialog.program === "oceanleo";
           return (
-            <button
-              key={id}
-              type="button"
-              data-oceanleo-cc-dialog-oceanleo=""
-              onClick={() => onOpenLeo?.()}
-              className="rounded-lg bg-neutral-800 px-2.5 py-1 text-[12px] text-neutral-100"
-            >
-              {PROGRAM_LABEL.oceanleo}
-            </button>
+            <div key={id} className="flex items-center gap-1" data-oceanleo-cc-program="oceanleo">
+              <button
+                type="button"
+                data-oceanleo-cc-dialog-oceanleo=""
+                onClick={() => dialog.setProgram("oceanleo")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] ${
+                  selected ? "bg-neutral-100 font-medium text-neutral-900" : "bg-neutral-800 text-neutral-100"
+                }`}
+              >
+                <span
+                  data-oceanleo-cc-dot="green"
+                  className={`inline-block h-2 w-2 rounded-full ${DOT_CLASS.green}`}
+                />
+                {PROGRAM_LABEL.oceanleo}
+              </button>
+            </div>
           );
         }
         const row = dialog.programs.find((item) => item.id === id);
@@ -118,7 +124,7 @@ export function ProgramRow({
                 type="button"
                 data-oceanleo-cc-close-session={id}
                 onClick={() => dialog.closeProgram(id)}
-                className="px-1 text-[11px] text-neutral-400 underline"
+                className="px-1 text-[11px] text-neutral-300 underline"
               >
                 {tt("关掉会话")}
               </button>
