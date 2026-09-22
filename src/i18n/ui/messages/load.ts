@@ -8,6 +8,7 @@ import type {
   UIMessageModule,
 } from "./runtime";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
+import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
 
 const BASE_MESSAGE_LOADERS = {
   de: () => import("./de"),
@@ -47,6 +48,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-09-14 W4：byok-reauth（W5 申请的两条）两边同时加。
   // 2026-09-14 W8：国内版绑手机文案两边同时加。
   // 2026-09-20 W19：企业版 + MCP 能力面文案两边同时加。
+  // 2026-09-22 leo 面板重做（W5A）：leo-panel-copy 两边同时加（父整合补登）。
   const [
     base,
     recent,
@@ -100,5 +102,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...enterprise.ENTERPRISE_COPY_MESSAGES[locale],
     ...phoneBind.PHONE_BIND_MESSAGES[locale],
     ...shellOverhaul.SHELL_OVERHAUL_MESSAGES[locale],
+    ...LEO_PANEL_MESSAGES[locale],
   };
 };
