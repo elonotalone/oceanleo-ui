@@ -158,8 +158,12 @@ export function useComputerTerminal({
       setStatus(kind);
       setDetail(kind === "exit" || kind === "error" ? applied.state.code : undefined);
       if (kind === "exit" || kind === "gone" || kind === "error") {
-        // 终局与「连接断了」都不再有未决的重连计时。
+        // 终局与「连接断了」都不再有未决的重连计时；当前 socket 一并关掉，
+        // 免得握手途中落地终局后还留着一条活管道（界面说断了、屏幕却在更新）。
         clearConnTimers();
+        const socket = socketRef.current;
+        socketRef.current = null;
+        socket?.close();
       }
       if (applied.effect.type === "schedule_reconnect") {
         if (prev.kind !== "reconnecting") {
@@ -213,6 +217,12 @@ export function useComputerTerminal({
         return false;
       }
       socketRef.current = socket;
+      if (connRef.current.kind !== "live" && connRef.current.kind !== "reconnecting") {
+        // 握手期间状态机已落终局（exit/gone）或 give_up：这条 socket 直接废掉。
+        socketRef.current = null;
+        socket.close();
+        return false;
+      }
       const isCurrent = () => life.current === lifeToken && socketRef.current === socket;
       socket.addEventListener("open", () => {
         if (!isCurrent()) return;

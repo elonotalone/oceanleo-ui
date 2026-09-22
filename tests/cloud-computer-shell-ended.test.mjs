@@ -355,6 +355,8 @@ test("exit 帧把退出码写进 detail，0 也是真退出码", async () => {
   await view.emit(0, { t: "exit", exit_code: 0 });
   assert.equal(await until(() => view.probe().getAttribute("data-status") === "exit"), true);
   assert.equal(view.probe().getAttribute("data-detail"), "0");
+  // 终局落地后当前 socket 被关掉：不留活管道假装还连着。
+  assert.equal(FakeSocket.instances[0].readyState, 3);
   await view.cleanup();
 });
 
@@ -392,6 +394,7 @@ test("error session_not_found → gone（节点说会话没了）", async () => 
   const view = await mountTerminal("sid_3");
   await view.emit(0, { t: "error", code: "session_not_found" });
   assert.equal(await until(() => view.probe().getAttribute("data-status") === "gone"), true);
+  assert.equal(FakeSocket.instances[0].readyState, 3);
   await view.cleanup();
 });
 
