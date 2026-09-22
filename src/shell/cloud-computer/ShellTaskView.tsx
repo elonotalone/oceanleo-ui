@@ -9,7 +9,6 @@ import {
 } from "../../lib/cloud-computer-api";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHELL_ENDED_ZH } from "../../i18n/ui/messages/shell-ended-copy";
-import { openLeoAssistant } from "../LeoAssistant";
 import {
   canOpenShell,
   computerDisplayState,
@@ -162,15 +161,6 @@ export function ShellTaskView({
             {tt("用对话界面继续")}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => openLeoAssistant({ toggle: true })}
-          data-oceanleo-cc-leo-toggle
-          className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95"
-        >
-          <ShellLeoSpark />
-          leo
-        </button>
         {!showEnded && (
           <button
             type="button"
@@ -222,27 +212,5 @@ export function ShellTaskView({
         </div>
       )}
     </div>
-  );
-}
-
-function ShellLeoSpark() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
-      <defs>
-        <linearGradient id="leo-shell-sparkle-g" x1="0" y1="0" x2="24" y2="24">
-          <stop offset="0%" stopColor="#818cf8" />
-          <stop offset="100%" stopColor="#c084fc" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"
-        fill="url(#leo-shell-sparkle-g)"
-      />
-      <path
-        d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z"
-        fill="url(#leo-shell-sparkle-g)"
-        opacity="0.65"
-      />
-    </svg>
   );
 }

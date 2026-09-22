@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { currentDomainProfile } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
-import { createTask } from "../lib/agent";
+import { authed } from "../lib/agent";
+import { notifyHistoryChanged } from "../lib/history-events";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
@@ -594,6 +595,7 @@ export function LeoAssistant({
           siteId={siteId}
           docType={docType}
           context={context}
+          expanded={expanded}
           onContextChange={handleContextChange}
           resolveHost={resolve}
         />
@@ -733,9 +735,9 @@ const VERBS: { id: VerbId; label: string }[] = [
 ];
 
 /**
- * 合同 §2.2，写死，不再另加一条：
- * 翻译、精简、总结、解释、改写，以及上面这些快捷动作，只在面板里做，不建任务。
- * 人在输入里提出的其他工作才 POST /v1/agent/tasks。
+ * 改写动词（翻译、精简、总结、解释、改写、扩充、润色）且板上有文字：走 transform。
+ * 其余的话 POST /v1/assistant/leo-turn。leo 只回答；要交出一份还能回来看的工作时，
+ * 响应里带任务链接。卡片不执行，也不渲染任务过程。
  */
 const PANEL_LOCAL_ACTIONS: { verb: string; action: string; label: string }[] = [
   { verb: "翻译", action: "translate", label: "翻译" },
@@ -792,8 +794,83 @@ export function leoTypedWorkStaysInPanel(raw: string): boolean {
   return matchLeoPanelLocalAction(raw) != null;
 }
 
-const LEO_TASK_PLACED = "已经放进「我的任务」。";
-const LEO_TASK_MISSED = "没建成。";
+const LEO_TRANSCRIPT_KEY = "oceanleo:leo-transcript:v1";
+const LEO_TRANSCRIPT_MAX = 80;
+const LEO_HISTORY_MAX = 20;
+const LEO_TURN_TEXT_MAX = 8000;
+const LEO_HISTORY_CONTENT_MAX = 2000;
+const LEO_MISSED = "没说成。";
+
+interface LeoTranscriptTask {
+  task_id: string;
+  title: string;
+  href: string;
+}
+
+interface LeoTranscriptEntry {
+  id: string;
+  role: "user" | "leo";
+  text: string;
+  task?: LeoTranscriptTask;
+}
+
+interface LeoTurnResponse {
+  reply?: string;
+  task?: {
+    task_id?: string;
+    title?: string;
+    href?: string;
+  } | null;
+}
+
+let transcriptSeq = 0;
+
+function nextTranscriptId(): string {
+  transcriptSeq += 1;
+  return `leo-turn-${transcriptSeq}`;
+}
+
+function normalizeStoredTask(value: unknown): LeoTranscriptTask | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const task = value as Partial<LeoTranscriptTask>;
+  if (typeof task.task_id !== "string" || !task.task_id.trim()) return undefined;
+  if (typeof task.href !== "string" || !task.href.trim()) return undefined;
+  return {
+    task_id: task.task_id,
+    title: typeof task.title === "string" ? task.title : "",
+    href: task.href,
+  };
+}
+
+function loadLeoTranscript(): LeoTranscriptEntry[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LEO_TRANSCRIPT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const rows: LeoTranscriptEntry[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<LeoTranscriptEntry>;
+      if ((row.role !== "user" && row.role !== "leo") || typeof row.text !== "string") continue;
+      const id = typeof row.id === "string" && row.id ? row.id : nextTranscriptId();
+      const task = row.role === "leo" ? normalizeStoredTask(row.task) : undefined;
+      rows.push(task ? { id, role: row.role, text: row.text, task } : { id, role: row.role, text: row.text });
+    }
+    return rows.slice(-LEO_TRANSCRIPT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function saveLeoTranscript(entries: LeoTranscriptEntry[]): void {
+  try {
+    localStorage.setItem(LEO_TRANSCRIPT_KEY, JSON.stringify(entries.slice(-LEO_TRANSCRIPT_MAX)));
+  } catch {
+    /* 写入失败就只留在内存里，不抛到页面上。 */
+  }
+}
 
 interface LeoResult {
   id: number;
@@ -808,12 +885,14 @@ function Panel({
   siteId,
   docType,
   context,
+  expanded,
   onContextChange,
   resolveHost,
 }: {
   siteId: string;
   docType: string;
   context: LeoContext | null;
+  expanded: boolean;
   onContextChange: (c: LeoContext | null) => void;
   resolveHost: () => HostTarget | null;
 }) {
@@ -821,12 +900,35 @@ function Panel({
   const [busy, setBusy] = useState<string | null>(null); // 正在跑的 transform 动词 label
   const [err, setErr] = useState<string | null>(null);
   const [leoSays, setLeoSays] = useState<string | null>(null); // leo 的追问/提示
-  const [taskBusy, setTaskBusy] = useState(false);
-  const [taskNote, setTaskNote] = useState<string | null>(null);
-  const taskLock = useRef(false);
+  const [turnBusy, setTurnBusy] = useState(false);
+  const turnLock = useRef(false);
+  const [transcript, setTranscript] = useState<LeoTranscriptEntry[]>(() => loadLeoTranscript());
+  const transcriptRef = useRef<LeoTranscriptEntry[]>(transcript);
   const [results, setResults] = useState<LeoResult[]>([]);
   const [input, setInput] = useState("");
   const idRef = useRef(0);
+
+  useEffect(() => {
+    if (transcriptRef.current.length > 0) return;
+    const loaded = loadLeoTranscript();
+    if (loaded.length === 0) return;
+    transcriptRef.current = loaded;
+    setTranscript(loaded);
+  }, []);
+
+  const persistTranscript = (next: LeoTranscriptEntry[]) => {
+    const capped = next.slice(-LEO_TRANSCRIPT_MAX);
+    transcriptRef.current = capped;
+    setTranscript(capped);
+    saveLeoTranscript(capped);
+  };
+
+  const rememberMiss = () => {
+    persistTranscript([
+      ...transcriptRef.current,
+      { id: nextTranscriptId(), role: "leo", text: LEO_MISSED },
+    ]);
+  };
 
   // ── leo board 状态（宗旨 v12） ──────────────────────────────────────────
   const [board, setBoard] = useState<string | null>(null); // null = board 未激活
@@ -1014,41 +1116,74 @@ function Panel({
   // 自动把这段 prompt 扩充成更好的 prompt**——不问问题、不给回答/成稿（后端 expand 指令
   // 已改为「扩充 prompt 本身」而非「写成成稿」）。
   const onVerb = (v: { id: VerbId; label: string }) => {
-    if (busy || boardBusy || taskBusy || !(board ?? context?.text)) return;
-    setTaskNote(null);
+    if (busy || boardBusy || turnBusy || !(board ?? context?.text)) return;
     void runTransform(v.id, tt(v.label));
   };
 
-  const placeTask = async (prompt: string) => {
-    if (taskLock.current) return;
-    taskLock.current = true;
-    setTaskBusy(true);
-    setTaskNote(null);
+  const sendLeoTurn = async (raw: string) => {
+    if (turnLock.current) return;
+    turnLock.current = true;
+    setTurnBusy(true);
     setErr(null);
+    const text = raw.trim().slice(0, LEO_TURN_TEXT_MAX);
+    const history = transcriptRef.current.slice(-LEO_HISTORY_MAX).map((entry) => ({
+      role: entry.role,
+      content: entry.text.slice(0, LEO_HISTORY_CONTENT_MAX),
+    }));
+    persistTranscript([
+      ...transcriptRef.current,
+      { id: nextTranscriptId(), role: "user", text },
+    ]);
     try {
-      const result = await createTask({
-        prompt,
-        siteId,
-        created_by: "leo",
+      const res = await authed<LeoTurnResponse>("/v1/assistant/leo-turn", {
+        method: "POST",
+        body: JSON.stringify({
+          site_id: siteId,
+          text,
+          board_text: board ?? "",
+          history,
+        }),
       });
-      if (result.ok) {
-        setTaskNote(LEO_TASK_PLACED);
+      const reply = res.ok && res.data ? String(res.data.reply ?? "") : "";
+      if (!reply.trim()) {
+        rememberMiss();
         return;
       }
-      setTaskNote(LEO_TASK_MISSED);
+      const task = res.data?.task;
+      const taskId = task && typeof task.task_id === "string" ? task.task_id.trim() : "";
+      const href = task && typeof task.href === "string" ? task.href.trim() : "";
+      const linked = taskId
+        ? {
+            task_id: taskId,
+            title:
+              task && typeof task.title === "string" && task.title.trim()
+                ? task.title.trim().slice(0, 48)
+                : text.slice(0, 48),
+            href,
+          }
+        : undefined;
+      persistTranscript([
+        ...transcriptRef.current,
+        {
+          id: nextTranscriptId(),
+          role: "leo",
+          text: reply,
+          ...(linked && linked.href ? { task: linked } : {}),
+        },
+      ]);
+      if (taskId) notifyHistoryChanged();
     } catch {
-      setTaskNote(LEO_TASK_MISSED);
+      rememberMiss();
     } finally {
-      taskLock.current = false;
-      setTaskBusy(false);
+      turnLock.current = false;
+      setTurnBusy(false);
     }
   };
 
   const send = () => {
     const q = input.trim();
-    if (!q || busy || boardBusy || taskBusy || taskLock.current) return;
+    if (!q || busy || boardBusy || turnBusy || turnLock.current) return;
     setInput("");
-    setTaskNote(null);
     const local = matchLeoPanelLocalAction(q);
     if (local) {
       const text = (board ?? context?.text ?? "").trim();
@@ -1059,7 +1194,7 @@ function Panel({
       void runTransform(local.action, tt(local.label), local.instruction);
       return;
     }
-    void placeTask(q);
+    void sendLeoTurn(q);
   };
 
   const readHostInput = () => {
@@ -1068,10 +1203,21 @@ function Panel({
   };
 
   const hasContext = Boolean(context?.text);
+  const latestLeo = [...transcript].reverse().find((entry) => entry.role === "leo") ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={bodyRef} className="v-scroll min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        {expanded && transcript.length > 0 && (
+          <div
+            data-leo-transcript
+            className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2"
+          >
+            {transcript.map((entry) => (
+              <TranscriptEntryView key={entry.id} entry={entry} />
+            ))}
+          </div>
+        )}
         {/* 无上下文时的空态引导；有上下文时**不再**单列只读「来自输入框/来自页面划词」卡——
             内容统一进下方常驻可编辑的「leo board」（操作员 2026-07-06）。 */}
         {!hasContext && (
@@ -1091,15 +1237,9 @@ function Panel({
         {err && (
           <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-600">{tt(err)}</p>
         )}
-        {taskBusy && (
-          <p className="flex items-center gap-2 text-xs text-slate-400">
-            <Spinner />
-            {tt("正在放进「我的任务」…")}
-          </p>
-        )}
-        {taskNote && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
-            {tt(taskNote)}
+        {!expanded && latestLeo && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <TranscriptEntryView entry={latestLeo} />
           </div>
         )}
         {leoSays && (
@@ -1266,7 +1406,7 @@ function Panel({
         ))}
       </div>
 
-      {/* 底部输入：五类改写留在面板；其余原话 POST /v1/agent/tasks，created_by 为 leo。 */}
+      {/* 底部输入：改写动词留在面板；其余原话 POST /v1/assistant/leo-turn。不把这句话合并进 board。 */}
       <div className="border-t border-slate-100 px-3 py-3">
         <form
           className="flex gap-2"
@@ -1279,18 +1419,31 @@ function Panel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={tt("其他工作会放进「我的任务」")}
+            placeholder={tt("跟 leo 说")}
             className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-slate-400"
           />
           <button
             type="submit"
-            disabled={Boolean(busy) || Boolean(boardBusy) || taskBusy || !input.trim()}
+            disabled={Boolean(busy) || Boolean(boardBusy) || turnBusy || !input.trim()}
             className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {busy || boardBusy || taskBusy ? "…" : tt("发送")}
+            {busy || boardBusy || turnBusy ? "…" : tt("发送")}
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+function TranscriptEntryView({ entry }: { entry: LeoTranscriptEntry }) {
+  return (
+    <div data-leo-turn={entry.role} className="space-y-1">
+      <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800">{entry.text}</p>
+      {entry.role === "leo" && entry.task?.task_id && entry.task.href ? (
+        <a href={entry.task.href} className="inline-block text-xs font-medium text-indigo-600 underline">
+          {entry.task.title}
+        </a>
+      ) : null}
     </div>
   );
 }
