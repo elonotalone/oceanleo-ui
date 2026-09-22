@@ -70,12 +70,16 @@ test("LeoComposer：在上传按键右侧渲染插件按键（带有指定的插
   assert.match(html, /<svg[^>]*viewBox="0 0 24 24"/);
   assert.doesNotMatch(html, /<img[^>]*src="data:image\/png/);
   assert.doesNotMatch(html, /PLUGIN_ICON_SRC|data:image\/png;base64/);
-  // 4. 插件按键在上传按键之后、leo 建议按键之前
+  // 4. 插件按键在上传按键之后、leo 入口按键之前
   const attachIdx = html.indexOf('aria-label="添加附件"');
   const pluginIdx = html.indexOf('aria-label="插件与连接器"');
   const leoIdx = html.indexOf('title="让 leo 帮你处理这段内容');
   assert.ok(attachIdx < pluginIdx, "插件按键必须在上传按键右侧");
-  assert.ok(pluginIdx < leoIdx, "插件按键在 leo 建议之前");
+  assert.ok(pluginIdx < leoIdx, "插件按键在 leo 入口之前");
+  // 5. leo 入口是全站共享的 LeoEntryButton（合同 I5），不是本组件的内联按钮：
+  //    渲染结果带 data-oceanleo-leo-entry，宿主根带 data-oceanleo-leo-entry-root。
+  assert.match(html, /data-oceanleo-leo-entry=""/);
+  assert.match(html, /data-oceanleo-leo-entry-root=""/);
 });
 
 test("LeoComposer：支持通过 showPlugins={false} 隐藏插件按键", async () => {
@@ -134,4 +138,6 @@ test("LeoAssistant：渲染包含“停用”/“启用”按键与关闭按键"
   assert.match(html, /data-leo-expanded="0"/);
   assert.doesNotMatch(html, /OceanLeo agent/);
   assert.doesNotMatch(html, /bottom-5 right-5/);
+  // 合同 §2.1：任何页面都没有悬浮气泡——面板渲染里没有 fab。
+  assert.doesNotMatch(html, /data-oceanleo-leo-fab/);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type MouseEvent } from "react";
+import { useId, type MouseEvent, type ReactElement } from "react";
 import {
   openLeoAssistant,
   useLeoEnabled,
@@ -30,7 +30,7 @@ export function LeoEntryButton({
   tone: "light" | "dark";
   context: LeoContext;
   className?: string;
-}): JSX.Element | null {
+}): ReactElement | null {
   const tt = useUI();
   // leo 总开关（/general 可关，默认开）：关闭时三处输入框都不渲染这颗按钮。
   const enabled = useLeoEnabled();
