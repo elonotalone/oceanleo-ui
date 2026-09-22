@@ -69,13 +69,12 @@ function endpointOf(provider: KeyProvider | undefined): string {
 // ---------------------------------------------------------------------------
 // key 与其它厂商一样只进这台设备的密封 cookie；写入口是 PUT /v1/cursor/key
 // （/v1/byok/cursor 故意不收，因为 cursor 不是聊天模型厂商），撤销复用
-// DELETE /v1/byok/cursor（下面表格的「删除」）。运行时的选择只留在组件 state：
+// DELETE /v1/byok/cursor（下面表格的「删除」）。首页不用这把 key 开 Cursor。
 // 这一页的规矩是不往任何浏览器存储写东西。
 // `../lib/auth` 与 `../lib/auth/client` 在既有测试里被替身成极少几个导出，
 // 所以这里的网关请求用运行时 import() 取 accessToken / GATEWAY_BASE，不加静态命名导入。
 const CURSOR_PROVIDER = "cursor";
 const CURSOR_KEY_PREFIX = "crsr_";
-type CursorRuntime = "cloud" | "local";
 
 type CursorResult<T> = {
   ok: boolean;
@@ -161,7 +160,6 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   const [cursorVerified, setCursorVerified] = useState<{ name: string; email: string } | null>(
     null,
   );
-  const [cursorRuntime, setCursorRuntime] = useState<CursorRuntime>("cloud");
   const cursorSaved = !!status?.providers?.some((row) => row.provider === CURSOR_PROVIDER);
 
   const selected = useMemo(
@@ -590,7 +588,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               </h3>
               <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-500">
                 {tt(
-                  "这把 key 只用来在 OceanLeo 里启动、追问、查看和取消你自己的 Cursor 编码 agent，花的是你自己的 Cursor 额度，OceanLeo 不扣钱包。它和上面的 key 一样只以加密形式保存在这台设备的浏览器里，服务器不保存、不写日志、响应里也不会出现；要撤销，删掉下方表格里的 Cursor 一行即可。",
+                  "首页不用这把 key 开 Cursor。要在自己的电脑上用，从 Shell 的「用对话界面继续」进去。",
                 )}
               </p>
             </div>
@@ -615,48 +613,6 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               >
                 {tt("去 Cursor Dashboard → Integrations → User API Keys 生成 →")}
               </a>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                {tt("在哪里跑")}
-              </label>
-              <div className="space-y-2">
-                <label className="flex items-start gap-2 text-[13px] text-neutral-700">
-                  <input
-                    type="radio"
-                    name="cursor-runtime"
-                    checked={cursorRuntime === "cloud"}
-                    onChange={() => setCursorRuntime("cloud")}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">{tt("云端（Cursor 的机器）")}</span>
-                    <span className="block text-[11px] text-neutral-500">
-                      {tt(
-                        "Cursor 开一台云端机器克隆你的 GitHub 仓库、跑完可自动开 PR。需要你的 Cursor 账号已连通 GitHub 并授权该仓库，否则会被 Cursor 拒绝（ERROR_GITHUB_NO_USER_CREDENTIALS）。",
-                      )}
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-[13px] text-neutral-700">
-                  <input
-                    type="radio"
-                    name="cursor-runtime"
-                    checked={cursorRuntime === "local"}
-                    onChange={() => setCursorRuntime("local")}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">{tt("本机（你已配对的电脑）")}</span>
-                    <span className="block text-[11px] text-neutral-500">
-                      {tt(
-                        "通过设备桥在你自己的电脑上跑，文件不离开本机。那台电脑要先装好 Cursor CLI 并登录；这里的 key 不会下发到那台机器。",
-                      )}
-                    </span>
-                  </span>
-                </label>
-              </div>
             </div>
 
             {cursorSaved ? (

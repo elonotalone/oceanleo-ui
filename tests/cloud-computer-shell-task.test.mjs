@@ -66,6 +66,9 @@ const navStubUrl = dataModule(`
 `);
 const apiStubUrl = dataModule(`
   export const cloudComputerApi = globalThis.__shellApi;
+  export function agentDialogWsUrl(id, sessionId, token) {
+    return "ws://example.test/v1/computers/" + id + "/agent-dialog?session_id=" + sessionId + "&token=" + token;
+  }
 `);
 const terminalStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -214,6 +217,26 @@ test("进行中的 Shell 显示结束按钮，点了调用 closeTerminal", async
   await flush();
   assert.deepEqual(closed, { computerId: "cc_1", sessionId: "sid_1" });
   assert.match(view.text(), /这个 Shell 已结束/);
+  view.cleanup();
+});
+
+test("进行中的 Shell 能改用对话界面，终端节点仍留在页面上", async () => {
+  const view = await render({});
+  assert.match(view.text(), /用对话界面继续/);
+  const open = view.host.querySelector("[data-oceanleo-cc-agent-dialog]");
+  assert.ok(open);
+  await act(async () => {
+    open.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  const cursor = view.host.querySelector("[data-oceanleo-cc-dialog-cursor]");
+  assert.ok(cursor);
+  await act(async () => {
+    cursor.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-dialog-input]"));
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-xterm]"));
   view.cleanup();
 });
 

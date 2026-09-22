@@ -20,15 +20,6 @@ import {
 import { IconCheck, IconChevronDown } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
 import { fetchByokStatusLite, type ByokStatusLite } from "./byok-status";
-import {
-  clearCursorModel,
-  CURSOR_MODEL_EVENT,
-  readCursorModel,
-  selectCursorModel,
-  type CursorModelChoice,
-} from "../lib/cursor-model-choice";
-import { accessToken } from "../lib/auth/client";
-import { GATEWAY_BASE } from "../lib/auth/config";
 import { useWorkbenchOpen } from "./workbench-open-store";
 import { AnchoredPopover } from "./anchored-popover";
 
@@ -131,8 +122,6 @@ function ModelGroupPickerBody({
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
   const [byok, setByok] = useState<ByokStatusLite | null>(null);
-  const [cursorModels, setCursorModels] = useState<CursorModelChoice[]>([]);
-  const [cursorChoice, setCursorChoice] = useState<CursorModelChoice | null>(null);
   const groups = payload?.groups?.length ? payload.groups : FALLBACK_GROUPS;
   const activeKey = payload?.active_group_key || "preset:pro";
   const active =
@@ -180,50 +169,6 @@ function ModelGroupPickerBody({
     };
   }, [open]);
 
-  useEffect(() => {
-    const sync = () => setCursorChoice(readCursorModel());
-    sync();
-    window.addEventListener(CURSOR_MODEL_EVENT, sync);
-    return () => window.removeEventListener(CURSOR_MODEL_EVENT, sync);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const hasCursor = byok?.providers.some((name) => name.toLowerCase() === "cursor");
-    if (!hasCursor) {
-      setCursorModels([]);
-      return;
-    }
-    let alive = true;
-    void (async () => {
-      const token = await accessToken();
-      if (!token) return;
-      try {
-        const res = await fetch(`${GATEWAY_BASE}/v1/cursor/models`, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as { items?: Array<{ id?: string; name?: string }> };
-        if (!alive) return;
-        setCursorModels(
-          (data.items || [])
-            .map((item) => ({
-              id: String(item.id || "").trim(),
-              name: String(item.name || item.id || "").trim(),
-            }))
-            .filter((item) => item.id),
-        );
-      } catch {
-        /* 列表拉不到时首页仍可继续用 OceanLeo 组合 */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [open, byok]);
-
   async function activate(group: ModelGroup) {
     if (!payload || saving || group.key === activeKey) {
       if (group.key === activeKey) setOpen(false);
@@ -231,8 +176,6 @@ function ModelGroupPickerBody({
     }
     setSaving(group.key);
     setError("");
-    clearCursorModel();
-    setCursorChoice(null);
     const result = await setActiveModelGroup(group.key);
     setSaving("");
     if (result.ok && result.data) {
@@ -256,11 +199,7 @@ function ModelGroupPickerBody({
               : "border-neutral-200/90 bg-stone-50/80 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-900"
           }`}
           title={
-            cursorChoice?.name
-              ? `${tt("模型组合")} · ${cursorChoice.name}`
-              : active?.name
-                ? `${tt("模型组合")} · ${active.name}`
-                : tt("模型组合")
+            active?.name ? `${tt("模型组合")} · ${active.name}` : tt("模型组合")
           }
         >
           <svg
@@ -276,7 +215,7 @@ function ModelGroupPickerBody({
             <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
           </svg>
           <span className="max-w-[70px] truncate">
-            {loading ? "…" : cursorChoice?.name || active?.name || "Pro"}
+            {loading ? "…" : active?.name || "Pro"}
           </span>
           <span
             className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
@@ -312,7 +251,7 @@ function ModelGroupPickerBody({
           </svg>
           <span className="shrink-0 text-neutral-500">{tt("模型组合")}</span>
           <span className="truncate text-neutral-900">
-            {loading ? "…" : cursorChoice?.name || active?.name || "Pro"}
+            {loading ? "…" : active?.name || "Pro"}
           </span>
           <span
             className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
@@ -400,58 +339,8 @@ function ModelGroupPickerBody({
               compact ? "py-1" : "py-1.5"
             }`}
           >
-            {cursorModels.map((model) => {
-              const selected = cursorChoice?.id === model.id;
-              return (
-                <button
-                  key={`cursor:${model.id}`}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    selectCursorModel(model.id, model.name);
-                    setCursorChoice({ id: model.id, name: model.name });
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                    compact ? "gap-2 px-3 py-1.5" : "gap-3 px-3.5 py-2.5"
-                  } ${selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"}`}
-                >
-                  <span
-                    className={`grid shrink-0 place-items-center rounded-lg bg-neutral-900 font-bold text-white ${
-                      compact ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-[11px]"
-                    }`}
-                  >
-                    C
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate font-medium text-neutral-900 ${
-                        compact ? "text-[12px]" : "text-[13px]"
-                      }`}
-                    >
-                      {model.name}
-                    </span>
-                    <span
-                      className={`block text-neutral-400 ${
-                        compact ? "text-[10px]" : "mt-0.5 text-[11px]"
-                      }`}
-                    >
-                      {tt("Cursor · 主 agent 用你的额度")}
-                    </span>
-                  </span>
-                  {selected && (
-                    <IconCheck
-                      className={`shrink-0 text-emerald-600 ${
-                        compact ? "h-3.5 w-3.5" : "h-4 w-4"
-                      }`}
-                    />
-                  )}
-                </button>
-              );
-            })}
             {groups.map((group) => {
-              const selected = !cursorChoice && group.key === activeKey;
+              const selected = group.key === activeKey;
               const busy = group.key === saving;
               return (
                 <button

@@ -14,6 +14,7 @@ import {
   type ComputerDisplayState,
 } from "./computer-state";
 import { useComputerTerminal } from "./TerminalPanel";
+import { AgentDialogPane, useAgentDialog } from "./useAgentDialog";
 
 export type ShellTaskViewProps = {
   taskId: string;
@@ -45,11 +46,18 @@ export function ShellTaskView({
   const missing = !computerId || !sessionId;
   const [ended, setEnded] = useState(missing);
   const [computer, setComputer] = useState<Computer | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const shellLive = !ended && !missing;
 
   const terminal = useComputerTerminal({
     computerId,
-    sessionId: ended || missing ? null : sessionId,
-    enabled: !ended && !missing,
+    sessionId: shellLive ? sessionId : null,
+    enabled: shellLive,
+  });
+  const dialog = useAgentDialog({
+    computerId,
+    sessionId,
+    enabled: dialogOpen && shellLive,
   });
 
   useEffect(() => {
@@ -125,6 +133,16 @@ export function ShellTaskView({
           data-oceanleo-cc-online={state === "ready" ? "1" : "0"}
         />
         <span className="min-w-0 flex-1 truncate">{name}</span>
+        {!showEnded && !dialogOpen && (
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            data-oceanleo-cc-agent-dialog
+            className="rounded-lg px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+          >
+            {tt("用对话界面继续")}
+          </button>
+        )}
         {!showEnded && (
           <button
             type="button"
@@ -156,11 +174,19 @@ export function ShellTaskView({
           ) : null}
         </div>
       ) : (
-        <div
-          ref={terminal.hostRef}
-          className="min-h-0 flex-1 px-2 py-1"
-          data-oceanleo-cc-xterm
-        />
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={terminal.hostRef}
+            className={`h-full min-h-0 px-2 py-1 ${dialogOpen ? "invisible" : ""}`}
+            data-oceanleo-cc-xterm
+            aria-hidden={dialogOpen || undefined}
+          />
+          {dialogOpen ? (
+            <div className="absolute inset-0 flex min-h-0 flex-col bg-neutral-950">
+              <AgentDialogPane dialog={dialog} onBack={() => setDialogOpen(false)} />
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );

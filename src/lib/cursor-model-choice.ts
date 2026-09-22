@@ -50,19 +50,12 @@ export function clearCursorModel(): void {
   emit();
 }
 
-/** Create-task field. Empty keeps the OceanLeo loop (existing request shape). */
+/** Homepage create-task field. Always empty: the home box stays on OceanLeo. */
 export function createBackboneField(): string {
-  const choice = readCursorModel();
-  return choice ? `cursor:${choice.id}` : "";
+  return "";
 }
 
-/**
- * Follow-up field. Empty means "don't send", so older clients and the payer
- * contract stay unchanged until someone has actually picked or cleared Cursor.
- */
+/** Homepage follow-up field. Always empty: do not send a Cursor backbone. */
 export function followUpBackboneField(): string {
-  const choice = readCursorModel();
-  if (choice) return `cursor:${choice.id}`;
-  if (storage()?.getItem(CLEARED_KEY) === "1") return "oceanleo";
   return "";
 }

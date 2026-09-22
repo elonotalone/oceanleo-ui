@@ -292,6 +292,20 @@ export function terminalWsUrl(
   return `${wsBase}/v1/computers/${encodeURIComponent(id)}/terminal?${query.toString()}`;
 }
 
+/** Same auth query as `terminalWsUrl`; path is the shell agent dialog. */
+export function agentDialogWsUrl(
+  id: string,
+  sessionId: string,
+  token: string,
+): string {
+  const wsBase = GATEWAY_BASE.replace(/^http/i, "ws");
+  const query = new URLSearchParams({
+    session_id: sessionId,
+    token,
+  });
+  return `${wsBase}/v1/computers/${encodeURIComponent(id)}/agent-dialog?${query.toString()}`;
+}
+
 export function nodeWsUrl(): string {
   const wsBase = GATEWAY_BASE.replace(/^http/i, "ws");
   return `${wsBase}/v1/computers/node/ws`;
