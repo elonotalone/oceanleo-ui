@@ -10,7 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { openLeoAssistant, useLeoEnabled } from "./LeoAssistant";
+import { type LeoContext } from "./LeoAssistant";
+import { LeoEntryButton } from "./LeoEntryButton";
 import {
   TemplateFillArea,
   type TemplateFillAreaHandle,
@@ -139,6 +140,13 @@ export interface LeoComposerProps {
   onStop?: () => void;
   /** 是否显示「leo」按钮（仅与 AI 生成有关的输入框传 true） */
   leoSuggest?: boolean;
+  /**
+   * leo 入口按钮的页面上下文（合同 I5）：告诉 leo「这个输入框在哪个页面」。
+   * 任务页（AgentChat）传 `{ page: "task", taskId }`；不传默认 `{ page: "home" }`
+   * ——本组件的旗舰用例是首页大输入框（HomeIntro）。其余页面复用时传自己的
+   * page（如 `{ page: "other" }`），leo-turn 的 context 才不说谎。
+   */
+  leoContext?: LeoContext;
   /**
    * @deprecated 宗旨 v11（2026-07-02）：「⚡ 一键补充」自动写回输入框违反
    * 「结果永不自动写回」原则，已下线。传了也不再渲染任何按钮（编译兼容）。 */
@@ -271,6 +279,7 @@ export function LeoComposer({
   loading = false,
   onStop,
   leoSuggest = false,
+  leoContext,
   leftSlot,
   inlineSlot,
   rows = 2,
@@ -312,8 +321,7 @@ export function LeoComposer({
   const effectiveFillNonce = (fillNonce ?? 0) + ctxFillNonce;
   const effectiveHighlightTemplate = highlightTemplate ?? ctxFillTemplate;
   const runtimeHydration = useWorkspaceRuntimeHydration();
-  // leo 总开关（/general 可关，默认开）：关闭时不渲染「leo」按钮。
-  const leoEnabled = useLeoEnabled();
+  // leo 总开关（/general 可关，默认开）由 LeoEntryButton 内部自查（关闭时它返回 null）。
   // 唯一输入框（宗旨 v15j）：全程用 TemplateFillArea（Tiptap 编辑器），普通/模板同一个实例。
   // 真正的可编辑 DOM 藏在组件内，用这个 handle 取（供聚焦 / leo 助手锚点 / 上传落焦等）。
   const highlightRef = useRef<TemplateFillAreaHandle>(null);
@@ -396,13 +404,6 @@ export function LeoComposer({
     return value.trim();
   }
 
-  function handleLeoSuggest() {
-    const el = currentTextarea();
-    el?.setAttribute("data-ai-assistant-target", "");
-    el?.focus();
-    openLeoAssistant({ toggle: true, source: "input" });
-  }
-
   function handlePluginsClick() {
     if (onOpenPlugins) {
       onOpenPlugins();
@@ -470,6 +471,7 @@ export function LeoComposer({
 
   return (
     <div
+      data-oceanleo-leo-entry-root=""
       onDragEnter={dragEnabled ? onDragEnter : undefined}
       onDragOver={dragEnabled ? onDragOver : undefined}
       onDragLeave={dragEnabled ? onDragLeave : undefined}
@@ -628,16 +630,10 @@ export function LeoComposer({
           )}
           {leftSlot}
           {showComputerDock && <ComputerDock />}
+          {/* 全站唯一的 leo 入口（合同 I5 / W5B）：三处输入框同一颗 ✦ leo 按钮，
+              面板从按钮上方弹出。页面上下文见 leoContext prop。 */}
           {leoSuggest && (
-            <button
-              type="button"
-              onClick={handleLeoSuggest}
-              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] text-neutral-600 transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 active:scale-95"
-              title={tt("让 leo 帮你处理这段内容（扩充 / 精简 / 总结 / 解释 / 翻译…）")}
-            >
-              <Sparkle />
-              leo
-            </button>
+            <LeoEntryButton tone="light" context={leoContext ?? { page: "home" }} />
           )}
           {inlineSlot}
           {/* 「这次谁付钱」。进了组织才渲染，否则这里是 null，整排与企业版之前逐字相同。
@@ -1246,28 +1242,6 @@ function ArrowUp() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function Sparkle() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5">
-      <defs>
-        <linearGradient id="leo-composer-sparkle-g" x1="0" y1="0" x2="24" y2="24">
-          <stop offset="0%" stopColor="#818cf8" />
-          <stop offset="100%" stopColor="#c084fc" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z"
-        fill="url(#leo-composer-sparkle-g)"
-      />
-      <path
-        d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9L18 14z"
-        fill="url(#leo-composer-sparkle-g)"
-        opacity="0.65"
-      />
     </svg>
   );
 }

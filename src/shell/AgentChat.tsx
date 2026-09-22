@@ -2116,6 +2116,7 @@ function AgentChatInner({
             onStop={() => void stop()}
             disabled={readOnly}
             leoSuggest
+            leoContext={{ page: "task", taskId: taskId || undefined }}
             inlineSlot={inlineSlot}
             placeholder={
               placeholder ??
