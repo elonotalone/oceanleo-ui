@@ -339,15 +339,22 @@ function NoticeView({
   dialog: AgentDialogController;
 }) {
   const tt = useUI();
-  const action = noticeAction(message.code);
   const program = isWsProgram(message.program)
     ? message.program
     : isWsProgram(dialog.program)
       ? dialog.program
       : null;
+  const finishedHere =
+    program !== null &&
+    dialog.install.program === program &&
+    dialog.install.donePath !== "" &&
+    dialog.install.failedText === "";
+  const row = program ? dialog.programs.find((item) => item.id === program) : undefined;
+  const installed = finishedHere ? true : row ? row.installed : null;
+  const action = noticeAction(message.code, installed);
   return (
     <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-200">
-      <p>{noticeCopy(tt, message.code)}</p>
+      <p>{noticeCopy(tt, message.code, installed)}</p>
       {action === "login" && program ? (
         <button
           type="button"

@@ -64,6 +64,7 @@ const SOURCE = {
   openingLogin: "正在打开登录",
   answerSubmitted: "已经提交",
   closeSession: "关掉会话",
+  dialogDidNotStart: "对话组件没有启动。请再发一次。",
 } as const;
 
 export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
@@ -127,6 +128,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Opening sign-in",
     answerSubmitted: "Submitted",
     closeSession: "Close the session",
+    dialogDidNotStart: "The dialog piece did not start. Send again.",
   },
   de: {
     connectCloud: "Cloud-Computer verbinden",
@@ -188,6 +190,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Anmeldung wird geöffnet",
     answerSubmitted: "Gesendet",
     closeSession: "Sitzung schließen",
+    dialogDidNotStart: "Das Dialogteil ist nicht gestartet. Senden Sie noch einmal.",
   },
   es: {
     connectCloud: "Conectar un ordenador en la nube",
@@ -249,6 +252,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Abriendo el inicio de sesión",
     answerSubmitted: "Enviado",
     closeSession: "Cerrar la sesión",
+    dialogDidNotStart: "La pieza de diálogo no se ha iniciado. Envíala otra vez.",
   },
   "es-419": {
     connectCloud: "Conectar una computadora en la nube",
@@ -310,6 +314,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Abriendo el inicio de sesión",
     answerSubmitted: "Enviado",
     closeSession: "Cerrar la sesión",
+    dialogDidNotStart: "La parte de diálogo no se inició. Envíala otra vez.",
   },
   fr: {
     connectCloud: "Connecter un ordinateur cloud",
@@ -371,6 +376,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Ouverture de la connexion",
     answerSubmitted: "Envoyé",
     closeSession: "Fermer la session",
+    dialogDidNotStart: "La partie dialogue n’a pas démarré. Envoyez encore une fois.",
   },
   it: {
     connectCloud: "Collega un computer cloud",
@@ -432,6 +438,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Apertura dell’accesso",
     answerSubmitted: "Inviato",
     closeSession: "Chiudi la sessione",
+    dialogDidNotStart: "La parte di dialogo non si è avviata. Invia di nuovo.",
   },
   "pt-BR": {
     connectCloud: "Conectar um computador na nuvem",
@@ -493,6 +500,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Abrindo o login",
     answerSubmitted: "Enviado",
     closeSession: "Fechar a sessão",
+    dialogDidNotStart: "A parte de diálogo não iniciou. Envie de novo.",
   },
   "pt-PT": {
     connectCloud: "Ligar um computador na nuvem",
@@ -554,6 +562,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "A abrir o início de sessão",
     answerSubmitted: "Enviado",
     closeSession: "Fechar a sessão",
+    dialogDidNotStart: "A parte de diálogo não arrancou. Envie outra vez.",
   },
   vi: {
     connectCloud: "Kết nối máy tính đám mây",
@@ -615,6 +624,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Đang mở đăng nhập",
     answerSubmitted: "Đã gửi",
     closeSession: "Đóng phiên",
+    dialogDidNotStart: "Phần hội thoại chưa khởi động. Hãy gửi lại.",
   },
   tr: {
     connectCloud: "Bir bulut bilgisayar bağla",
@@ -676,6 +686,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "Giriş açılıyor",
     answerSubmitted: "Gönderildi",
     closeSession: "Oturumu kapat",
+    dialogDidNotStart: "Diyalog parçası başlamadı. Bir kez daha gönderin.",
   },
   "zh-TW": {
     connectCloud: "接入雲電腦",
@@ -737,6 +748,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "正在打開登入",
     answerSubmitted: "已經提交",
     closeSession: "關掉會話",
+    dialogDidNotStart: "對話元件沒有啟動。請再發一次。",
   },
   ja: {
     connectCloud: "クラウドパソコンを接続",
@@ -798,6 +810,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "ログインを開いています",
     answerSubmitted: "送信しました",
     closeSession: "セッションを閉じる",
+    dialogDidNotStart: "対話部品が起動しませんでした。もう一度送ってください。",
   },
   ko: {
     connectCloud: "클라우드 컴퓨터 연결",
@@ -859,6 +872,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "로그인을 여는 중",
     answerSubmitted: "제출했습니다",
     closeSession: "세션 닫기",
+    dialogDidNotStart: "대화 부품이 시작되지 않았습니다. 다시 보내 주세요.",
   },
   ar: {
     connectCloud: "توصيل حاسوب سحابي",
@@ -920,6 +934,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "جارٍ فتح تسجيل الدخول",
     answerSubmitted: "تم الإرسال",
     closeSession: "إغلاق الجلسة",
+    dialogDidNotStart: "جزء الحوار لم يبدأ. أعد الإرسال مرة أخرى.",
   },
   th: {
     connectCloud: "เชื่อมต่อคอมพิวเตอร์คลาวด์",
@@ -981,6 +996,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "กำลังเปิดหน้าเข้าสู่ระบบ",
     answerSubmitted: "ส่งแล้ว",
     closeSession: "ปิดเซสชัน",
+    dialogDidNotStart: "ส่วนสนทนายังไม่เริ่มทำงาน ส่งอีกครั้ง",
   },
   hi: {
     connectCloud: "क्लाउड कंप्यूटर जोड़ें",
@@ -1042,5 +1058,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     openingLogin: "लॉग इन खोला जा रहा है",
     answerSubmitted: "भेज दिया गया",
     closeSession: "सत्र बंद करें",
+    dialogDidNotStart: "बातचीत वाला हिस्सा शुरू नहीं हुआ। फिर से भेजें।",
   },
 });

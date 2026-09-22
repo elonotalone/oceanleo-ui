@@ -2,7 +2,9 @@
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
 
-export function noticeCopy(tt: Translate, code: string): string {
+const DIALOG_DID_NOT_START = "对话组件没有启动。请再发一次。";
+
+export function noticeCopy(tt: Translate, code: string, installed: boolean | null = null): string {
   switch (code) {
     case "not_logged_in":
       return tt("还没登录。点登录，在浏览器里完成后这里会变绿。");
@@ -27,7 +29,10 @@ export function noticeCopy(tt: Translate, code: string): string {
       return tt("这台电脑上的程序出错了。");
     case "feature_disabled":
       return tt("这个功能在当前站点不可用。");
+    case "acp_start_failed":
+      return tt(DIALOG_DID_NOT_START);
     case "acp_unavailable":
+      if (installed === true) return tt(DIALOG_DID_NOT_START);
       return tt("这个程序的对话组件还没就绪。安装会一并补齐。");
     case "runtime_missing":
       return tt("运行这个程序还缺运行时。安装会一并补齐。");
@@ -44,14 +49,14 @@ export function noticeCopy(tt: Translate, code: string): string {
   }
 }
 
-export function noticeAction(code: string): "login" | "install" | "retry" | null {
+export function noticeAction(
+  code: string,
+  installed: boolean | null = null,
+): "login" | "install" | "retry" | null {
+  if (code === "acp_start_failed") return null;
+  if (code === "acp_unavailable") return installed === false ? "install" : null;
   if (code === "not_logged_in") return "login";
-  if (
-    code === "program_missing" ||
-    code === "missing_program" ||
-    code === "runtime_missing" ||
-    code === "acp_unavailable"
-  ) {
+  if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
     return "install";
   }
   if (code === "computer_offline") return "retry";

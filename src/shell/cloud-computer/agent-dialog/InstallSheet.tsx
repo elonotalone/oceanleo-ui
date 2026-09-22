@@ -84,6 +84,15 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
           >
             {tt("重试")}
           </button>
+        ) : install.donePath ? (
+          <button
+            type="button"
+            data-oceanleo-cc-install-done=""
+            onClick={dialog.closeInstall}
+            className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900"
+          >
+            {tt("完成")}
+          </button>
         ) : (
           <button
             type="button"
