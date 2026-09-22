@@ -228,12 +228,56 @@ function QuestionView({
   );
 }
 
+// 裸 URL → 真链接（oceanleo 程序的产物行因此可点）。行内代码段里的 URL 不变链接。
+// 不解析 HTML；textContent 与纯文本渲染完全一致。
+const URL_PART = /(https?:\/\/[^\s<>()"']+)/;
+
+function AssistantText({ text }: { text: string }) {
+  const parts = text.split(/(`[^`\n]+`)/g);
+  return (
+    <p className="whitespace-pre-wrap text-[13px] text-neutral-200">
+      {parts.map((part, index) => {
+        if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
+          return (
+            <code
+              key={index}
+              className="rounded bg-neutral-800 px-1 font-mono text-[12px] text-neutral-100"
+            >
+              {part.slice(1, -1)}
+            </code>
+          );
+        }
+        return (
+          <span key={index}>
+            {part.split(URL_PART).map((segment, segIndex) =>
+              segIndex % 2 === 1 ? (
+                <a
+                  key={segIndex}
+                  data-oceanleo-cc-link=""
+                  href={segment}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all text-sky-300 underline"
+                >
+                  {segment}
+                </a>
+              ) : (
+                segment
+              ),
+            )}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
 function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogController }) {
   const tt = useUI();
   if (item.kind === "assistant") {
     return (
       <div data-oceanleo-cc-assistant="">
-        <AgentText text={item.text} />
+        <AssistantText text={item.text} />
       </div>
     );
   }
@@ -360,9 +404,15 @@ function NoticeView({
   const installed = finishedHere ? true : row ? row.installed : null;
   const action = noticeAction(message.code, installed);
   const spoken = noticeFrameText(message);
+  // oceanleo 程序的离线行与 ACP 进程退出行在这里说人话；其余 code 走 notice.ts 词典。
+  const copy = message.code === "computer_offline" && message.program === "oceanleo"
+    ? tt("这台电脑不在线")
+    : message.code === "acp_exited"
+      ? tt("这个程序的对话进程退出了。再发一句会重新打开。")
+      : noticeCopy(tt, message.code, installed);
   return (
     <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-200">
-      <p>{spoken || noticeCopy(tt, message.code, installed)}</p>
+      <p>{spoken || copy}</p>
       {action === "login" && program ? (
         <button
           type="button"

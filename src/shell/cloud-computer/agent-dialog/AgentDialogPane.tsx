@@ -6,14 +6,14 @@ import { InstallSheet } from "./InstallSheet";
 import { LoginCard } from "./LoginCard";
 import { MessageList } from "./MessageList";
 import { ProgramRow } from "./ProgramRow";
-import { PROGRAM_LABEL, type AgentDialogController } from "./types";
+import { PROGRAM_LABEL } from "./types";
+import type { AgentDialogControllerV2 } from "./useAgentDialogController";
 
 export function AgentDialogPane({
   dialog,
   onBack,
 }: {
-  // computerName 由控制器（W6A）提供；W3 把它并进 types.ts 后这个交叉可删。
-  dialog: AgentDialogController & { computerName?: string };
+  dialog: AgentDialogControllerV2;
   onBack: () => void;
 }) {
   const tt = useUI();

@@ -4,18 +4,29 @@
 // 用户的话只出现在 JSON 帧里，不拼进任何命令字符串。
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
 import { agentDialogWsUrl } from "../../../lib/cloud-computer-api";
+import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
+import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
+import { mapTaskMessages, nextOceanleoPoll } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
 import { applyDialog, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
-import type { AgentDialogController, AgentProgram, WsProgram } from "./types";
+import type {
+  AgentDialogController,
+  AgentDialogMessage,
+  AgentProgram,
+  WsProgram,
+} from "./types";
 
 // 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
 // W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
 export type AgentDialogControllerV2 = AgentDialogController & {
   /** oceanleo 程序标题「OceanLeo agent · 电脑名」用；agentState 未回到前为空串。 */
   computerName: string;
+  /** 登录卡贴码输入框的受控草稿（W3 的 LoginCard 也可以自己持局部 state）。 */
+  setLoginCodeDraft: (code: string) => void;
 };
 
 const MAX_PROMPT_CHARS = 32000;
@@ -35,9 +46,11 @@ export function useAgentDialog({
   sessionId: string;
   enabled: boolean;
 }): AgentDialogControllerV2 {
+  const tt = useUI();
   const [state, dispatch] = useReducer(applyDialog, undefined, initialDialogState);
   const [draft, setDraft] = useState("");
   const [fresh, setFresh] = useState(false);
+  const [computerName, setComputerName] = useState("");
 
   const stateRef = useRef(state);
   const draftRef = useRef(draft);
@@ -52,6 +65,18 @@ export function useAgentDialog({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef<() => Promise<WebSocket | null>>(async () => null);
   const inflightRef = useRef<Promise<WebSocket | null> | null>(null);
+  // OceanLeo agent 程序（合同 I6）：任务指针、刚发出去还没在任务消息里看到的原文、
+  // 轮询代际与可取消的等待器。代际一升，所有在飞的轮询/回放立即作废。
+  const oceanTaskRef = useRef("");
+  const oceanSendRef = useRef("");
+  const oceanGen = useRef(0);
+  const oceanWaiterRef = useRef<{
+    timer: ReturnType<typeof setTimeout>;
+    resolve: (done: boolean) => void;
+  } | null>(null);
+  // 程序切换时消息列表按程序分开：切走前把当前列表存进缓存，切回来时恢复；
+  // oceanleo 的缓存只是过渡，进入时一律用 agentState/getTask 的服务端真相覆盖。
+  const messagesCacheRef = useRef(new Map<string, AgentDialogMessage[]>());
 
   stateRef.current = state;
   draftRef.current = draft;
@@ -202,17 +227,205 @@ export function useAgentDialog({
 
   const ensureOpen = useCallback(() => connectRef.current(), []);
 
+  // --------------------------------------------------------------------- //
+  // OceanLeo agent 程序（合同 I6）：REST turn + getTask 轮询，不走 WS。
+  // --------------------------------------------------------------------- //
+
+  const clearOceanWait = useCallback(() => {
+    const waiter = oceanWaiterRef.current;
+    if (!waiter) return;
+    oceanWaiterRef.current = null;
+    clearTimeout(waiter.timer);
+    waiter.resolve(false);
+  }, []);
+
+  const oceanWait = useCallback(
+    (ms: number) =>
+      new Promise<boolean>((resolve) => {
+        oceanWaiterRef.current = {
+          timer: setTimeout(() => {
+            oceanWaiterRef.current = null;
+            resolve(true);
+          }, ms),
+          resolve,
+        };
+      }),
+    [],
+  );
+
+  /** 任务详情 → 消息列表。刚发的那句服务端还没落库时这一轮不替换（本地回显不闪没）。 */
+  const applyOceanDetail = useCallback(
+    (detail: TaskDetail) => {
+      const mapped = mapTaskMessages(detail, { step: tt("步骤"), error: tt("出错") });
+      const pending = oceanSendRef.current;
+      if (pending) {
+        const seen = mapped.some((message) => message.kind === "user" && message.text === pending);
+        if (!seen) return;
+        oceanSendRef.current = "";
+      }
+      messagesCacheRef.current.set("oceanleo", mapped);
+      if (stateRef.current.program === "oceanleo") {
+        dispatch({ type: "messages-replace", messages: mapped });
+        const running = detail.task?.status === "running";
+        if (running !== stateRef.current.busy) {
+          dispatch(running ? { type: "send-began" } : { type: "cancel-local" });
+        }
+      }
+    },
+    [tt],
+  );
+
+  /** 轮询直到任务离开 running；代际变了（重进程序/复位/卸载）立即收手。 */
+  const pollOcean = useCallback(
+    async (taskId: string, gen: number) => {
+      let idleStep = -1;
+      let waitedMs = 0;
+      let lastCount = -1;
+      for (;;) {
+        if (gen !== oceanGen.current) return;
+        const result = await getTask(taskId);
+        if (gen !== oceanGen.current) return;
+        if (!result.ok || !result.data) {
+          // 网络/权限抖动：不擦列表、不假装结束，按退避节奏再来。
+          const cadence = nextOceanleoPoll({ hidden: false, changed: false, idleStep, waitedMs });
+          idleStep = cadence.idleStep;
+          waitedMs = cadence.waitedMs;
+          if (!(await oceanWait(cadence.delayMs))) return;
+          continue;
+        }
+        const detail = result.data;
+        const changed = (detail.messages?.length ?? 0) !== lastCount;
+        lastCount = detail.messages?.length ?? 0;
+        applyOceanDetail(detail);
+        if (detail.task?.status !== "running") return;
+        const hidden = typeof document !== "undefined" && document.hidden === true;
+        const cadence = nextOceanleoPoll({ hidden, changed, idleStep, waitedMs });
+        idleStep = cadence.idleStep;
+        waitedMs = cadence.waitedMs;
+        if (!(await oceanWait(cadence.delayMs))) return;
+      }
+    },
+    [applyOceanDetail, oceanWait],
+  );
+
+  /** 进入 oceanleo 程序（或重试）：拉 agentState，回放当前任务的消息。 */
+  const refreshOcean = useCallback(async () => {
+    const computerId = computerIdRef.current;
+    if (!computerId || !enabledRef.current) return;
+    const gen = (oceanGen.current += 1);
+    clearOceanWait();
+    const result = await agentState(computerId);
+    if (gen !== oceanGen.current) return;
+    if (!result.ok || !result.data) {
+      setComputerName("");
+      oceanTaskRef.current = "";
+      dispatch({
+        type: "frame",
+        frame: {
+          t: "error",
+          code: result.status === 0 ? "dialog_unreachable" : "node_error",
+          program: "oceanleo",
+        },
+      });
+      return;
+    }
+    const data = result.data;
+    setComputerName(data.computer?.name ?? "");
+    if (data.computer?.online !== true) {
+      // 电脑不在线：消息区只留一行实话，输入禁用（offline 语义与 WS 程序一致）。
+      oceanTaskRef.current = "";
+      oceanSendRef.current = "";
+      messagesCacheRef.current.set("oceanleo", []);
+      if (stateRef.current.program === "oceanleo") {
+        dispatch({ type: "messages-replace", messages: [] });
+        dispatch({ type: "cancel-local" });
+      }
+      dispatch({ type: "frame", frame: { t: "error", code: "computer_offline", program: "oceanleo" } });
+      return;
+    }
+    if (stateRef.current.offline) dispatch({ type: "clear-offline" });
+    const taskId = typeof data.task_id === "string" ? data.task_id : "";
+    oceanTaskRef.current = taskId;
+    if (!taskId) {
+      messagesCacheRef.current.set("oceanleo", []);
+      if (stateRef.current.program === "oceanleo") {
+        dispatch({ type: "messages-replace", messages: [] });
+        dispatch({ type: "cancel-local" });
+      }
+      return;
+    }
+    const detail = await getTask(taskId);
+    if (gen !== oceanGen.current) return;
+    if (!detail.ok || !detail.data) return;
+    applyOceanDetail(detail.data);
+    if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
+  }, [applyOceanDetail, clearOceanWait, pollOcean]);
+
+  const sendOcean = useCallback(async () => {
+    const computerId = computerIdRef.current;
+    if (!computerId) return;
+    if (stateRef.current.busy || stateRef.current.offline) return;
+    const text = draftRef.current.trim();
+    if (!text) return;
+    if (text.length > MAX_PROMPT_CHARS) {
+      dispatch({ type: "notice", code: "invalid_argument", program: "oceanleo" });
+      return;
+    }
+    const gen = (oceanGen.current += 1);
+    clearOceanWait();
+    // 与 WS send 同款乐观写：dispatch 到重渲染之间再按发送不能发出第二句。
+    stateRef.current = { ...stateRef.current, busy: true };
+    dispatch({ type: "user", text });
+    setDraft("");
+    const freshTurn = freshRef.current;
+    setFresh(false);
+    if (freshTurn) {
+      // 「新对话」：先丢掉服务端任务指针，下一句必然新建任务。
+      await agentReset(computerId);
+      if (gen !== oceanGen.current) return;
+      oceanTaskRef.current = "";
+    }
+    oceanSendRef.current = text;
+    const result = await agentTurn(computerId, {
+      text,
+      shell_session_id: sessionIdRef.current || undefined,
+    });
+    if (gen !== oceanGen.current) return;
+    if (!result.ok || !result.data?.task_id) {
+      oceanSendRef.current = "";
+      if (result.status === 0) {
+        dispatch({ type: "send-failed" });
+      } else {
+        dispatch({
+          type: "frame",
+          frame: { t: "error", code: "node_error", program: "oceanleo" },
+        });
+      }
+      return;
+    }
+    oceanTaskRef.current = result.data.task_id;
+    void pollOcean(result.data.task_id, gen);
+  }, [clearOceanWait, pollOcean]);
+
   useEffect(() => {
     dispatch({ type: "reset" });
     setDraft("");
     setFresh(false);
-  }, [computerId, sessionId]);
+    setComputerName("");
+    oceanGen.current += 1;
+    oceanTaskRef.current = "";
+    oceanSendRef.current = "";
+    messagesCacheRef.current.clear();
+    clearOceanWait();
+  }, [computerId, sessionId, clearOceanWait]);
 
   useEffect(() => {
     if (!enabled) {
       connectGen.current += 1;
       inflightRef.current = null;
       clearTimer();
+      oceanGen.current += 1;
+      clearOceanWait();
       const socket = socketRef.current;
       socketRef.current = null;
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
@@ -222,29 +435,56 @@ export function useAgentDialog({
     dispatch({ type: "clear-offline" });
     delayRef.current = 1000;
     void connect();
+    // 默认程序就是 oceanleo（合同 I6）：打开对话框即拉 agentState 回放当前任务。
+    if (stateRef.current.program === "oceanleo") void refreshOcean();
     return () => {
       connectGen.current += 1;
       inflightRef.current = null;
       clearTimer();
+      oceanGen.current += 1;
+      clearOceanWait();
       const socket = socketRef.current;
       socketRef.current = null;
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
     };
-  }, [enabled, computerId, sessionId, clearTimer, connect]);
+  }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait, refreshOcean]);
 
-  const setProgram = useCallback((next: AgentProgram) => {
-    // 合同 I6：oceanleo 也是可选程序；模型帧只对走 WS 的程序发。
-    if (!isWsProgram(next) && next !== "oceanleo") return;
-    if (stateRef.current.busy) return;
-    dispatch({ type: "program", program: next });
-    const socket = socketRef.current;
-    if (isWsProgram(next) && socket && socket.readyState === WebSocket.OPEN) {
-      sendJson(socket, { t: "models", program: next });
-    }
-  }, []);
+  const setProgram = useCallback(
+    (next: AgentProgram) => {
+      // 合同 I6：oceanleo 也是可选程序；模型帧只对走 WS 的程序发。
+      if (!isWsProgram(next) && next !== "oceanleo") return;
+      if (stateRef.current.busy) return;
+      const prev = stateRef.current.program;
+      if (prev && prev !== next) messagesCacheRef.current.set(prev, stateRef.current.messages);
+      dispatch({ type: "program", program: next });
+      dispatch({
+        type: "messages-replace",
+        messages: messagesCacheRef.current.get(next) ?? [],
+      });
+      if (next === "oceanleo") {
+        // 进入即拉服务端真相（覆盖上面的缓存过渡）；离开 oceanleo 则停掉轮询。
+        void refreshOcean();
+        return;
+      }
+      if (prev === "oceanleo") {
+        oceanGen.current += 1;
+        clearOceanWait();
+      }
+      const socket = socketRef.current;
+      if (isWsProgram(next) && socket && socket.readyState === WebSocket.OPEN) {
+        sendJson(socket, { t: "models", program: next });
+      }
+    },
+    [clearOceanWait, refreshOcean],
+  );
 
   const send = useCallback(async () => {
     const program = stateRef.current.program;
+    // 合同 I6：oceanleo 走 REST turn + 轮询，不碰 WS（P7：不为它等 15s 连接超时）。
+    if (program === "oceanleo") {
+      await sendOcean();
+      return;
+    }
     if (!isWsProgram(program)) return;
     if (stateRef.current.busy || stateRef.current.agentBusy || stateRef.current.offline) return;
     const text = draftRef.current.trim();
@@ -276,9 +516,27 @@ export function useAgentDialog({
 
   const abort = useCallback(() => {
     const program = stateRef.current.program;
+    if (program === "oceanleo") {
+      // 「停止」真的停：停轮询、停服务端任务，再拉一次终态消息。
+      oceanGen.current += 1;
+      clearOceanWait();
+      oceanSendRef.current = "";
+      const taskId = oceanTaskRef.current;
+      dispatch({ type: "cancel-local" });
+      if (taskId) {
+        const gen = oceanGen.current;
+        void stopTask(taskId).then(async () => {
+          if (gen !== oceanGen.current) return;
+          const detail = await getTask(taskId);
+          if (gen !== oceanGen.current || !detail.ok || !detail.data) return;
+          applyOceanDetail(detail.data);
+        });
+      }
+      return;
+    }
     if (isWsProgram(program)) sendJson(socketRef.current, { t: "cancel", program });
     dispatch({ type: "cancel-local" });
-  }, []);
+  }, [applyOceanDetail, clearOceanWait]);
 
   const closeProgram = useCallback((program: WsProgram) => {
     const sent = sendJson(socketRef.current, { t: "close", program });
@@ -336,6 +594,37 @@ export function useAgentDialog({
     dispatch({ type: "close-login" });
   }, []);
 
+  // 合同 I3：Claude 这类 needs_code 的程序，把浏览器给的码贴进登录进程 stdin。
+  const submitLoginCode = useCallback(
+    (program: WsProgram, code: string) => {
+      const trimmed = code.trim();
+      if (!trimmed) return;
+      dispatch({ type: "login-code-draft", code: "" });
+      void (async () => {
+        const socket = await ensureOpen();
+        if (!socket) return;
+        sendJson(socket, { t: "login_code", program, code: trimmed });
+      })();
+    },
+    [ensureOpen],
+  );
+
+  // 取消登录：告诉服务端杀登录进程，本地立刻关卡（服务端随后补 login_failed cancelled）。
+  const cancelLogin = useCallback((program: WsProgram) => {
+    dispatch({ type: "close-login" });
+    const sent = sendJson(socketRef.current, { t: "login_cancel", program });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "login_cancel", program });
+    })();
+    // ensureOpen 也失败就算了：卡片已关，进程侧 15 分钟超时自己收。
+  }, [ensureOpen]);
+
+  const setLoginCodeDraft = useCallback((code: string) => {
+    dispatch({ type: "login-code-draft", code });
+  }, []);
+
   const setSelectedModel = useCallback((id: string) => {
     dispatch({ type: "set-model", id });
   }, []);
@@ -371,6 +660,12 @@ export function useAgentDialog({
   }, [ensureOpen]);
 
   const retryConnect = useCallback(() => {
+    // oceanleo 程序的「重试」= 重拉 agentState；WS 程序维持原来的重连。
+    if (stateRef.current.program === "oceanleo") {
+      dispatch({ type: "clear-offline" });
+      void refreshOcean();
+      return;
+    }
     haltRef.current = false;
     delayRef.current = 1000;
     dispatch({ type: "clear-offline" });
@@ -380,7 +675,7 @@ export function useAgentDialog({
       return;
     }
     void connect();
-  }, [connect]);
+  }, [connect, refreshOcean]);
 
   const setFreshValue = useCallback((value: boolean) => {
     setFresh(value);
@@ -389,7 +684,7 @@ export function useAgentDialog({
   return {
     program: state.program,
     setProgram,
-    computerName: "",
+    computerName,
     messages: state.messages,
     draft,
     setDraft,
@@ -414,6 +709,9 @@ export function useAgentDialog({
     login: state.login,
     openLogin,
     closeLogin,
+    submitLoginCode,
+    cancelLogin,
+    setLoginCodeDraft,
     answerPermission,
     answerQuestion,
     openedPrograms: state.opened,

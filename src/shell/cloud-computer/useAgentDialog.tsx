@@ -7,3 +7,4 @@ export type {
 } from "./agent-dialog/types";
 
 export { useAgentDialog, AgentDialogPane } from "./agent-dialog";
+export type { AgentDialogControllerV2 } from "./agent-dialog";

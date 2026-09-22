@@ -8,7 +8,7 @@ import { SHELL_OVERHAUL_SETTINGS_MESSAGES } from "./shell-overhaul-settings-copy
 import { SHELL_OVERHAUL_FOOTER_MESSAGES } from "./shell-overhaul-footer-copy";
 import { SHELL_OVERHAUL_PLUGINS_MESSAGES } from "./shell-overhaul-plugins-copy";
 import { SHELL_OVERHAUL_LEGACY_MESSAGES } from "./shell-overhaul-legacy-copy";
-import { LEO_AGENT_MESSAGES } from "./leo-agent-copy";
+import { SHELL_OCEANLEO_PANE_MESSAGES } from "./shell-oceanleo-pane-copy";
 import { SHELL_ENDED_MESSAGES } from "./shell-ended-copy";
 
 const PARTS = [
@@ -18,7 +18,7 @@ const PARTS = [
   SHELL_OVERHAUL_FOOTER_MESSAGES,
   SHELL_OVERHAUL_PLUGINS_MESSAGES,
   SHELL_OVERHAUL_LEGACY_MESSAGES,
-  LEO_AGENT_MESSAGES,
+  SHELL_OCEANLEO_PANE_MESSAGES,
   SHELL_ENDED_MESSAGES,
 ];
 

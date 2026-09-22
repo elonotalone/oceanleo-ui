@@ -49,8 +49,11 @@ function blankLogin(): LoginState {
   return {
     open: false,
     program: null,
+    phase: "idle",
     url: "",
     code: "",
+    needsCode: false,
+    codeDraft: "",
     hint: "",
     failed: "",
     pending: false,
@@ -96,6 +99,8 @@ export type DialogEvent =
   | { type: "install-local-fail" }
   | { type: "open-login"; program: WsProgram }
   | { type: "close-login" }
+  | { type: "login-code-draft"; code: string }
+  | { type: "messages-replace"; messages: AgentDialogMessage[] }
   | { type: "permission-chose"; id: string; name: string }
   | { type: "question-submitted"; id: string }
   | { type: "close-session"; program: WsProgram };
@@ -323,11 +328,20 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
     storedNoticeText(last) === text;
   const base = { kind: "notice" as const, id: nextId(), code, program };
   const notice = text ? { ...base, text } : base;
+  // 防御（合同 I3 起 W2 已改发 login_failed busy，这里兜底旧节点）：登录卡开着时
+  // 收到 agent_busy，按 busy 失败收尾登录卡，不让它一直转「正在打开登录」。
+  const loginBusy =
+    code === "agent_busy" &&
+    state.login.open &&
+    (state.login.pending || state.login.phase === "opening" || state.login.phase === "waiting");
   return {
     ...state,
     busy: false,
     agentBusy: code === "agent_busy",
     offline: code === "computer_offline" ? true : state.offline,
+    login: loginBusy
+      ? { ...state.login, phase: "failed", pending: false, failed: "busy" }
+      : state.login,
     messages: same ? state.messages : [...state.messages, notice],
   };
 }
@@ -370,14 +384,17 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       },
     };
   }
+  // 登录相位机（合同 I3 + W3-interface 映射表）：opening → waiting → done/failed。
   if (kind === "login_url") {
     return {
       ...state,
       login: {
         ...state.login,
         open: true,
+        phase: "waiting",
         url: str(frame.url),
         code: str(frame.code),
+        needsCode: frame.needs_code === true,
         hint: "",
         failed: "",
         pending: false,
@@ -385,18 +402,29 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     };
   }
   if (kind === "login_hint") {
+    // hint 可能先于 url 到（codex 先打印一行说明）：那也算进入 waiting。
+    const phase = state.login.phase === "opening" || state.login.phase === "idle" ? "waiting" : state.login.phase;
     return {
       ...state,
-      login: { ...state.login, open: true, hint: str(frame.text), pending: false, failed: "" },
+      login: { ...state.login, open: true, phase, hint: str(frame.text), pending: false, failed: "" },
     };
   }
   if (kind === "login_failed") {
     return {
       ...state,
-      login: { ...state.login, open: true, pending: false, failed: str(frame.code) || "login_failed" },
+      login: {
+        ...state.login,
+        open: true,
+        phase: "failed",
+        pending: false,
+        failed: str(frame.code) || "login_failed",
+      },
     };
   }
-  if (kind === "login_done") return { ...state, login: blankLogin() };
+  // login_done 不关卡：phase:"done" 亮绿一秒由 LoginCard 自己 closeLogin（W3-interface）。
+  if (kind === "login_done") {
+    return { ...state, login: { ...state.login, phase: "done", pending: false, failed: "" } };
+  }
   if (!forCurrent(state, frame)) return state;
   if (kind === "models") {
     const models = parseModels(frame.models);
@@ -423,6 +451,8 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (kind === "commands") return onCommands(state, frame);
   if (kind === "done") return onDone(state, frame);
   if (kind === "error") return onError(state, frame);
+  // 未知帧：忽略并留一条 debug，不许当成「对话连不上」报错（P7 整面复核）。
+  if (kind) console.debug("[agent-dialog] unknown frame ignored:", kind);
   return state;
 }
 
@@ -504,10 +534,14 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
     case "open-login":
       return {
         ...state,
-        login: { ...blankLogin(), open: true, program: event.program, pending: true },
+        login: { ...blankLogin(), open: true, program: event.program, pending: true, phase: "opening" },
       };
     case "close-login":
-      return { ...state, login: { ...state.login, open: false } };
+      return { ...state, login: { ...state.login, open: false, phase: "idle" } };
+    case "login-code-draft":
+      return { ...state, login: { ...state.login, codeDraft: event.code } };
+    case "messages-replace":
+      return { ...state, messages: event.messages };
     case "permission-chose":
       return {
         ...state,
