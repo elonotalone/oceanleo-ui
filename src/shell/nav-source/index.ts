@@ -221,15 +221,6 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     placements: { workspace: { order: 50 }, portal: { order: 100 } },
   },
   {
-    id: "devices",
-    href: "/devices",
-    labelKey: "我的设备",
-    labelSource: "ui",
-    iconId: "device",
-    // 与「下载 App」是同一件事的两头：先下载客户端，再回这里把电脑连上来。
-    placements: { portal: { order: 10, section: "footer" } },
-  },
-  {
     id: "download",
     href: "/download",
     labelKey: "downloadApp",

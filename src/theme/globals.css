@@ -153,6 +153,11 @@ html.dark [data-oceanleo-chrome] {
   color: var(--leo-d-fg);
   backdrop-filter: none !important;
 }
+/* 侧栏右缘单独抬高。全局 chrome / border-neutral-* 仍是约 5% 白，贴在侧栏上几乎看不见。
+   只命中带 sidebar-mode 的那一条，浅色继续用 border-neutral-200。 */
+html.dark [data-oceanleo-chrome][data-oceanleo-sidebar-mode] {
+  border-right-color: rgba(255, 255, 255, 0.22) !important;
+}
 /* 侧栏 / drawer 写死的 bg-[#f7f7f7] / bg-[#fafafa]（任意值浅底）→ 侧栏层色。 */
 html.dark .bg-\[\#f7f7f7\],
 html.dark .bg-\[\#f7f7f7\]\/85,
