@@ -129,4 +129,9 @@ test("LeoAssistant：渲染包含“停用”/“启用”按键与关闭按键"
   // 包含停用/启用按键以及关闭按键
   assert.match(html, /aria-label="停用"/);
   assert.match(html, /aria-label="关闭"/);
+  assert.match(html, /aria-label="放大"/);
+  assert.match(html, /data-leo-shape="rect"/);
+  assert.match(html, /data-leo-expanded="0"/);
+  assert.doesNotMatch(html, /OceanLeo agent/);
+  assert.doesNotMatch(html, /bottom-5 right-5/);
 });

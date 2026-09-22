@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useUI } from "../i18n/ui/useUI";
 import { currentDomainProfile } from "../contracts/domain-family";
+import { useUI } from "../i18n/ui/useUI";
+import { createTask } from "../lib/agent";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源）
@@ -324,10 +325,38 @@ export interface LeoAssistantProps {
   enableSelection?: boolean;
 }
 
-// 浮窗尺寸（拖动边界计算用）。
+// 浮窗尺寸（拖动边界计算用）。放大再按一次回到这两个数，不缩成右下角气泡。
 const PANEL_W = 384;
 const PANEL_H = 560;
 const POS_KEY = "oceanleo:leo-assistant-pos";
+
+/** 放大后视口四边各留 3%：left/top 为 3%，宽高为 94%。 */
+function leoPanelBox(expanded: boolean, pos: Pos | null): React.CSSProperties {
+  if (expanded) {
+    return {
+      left: "3%",
+      top: "3%",
+      width: "94%",
+      height: "94%",
+      right: undefined,
+      bottom: undefined,
+      maxWidth: "none",
+      maxHeight: "none",
+      boxSizing: "border-box",
+    };
+  }
+  return {
+    left: pos ? pos.left : undefined,
+    top: pos ? pos.top : undefined,
+    width: PANEL_W,
+    height: PANEL_H,
+    maxWidth: "92vw",
+    maxHeight: "90vh",
+    right: pos ? undefined : 20,
+    bottom: pos ? undefined : 20,
+    boxSizing: "border-box",
+  };
+}
 
 interface Pos {
   left: number;
@@ -370,6 +399,7 @@ export function LeoAssistant({
   const panelTitle = title ?? "leo";
   const enabled = useLeoEnabled();
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [context, setContext] = useState<LeoContext | null>(null);
   const { resolve } = useHostInput();
   // 面板带【内容变化的】新上下文打开时 +1，让 Panel 重置瞬态（board / 问答流）。
@@ -442,13 +472,13 @@ export function LeoAssistant({
 
   const onDragStart = useCallback(
     (e: React.PointerEvent) => {
-      if (!pos) return;
+      if (expanded || !pos) return;
       if ((e.target as HTMLElement).closest("[data-leo-no-drag]")) return;
       e.preventDefault();
       dragRef.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top };
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     },
-    [pos],
+    [expanded, pos],
   );
 
   const onDragMove = useCallback((e: React.PointerEvent) => {
@@ -497,19 +527,13 @@ export function LeoAssistant({
       )}
       {/* 面板隐藏而非卸载——leo board 在关闭/重开之间留存（宗旨 v12 规则 5）。 */}
       <div
+        data-leo-panel
+        data-leo-shape="rect"
+        data-leo-expanded={expanded ? "1" : "0"}
         className={`fixed z-50 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${
           open ? "flex" : "hidden"
         }`}
-        style={{
-          left: pos ? pos.left : undefined,
-          top: pos ? pos.top : undefined,
-          width: PANEL_W,
-          height: PANEL_H,
-          maxWidth: "92vw",
-          maxHeight: "90vh",
-          right: pos ? undefined : 20,
-          bottom: pos ? undefined : 20,
-        }}
+        style={leoPanelBox(expanded, pos)}
       >
         {/* 可拖动标题栏 */}
         <div
@@ -525,6 +549,17 @@ export function LeoAssistant({
             <DragDots />
           </div>
           <div className="flex items-center gap-2">
+            <button
+              data-leo-no-drag
+              type="button"
+              aria-pressed={expanded}
+              aria-label={tt("放大")}
+              title={expanded ? tt("再按一次回到原来的大小") : tt("放大")}
+              onClick={() => setExpanded((value) => !value)}
+              className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+            >
+              {tt("放大")}
+            </button>
             <button
               data-leo-no-drag
               type="button"
@@ -697,6 +732,69 @@ const VERBS: { id: VerbId; label: string }[] = [
   { id: "polish", label: "润色" },
 ];
 
+/**
+ * 合同 §2.2，写死，不再另加一条：
+ * 翻译、精简、总结、解释、改写，以及上面这些快捷动作，只在面板里做，不建任务。
+ * 人在输入里提出的其他工作才 POST /v1/agent/tasks。
+ */
+const PANEL_LOCAL_ACTIONS: { verb: string; action: string; label: string }[] = [
+  { verb: "翻译", action: "translate", label: "翻译" },
+  { verb: "精简", action: "condense", label: "精简" },
+  { verb: "总结", action: "summarize", label: "总结" },
+  { verb: "解释", action: "explain", label: "解释" },
+  { verb: "改写", action: "custom", label: "改写" },
+  { verb: "扩充", action: "expand", label: "扩充" },
+  { verb: "润色", action: "polish", label: "润色" },
+];
+
+const PANEL_LOCAL_PREFIX =
+  /^(?:请你|请|帮我|帮忙|麻烦你|麻烦|给我|把这段文字|把这段内容|把上面这段|把上面的文字|把上面的内容|把上面的|把上面|把这段|将这段文字|将这段内容|将这段)\s*/;
+
+const PANEL_LOCAL_TAIL_PART =
+  /^(?:一下|一遍|这段文字|这段内容|这段|上文|上面的文字|上面的内容|上面|成\s*[\u4e00-\u9fffA-Za-z]{0,16}|为\s*[\u4e00-\u9fffA-Za-z]{0,16}|得\s*[\u4e00-\u9fffA-Za-z]{0,16})/;
+
+function isPanelLocalTail(rest: string): boolean {
+  let left = rest.trim();
+  if (!left) return true;
+  for (let i = 0; i < 4 && left; i += 1) {
+    const match = left.match(PANEL_LOCAL_TAIL_PART);
+    if (!match) return false;
+    left = left.slice(match[0].length).trim();
+  }
+  return left.length === 0;
+}
+
+function matchLeoPanelLocalAction(raw: string): {
+  action: string;
+  label: string;
+  instruction?: string;
+} | null {
+  let text = raw.trim().replace(/[。！!？?…\s]+$/g, "").trim();
+  if (!text) return null;
+  for (let i = 0; i < 4 && PANEL_LOCAL_PREFIX.test(text); i += 1) {
+    text = text.replace(PANEL_LOCAL_PREFIX, "").trim();
+  }
+  if (!text) return null;
+  for (const item of PANEL_LOCAL_ACTIONS) {
+    if (text !== item.verb && !text.startsWith(item.verb)) continue;
+    const rest = text.slice(item.verb.length).trim();
+    if (!isPanelLocalTail(rest)) continue;
+    return {
+      action: item.action,
+      label: item.label,
+      ...(item.action === "custom" || rest ? { instruction: raw.trim() } : {}),
+    };
+  }
+  return null;
+}
+
+export function leoTypedWorkStaysInPanel(raw: string): boolean {
+  return matchLeoPanelLocalAction(raw) != null;
+}
+
+const LEO_TASK_PLACED = "已经放进「我的任务」。";
+const LEO_TASK_MISSED = "没建成。";
+
 interface LeoResult {
   id: number;
   label: string;
@@ -723,6 +821,9 @@ function Panel({
   const [busy, setBusy] = useState<string | null>(null); // 正在跑的 transform 动词 label
   const [err, setErr] = useState<string | null>(null);
   const [leoSays, setLeoSays] = useState<string | null>(null); // leo 的追问/提示
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskNote, setTaskNote] = useState<string | null>(null);
+  const taskLock = useRef(false);
   const [results, setResults] = useState<LeoResult[]>([]);
   const [input, setInput] = useState("");
   const idRef = useRef(0);
@@ -913,22 +1014,52 @@ function Panel({
   // 自动把这段 prompt 扩充成更好的 prompt**——不问问题、不给回答/成稿（后端 expand 指令
   // 已改为「扩充 prompt 本身」而非「写成成稿」）。
   const onVerb = (v: { id: VerbId; label: string }) => {
-    if (busy || boardBusy || !(board ?? context?.text)) return;
+    if (busy || boardBusy || taskBusy || !(board ?? context?.text)) return;
+    setTaskNote(null);
     void runTransform(v.id, tt(v.label));
+  };
+
+  const placeTask = async (prompt: string) => {
+    if (taskLock.current) return;
+    taskLock.current = true;
+    setTaskBusy(true);
+    setTaskNote(null);
+    setErr(null);
+    try {
+      const result = await createTask({
+        prompt,
+        siteId,
+        created_by: "leo",
+      });
+      if (result.ok) {
+        setTaskNote(LEO_TASK_PLACED);
+        return;
+      }
+      setTaskNote(LEO_TASK_MISSED);
+    } catch {
+      setTaskNote(LEO_TASK_MISSED);
+    } finally {
+      taskLock.current = false;
+      setTaskBusy(false);
+    }
   };
 
   const send = () => {
     const q = input.trim();
-    if (!q || busy || boardBusy) return;
+    if (!q || busy || boardBusy || taskBusy || taskLock.current) return;
     setInput("");
-    // board 激活时：输入框内容合并进 board（宗旨 v12 规则 4，保守合并 + 出下一题）；
-    // 未激活时：自由指令 transform，结果写回 board。
-    if (board != null) {
-      void applyAnswer(q);
-    } else {
-      if (!context?.text) return;
-      void runTransform("custom", q.length > 12 ? `${q.slice(0, 12)}…` : q, q);
+    setTaskNote(null);
+    const local = matchLeoPanelLocalAction(q);
+    if (local) {
+      const text = (board ?? context?.text ?? "").trim();
+      if (!text) {
+        setErr(tt("先有一段文字，才能在面板里做。"));
+        return;
+      }
+      void runTransform(local.action, tt(local.label), local.instruction);
+      return;
     }
+    void placeTask(q);
   };
 
   const readHostInput = () => {
@@ -959,6 +1090,17 @@ function Panel({
 
         {err && (
           <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-600">{tt(err)}</p>
+        )}
+        {taskBusy && (
+          <p className="flex items-center gap-2 text-xs text-slate-400">
+            <Spinner />
+            {tt("正在放进「我的任务」…")}
+          </p>
+        )}
+        {taskNote && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
+            {tt(taskNote)}
+          </div>
         )}
         {leoSays && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-800">
@@ -1124,7 +1266,7 @@ function Panel({
         ))}
       </div>
 
-      {/* 底部输入：board 激活时 = 补充内容合并进 board；否则 = 自由指令 transform */}
+      {/* 底部输入：五类改写留在面板；其余原话 POST /v1/agent/tasks，created_by 为 leo。 */}
       <div className="border-t border-slate-100 px-3 py-3">
         <form
           className="flex gap-2"
@@ -1137,21 +1279,15 @@ function Panel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              board != null
-                ? tt("补充内容，leo 会合并进 leo board")
-                : tt("告诉 leo 你想怎么处理这段内容")
-            }
+            placeholder={tt("其他工作会放进「我的任务」")}
             className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-slate-400"
           />
           <button
             type="submit"
-            disabled={
-              Boolean(busy) || Boolean(boardBusy) || !input.trim() || (board == null && !hasContext)
-            }
+            disabled={Boolean(busy) || Boolean(boardBusy) || taskBusy || !input.trim()}
             className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {busy || boardBusy ? "…" : tt("发送")}
+            {busy || boardBusy || taskBusy ? "…" : tt("发送")}
           </button>
         </form>
       </div>
