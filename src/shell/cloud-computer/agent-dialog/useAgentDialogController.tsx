@@ -11,6 +11,13 @@ import { applyDialog, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
 import type { AgentDialogController, AgentProgram, WsProgram } from "./types";
 
+// 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
+// W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
+export type AgentDialogControllerV2 = AgentDialogController & {
+  /** oceanleo 程序标题「OceanLeo agent · 电脑名」用；agentState 未回到前为空串。 */
+  computerName: string;
+};
+
 const MAX_PROMPT_CHARS = 32000;
 
 function sendJson(socket: WebSocket | null, frame: Record<string, unknown>): boolean {
@@ -27,7 +34,7 @@ export function useAgentDialog({
   computerId: string;
   sessionId: string;
   enabled: boolean;
-}): AgentDialogController {
+}): AgentDialogControllerV2 {
   const [state, dispatch] = useReducer(applyDialog, undefined, initialDialogState);
   const [draft, setDraft] = useState("");
   const [fresh, setFresh] = useState(false);
@@ -226,10 +233,12 @@ export function useAgentDialog({
   }, [enabled, computerId, sessionId, clearTimer, connect]);
 
   const setProgram = useCallback((next: AgentProgram) => {
-    if (!isWsProgram(next) || stateRef.current.busy) return;
+    // 合同 I6：oceanleo 也是可选程序；模型帧只对走 WS 的程序发。
+    if (!isWsProgram(next) && next !== "oceanleo") return;
+    if (stateRef.current.busy) return;
     dispatch({ type: "program", program: next });
     const socket = socketRef.current;
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    if (isWsProgram(next) && socket && socket.readyState === WebSocket.OPEN) {
       sendJson(socket, { t: "models", program: next });
     }
   }, []);
@@ -380,6 +389,7 @@ export function useAgentDialog({
   return {
     program: state.program,
     setProgram,
+    computerName: "",
     messages: state.messages,
     draft,
     setDraft,

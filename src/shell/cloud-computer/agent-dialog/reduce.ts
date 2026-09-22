@@ -16,6 +16,7 @@ import {
 } from "./parse";
 import type {
   AgentDialogMessage,
+  AgentProgram,
   DialogState,
   InstallState,
   LoginState,
@@ -58,7 +59,8 @@ function blankLogin(): LoginState {
 
 export function initialDialogState(): DialogState {
   return {
-    program: null,
+    // 合同 I6：OceanLeo agent 是对话框第一个程序，打开即选中。
+    program: "oceanleo",
     messages: [],
     busy: false,
     agentBusy: false,
@@ -79,7 +81,7 @@ export type DialogEvent =
   | { type: "reset" }
   | { type: "frame"; frame: Record<string, unknown> }
   | { type: "notice"; code: string; program: string }
-  | { type: "program"; program: WsProgram }
+  | { type: "program"; program: AgentProgram }
   | { type: "send-began" }
   | { type: "send-failed" }
   | { type: "user"; text: string }

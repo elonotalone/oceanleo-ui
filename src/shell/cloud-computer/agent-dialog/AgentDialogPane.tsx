@@ -11,14 +11,20 @@ import { PROGRAM_LABEL, type AgentDialogController } from "./types";
 export function AgentDialogPane({
   dialog,
   onBack,
-  onOpenLeo,
 }: {
-  dialog: AgentDialogController;
+  // computerName 由控制器（W6A）提供；W3 把它并进 types.ts 后这个交叉可删。
+  dialog: AgentDialogController & { computerName?: string };
   onBack: () => void;
-  onOpenLeo?: () => void;
 }) {
   const tt = useUI();
-  const title = dialog.program ? PROGRAM_LABEL[dialog.program] : tt("用对话界面继续");
+  // 合同 I6：onOpenLeo 已删——OceanLeo agent 是程序行第一项，不再开另一个面板。
+  const title = !dialog.program
+    ? tt("用对话界面继续")
+    : dialog.program === "oceanleo"
+      ? dialog.computerName
+        ? tt("OceanLeo agent · {name}", { name: dialog.computerName })
+        : tt("OceanLeo agent")
+      : PROGRAM_LABEL[dialog.program];
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col bg-neutral-950 text-neutral-100"
@@ -36,7 +42,7 @@ export function AgentDialogPane({
           {tt("回到终端")}
         </button>
       </div>
-      <ProgramRow dialog={dialog} onOpenLeo={onOpenLeo} />
+      <ProgramRow dialog={dialog} />
       {!dialog.program ? (
         <p className="px-3 py-3 text-[13px] leading-relaxed text-neutral-300">
           {tt(
