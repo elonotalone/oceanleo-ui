@@ -2311,6 +2311,18 @@
         },
         {
           "kind": "named",
+          "name": "CloudComputersPage",
+          "importedName": "CloudComputersPage",
+          "source": "./CloudComputersPage"
+        },
+        {
+          "kind": "named",
+          "name": "CloudComputersSection",
+          "importedName": "CloudComputersSection",
+          "source": "./CloudComputersPage"
+        },
+        {
+          "kind": "named",
           "name": "CostPage",
           "importedName": "CostPage",
           "source": "./CostPage"
@@ -2539,6 +2551,18 @@
         },
         {
           "kind": "named",
+          "name": "SettingsHub",
+          "importedName": "SettingsHub",
+          "source": "./settings/SettingsHub"
+        },
+        {
+          "kind": "named",
+          "name": "SettingsHubProps",
+          "importedName": "SettingsHubProps",
+          "source": "./settings/SettingsHub"
+        },
+        {
+          "kind": "named",
           "name": "SettingsPage",
           "importedName": "SettingsPage",
           "source": "./SettingsPage"
@@ -2548,6 +2572,12 @@
           "name": "SettingsPageProps",
           "importedName": "SettingsPageProps",
           "source": "./SettingsPage"
+        },
+        {
+          "kind": "named",
+          "name": "SettingsSection",
+          "importedName": "SettingsSection",
+          "source": "./settings/SettingsHub"
         },
         {
           "kind": "named",
@@ -2566,6 +2596,18 @@
           "name": "wechatRedirectTarget",
           "importedName": "wechatRedirectTarget",
           "source": "./AuthDialog"
+        },
+        {
+          "kind": "type",
+          "name": "CloudComputersPageProps",
+          "importedName": "CloudComputersPageProps",
+          "source": "./CloudComputersPage"
+        },
+        {
+          "kind": "type",
+          "name": "CloudComputersSectionProps",
+          "importedName": "CloudComputersSectionProps",
+          "source": "./CloudComputersPage"
         },
         {
           "kind": "type",
@@ -4667,6 +4709,12 @@
         },
         {
           "kind": "named",
+          "name": "PluginsPopover",
+          "importedName": "PluginsPopover",
+          "source": "./PluginsPopover"
+        },
+        {
+          "kind": "named",
           "name": "PluginStateAccess",
           "importedName": "PluginStateAccess",
           "source": "./plugin-module"
@@ -5135,6 +5183,18 @@
         },
         {
           "kind": "named",
+          "name": "ServerPage",
+          "importedName": "ServerPage",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "named",
+          "name": "serverPageHref",
+          "importedName": "serverPageHref",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "named",
           "name": "setArtifactFavorite",
           "importedName": "setArtifactFavorite",
           "source": "./artifact-client"
@@ -5174,6 +5234,12 @@
           "name": "ShellSubNav",
           "importedName": "ShellSubNav",
           "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "ShellTaskView",
+          "importedName": "ShellTaskView",
+          "source": "./cloud-computer/ShellTaskView"
         },
         {
           "kind": "named",
@@ -6180,6 +6246,30 @@
           "name": "SelectionToolbarProps",
           "importedName": "SelectionToolbarProps",
           "source": "./SelectionToolbar"
+        },
+        {
+          "kind": "type",
+          "name": "ServerPageCard",
+          "importedName": "ServerPageCard",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "type",
+          "name": "ServerPageHrefOptions",
+          "importedName": "ServerPageHrefOptions",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "type",
+          "name": "ServerPageProps",
+          "importedName": "ServerPageProps",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "type",
+          "name": "ShellTaskViewProps",
+          "importedName": "ShellTaskViewProps",
+          "source": "./cloud-computer/ShellTaskView"
         },
         {
           "kind": "type",

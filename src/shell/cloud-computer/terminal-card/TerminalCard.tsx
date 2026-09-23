@@ -261,7 +261,7 @@ export function TerminalCard({
                     {record.alive ? (
                       <button
                         type="button"
-                        className={`m-1 rounded px-1.5 py-1 text-xs opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 ${tone.hover}`}
+                        className={`m-1 rounded px-1.5 py-1 text-xs opacity-0 transition-opacity duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 focus:opacity-100 ${tone.hover}`}
                         aria-label={tt("关闭终端")}
                         disabled={busyId !== null}
                         onClick={() => void closeTerminal(record.id)}

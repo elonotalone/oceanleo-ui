@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -541,19 +544,22 @@ test("清空记录走 DELETE，面板清空", async () => {
 
 test("全站无悬浮气泡；门户 launcher 只挂一次 LeoAssistant，无 hideFloatingButton", () => {
   const assistant = readFileSync(
-    "/root/projects/oceanleo-ui/src/shell/LeoAssistant.tsx",
+    join(TESTS_DIR, "../src/shell/LeoAssistant.tsx"),
     "utf8",
   );
   assert.equal(assistant.includes("data-oceanleo-leo-fab"), false);
   assert.equal(assistant.includes("hideFloatingButton"), false);
 
   const shell = readFileSync(
-    "/root/projects/oceanleo-ui/src/shell/cloud-computer/ShellTaskView.tsx",
+    join(TESTS_DIR, "../src/shell/cloud-computer/ShellTaskView.tsx"),
     "utf8",
   );
   assert.equal(shell.includes("data-oceanleo-cc-leo-toggle"), false);
 
-  const launcher = readFileSync("/root/projects/oceanleo/app/_components/leo-launcher.tsx", "utf8");
+  const launcher = readFileSync(
+    join(TESTS_DIR, "../../oceanleo/app/_components/leo-launcher.tsx"),
+    "utf8",
+  );
   assert.match(launcher, /siteId="oceanleo"/);
   assert.match(launcher, /docType="doc"/);
   // 属性与按路径判断函数都已不再使用（注释里提到名字不算）。

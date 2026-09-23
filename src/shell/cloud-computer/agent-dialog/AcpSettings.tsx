@@ -45,7 +45,7 @@ function Toggle({
         disabled={disabled}
         data-oceanleo-acp-setting={setting}
         onChange={(event) => onChange(event.currentTarget.checked)}
-        className="mt-0.5 h-4 w-4 accent-indigo-600"
+        className="mt-0.5 size-11 shrink-0 accent-indigo-600"
       />
       <span className="min-w-0">
         <span className="block text-sm font-medium">{label}</span>
@@ -180,7 +180,7 @@ export function AcpSettings({
           <button
             type="button"
             onClick={onClose}
-            className={`rounded-lg px-2 py-1 text-sm ${tone.hover} ${tone.muted}`}
+            className={`min-h-11 rounded-lg px-2 py-1 text-sm ${tone.hover} ${tone.muted}`}
             data-oceanleo-acp-settings-close=""
           >
             {tt("关闭")}
@@ -314,7 +314,7 @@ export function AcpSettings({
                 {!programStatus?.installed ? (
                   <button
                     type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                    className={`min-h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
                     onClick={() => onRequestInstall(wsProgram)}
                   >
                     {tt("安装")}
@@ -322,7 +322,7 @@ export function AcpSettings({
                 ) : programStatus.logged_in === true ? (
                   <button
                     type="button"
-                    className={`rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                    className={`min-h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
                     onClick={() => dialog.logoutProgram(wsProgram)}
                     data-oceanleo-acp-settings-logout={wsProgram}
                   >
@@ -331,7 +331,7 @@ export function AcpSettings({
                 ) : (
                   <button
                     type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                    className={`min-h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
                     onClick={() => onRequestLogin(wsProgram)}
                     data-oceanleo-acp-settings-login={wsProgram}
                   >
@@ -341,7 +341,7 @@ export function AcpSettings({
                 {programStatus?.installed ? (
                   <button
                     type="button"
-                    className={`rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                    className={`min-h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
                     onClick={() => onRequestKey(wsProgram)}
                     data-oceanleo-acp-settings-key={wsProgram}
                   >
@@ -360,7 +360,7 @@ export function AcpSettings({
                 type="button"
                 disabled={Boolean(saving)}
                 onClick={() => setConfirmUninstall(true)}
-                className={`mt-3 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
+                className={`mt-3 min-h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
                 data-oceanleo-acp-uninstall=""
               >
                 {tt("卸载")}
