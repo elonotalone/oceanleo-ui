@@ -134,12 +134,13 @@ export function AcpCard({
   }, [dialog, selected]);
 
   useEffect(() => {
+    if (selected === "oceanleo" && !oceanleoLoaded) return;
     if (!mountSession || selected !== mountTarget.program || dialog.program !== selected || initialSessionApplied.current) return;
     const key = `${computer.id}:${selected}:${mountSession}`;
     if (initialSessionApplied.current === key) return;
     initialSessionApplied.current = key;
     dialog.openSession(mountSession);
-  }, [computer.id, dialog, mountSession, mountTarget.program, selected]);
+  }, [computer.id, dialog, mountSession, mountTarget.program, selected, oceanleoLoaded]);
 
   function replaceAddress(program: AgentProgram, session?: string) {
     replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
@@ -211,6 +212,7 @@ export function AcpCard({
   const currentWsRow = selected && selected !== "oceanleo"
     ? statusOf(selected, dialog.programs)
     : undefined;
+  const sessionTitle = dialog.sessions.find((session) => session.id === dialog.activeSession)?.title;
   const keyRow = keyProgram ? statusOf(keyProgram, dialog.programs) : undefined;
 
   return (
@@ -299,6 +301,9 @@ export function AcpCard({
             </aside>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
+              <header className={`shrink-0 truncate border-b px-3 py-2 text-xs ${tone.border} ${tone.muted}`}>
+                {sessionTitle || PROGRAM_LABEL[selected]}
+              </header>
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (
                 <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}

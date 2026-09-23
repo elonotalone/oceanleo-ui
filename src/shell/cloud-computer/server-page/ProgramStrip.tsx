@@ -41,6 +41,7 @@ export function ProgramStrip({
 }: ProgramStripProps) {
   const tt = useUI();
   const rows = useRef<HTMLDivElement>(null);
+  const controls = useRef<HTMLSpanElement>(null);
   const [collapsed, setCollapsed] = useState(() => {
     try { return !!storageKey && localStorage.getItem(storageKey) === "collapsed"; }
     catch { return false; }
@@ -55,7 +56,15 @@ export function ProgramStrip({
       const children = Array.from(node.children) as HTMLElement[];
       const top = Math.min(...children.map((child) => child.offsetTop));
       const first = children.filter((child) => child.offsetTop === top);
-      setWrapped(children.some((child) => child.offsetTop > top));
+      // Test wrapping against the space available WITHOUT our own controls;
+      // otherwise their width can keep a now-wide-enough strip stuck expanded.
+      const gap = Number.parseFloat(window.getComputedStyle(node).columnGap) || 0;
+      const naturalWidth = children.reduce((width, child) => width + child.offsetWidth, 0)
+        + Math.max(0, children.length - 1) * gap;
+      const controlsWidth = controls.current?.offsetWidth || 0;
+      const fitsWithoutControls = node.clientWidth > 0 && naturalWidth <= node.clientWidth
+        + controlsWidth + (controlsWidth && controls.current?.previousElementSibling ? 4 : 0);
+      setWrapped(!fitsWithoutControls && children.some((child) => child.offsetTop > top));
       setFirstHeight(first[0]?.offsetHeight || 40);
       const ids = first.map((child) => child.dataset.programId || "");
       setVisible((previous) => previous.join("|") === ids.join("|") ? previous : ids);
@@ -83,7 +92,7 @@ export function ProgramStrip({
         data-program-strip-rows data-collapsed={collapsed && wrapped}>
         {items.map((item) => (
           <span key={item.id} data-program-id={item.id} className="inline-flex h-10 max-w-full items-center gap-1"
-            style={{ order: collapsed && item.id === selected ? -1 : undefined }}
+            style={{ order: collapsed && wrapped && item.id === selected ? -1 : undefined }}
             inert={collapsed && wrapped && !visible.includes(item.id)}
             aria-hidden={collapsed && wrapped && !visible.includes(item.id) ? true : undefined}>
             <button
@@ -118,10 +127,10 @@ export function ProgramStrip({
       </div>
       <div className="flex min-h-10 shrink-0 items-center gap-1">
         {trailing}
-        {wrapped ? <>
+        {wrapped ? <span ref={controls} className="inline-flex items-center gap-1">
           <button type="button" aria-label={tt("上移")} disabled={collapsed} onClick={() => collapse(true)} className={`${tone.iconBtn} text-xs disabled:opacity-40`}>{tt("上移")}</button>
           <button type="button" aria-label={tt("下移")} disabled={!collapsed} onClick={() => collapse(false)} className={`${tone.iconBtn} text-xs disabled:opacity-40`}>{tt("下移")}</button>
-        </> : null}
+        </span> : null}
       </div>
     </div>
   );

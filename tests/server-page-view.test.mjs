@@ -177,6 +177,8 @@ async function renderPage({
   api = client(),
   props = {},
 } = {}) {
+  localStorage.clear();
+  window.history.replaceState(null, "", "/computers/cc_1?" + new URLSearchParams(query));
   const pushes = [];
   const replaces = [];
   globalThis.__serverQuery = query;
@@ -235,13 +237,14 @@ test("服务器落地页按 AI 对话、AI 命令行、终端显示说明并进�
     await act(async () => {
       choices[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    assert.deepEqual(view.pushes, ["/computers/cc_1?card=cli"]);
+    assert.deepEqual(view.pushes, []);
+    assert.equal(window.location.search, "?card=cli");
   } finally {
     view.cleanup();
   }
 });
 
-test("卡片视图保留 program/session，并用 replace 在三张卡间切换", async () => {
+test("卡片视图保留 program/session，并用浅地址在三张卡间切换", async () => {
   const view = await renderPage({
     query: { card: "acp", program: "cursor", session: "chat /1" },
   });
@@ -255,7 +258,8 @@ test("卡片视图保留 program/session，并用 replace 在三张卡间切换"
     await act(async () => {
       terminal.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    assert.deepEqual(view.replaces, ["/computers/cc_1?card=terminal"]);
+    assert.deepEqual(view.replaces, []);
+    assert.equal(window.location.search, "?card=terminal");
   } finally {
     view.cleanup();
   }

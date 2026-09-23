@@ -11,7 +11,7 @@ import { createRoot } from "react-dom/client";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
-// AI 对话卡（合同 I6 / I8 / I9；W8 任务书「测试」一节逐条对应）。
+// AI 对话卡：保留旧功能回归并覆盖 cloud-computer-polish W2 的 I1–I4 / I9。
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -147,7 +147,7 @@ const apiStub = dataModule(`
   }
   export async function getOceanleoAgent(id) {
     api().calls.push(["getOceanleoAgent", id]);
-    return { ...api().oceanleo };
+    return api().oceanleoPending ?? { ...api().oceanleo };
   }
   export async function installOceanleoAgent(id) {
     api().calls.push(["installOceanleoAgent", id]);
@@ -285,7 +285,9 @@ function calls(name) {
   return globalThis.__acpApi.calls.filter((call) => call[0] === name);
 }
 
+let computerSequence = 0;
 async function boot(props = {}, api = {}) {
+  const computer = props.computer ?? { ...COMPUTER, id: `cc_${++computerSequence}` };
   FakeSocket.sockets.length = 0;
   globalThis.__acpApi = { ...freshApi(), ...api };
   globalThis.__acpRouter.replaced = [];
@@ -293,12 +295,14 @@ async function boot(props = {}, api = {}) {
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(AcpCard, { computer: COMPUTER, ...props }));
+    root.render(React.createElement(AcpCard, { computer, ...props }));
   });
   await until(() => sentFrames().some((frame) => frame.t === "status"), "status frame");
   await server(STATUS);
   return {
     host,
+    computer,
+    async rerender(patch) { await act(async () => root.render(React.createElement(AcpCard, { computer, ...props, ...patch }))); },
     $: (selector) => host.querySelector(selector),
     $$: (selector) => [...host.querySelectorAll(selector)],
     text: () => host.textContent || "",
@@ -309,65 +313,39 @@ async function boot(props = {}, api = {}) {
   };
 }
 
-test("选择页四态：已安装（版本）/ 未安装（安装）/ 未登录（登录 · Key）/ OceanLeo 云端；对话 WS 不带 session_id", async () => {
+test("程序条展示状态、无选择页；缺安装与凭据时顶部操作可用", async () => {
   const view = await boot();
   try {
-    assert.ok(view.$("[data-oceanleo-acp-picker]"));
-    assert.deepEqual(
-      view.$$("[data-oceanleo-acp-agent]").map((node) => node.getAttribute("data-oceanleo-acp-agent")),
-      ["oceanleo", "cursor", "claude", "codex", "hermes"],
-    );
-    assert.ok(globalThis.__acpApi.wsUrls.length > 0);
-    for (const url of globalThis.__acpApi.wsUrls) assert.equal(url.sessionId, undefined);
-    assert.ok(FakeSocket.sockets.every((socket) => !socket.url.includes("session_id")));
-
-    const ready = view.$('[data-oceanleo-acp-agent="cursor"] [data-oceanleo-acp-agent-state="ready"]');
-    assert.equal(ready.textContent, "已安装 · 2025.09");
-    assert.equal(view.$('[data-oceanleo-acp-agent-open="cursor"]').disabled, false);
-
-    assert.ok(view.$('[data-oceanleo-acp-agent="codex"] [data-oceanleo-acp-agent-state="missing"]'));
-    assert.ok(view.$('[data-oceanleo-acp-picker-install="codex"]'));
-    assert.equal(view.$('[data-oceanleo-acp-agent-open="codex"]').disabled, true);
-
-    const signedOut = view.$('[data-oceanleo-acp-agent="claude"]');
-    assert.equal(signedOut.querySelector("[data-oceanleo-acp-agent-state]").getAttribute("data-oceanleo-acp-agent-state"), "signed-out");
-    assert.match(signedOut.textContent, /未登录/);
-    assert.doesNotMatch(signedOut.textContent, /已登录|Signed in/);
-    assert.ok(view.$('[data-oceanleo-acp-picker-login="claude"]'));
-    assert.ok(view.$('[data-oceanleo-acp-picker-key="claude"]'));
-
-    assert.ok(view.$('[data-oceanleo-acp-agent="oceanleo"] [data-oceanleo-acp-agent-state="cloud"]'));
-    const installBanner = view.$("[data-oceanleo-acp-oceanleo-banner]");
-    assert.match(installBanner.textContent, /安装/);
-    assert.equal(installBanner.closest('[data-oceanleo-acp-agent="oceanleo"]') !== null, true);
-
-    await click(view.$('[data-oceanleo-acp-picker-login="claude"]'));
-    await until(() => sentFrames().some((frame) => frame.t === "login" && frame.program === "claude"), "login frame");
+    assert.equal(view.$("[data-oceanleo-acp-picker]"), null);
+    assert.deepEqual(view.$$("[data-oceanleo-program-strip-item]").map(n => n.dataset.oceanleoProgramStripItem), ["oceanleo", "cursor", "claude", "codex", "hermes"]);
+    assert.equal(view.$("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "oceanleo");
+    assert.ok(FakeSocket.sockets.every(socket => !socket.url.includes("session_id")));
+    assert.ok(view.$('[data-oceanleo-program-strip-item="cursor"] .bg-emerald-500'));
+    assert.ok(view.$('[data-oceanleo-program-strip-item="claude"] .bg-amber-500'));
+    assert.ok(view.$('[data-oceanleo-program-strip-item="codex"] .bg-zinc-400'));
+    await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
+    const action = label => view.$$("[data-oceanleo-acp-conversation] button").find(n => n.textContent === label);
+    await click(action("登录"));
+    await until(() => sentFrames().some(f => f.t === "login" && f.program === "claude"), "login");
     assert.ok(view.$("[data-oceanleo-cc-login-card]"));
     await click(view.$("[data-oceanleo-cc-login-cancel]"));
-
-    await click(view.$('[data-oceanleo-acp-picker-install="codex"]'));
+    await click(view.$('[data-oceanleo-program-strip-item="codex"]'));
+    await click(action("安装"));
     assert.ok(view.$("[data-oceanleo-cc-install-sheet]"));
     await click(view.$("[data-oceanleo-cc-install-close]"));
-
-    await click(view.$('[data-oceanleo-acp-picker-key="claude"]'));
+    await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
+    await click(action("Key"));
     assert.match(view.text(), /Key/);
-  } finally {
-    view.cleanup();
-  }
+  } finally { view.cleanup(); }
 });
 
-test("OceanLeo 未装：横幅安装按钮调 installOceanleoAgent，装完刷新成「已安装」", async () => {
+test("OceanLeo 未装：横幅安装按钮调 installOceanleoAgent，装完移除云端提示", async () => {
   const view = await boot();
   try {
     await until(() => !view.$("[data-oceanleo-acp-oceanleo-install]").disabled, "install enabled");
     await click(view.$("[data-oceanleo-acp-oceanleo-install]"));
     await until(() => calls("installOceanleoAgent").length === 1, "install call");
-    await until(() => view.$('[data-oceanleo-acp-agent="oceanleo"] [data-oceanleo-acp-agent-state="installed"]'), "installed state");
-    assert.equal(
-      view.$('[data-oceanleo-acp-agent="oceanleo"] [data-oceanleo-acp-agent-state="installed"]').textContent,
-      "已安装 · 0.3.1",
-    );
+    await until(() => !view.$("[data-oceanleo-acp-oceanleo-banner]"), "installed state");
     assert.ok(calls("getOceanleoAgent").length >= 2, "装完重新读一次状态");
     assert.equal(view.$("[data-oceanleo-acp-oceanleo-banner]"), null);
   } finally {
@@ -379,14 +357,15 @@ test("OceanLeo 未装：进入走云端 REST（agentState），不发 WS 程序�
   const view = await boot();
   try {
     await until(() => calls("getOceanleoAgent").length > 0, "status read");
-    await click(view.$('[data-oceanleo-acp-agent-open="oceanleo"]'));
+    await click(view.$('[data-oceanleo-program-strip-item="oceanleo"]'));
     await until(() => calls("agentState").length > 0, "agentState");
     assert.ok(view.$("[data-oceanleo-acp-conversation]"));
     assert.equal(sentFrames().some((frame) => frame.program === "oceanleo"), false);
     assert.ok(view.$("[data-oceanleo-acp-sessions-unsupported]"));
     assert.match(view.text(), /这个程序不支持列出过去的对话/);
     assert.match(view.text(), /当前使用云端 OceanLeo agent/);
-    assert.ok(globalThis.__acpRouter.replaced.some((href) => href === "/computers/cc_1?card=acp&program=oceanleo"));
+    assert.equal(window.location.search, "?card=acp&program=oceanleo");
+    assert.equal(globalThis.__acpRouter.replaced.length, 0);
   } finally {
     view.cleanup();
   }
@@ -416,32 +395,22 @@ test("OceanLeo 已装：走 WS 程序 oceanleo（sessions / models / prompt）�
   }
 });
 
-test("对话视图：agent 条默认收起只显示当前 agent 名，展开可切换并改地址", async () => {
+test("程序切换复用 socket、浅地址并保持固定高度独立滚动", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
-    await until(() => sentFrames().some((frame) => frame.t === "sessions" && frame.program === "cursor"), "cursor sessions");
-    const bar = view.$("[data-oceanleo-acp-agent-bar]");
-    assert.ok(view.$("[data-oceanleo-acp-agents-collapsed]"));
-    assert.equal(view.$$("[data-oceanleo-acp-agent-tab]").length, 0);
-    assert.match(bar.textContent, /Cursor/);
-    assert.doesNotMatch(bar.textContent, /Codex|Claude Code|Hermes|OceanLeo/);
-
-    await click(view.$("[data-oceanleo-acp-agents-expand]"));
-    assert.equal(view.$$("[data-oceanleo-acp-agent-tab]").length, 5);
-    assert.equal(view.$$("[data-oceanleo-acp-agent-settings]").length, 5);
-    await click(view.$('[data-oceanleo-acp-agent-tab="hermes"]'));
-    assert.ok(view.$("[data-oceanleo-acp-agents-collapsed]"), "切换后自动收起");
-    assert.match(view.$("[data-oceanleo-acp-agent-bar]").textContent, /Hermes/);
-    assert.doesNotMatch(view.$("[data-oceanleo-acp-agent-bar]").textContent, /Cursor/);
-    assert.ok(globalThis.__acpRouter.replaced.includes("/computers/cc_1?card=acp&program=hermes"));
-    await until(() => sentFrames().some((frame) => frame.t === "sessions" && frame.program === "hermes"), "hermes sessions");
-
-    await click(view.$("[data-oceanleo-acp-agents-expand]"));
-    await click(view.$("[data-oceanleo-acp-agents-collapse]"));
-    assert.ok(view.$("[data-oceanleo-acp-agents-collapsed]"));
-  } finally {
-    view.cleanup();
-  }
+    const sockets = FakeSocket.sockets.length;
+    assert.equal(view.$$("[data-oceanleo-program-strip-item]").length, 5);
+    assert.equal(view.$$("[data-oceanleo-program-strip-settings]").length, 5);
+    await click(view.$('[data-oceanleo-program-strip-item="hermes"]'));
+    assert.equal(view.$('[data-oceanleo-program-strip-item="hermes"]').getAttribute("aria-selected"), "true");
+    assert.equal(window.location.search, "?card=acp&program=hermes");
+    assert.equal(globalThis.__acpRouter.replaced.length, 0);
+    assert.equal(FakeSocket.sockets.length, sockets);
+    assert.ok(view.$("[data-oceanleo-acp-sessions] .overflow-y-auto"));
+    const card = view.$("[data-oceanleo-acp-card]");
+    assert.ok(card.classList.contains("h-full") && card.classList.contains("min-h-0"));
+    assert.ok(!card.className.includes("min-h-[34rem]"));
+  } finally { view.cleanup(); }
 });
 
 test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 带 acp_session；模型菜单、「/」补全、自动允许、无关掉会话、无费用", async () => {
@@ -463,13 +432,18 @@ test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 
     assert.match(row.textContent, /5 分钟前/);
     assert.ok(view.$("[data-oceanleo-acp-new-session]"));
 
+    const socketsBeforeSession = FakeSocket.sockets.length;
+    const listsBeforeSession = sentFrames().filter(f => f.t === "sessions").length;
     await click(row);
+    assert.equal(FakeSocket.sockets.length, socketsBeforeSession);
+    assert.equal(sentFrames().filter(f => f.t === "sessions").length, listsBeforeSession);
     await until(() => sentFrames().some((frame) => frame.t === "open_session"), "open_session");
     assert.deepEqual(
       sentFrames().find((frame) => frame.t === "open_session"),
       { t: "open_session", program: "cursor", acp_session: "s-old" },
     );
-    assert.ok(globalThis.__acpRouter.replaced.includes("/computers/cc_1?card=acp&program=cursor&session=s-old"));
+    assert.equal(window.location.search, "?card=acp&program=cursor&session=s-old");
+    assert.equal(globalThis.__acpRouter.replaced.length, 0);
 
     const replay = { program: "cursor", acp_session: "s-old", replay: true };
     await server({ t: "user_message", ...replay, text: "看看磁盘" });
@@ -584,7 +558,7 @@ test("initialSessionId：进卡即 open_session 那一条", async () => {
   }
 });
 
-test("设置齿轮：模型 / 模式 / 其它配置项；危险操作先问我、OceanLeo 工具、允许扣费三开关调对接口；卸载走确认框", async () => {
+test("程序条设置：模型 / 模式 / 其它配置项；危险操作先问我、OceanLeo 工具、允许扣费三开关调对接口；卸载走确认框", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await until(() => sentFrames().some((frame) => frame.t === "models" && frame.program === "cursor"), "cursor models");
@@ -603,7 +577,7 @@ test("设置齿轮：模型 / 模式 / 其它配置项；危险操作先问我�
       ],
     });
 
-    await click(view.$("[data-oceanleo-acp-current-settings]"));
+    await click(view.$('[data-oceanleo-program-strip-settings="cursor"]'));
     await until(() => calls("getAgentSettings").length > 0 && !view.$('[data-oceanleo-acp-setting="confirm_dangerous"]').disabled, "settings loaded");
     const panel = view.$('[data-oceanleo-acp-settings="cursor"]');
     assert.ok(panel);
@@ -622,13 +596,13 @@ test("设置齿轮：模型 / 模式 / 其它配置项；危险操作先问我�
     assert.equal(confirm.checked, true, "危险操作先问我默认开");
     await click(confirm);
     await until(() => calls("patchAgentSettings").length === 1, "patch confirm_dangerous");
-    assert.deepEqual(calls("patchAgentSettings")[0], ["patchAgentSettings", "cc_1", { confirm_dangerous: false }]);
+    assert.deepEqual(calls("patchAgentSettings")[0], ["patchAgentSettings", view.computer.id, { confirm_dangerous: false }]);
     await until(() => !panel.querySelector('[data-oceanleo-acp-setting="oceanleo_tools"]').disabled, "saved");
     assert.equal(panel.querySelector('[data-oceanleo-acp-setting="confirm_dangerous"]').checked, false);
 
     await click(panel.querySelector('[data-oceanleo-acp-setting="oceanleo_tools"]'));
     await until(() => calls("patchAgentSettings").length === 2, "patch oceanleo_tools");
-    assert.deepEqual(calls("patchAgentSettings")[1], ["patchAgentSettings", "cc_1", { oceanleo_tools: false }]);
+    assert.deepEqual(calls("patchAgentSettings")[1], ["patchAgentSettings", view.computer.id, { oceanleo_tools: false }]);
     await click(view.$("[data-oceanleo-acp-settings-close]"));
     assert.equal(view.$("[data-oceanleo-acp-settings]"), null);
   } finally {
@@ -637,8 +611,8 @@ test("设置齿轮：模型 / 模式 / 其它配置项；危险操作先问我�
 
   const local = await boot({}, { oceanleo: { installed: true, version: "0.3.1", token_active: true } });
   try {
-    await until(() => local.$('[data-oceanleo-acp-agent="oceanleo"] [data-oceanleo-acp-agent-state="installed"]'), "local installed");
-    await click(local.$('[data-oceanleo-acp-picker-settings="oceanleo"]'));
+    await until(() => !local.$("[data-oceanleo-acp-oceanleo-banner]"), "local installed");
+    await click(local.$('[data-oceanleo-program-strip-settings="oceanleo"]'));
     await until(() => {
       const toggle = local.$('[data-oceanleo-acp-setting="billing_allowed"]');
       return toggle && !toggle.disabled;
@@ -647,14 +621,14 @@ test("设置齿轮：模型 / 模式 / 其它配置项；危险操作先问我�
     assert.equal(billing.checked, true, "billing_paused:false = 允许扣费");
     await click(billing);
     await until(() => calls("patchAgentSettings").length === 1, "patch billing");
-    assert.deepEqual(calls("patchAgentSettings")[0], ["patchAgentSettings", "cc_1", { billing_paused: true }]);
+    assert.deepEqual(calls("patchAgentSettings")[0], ["patchAgentSettings", local.computer.id, { billing_paused: true }]);
 
     await until(() => !local.$("[data-oceanleo-acp-uninstall]").disabled, "uninstall enabled");
     await click(local.$("[data-oceanleo-acp-uninstall]"));
     assert.equal(calls("uninstallOceanleoAgent").length, 0, "卸载先确认");
     await click(local.$("[data-test-confirm-ok]"));
     await until(() => calls("uninstallOceanleoAgent").length === 1, "uninstall call");
-    await until(() => local.$('[data-oceanleo-acp-agent="oceanleo"] [data-oceanleo-acp-agent-state="cloud"]'), "back to cloud");
+    await until(() => local.$("[data-oceanleo-acp-oceanleo-banner]"), "back to cloud");
     assert.equal(local.$("[data-oceanleo-acp-settings]"), null);
   } finally {
     local.cleanup();
@@ -670,7 +644,7 @@ test("白 / 黑两套 class 都在：卡片、设置与子面板不再写死深�
     }
     const input = view.$("[data-oceanleo-cc-dialog-input]");
     assert.ok(input.className.includes("bg-white") && input.className.includes("dark:bg-neutral-900"));
-    await click(view.$("[data-oceanleo-acp-current-settings]"));
+    await click(view.$('[data-oceanleo-program-strip-settings="cursor"]'));
     const panel = view.$('[data-oceanleo-acp-settings="cursor"]');
     assert.ok(panel.className.includes("bg-white") && panel.className.includes("dark:bg-neutral-950"));
   } finally {
@@ -710,4 +684,77 @@ test("reduce：回放没有 done 时每条用户消息后的回复各成一轮",
   state = applyDialog(state, { type: "frame", frame: { t: "commands", program: "cursor", commands: [{ name: "x", description: "y" }] } });
   assert.equal(state.messages.length, 4, "commands 不进消息流");
   assert.deepEqual(state.commands, [{ name: "x", description: "y" }]);
+});
+
+
+test("挂载即连 WS；地址 props 改动与失活恢复不重连、不重取探针", async () => {
+  let resolveProbe;
+  const oceanleoPending = new Promise(resolve => { resolveProbe = resolve; });
+  const view = await boot({ initialProgram: "cursor", initialSessionId: "deep" }, { oceanleoPending });
+  try {
+    assert.equal(calls("getOceanleoAgent").length, 1);
+    assert.equal(FakeSocket.sockets.length, 1, "SSH 探针尚未完成已连 WS");
+    await until(() => sentFrames().some(f => f.t === "open_session"), "deep session");
+    await view.rerender({ initialProgram: "hermes", initialSessionId: "changed" });
+    assert.equal(view.$("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "cursor");
+    assert.equal(sentFrames().filter(f => f.t === "open_session").length, 1);
+    const requests = sentFrames().filter(f => f.t === "sessions").length;
+    await view.rerender({ active: false });
+    assert.equal(view.$("[data-oceanleo-program-strip]"), null);
+    assert.equal(openSocket().readyState, 1);
+    window.history.replaceState({}, "", "?card=terminal");
+    await view.rerender({ active: true });
+    assert.equal(window.location.search, "?card=acp&program=cursor&session=deep");
+    assert.equal(sentFrames().filter(f => f.t === "sessions").length, requests);
+    await click(view.$('[data-oceanleo-program-strip-item="hermes"]'));
+    await click(view.$('[data-oceanleo-program-strip-item="cursor"]'));
+    assert.equal(sentFrames().filter(f => f.t === "open_session").length, 1, "不重用初始会话");
+    assert.equal(calls("getOceanleoAgent").length, 1);
+    assert.equal(FakeSocket.sockets.length, 1);
+  } finally {
+    await act(async () => resolveProbe({ installed: false, token_active: false }));
+    view.cleanup();
+  }
+});
+
+test("默认程序优先地址、其次本地记忆，缓存按电脑和程序隔离并首帧回显", async () => {
+  const computer = { ...COMPUTER, id: "cache-check" };
+  window.localStorage.setItem(`oceanleo.serverPage.lastProgram.${computer.id}`, "hermes");
+  let view = await boot({ computer, initialProgram: "cursor" });
+  try {
+    assert.equal(view.$("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "cursor");
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [{ id: "cached", title: "Saved session" }] });
+    await click(view.$('[data-oceanleo-program-strip-item="hermes"]'));
+    assert.equal(view.$('[data-oceanleo-acp-session="cached"]'), null);
+    await click(view.$('[data-oceanleo-program-strip-item="cursor"]'));
+    assert.ok(view.$('[data-oceanleo-acp-session="cached"]'));
+  } finally { view.cleanup(); }
+  // Neither status nor probe is delivered to the remount before this assertion.
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  globalThis.__acpApi = { ...freshApi(), oceanleoPending: new Promise(() => {}) };
+  try {
+    await act(async () => root.render(React.createElement(AcpCard, { computer })));
+    assert.equal(host.querySelector("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "cursor");
+    assert.ok(host.querySelector('[data-oceanleo-acp-session="cached"]'));
+    assert.ok(host.querySelector('[data-oceanleo-program-strip-item="cursor"] .bg-emerald-500'));
+    await act(async () => root.render(React.createElement(AcpCard, { key: "other", computer: { ...computer, id: "uncached" } })));
+    assert.equal(host.querySelector("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "oceanleo");
+    assert.equal(host.querySelector('[data-oceanleo-acp-session="cached"]'), null);
+  } finally { act(() => root.unmount()); host.remove(); }
+});
+
+test("本地 OceanLeo 探针完成后才应用初始会话，且只应用一次", async () => {
+  let resolveProbe;
+  const view = await boot({ initialProgram: "oceanleo", initialSessionId: "local-deep" }, {
+    oceanleoPending: new Promise(resolve => { resolveProbe = resolve; }),
+  });
+  try {
+    assert.equal(sentFrames().filter(f => f.t === "open_session").length, 0);
+    await act(async () => resolveProbe({ installed: true, version: "1", token_active: true }));
+    await until(() => sentFrames().some(f => f.t === "open_session" && f.acp_session === "local-deep"), "local deep link");
+    assert.equal(FakeSocket.sockets.length, 1);
+    assert.equal(calls("agentState").length, 0);
+  } finally { view.cleanup(); }
 });

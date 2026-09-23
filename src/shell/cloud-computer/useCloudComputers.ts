@@ -24,6 +24,71 @@ function rememberMountedComputerName(name: string | null): void {
 
 export const CC_POLL_MS = 15_000;
 
+const LIST_CACHE_KEY = "oceanleo.computers.list.v1";
+const listCache = new WeakMap<CloudComputerClient, Computer[]>();
+// Deliberately enumerate persisted scalar fields: future API credentials and
+// arbitrary nested metadata must never enter sessionStorage.
+const CACHE_FIELDS = [
+  "id", "name", "source", "status", "edition", "node_online", "created_at", "updated_at",
+  "region_id", "zone_id", "instance_id", "instance_type", "image_id", "system_disk_gb",
+  "public_ip", "private_ip", "tier_id", "hourly_price_cny", "charge_status", "unpaid_since",
+  "last_metered_at", "node_id", "node_version", "node_os", "node_arch", "node_hostname",
+  "node_last_seen_at", "node_fingerprint", "node_kernel", "node_cpus", "node_mem_bytes",
+  "node_run_as", "node_public_ip", "enrolled_at", "confirmed_at", "host_cert_expires_at", "released_at",
+] as const satisfies readonly (keyof Computer)[];
+
+function persistedComputer(item: Computer): Computer {
+  return { id: item.id, name: item.name, source: item.source, status: item.status,
+    edition: item.edition, node_online: item.node_online, created_at: item.created_at, updated_at: item.updated_at,
+    ...Object.fromEntries(CACHE_FIELDS.flatMap((key) => {
+    const value = item[key];
+    return value === null || ["string", "number", "boolean"].includes(typeof value)
+      ? [[key, value]] : [];
+  })) };
+}
+
+function readListCache(client: CloudComputerClient): Computer[] | undefined {
+  if (typeof window === "undefined") return undefined;
+  const memory = listCache.get(client);
+  if (memory) return memory;
+  if (client !== cloudComputerApi) return undefined;
+  try {
+    const rows: unknown = JSON.parse(window.sessionStorage.getItem(LIST_CACHE_KEY) || "null");
+    if (!Array.isArray(rows) || !rows.every((row) => row && typeof row === "object"
+      && ["id", "name", "source", "status", "edition", "created_at", "updated_at"].every((key) => typeof row[key] === "string")
+      && typeof row.node_online === "boolean")) return undefined;
+    const items = rows.map(persistedComputer);
+    listCache.set(client, items);
+    return items;
+  } catch { return undefined; }
+}
+
+function writeListCache(client: CloudComputerClient, items: Computer[]): void {
+  if (typeof window === "undefined") return;
+  listCache.set(client, items);
+  if (client !== cloudComputerApi) return;
+  try { window.sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(items.map(persistedComputer))); }
+  catch { /* Memory cache still works when browser storage is unavailable. */ }
+}
+
+function sameContent(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const a = Object.entries(left), b = Object.entries(right);
+  const other = new Map(b);
+  return a.length === b.length && a.every(([key, value]) => other.has(key) && sameContent(value, other.get(key)));
+}
+
+function reconcileComputers(previous: Computer[], items: Computer[]): Computer[] {
+  const byId = new Map(previous.map((item) => [item.id, item]));
+  const next = items.map((item) => {
+    const before = byId.get(item.id);
+    return before && sameContent(before, item) ? before : item;
+  });
+  return next.length === previous.length && next.every((item, index) => item === previous[index]) ? previous : next;
+}
+
+
 export function isAliveComputer(computer: Computer): boolean {
   return computer.status !== "released" && computer.status !== "removed";
 }
@@ -66,24 +131,26 @@ export function useCloudComputers(options?: {
 }) {
   const client = options?.client ?? cloudComputerApi;
   const pollMs = options?.pollMs ?? CC_POLL_MS;
-  const [computers, setComputers] = useState<Computer[]>(
-    options?.computers ?? [],
-  );
+  const [initial] = useState(() => options?.computers ?? readListCache(client));
+  const [computers, setComputers] = useState<Computer[]>(initial ?? []);
   const [mountedId, setMountedIdState] = useState<string | null>(null);
   const [rememberedId, setRememberedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(!options?.computers);
+  const [loading, setLoading] = useState(initial === undefined);
   const [error, setError] = useState<string | null>(null);
   const computersRef = useRef(computers);
   computersRef.current = computers;
 
   const applyList = useCallback((items: Computer[]) => {
-    setComputers(items);
+    const stable = reconcileComputers(computersRef.current, items);
+    computersRef.current = stable;
+    setComputers(stable);
+    if (!options?.computers) writeListCache(client, stable);
     const next = pickMountedId(items, readMountedComputerId() || null);
     setMountedIdState(next);
     writeMountedComputerId(next);
     const chosen = next ? items.find((item) => item.id === next) : undefined;
     rememberMountedComputerName(chosen?.name ? chosen.name : null);
-  }, []);
+  }, [client, options?.computers]);
 
   const refresh = useCallback(async () => {
     if (options?.computers) {
@@ -113,7 +180,7 @@ export function useCloudComputers(options?: {
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    setLoading(readListCache(client) === undefined);
     client
       .listComputers()
       .then((data) => {

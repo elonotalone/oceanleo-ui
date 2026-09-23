@@ -165,7 +165,7 @@ export function useAgentDialog({
     }
     const cached = presentationFor(computerIdRef.current);
     if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
-    if (frame.t === "sessions" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
+    if (frame.t === "sessions" && typeof frame.program === "string" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
       const parsed = applyDialog({ ...stateRef.current, program: frame.program }, { type: "frame", frame });
       cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
     }
