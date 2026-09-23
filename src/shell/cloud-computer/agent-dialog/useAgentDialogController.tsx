@@ -49,19 +49,42 @@ function usesDialogSocket(
   return isWsProgram(program) || (program === "oceanleo" && localOceanleo);
 }
 
+// Only parsed presentation state is retained; authentication and socket URLs never enter this cache.
+type Presentation = Pick<ReturnType<typeof initialDialogState>, "programs" | "sessions" | "sessionsSupported">;
+const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">> }>();
+function presentationFor(id: string) {
+  let cached = presentationCache.get(id);
+  if (!cached) {
+    cached = { programs: [], sessions: new Map() };
+    presentationCache.set(id, cached);
+  }
+  return cached;
+}
+function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>) {
+  const cached = presentationFor(id);
+  return { ...state, programs: cached.programs, ...cached.sessions.get(state.program ?? "") };
+}
+
 export function useAgentDialog({
   computerId,
   sessionId,
   enabled,
   localOceanleo = false,
+  active = true,
 }: {
   computerId: string;
   sessionId?: string;
   enabled: boolean;
   localOceanleo?: boolean;
+  active?: boolean;
 }): AgentDialogControllerV2 {
   const tt = useUI();
-  const [state, dispatch] = useReducer(applyDialog, undefined, initialDialogState);
+  const [state, dispatch] = useReducer(
+    (previous: ReturnType<typeof initialDialogState>, event: Parameters<typeof applyDialog>[1]) => {
+      const next = applyDialog(previous, event);
+      return event.type === "reset" || event.type === "program" ? hydratePresentation(computerId, next) : next;
+    }, undefined, () => hydratePresentation(computerId, initialDialogState()),
+  );
   const [draft, setDraft] = useState("");
   const [fresh, setFresh] = useState(false);
   const [computerName, setComputerName] = useState("");
@@ -70,6 +93,7 @@ export function useAgentDialog({
   const draftRef = useRef(draft);
   const freshRef = useRef(fresh);
   const enabledRef = useRef(enabled);
+  const activeRef = useRef(active);
   const computerIdRef = useRef(computerId);
   const sessionIdRef = useRef(sessionId);
   const localOceanleoRef = useRef(localOceanleo);
@@ -100,6 +124,7 @@ export function useAgentDialog({
   draftRef.current = draft;
   freshRef.current = fresh;
   enabledRef.current = enabled;
+  activeRef.current = active;
   computerIdRef.current = computerId;
   sessionIdRef.current = sessionId;
   localOceanleoRef.current = localOceanleo;
@@ -130,6 +155,12 @@ export function useAgentDialog({
       haltRef.current = true;
       clearTimer();
     }
+    const cached = presentationFor(computerIdRef.current);
+    if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
+    if (frame.t === "sessions" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
+      const parsed = applyDialog({ ...stateRef.current, program: frame.program }, { type: "frame", frame });
+      cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
+    }
     dispatch({ type: "frame", frame });
     if (frame.t === "install_done" || frame.t === "login_done") {
       sendJson(socketRef.current, { t: "status" });
@@ -137,7 +168,7 @@ export function useAgentDialog({
   }, [clearTimer]);
 
   const scheduleReconnect = useCallback(() => {
-    if (!enabledRef.current || haltRef.current) return;
+    if (!enabledRef.current || !activeRef.current || haltRef.current) return;
     clearTimer();
     const wait = delayRef.current;
     delayRef.current = nextReconnectDelay(wait);
@@ -310,7 +341,7 @@ export function useAgentDialog({
       let waitedMs = 0;
       let lastCount = -1;
       for (;;) {
-        if (gen !== oceanGen.current) return;
+        if (gen !== oceanGen.current || !activeRef.current) return;
         // 与 AgentChat 同语义：页面在后台这一轮不发请求，只留便宜定时器回来看。
         const hidden = typeof document !== "undefined" && document.hidden === true;
         if (hidden) {
@@ -347,7 +378,7 @@ export function useAgentDialog({
   /** 进入 oceanleo 程序（或重试）：拉 agentState，回放当前任务的消息。 */
   const refreshOcean = useCallback(async () => {
     const computerId = computerIdRef.current;
-    if (!computerId || !enabledRef.current) return;
+    if (!computerId || !enabledRef.current || !activeRef.current) return;
     const gen = (oceanGen.current += 1);
     clearOceanWait();
     const result = await agentState(computerId);
@@ -496,6 +527,22 @@ export function useAgentDialog({
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
     };
   }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait]);
+
+  const previousActive = useRef(active);
+  useEffect(() => {
+    if (previousActive.current === active) return;
+    previousActive.current = active;
+    if (!active) {
+      clearTimer();
+      oceanGen.current += 1;
+      clearOceanWait();
+      return;
+    }
+    if (enabled) {
+      void connectRef.current();
+      if (stateRef.current.program === "oceanleo" && !localOceanleoRef.current) void refreshOceanRef.current();
+    }
+  }, [active, enabled, clearTimer, clearOceanWait]);
 
   // 本地 OceanLeo agent 装上 / 卸掉时，正在看的 oceanleo 换到另一条通道（WS ↔ REST）。
   const localSeenRef = useRef(localOceanleo);
@@ -812,11 +859,11 @@ export function useAgentDialog({
     setConfig(id, value);
   }, [setConfig]);
 
-  const logoutProgram = useCallback((program: WsProgram) => {
+  const logoutProgram = useCallback((program: WsProgram, provider?: string) => {
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) return;
-      sendJson(socket, { t: "logout", program });
+      sendJson(socket, { t: "logout", program, ...(provider ? { provider } : {}) });
       sendJson(socket, { t: "status" });
     })();
   }, [ensureOpen]);

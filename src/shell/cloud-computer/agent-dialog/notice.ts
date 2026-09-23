@@ -1,11 +1,14 @@
+import type { DialogModel } from "./types";
 // 错误帧按 code 换成用户能照着做的一句话。原文不进日志，这里也不拼用户说过的字。
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
 
 const DIALOG_DID_NOT_START = "对话没有启动。";
 
-export function noticeCopy(tt: Translate, code: string, installed: boolean | null = null): string {
+export function noticeCopy(tt: Translate, code: string, installed: boolean | null = null, provider = "nous"): string {
   switch (code) {
+    case "provider_needs_credits":
+      return tt("这个模型需要 {provider} 账户余额。请换一个可用模型，或前往该供应商充值。", { provider: providerLabel(provider) });
     case "not_logged_in":
       return tt("还没登录。点登录，在浏览器里完成后这里会变绿。");
     case "program_missing":
@@ -85,4 +88,28 @@ export function keyErrorCopy(
   }
   if (op === "save") return tt("Key 没存上。稍后再试。");
   return tt("移除没成功。稍后再试。");
+}
+
+export function providerLabel(id: string): string {
+  const labels: Record<string, string> = { nous: "Nous Portal", deepseek: "DeepSeek", openrouter: "OpenRouter", anthropic: "Anthropic", openai: "OpenAI", xai: "xAI", cursor: "Cursor" };
+  return labels[id] || id;
+}
+
+export function modelGroups(models: DialogModel[]): { label: string; models: DialogModel[] }[] {
+  const groups = new Map<string, DialogModel[]>();
+  for (const model of models) {
+    if (model.usable === false) continue;
+    const label = model.provider_label || providerLabel(model.provider || "");
+    groups.set(label, [...(groups.get(label) || []), model]);
+  }
+  return Array.from(groups, ([label, models]) => ({ label, models }));
+}
+
+export function hiddenModelCopy(tt: Translate, models: DialogModel[]): string[] {
+  return [...new Set(models.filter((m) => m.usable === false).map((model) => {
+    const provider = model.provider_label || providerLabel(model.provider || "") || tt("供应商");
+    if (model.reason === "needs_credits") return tt("{provider} 的付费模型需要账户余额，已隐藏。", { provider });
+    if (model.reason === "no_credentials") return tt("{provider} 尚未认证，相关模型已隐藏。", { provider });
+    return tt("当前不可用的模型已隐藏。");
+  }))];
 }

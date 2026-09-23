@@ -72,7 +72,7 @@ async function request(
   }
   if (!res.ok) {
     const detail = detailOf(payload);
-    throw new ProgramKeyError(detail.code || "node_error", detail.message);
+    throw new ProgramKeyError(detail.code || "node_error", "");
   }
   return payload && typeof payload === "object" && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)

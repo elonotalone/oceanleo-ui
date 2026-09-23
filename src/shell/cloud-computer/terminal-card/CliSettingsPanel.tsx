@@ -57,8 +57,8 @@ export function CliSettingsPanel({
     settings.confirmDangerous ?? serverConfirmDangerous;
 
   return (
-    <div className="grid gap-4" data-oceanleo-cli-settings={program.id}>
-      <section className={`border-b pb-4 ${tone.border}`}>
+    <div className="grid gap-3" data-oceanleo-cli-settings={program.id}>
+      <section className={`border-b pb-3 ${tone.border}`}>
         <h3 className="sr-only">{tt("AI 命令行设置")}</h3>
         <p className={`mt-1 text-xs ${tone.muted}`}>
           {tt("这些设置将在下一次启动时生效。")}
@@ -78,11 +78,12 @@ export function CliSettingsPanel({
                 return (
                   <label
                     key={option.key}
-                    className="flex items-center justify-between gap-3 pt-3 text-xs first:pt-0"
+                    className="flex items-center justify-between gap-3 pt-2 text-[13px] first:pt-0"
                   >
                     <span>{option.label}</span>
                     <input
                       type="checkbox"
+                      className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
                       checked={checked}
                       data-oceanleo-cli-option={option.key}
                       onChange={(event) =>
@@ -96,11 +97,11 @@ export function CliSettingsPanel({
                 typeof option.default === "string" ? option.default : "";
               const value = typeof stored === "string" ? stored : fallback;
               return (
-                <label key={option.key} className="grid gap-1 pt-3 text-xs first:pt-0">
+                <label key={option.key} className="grid gap-1 pt-2 text-[13px] first:pt-0">
                   <span className={tone.muted}>{option.label}</span>
                   <select
                     value={value}
-                    className={`rounded-lg border px-2 py-1.5 ${tone.input}`}
+                    className={`h-8 rounded-md border px-2 text-[13px] ${tone.input}`}
                     data-oceanleo-cli-option={option.key}
                     onChange={(event) =>
                       setOption(option.key, event.currentTarget.value)
@@ -115,15 +116,16 @@ export function CliSettingsPanel({
                 </label>
               );
             })}
-          <label className="flex items-center justify-between gap-3 pt-3 text-xs first:pt-0">
+          <label className="flex items-center justify-between gap-3 pt-2 text-[13px] first:pt-0">
             <span>
               <span className="block">{tt("危险操作先问")}</span>
-              <span className={`mt-0.5 block text-[10px] ${tone.muted}`}>
+              <span className={`mt-0.5 block text-xs ${tone.muted}`}>
                 {tt("可以按程序覆盖服务器的默认设置。")}
               </span>
             </span>
             <input
               type="checkbox"
+                      className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
               checked={confirmDangerous}
               data-oceanleo-confirm-dangerous=""
               onChange={(event) =>
@@ -134,8 +136,8 @@ export function CliSettingsPanel({
               }
             />
           </label>
-          {isCliToolProgram(program.id) && (
-            <label className="flex items-center justify-between gap-3 pt-3 text-xs">
+          {isCliToolProgram(program.id) && onToolsEnabledChange && (
+            <label className="flex items-center justify-between gap-3 pt-2 text-[13px]">
               <span>
                 {tt("把 OceanLeo 工具装进 {program}", {
                   program: program.label,
@@ -143,6 +145,7 @@ export function CliSettingsPanel({
               </span>
               <input
                 type="checkbox"
+                      className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
                 checked={toolsEnabled === true}
                 disabled={toolsEnabled === undefined || toolsBusy}
                 data-oceanleo-cli-tools={program.id}
@@ -154,7 +157,7 @@ export function CliSettingsPanel({
           )}
         </div>
       </section>
-      <AppearancePanel framed={false} />
+      <AppearancePanel framed={false} className="[&_h3]:text-[13px] [&_label]:text-[13px] [&_select]:h-8 [&_select]:py-0 [&_input:not([type=checkbox])]:h-8 [&_input:not([type=checkbox])]:py-0 [&_input[type=checkbox]]:size-4" />
     </div>
   );
 }

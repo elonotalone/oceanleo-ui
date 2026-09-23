@@ -58,6 +58,8 @@ export interface AnchoredPopoverPositionOptions {
    * sit below unless the panel is taller than the room below and above is roomier.
    */
   preferredPlacement?: "above" | "below";
+  /** Prefer beside the anchor; fall back to vertical placement if it cannot fit. */
+  side?: "right" | "left";
 }
 
 export type AnchoredPopoverCloseReason = "escape" | "outside";
@@ -362,6 +364,7 @@ export function computeAnchoredPopoverPosition(
     margin = DEFAULT_MARGIN,
     maxHeight: requestedMaxHeight,
     preferredPlacement,
+    side,
   }: AnchoredPopoverPositionOptions = {},
 ): AnchoredPopoverPosition {
   const viewportRight = viewport.left + viewport.width;
@@ -370,6 +373,25 @@ export function computeAnchoredPopoverPosition(
   const innerTop = viewport.top + margin;
   const innerRight = Math.max(innerLeft, viewportRight - margin);
   const innerBottom = Math.max(innerTop, viewportBottom - margin);
+  if (side) {
+    const room = side === "right"
+      ? innerRight - anchor.right - gap
+      : anchor.left - gap - innerLeft;
+    if (popover.width <= room) {
+      const maxHeight = Math.max(0, Math.min(
+        innerBottom - innerTop,
+        requestedMaxHeight ?? Number.POSITIVE_INFINITY,
+      ));
+      const renderedHeight = Math.min(popover.height, maxHeight);
+      return {
+        left: side === "right" ? anchor.right + gap : anchor.left - gap - popover.width,
+        top: clamp(anchor.top, innerTop, innerBottom - renderedHeight),
+        maxWidth: Math.max(0, room),
+        maxHeight,
+        placement: preferredPlacement ?? "below",
+      };
+    }
+  }
   const roomBelow = Math.max(0, innerBottom - anchor.bottom - gap);
   const roomAbove = Math.max(0, anchor.top - gap - innerTop);
   const preferredRoom =
@@ -479,6 +501,8 @@ export interface AnchoredPopoverProps {
   margin?: number;
   maxHeight?: number;
   preferredPlacement?: "above" | "below";
+  /** Prefer beside the anchor; fall back to vertical placement if it cannot fit. */
+  side?: "right" | "left";
   className?: string;
   style?: CSSProperties;
   attributes?: Record<string, string | number | boolean | undefined>;
@@ -515,6 +539,7 @@ export function AnchoredPopover({
   margin = DEFAULT_MARGIN,
   maxHeight,
   preferredPlacement,
+  side,
   className = "",
   style,
   attributes,
@@ -625,7 +650,7 @@ export function AnchoredPopover({
         height: naturalHeight,
       },
       visualViewportRect(),
-      { align, gap, margin, maxHeight, preferredPlacement },
+      { align, gap, margin, maxHeight, preferredPlacement, side },
     );
     setPosition((current) => (samePosition(current, next) ? current : next));
     setTransformOrigin(
@@ -635,7 +660,7 @@ export function AnchoredPopover({
       }),
     );
     setPositioned(true);
-  }, [align, anchorRef, gap, margin, maxHeight, preferredPlacement]);
+  }, [align, anchorRef, gap, margin, maxHeight, preferredPlacement, side]);
 
   useLayoutEffect(() => {
     if (!open || !portalRoot) return;

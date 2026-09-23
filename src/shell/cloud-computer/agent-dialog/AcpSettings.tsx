@@ -10,6 +10,7 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
+import { hiddenModelCopy, modelGroups } from "./notice";
 import { tone } from "../server-page/tone";
 import { PROGRAM_LABEL, type AgentProgram, type WsProgram } from "./types";
 import type { AgentDialogControllerV2 } from "./useAgentDialogController";
@@ -38,17 +39,17 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className={`flex gap-3 rounded-xl border p-3 ${tone.border}`}>
+    <label className={`flex min-h-8 cursor-pointer gap-3 border-b py-2 ${tone.border}`}>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         data-oceanleo-acp-setting={setting}
         onChange={(event) => onChange(event.currentTarget.checked)}
-        className="mt-0.5 size-11 shrink-0 accent-indigo-600"
+        className="mt-0.5 size-4 shrink-0 accent-indigo-600"
       />
       <span className="min-w-0">
-        <span className="block text-sm font-medium">{label}</span>
+        <span className="block text-[13px] font-medium">{label}</span>
         {description ? (
           <span className={`mt-1 block text-xs leading-5 ${tone.muted}`}>
             {description}
@@ -169,41 +170,43 @@ export function AcpSettings({
         role="dialog"
         aria-modal="true"
         aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
-        className={`h-full w-full max-w-md overflow-y-auto border-l p-4 shadow-2xl ${tone.border} ${tone.page}`}
+        className={`h-full w-full max-w-[384px] overflow-y-auto border-l p-4 shadow-2xl ${tone.border} ${tone.page}`}
         data-oceanleo-acp-settings={program}
       >
         <header className={`flex items-center justify-between gap-3 border-b pb-3 ${tone.border}`}>
           <div>
-            <p className="font-semibold">{PROGRAM_LABEL[program]}</p>
+            <p className="text-[13px] font-semibold">{PROGRAM_LABEL[program]}</p>
             <p className={`text-xs ${tone.muted}`}>{tt("设置")}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className={`min-h-11 rounded-lg px-2 py-1 text-sm ${tone.hover} ${tone.muted}`}
+            className={`h-8 rounded-lg px-2 py-1 text-[13px] ${tone.hover} ${tone.muted}`}
             data-oceanleo-acp-settings-close=""
           >
             {tt("关闭")}
           </button>
         </header>
 
-        <div className="mt-4 space-y-5">
+        <div className="mt-4 space-y-3">
           {dialog.models.length > 0 ? (
             <label className={`block text-xs ${tone.muted}`}>
               {tt("模型")}
               <select
-                value={dialog.selectedModel}
+                value={dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? dialog.selectedModel : ""}
                 onChange={(event) => dialog.setSelectedModel(event.currentTarget.value)}
-                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${tone.input}`}
+                className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
                 data-oceanleo-acp-settings-model=""
               >
-                {dialog.models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
+                {!dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
+                  {modelGroups(dialog.models).map((group) => group.label ? (
+                    <optgroup key={group.label} label={group.label}>{group.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</optgroup>
+                  ) : group.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>))}
               </select>
-            </label>
+            
+                {hiddenModelCopy(tt, dialog.models).map((copy) => <span key={copy} className={`block text-[12px] ${tone.muted}`} data-oceanleo-hidden-models="">{copy}</span>)}
+                {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
+</label>
           ) : null}
 
           {dialog.mode && dialog.mode.options.length > 0 ? (
@@ -212,7 +215,7 @@ export function AcpSettings({
               <select
                 value={dialog.selectedMode}
                 onChange={(event) => dialog.setMode(event.currentTarget.value)}
-                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${tone.input}`}
+                className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
                 data-oceanleo-acp-settings-mode=""
               >
                 {dialog.mode.options.map((option) => (
@@ -244,7 +247,7 @@ export function AcpSettings({
                   <select
                     value={String(option.current)}
                     onChange={(event) => dialog.setConfig(option.id, event.currentTarget.value)}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${tone.input}`}
+                    className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
                     data-oceanleo-acp-setting-config={option.id}
                   >
                     {option.options.map((choice) => (
@@ -262,14 +265,14 @@ export function AcpSettings({
                 <input
                   value={String(option.current)}
                   onChange={(event) => dialog.setConfig(option.id, event.currentTarget.value)}
-                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${tone.input}`}
+                  className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
                   data-oceanleo-acp-setting-config={option.id}
                 />
               </label>
             );
           })}
 
-          <div className="space-y-3">
+          <div className="space-y-0">
             <Toggle
               checked={settings.confirm_dangerous}
               disabled={loading || Boolean(saving)}
@@ -282,7 +285,7 @@ export function AcpSettings({
               checked={settings.oceanleo_tools}
               disabled={loading || Boolean(saving)}
               label={tt("让它能用 OceanLeo 的工具")}
-              description={tt("这一项对这台服务器上所有 AI 生效。")}
+              description={tt("工具设置在新会话中生效。")}
               setting="oceanleo_tools"
               onChange={(value) => void changeSetting("oceanleo_tools", value)}
             />
@@ -298,9 +301,12 @@ export function AcpSettings({
             ) : null}
           </div>
 
+          {wsProgram === "hermes" && programStatus?.providers ? <ul className={`text-[12px] ${tone.muted}`}>
+            {programStatus.providers.map((p) => <li key={p.id}>{p.label} · {p.auth === "key" ? tt("已存 Key") : tt("已登录")}{p.tier === "free" ? ` · ${tt("免费账户（没有余额时付费模型用不了）")}` : ""}</li>)}
+          </ul> : null}
           {wsProgram ? (
             <section className={`rounded-xl border p-3 ${tone.border}`}>
-              <p className="text-sm font-medium">{tt("登录")}</p>
+              <p className="text-[13px] font-medium">{tt("登录")}</p>
               <p className={`mt-1 text-xs ${tone.muted}`}>
                 {!programStatus?.installed
                   ? tt("未安装")
@@ -314,7 +320,7 @@ export function AcpSettings({
                 {!programStatus?.installed ? (
                   <button
                     type="button"
-                    className={`min-h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                    className={`h-8 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
                     onClick={() => onRequestInstall(wsProgram)}
                   >
                     {tt("安装")}
@@ -322,16 +328,16 @@ export function AcpSettings({
                 ) : programStatus.logged_in === true ? (
                   <button
                     type="button"
-                    className={`min-h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
-                    onClick={() => dialog.logoutProgram(wsProgram)}
+                    className={`h-8 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                    onClick={() => wsProgram === "hermes" ? onRequestKey(wsProgram) : dialog.logoutProgram(wsProgram)}
                     data-oceanleo-acp-settings-logout={wsProgram}
                   >
-                    {tt("退出登录")}
+                    {wsProgram === "hermes" ? tt("管理凭据") : tt("退出登录")}
                   </button>
                 ) : (
                   <button
                     type="button"
-                    className={`min-h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                    className={`h-8 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
                     onClick={() => onRequestLogin(wsProgram)}
                     data-oceanleo-acp-settings-login={wsProgram}
                   >
@@ -341,18 +347,18 @@ export function AcpSettings({
                 {programStatus?.installed ? (
                   <button
                     type="button"
-                    className={`min-h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                    className={`h-8 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
                     onClick={() => onRequestKey(wsProgram)}
                     data-oceanleo-acp-settings-key={wsProgram}
                   >
-                    {programStatus.auth === "key" ? tt("Key ✓") : tt("Key")}
+                    {wsProgram === "hermes" ? tt("管理凭据") : programStatus.auth === "key" ? tt("已存 Key") : tt("Key")}
                   </button>
                 ) : null}
               </div>
             </section>
           ) : oceanleoStatus?.installed ? (
             <section className={`rounded-xl border p-3 ${tone.border}`}>
-              <p className="text-sm font-medium">{tt("本地 OceanLeo agent")}</p>
+              <p className="text-[13px] font-medium">{tt("本地 OceanLeo agent")}</p>
               {oceanleoStatus.version ? (
                 <p className={`mt-1 text-xs ${tone.muted}`}>{oceanleoStatus.version}</p>
               ) : null}
@@ -360,7 +366,7 @@ export function AcpSettings({
                 type="button"
                 disabled={Boolean(saving)}
                 onClick={() => setConfirmUninstall(true)}
-                className={`mt-3 min-h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
+                className={`mt-3 h-8 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
                 data-oceanleo-acp-uninstall=""
               >
                 {tt("卸载")}

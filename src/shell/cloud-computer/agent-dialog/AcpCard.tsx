@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   getOceanleoAgent,
   installOceanleoAgent,
@@ -10,11 +9,11 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
-  IconChevron,
   IconRefresh,
-  IconSettings,
 } from "../server-page/chrome-icons";
-import { serverPageHref } from "../server-page/href";
+import { replaceServerPageUrl } from "../server-page/url-state";
+import { ProgramStrip, type ProgramStripItem } from "../server-page/ProgramStrip";
+import { ServerPageStripPortal } from "../server-page/server-page-chrome";
 import { tone } from "../server-page/tone";
 import { AcpSettings } from "./AcpSettings";
 import { Composer } from "./Composer";
@@ -65,75 +64,32 @@ function statusOf(program: WsProgram, rows: ProgramStatus[]): ProgramStatus | un
   return rows.find((row) => row.id === program);
 }
 
-function ProgramState({
-  program,
-  row,
-  oceanleoStatus,
-}: {
-  program: AgentProgram;
-  row?: ProgramStatus;
-  oceanleoStatus: OceanleoAgentStatus | null;
-}) {
-  const tt = useUI();
-  if (program === "oceanleo") {
-    if (oceanleoStatus?.installed) {
-      return (
-        <span className={`text-xs ${tone.muted}`} data-oceanleo-acp-agent-state="installed">
-          {oceanleoStatus.version
-            ? tt("已安装 · {version}", { version: oceanleoStatus.version })
-            : tt("已安装")}
-        </span>
-      );
-    }
-    return (
-      <span className={`text-xs ${tone.muted}`} data-oceanleo-acp-agent-state="cloud">
-        {tt("云端 OceanLeo agent")}
-      </span>
-    );
-  }
-  if (!row?.installed) {
-    return (
-      <span className={`text-xs ${tone.muted}`} data-oceanleo-acp-agent-state="missing">
-        {tt("未安装")}
-      </span>
-    );
-  }
-  if (row.logged_in === false) {
-    return (
-      <span className="text-xs text-amber-700 dark:text-amber-200" data-oceanleo-acp-agent-state="signed-out">
-        {tt("未登录")}
-      </span>
-    );
-  }
-  return (
-    <span className={`text-xs ${tone.muted}`} data-oceanleo-acp-agent-state={row.logged_in ? "ready" : "unknown"}>
-      {row.version
-        ? tt("已安装 · {version}", { version: row.version })
-        : row.logged_in
-          ? tt("已登录")
-          : tt("已安装")}
-    </span>
-  );
+const oceanleoCache = new Map<string, OceanleoAgentStatus>();
+function rememberedProgram(computerId: string): AgentProgram {
+  try {
+    return agentProgram(window.localStorage.getItem(`oceanleo.serverPage.lastProgram.${computerId}`) ?? undefined) ?? "oceanleo";
+  } catch { return "oceanleo"; }
 }
 
 export function AcpCard({
   computer,
   initialProgram,
   initialSessionId,
+  active = true,
 }: {
   computer: Computer;
   initialProgram?: string;
   initialSessionId?: string;
+  active?: boolean;
 }) {
   const tt = useUI();
-  const router = useRouter();
-  const [selected, setSelected] = useState<AgentProgram | null>(() =>
-    agentProgram(initialProgram),
+  const [selected, setSelected] = useState<AgentProgram>(() =>
+    agentProgram(initialProgram) ?? rememberedProgram(computer.id),
   );
-  const [agentsExpanded, setAgentsExpanded] = useState(false);
+  const [mountSession] = useState(() => initialSessionId);
   const [settingsProgram, setSettingsProgram] = useState<AgentProgram | null>(null);
   const [keyProgram, setKeyProgram] = useState<WsProgram | null>(null);
-  const [oceanleoStatus, setOceanleoStatus] = useState<OceanleoAgentStatus | null>(null);
+  const [oceanleoStatus, setOceanleoStatus] = useState<OceanleoAgentStatus | null>(() => oceanleoCache.get(computer.id) ?? null);
   const [oceanleoLoaded, setOceanleoLoaded] = useState(false);
   const [oceanleoInstalling, setOceanleoInstalling] = useState(false);
   const [oceanleoError, setOceanleoError] = useState("");
@@ -141,23 +97,22 @@ export function AcpCard({
 
   const dialog = useAgentDialog({
     computerId: computer.id,
-    enabled: oceanleoLoaded,
+    enabled: true,
+    active,
     localOceanleo: oceanleoStatus?.installed === true,
   });
 
   useEffect(() => {
     let active = true;
     setOceanleoLoaded(false);
-    setOceanleoStatus(null);
+    setOceanleoStatus(oceanleoCache.get(computer.id) ?? null);
     setOceanleoError("");
-    setSelected(agentProgram(initialProgram));
     setSettingsProgram(null);
     setKeyProgram(null);
-    setAgentsExpanded(false);
     initialSessionApplied.current = "";
     void getOceanleoAgent(computer.id)
       .then((status) => {
-        if (active) setOceanleoStatus(status);
+        if (active) { oceanleoCache.set(computer.id, status); setOceanleoStatus(status); }
       })
       .catch(() => {
         if (active) setOceanleoError(tt("未能读取本地 agent 状态。"));
@@ -168,36 +123,39 @@ export function AcpCard({
     return () => {
       active = false;
     };
-  }, [computer.id, initialProgram]);
+  }, [computer.id]);
 
   useEffect(() => {
-    if (!oceanleoLoaded || !selected || dialog.program === selected || dialog.busy) return;
+    if (!selected || dialog.program === selected || dialog.busy) return;
     dialog.setProgram(selected);
-  }, [dialog, oceanleoLoaded, selected]);
+  }, [dialog, selected]);
 
   useEffect(() => {
-    if (!initialSessionId || !selected || dialog.program !== selected) return;
-    const key = `${computer.id}:${selected}:${initialSessionId}`;
+    if (!mountSession || !selected || dialog.program !== selected) return;
+    const key = `${computer.id}:${selected}:${mountSession}`;
     if (initialSessionApplied.current === key) return;
     initialSessionApplied.current = key;
-    dialog.openSession(initialSessionId);
-  }, [computer.id, dialog, initialSessionId, selected]);
+    dialog.openSession(mountSession);
+  }, [computer.id, dialog, mountSession, selected]);
 
   function replaceAddress(program: AgentProgram, session?: string) {
-    router.replace(
-      serverPageHref(computer.id, {
-        card: "acp",
-        program,
-        session: session || undefined,
-      }),
-    );
+    replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
   }
+
+  useEffect(() => {
+    try { window.localStorage.setItem(`oceanleo.serverPage.lastProgram.${computer.id}`, selected); } catch { /* Storage may be unavailable. */ }
+  }, [computer.id, selected]);
+
+  useEffect(() => {
+    if (active && dialog.program === selected) replaceServerPageUrl(computer.id, {
+      card: "acp", program: selected, session: dialog.activeSession || mountSession && !initialSessionApplied.current ? mountSession : dialog.activeSession || null,
+    });
+  }, [active, computer.id, selected, dialog.program, dialog.activeSession, mountSession]);
 
   function openProgram(program: AgentProgram) {
     if (dialog.busy && dialog.program !== program) return;
     dialog.setProgram(program);
     setSelected(program);
-    setAgentsExpanded(false);
     replaceAddress(program);
   }
 
@@ -238,6 +196,7 @@ export function AcpCard({
       } catch {
         status = { installed: true, version: result.version || null, token_active: true };
       }
+      oceanleoCache.set(computer.id, status);
       setOceanleoStatus(status);
     } catch {
       setOceanleoError(tt("安装失败，请稍后重试。"));
@@ -254,80 +213,28 @@ export function AcpCard({
   return (
     <section
       aria-label={tt("AI 对话")}
-      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden border text-zinc-900 dark:text-neutral-100 ${tone.border} ${tone.panel}`}
+      className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border text-zinc-900 dark:text-neutral-100 ${tone.border} ${tone.panel}`}
       data-oceanleo-acp-card=""
       data-oceanleo-acp-program={selected ?? ""}
     >
-      {selected ? (
-        <>
-          <header className={`border-b px-3 py-2 ${tone.border}`} data-oceanleo-acp-agent-bar="">
-            {agentsExpanded ? (
-              <div className="flex flex-wrap items-center gap-2" data-oceanleo-acp-agents-expanded="">
-                {PROGRAMS.map((program) => (
-                  <span key={program} className="inline-flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={dialog.busy && selected !== program}
-                      onClick={() => openProgram(program)}
-                      className={`px-1 py-1 text-xs disabled:opacity-40 ${
-                        selected === program ? "text-zinc-900 dark:text-neutral-100" : tone.muted
-                      }`}
-                      data-oceanleo-acp-agent-tab={program}
-                    >
-                      {PROGRAM_LABEL[program]}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={dialog.busy && selected !== program}
-                      onClick={() => openSettings(program)}
-                      className={`${tone.iconBtn} size-7 disabled:opacity-40`}
-                      aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
-                      title={tt("设置")}
-                      data-oceanleo-acp-agent-settings={program}
-                    >
-                      <IconSettings className="size-3.5" />
-                    </button>
-                  </span>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setAgentsExpanded(false)}
-                  className={`${tone.iconBtn} ml-auto size-7`}
-                  aria-label={tt("收起")}
-                  data-oceanleo-acp-agents-collapse=""
-                >
-                  <IconChevron up className="size-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2" data-oceanleo-acp-agents-collapsed="">
-                <button
-                  type="button"
-                  onClick={() => setAgentsExpanded(true)}
-                  className={`flex min-w-0 items-center gap-2 px-1 py-1 text-sm ${tone.hover}`}
-                  aria-label={tt("展开")}
-                  data-oceanleo-acp-agents-expand=""
-                >
-                  <span className="truncate">{PROGRAM_LABEL[selected]}</span>
-                  <IconChevron className={`size-3.5 ${tone.muted}`} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openSettings(selected)}
-                  className={tone.iconBtn}
-                  aria-label={`${PROGRAM_LABEL[selected]} · ${tt("设置")}`}
-                  title={tt("设置")}
-                  data-oceanleo-acp-current-settings=""
-                >
-                  <IconSettings />
-                </button>
-              </div>
-            )}
-          </header>
-
+      {active ? <ServerPageStripPortal card="acp">
+        <ProgramStrip
+          items={PROGRAMS.map((program): ProgramStripItem => {
+            const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
+            return { id: program, label: PROGRAM_LABEL[program],
+              dot: program === "oceanleo" ? "green" : !row?.installed ? "gray" : row.logged_in || row.auth === "key" ? "green" : "yellow",
+              running: row?.running, disabled: dialog.busy && selected !== program };
+          })}
+          selected={selected}
+          onSelect={(id) => { const program = agentProgram(id); if (program) openProgram(program); }}
+          onSettings={(id) => { const program = agentProgram(id); if (program) openSettings(program); }}
+          settingsLabel={tt("设置")}
+          storageKey="oceanleo.serverPage.programStrip.acp"
+        />
+      </ServerPageStripPortal> : null}
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">
             <aside
-              className={`w-full shrink-0 border-b p-3 md:w-56 md:border-b-0 md:border-r ${tone.border}`}
+              className={`flex min-h-0 max-h-48 w-full shrink-0 flex-col border-b p-3 md:max-h-none md:w-60 md:border-b-0 md:border-r ${tone.border}`}
               data-oceanleo-acp-sessions=""
             >
               <div className="flex items-center justify-between gap-2">
@@ -353,7 +260,7 @@ export function AcpCard({
               >
                 {tt("新对话")}
               </button>
-              <div className="mt-3 space-y-1">
+              <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
                 {dialog.sessionsSupported === false ? (
                   <p className={`text-xs leading-5 ${tone.muted}`} data-oceanleo-acp-sessions-unsupported="">
                     {tt("这个程序不支持列出过去的对话")}
@@ -388,12 +295,13 @@ export function AcpCard({
               </div>
             </aside>
 
-            <div className="flex min-h-[28rem] min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (
-                <p className={`mx-3 mt-3 text-xs ${tone.muted}`}>
+                <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}
+                  <button type="button" disabled={!oceanleoLoaded || oceanleoInstalling} onClick={() => void installLocalAgent()} data-oceanleo-acp-oceanleo-install="" className="ml-2 underline disabled:opacity-50">{oceanleoInstalling ? tt("正在安装…") : tt("安装")}</button>
                 </p>
-              ) : selected !== "oceanleo" && (!currentWsRow?.installed || currentWsRow.logged_in === false) ? (
+              ) : selected !== "oceanleo" && (!currentWsRow?.installed || (currentWsRow.logged_in !== true && currentWsRow.auth !== "key")) ? (
                 <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs ${tone.border} ${tone.muted}`}>
                   <span className="min-w-0 flex-1">
                     {!currentWsRow?.installed ? tt("未安装") : tt("未登录")}
@@ -422,94 +330,6 @@ export function AcpCard({
               />
             </div>
           </div>
-        </>
-      ) : (
-        <div className="px-1" data-oceanleo-acp-picker="">
-          <h2 className="sr-only">{tt("AI 对话")}</h2>
-
-          <div className={`divide-y ${tone.divide}`}>
-            {PROGRAMS.map((program) => {
-              const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
-              const canOpen = program === "oceanleo" || row?.installed === true;
-              return (
-                <article
-                  key={program}
-                  className="flex items-center gap-3 py-2.5"
-                  data-oceanleo-acp-agent={program}
-                >
-                  <button
-                    type="button"
-                    disabled={!canOpen}
-                    className={`min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50 ${canOpen ? tone.hover : ""}`}
-                    onClick={() => openProgram(program)}
-                    data-oceanleo-acp-agent-open={program}
-                  >
-                    <span className="block text-sm">{PROGRAM_LABEL[program]}</span>
-                    <span className="mt-0.5 block">
-                      <ProgramState program={program} row={row} oceanleoStatus={oceanleoStatus} />
-                    </span>
-                  </button>
-                  {program === "oceanleo" && !oceanleoStatus?.installed ? (
-                    <div
-                      className="flex items-center"
-                      data-oceanleo-acp-oceanleo-banner=""
-                    >
-                      <button
-                        type="button"
-                        disabled={!oceanleoLoaded || oceanleoInstalling}
-                        onClick={() => void installLocalAgent()}
-                        title={tt("在这台服务器上安装 OceanLeo agent：本地运行、按用量从余额扣费")}
-                        className="text-xs underline-offset-2 hover:underline disabled:opacity-50"
-                        data-oceanleo-acp-oceanleo-install=""
-                      >
-                        {oceanleoInstalling ? tt("正在安装…") : tt("安装")}
-                      </button>
-                    </div>
-                  ) : program !== "oceanleo" && !row?.installed ? (
-                    <button
-                      type="button"
-                      className="text-xs underline-offset-2 hover:underline"
-                      onClick={() => requestInstall(program)}
-                      data-oceanleo-acp-picker-install={program}
-                    >
-                      {tt("安装")}
-                    </button>
-                  ) : program !== "oceanleo" && row?.logged_in === false ? (
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        className="text-xs underline-offset-2 hover:underline"
-                        onClick={() => requestLogin(program)}
-                        data-oceanleo-acp-picker-login={program}
-                      >
-                        {tt("登录")}
-                      </button>
-                      <button
-                        type="button"
-                        className={`text-xs underline-offset-2 hover:underline ${tone.muted}`}
-                        onClick={() => requestKey(program)}
-                        data-oceanleo-acp-picker-key={program}
-                      >
-                        {tt("Key")}
-                      </button>
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => openSettings(program)}
-                    className={tone.iconBtn}
-                    aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
-                    title={tt("设置")}
-                    data-oceanleo-acp-picker-settings={program}
-                  >
-                    <IconSettings />
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {oceanleoError ? (
         <p className={`mx-4 mb-4 rounded-lg border px-3 py-2 text-xs ${tone.danger}`} data-oceanleo-acp-oceanleo-error="">
@@ -524,6 +344,8 @@ export function AcpCard({
         computerId={computer.id}
         program={keyProgram}
         hasKey={keyRow?.auth === "key"}
+        status={keyRow ?? null}
+        onLogout={(provider) => { if (keyProgram) dialog.logoutProgram(keyProgram, provider); }}
         onClose={() => setKeyProgram(null)}
         onChanged={dialog.retryConnect}
       />
@@ -539,7 +361,8 @@ export function AcpCard({
           onRequestLogin={requestLogin}
           onRequestKey={requestKey}
           onOceanleoStatusChange={(status) => {
-            setOceanleoStatus(status);
+            oceanleoCache.set(computer.id, status);
+      setOceanleoStatus(status);
             setOceanleoError("");
           }}
         />

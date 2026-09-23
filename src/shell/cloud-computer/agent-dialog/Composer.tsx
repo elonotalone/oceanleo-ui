@@ -5,6 +5,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { getTask } from "../../../lib/agent";
 import { shellSessionFromTask } from "../../history-model";
 import { LeoEntryButton, type LeoContext } from "../../LeoEntryButton";
+import { hiddenModelCopy, modelGroups, noticeCopy } from "./notice";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -81,6 +82,9 @@ export function Composer({
   }, []);
   // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
   if (!dialog.program) return null;
+  const lastMessage = dialog.messages[dialog.messages.length - 1];
+  const creditNotice = lastMessage?.kind === "notice" && lastMessage.code === "provider_needs_credits" ? lastMessage : null;
+  const alternative = dialog.models.find((model) => model.usable !== false && model.id !== creditNotice?.model && model.id !== dialog.selectedModel);
   const showModels = dialog.models.length > 0;
   const showStop = dialog.busy || dialog.agentBusy;
   const leoContext: LeoContext = context ?? { page: "shell", ...shellInfo };
@@ -101,6 +105,10 @@ export function Composer({
         void dialog.send();
       }}
     >
+      {creditNotice ? <div className={`mb-2 text-[12px] ${tone.muted}`} data-oceanleo-credit-recovery="">
+        <p>{noticeCopy(tt, creditNotice.code, null, creditNotice.provider)}</p>
+        {alternative ? <button type="button" className={`mt-1 h-8 rounded-lg px-2 text-[13px] ${tone.hover}`} onClick={() => dialog.setSelectedModel(alternative.id)}>{tt("换成 {model}", { model: alternative.name })}</button> : null}
+      </div> : null}
       <div className="flex items-end gap-2">
         <div className="relative flex min-w-0 flex-1 flex-col gap-2">
           <textarea
@@ -153,24 +161,26 @@ export function Composer({
               className="dark:text-neutral-300 dark:hover:bg-neutral-800"
             />
             {showModels ? (
-              <label className={`flex items-center gap-1 text-[11px] ${tone.muted}`}>
+              <label className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
                 {tt("模型")}
                 <select
                   data-oceanleo-cc-model=""
-                  value={dialog.selectedModel}
+                  value={dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? dialog.selectedModel : ""}
                   onChange={(event) => dialog.setSelectedModel(event.target.value)}
                   className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
                 >
-                  {dialog.models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
+                  {!dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
+                  {modelGroups(dialog.models).map((group) => group.label ? (
+                    <optgroup key={group.label} label={group.label}>{group.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</optgroup>
+                  ) : group.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>))}
                 </select>
-              </label>
+              
+                {hiddenModelCopy(tt, dialog.models).map((copy) => <span key={copy} className={`block text-[12px] ${tone.muted}`} data-oceanleo-hidden-models="">{copy}</span>)}
+                {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
+</label>
             ) : null}
             {dialog.mode && dialog.mode.options.length > 0 ? (
-              <label className={`flex items-center gap-1 text-[11px] ${tone.muted}`}>
+              <label className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
                 {dialog.mode.name || tt("模式")}
                 <select
                   data-oceanleo-cc-mode=""

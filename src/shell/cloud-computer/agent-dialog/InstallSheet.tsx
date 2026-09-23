@@ -40,7 +40,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
           type="button"
           data-oceanleo-cc-install-close=""
           onClick={dialog.closeInstall}
-          className={`rounded-lg px-2 py-1 text-[12px] ${tone.muted} ${tone.hover}`}
+          className={`h-8 rounded-lg px-2 py-1 text-[13px] ${tone.muted} ${tone.hover}`}
         >
           {tt("关闭")}
         </button>
@@ -55,7 +55,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
           value={install.dir}
           disabled={dirLocked}
           onChange={(event) => dialog.setInstallDir(event.target.value)}
-          className={`mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-[12px] outline-none disabled:opacity-50 ${tone.input}`}
+          className={`mt-1 w-full h-8 rounded-lg border px-2 py-1.5 font-mono text-[13px] outline-none disabled:opacity-50 ${tone.input}`}
         />
       </label>
       {install.lines.length > 0 ? (
@@ -88,7 +88,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-install-retry=""
             onClick={dialog.startInstall}
-            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
+            className={`h-8 rounded-lg px-3 py-1.5 text-[13px] font-medium ${tone.primary}`}
           >
             {tt("重试")}
           </button>
@@ -97,7 +97,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-install-done=""
             onClick={dialog.closeInstall}
-            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
+            className={`h-8 rounded-lg px-3 py-1.5 text-[13px] font-medium ${tone.primary}`}
           >
             {tt("完成")}
           </button>
@@ -106,7 +106,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-install-start=""
             onClick={dialog.startInstall}
-            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
+            className={`h-8 rounded-lg px-3 py-1.5 text-[13px] font-medium ${tone.primary}`}
           >
             {tt("开始安装")}
           </button>

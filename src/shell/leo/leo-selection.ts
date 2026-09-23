@@ -15,7 +15,7 @@ let current: LeoSelection | null = null;
 
 /** `null` clears the announced selection. */
 export function announceLeoSelection(selection: LeoSelection | null): void {
-  const next = selection && selection.text.trim().length >= 2 ? selection : null;
+  const next = selection && Array.from(selection.text.replace(/\s/g, "")).length >= 2 ? selection : null;
   if (!next && !current) return;
   current = next;
   for (const listener of Array.from(listeners)) listener(next);

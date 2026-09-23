@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   cloudComputerApi,
   type CloudComputerClient,
@@ -44,7 +44,6 @@ export function ComputerDock({
   computers?: Computer[];
 }) {
   const tt = useUI();
-  const router = useRouter();
   const hidden = currentDomainFamily() === "cn";
   const { computers, mounted, mountedId, rememberedId, setMountedId, refresh, loading } =
     useCloudComputers({ client, computers: computersProp });
@@ -143,12 +142,9 @@ export function ComputerDock({
         </>
       ) : (
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            disabled={!mounted}
-            onClick={() => {
-              if (mounted) router.push(serverPageHref(mounted.id));
-            }}
+          <Link
+            href={mounted ? serverPageHref(mounted.id) : "/devices?tab=cloud"}
+            prefetch={true}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
             data-oceanleo-cc-dock-mounted
             data-oceanleo-cc-status={mountedState || ""}
@@ -166,7 +162,7 @@ export function ComputerDock({
             {mountedState ? (
               <span className="text-neutral-500">{statusWord(mountedState, tt)}</span>
             ) : null}
-          </button>
+          </Link>
           {connected.length > 1 && (
             <>
               <button

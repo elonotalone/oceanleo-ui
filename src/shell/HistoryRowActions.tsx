@@ -3,6 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
+import { useToast } from "../ui/Toast";
+import { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator } from "../ui/menu/FloatingMenu";
+
+const MENU_ICON_PATHS = {
+  open: "M14 3h7v7m0-7L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5",
+  link: "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2",
+  share: "M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7",
+  rename: "m15 4 5 5M4 20l5-1L21 7l-5-5L4 14z",
+  pin: "m16 3 5 5-4 2-3 5-5-5 5-3zM9 15l-6 6",
+  star: "m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
+  folder: "M3 7V4h6l3 3h9v13H3z",
+  delete: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7",
+} as const;
+
+function MenuIcon({ name }: { name: keyof typeof MENU_ICON_PATHS }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={MENU_ICON_PATHS[name]} /></svg>;
+}
 
 export function HistoryRowMenu({
   open,
@@ -32,96 +49,68 @@ export function HistoryRowMenu({
   onDelete: () => void;
 }) {
   const tt = useUI();
-  const ref = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const toast = useToast();
   const absoluteHref =
     typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocument = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        onOpenChange(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocument);
-    return () => document.removeEventListener("mousedown", onDocument);
-  }, [open, onOpenChange]);
-
   const closeAnd = (action: () => void) => () => {
     onOpenChange(false);
     action();
   };
-  const copyLink = closeAnd(() => {
-    void navigator.clipboard?.writeText(absoluteHref);
-  });
-  const share = closeAnd(() => {
-    if (navigator.share) {
-      void navigator.share({ title: document.title, url: absoluteHref });
-    } else {
-      void navigator.clipboard?.writeText(absoluteHref);
+  const copyLink = async () => {
+    try {
+      if (!navigator.clipboard) return;
+      await navigator.clipboard.writeText(absoluteHref);
+      toast.success(tt("已复制"));
+      onOpenChange(false);
+    } catch {
+      // A denied clipboard request must never announce success.
     }
-  });
-  const item = (label: string, handler: () => void, danger = false) => (
-    <button
-      type="button"
-      onClick={handler}
-      className={`flex w-full items-center px-3 py-1.5 text-left text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- danger
- ? "text-rose-600 hover:bg-rose-50"
- : "text-neutral-700 hover:bg-neutral-100"
- }`}
-    >
-      {label}
-    </button>
-  );
+  };
+  const share = () => {
+    if (navigator.share) {
+      onOpenChange(false);
+      void navigator.share({ title: document.title, url: absoluteHref }).catch(() => {});
+    } else {
+      void copyLink();
+    }
+  };
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-label={tt("更多操作")}
+        aria-haspopup="menu"
+        aria-expanded={open}
         className={`rounded p-0.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- active
- ? "text-white/70 hover:bg-white/20 hover:text-white"
- : "text-neutral-300 opacity-0 hover:bg-neutral-200 hover:text-neutral-600 group-hover:opacity-100"
- } ${open ? "opacity-100" : ""}`}
+          active
+            ? "text-white/70 hover:bg-white/20 hover:text-white"
+            : `text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-100 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`
+        }`}
       >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="5" cy="12" r="1.6" />
           <circle cx="12" cy="12" r="1.6" />
           <circle cx="19" cy="12" r="1.6" />
         </svg>
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => onOpenChange(false)}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100"
-          >
-            {tt("在新标签打开")}
-          </a>
-          {item(tt("复制链接"), copyLink)}
-          {item(tt("分享"), share)}
-          <div className="my-1 h-px bg-neutral-100" />
-          {item(tt("重命名"), closeAnd(onRename))}
-          {item(pinned ? tt("取消置顶") : tt("置顶"), closeAnd(onTogglePin))}
-          {item(
-            favorite ? tt("取消收藏") : tt("收藏"),
-            closeAnd(onToggleFavorite),
-          )}
-          {item(tt("移动到项目"), closeAnd(onMove))}
-          {canDelete && (
-            <>
-              <div className="my-1 h-px bg-neutral-100" />
-              {item(tt("删除"), closeAnd(onDelete), true)}
-            </>
-          )}
-        </div>
-      )}
+      <FloatingMenu open={open} anchorRef={anchorRef} onClose={() => onOpenChange(false)} align="end" ariaLabel={tt("更多操作")}>
+        <FloatingMenuItem icon={<MenuIcon name="open" />} label={tt("在新标签打开")} href={href} external onSelect={() => onOpenChange(false)} />
+        <FloatingMenuItem icon={<MenuIcon name="link" />} label={tt("复制链接")} onSelect={() => void copyLink()} />
+        <FloatingMenuItem icon={<MenuIcon name="share" />} label={tt("分享")} onSelect={share} />
+        <FloatingMenuSeparator />
+        <FloatingMenuItem icon={<MenuIcon name="rename" />} label={tt("重命名")} onSelect={closeAnd(onRename)} />
+        <FloatingMenuItem icon={<MenuIcon name="pin" />} label={pinned ? tt("取消置顶") : tt("置顶")} onSelect={closeAnd(onTogglePin)} />
+        <FloatingMenuItem icon={<MenuIcon name="star" />} label={favorite ? tt("取消收藏") : tt("收藏")} onSelect={closeAnd(onToggleFavorite)} />
+        <FloatingMenuItem icon={<MenuIcon name="folder" />} label={tt("移动到项目")} onSelect={closeAnd(onMove)} />
+        {canDelete && <>
+          <FloatingMenuSeparator />
+          <FloatingMenuItem icon={<MenuIcon name="delete" />} label={tt("删除")} danger onSelect={closeAnd(onDelete)} />
+        </>}
+      </FloatingMenu>
     </div>
   );
 }

@@ -433,3 +433,5 @@ export function timeAgo(
   if (mo < 12) return t("{mo} 个月前", { mo });
   return t("{y} 年前", { y: Math.floor(mo / 12) });
 }
+
+export { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator, FloatingMenuLabel, type FloatingMenuProps, type FloatingMenuItemProps } from "./menu/FloatingMenu";

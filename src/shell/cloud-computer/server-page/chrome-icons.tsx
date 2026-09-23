@@ -61,9 +61,10 @@ export function IconTerminal({ className }: IconProps) {
 
 export function IconSettings({ className }: IconProps) {
   return (
-    <Svg className={className}>
-      <circle cx="8" cy="8" r="1.4" />
-      <path d="M8 2.75v1.3M8 11.95v1.3M2.75 8h1.3M11.95 8h1.3M4.05 4.05l.92.92M11.03 11.03l.92.92M11.95 4.05l-.92.92M4.97 11.03l-.92.92" />
+    <Svg className={className} viewBox="0 0 24 24">
+      <path d="M3 7h3m4 0h11M3 17h11m4 0h3" />
+      <circle cx="8" cy="7" r="2" />
+      <circle cx="16" cy="17" r="2" />
     </Svg>
   );
 }

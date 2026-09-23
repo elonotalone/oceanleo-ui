@@ -1,6 +1,23 @@
-// 2026-09-23 cloud-computer-polish 波 W3 的分表。只由 W3 改；注册在 shell-overhaul-copy.ts（父改）。
-// 写法：const SOURCE = { key: "简体中文原文" } as const;
-//       export const CCP_W3_MESSAGES = assembleCopy(SOURCE, { en: {...}, ... 16 个语种 });
-import { emptyCopy } from "./shell-overhaul-copy-shared";
+// W3: message list navigation.
+import { assembleCopy } from "./shell-overhaul-copy-shared";
 
-export const CCP_W3_MESSAGES = emptyCopy();
+const SOURCE = { latest: "最新消息" } as const;
+
+export const CCP_W3_MESSAGES = assembleCopy(SOURCE, {
+  en: { latest: "Latest messages" },
+  de: { latest: "Neueste Nachrichten" },
+  es: { latest: "Últimos mensajes" },
+  "es-419": { latest: "Últimos mensajes" },
+  fr: { latest: "Derniers messages" },
+  it: { latest: "Ultimi messaggi" },
+  "pt-BR": { latest: "Mensagens recentes" },
+  "pt-PT": { latest: "Mensagens recentes" },
+  vi: { latest: "Tin nhắn mới nhất" },
+  tr: { latest: "Son mesajlar" },
+  "zh-TW": { latest: "最新訊息" },
+  ja: { latest: "最新のメッセージ" },
+  ko: { latest: "최신 메시지" },
+  ar: { latest: "أحدث الرسائل" },
+  th: { latest: "ข้อความล่าสุด" },
+  hi: { latest: "नवीनतम संदेश" },
+});

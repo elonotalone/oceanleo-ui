@@ -10,6 +10,9 @@ import {
   type LeoBoardApi,
   type LeoBoardContext,
 } from "./leo/LeoBoard";
+import { FloatingMenu } from "../ui/menu/FloatingMenu";
+import { LeoSessionList, useLeoSessions } from "./leo/LeoSessions";
+import { announceLeoSelection, currentLeoSelection, subscribeLeoSelection } from "./leo/leo-selection";
 import { LeoPanelComposer } from "./leo/LeoPanelComposer";
 import { LeoTranscript, useLeoTranscript } from "./leo/LeoTranscript";
 import { leoTurn, type LeoTurnWireContext } from "./leo/leo-api";
@@ -256,7 +259,13 @@ export function LeoAssistant({
   const [turnErr, setTurnErr] = useState<string | null>(null);
   const turnLock = useRef(false);
   const boardApiRef = useRef<LeoBoardApi | null>(null);
-  const transcript = useLeoTranscript({ open });
+  const sessions = useLeoSessions(open, siteId);
+  const transcript = useLeoTranscript({ open: open && !sessions.loading, sessionId: sessions.selected });
+  const [sessionMenu, setSessionMenu] = useState(false);
+  const [boardCollapsed, setBoardCollapsed] = useState(false);
+  const sessionAnchor = useRef<HTMLButtonElement>(null);
+  const sessionDisabled = turnBusy || sessions.busy || sessions.loading;
+
 
   // 打开事件：detail.text（划词）优先；否则读宿主输入框。
   useEffect(() => {
@@ -384,6 +393,7 @@ export function LeoAssistant({
       try {
         const res = await leoTurn({
           site_id: siteId,
+          session_id: sessions.selected,
           text,
           board_text: boardApiRef.current?.getText() ?? "",
           context: toWireContext(pageContextRef.current),
@@ -414,6 +424,8 @@ export function LeoAssistant({
           return;
         }
         transcript.applyTurn(tempId, entries);
+        if (res.data.session) sessions.upsert(res.data.session);
+        if (res.data.session_id && sessions.supported) sessions.select(res.data.session_id);
         if (res.data.task?.task_id) notifyHistoryChanged();
       } catch {
         transcript.dropOptimistic(tempId, "network");
@@ -423,7 +435,7 @@ export function LeoAssistant({
         setTurnBusy(false);
       }
     },
-    [siteId, transcript, tt],
+    [siteId, transcript, sessions, tt],
   );
 
   const send = useCallback(
@@ -458,7 +470,7 @@ export function LeoAssistant({
         data-leo-panel
         data-leo-shape="rect"
         data-leo-expanded={expanded ? "1" : "0"}
-        className={`fixed z-50 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+        className={`fixed z-50 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${
           open ? "flex" : "hidden"
         }`}
         style={{
@@ -475,24 +487,25 @@ export function LeoAssistant({
           onPointerMove={onDragMove}
           onPointerUp={onDragEnd}
           onPointerCancel={onDragEnd}
-          className="flex cursor-move touch-none items-center justify-between border-b border-slate-100 px-4 py-3"
+          className="flex shrink-0 cursor-move touch-none items-center justify-between border-b border-slate-100 px-4 py-3"
         >
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
             <Sparkle />
-            {panelTitle}
+            {sessions.supported ? <button data-leo-no-drag ref={sessionAnchor} className="min-w-0 truncate text-left" aria-expanded={sessionMenu} onClick={() => setSessionMenu(!sessionMenu)}>{sessions.sessions.find((s) => s.id === sessions.selected)?.title || tt("新对话")} ▾</button> : panelTitle}
             <DragDots />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            {sessions.supported && <button data-leo-no-drag type="button" disabled={sessionDisabled} aria-label={tt("新会话")} title={tt("新会话")} onClick={() => { void sessions.create(); }} className="rounded-md px-1.5 disabled:opacity-50">+</button>}
             <button
               data-leo-no-drag
               type="button"
               aria-pressed={expanded}
-              aria-label={tt("放大")}
-              title={expanded ? tt("再按一次回到原来的大小") : tt("放大")}
+              aria-label={expanded ? tt("缩小") : tt("放大")}
+              title={expanded ? tt("缩小") : tt("放大")}
               onClick={() => setExpanded((value) => !value)}
               className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
             >
-              {tt("放大")}
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6"><path d={expanded ? "M3 9h6V3M21 9h-6V3M3 15h6v6M21 15h-6v6M9 9 3 3m12 6 6-6M9 15l-6 6m12-6 6 6" : "M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"} /></svg>
             </button>
             <button
               data-leo-no-drag
@@ -530,6 +543,15 @@ export function LeoAssistant({
           </p>
         )}
 
+        <FloatingMenu open={open && sessionMenu && sessions.supported} anchorRef={sessionAnchor} onClose={() => setSessionMenu(false)} width={280}>
+          <div className="flex max-h-[50vh] flex-col"><LeoSessionList state={sessions} disabled={sessionDisabled} compact onSelect={() => setSessionMenu(false)} onExpand={() => { setExpanded(true); setSessionMenu(false); }} /></div>
+        </FloatingMenu>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {expanded && sessions.supported && <aside data-leo-sessions className="flex w-60 max-w-[35%] shrink-0 flex-col border-r border-neutral-200 dark:border-neutral-700"><LeoSessionList state={sessions} disabled={sessionDisabled} /></aside>}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div data-leo-board-region className="max-h-[40%] shrink-0 overflow-y-auto">
+          <button type="button" className="px-4 py-1 text-xs text-neutral-500" aria-expanded={!boardCollapsed} onClick={() => setBoardCollapsed(!boardCollapsed)}>{boardCollapsed ? tt("展开") : tt("收起")}</button>
+          <div hidden={boardCollapsed}>
         {/* 顶部：面板上的文字（leo board）+ 动词（宗旨 v12，逻辑不变）。 */}
         <LeoBoard
           key={ctxEpoch}
@@ -542,6 +564,8 @@ export function LeoAssistant({
           onBusyChange={setBoardBusy}
         />
 
+          </div>
+        </div>
         {/* 主体：对话记录（紧凑态也显示；存服务器，跨页面跨设备同一份）。 */}
         <LeoTranscript state={transcript} />
 
@@ -552,7 +576,9 @@ export function LeoAssistant({
         )}
 
         {/* 底部输入 + 发送（Enter 发送、Shift+Enter 换行、IME 候选态不发）。 */}
-        <LeoPanelComposer busy={turnBusy || boardBusy} visible={open} onSend={send} />
+        <LeoPanelComposer busy={turnBusy || boardBusy || sessions.loading || sessions.busy} visible={open} onSend={send} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -574,6 +600,16 @@ function SelectionBubble() {
 
   useEffect(() => {
     let raf = 0;
+    const showExternal = (selection: ReturnType<typeof currentLeoSelection>) => {
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      if (!selection || !isLeoEnabled()) { setBubble(null); return; }
+      textRef.current = selection.text;
+      rectRef.current = selection.anchor;
+      const rect = selection.anchor;
+      setBubble({ x: Math.max(8, Math.min(rect ? rect.left + rect.width / 2 - 26 : 8, window.innerWidth - 70)), y: Math.max(8, (rect?.top ?? 46) - 38) });
+    };
+    const unsubscribe = subscribeLeoSelection(showExternal);
+    showExternal(currentLeoSelection());
     const update = () => {
       raf = 0;
       if (!isLeoEnabled()) {
@@ -597,7 +633,8 @@ function SelectionBubble() {
         const end = el.selectionEnd ?? 0;
         const text = (el.value || "").substring(start, end).trim();
         if (text.length >= 2) {
-          textRef.current = text;
+          announceLeoSelection(null);
+      textRef.current = text;
           const r = el.getBoundingClientRect();
           rectRef.current = r;
           setBubble({ x: Math.min(r.right - 8, window.innerWidth - 60), y: Math.max(8, r.top - 34) });
@@ -609,6 +646,7 @@ function SelectionBubble() {
       // ② 普通页面选区。
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        if (currentLeoSelection()) return;
         setBubble(null);
         return;
       }
@@ -629,6 +667,7 @@ function SelectionBubble() {
         setBubble(null);
         return;
       }
+      announceLeoSelection(null);
       textRef.current = text;
       const rect = sel.getRangeAt(0).getBoundingClientRect();
       if (!rect || (rect.width === 0 && rect.height === 0)) {
@@ -644,11 +683,12 @@ function SelectionBubble() {
     const onSelChange = () => {
       if (!raf) raf = requestAnimationFrame(update);
     };
-    const onHide = () => setBubble(null);
+    const onHide = () => { announceLeoSelection(null); setBubble(null); };
     document.addEventListener("selectionchange", onSelChange);
     window.addEventListener("scroll", onHide, true);
     window.addEventListener("resize", onHide);
     return () => {
+      unsubscribe();
       document.removeEventListener("selectionchange", onSelChange);
       window.removeEventListener("scroll", onHide, true);
       window.removeEventListener("resize", onHide);

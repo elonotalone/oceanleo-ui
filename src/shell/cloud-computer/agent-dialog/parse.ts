@@ -9,6 +9,7 @@ import type {
   PermissionOption,
   PlanEntry,
   ProgramAuth,
+  ProgramProvider,
   ProgramStatus,
   ToolCard,
   ToolContent,
@@ -65,6 +66,20 @@ export function loggedInOf(auth: ProgramAuth): boolean | null {
   return null;
 }
 
+function parseProviders(raw: unknown): ProgramProvider[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const providers: ProgramProvider[] = [];
+  for (const item of raw) {
+    const row = asRecord(item);
+    if (!row || !str(row.id) || (row.auth !== "login" && row.auth !== "key")) continue;
+    providers.push({
+      id: str(row.id), label: str(row.label) || str(row.id), auth: row.auth,
+      ...(row.tier === "free" || row.tier === "paid" || row.tier === "unknown" ? { tier: row.tier } : {}),
+    });
+  }
+  return providers;
+}
+
 export function parsePrograms(raw: unknown): ProgramStatus[] {
   if (!Array.isArray(raw)) return [];
   const out: ProgramStatus[] = [];
@@ -84,6 +99,9 @@ export function parsePrograms(raw: unknown): ProgramStatus[] {
       logged_in: loggedInOf(auth),
       dir_capability,
       running: row.running === true,
+      ...(Array.isArray(row.providers) ? { providers: parseProviders(row.providers) } : {}),
+      ...(typeof row.active_provider === "string" ? { active_provider: row.active_provider } : {}),
+      ...(typeof row.account_kind === "string" ? { account_kind: row.account_kind } : {}),
     });
   }
   return out;
@@ -100,6 +118,10 @@ export function parseModels(raw: unknown): DialogModel[] {
       id,
       name: str(row.name) || id,
       default: row.default === true,
+      ...(typeof row.provider === "string" ? { provider: row.provider } : {}),
+      ...(typeof row.provider_label === "string" ? { provider_label: row.provider_label } : {}),
+      ...(typeof row.usable === "boolean" ? { usable: row.usable } : {}),
+      ...(typeof row.reason === "string" ? { reason: row.reason } : {}),
     });
   }
   return out;

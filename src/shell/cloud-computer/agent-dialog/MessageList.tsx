@@ -439,31 +439,108 @@ function NoticeView({
   );
 }
 
+const AGENT_AVATAR = {
+  oceanleo: { mark: "✦", color: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300" },
+  cursor: { mark: "C", color: "bg-zinc-200 text-zinc-800 dark:bg-neutral-800 dark:text-neutral-100" },
+  claude: { mark: "C", color: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300" },
+  codex: { mark: "C", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" },
+  hermes: { mark: "H", color: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300" },
+};
+
 export function MessageList({ dialog }: { dialog: AgentDialogController }) {
+  const tt = useUI();
   const ref = useRef<HTMLDivElement>(null);
+  // Remember the position before React grows the content, not the new distance
+  // after a streaming chunk has already increased scrollHeight.
+  const following = useRef(true);
+  const smoothFollowing = useRef(false);
+  const [showLatest, setShowLatest] = useState(false);
+  const firstId = dialog.messages[0]?.id;
+  const identity = useRef({ program: dialog.program, session: dialog.activeSession, firstId });
   useEffect(() => {
     const node = ref.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [dialog.messages]);
+    if (!node) return;
+    const previous = identity.current;
+    const changed = previous.program !== dialog.program || previous.session !== dialog.activeSession || previous.firstId !== firstId;
+    identity.current = { program: dialog.program, session: dialog.activeSession, firstId };
+    if (changed || following.current) {
+      smoothFollowing.current = false;
+      node.scrollTop = node.scrollHeight;
+      following.current = true;
+      setShowLatest(false);
+    } else {
+      setShowLatest(true);
+    }
+  }, [dialog.messages, dialog.program, dialog.activeSession, firstId]);
+  const avatar = AGENT_AVATAR[dialog.program ?? "oceanleo"];
   return (
-    <div ref={ref} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-      {dialog.messages.map((message) => {
-        if (message.kind === "user") {
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        ref={ref}
+        data-oceanleo-cc-messages=""
+        onWheel={() => { smoothFollowing.current = false; }}
+        onTouchStart={() => { smoothFollowing.current = false; }}
+        onPointerDown={() => { smoothFollowing.current = false; }}
+        onKeyDown={() => { smoothFollowing.current = false; }}
+        onScroll={() => {
+          const node = ref.current;
+          if (!node) return;
+          const nearBottom = node.scrollHeight - node.clientHeight - node.scrollTop < 80;
+          if (smoothFollowing.current && !nearBottom) return;
+          smoothFollowing.current = false;
+          following.current = nearBottom;
+          setShowLatest(!following.current);
+        }}
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 pt-3 pb-6 [overflow-anchor:none]"
+      >
+        {dialog.messages.map((message) => {
+          if (message.kind === "user") {
+            return (
+              <div key={message.id} data-oceanleo-cc-user="" className="flex items-start gap-2.5">
+                <span data-oceanleo-cc-user-avatar="" aria-hidden="true" className="mt-2 flex size-[22px] shrink-0 items-center justify-center rounded-full bg-zinc-200 text-zinc-700 dark:bg-neutral-700 dark:text-neutral-200">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <circle cx="12" cy="8" r="3.5" />
+                    <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+                  </svg>
+                </span>
+                <p className="min-w-0 whitespace-pre-wrap break-words rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50 [overflow-wrap:anywhere]">
+                  {message.text}
+                </p>
+              </div>
+            );
+          }
+          if (message.kind === "notice") return <NoticeView key={message.id} message={message} dialog={dialog} />;
           return (
-            <p key={message.id} data-oceanleo-cc-user="" className="whitespace-pre-wrap text-[13px]">
-              {message.text}
-            </p>
+            <div key={message.id} data-oceanleo-cc-turn="" data-oceanleo-cc-turn-stop={message.stop} className="flex items-start gap-2.5 text-[13px]">
+              <span data-oceanleo-cc-agent-avatar={dialog.program ?? "oceanleo"} aria-hidden="true" className={`flex size-[22px] shrink-0 items-center justify-center rounded-full text-[12px] ${avatar.color}`}>
+                {avatar.mark}
+              </span>
+              <div className="min-w-0 flex-1 space-y-2 break-words [overflow-wrap:anywhere]">
+                {message.items.map((item) => (
+                  <ItemView key={item.id} item={item} dialog={dialog} />
+                ))}
+              </div>
+            </div>
           );
-        }
-        if (message.kind === "notice") return <NoticeView key={message.id} message={message} dialog={dialog} />;
-        return (
-          <div key={message.id} data-oceanleo-cc-turn="" data-oceanleo-cc-turn-stop={message.stop} className="space-y-2">
-            {message.items.map((item) => (
-              <ItemView key={item.id} item={item} dialog={dialog} />
-            ))}
-          </div>
-        );
-      })}
+        })}
+      </div>
+      {showLatest ? (
+        <button
+          type="button"
+          data-oceanleo-cc-latest=""
+          onClick={() => {
+            const node = ref.current;
+            if (!node) return;
+            following.current = true;
+            smoothFollowing.current = true;
+            setShowLatest(false);
+            node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+          }}
+          className={`absolute bottom-2 right-3 rounded-full border px-3 py-1.5 text-[12px] shadow-sm ${tone.border} ${tone.panel} ${tone.hover}`}
+        >
+          <span aria-hidden="true">↓ </span>{tt("最新消息")}
+        </button>
+      ) : null}
     </div>
   );
 }

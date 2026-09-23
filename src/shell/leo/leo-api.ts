@@ -37,7 +37,16 @@ export interface LeoTurnWireContext {
   shell_session_id?: string;
 }
 
+export interface LeoSession {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  entry_count: number;
+}
+
 export interface LeoTurnBody {
+  session_id?: string;
   site_id: string;
   text: string;
   board_text: string;
@@ -46,6 +55,8 @@ export interface LeoTurnBody {
 
 /** leo-turn 响应（合同 I4）。entries 是这一轮新增的两条（用户 + leo）。 */
 export interface LeoTurnResult {
+  session_id?: string;
+  session?: LeoSession;
   reply: string;
   action: "reply" | "task" | "error";
   entries: LeoTranscriptEntry[];
@@ -112,6 +123,8 @@ export async function leoTurn(body: LeoTurnBody): Promise<LeoApiResult<LeoTurnRe
   return {
     ok: true,
     data: {
+      session_id: typeof data.session_id === "string" ? data.session_id : undefined,
+      session: normalizeLeoSession(data.session) ?? undefined,
       reply: typeof data.reply === "string" ? data.reply : "",
       action:
         data.action === "task" || data.action === "error" ? data.action : "reply",
@@ -128,19 +141,50 @@ export async function leoTurn(body: LeoTurnBody): Promise<LeoApiResult<LeoTurnRe
 /** 最近 limit 条记录（升序）。 */
 export async function leoTranscript(
   limit = 100,
-): Promise<LeoApiResult<{ entries: LeoTranscriptEntry[] }>> {
-  const res = await authed<{ entries?: unknown }>(
-    `/v1/assistant/leo-transcript?limit=${Math.max(1, Math.floor(limit))}`,
+  session_id?: string,
+): Promise<LeoApiResult<{ entries: LeoTranscriptEntry[]; session_id?: string }>> {
+  const res = await authed<{ entries?: unknown; session_id?: string }>(
+    `/v1/assistant/leo-transcript?limit=${Math.max(1, Math.floor(limit))}${session_id ? `&session_id=${encodeURIComponent(session_id)}` : ""}`,
   );
   if (!res.ok || !res.data) return { ok: false, error: normalizeError(res.status) };
-  return { ok: true, data: { entries: normalizeEntries(res.data.entries) } };
+  return { ok: true, data: { entries: normalizeEntries(res.data.entries), session_id: res.data.session_id } };
 }
 
 /** 清空这个用户的全部 leo 记录。 */
-export async function leoClear(): Promise<LeoApiResult<{ ok: true }>> {
-  const res = await authed<{ ok?: boolean }>("/v1/assistant/leo-transcript", {
+export async function leoClear(session_id?: string): Promise<LeoApiResult<{ ok: true }>> {
+  const res = await authed<{ ok?: boolean }>(`/v1/assistant/leo-transcript${session_id ? `?session_id=${encodeURIComponent(session_id)}` : ""}`, {
     method: "DELETE",
   });
   if (!res.ok) return { ok: false, error: normalizeError(res.status) };
   return { ok: true, data: { ok: true } };
+}
+
+export function normalizeLeoSession(value: unknown): LeoSession | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<LeoSession>;
+  if (typeof row.id !== "string" || !row.id) return null;
+  return { id: row.id, title: typeof row.title === "string" ? row.title : "",
+    created_at: typeof row.created_at === "string" ? row.created_at : "",
+    updated_at: typeof row.updated_at === "string" ? row.updated_at : "",
+    entry_count: typeof row.entry_count === "number" ? row.entry_count : 0 };
+}
+export async function leoSessions(): Promise<LeoApiResult<LeoSession[]>> {
+  const res = await authed<{ sessions?: unknown }>("/v1/assistant/leo-sessions?limit=50");
+  if (!res.ok || !Array.isArray(res.data?.sessions)) return { ok: false, error: normalizeError(res.status) };
+  return { ok: true, data: res.data.sessions.map(normalizeLeoSession).filter((s): s is LeoSession => s !== null) };
+}
+async function mutateSession(path: string, method: string, body: object): Promise<LeoApiResult<LeoSession>> {
+  const res = await authed<{ session?: unknown }>(path, { method, body: JSON.stringify(body) });
+  const session = normalizeLeoSession(res.data?.session);
+  return res.ok && session ? { ok: true, data: session } : { ok: false, error: normalizeError(res.status) };
+}
+export function leoCreateSession(site_id?: string) {
+  return mutateSession("/v1/assistant/leo-sessions", "POST", { site_id });
+}
+export function leoRenameSession(id: string, title: string) {
+  return mutateSession(`/v1/assistant/leo-sessions/${encodeURIComponent(id)}`, "PATCH", { title });
+}
+export async function leoDeleteSession(id: string): Promise<LeoApiResult<{ ok: true }>> {
+  const res = await authed(`/v1/assistant/leo-sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return res.ok ? { ok: true, data: { ok: true } } : { ok: false, error: normalizeError(res.status) };
 }

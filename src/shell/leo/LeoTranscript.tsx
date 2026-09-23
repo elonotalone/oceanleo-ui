@@ -4,7 +4,7 @@
 // @oceanleo/ui — leo 对话记录（合同 §2.1：面板主体就是记录，紧凑态也显示）
 // ----------------------------------------------------------------------------
 // 记录存服务器（合同 I4），跨页面跨设备同一份；本地不再持久化。
-//   · 打开面板 → leoTranscript(100)；entries 合并去重按 id；
+//   · 打开面板 → leoTranscript(100, sessionId)；entries 合并去重按 id；
 //   · 未登录：显示「登录后 leo 才能记住对话」，动词（leo board）不受影响；
 //   · leo 建了任务的那一句带任务卡片（标题 + 「打开任务」链接）；
 //   · 「清空记录」走 DELETE，清不动就说清不动。
@@ -74,7 +74,7 @@ export function leoTaskLink(href: string, currentOrigin: string | null): string 
   return `${portal}${href.startsWith("/") ? href : `/${href}`}`;
 }
 
-export function useLeoTranscript({ open }: { open: boolean }): LeoTranscriptState {
+export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId?: string }): LeoTranscriptState {
   const [entries, setEntries] = useState<LeoTranscriptEntry[]>([]);
   const [status, setStatus] = useState<LeoTranscriptStatus>("idle");
   const [clearing, setClearing] = useState(false);
@@ -84,7 +84,7 @@ export function useLeoTranscript({ open }: { open: boolean }): LeoTranscriptStat
     loadSeq.current += 1;
     const seq = loadSeq.current;
     setStatus((s) => (s === "ready" ? s : "loading"));
-    void leoTranscript(100).then((res) => {
+    void leoTranscript(100, sessionId).then((res) => {
       if (seq !== loadSeq.current) return; // 又开了一次，旧响应作废
       if (res.ok) {
         setEntries((prev) => mergeLeoEntries(prev, res.data.entries));
@@ -93,16 +93,18 @@ export function useLeoTranscript({ open }: { open: boolean }): LeoTranscriptStat
         setStatus(res.error === "anonymous" ? "anonymous" : "error");
       }
     });
-  }, []);
+  }, [sessionId]);
 
   // 打开面板 → 拉服务端记录（合同 I4；每次打开都拉，跨设备才一致）。
   useEffect(() => {
+    setEntries([]);
     if (open) reload();
+    return () => { loadSeq.current += 1; };
   }, [open, reload]);
 
   const clear = useCallback(() => {
     setClearing(true);
-    void leoClear().then((res) => {
+    void leoClear(sessionId).then((res) => {
       setClearing(false);
       if (res.ok) {
         setEntries([]);
@@ -111,7 +113,7 @@ export function useLeoTranscript({ open }: { open: boolean }): LeoTranscriptStat
         setStatus(res.error === "anonymous" ? "anonymous" : "error");
       }
     });
-  }, []);
+  }, [sessionId]);
 
   const appendOptimistic = useCallback((text: string): string => {
     optimisticSeq += 1;

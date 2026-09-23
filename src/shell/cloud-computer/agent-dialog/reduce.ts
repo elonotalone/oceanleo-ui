@@ -349,8 +349,11 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
     last.kind === "notice" &&
     last.code === code &&
     last.program === program &&
-    storedNoticeText(last) === text;
-  const base = { kind: "notice" as const, id: nextId(), code, program };
+    storedNoticeText(last) === text && last.provider === (typeof frame.provider === "string" ? frame.provider : undefined) && last.model === (typeof frame.model === "string" ? frame.model : undefined);
+  const base = { kind: "notice" as const, id: nextId(), code, program,
+    ...(typeof frame.provider === "string" ? { provider: frame.provider } : {}),
+    ...(typeof frame.model === "string" ? { model: frame.model } : {}),
+  };
   const notice = text ? { ...base, text } : base;
   return {
     ...state,
@@ -499,7 +502,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (kind === "question") return onQuestion(state, frame);
   if (kind === "commands") return { ...state, commands: parseCommands(frame.commands) };
   if (kind === "done") return onDone(state, frame);
-  if (kind === "error") return onError(state, frame);
+  if (kind === "error" || kind === "notice") return onError(state, frame);
   // 未知帧：忽略并留一条 debug，不许当成「对话连不上」报错（P7 整面复核）。
   if (kind) console.debug("[agent-dialog] unknown frame ignored:", kind);
   return state;

@@ -9,11 +9,13 @@ import { tone } from "../server-page/tone";
 
 export function TerminalViewport({
   computerId,
+  active = true,
   record,
   readOnly = !record.alive,
   onEnded,
 }: {
   computerId: string;
+  active?: boolean;
   record: TerminalRecord;
   readOnly?: boolean;
   onEnded?: () => void;
@@ -23,6 +25,7 @@ export function TerminalViewport({
     computerId,
     sessionId: record.id,
     enabled: true,
+    active,
     readOnly,
   });
   const notified = useRef(false);
@@ -62,7 +65,7 @@ export function TerminalViewport({
       )}
       <div
         ref={terminal.hostRef}
-        className="min-h-[24rem] w-full flex-1 px-2 py-1"
+        className="min-h-0 w-full flex-1 px-2 py-1"
         data-oceanleo-card-xterm=""
       />
       {!terminal.ready && (

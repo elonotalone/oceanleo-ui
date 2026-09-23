@@ -31,6 +31,8 @@ import {
   IconTerminal,
 } from "./chrome-icons";
 import { tone } from "./tone";
+import { replaceServerPageUrl } from "./url-state";
+import { ServerPageChromeContext } from "./server-page-chrome";
 
 const CARD_ORDER: readonly ServerPageCard[] = ["acp", "cli", "terminal"];
 
@@ -146,7 +148,7 @@ export function ServerPage(props: ServerPageProps) {
   }, [hidden, router]);
 
   if (hidden) return null;
-  return <ServerPageContent {...props} />;
+  return <ServerPageContent key={props.computerId} {...props} />;
 }
 
 function ServerPageContent({
@@ -173,9 +175,21 @@ function ServerPageContent({
     () => computers.filter(isConnectedComputer),
     [computers],
   );
-  const card = cardFromQuery(searchParams.get("card"));
-  const initialProgram = searchParams.get("program") || undefined;
-  const initialSessionId = searchParams.get("session") || undefined;
+  const [initial] = useState(() => {
+    let remembered: ServerPageCard | undefined;
+    try {
+      remembered = cardFromQuery(window.localStorage.getItem(`oceanleo.serverPage.lastCard.${computerId}`));
+    } catch { /* Storage can be unavailable in private browsing. */ }
+    return {
+      card: cardFromQuery(searchParams.get("card")) ?? remembered,
+      program: searchParams.get("program") || undefined,
+      session: searchParams.get("session") || undefined,
+    };
+  });
+  const [card, setCard] = useState(initial.card);
+  const [visited, setVisited] = useState<ServerPageCard[]>(() => initial.card ? [initial.card] : []);
+  const [stripSlot, setStripSlot] = useState<HTMLElement | null>(null);
+  const chrome = useMemo(() => card ? { activeCard: card, stripSlot } : null, [card, stripSlot]);
   const state = computer ? computerDisplayState(computer) : null;
   const available = state === "ready";
   const [nodeInfo, setNodeInfo] = useState<NodeInfo | null>(null);
@@ -183,10 +197,18 @@ function ServerPageContent({
   const [confirmUpgrade, setConfirmUpgrade] = useState(false);
   const [startState, setStartState] = useState<StartState>("idle");
 
+  const isConnected = computer ? isConnectedComputer(computer) : false;
+  const nodeVersion = computer?.node_version;
+  const nodeOnline = computer?.node_online;
   useEffect(() => {
-    if (!computer || !isConnectedComputer(computer)) return;
-    setMountedId(computer.id);
-  }, [computer, setMountedId]);
+    if (isConnected) setMountedId(computerId);
+  }, [computerId, isConnected, setMountedId]);
+
+  useEffect(() => {
+    if (!card) return;
+    try { window.localStorage.setItem(`oceanleo.serverPage.lastCard.${computerId}`, card); }
+    catch { /* Best effort preference. */ }
+  }, [card, computerId]);
 
   useEffect(() => {
     setUpgradeState("idle");
@@ -194,13 +216,13 @@ function ServerPageContent({
   }, [computerId]);
 
   useEffect(() => {
-    if (!computer || !isConnectedComputer(computer)) {
+    if (!isConnected) {
       setNodeInfo(null);
       return;
     }
     let active = true;
     void client
-      .getNodeInfo(computer.id)
+      .getNodeInfo(computerId)
       .then((info) => {
         if (active) setNodeInfo(info);
       })
@@ -210,16 +232,16 @@ function ServerPageContent({
     return () => {
       active = false;
     };
-  }, [client, computer]);
+  }, [client, computerId, isConnected, nodeOnline, nodeVersion]);
 
   const openCard = useCallback(
-    (next: ServerPageCard, replace = false) => {
-      if (!computer || !available) return;
-      const href = serverPageHref(computer.id, { card: next });
-      if (replace) router.replace(href);
-      else router.push(href);
+    (next: ServerPageCard) => {
+      if (!available || next === card) return;
+      setCard(next);
+      setVisited((previous) => previous.includes(next) ? previous : [...previous, next]);
+      replaceServerPageUrl(computerId, { card: next, program: null, session: null });
     },
-    [available, computer, router],
+    [available, card, computerId],
   );
 
   const start = useCallback(async () => {
@@ -272,7 +294,7 @@ function ServerPageContent({
   if (loading) {
     return (
       <main
-        className={`grid min-h-screen place-items-center p-6 ${tone.page}`}
+        className={`grid h-full min-h-0 place-items-center p-6 ${tone.page}`}
         data-oceanleo-server-page-loading
       >
         <p className={tone.muted}>{tt("正在读取服务器…")}</p>
@@ -283,7 +305,7 @@ function ServerPageContent({
   if (!computer || !state) {
     return (
       <main
-        className={`grid min-h-screen place-items-center p-6 ${tone.page}`}
+        className={`grid h-full min-h-0 place-items-center p-6 ${tone.page}`}
         data-oceanleo-server-page-missing
       >
         <div className="max-w-lg text-center">
@@ -303,14 +325,15 @@ function ServerPageContent({
 
   return (
     <main
-      className={`min-h-screen px-4 py-3 sm:px-6 lg:px-8 ${tone.page}`}
+      className={`flex h-full min-h-0 flex-col overflow-hidden px-2 py-3 sm:px-6 lg:px-8 ${tone.page}`}
       data-oceanleo-server-page={computer.id}
       data-oceanleo-server-state={state}
     >
-      <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[96rem] flex-col">
+      <div className="mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col">
         <header
-          className={`flex h-12 items-center gap-2 border-b ${tone.border}`}
+          className={`grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-b ${tone.border}`}
         >
+          <div className="flex min-w-0 items-center gap-2">
           <a
             href="/"
             aria-label={tt("返回首页")}
@@ -333,7 +356,37 @@ function ServerPageContent({
             />
             <span className="sr-only">{statusWord(state, tt)}</span>
           </span>
-          <div className="min-w-0 flex-1" />
+          </div>
+          <nav role="tablist" aria-label={tt("选择工作方式")} className="flex items-center gap-1" data-oceanleo-server-header-tabs>
+            {CARD_ORDER.map((item, index) => (
+              <button
+                key={item}
+                id={`server-tab-${item}`}
+                type="button"
+                role="tab"
+                aria-selected={card === item}
+                aria-controls={visited.includes(item) ? `server-panel-${item}` : undefined}
+                aria-label={tt(CARD_COPY[item].title)}
+                title={tt(CARD_COPY[item].title)}
+                tabIndex={card === item || (!card && index === 0) ? 0 : -1}
+                disabled={!available}
+                className={`inline-flex h-9 items-center gap-2 rounded-full px-2 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-40 ${card === item ? `${tone.rowActive} text-zinc-950 dark:text-neutral-50` : tone.iconBtn}`}
+                onClick={() => openCard(item)}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? CARD_ORDER.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + CARD_ORDER.length) % CARD_ORDER.length;
+                  openCard(CARD_ORDER[next]);
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
+                }}
+                data-oceanleo-server-tab={item}
+              >
+                <span className={`inline-flex [&>svg]:size-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${card === item ? "scale-110" : ""}`}><CardGlyph card={item} /></span>
+                {card === item ? <span>{tt(CARD_COPY[item].title)}</span> : null}
+              </button>
+            ))}
+          </nav>
+          <div className="flex min-w-0 items-center justify-end gap-2">
           {showUpgrade ? (
             <div
               className={`flex shrink-0 items-center gap-2 text-xs ${
@@ -369,10 +422,10 @@ function ServerPageContent({
             </div>
           ) : null}
           {connected.length > 1 ? (
-            <label className="shrink-0">
+            <label className="min-w-0">
               <span className="sr-only">{tt("切换服务器")}</span>
               <select
-                className={`max-w-[12rem] border-0 bg-transparent py-1 text-sm ${tone.input}`}
+                className={`w-full max-w-[12rem] border-0 bg-transparent py-1 text-sm ${tone.input}`}
                 aria-label={tt("切换服务器")}
                 value={
                   connected.some((item) => item.id === computer.id)
@@ -402,50 +455,30 @@ function ServerPageContent({
               </select>
             </label>
           ) : null}
+          </div>
         </header>
+        <div ref={setStripSlot} className={`min-h-10 shrink-0 border-b ${tone.border}`} data-oceanleo-server-program-row />
+        <ServerPageChromeContext.Provider value={chrome}>
 
         <div className="flex min-h-0 flex-1 flex-col">
           {card ? (
             <>
-              <nav
-                className={`flex items-center gap-5 border-b ${tone.border}`}
-                aria-label={tt("选择工作方式")}
-                data-oceanleo-server-card-tabs
-              >
-                {CARD_ORDER.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    disabled={!available}
-                    className={card === item ? tone.tabActive : tone.tab}
-                    onClick={() => openCard(item, true)}
-                    data-oceanleo-server-tab={item}
-                  >
-                    <CardGlyph card={item} />
-                    {tt(CARD_COPY[item].title)}
-                  </button>
-                ))}
-              </nav>
               {available ? (
-                <div className="min-h-0 flex-1 pt-3" data-oceanleo-server-card={card}>
-                  {card === "acp" ? (
-                    <AcpCard
-                      computer={computer}
-                      initialProgram={initialProgram}
-                      initialSessionId={initialSessionId}
-                    />
-                  ) : card === "cli" ? (
-                    <CliCard
-                      computer={computer}
-                      initialProgram={initialProgram}
-                      initialSessionId={initialSessionId}
-                    />
-                  ) : (
-                    <TerminalCard
-                      computer={computer}
-                      initialSessionId={initialSessionId}
-                    />
-                  )}
+                <div className="relative min-h-0 flex-1" data-oceanleo-server-card={card}>
+                  {visited.map((item) => (
+                    <div key={item} id={`server-panel-${item}`} role="tabpanel" aria-labelledby={`server-tab-${item}`}
+                      className={`absolute inset-0 min-h-0 pt-3 ${card === item ? "" : "invisible pointer-events-none"}`}
+                      aria-hidden={card !== item} inert={card !== item} data-oceanleo-server-panel={item}>
+                      {item === "acp" ? <AcpCard computer={computer} active={card === item}
+                        initialProgram={initial.card === item ? initial.program : undefined}
+                        initialSessionId={initial.card === item ? initial.session : undefined} />
+                        : item === "cli" ? <CliCard computer={computer} active={card === item}
+                          initialProgram={initial.card === item ? initial.program : undefined}
+                          initialSessionId={initial.card === item ? initial.session : undefined} />
+                          : <TerminalCard computer={computer} active={card === item}
+                            initialSessionId={initial.card === item ? initial.session : undefined} />}
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <UnavailablePanel
@@ -500,6 +533,7 @@ function ServerPageContent({
             </section>
           )}
         </div>
+        </ServerPageChromeContext.Provider>
       </div>
       {confirmUpgrade ? (
         <ConfirmDialog

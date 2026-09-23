@@ -794,3 +794,5 @@ export * from "./mobile-bridge-public";
 // Dev / HMR：`next/dynamic` 拉共享 barrel 时旧 chunk hash 会 404。消费站用
 // `dynamic(() => importWithChunkReload(() => import("@oceanleo/ui/shell").then(…)))`。
 export { importWithChunkReload } from "../lib/lazy-with-retry";
+
+export { AccountMenu, type AccountMenuProps } from "./AccountMenu";

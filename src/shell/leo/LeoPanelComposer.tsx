@@ -32,12 +32,12 @@ export function LeoPanelComposer({
     if (visible) areaRef.current?.focus();
   }, [visible]);
 
-  // 自动增高（封顶 4 行左右后内部滚动）。
+  // 自动增高（封顶 8 行左右后内部滚动）。
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+    el.style.height = `${Math.max(52, Math.min(el.scrollHeight, 192))}px`;
   }, [text]);
 
   const send = () => {
@@ -57,7 +57,7 @@ export function LeoPanelComposer({
   };
 
   return (
-    <div className="border-t border-slate-100 px-3 py-3">
+    <div className="shrink-0 border-t border-slate-100 px-3 py-3">
       <div className="flex items-end gap-2">
         <textarea
           ref={areaRef}
@@ -65,10 +65,10 @@ export function LeoPanelComposer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
-          rows={1}
+          rows={2}
           spellCheck={false}
           placeholder={tt("跟 leo 说")}
-          className="v-scroll max-h-24 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-xs leading-relaxed outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-slate-400"
+          className="v-scroll min-h-[52px] max-h-48 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-[13px] leading-relaxed dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-slate-400"
         />
         <button
           type="button"

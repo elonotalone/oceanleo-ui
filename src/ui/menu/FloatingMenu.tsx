@@ -25,6 +25,7 @@ export function FloatingMenu({
   onClose,
   align = "end",
   preferredPlacement,
+  side,
   width = 224,
   ariaLabel,
   className = "",
@@ -39,7 +40,9 @@ export function FloatingMenu({
       ariaLabel={ariaLabel}
       align={align}
       preferredPlacement={preferredPlacement}
-      className={`overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1 shadow-xl ${className}`}
+      side={side}
+      initialFocusSelector='[role="menuitem"]:not([aria-disabled="true"]):not(:disabled)'
+      className={`z-50 overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-1 shadow-[0_8px_32px_rgba(0,0,0,0.14)] dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100 ${className}`}
       style={{ width }}
     >
       {children}
@@ -72,19 +75,23 @@ export function FloatingMenuItem({
   selected = false,
   onSelect,
 }: FloatingMenuItemProps) {
-  const className = `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
-    danger ? "text-rose-600 hover:bg-rose-50" : "text-neutral-800 hover:bg-neutral-100"
+  const className = `flex min-h-8 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-50 ${
+    danger
+      ? "text-rose-600 hover:bg-rose-50 focus-visible:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10 dark:focus-visible:bg-rose-500/10"
+      : "text-neutral-800 hover:bg-neutral-100 focus-visible:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
   }`;
   const body = (
     <>
-      {icon ? <span className="shrink-0 text-neutral-500">{icon}</span> : null}
+      {icon ? <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center [&>svg]:size-4">{icon}</span> : null}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{label}</span>
         {description ? (
-          <span className="block truncate text-[11px] text-neutral-500">{description}</span>
+          <span className="block truncate text-[11px] text-neutral-500 dark:text-neutral-400">{description}</span>
         ) : null}
       </span>
       {trailing ? <span className="shrink-0 text-neutral-400">{trailing}</span> : null}
+      {selected ? <span aria-hidden="true" className="shrink-0">✓</span> : null}
+      {external ? <span aria-hidden="true" className="shrink-0">↗</span> : null}
     </>
   );
   if (href && !disabled) {
@@ -96,6 +103,12 @@ export function FloatingMenuItem({
         rel={external ? "noreferrer" : undefined}
         aria-current={selected ? "true" : undefined}
         className={className}
+        onKeyDown={(event) => {
+          if (event.key === " ") {
+            event.preventDefault();
+            event.currentTarget.click();
+          }
+        }}
         onClick={() => onSelect?.()}
       >
         {body}
@@ -107,7 +120,8 @@ export function FloatingMenuItem({
       type="button"
       role="menuitem"
       disabled={disabled}
-      aria-checked={selected || undefined}
+      aria-disabled={disabled || undefined}
+      aria-current={selected ? "true" : undefined}
       className={className}
       onClick={() => onSelect?.()}
     >
@@ -117,7 +131,7 @@ export function FloatingMenuItem({
 }
 
 export function FloatingMenuSeparator() {
-  return <div role="separator" className="my-1 h-px bg-neutral-100" />;
+  return <div role="separator" className="my-1 h-px bg-neutral-100 dark:bg-white/10" />;
 }
 
 export function FloatingMenuLabel({ children }: { children: ReactNode }) {

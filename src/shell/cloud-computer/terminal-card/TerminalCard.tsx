@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cloudComputerApi,
   type CloudComputerClient,
@@ -11,7 +10,8 @@ import {
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
 import { IconClose, IconPlus, IconSettings } from "../server-page/chrome-icons";
-import { serverPageHref } from "../server-page/href";
+import { replaceServerPageUrl } from "../server-page/url-state";
+import { ServerPageStripPortal } from "../server-page/server-page-chrome";
 import { tone } from "../server-page/tone";
 import { AppearancePanel } from "./AppearancePanel";
 import {
@@ -22,28 +22,34 @@ import { TerminalViewport } from "./TerminalViewport";
 
 export type TerminalCardProps = {
   computer: Computer;
+  active?: boolean;
   initialSessionId?: string;
   client?: CloudComputerClient;
   refreshIntervalMs?: number;
 };
 
+const terminalLists = new Map<string, { records: TerminalRecord[]; supported: boolean }>();
+
 type NoticeKind = "info" | "error";
 
 export function TerminalCard({
   computer,
+  active = true,
   initialSessionId,
   client = cloudComputerApi,
   refreshIntervalMs = 15_000,
 }: TerminalCardProps) {
   const tt = useUI();
-  const router = useRouter();
-  const [records, setRecords] = useState<TerminalRecord[]>([]);
-  const [recordsSupported, setRecordsSupported] = useState(true);
+  const [mountSessionId] = useState(() => initialSessionId ?? null);
+  const [cached] = useState(() => terminalLists.get(computer.id));
+  const [records, setRecords] = useState<TerminalRecord[]>(cached?.records ?? []);
+  const [recordsSupported, setRecordsSupported] = useState(cached?.supported ?? true);
+  const refreshVersion = useRef(0);
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialSessionId ?? null,
+    () => mountSessionId ?? cached?.records.find((record) => cached.supported || record.alive)?.id ?? null,
   );
   const [showAppearance, setShowAppearance] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -63,59 +69,58 @@ export function TerminalCard({
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     setNotice(message);
     setNoticeKind(kind);
-    window.setTimeout(() => {
-      setNotice((current) => {
-        if (current !== message) return current;
-        setNoticeKind("info");
-        return null;
-      });
-    }, 3_000);
   }, []);
 
+  useEffect(() => {
+    if (!active || !notice) return;
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+      setNoticeKind("info");
+    }, 3_000);
+    return () => window.clearTimeout(timer);
+  }, [active, notice]);
+
   const refresh = useCallback(async () => {
+    const version = ++refreshVersion.current;
     try {
       const result = await client.listTerminalsWithRecords(computer.id);
+      if (version !== refreshVersion.current) return;
       const next = shellTerminalRecords(result.sessions || []);
       const visible = result.records_supported
         ? next
         : next.filter((record) => record.alive);
+      terminalLists.set(computer.id, { records: next, supported: result.records_supported });
       setRecords(next);
       setRecordsSupported(result.records_supported);
       setSelectedId((current) => {
         if (current && visible.some((record) => record.id === current)) {
           return current;
         }
-        if (
-          initialSessionId &&
-          visible.some((record) => record.id === initialSessionId)
-        ) {
-          return initialSessionId;
-        }
         return visible[0]?.id ?? null;
       });
       setFailed(false);
     } catch {
-      setFailed(true);
+      if (version === refreshVersion.current) setFailed(true);
     } finally {
-      setLoading(false);
+      if (version === refreshVersion.current) setLoading(false);
     }
-  }, [client, computer.id, initialSessionId]);
+  }, [client, computer.id]);
 
   useEffect(() => {
-    setLoading(true);
-    setSelectedId(initialSessionId ?? null);
     void refresh();
-    if (refreshIntervalMs <= 0) return;
+    return () => { refreshVersion.current += 1; };
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!active || refreshIntervalMs <= 0) return;
     const timer = window.setInterval(() => void refresh(), refreshIntervalMs);
     return () => window.clearInterval(timer);
-  }, [initialSessionId, refresh, refreshIntervalMs]);
+  }, [active, refresh, refreshIntervalMs]);
 
   useEffect(() => {
-    if (!selectedId) return;
-    router.replace(
-      serverPageHref(computer.id, { card: "terminal", session: selectedId }),
-    );
-  }, [computer.id, router, selectedId]);
+    if (!active) return;
+    replaceServerPageUrl(computer.id, { card: "terminal", session: selectedId });
+  }, [active, computer.id, selectedId]);
 
   const openTerminal = useCallback(async () => {
     if (!computer.node_online || busyId) return;
@@ -179,11 +184,12 @@ export function TerminalCard({
   return (
     <section
       aria-label={tt("终端")}
-      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden border ${tone.border} ${tone.panel}`}
+      className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border ${tone.border} ${tone.panel}`}
       data-oceanleo-terminal-card=""
-      data-initial-session={initialSessionId || undefined}
+      data-initial-session={mountSessionId || undefined}
     >
-      <header className={`flex items-center justify-end border-b px-3 py-2 ${tone.border}`}>
+      {active && <ServerPageStripPortal card="terminal">
+      <div className="relative flex w-full shrink-0 items-center justify-end px-3 py-2">
         <button
           type="button"
           className={tone.iconBtn}
@@ -195,10 +201,9 @@ export function TerminalCard({
         >
           <IconSettings />
         </button>
-      </header>
       {showAppearance && (
         <div
-          className="absolute inset-0 z-20 bg-black/10"
+          className="absolute right-0 top-full z-20 w-[min(28rem,90vw)]"
           data-oceanleo-terminal-appearance-overlay=""
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setShowAppearance(false);
@@ -208,7 +213,7 @@ export function TerminalCard({
             role="dialog"
             aria-modal="false"
             aria-label={tt("外观设置")}
-            className={`absolute right-3 top-3 max-h-[90%] w-[min(28rem,90%)] overflow-y-auto rounded-lg border p-4 shadow-xl ${tone.border} ${tone.page}`}
+            className={`max-h-[70dvh] w-full overflow-y-auto rounded-lg border p-4 shadow-xl ${tone.border} ${tone.page}`}
             onMouseDown={(event) => event.stopPropagation()}
             data-oceanleo-terminal-appearance-panel=""
           >
@@ -229,6 +234,8 @@ export function TerminalCard({
           </section>
         </div>
       )}
+      </div>
+      </ServerPageStripPortal>}
       {notice && (
         <div
           className={`border-b px-4 py-2 text-xs ${noticeKind === "error" ? tone.danger : `${tone.panel} ${tone.muted}`}`}
@@ -239,7 +246,7 @@ export function TerminalCard({
         </div>
       )}
       <div className="flex min-h-0 flex-1" data-oceanleo-terminal-card-body="">
-        <aside className={`flex w-52 shrink-0 flex-col border-r ${tone.border}`}>
+        <aside className={`flex min-h-0 w-32 shrink-0 flex-col sm:w-52 border-r ${tone.border}`}>
           <div className={`border-b p-2 ${tone.border}`}>
             <button
               type="button"
@@ -249,7 +256,7 @@ export function TerminalCard({
               onClick={() => void openTerminal()}
             >
               <IconPlus className="size-3.5" />
-              {busyId === "new" ? tt("正在创建…") : tt("+ 新终端")}
+              {busyId === "new" ? tt("正在创建…") : tt("新终端")}
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -337,7 +344,7 @@ export function TerminalCard({
             )}
           </div>
         </aside>
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {failed && (
             <div className={`border-b px-3 py-2 text-xs ${tone.danger}`} role="alert">
               {tt("终端列表读取失败，请稍后重试。")}
@@ -365,12 +372,13 @@ export function TerminalCard({
                 key={selected.id}
                 computerId={computer.id}
                 record={selected}
+                active={active}
                 readOnly={!selected.alive}
                 onEnded={() => void refresh()}
               />
             </>
           ) : (
-            <div className={`grid min-h-[24rem] flex-1 place-items-center p-6 text-center text-sm ${tone.muted}`}>
+            <div className={`grid min-h-0 flex-1 place-items-center p-6 text-center text-sm ${tone.muted}`}>
               <div>
                 <p>{tt("选择一个终端，或新建终端。")}</p>
                 <button
@@ -380,7 +388,7 @@ export function TerminalCard({
                   onClick={() => void openTerminal()}
                 >
                   <IconPlus className="size-3.5" />
-                  {tt("+ 新终端")}
+                  {tt("新终端")}
                 </button>
               </div>
             </div>

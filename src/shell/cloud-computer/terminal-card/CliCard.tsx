@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
   type CliChat,
@@ -12,12 +11,12 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
-  IconChevron,
   IconClose,
   IconPlus,
-  IconSettings,
 } from "../server-page/chrome-icons";
-import { serverPageHref } from "../server-page/href";
+import { replaceServerPageUrl } from "../server-page/url-state";
+import { ServerPageStripPortal } from "../server-page/server-page-chrome";
+import { ProgramStrip } from "../server-page/ProgramStrip";
 import { tone } from "../server-page/tone";
 import {
   cliLaunchOptions,
@@ -36,6 +35,7 @@ import {
 import { TerminalViewport } from "./TerminalViewport";
 
 export type CliCardProps = {
+  active?: boolean;
   computer: Computer;
   initialProgram?: string;
   initialSessionId?: string;
@@ -52,26 +52,38 @@ function normalizeCliRecord(record: TerminalRecord, program: string): TerminalRe
   };
 }
 
+type CachedChats = { supported: boolean; sessions: CliChat[] };
+type CliCache = { programs?: CliProgram[]; records?: TerminalRecord[]; chats: Map<string, CachedChats> };
+const computerCaches = new Map<string, CliCache>();
+function computerCache(id: string): CliCache {
+  let cache = computerCaches.get(id);
+  if (!cache) {
+    cache = { chats: new Map() };
+    computerCaches.set(id, cache);
+  }
+  return cache;
+}
+
 type NoticeKind = "info" | "error";
 
 export function CliCard({
   computer,
+  active = true,
   initialProgram,
   initialSessionId,
   client = cloudComputerApi,
   refreshIntervalMs = 15_000,
 }: CliCardProps) {
   const tt = useUI();
-  const router = useRouter();
-  const [programs, setPrograms] = useState<CliProgram[]>([]);
-  const [programId, setProgramId] = useState(initialProgram || "oceanleo");
-  const [records, setRecords] = useState<TerminalRecord[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    initialSessionId ?? null,
-  );
-  const [chats, setChats] = useState<CliChat[]>([]);
-  const [chatsSupported, setChatsSupported] = useState(true);
-  const [programsCollapsed, setProgramsCollapsed] = useState(false);
+  const cache = useMemo(() => computerCache(computer.id), [computer.id]);
+  const [initial] = useState(() => ({ program: initialProgram || "oceanleo", session: initialSessionId ?? null }));
+  const [programs, setPrograms] = useState<CliProgram[]>(() => cache.programs ?? []);
+  const [programId, setProgramId] = useState(initial.program);
+  const [records, setRecords] = useState<TerminalRecord[]>(() => cache.records ?? []);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initial.session);
+  const [chatLists, setChatLists] = useState(() => new Map(cache.chats));
+  const chats = chatLists.get(programId)?.sessions ?? [];
+  const chatsSupported = chatLists.get(programId)?.supported ?? true;
   const [showSettings, setShowSettings] = useState(false);
   const [serverConfirmDangerous, setServerConfirmDangerous] = useState(true);
   const [cliTools, setCliToolsState] = useState<
@@ -79,8 +91,9 @@ export function CliCard({
   >({});
   const [busy, setBusy] = useState<string | null>(null);
   const [toolsBusy, setToolsBusy] = useState(false);
-  const [loadingPrograms, setLoadingPrograms] = useState(true);
-  const [loadingChats, setLoadingChats] = useState(false);
+  const [loadingPrograms, setLoadingPrograms] = useState(!cache.programs);
+  const [loadingChatProgram, setLoadingChatProgram] = useState<string | null>(null);
+  const loadingChats = loadingChatProgram === programId && !chatLists.has(programId);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [noticeKind, setNoticeKind] = useState<NoticeKind>("info");
@@ -102,28 +115,22 @@ export function CliCard({
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     setNotice(message);
     setNoticeKind(kind);
-    window.setTimeout(() => {
-      setNotice((current) => {
-        if (current !== message) return current;
-        setNoticeKind("info");
-        return null;
-      });
-    }, 3_000);
   }, []);
+
+  useEffect(() => {
+    if (!active || !notice) return;
+    const timer = window.setTimeout(() => { setNotice(null); setNoticeKind("info"); }, 3_000);
+    return () => window.clearTimeout(timer);
+  }, [active, notice]);
 
   const refreshPrograms = useCallback(async () => {
     try {
       const result = await client.listCliPrograms(computer.id);
       const next = orderedCliPrograms(result.programs || []);
+      cache.programs = next;
       setPrograms(next);
       setProgramId((current) => {
         if (next.some((program) => program.id === current)) return current;
-        if (
-          initialProgram &&
-          next.some((program) => program.id === initialProgram)
-        ) {
-          return initialProgram;
-        }
         return next[0]?.id ?? current;
       });
       setFailed(false);
@@ -132,42 +139,42 @@ export function CliCard({
     } finally {
       setLoadingPrograms(false);
     }
-  }, [client, computer.id, initialProgram]);
+  }, [cache, client, computer.id]);
 
   const refreshTerminals = useCallback(async () => {
     try {
       const result = await client.listTerminalsWithRecords(computer.id);
-      setRecords(
-        (result.sessions || []).map((record) => {
+      const next = (result.sessions || []).map((record) => {
           const program =
             record.program || legacyCliPrograms.current.get(record.id);
           return program ? normalizeCliRecord(record, program) : record;
-        }),
-      );
+        });
+      cache.records = next;
+      setRecords(next);
     } catch {
       setFailed(true);
     }
-  }, [client, computer.id]);
+  }, [cache, client, computer.id]);
 
   const refreshChats = useCallback(async () => {
     if (!programId) return;
-    setLoadingChats(true);
+    setLoadingChatProgram(programId);
     try {
       const result = await client.listCliSessions(computer.id, programId);
-      setChatsSupported(result.supported);
-      setChats(sortCliChats(result.sessions || []));
+      const next = { supported: result.supported, sessions: sortCliChats(result.sessions || []) };
+      cache.chats.set(programId, next);
+      setChatLists((current) => new Map(current).set(programId, next));
     } catch {
-      setChatsSupported(false);
-      setChats([]);
+      if (!cache.chats.has(programId)) {
+        setChatLists((current) => new Map(current).set(programId, { supported: false, sessions: [] }));
+      }
     } finally {
-      setLoadingChats(false);
+      setLoadingChatProgram((current) => current === programId ? null : current);
     }
-  }, [client, computer.id, programId]);
+  }, [cache, client, computer.id, programId]);
 
   useEffect(() => {
-    setLoadingPrograms(true);
-    setProgramId(initialProgram || "oceanleo");
-    setSelectedSessionId(initialSessionId ?? null);
+    setLoadingPrograms(!cache.programs);
     void refreshPrograms();
     void refreshTerminals();
     void client
@@ -178,41 +185,43 @@ export function CliCard({
       .getCliTools(computer.id)
       .then((result) => setCliToolsState(result.programs))
       .catch(() => setCliToolsState({}));
-  }, [client, computer.id, initialProgram, initialSessionId, refreshPrograms, refreshTerminals]);
+  }, [cache, client, computer.id, refreshPrograms, refreshTerminals]);
 
   useEffect(() => {
-    void refreshChats();
-  }, [refreshChats]);
+    if (!cache.chats.has(programId)) void refreshChats();
+  }, [cache, programId, refreshChats]);
 
   useEffect(() => {
-    if (refreshIntervalMs <= 0) return;
+    if (cache.chats.has(initial.program)) void client.listCliSessions(computer.id, initial.program).then((result) => {
+      const next = { supported: result.supported, sessions: sortCliChats(result.sessions || []) };
+      cache.chats.set(initial.program, next);
+      setChatLists((current) => new Map(current).set(initial.program, next));
+    }).catch(() => {});
+  }, [cache, client, computer.id, initial.program]);
+
+  useEffect(() => {
+    if (!active || refreshIntervalMs <= 0) return;
     const timer = window.setInterval(() => void refreshTerminals(), refreshIntervalMs);
     return () => window.clearInterval(timer);
-  }, [refreshIntervalMs, refreshTerminals]);
+  }, [active, refreshIntervalMs, refreshTerminals]);
 
   useEffect(() => {
     setSelectedSessionId((current) => {
       if (current && running.some((record) => record.id === current)) return current;
       if (
-        initialSessionId &&
-        running.some((record) => record.id === initialSessionId)
+        initial.session &&
+        running.some((record) => record.id === initial.session)
       ) {
-        return initialSessionId;
+        return initial.session;
       }
       return running[0]?.id ?? null;
     });
-  }, [initialSessionId, programId, running]);
+  }, [initial.session, programId, running]);
 
   useEffect(() => {
-    if (!programId) return;
-    router.replace(
-      serverPageHref(computer.id, {
-        card: "cli",
-        program: programId,
-        session: selectedSessionId || undefined,
-      }),
-    );
-  }, [computer.id, programId, router, selectedSessionId]);
+    if (!active || !programId) return;
+    replaceServerPageUrl(computer.id, { card: "cli", program: programId, session: selectedSessionId });
+  }, [active, computer.id, programId, selectedSessionId]);
 
   const launch = useCallback(
     async (resumeId?: string) => {
@@ -295,72 +304,32 @@ export function CliCard({
     [client, computer.id, programId, showNotice, toolsBusy, tt],
   );
 
-  const visiblePrograms = programsCollapsed && selectedProgram
-    ? [selectedProgram]
-    : programs;
-
   return (
     <section
       aria-label={tt("AI 命令行")}
-      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden border ${tone.border} ${tone.panel}`}
+      className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden border ${tone.border} ${tone.panel}`}
       data-oceanleo-cli-card=""
-      data-initial-program={initialProgram || undefined}
-      data-initial-session={initialSessionId || undefined}
+      data-initial-program={initial.program}
+      data-initial-session={initial.session || undefined}
     >
-      <div className={`flex items-center gap-2 border-b px-3 py-2 ${tone.border}`}>
-        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" data-oceanleo-cli-programs="">
-          {visiblePrograms.map((program) => (
-            <button
-              key={program.id}
-              type="button"
-              className={`shrink-0 border-b-2 px-2 py-1.5 text-xs ${
-                program.id === programId
-                  ? "border-zinc-900 text-zinc-900 dark:border-neutral-100 dark:text-neutral-100"
-                  : `border-transparent ${tone.muted}`
-              }`}
-              data-oceanleo-cli-program={program.id}
-              data-installed={program.installed ? "1" : "0"}
-              title={!program.installed ? tt("未安装") : undefined}
-              onClick={() => {
-                setProgramId(program.id);
-                setSelectedSessionId(null);
-              }}
-            >
-              {program.label}
-              {!program.installed && (
-                <span
-                  aria-hidden="true"
-                  className="ml-1 inline-block size-1.5 rounded-full bg-amber-500 align-middle"
-                />
-              )}
-            </button>
-          ))}
-          {loadingPrograms && programs.length === 0 && (
-            <span className={`px-2 py-1.5 text-xs ${tone.muted}`}>{tt("加载中…")}</span>
-          )}
-        </div>
-        <button
-          type="button"
-          className={tone.iconBtn}
-          aria-label={tt(programsCollapsed ? "展开程序列表" : "收起程序列表")}
-          aria-expanded={!programsCollapsed}
-          data-oceanleo-cli-programs-toggle=""
-          onClick={() => setProgramsCollapsed((collapsed) => !collapsed)}
-        >
-          <IconChevron up={!programsCollapsed} />
-        </button>
-        <button
-          type="button"
-          className={tone.iconBtn}
-          aria-label={tt("AI 命令行设置")}
-          title={tt("AI 命令行设置")}
-          aria-expanded={showSettings}
-          data-oceanleo-cli-settings-toggle=""
-          onClick={() => setShowSettings((open) => !open)}
-        >
-          <IconSettings />
-        </button>
-      </div>
+      {active && <ServerPageStripPortal card="cli">
+        <ProgramStrip
+          items={programs.map((program) => ({
+            id: program.id,
+            label: program.label,
+            dot: !program.installed ? "gray" : program.id === "oceanleo" ? "green" : "yellow",
+            running: runningCliTerminals(records, program.id).length > 0,
+            title: !program.installed ? tt("未安装") : undefined,
+          }))}
+          selected={programId}
+          onSelect={(id) => { setProgramId(id); setSelectedSessionId(null); }}
+          onSettings={(id) => { setProgramId(id); setShowSettings(true); }}
+          settingsLabel={tt("AI 命令行设置")}
+          ariaLabel={tt("AI 命令行")}
+          storageKey="oceanleo.serverPage.programStrip.cli"
+          trailing={loadingPrograms && !programs.length ? <span className={`text-xs ${tone.muted}`}>{tt("加载中…")}</span> : undefined}
+        />
+      </ServerPageStripPortal>}
       {showSettings && selectedProgram ? (
         <div
           className="absolute inset-0 z-20 bg-black/10"
@@ -373,15 +342,15 @@ export function CliCard({
             role="dialog"
             aria-modal="false"
             aria-label={tt("AI 命令行设置")}
-            className={`absolute right-3 top-3 flex max-h-[90%] w-[min(28rem,90%)] flex-col overflow-y-auto rounded-lg border p-4 shadow-xl ${tone.border} ${tone.page}`}
+            className={`absolute right-3 top-3 flex max-h-[90%] w-[min(24rem,90%)] flex-col overflow-y-auto rounded-lg border p-4 shadow-xl ${tone.border} ${tone.page}`}
             onMouseDown={(event) => event.stopPropagation()}
             data-oceanleo-cli-settings-panel=""
           >
             <header className={`mb-3 flex items-center justify-between gap-3 border-b pb-3 ${tone.border}`}>
-              <h3 className="text-sm font-semibold">{tt("AI 命令行设置")}</h3>
+              <h3 className="text-[13px] font-semibold">{tt("AI 命令行设置")}</h3>
               <button
                 type="button"
-                className={`rounded-md p-2 text-base leading-none ${tone.hover} ${tone.muted}`}
+                className={`h-8 rounded-md px-2 text-[13px] leading-none ${tone.hover} ${tone.muted}`}
                 aria-label={tt("关闭")}
                 title={tt("关闭")}
                 onClick={() => setShowSettings(false)}
@@ -416,7 +385,7 @@ export function CliCard({
         </div>
       )}
       <div className="flex min-h-0 flex-1" data-oceanleo-cli-card-body="">
-        <aside className={`flex w-56 shrink-0 flex-col border-r ${tone.border}`}>
+        <aside className={`flex min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r ${tone.border}`}>
           <div className={`border-b p-2 ${tone.border}`}>
             <button
               type="button"
@@ -509,14 +478,14 @@ export function CliCard({
             )}
           </div>
         </aside>
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {failed && (
             <div className={`border-b px-3 py-2 text-xs ${tone.danger}`} role="alert">
               {tt("AI 命令行信息读取失败，请稍后重试。")}
             </div>
           )}
           {selectedProgram && !selectedProgram.installed ? (
-            <div className={`grid min-h-[24rem] flex-1 place-items-center p-6 text-center text-sm ${tone.muted}`}>
+            <div className={`grid min-h-0 flex-1 overflow-y-auto place-items-center p-6 text-center text-sm ${tone.muted}`}>
               <div>
                 <p>
                   {tt("{program} 尚未安装", { program: selectedProgram.label })}
@@ -526,12 +495,7 @@ export function CliCard({
                   className="mt-3 text-xs underline-offset-2 hover:underline"
                   data-oceanleo-cli-install={selectedProgram.id}
                   onClick={() =>
-                    router.push(
-                      serverPageHref(computer.id, {
-                        card: "acp",
-                        program: selectedProgram.id,
-                      }),
-                    )
+                    replaceServerPageUrl(computer.id, { card: "acp", program: selectedProgram.id, session: null })
                   }
                 >
                   {tt("安装")}
@@ -546,7 +510,7 @@ export function CliCard({
               onEnded={() => void refreshTerminals()}
             />
           ) : (
-            <div className={`grid min-h-[24rem] flex-1 place-items-center p-6 text-center text-sm ${tone.muted}`}>
+            <div className={`grid min-h-0 flex-1 overflow-y-auto place-items-center p-6 text-center text-sm ${tone.muted}`}>
               <div>
                 <p>{tt("选择运行中的命令行，或打开一个新的。")}</p>
                 <button

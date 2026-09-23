@@ -32,6 +32,10 @@ export type SettingsSection = {
 };
 
 export type SettingsHubProps = {
+  variant?: "page" | "modal";
+  onClose?: () => void;
+  initialTab?: string;
+  onTabChange?: (tab: string) => void;
   defaultTab?: string;
   extraSections?: SettingsSection[];
   planLabel?: string | null;
@@ -81,6 +85,9 @@ function writeTab(tab: string) {
 }
 
 export function SettingsHub({
+  variant = "page",
+  initialTab,
+  onTabChange,
   defaultTab = "general",
   extraSections = [],
   planLabel,
@@ -99,7 +106,7 @@ export function SettingsHub({
   const href = currentHref ?? (typeof window !== "undefined" ? window.location.href : "");
   const resetLanding = isPasswordResetLanding(href);
   const fallbackTab = defaultTab || "general";
-  const [tab, setTab] = useState(() => tabFromLocation(fallbackTab));
+  const [tab, setTab] = useState(() => variant === "modal" ? initialTab || fallbackTab : tabFromLocation(fallbackTab));
   const [email, setEmail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [currency, setCurrency] = useState<LedgerCurrency>("CNY");
@@ -109,13 +116,18 @@ export function SettingsHub({
   const [showAuth, setShowAuth] = useState(false);
 
   useEffect(() => {
+    if (variant === "modal") setTab(initialTab || fallbackTab);
+  }, [variant, initialTab, fallbackTab]);
+
+  useEffect(() => {
+    if (variant === "modal") return;
     function onPop() {
       setTab(tabFromLocation(fallbackTab));
     }
     if (typeof window === "undefined") return;
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [fallbackTab]);
+  }, [fallbackTab, variant]);
 
   useEffect(() => {
     if (!configured) return;
@@ -268,7 +280,8 @@ export function SettingsHub({
 
   function selectTab(id: string) {
     setTab(id);
-    writeTab(id);
+    if (variant === "modal") onTabChange?.(id);
+    else writeTab(id);
   }
 
   function handleSignedIn() {
@@ -347,6 +360,13 @@ export function SettingsHub({
         </div>
       </div>
     );
+  }
+
+  if (variant === "modal") {
+    return <div data-settings-hub data-settings-variant="modal" className="flex h-full min-h-0 flex-col gap-4 p-5 pt-14 text-neutral-900 dark:text-neutral-100 sm:flex-row sm:gap-6 sm:p-6 sm:pt-14">
+      <div className="min-h-0 shrink-0 overflow-auto sm:w-56"><SettingsNav groups={groups} activeId={active?.id ?? fallbackTab} onSelect={selectTab} userEmail={email} planLabel={resolvedPlanLabel} /></div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"><h2 className="mb-4 text-[16px] font-semibold">{active?.label}</h2>{active?.render?.()}</div>
+    </div>;
   }
 
   return (

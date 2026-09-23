@@ -121,6 +121,9 @@ export function ProgramRow({
                 />
               ) : null}
             </button>
+            {id === "hermes" && row?.providers ? <button type="button" onClick={() => openKeySheet(id)} className={`px-1 text-[12px] ${tone.muted}`}>
+              {row.providers.map((p) => `${p.label} · ${p.auth === "key" ? tt("已存 Key") : tt("已登录")}`).join(" · ")}
+            </button> : null}
             {state === "authed-login" ? (
               <span className={`flex items-center gap-1 text-[11px] ${tone.muted}`}>
                 {row?.version ? (
@@ -141,7 +144,7 @@ export function ProgramRow({
                   onClick={() => openKeySheet(id)}
                   className="px-1 text-[11px] text-emerald-700 dark:text-emerald-300"
                 >
-                  {tt("Key ✓")}
+                  {id === "hermes" ? tt("管理凭据") : tt("Key ✓")}
                 </button>
                 <button
                   type="button"
@@ -207,6 +210,8 @@ export function ProgramRow({
         computerId={keyComputerId}
         program={keyProgram}
         hasKey={keyRow?.auth === "key"}
+        status={keyRow ?? null}
+        onLogout={dialog.logoutProgram ? (provider) => keyProgram && dialog.logoutProgram(keyProgram, provider) : undefined}
         onClose={() => setKeyProgram(null)}
         onChanged={() => dialog.retryConnect()}
       />

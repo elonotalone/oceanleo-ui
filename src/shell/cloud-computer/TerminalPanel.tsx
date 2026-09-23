@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { announceLeoSelection } from "../leo/leo-selection";
 import { accessToken } from "../../lib/auth/client";
 import {
   terminalWsUrl,
@@ -108,6 +109,7 @@ export function useComputerTerminal({
   computerId,
   sessionId,
   enabled = true,
+  active = true,
   appearance,
   readOnly = false,
   onRecord,
@@ -115,6 +117,8 @@ export function useComputerTerminal({
   computerId: string;
   sessionId: string | null;
   enabled?: boolean;
+  /** Visibility only: keep the terminal and socket alive while hidden. */
+  active?: boolean;
   appearance?: TerminalAppearance;
   readOnly?: boolean;
   onRecord?: (notice: TerminalRecordNotice) => void;
@@ -134,6 +138,8 @@ export function useComputerTerminal({
   const life = useRef(0);
   const connRef = useRef<TerminalConnState>({ kind: "live" });
   const ctxRef = useRef<{ sid: string; lifeToken: number } | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const appearanceRef = useRef(effectiveAppearance);
   const readOnlyRef = useRef(readOnly);
   const onRecordRef = useRef(onRecord);
@@ -164,12 +170,21 @@ export function useComputerTerminal({
   /** 重算尺寸并通知节点；重连成功后也要做一次（节点侧 PTY 需要新尺寸）。 */
   const announceSize = useCallback(() => {
     const term = termRef.current;
-    if (!term) return;
+    if (!term || !activeRef.current) return;
     term.fit();
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ t: "resize", cols: term.cols, rows: term.rows }));
   }, []);
+
+  useEffect(() => {
+    if (active) announceSize();
+    else {
+      if (fitTimer.current) clearTimeout(fitTimer.current);
+      fitTimer.current = null;
+      announceLeoSelection(null);
+    }
+  }, [active, announceSize]);
 
   const attachSocketRef = useRef<(sid: string, lifeToken: number) => Promise<boolean>>(
     async () => false,
@@ -307,6 +322,7 @@ export function useComputerTerminal({
     tailRef.current = "";
     let disposed = false;
     let removeResize: (() => void) | undefined;
+    let removeSelection: (() => void) | undefined;
     clearConnTimers();
     setReady(false);
     setStatus("live");
@@ -331,7 +347,7 @@ export function useComputerTerminal({
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostRef.current);
-      fit.fit();
+      if (activeRef.current) fit.fit();
       const dims = () => fit.proposeDimensions() || { cols: term.cols, rows: term.rows };
       termRef.current = {
         dispose: () => term.dispose(),
@@ -368,8 +384,41 @@ export function useComputerTerminal({
         if (readOnlyRef.current) return;
         sendText(data);
       });
-      term.onSelectionChange?.(() => {
-        if (!appearanceRef.current.copyOnSelect) return;
+      let pointerAnchor: DOMRect | null = null;
+      const host = hostRef.current;
+      const publishSelection = () => {
+        if (!activeRef.current) return;
+        const text = term.getSelection?.() ?? "";
+        if ([...text.replace(/\s/g, "")].length < 2) {
+          announceLeoSelection(null);
+          return;
+        }
+        let anchor = pointerAnchor;
+        const position = term.getSelectionPosition?.();
+        const screen = host.querySelector(".xterm-screen") ?? term.element;
+        const rect = screen?.getBoundingClientRect();
+        if (position && rect && rect.width > 0 && rect.height > 0 && term.cols > 0 && term.rows > 0) {
+          const cellWidth = rect.width / term.cols;
+          const cellHeight = rect.height / term.rows;
+          const endColumn = position.end.x === 0 ? term.cols - 1 : position.end.x - 1;
+          const endRow = position.end.y - (position.end.x === 0 ? 1 : 0) - term.buffer.active.viewportY;
+          anchor = new DOMRect(
+            rect.left + Math.max(0, Math.min(term.cols - 1, endColumn)) * cellWidth,
+            rect.top + Math.max(0, Math.min(term.rows - 1, endRow)) * cellHeight,
+            cellWidth,
+            cellHeight,
+          );
+        }
+        announceLeoSelection({ text, anchor, source: "terminal" });
+      };
+      const onPointerUp = (event: PointerEvent) => {
+        pointerAnchor = new DOMRect(event.clientX, event.clientY, 1, 1);
+        publishSelection();
+      };
+      host.addEventListener("pointerup", onPointerUp);
+      const selectionSubscription = term.onSelectionChange?.(() => {
+        publishSelection();
+        if (!activeRef.current || !appearanceRef.current.copyOnSelect) return;
         const selection = term.getSelection?.() ?? "";
         if (!selection) return;
         try {
@@ -381,6 +430,11 @@ export function useComputerTerminal({
           /* clipboard may be unavailable in an embedded/private context */
         }
       });
+      removeSelection = () => {
+        host.removeEventListener("pointerup", onPointerUp);
+        selectionSubscription?.dispose();
+        announceLeoSelection(null);
+      };
       setReady(true);
       const opened = await attachSocket(sessionId, lifeToken);
       if (disposed) return;
@@ -389,13 +443,19 @@ export function useComputerTerminal({
         applyConnEventRef.current({ type: "socket_closed" });
       }
       const onResize = () => {
+        if (!activeRef.current) return;
         if (fitTimer.current) clearTimeout(fitTimer.current);
         fitTimer.current = setTimeout(announceSize, 200);
       };
       window.addEventListener("resize", onResize);
-      removeResize = () => window.removeEventListener("resize", onResize);
+      const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
+      observer?.observe(host);
+      removeResize = () => {
+        window.removeEventListener("resize", onResize);
+        observer?.disconnect();
+      };
       announceSize();
-      if (!readOnlyRef.current) term.focus();
+      if (activeRef.current && !readOnlyRef.current) term.focus();
     })();
     return () => {
       disposed = true;
@@ -408,6 +468,7 @@ export function useComputerTerminal({
       }
       clearConnTimers();
       removeResize?.();
+      removeSelection?.();
       if (fitTimer.current) clearTimeout(fitTimer.current);
       const socket = socketRef.current;
       socketRef.current = null;
