@@ -235,10 +235,8 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
     assert.equal(replay?.getAttribute("data-test-terminal-viewport"), "ended");
     assert.equal(replay?.getAttribute("data-read-only"), "1");
     assert.ok(view.host.querySelector("[data-oceanleo-ended-terminal-banner]"));
-    assert.equal(
-      view.replaces.at(-1),
-      "/computers/cc_1?card=terminal&session=ended",
-    );
+    assert.equal(view.replaces.length, 0);
+    assert.equal(window.location.search, "?card=terminal&session=ended");
 
     const liveRow = view.host.querySelector(
       '[data-oceanleo-terminal-row="live-new"]',
@@ -287,13 +285,28 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
     assert.deepEqual(api.calls.open, [
       { id: "cc_1", body: { cols: 120, rows: 36, kind: "shell" } },
     ]);
-    assert.equal(
-      view.replaces.at(-1),
-      "/computers/cc_1?card=terminal&session=new-1",
-    );
+    assert.equal(view.replaces.length, 0);
+    assert.equal(window.location.search, "?card=terminal&session=new-1");
   } finally {
     window.setTimeout = originalSetTimeout;
     view.cleanup();
+  }
+});
+
+test("缓存列表首帧可用，地址更新不触发 router，重渲染不重拉", async () => {
+  const api = createClient({ initialRecords: [record({ id: "cached" })] });
+  const first = await renderCard({ api });
+  assert.equal(api.calls.list, 1);
+  first.cleanup();
+  const before = api.calls.list;
+  const second = await renderCard({ api, props: { initialSessionId: "cached" } });
+  try {
+    assert.equal(api.calls.list, before + 1);
+    assert.ok(second.host.querySelector('[data-oceanleo-terminal-row="cached"]'));
+    assert.equal(second.host.querySelector("[data-oceanleo-new-terminal]")?.textContent?.includes("+"), false);
+    assert.equal(second.replaces.length, 0);
+  } finally {
+    second.cleanup();
   }
 });
 

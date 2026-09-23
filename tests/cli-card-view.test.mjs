@@ -406,3 +406,23 @@ test("旧节点缺少 CLI kind 时，启动后的会话仍保持可见", async (
     view.cleanup();
   }
 });
+
+test("地址变化只更新浅地址，不重拉列表；失活时暂停终端轮询", async () => {
+  const api = createClient();
+  const view = await renderCard({ api, props: { active: false, refreshIntervalMs: 20 } });
+  try {
+    const programs = api.calls.programs;
+    const terminals = api.calls.terminals;
+    await view.rerender({ initialProgram: "codex", initialSessionId: "ignored" });
+    assert.equal(api.calls.programs, programs, "initial props are mount-only");
+    assert.equal(api.calls.terminals, terminals, "initial props do not reset the card");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 70)); });
+    assert.equal(api.calls.terminals, terminals, "inactive cards pause polling");
+    await view.rerender({ active: true });
+    assert.equal(window.location.search, "?card=cli&program=cursor&session=cursor-live");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    assert.ok(api.calls.terminals > terminals, "active cards resume polling");
+  } finally {
+    view.cleanup();
+  }
+});
