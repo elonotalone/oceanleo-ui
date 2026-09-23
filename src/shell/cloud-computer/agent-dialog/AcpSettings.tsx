@@ -9,6 +9,7 @@ import {
   type OceanleoAgentStatus,
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
+import { ConfirmDialog } from "../../../ui";
 import { tone } from "../server-page/tone";
 import { PROGRAM_LABEL, type AgentProgram, type WsProgram } from "./types";
 import type { AgentDialogControllerV2 } from "./useAgentDialogController";
@@ -86,6 +87,7 @@ export function AcpSettings({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState<BooleanSetting | "uninstall" | "">("");
   const [error, setError] = useState("");
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
   const loadGeneration = useRef(0);
 
   useEffect(() => {
@@ -106,7 +108,7 @@ export function AcpSettings({
     return () => {
       loadGeneration.current += 1;
     };
-  }, [computerId, open, tt]);
+  }, [computerId, open]);
 
   const otherConfig = useMemo(
     () =>
@@ -138,8 +140,8 @@ export function AcpSettings({
   }
 
   async function uninstallLocalAgent() {
+    setConfirmUninstall(false);
     if (saving || !oceanleoStatus?.installed) return;
-    if (!window.confirm(tt("卸载这台服务器上的 OceanLeo agent？"))) return;
     setSaving("uninstall");
     setError("");
     try {
@@ -357,7 +359,7 @@ export function AcpSettings({
               <button
                 type="button"
                 disabled={Boolean(saving)}
-                onClick={() => void uninstallLocalAgent()}
+                onClick={() => setConfirmUninstall(true)}
                 className={`mt-3 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
                 data-oceanleo-acp-uninstall=""
               >
@@ -373,6 +375,15 @@ export function AcpSettings({
           ) : null}
         </div>
       </section>
+      {confirmUninstall ? (
+        <ConfirmDialog
+          title="卸载这台服务器上的 OceanLeo agent？"
+          confirmLabel="卸载"
+          danger
+          onConfirm={() => void uninstallLocalAgent()}
+          onCancel={() => setConfirmUninstall(false)}
+        />
+      ) : null}
     </div>
   );
 }
