@@ -139,6 +139,8 @@ function mapOpenTurn(
   const messages = state.messages.slice();
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
+    // 回放（I6 `replay:true`）不发 done：一条用户消息之前的轮次不再接收后续回复。
+    if (message.kind === "user") break;
     if (message.kind === "turn" && !message.stop) {
       messages[index] = { ...message, items: update(message.items) };
       return { ...state, messages };
