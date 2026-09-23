@@ -74,7 +74,13 @@ function ToggleField({
   );
 }
 
-export function AppearancePanel({ className = "" }: { className?: string }) {
+export function AppearancePanel({
+  className = "",
+  framed = true,
+}: {
+  className?: string;
+  framed?: boolean;
+}) {
   const tt = useUI();
   const [appearance, setAppearance] = useTerminalAppearance();
   const update = <K extends keyof TerminalAppearance,>(
@@ -84,7 +90,7 @@ export function AppearancePanel({ className = "" }: { className?: string }) {
 
   return (
     <div
-      className={`grid gap-3 rounded-xl border p-3 ${tone.border} ${tone.panel} ${className}`}
+      className={`grid gap-3 ${framed ? `rounded-lg border p-3 ${tone.border} ${tone.panel}` : ""} ${className}`}
       data-oceanleo-terminal-appearance=""
     >
       <h3 className="text-sm font-semibold">{tt("外观设置")}</h3>

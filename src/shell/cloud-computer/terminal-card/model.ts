@@ -38,7 +38,7 @@ export function shellTerminalRecords(
   records: readonly TerminalRecord[],
 ): TerminalRecord[] {
   return sortTerminalRecords(
-    records.filter((record) => record.kind !== "cli"),
+    records.filter((record) => record.kind !== "cli" && record.program == null),
   );
 }
 
@@ -49,7 +49,9 @@ export function runningCliTerminals(
   return sortTerminalRecords(
     records.filter(
       (record) =>
-        record.kind === "cli" && record.program === program && record.alive,
+        // Older nodes returned CLI sessions with a shell kind. The program id
+        // is the stable discriminator and keeps a successful launch selectable.
+        record.program === program && record.alive,
     ),
   );
 }

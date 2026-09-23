@@ -7,8 +7,13 @@ export const tone = {
   muted: "text-zinc-500 dark:text-neutral-400",
   faint: "text-zinc-400 dark:text-neutral-500",
   hover: "hover:bg-zinc-100 dark:hover:bg-neutral-800",
-  chip: "bg-zinc-100 text-zinc-700 dark:bg-neutral-800 dark:text-neutral-100",
-  chipActive: "bg-zinc-900 text-white dark:bg-neutral-100 dark:text-neutral-900",
+  chip: "bg-transparent text-zinc-600 dark:text-neutral-400",
+  chipActive: "bg-transparent text-zinc-900 dark:text-neutral-100",
+  iconBtn:
+    "inline-flex size-8 items-center justify-center rounded text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100",
+  tab: "inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent px-1 text-sm text-zinc-500 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-400 dark:hover:text-neutral-100",
+  tabActive:
+    "inline-flex h-9 items-center gap-1.5 border-b-2 border-zinc-900 px-1 text-sm text-zinc-900 disabled:cursor-not-allowed dark:border-neutral-100 dark:text-neutral-100",
   rowActive: "bg-zinc-100 dark:bg-neutral-800",
   input: "bg-white border-zinc-300 text-zinc-900 placeholder:text-zinc-400 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder:text-neutral-500",
   primary: "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white",

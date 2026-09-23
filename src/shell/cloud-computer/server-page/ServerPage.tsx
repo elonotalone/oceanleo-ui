@@ -24,6 +24,12 @@ import {
   serverPageHref,
   type ServerPageCard,
 } from "./href";
+import {
+  IconBack,
+  IconChat,
+  IconCli,
+  IconTerminal,
+} from "./chrome-icons";
 import { tone } from "./tone";
 
 const CARD_ORDER: readonly ServerPageCard[] = ["acp", "cli", "terminal"];
@@ -34,18 +40,23 @@ const CARD_COPY: Record<
 > = {
   acp: {
     title: "AI 对话",
-    description: "用聊天让 AI 在这台服务器上做事。",
+    description: "聊天代理",
   },
   cli: {
     title: "AI 命令行",
-    description:
-      "在终端里用这些 AI 程序的原版界面，功能最全，比如 /model。",
+    description: "原版 AI 命令行",
   },
   terminal: {
     title: "终端",
-    description: "最原始的命令行。",
+    description: "Shell 终端",
   },
 };
+
+function CardGlyph({ card }: { card: ServerPageCard }) {
+  if (card === "acp") return <IconChat />;
+  if (card === "cli") return <IconCli />;
+  return <IconTerminal />;
+}
 
 type UpgradeState = "idle" | "running" | "complete" | "failed";
 type StartState = "idle" | "running" | "requested" | "failed";
@@ -71,6 +82,13 @@ function statusWord(
   if (state === "stopped") return tt("已停机");
   if (state === "unpaid") return tt("欠费");
   return tt("未接入");
+}
+
+function statusDotTone(state: ComputerDisplayState): string {
+  if (state === "ready") return "bg-emerald-500";
+  if (state === "offline") return "bg-amber-500";
+  if (state === "stopped" || state === "unpaid") return "bg-rose-500";
+  return "bg-zinc-400 dark:bg-neutral-600";
 }
 
 function unavailableReason(
@@ -285,34 +303,76 @@ function ServerPageContent({
 
   return (
     <main
-      className={`min-h-screen px-4 py-4 sm:px-6 lg:px-8 ${tone.page}`}
+      className={`min-h-screen px-4 py-3 sm:px-6 lg:px-8 ${tone.page}`}
       data-oceanleo-server-page={computer.id}
       data-oceanleo-server-state={state}
     >
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-[96rem] flex-col">
+      <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[96rem] flex-col">
         <header
-          className={`flex flex-wrap items-center gap-3 border-b pb-4 ${tone.border}`}
+          className={`flex h-12 items-center gap-2 border-b ${tone.border}`}
         >
           <a
             href="/"
-            className={`rounded-lg px-2 py-1 text-sm ${tone.hover} ${tone.muted}`}
+            aria-label={tt("返回首页")}
+            title={tt("返回首页")}
+            className={tone.iconBtn}
           >
-            ← {tt("返回首页")}
+            <IconBack />
           </a>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold">{computer.name}</h1>
+          <h1 className="min-w-0 truncate text-sm font-medium">
+            {computer.name}
+          </h1>
+          <span
+            className="inline-flex items-center"
+            data-oceanleo-server-status={state}
+            title={statusWord(state, tt)}
+          >
             <span
-              className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs ${tone.chip}`}
-              data-oceanleo-server-status={state}
+              aria-hidden="true"
+              className={`size-1.5 rounded-full ${statusDotTone(state)}`}
+            />
+            <span className="sr-only">{statusWord(state, tt)}</span>
+          </span>
+          <div className="min-w-0 flex-1" />
+          {showUpgrade ? (
+            <div
+              className={`flex shrink-0 items-center gap-2 text-xs ${
+                upgradeState === "failed"
+                  ? "text-rose-700 dark:text-rose-300"
+                  : upgradeState === "complete"
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : tone.muted
+              }`}
+              data-oceanleo-node-upgrade={upgradeState}
+              role={upgradeState === "failed" ? "alert" : "status"}
             >
-              {statusWord(state, tt)}
-            </span>
-          </div>
+              <span className="sr-only sm:not-sr-only">
+                {upgradeState === "running"
+                  ? tt("正在更新节点…")
+                  : upgradeState === "complete"
+                    ? tt("节点更新完成")
+                    : upgradeState === "failed"
+                      ? tt("更新失败，请稍后重试。")
+                      : tt("节点有可用更新")}
+              </span>
+              {nodeInfo?.update_available && upgradeState !== "complete" ? (
+                <button
+                  type="button"
+                  className="text-xs underline-offset-2 hover:underline disabled:opacity-50"
+                  disabled={upgradeState === "running"}
+                  onClick={() => setConfirmUpgrade(true)}
+                  data-oceanleo-node-upgrade-action
+                >
+                  {tt("更新")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {connected.length > 1 ? (
             <label className="shrink-0">
               <span className="sr-only">{tt("切换服务器")}</span>
               <select
-                className={`max-w-[14rem] rounded-lg border px-3 py-2 text-sm ${tone.input}`}
+                className={`max-w-[12rem] border-0 bg-transparent py-1 text-sm ${tone.input}`}
                 aria-label={tt("切换服务器")}
                 value={
                   connected.some((item) => item.id === computer.id)
@@ -344,44 +404,12 @@ function ServerPageContent({
           ) : null}
         </header>
 
-        {showUpgrade ? (
-          <section
-            className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm ${
-              upgradeState === "failed" ? tone.danger : tone.warn
-            }`}
-            data-oceanleo-node-upgrade={upgradeState}
-          >
-            <span className="min-w-0 flex-1">
-              {upgradeState === "running"
-                ? tt("正在更新节点…")
-                : upgradeState === "complete"
-                  ? tt("节点更新完成")
-                  : upgradeState === "failed"
-                    ? tt("更新失败，请稍后重试。")
-                    : tt("节点有新版本 {version}", {
-                        version: nodeInfo?.latest_version || "",
-                      })}
-            </span>
-            {nodeInfo?.update_available && upgradeState !== "complete" ? (
-              <button
-                type="button"
-                className={`rounded-lg px-3 py-1.5 font-medium ${tone.primary}`}
-                disabled={upgradeState === "running"}
-                onClick={() => setConfirmUpgrade(true)}
-                data-oceanleo-node-upgrade-action
-              >
-                {tt("更新")}
-              </button>
-            ) : null}
-          </section>
-        ) : null}
-
-        <div className="min-h-0 flex-1 pt-5">
+        <div className="flex min-h-0 flex-1 flex-col">
           {card ? (
             <>
               <nav
-                className="mb-4 flex flex-wrap gap-2"
-                aria-label={tt("在这台服务器上做什么？")}
+                className={`flex items-center gap-5 border-b ${tone.border}`}
+                aria-label={tt("选择工作方式")}
                 data-oceanleo-server-card-tabs
               >
                 {CARD_ORDER.map((item) => (
@@ -389,18 +417,17 @@ function ServerPageContent({
                     key={item}
                     type="button"
                     disabled={!available}
-                    className={`rounded-full px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                      card === item ? tone.chipActive : `${tone.chip} ${tone.hover}`
-                    }`}
+                    className={card === item ? tone.tabActive : tone.tab}
                     onClick={() => openCard(item, true)}
                     data-oceanleo-server-tab={item}
                   >
+                    <CardGlyph card={item} />
                     {tt(CARD_COPY[item].title)}
                   </button>
                 ))}
               </nav>
               {available ? (
-                <div data-oceanleo-server-card={card}>
+                <div className="min-h-0 flex-1 pt-3" data-oceanleo-server-card={card}>
                   {card === "acp" ? (
                     <AcpCard
                       computer={computer}
@@ -431,12 +458,15 @@ function ServerPageContent({
               )}
             </>
           ) : (
-            <section aria-labelledby="server-page-title">
-              <h2 id="server-page-title" className="text-xl font-semibold">
-                {tt("在这台服务器上做什么？")}
+            <section
+              aria-labelledby="server-page-title"
+              className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center"
+            >
+              <h2 id="server-page-title" className="sr-only">
+                {tt("选择工作方式")}
               </h2>
               <div
-                className="mt-5 grid gap-4 md:grid-cols-3"
+                className={`divide-y ${tone.divide}`}
                 data-oceanleo-server-card-picker
               >
                 {CARD_ORDER.map((item) => (
@@ -444,21 +474,20 @@ function ServerPageContent({
                     key={item}
                     type="button"
                     disabled={!available}
-                    className={`min-h-44 rounded-2xl border p-5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${tone.border} ${tone.panel} ${tone.hover}`}
+                    title={tt(CARD_COPY[item].description)}
+                    className={`flex h-12 w-full items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-40 ${tone.hover}`}
                     onClick={() => openCard(item)}
                     data-oceanleo-server-card-choice={item}
                   >
-                    <span className="block text-lg font-semibold">
-                      {tt(CARD_COPY[item].title)}
+                    <span className={tone.muted}>
+                      <CardGlyph card={item} />
                     </span>
-                    <span className={`mt-3 block text-sm leading-6 ${tone.muted}`}>
-                      {tt(CARD_COPY[item].description)}
-                    </span>
+                    <span className="text-sm">{tt(CARD_COPY[item].title)}</span>
                   </button>
                 ))}
               </div>
               {!available ? (
-                <div className="mt-4">
+                <div className="mt-6">
                   <UnavailablePanel
                     computer={computer}
                     state={state}
@@ -501,16 +530,16 @@ function UnavailablePanel({
   const canStart = state === "stopped" && computer.source === "aliyun";
   return (
     <section
-      className={`rounded-xl border p-4 text-sm ${tone.border} ${tone.panel}`}
+      className="px-1 py-4 text-sm"
       data-oceanleo-server-unavailable={state}
     >
-      <p>{unavailableReason(state, tt)}</p>
+      <p className={tone.muted}>{unavailableReason(state, tt)}</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {canStart ? (
           <button
             type="button"
             disabled={startState === "running"}
-            className={`rounded-lg px-3 py-2 font-medium ${tone.primary}`}
+            className="text-sm underline-offset-2 hover:underline"
             onClick={() => void onStart()}
             data-oceanleo-server-start
           >
@@ -519,7 +548,7 @@ function UnavailablePanel({
         ) : state !== "unpaid" ? (
           <a
             href="/devices?tab=cloud"
-            className={`rounded-lg px-3 py-2 font-medium ${tone.chip} ${tone.hover}`}
+            className={`text-sm underline-offset-2 hover:underline ${tone.muted}`}
           >
             {tt("查看我的设备")}
           </a>

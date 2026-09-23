@@ -10,6 +10,7 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
+import { IconClose, IconPlus, IconSettings } from "../server-page/chrome-icons";
 import { serverPageHref } from "../server-page/href";
 import { tone } from "../server-page/tone";
 import { AppearancePanel } from "./AppearancePanel";
@@ -25,6 +26,8 @@ export type TerminalCardProps = {
   client?: CloudComputerClient;
   refreshIntervalMs?: number;
 };
+
+type NoticeKind = "info" | "error";
 
 export function TerminalCard({
   computer,
@@ -44,6 +47,7 @@ export function TerminalCard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeKind, setNoticeKind] = useState<NoticeKind>("info");
   const [failed, setFailed] = useState(false);
 
   const terminals = useMemo(() => {
@@ -56,10 +60,15 @@ export function TerminalCard({
     [selectedId, terminals],
   );
 
-  const showNotice = useCallback((message: string) => {
+  const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     setNotice(message);
+    setNoticeKind(kind);
     window.setTimeout(() => {
-      setNotice((current) => (current === message ? null : current));
+      setNotice((current) => {
+        if (current !== message) return current;
+        setNoticeKind("info");
+        return null;
+      });
     }, 3_000);
   }, []);
 
@@ -125,7 +134,7 @@ export function TerminalCard({
       setFailed(false);
       await refresh();
     } catch {
-      showNotice(tt("新终端创建失败，请稍后重试。"));
+      showNotice(tt("新终端创建失败，请稍后重试。"), "error");
     } finally {
       setBusyId(null);
     }
@@ -140,7 +149,7 @@ export function TerminalCard({
         showNotice(tt("已关闭，记录保留"));
         await refresh();
       } catch {
-        showNotice(tt("终端关闭失败，请稍后重试。"));
+        showNotice(tt("终端关闭失败，请稍后重试。"), "error");
       } finally {
         setBusyId(null);
       }
@@ -159,7 +168,7 @@ export function TerminalCard({
         showNotice(tt("终端记录已删除"));
         await refresh();
       } catch {
-        showNotice(tt("终端记录删除失败，请稍后重试。"));
+        showNotice(tt("终端记录删除失败，请稍后重试。"), "error");
       } finally {
         setBusyId(null);
       }
@@ -169,38 +178,63 @@ export function TerminalCard({
 
   return (
     <section
-      className={`flex min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-2xl border ${tone.border} ${tone.panel}`}
+      aria-label={tt("终端")}
+      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden border ${tone.border} ${tone.panel}`}
       data-oceanleo-terminal-card=""
       data-initial-session={initialSessionId || undefined}
     >
-      <header className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${tone.border}`}>
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">{tt("终端")}</h2>
-          <p className={`truncate text-xs ${tone.muted}`}>{computer.name}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs ${computer.node_online ? "text-emerald-600 dark:text-emerald-400" : tone.muted}`}>
-            {tt(computer.node_online ? "在线" : "离线")}
-          </span>
-          <button
-            type="button"
-            className={`rounded-lg px-2 py-1 text-sm ${showAppearance ? tone.chipActive : tone.chip}`}
-            aria-label={tt("外观设置")}
-            aria-expanded={showAppearance}
-            data-oceanleo-terminal-appearance-toggle=""
-            onClick={() => setShowAppearance((open) => !open)}
-          >
-            ⚙
-          </button>
-        </div>
+      <header className={`flex items-center justify-end border-b px-3 py-2 ${tone.border}`}>
+        <button
+          type="button"
+          className={tone.iconBtn}
+          aria-label={tt("外观设置")}
+          title={tt("外观设置")}
+          aria-expanded={showAppearance}
+          data-oceanleo-terminal-appearance-toggle=""
+          onClick={() => setShowAppearance((open) => !open)}
+        >
+          <IconSettings />
+        </button>
       </header>
       {showAppearance && (
-        <div className={`border-b p-3 ${tone.border}`}>
-          <AppearancePanel />
+        <div
+          className="absolute inset-0 z-20 bg-black/10"
+          data-oceanleo-terminal-appearance-overlay=""
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowAppearance(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="false"
+            aria-label={tt("外观设置")}
+            className={`absolute right-3 top-3 max-h-[90%] w-[min(28rem,90%)] overflow-y-auto rounded-lg border p-4 shadow-xl ${tone.border} ${tone.page}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            data-oceanleo-terminal-appearance-panel=""
+          >
+            <header className={`mb-3 flex items-center justify-between gap-3 border-b pb-3 ${tone.border}`}>
+              <h3 className="text-sm font-semibold">{tt("外观设置")}</h3>
+              <button
+                type="button"
+                className={`rounded-md p-2 text-base leading-none ${tone.hover} ${tone.muted}`}
+                aria-label={tt("关闭")}
+                title={tt("关闭")}
+                onClick={() => setShowAppearance(false)}
+                data-oceanleo-terminal-appearance-close=""
+              >
+                <IconClose />
+              </button>
+            </header>
+            <AppearancePanel framed={false} />
+          </section>
         </div>
       )}
       {notice && (
-        <div className={`border-b px-4 py-2 text-xs ${tone.warn}`} role="status">
+        <div
+          className={`border-b px-4 py-2 text-xs ${noticeKind === "error" ? tone.danger : `${tone.panel} ${tone.muted}`}`}
+          role={noticeKind === "error" ? "alert" : "status"}
+          data-oceanleo-terminal-notice=""
+        >
           {notice}
         </div>
       )}
@@ -209,11 +243,12 @@ export function TerminalCard({
           <div className={`border-b p-2 ${tone.border}`}>
             <button
               type="button"
-              className={`w-full rounded-lg px-3 py-2 text-left text-xs font-medium ${tone.primary} disabled:cursor-not-allowed disabled:opacity-50`}
+              className="inline-flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!computer.node_online || busyId !== null}
               data-oceanleo-new-terminal=""
               onClick={() => void openTerminal()}
             >
+              <IconPlus className="size-3.5" />
               {busyId === "new" ? tt("正在创建…") : tt("+ 新终端")}
             </button>
           </div>
@@ -266,7 +301,7 @@ export function TerminalCard({
                         disabled={busyId !== null}
                         onClick={() => void closeTerminal(record.id)}
                       >
-                        ×
+                        <IconClose className="size-3.5" />
                       </button>
                     ) : (
                       <details className="relative m-1" data-oceanleo-record-menu="">
@@ -294,7 +329,7 @@ export function TerminalCard({
             </div>
             {!recordsSupported && (
               <p
-                className={`mt-3 rounded-lg border px-2 py-2 text-[11px] ${tone.warn}`}
+                className={`mt-3 px-2 py-2 text-[11px] ${tone.muted}`}
                 data-oceanleo-records-unsupported=""
               >
                 {tt("更新节点程序后才能保留终端记录")}
@@ -304,7 +339,7 @@ export function TerminalCard({
         </aside>
         <main className="flex min-w-0 flex-1 flex-col">
           {failed && (
-            <div className={`border-b px-3 py-2 text-xs ${tone.warn}`} role="alert">
+            <div className={`border-b px-3 py-2 text-xs ${tone.danger}`} role="alert">
               {tt("终端列表读取失败，请稍后重试。")}
             </div>
           )}
@@ -340,10 +375,11 @@ export function TerminalCard({
                 <p>{tt("选择一个终端，或新建终端。")}</p>
                 <button
                   type="button"
-                  className={`mt-3 rounded-lg px-3 py-2 text-xs ${tone.primary} disabled:opacity-50`}
+                  className="mt-3 inline-flex items-center gap-2 text-xs underline-offset-2 hover:underline disabled:opacity-50"
                   disabled={!computer.node_online || busyId !== null}
                   onClick={() => void openTerminal()}
                 >
+                  <IconPlus className="size-3.5" />
                   {tt("+ 新终端")}
                 </button>
               </div>

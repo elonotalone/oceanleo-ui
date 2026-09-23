@@ -337,7 +337,9 @@ test("选择页四态：已安装（版本）/ 未安装（安装）/ 未登录�
     assert.ok(view.$('[data-oceanleo-acp-picker-key="claude"]'));
 
     assert.ok(view.$('[data-oceanleo-acp-agent="oceanleo"] [data-oceanleo-acp-agent-state="cloud"]'));
-    assert.match(view.$("[data-oceanleo-acp-oceanleo-banner]").textContent, /在这台服务器上安装 OceanLeo agent：本地运行、按用量从余额扣费/);
+    const installBanner = view.$("[data-oceanleo-acp-oceanleo-banner]");
+    assert.match(installBanner.textContent, /安装/);
+    assert.equal(installBanner.closest('[data-oceanleo-acp-agent="oceanleo"]') !== null, true);
 
     await click(view.$('[data-oceanleo-acp-picker-login="claude"]'));
     await until(() => sentFrames().some((frame) => frame.t === "login" && frame.program === "claude"), "login frame");

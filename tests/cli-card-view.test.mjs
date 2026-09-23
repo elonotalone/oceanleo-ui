@@ -366,3 +366,42 @@ test("不支持读取 CLI 历史时显示明确提示", async () => {
     view.cleanup();
   }
 });
+
+test("旧节点缺少 CLI kind 时，启动后的会话仍保持可见", async () => {
+  const api = createClient();
+  const listTerminals = api.listTerminalsWithRecords;
+  const launchCli = api.launchCli;
+  api.listTerminalsWithRecords = async (...args) => {
+    const result = await listTerminals(...args);
+    return {
+      ...result,
+      sessions: result.sessions.map((session) =>
+        session.id.startsWith("launched-")
+          ? { ...session, kind: "shell", program: null }
+          : session,
+      ),
+    };
+  };
+  api.launchCli = async (...args) => {
+    const result = await launchCli(...args);
+    return {
+      session: { ...result.session, kind: "shell", program: null },
+    };
+  };
+  const view = await renderCard({ api });
+  try {
+    const open = view.host.querySelector("[data-oceanleo-new-cli-chat]");
+    assert.ok(open);
+    await act(async () => open.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    assert.equal(
+      view.host.querySelector("[data-test-cli-viewport]")?.getAttribute(
+        "data-test-cli-viewport",
+      ),
+      "launched-1",
+    );
+    assert.ok(view.host.querySelector('[data-oceanleo-cli-running="launched-1"]'));
+  } finally {
+    view.cleanup();
+  }
+});

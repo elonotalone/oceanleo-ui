@@ -57,9 +57,9 @@ export function CliSettingsPanel({
     settings.confirmDangerous ?? serverConfirmDangerous;
 
   return (
-    <div className="grid gap-3" data-oceanleo-cli-settings={program.id}>
-      <div className={`rounded-xl border p-3 ${tone.border} ${tone.panel}`}>
-        <h3 className="text-sm font-semibold">{tt("AI 命令行设置")}</h3>
+    <div className="grid gap-4" data-oceanleo-cli-settings={program.id}>
+      <section className={`border-b pb-4 ${tone.border}`}>
+        <h3 className="sr-only">{tt("AI 命令行设置")}</h3>
         <p className={`mt-1 text-xs ${tone.muted}`}>
           {tt("这些设置将在下一次启动时生效。")}
         </p>
@@ -153,8 +153,8 @@ export function CliSettingsPanel({
             </label>
           )}
         </div>
-      </div>
-      <AppearancePanel />
+      </section>
+      <AppearancePanel framed={false} />
     </div>
   );
 }

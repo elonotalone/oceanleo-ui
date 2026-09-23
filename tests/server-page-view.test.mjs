@@ -230,11 +230,7 @@ test("服务器落地页按 AI 对话、AI 命令行、终端显示说明并进�
     );
     assert.deepEqual(
       choices.map((node) => (node.textContent || "").replace(/\s+/g, " ").trim()),
-      [
-        "AI 对话用聊天让 AI 在这台服务器上做事。",
-        "AI 命令行在终端里用这些 AI 程序的原版界面，功能最全，比如 /model。",
-        "终端最原始的命令行。",
-      ],
+      ["AI 对话", "AI 命令行", "终端"],
     );
     await act(async () => {
       choices[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -417,7 +413,7 @@ test("节点升级先确认，再请求升级并轮询到在线且版本变化",
   });
   const view = await renderPage({ api });
   try {
-    assert.match(view.host.textContent || "", /节点有新版本 v2/);
+    assert.match(view.host.textContent || "", /节点有可用更新/);
     const action = view.host.querySelector("[data-oceanleo-node-upgrade-action]");
     assert.ok(action);
     await act(async () => {

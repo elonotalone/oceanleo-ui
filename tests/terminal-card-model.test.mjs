@@ -60,7 +60,7 @@ function memoryStorage() {
   };
 }
 
-test("终端列表按活着优先、组内时间倒序，Shell 与 CLI 严格分组", () => {
+test("终端列表按活着优先、组内时间倒序，兼容旧节点的 CLI kind", () => {
   const rows = [
     record({
       id: "ended-old",
@@ -76,6 +76,12 @@ test("终端列表按活着优先、组内时间倒序，Shell 与 CLI 严格分
       program: "cursor",
       created_at: "2026-09-23T11:00:00Z",
     }),
+    record({
+      id: "legacy-cli-live",
+      kind: "shell",
+      program: "cursor",
+      created_at: "2026-09-23T11:30:00Z",
+    }),
     record({ id: "live-new", created_at: "2026-09-23T10:00:00Z" }),
     record({
       id: "ended-new",
@@ -87,7 +93,7 @@ test("终端列表按活着优先、组内时间倒序，Shell 与 CLI 严格分
 
   assert.deepEqual(
     sortTerminalRecords(rows).map((item) => item.id),
-    ["cli-live", "live-new", "live-old", "ended-new", "ended-old"],
+    ["legacy-cli-live", "cli-live", "live-new", "live-old", "ended-new", "ended-old"],
   );
   assert.deepEqual(
     shellTerminalRecords(rows).map((item) => item.id),
@@ -95,7 +101,7 @@ test("终端列表按活着优先、组内时间倒序，Shell 与 CLI 严格分
   );
   assert.deepEqual(
     runningCliTerminals(rows, "cursor").map((item) => item.id),
-    ["cli-live"],
+    ["legacy-cli-live", "cli-live"],
   );
   assert.deepEqual(runningCliTerminals(rows, "claude"), []);
 });

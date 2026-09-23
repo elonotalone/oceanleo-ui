@@ -9,6 +9,11 @@ import {
   type OceanleoAgentStatus,
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
+import {
+  IconChevron,
+  IconRefresh,
+  IconSettings,
+} from "../server-page/chrome-icons";
 import { serverPageHref } from "../server-page/href";
 import { tone } from "../server-page/tone";
 import { AcpSettings } from "./AcpSettings";
@@ -248,7 +253,8 @@ export function AcpCard({
 
   return (
     <section
-      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-2xl border text-zinc-900 dark:text-neutral-100 ${tone.border} ${tone.panel}`}
+      aria-label={tt("AI 对话")}
+      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden border text-zinc-900 dark:text-neutral-100 ${tone.border} ${tone.panel}`}
       data-oceanleo-acp-card=""
       data-oceanleo-acp-program={selected ?? ""}
     >
@@ -263,8 +269,8 @@ export function AcpCard({
                       type="button"
                       disabled={dialog.busy && selected !== program}
                       onClick={() => openProgram(program)}
-                      className={`rounded-lg px-2.5 py-1 text-xs disabled:opacity-40 ${
-                        selected === program ? tone.chipActive : `${tone.chip} ${tone.hover}`
+                      className={`px-1 py-1 text-xs disabled:opacity-40 ${
+                        selected === program ? "text-zinc-900 dark:text-neutral-100" : tone.muted
                       }`}
                       data-oceanleo-acp-agent-tab={program}
                     >
@@ -274,22 +280,23 @@ export function AcpCard({
                       type="button"
                       disabled={dialog.busy && selected !== program}
                       onClick={() => openSettings(program)}
-                      className={`rounded-md px-1.5 py-1 text-xs disabled:opacity-40 ${tone.hover} ${tone.muted}`}
+                      className={`${tone.iconBtn} size-7 disabled:opacity-40`}
                       aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
+                      title={tt("设置")}
                       data-oceanleo-acp-agent-settings={program}
                     >
-                      ⚙
+                      <IconSettings className="size-3.5" />
                     </button>
                   </span>
                 ))}
                 <button
                   type="button"
                   onClick={() => setAgentsExpanded(false)}
-                  className={`ml-auto rounded-lg px-2 py-1 text-xs ${tone.hover} ${tone.muted}`}
+                  className={`${tone.iconBtn} ml-auto size-7`}
                   aria-label={tt("收起")}
                   data-oceanleo-acp-agents-collapse=""
                 >
-                  ↑
+                  <IconChevron up className="size-3.5" />
                 </button>
               </div>
             ) : (
@@ -297,21 +304,22 @@ export function AcpCard({
                 <button
                   type="button"
                   onClick={() => setAgentsExpanded(true)}
-                  className={`flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium ${tone.hover}`}
+                  className={`flex min-w-0 items-center gap-2 px-1 py-1 text-sm ${tone.hover}`}
                   aria-label={tt("展开")}
                   data-oceanleo-acp-agents-expand=""
                 >
                   <span className="truncate">{PROGRAM_LABEL[selected]}</span>
-                  <span aria-hidden="true" className={tone.muted}>↓</span>
+                  <IconChevron className={`size-3.5 ${tone.muted}`} />
                 </button>
                 <button
                   type="button"
                   onClick={() => openSettings(selected)}
-                  className={`rounded-lg px-2 py-1.5 text-sm ${tone.hover} ${tone.muted}`}
+                  className={tone.iconBtn}
                   aria-label={`${PROGRAM_LABEL[selected]} · ${tt("设置")}`}
+                  title={tt("设置")}
                   data-oceanleo-acp-current-settings=""
                 >
-                  ⚙
+                  <IconSettings />
                 </button>
               </div>
             )}
@@ -326,12 +334,12 @@ export function AcpCard({
                 <p className={`text-xs font-medium ${tone.muted}`}>{tt("过去的对话")}</p>
                 <button
                   type="button"
-                  className={`rounded-md px-1.5 py-1 text-xs ${tone.hover} ${tone.muted}`}
+                  className={`${tone.iconBtn} size-7`}
                   onClick={dialog.requestSessions}
                   aria-label={tt("刷新")}
                   data-oceanleo-acp-sessions-refresh=""
                 >
-                  ↻
+                  <IconRefresh className="size-3.5" />
                 </button>
               </div>
               <button
@@ -340,10 +348,10 @@ export function AcpCard({
                   dialog.newSession();
                   replaceAddress(selected);
                 }}
-                className={`mt-3 w-full rounded-lg px-3 py-2 text-left text-sm font-medium ${tone.primary}`}
+                className="mt-3 w-full px-2 py-1.5 text-left text-sm"
                 data-oceanleo-acp-new-session=""
               >
-                + {tt("新对话")}
+                {tt("新对话")}
               </button>
               <div className="mt-3 space-y-1">
                 {dialog.sessionsSupported === false ? (
@@ -382,24 +390,24 @@ export function AcpCard({
 
             <div className="flex min-h-[28rem] min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (
-                <div className={`m-3 rounded-xl border px-3 py-2 text-xs ${tone.warn}`}>
+                <p className={`mx-3 mt-3 text-xs ${tone.muted}`}>
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}
-                </div>
+                </p>
               ) : selected !== "oceanleo" && (!currentWsRow?.installed || currentWsRow.logged_in === false) ? (
-                <div className={`m-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs ${tone.warn}`}>
+                <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs ${tone.border} ${tone.muted}`}>
                   <span className="min-w-0 flex-1">
                     {!currentWsRow?.installed ? tt("未安装") : tt("未登录")}
                   </span>
                   {!currentWsRow?.installed ? (
-                    <button type="button" className="underline" onClick={() => requestInstall(selected)}>
+                    <button type="button" className="underline-offset-2 hover:underline" onClick={() => requestInstall(selected)}>
                       {tt("安装")}
                     </button>
                   ) : (
                     <>
-                      <button type="button" className="underline" onClick={() => requestLogin(selected)}>
+                      <button type="button" className="underline-offset-2 hover:underline" onClick={() => requestLogin(selected)}>
                         {tt("登录")}
                       </button>
-                      <button type="button" className="underline" onClick={() => requestKey(selected)}>
+                      <button type="button" className="underline-offset-2 hover:underline" onClick={() => requestKey(selected)}>
                         {tt("Key")}
                       </button>
                     </>
@@ -416,76 +424,61 @@ export function AcpCard({
           </div>
         </>
       ) : (
-        <div className="p-5" data-oceanleo-acp-picker="">
-          <h2 className="text-lg font-semibold">{tt("AI 对话")}</h2>
-          <p className={`mt-1 text-sm ${tone.muted}`}>
-            {tt("选择在这台服务器上运行的 AI agent。")}
-          </p>
+        <div className="px-1" data-oceanleo-acp-picker="">
+          <h2 className="sr-only">{tt("AI 对话")}</h2>
 
-          {!oceanleoStatus?.installed ? (
-            <div className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border p-3 text-sm ${tone.warn}`} data-oceanleo-acp-oceanleo-banner="">
-              <span className="min-w-0 flex-1">
-                {tt("在这台服务器上安装 OceanLeo agent：本地运行、按用量从余额扣费")}
-              </span>
-              <button
-                type="button"
-                disabled={!oceanleoLoaded || oceanleoInstalling}
-                onClick={() => void installLocalAgent()}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${tone.primary}`}
-                data-oceanleo-acp-oceanleo-install=""
-              >
-                {oceanleoInstalling ? tt("正在安装…") : tt("安装")}
-              </button>
-            </div>
-          ) : null}
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className={`divide-y ${tone.divide}`}>
             {PROGRAMS.map((program) => {
               const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
               const canOpen = program === "oceanleo" || row?.installed === true;
               return (
                 <article
                   key={program}
-                  className={`rounded-xl border p-4 ${tone.border}`}
+                  className="flex items-center gap-3 py-2.5"
                   data-oceanleo-acp-agent={program}
                 >
-                  <div className="flex items-start gap-2">
-                    <button
-                      type="button"
-                      disabled={!canOpen}
-                      className={`min-w-0 flex-1 rounded-lg text-left disabled:cursor-not-allowed disabled:opacity-60 ${canOpen ? tone.hover : ""}`}
-                      onClick={() => openProgram(program)}
-                      data-oceanleo-acp-agent-open={program}
+                  <button
+                    type="button"
+                    disabled={!canOpen}
+                    className={`min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50 ${canOpen ? tone.hover : ""}`}
+                    onClick={() => openProgram(program)}
+                    data-oceanleo-acp-agent-open={program}
+                  >
+                    <span className="block text-sm">{PROGRAM_LABEL[program]}</span>
+                    <span className="mt-0.5 block">
+                      <ProgramState program={program} row={row} oceanleoStatus={oceanleoStatus} />
+                    </span>
+                  </button>
+                  {program === "oceanleo" && !oceanleoStatus?.installed ? (
+                    <div
+                      className="flex items-center"
+                      data-oceanleo-acp-oceanleo-banner=""
                     >
-                      <span className="block text-sm font-medium">{PROGRAM_LABEL[program]}</span>
-                      <span className="mt-2 block">
-                        <ProgramState program={program} row={row} oceanleoStatus={oceanleoStatus} />
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        disabled={!oceanleoLoaded || oceanleoInstalling}
+                        onClick={() => void installLocalAgent()}
+                        title={tt("在这台服务器上安装 OceanLeo agent：本地运行、按用量从余额扣费")}
+                        className="text-xs underline-offset-2 hover:underline disabled:opacity-50"
+                        data-oceanleo-acp-oceanleo-install=""
+                      >
+                        {oceanleoInstalling ? tt("正在安装…") : tt("安装")}
+                      </button>
+                    </div>
+                  ) : program !== "oceanleo" && !row?.installed ? (
                     <button
                       type="button"
-                      onClick={() => openSettings(program)}
-                      className={`rounded-lg px-2 py-1 text-sm ${tone.hover} ${tone.muted}`}
-                      aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
-                      data-oceanleo-acp-picker-settings={program}
-                    >
-                      ⚙
-                    </button>
-                  </div>
-                  {program !== "oceanleo" && !row?.installed ? (
-                    <button
-                      type="button"
-                      className={`mt-3 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                      className="text-xs underline-offset-2 hover:underline"
                       onClick={() => requestInstall(program)}
                       data-oceanleo-acp-picker-install={program}
                     >
                       {tt("安装")}
                     </button>
                   ) : program !== "oceanleo" && row?.logged_in === false ? (
-                    <div className="mt-3 flex gap-2">
+                    <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        className={`rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                        className="text-xs underline-offset-2 hover:underline"
                         onClick={() => requestLogin(program)}
                         data-oceanleo-acp-picker-login={program}
                       >
@@ -493,7 +486,7 @@ export function AcpCard({
                       </button>
                       <button
                         type="button"
-                        className={`rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                        className={`text-xs underline-offset-2 hover:underline ${tone.muted}`}
                         onClick={() => requestKey(program)}
                         data-oceanleo-acp-picker-key={program}
                       >
@@ -501,6 +494,16 @@ export function AcpCard({
                       </button>
                     </div>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => openSettings(program)}
+                    className={tone.iconBtn}
+                    aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
+                    title={tt("设置")}
+                    data-oceanleo-acp-picker-settings={program}
+                  >
+                    <IconSettings />
+                  </button>
                 </article>
               );
             })}

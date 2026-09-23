@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
@@ -11,6 +11,12 @@ import {
   type TerminalRecord,
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
+import {
+  IconChevron,
+  IconClose,
+  IconPlus,
+  IconSettings,
+} from "../server-page/chrome-icons";
 import { serverPageHref } from "../server-page/href";
 import { tone } from "../server-page/tone";
 import {
@@ -36,6 +42,17 @@ export type CliCardProps = {
   client?: CloudComputerClient;
   refreshIntervalMs?: number;
 };
+
+function normalizeCliRecord(record: TerminalRecord, program: string): TerminalRecord {
+  return {
+    ...record,
+    kind: "cli",
+    program,
+    alive: record.alive !== false,
+  };
+}
+
+type NoticeKind = "info" | "error";
 
 export function CliCard({
   computer,
@@ -66,6 +83,8 @@ export function CliCard({
   const [loadingChats, setLoadingChats] = useState(false);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeKind, setNoticeKind] = useState<NoticeKind>("info");
+  const legacyCliPrograms = useRef(new Map<string, string>());
 
   const selectedProgram = useMemo(
     () => programs.find((program) => program.id === programId) ?? null,
@@ -80,10 +99,15 @@ export function CliCard({
     [running, selectedSessionId],
   );
 
-  const showNotice = useCallback((message: string) => {
+  const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     setNotice(message);
+    setNoticeKind(kind);
     window.setTimeout(() => {
-      setNotice((current) => (current === message ? null : current));
+      setNotice((current) => {
+        if (current !== message) return current;
+        setNoticeKind("info");
+        return null;
+      });
     }, 3_000);
   }, []);
 
@@ -113,7 +137,13 @@ export function CliCard({
   const refreshTerminals = useCallback(async () => {
     try {
       const result = await client.listTerminalsWithRecords(computer.id);
-      setRecords(result.sessions || []);
+      setRecords(
+        (result.sessions || []).map((record) => {
+          const program =
+            record.program || legacyCliPrograms.current.get(record.id);
+          return program ? normalizeCliRecord(record, program) : record;
+        }),
+      );
     } catch {
       setFailed(true);
     }
@@ -201,15 +231,17 @@ export function CliCard({
           cols: 120,
           rows: 36,
         });
+        const session = normalizeCliRecord(result.session, selectedProgram.id);
+        legacyCliPrograms.current.set(session.id, selectedProgram.id);
         setRecords((current) => [
-          result.session,
-          ...current.filter((record) => record.id !== result.session.id),
+          session,
+          ...current.filter((record) => record.id !== session.id),
         ]);
-        setSelectedSessionId(result.session.id);
+        setSelectedSessionId(session.id);
         setFailed(false);
         await Promise.all([refreshTerminals(), refreshChats()]);
       } catch {
-        showNotice(tt("AI 命令行启动失败，请稍后重试。"));
+      showNotice(tt("AI 命令行启动失败，请稍后重试。"), "error");
       } finally {
         setBusy(null);
       }
@@ -236,7 +268,7 @@ export function CliCard({
         showNotice(tt("已关闭，记录保留"));
         await refreshTerminals();
       } catch {
-        showNotice(tt("终端关闭失败，请稍后重试。"));
+        showNotice(tt("终端关闭失败，请稍后重试。"), "error");
       } finally {
         setBusy(null);
       }
@@ -255,7 +287,7 @@ export function CliCard({
           [programId]: result.enabled,
         }));
       } catch {
-        showNotice(tt("OceanLeo 工具设置失败，请稍后重试。"));
+        showNotice(tt("OceanLeo 工具设置失败，请稍后重试。"), "error");
       } finally {
         setToolsBusy(false);
       }
@@ -269,29 +301,26 @@ export function CliCard({
 
   return (
     <section
-      className={`flex min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-2xl border ${tone.border} ${tone.panel}`}
+      aria-label={tt("AI 命令行")}
+      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden border ${tone.border} ${tone.panel}`}
       data-oceanleo-cli-card=""
       data-initial-program={initialProgram || undefined}
       data-initial-session={initialSessionId || undefined}
     >
-      <header className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${tone.border}`}>
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">{tt("AI 命令行")}</h2>
-          <p className={`truncate text-xs ${tone.muted}`}>{computer.name}</p>
-        </div>
-        <span className={`text-xs ${computer.node_online ? "text-emerald-600 dark:text-emerald-400" : tone.muted}`}>
-          {tt(computer.node_online ? "在线" : "离线")}
-        </span>
-      </header>
       <div className={`flex items-center gap-2 border-b px-3 py-2 ${tone.border}`}>
         <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" data-oceanleo-cli-programs="">
           {visiblePrograms.map((program) => (
             <button
               key={program.id}
               type="button"
-              className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs ${program.id === programId ? tone.chipActive : tone.chip}`}
+              className={`shrink-0 border-b-2 px-2 py-1.5 text-xs ${
+                program.id === programId
+                  ? "border-zinc-900 text-zinc-900 dark:border-neutral-100 dark:text-neutral-100"
+                  : `border-transparent ${tone.muted}`
+              }`}
               data-oceanleo-cli-program={program.id}
               data-installed={program.installed ? "1" : "0"}
+              title={!program.installed ? tt("未安装") : undefined}
               onClick={() => {
                 setProgramId(program.id);
                 setSelectedSessionId(null);
@@ -299,7 +328,10 @@ export function CliCard({
             >
               {program.label}
               {!program.installed && (
-                <span className="ml-1 opacity-70">· {tt("未安装")}</span>
+                <span
+                  aria-hidden="true"
+                  className="ml-1 inline-block size-1.5 rounded-full bg-amber-500 align-middle"
+                />
               )}
             </button>
           ))}
@@ -309,44 +341,77 @@ export function CliCard({
         </div>
         <button
           type="button"
-          className={`shrink-0 rounded-lg px-2 py-1.5 text-xs ${tone.chip}`}
+          className={tone.iconBtn}
           aria-label={tt(programsCollapsed ? "展开程序列表" : "收起程序列表")}
           aria-expanded={!programsCollapsed}
           data-oceanleo-cli-programs-toggle=""
           onClick={() => setProgramsCollapsed((collapsed) => !collapsed)}
         >
-          {programsCollapsed ? "⌄" : "⌃"}
+          <IconChevron up={!programsCollapsed} />
         </button>
         <button
           type="button"
-          className={`shrink-0 rounded-lg px-2 py-1.5 text-sm ${showSettings ? tone.chipActive : tone.chip}`}
+          className={tone.iconBtn}
           aria-label={tt("AI 命令行设置")}
+          title={tt("AI 命令行设置")}
           aria-expanded={showSettings}
           data-oceanleo-cli-settings-toggle=""
           onClick={() => setShowSettings((open) => !open)}
         >
-          ⚙
+          <IconSettings />
         </button>
       </div>
-      {showSettings && selectedProgram && (
-        <div className={`max-h-[28rem] overflow-y-auto border-b p-3 ${tone.border}`}>
-          <CliSettingsPanel
-            key={`${computer.id}:${selectedProgram.id}`}
-            computerId={computer.id}
-            program={selectedProgram}
-            serverConfirmDangerous={serverConfirmDangerous}
-            toolsEnabled={
-              isCliToolProgram(selectedProgram.id)
-                ? cliTools[selectedProgram.id]
-                : undefined
-            }
-            toolsBusy={toolsBusy}
-            onToolsEnabledChange={(enabled) => void toggleCliTools(enabled)}
-          />
+      {showSettings && selectedProgram ? (
+        <div
+          className="absolute inset-0 z-20 bg-black/10"
+          data-oceanleo-cli-settings-overlay=""
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowSettings(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="false"
+            aria-label={tt("AI 命令行设置")}
+            className={`absolute right-3 top-3 flex max-h-[90%] w-[min(28rem,90%)] flex-col overflow-y-auto rounded-lg border p-4 shadow-xl ${tone.border} ${tone.page}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            data-oceanleo-cli-settings-panel=""
+          >
+            <header className={`mb-3 flex items-center justify-between gap-3 border-b pb-3 ${tone.border}`}>
+              <h3 className="text-sm font-semibold">{tt("AI 命令行设置")}</h3>
+              <button
+                type="button"
+                className={`rounded-md p-2 text-base leading-none ${tone.hover} ${tone.muted}`}
+                aria-label={tt("关闭")}
+                title={tt("关闭")}
+                onClick={() => setShowSettings(false)}
+                data-oceanleo-cli-settings-close=""
+              >
+                <IconClose />
+              </button>
+            </header>
+            <CliSettingsPanel
+              key={`${computer.id}:${selectedProgram.id}`}
+              computerId={computer.id}
+              program={selectedProgram}
+              serverConfirmDangerous={serverConfirmDangerous}
+              toolsEnabled={
+                isCliToolProgram(selectedProgram.id)
+                  ? cliTools[selectedProgram.id]
+                  : undefined
+              }
+              toolsBusy={toolsBusy}
+              onToolsEnabledChange={(enabled) => void toggleCliTools(enabled)}
+            />
+          </section>
         </div>
-      )}
+      ) : null}
       {notice && (
-        <div className={`border-b px-4 py-2 text-xs ${tone.warn}`} role="status">
+        <div
+          className={`border-b px-4 py-2 text-xs ${noticeKind === "error" ? tone.danger : `${tone.panel} ${tone.muted}`}`}
+          role={noticeKind === "error" ? "alert" : "status"}
+          data-oceanleo-cli-notice=""
+        >
           {notice}
         </div>
       )}
@@ -355,12 +420,13 @@ export function CliCard({
           <div className={`border-b p-2 ${tone.border}`}>
             <button
               type="button"
-              className={`w-full rounded-lg px-3 py-2 text-left text-xs font-medium ${tone.primary} disabled:cursor-not-allowed disabled:opacity-50`}
+              className="inline-flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!computer.node_online || !selectedProgram?.installed || busy !== null}
               data-oceanleo-new-cli-chat=""
               onClick={() => void launch()}
             >
-              {busy === "new" ? tt("正在启动…") : tt("+ 新对话")}
+              <IconPlus className="size-3.5" />
+              {busy === "new" ? tt("正在启动…") : tt("打开命令行")}
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -393,7 +459,7 @@ export function CliCard({
                     disabled={busy !== null}
                     onClick={() => void closeTerminal(record.id)}
                   >
-                    ×
+                    <IconClose className="size-3.5" />
                   </button>
                 </div>
               ))}
@@ -435,7 +501,7 @@ export function CliCard({
               </div>
             ) : (
               <p
-                className={`mx-2 rounded-lg border px-2 py-2 text-[11px] ${tone.warn}`}
+                className={`mx-2 px-2 py-2 text-[11px] ${tone.muted}`}
                 data-oceanleo-cli-history-unsupported=""
               >
                 {tt("这个程序不支持读取过去的命令行对话")}
@@ -445,7 +511,7 @@ export function CliCard({
         </aside>
         <main className="flex min-w-0 flex-1 flex-col">
           {failed && (
-            <div className={`border-b px-3 py-2 text-xs ${tone.warn}`} role="alert">
+            <div className={`border-b px-3 py-2 text-xs ${tone.danger}`} role="alert">
               {tt("AI 命令行信息读取失败，请稍后重试。")}
             </div>
           )}
@@ -457,7 +523,7 @@ export function CliCard({
                 </p>
                 <button
                   type="button"
-                  className={`mt-3 rounded-lg px-3 py-2 text-xs ${tone.primary}`}
+                  className="mt-3 text-xs underline-offset-2 hover:underline"
                   data-oceanleo-cli-install={selectedProgram.id}
                   onClick={() =>
                     router.push(
@@ -482,14 +548,15 @@ export function CliCard({
           ) : (
             <div className={`grid min-h-[24rem] flex-1 place-items-center p-6 text-center text-sm ${tone.muted}`}>
               <div>
-                <p>{tt("新建对话，或从左侧继续过去的对话。")}</p>
+                <p>{tt("选择运行中的命令行，或打开一个新的。")}</p>
                 <button
                   type="button"
-                  className={`mt-3 rounded-lg px-3 py-2 text-xs ${tone.primary} disabled:opacity-50`}
+                  className="mt-3 inline-flex items-center gap-2 text-xs underline-offset-2 hover:underline disabled:opacity-50"
                   disabled={!computer.node_online || !selectedProgram?.installed || busy !== null}
                   onClick={() => void launch()}
                 >
-                  {tt("+ 新对话")}
+                  <IconPlus className="size-3.5" />
+                  {tt("打开命令行")}
                 </button>
               </div>
             </div>
