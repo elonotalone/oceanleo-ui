@@ -9,6 +9,7 @@ import {
   type TerminalRecord,
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
+import { ConfirmDialog } from "../../../ui";
 import { serverPageHref } from "../server-page/href";
 import { tone } from "../server-page/tone";
 import { AppearancePanel } from "./AppearancePanel";
@@ -41,6 +42,7 @@ export function TerminalCard({
   const [showAppearance, setShowAppearance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -149,7 +151,7 @@ export function TerminalCard({
   const deleteRecord = useCallback(
     async (sessionId: string) => {
       if (busyId) return;
-      if (!window.confirm(tt("确定删除这条终端记录吗？"))) return;
+      setPendingDeleteId(null);
       setBusyId(sessionId);
       try {
         await client.deleteTerminalRecord(computer.id, sessionId);
@@ -279,7 +281,7 @@ export function TerminalCard({
                             type="button"
                             className={`w-full rounded px-2 py-1.5 text-left text-xs ${tone.hover}`}
                             disabled={busyId !== null}
-                            onClick={() => void deleteRecord(record.id)}
+                            onClick={() => setPendingDeleteId(record.id)}
                           >
                             {tt("删除这条记录")}
                           </button>
@@ -349,6 +351,15 @@ export function TerminalCard({
           )}
         </main>
       </div>
+      {pendingDeleteId ? (
+        <ConfirmDialog
+          title="确定删除这条终端记录吗？"
+          confirmLabel="删除"
+          danger
+          onConfirm={() => void deleteRecord(pendingDeleteId)}
+          onCancel={() => setPendingDeleteId(null)}
+        />
+      ) : null}
     </section>
   );
 }

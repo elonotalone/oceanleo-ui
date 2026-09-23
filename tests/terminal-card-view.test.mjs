@@ -222,7 +222,6 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
     ],
   });
   const view = await renderCard({ api, props: { initialSessionId: "ended" } });
-  const originalConfirm = window.confirm;
   const originalSetTimeout = window.setTimeout;
   window.setTimeout = () => 1;
   try {
@@ -255,14 +254,25 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
       '[data-oceanleo-terminal-row="ended"] [data-oceanleo-record-menu] button',
     );
     assert.ok(endedMenu);
-    window.confirm = () => false;
+    const dialogButton = (label) =>
+      [...(document.querySelector('[role="dialog"]')?.querySelectorAll("button") ?? [])].find(
+        (button) => button.textContent === label,
+      );
     await act(async () => endedMenu.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    assert.match(
+      document.querySelector('[role="dialog"]')?.textContent || "",
+      /确定删除这条终端记录吗？/,
+    );
+    const cancel = dialogButton("取消");
+    assert.ok(cancel);
+    await act(async () => cancel.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
     assert.equal(api.calls.deleteRecord.length, 0);
-    window.confirm = (message) => {
-      assert.equal(message, "确定删除这条终端记录吗？");
-      return true;
-    };
+    assert.equal(document.querySelector('[role="dialog"]'), null);
     await act(async () => endedMenu.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const confirm = dialogButton("删除");
+    assert.ok(confirm);
+    await act(async () => confirm.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flush();
     assert.deepEqual(api.calls.deleteRecord, [{ id: "cc_1", sessionId: "ended" }]);
     assert.equal(
@@ -282,7 +292,6 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
       "/computers/cc_1?card=terminal&session=new-1",
     );
   } finally {
-    window.confirm = originalConfirm;
     window.setTimeout = originalSetTimeout;
     view.cleanup();
   }

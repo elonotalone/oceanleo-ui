@@ -10,6 +10,7 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { currentDomainFamily } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
+import { ConfirmDialog } from "../../../ui";
 import { AcpCard } from "../agent-dialog/AcpCard";
 import {
   computerDisplayState,
@@ -161,6 +162,7 @@ function ServerPageContent({
   const available = state === "ready";
   const [nodeInfo, setNodeInfo] = useState<NodeInfo | null>(null);
   const [upgradeState, setUpgradeState] = useState<UpgradeState>("idle");
+  const [confirmUpgrade, setConfirmUpgrade] = useState(false);
   const [startState, setStartState] = useState<StartState>("idle");
 
   useEffect(() => {
@@ -220,13 +222,7 @@ function ServerPageContent({
     if (!computer || !nodeInfo?.update_available || upgradeState === "running") {
       return;
     }
-    const confirmed = window.confirm(
-      tt(
-        "更新时这台服务器上正在运行的终端会被关掉，过去的记录会保留",
-      ),
-    );
-    if (!confirmed) return;
-
+    setConfirmUpgrade(false);
     setUpgradeState("running");
     const previousVersion = nodeInfo.version;
     try {
@@ -371,7 +367,7 @@ function ServerPageContent({
                 type="button"
                 className={`rounded-lg px-3 py-1.5 font-medium ${tone.primary}`}
                 disabled={upgradeState === "running"}
-                onClick={() => void upgrade()}
+                onClick={() => setConfirmUpgrade(true)}
                 data-oceanleo-node-upgrade-action
               >
                 {tt("更新")}
@@ -476,6 +472,15 @@ function ServerPageContent({
           )}
         </div>
       </div>
+      {confirmUpgrade ? (
+        <ConfirmDialog
+          title="更新节点程序？"
+          body="更新时这台服务器上正在运行的终端会被关掉，过去的记录会保留"
+          confirmLabel="更新"
+          onConfirm={() => void upgrade()}
+          onCancel={() => setConfirmUpgrade(false)}
+        />
+      ) : null}
     </main>
   );
 }

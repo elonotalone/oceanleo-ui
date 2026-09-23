@@ -19,6 +19,7 @@ const SOURCE = {
   unpaidReason: "这台服务器因欠费暂停使用，请先充值。",
   notConnectedReason: "这台服务器还没有接入，请到我的设备完成接入。",
   viewDevices: "查看我的设备",
+  updateNodeTitle: "更新节点程序？",
   updateAvailable: "节点有新版本 {version}",
   updateConfirm:
     "更新时这台服务器上正在运行的终端会被关掉，过去的记录会保留",
@@ -48,6 +49,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "This server is paused because of an unpaid balance. Top up first.",
     notConnectedReason: "This server is not connected yet. Finish connecting it in My devices.",
     viewDevices: "View My devices",
+    updateNodeTitle: "Update the node program?",
     updateAvailable: "Node update available: {version}",
     updateConfirm:
       "Updating will close terminals currently running on this server. Past records will be kept",
@@ -75,6 +77,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Dieser Server ist wegen eines offenen Guthabens pausiert. Laden Sie zuerst auf.",
     notConnectedReason: "Dieser Server ist noch nicht verbunden. Schließen Sie die Verbindung unter Meine Geräte ab.",
     viewDevices: "Meine Geräte anzeigen",
+    updateNodeTitle: "Knotenprogramm aktualisieren?",
     updateAvailable: "Knoten-Update verfügbar: {version}",
     updateConfirm:
       "Beim Update werden laufende Terminals auf diesem Server geschlossen. Frühere Aufzeichnungen bleiben erhalten",
@@ -102,6 +105,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Este servidor está en pausa por falta de saldo. Recarga primero.",
     notConnectedReason: "Este servidor aún no está conectado. Completa la conexión en Mis dispositivos.",
     viewDevices: "Ver Mis dispositivos",
+    updateNodeTitle: "¿Actualizar el programa del nodo?",
     updateAvailable: "Actualización del nodo disponible: {version}",
     updateConfirm:
       "La actualización cerrará los terminales que estén ejecutándose en este servidor. Se conservarán los registros anteriores",
@@ -129,6 +133,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Este servidor está pausado por falta de saldo. Recarga primero.",
     notConnectedReason: "Este servidor aún no está conectado. Completa la conexión en Mis dispositivos.",
     viewDevices: "Ver Mis dispositivos",
+    updateNodeTitle: "¿Actualizar el programa del nodo?",
     updateAvailable: "Actualización del nodo disponible: {version}",
     updateConfirm:
       "La actualización cerrará las terminales que estén ejecutándose en este servidor. Los registros anteriores se conservarán",
@@ -156,6 +161,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Ce serveur est suspendu faute de solde. Rechargez d’abord.",
     notConnectedReason: "Ce serveur n’est pas encore connecté. Terminez la connexion dans Mes appareils.",
     viewDevices: "Voir Mes appareils",
+    updateNodeTitle: "Mettre à jour le programme du nœud ?",
     updateAvailable: "Mise à jour du nœud disponible : {version}",
     updateConfirm:
       "La mise à jour fermera les terminaux en cours sur ce serveur. Les anciens enregistrements seront conservés",
@@ -183,6 +189,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Questo server è in pausa per saldo insufficiente. Ricarica prima.",
     notConnectedReason: "Questo server non è ancora connesso. Completa la connessione in I miei dispositivi.",
     viewDevices: "Vedi I miei dispositivi",
+    updateNodeTitle: "Aggiornare il programma del nodo?",
     updateAvailable: "Aggiornamento del nodo disponibile: {version}",
     updateConfirm:
       "L’aggiornamento chiuderà i terminali in esecuzione su questo server. Le registrazioni precedenti saranno conservate",
@@ -210,6 +217,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Este servidor está pausado por falta de saldo. Recarregue primeiro.",
     notConnectedReason: "Este servidor ainda não está conectado. Conclua a conexão em Meus dispositivos.",
     viewDevices: "Ver Meus dispositivos",
+    updateNodeTitle: "Atualizar o programa do nó?",
     updateAvailable: "Atualização do nó disponível: {version}",
     updateConfirm:
       "A atualização fechará os terminais em execução neste servidor. Os registros anteriores serão preservados",
@@ -237,6 +245,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Este servidor está suspenso por falta de saldo. Carregue primeiro.",
     notConnectedReason: "Este servidor ainda não está ligado. Conclua a ligação em Os meus dispositivos.",
     viewDevices: "Ver Os meus dispositivos",
+    updateNodeTitle: "Atualizar o programa do nó?",
     updateAvailable: "Atualização do nó disponível: {version}",
     updateConfirm:
       "A atualização fechará os terminais em execução neste servidor. Os registos anteriores serão mantidos",
@@ -264,6 +273,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Máy chủ này đang tạm dừng vì thiếu số dư. Hãy nạp tiền trước.",
     notConnectedReason: "Máy chủ này chưa được kết nối. Hãy hoàn tất kết nối trong Thiết bị của tôi.",
     viewDevices: "Xem Thiết bị của tôi",
+    updateNodeTitle: "Cập nhật chương trình nút?",
     updateAvailable: "Có bản cập nhật nút: {version}",
     updateConfirm:
       "Việc cập nhật sẽ đóng các thiết bị đầu cuối đang chạy trên máy chủ này. Bản ghi trước đây vẫn được giữ lại",
@@ -291,6 +301,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "Bu sunucu yetersiz bakiye nedeniyle duraklatıldı. Önce bakiye yükleyin.",
     notConnectedReason: "Bu sunucu henüz bağlı değil. Cihazlarım bölümünde bağlantıyı tamamlayın.",
     viewDevices: "Cihazlarımı görüntüle",
+    updateNodeTitle: "Düğüm programı güncellensin mi?",
     updateAvailable: "Düğüm güncellemesi hazır: {version}",
     updateConfirm:
       "Güncelleme bu sunucuda çalışan terminalleri kapatacak. Önceki kayıtlar korunacak",
@@ -318,6 +329,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "這台伺服器因欠費暫停使用，請先儲值。",
     notConnectedReason: "這台伺服器還沒有接入，請到我的裝置完成接入。",
     viewDevices: "查看我的裝置",
+    updateNodeTitle: "更新節點程式？",
     updateAvailable: "節點有新版本 {version}",
     updateConfirm:
       "更新時這台伺服器上正在執行的終端機會被關掉，過去的記錄會保留",
@@ -345,6 +357,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "残高不足のため、このサーバーは一時停止中です。先にチャージしてください。",
     notConnectedReason: "このサーバーはまだ接続されていません。マイデバイスで接続を完了してください。",
     viewDevices: "マイデバイスを見る",
+    updateNodeTitle: "ノードプログラムを更新しますか？",
     updateAvailable: "ノードの更新があります: {version}",
     updateConfirm:
       "更新すると、このサーバーで実行中のターミナルは閉じられます。過去の記録は保持されます",
@@ -372,6 +385,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "잔액 부족으로 이 서버가 일시 중지되었습니다. 먼저 충전하세요.",
     notConnectedReason: "이 서버는 아직 연결되지 않았습니다. 내 기기에서 연결을 완료하세요.",
     viewDevices: "내 기기 보기",
+    updateNodeTitle: "노드 프로그램을 업데이트할까요?",
     updateAvailable: "노드 업데이트 사용 가능: {version}",
     updateConfirm:
       "업데이트하면 이 서버에서 실행 중인 터미널이 닫힙니다. 이전 기록은 유지됩니다",
@@ -399,6 +413,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "هذا الخادم متوقف مؤقتًا بسبب نقص الرصيد. اشحن الرصيد أولًا.",
     notConnectedReason: "هذا الخادم غير متصل بعد. أكمل توصيله من أجهزتي.",
     viewDevices: "عرض أجهزتي",
+    updateNodeTitle: "تحديث برنامج العقدة؟",
     updateAvailable: "يتوفر تحديث للعقدة: {version}",
     updateConfirm:
       "سيؤدي التحديث إلى إغلاق الطرفيات العاملة حاليًا على هذا الخادم. ستبقى السجلات السابقة محفوظة",
@@ -426,6 +441,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "เซิร์ฟเวอร์นี้หยุดชั่วคราวเพราะยอดเงินไม่พอ โปรดเติมเงินก่อน",
     notConnectedReason: "เซิร์ฟเวอร์นี้ยังไม่เชื่อมต่อ โปรดเชื่อมต่อให้เสร็จในอุปกรณ์ของฉัน",
     viewDevices: "ดูอุปกรณ์ของฉัน",
+    updateNodeTitle: "อัปเดตโปรแกรมโหนดหรือไม่?",
     updateAvailable: "มีอัปเดตโหนด: {version}",
     updateConfirm:
       "การอัปเดตจะปิดเทอร์มินัลที่กำลังทำงานบนเซิร์ฟเวอร์นี้ โดยจะเก็บบันทึกที่ผ่านมาไว้",
@@ -453,6 +469,7 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     unpaidReason: "कम बैलेंस के कारण यह सर्वर रुका हुआ है। पहले बैलेंस जोड़ें।",
     notConnectedReason: "यह सर्वर अभी कनेक्ट नहीं है। मेरे डिवाइस में कनेक्शन पूरा करें।",
     viewDevices: "मेरे डिवाइस देखें",
+    updateNodeTitle: "नोड प्रोग्राम अपडेट करें?",
     updateAvailable: "नोड अपडेट उपलब्ध है: {version}",
     updateConfirm:
       "अपडेट करने से इस सर्वर पर चल रहे टर्मिनल बंद हो जाएंगे। पुराने रिकॉर्ड सुरक्षित रहेंगे",

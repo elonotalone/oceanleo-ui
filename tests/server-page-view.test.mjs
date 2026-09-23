@@ -380,12 +380,6 @@ test("未接入机器禁用卡片；已停机的阿里云机器可以发起开�
 test("节点升级先确认，再请求升级并轮询到在线且版本变化", async () => {
   let nodeReads = 0;
   let upgradeCalls = 0;
-  const confirmations = [];
-  const originalConfirm = window.confirm;
-  window.confirm = (message) => {
-    confirmations.push(message);
-    return true;
-  };
   const api = client({
     async getNodeInfo() {
       nodeReads += 1;
@@ -429,10 +423,21 @@ test("节点升级先确认，再请求升级并轮询到在线且版本变化",
     await act(async () => {
       action.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    await flush();
+    assert.equal(upgradeCalls, 0);
+    const dialog = document.querySelector('[role="dialog"]');
+    assert.match(
+      dialog?.textContent || "",
+      /更新时这台服务器上正在运行的终端会被关掉，过去的记录会保留/,
+    );
+    const confirm = [...dialog.querySelectorAll("button")].find(
+      (button) => button.textContent === "更新",
+    );
+    assert.ok(confirm);
+    await act(async () => {
+      confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
     await flush(10);
-    assert.deepEqual(confirmations, [
-      "更新时这台服务器上正在运行的终端会被关掉，过去的记录会保留",
-    ]);
     assert.equal(upgradeCalls, 1);
     assert.equal(nodeReads, 3);
     assert.equal(globalThis.__serverRefreshes, 1);
@@ -444,7 +449,6 @@ test("节点升级先确认，再请求升级并轮询到在线且版本变化",
     );
     assert.match(view.host.textContent || "", /节点更新完成/);
   } finally {
-    window.confirm = originalConfirm;
     view.cleanup();
   }
 });
