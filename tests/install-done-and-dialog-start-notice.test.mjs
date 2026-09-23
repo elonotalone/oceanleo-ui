@@ -6,6 +6,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 
 import { LOCALES } from "../src/i18n/config.ts";
+import { ACP_CARD_MESSAGES } from "../src/i18n/ui/messages/acp-card-copy.ts";
 import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
 import { noticeAction, noticeCopy } from "../src/shell/cloud-computer/agent-dialog/notice.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -299,9 +300,10 @@ test("黄字：名单或刚装完的路径能证明已安装时，不再给安�
 test("对话没启动这句在 17 种语言里都有译文", () => {
   assert.equal(LOCALES.length, 17);
   for (const locale of LOCALES) {
-    const value = UI_MESSAGES[locale][DID_NOT_START];
+    const value = ACP_CARD_MESSAGES[locale][DID_NOT_START] ?? UI_MESSAGES[locale][DID_NOT_START];
     assert.equal(typeof value, "string", locale);
     assert.equal(value.length > 0, true, locale);
   }
+  assert.equal(ACP_CARD_MESSAGES.en[DID_NOT_START], UI_MESSAGES.en[DID_NOT_START]);
   assert.equal(UI_MESSAGES.en[DID_NOT_START], "The dialog did not start.");
 });

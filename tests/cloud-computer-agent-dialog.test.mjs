@@ -123,6 +123,15 @@ const apiStub = dataModule(`
   export function agentDialogWsUrl(id, sessionId, token) {
     return "ws://example.test/v1/computers/" + id + "/agent-dialog?session_id=" + sessionId + "&token=" + token;
   }
+  const settings = { confirm_dangerous: true, oceanleo_tools: true, billing_paused: false };
+  export async function getAgentSettings() { return settings; }
+  export async function patchAgentSettings(_id, patch) { return { ...settings, ...patch }; }
+  export async function getOceanleoAgent() { return { installed: false, version: null, token_active: false }; }
+  export async function installOceanleoAgent() { return { ok: true, version: "1" }; }
+  export async function uninstallOceanleoAgent() { return { ok: true }; }
+`);
+const navigationStub = dataModule(`
+  export function useRouter() { return { replace() {}, push() {} }; }
 `);
 const authStub = dataModule(`
   export async function accessToken() { return "tok"; }
@@ -152,6 +161,7 @@ const { useAgentDialog, AgentDialogPane } = await import(
     "../../../lib/agent": agentStub,
     "../../../lib/cloud-computer-agent-api": computerAgentStub,
     "../../LeoEntryButton": leoEntryStub,
+    "next/navigation": navigationStub,
   })
 );
 
@@ -496,12 +506,10 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.socket().sent.find((frame) => frame.t === "cancel"),
       { t: "cancel", program: "cursor" },
     );
-    await click(view.host.querySelector('[data-oceanleo-cc-close-session="cursor"]'));
-    assert.deepEqual(
-      view.socket().sent.find((frame) => frame.t === "close"),
-      { t: "close", program: "cursor" },
-    );
-    assert.equal(view.host.querySelector('[data-oceanleo-cc-close-session="cursor"]'), null);
+    // 决定 7：不显示「关掉会话」，程序闲置 30 分钟由网关回收。
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-close-session]"), null);
+    assert.equal((view.host.textContent || "").includes("关掉会话"), false);
+    assert.equal(view.socket().sent.some((frame) => frame.t === "close"), false);
 
     await act(async () => {
       view.socket().server({ t: "models", program: "cursor", source: "none", models: [] });

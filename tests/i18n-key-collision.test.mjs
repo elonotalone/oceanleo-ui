@@ -77,3 +77,31 @@ test("分表不得悄悄改变基础词典里同一中文键的英文含义", as
   assert.equal(baseEnglish["登录"], "Log in");
   assert.equal(finalEnglish["登录"], baseEnglish["登录"]);
 });
+
+// 服务器页三张卡的分表由集成 owner 注册进 shell-overhaul-copy.ts；注册前后都不许改写已有英文。
+const PENDING_FRAGMENTS = [
+  ["server-page-copy", "SERVER_PAGE_MESSAGES"],
+  ["acp-card-copy", "ACP_CARD_MESSAGES"],
+  ["terminal-card-copy", "TERMINAL_CARD_MESSAGES"],
+];
+
+test("服务器页分表不改写全站词典，也不互相改写", async () => {
+  const { UI_MESSAGES } = await import(new URL("index.ts", messagesDir));
+  const seen = { ...UI_MESSAGES.en };
+  const owner = {};
+  const conflicts = [];
+  for (const [file, name] of PENDING_FRAGMENTS) {
+    const module = await import(new URL(`${file}.ts`, messagesDir));
+    const dictionary = module[name]?.en;
+    assert.ok(dictionary && typeof dictionary === "object", `${name}.en 不是词典`);
+    for (const [key, translated] of Object.entries(dictionary)) {
+      if (Object.prototype.hasOwnProperty.call(seen, key) && seen[key] !== translated) {
+        conflicts.push(`${name}:${key}\n  ${owner[key] ?? "UI_MESSAGES"}: ${seen[key]}\n  ${name}: ${translated}`);
+      }
+      seen[key] = translated;
+      owner[key] = name;
+    }
+  }
+  assert.deepEqual(conflicts, [], `发现 ${conflicts.length} 个改写：\n${conflicts.join("\n")}`);
+  assert.equal(seen["登录"], "Log in");
+});

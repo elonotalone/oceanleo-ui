@@ -29,6 +29,7 @@ const SOURCE = {
   uninstall: "卸载",
   thisAction: "这项操作",
   autoAllowed: "已自动允许：{name}",
+  dialogDidNotStart: "对话没有启动。",
 } as const;
 
 export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
@@ -58,6 +59,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Uninstall",
     thisAction: "this action",
     autoAllowed: "Automatically allowed: {name}",
+    dialogDidNotStart: "The dialog did not start.",
   },
   de: {
     installedVersion: "Installiert · {version}",
@@ -85,6 +87,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Deinstallieren",
     thisAction: "diese Aktion",
     autoAllowed: "Automatisch erlaubt: {name}",
+    dialogDidNotStart: "Die Unterhaltung wurde nicht gestartet.",
   },
   es: {
     installedVersion: "Instalado · {version}",
@@ -112,6 +115,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Desinstalar",
     thisAction: "esta acción",
     autoAllowed: "Permitido automáticamente: {name}",
+    dialogDidNotStart: "La conversación no se inició.",
   },
   "es-419": {
     installedVersion: "Instalado · {version}",
@@ -139,6 +143,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Desinstalar",
     thisAction: "esta acción",
     autoAllowed: "Permitido automáticamente: {name}",
+    dialogDidNotStart: "La conversación no se inició.",
   },
   fr: {
     installedVersion: "Installé · {version}",
@@ -166,6 +171,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Désinstaller",
     thisAction: "cette action",
     autoAllowed: "Autorisé automatiquement : {name}",
+    dialogDidNotStart: "La conversation n’a pas démarré.",
   },
   it: {
     installedVersion: "Installato · {version}",
@@ -193,6 +199,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Disinstalla",
     thisAction: "questa azione",
     autoAllowed: "Consentito automaticamente: {name}",
+    dialogDidNotStart: "La conversazione non è partita.",
   },
   "pt-BR": {
     installedVersion: "Instalado · {version}",
@@ -220,6 +227,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Desinstalar",
     thisAction: "esta ação",
     autoAllowed: "Permitido automaticamente: {name}",
+    dialogDidNotStart: "A conversa não foi iniciada.",
   },
   "pt-PT": {
     installedVersion: "Instalado · {version}",
@@ -247,6 +255,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Desinstalar",
     thisAction: "esta ação",
     autoAllowed: "Permitido automaticamente: {name}",
+    dialogDidNotStart: "A conversa não foi iniciada.",
   },
   vi: {
     installedVersion: "Đã cài · {version}",
@@ -274,6 +283,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Gỡ cài đặt",
     thisAction: "thao tác này",
     autoAllowed: "Đã tự động cho phép: {name}",
+    dialogDidNotStart: "Cuộc trò chuyện chưa khởi động.",
   },
   tr: {
     installedVersion: "Yüklü · {version}",
@@ -301,6 +311,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "Kaldır",
     thisAction: "bu işlem",
     autoAllowed: "Otomatik olarak izin verildi: {name}",
+    dialogDidNotStart: "Sohbet başlamadı.",
   },
   "zh-TW": {
     installedVersion: "已安裝 · {version}",
@@ -328,6 +339,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "解除安裝",
     thisAction: "這項操作",
     autoAllowed: "已自動允許：{name}",
+    dialogDidNotStart: "對話沒有啟動。",
   },
   ja: {
     installedVersion: "インストール済み · {version}",
@@ -355,6 +367,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "アンインストール",
     thisAction: "この操作",
     autoAllowed: "自動で許可しました：{name}",
+    dialogDidNotStart: "会話が起動しませんでした。",
   },
   ko: {
     installedVersion: "설치됨 · {version}",
@@ -382,6 +395,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "제거",
     thisAction: "이 작업",
     autoAllowed: "자동으로 허용됨: {name}",
+    dialogDidNotStart: "대화가 시작되지 않았습니다.",
   },
   ar: {
     installedVersion: "مثبّت · {version}",
@@ -409,6 +423,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "إلغاء التثبيت",
     thisAction: "هذه العملية",
     autoAllowed: "سُمح تلقائيًا: {name}",
+    dialogDidNotStart: "لم تبدأ المحادثة.",
   },
   th: {
     installedVersion: "ติดตั้งแล้ว · {version}",
@@ -436,6 +451,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "ถอนการติดตั้ง",
     thisAction: "การดำเนินการนี้",
     autoAllowed: "อนุญาตอัตโนมัติแล้ว: {name}",
+    dialogDidNotStart: "บทสนทนาไม่ได้เริ่มทำงาน",
   },
   hi: {
     installedVersion: "इंस्टॉल है · {version}",
@@ -463,5 +479,6 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     uninstall: "अनइंस्टॉल करें",
     thisAction: "यह काम",
     autoAllowed: "अपने आप अनुमति दी गई: {name}",
+    dialogDidNotStart: "बातचीत शुरू नहीं हुई।",
   },
 });

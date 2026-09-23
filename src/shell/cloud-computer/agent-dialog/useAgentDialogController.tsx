@@ -496,6 +496,31 @@ export function useAgentDialog({
     };
   }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait]);
 
+  // 本地 OceanLeo agent 装上 / 卸掉时，正在看的 oceanleo 换到另一条通道（WS ↔ REST）。
+  const localSeenRef = useRef(localOceanleo);
+  useEffect(() => {
+    if (localSeenRef.current === localOceanleo) return;
+    localSeenRef.current = localOceanleo;
+    if (!enabled || stateRef.current.program !== "oceanleo" || stateRef.current.busy) return;
+    messagesCacheRef.current.delete("oceanleo");
+    dispatch({ type: "program", program: "oceanleo" });
+    dispatch({ type: "messages-replace", messages: [] });
+    if (!localOceanleo) {
+      dispatch({ type: "sessions-unavailable" });
+      void refreshOceanRef.current();
+      return;
+    }
+    oceanGen.current += 1;
+    clearOceanWait();
+    oceanTaskRef.current = "";
+    oceanSendRef.current = null;
+    void (async () => {
+      const socket = await connectRef.current();
+      sendJson(socket, { t: "sessions", program: "oceanleo" });
+      sendJson(socket, { t: "models", program: "oceanleo" });
+    })();
+  }, [enabled, localOceanleo, clearOceanWait]);
+
   const setProgram = useCallback(
     (next: AgentProgram) => {
       // OceanLeo 本地安装后走同一条 ACP WS；没安装时保留既有 REST 云端 agent。

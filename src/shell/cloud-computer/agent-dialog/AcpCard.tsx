@@ -234,7 +234,6 @@ export function AcpCard({
         status = { installed: true, version: result.version || null, token_active: true };
       }
       setOceanleoStatus(status);
-      if (selected === "oceanleo") dialog.setProgram("oceanleo");
     } catch {
       setOceanleoError(tt("安装失败，请稍后重试。"));
     } finally {
