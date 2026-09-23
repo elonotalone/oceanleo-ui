@@ -482,6 +482,7 @@ export function useAgentDialog({
     void connect();
     // 默认程序就是 oceanleo（合同 I6）：打开对话框即拉 agentState 回放当前任务。
     if (stateRef.current.program === "oceanleo" && !localOceanleoRef.current) {
+      dispatch({ type: "sessions-unavailable" });
       void refreshOceanRef.current();
     }
     return () => {
@@ -527,7 +528,9 @@ export function useAgentDialog({
       if (!isWsProgram(next) && next !== "oceanleo") return;
       if (stateRef.current.busy) return;
       const prev = stateRef.current.program;
-      if (prev && prev !== next) messagesCacheRef.current.set(prev, stateRef.current.messages);
+      // 同一程序再选一次（如对话中点当前 agent 的齿轮）不能清掉模型、会话和消息。
+      if (prev === next) return;
+      if (prev) messagesCacheRef.current.set(prev, stateRef.current.messages);
       dispatch({ type: "program", program: next });
       dispatch({
         type: "messages-replace",

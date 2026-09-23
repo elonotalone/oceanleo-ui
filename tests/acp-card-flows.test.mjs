@@ -248,11 +248,18 @@ async function click(element) {
   });
 }
 
+// react-dom 先于 jsdom 全局加载，textarea 走 React 的 focusin + keyup 输入兜底路径。
 async function setValue(element, value) {
   assert.ok(element, "要填的控件不存在");
   await act(async () => {
     const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
     assert.ok(setter);
+    if (element instanceof window.HTMLTextAreaElement) {
+      element.dispatchEvent(new window.FocusEvent("focusin", { bubbles: true }));
+      setter.call(element, value);
+      element.dispatchEvent(new KeyboardEvent("keyup", { key: "a", bubbles: true }));
+      return;
+    }
     setter.call(element, value);
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
@@ -261,6 +268,7 @@ async function setValue(element, value) {
 
 async function pressEnter(element) {
   await act(async () => {
+    element.dispatchEvent(new window.FocusEvent("focusin", { bubbles: true }));
     element.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
     );

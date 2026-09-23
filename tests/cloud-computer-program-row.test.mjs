@@ -182,7 +182,7 @@ test("三态按钮与文案：未装→安装；未认证→登录+Key；key→K
     assert.equal(codex.querySelector('[data-oceanleo-cc-version="codex"]').textContent, "9.9");
     assert.equal(codex.querySelector('[data-oceanleo-cc-signed-in="codex"]').textContent, "已登录");
     assert.ok(codex.querySelector('[data-oceanleo-cc-running="1"]'));
-    assert.ok(codex.querySelector('[data-oceanleo-cc-close-session="codex"]'));
+    assert.equal(codex.querySelector('[data-oceanleo-cc-close-session="codex"]'), null);
   } finally {
     view.cleanup();
   }
