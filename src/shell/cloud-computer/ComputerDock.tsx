@@ -14,16 +14,13 @@ import { AnchoredPopover } from "../anchored-popover";
 import { ConnectServerDialog } from "./ConnectServerDialog";
 import { CreateComputerDialog } from "./CreateComputerDialog";
 import {
-  canOpenShell,
   computerDisplayState,
   isConnectedComputer,
   isPendingComputer,
   type ComputerDisplayState,
 } from "./computer-state";
-import {
-  newShellEnabled,
-  useCloudComputers,
-} from "./useCloudComputers";
+import { serverPageHref } from "./server-page/href";
+import { useCloudComputers } from "./useCloudComputers";
 
 function statusWord(state: ComputerDisplayState, tt: (zh: string) => string): string {
   if (state === "ready") return tt("在线");
@@ -37,15 +34,6 @@ function statusDotClass(state: ComputerDisplayState): string {
   if (state === "ready") return "bg-emerald-500";
   if (state === "unpaid") return "bg-rose-500";
   return "bg-neutral-300";
-}
-
-function newShellTitle(computer: Computer | null, tt: (zh: string) => string): string | undefined {
-  if (!computer || canOpenShell(computer)) return undefined;
-  const state = computerDisplayState(computer);
-  if (state === "offline") return tt("云电脑离线，先到我的设备里检查节点");
-  if (state === "stopped") return tt("先开机");
-  if (state === "unpaid") return tt("先充值");
-  return undefined;
 }
 
 export function ComputerDock({
@@ -74,21 +62,7 @@ export function ComputerDock({
   const connected = computers.filter(isConnectedComputer);
   const pending = computers.filter(isPendingComputer);
   const empty = connected.length === 0;
-  const shellOn = newShellEnabled(mounted);
   const mountedState = mounted ? computerDisplayState(mounted) : null;
-
-  async function openNewShell() {
-    if (!mounted || !shellOn) return;
-    const opened = await client.openTerminal(mounted.id, {
-      cols: 80,
-      rows: 24,
-      as_task: true,
-    });
-    await refresh();
-    if (opened.task_id) {
-      router.push(`/history?task=${encodeURIComponent(opened.task_id)}`);
-    }
-  }
 
   if (loading) {
     const rememberedName =
@@ -169,8 +143,12 @@ export function ComputerDock({
         </>
       ) : (
         <div className="flex items-center gap-1">
-          <a
-            href="/devices?tab=cloud"
+          <button
+            type="button"
+            disabled={!mounted}
+            onClick={() => {
+              if (mounted) router.push(serverPageHref(mounted.id));
+            }}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
             data-oceanleo-cc-dock-mounted
             data-oceanleo-cc-status={mountedState || ""}
@@ -188,7 +166,7 @@ export function ComputerDock({
             {mountedState ? (
               <span className="text-neutral-500">{statusWord(mountedState, tt)}</span>
             ) : null}
-          </a>
+          </button>
           {connected.length > 1 && (
             <>
               <button
@@ -235,17 +213,6 @@ export function ComputerDock({
               </AnchoredPopover>
             </>
           )}
-          <button
-            type="button"
-            onClick={() => void openNewShell()}
-            disabled={!shellOn}
-            title={newShellTitle(mounted, tt)}
-            data-oceanleo-cc-new-shell
-            aria-label={tt("新建 Shell")}
-            className="rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-300"
-          >
-            {tt("新建 Shell")}
-          </button>
         </div>
       )}
       {createOpen && (

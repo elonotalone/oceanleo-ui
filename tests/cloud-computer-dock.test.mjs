@@ -246,32 +246,67 @@ test("pending / enrolled / active 未 enrolled 的行不上坞", async () => {
   view.cleanup();
 });
 
-test("ready 机器：芯片 + 可点新建 Shell，无管理", async () => {
+test("ready 机器：状态按钮进入服务器页面，且没有新建 Shell", async () => {
   storedMounted = "";
+  const pushes = [];
+  globalThis.__ccRouter = {
+    push(href) {
+      pushes.push(href);
+    },
+    replace() {},
+    refresh() {},
+    back() {},
+  };
   const view = await render([pc({ name: "新加坡一号" })]);
   assert.ok(view.text().includes("新加坡一号"));
   assert.ok(view.text().includes("在线"));
-  const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
-  assert.ok(shell);
-  assert.equal(shell.disabled, false);
+  const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.ok(mounted);
+  await act(async () => {
+    mounted.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.deepEqual(pushes, ["/computers/cc_1"]);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-new-shell]"), null);
+  assert.equal(view.text().includes("新建 Shell"), false);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-manage]"), null);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-empty]"), null);
   view.cleanup();
 });
 
-test("offline 时新建 Shell 不可点", async () => {
+test("offline 机器仍可进入服务器页面看原因，没有新建 Shell", async () => {
   storedMounted = "cc_1";
+  const pushes = [];
+  globalThis.__ccRouter = {
+    push(href) {
+      pushes.push(href);
+    },
+    replace() {},
+    refresh() {},
+    back() {},
+  };
   const view = await render([pc({ node_online: false })]);
-  const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
-  assert.ok(shell);
-  assert.equal(shell.disabled, true);
-  assert.equal(shell.getAttribute("title"), "云电脑离线，先到我的设备里检查节点");
+  const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.ok(mounted);
+  await act(async () => {
+    mounted.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.deepEqual(pushes, ["/computers/cc_1"]);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-new-shell]"), null);
   assert.equal(newShellEnabled(pc({ node_online: false })), false);
   view.cleanup();
 });
 
-test("多台已接入：箭头切换只列出已接入，切换后新建 Shell 随 ready 变", async () => {
+test("多台已接入：箭头只列已接入，切换后状态按钮进入新机器页面", async () => {
   storedMounted = "cc_b";
+  const pushes = [];
+  globalThis.__ccRouter = {
+    push(href) {
+      pushes.push(href);
+    },
+    replace() {},
+    refresh() {},
+    back() {},
+  };
   const items = [
     pc({ id: "cc_a", name: "甲机", node_online: true }),
     pc({ id: "cc_b", name: "乙机", node_online: true }),
@@ -311,11 +346,13 @@ test("多台已接入：箭头切换只列出已接入，切换后新建 Shell �
     offline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await flush();
-  const shellOffline = view.host.querySelector("[data-oceanleo-cc-new-shell]");
-  assert.ok(shellOffline);
-  assert.equal(shellOffline.disabled, true);
   const mountedOffline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
   assert.match((mountedOffline.textContent || "").trim(), /丙机/);
+  await act(async () => {
+    mountedOffline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.deepEqual(pushes, ["/computers/cc_c"]);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-new-shell]"), null);
   view.cleanup();
 });
 
@@ -418,7 +455,7 @@ test("名单返回且一台都没有：才显示接入云电脑", async () => {
   }
 });
 
-test("openTerminal 带 as_task: true，成功后 push /history?task=", async () => {
+test("点击机器状态只进入服务器页面，不调用 openTerminal 或创建 Shell 任务", async () => {
   storedMounted = "";
   const pushes = [];
   globalThis.__ccRouter = {
@@ -429,20 +466,20 @@ test("openTerminal 带 as_task: true，成功后 push /history?task=", async () 
     refresh() {},
     back() {},
   };
-  let opened = null;
-  const client = makeClient([pc({ name: "新加坡一号" })], async (id, body) => {
-    opened = { id, body };
+  let openCalls = 0;
+  const client = makeClient([pc({ name: "新加坡一号" })], async () => {
+    openCalls += 1;
     return { id: "sid_9", task_id: "task-shell-1" };
   });
   const view = await render([pc({ name: "新加坡一号" })], client);
-  const shell = view.host.querySelector("[data-oceanleo-cc-new-shell]");
-  assert.ok(shell);
+  const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.ok(mounted);
   await act(async () => {
-    shell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    mounted.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await flush(12);
-  assert.ok(opened);
-  assert.equal(opened.body.as_task, true);
-  assert.deepEqual(pushes, ["/history?task=task-shell-1"]);
+  assert.equal(openCalls, 0);
+  assert.deepEqual(pushes, ["/computers/cc_1"]);
+  assert.equal(view.text().includes("新建 Shell"), false);
   view.cleanup();
 });
