@@ -311,8 +311,7 @@ function onDone(state: DialogState, frame: Record<string, unknown>): DialogState
 
 function storedNoticeText(message: AgentDialogMessage): string {
   if (message.kind !== "notice") return "";
-  const raw = (message as { text?: unknown }).text;
-  return typeof raw === "string" ? raw : "";
+  return message.text ?? "";
 }
 
 // 防御（合同 I3 起 W2 已改发 login_failed busy，这里兜底旧节点）：登录卡开着时

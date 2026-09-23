@@ -741,6 +741,28 @@ test("控制器：超过后端 8000 字上限明说 invalid_argument，不静默
   }
 });
 
+test("控制器：oceanleo 选中时 retryConnect 也重发 status（仲裁 A-5 X1）", async () => {
+  installDefaultHandlers();
+  const view = await boot();
+  try {
+    await until(() => globalThis.__oceanApi.calls.includes("state"), "agentState on open");
+    assert.equal(view.controller().program, "oceanleo");
+    const statusBefore = view.socket().sent.filter((frame) => frame.t === "status").length;
+    const stateBefore = globalThis.__oceanApi.calls.filter((name) => name === "state").length;
+    await act(async () => {
+      view.controller().retryConnect();
+    });
+    // Key 保存后程序行靠这次 status 刷新（key 的 POST 是纯 REST，后端不推帧）。
+    assert.equal(view.socket().sent.filter((frame) => frame.t === "status").length, statusBefore + 1);
+    await until(
+      () => globalThis.__oceanApi.calls.filter((name) => name === "state").length > stateBefore,
+      "agentState re-fetched on retry",
+    );
+  } finally {
+    view.cleanup();
+  }
+});
+
 test("控制器：agentTurn 网络失败（status 0）报 dialog_unreachable，不留 busy", async () => {
   installDefaultHandlers();
   globalThis.__oceanApi.agentTurn = async function agentTurn() {

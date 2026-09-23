@@ -170,6 +170,8 @@ test("acp_start_failed 的默认句是「对话没有启动。」，不含请再
 
 test("错误帧的 text 留在 notice 上，有 text 就显示这句", async () => {
   let state = initialDialogState();
+  // 合同 I6 起默认选中 oceanleo；本例考 cursor 的错误帧，先切过去（forCurrent 语义）。
+  state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, {
     type: "frame",
     frame: { t: "error", code: "acp_start_failed", program: "cursor", text: UNSUPPORTED },

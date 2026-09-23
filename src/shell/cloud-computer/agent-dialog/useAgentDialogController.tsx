@@ -691,21 +691,19 @@ export function useAgentDialog({
   }, [ensureOpen]);
 
   const retryConnect = useCallback(() => {
-    // oceanleo 程序的「重试」= 重拉 agentState；WS 程序维持原来的重连。
-    if (stateRef.current.program === "oceanleo") {
-      dispatch({ type: "clear-offline" });
-      void refreshOcean();
-      return;
-    }
+    // 「重试」对整个对话框一视同仁：WS 开着就重发 status（Key 保存后程序行靠它刷新，
+    // key 的 POST/DELETE 是纯 REST、后端不推 status），没开着就重连；
+    // oceanleo 额外再拉 agentState（REST 侧真相）。
     haltRef.current = false;
     delayRef.current = 1000;
     dispatch({ type: "clear-offline" });
     const socket = socketRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
       sendJson(socket, { t: "status" });
-      return;
+    } else {
+      void connect();
     }
-    void connect();
+    if (stateRef.current.program === "oceanleo") void refreshOcean();
   }, [connect, refreshOcean]);
 
   const setFreshValue = useCallback((value: boolean) => {

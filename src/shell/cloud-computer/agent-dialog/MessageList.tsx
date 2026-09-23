@@ -378,8 +378,7 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
 function noticeFrameText(
   message: Extract<AgentDialogMessage, { kind: "notice" }>,
 ): string {
-  const raw = (message as { text?: unknown }).text;
-  return typeof raw === "string" ? raw.trim() : "";
+  return (message.text ?? "").trim();
 }
 
 function NoticeView({
@@ -404,12 +403,10 @@ function NoticeView({
   const installed = finishedHere ? true : row ? row.installed : null;
   const action = noticeAction(message.code, installed);
   const spoken = noticeFrameText(message);
-  // oceanleo 程序的离线行与 ACP 进程退出行在这里说人话；其余 code 走 notice.ts 词典。
+  // oceanleo 程序的离线行在这里说人话；其余 code 全站一份文案，走 notice.ts 词典。
   const copy = message.code === "computer_offline" && message.program === "oceanleo"
     ? tt("这台电脑不在线")
-    : message.code === "acp_exited"
-      ? tt("这个程序的对话进程退出了。再发一句会重新打开。")
-      : noticeCopy(tt, message.code, installed);
+    : noticeCopy(tt, message.code, installed);
   return (
     <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-200">
       <p>{spoken || copy}</p>
