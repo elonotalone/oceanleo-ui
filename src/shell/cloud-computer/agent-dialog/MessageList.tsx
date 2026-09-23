@@ -43,19 +43,19 @@ function statusLabel(tt: ReturnType<typeof useUI>, status: string): string {
 }
 
 function statusClass(status: string): string {
-  if (status === "completed") return "text-emerald-300";
-  if (status === "failed") return "text-rose-300";
-  if (status === "in_progress") return "text-sky-300";
-  return "text-neutral-500";
+  if (status === "completed") return "text-emerald-700 dark:text-emerald-300";
+  if (status === "failed") return "text-rose-700 dark:text-rose-300";
+  if (status === "in_progress") return "text-sky-700 dark:text-sky-300";
+  return tone.faint;
 }
 
 function permissionClass(kind: string): string {
   const base = "rounded-lg px-2.5 py-1 text-[12px]";
   if (kind === "allow_always") return `${base} bg-emerald-600 text-white`;
-  if (kind === "allow_once") return `${base} border border-emerald-700 text-emerald-200`;
+  if (kind === "allow_once") return `${base} border border-emerald-600 text-emerald-700 dark:border-emerald-700 dark:text-emerald-200`;
   if (kind === "reject_always") return `${base} bg-rose-700 text-white`;
-  if (kind === "reject_once") return `${base} border border-amber-700 text-amber-200`;
-  return `${base} border border-neutral-700 text-neutral-200`;
+  if (kind === "reject_once") return `${base} border border-amber-600 text-amber-700 dark:border-amber-700 dark:text-amber-200`;
+  return `${base} border ${tone.border}`;
 }
 
 function ToolView({ tool }: { tool: ToolCard }) {
@@ -69,12 +69,12 @@ function ToolView({ tool }: { tool: ToolCard }) {
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-2 text-left text-[12px]"
       >
-        <span aria-hidden="true" className="text-neutral-500">
+        <span aria-hidden="true" className={tone.faint}>
           {toolMark(tool.kind)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-neutral-100">{tool.title || tool.kind}</span>
+        <span className="min-w-0 flex-1 truncate">{tool.title || tool.kind}</span>
         <span className={statusClass(tool.status)}>{statusLabel(tt, tool.status)}</span>
-        <span className="text-neutral-500">{open ? tt("收起") : tt("展开")}</span>
+        <span className={tone.faint}>{open ? tt("收起") : tt("展开")}</span>
       </button>
       {open ? (
         <div className="mt-1 space-y-2 pl-4">
@@ -82,13 +82,17 @@ function ToolView({ tool }: { tool: ToolCard }) {
             if (part.type === "diff") {
               return (
                 <div key={index} data-oceanleo-cc-diff={part.path} className="font-mono text-[11px]">
-                  <div className="text-neutral-500">{part.path}</div>
+                  <div className={tone.faint}>{part.path}</div>
                   {lineDiff(part.old_text, part.new_text).map((row, rowIndex) => (
                     <div
                       key={rowIndex}
                       data-oceanleo-cc-diff-op={row.op}
                       className={
-                        row.op === "+" ? "text-green-400" : row.op === "-" ? "text-red-400" : "text-neutral-500"
+                        row.op === "+"
+                          ? "text-green-700 dark:text-green-400"
+                          : row.op === "-"
+                            ? "text-red-700 dark:text-red-400"
+                            : tone.faint
                       }
                     >
                       {row.op === "+" ? "+ " : row.op === "-" ? "- " : "  "}
@@ -103,14 +107,14 @@ function ToolView({ tool }: { tool: ToolCard }) {
               <pre
                 key={index}
                 data-oceanleo-cc-tool-body={part.type}
-                className="whitespace-pre-wrap font-mono text-[11px] text-neutral-300"
+                className={`whitespace-pre-wrap font-mono text-[11px] ${tone.muted}`}
               >
                 {body}
               </pre>
             );
           })}
           {tool.locations.length > 0 ? (
-            <ul data-oceanleo-cc-tool-locations="" className="text-[11px] text-neutral-400">
+            <ul data-oceanleo-cc-tool-locations="" className={`text-[11px] ${tone.muted}`}>
               {tool.locations.map((loc) => (
                 <li key={`${loc.path}:${loc.line ?? ""}`}>
                   {typeof loc.line === "number" ? `${loc.path}:${loc.line}` : loc.path}
@@ -137,7 +141,7 @@ function QuestionView({
   const [text, setText] = useState("");
   if (item.submitted) {
     return (
-      <p data-oceanleo-cc-question={item.questionId} className="text-[12px] text-neutral-400">
+      <p data-oceanleo-cc-question={item.questionId} className={`text-[12px] ${tone.muted}`}>
         {tt("已经提交")}
       </p>
     );
@@ -153,19 +157,19 @@ function QuestionView({
           onSubmit(item.questionId, { text });
         }}
       >
-        <p className="text-[13px] text-neutral-100">{item.title || tt("需要你回答")}</p>
+        <p className="text-[13px]">{item.title || tt("需要你回答")}</p>
         <textarea
           data-oceanleo-cc-question-input=""
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={2}
           placeholder={tt("写下回答")}
-          className="w-full resize-none rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-[12px] text-neutral-100 outline-none"
+          className={`w-full resize-none rounded-lg border px-2 py-1.5 text-[12px] outline-none ${tone.input}`}
         />
         <button
           type="submit"
           data-oceanleo-cc-question-submit=""
-          className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[12px] font-medium text-neutral-900"
+          className={`rounded-lg px-2.5 py-1 text-[12px] font-medium ${tone.primary}`}
         >
           {tt("提交")}
         </button>
@@ -183,10 +187,10 @@ function QuestionView({
         onSubmit(item.questionId, values);
       }}
     >
-      {item.title ? <p className="text-[13px] text-neutral-100">{item.title}</p> : null}
+      {item.title ? <p className="text-[13px]">{item.title}</p> : null}
       {parsed.fields.map((field) => (
         <fieldset key={field.id} className="space-y-1">
-          <legend className="text-[12px] text-neutral-300">{field.title}</legend>
+          <legend className={`text-[12px] ${tone.muted}`}>{field.title}</legend>
           {field.options.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {field.options.map((option) => (
@@ -198,8 +202,8 @@ function QuestionView({
                   onClick={() => setValues((current) => ({ ...current, [field.id]: option.id }))}
                   className={`rounded-lg px-2 py-1 text-[12px] ${
                     values[field.id] === option.id
-                      ? "bg-neutral-100 text-neutral-900"
-                      : "border border-neutral-700 text-neutral-200"
+                      ? tone.chipActive
+                      : `border ${tone.border} ${tone.hover}`
                   }`}
                 >
                   {option.label}
@@ -212,7 +216,7 @@ function QuestionView({
               onChange={(event) =>
                 setValues((current) => ({ ...current, [field.id]: event.target.value }))
               }
-              className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1 text-[12px] text-neutral-100 outline-none"
+              className={`w-full rounded-lg border px-2 py-1 text-[12px] outline-none ${tone.input}`}
             />
           )}
         </fieldset>
@@ -221,7 +225,7 @@ function QuestionView({
         type="submit"
         data-oceanleo-cc-question-submit=""
         disabled={!ready}
-        className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[12px] font-medium text-neutral-900 disabled:opacity-40"
+        className={`rounded-lg px-2.5 py-1 text-[12px] font-medium disabled:opacity-40 ${tone.primary}`}
       >
         {tt("提交")}
       </button>
@@ -236,13 +240,13 @@ const URL_PART = /(https?:\/\/[^\s<>()"']+)/;
 function AssistantText({ text }: { text: string }) {
   const parts = text.split(/(`[^`\n]+`)/g);
   return (
-    <p className="whitespace-pre-wrap text-[13px] text-neutral-200">
+    <p className="whitespace-pre-wrap text-[13px]">
       {parts.map((part, index) => {
         if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
           return (
             <code
               key={index}
-              className="rounded bg-neutral-800 px-1 font-mono text-[12px] text-neutral-100"
+              className={`rounded px-1 font-mono text-[12px] ${tone.chip}`}
             >
               {part.slice(1, -1)}
             </code>
@@ -258,7 +262,7 @@ function AssistantText({ text }: { text: string }) {
                   href={segment}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="break-all text-sky-300 underline"
+                  className="break-all text-sky-700 underline dark:text-sky-300"
                 >
                   {segment}
                 </a>
@@ -284,9 +288,9 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
   }
   if (item.kind === "thought") {
     return (
-      <details data-oceanleo-cc-thought="" className="text-[12px] text-neutral-500">
+      <details data-oceanleo-cc-thought="" className={`text-[12px] ${tone.faint}`}>
         <summary>{tt("思考")}</summary>
-        <AgentText text={item.text} className="whitespace-pre-wrap text-[12px] text-neutral-500" />
+        <AgentText text={item.text} className={`whitespace-pre-wrap text-[12px] ${tone.faint}`} />
       </details>
     );
   }
@@ -294,19 +298,19 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
   if (item.kind === "plan") {
     return (
       <div data-oceanleo-cc-plan="">
-        <p className="text-[12px] text-neutral-400">{tt("计划")}</p>
+        <p className={`text-[12px] ${tone.muted}`}>{tt("计划")}</p>
         <ul className="mt-1 space-y-1">
           {item.entries.map((entry, index) => (
             <li
               key={index}
               data-oceanleo-cc-plan-status={entry.status}
-              className="flex items-start gap-2 text-[12px] text-neutral-200"
+              className="flex items-start gap-2 text-[12px]"
             >
-              <span aria-hidden="true" className="text-neutral-400">
+              <span aria-hidden="true" className={tone.muted}>
                 {entry.status === "completed" ? "☑" : entry.status === "in_progress" ? "–" : "☐"}
               </span>
               <span className="min-w-0 flex-1">{entry.content}</span>
-              <span className="text-neutral-500">
+              <span className={tone.faint}>
                 {entry.priority === "high"
                   ? tt("优先级高")
                   : entry.priority === "low"
@@ -322,12 +326,12 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
   if (item.kind === "usage") {
     const pct = item.size > 0 ? Math.min(100, Math.round((item.used / item.size) * 100)) : 0;
     return (
-      <div data-oceanleo-cc-usage="" className="text-[11px] text-neutral-500">
+      <div data-oceanleo-cc-usage="" className={`text-[11px] ${tone.faint}`}>
         <p>
           {tt("用量 {pct}%", { pct })}
         </p>
-        <div className="mt-1 h-1 w-full bg-neutral-800">
-          <div className="h-1 bg-neutral-400" style={{ width: `${pct}%` }} />
+        <div className="mt-1 h-1 w-full bg-zinc-200 dark:bg-neutral-800">
+          <div className="h-1 bg-zinc-500 dark:bg-neutral-400" style={{ width: `${pct}%` }} />
         </div>
       </div>
     );
@@ -343,8 +347,8 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
     }
     return (
       <div data-oceanleo-cc-permission={item.permId} className="space-y-2 text-[12px]">
-        <p className="text-neutral-100">{item.title}</p>
-        {item.toolTitle ? <p className="text-neutral-400">{item.toolTitle}</p> : null}
+        <p>{item.title}</p>
+        {item.toolTitle ? <p className={tone.muted}>{item.toolTitle}</p> : null}
         {item.chosen ? (
           <p data-oceanleo-cc-permission-chosen="">{tt("已选：{name}", { name: item.chosen })}</p>
         ) : (
@@ -401,13 +405,13 @@ function NoticeView({
     ? tt("这台电脑不在线")
     : noticeCopy(tt, message.code, installed);
   return (
-    <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-200">
+    <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-700 dark:text-amber-200">
       <p>{spoken || copy}</p>
       {action === "login" && program ? (
         <button
           type="button"
           onClick={() => dialog.openLogin(program)}
-          className="rounded-lg border border-amber-700 px-2 py-1 text-[12px]"
+          className="rounded-lg border border-amber-600 px-2 py-1 text-[12px] dark:border-amber-700"
         >
           {tt("登录")}
         </button>
@@ -416,7 +420,7 @@ function NoticeView({
         <button
           type="button"
           onClick={() => dialog.openInstall(program)}
-          className="rounded-lg border border-amber-700 px-2 py-1 text-[12px]"
+          className="rounded-lg border border-amber-600 px-2 py-1 text-[12px] dark:border-amber-700"
         >
           {tt("安装")}
         </button>
@@ -426,7 +430,7 @@ function NoticeView({
           type="button"
           data-oceanleo-cc-retry=""
           onClick={dialog.retryConnect}
-          className="rounded-lg border border-amber-700 px-2 py-1 text-[12px]"
+          className="rounded-lg border border-amber-600 px-2 py-1 text-[12px] dark:border-amber-700"
         >
           {tt("重试")}
         </button>
@@ -446,7 +450,7 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
       {dialog.messages.map((message) => {
         if (message.kind === "user") {
           return (
-            <p key={message.id} data-oceanleo-cc-user="" className="whitespace-pre-wrap text-[13px] text-neutral-100">
+            <p key={message.id} data-oceanleo-cc-user="" className="whitespace-pre-wrap text-[13px]">
               {message.text}
             </p>
           );
