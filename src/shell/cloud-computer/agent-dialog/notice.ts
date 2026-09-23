@@ -31,6 +31,8 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
       return tt("这个功能在当前站点不可用。");
     case "acp_start_failed":
       return tt(DIALOG_DID_NOT_START);
+    case "acp_exited":
+      return tt("这个程序的对话进程退出了，重新发一句会再启动。");
     case "acp_unavailable":
       if (installed === true) return tt(DIALOG_DID_NOT_START);
       return tt("这个程序的对话组件还没就绪。安装会一并补齐。");
@@ -54,6 +56,7 @@ export function noticeAction(
   installed: boolean | null = null,
 ): "login" | "install" | "retry" | null {
   if (code === "acp_start_failed") return null;
+  if (code === "acp_exited") return null;
   if (code === "acp_unavailable") return installed === false ? "install" : null;
   if (code === "not_logged_in") return "login";
   if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
@@ -61,4 +64,25 @@ export function noticeAction(
   }
   if (code === "computer_offline") return "retry";
   return null;
+}
+
+// Key 卡的错误文案也走这里：认识的后端码用同一句 notice 文案；
+// invalid_argument 带后端自己的说明（固定句，不是用户输入）；其余按存/取给一句实话。
+export function keyErrorCopy(
+  tt: Translate,
+  code: string,
+  op: "save" | "remove",
+  serverMessage = "",
+): string {
+  if (code === "invalid_argument" && serverMessage) return serverMessage;
+  if (
+    code === "computer_offline" ||
+    code === "not_owner" ||
+    code === "computer_not_found" ||
+    code === "feature_disabled"
+  ) {
+    return noticeCopy(tt, code);
+  }
+  if (op === "save") return tt("Key 没存上。稍后再试。");
+  return tt("移除没成功。稍后再试。");
 }
