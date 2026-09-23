@@ -23,7 +23,9 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
   if (!install.open || !install.program) return null;
   const row = dialog.programs.find((item) => item.id === install.program);
   const capability = row?.dir_capability ?? "full";
-  const dirLocked = capability === "none" || install.running;
+  // 已装好的程序不再出「开始安装」：状态帧可能先于用户点按到达，此时只给实话。
+  const alreadyInstalled = row?.installed === true && !install.running && !install.failedText && !install.donePath;
+  const dirLocked = capability === "none" || install.running || alreadyInstalled;
   return (
     <div
       data-oceanleo-cc-install-sheet=""
@@ -74,8 +76,13 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
           {install.failedText}
         </p>
       ) : null}
+      {alreadyInstalled ? (
+        <p data-oceanleo-cc-install-already="" className="mt-2 text-[12px] text-emerald-300">
+          {tt("这个程序已经装好了。")}
+        </p>
+      ) : null}
       <div className="mt-3">
-        {install.running ? null : install.failedText ? (
+        {install.running || alreadyInstalled ? null : install.failedText ? (
           <button
             type="button"
             data-oceanleo-cc-install-retry=""

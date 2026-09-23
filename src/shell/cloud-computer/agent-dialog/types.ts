@@ -202,6 +202,10 @@ export type AgentDialogController = {
   closeLogin: () => void;
   submitLoginCode: (program: WsProgram, code: string) => void;
   cancelLogin: (program: WsProgram) => void;
+  /** 登录卡贴码输入框的受控草稿（LoginCard 用；清空随 submitLoginCode）。 */
+  setLoginCodeDraft: (code: string) => void;
+  /** oceanleo 程序标题「OceanLeo agent · 电脑名」用；agentState 未回到前为空串。 */
+  computerName: string;
   answerPermission: (id: string, option: string, name: string) => void;
   answerQuestion: (id: string, values: Record<string, string>) => void;
   openedPrograms: WsProgram[];
