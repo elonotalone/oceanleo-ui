@@ -8,7 +8,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { tone } from "../server-page/tone";
 import { keyErrorCopy } from "./notice";
 import { ProgramKeyError, removeProgramKey, saveProgramKey } from "./program-key-api";
-import { PROGRAM_LABEL, type WsProgram } from "./types";
+import { PROGRAM_LABEL, type ProgramStatus, type WsProgram } from "./types";
 
 // W2-interface.md 未出前按任务书写死五家（合同 I3 与 W2 后端 HERMES_PROVIDERS 一致）。
 export const HERMES_PROVIDERS = ["openrouter", "anthropic", "openai", "deepseek", "xai"] as const;
@@ -34,6 +34,9 @@ export function KeySheet({
   hasKey: boolean;
   onClose: () => void;
   onChanged: () => void;
+  status?: ProgramStatus | null;
+  /** Signs the program out of one login-type provider; hidden when absent. */
+  onLogout?: (provider: string) => void;
 }) {
   const tt = useUI();
   const busyRef = useRef(false);

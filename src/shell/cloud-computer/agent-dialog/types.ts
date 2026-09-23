@@ -30,12 +30,29 @@ export type ProgramStatus = {
   logged_in: boolean | null;
   dir_capability: DirCapability;
   running: boolean;
+  /** Hermes only: every provider with a credential on the machine. */
+  providers?: ProgramProvider[];
+  /** Hermes only; "" when unknown. */
+  active_provider?: string;
+  account_kind?: string;
+};
+
+export type ProgramProvider = {
+  id: string;
+  label: string;
+  auth: "login" | "key";
+  tier?: "free" | "paid" | "unknown";
 };
 
 export type DialogModel = {
   id: string;
   name: string;
   default: boolean;
+  provider?: string;
+  provider_label?: string;
+  /** `false` = listed but unusable right now; see `reason`. */
+  usable?: boolean;
+  reason?: string;
 };
 
 export type DialogCommand = {
@@ -137,7 +154,7 @@ export type AgentDialogMessage =
   | { kind: "user"; id: string; text: string; replay?: boolean }
   | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
-  | { kind: "notice"; id: string; code: string; program: string; text?: string };
+  | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
 
 export type ModeOption = {
   id: string;
@@ -244,7 +261,7 @@ export type AgentDialogController = {
   answerQuestion: (id: string, values: Record<string, string>) => void;
   openedPrograms: AgentProgram[];
   closeProgram: (program: WsProgram) => void;
-  logoutProgram: (program: WsProgram) => void;
+  logoutProgram: (program: WsProgram, provider?: string) => void;
   retryConnect: () => void;
   offline: boolean;
   agentBusy: boolean;

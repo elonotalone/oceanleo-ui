@@ -13,6 +13,15 @@ import { SHELL_ENDED_MESSAGES } from "./shell-ended-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-page-copy";
 import { TERMINAL_CARD_MESSAGES } from "./terminal-card-copy";
 import { ACP_CARD_MESSAGES } from "./acp-card-copy";
+import { CCP_W1_MESSAGES } from "./ccp-w1-copy";
+import { CCP_W2_MESSAGES } from "./ccp-w2-copy";
+import { CCP_W3_MESSAGES } from "./ccp-w3-copy";
+import { CCP_W5_MESSAGES } from "./ccp-w5-copy";
+import { CCP_W8_MESSAGES } from "./ccp-w8-copy";
+import { CCP_W9_MESSAGES } from "./ccp-w9-copy";
+import { CCP_W10_MESSAGES } from "./ccp-w10-copy";
+import { CCP_W11_MESSAGES } from "./ccp-w11-copy";
+import { CCP_W12_MESSAGES } from "./ccp-w12-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -26,6 +35,15 @@ const PARTS = [
   SERVER_PAGE_MESSAGES,
   TERMINAL_CARD_MESSAGES,
   ACP_CARD_MESSAGES,
+  CCP_W1_MESSAGES,
+  CCP_W2_MESSAGES,
+  CCP_W3_MESSAGES,
+  CCP_W5_MESSAGES,
+  CCP_W8_MESSAGES,
+  CCP_W9_MESSAGES,
+  CCP_W10_MESSAGES,
+  CCP_W11_MESSAGES,
+  CCP_W12_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
