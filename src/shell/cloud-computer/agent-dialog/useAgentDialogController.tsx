@@ -42,14 +42,23 @@ function sendJson(socket: WebSocket | null, frame: Record<string, unknown>): boo
   return true;
 }
 
+function usesDialogSocket(
+  program: AgentProgram | null,
+  localOceanleo: boolean,
+): program is AgentProgram {
+  return isWsProgram(program) || (program === "oceanleo" && localOceanleo);
+}
+
 export function useAgentDialog({
   computerId,
   sessionId,
   enabled,
+  localOceanleo = false,
 }: {
   computerId: string;
-  sessionId: string;
+  sessionId?: string;
   enabled: boolean;
+  localOceanleo?: boolean;
 }): AgentDialogControllerV2 {
   const tt = useUI();
   const [state, dispatch] = useReducer(applyDialog, undefined, initialDialogState);
@@ -63,6 +72,7 @@ export function useAgentDialog({
   const enabledRef = useRef(enabled);
   const computerIdRef = useRef(computerId);
   const sessionIdRef = useRef(sessionId);
+  const localOceanleoRef = useRef(localOceanleo);
   const socketRef = useRef<WebSocket | null>(null);
   const connectGen = useRef(0);
   const haltRef = useRef(false);
@@ -92,6 +102,7 @@ export function useAgentDialog({
   enabledRef.current = enabled;
   computerIdRef.current = computerId;
   sessionIdRef.current = sessionId;
+  localOceanleoRef.current = localOceanleo;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -206,7 +217,10 @@ export function useAgentDialog({
           delayRef.current = 1000;
           sendJson(socket, { t: "status" });
           const program = stateRef.current.program;
-          if (isWsProgram(program)) sendJson(socket, { t: "models", program });
+          if (usesDialogSocket(program, localOceanleoRef.current)) {
+            if (!sessionIdRef.current) sendJson(socket, { t: "sessions", program });
+            sendJson(socket, { t: "models", program });
+          }
           finish(socket);
         },
         { once: true },
@@ -467,7 +481,9 @@ export function useAgentDialog({
     delayRef.current = 1000;
     void connect();
     // 默认程序就是 oceanleo（合同 I6）：打开对话框即拉 agentState 回放当前任务。
-    if (stateRef.current.program === "oceanleo") void refreshOceanRef.current();
+    if (stateRef.current.program === "oceanleo" && !localOceanleoRef.current) {
+      void refreshOceanRef.current();
+    }
     return () => {
       connectGen.current += 1;
       inflightRef.current = null;
@@ -482,7 +498,7 @@ export function useAgentDialog({
 
   const setProgram = useCallback(
     (next: AgentProgram) => {
-      // 合同 I6：oceanleo 也是可选程序；模型帧只对走 WS 的程序发。
+      // OceanLeo 本地安装后走同一条 ACP WS；没安装时保留既有 REST 云端 agent。
       if (!isWsProgram(next) && next !== "oceanleo") return;
       if (stateRef.current.busy) return;
       const prev = stateRef.current.program;
@@ -492,17 +508,19 @@ export function useAgentDialog({
         type: "messages-replace",
         messages: messagesCacheRef.current.get(next) ?? [],
       });
-      if (next === "oceanleo") {
+      if (next === "oceanleo" && !localOceanleoRef.current) {
+        dispatch({ type: "sessions-unavailable" });
         // 进入即拉服务端真相（覆盖上面的缓存过渡）；离开 oceanleo 则停掉轮询。
         void refreshOcean();
         return;
       }
-      if (prev === "oceanleo") {
+      if (prev === "oceanleo" && !localOceanleoRef.current) {
         oceanGen.current += 1;
         clearOceanWait();
       }
       const socket = socketRef.current;
-      if (isWsProgram(next) && socket && socket.readyState === WebSocket.OPEN) {
+      if (usesDialogSocket(next, localOceanleoRef.current) && socket && socket.readyState === WebSocket.OPEN) {
+        if (!sessionIdRef.current) sendJson(socket, { t: "sessions", program: next });
         sendJson(socket, { t: "models", program: next });
       }
     },
@@ -512,11 +530,11 @@ export function useAgentDialog({
   const send = useCallback(async () => {
     const program = stateRef.current.program;
     // 合同 I6：oceanleo 走 REST turn + 轮询，不碰 WS（P7：不为它等 15s 连接超时）。
-    if (program === "oceanleo") {
+    if (program === "oceanleo" && !localOceanleoRef.current) {
       await sendOcean();
       return;
     }
-    if (!isWsProgram(program)) return;
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     if (stateRef.current.busy || stateRef.current.agentBusy || stateRef.current.offline) return;
     const text = draftRef.current.trim();
     if (!text) return;
@@ -536,6 +554,9 @@ export function useAgentDialog({
       return;
     }
     const frame: Record<string, unknown> = { t: "prompt", program, text };
+    if (stateRef.current.activeSession) {
+      frame.acp_session = stateRef.current.activeSession;
+    }
     if (model) frame.model = model;
     if (mode) frame.mode = mode;
     if (freshTurn) frame.fresh = true;
@@ -547,7 +568,7 @@ export function useAgentDialog({
 
   const abort = useCallback(() => {
     const program = stateRef.current.program;
-    if (program === "oceanleo") {
+    if (program === "oceanleo" && !localOceanleoRef.current) {
       // 「停止」真的停：停轮询、停服务端任务，再拉一次终态消息。
       oceanGen.current += 1;
       clearOceanWait();
@@ -565,7 +586,9 @@ export function useAgentDialog({
       }
       return;
     }
-    if (isWsProgram(program)) sendJson(socketRef.current, { t: "cancel", program });
+    if (usesDialogSocket(program, localOceanleoRef.current)) {
+      sendJson(socketRef.current, { t: "cancel", program });
+    }
     dispatch({ type: "cancel-local" });
   }, [applyOceanDetail, clearOceanWait]);
 

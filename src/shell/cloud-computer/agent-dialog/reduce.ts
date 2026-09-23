@@ -5,12 +5,14 @@ import {
   asRecord,
   isWsProgram,
   parseCommands,
+  parseConfigOptions,
   parseCost,
   parseMode,
   parseModels,
   parseOptions,
   parsePlan,
   parsePrograms,
+  parseSessions,
   parseTool,
   toolTitleOf,
 } from "./parse";
@@ -74,6 +76,12 @@ export function initialDialogState(): DialogState {
     selectedModel: "",
     mode: null,
     selectedMode: "",
+    configOptions: [],
+    commands: [],
+    sessions: [],
+    sessionsSupported: null,
+    activeSession: "",
+    sessionLoading: false,
     install: blankInstall(),
     login: blankLogin(),
     opened: [],
@@ -92,6 +100,9 @@ export type DialogEvent =
   | { type: "clear-offline" }
   | { type: "set-model"; id: string }
   | { type: "set-mode"; value: string }
+  | { type: "set-config"; id: string; value: string | boolean }
+  | { type: "session-loading"; id: string }
+  | { type: "sessions-unavailable" }
   | { type: "open-install"; program: WsProgram }
   | { type: "close-install" }
   | { type: "set-install-dir"; dir: string }
@@ -145,8 +156,8 @@ function mapOpenTurn(
 
 function rememberSession(state: DialogState, frame: Record<string, unknown>): DialogState {
   const named = str(frame.program);
-  const id = isWsProgram(named) ? named : state.program;
-  if (!id || !isWsProgram(id) || state.opened.includes(id)) return state;
+  const id = (isWsProgram(named) || named === "oceanleo") ? named : state.program;
+  if (!id || state.opened.includes(id)) return state;
   return { ...state, opened: [...state.opened, id] };
 }
 
@@ -254,6 +265,7 @@ function onPermission(state: DialogState, frame: Record<string, unknown>): Dialo
     permKind: str(frame.kind),
     options: parseOptions(frame.options),
     toolTitle: toolTitleOf(frame.tool),
+    auto: frame.auto === true,
   };
   let found = false;
   const messages = state.messages.map((message) => {
@@ -289,11 +301,6 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
       },
     ];
   });
-}
-
-function onCommands(state: DialogState, frame: Record<string, unknown>): DialogState {
-  const commands = parseCommands(frame.commands);
-  return mapOpenTurn(state, (items) => [...items, { kind: "commands", id: nextId(), commands }]);
 }
 
 function onDone(state: DialogState, frame: Record<string, unknown>): DialogState {
@@ -434,6 +441,22 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   // 登录卡的 agent_busy 兜底不挑当前程序（见 finishLoginOnAgentBusy 注释）。
   state = finishLoginOnAgentBusy(state, frame);
   if (!forCurrent(state, frame)) return state;
+  if (kind === "sessions") {
+    return {
+      ...state,
+      sessionsSupported: frame.supported !== false,
+      sessions: frame.supported === false ? [] : parseSessions(frame.sessions),
+    };
+  }
+  if (kind === "session_opened") {
+    return {
+      ...rememberSession(state, frame),
+      activeSession: str(frame.acp_session),
+      sessionLoading: false,
+      busy: false,
+      agentBusy: false,
+    };
+  }
   if (kind === "models") {
     const models = parseModels(frame.models);
     const source = str(frame.source);
@@ -444,9 +467,25 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     return { ...state, models, modelSource: source, selectedModel: selected };
   }
   if (kind === "config") {
+    const configOptions = parseConfigOptions(frame.options);
     const mode = parseMode(frame.options);
-    if (!mode) return state;
-    return { ...state, mode, selectedMode: mode.current || state.selectedMode };
+    return {
+      ...state,
+      configOptions,
+      mode,
+      selectedMode: mode?.current || state.selectedMode,
+    };
+  }
+  if (kind === "user_message") {
+    const text = str(frame.text);
+    if (!text) return state;
+    return {
+      ...state,
+      messages: [
+        ...state.messages,
+        { kind: "user", id: nextId(), text, replay: frame.replay === true },
+      ],
+    };
   }
   if (kind === "turn_start") return onTurnStart(state, frame);
   if (kind === "delta") return appendText(state, "assistant", str(frame.text));
@@ -456,7 +495,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (kind === "usage") return onUsage(state, frame);
   if (kind === "permission") return onPermission(state, frame);
   if (kind === "question") return onQuestion(state, frame);
-  if (kind === "commands") return onCommands(state, frame);
+  if (kind === "commands") return { ...state, commands: parseCommands(frame.commands) };
   if (kind === "done") return onDone(state, frame);
   if (kind === "error") return onError(state, frame);
   // 未知帧：忽略并留一条 debug，不许当成「对话连不上」报错（P7 整面复核）。
@@ -482,6 +521,12 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         selectedModel: "",
         mode: null,
         selectedMode: "",
+        configOptions: [],
+        commands: [],
+        sessions: [],
+        sessionsSupported: null,
+        activeSession: "",
+        sessionLoading: false,
       };
     case "send-began":
       return { ...state, busy: true };
@@ -506,6 +551,37 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       return { ...state, selectedModel: event.id };
     case "set-mode":
       return { ...state, selectedMode: event.value };
+    case "set-config":
+      return {
+        ...state,
+        configOptions: state.configOptions.map((option) =>
+          option.id === event.id ? { ...option, current: event.value } : option,
+        ),
+        mode:
+          state.mode?.id === event.id
+            ? { ...state.mode, current: String(event.value) }
+            : state.mode,
+        selectedMode:
+          state.mode?.id === event.id ? String(event.value) : state.selectedMode,
+      };
+    case "session-loading":
+      return {
+        ...state,
+        activeSession: event.id,
+        sessionLoading: true,
+        messages: [],
+        busy: false,
+        agentBusy: false,
+        commands: [],
+      };
+    case "sessions-unavailable":
+      return {
+        ...state,
+        sessions: [],
+        sessionsSupported: false,
+        activeSession: "",
+        sessionLoading: false,
+      };
     case "open-install": {
       if (state.install.running && state.install.program && state.install.program !== event.program) {
         return { ...state, install: { ...state.install, open: true } };

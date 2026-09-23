@@ -2,6 +2,8 @@
 
 import type {
   DialogModel,
+  DialogConfigOption,
+  DialogSession,
   DirCapability,
   ModeOption,
   PermissionOption,
@@ -128,6 +130,58 @@ export function parseMode(raw: unknown): ModeOption | null {
     };
   }
   return null;
+}
+
+export function parseConfigOptions(raw: unknown): DialogConfigOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DialogConfigOption[] = [];
+  for (const item of raw) {
+    const row = asRecord(item);
+    if (!row || !str(row.id)) continue;
+    const options: { value: string; name: string }[] = [];
+    if (Array.isArray(row.options)) {
+      for (const rawOption of row.options) {
+        const option = asRecord(rawOption);
+        if (!option || !str(option.value)) continue;
+        const value = str(option.value);
+        options.push({ value, name: str(option.name) || value });
+      }
+    }
+    const current = typeof row.current === "boolean" ? row.current : str(row.current);
+    const rawType = str(row.type);
+    const type =
+      rawType === "bool" || typeof current === "boolean"
+        ? "bool"
+        : rawType === "select" || options.length > 0
+          ? "select"
+          : "text";
+    out.push({
+      id: str(row.id),
+      name: str(row.name) || str(row.id),
+      category: str(row.category),
+      type,
+      current,
+      options,
+    });
+  }
+  return out;
+}
+
+export function parseSessions(raw: unknown): DialogSession[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DialogSession[] = [];
+  for (const item of raw) {
+    const row = asRecord(item);
+    if (!row || !str(row.id)) continue;
+    const id = str(row.id);
+    out.push({
+      id,
+      title: str(row.title) || id,
+      cwd: str(row.cwd),
+      updatedAt: str(row.updated_at),
+    });
+  }
+  return out;
 }
 
 export function parseContent(raw: unknown): ToolContent[] {

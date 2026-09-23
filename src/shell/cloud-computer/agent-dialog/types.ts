@@ -38,6 +38,27 @@ export type DialogModel = {
   default: boolean;
 };
 
+export type DialogCommand = {
+  name: string;
+  description: string;
+};
+
+export type DialogSession = {
+  id: string;
+  title: string;
+  cwd: string;
+  updatedAt: string;
+};
+
+export type DialogConfigOption = {
+  id: string;
+  name: string;
+  category: string;
+  type: "select" | "bool" | "text";
+  current: string | boolean;
+  options: { value: string; name: string }[];
+};
+
 export type ToolKind =
   | "read"
   | "edit"
@@ -101,6 +122,7 @@ export type TurnItem =
       options: PermissionOption[];
       toolTitle: string;
       chosen: string;
+      auto: boolean;
     }
   | {
       kind: "question";
@@ -109,15 +131,10 @@ export type TurnItem =
       title: string;
       questions: unknown;
       submitted: boolean;
-    }
-  | {
-      kind: "commands";
-      id: string;
-      commands: { name: string; description: string }[];
     };
 
 export type AgentDialogMessage =
-  | { kind: "user"; id: string; text: string }
+  | { kind: "user"; id: string; text: string; replay?: boolean }
   | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string };
@@ -169,9 +186,15 @@ export type DialogState = {
   selectedModel: string;
   mode: ModeOption | null;
   selectedMode: string;
+  configOptions: DialogConfigOption[];
+  commands: DialogCommand[];
+  sessions: DialogSession[];
+  sessionsSupported: boolean | null;
+  activeSession: string;
+  sessionLoading: boolean;
   install: InstallState;
   login: LoginState;
-  opened: WsProgram[];
+  opened: AgentProgram[];
 };
 
 export type AgentDialogController = {
@@ -191,6 +214,16 @@ export type AgentDialogController = {
   mode: ModeOption | null;
   selectedMode: string;
   setMode: (value: string) => void;
+  configOptions: DialogConfigOption[];
+  setConfig: (id: string, value: string | boolean) => void;
+  commands: DialogCommand[];
+  sessions: DialogSession[];
+  sessionsSupported: boolean | null;
+  activeSession: string;
+  sessionLoading: boolean;
+  requestSessions: () => void;
+  openSession: (id: string) => void;
+  newSession: (cwd?: string) => void;
   fresh: boolean;
   setFresh: (value: boolean) => void;
   install: InstallState;
@@ -209,8 +242,9 @@ export type AgentDialogController = {
   computerName: string;
   answerPermission: (id: string, option: string, name: string) => void;
   answerQuestion: (id: string, values: Record<string, string>) => void;
-  openedPrograms: WsProgram[];
+  openedPrograms: AgentProgram[];
   closeProgram: (program: WsProgram) => void;
+  logoutProgram: (program: WsProgram) => void;
   retryConnect: () => void;
   offline: boolean;
   agentBusy: boolean;
