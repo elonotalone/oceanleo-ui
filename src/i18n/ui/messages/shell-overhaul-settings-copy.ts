@@ -13,6 +13,7 @@ const SOURCE = {
   more: "更多",
   contentSamples: "内容示例",
   memory: "记忆",
+  backToHome: "回到首页",
 } as const;
 
 export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
@@ -26,6 +27,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "More",
     contentSamples: "Content samples",
     memory: "Memory",
+    backToHome: "Back to home",
   },
   de: {
     usageAndBilling: "Nutzung & Abrechnung",
@@ -37,6 +39,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Mehr",
     contentSamples: "Inhaltsbeispiele",
     memory: "Gedächtnis",
+    backToHome: "Zur Startseite",
   },
   es: {
     usageAndBilling: "Uso y facturación",
@@ -48,6 +51,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Más",
     contentSamples: "Ejemplos de contenido",
     memory: "Memoria",
+    backToHome: "Volver al inicio",
   },
   "es-419": {
     usageAndBilling: "Uso y facturación",
@@ -59,6 +63,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Más",
     contentSamples: "Ejemplos de contenido",
     memory: "Memoria",
+    backToHome: "Volver al inicio",
   },
   fr: {
     usageAndBilling: "Usage et facturation",
@@ -70,6 +75,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Plus",
     contentSamples: "Exemples de contenu",
     memory: "Mémoire",
+    backToHome: "Retour à l’accueil",
   },
   it: {
     usageAndBilling: "Utilizzo e fatturazione",
@@ -81,6 +87,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Altro",
     contentSamples: "Esempi di contenuto",
     memory: "Memoria",
+    backToHome: "Torna alla home",
   },
   "pt-BR": {
     usageAndBilling: "Uso e faturamento",
@@ -92,6 +99,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Mais",
     contentSamples: "Exemplos de conteúdo",
     memory: "Memória",
+    backToHome: "Voltar ao início",
   },
   "pt-PT": {
     usageAndBilling: "Utilização e faturação",
@@ -103,6 +111,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Mais",
     contentSamples: "Exemplos de conteúdo",
     memory: "Memória",
+    backToHome: "Voltar ao início",
   },
   vi: {
     usageAndBilling: "Sử dụng & thanh toán",
@@ -114,6 +123,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Thêm",
     contentSamples: "Mẫu nội dung",
     memory: "Trí nhớ",
+    backToHome: "Về trang chủ",
   },
   tr: {
     usageAndBilling: "Kullanım ve faturalama",
@@ -125,6 +135,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "Daha fazla",
     contentSamples: "İçerik örnekleri",
     memory: "Bellek",
+    backToHome: "Ana sayfaya dön",
   },
   "zh-TW": {
     usageAndBilling: "用量與帳單",
@@ -136,6 +147,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "更多",
     contentSamples: "內容示例",
     memory: "記憶",
+    backToHome: "回到首頁",
   },
   ja: {
     usageAndBilling: "利用状況と請求",
@@ -147,6 +159,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "その他",
     contentSamples: "コンテンツ例",
     memory: "記憶",
+    backToHome: "ホームに戻る",
   },
   ko: {
     usageAndBilling: "사용량 및 결제",
@@ -158,6 +171,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "더보기",
     contentSamples: "콘텐츠 예시",
     memory: "기억",
+    backToHome: "홈으로 돌아가기",
   },
   ar: {
     usageAndBilling: "الاستخدام والفوترة",
@@ -169,6 +183,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "المزيد",
     contentSamples: "أمثلة المحتوى",
     memory: "الذاكرة",
+    backToHome: "العودة إلى الصفحة الرئيسية",
   },
   th: {
     usageAndBilling: "การใช้งานและการเรียกเก็บเงิน",
@@ -180,6 +195,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "เพิ่มเติม",
     contentSamples: "ตัวอย่างเนื้อหา",
     memory: "ความจำ",
+    backToHome: "กลับหน้าแรก",
   },
   hi: {
     usageAndBilling: "उपयोग और बिलिंग",
@@ -191,5 +207,6 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     more: "और",
     contentSamples: "सामग्री उदाहरण",
     memory: "स्मृति",
+    backToHome: "होम पर वापस जाएँ",
   },
 });

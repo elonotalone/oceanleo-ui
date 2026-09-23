@@ -10,6 +10,9 @@ import { SHELL_OVERHAUL_PLUGINS_MESSAGES } from "./shell-overhaul-plugins-copy";
 import { SHELL_OVERHAUL_LEGACY_MESSAGES } from "./shell-overhaul-legacy-copy";
 import { SHELL_OCEANLEO_PANE_MESSAGES } from "./shell-oceanleo-pane-copy";
 import { SHELL_ENDED_MESSAGES } from "./shell-ended-copy";
+import { SERVER_PAGE_MESSAGES } from "./server-page-copy";
+import { TERMINAL_CARD_MESSAGES } from "./terminal-card-copy";
+import { ACP_CARD_MESSAGES } from "./acp-card-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -20,6 +23,9 @@ const PARTS = [
   SHELL_OVERHAUL_LEGACY_MESSAGES,
   SHELL_OCEANLEO_PANE_MESSAGES,
   SHELL_ENDED_MESSAGES,
+  SERVER_PAGE_MESSAGES,
+  TERMINAL_CARD_MESSAGES,
+  ACP_CARD_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

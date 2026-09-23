@@ -20,6 +20,7 @@ export const LEO_PANEL_ZH = {
   needBoardText: "先有一段文字，才能在面板里做。",
   collapseBack: "再按一次回到原来的大小",
   importToInput: "导入到输入框",
+  transcriptTitle: "对话记录",
 } as const;
 
 const SOURCE = {
@@ -31,6 +32,7 @@ const SOURCE = {
   needBoardText: LEO_PANEL_ZH.needBoardText,
   collapseBack: LEO_PANEL_ZH.collapseBack,
   importToInput: LEO_PANEL_ZH.importToInput,
+  transcriptTitle: LEO_PANEL_ZH.transcriptTitle,
 } as const;
 
 export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
@@ -43,6 +45,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Add some text first so leo can work on it in the panel.",
     collapseBack: "Press again to return to the original size",
     importToInput: "Import into the input box",
+    transcriptTitle: "Conversation history",
   },
   de: {
     composerPlaceholder: "Sprich mit leo",
@@ -53,6 +56,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Lege zuerst einen Text vor, damit leo ihn im Panel bearbeiten kann.",
     collapseBack: "Erneut drücken, um zur ursprünglichen Größe zurückzukehren",
     importToInput: "In das Eingabefeld übernehmen",
+    transcriptTitle: "Gesprächsverlauf",
   },
   es: {
     composerPlaceholder: "Habla con leo",
@@ -63,6 +67,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Primero añade un texto para que leo pueda trabajarlo en el panel.",
     collapseBack: "Pulsa de nuevo para volver al tamaño original",
     importToInput: "Importar al cuadro de entrada",
+    transcriptTitle: "Historial de conversación",
   },
   "es-419": {
     composerPlaceholder: "Habla con leo",
@@ -73,6 +78,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Primero agrega un texto para que leo pueda trabajarlo en el panel.",
     collapseBack: "Pulsa de nuevo para volver al tamaño original",
     importToInput: "Importar al cuadro de entrada",
+    transcriptTitle: "Historial de conversación",
   },
   fr: {
     composerPlaceholder: "Parler à leo",
@@ -83,6 +89,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Ajoutez d'abord un texte pour que leo puisse le traiter dans le panneau.",
     collapseBack: "Appuyez à nouveau pour revenir à la taille d'origine",
     importToInput: "Importer dans le champ de saisie",
+    transcriptTitle: "Historique de conversation",
   },
   it: {
     composerPlaceholder: "Parla con leo",
@@ -93,6 +100,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Prima serve un testo su cui leo possa lavorare nel pannello.",
     collapseBack: "Premi di nuovo per tornare alle dimensioni originali",
     importToInput: "Importa nel campo di input",
+    transcriptTitle: "Cronologia della conversazione",
   },
   "pt-BR": {
     composerPlaceholder: "Fale com a leo",
@@ -103,6 +111,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Primeiro forneça um texto para a leo trabalhar no painel.",
     collapseBack: "Pressione novamente para voltar ao tamanho original",
     importToInput: "Importar para a caixa de entrada",
+    transcriptTitle: "Histórico da conversa",
   },
   "pt-PT": {
     composerPlaceholder: "Fala com a leo",
@@ -113,6 +122,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Primeiro forneça um texto para a leo trabalhar no painel.",
     collapseBack: "Prima novamente para voltar ao tamanho original",
     importToInput: "Importar para a caixa de entrada",
+    transcriptTitle: "Histórico da conversa",
   },
   vi: {
     composerPlaceholder: "Nói với leo",
@@ -123,6 +133,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Hãy có một đoạn văn bản trước để leo xử lý trong bảng.",
     collapseBack: "Nhấn lần nữa để về kích thước ban đầu",
     importToInput: "Đưa vào ô nhập",
+    transcriptTitle: "Lịch sử trò chuyện",
   },
   tr: {
     composerPlaceholder: "leo'ya söyle",
@@ -133,6 +144,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "Önce bir metin gerekir; leo panelde onun üzerinde çalışır.",
     collapseBack: "Önceki boyuta dönmek için tekrar basın",
     importToInput: "Girdi kutusuna aktar",
+    transcriptTitle: "Sohbet geçmişi",
   },
   "zh-TW": {
     composerPlaceholder: "跟 leo 說",
@@ -143,6 +155,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "先有一段文字，才能在面板裡做。",
     collapseBack: "再按一次回到原來的大小",
     importToInput: "匯入到輸入框",
+    transcriptTitle: "對話記錄",
   },
   ja: {
     composerPlaceholder: "leo に話す",
@@ -153,6 +166,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "先にテキストを用意すると、leo がパネルで処理できます。",
     collapseBack: "もう一度押すと元のサイズに戻ります",
     importToInput: "入力欄にインポート",
+    transcriptTitle: "会話の記録",
   },
   ko: {
     composerPlaceholder: "leo에게 말하기",
@@ -163,6 +177,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "먼저 텍스트가 있어야 leo가 패널에서 처리할 수 있습니다.",
     collapseBack: "다시 누르면 원래 크기로 돌아갑니다",
     importToInput: "입력창으로 가져오기",
+    transcriptTitle: "대화 기록",
   },
   ar: {
     composerPlaceholder: "تحدث مع leo",
@@ -173,6 +188,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "يلزم وجود نص أولًا ليتمكن leo من معالجته في اللوحة.",
     collapseBack: "اضغط مرة أخرى للعودة إلى الحجم الأصلي",
     importToInput: "استيراد إلى مربع الإدخال",
+    transcriptTitle: "سجل المحادثة",
   },
   th: {
     composerPlaceholder: "บอก leo",
@@ -183,6 +199,7 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "ต้องมีข้อความก่อน leo ถึงจะทำงานในแผงได้",
     collapseBack: "กดอีกครั้งเพื่อกลับไปขนาดเดิม",
     importToInput: "นำเข้าสู่ช่องป้อนข้อความ",
+    transcriptTitle: "ประวัติการสนทนา",
   },
   hi: {
     composerPlaceholder: "leo से कहें",
@@ -193,5 +210,6 @@ export const LEO_PANEL_MESSAGES = assembleCopy(SOURCE, {
     needBoardText: "पहले कोई टेक्स्ट होना चाहिए, तभी leo पैनल में उस पर काम कर सकता है।",
     collapseBack: "मूल आकार पर लौटने के लिए फिर दबाएँ",
     importToInput: "इनपुट बॉक्स में आयात करें",
+    transcriptTitle: "बातचीत का इतिहास",
   },
 });

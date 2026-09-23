@@ -48,30 +48,21 @@ export const ENTERPRISE_COPY_SOURCE = {
 
   // --- ByokKeys (Cursor / 自带 key) ---
   cursorKeySaved: "Cursor key 已保存在这台设备。",
-  cursorCloudHint:
-    "Cursor 开一台云端机器克隆你的 GitHub 仓库、跑完可自动开 PR。需要你的 Cursor 账号已连通 GitHub 并授权该仓库，否则会被 Cursor 拒绝（ERROR_GITHUB_NO_USER_CREDENTIALS）。",
   cursorRejectedKey:
     "Cursor 拒绝了这把 key（无效或已撤销），请重新生成后再保存。",
   cursorQuota: "Cursor 额度或频率受限，请稍后再试。",
-  cursorCloudRuntime: "云端（Cursor 的机器）",
   cursorGithubNotConnected:
     "你的 Cursor 账号还没有连通 GitHub：请在 Cursor Dashboard → Integrations 里连接后重试。",
   saveAndVerify: "保存并校验",
   getCursorKeyLink:
     "去 Cursor Dashboard → Integrations → User API Keys 生成 →",
-  whereToRun: "在哪里跑",
   verifiedAs: "已校验：",
-  cursorLocalRuntime: "本机（你已配对的电脑）",
   pasteCrsrKey: "粘贴 crsr_ 开头的 key",
   codingAgentNotChat: "编码 agent（不用于聊天）",
   codingAgentNotChatModel: "编码 agent，不是聊天模型",
   enterCursorApiKey: "请填入 Cursor API key",
   notCursorApiKey: "这不是 Cursor 的 API Key（应以 crsr_ 开头）。",
-  cursorKeyPrivacy:
-    "这把 key 只用来在 OceanLeo 里启动、追问、查看和取消你自己的 Cursor 编码 agent，花的是你自己的 Cursor 额度，OceanLeo 不扣钱包。它和上面的 key 一样只以加密形式保存在这台设备的浏览器里，服务器不保存、不写日志、响应里也不会出现；要撤销，删掉下方表格里的 Cursor 一行即可。",
   cursorTimeout: "连接 Cursor 超时，请稍后再试。",
-  cursorLocalHint:
-    "通过设备桥在你自己的电脑上跑，文件不离开本机。那台电脑要先装好 Cursor CLI 并登录；这里的 key 不会下发到那台机器。",
   recheck: "重新校验",
   unnamedKey: "（未命名 key）",
 
