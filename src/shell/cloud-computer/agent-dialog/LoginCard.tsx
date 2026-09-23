@@ -46,7 +46,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
   const tt = useUI();
   const login = dialog.login;
   const phase = phaseOf(login);
-  const [copied, setCopied] = useState(false);
+  const [copiedWhat, setCopiedWhat] = useState("");
   const [stalled, setStalled] = useState(false);
 
   // opening 卡 20 s 没等到 login_url → 本地按失败展示（服务端进程仍在，取消会发 login_cancel）。
@@ -72,12 +72,12 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
   const program = login.program;
   const href = httpUrl(login.url);
 
-  function copyText(value: string) {
+  function copyText(what: "url" | "code", value: string) {
     const write = navigator.clipboard?.writeText;
     if (!write) return;
     void write.call(navigator.clipboard, value).then(
-      () => setCopied(true),
-      () => setCopied(false),
+      () => setCopiedWhat(what),
+      () => setCopiedWhat(""),
     );
   }
 
@@ -116,7 +116,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
       ) : null}
 
       {phase === "opening" && !stalled ? (
-        <p data-oceanleo-cc-login-opening="" className="text-[12px] text-neutral-400">
+        <p data-oceanleo-cc-login-opening="" className="text-[12px] text-neutral-300">
           {tt("正在打开登录…")}
         </p>
       ) : null}
@@ -149,10 +149,10 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
               <button
                 type="button"
                 data-oceanleo-cc-login-url-copy=""
-                onClick={() => copyText(href)}
+                onClick={() => copyText("url", href)}
                 className="shrink-0 rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-200"
               >
-                {copied ? tt("已复制") : tt("复制")}
+                {copiedWhat === "url" ? tt("已复制") : tt("复制")}
               </button>
             </div>
           ) : login.url ? (
@@ -166,14 +166,14 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
               <button
                 type="button"
                 data-oceanleo-cc-login-code-copy=""
-                onClick={() => copyText(login.code)}
+                onClick={() => copyText("code", login.code)}
                 className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-200"
               >
-                {copied ? tt("已复制") : tt("复制")}
+                {copiedWhat === "code" ? tt("已复制") : tt("复制")}
               </button>
             </div>
           ) : null}
-          <p className="mt-2 text-[12px] text-neutral-400">{tt("在浏览器里完成后，这里几秒内会变绿")}</p>
+          <p className="mt-2 text-[12px] text-neutral-300">{tt("在浏览器里完成后，这里几秒内会变绿")}</p>
           {login.needsCode ? (
             <form
               className="mt-2"
@@ -182,7 +182,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 submitCode();
               }}
             >
-              <label className="block text-[11px] text-neutral-500">
+              <label className="block text-[11px] text-neutral-300">
                 {tt("把浏览器给你的代码贴到这里")}
                 <input
                   type="text"

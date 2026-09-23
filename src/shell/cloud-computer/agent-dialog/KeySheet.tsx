@@ -101,11 +101,11 @@ export function KeySheet({
           {tt("关闭")}
         </button>
       </div>
-      <p className="text-[12px] leading-relaxed text-neutral-400" data-oceanleo-cc-key-where="">
+      <p className="text-[12px] leading-relaxed text-neutral-300" data-oceanleo-cc-key-where="">
         {whereCopy(tt, program)}
       </p>
       {program === "hermes" ? (
-        <label className="mt-2 block text-[11px] text-neutral-500">
+        <label className="mt-2 block text-[11px] text-neutral-300">
           {tt("供应商")}
           <select
             data-oceanleo-cc-key-provider=""
@@ -139,7 +139,7 @@ export function KeySheet({
         </div>
       ) : (
         <>
-          <label className="mt-2 block text-[11px] text-neutral-500">
+          <label className="mt-2 block text-[11px] text-neutral-300">
             {tt("Key")}
             <input
               type="password"

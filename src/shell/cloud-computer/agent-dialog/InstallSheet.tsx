@@ -44,10 +44,10 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
           {tt("关闭")}
         </button>
       </div>
-      <p className="text-[12px] leading-relaxed text-neutral-400" data-oceanleo-cc-install-where="">
+      <p className="text-[12px] leading-relaxed text-neutral-300" data-oceanleo-cc-install-where="">
         {dirSentence(tt, capability)}
       </p>
-      <label className="mt-2 block text-[11px] text-neutral-500">
+      <label className="mt-2 block text-[11px] text-neutral-300">
         {tt("安装位置")}
         <input
           data-oceanleo-cc-install-dir=""

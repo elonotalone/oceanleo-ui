@@ -121,7 +121,7 @@ export function ProgramRow({
               ) : null}
             </button>
             {state === "authed-login" ? (
-              <span className="flex items-center gap-1 text-[11px] text-neutral-400">
+              <span className="flex items-center gap-1 text-[11px] text-neutral-300">
                 {row?.version ? (
                   <span data-oceanleo-cc-version={id} className="font-mono">
                     {row.version}
@@ -154,7 +154,7 @@ export function ProgramRow({
             ) : null}
             {state === "unknown" ? (
               <>
-                <span data-oceanleo-cc-unknown={id} className="px-1 text-[11px] text-neutral-500">
+                <span data-oceanleo-cc-unknown={id} className="px-1 text-[11px] text-neutral-300">
                   {tt("未知")}
                 </span>
                 <button
