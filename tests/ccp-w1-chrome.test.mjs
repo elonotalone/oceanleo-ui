@@ -217,6 +217,13 @@ async function renderPage({
     host,
     pushes,
     replaces,
+    async rerenderComputers(next) {
+      await act(async () => root.render(React.createElement(ServerPage, {
+        computerId: "cc_1", client: api, computers: next,
+        upgradePollIntervalMs: 0, upgradePollAttempts: 4, ...props,
+      })));
+      await flush();
+    },
     cleanup() {
       act(() => root.unmount());
       host.remove();
@@ -285,6 +292,27 @@ test("header supports arrow navigation, selected label and last-card preference"
   } finally { view.cleanup(); }
 });
 
+test("list polling does not repeat node probes or reset initial card parameters", async () => {
+  let probes = 0;
+  const api = client({ async getNodeInfo() {
+    probes++;
+    return { version: "v1", latest_version: "v1", online: true, update_available: false, features: [] };
+  } });
+  const view = await renderPage({ api, query: { card: "acp", program: "cursor", session: "initial" } });
+  try {
+    const original = view.host.querySelector("[data-test-acp-card]");
+    assert.equal(probes, 1);
+    globalThis.__serverQuery = { card: "acp", program: "codex", session: "changed" };
+    await view.rerenderComputers([computer()]);
+    assert.equal(probes, 1);
+    assert.equal(view.host.querySelector("[data-test-acp-card]"), original);
+    assert.equal(original.getAttribute("data-program"), "cursor");
+    assert.equal(original.getAttribute("data-session"), "initial");
+    await view.rerenderComputers([computer({ node_version: "v2" })]);
+    assert.equal(probes, 2);
+  } finally { view.cleanup(); }
+});
+
 test("URL patch preserves unrelated query, hash and history state; null removes only its key", () => {
   window.history.replaceState({ next: true }, "", "/computers/cc_1?card=acp&program=cursor&session=s1&x=2#settings");
   replaceServerPageUrl("cc_1", { session: null });
@@ -297,7 +325,7 @@ test("URL patch preserves unrelated query, hash and history state; null removes 
 
 test("program strip wraps, collapses accessibly, persists and keeps selected item on first row", async () => {
   localStorage.clear();
-  let wrapped = true;
+  let availableWidth = 280;
   const observers = new Set();
   globalThis.ResizeObserver = class {
     constructor(fn) { this.fn = fn; observers.add(this); }
@@ -306,10 +334,20 @@ test("program strip wraps, collapses accessibly, persists and keeps selected ite
   };
   const top = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+  const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+  const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() {
+    if (this.dataset.programId) return 100;
+    if (this.querySelector?.('[aria-label="上移"]')) return 80;
+    return 0;
+  } });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() {
+    return availableWidth - (host.querySelector('[aria-label="上移"]') ? 80 : 0);
+  } });
   Object.defineProperty(HTMLElement.prototype, "offsetTop", { configurable: true, get() {
-    if (!wrapped || !this.dataset.programId) return 0;
+    if (!this.dataset.programId) return 0;
     const ordered = [...this.parentElement.children].sort((a, b) => Number(a.style.order || 0) - Number(b.style.order || 0));
-    return Math.floor(ordered.indexOf(this) / 2) * 40;
+    return Math.floor(ordered.indexOf(this) / Math.max(1, Math.floor(this.parentElement.clientWidth / 100))) * 40;
   } });
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get() { return 40; } });
   const host = document.createElement("div"); document.body.append(host);
@@ -342,7 +380,9 @@ test("program strip wraps, collapses accessibly, persists and keeps selected ite
     assert.equal(host.querySelector('[data-program-strip-rows]').style.maxHeight, "");
     assert.equal(host.querySelectorAll('[data-program-id][inert]').length, 0);
     assert.equal(localStorage.getItem("test.strip"), "expanded");
-    wrapped = false;
+    // The controls themselves still make three items wrap at 240px. The strip
+    // must reclaim their 80px and discover that the full 320px fits one row.
+    availableWidth = 320;
     await act(async () => { for (const observer of observers) observer.fn(); });
     assert.equal(up(), null); assert.equal(down(), null);
     await click(host.querySelector('[data-oceanleo-program-strip-item="Cursor"]'));
@@ -351,6 +391,9 @@ test("program strip wraps, collapses accessibly, persists and keeps selected ite
     act(() => root.unmount()); host.remove();
     Object.defineProperty(HTMLElement.prototype, "offsetTop", top);
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", height);
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", width);
+    if (clientWidth) Object.defineProperty(HTMLElement.prototype, "clientWidth", clientWidth);
+    else delete HTMLElement.prototype.clientWidth;
     delete globalThis.ResizeObserver;
   }
 });
