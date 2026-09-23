@@ -30,6 +30,11 @@ export type AgentDialogControllerV2 = AgentDialogController & {
 };
 
 const MAX_PROMPT_CHARS = 32000;
+// oceanleo turn 的上限 = 后端 TurnBody text max_length=8000（cloud_computer_agent_router.py），
+// 与 cloud-computer-agent-api.MAX_AGENT_TURN_CHARS 同数。这里本地持有一份而不 import：
+// W3 的测试桩按导出名单替身整份 agent-api 模块，控制器每多 import 一个命名导出，
+// 那份文件就在加载期炸一次（2026-09-23 实测）。同数改动时两处一起改。
+const MAX_OCEAN_PROMPT_CHARS = 8000;
 
 function sendJson(socket: WebSocket | null, frame: Record<string, unknown>): boolean {
   if (!socket || socket.readyState !== WebSocket.OPEN) return false;
@@ -64,11 +69,14 @@ export function useAgentDialog({
   const delayRef = useRef(1000);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef<() => Promise<WebSocket | null>>(async () => null);
+  // refreshOcean 经 tt 间接依赖 useUI 的返回函数；enable effect 只认 ref，
+  // tt 一旦不是 memo 稳定的（如测试桩），effect 也不会「渲染→dispatch→渲染」空转。
+  const refreshOceanRef = useRef<() => Promise<void>>(async () => {});
   const inflightRef = useRef<Promise<WebSocket | null> | null>(null);
-  // OceanLeo agent 程序（合同 I6）：任务指针、刚发出去还没在任务消息里看到的原文、
+  // OceanLeo agent 程序（合同 I6）：任务指针、刚发出去那句的落地判定基线、
   // 轮询代际与可取消的等待器。代际一升，所有在飞的轮询/回放立即作废。
   const oceanTaskRef = useRef("");
-  const oceanSendRef = useRef("");
+  const oceanSendRef = useRef<{ baseUsers: number } | null>(null);
   const oceanGen = useRef(0);
   const oceanWaiterRef = useRef<{
     timer: ReturnType<typeof setTimeout>;
@@ -259,9 +267,15 @@ export function useAgentDialog({
       const mapped = mapTaskMessages(detail, { step: tt("步骤"), error: tt("出错") });
       const pending = oceanSendRef.current;
       if (pending) {
-        const seen = mapped.some((message) => message.kind === "user" && message.text === pending);
-        if (!seen) return;
-        oceanSendRef.current = "";
+        // 落地判定按用户消息计数、不按文本：重发同一句不算落地，服务端改写文本也不卡死。
+        // 任务已到终态则无条件应用——服务端真相优先，busy 不许因此卡住。
+        const userCount = mapped.reduce(
+          (count, message) => (message.kind === "user" ? count + 1 : count),
+          0,
+        );
+        const terminal = typeof detail.task?.status === "string" && detail.task.status !== "running";
+        if (!terminal && userCount <= pending.baseUsers) return;
+        oceanSendRef.current = null;
       }
       messagesCacheRef.current.set("oceanleo", mapped);
       if (stateRef.current.program === "oceanleo") {
@@ -283,6 +297,15 @@ export function useAgentDialog({
       let lastCount = -1;
       for (;;) {
         if (gen !== oceanGen.current) return;
+        // 与 AgentChat 同语义：页面在后台这一轮不发请求，只留便宜定时器回来看。
+        const hidden = typeof document !== "undefined" && document.hidden === true;
+        if (hidden) {
+          const cadence = nextOceanleoPoll({ hidden: true, changed: false, idleStep, waitedMs });
+          idleStep = cadence.idleStep;
+          waitedMs = cadence.waitedMs;
+          if (!(await oceanWait(cadence.delayMs))) return;
+          continue;
+        }
         const result = await getTask(taskId);
         if (gen !== oceanGen.current) return;
         if (!result.ok || !result.data) {
@@ -298,8 +321,7 @@ export function useAgentDialog({
         lastCount = detail.messages?.length ?? 0;
         applyOceanDetail(detail);
         if (detail.task?.status !== "running") return;
-        const hidden = typeof document !== "undefined" && document.hidden === true;
-        const cadence = nextOceanleoPoll({ hidden, changed, idleStep, waitedMs });
+        const cadence = nextOceanleoPoll({ hidden: false, changed, idleStep, waitedMs });
         idleStep = cadence.idleStep;
         waitedMs = cadence.waitedMs;
         if (!(await oceanWait(cadence.delayMs))) return;
@@ -334,7 +356,7 @@ export function useAgentDialog({
     if (data.computer?.online !== true) {
       // 电脑不在线：消息区只留一行实话，输入禁用（offline 语义与 WS 程序一致）。
       oceanTaskRef.current = "";
-      oceanSendRef.current = "";
+      oceanSendRef.current = null;
       messagesCacheRef.current.set("oceanleo", []);
       if (stateRef.current.program === "oceanleo") {
         dispatch({ type: "messages-replace", messages: [] });
@@ -361,13 +383,16 @@ export function useAgentDialog({
     if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
   }, [applyOceanDetail, clearOceanWait, pollOcean]);
 
+  refreshOceanRef.current = refreshOcean;
+
   const sendOcean = useCallback(async () => {
     const computerId = computerIdRef.current;
     if (!computerId) return;
     if (stateRef.current.busy || stateRef.current.offline) return;
     const text = draftRef.current.trim();
     if (!text) return;
-    if (text.length > MAX_PROMPT_CHARS) {
+    // 后端 turn 上限 8000：超了明说，不静默截断（WS 程序的 32000 是另一条协议）。
+    if (text.length > MAX_OCEAN_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program: "oceanleo" });
       return;
     }
@@ -384,15 +409,21 @@ export function useAgentDialog({
       await agentReset(computerId);
       if (gen !== oceanGen.current) return;
       oceanTaskRef.current = "";
+      // 新任务从 0 条用户消息计起；旧缓存的计数会把落地判定永远挡住。
+      messagesCacheRef.current.set("oceanleo", []);
     }
-    oceanSendRef.current = text;
+    const baseUsers = (messagesCacheRef.current.get("oceanleo") ?? []).reduce(
+      (count, message) => (message.kind === "user" ? count + 1 : count),
+      0,
+    );
+    oceanSendRef.current = { baseUsers };
     const result = await agentTurn(computerId, {
       text,
       shell_session_id: sessionIdRef.current || undefined,
     });
     if (gen !== oceanGen.current) return;
     if (!result.ok || !result.data?.task_id) {
-      oceanSendRef.current = "";
+      oceanSendRef.current = null;
       if (result.status === 0) {
         dispatch({ type: "send-failed" });
       } else {
@@ -414,7 +445,7 @@ export function useAgentDialog({
     setComputerName("");
     oceanGen.current += 1;
     oceanTaskRef.current = "";
-    oceanSendRef.current = "";
+    oceanSendRef.current = null;
     messagesCacheRef.current.clear();
     clearOceanWait();
   }, [computerId, sessionId, clearOceanWait]);
@@ -436,7 +467,7 @@ export function useAgentDialog({
     delayRef.current = 1000;
     void connect();
     // 默认程序就是 oceanleo（合同 I6）：打开对话框即拉 agentState 回放当前任务。
-    if (stateRef.current.program === "oceanleo") void refreshOcean();
+    if (stateRef.current.program === "oceanleo") void refreshOceanRef.current();
     return () => {
       connectGen.current += 1;
       inflightRef.current = null;
@@ -447,7 +478,7 @@ export function useAgentDialog({
       socketRef.current = null;
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
     };
-  }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait, refreshOcean]);
+  }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait]);
 
   const setProgram = useCallback(
     (next: AgentProgram) => {
@@ -520,7 +551,7 @@ export function useAgentDialog({
       // 「停止」真的停：停轮询、停服务端任务，再拉一次终态消息。
       oceanGen.current += 1;
       clearOceanWait();
-      oceanSendRef.current = "";
+      oceanSendRef.current = null;
       const taskId = oceanTaskRef.current;
       dispatch({ type: "cancel-local" });
       if (taskId) {

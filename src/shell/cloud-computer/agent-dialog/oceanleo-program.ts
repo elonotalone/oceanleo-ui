@@ -111,9 +111,11 @@ export function mapTaskMessages(
   };
   for (const message of detail.messages ?? []) {
     if (message.role === "user") {
-      closeTurn();
+      // 空 user 消息（如只带附件的一行）不占行，也不该切断正在收的 turn。
       const text = (message.content || "").trim();
-      if (text) out.push({ kind: "user", id: nextId("u"), text: message.content });
+      if (!text) continue;
+      closeTurn();
+      out.push({ kind: "user", id: nextId("u"), text: message.content });
       continue;
     }
     const item = mapAssistantItem(message, labels);

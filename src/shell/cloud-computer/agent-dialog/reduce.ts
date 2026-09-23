@@ -315,6 +315,22 @@ function storedNoticeText(message: AgentDialogMessage): string {
   return typeof raw === "string" ? raw : "";
 }
 
+// 防御（合同 I3 起 W2 已改发 login_failed busy，这里兜底旧节点）：登录卡开着时
+// 收到 agent_busy，按 busy 失败收尾登录卡，不让它一直转「正在打开登录」。
+// 登录卡属于它自己那张程序行，不挑当前选中的程序——oceanleo 是默认选中，
+// 用户多半是在看着 oceanleo 时点 codex 的登录，所以必须放在 forCurrent 之前。
+function finishLoginOnAgentBusy(
+  state: DialogState,
+  frame: Record<string, unknown>,
+): DialogState {
+  if (str(frame.t) !== "error" || str(frame.code) !== "agent_busy") return state;
+  const open =
+    state.login.open &&
+    (state.login.pending || state.login.phase === "opening" || state.login.phase === "waiting");
+  if (!open) return state;
+  return { ...state, login: { ...state.login, phase: "failed", pending: false, failed: "busy" } };
+}
+
 function onError(state: DialogState, frame: Record<string, unknown>): DialogState {
   const code = str(frame.code) || "node_error";
   const program = str(frame.program);
@@ -328,20 +344,11 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
     storedNoticeText(last) === text;
   const base = { kind: "notice" as const, id: nextId(), code, program };
   const notice = text ? { ...base, text } : base;
-  // 防御（合同 I3 起 W2 已改发 login_failed busy，这里兜底旧节点）：登录卡开着时
-  // 收到 agent_busy，按 busy 失败收尾登录卡，不让它一直转「正在打开登录」。
-  const loginBusy =
-    code === "agent_busy" &&
-    state.login.open &&
-    (state.login.pending || state.login.phase === "opening" || state.login.phase === "waiting");
   return {
     ...state,
     busy: false,
     agentBusy: code === "agent_busy",
     offline: code === "computer_offline" ? true : state.offline,
-    login: loginBusy
-      ? { ...state.login, phase: "failed", pending: false, failed: "busy" }
-      : state.login,
     messages: same ? state.messages : [...state.messages, notice],
   };
 }
@@ -425,6 +432,8 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (kind === "login_done") {
     return { ...state, login: { ...state.login, phase: "done", pending: false, failed: "" } };
   }
+  // 登录卡的 agent_busy 兜底不挑当前程序（见 finishLoginOnAgentBusy 注释）。
+  state = finishLoginOnAgentBusy(state, frame);
   if (!forCurrent(state, frame)) return state;
   if (kind === "models") {
     const models = parseModels(frame.models);
@@ -492,7 +501,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
     case "cancel-local":
       return { ...state, busy: false, agentBusy: false };
     case "clear-offline":
-      return { ...state, offline: false };
+      // 已不在离线就原样返回：调用方可能在 effect 里每次挂载都发，别白造一帧渲染。
+      return state.offline ? { ...state, offline: false } : state;
     case "set-model":
       return { ...state, selectedModel: event.id };
     case "set-mode":

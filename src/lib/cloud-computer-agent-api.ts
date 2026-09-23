@@ -17,6 +17,10 @@ export type ComputerAgentState = {
   task: { id: string; title: string; status: string } | null;
 };
 
+// 后端 TurnBody text max_length=8000（cloud_computer_agent_router.py）。控制器按这个数
+// 拒绝超长输入（invalid_argument 提示），这里的 slice 只是第二道防线，不做静默截断的借口。
+export const MAX_AGENT_TURN_CHARS = 8000;
+
 function agentPath(computerId: string, suffix: string): string {
   return `/v1/computers/${encodeURIComponent(computerId)}/agent${suffix}`;
 }
@@ -30,7 +34,7 @@ export function agentTurn(
   body: { text: string; shell_session_id?: string },
 ) {
   const payload: { text: string; shell_session_id?: string } = {
-    text: body.text.slice(0, 8000),
+    text: body.text.slice(0, MAX_AGENT_TURN_CHARS),
   };
   if (body.shell_session_id) payload.shell_session_id = body.shell_session_id;
   return authed<{ task_id: string; message_id: number | string }>(agentPath(computerId, "/turn"), {
