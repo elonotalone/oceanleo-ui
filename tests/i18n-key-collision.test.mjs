@@ -25,6 +25,18 @@ function importedFragments() {
 
 const ALLOWED_BASE_OVERRIDES = new Map([
   // 每一项都必须说明为什么同一中文键可以故意改写基础英文；无理由不得加白名单。
+  [
+    "RECENT_MODEL_AND_TASK_MESSAGES:新建",
+    "任务列表按钮特指新建任务，基础表的 New 是无对象的通用动作。",
+  ],
+  [
+    "CLOUD_BROWSER_MESSAGES:前进",
+    "浏览器工具栏指页面导航 Forward，基础表的 Redo 属于编辑器重做动作。",
+  ],
+  [
+    "EDITOR_PANELS_MESSAGES:中",
+    "编辑器分表指居中对齐 Center，基础表的 Medium 指尺寸或强度档位。",
+  ],
 ]);
 
 test("分表不得悄悄改变基础词典里同一中文键的英文含义", async () => {

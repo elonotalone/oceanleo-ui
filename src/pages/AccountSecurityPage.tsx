@@ -79,7 +79,7 @@ export function securityErrorCopy(code: SecurityApiCode | undefined): string {
 export function securityEventCopy(kind: SecurityEventKind): string {
   switch (kind) {
     case "login":
-      return "登录";
+      return "账号登录";
     case "password_changed":
       return "修改了密码";
     case "mfa_enrolled":

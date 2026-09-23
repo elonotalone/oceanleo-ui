@@ -192,6 +192,74 @@ export type TerminalSession = {
   alive?: boolean;
 };
 
+export type TerminalRecord = {
+  id: string;
+  title: string;
+  created_at: string;
+  alive: boolean;
+  ended_at: string | null;
+  exit_code: number | null;
+  end_reason: "exit" | "closed" | "node_restart" | null;
+  kind: "shell" | "cli";
+  program: string | null;
+  cwd: string | null;
+  record_bytes: number;
+  cols?: number;
+  rows?: number;
+};
+
+export type TerminalRecordRead = {
+  data_b64: string;
+  offset: number;
+  next_offset: number;
+  total: number;
+  alive: boolean;
+};
+
+export type NodeInfo = {
+  version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+  features: string[];
+  online: boolean;
+};
+
+export type AgentSettings = {
+  confirm_dangerous: boolean;
+  oceanleo_tools: boolean;
+  billing_paused: boolean;
+};
+
+export type OceanleoAgentStatus = {
+  installed: boolean;
+  version: string | null;
+  token_active: boolean;
+};
+
+export type CliProgramOption = {
+  key: string;
+  label: string;
+  type: "select" | "bool";
+  choices?: Array<{ value: string; label: string }>;
+  default: string | boolean;
+};
+
+export type CliProgram = {
+  id: string;
+  label: string;
+  installed: boolean;
+  version: string | null;
+  supports_resume: boolean;
+  options: CliProgramOption[];
+};
+
+export type CliChat = {
+  id: string;
+  title: string;
+  cwd: string | null;
+  updated_at: string;
+};
+
 export type InstallCommandResponse = {
   install_command: string;
   enroll_expires_at: string;
@@ -222,7 +290,10 @@ function errorFromPayload(status: number, payload: unknown): CloudComputerError 
   return new CloudComputerError(code, message, status);
 }
 
-async function ccRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function cloudComputerRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
   const token = await accessToken();
   if (!token) {
     throw new CloudComputerError("client_unauthorized", "未登录", 401);
@@ -253,6 +324,8 @@ async function ccRequest<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return payload as T;
 }
+
+const ccRequest = cloudComputerRequest;
 
 export function readMountedComputerId(): string {
   if (typeof window === "undefined") return "";
@@ -316,14 +389,12 @@ export function terminalWsUrl(
 /** Same auth query as `terminalWsUrl`; path is the shell agent dialog. */
 export function agentDialogWsUrl(
   id: string,
-  sessionId: string,
+  sessionId: string | undefined,
   token: string,
 ): string {
   const wsBase = GATEWAY_BASE.replace(/^http/i, "ws");
-  const query = new URLSearchParams({
-    session_id: sessionId,
-    token,
-  });
+  const query = new URLSearchParams({ token });
+  if (sessionId) query.set("session_id", sessionId);
   return `${wsBase}/v1/computers/${encodeURIComponent(id)}/agent-dialog?${query.toString()}`;
 }
 
@@ -447,6 +518,156 @@ export function closeTerminal(computerId: string, sessionId: string) {
   );
 }
 
+export function listTerminalsWithRecords(computerId: string) {
+  return cloudComputerRequest<{
+    sessions: TerminalRecord[];
+    records_supported: boolean;
+  }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/terminals?include_ended=1`,
+  );
+}
+
+export function openTerminalSession(
+  computerId: string,
+  body: {
+    cols: number;
+    rows: number;
+    title?: string;
+    command?: string;
+    kind?: "shell" | "cli";
+    program?: string;
+    as_task?: boolean;
+  },
+) {
+  return cloudComputerRequest<{ session: TerminalRecord }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/terminals`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function readTerminalRecord(
+  computerId: string,
+  sessionId: string,
+  options: { offset?: number; limit?: number } = {},
+) {
+  const query = new URLSearchParams();
+  if (options.offset !== undefined) query.set("offset", String(options.offset));
+  if (options.limit !== undefined) query.set("limit", String(options.limit));
+  const suffix = query.toString();
+  return cloudComputerRequest<TerminalRecordRead>(
+    `/v1/computers/${encodeURIComponent(computerId)}/terminals/${encodeURIComponent(sessionId)}/record${suffix ? `?${suffix}` : ""}`,
+  );
+}
+
+export function deleteTerminalRecord(computerId: string, sessionId: string) {
+  return cloudComputerRequest<{ ok: boolean }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/terminals/${encodeURIComponent(sessionId)}/record`,
+    { method: "DELETE" },
+  );
+}
+
+export function getNodeInfo(computerId: string) {
+  return cloudComputerRequest<NodeInfo>(
+    `/v1/computers/${encodeURIComponent(computerId)}/node`,
+  );
+}
+
+export function upgradeNode(computerId: string) {
+  return cloudComputerRequest<{
+    ok: boolean;
+    from: string | null;
+    to: string;
+  }>(`/v1/computers/${encodeURIComponent(computerId)}/node/upgrade`, {
+    method: "POST",
+  });
+}
+
+export function getAgentSettings(computerId: string) {
+  return cloudComputerRequest<AgentSettings>(
+    `/v1/computers/${encodeURIComponent(computerId)}/agent-settings`,
+  );
+}
+
+export function patchAgentSettings(
+  computerId: string,
+  patch: Partial<AgentSettings>,
+) {
+  return cloudComputerRequest<AgentSettings>(
+    `/v1/computers/${encodeURIComponent(computerId)}/agent-settings`,
+    { method: "PATCH", body: JSON.stringify(patch) },
+  );
+}
+
+export function getOceanleoAgent(computerId: string) {
+  return cloudComputerRequest<OceanleoAgentStatus>(
+    `/v1/computers/${encodeURIComponent(computerId)}/oceanleo-agent`,
+  );
+}
+
+export function installOceanleoAgent(computerId: string) {
+  return cloudComputerRequest<{ ok: boolean; version: string }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/oceanleo-agent/install`,
+    { method: "POST" },
+  );
+}
+
+export function uninstallOceanleoAgent(computerId: string) {
+  return cloudComputerRequest<{ ok: boolean }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/oceanleo-agent`,
+    { method: "DELETE" },
+  );
+}
+
+export function listCliPrograms(computerId: string) {
+  return cloudComputerRequest<{ programs: CliProgram[] }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/cli/programs`,
+  );
+}
+
+export function listCliSessions(computerId: string, program: string) {
+  const query = new URLSearchParams({ program });
+  return cloudComputerRequest<{ supported: boolean; sessions: CliChat[] }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/cli/sessions?${query.toString()}`,
+  );
+}
+
+export function launchCli(
+  computerId: string,
+  body: {
+    program: string;
+    resume_id?: string;
+    options?: Record<string, string | boolean>;
+    cols: number;
+    rows: number;
+  },
+) {
+  return cloudComputerRequest<{ session: TerminalRecord }>(
+    `/v1/computers/${encodeURIComponent(computerId)}/cli/launch`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function getCliTools(computerId: string) {
+  return cloudComputerRequest<{
+    programs: Record<"cursor" | "claude" | "codex", boolean>;
+  }>(`/v1/computers/${encodeURIComponent(computerId)}/agent/cli-tools`);
+}
+
+export function setCliTools(
+  computerId: string,
+  program: "cursor" | "claude" | "codex",
+  enabled: boolean,
+) {
+  return cloudComputerRequest<{
+    ok: boolean;
+    program: string;
+    enabled: boolean;
+  }>(`/v1/computers/${encodeURIComponent(computerId)}/agent/cli-tools`, {
+    method: "PUT",
+    body: JSON.stringify({ program, enabled }),
+  });
+}
+
 export function getUsage(id: string, days = 30) {
   const query = new URLSearchParams({ days: String(days) });
   return ccRequest<UsageResponse>(
@@ -474,6 +695,22 @@ export type CloudComputerClient = {
   listTerminals: typeof listTerminals;
   openTerminal: typeof openTerminal;
   closeTerminal: typeof closeTerminal;
+  listTerminalsWithRecords: typeof listTerminalsWithRecords;
+  openTerminalSession: typeof openTerminalSession;
+  readTerminalRecord: typeof readTerminalRecord;
+  deleteTerminalRecord: typeof deleteTerminalRecord;
+  getNodeInfo: typeof getNodeInfo;
+  upgradeNode: typeof upgradeNode;
+  getAgentSettings: typeof getAgentSettings;
+  patchAgentSettings: typeof patchAgentSettings;
+  getOceanleoAgent: typeof getOceanleoAgent;
+  installOceanleoAgent: typeof installOceanleoAgent;
+  uninstallOceanleoAgent: typeof uninstallOceanleoAgent;
+  listCliPrograms: typeof listCliPrograms;
+  listCliSessions: typeof listCliSessions;
+  launchCli: typeof launchCli;
+  getCliTools: typeof getCliTools;
+  setCliTools: typeof setCliTools;
   getUsage: typeof getUsage;
   getUsageSummary: typeof getUsageSummary;
 };
@@ -494,6 +731,22 @@ export const cloudComputerApi: CloudComputerClient = {
   listTerminals,
   openTerminal,
   closeTerminal,
+  listTerminalsWithRecords,
+  openTerminalSession,
+  readTerminalRecord,
+  deleteTerminalRecord,
+  getNodeInfo,
+  upgradeNode,
+  getAgentSettings,
+  patchAgentSettings,
+  getOceanleoAgent,
+  installOceanleoAgent,
+  uninstallOceanleoAgent,
+  listCliPrograms,
+  listCliSessions,
+  launchCli,
+  getCliTools,
+  setCliTools,
   getUsage,
   getUsageSummary,
 };

@@ -95,7 +95,7 @@ export const ACCOUNT_SECURITY_COPY_SOURCE = {
   unknownIp: "地址未知",
 
   // —— 活动类型（契约 §2 的 kind 表）——————————————————————
-  eventLogin: "登录",
+  eventLogin: "账号登录",
   eventPasswordChanged: "修改了密码",
   eventMfaEnrolled: "开启了两步验证",
   eventMfaUnenrolled: "关闭了两步验证",
