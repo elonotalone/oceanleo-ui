@@ -13,10 +13,22 @@ import { SHELL_ENDED_ZH } from "../../i18n/ui/messages/shell-ended-copy";
 import {
   nextTerminalState,
   RECONNECT_BUDGET_MS,
+  terminalRecordNotice,
   type TerminalConnState,
   type TerminalEvent,
   type TerminalFrameLike,
+  type TerminalRecordNotice,
 } from "./terminal-status";
+import {
+  useTerminalAppearance,
+  type TerminalAppearance,
+} from "./terminal-card/appearance";
+import {
+  observeSiteTheme,
+  siteThemeIsDark,
+  terminalOptionsFromAppearance,
+  type AppearanceTerminalOptions,
+} from "./terminal-card/xterm-themes";
 
 export function encodeTermText(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -79,6 +91,8 @@ type TermHandle = {
   fit: () => void;
   /** 重连成功后清屏，再接受节点回放。 */
   reset: () => void;
+  setOptions: (options: AppearanceTerminalOptions) => void;
+  setReadOnly: (readOnly: boolean) => void;
   cols: number;
   rows: number;
 };
@@ -94,11 +108,19 @@ export function useComputerTerminal({
   computerId,
   sessionId,
   enabled = true,
+  appearance,
+  readOnly = false,
+  onRecord,
 }: {
   computerId: string;
   sessionId: string | null;
   enabled?: boolean;
+  appearance?: TerminalAppearance;
+  readOnly?: boolean;
+  onRecord?: (notice: TerminalRecordNotice) => void;
 }): ComputerTerminalHandle {
+  const [storedAppearance] = useTerminalAppearance();
+  const effectiveAppearance = appearance ?? storedAppearance;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<TermHandle | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -112,8 +134,15 @@ export function useComputerTerminal({
   const life = useRef(0);
   const connRef = useRef<TerminalConnState>({ kind: "live" });
   const ctxRef = useRef<{ sid: string; lifeToken: number } | null>(null);
+  const appearanceRef = useRef(effectiveAppearance);
+  const readOnlyRef = useRef(readOnly);
+  const onRecordRef = useRef(onRecord);
+  appearanceRef.current = effectiveAppearance;
+  readOnlyRef.current = readOnly;
+  onRecordRef.current = onRecord;
 
   const sendText = useCallback((text: string) => {
+    if (readOnlyRef.current) return;
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ t: "in", data_b64: encodeTermText(text) }));
@@ -239,6 +268,8 @@ export function useComputerTerminal({
         if (frame.t === "out" && frame.data_b64) {
           termRef.current?.write(decodeTermB64(frame.data_b64));
         }
+        const record = terminalRecordNotice(frame);
+        if (record) onRecordRef.current?.(record);
         applyConnEventRef.current({ type: "frame", frame });
       });
       socket.addEventListener("close", () => {
@@ -291,8 +322,11 @@ export function useComputerTerminal({
       hostRef.current.replaceChildren();
       const term = new Terminal({
         convertEol: true,
-        fontSize: 13,
-        theme: { background: "#0a0a0a", foreground: "#e5e5e5" },
+        ...terminalOptionsFromAppearance(
+          appearanceRef.current,
+          siteThemeIsDark(),
+        ),
+        disableStdin: readOnlyRef.current,
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
@@ -308,6 +342,14 @@ export function useComputerTerminal({
         focus: () => term.focus(),
         fit: () => fit.fit(),
         reset: () => term.reset(),
+        setOptions: (options) => {
+          if (!term.options) return;
+          Object.assign(term.options, options);
+        },
+        setReadOnly: (nextReadOnly) => {
+          if (!term.options) return;
+          term.options.disableStdin = nextReadOnly;
+        },
         get cols() {
           return dims().cols;
         },
@@ -323,7 +365,21 @@ export function useComputerTerminal({
         tailRef.current = pushPlainTail(tailRef.current, chunk);
       });
       term.onData((data) => {
+        if (readOnlyRef.current) return;
         sendText(data);
+      });
+      term.onSelectionChange?.(() => {
+        if (!appearanceRef.current.copyOnSelect) return;
+        const selection = term.getSelection?.() ?? "";
+        if (!selection) return;
+        try {
+          const pending = navigator.clipboard?.writeText(selection);
+          void pending?.catch(() => {
+            /* clipboard permission failures are intentionally silent */
+          });
+        } catch {
+          /* clipboard may be unavailable in an embedded/private context */
+        }
       });
       setReady(true);
       const opened = await attachSocket(sessionId, lifeToken);
@@ -339,7 +395,7 @@ export function useComputerTerminal({
       window.addEventListener("resize", onResize);
       removeResize = () => window.removeEventListener("resize", onResize);
       announceSize();
-      term.focus();
+      if (!readOnlyRef.current) term.focus();
     })();
     return () => {
       disposed = true;
@@ -360,6 +416,26 @@ export function useComputerTerminal({
       termRef.current = null;
     };
   }, [announceSize, attachSocket, clearConnTimers, enabled, sendText, sessionId]);
+
+  useEffect(() => {
+    termRef.current?.setOptions(
+      terminalOptionsFromAppearance(effectiveAppearance, siteThemeIsDark()),
+    );
+  }, [effectiveAppearance]);
+
+  useEffect(() => {
+    termRef.current?.setReadOnly(readOnly);
+  }, [readOnly]);
+
+  useEffect(
+    () =>
+      observeSiteTheme((siteDark) => {
+        termRef.current?.setOptions(
+          terminalOptionsFromAppearance(appearanceRef.current, siteDark),
+        );
+      }),
+    [],
+  );
 
   return { hostRef, ready, status, detail, sendText, tail, retry };
 }

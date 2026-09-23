@@ -20,10 +20,47 @@ export type TerminalConnState =
 export type TerminalFrameLike = {
   t?: string;
   data_b64?: string;
+  alive?: boolean;
+  ended_at?: string | null;
   exit_code?: number | null;
+  end_reason?: "exit" | "closed" | "node_restart" | null;
+  record?: boolean;
   code?: string;
   reason?: string;
 };
+
+export type TerminalRecordNotice = {
+  source: "record" | "exit";
+  alive: boolean;
+  endedAt: string | null;
+  exitCode: number | null;
+  endReason: "exit" | "closed" | "node_restart" | null;
+};
+
+/** I3 的只读回放会先发 record，再以 exit.record=true 收尾。 */
+export function terminalRecordNotice(
+  frame: TerminalFrameLike,
+): TerminalRecordNotice | null {
+  if (frame.t === "record") {
+    return {
+      source: "record",
+      alive: frame.alive === true,
+      endedAt: frame.ended_at ?? null,
+      exitCode: frame.exit_code ?? null,
+      endReason: frame.end_reason ?? null,
+    };
+  }
+  if (frame.t === "exit" && frame.record === true) {
+    return {
+      source: "exit",
+      alive: false,
+      endedAt: frame.ended_at ?? null,
+      exitCode: frame.exit_code ?? null,
+      endReason: frame.end_reason ?? null,
+    };
+  }
+  return null;
+}
 
 export type TerminalEvent =
   | { type: "frame"; frame: TerminalFrameLike }

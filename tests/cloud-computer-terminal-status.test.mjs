@@ -10,6 +10,7 @@ import {
   reconnectDelayMs,
   RECONNECT_BUDGET_MS,
   RECONNECT_GAVE_UP_CODE,
+  terminalRecordNotice,
 } from "../src/shell/cloud-computer/terminal-status.ts";
 
 const LIVE = { kind: "live" };
@@ -35,6 +36,37 @@ test("out 帧与未知帧不改变连接状态", () => {
     const unknown = nextTerminalState(state, frame({ t: "mystery" }));
     assert.equal(unknown.state, state);
   }
+});
+
+test("I3 record 与 exit.record 帧都能产出只读回放通知", () => {
+  assert.deepEqual(
+    terminalRecordNotice({
+      t: "record",
+      alive: false,
+      ended_at: "2026-09-23T08:00:00Z",
+      exit_code: 7,
+      end_reason: "exit",
+    }),
+    {
+      source: "record",
+      alive: false,
+      endedAt: "2026-09-23T08:00:00Z",
+      exitCode: 7,
+      endReason: "exit",
+    },
+  );
+  assert.deepEqual(
+    terminalRecordNotice({ t: "exit", exit_code: 7, record: true }),
+    {
+      source: "exit",
+      alive: false,
+      endedAt: null,
+      exitCode: 7,
+      endReason: null,
+    },
+  );
+  assert.equal(terminalRecordNotice({ t: "exit", exit_code: 7 }), null);
+  assert.equal(terminalRecordNotice({ t: "out", data_b64: "eA==" }), null);
 });
 
 test("exit 帧只在服务端真退出时来：退出码原样保留，0 也是 0，缺省为空串", () => {
