@@ -2563,6 +2563,12 @@
         },
         {
           "kind": "named",
+          "name": "SettingsModal",
+          "importedName": "SettingsModal",
+          "source": "./settings/SettingsModal"
+        },
+        {
+          "kind": "named",
           "name": "SettingsPage",
           "importedName": "SettingsPage",
           "source": "./SettingsPage"
@@ -2614,6 +2620,12 @@
           "name": "DevicesPageProps",
           "importedName": "DevicesPageProps",
           "source": "./DevicesPage"
+        },
+        {
+          "kind": "type",
+          "name": "SettingsModalProps",
+          "importedName": "SettingsModalProps",
+          "source": "./settings/SettingsModal"
         }
       ]
     },
@@ -2823,6 +2835,12 @@
     "./shell": {
       "target": "./src/shell/index.ts",
       "declarations": [
+        {
+          "kind": "named",
+          "name": "AccountMenu",
+          "importedName": "AccountMenu",
+          "source": "./AccountMenu"
+        },
         {
           "kind": "named",
           "name": "ActiveAppCapability",
@@ -5949,6 +5967,12 @@
         },
         {
           "kind": "type",
+          "name": "AccountMenuProps",
+          "importedName": "AccountMenuProps",
+          "source": "./AccountMenu"
+        },
+        {
+          "kind": "type",
           "name": "AdvancedContentWorkbenchProps",
           "importedName": "AdvancedContentWorkbenchProps",
           "source": "./AdvancedContentWorkbench"
@@ -8329,6 +8353,30 @@
         },
         {
           "kind": "named",
+          "name": "FloatingMenu",
+          "importedName": "FloatingMenu",
+          "source": "./menu/FloatingMenu"
+        },
+        {
+          "kind": "named",
+          "name": "FloatingMenuItem",
+          "importedName": "FloatingMenuItem",
+          "source": "./menu/FloatingMenu"
+        },
+        {
+          "kind": "named",
+          "name": "FloatingMenuLabel",
+          "importedName": "FloatingMenuLabel",
+          "source": "./menu/FloatingMenu"
+        },
+        {
+          "kind": "named",
+          "name": "FloatingMenuSeparator",
+          "importedName": "FloatingMenuSeparator",
+          "source": "./menu/FloatingMenu"
+        },
+        {
+          "kind": "named",
           "name": "IconButton",
           "importedName": "IconButton",
           "source": "./Button"
@@ -8415,6 +8463,18 @@
           "name": "ButtonVariant",
           "importedName": "ButtonVariant",
           "source": "./Button"
+        },
+        {
+          "kind": "type",
+          "name": "FloatingMenuItemProps",
+          "importedName": "FloatingMenuItemProps",
+          "source": "./menu/FloatingMenu"
+        },
+        {
+          "kind": "type",
+          "name": "FloatingMenuProps",
+          "importedName": "FloatingMenuProps",
+          "source": "./menu/FloatingMenu"
         },
         {
           "kind": "type",
