@@ -602,6 +602,83 @@ export function useAgentDialog({
     })();
   }, [ensureOpen]);
 
+  const requestSessions = useCallback(() => {
+    const program = stateRef.current.program;
+    if (!usesDialogSocket(program, localOceanleoRef.current)) {
+      dispatch({ type: "sessions-unavailable" });
+      return;
+    }
+    const sent = sendJson(socketRef.current, { t: "sessions", program });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "sessions", program });
+    })();
+  }, [ensureOpen]);
+
+  const openSession = useCallback((id: string) => {
+    const acpSession = id.trim();
+    const program = stateRef.current.program;
+    if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
+    stateRef.current = {
+      ...stateRef.current,
+      activeSession: acpSession,
+      sessionLoading: true,
+      messages: [],
+      commands: [],
+      busy: false,
+      agentBusy: false,
+    };
+    dispatch({ type: "session-loading", id: acpSession });
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) {
+        dispatch({ type: "send-failed" });
+        return;
+      }
+      sendJson(socket, { t: "open_session", program, acp_session: acpSession });
+    })();
+  }, [ensureOpen]);
+
+  const newSession = useCallback((cwd?: string) => {
+    const program = stateRef.current.program;
+    stateRef.current = {
+      ...stateRef.current,
+      activeSession: "",
+      sessionLoading: true,
+      messages: [],
+      commands: [],
+      busy: false,
+      agentBusy: false,
+    };
+    dispatch({ type: "session-loading", id: "" });
+    if (program === "oceanleo" && !localOceanleoRef.current) {
+      oceanGen.current += 1;
+      clearOceanWait();
+      oceanTaskRef.current = "";
+      oceanSendRef.current = null;
+      messagesCacheRef.current.set("oceanleo", []);
+      void agentReset(computerIdRef.current).finally(() => {
+        dispatch({
+          type: "frame",
+          frame: { t: "session_opened", program: "oceanleo", acp_session: "" },
+        });
+      });
+      return;
+    }
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) {
+        dispatch({ type: "send-failed" });
+        return;
+      }
+      const frame: Record<string, unknown> = { t: "new_session", program };
+      if (cwd?.trim()) frame.cwd = cwd.trim();
+      sendJson(socket, frame);
+    })();
+  }, [clearOceanWait, ensureOpen]);
+
   const openInstall = useCallback((program: WsProgram) => {
     dispatch({ type: "open-install", program });
   }, []);
@@ -680,18 +757,39 @@ export function useAgentDialog({
   }, []);
 
   const setSelectedModel = useCallback((id: string) => {
-    dispatch({ type: "set-model", id });
-  }, []);
-
-  const setMode = useCallback((value: string) => {
     const program = stateRef.current.program;
-    const id = stateRef.current.mode?.id || "mode";
-    dispatch({ type: "set-mode", value });
-    if (!isWsProgram(program)) return;
+    dispatch({ type: "set-model", id });
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) return;
+      sendJson(socket, { t: "set_config", program, id: "model", value: id });
+    })();
+  }, [ensureOpen]);
+
+  const setConfig = useCallback((id: string, value: string | boolean) => {
+    const program = stateRef.current.program;
+    dispatch({ type: "set-config", id, value });
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) return;
       sendJson(socket, { t: "set_config", program, id, value });
+    })();
+  }, [ensureOpen]);
+
+  const setMode = useCallback((value: string) => {
+    const id = stateRef.current.mode?.id || "mode";
+    dispatch({ type: "set-mode", value });
+    setConfig(id, value);
+  }, [setConfig]);
+
+  const logoutProgram = useCallback((program: WsProgram) => {
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) return;
+      sendJson(socket, { t: "logout", program });
+      sendJson(socket, { t: "status" });
     })();
   }, [ensureOpen]);
 
@@ -751,6 +849,16 @@ export function useAgentDialog({
     mode: state.mode,
     selectedMode: state.selectedMode,
     setMode,
+    configOptions: state.configOptions,
+    setConfig,
+    commands: state.commands,
+    sessions: state.sessions,
+    sessionsSupported: state.sessionsSupported,
+    activeSession: state.activeSession,
+    sessionLoading: state.sessionLoading,
+    requestSessions,
+    openSession,
+    newSession,
     fresh,
     setFresh: setFreshValue,
     install: state.install,
@@ -768,6 +876,7 @@ export function useAgentDialog({
     answerQuestion,
     openedPrograms: state.opened,
     closeProgram,
+    logoutProgram,
     retryConnect,
     offline: state.offline,
     agentBusy: state.agentBusy,

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { tone } from "../server-page/tone";
 import { lineDiff } from "./diff-lines";
 import { noticeAction, noticeCopy } from "./notice";
 import { isWsProgram } from "./parse";
@@ -324,7 +325,6 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
       <div data-oceanleo-cc-usage="" className="text-[11px] text-neutral-500">
         <p>
           {tt("用量 {pct}%", { pct })}
-          {item.cost ? ` ${item.cost.amount} ${item.cost.currency}` : ""}
         </p>
         <div className="mt-1 h-1 w-full bg-neutral-800">
           <div className="h-1 bg-neutral-400" style={{ width: `${pct}%` }} />
@@ -333,6 +333,14 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
     );
   }
   if (item.kind === "permission") {
+    if (item.auto) {
+      const allowed = item.toolTitle || item.title || tt("这项操作");
+      return (
+        <p data-oceanleo-cc-permission-auto={item.permId} className={`text-[12px] ${tone.muted}`}>
+          {tt("已自动允许：{name}", { name: allowed })}
+        </p>
+      );
+    }
     return (
       <div data-oceanleo-cc-permission={item.permId} className="space-y-2 text-[12px]">
         <p className="text-neutral-100">{item.title}</p>
@@ -357,22 +365,7 @@ function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogControl
       </div>
     );
   }
-  if (item.kind === "question") {
-    return <QuestionView item={item} onSubmit={dialog.answerQuestion} />;
-  }
-  return (
-    <div data-oceanleo-cc-commands="">
-      <p className="text-[11px] text-neutral-500">{tt("可用命令")}</p>
-      <ul className="text-[11px] text-neutral-400">
-        {item.commands.map((command) => (
-          <li key={command.name}>
-            {command.name}
-            {command.description ? ` ${command.description}` : ""}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+  return <QuestionView item={item} onSubmit={dialog.answerQuestion} />;
 }
 
 function noticeFrameText(

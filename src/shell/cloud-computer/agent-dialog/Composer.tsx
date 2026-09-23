@@ -5,6 +5,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { getTask } from "../../../lib/agent";
 import { shellSessionFromTask } from "../../history-model";
 import { LeoEntryButton, type LeoContext } from "../../LeoEntryButton";
+import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
 // ============================================================================
@@ -54,7 +55,19 @@ function resolveShellLeoInfo(): Promise<ShellLeoInfo> {
   return pending;
 }
 
-export function Composer({ dialog }: { dialog: AgentDialogController }) {
+function commandText(name: string): string {
+  return name.startsWith("/") ? name : `/${name}`;
+}
+
+export function Composer({
+  dialog,
+  context,
+  showFresh = true,
+}: {
+  dialog: AgentDialogController;
+  context?: LeoContext;
+  showFresh?: boolean;
+}) {
   const tt = useUI();
   const [shellInfo, setShellInfo] = useState<ShellLeoInfo>({});
   useEffect(() => {
@@ -68,19 +81,28 @@ export function Composer({ dialog }: { dialog: AgentDialogController }) {
   }, []);
   // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
   if (!dialog.program) return null;
-  const showModels = dialog.modelSource !== "none" && dialog.models.length > 0;
+  const showModels = dialog.models.length > 0;
   const showStop = dialog.busy || dialog.agentBusy;
-  const leoContext: LeoContext = { page: "shell", ...shellInfo };
+  const leoContext: LeoContext = context ?? { page: "shell", ...shellInfo };
+  const commandQuery = dialog.draft.startsWith("/")
+    ? dialog.draft.slice(1).trimStart().toLocaleLowerCase()
+    : null;
+  const commandMatches = commandQuery === null
+    ? []
+    : dialog.commands.filter((command) => {
+        const name = command.name.replace(/^\//, "").toLocaleLowerCase();
+        return !commandQuery || name.includes(commandQuery) || command.description.toLocaleLowerCase().includes(commandQuery);
+      }).slice(0, 8);
   return (
     <form
-      className="border-t border-neutral-800 p-3"
+      className={`border-t p-3 ${tone.border}`}
       onSubmit={(event) => {
         event.preventDefault();
         void dialog.send();
       }}
     >
       <div className="flex items-end gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="relative flex min-w-0 flex-1 flex-col gap-2">
           <textarea
             data-oceanleo-cc-dialog-input=""
             value={dialog.draft}
@@ -98,20 +120,46 @@ export function Composer({ dialog }: { dialog: AgentDialogController }) {
             }}
             placeholder={tt("输入你想说的话")}
             rows={3}
-            className="min-h-[4.5rem] w-full resize-none rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-[13px] text-neutral-100 outline-none disabled:opacity-50"
+            className={`min-h-[4.5rem] w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none disabled:opacity-50 ${tone.input}`}
           />
+          {commandMatches.length > 0 ? (
+            <ul
+              className={`absolute bottom-[3.15rem] left-0 right-0 z-10 max-h-52 overflow-y-auto rounded-xl border p-1 shadow-xl ${tone.border} ${tone.panel}`}
+              data-oceanleo-acp-command-completions=""
+            >
+              {commandMatches.map((command) => (
+                <li key={command.name}>
+                  <button
+                    type="button"
+                    className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${tone.hover}`}
+                    data-oceanleo-acp-command={command.name}
+                    onClick={() => dialog.setDraft(`${commandText(command.name)} `)}
+                  >
+                    <span className="font-mono font-medium">{commandText(command.name)}</span>
+                    {command.description ? (
+                      <span className={`min-w-0 flex-1 truncate ${tone.muted}`}>{command.description}</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             {/* 全站唯一的 leo 入口（合同 I5）：Shell 对话框左下角同一颗 ✦ leo
                 按钮，深色底用 tone="dark"；context 带这台电脑，leo 建的任务挂上来。 */}
-            <LeoEntryButton tone="dark" context={leoContext} />
+            <LeoEntryButton
+              tone="light"
+              context={leoContext}
+              className="dark:text-neutral-300 dark:hover:bg-neutral-800"
+            />
             {showModels ? (
-              <label className="flex items-center gap-1 text-[11px] text-neutral-400">
+              <label className={`flex items-center gap-1 text-[11px] ${tone.muted}`}>
                 {tt("模型")}
                 <select
                   data-oceanleo-cc-model=""
                   value={dialog.selectedModel}
                   onChange={(event) => dialog.setSelectedModel(event.target.value)}
-                  className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] text-neutral-100"
+                  className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
                 >
                   {dialog.models.map((model) => (
                     <option key={model.id} value={model.id}>
@@ -122,13 +170,13 @@ export function Composer({ dialog }: { dialog: AgentDialogController }) {
               </label>
             ) : null}
             {dialog.mode && dialog.mode.options.length > 0 ? (
-              <label className="flex items-center gap-1 text-[11px] text-neutral-400">
+              <label className={`flex items-center gap-1 text-[11px] ${tone.muted}`}>
                 {dialog.mode.name || tt("模式")}
                 <select
                   data-oceanleo-cc-mode=""
                   value={dialog.selectedMode}
                   onChange={(event) => dialog.setMode(event.target.value)}
-                  className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] text-neutral-100"
+                  className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
                 >
                   {dialog.mode.options.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -138,17 +186,17 @@ export function Composer({ dialog }: { dialog: AgentDialogController }) {
                 </select>
               </label>
             ) : null}
-            <button
+            {showFresh ? <button
               type="button"
               data-oceanleo-cc-fresh=""
               aria-pressed={dialog.fresh}
               onClick={() => dialog.setFresh(!dialog.fresh)}
               className={`rounded-lg px-2 py-1 text-[11px] ${
-                dialog.fresh ? "bg-neutral-100 text-neutral-900" : "text-neutral-400 hover:bg-neutral-800"
+                dialog.fresh ? tone.chipActive : `${tone.muted} ${tone.hover}`
               }`}
             >
               {tt("新对话")}
-            </button>
+            </button> : null}
           </div>
         </div>
         {showStop ? (
@@ -156,7 +204,7 @@ export function Composer({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-stop=""
             onClick={dialog.abort}
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-[12px] text-neutral-200"
+            className={`rounded-lg border px-3 py-2 text-[12px] ${tone.border}`}
           >
             {tt("停止")}
           </button>
@@ -164,7 +212,7 @@ export function Composer({ dialog }: { dialog: AgentDialogController }) {
           <button
             type="submit"
             disabled={dialog.offline}
-            className="rounded-lg bg-neutral-100 px-3 py-2 text-[12px] font-medium text-neutral-900 disabled:opacity-40"
+            className={`rounded-lg px-3 py-2 text-[12px] font-medium disabled:opacity-40 ${tone.primary}`}
           >
             {tt("发送")}
           </button>
