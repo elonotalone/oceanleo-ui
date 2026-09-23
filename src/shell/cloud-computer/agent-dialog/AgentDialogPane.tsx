@@ -1,6 +1,7 @@
 "use client";
 
 import { useUI } from "../../../i18n/ui/useUI";
+import { tone } from "../server-page/tone";
 import { Composer } from "./Composer";
 import { InstallSheet } from "./InstallSheet";
 import { LoginCard } from "./LoginCard";
@@ -27,24 +28,24 @@ export function AgentDialogPane({
       : PROGRAM_LABEL[dialog.program];
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col bg-neutral-950 text-neutral-100"
+      className={`relative flex min-h-0 flex-1 flex-col ${tone.page}`}
       data-oceanleo-cc-agent-dialog-pane=""
       data-oceanleo-cc-reconnect={dialog.offline ? "paused" : "on"}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-3 py-2">
-        <p className="text-[12px] text-neutral-400">{title}</p>
+      <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${tone.border}`}>
+        <p className={`text-[12px] ${tone.muted}`}>{title}</p>
         <button
           type="button"
           onClick={onBack}
           data-oceanleo-cc-dialog-back=""
-          className="rounded-lg px-2 py-1 text-[12px] text-neutral-300 hover:bg-neutral-800"
+          className={`rounded-lg px-2 py-1 text-[12px] ${tone.muted} ${tone.hover}`}
         >
           {tt("回到终端")}
         </button>
       </div>
       <ProgramRow dialog={dialog} />
       {!dialog.program ? (
-        <p className="px-3 py-3 text-[13px] leading-relaxed text-neutral-300">
+        <p className={`px-3 py-3 text-[13px] leading-relaxed ${tone.muted}`}>
           {tt(
             "选一个程序。没装的点安装，没登录的点登录。字打在这里，发到那台电脑上，程序用它自己保存的会话接着说。网站不保存这些字。",
           )}

@@ -295,6 +295,88 @@ test("离线服务器的三张卡不可点，直接卡片 URL 也只显示原因
   }
 });
 
+test("页头只列已接入服务器，切换时保留当前卡片", async () => {
+  const second = computer({ id: "cc /2", name: "东京服务器" });
+  const pending = computer({
+    id: "cc_pending",
+    name: "尚未接入",
+    source: "byo",
+    status: "pending",
+    enrolled_at: null,
+    confirmed_at: null,
+    node_online: false,
+  });
+  const view = await renderPage({
+    computers: [computer(), second, pending],
+    query: { card: "cli" },
+  });
+  try {
+    const select = view.host.querySelector("[data-oceanleo-server-switch]");
+    assert.ok(select);
+    assert.deepEqual(
+      [...select.options].map((option) => option.value),
+      ["cc_1", "cc /2"],
+    );
+    await act(async () => {
+      select.value = "cc /2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert.equal(globalThis.__serverMounted, "cc /2");
+    assert.deepEqual(view.pushes, ["/computers/cc%20%2F2?card=cli"]);
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("未接入机器禁用卡片；已停机的阿里云机器可以发起开机", async () => {
+  const pending = await renderPage({
+    computers: [
+      computer({
+        source: "byo",
+        status: "pending",
+        enrolled_at: null,
+        confirmed_at: null,
+        node_online: false,
+      }),
+    ],
+  });
+  try {
+    assert.equal(
+      [...pending.host.querySelectorAll("[data-oceanleo-server-card-choice]")].every(
+        (node) => node.disabled,
+      ),
+      true,
+    );
+    assert.match(pending.host.textContent || "", /还没有接入/);
+  } finally {
+    pending.cleanup();
+  }
+
+  const starts = [];
+  const stopped = await renderPage({
+    computers: [computer({ status: "stopped", node_online: false })],
+    api: client({
+      async startComputer(id) {
+        starts.push(id);
+        return { ok: true };
+      },
+    }),
+  });
+  try {
+    const action = stopped.host.querySelector("[data-oceanleo-server-start]");
+    assert.ok(action);
+    await act(async () => {
+      action.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+    assert.deepEqual(starts, ["cc_1"]);
+    assert.equal(globalThis.__serverRefreshes, 1);
+    assert.match(stopped.host.textContent || "", /开机请求已发送/);
+  } finally {
+    stopped.cleanup();
+  }
+});
+
 test("节点升级先确认，再请求升级并轮询到在线且版本变化", async () => {
   let nodeReads = 0;
   let upgradeCalls = 0;

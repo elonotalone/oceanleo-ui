@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { tone } from "../server-page/tone";
 import { keyErrorCopy } from "./notice";
 import { ProgramKeyError, removeProgramKey, saveProgramKey } from "./program-key-api";
 import { PROGRAM_LABEL, type WsProgram } from "./types";
@@ -81,14 +82,14 @@ export function KeySheet({
     <form
       data-oceanleo-cc-key-sheet=""
       data-oceanleo-cc-key-sheet-program={program}
-      className="absolute inset-x-0 bottom-0 z-10 border-t border-neutral-700 bg-neutral-900 px-3 py-3"
+      className={`absolute inset-x-0 bottom-0 z-10 border-t px-3 py-3 ${tone.border} ${tone.page}`}
       onSubmit={(event) => {
         event.preventDefault();
         if (!hasKey) void run("save");
       }}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[13px] text-neutral-100">
+        <p className="text-[13px]">
           {tt("Key")} · {PROGRAM_LABEL[program]}
         </p>
         <button
@@ -96,23 +97,23 @@ export function KeySheet({
           data-oceanleo-cc-key-close=""
           disabled={busy}
           onClick={onClose}
-          className="rounded-lg px-2 py-1 text-[12px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+          className={`rounded-lg px-2 py-1 text-[12px] disabled:opacity-50 ${tone.muted} ${tone.hover}`}
         >
           {tt("关闭")}
         </button>
       </div>
-      <p className="text-[12px] leading-relaxed text-neutral-300" data-oceanleo-cc-key-where="">
+      <p className={`text-[12px] leading-relaxed ${tone.muted}`} data-oceanleo-cc-key-where="">
         {whereCopy(tt, program)}
       </p>
       {program === "hermes" ? (
-        <label className="mt-2 block text-[11px] text-neutral-300">
+        <label className={`mt-2 block text-[11px] ${tone.muted}`}>
           {tt("供应商")}
           <select
             data-oceanleo-cc-key-provider=""
             value={provider}
             disabled={busy}
             onChange={(event) => setProvider(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-[12px] text-neutral-100 outline-none disabled:opacity-50"
+            className={`mt-1 w-full rounded-lg border px-2 py-1.5 text-[12px] outline-none disabled:opacity-50 ${tone.input}`}
           >
             {HERMES_PROVIDERS.map((name) => (
               <option key={name} value={name}>
@@ -124,7 +125,7 @@ export function KeySheet({
       ) : null}
       {hasKey ? (
         <div className="mt-3 flex items-center gap-2">
-          <span data-oceanleo-cc-key-saved-badge="" className="text-[12px] text-emerald-300">
+          <span data-oceanleo-cc-key-saved-badge="" className="text-[12px] text-emerald-700 dark:text-emerald-300">
             {tt("Key ✓")}
           </span>
           <button
@@ -132,14 +133,14 @@ export function KeySheet({
             data-oceanleo-cc-key-remove=""
             disabled={busy}
             onClick={() => void run("remove")}
-            className="rounded-lg border border-neutral-700 px-2 py-1 text-[12px] text-neutral-200 disabled:opacity-50"
+            className={`rounded-lg border px-2 py-1 text-[12px] disabled:opacity-50 ${tone.border} ${tone.hover}`}
           >
             {tt("移除")}
           </button>
         </div>
       ) : (
         <>
-          <label className="mt-2 block text-[11px] text-neutral-300">
+          <label className={`mt-2 block text-[11px] ${tone.muted}`}>
             {tt("Key")}
             <input
               type="password"
@@ -148,7 +149,7 @@ export function KeySheet({
               value={key}
               disabled={busy}
               onChange={(event) => setKey(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 font-mono text-[12px] text-neutral-100 outline-none disabled:opacity-50"
+              className={`mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-[12px] outline-none disabled:opacity-50 ${tone.input}`}
             />
           </label>
           <div className="mt-3">
@@ -156,7 +157,7 @@ export function KeySheet({
               type="submit"
               data-oceanleo-cc-key-save=""
               disabled={busy || !key.trim()}
-              className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900 disabled:opacity-50"
+              className={`rounded-lg px-3 py-1.5 text-[12px] font-medium disabled:opacity-50 ${tone.primary}`}
             >
               {tt("保存")}
             </button>
@@ -164,7 +165,7 @@ export function KeySheet({
         </>
       )}
       {error ? (
-        <p data-oceanleo-cc-key-error="" className="mt-2 text-[12px] text-rose-300">
+        <p data-oceanleo-cc-key-error="" className="mt-2 text-[12px] text-rose-700 dark:text-rose-300">
           {error}
         </p>
       ) : null}

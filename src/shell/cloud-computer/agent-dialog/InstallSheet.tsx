@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { tone } from "../server-page/tone";
 import { PROGRAM_LABEL, type AgentDialogController, type DirCapability } from "./types";
 
 function dirSentence(tt: ReturnType<typeof useUI>, capability: DirCapability): string {
@@ -29,55 +30,55 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
   return (
     <div
       data-oceanleo-cc-install-sheet=""
-      className="absolute inset-x-0 bottom-0 z-10 max-h-[70%] overflow-y-auto border-t border-neutral-700 bg-neutral-900 px-3 py-3"
+      className={`absolute inset-x-0 bottom-0 z-10 max-h-[70%] overflow-y-auto border-t px-3 py-3 ${tone.border} ${tone.page}`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[13px] text-neutral-100">
+        <p className="text-[13px]">
           {tt("安装")} {PROGRAM_LABEL[install.program]}
         </p>
         <button
           type="button"
           data-oceanleo-cc-install-close=""
           onClick={dialog.closeInstall}
-          className="rounded-lg px-2 py-1 text-[12px] text-neutral-300 hover:bg-neutral-800"
+          className={`rounded-lg px-2 py-1 text-[12px] ${tone.muted} ${tone.hover}`}
         >
           {tt("关闭")}
         </button>
       </div>
-      <p className="text-[12px] leading-relaxed text-neutral-300" data-oceanleo-cc-install-where="">
+      <p className={`text-[12px] leading-relaxed ${tone.muted}`} data-oceanleo-cc-install-where="">
         {dirSentence(tt, capability)}
       </p>
-      <label className="mt-2 block text-[11px] text-neutral-300">
+      <label className={`mt-2 block text-[11px] ${tone.muted}`}>
         {tt("安装位置")}
         <input
           data-oceanleo-cc-install-dir=""
           value={install.dir}
           disabled={dirLocked}
           onChange={(event) => dialog.setInstallDir(event.target.value)}
-          className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 font-mono text-[12px] text-neutral-100 outline-none disabled:opacity-50"
+          className={`mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-[12px] outline-none disabled:opacity-50 ${tone.input}`}
         />
       </label>
       {install.lines.length > 0 ? (
         <pre
           ref={logRef}
           data-oceanleo-cc-install-log=""
-          className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-neutral-300"
+          className={`mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] ${tone.muted}`}
         >
           {install.lines.join("\n")}
         </pre>
       ) : null}
       {install.donePath ? (
-        <p data-oceanleo-cc-install-path="" className="mt-2 text-[12px] text-emerald-300">
+        <p data-oceanleo-cc-install-path="" className="mt-2 text-[12px] text-emerald-700 dark:text-emerald-300">
           {tt("已装到 {path}", { path: install.donePath })}
         </p>
       ) : null}
       {install.failedText ? (
-        <p data-oceanleo-cc-install-error="" className="mt-2 text-[12px] text-rose-300">
+        <p data-oceanleo-cc-install-error="" className="mt-2 text-[12px] text-rose-700 dark:text-rose-300">
           {install.failedText}
         </p>
       ) : null}
       {alreadyInstalled ? (
-        <p data-oceanleo-cc-install-already="" className="mt-2 text-[12px] text-emerald-300">
+        <p data-oceanleo-cc-install-already="" className="mt-2 text-[12px] text-emerald-700 dark:text-emerald-300">
           {tt("这个程序已经装好了。")}
         </p>
       ) : null}
@@ -87,7 +88,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-install-retry=""
             onClick={dialog.startInstall}
-            className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900"
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
           >
             {tt("重试")}
           </button>
@@ -96,7 +97,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-install-done=""
             onClick={dialog.closeInstall}
-            className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900"
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
           >
             {tt("完成")}
           </button>
@@ -105,7 +106,7 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-install-start=""
             onClick={dialog.startInstall}
-            className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900"
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
           >
             {tt("开始安装")}
           </button>

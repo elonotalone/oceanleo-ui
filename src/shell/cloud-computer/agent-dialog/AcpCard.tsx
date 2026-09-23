@@ -20,13 +20,18 @@ import { MessageList } from "./MessageList";
 import { useAgentDialog } from "./useAgentDialogController";
 import {
   PROGRAM_LABEL,
-  WS_PROGRAMS,
   type AgentProgram,
   type ProgramStatus,
   type WsProgram,
 } from "./types";
 
-const PROGRAMS: readonly AgentProgram[] = ["oceanleo", ...WS_PROGRAMS];
+const PROGRAMS: readonly AgentProgram[] = [
+  "oceanleo",
+  "cursor",
+  "claude",
+  "codex",
+  "hermes",
+];
 
 function agentProgram(value: string | undefined): AgentProgram | null {
   return PROGRAMS.find((program) => program === value) ?? null;
@@ -244,7 +249,7 @@ export function AcpCard({
 
   return (
     <section
-      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-2xl border ${tone.border} ${tone.panel}`}
+      className={`relative flex min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-2xl border text-zinc-900 dark:text-neutral-100 ${tone.border} ${tone.panel}`}
       data-oceanleo-acp-card=""
       data-oceanleo-acp-program={selected ?? ""}
     >
@@ -477,7 +482,7 @@ export function AcpCard({
                     >
                       {tt("安装")}
                     </button>
-                  ) : program !== "oceanleo" && row.logged_in === false ? (
+                  ) : program !== "oceanleo" && row?.logged_in === false ? (
                     <div className="mt-3 flex gap-2">
                       <button
                         type="button"

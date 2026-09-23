@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { tone } from "../server-page/tone";
 import { PROGRAM_LABEL, type AgentDialogController, type LoginPhase, type LoginState } from "./types";
 
 // 任务书 P4：opening 超 20 s 无 login_url → 自动转 failed。
@@ -90,10 +91,10 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
     <div
       data-oceanleo-cc-login-card=""
       data-oceanleo-cc-login-phase={stalled && phase === "opening" ? "failed" : phase}
-      className="absolute inset-x-3 bottom-3 z-20 rounded-xl border border-neutral-700 bg-neutral-900 p-3"
+      className={`absolute inset-x-3 bottom-3 z-20 rounded-xl border p-3 shadow-xl ${tone.border} ${tone.page}`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[13px] text-neutral-100">
+        <p className="text-[13px]">
           {tt("登录")}
           {program ? ` ${PROGRAM_LABEL[program]}` : ""}
         </p>
@@ -102,7 +103,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-login-close=""
             onClick={dialog.closeLogin}
-            className="rounded-lg px-2 py-1 text-[12px] text-neutral-300 hover:bg-neutral-800"
+            className={`rounded-lg px-2 py-1 text-[12px] ${tone.muted} ${tone.hover}`}
           >
             {tt("关闭")}
           </button>
@@ -110,25 +111,25 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
       </div>
 
       {phase === "done" ? (
-        <p data-oceanleo-cc-login-done="" className="text-[13px] text-emerald-300">
+        <p data-oceanleo-cc-login-done="" className="text-[13px] text-emerald-700 dark:text-emerald-300">
           {tt("已登录")}
         </p>
       ) : null}
 
       {phase === "opening" && !stalled ? (
-        <p data-oceanleo-cc-login-opening="" className="text-[12px] text-neutral-300">
+        <p data-oceanleo-cc-login-opening="" className={`text-[12px] ${tone.muted}`}>
           {tt("正在打开登录…")}
         </p>
       ) : null}
 
       {phase === "opening" && stalled ? (
-        <p data-oceanleo-cc-login-stalled="" className="text-[12px] text-rose-300">
+        <p data-oceanleo-cc-login-stalled="" className="text-[12px] text-rose-700 dark:text-rose-300">
           {tt("没拿到登录链接。可以取消后重试，也可以贴 Key 直接用。")}
         </p>
       ) : null}
 
       {phase === "failed" ? (
-        <p data-oceanleo-cc-login-error="" className="text-[12px] text-rose-300">
+        <p data-oceanleo-cc-login-error="" className="text-[12px] text-rose-700 dark:text-rose-300">
           {failureCopy(tt, login.failed)}
         </p>
       ) : null}
@@ -142,7 +143,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block min-w-0 flex-1 break-all text-[12px] text-sky-300 underline"
+                className="block min-w-0 flex-1 break-all text-[12px] text-sky-700 underline dark:text-sky-300"
               >
                 {href}
               </a>
@@ -150,30 +151,30 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 type="button"
                 data-oceanleo-cc-login-url-copy=""
                 onClick={() => copyText("url", href)}
-                className="shrink-0 rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-200"
+                className={`shrink-0 rounded-lg border px-2 py-1 text-[11px] ${tone.border} ${tone.hover}`}
               >
                 {copiedWhat === "url" ? tt("已复制") : tt("复制")}
               </button>
             </div>
           ) : login.url ? (
-            <p className="break-all text-[12px] text-neutral-300">{login.url}</p>
+            <p className={`break-all text-[12px] ${tone.muted}`}>{login.url}</p>
           ) : null}
           {login.code ? (
             <div className="mt-2 flex items-center gap-2">
-              <code data-oceanleo-cc-login-code="" className="font-mono text-[13px] text-neutral-100">
+              <code data-oceanleo-cc-login-code="" className="font-mono text-[13px]">
                 {login.code}
               </code>
               <button
                 type="button"
                 data-oceanleo-cc-login-code-copy=""
                 onClick={() => copyText("code", login.code)}
-                className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-200"
+                className={`rounded-lg border px-2 py-1 text-[11px] ${tone.border} ${tone.hover}`}
               >
                 {copiedWhat === "code" ? tt("已复制") : tt("复制")}
               </button>
             </div>
           ) : null}
-          <p className="mt-2 text-[12px] text-neutral-300">{tt("在浏览器里完成后，这里几秒内会变绿")}</p>
+          <p className={`mt-2 text-[12px] ${tone.muted}`}>{tt("在浏览器里完成后，这里几秒内会变绿")}</p>
           {login.needsCode ? (
             <form
               className="mt-2"
@@ -182,7 +183,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 submitCode();
               }}
             >
-              <label className="block text-[11px] text-neutral-300">
+              <label className={`block text-[11px] ${tone.muted}`}>
                 {tt("把浏览器给你的代码贴到这里")}
                 <input
                   type="text"
@@ -190,7 +191,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                   data-oceanleo-cc-login-code-input=""
                   value={login.codeDraft}
                   onChange={(event) => dialog.setLoginCodeDraft(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-2 py-1.5 font-mono text-[12px] text-neutral-100 outline-none"
+                  className={`mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-[12px] outline-none ${tone.input}`}
                 />
               </label>
               <div className="mt-2">
@@ -198,7 +199,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                   type="submit"
                   data-oceanleo-cc-login-code-submit=""
                   disabled={!login.codeDraft.trim()}
-                  className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900 disabled:opacity-50"
+                  className={`rounded-lg px-3 py-1.5 text-[12px] font-medium disabled:opacity-50 ${tone.primary}`}
                 >
                   {tt("提交")}
                 </button>
@@ -206,7 +207,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
             </form>
           ) : null}
           {login.hint ? (
-            <p data-oceanleo-cc-login-hint="" className="mt-2 text-[12px] text-neutral-200">
+            <p data-oceanleo-cc-login-hint="" className={`mt-2 text-[12px] ${tone.muted}`}>
               {login.hint}
             </p>
           ) : null}
@@ -222,7 +223,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
               if (program) dialog.cancelLogin(program);
               else dialog.closeLogin();
             }}
-            className="rounded-lg border border-neutral-700 px-3 py-1.5 text-[12px] text-neutral-200"
+            className={`rounded-lg border px-3 py-1.5 text-[12px] ${tone.border} ${tone.hover}`}
           >
             {tt("取消")}
           </button>
@@ -237,7 +238,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
             onClick={() => {
               if (program) dialog.openLogin(program);
             }}
-            className="rounded-lg bg-neutral-100 px-3 py-1.5 text-[12px] font-medium text-neutral-900"
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${tone.primary}`}
           >
             {tt("再试一次")}
           </button>
@@ -249,7 +250,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 if (program) dialog.cancelLogin(program);
                 else dialog.closeLogin();
               }}
-              className="rounded-lg border border-neutral-700 px-3 py-1.5 text-[12px] text-neutral-200"
+              className={`rounded-lg border px-3 py-1.5 text-[12px] ${tone.border} ${tone.hover}`}
             >
               {tt("取消")}
             </button>
