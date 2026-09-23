@@ -503,7 +503,7 @@ export function LeoAssistant({
               aria-label={expanded ? tt("缩小") : tt("放大")}
               title={expanded ? tt("缩小") : tt("放大")}
               onClick={() => setExpanded((value) => !value)}
-              className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+              className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6"><path d={expanded ? "M3 9h6V3M21 9h-6V3M3 15h6v6M21 15h-6v6M9 9 3 3m12 6 6-6M9 15l-6 6m12-6 6 6" : "M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"} /></svg>
             </button>
@@ -520,7 +520,7 @@ export function LeoAssistant({
               }}
               aria-label={enabled ? tt("停用") : tt("启用")}
               title={enabled ? tt("停用 leo（选中文本后不再显示气泡）") : tt("启用 leo")}
-              className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+              className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-normal text-slate-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
             >
               {enabled ? tt("停用") : tt("启用")}
             </button>
@@ -709,7 +709,7 @@ function SelectionBubble() {
         setBubble(null);
         if (text) openLeoAssistant({ text, source: "selection", anchor: rect });
       }}
-      className="leo-pop-in fixed z-[60] flex items-center gap-1 rounded-full border border-indigo-200/70 bg-white/95 px-2.5 py-1 text-[12px] font-medium text-indigo-600 shadow-lg backdrop-blur-sm transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-indigo-50"
+      className="leo-pop-in fixed z-[60] flex items-center gap-1 rounded-full border border-indigo-200/70 bg-white/95 px-2.5 py-1 text-[12px] font-medium text-indigo-600 shadow-lg backdrop-blur-sm transition duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:bg-indigo-50 dark:border-indigo-400/40 dark:bg-neutral-900/95 dark:text-indigo-300 dark:hover:bg-neutral-800"
       style={{ left: bubble.x, top: bubble.y }}
     >
       <Sparkle />

@@ -225,8 +225,8 @@ function TranscriptEntryView({ entry }: { entry: LeoTranscriptEntry }) {
       <div
         className={`max-w-[85%] space-y-1 rounded-2xl px-3 py-2 text-xs leading-relaxed ${
           isUser
-            ? "bg-slate-900 text-white"
-            : "border border-slate-200 bg-slate-50 text-slate-800"
+            ? "bg-slate-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+            : "border border-slate-200 bg-slate-50 text-slate-800 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
         }`}
       >
         <p className="whitespace-pre-wrap">{entry.text}</p>
