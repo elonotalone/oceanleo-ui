@@ -86,7 +86,8 @@ export function AcpCard({
   const [selected, setSelected] = useState<AgentProgram>(() =>
     agentProgram(initialProgram) ?? rememberedProgram(computer.id),
   );
-  const [mountSession] = useState(() => initialSessionId);
+  const [mountTarget] = useState(() => ({ program: selected, session: initialSessionId }));
+  const mountSession = mountTarget.session;
   const [settingsProgram, setSettingsProgram] = useState<AgentProgram | null>(null);
   const [keyProgram, setKeyProgram] = useState<WsProgram | null>(null);
   const [oceanleoStatus, setOceanleoStatus] = useState<OceanleoAgentStatus | null>(() => oceanleoCache.get(computer.id) ?? null);
@@ -99,6 +100,8 @@ export function AcpCard({
     computerId: computer.id,
     enabled: true,
     active,
+    initialProgram: selected,
+    oceanleoReady: oceanleoLoaded || oceanleoStatus !== null,
     localOceanleo: oceanleoStatus?.installed === true,
   });
 
@@ -131,12 +134,12 @@ export function AcpCard({
   }, [dialog, selected]);
 
   useEffect(() => {
-    if (!mountSession || !selected || dialog.program !== selected) return;
+    if (!mountSession || selected !== mountTarget.program || dialog.program !== selected || initialSessionApplied.current) return;
     const key = `${computer.id}:${selected}:${mountSession}`;
     if (initialSessionApplied.current === key) return;
     initialSessionApplied.current = key;
     dialog.openSession(mountSession);
-  }, [computer.id, dialog, mountSession, selected]);
+  }, [computer.id, dialog, mountSession, mountTarget.program, selected]);
 
   function replaceAddress(program: AgentProgram, session?: string) {
     replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
@@ -148,7 +151,7 @@ export function AcpCard({
 
   useEffect(() => {
     if (active && dialog.program === selected) replaceServerPageUrl(computer.id, {
-      card: "acp", program: selected, session: dialog.activeSession || mountSession && !initialSessionApplied.current ? mountSession : dialog.activeSession || null,
+      card: "acp", program: selected, session: dialog.activeSession || null,
     });
   }, [active, computer.id, selected, dialog.program, dialog.activeSession, mountSession]);
 
@@ -362,7 +365,7 @@ export function AcpCard({
           onRequestKey={requestKey}
           onOceanleoStatusChange={(status) => {
             oceanleoCache.set(computer.id, status);
-      setOceanleoStatus(status);
+            setOceanleoStatus(status);
             setOceanleoError("");
           }}
         />

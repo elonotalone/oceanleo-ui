@@ -125,7 +125,7 @@ async function flush(count = 7) {
 }
 
 function createClient({ historySupported = true } = {}) {
-  const calls = { launch: [], setTools: [], close: [] };
+  const calls = { launch: [], setTools: [], close: [], programs: 0, terminals: 0, chats: [] };
   let records = [
     record(),
     record({ id: "claude-live", program: "claude" }),
@@ -141,6 +141,7 @@ function createClient({ historySupported = true } = {}) {
   return {
     calls,
     async listCliPrograms() {
+      calls.programs++;
       return {
         programs: [
           program({ id: "codex", label: "Codex" }),
@@ -167,9 +168,11 @@ function createClient({ historySupported = true } = {}) {
       };
     },
     async listTerminalsWithRecords() {
+      calls.terminals++;
       return { sessions: [...records], records_supported: true };
     },
     async listCliSessions(_id, selectedProgram) {
+      calls.chats.push(selectedProgram);
       if (!historySupported) return { supported: false, sessions: [] };
       return {
         supported: true,
@@ -262,6 +265,10 @@ async function renderCard({ api, props = {} }) {
   await flush();
   return {
     host,
+    async rerender(patch) {
+      props = { ...props, ...patch };
+      await act(async () => root.render(React.createElement(CliCard, { computer: computer(), initialProgram: "cursor", client: api, refreshIntervalMs: 0, ...props })));
+    },
     pushes,
     replaces,
     cleanup() {
@@ -271,13 +278,13 @@ async function renderCard({ api, props = {} }) {
   };
 }
 
-test("CLI 卡程序条收起、运行/历史列表、续聊 options 与工具开关", async () => {
+test("CLI 共享程序条、运行/历史列表、浅地址、续聊 options 与工具开关", async () => {
   const api = createClient();
   const view = await renderCard({ api });
   try {
     assert.deepEqual(
-      [...view.host.querySelectorAll("[data-oceanleo-cli-program]")].map((node) =>
-        node.getAttribute("data-oceanleo-cli-program"),
+      [...view.host.querySelectorAll("[data-oceanleo-program-strip-item]")].map((node) =>
+        node.getAttribute("data-oceanleo-program-strip-item"),
       ),
       ["oceanleo", "cursor", "claude", "codex", "hermes"],
     );
@@ -294,15 +301,8 @@ test("CLI 卡程序条收起、运行/历史列表、续聊 options 与工具开
       ["resume-new", "resume-old"],
     );
 
-    const collapse = view.host.querySelector("[data-oceanleo-cli-programs-toggle]");
-    assert.ok(collapse);
-    await act(async () => collapse.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    assert.deepEqual(
-      [...view.host.querySelectorAll("[data-oceanleo-cli-program]")].map((node) =>
-        node.getAttribute("data-oceanleo-cli-program"),
-      ),
-      ["cursor"],
-    );
+    assert.ok(view.host.querySelector("[data-oceanleo-program-strip]"));
+    assert.equal(view.host.querySelector("[data-oceanleo-cli-programs-toggle]"), null);
 
     const resume = view.host.querySelector('[data-oceanleo-cli-chat="resume-new"]');
     assert.ok(resume);
@@ -325,11 +325,11 @@ test("CLI 卡程序条收起、运行/历史列表、续聊 options 与工具开
       "launched-1",
     );
     assert.equal(
-      view.replaces.at(-1),
+      window.location.pathname + window.location.search,
       "/computers/cc_1?card=cli&program=cursor&session=launched-1",
     );
 
-    const settings = view.host.querySelector("[data-oceanleo-cli-settings-toggle]");
+    const settings = view.host.querySelector('[data-oceanleo-program-strip-settings="cursor"]');
     assert.ok(settings);
     await act(async () => settings.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flush();
@@ -342,15 +342,16 @@ test("CLI 卡程序条收起、运行/历史列表、续聊 options 与工具开
       { id: "cc_1", program: "cursor", enabled: false },
     ]);
 
-    await act(async () => collapse.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    const claude = view.host.querySelector('[data-oceanleo-cli-program="claude"]');
+    const claude = view.host.querySelector('[data-oceanleo-program-strip-item="claude"]');
     assert.ok(claude);
     await act(async () => claude.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flush();
     const install = view.host.querySelector('[data-oceanleo-cli-install="claude"]');
     assert.ok(install);
     await act(async () => install.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    assert.deepEqual(view.pushes, ["/computers/cc_1?card=acp&program=claude"]);
+    assert.equal(window.location.search, "?card=acp&program=claude");
+    assert.deepEqual(view.pushes, []);
+    assert.deepEqual(view.replaces, []);
   } finally {
     view.cleanup();
   }

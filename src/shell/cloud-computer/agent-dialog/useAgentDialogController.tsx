@@ -71,19 +71,25 @@ export function useAgentDialog({
   enabled,
   localOceanleo = false,
   active = true,
+  initialProgram = "oceanleo",
+  oceanleoReady = true,
 }: {
   computerId: string;
   sessionId?: string;
   enabled: boolean;
   localOceanleo?: boolean;
   active?: boolean;
+  initialProgram?: AgentProgram;
+  oceanleoReady?: boolean;
 }): AgentDialogControllerV2 {
   const tt = useUI();
+  const [mountProgram] = useState(() => initialProgram);
   const [state, dispatch] = useReducer(
     (previous: ReturnType<typeof initialDialogState>, event: Parameters<typeof applyDialog>[1]) => {
       const next = applyDialog(previous, event);
+      if (event.type === "reset") next.program = mountProgram;
       return event.type === "reset" || event.type === "program" ? hydratePresentation(computerId, next) : next;
-    }, undefined, () => hydratePresentation(computerId, initialDialogState()),
+    }, undefined, () => hydratePresentation(computerId, { ...initialDialogState(), program: mountProgram }),
   );
   const [draft, setDraft] = useState("");
   const [fresh, setFresh] = useState(false);
@@ -94,6 +100,7 @@ export function useAgentDialog({
   const freshRef = useRef(fresh);
   const enabledRef = useRef(enabled);
   const activeRef = useRef(active);
+  const oceanleoReadyRef = useRef(oceanleoReady);
   const computerIdRef = useRef(computerId);
   const sessionIdRef = useRef(sessionId);
   const localOceanleoRef = useRef(localOceanleo);
@@ -125,6 +132,7 @@ export function useAgentDialog({
   freshRef.current = fresh;
   enabledRef.current = enabled;
   activeRef.current = active;
+  oceanleoReadyRef.current = oceanleoReady;
   computerIdRef.current = computerId;
   sessionIdRef.current = sessionId;
   localOceanleoRef.current = localOceanleo;
@@ -378,7 +386,7 @@ export function useAgentDialog({
   /** 进入 oceanleo 程序（或重试）：拉 agentState，回放当前任务的消息。 */
   const refreshOcean = useCallback(async () => {
     const computerId = computerIdRef.current;
-    if (!computerId || !enabledRef.current || !activeRef.current) return;
+    if (!computerId || !enabledRef.current || !activeRef.current || !oceanleoReadyRef.current) return;
     const gen = (oceanGen.current += 1);
     clearOceanWait();
     const result = await agentState(computerId);
@@ -527,6 +535,15 @@ export function useAgentDialog({
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
     };
   }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait]);
+
+  const readySeenRef = useRef(oceanleoReady);
+  useEffect(() => {
+    const wasReady = readySeenRef.current;
+    readySeenRef.current = oceanleoReady;
+    if (!wasReady && oceanleoReady && !localOceanleo && stateRef.current.program === "oceanleo") {
+      void refreshOceanRef.current();
+    }
+  }, [oceanleoReady, localOceanleo]);
 
   const previousActive = useRef(active);
   useEffect(() => {

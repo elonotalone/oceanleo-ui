@@ -317,9 +317,9 @@ export function CliCard({
           items={programs.map((program) => ({
             id: program.id,
             label: program.label,
-            dot: !program.installed ? "gray" : program.id === "oceanleo" ? "green" : "yellow",
+            dot: program.installed ? "green" : "gray",
             running: runningCliTerminals(records, program.id).length > 0,
-            title: !program.installed ? tt("未安装") : undefined,
+            title: !program.installed ? tt("未安装") : program.version ? tt("已安装 · {version}", { version: program.version }) : tt("已安装"),
           }))}
           selected={programId}
           onSelect={(id) => { setProgramId(id); setSelectedSessionId(null); }}
