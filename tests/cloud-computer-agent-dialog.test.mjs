@@ -130,6 +130,18 @@ const authStub = dataModule(`
 `);
 const agentStub = dataModule(`
   export async function getTask() { return { ok: false, data: null }; }
+  export async function stopTask() { return { ok: false }; }
+`);
+// W6A 的 oceanleo 程序走 REST（合同 I6）：stub 掉，真模块会把 lib/agent 整棵拉进图。
+const computerAgentStub = dataModule(`
+  export async function agentState() { return { ok: false, error: "off" }; }
+  export async function agentTurn() { return { ok: false, error: "off" }; }
+  export async function agentReset() { return { ok: false, error: "off" }; }
+`);
+// W5B 在 Composer 左下角挂的 LeoEntryButton（合同 I7）：stub 在边上是了，
+// 真组件会把 leo 面板整棵子树（含 lib/agent）拉进图。
+const leoEntryStub = dataModule(`
+  export function LeoEntryButton() { return null; }
 `);
 
 const { useAgentDialog, AgentDialogPane } = await import(
@@ -138,6 +150,8 @@ const { useAgentDialog, AgentDialogPane } = await import(
     "../../lib/cloud-computer-api": apiStub,
     "../../lib/auth/client": authStub,
     "../../../lib/agent": agentStub,
+    "../../../lib/cloud-computer-agent-api": computerAgentStub,
+    "../../LeoEntryButton": leoEntryStub,
   })
 );
 
@@ -285,7 +299,8 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     assert.ok(view.host.querySelector('[data-oceanleo-cc-login="hermes"]'));
     assert.ok(view.host.querySelector('[data-oceanleo-cc-program="claude"] [data-oceanleo-cc-dot="gray"]'));
     assert.ok(view.host.querySelector('[data-oceanleo-cc-install="codex"]'));
-    assert.equal(view.host.querySelector("[data-oceanleo-cc-dialog-input]"), null);
+    // 合同 I6：oceanleo 默认选中，输入框一进来就在（Composer 对所有程序生效）
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-dialog-input]"));
 
     await click(view.host.querySelector("[data-oceanleo-cc-dialog-oceanleo]"));
     assert.equal(view.socket().sent.some((frame) => frame.program === "oceanleo"), false);
@@ -328,6 +343,9 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
 
     await click(view.host.querySelector('[data-oceanleo-cc-login="hermes"]'));
     await until(() => view.socket().sent.some((frame) => frame.t === "login" && frame.program === "hermes"), "login frame");
+    // opening：还没拿到链接时只有「正在打开登录…」和取消
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-login-opening]"));
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-login-cancel]"));
     await act(async () => {
       view.socket().server({
         t: "login_url",
@@ -341,10 +359,19 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     assert.equal(link.getAttribute("target"), "_blank");
     assert.equal(link.getAttribute("rel"), "noopener noreferrer");
     assert.equal(view.host.querySelector("[data-oceanleo-cc-login-code]").textContent, "ABCD");
-    assert.match(view.host.textContent || "", /在浏览器里完成后这里会自动变绿/);
+    assert.match(view.host.textContent || "", /在浏览器里完成后，这里几秒内会变绿/);
+    // hermes 不需要贴码：没有输入框
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-login-code-input]"), null);
     await act(async () => {
       view.socket().server({ t: "login_done", program: "hermes" });
     });
+    // done：亮绿（已登录）一秒后自动收起
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-login-done]"));
+    for (let i = 0; i < 40 && view.host.querySelector("[data-oceanleo-cc-login-card]"); i += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    }
     assert.equal(view.host.querySelector("[data-oceanleo-cc-login-card]"), null);
 
     await click(view.host.querySelector("[data-oceanleo-cc-dialog-cursor]"));
@@ -512,5 +539,205 @@ test("OceanLeo agent 恒在程序行第一项", async () => {
     assert.ok(view.host.querySelector("[data-oceanleo-cc-dialog-cursor]"));
   } finally {
     view.cleanup();
+  }
+});
+
+test("parsePrograms 解析 auth 并派生 logged_in，老帧按 logged_in 退化", async () => {
+  const { parsePrograms } = await import("../src/shell/cloud-computer/agent-dialog/parse.ts");
+  const rows = parsePrograms([
+    { id: "cursor", installed: true, auth: "key" },
+    { id: "hermes", installed: true, auth: "malformed" },
+    { id: "claude", installed: true, auth: "unknown" },
+    { id: "codex", installed: true, auth: "login" },
+  ]);
+  assert.equal(rows.find((row) => row.id === "cursor").logged_in, true);
+  assert.equal(rows.find((row) => row.id === "hermes").logged_in, false);
+  assert.equal(rows.find((row) => row.id === "claude").logged_in, null);
+  assert.equal(rows.find((row) => row.id === "codex").logged_in, true);
+  // 老帧没有 auth 字段：logged_in true→login、false→none、缺→unknown
+  const legacy = parsePrograms([
+    { id: "cursor", installed: true, logged_in: true },
+    { id: "hermes", installed: true, logged_in: false },
+    { id: "claude", installed: true, logged_in: null },
+  ]);
+  assert.equal(legacy.find((row) => row.id === "cursor").auth, "login");
+  assert.equal(legacy.find((row) => row.id === "hermes").auth, "none");
+  assert.equal(legacy.find((row) => row.id === "claude").auth, "unknown");
+  // 不认得的 auth 不猜，按 unknown
+  const weird = parsePrograms([{ id: "cursor", installed: true, auth: "maybe" }]);
+  assert.equal(weird[0].auth, "unknown");
+});
+
+test("claude needs_code：贴码框提交 login_code 帧", async () => {
+  const view = await boot();
+  try {
+    await act(async () => {
+      view.socket().server({
+        t: "status",
+        program: "",
+        programs: [
+          { id: "claude", installed: true, path: "/cl", version: "3", auth: "none", logged_in: false, dir_capability: "full", running: false },
+        ],
+      });
+    });
+    await click(view.host.querySelector('[data-oceanleo-cc-login="claude"]'));
+    await until(() => view.socket().sent.some((frame) => frame.t === "login" && frame.program === "claude"), "login frame");
+    await act(async () => {
+      view.socket().server({
+        t: "login_url",
+        program: "claude",
+        url: "https://claude.example/device",
+        code: "",
+        needs_code: true,
+      });
+    });
+    const input = view.host.querySelector("[data-oceanleo-cc-login-code-input]");
+    assert.ok(input);
+    assert.match(view.host.textContent || "", /把浏览器给你的代码贴到这里/);
+    const submit = view.host.querySelector("[data-oceanleo-cc-login-code-submit]");
+    assert.equal(submit.disabled, true);
+    const inputPropKey = Object.keys(input).find((name) => name.startsWith("__reactProps"));
+    assert.ok(inputPropKey);
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+      setter.call(input, "code-123");
+      input[inputPropKey].onChange({ target: input, currentTarget: input });
+    });
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-login-code-submit]").disabled, false);
+    await click(submit);
+    await until(
+      () => view.socket().sent.some((frame) => frame.t === "login_code"),
+      "login_code frame",
+    );
+    assert.deepEqual(view.socket().sent.find((frame) => frame.t === "login_code"), {
+      t: "login_code",
+      program: "claude",
+      code: "code-123",
+    });
+    // 提交后草稿清空
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-login-code-input]").value, "");
+    await act(async () => {
+      view.socket().server({ t: "login_done", program: "claude" });
+    });
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-login-done]"));
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("login_failed 给原因与「再试一次」，重试重新发 login 帧", async () => {
+  const view = await boot();
+  try {
+    await click(view.host.querySelector('[data-oceanleo-cc-login="hermes"]'));
+    await until(() => view.socket().sent.some((frame) => frame.t === "login" && frame.program === "hermes"), "login frame");
+    await act(async () => {
+      view.socket().server({ t: "login_failed", program: "hermes", code: "timeout" });
+    });
+    assert.match(
+      view.host.querySelector("[data-oceanleo-cc-login-error]").textContent || "",
+      /登录超时，没等到确认。/,
+    );
+    const before = view.socket().sent.filter((frame) => frame.t === "login").length;
+    await click(view.host.querySelector("[data-oceanleo-cc-login-retry]"));
+    await until(
+      () => view.socket().sent.filter((frame) => frame.t === "login").length > before,
+      "retry login frame",
+    );
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-login-opening]"));
+    // exit_<n> 映射带退出码
+    await act(async () => {
+      view.socket().server({ t: "login_failed", program: "hermes", code: "exit_3" });
+    });
+    assert.match(
+      view.host.querySelector("[data-oceanleo-cc-login-error]").textContent || "",
+      /登录程序退出了（退出码 3）。/,
+    );
+    await click(view.host.querySelector("[data-oceanleo-cc-login-close]"));
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-login-card]"), null);
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("waiting 中取消：发 login_cancel 并立刻关卡", async () => {
+  const view = await boot();
+  try {
+    await click(view.host.querySelector('[data-oceanleo-cc-login="hermes"]'));
+    await until(() => view.socket().sent.some((frame) => frame.t === "login" && frame.program === "hermes"), "login frame");
+    await act(async () => {
+      view.socket().server({ t: "login_url", program: "hermes", url: "https://example.com/d", code: "" });
+    });
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-login-url]"));
+    await click(view.host.querySelector("[data-oceanleo-cc-login-cancel]"));
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-login-card]"), null);
+    await until(
+      () => view.socket().sent.some((frame) => frame.t === "login_cancel"),
+      "login_cancel frame",
+    );
+    assert.deepEqual(view.socket().sent.find((frame) => frame.t === "login_cancel"), {
+      t: "login_cancel",
+      program: "hermes",
+    });
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("opening 超 20 s 无 login_url 自动转失败展示", async () => {
+  const { LoginCard } = await import(
+    await compileModule("src/shell/cloud-computer/agent-dialog/LoginCard.tsx", {
+      "../../../i18n/ui/useUI": uiStub,
+    })
+  );
+  const { mock } = await import("node:test");
+  mock.timers.enable({ apis: ["setTimeout"] });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const calls = { cancel: 0, retry: 0 };
+  const dialog = {
+    login: {
+      open: true,
+      program: "cursor",
+      phase: "opening",
+      url: "",
+      code: "",
+      needsCode: false,
+      codeDraft: "",
+      hint: "",
+      failed: "",
+      pending: true,
+    },
+    closeLogin() {},
+    cancelLogin: () => { calls.cancel += 1; },
+    openLogin: () => { calls.retry += 1; },
+    submitLoginCode() {},
+    setLoginCodeDraft() {},
+  };
+  try {
+    await act(async () => {
+      root.render(React.createElement(LoginCard, { dialog }));
+    });
+    assert.ok(host.querySelector("[data-oceanleo-cc-login-opening]"));
+    assert.equal(host.querySelector("[data-oceanleo-cc-login-stalled]"), null);
+    await act(async () => {
+      mock.timers.tick(19999);
+    });
+    assert.equal(host.querySelector("[data-oceanleo-cc-login-stalled]"), null);
+    await act(async () => {
+      mock.timers.tick(1);
+    });
+    assert.match(host.querySelector("[data-oceanleo-cc-login-stalled]").textContent || "", /没拿到登录链接/);
+    assert.equal(host.querySelector("[data-oceanleo-cc-login-card]").getAttribute("data-oceanleo-cc-login-phase"), "failed");
+    await act(async () => {
+      host.querySelector("[data-oceanleo-cc-login-cancel]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(calls.cancel, 1);
+  } finally {
+    mock.timers.reset();
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
   }
 });
