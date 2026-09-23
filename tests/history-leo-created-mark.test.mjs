@@ -202,23 +202,16 @@ test("created_by 为 leo 的行在名称右侧标出火花，其它行不标", a
     assertLeoMark(container, "由 leo 写成", true);
     assertLeoMark(container, "挂在会话上", true);
     assertLeoMark(container, "leo 的旧任务", true);
-    assertLeoMark(container, "终端里的活", true);
     assertLeoMark(container, "人手记下的", false);
     assertLeoMark(container, "空字符串", false);
     assertLeoMark(container, "旧对话", false);
     assertLeoMark(container, "别人建的", false);
-    assertLeoMark(container, "普通终端", false);
-
-    const shellLeo = rowButton(container, "终端里的活");
-    const shellPlain = rowButton(container, "普通终端");
-    assert.ok(shellLeo.querySelector("[data-oceanleo-cc-shell-tag]"));
-    assert.match(shellLeo.textContent, /Shell/);
-    assert.ok(shellPlain.querySelector("[data-oceanleo-cc-shell-tag]"));
-    assert.equal(shellPlain.querySelector("[data-oceanleo-leo-created]"), null);
+    assert.equal(rowButton(container, "终端里的活"), undefined);
+    assert.equal(rowButton(container, "普通终端"), undefined);
     assert.equal(rowButton(container, "不该单独成行的 leo 任务"), undefined);
 
     const marks = container.querySelectorAll("[data-oceanleo-leo-created]");
-    assert.equal(marks.length, 4);
+    assert.equal(marks.length, 3);
     for (const mark of marks) assert.equal(mark.getAttribute("aria-label"), "leo");
   } finally {
     await act(async () => {

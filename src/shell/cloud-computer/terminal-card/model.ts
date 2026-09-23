@@ -1,4 +1,5 @@
 import type {
+  CliChat,
   CliProgram,
   TerminalRecord,
 } from "../../../lib/cloud-computer-api";
@@ -66,6 +67,14 @@ export function orderedCliPrograms(
   });
 }
 
+export function sortCliChats(chats: readonly CliChat[]): CliChat[] {
+  return [...chats].sort(
+    (left, right) =>
+      timestamp(right.updated_at) - timestamp(left.updated_at) ||
+      left.id.localeCompare(right.id),
+  );
+}
+
 export type TerminalEndCopy = {
   key: "已退出（代码 {code}）" | "已关闭" | "节点重启" | "已结束";
   vars?: { code: number | string };
@@ -82,4 +91,3 @@ export function terminalEndCopy(record: TerminalRecord): TerminalEndCopy {
   }
   return { key: "已结束" };
 }
-

@@ -127,6 +127,43 @@ test("旧后端可回放 session-bound task；聚合 session 使用独立永久�
   );
 });
 
+test("Shell 不是任务：历史合并在新旧后端模式下都不列 shell task", () => {
+  const tasks = [
+    {
+      id: "shell-legacy",
+      title: "旧 Shell",
+      status: "done",
+      mode: "shell",
+      created_at: "2026-09-23T03:00:00Z",
+    },
+    {
+      id: "shell-bound",
+      title: "绑定过会话的 Shell",
+      status: "done",
+      mode: "shell",
+      session_id: "legacy-shell-session",
+      created_at: "2026-09-23T02:00:00Z",
+    },
+    {
+      id: "agent-legacy",
+      title: "普通旧任务",
+      status: "done",
+      mode: "agent",
+      created_at: "2026-09-23T01:00:00Z",
+    },
+  ];
+  assert.deepEqual(
+    mergeHistoryEntries([], tasks).map((entry) => entry.id),
+    ["agent-legacy"],
+  );
+  assert.deepEqual(
+    mergeHistoryEntries([], tasks, { sessionApiUnavailable: true }).map(
+      (entry) => entry.id,
+    ),
+    ["agent-legacy"],
+  );
+});
+
 test("操作台需真实 snapshot；标准 agent 可用真实 task thread 恢复 runtime", () => {
   assert.equal(isRestorableAppSession(baseSession), true);
   assert.equal(

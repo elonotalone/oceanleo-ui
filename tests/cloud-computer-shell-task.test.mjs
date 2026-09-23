@@ -29,7 +29,7 @@ else delete require.cache[canvasEntry];
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
-  url: "https://oceanleo.com/",
+  url: "https://oceanleo.com/history?task=task-1",
 });
 const { window } = dom;
 const { document } = window;
@@ -41,7 +41,6 @@ for (const [name, value] of Object.entries({
   Element: window.Element,
   Node: window.Node,
   Event: window.Event,
-  MouseEvent: window.MouseEvent,
 })) {
   Object.defineProperty(globalThis, name, {
     configurable: true,
@@ -53,119 +52,47 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
-const reactUrl = pathToFileURL(require.resolve("react")).href;
-const uiTextStubUrl = dataModule(`
-  export function useUI() {
-    return (value) => value;
-  }
+const uiStubUrl = dataModule(`
+  export function useUI() { return (value) => value; }
 `);
 const navStubUrl = dataModule(`
-  export function useRouter() {
-    return globalThis.__shellRouter || { push() {}, replace() {}, refresh() {}, back() {} };
-  }
+  export function useRouter() { return globalThis.__shellRouter; }
 `);
-const apiStubUrl = dataModule(`
-  export const cloudComputerApi = globalThis.__shellApi;
-  export function agentDialogWsUrl(id, sessionId, token) {
-    return "ws://example.test/v1/computers/" + id + "/agent-dialog?session_id=" + sessionId + "&token=" + token;
-  }
-`);
-const terminalStubUrl = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  export function useComputerTerminal() {
-    return {
-      hostRef: { current: null },
-      ready: true,
-      status: "live",
-      detail: undefined,
-      sendText() {},
-      tail() { return ""; },
-    };
-  }
-  export function encodeTermText(t) { return t; }
-  export function decodeTermB64(t) { return t; }
-  export function TerminalPanel() { return null; }
-`);
-// 隔离 W6A 在途的 agent-dialog：这份测试只管 ShellTaskView 自己的外壳行为。
-const agentDialogStubUrl = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  export function useAgentDialog() {
-    return { messages: [], busy: false };
-  }
-  export function AgentDialogPane() {
-    return React.createElement("div", { "data-oceanleo-cc-agent-dialog-pane": "1" });
-  }
-`);
-const stateStubUrl = dataModule(`
-  export function computerDisplayState(computer) {
-    if (!computer) return "offline";
-    if (computer.node_online) return "ready";
-    return "offline";
-  }
-  export function canOpenShell(computer) {
-    return Boolean(computer && computer.node_online);
-  }
+const endedCopyStubUrl = dataModule(`
+  export const SHELL_ENDED_ZH = {
+    missingSession: "缺少会话，这个 Shell 没有开始。",
+  };
 `);
 
 const { ShellTaskView } = await import(
   await compileModule("src/shell/cloud-computer/ShellTaskView.tsx", {
-    "../../i18n/ui/useUI": uiTextStubUrl,
-    "../../lib/cloud-computer-api": apiStubUrl,
-    "./TerminalPanel": terminalStubUrl,
-    "./computer-state": stateStubUrl,
-    "./useAgentDialog": agentDialogStubUrl,
+    "../../i18n/ui/useUI": uiStubUrl,
+    "../../i18n/ui/messages/shell-ended-copy": endedCopyStubUrl,
     "next/navigation": navStubUrl,
-    "../../i18n/ui/messages/shell-ended-copy": dataModule(`
-      export const SHELL_ENDED_ZH = {
-        missingSession: "缺少会话，这个 Shell 没有开始。",
-        endedExit: "这个 Shell 已结束，退出码 {code}。",
-        endedGone: "这个 Shell 已经不存在了。",
-        reconnecting: "重新连接中…",
-        connectionLost: "连接断了。",
-        retryConnection: "重新连接",
-      };
-    `),
   })
 );
 
-function makeClient(overrides = {}) {
-  return {
-    async getComputer() {
-      return {
-        id: "cc_1",
-        name: "新加坡一号",
-        node_online: true,
-        status: "running",
-      };
+async function flush(count = 6) {
+  for (let index = 0; index < count; index += 1) await act(async () => {});
+}
+
+async function render(props = {}) {
+  const replaces = [];
+  globalThis.__shellRouter = {
+    push() {},
+    replace(href) {
+      replaces.push(href);
     },
-    async closeTerminal() {
-      return { ok: true };
-    },
-    async openTerminal(_id, body) {
-      globalThis.__shellOpenBody = body;
-      return { id: "sid_new", task_id: "task-new" };
-    },
-    ...overrides,
   };
-}
-
-async function flush(count = 8) {
-  for (let i = 0; i < count; i += 1) await act(async () => {});
-}
-
-async function render(props, client = makeClient()) {
-  globalThis.__shellApi = client;
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
     root.render(
       React.createElement(ShellTaskView, {
-        client,
         taskId: "task-1",
-        computerId: "cc_1",
-        sessionId: "sid_1",
-        computerName: "新加坡一号",
+        computerId: "cc /1",
+        sessionId: "sid /2",
         ...props,
       }),
     );
@@ -173,7 +100,7 @@ async function render(props, client = makeClient()) {
   await flush();
   return {
     host,
-    text: () => host.textContent || "",
+    replaces,
     cleanup() {
       act(() => root.unmount());
       host.remove();
@@ -181,7 +108,7 @@ async function render(props, client = makeClient()) {
   };
 }
 
-test("shellPlanOf / shellSessionFromTask：缺字段视为已结束", () => {
+test("shellSessionFromTask 从旧任务 plan/列提取服务器和会话", () => {
   assert.equal(isShellTask({ mode: "shell" }), true);
   assert.equal(isShellTask({ mode: "agent" }), false);
   assert.equal(shellPlanOf({ plan: null }), null);
@@ -218,79 +145,37 @@ test("shellPlanOf / shellSessionFromTask：缺字段视为已结束", () => {
   );
 });
 
-test("缺 sessionId 时说明缺少会话，不用正常结束那一句", async () => {
-  const view = await render({ sessionId: "" });
-  assert.match(view.text(), /缺少会话/);
-  assert.equal(view.text().includes("这个 Shell 已结束"), false);
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-reopen-shell]"));
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-end-shell]"), null);
-  view.cleanup();
+test("旧 Shell 任务只 replace 到服务器页终端记录，不再渲染结束或对话操作", async () => {
+  const view = await render();
+  try {
+    assert.deepEqual(view.replaces, [
+      "/computers/cc%20%2F1?card=terminal&session=sid+%2F2",
+    ]);
+    assert.equal(view.host.innerHTML, "");
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-end-shell]"), null);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-agent-dialog]"), null);
+    assert.equal((view.host.textContent || "").includes("结束 Shell"), false);
+    assert.equal((view.host.textContent || "").includes("用对话界面继续"), false);
+  } finally {
+    view.cleanup();
+  }
 });
 
-test("进行中的 Shell 显示结束按钮，点了调用 closeTerminal", async () => {
-  let closed = null;
-  const client = makeClient({
-    async closeTerminal(computerId, sessionId) {
-      closed = { computerId, sessionId };
-      return { ok: true };
-    },
-  });
-  const view = await render({}, client);
-  const root = view.host.querySelector("[data-oceanleo-cc-shell-task]");
-  assert.equal(root.getAttribute("data-ended"), "0");
-  const end = view.host.querySelector("[data-oceanleo-cc-end-shell]");
-  assert.ok(end);
-  await act(async () => {
-    end.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  assert.deepEqual(closed, { computerId: "cc_1", sessionId: "sid_1" });
-  assert.match(view.text(), /这个 Shell 已结束/);
-  view.cleanup();
-});
-
-test("进行中的 Shell 能改用对话界面，终端节点仍留在页面上", async () => {
-  const view = await render({});
-  assert.match(view.text(), /用对话界面继续/);
-  const open = view.host.querySelector("[data-oceanleo-cc-agent-dialog]");
-  assert.ok(open);
-  await act(async () => {
-    open.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  // pane 里面是 W6A 的面（这里打桩）；ShellTaskView 负责挂上 pane 且终端不卸载。
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-agent-dialog-pane]"));
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-xterm]"));
-  view.cleanup();
-});
-
-test("再开一个会带 as_task 并 push /history?task=", async () => {
-  const pushes = [];
-  globalThis.__shellRouter = {
-    push(href) {
-      pushes.push(href);
-    },
-    replace() {},
-    refresh() {},
-    back() {},
-  };
-  const view = await render({ sessionId: "" });
-  const reopen = view.host.querySelector("[data-oceanleo-cc-reopen-shell]");
-  await act(async () => {
-    reopen.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
-  assert.equal(globalThis.__shellOpenBody.as_task, true);
-  assert.deepEqual(pushes, ["/history?task=task-new"]);
-  view.cleanup();
-});
-
-test("顶栏不再有 leo 入口（入口统一进对话框输入框，合同 §2.1）", async () => {
-  const view = await render({});
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-toggle]"), null);
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-form]"), null);
-  assert.equal((view.text() || "").includes("缩到气泡"), false);
-  // 顶栏仍有结束按钮，Shell 自己的操作不丢。
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-end-shell]"));
-  view.cleanup();
+test("旧任务缺服务器或会话时给说明和回首页，不猜测跳转", async () => {
+  for (const props of [
+    { computerId: "" },
+    { sessionId: "" },
+  ]) {
+    const view = await render(props);
+    try {
+      assert.deepEqual(view.replaces, []);
+      assert.ok(view.host.querySelector("[data-oceanleo-cc-shell-redirect-missing]"));
+      assert.match(view.host.textContent || "", /缺少会话/);
+      assert.equal(view.host.querySelector('a[href="/"]')?.textContent, "返回首页");
+      assert.equal((view.host.textContent || "").includes("结束 Shell"), false);
+      assert.equal((view.host.textContent || "").includes("用对话界面继续"), false);
+    } finally {
+      view.cleanup();
+    }
+  }
 });

@@ -61,6 +61,7 @@ export function mergeHistoryEntries(
     newestFirst(a.last_activity_at || a.updated_at, b.last_activity_at || b.updated_at),
   );
   const legacyTasks = tasks
+    .filter((task) => !isShellTask(task))
     .filter((task) => options.sessionApiUnavailable || !task.session_id)
     .sort((a, b) =>
       newestFirst(a.updated_at || a.created_at, b.updated_at || b.created_at),

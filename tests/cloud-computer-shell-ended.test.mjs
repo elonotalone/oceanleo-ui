@@ -410,92 +410,17 @@ test("重连时拿不到令牌：保持 reconnecting，不谎报结束也不黑�
   await view.cleanup();
 });
 
-test("结束句只在 exit/gone/缺会话；退出码只在 exit 帧后出现", async () => {
-  globalThis.__endedTerminal = { status: "exit", detail: "7" };
-  const exited = await render({});
-  assert.match(exited.text(), /退出码 7/);
-  assert.equal(
-    exited.host.querySelector("[data-oceanleo-cc-shell-end]")?.getAttribute("data-oceanleo-cc-shell-end"),
-    "exit",
-  );
-  exited.cleanup();
-
-  globalThis.__endedTerminal = { status: "gone", detail: "" };
-  const gone = await render({});
-  assert.match(gone.text(), /这个 Shell 已经不存在了/);
-  assert.equal(gone.text().includes("退出码"), false);
-  assert.equal(
-    gone.host.querySelector("[data-oceanleo-cc-shell-end]")?.getAttribute("data-oceanleo-cc-shell-end"),
-    "gone",
-  );
-  gone.cleanup();
-
-  globalThis.__endedTerminal = { status: "live", detail: "" };
-  const missingComputer = await render({ computerId: "" });
-  assert.match(missingComputer.text(), /缺少会话/);
-  assert.equal(missingComputer.text().includes("这个 Shell 已结束"), false);
-  assert.equal(
-    missingComputer.host.querySelector("[data-oceanleo-cc-shell-end]")?.getAttribute("data-oceanleo-cc-shell-end"),
-    "missing",
-  );
-  missingComputer.cleanup();
-
-  const missingSession = await render({ sessionId: "" });
-  assert.match(missingSession.text(), /缺少会话/);
-  assert.equal(missingSession.text().includes("这个 Shell 已结束"), false);
-  missingSession.cleanup();
-});
-
-test("reconnecting 只是终端上方一条细提示，页面不进入结束态", async () => {
-  globalThis.__endedTerminal = { status: "reconnecting", detail: "" };
-  const view = await render({});
-  assert.equal(
-    view.host.querySelector("[data-oceanleo-cc-shell-task]")?.getAttribute("data-ended"),
-    "0",
-  );
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-reconnecting]"));
-  assert.match(view.text(), /重新连接中…/);
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-shell-end]"), null);
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-end-shell]"));
-  view.cleanup();
-});
-
-test("60s 没接回来：显示「连接断了」+「重新连接」按钮，点了触发 retry，不算结束", async () => {
-  globalThis.__endedTerminal = { status: "error", detail: "connection_lost" };
-  globalThis.__terminalRetryCalls = 0;
-  const view = await render({});
-  assert.equal(
-    view.host.querySelector("[data-oceanleo-cc-shell-task]")?.getAttribute("data-ended"),
-    "0",
-  );
-  assert.match(view.text(), /连接断了/);
-  assert.equal(view.text().includes("这个 Shell 已结束"), false);
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-shell-end]"), null);
-  const retry = view.host.querySelector("[data-oceanleo-cc-retry-connection]");
-  assert.ok(retry);
-  await act(async () => {
-    retry.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  assert.equal(globalThis.__terminalRetryCalls, 1);
-  view.cleanup();
-});
-
-test("顶栏没有 leo 旧入口：无 toggle、无悬浮覆盖，源码不再出现 onOpenLeo/LeoAgentPanel", async () => {
-  globalThis.__endedTerminal = { status: "live", detail: "" };
-  const view = await render({});
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-toggle]"), null);
-  assert.equal(view.host.querySelector("[data-oceanleo-cc-leo-form]"), null);
-  const overlay = [...view.host.querySelectorAll("div")].find((el) => {
-    const className = String(el.className || "");
-    return className.includes("bottom-3") && className.includes("right-3");
-  });
-  assert.equal(overlay, undefined);
+test("旧 Shell 外壳已退役，只保留服务器页重定向且没有结束/对话入口", () => {
   const source = readFileSync(resolve(repo, "src/shell/cloud-computer/ShellTaskView.tsx"), "utf8");
+  assert.match(source, /serverPageHref/);
+  assert.match(source, /card:\s*"terminal"/);
+  assert.match(source, /router\.replace\(target\)/);
+  assert.equal(source.includes("data-oceanleo-cc-end-shell"), false);
+  assert.equal(source.includes("data-oceanleo-cc-agent-dialog"), false);
   assert.equal(source.includes("data-oceanleo-cc-leo-toggle"), false);
   assert.equal(source.includes("onOpenLeo"), false);
   assert.equal(source.includes("LeoAgentPanel"), false);
   assert.equal(source.includes("openLeoAssistant"), false);
-  view.cleanup();
 });
 
 test("结束与断线句接进外壳词典，17 个语种全 key", () => {

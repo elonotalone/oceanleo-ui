@@ -663,16 +663,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                     )}
                     <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
                     {entry.created_by === "leo" && <LeoCreatedMark />}
-                    {!isSession && isShellTask(entry.task) && (
-                      <span
-                        className={`shrink-0 rounded px-1 text-[10px] ${
-                          on ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
-                        }`}
-                        data-oceanleo-cc-shell-tag
-                      >
-                        {tt("Shell")}
-                      </span>
-                    )}
                     {favorite && (
                       <svg className={`h-3 w-3 shrink-0 ${on ? "fill-white/80 text-white/80" : "fill-yellow-500 text-yellow-500"}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
                         <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
