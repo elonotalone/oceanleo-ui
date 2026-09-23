@@ -6,7 +6,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 
 import { LOCALES } from "../src/i18n/config.ts";
-import { SHELL_OVERHAUL_DOCK_MESSAGES } from "../src/i18n/ui/messages/shell-overhaul-dock-copy.ts";
+import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
 import { noticeAction, noticeCopy } from "../src/shell/cloud-computer/agent-dialog/notice.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -45,7 +45,7 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const DID_NOT_START = "对话组件没有启动。请再发一次。";
+const DID_NOT_START = "对话没有启动。";
 const STILL_NEEDS_INSTALL = "这个程序的对话组件还没就绪。安装会一并补齐。";
 const tt = (zh, vars) => {
   if (!vars) return zh;
@@ -299,12 +299,9 @@ test("黄字：名单或刚装完的路径能证明已安装时，不再给安�
 test("对话没启动这句在 17 种语言里都有译文", () => {
   assert.equal(LOCALES.length, 17);
   for (const locale of LOCALES) {
-    const value = SHELL_OVERHAUL_DOCK_MESSAGES[locale][DID_NOT_START];
+    const value = UI_MESSAGES[locale][DID_NOT_START];
     assert.equal(typeof value, "string", locale);
     assert.equal(value.length > 0, true, locale);
   }
-  assert.equal(
-    SHELL_OVERHAUL_DOCK_MESSAGES.en[DID_NOT_START],
-    "The dialog piece did not start. Send again.",
-  );
+  assert.equal(UI_MESSAGES.en[DID_NOT_START], "The dialog did not start.");
 });
