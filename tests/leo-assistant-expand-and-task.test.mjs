@@ -87,6 +87,14 @@ const agentStubUrl = dataModule(`
     return { ok: true, data };
   }
 `);
+const authClientStubUrl = dataModule(`
+  export async function accessToken() {
+    return globalThis.__leoStreamAuth ? "test-token" : null;
+  }
+`);
+const authConfigStubUrl = dataModule(`
+  export const GATEWAY_BASE = "https://gateway.test";
+`);
 
 const {
   LeoAssistant,
@@ -95,6 +103,10 @@ const {
   await compileModule("src/shell/LeoAssistant.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
     "../lib/agent": agentStubUrl,
+    "../lib/auth/client": authClientStubUrl,
+    "../lib/auth/config": authConfigStubUrl,
+    "../../lib/auth/client": authClientStubUrl,
+    "../../lib/auth/config": authConfigStubUrl,
   })
 );
 
@@ -124,6 +136,28 @@ function installFetch({
       body: typeof init.body === "string" ? JSON.parse(init.body) : null,
     };
     calls.push(call);
+    if (call.url.includes("/v1/assistant/leo-turn/stream") && globalThis.__leoStreamMode) {
+      const encoder = new TextEncoder();
+      return new Response(new ReadableStream({
+        start(controller) {
+          globalThis.__leoStreamController = controller;
+          controller.enqueue(encoder.encode('event: delta\ndata: {"text":"首个正文"}\n\n'));
+          globalThis.__leoStreamGate.then(() => {
+            if (globalThis.__leoStreamFailed) return;
+            globalThis.__leoStreamTerminalSent = true;
+            controller.enqueue(encoder.encode('event: done\ndata: ' + JSON.stringify({
+              reply: "首个正文，完整回答。", action: "reply",
+              entries: [
+                { id: "stream-u", role: "user", text: call.body?.text ?? "" },
+                { id: "stream-l", role: "leo", text: "首个正文，完整回答。", task: null },
+              ], task: null, error: "",
+            }) + "\n\n"));
+            controller.close();
+          });
+        },
+      }), { headers: { "Content-Type": "text/event-stream" } });
+    }
+
     if (call.url.includes("/v1/assistant/leo-turn")) {
       if (leoStatus !== 200) return jsonResponse(leoStatus, { detail: "no" });
       const body = { ...leoBody };
@@ -392,6 +426,62 @@ test("输入「你好」走 leo-turn（带 context、不带 history），不建�
   }
 });
 
+test("leo 真流：done 之前正文已经首次出现在正在增长的气泡", async () => {
+  let release;
+  globalThis.__leoStreamAuth = true;
+  globalThis.__leoStreamMode = true;
+  globalThis.__leoStreamTerminalSent = false;
+  globalThis.__leoStreamGate = new Promise((resolve) => {
+    release = resolve;
+  });
+  installFetch();
+  const view = await renderAssistant();
+  try {
+    await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+    await typeAndSend(view.host, "流式回答");
+
+    // The reader is paused before the terminal frame. An end-only renderer has no
+    // opportunity to satisfy this assertion and fails the test here.
+    const leoRows = [...view.host.querySelectorAll('[data-leo-turn="leo"]')];
+    assert.ok(leoRows.some((row) => row.textContent?.includes("首个正文")));
+    assert.equal(globalThis.__leoStreamTerminalSent, false);
+    const bubble = view.host.querySelector('[data-leo-turn="leo"]');
+    const scroller = view.host.querySelector('[data-leo-transcript]');
+    let height = 1000;
+    Object.defineProperties(scroller, {
+      scrollHeight: { configurable: true, get: () => height },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    scroller.scrollTop = 800;
+    scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+    height = 1400;
+    globalThis.__leoStreamController.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"，继续增长"}\n\n'));
+    await settle();
+    assert.equal(view.host.querySelector('[data-leo-turn="leo"]') === bubble, true);
+    assert.match(bubble.textContent, /首个正文，继续增长/);
+    assert.equal(scroller.scrollTop, 1400, "same-row growth follows even a large delta");
+    scroller.scrollTop = 100;
+    scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+    height = 1800;
+    globalThis.__leoStreamController.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"，仍在生成"}\n\n'));
+    await settle();
+    assert.equal(scroller.scrollTop, 100, "reading earlier text is not interrupted");
+
+    release();
+    await settle();
+    assert.match(view.host.textContent, /完整回答/);
+    assert.equal(view.host.querySelectorAll('[data-leo-turn="leo"]').length, 1);
+  } finally {
+    release();
+    await settle();
+    await view.cleanup();
+    globalThis.__leoStreamAuth = false;
+    globalThis.__leoStreamMode = false;
+    globalThis.__leoStreamGate = null;
+    globalThis.__leoStreamTerminalSent = false;
+  }
+});
+
 test("leo-turn 带回任务时，那句带任务卡片（标题 + 「打开任务」链接），不展开执行过程", async () => {
   installFetch({
     leoBody: {
@@ -567,3 +657,33 @@ test("全站无悬浮气泡；门户 launcher 只挂一次 LeoAssistant，无 hi
   assert.doesNotMatch(launcher, /leoFloatingButtonHidden\s*\(/);
   assert.doesNotMatch(launcher, /OceanLeo agent/);
 });
+
+for (const failure of ["disconnect", "missing-done"]) {
+  test(`leo streamed failure ${failure}: remove both temporary rows, preserve history`, async () => {
+    let release;
+    globalThis.__leoStreamAuth = true;
+    globalThis.__leoStreamMode = true;
+    globalThis.__leoStreamFailed = true;
+    globalThis.__leoStreamGate = new Promise((resolve) => { release = resolve; });
+    installFetch({ transcriptEntries: [{ id: "old", role: "leo", text: "已有记录" }] });
+    const view = await renderAssistant();
+    try {
+      await openPanel({ toggle: true, source: "input", anchor: ANCHOR, context: { page: "home" } });
+      await typeAndSend(view.host, "失败的这一轮");
+      assert.match(view.host.textContent, /首个正文/);
+      if (failure === "disconnect") globalThis.__leoStreamController.error(new Error("offline"));
+      else globalThis.__leoStreamController.close();
+      await settle();
+      assert.doesNotMatch(view.host.textContent, /首个正文|失败的这一轮/);
+      assert.match(view.host.textContent, /已有记录/);
+      assert.ok(view.host.querySelector("[data-leo-turn-error]"));
+    } finally {
+      release();
+      await settle();
+      await view.cleanup();
+      globalThis.__leoStreamAuth = false;
+      globalThis.__leoStreamMode = false;
+      globalThis.__leoStreamFailed = false;
+    }
+  });
+}

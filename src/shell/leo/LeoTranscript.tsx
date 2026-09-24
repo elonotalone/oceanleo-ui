@@ -10,7 +10,7 @@
 //   · 「清空记录」走 DELETE，清不动就说清不动。
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import {
@@ -140,7 +140,7 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
   }, []);
 
   const dropOptimistic = useCallback((tempId: string, error: LeoApiError) => {
-    setEntries((prev) => prev.filter((entry) => entry.id !== tempId));
+    setEntries((prev) => prev.filter((entry) => entry.id !== tempId && entry.id !== `${tempId}-stream`));
     if (error === "anonymous") setStatus("anonymous");
   }, []);
 
@@ -163,13 +163,12 @@ export function LeoTranscript({ state }: { state: LeoTranscriptState }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const count = state.entries.length;
 
-  // 新条目到底就粘底（用户往上翻时不硬拽——只在本就在底部附近时自动滚）。
-  useEffect(() => {
+  const following = useRef(true);
+  // Remember the user's position before growth; a large delta must not disable follow.
+  useLayoutEffect(() => {
     const el = bodyRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [count]);
+    if (el && following.current) el.scrollTop = el.scrollHeight;
+  }, [state.entries]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -189,6 +188,10 @@ export function LeoTranscript({ state }: { state: LeoTranscriptState }) {
       <div
         ref={bodyRef}
         data-leo-transcript
+        onScroll={() => {
+          const el = bodyRef.current;
+          if (el) following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+        }}
         className="v-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-3"
       >
         {state.status === "loading" && count === 0 && (
