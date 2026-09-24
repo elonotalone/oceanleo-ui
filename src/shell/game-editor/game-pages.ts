@@ -28,3 +28,10 @@ export function gameModeUnavailable() {
     unavailableReason: GAME_PRO_UNAVAILABLE,
   };
 }
+
+/** 游戏没有第二套专业引擎；切页只是同实例的 Code 辅助页。 */
+export const GAME_DUAL_ENGINE_HANDOFF = false;
+
+export function gameLeavePolicy() {
+  return { wait: false, confirm: false, beforeunload: false } as const;
+}

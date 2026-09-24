@@ -12,6 +12,12 @@
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { VideoCanvasStage } from "../workflow-carrier/VideoCanvasStage";
 
+export {
+  VIDEO_CANVAS_DUAL_ENGINE_HANDOFF,
+  flushVideoCanvasGraph,
+  videoCanvasLeavePolicy,
+} from "../workflow-carrier/video-canvas-leave";
+
 export function VideoCanvasRoute(props: AdvancedContentWorkbenchProps) {
   return <VideoCanvasStage {...props} />;
 }

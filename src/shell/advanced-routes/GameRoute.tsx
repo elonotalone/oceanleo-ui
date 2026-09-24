@@ -36,9 +36,13 @@ import {
   type GamePreviewHostProps,
 } from "../game-editor/preview-host";
 import {
+  GAME_DUAL_ENGINE_HANDOFF,
+  gameLeavePolicy,
   gameModeUnavailable,
   gamePagesAdapter,
 } from "../game-editor/game-pages";
+
+export { GAME_DUAL_ENGINE_HANDOFF, gameLeavePolicy };
 import type { AdvancedEditorPagesAdapter } from "../plugin-chrome/plugin-pages";
 
 export type { GameBundleFormat, GamePreviewHost, GamePreviewHostProps };

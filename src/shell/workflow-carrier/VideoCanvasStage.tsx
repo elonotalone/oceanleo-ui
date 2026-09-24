@@ -20,6 +20,13 @@ import type {
   VideoCanvasGraph,
   VideoCanvasNode,
 } from "./video-canvas-schema";
+import { flushVideoCanvasGraph } from "./video-canvas-leave";
+
+export {
+  VIDEO_CANVAS_DUAL_ENGINE_HANDOFF,
+  flushVideoCanvasGraph,
+  videoCanvasLeavePolicy,
+} from "./video-canvas-leave";
 import {
   WORKFLOW_AGENT_CHIPS,
   WORKFLOW_EDITOR_ID,
@@ -222,8 +229,8 @@ export function VideoCanvasStage({
         persistence: {
           dirty: editRevision > 0,
           editRevision,
-          autoSave: false,
-          flush: () => ({ ok: true as const }),
+          autoSave: true,
+          flush: () => flushVideoCanvasGraph(item, graph),
         },
       }}
       onClose={onClose}
