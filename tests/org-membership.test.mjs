@@ -525,6 +525,7 @@ test("建组织：422 agreement_required 显示人话", async () => {
 
 const authStubUrl = dataModule(`
   const s = () => globalThis.__authStub;
+  const emptyByok = { enabled: false, providers: [], limits: { max_providers: 0 } };
   export function oceanleoConfigured() { return true; }
   export function browserClient() { return s().client; }
   export async function getUserEmail() { return s().email; }
@@ -534,6 +535,18 @@ const authStubUrl = dataModule(`
   export async function signOutEverywhere() {}
   export function loginUnavailableNotice() { return { title: "", detail: "" }; }
   export function isPasswordResetLanding() { return false; }
+  export async function getModelCatalog() { return { ok: true, data: { providers: [], model_count: 0 } }; }
+  export function pricingDocUrl(provider, kind) { return "/pricing/" + provider + "." + kind; }
+  export async function getKeyProviders() { return { ok: true, data: { providers: [] } }; }
+  export async function getByok() { return { ok: true, data: emptyByok }; }
+  export async function putByok() { return { ok: true, data: emptyByok }; }
+  export async function deleteByok() { return { ok: true, data: emptyByok }; }
+  export async function probeByok() { return { ok: true, data: { models: [], count: 0 } }; }
+  export async function getModelGroups() { return { ok: true, data: { groups: [] } }; }
+  export async function createModelGroup() { return { ok: true, data: {} }; }
+  export async function updateModelGroup() { return { ok: true, data: {} }; }
+  export async function deleteModelGroup() { return { ok: true }; }
+  export const MODEL_GROUP_CHANGED_EVENT = "oceanleo:model-group-changed";
 `);
 const stubComponent = (name, testid) =>
   dataModule(`
@@ -562,6 +575,10 @@ const { AccountPage } = await import(
     "../lib/auth": authStubUrl,
     "../i18n/ui/useUI": uiStubUrl,
     "../lib/org-api": orgApiWithPreview,
+    "./ApiPage": stubComponent("ApiPage", "pane-api"),
+    "./DevicesPage": stubComponent("DevicesPage", "pane-devices"),
+    "./PluginsPage": stubComponent("PluginsPage", "pane-plugins"),
+    "./settings/personalization/PersonalizationSection": stubComponent("PersonalizationSection", "pane-personalization"),
   })
 );
 
