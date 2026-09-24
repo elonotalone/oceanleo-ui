@@ -48,10 +48,10 @@ export function PluginPageRow({
     >
       {pages.map((page) => {
         const active = page.id === activePageId;
-        const blocked = Boolean(page.unavailableReason);
+        const blocked = Boolean(page.disabled || page.unavailableReason);
         const label = tt(page.label);
         const title = page.unavailableReason
-          ? `${label}：${page.unavailableReason}`
+          ? `${label}：${tt(page.unavailableReason)}`
           : label;
         return (
           <button
@@ -63,6 +63,8 @@ export function PluginPageRow({
             aria-current={active ? "page" : undefined}
             title={title}
             aria-label={title}
+            aria-disabled={blocked || undefined}
+            disabled={blocked}
             className={`${TAB_CLASS} ${active ? TAB_ACTIVE_CLASS : TAB_IDLE_CLASS}`}
             style={{
               transitionProperty: "background-color, border-color, color",
