@@ -38,8 +38,10 @@ export function websiteHostDocumentSelection(
   };
 }
 
+const FALLBACK_WEBSITE_HOST_DOCUMENT_SELECTION = websiteHostDocumentSelection(0);
+
 export function hostedWebsiteEditBarSelection(
   selection: SelectionContext | null | undefined,
 ): SelectionContext {
-  return selection || websiteHostDocumentSelection();
+  return selection || FALLBACK_WEBSITE_HOST_DOCUMENT_SELECTION;
 }

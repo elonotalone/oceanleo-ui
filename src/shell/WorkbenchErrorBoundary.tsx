@@ -44,6 +44,17 @@ interface WorkbenchErrorBoundaryProps {
 
 interface WorkbenchErrorBoundaryState {
   error: Error | null;
+  componentStack: string;
+}
+
+const COMPONENT_STACK_MAX_LINES = 40;
+
+function clippedComponentStack(stack: string): string {
+  return stack
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .slice(0, COMPONENT_STACK_MAX_LINES)
+    .join("\n");
 }
 
 /**
@@ -54,14 +65,20 @@ export class WorkbenchErrorBoundary extends Component<
   WorkbenchErrorBoundaryProps,
   WorkbenchErrorBoundaryState
 > {
-  state: WorkbenchErrorBoundaryState = { error: null };
+  state: WorkbenchErrorBoundaryState = { error: null, componentStack: "" };
 
   static getDerivedStateFromError(error: Error): WorkbenchErrorBoundaryState {
-    return { error };
+    return { error, componentStack: "" };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[advanced-workbench] editor crashed", error, info);
+    const componentStack = info.componentStack || "";
+    this.setState({ componentStack });
+    console.error(
+      "[advanced-workbench] editor crashed",
+      error,
+      componentStack,
+    );
     // W09：在此之前 `componentDidCatch` 只有上面那句 `console.error`，
     // 也就是生产上这类崩溃**没有任何信号**，只能等用户截图。
     // 事件里不带 `error.message`（编辑器的错误消息经常直接嵌着素材文件名），
@@ -81,18 +98,18 @@ export class WorkbenchErrorBoundary extends Component<
       this.state.error &&
       previous.item.id !== this.props.item.id
     ) {
-      this.setState({ error: null });
+      this.setState({ error: null, componentStack: "" });
     }
   }
 
   render() {
     const { children, item, onClose, contained, scope } = this.props;
-    const { error } = this.state;
+    const { error, componentStack } = this.state;
     if (!error) return children;
     if (typeof document === "undefined") return null;
 
     const url = item.url || item.previewUrl || "";
-    const retry = () => this.setState({ error: null });
+    const retry = () => this.setState({ error: null, componentStack: "" });
 
     // 路由级：留在窗格内，措辞也不同 —— 坏掉的是这一件素材的编辑器，不是整个工作台。
     //
@@ -101,12 +118,20 @@ export class WorkbenchErrorBoundary extends Component<
     // 于是既不需要「有定位的祖先」这个前提，也不必为此往 31 个站的 DOM 里
     // 多插一层 wrapper。
     if (scope === "route") {
-      return <RouteCrashFallback error={error} url={url} onRetry={retry} />;
+      return (
+        <RouteCrashFallback
+          error={error}
+          componentStack={componentStack}
+          url={url}
+          onRetry={retry}
+        />
+      );
     }
 
     const fallback = (
       <WorkbenchCrashFallback
         error={error}
+        componentStack={componentStack}
         title={item.title}
         url={url}
         contained={Boolean(contained)}
@@ -153,12 +178,21 @@ function useCrashCopy(): UITranslate {
 
 function CrashTechnicalDetails({
   error,
+  componentStack,
   className = "",
 }: {
   error: Error;
+  componentStack?: string;
   className?: string;
 }) {
   const tt = useCrashCopy();
+  const stack = clippedComponentStack(componentStack || "");
+  const body = [
+    error.message || error.name || "Unknown editor error",
+    stack ? `${tt("组件栈")}\n${stack}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return (
     <details
       data-workbench-error-details
@@ -167,8 +201,11 @@ function CrashTechnicalDetails({
       <summary className="cursor-pointer select-none">
         {tt("技术细节（给开发者看）")}
       </summary>
-      <pre className="mt-2 max-h-24 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--card,#fff)] p-3">
-        {error.message || error.name || "Unknown editor error"}
+      <pre
+        data-workbench-error-stack={stack ? "true" : undefined}
+        className="mt-2 max-h-80 max-w-full select-text overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--card,#fff)] p-3 font-mono"
+      >
+        {body}
       </pre>
     </details>
   );
@@ -176,10 +213,12 @@ function CrashTechnicalDetails({
 
 function RouteCrashFallback({
   error,
+  componentStack,
   url,
   onRetry,
 }: {
   error: Error;
+  componentStack?: string;
   url: string;
   onRetry: () => void;
 }) {
@@ -218,7 +257,11 @@ function RouteCrashFallback({
             {tt("重新载入")}
           </button>
         </div>
-        <CrashTechnicalDetails error={error} className="mx-auto mt-4" />
+        <CrashTechnicalDetails
+          error={error}
+          componentStack={componentStack}
+          className="mx-auto mt-4"
+        />
       </div>
     </div>
   );
@@ -226,6 +269,7 @@ function RouteCrashFallback({
 
 function WorkbenchCrashFallback({
   error,
+  componentStack,
   title,
   url,
   contained,
@@ -233,6 +277,7 @@ function WorkbenchCrashFallback({
   onClose,
 }: {
   error: Error;
+  componentStack?: string;
   title: string;
   url: string;
   contained: boolean;
@@ -284,7 +329,11 @@ function WorkbenchCrashFallback({
             {tt("关闭")}
           </button>
         </div>
-        <CrashTechnicalDetails error={error} className="mt-4" />
+        <CrashTechnicalDetails
+          error={error}
+          componentStack={componentStack}
+          className="mt-4"
+        />
       </div>
     </div>
   );

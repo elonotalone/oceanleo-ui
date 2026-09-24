@@ -11,6 +11,7 @@
 
 import type { EditorMode } from "../hosted-editor";
 import type { WorkbenchIconName } from "../AdvancedEditorIcon";
+import { mergePluginAuxPages } from "./plugin-page-registry";
 
 /** 成品页（编辑）：唯一一个显示编辑栏的页面。 */
 export const ARTIFACT_PAGE_ID = "artifact";
@@ -49,6 +50,8 @@ export interface AdvancedEditorPagesAdapter {
 }
 
 export interface BuildPluginPagesOptions {
+  /** 有登记时首帧就拼上静态附加页；iframe 的 aux 只更新可用状态。 */
+  pluginId?: string;
   proLabel?: string;
   proUnavailableReason?: string;
   aux?: readonly PluginPage[];
@@ -63,7 +66,7 @@ const RESERVED_PAGE_IDS: ReadonlySet<string> = new Set([
 export function buildPluginPages(
   options: BuildPluginPagesOptions = {},
 ): PluginPage[] {
-  const aux = (options.aux ?? []).filter(
+  const aux = mergePluginAuxPages(options.pluginId, options.aux).filter(
     (page) => page.kind === "aux" && !RESERVED_PAGE_IDS.has(page.id),
   );
   return [

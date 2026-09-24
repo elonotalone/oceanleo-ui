@@ -29,6 +29,10 @@ import {
   PRO_PAGE_ID,
   type PluginPage,
 } from "../plugin-chrome/plugin-pages";
+import {
+  embeddedPageDispatchKey,
+  mergePluginAuxPages,
+} from "../plugin-chrome/plugin-page-registry";
 import { uploadFile } from "../../lib/database";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { SelectionToolbar } from "../SelectionToolbar";
@@ -824,24 +828,28 @@ export function EmbeddedRoute({
   ]);
   const remoteAuxPages = useMemo<PluginPage[]>(
     () =>
-      (classifiedManifest?.auxViews || []).map((view) => ({
-        id: view.id,
-        label: view.label,
-        kind: "aux" as const,
-        icon: view.icon,
-        disabled: view.disabled,
-        unavailableReason: view.unavailableReason,
-      })),
-    [classifiedManifest],
+      mergePluginAuxPages(
+        embeddedAdapterId,
+        (classifiedManifest?.auxViews || []).map((view) => ({
+          id: view.id,
+          label: view.label,
+          kind: "aux" as const,
+          icon: view.icon,
+          disabled: view.disabled,
+          unavailableReason: view.unavailableReason,
+        })),
+      ),
+    [classifiedManifest, embeddedAdapterId],
   );
   const hostActivePageId =
     rememberedEditorMode === "pro" || storePageId === PRO_PAGE_ID
       ? PRO_PAGE_ID
       : storePageId || classifiedManifest?.activePageId || ARTIFACT_PAGE_ID;
   const lastDispatchedPageRef = useRef<string | null>(null);
+  const manifestReady = Boolean(classifiedManifest);
   const selectEmbeddedPage = useCallback(
     (pageId: string) => {
-      const dispatchKey = `${pageId}::${classifiedManifest?.artifactViewId ?? ""}::${projectManifest?.revision ?? ""}`;
+      const dispatchKey = embeddedPageDispatchKey(pageId, manifestReady);
       if (lastDispatchedPageRef.current === dispatchKey) return;
       lastDispatchedPageRef.current = dispatchKey;
       if (pageId === PRO_PAGE_ID) {
@@ -862,7 +870,13 @@ export function EmbeddedRoute({
       }
       sendProjectCommand("view", pageId, projectManifest.revision);
     },
-    [applyEditorMode, classifiedManifest, projectManifest, sendProjectCommand],
+    [
+      applyEditorMode,
+      classifiedManifest,
+      manifestReady,
+      projectManifest,
+      sendProjectCommand,
+    ],
   );
   useEffect(() => {
     selectEmbeddedPage(hostActivePageId);
