@@ -15,11 +15,20 @@ import { LeoSessionList, useLeoSessions } from "./leo/LeoSessions";
 import { announceLeoSelection, currentLeoSelection, subscribeLeoSelection } from "./leo/leo-selection";
 import { LeoPanelComposer } from "./leo/LeoPanelComposer";
 import { LeoTranscript, useLeoTranscript } from "./leo/LeoTranscript";
-import { leoTurnStream, type LeoTurnWireContext } from "./leo/leo-api";
+import { leoTurnStream, type LeoApiError, type LeoTurnWireContext } from "./leo/leo-api";
 import { panelBox, type LeoPanelAnchor, type LeoPanelViewport } from "./leo/leo-position";
 import { getHostText, isEditableInput, type HostTarget } from "./leo/host-input";
 import { LeoMountKindContext, useLeoMountSlot, type LeoMountKind } from "./leo/leo-instance-guard";
 import { canonicalLeoSiteId, LEO_DEFAULT_SITE_ID, leoDocTypeForSite } from "./leo/leo-site-registry";
+import {
+  LEO_ENABLED_EVENT,
+  LEO_ENABLED_KEY,
+  isLeoEnabled,
+  persistLeoPanelPos,
+  pullLeoPrefsFromServer,
+  readLeoPanelPos,
+  setLeoEnabled,
+} from "./leo/leo-prefs";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源，2026-09-22 重做）
@@ -47,28 +56,7 @@ export const OPEN_LEO_EVENT = "oceanleo:open-leo";
 // leo 总开关（宗旨 v12）：/general 页可开关 leo（默认开启），localStorage
 // `oceanleo:leo-enabled`，关闭时输入框按钮 / 划词气泡 / 面板全部不出现。
 // ─────────────────────────────────────────────────────────────────────────────
-export const LEO_ENABLED_KEY = "oceanleo:leo-enabled";
-export const LEO_ENABLED_EVENT = "oceanleo:leo-enabled-change";
-
-export function isLeoEnabled(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return localStorage.getItem(LEO_ENABLED_KEY) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-export function setLeoEnabled(on: boolean): void {
-  try {
-    localStorage.setItem(LEO_ENABLED_KEY, on ? "1" : "0");
-  } catch {
-    /* noop */
-  }
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(LEO_ENABLED_EVENT, { detail: { enabled: on } }));
-  }
-}
+export { LEO_ENABLED_KEY, LEO_ENABLED_EVENT, isLeoEnabled, setLeoEnabled };
 
 /** 响应式读取 leo 开关（LeoAssistant / LeoEntryButton / GeneralPage 共用）。 */
 export function useLeoEnabled(): boolean {
@@ -77,6 +65,9 @@ export function useLeoEnabled(): boolean {
   useEffect(() => {
     const sync = () => setOn(isLeoEnabled());
     sync();
+    void pullLeoPrefsFromServer().then((res) => {
+      if (res.ok) setOn(res.enabled);
+    });
     window.addEventListener(LEO_ENABLED_EVENT, sync);
     window.addEventListener("storage", sync);
     return () => {
@@ -195,7 +186,6 @@ export interface LeoAssistantProps {
   enableSelection?: boolean;
 }
 
-const POS_KEY = "oceanleo:leo-assistant-pos";
 const LEO_TURN_TEXT_MAX = 8000;
 
 interface Pos {
@@ -206,17 +196,11 @@ interface Pos {
 /** SSR / 首帧占位视口；面板打开那一帧会用真实视口重算。 */
 const FALLBACK_VIEWPORT: LeoPanelViewport = { width: 1280, height: 800 };
 
-function readSavedPos(): Pos | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(POS_KEY);
-    if (!raw) return null;
-    const saved = JSON.parse(raw) as Pos;
-    if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) return saved;
-  } catch {
-    /* noop */
-  }
-  return null;
+function sessionsReason(error: LeoApiError | null, tt: (zh: string) => string): string {
+  if (error === "outdated-gateway") return tt("Leo 服务版本过旧，暂时不能保存对话");
+  if (error === "anonymous") return tt("登录后 leo 才能记住对话");
+  if (error === "network" || error === "unavailable") return tt("记录暂时不可用，稍后再试。");
+  return "";
 }
 
 /** I5 的 LeoContext → I4 线上形状（蛇形；computerName 只用于展示，不上行）。 */
@@ -267,6 +251,8 @@ function LeoAssistantPanel({
   const [pageContext, setPageContext] = useState<LeoContext | null>(null);
   const [anchor, setAnchor] = useState<LeoPanelAnchor | null>(null);
   const [dragged, setDragged] = useState<Pos | null>(null);
+  const [savedPos, setSavedPos] = useState<Pos | null>(null);
+  const userDraggedRef = useRef(false);
   const [viewport, setViewport] = useState<LeoPanelViewport>(FALLBACK_VIEWPORT);
   const [turnBusy, setTurnBusy] = useState(false);
   const [boardBusy, setBoardBusy] = useState(false);
@@ -279,7 +265,14 @@ function LeoAssistantPanel({
   const [boardCollapsed, setBoardCollapsed] = useState(false);
   const sessionAnchor = useRef<HTMLButtonElement>(null);
   const sessionDisabled = turnBusy || sessions.busy || sessions.loading;
+  const sessionBlockedReason = sessionsReason(sessions.capabilityError, tt);
 
+  useEffect(() => {
+    setSavedPos(readLeoPanelPos());
+    void pullLeoPrefsFromServer().then((res) => {
+      if (res.ok && res.panel.pos) setSavedPos(res.panel.pos);
+    });
+  }, []);
 
   // 打开事件：detail.text（划词）优先；否则读宿主输入框。
   useEffect(() => {
@@ -371,11 +364,9 @@ function LeoAssistantPanel({
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
     setDragged((p) => {
       if (p) {
-        try {
-          localStorage.setItem(POS_KEY, JSON.stringify(p));
-        } catch {
-          /* noop */
-        }
+        userDraggedRef.current = true;
+        persistLeoPanelPos(p);
+        setSavedPos(p);
       }
       return p;
     });
@@ -383,9 +374,9 @@ function LeoAssistantPanel({
 
   // 无锚点打开（快捷键 / 程序化调用）：沿用上次拖拽位。
   useEffect(() => {
-    if (open && !anchor && !dragged) setDragged(readSavedPos());
+    if (open && !anchor && !dragged && !userDraggedRef.current) setDragged(savedPos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, savedPos]);
 
   // LeoBoard 内部改上下文（清除 / 读取输入框）时同步 ctxTextRef，
   // 保证下次 OPEN_LEO_EVENT 的「同文本不重置」判断准确。
@@ -420,6 +411,7 @@ function LeoAssistantPanel({
         if (!res.ok) {
           transcript.dropOptimistic(tempId, res.error);
           if (res.error === "network") setTurnErr(tt("网络错误，请稍后再试。"));
+          else if (res.error === "outdated-gateway") setTurnErr(tt("Leo 服务版本过旧，暂时不能对话"));
           else if (res.error !== "anonymous") setTurnErr(tt("记录暂时不可用，稍后再试。"));
           return;
         }
@@ -510,11 +502,11 @@ function LeoAssistantPanel({
         >
           <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
             <Sparkle />
-            {sessions.supported ? <button data-leo-no-drag ref={sessionAnchor} className="min-w-0 truncate text-left" aria-expanded={sessionMenu} onClick={() => setSessionMenu(!sessionMenu)}>{sessions.sessions.find((s) => s.id === sessions.selected)?.title || tt("新对话")} ▾</button> : panelTitle}
+            <button data-leo-no-drag ref={sessionAnchor} className="min-w-0 truncate text-left" aria-expanded={sessionMenu} onClick={() => setSessionMenu(!sessionMenu)}>{sessions.supported ? (sessions.sessions.find((s) => s.id === sessions.selected)?.title || tt("新对话")) : panelTitle} ▾</button>
             <DragDots />
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {sessions.supported && <button data-leo-no-drag type="button" disabled={sessionDisabled} aria-label={tt("新会话")} title={tt("新会话")} onClick={() => { void sessions.create(); }} className="rounded-md px-1.5 disabled:opacity-50">+</button>}
+            <button data-leo-no-drag type="button" disabled={sessionDisabled || !sessions.supported} aria-label={tt("新会话")} title={sessionBlockedReason || tt("新会话")} onClick={() => { void sessions.create(); }} className="rounded-md px-1.5 disabled:opacity-50">+</button>
             <button
               data-leo-no-drag
               type="button"
@@ -562,8 +554,14 @@ function LeoAssistantPanel({
           </p>
         )}
 
-        <FloatingMenu open={open && sessionMenu && sessions.supported} anchorRef={sessionAnchor} onClose={() => setSessionMenu(false)} width={280}>
-          <div className="flex max-h-[50vh] flex-col"><LeoSessionList state={sessions} disabled={sessionDisabled} compact onSelect={() => setSessionMenu(false)} onExpand={() => { setExpanded(true); setSessionMenu(false); }} /></div>
+        <FloatingMenu open={open && sessionMenu} anchorRef={sessionAnchor} onClose={() => setSessionMenu(false)} width={280}>
+          {sessions.supported ? (
+            <div className="flex max-h-[50vh] flex-col"><LeoSessionList state={sessions} disabled={sessionDisabled} compact onSelect={() => setSessionMenu(false)} onExpand={() => { setExpanded(true); setSessionMenu(false); }} /></div>
+          ) : (
+            <p data-leo-sessions-unavailable className="px-3 py-3 text-xs leading-relaxed text-amber-800">
+              {sessionBlockedReason || tt("记录暂时不可用，稍后再试。")}
+            </p>
+          )}
         </FloatingMenu>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {expanded && sessions.supported && <aside data-leo-sessions className="flex w-60 max-w-[35%] shrink-0 flex-col border-r border-neutral-200 dark:border-neutral-700"><LeoSessionList state={sessions} disabled={sessionDisabled} /></aside>}

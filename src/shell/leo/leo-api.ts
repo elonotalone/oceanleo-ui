@@ -5,10 +5,13 @@
 //   GET    /v1/assistant/leo-transcript  服务端记录（升序，跨页面跨设备同一份）
 //   DELETE /v1/assistant/leo-transcript  清空记录
 //
-// 错误归一成三态，UI 只按这三态说话，不猜：
-//   anonymous   未登录（401）——面板显示「登录后 leo 才能记住对话」；
-//   network     网关连不上（status 0）；
-//   unavailable 其它失败（503 等）——「记录暂时不可用，稍后再试。」。
+// 错误归一成四态，UI 只按这四态说话，不猜：
+//   anonymous        未登录（401）——面板显示「登录后 leo 才能记住对话」；
+//   network          网关连不上（status 0）；
+//   outdated-gateway 路由不存在（404 且 detail 是框架默认的 "Not Found" 或没有 JSON）——
+//                    连到的网关比这版 leo 旧，重试没用；
+//   unavailable      其它失败（503、记录级 404 如 leo_session_not_found 等）——
+//                    「记录暂时不可用，稍后再试。」。
 // ============================================================================
 
 import { authed } from "../../lib/agent";
@@ -70,14 +73,20 @@ export type LeoTurnStreamEvent =
   | { type: "delta"; text: string }
   | { type: "done"; data: LeoTurnResult };
 
-export type LeoApiError = "anonymous" | "network" | "unavailable";
+export type LeoApiError = "anonymous" | "network" | "unavailable" | "outdated-gateway";
 export type LeoApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: LeoApiError };
 
-function normalizeError(status: number | undefined): LeoApiError {
+/** 404 的 detail：路由缺失时是框架默认的 "Not Found"，代理层 404 没有 JSON（authed 给 `HTTP 404`）。 */
+function isMissingRoute(status: number | undefined, detail: unknown): boolean {
+  return status === 404 && (detail === "Not Found" || detail === "HTTP 404" || detail == null);
+}
+
+function normalizeError(status: number | undefined, detail?: unknown): LeoApiError {
   if (status === 401) return "anonymous";
   if (!status) return "network";
+  if (isMissingRoute(status, detail)) return "outdated-gateway";
   return "unavailable";
 }
 
@@ -124,7 +133,7 @@ export async function leoTurn(body: LeoTurnBody): Promise<LeoApiResult<LeoTurnRe
     method: "POST",
     body: JSON.stringify(body),
   });
-  if (!res.ok || !res.data) return { ok: false, error: normalizeError(res.status) };
+  if (!res.ok || !res.data) return { ok: false, error: normalizeError(res.status, res.error) };
   const data = res.data;
   return {
     ok: true,
@@ -168,10 +177,18 @@ export async function leoTurnStream(
   } catch {
     return { ok: false, error: "network" };
   }
-  if (!res.ok) return { ok: false, error: normalizeError(res.status) };
+  let streamRouteMissing = false;
+  if (!res.ok) {
+    const detail = await res.json().then(
+      (payload: { detail?: unknown } | null) => payload?.detail,
+      () => undefined,
+    );
+    if (!isMissingRoute(res.status, detail)) return { ok: false, error: normalizeError(res.status, detail) };
+    streamRouteMissing = true;
+  }
   const contentType = res.headers?.get?.("content-type") || "";
-  if (!res.body || !contentType.toLowerCase().includes("text/event-stream")) {
-    // Older gateways have no stream route yet; retain the established contract.
+  if (streamRouteMissing || !res.body || !contentType.toLowerCase().includes("text/event-stream")) {
+    // Older gateways have no stream route yet (404, or 200 without SSE); the plain route decides.
     const fallback = await leoTurn(body);
     if (fallback.ok && fallback.data.reply) onEvent({ type: "delta", text: fallback.data.reply });
     if (fallback.ok) onEvent({ type: "done", data: fallback.data });
@@ -239,7 +256,7 @@ export async function leoTranscript(
   const res = await authed<{ entries?: unknown; session_id?: string }>(
     `/v1/assistant/leo-transcript?limit=${Math.max(1, Math.floor(limit))}${session_id ? `&session_id=${encodeURIComponent(session_id)}` : ""}`,
   );
-  if (!res.ok || !res.data) return { ok: false, error: normalizeError(res.status) };
+  if (!res.ok || !res.data) return { ok: false, error: normalizeError(res.status, res.error) };
   return { ok: true, data: { entries: normalizeEntries(res.data.entries), session_id: res.data.session_id } };
 }
 
@@ -248,7 +265,7 @@ export async function leoClear(session_id?: string): Promise<LeoApiResult<{ ok: 
   const res = await authed<{ ok?: boolean }>(`/v1/assistant/leo-transcript${session_id ? `?session_id=${encodeURIComponent(session_id)}` : ""}`, {
     method: "DELETE",
   });
-  if (!res.ok) return { ok: false, error: normalizeError(res.status) };
+  if (!res.ok) return { ok: false, error: normalizeError(res.status, res.error) };
   return { ok: true, data: { ok: true } };
 }
 
@@ -263,13 +280,13 @@ export function normalizeLeoSession(value: unknown): LeoSession | null {
 }
 export async function leoSessions(): Promise<LeoApiResult<LeoSession[]>> {
   const res = await authed<{ sessions?: unknown }>("/v1/assistant/leo-sessions?limit=50");
-  if (!res.ok || !Array.isArray(res.data?.sessions)) return { ok: false, error: normalizeError(res.status) };
+  if (!res.ok || !Array.isArray(res.data?.sessions)) return { ok: false, error: normalizeError(res.status, res.error) };
   return { ok: true, data: res.data.sessions.map(normalizeLeoSession).filter((s): s is LeoSession => s !== null) };
 }
 async function mutateSession(path: string, method: string, body: object): Promise<LeoApiResult<LeoSession>> {
   const res = await authed<{ session?: unknown }>(path, { method, body: JSON.stringify(body) });
   const session = normalizeLeoSession(res.data?.session);
-  return res.ok && session ? { ok: true, data: session } : { ok: false, error: normalizeError(res.status) };
+  return res.ok && session ? { ok: true, data: session } : { ok: false, error: normalizeError(res.status, res.error) };
 }
 export function leoCreateSession(site_id?: string) {
   return mutateSession("/v1/assistant/leo-sessions", "POST", { site_id });
@@ -279,5 +296,5 @@ export function leoRenameSession(id: string, title: string) {
 }
 export async function leoDeleteSession(id: string): Promise<LeoApiResult<{ ok: true }>> {
   const res = await authed(`/v1/assistant/leo-sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
-  return res.ok ? { ok: true, data: { ok: true } } : { ok: false, error: normalizeError(res.status) };
+  return res.ok ? { ok: true, data: { ok: true } } : { ok: false, error: normalizeError(res.status, res.error) };
 }

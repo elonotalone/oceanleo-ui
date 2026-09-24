@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { FloatingMenu, FloatingMenuItem } from "../../ui/menu/FloatingMenu";
-import { leoSessions, leoCreateSession, leoRenameSession, leoDeleteSession, type LeoSession } from "./leo-api";
+import { leoSessions, leoCreateSession, leoRenameSession, leoDeleteSession, type LeoApiError, type LeoSession } from "./leo-api";
 
 export function useLeoSessions(open: boolean, siteId: string) {
   const [sessions, setSessions] = useState<LeoSession[]>([]);
   const [selected, setSelected] = useState<string>();
   const [supported, setSupported] = useState(false);
+  const [capabilityError, setCapabilityError] = useState<LeoApiError | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -20,6 +21,7 @@ export function useLeoSessions(open: boolean, siteId: string) {
     void leoSessions().then((res) => {
       if (!alive) return;
       setSupported(res.ok);
+      setCapabilityError(res.ok ? null : res.error);
       if (res.ok) {
         setSessions(res.data);
         setSelected((id) => res.data.some((s) => s.id === id) ? id : res.data[0]?.id);
@@ -39,7 +41,7 @@ export function useLeoSessions(open: boolean, siteId: string) {
     try { const ok = await action(); setError(!ok); return ok; }
     finally { lock.current = false; setBusy(false); }
   };
-  return { sessions, selected, supported, loading, busy, error, upsert,
+  return { sessions, selected, supported, capabilityError, loading, busy, error, upsert,
     select: (id: string) => { setError(false); setSelected(id); },
     create: () => mutate(async () => {
       const res = await leoCreateSession(siteId);

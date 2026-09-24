@@ -25,7 +25,14 @@ export type LeoTranscriptStatus =
   | "loading"
   | "ready"
   | "anonymous"
+  | "outdated-gateway"
   | "error";
+
+function failureStatus(error: LeoApiError): LeoTranscriptStatus {
+  if (error === "anonymous") return "anonymous";
+  if (error === "outdated-gateway") return "outdated-gateway";
+  return "error";
+}
 
 export interface LeoTranscriptState {
   entries: LeoTranscriptEntry[];
@@ -91,7 +98,7 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
         setEntries((prev) => mergeLeoEntries(prev, res.data.entries));
         setStatus("ready");
       } else {
-        setStatus(res.error === "anonymous" ? "anonymous" : "error");
+        setStatus(failureStatus(res.error));
       }
     });
   }, [sessionId]);
@@ -111,7 +118,7 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
         setEntries([]);
         setStatus("ready");
       } else {
-        setStatus(res.error === "anonymous" ? "anonymous" : "error");
+        setStatus(failureStatus(res.error));
       }
     });
   }, [sessionId]);
@@ -141,7 +148,7 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
 
   const dropOptimistic = useCallback((tempId: string, error: LeoApiError) => {
     setEntries((prev) => prev.filter((entry) => entry.id !== tempId && entry.id !== `${tempId}-stream`));
-    if (error === "anonymous") setStatus("anonymous");
+    if (error === "anonymous" || error === "outdated-gateway") setStatus(failureStatus(error));
   }, []);
 
   return {
@@ -203,6 +210,14 @@ export function LeoTranscript({ state }: { state: LeoTranscriptState }) {
             className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs leading-relaxed text-slate-500"
           >
             {tt("登录后 leo 才能记住对话")}
+          </p>
+        )}
+        {state.status === "outdated-gateway" && (
+          <p
+            data-leo-transcript-outdated
+            className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-4 text-center text-xs leading-relaxed text-amber-700"
+          >
+            {tt("Leo 服务版本过旧，暂时不能保存对话")}
           </p>
         )}
         {state.status === "error" && count === 0 && (
