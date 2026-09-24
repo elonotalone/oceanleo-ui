@@ -159,6 +159,9 @@ const workspaceActionsStubUrl = dataModule(`
   export function workspaceSlotForLegacyId(id) {
     return ["template", "preview", "materials", "mine", "browser"].includes(id) ? id : "preview";
   }
+  export function isWorkspaceActionConsumed(_nonce, _consumer) { return false; }
+  export function consumeWorkspaceAction() { return true; }
+  export function resetWorkspaceActionConsumptionForTests() {}
 `);
 const hydrationStubUrl = dataModule(`
   export function useWorkspaceRuntimeHydration() { return null; }

@@ -140,6 +140,9 @@ const workspaceActionsStubUrl = dataModule(`
       ? id
       : "preview";
   }
+  export function isWorkspaceActionConsumed(_nonce, _consumer) { return false; }
+  export function consumeWorkspaceAction() { return true; }
+  export function resetWorkspaceActionConsumptionForTests() {}
 `);
 const hydrationStubUrl = dataModule(`
   export function useWorkspaceRuntimeHydration() { return null; }
