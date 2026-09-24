@@ -24,6 +24,7 @@ import {
   deckPreviewViewportCapStyle,
   type DeckPreviewLogicalSize,
 } from "./deck-preview-geometry";
+import { useDeckRailVisibility } from "./deck-rail-visibility";
 
 export {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
@@ -146,6 +147,64 @@ function DeckRailThumbnail({
     >
       {mountNode ? createPortal(children, mountNode) : null}
     </span>
+  );
+}
+
+function DeckRailSlideItem({
+  slide,
+  index,
+  active,
+  accent,
+  thumbnailAspect,
+  onSelect,
+  onKeyMove,
+  registerRef,
+}: {
+  slide: DeckPreviewLayoutSlide;
+  index: number;
+  active: boolean;
+  accent: string;
+  thumbnailAspect: number;
+  onSelect: (slideId: string) => void;
+  onKeyMove: (event: KeyboardEvent<HTMLButtonElement>, index: number) => void;
+  registerRef: (slideId: string, node: HTMLButtonElement | null) => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const visible = useDeckRailVisibility(buttonRef);
+
+  return (
+    <li>
+      <button
+        ref={(node) => {
+          buttonRef.current = node;
+          registerRef(slide.id, node);
+        }}
+        type="button"
+        data-deck-thumbnail={slide.id}
+        data-deck-thumb-visible={visible ? "1" : "0"}
+        aria-label={`${index + 1}. ${slide.label}`}
+        aria-current={active ? "page" : undefined}
+        onClick={() => onSelect(slide.id)}
+        onKeyDown={(event) => onKeyMove(event, index)}
+        className="block w-full border-0 bg-transparent p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-preview-accent)] focus-visible:ring-offset-1"
+      >
+        <DeckRailThumbnail
+          aspectRatio={thumbnailAspect}
+          active={active}
+          accent={accent}
+        >
+          {visible ? (
+            slide.thumbnail ?? (
+              <span className="flex h-full w-full items-center justify-center bg-[var(--surface,#fafaf9)] px-2 text-center text-[10px] text-[var(--muted,#78716c)]">
+                {slide.label}
+              </span>
+            )
+          ) : (
+            <span data-deck-thumb-placeholder className="block h-full w-full" />
+          )}
+        </DeckRailThumbnail>
+      </button>
+    </li>
   );
 }
 
@@ -324,38 +383,22 @@ export function DeckPreviewLayout({
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-2"
         >
           <ol className="space-y-2.5">
-            {slides.map((slide, index) => {
-              const active = slide.id === activeSlideId;
-              return (
-                <li key={slide.id}>
-                  <button
-                    ref={(node) => {
-                      if (node) thumbnailRefs.current.set(slide.id, node);
-                      else thumbnailRefs.current.delete(slide.id);
-                    }}
-                    type="button"
-                    data-deck-thumbnail={slide.id}
-                    aria-label={`${index + 1}. ${slide.label}`}
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => onActiveSlideChange(slide.id)}
-                    onKeyDown={(event) => moveThumbnailFocus(event, index)}
-                    className="block w-full border-0 bg-transparent p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-preview-accent)] focus-visible:ring-offset-1"
-                  >
-                    <DeckRailThumbnail
-                      aspectRatio={thumbnailAspect}
-                      active={active}
-                      accent={accent}
-                    >
-                      {slide.thumbnail ?? (
-                        <span className="flex h-full w-full items-center justify-center bg-[var(--surface,#fafaf9)] px-2 text-center text-[10px] text-[var(--muted,#78716c)]">
-                          {slide.label}
-                        </span>
-                      )}
-                    </DeckRailThumbnail>
-                  </button>
-                </li>
-              );
-            })}
+            {slides.map((slide, index) => (
+              <DeckRailSlideItem
+                key={slide.id}
+                slide={slide}
+                index={index}
+                active={slide.id === activeSlideId}
+                accent={accent}
+                thumbnailAspect={thumbnailAspect}
+                onSelect={onActiveSlideChange}
+                onKeyMove={moveThumbnailFocus}
+                registerRef={(slideId, node) => {
+                  if (node) thumbnailRefs.current.set(slideId, node);
+                  else thumbnailRefs.current.delete(slideId);
+                }}
+              />
+            ))}
           </ol>
         </div>
       </aside>

@@ -32,7 +32,7 @@ import {
   type DeckResizeHandleSpec,
 } from "./DeckElementSelectionChrome";
 import { DeckLegacySlideLayout } from "./DeckLegacySlideLayout";
-import { DeckMiniSlide } from "./DeckMiniSlide";
+import { DeckSlideThumbnail } from "./DeckSlideThumbnail";
 import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
 import { DeckPreviewLayout } from "./DeckPreviewLayout";
 import type { DeckInkStyle } from "./deck-ink";
@@ -426,15 +426,15 @@ export function DeckStage({
   const theme = deckTheme(editor.deck.theme);
   const previewSlides = editor.deck.slides.map((candidate, index) => ({
     id: candidate.id,
-    label: candidate.title.trim() || `第 ${index + 1} 页`,
+    label: candidate.title.trim() || tt("第 {n} 页", { n: index + 1 }),
     thumbnail: (
-      <DeckMiniSlide
+      <DeckSlideThumbnail
         slide={candidate}
         number={index + 1}
-        active={candidate.id === editor.activeSlide.id}
         theme={theme}
         master={deckMasterFor(editor.deck, candidate)}
-        aspectRatio={logicalSize.width / logicalSize.height}
+        pageWidth={logicalSize.width}
+        pageHeight={logicalSize.height}
       />
     ),
   }));
