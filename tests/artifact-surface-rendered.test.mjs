@@ -671,6 +671,20 @@ async function click(target) {
   });
 }
 
+/** 地址栏已是这一份时，货架会直接开详情；卡不在不等于没打开这一份。 */
+async function openWorkspaceCard(container, title) {
+  const card = container.querySelector(`[data-open-entry="${title}"]`);
+  if (card) {
+    await click(card);
+    await settle();
+    return;
+  }
+  const heading = [...container.querySelectorAll("h3")].find(
+    (node) => node.textContent.trim() === title,
+  );
+  assert.ok(heading, `详情不是「${title}」，货架上也没有这张卡`);
+}
+
 /**
  * 按素材标题找那张卡。
  *
@@ -3653,12 +3667,7 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
     onOpenItem: (prepared) => opened.push(prepared),
   });
   try {
-    await click(
-      mounted.container.querySelector(
-        '[data-open-entry="Workspace edit"]',
-      ),
-    );
-    await settle();
+    await openWorkspaceCard(mounted.container, "Workspace edit");
     assert.equal(opened.length, 0, "card click only opens preview detail");
 
     // 2026-08-13 改判回来（`40e191e`）。8-07 那一版把同 app 也定成预览深链，操作员
@@ -3709,10 +3718,7 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
     onOpenItem: (prepared) => opened.push(prepared),
   });
   try {
-    await click(
-      crossApp.container.querySelector('[data-open-entry="Workspace edit"]'),
-    );
-    await settle();
+    await openWorkspaceCard(crossApp.container, "Workspace edit");
     const buttons = [...crossApp.container.querySelectorAll("button")].map(
       (button) => button.textContent.trim(),
     );

@@ -376,6 +376,10 @@ test("「开玩」不再接编辑器派发；游戏在网格里也被路由到�
     new URL("../src/shell/material-library-view.tsx", import.meta.url),
     "utf8",
   );
+  const openPreparedSource = readFileSync(
+    new URL("../src/shell/material-library-open.ts", import.meta.url),
+    "utf8",
+  );
   // 这是本轮要根除的那一行。
   assert.doesNotMatch(
     view,
@@ -384,7 +388,11 @@ test("「开玩」不再接编辑器派发；游戏在网格里也被路由到�
   );
   // 网格那条通路上，游戏在碰到 isAdvancedEditableShelfItem 之前就被引走了。
   // 按**代码**取位置，不按注释——注释里提到判据名会让这条断言假绿。
-  const openPrepared = view.slice(view.indexOf("const openPreparedItem"));
+  // 分流跟 `openPreparedItem` 一起抽到 `useMaterialLibraryOpenItem`（view 贴着
+  // 800 行硬顶）；认那个函数，搬家不等于放行。
+  const openPrepared = openPreparedSource.slice(
+    openPreparedSource.indexOf("export function useMaterialLibraryOpenItem"),
+  );
   const playAt = openPrepared.indexOf("if (openArtifactPlay(item)) return;");
   const editableAt = openPrepared.indexOf("if (!isAdvancedEditableShelfItem(item)) {");
   assert.ok(playAt > -1, "openPreparedItem 里没有播放分流");
@@ -395,7 +403,8 @@ test("「开玩」不再接编辑器派发；游戏在网格里也被路由到�
   );
   // 素材那一类的编辑器落点没被动过。
   assert.match(view, /onOpenItem=\{openPreparedItem\}/);
-  assert.match(view, /当前 revision 缺少可验证的编辑器 source。/);
+  assert.match(view, /const openPreparedItem = useMaterialLibraryOpenItem/);
+  assert.match(openPreparedSource, /当前 revision 缺少可验证的编辑器 source。/);
 });
 
 // ── ⑥ feed 渲染：链接落点、缺地址、三态封面 ────────────────────────────────

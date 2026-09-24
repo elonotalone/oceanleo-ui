@@ -489,9 +489,23 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
     new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(materialView, /artifactId/);
-  assert.match(materialView, /revisionId/);
-  assert.match(materialView, /AdvancedContentWorkbench/);
+  const materialStandalone = readFileSync(
+    new URL("../src/shell/material-library-standalone.tsx", import.meta.url),
+    "utf8",
+  );
+  const materialEffects = readFileSync(
+    new URL("../src/shell/material-library-effects.ts", import.meta.url),
+    "utf8",
+  );
+  // 独立编辑器的 artifact 身份与 AdvancedContentWorkbench 跟着抽到
+  // `material-library-standalone.tsx`（view 贴着 800 行硬顶）。两头都断言，
+  // 搬家不等于放行：view 仍要挂上它，深链仍按裸 artifactId 取当前版本。
+  assert.match(materialView, /MaterialStandaloneEditor/);
+  assert.match(materialStandalone, /artifactId/);
+  assert.match(materialStandalone, /revisionId/);
+  assert.match(materialStandalone, /AdvancedContentWorkbench/);
+  assert.match(materialEffects, /裸 artifactId/);
+  assert.match(materialEffects, /getCurrentArtifactItem\(artifactId/);
   assert.match(
     materialView,
     /onOpenItem=\{openPreparedItem\}/,

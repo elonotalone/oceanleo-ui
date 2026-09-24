@@ -99,6 +99,7 @@ const { MaterialLibrary } = await import(
       export function useMaterialLibraryChangeEvents(){}
       export function useMaterialLibraryDeepLink(){}
       export function useMaterialLibraryPreviewIntent(){}
+      export function useLibraryCurrentIdentityRestore(){}
       export function useMaterialShelfSettle(){ return { settled: true, markSettled(){} }; }
       export function useOfficialTemplateMaterials(){
         return { entries: [], loading: false, error: "", status: undefined, deepLinkEntryId: "" };

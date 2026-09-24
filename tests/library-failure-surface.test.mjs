@@ -676,10 +676,20 @@ function action(container, label) {
 }
 
 async function openDetail(mounted, item) {
-  await click(
-    mounted.container.querySelector(`[data-library-card="${item.title}"]`),
+  const card = mounted.container.querySelector(
+    `[data-library-card="${item.title}"]`,
   );
-  await settle();
+  if (card) {
+    await click(card);
+    await settle();
+    return;
+  }
+  // 地址栏已是这一份时，货架会直接开它的详情（离开编辑器回到刚才那份）。
+  // 仍要钉住「屏幕上就是这一份」，不能把任意详情当成打开成功。
+  const heading = [...mounted.container.querySelectorAll("h3")].find(
+    (node) => node.textContent.trim() === item.title,
+  );
+  assert.ok(heading, `详情不是「${item.title}」，货架上也没有这张卡`);
 }
 
 test("取当前版本失败时下载与收藏留在原地并说清原因，重试一次就回来", async () => {

@@ -1152,7 +1152,7 @@ export function MyLibrary({
           onCategoryChange={onCategoryChange}
           taskId={taskId}
           siteId={siteId}
-          onOpenItem={openLibraryItem}
+          onOpenItem={onOpenItem || setStandaloneEditorItem}
           openAdvancedOnSelect={openAdvancedOnSelect}
           materialActions={materialActions}
           onMaterialAction={onMaterialAction}
