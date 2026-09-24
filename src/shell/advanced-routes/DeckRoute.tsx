@@ -1,10 +1,24 @@
 "use client";
 
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  bindNormalFaceHandoff,
+  captureBeforeEnterPro,
+  useProSavedRevision,
+} from "./editor-handoff";
+import { deckDocumentToPptist } from "../doc-editors/deck-pptist-carrier";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -88,6 +102,7 @@ export function DeckRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="deck"
+      beforeEnterPro={() => captureBeforeEnterPro(props.item)}
       renderNormal={() => <DeckLegacyRoute {...props} />}
       renderPro={() => (
         <Suspense fallback={null}>
@@ -108,13 +123,34 @@ function DeckLegacyRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const officeSource = useOfficeArtifactSource(item);
+  const proSaved = useProSavedRevision(item.key || item.id);
+  const workingItem = proSaved ?? item;
+  const officeSource = useOfficeArtifactSource(workingItem);
   const editor = useDeckEditor(
     officeSource.item,
     siteId,
     previewContent,
     officeSource.resourceFailed,
   );
+  const liveDeckRef = useRef(editor.deck);
+  liveDeckRef.current = editor.deck;
+  const liveRevisionRef = useRef(editor.editRevision);
+  liveRevisionRef.current = editor.editRevision;
+  useEffect(() => {
+    return bindNormalFaceHandoff(item.key || item.id, {
+      getHandoff: () => ({
+        kind: "inline",
+        json: deckDocumentToPptist(liveDeckRef.current),
+        revision:
+          liveRevisionRef.current == null
+            ? null
+            : String(liveRevisionRef.current),
+      }),
+      persistInBackground: () => {
+        void editor.save();
+      },
+    });
+  }, [editor.save, item.id, item.key]);
   const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");

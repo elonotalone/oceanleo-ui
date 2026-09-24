@@ -2,14 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchReady } from "./mode-switch-gate";
+import { useModeSwitchHandoff, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  ENTER_PRO_NOT_READY,
+  handoffItemKey,
+  hostedSaveTimeoutMs,
+  libraryItemFromProSave,
+  materializeHandoffJson,
+  openHostedSaveGate,
+  reportProSaved,
+  useEditorHandoffSource,
+} from "./editor-handoff";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import {
   deckDocumentToPptist,
   PPTIST_CARRIER_FORMAT,
+  pptistToDeckDocument,
 } from "../doc-editors/deck-pptist-carrier";
 import { normalizeDeckDocument } from "../doc-editors/deck-schema";
+import { importPptxDeck } from "../doc-editors/pptx-deck-import";
 import {
   EDITOR_PROTOCOL,
   acceptEditorFrameMessage,
@@ -91,30 +103,6 @@ export function computeDeckHostedEmbedSrc(input: DeckHostedEmbedSrcInput): strin
   }
 }
 
-function inlineSourceFromItem(item: AdvancedContentWorkbenchProps["item"]): unknown {
-  const raw = typeof item.content === "string" ? item.content.trim() : "";
-  if (raw) {
-    try {
-      return JSON.parse(raw) as unknown;
-    } catch {
-      return null;
-    }
-  }
-  const meta = item.meta || {};
-  for (const key of ["deck", "slides", "project"] as const) {
-    const value = meta[key];
-    if (value && typeof value === "object") return value;
-    if (typeof value === "string" && value.trim()) {
-      try {
-        return JSON.parse(value) as unknown;
-      } catch {
-        /* next */
-      }
-    }
-  }
-  return null;
-}
-
 /**
  * 存量 deck IR 与已经是托管格式的工程档都要能打开。
  * 已经是托管格式的原样交出去（R6：存量只读，不静默改写）。
@@ -150,43 +138,59 @@ export function DeckHostedRoute({
   const [status, setStatus] = useState("");
   const [snapshot, setSnapshot] = useState<unknown>(null);
   const [source, setSource] = useState<unknown>(null);
+  const snapshotRef = useRef<unknown>(null);
+  const sourceRef = useRef<unknown>(null);
+  snapshotRef.current = snapshot;
+  sourceRef.current = source;
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  const saveGateRef = useRef<ReturnType<typeof openHostedSaveGate> | null>(
+    null,
+  );
+  const gateHandoff = useModeSwitchHandoff();
+  const resolved = useEditorHandoffSource(item, gateHandoff);
   // 过渡门的 ready 信号（plugin-ui U4）：PPTist 的协议 ready 到达即首帧可见。
   useModeSwitchReady(ready);
 
   useEffect(() => {
-    const inline = inlineSourceFromItem(item);
-    if (inline) {
-      setSource(inline);
-      return;
-    }
-    const projectUrl = String(item.meta.editor_project_url || "").trim();
-    if (!projectUrl) {
-      setSource({});
-      return;
-    }
     let cancelled = false;
-    fetch(projectUrl, { cache: "no-store", headers: { Accept: "application/json" } })
-      .then((response) => {
-        if (!response.ok) throw new Error(`工程档读取失败（HTTP ${response.status}）`);
-        return response.json() as Promise<unknown>;
-      })
-      .then((json) => {
-        if (!cancelled) setSource(json);
-      })
-      .catch((caught: unknown) => {
-        if (cancelled) return;
-        setStatus(
-          caught instanceof Error ? caught.message : "工程档读取失败，已按空白演示打开。",
-        );
-        setSource({});
+    if (resolved.status === "loading") return;
+    void (async () => {
+      const sourceHandoff =
+        resolved.source && resolved.source.kind !== "empty"
+          ? resolved.source
+          : null;
+      if (!sourceHandoff) {
+        if (!cancelled) {
+          setStatus(resolved.error || ENTER_PRO_NOT_READY);
+        }
+        return;
+      }
+      const loaded = await materializeHandoffJson(sourceHandoff, {
+        title: item.title || "演示文稿",
+        fetchBytes: async (url) => {
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`源文件读取失败（HTTP ${response.status}）`);
+          }
+          return response.arrayBuffer();
+        },
+        importPptx: async (bytes, title) =>
+          deckDocumentToPptist(await importPptxDeck(bytes, title, "pptx")),
       });
+      if (cancelled) return;
+      if (!loaded.ok) {
+        setStatus(loaded.error);
+        return;
+      }
+      setStatus("");
+      setSource(loaded.json);
+    })();
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [item.title, resolved]);
 
   const embedBase = deckHostedEmbedBase();
   const editorOrigin = DECK_HOSTED_EMBED_ORIGIN;
@@ -224,6 +228,7 @@ export function DeckHostedRoute({
   );
 
   const pushInit = useCallback(() => {
+    if (source == null) return;
     sendToEditor(buildSetModeMessage(instanceId, mode));
     sendToEditor(
       buildHideChromeMessage(instanceId, {
@@ -286,8 +291,16 @@ export function DeckHostedRoute({
         return;
       }
       if (message.type === "recovery-snapshot" && message.ok) {
-        setSnapshot(message.snapshot?.payload ?? null);
+        const payload = message.snapshot?.payload ?? null;
+        snapshotRef.current = payload;
+        setSnapshot(payload);
         setDirty(false);
+        const gate = saveGateRef.current;
+        const recoveryId = String(message.recoveryId || "");
+        if (gate && (!recoveryId || recoveryId === gate.saveId)) {
+          gate.acceptSnapshot(payload);
+          gate.acceptSaveResult();
+        }
         return;
       }
       if (message.type === "error" && typeof message.message === "string") {
@@ -332,23 +345,44 @@ export function DeckHostedRoute({
   );
 
   const flush = useCallback(async () => {
-    const saveId = `save-${Date.now().toString(36)}`;
+    const gate = openHostedSaveGate({ timeoutMs: hostedSaveTimeoutMs() });
+    saveGateRef.current = gate;
     const sent = sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "save-request",
       instanceId,
-      saveId,
+      saveId: gate.saveId,
     });
     sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "recovery-capture",
       instanceId,
-      recoveryId: saveId,
+      recoveryId: gate.saveId,
     });
     if (!sent) {
       return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
     }
-    return { ok: true as const, item };
+    const confirmed = await gate.wait();
+    if (!confirmed.ok) {
+      return { ok: false as const, error: confirmed.error };
+    }
+    const payload = confirmed.snapshot;
+    snapshotRef.current = payload;
+    setSnapshot(payload);
+    const deck = pptistToDeckDocument(payload, item.title || "演示文稿");
+    const revision = `${Date.now().toString(36)}`;
+    const savedItem = libraryItemFromProSave(item, { deck, revision });
+    sendToEditor({
+      protocol: EDITOR_PROTOCOL,
+      type: "save-result",
+      instanceId,
+      ok: true,
+      message: "已保存",
+      saveId: gate.saveId,
+      revision,
+    });
+    reportProSaved(handoffItemKey(item), savedItem);
+    return { ok: true as const, item: savedItem };
   }, [instanceId, item, sendToEditor]);
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
@@ -442,8 +476,22 @@ export function DeckHostedRoute({
           recovery: {
             key: advancedRecoveryKey("deck", item),
             ready,
-            capture: () => snapshot || source,
-            restore: () => false,
+            capture: () => snapshotRef.current || sourceRef.current,
+            restore: (payload) => {
+              if (payload == null) return false;
+              snapshotRef.current = payload;
+              sourceRef.current = payload;
+              setSnapshot(payload);
+              setSource(payload);
+              sendToEditor({
+                protocol: EDITOR_PROTOCOL,
+                type: "recovery-restore",
+                instanceId,
+                recoveryId: `restore-${Date.now().toString(36)}`,
+                snapshot: { revision: editRevision, payload },
+              });
+              return true;
+            },
           },
         },
       }}

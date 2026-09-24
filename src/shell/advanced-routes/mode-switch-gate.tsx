@@ -43,6 +43,11 @@ import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import type { PluginThemeId } from "../plugin-theme";
+import {
+  ENTER_PRO_NOT_READY,
+  type BeforeEnterPro,
+  type EditorHandoff,
+} from "./editor-handoff";
 
 export type ModeSwitchFace = "normal" | "pro";
 
@@ -60,6 +65,13 @@ const noop = () => {};
  * noop；门外调用拿到的也是 noop，所以 stage 单独挂（flag=next 直出）时调它没有副作用。
  */
 const ModeSwitchReadyContext = createContext<() => void>(noop);
+
+const ModeSwitchHandoffContext = createContext<EditorHandoff | null>(null);
+
+/** 专业面读进门时带过来的那份稿。没传 `beforeEnterPro` 的路由拿到 `null`。 */
+export function useModeSwitchHandoff(): EditorHandoff | null {
+  return useContext(ModeSwitchHandoffContext);
+}
 
 /**
  * 在新面里接 ready 信号的唯一入口。
@@ -83,11 +95,14 @@ export interface ModeSwitchGateProps {
   renderNormal: () => ReactNode;
   renderPro: () => ReactNode;
   /**
-   * 进专业面之前要等的事（Deck / RichDoc / Grid 这类要先把编辑 flush 到文档的调用方）。
-   * 等待期间覆盖层已在、专业面**不**挂；resolve / reject 之后才挂。兜底计时从切换那一刻起算，
-   * 所以这个 promise 悬着也最多拖 `fallbackMs`。
+   * 进专业面之前要等的事。有这份函数时：成功才把 `handoff` 交给专业面；
+   * 失败留在快速面，出不挡操作的提示和重试。没传的路由保持今天的行为。
    */
-  beforeEnterPro?: () => Promise<unknown>;
+  beforeEnterPro?: BeforeEnterPro;
+  /** 进专业面失败时（调用方用来把 L0 模式拨回「编辑」）。 */
+  onEnterProFailed?: () => void;
+  /** 点提示上的「重试」时（调用方再把 L0 拨去「专业编辑」）。 */
+  onRetryEnterPro?: () => void;
   /** 兜底毫秒数；默认 `MODE_SWITCH_FALLBACK_MS`。测试用。 */
   fallbackMs?: number;
 }
@@ -97,13 +112,21 @@ export function ModeSwitchGate({
   renderNormal,
   renderPro,
   beforeEnterPro,
+  onEnterProFailed,
+  onRetryEnterPro,
   fallbackMs = MODE_SWITCH_FALLBACK_MS,
 }: ModeSwitchGateProps) {
   const target: ModeSwitchFace = pro ? "pro" : "normal";
   const [shown, setShown] = useState<ModeSwitchFace>(target);
   // `beforeEnterPro` 在飞时为 false：覆盖层在、专业面还不挂。
   const [gateOpen, setGateOpen] = useState(true);
-  const pending: ModeSwitchFace | null = target !== shown ? target : null;
+  const [proHandoff, setProHandoff] = useState<EditorHandoff | null>(null);
+  const [enterError, setEnterError] = useState<string | null>(null);
+  const [enterBlocked, setEnterBlocked] = useState(false);
+  const [enterAttempt, setEnterAttempt] = useState(0);
+  const enterBlockedRef = useRef(false);
+  const pending: ModeSwitchFace | null =
+    !enterBlocked && target !== shown ? target : null;
 
   // 子组件的 passive effect 先于父组件跑；待命面挂上去的那一帧就可能发信号。
   // 用 layout effect 更新目标（layout 阶段整体先于 passive 阶段），信号回调本身保持稳定。
@@ -112,24 +135,69 @@ export function ModeSwitchGate({
     targetRef.current = target;
   }, [target]);
   const commitPending = useCallback(() => {
+    if (enterBlockedRef.current) return;
     setShown(targetRef.current);
     setGateOpen(true);
   }, []);
 
+  const failEnterPro = useCallback(
+    (error: string) => {
+      enterBlockedRef.current = true;
+      setEnterBlocked(true);
+      setEnterError(error || ENTER_PRO_NOT_READY);
+      setGateOpen(true);
+      onEnterProFailed?.();
+    },
+    [onEnterProFailed],
+  );
+
   useEffect(() => {
     if (!pending) return;
     let alive = true;
+    let settled = false;
     if (pending === "pro" && beforeEnterPro) {
       setGateOpen(false);
+      enterBlockedRef.current = false;
+      setEnterBlocked(false);
       Promise.resolve()
         .then(beforeEnterPro)
-        .catch(noop)
-        .then(() => {
-          if (alive) setGateOpen(true);
+        .then((result) => {
+          if (!alive) return;
+          if (
+            result &&
+            typeof result === "object" &&
+            "ok" in result &&
+            result.ok === false
+          ) {
+            settled = true;
+            failEnterPro(result.error || ENTER_PRO_NOT_READY);
+            return;
+          }
+          if (
+            result &&
+            typeof result === "object" &&
+            result.ok === true &&
+            result.handoff
+          ) {
+            setProHandoff(result.handoff);
+          }
+          settled = true;
+          setEnterError(null);
+          setGateOpen(true);
+        })
+        .catch(() => {
+          if (!alive) return;
+          settled = true;
+          failEnterPro(ENTER_PRO_NOT_READY);
         });
     }
     const timer = window.setTimeout(() => {
-      if (alive) commitPending();
+      if (!alive || settled) return;
+      if (pending === "pro" && beforeEnterPro && !enterBlockedRef.current) {
+        failEnterPro(ENTER_PRO_NOT_READY);
+        return;
+      }
+      commitPending();
     }, fallbackMs);
     return () => {
       alive = false;
@@ -137,7 +205,15 @@ export function ModeSwitchGate({
     };
     // beforeEnterPro 有意不进依赖：它只在切换那一刻取一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, fallbackMs, commitPending]);
+  }, [pending, fallbackMs, commitPending, enterAttempt, failEnterPro]);
+
+  const retryEnterPro = useCallback(() => {
+    enterBlockedRef.current = false;
+    setEnterBlocked(false);
+    setEnterError(null);
+    setEnterAttempt((value) => value + 1);
+    onRetryEnterPro?.();
+  }, [onRetryEnterPro]);
 
   const normalRef = useRef<HTMLDivElement | null>(null);
   const proRef = useRef<HTMLDivElement | null>(null);
@@ -156,7 +232,8 @@ export function ModeSwitchGate({
     );
   }, [pending, shownRef]);
 
-  const mountPro = shown === "pro" || (pending === "pro" && gateOpen);
+  const mountPro =
+    shown === "pro" || (pending === "pro" && gateOpen && !enterBlocked);
   const mountNormal = shown === "normal" || pending === "normal";
 
   const overlay = pending ? <ModeSwitchPendingOverlay target={pending} /> : null;
@@ -187,11 +264,19 @@ export function ModeSwitchGate({
           slotRef={proRef}
           signal={pending === "pro" ? commitPending : noop}
         >
-          {renderPro()}
+          <ModeSwitchHandoffContext.Provider value={proHandoff}>
+            {renderPro()}
+          </ModeSwitchHandoffContext.Provider>
         </ModeSwitchFaceSlot>
       )}
       {overlay &&
         (overlayHost ? createPortal(overlay, overlayHost) : overlay)}
+      {enterError ? (
+        <ModeSwitchHandoffError
+          message={enterError}
+          onRetry={retryEnterPro}
+        />
+      ) : null}
     </div>
   );
 }
@@ -209,10 +294,25 @@ export interface PluginModeSwitchGateProps
  */
 export function PluginModeSwitchGate({
   pluginId,
+  onEnterProFailed,
+  onRetryEnterPro,
   ...rest
 }: PluginModeSwitchGateProps) {
-  const { pro } = usePluginMode(pluginId);
-  return <ModeSwitchGate pro={pro} {...rest} />;
+  const { pro, setMode } = usePluginMode(pluginId);
+  return (
+    <ModeSwitchGate
+      pro={pro}
+      onEnterProFailed={() => {
+        onEnterProFailed?.();
+        setMode("normal");
+      }}
+      onRetryEnterPro={() => {
+        onRetryEnterPro?.();
+        setMode("pro");
+      }}
+      {...rest}
+    />
+  );
 }
 
 function ModeSwitchFaceSlot({
@@ -256,6 +356,33 @@ function ModeSwitchFaceSlot({
  * 舞台内的加载覆盖层。`absolute inset-0` 只相对它所在的舞台节点；
  * 第一行、第二行在舞台之外，不会被遮。
  */
+function ModeSwitchHandoffError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  const tt = useUI();
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-mode-switch-handoff-error=""
+      className="pointer-events-none absolute bottom-3 left-1/2 z-[2147483025] flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--awb-border,var(--pchrome-line,#e7e5e4))] bg-[var(--awb-chrome-bg,var(--pchrome-surface,#fff))] px-3 py-1.5 text-[12px] text-[var(--awb-text,var(--pchrome-ink,#292524))] shadow-sm"
+    >
+      <span>{tt(message)}</span>
+      <button
+        type="button"
+        className="pointer-events-auto rounded-full border border-[var(--awb-border,#e7e5e4)] px-2 py-0.5 text-[11px]"
+        onClick={onRetry}
+      >
+        {tt("重试")}
+      </button>
+    </div>
+  );
+}
+
 function ModeSwitchPendingOverlay({ target }: { target: ModeSwitchFace }) {
   const tt = useUI();
   const label =

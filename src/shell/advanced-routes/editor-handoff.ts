@@ -31,6 +31,14 @@ export type EditorHandoffSourceState = {
 
 export const PRO_FLUSH_TIMEOUT_MS = 8_000;
 
+export function hostedSaveTimeoutMs(): number {
+  const override = (globalThis as { __W17_PRO_FLUSH_TIMEOUT_MS?: number })
+    .__W17_PRO_FLUSH_TIMEOUT_MS;
+  return typeof override === "number" && override > 0
+    ? override
+    : PRO_FLUSH_TIMEOUT_MS;
+}
+
 export const ENTER_PRO_NOT_READY =
   "还没准备好，稍后再切换";
 

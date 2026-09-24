@@ -353,14 +353,19 @@ test("beforeEnterPro 悬着：覆盖层已在、专业面不挂；resolve 后才
   }
 });
 
-test("beforeEnterPro reject 不卡门：照样挂专业面", async () => {
+test("beforeEnterPro 失败：留在快速面，出不挡操作的提示和重试（旧断言「照样挂专业面」是错的）", async () => {
   const m = await mount({ beforeEnterPro: () => Promise.reject(new Error("flush failed")) });
   try {
     await act(async () => m.controls().setPro(true));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    assert.ok(m.q("[data-face=pro]"));
+    assert.equal(m.q("[data-face=pro]"), null, "进专业面失败还是把专业面挂上了");
+    assert.ok(m.q("[data-face=normal]"), "失败后快速面被卸了");
+    const toast = m.q("[data-mode-switch-handoff-error]");
+    assert.ok(toast, "失败后没有提示");
+    assert.equal(toast.textContent.includes("还没准备好，稍后再切换"), true);
+    assert.equal(toast.textContent.includes("重试"), true);
   } finally {
     await m.unmount();
   }

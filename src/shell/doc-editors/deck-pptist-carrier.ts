@@ -29,6 +29,7 @@ import type {
   DeckElement,
   DeckSlide,
 } from "./deck-schema";
+import { deckId, emptyDeckSlide } from "./deck-schema";
 import { packById, type DeckPack } from "./deck-packs";
 
 /** `AI_PPT_SCHEMA.md` 的逻辑画布宽度。 */
@@ -474,4 +475,277 @@ export function deckDocumentToPptist(
 
   const pack = options.packId ? packById(options.packId) : undefined;
   return pack ? applyDeckPackTheme(base, pack) : base;
+}
+
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function numberOf(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function fromPct(pixels: number, total: number): number {
+  if (!Number.isFinite(pixels) || !Number.isFinite(total) || total === 0) {
+    return 0;
+  }
+  return Math.round(((pixels / total) * 100 + Number.EPSILON) * 100) / 100;
+}
+
+/** PPTist 富文本 HTML → deck IR 纯文本。标签只用于读字，不回写 HTML。 */
+export function pptistRichTextToPlain(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function firstSpanStyle(html: string): {
+  color?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+} {
+  const match = html.match(/style="([^"]*)"/i);
+  if (!match) return {};
+  const style = match[1];
+  const pick = (name: string) => {
+    const found = style.match(new RegExp(`${name}\\s*:\\s*([^;]+)`, "i"));
+    return found ? found[1].trim() : "";
+  };
+  const fontSize = Number.parseFloat(pick("font-size"));
+  return {
+    color: pick("color") || undefined,
+    fontFamily: pick("font-family") || undefined,
+    fontSize: Number.isFinite(fontSize) ? fontSize : undefined,
+    bold: /font-weight\s*:\s*(bold|[6-9]00)/i.test(style) || undefined,
+    italic: /font-style\s*:\s*italic/i.test(style) || undefined,
+    underline: /text-decoration\s*:\s*underline/i.test(style) || undefined,
+  };
+}
+
+function geometryFromPptist(
+  raw: Record<string, unknown>,
+  pageHeight: number,
+  order: number,
+): Pick<
+  DeckElement,
+  "id" | "x" | "y" | "width" | "height" | "rotation" | "order" | "locked" | "label"
+> {
+  return {
+    id: String(raw.id || deckId("el")),
+    x: fromPct(numberOf(raw.left), PPTIST_VIEWPORT_WIDTH),
+    y: fromPct(numberOf(raw.top), pageHeight),
+    width: fromPct(numberOf(raw.width), PPTIST_VIEWPORT_WIDTH),
+    height: fromPct(numberOf(raw.height), pageHeight),
+    rotation: numberOf(raw.rotate),
+    order,
+    locked: raw.lock === true || undefined,
+    label: typeof raw.name === "string" ? raw.name : undefined,
+  };
+}
+
+function placeholderElement(
+  raw: Record<string, unknown>,
+  pageHeight: number,
+  order: number,
+  warnings: string[],
+): DeckElement {
+  const kind = String(raw.type || "unknown");
+  const id = String(raw.id || `kept-${order}`);
+  warnings.push(
+    `元素 ${id} 的类型「${kind}」快速面画不成原样，已留成占位，没有丢掉。`,
+  );
+  return {
+    ...geometryFromPptist(raw, pageHeight, order),
+    id,
+    type: "unsupported",
+    label: raw.name ? String(raw.name) : kind,
+    text: pptistRichTextToPlain(
+      typeof raw.content === "string" ? raw.content : kind,
+    ),
+  };
+}
+
+function reverseElement(
+  raw: Record<string, unknown>,
+  pageHeight: number,
+  order: number,
+  warnings: string[],
+): DeckElement {
+  const geometry = geometryFromPptist(raw, pageHeight, order);
+  const outline = recordOf(raw.outline);
+  const type = String(raw.type || "");
+
+  if (type === "text") {
+    const html = typeof raw.content === "string" ? raw.content : "";
+    const styles = firstSpanStyle(html);
+    return {
+      ...geometry,
+      type: "text",
+      text: pptistRichTextToPlain(html),
+      fontFamily: styles.fontFamily || (typeof raw.defaultFontName === "string"
+        ? raw.defaultFontName
+        : undefined),
+      color: styles.color || (typeof raw.defaultColor === "string"
+        ? raw.defaultColor
+        : undefined),
+      fontSize: styles.fontSize,
+      bold: styles.bold,
+      italic: styles.italic,
+      underline: styles.underline,
+      fill: typeof raw.fill === "string" ? raw.fill : undefined,
+      lineHeight: optionalNumber(raw.lineHeight),
+      opacity: optionalNumber(raw.opacity),
+      borderColor: typeof outline?.color === "string" ? outline.color : undefined,
+      borderWidth: optionalNumber(outline?.width),
+    };
+  }
+
+  if (type === "image") {
+    const src = typeof raw.src === "string" ? raw.src : "";
+    if (!src) {
+      return placeholderElement(raw, pageHeight, order, warnings);
+    }
+    return {
+      ...geometry,
+      type: "image",
+      src,
+      imageFit: raw.fixedRatio === true ? "contain" : "cover",
+      flipX: raw.flipH === true || undefined,
+      flipY: raw.flipV === true || undefined,
+      opacity: optionalNumber(raw.opacity),
+      borderColor: typeof outline?.color === "string" ? outline.color : undefined,
+      borderWidth: optionalNumber(outline?.width),
+    };
+  }
+
+  if (type === "shape") {
+    const text = recordOf(raw.text);
+    const html = typeof text?.content === "string" ? text.content : "";
+    return {
+      ...geometry,
+      type: "shape",
+      shape: "rect",
+      fill: typeof raw.fill === "string" ? raw.fill : undefined,
+      text: html ? pptistRichTextToPlain(html) : undefined,
+      fontFamily: typeof text?.defaultFontName === "string"
+        ? text.defaultFontName
+        : undefined,
+      color: typeof text?.defaultColor === "string" ? text.defaultColor : undefined,
+      opacity: optionalNumber(raw.opacity),
+      borderColor: typeof outline?.color === "string" ? outline.color : undefined,
+      borderWidth: optionalNumber(outline?.width),
+    };
+  }
+
+  if (type === "table") {
+    const data = Array.isArray(raw.data) ? raw.data : [];
+    const rows = data.map((row) =>
+      Array.isArray(row)
+        ? row.map((cell) => {
+            const record = recordOf(cell);
+            return record && typeof record.text === "string" ? record.text : "";
+          })
+        : [],
+    );
+    return {
+      ...geometry,
+      type: "table",
+      rows,
+      borderColor: typeof outline?.color === "string" ? outline.color : undefined,
+      borderWidth: optionalNumber(outline?.width),
+    };
+  }
+
+  return placeholderElement(raw, pageHeight, order, warnings);
+}
+
+function reverseBackground(
+  raw: unknown,
+): Pick<DeckSlide, "background" | "image"> {
+  const background = recordOf(raw);
+  if (!background) return { background: "" };
+  if (background.type === "image") {
+    const image = recordOf(background.image);
+    const src = typeof image?.src === "string" ? image.src : "";
+    if (src) return { background: "", image: { url: src, alt: "" } };
+  }
+  if (typeof background.color === "string") {
+    return { background: background.color };
+  }
+  return { background: "" };
+}
+
+function reverseSlideType(type: unknown): DeckSlide["layout"] {
+  if (type === "cover") return "title-only";
+  if (type === "contents") return "agenda";
+  if (type === "transition") return "section";
+  if (type === "end") return "closing";
+  return "title-body";
+}
+
+/**
+ * PPTist JSON → deck IR。页序按 `slides[]` 原样保留。
+ * 转不了的元素写成 `unsupported` 占位，不静默丢。
+ */
+export function pptistToDeckDocument(
+  source: unknown,
+  fallbackTitle = "演示文稿",
+): DeckDocument {
+  const root = recordOf(source) || {};
+  const ratio = numberOf(root.viewportRatio, PPTIST_VIEWPORT_16_9 / PPTIST_VIEWPORT_WIDTH);
+  const aspect: DeckDocument["aspect"] = Math.abs(ratio - 0.75) < 0.01 ? "4:3" : "16:9";
+  const pageHeight = PPTIST_VIEWPORT_WIDTH * (aspect === "4:3" ? 0.75 : ratio || 0.5625);
+  const warnings: string[] = [];
+  const rawSlides = Array.isArray(root.slides) ? root.slides : [];
+  const slides: DeckSlide[] = rawSlides.map((raw, index) => {
+    const slide = recordOf(raw) || {};
+    const elements = (Array.isArray(slide.elements) ? slide.elements : []).map(
+      (element, order) =>
+        reverseElement(recordOf(element) || {}, pageHeight, order, warnings),
+    );
+    const textTitle = elements.find(
+      (element) => element.type === "text" && element.text,
+    )?.text;
+    const bg = reverseBackground(slide.background);
+    const blank = emptyDeckSlide(
+      textTitle?.split("\n")[0]?.slice(0, 80) || `第 ${index + 1} 页`,
+    );
+    return {
+      ...blank,
+      id: String(slide.id || blank.id),
+      notes: typeof slide.remark === "string" ? slide.remark : "",
+      layout: reverseSlideType(slide.type),
+      background: bg.background,
+      image: bg.image,
+      elements,
+    };
+  });
+
+  return {
+    version: 2,
+    title:
+      (typeof root.title === "string" && root.title.trim()) || fallbackTitle,
+    aspect,
+    theme: "ocean",
+    masters: [],
+    slides: slides.length ? slides : [emptyDeckSlide()],
+    ...(warnings.length ? { importWarnings: warnings } : {}),
+  };
 }
