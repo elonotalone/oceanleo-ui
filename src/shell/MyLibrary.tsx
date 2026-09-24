@@ -1100,7 +1100,7 @@ export function MyLibrary({
         type="button"
         onClick={() => void load()}
         disabled={loading || uploading}
-        className="inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
+        className="min-h-11 inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
       >
         {tt(loading ? "加载中…" : "刷新")}
       </button>
@@ -1109,7 +1109,7 @@ export function MyLibrary({
           type="button"
           onClick={() => void loadMore()}
           disabled={loadingMore || loading}
-          className="inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
+          className="min-h-11 inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
         >
           {tt(loadingMore ? "加载中…" : "继续加载")}
         </button>

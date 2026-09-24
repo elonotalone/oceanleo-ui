@@ -921,7 +921,7 @@ export function DeckPresenterView({
   );
 
   const shellClass =
-    "relative flex h-full min-h-0 w-full flex-col bg-[#0b0b0f] text-white outline-none";
+    "relative flex h-full min-h-0 w-full flex-col bg-[#0b0b0f] text-white outline-none focus-visible:ring-2 focus-visible:ring-white/60";
 
   // ── 投影出去的那一面 ──────────────────────────────────────────────────────
   if (surface === "stage-only") {

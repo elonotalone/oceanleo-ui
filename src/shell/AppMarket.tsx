@@ -201,7 +201,7 @@ export function AppMarket({
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={tt("搜一搜，例如：简历")}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
           />
         </label>
       </div>

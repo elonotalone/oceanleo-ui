@@ -118,7 +118,7 @@ export function VideoTimelineStage({
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.currentTarget.focus()}
-      className="flex h-full min-h-0 flex-col outline-none"
+      className="flex h-full min-h-0 flex-col outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/45"
     >
       {/* 预览窗 */}
       <div className="flex min-h-0 flex-[3] items-center justify-center bg-[var(--awb-stage-bg,#0c0a09)] p-3">

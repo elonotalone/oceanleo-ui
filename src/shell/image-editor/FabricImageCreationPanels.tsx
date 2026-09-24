@@ -162,7 +162,7 @@ export function FabricImageBrushPanel({
             value={editor.brush.color}
             disabled={editor.activeTool === "erase"}
             onChange={(event) => editor.setBrush({ color: event.target.value })}
-            className="h-9 w-12 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1 disabled:opacity-40"
+            className="min-h-11 h-9 w-12 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1 disabled:opacity-40"
           />
         </label>
         <label className="mt-4 block text-[11px] text-[var(--fg-2,#57534e)]">
@@ -409,7 +409,7 @@ export function FabricImageSignaturePanel({
             type="color"
             value={color}
             onChange={(event) => setColor(event.target.value)}
-            className="h-9 w-11 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1"
+            className="min-h-11 h-9 w-11 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1"
             aria-label={tt("签名颜色")}
           />
           <button
@@ -434,7 +434,7 @@ export function FabricImageSignaturePanel({
           value={typedName}
           onChange={(event) => setTypedName(event.target.value)}
           placeholder={tt("输入姓名")}
-          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[20px] outline-none"
+          className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[20px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#6d5dfc)]/45"
           style={{ fontFamily: "Segoe Script, Brush Script MT, cursive" }}
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -501,7 +501,7 @@ export function FabricImageTablePanel({
                 onMouseEnter={() => setHovered({ rows: row, columns: column })}
                 onFocus={() => setHovered({ rows: row, columns: column })}
                 onClick={() => editor.addTable(row, column)}
-                className="h-7 w-7 rounded-[4px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
+                className="min-h-11 h-7 w-7 rounded-[4px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={{
                   borderColor: active
                     ? "var(--awb-accent,#6d5dfc)"
@@ -1311,7 +1311,7 @@ export function FabricImageAiPanel({
           rows={3}
           maxLength={500}
           placeholder={tt("例如：保留衣服上的纹理")}
-          className="w-full resize-none rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[11px] outline-none"
+          className="w-full resize-none rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#6d5dfc)]/45"
         />
       </Panel>
     </div>

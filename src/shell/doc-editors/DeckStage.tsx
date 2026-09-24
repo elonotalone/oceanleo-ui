@@ -205,7 +205,7 @@ function PositionedSlideCanvas({
           rows={1}
           placeholder="编辑幻灯片标题"
           {...deckTextGestureProps(editor, "title")}
-          className="absolute left-3 right-3 top-3 z-[25] resize-none overflow-hidden rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-2 py-1.5 text-[13px] font-semibold text-[var(--fg,#292524)] shadow-md outline-none placeholder:opacity-40"
+          className="absolute left-3 right-3 top-3 z-[25] resize-none overflow-hidden rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-2 py-1.5 text-[13px] font-semibold text-[var(--fg,#292524)] shadow-md outline-none placeholder:opacity-40 focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#8b5cf6)]/45"
           onPointerDown={(event) => event.stopPropagation()}
         />
       )}
@@ -268,7 +268,7 @@ function PositionedSlideCanvas({
                   beginTextEditing(primaryEditableText.id);
                 }
               }}
-              className={`absolute overflow-visible text-left outline-none ${
+              className={`absolute overflow-visible text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#8b5cf6)]/45 ${
                 selected
                   ? "after:pointer-events-none after:absolute after:-inset-[2px] after:rounded-[inherit] after:border-2 after:border-[var(--awb-accent,#8b5cf6)]"
                   : ""
@@ -482,7 +482,7 @@ export function DeckStage({
             <button
               type="button"
               onClick={editor.addSlide}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]"
+              className="min-h-11 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]"
               aria-label={tt("新建一页")}
               title={tt("新建一页")}
             >

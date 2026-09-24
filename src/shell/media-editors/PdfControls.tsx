@@ -167,7 +167,7 @@ function ControlButton({
       title={title}
       aria-label={title}
       aria-pressed={active || undefined}
-      className={`rounded-xl border bg-[var(--card,#fff)] text-[11px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40 ${
+      className={`min-h-11 rounded-xl border bg-[var(--card,#fff)] text-[11px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40 ${
         iconOnly ? "grid h-9 w-9 place-items-center p-0" : "px-2.5 py-2"
       } ${
         active

@@ -69,7 +69,7 @@ export function LibraryToolbar({
           id={searchId}
           type="search"
           aria-label={placeholder}
-          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)]"
+          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
           placeholder={placeholder}
           value={search}
           onChange={(e) => setSearch(e.target.value)}

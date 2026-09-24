@@ -202,13 +202,13 @@ export function TextWorkbenchControls({
         value={editor.find}
         onChange={(event) => editor.setFind(event.target.value)}
         placeholder={tt("查找")}
-        className="w-full rounded-lg border border-stone-200 px-2.5 py-2 outline-none"
+        className="w-full rounded-lg border border-stone-200 px-2.5 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
       />
       <input
         value={editor.replace}
         onChange={(event) => editor.setReplace(event.target.value)}
         placeholder={tt("替换为")}
-        className="mt-2 w-full rounded-lg border border-stone-200 px-2.5 py-2 outline-none"
+        className="mt-2 w-full rounded-lg border border-stone-200 px-2.5 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
       />
       <button
         type="button"
@@ -286,7 +286,7 @@ export function TextWorkbenchCanvas({ editor }: { editor: TextWorkbench }) {
             })
           }
           spellCheck
-          className="min-h-0 flex-1 resize-none bg-white p-6 font-mono text-[13px] leading-7 text-stone-700 outline-none"
+          className="min-h-0 flex-1 resize-none bg-white p-6 font-mono text-[13px] leading-7 text-stone-700 outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
           placeholder={tt("在这里编辑文字、Markdown、HTML 或代码文本…")}
         />
       ) : (
@@ -505,7 +505,7 @@ export function SheetWorkbenchCanvas({ editor }: { editor: SheetWorkbench }) {
                     onChange={(event) =>
                       editor.setCell(rowIndex, columnIndex, event.target.value)
                     }
-                    className="h-9 w-full min-w-28 bg-white px-2 outline-none focus:bg-sky-50"
+                    className="h-11 w-full min-w-28 bg-white px-2 outline-none focus:bg-sky-50 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
                   />
                 </td>
               ))}

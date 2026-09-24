@@ -252,7 +252,7 @@ function MediaGrid({
                 <button
                   type="button"
                   onClick={() => onDelete(c.id)}
-                  className="absolute right-1.5 top-1.5 z-10 hidden h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white group-hover:flex"
+                  className="absolute right-1.5 top-1.5 z-10 hidden h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white group-hover:flex"
                   aria-label={tt("删除")}
                 >
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -313,14 +313,14 @@ function KnowledgeList({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={tt("知识条目标题（如：我的品牌调性）")}
-          className="w-full border-0 bg-transparent px-1 py-1 text-[14px] font-medium text-stone-800 outline-none placeholder:text-stone-400"
+          className="w-full border-0 bg-transparent px-1 py-1 text-[14px] font-medium text-stone-800 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={3}
           placeholder={tt("写下供各站 AI 生成时参考的内容…")}
-          className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-relaxed text-stone-700 outline-none placeholder:text-stone-400"
+          className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-relaxed text-stone-700 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
         <div className="flex justify-end">
           <button

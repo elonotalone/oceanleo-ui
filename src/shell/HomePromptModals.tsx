@@ -149,7 +149,7 @@ export function AddPromptModal({
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={tt("搜索预制 prompt…")}
-                className="w-full bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400"
+                className="w-full bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
               />
             </div>
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">

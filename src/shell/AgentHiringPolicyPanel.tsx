@@ -226,16 +226,20 @@ export function AgentHiringPolicyPanel({
             onClick={() =>
               setPolicy((current) => ({ ...current, enabled: !current.enabled }))
             }
-            className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- policy.enabled ? "" : "bg-stone-300"
- }`}
-            style={policy.enabled ? { background: accent } : undefined}
+            className="mt-0.5 flex h-11 w-14 shrink-0 items-center justify-center"
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- policy.enabled ? "left-[1.375rem]" : "left-0.5"
- }`}
-            />
+              className={`relative h-6 w-11 rounded-full transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                policy.enabled ? "" : "bg-stone-300"
+              }`}
+              style={policy.enabled ? { background: accent } : undefined}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                  policy.enabled ? "left-[1.375rem]" : "left-0.5"
+                }`}
+              />
+            </span>
           </button>
         </div>
 
@@ -328,7 +332,7 @@ export function AgentHiringPolicyPanel({
                 require_confirmation: event.target.checked,
               }))
             }
-            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            className="min-h-11 mt-0.5 h-3.5 w-3.5 shrink-0"
             style={{ accentColor: accent }}
           />
           <span className="min-w-0 flex-1">

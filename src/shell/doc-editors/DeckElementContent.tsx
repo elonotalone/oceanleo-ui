@@ -62,7 +62,7 @@ function DeckEditableText({
       contentEditable
       suppressContentEditableWarning
       data-deck-editable-text
-      className="flex h-full w-full cursor-text overflow-hidden whitespace-pre-wrap rounded-sm outline-none ring-2 ring-white/70"
+      className="flex h-full w-full cursor-text overflow-hidden whitespace-pre-wrap rounded-sm outline-none ring-2 ring-white/70 focus-visible:ring-2 focus-visible:ring-white/70"
       style={textStyle}
       onPointerDown={(event) => event.stopPropagation()}
       onBlur={(event) => commit(event.currentTarget)}

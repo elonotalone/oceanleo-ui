@@ -208,7 +208,7 @@ export function HumanHandoffDialog({
             type="button"
             aria-label={tt("关闭")}
             onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
+            className="min-h-11 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl leading-none text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
           >
             <span aria-hidden="true">×</span>
           </button>
@@ -251,7 +251,7 @@ export function HumanHandoffDialog({
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggle(candidate)}
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                          className="min-h-11 mt-0.5 h-3.5 w-3.5 shrink-0"
                           style={{ accentColor: accent }}
                         />
                         <span className="min-w-0 flex-1">

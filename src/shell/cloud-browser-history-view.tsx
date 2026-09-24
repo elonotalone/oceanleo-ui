@@ -272,7 +272,7 @@ export function CloudBrowserCheckpointPanel({
         aria-modal="true"
         aria-labelledby="cloud-browser-checkpoint-title"
         tabIndex={-1}
-        className="flex max-h-[calc(100dvh-1rem)] w-[min(60rem,calc(100dvw-1rem))] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white text-stone-700 shadow-2xl outline-none sm:max-h-[calc(100dvh-2rem)] sm:w-[min(60rem,calc(100dvw-2rem))]"
+        className="flex max-h-[calc(100dvh-1rem)] w-[min(60rem,calc(100dvw-1rem))] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white text-stone-700 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:max-h-[calc(100dvh-2rem)] sm:w-[min(60rem,calc(100dvw-2rem))]"
         data-cloud-browser-checkpoints
         onKeyDown={handleDialogKeyDown}
       >
@@ -282,7 +282,7 @@ export function CloudBrowserCheckpointPanel({
               ref={headingRef}
               id="cloud-browser-checkpoint-title"
               tabIndex={-1}
-              className="text-[14px] font-semibold outline-none"
+              className="text-[14px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
               {tt("历史")}
             </h2>
@@ -295,7 +295,7 @@ export function CloudBrowserCheckpointPanel({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 outline-none hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-indigo-400"
+            className="min-h-11 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 outline-none hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-indigo-400"
             aria-label={tt("关闭历史面板")}
             title={tt("关闭历史面板")}
             data-cloud-browser-history-close
@@ -413,7 +413,7 @@ export function CloudBrowserCheckpointPanel({
                       disabled={
                         busy || selectedOpenAction === "unavailable"
                       }
-                      className="h-8 rounded-lg bg-stone-900 px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
+                      className="min-h-11 h-8 rounded-lg bg-stone-900 px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500"
                       title={
                         selectedOpenAction === "resume"
                           ? tt("恢复当前浏览会话")
@@ -430,7 +430,7 @@ export function CloudBrowserCheckpointPanel({
                       type="button"
                       onClick={onDelete}
                       disabled={busy}
-                      className={`h-8 rounded-lg border px-2.5 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
+                      className={`min-h-11 h-8 rounded-lg border px-2.5 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-45 ${
                         deleteArmed
                           ? "border-rose-300 bg-rose-50 text-rose-700"
                           : "border-stone-200 text-stone-600"
@@ -474,7 +474,7 @@ export function CloudBrowserCheckpointPanel({
                         }
                         maxLength={SESSION_TITLE_MAX_LENGTH}
                         disabled={renamePending}
-                        className="h-8 w-full rounded-lg border border-stone-200 px-2 text-[10px] text-stone-800 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
+                        className="min-h-11 h-8 w-full rounded-lg border border-stone-200 px-2 text-[10px] text-stone-800 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
                         aria-label={tt("会话名称")}
                       />
                     </label>
@@ -486,7 +486,7 @@ export function CloudBrowserCheckpointPanel({
                         titleDraft.trim() ===
                           (selected.title || "").trim()
                       }
-                      className="grid h-8 min-w-16 place-items-center rounded-lg bg-stone-900 px-2.5 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-45"
+                      className="min-h-11 grid h-8 min-w-16 place-items-center rounded-lg bg-stone-900 px-2.5 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-45"
                       aria-busy={renamePending}
                       aria-label={
                         renamePending

@@ -101,7 +101,7 @@ export function SelectionToolbarNumberControl({
           if (Number.isFinite(next)) emit(clamp(next));
         }}
         aria-label={namedLabel}
-        className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums text-[var(--fg,#292524)] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+        className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums text-[var(--fg,#292524)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
           menu ? "min-w-10 flex-1" : "w-12"
         }`}
       />

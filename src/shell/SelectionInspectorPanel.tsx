@@ -177,7 +177,7 @@ function InspectorControl({
             onChange={(event) => update(Number(event.target.value))}
             onBlur={() => commit()}
             onKeyUp={keyboardCommit}
-            className="h-9 w-20 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 text-right font-semibold tabular-nums outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
+            className="min-h-11 h-9 w-20 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 text-right font-semibold tabular-nums outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
             aria-label={`${control.label}精确值`}
           />
         </div>
@@ -205,7 +205,7 @@ function InspectorControl({
           }}
           onKeyUp={keyboardCommit}
           onBlur={() => commit()}
-          className="h-2 w-full cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)]"
+          className="min-h-11 h-2 w-full cursor-pointer appearance-none rounded-full bg-[var(--divider,#e7e5e4)]"
           style={{ accentColor: accent }}
           aria-label={control.label}
         />
@@ -263,7 +263,7 @@ function InspectorControl({
             onFocus={begin}
             onChange={(event) => update(event.target.value)}
             onBlur={() => commit()}
-            className="h-9 w-12 cursor-pointer rounded-lg border-0 bg-transparent"
+            className="min-h-11 h-9 w-12 cursor-pointer rounded-lg border-0 bg-transparent"
             aria-label={control.label}
           />
           <input
@@ -283,7 +283,7 @@ function InspectorControl({
                 event.currentTarget.blur();
               }
             }}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-3 font-mono uppercase outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
+            className="min-h-11 h-9 min-w-0 flex-1 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-3 font-mono uppercase outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
             aria-label={`${control.label} HEX`}
           />
         </div>
@@ -330,7 +330,7 @@ function InspectorControl({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={`搜索${control.label}`}
             aria-label={`搜索${control.label}`}
-            className="h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 font-normal outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
+            className="min-h-11 h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 font-normal outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
           />
         )}
         <div className="grid grid-cols-2 gap-2">
@@ -382,7 +382,7 @@ function InspectorControl({
           onChange={(event) => update(Number(event.target.value))}
           onBlur={() => commit()}
           onKeyUp={keyboardCommit}
-          className="h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
+          className="min-h-11 h-10 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 outline-none focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/30"
         />
       </label>
     );
@@ -401,7 +401,7 @@ function InspectorControl({
         emitInstant(next);
       }}
       aria-label={control.label}
-      className={`flex h-10 w-full items-center justify-between rounded-xl border px-3 text-[12px] font-medium outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
+      className={`min-h-11 flex h-10 w-full items-center justify-between rounded-xl border px-3 text-[12px] font-medium outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/35 ${
  active
  ? "border-transparent text-[var(--awb-on-accent,#fff)]"
  : danger

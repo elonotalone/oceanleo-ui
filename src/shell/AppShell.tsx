@@ -759,7 +759,7 @@ function AppShellInner({
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 focus-within:border-neutral-400">
             <IconSearch className="h-3.5 w-3.5 text-neutral-400" />
             <input
-              className="w-full bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
               placeholder={searchPlaceholder ?? tt("搜索...")}
               value={term}
               onChange={(e) => {

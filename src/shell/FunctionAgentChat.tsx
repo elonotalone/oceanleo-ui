@@ -1110,7 +1110,7 @@ export function FunctionAgentChat({
               title={title}
               aria-label={title}
               aria-pressed={selected}
-              className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+              className={`min-h-11 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  selected
  ? "max-w-[6.5rem] px-2 text-white"
  : "w-7 px-0 text-stone-500 hover:bg-white/70 hover:text-stone-700"
@@ -1145,7 +1145,7 @@ export function FunctionAgentChat({
               ? tt("把当前操作台的输入与备注保存为灵感，稍后可在右侧「灵感 · 我的」里一键复用")
               : saveLabel
           }
-          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 disabled:opacity-60 ${
+          className={`min-h-11 grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 disabled:opacity-60 ${
  saveState === "saved"
  ? "border-transparent text-white"
  : saveState === "saving"

@@ -545,7 +545,7 @@ export function LeoComposer({
                   type="button"
                   onClick={() => onRemoveAttachment(a.id)}
                   aria-label={tt("移除")}
-                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
+                  className="min-h-11 ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
                 >
                   ×
                 </button>
@@ -663,7 +663,7 @@ export function LeoComposer({
               disabled={disabled}
               aria-label={tt("会议录音纪要")}
               title={tt("会议录音纪要")}
-              className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
+              className="min-h-11 flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
             >
               <MeetingGlyph />
             </button>
@@ -679,7 +679,7 @@ export function LeoComposer({
                 onClick={onStop}
                 aria-label={tt("停止")}
                 title={tt("停止")}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:scale-105 hover:bg-neutral-800 active:scale-95"
+                className="min-h-11 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:scale-105 hover:bg-neutral-800 active:scale-95"
               >
                 <StopGlyph />
               </button>
@@ -689,7 +689,7 @@ export function LeoComposer({
                 onClick={() => canSend && submitPrompt()}
                 disabled={!canSend}
                 aria-label={tt("发送")}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
+                className={`min-h-11 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
  canSend
  ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
  : "cursor-not-allowed bg-neutral-300"
@@ -765,7 +765,7 @@ function AttachMenu({
         onClick={() => setOpen((v) => !v)}
         aria-label={tt("添加附件")}
         aria-expanded={open}
-        className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
+        className={`min-h-11 flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
  open
  ? "border-neutral-300 bg-neutral-100 text-neutral-800"
  : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
@@ -972,7 +972,7 @@ function VoiceButton({
       aria-label={listening ? tt("停止语音输入") : tt("语音输入")}
       aria-pressed={listening}
       title={tt("语音输入")}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
+      className={`min-h-11 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
  listening
  ? "bg-rose-100 text-rose-600"
  : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"

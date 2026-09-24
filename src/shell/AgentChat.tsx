@@ -2134,7 +2134,7 @@ function MentionPicker({
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={tt("@ 某个成员：只让 TA 处理")}
-        className="inline-flex h-7 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[12px] font-medium text-stone-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700"
+        className="min-h-11 inline-flex h-7 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[12px] font-medium text-stone-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700"
         style={{ color: accent }}
       >
         @

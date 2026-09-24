@@ -68,7 +68,7 @@ function ColorRow({
           key={color}
           type="button"
           onClick={() => onChange(color)}
-          className="h-7 w-7 rounded-full border-2 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:scale-110"
+          className="min-h-11 h-7 w-7 rounded-full border-2 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:scale-110"
           style={{
             background: color,
             borderColor: value === color ? "white" : "transparent",
@@ -338,7 +338,7 @@ export function DeckTablePanel({ editor }: { editor: DeckEditorState }) {
                 onMouseEnter={() => setHovered({ rows: row, columns: column })}
                 onFocus={() => setHovered({ rows: row, columns: column })}
                 onClick={() => editor.addTableElement(row, column)}
-                className="h-6 w-6 rounded-[3px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
+                className="min-h-11 h-6 w-6 rounded-[3px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={{
                   borderColor: active
                     ? "var(--awb-accent,#7c3aed)"
@@ -430,7 +430,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
             type="color"
             value={color}
             onChange={(event) => setColor(event.target.value)}
-            className="h-9 w-10 cursor-pointer rounded-lg border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] p-1"
+            className="min-h-11 h-9 w-10 cursor-pointer rounded-lg border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] p-1"
             aria-label={tt("签名颜色")}
           />
           <button
@@ -458,7 +458,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
           value={typedName}
           onChange={(event) => setTypedName(event.target.value)}
           placeholder={tt("输入姓名")}
-          className="w-full rounded-xl border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] px-3 py-2.5 text-[20px] text-[var(--fg,#292524)] outline-none"
+          className="w-full rounded-xl border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] px-3 py-2.5 text-[20px] text-[var(--fg,#292524)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/45"
           style={{ fontFamily: "Segoe Script, Brush Script MT, cursive" }}
         />
         <button

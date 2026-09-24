@@ -67,8 +67,8 @@ export function SettingsModal({ open, onClose, ...props }: SettingsModalProps) {
   }, [open, present]);
   if (!present || typeof document === "undefined") return null;
   return createPortal(<div data-settings-backdrop className={`fixed inset-0 z-[160] flex items-center justify-center bg-black/25 backdrop-blur-sm transition-opacity duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] dark:bg-black/50 motion-reduce:transition-none ${visible ? "opacity-100" : "opacity-0"}`} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={panel} role="dialog" aria-modal="true" aria-label={tt("设置")} tabIndex={-1} className={`relative h-[min(760px,88vh)] w-[min(1040px,94vw)] overflow-hidden rounded-2xl bg-white shadow-2xl outline-none transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] dark:bg-neutral-950 dark:text-neutral-100 motion-reduce:transition-none ${visible ? "scale-100" : "scale-95"}`}>
-      <button type="button" onClick={onClose} aria-label={tt("关闭")} className="absolute right-3 top-3 z-10 flex size-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800">✕</button>
+    <div ref={panel} role="dialog" aria-modal="true" aria-label={tt("设置")} tabIndex={-1} className={`relative h-[min(760px,88vh)] w-[min(1040px,94vw)] overflow-hidden rounded-2xl bg-white shadow-2xl outline-none transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 dark:bg-neutral-950 dark:text-neutral-100 motion-reduce:transition-none ${visible ? "scale-100" : "scale-95"}`}>
+      <button type="button" onClick={onClose} aria-label={tt("关闭")} className="absolute right-3 top-3 z-10 flex size-11 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800">✕</button>
       <SettingsHub {...props} variant="modal" onClose={onClose} />
     </div>
   </div>, document.body);

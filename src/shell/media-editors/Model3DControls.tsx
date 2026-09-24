@@ -254,7 +254,7 @@ export function Model3DControls({
           value={editor.annotationDraft}
           onChange={(event) => editor.setAnnotationDraft(event.target.value)}
           placeholder={tt("输入标注，再点击模型表面放置")}
-          className="min-h-16 w-full resize-y rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2.5 py-2 text-[11px] outline-none"
+          className="min-h-16 w-full resize-y rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2.5 py-2 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
         <ActionButton
           disabled={

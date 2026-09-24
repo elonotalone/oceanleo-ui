@@ -93,7 +93,7 @@ export function Model3DStage({
           data-selection-mode="single"
           aria-label={tt("Three.js 3D 编辑画布")}
           aria-describedby="model3d-stage-status"
-          className="block h-full min-h-[280px] w-full touch-none outline-none"
+          className="block h-full min-h-[280px] w-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
 
         {!editor.modelLoaded && editor.posterUrl && (

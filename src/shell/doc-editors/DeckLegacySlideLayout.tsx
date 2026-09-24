@@ -32,7 +32,7 @@ export function DeckLegacySlideLayout({
         rows={isCenter ? 2 : 1}
         {...deckTextGestureProps(editor, "title")}
         placeholder={tt("输入标题")}
-        className={`w-full resize-none overflow-hidden bg-transparent font-bold outline-none placeholder:opacity-30 ${
+        className={`w-full resize-none overflow-hidden bg-transparent font-bold outline-none placeholder:opacity-30 focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/45 ${
           isCenter ? "text-center text-[clamp(24px,4vw,54px)]" : "text-[clamp(20px,3vw,38px)]"
         }`}
         style={{
@@ -47,7 +47,7 @@ export function DeckLegacySlideLayout({
           rows={isCenter ? 3 : 5}
           {...deckTextGestureProps(editor, "body")}
           placeholder={tt("输入正文")}
-          className={`mt-3 w-full resize-none bg-transparent text-[clamp(12px,1.6vw,21px)] leading-relaxed outline-none placeholder:opacity-30 ${
+          className={`mt-3 w-full resize-none bg-transparent text-[clamp(12px,1.6vw,21px)] leading-relaxed outline-none placeholder:opacity-30 focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/45 ${
             isCenter ? "text-center" : "text-left"
           }`}
           style={{ color: theme.muted, fontFamily: theme.fontFamily }}

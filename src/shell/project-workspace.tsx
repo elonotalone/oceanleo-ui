@@ -234,7 +234,7 @@ export function ProjectWorkspaceFrame({
                   type="button"
                   aria-label={closeConfigLabel}
                   data-project-config-close
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+                  className="min-h-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
                   onClick={() => changeConfigOpen(false)}
                 >
                   <span aria-hidden="true">×</span>
@@ -630,7 +630,7 @@ export function ProjectModal({
             type="button"
             aria-label={closeLabel}
             data-project-modal-close
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+            className="min-h-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
             onClick={onClose}
           >
             <span aria-hidden="true">×</span>

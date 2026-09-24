@@ -512,7 +512,7 @@ export function CloudBrowserPanel({
             onCompositionUpdate={interaction.handleCompositionUpdate}
             onCompositionEnd={interaction.handleCompositionEnd}
             onPaste={interaction.handlePaste}
-            className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none overflow-hidden border-0 p-0 opacity-0 outline-none"
+            className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none overflow-hidden border-0 p-0 opacity-0 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             style={{ fontSize: 16 }}
             data-cloud-browser-hidden-input
           />

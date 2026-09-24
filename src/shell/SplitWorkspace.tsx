@@ -695,7 +695,7 @@ export function SplitWorkspace({
           if (activeDetail) clearDetail(activeDetail.ownerId);
           else closeLibraryPanel();
         }}
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
+        className="min-h-11 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
         aria-label={tt("返回操作台")}
         title={tt("返回操作台")}
       >

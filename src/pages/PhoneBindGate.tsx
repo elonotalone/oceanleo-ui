@@ -290,7 +290,7 @@ export function PhoneBindGate() {
     >
       <div
         tabIndex={-1}
-        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl outline-none"
+        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
       >
         <h2 id={titleId} className="text-[17px] font-semibold text-neutral-900">
           {tt("绑定手机号")}

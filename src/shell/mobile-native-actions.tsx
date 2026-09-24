@@ -409,7 +409,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={tt("收起")}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
+            className="min-h-11 flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
           >
             ×
           </button>

@@ -90,7 +90,7 @@ export function AiRecommendBox({
             }}
             rows={2}
             placeholder={placeholder}
-            className="w-full resize-none bg-transparent px-4 py-3.5 text-sm text-stone-800 outline-none placeholder:text-stone-400 sm:text-base"
+            className="w-full resize-none bg-transparent px-4 py-3.5 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 sm:text-base"
           />
           <div className="flex items-center justify-between border-t border-stone-100 px-3 py-2">
             <span className="text-[11px] text-stone-400">

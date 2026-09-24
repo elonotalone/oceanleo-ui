@@ -229,7 +229,7 @@ export function DeckDesignPanel({
             onKeyDown={editor.beginGesture}
             onKeyUp={editor.endGesture}
             onBlur={editor.endGesture}
-            className="mt-1 h-10 w-full cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] bg-transparent p-1"
+            className="min-h-11 mt-1 h-10 w-full cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] bg-transparent p-1"
           />
         </label>
       </Panel>
@@ -460,7 +460,7 @@ export function DeckLayersPanel({
                   <button
                     type="button"
                     onClick={editor.toggleElementLock}
-                    className="grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)]"
+                    className="min-h-11 grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)]"
                     title={item.locked ? tt("解锁") : tt("锁定")}
                   >
                     <AdvancedEditorIcon

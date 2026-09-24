@@ -48,7 +48,7 @@ function NumericField({
           const next = Number(event.target.value);
           if (Number.isFinite(next)) onChange(next);
         }}
-        className="w-full rounded-md border border-[var(--border,#e7e5e4)] bg-transparent px-2 py-1.5 text-[11px] text-[var(--fg,#292524)] outline-none"
+        className="w-full rounded-md border border-[var(--border,#e7e5e4)] bg-transparent px-2 py-1.5 text-[11px] text-[var(--fg,#292524)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
       />
     </label>
   );

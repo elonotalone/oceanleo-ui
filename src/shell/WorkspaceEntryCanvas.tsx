@@ -22,7 +22,7 @@ export function WorkspaceEntryCanvas({
         <button
           type="button"
           onClick={onClose}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#f5f5f4)] hover:text-[var(--fg,#292524)]"
+          className="min-h-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#f5f5f4)] hover:text-[var(--fg,#292524)]"
           aria-label={tt("返回库")}
           title={tt("返回库")}
         >
