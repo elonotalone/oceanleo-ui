@@ -729,20 +729,26 @@ export function SiteCatalogConsole({
     agentApp === true || agentApp === false ? {} : agentApp;
   const consoleNode =
     activeAppId === "agent" && agentCard ? (
-      <AgentChat
-        siteId={canonicalSiteKey}
-        agentId={
-          activeAgentConfig.agentId || `${canonicalSiteKey}.agent`
-        }
-        mode="agent"
-        accent={accent}
-        headerHeight={0}
-        placeholder={activeAgentConfig.placeholder}
-        libraryTabs={{
-          materials: activeAgentConfig.materials || [],
-          resultLabel: "预览",
-        }}
-      />
+      <div
+        data-agent-page-frame
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+        style={{ height: "calc(100dvh - var(--leo-safe-top, 0px) - var(--leo-safe-bottom, 0px))" }}
+      >
+        <AgentChat
+          siteId={canonicalSiteKey}
+          agentId={
+            activeAgentConfig.agentId || `${canonicalSiteKey}.agent`
+          }
+          mode="agent"
+          accent={accent}
+          headerHeight={0}
+          placeholder={activeAgentConfig.placeholder}
+          libraryTabs={{
+            materials: activeAgentConfig.materials || [],
+            resultLabel: "预览",
+          }}
+        />
+      </div>
     ) : (
       <OperatorConsole
         functions={functions}

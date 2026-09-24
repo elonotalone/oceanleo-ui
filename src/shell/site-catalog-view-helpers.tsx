@@ -58,7 +58,10 @@ export function LegacyHistoryPlayback({
   onBack: () => void;
 }) {
   return (
-    <div className="flex h-full min-h-[420px] flex-col bg-white">
+    <div
+      className="flex min-h-0 flex-col overflow-hidden bg-white"
+      style={{ height: "calc(100dvh - var(--leo-safe-top, 0px) - var(--leo-safe-bottom, 0px))" }}
+    >
       <div className="flex shrink-0 justify-end border-b border-stone-100 px-4 py-2">
         <button
           type="button"
