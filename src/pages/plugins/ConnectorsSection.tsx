@@ -44,6 +44,8 @@ export function ConnectorsSection({
   oauthOnly: boolean;
 }) {
   const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
   const toast = useToast();
   const [registry, setRegistry] = useState<McpConnectorMeta[]>([]);
   const [registryStatus, setRegistryStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -151,16 +153,16 @@ export function ConnectorsSection({
       oauthPopupRef.current = null;
       setAuthorizing(false);
       if (data.ok) {
-        toast.success(data.message || tt("授权成功，已连接"));
+        toast.success(data.message || ttRef.current("授权成功，已连接"));
         setSelected(null);
         void loadConnections();
       } else {
-        toast.error(data.message || tt("授权失败"));
+        toast.error(data.message || ttRef.current("授权失败"));
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [loadConnections, toast, tt]);
+  }, [loadConnections, toast]);
 
   useEffect(() => {
     if (!authorizing) return;
@@ -181,7 +183,7 @@ export function ConnectorsSection({
             setAuthorizing(false);
             setSelected(null);
             setConnections(rows);
-            toast.success(tt("授权成功，已连接"));
+            toast.success(ttRef.current("授权成功，已连接"));
           }
         });
       }
@@ -197,12 +199,14 @@ export function ConnectorsSection({
       oauthStartedAtRef.current = null;
       setAuthorizing(false);
       toast.error(
-        outcome === "closed" ? tt("授权窗口已关闭，未完成授权") : tt("授权等待超时，请重试"),
+        outcome === "closed"
+          ? ttRef.current("授权窗口已关闭，未完成授权")
+          : ttRef.current("授权等待超时，请重试"),
       );
     };
     const intervalId = window.setInterval(tick, 400);
     return () => window.clearInterval(intervalId);
-  }, [authorizing, selected, toast, tt]);
+  }, [authorizing, selected, toast]);
 
   async function handleOauth() {
     const c = selected;
