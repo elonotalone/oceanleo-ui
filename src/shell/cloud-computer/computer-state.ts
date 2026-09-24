@@ -53,14 +53,13 @@ export function isConnectedComputer(computer: Computer): boolean {
   return state === "ready" || state === "offline" || state === "stopped" || state === "unpaid";
 }
 
-/** 还在接入途中（装命令 / 待确认 / 开机中 / 开机失败）的机器：只在「我的设备」里以待办卡出现，绝不上坞。 */
+/** 还在接入途中（装命令 / 待确认 / 开机中）。开通失败不算接入中，也不上坞。 */
 export function isPendingComputer(computer: Computer): boolean {
   const state = computerDisplayState(computer);
   return (
     state === "provisioning" ||
     state === "pending_install" ||
-    state === "pending_confirm" ||
-    state === "error"
+    state === "pending_confirm"
   );
 }
 

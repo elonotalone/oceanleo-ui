@@ -111,7 +111,10 @@ export type Computer = {
   cost_to_date?: MoneyAmount | null;
 };
 
-/** Dock / pickMountedId：自有 active 或阿里云 running，且主人已确认。 */
+/**
+ * @deprecated 改用 `computer-state` 的 `isConnectedComputer`。
+ * 已停机 / 欠费的已接入机器这里会判不可挂，和坞的候选规则不一致。
+ */
 export function isMountable(computer: Computer): boolean {
   return (
     (computer.status === "active" || computer.status === "running") &&

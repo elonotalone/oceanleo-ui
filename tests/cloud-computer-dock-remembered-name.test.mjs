@@ -60,6 +60,7 @@ const uiStub = dataModule(`
 `);
 const domainStub = dataModule(`
   export function currentDomainFamily() { return "com"; }
+  export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
 `);
 const dialogStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};

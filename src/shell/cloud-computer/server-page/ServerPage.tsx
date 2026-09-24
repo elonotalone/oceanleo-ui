@@ -21,6 +21,7 @@ import { CliCard } from "../terminal-card/CliCard";
 import { TerminalCard } from "../terminal-card/TerminalCard";
 import { useCloudComputers } from "../useCloudComputers";
 import {
+  devicesCloudHref,
   serverPageHref,
   type ServerPageCard,
 } from "./href";
@@ -581,7 +582,7 @@ function UnavailablePanel({
           </button>
         ) : state !== "unpaid" ? (
           <a
-            href="/devices?tab=cloud"
+            href={devicesCloudHref()}
             className={`text-sm underline-offset-2 hover:underline ${tone.muted}`}
           >
             {tt("查看我的设备")}

@@ -58,6 +58,7 @@ const uiTextStubUrl = dataModule(`
 `);
 const domainStubUrl = dataModule(`
   export function currentDomainFamily() { return "com"; }
+  export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
 `);
 const dialogStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};

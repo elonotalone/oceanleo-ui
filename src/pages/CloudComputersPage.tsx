@@ -44,16 +44,12 @@ const CONNECTED_CHIP: Record<
 };
 
 const PENDING_NEXT_STEP: Record<
-  Extract<
-    ComputerDisplayState,
-    "provisioning" | "pending_install" | "pending_confirm" | "error"
-  >,
+  Extract<ComputerDisplayState, "provisioning" | "pending_install" | "pending_confirm">,
   string
 > = {
   provisioning: "正在开通",
   pending_install: "安装命令还没在服务器上运行",
   pending_confirm: "节点已上线，请核对指纹后确认",
-  error: "开通失败",
 };
 
 function formatMemBytes(bytes: number | null | undefined): string {
@@ -104,6 +100,7 @@ export function CloudComputersSection({
 
   const connected = computers.filter(isConnectedComputer);
   const pending = computers.filter(isPendingComputer);
+  const failed = computers.filter((item) => computerDisplayState(item) === "error");
   const selected = connected.find((item) => item.id === selectedId) ?? null;
 
   async function refresh() {
@@ -202,7 +199,7 @@ export function CloudComputersSection({
     setConnectOpen(true);
   }
 
-  const empty = !loading && connected.length === 0 && pending.length === 0;
+  const empty = !loading && connected.length === 0 && pending.length === 0 && failed.length === 0;
 
   return (
     <section
@@ -362,17 +359,63 @@ export function CloudComputersSection({
                         </button>
                       )}
                       {(state === "pending_install" ||
-                        state === "pending_confirm" ||
-                        state === "error") && (
+                        state === "pending_confirm") && (
                         <button
                           type="button"
                           className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12px] text-rose-700"
                           data-oceanleo-cc-pending-cancel
                           onClick={() => void act(computer, "delete")}
                         >
-                          {state === "error" ? tt("移除") : tt("取消")}
+                          {tt("取消")}
                         </button>
                       )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {failed.length > 0 && (
+            <div className="space-y-2" data-oceanleo-cc-failed-list>
+              <h3 className="text-[13px] font-medium text-neutral-700">
+                {tt("开通失败")}
+              </h3>
+              {failed.map((computer) => {
+                const state = computerDisplayState(computer);
+                return (
+                  <div
+                    key={computer.id}
+                    data-oceanleo-cc-card={computer.id}
+                    data-oceanleo-cc-card-kind="failed"
+                    data-oceanleo-cc-card-status={computer.status}
+                    data-oceanleo-cc-display-state={state}
+                    className="rounded-2xl border border-rose-200 bg-rose-50 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[14px] font-medium text-neutral-900">
+                        {computer.name}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] ${chipClass(state)}`}
+                      >
+                        {computer.source === "aliyun"
+                          ? tt("阿里云")
+                          : tt("自有服务器")}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[12px] text-neutral-700">
+                      {tt("开通失败")}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12px] text-rose-700"
+                        data-oceanleo-cc-pending-cancel
+                        onClick={() => void act(computer, "delete")}
+                      >
+                        {tt("移除")}
+                      </button>
                     </div>
                   </div>
                 );

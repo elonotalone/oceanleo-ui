@@ -19,7 +19,7 @@ import {
   isPendingComputer,
   type ComputerDisplayState,
 } from "./computer-state";
-import { serverPageHref } from "./server-page/href";
+import { devicesCloudHref, serverPageHref } from "./server-page/href";
 import { useCloudComputers } from "./useCloudComputers";
 
 function statusWord(state: ComputerDisplayState, tt: (zh: string) => string): string {
@@ -60,7 +60,9 @@ export function ComputerDock({
 
   const connected = computers.filter(isConnectedComputer);
   const pending = computers.filter(isPendingComputer);
+  const failed = computers.filter((item) => computerDisplayState(item) === "error");
   const empty = connected.length === 0;
+  const failedOnly = empty && pending.length === 0 && failed.length > 0;
   const mountedState = mounted ? computerDisplayState(mounted) : null;
 
   if (loading) {
@@ -89,11 +91,11 @@ export function ComputerDock({
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
-            aria-label={tt("接入云电脑")}
+            aria-label={failedOnly ? tt("开通失败") : tt("接入云电脑")}
             data-oceanleo-cc-dock-empty
           >
             <ComputerGlyph />
-            {tt("接入云电脑")}
+            {failedOnly ? tt("开通失败") : tt("接入云电脑")}
           </button>
           <AnchoredPopover
             open={menuOpen}
@@ -129,7 +131,7 @@ export function ComputerDock({
             </button>
             {pending.length > 0 && (
               <a
-                href="/devices?tab=cloud"
+                href={devicesCloudHref()}
                 role="menuitem"
                 className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
                 data-oceanleo-cc-dock-pending-progress
@@ -138,12 +140,23 @@ export function ComputerDock({
                 {tt("接入进行中 · 查看进度")}
               </a>
             )}
+            {failedOnly && (
+              <a
+                href={devicesCloudHref()}
+                role="menuitem"
+                className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
+                data-oceanleo-cc-dock-failed
+                onClick={() => setMenuOpen(false)}
+              >
+                {tt("开通失败")}
+              </a>
+            )}
           </AnchoredPopover>
         </>
       ) : (
         <div className="flex items-center gap-1">
           <Link
-            href={mounted ? serverPageHref(mounted.id) : "/devices?tab=cloud"}
+            href={mounted ? serverPageHref(mounted.id) : devicesCloudHref()}
             prefetch={true}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
             data-oceanleo-cc-dock-mounted

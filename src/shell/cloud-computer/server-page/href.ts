@@ -1,3 +1,5 @@
+import { currentDomainProfile } from "../../../contracts/domain-family";
+
 export type ServerPageCard = "acp" | "cli" | "terminal";
 
 export type ServerPageHrefOptions = {
@@ -5,6 +7,19 @@ export type ServerPageHrefOptions = {
   program?: string;
   session?: string;
 };
+
+/** 子站上指向门户；已经在门户 origin 上则保持相对路径。 */
+export function portalHref(path: string): string {
+  const portalOrigin = currentDomainProfile().portalOrigin;
+  if (typeof window === "undefined" || window.location.origin === portalOrigin) {
+    return path;
+  }
+  return `${portalOrigin}${path}`;
+}
+
+export function devicesCloudHref(): string {
+  return portalHref("/devices?tab=cloud");
+}
 
 export function serverPageHref(
   computerId: string,
@@ -16,5 +31,5 @@ export function serverPageHref(
   if (options.program) query.set("program", options.program);
   if (options.session) query.set("session", options.session);
   const suffix = query.toString();
-  return suffix ? `${path}?${suffix}` : path;
+  return portalHref(suffix ? `${path}?${suffix}` : path);
 }

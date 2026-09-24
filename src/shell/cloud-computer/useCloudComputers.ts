@@ -89,10 +89,18 @@ function reconcileComputers(previous: Computer[], items: Computer[]): Computer[]
 }
 
 
+/**
+ * @deprecated 改用 `computer-state` 的 `isConnectedComputer` / `computerDisplayState`。
+ * 正在释放、或节点在线但主人还没确认的机器，这里的结论与全站口径相反。
+ */
 export function isAliveComputer(computer: Computer): boolean {
   return computer.status !== "released" && computer.status !== "removed";
 }
 
+/**
+ * @deprecated 改用 `computer-state` 的 `canOpenShell` / `computerDisplayState`。
+ * 「节点在线」不等于已接入且可开 Shell。
+ */
 export function isOnlineComputer(computer: Computer): boolean {
   return isAliveComputer(computer) && computer.node_online === true;
 }
