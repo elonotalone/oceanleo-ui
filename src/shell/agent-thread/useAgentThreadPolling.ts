@@ -10,6 +10,7 @@ export function useAgentThreadPolling(
   taskId: string | null | undefined,
   status: string,
   refresh: (id: string) => Promise<TaskPollResult>,
+  resetNonce = 0,
 ) {
   useEffect(() => {
     if (!taskId || (status && status !== "running")) return;
@@ -45,5 +46,5 @@ export function useAgentThreadPolling(
       if (timer) clearTimeout(timer);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [taskId, status, refresh]);
+  }, [taskId, status, refresh, resetNonce]);
 }

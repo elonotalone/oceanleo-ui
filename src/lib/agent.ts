@@ -330,6 +330,12 @@ export interface TaskDetail {
   task: AgentTask;
   messages: AgentMessage[];
   artifacts: AgentArtifact[];
+  /** 网关支持按游标只取新行时才会出现；没有这个字段就一直拉全表。 */
+  next_after_id?: number;
+}
+
+export interface GetTaskOptions {
+  afterId?: number;
 }
 
 /** 用户随消息上传的附件（文件/图片/语音）。上传到文件库拿到公网 url 后传给 agent：
@@ -804,8 +810,13 @@ export function stopTask(taskId: string) {
   });
 }
 
-export function getTask(taskId: string) {
-  return authed<TaskDetail>(`/v1/agent/tasks/${encodeURIComponent(taskId)}`);
+export function getTask(taskId: string, options?: GetTaskOptions) {
+  const afterId = options?.afterId;
+  const query =
+    typeof afterId === "number" && Number.isSafeInteger(afterId) && afterId >= 0
+      ? `?after_id=${afterId}`
+      : "";
+  return authed<TaskDetail>(`/v1/agent/tasks/${encodeURIComponent(taskId)}${query}`);
 }
 
 /**

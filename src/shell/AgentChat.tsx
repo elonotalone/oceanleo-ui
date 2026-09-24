@@ -101,10 +101,14 @@ import { RestartDraftButton } from "./RestartDraftButton";
 import {
   activeAgentProgressKey,
   buildAgentRenderItems,
-  sameAgentMessages,
 } from "../lib/agent-progress";
 import { historySessionHref } from "./workspace-route";
-import { agentMessagesChanged, threadPresentation, resolveTaskStatus } from "./agent-thread/rules";
+import { mergeAgentMessages } from "./agent-thread/merge";
+import { threadPresentation, resolveTaskStatus } from "./agent-thread/rules";
+import { createAgentThreadSync } from "./agent-thread/sync";
+import { thinkingLabel, useThinkingSeconds } from "./agent-thread/thinking-label";
+import { markSend, noteFirstVisibleReply, sentAtFor } from "./agent-thread/ttfv";
+import { latestTurn, userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling } from "./agent-thread/useAgentThreadPolling";
 
 /**
@@ -581,6 +585,7 @@ function AgentChatInner({
     Set<number>
   >(new Set());
   const [status, setStatus] = useState<string>("");
+  const [pollEpoch, setPollEpoch] = useState(0);
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
   const [taskSiteId, setTaskSiteId] = useState<string>("");
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
@@ -602,6 +607,7 @@ function AgentChatInner({
   // 轮询节奏据此收紧或退避。不能直接读 `messages`：本地乐观插入的用户消息
   // 也会改它，那不是服务端的动静。
   const serverMessagesRef = useRef<AgentMessage[]>([]);
+  const threadSyncRef = useRef(createAgentThreadSync());
   // 用户按过停止的那个 task。服务端要过一会儿才把状态落成 stopped，
   // 这期间任何一次 refresh 都会把 status 写回 running、把轮询和「思考中」放回来。
   // 有了它，本地判定优先，界面不会自己复活。
@@ -684,19 +690,31 @@ function AgentChatInner({
    * `changed` 是轮询节奏的输入：还在出字就跟紧，没动静就退避。
    */
   const refresh = useCallback(async (id: string): Promise<TaskPollResult> => {
-    const r = await getTask(id);
+    const pull = threadSyncRef.current.begin(id);
+    const r = await getTask(id, pull.options);
     if (loadedTaskRef.current !== id) return IDLE_POLL_RESULT;
     if (r.ok && r.data) {
-      const incoming = r.data.messages || [];
-      const changed = agentMessagesChanged(serverMessagesRef.current, incoming);
-      if (changed) serverMessagesRef.current = incoming;
+      const settled = threadSyncRef.current.settle(
+        pull,
+        serverMessagesRef.current,
+        r.data,
+      );
+      if (settled === null) return IDLE_POLL_RESULT;
+      const changed = settled !== serverMessagesRef.current;
+      serverMessagesRef.current = settled;
       setMessagesTaskId(id);
-      setMessages((current) =>
-        sameAgentMessages(current, incoming) ? current : incoming,
-      );
-      setActiveArtifactIds(
-        new Set((r.data.artifacts || []).map((artifact) => String(artifact.id))),
-      );
+      setMessages((current) => mergeAgentMessages(current, settled));
+      const artifactIds = (r.data.artifacts || []).map((artifact) => String(artifact.id));
+      setActiveArtifactIds((current) => {
+        if (
+          current &&
+          current.size === artifactIds.length &&
+          artifactIds.every((artifactId) => current.has(artifactId))
+        ) {
+          return current;
+        }
+        return new Set(artifactIds);
+      });
       // 用户已经按过停止：服务端还没跟上不代表它还在跑，本地判定优先。
       // 少了这一句，停止键按下去就是「界面停半秒又自己动起来」。
       const status = resolveTaskStatus({
@@ -712,6 +730,24 @@ function AgentChatInner({
     }
     return IDLE_POLL_RESULT;
   }, []);
+
+  const noteOutgoingTurn = useCallback((id: string, turn: number) => {
+    markSend(id, turn);
+    threadSyncRef.current.invalidate();
+  }, []);
+
+  const kickAfterFollowUp = useCallback(
+    (id: string) => {
+      setPollEpoch((epoch) => epoch + 1);
+      setStatus("running");
+      void refresh(id);
+    },
+    [refresh],
+  );
+
+  useEffect(() => {
+    if (taskId) noteFirstVisibleReply(taskId, messages);
+  }, [taskId, messages]);
 
   // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
   // 不要求宿主重新挂载 AgentChat；切到无 task 的新 session 时也不能残留上一段消息。
@@ -779,7 +815,7 @@ function AgentChatInner({
     workspace?.taskId,
   ]);
 
-  useAgentThreadPolling(taskId, status, refresh);
+  useAgentThreadPolling(taskId, status, refresh, pollEpoch);
 
   // 流式正文（可选，见 AgentChatProps.agentStreamEndpoint）。
   // 轮询在旁边照常跑，所以这条流唯一的职责是让正文**早一点**出现；
@@ -992,6 +1028,7 @@ function AgentChatInner({
         createdSessionId = bound?.id || linkedSessionId;
       }
       onTaskCreated?.(createdTaskId, createdSessionId || undefined);
+      markSend(createdTaskId, 1);
       void refresh(createdTaskId);
       return true;
     },
@@ -1044,6 +1081,7 @@ function AgentChatInner({
               : undefined,
         },
       ]);
+      noteOutgoingTurn(id, userTurnCount(messages) + 1);
       const result = await followUp(id, effectivePrompt, uploaded, editorContext);
       setBusy(false);
       if (!result.ok) {
@@ -1053,15 +1091,17 @@ function AgentChatInner({
         setError(result.error || tt("发送失败"));
         return;
       }
-      setStatus("running");
       // 对 ?q= 来说，已有 active free session 时 task 已经存在；成功接续后同样通知
       // 宿主清理一次性 query，避免既丢 prompt 又让 URL 永久残留 q。
       onTaskCreated?.(id);
-      void refresh(id);
+      kickAfterFollowUp(id);
     },
     [
       beginUserTurn,
       editorContextFor,
+      kickAfterFollowUp,
+      messages,
+      noteOutgoingTurn,
       noteUserTurn,
       onTaskCreated,
       readOnly,
@@ -1190,9 +1230,10 @@ function AgentChatInner({
       { id: optimisticMessageId, role: "user", kind: "text", content: effectivePrompt,
         meta: uploaded.length ? { attachments: uploaded } : undefined },
     ]);
+    noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
     const r = await followUp(taskId, effectivePrompt, uploaded, editorContext, orgId);
     setBusy(false);
-    if (r.ok) setStatus("running");
+    if (r.ok) kickAfterFollowUp(taskId);
     else {
       setMessages((current) =>
         current.filter((message) => message.id !== optimisticMessageId),
@@ -1252,6 +1293,15 @@ function AgentChatInner({
     busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
   const suggestions = presentation.suggestions;
+  const turnState = latestTurn(messages);
+  const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
+  const showThinkingTicker = Boolean(
+    presentation.thinking && !turnState.visible && sentAt !== null,
+  );
+  const thinkingSeconds = useThinkingSeconds(showThinkingTicker, sentAt);
+  const thinkingText = showThinkingTicker
+    ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars)
+    : tt("agent 正在思考…");
 
   const sendSuggestion = useCallback(
     async (text: string) => {
@@ -1264,15 +1314,19 @@ function AgentChatInner({
         ...m,
         { id: Date.now(), role: "user", kind: "text", content: text },
       ]);
+      noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
       const r = await followUp(taskId, text, undefined, editorContext);
       setBusy(false);
-      if (r.ok) setStatus("running");
+      if (r.ok) kickAfterFollowUp(taskId);
       else setError(r.error || tt("发送失败"));
     },
     [
       taskId,
       beginUserTurn,
       busy,
+      kickAfterFollowUp,
+      messages,
+      noteOutgoingTurn,
       readOnly,
       tt,
       editorContextFor,
@@ -1850,7 +1904,7 @@ function AgentChatInner({
           )}
           {presentation.thinking && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
-              <span className="v-spinner" /> {tt("agent 正在思考…")}
+              <span className="v-spinner" /> {thinkingText}
             </div>
           )}
           {/* 灵感（回答完成后给 3 个可点追问，对照 Manus）：从上到下渐变显示

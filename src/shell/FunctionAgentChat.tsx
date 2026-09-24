@@ -38,7 +38,12 @@ import {
 } from "react";
 import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
-import { agentMessagesChanged, resolveTaskStatus, threadPresentation } from "./agent-thread/rules";
+import { mergeAgentMessages } from "./agent-thread/merge";
+import { resolveTaskStatus, threadPresentation } from "./agent-thread/rules";
+import { createAgentThreadSync } from "./agent-thread/sync";
+import { thinkingLabel, useThinkingSeconds } from "./agent-thread/thinking-label";
+import { markSend, noteFirstVisibleReply, sentAtFor } from "./agent-thread/ttfv";
+import { latestTurn, userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
 import { LeoComposer } from "./LeoComposer";
 import {
@@ -103,7 +108,6 @@ import { appendOperatorRemark } from "../lib/operator-remark";
 import {
   activeAgentProgressKey,
   buildAgentRenderItems,
-  sameAgentMessages,
   takeUnreportedAgentArtifacts,
 } from "../lib/agent-progress";
 
@@ -596,10 +600,12 @@ export function FunctionAgentChat({
       : workspace?.taskId || localTaskId);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const serverMessagesRef = useRef<AgentMessage[]>([]);
+  const threadSyncRef = useRef(createAgentThreadSync());
   const stoppedTaskRef = useRef("");
   const [stoppedTaskId, setStoppedTaskId] = useState("");
   const [messagesTaskId, setMessagesTaskId] = useState("");
   const [status, setStatus] = useState("");
+  const [pollEpoch, setPollEpoch] = useState(0);
   const [input, setInput] = useState("");
   const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
     null,
@@ -1207,16 +1213,20 @@ export function FunctionAgentChat({
   }, [leftPaneOwner, slot]);
 
   const refresh = useCallback(async (id: string): Promise<TaskPollResult> => {
-    const r = await getTask(id);
+    const pull = threadSyncRef.current.begin(id);
+    const r = await getTask(id, pull.options);
     if (loadedTaskRef.current !== id) return { status: "", changed: false };
     if (r.ok && r.data) {
-      setMessagesTaskId(id);
-      const incoming = r.data.messages || [];
-      const changed = agentMessagesChanged(serverMessagesRef.current, incoming);
-      if (changed) serverMessagesRef.current = incoming;
-      setMessages((current) =>
-        sameAgentMessages(current, incoming) ? current : incoming,
+      const settled = threadSyncRef.current.settle(
+        pull,
+        serverMessagesRef.current,
+        r.data,
       );
+      if (settled === null) return { status: "", changed: false };
+      setMessagesTaskId(id);
+      const changed = settled !== serverMessagesRef.current;
+      serverMessagesRef.current = settled;
+      setMessages((current) => mergeAgentMessages(current, settled));
       const serverStatus = r.data.task?.status || "";
       const status = resolveTaskStatus({ serverStatus, taskId: id, stoppedTaskId: stoppedTaskRef.current });
       setStatus(status);
@@ -1253,13 +1263,34 @@ export function FunctionAgentChat({
     setMessagesTaskId("");
     setMessages([]);
     serverMessagesRef.current = [];
+    threadSyncRef.current = createAgentThreadSync();
     stoppedTaskRef.current = "";
     setStoppedTaskId("");
     setStatus("");
     void refresh(taskId);
   }, [taskId, refresh]);
 
-  useAgentThreadPolling(taskId, status, refresh);
+  useAgentThreadPolling(taskId, status, refresh, pollEpoch);
+
+  const noteOutgoingTurn = useCallback((id: string, turn: number) => {
+    markSend(id, turn);
+    threadSyncRef.current.invalidate();
+  }, []);
+
+  const kickAfterFollowUp = useCallback(
+    (id: string) => {
+      setPollEpoch((epoch) => epoch + 1);
+      stoppedTaskRef.current = "";
+      setStoppedTaskId("");
+      setStatus("running");
+      void refresh(id);
+    },
+    [refresh],
+  );
+
+  useEffect(() => {
+    if (taskId) noteFirstVisibleReply(taskId, messages);
+  }, [taskId, messages]);
 
   useEffect(() => {
     if (tab !== "agent") return;
@@ -1457,16 +1488,16 @@ export function FunctionAgentChat({
         void workspace.bindTask(r.data.task_id, effectivePrompt);
       }
       setStatus("running");
+      markSend(r.data.task_id, 1);
       void refresh(r.data.task_id);
       return;
     }
+    noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
     setBusy(true);
     const r = await followUp(taskId, effectivePrompt, uploaded, editorContext, orgId);
     setBusy(false);
     if (r.ok) {
-      stoppedTaskRef.current = "";
-      setStoppedTaskId("");
-      setStatus("running");
+      kickAfterFollowUp(taskId);
     }
     else {
       setMessages((current) =>
@@ -1529,6 +1560,15 @@ export function FunctionAgentChat({
     busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
   const suggestions = presentation.suggestions;
+  const turnState = latestTurn(messages);
+  const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
+  const showThinkingTicker = Boolean(
+    presentation.thinking && !turnState.visible && sentAt !== null,
+  );
+  const thinkingSeconds = useThinkingSeconds(showThinkingTicker, sentAt);
+  const thinkingText = showThinkingTicker
+    ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars)
+    : tt("agent 正在思考…");
 
   async function sendSuggestion(text: string) {
     if (!taskId || busy || sessionReadOnly) return;
@@ -1540,12 +1580,11 @@ export function FunctionAgentChat({
       ...m,
       { id: Date.now(), role: "user", kind: "text", content: effectiveText },
     ]);
+    noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
     const r = await followUp(taskId, effectiveText, undefined, editorContext);
     setBusy(false);
     if (r.ok) {
-      stoppedTaskRef.current = "";
-      setStoppedTaskId("");
-      setStatus("running");
+      kickAfterFollowUp(taskId);
     }
     else setError(r.error || tt("发送失败"));
   }
@@ -1694,7 +1733,7 @@ export function FunctionAgentChat({
           )}
           {presentation.thinking && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
-              <span className="v-spinner" /> {tt("agent 正在思考…")}
+              <span className="v-spinner" /> {thinkingText}
             </div>
           )}
           {/* 灵感（3 个可点追问）：从上到下渐变显示（错峰淡入，非流式）。 */}
