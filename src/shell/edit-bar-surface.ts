@@ -10,11 +10,25 @@
 
 import type { CSSProperties } from "react";
 
-/** 胶囊内容行高，与 SelectionToolbar 的 h-11 控件对齐后总高约 56px。 */
-export const EDIT_BAR_PILL_PADDING_PX = 6;
-export const EDIT_BAR_CONTROL_SIZE_PX = 44;
-/** 收起态圆形直径。取 48 而非控件的 44，收起后仍是一个舒适的点击目标。 */
-export const EDIT_BAR_COLLAPSED_SIZE_PX = 48;
+/** 控件 28 + 上下内边距 4 + 上下边框 1 = 38。 */
+export const EDIT_BAR_PILL_PADDING_PX = 4;
+export const EDIT_BAR_CONTROL_SIZE_PX = 28;
+export const EDIT_BAR_BORDER_PX = 1;
+/** 收起态圆形直径。32 + 触屏各向外 4 得到约 40 的可点区。 */
+export const EDIT_BAR_COLLAPSED_SIZE_PX = 32;
+export const EDIT_BAR_HEIGHT_PX =
+  EDIT_BAR_CONTROL_SIZE_PX +
+  EDIT_BAR_PILL_PADDING_PX * 2 +
+  EDIT_BAR_BORDER_PX * 2;
+
+/**
+ * 触屏把可点区扩到约 40px，不改变布局高度。
+ * 只用于条上的紧凑控件；More 弹层菜单行已经是 min-h-11。
+ */
+export const EDIT_BAR_TOUCH_EXTEND_CLASS =
+  "relative [@media(pointer:coarse)]:before:pointer-events-auto [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:-inset-y-1.5 [@media(pointer:coarse)]:before:content-['']";
+export const EDIT_BAR_COLLAPSED_TOUCH_EXTEND_CLASS =
+  "relative [@media(pointer:coarse)]:before:pointer-events-auto [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-1 [@media(pointer:coarse)]:before:content-['']";
 
 /** 背景：主题表面色兜到站点 card，再兜到白。94% 不透明度是可读性下限。 */
 const SURFACE =
@@ -40,7 +54,9 @@ export function editBarSurfaceStyle(lifted = false): CSSProperties {
   return {
     background: SURFACE,
     color: INK,
-    border: `1px solid ${LINE}`,
+    borderWidth: `${EDIT_BAR_BORDER_PX}px`,
+    borderStyle: "solid",
+    borderColor: LINE,
     boxShadow: lifted ? ELEVATION_LIFTED : ELEVATION,
     backdropFilter: BLUR,
     WebkitBackdropFilter: BLUR,
@@ -67,8 +83,8 @@ export function editBarCollapsedStyle(lifted = false): CSSProperties {
 
 /** 分段之间的竖线。四段分区靠它区分，插件不得自定义粗细颜色。 */
 export const EDIT_BAR_DIVIDER_CLASS =
-  "mx-1 h-6 w-px shrink-0 bg-[var(--pchrome-line,var(--divider,#e7e5e4))] opacity-60";
+  "mx-1 h-4 w-px shrink-0 bg-[var(--pchrome-line,var(--divider,#e7e5e4))] opacity-60";
 
 /** 段内单个图标按钮。圆形 hover 与胶囊外形呼应。 */
 export const EDIT_BAR_BUTTON_CLASS =
-  "grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--pchrome-ink-mid,var(--awb-muted,#57534e))] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] hover:text-[var(--pchrome-ink,var(--awb-text,#292524))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40";
+  `grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--pchrome-ink-mid,var(--awb-muted,#57534e))] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] hover:text-[var(--pchrome-ink,var(--awb-text,#292524))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;

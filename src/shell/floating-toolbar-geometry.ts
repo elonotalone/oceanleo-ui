@@ -18,8 +18,8 @@ export interface FloatingToolbarBounds {
 /**
  * Non-negative clearance between a docked edit bar's bottom edge and the
  * editor stage / website iframe top. V5 adjacency allows gap in [-2, 40];
- * keep a small positive gap so a taller floating chrome (p-1.5 + h-11 +
- * border ≈ 58–60px) cannot overlap the frame when the dock band is shorter.
+ * keep a small positive gap so a taller floating chrome (p-1 + h-7 +
+ * border ≈ 38px) cannot overlap the frame when the dock band is shorter.
  */
 export const DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX = 2;
 

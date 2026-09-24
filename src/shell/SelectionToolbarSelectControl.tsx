@@ -10,6 +10,7 @@ import {
   type SelectionControl,
   type SelectionControlValue,
 } from "./selection-context";
+import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import { selectionControlUsesIconOnly } from "./selection-toolbar-layout";
 
 export function SelectionToolbarSelectControl({
@@ -61,7 +62,7 @@ export function SelectionToolbarSelectControl({
     });
   const buttonClass = menu
     ? "group/control flex min-h-11 min-w-0 w-full items-center justify-start gap-2 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
-    : "group/control inline-flex h-11 min-w-11 shrink-0 max-w-48 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
+    : `group/control inline-flex h-7 min-w-7 shrink-0 max-w-48 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;
 
   return (
     <div
@@ -99,7 +100,7 @@ export function SelectionToolbarSelectControl({
         {control.icon && (
           <AdvancedEditorIcon
             name={control.icon}
-            className="h-[17px] w-[17px]"
+            className="h-4 w-4"
           />
         )}
         {!iconOnly && (

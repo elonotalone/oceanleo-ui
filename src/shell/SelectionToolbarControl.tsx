@@ -17,6 +17,7 @@ import {
   selectionControlSemantic,
   selectionControlUsesIconOnly,
 } from "./selection-toolbar-layout";
+import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import { SelectionToolbarSelectControl } from "./SelectionToolbarSelectControl";
 
 export function hasCanonicalAlignmentCapability(
@@ -75,11 +76,11 @@ export function SelectionToolbarControl({
       ...(history ? { history } : {}),
     });
   const icon = control.icon
-    ? <AdvancedEditorIcon name={control.icon} className="h-[17px] w-[17px]" />
+    ? <AdvancedEditorIcon name={control.icon} className="h-4 w-4" />
     : null;
   const buttonClass = menu
     ? "group/control flex min-h-11 min-w-0 w-full items-center justify-start gap-2 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
-    : "group/control inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35";
+    : `group/control inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;
 
   if (control.kind === "animation-gallery") {
     return (
@@ -130,7 +131,7 @@ export function SelectionToolbarControl({
           emit(next);
           onActivated?.();
         }}
-        className={`${buttonClass} ${iconOnly ? "w-11 px-0" : ""}`}
+        className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""}`}
         title={namedAlignmentLabel}
         aria-label={namedAlignmentLabel}
         aria-pressed={current !== undefined}
@@ -138,7 +139,7 @@ export function SelectionToolbarControl({
       >
         <AdvancedEditorIcon
           name={alignmentIcon}
-          className="h-[17px] w-[17px]"
+          className="h-4 w-4"
         />
         {!iconOnly && (
           <span className="whitespace-nowrap">{control.label}</span>

@@ -39,5 +39,5 @@ export function pluginChromeStyle(
 
 /** 顶栏与 edit bar 的固定行高，插件不得各自定义，否则跨插件切换会跳。 */
 export const PLUGIN_CHROME_HEADER_H = "h-14";
-export const PLUGIN_CHROME_EDITBAR_MIN_H = "min-h-12";
+export const PLUGIN_CHROME_EDITBAR_MIN_H = "min-h-10";
 export const PLUGIN_CHROME_PANEL_DEFAULT_W = 320;

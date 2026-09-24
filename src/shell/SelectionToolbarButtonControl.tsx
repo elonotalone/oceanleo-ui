@@ -56,7 +56,7 @@ export function SelectionToolbarButtonControl({
           }
           onActivated?.();
         }}
-        className={`${buttonClass} ${iconOnly ? "w-11 px-0" : ""} ${
+        className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""} ${
           activePanel ? "bg-[var(--surface-hover,rgba(0,0,0,.06))]" : ""
         } ${
           control.danger || control.tone === "danger"
@@ -101,7 +101,7 @@ export function SelectionToolbarButtonControl({
           emit(!active);
           onActivated?.();
         }}
-        className={`${buttonClass} ${iconOnly ? "w-11 px-0" : ""} ${
+        className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""} ${
           active ? "text-[var(--awb-on-accent,#fff)] shadow-sm" : ""
         }`}
         style={active ? { background: accent } : undefined}
@@ -126,7 +126,7 @@ export function SelectionToolbarButtonControl({
     return (
       <label
         className={`${buttonClass} relative ${
-          iconOnly ? "w-11 px-0" : ""
+          iconOnly ? "w-7 px-0" : ""
         } focus-within:ring-2 focus-within:ring-[var(--awb-accent,#7c3aed)]/40`}
         title={namedLabel}
       >

@@ -121,7 +121,7 @@ window.ResizeObserver = ToolbarResizeObserver;
 const CONTROL_COUNT = 160;
 const CONTROL_WIDTH = 40;
 const GAP = 4;
-const MORE_WIDTH = 44;
+const MORE_WIDTH = 28;
 
 function rect(width, left = 0, height = 44) {
   return {

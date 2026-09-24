@@ -5,6 +5,7 @@ import type {
   SelectionControl,
   SelectionControlValue,
 } from "./selection-context";
+import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 
 function asNumber(value: SelectionControlValue | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -40,8 +41,8 @@ export function SelectionToolbarNumberControl({
     );
   return (
     <div
-      className={`flex h-11 max-w-full min-w-0 shrink-0 items-center overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
-        menu ? "w-full" : ""
+      className={`flex max-w-full min-w-0 shrink-0 items-center overflow-x-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
+        menu ? "min-h-11 w-full" : `h-7 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`
       }`}
       title={namedLabel}
     >

@@ -48,7 +48,7 @@ export function SelectionToolbarAgentButton({
       aria-label={tt("AI 助手")}
       title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
     >
-      <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
+      <AdvancedEditorIcon name="agent" className="h-4 w-4" />
     </button>
   );
 }

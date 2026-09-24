@@ -186,7 +186,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
     ["ordinary-small", 70],
   ]);
 
-  const exactFit = partitionSelectionControls(controls, widths, 296);
+  const exactFit = partitionSelectionControls(controls, widths, 280);
   assert.deepEqual(
     exactFit.visible.map(({ id }) => id),
     ["ordinary-wide", "late-primary", "ordinary-small"],
@@ -198,7 +198,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
     ["authored-more", "context-only"],
   );
 
-  const onePixelNarrower = partitionSelectionControls(controls, widths, 295);
+  const onePixelNarrower = partitionSelectionControls(controls, widths, 279);
   assert.deepEqual(
     onePixelNarrower.visible.map(({ id }) => id),
     ["ordinary-wide", "late-primary"],
@@ -211,7 +211,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
   const priorityConstrained = partitionSelectionControls(
     controls,
     widths,
-    212,
+    205,
   );
   assert.deepEqual(
     priorityConstrained.visible.map(({ id }) => id),
@@ -224,7 +224,7 @@ test("measured thresholds preserve priority, semantic slots, and authored More",
   const widerPriorityProjection = partitionSelectionControls(
     controls,
     widths,
-    222,
+    206,
   );
   assert.deepEqual(
     widerPriorityProjection.visible.map(({ id }) => id),
@@ -1338,7 +1338,7 @@ test("floating capacity is the boundary width, never the strip left of the bar's
       "primary cjk ordinary danger",
     );
     assert.equal(toolbar.style.maxInlineSize, "1084px");
-    // 边界本身变窄（宿主面板收窄到 200）才折进 More：44 + 4 + 70 ≤ 184 < +4+160。
+    // 边界本身变窄（宿主面板收窄到 200）才折进 More：28 + 4 + 70 ≤ 184 < +4+160。
     containerWidth = 200;
     toolbarOffsetLeft = 920;
     await act(async () => {

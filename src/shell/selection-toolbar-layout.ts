@@ -13,8 +13,8 @@ export const SELECTION_TOOLBAR_VIEWPORT_MAX =
 /** Matches the compact row's `gap-1` spacing. */
 export const SELECTION_TOOLBAR_CONTROL_GAP = 4;
 
-/** Matches the More launcher's `h-11 w-11` hit target. */
-export const SELECTION_TOOLBAR_MORE_BUTTON_WIDTH = 44;
+/** Matches the More launcher's `h-7 w-7` hit target. */
+export const SELECTION_TOOLBAR_MORE_BUTTON_WIDTH = 28;
 
 /**
  * Fractional ResizeObserver values can differ by a sub-pixel across layout
@@ -243,7 +243,7 @@ export function estimatedSelectionControlWidth(
   if (selectionControlUsesIconOnly(control)) {
     if (control.kind === "number") return 132;
     if (control.kind === "select") return 112;
-    return 44;
+    return 28;
   }
   if (control.kind === "range") return 210;
   if (control.kind === "text") return 180;
@@ -261,11 +261,11 @@ export function estimatedSelectionControlWidth(
     return Math.max(112, Math.min(192, 52 + contentLength * 12));
   }
   if (control.kind === "panel") {
-    return Math.max(44, Math.min(124, 28 + control.label.length * 12));
+    return Math.max(28, Math.min(124, 28 + control.label.length * 12));
   }
   return control.label
-    ? Math.max(44, Math.min(144, 24 + control.label.length * 12))
-    : 44;
+    ? Math.max(28, Math.min(144, 24 + control.label.length * 12))
+    : 28;
 }
 
 /**

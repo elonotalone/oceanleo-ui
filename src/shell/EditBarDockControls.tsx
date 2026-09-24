@@ -1,8 +1,7 @@
 "use client";
 
 // 左右两个 ⠿ 拖拽手柄已移除：它们占掉两个控件位，且把「怎么移动这条」变成
-// 需要瞄准的操作。展开胶囊：双击条上任意位置（含按键）并按住拖、松手落下；
-// 第一次单击仍立即触发按键，不延迟。选中后按空白也能直接跟手。
+// 需要瞄准的操作。展开胶囊：先单击一下，再按住拖动；收起成圆时按住即可拖。
 // 见 edit-bar-dock-controller。这里只剩两个常驻控件：固定、以及收起后的圆。
 // 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）；收起走 Ctrl/⌘+. 。
 
@@ -16,6 +15,7 @@ import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon
 import type { EditBarDockMode } from "./edit-bar-dock-state";
 import {
   EDIT_BAR_BUTTON_CLASS,
+  EDIT_BAR_COLLAPSED_TOUCH_EXTEND_CLASS,
   editBarCollapsedStyle,
 } from "./edit-bar-surface";
 
@@ -55,7 +55,7 @@ export function EditBarHistoryControls({
         aria-label={tt("撤销")}
         title={tt("撤销")}
       >
-        <AdvancedEditorIcon name="undo" className="h-[18px] w-[18px]" />
+        <AdvancedEditorIcon name="undo" className="h-4 w-4" />
       </button>
       <button
         type="button"
@@ -67,7 +67,7 @@ export function EditBarHistoryControls({
         aria-label={tt("重做")}
         title={tt("重做")}
       >
-        <AdvancedEditorIcon name="redo" className="h-[18px] w-[18px]" />
+        <AdvancedEditorIcon name="redo" className="h-4 w-4" />
       </button>
     </div>
   );
@@ -161,7 +161,7 @@ export function EditBarCollapsedPill({
       onClick={onClick}
       onKeyDown={onKeyDown}
       style={editBarCollapsedStyle(dragging)}
-      className={`relative grid shrink-0 touch-none select-none place-items-center outline-none transition-shadow duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${
+      className={`${EDIT_BAR_COLLAPSED_TOUCH_EXTEND_CLASS} grid shrink-0 touch-none select-none place-items-center outline-none transition-shadow duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${
  dragging ? "cursor-grabbing" : "cursor-grab"
  }`}
       aria-label={label}
@@ -171,7 +171,7 @@ export function EditBarCollapsedPill({
     >
       <AdvancedEditorIcon
         name={icon}
-        className="h-[18px] w-[18px] text-[var(--pchrome-ink,var(--awb-text,#292524))]"
+        className="h-4 w-4 text-[var(--pchrome-ink,var(--awb-text,#292524))]"
       />
       {busy && (
         <span
@@ -182,7 +182,7 @@ export function EditBarCollapsedPill({
       {!busy && dirty && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-[10px] top-[10px] h-[6px] w-[6px] rounded-full bg-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]"
+          className="pointer-events-none absolute right-[6px] top-[6px] h-[6px] w-[6px] rounded-full bg-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]"
         />
       )}
     </button>
