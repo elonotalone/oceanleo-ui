@@ -746,6 +746,17 @@ export function ResultCanvas({
       };
     }
     rightSlot.setRightFrameless(false);
+    const editorOpening = Boolean(
+      activeCanvasMode === "edit" &&
+        activeCanvasEntry?.libraryItem &&
+        editorCapabilityFor(activeCanvasEntry.libraryItem).available,
+    );
+    if (editorOpening) {
+      rightSlot.setRightEditorHeader(true);
+      return () => {
+        rightSlot.setRightEditorHeader(false);
+      };
+    }
     if (activeCanvasEntry) return;
     rightSlot.setRightEditorHeader(false);
     rightSlot.setRightLabel(
@@ -764,6 +775,7 @@ export function ResultCanvas({
     accent,
     activeCapability,
     activeCanvasEntry,
+    activeCanvasMode,
     rightSlot,
     select,
     selected,

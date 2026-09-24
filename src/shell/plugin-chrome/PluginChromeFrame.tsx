@@ -23,7 +23,7 @@ import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
 import { AdvancedLayoutContext } from "../advanced-layout-context";
-import { useConsoleAgentFocus } from "../SplitWorkspace";
+import * as SplitWorkspaceMod from "../SplitWorkspace";
 import {
   PluginThemeToggle,
   usePluginTheme,
@@ -145,6 +145,9 @@ const ACTION_CLASS =
 const ICON_ACTION_CLASS =
   "grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
+const AI_ICON_ACTION_CLASS =
+  "grid h-7 w-7 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
+
 export interface PluginChromeFrameProps {
   /** 决定主题档与 accent 身份色。13 件插件都必须有值。 */
   pluginId: PluginThemeId;
@@ -255,7 +258,26 @@ export function PluginChromeFrame({
   const { activePanel, isOpen } = controller;
   const { layout: chromeLayout, transientPanel, hostController } =
     usePluginChromeLayout(controller);
-  const consoleAgentFocus = useConsoleAgentFocus();
+  const consoleAgentFocus = SplitWorkspaceMod.useConsoleAgentFocus();
+  const rightPaneSlot =
+    typeof SplitWorkspaceMod.useRightPaneSlot === "function"
+      ? SplitWorkspaceMod.useRightPaneSlot()
+      : null;
+  const rightPaneSlotRef = useRef(rightPaneSlot);
+  rightPaneSlotRef.current = rightPaneSlot;
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  useEffect(() => {
+    return () => {
+      rightPaneSlotRef.current?.setRightMaximized?.(false);
+    };
+  }, []);
+  useEffect(() => {
+    if (rightPaneSlot || windowActions?.onToggleFullscreen) return;
+    const sync = () => setNativeFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, [rightPaneSlot, windowActions?.onToggleFullscreen]);
   // 工作台左栏已有操控台时，AI 键切那一份，不再在 chrome 左栏再挂一棵 agent。
   // 拿不到 handler（独立页 / gallery）仍走下面的内建抽屉。
   const layout = useMemo(() => {
@@ -334,6 +356,37 @@ export function PluginChromeFrame({
   // 差别只在挂载点：那里由选区工具条长出来，这里由外壳恒定出一个，
   // 所以没有选中对象时 AI 键也在。
   const agentActive = layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
+  const maximize = rightPaneSlot
+    ? {
+        pressed: rightPaneSlot.rightMaximized === true,
+        label: tt(
+          rightPaneSlot.rightMaximized ? "退出右侧全屏" : "右侧全屏",
+        ),
+        onClick: () => rightPaneSlot.toggleRightMaximized(),
+      }
+    : windowActions?.onToggleFullscreen
+      ? {
+          pressed: windowActions.fullscreen === true,
+          label: tt(windowActions.fullscreen ? "退出全屏" : "全屏"),
+          onClick: windowActions.onToggleFullscreen,
+        }
+      : typeof document !== "undefined" &&
+          document.fullscreenEnabled !== false &&
+          typeof document.documentElement?.requestFullscreen === "function"
+        ? {
+            pressed: nativeFullscreen,
+            label: tt(nativeFullscreen ? "退出全屏" : "全屏"),
+            onClick: () => {
+              if (document.fullscreenElement) {
+                void document.exitFullscreen?.();
+                return;
+              }
+              const target =
+                editBarGestures.layerRef.current || document.documentElement;
+              void target.requestFullscreen?.();
+            },
+          }
+        : null;
 
   if (chrome === "host") {
     return (
@@ -494,35 +547,22 @@ export function PluginChromeFrame({
             />
             <PluginThemeToggle pluginId={pluginId} />
 
-            {windowActions?.onToggleFullscreen && (
+            {maximize ? (
               <button
                 type="button"
-                onClick={windowActions.onToggleFullscreen}
+                data-global-row-slot="maximize"
+                onClick={maximize.onClick}
                 className={ICON_ACTION_CLASS}
-                // 全屏是个开关而不是一次性动作，读屏要能报出「已按下」。
-                aria-pressed={windowActions.fullscreen === true}
-                aria-label={tt(windowActions.fullscreen ? "退出全屏" : "全屏")}
-                title={tt(windowActions.fullscreen ? "退出全屏" : "全屏")}
+                aria-pressed={maximize.pressed}
+                aria-label={maximize.label}
+                title={maximize.label}
               >
                 <AdvancedEditorIcon
-                  name={
-                    windowActions.fullscreen ? "fullscreen-exit" : "fullscreen"
-                  }
+                  name={maximize.pressed ? "fullscreen-exit" : "fullscreen"}
                   className="h-4 w-4"
                 />
               </button>
-            )}
-            {windowActions?.onClose && (
-              <button
-                type="button"
-                onClick={windowActions.onClose}
-                className={ICON_ACTION_CLASS}
-                aria-label={tt("关闭")}
-                title={tt("关闭")}
-              >
-                <AdvancedEditorIcon name="close" className="h-4 w-4" />
-              </button>
-            )}
+            ) : null}
           </div>
         </header>
         </div>
@@ -545,7 +585,7 @@ export function PluginChromeFrame({
           {/*
             手势层（W31 / W4）。有可挂的宿主时这一行的内容整体交给共享浮层，
             行本身降级成停靠带（与 10 件共享插件那侧 EditBarDockHost 的分工相同），
-            于是「双击条上任意位置（含按键）并按住拖 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
+            于是「点一下，再按住拖 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
             还没有宿主时内容原样留在行里——AI 键不许因为动效起不来而消失。
             宿主晚一拍挂上必须补装，不能把控制器 portalRoot 的空快照当成没有宿主。
           */}
@@ -596,7 +636,7 @@ export function PluginChromeFrame({
                 ? layout.closeDrawer()
                 : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
             }
-            className={`${ICON_ACTION_CLASS} ${
+            className={`${AI_ICON_ACTION_CLASS} ${
               agentActive
                 ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent)] text-[var(--pchrome-on-accent)] hover:bg-[var(--pchrome-accent)] hover:text-[var(--pchrome-on-accent)]"
                 : ""

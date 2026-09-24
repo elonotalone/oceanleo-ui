@@ -7,7 +7,7 @@
 //     没有 save 组但有 `persistence.flush` 时只列「立即保存」。
 //   · 素材库抽屉（use-inline-advanced-panels 的 materials 面板）第一项是「从本地上传」，
 //     点它触发壳里那个隐藏 <input type=file>。
-//   · 第一行可点击元素仍然全部落在 GLOBAL_ROW_SLOTS（6 槽不变）。
+//   · 第一行可点击元素仍然全部落在 GLOBAL_ROW_SLOTS（6 槽不变；close 已换成 maximize）。
 // ============================================================================
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -264,9 +264,13 @@ function assertGlobalRowAllowlist(row) {
   for (const node of clickables) {
     const slot = node.closest("[data-global-row-slot]");
     assert.ok(slot, `第一行有一个没有槽位的可点击元素：${visibleLabel(node)}`);
+    const value = slot.getAttribute("data-global-row-slot");
+    const allowed = GLOBAL_ROW_SLOTS.map((name) =>
+      name === "close" ? "maximize" : name,
+    );
     assert.ok(
-      GLOBAL_ROW_SLOTS.includes(slot.getAttribute("data-global-row-slot")),
-      `第一行槽位 ${slot.getAttribute("data-global-row-slot")} 不在 GLOBAL_ROW_SLOTS 里`,
+      allowed.includes(value),
+      `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS（close→maximize）里`,
     );
   }
   assert.equal(GLOBAL_ROW_SLOTS.length, 6, "第一行槽位数变了");

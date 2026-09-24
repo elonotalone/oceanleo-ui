@@ -9,16 +9,15 @@
 //
 //   ┌──────────────┊──────────────────────────────┐
 //   │ 左（默认 1/3）  ┊ 右（默认 2/3）                 │
-//   │  标题行 … [▯]   ┊  ✕ 标题                        │
+//   │  标题行 … [▯]   ┊  标题（显隐只走左栏那个开关）     │
 //   └──────────────┊──────────────────────────────┘
 //                  ↑ 中间竖线，左右拖动改比例（localStorage 记忆）
 //
 // - 默认左 1/3、右 2/3；拖动竖线改比例，按 storageKey 记进 localStorage。
 // - 移动端（< md）：上下堆叠，竖线/拖动隐藏。
 // - 框架无关：左右内容都由消费端传入。
-// - 2026-09-07（操作员，agent 顶栏统一）：两栏标题上原有的「这一栏切大屏 / 恢复双栏」
-//   全屏键（IconExpand/IconCompress）连同其 maxed 状态一并删除——右版面的显隐由
-//   左栏标题右侧的 IconRightPanelToggle 一个键负责，不再有第三个图标。
+// - 右版面的显隐由左栏标题右侧的 IconRightPanelToggle 负责。编辑器顶栏最右是
+//   「右侧全屏」（rightMaximized）：左栏 CSS 隐藏但保持挂载，不写 URL。
 // ============================================================================
 
 import {
@@ -127,6 +126,10 @@ export interface RightPaneSlot {
   /** 发布当前编辑栏的停靠/拖放呈现；ownerId 防止旧编辑器 cleanup 覆盖新实例。 */
   setEditBarDockPresentation: (state: EditBarDockPresentation) => void;
   clearEditBarDockPresentation: (ownerId: string) => void;
+  /** 右栏占满工作区，左栏隐藏但保持挂载。没有分栏时调用方应退回浏览器全屏。 */
+  rightMaximized: boolean;
+  toggleRightMaximized: () => void;
+  setRightMaximized: (value: boolean) => void;
 }
 const RightPaneCtx = createContext<RightPaneSlot | null>(null);
 /** 供 ResultCanvas 等右栏 body 后代使用：把标签条装到右栏标题位（去框中框）。 */
@@ -212,8 +215,7 @@ export interface SplitWorkspaceProps {
    *
    * 给了 library：
    *   - 关（默认）：右版面不渲染 → 单栏（左栏占满）。左栏标题右侧出现「库」按钮（黑/accent）。
-   *   - 开：右版面渲染 `right`，其顶栏 = ✕(左，关闭右版面) / 「预览」标题。
-   *     左栏那枚「库」按钮此时【隐藏】（避免出现两个「库」）。
+   *   - 开：右版面渲染 `right`，其顶栏只有标题（显隐只走左栏标题里的开关）。
    * 不传 library：右版面按 `right` 是否为 null 决定单/双栏（旧行为，无「库」按钮）。 */
   library?: SplitLibraryConfig;
 }
@@ -263,8 +265,8 @@ export function SplitWorkspace({
   const tt = useUI();
   // 「库」= 右版面显隐开关（不内建内容）。**默认开**（宗旨 v12.1，操作员 2026-07-04）：
   // 一打开功能页就同时显示「操作台 + 库」，库首屏是「使用指南（navigator）」——让用户
-  // 一眼看到这个 app 怎么用、有哪些示例，而不必自己点「库」才看得见。用户仍可点右版面
-  // 顶栏 ✕ 收起成单栏。支持受控（消费端持有 open）与非受控（本组件自管）。
+  // 一眼看到这个 app 怎么用、有哪些示例，而不必自己点「库」才看得见。用户仍可用左栏
+  // 标题里的开关收起成单栏。支持受控（消费端持有 open）与非受控（本组件自管）。
   const [internalOpen, setInternalOpen] = useState(true);
   const libraryControlled = library?.open !== undefined;
   const libraryOpen = library != null && (libraryControlled ? Boolean(library.open) : internalOpen);
@@ -282,7 +284,7 @@ export function SplitWorkspace({
   // 右上角「模型组合」是 AppShell 的绝对定位浮层，右栏标题行正好住在同一个角上：
   // 操作员截图里它压住的就是这条标题行上的「我的库」页签——不需要等到编辑器打开。
   // 普通 agent 对话页右栏默认收起（AgentChat `rightOpen` 初值 false），选择框照常在；
-  // 用户点开「库」它让位，点 ✕ 收起它回来。
+  // 用户点开「库」它让位，点左栏标题里的开关收起它回来。
   useWorkbenchOpenClaim(hasRight);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(defaultRatio);
@@ -324,6 +326,7 @@ export function SplitWorkspace({
       focusAgent() {
         const current = consoleAgentFocusHandlerRef.current;
         if (!current) return false;
+        setRightMaximizedState(false);
         current.handler();
         return true;
       },
@@ -397,6 +400,16 @@ export function SplitWorkspace({
   const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
   const [rightFrameless, setRightFrameless] = useState(false);
   const [rightEditorHeader, setRightEditorHeader] = useState(false);
+  const [rightMaximized, setRightMaximizedState] = useState(false);
+  const rightMaximizedRef = useRef(false);
+  rightMaximizedRef.current = rightMaximized;
+  const setRightMaximized = useCallback((value: boolean) => {
+    setRightMaximizedState(value);
+  }, []);
+  const toggleRightMaximized = useCallback(() => {
+    setRightMaximizedState((current) => !current);
+  }, []);
+  const wasRightEditorHeaderRef = useRef(false);
   const editBarLayerRef = useRef<HTMLElement>(null);
   const editBarDockRef = useRef<HTMLDivElement>(null);
   const [editBarDockPresentation, setEditBarDockPresentation] =
@@ -416,8 +429,13 @@ export function SplitWorkspace({
         setEditBarDockPresentation((current) =>
           current?.ownerId === ownerId ? null : current,
         ),
+      get rightMaximized() {
+        return rightMaximizedRef.current;
+      },
+      toggleRightMaximized,
+      setRightMaximized,
     }),
-    [],
+    [setRightMaximized, toggleRightMaximized],
   );
   const effectiveRightLabel = rightLabelOverride ?? rightLabel;
   const [detail, setDetail] = useState<WorkspacePaneDetail | null>(null);
@@ -435,12 +453,30 @@ export function SplitWorkspace({
     if (!hasRight) {
       setDetail(null);
       setActiveLibraryPanelId(null);
+      setRightMaximizedState(false);
     }
   }, [hasRight]);
+  useEffect(() => {
+    if (wasRightEditorHeaderRef.current && !rightEditorHeader) {
+      setRightMaximizedState(false);
+    }
+    wasRightEditorHeaderRef.current = rightEditorHeader;
+  }, [rightEditorHeader]);
+  useEffect(() => {
+    if (!rightMaximized) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (event.defaultPrevented || event.isComposing) return;
+      setRightMaximizedState(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [rightMaximized]);
   const showDetail = useCallback((next: WorkspacePaneDetail) => {
     // Selection drawers live in the semantic left operation pane. Revealing
     // them must never leave browser fullscreen (that is `fullscreenRef`'s
     // business, not ours), so this only swaps which left layer is visible.
+    setRightMaximizedState(false);
     setActiveLibraryPanelId(null);
     setDetail(next);
   }, []);
@@ -477,6 +513,7 @@ export function SplitWorkspace({
   const openLibraryPanel = useCallback(
     (id: WorkspaceLibraryPanelId) => {
       if (!libraryPanels[id]) return false;
+      setRightMaximizedState(false);
       setDetail(null);
       setActiveLibraryPanelId(id);
       return true;
@@ -647,6 +684,7 @@ export function SplitWorkspace({
     );
   }
 
+  const paneMaximized = hasRight && rightMaximized;
   const activeLeftPanel = activeDetail || activeLibraryPanel;
   const presentedLeftPanel = activeDetail || activeLibraryPanel;
   const detailLabel = presentedLeftPanel ? (
@@ -676,7 +714,9 @@ export function SplitWorkspace({
       data-left-panel={
         activeDetail ? "tool-detail" : activeLibraryPanel ? "library" : "app"
       }
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70"
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70${
+        paneMaximized ? " hidden" : ""
+      }`}
       style={
         hydrated || !hasRight
           ? { flexBasis: appBasis, flexGrow: 0, flexShrink: 0 }
@@ -715,7 +755,11 @@ export function SplitWorkspace({
       }`}
       style={
         hydrated || !hasRight
-          ? { flexBasis: libraryBasis, flexGrow: 1, flexShrink: 1 }
+          ? {
+              flexBasis: paneMaximized ? "100%" : libraryBasis,
+              flexGrow: 1,
+              flexShrink: 1,
+            }
           : {
               flexBasis: `${(1 - defaultRatio) * 100}%`,
               flexGrow: 1,
@@ -728,19 +772,6 @@ export function SplitWorkspace({
           data-pane-header
           className="relative z-40 flex min-h-[2.5rem] shrink-0 items-center gap-2 border-b border-stone-100 px-3 py-1.5"
         >
-          {!rightEditorHeader && (
-            <button
-              type="button"
-              onClick={() => {
-                clearDetail();
-                setLibraryOpen(false);
-              }}
-              aria-label={tt("关闭")}
-              className="shrink-0 rounded p-1 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
-            >
-              ✕
-            </button>
-          )}
           <div className="min-w-0 flex-1">
             {rightLabelOverride != null ? (
               rightLabelOverride
@@ -762,7 +793,7 @@ export function SplitWorkspace({
     </section>
   );
 
-  const divider = hasRight ? (
+  const divider = hasRight && !paneMaximized ? (
     <div
       key="workspace-divider"
       role="separator"
@@ -786,6 +817,7 @@ export function SplitWorkspace({
     <div
       ref={wrapRef}
       data-workspace-split
+      data-workspace-maximized={paneMaximized ? "library" : undefined}
       className={`relative gap-0 bg-[var(--bg,#f7f7f5)] p-1.5 ${className} md:flex`}
       style={{ height: rootHeight, backgroundColor: "var(--bg,#f7f7f5)" }}
     >

@@ -234,9 +234,12 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
         `第一行有一个没有槽位的可点击元素：${node.getAttribute("aria-label") || node.textContent}`,
       );
       const value = slot.getAttribute("data-global-row-slot");
+      const allowed = GLOBAL_ROW_SLOTS.map((name) =>
+        name === "close" ? "maximize" : name,
+      );
       assert.ok(
-        GLOBAL_ROW_SLOTS.includes(value),
-        `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS 里`,
+        allowed.includes(value),
+        `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS（close→maximize）里`,
       );
     }
     assert.equal(

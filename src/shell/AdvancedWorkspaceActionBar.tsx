@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { Button, IconButton } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
@@ -12,7 +12,28 @@ import {
 import { AnchoredPopover } from "./anchored-popover";
 import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
-import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
+import {
+  useRightPaneSlot,
+  type WorkspaceLibraryPanelId,
+} from "./SplitWorkspace";
+
+function browserFullscreenAvailable(): boolean {
+  if (typeof document === "undefined") return false;
+  if (document.fullscreenEnabled === false) return false;
+  return typeof document.documentElement?.requestFullscreen === "function";
+}
+
+function toggleEditorBrowserFullscreen() {
+  if (typeof document === "undefined") return;
+  if (document.fullscreenElement) {
+    void document.exitFullscreen?.();
+    return;
+  }
+  const target =
+    document.querySelector<HTMLElement>("[data-inline-editor]") ||
+    document.documentElement;
+  void target.requestFullscreen?.();
+}
 
 /** 保存菜单里「立即保存」这一项的 id（无 save 组动作、但有 `persistence.flush` 时出现）。 */
 export const SAVE_NOW_ACTION_ID = "flush-now";
@@ -58,6 +79,30 @@ export function AdvancedWorkspaceActionBar({
   onUploadFiles?: (files: File[]) => void;
 }) {
   const tt = useUI();
+  const rightPaneSlot = useRightPaneSlot();
+  const [browserFullscreen, setBrowserFullscreen] = useState(false);
+  useEffect(() => {
+    if (rightPaneSlot) return;
+    const sync = () => setBrowserFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, [rightPaneSlot]);
+  const maximize = rightPaneSlot
+    ? {
+        pressed: rightPaneSlot.rightMaximized === true,
+        label: tt(
+          rightPaneSlot.rightMaximized ? "退出右侧全屏" : "右侧全屏",
+        ),
+        toggle: () => rightPaneSlot.toggleRightMaximized(),
+      }
+    : browserFullscreenAvailable()
+      ? {
+          pressed: browserFullscreen,
+          label: tt(browserFullscreen ? "退出全屏" : "全屏"),
+          toggle: toggleEditorBrowserFullscreen,
+        }
+      : null;
   const downloadButtonRef = useRef<HTMLButtonElement>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
@@ -357,12 +402,18 @@ export function AdvancedWorkspaceActionBar({
         <div data-global-row-slot="theme">
           {pluginThemeId ? <PluginThemeToggle pluginId={pluginThemeId} /> : null}
         </div>
-        <div data-global-row-slot="close">
-          {showClose && onClose ? (
+        <div data-global-row-slot="maximize">
+          {maximize ? (
             <IconButton
-              onClick={onClose}
-              label={tt("关闭")}
-              icon={<AdvancedEditorIcon name="close" className="h-4 w-4" />}
+              onClick={maximize.toggle}
+              label={maximize.label}
+              aria-pressed={maximize.pressed}
+              icon={
+                <AdvancedEditorIcon
+                  name={maximize.pressed ? "fullscreen-exit" : "fullscreen"}
+                  className="h-4 w-4"
+                />
+              }
             />
           ) : null}
         </div>
