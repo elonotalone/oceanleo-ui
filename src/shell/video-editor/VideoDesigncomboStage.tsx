@@ -22,6 +22,7 @@ import {
   reportW19ProSaved,
   resolveW19Handoff,
   w19ItemKey,
+  w19OfficeProbeItem,
   W19_PRO_SAVED_AS_NEW_VERSION,
 } from "../../i18n/ui/messages/eas-w19-copy";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -122,7 +123,11 @@ export function VideoDesigncomboStage({
   const gateHandoff = useModeSwitchHandoff();
   const pendingHandoff =
     peekW19EnterHandoff(w19ItemKey("video-timeline", item)) ?? gateHandoff;
-  const editorSource = useEditorHandoffSource(item, pendingHandoff);
+  const officeProbeItem = useMemo(
+    () => w19OfficeProbeItem(item, pendingHandoff),
+    [item, pendingHandoff],
+  );
+  const editorSource = useEditorHandoffSource(officeProbeItem, pendingHandoff);
   // 过渡门的 ready 信号（plugin-ui U4）：工程载入结束就算首帧可见。
   useModeSwitchReady(!loading);
   const readonly =

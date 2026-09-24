@@ -258,22 +258,26 @@ export function PdfRoute({
         // §2.4 SC 1.4.5 / F2：扫描件必须说明自己没有文本层。规范 v2 §1 之后
         // 这句提示不再是画布顶部的黑条，而是宿主 PluginChromeNotices 的左下角小胶囊
         // （id 与 PDF_FAILURE_CODES 的 `pdf-no-text-layer` 同名，验收脚本按它找）。
-        notices: [
-          {
-            id: "w19-pro-saved-as-new-version",
-            text: W19_PRO_SAVED_AS_NEW_VERSION,
-            severity: "info" as const,
-          },
-          ...(editor.readerState === "image-only"
-            ? [
-                {
-                  id: "pdf-no-text-layer",
-                  text: "此文档无文本层，只能按页浏览与标注，无法全文检索或复制文字。",
-                  severity: "info" as const,
-                },
-              ]
-            : []),
-        ],
+        notices: editor.readerState === "image-only"
+          ? [
+              {
+                id: "pdf-no-text-layer",
+                text: "此文档无文本层，只能按页浏览与标注，无法全文检索或复制文字。",
+                severity: "info" as const,
+              },
+              {
+                id: "w19-pro-saved-as-new-version",
+                text: W19_PRO_SAVED_AS_NEW_VERSION,
+                severity: "info" as const,
+              },
+            ]
+          : [
+              {
+                id: "w19-pro-saved-as-new-version",
+                text: W19_PRO_SAVED_AS_NEW_VERSION,
+                severity: "info" as const,
+              },
+            ],
         // flag=`next` 或专业模式走 EmbedPDF 叶子（普通模式我们自己画、专业
         // 模式换成上游即用查看器，**同一份字节**）。`effectiveCore` 判定保留，
         // 两面之间经同一个过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。

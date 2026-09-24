@@ -220,6 +220,20 @@ export function resolveW19Handoff(
   return { kind: "empty" };
 }
 
+/** 已经能从内存 / 现成 url 交稿时，不要把同一地址再交给 Office 源去 fetch。 */
+export function w19OfficeProbeItem<
+  T extends {
+    url?: string;
+    previewUrl?: string;
+    artifactId?: string;
+    revisionId?: string;
+    meta?: Record<string, unknown>;
+  },
+>(item: T, handoff?: W19Handoff | null): T {
+  if (resolveW19Handoff(item, handoff).kind === "empty") return item;
+  return { ...item, url: undefined, previewUrl: undefined };
+}
+
 export function applyW19HandoffToItem<
   T extends {
     url?: string;
