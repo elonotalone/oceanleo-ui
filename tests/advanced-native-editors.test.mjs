@@ -137,6 +137,9 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
     source("../src/shell/use-inline-advanced-panels.tsx");
+  const leaveNotice =
+    source("../src/shell/advanced-background-save-notice.ts") +
+    source("../src/i18n/ui/messages/eas-w14-copy.ts");
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const image = source("../src/shell/image-editor/use-fabric-image-editor.ts");
@@ -151,7 +154,12 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   assert.match(shell, /beforeunload/);
   assert.match(shell, /handleDrop/);
   assert.match(shell, /source: "drop"/);
-  assert.match(shell, /修改仍安全保留在当前编辑器，但尚未同步到云端/);
+  // W14 拆掉「仍要离开?」确认框。后台冲刷失败时人必须仍知道
+  // 改动在本机、还没同步到云端：钉新提示的文案 + DOM 钩子，壳必须接上离开。
+  assert.match(shell, /leaveAdvancedWorkbench/);
+  assert.match(leaveNotice, /有 \{n\} 份修改还没保存上/);
+  assert.match(leaveNotice, /data-advanced-background-save-notice/);
+  assert.match(leaveNotice, /data-advanced-background-save-retry/);
   assert.match(shell, /useAdvancedRecovery/);
   for (const [name, editor] of [
     ["richdoc", rich],
