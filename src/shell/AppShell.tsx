@@ -37,7 +37,7 @@ import { formatMoney, useLedgerCurrency } from "../lib/money";
 import { ToastProvider } from "../ui";
 import { IconPanel, IconSearch } from "./icons";
 import { SidebarAccountCluster } from "./account/SidebarAccountCluster";
-import { SettingsModalHost } from "./account/SettingsModalHost";
+import { SettingsModalHost, openSettingsModal } from "./account/SettingsModalHost";
 import { LeoShellMount } from "./leo/LeoShellMount";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
@@ -253,9 +253,12 @@ export interface AppShellProps {
   pinnedNavCount?: number;
   /** 账户区点击退出 */
   onSignOut?: () => void;
-  /** 左下角账户按钮跳转路由（默认 /settings） */
+  /**
+   * 旧消费端仍可传账户跳转。左下角账户簇不再用它：点账户打开设置弹层，
+   * 不整页去 `/settings`。默认值只留给未改接线的站与源码钉。
+   */
   accountHref?: string;
-  /** 账户按钮点击回调（i18n 站用自己的 router 做 locale-aware 跳转）；传了则覆盖 accountHref 的 Link。 */
+  /** 旧账户按钮点击回调；账户簇打开设置弹层后不再走这条。 */
   onAccountClick?: () => void;
   /**
    * 账号菜单里「获取帮助」的地址（外壳上没有别的帮助入口）。`null` = 不显示；
@@ -911,7 +914,8 @@ function AppShellInner({
   const historyNavParts = partitionHistoryNav();
 
   const sidebarBody = wholeSidebarScrolls ? (
-    /* "whole"：品牌、搜索、导航、最近区、余额全在同一个滚动容器里一起走，
+    /* "whole"：品牌、搜索、导航、最近区、余额全在同一个滚动容器里一起走。
+       余额是菜单关上也能看见的 creditsText，不是只藏在账户菜单里。
        左下角账户按钮留在容器外，因此滚多远它都不动（操作员点名的那一颗）。 */
     <>
       <div
@@ -925,6 +929,15 @@ function AppShellInner({
         {historySection}
         <div className="space-y-3 px-3 pb-3 pt-3">
           {renderSwitchers()}
+          <button
+            type="button"
+            data-oceanleo-sidebar-credits
+            aria-label={tt("余额")}
+            onClick={() => openSettingsModal("billing")}
+            className="block w-full truncate px-1 text-left text-[12px] tabular-nums text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
+            {creditsText}
+          </button>
         </div>
       </div>
 

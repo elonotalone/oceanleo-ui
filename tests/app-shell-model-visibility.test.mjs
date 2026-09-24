@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -280,14 +281,27 @@ test("fusion-mounted shell prefixes in-site nav hrefs and leaves production href
   assert.doesNotMatch(production, /href="\/s\//);
 });
 
-test("account button defaults to /settings and oceanleo nav has no cloud computer item", () => {
+test("account menu opens the settings modal and oceanleo nav has no cloud computer item", () => {
   const markup = renderShell("/", "", "sidebar", {
     siteId: "oceanleo",
     siteKey: "oceanleo",
     userEmail: "op@oceanleo.com",
     nav: [{ label: "工作台", href: "/workspace" }],
   });
-  assert.match(markup, /href="\/settings"/);
+  assert.match(markup, /data-account-trigger/);
+  assert.doesNotMatch(markup, /href="\/settings"/);
   assert.doesNotMatch(markup, /云电脑/);
   assert.doesNotMatch(markup, /href="\/computers"/);
+
+  const accountMenu = readFileSync(new URL("../src/shell/AccountMenu.tsx", import.meta.url), "utf8");
+  assert.match(accountMenu, /label=\{tt\("设置"\)\}/);
+  assert.match(accountMenu, /onSelect=\{\(\) => settings\("general"\)\}/);
+  const cluster = readFileSync(
+    new URL("../src/shell/account/SidebarAccountCluster.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(cluster, /onOpenSettings=\{props\.onOpenSettings \?\? openSettingsModal\}/);
+  const shell = readFileSync(new URL("../src/shell/AppShell.tsx", import.meta.url), "utf8");
+  assert.match(shell, /<SettingsModalHost \/>/);
+  assert.match(shell, /<SidebarAccountCluster /);
 });
