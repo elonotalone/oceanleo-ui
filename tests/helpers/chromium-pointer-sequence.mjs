@@ -25,8 +25,90 @@ export function resetPointerCaptureShim() {
   captures.clear();
 }
 
+/**
+ * 假时钟。`now` 一往前走，就兑现已经到期的 `schedule` 回调。
+ * 控制器里的武装窗 / 抬起 / 吞点击用的是 `window.setTimeout`，
+ * 测试必须走这套，不能靠墙上的 250/1500ms，整包负载下那些定时器会抢跑。
+ */
 export function createPointerClock(start = 1000) {
-  return { now: start };
+  let now = start;
+  const timers = new Map();
+  let nextId = 1;
+  const flush = () => {
+    let ran = true;
+    while (ran) {
+      ran = false;
+      for (const [id, entry] of [...timers]) {
+        if (entry.due <= now) {
+          timers.delete(id);
+          ran = true;
+          entry.fn();
+        }
+      }
+    }
+  };
+  return {
+    get now() {
+      return now;
+    },
+    set now(value) {
+      now = Number(value);
+      flush();
+    },
+    schedule(fn, delayMs) {
+      const id = nextId++;
+      timers.set(id, {
+        due: now + Math.max(0, Number(delayMs) || 0),
+        fn,
+      });
+      return id;
+    },
+    cancel(id) {
+      timers.delete(id);
+    },
+  };
+}
+
+/** 把 `window.setTimeout`（delay≥16）接到假时钟上。0 延时仍走真定时器，留给 React / act。 */
+export function installClockTimers(clock) {
+  const targets = [];
+  if (typeof window !== "undefined") targets.push(window);
+  if (typeof globalThis !== "undefined" && globalThis !== window) {
+    targets.push(globalThis);
+  }
+  const ours = new Set();
+  const restores = targets.map((target) => {
+    const realSet = target.setTimeout.bind(target);
+    const realClear = target.clearTimeout.bind(target);
+    target.setTimeout = (fn, delay, ...args) => {
+      const ms = typeof delay === "number" ? delay : Number(delay) || 0;
+      if (typeof fn !== "function" || ms < 16) {
+        return realSet(fn, delay, ...args);
+      }
+      const id = clock.schedule(() => {
+        ours.delete(id);
+        fn(...args);
+      }, ms);
+      ours.add(id);
+      return id;
+    };
+    target.clearTimeout = (id) => {
+      if (ours.has(id)) {
+        ours.delete(id);
+        clock.cancel(id);
+        return;
+      }
+      realClear(id);
+    };
+    return () => {
+      target.setTimeout = realSet;
+      target.clearTimeout = realClear;
+    };
+  });
+  return () => {
+    for (const restore of restores) restore();
+    ours.clear();
+  };
 }
 
 function define(event, values) {

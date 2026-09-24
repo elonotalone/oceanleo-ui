@@ -13,6 +13,7 @@ import React, { act } from "react";
 
 import {
   createPointerClock,
+  installClockTimers,
   pointerCancel,
   pointerDown,
   pointerMove,
@@ -211,10 +212,15 @@ function barOf(container) {
   return container.querySelector("[data-workspace-edit-bar-toolbar]");
 }
 
+function beginClock(start) {
+  const clock = createPointerClock(start);
+  return { clock, restoreTimers: installClockTimers(clock) };
+}
+
 async function holdDrag(target, clock, { pointerId, pointerType, from, to, afterMs }) {
-  clock.now += afterMs;
   let down;
   await act(async () => {
+    clock.now += afterMs;
     down = pointerDown(target, {
       clock,
       pointerId,
@@ -255,29 +261,33 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
       assert.ok(anywhere() && bar(), "条和内容必须在");
       assert.match(bar().className, /touch-none/, "条根必须 touch-action: none");
       for (const gap of [150, 800, 1499]) {
-        const clock = createPointerClock(10_000 + gap);
-        const before = translateOf(bar());
-        await act(async () => {
-          tap(anywhere(), { clock, clientX: 400, clientY: 70, pointerId: 1 });
-        });
-        assert.ok(bar().hasAttribute("data-edit-bar-armed"), `${gap}ms 前第一下松开后应武装`);
-        await holdDrag(anywhere(), clock, {
-          pointerId: 1,
-          pointerType: "mouse",
-          from: { x: 400, y: 70 },
-          to: { x: 460, y: 70 },
-          afterMs: gap,
-        });
-        const dragged = translateOf(bar());
-        assert.ok(before && dragged, "必须量得到位置");
-        assert.ok(
-          Math.abs(dragged.x - before.x) >= 40,
-          `${pluginId} 隔 ${gap}ms 应拖动，实际 ${before.x} → ${dragged.x}`,
-        );
-        clock.now += 16;
-        await act(async () => {
-          pointerUp(anywhere(), { clock, pointerId: 1, clientX: 460, clientY: 70 });
-        });
+        const { clock, restoreTimers } = beginClock(10_000 + gap);
+        try {
+          const before = translateOf(bar());
+          await act(async () => {
+            tap(anywhere(), { clock, clientX: 400, clientY: 70, pointerId: 1 });
+          });
+          assert.ok(bar().hasAttribute("data-edit-bar-armed"), `${gap}ms 前第一下松开后应武装`);
+          await holdDrag(anywhere(), clock, {
+            pointerId: 1,
+            pointerType: "mouse",
+            from: { x: 400, y: 70 },
+            to: { x: 460, y: 70 },
+            afterMs: gap,
+          });
+          const dragged = translateOf(bar());
+          assert.ok(before && dragged, "必须量得到位置");
+          assert.ok(
+            Math.abs(dragged.x - before.x) >= 40,
+            `${pluginId} 隔 ${gap}ms 应拖动，实际 ${before.x} → ${dragged.x}`,
+          );
+          clock.now += 16;
+          await act(async () => {
+            pointerUp(anywhere(), { clock, pointerId: 1, clientX: 460, clientY: 70 });
+          });
+        } finally {
+          restoreTimers();
+        }
       }
     } finally {
       await mounted.unmount();
@@ -302,7 +312,8 @@ test("隔 1501 ms：第二下是普通点击，再一下才拖", async () => {
   );
   try {
     const btn = mounted.container.querySelector("[data-test-bold]");
-    const clock = createPointerClock(20_000);
+    const { clock, restoreTimers } = beginClock(20_000);
+    try {
     const before = translateOf(barOf(mounted.container));
     await act(async () => {
       tap(btn, { clock, clientX: 200, clientY: 70, pointerId: 1 });
@@ -333,6 +344,9 @@ test("隔 1501 ms：第二下是普通点击，再一下才拖", async () => {
     });
     const dragged = translateOf(barOf(mounted.container));
     assert.ok(Math.abs(dragged.x - afterLate.x) >= 40, "窗口内的下一一下才拖");
+    } finally {
+      restoreTimers();
+    }
   } finally {
     await mounted.unmount();
     restore();
@@ -366,7 +380,8 @@ test("第一下加粗恰好一次；第二下按住或拖动 onClick 0；快速�
   try {
     const boldBtn = mounted.container.querySelector("[data-test-bold]");
     const undoBtn = mounted.container.querySelector("[data-test-undo]");
-    const clock = createPointerClock(30_000);
+    const { clock, restoreTimers } = beginClock(30_000);
+    try {
     await act(async () => {
       tap(boldBtn, { clock, clientX: 180, clientY: 70, pointerId: 1 });
     });
@@ -393,6 +408,9 @@ test("第一下加粗恰好一次；第二下按住或拖动 onClick 0；快速�
       tap(undoBtn, { clock, clientX: 220, clientY: 70, pointerId: 2, clickCount: 2 });
     });
     assert.equal(undo, 2, "第二下快速点撤销必须再撤销一次");
+    } finally {
+      restoreTimers();
+    }
   } finally {
     await mounted.unmount();
     restore();
@@ -416,15 +434,17 @@ test("第二下按住 300ms 不动：没有 click，带 data-edit-bar-lifted；E
   try {
     const btn = mounted.container.querySelector("[data-test-tool]");
     const bar = () => barOf(mounted.container);
-    const clock = createPointerClock(40_000);
+    const { clock, restoreTimers } = beginClock(40_000);
+    try {
     await act(async () => {
       tap(btn, { clock, clientX: 200, clientY: 70, pointerId: 1 });
     });
     const before = translateOf(bar());
-    clock.now += 100;
-    const down = pointerDown(btn, { clock, pointerId: 1, clientX: 200, clientY: 70 });
-    clock.now += 300;
+    let down;
     await act(async () => {
+      clock.now += 100;
+      down = pointerDown(btn, { clock, pointerId: 1, clientX: 200, clientY: 70 });
+      clock.now += 300;
       pointerMove(btn, {
         clock,
         pointerId: down.pointerId,
@@ -444,6 +464,9 @@ test("第二下按住 300ms 不动：没有 click，带 data-edit-bar-lifted；E
     });
     assert.deepEqual(translateOf(bar()), before, "Esc 必须恢复位置");
     assert.equal(clicks, 1, "Esc 不得产生 click");
+    } finally {
+      restoreTimers();
+    }
   } finally {
     await mounted.unmount();
     restore();
@@ -459,7 +482,8 @@ test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；bu
   try {
     const anywhere = mounted.container.querySelector("[data-test-edit-bar]");
     const bar = () => barOf(mounted.container);
-    const clock = createPointerClock(50_000);
+    const { clock, restoreTimers } = beginClock(50_000);
+    try {
     await act(async () => {
       tap(anywhere, {
         clock,
@@ -539,6 +563,9 @@ test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；bu
       });
     });
     assert.deepEqual(translateOf(bar()), mid, "buttons 0 视为松开，不得继续跟手");
+    } finally {
+      restoreTimers();
+    }
   } finally {
     await mounted.unmount();
     restore();
@@ -571,7 +598,8 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
     const range = mounted.container.querySelector("[data-test-slider]");
     const stage = mounted.container.querySelector("[data-test-stage]");
     const bar = () => barOf(mounted.container);
-    const clock = createPointerClock(60_000);
+    const { clock, restoreTimers } = beginClock(60_000);
+    try {
     await act(async () => {
       tap(anywhere, { clock, clientX: 400, clientY: 70, pointerId: 1 });
     });
@@ -632,6 +660,9 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
       1,
       "同一页会话提示只出一次",
     );
+    } finally {
+      restoreTimers();
+    }
   } finally {
     await mounted.unmount();
     restore();
@@ -657,7 +688,8 @@ test("收起的圆：按住就能拖，点一下展开", async () => {
     });
     const pill = mounted.container.querySelector("[data-edit-bar-collapsed-pill]");
     assert.ok(pill, "Ctrl+. 应收成圆");
-    const clock = createPointerClock(70_000);
+    const { clock, restoreTimers } = beginClock(70_000);
+    try {
     const parked = translateOf(bar());
     await act(async () => {
       const down = pointerDown(pill, { clock, pointerId: 8, clientX: 200, clientY: 200 });
@@ -682,6 +714,9 @@ test("收起的圆：按住就能拖，点一下展开", async () => {
       );
     });
     assert.ok(mounted.container.querySelector("[data-test-edit-bar]"), "点圆应展开");
+    } finally {
+      restoreTimers();
+    }
   } finally {
     await mounted.unmount();
     restore();
