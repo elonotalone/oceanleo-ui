@@ -310,7 +310,7 @@ export function CreateComputerDialog({
                 ref={nameRef}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-neutral-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
                 aria-label={tt("名字")}
               />
             </label>
@@ -319,7 +319,7 @@ export function CreateComputerDialog({
               <select
                 value={regionId}
                 onChange={(event) => setRegionId(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
                 aria-label={tt("地域")}
               >
                 {catalog.regions.map((region) => (

@@ -371,7 +371,7 @@ function ServerPageContent({
                 title={tt(CARD_COPY[item].title)}
                 tabIndex={card === item || (!card && index === 0) ? 0 : -1}
                 disabled={!available}
-                className={`inline-flex h-9 items-center gap-2 rounded-full px-2 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-40 ${card === item ? `${tone.rowActive} text-zinc-950 dark:text-neutral-50` : tone.iconBtn}`}
+                className={`inline-flex h-11 items-center gap-2 rounded-full px-2 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-40 ${card === item ? `${tone.rowActive} text-zinc-950 dark:text-neutral-50` : tone.iconBtn}`}
                 onClick={() => openCard(item)}
                 onKeyDown={(event) => {
                   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

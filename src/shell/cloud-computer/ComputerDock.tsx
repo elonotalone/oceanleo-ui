@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import Link from "next/link";
+import { useRef, useState, type MouseEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
   type CloudComputerClient,
@@ -44,9 +44,19 @@ export function ComputerDock({
   computers?: Computer[];
 }) {
   const tt = useUI();
+  const router = useRouter();
   const hidden = currentDomainFamily() === "cn";
   const { computers, mounted, mountedId, rememberedId, setMountedId, refresh, loading } =
     useCloudComputers({ client, computers: computersProp });
+  const mountedHref = mounted ? serverPageHref(mounted.id) : devicesCloudHref();
+  const openMounted = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.defaultPrevented) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    router.push(mountedHref);
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
@@ -90,7 +100,7 @@ export function ComputerDock({
             ref={connectBtnRef}
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
+            className="flex min-h-11 items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
             aria-label={failedOnly ? tt("开通失败") : tt("接入云电脑")}
             data-oceanleo-cc-dock-empty
           >
@@ -110,7 +120,7 @@ export function ComputerDock({
             <button
               type="button"
               role="menuitem"
-              className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
+              className="block min-h-11 w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
               onClick={() => {
                 setMenuOpen(false);
                 setCreateOpen(true);
@@ -121,7 +131,7 @@ export function ComputerDock({
             <button
               type="button"
               role="menuitem"
-              className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
+              className="block min-h-11 w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
               onClick={() => {
                 setMenuOpen(false);
                 setConnectOpen(true);
@@ -133,7 +143,7 @@ export function ComputerDock({
               <a
                 href={devicesCloudHref()}
                 role="menuitem"
-                className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
+                className="block min-h-11 w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
                 data-oceanleo-cc-dock-pending-progress
                 onClick={() => setMenuOpen(false)}
               >
@@ -144,7 +154,7 @@ export function ComputerDock({
               <a
                 href={devicesCloudHref()}
                 role="menuitem"
-                className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
+                className="block min-h-11 w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
                 data-oceanleo-cc-dock-failed
                 onClick={() => setMenuOpen(false)}
               >
@@ -155,13 +165,13 @@ export function ComputerDock({
         </>
       ) : (
         <div className="flex items-center gap-1">
-          <Link
-            href={mounted ? serverPageHref(mounted.id) : devicesCloudHref()}
-            prefetch={true}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
+          <a
+            href={mountedHref}
+            className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
             data-oceanleo-cc-dock-mounted
             data-oceanleo-cc-status={mountedState || ""}
             aria-label={mounted?.name || tt("接入云电脑")}
+            onClick={openMounted}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
@@ -175,14 +185,14 @@ export function ComputerDock({
             {mountedState ? (
               <span className="text-neutral-500">{statusWord(mountedState, tt)}</span>
             ) : null}
-          </Link>
+          </a>
           {connected.length > 1 && (
             <>
               <button
                 ref={switchBtnRef}
                 type="button"
                 onClick={() => setSwitchOpen((open) => !open)}
-                className="rounded-lg px-1 py-1 text-neutral-500 hover:bg-neutral-100"
+                className="min-h-11 min-w-11 rounded-lg px-1 py-1 text-neutral-500 hover:bg-neutral-100"
                 aria-label={tt("接入云电脑")}
                 data-oceanleo-cc-switch-toggle
               >
@@ -206,7 +216,7 @@ export function ComputerDock({
                       type="button"
                       role="menuitem"
                       data-oceanleo-cc-switch-item={item.id}
-                      className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50 ${
+                      className={`block min-h-11 w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50 ${
                         item.id === mountedId ? "font-medium" : ""
                       }`}
                       onClick={() => {

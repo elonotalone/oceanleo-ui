@@ -39,14 +39,14 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className={`flex min-h-8 cursor-pointer gap-3 border-b py-2 ${tone.border}`}>
+    <label className={`flex min-h-11 cursor-pointer gap-3 border-b py-2 ${tone.border}`}>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         data-oceanleo-acp-setting={setting}
         onChange={(event) => onChange(event.currentTarget.checked)}
-        className="mt-0.5 size-4 shrink-0 accent-indigo-600"
+        className="mt-0.5 size-11 shrink-0 accent-indigo-600"
       />
       <span className="min-w-0">
         <span className="block text-[13px] font-medium">{label}</span>
@@ -181,7 +181,7 @@ export function AcpSettings({
           <button
             type="button"
             onClick={onClose}
-            className={`h-8 rounded-lg px-2 py-1 text-[13px] ${tone.hover} ${tone.muted}`}
+            className={`h-11 rounded-lg px-2 py-1 text-[13px] ${tone.hover} ${tone.muted}`}
             data-oceanleo-acp-settings-close=""
           >
             {tt("关闭")}
@@ -195,7 +195,7 @@ export function AcpSettings({
               <select
                 value={dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? dialog.selectedModel : ""}
                 onChange={(event) => dialog.setSelectedModel(event.currentTarget.value)}
-                className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
+                className={`mt-1 w-full rounded-lg border h-11 px-2 text-[13px] ${tone.input}`}
                 data-oceanleo-acp-settings-model=""
               >
                 {!dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
@@ -215,7 +215,7 @@ export function AcpSettings({
               <select
                 value={dialog.selectedMode}
                 onChange={(event) => dialog.setMode(event.currentTarget.value)}
-                className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
+                className={`mt-1 w-full rounded-lg border h-11 px-2 text-[13px] ${tone.input}`}
                 data-oceanleo-acp-settings-mode=""
               >
                 {dialog.mode.options.map((option) => (
@@ -247,7 +247,7 @@ export function AcpSettings({
                   <select
                     value={String(option.current)}
                     onChange={(event) => dialog.setConfig(option.id, event.currentTarget.value)}
-                    className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
+                    className={`mt-1 w-full rounded-lg border h-11 px-2 text-[13px] ${tone.input}`}
                     data-oceanleo-acp-setting-config={option.id}
                   >
                     {option.options.map((choice) => (
@@ -265,7 +265,7 @@ export function AcpSettings({
                 <input
                   value={String(option.current)}
                   onChange={(event) => dialog.setConfig(option.id, event.currentTarget.value)}
-                  className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
+                  className={`mt-1 w-full rounded-lg border h-11 px-2 text-[13px] ${tone.input}`}
                   data-oceanleo-acp-setting-config={option.id}
                 />
               </label>
@@ -320,7 +320,7 @@ export function AcpSettings({
                 {!programStatus?.installed ? (
                   <button
                     type="button"
-                    className={`h-8 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                    className={`h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
                     onClick={() => onRequestInstall(wsProgram)}
                   >
                     {tt("安装")}
@@ -328,7 +328,7 @@ export function AcpSettings({
                 ) : programStatus.logged_in === true ? (
                   <button
                     type="button"
-                    className={`h-8 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                    className={`h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
                     onClick={() => wsProgram === "hermes" ? onRequestKey(wsProgram) : dialog.logoutProgram(wsProgram)}
                     data-oceanleo-acp-settings-logout={wsProgram}
                   >
@@ -337,7 +337,7 @@ export function AcpSettings({
                 ) : (
                   <button
                     type="button"
-                    className={`h-8 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
+                    className={`h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
                     onClick={() => onRequestLogin(wsProgram)}
                     data-oceanleo-acp-settings-login={wsProgram}
                   >
@@ -347,7 +347,7 @@ export function AcpSettings({
                 {programStatus?.installed ? (
                   <button
                     type="button"
-                    className={`h-8 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
+                    className={`h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.border} ${tone.hover}`}
                     onClick={() => onRequestKey(wsProgram)}
                     data-oceanleo-acp-settings-key={wsProgram}
                   >
@@ -366,7 +366,7 @@ export function AcpSettings({
                 type="button"
                 disabled={Boolean(saving)}
                 onClick={() => setConfirmUninstall(true)}
-                className={`mt-3 h-8 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
+                className={`mt-3 h-11 rounded-lg border px-3 py-1.5 text-xs ${tone.danger}`}
                 data-oceanleo-acp-uninstall=""
               >
                 {tt("卸载")}

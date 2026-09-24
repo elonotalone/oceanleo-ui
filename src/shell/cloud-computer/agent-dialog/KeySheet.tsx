@@ -109,7 +109,7 @@ export function KeySheet({
           data-oceanleo-cc-key-close=""
           disabled={busy}
           onClick={onClose}
-          className={`h-8 rounded-lg px-2 py-1 text-[13px] disabled:opacity-50 ${tone.muted} ${tone.hover}`}
+          className={`h-11 rounded-lg px-2 py-1 text-[13px] disabled:opacity-50 ${tone.muted} ${tone.hover}`}
         >
           {tt("关闭")}
         </button>
@@ -121,14 +121,14 @@ export function KeySheet({
         <>
           <ul className="mt-2 text-[13px]" data-oceanleo-cc-provider-credentials="">
             {savedProviders?.map((row) => (
-              <li key={row.id} className={`flex min-h-8 flex-wrap items-center justify-between gap-2 border-b py-2 ${tone.border}`} data-oceanleo-cc-provider={row.id}>
+              <li key={row.id} className={`flex min-h-11 flex-wrap items-center justify-between gap-2 border-b py-2 ${tone.border}`} data-oceanleo-cc-provider={row.id}>
                 <span>{row.label || providerLabel(row.id)} · {row.auth === "key" ? tt("已存 Key") : tt("已登录")}
                   {row.tier === "free" ? ` · ${tt("免费账户（没有余额时付费模型用不了）")}` : row.tier === "paid" ? ` · ${tt("付费账户")}` : ""}
                 </span>
                 {row.auth === "key" ? (
-                  <button type="button" disabled={busy} data-oceanleo-cc-key-remove={row.id} onClick={() => void run("remove", row.id)} className={`h-8 rounded-lg px-2 text-[13px] ${tone.hover}`}>{tt("移除")}</button>
+                  <button type="button" disabled={busy} data-oceanleo-cc-key-remove={row.id} onClick={() => void run("remove", row.id)} className={`h-11 rounded-lg px-2 text-[13px] ${tone.hover}`}>{tt("移除")}</button>
                 ) : onLogout ? (
-                  <button type="button" disabled={busy} onClick={() => onLogout(row.id)} className={`h-8 rounded-lg px-2 text-[13px] ${tone.hover}`}>{tt("退出登录")}</button>
+                  <button type="button" disabled={busy} onClick={() => onLogout(row.id)} className={`h-11 rounded-lg px-2 text-[13px] ${tone.hover}`}>{tt("退出登录")}</button>
                 ) : null}
               </li>
             ))}
@@ -137,13 +137,13 @@ export function KeySheet({
           <p className="mt-3 text-[13px] font-medium">{tt("添加 Key")}</p>
           <label className={`mt-2 block text-[12px] ${tone.muted}`}>
             {tt("供应商")}
-            <select data-oceanleo-cc-key-provider="" value={provider} disabled={busy} onChange={(event) => setProvider(event.target.value)} className={`mt-1 h-8 w-full h-8 rounded-lg border px-2 text-[13px] ${tone.input}`}>
+            <select data-oceanleo-cc-key-provider="" value={provider} disabled={busy} onChange={(event) => setProvider(event.target.value)} className={`mt-1 h-11 w-full h-11 rounded-lg border px-2 text-[13px] ${tone.input}`}>
               {HERMES_PROVIDERS.map((name) => (
                 <option key={name} value={name}>{providerLabel(name)}{savedProviders?.some((row) => row.id === name && row.auth === "key") ? ` · ${tt("已存 Key")}` : ""}</option>
               ))}
             </select>
           </label>
-          {!savedProviders && hasKey ? <button type="button" disabled={busy} onClick={() => void run("remove")} className={`mt-2 h-8 rounded-lg px-2 text-[13px] ${tone.hover}`}>{tt("移除")}</button> : null}
+          {!savedProviders && hasKey ? <button type="button" disabled={busy} onClick={() => void run("remove")} className={`mt-2 h-11 rounded-lg px-2 text-[13px] ${tone.hover}`}>{tt("移除")}</button> : null}
         </>
       ) : <p className={`mt-2 text-[12px] ${tone.muted}`}>{program === "claude" ? "Anthropic API Key" : program === "codex" ? "OpenAI API Key" : "Cursor API Key"} · {hasKey ? tt("已存 Key") : tt("未存 Key")}</p>}
       {hasKey && program !== "hermes" ? (
@@ -156,7 +156,7 @@ export function KeySheet({
             data-oceanleo-cc-key-remove=""
             disabled={busy}
             onClick={() => void run("remove")}
-            className={`h-8 rounded-lg border px-2 py-1 text-[13px] disabled:opacity-50 ${tone.border} ${tone.hover}`}
+            className={`h-11 rounded-lg border px-2 py-1 text-[13px] disabled:opacity-50 ${tone.border} ${tone.hover}`}
           >
             {tt("移除")}
           </button>
@@ -172,7 +172,7 @@ export function KeySheet({
               value={key}
               disabled={busy}
               onChange={(event) => setKey(event.target.value)}
-              className={`mt-1 w-full h-8 rounded-lg border px-2 py-1.5 font-mono text-[13px] outline-none disabled:opacity-50 ${tone.input}`}
+              className={`mt-1 w-full h-11 rounded-lg border px-2 py-1.5 font-mono text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 disabled:opacity-50 ${tone.input}`}
             />
           </label>
           <div className="mt-3">
@@ -180,7 +180,7 @@ export function KeySheet({
               type="submit"
               data-oceanleo-cc-key-save=""
               disabled={busy || !key.trim()}
-              className={`h-8 rounded-lg px-3 py-1.5 text-[13px] font-medium disabled:opacity-50 ${tone.primary}`}
+              className={`h-11 rounded-lg px-3 py-1.5 text-[13px] font-medium disabled:opacity-50 ${tone.primary}`}
             >
               {tt("保存")}
             </button>

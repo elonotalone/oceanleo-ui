@@ -114,7 +114,7 @@ export function ProgramStrip({
                 type="button"
                 disabled={item.disabled}
                 onClick={() => onSettings(item.id)}
-                className={`${tone.iconBtn} size-7`}
+                className={`${tone.iconBtn} size-11`}
                 aria-label={`${item.label} · ${settingsLabel || tt("设置")}`}
                 title={settingsLabel || tt("设置")}
                 data-oceanleo-program-strip-settings={item.id}

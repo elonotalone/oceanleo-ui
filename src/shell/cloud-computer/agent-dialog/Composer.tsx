@@ -107,7 +107,7 @@ export function Composer({
     >
       {creditNotice ? <div className={`mb-2 text-[12px] ${tone.muted}`} data-oceanleo-credit-recovery="">
         <p>{noticeCopy(tt, creditNotice.code, null, creditNotice.provider)}</p>
-        {alternative ? <button type="button" className={`mt-1 h-8 rounded-lg px-2 text-[13px] ${tone.hover}`} onClick={() => dialog.setSelectedModel(alternative.id)}>{tt("换成 {model}", { model: alternative.name })}</button> : null}
+        {alternative ? <button type="button" className={`mt-1 h-11 rounded-lg px-2 text-[13px] ${tone.hover}`} onClick={() => dialog.setSelectedModel(alternative.id)}>{tt("换成 {model}", { model: alternative.name })}</button> : null}
       </div> : null}
       <div className="flex items-end gap-2">
         <div className="relative flex min-w-0 flex-1 flex-col gap-2">
@@ -128,7 +128,7 @@ export function Composer({
             }}
             placeholder={tt("输入你想说的话")}
             rows={3}
-            className={`min-h-[4.5rem] w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none disabled:opacity-50 ${tone.input}`}
+            className={`min-h-[4.5rem] w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 disabled:opacity-50 ${tone.input}`}
           />
           {commandMatches.length > 0 ? (
             <ul

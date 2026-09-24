@@ -164,7 +164,7 @@ function QuestionView({
           onChange={(event) => setText(event.target.value)}
           rows={2}
           placeholder={tt("写下回答")}
-          className={`w-full resize-none rounded-lg border px-2 py-1.5 text-[12px] outline-none ${tone.input}`}
+          className={`w-full resize-none rounded-lg border px-2 py-1.5 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 ${tone.input}`}
         />
         <button
           type="submit"
@@ -216,7 +216,7 @@ function QuestionView({
               onChange={(event) =>
                 setValues((current) => ({ ...current, [field.id]: event.target.value }))
               }
-              className={`w-full rounded-lg border px-2 py-1 text-[12px] outline-none ${tone.input}`}
+              className={`w-full rounded-lg border px-2 py-1 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 ${tone.input}`}
             />
           )}
         </fieldset>

@@ -432,7 +432,7 @@ export function ConnectServerDialog({
                 onChange={(event) =>
                   dispatch({ type: "set_name", name: event.target.value })
                 }
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] outline-none"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
                 aria-label={tt("名字")}
                 data-oceanleo-cc-name
               />

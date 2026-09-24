@@ -350,7 +350,7 @@ export function CliCard({
               <h3 className="text-[13px] font-semibold">{tt("AI 命令行设置")}</h3>
               <button
                 type="button"
-                className={`h-8 rounded-md px-2 text-[13px] leading-none ${tone.hover} ${tone.muted}`}
+                className={`h-11 rounded-md px-2 text-[13px] leading-none ${tone.hover} ${tone.muted}`}
                 aria-label={tt("关闭")}
                 title={tt("关闭")}
                 onClick={() => setShowSettings(false)}

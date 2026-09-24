@@ -83,7 +83,7 @@ export function CliSettingsPanel({
                     <span>{option.label}</span>
                     <input
                       type="checkbox"
-                      className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
+                      className="size-11 shrink-0 accent-zinc-900 dark:accent-neutral-100"
                       checked={checked}
                       data-oceanleo-cli-option={option.key}
                       onChange={(event) =>
@@ -101,7 +101,7 @@ export function CliSettingsPanel({
                   <span className={tone.muted}>{option.label}</span>
                   <select
                     value={value}
-                    className={`h-8 rounded-md border px-2 text-[13px] ${tone.input}`}
+                    className={`h-11 rounded-md border px-2 text-[13px] ${tone.input}`}
                     data-oceanleo-cli-option={option.key}
                     onChange={(event) =>
                       setOption(option.key, event.currentTarget.value)
@@ -125,7 +125,7 @@ export function CliSettingsPanel({
             </span>
             <input
               type="checkbox"
-                      className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
+                      className="size-11 shrink-0 accent-zinc-900 dark:accent-neutral-100"
               checked={confirmDangerous}
               data-oceanleo-confirm-dangerous=""
               onChange={(event) =>
@@ -145,7 +145,7 @@ export function CliSettingsPanel({
               </span>
               <input
                 type="checkbox"
-                      className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
+                      className="size-11 shrink-0 accent-zinc-900 dark:accent-neutral-100"
                 checked={toolsEnabled === true}
                 disabled={toolsEnabled === undefined || toolsBusy}
                 data-oceanleo-cli-tools={program.id}
@@ -157,7 +157,7 @@ export function CliSettingsPanel({
           )}
         </div>
       </section>
-      <AppearancePanel framed={false} className="[&_h3]:text-[13px] [&_label]:text-[13px] [&_select]:h-8 [&_select]:py-0 [&_input:not([type=checkbox])]:h-8 [&_input:not([type=checkbox])]:py-0 [&_input[type=checkbox]]:size-4" />
+      <AppearancePanel framed={false} className="[&_h3]:text-[13px] [&_label]:text-[13px] [&_select]:h-11 [&_select]:py-0 [&_input:not([type=checkbox])]:h-11 [&_input:not([type=checkbox])]:py-0 [&_input[type=checkbox]]:size-11" />
     </div>
   );
 }

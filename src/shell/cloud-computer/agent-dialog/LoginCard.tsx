@@ -103,7 +103,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
             type="button"
             data-oceanleo-cc-login-close=""
             onClick={dialog.closeLogin}
-            className={`h-8 rounded-lg px-2 py-1 text-[13px] ${tone.muted} ${tone.hover}`}
+            className={`h-11 rounded-lg px-2 py-1 text-[13px] ${tone.muted} ${tone.hover}`}
           >
             {tt("关闭")}
           </button>
@@ -151,7 +151,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 type="button"
                 data-oceanleo-cc-login-url-copy=""
                 onClick={() => copyText("url", href)}
-                className={`shrink-0 h-8 rounded-lg border px-2 py-1 text-[13px] ${tone.border} ${tone.hover}`}
+                className={`shrink-0 h-11 rounded-lg border px-2 py-1 text-[13px] ${tone.border} ${tone.hover}`}
               >
                 {copiedWhat === "url" ? tt("已复制") : tt("复制")}
               </button>
@@ -168,7 +168,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 type="button"
                 data-oceanleo-cc-login-code-copy=""
                 onClick={() => copyText("code", login.code)}
-                className={`h-8 rounded-lg border px-2 py-1 text-[13px] ${tone.border} ${tone.hover}`}
+                className={`h-11 rounded-lg border px-2 py-1 text-[13px] ${tone.border} ${tone.hover}`}
               >
                 {copiedWhat === "code" ? tt("已复制") : tt("复制")}
               </button>
@@ -191,7 +191,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                   data-oceanleo-cc-login-code-input=""
                   value={login.codeDraft}
                   onChange={(event) => dialog.setLoginCodeDraft(event.target.value)}
-                  className={`mt-1 w-full h-8 rounded-lg border px-2 py-1.5 font-mono text-[13px] outline-none ${tone.input}`}
+                  className={`mt-1 w-full h-11 rounded-lg border px-2 py-1.5 font-mono text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 ${tone.input}`}
                 />
               </label>
               <div className="mt-2">
@@ -199,7 +199,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                   type="submit"
                   data-oceanleo-cc-login-code-submit=""
                   disabled={!login.codeDraft.trim()}
-                  className={`h-8 rounded-lg px-3 py-1.5 text-[13px] font-medium disabled:opacity-50 ${tone.primary}`}
+                  className={`h-11 rounded-lg px-3 py-1.5 text-[13px] font-medium disabled:opacity-50 ${tone.primary}`}
                 >
                   {tt("提交")}
                 </button>
@@ -223,7 +223,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
               if (program) dialog.cancelLogin(program);
               else dialog.closeLogin();
             }}
-            className={`h-8 rounded-lg border px-3 py-1.5 text-[13px] ${tone.border} ${tone.hover}`}
+            className={`h-11 rounded-lg border px-3 py-1.5 text-[13px] ${tone.border} ${tone.hover}`}
           >
             {tt("取消")}
           </button>
@@ -238,7 +238,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
             onClick={() => {
               if (program) dialog.openLogin(program);
             }}
-            className={`h-8 rounded-lg px-3 py-1.5 text-[13px] font-medium ${tone.primary}`}
+            className={`h-11 rounded-lg px-3 py-1.5 text-[13px] font-medium ${tone.primary}`}
           >
             {tt("再试一次")}
           </button>
@@ -250,7 +250,7 @@ export function LoginCard({ dialog }: { dialog: AgentDialogController }) {
                 if (program) dialog.cancelLogin(program);
                 else dialog.closeLogin();
               }}
-              className={`h-8 rounded-lg border px-3 py-1.5 text-[13px] ${tone.border} ${tone.hover}`}
+              className={`h-11 rounded-lg border px-3 py-1.5 text-[13px] ${tone.border} ${tone.hover}`}
             >
               {tt("取消")}
             </button>
