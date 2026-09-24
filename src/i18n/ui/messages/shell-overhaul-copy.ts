@@ -38,6 +38,7 @@ import { EAS_W11_MESSAGES } from "./eas-w11-copy";
 import { EAS_W12_MESSAGES } from "./eas-w12-copy";
 import { EAS_W13_MESSAGES } from "./eas-w13-copy";
 import { EAS_W14_MESSAGES } from "./eas-w14-copy";
+import { EAS_W15_MESSAGES } from "./eas-w15-copy";
 import { EAS_W16_MESSAGES } from "./eas-w16-copy";
 import { EAS_W17_MESSAGES } from "./eas-w17-copy";
 import { EAS_W18_MESSAGES } from "./eas-w18-copy";
@@ -84,6 +85,7 @@ const PARTS = [
   EAS_W12_MESSAGES,
   EAS_W13_MESSAGES,
   EAS_W14_MESSAGES,
+  EAS_W15_MESSAGES,
   EAS_W16_MESSAGES,
   EAS_W17_MESSAGES,
   EAS_W18_MESSAGES,

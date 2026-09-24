@@ -38,3 +38,5 @@ export * from "./image-ai-edit";
 // 宗旨 v16 补充（2026-07-06）：「我的工作流」存取（操作台输入快照 → 右栏导航「我的」复用）。
 export * from "./workflows";
 export * from "./console-draft";
+// 插件与连接器面板的 MCP 连接器 API；门户从 `@oceanleo/ui` 直接取。
+export * from "./mcp-api";

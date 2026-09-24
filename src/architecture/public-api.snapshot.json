@@ -1130,6 +1130,10 @@
         },
         {
           "kind": "star",
+          "source": "./mcp-api"
+        },
+        {
+          "kind": "star",
           "source": "./media-proxy"
         },
         {
@@ -6378,6 +6382,12 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "GAME_DUAL_ENGINE_HANDOFF",
+          "importedName": "GAME_DUAL_ENGINE_HANDOFF",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "GAME_EDITOR_CAPABILITY",
           "source": ""
         },
@@ -6405,6 +6415,12 @@
           "kind": "named",
           "name": "GameBundleFormat",
           "importedName": "GameBundleFormat",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "gameLeavePolicy",
+          "importedName": "gameLeavePolicy",
           "source": ""
         },
         {
