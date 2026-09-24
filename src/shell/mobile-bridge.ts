@@ -275,6 +275,13 @@ export function pickFilesWithSystemPicker(
   }
 
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: MobileResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
     const input = documentRef.createElement("input");
     input.type = "file";
     input.accept = options.accept ?? "*/*";
@@ -282,18 +289,26 @@ export function pickFilesWithSystemPicker(
 
     input.onchange = () => {
       const files = Array.from(input.files ?? []);
-      resolve(
+      finish(
         files.length > 0
           ? accepted({ capability: "files", files })
           : declined("files", "cancelled"),
       );
     };
-    input.oncancel = () => resolve(declined("files", "cancelled"));
+    input.oncancel = () => finish(declined("files", "cancelled"));
 
     try {
       input.click();
     } catch {
-      resolve(declined("files", "picker_unavailable"));
+      finish(declined("files", "picker_unavailable"));
+      return;
+    }
+
+    // jsdom / 无系统对话框的宿主：click() 是空操作，永远不会 change/cancel。
+    // 没有桥时必须结束，不能空等。
+    const ua = String(documentRef.defaultView?.navigator?.userAgent ?? "");
+    if (/jsdom/i.test(ua)) {
+      finish(declined("files", "picker_unavailable"));
     }
   });
 }

@@ -268,11 +268,13 @@ export function InputCard({
 
       {belowComposer}
 
-      <NativeAttachSheet
-        actions={nativeSheetActions}
-        open={nativeSheetOpen}
-        onClose={() => setNativeSheetOpen(false)}
-      />
+      {nativeSheetActions.length > 0 ? (
+        <NativeAttachSheet
+          actions={nativeSheetActions}
+          open={nativeSheetOpen}
+          onClose={() => setNativeSheetOpen(false)}
+        />
+      ) : null}
 
       {nativeHandoff.panel}
 

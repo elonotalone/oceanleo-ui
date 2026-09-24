@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type MouseEvent, type ReactElement } from "react";
+import { useState, type MouseEvent, type ReactElement } from "react";
 import {
   openLeoAssistant,
   useLeoEnabled,
@@ -9,6 +9,9 @@ import {
 import { useUI } from "../i18n/ui/useUI";
 
 export type { LeoContext };
+
+/** 本模块内递增。不走 React `useId`：那是运行时全局计数，后挂的那棵树 id 永远更大。 */
+let sparkleSeq = 0;
 
 // ============================================================================
 // @oceanleo/ui — ✦ leo 入口按钮（全站唯一样子，合同 I5 / W5B）
@@ -34,8 +37,8 @@ export function LeoEntryButton({
   const tt = useUI();
   // leo 总开关（/general 可关，默认开）：关闭时三处输入框都不渲染这颗按钮。
   const enabled = useLeoEnabled();
-  // 渐变 id 每实例唯一：同一页三处输入框各有一颗按钮，不能共用同一个 SVG id。
-  const gradientId = `leo-entry-g-${useId().replace(/:/g, "")}`;
+  // 同一页多颗按钮不共用 SVG id；计数在本模块，两份编译台各自从 0 起。
+  const [gradientId] = useState(() => `leo-entry-g-${++sparkleSeq}`);
 
   if (!enabled) return null;
 

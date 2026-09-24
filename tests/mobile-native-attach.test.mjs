@@ -127,6 +127,10 @@ const OVERRIDES = {
     export function highlightSegments(){ return []; }
     export function stripPromptPlaceholders(text){ return text; }
   `),
+  // 云电脑坞会去拉永远不回来的列表；本文件不测它，挂上就空等整份超时。
+  "./cloud-computer/ComputerDock": dataModule(`
+    export function ComputerDock(){ return null; }
+  `),
 };
 
 /**
@@ -359,16 +363,17 @@ test("浏览器：InputCard 的 DOM 与「没有手机模块」的那一版逐�
   const props = { value: "", onChange() {}, onSubmit() {}, onFiles() {} };
   const real = await mount(inputCardReal.InputCard, props);
   const baseline = await mount(inputCardWithoutNative.InputCard, props);
-
-  assert.match(real.container.textContent, /上传文件/, "那颗虚线上传按钮还在");
-  assert.equal(
-    real.container.innerHTML,
-    baseline.container.innerHTML,
-    "浏览器里的 InputCard DOM 被手机功能改到了",
-  );
-
-  await real.unmount();
-  await baseline.unmount();
+  try {
+    assert.match(real.container.textContent, /上传文件/, "那颗虚线上传按钮还在");
+    assert.equal(
+      real.container.innerHTML,
+      baseline.container.innerHTML,
+      "浏览器里的 InputCard DOM 被手机功能改到了",
+    );
+  } finally {
+    await real.unmount();
+    await baseline.unmount();
+  }
 });
 
 test("浏览器：那颗上传按钮点下去照旧是系统文件选择器，不弹三选一", async () => {
