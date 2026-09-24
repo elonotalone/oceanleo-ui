@@ -37,6 +37,12 @@ function fmtTime(iso: string) {
 export interface ApiPageProps {
   onLogin?: () => void;
   billingHref?: string;
+  /**
+   * `page`（缺省）：独立的 `/api` 页，带统一页头。
+   * `pane`：嵌在设置窗「AI 模型」面板里。面板区自带标题与滚动，所以不渲染页头
+   * （页头的「返回」会把设置窗背后的页面退回上一页），也不占整页。
+   */
+  variant?: "page" | "pane";
 }
 
 /** Shared AI-model market page used by the main site and every subsite. */
@@ -45,8 +51,12 @@ export function ApiPage({
   // 门户在两个家族里都存在，所以这里按家族拼即可，不需要「暂未开放」态。
   // `.com` 站解析出来的仍是 https://oceanleo.com/billing（逐字不变）。
   billingHref = `${currentDomainProfile().portalOrigin}/billing`,
+  variant = "page",
 }: ApiPageProps = {}) {
   const tt = useUI();
+  const pane = variant === "pane";
+  const frameClass = pane ? "min-h-0 overflow-y-auto overscroll-contain" : "px-8 py-6";
+  const paneMark = pane ? "" : undefined;
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
@@ -84,9 +94,9 @@ export function ApiPage({
   if (!oceanleoConfigured()) {
     const notice = loginUnavailableNotice();
     return (
-      <div className="px-8 py-6">
-        <PageHeader title={tt("AI 模型")} />
-        <div className="mx-auto mt-10 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+      <div className={frameClass} data-api-pane={paneMark}>
+        {!pane && <PageHeader title={tt("AI 模型")} />}
+        <div className={`${pane ? "" : "mx-auto mt-10 "}max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800`}>
           <p className="text-[14px] font-medium">{tt(notice?.title || "")}</p>
           {notice?.detail && (
             <p className="mt-1.5 text-[13px] text-amber-700">{tt(notice.detail)}</p>
@@ -98,9 +108,9 @@ export function ApiPage({
 
   const providers = catalog?.providers || [];
   return (
-    <div className="px-8 py-6">
-      <PageHeader title={tt("AI 模型")} />
-      <div className="mx-auto mt-6 max-w-3xl space-y-8">
+    <div className={frameClass} data-api-pane={paneMark}>
+      {!pane && <PageHeader title={tt("AI 模型")} />}
+      <div className={pane ? "max-w-3xl space-y-8" : "mx-auto mt-6 max-w-3xl space-y-8"}>
         <section className="v-fade-up">
           <div className="rounded-2xl border border-neutral-200 p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">

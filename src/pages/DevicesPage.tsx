@@ -22,11 +22,17 @@ export interface DevicesPageProps {
   client?: DevicesFacade;
   cloudClient?: CloudComputerClient;
   initialTab?: DevicesPageTab;
+  /**
+   * `page`（缺省）：独立的 `/devices` 页，带统一页头，认地址栏的 `?tab=cloud` / `#cloud`。
+   * `pane`：嵌在设置窗「我的设备」面板里。不渲染页头、不占整页；地址栏属于设置窗
+   * 背后的页面，所以只认显式的 `initialTab`。
+   */
+  variant?: "page" | "pane";
 }
 
-function resolveDevicesTab(initialTab?: DevicesPageTab): DevicesPageTab {
+function resolveDevicesTab(initialTab?: DevicesPageTab, readLocation = true): DevicesPageTab {
   if (initialTab === "cloud" || initialTab === "devices") return initialTab;
-  if (typeof window === "undefined") return "devices";
+  if (!readLocation || typeof window === "undefined") return "devices";
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "cloud") return "cloud";
@@ -80,10 +86,12 @@ export function DevicesPage({
   client = devicesFacade,
   cloudClient,
   initialTab,
+  variant = "page",
 }: DevicesPageProps) {
   const tt = useUI();
   const cn = currentDomainFamily() === "cn";
-  const tab = resolveDevicesTab(initialTab);
+  const pane = variant === "pane";
+  const tab = resolveDevicesTab(initialTab, !pane);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -188,8 +196,12 @@ export function DevicesPage({
   const allOffline = devices.length > 0 && devices.every((device) => !device.online);
 
   return (
-    <div className="px-8 py-6" data-oceanleo-devices-page>
-      <PageHeader title={tt("我的设备")} />
+    <div
+      className={pane ? "min-h-0 overflow-y-auto overscroll-contain" : "px-8 py-6"}
+      data-oceanleo-devices-page
+      data-devices-pane={pane ? "" : undefined}
+    >
+      {!pane && <PageHeader title={tt("我的设备")} />}
 
       {confirmRevoke && (
         <ConfirmDialog
@@ -202,7 +214,7 @@ export function DevicesPage({
         />
       )}
 
-      <div className="mx-auto mt-7 max-w-3xl space-y-6">
+      <div className={pane ? "max-w-3xl space-y-6" : "mx-auto mt-7 max-w-3xl space-y-6"}>
         <section
           className="rounded-2xl border border-neutral-200 bg-white p-5"
           data-oceanleo-devices-phones
