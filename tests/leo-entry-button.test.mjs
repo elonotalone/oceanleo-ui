@@ -259,7 +259,15 @@ function fakeDialog(overrides = {}) {
       busy: false,
       agentBusy: false,
       modelSource: "none",
+      // Composer 把 messages / commands 当必有（dialog.messages.length、
+      // dialog.commands.filter）。夹具以前没给，渲染直接炸；名单为空必须是
+      // 空数组，产品空名单不得炸——这两条用例和下面的空名单专测一起钉住。
       models: [],
+      messages: [],
+      commands: [],
+      programs: [],
+      configOptions: [],
+      sessions: [],
       selectedModel: "",
       mode: null,
       selectedMode: "",
@@ -290,6 +298,34 @@ function pressEnter(target, { composing }) {
   target.dispatchEvent(event);
   return event;
 }
+
+test("Shell Composer：名单为空不炸，仍渲染输入框和 leo 入口", async () => {
+  resetLeoSwitch();
+  const { dialog } = fakeDialog({
+    messages: [],
+    commands: [],
+    models: [],
+    programs: [],
+  });
+  const view = await renderInto(React.createElement(Composer, { dialog }));
+  try {
+    assert.ok(
+      view.host.querySelector("[data-oceanleo-cc-dialog-input]"),
+      "空名单仍渲染输入框",
+    );
+    assert.ok(
+      view.host.querySelector("[data-oceanleo-leo-entry]"),
+      "空名单仍渲染 ✦ leo 入口",
+    );
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-cc-model]"),
+      null,
+      "模型名单为空时不画选择器",
+    );
+  } finally {
+    await view.cleanup();
+  }
+});
 
 test("Shell Composer：对 OceanLeo agent 渲染（无 isWsProgram 早退），Enter 守 isComposing", async () => {
   resetLeoSwitch();

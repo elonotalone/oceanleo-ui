@@ -167,9 +167,17 @@ function UnmemoizedBlocks({ content }) {
 }
 
 test("普通发送不会被误认成操作台 override，输入和附件会清空", () => {
-  assert.match(functionChat, /onSubmit=\{\(\) => void send\(\)\}/);
+  // 签名多了 payer / org_id：普通发送仍直接 send，第一参是 undefined
+  //（不是操作台 override 文本）。AgentChat 的 send 本来就没有 override 参。
+  assert.match(
+    functionChat,
+    /onSubmit=\{\(_, payer\) => void send\(undefined, payer\?\.org_id\)\}/,
+  );
   assert.match(functionChat, /if \(!override\) \{\s*setInput\(""\);\s*atts\.clear\(\)/);
-  assert.match(agentChat, /onSubmit=\{\(\) => void send\(\)\}/);
+  assert.match(agentChat, /onSubmit=\{\(_, payer\) => void send\(payer\?\.org_id\)\}/);
+  assert.match(agentChat, /setInput\(""\);\s*atts\.clear\(\)/);
+  assert.doesNotMatch(functionChat, /onSubmit=\{[^}]*\bsend\(\s*override/);
+  assert.doesNotMatch(agentChat, /onSubmit=\{[^}]*\bsend\(\s*override/);
 });
 
 test("发送失败只在没有新草稿时恢复原输入和附件", () => {
