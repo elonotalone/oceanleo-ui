@@ -190,13 +190,7 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
       portal: { order: 60 },
     },
   },
-  {
-    id: "plugins",
-    href: "/plugins",
-    labelKey: "plugins",
-    iconId: "plugins",
-    placements: { portal: { order: 70 } },
-  },
+  // 「插件」不占侧栏：入口是账号菜单「插件」→ 设置窗的插件面板。
   {
     id: "schedules",
     href: "/schedules",

@@ -225,8 +225,9 @@ export function PluginsPopover({
             </ul>
           )}
         </div>
+        {/* 与 openSettingsModal("plugins") 同一个地址；不 import 它，是为了不把整个设置窗拖进输入框的模块图。 */}
         <a
-          href="/plugins"
+          href="#settings/plugins"
           data-plugins-add-connector
           onClick={onClose}
           className="block shrink-0 border-t border-neutral-100 px-4 py-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"

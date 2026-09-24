@@ -343,9 +343,17 @@ test("插件按钮渲染 SVG 不是 img；点击后浮层 portal 到 body 并列
 
     const add = panel.querySelector("[data-plugins-add-connector]");
     assert.ok(add);
-    assert.equal(add.getAttribute("href"), "/plugins");
     assert.match(add.textContent, /添加连接器/);
+    // 打开设置窗的插件面板（openSettingsModal("plugins") 写的同一个 hash），不整页跳 /plugins。
+    assert.equal(add.getAttribute("href"), "#settings/plugins");
+    await act(async () => {
+      add.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    assert.equal(window.location.hash, "#settings/plugins");
+    assert.equal(window.location.pathname, "/");
+    assert.equal(panel.getAttribute("data-leo-overlay-state"), "closed", "浮层要让位给设置窗");
   } finally {
+    window.history.replaceState(null, "", "/");
     await mounted.unmount();
     delete globalThis.__W5_PLUGINS_CATALOG__;
     delete globalThis.__W5_PLUGINS_EMAIL__;
