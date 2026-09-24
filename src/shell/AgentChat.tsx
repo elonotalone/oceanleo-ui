@@ -704,8 +704,10 @@ function AgentChatInner({
       serverMessagesRef.current = settled;
       setMessagesTaskId(id);
       setMessages((current) => mergeAgentMessages(current, settled));
-      const artifactIds = (r.data.artifacts || []).map((artifact) => String(artifact.id));
       setActiveArtifactIds((current) => {
+        const artifactIds = (r.data ? r.data.artifacts || [] : []).map((artifact) =>
+          String(artifact.id),
+        );
         if (
           current &&
           current.size === artifactIds.length &&
