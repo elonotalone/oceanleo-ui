@@ -120,6 +120,10 @@ export function SettingsHub({
   }, [variant, initialTab, fallbackTab]);
 
   useEffect(() => {
+    if (variant === "modal" && checked && !email && guestPrompt === "auth") setShowAuth(true);
+  }, [variant, checked, email, guestPrompt]);
+
+  useEffect(() => {
     if (variant === "modal") return;
     function onPop() {
       setTab(tabFromLocation(fallbackTab));

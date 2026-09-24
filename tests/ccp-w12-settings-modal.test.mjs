@@ -11,6 +11,8 @@ test("SettingsModal is a blurred body portal with close and focus handling", () 
   assert.match(modal, /aria-modal="true"/);
   assert.match(modal, /event\.key === "Escape"/);
   assert.match(modal, /focusin/);
+  assert.match(modal, /foreignModalOwns/);
+  assert.match(modal, /leo-overlay-scrim/);
   assert.match(modal, /onClick=\{onClose\}/);
   assert.match(modal, /✕/);
 });
@@ -20,4 +22,5 @@ test("SettingsHub keeps page variant and uses callback tabs in modal variant", (
   assert.match(hub, /variant === "modal" \? initialTab/);
   assert.match(hub, /onTabChange\?\./);
   assert.match(hub, /else writeTab\(id\)/);
+  assert.match(hub, /variant === "modal" && checked && !email && guestPrompt === "auth"/);
 });

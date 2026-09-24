@@ -28,7 +28,14 @@ export function SettingsModal({ open, onClose, ...props }: SettingsModalProps) {
     document.body.style.overflow = "hidden";
     const first = () => panel.current?.querySelector<HTMLElement>(focusable) ?? panel.current;
     first()?.focus();
+    function foreignModalOwns(node: Node | null) {
+      if (!(node instanceof Element) || !panel.current) return false;
+      if (panel.current.contains(node)) return false;
+      const dialog = node.closest('[role="dialog"][aria-modal="true"], .leo-overlay-scrim');
+      return Boolean(dialog && !panel.current.contains(dialog));
+    }
     function key(event: KeyboardEvent) {
+      if (foreignModalOwns(event.target instanceof Node ? event.target : document.activeElement)) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeRef.current(); }
       if (event.key !== "Tab" || !panel.current) return;
       const nodes = [...panel.current.querySelectorAll<HTMLElement>(focusable)].filter((node) => !node.closest('[hidden], [aria-hidden="true"]'));
@@ -37,7 +44,10 @@ export function SettingsModal({ open, onClose, ...props }: SettingsModalProps) {
       else if (event.shiftKey && index <= 0) { event.preventDefault(); nodes.at(-1)?.focus(); }
       else if (!event.shiftKey && (index === nodes.length - 1 || index < 0)) { event.preventDefault(); nodes[0].focus(); }
     }
-    function focus(event: FocusEvent) { if (!panel.current?.contains(event.target as Node)) first()?.focus(); }
+    function focus(event: FocusEvent) {
+      if (panel.current?.contains(event.target as Node) || foreignModalOwns(event.target as Node)) return;
+      first()?.focus();
+    }
     document.addEventListener("keydown", key, true);
     document.addEventListener("focusin", focus);
     return () => {

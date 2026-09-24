@@ -220,13 +220,6 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     supportsDisclosure: true,
     placements: { workspace: { order: 50 }, portal: { order: 100 } },
   },
-  {
-    id: "download",
-    href: "/download",
-    labelKey: "downloadApp",
-    iconId: "download",
-    placements: { portal: { order: 20, section: "footer" } },
-  },
 ] as const;
 
 /** 派生出来的一行：调用方只需把 `iconId` / `labelKey` 换成自己的节点与文案。 */
