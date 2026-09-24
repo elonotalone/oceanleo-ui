@@ -112,7 +112,7 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
         aria-label={tt("我的设备")}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+        className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
         <IconDevice className="h-4 w-4" />
       </button>

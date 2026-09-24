@@ -106,7 +106,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
         aria-label={tt("通知")}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+        className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
         <IconBell className="h-4 w-4" />
         {unread > 0 ? (
@@ -130,7 +130,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
               <button
                 type="button"
                 onClick={() => void readAll()}
-                className="text-[11px] text-neutral-500 transition hover:text-neutral-800"
+                className="text-[11px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-800"
               >
                 {tt("全部标记已读")}
               </button>
@@ -149,7 +149,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
                   key={item.id}
                   type="button"
                   onClick={() => void openItem(item)}
-                  className={`block w-full border-b border-neutral-50 px-3 py-2.5 text-left transition hover:bg-neutral-50 ${
+                  className={`block w-full border-b border-neutral-50 px-3 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 ${
                     item.read_at ? "" : "bg-blue-50/40"
                   }`}
                 >
