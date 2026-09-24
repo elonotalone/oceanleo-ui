@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { ConfirmDialog } from "../ui";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
 import { AdvancedStageControls } from "./AdvancedStageControls";
@@ -13,7 +19,12 @@ import {
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
-import { flushAdvancedWorkBeforeLeave } from "./advanced-leave-flush";
+import {
+  hasPendingOrFailed,
+  leaveAdvancedWorkbench,
+  shouldWarnBeforeUnload,
+  subscribe as subscribeBackgroundSaves,
+} from "./advanced-background-saver";
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
 import {
@@ -21,7 +32,6 @@ import {
   StageNoticeCorner,
   useEditBarDockPresentation,
   useHistoryControls,
-  useLeaveGate,
   usePluginPagesForAdapter,
 } from "./inline-advanced-shell-parts";
 import { useAdvancedSession } from "./advanced-session-context";
@@ -168,14 +178,21 @@ export function InlineAdvancedWorkbenchShell({
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
   const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false;
+  const materialKey = item.key || item.id;
   const autoSave = useAdvancedAutoSave({
     // Website keeps dirty for close guards but disables observe-autosave so a
     // pending visual draft is not save→auto-Applied out from under Apply.
+    key: materialKey,
     dirty: hostAutoSaveEnabled ? editorDirty : false,
     revision: editRevision,
     flush: adapter.persistence?.flush,
     session: advancedSession,
   });
+  const backgroundBusy = useSyncExternalStore(
+    subscribeBackgroundSaves,
+    hasPendingOrFailed,
+    () => false,
+  );
   const { state: autoSaveState, errorMessage: autoSaveError } = autoSave as {
     state: typeof autoSave.state;
     errorMessage?: string;
@@ -277,31 +294,23 @@ export function InlineAdvancedWorkbenchShell({
   const contextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
-  // 离开确认走异步 ConfirmDialog（useLeaveGate 的注释）：requestClose 里
-  // `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
-  const { askingLeave, confirmLeave, answerLeave } = useLeaveGate();
 
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
-    void (async () => {
-      if (editorDirty || autoSave.state !== "saved") {
-        const flushed = await flushAdvancedWorkBeforeLeave(autoSave);
-        if (!flushed.ok && !(await confirmLeave())) {
-          closingRef.current = false;
-          return;
-        }
-      }
-      closeDetail();
-      onClose();
-      closingRef.current = false;
-    })();
+    // 不能在这里 dispose 保存控制器：排队里的修订会丢。先交给模块级后台
+    // 保存器，再同步关编辑器。
+    leaveAdvancedWorkbench({
+      autoSaveEnabled: hostAutoSaveEnabled,
+      handOff: () => autoSave.handOffToBackground?.(),
+      closeDetail,
+      onClose,
+    });
+    closingRef.current = false;
   }, [
-    autoSave.flushLatest,
-    autoSave.state,
+    autoSave.handOffToBackground,
     closeDetail,
-    confirmLeave,
-    editorDirty,
+    hostAutoSaveEnabled,
     onClose,
   ]);
 
@@ -335,15 +344,20 @@ export function InlineAdvancedWorkbenchShell({
     return () => advancedSession.registerFlush(null);
   }, [advancedSession, autoSave.flushLatest]);
 
+  const editorUnconfirmed = hostAutoSaveEnabled
+    ? editorDirty || autoSave.state !== "saved"
+    : editorDirty;
+  const warnBeforeUnload = shouldWarnBeforeUnload(editorUnconfirmed);
+  void backgroundBusy;
   useEffect(() => {
-    if (!editorDirty) return;
+    if (!warnBeforeUnload) return;
     const guard = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [editorDirty]);
+  }, [warnBeforeUnload]);
 
   const openLibraryPanel = useCallback(
     (id: "materials" | "mine") => {
@@ -378,7 +392,6 @@ export function InlineAdvancedWorkbenchShell({
         pluginThemeId={pluginThemeId}
         showLibrary={siteId !== "plugin-gallery"}
         showBack={siteId !== "plugin-gallery"}
-        showClose
         onBack={requestClose}
         onOpenDrawer={openDrawer}
         onCloseDrawer={closeDetail}
@@ -387,7 +400,6 @@ export function InlineAdvancedWorkbenchShell({
         onRetrySave={() => void autoSave.retry()}
         onSaveNow={saveNow}
         onUploadFiles={(files) => void performUpload(files)}
-        onClose={requestClose}
       />
     ),
     [
@@ -551,27 +563,6 @@ export function InlineAdvancedWorkbenchShell({
           </div>
         </div>
       </div>
-      {askingLeave && (
-        // 文案逐字沿用原生弹窗那一句（已有 16 语覆盖）：它已经说清了后果——
-        // 改动留在编辑器里、只是没同步到云端，所以这一步不是 danger。
-        //
-        // 确认键从通用的「确认」换成「离开」（`W05-request.md` 的 A-11 D-1）：
-        // 16 语译文在 `src/i18n/ui/messages/workbench-office-copy.ts`。
-        // 传中文原文而不是 `tt("离开")`——`ConfirmDialog` 内部对 `confirmLabel`
-        // 自己过一次 `tt()`，外面再包一层就成了拿译文去查词典。
-        //
-        // `body` 反过来，刻意包一层 `tt()`（W43 A-11 D-4）：`i18n-tt-key-coverage`
-        // 的 AST 扫的是 `tt()` 的字面量实参，包了这一层，词典条目哪天被删掉会当场判红；
-        // 传裸中文则一条判据都碰不到，16 语一起静默回落成中文。
-        // 代价只是内部那次 `tt()` 拿译文查一次词典、查不中原样返回。
-        <ConfirmDialog
-          title={tt("修改仍安全保留在当前编辑器，但尚未同步到云端。仍要离开吗？")}
-          body={tt("改动留在这台设备的编辑器里，换台设备就打不开；回到编辑器可以再同步一次。")}
-          confirmLabel="离开"
-          onConfirm={() => answerLeave(true)}
-          onCancel={() => answerLeave(false)}
-        />
-      )}
     </AdvancedLayoutContext.Provider>
     </PluginThemePortalContext.Provider>
   );

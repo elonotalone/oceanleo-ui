@@ -1,41 +1,40 @@
-// 关闭编辑器之前那次冲刷的三条分支。原本内联在 InlineAdvancedWorkbenchShell 的
-// requestClose 里，没有任何用例；单独成模块时把行为锁下来，免得下一次「顺手
-// 简化」把 3 秒上限或者错误态的短路去掉，关闭动作跟着挂死。
+// 旧断言钉的是「离开前最多等 3 秒 / 错误态短路再弹确认」。那正是用户被拦的原因。
+// 离开改为同步：有待保存就 handOff，然后立刻 close；网站关自动保存则不接手。
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { flushAdvancedWorkBeforeLeave } from "../src/shell/advanced-leave-flush.ts";
+import { leaveAdvancedWorkbench } from "../src/shell/advanced-background-saver.ts";
 
-test("自动保存已是错误态时直接报那个错，不再多试一次", async () => {
-  let calls = 0;
-  const result = await flushAdvancedWorkBeforeLeave({
-    state: "error",
-    flushLatest: async () => {
-      calls += 1;
-      return { ok: true };
+test("离开是同步的：先接手再关，不等冲刷结果", () => {
+  const order = [];
+  leaveAdvancedWorkbench({
+    autoSaveEnabled: true,
+    handOff: () => {
+      order.push("handOff");
+    },
+    closeDetail: () => {
+      order.push("closeDetail");
+    },
+    onClose: () => {
+      order.push("onClose");
     },
   });
-  assert.deepEqual(result, { ok: false, error: "自动保存仍未同步" });
-  assert.equal(calls, 0);
+  assert.deepEqual(order, ["handOff", "closeDetail", "onClose"]);
 });
 
-test("冲刷成功就按成功返回", async () => {
-  const result = await flushAdvancedWorkBeforeLeave({
-    state: "saving",
-    flushLatest: async () => ({ ok: true }),
-  });
-  assert.deepEqual(result, { ok: true });
-});
-
-test("冲刷卡住时到点就收，关闭动作不跟着一起挂起", async () => {
-  const started = Date.now();
-  const result = await flushAdvancedWorkBeforeLeave(
-    {
-      state: "saving",
-      flushLatest: () => new Promise(() => {}),
+test("网站关闭自动保存时不接手，仍然立刻离开", () => {
+  let handed = false;
+  let closed = false;
+  leaveAdvancedWorkbench({
+    autoSaveEnabled: false,
+    handOff: () => {
+      handed = true;
     },
-    20,
-  );
-  assert.deepEqual(result, { ok: false, error: "离开前保存等待超时" });
-  assert.ok(Date.now() - started >= 15, "不许还没等就先判超时");
+    closeDetail: () => {},
+    onClose: () => {
+      closed = true;
+    },
+  });
+  assert.equal(handed, false);
+  assert.equal(closed, true);
 });

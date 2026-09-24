@@ -349,6 +349,7 @@ function loadShell() {
           state: "saved",
           flushLatest: async () => ({ ok: true }),
           retry: async () => {},
+          handOffToBackground() {},
         };
       }
     `);

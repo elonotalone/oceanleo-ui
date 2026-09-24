@@ -6,6 +6,7 @@ import type {
   AdvancedFlushResult,
   AdvancedSessionActions,
 } from "./advanced-session-context";
+import { handOff, takeBack } from "./advanced-background-saver";
 import {
   AdvancedPersistenceController,
   type AdvancedEditRevision,
@@ -96,11 +97,13 @@ class RevisionFlushLedger {
 }
 
 export function useAdvancedAutoSave({
+  key,
   dirty,
   revision,
   flush,
   session,
 }: {
+  key?: string;
   dirty: boolean;
   revision: AdvancedEditRevision;
   flush?: () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
@@ -110,6 +113,7 @@ export function useAdvancedAutoSave({
   const sessionRef = useRef(session);
   const mountedRef = useRef(true);
   const latestRevisionRef = useRef(revision);
+  const dirtyRef = useRef(dirty);
   const ledgerRef = useRef<RevisionFlushLedger | null>(null);
   if (!ledgerRef.current) ledgerRef.current = new RevisionFlushLedger();
   const [state, setState] = useState<AdvancedAutoSaveState>("saved");
@@ -117,6 +121,7 @@ export function useAdvancedAutoSave({
   flushRef.current = flush;
   sessionRef.current = session;
   latestRevisionRef.current = revision;
+  dirtyRef.current = dirty;
 
   const rememberFlush = useCallback((result: AdvancedFlushResult) => {
     const next = withErrorMessage(result);
@@ -126,9 +131,9 @@ export function useAdvancedAutoSave({
     return next;
   }, []);
 
-  const makeController = useCallback(
-    () =>
-      new AdvancedPersistenceController<LibraryItem>({
+  const bindController = useCallback(
+    (controller: AdvancedPersistenceController<LibraryItem>) => {
+      controller.rebind({
         flushRevision: (targetRevision) => {
           const activeFlush = flushRef.current;
           if (!activeFlush) {
@@ -149,31 +154,64 @@ export function useAdvancedAutoSave({
         },
         recordSavedItem: async (item) => {
           const activeSession = sessionRef.current;
-          return activeSession
-            ? activeSession.recordSavedItem(item)
-            : true;
+          return activeSession ? activeSession.recordSavedItem(item) : true;
         },
         onStateChange: (next) => {
           if (!mountedRef.current) return;
           setState(next);
           if (next === "saved") setErrorMessage(undefined);
         },
-      }),
+      });
+    },
     [rememberFlush],
   );
+
+  const makeController = useCallback(() => {
+    const controller = new AdvancedPersistenceController<LibraryItem>({
+      flushRevision: async () => ({
+        ok: false,
+        error: "自动保存控制器尚未绑定",
+      }),
+      recordSavedItem: async () => true,
+    });
+    bindController(controller);
+    return controller;
+  }, [bindController]);
   const controllerRef =
     useRef<AdvancedPersistenceController<LibraryItem> | null>(null);
   if (!controllerRef.current) controllerRef.current = makeController();
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!controllerRef.current) controllerRef.current = makeController();
+    const taken = key ? takeBack(key) : null;
+    if (taken && taken !== controllerRef.current) {
+      controllerRef.current?.dispose();
+      controllerRef.current = taken;
+    } else if (!controllerRef.current) {
+      controllerRef.current = makeController();
+    }
+    const controller = controllerRef.current;
+    if (controller) {
+      bindController(controller);
+      setState(controller.snapshot().state);
+      controller.observe({
+        revision: latestRevisionRef.current,
+        dirty: dirtyRef.current,
+      });
+    }
     return () => {
       mountedRef.current = false;
-      controllerRef.current?.dispose();
+      const active = controllerRef.current;
       controllerRef.current = null;
+      if (!active) return;
+      if (active.isHandedOff()) return;
+      if (key && active.hasUnconfirmedWork()) {
+        handOff(key, active);
+        return;
+      }
+      active.dispose();
     };
-  }, [makeController]);
+  }, [bindController, key, makeController]);
 
   const wasDirtyRef = useRef(dirty);
   useEffect(() => {
@@ -203,6 +241,12 @@ export function useAdvancedAutoSave({
       ),
     [rememberFlush],
   );
+  const handOffToBackground = useCallback(() => {
+    const controller = controllerRef.current;
+    if (!key || !controller || !controller.hasUnconfirmedWork()) return;
+    controller.markHandedOff();
+    handOff(key, controller);
+  }, [key]);
 
-  return { state, errorMessage, flushLatest, retry };
+  return { state, errorMessage, flushLatest, retry, handOffToBackground };
 }

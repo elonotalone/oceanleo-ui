@@ -49,11 +49,11 @@ function errorMessage(error: unknown): string {
  */
 export class AdvancedPersistenceController<Item = unknown> {
   private readonly debounceMs: number;
-  private readonly maxRetries: number;
-  private readonly retryDelays: readonly number[];
-  private readonly flushRevision: AdvancedPersistenceControllerOptions<Item>["flushRevision"];
-  private readonly recordSavedItem: AdvancedPersistenceControllerOptions<Item>["recordSavedItem"];
-  private readonly onStateChange?: AdvancedPersistenceControllerOptions<Item>["onStateChange"];
+  private maxRetries: number;
+  private retryDelays: readonly number[];
+  private flushRevision: AdvancedPersistenceControllerOptions<Item>["flushRevision"];
+  private recordSavedItem: AdvancedPersistenceControllerOptions<Item>["recordSavedItem"];
+  private onStateChange?: AdvancedPersistenceControllerOptions<Item>["onStateChange"];
   private readonly scheduleTimeout: NonNullable<
     AdvancedPersistenceControllerOptions<Item>["setTimeout"]
   >;
@@ -72,6 +72,7 @@ export class AdvancedPersistenceController<Item = unknown> {
   private drainPromise: Promise<AdvancedPersistenceResult<Item>> | null = null;
   private retryCount = 0;
   private disposed = false;
+  private handedOff = false;
 
   constructor(options: AdvancedPersistenceControllerOptions<Item>) {
     this.debounceMs = Math.max(0, options.debounceMs ?? 1_600);
@@ -151,6 +152,53 @@ export class AdvancedPersistenceController<Item = unknown> {
     return this.flushLatest();
   }
 
+  hasUnconfirmedWork(): boolean {
+    if (this.disposed) return false;
+    if (this.dirty) return true;
+    if (this.state === "saving" || this.state === "error") return true;
+    if (this.drainPromise) return true;
+    if (this.pendingItem !== undefined) return true;
+    return (
+      this.latestRevision !== undefined &&
+      !sameRevision(this.latestRevision, this.acknowledgedRevision)
+    );
+  }
+
+  markHandedOff(): void {
+    this.handedOff = true;
+  }
+
+  clearHandedOff(): void {
+    this.handedOff = false;
+  }
+
+  isHandedOff(): boolean {
+    return this.handedOff;
+  }
+
+  /**
+   * 交给后台后把重试拉长到大约半分钟。maxRetries===0 的控制器保持不重试
+   * （测试台架），避免手一交出去就被改成 5s+ 的定时重试。
+   */
+  prepareBackgroundRetries(): void {
+    if (this.maxRetries === 0) return;
+    this.maxRetries = Math.max(this.maxRetries, 3);
+    this.retryDelays = [5_000, 10_000, 15_000];
+  }
+
+  rebind(
+    next: Partial<
+      Pick<
+        AdvancedPersistenceControllerOptions<Item>,
+        "flushRevision" | "recordSavedItem" | "onStateChange"
+      >
+    >,
+  ): void {
+    if (next.flushRevision) this.flushRevision = next.flushRevision;
+    if (next.recordSavedItem) this.recordSavedItem = next.recordSavedItem;
+    if (next.onStateChange !== undefined) this.onStateChange = next.onStateChange;
+  }
+
   whenIdle(): Promise<unknown> {
     return this.drainPromise ?? Promise.resolve();
   }
@@ -163,6 +211,14 @@ export class AdvancedPersistenceController<Item = unknown> {
       pendingSessionRevision: this.pendingSessionRevision,
       running: Boolean(this.drainPromise),
     };
+  }
+
+  hasScheduledWork(): boolean {
+    return this.timer !== undefined;
+  }
+
+  isBusy(): boolean {
+    return Boolean(this.drainPromise) || this.timer !== undefined;
   }
 
   dispose(): void {

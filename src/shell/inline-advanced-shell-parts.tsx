@@ -1,12 +1,8 @@
 "use client";
 
 import {
-  useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
-  useState,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -87,33 +83,6 @@ export function useEditBarDockPresentation({
     return () => rightPaneSlot.clearEditBarDockPresentation(ownerId);
   }, [accent, dropActive, mode, ownerId, rightPaneSlot, showEditBar, theme]);
   return localDockPresentation;
-}
-
-/**
- * 离开确认门。原生 window.confirm 冻住主线程、样式不可控、移动端尤其糟，换成
- * ConfirmDialog 后它是异步的；用一道 promise 门把壳里那段命令式流程接回来：
- * requestClose 里 `await confirmLeave()`，用户点哪个按钮就 resolve 成什么。
- * 卸载时把门放掉，否则 requestClose 里那个 await 会永远挂着。
- */
-export function useLeaveGate() {
-  const leaveResolveRef = useRef<((leave: boolean) => void) | null>(null);
-  const [askingLeave, setAskingLeave] = useState(false);
-  const confirmLeave = useCallback(
-    () =>
-      new Promise<boolean>((resolve) => {
-        leaveResolveRef.current = resolve;
-        setAskingLeave(true);
-      }),
-    [],
-  );
-  const answerLeave = useCallback((leave: boolean) => {
-    const resolve = leaveResolveRef.current;
-    leaveResolveRef.current = null;
-    setAskingLeave(false);
-    resolve?.(leave);
-  }, []);
-  useEffect(() => () => answerLeave(false), [answerLeave]);
-  return { askingLeave, confirmLeave, answerLeave };
 }
 
 /** 撤销/重做从顶栏搬到编辑栏最左段（见 EditBarHistoryControls 的注释）。 */
