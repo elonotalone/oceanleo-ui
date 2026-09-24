@@ -9,7 +9,7 @@ import { agentDialogWsUrl } from "../../../lib/cloud-computer-api";
 import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
-import { mapTaskMessages, nextOceanleoPoll } from "./oceanleo-program";
+import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
 import { applyDialog, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
@@ -347,7 +347,10 @@ export function useAgentDialog({
     async (taskId: string, gen: number) => {
       let idleStep = -1;
       let waitedMs = 0;
-      let lastCount = -1;
+      // Streaming assistant output updates one row repeatedly. Track a stable
+      // fingerprint of row ids/content, rather than only the row count, so a
+      // growing message is rendered on the next poll.
+      let lastFingerprint = "";
       for (;;) {
         if (gen !== oceanGen.current || !activeRef.current) return;
         // 与 AgentChat 同语义：页面在后台这一轮不发请求，只留便宜定时器回来看。
@@ -370,8 +373,9 @@ export function useAgentDialog({
           continue;
         }
         const detail = result.data;
-        const changed = (detail.messages?.length ?? 0) !== lastCount;
-        lastCount = detail.messages?.length ?? 0;
+        const fingerprint = oceanMessageFingerprint(detail.messages ?? []);
+        const changed = fingerprint !== lastFingerprint;
+        lastFingerprint = fingerprint;
         applyOceanDetail(detail);
         if (detail.task?.status !== "running") return;
         const cadence = nextOceanleoPoll({ hidden: false, changed, idleStep, waitedMs });

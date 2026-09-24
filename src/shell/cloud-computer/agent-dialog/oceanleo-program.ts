@@ -137,6 +137,13 @@ export function mapTaskMessages(
   return out;
 }
 
+/** Detect both new rows and content growth inside an existing streamed row. */
+export function oceanMessageFingerprint(messages: Array<Pick<AgentMessage, "id" | "role" | "content">> = []): string {
+  return messages
+    .map((message) => `${message.id ?? ""}:${message.role}:${message.content ?? ""}`)
+    .join("\u001f");
+}
+
 // ---------------------------------------------------------------------------
 // 轮询节奏：与 AgentChat.nextPollCadence 同一张时刻表（POLL_ACTIVE 200ms、
 // 首字窗口 2000ms 内 225ms、之后 300/500/800/1200 退避、后台 1000ms 只看不拉）。
