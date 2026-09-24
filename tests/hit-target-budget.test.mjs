@@ -307,15 +307,16 @@ function registrationProblem(entry) {
 /**
  * **判断**：这些文件是已登记的密集工具条，允许用 `size="sm"`(36) / `size="md"`(40)。
  *
- * 今天是空的，而且空得有理由：W04 迁的四件工作台 chrome **一件都没用 sm/md**，
- * 全是默认 `lg`(44)。任务书说「`sm` 只允许出现在已登记的密集工具条里」，
- * 今天的实测答案是「一条都还不需要」。
- *
- * 将来真要用（例如表格行内的密排按钮，44 会把行高撑到不可用），
- * 登记形状 `{ file, reason }`，理由必须写清**为什么这里 44 反而更糟**，
- * 而不是「这样好看」。
+ * W12 把插件编辑栏收到 38px：控件 28，条上必须用 `sm`。登记形状
+ * `{ file, reason }`，理由必须写清**为什么这里 44 反而更糟**，不是「这样好看」。
  */
-const SM_ALLOWED_FILES = [];
+const SM_ALLOWED_FILES = [
+  {
+    file: "src/shell/plugin-chrome/PluginChromeEditBarButton.tsx",
+    reason:
+      "13 个插件共用的编辑栏人侧目标是 38px 高（控件 28 + 垫 4 + 边 1）。控件若维持 44，条会被撑回约 54px，重新挡住画布。触屏用 EDIT_BAR_TOUCH_EXTEND_CLASS 把可点区扩到约 40，不抬条高。",
+  },
+];
 
 /**
  * **欠账**：存量的小命中区点位，绝大多数落在别人的独占面上，
@@ -358,7 +359,7 @@ const W04_CLEARED_FILES = [
   "src/shell/AdvancedStageControls.tsx",
   "src/shell/AdvancedWorkspaceActionBar.tsx",
   "src/shell/AppCapabilityBar.tsx",
-  "src/shell/plugin-chrome/PluginChromeEditBarButton.tsx",
+  // W12：编辑栏改为 38px 密排（size=sm + 触屏扩点），改挂 SM_ALLOWED_FILES / FILE_BUDGET。
 ];
 
 /**
@@ -411,6 +412,7 @@ const FILE_BUDGET = new Map([
   ["src/shell/media-editors/AudioWorkbenchView.tsx", 1],
   ["src/shell/media-editors/PdfControls.tsx", 1],
   ["src/shell/mobile-native-actions.tsx", 1],
+  ["src/shell/plugin-chrome/PluginChromeEditBarButton.tsx", 1],
   ["src/shell/plugin-chrome/PluginChromeFrame.tsx", 6],
   ["src/shell/plugin-theme.tsx", 1],
   ["src/shell/project-workspace.tsx", 2],

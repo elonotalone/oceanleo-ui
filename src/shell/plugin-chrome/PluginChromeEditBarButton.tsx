@@ -4,7 +4,9 @@
 // 把面板改成「点开才有」以后，如果没有可见的展开提示，功能等于被藏了。
 //
 // 高度钉在 EDIT_BAR_CONTROL_SIZE_PX。ui/Button 没有 28 这一档：size="sm"
-// 声明「比 44 小」，真实几何用 style 盖过 h-9，避免同类工具类谁赢靠样式表顺序。
+// 声明「比 44 小」（已在 hit-target-budget 的 SM_ALLOWED_FILES 登记），
+// 真实几何用 style 盖过 h-9，避免同类工具类谁赢靠样式表顺序。
+// 触屏用 EDIT_BAR_TOUCH_EXTEND_CLASS 把可点区扩到约 40，不抬 38px 条高。
 
 import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
