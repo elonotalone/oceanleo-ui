@@ -38,6 +38,7 @@ export interface LeoTranscriptState {
   appendOptimistic: (text: string) => string;
   /** 用服务端这一轮的两条（用户 + leo）替换乐观条目，按 id 合并去重。 */
   applyTurn: (tempId: string, entries: LeoTranscriptEntry[]) => void;
+  updateStreaming: (tempId: string, text: string) => void;
   /** 这一轮没说成：撤掉乐观条目；401 时把记录区切成未登录提示。 */
   dropOptimistic: (tempId: string, error: LeoApiError) => void;
 }
@@ -124,8 +125,17 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
 
   const applyTurn = useCallback((tempId: string, incoming: LeoTranscriptEntry[]) => {
     setEntries((prev) =>
-      mergeLeoEntries(prev.filter((entry) => entry.id !== tempId), incoming),
+      mergeLeoEntries(prev.filter((entry) => entry.id !== tempId && entry.id !== `${tempId}-stream`), incoming),
     );
+    setStatus("ready");
+  }, []);
+
+  const updateStreaming = useCallback((tempId: string, text: string) => {
+    setEntries((prev) => {
+      const existing = prev.find((entry) => entry.id === tempId);
+      if (!existing) return [...prev, { id: tempId, role: "leo", text }];
+      return prev.map((entry) => entry.id === tempId ? { ...entry, role: "leo", text } : entry);
+    });
     setStatus("ready");
   }, []);
 
@@ -142,6 +152,7 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
     clear,
     appendOptimistic,
     applyTurn,
+    updateStreaming,
     dropOptimistic,
   };
 }

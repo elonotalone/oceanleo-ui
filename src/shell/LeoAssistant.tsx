@@ -15,7 +15,7 @@ import { LeoSessionList, useLeoSessions } from "./leo/LeoSessions";
 import { announceLeoSelection, currentLeoSelection, subscribeLeoSelection } from "./leo/leo-selection";
 import { LeoPanelComposer } from "./leo/LeoPanelComposer";
 import { LeoTranscript, useLeoTranscript } from "./leo/LeoTranscript";
-import { leoTurn, type LeoTurnWireContext } from "./leo/leo-api";
+import { leoTurnStream, type LeoTurnWireContext } from "./leo/leo-api";
 import { panelBox, type LeoPanelAnchor, type LeoPanelViewport } from "./leo/leo-position";
 import { getHostText, isEditableInput, type HostTarget } from "./leo/host-input";
 
@@ -391,12 +391,17 @@ export function LeoAssistant({
       // 发送前把用户句乐观追加；响应到了用服务端 entries 替换（按 id 合并去重）。
       const tempId = transcript.appendOptimistic(text);
       try {
-        const res = await leoTurn({
+        let streamedText = "";
+        const res = await leoTurnStream({
           site_id: siteId,
           session_id: sessions.selected,
           text,
           board_text: boardApiRef.current?.getText() ?? "",
           context: toWireContext(pageContextRef.current),
+        }, (event) => {
+          if (event.type !== "delta") return;
+          streamedText += event.text;
+          transcript.updateStreaming(`${tempId}-stream`, streamedText);
         });
         if (!res.ok) {
           transcript.dropOptimistic(tempId, res.error);

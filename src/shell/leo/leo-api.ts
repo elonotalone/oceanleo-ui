@@ -12,6 +12,8 @@
 // ============================================================================
 
 import { authed } from "../../lib/agent";
+import { accessToken } from "../../lib/auth/client";
+import { GATEWAY_BASE } from "../../lib/auth/config";
 
 /** leo 建的那条任务挂在记录条目上的卡片。 */
 export interface LeoTranscriptTask {
@@ -63,6 +65,10 @@ export interface LeoTurnResult {
   task: LeoTranscriptTask | null;
   error: "" | "llm_unavailable" | "create_failed";
 }
+
+export type LeoTurnStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; data: LeoTurnResult };
 
 export type LeoApiError = "anonymous" | "network" | "unavailable";
 export type LeoApiResult<T> =
@@ -135,6 +141,93 @@ export async function leoTurn(body: LeoTurnBody): Promise<LeoApiResult<LeoTurnRe
           ? data.error
           : "",
     },
+  };
+}
+
+/** True model SSE transport. The callback runs for every generated delta. */
+export async function leoTurnStream(
+  body: LeoTurnBody,
+  onEvent: (event: LeoTurnStreamEvent) => void,
+): Promise<LeoApiResult<LeoTurnResult>> {
+  const token = await accessToken();
+  if (!token) {
+    const fallback = await leoTurn(body);
+    if (fallback.ok && fallback.data.reply) onEvent({ type: "delta", text: fallback.data.reply });
+    if (fallback.ok) onEvent({ type: "done", data: fallback.data });
+    return fallback;
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_BASE}/v1/assistant/leo-turn/stream`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream" },
+      cache: "no-store",
+      credentials: "include",
+    });
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  if (!res.ok) return { ok: false, error: normalizeError(res.status) };
+  const contentType = res.headers?.get?.("content-type") || "";
+  if (!res.body || !contentType.toLowerCase().includes("text/event-stream")) {
+    // Older gateways have no stream route yet; retain the established contract.
+    const fallback = await leoTurn(body);
+    if (fallback.ok && fallback.data.reply) onEvent({ type: "delta", text: fallback.data.reply });
+    if (fallback.ok) onEvent({ type: "done", data: fallback.data });
+    return fallback;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let event = "message";
+  let data = "";
+  let result: LeoTurnResult | null = null;
+  const consume = (line: string) => {
+    if (line === "") {
+      if (data) {
+        try {
+          const payload = JSON.parse(data) as unknown;
+          if (event === "delta" && payload && typeof payload === "object" && typeof (payload as { text?: unknown }).text === "string") {
+            onEvent({ type: "delta", text: (payload as { text: string }).text });
+          } else if (event === "done" && payload && typeof payload === "object") {
+            result = normalizeLeoTurnResult(payload);
+            if (result) onEvent({ type: "done", data: result });
+          }
+        } catch { /* ignore malformed frames; the terminal frame decides success */ }
+      }
+      event = "message";
+      data = "";
+    } else if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  };
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) consume(line.replace(/\r$/, ""));
+      if (chunk.done) break;
+    }
+    if (buffer) consume(buffer);
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  return result ? { ok: true, data: result } : { ok: false, error: "unavailable" };
+}
+
+function normalizeLeoTurnResult(value: unknown): LeoTurnResult | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Partial<LeoTurnResult>;
+  return {
+    session_id: typeof data.session_id === "string" ? data.session_id : undefined,
+    session: normalizeLeoSession(data.session) ?? undefined,
+    reply: typeof data.reply === "string" ? data.reply : "",
+    action: data.action === "task" || data.action === "error" ? data.action : "reply",
+    entries: normalizeEntries(data.entries),
+    task: normalizeTask(data.task),
+    error: data.error === "llm_unavailable" || data.error === "create_failed" ? data.error : "",
   };
 }
 
