@@ -11,7 +11,17 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
+import {
+  useModeSwitchHandoff,
+  useModeSwitchReady,
+} from "../advanced-routes/mode-switch-gate";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import {
+  peekW19EnterHandoff,
+  reportW19ProSaved,
+  resolveW19Handoff,
+  w19ItemKey,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -137,6 +147,10 @@ export function Model3DNextStage({
   >([]);
   const [hostedSrc, setHostedSrc] = useState("");
   const chipsManifest = useMemo(() => model3dToolsManifestChips(), []);
+  const gateHandoff = useModeSwitchHandoff();
+  const pendingHandoff =
+    peekW19EnterHandoff(w19ItemKey("threed", item)) ?? gateHandoff;
+  const editorSource = useEditorHandoffSource(item, pendingHandoff);
   const readonly = conversion === "readonly" || conversion === "converting";
   const applied = applyModel3DNextMode(instanceId, mode);
   const showHosted = applied.showHostedEditor && Boolean(hostedSrc) && frameMounted;
@@ -149,8 +163,17 @@ export function Model3DNextStage({
   }, []);
 
   useEffect(() => {
-    if (!isModel3DSourceItem(item)) return;
-    const url = item.url || item.previewUrl || "";
+    if (
+      editorSource.status === "loading" &&
+      (!pendingHandoff || pendingHandoff.kind === "empty")
+    ) {
+      return;
+    }
+    const source = resolveW19Handoff(
+      item,
+      editorSource.source ?? pendingHandoff,
+    );
+    const url = source.kind === "url" ? source.url : "";
     if (!url) return;
     let cancelled = false;
     void fetchMediaBlob(url, { maxBytes: 256 * 1024 * 1024 })
@@ -188,7 +211,7 @@ export function Model3DNextStage({
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [editorSource.source, editorSource.status, item, pendingHandoff]);
 
   useEffect(() => {
     return () => {
@@ -354,7 +377,9 @@ export function Model3DNextStage({
       },
     });
     if (!saved.ok) return { ok: false as const, error: saved.error || "保存失败" };
-    return { ok: true as const, item: advancedSavedItem(item, { url: saved.url, versionId: saved.versionId }) };
+    const next = advancedSavedItem(item, { url: saved.url, versionId: saved.versionId });
+    reportW19ProSaved(w19ItemKey("threed", item), next);
+    return { ok: true as const, item: next };
   }, [
     chipsManifest.chips,
     format,

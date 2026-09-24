@@ -41,10 +41,16 @@ import {
 } from "./pdf-next-runtime";
 import type { EditorMode } from "../hosted-editor";
 import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
+import {
+  peekW19EnterHandoff,
+  w19PdfBytesFromHandoff,
+} from "../../i18n/ui/messages/eas-w19-copy";
 
 export interface PdfNextStageProps {
   /** 当前文档字节。两个模式共用这一份 —— 同一文档实例（规范 §7 判据 1）。 */
   bytes: Uint8Array | null;
+  /** 与路由 stash 的 handoff 对齐；bytes 为空时用这份。 */
+  itemKey?: string;
   /** 文件名；只用于查看器标题与下载默认名。 */
   name: string;
   mode: EditorMode;
@@ -228,11 +234,17 @@ function ProViewer({
 
 export function PdfNextStage({
   bytes,
+  itemKey,
   name,
   mode,
   onFailure,
   onDocumentReady,
 }: PdfNextStageProps) {
+  const handed = itemKey
+    ? w19PdfBytesFromHandoff(peekW19EnterHandoff(itemKey))
+    : null;
+  const liveBytes =
+    bytes && bytes.byteLength > 0 ? bytes : handed;
   const plan = usePdfiumLoadPlan();
   // 地址不合规时不许把它递给 hook：`wasmUrl: undefined` 会让上游用它写死的
   // jsDelivr 兜底地址（`dist/react/index.js:7`），那正是判据 1 要拦的行为。
@@ -256,12 +268,12 @@ export function PdfNextStage({
   // 普通模式：用同一个引擎实例打开同一份字节，页数交回路由。
   // 专业模式不走这里——查看器自己管文档，两边同时开会有两份状态。
   useEffect(() => {
-    if (mode === "pro" || !engine || !bytes) return;
+    if (mode === "pro" || !engine || !liveBytes) return;
     let alive = true;
     engine
       .openDocumentBuffer({
         id: name || "document.pdf",
-        content: pdfArrayBuffer(bytes),
+        content: pdfArrayBuffer(liveBytes),
       })
       .toPromise()
       .then((doc) => {
@@ -281,7 +293,7 @@ export function PdfNextStage({
     return () => {
       alive = false;
     };
-  }, [bytes, engine, mode, name, onDocumentReady, onFailure]);
+  }, [liveBytes, engine, mode, name, onDocumentReady, onFailure]);
 
   if (!plan.wasm.ok) {
     return (
@@ -290,11 +302,11 @@ export function PdfNextStage({
       </p>
     );
   }
-  if (!bytes) return <p className="p-4 text-xs">正在载入 PDF…</p>;
+  if (!liveBytes) return <p className="p-4 text-xs">正在载入 PDF…</p>;
   if (mode === "pro") {
     return (
       <ProViewer
-        bytes={bytes}
+        bytes={liveBytes}
         name={name}
         wasmUrl={plan.wasm.wasmUrl}
         fontFallback={plan.fontFallback}

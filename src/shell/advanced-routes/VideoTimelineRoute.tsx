@@ -1,10 +1,25 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import dynamic from "next/dynamic";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  resolveW19Handoff,
+  stashW19EnterHandoff,
+  useW19ProSavedRevision,
+  w19ItemKey,
+  w19RemountKey,
+  W19_PRO_SAVED_AS_NEW_VERSION,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -82,10 +97,18 @@ export function VideoTimelineRoute(props: AdvancedContentWorkbenchProps) {
     return <VideoDesigncomboStage {...props} />;
   }
   // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
+  return <VideoTimelineGated {...props} />;
+}
+
+function VideoTimelineGated(props: AdvancedContentWorkbenchProps) {
+  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
   return (
     <PluginModeSwitchGate
       pluginId="video-timeline"
-      renderNormal={() => <VideoTimelineLegacyRoute {...props} />}
+      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
+      renderNormal={() => (
+        <VideoTimelineLegacyRoute {...props} enterProRef={enterProRef} />
+      )}
       renderPro={() => <VideoDesigncomboStage {...props} />}
     />
   );
@@ -99,7 +122,42 @@ function VideoTimelineLegacyRoute({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-}: AdvancedContentWorkbenchProps) {
+  enterProRef,
+}: AdvancedContentWorkbenchProps & {
+  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
+}) {
+  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("video-timeline", item));
+  const liveItem = saved ?? item;
+  return (
+    <VideoTimelineLegacyBody
+      key={w19RemountKey(liveItem)}
+      item={liveItem}
+      previewContent={previewContent}
+      linkUrl={linkUrl}
+      taskId={taskId}
+      siteId={siteId}
+      accent={accent}
+      onClose={onClose}
+      enterProRef={enterProRef}
+      sourceItem={item}
+    />
+  );
+}
+
+function VideoTimelineLegacyBody({
+  item,
+  previewContent,
+  linkUrl,
+  taskId,
+  siteId = "",
+  accent = "#4f46e5",
+  onClose,
+  enterProRef,
+  sourceItem,
+}: AdvancedContentWorkbenchProps & {
+  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
+  sourceItem: AdvancedContentWorkbenchProps["item"];
+}) {
   const editor = useVideoTimeline(item, siteId);
   const sourceStopped = !editor.loadingSource && !editor.sourceReady;
   const sourcePending = editor.loadingSource && !editor.sourceReady;
@@ -218,6 +276,22 @@ function VideoTimelineLegacyRoute({
   const { setMode: setEditorMode } = usePluginMode("video-timeline");
   // 切回「编辑」时的 ready 信号：源素材载入结束（成功或停下）就算首帧可见。
   useModeSwitchReady(!editor.loadingSource);
+  useEffect(() => {
+    enterProRef.current = async () => {
+      const handoff = editor.sourceReady
+        ? {
+            kind: "inline" as const,
+            json: structuredClone(editor.doc),
+            revision: String(editor.editRevision),
+          }
+        : resolveW19Handoff(item, null);
+      stashW19EnterHandoff(w19ItemKey("video-timeline", sourceItem), handoff);
+      return { ok: true, handoff, item };
+    };
+    return () => {
+      enterProRef.current = null;
+    };
+  }, [editor, enterProRef, item, sourceItem]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -251,6 +325,13 @@ function VideoTimelineLegacyRoute({
           current: "normal",
           setMode: setEditorMode,
         },
+        notices: [
+          {
+            id: "w19-pro-saved-as-new-version",
+            text: W19_PRO_SAVED_AS_NEW_VERSION,
+            severity: "info" as const,
+          },
+        ],
         pages: {},
         directDownload: {
           id: "video-download-mp4",

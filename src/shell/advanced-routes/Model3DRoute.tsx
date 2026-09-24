@@ -6,12 +6,19 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
 } from "react";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  resolveW19Handoff,
+  stashW19EnterHandoff,
+  useW19ProSavedRevision,
+  w19ItemKey,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -74,10 +81,14 @@ export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
 
 /** 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。 */
 function Model3DLegacyRoute(props: AdvancedContentWorkbenchProps) {
+  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
   return (
     <PluginModeSwitchGate
       pluginId="threed"
-      renderNormal={() => <Model3DModelRoute {...props} />}
+      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
+      renderNormal={() => (
+        <Model3DModelRoute {...props} enterProRef={enterProRef} />
+      )}
       renderPro={() => <Model3DNextStage {...props} />}
     />
   );
@@ -197,8 +208,12 @@ function Model3DModelRoute({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-}: AdvancedContentWorkbenchProps) {
-  const editor = useModel3DWorkbench(item, siteId);
+  enterProRef,
+}: AdvancedContentWorkbenchProps & {
+  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
+}) {
+  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("threed", item));
+  const editor = useModel3DWorkbench(saved ?? item, siteId);
   const history = useModel3DDocumentHistory(
     editor,
     `${item.id}:${item.url || item.previewUrl || ""}`,
@@ -383,6 +398,24 @@ function Model3DModelRoute({
   const { setMode: setEditorMode } = usePluginMode("threed");
   // 切回「编辑」时的 ready 信号：模型载入完（或已判定失败）就算首帧可见。
   useModeSwitchReady(!editor.loading);
+  useEffect(() => {
+    enterProRef.current = async () => {
+      const url = editor.sourceUrl;
+      const handoff = url
+        ? {
+            kind: "url" as const,
+            url,
+            format: editor.sourceFormat || "glb",
+            revision: String(editor.editRevision),
+          }
+        : resolveW19Handoff(item, null);
+      stashW19EnterHandoff(w19ItemKey("threed", item), handoff);
+      return { ok: true, handoff, item: saved ?? item };
+    };
+    return () => {
+      enterProRef.current = null;
+    };
+  }, [editor, enterProRef, item, saved]);
   return (
     <AdvancedWorkbenchShell
       item={item}

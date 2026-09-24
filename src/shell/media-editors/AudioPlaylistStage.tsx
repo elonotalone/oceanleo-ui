@@ -10,7 +10,17 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
+import {
+  useModeSwitchHandoff,
+  useModeSwitchReady,
+} from "../advanced-routes/mode-switch-gate";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import {
+  reportW19ProSaved,
+  peekW19EnterHandoff,
+  resolveW19Handoff,
+  w19ItemKey,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -134,6 +144,10 @@ export function AudioPlaylistStage({
   const [transcriptError, setTranscriptError] = useState("");
   const hostedSessionRef = useRef(false);
   const chipsManifest = useMemo(() => audioToolsManifestChips(), []);
+  const gateHandoff = useModeSwitchHandoff();
+  const pendingHandoff =
+    peekW19EnterHandoff(w19ItemKey("audio", item)) ?? gateHandoff;
+  const editorSource = useEditorHandoffSource(item, pendingHandoff);
   const readonly = conversion === "readonly" || conversion === "converting";
   const applied = applyAudioNextMode(instanceId, mode);
   // 过渡门的 ready 信号（plugin-ui U4）：专业面等 AudioMass 的协议 ready，普通面等音频载入完。
@@ -154,7 +168,17 @@ export function AudioPlaylistStage({
   }, [instanceId, item.title]);
 
   useEffect(() => {
-    const url = item.url || item.previewUrl || "";
+    if (
+      editorSource.status === "loading" &&
+      (!pendingHandoff || pendingHandoff.kind === "empty")
+    ) {
+      return;
+    }
+    const source = resolveW19Handoff(
+      item,
+      editorSource.source ?? pendingHandoff,
+    );
+    const url = source.kind === "url" ? source.url : "";
     if (!url) {
       setLoading(false);
       return;
@@ -197,7 +221,7 @@ export function AudioPlaylistStage({
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [editorSource.source, editorSource.status, item, pendingHandoff]);
 
   useEffect(() => {
     const root = playlistRootRef.current;
@@ -408,12 +432,14 @@ export function AudioPlaylistStage({
       },
     });
     if (!saved.ok) return { ok: false as const, error: saved.error || "保存失败" };
+    const next = advancedSavedItem(item, {
+      url: saved.url,
+      versionId: saved.versionId,
+    });
+    reportW19ProSaved(w19ItemKey("audio", item), next);
     return {
       ok: true as const,
-      item: advancedSavedItem(item, {
-        url: saved.url,
-        versionId: saved.versionId,
-      }),
+      item: next,
     };
   }, [chipsManifest.chips, editRevision, item, readonly, siteId]);
 

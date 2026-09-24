@@ -1,6 +1,17 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useEditorHandoffSource } from "./editor-handoff";
+import {
+  applyW19HandoffToItem,
+  peekW19EnterHandoff,
+  reportW19ProSaved,
+  resolveW19Handoff,
+  stashW19EnterHandoff,
+  useW19ProSavedRevision,
+  w19ItemKey,
+  W19_PRO_SAVED_AS_NEW_VERSION,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
@@ -71,7 +82,19 @@ export function PdfRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const editor = usePdfWorkbench(item, siteId);
+  const pendingHandoff = peekW19EnterHandoff(w19ItemKey("pdf", item));
+  const editorSource = useEditorHandoffSource(item, pendingHandoff);
+  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("pdf", item));
+  const liveItem = saved ?? item;
+  const source = useMemo(
+    () => resolveW19Handoff(liveItem, editorSource.source ?? pendingHandoff),
+    [editorSource.source, liveItem, pendingHandoff],
+  );
+  const workbenchItem = useMemo(
+    () => applyW19HandoffToItem(liveItem, source),
+    [liveItem, source],
+  );
+  const editor = usePdfWorkbench(workbenchItem, siteId);
   // 双核 flag 顶层判一次（`editor-core-flags.ts` 三条纪律的第 1 条）：
   // 默认 `legacy`，翻到 `next` 才拉起 EmbedPDF 那个叶子。
   const core = resolveEditorCore("pdf");
@@ -120,22 +143,32 @@ export function PdfRoute({
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
-    const saved = await editor.saveCopy();
-    return saved
-      ? {
-          ok: true as const,
-          item: advancedSavedItem(item, {
-            url: saved.url,
-            versionId: saved.versionId,
-            meta: {
-              editor: "pdf-native-v1",
-              editor_project_url: saved.projectUrl,
-              editor_project_schema: saved.projectSchema,
-            },
-          }),
-        }
-      : { ok: false as const };
+    const copied = await editor.saveCopy();
+    if (!copied) return { ok: false as const };
+    const next = advancedSavedItem(item, {
+      url: copied.url,
+      versionId: copied.versionId,
+      meta: {
+        editor: "pdf-native-v1",
+        editor_project_url: copied.projectUrl,
+        editor_project_schema: copied.projectSchema,
+      },
+    });
+    reportW19ProSaved(w19ItemKey("pdf", item), next);
+    return { ok: true as const, item: next };
   }, [editor.saveCopy, item]);
+  const enterPdfPro = useCallback(async () => {
+    const bytes = editor.currentBytes();
+    const handoff = bytes
+      ? {
+          kind: "inline" as const,
+          json: { pdfBytes: bytes },
+          revision: String(editor.editRevision),
+        }
+      : resolveW19Handoff(workbenchItem, null);
+    stashW19EnterHandoff(w19ItemKey("pdf", item), handoff);
+    return { ok: true, handoff, item: workbenchItem };
+  }, [editor, item, workbenchItem]);
   const [importError, setImportError] = useState("");
   /**
    * 拖进来的不只是 PDF：Word / 表格 / 演示 / 图片先由后端转成 PDF（合同 §3.3），
@@ -225,28 +258,36 @@ export function PdfRoute({
         // §2.4 SC 1.4.5 / F2：扫描件必须说明自己没有文本层。规范 v2 §1 之后
         // 这句提示不再是画布顶部的黑条，而是宿主 PluginChromeNotices 的左下角小胶囊
         // （id 与 PDF_FAILURE_CODES 的 `pdf-no-text-layer` 同名，验收脚本按它找）。
-        notices:
-          editor.readerState === "image-only"
+        notices: [
+          {
+            id: "w19-pro-saved-as-new-version",
+            text: W19_PRO_SAVED_AS_NEW_VERSION,
+            severity: "info" as const,
+          },
+          ...(editor.readerState === "image-only"
             ? [
                 {
                   id: "pdf-no-text-layer",
                   text: "此文档无文本层，只能按页浏览与标注，无法全文检索或复制文字。",
-                  severity: "info",
+                  severity: "info" as const,
                 },
               ]
-            : undefined,
+            : []),
+        ],
         // flag=`next` 或专业模式走 EmbedPDF 叶子（普通模式我们自己画、专业
         // 模式换成上游即用查看器，**同一份字节**）。`effectiveCore` 判定保留，
         // 两面之间经同一个过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
         stage: (
           <ModeSwitchGate
             pro={effectiveCore === "next"}
+            beforeEnterPro={enterPdfPro}
             renderNormal={() => (
               <PdfLegacyFace editor={editor} accent={accent} />
             )}
             renderPro={() => (
               <PdfNextStage
                 bytes={nextCoreEditor.currentBytes()}
+                itemKey={w19ItemKey("pdf", item)}
                 name={`${item.title || "document"}.pdf`}
                 mode={mode}
                 onFailure={setNextCoreFailure}

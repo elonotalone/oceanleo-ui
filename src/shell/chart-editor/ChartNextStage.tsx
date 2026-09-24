@@ -10,7 +10,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
+import {
+  useModeSwitchHandoff,
+  useModeSwitchReady,
+} from "../advanced-routes/mode-switch-gate";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import {
+  applyW19HandoffToItem,
+  peekW19EnterHandoff,
+  reportW19ProSaved,
+  resolveW19Handoff,
+  w19ItemKey,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -63,7 +74,19 @@ export function ChartNextStage({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const editor = useChartWorkbench(item, siteId);
+  const gateHandoff = useModeSwitchHandoff();
+  const pendingHandoff =
+    peekW19EnterHandoff(w19ItemKey("chart-editor", item)) ?? gateHandoff;
+  const editorSource = useEditorHandoffSource(item, pendingHandoff);
+  const source = useMemo(
+    () => resolveW19Handoff(item, editorSource.source ?? pendingHandoff),
+    [editorSource.source, item, pendingHandoff],
+  );
+  const liveItem = useMemo(
+    () => applyW19HandoffToItem(item, source),
+    [item, source],
+  );
+  const editor = useChartWorkbench(liveItem, siteId);
   const toolsManifest = useMemo(() => chartToolsManifestChips(), []);
   const [mode, setModeState] = useState<EditorMode>(CHART_NEXT_DEFAULT_MODE);
   const chrome = applyChartNextMode(CHART_NEXT_INSTANCE_ID, mode);
@@ -184,17 +207,20 @@ export function ChartNextStage({
   );
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
-    return saved
-      ? { ok: true as const, item: buildSavedItem(saved) }
-      : {
-          ok: false as const,
-          error:
-            editor.error ||
-            (!editor.sourceReady
-              ? "图表源未成功载入，未保存示例回退内容。"
-              : "图表保存失败"),
-        };
-  }, [buildSavedItem, editor]);
+    if (!saved) {
+      return {
+        ok: false as const,
+        error:
+          editor.error ||
+          (!editor.sourceReady
+            ? "图表源未成功载入，未保存示例回退内容。"
+            : "图表保存失败"),
+      };
+    }
+    const next = buildSavedItem(saved);
+    reportW19ProSaved(w19ItemKey("chart-editor", item), next);
+    return { ok: true as const, item: next };
+  }, [buildSavedItem, editor, item]);
   const importLocalData = useCallback(
     async (files: File[]) => {
       const file = files[0];

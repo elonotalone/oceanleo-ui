@@ -12,7 +12,18 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
+import {
+  useModeSwitchHandoff,
+  useModeSwitchReady,
+} from "../advanced-routes/mode-switch-gate";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import {
+  peekW19EnterHandoff,
+  reportW19ProSaved,
+  resolveW19Handoff,
+  w19ItemKey,
+  W19_PRO_SAVED_AS_NEW_VERSION,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
@@ -108,6 +119,10 @@ export function VideoDesigncomboStage({
   const [exporting, setExporting] = useState(false);
   const [legacyDoc, setLegacyDoc] = useState<unknown>(null);
   const chipsManifest = useMemo(() => videoToolsManifestChips(), []);
+  const gateHandoff = useModeSwitchHandoff();
+  const pendingHandoff =
+    peekW19EnterHandoff(w19ItemKey("video-timeline", item)) ?? gateHandoff;
+  const editorSource = useEditorHandoffSource(item, pendingHandoff);
   // 过渡门的 ready 信号（plugin-ui U4）：工程载入结束就算首帧可见。
   useModeSwitchReady(!loading);
   const readonly =
@@ -140,12 +155,58 @@ export function VideoDesigncomboStage({
   }, [applyChrome, mode]);
 
   useEffect(() => {
+    if (
+      editorSource.status === "loading" &&
+      (!pendingHandoff || pendingHandoff.kind === "empty")
+    ) {
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     (async () => {
       try {
+        const source = resolveW19Handoff(
+          item,
+          editorSource.source ?? pendingHandoff,
+        );
+        if (source.kind === "inline") {
+          if (isOpenVideoProject(source.json)) {
+            const next = normalizeOpenVideoProject(source.json);
+            projectRef.current = next;
+            setProject(next);
+            setConversion("converted");
+            setConversionNotice("");
+            setLegacyDoc(null);
+            return;
+          }
+          if (isTimelineDoc(source.json)) {
+            const planned = planVideoLegacyConversion({
+              doc: source.json,
+              schema: LEGACY_TIMELINE_SCHEMA,
+              title: item.title,
+            });
+            setLegacyDoc(source.json);
+            if (planned.ok) {
+              projectRef.current = planned.data;
+              setProject(planned.data);
+              setConversion("converted");
+              setConversionNotice("");
+            } else {
+              projectRef.current = emptyOpenVideoProject();
+              setProject(projectRef.current);
+              setConversion("readonly");
+              setConversionNotice(
+                `${VIDEO_LEGACY_READONLY_NOTICE} ${planned.reason}`,
+              );
+            }
+            return;
+          }
+        }
         const schema = String(item.meta.editor_project_schema || "");
-        const projectUrl = String(item.meta.editor_project_url || "").trim();
+        const projectUrl =
+          source.kind === "url" && source.format === "json"
+            ? source.url
+            : String(item.meta.editor_project_url || "").trim();
         if (schema === OPENVIDEO_PROJECT_SCHEMA && projectUrl) {
           const blob = await fetchMediaBlob(projectUrl, { maxBytes: 20 * 1024 * 1024 });
           const data = parseEnvelope(await blob.text());
@@ -197,7 +258,8 @@ export function VideoDesigncomboStage({
           }
           return;
         }
-        const mediaUrl = item.url || item.previewUrl || "";
+        const mediaUrl =
+          source.kind === "url" ? source.url : "";
         const seeded = emptyOpenVideoProject();
         if (mediaUrl) {
           const id = makeOpenVideoId("clip");
@@ -256,6 +318,9 @@ export function VideoDesigncomboStage({
     item.previewUrl,
     item.title,
     item.url,
+    editorSource.source,
+    editorSource.status,
+    pendingHandoff,
   ]);
 
   useEffect(() => {
@@ -461,22 +526,22 @@ export function VideoDesigncomboStage({
 
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await saveDraft();
-    return saved?.url
-      ? {
-          ok: true as const,
-          item: advancedSavedItem(item, {
-            url: saved.url,
-            versionId: saved.versionId,
-            meta: {
-              editor_project_url: saved.projectUrl,
-              editor_project_schema: saved.projectSchema,
-            },
-          }),
-        }
-      : {
-          ok: false as const,
-          error: status || "时间线草稿保存失败",
-        };
+    if (!saved?.url) {
+      return {
+        ok: false as const,
+        error: status || "时间线草稿保存失败",
+      };
+    }
+    const next = advancedSavedItem(item, {
+      url: saved.url,
+      versionId: saved.versionId,
+      meta: {
+        editor_project_url: saved.projectUrl,
+        editor_project_schema: saved.projectSchema,
+      },
+    });
+    reportW19ProSaved(w19ItemKey("video-timeline", item), next);
+    return { ok: true as const, item: next };
   }, [item, saveDraft, status]);
 
   return (
@@ -531,6 +596,13 @@ export function VideoDesigncomboStage({
           current: mode,
           setMode,
         },
+        notices: [
+          {
+            id: "w19-pro-saved-as-new-version",
+            text: W19_PRO_SAVED_AS_NEW_VERSION,
+            severity: "info",
+          },
+        ],
         pages: { proLabel: "专业编辑" },
         directDownload: {
           id: "video-download-mp4",

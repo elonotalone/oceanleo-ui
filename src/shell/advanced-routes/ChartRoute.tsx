@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
@@ -25,6 +32,13 @@ import { createChartCommandSurface } from "../chart-editor/chart-command-surface
 import { visualImportPlan } from "../media-editors/visual-formats";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  resolveW19Handoff,
+  stashW19EnterHandoff,
+  useW19ProSavedRevision,
+  w19ItemKey,
+  w19RemountKey,
+} from "../../i18n/ui/messages/eas-w19-copy";
 
 const ChartNextStage = dynamic(
   () =>
@@ -43,11 +57,45 @@ export function ChartRoute(props: AdvancedContentWorkbenchProps) {
 
 /** 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。 */
 function ChartLegacyRoute(props: AdvancedContentWorkbenchProps) {
+  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
   return (
     <PluginModeSwitchGate
       pluginId="chart-editor"
-      renderNormal={() => <ChartLegacyBody {...props} />}
+      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
+      renderNormal={() => (
+        <ChartLegacyFace {...props} enterProRef={enterProRef} />
+      )}
       renderPro={() => <ChartNextStage {...props} />}
+    />
+  );
+}
+
+function ChartLegacyFace({
+  item,
+  previewContent,
+  linkUrl,
+  taskId,
+  siteId = "",
+  accent = "#4f46e5",
+  onClose,
+  enterProRef,
+}: AdvancedContentWorkbenchProps & {
+  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
+}) {
+  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("chart-editor", item));
+  const liveItem = saved ?? item;
+  return (
+    <ChartLegacyBody
+      key={w19RemountKey(liveItem)}
+      item={liveItem}
+      previewContent={previewContent}
+      linkUrl={linkUrl}
+      taskId={taskId}
+      siteId={siteId}
+      accent={accent}
+      onClose={onClose}
+      enterProRef={enterProRef}
+      sourceItem={item}
     />
   );
 }
@@ -60,7 +108,12 @@ function ChartLegacyBody({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-}: AdvancedContentWorkbenchProps) {
+  enterProRef,
+  sourceItem,
+}: AdvancedContentWorkbenchProps & {
+  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
+  sourceItem: AdvancedContentWorkbenchProps["item"];
+}) {
   const editor = useChartWorkbench(item, siteId);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -73,6 +126,22 @@ function ChartLegacyBody({
   const { setMode: setEditorMode } = usePluginMode("chart-editor");
   // 切回「编辑」时的 ready 信号：图表源载入完（成功或已判定失败）就算首帧可见。
   useModeSwitchReady(!editor.loading);
+  useEffect(() => {
+    enterProRef.current = async () => {
+      const handoff = editor.sourceReady
+        ? {
+            kind: "inline" as const,
+            json: structuredClone(editor.document),
+            revision: String(editor.editRevision),
+          }
+        : resolveW19Handoff(item, null);
+      stashW19EnterHandoff(w19ItemKey("chart-editor", sourceItem), handoff);
+      return { ok: true, handoff, item };
+    };
+    return () => {
+      enterProRef.current = null;
+    };
+  }, [editor, enterProRef, item, sourceItem]);
   const buildSavedItem = useCallback(
     (saved: ChartSaveResult): LibraryItem => {
       if (saved.item) {

@@ -191,6 +191,23 @@ const chartRouteStubs = {
   "../library-data": dataModule(
     `export function libraryContentDescriptor(){ return {}; }`,
   ),
+  "./mode-switch-gate": dataModule(`
+    export function PluginModeSwitchGate({ renderNormal }) {
+      return typeof renderNormal === "function" ? renderNormal() : null;
+    }
+    export function ModeSwitchGate({ renderNormal }) {
+      return typeof renderNormal === "function" ? renderNormal() : null;
+    }
+    export function useModeSwitchReady() { return () => {}; }
+    export function useModeSwitchHandoff() { return null; }
+  `),
+  "../../i18n/ui/messages/eas-w19-copy": dataModule(`
+    export function resolveW19Handoff(){ return { kind: "empty" }; }
+    export function stashW19EnterHandoff(){}
+    export function useW19ProSavedRevision(){ return null; }
+    export function w19ItemKey(){ return ""; }
+    export function w19RemountKey(){ return ""; }
+  `),
   "../chart-editor/chart-command-surface": dataModule(
     `export function createChartCommandSurface(){ return {}; }`,
   ),

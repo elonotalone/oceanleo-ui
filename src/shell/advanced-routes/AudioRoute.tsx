@@ -1,11 +1,24 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  resolveW19Handoff,
+  stashW19EnterHandoff,
+  useW19ProSavedRevision,
+  w19ItemKey,
+} from "../../i18n/ui/messages/eas-w19-copy";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -59,10 +72,18 @@ export function AudioRoute(props: AdvancedContentWorkbenchProps) {
     return <AudioPlaylistStage {...props} />;
   }
   // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
+  return <AudioGated {...props} />;
+}
+
+function AudioGated(props: AdvancedContentWorkbenchProps) {
+  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
   return (
     <PluginModeSwitchGate
       pluginId="audio"
-      renderNormal={() => <AudioLegacyRoute {...props} />}
+      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
+      renderNormal={() => (
+        <AudioLegacyRoute {...props} enterProRef={enterProRef} />
+      )}
       renderPro={() => <AudioPlaylistStage {...props} />}
     />
   );
@@ -76,8 +97,12 @@ function AudioLegacyRoute({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-}: AdvancedContentWorkbenchProps) {
-  const editor = useAudioWorkbench(item, siteId);
+  enterProRef,
+}: AdvancedContentWorkbenchProps & {
+  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
+}) {
+  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("audio", item));
+  const editor = useAudioWorkbench(saved ?? item, siteId);
   const [deliverBusy, setDeliverBusy] = useState(false);
   const [deliverNotice, setDeliverNotice] = useState("");
   /** wav 本地出；mp3 / m4a 拿同一份 wav 去后端转一道再下载。 */
@@ -182,6 +207,24 @@ function AudioLegacyRoute({
   const { setMode: setEditorMode } = usePluginMode("audio");
   // 切回「编辑」时的 ready 信号：音频载入完就算首帧可见。
   useModeSwitchReady(!editor.loading);
+  useEffect(() => {
+    enterProRef.current = async () => {
+      const blob = editor.wavBlob();
+      const handoff = blob
+        ? {
+            kind: "url" as const,
+            url: URL.createObjectURL(blob),
+            format: "wav",
+            revision: String(editor.editRevision),
+          }
+        : resolveW19Handoff(item, null);
+      stashW19EnterHandoff(w19ItemKey("audio", item), handoff);
+      return { ok: true, handoff, item: saved ?? item };
+    };
+    return () => {
+      enterProRef.current = null;
+    };
+  }, [editor, enterProRef, item, saved]);
   return (
     <AdvancedWorkbenchShell
       item={item}
