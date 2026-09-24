@@ -24,7 +24,7 @@ import {
   w19ItemKey,
   w19OfficeProbeItem,
   W19_PRO_SAVED_AS_NEW_VERSION,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "../advanced-routes/w19-handoff-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";

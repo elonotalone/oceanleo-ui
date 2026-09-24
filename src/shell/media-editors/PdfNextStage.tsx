@@ -44,7 +44,7 @@ import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 import {
   peekW19EnterHandoff,
   w19PdfBytesFromHandoff,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "../advanced-routes/w19-handoff-store";
 
 export interface PdfNextStageProps {
   /** 当前文档字节。两个模式共用这一份 —— 同一文档实例（规范 §7 判据 1）。 */

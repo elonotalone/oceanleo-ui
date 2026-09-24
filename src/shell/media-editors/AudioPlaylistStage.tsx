@@ -20,7 +20,7 @@ import {
   peekW19EnterHandoff,
   resolveW19Handoff,
   w19ItemKey,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "../advanced-routes/w19-handoff-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";

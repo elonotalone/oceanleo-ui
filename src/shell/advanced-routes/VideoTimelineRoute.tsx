@@ -19,7 +19,7 @@ import {
   w19ItemKey,
   w19RemountKey,
   W19_PRO_SAVED_AS_NEW_VERSION,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "./w19-handoff-store";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";

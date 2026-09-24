@@ -21,7 +21,7 @@ import {
   reportW19ProSaved,
   resolveW19Handoff,
   w19ItemKey,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "../advanced-routes/w19-handoff-store";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";

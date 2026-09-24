@@ -201,7 +201,7 @@ const chartRouteStubs = {
     export function useModeSwitchReady() { return () => {}; }
     export function useModeSwitchHandoff() { return null; }
   `),
-  "../../i18n/ui/messages/eas-w19-copy": dataModule(`
+  "./w19-handoff-store": dataModule(`
     export function resolveW19Handoff(){ return { kind: "empty" }; }
     export function stashW19EnterHandoff(){}
     export function useW19ProSavedRevision(){ return null; }

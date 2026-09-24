@@ -25,7 +25,7 @@ import {
   stashW19EnterHandoff,
   w19ItemKey,
   w19PdfBytesFromHandoff,
-} from "../src/i18n/ui/messages/eas-w19-copy.ts";
+} from "../src/shell/advanced-routes/w19-handoff-store.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

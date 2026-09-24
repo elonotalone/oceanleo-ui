@@ -38,7 +38,7 @@ import {
   useW19ProSavedRevision,
   w19ItemKey,
   w19RemountKey,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "./w19-handoff-store";
 
 const ChartNextStage = dynamic(
   () =>

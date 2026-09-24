@@ -11,7 +11,7 @@ import {
   useW19ProSavedRevision,
   w19ItemKey,
   W19_PRO_SAVED_AS_NEW_VERSION,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "./w19-handoff-store";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";

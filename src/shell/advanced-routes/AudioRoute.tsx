@@ -18,7 +18,7 @@ import {
   stashW19EnterHandoff,
   useW19ProSavedRevision,
   w19ItemKey,
-} from "../../i18n/ui/messages/eas-w19-copy";
+} from "./w19-handoff-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
