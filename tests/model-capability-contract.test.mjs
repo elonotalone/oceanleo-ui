@@ -89,7 +89,12 @@ test("每站右上角恢复全局模型组合切换器，不发送一次性模�
 
 test("AI 模型页删除用量记录与独立市场，价格来源位于组合管理之后", () => {
   assert.match(page, /title=\{tt\("AI 模型"\)\}/);
-  assert.match(accountPage, /label: tt\("AI 模型"\),\s*href: "\/api"/);
+  // 2026-09-24 W07：能力项「AI 模型」是设置窗面板，不是 /api 链接。旧断言
+  // `label: tt("AI 模型"), href: "/api"` 钉住的正是点了没反应、子站 404 的那条缺陷。
+  assert.match(accountPage, /id: "models"/);
+  assert.match(accountPage, /label: tt\("AI 模型"\)/);
+  assert.match(accountPage, /<ApiPage variant="pane"/);
+  assert.doesNotMatch(accountPage, /href: "\/api"/);
   assert.doesNotMatch(accountPage, /label: "API", href: "\/api"/);
   assert.doesNotMatch(page, /用量记录|前往 Cost 页/);
   const managerIndex = page.indexOf("<ModelGroupManager");

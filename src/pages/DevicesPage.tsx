@@ -205,7 +205,7 @@ export function DevicesPage({
 
       {confirmRevoke && (
         <ConfirmDialog
-          title={tt(`撤销「${confirmRevoke.device_name}」？`)}
+          title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })}
           body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")}
           confirmLabel={tt("确认撤销")}
           danger
@@ -255,7 +255,7 @@ export function DevicesPage({
             </h2>
             {!loading && devices.length > 0 && (
               <span className="text-[12px] text-neutral-400">
-                {tt(`${devices.filter((device) => device.online).length} 台在线`)}
+                {tt("{n} 台在线", { n: devices.filter((device) => device.online).length })}
               </span>
             )}
           </div>
@@ -372,13 +372,14 @@ export function DevicesPage({
 
                   {!device.online && (
                     <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
-                      {tt(`${device.device_name}现在离线，需要它执行的步骤会排队等它上线`)}
+                      {tt("{name}现在离线，需要它执行的步骤会排队等它上线", { name: device.device_name })}
                     </p>
                   )}
                   {device.online && !device.local_exec_enabled && (
                     <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
                       {tt(
-                        `${device.device_name}在线，但它还没允许云端下发任务。这个开关只能在那台电脑上打开（托盘图标里）。`,
+                        "{name}在线，但它还没允许云端下发任务。这个开关只能在那台电脑上打开（托盘图标里）。",
+                        { name: device.device_name },
                       )}
                     </p>
                   )}

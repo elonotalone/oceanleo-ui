@@ -209,6 +209,13 @@ const orgStubUrl = dataModule(`
   }
 `);
 
+const paneStub = (exportName, testId) => dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function ${exportName}() {
+    return React.createElement("div", { "data-testid": ${JSON.stringify(testId)} });
+  }
+`);
+
 const COMPONENT_STUBS = {
   "next/link": linkStubUrl,
   "next/navigation": navigationStubUrl,
@@ -221,6 +228,10 @@ const COMPONENT_STUBS = {
   "../i18n/ui/useUI": uiStubUrl,
   "./AuthDialog": authDialogStubUrl,
   "./PageHeader": pageHeaderStubUrl,
+  "./ApiPage": paneStub("ApiPage", "pane-api"),
+  "./DevicesPage": paneStub("DevicesPage", "pane-devices"),
+  "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
+  "./settings/personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
 };
 
 /** 本文件所有组件共用这套替身；每次调用还能再补几条。 */
@@ -377,15 +388,15 @@ test("用户卡片默认带「免费计划」标签，planLabel=null 才隐藏",
 
 /* ---------- 超集第 3 项：菜单项 external 外链 ---------- */
 
-test("菜单项 external 走原生 <a target=_blank>，内链走 next/link", async () => {
+test("菜单项 external 走原生 <a target=_blank>，能力组内链不再走 next/link", async () => {
   const view = await render(
     React.createElement(AccountPage, {
       menuItems: [
         { label: "自定义页", href: "/workspace", desc: "工作台" },
         {
-          label: "插件与连接器",
-          href: "https://oceanleo.com/plugins",
-          desc: "技能、连接器与 MCP 服务器",
+          label: "使用文档",
+          href: "https://oceanleo.com/docs",
+          desc: "文档",
           external: true,
         },
       ],
@@ -393,8 +404,10 @@ test("菜单项 external 走原生 <a target=_blank>，内链走 next/link", asy
     signedInStub(),
   );
   const internal = view.host.querySelector('a[href="/workspace"]');
-  const external = view.host.querySelector('a[href="https://oceanleo.com/plugins"]');
-  assert.equal(internal.getAttribute("data-next-link"), "1");
+  const external = view.host.querySelector('a[href="https://oceanleo.com/docs"]');
+  // 旧断言要求内链是 next/link。Next 的 <Link> 走 pushState，设置窗原来只听
+  // hashchange / popstate，点下去背后换页、窗还盖着，看起来像没反应。
+  assert.equal(internal.getAttribute("data-next-link"), null);
   assert.equal(internal.getAttribute("target"), null);
   assert.equal(external.getAttribute("data-next-link"), null);
   assert.equal(external.getAttribute("target"), "_blank");

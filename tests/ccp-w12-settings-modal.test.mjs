@@ -21,6 +21,6 @@ test("SettingsHub keeps page variant and uses callback tabs in modal variant", (
   assert.match(hub, /variant\?: "page" \| "modal"/);
   assert.match(hub, /variant === "modal" \? initialTab/);
   assert.match(hub, /onTabChange\?\./);
-  assert.match(hub, /else writeTab\(id\)/);
+  assert.match(hub, /else writeTab\(next\)/);
   assert.match(hub, /variant === "modal" && checked && !email && guestPrompt === "auth"/);
 });

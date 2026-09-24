@@ -142,6 +142,12 @@ const resetStubUrl = dataModule(`
     return React.createElement("div", { "data-testid": "reset-page" });
   }
 `);
+const paneStub = (exportName, testId) => dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function ${exportName}() {
+    return React.createElement("div", { "data-testid": ${JSON.stringify(testId)} });
+  }
+`);
 
 const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "next/link": linkStubUrl,
@@ -154,6 +160,10 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "../GeneralPage": generalStubUrl,
   "../AccountSecurityPage": securityStubUrl,
   "../OrgMembership": orgStubUrl,
+  "../ApiPage": paneStub("ApiPage", "pane-api"),
+  "../DevicesPage": paneStub("DevicesPage", "pane-devices"),
+  "../PluginsPage": paneStub("PluginsPage", "pane-plugins"),
+  "./personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
 });
 const { SettingsHub } = await import(hubUrl);
 
@@ -168,6 +178,10 @@ const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "./GeneralPage": generalStubUrl,
   "./AccountSecurityPage": securityStubUrl,
   "./OrgMembership": orgStubUrl,
+  "./ApiPage": paneStub("ApiPage", "pane-api"),
+  "./DevicesPage": paneStub("DevicesPage", "pane-devices"),
+  "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
+  "./settings/personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
 });
 const { AccountPage } = await import(accountUrl);
 

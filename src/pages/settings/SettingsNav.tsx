@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
 
 export type SettingsNavItem = {
   id: string;
@@ -105,9 +104,9 @@ function NavRow({
       );
     }
     return (
-      <Link href={item.href} data-settings-item={item.id} className={className}>
+      <a href={item.href} data-settings-item={item.id} className={className}>
         {label}
-      </Link>
+      </a>
     );
   }
 

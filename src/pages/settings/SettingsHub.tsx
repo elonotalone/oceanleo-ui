@@ -13,13 +13,18 @@ import {
 } from "../../lib/auth";
 import { formatMoney, normalizeCurrency, type LedgerCurrency } from "../../lib/money";
 import { useUI } from "../../i18n/ui/useUI";
+import { ApiPage } from "../ApiPage";
 import { AuthDialog } from "../AuthDialog";
+import { DevicesPage } from "../DevicesPage";
 import { PasswordResetPage } from "../PasswordResetPage";
+import { PluginsPage } from "../PluginsPage";
 import { SettingsNav, type SettingsNavGroup } from "./SettingsNav";
+import { PersonalizationSection } from "./personalization/PersonalizationSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AccountSection } from "./sections/AccountSection";
 import { BillingSection } from "./sections/BillingSection";
 import { OrgSection } from "./sections/OrgSection";
+import { canonicalSettingsTab, isReservedSettingsTab, resolveSettingsTab } from "./settings-tabs";
 
 export type SettingsSection = {
   id: string;
@@ -57,6 +62,31 @@ export type SettingsHubProps = {
 };
 
 const SKIP_MENU_HREFS = new Set(["/general", "/settings", "/cost", "/org", "/account", ""]);
+/** 旧账号菜单里指向这几页的项（站内或主站外链）已由内置面板承接。 */
+const PANE_MENU_PATHS = new Set(["/api", "/plugins", "/devices"]);
+
+function menuPath(href: string): string {
+  try {
+    return new URL(href, "https://settings.invalid").pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return href;
+  }
+}
+
+const warnedShadowedSections = new Set<string>();
+
+function withoutShadowedSections(sections: SettingsSection[]): SettingsSection[] {
+  return sections.filter((section) => {
+    if (!isReservedSettingsTab(section.id)) return true;
+    if (!warnedShadowedSections.has(section.id)) {
+      warnedShadowedSections.add(section.id);
+      console.warn(
+        `[SettingsHub] extraSections item "${section.id}" is ignored: the built-in "${canonicalSettingsTab(section.id)}" section owns this id.`,
+      );
+    }
+    return false;
+  });
+}
 
 function SettingsHomeLink({ label }: { label: string }) {
   return (
@@ -106,7 +136,15 @@ export function SettingsHub({
   const href = currentHref ?? (typeof window !== "undefined" ? window.location.href : "");
   const resetLanding = isPasswordResetLanding(href);
   const fallbackTab = defaultTab || "general";
-  const [tab, setTab] = useState(() => variant === "modal" ? initialTab || fallbackTab : tabFromLocation(fallbackTab));
+  const extraIdKey = extraSections.map((section) => section.id).join("\0");
+  const extraIds = useMemo(() => extraIdKey.split("\0").filter(Boolean), [extraIdKey]);
+  const [tab, setTab] = useState(() =>
+    resolveSettingsTab(
+      variant === "modal" ? initialTab || fallbackTab : tabFromLocation(fallbackTab),
+      extraIds,
+      fallbackTab,
+    ),
+  );
   const [email, setEmail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [currency, setCurrency] = useState<LedgerCurrency>("CNY");
@@ -116,8 +154,10 @@ export function SettingsHub({
   const [showAuth, setShowAuth] = useState(false);
 
   useEffect(() => {
-    if (variant === "modal") setTab(initialTab || fallbackTab);
-  }, [variant, initialTab, fallbackTab]);
+    if (variant === "modal") {
+      setTab(resolveSettingsTab(initialTab || fallbackTab, extraIds, fallbackTab));
+    }
+  }, [variant, initialTab, fallbackTab, extraIds]);
 
   useEffect(() => {
     if (variant === "modal" && checked && !email && guestPrompt === "auth") setShowAuth(true);
@@ -126,12 +166,12 @@ export function SettingsHub({
   useEffect(() => {
     if (variant === "modal") return;
     function onPop() {
-      setTab(tabFromLocation(fallbackTab));
+      setTab(resolveSettingsTab(tabFromLocation(fallbackTab), extraIds, fallbackTab));
     }
     if (typeof window === "undefined") return;
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [fallbackTab, variant]);
+  }, [fallbackTab, variant, extraIds]);
 
   useEffect(() => {
     if (!configured) return;
@@ -210,40 +250,48 @@ export function SettingsHub({
         render: () => <AccountSection email={email} onSignedOut={onSignedOut} />,
       },
       {
+        id: "personalization",
+        group: "settings",
+        label: tt("个性化"),
+        render: () => <PersonalizationSection />,
+      },
+      {
         id: "billing",
         group: "settings",
         label: tt("用量与账单"),
         render: () => <BillingSection stats={stats} />,
       },
     ];
+    const caps: SettingsSection[] = [
+      {
+        id: "models",
+        group: "capabilities",
+        label: tt("AI 模型"),
+        render: () => <ApiPage variant="pane" />,
+      },
+      {
+        id: "plugins",
+        group: "capabilities",
+        label: tt("插件与连接器"),
+        render: () => <PluginsPage variant="pane" />,
+      },
+      {
+        id: "devices",
+        group: "capabilities",
+        label: tt("我的设备"),
+        render: () => <DevicesPage variant="pane" />,
+      },
+    ];
+    const takenLabels = new Set([...builtin, ...caps].map((section) => section.label));
     const capsByHref = new Map<string, SettingsSection>();
-    const putCap = (section: SettingsSection) => {
-      if (section.href) capsByHref.set(section.href, section);
-    };
-    putCap({
-      id: "models",
-      group: "capabilities",
-      label: tt("AI 模型"),
-      href: "/api",
-    });
-    putCap({
-      id: "plugins",
-      group: "capabilities",
-      label: tt("插件与连接器"),
-      href: "/plugins",
-    });
-    putCap({
-      id: "devices",
-      group: "capabilities",
-      label: tt("我的设备"),
-      href: "/devices",
-    });
     for (const item of menu ?? []) {
       if (item.expands) continue;
       const itemHref = (item.href || "").trim();
       if (SKIP_MENU_HREFS.has(itemHref)) continue;
+      if (PANE_MENU_PATHS.has(menuPath(itemHref))) continue;
+      if (takenLabels.has(item.label)) continue;
       const slug = itemHref.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || item.label;
-      putCap({
+      capsByHref.set(itemHref, {
         id: `cap-${slug}`,
         group: "capabilities",
         label: item.label,
@@ -257,7 +305,7 @@ export function SettingsHub({
       label: tt("组织"),
       render: () => <OrgSection orgHref={orgHref} />,
     };
-    return [...builtin, ...capsByHref.values(), org, ...extraSections];
+    return [...builtin, ...caps, ...capsByHref.values(), org, ...withoutShadowedSections(extraSections)];
   }, [tt, email, onSignedOut, stats, menu, orgHref, extraSections]);
 
   const groups = useMemo<SettingsNavGroup[]>(() => {
@@ -277,15 +325,18 @@ export function SettingsHub({
   }, [sections, tt]);
 
   const paneSections = sections.filter((s) => !s.href);
+  const paneIds = paneSections.map((s) => s.id);
+  const requested = resolveSettingsTab(tab, paneIds, fallbackTab);
   const active =
-    paneSections.find((s) => s.id === tab) ??
+    paneSections.find((s) => s.id === requested) ??
     paneSections.find((s) => s.id === fallbackTab) ??
     paneSections[0];
 
   function selectTab(id: string) {
-    setTab(id);
-    if (variant === "modal") onTabChange?.(id);
-    else writeTab(id);
+    const next = resolveSettingsTab(id, paneIds, fallbackTab);
+    setTab(next);
+    if (variant === "modal") onTabChange?.(next);
+    else writeTab(next);
   }
 
   function handleSignedIn() {

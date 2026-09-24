@@ -56,7 +56,10 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const uiTextStubUrl = dataModule(`
   export function useUI() {
-    return (value) => value;
+    return (value, vars) => value.replace(
+      /\\{(\\w+)\\}/g,
+      (_, key) => String(vars?.[key] ?? "{" + key + "}"),
+    );
   }
 `);
 const pageHeaderStubUrl = dataModule(`
