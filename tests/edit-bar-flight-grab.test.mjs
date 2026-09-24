@@ -27,10 +27,21 @@ import test from "node:test";
 
 import React, { act, useRef } from "react";
 
+import { readFileSync } from "node:fs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+function surfaceNumber(name) {
+  const src = readFileSync(new URL("../src/shell/edit-bar-surface.ts", import.meta.url), "utf8");
+  const match = src.match(new RegExp(`export const ${name} = (\\d+)`));
+  if (!match) throw new Error(`edit-bar-surface.ts 里没有 ${name}`);
+  return Number(match[1]);
+}
 
 const FRAME_MS = 1000 / 60;
 const EXPANDED_WIDTH = 300;
+const TOOLBAR_HEIGHT =
+  surfaceNumber("EDIT_BAR_CONTROL_SIZE_PX") +
+  surfaceNumber("EDIT_BAR_PILL_PADDING_PX") * 2;
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -232,8 +243,8 @@ function installRectStub() {
       const top = match ? Number(match[2]) : 46;
       return {
         x: left, y: top, left, top,
-        right: left + EXPANDED_WIDTH, bottom: top + 52,
-        width: EXPANDED_WIDTH, height: 52, toJSON() {},
+        right: left + EXPANDED_WIDTH, bottom: top + TOOLBAR_HEIGHT,
+        width: EXPANDED_WIDTH, height: TOOLBAR_HEIGHT, toJSON() {},
       };
     }
     if (

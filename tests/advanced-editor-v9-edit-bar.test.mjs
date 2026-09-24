@@ -34,10 +34,12 @@ test("primary capabilities overflow by measured width without fixed-six truncati
     { id: "tools-only", kind: "action", label: "Tools", placement: "tools" },
   ];
   const measured = new Map(primary.map(({ id }) => [id, 100]));
+  // More 是 28px（h-7）。旧表 [1,2,6,14] 按更大的 More 预留算；
+  // 现在 240 能放下 2 个 100 宽控件，768 能放下 7 个。
   const widthsAndVisibleCounts = [
-    [240, 1],
+    [240, 2],
     [320, 2],
-    [768, 6],
+    [768, 7],
     [1920, 14],
   ];
   for (const [width, visibleCount] of widthsAndVisibleCounts) {

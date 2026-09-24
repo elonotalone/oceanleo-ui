@@ -19,7 +19,18 @@ import {
 } from "../src/shell/selection-inspector-groups.ts";
 import { normalizeSelectionContext } from "../src/shell/selection-context.ts";
 
+import { readFileSync } from "node:fs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+function surfaceNumber(name) {
+  const src = readFileSync(new URL("../src/shell/edit-bar-surface.ts", import.meta.url), "utf8");
+  const match = src.match(new RegExp(`export const ${name} = (\\d+)`));
+  if (!match) throw new Error(`edit-bar-surface.ts 里没有 ${name}`);
+  return Number(match[1]);
+}
+const TOOLBAR_HEIGHT =
+  surfaceNumber("EDIT_BAR_CONTROL_SIZE_PX") +
+  surfaceNumber("EDIT_BAR_PILL_PADDING_PX") * 2;
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -213,7 +224,9 @@ test("measured width overflow preserves semantic placement without fixed truncat
       width,
     ),
   );
-  const expectedVisibleCounts = [1, 1, 2, 5, 7];
+  // More 是 28px（h-7）。旧表 [1,1,2,5,7] 按更大的 More（约 52–56）算，
+  // 768 宽只能放下 2 个 240 控件；现在 28+3×244=760 ≤ 768，第三颗进条。
+  const expectedVisibleCounts = [1, 1, 3, 5, 7];
   for (const [snapshotIndex, snapshot] of snapshots.entries()) {
     const visibleCount = expectedVisibleCounts[snapshotIndex];
     assert.deepEqual(
@@ -489,8 +502,8 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     }
     if (this.hasAttribute("data-handle-toolbar")) {
       return {
-        x: 0, y: 0, left: 0, top: 0, right: 300, bottom: 52,
-        width: 300, height: 52, toJSON() {},
+        x: 0, y: 0, left: 0, top: 0, right: 300, bottom: TOOLBAR_HEIGHT,
+        width: 300, height: TOOLBAR_HEIGHT, toJSON() {},
       };
     }
     return originalRect.call(this);
@@ -587,7 +600,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     assert.equal(
       liveController.moveMode,
       true,
-      "双击窗口内对按键第二次按下必须立刻起拖",
+      "武装窗口内对按键第二次按下必须进入按住拖",
     );
     await pointer(window, "pointermove", {
       pointerId: 1,
@@ -621,25 +634,15 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await key(bar(), "Home", { altKey: true });
     assert.equal(offset(), "0,0");
 
-    // 第二次按下抬起不移动：落回原位，第二下的 click 被吞。
+    // 第二次按下很快抬起、没移动：仍是普通点击。旧断言「立刻起拖并吞 click」是错的。
     await pointer(tool, "pointerdown", toolPress(4500));
     await pointer(tool, "pointerup", toolPress(4510));
     await pointer(tool, "pointerdown", toolPress(4600));
-    assert.equal(liveController.moveMode, true, "第二次按下必须立刻起拖");
+    assert.equal(liveController.moveMode, true, "第二次按下先武装");
     await pointer(window, "pointerup", { ...toolPress(4650) });
-    assert.equal(liveController.moveMode, false, "松手必须结束拖拽");
-    assert.equal(offset(), "0,0", "第二次按下未移动就松手，条子必须落回原位");
-    await act(async () => {
-      tool.dispatchEvent(
-        new window.MouseEvent("click", {
-          bubbles: true,
-          cancelable: true,
-          clientX: 80,
-          clientY: 20,
-        }),
-      );
-    });
-    assert.equal(toolClicks, 1, "第二下的 click 必须被吞，按键不得二次触发");
+    assert.equal(liveController.moveMode, false, "快速第二下松开后离开武装");
+    assert.equal(offset(), "0,0", "快速第二下不得拖走条子");
+    assert.equal(toolClicks, 2, "快速第二下必须再激活一次按键");
 
     // 条外按下清掉双按戳：条上按一下、去点画布、再回来按一下，不算「两次按下」。
     await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 5000 });
@@ -657,24 +660,25 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await pointer(bar(), "pointerup", { ...press(200, 200), timeStamp: 5110 });
 
     // 单次按下再移动，不能启动拖拽（没有「待拖」）。
-    await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 6000 });
+    // 上一拍 5110 松开留下武装窗；必须等到窗过期，否则这下会被当成第二下起拖。
+    await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 6620 });
     await pointer(window, "pointermove", {
       pointerId: 1,
       pointerType: "mouse",
       clientX: 230,
       clientY: 220,
-      timeStamp: 6050,
+      timeStamp: 6670,
     });
     assert.equal(offset(), "0,0", "第一次按下后移动指针不得拖走编辑栏");
     assert.equal(liveController.moveMode, false, "单次按下移动也不得进入移动模式");
-    await pointer(window, "pointerup", { ...press(230, 220), timeStamp: 6100 });
+    await pointer(window, "pointerup", { ...press(230, 220), timeStamp: 6720 });
 
-    // 两次按下间隔 >400ms：不起拖。
+    // 松开后 1501ms：第二下是新的第一下。旧断言「401ms 不起拖」锁住了错误窗口。
     await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 7000 });
     await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 7010 });
-    await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 7401 });
-    assert.equal(liveController.moveMode, false, "间隔 401ms 的第二次按下不得起拖");
-    await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 7410 });
+    await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 8511 });
+    assert.equal(liveController.moveMode, false, "松开后 1501ms 的第二次按下不得起拖");
+    await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 8520 });
 
     // 触控：两次 pointerId 不同也算同一条上的两次按下。
     await pointer(bar(), "pointerdown", {

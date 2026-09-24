@@ -67,8 +67,8 @@ export function useFloatingContextToolbar({
   });
 }
 
-/** 文档段折进「更多」前，选中工具那一段至少保住 More 键（44）+ 一个间隙。 */
-const SELECTION_SEGMENT_MIN_PX = 52;
+/** 文档段折进「更多」前，选中工具那一段至少保住 More 键 + 一个间隙。 */
+const SELECTION_SEGMENT_MIN_PX = 36;
 
 /**
  * 行里宽度与本判定无关的「固定段」：撤销重做、分隔线、右段。选中段、文档段
@@ -309,9 +309,9 @@ export function EditBarRow({
       {hasSelection && (
         <div
           data-edit-bar-selection-slot
-          // 插件控件里偶有 25px 高的小按钮（pdf「办公工具」）：统一到 44px 命中区，
+          // 插件控件里偶有偏矮的小按钮：统一到 28px 命中区，
           // 整行按钮同一条 y 带，规范 v2 §4「所有可见按钮 y 同带」才成立。
-          className="flex min-w-0 shrink items-center [&_button]:min-h-11"
+          className="flex min-w-0 shrink items-center [&_button]:min-h-7"
         >
           <EditBarRowContext.Provider value={true}>
             {children}
@@ -325,8 +325,8 @@ export function EditBarRow({
         (documentVisible ? (
           <div
             data-edit-bar-document-slot
-            // 文档段按键统一 44px 高：与撤销重做 / AI 同一条 y 带，探针按 y 聚类才是 1 行。
-            className="flex shrink-0 items-center gap-0.5 [&_button]:h-11 [&_button]:min-h-11"
+            // 文档段按键统一 28px 高：与撤销重做 / AI 同一条 y 带，探针按 y 聚类才是 1 行。
+            className="flex shrink-0 items-center gap-0.5 [&_button]:h-7 [&_button]:min-h-7"
           >
             {documentSegment}
           </div>
@@ -356,7 +356,7 @@ export function EditBarRow({
           aria-hidden="true"
           inert
           data-edit-bar-document-measure
-          className="pointer-events-none invisible absolute left-0 top-0 flex w-max flex-nowrap items-center gap-0.5 [&_button]:h-11 [&_button]:min-h-11"
+          className="pointer-events-none invisible absolute left-0 top-0 flex w-max flex-nowrap items-center gap-0.5 [&_button]:h-7 [&_button]:min-h-7"
           style={{ contain: "layout style paint" }}
         >
           {documentSegment}
@@ -403,6 +403,7 @@ export function FloatingContextToolbar({
   /** 没选中也没有文档动作时（`data-empty`）栏里显示的一句提示。 */
   emptyHint?: string;
 }) {
+  const tt = useUI();
   if (!controller.portalRoot) return null;
   const docked = controller.mode === "docked" && !controller.collapsed;
   return createPortal(
@@ -430,10 +431,11 @@ export function FloatingContextToolbar({
           data-edit-bar-offset={`${controller.offset.x},${controller.offset.y}`}
           onPointerDownCapture={controller.rootProps.onPointerDownCapture}
           onClickCapture={controller.rootProps.onClickCapture}
-          onDoubleClickCapture={controller.rootProps.onDoubleClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
           aria-keyshortcuts={controller.rootProps["aria-keyshortcuts"]}
-          className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform"
+          data-edit-bar-armed={controller.rearmWindow || undefined}
+          data-edit-bar-lifted={controller.lifted || undefined}
+          className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform touch-none"
           // transform 刻意不在这里写：位置由控制器的 paintMotion() 一处写入，
           // 否则每次重渲染都会把弹簧算出来的中间帧盖回去。
           style={
@@ -493,6 +495,15 @@ export function FloatingContextToolbar({
               data-edit-bar-move-shield
               className="absolute inset-0 cursor-grabbing rounded-full ring-2 ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/60"
             />
+          )}
+          {controller.rearmHintVisible && (
+            <div
+              role="status"
+              data-edit-bar-rearm-hint
+              className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--pchrome-ink,#292524)] px-3 py-1 text-[12px] text-[var(--pchrome-surface,#fff)]"
+            >
+              {tt("先点一下，再按住就能拖动")}
+            </div>
           )}
         </div>
       </div>

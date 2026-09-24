@@ -2,8 +2,8 @@
  * 编辑栏三条手势的**逐件**覆盖闸（W31）。
  *
  * 操作员原话三条：
- *   ① 在 edit bar 任何位置（含按键）第二次按下并按住即拖，松手落下（2026-09-07 裁定：
- *      删「第一下选中 + 光环」与「待拖」，只剩这一条规则；第一下照常触发按键）
+ *   ① 在 edit bar 任何位置（含按键）先单击一下，再按住即拖，松手落下
+ *      （计时从第一下松开算；第一下照常触发按键）
  *   ② 点击后缩为一个圆形，再点击展开
  *   ③ 缩小版也可以拖拽到各个位置
  *
@@ -41,6 +41,17 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const SHELL = "src/shell";
 const REPO = fileURLToPath(new URL("..", import.meta.url));
+
+function surfaceNumber(name) {
+  const src = readFileSync(resolve(REPO, "src/shell/edit-bar-surface.ts"), "utf8");
+  const match = src.match(new RegExp(`export const ${name} = (\\d+)`));
+  if (!match) throw new Error(`edit-bar-surface.ts 里没有 ${name}`);
+  return Number(match[1]);
+}
+const COLLAPSED_SIZE = surfaceNumber("EDIT_BAR_COLLAPSED_SIZE_PX");
+const TOOLBAR_HEIGHT =
+  surfaceNumber("EDIT_BAR_CONTROL_SIZE_PX") +
+  surfaceNumber("EDIT_BAR_PILL_PADDING_PX") * 2;
 
 /**
  * 冻结「13 件」这个数时所在的 commit。末尾那条基线自检会把这个 commit 的树解出来重量一遍。
@@ -276,7 +287,7 @@ const controllerSource = code(`${SHELL}/edit-bar-dock-controller.tsx`);
 const controlsSource = code(`${SHELL}/EditBarDockControls.tsx`);
 const floatingSource = code(`${SHELL}/FloatingContextToolbar.tsx`);
 
-test("引擎：① 任意处（含按键）第二次按下即拖；没有选中态、没有待拖", () => {
+test("引擎：① 任意处（含按键）先单击再按住即拖；没有选中态、没有待拖", () => {
   // 判据落在「摊到浮层根节点上」这件事上：第二次按下挂在根的捕获阶段，
   // 所以条上任何一个位置（包括控件本身）都算。
   assert.match(
@@ -286,28 +297,33 @@ test("引擎：① 任意处（含按键）第二次按下即拖；没有选中�
   );
   assert.match(
     controllerSource,
-    /const DOUBLE_PRESS_MS = 400/,
-    "双按窗口必须是 400ms：触控板双击常 >320ms，窗口再短就得按第三下",
+    /const REARM_WINDOW_MS = 1500/,
+    "武装窗口必须从第一下松开算 1500ms，再短就会再变成要点三下",
   );
   assert.match(
     controllerSource,
-    /const DOUBLE_PRESS_SLOP_PX = 12/,
-    "双按落点容差必须钉死，否则微移会被当成另一次单击",
+    /const REARM_SLOP_PX = 24/,
+    "武装落点容差必须钉死",
   );
   assert.match(
     controllerSource,
-    /function isEditBarDoublePress\(/,
-    "双按判定必须是具名函数，按键与空白走同一条",
+    /function isRearmPress\(/,
+    "武装判定必须是具名函数，按键与空白走同一条",
+  );
+  assert.doesNotMatch(
+    controllerSource,
+    /DOUBLE_PRESS_MS/,
+    "400ms 按下到按下的窗口必须删掉——那是「要点三下」的根因",
   );
   assert.doesNotMatch(
     controllerSource,
     /last\.pointerId !== pointerId/,
-    "双按判定不许比对 pointerId——触控每次按下 pointerId 都不同，比对它等于触屏拖不动",
+    "武装判定不许比对 pointerId——触控每次按下 pointerId 都不同，比对它等于触屏拖不动",
   );
   assert.match(
     controllerSource,
-    /if \(\s*isEditBarDoublePress\([\s\S]*?beginHoldDrag\(event\.pointerId,\s*event\.clientX,\s*event\.clientY\)/,
-    "窗口内第二次按下必须立刻起拖，且不先问是不是按键",
+    /attachArmedSession\(/,
+    "窗口内第二次按下必须进入武装，再按住或移动才拖",
   );
   assert.equal(
     /armPendingClick/.test(controllerSource),
@@ -329,7 +345,7 @@ test("引擎：① 任意处（含按键）第二次按下即拖；没有选中�
     assert.doesNotMatch(
       controllerSource,
       wholeName(gone),
-      `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「第二次按下即拖」一条`,
+      `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「先单击再按住拖」一条`,
     );
   }
   assert.doesNotMatch(
@@ -618,11 +634,11 @@ function installRectStub() {
       const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(
         this.style.transform || "",
       );
-      return rect(match ? Number(match[1]) : 100, match ? Number(match[2]) : 60, 300, 52);
+      return rect(match ? Number(match[1]) : 100, match ? Number(match[2]) : 60, 300, TOOLBAR_HEIGHT);
     }
     if (this.hasAttribute("data-plugin-chrome")) return rect(0, 0, 1000, 600);
     if (this.hasAttribute("data-plugin-chrome-stage")) return rect(0, 110, 1000, 490);
-    if (this.hasAttribute("data-plugin-chrome-edit-bar")) return rect(0, 56, 1000, 48);
+    if (this.hasAttribute("data-plugin-chrome-edit-bar")) return rect(0, 56, 1000, COLLAPSED_SIZE);
     if (
       this.hasAttribute("data-workspace-docked-toolbar") ||
       this.hasAttribute("data-workspace-floating-toolbar")
@@ -838,11 +854,11 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
 }
 
 /* ===========================================================================
- * 四 b · W04 场景 A/B/C/D：第二次按下再拖 60px
- *   A：按键上，间隔 350ms（旧 320 窗口拖不动、新 400 窗口拖得动——触控板双击的主路）
- *   B：空白上，间隔 350ms
- *   C：按键上，间隔 150ms（快路）
- *   D：间隔 401ms，**不**起拖（判据 (d)）；单次按下移动也不起拖（判据 (b)）
+ * 四 b · W04 场景 A/B/C/D：松开后再按下并拖 60px
+ *   A：按键上，松开后 350ms
+ *   B：空白上，松开后 350ms
+ *   C：按键上，松开后 150ms（快路）
+ *   D：松开后 1501ms 不起拖；单次按下移动也不起拖
  * ========================================================================= */
 
 async function moveWindow(values) {
@@ -1025,7 +1041,7 @@ test("W04 场景 C：按键上 150ms 内再按下并拖，快路仍跟手", asyn
   }
 });
 
-test("W04 场景 D：间隔 401ms 不起拖；单次按下再移动也不起拖", async () => {
+test("W04 场景 D：松开后 1501ms 不起拖；单次按下再移动也不起拖", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   const mounted = await mountFrame(
@@ -1062,7 +1078,7 @@ test("W04 场景 D：间隔 401ms 不起拖；单次按下再移动也不起拖"
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 4100,
     });
 
-    // (d) 两次按下间隔 401ms：不起拖。
+    // (d) 松开后 1501ms：第二下是新的第一下，再移动不得拖。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 5000,
@@ -1073,42 +1089,42 @@ test("W04 场景 D：间隔 401ms 不起拖；单次按下再移动也不起拖"
     });
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 5401,
+      clientX: 200, clientY: 70, timeStamp: 6511,
     });
     assert.equal(
       mounted.container.querySelector("[data-edit-bar-move-mode]"),
       null,
-      "间隔 401ms 的第二次按下不得起拖",
+      "松开后 1501ms 的第二次按下不得起拖",
     );
     await moveWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 5450,
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6550,
     });
     assert.deepEqual(translateOf(bar()), before, "窗口外的第二次按下再移动也不得拖走编辑栏");
     await upWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 5500,
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6600,
     });
 
-    // 正对照：同一套指针、间隔 400ms（窗口边界内）就得拖得动。
+    // 正对照：松开后 1499ms 就得拖得动。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 6000,
+      clientX: 200, clientY: 70, timeStamp: 7000,
     });
     await pointer(btn, "pointerup", {
       pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 6010,
+      clientX: 200, clientY: 70, timeStamp: 7010,
     });
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 6400,
+      clientX: 200, clientY: 70, timeStamp: 8509,
     });
     await moveWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6450,
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 8550,
     });
     const dragged = translateOf(bar());
     assert.equal(
       dragged.x - before.x,
       60,
-      `正对照：400ms 边界内应拖动 60，实际 ${before.x} → ${dragged.x}`,
+      `正对照：1499ms 边界内应拖动 60，实际 ${before.x} → ${dragged.x}`,
     );
     await upWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6500,

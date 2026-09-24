@@ -129,7 +129,7 @@ export function usePluginChromeLayout(
       // 两个槽恒为 undefined。承诺缩小已写进契约说明。
       //
       // ⚠️ 后来者请勿「顺手把它们填上」（W31，2026-08-31）。
-      // 编辑栏的三条手势（双击拖拽 / 收起为圆 / 拖圆）此前在这三件 extracted
+      // 编辑栏的三条手势（先单击一下，再按住拖动 / 收起为圆 / 拖圆）此前在这三件 extracted
       // 插件上一条都不成立，看上去正像是这两个槽写死 undefined 造成的。
       // **不是。** 填上它们只会让 `SelectionToolbar` 在 edit bar 槽内拿到
       // `AdvancedLayout`，当场长出第二个 AI 键、被强制翻成 floating 胶囊、

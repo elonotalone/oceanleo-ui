@@ -28,7 +28,18 @@ import {
   rectNearFloatingToolbarBounds,
 } from "../src/shell/floating-toolbar-geometry.ts";
 
+import { readFileSync } from "node:fs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+function surfaceNumber(name) {
+  const src = readFileSync(new URL("../src/shell/edit-bar-surface.ts", import.meta.url), "utf8");
+  const match = src.match(new RegExp(`export const ${name} = (\\d+)`));
+  if (!match) throw new Error(`edit-bar-surface.ts 里没有 ${name}`);
+  return Number(match[1]);
+}
+const TOOLBAR_HEIGHT =
+  surfaceNumber("EDIT_BAR_CONTROL_SIZE_PX") +
+  surfaceNumber("EDIT_BAR_PILL_PADDING_PX") * 2;
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -304,9 +315,8 @@ async function pointer(target, type, values) {
   });
 }
 
-// 左右两个 ⠿ 手柄已取消。展开胶囊只有一条拖拽规则：同一落点、400ms 窗口内
-// 连续两次按下即跟手。第一次 down/up 不改任何状态；第二次 down 起拖。
-// 不延迟派发 click。没有「选中」、没有「待拖」。
+// 左右两个 ⠿ 手柄已取消。展开胶囊：先单击一下，再按住拖动。
+// 第一次 down/up 不改位置；窗口内第二次 down 武装，按住或移动才跟手。
 let grabClock = 10_000;
 async function grab(target, clientX, clientY) {
   const t0 = (grabClock += 1000);
@@ -322,7 +332,7 @@ async function grab(target, clientX, clientY) {
   await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 20 });
 }
 
-/** 反例：两次按下间隔超过 400ms 窗口（401ms）。第二下**不许**起拖。 */
+/** 反例：第一下松开后超过 1500ms。第二下**不许**起拖。 */
 async function pressTwiceOutsideWindow(target, clientX, clientY) {
   const t0 = (grabClock += 1000);
   const press = {
@@ -334,7 +344,7 @@ async function pressTwiceOutsideWindow(target, clientX, clientY) {
   };
   await pointer(target, "pointerdown", { ...press, timeStamp: t0 });
   await pointer(target, "pointerup", { ...press, timeStamp: t0 + 10 });
-  await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 401 });
+  await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 1511 });
 }
 
 async function moveTo(target, clientX, clientY) {
@@ -471,15 +481,15 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     clampFloatingToolbarToBounds(
       { x: 10_000, y: 10_000 },
       { left: 40, top: 20, right: 640, bottom: 420 },
-      { width: 300, height: 52 },
+      { width: 300, height: TOOLBAR_HEIGHT },
     ),
-    { x: 332, y: 360 },
+    { x: 332, y: 420 - TOOLBAR_HEIGHT - 8 },
   );
   assert.deepEqual(
     clampFloatingToolbarToBounds(
       { x: -10_000, y: -10_000 },
       { left: 40, top: 20, right: 640, bottom: 420 },
-      { width: 300, height: 52 },
+      { width: 300, height: TOOLBAR_HEIGHT },
     ),
     { x: 48, y: 28 },
   );
@@ -563,7 +573,7 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     ]);
   assert.match(floatingSource, /data-workspace-floating-toolbar-overlay/);
   assert.match(floatingSource, /data-floating-toolbar-boundary="editor-shell"/);
-  assert.match(floatingSource, /pointer-events-none absolute inset-0 overflow-hidden/);
+  assert.match(floatingSource, /pointer-events-none absolute inset-0 z-\[35\] overflow-hidden/);
   assert.match(floatingSource, /contain: "layout paint"/);
   assert.match(floatingSource, /data-workspace-docked-toolbar=\{docked/);
   assert.match(floatingSource, /data-workspace-floating-toolbar=\{!docked/);
@@ -589,8 +599,9 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     ),
     /export function dockedFloatingToolbarPosition/,
   );
-  assert.match(dockHostSource, /min-h-16/);
-  assert.match(dockHostSource, /data-edit-bar-dock-sentinel[\s\S]{0,120}h-16/);
+  // 条总高 38，停靠带 min-h-10 / 哨兵 h-10。旧断言 min-h-16 锁的是 64px 旧带。
+  assert.match(dockHostSource, /min-h-10/);
+  assert.match(dockHostSource, /data-edit-bar-dock-sentinel[\s\S]{0,120}h-10/);
   assert.match(
     inlineSource,
     /data-edit-bar-layer-root=\{!rightPaneSlot \|\| undefined\}[\s\S]{0,120}relative[\s\S]{0,120}overflow-hidden/,
@@ -631,8 +642,8 @@ function installDockHarnessRects() {
       const left = match ? Number(match[1]) : 100;
       const top = match ? Number(match[2]) : 46;
       return {
-        x: left, y: top, left, top, right: left + 300, bottom: top + 52,
-        width: 300, height: 52, toJSON() {},
+        x: left, y: top, left, top, right: left + 300, bottom: top + TOOLBAR_HEIGHT,
+        width: 300, height: TOOLBAR_HEIGHT, toJSON() {},
       };
     }
     if (
@@ -651,7 +662,7 @@ function installDockHarnessRects() {
   };
 }
 
-test("两次按下间隔 >400ms：不起拖；DOM 里没有选中态", async () => {
+test("松开后超过 1500ms：不起拖；DOM 里没有选中态", async () => {
   window.localStorage.clear();
   const restoreRect = installDockHarnessRects();
   const mounted = await createMounted(DockHarness, {
@@ -665,7 +676,7 @@ test("两次按下间隔 >400ms：不起拖；DOM 里没有选中态", async () 
     assert.equal(
       mounted.container.querySelector("[data-edit-bar-move-mode]"),
       null,
-      "间隔 401ms 的第二次按下不得起拖",
+      "松开后 1501ms 的第二次按下不得起拖",
     );
     await moveTo(bar(), 400, 300);
     assert.equal(
