@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
@@ -38,6 +38,17 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import {
+  bindNormalFaceHandoff,
+  captureBeforeEnterPro,
+  handoffItemKey,
+  handoffRevisionOf,
+  useProSavedRevision,
+} from "./editor-handoff";
+import {
+  deriveEditorHandoffFromItem,
+  isEmptyRichDoc,
+} from "./richdoc-pro-source";
 
 /**
  * 双核 `next` 分支：Umo iframe 托管。**单独 lazy**，翻 flag 前不进本 chunk
@@ -65,6 +76,7 @@ export function RichDocRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="richdoc"
+      beforeEnterPro={() => captureBeforeEnterPro(props.item)}
       renderNormal={() => <RichDocLegacyRoute {...props} />}
       renderPro={() => (
         <Suspense fallback={null}>
@@ -88,12 +100,37 @@ function RichDocLegacyRoute({
   // loaded bytes stable so that parent identity updates cannot discard edits
   // that landed while the save request was in flight.
   const openedItemRef = useRef(item);
+  const proSaved = useProSavedRevision(handoffItemKey(item));
+  const [, setProTick] = useState(0);
+  useEffect(() => {
+    if (!proSaved) return;
+    openedItemRef.current = proSaved;
+    setProTick((value) => value + 1);
+  }, [proSaved]);
   const officeSource = useOfficeArtifactSource(openedItemRef.current);
   const editor = useRichDocEditor(
     officeSource.item,
     siteId,
     officeSource.resourceFailed,
   );
+  useEffect(() => {
+    return bindNormalFaceHandoff(handoffItemKey(openedItemRef.current), {
+      getHandoff: () => {
+        const live = editor.editor?.getJSON();
+        if (live && !isEmptyRichDoc(live)) {
+          return {
+            kind: "inline",
+            json: live,
+            revision: handoffRevisionOf(openedItemRef.current),
+          };
+        }
+        return deriveEditorHandoffFromItem(openedItemRef.current);
+      },
+      persistInBackground: () => {
+        if (editor.dirty) void editor.save();
+      },
+    });
+  }, [editor.dirty, editor.editRevision, editor.editor, editor.save]);
   const [exportError, setExportError] = useState("");
   // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
   const { setMode: setEditorMode } = usePluginMode("richdoc");

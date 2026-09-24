@@ -245,6 +245,30 @@ const shellStubUrl = dataModule(`
 `);
 const routesStubUrl = dataModule(`
   export function editorToolLabel() { return "文档"; }
+  export function officeExtensionForItem() { return ""; }
+`);
+const editorHandoffStubUrl = dataModule(`
+  export const ENTER_PRO_NOT_READY = "还没准备好，稍后再切换";
+  const EMPTY_HANDOFF = { kind: "empty" };
+  const READY_EMPTY = { status: "ready", source: EMPTY_HANDOFF };
+  export function handoffItemKey(item) { return (item && (item.key || item.id)) || ""; }
+  export function handoffRevisionOf() { return null; }
+  export function peekNormalFaceHandoff() { return EMPTY_HANDOFF; }
+  export function useEditorHandoffSource() { return READY_EMPTY; }
+  export function useProSavedRevision() { return null; }
+  export function reportProSaved() {}
+  export function bindNormalFaceHandoff() { return () => {}; }
+  export async function captureBeforeEnterPro(item) {
+    return { ok: true, handoff: EMPTY_HANDOFF, item };
+  }
+  export function openHostedSaveGate() {
+    return {
+      saveId: "save-test",
+      wait: async () => ({ ok: true, snapshot: { type: "doc", content: [] } }),
+      acceptSnapshot() {},
+      acceptSaveResult() {},
+    };
+  }
 `);
 const richdocEmptyUrl = dataModule(`
   export function AdvancedWorkbenchShell() { return null; }
@@ -255,6 +279,7 @@ const richdocEmptyUrl = dataModule(`
   export function EditorSourceFailurePanel() { return null; }
   export function RichDocStage() { return null; }
   export function downloadText() {}
+  export async function saveFileToLibrary() { return { ok: false, error: "" }; }
   export function artifactSaveStepMessage() { return ""; }
   export function tiptapJsonToDocxBlob() { return new Blob(); }
   export function buildRichDocCommandSurface() { return {}; }
@@ -339,6 +364,7 @@ const reachStubs = {
   "../library-data": richdocEmptyUrl,
   "../office-editor": richdocEmptyUrl,
   "../workbench-material-provider": richdocEmptyUrl,
+  "./editor-handoff": editorHandoffStubUrl,
 };
 
 function richDocItem() {
@@ -450,6 +476,7 @@ async function loadHostedRoute() {
         "../AdvancedWorkbenchShell": shellStubUrl,
         "../workbench-routes": routesStubUrl,
         "../agent-review": agentReviewStubUrl,
+        "./editor-handoff": editorHandoffStubUrl,
       },
     );
     hostedRouteModule = await import(url);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchReady } from "./mode-switch-gate";
+import { useModeSwitchHandoff, useModeSwitchReady } from "./mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
@@ -39,33 +39,46 @@ import {
   type EditorReviewProposal,
 } from "../hosted-editor/index";
 import { editorToolLabel } from "../workbench-routes";
+import {
+  handoffItemKey,
+  openHostedSaveGate,
+  peekNormalFaceHandoff,
+  reportProSaved,
+  useEditorHandoffSource,
+} from "./editor-handoff";
+import {
+  collectRichDocText,
+  emptyRichDoc,
+  handoffLooksLikeDocx,
+  hostedStateFromResolvedJson,
+  persistUmoPayload,
+  umoSourceFromDocxItem,
+} from "./richdoc-pro-source";
 
-function inlineSourceFromItem(item: AdvancedContentWorkbenchProps["item"]): unknown {
-  const raw = typeof item.content === "string" ? item.content.trim() : "";
-  if (raw) {
-    try {
-      return JSON.parse(raw) as unknown;
-    } catch {
-      return null;
-    }
+function hostedHandoffLoadKey(
+  status: string,
+  handoff: {
+    kind: string;
+    json?: unknown;
+    url?: string;
+    format?: string | null;
+    revision?: string | null;
+  } | null,
+  item: {
+    key?: string;
+    id?: string;
+    revisionId?: string;
+    url?: string;
+    meta?: Record<string, unknown>;
+  },
+): string {
+  const itemPart = `${item.key || ""}:${item.id || ""}:${item.revisionId || ""}:${item.url || ""}:${String(item.meta?.editor_project_url || "")}`;
+  if (status === "loading") return `loading:${itemPart}`;
+  if (!handoff || handoff.kind === "empty") return `${status}:empty:${itemPart}`;
+  if (handoff.kind === "url") {
+    return `${status}:url:${handoff.url}:${handoff.format || ""}:${handoff.revision || ""}:${itemPart}`;
   }
-  const meta = item.meta || {};
-  for (const key of ["tiptap", "project", "umo"] as const) {
-    const value = meta[key];
-    if (value && typeof value === "object") return value;
-    if (typeof value === "string" && value.trim()) {
-      try {
-        return JSON.parse(value) as unknown;
-      } catch {
-        /* next */
-      }
-    }
-  }
-  return null;
-}
-
-function emptyDoc(): { type: "doc"; content: { type: "paragraph" }[] } {
-  return { type: "doc", content: [{ type: "paragraph" }] };
+  return `${status}:inline:${handoff.revision || ""}:${collectRichDocText(handoff.json)}:${itemPart}`;
 }
 
 export type RichDocHostedEmbedSrcInput = {
@@ -149,49 +162,110 @@ export function RichDocHostedRoute({
   const [frameLoaded, setFrameLoaded] = useState(false);
   // 过渡门的 ready 信号（plugin-ui U4）：Umo 的协议 ready 到达即首帧可见。
   useModeSwitchReady(ready);
+  const gateHandoff = useModeSwitchHandoff();
+  const boundHandoff = peekNormalFaceHandoff(handoffItemKey(item));
+  const incomingHandoff =
+    gateHandoff && gateHandoff.kind !== "empty"
+      ? gateHandoff
+      : boundHandoff.kind !== "empty"
+        ? boundHandoff
+        : null;
+  const { status: handoffStatus, source: handoff } = useEditorHandoffSource(
+    item,
+    incomingHandoff,
+  );
+  const saveGateRef = useRef<ReturnType<typeof openHostedSaveGate> | null>(
+    null,
+  );
+  const appliedHandoffKeyRef = useRef("");
 
   useEffect(() => {
-    const inline = inlineSourceFromItem(item);
-    if (inline) {
-      const looked = inspectRichDocDocument(inline);
-      setSource(inline);
-      setInspect(looked);
-      setReadOnly(looked.kind !== "umo" && looked.differences.length > 0);
-      return;
-    }
-    const projectUrl = String(item.meta.editor_project_url || "").trim();
-    if (!projectUrl) {
-      setSource(emptyDoc());
-      setInspect(inspectRichDocDocument(emptyDoc()));
-      setReadOnly(false);
-      return;
-    }
     let cancelled = false;
-    fetch(projectUrl, { cache: "no-store", headers: { Accept: "application/json" } })
-      .then((response) => {
-        if (!response.ok) throw new Error(`工程档读取失败（HTTP ${response.status}）`);
-        return response.json() as Promise<unknown>;
-      })
-      .then((json) => {
+    const loadKey = hostedHandoffLoadKey(handoffStatus, handoff, item);
+    if (handoffStatus !== "loading" && appliedHandoffKeyRef.current === loadKey) {
+      return;
+    }
+    if (handoffStatus !== "loading") appliedHandoffKeyRef.current = loadKey;
+    const applyEmpty = () => {
+      setSource(emptyRichDoc());
+      setConverted(null);
+      setInspect(inspectRichDocDocument(emptyRichDoc()));
+      setReadOnly(false);
+    };
+    const applyLoaded = (next: {
+      source: unknown;
+      converted: ReturnType<typeof hostedStateFromResolvedJson>["converted"];
+      inspect: ReturnType<typeof inspectRichDocDocument>;
+      readOnly: boolean;
+    }) => {
+      setSource(next.source);
+      setConverted(next.converted);
+      setInspect(next.inspect);
+      setReadOnly(next.readOnly);
+    };
+    void (async () => {
+      if (handoffStatus === "loading") return;
+      if (handoff && handoff.kind === "inline") {
+        applyLoaded(hostedStateFromResolvedJson(handoff.json));
+        return;
+      }
+      if (handoffLooksLikeDocx(handoff, item)) {
+        const officeItem =
+          handoff?.kind === "url"
+            ? {
+                ...item,
+                url: handoff.url,
+                meta: { ...item.meta, editor_source_url: handoff.url },
+              }
+            : item;
+        const loaded = await umoSourceFromDocxItem(officeItem);
         if (cancelled) return;
-        const looked = inspectRichDocDocument(json);
-        setSource(json);
-        setInspect(looked);
-        setReadOnly(looked.kind !== "umo" && looked.differences.length > 0);
-      })
-      .catch((caught: unknown) => {
+        if (loaded.ok) {
+          applyLoaded({
+            source: loaded.source,
+            converted: loaded.converted,
+            inspect: loaded.inspect,
+            readOnly: false,
+          });
+          return;
+        }
+        setStatus(loaded.error);
+        applyEmpty();
+        return;
+      }
+      const projectUrl =
+        handoff?.kind === "url"
+          ? handoff.url
+          : String(item.meta.editor_project_url || "").trim();
+      if (!projectUrl) {
+        applyEmpty();
+        return;
+      }
+      try {
+        const response = await fetch(projectUrl, {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          throw new Error(`工程档读取失败（HTTP ${response.status}）`);
+        }
+        const json = (await response.json()) as unknown;
+        if (cancelled) return;
+        applyLoaded(hostedStateFromResolvedJson(json));
+      } catch (caught: unknown) {
         if (cancelled) return;
         setStatus(
-          caught instanceof Error ? caught.message : "工程档读取失败，已按空白文档打开。",
+          caught instanceof Error
+            ? caught.message
+            : "工程档读取失败，已按空白文档打开。",
         );
-        setSource(emptyDoc());
-        setInspect(inspectRichDocDocument(emptyDoc()));
-        setReadOnly(false);
-      });
+        applyEmpty();
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [handoff, handoffStatus, item]);
 
   const embedBase = richDocHostedEmbedBase();
   const editorOrigin = RICHDOC_HOSTED_EMBED_ORIGIN;
@@ -236,7 +310,7 @@ export function RichDocHostedRoute({
     const current = modeRef.current;
     sendToEditor(
       buildRichDocInitEnvelope(instanceId, {
-        content: converted?.content || source || emptyDoc(),
+        content: converted?.content || source || emptyRichDoc(),
         readOnly,
         title: item.title,
         mode: current,
@@ -279,8 +353,15 @@ export function RichDocHostedRoute({
       }
       if (message.type === "recovery-snapshot" && message.ok) {
         // 契约快照是 `{ revision, payload }`；正文在 payload 里。
-        setSnapshot(message.snapshot?.payload ?? null);
+        const payload = message.snapshot?.payload ?? message.snapshot ?? null;
+        setSnapshot(payload);
         setDirty(false);
+        const gate = saveGateRef.current;
+        const recoveryId = String(message.recoveryId || "");
+        if (gate && (!recoveryId || recoveryId === gate.saveId)) {
+          gate.acceptSnapshot(payload);
+          gate.acceptSaveResult();
+        }
         return;
       }
       if (message.type === "review-proposal") {
@@ -395,24 +476,53 @@ export function RichDocHostedRoute({
   );
 
   const flush = useCallback(async () => {
-    const saveId = `save-${Date.now().toString(36)}`;
+    const gate = openHostedSaveGate();
+    saveGateRef.current = gate;
     const sent = sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "save-request",
       instanceId,
-      saveId,
+      saveId: gate.saveId,
     });
     sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "recovery-capture",
       instanceId,
-      recoveryId: saveId,
+      recoveryId: gate.saveId,
     });
     if (!sent) {
       return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
     }
-    return { ok: true as const, item };
-  }, [instanceId, item, sendToEditor]);
+    const waited = await gate.wait();
+    if (!waited.ok) {
+      return { ok: false as const, error: waited.error };
+    }
+    const saved = await persistUmoPayload({
+      item,
+      siteId,
+      payload: waited.snapshot,
+    });
+    sendToEditor({
+      protocol: EDITOR_PROTOCOL,
+      type: "save-result",
+      instanceId,
+      ok: saved.ok,
+      message: saved.ok ? "已保存" : saved.error,
+      saveId: gate.saveId,
+      ...(saved.ok && saved.item.url && /^https:/i.test(saved.item.url)
+        ? { url: saved.item.url }
+        : {}),
+      ...(saved.ok && saved.item.artifactId
+        ? { artifactId: saved.item.artifactId }
+        : {}),
+      ...(saved.ok && saved.item.revisionId
+        ? { revisionId: saved.item.revisionId }
+        : {}),
+    });
+    if (!saved.ok) return saved;
+    reportProSaved(handoffItemKey(item), saved.item);
+    return { ok: true as const, item: saved.item };
+  }, [instanceId, item, sendToEditor, siteId]);
 
   const banner =
     inspect &&

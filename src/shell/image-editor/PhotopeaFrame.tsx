@@ -9,7 +9,6 @@
  */
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import {
-  PHOTOPEA_EXPORT_SCRIPT,
   PHOTOPEA_INITIAL_STATE,
   PHOTOPEA_ORIGIN,
   classifyPhotopeaMessage,
@@ -25,8 +24,10 @@ export function PhotopeaFrame({
   documentDataUrl,
   theme,
   onDocument,
+  exportRequestId,
 }: PhotopeaLaunchOptions & {
   onDocument?: (bytes: ArrayBuffer) => void;
+  exportRequestId?: number;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [state, dispatch] = useReducer(photopeaReducer, PHOTOPEA_INITIAL_STATE);
@@ -56,12 +57,16 @@ export function PhotopeaFrame({
     dispatch({ type: "request-export" });
     postToPhotopea(
       iframeRef.current?.contentWindow ?? null,
-      PHOTOPEA_EXPORT_SCRIPT,
+      'app.activeDocument.saveToOE("png");',
       PHOTOPEA_ORIGIN,
     );
   }, []);
 
-  void requestExport;
+  useEffect(() => {
+    if (!exportRequestId) return;
+    requestExport();
+  }, [exportRequestId, requestExport]);
+
   void state;
 
   return (

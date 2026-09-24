@@ -13,9 +13,11 @@ export function ImagePhotopeaHost({
   documentDataUrl,
   theme,
   onDocument,
+  exportRequestId,
 }: PhotopeaLaunchOptions & {
   showPhotopea: boolean;
   onDocument?: (bytes: ArrayBuffer) => void;
+  exportRequestId?: number;
 }) {
   const planned = planPhotopeaMount(showPhotopea);
   if (!planned.mount) return null;
@@ -28,6 +30,7 @@ export function ImagePhotopeaHost({
         documentDataUrl={documentDataUrl}
         theme={theme}
         onDocument={onDocument}
+        exportRequestId={exportRequestId}
       />
     </div>
   );

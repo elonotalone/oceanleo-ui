@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import {
   advancedCommittedRevisionItem,
@@ -63,6 +63,20 @@ import { DESIGN_MODE_INITIAL_STATE } from "../image-editor/design-mode/design-mo
 import { applyCanvasViewClick } from "../image-editor/design-mode/canvas-view-switch";
 import { ImageCanvasViewSwitch } from "../image-editor/ImageCanvasViewSwitch";
 import { ImagePhotopeaHost } from "../image-editor/ImagePhotopeaHost";
+import { clearLocalImageDraft } from "../image-editor/editor-persistence";
+import {
+  bindNormalFaceHandoff,
+  captureBeforeEnterPro,
+  handoffItemKey,
+  handoffRevisionOf,
+  reportProSaved,
+  useProSavedRevision,
+} from "./editor-handoff";
+import {
+  createPhotopeaSaveRoundtrip,
+  persistPhotopeaDocument,
+  toPhotopeaDocumentRef,
+} from "./image-pro-handoff";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
   imageDesignChipManifestEntries,
@@ -79,8 +93,19 @@ export function ImageRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const editor = useFabricImageEditor(item, siteId);
+  const [activeItem, setActiveItem] = useState(item);
+  const proSaved = useProSavedRevision(handoffItemKey(item));
+  useEffect(() => {
+    setActiveItem(item);
+  }, [item.id, item.key]);
+  useEffect(() => {
+    if (proSaved) setActiveItem(proSaved);
+  }, [proSaved]);
+  const editor = useFabricImageEditor(activeItem, siteId);
   const [importNotice, setImportNotice] = useState("");
+  const [documentDataUrl, setDocumentDataUrl] = useState<string | undefined>();
+  const [exportRequestId, setExportRequestId] = useState(0);
+  const photopeaSaveRef = useRef(createPhotopeaSaveRoundtrip());
   /**
    * L0 专业模式（W01：`normal | pro`）。第二行「专业编辑」页切到这里；
    * 打开时用 `currentPluginMode("image")` 记住的档位，之后只走 `setEditorMode`。
@@ -89,9 +114,6 @@ export function ImageRoute({
   const [pluginMode, setPluginModeState] = useState<EditorMode>(
     () => rememberedImagePluginMode(),
   );
-  const setEditorMode = useCallback((mode: EditorMode) => {
-    setPluginModeState(applyImageL0Mode(mode).mode);
-  }, []);
   const { showPhotopea } = applyImageL0Mode(pluginMode);
   /**
    * 画布内结构 / 皮肤（photo | design）。不占 L0 槽。
@@ -177,6 +199,22 @@ export function ImageRoute({
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
+    if (showPhotopea) {
+      const waiting = photopeaSaveRef.current.expect();
+      setExportRequestId((value) => value + 1);
+      try {
+        const next = await waiting;
+        return { ok: true as const, item: next };
+      } catch (caught) {
+        return {
+          ok: false as const,
+          error:
+            caught instanceof Error
+              ? caught.message
+              : "专业编辑还没确认保存。",
+        };
+      }
+    }
     const saved = await editor.save();
     if (!saved) {
       return {
@@ -199,8 +237,8 @@ export function ImageRoute({
       return {
         ok: true as const,
         item: saved.item
-          ? advancedCommittedRevisionItem(item, saved.item, meta)
-          : advancedSavedItem(item, {
+          ? advancedCommittedRevisionItem(activeItem, saved.item, meta)
+          : advancedSavedItem(activeItem, {
               url: saved.url,
               versionId: saved.versionId,
               meta,
@@ -215,7 +253,7 @@ export function ImageRoute({
             : "图片 revision 回执无法固定到当前 artifact head。",
       };
     }
-  }, [editor.error, editor.save, item]);
+  }, [activeItem, editor.error, editor.save, showPhotopea]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       setImportNotice("");
@@ -299,14 +337,112 @@ export function ImageRoute({
       if (saved?.url) return saved.url;
     }
     if (editor.savedUrl) return editor.savedUrl;
-    const source = advancedEditorSourceFor(item);
+    const source = advancedEditorSourceFor(activeItem);
     // structured 的 url 是 fabric 工程 JSON，不能当图片喂给网关。
     if (source && !source.structured && source.url) return source.url;
     throw new ImageGatewayError(
       "image-source-unavailable",
       editor.error || "这张画布还没有 AI 取得到的地址；先保存一次，再用 AI 能力。",
     );
-  }, [editor.dirty, editor.error, editor.save, editor.savedUrl, item]);
+  }, [activeItem, editor.dirty, editor.error, editor.save, editor.savedUrl]);
+
+  useEffect(() => {
+    return bindNormalFaceHandoff(handoffItemKey(activeItem), {
+      getHandoff: () => {
+        const url =
+          editor.savedUrl ||
+          (!advancedEditorSourceFor(activeItem)?.structured
+            ? advancedEditorSourceFor(activeItem)?.url
+            : "") ||
+          activeItem.previewUrl ||
+          activeItem.url ||
+          "";
+        if (!url) return { kind: "empty" };
+        return {
+          kind: "url",
+          url,
+          format: "png",
+          revision: handoffRevisionOf(activeItem),
+        };
+      },
+      persistInBackground: () => {
+        if (editor.dirty) void editor.save();
+      },
+    });
+  }, [activeItem, editor.dirty, editor.save, editor.savedUrl]);
+
+  const setEditorMode = useCallback((mode: EditorMode) => {
+    const next = applyImageL0Mode(mode).mode;
+    if (next === "pro" && pluginMode !== "pro") {
+      void (async () => {
+        try {
+          let url = "";
+          const captured = await captureBeforeEnterPro(activeItem);
+          if (captured.ok && captured.handoff.kind === "url") {
+            url = captured.handoff.url;
+          }
+          try {
+            url = await frozenCanvasUrl();
+          } catch {
+            url =
+              url ||
+              activeItem.previewUrl ||
+              activeItem.url ||
+              "";
+          }
+          const ref = await toPhotopeaDocumentRef(url);
+          if (ref.ok) setDocumentDataUrl(ref.documentDataUrl);
+          else setImportNotice(ref.error);
+          setPluginModeState("pro");
+        } catch (caught) {
+          setImportNotice(
+            caught instanceof Error
+              ? caught.message
+              : "还没准备好打开专业编辑，稍后再试。",
+          );
+        }
+      })();
+      return;
+    }
+    if (next === "normal" && pluginMode === "pro") {
+      void (async () => {
+        const waiting = photopeaSaveRef.current.expect();
+        setExportRequestId((value) => value + 1);
+        try {
+          await waiting;
+        } catch (caught) {
+          setImportNotice(
+            caught instanceof Error
+              ? caught.message
+              : "专业编辑还没确认保存。",
+          );
+        }
+        setPluginModeState("normal");
+      })();
+      return;
+    }
+    setPluginModeState(next);
+  }, [activeItem, frozenCanvasUrl, pluginMode]);
+
+  const onPhotopeaDocument = useCallback(
+    async (bytes: ArrayBuffer) => {
+      const saved = await persistPhotopeaDocument({
+        item: activeItem,
+        siteId,
+        bytes,
+      });
+      if (!saved.ok) {
+        setImportNotice(saved.error);
+        photopeaSaveRef.current.settle(saved);
+        return;
+      }
+      clearLocalImageDraft(activeItem);
+      setActiveItem(saved.item);
+      reportProSaved(handoffItemKey(activeItem), saved.item);
+      photopeaSaveRef.current.settle(saved);
+    },
+    [activeItem, siteId],
+  );
 
   /**
    * Lets the edit bar and the agent reach the same AI capabilities the panel
@@ -392,7 +528,7 @@ export function ImageRoute({
 
   return (
     <AdvancedWorkbenchShell
-      item={item}
+      item={activeItem}
       taskId={taskId}
       siteId={siteId}
       accent={accent}
@@ -572,7 +708,11 @@ export function ImageRoute({
           >
             <div className="relative min-h-0 flex-1">
               <FabricImageStage editor={editor} accent={accent} />
-              <ImagePhotopeaHost showPhotopea={showPhotopea} />
+              <ImagePhotopeaHost showPhotopea={showPhotopea}
+                documentDataUrl={documentDataUrl}
+                onDocument={onPhotopeaDocument}
+                exportRequestId={exportRequestId}
+              />
             </div>
             {/* 结构 / 皮肤：画布右下角、与宿主缩放控件同组（规范 v2 §1），
                 顶部不再画通栏。 */}
