@@ -35,6 +35,8 @@ export interface WorkspaceActionV1 {
   query?: string;
   category?: string;
   itemId?: string;
+  /** Catalog card id. Distinct from `itemId` (artifact / material id). */
+  entryId?: string;
   url?: string;
   browserSessionId?: string;
   intent?: WorkspaceActionIntent;
@@ -123,6 +125,7 @@ export function normalizeWorkspaceAction(
     rawIntent && WORKSPACE_ACTION_INTENTS.includes(rawIntent)
       ? rawIntent
       : undefined;
+  const entryId = clean("entryId", 300);
   return {
     version: 1,
     tab,
@@ -131,6 +134,7 @@ export function normalizeWorkspaceAction(
     itemId: clean("itemId", 300),
     url,
     browserSessionId: clean("browserSessionId", 300),
+    ...(entryId ? { entryId } : {}),
     ...(intent ? { intent } : {}),
   };
 }
@@ -142,4 +146,59 @@ export function dispatchWorkspaceAction(envelope: WorkspaceActionEnvelope) {
       detail: envelope,
     }),
   );
+}
+
+const CONSUMED_NONCE_CAP = 64;
+const consumedKeys = new Set<string>();
+const consumedOrder: string[] = [];
+
+function consumptionKey(nonce: string, consumer: string): string {
+  return `${nonce}\u0000${consumer}`;
+}
+
+function evictConsumedNonce(nonce: string): void {
+  const prefix = `${nonce}\u0000`;
+  for (const key of [...consumedKeys]) {
+    if (key.startsWith(prefix)) consumedKeys.delete(key);
+  }
+}
+
+export function isWorkspaceActionConsumed(
+  nonce: string,
+  consumer?: string,
+): boolean {
+  const id = String(nonce || "").trim();
+  if (!id) return false;
+  if (consumer) return consumedKeys.has(consumptionKey(id, consumer));
+  const prefix = `${id}\u0000`;
+  for (const key of consumedKeys) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+/** First claim for this consumer wins. Later claims (including remount) skip. */
+export function consumeWorkspaceAction(
+  nonce: string,
+  consumer: string,
+): boolean {
+  const id = String(nonce || "").trim();
+  const who = String(consumer || "").trim();
+  if (!id || !who) return false;
+  const key = consumptionKey(id, who);
+  if (consumedKeys.has(key)) return false;
+  consumedKeys.add(key);
+  if (!consumedOrder.includes(id)) {
+    consumedOrder.push(id);
+    while (consumedOrder.length > CONSUMED_NONCE_CAP) {
+      const oldest = consumedOrder.shift();
+      if (oldest) evictConsumedNonce(oldest);
+    }
+  }
+  return true;
+}
+
+export function resetWorkspaceActionConsumptionForTests(): void {
+  consumedKeys.clear();
+  consumedOrder.length = 0;
 }

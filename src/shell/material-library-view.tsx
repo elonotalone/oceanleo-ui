@@ -12,9 +12,10 @@ import { useUI } from "../i18n/ui/useUI";
 import type { ArtifactContextRef, ArtifactType } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import { deckDeliverySections } from "./deck-delivery-family";
-import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
-import { openArtifactPlay } from "./explore-artifact-class";
+import { libraryIdentityAction } from "./library-current-identity";
+import { MaterialStandaloneEditor } from "./material-library-standalone";
+import { useMaterialLibraryOpenItem } from "./material-library-open";
 import {
   ExplorePlayableSurface,
   useExploreShelfDispatch,
@@ -58,6 +59,7 @@ import {
 import { useMaterialPackLanding } from "./material-pack-landing";
 import { MaterialShelfSkeleton } from "./material-library-skeleton";
 import {
+  useLibraryCurrentIdentityRestore,
   useMaterialLibraryChangeEvents,
   useMaterialLibraryDeepLink,
   useMaterialLibraryPreviewIntent,
@@ -595,22 +597,13 @@ export function MaterialLibrary({
     }
   }
   const availableTypes = sceneView ? seenTypesRef.current.types : undefined;
-  const openPreparedItem = useCallback(
-    (item: LibraryItem) => {
-      if (openArtifactPlay(item)) return;
-      if (!isAdvancedEditableShelfItem(item)) {
-        setError("editor-source-unavailable");
-        setErrorStatus(422);
-        throw new Error("当前 revision 缺少可验证的编辑器 source。");
-      }
-      if (onOpenItem) {
-        onOpenItem(item);
-      } else {
-        setStandaloneEditorItem(item);
-      }
-    },
-    [onOpenItem],
-  );
+  const openPreparedItem = useMaterialLibraryOpenItem({
+    onOpenItem,
+    actionNonce: action?.nonce,
+    setStandaloneEditorItem,
+    setError,
+    setErrorStatus,
+  });
   // 接口 A 的只读落点。目录已经认领这条深链时不再重复：`templateDeepLinkAction`
   // 已经把 `item=` 改写成目录条目 id，货架自己会开那一张卡，这里再按 artifact id
   // 取一次只是多余请求。
@@ -618,6 +611,13 @@ export function MaterialLibrary({
     action: templateShelf.deepLinkEntryId ? null : action,
     entries,
     onOpenItem: openPreparedItem,
+    setDeepLinkedEntry,
+    setDeepLinkError,
+    setDeepLinkStatus,
+  });
+  useLibraryCurrentIdentityRestore({
+    action,
+    entries,
     setDeepLinkedEntry,
     setDeepLinkError,
     setDeepLinkStatus,
@@ -702,21 +702,16 @@ export function MaterialLibrary({
 
   if (standaloneEditorItem) {
     return (
-      <div className={`h-full min-h-0 ${className}`}>
-        <AdvancedContentWorkbench
-          key={`${standaloneEditorItem.artifactId || standaloneEditorItem.id}:${
-            standaloneEditorItem.revisionId || "transient"
-          }`}
-          item={standaloneEditorItem}
-          taskId={taskId}
-          siteId={siteId || standaloneEditorItem.siteId}
-          appId={runtimeAppId}
-          accent={accent}
-          embedded
-          onSavedItem={setStandaloneEditorItem}
-          onClose={() => setStandaloneEditorItem(null)}
-        />
-      </div>
+      <MaterialStandaloneEditor
+        item={standaloneEditorItem}
+        taskId={taskId}
+        siteId={siteId}
+        appId={runtimeAppId}
+        accent={accent}
+        className={className}
+        onSavedItem={setStandaloneEditorItem}
+        onClose={() => setStandaloneEditorItem(null)}
+      />
     );
   }
 
@@ -766,7 +761,11 @@ export function MaterialLibrary({
       packAppIdForEntry={packAppIdForEntry}
       accent={accent}
       plain={plain}
-      action={templateDeepLinkAction(action, templateShelf.deepLinkEntryId)}
+      action={libraryIdentityAction(
+        action,
+        templateDeepLinkAction(action, templateShelf.deepLinkEntryId),
+        templateShelf.deepLinkEntryId,
+      )}
       taskId={taskId}
       siteId={siteId}
       appId={runtimeAppId}

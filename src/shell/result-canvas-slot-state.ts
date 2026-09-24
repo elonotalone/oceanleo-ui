@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FIXED_WORKSPACE_SLOTS,
   WORKSPACE_ACTION_EVENT,
+  isWorkspaceActionConsumed,
   normalizeWorkspaceAction,
   type WorkspaceActionEnvelope,
   type WorkspaceSlotId,
@@ -209,8 +210,11 @@ export function useWorkspaceSlotState({
   }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const actionFor = useCallback(
-    (slot: WorkspaceSlotId) =>
-      workspaceAction?.action.tab === slot ? workspaceAction : null,
+    (slot: WorkspaceSlotId) => {
+      if (!workspaceAction || workspaceAction.action.tab !== slot) return null;
+      if (isWorkspaceActionConsumed(workspaceAction.nonce)) return null;
+      return workspaceAction;
+    },
     [workspaceAction],
   );
 

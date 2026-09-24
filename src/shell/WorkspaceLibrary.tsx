@@ -22,7 +22,16 @@ import {
   type LibraryItem,
 } from "./library-data";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
-import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import {
+  consumeWorkspaceAction,
+  type WorkspaceActionEnvelope,
+} from "./workspace-actions";
+import {
+  matchLibraryIdentityEntry,
+  rememberOpenedLibraryItem,
+  resolveLibraryCurrentIdentity,
+  setLibraryCurrentIdentity,
+} from "./library-current-identity";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import {
@@ -440,6 +449,7 @@ export function WorkspaceLibrary({
 
   const editItem = async (item: LibraryItem) => {
     if (!onOpenItem) throw new Error("当前工作区没有注册 typed Edit route。");
+    rememberOpenedLibraryItem(item, action?.nonce);
     onOpenItem(item);
   };
 
@@ -483,6 +493,14 @@ export function WorkspaceLibrary({
     // detail header and must not be the card-click primary path.
     // 记下这一张：详情占满整个组件，返回时货架是重新挂载的，不记就回到顶部。
     setRestoreEntryId(entry.id);
+    const item = entry.libraryItem;
+    if (item) rememberOpenedLibraryItem(item, action?.nonce, entry.id);
+    else {
+      setLibraryCurrentIdentity({
+        artifactId: "",
+        entryId: entry.id,
+      });
+    }
     openEntry(entry);
   };
 
@@ -609,8 +627,24 @@ export function WorkspaceLibrary({
     return () => observer.disconnect();
   }, [selectedId, viewerNonce, detailAppPlan.item]);
 
+  const appliedIdentityRef = useRef(false);
+  const restoreCurrentIdentity = useCallback(() => {
+    if (appliedIdentityRef.current) return;
+    const identity = resolveLibraryCurrentIdentity();
+    if (!identity) return;
+    const found = entries.find((entry) =>
+      matchLibraryIdentityEntry(entry, identity),
+    );
+    if (!found) return;
+    appliedIdentityRef.current = true;
+    openEntry(found);
+  }, [entries, openEntry]);
+
   useEffect(() => {
-    if (!action) return;
+    if (!action) {
+      restoreCurrentIdentity();
+      return;
+    }
     const next = action.action;
     if (next.query !== undefined) setSearch(next.query);
     if (next.category !== undefined) {
@@ -623,18 +657,24 @@ export function WorkspaceLibrary({
     // `intent:"edit"` 已经由宿主直接送进 typed 编辑器，这里不要再抢着开一份安静
     // 预览详情——否则用户会看到编辑器背后还压着一层列表详情。
     if (next.intent === "edit") return;
+    if (!consumeWorkspaceAction(action.nonce, "workspace-library")) {
+      restoreCurrentIdentity();
+      return;
+    }
     // 深链指名的是 **artifact id**，而 durable 条目的 `entry.id` 是
     // `artifact:<artifactId>:<revisionId>`，直接比 id 永远匹配不上。「预览&编辑」
     // 就落在这一行上，所以两种写法都要认。
-    const byId = next.itemId
-      ? entries.find(
-          (entry) =>
-            entry.id === next.itemId ||
-            (entry.libraryItem &&
-              isDurableLibraryItem(entry.libraryItem) &&
-              entry.libraryItem.artifactId === next.itemId),
-        )
-      : null;
+    const byId =
+      next.itemId || next.entryId
+        ? entries.find(
+            (entry) =>
+              entry.id === next.entryId ||
+              entry.id === next.itemId ||
+              (entry.libraryItem &&
+                isDurableLibraryItem(entry.libraryItem) &&
+                entry.libraryItem.artifactId === next.itemId),
+          )
+        : null;
     const byUrl = !byId && next.url
       ? entries.find(
           (entry) =>
@@ -646,6 +686,13 @@ export function WorkspaceLibrary({
         )
       : null;
     if (byId || byUrl) openEntry((byId || byUrl)!);
+    if (byId || byUrl) {
+      appliedIdentityRef.current = true;
+      setLibraryCurrentIdentity({
+        artifactId: String(next.itemId || "").trim(),
+        entryId: String(next.entryId || "").trim(),
+      });
+    }
   // Remote material/file rows may arrive after the action. Re-run against the
   // new entry set so `itemId` opens once its card exists.
   }, [action?.nonce, entries, categories]); // eslint-disable-line react-hooks/exhaustive-deps

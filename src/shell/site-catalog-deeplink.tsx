@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from "react";
 import type { GoalApp } from "./app-catalog";
+import { registerLibraryIdentityWriter } from "./library-current-identity";
 import {
   libraryPreviewIntentAction,
   libraryPreviewIntentFromSearch,
@@ -150,6 +151,12 @@ export function useCatalogDeepLink({
   // 否则「消费 → 改 state → 回调换身份 → 再消费」会连环触发。
   const strippedRef = useRef(onDeepLinkQueryStripped);
   strippedRef.current = onDeepLinkQueryStripped;
+  useEffect(() => {
+    registerLibraryIdentityWriter((search, href) => {
+      strippedRef.current(search ? `?${search}` : "", href);
+    });
+    return () => registerLibraryIdentityWriter(null);
+  }, []);
   const clearDeepLinkQuery = useCallback(() => {
     if (typeof window === "undefined" || embed) return;
     const stripped = searchWithoutCatalogDeepLinkIntent(

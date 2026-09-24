@@ -475,9 +475,10 @@ test("只有 intent=edit 的 envelope 才要求直达编辑器", () => {
 
 test("intent=edit 直接交给 typed 编辑器，不落在安静预览详情", () => {
   assert.match(myLibrarySource, /useLibraryEditIntent\(\{/);
+  assert.match(myLibrarySource, /onOpenItem: openLibraryItem/);
   assert.match(
     myLibrarySource,
-    /onOpenItem: onOpenItem \|\| setStandaloneEditorItem/,
+    /onOpenItem \|\| setStandaloneEditorItem/,
   );
 });
 

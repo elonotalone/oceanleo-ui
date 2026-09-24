@@ -23,11 +23,21 @@ import {
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   getArtifactItem,
+  getCurrentArtifactItem,
 } from "./artifact-client";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
+import {
+  getLibraryCurrentIdentity,
+  libraryCurrentIdentityFromSearch,
+  matchLibraryIdentityEntry,
+} from "./library-current-identity";
 import { useLibraryEditIntent } from "./library-edit-intent";
-import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import {
+  consumeWorkspaceAction,
+  isWorkspaceActionConsumed,
+  type WorkspaceActionEnvelope,
+} from "./workspace-actions";
 import {
   artifactEntry,
   invalidateMaterialLibraryCache,
@@ -361,7 +371,7 @@ export function useMaterialLibraryPreviewIntent(options: {
     onFailure: (failure) => {
       setDeepLinkedEntry(null);
       setDeepLinkError(
-        failure.message || "深链指名的素材暂时打不开，请重试。",
+        failure.message || "没取到这份素材的最新版本",
       );
       setDeepLinkStatus(failure.status);
     },
@@ -391,6 +401,12 @@ export function useMaterialLibraryDeepLink(options: {
     taxonomy,
   } = options;
   useEffect(() => {
+    if (
+      options.nonce &&
+      !consumeWorkspaceAction(options.nonce, "material-deeplink")
+    ) {
+      return;
+    }
     const match = /^artifact:([^:]+):([^:]+)$/.exec(itemId);
     setDeepLinkedEntry(null);
     setDeepLinkError("");
@@ -445,4 +461,72 @@ export function useMaterialLibraryDeepLink(options: {
     );
     return () => controller.abort();
   }, [options.nonce, context, level, options.retryNonce, taxonomy]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+export function useLibraryCurrentIdentityRestore(options: {
+  action?: WorkspaceActionEnvelope | null;
+  entries: readonly WorkspaceLibraryEntry[];
+  setDeepLinkedEntry: Dispatch<SetStateAction<WorkspaceLibraryEntry | null>>;
+  setDeepLinkError: Dispatch<SetStateAction<string>>;
+  setDeepLinkStatus: Dispatch<SetStateAction<number | undefined>>;
+}): void {
+  const {
+    action,
+    entries,
+    setDeepLinkedEntry,
+    setDeepLinkError,
+    setDeepLinkStatus,
+  } = options;
+  const appliedRef = useRef("");
+  useEffect(() => {
+    if (
+      action?.nonce &&
+      !isWorkspaceActionConsumed(action.nonce, "library-edit-intent")
+    ) {
+      return;
+    }
+    const identity =
+      getLibraryCurrentIdentity() ||
+      libraryCurrentIdentityFromSearch(
+        typeof window === "undefined" ? "" : window.location.search,
+      );
+    const artifactId = identity?.artifactId || "";
+    if (!identity || (!artifactId && !identity.entryId)) return;
+    const key = `${artifactId}:${identity.entryId}`;
+    if (appliedRef.current === key) return;
+    const known = entries.find((entry) =>
+      matchLibraryIdentityEntry(entry, identity),
+    );
+    if (known) {
+      appliedRef.current = key;
+      setDeepLinkedEntry(known);
+      setDeepLinkError("");
+      setDeepLinkStatus(undefined);
+      return;
+    }
+    if (!artifactId) return;
+    const controller = new AbortController();
+    void getCurrentArtifactItem(artifactId, controller.signal).then(
+      (result) => {
+        if (controller.signal.aborted) return;
+        if (!result.ok || !result.data) {
+          setDeepLinkedEntry(null);
+          setDeepLinkError("没取到这份素材的最新版本");
+          setDeepLinkStatus(result.status);
+          return;
+        }
+        appliedRef.current = key;
+        setDeepLinkedEntry(artifactEntry(result.data));
+        setDeepLinkError("");
+        setDeepLinkStatus(undefined);
+      },
+    );
+    return () => controller.abort();
+  }, [
+    action?.nonce,
+    entries,
+    setDeepLinkedEntry,
+    setDeepLinkError,
+    setDeepLinkStatus,
+  ]);
 }

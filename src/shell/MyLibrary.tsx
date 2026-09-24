@@ -29,6 +29,10 @@ import {
   listMyArtifacts,
   retireArtifact,
 } from "./artifact-client";
+import {
+  getLibraryCurrentIdentity,
+  rememberOpenedLibraryItem,
+} from "./library-current-identity";
 import { useLibraryEditIntent } from "./library-edit-intent";
 import {
   artifactIsVisible,
@@ -698,13 +702,32 @@ export function MyLibrary({
     void load();
   }, [action?.nonce, load]);
 
+  const openLibraryItem = useCallback(
+    (item: LibraryItem) => {
+      rememberOpenedLibraryItem(item, action?.nonce);
+      (onOpenItem || setStandaloneEditorItem)(item);
+    },
+    [action?.nonce, onOpenItem],
+  );
+
+  useEffect(() => {
+    if (previewIntentItem) return;
+    const identity = getLibraryCurrentIdentity();
+    if (!identity?.artifactId) return;
+    const known = items.find(
+      (item) =>
+        isDurableLibraryItem(item) && item.artifactId === identity.artifactId,
+    );
+    if (known) setPreviewIntentItem(known);
+  }, [items, previewIntentItem]);
+
   // 指名了一份具体 artifact 的深链：`intent: "open"` 走只读预览，旧的模板直编深链
   // （`intent: "edit"`）直接进 typed 编辑器（时序与兜底取数见 `library-edit-intent.ts`）。
   // 不带 `intent` 的 action 语义不变，仍是安静预览详情。
   useLibraryEditIntent({
     action,
     items,
-    onOpenItem: onOpenItem || setStandaloneEditorItem,
+    onOpenItem: openLibraryItem,
     // 只读预览落点：纯读取回投影 + 挂进 entries，不碰任何写端点、不 fork。
     onPreviewItem: setPreviewIntentItem,
     onFailure: ({ status, message }) => {
@@ -1047,9 +1070,9 @@ export function MyLibrary({
       const item = items.find(
         (candidate) => (candidate.artifactId || candidate.id) === itemId,
       );
-      if (item) (onOpenItem || setStandaloneEditorItem)(item);
+      if (item) openLibraryItem(item);
     },
-    [items, libraryScope, onOpenItem],
+    [items, libraryScope, openLibraryItem],
   );
   const failureCopy = myLibraryFailure(failureStatus, failureMessage);
   const toolbar = (
@@ -1129,7 +1152,7 @@ export function MyLibrary({
           onCategoryChange={onCategoryChange}
           taskId={taskId}
           siteId={siteId}
-          onOpenItem={onOpenItem || setStandaloneEditorItem}
+          onOpenItem={openLibraryItem}
           openAdvancedOnSelect={openAdvancedOnSelect}
           materialActions={materialActions}
           onMaterialAction={onMaterialAction}

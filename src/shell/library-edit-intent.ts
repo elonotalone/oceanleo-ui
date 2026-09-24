@@ -16,8 +16,10 @@
 
 import { useEffect, useRef } from "react";
 import { getCurrentArtifactItem } from "./artifact-client";
+import { setLibraryCurrentIdentity } from "./library-current-identity";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
+  consumeWorkspaceAction,
   workspaceSlotForLegacyId,
   type WorkspaceActionEnvelope,
   type WorkspaceActionV1,
@@ -210,8 +212,10 @@ export function useLibraryEditIntent({
 
   useEffect(() => {
     if (!artifactId || handledNonceRef.current === nonce) return;
+    if (nonce && !consumeWorkspaceAction(nonce, "library-edit-intent")) return;
     handledNonceRef.current = nonce;
     const deliver = (item: LibraryItem) => {
+      setLibraryCurrentIdentity({ artifactId, entryId: "" });
       if (mode === "preview") {
         latest.current.onPreviewItem?.(item);
         return;
@@ -235,7 +239,7 @@ export function useLibraryEditIntent({
       if (!result.ok || !result.data) {
         latest.current.onFailure({
           status: result.status,
-          message: result.error || "",
+          message: "没取到这份素材的最新版本",
         });
         return;
       }
