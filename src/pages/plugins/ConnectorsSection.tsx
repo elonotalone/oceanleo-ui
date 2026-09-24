@@ -436,7 +436,7 @@ function ConnectorCard({
       type="button"
       data-mcp-connector={connector.id}
       onClick={onClick}
-      className="relative w-full rounded-xl border border-neutral-200 p-4 text-left transition hover:border-neutral-300"
+      className="relative w-full rounded-xl border border-neutral-200 p-4 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300"
     >
       {connected ? (
         <span

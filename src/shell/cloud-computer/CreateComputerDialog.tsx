@@ -340,7 +340,7 @@ export function CreateComputerDialog({
                     onClick={() => setTierId(item.id)}
                     data-oceanleo-cc-tier={item.id}
                     data-available={item.available ? "1" : "0"}
-                    className={`rounded-2xl border px-3 py-3 text-left text-[12px] transition ${
+                    className={`rounded-2xl border px-3 py-3 text-left text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                       !item.available
                         ? "cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400"
                         : selected
