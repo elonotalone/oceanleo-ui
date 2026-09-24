@@ -15,7 +15,8 @@ export interface SidebarAccountClusterProps {
   signedIn?: boolean;
   orgHref?: string;
   homeHref?: string;
-  helpHref?: string;
+  /** `null` omits 获取帮助; omitted = the portal's /help. */
+  helpHref?: string | null;
   docsHref?: string;
   personalizationTab?: string | null;
   onOpenSettings?: (tab: string) => void;
@@ -32,7 +33,7 @@ export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
       compact={props.compact} signedIn={props.signedIn}
       orgHref={props.orgHref ?? href("/org")}
       homeHref={props.homeHref ?? href("/")}
-      helpHref={props.helpHref ?? href("/help")}
+      helpHref={props.helpHref === null ? null : props.helpHref ?? href("/help")}
       docsHref={props.docsHref ?? href("/help")}
       personalizationTab={props.personalizationTab}
       onOpenSettings={props.onOpenSettings ?? openSettingsModal}

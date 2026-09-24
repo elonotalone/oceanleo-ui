@@ -14,11 +14,13 @@ test("all AppShell layouts share account, device and notification controls", () 
   const accountExports = src("../src/shell/account/index.ts");
   for (const name of ["SidebarAccountCluster", "DeviceStatusPopover", "NotificationBell", "SettingsModalHost", "openSettingsModal"]) assert.match(accountExports, new RegExp(name));
 });
-test("subsites hide the portal-only personalization entry", () => {
+test("every site's account menu has personalization and plugins; only an explicit null hides personalization", () => {
   const cluster = src("../src/shell/account/SidebarAccountCluster.tsx");
   const menu = src("../src/shell/AccountMenu.tsx");
   assert.match(cluster, /personalizationTab=\{props\.personalizationTab\}/);
-  assert.match(menu, /props\.personalizationTab \? <FloatingMenuItem/);
+  assert.match(menu, /props\.personalizationTab === undefined \? "personalization" : props\.personalizationTab/);
+  assert.match(menu, /settings\("plugins"\)/);
+  assert.doesNotMatch(shell, /personalizationTab=/, "AppShell must not narrow the shared menu per site");
 });
 test("settings route renders the shared center without site sidebar", () => {
   const page = src("../src/pages/SettingsPage.tsx");

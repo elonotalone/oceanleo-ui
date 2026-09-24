@@ -13,8 +13,10 @@ export type AccountMenuProps = {
   balanceText: string;
   orgHref: string;
   homeHref: string;
-  helpHref: string;
+  /** `null` omits 获取帮助. */
+  helpHref: string | null;
   docsHref: string;
+  /** Settings tab behind 个性化; defaults to `"personalization"`, `null` omits the entry. */
   personalizationTab?: string | null;
   onOpenSettings: (tab: string) => void;
   onSignOut: () => void;
@@ -72,6 +74,7 @@ export function AccountMenu(props: AccountMenuProps) {
     <FloatingMenuItem icon="+" label={tt("创建团队")} href={props.orgHref} onSelect={close} />
   </>;
   const settings = (tab: string) => { close(); props.onOpenSettings(tab); };
+  const personalizationTab = props.personalizationTab === undefined ? "personalization" : props.personalizationTab;
   return <>
     <button ref={anchorRef} type="button" data-account-trigger aria-haspopup="menu" aria-expanded={open} aria-label={props.name} title={props.name} onClick={() => { setOpen(!open); setIdentitiesOpen(false); }} className={`leo-tap-row flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 dark:text-neutral-100 dark:hover:bg-neutral-800 ${props.compact ? "w-full justify-center" : "flex-1"}`}>
       {avatar}{!props.compact && <span className="truncate text-[13px] font-medium">{props.name}</span>}
@@ -85,11 +88,12 @@ export function AccountMenu(props: AccountMenuProps) {
       <FloatingMenuItem label={tt("余额")} trailing={<>{props.balanceText} ›</>} onSelect={() => settings("billing")} />
       <FloatingMenuSeparator />
       <FloatingMenuItem icon="♙" label={tt("账户")} onSelect={() => settings("account")} />
-      {props.personalizationTab ? <FloatingMenuItem icon="✦" label={tt("个性化")} onSelect={() => settings(props.personalizationTab!)} /> : null}
+      {personalizationTab ? <FloatingMenuItem icon="✦" label={tt("个性化")} onSelect={() => settings(personalizationTab)} /> : null}
       <FloatingMenuItem icon="☷" label={tt("设置")} onSelect={() => settings("general")} />
+      <FloatingMenuItem icon="⧉" label={tt("插件")} onSelect={() => settings("plugins")} />
       <FloatingMenuSeparator />
       <FloatingMenuItem label={tt("主页")} href={props.homeHref} external onSelect={close} />
-      <FloatingMenuItem label={tt("获取帮助")} href={props.helpHref} external onSelect={close} />
+      {props.helpHref ? <FloatingMenuItem label={tt("获取帮助")} href={props.helpHref} external onSelect={close} /> : null}
       <FloatingMenuItem label={tt("使用文档")} href={props.docsHref} external onSelect={close} />
       {signedIn ? <>
         <FloatingMenuSeparator />
