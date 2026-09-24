@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { notifyHistoryChanged } from "../lib/history-events";
 import {
@@ -18,6 +18,8 @@ import { LeoTranscript, useLeoTranscript } from "./leo/LeoTranscript";
 import { leoTurnStream, type LeoTurnWireContext } from "./leo/leo-api";
 import { panelBox, type LeoPanelAnchor, type LeoPanelViewport } from "./leo/leo-position";
 import { getHostText, isEditableInput, type HostTarget } from "./leo/host-input";
+import { LeoMountKindContext, useLeoMountSlot, type LeoMountKind } from "./leo/leo-instance-guard";
+import { canonicalLeoSiteId, LEO_DEFAULT_SITE_ID, leoDocTypeForSite } from "./leo/leo-site-registry";
 
 // ============================================================================
 // @oceanleo/ui — leo 助手浮窗（全家桶单一事实源，2026-09-22 重做）
@@ -181,7 +183,9 @@ function useHostInput() {
 }
 
 export interface LeoAssistantProps {
+  /** 站点 key；历史别名（leoslides 等）经 canonicalLeoSiteId 换成 TSV key 再用。 */
   siteId: string;
+  /** 不传时取该站的默认 docType（leoDocTypeForSite）。 */
   docType?: string;
   title?: string;
   /**
@@ -227,12 +231,22 @@ function toWireContext(ctx: LeoContext | null): LeoTurnWireContext {
 
 let localEntrySeq = 0;
 
-export function LeoAssistant({
-  siteId,
-  docType = "doc",
+/** 同一文档只渲染一个 leo：壳挂载（LeoShellMount）优先，其余实例渲染 null。 */
+export function LeoAssistant(props: LeoAssistantProps) {
+  const mount = useContext(LeoMountKindContext);
+  const active = useLeoMountSlot(mount);
+  return active ? <LeoAssistantPanel {...props} mount={mount} /> : null;
+}
+
+function LeoAssistantPanel({
+  siteId: rawSiteId,
+  docType: rawDocType,
   title,
   enableSelection = true,
-}: LeoAssistantProps) {
+  mount,
+}: LeoAssistantProps & { mount: LeoMountKind }) {
+  const siteId = canonicalLeoSiteId(rawSiteId) || LEO_DEFAULT_SITE_ID;
+  const docType = rawDocType || leoDocTypeForSite(siteId);
   const tt = useUI();
   const panelTitle = title ?? "leo";
   const enabled = useLeoEnabled();
@@ -467,7 +481,7 @@ export function LeoAssistant({
     pageContext?.page === "shell" ? pageContext.computerName?.trim() : "";
 
   return (
-    <div data-ai-assistant-root>
+    <div data-ai-assistant-root data-leo-mount={mount}>
       {enabled && enableSelection && <SelectionBubble />}
       {/* 面板隐藏而非卸载——leo board 在关闭/重开之间留存（宗旨 v12 规则 5）。
           z-50：高于 Shell 页对话框（z-40），低于全局 modal（z-80+）。 */}
