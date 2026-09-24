@@ -340,11 +340,17 @@ test("late catalog categories stay behind More and native Office routes use the 
         ? "../src/shell/doc-editors/GridUniverStage.tsx"
         : `../src/shell/advanced-routes/${route}.tsx`,
     );
+    // Deck 快速面在专业面回写后改读 workingItem（proSaved ?? item），
+    // 仍必须走同一条可刷新 Office 源，不能换成别的取源。
     assert.match(
       contents,
-      /useOfficeArtifactSource\((?:item|openedItemRef\.current)\)/,
+      /useOfficeArtifactSource\((?:item|openedItemRef\.current|workingItem)\)/,
       route,
     );
+    if (route === "DeckRoute") {
+      assert.match(contents, /useProSavedRevision\(/, route);
+      assert.match(contents, /const workingItem = proSaved \?\? item/, route);
+    }
     assert.doesNotMatch(contents, /nativeChrome/, route);
   }
   assert.match(actionBar, /role="toolbar"/);

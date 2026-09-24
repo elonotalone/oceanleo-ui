@@ -232,11 +232,17 @@ test("preview and native Office routes consume only refreshable source/full inpu
         ? "../src/shell/doc-editors/GridUniverStage.tsx"
         : `../src/shell/advanced-routes/${route}.tsx`,
     );
+    // Deck 快速面在专业面回写后改读 workingItem（proSaved ?? item），
+    // 仍必须走同一条可刷新 source/full，不能换成别的取源。
     assert.match(
       contents,
-      /useOfficeArtifactSource\((?:item|openedItemRef\.current)\)/,
+      /useOfficeArtifactSource\((?:item|openedItemRef\.current|workingItem)\)/,
       route,
     );
+    if (route === "DeckRoute") {
+      assert.match(contents, /useProSavedRevision\(/, route);
+      assert.match(contents, /const workingItem = proSaved \?\? item/, route);
+    }
     assert.match(contents, /resourceFailed/, route);
     if (isGrid) {
       assert.match(contents, /reload:\s*officeSource\.retry/, route);
