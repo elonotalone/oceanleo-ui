@@ -27,6 +27,25 @@ import { TPP_W1_MESSAGES } from "./tpp-w1-copy";
 import { TPP_W3_MESSAGES } from "./tpp-w3-copy";
 import { TPP_W4_MESSAGES } from "./tpp-w4-copy";
 import { TPP_W5_MESSAGES } from "./tpp-w5-copy";
+import { EAS_W03_MESSAGES } from "./eas-w03-copy";
+import { EAS_W04_MESSAGES } from "./eas-w04-copy";
+import { EAS_W05_MESSAGES } from "./eas-w05-copy";
+import { EAS_W06_MESSAGES } from "./eas-w06-copy";
+import { EAS_W07_MESSAGES } from "./eas-w07-copy";
+import { EAS_W08_MESSAGES } from "./eas-w08-copy";
+import { EAS_W09_MESSAGES } from "./eas-w09-copy";
+import { EAS_W11_MESSAGES } from "./eas-w11-copy";
+import { EAS_W12_MESSAGES } from "./eas-w12-copy";
+import { EAS_W13_MESSAGES } from "./eas-w13-copy";
+import { EAS_W14_MESSAGES } from "./eas-w14-copy";
+import { EAS_W16_MESSAGES } from "./eas-w16-copy";
+import { EAS_W17_MESSAGES } from "./eas-w17-copy";
+import { EAS_W18_MESSAGES } from "./eas-w18-copy";
+import { EAS_W19_MESSAGES } from "./eas-w19-copy";
+import { EAS_W20_MESSAGES } from "./eas-w20-copy";
+import { EAS_W21_MESSAGES } from "./eas-w21-copy";
+import { EAS_W22_MESSAGES } from "./eas-w22-copy";
+import { EAS_W23_MESSAGES } from "./eas-w23-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -54,6 +73,25 @@ const PARTS = [
   TPP_W3_MESSAGES,
   TPP_W4_MESSAGES,
   TPP_W5_MESSAGES,
+  EAS_W03_MESSAGES,
+  EAS_W04_MESSAGES,
+  EAS_W05_MESSAGES,
+  EAS_W06_MESSAGES,
+  EAS_W07_MESSAGES,
+  EAS_W08_MESSAGES,
+  EAS_W09_MESSAGES,
+  EAS_W11_MESSAGES,
+  EAS_W12_MESSAGES,
+  EAS_W13_MESSAGES,
+  EAS_W14_MESSAGES,
+  EAS_W16_MESSAGES,
+  EAS_W17_MESSAGES,
+  EAS_W18_MESSAGES,
+  EAS_W19_MESSAGES,
+  EAS_W20_MESSAGES,
+  EAS_W21_MESSAGES,
+  EAS_W22_MESSAGES,
+  EAS_W23_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
