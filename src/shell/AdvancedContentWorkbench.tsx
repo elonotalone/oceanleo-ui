@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -50,6 +51,18 @@ import {
   AdvancedEditorHostProvider,
   useAdvancedEditorHost,
 } from "./advanced-editor-host-context";
+import {
+  editorOpenSessionId,
+  markEditorOpen,
+} from "./editor-open-timing";
+import {
+  ensureHostedEditorPreconnect,
+  installEditorHoverPreload,
+  loadEditorModuleWithRetry,
+  preloadEditorFor,
+  registerEditorRouteLoader,
+  scheduleSiteHomeEditorPreload,
+} from "./editor-preload";
 
 export type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 
@@ -95,12 +108,16 @@ function lazyRoute<P extends object>(
   routeId: string,
   load: () => Promise<ComponentType<P>>,
 ): ComponentType<P> {
+  registerEditorRouteLoader(routeId, load);
   return withChunkRetry(
     routeId,
-    dynamic<P>(chunkRetryLoader(routeId, load), {
-      ssr: false,
-      loading: WorkbenchRouteLoading,
-    }),
+    dynamic<P>(
+      chunkRetryLoader(routeId, () => loadEditorModuleWithRetry(load)),
+      {
+        ssr: false,
+        loading: WorkbenchRouteLoading,
+      },
+    ),
     WorkbenchRouteChunkError,
   );
 }
@@ -139,6 +156,9 @@ const EmbeddedRoute = lazyRoute("embed", () =>
 const ChartRoute = lazyRoute("chart", () =>
   import("./advanced-routes/ChartRoute").then((module) => module.ChartRoute),
 );
+registerEditorRouteLoader("chart-editor@1", () =>
+  import("./advanced-routes/ChartRoute").then((module) => module.ChartRoute),
+);
 const GameRoute = lazyRoute("game", () =>
   import("./advanced-routes/GameRoute").then((module) => module.GameRoute),
 );
@@ -163,16 +183,73 @@ export type AdvancedContentWorkbenchMountProps = Omit<
   projectImportSlot?: ReactNode;
 };
 
+function EditorOpenMarks({
+  item,
+  children,
+}: {
+  item: LibraryItem;
+  children: ReactNode;
+}) {
+  const openId = editorOpenSessionId(item);
+  useLayoutEffect(() => {
+    markEditorOpen(openId, "click");
+    void preloadEditorFor(item).then((result) => {
+      if (result.codeReady) markEditorOpen(openId, "code");
+      if (result.sourceReady) markEditorOpen(openId, "content");
+    });
+    const frame =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(() => {
+            markEditorOpen(openId, "firstFrame");
+          })
+        : 0;
+    return () => {
+      if (typeof cancelAnimationFrame === "function" && frame) {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, [item, openId]);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const markEditable = () => {
+      if (!document.querySelector("[data-workbench-route-loading]")) {
+        markEditorOpen(openId, "editable");
+        return true;
+      }
+      return false;
+    };
+    if (markEditable()) return;
+    if (typeof MutationObserver !== "function" || !document.body) {
+      const timer = setInterval(() => {
+        if (markEditable()) clearInterval(timer);
+      }, 50);
+      return () => clearInterval(timer);
+    }
+    const observer = new MutationObserver(() => {
+      if (markEditable()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [openId]);
+  return children;
+}
+
 export function AdvancedContentWorkbench(
   props: AdvancedContentWorkbenchMountProps,
 ) {
-  const [mounted, setMounted] = useState(false);
   const [droppedItem, setDroppedItem] = useState<LibraryItem | null>(null);
-  useEffect(() => setMounted(true), []);
   // 编辑器（含空框）挂着的整段时间登记 workbenchOpen：右上角「模型组合」据此让位。
   // 不分入口——/advanced、工作台、/history 里的库、MyLibrary、素材库全走这一处。
-  useWorkbenchOpenClaim(mounted);
-  if (!mounted) return null;
+  useWorkbenchOpenClaim(true);
+  useEffect(() => {
+    const stopHover = installEditorHoverPreload();
+    ensureHostedEditorPreconnect();
+    const stopIdle = scheduleSiteHomeEditorPreload();
+    return () => {
+      stopHover();
+      stopIdle();
+    };
+  }, []);
 
   const item = props.item || droppedItem;
   if (!item) {
@@ -185,7 +262,11 @@ export function AdvancedContentWorkbench(
       />
     );
   }
-  return <AdvancedContentWorkbenchMounted {...props} item={item} />;
+  return (
+    <EditorOpenMarks item={item}>
+      <AdvancedContentWorkbenchMounted {...props} item={item} />
+    </EditorOpenMarks>
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import {
   useArtifactRendition,
@@ -11,6 +11,11 @@ import {
   type LibraryItem,
 } from "../library-data";
 import { officeRenditionPurposes } from "../doc-editors/office-file";
+import {
+  loadOfficeSource,
+  peekOfficeSource,
+  sourceHintForItem,
+} from "./office-source-cache";
 
 /**
  * Resolve an Office editor input without ever falling back to preview/thumb.
@@ -21,6 +26,12 @@ export function useOfficeArtifactSource(item: LibraryItem) {
   const rendition = useArtifactRendition(item, purposes);
   const acceptedPurpose =
     rendition.purpose === "source" || rendition.purpose === "full";
+  const hint = sourceHintForItem(item);
+  const sourceUrl = acceptedPurpose && rendition.url ? rendition.url : hint.url;
+  const sourceRevision = item.revisionId || hint.revision;
+  const cached = sourceUrl
+    ? peekOfficeSource(sourceUrl, sourceRevision)
+    : null;
   const sourceItem = useMemo<LibraryItem>(() => {
     if (!acceptedPurpose || !rendition.url) {
       return isDurableLibraryItem(item)
@@ -36,6 +47,11 @@ export function useOfficeArtifactSource(item: LibraryItem) {
     rendition.version,
   ]);
 
+  useEffect(() => {
+    if (!sourceUrl) return;
+    void loadOfficeSource(sourceUrl, sourceRevision, item);
+  }, [item, sourceRevision, sourceUrl]);
+
   return {
     item: sourceItem,
     url: acceptedPurpose ? rendition.url : "",
@@ -45,5 +61,7 @@ export function useOfficeArtifactSource(item: LibraryItem) {
     version: rendition.version,
     retry: rendition.retry,
     resourceFailed: rendition.resourceFailed,
+    cached: Boolean(cached),
+    bytes: cached?.bytes,
   };
 }

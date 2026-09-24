@@ -1,19 +1,38 @@
 "use client";
 
 import type { ChunkErrorProps } from "../../lib/lazy-with-retry";
+import { useUI } from "../../i18n/ui/useUI";
+import { EDIT_BAR_HEIGHT_PX } from "../edit-bar-surface";
+import { PLUGIN_CHROME_HEADER_H } from "../plugin-chrome/tokens";
 
 export function WorkbenchRouteLoading() {
+  const tt = useUI();
   return (
     <div
       role="status"
-      aria-label="正在加载编辑器"
+      aria-busy="true"
+      aria-label={tt("正在加载编辑器")}
       aria-live="polite"
       data-workbench-route-loading
-      className="grid h-full min-h-[18rem] w-full place-items-center bg-[var(--surface,#f5f5f4)]"
+      data-workbench-skeleton
+      className="flex h-full min-h-[18rem] w-full flex-col bg-[var(--pchrome-canvas,var(--surface,#f5f5f4))] text-[var(--pchrome-ink,var(--fg,#292524))]"
     >
-      <div className="text-center">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border,#e7e5e4)] border-t-[var(--awb-accent,#7c3aed)]" />
-        <p className="mt-3 text-[12px] text-[var(--muted,#78716c)]">正在加载编辑器…</p>
+      <div
+        data-workbench-skeleton-header
+        className={`shrink-0 ${PLUGIN_CHROME_HEADER_H} border-b border-[var(--pchrome-line,var(--border,#e7e5e4))] bg-[var(--pchrome-surface,var(--awb-chrome-bg,var(--card,#fff)))]`}
+      />
+      <div
+        data-workbench-skeleton-edit-bar
+        className="shrink-0 border-b border-[var(--pchrome-line,var(--border,#e7e5e4))] bg-[var(--pchrome-surface,var(--awb-chrome-bg,var(--card,#fff)))]"
+        style={{ height: EDIT_BAR_HEIGHT_PX }}
+      />
+      <div
+        data-workbench-skeleton-stage
+        className="flex min-h-0 flex-1 items-start bg-[var(--pchrome-stage,var(--awb-stage-bg,var(--surface,#f5f5f4)))]"
+      >
+        <p className="px-3 py-2 text-[12px] text-[var(--pchrome-ink-mid,var(--muted,#78716c))]">
+          {tt("正在加载编辑器…")}
+        </p>
       </div>
     </div>
   );

@@ -220,9 +220,13 @@ test("三次重试都失败：进可重试的失败态，而渲染出来的不�
   assert.equal(events.filter(named("chunk.failed")).length, 1);
   assert.equal(events.filter(named("chunk.failed"))[0].detail.kind, "network");
 
-  // 失败态渲染出来是什么。spinner 的签名是 `animate-spin` + data-workbench-route-loading。
+  // 加载态现在是编辑器外框骨架，不再是居中转圈。
   const spinner = renderToStaticMarkup(React.createElement(WorkbenchRouteLoading));
-  assert.match(spinner, /animate-spin/);
+  assert.match(spinner, /data-workbench-skeleton-header/);
+  assert.match(spinner, /data-workbench-skeleton-edit-bar/);
+  assert.match(spinner, /data-workbench-skeleton-stage/);
+  assert.match(spinner, /aria-busy/);
+  assert.doesNotMatch(spinner, /animate-spin/);
 
   const failure = renderToStaticMarkup(
     React.createElement(WorkbenchRouteChunkError, {
