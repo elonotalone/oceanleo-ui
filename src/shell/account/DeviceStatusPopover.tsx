@@ -4,15 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { currentDomainFamily, currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
+import type { Computer } from "../../lib/cloud-computer-api";
+import type { ComputerDisplayState } from "../cloud-computer/computer-state";
 import { AnchoredFixedPopover } from "./AnchoredFixedPopover";
 import {
   buildDeviceStatusView,
   fetchPairedDevices,
   fetchStatusComputers,
-  type ComputerStatusKind,
   type DeviceStatusView,
   type PairedDevice,
-  type StatusComputer,
 } from "./device-status-api";
 
 const REFRESH_MS = 15000;
@@ -40,16 +40,23 @@ function IconDevice({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-function statusDot(kind: "online" | "offline" | ComputerStatusKind) {
-  const on = kind === "online";
+type DotTone = "on" | "off" | "alert";
+
+function statusDot(tone: DotTone) {
+  const color =
+    tone === "on" ? "bg-emerald-500" : tone === "alert" ? "bg-rose-500" : "bg-neutral-300";
   return (
     <span
-      className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-        on ? "bg-emerald-500" : "bg-neutral-300"
-      }`}
+      className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${color}`}
       aria-hidden="true"
     />
   );
+}
+
+function computerDotTone(state: ComputerDisplayState): DotTone {
+  if (state === "ready") return "on";
+  if (state === "unpaid" || state === "error") return "alert";
+  return "off";
 }
 
 function lastSeenLabel(
@@ -66,13 +73,14 @@ function lastSeenLabel(
   return tt("最近 {n} 天前", { n: Math.round(hours / 24) });
 }
 
-function computerKindLabel(
+function computerStateLabel(
   tt: (zh: string, vars?: Record<string, string | number>) => string,
-  kind: ComputerStatusKind,
+  state: ComputerDisplayState,
 ): string {
-  if (kind === "unpaid") return tt("欠费");
-  if (kind === "stopped") return tt("已停机");
-  if (kind === "online") return tt("在线");
+  if (state === "ready") return tt("在线");
+  if (state === "stopped") return tt("已停机");
+  if (state === "unpaid") return tt("欠费");
+  if (state === "error") return tt("开通失败");
   return tt("离线");
 }
 
@@ -87,7 +95,7 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
   const load = useCallback(async () => {
     const hideCloud = currentDomainFamily() === "cn";
     const devices: PairedDevice[] = await fetchPairedDevices();
-    const computers: StatusComputer[] = hideCloud ? [] : await fetchStatusComputers();
+    const computers: Computer[] = hideCloud ? [] : await fetchStatusComputers();
     setView(buildDeviceStatusView(devices, computers));
   }, []);
 
@@ -102,6 +110,18 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
     setOpen(false);
     if (reason === "escape") buttonRef.current?.focus();
   }, []);
+
+  const pendingLink =
+    view.pendingCount > 0 ? (
+      <Link
+        href={portalHref(view.pendingHref)}
+        data-oceanleo-device-status-pending
+        className="block text-[11px] text-neutral-400 hover:text-neutral-600"
+        onClick={() => setOpen(false)}
+      >
+        {tt("{n} 台接入中", { n: view.pendingCount })}
+      </Link>
+    ) : null;
 
   return (
     <div className={`relative ${className}`}>
@@ -134,9 +154,10 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
 
           <div className="max-h-72 overflow-y-auto px-3 py-2">
             {view.empty ? (
-              <p className="py-6 text-center text-[12px] text-neutral-400">
-                {tt("还没有连接任何设备")}
-              </p>
+              <div className="space-y-1.5 py-6 text-center">
+                <p className="text-[12px] text-neutral-400">{tt("还没有连接任何设备")}</p>
+                {pendingLink}
+              </div>
             ) : (
               <div className="space-y-3">
                 {view.devices.length > 0 ? (
@@ -146,7 +167,7 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
                         key={device.device_id || `${device.device_name}-${index}`}
                         className="flex items-start gap-2"
                       >
-                        {statusDot(device.online ? "online" : "offline")}
+                        {statusDot(device.online ? "on" : "off")}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] text-neutral-800">
                             {device.device_name}
@@ -163,30 +184,26 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
                 ) : null}
                 {view.computers.length > 0 ? (
                   <ul className="space-y-1.5">
-                    {view.computers.map((computer, index) => (
-                      <li key={`${computer.name}-${index}`} className="flex items-start gap-2">
-                        {statusDot(computer.kind)}
+                    {view.computers.map((computer) => (
+                      <li
+                        key={computer.id}
+                        data-oceanleo-device-status-state={computer.state}
+                        className="flex items-start gap-2"
+                      >
+                        {statusDot(computerDotTone(computer.state))}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] text-neutral-800">
                             {computer.name}
                           </p>
                           <p className="text-[11px] text-neutral-500">
-                            {computerKindLabel(tt, computer.kind)}
+                            {computerStateLabel(tt, computer.state)}
                           </p>
                         </div>
                       </li>
                     ))}
                   </ul>
                 ) : null}
-                {view.pendingCount > 0 ? (
-                  <Link
-                    href={portalHref(view.pendingHref)}
-                    className="block text-[11px] text-neutral-400 hover:text-neutral-600"
-                    onClick={() => setOpen(false)}
-                  >
-                    {tt("{n} 台接入中", { n: view.pendingCount })}
-                  </Link>
-                ) : null}
+                {pendingLink}
               </div>
             )}
           </div>

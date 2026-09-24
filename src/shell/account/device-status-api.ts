@@ -1,14 +1,19 @@
 "use client";
 
-// 侧栏「我的设备」小窗的取数与列表规则。认证方式与
+// 侧栏「我的设备」小窗的取数与分组。认证方式与
 // `lib/oceanleo-ai.ts::notificationRequest` 相同：Supabase access token +
-// credentials: "include"。本文件不改 oceanleo-ai。
+// credentials: "include"。
 //
-// 「已接入」按任务书写死的字段，不 import 钉子里还没有的 computer-state。
+// 云电脑的状态只认 `computer-state`，这里不另写判定。
 
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { accessToken } from "../../lib/auth/client";
 import { listDevices } from "../../api/devices";
+import type { Computer } from "../../lib/cloud-computer-api";
+import {
+  computerDisplayState,
+  type ComputerDisplayState,
+} from "../cloud-computer/computer-state";
 
 export type PairedDevice = {
   device_id?: string;
@@ -18,20 +23,15 @@ export type PairedDevice = {
   last_seen_at: string | null;
 };
 
-export type StatusComputer = {
-  id?: string;
+export type DeviceStatusComputer = {
+  id: string;
   name: string;
-  status: string;
-  confirmed_at: string | null;
-  node_online: boolean;
-  charge_status?: string;
+  state: ComputerDisplayState;
 };
-
-export type ComputerStatusKind = "unpaid" | "stopped" | "online" | "offline";
 
 export type DeviceStatusView = {
   devices: PairedDevice[];
-  computers: { name: string; kind: ComputerStatusKind }[];
+  computers: DeviceStatusComputer[];
   pendingCount: number;
   empty: boolean;
   downloadHref: "/download";
@@ -58,42 +58,29 @@ async function deviceStatusRequest<T>(path: string): Promise<GatewayResult<T>> {
   }
 }
 
-/** 已接入：confirmed，且 active/running；stopped 与欠费也列出来。未 confirmed / pending / enrolled 不列。 */
-export function isListedComputer(computer: StatusComputer): boolean {
-  if (!computer.confirmed_at) return false;
-  if (computer.charge_status === "unpaid") return true;
-  if (computer.status === "stopped") return true;
-  return computer.status === "active" || computer.status === "running";
-}
-
-export function isPendingComputer(computer: StatusComputer): boolean {
-  if (isListedComputer(computer)) return false;
-  return (
-    !computer.confirmed_at ||
-    computer.status === "pending" ||
-    computer.status === "enrolled" ||
-    computer.status === "provisioning"
-  );
-}
-
-export function computerStatusKind(computer: StatusComputer): ComputerStatusKind {
-  if (computer.charge_status === "unpaid") return "unpaid";
-  if (computer.status === "stopped") return "stopped";
-  return computer.node_online ? "online" : "offline";
-}
+/** 与 `isPendingComputer` 不同：开通失败（error）不算接入中，作为一行单独列出。 */
+const CONNECTING: ReadonlySet<ComputerDisplayState> = new Set([
+  "provisioning",
+  "pending_install",
+  "pending_confirm",
+]);
 
 export function buildDeviceStatusView(
   devices: PairedDevice[],
-  computers: StatusComputer[],
+  computers: Computer[],
 ): DeviceStatusView {
-  const listed = computers.filter(isListedComputer);
+  const listed: DeviceStatusComputer[] = [];
+  let pendingCount = 0;
+  for (const computer of computers) {
+    const state = computerDisplayState(computer);
+    if (state === "gone") continue;
+    if (CONNECTING.has(state)) pendingCount += 1;
+    else listed.push({ id: computer.id, name: computer.name, state });
+  }
   return {
     devices,
-    computers: listed.map((computer) => ({
-      name: computer.name,
-      kind: computerStatusKind(computer),
-    })),
-    pendingCount: computers.filter(isPendingComputer).length,
+    computers: listed,
+    pendingCount,
     empty: devices.length === 0 && listed.length === 0,
     downloadHref: "/download",
     manageHref: "/devices",
@@ -106,8 +93,8 @@ export async function fetchPairedDevices(): Promise<PairedDevice[]> {
   return result.ok && result.data ? result.data : [];
 }
 
-export async function fetchStatusComputers(): Promise<StatusComputer[]> {
-  const result = await deviceStatusRequest<{ items?: StatusComputer[] }>("/v1/computers");
+export async function fetchStatusComputers(): Promise<Computer[]> {
+  const result = await deviceStatusRequest<{ items?: Computer[] }>("/v1/computers");
   if (!result.ok || !result.data) return [];
   return Array.isArray(result.data.items) ? result.data.items : [];
 }
