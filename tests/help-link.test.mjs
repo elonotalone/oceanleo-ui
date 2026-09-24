@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { helpCenterUrl, isHelpCenterHost } from "../src/lib/help-url.ts";
@@ -73,27 +74,19 @@ test("isHelpCenterHost: help.com / help.cn 隐藏；design.com 与本机开发 h
 });
 
 const appShell = await readFile("src/shell/AppShell.tsx", "utf8");
-const helpLinkSrc = await readFile("src/shell/HelpLink.tsx", "utf8");
 
-test("HelpLink 在 help host 上 return null；AppShell 两处仍调用", () => {
-  assert.match(helpLinkSrc, /isHelpCenterHost/);
-  assert.match(helpLinkSrc, /if \(hidden\) return null/);
+// 操作员 2026-09-24：左下角 / 顶栏的「?」删掉，帮助只从账号菜单「获取帮助」进。
+// 三种布局真渲染出来的判据在 eas-w05-shell-help-leo；这里钉住源码层面不许回来。
+test("AppShell 不再渲染 HelpLink，HelpLink.tsx 已删", () => {
+  assert.doesNotMatch(appShell, /<HelpLink\b/);
+  assert.doesNotMatch(appShell, /from ["']\.\/HelpLink["']/);
+  assert.equal(existsSync("src/shell/HelpLink.tsx"), false);
 });
 
-test("HelpLink 首帧按构建期家族取帮助域，不写死 help.oceanleo.com", () => {
-  assert.match(helpLinkSrc, /currentDomainFamily/);
-  assert.match(helpLinkSrc, /familyHelpHost/);
-  assert.doesNotMatch(helpLinkSrc, /host:\s*"oceanleo\.com"/);
-});
-
-test("AppShell 声明 helpHref，并在 sidebar 与 topbar 各渲染一次 HelpLink", () => {
+test("AppShell 仍收 helpHref / showHelp / siteKey（子站在传），只喂账号菜单「获取帮助」", () => {
   assert.match(appShell, /helpHref\?: string \| null/);
+  assert.match(appShell, /showHelp\?: boolean/);
   assert.match(appShell, /siteKey\?: string/);
-  const renders = appShell.match(/<HelpLink\b/g) || [];
-  assert.equal(
-    renders.length,
-    2,
-    `HelpLink JSX 出现 ${renders.length} 次，期望 sidebar + topbar 两处`,
-  );
-  assert.match(appShell, /from ["']\.\/HelpLink["']/);
+  assert.match(appShell, /helpHref=\{accountHelpHref\}/);
+  assert.match(appShell, /helpCenterUrl\(\{\s*host: window\.location\.host,/);
 });

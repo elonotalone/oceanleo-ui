@@ -24,6 +24,7 @@ import {
   ReactNode,
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useState,
@@ -37,11 +38,12 @@ import { ToastProvider } from "../ui";
 import { IconPanel, IconSearch } from "./icons";
 import { SidebarAccountCluster } from "./account/SidebarAccountCluster";
 import { SettingsModalHost } from "./account/SettingsModalHost";
+import { LeoShellMount } from "./leo/LeoShellMount";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useUI } from "../i18n/ui/useUI";
-import { HelpLink } from "./HelpLink";
+import { helpCenterUrl } from "../lib/help-url";
 import { usePresenceHeartbeat } from "../lib/presence";
 import { PhoneBindGate } from "../pages/PhoneBindGate";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
@@ -111,6 +113,31 @@ function useNativeShellFlag() {
     // 只置不清：这个属性是「宿主是原生」的事实，不是组件状态，卸载时不该抹掉。
     if (native) document.documentElement.setAttribute(NATIVE_SHELL_ATTR, "");
   }, []);
+}
+
+// 来源页在 effect 里读：路由切换的那次渲染里 `location` 还是上一页。
+function useAccountHelpHref(
+  helpHref: string | null | undefined,
+  showHelp: boolean | undefined,
+  siteKey: string | undefined,
+  routeKey: string,
+): string | null {
+  const [helpCenterHref, setHelpCenterHref] = useState(() =>
+    helpCenterUrl({ siteKey, path: "/chat" }),
+  );
+  useEffect(() => {
+    if (helpHref !== undefined || showHelp === false) return;
+    setHelpCenterHref(
+      helpCenterUrl({
+        host: window.location.host,
+        siteKey,
+        from: window.location.href,
+        path: "/chat",
+      }),
+    );
+  }, [helpHref, showHelp, siteKey, routeKey]);
+  if (showHelp === false) return null;
+  return helpHref === undefined ? helpCenterHref : helpHref;
 }
 
 /** @deprecated v5 不再允许覆盖式子栏；仅为旧消费端类型兼容保留。 */
@@ -231,10 +258,16 @@ export interface AppShellProps {
   /** 账户按钮点击回调（i18n 站用自己的 router 做 locale-aware 跳转）；传了则覆盖 accountHref 的 Link。 */
   onAccountClick?: () => void;
   /**
-   * 「帮助与反馈」入口。`null` = 隐藏；字符串 = 覆盖 href；未传 = 按当前 host
-   * 自动指向 help.oceanleo.com / help.oceanleo.cn。
+   * 账号菜单里「获取帮助」的地址（外壳上没有别的帮助入口）。`null` = 不显示；
+   * 字符串 = 用它；未传 = 帮助中心在线客服，带 `?site=` 与来源页，
+   * 按当前 host 指向 help.oceanleo.com / help.oceanleo.cn。
    */
   helpHref?: string | null;
+  /**
+   * 账号菜单「获取帮助」的开关。`false` = 不显示；未传或 `true` 时按 `helpHref`。
+   * 子站仍在传，保留以免编译失败。
+   */
+  showHelp?: boolean;
   /**
    * 帮助中心 `?site=` 参数。不传时回退已有的 `siteId`（各站心跳标识）。
    */
@@ -311,6 +344,7 @@ function AppShellInner({
   accountHref = "/settings",
   onAccountClick,
   helpHref,
+  showHelp,
   siteKey,
   apiHref = "/api",
   siteId = "default",
@@ -323,11 +357,17 @@ function AppShellInner({
   const ledger = useLedgerCurrency();
   const balanceCurrency = creditsCurrency || ledger;
   const creditsText = credits != null ? formatMoney(credits, balanceCurrency, 2) : "…";
-  const helpSiteKey =
+  const shellSiteKey =
     (siteKey || (siteId !== "default" ? siteId : "")).trim() || undefined;
-  const showHelp = helpHref !== null;
   const rawPathname = usePathname() || "/";
   const searchParams = useSearchParams();
+  const accountHelpHref = useAccountHelpHref(
+    helpHref,
+    showHelp,
+    shellSiteKey,
+    `${rawPathname}?${searchParams?.toString() ?? ""}`,
+  );
+  const leoShell = <LeoShellMount siteKey={shellSiteKey} />;
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
   const mountNavPath = fusionMountPrefix(rawPathname) ? rawPathname : pathname;
   const shellHref = (href: string) =>
@@ -392,7 +432,7 @@ function AppShellInner({
   function renderAccountCluster(compact = false): ReactNode {
     return <SidebarAccountCluster name={accountName} email={userEmail}
       compact={compact} signedIn={Boolean(userEmail)} balanceText={creditsText}
-      onSignOut={onSignOut} helpHref={helpHref ?? undefined} />;
+      onSignOut={onSignOut} helpHref={accountHelpHref} />;
   }
 
   // 主题 + 语言切换器（全家桶壳内单一事实源）。sidebar 放账户区上方，topbar 放右上区。
@@ -866,7 +906,7 @@ function AppShellInner({
     <div className="mt-3 px-2 pb-1">{recentSlot}</div>
   ) : null;
 
-  const accountRow = <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1">{renderAccountCluster()}</div>{showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}</div>;
+  const accountRow = renderAccountCluster();
 
   const historyNavParts = partitionHistoryNav();
 
@@ -957,7 +997,7 @@ function AppShellInner({
   // ── topbar 布局：无侧边栏。顶部一条 bar——左=站名(+模型选择)，右=余额+账户。
   //    用于单页操作台站（侧栏原本只有一个功能按键，无站级导航可留）。
   if (pathname === "/settings") {
-    return <div data-settings-center>{children}<SettingsModalHost /></div>;
+    return <div data-settings-center>{children}<SettingsModalHost />{leoShell}</div>;
   }
 
   if (layout === "topbar") {
@@ -978,7 +1018,6 @@ function AppShellInner({
             {renderSwitchers()}
             {modelPickerSlot}
             {headerRight}
-            {showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}
             {renderAccountCluster()}
           </div>
         </header>
@@ -990,6 +1029,7 @@ function AppShellInner({
         </main>
         <SettingsModalHost />
         <PhoneBindGate />
+        {leoShell}
       </div>
     );
   }
@@ -1100,6 +1140,7 @@ function AppShellInner({
       </div>
       <SettingsModalHost />
       <PhoneBindGate />
+      {leoShell}
     </div>
   );
 }
