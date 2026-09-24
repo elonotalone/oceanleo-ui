@@ -34,7 +34,9 @@ import { useWorkbenchOpen } from "./workbench-open-store";
 import type { PreferredModel } from "../lib/auth/account";
 import { formatMoney, useLedgerCurrency } from "../lib/money";
 import { ToastProvider } from "../ui";
-import { IconGift, IconPanel, IconSearch } from "./icons";
+import { IconPanel, IconSearch } from "./icons";
+import { SidebarAccountCluster } from "./account/SidebarAccountCluster";
+import { SettingsModalHost } from "./account/SettingsModalHost";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
@@ -386,52 +388,11 @@ function AppShellInner({
     localStorage.setItem(collapseKey, next ? "1" : "0");
   }
 
-  // 账户按钮（头像 + 用户名）——sidebar 与 topbar 共用。退出登录统一在账户页内。
-  // rail=true：图标轨只留头像，用户名用 title / aria-label 交代。
-  function renderAccountButton(rail = false): ReactNode {
-    const accountName = userEmail ? userEmail.split("@")[0] : tt("未登录");
-    const accountInner = (
-      <>
-        <div
-          className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-medium text-white"
-          style={{ background: brand.accent }}
-        >
-          {userEmail ? userEmail[0].toUpperCase() : "?"}
-        </div>
-        {!rail && (
-          <span className="max-w-[120px] flex-1 truncate text-[13px] font-medium text-neutral-800">
-            {accountName}
-          </span>
-        )}
-      </>
-    );
-    // leo-tap-row：手指设备上这一行不矮于 44px（原来 py-1.5 ≈ 30px）。
-    const accountCls = `leo-tap-row flex items-center rounded-lg text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 ${
-      rail ? "justify-center p-1.5" : "gap-2.5 px-2 py-1.5"
-    }`;
-    return onAccountClick ? (
-      <button
-        type="button"
-        onClick={() => {
-          setMobileOpen(false);
-          onAccountClick();
-        }}
-        className={accountCls}
-        title={rail ? accountName : undefined}
-        aria-label={rail ? accountName : undefined}
-      >
-        {accountInner}
-      </button>
-    ) : (
-      <Link
-        href={shellHref(accountHref)}
-        className={accountCls}
-        title={rail ? accountName : undefined}
-        aria-label={rail ? accountName : undefined}
-      >
-        {accountInner}
-      </Link>
-    );
+  const accountName = userEmail ? userEmail.split("@")[0] : tt("未登录");
+  function renderAccountCluster(compact = false): ReactNode {
+    return <SidebarAccountCluster name={accountName} email={userEmail}
+      compact={compact} signedIn={Boolean(userEmail)} balanceText={creditsText}
+      onSignOut={onSignOut} helpHref={helpHref ?? undefined} />;
   }
 
   // 主题 + 语言切换器（全家桶壳内单一事实源）。sidebar 放账户区上方，topbar 放右上区。
@@ -441,22 +402,6 @@ function AppShellInner({
       <div className="flex flex-wrap items-center gap-1.5">
         {showThemeSwitcher && <ThemeSwitcher variant="compact" />}
         {showLanguageSwitcher && <LanguageSwitcher variant="compact" />}
-      </div>
-    );
-  }
-
-  // 只读 余额胶囊——sidebar 与 topbar 共用。
-  function renderCredits(): ReactNode {
-    const balanceText = tt("token 余额").replace(/^token\s*/i, "").trim() || "余额";
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-1.5">
-        <span style={{ color: brand.accent }}>
-          <IconGift className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[12px] text-neutral-600">{balanceText}</span>
-        <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
-          {creditsText}
-        </span>
       </div>
     );
   }
@@ -921,33 +866,7 @@ function AppShellInner({
     <div className="mt-3 px-2 pb-1">{recentSlot}</div>
   ) : null;
 
-  /* 余额 —— 只读展示，不可点击（实时余额由各站传入）。 */
-  const balanceText = tt("token 余额").replace(/^token\s*/i, "").trim() || "余额";
-  const creditsCapsule = (
-    <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2">
-      <span className="flex items-center gap-2 text-[12px] text-neutral-600">
-        <span style={{ color: brand.accent }}>
-          <IconGift className="h-3.5 w-3.5" />
-        </span>
-        {balanceText}
-      </span>
-      <span className="text-[13px] font-semibold tabular-nums text-neutral-900">
-        {creditsText}
-      </span>
-    </div>
-  );
-
-  /* 账户按钮 —— 进入设置中心。退出登录统一移到 /settings?tab=account 页内，侧栏不放
-     独立「退出」按钮（这就是消灭 e-commerce 左下角多余退出键的单一事实源）。
-     i18n 站传 onAccountClick 用自己的 locale-aware router 跳转。*/
-  const accountRow = (
-    <div className="flex items-center gap-1.5">
-      <div className="min-w-0 flex-1 [&>a]:w-full [&>button]:w-full">
-        {renderAccountButton()}
-      </div>
-      {showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}
-    </div>
-  );
+  const accountRow = <div className="flex min-w-0 items-center gap-1.5"><div className="min-w-0 flex-1">{renderAccountCluster()}</div>{showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}</div>;
 
   const historyNavParts = partitionHistoryNav();
 
@@ -966,7 +885,6 @@ function AppShellInner({
         {historySection}
         <div className="space-y-3 px-3 pb-3 pt-3">
           {renderSwitchers()}
-          {creditsCapsule}
         </div>
       </div>
 
@@ -1008,7 +926,6 @@ function AppShellInner({
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
         {/* 主题 + 语言切换器（全家桶壳内单一事实源，账户区上方） */}
         {renderSwitchers()}
-        {creditsCapsule}
         {accountRow}
       </div>
     </>
@@ -1032,13 +949,17 @@ function AppShellInner({
         </div>
       </nav>
       <div className="shrink-0 px-1 pb-3 pt-2">
-        <div className="flex justify-center">{renderAccountButton(true)}</div>
+        {renderAccountCluster(true)}
       </div>
     </>
   );
 
   // ── topbar 布局：无侧边栏。顶部一条 bar——左=站名(+模型选择)，右=余额+账户。
   //    用于单页操作台站（侧栏原本只有一个功能按键，无站级导航可留）。
+  if (pathname === "/settings") {
+    return <div data-settings-center>{children}<SettingsModalHost /></div>;
+  }
+
   if (layout === "topbar") {
     return (
       <div className="leo-safe-shell flex min-h-screen flex-col bg-transparent" data-oceanleo-shell>
@@ -1058,8 +979,7 @@ function AppShellInner({
             {modelPickerSlot}
             {headerRight}
             {showHelp ? <HelpLink href={helpHref} siteKey={helpSiteKey} /> : null}
-            {renderCredits()}
-            {renderAccountButton()}
+            {renderAccountCluster()}
           </div>
         </header>
 
@@ -1068,6 +988,7 @@ function AppShellInner({
             {children}
           </div>
         </main>
+        <SettingsModalHost />
         <PhoneBindGate />
       </div>
     );
@@ -1177,6 +1098,7 @@ function AppShellInner({
           </div>
         </main>
       </div>
+      <SettingsModalHost />
       <PhoneBindGate />
     </div>
   );

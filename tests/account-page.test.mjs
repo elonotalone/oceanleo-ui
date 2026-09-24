@@ -507,7 +507,7 @@ test("未登录且没传 onSignInClick 时，点「登录」就地打开 AuthDia
   assert.ok(view.text().includes("尚未登录"));
   // 死路的两个形态：跳首页的 CTA、以及点了什么都不发生。
   assert.ok(!view.text().includes("返回首页登录"));
-  assert.equal(view.host.querySelector('a[href="/"]'), null);
+  assert.equal([...view.host.querySelectorAll('a[href="/"]')].some((link) => link.textContent?.includes("登录")), false);
 
   const button = view.buttonByText("登录");
   assert.ok(button);

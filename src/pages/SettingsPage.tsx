@@ -60,6 +60,6 @@ export function SettingsPage({ extraSections, knowledgeBaseLink = true }: Settin
     });
   }
   return (
-    <SettingsHub defaultTab="general" extraSections={extras} guestPrompt="notice" />
+    <div data-settings-center><SettingsHub defaultTab="general" extraSections={extras} guestPrompt="notice" /></div>
   );
 }

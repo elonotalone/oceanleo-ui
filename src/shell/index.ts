@@ -796,3 +796,8 @@ export * from "./mobile-bridge-public";
 export { importWithChunkReload } from "../lib/lazy-with-retry";
 
 export { AccountMenu, type AccountMenuProps } from "./AccountMenu";
+
+export { SidebarAccountCluster, type SidebarAccountClusterProps } from "./account/SidebarAccountCluster";
+export { DeviceStatusPopover } from "./account/DeviceStatusPopover";
+export { NotificationBell } from "./account/NotificationBell";
+export { SettingsModalHost, openSettingsModal } from "./account/SettingsModalHost";

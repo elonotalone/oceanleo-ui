@@ -15,7 +15,7 @@ export type AccountMenuProps = {
   homeHref: string;
   helpHref: string;
   docsHref: string;
-  personalizationTab: string;
+  personalizationTab?: string | null;
   onOpenSettings: (tab: string) => void;
   onSignOut: () => void;
   /** When false, Sign out is omitted. Defaults to signed in so other shells stay unchanged. */
@@ -85,7 +85,7 @@ export function AccountMenu(props: AccountMenuProps) {
       <FloatingMenuItem label={tt("余额")} trailing={<>{props.balanceText} ›</>} onSelect={() => settings("billing")} />
       <FloatingMenuSeparator />
       <FloatingMenuItem icon="♙" label={tt("账户")} onSelect={() => settings("account")} />
-      <FloatingMenuItem icon="✦" label={tt("个性化")} onSelect={() => settings(props.personalizationTab)} />
+      {props.personalizationTab ? <FloatingMenuItem icon="✦" label={tt("个性化")} onSelect={() => settings(props.personalizationTab!)} /> : null}
       <FloatingMenuItem icon="☷" label={tt("设置")} onSelect={() => settings("general")} />
       <FloatingMenuSeparator />
       <FloatingMenuItem label={tt("主页")} href={props.homeHref} external onSelect={close} />
