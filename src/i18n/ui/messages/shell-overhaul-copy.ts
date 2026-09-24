@@ -23,6 +23,10 @@ import { CCP_W10_MESSAGES } from "./ccp-w10-copy";
 import { CCP_W11_MESSAGES } from "./ccp-w11-copy";
 import { CCP_W12_MESSAGES } from "./ccp-w12-copy";
 import { CCP_S1_MESSAGES } from "./ccp-s1-copy";
+import { TPP_W1_MESSAGES } from "./tpp-w1-copy";
+import { TPP_W3_MESSAGES } from "./tpp-w3-copy";
+import { TPP_W4_MESSAGES } from "./tpp-w4-copy";
+import { TPP_W5_MESSAGES } from "./tpp-w5-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -46,6 +50,10 @@ const PARTS = [
   CCP_W11_MESSAGES,
   CCP_W12_MESSAGES,
   CCP_S1_MESSAGES,
+  TPP_W1_MESSAGES,
+  TPP_W3_MESSAGES,
+  TPP_W4_MESSAGES,
+  TPP_W5_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
