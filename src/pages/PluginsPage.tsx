@@ -46,10 +46,17 @@ function pluginPriceSymbol(currency: string | undefined): string {
 export interface PluginsPageProps {
   accent?: string;
   title?: ReactNode;
+  /**
+   * `page`（缺省）：独立的 `/plugins` 页，带统一页头。
+   * `pane`：嵌在设置窗「插件与连接器」面板里。面板区自带标题与滚动，所以不渲染页头
+   * （页头的「返回」会把设置窗背后的页面退回上一页），也不占整页高度。
+   */
+  variant?: "page" | "pane";
 }
 
-export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
+export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: PluginsPageProps) {
   const tt = useUI();
+  const pane = variant === "pane";
   const {
     items,
     loading,
@@ -77,11 +84,14 @@ export function PluginsPage({ accent = "#4f46e5", title }: PluginsPageProps) {
     : items;
 
   return (
-    <div className="px-8 py-6">
-      <PageHeader title={typeof title === "string" ? title : tt("插件与连接器")} />
-      <p className="mt-1 text-center text-[13px] text-neutral-500">{tt("技能、连接器与 MCP 服务器，接入后即可在全 OceanLeo 系列中调用。")}</p>
+    <div
+      className={pane ? "min-h-0 overflow-y-auto overscroll-contain" : "px-8 py-6"}
+      data-plugins-pane={pane ? "" : undefined}
+    >
+      {!pane && <PageHeader title={typeof title === "string" ? title : tt("插件与连接器")} />}
+      <p className={pane ? "text-[13px] text-neutral-500" : "mt-1 text-center text-[13px] text-neutral-500"}>{tt("技能、连接器与 MCP 服务器，接入后即可在全 OceanLeo 系列中调用。")}</p>
 
-      <div className="mx-auto mt-6 max-w-3xl">
+      <div className={pane ? "mt-4 max-w-3xl" : "mx-auto mt-6 max-w-3xl"}>
         {showOrgSection && (
           <section data-org-mcp-section className="mb-8">
             <div className="flex items-baseline justify-between gap-3">
