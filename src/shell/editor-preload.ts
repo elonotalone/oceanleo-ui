@@ -20,15 +20,25 @@ const routeLoaders = new Map<string, RouteLoader>();
 const routeInflight = new Map<string, Promise<unknown>>();
 
 export interface EditorHoverScheduler {
-  schedule: (fn: () => void, ms: number) => number;
-  cancel: (id: number) => void;
+  schedule: (fn: () => void, ms: number) => unknown;
+  cancel: (id: unknown) => void;
+}
+
+function defaultSchedule(fn: () => void, ms: number): unknown {
+  return typeof window !== "undefined"
+    ? window.setTimeout(fn, ms)
+    : setTimeout(fn, ms);
+}
+
+function defaultCancel(id: unknown): void {
+  const handle = id as number;
+  if (typeof window !== "undefined") window.clearTimeout(handle);
+  else clearTimeout(handle);
 }
 
 let hoverScheduler: EditorHoverScheduler = {
-  schedule: (fn, ms) =>
-    typeof window !== "undefined" ? window.setTimeout(fn, ms) : setTimeout(fn, ms),
-  cancel: (id) =>
-    typeof window !== "undefined" ? window.clearTimeout(id) : clearTimeout(id),
+  schedule: defaultSchedule,
+  cancel: defaultCancel,
 };
 
 export function registerEditorRouteLoader(
@@ -42,10 +52,8 @@ export function configureEditorHoverSchedulerForTests(
   next?: EditorHoverScheduler,
 ): void {
   hoverScheduler = next ?? {
-    schedule: (fn, ms) =>
-      typeof window !== "undefined" ? window.setTimeout(fn, ms) : setTimeout(fn, ms),
-    cancel: (id) =>
-      typeof window !== "undefined" ? window.clearTimeout(id) : clearTimeout(id),
+    schedule: defaultSchedule,
+    cancel: defaultCancel,
   };
 }
 
@@ -239,28 +247,20 @@ export function findLibraryCardElement(start: EventTarget | null): Element | nul
 
 function kindFromHint(hint: string): LibraryKind | "" {
   const value = hint.trim().toLowerCase();
-  if (
-    value === "ppt" ||
-    value === "deck" ||
-    value === "presentation" ||
-    value === "website" ||
-    value === "canvas" ||
-    value === "sheet" ||
-    value === "document" ||
-    value === "image" ||
-    value === "video" ||
-    value === "video_canvas" ||
-    value === "audio" ||
-    value === "threed" ||
-    value === "game" ||
-    value === "pdf" ||
-    value === "file"
-  ) {
-    return value;
+  if (value === "ppt" || value === "deck" || value === "presentation" || value === "pptx") {
+    return "ppt";
   }
-  if (value === "richdoc" || value === "docx") return "document";
-  if (value === "xlsx" || value === "grid") return "sheet";
-  if (value === "pptx") return "ppt";
+  if (value === "document" || value === "richdoc" || value === "docx") return "document";
+  if (value === "sheet" || value === "xlsx" || value === "grid") return "sheet";
+  if (value === "website") return "website";
+  if (value === "canvas") return "canvas";
+  if (value === "image") return "image";
+  if (value === "video") return "video";
+  if (value === "video_canvas") return "video_canvas";
+  if (value === "audio") return "audio";
+  if (value === "threed" || value === "3d") return "threed";
+  if (value === "game") return "game";
+  if (value === "file" || value === "pdf") return "file";
   return "";
 }
 
@@ -297,7 +297,7 @@ export function installEditorHoverPreload(
   doc: Document | null = typeof document === "undefined" ? null : document,
 ): () => void {
   if (!doc) return () => {};
-  let timer = 0;
+  let timer: unknown = 0;
   let active: Element | null = null;
 
   const clear = () => {
