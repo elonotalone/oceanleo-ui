@@ -205,7 +205,7 @@ function PositionedSlideCanvas({
           rows={1}
           placeholder="编辑幻灯片标题"
           {...deckTextGestureProps(editor, "title")}
-          className="absolute left-3 right-3 top-3 z-40 resize-none overflow-hidden rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-2 py-1.5 text-[13px] font-semibold text-[var(--fg,#292524)] shadow-md outline-none placeholder:opacity-40"
+          className="absolute left-3 right-3 top-3 z-[25] resize-none overflow-hidden rounded-md border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]/95 px-2 py-1.5 text-[13px] font-semibold text-[var(--fg,#292524)] shadow-md outline-none placeholder:opacity-40"
           onPointerDown={(event) => event.stopPropagation()}
         />
       )}
@@ -347,7 +347,7 @@ function PositionedSlideCanvas({
                       <span
                         role="status"
                         data-deck-edit-lock-reason
-                        className="pointer-events-none absolute left-1/2 top-[-72px] z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--awb-text,#0f172a)] px-2 py-1 text-[10px] text-[var(--awb-chrome-bg,#fff)] shadow"
+                        className="pointer-events-none absolute left-1/2 top-[-72px] z-20 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--awb-text,#0f172a)] px-2 py-1 text-[10px] text-[var(--awb-chrome-bg,#fff)] shadow"
                         style={{
                           transform: `translateX(-50%) rotate(${-rendered.rotation}deg)`,
                         }}
@@ -498,7 +498,7 @@ export function DeckStage({
                 <div
                   role="status"
                   aria-live="polite"
-                  className="absolute inset-0 z-40 grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]"
+                  className="absolute inset-0 z-[25] grid place-items-center bg-[var(--card,#fff)]/85 text-[12px] text-[var(--muted,#78716c)]"
                 >
                   {tt("正在载入演示文稿…")}
                 </div>
@@ -512,7 +512,7 @@ export function DeckStage({
               {!editor.loading && !editor.sourceFailed && editor.error && (
                 <div
                   role="alert"
-                  className="absolute left-1/2 top-4 z-40 w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] px-3 py-2 text-[11px] text-[var(--awb-danger)] shadow-sm"
+                  className="absolute left-1/2 top-4 z-[25] w-fit max-w-[calc(100%_-_2rem)] -translate-x-1/2 rounded-lg border border-[color-mix(in_srgb,var(--awb-danger)_35%,transparent)] bg-[var(--awb-danger-soft)] px-3 py-2 text-[11px] text-[var(--awb-danger)] shadow-sm"
                 >
                   {tt(editor.error)}
                 </div>
@@ -520,7 +520,7 @@ export function DeckStage({
               {!editor.loading && !editor.error && !hasContent && (
                 <p
                   role="status"
-                  className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/90 px-3 py-2 text-[11px] text-[var(--muted,#78716c)] shadow-sm"
+                  className="pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/90 px-3 py-2 text-[11px] text-[var(--muted,#78716c)] shadow-sm"
                 >
                   {tt(
                     "空白演示文稿。添加或选中文字后点击“编辑文字”，也可按 Enter / F2。",

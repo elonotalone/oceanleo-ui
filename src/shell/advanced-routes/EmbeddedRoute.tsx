@@ -1561,7 +1561,7 @@ export function EmbeddedRoute({
               />
               {designComposite && !designHandshakeReady && (
                 <div
-                  className="absolute inset-0 z-50 grid place-items-center bg-[var(--surface,#f5f5f4)]/95 p-6 text-center backdrop-blur-sm"
+                  className="absolute inset-0 z-[27] grid place-items-center bg-[var(--surface,#f5f5f4)]/95 p-6 text-center backdrop-blur-sm"
                   role={designHandshakeError ? "alert" : "status"}
                 >
                   <p className="max-w-lg text-[12px] leading-relaxed text-[var(--muted,#78716c)]">

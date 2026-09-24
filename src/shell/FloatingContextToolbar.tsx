@@ -41,8 +41,8 @@ export type FloatingContextToolbarController = EditBarDockController;
 /**
  * 页签必须永远能点。两行 chrome（`data-advanced-workbench-header` /
  * `data-plugin-chrome-rows` / `data-pane-header` / `data-plugin-page-row`）
- * 各自在 className 里静态带 `relative z-[2147483647]`，压在本 overlay
- * （zIndex 2_147_483_000）之上。这里不再在运行时改任何元素的 style ——
+ * 各自在 className 里静态带 `relative z-40`，压在本 overlay
+ * （`z-[35]`）之上。这里不再在运行时改任何元素的 style ——
  * 手势点只许写 transform / opacity（tests/motion-compositor-only.test.mjs）。
  */
 export function useFloatingContextToolbar({
@@ -409,8 +409,8 @@ export function FloatingContextToolbar({
     <div
       data-workspace-floating-toolbar-overlay
       data-floating-toolbar-boundary="editor-shell"
-      className="pointer-events-none absolute inset-0 overflow-hidden"
-      style={{ contain: "layout paint", zIndex: 2_147_483_000 }}
+      className="pointer-events-none absolute inset-0 z-[35] overflow-hidden"
+      style={{ contain: "layout paint" }}
     >
       <div
         data-workspace-docked-toolbar={docked || undefined}

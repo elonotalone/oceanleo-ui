@@ -416,7 +416,7 @@ function PresenterInkLayer({
   return (
     <div
       data-deck-presenter-ink={tool}
-      className={`absolute inset-0 z-30 ${
+      className={`absolute inset-0 z-20 ${
         tool === "off" ? "pointer-events-none" : "cursor-crosshair"
       }`}
       onPointerDown={(event) => {
@@ -651,7 +651,7 @@ export function DeckPresenterView({
       <div
         data-deck-presenter-blackout={state.blackout}
         aria-hidden="true"
-        className="absolute inset-0 z-40"
+        className="absolute inset-0 z-[25]"
         style={{ background: state.blackout === "black" ? "#000" : "#fff" }}
       />
     );

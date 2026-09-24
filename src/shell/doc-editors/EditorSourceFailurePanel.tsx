@@ -26,7 +26,7 @@ export function EditorSourceFailurePanel({
       role="alert"
       data-editor-source-failure
       className={`${
-        variant === "overlay" ? "absolute inset-0 z-40" : "h-full w-full"
+        variant === "overlay" ? "absolute inset-0 z-[25]" : "h-full w-full"
       } flex flex-col items-center justify-center gap-3 bg-[var(--card,#fff)]/95 px-6 text-center`}
     >
       <p className="max-w-md text-[12px] leading-relaxed text-[var(--fg-2,#57534e)]">

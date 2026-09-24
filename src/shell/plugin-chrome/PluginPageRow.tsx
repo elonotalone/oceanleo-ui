@@ -43,7 +43,7 @@ export function PluginPageRow({
       data-plugin-page-row
       role="tablist"
       // 单行、固定高、横向可滚但不露滚动条、纵向绝不滚（scrollHeight <= clientHeight）。
-      className="relative z-[2147483647] flex w-full min-w-0 flex-nowrap items-stretch gap-0.5 overflow-x-auto overflow-y-hidden py-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="relative z-40 flex w-full min-w-0 flex-nowrap items-stretch gap-0.5 overflow-x-auto overflow-y-hidden py-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={{ height: PLUGIN_PAGE_ROW_H, maxHeight: PLUGIN_PAGE_ROW_H }}
     >
       {pages.map((page) => {

@@ -41,7 +41,7 @@ export function DeckInkOverlay({
     <svg
       viewBox="0 0 1000 1000"
       preserveAspectRatio="none"
-      className="absolute inset-0 z-[100] h-full w-full cursor-crosshair touch-none"
+      className="absolute inset-0 z-30 h-full w-full cursor-crosshair touch-none"
       aria-label="画笔绘制层"
       onPointerDown={(event) => {
         if (event.button !== 0) return;

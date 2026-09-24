@@ -113,7 +113,7 @@ export function AdvancedWorkbenchStage({
       )}
       {(draggedTitle || stageDragging) && (
         <div
-          className="absolute inset-3 z-[80] grid place-items-center rounded-2xl border-2 border-dashed bg-[var(--card,#fff)]/88 p-6 text-center shadow-2xl backdrop-blur-sm"
+          className="absolute inset-3 z-[28] grid place-items-center rounded-2xl border-2 border-dashed bg-[var(--card,#fff)]/88 p-6 text-center shadow-2xl backdrop-blur-sm"
           style={{ borderColor: accent }}
           onDragEnter={(event) => event.preventDefault()}
           onDragOver={(event) => {
@@ -147,7 +147,7 @@ export function AdvancedWorkbenchStage({
       {dropMessage && (
         <div
           role="status"
-          className="absolute bottom-5 left-1/2 z-[90] -translate-x-1/2 rounded-full bg-[var(--fg,#292524)] px-4 py-2 text-[11px] font-medium text-[var(--card,#fff)] shadow-xl"
+          className="absolute bottom-5 left-1/2 z-[29] -translate-x-1/2 rounded-full bg-[var(--fg,#292524)] px-4 py-2 text-[11px] font-medium text-[var(--card,#fff)] shadow-xl"
         >
           {dropMessage}
         </div>

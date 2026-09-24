@@ -659,7 +659,7 @@ export function TerminalPanel({
     return createPortal(body, portalTarget);
   }
   return createPortal(
-    <div className="fixed inset-x-0 bottom-0 z-[40]">{body}</div>,
+    <div className="fixed inset-x-0 bottom-0 z-[25]">{body}</div>,
     portalTarget,
   );
 }

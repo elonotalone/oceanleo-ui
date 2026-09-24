@@ -996,14 +996,14 @@ function PptViewer({
       stageOverlay={
         <>
           {state === "loading" && (
-            <div className="absolute inset-0 z-40">
+            <div className="absolute inset-0 z-[25]">
               <ViewerParsingPoster item={item} label={tt("正在解析 PPT…")} />
             </div>
           )}
           {state === "error" && hasStructuredFallback && (
             <div
               role="alert"
-              className="absolute left-1/2 top-4 z-40 flex max-w-[calc(100%_-_2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow-sm"
+              className="absolute left-1/2 top-4 z-[25] flex max-w-[calc(100%_-_2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow-sm"
             >
               <span>
                 {tt("PPT 在线解析失败，正在显示结构化幻灯片快照。")}
@@ -1019,7 +1019,7 @@ function PptViewer({
             </div>
           )}
           {state === "error" && !hasStructuredFallback && (
-            <div className="absolute inset-0 z-40 bg-white">
+            <div className="absolute inset-0 z-[25] bg-white">
               <ErrorView
                 message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${tt(error)}）` : ""}`}
                 url={item.url}
