@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { localeStubUrl } from "./helpers/locale-stub.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -59,7 +60,7 @@ const appShellUrl = await compileModule("src/shell/AppShell.tsx", {
   "../i18n/LanguageSwitcher": dataModule(
     "export function LanguageSwitcher(){ return null; }",
   ),
-  "../i18n/config": dataModule('export const LOCALES = ["en", "zh"];'),
+  "../i18n/config": localeStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/presence": dataModule("export function usePresenceHeartbeat(){}"),
 });

@@ -26,6 +26,8 @@ import test from "node:test";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { ORG_MCP_STUB_SOURCE } from "./helpers/org-api-stub.mjs";
+import { TOAST_BARREL_STUB_SOURCE } from "./helpers/toast-stub.mjs";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
@@ -41,9 +43,11 @@ const orgApiStub = dataModule(`
   const g = () => globalThis.__W12_ORG_API__;
   export async function listMyOrgs() { return g().listMyOrgs(); }
   export async function getOrg(orgId) { return g().getOrg(orgId); }
+  ${ORG_MCP_STUB_SOURCE}
 `);
 
 const toastStub = dataModule(`
+  ${TOAST_BARREL_STUB_SOURCE}
   export function useToast() {
     return {
       show: (input) => (globalThis.__W12_TOASTS__.push(input), { id: "t" }),
@@ -75,6 +79,16 @@ const OVERRIDES = {
       "export function useNativeHandoffEntry(){ return { action: null, panel: null }; }\n" +
       "export function useNativeTaskNotifications(){}\n",
   ),
+  "./LeoEntryButton": dataModule(`
+    import { createElement } from ${JSON.stringify(reactUrl)};
+    export function LeoEntryButton() {
+      return createElement("button", {
+        type: "button",
+        "data-oceanleo-leo-entry": "",
+        "aria-label": "leo",
+      }, "leo");
+    }
+  `),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";
     export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){

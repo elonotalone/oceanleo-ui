@@ -28,6 +28,7 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { localeStubUrl } from "./helpers/locale-stub.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -83,9 +84,6 @@ const themeStubUrl = dataModule("export function ThemeSwitcher(){ return null; }
 const languageStubUrl = dataModule(
   "export function LanguageSwitcher(){ return null; }",
 );
-const localeStubUrl = dataModule(`
-  export const LOCALES = ["en", "zh"];
-`);
 const presenceStubUrl = dataModule("export function usePresenceHeartbeat(){}");
 const appMarketStubUrl = dataModule(`
   export async function listMyApps() { return []; }

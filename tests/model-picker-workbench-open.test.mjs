@@ -23,6 +23,7 @@ import test from "node:test";
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { localeStubUrl } from "./helpers/locale-stub.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -148,12 +149,6 @@ const workspaceSelectionStubUrl = dataModule(`
 `);
 const themeStubUrl = dataModule(`export function ThemeSwitcher() { return null; }`);
 const languageStubUrl = dataModule(`export function LanguageSwitcher() { return null; }`);
-const localeStubUrl = dataModule(`
-  export const LOCALES = [
-    "de", "en", "es", "es-419", "fr", "it", "pt-BR", "pt-PT", "vi",
-    "tr", "zh", "zh-TW", "ja", "ko", "ar", "th", "hi"
-  ];
-`);
 const presenceStubUrl = dataModule(`export function usePresenceHeartbeat() {}`);
 const appShellUrl = await compileModule("src/shell/AppShell.tsx", {
   "next/link": linkStubUrl,

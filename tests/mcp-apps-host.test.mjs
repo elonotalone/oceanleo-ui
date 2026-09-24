@@ -49,7 +49,10 @@ import {
   sandboxGrantsScriptedSameOrigin,
   sandboxTokens,
 } from "../src/shell/editor-sandbox-origin.ts";
+import { authClientStubUrl } from "./helpers/auth-client-stub.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { ORG_MCP_STUB_SOURCE } from "./helpers/org-api-stub.mjs";
+import { TOAST_BARREL_STUB_SOURCE } from "./helpers/toast-stub.mjs";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
@@ -385,26 +388,21 @@ const uiStub = dataModule("export function useUI(){ return (zh) => zh; }");
 // host.ts 只要 accessToken；LeoComposer → guide-context → workflows 还要
 // browserClient。同一份桩按解析后的路径套到整张图上，缺一个具名导出就会在
 // 加载期打哑后面所有 DOM 例（父 agent 实测 15 里那 1 红就是这条）。
-const authClientStub = dataModule(`
-  export async function accessToken(){ return null; }
-  export function browserClient(){ return null; }
-  export function cachedAccessToken(){ return null; }
-  export async function isSignedIn(){ return false; }
-  export async function getUserId(){ return null; }
-  export async function getUserEmail(){ return null; }
-  export function oceanleoConfigured(){ return false; }
-`);
+const authClientStub = authClientStubUrl;
 const OVERRIDES = {
   "../../i18n/ui/useUI": uiStub,
   "../i18n/ui/useUI": uiStub,
   "../../lib/auth/client": authClientStub,
   "../lib/auth/client": authClientStub,
-  "../lib/org-api": dataModule(
-    "export async function listMyOrgs(){ return []; }\nexport async function getOrg(){ throw new Error('no'); }",
-  ),
-  "../ui/Toast": dataModule(
-    "export function useToast(){ return { show(){}, info(){}, success(){}, error(){}, loading(){}, dismiss(){}, dismissAll(){} }; }",
-  ),
+  "../lib/org-api": dataModule(`
+    export async function listMyOrgs(){ return []; }
+    export async function getOrg(){ throw new Error('no'); }
+    ${ORG_MCP_STUB_SOURCE}
+  `),
+  "../ui/Toast": dataModule(`
+    ${TOAST_BARREL_STUB_SOURCE}
+    export function useToast(){ return { show(){}, info(){}, success(){}, error(){}, loading(){}, dismiss(){}, dismissAll(){} }; }
+  `),
   "next/navigation": dataModule(
     "export function useRouter(){ return { push(){}, replace(){}, refresh(){}, back(){} }; }\n" +
       "export function useSearchParams(){ return new URLSearchParams(); }\n" +
@@ -417,6 +415,16 @@ const OVERRIDES = {
       "export function useNativeHandoffEntry(){ return { action: null, panel: null }; }\n" +
       "export function useNativeTaskNotifications(){}\n",
   ),
+  "./LeoEntryButton": dataModule(`
+    import { createElement } from ${JSON.stringify(reactUrl)};
+    export function LeoEntryButton() {
+      return createElement("button", {
+        type: "button",
+        "data-oceanleo-leo-entry": "",
+        "aria-label": "leo",
+      }, "leo");
+    }
+  `),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";
     export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){
