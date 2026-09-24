@@ -1,3 +1,5 @@
+import { nextPollCadence, type PollCadenceInput } from "../../agent-thread/cadence";
+import { agentMessageFingerprint } from "../../agent-thread/rules";
 // Shell 对话框里 OceanLeo agent 程序（合同 I6）的纯函数半区：
 // 把 agent 任务的消息流映射成对话框消息，以及轮询节奏。不碰网络、不碰 React，
 // 方便逐条钉单测。控制器（useAgentDialogController）负责调用与时机。
@@ -138,47 +140,9 @@ export function mapTaskMessages(
 }
 
 /** Detect both new rows and content growth inside an existing streamed row. */
-export function oceanMessageFingerprint(messages: Array<Pick<AgentMessage, "id" | "role" | "content">> = []): string {
-  return messages
-    .map((message) => `${message.id ?? ""}:${message.role}:${message.content ?? ""}`)
-    .join("\u001f");
+export function oceanMessageFingerprint(messages: AgentMessage[] = []): string {
+  return agentMessageFingerprint(messages);
 }
 
-// ---------------------------------------------------------------------------
-// 轮询节奏：与 AgentChat.nextPollCadence 同一张时刻表（POLL_ACTIVE 200ms、
-// 首字窗口 2000ms 内 225ms、之后 300/500/800/1200 退避、后台 1000ms 只看不拉）。
-// 不静态 import AgentChat.tsx：那会把整棵页面组件树拖进对话框控制器与测试编译图。
-// 哪天 AgentChat 把 nextPollCadence 抽进 lib/ 纯模块，这里删掉换 import。
-// ---------------------------------------------------------------------------
-const POLL_ACTIVE_MS = 200;
-const POLL_FIRST_BYTE_MS = 225;
-const POLL_FIRST_BYTE_WINDOW_MS = 2000;
-const POLL_IDLE_LADDER_MS = [300, 500, 800, 1200];
-const POLL_HIDDEN_RECHECK_MS = 1000;
-
-export type OceanleoPollInput = {
-  hidden: boolean;
-  changed: boolean;
-  idleStep: number;
-  waitedMs: number;
-};
-
-export function nextOceanleoPoll({
-  hidden,
-  changed,
-  idleStep,
-  waitedMs,
-}: OceanleoPollInput): { delayMs: number; idleStep: number; waitedMs: number } {
-  if (hidden) return { delayMs: POLL_HIDDEN_RECHECK_MS, idleStep, waitedMs };
-  if (changed) return { delayMs: POLL_ACTIVE_MS, idleStep: -1, waitedMs: 0 };
-  if (waitedMs < POLL_FIRST_BYTE_WINDOW_MS) {
-    return {
-      delayMs: POLL_FIRST_BYTE_MS,
-      idleStep: -1,
-      waitedMs: waitedMs + POLL_FIRST_BYTE_MS,
-    };
-  }
-  const step = Math.min(idleStep + 1, POLL_IDLE_LADDER_MS.length - 1);
-  const delayMs = POLL_IDLE_LADDER_MS[step];
-  return { delayMs, idleStep: step, waitedMs: waitedMs + delayMs };
-}
+export type OceanleoPollInput = PollCadenceInput;
+export const nextOceanleoPoll = nextPollCadence;

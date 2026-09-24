@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
+import { resolveTaskStatus } from "../../agent-thread/rules";
 import { agentDialogWsUrl } from "../../../lib/cloud-computer-api";
 import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -117,6 +118,7 @@ export function useAgentDialog({
   // OceanLeo agent 程序（合同 I6）：任务指针、刚发出去那句的落地判定基线、
   // 轮询代际与可取消的等待器。代际一升，所有在飞的轮询/回放立即作废。
   const oceanTaskRef = useRef("");
+  const stoppedOceanTaskRef = useRef("");
   const oceanSendRef = useRef<{ baseUsers: number } | null>(null);
   const oceanGen = useRef(0);
   const oceanWaiterRef = useRef<{
@@ -317,7 +319,12 @@ export function useAgentDialog({
   /** 任务详情 → 消息列表。刚发的那句服务端还没落库时这一轮不替换（本地回显不闪没）。 */
   const applyOceanDetail = useCallback(
     (detail: TaskDetail) => {
-      const mapped = mapTaskMessages(detail, { step: tt("步骤"), error: tt("出错") });
+      const status = resolveTaskStatus({
+        serverStatus: detail.task?.status || "",
+        taskId: oceanTaskRef.current,
+        stoppedTaskId: stoppedOceanTaskRef.current,
+      });
+      const mapped = mapTaskMessages({ ...detail, task: { ...detail.task, status } }, { step: tt("步骤"), error: tt("出错") });
       const pending = oceanSendRef.current;
       if (pending) {
         // 落地判定按用户消息计数、不按文本：重发同一句不算落地，服务端改写文本也不卡死。
@@ -326,14 +333,14 @@ export function useAgentDialog({
           (count, message) => (message.kind === "user" ? count + 1 : count),
           0,
         );
-        const terminal = typeof detail.task?.status === "string" && detail.task.status !== "running";
+        const terminal = Boolean(status && status !== "running");
         if (!terminal && userCount <= pending.baseUsers) return;
         oceanSendRef.current = null;
       }
       messagesCacheRef.current.set("oceanleo", mapped);
       if (stateRef.current.program === "oceanleo") {
         dispatch({ type: "messages-replace", messages: mapped });
-        const running = detail.task?.status === "running";
+        const running = status === "running";
         if (running !== stateRef.current.busy) {
           dispatch(running ? { type: "send-began" } : { type: "cancel-local" });
         }
@@ -492,6 +499,7 @@ export function useAgentDialog({
       return;
     }
     oceanTaskRef.current = result.data.task_id;
+    stoppedOceanTaskRef.current = "";
     void pollOcean(result.data.task_id, gen);
   }, [clearOceanWait, pollOcean]);
 
@@ -502,6 +510,7 @@ export function useAgentDialog({
     setComputerName("");
     oceanGen.current += 1;
     oceanTaskRef.current = "";
+    stoppedOceanTaskRef.current = "";
     oceanSendRef.current = null;
     messagesCacheRef.current.clear();
     clearOceanWait();
@@ -670,6 +679,7 @@ export function useAgentDialog({
       clearOceanWait();
       oceanSendRef.current = null;
       const taskId = oceanTaskRef.current;
+      stoppedOceanTaskRef.current = taskId;
       dispatch({ type: "cancel-local" });
       if (taskId) {
         const gen = oceanGen.current;

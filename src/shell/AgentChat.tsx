@@ -104,6 +104,8 @@ import {
   sameAgentMessages,
 } from "../lib/agent-progress";
 import { historySessionHref } from "./workspace-route";
+import { agentMessagesChanged, threadPresentation, resolveTaskStatus } from "./agent-thread/rules";
+import { useAgentThreadPolling } from "./agent-thread/useAgentThreadPolling";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -129,118 +131,9 @@ export function orgStatusFromMessages(
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// 轮询节奏
-// ---------------------------------------------------------------------------
-// 正文本该走 SSE，但网关**没有** agent 任务的流式端点：`/v1/agent/**` 全部 16 条
-// 路由无一流式，全网关唯一的浏览器向 SSE 是 `/v1/chat/stream`，那是无状态 LLM 透传，
-// 不跑规划循环、不产 artifact、不认 task——拿它顶 agent 对话是功能净损失。
-// 加端点是后端的活，本波禁区；前端这侧已经接好（见下方 consumeAgentStream 与
-// AgentChatProps.agentStreamEndpoint），端点落地后宿主传一个 prop 即可。
-// 详见 signals/W21-request.md。
-//
-// 在那之前，轮询仍是正文的真源，于是先把**固定 450ms** 换成随内容走的节奏。
-// 原来的问题不只是慢，是「快慢跟内容无关」——正在出字的时候和干等的时候一样慢，
-// 用户等首字要多等最多 450ms，而任务空转时又在白发请求。
-const POLL_FIRST_MS = 120; // 刚发出去，首字最金贵
-const POLL_ACTIVE_MS = 200; // 上一轮拿到了新内容：正在出字，跟紧
-// 等首字的那几秒**不许退避**。
-//
-// 这一条是量出来的，不是想出来的。退避档原先从第一轮就开始爬，而「等首字」
-// 恰恰是一段没有新内容的时间 —— 于是用户盯着屏幕干等的那几秒被退避越拉越长。
-// 扫 `T_write`（后端首个 token 落库时刻）0–2000ms 共 201 点，对比改成自适应之前的
-// 固定 450ms：首字可见延迟均值 1217.0ms → **1390.6ms**、最坏 2370 → 2920ms，
-// 201 个点里 98 个比改之前更慢，最大一处多等 1000ms。
-// 「点了发送、界面呆住一秒多」正是任务书要消灭的那句体感，退避把它做得更糟了。
-//
-// 退避的方向没错，错在起点：它该在用户已经不指望立刻有反应之后才生效。
-// 所以首字窗口内走紧凑档，`POLL_FIRST_BYTE_WINDOW_MS` 之后再上梯子。
-//
-// 225ms = 改之前那个 450ms 的**一半**，这个取值是有讲究的：间隔整除 450，
-// 新时刻表就是老时刻表的**超集**（120,345,570,795,1020,… ⊇ 120,570,1020,…），
-// 于是「任何 `T_write` 都不会比改之前慢」是**结构上成立**的，不是扫出来碰巧。
-// 实测：均值 1217.0 → 1109.6ms、最坏 2370 → 2145ms、201 点里比改前慢的 **0** 个。
-const POLL_FIRST_BYTE_MS = 225;
-const POLL_FIRST_BYTE_WINDOW_MS = 2000;
-// 熬过首字窗口还没动静，才一档档退。这时用户已经知道这次要等一会儿了，
-// 后端本来又有 ~330ms 写库节流，把间隔拉开只会少发请求。
-const POLL_IDLE_LADDER_MS = [300, 500, 800, 1200];
-// 页面切到后台：**不发请求**，只留一个便宜的定时器等它回前台。
-// 长任务用户十有八九会切走干别的，这一条把那段时间的请求全省了。
-const POLL_HIDDEN_RECHECK_MS = 1000;
-
-export interface PollCadenceInput {
-  /** 页面切到后台了吗？后台不发请求。 */
-  hidden: boolean;
-  /** 刚结束的那一轮有没有拿到服务端新内容？ */
-  changed: boolean;
-  /** 已经连续空转了几档（`-1` = 还没空转过）。 */
-  idleStep: number;
-  /** 上一次拿到新内容之后，已经干等了多久（ms）。拿到新内容就归零。 */
-  waitedMs: number;
-}
-
-export interface PollCadence {
-  /** 距下一次动作要等多久。 */
-  delayMs: number;
-  /** 传回下一轮的空转档位。 */
-  idleStep: number;
-  /** 传回下一轮的干等累计（= 本轮的 `waitedMs` 加上这次要等的 `delayMs`）。 */
-  waitedMs: number;
-}
-
-/**
- * 下一次轮询隔多久——**快慢跟着内容走**，这是这条改动的全部要点。
- *
- * 三档，优先级从上到下：正在出字 → 还在等首字 → 确实空转了。
- * 中间那档是后补的，见上方 `POLL_FIRST_BYTE_MS` 的注释：少了它，退避会把
- * 「点了发送界面呆住」这件事做得比改动之前更糟。
- *
- * 抽成纯函数是为了能被单测钉死：节奏策略藏在 effect 里就只能靠读代码相信它。
- */
-export function nextPollCadence({
-  hidden,
-  changed,
-  idleStep,
-  waitedMs,
-}: PollCadenceInput): PollCadence {
-  // 后台优先级最高：哪怕上一轮正在出字，用户看不见就不值得发请求。
-  // 干等累计原样带回来——回到前台时还在首字窗口里的，就该还按首字窗口的节奏走。
-  if (hidden) return { delayMs: POLL_HIDDEN_RECHECK_MS, idleStep, waitedMs };
-  if (changed) return { delayMs: POLL_ACTIVE_MS, idleStep: -1, waitedMs: 0 };
-  // 还在首字窗口里：不许退避，也不许把空转档位往上推（`idleStep` 留在 -1），
-  // 否则窗口一到期就直接从梯子中段起步。
-  if (waitedMs < POLL_FIRST_BYTE_WINDOW_MS) {
-    return {
-      delayMs: POLL_FIRST_BYTE_MS,
-      idleStep: -1,
-      waitedMs: waitedMs + POLL_FIRST_BYTE_MS,
-    };
-  }
-  const step = Math.min(idleStep + 1, POLL_IDLE_LADDER_MS.length - 1);
-  const delayMs = POLL_IDLE_LADDER_MS[step];
-  return { delayMs, idleStep: step, waitedMs: waitedMs + delayMs };
-}
-
-/**
- * 服务端状态与本地「已按过停止」的裁决。
- *
- * 停止请求发出后，服务端要过一会儿才把状态落成 stopped；这期间任何一次拉取都会把
- * 状态写回 `running`，于是轮询重新起跑、「思考中」重新亮起——用户看到的是
- * 「按下去停了半秒，它自己又活过来了」。本地判定优先，界面才不会自己复活。
- */
-export function resolveTaskStatus(input: {
-  serverStatus: string;
-  taskId: string;
-  /** 用户按过停止的那个 task；空串 = 没按过。 */
-  stoppedTaskId: string;
-}): string {
-  const { serverStatus, taskId, stoppedTaskId } = input;
-  if (stoppedTaskId && stoppedTaskId === taskId && serverStatus === "running") {
-    return "stopped";
-  }
-  return serverStatus;
-}
+export { nextPollCadence } from "./agent-thread/cadence";
+export type { PollCadenceInput, PollCadence } from "./agent-thread/cadence";
+export { resolveTaskStatus } from "./agent-thread/rules";
 
 interface TaskPollResult {
   status: string;
@@ -795,7 +688,7 @@ function AgentChatInner({
     if (loadedTaskRef.current !== id) return IDLE_POLL_RESULT;
     if (r.ok && r.data) {
       const incoming = r.data.messages || [];
-      const changed = !sameAgentMessages(serverMessagesRef.current, incoming);
+      const changed = agentMessagesChanged(serverMessagesRef.current, incoming);
       if (changed) serverMessagesRef.current = incoming;
       setMessagesTaskId(id);
       setMessages((current) =>
@@ -886,62 +779,7 @@ function AgentChatInner({
     workspace?.taskId,
   ]);
 
-  // poll while running（节奏随内容走，见文件头 POLL_* 注释）
-  useEffect(() => {
-    if (!taskId) return;
-    if (status && status !== "running") return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let idleStep = -1;
-    // 这一轮之前已经干等了多久。`0` = 刚开跑，正处在最该跟紧的首字窗口里。
-    let waitedMs = 0;
-
-    const arm = (delay: number) => {
-      if (cancelled) return;
-      timer = setTimeout(() => void poll(), delay);
-    };
-
-    const poll = async () => {
-      if (cancelled) return;
-      // 后台这一轮**不发请求**，只安排一次回来看看还在不在后台。
-      const hidden = documentHidden();
-      const result = hidden ? IDLE_POLL_RESULT : await refresh(taskId);
-      if (cancelled) return;
-      // 落到终态就收工；status 变了会让本 effect 重跑并在上面的守卫处停住。
-      if (result.status && result.status !== "running") return;
-      const cadence = nextPollCadence({
-        hidden,
-        changed: result.changed,
-        idleStep,
-        waitedMs,
-      });
-      idleStep = cadence.idleStep;
-      waitedMs = cadence.waitedMs;
-      arm(cadence.delayMs);
-    };
-
-    // 回到前台立刻补一次，不让用户为「刚才在后台」多等一个间隔。
-    // 干等累计也一并归零：他刚把页面切回来，此刻等的就是「第一眼」。
-    const onVisibilityChange = () => {
-      if (cancelled || documentHidden()) return;
-      if (timer) clearTimeout(timer);
-      idleStep = -1;
-      waitedMs = 0;
-      arm(0);
-    };
-
-    arm(POLL_FIRST_MS);
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVisibilityChange);
-    }
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-      }
-    };
-  }, [taskId, status, refresh]);
+  useAgentThreadPolling(taskId, status, refresh);
 
   // 流式正文（可选，见 AgentChatProps.agentStreamEndpoint）。
   // 轮询在旁边照常跑，所以这条流唯一的职责是让正文**早一点**出现；
@@ -1408,13 +1246,12 @@ function AgentChatInner({
       break;
     }
   }
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const suggestions: string[] =
-    !busy && status !== "running" && Array.isArray(lastAssistant?.meta?.suggestions)
-      ? (lastAssistant!.meta!.suggestions as string[]).filter(
-          (s) => typeof s === "string" && s.trim(),
-        ).slice(0, 3)
-      : [];
+  const renderItems = buildAgentRenderItems(messages);
+  const activeProgressKey = activeAgentProgressKey(renderItems, messages);
+  const presentation = threadPresentation(messages, status, {
+    busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
+  });
+  const suggestions = presentation.suggestions;
 
   const sendSuggestion = useCallback(
     async (text: string) => {
@@ -1570,17 +1407,6 @@ function AgentChatInner({
     artifactMessages[artifactMessages.length - 1] || null;
   const art = latestArtifact(messages);
   const running = status === "running" || busy;
-  const lastMessage = messages[messages.length - 1];
-  const responseComplete =
-    !busy &&
-    lastMessage?.role === "assistant" &&
-    Boolean(lastMessage.meta?.done || lastMessage.meta?.final);
-  // Title/suggestion post-processing may keep the task row "running" briefly
-  // after the answer is already durable. Never describe that background work
-  // as the Agent still thinking.
-  const showThinking = running && !responseComplete;
-  const renderItems = buildAgentRenderItems(messages);
-  const activeProgressKey = activeAgentProgressKey(renderItems, messages);
   const activeGateId =
     status === "waiting_user"
       ? [...messages].reverse().find((message) => message.kind === "gate")?.id
@@ -1976,7 +1802,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={showThinking && item.key === activeProgressKey}
+                running={presentation.working && item.key === activeProgressKey}
                 accent={accent}
               />
             ) : (
@@ -1985,9 +1811,9 @@ function AgentChatInner({
                 message={messageForBubble(item)}
                 streaming={running && item.index === lastAssistantIdx}
                 stopped={
-                  Boolean(stoppedTaskId) &&
-                  stoppedTaskId === (taskId || "") &&
-                  item.index === lastAssistantIdx
+                  item.message.meta?.stopped === true ||
+                  ((Boolean(stoppedTaskId) && stoppedTaskId === (taskId || "")) &&
+                    item.index === lastAssistantIdx)
                 }
                 onArtifactOpen={
                   item.message.meta?.artifact &&
@@ -2022,7 +1848,7 @@ function AgentChatInner({
               />
             ),
           )}
-          {showThinking && !activeProgressKey && (
+          {presentation.thinking && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>

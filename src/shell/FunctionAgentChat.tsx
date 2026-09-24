@@ -38,6 +38,8 @@ import {
 } from "react";
 import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
+import { agentMessagesChanged, resolveTaskStatus, threadPresentation } from "./agent-thread/rules";
+import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
 import { LeoComposer } from "./LeoComposer";
 import {
   useLeftPaneSlot,
@@ -593,6 +595,9 @@ export function FunctionAgentChat({
       ? controlledTaskId
       : workspace?.taskId || localTaskId);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const serverMessagesRef = useRef<AgentMessage[]>([]);
+  const stoppedTaskRef = useRef("");
+  const [stoppedTaskId, setStoppedTaskId] = useState("");
   const [messagesTaskId, setMessagesTaskId] = useState("");
   const [status, setStatus] = useState("");
   const [input, setInput] = useState("");
@@ -1201,19 +1206,23 @@ export function FunctionAgentChat({
     return () => slot?.setLeftLabel(leftPaneOwner, null);
   }, [leftPaneOwner, slot]);
 
-  const refresh = useCallback(async (id: string) => {
+  const refresh = useCallback(async (id: string): Promise<TaskPollResult> => {
     const r = await getTask(id);
-    if (loadedTaskRef.current !== id) return "";
+    if (loadedTaskRef.current !== id) return { status: "", changed: false };
     if (r.ok && r.data) {
       setMessagesTaskId(id);
       const incoming = r.data.messages || [];
+      const changed = agentMessagesChanged(serverMessagesRef.current, incoming);
+      if (changed) serverMessagesRef.current = incoming;
       setMessages((current) =>
         sameAgentMessages(current, incoming) ? current : incoming,
       );
-      setStatus(r.data.task?.status || "");
-      return r.data.task?.status || "";
+      const serverStatus = r.data.task?.status || "";
+      const status = resolveTaskStatus({ serverStatus, taskId: id, stoppedTaskId: stoppedTaskRef.current });
+      setStatus(status);
+      return { status, changed };
     }
-    return "";
+    return { status: "", changed: false };
   }, []);
 
   // session / 受控 task 变化时复用既有 thread；切到无 task 的新 session 时清空旧本地 id。
@@ -1243,28 +1252,14 @@ export function FunctionAgentChat({
     seenWorkspaceActionIdsRef.current.clear();
     setMessagesTaskId("");
     setMessages([]);
+    serverMessagesRef.current = [];
+    stoppedTaskRef.current = "";
+    setStoppedTaskId("");
     setStatus("");
     void refresh(taskId);
   }, [taskId, refresh]);
 
-  // poll agent thread while running
-  useEffect(() => {
-    if (!taskId) return;
-    if (status && status !== "running") return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const poll = async () => {
-      const s = await refresh(taskId);
-      if (!cancelled && (!s || s === "running")) {
-        timer = setTimeout(poll, 450);
-      }
-    };
-    timer = setTimeout(poll, 120);
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [taskId, status, refresh]);
+  useAgentThreadPolling(taskId, status, refresh);
 
   useEffect(() => {
     if (tab !== "agent") return;
@@ -1468,7 +1463,11 @@ export function FunctionAgentChat({
     setBusy(true);
     const r = await followUp(taskId, effectivePrompt, uploaded, editorContext, orgId);
     setBusy(false);
-    if (r.ok) setStatus("running");
+    if (r.ok) {
+      stoppedTaskRef.current = "";
+      setStoppedTaskId("");
+      setStatus("running");
+    }
     else {
       setMessages((current) =>
         current.filter((message) => message.id !== optimisticMessageId),
@@ -1505,6 +1504,8 @@ export function FunctionAgentChat({
     }
     const r = await stopTask(taskId);
     if (r.ok) {
+      stoppedTaskRef.current = taskId;
+      setStoppedTaskId(taskId);
       setStatus("stopped");
       setBusy(false);
       void refresh(taskId);
@@ -1524,13 +1525,10 @@ export function FunctionAgentChat({
       break;
     }
   }
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const suggestions: string[] =
-    !running && Array.isArray(lastAssistant?.meta?.suggestions)
-      ? (lastAssistant!.meta!.suggestions as string[]).filter(
-          (s) => typeof s === "string" && s.trim(),
-        ).slice(0, 3)
-      : [];
+  const presentation = threadPresentation(messages, status, {
+    busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
+  });
+  const suggestions = presentation.suggestions;
 
   async function sendSuggestion(text: string) {
     if (!taskId || busy || sessionReadOnly) return;
@@ -1544,7 +1542,11 @@ export function FunctionAgentChat({
     ]);
     const r = await followUp(taskId, effectiveText, undefined, editorContext);
     setBusy(false);
-    if (r.ok) setStatus("running");
+    if (r.ok) {
+      stoppedTaskRef.current = "";
+      setStoppedTaskId("");
+      setStatus("running");
+    }
     else setError(r.error || tt("发送失败"));
   }
 
@@ -1642,7 +1644,7 @@ export function FunctionAgentChat({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={running && item.key === activeProgressKey}
+                running={presentation.working && item.key === activeProgressKey}
                 accent={accent}
               />
             ) : (
@@ -1650,6 +1652,7 @@ export function FunctionAgentChat({
                 key={item.key}
                 message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
+                stopped={item.message.meta?.stopped === true || ((stoppedTaskId === taskId && Boolean(stoppedTaskId)) && item.index === lastAssistantIdx)}
                 onArtifactOpen={
                   item.message.meta?.artifact
                     ? () => {
@@ -1689,9 +1692,9 @@ export function FunctionAgentChat({
               />
             ),
           )}
-          {running && !activeProgressKey && (
+          {presentation.thinking && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
-              <span className="v-spinner" /> {tt("agent 正在处理…")}
+              <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
           )}
           {/* 灵感（3 个可点追问）：从上到下渐变显示（错峰淡入，非流式）。 */}
