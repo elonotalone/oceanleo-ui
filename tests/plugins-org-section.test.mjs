@@ -62,6 +62,33 @@ const databaseStub = dataModule(`
   }
 `);
 
+const mcpApiStub = dataModule(`
+  export function mcpGatewayDetail() { return ""; }
+  export function mcpOauthReturnOrigin() { return "https://oceanleo.com"; }
+  export function mcpOauthMessageOrigin() { return "https://api.oceanleo.com"; }
+  export function mcpOauthOpensPortalPage() { return false; }
+  export function mcpOauthPortalPageHref() { return "https://oceanleo.com/plugins"; }
+  export async function getMcpRegistry() { return { items: [] }; }
+  export async function getMcpConnections() { return []; }
+  export async function connectMcp() { return { ok: true }; }
+  export async function startMcpOauth() { return { ok: false }; }
+  export async function disconnectMcp() { return { ok: true }; }
+  export async function toggleMcp() { return { ok: true }; }
+  export async function probeMcp() { return { ok: true }; }
+`);
+
+const skillsStub = dataModule(`
+  export const OFFICIAL_SKILLS = [];
+  export const SKILLS_NOT_CONFIGURED = "未配置 Supabase";
+  export const SKILLS_SIGNED_OUT = "请先登录";
+  export async function listSkills() { return []; }
+  export async function addSkill() { return null; }
+  export async function setSkillEnabled() { return null; }
+  export async function deleteSkill() { return null; }
+  export async function listRecentTasks() { return []; }
+  export async function firstUserPrompt() { return ""; }
+`);
+
 /** 与真 `useUI` 同一插值规则（`{name}` 占位），这样才能判「由组织 X 提供」真的带了组织名。 */
 const uiStub = dataModule(`
   export function useUI(){
@@ -72,6 +99,8 @@ const uiStub = dataModule(`
 const OVERRIDES = {
   "../lib/org-api": orgApiStub,
   "../lib/database": databaseStub,
+  "../lib/mcp-api": mcpApiStub,
+  "./plugins/skills-api": skillsStub,
   "../i18n/ui/useUI": uiStub,
 };
 

@@ -18,6 +18,8 @@ import {
   type OrgSummary,
 } from "../lib/org-api";
 import { PageHeader } from "./PageHeader";
+import { ConnectorsSection } from "./plugins/ConnectorsSection";
+import { SkillsSection } from "./plugins/SkillsSection";
 import { useUI } from "../i18n/ui/useUI";
 import {
   canManageOrgMcp,
@@ -32,6 +34,23 @@ export {
   shouldRenderOrgSection,
   type OrgMcpConnection,
 } from "../shell/usePluginsCatalog";
+
+export {
+  connectMcp,
+  disconnectMcp,
+  getMcpConnections,
+  getMcpRegistry,
+  mcpGatewayDetail,
+  mcpOauthMessageOrigin,
+  mcpOauthOpensPortalPage,
+  mcpOauthPortalPageHref,
+  mcpOauthReturnOrigin,
+  probeMcp,
+  startMcpOauth,
+  toggleMcp,
+  type McpConnection,
+  type McpConnectorMeta,
+} from "../lib/mcp-api";
 
 /**
  * 插件目录的 `currency` 历史上既可能是货币码（"CNY" / "USD"）也可能直接是符号（"¥"）。
@@ -70,6 +89,7 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
     setForwardIdentity,
   } = usePluginsCatalog();
   const [q, setQ] = useState("");
+  const [oauthOnly, setOauthOnly] = useState(false);
   const [connectForOrg, setConnectForOrg] = useState<string | null>(null);
 
   const manageableOrgs = orgs.filter((org) => canManageOrgMcp(org.role));
@@ -204,12 +224,28 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
           </section>
         )}
 
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={tt("搜索连接器 / MCP 服务器…")}
-          className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-neutral-400"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={tt("搜索连接器与技能（名称、描述、分类）")}
+            className="min-w-[16rem] flex-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-neutral-400"
+          />
+          <button
+            type="button"
+            aria-pressed={oauthOnly}
+            onClick={() => setOauthOnly((v) => !v)}
+            className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+              oauthOnly
+                ? "bg-sky-100 text-sky-800"
+                : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+            }`}
+          >
+            {tt("可一键授权")}
+          </button>
+        </div>
+
+        <SkillsSection search={q} />
 
         {error ? (
           <p className="mt-8 text-center text-sm text-neutral-500">{error}</p>
@@ -247,6 +283,8 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
             ))}
           </div>
         )}
+
+        <ConnectorsSection search={q} oauthOnly={oauthOnly} />
       </div>
 
       {connectForOrg !== null && (

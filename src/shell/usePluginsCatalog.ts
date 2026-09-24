@@ -32,6 +32,9 @@ export interface OrgMcpConnection {
   forwardMemberIdentity: boolean;
 }
 
+/** 设置窗「插件与连接器」面板；浮层的连接 / 管理都进这里，不整页跳 /plugins。 */
+export const PLUGINS_SETTINGS_HREF = "#settings/plugins";
+
 export type PopoverConnectorKind = "connect" | "toggle" | "connected";
 
 export interface PopoverConnector {
@@ -180,8 +183,8 @@ export function buildPopoverConnectors(input: {
       beta: extra?.beta === true,
       kind: toggleable ? "toggle" : "connected",
       enabled: row.enabled,
-      connectHref: extra?.connectHref || "/plugins",
-      manageHref: "/plugins",
+      connectHref: extra?.connectHref || PLUGINS_SETTINGS_HREF,
+      manageHref: PLUGINS_SETTINGS_HREF,
       orgId: row.orgId,
       connectorId: row.connectorId,
     });
@@ -192,7 +195,7 @@ export function buildPopoverConnectors(input: {
     if (!connectorId) continue;
     const connected = byConnector.get(connectorId.toLowerCase());
     const name = item.name || connectorId;
-    const href = item.detail_url || "/plugins";
+    const href = PLUGINS_SETTINGS_HREF;
     const beta = looksBeta(item.name, item.description, item.code, item.vendor);
     if (connected) {
       used.add(connected.connectorId.toLowerCase());
@@ -209,7 +212,7 @@ export function buildPopoverConnectors(input: {
       kind: "connect",
       enabled: false,
       connectHref: href,
-      manageHref: "/plugins",
+      manageHref: PLUGINS_SETTINGS_HREF,
       orgId: "",
       connectorId,
     });

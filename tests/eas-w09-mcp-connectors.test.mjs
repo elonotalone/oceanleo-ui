@@ -1,16 +1,13 @@
-// 「插件与连接器」嵌进设置窗（editors-and-shell-0924 W09）的判据：pane 形态。
+// 「插件与连接器」共享页要有个人 MCP 目录：连接 / 断开 / 探活（editors-and-shell-0924 W09）。
 //
-// 设置窗的「插件与连接器」面板（W07 注册）直接渲染共享 `PluginsPage variant="pane"`。
-// 面板区自己有标题、自己滚动，所以 pane 形态：
-//   ① 不渲染统一页头（没有「返回」键、没有 h1）——否则设置窗里多出一个返回键，
-//      点了 history.back() 会把背后的页面退回上一页；
-//   ② 不占整页：根节点不带独立页的 `px-8 py-6` 外边距，也不带 `min-h-screen`；
-//   ③ 独立页（缺省 / `variant="page"`）页头照旧在。
+// 今天主站那页是门户本地 1474 行副本，共享 PluginsPage 只有组织区 + 阿里云市场卡片。
+// 子站用户看不到连接器目录，也不能在这一页连上、断开、探活。本文件钉住共享页
+// 必须渲染出那三个入口（假 fetch），以及 OAuth 回跳 origin 按当前来源生成且不含通配。
 //
 // 跑法（必须带 loader）：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
 //        --experimental-loader ./tests/ts-extension-loader.mjs --test \
-//        tests/eas-w09-plugins-pane.test.mjs
+//        tests/eas-w09-mcp-connectors.test.mjs
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -42,17 +39,36 @@ const databaseStub = dataModule(`
 
 const mcpApiStub = dataModule(`
   export function mcpGatewayDetail() { return ""; }
-  export function mcpOauthReturnOrigin() { return "https://chat.oceanleo.com"; }
+  export function mcpOauthReturnOrigin(raw) {
+    const value = raw || (typeof location !== "undefined" ? location.origin : "");
+    try {
+      const url = new URL(value);
+      if (url.hostname.includes("*") || String(value).includes("*")) return "";
+      return url.origin;
+    } catch { return ""; }
+  }
   export function mcpOauthMessageOrigin() { return "https://api.oceanleo.com"; }
-  export function mcpOauthOpensPortalPage() { return false; }
-  export function mcpOauthPortalPageHref() { return "https://oceanleo.com/plugins"; }
-  export async function getMcpRegistry() { return { items: [] }; }
-  export async function getMcpConnections() { return []; }
-  export async function connectMcp() { return { ok: true }; }
-  export async function startMcpOauth() { return { ok: false }; }
+  export function mcpOauthOpensPortalPage(site, portal) {
+    return mcpOauthReturnOrigin(site) !== mcpOauthReturnOrigin(portal);
+  }
+  export function mcpOauthPortalPageHref(portal, id) {
+    const origin = mcpOauthReturnOrigin(portal);
+    return origin ? origin + "/plugins#connect=" + encodeURIComponent(id || "") : "";
+  }
+  export async function getMcpRegistry() {
+    return { items: [
+      { id: "github", name: "GitHub", desc: "代码托管", icon: "🐙", category: "开发", transport: "sse", auth: "oauth", auth_header: "", needs_endpoint: false, endpoint: "", help_url: "", docs: "GitHub MCP", supports_oauth: true },
+      { id: "custom", name: "自建服务", desc: "贴凭证", icon: "🔌", category: "其他", transport: "sse", auth: "token", auth_header: "", needs_endpoint: true, endpoint: "", help_url: "https://example.com/help", docs: "自建", supports_oauth: false },
+    ] };
+  }
+  export async function getMcpConnections() {
+    return [{ id: "c1", connector_id: "custom", label: "自建服务", endpoint: "https://mcp.example.com", auth_header: "", fingerprint: "ab12", tools_count: 3, enabled: true }];
+  }
+  export async function connectMcp() { return { ok: true, tools_count: 1 }; }
+  export async function startMcpOauth() { return { ok: false, error: "stub" }; }
   export async function disconnectMcp() { return { ok: true }; }
   export async function toggleMcp() { return { ok: true }; }
-  export async function probeMcp() { return { ok: true }; }
+  export async function probeMcp() { return { ok: true, tools_count: 3 }; }
 `);
 
 const skillsStub = dataModule(`
@@ -91,7 +107,7 @@ const { PluginsPage } = await import(
   await compileModule("src/pages/PluginsPage.tsx", OVERRIDES, { missingPackageStub: lazyStub })
 );
 
-async function withDom(run) {
+async function withDom(run, url = "https://ppt.oceanleo.com/plugins") {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvasModule = require.cache[canvasEntry];
@@ -104,7 +120,7 @@ async function withDom(run) {
   virtualConsole.on("jsdomError", () => {});
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     pretendToBeVisual: true,
-    url: "https://ppt.oceanleo.com/plugins",
+    url,
     virtualConsole,
   });
   const { window } = dom;
@@ -113,6 +129,7 @@ async function withDom(run) {
     window,
     document: window.document,
     navigator: window.navigator,
+    location: window.location,
     localStorage: window.localStorage,
     sessionStorage: window.sessionStorage,
     HTMLElement: window.HTMLElement,
@@ -139,15 +156,20 @@ async function withDom(run) {
   const root = createRoot(container);
   const render = async (props = {}) => {
     await act(async () => root.render(React.createElement(PluginsPage, props)));
-    for (let i = 0; i < 4; i += 1) await act(async () => {});
+    for (let i = 0; i < 6; i += 1) await act(async () => {});
   };
 
   try {
     return await run({
       render,
       container,
+      window,
       find: (selector) => container.querySelector(selector),
       findAll: (selector) => [...container.querySelectorAll(selector)],
+      click: (node) => {
+        assert.ok(node, "点不到目标");
+        return act(async () => node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+      },
     });
   } finally {
     await act(async () => root.unmount());
@@ -157,36 +179,40 @@ async function withDom(run) {
   }
 }
 
-function backButtons(findAll) {
-  return findAll("button").filter((b) => b.getAttribute("aria-label") === "返回");
-}
-
-test("pane 形态：没有统一页头（没有「返回」键、没有 h1）", async () => {
-  await withDom(async ({ render, find, findAll }) => {
-    await render({ variant: "pane" });
-    assert.equal(backButtons(findAll).length, 0, "设置窗面板里不该有页头的「返回」键");
-    assert.equal(find("h1"), null, "面板自己有标题，pane 形态不该再渲染页头 h1");
-    assert.ok(find("[data-plugins-pane]"), "pane 形态的根节点要带 data-plugins-pane，宿主据此认面板");
+test("共享页渲染个人 MCP 目录，已连接的卡上有断开 / 探活入口", async () => {
+  await withDom(async ({ render, find, click }) => {
+    await render();
+    assert.ok(find("[data-plugins-connectors]"), "共享页必须有个人 MCP 连接器区");
+    assert.ok(find('[data-mcp-connector="github"]'), "目录里要有未连接的 GitHub");
+    assert.ok(find('[data-mcp-connector="custom"]'), "目录里要有已连接的自建服务");
+    await click(find('[data-mcp-connector="custom"]'));
+    assert.ok(find("[data-mcp-probe]"), "已连接的连接器对话框要有探活");
+    assert.ok(find("[data-mcp-disconnect]"), "已连接的连接器对话框要有断开");
+    assert.ok(find("[data-mcp-connect]"), "已连接的连接器对话框要有重新连接入口");
   });
 });
 
-test("pane 形态：不占整页——根节点没有独立页的外边距，也没有 min-h-screen", async () => {
-  await withDom(async ({ render, container }) => {
+test("未连接的一键授权卡打开后有连接入口；pane 形态仍无页头", async () => {
+  await withDom(async ({ render, find, findAll, click }) => {
     await render({ variant: "pane" });
-    const rootClass = container.firstElementChild?.getAttribute("class") || "";
-    assert.ok(!/\bpx-8\b/.test(rootClass) && !/\bpy-6\b/.test(rootClass), `pane 根节点不该带独立页外边距，实际：${rootClass}`);
-    assert.ok(!/min-h-screen|h-screen/.test(rootClass), `pane 根节点不该占整屏，实际：${rootClass}`);
-    assert.ok(/\bmin-h-0\b/.test(rootClass), `pane 根节点要能在宿主里收缩并滚动（min-h-0），实际：${rootClass}`);
+    assert.equal(find("h1"), null, "pane 形态不该再渲染页头 h1");
+    assert.equal(
+      findAll("button").filter((b) => b.getAttribute("aria-label") === "返回").length,
+      0,
+      "设置窗面板里不该有页头的「返回」键",
+    );
+    await click(find('[data-mcp-connector="github"]'));
+    assert.ok(find("[data-mcp-oauth]") || find("[data-mcp-connect]"), "未连接的卡要有连接 / 一键授权入口");
   });
 });
 
-test("独立页（缺省与 variant=page）：统一页头照旧在", async () => {
-  for (const props of [{}, { variant: "page" }]) {
-    await withDom(async ({ render, find, findAll }) => {
-      await render(props);
-      assert.equal(backButtons(findAll).length, 1, `独立页要有页头「返回」键（props=${JSON.stringify(props)}）`);
-      assert.ok(find("h1"), "独立页要有页头标题");
-      assert.equal(find("[data-plugins-pane]"), null, "独立页不带 pane 标记");
-    });
-  }
+test("页面上的 OAuth 回跳 origin 等于当前来源，且不含通配", async () => {
+  await withDom(async ({ render, find }) => {
+    await render();
+    const node = find("[data-mcp-oauth-return-origin]");
+    assert.ok(node, "页面要写出当前站点的回跳 origin，测试才能核对");
+    const origin = node.getAttribute("data-mcp-oauth-return-origin") || "";
+    assert.equal(origin, "https://ppt.oceanleo.com");
+    assert.ok(!origin.includes("*"), `回跳 origin 含通配：${origin}`);
+  });
 });
