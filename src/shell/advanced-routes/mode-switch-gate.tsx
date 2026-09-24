@@ -97,8 +97,9 @@ export interface ModeSwitchGateProps {
   /**
    * 进专业面之前要等的事。有这份函数时：成功才把 `handoff` 交给专业面；
    * 失败留在快速面，出不挡操作的提示和重试。没传的路由保持今天的行为。
+   * 运行期也认 `Promise<unknown>`（W18–W20 未接完时的旧形状）。
    */
-  beforeEnterPro?: BeforeEnterPro;
+  beforeEnterPro?: BeforeEnterPro | (() => Promise<unknown>);
   /** 进专业面失败时（调用方用来把 L0 模式拨回「编辑」）。 */
   onEnterProFailed?: () => void;
   /** 点提示上的「重试」时（调用方再把 L0 拨去「专业编辑」）。 */
@@ -163,23 +164,21 @@ export function ModeSwitchGate({
         .then(beforeEnterPro)
         .then((result) => {
           if (!alive) return;
-          if (
-            result &&
-            typeof result === "object" &&
-            "ok" in result &&
-            result.ok === false
-          ) {
+          const record =
+            result && typeof result === "object"
+              ? (result as Record<string, unknown>)
+              : null;
+          if (record && record.ok === false) {
             settled = true;
-            failEnterPro(result.error || ENTER_PRO_NOT_READY);
+            failEnterPro(
+              typeof record.error === "string"
+                ? record.error
+                : ENTER_PRO_NOT_READY,
+            );
             return;
           }
-          if (
-            result &&
-            typeof result === "object" &&
-            result.ok === true &&
-            result.handoff
-          ) {
-            setProHandoff(result.handoff);
+          if (record && record.ok === true && record.handoff) {
+            setProHandoff(record.handoff as EditorHandoff);
           }
           settled = true;
           setEnterError(null);

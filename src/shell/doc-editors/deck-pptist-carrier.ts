@@ -693,10 +693,10 @@ function reverseBackground(
 }
 
 function reverseSlideType(type: unknown): DeckSlide["layout"] {
-  if (type === "cover") return "title-only";
-  if (type === "contents") return "agenda";
+  if (type === "cover") return "title";
+  if (type === "contents") return "bullets";
   if (type === "transition") return "section";
-  if (type === "end") return "closing";
+  if (type === "end") return "title";
   return "title-body";
 }
 
