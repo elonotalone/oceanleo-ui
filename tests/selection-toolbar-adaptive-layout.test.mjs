@@ -817,7 +817,7 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     assert.equal(document.activeElement?.getAttribute("aria-label"), "普通操作");
 
     await act(async () => {
-      containerWidth = 420;
+      containerWidth = 436;
       ToolbarResizeObserver.flush();
     });
     assert.equal(

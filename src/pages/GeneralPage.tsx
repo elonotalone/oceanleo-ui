@@ -336,19 +336,15 @@ export function GeneralSettingsBody({ themeLabels, labels }: GeneralSettingsBody
               role="switch"
               aria-checked={leoOn}
               onClick={() => setLeoEnabled(!leoOn)}
-              className="flex h-11 w-14 shrink-0 items-center justify-center"
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                leoOn ? "bg-neutral-900" : "bg-neutral-300"
+              }`}
             >
               <span
-                className={`relative h-6 w-11 rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                  leoOn ? "bg-neutral-900" : "bg-neutral-300"
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                  leoOn ? "left-[22px]" : "left-0.5"
                 }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                    leoOn ? "left-[22px]" : "left-0.5"
-                  }`}
-                />
-              </span>
+              />
             </button>
           </div>
         </section>

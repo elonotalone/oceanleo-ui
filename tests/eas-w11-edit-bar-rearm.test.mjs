@@ -406,6 +406,58 @@ test("第一下加粗恰好一次；第二下按住或拖动 onClick 0；快速�
   }
 });
 
+test("第二下拖动会撤回第一下打开的可逆按钮状态", async () => {
+  window.localStorage.clear();
+  resetPointerCaptureShim();
+  const restore = installRectStub();
+  const mounted = await mountFrame(
+    "deck",
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-pressed": "false",
+        "data-test-toggle": true,
+        onClick: (event) => {
+          const button = event.currentTarget;
+          button.setAttribute(
+            "aria-pressed",
+            button.getAttribute("aria-pressed") === "true" ? "false" : "true",
+          );
+        },
+      },
+      "加粗",
+    ),
+  );
+  try {
+    const button = mounted.container.querySelector("[data-test-toggle]");
+    const { clock, restoreTimers } = beginClock(35_000);
+    try {
+      await act(async () => {
+        tap(button, { clock, clientX: 180, clientY: 70, pointerId: 1 });
+      });
+      assert.equal(button.getAttribute("aria-pressed"), "true");
+      await holdDrag(button, clock, {
+        pointerId: 1,
+        pointerType: "mouse",
+        from: { x: 180, y: 70 },
+        to: { x: 240, y: 70 },
+        afterMs: 120,
+      });
+      assert.equal(button.getAttribute("aria-pressed"), "false");
+      clock.now += 16;
+      await act(async () => {
+        pointerUp(button, { clock, pointerId: 1, clientX: 240, clientY: 70 });
+      });
+    } finally {
+      restoreTimers();
+    }
+  } finally {
+    await mounted.unmount();
+    restore();
+  }
+});
+
 test("第二下按住 300ms 不动：没有 click，带 data-edit-bar-lifted；Esc 归位", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
@@ -632,8 +684,7 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
       });
     });
     const hint = mounted.container.querySelector("[data-edit-bar-rearm-hint][role='status']");
-    assert.ok(hint, "没先点就按住拖必须出提示");
-    assert.match(hint.textContent, /先点一下，再按住就能拖动/);
+    assert.equal(hint, null, "没先点就按住拖不得弹提示");
     clock.now += 40;
     await act(async () => {
       pointerUp(anywhere, { clock, pointerId: 5, clientX: 480, clientY: 70 });
@@ -650,8 +701,8 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
     });
     assert.equal(
       mounted.container.querySelectorAll("[data-edit-bar-rearm-hint]").length,
-      1,
-      "同一页会话提示只出一次",
+      0,
+      "无资格按住始终不得弹提示",
     );
     } finally {
       restoreTimers();
@@ -756,5 +807,94 @@ test("收起的圆：按住就能拖，点一下展开", async () => {
   } finally {
     await mounted.unmount();
     restore();
+  }
+});
+
+test("U3 实测几何：658px 编辑区里 624px 的条横拖到边就停，始终完整可见；竖向跟手", async () => {
+  // csdk U3 (1440×900): the layer root starts at 776.28px and is 657.72px wide.
+  // Every layer root is overflow-hidden, so a bar allowed past its edge is cut off.
+  const LAYER_LEFT = 776.28;
+  const LAYER_WIDTH = 657.72;
+  const BAR_WIDTH = 624;
+  window.localStorage.clear();
+  resetPointerCaptureShim();
+  const original = window.HTMLElement.prototype.getBoundingClientRect;
+  const innerWidth = Object.getOwnPropertyDescriptor(window, "innerWidth");
+  const innerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 900 });
+  const rect = (left, top, width, height) => ({
+    x: left,
+    y: top,
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+    toJSON() {},
+  });
+  window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
+    if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
+      const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(this.style.transform || "");
+      const x = match ? Number(match[1]) : 0;
+      const y = match ? Number(match[2]) : 118;
+      return rect(LAYER_LEFT + x, y, BAR_WIDTH, TOOLBAR_HEIGHT);
+    }
+    if (this.hasAttribute("data-plugin-chrome")) return rect(LAYER_LEFT, 0, LAYER_WIDTH, 900);
+    if (this.hasAttribute("data-plugin-chrome-stage")) return rect(LAYER_LEFT, 110, LAYER_WIDTH, 790);
+    if (this.hasAttribute("data-plugin-chrome-edit-bar")) {
+      return rect(LAYER_LEFT, 56, LAYER_WIDTH, COLLAPSED_SIZE);
+    }
+    if (
+      this.hasAttribute("data-workspace-docked-toolbar") ||
+      this.hasAttribute("data-workspace-floating-toolbar")
+    ) {
+      return rect(LAYER_LEFT, 0, LAYER_WIDTH, 900);
+    }
+    return original.call(this);
+  };
+  const mounted = await mountFrame("deck");
+  try {
+    const anywhere = () => mounted.container.querySelector("[data-test-edit-bar]");
+    const bar = () => barOf(mounted.container);
+    const { clock, restoreTimers } = beginClock(80_000);
+    try {
+      const before = translateOf(bar());
+      assert.ok(before, "必须量得到位置");
+      await act(async () => {
+        tap(anywhere(), { clock, clientX: 1100, clientY: 140, pointerId: 1 });
+      });
+      await holdDrag(anywhere(), clock, {
+        pointerId: 1,
+        pointerType: "mouse",
+        from: { x: 1100, y: 140 },
+        to: { x: 900, y: 220 },
+        afterMs: 120,
+      });
+      const dragged = translateOf(bar());
+      assert.ok(dragged, "拖动后必须量得到位置");
+      assert.ok(dragged.y - before.y >= 60, `竖向应跟手，实际 ${before.y} → ${dragged.y}`);
+      assert.ok(dragged.x >= -0.5, `条左边越出编辑区 ${-dragged.x}px，会被裁掉`);
+      assert.ok(
+        dragged.x + BAR_WIDTH <= LAYER_WIDTH + 0.5,
+        `条右边越出编辑区 ${dragged.x + BAR_WIDTH - LAYER_WIDTH}px，会被裁掉`,
+      );
+      clock.now += 16;
+      await act(async () => {
+        pointerUp(anywhere(), { clock, pointerId: 1, clientX: 900, clientY: 220 });
+      });
+      const settled = translateOf(bar());
+      assert.ok(settled && settled.x >= -0.5 && settled.x + BAR_WIDTH <= LAYER_WIDTH + 0.5, "松手后条仍完整在编辑区内");
+    } finally {
+      restoreTimers();
+    }
+  } finally {
+    await mounted.unmount();
+    window.HTMLElement.prototype.getBoundingClientRect = original;
+    if (innerWidth) Object.defineProperty(window, "innerWidth", innerWidth);
+    else delete window.innerWidth;
+    if (innerHeight) Object.defineProperty(window, "innerHeight", innerHeight);
+    else delete window.innerHeight;
   }
 });

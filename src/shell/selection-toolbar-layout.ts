@@ -23,6 +23,12 @@ export const SELECTION_TOOLBAR_MORE_BUTTON_WIDTH = 28;
  */
 const SELECTION_TOOLBAR_FIT_EPSILON = 0.5;
 
+/**
+ * 回差：已在条上的控件放得下就留着；还在 More 里的控件要多出这么多才搬回条上。
+ * 进出分两条线，容量在临界值两侧抖（缩放取整、滚动条出没、过渡中间帧）时分区不来回翻。
+ */
+export const SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX = 24;
+
 export const DESIGN_TEXT_CONTROL_ORDER: readonly SelectionControlSemantic[] = [
   "font-size",
   "color",
@@ -304,10 +310,15 @@ function measuredSelectionControlWidth(
     : estimatedSelectionControlWidth(control);
 }
 
+/**
+ * `previousVisibleIds` 是上一次提交时条上的控件；缺省表示没有上一次（首帧、换了选中
+ * 对象），按单一阈值分区。
+ */
 export function partitionSelectionControls(
   controls: readonly SelectionControl[],
   measuredWidths: ReadonlyMap<string, number>,
   availableWidth: number,
+  previousVisibleIds?: ReadonlySet<string> | null,
 ): {
   visible: SelectionControl[];
   overflow: SelectionControl[];
@@ -335,10 +346,19 @@ export function partitionSelectionControls(
       ? SELECTION_TOOLBAR_MORE_BUTTON_WIDTH +
         (compact.length > 0 ? SELECTION_TOOLBAR_CONTROL_GAP : 0)
       : 0;
+  const fits = (width: number, entering: boolean) =>
+    width <=
+    normalizedAvailableWidth +
+      SELECTION_TOOLBAR_FIT_EPSILON -
+      (entering ? SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX : 0);
+  const entering = (control: SelectionControl) =>
+    previousVisibleIds ? !previousVisibleIds.has(control.id) : false;
 
   if (
-    compactWidth + compactGaps + authoredMoreWidth <=
-    normalizedAvailableWidth + SELECTION_TOOLBAR_FIT_EPSILON
+    fits(
+      compactWidth + compactGaps + authoredMoreWidth,
+      compact.some(entering),
+    )
   ) {
     return { visible: compact, overflow: authoredOverflow };
   }
@@ -364,10 +384,7 @@ export function partitionSelectionControls(
       occupiedWidth +
       SELECTION_TOOLBAR_CONTROL_GAP +
       measuredSelectionControlWidth(control, measuredWidths);
-    if (
-      nextWidth <=
-      normalizedAvailableWidth + SELECTION_TOOLBAR_FIT_EPSILON
-    ) {
+    if (fits(nextWidth, entering(control))) {
       visibleIds.add(control.id);
       occupiedWidth = nextWidth;
     } else {

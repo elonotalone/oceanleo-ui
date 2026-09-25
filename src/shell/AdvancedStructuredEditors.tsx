@@ -528,7 +528,7 @@ export function SheetWorkbenchCanvas({ editor }: { editor: SheetWorkbench }) {
                     onChange={(event) =>
                       editor.setCell(rowIndex, columnIndex, event.target.value)
                     }
-                    className="h-11 w-full min-w-28 bg-white px-2 outline-none focus:bg-sky-50 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
+                    className="h-9 w-full min-w-28 bg-white px-2 outline-none focus:bg-sky-50 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
                   />
                 </td>
               ))}

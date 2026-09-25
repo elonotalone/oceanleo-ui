@@ -33,6 +33,7 @@ import {
   elementOuterInlineSize,
 } from "./selection-toolbar-measure";
 import { EditBarRowContext } from "./edit-bar-row-context";
+import { SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX } from "./selection-toolbar-layout";
 
 export { useInsideEditBarRow } from "./edit-bar-row-context";
 
@@ -129,8 +130,15 @@ function useDocumentSegmentFold({
         documentWidth +
         selectionMin +
         Math.max(0, segments + 1 + (hasSelection ? 1 : 0) - 1) * gap;
-      const next = !hasSelection || needed <= capacity + 0.5;
-      setVisible((current) => (current === next ? current : next));
+      setVisible((current) => {
+        const next =
+          !hasSelection ||
+          needed <=
+            capacity +
+              0.5 -
+              (current ? 0 : SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX);
+        return current === next ? current : next;
+      });
     };
     read();
     const observer =
@@ -495,15 +503,6 @@ export function FloatingContextToolbar({
               data-edit-bar-move-shield
               className="pointer-events-none absolute inset-0 cursor-grabbing rounded-full ring-2 ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/60"
             />
-          )}
-          {controller.rearmHintVisible && (
-            <div
-              role="status"
-              data-edit-bar-rearm-hint
-              className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--pchrome-ink,#292524)] px-3 py-1 text-[12px] text-[var(--pchrome-surface,#fff)]"
-            >
-              {tt("先点一下，再按住就能拖动")}
-            </div>
           )}
         </div>
       </div>

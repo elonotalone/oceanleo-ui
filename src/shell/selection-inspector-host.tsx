@@ -103,6 +103,13 @@ export function useSelectionInspectorHost({
   overflowTriggerRef?: RefObject<HTMLElement | null>;
 }) {
   const [fallbackId, setFallbackId] = useState("");
+  const onCommandRef = useRef(onCommand);
+  useLayoutEffect(() => {
+    onCommandRef.current = onCommand;
+  }, [onCommand]);
+  const dispatchCommand = useCallback((command: SelectionCommand) => {
+    onCommandRef.current(command);
+  }, []);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const fallbackGroup =
     groups.find((group) => group.panelId === fallbackId) || null;
@@ -122,18 +129,21 @@ export function useSelectionInspectorHost({
   useEffect(() => {
     if (fallbackId && (!fallbackGroup || !context)) closeFallback();
   }, [closeFallback, context, fallbackGroup, fallbackId]);
+  const updateTransientPanel = layout?.updateTransientPanel;
   useLayoutEffect(() => {
-    if (!layout || !hostedGroup || !context) return;
-    layout.updateTransientPanel(
+    if (!updateTransientPanel || !hostedGroup || !context) return;
+    // Writing panel content can replace the host layout object. Depend on the
+    // writer and panel inputs so that write cannot schedule itself again.
+    updateTransientPanel(
       hostedGroup.panelId,
       <SelectionInspectorPanel
         context={context}
         controls={hostedGroup.controls}
-        onCommand={onCommand}
+        onCommand={dispatchCommand}
         accent={accent}
       />,
     );
-  }, [accent, context, hostedGroup, layout, onCommand]);
+  }, [accent, context, dispatchCommand, hostedGroup, updateTransientPanel]);
 
   const openPanel = useCallback(
     (panelId: string, panelAction?: SelectionPanelAction) => {
@@ -149,7 +159,7 @@ export function useSelectionInspectorHost({
               <SelectionInspectorPanel
                 context={context}
                 controls={inspector.controls}
-                onCommand={onCommand}
+                onCommand={dispatchCommand}
                 accent={accent}
               />,
             );
@@ -181,7 +191,7 @@ export function useSelectionInspectorHost({
       fallbackId,
       groups,
       layout,
-      onCommand,
+      dispatchCommand,
       onOpenPanel,
       overflowTriggerRef,
     ],
@@ -198,7 +208,7 @@ export function useSelectionInspectorHost({
         <FallbackSelectionInspector
           group={fallbackGroup}
           context={context}
-          onCommand={onCommand}
+          onCommand={dispatchCommand}
           accent={accent}
           anchorRef={anchorRef}
           onClose={closeFallback}

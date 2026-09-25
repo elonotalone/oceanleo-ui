@@ -282,7 +282,7 @@ export function LocalFileTree({
                       checked={isSelected}
                       disabled={outsideRoot}
                       onChange={() => toggleSelected(childPath)}
-                      className="size-11"
+                      className="size-4"
                     />
                     <span>📄 {file.name}</span>
                   </label>

@@ -660,7 +660,15 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await pointer(bar(), "pointerup", { ...press(200, 200), timeStamp: 5110 });
 
     // 单次按下再移动，不能启动拖拽（没有「待拖」）。
-    // 上一拍 5110 松开留下武装窗；必须等到窗过期，否则这下会被当成第二下起拖。
+    // 不设时间窗：5110 那一下仍算第一下，先在条外按一下把它清掉。
+    await pointer(mounted.container.querySelector("[data-handle-stage]"), "pointerdown", {
+      pointerId: 3,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 900,
+      clientY: 500,
+      timeStamp: 6600,
+    });
     await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 6620 });
     await pointer(window, "pointermove", {
       pointerId: 1,
@@ -673,12 +681,22 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     assert.equal(liveController.moveMode, false, "单次按下移动也不得进入移动模式");
     await pointer(window, "pointerup", { ...press(230, 220), timeStamp: 6720 });
 
-    // 松开后 1501ms：第二下是新的第一下。旧断言「401ms 不起拖」锁住了错误窗口。
+    // 不设时间窗：第一下松开 1501ms 后，第二下照样按住就拖（eas-w11 主路径同一规则）。
     await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 7000 });
     await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 7010 });
     await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 8511 });
-    assert.equal(liveController.moveMode, false, "松开后 1501ms 的第二次按下不得起拖");
-    await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 8520 });
+    assert.equal(liveController.moveMode, true, "松开后 1501ms 的第二次按下仍进入按住拖");
+    await pointer(window, "pointerup", { ...press(10, 10), timeStamp: 8520 });
+    assert.equal(liveController.moveMode, false);
+    assert.equal(offset(), "0,0", "第二下没移动就松开不得拖走条子");
+    await pointer(mounted.container.querySelector("[data-handle-stage]"), "pointerdown", {
+      pointerId: 4,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 900,
+      clientY: 500,
+      timeStamp: 8600,
+    });
 
     // 触控：两次 pointerId 不同也算同一条上的两次按下。
     await pointer(bar(), "pointerdown", {

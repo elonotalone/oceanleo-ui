@@ -181,7 +181,7 @@ export function AcpSettings({
           <button
             type="button"
             onClick={onClose}
-            className={`h-11 rounded-lg px-2 py-1 text-[13px] ${tone.hover} ${tone.muted}`}
+            className={`h-8 rounded-lg px-2 py-1 text-[13px] ${tone.hover} ${tone.muted}`}
             data-oceanleo-acp-settings-close=""
           >
             {tt("关闭")}
@@ -195,7 +195,7 @@ export function AcpSettings({
               <select
                 value={dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? dialog.selectedModel : ""}
                 onChange={(event) => dialog.setSelectedModel(event.currentTarget.value)}
-                className={`mt-1 w-full rounded-lg border h-11 px-2 text-[13px] ${tone.input}`}
+                className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
                 data-oceanleo-acp-settings-model=""
               >
                 {!dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
@@ -215,7 +215,7 @@ export function AcpSettings({
               <select
                 value={dialog.selectedMode}
                 onChange={(event) => dialog.setMode(event.currentTarget.value)}
-                className={`mt-1 w-full rounded-lg border h-11 px-2 text-[13px] ${tone.input}`}
+                className={`mt-1 w-full rounded-lg border h-8 px-2 text-[13px] ${tone.input}`}
                 data-oceanleo-acp-settings-mode=""
               >
                 {dialog.mode.options.map((option) => (

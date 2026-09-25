@@ -438,7 +438,7 @@ export function LeoBoard({
                   disabled={!canUndo || Boolean(boardBusy)}
                   aria-label={tt("回退")}
                   title={tt("回退")}
-                  className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   <UndoGlyph />
                 </button>
@@ -448,7 +448,7 @@ export function LeoBoard({
                   disabled={!canRedo || Boolean(boardBusy)}
                   aria-label={tt("前进")}
                   title={tt("前进")}
-                  className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   <RedoGlyph />
                 </button>

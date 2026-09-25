@@ -246,7 +246,7 @@ export function AcpCard({
                 <p className={`text-xs font-medium ${tone.muted}`}>{tt("过去的对话")}</p>
                 <button
                   type="button"
-                  className={`${tone.iconBtn} size-11`}
+                  className={`${tone.iconBtn} size-7`}
                   onClick={dialog.requestSessions}
                   aria-label={tt("刷新")}
                   data-oceanleo-acp-sessions-refresh=""

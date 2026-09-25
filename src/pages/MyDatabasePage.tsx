@@ -252,7 +252,7 @@ function MediaGrid({
                 <button
                   type="button"
                   onClick={() => onDelete(c.id)}
-                  className="absolute right-1.5 top-1.5 z-10 hidden h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white group-hover:flex"
+                  className="absolute right-1.5 top-1.5 z-10 hidden h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white group-hover:flex"
                   aria-label={tt("删除")}
                 >
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

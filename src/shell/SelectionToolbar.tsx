@@ -52,6 +52,24 @@ import {
   SelectionToolbarViewportProbe,
 } from "./selection-toolbar-chrome";
 
+/**
+ * 内容没变就沿用上一份对象：iframe 宿主每条选区消息都是新引用，按引用比会让
+ * 控件投影、AI 广播、检查器回写每条都重来一遍。锚点是几何，不进内容键。
+ */
+function useContentStableSelection(
+  context: SelectionContext | null,
+): SelectionContext | null {
+  const key = context ? JSON.stringify({ ...context, anchor: undefined }) : "";
+  const stableRef = useRef({ key, context });
+  const stableContext = stableRef.current.key === key
+    ? stableRef.current.context
+    : context;
+  useLayoutEffect(() => {
+    stableRef.current = { key, context: stableContext };
+  }, [key, stableContext]);
+  return stableContext;
+}
+
 export interface SelectionToolbarProps {
   context: SelectionContext | null;
   onCommand: (command: SelectionCommand) => void;
@@ -64,7 +82,7 @@ export interface SelectionToolbarProps {
 }
 
 export function SelectionToolbar({
-  context,
+  context: liveContext,
   onCommand,
   onOpenPanel,
   className = "",
@@ -73,6 +91,7 @@ export function SelectionToolbar({
   trailing,
   variant = "bar",
 }: SelectionToolbarProps) {
+  const context = useContentStableSelection(liveContext);
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -198,15 +217,29 @@ export function SelectionToolbar({
   const measurableControls = semanticProjection.visible;
   const hasAdaptiveControls =
     measurableControls.length > 0 || semanticProjection.overflow.length > 0;
+  const partitionIdentity = `${identity}:${controlsIdentity}`;
+  const committedPartitionRef = useRef<{
+    identity: string;
+    visibleIds: ReadonlySet<string>;
+  } | null>(null);
   const { visible, overflow } = useMemo(
     () =>
       partitionSelectionControls(
         orderedControls,
         measuredWidths,
         availableWidth,
+        committedPartitionRef.current?.identity === partitionIdentity
+          ? committedPartitionRef.current.visibleIds
+          : null,
       ),
-    [availableWidth, measuredWidths, orderedControls],
+    [availableWidth, measuredWidths, orderedControls, partitionIdentity],
   );
+  useLayoutEffect(() => {
+    committedPartitionRef.current = {
+      identity: partitionIdentity,
+      visibleIds: new Set(visible.map((control) => control.id)),
+    };
+  }, [partitionIdentity, visible]);
   const overflowGroups = useMemo(
     () => groupSelectionOverflowControls(overflow),
     [overflow],
@@ -373,10 +406,10 @@ export function SelectionToolbar({
       data-selection-kind={context?.kind || "none"}
       data-selection-live-capability={liveCapability?.id || undefined}
       data-selection-id={context?.id || ""}
-      data-selection-anchor-x={context?.anchor?.x}
-      data-selection-anchor-y={context?.anchor?.y}
-      data-selection-anchor-width={context?.anchor?.width}
-      data-selection-anchor-height={context?.anchor?.height}
+      data-selection-anchor-x={liveContext?.anchor?.x}
+      data-selection-anchor-y={liveContext?.anchor?.y}
+      data-selection-anchor-width={liveContext?.anchor?.width}
+      data-selection-anchor-height={liveContext?.anchor?.height}
       data-selection-visible-controls={visible
         .map((control) => control.id)
         .join(" ")}
