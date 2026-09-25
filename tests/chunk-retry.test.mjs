@@ -220,13 +220,14 @@ test("三次重试都失败：进可重试的失败态，而渲染出来的不�
   assert.equal(events.filter(named("chunk.failed")).length, 1);
   assert.equal(events.filter(named("chunk.failed"))[0].detail.kind, "network");
 
-  // 加载态现在是编辑器外框骨架，不再是居中转圈。
+  // 加载态是编辑器外框骨架；操作员 P3（09-24）：舞台里只在转圈旁写简短文字。
+  // 转圈只属于「还在进行」，下面的失败态一律不许转。
   const spinner = renderToStaticMarkup(React.createElement(WorkbenchRouteLoading));
   assert.match(spinner, /data-workbench-skeleton-header/);
   assert.match(spinner, /data-workbench-skeleton-edit-bar/);
   assert.match(spinner, /data-workbench-skeleton-stage/);
   assert.match(spinner, /aria-busy/);
-  assert.doesNotMatch(spinner, /animate-spin/);
+  assert.match(spinner, /animate-spin/);
 
   const failure = renderToStaticMarkup(
     React.createElement(WorkbenchRouteChunkError, {

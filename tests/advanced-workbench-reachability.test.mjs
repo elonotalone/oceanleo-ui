@@ -572,7 +572,7 @@ test("jsdom 挂上的是真 AdvancedContentWorkbench：冲过 return null，先�
     if (loading && !editor) {
       assert.equal(
         loading.getAttribute("aria-label"),
-        "正在加载编辑器",
+        "正在打开",
         "加载态不是生产 WorkbenchRouteLoading，工作台可能没走到 lazyRoute",
       );
     }

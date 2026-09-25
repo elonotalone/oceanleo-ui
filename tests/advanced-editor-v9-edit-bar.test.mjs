@@ -333,7 +333,9 @@ test("route capability ownership is artifact-based, including edu website artifa
     }).adapter,
     "video-canvas",
   );
-  const embed = source("../src/shell/workbench-embed.tsx");
+  // embedEditorBase 已从 workbench-embed.tsx 拆到 workbench-embed-base.ts（前者只剩转出）。
+  const embed = source("../src/shell/workbench-embed-base.ts");
+  assert.match(source("../src/shell/workbench-embed.tsx"), /export \{ embedEditorBase \} from "\.\/workbench-embed-base"/);
   assert.match(embed, /editorRouteFor\(item\)/);
   assert.doesNotMatch(embed, /item\.siteId\s*===\s*"video"/);
   assert.doesNotMatch(source("../src/shell/workbench-routes.ts"), /siteKey/);

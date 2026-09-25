@@ -934,7 +934,7 @@ function AppShellInner({
             data-oceanleo-sidebar-credits
             aria-label={tt("余额")}
             onClick={() => openSettingsModal("billing")}
-            className="block w-full truncate px-1 text-left text-[12px] tabular-nums text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+            className="leo-tap-row block w-full truncate px-1 text-left text-[12px] tabular-nums text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
           >
             {creditsText}
           </button>

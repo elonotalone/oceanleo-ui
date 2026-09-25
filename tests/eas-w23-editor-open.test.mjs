@@ -78,9 +78,10 @@ test("首帧工作台源码不再 return null；骨架是编辑器外框", () =>
   assert.match(html, /data-workbench-skeleton-edit-bar/);
   assert.match(html, /data-workbench-skeleton-stage/);
   assert.match(html, /aria-busy="true"/);
-  assert.match(html, /正在加载编辑器/);
-  assert.doesNotMatch(html, /animate-spin/);
-  assert.doesNotMatch(html, /place-items-center/);
+  // 操作员 P3（09-24）：不要「正在加载编辑器…」这种通栏行，切换中只在舞台里的转圈旁写简短文字。
+  assert.match(html, /正在打开/);
+  assert.doesNotMatch(html, /正在加载编辑器|正在打开编辑器|编辑器已打开/);
+  assert.match(html, /data-workbench-skeleton-stage[^>]*>[\s\S]*animate-spin/);
   assert.match(html, new RegExp(`height:${EDIT_BAR_HEIGHT_PX}px`));
 });
 

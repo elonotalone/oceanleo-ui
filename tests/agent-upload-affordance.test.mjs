@@ -174,11 +174,13 @@ test("默认（不传 prop）= 35 个站的现状：两个组件都照旧渲染�
 });
 
 test("显式传 true 与不传完全一致（默认值不是另一条分支）", () => {
+  // ✦ leo 按钮的渐变 id 按模块计数递增（LeoEntryButton.tsx 有意不用 useId），每渲染一次就换号。
+  const stable = (html) => html.replace(/leo-entry-g-\d+/g, "leo-entry-g-N");
   assert.equal(
-    renderFunctionChat({ enableInputTools: true }),
-    renderFunctionChat({}),
+    stable(renderFunctionChat({ enableInputTools: true })),
+    stable(renderFunctionChat({})),
   );
-  assert.equal(renderAgentChat({ enableInputTools: true }), renderAgentChat({}));
+  assert.equal(stable(renderAgentChat({ enableInputTools: true })), stable(renderAgentChat({})));
 });
 
 test("enableInputTools={false}：渲染结果里一个上传能力都没有，文案也不再邀请上传", () => {
