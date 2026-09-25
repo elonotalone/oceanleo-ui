@@ -112,6 +112,21 @@ export function useWorkspaceSlotState({
     },
     [runtimeHydration?.identity],
   );
+  const pinnedSlot = (): WorkspaceSlotId | null =>
+    runtimeHydration &&
+    explicitSlotRef.current?.identity === runtimeHydration.identity
+      ? explicitSlotRef.current.slot
+      : null;
+  const appliedRestoreRef = useRef<{ identity: string; epoch: number } | null>(
+    null,
+  );
+  const hasPendingRestore = () =>
+    Boolean(
+      runtimeHydration?.restoredSnapshot &&
+        (appliedRestoreRef.current?.identity !== runtimeHydration.identity ||
+          appliedRestoreRef.current?.epoch !==
+            runtimeHydration.snapshotRestoreEpoch),
+    );
   const selected =
     !showTemplate && internal === "template" ? "preview" : internal;
   const previousActive = useRef(active);
@@ -144,6 +159,11 @@ export function useWorkspaceSlotState({
     }
     if (active === previousActive.current) return;
     previousActive.current = active;
+    // 这份受控值是快照恢复的一部分，与 `right_tab` 同一优先级：显式 pin 赢，
+    // 由下面的恢复 effect 让路并把宿主的值改回 pin 住的栏位。
+    if (hasPendingRestore() && pinnedSlot()) {
+      return;
+    }
     const requested = slotForId(active);
     const slot =
       !showTemplate && requested === "template" ? "preview" : requested;
@@ -156,17 +176,24 @@ export function useWorkspaceSlotState({
   }, [runtimeHydration?.identity, showTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!runtimeHydration?.restoredSnapshot) return;
-    const pinned =
-      explicitSlotRef.current?.identity === runtimeHydration.identity
-        ? explicitSlotRef.current.slot
-        : null;
+    if (!runtimeHydration || !hasPendingRestore()) return;
+    // 宿主重渲染会重建 slotForId；同一份快照只能裁定一次，不能把后续主动切页拉回去。
+    appliedRestoreRef.current = {
+      identity: runtimeHydration.identity,
+      epoch: runtimeHydration.snapshotRestoreEpoch,
+    };
+    const pinned = pinnedSlot();
     if (pinned) {
       // 深链/receipt 赢。同时把快照带回来的 `rightTab` 覆盖成这个栏位：`restoreSharedUi`
       // 刚刚改写了 hydration 里的 rightTab，不覆盖回来的话下一次保存会把旧栏位写回去，
       // 用户再进来又跑偏——那等于这条竞态只修了看得见的那一半。
       if (runtimeHydration.rightTab !== pinned) {
         runtimeHydration.setRightTab(pinned);
+      }
+      // 宿主那份受控值同理：它跟着快照回到了旧栏位，不改回来就会被存回去。
+      const callerId = callerIdForSlot(pinned);
+      if (active !== undefined && slotForId(active) !== pinned && callerId) {
+        onChange?.(callerId);
       }
       return;
     }

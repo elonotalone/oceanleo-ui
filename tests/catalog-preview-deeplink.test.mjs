@@ -362,7 +362,7 @@ test("非预览深链一条都不许触发这条链", async () => {
     "?fill=preset",
     "?open=advanced",
     "?open=template&template=tpl-1",
-    "?tab=library&item=art-1", // 缺 mode=preview
+    "?tab=library&item=art-1&mode=edit", // 显式写了别的 mode
     "?item=art-1&mode=preview", // 缺 tab
     "?tab=ops&item=art-1&mode=preview", // tab 不是库
   ]) {
@@ -455,6 +455,15 @@ test("law / threed / website 三站的「预览&编辑」都落到库只读预�
     assert.deepEqual(editor, [], `${site.siteKey}: 不该进 typed 编辑器`);
     assert.deepEqual(FETCHED, [site.artifactId], `${site.siteKey}: 取的不是深链指名那一份`);
   }
+});
+
+test("不带 mode 的库位置（库自己改写出的地址）进页时打开指名那一件", async () => {
+  // 库打开一件素材后改写地址会去掉 `mode`，刷新、收藏、分享回来的正是这个形状。
+  const { dispatched } = await dispatchWithApp(APP.id, "?tab=library&item=art-1");
+  assert.equal(dispatched.length, 1, "进页那一刻的库位置必须派发且只派发一次");
+  assert.equal(dispatched[0].action.intent, "open");
+  assert.equal(dispatched[0].action.tab, "mine");
+  assert.equal(dispatched[0].action.itemId, "art-1");
 });
 
 test("落点按素材归属分流：官方模板落素材库，用户自有 artifact 仍落我的库", async () => {

@@ -29,8 +29,10 @@ import {
 import type { GoalApp } from "./app-catalog";
 import { registerLibraryIdentityWriter } from "./library-current-identity";
 import {
+  LIBRARY_PREVIEW_QUERY_MODE,
   libraryPreviewIntentAction,
   libraryPreviewIntentFromSearch,
+  type LibraryPreviewIntent,
 } from "./library-edit-intent";
 import {
   catalogAdvancedOpenPlan,
@@ -44,6 +46,20 @@ import {
   type CatalogPresetFill,
 } from "./site-catalog-controller";
 import { dispatchWorkspaceAction } from "./workspace-actions";
+
+/**
+ * 不带 `mode` 的库位置：`?tab=<库栏位>&item=<artifactId>`。库打开一件素材后自己改写
+ * 地址时会去掉 `mode`（`applyLibraryCurrentIdentityToSearch`），所以刷新、收藏、分享
+ * 回来的正是这个形状。显式写了别的 `mode` 的不认。
+ */
+export function libraryLocationIntentFromSearch(
+  search: string,
+): LibraryPreviewIntent | null {
+  const params = new URLSearchParams(String(search || "").replace(/^\?/, ""));
+  if (params.has("mode")) return null;
+  params.set("mode", LIBRARY_PREVIEW_QUERY_MODE);
+  return libraryPreviewIntentFromSearch(params);
+}
 
 /** `?fill=preset` 的待办：只对 `appId` 这一个 app 有效，灌完由宿主标记消费。 */
 export interface CatalogDeepLinkFill {
@@ -262,9 +278,19 @@ export function useCatalogDeepLink({
   // 会在刷新时被回灌；而库预览是一个**位置**——「库中的预览页面」本身就该能被刷新、
   // 被收藏、被分享。抹掉的话用户一刷新就掉回操作台，等于这条 BLOCKER 只修了一半。
   // 重复派发由 latch 挡住，不靠抹 URL。
+  // 不带 `mode` 的库位置只认进页那一刻的地址。之后库每换一件都会改写地址，那是用户
+  // 自己在库里的操作，再派发一次就会把右栏从他正在看的栏位拽走。
+  const landingSearchRef = useRef<string | null>(null);
+  if (activeAppId && landingSearchRef.current === null) {
+    landingSearchRef.current = locationSearch;
+  }
   const previewIntent = useMemo(
-    () => libraryPreviewIntentFromSearch(locationSearch),
-    [locationSearch],
+    () =>
+      libraryPreviewIntentFromSearch(locationSearch) ||
+      (locationSearch === landingSearchRef.current
+        ? libraryLocationIntentFromSearch(locationSearch)
+        : null),
+    [locationSearch, activeAppId], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const previewArtifactId = previewIntent?.artifactId || "";
   // 落点栏位由 URL 的 `tab` 决定（接口 A 的归属分流），派发时必须原样带上：
