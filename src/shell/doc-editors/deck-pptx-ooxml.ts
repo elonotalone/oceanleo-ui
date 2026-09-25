@@ -529,6 +529,7 @@ export interface DeckPptxPackageRepairReport {
   customPartAdded: boolean;
   customOverrideAdded: boolean;
   customRelationshipAdded: boolean;
+  phantomMasterOverridesRemoved: number;
   credits: string;
 }
 
@@ -560,6 +561,10 @@ export function deckPptxCreditsText(
  *   2. attribution has nowhere to go — `dc:rights` does not exist in the closed
  *      15-element OPC core property set — so it goes to `docProps/custom.xml`,
  *      and all three of part + Override + relationship must land together.
+ *   3. pptxgenjs declares one `slideMasterN.xml` Override per slide but only
+ *      writes `slideMaster1.xml`; a viewer that follows the declaration stops at
+ *      the first missing master and shows zero pages. Only master Overrides with
+ *      no part behind them are dropped.
  *
  * The function is idempotent: anything already present is left alone.
  */
@@ -573,13 +578,21 @@ export function repairDeckPptxPackageParts(
     customPartAdded: false,
     customOverrideAdded: false,
     customRelationshipAdded: false,
+    phantomMasterOverridesRemoved: 0,
     credits: "",
   };
   const contentTypesRaw = archive["[Content_Types].xml"];
   const packageRelsRaw = archive["_rels/.rels"];
   if (!contentTypesRaw || !packageRelsRaw) return report;
 
-  let contentTypes = strFromU8(contentTypesRaw);
+  let contentTypes = strFromU8(contentTypesRaw).replace(
+    /<Override\b[^>]*\bPartName="\/ppt\/slideMasters\/(slideMaster\d+\.xml)"[^>]*\/>/g,
+    (override, part: string) => {
+      if (archive[`ppt/slideMasters/${part}`]) return override;
+      report.phantomMasterOverridesRemoved += 1;
+      return "";
+    },
+  );
   let packageRels = strFromU8(packageRelsRaw);
 
   if (archive["docProps/core.xml"]) {

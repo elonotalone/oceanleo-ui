@@ -54,6 +54,8 @@ export interface ArtifactIdentityState {
   failed: boolean;
   /** 给用户看的一句中文；必须说清下一步。 */
   reason: string;
+  /** 取失败的具体原因（例如连不上素材服务），失败时显示在按钮下面。 */
+  failure?: string;
   /** 重试这一次取数，免得读者只能刷新整页。 */
   onRetry?: () => void;
 }
@@ -381,27 +383,6 @@ const ACTION_LABEL: Record<ArtifactCardAction, string> = {
   replace: "替换",
 };
 
-const ACTION_PENDING_STATUS: Record<ArtifactCardAction, string> = {
-  preview: "正在打开预览…",
-  edit: "正在打开编辑器…",
-  insert: "正在插入素材…",
-  replace: "正在替换素材…",
-};
-
-const ACTION_ENSURE_PENDING_STATUS: Record<ArtifactCardAction, string> = {
-  preview: "正在建立耐久 artifact identity 并打开预览…",
-  edit: "正在建立耐久 artifact identity 并打开编辑器…",
-  insert: "正在建立耐久 artifact identity 并插入素材…",
-  replace: "正在建立耐久 artifact identity 并替换素材…",
-};
-
-const ACTION_SUCCESS_STATUS: Record<ArtifactCardAction, string> = {
-  preview: "预览已打开。",
-  edit: "编辑器已打开。",
-  insert: "素材已插入。",
-  replace: "素材已替换。",
-};
-
 export function ArtifactActionButtons({
   item,
   matrix,
@@ -465,12 +446,21 @@ export function ArtifactActionButtons({
     });
   const [favorite, setFavorite] = useState(item.favorite);
   const [liveStatus, setLiveStatus] = useState("");
+  const [failure, setFailure] = useState("");
   useEffect(() => {
     setFavorite(item.favorite);
   }, [item.artifactId, item.favorite, item.revisionId]);
   const report = (message: string) => {
     const translated = tt(message);
     setLiveStatus(translated);
+    setFailure("");
+    onStatus?.(translated);
+  };
+  // 进度与成功只给读屏；失败必须看得见，否则用户点了没反应也不知道为什么。
+  const fail = (message: string) => {
+    const translated = tt(message);
+    setLiveStatus("");
+    setFailure(translated);
     onStatus?.(translated);
   };
   const actionLabel = (action: ArtifactCardAction) =>
@@ -492,22 +482,17 @@ export function ArtifactActionButtons({
       return;
     }
     beginBusy(action);
-    report(
-      state.requiresEnsure
-        ? ACTION_ENSURE_PENDING_STATUS[action]
-        : ACTION_PENDING_STATUS[action],
-    );
+    setFailure("");
     try {
       const prepared = await prepareArtifactForAction(action, item);
       if (!prepared.ok || !prepared.data) {
         throw new Error(prepared.error || `${actionLabel(action)}失败。`);
       }
       await handler(prepared.data);
-      report(ACTION_SUCCESS_STATUS[action]);
     } catch (error) {
       // 抛上来的可能是我们自己那句中文，也可能是宿主编辑器里冒出来的运行时异常
       // （`Cannot read properties of undefined` 之类）。后者不许摆给读者。
-      report(
+      fail(
         humanErrorMessage(error, `${actionLabel(action)}失败，请重试。`),
       );
     } finally {
@@ -623,7 +608,7 @@ export function ArtifactActionButtons({
       link.remove();
       report("下载已开始。");
     } catch (error) {
-      report(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
+      fail(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
     } finally {
       endBusy("download");
     }
@@ -652,7 +637,7 @@ export function ArtifactActionButtons({
       setFavorite(next);
       report(next ? "已收藏。" : "已取消收藏。");
     } catch (error) {
-      report(humanErrorMessage(error, "收藏没能保存，请稍后重试。"));
+      fail(humanErrorMessage(error, "收藏没能保存，请稍后重试。"));
     } finally {
       endBusy("favorite");
     }
@@ -668,7 +653,7 @@ export function ArtifactActionButtons({
       // 这一条最常踩：`requestFullscreen()` 被拒时浏览器抛的是
       // `TypeError: Permissions check failed` 这种英文原文——嵌在没开
       // `allowfullscreen` 的 iframe 里、或者手势判定没通过时每次都会走到这儿。
-      report(
+      fail(
         humanErrorMessage(error, "浏览器没有允许进入全屏，可以改用整页浏览。"),
       );
     } finally {
@@ -743,7 +728,17 @@ export function ArtifactActionButtons({
         className={chipClass}
         style={chipStyle(state.available)}
       >
-        {isBusy(action) ? tt("处理中…") : tt(label)}
+        {isBusy(action) ? (
+          <span className="inline-flex items-center gap-1">
+            <span
+              aria-hidden="true"
+              className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
+            />
+            {tt("处理中")}
+          </span>
+        ) : (
+          tt(label)
+        )}
       </button>
     );
   };
@@ -795,6 +790,7 @@ export function ArtifactActionButtons({
           item={item}
           evidence={deckHtml}
           report={report}
+          onFailure={fail}
           reasonId={reasonId}
           className={chipClass}
           style={chipStyle(deckHtml.available)}
@@ -874,6 +870,15 @@ export function ArtifactActionButtons({
           role="note"
         >
           {tt(unavailableReason)}
+        </p>
+      )}
+      {(failure || (identityFailed && identity?.failure)) && (
+        <p
+          className="mt-1 text-[11px] leading-snug text-red-600"
+          role="alert"
+          data-artifact-action-failure="true"
+        >
+          {failure || tt(identity?.failure || "")}
         </p>
       )}
       <span className="sr-only" role="status" aria-live="polite">

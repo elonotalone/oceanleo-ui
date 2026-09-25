@@ -1,5 +1,5 @@
 /**
- * W11：先单击一下，再按住即可拖动。计时从第一下松开算，窗口 1500ms。
+ * W11：先单击一下，再按住即可拖动。选中状态不设时间窗口。
  * 全部指针回放走 Chromium 顺序助手；13 个插件 id + 三个 PluginChromeFrame 宿主各跑主路径。
  */
 import assert from "node:assert/strict";
@@ -245,11 +245,11 @@ test("源码门禁：controller 里没有 DOUBLE_PRESS_MS / .detail / dblclick",
   assert.doesNotMatch(src, /DOUBLE_PRESS_MS/);
   assert.doesNotMatch(src, /\.detail\b/);
   assert.doesNotMatch(src, /dblclick/i);
-  assert.match(src, /const REARM_WINDOW_MS = 1500/);
+  assert.doesNotMatch(src, /REARM_WINDOW_MS|REARM_SLOP_/);
 });
 
 for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
-  test(`主路径 · ${pluginId}：松开后 150 / 800 / 1499 ms 再按住就能拖`, async () => {
+  test(`主路径 · ${pluginId}：松开后 150 / 800 / 1499 / 10000 ms 再按住就能拖`, async () => {
     window.localStorage.clear();
     resetPointerCaptureShim();
     resetHint();
@@ -260,7 +260,7 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
     try {
       assert.ok(anywhere() && bar(), "条和内容必须在");
       assert.match(bar().className, /touch-none/, "条根必须 touch-action: none");
-      for (const gap of [150, 800, 1499]) {
+      for (const gap of [150, 800, 1499, 10000]) {
         const { clock, restoreTimers } = beginClock(10_000 + gap);
         try {
           const before = translateOf(bar());
@@ -296,7 +296,7 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
   });
 }
 
-test("隔 1501 ms：第二下是普通点击，再一下才拖", async () => {
+test("隔 1501 ms：第二下仍可拖，且拖动不触发按钮", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
   resetHint();
@@ -326,24 +326,13 @@ test("隔 1501 ms：第二下是普通点击，再一下才拖", async () => {
       to: { x: 260, y: 70 },
       afterMs: 1501,
     });
-    assert.deepEqual(translateOf(barOf(mounted.container)), before, "1501ms 后第二下按住不得拖");
+    const draggedAfterLongGap = translateOf(barOf(mounted.container));
+    assert.ok(Math.abs(draggedAfterLongGap.x - before.x) >= 40, "1501ms 后第二下按住仍应拖");
     clock.now += 16;
     await act(async () => {
       pointerUp(btn, { clock, pointerId: 1, clientX: 260, clientY: 70 });
     });
-    const afterLate = translateOf(barOf(mounted.container));
-    await act(async () => {
-      tap(btn, { clock, clientX: 200, clientY: 70, pointerId: 1 });
-    });
-    await holdDrag(btn, clock, {
-      pointerId: 1,
-      pointerType: "mouse",
-      from: { x: 200, y: 70 },
-      to: { x: 260, y: 70 },
-      afterMs: 150,
-    });
-    const dragged = translateOf(barOf(mounted.container));
-    assert.ok(Math.abs(dragged.x - afterLate.x) >= 40, "窗口内的下一一下才拖");
+    assert.equal(clicks, 1, "拖动那一下不得再次触发按钮");
     } finally {
       restoreTimers();
     }
@@ -621,7 +610,11 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
       to: { x: 300, y: 70 },
       afterMs: 80,
     });
-    assert.deepEqual(translateOf(bar()), before, "滑块上第二下条不得动");
+    assert.ok(Math.abs(translateOf(bar()).x - before.x) >= 40, "条上任意位置第二下都应可拖动");
+    clock.now += 16;
+    await act(async () => {
+      pointerUp(range, { clock, pointerId: 4, clientX: 300, clientY: 70 });
+    });
 
     resetHint();
     clock.now += 40;
@@ -660,6 +653,49 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
       1,
       "同一页会话提示只出一次",
     );
+    } finally {
+      restoreTimers();
+    }
+  } finally {
+    await mounted.unmount();
+    restore();
+  }
+});
+
+test("全程跟随：15 步累计指针位移 150px，编辑条位置误差不超过 4px", async () => {
+  window.localStorage.clear();
+  resetPointerCaptureShim();
+  resetHint();
+  const restore = installRectStub();
+  const mounted = await mountFrame("deck");
+  try {
+    const anywhere = mounted.container.querySelector("[data-test-edit-bar]");
+    const bar = () => barOf(mounted.container);
+    const { clock, restoreTimers } = beginClock(70_000);
+    try {
+      await act(async () => {
+        tap(anywhere, { clock, clientX: 400, clientY: 70, pointerId: 1 });
+      });
+      const before = translateOf(bar());
+      await act(async () => {
+        clock.now += 16;
+        pointerDown(anywhere, { clock, pointerId: 1, clientX: 400, clientY: 70 });
+        for (let i = 1; i <= 15; i += 1) {
+          clock.now += 16;
+          pointerMove(anywhere, {
+            clock,
+            pointerId: 1,
+            clientX: 400 + i * 10,
+            clientY: 70,
+          });
+        }
+      });
+      const after = translateOf(bar());
+      assert.ok(before && after, "必须量得到拖动前后位置");
+      assert.ok(Math.abs((after.x - before.x) - 150) <= 4, `全程应跟随 150px，实际 ${after.x - before.x}`);
+      await act(async () => {
+        pointerUp(anywhere, { clock, pointerId: 1, clientX: 550, clientY: 70 });
+      });
     } finally {
       restoreTimers();
     }

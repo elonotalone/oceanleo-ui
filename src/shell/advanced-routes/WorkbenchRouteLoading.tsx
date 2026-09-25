@@ -11,7 +11,7 @@ export function WorkbenchRouteLoading() {
     <div
       role="status"
       aria-busy="true"
-      aria-label={tt("正在加载编辑器")}
+      aria-label={tt("正在打开")}
       aria-live="polite"
       data-workbench-route-loading
       data-workbench-skeleton
@@ -30,9 +30,15 @@ export function WorkbenchRouteLoading() {
         data-workbench-skeleton-stage
         className="flex min-h-0 flex-1 items-start bg-[var(--pchrome-stage,var(--awb-stage-bg,var(--surface,#f5f5f4)))]"
       >
-        <p className="px-3 py-2 text-[12px] text-[var(--pchrome-ink-mid,var(--muted,#78716c))]">
-          {tt("正在加载编辑器…")}
-        </p>
+        <div className="grid min-h-0 flex-1 place-items-center text-[var(--pchrome-ink-mid,var(--muted,#78716c))]">
+          <span className="inline-flex items-center gap-2 text-[11px]">
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-current/25 border-t-current"
+            />
+            {tt("正在打开")}
+          </span>
+        </div>
       </div>
     </div>
   );

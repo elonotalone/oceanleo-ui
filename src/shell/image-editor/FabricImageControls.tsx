@@ -127,7 +127,7 @@ export function FabricImageControls({
     sections.includes(section);
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       {has("layers") && <Section title={tt("图层")}>
         <div className="max-h-56 space-y-1 overflow-y-auto">
           {[...editor.layers].reverse().map((layer) => (
@@ -271,7 +271,7 @@ export function FabricImageFilterPanel({
     { key: "invert", label: "反相" },
   ];
   return (
-    <div className="min-h-full bg-[var(--card,#fff)] p-4">
+    <div className="bg-[var(--card,#fff)] p-4">
       <div className="mb-4">
         <p className="text-[12px] font-semibold text-[var(--fg,#292524)]">
           {tt("图片调整")}

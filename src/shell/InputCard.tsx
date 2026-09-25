@@ -241,7 +241,7 @@ export function InputCard({
                   type="button"
                   onClick={() => onRemoveAttachment(a.id)}
                   aria-label={tt("移除")}
-                  className="min-h-11 ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
+                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
                 >
                   ×
                 </button>

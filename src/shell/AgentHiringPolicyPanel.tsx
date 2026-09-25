@@ -332,7 +332,7 @@ export function AgentHiringPolicyPanel({
                 require_confirmation: event.target.checked,
               }))
             }
-            className="min-h-11 mt-0.5 h-3.5 w-3.5 shrink-0"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
             style={{ accentColor: accent }}
           />
           <span className="min-w-0 flex-1">

@@ -164,7 +164,7 @@ export function ShareCheckbox({
       aria-checked={checked}
       aria-label={label}
       onClick={onToggle}
-      className={`min-h-11 mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-90 ${
+      className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-90 ${
  checked
  ? "border-stone-900 bg-stone-900 text-white"
  : "border-stone-300 bg-white text-transparent hover:border-stone-400"

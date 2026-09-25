@@ -126,7 +126,7 @@ export function VectorContextToolbar({
               type="color"
               value={/^#[0-9A-Fa-f]{6}$/.test(entry.value) ? entry.value : "#1F2328"}
               onChange={(event) => editor.recolor(entry.token, event.target.value)}
-              className="min-h-11 h-5 w-5 cursor-pointer rounded border border-stone-200 p-0"
+              className="h-5 w-5 cursor-pointer rounded border border-stone-200 p-0"
               aria-label={`${tt("配色")} ${entry.token}`}
             />
             <span className="text-[10px] text-stone-400">{entry.token}</span>

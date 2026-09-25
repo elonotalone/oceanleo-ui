@@ -476,7 +476,7 @@ test("Current App, More, and My Library cards share quiet detail actions and ret
   }
 });
 
-test("Edit reports editor opening/opened and never claims a user edit occurred", async () => {
+test("Edit shows only inline busy state and never claims a user edit occurred", async () => {
   globalThis.__libraryPreparedActions = [];
   globalThis.__libraryHeldAction = "edit";
   globalThis.__releaseLibraryAction = null;
@@ -491,7 +491,7 @@ test("Edit reports editor opening/opened and never claims a user edit occurred",
       mounted.container.querySelector(`[data-library-card="${item.title}"]`),
     );
     await click(action(mounted.container, "编辑"));
-    assert.match(mounted.container.textContent || "", /正在打开编辑器/);
+    assert.doesNotMatch(mounted.container.textContent || "", /正在打开编辑器|编辑器已打开/);
     assert.doesNotMatch(
       mounted.container.textContent || "",
       /编辑中|编辑已执行/,
@@ -506,7 +506,7 @@ test("Edit reports editor opening/opened and never claims a user edit occurred",
     assert.deepEqual(globalThis.__libraryPreparedActions, ["edit"]);
     assert.equal(opened.length, 1);
     assert.equal(opened[0].preparedAction, "edit");
-    assert.match(mounted.container.textContent || "", /编辑器已打开/);
+    assert.doesNotMatch(mounted.container.textContent || "", /正在打开编辑器|编辑器已打开/);
     assert.doesNotMatch(
       mounted.container.textContent || "",
       /编辑中|编辑已执行/,

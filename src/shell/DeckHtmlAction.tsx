@@ -261,6 +261,8 @@ export interface DeckHtmlActionButtonProps {
   evidence: DeckHtmlEvidence;
   /** 报给宿主那条 live region 的一句话；宿主负责翻译与朗读。 */
   report: (message: string) => void;
+  /** 生成失败的那句话；宿主要把它显示出来。缺省时仍走 `report`。 */
+  onFailure?: (message: string) => void;
   className?: string;
   style?: CSSProperties;
   /** 按不动时指向宿主那条理由行，读屏才连得起来。 */
@@ -280,6 +282,7 @@ export function DeckHtmlActionButton({
   item,
   evidence,
   report,
+  onFailure,
   className,
   style,
   reasonId,
@@ -339,8 +342,10 @@ export function DeckHtmlActionButton({
       );
       if (error instanceof DeckHtmlProjectRejectedError) {
         setRejection({ projectKey, reason: message });
+        report(message);
+      } else {
+        (onFailure ?? report)(message);
       }
-      report(message);
     } finally {
       setBusy(false);
     }

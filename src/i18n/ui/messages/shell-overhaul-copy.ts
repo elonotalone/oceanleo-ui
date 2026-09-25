@@ -47,6 +47,7 @@ import { EAS_W20_MESSAGES } from "./eas-w20-copy";
 import { EAS_W21_MESSAGES } from "./eas-w21-copy";
 import { EAS_W22_MESSAGES } from "./eas-w22-copy";
 import { EAS_W23_MESSAGES } from "./eas-w23-copy";
+import { REGRESSION_0924_MESSAGES } from "./regression-0924-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -94,6 +95,7 @@ const PARTS = [
   EAS_W21_MESSAGES,
   EAS_W22_MESSAGES,
   EAS_W23_MESSAGES,
+  REGRESSION_0924_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

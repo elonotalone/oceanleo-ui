@@ -175,7 +175,7 @@ export function ClipInspector({
                 type="color"
                 value={style.color ?? "#ffffff"}
                 onChange={(event) => patchStyle({ color: event.target.value })}
-                className="min-h-11 h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
+                className="h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
               />
             </label>
             <label className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border,#e7e5e4)] px-2.5 py-2 text-[11px] text-[var(--fg-2,#57534e)]">
@@ -184,7 +184,7 @@ export function ClipInspector({
                 type="color"
                 value={style.background ?? "#000000"}
                 onChange={(event) => patchStyle({ background: event.target.value })}
-                className="min-h-11 h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
+                className="h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
               />
             </label>
           </div>

@@ -76,7 +76,6 @@ import {
   followUp,
   getTask,
   stopTask,
-  latestArtifact,
   type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
@@ -103,6 +102,12 @@ import {
   buildAgentRenderItems,
 } from "../lib/agent-progress";
 import { historySessionHref } from "./workspace-route";
+import {
+  isLiveAction,
+  ownTaskActionMark,
+  settleActionHistory,
+  type ActionHistoryMark,
+} from "./agent-thread/action-history";
 import { mergeAgentMessages } from "./agent-thread/merge";
 import { threadPresentation, resolveTaskStatus } from "./agent-thread/rules";
 import { createAgentThreadSync } from "./agent-thread/sync";
@@ -602,6 +607,7 @@ function AgentChatInner({
   const loadedTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
+  const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 服务端那份消息的上一次快照。用来判断「这一轮轮询有没有拿到新东西」——
   // 轮询节奏据此收紧或退避。不能直接读 `messages`：本地乐观插入的用户消息
@@ -701,6 +707,11 @@ function AgentChatInner({
       );
       if (settled === null) return IDLE_POLL_RESULT;
       const changed = settled !== serverMessagesRef.current;
+      actionHistoryRef.current = settleActionHistory(
+        actionHistoryRef.current,
+        id,
+        settled,
+      );
       serverMessagesRef.current = settled;
       setMessagesTaskId(id);
       setMessages((current) => mergeAgentMessages(current, settled));
@@ -762,6 +773,7 @@ function AgentChatInner({
       setHiddenArtifactMessageIds(new Set());
       seenArtRef.current = null;
       seenActionRef.current = null;
+      actionHistoryRef.current = null;
       setLibTab(hasOrgPanel ? "preview" : "template");
       setWorkspaceAction(null);
       setRightOpen(hasOrgPanel);
@@ -778,6 +790,7 @@ function AgentChatInner({
     setHiddenArtifactMessageIds(new Set());
     seenArtRef.current = null;
     seenActionRef.current = null;
+    if (actionHistoryRef.current?.taskId !== taskId) actionHistoryRef.current = null;
     setLibTab(hasOrgPanel ? "preview" : "template");
     setWorkspaceAction(null);
     setRightOpen(hasOrgPanel);
@@ -1021,6 +1034,7 @@ function AgentChatInner({
       const createdTaskId = result.data.task_id;
       // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
       noteOwnEditorTask(createdTaskId);
+      actionHistoryRef.current = ownTaskActionMark(createdTaskId);
       loadedTaskRef.current = createdTaskId;
       setLocalTaskId(createdTaskId);
       setStatus("running");
@@ -1461,7 +1475,6 @@ function AgentChatInner({
   );
   const latestArtifactMessage =
     artifactMessages[artifactMessages.length - 1] || null;
-  const art = latestArtifact(messages);
   const running = status === "running" || busy;
   const activeGateId =
     status === "waiting_user"
@@ -1514,46 +1527,24 @@ function AgentChatInner({
   useEffect(() => {
     if (
       !latestActionMessage ||
-      latestActionMessage.id === seenActionRef.current
+      latestActionMessage.id === seenActionRef.current ||
+      !taskId ||
+      messagesTaskId !== taskId
     )
       return;
+    seenActionRef.current = latestActionMessage.id;
+    if (!isLiveAction(actionHistoryRef.current, taskId, latestActionMessage)) return;
     const action = normalizeWorkspaceAction(
       latestActionMessage.meta?.workspace_action ||
         latestActionMessage.meta?.ui_action,
     );
     if (!action) return;
-    seenActionRef.current = latestActionMessage.id;
     setLibTab(action.tab);
     setWorkspaceAction({
       nonce: `message:${latestActionMessage.id}`,
       action,
     });
-  }, [latestActionMessage]);
-
-  // Rolling-deploy fallback for old backend browse receipts that predate
-  // ui_action. Once a signed ui_action exists, it is the sole authority.
-  useEffect(() => {
-    if (latestActionMessage) return;
-    const browserActivity = [...messages].reverse().find((message) => {
-      const tool = String(message.meta?.tool || "");
-      return tool === "browse" || tool.startsWith("browser_");
-    });
-    const takeover = [...messages].reverse().find(
-      (message) =>
-        message.role !== "user" &&
-        message.content.includes("接管") &&
-        (message.content.includes("浏览器") ||
-          message.content.includes("登录") ||
-          message.content.includes("验证码") ||
-          message.content.includes("支付")),
-    );
-    if ((!browserActivity && !takeover) || art) return;
-    setLibTab("browser");
-    setWorkspaceAction({
-      nonce: `legacy-browser:${browserActivity?.id || takeover?.id || "open"}`,
-      action: { version: 1, tab: "browser" },
-    });
-  }, [art, latestActionMessage, messages]);
+  }, [latestActionMessage, messagesTaskId, taskId]);
 
   // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
   // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
@@ -2134,7 +2125,7 @@ function MentionPicker({
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={tt("@ 某个成员：只让 TA 处理")}
-        className="min-h-11 inline-flex h-7 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[12px] font-medium text-stone-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700"
+        className="inline-flex h-7 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 text-[12px] font-medium text-stone-500 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700"
         style={{ color: accent }}
       >
         @

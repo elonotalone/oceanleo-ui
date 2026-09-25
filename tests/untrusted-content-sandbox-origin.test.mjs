@@ -1078,6 +1078,6 @@ test("R8 生产宿主忽略嵌入源覆盖，LeoDev 槽位覆盖不得放宽 UGC
     UNTRUSTED_FRAME_SANDBOX,
   );
   const embed = source("../src/shell/workbench-embed.tsx");
-  assert.match(embed, /isTrustedEmbedEditorBase\(editorBase\)/);
-  assert.match(embed, /applyFamilyEmbedOriginOverride\(/);
+  assert.match(embed, /isTrustedEmbedEditorBase\(editorBase\)[\s\S]*resolveEmbedLoadBase\(editorBase\)/);
+  assert.match(source("../src/shell/workbench-embed-base.ts"), /applyFamilyEmbedOriginOverride\(/);
 });

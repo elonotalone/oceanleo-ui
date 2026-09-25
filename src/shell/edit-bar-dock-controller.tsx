@@ -58,12 +58,6 @@ const MORPH_SPRING = { stiffness: 190, damping: 24 };
  * 「甩得到」的情形，不会改变已有的「停在带内」判定。
  */
 const FLING_PROJECTION_SECONDS = 0.09;
-/**
- * 先单击一下，再按住拖动。计时从第一下松开算，不读事件计数。
- */
-const REARM_WINDOW_MS = 1500;
-const REARM_SLOP_PX = 24;
-const REARM_SLOP_TOUCH_PX = 40;
 const DRAG_START_PX = 4;
 const DRAG_START_TOUCH_PX = 8;
 const HOLD_LIFT_MS = 250;
@@ -104,10 +98,6 @@ function isEditBarOwnDragTarget(target: EventTarget | null): boolean {
 
 function dragStartThreshold(pointerType: string): number {
   return pointerType === "touch" ? DRAG_START_TOUCH_PX : DRAG_START_PX;
-}
-
-function rearmSlopPx(pointerType: string): number {
-  return pointerType === "touch" ? REARM_SLOP_TOUCH_PX : REARM_SLOP_PX;
 }
 
 /** 编辑栏可停靠区域从第二行页签底边再往下这么多。 */
@@ -174,29 +164,11 @@ function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-type RearmStamp = {
-  x: number;
-  y: number;
-  t: number;
-  pointerType: string;
-};
-
-function isRearmPress(
-  last: RearmStamp | null,
-  clientX: number,
-  clientY: number,
-  time: number,
-  pointerType: string,
-): boolean {
-  if (!last) return false;
-  if (pointerType !== last.pointerType) return false;
-  if (time < last.t || time - last.t > REARM_WINDOW_MS) return false;
-  return Math.hypot(clientX - last.x, clientY - last.y) <= rearmSlopPx(pointerType);
-}
+type RearmStamp = { selected: true };
 
 /**
- * 展开胶囊：先单击一下，再按住拖动。第一下是普通点击；松开后窗口内再按下并按住才跟手。
- * 没有「选中」、不延迟派发第一下 click。收起圆仍是按下即拖。
+ * 展开胶囊：先单击一下，再按住拖动。第一次 click 立即生效，选中状态持续到条外按下。
+ * 收起圆仍是按下即拖。
  */
 
 interface EditBarDrag {
@@ -254,15 +226,15 @@ export interface EditBarDockController {
   collapsed: boolean;
   /** 按住拖的进行中：条子跟手，松手落下，Esc 取消。 */
   moveMode: boolean;
-  /** 第一下松开后、再按住之前的武装窗口。 */
+  /** 第一次点击后的选中状态。 */
   rearmWindow: boolean;
   /** 第二下按住未移动，条被轻微抬起。 */
   lifted: boolean;
   /** 没先点就按住拖时的一次提示。 */
   rearmHintVisible: boolean;
-  /** 摊到浮层根上：第一下普通点击，窗口内再按下并按住才拖。 */
+  /** 摊到浮层根上：第一下普通点击，选中后再次按下并按住才拖。 */
   rootProps: {
-    onPointerDownCapture: (event: ReactPointerEvent<HTMLElement>) => void;
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
     /**
@@ -309,7 +281,6 @@ export function useEditBarDockController({
   const rememberedDockBoundsRef = useRef<FloatingToolbarBounds | null>(null);
   const hydratedStorageKeyRef = useRef("");
   const rearmStampRef = useRef<RearmStamp | null>(null);
-  const rearmExpireTimerRef = useRef(0);
   const hintHideTimerRef = useRef(0);
   const idlePressCleanupRef = useRef<(() => void) | null>(null);
   const armedSessionCleanupRef = useRef<(() => void) | null>(null);
@@ -1307,24 +1278,12 @@ export function useEditBarDockController({
   const clearRearm = useCallback(() => {
     rearmStampRef.current = null;
     setRearmWindow(false);
-    if (rearmExpireTimerRef.current) {
-      window.clearTimeout(rearmExpireTimerRef.current);
-      rearmExpireTimerRef.current = 0;
-    }
   }, []);
 
-  const enterClicked = useCallback(
-    (stamp: RearmStamp) => {
-      rearmStampRef.current = stamp;
-      setRearmWindow(true);
-      if (typeof window === "undefined") return;
-      if (rearmExpireTimerRef.current) window.clearTimeout(rearmExpireTimerRef.current);
-      rearmExpireTimerRef.current = window.setTimeout(() => {
-        if (rearmStampRef.current === stamp) clearRearm();
-      }, REARM_WINDOW_MS);
-    },
-    [clearRearm],
-  );
+  const enterClicked = useCallback(() => {
+    rearmStampRef.current = { selected: true };
+    setRearmWindow(true);
+  }, []);
 
   const showRearmHint = useCallback(() => {
     if (rearmHintAlreadyShown()) return;
@@ -1345,9 +1304,8 @@ export function useEditBarDockController({
       finishDrag(pointerId);
       releaseClickSuppression();
       if (pointerId !== undefined) releaseCapture(pointerId);
-      clearRearm();
     },
-    [clearRearm, finishDrag, releaseCapture, releaseClickSuppression, revertDrag],
+    [finishDrag, releaseCapture, releaseClickSuppression, revertDrag],
   );
 
   const attachArmedSession = useCallback(
@@ -1361,7 +1319,6 @@ export function useEditBarDockController({
     ) => {
       if (typeof window === "undefined") return;
       armedSessionCleanupRef.current?.();
-      clearRearm();
       setMoveMode(true);
       setLifted(false);
       try {
@@ -1407,6 +1364,8 @@ export function useEditBarDockController({
         if (phase === "armed" && dist >= threshold) {
           window.clearTimeout(liftTimer);
           phase = "dragging";
+          event.preventDefault();
+          event.stopPropagation();
           startDrag("press", pointerId, clientX, clientY, pointerType);
           updateDrag(pointerId, event.clientX, event.clientY, event.timeStamp);
           return;
@@ -1418,19 +1377,12 @@ export function useEditBarDockController({
 
       const handleUp = (event: PointerEvent) => {
         if (closed || !matching(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
         const dist = Math.hypot(event.clientX - clientX, event.clientY - clientY);
         const held = event.timeStamp - downT >= HOLD_LIFT_MS || didLift;
         if (phase === "armed" && dist < threshold && !held) {
           finishSession();
           finishDrag(pointerId);
-          enterClicked({
-            x: event.clientX,
-            y: event.clientY,
-            t: Number.isFinite(event.timeStamp) ? event.timeStamp : downT,
-            pointerType,
-          });
+          enterClicked();
           if (origin && toolbarRef.current?.contains(origin)) {
             replayClickRef.current = origin;
             origin.dispatchEvent(
@@ -1445,6 +1397,8 @@ export function useEditBarDockController({
           return;
         }
         if (phase === "dragging") {
+          event.preventDefault();
+          event.stopPropagation();
           settleDrag(event.clientX, event.clientY);
           swallowNextClick(event.clientX, event.clientY);
         } else {
@@ -1452,7 +1406,6 @@ export function useEditBarDockController({
         }
         finishSession();
         finishDrag(pointerId);
-        clearRearm();
       };
 
       const handleCancel = (event: PointerEvent) => {
@@ -1491,7 +1444,6 @@ export function useEditBarDockController({
     },
     [
       abortArmed,
-      clearRearm,
       enterClicked,
       finishDrag,
       releaseCapture,
@@ -1544,12 +1496,7 @@ export function useEditBarDockController({
           clearRearm();
           return;
         }
-        enterClicked({
-          x: event.clientX,
-          y: event.clientY,
-          t: Number.isFinite(event.timeStamp) ? event.timeStamp : downT,
-          pointerType,
-        });
+        enterClicked();
       };
 
       const handleCancel = (event: PointerEvent) => {
@@ -1572,26 +1519,17 @@ export function useEditBarDockController({
   );
 
   /**
-   * 第一下不拦；窗口内第二下按住才拖。监听同步挂上，不放进 effect。
+   * 第一下只阻断画布传播；选中后第二下按住才拖。监听同步挂上，不放进 effect。
    */
-  const onPointerDownCapture = useCallback(
+  const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (presentationRef.current === "collapsed") return;
       if (dragRef.current) return;
       const now = Number.isFinite(event.timeStamp) ? event.timeStamp : 0;
-      if (
-        isRearmPress(
-          rearmStampRef.current,
-          event.clientX,
-          event.clientY,
-          now,
-          event.pointerType,
-        )
-      ) {
-        if (isEditBarOwnDragTarget(event.target)) return;
-        event.preventDefault();
-        event.stopPropagation();
+      // Bubble phase lets child controls receive pointerdown before the canvas is blocked.
+      event.stopPropagation();
+      if (rearmStampRef.current) {
         attachArmedSession(
           event.pointerId,
           event.pointerType,
@@ -1948,7 +1886,6 @@ export function useEditBarDockController({
       idlePressCleanupRef.current?.();
       armedSessionCleanupRef.current?.();
       if (hintHideTimerRef.current) window.clearTimeout(hintHideTimerRef.current);
-      if (rearmExpireTimerRef.current) window.clearTimeout(rearmExpireTimerRef.current);
     },
     [],
   );
@@ -1979,14 +1916,14 @@ export function useEditBarDockController({
 
   const rootProps = useMemo(
     () => ({
-      onPointerDownCapture,
+      onPointerDown,
       onClickCapture,
       onKeyDown: onRootKeyDown,
       "aria-keyshortcuts": rootKeyShortcuts,
     }),
     [
-      onClickCapture,
-      onPointerDownCapture,
+          onClickCapture,
+          onPointerDown,
       onRootKeyDown,
       rootKeyShortcuts,
     ],

@@ -52,6 +52,7 @@ import { DECK_PREVIEW_FIT_ZOOM_PERCENT } from "../doc-editors/deck-preview-geome
 import type { DeckCreationTool } from "../doc-editors/deck-quick-tools";
 import type { DeckInkStyle } from "../doc-editors/deck-ink";
 import { DeckStage } from "../doc-editors/DeckStage";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import {
   buildDeckPptxBlob,
   deckPresentationSource,
@@ -138,19 +139,22 @@ function DeckLegacyRoute({
   liveRevisionRef.current = editor.editRevision;
   useEffect(() => {
     return bindNormalFaceHandoff(item.key || item.id, {
-      getHandoff: () => ({
-        kind: "inline",
-        json: deckDocumentToPptist(liveDeckRef.current),
-        revision:
-          liveRevisionRef.current == null
-            ? null
-            : String(liveRevisionRef.current),
-      }),
+      getHandoff: () =>
+        editor.sourceFailed
+          ? { kind: "empty" as const }
+          : {
+              kind: "inline" as const,
+              json: deckDocumentToPptist(liveDeckRef.current),
+              revision:
+                liveRevisionRef.current == null
+                  ? null
+                  : String(liveRevisionRef.current),
+            },
       persistInBackground: () => {
-        void editor.save();
+        if (editor.dirty && !editor.sourceFailed) void editor.save();
       },
     });
-  }, [editor.save, item.id, item.key]);
+  }, [editor.dirty, editor.save, editor.sourceFailed, item.id, item.key]);
   const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");
@@ -537,7 +541,7 @@ function DeckLegacyRoute({
             ? [
                 {
                   id: "deck-refresh-office-source",
-                  label: "刷新 source/full 后重试",
+                  label: "重新获取文件后重试",
                   onTrigger: officeSource.retry,
                 },
               ]
@@ -557,7 +561,13 @@ function DeckLegacyRoute({
           multiple: true,
           onFiles: addLocalFiles,
         },
-        stage: presentation ? (
+        stage: editor.sourceFailed ? (
+          <EditorSourceFailurePanel
+            message={`${item.title || "演示文稿"}：${editor.error}`}
+            onReload={editor.reload}
+            variant="surface"
+          />
+        ) : presentation ? (
           <DeckPresenterView
             source={deckPresentationSource(editor)}
             surface={presentation.surface}

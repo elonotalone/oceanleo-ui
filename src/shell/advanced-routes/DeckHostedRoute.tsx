@@ -138,6 +138,7 @@ export function DeckHostedRoute({
   const [status, setStatus] = useState("");
   const [snapshot, setSnapshot] = useState<unknown>(null);
   const [source, setSource] = useState<unknown>(null);
+  const [sourceReady, setSourceReady] = useState(false);
   const snapshotRef = useRef<unknown>(null);
   const sourceRef = useRef<unknown>(null);
   snapshotRef.current = snapshot;
@@ -156,6 +157,7 @@ export function DeckHostedRoute({
   useEffect(() => {
     let cancelled = false;
     if (resolved.status === "loading") return;
+    setSourceReady(false);
     void (async () => {
       const sourceHandoff =
         resolved.source && resolved.source.kind !== "empty"
@@ -186,6 +188,7 @@ export function DeckHostedRoute({
       }
       setStatus("");
       setSource(loaded.json);
+      setSourceReady(true);
     })();
     return () => {
       cancelled = true;
@@ -345,6 +348,9 @@ export function DeckHostedRoute({
   );
 
   const flush = useCallback(async () => {
+    if (!sourceReady) {
+      return { ok: false as const, error: "文件还没成功载入，不能保存。" };
+    }
     const gate = openHostedSaveGate({ timeoutMs: hostedSaveTimeoutMs() });
     saveGateRef.current = gate;
     const sent = sendToEditor({
@@ -383,7 +389,7 @@ export function DeckHostedRoute({
     });
     reportProSaved(handoffItemKey(item), savedItem);
     return { ok: true as const, item: savedItem };
-  }, [instanceId, item, sendToEditor]);
+  }, [instanceId, item, sendToEditor, sourceReady]);
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 
@@ -475,10 +481,10 @@ export function DeckHostedRoute({
           flush,
           recovery: {
             key: advancedRecoveryKey("deck", item),
-            ready,
+            ready: ready && sourceReady,
             capture: () => snapshotRef.current || sourceRef.current,
             restore: (payload) => {
-              if (payload == null) return false;
+              if (!sourceReady || payload == null) return false;
               snapshotRef.current = payload;
               sourceRef.current = payload;
               setSnapshot(payload);

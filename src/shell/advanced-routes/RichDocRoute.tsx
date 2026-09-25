@@ -451,7 +451,7 @@ function RichDocLegacyRoute({
             ? [
                 {
                   id: "richdoc-refresh-office-source",
-                  label: "刷新 source/full 后重试",
+                  label: "重新获取文件后重试",
                   onTrigger: officeSource.retry,
                 },
               ]

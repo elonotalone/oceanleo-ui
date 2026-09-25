@@ -429,7 +429,7 @@ export function FloatingContextToolbar({
           data-plugin-theme={theme || undefined}
           data-edit-bar-mode={controller.mode}
           data-edit-bar-offset={`${controller.offset.x},${controller.offset.y}`}
-          onPointerDownCapture={controller.rootProps.onPointerDownCapture}
+          onPointerDown={controller.rootProps.onPointerDown}
           onClickCapture={controller.rootProps.onClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
           aria-keyshortcuts={controller.rootProps["aria-keyshortcuts"]}
@@ -489,11 +489,11 @@ export function FloatingContextToolbar({
             )}
           </div>
           {controller.moveMode && (
-            // 按住拖的这一段盖住控件：松手之前按钮不许被点到。
+            // 按住拖的这一段只提供视觉反馈；控制器在阈值后吞掉 click。
             <div
               aria-hidden="true"
               data-edit-bar-move-shield
-              className="absolute inset-0 cursor-grabbing rounded-full ring-2 ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/60"
+              className="pointer-events-none absolute inset-0 cursor-grabbing rounded-full ring-2 ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/60"
             />
           )}
           {controller.rearmHintVisible && (

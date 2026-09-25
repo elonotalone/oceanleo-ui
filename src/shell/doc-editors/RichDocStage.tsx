@@ -30,9 +30,13 @@ export function RichDocStage({
               aria-live="polite"
               className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-[var(--card,#fff)]/90"
             >
-              <p className="text-[12px] text-[var(--muted,#78716c)]">
-                {tt("正在载入文档…")}
-              </p>
+              <span className="inline-flex items-center gap-2 text-[11px] text-[var(--muted,#78716c)]">
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-current/25 border-t-current"
+                />
+                {tt("正在打开")}
+              </span>
             </div>
           )}
           {!editor.loading && editor.sourceFailed && (

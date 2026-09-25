@@ -55,7 +55,7 @@ export function ApiPage({
 }: ApiPageProps = {}) {
   const tt = useUI();
   const pane = variant === "pane";
-  const frameClass = pane ? "min-h-0 overflow-y-auto overscroll-contain" : "px-8 py-6";
+  const frameClass = pane ? "min-h-0" : "px-8 py-6";
   const paneMark = pane ? "" : undefined;
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);

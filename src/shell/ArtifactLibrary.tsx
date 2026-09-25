@@ -541,7 +541,7 @@ function ArtifactLibraryLegacy({
                 type="button"
                 onClick={() => navigate(-1)}
                 aria-label={tt("上一项")}
-                className="min-h-11 absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white"
+                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -553,7 +553,7 @@ function ArtifactLibraryLegacy({
                 type="button"
                 onClick={() => navigate(1)}
                 aria-label={tt("下一项")}
-                className="min-h-11 absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-600 shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -753,7 +753,7 @@ function ArtifactLibraryLegacy({
             type="button"
             onClick={() => void loadMore()}
             disabled={loadingMore}
-            className="min-h-11 inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
+            className="inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
           >
             {tt(loadingMore ? "加载中…" : "继续加载")}
           </button>

@@ -22,7 +22,7 @@ export async function loadGridUniverStage() {
 
 /**
  * 重内核只能在懒加载叶子里。chunk 没到之前舞台不能留白——
- * 用与外层路由同一块加载态，用户看到的是「正在加载编辑器」而不是空白。
+ * 用与外层路由同一块加载态，用户看到的是简短的打开提示和转圈。
  */
 const GridUniverStage = dynamic(loadGridUniverStage, {
   ssr: false,

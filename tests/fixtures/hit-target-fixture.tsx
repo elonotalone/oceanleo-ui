@@ -46,9 +46,9 @@ export function HitTargetFixture() {
       {/* 绿 2：原语默认档就是 lg(44)，什么都不用写。 */}
       <Button>保存</Button>
 
-      {/* 绿 3：`h-8` 写小了，但 `min-h-11` 把命中区托住了。 */}
-      <button type="button" className="h-8 min-h-11 px-3">
-        托底
+      {/* 绿 3：44px 控件直接写出恢复后的高度。 */}
+      <button type="button" className="h-11 px-3">
+        合规
       </button>
 
       {/* 绿 4：没写死高度，靠 padding 撑。静态判据量不出来就不猜——

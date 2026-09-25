@@ -342,7 +342,6 @@ export function WorkspaceLibrary({
   const [selectedId, setSelectedId] = useState("");
   const [viewerNonce, setViewerNonce] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
-  const [materialActionState, setMaterialActionState] = useState("");
   /** 详情返回后要滚回哪一张（虚拟化之后滚动位置不再由浏览器自己保住）。 */
   const [restoreEntryId, setRestoreEntryId] = useState("");
   const detailRef = useRef<HTMLDivElement>(null);
@@ -355,6 +354,7 @@ export function WorkspaceLibrary({
    * 整页**就能再试一次（改前的实况见 W4-journal J3：两颗按钮直接消失，没有出口）。
    */
   const [detailIdentityFailed, setDetailIdentityFailed] = useState(false);
+  const [detailIdentityFailure, setDetailIdentityFailure] = useState("");
   const [detailIdentityNonce, setDetailIdentityNonce] = useState(0);
   /**
    * 详情里此刻**真的**有没有可放大的东西。「全屏」过去只看宿主传没传回调，于是对任何
@@ -388,13 +388,11 @@ export function WorkspaceLibrary({
       throw new Error("另一个素材命令仍在执行。");
     }
     materialActionPendingRef.current = true;
-    setMaterialActionState(tt("应用中…"));
     try {
       const result = await onMaterialAction(action, item);
       if (!result.ok) {
         throw new Error(result.error || tt("素材应用失败"));
       }
-      setMaterialActionState(tt("已通过编辑器历史应用素材"));
     } catch (caught) {
       // 宿主编辑器抛什么都有可能，包括运行时的英文异常。摆给用户的必须是人话，
       // 但**往上抛的仍是原异常**：调用方要靠它做机器判断，排障也要靠它。
@@ -402,7 +400,6 @@ export function WorkspaceLibrary({
         caught,
         tt("这份素材没能应用到编辑器里，请重试。"),
       );
-      setMaterialActionState(message);
       throw caught instanceof Error ? caught : new Error(message);
     } finally {
       materialActionPendingRef.current = false;
@@ -581,7 +578,7 @@ export function WorkspaceLibrary({
     packAppId: (selected && packAppIdForEntry?.(selected)) || "",
     onStatus: (message) => {
       setDetailIdentityFailed(true);
-      setMaterialActionState(message);
+      setDetailIdentityFailure(message);
     },
   });
 
@@ -591,8 +588,8 @@ export function WorkspaceLibrary({
   }, [entries, selectedId]);
 
   useEffect(() => {
-    setMaterialActionState("");
     setDetailIdentityFailed(false);
+    setDetailIdentityFailure("");
     setDetailIdentityNonce(0);
   }, [selectedId]);
 
@@ -751,16 +748,16 @@ export function WorkspaceLibrary({
                 failed: detailIdentityFailed,
                 reason:
                   "没取到这份素材的当前版本，所以下载与收藏暂时按不动；重试一次通常就好了。",
+                failure: detailIdentityFailure,
                 onRetry: () => {
                   setDetailIdentityFailed(false);
-                  setMaterialActionState("");
+                  setDetailIdentityFailure("");
                   setDetailIdentityNonce((value) => value + 1);
                 },
               }
             : undefined
         }
         linkUrl={linkUrl || undefined}
-        onStatus={setMaterialActionState}
         accent={accent}
         compact={compact}
         editLabel={websiteTemplate ? "用这个模板建站" : undefined}
@@ -822,7 +819,7 @@ export function WorkspaceLibrary({
               }
               setSelectedId("");
             }}
-            className="min-h-11 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"
             aria-label={tt("返回列表")}
             title={tt("返回列表")}
           >
@@ -875,15 +872,6 @@ export function WorkspaceLibrary({
             </button>
           )}
         </header>
-        {materialActionState && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-600"
-          >
-            {materialActionState}
-          </div>
-        )}
         <div
           ref={viewerRef}
           className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]"
@@ -956,15 +944,6 @@ export function WorkspaceLibrary({
       } ${className}`}
     >
       {shelfToolbar}
-      {materialActionState && (
-        <p
-          className="mt-2 shrink-0 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700"
-          role="status"
-          aria-live="polite"
-        >
-          {materialActionState}
-        </p>
-      )}
       <div ref={shelfScrollRef} className="min-h-0 flex-1 overflow-y-auto pt-3">
         {!hideCategoryChips && categories.length > 1 && (
           <LibraryChips

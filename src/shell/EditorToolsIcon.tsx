@@ -1,6 +1,7 @@
 import { forwardRef } from "react";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import type { AdvancedToolsLauncher } from "./advanced-layout-context";
+import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import type { SelectionControlIcon } from "./selection-context";
 
 export function editorToolsIconForSelection(
@@ -75,7 +76,7 @@ export const EditorToolsTrigger = forwardRef<
       aria-expanded={available ? launcher?.expanded || false : undefined}
       aria-controls={available ? launcher?.controlsId : undefined}
       title={accessibleLabel}
-      className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 ${
+      className={`grid h-7 w-7 shrink-0 place-items-center rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS} ${
  available
  ? "hover:brightness-95"
  : "cursor-not-allowed opacity-40"

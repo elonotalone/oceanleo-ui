@@ -6,6 +6,7 @@ import { currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { Switch, useToast } from "../../ui";
 import { InTreeDialog } from "./parts";
+import { PuzzleIcon } from "../../shell/icons/PuzzleIcon";
 import {
   OFFICIAL_SKILLS,
   SKILLS_NOT_CONFIGURED,
@@ -26,14 +27,6 @@ export const COMPOSER_PROMPT_KEY = "oceanleo_composer_prompt";
 function isPortalOrigin(): boolean {
   if (typeof window === "undefined") return false;
   return window.location.origin === currentDomainProfile().portalOrigin;
-}
-
-function PuzzleGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-neutral-500" aria-hidden>
-      <path d="M10 3.5a2 2 0 1 1 4 0V5h3a2 2 0 0 1 2 2v3h-1.5a2 2 0 1 0 0 4H19v3a2 2 0 0 1-2 2h-3v-1.5a2 2 0 1 0-4 0V19H7a2 2 0 0 1-2-2v-3h1.5a2 2 0 1 0 0-4H5V7a2 2 0 0 1 2-2h3z" />
-    </svg>
-  );
 }
 
 export function SkillsSection({ search }: { search: string }) {
@@ -257,7 +250,7 @@ export function SkillsSection({ search }: { search: string }) {
               </div>
               <div className={`flex gap-3 ${skill.enabled ? "" : "opacity-60"}`}>
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100">
-                  <PuzzleGlyph />
+                  <PuzzleIcon className="h-4 w-4 text-neutral-500" />
                 </div>
                 <div className="min-w-0 pr-36">
                   <p className="text-[13px] font-medium text-neutral-900">

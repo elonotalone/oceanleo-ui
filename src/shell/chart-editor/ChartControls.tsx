@@ -45,7 +45,7 @@ export function ChartControls({
   return (
     <fieldset
       disabled={editor.loading || editor.saving}
-      className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-60"
+      className="space-y-4 bg-[var(--card,#fff)] p-4 text-[11px] text-[var(--fg-2,#57534e)] disabled:opacity-60"
     >
       <section className="space-y-2">
         <p className="font-semibold text-[var(--fg,#292524)]">{tt("图表数据")}</p>

@@ -68,7 +68,7 @@ export function DeckDesignPanel({
   const tt = useUI();
   const slide = editor.activeSlide;
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("演示文稿")}
         description={tt("设置页面比例、主题和整套演示的视觉基调。")}
@@ -229,7 +229,7 @@ export function DeckDesignPanel({
             onKeyDown={editor.beginGesture}
             onKeyUp={editor.endGesture}
             onBlur={editor.endGesture}
-            className="min-h-11 mt-1 h-10 w-full cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] bg-transparent p-1"
+            className="mt-1 h-10 w-full cursor-pointer rounded-xl border border-[var(--border,#e7e5e4)] bg-transparent p-1"
           />
         </label>
       </Panel>
@@ -254,7 +254,7 @@ export function DeckElementsPanel({
     ["hexagon", "六边形"],
   ] as const;
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("形状")} description={tt("点击后直接添加到当前页面中央。")}>
         <div className="grid grid-cols-2 gap-2">
           {shapes.map(([shape, label]) => (
@@ -313,7 +313,7 @@ export function DeckTextPanel({ editor }: { editor: DeckEditorState }) {
     { label: "添加说明文字", size: 14, bold: false, height: 10 },
   ];
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("文字")}
         description={tt("添加后双击画布文字即可原地输入。")}
@@ -361,7 +361,7 @@ export function DeckUploadPanel({ editor }: { editor: DeckEditorState }) {
     reader.readAsDataURL(file);
   };
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("上传图片")}
         description={tt("上传后图片直接落在当前页面，并保持可移动、缩放和替换。")}
@@ -419,7 +419,7 @@ export function DeckLayersPanel({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("图层")}
         description={tt("顶部图层先渲染；点击可在画布中选中。")}
@@ -460,7 +460,7 @@ export function DeckLayersPanel({
                   <button
                     type="button"
                     onClick={editor.toggleElementLock}
-                    className="min-h-11 grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)]"
+                    className="grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)]"
                     title={item.locked ? tt("解锁") : tt("锁定")}
                   >
                     <AdvancedEditorIcon
@@ -531,7 +531,7 @@ export function DeckEffectsPanel({ editor }: { editor: DeckEditorState }) {
     </label>
   );
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("对象效果")}>
         <button
           type="button"

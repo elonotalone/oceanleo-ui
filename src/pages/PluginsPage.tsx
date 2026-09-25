@@ -105,7 +105,7 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
 
   return (
     <div
-      className={pane ? "min-h-0 overflow-y-auto overscroll-contain" : "px-8 py-6"}
+      className={pane ? "min-h-0" : "px-8 py-6"}
       data-plugins-pane={pane ? "" : undefined}
     >
       {!pane && <PageHeader title={typeof title === "string" ? title : tt("插件与连接器")} />}

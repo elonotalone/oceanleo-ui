@@ -167,7 +167,7 @@ function ControlButton({
       title={title}
       aria-label={title}
       aria-pressed={active || undefined}
-      className={`min-h-11 rounded-xl border bg-[var(--card,#fff)] text-[11px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40 ${
+      className={`rounded-xl border bg-[var(--card,#fff)] text-[11px] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40 ${
         iconOnly ? "grid h-9 w-9 place-items-center p-0" : "px-2.5 py-2"
       } ${
         active
@@ -191,7 +191,7 @@ export function PdfControls({
   const busy = editor.loading || editor.processing || editor.saving;
 
   return (
-    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
+    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
       <section className="space-y-2">
         <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("页面")}

@@ -140,13 +140,13 @@ export function usePluginChromePanelHost(): PluginChromePanelController {
 }
 
 const ACTION_CLASS =
-  "inline-flex min-h-11 h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-3 text-[11px] font-semibold text-[var(--pchrome-ink-mid)] shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-3 text-[11px] font-semibold text-[var(--pchrome-ink-mid)] shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
 const ICON_ACTION_CLASS =
-  "grid min-h-11 h-9 w-9 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
+  "grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
 const AI_ICON_ACTION_CLASS =
-  "grid min-h-11 h-7 w-7 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
+  "grid h-7 w-7 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
 export interface PluginChromeFrameProps {
   /** 决定主题档与 accent 身份色。13 件插件都必须有值。 */
@@ -480,7 +480,7 @@ export function PluginChromeFrame({
                           : tt(view.label)
                     }
                     onClick={() => onViewChange?.(view.id)}
-                    className={`min-h-11 inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                    className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  selected
  ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent-soft)] text-[var(--pchrome-accent)] shadow-sm"
  : `border-transparent hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] ${
@@ -515,7 +515,7 @@ export function PluginChromeFrame({
                   title={tt(action.label)}
                   disabled={action.disabled || action.busy}
                   onClick={() => runAction(action)}
-                  className={`min-h-11 ${iconOnly ? ICON_ACTION_CLASS : ACTION_CLASS} ${
+                  className={`${iconOnly ? ICON_ACTION_CLASS : ACTION_CLASS} ${
                     active
                       ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent-soft)] text-[var(--pchrome-accent)]"
                       : ""
@@ -636,7 +636,7 @@ export function PluginChromeFrame({
                 ? layout.closeDrawer()
                 : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
             }
-            className={`min-h-11 ${AI_ICON_ACTION_CLASS} ${
+            className={`${AI_ICON_ACTION_CLASS} ${
               agentActive
                 ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent)] text-[var(--pchrome-on-accent)] hover:bg-[var(--pchrome-accent)] hover:text-[var(--pchrome-on-accent)]"
                 : ""
@@ -672,7 +672,7 @@ export function PluginChromeFrame({
                     onClick={layout.closeDrawer}
                     aria-label={tt("收起面板")}
                     title={tt("收起面板")}
-                    className="min-h-11 grid h-6 w-6 place-items-center rounded-md text-[var(--pchrome-ink-mid)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)]"
+                    className="grid h-6 w-6 place-items-center rounded-md text-[var(--pchrome-ink-mid)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)]"
                   >
                     <AdvancedEditorIcon name="close" className="h-3.5 w-3.5" />
                   </button>

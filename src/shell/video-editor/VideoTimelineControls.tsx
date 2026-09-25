@@ -64,7 +64,7 @@ export function VideoTimelineControls({
   const [showUrlInput, setShowUrlInput] = useState(false);
 
   return (
-    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
+    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
       {/* 素材 */}
       <section>
         <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("素材")}</p>

@@ -303,9 +303,9 @@ export function validateSpreadsheetParserBytes(
     throw new OfficeFileDiagnosticError(
       "spreadsheet-preview-blocked",
       "xlsx",
-      `表格源校验失败：Content-Type ${mediaType || "（空）"}，文件头 ${
+      `表格文件校验失败：返回内容不是可读的工作簿（${mediaType || "类型未知"}，文件头 ${
         signature(bytes) || "为空"
-      }。这是图片或错误页，不是工作簿；已阻止送入 XLSX 解析器。请刷新 source/full rendition 后重试。`,
+      }。这是图片或错误页，不是工作簿；已阻止送入解析器。请重新获取文件后重试。`,
     );
   }
 }
@@ -332,7 +332,7 @@ function validateTransportMediaType(
   throw new OfficeFileDiagnosticError(
     "content-type-mismatch",
     kind,
-    `${spec.label} 类型校验失败：${detail}${blockedPreview}。请刷新安全地址，或下载原文件检查 source/full rendition。`,
+    `${spec.label} 类型校验失败：${detail}${blockedPreview}。请重新获取文件，或下载原文件检查。`,
   );
 }
 
@@ -372,7 +372,7 @@ export function validateOfficePackageBytes(
     throw new OfficeFileDiagnosticError(
       "package-kind-mismatch",
       kind,
-      `${spec.label} 包缺少 ${spec.mainPart}。该地址不是可编辑的 ${spec.label} source/full；请刷新 rendition 或打开原文件诊断。`,
+      `${spec.label} 包缺少必要内容。该地址不是可编辑的 ${spec.label} 文件；请重新获取原文件后重试。`,
     );
   }
 }
@@ -388,7 +388,7 @@ export async function validateOfficePackageBlob(
 
 export function isOfficeAccessDeniedError(reason: unknown): boolean {
   const message = reason instanceof Error ? reason.message : String(reason || "");
-  return /\bHTTP\s+(?:401|403)\b/i.test(message);
+  return /\bHTTP\s+(?:401|403|410)\b/i.test(message);
 }
 
 export function notifyOfficeAccessDenied(
@@ -444,7 +444,7 @@ export async function fetchValidatedOfficePackage(
       throw new OfficeFileDiagnosticError(
         "signed-url-expired",
         kind,
-        `${OFFICE_PACKAGE_SPECS[kind].label} 安全地址已失效（HTTP 401/403），正在刷新同一 revision 的 source/full；请稍候重试。`,
+        `${OFFICE_PACKAGE_SPECS[kind].label} 文件链接已失效，正在重新获取同一份文件；请稍候重试。`,
       );
     }
     throw caught;
@@ -480,7 +480,7 @@ export async function fetchValidatedSpreadsheetSource(
       throw new OfficeFileDiagnosticError(
         "signed-url-expired",
         "xlsx",
-        "表格安全地址已失效（HTTP 401/403），正在刷新同一 revision 的 source/full；请稍候重试。",
+        "表格文件链接已失效，正在重新获取同一份文件；请稍候重试。",
       );
     }
     throw caught;

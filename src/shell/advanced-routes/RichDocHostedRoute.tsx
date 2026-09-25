@@ -48,7 +48,6 @@ import {
 } from "./editor-handoff";
 import {
   collectRichDocText,
-  emptyRichDoc,
   handoffLooksLikeDocx,
   hostedStateFromResolvedJson,
   persistUmoPayload,
@@ -186,12 +185,6 @@ export function RichDocHostedRoute({
       return;
     }
     if (handoffStatus !== "loading") appliedHandoffKeyRef.current = loadKey;
-    const applyEmpty = () => {
-      setSource(emptyRichDoc());
-      setConverted(null);
-      setInspect(inspectRichDocDocument(emptyRichDoc()));
-      setReadOnly(false);
-    };
     const applyLoaded = (next: {
       source: unknown;
       converted: ReturnType<typeof hostedStateFromResolvedJson>["converted"];
@@ -230,7 +223,10 @@ export function RichDocHostedRoute({
           return;
         }
         setStatus(loaded.error);
-        applyEmpty();
+        setSource(null);
+        setConverted(null);
+        setInspect(null);
+        setReadOnly(true);
         return;
       }
       const projectUrl =
@@ -238,7 +234,11 @@ export function RichDocHostedRoute({
           ? handoff.url
           : String(item.meta.editor_project_url || "").trim();
       if (!projectUrl) {
-        applyEmpty();
+        setStatus(`${item.title || "文档"}：没有可读取的文件。`);
+        setSource(null);
+        setConverted(null);
+        setInspect(null);
+        setReadOnly(true);
         return;
       }
       try {
@@ -256,10 +256,13 @@ export function RichDocHostedRoute({
         if (cancelled) return;
         setStatus(
           caught instanceof Error
-            ? caught.message
-            : "工程档读取失败，已按空白文档打开。",
+            ? caught.message.replace(/\bHTTP\s+\d{3}\b/gi, "文件服务器暂时无法提供内容")
+            : "工程档读取失败，文件内容读不出来。",
         );
-        applyEmpty();
+        setSource(null);
+        setConverted(null);
+        setInspect(null);
+        setReadOnly(true);
       }
     })();
     return () => {
@@ -310,7 +313,7 @@ export function RichDocHostedRoute({
     const current = modeRef.current;
     sendToEditor(
       buildRichDocInitEnvelope(instanceId, {
-        content: converted?.content || source || emptyRichDoc(),
+        content: converted?.content || source,
         readOnly,
         title: item.title,
         mode: current,
@@ -439,11 +442,7 @@ export function RichDocHostedRoute({
     }
     setConverted(result.document);
     setReadOnly(false);
-    setStatus(
-      result.document.warnings.length > 0
-        ? `已转换。${result.document.warnings[0]}`
-        : "已转换成 Umo 文档，可以继续编辑。",
-    );
+    setStatus(result.document.warnings[0] || "");
   }, [item.title, source]);
 
   const exportWechat = useCallback(() => {
@@ -476,6 +475,9 @@ export function RichDocHostedRoute({
   );
 
   const flush = useCallback(async () => {
+    if (!source) {
+      return { ok: false as const, error: "文件还没成功载入，不能保存。" };
+    }
     const gate = openHostedSaveGate();
     saveGateRef.current = gate;
     const sent = sendToEditor({
@@ -522,13 +524,8 @@ export function RichDocHostedRoute({
     if (!saved.ok) return saved;
     reportProSaved(handoffItemKey(item), saved.item);
     return { ok: true as const, item: saved.item };
-  }, [instanceId, item, sendToEditor, siteId]);
+  }, [instanceId, item, sendToEditor, siteId, source]);
 
-  const banner =
-    inspect &&
-    inspect.kind === "richdoc" &&
-    inspect.differences.length > 0 &&
-    !converted;
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 
   return (
@@ -547,6 +544,18 @@ export function RichDocHostedRoute({
         },
         pages: { proLabel: "Umo" },
         actions: [
+          ...(inspect?.kind === "richdoc" &&
+          inspect.differences.length > 0 &&
+          !converted
+            ? [
+                {
+                  id: "richdoc-convert",
+                  label: "转换为可编辑",
+                  variant: "primary" as const,
+                  onTrigger: convertNow,
+                },
+              ]
+            : []),
           {
             id: "richdoc-wechat-layout",
             label: "转公众号排版",
@@ -556,31 +565,9 @@ export function RichDocHostedRoute({
         ],
         stage: (
           <div className="flex h-full min-h-0 flex-col">
-            {banner ? (
-              <div className="shrink-0 border-b border-[var(--border,#e7e5e4)] px-4 py-3 text-sm">
-                <p className="font-medium">这份文档按只读打开，原文没有改写</p>
-                <p className="mt-1 text-xs opacity-70">
-                  旧版富文档和 Umo 同源但扩展集不同。转换会列出每一处差异；失败会留下原因。
-                </p>
-                {inspect.differences.length > 0 ? (
-                  <ul className="mt-2 max-h-24 overflow-auto text-xs opacity-80">
-                    {inspect.differences.slice(0, 8).map((item) => (
-                      <li key={`${item.path}:${item.feature}`}>
-                        {item.feature} · {item.reason}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <button
-                  type="button"
-                  className="mt-2 rounded-md border px-3 py-1 text-xs"
-                  onClick={convertNow}
-                >
-                  一键转换为 Umo
-                </button>
-                {convertError ? (
-                  <p className="mt-2 text-xs text-red-600">{convertError}</p>
-                ) : null}
+            {status || convertError ? (
+              <div className="shrink-0 px-3 py-2 text-xs text-[var(--fg-2,#57534e)]" role="status">
+                {status || convertError}
               </div>
             ) : null}
             {src ? (
@@ -608,7 +595,6 @@ export function RichDocHostedRoute({
         ),
         status:
           convertError ||
-          status ||
           (!src
             ? "托管地址未放行"
             : ready
@@ -622,7 +608,7 @@ export function RichDocHostedRoute({
           flush,
           recovery: {
             key: advancedRecoveryKey("richdoc", item),
-            ready,
+            ready: ready && source != null,
             capture: () => snapshot || converted || source,
             restore: () => false,
           },

@@ -37,7 +37,7 @@ export function DeckElementSelectionChrome({
             onPointerDown={(event) =>
               onStartInteraction(event, element, "resize", handle.id)
             }
-            className={`min-h-11 absolute z-20 h-3 w-3 rounded-[3px] border-2 border-white bg-[var(--awb-accent,#8b5cf6)] shadow ${handle.className}`}
+            className={`absolute z-20 h-3 w-3 rounded-[3px] border-2 border-white bg-[var(--awb-accent,#8b5cf6)] shadow ${handle.className}`}
             style={{ cursor: handle.cursor }}
           />
         ))}
@@ -50,7 +50,7 @@ export function DeckElementSelectionChrome({
             onPointerDown={(event) =>
               onStartInteraction(event, element, "rotate")
             }
-            className="min-h-11 absolute -bottom-10 left-1/2 z-20 grid h-4 w-4 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-white bg-[var(--awb-accent,#8b5cf6)] shadow active:cursor-grabbing"
+            className="absolute -bottom-10 left-1/2 z-20 grid h-4 w-4 -translate-x-1/2 cursor-grab place-items-center rounded-full border-2 border-white bg-[var(--awb-accent,#8b5cf6)] shadow active:cursor-grabbing"
           />
         </>
       )}

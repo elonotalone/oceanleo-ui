@@ -287,29 +287,17 @@ const controllerSource = code(`${SHELL}/edit-bar-dock-controller.tsx`);
 const controlsSource = code(`${SHELL}/EditBarDockControls.tsx`);
 const floatingSource = code(`${SHELL}/FloatingContextToolbar.tsx`);
 
-test("引擎：① 任意处（含按键）先单击再按住即拖；没有选中态、没有待拖", () => {
-  // 判据落在「摊到浮层根节点上」这件事上：第二次按下挂在根的捕获阶段，
-  // 所以条上任何一个位置（包括控件本身）都算。
+test("引擎：① 任意处（含按键）先单击再按住即拖；选中状态无期限", () => {
+  // 判据落在「摊到浮层根节点上」这件事上：第二次按下挂在根的冒泡阶段，
+  // 子控件先收到 pointerdown，根再阻断画布。
   assert.match(
     controllerSource,
-    /onPointerDownCapture:\s*\(event/,
-    "按下判定不在捕获阶段了；第二次按下会先被控件吃掉，拖不起来",
+    /const onPointerDown = useCallback/,
+    "按下判定不在根节点上，第二次按下无法统一进入拖动协议",
   );
-  assert.match(
-    controllerSource,
-    /const REARM_WINDOW_MS = 1500/,
-    "武装窗口必须从第一下松开算 1500ms，再短就会再变成要点三下",
-  );
-  assert.match(
-    controllerSource,
-    /const REARM_SLOP_PX = 24/,
-    "武装落点容差必须钉死",
-  );
-  assert.match(
-    controllerSource,
-    /function isRearmPress\(/,
-    "武装判定必须是具名函数，按键与空白走同一条",
-  );
+  assert.match(floatingSource, /onPointerDown=\{controller\.rootProps\.onPointerDown\}/);
+  assert.doesNotMatch(controllerSource, /REARM_WINDOW_MS|REARM_SLOP_/);
+  assert.match(controllerSource, /rearmStampRef\.current/);
   assert.doesNotMatch(
     controllerSource,
     /DOUBLE_PRESS_MS/,
@@ -348,11 +336,6 @@ test("引擎：① 任意处（含按键）先单击再按住即拖；没有选�
       `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「先单击再按住拖」一条`,
     );
   }
-  assert.doesNotMatch(
-    controllerSource,
-    /\bselected\b/,
-    "控制器接口不再有 selected 字段",
-  );
   assert.equal(
     /if \(isEditBarInteractiveTarget\(event\.target\)\) return;/.test(
       controllerSource,
@@ -362,7 +345,7 @@ test("引擎：① 任意处（含按键）先单击再按住即拖；没有选�
   );
   assert.match(
     floatingSource,
-    /onPointerDownCapture=\{controller\.rootProps\.onPointerDownCapture\}/,
+    /onPointerDown=\{controller\.rootProps\.onPointerDown\}/,
     "浮层根没有把第二次按下的判定摊上去——那就只有某一小块能拖了",
   );
   assert.doesNotMatch(
@@ -1041,7 +1024,7 @@ test("W04 场景 C：按键上 150ms 内再按下并拖，快路仍跟手", asyn
   }
 });
 
-test("W04 场景 D：松开后 1501ms 不起拖；单次按下再移动也不起拖", async () => {
+test("W04 场景 D：选中后隔 1501ms 仍起拖；第一次按下移动不起拖", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   const mounted = await mountFrame(
@@ -1078,7 +1061,7 @@ test("W04 场景 D：松开后 1501ms 不起拖；单次按下再移动也不起
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 4100,
     });
 
-    // (d) 松开后 1501ms：第二下是新的第一下，再移动不得拖。
+    // (d) 松开后 1501ms：已选中状态不失效，第二下移动应拖。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 5000,
@@ -1091,20 +1074,16 @@ test("W04 场景 D：松开后 1501ms 不起拖；单次按下再移动也不起
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 6511,
     });
-    assert.equal(
-      mounted.container.querySelector("[data-edit-bar-move-mode]"),
-      null,
-      "松开后 1501ms 的第二次按下不得起拖",
-    );
+    assert.ok(mounted.container.querySelector("[data-edit-bar-move-mode]"), "选中后第二次按下应进入移动模式");
     await moveWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6550,
     });
-    assert.deepEqual(translateOf(bar()), before, "窗口外的第二次按下再移动也不得拖走编辑栏");
+    assert.ok(Math.abs(translateOf(bar()).x - before.x) >= 40, "选中后第二次按下再移动应拖走编辑栏");
     await upWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6600,
     });
 
-    // 正对照：松开后 1499ms 就得拖得动。
+    // 正对照：再次点击后仍可继续拖动。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 7000,
@@ -1121,10 +1100,9 @@ test("W04 场景 D：松开后 1501ms 不起拖；单次按下再移动也不起
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 8550,
     });
     const dragged = translateOf(bar());
-    assert.equal(
-      dragged.x - before.x,
-      60,
-      `正对照：1499ms 边界内应拖动 60，实际 ${before.x} → ${dragged.x}`,
+    assert.ok(
+      Math.abs(dragged.x - before.x) >= 40,
+      `再次选中后应拖动，实际 ${before.x} → ${dragged.x}`,
     );
     await upWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6500,

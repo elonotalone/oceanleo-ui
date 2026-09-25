@@ -18,7 +18,7 @@ export function DeckSlideRail({ editor }: { editor: DeckEditorState }) {
         <button
           type="button"
           onClick={editor.addSlide}
-          className="min-h-11 grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
+          className="grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
           title={tt("新建一页")}
         >
           <AdvancedEditorIcon name="add" className="h-4 w-4" />

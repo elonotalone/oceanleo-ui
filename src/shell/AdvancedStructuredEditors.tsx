@@ -78,6 +78,8 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
   const [text, setText] = useState(() => textFromItem(item));
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [sourceFailed, setSourceFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
@@ -88,6 +90,7 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
     const local = textFromItem(item);
     setText(local);
     setStatus("");
+    setSourceFailed(false);
     const url = sourceUrl(item);
     if (local || !url || !canFetchText(url)) return;
     let alive = true;
@@ -99,7 +102,10 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
         if (alive) setText(value.slice(0, 2_000_000));
       })
       .catch(() => {
-        if (alive) setStatus("原文件无法直接读取，可在这里新建可编辑版本。");
+        if (alive) {
+          setSourceFailed(true);
+          setStatus("原文件无法读取，请重新载入后再试。");
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -107,7 +113,7 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
     return () => {
       alive = false;
     };
-  }, [item]);
+  }, [item, reloadNonce]);
 
   function wrap(before: string, after = before) {
     const start = Math.min(selection.start, text.length);
@@ -121,6 +127,7 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
   }
 
   async function save() {
+    if (sourceFailed) return;
     setStatus("保存中…");
     const result = await saveTextVersion(
       item,
@@ -151,6 +158,8 @@ export function useTextWorkbench(item: LibraryItem, siteId: string) {
     wrap,
     replaceAll,
     save,
+    sourceFailed,
+    reload: () => setReloadNonce((value) => value + 1),
     download: () =>
       download(`${item.title || "document"}.md`, text, "text/markdown;charset=utf-8"),
   };
@@ -166,6 +175,20 @@ export function TextWorkbenchControls({
   accent: string;
 }) {
   const tt = useUI();
+  if (editor.sourceFailed) {
+    return (
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-[12px] text-stone-500">
+        <p>{editor.status}</p>
+        <button
+          type="button"
+          onClick={editor.reload}
+          className="rounded-lg border border-stone-200 px-3 py-2 font-medium text-stone-600"
+        >
+          {tt("重新载入")}
+        </button>
+      </div>
+    );
+  }
   const stats = useMemo(() => {
     const compact = editor.text.trim();
     return {

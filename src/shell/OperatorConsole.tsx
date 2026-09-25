@@ -386,7 +386,7 @@ export function OperatorConsole({
         <button
           type="button"
           onClick={backToDirectory}
-          className="min-h-11 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
           aria-label={tt("返回 App 目录")}
           title={tt("返回 App 目录")}
         >

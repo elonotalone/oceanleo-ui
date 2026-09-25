@@ -235,6 +235,14 @@ const shellStubUrl = dataModule(`
     return jsxs("div", {
       "data-role": "richdoc-hosted-shell",
       children: [
+        ...((adapter && adapter.actions) || []).map((action) =>
+          jsx("button", {
+            type: "button",
+            "data-action": action.id,
+            onClick: action.onTrigger,
+            children: action.label,
+          }, action.id),
+        ),
         adapter && adapter.stage ? adapter.stage : null,
         adapter && adapter.status
           ? jsx("div", { "data-role": "richdoc-hosted-status", children: adapter.status })
@@ -254,7 +262,7 @@ const editorHandoffStubUrl = dataModule(`
   export function handoffItemKey(item) { return (item && (item.key || item.id)) || ""; }
   export function handoffRevisionOf() { return null; }
   export function peekNormalFaceHandoff() { return EMPTY_HANDOFF; }
-  export function useEditorHandoffSource() { return READY_EMPTY; }
+  export function useEditorHandoffSource() { return globalThis.__richdocHandoff || READY_EMPTY; }
   export function useProSavedRevision() { return null; }
   export function reportProSaved() {}
   export function bindNormalFaceHandoff() { return () => {}; }
@@ -583,6 +591,50 @@ test("jsdom 挂上 RichDocHostedRoute 后，画布是真 iframe 而不是 fallba
       "用户看见的是「无法构造嵌入地址」fallback，iframe 没挂上",
     );
   } finally {
+    await unmount();
+  }
+});
+
+test("老格式文档只读打开时顶栏有「转换为可编辑」，点了就转成可编辑的副本", async () => {
+  globalThis.__richdocHandoff = {
+    status: "ready",
+    source: {
+      kind: "inline",
+      json: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "被批的一句",
+                marks: [{ type: "richdocComment", attrs: { commentId: "c1" } }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const { container, unmount } = await mountRichDocHostedRoute();
+  try {
+    await act(async () => {});
+    const convert = container.querySelector('[data-action="richdoc-convert"]');
+    assert.ok(convert, "老格式文档只读打开，却没有转换入口：用户永远改不了它");
+    assert.equal(convert.textContent, "转换为可编辑");
+    await act(async () => {
+      convert.click();
+    });
+    assert.equal(
+      container.querySelector('[data-action="richdoc-convert"]'),
+      null,
+      "转换成功后入口应收起",
+    );
+    const line = container.querySelector('[role="status"]');
+    assert.ok(line && line.textContent.includes("批注"), "转换时去掉了批注，应告诉用户");
+  } finally {
+    delete globalThis.__richdocHandoff;
     await unmount();
   }
 });

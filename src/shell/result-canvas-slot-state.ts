@@ -85,12 +85,24 @@ export function useWorkspaceSlotState({
   //
   // 修法是**显式的优先级**，不是定时器也不是抢跑：凡是走过总线的 action（深链与 agent
   // receipt 同一条通道）都在这里留下一枚 pin，恢复 effect 见到 pin 就让路——谁先落地都
-  // 得到同一个结果，所以这条不会随渲染时序漂移。pin 只认总线 action，不认用户手点标签页
-  // 与 `focusNonce`：那两条不是深链，无深链时的恢复行为必须逐字不变。
+  // 得到同一个结果，所以这条不会随渲染时序漂移。用户手点标签页和总线 action 都会 pin；
+  // 受控 active/focusNonce 同步仍不产生 pin，无显式选择时的恢复行为保持不变。
   const explicitSlotRef = useRef<{
     identity: string;
     slot: WorkspaceSlotId;
   } | null>(null);
+  const knownIdentityRef = useRef(runtimeHydration?.identity || "");
+  useEffect(() => {
+    const identity = runtimeHydration?.identity || "";
+    const previousIdentity = knownIdentityRef.current;
+    if (identity && previousIdentity && identity !== previousIdentity) {
+      explicitSlotRef.current = null;
+    }
+    knownIdentityRef.current = identity;
+    if (identity && explicitSlotRef.current?.identity === "") {
+      explicitSlotRef.current.identity = identity;
+    }
+  }, [runtimeHydration?.identity]);
   const pinExplicitSlot = useCallback(
     (slot: WorkspaceSlotId) => {
       explicitSlotRef.current = {
@@ -104,18 +116,25 @@ export function useWorkspaceSlotState({
     !showTemplate && internal === "template" ? "preview" : internal;
   const previousActive = useRef(active);
 
-  const select = useCallback(
-    (id: WorkspaceSlotId) => {
+  const applySelection = useCallback(
+    (id: WorkspaceSlotId, persist = true) => {
       if (!showTemplate && id === "template") return;
       setInternal(id);
-      // Existing sites persist their local `result/material/mine` ids in app
-      // snapshots. Keep that callback contract while the shared runtime stores
-      // the canonical fixed-slot id below.
-      const callerId = callerIdForSlot(id);
-      if (callerId) onChange?.(callerId);
-      runtimeHydration?.setRightTab(id);
+      if (persist) {
+        const callerId = callerIdForSlot(id);
+        if (callerId) onChange?.(callerId);
+        runtimeHydration?.setRightTab(id);
+      }
     },
     [callerIdForSlot, onChange, runtimeHydration, showTemplate],
+  );
+
+  const select = useCallback(
+    (id: WorkspaceSlotId) => {
+      pinExplicitSlot(id);
+      applySelection(id);
+    },
+    [applySelection, pinExplicitSlot],
   );
 
   useEffect(() => {
@@ -194,7 +213,7 @@ export function useWorkspaceSlotState({
       };
       setWorkspaceAction(envelope);
       pinExplicitSlot(action.tab);
-      select(action.tab);
+      applySelection(action.tab);
     };
     window.addEventListener(WORKSPACE_ACTION_EVENT, receive);
     return () => window.removeEventListener(WORKSPACE_ACTION_EVENT, receive);
@@ -206,7 +225,7 @@ export function useWorkspaceSlotState({
     if (!action) return;
     setWorkspaceAction({ nonce: externalAction.nonce, action });
     pinExplicitSlot(action.tab);
-    select(action.tab);
+    applySelection(action.tab);
   }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const actionFor = useCallback(

@@ -38,6 +38,12 @@ import {
 } from "react";
 import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
+import {
+  isLiveAction,
+  ownTaskActionMark,
+  settleActionHistory,
+  type ActionHistoryMark,
+} from "./agent-thread/action-history";
 import { mergeAgentMessages } from "./agent-thread/merge";
 import { resolveTaskStatus, threadPresentation } from "./agent-thread/rules";
 import { createAgentThreadSync } from "./agent-thread/sync";
@@ -615,6 +621,7 @@ export function FunctionAgentChat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const reportedArtifactIdsRef = useRef<Set<number>>(new Set());
   const seenWorkspaceActionIdsRef = useRef<Set<number>>(new Set());
+  const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
   const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
@@ -1110,7 +1117,7 @@ export function FunctionAgentChat({
               title={title}
               aria-label={title}
               aria-pressed={selected}
-              className={`min-h-11 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+              className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md font-medium transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  selected
  ? "max-w-[6.5rem] px-2 text-white"
  : "w-7 px-0 text-stone-500 hover:bg-white/70 hover:text-stone-700"
@@ -1145,7 +1152,7 @@ export function FunctionAgentChat({
               ? tt("把当前操作台的输入与备注保存为灵感，稍后可在右侧「灵感 · 我的」里一键复用")
               : saveLabel
           }
-          className={`min-h-11 grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 disabled:opacity-60 ${
+          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 disabled:opacity-60 ${
  saveState === "saved"
  ? "border-transparent text-white"
  : saveState === "saving"
@@ -1223,8 +1230,13 @@ export function FunctionAgentChat({
         r.data,
       );
       if (settled === null) return { status: "", changed: false };
-      setMessagesTaskId(id);
       const changed = settled !== serverMessagesRef.current;
+      actionHistoryRef.current = settleActionHistory(
+        actionHistoryRef.current,
+        id,
+        settled,
+      );
+      setMessagesTaskId(id);
       serverMessagesRef.current = settled;
       setMessages((current) => mergeAgentMessages(current, settled));
       const serverStatus = r.data.task?.status || "";
@@ -1251,6 +1263,7 @@ export function FunctionAgentChat({
         loadedTaskRef.current = "";
         reportedArtifactIdsRef.current.clear();
         seenWorkspaceActionIdsRef.current.clear();
+        actionHistoryRef.current = null;
         setMessages([]);
         setStatus("");
       }
@@ -1260,6 +1273,7 @@ export function FunctionAgentChat({
     loadedTaskRef.current = taskId;
     reportedArtifactIdsRef.current.clear();
     seenWorkspaceActionIdsRef.current.clear();
+    if (actionHistoryRef.current?.taskId !== taskId) actionHistoryRef.current = null;
     setMessagesTaskId("");
     setMessages([]);
     serverMessagesRef.current = [];
@@ -1340,11 +1354,12 @@ export function FunctionAgentChat({
         seenWorkspaceActionIdsRef.current.has(message.id)
       )
         continue;
+      seenWorkspaceActionIdsRef.current.add(message.id);
+      if (!isLiveAction(actionHistoryRef.current, taskId, message)) continue;
       const action = normalizeWorkspaceAction(
         message.meta?.workspace_action || message.meta?.ui_action,
       );
       if (!action) continue;
-      seenWorkspaceActionIdsRef.current.add(message.id);
       dispatchWorkspaceAction({
         nonce: `${taskId}:${message.id}`,
         action,
@@ -1481,6 +1496,7 @@ export function FunctionAgentChat({
       }
       // 这段对话是刚建起来的：模型的回答哪怕跟第一份消息一起到，也不能被当成历史吞掉。
       editorCommands.noteOwnTask(r.data.task_id);
+      actionHistoryRef.current = ownTaskActionMark(r.data.task_id);
       setLocalTaskId(r.data.task_id);
       onTaskIdChange?.(r.data.task_id);
       if (workspace) {

@@ -226,7 +226,7 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
             (controlPending && driving) ||
             otherHumanControls
           }
-          className={`min-h-11 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
+          className={`inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
             driving
               ? "bg-amber-100 text-amber-900"
               : "bg-stone-900 text-white"
@@ -312,7 +312,7 @@ export function CloudBrowserChrome(props: BrowserSessionRowProps) {
             type="button"
             onClick={powerAction}
             disabled={busy}
-            className="min-h-11 h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
+            className="h-8 shrink-0 rounded-lg px-3 text-[10px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45"
             style={{ background: accent }}
             aria-label={powerAria}
             data-cloud-browser-power

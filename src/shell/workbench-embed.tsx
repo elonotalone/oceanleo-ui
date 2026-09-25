@@ -17,10 +17,6 @@ import {
 } from "./editor-protocol";
 import { isTrustedEmbedEditorBase } from "./editor-sandbox-origin";
 import {
-  applyFamilyEmbedOriginOverride,
-  familyEmbedOverrideInputFromWindow,
-} from "./family-embed-origin";
-import {
   embedEditorOriginFor,
   embedFrameSandboxFor,
   resolveEmbedLoadBase,
@@ -33,24 +29,13 @@ import {
   type EmbedEditorStatus,
 } from "./use-embed-editor-messages";
 import type { EmbedEditorPaneProps } from "./workbench-embed-types";
-import { editorRouteFor } from "./workbench-routes";
 import {
   buildOpenAssetPayload,
   isWebsiteBlankDraft,
 } from "./website-embed-params";
 
 export type { EmbedEditorPaneProps } from "./workbench-embed-types";
-
-/** 每类嵌入编辑器的地址；只列已实现 editor.v1 接收端的页面。 */
-export function embedEditorBase(item: LibraryItem): string {
-  const route = editorRouteFor(item);
-  if (route.type !== "embed") return "";
-  if (typeof window === "undefined") return route.base;
-  return applyFamilyEmbedOriginOverride(
-    route.base,
-    familyEmbedOverrideInputFromWindow(),
-  );
-}
+export { embedEditorBase } from "./workbench-embed-base";
 
 export function EmbedEditorPane({
   item,

@@ -203,19 +203,7 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
     if (busy || !requireSelection()) return;
     setBusy("copyLink");
     try {
-      let url = "";
-      try {
-        url = await ensureLink();
-      } catch (err) {
-        // 兜底回落：分享接口未上线或报错时，复制当前对话任务的 URL，确保复制可用
-        if (typeof window !== "undefined") {
-          const u = new URL(window.location.href);
-          if (input.taskId) u.searchParams.set("taskId", input.taskId);
-          url = u.toString();
-        } else {
-          throw err;
-        }
-      }
+      const url = await ensureLink();
       const copied = await writeClipboardText(url);
       say(
         copied ? "ok" : "error",
@@ -239,14 +227,13 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
     if (busy || !requireSelection()) return;
     setBusy("image");
     try {
-      // 二维码要回链到 Copy Link 的同一个地址；接口没上线就退回站点首页，
-      // 图照出，只是扫码到首页而不是这段对话。
+      // 二维码只回链 Copy Link 的同一个地址；链接没建成就不画二维码，
+      // 不能拿站点首页冒充这段对话。
       let link = "";
       try {
         link = await ensureLink();
       } catch {
-        link =
-          typeof window !== "undefined" ? window.location.origin : "";
+        link = "";
       }
       const images = await generateShareCard({
         messages: chosen,
@@ -257,12 +244,16 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
         tt,
       });
       setPreview(images);
-      say(
-        "ok",
-        images.blobs.length > 1
-          ? tt("长图已生成 · 共 {count} 张", { count: images.blobs.length })
-          : tt("长图已生成"),
-      );
+      if (!link) {
+        say("error", tt("长图已生成，但分享链接没建成，图上没有二维码。"));
+      } else {
+        say(
+          "ok",
+          images.blobs.length > 1
+            ? tt("长图已生成 · 共 {count} 张", { count: images.blobs.length })
+            : tt("长图已生成"),
+        );
+      }
     } catch (error) {
       say(
         "error",

@@ -426,6 +426,9 @@ const clientStubUrl = dataModule(`
     if (globalThis.__holdDownload) {
       await new Promise((done) => { globalThis.__releaseDownload = done; });
     }
+    if (globalThis.__downloadError) {
+      return { ok: false, error: globalThis.__downloadError };
+    }
     return {
       ok: true,
       data: {
@@ -776,6 +779,38 @@ test("下载在跑的时候收藏仍然按得动：两个入口各自独立", as
       await Promise.resolve();
     });
     await settle();
+    await mounted.unmount();
+  }
+});
+
+test("下载没能开始时，按钮下面写出原因；再点一次就清掉", async () => {
+  globalThis.__identityReads = [];
+  globalThis.__identityResolutions = {};
+  globalThis.__downloadError = "这份文件暂时下载不了，请稍后重试。";
+  const item = durableItem("Download fails");
+  const mounted = await createMounted({
+    entries: [entryFor(item)],
+    onOpenItem: () => {},
+  });
+  try {
+    await openDetail(mounted, item);
+    await click(action(mounted.container, "下载"));
+    await settle();
+    const line = mounted.container.querySelector('[data-artifact-action-failure="true"]');
+    assert.ok(line, "下载失败只报给读屏，看屏幕的人点了没反应也不知道为什么");
+    assert.equal(line.textContent, "这份文件暂时下载不了，请稍后重试。");
+    assert.equal(line.getAttribute("role"), "alert");
+
+    globalThis.__downloadError = "";
+    await click(action(mounted.container, "下载"));
+    await settle();
+    assert.equal(
+      mounted.container.querySelector('[data-artifact-action-failure="true"]'),
+      null,
+      "重新下载后旧的失败原因应清掉",
+    );
+  } finally {
+    globalThis.__downloadError = "";
     await mounted.unmount();
   }
 });

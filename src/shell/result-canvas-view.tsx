@@ -118,7 +118,7 @@ export function StandaloneWorkspaceFrame({
                 type="button"
                 onClick={() => onSelect(slot)}
                 aria-current={isActive ? "page" : undefined}
-                className={`min-h-11 relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                className={`relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  isActive
  ? "text-stone-900"
  : "text-stone-400 hover:text-stone-700"

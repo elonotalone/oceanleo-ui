@@ -641,7 +641,7 @@ export function SplitWorkspace({
   // ResultCanvas which has its own tab header + scroll body) and (b) plain long
   // content (wrap it in an overflow-y-auto child yourself, e.g. Studio's ops).
   const bodyClass =
-    "flex min-h-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1";
+    "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [&>*]:min-h-0 [&>*]:flex-1";
 
   // Single-pane mode (no right content): just render left full-width.
   // doctrine v4（2026-06-22）：紧凑内边距——四周（尤其上下）几乎不留白，两栏几乎
@@ -695,7 +695,7 @@ export function SplitWorkspace({
           if (activeDetail) clearDetail(activeDetail.ownerId);
           else closeLibraryPanel();
         }}
-        className="min-h-11 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
         aria-label={tt("返回操作台")}
         title={tt("返回操作台")}
       >

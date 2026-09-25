@@ -119,7 +119,7 @@ export function FabricImageBrushPanel({
   const tt = useUI();
   const eraseBlocked = editor.layers.some((layer) => layer.locked);
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("画笔")}
         description={tt("选择绘制或擦除，随后直接在画布上拖动。")}
@@ -162,7 +162,7 @@ export function FabricImageBrushPanel({
             value={editor.brush.color}
             disabled={editor.activeTool === "erase"}
             onChange={(event) => editor.setBrush({ color: event.target.value })}
-            className="min-h-11 h-9 w-12 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1 disabled:opacity-40"
+            className="h-9 w-12 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1 disabled:opacity-40"
           />
         </label>
         <label className="mt-4 block text-[11px] text-[var(--fg-2,#57534e)]">
@@ -205,7 +205,7 @@ export function FabricImageShapePanel({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("形状")} description={tt("选择后插入；颜色、描边和透明度可继续调整。")}>
         <div className="grid grid-cols-3 gap-2">
           {SHAPES.map(({ kind, label }) => (
@@ -238,7 +238,7 @@ export function FabricImageLinePanel({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("线条")} description={tt("先选择线条类型，再在画布中调整长度、角度和样式。")}>
         <div className="grid grid-cols-2 gap-2">
           {LINES.map(({ kind, label }) => (
@@ -264,7 +264,7 @@ export function FabricImageNotePanel({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("便签")} description={tt("选择颜色后插入；双击便签文字即可编辑。")}>
         <div className="grid grid-cols-3 gap-2">
           {NOTE_COLORS.map((color) => (
@@ -300,7 +300,7 @@ export function FabricImageTextPanel({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("文字")} description={tt("选择文字层级，插入后可在画布中直接改字。")}>
         <div className="space-y-2">
           {TEXT_PRESETS.map(({ preset, label, sampleClass }) => (
@@ -360,7 +360,7 @@ export function FabricImageSignaturePanel({
     setStrokes([]);
   };
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("手写签名")} description={tt("在签名板书写，满意后插入为可缩放图层。")}>
         <svg
           viewBox="0 0 1000 300"
@@ -409,7 +409,7 @@ export function FabricImageSignaturePanel({
             type="color"
             value={color}
             onChange={(event) => setColor(event.target.value)}
-            className="min-h-11 h-9 w-11 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1"
+            className="h-9 w-11 rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent p-1"
             aria-label={tt("签名颜色")}
           />
           <button
@@ -481,7 +481,7 @@ export function FabricImageTablePanel({
   const tt = useUI();
   const [hovered, setHovered] = useState({ rows: 3, columns: 3 });
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("插入表格")}
         description={tt("拖过网格选择初始行列；插入后可在属性栏继续增减。")}
@@ -501,7 +501,7 @@ export function FabricImageTablePanel({
                 onMouseEnter={() => setHovered({ rows: row, columns: column })}
                 onFocus={() => setHovered({ rows: row, columns: column })}
                 onClick={() => editor.addTable(row, column)}
-                className="min-h-11 h-7 w-7 rounded-[4px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
+                className="h-7 w-7 rounded-[4px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={{
                   borderColor: active
                     ? "var(--awb-accent,#6d5dfc)"
@@ -533,7 +533,7 @@ export function FabricImageExportPanel({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("导出图片")}
         description={tt("选择交付格式与清晰度；导出不会改变可编辑工程。")}
@@ -1064,7 +1064,7 @@ export function FabricImageAiPanel({
   const busy = Boolean(panel.busyId);
 
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       {panel.preview && (
         <Panel
           title={tt(`${panel.preview.capability.label}结果`)}
@@ -1317,4 +1317,3 @@ export function FabricImageAiPanel({
     </div>
   );
 }
-

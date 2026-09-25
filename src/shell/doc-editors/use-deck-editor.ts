@@ -642,6 +642,44 @@ export async function assertDeckPptxDelivery(
   if (required.some((path) => !archive[path]?.length)) {
     throw new Error("PPTX 交付缺少必要的 OOXML 部件");
   }
+  const contentTypes = new TextDecoder().decode(archive["[Content_Types].xml"]);
+  const normalizePart = (value: string): string => {
+    const parts: string[] = [];
+    for (const segment of value.replace(/^\//, "").split("/")) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") parts.pop();
+      else parts.push(segment);
+    }
+    return parts.join("/");
+  };
+  const overrideParts = Array.from(
+    contentTypes.matchAll(/<Override\b[^>]*\bPartName="([^"]+)"/g),
+  ).map((match) => normalizePart(match[1]));
+  const missingOverrides = overrideParts.filter((part) => !archive[part]?.length);
+  if (missingOverrides.length) {
+    throw new Error(
+      `PPTX 交付声明了不存在的部件：${missingOverrides.join(", ")}`,
+    );
+  }
+  for (const [path, bytes] of Object.entries(archive)) {
+    if (!path.endsWith(".rels")) continue;
+    const xml = new TextDecoder().decode(bytes);
+    for (const match of xml.matchAll(
+      /<Relationship\b([^>]*?)\bTarget="([^"]+)"([^>]*)\/>/g,
+    )) {
+      const attributes = `${match[1]} ${match[3]}`;
+      if (/\bTargetMode="External"\b/i.test(attributes)) continue;
+      const target = match[2].split("#", 1)[0];
+      if (/^[a-z][a-z\d+.-]*:/i.test(target)) continue;
+      const owner = path.startsWith("_rels/")
+        ? ""
+        : path.slice(0, -5).replace(/\/_rels\/[^/]+$/, "");
+      const targetPath = normalizePart(`${owner}/${target}`);
+      if (!archive[targetPath]?.length) {
+        throw new Error(`PPTX 交付关系指向不存在的部件：${path} -> ${target}`);
+      }
+    }
+  }
   const slideCount = Object.keys(archive).filter((path) =>
     /^ppt\/slides\/slide\d+\.xml$/.test(path),
   ).length;
@@ -1582,8 +1620,10 @@ export function deckSourceFailureMessage(
   translate: (value: string) => string,
 ): string {
   const detail =
-    caught instanceof Error ? translate(caught.message).trim() : "";
-  const head = translate("没能读到这份演示文稿的源文件，现在停在一份空白稿上。");
+    caught instanceof Error
+      ? translate(caught.message).replace(/\bHTTP\s+\d{3}\b/gi, "文件服务器暂时无法提供内容").trim()
+      : "";
+  const head = translate("没能读到这份演示文稿。");
   const tail = translate("点「重新载入」再试一次，或关掉这份素材重新打开。");
   return detail ? `${head}原因：${detail}。${tail}` : `${head}${tail}`;
 }
@@ -1622,6 +1662,7 @@ export function useDeckEditor(
   const mountedRef = useRef(true);
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const sourceFailedRef = useRef(false);
   const persistedItemRef = useRef(item);
   const preparedSaveRef = useRef<{
     key: string;
@@ -1681,6 +1722,7 @@ export function useDeckEditor(
     setSavedUrl("");
     setError("");
     setSourceFailed(false);
+    sourceFailedRef.current = false;
     setNotice("");
     revisionRef.current = 0;
     persistedItemRef.current = source;
@@ -1711,6 +1753,7 @@ export function useDeckEditor(
       .catch((caught) => {
         if (!abort.signal.aborted) {
           setSourceFailed(true);
+          sourceFailedRef.current = true;
           setError(deckSourceFailureMessage(caught, translate));
         }
       })
@@ -2417,7 +2460,7 @@ export function useDeckEditor(
   }, [buildDelivery, exporting, tt]);
 
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
-    if (savingRef.current) return null;
+    if (savingRef.current || sourceFailedRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneDeckDocument(deckRef.current);
     const baseItem = persistedItemRef.current;
@@ -2606,6 +2649,7 @@ export function useDeckEditor(
 
   const restoreRecovery = useCallback(
     (payload: unknown): boolean => {
+      if (sourceFailedRef.current) return false;
       if (
         !payload ||
         typeof payload !== "object" ||

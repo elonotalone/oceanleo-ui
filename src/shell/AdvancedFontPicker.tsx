@@ -96,7 +96,7 @@ export function AdvancedFontPicker({
   }, [query]);
 
   return (
-    <section className="min-h-full bg-[var(--card,#fff)] px-3 py-4">
+    <section className="bg-[var(--card,#fff)] px-3 py-4">
       <div className="px-1">
         <h3 className="text-[15px] font-semibold tracking-tight text-[var(--fg,#1e293b)]">
           {tt("字体")}

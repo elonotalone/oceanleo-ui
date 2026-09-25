@@ -197,7 +197,7 @@ export function DevicesPage({
 
   return (
     <div
-      className={pane ? "min-h-0 overflow-y-auto overscroll-contain" : "px-8 py-6"}
+      className={pane ? "min-h-0" : "px-8 py-6"}
       data-oceanleo-devices-page
       data-devices-pane={pane ? "" : undefined}
     >

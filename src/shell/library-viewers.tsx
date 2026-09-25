@@ -34,6 +34,9 @@ import {
   officePackageKindForItem,
   officeViewerRenditionPurposes,
 } from "./doc-editors/office-file";
+import { importPptxDeck } from "./doc-editors/pptx-deck-import";
+import { DeckSlideThumbnail } from "./doc-editors/DeckSlideThumbnail";
+import type { DeckDocument, DeckSlide } from "./doc-editors/deck-schema";
 import {
   DeckPreviewLayout,
   deckPreviewLogicalSize,
@@ -378,6 +381,7 @@ interface PptxRenderedSlide {
    * 一页一页补上，在此之前页轨画的是页码占位。见 `PptViewer` 里的取舍说明。
    */
   thumbnail: HTMLElement | null;
+  nativeSlide?: DeckSlide;
 }
 
 type PptxPreviewInit = (
@@ -757,6 +761,7 @@ function PptViewer({
     deckPreviewLogicalSize(),
   );
   const [renderedSlides, setRenderedSlides] = useState<PptxRenderedSlide[]>([]);
+  const [nativeDeck, setNativeDeck] = useState<DeckDocument | null>(null);
   const [activeSlideId, setActiveSlideId] = useState("");
   /**
    * 代理指标，替代拿不到的浏览器计时（`_COMMON.md` §2.4 禁止浏览器验证）。
@@ -775,6 +780,7 @@ function PptViewer({
     if (!node) return;
     node.replaceChildren();
     setRenderedSlides([]);
+    setNativeDeck(null);
     setLogicalSize(deckPreviewLogicalSize());
     setActiveSlideId("");
     setFirstPaintRenders(0);
@@ -811,7 +817,28 @@ function PptViewer({
         const model = await activePreviewer.load(arrayBuffer);
         if (cancelled) return;
         if (!model.slides.length) {
-          throw new Error("PPT 中没有可显示的幻灯片。");
+          activePreviewer.destroy();
+          previewer = null;
+          const deck = await importPptxDeck(arrayBuffer, item.title || "演示文稿");
+          if (cancelled) return;
+          if (!deck.slides.length) throw new Error("PPT 中没有可显示的幻灯片。");
+          const nextLogicalSize = deckPreviewLogicalSize(
+            deck.aspect === "4:3" ? 4 / 3 : 16 / 9,
+          );
+          const outline: PptxRenderedSlide[] = deck.slides.map((slide, index) => ({
+            id: slide.id || `pptx-slide-${index + 1}`,
+            index,
+            label: slide.title || `第 ${index + 1} 页`,
+            thumbnail: null,
+            nativeSlide: slide,
+          }));
+          setNativeDeck(deck);
+          setLogicalSize(nextLogicalSize);
+          setRenderedSlides(outline);
+          setActiveSlideId(outline[0].id);
+          setFirstPaintRenders(1);
+          setState("ready");
+          return;
         }
         const nextLogicalSize = deckPreviewLogicalSize(
           model.width / model.height,
@@ -903,7 +930,16 @@ function PptViewer({
       return renderedSlides.map((slide) => ({
         id: slide.id,
         label: slide.label,
-        thumbnail: slide.thumbnail ? (
+        thumbnail: slide.nativeSlide ? (
+          <div className="aspect-video overflow-hidden rounded bg-white shadow-sm">
+            <DeckSlideThumbnail
+              slide={slide.nativeSlide}
+              number={slide.index + 1}
+              pageWidth={logicalSize.width}
+              pageHeight={logicalSize.height}
+            />
+          </div>
+        ) : slide.thumbnail ? (
           <PptxSlideThumbnail
             surface={slide.thumbnail}
             logicalSize={logicalSize}
@@ -964,9 +1000,19 @@ function PptViewer({
     state === "error" &&
     activeStructuredIndex >= 0 &&
     Boolean(structuredSlides[activeStructuredIndex]);
+  const activeNativeSlide = nativeDeck
+    ? renderedSlides.find((slide) => slide.id === effectiveActiveSlideId)?.nativeSlide
+    : undefined;
+  const activeNativeSlideNumber = renderedSlides.find(
+    (slide) => slide.id === effectiveActiveSlideId,
+  )?.index;
 
   const selectSlide = (slideId: string) => {
     const renderedSlide = renderedSlides.find((slide) => slide.id === slideId);
+    if (state === "ready" && renderedSlide?.nativeSlide) {
+      setActiveSlideId(slideId);
+      return;
+    }
     if (state === "ready" && renderedSlide && previewerRef.current) {
       try {
         previewerRef.current.renderSingleSlide(renderedSlide.index);
@@ -1003,7 +1049,7 @@ function PptViewer({
           {state === "error" && hasStructuredFallback && (
             <div
               role="alert"
-              className="absolute left-1/2 top-4 z-[25] flex max-w-[calc(100%_-_2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow-sm"
+              className="absolute bottom-3 left-3 z-[25] inline-flex max-w-[calc(100%_-_1.5rem)] flex-wrap items-center gap-2 px-1 py-1 text-[11px] text-[var(--awb-warn,#b45309)]"
             >
               <span>
                 {tt("PPT 在线解析失败，正在显示结构化幻灯片快照。")}
@@ -1012,7 +1058,7 @@ function PptViewer({
               <button
                 type="button"
                 onClick={retry}
-                className="rounded border border-amber-300 px-2 py-1 font-medium hover:bg-amber-100"
+                className="rounded border border-current/40 px-2 py-1 font-medium hover:bg-[var(--awb-muted,#f5f5f4)]"
               >
                 {tt("重试")}
               </button>
@@ -1042,6 +1088,16 @@ function PptViewer({
             state === "ready" ? "" : "invisible"
           }`}
         />
+        {activeNativeSlide && (
+          <div className="absolute inset-0">
+            <DeckSlideThumbnail
+              slide={activeNativeSlide}
+              number={(activeNativeSlideNumber ?? 0) + 1}
+              pageWidth={logicalSize.width}
+              pageHeight={logicalSize.height}
+            />
+          </div>
+        )}
         {hasStructuredFallback && (
           <div className="absolute inset-0">
             <StructuredSlidePreview

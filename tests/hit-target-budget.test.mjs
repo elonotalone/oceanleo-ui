@@ -246,7 +246,6 @@ function scanSource(absolutePath, root = REPO) {
     const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
     const minHeight = pinnedMinHeightPx(tokens);
     const height = pinnedHeightPx(tokens);
-    // `min-h-11` 把命中区托住了就不算欠账，即便 `h-*` 写得小。
     const heightOk = minHeight !== null && minHeight >= MIN_HIT_TARGET_PX;
 
     if (PRIMITIVES.has(tag)) {
@@ -421,6 +420,12 @@ const FILE_BUDGET = new Map([
   ["src/shell/share/ShareActionBar.tsx", 1],
   ["src/shell/vector-editor/VectorContextToolbar.tsx", 1],
   ["src/shell/video-editor/ClipInspector.tsx", 2],
+  // 操作员 2026-09-24：P10「按钮变高了」——CLI 设置面板改回当天放大之前的尺寸；
+  // P11「编辑栏矮三分之一」——编辑栏上这两枚跟同条其它控件一样收到 28，
+  // 触屏靠 EDIT_BAR_TOUCH_EXTEND_CLASS 扩点。
+  ["src/shell/EditorToolsIcon.tsx", 1],
+  ["src/shell/SelectionAnimationGallery.tsx", 1],
+  ["src/shell/cloud-computer/terminal-card/CliSettingsPanel.tsx", 4],
   // W03 的面（`ui/index.tsx`）。W04 不许动，已写进 `signals/W04-request.md`。
   ["src/ui/index.tsx", 1],
 ]);
@@ -578,7 +583,7 @@ test("反面用例：fixture 里该红的红、该绿的绿", () => {
     `fixture 判红的点位不对（实测 ${JSON.stringify(flagged)}）：判据被改松或改严了。\n`
       + "该红五处：h-7 的 button、h-8 的链接、h-10 的 input、role=button 且 h-8 的 div、"
       + "size=\"sm\" 的原语。\n"
-      + "该绿五处：h-11 的 button、默认档原语、min-h-11 托底的、没写高度的、"
+      + "该绿四处：h-11 的 button、默认档原语、没写高度的、"
       + "h-8 但不可交互的 span。",
   );
 });

@@ -994,7 +994,7 @@ function PromptZone({ accent }: { accent: string }) {
               }}
               title={tt("查看 / 编辑")}
               aria-label={tt("查看 / 编辑")}
-              className="min-h-11 absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
+              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />

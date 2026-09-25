@@ -317,9 +317,9 @@ export function AdvancedFeatureRoute({
 
   if (item) {
     return (
-      <div className="flex h-dvh min-h-0 flex-col bg-[var(--surface,#fafaf9)]">
+      <div className="relative flex h-dvh min-h-0 flex-col bg-[var(--surface,#fafaf9)]">
         {error ? (
-          <div className="shrink-0 border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-[12px] text-amber-700">
+          <div className="absolute left-3 top-3 z-20 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg px-2 py-1 text-[11px] text-amber-700">
             {tt(error)}
             <button
               type="button"
@@ -376,14 +376,15 @@ export function AdvancedFeatureRoute({
           </span>
         </div>
       </header>
-      {error && (
-        <div className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-6xl rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-600">
-          {tt(error)}
-        </div>
-      )}
       {loading ? (
-        <div className="grid min-h-[55vh] flex-1 place-items-center text-[13px] text-[var(--muted,#a8a29e)]">
-          {tt("正在打开高级功能…")}
+        <div className="grid min-h-[55vh] flex-1 place-items-center text-[var(--muted,#a8a29e)]">
+          <span className="inline-flex items-center gap-2 text-[11px]">
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-current/25 border-t-current"
+            />
+            {tt("正在打开")}
+          </span>
         </div>
       ) : (
         <div className="grid min-h-[55vh] flex-1 place-items-center p-8 text-center">

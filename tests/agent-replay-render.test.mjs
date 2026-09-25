@@ -547,7 +547,7 @@ test("静态档：三条消息首帧就全在，没有播放条 / 重播 / 逐�
   }
 });
 
-test("静态档取数：与回放同一个 /v1/share，失败时说的是「这个分享打不开了」", async () => {
+test("静态档取数：404 与其他失败使用不同的分享提示", async () => {
   shareStub.__setShareResponse({ ok: true, data: shared(SHARED_MESSAGES) });
   const ok = await mount(
     React.createElement(AgentReplayPage, { shareId: "abc123", playback: false }),
@@ -560,8 +560,8 @@ test("静态档取数：与回放同一个 /v1/share，失败时说的是「这�
     await ok.unmount();
   }
 
-  // 分享被关掉：一句人话，且措辞是「分享」而不是「回放」——这页不是回放页。
-  shareStub.__setShareResponse({ ok: false, error: "share 404" });
+  // 分享被关掉：明确说明不存在或已关闭。
+  shareStub.__setShareResponse({ ok: false, error: "share 404", status: 404 });
   const gone = await mount(
     React.createElement(AgentReplayPage, { shareId: "gone", playback: false }),
   );
@@ -570,9 +570,19 @@ test("静态档取数：与回放同一个 /v1/share，失败时说的是「这�
       gone.container.querySelector("[data-replay-root]").getAttribute("data-replay-root"),
       "error",
     );
-    assert.match(gone.container.textContent, /这个分享打不开了/);
+    assert.match(gone.container.textContent, /这个分享不存在或已被关闭/);
   } finally {
     await gone.unmount();
+  }
+
+  shareStub.__setShareResponse({ ok: false, error: "share 503", status: 503 });
+  const unavailable = await mount(
+    React.createElement(AgentReplayPage, { shareId: "offline", playback: false }),
+  );
+  try {
+    assert.match(unavailable.container.textContent, /这个分享暂时打不开，请稍后再试/);
+  } finally {
+    await unavailable.unmount();
   }
 });
 

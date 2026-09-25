@@ -68,7 +68,7 @@ function ColorRow({
           key={color}
           type="button"
           onClick={() => onChange(color)}
-          className="min-h-11 h-7 w-7 rounded-full border-2 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:scale-110"
+          className="h-7 w-7 rounded-full border-2 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:scale-110"
           style={{
             background: color,
             borderColor: value === color ? "white" : "transparent",
@@ -113,7 +113,7 @@ export function DeckDrawPanel({
     { label: "细线笔", width: 1.2, opacity: 1, highlighter: false },
   ] as const;
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("画笔")}
         description={tt("选择笔触后，直接在整张幻灯片上按住并拖动。")}
@@ -202,7 +202,7 @@ export function DeckLinePanel({ editor }: { editor: DeckEditorState }) {
     { label: "圆点箭头", dash: "solid", start: "circle", end: "arrow", width: 4 },
   ];
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("线条")}
         description={tt("选择线型后插入；可继续移动、旋转和调整长度。")}
@@ -272,7 +272,7 @@ export function DeckNotesPanel({ editor }: { editor: DeckEditorState }) {
     ["#fed7aa", "#542b12"],
   ] as const;
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("便签")}
         description={tt("选择颜色后插入，双击便签即可原地编辑文字。")}
@@ -315,7 +315,7 @@ export function DeckTablePanel({ editor }: { editor: DeckEditorState }) {
   const [hovered, setHovered] = useState({ rows: 3, columns: 3 });
   const size = 8;
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("表格")}
         description={tt("拖过网格选择行列，点击后插入可直接编辑的表格。")}
@@ -338,7 +338,7 @@ export function DeckTablePanel({ editor }: { editor: DeckEditorState }) {
                 onMouseEnter={() => setHovered({ rows: row, columns: column })}
                 onFocus={() => setHovered({ rows: row, columns: column })}
                 onClick={() => editor.addTableElement(row, column)}
-                className="min-h-11 h-6 w-6 rounded-[3px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
+                className="h-6 w-6 rounded-[3px] border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
                 style={{
                   borderColor: active
                     ? "var(--awb-accent,#7c3aed)"
@@ -375,7 +375,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
   const drawingRef = useRef(false);
   const style: DeckInkStyle = { color, width: 3.2, opacity: 1 };
   return (
-    <div className="min-h-full bg-[var(--card,#fff)]">
+    <div className="bg-[var(--card,#fff)]">
       <Panel
         title={tt("手写签名")}
         description={tt("在签名板中书写，可反复重画后插入幻灯片。")}
@@ -430,7 +430,7 @@ export function DeckSignaturePanel({ editor }: { editor: DeckEditorState }) {
             type="color"
             value={color}
             onChange={(event) => setColor(event.target.value)}
-            className="min-h-11 h-9 w-10 cursor-pointer rounded-lg border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] p-1"
+            className="h-9 w-10 cursor-pointer rounded-lg border border-[var(--border,#d6d3d1)] bg-[var(--card,#fff)] p-1"
             aria-label={tt("签名颜色")}
           />
           <button

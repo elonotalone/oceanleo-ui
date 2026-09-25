@@ -42,7 +42,7 @@ export function SelectionToolbarNumberControl({
   return (
     <div
       className={`flex max-w-full min-w-0 shrink-0 items-center overflow-x-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] ${
-        menu ? "min-h-11 w-full" : `h-7 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`
+        menu ? "w-full" : `h-7 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`
       }`}
       title={namedLabel}
     >

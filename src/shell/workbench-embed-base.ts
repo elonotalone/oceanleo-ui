@@ -15,6 +15,18 @@ import {
   familyEmbedFrameSandbox,
   familyEmbedOverrideInputFromWindow,
 } from "./family-embed-origin";
+import type { LibraryItem } from "./library-data";
+import { editorRouteFor } from "./workbench-routes";
+
+/**
+ * 每类嵌入编辑器的写死白名单 base；只列已实现 editor.v1 接收端的页面。
+ * 不得在这里套 LeoDev 覆盖：EmbedEditorPane 第一道闸只认白名单 base，
+ * 覆盖由 pane 内的 `resolveEmbedLoadBase` 做。
+ */
+export function embedEditorBase(item: LibraryItem): string {
+  const route = editorRouteFor(item);
+  return route.type === "embed" ? route.base : "";
+}
 
 export function resolveEmbedLoadBase(editorBase: string): {
   resolved: string;

@@ -59,7 +59,7 @@ export interface AgentReplayPageProps {
 type LoadState =
   | { phase: "loading" }
   | { phase: "ready"; replay: SharedReplay }
-  | { phase: "error"; message: string };
+  | { phase: "error"; message: string; status?: number };
 
 function initialLoadState(props: AgentReplayPageProps): LoadState {
   if (props.replay) return { phase: "ready", replay: props.replay };
@@ -98,7 +98,11 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
       setLoad(
         result.ok && result.data
           ? { phase: "ready", replay: result.data }
-          : { phase: "error", message: result.error || "share unavailable" },
+          : {
+              phase: "error",
+              message: result.error || "share unavailable",
+              status: result.status,
+            },
       );
     });
     return () => {
@@ -171,7 +175,9 @@ export function AgentReplayPage(props: AgentReplayPageProps) {
       >
         {playback
           ? tt("这个回放打不开了，可能已被分享者关闭。")
-          : tt("这个分享打不开了，可能已被分享者关闭。")}
+          : load.status === 404
+            ? tt("这个分享不存在或已被关闭。")
+            : tt("这个分享暂时打不开，请稍后再试。")}
       </div>
     );
   }

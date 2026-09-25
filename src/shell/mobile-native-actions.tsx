@@ -409,7 +409,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={tt("收起")}
-            className="min-h-11 flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
           >
             ×
           </button>
@@ -429,7 +429,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
             <button
               type="button"
               onClick={() => setReloads((value) => value + 1)}
-              className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-neutral-300 px-3 text-[13px] text-neutral-700"
+              className="mt-2 inline-flex items-center rounded-lg border border-neutral-300 px-3 text-[13px] text-neutral-700"
             >
               {tt("重试")}
             </button>
@@ -443,7 +443,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
             </p>
             <a
               href="/devices"
-              className="mt-2 inline-flex min-h-11 items-center rounded-lg bg-sky-600 px-4 text-[13px] font-medium text-white"
+              className="mt-2 inline-flex items-center rounded-lg bg-sky-600 px-4 text-[13px] font-medium text-white"
             >
               {tt("去连接一台电脑")}
             </a>
@@ -458,7 +458,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
                 <select
                   value={target.deviceId}
                   onChange={(event) => setPicked(event.target.value)}
-                  className="mt-1 block w-full min-h-11 rounded-lg border border-neutral-300 px-3 py-2 text-[13px]"
+                  className="mt-1 block w-full rounded-lg border border-neutral-300 px-3 py-2 text-[13px]"
                   data-native-handoff-device
                 >
                   {devices.map((device) => (

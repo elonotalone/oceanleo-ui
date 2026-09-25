@@ -20,10 +20,6 @@ const RICHDOC_SOURCE_MEDIA_TYPE =
 export const RICHDOC_PROJECT_SCHEMA = "tiptap-json@1";
 export const UMO_SAVE_TIMEOUT_MS = 15_000;
 
-export function emptyRichDoc(): { type: "doc"; content: { type: "paragraph" }[] } {
-  return { type: "doc", content: [{ type: "paragraph" }] };
-}
-
 export function collectRichDocText(node: unknown): string {
   if (!node || typeof node !== "object") return "";
   const record = node as { text?: unknown; content?: unknown; data?: unknown };

@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import {
   ANIMATION_PRESET_IDS,
   selectionRequestId,
@@ -159,7 +160,7 @@ export function SelectionAnimationGallery({
         ref={launcherRef}
         type="button"
         disabled={control.disabled}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+        className={`grid h-7 w-7 shrink-0 place-items-center rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`}
         aria-label={accessibleLabel}
         aria-haspopup="dialog"
         aria-expanded={open}

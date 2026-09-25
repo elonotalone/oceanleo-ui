@@ -484,7 +484,7 @@ export function AdvancedWorkbenchBlankStage({
           type="button"
           disabled={Boolean(busy)}
           onClick={() => inputRef.current?.click()}
-          className="min-h-11 mt-5 inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold text-[var(--awb-on-accent,#fff)] shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60"
+          className="mt-5 inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold text-[var(--awb-on-accent,#fff)] shadow transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-60"
           style={{ background: accent }}
         >
           {busy ? tt("上传中…") : tt("上传文件")}

@@ -40,7 +40,7 @@ function ToolButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="min-h-11 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm disabled:opacity-35"
+      className="rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] hover:shadow-sm disabled:opacity-35"
     >
       {label}
     </button>
@@ -74,7 +74,7 @@ function CheckRow({
       type="button"
       aria-pressed={checked}
       onClick={() => onChange(!checked)}
-      className={`min-h-11 rounded-xl border px-2.5 text-[11px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] ${
+      className={`rounded-xl border px-2.5 py-2 text-[11px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] ${
         checked
           ? "border-[var(--awb-accent,#7c3aed)] bg-[var(--surface-hover,rgba(0,0,0,.04))] text-[var(--awb-accent,#7c3aed)]"
           : "border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)]"
@@ -146,7 +146,7 @@ export function RichDocControls({
   };
 
   return (
-    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
+    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
       <Section title={tt("文档来源")}>
         <input
           ref={sourceFileRef}

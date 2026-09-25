@@ -103,7 +103,7 @@ function AudioIconButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="min-h-11 grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
+      className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
     >
       <AudioToolIcon name={icon} />
     </button>
@@ -118,7 +118,7 @@ export function AudioControls({
 }) {
   const tt = useUI();
   return (
-    <div className="min-h-full space-y-4 overflow-y-auto bg-[var(--card,#fff)] p-4">
+    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
       <section>
         <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("音频源")}
