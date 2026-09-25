@@ -16,7 +16,7 @@
 //     所以缺失一律渲染成「无预览」，绝不抛错。
 // ============================================================================
 
-import type { AgentMessage } from "../../lib/agent";
+import type { AgentAttachment, AgentMessage } from "../../lib/agent";
 
 /** 合同 I-1 给的硬上限。后端已经截过一刀，这里再截一刀是防御：分享出去的页面
  *  面向陌生人，不能因为某条历史数据超长就把整页卡死。 */
@@ -200,6 +200,9 @@ export interface ReplayStep {
   target: string;
   /** 消息正文（展开区里没有 result 预览时兜底显示它）。 */
   content: string;
+  /** 公开分享里允许显示的图片与附件元数据；URL 仍在渲染层做协议校验。 */
+  imageUrl?: string;
+  attachments: AgentAttachment[];
   args: ReplayPreview;
   result: ReplayPreview;
   createdAt: string;
@@ -369,6 +372,27 @@ export function buildReplaySteps(
     const args = parseReplayPreview(meta.args_preview, REPLAY_ARGS_PREVIEW_LIMIT);
     const result = parseReplayPreview(meta.result_preview, REPLAY_RESULT_PREVIEW_LIMIT);
     const content = typeof message.content === "string" ? message.content : "";
+    const attachments = Array.isArray(meta.attachments)
+      ? meta.attachments.filter(
+          (attachment): attachment is AgentAttachment =>
+            Boolean(
+              attachment &&
+                typeof attachment === "object" &&
+                typeof (attachment as AgentAttachment).url === "string" &&
+                (attachment as AgentAttachment).url.trim(),
+            ),
+        )
+      : [];
+    const artifact = meta.artifact;
+    const imageUrl =
+      typeof meta.image_url === "string"
+        ? meta.image_url
+        : artifact &&
+            typeof artifact === "object" &&
+            String(artifact.type || "").toLowerCase() === "image" &&
+            typeof artifact.url === "string"
+          ? artifact.url
+          : undefined;
     return {
       id: idValue(message),
       role: message.role === "user" ? "user" : "assistant",
@@ -376,6 +400,8 @@ export function buildReplaySteps(
       action: stepAction(message, tt),
       target: replayStepTarget(args, content),
       content,
+      imageUrl,
+      attachments,
       args,
       result,
       createdAt: message.created_at || "",

@@ -15,8 +15,8 @@
 //   两条路由共用这一个组件（不复制一份），差别只在这个开关。
 //
 // 安全（任务书不可协商项）：
-//   - 这页渲染的全是**用户文字**，一律走 React 文本节点。没有 `dangerouslySetInnerHTML`，
-//     没有 markdown/HTML 渲染器，没有 iframe——回放里不嵌生成站点/游戏预览，
+//   - 正文一律走 React 文本节点；图片和附件 URL 只允许 http(s) 并加 no-referrer。
+//     没有 `dangerouslySetInnerHTML`，没有 markdown/HTML 渲染器，没有 iframe——回放里不嵌生成站点/游戏预览，
 //     所以也就不存在「iframe 必须指向 *.oceanleo.app」那一条要守。
 //     日后真要嵌预览，`src` 必须是 `*.oceanleo.app`，且 `sandbox` 不得同时带
 //     `allow-scripts` 与 `allow-same-origin`。
@@ -302,12 +302,17 @@ function ReplayTextRow({ step }: { step: ReplayStep }) {
   if (step.role === "user") {
     return (
       <div className="flex justify-end">
-        <p
-          data-replay-text="user"
-          className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900"
-        >
-          {step.content}
-        </p>
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+          <ReplayMedia step={step} />
+          {step.content && (
+            <p
+              data-replay-text="user"
+              className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900"
+            >
+              {step.content}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -332,12 +337,17 @@ function ReplayTextRow({ step }: { step: ReplayStep }) {
     );
   }
   return (
-    <p
-      data-replay-text="answer"
-      className="whitespace-pre-wrap px-1 py-1 text-[15px] leading-relaxed text-neutral-900"
-    >
-      {step.content}
-    </p>
+    <div className="space-y-1">
+      {step.content && (
+        <p
+          data-replay-text="answer"
+          className="whitespace-pre-wrap px-1 py-1 text-[15px] leading-relaxed text-neutral-900"
+        >
+          {step.content}
+        </p>
+      )}
+      <ReplayMedia step={step} />
+    </div>
   );
 }
 
@@ -387,6 +397,7 @@ function ReplayStepCard({ step }: { step: ReplayStep }) {
           ›
         </span>
       </button>
+      <ReplayMedia step={step} />
       {open && (
         <div data-replay-card-detail className="space-y-3 border-t border-stone-100 px-3 py-3">
           <PreviewBlock label={tt("入参")} preview={step.args} />
@@ -398,6 +409,83 @@ function ReplayStepCard({ step }: { step: ReplayStep }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function safeMediaUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function isImageAttachment(attachment: { url?: string; mime?: string; media_type?: string }): boolean {
+  return (
+    String(attachment.mime || "").startsWith("image/") ||
+    attachment.media_type === "image" ||
+    /\.(png|jpe?g|webp|gif)$/i.test(String(attachment.url || "").split("?")[0])
+  );
+}
+
+/** 分享页只画图片和文件链接，所有 URL 先限制为 http(s)，不把任意协议交给 DOM。 */
+function ReplayMedia({ step }: { step: ReplayStep }) {
+  const images = [safeMediaUrl(step.imageUrl)]
+    .concat(
+      step.attachments
+        .filter(isImageAttachment)
+        .map((attachment) => safeMediaUrl(attachment.url)),
+    )
+    .filter((url): url is string => Boolean(url));
+  const files = step.attachments.filter((attachment) => !isImageAttachment(attachment));
+  if (!images.length && !files.length) return null;
+
+  return (
+    <div data-replay-media className="flex flex-wrap gap-2 px-1">
+      {images.map((url, index) => (
+        <a
+          key={`${url}-${index}`}
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          referrerPolicy="no-referrer"
+          className="block"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="max-h-56 max-w-full rounded-lg border border-stone-200 object-contain"
+          />
+        </a>
+      ))}
+      {files.map((attachment, index) => {
+        const url = safeMediaUrl(attachment.url);
+        const label = attachment.name || attachment.url || "附件";
+        return url ? (
+          <a
+            key={`${label}-${index}`}
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            referrerPolicy="no-referrer"
+            className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[12px] text-stone-600"
+          >
+            {label}
+          </a>
+        ) : (
+          <span
+            key={`${label}-${index}`}
+            className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[12px] text-stone-600"
+          >
+            {label}
+          </span>
+        );
+      })}
     </div>
   );
 }
