@@ -410,12 +410,15 @@ function AdvancedContentWorkbenchRuntime(
   const navigate = useCallback(
     (sessionId: string) => {
       if (editorHost.embedded) return;
+      // 全页库就地编辑的会话 app 是 library。这里不得改地址，尤其不得
+      // 把一条对不上清册的会话送去 /history/<id>。
+      if (workspace.appId === "library") return;
       const feature = advancedFeatureForItem(materialRef.current);
       if (feature) {
         router.replace(advancedFeatureHref(feature, { sessionId }));
       }
     },
-    [editorHost.embedded, router],
+    [editorHost.embedded, router, workspace.appId],
   );
   const ensure = useCallback(
     async (taskId?: string | null) => {

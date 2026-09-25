@@ -54,6 +54,7 @@ import {
   MaterialOwningAppList,
   useMaterialDetailAppPlan,
 } from "./library-detail-app-actions";
+import { resolveLibraryEditRoute } from "./library-edit-landing";
 import type { LibraryEntrySection } from "./deck-delivery-family";
 import {
   WorkspaceCard,
@@ -581,6 +582,18 @@ export function WorkspaceLibrary({
       setDetailIdentityFailure(message);
     },
   });
+  // 门户 /library 这类全页库没有挂归属工作台：跨应用深链会落到门户
+  // `/workspace/<app>` 或一条对不上清册的 `/history/<session>`。这里收成就地
+  // 类型编辑器。explore / 站内工作台仍用上面算出来的 editRoute。
+  const hostEditRoute = resolveLibraryEditRoute(detailAppPlan.editRoute, {
+    appId,
+    plain,
+  });
+  const hostDetailPlan = {
+    ...detailAppPlan,
+    editRoute: hostEditRoute,
+    routeEditByApp: hostEditRoute === "deep-link",
+  };
 
   useEffect(() => {
     if (!selectedId) return;
@@ -708,7 +721,7 @@ export function WorkspaceLibrary({
     // 写操作。所以它不受落点判据管，永远按既有规则出现。
     const matrix = matrixFor(
       item,
-      websiteTemplate ? "none" : detailAppPlan.editRoute,
+      websiteTemplate ? "none" : hostEditRoute,
     );
     // 只有「本该解析出耐久身份、但现在还没有」的条目才需要这套说明与重试：
     // 已经是 durable 的、以及压根没有可解析身份的（临时结果），都与过去逐字相同。
@@ -849,7 +862,7 @@ export function WorkspaceLibrary({
             <MaterialOwningAppList plan={detailAppPlan} />
           </div>
           <MaterialOwningAppEdit
-            plan={detailAppPlan}
+            plan={hostDetailPlan}
             item={workbenchItem}
             accent={accent}
             compact

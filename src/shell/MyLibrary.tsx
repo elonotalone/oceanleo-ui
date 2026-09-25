@@ -34,6 +34,7 @@ import {
   rememberOpenedLibraryItem,
 } from "./library-current-identity";
 import { useLibraryEditIntent } from "./library-edit-intent";
+import { libraryStandaloneEditorBinding } from "./library-edit-landing";
 import {
   artifactIsVisible,
   isEnsureableTransient,
@@ -1118,6 +1119,10 @@ export function MyLibrary({
   );
 
   if (standaloneEditorItem) {
+    const editorBinding = libraryStandaloneEditorBinding({
+      hostSiteId: siteId,
+      itemSiteId: standaloneEditorItem.siteId,
+    });
     return (
       <div className={`h-full min-h-0 ${className}`}>
         <AdvancedContentWorkbench
@@ -1126,8 +1131,8 @@ export function MyLibrary({
           }`}
           item={standaloneEditorItem}
           taskId={taskId}
-          siteId={siteId || standaloneEditorItem.siteId}
-          appId={siteId || "library"}
+          siteId={editorBinding.siteId}
+          appId={editorBinding.appId}
           accent={accent}
           embedded
           onSavedItem={setStandaloneEditorItem}
