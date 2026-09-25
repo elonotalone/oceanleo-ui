@@ -1729,7 +1729,7 @@ test("terminal configuration and v3 failures are visible instead of spinning for
   );
   assert.match(
     panelSource,
-    /transport\.transportState !== "failed"[\s\S]*?transport\.transportState !== "closed"/,
+    /cloudBrowserShouldShowViewportSpinner\(/,
   );
 });
 

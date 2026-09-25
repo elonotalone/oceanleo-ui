@@ -40,6 +40,7 @@ import {
   useCloudBrowserSessionData,
 } from "./cloud-browser-session-data";
 import { useCloudBrowserTransport } from "./cloud-browser-transport";
+import { cloudBrowserShouldShowViewportSpinner } from "./cloud-browser-spinner";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export { pointInContainedFrame } from "./cloud-browser-live";
@@ -397,11 +398,6 @@ export function CloudBrowserPanel({
     interaction.fullscreenMode === "fallback";
   const terminalFailure =
     liveRequested && transport.transportState === "failed";
-  const waitingForLive =
-    liveRequested &&
-    transport.transportState !== "streaming" &&
-    transport.transportState !== "failed" &&
-    transport.transportState !== "closed";
   const terminalMessage =
     transport.failureKind === "protocol_mismatch"
       ? `${error || tt(
@@ -518,7 +514,11 @@ export function CloudBrowserPanel({
           />
         )}
 
-        {waitingForLive && (
+        {cloudBrowserShouldShowViewportSpinner(
+          transport.transportState,
+          transport.hasCanvasFrame,
+          liveRequested,
+        ) && (
           <BrowserViewportSpinner
             label={tt("浏览器正在连接")}
             retainedFrame={transport.hasCanvasFrame}
