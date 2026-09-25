@@ -320,7 +320,7 @@ test("live inspector panels refresh through a guarded store without render loops
   assert.match(store, /Object\.is\(store\.node, node\)/);
   assert.match(shell, /updateTransientPanel/);
   assert.match(shell, /publishLiveReactNode\(liveHeaderStoreRef\.current, actionBar\)/);
-  assert.match(host, /layout\.updateTransientPanel/);
+  assert.match(host, /layout\??\.updateTransientPanel/);
   assert.doesNotMatch(shell, /store\.listeners\.forEach[\s\S]*useLayoutEffect\(\(\) => \{/);
 });
 

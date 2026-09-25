@@ -24,8 +24,8 @@ const galleryHost = "/opt/cursor-workspaces/oceandino/plugin-gallery/components/
 const galleryWorkbench = "/opt/cursor-workspaces/oceandino/plugin-gallery/components/PluginWorkbench.tsx";
 const galleryCss = "/opt/cursor-workspaces/oceandino/plugin-gallery/styles/gallery-host.css";
 const websiteCode = "/root/projects/website/front/packages/gallery-editor/src/WebsiteCodeStage.tsx";
-const advancedPages = "/root/projects/oceanleo-ui/src/shell/AdvancedFeaturePages.tsx";
-const workbenchLoading = "/root/projects/oceanleo-ui/src/shell/advanced-routes/WorkbenchRouteLoading.tsx";
+const advancedPages = new URL("../src/shell/AdvancedFeaturePages.tsx", import.meta.url);
+const workbenchLoading = new URL("../src/shell/advanced-routes/WorkbenchRouteLoading.tsx", import.meta.url);
 const gallerySeed = "/opt/cursor-workspaces/oceandino/plugin-gallery/tests/i18n/seed-gaps.json";
 
 async function source(path) {

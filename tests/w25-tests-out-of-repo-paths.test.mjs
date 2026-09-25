@@ -97,6 +97,27 @@ const REGISTERED = {
     "同上，umo-hosted 侧 SUPPORTED_CONTROL_IDS 权威，rich-doc-hosted-review.test.mjs 拿它对账指令面",
   "/root/projects/umo-hosted":
     "上面几条 umo-hosted 路径的仓根，rich-doc-hosted-review.test.mjs 用它拼 App.vue 路径做结构层判据（闸②），不是夹具本体",
+  // ── G3/G7 2026-09-25 登记的跨仓整合：P7 打开素材、P1 滚轮、P3 横幅的修法落在门户/网站/design/plugin-gallery，只有读对端真代码才验得到 ──
+  "/root/projects/oceanleo/app/library/page.tsx":
+    "门户仓的素材库页是 P7「打开素材」的真实宿主，g3-portal-typed-editor.test.mjs 挂它走完编辑键到类型编辑器的整条路；复述件验不了门户那一侧的接线",
+  "/root/projects/website/front":
+    "网站仓前端根，g3-website-material-restore.test.mjs 编译真实的 BuilderContext / BuildConsole / PreviewCanvas 验 P7 打开网站素材不再跳到云端浏览器；网站仓在 main 上长期存在",
+  "/root/projects/design/packages/gallery-editor/src/editor/EditorCanvas.tsx":
+    "design 仓画布的加载态，g7-banners-scroll.test.mjs 验 P3 通栏横幅换成舞台内转圈；跨仓对账不能抄副本",
+  "/root/projects/website/front/packages/gallery-editor/src/WebsiteExplorerPanel.tsx":
+    "网站仓左栏资源树，g7-banners-scroll.test.mjs 验 P1 长列表只由一个填满外壳的滚动者承接滚轮",
+  "/root/projects/website/front/packages/gallery-editor/src/WebsiteCodeStage.tsx":
+    "网站仓代码舞台的加载态，g7-banners-scroll.test.mjs 验 P3 不再保留通栏旧文案",
+  "/opt/cursor-workspaces/oceandino/plugin-gallery/components/GalleryGamePreviewHost.tsx":
+    "oceandino 仓 plugin-gallery 的游戏预览宿主，g7-banners-scroll.test.mjs 验 P3 加载态是舞台内转圈加短文案；控制面仓在 main 上长期存在",
+  "/opt/cursor-workspaces/oceandino/plugin-gallery/components/PluginHost.tsx":
+    "同上，plugin-gallery 插件宿主不再写通栏的「正在打开编辑器…」",
+  "/opt/cursor-workspaces/oceandino/plugin-gallery/components/PluginWorkbench.tsx":
+    "同上，plugin-gallery 工作台的加载态走 gallery-loading-indicator",
+  "/opt/cursor-workspaces/oceandino/plugin-gallery/styles/gallery-host.css":
+    "同上，plugin-gallery 宿主样式里不再有 .gallery-banner 通栏横幅",
+  "/opt/cursor-workspaces/oceandino/plugin-gallery/tests/i18n/seed-gaps.json":
+    "plugin-gallery 的 i18n 缺口清单随 oceandino 仓版本化，g7-banners-scroll.test.mjs 验已删的横幅文案没有留在待译清单里",
 };
 
 /**

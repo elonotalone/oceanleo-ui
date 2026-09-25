@@ -161,7 +161,7 @@ const lines = (html) => html.replace(/></g, ">\n<");
 
 const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 <div class="relative flex items-center justify-center py-1">
-<button type="button" aria-label="返回" title="返回" class="absolute left-0 flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95">
+<button type="button" aria-label="返回" title="返回" class="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95">
 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round">
 </path>
@@ -217,7 +217,7 @@ const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 
 const DEVICES_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6" data-oceanleo-devices-page="true">
 <div class="relative flex items-center justify-center py-1">
-<button type="button" aria-label="返回" title="返回" class="absolute left-0 flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95">
+<button type="button" aria-label="返回" title="返回" class="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95">
 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round">
 </path>

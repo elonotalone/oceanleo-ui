@@ -239,7 +239,8 @@ function deckItem() {
     kind: "ppt",
     siteId: "website",
     favorite: false,
-    meta: {},
+    // PPTist 要等稿件读出来才挂（G4），闸素材得带一份真稿。
+    meta: { deck: { format: "pptist", slides: [{ id: "s1", elements: [] }] } },
   };
 }
 
@@ -257,6 +258,7 @@ async function mountDeckHostedRoute() {
       }),
     );
   });
+  await act(async () => {});
   return {
     container,
     async unmount() {
@@ -384,6 +386,7 @@ async function mountDeckRoute() {
       }),
     );
   });
+  await act(async () => {});
   return {
     container,
     async unmount() {

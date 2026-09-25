@@ -328,10 +328,10 @@ const SM_ALLOWED_FILES = [
  *   · 单个文件的点位数不许变多（`FILE_BUDGET`）；
  *   · `sm`/`md` 只许出现在 `SM_ALLOWED_FILES` 里。
  */
-const PENDING_HIT_TARGET = 92;
+const PENDING_HIT_TARGET = 98;
 
 /**
- * `_COMMON.md §7b⑪` / `W33 R5`：上面那个 92 是在**哪一棵树**上量的。
+ * `_COMMON.md §7b⑪` / `W33 R5`：上面那个 98 是在**哪一棵树**上量的。
  *
  * `e17f823`「手机上点得中：表格舞台与批注侧栏 15 处小命中区撑到 44」就是取值那一刻。
  * 共享工作树上随时挂着别人未提交的改动，在那儿量出来的棘轮标定的是一棵 git 里
@@ -345,9 +345,11 @@ const PENDING_HIT_TARGET = 92;
  *   · `e17f823` = 92 / 48 文件（`W42` 修完 `GridStage` 5 处 + `RichDocControls` 1 处
  *     + `RichDocCommentRail` 9 处。其中 14 处是 `W11`/`W14`/`W15` 在 93 之后新欠的，
  *     还掉它们只是回到 93；净减的这 1 格来自 `GridStage` 列头 `th`，
- *     那是 93 里就有的老账，所以 `GridStage.tsx` 整条从 `FILE_BUDGET` 里删掉了）。
+ *     那是 93 里就有的老账，所以 `GridStage.tsx` 整条从 `FILE_BUDGET` 里删掉了）；
+ *   · `2ee4c1d` = 98（操作员 2026-09-24 P10「按钮变高了」：R06 撑到 44 的按钮改回放大之前的尺寸，
+ *     新登记的 7 处全在 `FILE_BUDGET` 里那条 P10 注释下。这是操作员拍板的回退，不是为判绿放宽）。
  */
-const BASELINE_COMMIT = "e17f823";
+const BASELINE_COMMIT = "2ee4c1d";
 
 /**
  * W04 本轮负责的五个文件：**必须保持零**。
@@ -426,6 +428,11 @@ const FILE_BUDGET = new Map([
   ["src/shell/EditorToolsIcon.tsx", 1],
   ["src/shell/SelectionAnimationGallery.tsx", 1],
   ["src/shell/cloud-computer/terminal-card/CliSettingsPanel.tsx", 4],
+  // 同一条 P10：设置弹窗关闭键、ACP 卡片与设置、Leo 看板改回 R06 放大之前的尺寸（G1，2026-09-25）。
+  ["src/pages/settings/SettingsModal.tsx", 1],
+  ["src/shell/cloud-computer/agent-dialog/AcpCard.tsx", 1],
+  ["src/shell/cloud-computer/agent-dialog/AcpSettings.tsx", 3],
+  ["src/shell/leo/LeoBoard.tsx", 2],
   // W03 的面（`ui/index.tsx`）。W04 不许动，已写进 `signals/W04-request.md`。
   ["src/ui/index.tsx", 1],
 ]);
@@ -485,7 +492,7 @@ test("W04 迁过的四件 chrome 与原语必须从名单里消失（任务书 P
   );
 });
 
-test("基线自检：PENDING_HIT_TARGET 的 92 是在 BASELINE_COMMIT 那棵干净树上量出来的", () => {
+test("基线自检：PENDING_HIT_TARGET 的 98 是在 BASELINE_COMMIT 那棵干净树上量出来的", () => {
   const measured = measureOnCommittedTree({
     repo: REPO,
     commit: BASELINE_COMMIT,

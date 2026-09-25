@@ -122,6 +122,12 @@ const CASES = [
   [material('document', 'document', 'richdoc-editor', 'docx', 'word'), 'RichDocRoute'],
 ];
 
+test('清单自检：CASES 覆盖网站、幻灯片、文档三种素材——表变空时下面那批用例会静默不注册', () => {
+  assert.equal(CASES.length, 3, `CASES 应覆盖 3 种素材，实测 ${CASES.length} 种`);
+  const routes = CASES.map(([, route]) => route);
+  assert.equal(new Set(routes).size, routes.length, `CASES 里有重复的路由：${routes}`);
+});
+
 for (const [item, route] of CASES) {
   test(`portal library Edit delivers ${item.artifactType} identity to ${route} and stays at its library URL`, async () => {
     const mounted = await mountDom();
