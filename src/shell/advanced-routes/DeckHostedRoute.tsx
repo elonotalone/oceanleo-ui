@@ -103,6 +103,70 @@ export function computeDeckHostedEmbedSrc(input: DeckHostedEmbedSrcInput): strin
   }
 }
 
+function stableUrlPart(value: string): string {
+  try {
+    const url = new URL(value);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+function stableInlinePart(value: unknown): string {
+  try {
+    return JSON.stringify(value) || "";
+  } catch {
+    return "";
+  }
+}
+
+/** 内容身份不包含签名查询参数，签名刷新不能触发重读或卸载编辑器。 */
+export function deckHostedContentIdentity(
+  item: Pick<AdvancedContentWorkbenchProps["item"], "id" | "key" | "revisionId" | "meta" | "url">,
+  resolved: { status: string; source?: unknown; error?: string } | null,
+): string {
+  const itemKey = String(item.key || item.id || "");
+  const revision = String(
+    item.revisionId || item.meta?.revision_id || item.meta?.handoff_revision || "",
+  );
+  const source = resolved?.source;
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    const record = source as Record<string, unknown>;
+    if (record.kind === "inline") {
+      return `${itemKey}|${revision}|inline|${String(record.revision || "")}|${stableInlinePart(record.json)}`;
+    }
+    if (record.kind === "url") {
+      return `${itemKey}|${revision}|url|${String(record.revision || "")}|${stableUrlPart(String(record.url || ""))}`;
+    }
+  }
+  const fallbackUrl = String(
+    item.url || item.meta?.editor_working_head_url || item.meta?.editor_project_url || "",
+  );
+  if (fallbackUrl) return `${itemKey}|${revision}|url|${stableUrlPart(fallbackUrl)}`;
+  return `${itemKey}|${revision}|${resolved?.status || "empty"}`;
+}
+
+function deckHostedResolutionIdentity(
+  contentIdentity: string,
+  resolved: { status: string; source?: unknown } | null,
+  loadedIdentity: string,
+): string {
+  if (loadedIdentity === contentIdentity) return contentIdentity;
+  const source = resolved?.source;
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    const record = source as Record<string, unknown>;
+    if (record.kind === "url") {
+      return `${contentIdentity}|${resolved?.status || ""}|${String(record.url || "")}`;
+    }
+  }
+  return `${contentIdentity}|${resolved?.status || "empty"}`;
+}
+
+export const DECK_HOSTED_MISSING_EMBED_MESSAGE =
+  "专业编辑器暂时打不开，普通编辑仍可继续使用。";
+
 /**
  * 存量 deck IR 与已经是托管格式的工程档都要能打开。
  * 已经是托管格式的原样交出去（R6：存量只读，不静默改写）。
@@ -141,6 +205,7 @@ export function DeckHostedRoute({
   const [sourceReady, setSourceReady] = useState(false);
   const snapshotRef = useRef<unknown>(null);
   const sourceRef = useRef<unknown>(null);
+  const initializedSourceRef = useRef<unknown>(null);
   snapshotRef.current = snapshot;
   sourceRef.current = source;
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
@@ -151,13 +216,46 @@ export function DeckHostedRoute({
   );
   const gateHandoff = useModeSwitchHandoff();
   const resolved = useEditorHandoffSource(item, gateHandoff);
+  // Inline sources stringify the whole deck; PPTist messages re-render this
+  // route on every edit, so only recompute when the resolution itself changes.
+  const contentIdentity = useMemo(
+    () => deckHostedContentIdentity(item, resolved),
+    [item, resolved],
+  );
+  const loadedContentIdentityRef = useRef("");
+  const [embedAssetUrl, setEmbedAssetUrl] = useState(item.url || "");
+  const resolutionIdentity = deckHostedResolutionIdentity(
+    contentIdentity,
+    resolved,
+    loadedContentIdentityRef.current,
+  );
   // 过渡门的 ready 信号（plugin-ui U4）：PPTist 的协议 ready 到达即首帧可见。
   useModeSwitchReady(ready);
 
   useEffect(() => {
     let cancelled = false;
-    if (resolved.status === "loading") return;
-    setSourceReady(false);
+    const sameContent = loadedContentIdentityRef.current === contentIdentity;
+    if (resolved.status === "loading") {
+      if (!sameContent) {
+        setSource(null);
+        setSourceReady(false);
+        setStatus("正在读取演示文稿。");
+      }
+      return;
+    }
+    if (sameContent) {
+      setStatus(resolved.error || "");
+      return;
+    }
+    if (!sameContent) {
+      setSourceReady(false);
+      setSource(null);
+      setReady(false);
+      frameLoadedRef.current = false;
+      initializedSourceRef.current = null;
+      setFrameLoaded(false);
+      setEmbedAssetUrl(item.url || "");
+    }
     void (async () => {
       const sourceHandoff =
         resolved.source && resolved.source.kind !== "empty"
@@ -187,13 +285,14 @@ export function DeckHostedRoute({
         return;
       }
       setStatus("");
+      loadedContentIdentityRef.current = contentIdentity;
       setSource(loaded.json);
       setSourceReady(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [item.title, resolved]);
+  }, [contentIdentity, resolutionIdentity]);
 
   const embedBase = deckHostedEmbedBase();
   const editorOrigin = DECK_HOSTED_EMBED_ORIGIN;
@@ -203,14 +302,16 @@ export function DeckHostedRoute({
       embedBase,
       instanceId,
       hostOrigin: window.location.origin,
-      assetUrl: item.url || undefined,
+      assetUrl: embedAssetUrl || undefined,
       assetTitle: item.title,
     });
-  }, [embedBase, instanceId, item.title, item.url]);
+  }, [embedAssetUrl, embedBase, instanceId, item.title]);
 
   useEffect(() => {
     frameLoadedRef.current = false;
+    initializedSourceRef.current = null;
     setFrameLoaded(false);
+    setReady(false);
   }, [src]);
 
   const sendToEditor = useCallback(
@@ -231,9 +332,9 @@ export function DeckHostedRoute({
   );
 
   const pushInit = useCallback(() => {
-    if (source == null) return;
-    sendToEditor(buildSetModeMessage(instanceId, mode));
-    sendToEditor(
+    if (source == null || initializedSourceRef.current === source) return;
+    const modeSent = sendToEditor(buildSetModeMessage(instanceId, mode));
+    const chromeSent = sendToEditor(
       buildHideChromeMessage(instanceId, {
         toolbar: mode === "normal",
         panels: mode === "normal",
@@ -241,14 +342,14 @@ export function DeckHostedRoute({
     );
     // `init` 先发：编辑器收到它才会报 tools-manifest / selection / history。
     // 只发 open-asset 的话文档进去了，但 agent 的接口面一条都没送上来。
-    sendToEditor({
+    const initSent = sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "init",
       instanceId,
       mode,
       title: item.title || "演示文稿",
     });
-    sendToEditor({
+    const assetSent = sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "open-asset",
       instanceId,
@@ -260,6 +361,9 @@ export function DeckHostedRoute({
         writable: true,
       },
     });
+    if (modeSent && chromeSent && initSent && assetSent) {
+      initializedSourceRef.current = source;
+    }
   }, [instanceId, item.id, item.title, mode, sendToEditor, source]);
 
   useEffect(() => {
@@ -443,8 +547,9 @@ export function DeckHostedRoute({
                 </div>
               </div>
             ) : null}
-            {src ? (
+            {src && source != null ? (
               <iframe
+                key={contentIdentity}
                 ref={iframeRef}
                 title="OceanLeo Slides"
                 src={src}
@@ -458,10 +563,7 @@ export function DeckHostedRoute({
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-8 text-center text-sm">
-                <p>
-                  无法构造 <code>{DECK_HOSTED_EMBED_ORIGIN}</code> 的嵌入地址。
-                  把双核 flag 切回 <code>legacy</code> 可继续用现有编辑器。
-                </p>
+                <p>{!src ? DECK_HOSTED_MISSING_EMBED_MESSAGE : status || "正在读取演示文稿。"}</p>
               </div>
             )}
           </div>
@@ -469,7 +571,7 @@ export function DeckHostedRoute({
         status:
           status ||
           (!src
-            ? "托管地址未放行"
+            ? DECK_HOSTED_MISSING_EMBED_MESSAGE
             : pending
               ? "有一条改动待审阅"
               : ready

@@ -366,6 +366,22 @@ export function deckDeliveryUrlFor(item: LibraryItem): string {
   const projectUrl = deckProjectUrlFor(item);
   const artifactSource = item.artifact?.renditions.source;
   const candidates: Array<{ url: unknown; hints: unknown[] }> = [
+    // `useOfficeArtifactSource` writes the freshly re-signed source/full URL
+    // here. The artifact projection can still contain the catalog URL that
+    // was signed five minutes ago, so it must be the fallback rather than the
+    // first candidate.
+    {
+      url: item.url,
+      hints: [
+        item.artifact?.sourceFormat,
+        item.meta.source_format,
+        item.meta.source_media_type,
+        item.meta.format,
+        item.meta.mime,
+        item.meta.file_name,
+        item.url,
+      ],
+    },
     {
       url: artifactSource?.url,
       hints: [
@@ -384,18 +400,6 @@ export function deckDeliveryUrlFor(item: LibraryItem): string {
         item.meta.delivery_format,
         item.meta.file_name,
         item.meta.source_url,
-      ],
-    },
-    {
-      url: item.url,
-      hints: [
-        item.artifact?.sourceFormat,
-        item.meta.source_format,
-        item.meta.source_media_type,
-        item.meta.format,
-        item.meta.mime,
-        item.meta.file_name,
-        item.url,
       ],
     },
   ];

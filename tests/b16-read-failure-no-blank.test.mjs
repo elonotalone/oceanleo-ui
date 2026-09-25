@@ -25,6 +25,7 @@ test("hosted editors reject persistence until source content loaded", () => {
   const rich = read("shell/advanced-routes/RichDocHostedRoute.tsx");
   assert.match(deck, /if \(!sourceReady\)/);
   assert.match(deck, /ready: ready && sourceReady/);
+  assert.match(deck, /src && source != null/);
   assert.match(rich, /if \(!source\)/);
   assert.match(rich, /ready: ready && source != null/);
   assert.doesNotMatch(rich, /已按空白文档打开/);

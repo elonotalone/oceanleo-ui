@@ -188,7 +188,7 @@ test("Office rendition selection excludes PNG preview and signed 403 requests re
           refreshes += 1;
         },
       }),
-      /安全地址已失效.*刷新同一 revision/,
+      /文件链接已失效.*重新获取同一份文件/,
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -251,7 +251,7 @@ test("preview and native Office routes consume only refreshable source/full inpu
         /重新载入表格/,
       );
     } else {
-      assert.match(contents, /刷新 source\/full 后重试/, route);
+      assert.match(contents, /重新获取文件后重试/, route);
     }
   }
 });
@@ -277,7 +277,7 @@ test("Content-Type, magic and OOXML parts reject PNG before every Office parser"
   }
   assert.throws(
     () => validateSpreadsheetParserBytes(png, "application/octet-stream"),
-    /已阻止送入 XLSX 解析器/,
+    /已阻止送入解析器/,
   );
 });
 

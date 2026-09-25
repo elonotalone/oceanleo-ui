@@ -220,6 +220,7 @@ test("3D 专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin
 });
 
 // UC-3 修订（2026-09-06）：我方部署的 PPTist 拿隔离域同源沙箱。
+// PPTist 要等稿件读出来才挂（G4），所以这里给一份内嵌稿，走真实的读稿与 sandbox 模块。
 test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
   const mounted = await mountCompiled(
     "src/shell/advanced-routes/DeckHostedRoute.tsx",
@@ -229,10 +230,14 @@ test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-
     },
     (mod) =>
       React.createElement(mod.DeckHostedRoute, {
-        item: workbenchItem("ppt", "w30-slides"),
+        item: {
+          ...workbenchItem("ppt", "w30-slides"),
+          meta: { deck: { format: "pptist", slides: [{ id: "s1", elements: [] }] } },
+        },
         onClose() {},
       }),
   );
+  await act(async () => {});
   try {
     assertIframeGrantsHostedSameOrigin(
       mounted.container.querySelector("iframe"),

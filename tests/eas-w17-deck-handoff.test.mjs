@@ -129,6 +129,7 @@ function deckItem(overrides = {}) {
     kind: "ppt",
     siteId: "website",
     favorite: false,
+    content: JSON.stringify(deckDocumentToPptist(sampleDeck())),
     meta: {},
     ...overrides,
     meta: { ...(overrides.meta || {}) },
@@ -272,6 +273,7 @@ test("只有 .pptx 的素材进专业面：解析为 pptx 且页数大于 0，�
   const source = resolveEditorHandoffFromItem(
     deckItem({
       url: "https://files.oceanleo.com/imported.pptx",
+      content: "",
       meta: { source_format: "pptx" },
     }),
   );
