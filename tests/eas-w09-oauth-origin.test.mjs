@@ -28,7 +28,8 @@ const { mcpOauthReturnOrigin, mcpOauthOpensPortalPage, mcpOauthPortalPageHref, m
     })
   );
 
-test("回跳 origin 按当前站点精确生成，通配与坏输入一律空串", () => {
+// UC-6：回跳 origin 必须是精确 origin，通配或解析不出的一律空串（空串即不授权）。
+test("UC-6: 回跳 origin 按当前站点精确生成，通配与坏输入一律空串", () => {
   assert.equal(mcpOauthReturnOrigin("https://ppt.oceanleo.com"), "https://ppt.oceanleo.com");
   assert.equal(mcpOauthReturnOrigin("https://oceanleo.com/plugins"), "https://oceanleo.com");
   assert.equal(mcpOauthReturnOrigin("https://chat.oceanleo.com:443"), "https://chat.oceanleo.com");
@@ -42,7 +43,8 @@ test("回跳 origin 按当前站点精确生成，通配与坏输入一律空串
   assert.doesNotMatch(origin, /%|\.\*/, "回跳 origin 不许带模糊匹配");
 });
 
-test("子站要改走主站插件页完成授权；主站自己弹窗", () => {
+// UC-6：只有主站自己开授权弹窗、自己收回执；子站跳主站，地址不能从通配拼出来。
+test("UC-6: 子站要改走主站插件页完成授权；主站自己弹窗", () => {
   assert.equal(
     mcpOauthOpensPortalPage("https://ppt.oceanleo.com", "https://oceanleo.com"),
     true,
@@ -66,7 +68,8 @@ test("子站要改走主站插件页完成授权；主站自己弹窗", () => {
   );
 });
 
-test("回执来源是网关 origin；startMcpOauth 请求体不带回跳 / CORS 字段", () => {
+// UC-6：回执只认网关 origin。UC-2：发起授权不许自带回跳地址或 CORS 白名单去放宽网关。
+test("UC-6 UC-2: 回执来源是网关 origin；startMcpOauth 请求体不带回跳 / CORS 字段", () => {
   assert.equal(mcpOauthMessageOrigin(), "https://api.oceanleo.com");
   const startFn = MCP_API.slice(
     MCP_API.indexOf("export async function startMcpOauth"),
