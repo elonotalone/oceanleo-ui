@@ -315,13 +315,19 @@ const AppShellPresence = createContext(false);
 // viewport 自己 `pointer-events: none`、`position: fixed`，包在最外面不挡任何点击。
 export function AppShell(props: AppShellProps) {
   const nested = useContext(AppShellPresence);
+  const rawPathname = usePathname() || "/";
+  const pathname = props.stripLocale ? props.stripLocale(rawPathname) : rawPathname;
+  // 公开对话链接只有一个 id 段；`/share` 本身可能是分站自己的页面，不能一并去壳。
+  const publicShare = /^\/share\/[^/]+\/?$/.test(pathname);
   if (nested) return <>{props.children}</>;
   return (
     <ToastProvider>
       <AppShellPresence.Provider value>
-        <WorkspaceSelectionProvider>
-          <AppShellInner {...props} />
-        </WorkspaceSelectionProvider>
+        {publicShare ? props.children : (
+          <WorkspaceSelectionProvider>
+            <AppShellInner {...props} />
+          </WorkspaceSelectionProvider>
+        )}
       </AppShellPresence.Provider>
     </ToastProvider>
   );
