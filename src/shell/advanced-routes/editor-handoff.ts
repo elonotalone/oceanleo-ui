@@ -18,7 +18,7 @@ export type EditorHandoff =
   | { kind: "url"; url: string; format: string | null; revision: string | null }
   | { kind: "empty" };
 
-export type BeforeEnterPro = () => Promise<
+export type BeforeEnterPro = (signal?: AbortSignal) => Promise<
   | { ok: true; handoff: EditorHandoff; item: LibraryItem }
   | { ok: false; error: string }
 >;
@@ -50,11 +50,14 @@ export type HostedSaveWaitResult =
   | { ok: false; error: string };
 
 export type NormalFaceHandoffBinder = {
+  /** A loading normal face contains a placeholder, not the user document. */
+  status?: "loading" | "ready" | "error";
   getHandoff: () => EditorHandoff;
   persistInBackground?: () => void;
 };
 
 const normalFaceBinders = new Map<string, NormalFaceHandoffBinder>();
+const normalFaceListeners = new Set<() => void>();
 const proSavedItems = new Map<string, LibraryItem>();
 const proSavedListeners = new Set<() => void>();
 
@@ -195,6 +198,7 @@ export function bindNormalFaceHandoff(
 ): () => void {
   if (!itemKey) return () => {};
   normalFaceBinders.set(itemKey, binder);
+  for (const listener of normalFaceListeners) listener();
   return () => {
     if (normalFaceBinders.get(itemKey) === binder) {
       normalFaceBinders.delete(itemKey);
@@ -208,12 +212,39 @@ export function peekNormalFaceHandoff(itemKey: string): EditorHandoff {
 
 export async function captureBeforeEnterPro(
   item: LibraryItem,
+  options?: { waitForReady?: boolean; signal?: AbortSignal },
 ): Promise<
   | { ok: true; handoff: EditorHandoff; item: LibraryItem }
   | { ok: false; error: string }
 > {
   const key = handoffItemKey(item);
-  const binder = key ? normalFaceBinders.get(key) : undefined;
+  let binder = key ? normalFaceBinders.get(key) : undefined;
+  if (options?.waitForReady || binder?.status === "loading") {
+    // The mode-switch attempt owns the single deadline. Subscribe to normal
+    // face commits and cancel with that attempt; never poll or serialize a placeholder.
+    binder = await new Promise<NormalFaceHandoffBinder | undefined>((resolve) => {
+      const finish = (value?: NormalFaceHandoffBinder) => {
+        normalFaceListeners.delete(check);
+        options?.signal?.removeEventListener("abort", cancel);
+        resolve(value);
+      };
+      const cancel = () => finish();
+      const check = () => {
+        if (options?.signal?.aborted) return cancel();
+        const current = normalFaceBinders.get(key);
+        if (current && current.status !== "loading") finish(current);
+      };
+      normalFaceListeners.add(check);
+      options?.signal?.addEventListener("abort", cancel, { once: true });
+      check();
+    });
+    if (!binder || binder.status === "error") {
+      return { ok: false, error: ENTER_PRO_NOT_READY };
+    }
+  }
+  if (options?.signal?.aborted || binder?.status === "error") {
+    return { ok: false, error: ENTER_PRO_NOT_READY };
+  }
   if (binder) {
     try {
       binder.persistInBackground?.();
@@ -225,6 +256,7 @@ export async function captureBeforeEnterPro(
       return { ok: true, handoff, item };
     }
   }
+  if (options?.waitForReady) return { ok: false, error: ENTER_PRO_NOT_READY };
   const resolved = resolveEditorHandoffFromItem(item);
   if (resolved.kind === "empty") {
     return { ok: false, error: ENTER_PRO_NOT_READY };

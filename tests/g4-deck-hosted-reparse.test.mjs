@@ -43,6 +43,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.tsx", {
+  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
+
   "./mode-switch-gate": dataModule(`
     export function useModeSwitchFailure() {}
     export function useModeSwitchHandoff() { return globalThis.__g4Handoff || null; }

@@ -29,7 +29,7 @@ import type {
   DeckElement,
   DeckSlide,
 } from "./deck-schema";
-import { deckId, emptyDeckSlide } from "./deck-schema";
+import { deckId, emptyDeckSlide, normalizeDeckDocument } from "./deck-schema";
 import { packById, type DeckPack } from "./deck-packs";
 
 /** `AI_PPT_SCHEMA.md` 的逻辑画布宽度。 */
@@ -442,6 +442,10 @@ export function deckDocumentToPptist(
   deck: DeckDocument,
   options: { packId?: string | null } = {},
 ): PptistDocument {
+  if (!options.packId && deck.pptistSource?.document.format === PPTIST_CARRIER_FORMAT &&
+      deck.pptistSource.projection === deckPptistProjection(deck)) {
+    return structuredClone(deck.pptistSource.document) as unknown as PptistDocument;
+  }
   const warnings: string[] = [];
 
   const slides: PptistSlide[] = deck.slides.map((slide) => {
@@ -475,6 +479,23 @@ export function deckDocumentToPptist(
 
   const pack = options.packId ? packById(options.packId) : undefined;
   return pack ? applyDeckPackTheme(base, pack) : base;
+}
+
+/** Normalize both sides so loading/cloning a normal deck doesn't lose its native source. */
+export function deckPptistProjection(deck: DeckDocument): string {
+  return JSON.stringify(normalizeDeckDocument({ ...deck, pptistSource: undefined }));
+}
+
+export function deckProjectFromPptist(payload: unknown, title: string): DeckDocument {
+  const source = recordOf(payload);
+  if (source?.format !== PPTIST_CARRIER_FORMAT || !Array.isArray(source.slides) || !source.slides.length) {
+    throw new Error("编辑器没有交回完整演示文稿，未保存。");
+  }
+  const deck = normalizeDeckDocument(pptistToDeckDocument(source, title), title);
+  return {
+    ...deck,
+    pptistSource: { document: structuredClone(source), projection: deckPptistProjection(deck) },
+  };
 }
 
 function recordOf(value: unknown): Record<string, unknown> | null {

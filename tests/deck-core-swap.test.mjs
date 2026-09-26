@@ -193,6 +193,8 @@ const deckLegacyStubUrl = dataModule(`
   }
 `);
 const deckRouteStubs = {
+  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
+
   "../AdvancedWorkbenchShell": shellStubUrl,
   "../workbench-routes": routesStubUrl,
   "../advanced-session": deckLegacyStubUrl,
@@ -221,6 +223,8 @@ async function loadHostedRoute() {
     const url = await compileModule(
       "src/shell/advanced-routes/DeckHostedRoute.tsx",
       {
+  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
+
         "../AdvancedWorkbenchShell": shellStubUrl,
         "../workbench-routes": routesStubUrl,
       },
@@ -626,7 +630,7 @@ test("握手先 init，再以有界恢复回执确认整份稿已打开", () => 
   assert.match(hosted, /useModeSwitchReady\(documentOpened\)/);
   assert.match(
     hosted,
-    /message\.type === "recovery-result"\s*&&\s*message\.recoveryId === openingIdRef\.current\s*\)\s*\{\s*openingIdRef\.current = null;\s*if \(message\.ok\) \{\s*setDocumentOpened\(true\)/,
+    /message\.type === "recovery-result"\s*&&\s*message\.recoveryId === openingIdRef\.current\s*\)\s*\{\s*openingIdRef\.current = null;\s*if \(message\.ok\) \{\s*openedContentIdentityRef\.current = contentIdentity;\s*setDocumentOpened\(true\)/,
     "只有本次 recoveryId 的成功回执才能确认已打开",
   );
   assert.equal(

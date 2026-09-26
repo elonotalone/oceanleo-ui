@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  createContext,
   Fragment,
   useCallback,
+  useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,6 +70,18 @@ export {
   useWorkspaceSession,
 } from "./workspace-session-context";
 
+const WorkspaceSessionSchemaContext = createContext<
+  ((version: number) => () => void) | null
+>(null);
+
+/** The console owns the app snapshot format, even when another surface saves first. */
+export function useRegisterWorkspaceSessionSchemaVersion(version?: number) {
+  const register = useContext(WorkspaceSessionSchemaContext);
+  useLayoutEffect(() => {
+    if (version !== undefined) return register?.(version);
+  }, [register, version]);
+}
+
 export function WorkspaceSessionProvider({
   children,
   siteId,
@@ -84,6 +99,20 @@ export function WorkspaceSessionProvider({
   const app = (appId || "").trim();
   const sessionSurface = surface === "advanced" ? "advanced" : "app";
   const appTitle = (sessionTitle || "").trim();
+  // A new identity gets its own registrations before any child effects run.
+  const schemaVersions = useMemo(
+    () => new Map<symbol, number>(),
+    [site, app, sessionSurface],
+  );
+  const registerSchemaVersion = useCallback((version: number) => {
+    const owner = Symbol();
+    schemaVersions.set(owner, version);
+    return () => { schemaVersions.delete(owner); };
+  }, [schemaVersions]);
+  const registeredSchemaVersion = useCallback(
+    () => Array.from(schemaVersions.values()).at(-1),
+    [schemaVersions],
+  );
   const controlled = controlledSessionId !== undefined;
   const [internalSessionId, setInternalSessionId] = useState<string | null>(
     controlledSessionId ?? initialSession?.id ?? null,
@@ -417,7 +446,7 @@ export function WorkspaceSessionProvider({
           surface: sessionSurface,
           title: options.title || appTitle,
           snapshot,
-          schemaVersion: options.schemaVersion,
+          schemaVersion: options.schemaVersion ?? registeredSchemaVersion(),
         });
         if (!result.ok || !result.data) {
           reportFailure(result.status, result.error);
@@ -457,13 +486,14 @@ export function WorkspaceSessionProvider({
       applySession,
       reportFailure,
       hydrateLinkedTask,
+      registeredSchemaVersion,
     ],
   );
 
   const saveSnapshot = useCallback(
     async (
       snapshot: unknown,
-      schemaVersion: number,
+      schemaVersion: number = sessionRef.current?.schema_version ?? registeredSchemaVersion() ?? 1,
       options: SaveWorkspaceSnapshotOptions = {},
     ): Promise<WorkspaceSnapshotSaveResult> => {
       if (
@@ -642,6 +672,7 @@ export function WorkspaceSessionProvider({
       sessionSurface,
       site,
       app,
+      registeredSchemaVersion,
     ],
   );
 
@@ -658,6 +689,7 @@ export function WorkspaceSessionProvider({
           appId: app,
           surface: sessionSurface,
           title: title || appTitle,
+          schemaVersion: registeredSchemaVersion(),
         });
         if (!result.ok || !result.data) {
           reportFailure(result.status, result.error);
@@ -682,6 +714,7 @@ export function WorkspaceSessionProvider({
       sessionSurface,
       applySession,
       reportFailure,
+      registeredSchemaVersion,
     ],
   );
 
@@ -924,7 +957,7 @@ export function WorkspaceSessionProvider({
           surface: sessionSurface,
           title: options.title || appTitle,
           snapshot: options.snapshot,
-          schemaVersion: options.schemaVersion,
+          schemaVersion: options.schemaVersion ?? registeredSchemaVersion(),
         });
         if (!result.ok || !result.data || isArchivedAppSession(result.data)) {
           reportFailure(
@@ -952,6 +985,7 @@ export function WorkspaceSessionProvider({
       reportFailure,
       sessionSurface,
       site,
+      registeredSchemaVersion,
     ],
   );
 
@@ -1014,7 +1048,9 @@ export function WorkspaceSessionProvider({
 
   return (
     <WorkspaceSessionContext.Provider value={value}>
-      <Fragment key={runtimeEpoch}>{children}</Fragment>
+      <WorkspaceSessionSchemaContext.Provider value={registerSchemaVersion}>
+        <Fragment key={runtimeEpoch}>{children}</Fragment>
+      </WorkspaceSessionSchemaContext.Provider>
     </WorkspaceSessionContext.Provider>
   );
 }

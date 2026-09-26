@@ -23,8 +23,8 @@ test("deck source failure cannot be described or handed off as a blank draft", (
 test("hosted editors reject persistence until source content loaded", () => {
   const deck = read("shell/advanced-routes/DeckHostedRoute.tsx");
   const rich = read("shell/advanced-routes/RichDocHostedRoute.tsx");
-  assert.match(deck, /if \(!sourceReady\)/);
-  assert.match(deck, /ready: ready && sourceReady/);
+  assert.match(deck, /if \(!sourceReady \|\| openedContentIdentityRef\.current !== contentIdentity\)/);
+  assert.match(deck, /ready: documentOpened && sourceReady/);
   assert.match(deck, /src && source != null/);
   assert.match(rich, /if \(!source\)/);
   assert.match(rich, /ready: ready && source != null/);

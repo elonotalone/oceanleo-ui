@@ -146,6 +146,8 @@ export interface DeckDocument {
   masters: DeckMaster[];
   slides: DeckSlide[];
   importWarnings?: string[];
+  /** Lossless professional source, reusable only while its normal projection is unchanged. */
+  pptistSource?: { document: Record<string, unknown>; projection: string };
 }
 
 export interface DeckTheme {
@@ -908,6 +910,10 @@ export function normalizeDeckDocument(
       ? slides
       : [{ ...emptyDeckSlide(), masterId: fallbackMasterId }],
     ...(importWarnings.length ? { importWarnings } : {}),
+    ...(record(source.pptistSource).document &&
+    typeof record(source.pptistSource).projection === "string"
+      ? { pptistSource: source.pptistSource as DeckDocument["pptistSource"] }
+      : {}),
   };
 }
 

@@ -126,7 +126,7 @@ const splitWorkspaceStubUrl = dataModule(`
   export function useConsoleAgentFocus() { return null; }
 `);
 
-const frameUrl = await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", {
+const frameStubs = {
   "react-dom": reactDomUrl,
   "../../i18n/ui/useUI": uiStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
@@ -134,8 +134,19 @@ const frameUrl = await compileModule("src/shell/plugin-chrome/PluginChromeFrame.
   "../SplitWorkspace": splitWorkspaceStubUrl,
   "./agent-drawer-panel": agentPanelStubUrl,
   "./PluginAgentPanel": agentPanelStubUrl,
-});
+};
+const frameUrl = await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", frameStubs);
 const { PluginChromeFrame } = await import(frameUrl);
+const { jumpAllSpringsToRest } = await import(
+  await compileModule("src/lib/motion/spring.ts", frameStubs)
+);
+
+// 假时钟不驱动松手弹簧（它走真实 rAF）；量位置前先让它落定，否则读数取决于机器快慢。
+async function settleSprings() {
+  await act(async () => {
+    jumpAllSpringsToRest();
+  });
+}
 
 function resetHint() {
   globalThis.__oceanleoEditBarRearmHintShown = false;
@@ -433,6 +444,7 @@ for (const initial of ["false", "true"]) {
         const button = mounted.container.querySelector("[data-test-toggle]");
         const target = hit === "icon" ? button.querySelector("[data-test-icon]") : button;
         for (let gesture = 0; gesture < 2; gesture += 1) {
+          await settleSprings();
           const before = translateOf(barOf(mounted.container));
           clock.now += 600;
           await act(async () => {
@@ -597,6 +609,7 @@ test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；bu
     });
     const mid = translateOf(bar());
     clock.now += 16;
+    let atRelease;
     await act(async () => {
       pointerMove(anywhere, {
         clock,
@@ -606,8 +619,10 @@ test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；bu
         clientX: 500,
         clientY: 70,
       });
+      // 松手后弹簧会把条送往落点（这里是停靠带）；只在松手这一刻比，才与机器快慢无关。
+      atRelease = translateOf(bar());
     });
-    assert.deepEqual(translateOf(bar()), mid, "buttons 0 视为松开，不得继续跟手");
+    assert.deepEqual(atRelease, mid, "buttons 0 视为松开，不得继续跟手");
     } finally {
       restoreTimers();
     }

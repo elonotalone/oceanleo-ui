@@ -207,6 +207,7 @@ export function AdvancedWorkspaceActionBar({
         <span className="min-w-4 flex-1" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        {adapter.persistence?.recovery?.ready !== false ? (
         <div data-global-row-slot="save-state">
           {/* 保存菜单：按钮本体只说状态；点开才有动作。无任何可点动作时它只是状态，不弹菜单。 */}
           <Button
@@ -321,6 +322,7 @@ export function AdvancedWorkspaceActionBar({
             </AnchoredPopover>
           ) : null}
         </div>
+        ) : null}
         <div data-global-row-slot="download">
           {downloadActions.length > 0 ? (
             <>

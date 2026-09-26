@@ -309,7 +309,7 @@ test("OperatorConsole renders back, icon and title inside the left PaneHeader on
 });
 
 const workspaceSessionStubUrl = dataModule(`
-  export function useOptionalWorkspaceSession() {
+  export function useRegisterWorkspaceSessionSchemaVersion() {} export function useOptionalWorkspaceSession() {
     return globalThis.__workbenchToolbarWorkspace || null;
   }
 `);

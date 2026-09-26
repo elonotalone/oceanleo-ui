@@ -95,7 +95,10 @@ import {
   installSelectionBridge,
 } from "./agent-review/install";
 import { useUI } from "../i18n/ui/useUI";
-import { useOptionalWorkspaceSession } from "./WorkspaceSession";
+import {
+  useOptionalWorkspaceSession,
+  useRegisterWorkspaceSessionSchemaVersion,
+} from "./WorkspaceSession";
 import { RestartDraftButton } from "./RestartDraftButton";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import {
@@ -573,6 +576,9 @@ export function FunctionAgentChat({
     workspaceValue && (!siteId || workspaceValue.siteId === siteId)
       ? workspaceValue
       : null;
+  useRegisterWorkspaceSessionSchemaVersion(
+    workspace && manageSessionSnapshot && showOps ? sessionSchemaVersion : undefined,
+  );
   const runtimeHydration = useWorkspaceRuntimeHydration();
   const {
     remark: operatorRemark,

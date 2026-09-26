@@ -103,7 +103,8 @@ export function DeckRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="deck"
-      beforeEnterPro={() => captureBeforeEnterPro(props.item)}
+      captureOnMount
+      beforeEnterPro={(signal) => captureBeforeEnterPro(props.item, { waitForReady: true, signal })}
       renderNormal={() => <DeckLegacyRoute {...props} />}
       renderPro={() => (
         <Suspense fallback={null}>
@@ -139,8 +140,9 @@ function DeckLegacyRoute({
   liveRevisionRef.current = editor.editRevision;
   useEffect(() => {
     return bindNormalFaceHandoff(item.key || item.id, {
+      status: editor.sourceFailed ? "error" : editor.loading || officeSource.loading ? "loading" : "ready",
       getHandoff: () =>
-        editor.sourceFailed
+        editor.sourceFailed || editor.loading || officeSource.loading
           ? { kind: "empty" as const }
           : {
               kind: "inline" as const,
@@ -151,10 +153,10 @@ function DeckLegacyRoute({
                   : String(liveRevisionRef.current),
             },
       persistInBackground: () => {
-        if (editor.dirty && !editor.sourceFailed) void editor.save();
+        if (editor.dirty && !editor.sourceFailed && !editor.loading && !officeSource.loading) void editor.save();
       },
     });
-  }, [editor.dirty, editor.save, editor.sourceFailed, item.id, item.key]);
+  }, [editor.dirty, editor.loading, editor.save, editor.sourceFailed, officeSource.loading, item.id, item.key]);
   const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");

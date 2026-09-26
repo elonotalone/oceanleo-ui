@@ -105,6 +105,8 @@ const shellStubUrl = dataModule(`
 const hostedUrl = await compileModule(
   "src/shell/advanced-routes/DeckHostedRoute.tsx",
   {
+  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
+
     "../AdvancedWorkbenchShell": shellStubUrl,
     "../workbench-routes": dataModule(`
       export function editorToolLabel() { return "PPT"; }
@@ -156,6 +158,31 @@ async function mountHosted(item = deckItem()) {
       container.remove();
     },
   };
+}
+
+async function confirmHostedOpen(hosted) {
+  const iframe = hosted.container.querySelector("iframe");
+  assert.ok(iframe, "专业面没有 iframe");
+  const instanceId = new URL(iframe.src).searchParams.get("instance");
+  const sent = [];
+  iframe.contentWindow.postMessage = message => sent.push(message);
+  const send = data => {
+    const event = new window.Event("message");
+    Object.defineProperties(event, {
+      origin: { value: "https://slides.oceanleo.app" },
+      source: { value: iframe.contentWindow },
+      data: { value: { protocol: "oceanleo.editor.v1", instanceId, ...data } },
+    });
+    window.dispatchEvent(event);
+  };
+  await act(async () => {
+    iframe.dispatchEvent(new window.Event("load"));
+    send({ type: "ready" });
+  });
+  const opening = sent.find(message => message.type === "recovery-restore");
+  assert.ok(opening, "整份稿尚未交给专业编辑器");
+  await act(async () => send({ type: "recovery-result", recoveryId: opening.recoveryId, ok: true }));
+  assert.equal(hosted.adapter().persistence.recovery.ready, true);
 }
 
 test.afterEach(() => {
@@ -305,9 +332,7 @@ test("flush 在没有 save-result 时超时返回 ok: false（不再发出去就
   try {
     const iframe = hosted.container.querySelector("iframe");
     assert.ok(iframe, "专业面没有 iframe");
-    await act(async () => {
-      iframe.dispatchEvent(new window.Event("load"));
-    });
+    await confirmHostedOpen(hosted);
     const flush = hosted.adapter()?.persistence?.flush;
     assert.equal(typeof flush, "function", "专业面没有 flush");
     const started = Date.now();
@@ -323,6 +348,7 @@ test("flush 在没有 save-result 时超时返回 ok: false（不再发出去就
 test("restore 生效：交回快照后 capture 能再拿到同一份", async () => {
   const hosted = await mountHosted();
   try {
+    await confirmHostedOpen(hosted);
     const recovery = hosted.adapter()?.persistence?.recovery;
     assert.ok(recovery, "专业面没有 recovery");
     const snapshot = {

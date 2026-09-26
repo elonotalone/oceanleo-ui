@@ -135,7 +135,10 @@ function assertIframeGrantsHostedSameOrigin(iframe, label) {
 }
 
 async function mountCompiled(entry, stubs, element) {
-  const url = await compileModule(entry, stubs);
+  const url = await compileModule(entry, {
+  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
+    ...stubs,
+  });
   const mod = await import(url);
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");

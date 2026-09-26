@@ -183,7 +183,7 @@ const agentChatUrl = await compileModule(
     "./AgentTranscriptBubble": textBubble,
     "./AgentProgress": dataModule("export function AgentProgress(){ return null; }"),
     "./WorkspaceSession": dataModule(`
-      export function useOptionalWorkspaceSession(){ return null; }
+      export function useRegisterWorkspaceSessionSchemaVersion() {} export function useOptionalWorkspaceSession(){ return null; }
       export function WorkspaceSessionProvider(props){ return props.children; }
     `),
     "./SplitWorkspace": dataModule(`
@@ -279,7 +279,7 @@ const functionChatUrl = await compileModule(
         };
       }
     `),
-    "./WorkspaceSession": dataModule("export function useOptionalWorkspaceSession(){ return null; }"),
+    "./WorkspaceSession": dataModule("export function useRegisterWorkspaceSessionSchemaVersion() {} export function useOptionalWorkspaceSession(){ return null; }"),
     "./workspace-runtime-hydration": dataModule(
       "export function useWorkspaceRuntimeHydration(){ return null; }",
     ),

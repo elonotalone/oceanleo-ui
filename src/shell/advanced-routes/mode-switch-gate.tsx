@@ -106,6 +106,8 @@ export interface ModeSwitchGateProps {
    * 运行期也认 `Promise<unknown>`（W18–W20 未接完时的旧形状）。
    */
   beforeEnterPro?: BeforeEnterPro | (() => Promise<unknown>);
+  /** Deck must capture the normal document even when the saved page starts on pro. */
+  captureOnMount?: boolean;
   /** 进专业面失败时（调用方用来把 L0 模式拨回「编辑」）。 */
   onEnterProFailed?: () => void;
   /** 点提示上的「重试」时（调用方再把 L0 拨去「专业编辑」）。 */
@@ -119,12 +121,15 @@ export function ModeSwitchGate({
   renderNormal,
   renderPro,
   beforeEnterPro,
+  captureOnMount = false,
   onEnterProFailed,
   onRetryEnterPro,
   fallbackMs = MODE_SWITCH_FALLBACK_MS,
 }: ModeSwitchGateProps) {
   const target: ModeSwitchFace = pro ? "pro" : "normal";
-  const [shown, setShown] = useState<ModeSwitchFace>(target);
+  const [shown, setShown] = useState<ModeSwitchFace>(() =>
+    target === "pro" && beforeEnterPro && captureOnMount ? "normal" : target,
+  );
   // `beforeEnterPro` 在飞时为 false：覆盖层在、专业面还不挂。
   const [gateOpen, setGateOpen] = useState(false);
   const [proHandoff, setProHandoff] = useState<EditorHandoff | null>(null);
@@ -171,13 +176,14 @@ export function ModeSwitchGate({
   useEffect(() => {
     if (!pending) return;
     let alive = true;
+    const attempt = new AbortController();
     if (pending === "pro" && beforeEnterPro) {
       setGateOpen(false);
       setProHandoff(null);
       enterBlockedRef.current = false;
       setEnterBlocked(false);
       Promise.resolve()
-        .then(beforeEnterPro)
+        .then(() => beforeEnterPro(attempt.signal))
         .then((result) => {
           if (!alive) return;
           const record =
@@ -216,6 +222,7 @@ export function ModeSwitchGate({
     }, fallbackMs);
     return () => {
       alive = false;
+      attempt.abort();
       window.clearTimeout(timer);
     };
     // beforeEnterPro 有意不进依赖：它只在切换那一刻取一次。

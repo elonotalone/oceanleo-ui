@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import {
   useModeSwitchFailure,
@@ -11,18 +11,17 @@ import {
   ENTER_PRO_NOT_READY,
   handoffItemKey,
   hostedSaveTimeoutMs,
-  libraryItemFromProSave,
   materializeHandoffJson,
   openHostedSaveGate,
   reportProSaved,
   useEditorHandoffSource,
 } from "./editor-handoff";
+import { saveHostedDeck } from "./deck-hosted-save";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import {
   deckDocumentToPptist,
   PPTIST_CARRIER_FORMAT,
-  pptistToDeckDocument,
 } from "../doc-editors/deck-pptist-carrier";
 import { normalizeDeckDocument } from "../doc-editors/deck-schema";
 import { importPptxDeck } from "../doc-editors/pptx-deck-import";
@@ -217,9 +216,12 @@ export function DeckHostedRoute({
   const [ready, setReady] = useState(false);
   const [documentOpened, setDocumentOpened] = useState(false);
   const openingIdRef = useRef<string | null>(null);
+  const openedContentIdentityRef = useRef<string | null>(null);
   const openingSequenceRef = useRef(0);
   const [dirty, setDirty] = useState(false);
   const [editRevision, setEditRevision] = useState(0);
+  const editRevisionRef = useRef(0);
+  const persistedItemRef = useRef(item);
   const [status, setStatus] = useState("");
   const [snapshot, setSnapshot] = useState<unknown>(null);
   const [source, setSource] = useState<unknown>(null);
@@ -253,6 +255,20 @@ export function DeckHostedRoute({
   );
   // The core booting is not proof that it opened this draft. Wait for its receipt.
   useModeSwitchReady(documentOpened);
+
+  useLayoutEffect(() => {
+    persistedItemRef.current = item;
+    editRevisionRef.current = 0;
+    openedContentIdentityRef.current = null;
+    openingIdRef.current = null;
+    saveGateRef.current = null;
+    snapshotRef.current = null;
+    setSnapshot(null);
+    setDirty(false);
+    setEditRevision(0);
+    setPending(null);
+    setDocumentOpened(false);
+  }, [contentIdentity]);
 
   useEffect(() => {
     let cancelled = false;
@@ -338,6 +354,7 @@ export function DeckHostedRoute({
     setReady(false);
     setDocumentOpened(false);
     openingIdRef.current = null;
+    openedContentIdentityRef.current = null;
   }, [src]);
 
   const sendToEditor = useCallback(
@@ -358,6 +375,7 @@ export function DeckHostedRoute({
   );
 
   const pushInit = useCallback(() => {
+    if (!sourceReady || loadedContentIdentityRef.current !== contentIdentity) return;
     if (source == null || initializedSourceRef.current === source) return;
     if (!frameLoadedRef.current) return;
     const recoveryId = `open-${instanceId}-${++openingSequenceRef.current}`;
@@ -381,6 +399,7 @@ export function DeckHostedRoute({
     // A repeated ready must not re-import over the user's live document.
     initializedSourceRef.current = source;
     openingIdRef.current = recoveryId;
+    openedContentIdentityRef.current = null;
     setDocumentOpened(false);
     const modeSent = sendToEditor(buildSetModeMessage(instanceId, mode));
     const chromeSent = sendToEditor(
@@ -402,7 +421,7 @@ export function DeckHostedRoute({
       setStatus(ENTER_PRO_NOT_READY);
       reportModeSwitchFailure(ENTER_PRO_NOT_READY);
     }
-  }, [instanceId, item.title, mode, reportModeSwitchFailure, sendToEditor, source]);
+  }, [contentIdentity, instanceId, item.title, mode, reportModeSwitchFailure, sendToEditor, source, sourceReady]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -425,6 +444,7 @@ export function DeckHostedRoute({
       ) {
         openingIdRef.current = null;
         if (message.ok) {
+          openedContentIdentityRef.current = contentIdentity;
           setDocumentOpened(true);
           setStatus("");
         } else {
@@ -434,15 +454,22 @@ export function DeckHostedRoute({
         }
         return;
       }
+      if (message.type === "error" && typeof message.message === "string") {
+        setStatus(message.message);
+        reportModeSwitchFailure(message.message);
+        return;
+      }
+      // Core startup may emit its demo content. Only the receipt for this
+      // exact opening authorizes edits, proposals, snapshots and persistence.
+      if (openedContentIdentityRef.current !== contentIdentity) return;
       if (message.type === "dirty") {
-        setDirty(message.dirty === true);
-        if (message.revision !== undefined) {
-          setEditRevision(
-            typeof message.revision === "number"
-              ? message.revision
-              : editRevision + 1,
-          );
-        }
+        // Only a committed host revision can clear dirty. The core's clean
+        // echo may arrive after newer edits while an upload is in flight.
+        if (message.dirty !== true) return;
+        setDirty(true);
+        editRevisionRef.current = typeof message.revision === "number"
+          ? message.revision : editRevisionRef.current + 1;
+        setEditRevision(editRevisionRef.current);
         return;
       }
       if (message.type === "review-proposal") {
@@ -454,7 +481,6 @@ export function DeckHostedRoute({
         const payload = message.snapshot?.payload ?? null;
         snapshotRef.current = payload;
         setSnapshot(payload);
-        setDirty(false);
         const gate = saveGateRef.current;
         const recoveryId = String(message.recoveryId || "");
         if (gate && (!recoveryId || recoveryId === gate.saveId)) {
@@ -463,14 +489,10 @@ export function DeckHostedRoute({
         }
         return;
       }
-      if (message.type === "error" && typeof message.message === "string") {
-        setStatus(message.message);
-        reportModeSwitchFailure(message.message);
-      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure]);
+  }, [contentIdentity, editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure]);
 
   useEffect(() => {
     if (!ready) return;
@@ -506,10 +528,11 @@ export function DeckHostedRoute({
   );
 
   const flush = useCallback(async () => {
-    if (!sourceReady) {
+    if (!sourceReady || openedContentIdentityRef.current !== contentIdentity) {
       return { ok: false as const, error: "文件还没成功载入，不能保存。" };
     }
     const gate = openHostedSaveGate({ timeoutMs: hostedSaveTimeoutMs() });
+    const savingRevision = editRevisionRef.current;
     saveGateRef.current = gate;
     const sent = sendToEditor({
       protocol: EDITOR_PROTOCOL,
@@ -530,12 +553,25 @@ export function DeckHostedRoute({
     if (!confirmed.ok) {
       return { ok: false as const, error: confirmed.error };
     }
+    if (openedContentIdentityRef.current !== contentIdentity || saveGateRef.current !== gate) {
+      return { ok: false as const, error: "文件已切换，不能保存上一份稿。" };
+    }
     const payload = confirmed.snapshot;
     snapshotRef.current = payload;
     setSnapshot(payload);
-    const deck = pptistToDeckDocument(payload, item.title || "演示文稿");
-    const revision = `${Date.now().toString(36)}`;
-    const savedItem = libraryItemFromProSave(item, { deck, revision });
+    const result = await saveHostedDeck(persistedItemRef.current, payload, siteId, savingRevision);
+    if (openedContentIdentityRef.current !== contentIdentity || saveGateRef.current !== gate) {
+      return { ok: false as const, error: "文件已切换，请重新打开查看保存结果。" };
+    }
+    if (!result.ok) {
+      setStatus(result.error);
+      sendToEditor({ type: "save-result", ok: false, saveId: gate.saveId, message: result.error });
+      return result;
+    }
+    const savedItem = result.item;
+    persistedItemRef.current = savedItem;
+    if (editRevisionRef.current === savingRevision) setDirty(false);
+    setStatus("");
     sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "save-result",
@@ -543,11 +579,11 @@ export function DeckHostedRoute({
       ok: true,
       message: "已保存",
       saveId: gate.saveId,
-      revision,
+      revision: savedItem.revisionId,
     });
     reportProSaved(handoffItemKey(item), savedItem);
     return { ok: true as const, item: savedItem };
-  }, [instanceId, item, sendToEditor, sourceReady]);
+  }, [contentIdentity, instanceId, item, sendToEditor, siteId, sourceReady]);
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 
@@ -632,15 +668,18 @@ export function DeckHostedRoute({
                 ? ""
                 : "正在连接幻灯片内核"),
         persistence: {
-          dirty,
+          autoSave: documentOpened && sourceReady,
+          dirty: documentOpened && dirty,
           editRevision,
           flush,
           recovery: {
             key: advancedRecoveryKey("deck", item),
-            ready: ready && sourceReady,
-            capture: () => snapshotRef.current || sourceRef.current,
+            ready: documentOpened && sourceReady,
+            capture: () => openedContentIdentityRef.current === contentIdentity
+              ? snapshotRef.current || sourceRef.current
+              : null,
             restore: (payload) => {
-              if (!sourceReady || payload == null) return false;
+              if (!sourceReady || openedContentIdentityRef.current !== contentIdentity || payload == null) return false;
               snapshotRef.current = payload;
               sourceRef.current = payload;
               setSnapshot(payload);

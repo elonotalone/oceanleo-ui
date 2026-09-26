@@ -145,7 +145,10 @@ for (const [item, route] of CASES) {
       assert.doesNotMatch(mounted.container.textContent, /正在打开编辑器|编辑器已打开/);
       assert.equal(mounted.container.querySelector('[data-editor]'), null);
       await act(async () => { globalThis.__g3library.release(); });
-      await act(async () => {});
+      // The route is a lazy chunk; a loaded test runner can need many ticks to resolve it.
+      for (const deadline = Date.now() + 2000; !mounted.container.querySelector('[data-editor]') && Date.now() < deadline;) {
+        await act(async () => { await new Promise(resolve => setImmediate(resolve)); });
+      }
       const editor = mounted.container.querySelector('[data-editor]');
       assert.equal(editor?.dataset.editor, route);
       assert.equal(editor?.dataset.artifact, item.artifactId);

@@ -82,7 +82,7 @@ export function Model3DHostedFrame({
         return;
       }
       if (accepted.type === "dirty") {
-        onDirty();
+        if (accepted.dirty) onDirty();
         return;
       }
       if (accepted.type === "recovery-snapshot") {

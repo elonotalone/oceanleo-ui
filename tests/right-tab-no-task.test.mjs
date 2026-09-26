@@ -99,7 +99,7 @@ const chatUrl = await compileModule("src/shell/FunctionAgentChat.tsx", {
     }
   `),
   "./WorkspaceSession": dataModule(`
-    export function useOptionalWorkspaceSession() {
+    export function useRegisterWorkspaceSessionSchemaVersion() {} export function useOptionalWorkspaceSession() {
       return globalThis.__rightTabWorkspace || null;
     }
   `),
@@ -184,7 +184,7 @@ const chatUrl = await compileModule("src/shell/FunctionAgentChat.tsx", {
 
 const draftUrl = await compileModule("src/shell/useConsoleDraft.ts", {
   "./WorkspaceSession": dataModule(`
-    export function useOptionalWorkspaceSession() {
+    export function useRegisterWorkspaceSessionSchemaVersion() {} export function useOptionalWorkspaceSession() {
       return globalThis.__rightTabWorkspace || null;
     }
   `),

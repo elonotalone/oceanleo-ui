@@ -178,3 +178,22 @@ test("D1: pro never mounts before the captured draft is available", async () => 
     await act(async () => m.controls.setReady(true));
   } finally { await m.close(); }
 });
+
+test("D1 R4: the single attempt deadline aborts a source wait and cannot be extended by a late capture", async () => {
+  let attemptSignal;
+  let finish;
+  const m = await fixture({ capture: signal => {
+    attemptSignal = signal;
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  try {
+    await act(async () => m.controls.setPro(true));
+    assert.equal(attemptSignal.aborted, false);
+    await act(async () => new Promise(resolve => setTimeout(resolve, 110)));
+    assert.equal(attemptSignal.aborted, true);
+    assert.ok(m.q("[data-mode-switch-handoff-error]"));
+    await act(async () => finish({ ok: true, handoff: { kind: "inline", json: {} } }));
+    assert.equal(m.proMounts, 0);
+    assert.equal(m.q("[data-mode-switch-pending]"), null);
+  } finally { await m.close(); }
+});

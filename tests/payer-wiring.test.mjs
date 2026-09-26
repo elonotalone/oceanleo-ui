@@ -301,7 +301,7 @@ const OVERRIDES = {
   `),
   "./WorkspaceSession": dataModule(`
     export function WorkspaceSessionProvider(props){ return props.children; }
-    export function useOptionalWorkspaceSession(){ return null; }
+    export function useRegisterWorkspaceSessionSchemaVersion() {} export function useOptionalWorkspaceSession(){ return null; }
   `),
   "./LeoComposer": dataModule(`
     import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};

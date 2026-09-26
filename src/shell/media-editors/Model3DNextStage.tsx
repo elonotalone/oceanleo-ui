@@ -25,7 +25,7 @@ import {
 } from "../advanced-routes/w19-handoff-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
-import { advancedSavedItem } from "../advanced-session";
+import { advancedCommittedRevisionItem, advancedSavedItem } from "../advanced-session";
 import { saveFileToLibrary } from "../doc-editors/doc-io";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -130,12 +130,17 @@ export function Model3DNextStage({
   const iframeHolderRef = useRef<HTMLIFrameElement | null>(null);
   const viewerHandleRef = useRef<ModelViewerCaptureHost | null>(null);
   const hostedInitedRef = useRef(false);
+  const importedDirtyRef = useRef(false);
+  const saveItemRef = useRef(item);
+  const committedRevisionRef = useRef("");
   const pendingCaptureRef = useRef<{
     id: string;
-    resolve: (ok: boolean) => void;
+    resolve: (bytes: ArrayBuffer | null) => void;
+    timer?: number;
   } | null>(null);
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [view, setView] = useState<Model3DNextViewState>(defaultModel3DNextView);
+  const [savedEditRevision, setSavedEditRevision] = useState(0);
   const [objectUrl, setObjectUrl] = useState("");
   const [gltfBytes, setGltfBytes] = useState<ArrayBuffer | null>(null);
   const [format, setFormat] = useState<"glb" | "gltf">("glb");
@@ -161,6 +166,10 @@ export function Model3DNextStage({
   useModeSwitchReady(mode === "pro" ? modelReady : Boolean(objectUrl));
 
   useEffect(() => {
+    saveItemRef.current = item;
+  }, [item]);
+
+  useEffect(() => {
     if (!gateHandoff || gateHandoff.kind === "empty") return;
     setFrameMounted(true);
     setMode("pro");
@@ -172,6 +181,9 @@ export function Model3DNextStage({
   }, []);
 
   useEffect(() => {
+    // The parent acknowledges our save with a new item; the live editor already
+    // contains those bytes. Reloading that receipt would reset its ready gate.
+    if (hostedInitedRef.current && item.revisionId === committedRevisionRef.current) return;
     if (
       editorSource.status === "loading" &&
       (!pendingHandoff || pendingHandoff.kind === "empty")
@@ -255,7 +267,6 @@ export function Model3DNextStage({
 
   const applyGltfBytes = useCallback((bytes: ArrayBuffer, nextFormat: "glb" | "gltf") => {
     setGltfBytes(bytes);
-    setModelReady(false);
     setFormat(nextFormat);
     setObjectUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -264,7 +275,8 @@ export function Model3DNextStage({
   }, []);
 
   const requestHostedCapture = useCallback(
-    (reason: string): Promise<boolean> => {
+    (reason: string): Promise<ArrayBuffer | null> => {
+      if (pendingCaptureRef.current) return Promise.resolve(null);
       const frame = iframeHolderRef.current?.contentWindow || null;
       const recoveryId = `${reason}-${Date.now().toString(36)}`.slice(0, 128);
       return new Promise((resolve) => {
@@ -272,13 +284,13 @@ export function Model3DNextStage({
         const sent = postModel3DRecoveryCapture(frame, instanceId, recoveryId);
         if (!sent) {
           pendingCaptureRef.current = null;
-          resolve(false);
+          resolve(null);
           return;
         }
-        window.setTimeout(() => {
+        pendingCaptureRef.current.timer = window.setTimeout(() => {
           if (pendingCaptureRef.current?.id === recoveryId) {
             pendingCaptureRef.current = null;
-            resolve(false);
+            resolve(null);
           }
         }, 8000);
       });
@@ -309,6 +321,7 @@ export function Model3DNextStage({
 
   useEffect(() => {
     if (!ready || mode !== "pro" || !gltfBytes || hostedInitedRef.current) return;
+    importedDirtyRef.current = false;
     const frame = iframeHolderRef.current?.contentWindow || null;
     const inited = postModel3DInit(
       frame,
@@ -356,31 +369,39 @@ export function Model3DNextStage({
     if (readonly) {
       return { ok: false as const, error: MODEL3D_LEGACY_READONLY_NOTICE };
     }
+    let bytes = gltfBytes;
+    let savedFormat = format;
     if (mode === "pro" && frameMounted) {
-      const captured = await requestHostedCapture("save");
-      if (!captured && !gltfBytes) {
+      bytes = await requestHostedCapture("save");
+      savedFormat = "glb";
+      if (!bytes) {
         return { ok: false as const, error: "专业内核还没有把模型交回来。" };
       }
     }
-    if (!gltfBytes) {
+    if (!bytes) {
       return { ok: false as const, error: "还没有可保存的模型字节。" };
     }
+    const saveItem = saveItemRef.current;
     const file = new File(
-      [gltfBytes],
-      `${item.title || "model"}.${format}`,
-      { type: format === "gltf" ? "model/gltf+json" : "model/gltf-binary" },
+      [bytes],
+      `${saveItem.title || "model"}.${savedFormat}`,
+      { type: savedFormat === "gltf" ? "model/gltf+json" : "model/gltf-binary" },
     );
     const saved = await saveFileToLibrary({
-      item,
+      item: saveItem,
       siteId,
       fallbackSite: "threed",
-      title: item.title || "model",
+      title: saveItem.title || "model",
       createFile: async () => file,
-      sourceFormat: format,
+      sourceFormat: savedFormat,
       sourceMediaType: file.type,
       mediaType: "model3d",
       kind: "model3d",
-      idempotencyKey: `model3d-next:${item.id}:${view.revision}`,
+      idempotencyKey: `model3d-next:${saveItem.artifactId || saveItem.id}:${saveItem.revisionId || "legacy"}:${view.revision}`,
+      artifactRevision: {
+        artifactType: "model_3d",
+        provenance: { editorRevision: view.revision },
+      },
       deliveryProjectSchema: MODEL3D_NEXT_PROJECT_SCHEMA,
       editorManifest: {
         id: "model-3d-editor",
@@ -388,7 +409,7 @@ export function Model3DNextStage({
       },
       meta: {
         editor: "model3d-next",
-        format,
+        format: savedFormat,
         chips: chipsManifest.chips.map((chip) => chip.id).join(","),
       },
       project: {
@@ -400,7 +421,12 @@ export function Model3DNextStage({
       },
     });
     if (!saved.ok) return { ok: false as const, error: saved.error || "保存失败" };
-    const next = advancedSavedItem(item, { url: saved.url, versionId: saved.versionId });
+    const next = saved.item
+      ? advancedCommittedRevisionItem(saveItem, saved.item)
+      : advancedSavedItem(saveItem, { url: saved.url, versionId: saved.versionId });
+    saveItemRef.current = next;
+    committedRevisionRef.current = next.revisionId || "";
+    setSavedEditRevision(view.revision);
     reportW19ProSaved(w19ItemKey("threed", item), next);
     return { ok: true as const, item: next };
   }, [
@@ -528,6 +554,7 @@ export function Model3DNextStage({
             if (!file || readonly) return;
             const buffer = await file.arrayBuffer();
             hostedInitedRef.current = false;
+            setModelReady(false);
             applyGltfBytes(buffer, /\.gltf$/i.test(file.name) ? "gltf" : "glb");
           },
         },
@@ -584,16 +611,31 @@ export function Model3DNextStage({
                     src={hostedSrc}
                     title="three.js editor"
                     onReady={() => setReady(true)}
-                    onDirty={() => setModelReady(true)}
+                    onDirty={() => {
+                      setModelReady(true);
+                      // Both adapter versions announce import with their first dirty.
+                      if (!importedDirtyRef.current) {
+                        importedDirtyRef.current = true;
+                        return;
+                      }
+                      setView((current) => ({ ...current, revision: current.revision + 1 }));
+                    }}
                     onSnapshot={(payload) => {
                       const pending = pendingCaptureRef.current;
-                      if (pending && payload.recoveryId === pending.id) {
-                        pendingCaptureRef.current = null;
-                        pending.resolve(Boolean(payload.ok && payload.gltfBase64));
+                      if (!pending || payload.recoveryId !== pending.id) return;
+                      pendingCaptureRef.current = null;
+                      window.clearTimeout(pending.timer);
+                      let bytes: ArrayBuffer | null = null;
+                      try {
+                        if (payload.ok && payload.gltfBase64) {
+                          bytes = arrayBufferFromView(base64ToBytes(payload.gltfBase64));
+                          applyGltfBytes(bytes, "glb");
+                        }
+                      } catch {
+                        bytes = null;
+                      } finally {
+                        pending.resolve(bytes);
                       }
-                      if (!payload.ok || !payload.gltfBase64) return;
-                      const bytes = base64ToBytes(payload.gltfBase64);
-                      applyGltfBytes(arrayBufferFromView(bytes), "glb");
                     }}
                     onError={(message) => {
                       setStatus(message);
@@ -610,7 +652,7 @@ export function Model3DNextStage({
           (readonly ? MODEL3D_LEGACY_READONLY_NOTICE : "") ||
           (showHosted && !ready ? "正在连接 3D 专业内核" : ""),
         persistence: {
-          dirty: view.revision > 0,
+          dirty: view.revision > savedEditRevision,
           editRevision: view.revision,
           autoSave: !readonly,
           flush: save,
