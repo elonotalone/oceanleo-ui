@@ -34,6 +34,7 @@ import { isHumanReadableMessage } from "./human-error-message";
 import {
   artifactProjectionToLibraryItem,
   isDurableLibraryItem,
+  withoutWithheldLibraryThumbnail,
   type LibraryItem,
 } from "./library-data";
 
@@ -481,7 +482,9 @@ function qualifyArtifactAccessUrls(value: unknown): unknown {
       return [key, qualifyArtifactAccessUrls(entry)];
     }),
   );
-  return rewriteSourceTreeUrlsInProjection(qualified);
+  return withoutWithheldLibraryThumbnail(
+    rewriteSourceTreeUrlsInProjection(qualified),
+  );
 }
 
 /**

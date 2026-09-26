@@ -160,6 +160,38 @@ export interface LibraryArtifactRow {
   artifact?: unknown;
 }
 
+/** A withheld cover is absent media, not a missing source document. */
+export function withoutWithheldLibraryThumbnail(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const raw = value as Record<string, unknown>;
+  if (raw.schema !== "oceanleo.artifact.v1") return value;
+  const renditions = raw.renditions;
+  if (!renditions || typeof renditions !== "object" || Array.isArray(renditions)) {
+    return value;
+  }
+  const map = renditions as Record<string, unknown>;
+  const thumbnail = map.thumbnail;
+  if (!thumbnail || typeof thumbnail !== "object" || Array.isArray(thumbnail)) {
+    return value;
+  }
+  const cover = thumbnail as Record<string, unknown>;
+  // The gateway deliberately empties both URLs for non-image thumbnails.
+  // Only recognize that exact receipt; malformed images, revision mismatches,
+  // and missing preview/full/source media must still fail normal validation.
+  const revisionId = raw.revisionId ?? raw.revision_id;
+  const mediaType = String(cover.mediaType ?? cover.media_type ?? "")
+    .split(";", 1)[0]!.trim().toLowerCase();
+  if (
+    !revisionId || cover.purpose !== "thumbnail" ||
+    (cover.revisionId ?? cover.revision_id) !== revisionId ||
+    cover.url !== "" || (cover.accessUrl ?? cover.access_url) !== "" ||
+    !mediaType || mediaType.startsWith("image/")
+  ) return value;
+  const { thumbnail: _thumbnail, ...remainingRenditions } = map;
+  const { thumbnail: _topThumbnail, ...remaining } = raw;
+  return { ...remaining, renditions: remainingRenditions };
+}
+
 const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
   single_file_image: "image",
   composite_image: "image",
