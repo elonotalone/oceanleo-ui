@@ -264,6 +264,22 @@ function orgPath(orgId: string, suffix = ""): string {
   return `/v1/orgs/${encodeURIComponent(orgId)}${suffix}`;
 }
 
+// Library cards mount together. Share only unfinished list reads, including
+// token lookup and normalization; a later call must always read fresh data.
+const pendingOrgLists = new Map<string, Promise<unknown>>();
+
+function shareOrgList<T>(path: string, read: () => Promise<T>): Promise<T> {
+  const pending = pendingOrgLists.get(path);
+  if (pending) return pending as Promise<T>;
+
+  // Defer read() so the promise is registered before any async work starts.
+  const request = Promise.resolve().then(read).finally(() => {
+    pendingOrgLists.delete(path);
+  });
+  pendingOrgLists.set(path, request);
+  return request;
+}
+
 // ---------------------------------------------------------------------------
 // 1 组织与成员（W01 / W05）
 // ---------------------------------------------------------------------------
@@ -293,11 +309,13 @@ function normalizeSummary(raw: unknown): OrgSummary {
 }
 
 /** 我的全部活跃组织（`GET /v1/orgs`）。一个人可能同时是 A 的 owner、B 的成员。 */
-export async function listMyOrgs(): Promise<OrgSummary[]> {
-  const data = await must<unknown>("/v1/orgs");
-  return rowsOf(data, "orgs")
-    .map(normalizeSummary)
-    .filter((org) => Boolean(org.id));
+export function listMyOrgs(): Promise<OrgSummary[]> {
+  return shareOrgList("/v1/orgs", async () => {
+    const data = await must<unknown>("/v1/orgs");
+    return rowsOf(data, "orgs")
+      .map(normalizeSummary)
+      .filter((org) => Boolean(org.id));
+  });
 }
 
 /**
@@ -783,9 +801,10 @@ export function normalizeOrgAssetRows(value: unknown): OrgAssetRow[] {
 }
 
 /** 组织的成果库（`GET /v1/orgs/{org}/assets`，W07）。 */
-export async function listOrgAssets(orgId: string): Promise<unknown[]> {
-  if (!orgId) throw new OrgApiError("not_found", 404);
-  return normalizeOrgAssetRows(await must<unknown>(orgPath(orgId, "/assets")));
+export function listOrgAssets(orgId: string): Promise<unknown[]> {
+  if (!orgId) return Promise.reject(new OrgApiError("not_found", 404));
+  const path = orgPath(orgId, "/assets");
+  return shareOrgList(path, async () => normalizeOrgAssetRows(await must<unknown>(path)));
 }
 
 // ---------------------------------------------------------------------------

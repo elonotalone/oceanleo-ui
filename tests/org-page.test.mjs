@@ -65,7 +65,7 @@ const CONTRACT_EXPORTS = [
 test("org-api.ts：契约 + A2 + A3 + A13 的导出函数一个不少，类型 OrgRole / OrgSummary / OrgMemberRow 在", () => {
   const src = read("src/lib/org-api.ts");
   for (const name of CONTRACT_EXPORTS) {
-    assert.match(src, new RegExp(`export async function ${name}\\(`), `缺导出 ${name}`);
+    assert.match(src, new RegExp(`export (?:async )?function ${name}\\(`), `缺导出 ${name}`);
   }
   assert.match(src, /export type OrgRole = "owner" \| "admin" \| "member";/);
   assert.match(src, /export interface OrgSummary \{/);
