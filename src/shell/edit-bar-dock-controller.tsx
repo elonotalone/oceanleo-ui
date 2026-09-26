@@ -67,9 +67,11 @@ const CLICK_SWALLOW_SLOP_PX = 12;
 const EDIT_BAR_DOCK_FALLBACK_HEIGHT_PX = EDIT_BAR_HEIGHT_PX;
 
 function eventElement(target: EventTarget | null): Element | null {
-  if (target instanceof Element) return target;
-  if (target instanceof Node) return target.parentElement;
-  return null;
+  const element = target instanceof Element
+    ? target
+    : target instanceof Node ? target.parentElement : null;
+  // 真鼠标常落在按钮里的 svg/path 上；开关状态属于按钮本身。
+  return element?.closest("button, [role='button']") || element;
 }
 
 function dragStartThreshold(pointerType: string): number {
@@ -143,7 +145,8 @@ function clampUnit(value: number): number {
 type RearmStamp = { selected: true };
 
 /**
- * 展开胶囊：先单击一下，再按住拖动。第一次 click 立即生效，选中状态持续到条外按下。
+ * 展开胶囊：直接双击，第二下按住移动即拖，不需要额外的选择点击。
+ * 第一下 click 立即生效；确认拖动时恢复它改变的开关状态。
  * 收起圆仍是按下即拖。
  */
 
@@ -1256,6 +1259,7 @@ export function useEditBarDockController({
 
   const clearRearm = useCallback(() => {
     rearmStampRef.current = null;
+    firstClickRef.current = null;
     setRearmWindow(false);
   }, []);
 
@@ -1268,11 +1272,11 @@ export function useEditBarDockController({
     const snapshot = firstClickRef.current;
     if (!snapshot || !target || snapshot.target !== target) return;
     const pressedChanged =
-      snapshot.pressed !== target.getAttribute("aria-pressed") &&
-      target.getAttribute("aria-pressed") === "true";
+      snapshot.pressed !== null &&
+      snapshot.pressed !== target.getAttribute("aria-pressed");
     const expandedChanged =
-      snapshot.expanded !== target.getAttribute("aria-expanded") &&
-      target.getAttribute("aria-expanded") === "true";
+      snapshot.expanded !== null &&
+      snapshot.expanded !== target.getAttribute("aria-expanded");
     if (pressedChanged || expandedChanged) {
       (target as HTMLElement).click();
     }
@@ -1311,6 +1315,11 @@ export function useEditBarDockController({
       }
       const threshold = dragStartThreshold(pointerType);
       const origin = eventElement(target);
+      const clickSnapshot = origin ? {
+        target: origin,
+        pressed: origin.getAttribute("aria-pressed"),
+        expanded: origin.getAttribute("aria-expanded"),
+      } : null;
       let phase: "armed" | "dragging" = "armed";
       let didLift = false;
       let closed = false;
@@ -1366,6 +1375,7 @@ export function useEditBarDockController({
         if (phase === "armed" && dist < threshold && !held) {
           finishSession();
           finishDrag(pointerId);
+          firstClickRef.current = clickSnapshot;
           enterClicked();
           if (origin && toolbarRef.current?.contains(origin)) {
             replayClickRef.current = origin;
@@ -1394,6 +1404,7 @@ export function useEditBarDockController({
         }
         finishSession();
         finishDrag(pointerId);
+        clearRearm();
       };
 
       const handleCancel = (event: PointerEvent) => {
@@ -1432,6 +1443,7 @@ export function useEditBarDockController({
     },
     [
       abortArmed,
+      clearRearm,
       enterClicked,
       finishDrag,
       releaseCapture,
@@ -1500,7 +1512,8 @@ export function useEditBarDockController({
   );
 
   /**
-   * 第一下只阻断画布传播；选中后第二下按住才拖。监听同步挂上，不放进 effect。
+   * 双击的第一下照常点击，第二下按住即拖；无需先选中编辑栏。
+   * 监听同步挂上，不放进 effect，快速第二下也能接住。
    */
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {

@@ -406,57 +406,61 @@ test("第一下加粗恰好一次；第二下按住或拖动 onClick 0；快速�
   }
 });
 
-test("第二下拖动会撤回第一下打开的可逆按钮状态", async () => {
-  window.localStorage.clear();
-  resetPointerCaptureShim();
-  const restore = installRectStub();
-  const mounted = await mountFrame(
-    "deck",
-    React.createElement(
-      "button",
-      {
-        type: "button",
-        "aria-pressed": "false",
-        "data-test-toggle": true,
-        onClick: (event) => {
-          const button = event.currentTarget;
-          button.setAttribute(
-            "aria-pressed",
-            button.getAttribute("aria-pressed") === "true" ? "false" : "true",
-          );
-        },
-      },
-      "加粗",
-    ),
-  );
-  try {
-    const button = mounted.container.querySelector("[data-test-toggle]");
-    const { clock, restoreTimers } = beginClock(35_000);
-    try {
-      await act(async () => {
-        tap(button, { clock, clientX: 180, clientY: 70, pointerId: 1 });
-      });
-      assert.equal(button.getAttribute("aria-pressed"), "true");
-      await holdDrag(button, clock, {
-        pointerId: 1,
-        pointerType: "mouse",
-        from: { x: 180, y: 70 },
-        to: { x: 240, y: 70 },
-        afterMs: 120,
-      });
-      assert.equal(button.getAttribute("aria-pressed"), "false");
-      clock.now += 16;
-      await act(async () => {
-        pointerUp(button, { clock, pointerId: 1, clientX: 240, clientY: 70 });
-      });
-    } finally {
-      restoreTimers();
-    }
-  } finally {
-    await mounted.unmount();
-    restore();
+for (const initial of ["false", "true"]) {
+  for (const hit of ["button", "icon"]) {
+    test(`首次双击即拖、连续重拖不改按钮：初始 ${initial}，命中 ${hit}`, async () => {
+      window.localStorage.clear();
+      resetPointerCaptureShim();
+      const restore = installRectStub();
+      const mounted = await mountFrame(
+        "deck",
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            "aria-pressed": initial,
+            "data-test-toggle": true,
+            onClick: (event) => {
+              const button = event.currentTarget;
+              button.setAttribute("aria-pressed", button.getAttribute("aria-pressed") === "true" ? "false" : "true");
+            },
+          },
+          React.createElement("span", { "data-test-icon": true }, "加粗"),
+        ),
+      );
+      const { clock, restoreTimers } = beginClock(35_000);
+      try {
+        const button = mounted.container.querySelector("[data-test-toggle]");
+        const target = hit === "icon" ? button.querySelector("[data-test-icon]") : button;
+        for (let gesture = 0; gesture < 2; gesture += 1) {
+          const before = translateOf(barOf(mounted.container));
+          clock.now += 600;
+          await act(async () => {
+            tap(target, { clock, clientX: 180, clientY: 70, pointerId: 1 });
+          });
+          assert.equal(button.getAttribute("aria-pressed"), initial === "true" ? "false" : "true", "单击按钮照常只切换一次");
+          await holdDrag(target, clock, {
+            pointerId: 1,
+            pointerType: "mouse",
+            from: { x: 180, y: 70 },
+            to: { x: 240, y: 70 },
+            afterMs: 120,
+          });
+          assert.equal(Math.round(translateOf(barOf(mounted.container)).x - before.x), 60, "两次按下就跟手，无预先选择");
+          assert.equal(button.getAttribute("aria-pressed"), initial, "双击拖动恢复初始开关状态");
+          clock.now += 16;
+          await act(async () => {
+            pointerUp(target, { clock, pointerId: 1, clientX: 240, clientY: 70 });
+          });
+        }
+      } finally {
+        restoreTimers();
+        await mounted.unmount();
+        restore();
+      }
+    });
   }
-});
+}
 
 test("第二下按住 300ms 不动：没有 click，带 data-edit-bar-lifted；Esc 归位", async () => {
   window.localStorage.clear();
