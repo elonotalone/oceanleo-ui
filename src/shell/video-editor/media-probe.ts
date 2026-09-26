@@ -30,9 +30,26 @@ export type MediaProbeOutcome =
 type UITranslate = (zh: string, vars?: Record<string, string | number>) => string;
 
 const PROBE_TIMEOUT_MS = 15_000;
+const pendingProbes = new Map<string, Promise<MediaProbeOutcome>>();
 
 /** 探测 video/audio 的真实时长与像素尺寸；三种失败分别带 reason。 */
 export function probeMediaSource(
+  url: string,
+  kind: "video" | "audio",
+): Promise<MediaProbeOutcome> {
+  // Initial seeding, track validation and React effect replay can ask for the
+  // same metadata together. Separate media requests queue behind full video
+  // downloads and can exhaust the timeout before they even reach the server.
+  // Share only in-flight work: reopening must still verify the current bytes.
+  const key = `${kind}:${url}`;
+  const pending = pendingProbes.get(key);
+  if (pending) return pending;
+  const probe = probeSource(url, kind).finally(() => pendingProbes.delete(key));
+  pendingProbes.set(key, probe);
+  return probe;
+}
+
+function probeSource(
   url: string,
   kind: "video" | "audio",
 ): Promise<MediaProbeOutcome> {
