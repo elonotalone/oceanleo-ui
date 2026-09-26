@@ -163,7 +163,11 @@ export function ShareCheckbox({
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
-      onClick={onToggle}
+      onClick={(event) => {
+        // The message row also toggles selection; one click must toggle once.
+        event.stopPropagation();
+        onToggle();
+      }}
       className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-90 ${
  checked
  ? "border-stone-900 bg-stone-900 text-white"
