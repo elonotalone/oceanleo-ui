@@ -159,6 +159,9 @@ async function mount(props) {
   const root = createRoot(host);
   const render = async patch => { await act(async () => root.render(React.createElement(Harness, { ...props, ...patch }))); await flush(); };
   await render({});
+  // Opening the socket first awaits a dynamic import that resolves through the loader thread; a loaded runner can need many ticks.
+  for (const deadline = Date.now() + 2000; !FakeSocket.sockets.length && Date.now() < deadline;) await flush();
+  await flush();
   return { render, cleanup() { act(() => root.unmount()); host.remove(); } };
 }
 
