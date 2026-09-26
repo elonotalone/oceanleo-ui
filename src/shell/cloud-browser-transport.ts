@@ -173,6 +173,24 @@ export function useCloudBrowserTransport({
   >(() => {});
   const reconcileControlIntentRef = useRef<() => void>(() => {});
 
+  const closeCurrentSocket = useCallback((
+    code: 1000 | 4000 | 4001 | 4008,
+    reason: string,
+  ) => {
+    const socket = socketRef.current;
+    // Retire identity and handlers before close can dispatch any callback.
+    // Saved/queued callbacks also check socket identity and attempt generation.
+    socketRef.current = null;
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onerror = null;
+    socket.onclose = null;
+    // Browser clients may only send 1000 or application codes 3000–4999.
+    // Do not swallow a failed close and then create a second live socket.
+    socket.close(code, reason);
+  }, []);
+
   const clearTakeoverTimeout = useCallback(() => {
     if (takeoverTimeoutRef.current === null) return;
     window.clearTimeout(takeoverTimeoutRef.current);
@@ -585,16 +603,10 @@ export function useCloudBrowserTransport({
       ) {
         return;
       }
-      const socket = socketRef.current;
-      socketRef.current = null;
+      closeCurrentSocket(4000, "validated browser startup timeout");
       handshakeRef.current = false;
       pendingBinaryRef.current = false;
       cancelFrameDecodeRef.current(false);
-      try {
-        socket?.close(4000, "validated browser startup timeout");
-      } catch {
-        // A retry always creates a fresh one-use ticket and connection.
-      }
       prepareControlIntentForReconnect();
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
       if (scheduleLiveRecoveryRef.current("first_paint")) {
@@ -612,6 +624,7 @@ export function useCloudBrowserTransport({
     }, FIRST_FRAME_TIMEOUT_MS);
   }, [
     clearFirstFrameTimeout,
+    closeCurrentSocket,
     prepareControlIntentForReconnect,
     setControlPending,
     setCurrentLease,
@@ -632,13 +645,7 @@ export function useCloudBrowserTransport({
       cancelFrameDecodeRef.current(false);
       prepareControlIntentForReconnect();
       setCurrentLease(EMPTY_BROWSER_LEASE, false);
-      const socket = socketRef.current;
-      socketRef.current = null;
-      try {
-        socket?.close(1008, "v3 protocol rejected");
-      } catch {
-        // The failed state is already final for this connection.
-      }
+      closeCurrentSocket(4008, "v3 protocol rejected");
       if (scheduleLiveRecoveryRef.current(kind)) {
         setFailureKind(null);
         setError("");
@@ -654,6 +661,7 @@ export function useCloudBrowserTransport({
     },
     [
       clearFirstFrameTimeout,
+      closeCurrentSocket,
       prepareControlIntentForReconnect,
       setControlPending,
       setCurrentLease,
@@ -795,14 +803,8 @@ export function useCloudBrowserTransport({
       waitingForOnlineRef.current = false;
       invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
-      const socket = socketRef.current;
-      socketRef.current = null;
+      closeCurrentSocket(1000, "client stop");
       socketSessionRef.current = "";
-      try {
-        socket?.close(1000, "client stop");
-      } catch {
-        // The close event may already have run.
-      }
       cancelFrameDecode(clearFrame);
       if (clearFrame) setHasCanvasFrame(false);
     },
@@ -810,6 +812,7 @@ export function useCloudBrowserTransport({
       cancelFrameDecode,
       clearBinding,
       clearFirstFrameTimeout,
+      closeCurrentSocket,
       setControlPending,
       setCurrentLease,
       setFailureKind,
@@ -861,14 +864,14 @@ export function useCloudBrowserTransport({
       invalidateLiveRecoveryAttempt(true);
       clearFirstFrameTimeout();
       clearTakeoverTimeout();
-      socketRef.current?.close();
-      socketRef.current = null;
+      closeCurrentSocket(1000, "transport unmounted");
       cancelFrameDecode(false);
     },
     [
       cancelFrameDecode,
       clearFirstFrameTimeout,
       clearTakeoverTimeout,
+      closeCurrentSocket,
     ],
   );
 
@@ -1131,13 +1134,7 @@ export function useCloudBrowserTransport({
       reconnectTimerRef.current = null;
     }
     invalidateLiveRecoveryAttempt(false);
-    const socket = socketRef.current;
-    socketRef.current = null;
-    try {
-      socket?.close(1001, "fresh v3 connection required");
-    } catch {
-      // The fresh-ticket reconnect below owns recovery.
-    }
+    closeCurrentSocket(4001, "fresh v3 connection required");
     scheduleReconnect(
       sessionId,
       generation,
@@ -1281,6 +1278,9 @@ export function useCloudBrowserTransport({
       );
       return false;
     }
+    // Every connect path shares this handoff, even if its caller did not
+    // already retire the previous socket. Close before rebinding or creating.
+    closeCurrentSocket(1000, "connection replaced");
     setProtocolVersion(null);
     handshakeRef.current = false;
     seedTicket(auth);
@@ -1314,8 +1314,7 @@ export function useCloudBrowserTransport({
         return;
       }
       if (auth.expiresAt <= Date.now()) {
-        socketRef.current = null;
-        socket.close(1008, "ticket expired");
+        closeCurrentSocket(4008, "ticket expired");
         scheduleReconnect(
           sessionId,
           generation,
@@ -1414,13 +1413,7 @@ export function useCloudBrowserTransport({
       return true;
     }
     invalidateLiveRecoveryAttempt(true);
-    const oldSocket = socketRef.current;
-    socketRef.current = null;
-    try {
-      oldSocket?.close(1000, "new v3 live request");
-    } catch {
-      // Already closed.
-    }
+    closeCurrentSocket(1000, "new v3 live request");
     const generation = ++socketGenerationRef.current;
     ++connectAttemptSerialRef.current;
     activeConnectAttemptRef.current = null;

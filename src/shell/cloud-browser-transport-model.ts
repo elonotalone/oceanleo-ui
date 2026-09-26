@@ -527,7 +527,15 @@ function coherentLeaseTransition(
     next.holderKind !== previous.holderKind ||
     next.holderId !== previous.holderId ||
     next.connectionId !== previous.connectionId;
-  return !identityChanged || next.epoch > previous.epoch;
+  // The executor increments the epoch when granting control. Releasing or
+  // expiring that grant keeps its epoch and clears the owner. A free lease
+  // cannot authorize input; strictLease already requires all owner fields to
+  // be absent. Older epochs and same-epoch replacement grants remain invalid.
+  return (
+    !identityChanged ||
+    next.epoch > previous.epoch ||
+    next.holderKind === "free"
+  );
 }
 
 function bindingFromState(

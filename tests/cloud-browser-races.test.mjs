@@ -625,7 +625,7 @@ test("a failed paint receipt retains the frame and reconnects", async () => {
 
     assert.equal(runtime.transport.hasCanvasFrame, true);
     assert.equal(runtime.transport.transportState, "reconnecting");
-    assert.equal(socket.closed?.code, 1001);
+    assert.equal(socket.closed?.code, 4001);
     await tick(runtime, 499);
     assert.equal(runtime.ticketCalls.length, 1);
     await tick(runtime, 1);
@@ -648,7 +648,7 @@ test("heartbeat backpressure cannot leave a stale socket live", async () => {
 
     assert.equal(runtime.transport.transportState, "reconnecting");
     assert.equal(runtime.transport.hasCanvasFrame, true);
-    assert.equal(socket.closed?.code, 1001);
+    assert.equal(socket.closed?.code, 4001);
     assert.equal(runtime.ticketCalls.length, 1);
   } finally {
     await mounted.unmount();
@@ -1041,7 +1041,7 @@ test("takeover timeout cancels the old writer path without replay", async () => 
     assert.equal(runtime.transport.controlPending, false);
     assert.equal(runtime.transport.driving, false);
     assert.equal(runtime.transport.transportState, "reconnecting");
-    assert.equal(socket.closed?.code, 1001);
+    assert.equal(socket.closed?.code, 4001);
     assert.equal(sentMessages(socket, "control.acquire").length, 1);
     assert.equal(runtime.ticketCalls.length, 1);
   } finally {
@@ -1074,7 +1074,7 @@ test("explicit takeover cancellation closes the in-flight socket once", async ()
     assert.equal(cancelled, true);
     assert.equal(runtime.transport.controlPending, false);
     assert.equal(runtime.transport.driving, false);
-    assert.equal(socket.closed?.code, 1001);
+    assert.equal(socket.closed?.code, 4001);
     assert.equal(sentMessages(socket, "control.acquire").length, 1);
     assert.equal(sentMessages(socket, "control.release").length, 0);
 

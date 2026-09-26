@@ -214,6 +214,8 @@ export function ResultCanvas({
     useState<WorkspaceLibraryEntry | null>(null);
   const [activeCanvasMode, setActiveCanvasMode] =
     useState<"preview" | "edit">("preview");
+  const [hasCommittedEditorRevision, setHasCommittedEditorRevision] =
+    useState(false);
   const [artifactSaveError, setArtifactSaveError] = useState("");
   const activeCanvasRevisionKey = activeCanvasEntry?.libraryItem
     ? libraryItemIdentityKey(activeCanvasEntry.libraryItem)
@@ -249,6 +251,7 @@ export function ResultCanvas({
       // An explicit library card is a pinned artifact/revision identity.
       // Never replace a historical card with a locally saved head by root id.
       setActiveCanvasEntry(entry);
+      setHasCommittedEditorRevision(false);
       setActiveCanvasMode("preview");
       setArtifactSaveError("");
     },
@@ -256,6 +259,7 @@ export function ResultCanvas({
   );
   const openCanvasItem = useCallback(
     (item: LibraryItem) => {
+      setHasCommittedEditorRevision(false);
       setActiveCanvasMode("edit");
       setArtifactSaveError("");
       setActiveCanvasEntry(workspaceEntryFromLibraryItem(item));
@@ -276,7 +280,10 @@ export function ResultCanvas({
     const rootId = advancedRootItemId(item);
     // A valid new durable revision resolves an earlier commit failure. A
     // rename/open/autosave-noop must not hide a still-unresolved real failure.
-    if (transition?.durableCommit) setArtifactSaveError("");
+    if (transition?.durableCommit) {
+      setArtifactSaveError("");
+      setHasCommittedEditorRevision(true);
+    }
     setActiveCanvasEntry((current) =>
       current?.libraryItem &&
       advancedRootItemId(current.libraryItem) === rootId
@@ -506,6 +513,7 @@ export function ResultCanvas({
         taskId={effectiveTaskId}
         siteId={effectiveSiteId}
         onOpenEntry={openCanvasEntry}
+        allowHostRestore={!activeCanvasEntry || activeCanvasMode !== "edit"}
         onOpenItem={openCanvasItem}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有生成内容"
@@ -627,21 +635,41 @@ export function ResultCanvas({
       embedded
       onSavedItem={recordSavedEditorItem}
       onClose={() => {
-        setActiveCanvasEntry(null);
+        // Keep the exact revision accepted from this editor's commit chain.
+        // Returning to a cached library card would reopen its older pin.
+        if (hasCommittedEditorRevision) setActiveCanvasMode("preview");
+        else setActiveCanvasEntry(null);
         setArtifactSaveError("");
       }}
     />
   ) : null;
   const viewerContent =
     activeCanvasEntry && activeCanvasMode === "preview" ? (
-      <WorkspaceEntryCanvas
-        entry={activeCanvasEntry}
-        accent={accent}
-        onClose={() => {
-          setActiveCanvasEntry(null);
-          setArtifactSaveError("");
-        }}
-      />
+      <div className="flex h-full min-h-0 flex-col">
+        {hasCommittedEditorRevision && activeCanvasEntry.libraryItem && (
+          <div className="flex shrink-0 justify-end px-3 py-1">
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#f5f5f4)]"
+              style={{ color: accent }}
+              onClick={() => openCanvasItem(activeCanvasEntry.libraryItem!)}
+            >
+              {tt("编辑")}
+            </button>
+          </div>
+        )}
+        <div className="min-h-0 flex-1">
+          <WorkspaceEntryCanvas
+            entry={activeCanvasEntry}
+            accent={accent}
+            onClose={() => {
+              setActiveCanvasEntry(null);
+              setHasCommittedEditorRevision(false);
+              setArtifactSaveError("");
+            }}
+          />
+        </div>
+      </div>
     ) : null;
   const pluginHost = useMemo<PluginHost | null>(() => {
     if (!activeCapability) return null;

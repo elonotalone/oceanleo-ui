@@ -120,6 +120,8 @@ export interface WorkspaceLibraryProps {
   onOpenItem?: (item: LibraryItem) => void;
   /** Workspace hosts can move every preview/editor into the fixed main canvas. */
   onOpenEntry?: (entry: WorkspaceLibraryEntry) => void;
+  /** Background restoration must not replace an editor that owns the canvas. */
+  allowHostRestore?: boolean;
   /**
    * 货架卡片上的动作插槽——**只给「下载」用**（合同 §0.6「每张素材卡带下载」、
    * §8.9 仲裁）。
@@ -315,6 +317,7 @@ export function WorkspaceLibrary({
   openAdvancedOnSelect = true,
   onOpenItem,
   onOpenEntry,
+  allowHostRestore = true,
   entryActions,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
@@ -369,13 +372,18 @@ export function WorkspaceLibrary({
 
   const openEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
-      if (onOpenEntry) {
+      // Kept-alive libraries still receive saved rows while another panel or
+      // editor is in front. Restore their selection without navigating the host.
+      const node = detailRef.current || shelfScrollRef.current;
+      const hostRestoreAllowed = allowHostRestore && Boolean(node) &&
+        !node?.closest('[hidden], [inert], [aria-hidden="true"]');
+      if (onOpenEntry && hostRestoreAllowed) {
         onOpenEntry(entry);
         return;
       }
       setSelectedId(entry.id);
     },
-    [onOpenEntry],
+    [allowHostRestore, onOpenEntry],
   );
 
   const applyMaterialAction = async (
@@ -499,7 +507,9 @@ export function WorkspaceLibrary({
         entryId: entry.id,
       });
     }
-    openEntry(entry);
+    // A card click is an explicit navigation request, even in an editor drawer.
+    if (onOpenEntry) onOpenEntry(entry);
+    else openEntry(entry);
   };
 
   const dragPropsFor = (entry: WorkspaceLibraryEntry) => {
