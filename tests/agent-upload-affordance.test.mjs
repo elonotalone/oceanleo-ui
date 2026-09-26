@@ -174,8 +174,8 @@ test("默认（不传 prop）= 35 个站的现状：两个组件都照旧渲染�
 });
 
 test("显式传 true 与不传完全一致（默认值不是另一条分支）", () => {
-  // ✦ leo 按钮的渐变 id 按模块计数递增（LeoEntryButton.tsx 有意不用 useId），每渲染一次就换号。
-  const stable = (html) => html.replace(/leo-entry-g-\d+/g, "leo-entry-g-N");
+  // React useId 的渐变编号无业务含义；同时归一化 SVG id 和 url(#id) 引用。
+  const stable = (html) => html.replace(/leo-entry-g-[\w:-]+/g, "leo-entry-g-N");
   assert.equal(
     stable(renderFunctionChat({ enableInputTools: true })),
     stable(renderFunctionChat({})),

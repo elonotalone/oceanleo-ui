@@ -318,6 +318,9 @@ const COMPOSER_PROPS = {
   onAttachFiles() {},
 };
 
+// Separate React roots have distinct useId values; normalize both SVG ids and url(#id) references.
+const stableHtml = (html) => html.replace(/leo-entry-g-[\w:-]+/g, "leo-entry-g-N");
+
 test("浏览器：LeoComposer 的 DOM 与「没有手机模块」的那一版逐字相同", async () => {
   assert.equal(window.Capacitor, undefined, "这一节必须在没有原生宿主的窗口里跑");
 
@@ -325,8 +328,8 @@ test("浏览器：LeoComposer 的 DOM 与「没有手机模块」的那一版逐
   const baseline = await mount(composerWithoutNative.LeoComposer, COMPOSER_PROPS);
 
   assert.equal(
-    real.container.innerHTML,
-    baseline.container.innerHTML,
+    stableHtml(real.container.innerHTML),
+    stableHtml(baseline.container.innerHTML),
     "浏览器里的输入框 DOM 被手机功能改到了",
   );
 
@@ -343,8 +346,8 @@ test("浏览器：「＋」菜单展开后也逐字相同，三项一个都不�
 
   assert.match(real.container.textContent, /从本地添加文件/, "菜单确实展开了");
   assert.equal(
-    real.container.innerHTML,
-    baseline.container.innerHTML,
+    stableHtml(real.container.innerHTML),
+    stableHtml(baseline.container.innerHTML),
     "展开的附件菜单被手机功能改到了",
   );
   for (const label of NATIVE_LABELS) {
@@ -366,8 +369,8 @@ test("浏览器：InputCard 的 DOM 与「没有手机模块」的那一版逐�
   try {
     assert.match(real.container.textContent, /上传文件/, "那颗虚线上传按钮还在");
     assert.equal(
-      real.container.innerHTML,
-      baseline.container.innerHTML,
+      stableHtml(real.container.innerHTML),
+      stableHtml(baseline.container.innerHTML),
       "浏览器里的 InputCard DOM 被手机功能改到了",
     );
   } finally {
@@ -379,13 +382,13 @@ test("浏览器：InputCard 的 DOM 与「没有手机模块」的那一版逐�
 test("浏览器：那颗上传按钮点下去照旧是系统文件选择器，不弹三选一", async () => {
   const props = { value: "", onChange() {}, onSubmit() {}, onFiles() {} };
   const view = await mount(inputCardReal.InputCard, props);
-  const before = view.container.innerHTML;
+  const before = stableHtml(view.container.innerHTML);
 
   const upload = buttonLabelled(view.container, "上传文件（可多选）");
   assert.ok(upload, "上传按钮不见了");
   await view.click(upload);
 
-  assert.equal(view.container.innerHTML, before, "浏览器里点上传竟然多渲染了东西");
+  assert.equal(stableHtml(view.container.innerHTML), before, "浏览器里点上传竟然多渲染了东西");
   await view.unmount();
 });
 

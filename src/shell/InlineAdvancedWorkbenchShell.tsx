@@ -6,8 +6,10 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
@@ -53,11 +55,6 @@ import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { editBarOwnershipForItem } from "./workbench-routes";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
 import { useAdvancedRecovery } from "./use-advanced-recovery";
-import {
-  createLiveReactNodeStore,
-  LiveReactNode,
-  publishLiveReactNode,
-} from "./live-react-node";
 import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
 import { editBarVisibleOnPage } from "./plugin-chrome/plugin-pages";
 import { usePluginPage } from "./plugin-chrome/plugin-page-store";
@@ -137,9 +134,13 @@ export function InlineAdvancedWorkbenchShell({
     accent: effectiveAccent,
     theme: pluginTheme.theme,
   });
-  const liveHeaderStoreRef = useRef(createLiveReactNodeStore());
-  const liveHeaderNode = useMemo(
-    () => <LiveReactNode store={liveHeaderStoreRef.current} />,
+  const [headerHost, setHeaderHost] = useState<HTMLDivElement | null>(null);
+  // Only the DOM target belongs to SplitWorkspace. The header stays in this
+  // React tree so its reported page and the editor commit together. Publishing
+  // a ReactNode from a layout effect let the old header effect write the old
+  // page back to the store while the editor was already reporting the new one.
+  const headerSlotNode = useMemo(
+    () => <div ref={setHeaderHost} className="w-full min-w-0" />,
     [],
   );
   const closingRef = useRef(false);
@@ -423,19 +424,16 @@ export function InlineAdvancedWorkbenchShell({
     ],
   );
   useLayoutEffect(() => {
-    publishLiveReactNode(liveHeaderStoreRef.current, actionBar);
-  }, [actionBar]);
-  useLayoutEffect(() => {
     if (!rightPaneSlot) return;
     rightPaneSlot.setRightFrameless(false);
     rightPaneSlot.setRightEditorHeader(true);
-    rightPaneSlot.setRightLabel(liveHeaderNode);
+    rightPaneSlot.setRightLabel(headerSlotNode);
     return () => {
-      rightPaneSlot.clearRightLabel(liveHeaderNode);
+      rightPaneSlot.clearRightLabel(headerSlotNode);
       rightPaneSlot.setRightEditorHeader(false);
       rightPaneSlot.setRightFrameless(false);
     };
-  }, [liveHeaderNode, rightPaneSlot]);
+  }, [headerSlotNode, rightPaneSlot]);
 
   const editorViewport = adapter.nativeChrome?.viewport
     ? undefined
@@ -448,6 +446,7 @@ export function InlineAdvancedWorkbenchShell({
   return (
     <PluginThemePortalContext.Provider value={pluginThemeId}>
     <AdvancedLayoutContext.Provider value={layoutState}>
+      {rightPaneSlot && headerHost && createPortal(actionBar, headerHost)}
       {showEditBar && (
         <FloatingContextToolbar
           controller={floatingToolbar}

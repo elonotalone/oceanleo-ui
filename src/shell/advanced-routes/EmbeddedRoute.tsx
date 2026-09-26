@@ -37,6 +37,7 @@ import { uploadFile } from "../../lib/database";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { EmbedEditorPane } from "../workbench-embed";
+import { embedEditorOriginFor } from "../workbench-embed-base";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import { refreshArtifactRendition } from "../artifact-client";
 import {
@@ -520,12 +521,7 @@ export function EmbeddedRoute({
     ) {
       return;
     }
-    let editorOrigin = "";
-    try {
-      editorOrigin = new URL(embeddedEditorBase).origin;
-    } catch {
-      editorOrigin = "";
-    }
+    const editorOrigin = embedEditorOriginFor(embeddedEditorBase);
     if (!editorOrigin || !isTrustedEditorOrigin(editorOrigin)) {
       setDesignHandshakeError(
         "设计画布握手已拒绝：[design-handshake-untrusted-origin] 编辑器 origin 不受信任。",

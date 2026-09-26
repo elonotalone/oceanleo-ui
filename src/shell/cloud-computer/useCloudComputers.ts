@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   cloudComputerApi,
   isMountable,
@@ -26,6 +26,7 @@ export const CC_POLL_MS = 15_000;
 
 const LIST_CACHE_KEY = "oceanleo.computers.list.v1";
 const listCache = new WeakMap<CloudComputerClient, Computer[]>();
+const noopSubscribe = () => () => {};
 // Deliberately enumerate persisted scalar fields: future API credentials and
 // arbitrary nested metadata must never enter sessionStorage.
 const CACHE_FIELDS = [
@@ -139,7 +140,10 @@ export function useCloudComputers(options?: {
 }) {
   const client = options?.client ?? cloudComputerApi;
   const pollMs = options?.pollMs ?? CC_POLL_MS;
-  const [initial] = useState(() => options?.computers ?? readListCache(client));
+  const clientRender = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  // SSR and hydration share props; client-only mounts can show cached data immediately.
+  const [initial] = useState(() => options?.computers ?? (clientRender ? readListCache(client) : undefined));
+  const initialCacheRef = useRef(options?.computers ? undefined : initial);
   const [computers, setComputers] = useState<Computer[]>(initial ?? []);
   const [mountedId, setMountedIdState] = useState<string | null>(null);
   const [rememberedId, setRememberedId] = useState<string | null>(null);
@@ -182,13 +186,17 @@ export function useCloudComputers(options?: {
   }, []);
 
   useEffect(() => {
+    const cachedAtMount = initialCacheRef.current;
+    initialCacheRef.current = undefined;
     if (options?.computers) {
       applyList(options.computers);
       setLoading(false);
       return;
     }
     let cancelled = false;
-    setLoading(readListCache(client) === undefined);
+    const cached = cachedAtMount ?? readListCache(client);
+    if (cached) applyList(cached);
+    setLoading(cached === undefined);
     client
       .listComputers()
       .then((data) => {

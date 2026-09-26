@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
@@ -48,6 +48,13 @@ export function ComputerDock({
   const hidden = currentDomainFamily() === "cn";
   const { computers, mounted, mountedId, rememberedId, setMountedId, refresh, loading } =
     useCloudComputers({ client, computers: computersProp });
+  const [rememberedName, setRememberedName] = useState("");
+  useEffect(() => {
+    // Browser storage is unavailable during SSR; restore it after the matching first render.
+    setRememberedName(
+      typeof ccApi.readMountedComputerName === "function" ? ccApi.readMountedComputerName() : "",
+    );
+  }, []);
   const mountedHref = mounted ? serverPageHref(mounted.id) : devicesCloudHref();
   const openMounted = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.defaultPrevented) return;
@@ -76,8 +83,6 @@ export function ComputerDock({
   const mountedState = mounted ? computerDisplayState(mounted) : null;
 
   if (loading) {
-    const rememberedName =
-      typeof ccApi.readMountedComputerName === "function" ? ccApi.readMountedComputerName() : "";
     return (
       <div className="relative" data-oceanleo-cc-dock>
         <div
