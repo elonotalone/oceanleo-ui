@@ -45,15 +45,15 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.tsx", {
   "./mode-switch-gate": dataModule(`
     export function useModeSwitchFailure() {}
-    export function useModeSwitchHandoff() { return globalThis.__g4Handoff || null; }
-    export function useModeSwitchReady() {}
+    export function useModeSwitchHandoff() { return globalThis.__d1Handoff || null; }
+    export function useModeSwitchReady(ready) { globalThis.__d1Opened = ready; }
   `),
   "./editor-handoff": dataModule(`
     export const ENTER_PRO_NOT_READY = "还没准备好";
     export function handoffItemKey(item) { return String(item.key || item.id || ""); }
     const resolvedByItem = new WeakMap();
     export function useEditorHandoffSource(item) {
-      if (!resolvedByItem.has(item)) resolvedByItem.set(item, globalThis.__g4Resolved);
+      if (!resolvedByItem.has(item)) resolvedByItem.set(item, globalThis.__d1Resolved);
       return resolvedByItem.get(item);
     }
     export async function materializeHandoffJson(source) {
@@ -81,7 +81,7 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
   "../editor-protocol": dataModule(`
     export const EDITOR_PROTOCOL = "oceanleo.editor.v1";
     export function isValidEditorTargetOrigin() { return true; }
-    export function asHostToEditorMessage(value) { return value; }
+    export { asHostToEditorMessage } from ${JSON.stringify(pathToFileURL(resolve("src/shell/editor-protocol.ts")).href)};
     export function buildEditorEmbedUrl(base, options) {
       const url = new URL(base);
       url.searchParams.set("instance", options.instanceId);
@@ -104,7 +104,7 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
   `),
   "../hosted-editor-origins": dataModule(`
     export const HOSTED_EDITOR_ORIGINS = { find(callback) {
-      const value = globalThis.__g4EmbedBase || "";
+      const value = globalThis.__d1EmbedBase || "";
       return value && callback(value) ? value : undefined;
     } };
   `),
@@ -142,7 +142,7 @@ function renderRoute() {
       await act(async () => {
         root.render(React.createElement(DeckHostedRoute, {
           item,
-          taskId: "task-g4",
+          taskId: "task-d1",
           onClose() {},
         }));
       });
@@ -151,7 +151,7 @@ function renderRoute() {
       flushSync(() => {
         root.render(React.createElement(DeckHostedRoute, {
           item,
-          taskId: "task-g4",
+          taskId: "task-d1",
           onClose() {},
         }));
       });
@@ -202,102 +202,69 @@ function attachFrameRecorder(frame) {
   };
 }
 
-test("G4: 同一 handoff 的重新解析不卸载 PPTist，也不重发稿件", async () => {
-  globalThis.__g4EmbedBase = ORIGIN;
-  globalThis.__g4Handoff = HANDOFF;
-  globalThis.__g4Resolved = resolved();
+test("D1: a full deck over 20 KB is sent once through the validated snapshot channel, and shown only after its receipt", async () => {
+  const draft = { format: "pptist", title: "保留这份八页稿", slides: Array.from({ length: 8 }, (_, i) => ({ id: `s${i}`, elements: [{ id: `title${i}`, type: "text", content: `${i} 保留原稿 ` + "正文".repeat(2000) }] })) };
+  assert.ok(JSON.stringify(draft).length > 20_000);
+  globalThis.__d1EmbedBase = ORIGIN;
+  globalThis.__d1Handoff = { kind: "inline", json: draft, revision: "rev-7" };
+  globalThis.__d1Resolved = resolved(globalThis.__d1Handoff);
   const view = renderRoute();
   try {
     await view.render();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 15));
-    });
-    const firstFrame = view.container.querySelector("iframe");
-    assert.ok(firstFrame, "初次读稿成功后应挂载 PPTist iframe");
-    const first = attachFrameRecorder(firstFrame);
-    await act(async () => {
-      first.load();
-      first.ready();
-    });
-    const initialMessages = first.messages.filter((message) => message.type === "recovery-restore");
-    assert.equal(initialMessages.length, 1, "首个 ready 只应收到一次稿件");
-
-    // 模拟签名刷新：resolved 外壳对象变了，但 handoff、素材 revision 和内容没有变。
-    globalThis.__g4Resolved = resolved({ ...HANDOFF });
-    await act(async () => {
-      view.renderWithoutAct({ ...ITEM });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    await act(async () => {});
-    const secondFrame = view.container.querySelector("iframe");
-    assert.equal(secondFrame, firstFrame, "内容身份未变时不应卸下已加载 iframe");
-    assert.equal(
-      first.messages.filter((message) => message.type === "recovery-restore").length,
-      1,
-      "重新解析不能把用户未保存的稿件重新覆盖一遍",
-    );
-  } finally {
-    await view.unmount();
-  }
+    const frame = view.container.querySelector("iframe");
+    assert.ok(frame);
+    const recorder = attachFrameRecorder(frame);
+    await act(async () => { recorder.load(); recorder.ready(); });
+    const restores = recorder.messages.filter(m => m.type === "recovery-restore");
+    assert.equal(restores.length, 1);
+    assert.deepEqual(restores[0].snapshot.payload, draft);
+    assert.equal(globalThis.__d1Opened, false, "core ready must not reveal its default example deck");
+    await act(async () => sendMessage(frame, { instanceId: instanceOf(frame), type: "recovery-result", recoveryId: "another-open", ok: true }));
+    assert.equal(globalThis.__d1Opened, false);
+    await act(async () => sendMessage(frame, { instanceId: instanceOf(frame), type: "recovery-result", recoveryId: restores[0].recoveryId, ok: true }));
+    assert.equal(globalThis.__d1Opened, true);
+    await act(async () => { recorder.ready(); recorder.ready(); });
+    assert.equal(recorder.messages.filter(m => m.type === "init").length, 1);
+    assert.equal(recorder.messages.filter(m => m.type === "recovery-restore").length, 1);
+  } finally { await view.unmount(); }
 });
 
-test("G4: 没有托管嵌入地址时舞台给出可行动的人话", async () => {
-  globalThis.__g4EmbedBase = "";
-  globalThis.__g4Handoff = HANDOFF;
-  globalThis.__g4Resolved = resolved();
+test("D1: an oversized or refused snapshot never reveals an empty/default PPT", async () => {
+  globalThis.__d1EmbedBase = ORIGIN;
+  globalThis.__d1Handoff = { kind: "inline", revision: "rev-7", json: { format: "pptist", slides: [{ id: "large", elements: [{ type: "text", content: "x".repeat(4_000_001) }] }] } };
+  globalThis.__d1Resolved = resolved(globalThis.__d1Handoff);
   const view = renderRoute();
   try {
-    await view.render();
-    await act(async () => {});
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    const text = view.container.textContent || "";
-    assert.match(text, /专业编辑器暂时打不开/);
-    assert.match(text, /普通编辑/);
-    assert.doesNotMatch(text, /正在读取演示文稿/);
-    assert.doesNotMatch(text, /托管地址未放行/);
-  } finally {
-    await view.unmount();
-  }
+    await view.render({ ...ITEM, id: "oversized", key: "oversized" });
+    const frame = view.container.querySelector("iframe");
+    const recorder = attachFrameRecorder(frame);
+    await act(async () => { recorder.load(); recorder.ready(); recorder.ready(); });
+    assert.equal(recorder.messages.filter(m => m.type === "init").length, 0);
+    assert.equal(recorder.messages.filter(m => m.type === "recovery-restore").length, 0);
+    assert.equal(globalThis.__d1Opened, false);
+  } finally { await view.unmount(); }
 });
 
-test("G4: 内容 revision 变化时新 iframe 等自己的 ready 后才收稿", async () => {
-  globalThis.__g4EmbedBase = ORIGIN;
-  globalThis.__g4Handoff = HANDOFF;
-  globalThis.__g4Resolved = resolved();
+test("D1: optional undefined fields are stripped before the bounded recovery contract", async () => {
+  globalThis.__d1EmbedBase = ORIGIN;
+  const draft = {
+    format: "pptist",
+    title: "含可选空字段的八页稿",
+    slides: [{ id: "s1", elements: [{ id: "title", text: "首页", fill: undefined, lock: undefined }] }],
+  };
+  globalThis.__d1Handoff = { kind: "inline", revision: "rev-undefined", json: draft };
+  globalThis.__d1Resolved = resolved(globalThis.__d1Handoff);
   const view = renderRoute();
   try {
-    await view.render();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 15));
-    });
-    const firstFrame = view.container.querySelector("iframe");
-    assert.ok(firstFrame);
-    const first = attachFrameRecorder(firstFrame);
-    await act(async () => {
-      first.load();
-      first.ready();
-    });
-    const nextItem = { ...ITEM, revisionId: "rev-8" };
-    globalThis.__g4Resolved = resolved({
-      ...HANDOFF,
-      revision: "rev-8",
-      json: { ...HANDOFF.json, slides: [{ id: "s2", elements: [{ id: "title", text: "第二版" }] }] },
-    });
-    await act(async () => {
-      view.renderWithoutAct(nextItem);
-      await new Promise((resolve) => setTimeout(resolve, 15));
-    });
-    const secondFrame = view.container.querySelector("iframe");
-    assert.ok(secondFrame);
-    assert.notEqual(secondFrame, firstFrame);
-    const second = attachFrameRecorder(secondFrame);
-    assert.equal(second.messages.length, 0, "新 iframe 未 ready 前不得收到消息");
-    await act(async () => {
-      second.load();
-      second.ready();
-    });
-    assert.equal(second.messages.filter((message) => message.type === "recovery-restore").length, 1);
-  } finally {
-    await view.unmount();
-  }
+    await view.render({ ...ITEM, id: "undefined-fields", key: "undefined-fields" });
+    const frame = view.container.querySelector("iframe");
+    const recorder = attachFrameRecorder(frame);
+    await act(async () => { recorder.load(); recorder.ready(); });
+    const restore = recorder.messages.find((message) => message.type === "recovery-restore");
+    assert.ok(restore);
+    assert.equal(Object.hasOwn(restore.snapshot.payload.slides[0].elements[0], "fill"), false);
+    assert.equal(Object.hasOwn(restore.snapshot.payload.slides[0].elements[0], "lock"), false);
+    await act(async () => sendMessage(frame, { instanceId: instanceOf(frame), type: "recovery-result", recoveryId: restore.recoveryId, ok: true }));
+    assert.equal(globalThis.__d1Opened, true);
+  } finally { await view.unmount(); }
 });

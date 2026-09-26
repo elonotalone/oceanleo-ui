@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { useModeSwitchHandoff, useModeSwitchReady } from "./mode-switch-gate";
+import {
+  useModeSwitchFailure,
+  useModeSwitchHandoff,
+  useModeSwitchReady,
+} from "./mode-switch-gate";
 import {
   ENTER_PRO_NOT_READY,
   handoffItemKey,
@@ -171,17 +175,31 @@ export const DECK_HOSTED_MISSING_EMBED_MESSAGE =
  * 存量 deck IR 与已经是托管格式的工程档都要能打开。
  * 已经是托管格式的原样交出去（R6：存量只读，不静默改写）。
  */
+function stripUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => stripUndefined(entry));
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry !== undefined) result[key] = stripUndefined(entry);
+    }
+    return result;
+  }
+  return value;
+}
+
 function toHostedDocument(source: unknown, title: string): Record<string, unknown> {
   const record =
     source && typeof source === "object" && !Array.isArray(source)
       ? (source as Record<string, unknown>)
       : null;
   if (record && record.format === PPTIST_CARRIER_FORMAT && Array.isArray(record.slides)) {
-    return record;
+    return stripUndefined(record) as Record<string, unknown>;
   }
-  return deckDocumentToPptist(
-    normalizeDeckDocument(source ?? {}, title || "演示文稿"),
-  ) as unknown as Record<string, unknown>;
+  return stripUndefined(
+    deckDocumentToPptist(
+      normalizeDeckDocument(source ?? {}, title || "演示文稿"),
+    ),
+  ) as Record<string, unknown>;
 }
 
 export function DeckHostedRoute({
@@ -197,6 +215,9 @@ export function DeckHostedRoute({
   ).current;
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [ready, setReady] = useState(false);
+  const [documentOpened, setDocumentOpened] = useState(false);
+  const openingIdRef = useRef<string | null>(null);
+  const openingSequenceRef = useRef(0);
   const [dirty, setDirty] = useState(false);
   const [editRevision, setEditRevision] = useState(0);
   const [status, setStatus] = useState("");
@@ -215,6 +236,7 @@ export function DeckHostedRoute({
     null,
   );
   const gateHandoff = useModeSwitchHandoff();
+  const reportModeSwitchFailure = useModeSwitchFailure();
   const resolved = useEditorHandoffSource(item, gateHandoff);
   // Inline sources stringify the whole deck; PPTist messages re-render this
   // route on every edit, so only recompute when the resolution itself changes.
@@ -229,8 +251,8 @@ export function DeckHostedRoute({
     resolved,
     loadedContentIdentityRef.current,
   );
-  // 过渡门的 ready 信号（plugin-ui U4）：PPTist 的协议 ready 到达即首帧可见。
-  useModeSwitchReady(ready);
+  // The core booting is not proof that it opened this draft. Wait for its receipt.
+  useModeSwitchReady(documentOpened);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +273,8 @@ export function DeckHostedRoute({
       setSourceReady(false);
       setSource(null);
       setReady(false);
+      setDocumentOpened(false);
+      openingIdRef.current = null;
       frameLoadedRef.current = false;
       initializedSourceRef.current = null;
       setFrameLoaded(false);
@@ -312,6 +336,8 @@ export function DeckHostedRoute({
     initializedSourceRef.current = null;
     setFrameLoaded(false);
     setReady(false);
+    setDocumentOpened(false);
+    openingIdRef.current = null;
   }, [src]);
 
   const sendToEditor = useCallback(
@@ -333,6 +359,29 @@ export function DeckHostedRoute({
 
   const pushInit = useCallback(() => {
     if (source == null || initializedSourceRef.current === source) return;
+    if (!frameLoadedRef.current) return;
+    const recoveryId = `open-${instanceId}-${++openingSequenceRef.current}`;
+    // Full documents use the existing bounded snapshot channel. Asset metadata
+    // is limited to 20 KB and silently rejected even ordinary multi-page decks.
+    const restore = {
+      protocol: EDITOR_PROTOCOL,
+      type: "recovery-restore",
+      instanceId,
+      recoveryId,
+      snapshot: { revision: 0, payload: toHostedDocument(source, item.title) },
+    };
+    if (!asHostToEditorMessage(restore, instanceId)) {
+      initializedSourceRef.current = source;
+      const message = "这份演示文稿超出专业编辑器的交接限制，原稿仍保留在普通编辑中。";
+      setStatus(message);
+      reportModeSwitchFailure(message);
+      return;
+    }
+    // Claim the attempt before init: the iframe replies ready to init as well.
+    // A repeated ready must not re-import over the user's live document.
+    initializedSourceRef.current = source;
+    openingIdRef.current = recoveryId;
+    setDocumentOpened(false);
     const modeSent = sendToEditor(buildSetModeMessage(instanceId, mode));
     const chromeSent = sendToEditor(
       buildHideChromeMessage(instanceId, {
@@ -340,8 +389,6 @@ export function DeckHostedRoute({
         panels: mode === "normal",
       }),
     );
-    // `init` 先发：编辑器收到它才会报 tools-manifest / selection / history。
-    // 只发 open-asset 的话文档进去了，但 agent 的接口面一条都没送上来。
     const initSent = sendToEditor({
       protocol: EDITOR_PROTOCOL,
       type: "init",
@@ -349,22 +396,13 @@ export function DeckHostedRoute({
       mode,
       title: item.title || "演示文稿",
     });
-    const assetSent = sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "open-asset",
-      instanceId,
-      asset: {
-        id: String(item.id || instanceId),
-        kind: "deck",
-        title: item.title || "演示文稿",
-        meta: { document: toHostedDocument(source, item.title) },
-        writable: true,
-      },
-    });
-    if (modeSent && chromeSent && initSent && assetSent) {
-      initializedSourceRef.current = source;
+    const documentSent = sendToEditor(restore);
+    if (!modeSent || !chromeSent || !initSent || !documentSent) {
+      openingIdRef.current = null;
+      setStatus(ENTER_PRO_NOT_READY);
+      reportModeSwitchFailure(ENTER_PRO_NOT_READY);
     }
-  }, [instanceId, item.id, item.title, mode, sendToEditor, source]);
+  }, [instanceId, item.title, mode, reportModeSwitchFailure, sendToEditor, source]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -379,6 +417,21 @@ export function DeckHostedRoute({
         setFrameLoaded(true);
         setReady(true);
         pushInit();
+        return;
+      }
+      if (
+        message.type === "recovery-result" &&
+        message.recoveryId === openingIdRef.current
+      ) {
+        openingIdRef.current = null;
+        if (message.ok) {
+          setDocumentOpened(true);
+          setStatus("");
+        } else {
+          const failure = message.message || ENTER_PRO_NOT_READY;
+          setStatus(failure);
+          reportModeSwitchFailure(failure);
+        }
         return;
       }
       if (message.type === "dirty") {
@@ -412,11 +465,12 @@ export function DeckHostedRoute({
       }
       if (message.type === "error" && typeof message.message === "string") {
         setStatus(message.message);
+        reportModeSwitchFailure(message.message);
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [editRevision, editorOrigin, instanceId, pushInit]);
+  }, [editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure]);
 
   useEffect(() => {
     if (!ready) return;

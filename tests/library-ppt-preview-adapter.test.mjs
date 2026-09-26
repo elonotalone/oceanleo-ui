@@ -328,6 +328,9 @@ async function renderPptAdapter({ slideCount, meta }) {
     export async function prepareArtifactForAction() {
       return { ok: true, data: null };
     }
+    export async function refreshArtifactRendition() {
+      return { ok: true, data: null };
+    }
   `);
   const artifactContractStubUrl = dataModule(`
     export function isArtifactSourceTreeUrl() { return false; }

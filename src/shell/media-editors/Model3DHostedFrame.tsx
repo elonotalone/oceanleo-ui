@@ -32,6 +32,7 @@ export function Model3DHostedFrame({
   title,
   iframeRef,
   onReady,
+  onDirty,
   onSnapshot,
   onError,
 }: {
@@ -41,6 +42,7 @@ export function Model3DHostedFrame({
   title: string;
   iframeRef?: RefObject<HTMLIFrameElement | null>;
   onReady: () => void;
+  onDirty: () => void;
   onSnapshot: (payload: {
     gltfBase64?: string;
     revision?: number;
@@ -79,6 +81,10 @@ export function Model3DHostedFrame({
         onReady();
         return;
       }
+      if (accepted.type === "dirty") {
+        onDirty();
+        return;
+      }
       if (accepted.type === "recovery-snapshot") {
         const snapshot = accepted.ok ? accepted.snapshot : null;
         const payload =
@@ -101,7 +107,7 @@ export function Model3DHostedFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [instanceId, onError, onReady, onSnapshot]);
+  }, [instanceId, onDirty, onError, onReady, onSnapshot]);
 
   void send;
   void hostOrigin;

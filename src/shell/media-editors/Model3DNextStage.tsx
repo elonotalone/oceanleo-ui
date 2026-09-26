@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import {
   useModeSwitchHandoff,
+  useModeSwitchFailure,
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
 import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
@@ -25,7 +26,6 @@ import {
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
-import { fetchMediaBlob } from "../../lib/media-proxy";
 import { saveFileToLibrary } from "../doc-editors/doc-io";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -74,6 +74,7 @@ import {
   postModel3DRecoveryCapture,
   postModel3DSetMode,
 } from "./Model3DHostedFrame";
+import { preloadModel3DSource } from "./model3d-source-cache";
 
 function hostOriginNow(): string {
   if (typeof window === "undefined") return "https://oceanleo.com";
@@ -140,6 +141,7 @@ export function Model3DNextStage({
   const [format, setFormat] = useState<"glb" | "gltf">("glb");
   const [status, setStatus] = useState("");
   const [ready, setReady] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
   const [frameMounted, setFrameMounted] = useState(false);
   const [conversion, setConversion] = useState<Model3DConversionState>("converted");
   const [inspectDiffs, setInspectDiffs] = useState<
@@ -148,6 +150,7 @@ export function Model3DNextStage({
   const [hostedSrc, setHostedSrc] = useState("");
   const chipsManifest = useMemo(() => model3dToolsManifestChips(), []);
   const gateHandoff = useModeSwitchHandoff();
+  const reportModeSwitchFailure = useModeSwitchFailure();
   const pendingHandoff =
     peekW19EnterHandoff(w19ItemKey("threed", item)) ?? gateHandoff;
   const editorSource = useEditorHandoffSource(item, pendingHandoff);
@@ -155,7 +158,13 @@ export function Model3DNextStage({
   const applied = applyModel3DNextMode(instanceId, mode);
   const showHosted = applied.showHostedEditor && Boolean(hostedSrc) && frameMounted;
   // 过渡门的 ready 信号（plugin-ui U4）：专业面等 three.js editor 的协议 ready，普通面等模型 URL 就位。
-  useModeSwitchReady(mode === "pro" ? ready : Boolean(objectUrl));
+  useModeSwitchReady(mode === "pro" ? modelReady : Boolean(objectUrl));
+
+  useEffect(() => {
+    if (!gateHandoff || gateHandoff.kind === "empty") return;
+    setFrameMounted(true);
+    setMode("pro");
+  }, [gateHandoff]);
 
   useEffect(() => {
     rememberEditorChips("threed", MODEL3D_AGENT_CHIPS);
@@ -174,23 +183,35 @@ export function Model3DNextStage({
       editorSource.source ?? pendingHandoff,
     );
     const url = source.kind === "url" ? source.url : "";
+    const sourceRevision = source.kind === "url" ? source.revision : null;
     if (!url) return;
     let cancelled = false;
-    void fetchMediaBlob(url, { maxBytes: 256 * 1024 * 1024 })
-      .then(async (blob) => {
+    void preloadModel3DSource({
+      url,
+      format: source.kind === "url" ? source.format : null,
+      revision: source.kind === "url" ? source.revision : null,
+      artifactId: item.id,
+      revisionId:
+        item.revisionId ||
+        String(item.meta?.revision_id || item.meta?.revisionId || sourceRevision || ""),
+    })
+      .then(({ bytes, format: sourceFormat }) => {
         if (cancelled) return;
-        const buffer = await blob.arrayBuffer();
-        if (cancelled) return;
-        setGltfBytes(buffer);
-        setFormat(blob.type.includes("json") || /\.gltf$/i.test(url) ? "gltf" : "glb");
-        const nextUrl = URL.createObjectURL(new Blob([buffer]));
+        setGltfBytes(bytes);
+        setModelReady(false);
+        setFormat(sourceFormat);
+        const nextUrl = URL.createObjectURL(new Blob([bytes]));
         setObjectUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return nextUrl;
         });
       })
       .catch((error) => {
-        if (!cancelled) setStatus(error instanceof Error ? error.message : "模型加载失败");
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : "模型加载失败";
+          setStatus(message);
+          reportModeSwitchFailure(message);
+        }
       });
     const projectUrl = String(item.meta.editor_project_url || "").trim();
     if (projectUrl) {
@@ -211,7 +232,7 @@ export function Model3DNextStage({
     return () => {
       cancelled = true;
     };
-  }, [editorSource.source, editorSource.status, item, pendingHandoff]);
+  }, [editorSource.source, editorSource.status, item, pendingHandoff, reportModeSwitchFailure]);
 
   useEffect(() => {
     return () => {
@@ -234,6 +255,7 @@ export function Model3DNextStage({
 
   const applyGltfBytes = useCallback((bytes: ArrayBuffer, nextFormat: "glb" | "gltf") => {
     setGltfBytes(bytes);
+    setModelReady(false);
     setFormat(nextFormat);
     setObjectUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -300,7 +322,8 @@ export function Model3DNextStage({
     );
     postModel3DSetMode(frame, instanceId, "pro");
     if (inited) hostedInitedRef.current = true;
-  }, [format, gltfBytes, instanceId, item.title, mode, ready, readonly]);
+    else reportModeSwitchFailure("3D 专业内核无法接收模型。");
+  }, [format, gltfBytes, instanceId, item.title, mode, ready, readonly, reportModeSwitchFailure]);
 
   const convertLegacy = useCallback(() => {
     setConversion((state) => nextModel3DConversionState(state, { type: "request" }));
@@ -561,6 +584,7 @@ export function Model3DNextStage({
                     src={hostedSrc}
                     title="three.js editor"
                     onReady={() => setReady(true)}
+                    onDirty={() => setModelReady(true)}
                     onSnapshot={(payload) => {
                       const pending = pendingCaptureRef.current;
                       if (pending && payload.recoveryId === pending.id) {
@@ -571,7 +595,10 @@ export function Model3DNextStage({
                       const bytes = base64ToBytes(payload.gltfBase64);
                       applyGltfBytes(arrayBufferFromView(bytes), "glb");
                     }}
-                    onError={setStatus}
+                    onError={(message) => {
+                      setStatus(message);
+                      reportModeSwitchFailure(message);
+                    }}
                   />
                 </div>
               ) : null}

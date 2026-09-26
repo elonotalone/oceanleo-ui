@@ -4,7 +4,7 @@
 // 这份闸钉住新语义：
 //   (a) 切 pro 后同一 tick 内旧面仍在 DOM、出现 `data-mode-switch-pending`、新面已挂但不可见；
 //   (b) 新面发 ready 后旧面消失、覆盖层消失、新面可见；
-//   (c) ready 信号不来，兜底到点直接切；
+//   (c) 专业页 ready 信号不来，到点留在普通面并给出错误；
 //   (d) 切回 normal 同理；
 //   (e) 覆盖层是舞台内的 absolute：portal 进当前面的舞台节点，不遮第一行、第二行。
 //   另：`beforeEnterPro` 悬着时专业面不挂、覆盖层已在；门外调 `useModeSwitchReady` 是 noop。
@@ -19,7 +19,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import React, { act, useState } from "react";
+import React, { act, useEffect, useState } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -92,6 +92,7 @@ const { __setPluginMode } = await import(pluginModeStub);
 const {
   ModeSwitchGate,
   PluginModeSwitchGate,
+  useModeSwitchFailure,
   useModeSwitchReady,
   MODE_SWITCH_FALLBACK_MS,
 } = await import(gateUrl);
@@ -158,8 +159,8 @@ function isHiddenPending(node) {
   );
 }
 
-test("默认兜底是 8 秒", () => {
-  assert.equal(MODE_SWITCH_FALLBACK_MS, 8000);
+test("默认兜底给冷启动留足余量", () => {
+  assert.equal(MODE_SWITCH_FALLBACK_MS, 60000);
 });
 
 test("(a) 切 pro：同一 tick 内旧面仍在、覆盖层出现、新面已挂但不可见（不是 display:none）", async () => {
@@ -222,7 +223,7 @@ test("(b′) 新面挂上时就已 ready：同一次提交里直接切，不闪�
   }
 });
 
-test("(c) ready 不来：兜底到点直接切，覆盖层不许永久停留", async () => {
+test("(c) 专业页 ready 不来：到点留在普通面，覆盖层不许永久停留", async () => {
   const m = await mount({ fallbackMs: 300 });
   try {
     const startedAt = Date.now();
@@ -239,9 +240,9 @@ test("(c) ready 不来：兜底到点直接切，覆盖层不许永久停留", a
       await new Promise((resolve) => setTimeout(resolve, 350));
     });
     assert.equal(m.q("[data-mode-switch-pending]"), null, "兜底到点覆盖层还在");
-    assert.equal(m.q("[data-face=normal]"), null, "兜底到点旧面还在");
-    const slot = m.q("[data-face=pro]").closest("[data-mode-switch-face]");
-    assert.equal(slot.getAttribute("data-mode-switch-face-state"), "shown");
+    assert.ok(m.q("[data-face=normal]"), "失败后应保留原稿");
+    assert.equal(m.q("[data-face=pro]"), null);
+    assert.ok(m.q("[data-mode-switch-handoff-error]"));
   } finally {
     await m.unmount();
   }
@@ -368,6 +369,42 @@ test("beforeEnterPro 失败：留在快速面，出不挡操作的提示和重�
     assert.equal(toast.textContent.includes("重试"), true);
   } finally {
     await m.unmount();
+  }
+});
+
+test("专业面明确失败时立即退回普通面并说明原因", async () => {
+  function FailingFace() {
+    const fail = useModeSwitchFailure();
+    useEffect(() => fail("3D 专业内核无法接收模型。"), [fail]);
+    return h("div", { "data-face": "pro" }, "pro");
+  }
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(h(ModeSwitchGate, {
+      pro: false,
+      renderNormal: () => h(Face, { name: "normal", ready: true }),
+      renderPro: () => h(FailingFace),
+      fallbackMs: 5000,
+      onEnterProFailed: () => {},
+    })));
+    await act(async () => {
+      root.render(h(ModeSwitchGate, {
+        pro: true,
+        renderNormal: () => h(Face, { name: "normal", ready: true }),
+        renderPro: () => h(FailingFace),
+        fallbackMs: 5000,
+        onEnterProFailed: () => {},
+      }));
+    });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.ok(container.querySelector('[data-face="normal"]'));
+    assert.equal(container.querySelector('[data-face="pro"]'), null);
+    assert.match(container.querySelector("[data-mode-switch-handoff-error]").textContent, /3D 专业内核/);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
   }
 });
 

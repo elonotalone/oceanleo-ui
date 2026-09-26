@@ -23,6 +23,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { preloadModel3DSource } from "../media-editors/model3d-source-cache";
 import { threeDSubtypeFor } from "../library-data";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
@@ -410,6 +411,22 @@ function Model3DModelRoute({
           }
         : resolveW19Handoff(item, null);
       stashW19EnterHandoff(w19ItemKey("threed", item), handoff);
+      if (handoff.kind === "url") {
+        try {
+          await preloadModel3DSource({
+            ...handoff,
+            artifactId: item.id,
+            revisionId:
+              item.revisionId ||
+              String(item.meta?.revision_id || item.meta?.revisionId || handoff.revision || ""),
+          });
+        } catch (error) {
+          return {
+            ok: false as const,
+            error: error instanceof Error ? error.message : "3D 模型读取失败",
+          };
+        }
+      }
       return { ok: true, handoff, item: saved ?? item };
     };
     return () => {

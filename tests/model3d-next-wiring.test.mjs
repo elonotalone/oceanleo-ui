@@ -213,6 +213,8 @@ const shellStubUrl = dataModule(`
   }
 `);
 const mediaStubUrl = dataModule(`
+  export function absoluteMediaUrl(url) { return String(url || ""); }
+  export function canvasSafeUrl(url) { return String(url || ""); }
   export async function fetchMediaBlob() {
     throw new Error("3D 叶子闸不该去拉媒体");
   }
@@ -290,9 +292,14 @@ const emptyFnUrl = dataModule(`
   export function createModel3DCommandSurface() { return {}; }
   export function visualImportPlan() { return {}; }
   export function assertBlobSource() {}
+  export function parseGltfDocument() { return null; }
+  export function gltfDependencyUris() { return []; }
   export function useWorkbenchMaterialAdapter() { return null; }
   export function advancedSavedItem(item) { return item; }
   export function advancedRecoveryKey() { return "k"; }
+  export async function writeAdvancedRecovery() { return undefined; }
+  export async function readAdvancedRecovery() { return null; }
+  export async function deleteAdvancedRecovery() {}
 `);
 
 const leafStubs = {

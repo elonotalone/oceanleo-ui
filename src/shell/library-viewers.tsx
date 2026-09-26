@@ -17,7 +17,10 @@ import {
   threeDSubtypeFor,
   type LibraryItem,
 } from "./library-data";
-import { prepareArtifactForAction } from "./artifact-client";
+import {
+  prepareArtifactForAction,
+  refreshArtifactRendition,
+} from "./artifact-client";
 import { isArtifactSourceTreeUrl } from "./artifact-contract";
 import {
   isTrustedInteractiveViewerUrl,
@@ -35,8 +38,18 @@ import {
   officeViewerRenditionPurposes,
 } from "./doc-editors/office-file";
 import { importPptxDeck } from "./doc-editors/pptx-deck-import";
+import { absoluteMediaUrl } from "../lib/media-proxy";
 import { DeckSlideThumbnail } from "./doc-editors/DeckSlideThumbnail";
-import type { DeckDocument, DeckSlide } from "./doc-editors/deck-schema";
+import {
+  deckDocumentFromIr,
+  deckMasterFor,
+  deckTheme,
+  normalizeDeckDocument,
+  type DeckDocument,
+  type DeckSlide,
+} from "./doc-editors/deck-schema";
+import { parseDeckIr } from "./doc-editors/deck-ir";
+import { deckStructuredSourceUrl } from "./deck-delivery-family";
 import {
   DeckPreviewLayout,
   deckPreviewLogicalSize,
@@ -721,6 +734,124 @@ function readableSlideName(name: string | undefined): string {
   return trimmed;
 }
 
+/**
+ * Read the declared `oceanleo.deck.v1` source through the normal media proxy.
+ * The IR is not an OOXML package: validating it as a PPTX makes the browser
+ * reject a perfectly usable structured deck before the shared deck renderer
+ * gets a chance to paint it.
+ */
+async function fetchStructuredDeck(
+  url: string,
+  item: LibraryItem,
+  signal?: AbortSignal,
+): Promise<DeckDocument> {
+  let absolute = absoluteMediaUrl(url);
+  if (/\/source-tree\/@source\/?$/.test(absolute)) {
+    if (!item.artifactId || !item.revisionId) {
+      throw new Error("结构化演示文稿缺少稳定版本身份。");
+    }
+    // A source-tree URL is an auth-gated entrypoint, not a browser media URL.
+    // Reuse the shared rendition refresh path to mint the opaque source grant;
+    // this keeps auth, expiry and revision binding in artifact-client rather
+    // than duplicating gateway calls in the viewer.
+    const refreshed = await refreshArtifactRendition(
+      { artifactId: item.artifactId, revisionId: item.revisionId },
+      "source",
+      signal,
+    );
+    if (!refreshed.ok || !refreshed.data?.url) {
+      throw new Error(refreshed.error || "结构化演示文稿授权失败。");
+    }
+    absolute = absoluteMediaUrl(refreshed.data.url);
+  }
+  const response = await fetch(absolute, {
+    cache: "no-store",
+    credentials: "include",
+    headers: { Accept: "application/vnd.oceanleo.deck+json, application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`结构化演示文稿读取失败（HTTP ${response.status}）`);
+  }
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > 8 * 1024 * 1024) {
+    throw new Error("结构化演示文稿过大，无法在浏览器内存中安全处理");
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > 8 * 1024 * 1024) {
+    throw new Error("结构化演示文稿过大，无法在浏览器内存中安全处理");
+  }
+  try {
+    return deckDocumentFromIr(parseDeckIr(bytes));
+  } catch (reason) {
+    // Some early `oceanleo.deck.v1` rows carry the same declared schema but
+    // the editor's v2-compatible slide object (without the IR attribution
+    // envelope). Keep the schema gate above, then use the shared normalizer
+    // for that already-persisted shape instead of treating it as PPTX bytes.
+    let raw: unknown;
+    try {
+      raw = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      throw reason;
+    }
+    const record =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : null;
+    if (!record) throw reason;
+    // The delivery endpoint wraps the validated IR with asset metadata and
+    // resolved asset URLs.  `data` is the actual §3.1 document; parse that
+    // inner object with the shared validator before considering legacy shapes.
+    const inner =
+      record.data && typeof record.data === "object" && !Array.isArray(record.data)
+        ? (record.data as Record<string, unknown>)
+        : null;
+    if (inner) {
+      try {
+        return deckDocumentFromIr(parseDeckIr(JSON.stringify(inner)));
+      } catch {
+        // Keep the controlled legacy fallback below for older rows whose
+        // `data` field is the editor's v2 document rather than IR.
+      }
+    }
+    const candidate =
+      inner ||
+      (record.deck && typeof record.deck === "object" && !Array.isArray(record.deck)
+        ? record.deck
+        : record.project && typeof record.project === "object" && !Array.isArray(record.project)
+          ? record.project
+          : record);
+    const normalized = normalizeDeckDocument(candidate, item.title || "演示文稿");
+    const candidateSlides =
+      candidate && typeof candidate === "object" && !Array.isArray(candidate)
+        ? (candidate as Record<string, unknown>).slides
+        : undefined;
+    if (!Array.isArray(candidateSlides) || candidateSlides.length === 0) throw reason;
+    return normalized;
+  }
+}
+
+function structuredDeckSourceCandidate(item: LibraryItem): string {
+  const declared = item.artifact?.sourceFormat || item.meta.source_format;
+  if (declared !== "oceanleo.deck.v1") return "";
+  const source = item.artifact?.renditions.source;
+  if (
+    source?.format === "oceanleo.deck.v1" &&
+    source.url &&
+    !/\/source-tree\/@source\/?$/.test(source.url)
+  ) {
+    return source.url;
+  }
+  // Legacy structured rows may lack a source projection; only then is the
+  // resolved item URL a valid fallback.  A normal projection with a
+  // source-tree URL must go through the refresh branch above, never through
+  // the full HTML rendition selected for ordinary previews.
+  if (!source && item.url && !/\/source-tree\/@source\/?$/.test(item.url)) {
+    return item.url;
+  }
+  return typeof item.meta.source_url === "string" ? item.meta.source_url : "";
+}
+
 function PptViewer({
   item,
   onResourceError,
@@ -752,8 +883,12 @@ function PptViewer({
     () => asRecords(item.meta.slides),
     [item.meta.slides],
   );
+  const structuredSourceUrl = useMemo(
+    () => deckStructuredSourceUrl(item) || structuredDeckSourceCandidate(item),
+    [item],
+  );
   const [state, setState] = useState<"loading" | "ready" | "error">(
-    item.url ? "loading" : "error",
+    item.url || structuredSourceUrl ? "loading" : "error",
   );
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -784,7 +919,7 @@ function PptViewer({
     setLogicalSize(deckPreviewLogicalSize());
     setActiveSlideId("");
     setFirstPaintRenders(0);
-    if (!item.url) {
+    if (!item.url && !structuredSourceUrl) {
       setError("没有可解析的 PPT 地址。");
       setState("error");
       return;
@@ -796,6 +931,33 @@ function PptViewer({
     setError("");
     void (async () => {
       try {
+        if (structuredSourceUrl) {
+          const deck = await fetchStructuredDeck(structuredSourceUrl, item);
+          if (cancelled) return;
+          if (!deck.slides.length) {
+            throw new Error("结构化演示文稿中没有可显示的幻灯片。");
+          }
+          const nextLogicalSize = deckPreviewLogicalSize(
+            deck.aspect === "4:3" ? 4 / 3 : 16 / 9,
+          );
+          const outline: PptxRenderedSlide[] = deck.slides.map(
+            (slide, index) => ({
+              id: slide.id || `structured-slide-${index + 1}`,
+              index,
+              label: slide.title || `第 ${index + 1} 页`,
+              thumbnail: null,
+              nativeSlide: slide,
+            }),
+          );
+          setNativeDeck(deck);
+          setLogicalSize(nextLogicalSize);
+          setRenderedSlides(outline);
+          setActiveSlideId(outline[0].id);
+          setFirstPaintRenders(1);
+          setState("ready");
+          return;
+        }
+        if (!item.url) throw new Error("没有可解析的 PPT 地址。");
         const { arrayBuffer } = await fetchValidatedOfficePackage(
           item.url!,
           "pptx",
@@ -923,7 +1085,7 @@ function PptViewer({
       previewer?.destroy();
       host.current?.replaceChildren();
     };
-  }, [attempt, item.url, onResourceError, structuredSlides]);
+  }, [attempt, item.url, onResourceError, structuredSlides, structuredSourceUrl]);
 
   const layoutSlides = useMemo<DeckPreviewLayoutSlide[]>(() => {
     if (state === "ready") {
@@ -937,6 +1099,12 @@ function PptViewer({
               number={slide.index + 1}
               pageWidth={logicalSize.width}
               pageHeight={logicalSize.height}
+              theme={nativeDeck ? deckTheme(nativeDeck.theme) : undefined}
+              master={
+                nativeDeck
+                  ? deckMasterFor(nativeDeck, slide.nativeSlide)
+                  : undefined
+              }
             />
           </div>
         ) : slide.thumbnail ? (
@@ -987,7 +1155,7 @@ function PptViewer({
       }));
     }
     return [];
-  }, [logicalSize, renderedSlides, state, structuredSlides]);
+  }, [logicalSize, nativeDeck, renderedSlides, state, structuredSlides]);
   const effectiveActiveSlideId = layoutSlides.some(
     (slide) => slide.id === activeSlideId,
   )
@@ -1095,6 +1263,12 @@ function PptViewer({
               number={(activeNativeSlideNumber ?? 0) + 1}
               pageWidth={logicalSize.width}
               pageHeight={logicalSize.height}
+              theme={nativeDeck ? deckTheme(nativeDeck.theme) : undefined}
+              master={
+                nativeDeck
+                  ? deckMasterFor(nativeDeck, activeNativeSlide)
+                  : undefined
+              }
             />
           </div>
         )}

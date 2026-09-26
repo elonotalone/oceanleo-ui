@@ -111,6 +111,7 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   editorEditFailed: "编辑器未能完成这项修改",
   editorDraftRestoreFailed: "编辑器草稿恢复失败",
   editorDraftSaveFailed: "编辑器草稿暂时无法保存",
+  videoProjectOpenFailed: "这份视频工程无法打开",
   newRevisionSaved: "新版本已保存到我的库",
   projectActionFailed: "项目操作失败",
   projectStateUpdated: "项目状态已更新，请重试",

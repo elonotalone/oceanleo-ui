@@ -112,6 +112,7 @@ const hostedUrl = await compileModule(
     "./editor-handoff": handoffUrl,
     "./mode-switch-gate": dataModule(`
       export function useModeSwitchReady() { return () => {}; }
+      export function useModeSwitchFailure() { return () => {}; }
       export function useModeSwitchHandoff() {
         return globalThis.__w17GateHandoff || null;
       }

@@ -608,11 +608,38 @@ test("普通模式收起内核自带的工具栏与面板（R3：默认普通模
   assert.match(hosted, /next === "normal"/, "切模式时没有跟着重发 hide-chrome");
 });
 
-test("握手要发 init，否则编辑器一条能力都不报", () => {
-  // 只发 open-asset：文档进得去，但 tools-manifest / selection / history 都不来，
-  // agent 的接口面是空的。init 与 open-asset 两条缺一不可。
+test("握手先 init，再以有界恢复回执确认整份稿已打开", () => {
+  // 整份 PPT 不能再塞进 20 KB 的 open-asset 元数据；它走受 4 MB 上限保护的
+  // recovery-restore 通道。只有匹配本次 recoveryId 且 ok 的回执，专业面才算就绪。
   assert.match(hosted, /type: "init"/, "从不发 init ⇒ 编辑器不报 tools-manifest");
-  assert.match(hosted, /type: "open-asset"/, "从不发 open-asset ⇒ 打开的是空白演示");
+  assert.match(
+    hosted,
+    /type: "recovery-restore"/,
+    "没有 recovery-restore ⇒ 用户自己的整份稿没有交给编辑器",
+  );
+  assert.match(
+    hosted,
+    /snapshot:\s*\{\s*revision:\s*0,\s*payload:\s*toHostedDocument\(/,
+    "恢复消息没有交整份宿主稿件",
+  );
+  assert.match(hosted, /const documentSent = sendToEditor\(restore\)/);
+  assert.match(hosted, /useModeSwitchReady\(documentOpened\)/);
+  assert.match(
+    hosted,
+    /message\.type === "recovery-result"\s*&&\s*message\.recoveryId === openingIdRef\.current\s*\)\s*\{\s*openingIdRef\.current = null;\s*if \(message\.ok\) \{\s*setDocumentOpened\(true\)/,
+    "只有本次 recoveryId 的成功回执才能确认已打开",
+  );
+  assert.equal(
+    (hosted.match(/setDocumentOpened\(true\)/g) || []).length,
+    1,
+    "不得绕过本次恢复回执提前确认已打开",
+  );
+  assert.match(
+    hosted,
+    /if \(!asHostToEditorMessage\(restore, instanceId\)\) \{[^}]*超出专业编辑器的交接限制[^}]*reportModeSwitchFailure\(message\);\s*return;/,
+    "交接超限时没有明确失败并退回普通模式",
+  );
+  assert.doesNotMatch(hosted, /type: "open-asset"/);
 });
 
 test("agent 的改动要经过这一页点头才落地（契约 v2 §3.3）", () => {

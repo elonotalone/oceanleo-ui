@@ -16,6 +16,7 @@ import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
+import { setPluginMode } from "../plugin-chrome/plugin-mode-store";
 import { pdfNextEditorFacade } from "../media-editors/pdf-next-facade";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -285,6 +286,14 @@ export function PdfRoute({
           <ModeSwitchGate
             pro={effectiveCore === "next"}
             beforeEnterPro={enterPdfPro}
+            onEnterProFailed={() => {
+              setMode("normal");
+              setPluginMode("pdf", "normal");
+            }}
+            onRetryEnterPro={() => {
+              setMode("pro");
+              setPluginMode("pdf", "pro");
+            }}
             renderNormal={() => (
               <PdfLegacyFace editor={editor} accent={accent} />
             )}

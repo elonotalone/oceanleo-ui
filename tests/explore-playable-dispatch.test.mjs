@@ -380,13 +380,13 @@ test("「开玩」不再接编辑器派发；游戏在网格里也被路由到�
     new URL("../src/shell/material-library-open.ts", import.meta.url),
     "utf8",
   );
-  // 这是本轮要根除的那一行。
+  // 「开玩」仍不能接到编辑器专用的 onPlay 插槽。
   assert.doesNotMatch(
     view,
     /onPlay=\{openPreparedItem\}/,
     "「开玩」还接在编辑器派发上",
   );
-  // 网格那条通路上，游戏在碰到 isAdvancedEditableShelfItem 之前就被引走了。
+  // 网格那条通路上，先认可可编辑的新格式游戏/私有副本；只有只读游戏才去试玩。
   // 按**代码**取位置，不按注释——注释里提到判据名会让这条断言假绿。
   // 分流跟 `openPreparedItem` 一起抽到 `useMaterialLibraryOpenItem`（view 贴着
   // 800 行硬顶）；认那个函数，搬家不等于放行。
@@ -395,11 +395,15 @@ test("「开玩」不再接编辑器派发；游戏在网格里也被路由到�
   );
   const playAt = openPrepared.indexOf("if (openArtifactPlay(item)) return;");
   const editableAt = openPrepared.indexOf("if (!isAdvancedEditableShelfItem(item)) {");
+  const throwAt = openPrepared.indexOf(
+    'throw new Error("当前 revision 缺少可验证的编辑器 source。");',
+  );
   assert.ok(playAt > -1, "openPreparedItem 里没有播放分流");
   assert.ok(editableAt > -1, "openPreparedItem 里找不到编辑器检查");
+  assert.ok(throwAt > -1, "openPreparedItem 里没有不可编辑错误");
   assert.ok(
-    playAt < editableAt,
-    "播放分流排在编辑器检查之后，view_only 游戏仍会抛错",
+    editableAt < playAt && playAt < throwAt,
+    "编辑器检查、播放分流、错误抛出顺序错误",
   );
   // 素材那一类的编辑器落点没被动过。
   assert.match(view, /onOpenItem=\{openPreparedItem\}/);

@@ -15,7 +15,7 @@
  *   2. 新面同时在覆盖层之下挂载，`visibility:hidden`——**不是** `display:none`：
  *      iframe / canvas 需要真实尺寸来初始化，`display:none` 下它们量到 0×0。
  *   3. 新面调一次 ready 信号（`useModeSwitchReady`），门在同一次提交里
- *      卸旧面、显新面、去覆盖层。信号 8 秒没来就直接切（`MODE_SWITCH_FALLBACK_MS`），
+ *      卸旧面、显新面、去覆盖层。进专业面时信号在 60 秒期限内没来就退回并提示（`MODE_SWITCH_FALLBACK_MS`），
  *      不能永远停在覆盖层上。
  *
  * 覆盖层只遮舞台，不遮第一行、第二行：门在挂载后从当前面里找舞台节点
@@ -51,8 +51,8 @@ import {
 
 export type ModeSwitchFace = "normal" | "pro";
 
-/** ready 信号迟迟不来时的兜底：到点直接切，覆盖层不许永久停留。 */
-export const MODE_SWITCH_FALLBACK_MS = 8_000;
+/** 进专业面的整次尝试最多 60 秒，包括交接和等待 ready。 */
+export const MODE_SWITCH_FALLBACK_MS = 60_000;
 
 /** 门从当前面里找舞台节点用的选择器（顺序即优先级）。 */
 export const MODE_SWITCH_STAGE_SELECTOR =
@@ -65,6 +65,7 @@ const noop = () => {};
  * noop；门外调用拿到的也是 noop，所以 stage 单独挂（flag=next 直出）时调它没有副作用。
  */
 const ModeSwitchReadyContext = createContext<() => void>(noop);
+const ModeSwitchFailureContext = createContext<(message?: string) => void>(noop);
 
 const ModeSwitchHandoffContext = createContext<EditorHandoff | null>(null);
 
@@ -87,6 +88,11 @@ export function useModeSwitchReady(ready?: boolean): () => void {
     if (ready === true) signal();
   }, [ready, signal]);
   return signal;
+}
+
+/** Report an explicit pro-editor failure so the gate can return immediately. */
+export function useModeSwitchFailure(): (message?: string) => void {
+  return useContext(ModeSwitchFailureContext);
 }
 
 export interface ModeSwitchGateProps {
@@ -120,7 +126,7 @@ export function ModeSwitchGate({
   const target: ModeSwitchFace = pro ? "pro" : "normal";
   const [shown, setShown] = useState<ModeSwitchFace>(target);
   // `beforeEnterPro` 在飞时为 false：覆盖层在、专业面还不挂。
-  const [gateOpen, setGateOpen] = useState(true);
+  const [gateOpen, setGateOpen] = useState(false);
   const [proHandoff, setProHandoff] = useState<EditorHandoff | null>(null);
   const [enterError, setEnterError] = useState<string | null>(null);
   const [enterBlocked, setEnterBlocked] = useState(false);
@@ -132,32 +138,42 @@ export function ModeSwitchGate({
   // 子组件的 passive effect 先于父组件跑；待命面挂上去的那一帧就可能发信号。
   // 用 layout effect 更新目标（layout 阶段整体先于 passive 阶段），信号回调本身保持稳定。
   const targetRef = useRef(target);
+  const callbacksRef = useRef({ onEnterProFailed, onRetryEnterPro });
+  useLayoutEffect(() => {
+    callbacksRef.current = { onEnterProFailed, onRetryEnterPro };
+  });
   useLayoutEffect(() => {
     targetRef.current = target;
+    // A failed attempt remains blocked until the user returns to normal or retries.
+    if (target === "normal") {
+      setGateOpen(false);
+      enterBlockedRef.current = false;
+      setEnterBlocked(false);
+    }
   }, [target]);
   const commitPending = useCallback(() => {
     if (enterBlockedRef.current) return;
     setShown(targetRef.current);
-    setGateOpen(true);
+    setGateOpen(false);
   }, []);
 
   const failEnterPro = useCallback(
-    (error: string) => {
+    (error?: string) => {
       enterBlockedRef.current = true;
       setEnterBlocked(true);
       setEnterError(error || ENTER_PRO_NOT_READY);
-      setGateOpen(true);
-      onEnterProFailed?.();
+      setGateOpen(false);
+      callbacksRef.current.onEnterProFailed?.();
     },
-    [onEnterProFailed],
+    [],
   );
 
   useEffect(() => {
     if (!pending) return;
     let alive = true;
-    let settled = false;
     if (pending === "pro" && beforeEnterPro) {
       setGateOpen(false);
+      setProHandoff(null);
       enterBlockedRef.current = false;
       setEnterBlocked(false);
       Promise.resolve()
@@ -169,7 +185,7 @@ export function ModeSwitchGate({
               ? (result as Record<string, unknown>)
               : null;
           if (record && record.ok === false) {
-            settled = true;
+            alive = false;
             failEnterPro(
               typeof record.error === "string"
                 ? record.error
@@ -180,19 +196,19 @@ export function ModeSwitchGate({
           if (record && record.ok === true && record.handoff) {
             setProHandoff(record.handoff as EditorHandoff);
           }
-          settled = true;
           setEnterError(null);
           setGateOpen(true);
         })
         .catch(() => {
           if (!alive) return;
-          settled = true;
+          alive = false;
           failEnterPro(ENTER_PRO_NOT_READY);
         });
     }
     const timer = window.setTimeout(() => {
-      if (!alive || settled) return;
-      if (pending === "pro" && beforeEnterPro && !enterBlockedRef.current) {
+      if (!alive) return;
+      alive = false;
+      if (pending === "pro") {
         failEnterPro(ENTER_PRO_NOT_READY);
         return;
       }
@@ -211,8 +227,8 @@ export function ModeSwitchGate({
     setEnterBlocked(false);
     setEnterError(null);
     setEnterAttempt((value) => value + 1);
-    onRetryEnterPro?.();
-  }, [onRetryEnterPro]);
+    callbacksRef.current.onRetryEnterPro?.();
+  }, []);
 
   const normalRef = useRef<HTMLDivElement | null>(null);
   const proRef = useRef<HTMLDivElement | null>(null);
@@ -232,7 +248,7 @@ export function ModeSwitchGate({
   }, [pending, shownRef]);
 
   const mountPro =
-    shown === "pro" || (pending === "pro" && gateOpen && !enterBlocked);
+    shown === "pro" || (pending === "pro" && (!beforeEnterPro || gateOpen) && !enterBlocked);
   const mountNormal = shown === "normal" || pending === "normal";
 
   const overlay = pending ? <ModeSwitchPendingOverlay target={pending} /> : null;
@@ -251,6 +267,7 @@ export function ModeSwitchGate({
           state={shown === "normal" ? "shown" : "pending"}
           slotRef={normalRef}
           signal={pending === "normal" ? commitPending : noop}
+          fail={noop}
         >
           {renderNormal()}
         </ModeSwitchFaceSlot>
@@ -262,6 +279,7 @@ export function ModeSwitchGate({
           state={shown === "pro" ? "shown" : "pending"}
           slotRef={proRef}
           signal={pending === "pro" ? commitPending : noop}
+          fail={pending === "pro" ? failEnterPro : noop}
         >
           <ModeSwitchHandoffContext.Provider value={proHandoff}>
             {renderPro()}
@@ -319,17 +337,20 @@ function ModeSwitchFaceSlot({
   state,
   slotRef,
   signal,
+  fail,
   children,
 }: {
   face: ModeSwitchFace;
   state: "shown" | "pending";
   slotRef: RefObject<HTMLDivElement | null>;
   signal: () => void;
+  fail: (message?: string) => void;
   children: ReactNode;
 }) {
   const pendingSlot = state === "pending";
   return (
     <ModeSwitchReadyContext.Provider value={signal}>
+      <ModeSwitchFailureContext.Provider value={fail}>
       <div
         ref={slotRef}
         data-mode-switch-face={face}
@@ -347,6 +368,7 @@ function ModeSwitchFaceSlot({
       >
         {children}
       </div>
+      </ModeSwitchFailureContext.Provider>
     </ModeSwitchReadyContext.Provider>
   );
 }
