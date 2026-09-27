@@ -311,3 +311,42 @@ test("计时对象五段齐全", () => {
     "deck",
   );
 });
+
+for (const [kind, extension] of [["video", "mp4"], ["audio", "mp3"]]) {
+  test(`${kind} 只预加载路由，不取 Office 字节且不虚报 sourceReady`, async () => {
+    resetEditorPreloadForTests();
+    resetOfficeSourceCacheForTests();
+    let fetches = 0;
+    let routes = 0;
+    const { routeIdsForItem } = await import("../src/shell/editor-preload.ts");
+    const item = { ...pptItem(), key: kind, kind, url: `https://asset.oceanleo.com/sample.${extension}`, meta: { extension } };
+    const ids = routeIdsForItem(item);
+    assert.ok(ids.length > 0, "媒体应有编辑器路由");
+    for (const id of ids) registerEditorRouteLoader(id, async () => { routes++; return {}; });
+    configureOfficeSourceCacheForTests({ fetchBytes: async () => { fetches++; return new ArrayBuffer(8); }, parse: () => null });
+    const result = await preloadEditorFor(item);
+    assert.equal(fetches, 0, "媒体不应发 Office 整片请求");
+    assert.ok(routes > 0);
+    assert.equal(result.codeReady, true);
+    assert.equal(result.sourceReady, false);
+  });
+}
+
+for (const [kind, extension] of [["ppt", "pptx"], ["document", "docx"], ["sheet", "xlsx"]]) {
+  test(`${extension} 预取并发去重、缓存命中及 revision 隔离保持有效`, async () => {
+    resetOfficeSourceCacheForTests();
+    const { prefetchOfficeSource } = await import("../src/shell/office-editor/office-source-cache.ts");
+    let fetches = 0;
+    let parses = 0;
+    configureOfficeSourceCacheForTests({ fetchBytes: async () => { fetches++; return new ArrayBuffer(8); }, parse: () => { parses++; return {}; } });
+    const item = { ...pptItem(), kind, url: `https://asset.oceanleo.com/sample.${extension}`, meta: { extension } };
+    const pair = await Promise.all([prefetchOfficeSource(item), prefetchOfficeSource(item)]);
+    assert.ok(pair.every(Boolean));
+    assert.equal(fetches, 1);
+    assert.equal(parses, 1);
+    assert.equal((await prefetchOfficeSource(item)).fromCache, true);
+    await prefetchOfficeSource({ ...item, revisionId: "rev-2" });
+    assert.equal(fetches, 2);
+    assert.equal(parses, 2);
+  });
+}

@@ -11,6 +11,7 @@ import {
 } from "react";
 import DOMPurify from "dompurify";
 import { Markdown } from "./Markdown";
+import { LibraryMediaPreview } from "./LibraryMediaPreview";
 import { useUI } from "../i18n/ui/useUI";
 import {
   isDurableLibraryItem,
@@ -2067,10 +2068,10 @@ function LibraryItemViewerBody({
   if (resolvedItem.kind === "video" && url) {
     return (
       <Center>
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <video
+        <LibraryMediaPreview
+          key={resolvedItem.key}
+          kind="video"
           src={url}
-          controls
           onError={rendition.resourceFailed}
           className="max-h-[70vh] max-w-full rounded-lg bg-black"
         />
@@ -2096,10 +2097,10 @@ function LibraryItemViewerBody({
         <p className="text-sm font-medium text-stone-700">
           {resolvedItem.title}
         </p>
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <audio
+        <LibraryMediaPreview
+          key={resolvedItem.key}
+          kind="audio"
           src={url}
-          controls
           onError={rendition.resourceFailed}
           className="w-full max-w-md"
         />

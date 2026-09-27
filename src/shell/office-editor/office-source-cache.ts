@@ -194,6 +194,7 @@ export async function loadOfficeSource(
 export function prefetchOfficeSource(
   item: LibraryItem,
 ): Promise<OfficeSourceLoadResult | null> {
+  if (!officePackageKindForItem(item)) return Promise.resolve(null);
   const { url, revision } = sourceHintForItem(item);
   if (!url) return Promise.resolve(null);
   return loadOfficeSource(url, revision, item);
