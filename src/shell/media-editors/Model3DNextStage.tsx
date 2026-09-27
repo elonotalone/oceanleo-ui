@@ -17,7 +17,7 @@ import {
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
 import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
-import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   peekW19EnterHandoff,
   reportW19ProSaved,
@@ -36,7 +36,11 @@ import {
   type EditorMode,
 } from "../hosted-editor/index";
 import { rememberEditorChips } from "../agent-review";
-import { isModel3DSourceItem } from "./model3d-workbench-defaults";
+import {
+  DEFAULT_MODEL3D_VIEW,
+  isModel3DSourceItem,
+} from "./model3d-workbench-defaults";
+import { normalizeModel3DProjectRecovery } from "./model3d-project";
 import {
   MODEL3D_LEGACY_READONLY_NOTICE,
   MODEL3D_NEXT_PROJECT_SCHEMA,
@@ -89,12 +93,6 @@ function triggerDownload(blob: Blob, filename: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function recordOf(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 /**
@@ -346,14 +344,10 @@ export function Model3DNextStage({
         setMode("pro");
         return;
       }
-      if (!await saveBeforeLeavePro(w19ItemKey("threed", item))) {
-        setStatus("专业编辑里的修改还没保存成功，请重试。");
-        return;
-      }
       setMode("normal");
       if (frameMounted) postModel3DSetMode(iframeHolderRef.current?.contentWindow || null, instanceId, "normal");
     },
-    [frameMounted, instanceId, item],
+    [frameMounted, instanceId],
   );
 
   useEffect(() => {
@@ -707,31 +701,70 @@ export function Model3DNextStage({
           autoSave: !readonly,
           flush: proFlush,
           recovery: {
+            draftSchema: "oceanleo.threed.edit.v1",
             key: advancedRecoveryKey("threed", item),
             ready: Boolean(gltfBytes),
-            capture: () => ({ view, format }),
-            restore: (payload) => {
-              const record = recordOf(payload);
-              const nextView = recordOf(record?.view) || record;
-              if (!nextView) return false;
+            capture: () => {
+              const url = String(
+                saveItemRef.current.url || item.url || "",
+              ).trim();
+              if (!url || url.startsWith("blob:")) return null;
+              return {
+                checkpointUrl: url,
+                operations: [],
+                view: {
+                  ...DEFAULT_MODEL3D_VIEW,
+                  sourceUrl: url,
+                  azimuth: view.azimuth,
+                  elevation: view.elevation,
+                  zoom: view.zoom,
+                  autoRotate: view.autoRotate,
+                  exposure: view.exposure,
+                  background: view.background,
+                },
+              };
+            },
+            restore: async (payload) => {
+              const fallbackUrl = String(
+                saveItemRef.current.url || item.url || "",
+              ).trim();
+              const recovered = normalizeModel3DProjectRecovery(
+                payload,
+                {
+                  ...DEFAULT_MODEL3D_VIEW,
+                  sourceUrl: fallbackUrl,
+                },
+                fallbackUrl,
+              );
+              if (!recovered) return false;
               setView((current) => ({
                 ...current,
-                azimuth: Number(nextView.azimuth ?? current.azimuth),
-                elevation: Number(nextView.elevation ?? current.elevation),
-                zoom: Number(nextView.zoom ?? current.zoom),
-                autoRotate: nextView.autoRotate === true,
-                exposure: Number(nextView.exposure ?? current.exposure),
-                background: String(nextView.background || current.background),
-                materialColor: String(
-                  nextView.materialColor || current.materialColor,
-                ),
-                nodeVisible: nextView.nodeVisible !== false,
-                selectedNodeName: String(
-                  nextView.selectedNodeName || current.selectedNodeName,
-                ),
+                azimuth: recovered.view.azimuth,
+                elevation: recovered.view.elevation,
+                zoom: recovered.view.zoom,
+                autoRotate: recovered.view.autoRotate,
+                exposure: recovered.view.exposure,
+                background: recovered.view.background,
                 revision: current.revision + 1,
               }));
-              return true;
+              const url = recovered.checkpointUrl;
+              if (!url || url.startsWith("blob:")) return true;
+              try {
+                const loaded = await preloadModel3DSource({
+                  url,
+                  format: recovered.provenance.format || format,
+                  artifactId: item.id,
+                  revisionId:
+                    item.revisionId || recovered.provenance.revisionId || "",
+                });
+                applyGltfBytes(
+                  loaded.bytes,
+                  loaded.format === "gltf" ? "gltf" : "glb",
+                );
+                return true;
+              } catch {
+                return false;
+              }
             },
           },
         },

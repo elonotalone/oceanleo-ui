@@ -3,7 +3,12 @@
 import { useEffect, useMemo } from "react";
 import { bindProFaceHandoff } from "./editor-handoff";
 
-/** A retained flush owns its item even after unmount or a change of key. */
+/**
+ * Thin face of the shared persist pipeline. The returned flush is the
+ * editor's own save (what `persistence.flush` already is). Mode switch
+ * must go through `saveBeforeLeavePro` / the draft gate — this hook
+ * must not grow a second leave-and-lock save.
+ */
 export function useProFaceSave<T extends { ok: boolean }>(
   key: string,
   dirty: boolean,
@@ -22,19 +27,24 @@ export function useProFaceSave<T extends { ok: boolean }>(
       if (state.committed?.revision === captured.revision) {
         return Promise.resolve(state.committed.result);
       }
-      const running = Promise.resolve().then(captured.save).then((result) => {
-        if (result.ok) {
-          state.committed = { revision: captured.revision, result };
-          if (state.current.revision !== captured.revision) {
-            return { ok: false as const, error: "还有更新的修改尚未保存，请重试。" };
+      const running = Promise.resolve()
+        .then(captured.save)
+        .then((result) => {
+          if (result.ok) {
+            state.committed = { revision: captured.revision, result };
           }
-        }
-        return result;
-      });
+          return result;
+        })
+        .catch((error) => ({
+          ok: false as const,
+          error: error instanceof Error ? error.message : "save failed",
+        }));
       state.flight = running;
-      void running.finally(() => {
-        if (state.flight === running) state.flight = null;
-      }).catch(() => {});
+      void running
+        .finally(() => {
+          if (state.flight === running) state.flight = null;
+        })
+        .catch(() => {});
       return running;
     };
     return { state, flush };
@@ -42,10 +52,15 @@ export function useProFaceSave<T extends { ok: boolean }>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   owner.state.current = { dirty, revision, save };
-  useEffect(() => bindProFaceHandoff(key, {
-    hasUnsavedChanges: () => owner.state.current.dirty &&
-      owner.state.committed?.revision !== owner.state.current.revision,
-    flush: async () => (await owner.flush()).ok,
-  }), [key, owner]);
+  useEffect(
+    () =>
+      bindProFaceHandoff(key, {
+        hasUnsavedChanges: () =>
+          owner.state.current.dirty &&
+          owner.state.committed?.revision !== owner.state.current.revision,
+        flush: async () => (await owner.flush()).ok,
+      }),
+    [key, owner],
+  );
   return owner.flush;
 }

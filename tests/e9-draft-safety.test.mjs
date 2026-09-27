@@ -57,7 +57,7 @@ test('three real ordinary recovery adapters declare schemas and capture portable
     ['advanced-routes/VideoTimelineRoute.tsx', 'oceanleo.video-timeline.edit.v1', { tracks: [], clips: [] }],
   ];
   for (const [file, schema, payload] of cases) {
-    const recovery = realRecovery(file, { editor: { sourceReady: true, editor: { getJSON: () => payload }, restoreRecovery() {}, doc: payload }, history: { snapshot: payload } });
+    const recovery = realRecovery(file, { editor: { sourceReady: true, editor: { getJSON: () => payload }, restoreRecovery() {}, doc: payload }, history: { snapshot: payload }, restoreWorkingDocument: () => true });
     assert.equal(recovery.draftSchema, schema);
     assert.deepEqual(recovery.capture(), payload);
     assert.deepEqual(await capturePortableAdvancedDraft(draftFromRecovery(recovery), 3), payload);

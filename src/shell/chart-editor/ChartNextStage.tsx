@@ -15,7 +15,7 @@ import {
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
 import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
-import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   applyW19HandoffToItem,
   peekW19EnterHandoff,
@@ -138,18 +138,14 @@ export function ChartNextStage({
     if (codeTouchedRef.current) setCodeError(parsed.reason);
   }, [chrome.codeModeVisible, code, editor.document]);
 
-  const setMode = useCallback(async (next: EditorMode) => {
-    if (next === "normal" && !await saveBeforeLeavePro(w19ItemKey("chart-editor", item))) {
-      setExportError("专业编辑里的修改还没保存成功，请重试。");
-      return;
-    }
+  const setMode = useCallback((next: EditorMode) => {
     const applied = applyChartNextMode(CHART_NEXT_INSTANCE_ID, next);
     setModeState(applied.mode);
     if (applied.codeModeVisible) {
       codeTouchedRef.current = false;
       setCodeError("");
     }
-  }, [item]);
+  }, []);
 
   const exportUnavailable =
     editor.loading ||
@@ -589,10 +585,11 @@ export function ChartNextStage({
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,
+          autoSave: true,
           flush: proFlush,
           recovery: {
             key: advancedRecoveryKey("chart-editor@1", item),
-            draftSchema: "oceanleo.chart.pro.v1",
+            draftSchema: "oceanleo.chart.edit.v1",
             ready: !editor.loading,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.document) : null,

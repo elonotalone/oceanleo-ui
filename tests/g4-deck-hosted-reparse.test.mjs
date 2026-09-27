@@ -74,6 +74,7 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
     }
   `),
   "../advanced-recovery-store": dataModule(`export function advancedRecoveryKey() { return "recovery"; }`),
+  "../advanced-draft-deck": dataModule(`export const DECK_DRAFT_SCHEMA = "oceanleo.deck-working-document.v1";`),
   "../doc-editors/deck-pptist-carrier": dataModule(`
     export const PPTIST_CARRIER_FORMAT = "pptist";
     export function deckDocumentToPptist(value) { return value; }

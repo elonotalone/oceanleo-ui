@@ -15,7 +15,7 @@ import {
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
 import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
-import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   reportW19ProSaved,
   peekW19EnterHandoff,
@@ -37,7 +37,11 @@ import {
   DEFAULT_EDITOR_MODE,
   type EditorMode,
 } from "../hosted-editor/index";
-import { applyAudioOperation, encodeWav } from "./audio-workbench-utils";
+import {
+  applyAudioOperation,
+  encodeWav,
+  validAudioProject,
+} from "./audio-workbench-utils";
 import {
   AUDIO_LEGACY_READONLY_NOTICE,
   AUDIO_NEXT_PROJECT_SCHEMA,
@@ -340,10 +344,6 @@ export function AudioPlaylistStage({
 
   const applyMode = useCallback(
     async (next: EditorMode) => {
-      if (next === "normal" && !await saveBeforeLeavePro(w19ItemKey("audio", item))) {
-        setStatus("专业编辑里的修改还没保存成功，请重试。");
-        return;
-      }
       const appliedNext = applyAudioNextMode(instanceId, next);
       setMode(appliedNext.mode);
       const frame = iframeHolderRef.current?.contentWindow || null;
@@ -764,10 +764,39 @@ export function AudioPlaylistStage({
           autoSave: !readonly,
           flush: proFlush,
           recovery: {
+            draftSchema: "oceanleo.audio.edit.v1",
             key: advancedRecoveryKey("audio", item),
             ready: Boolean(bufferRef.current),
-            capture: () => ({ schema: AUDIO_NEXT_PROJECT_SCHEMA, duration }),
-            restore: () => false,
+            capture: () => {
+              const url = String(
+                saveItemRef.current.url || item.url || "",
+              ).trim();
+              if (!url || url.startsWith("blob:")) return null;
+              return { sourceUrl: url, operations: [] };
+            },
+            restore: async (payload) => {
+              if (!validAudioProject(payload)) return false;
+              const url = payload.sourceUrl.trim();
+              if (!url || url.startsWith("blob:")) return false;
+              try {
+                const blob = await fetchMediaBlob(url, {
+                  maxBytes: 128 * 1024 * 1024,
+                });
+                const ctx = new AudioContext();
+                let decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+                await ctx.close();
+                for (const operation of payload.operations) {
+                  decoded = applyAudioOperation(decoded, operation);
+                }
+                bufferRef.current = decoded;
+                setSourceBlob(encodeWav(decoded));
+                setDuration(decoded.duration);
+                bump();
+                return true;
+              } catch {
+                return false;
+              }
+            },
           },
         },
       }}

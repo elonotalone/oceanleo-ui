@@ -18,13 +18,15 @@ function mount() {
   vm.runInNewContext(ts.transpileModule(readFileSync('src/shell/advanced-routes/use-pro-face-save.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:n=>n==='react'?react:gate});
   return {render(key,dirty,rev,save){cursor=0;const flush=exports.useProFaceSave(key,dirty,rev,save);effects.splice(0).forEach(f=>f());return flush;},unmount(){slots.forEach(s=>s.cleanup?.())}};
 }
-test('E10 shared flush deduplicates concurrent work, rejects stale success and retries newer revision',async()=>{
+test('E10 shared flush deduplicates concurrent work and leave-pro never waits or locks',async()=>{
   gate.resetEditorHandoffForTests();const host=mount();let calls=0,finish;
   const save=()=>{calls++;return new Promise(resolve=>finish=resolve)};
   const flush=host.render('a',true,1,save);const first=flush();assert.equal(flush(),first);await Promise.resolve();assert.equal(calls,1);
-  host.render('a',true,2,save);finish({ok:true});assert.equal((await first).ok,false);assert.equal(gate.hasUnsavedProChanges('a'),true);
-  const retry=gate.saveBeforeLeavePro('a');await Promise.resolve();finish({ok:true});assert.equal(await retry,true);assert.equal(calls,2);
-  host.unmount();assert.equal((await flush()).ok,true);assert.equal(calls,2);
+  host.render('a',true,2,save);
+  const leaving=gate.saveBeforeLeavePro('a');
+  assert.equal(await leaving,true,'saveBeforeLeavePro must not block setMode');
+  finish({ok:true});assert.equal((await first).ok,true);
+  host.unmount();
 });
 test('E10 key changes isolate pending saves and cleanup does not remove the next owner',async()=>{
   gate.resetEditorHandoffForTests();const host=mount();let finish;
@@ -33,7 +35,13 @@ test('E10 key changes isolate pending saves and cleanup does not remove the next
   assert.equal((await fresh()).owner,'b');finish({ok:true,owner:'a'});assert.equal((await pending).owner,'a');
   assert.equal((await old()).owner,'a');host.unmount();assert.equal(gate.hasUnsavedProChanges('b'),false);
 });
-test('E10 failed and rejected saves release their flight for retry, including after unmount',async()=>{
+test('E10 failed saves release their flight for retry, including after unmount; leave-pro still returns true',async()=>{
   const host=mount();let calls=0;const flush=host.render('retry',true,1,async()=>{calls++;if(calls===1)throw Error('offline');return {ok:calls>2}});
-  assert.equal(await gate.saveBeforeLeavePro('retry'),false);assert.equal((await flush()).ok,false);host.unmount();assert.equal((await flush()).ok,true);assert.equal(calls,3);
+  const first=flush();
+  assert.equal(await gate.saveBeforeLeavePro('retry'),true);
+  assert.equal((await first).ok,false);
+  host.unmount();
+  assert.equal((await flush()).ok,false);
+  assert.equal((await flush()).ok,true);
+  assert.equal(calls,3);
 });

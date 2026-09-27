@@ -3,7 +3,7 @@
 import type { AdvancedEditorDraftAdapter } from "../advanced-editor-adapter";
 import type { AdvancedFlushResult } from "../advanced-session-context";
 import { ADVANCED_DRAFT_META_KEY, type AdvancedDraftPointer } from "../advanced-draft";
-import { DECK_DRAFT_SCHEMA, loadDeckServerDraft } from "../advanced-draft-deck";
+import { DECK_DRAFT_SCHEMA, deckDocumentFromWorkingDraft, loadDeckServerDraft } from "../advanced-draft-deck";
 import { unzipSync } from "fflate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -2682,14 +2682,8 @@ export function useDeckEditor(
       if (updatedAt !== undefined && serverDraftRef.current &&
           Date.parse(serverDraftRef.current.savedAt) >= updatedAt) return false;
       if (sourceFailedRef.current) return false;
-      if (
-        !payload ||
-        typeof payload !== "object" ||
-        !Array.isArray((payload as { slides?: unknown }).slides)
-      ) {
-        return false;
-      }
-      const next = normalizeDeckDocument(payload, item.title || "演示文稿");
+      const next = deckDocumentFromWorkingDraft(payload, item.title || "演示文稿");
+      if (!next) return false;
       commit(() => next, next.slides[0].id);
       setNotice(tt("已恢复上次未同步的本地草稿"));
       return true;

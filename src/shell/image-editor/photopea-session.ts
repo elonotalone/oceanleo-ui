@@ -22,6 +22,8 @@ export interface PhotopeaSession {
   attach: (anchor: HTMLElement, options: PhotopeaLaunchOptions) => () => void;
   save: () => Promise<LibraryItem>;
   leave: () => Promise<LibraryItem>;
+  /** Iframe still exists; flush must keep writing this session, not Fabric. */
+  active: () => boolean;
   subscribe: (listener: () => void) => () => void;
   snapshot: () => PhotopeaSaveState;
 }
@@ -279,6 +281,7 @@ export function createPhotopeaSession(input: {
       };
     },
     save,
+    active: () => Boolean(frame && !disposed),
     leave() {
       leaving = true;
       conceal(); // No further edits can race this final export.

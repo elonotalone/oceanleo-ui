@@ -50,6 +50,7 @@ import {
   deriveEditorHandoffFromItem,
   isEmptyRichDoc,
 } from "./richdoc-pro-source";
+import { convertUmoToRichDoc } from "../doc-editors/rich-doc-umo-migration";
 
 /**
  * 双核 `next` 分支：Umo iframe 托管。**单独 lazy**，翻 flag 前不进本 chunk
@@ -115,24 +116,7 @@ function RichDocLegacyRoute({
     siteId,
     officeSource.resourceFailed,
   );
-  useEffect(() => {
-    return bindNormalFaceHandoff(handoffItemKey(openedItemRef.current), {
-      getHandoff: () => {
-        const live = editor.editor?.getJSON();
-        if (live && !isEmptyRichDoc(live)) {
-          return {
-            kind: "inline",
-            json: live,
-            revision: handoffRevisionOf(openedItemRef.current),
-          };
-        }
-        return deriveEditorHandoffFromItem(openedItemRef.current);
-      },
-      persistInBackground: () => {
-        if (editor.dirty) void editor.save();
-      },
-    });
-  }, [editor.dirty, editor.editRevision, editor.editor, editor.save]);
+  const persistFlushRef = useRef<(() => Promise<{ ok: boolean }>) | null>(null);
   const [exportError, setExportError] = useState("");
   // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
   const { setMode: setEditorMode } = usePluginMode("richdoc");
@@ -245,6 +229,32 @@ function RichDocLegacyRoute({
       item: richDocSavedItemForHandoff(receipt || item, saved),
     };
   }, [editor.error, editor.save, item]);
+  persistFlushRef.current = saveBeforeNewConversation;
+  useEffect(() => {
+    return bindNormalFaceHandoff(handoffItemKey(openedItemRef.current), {
+      getHandoff: () => {
+        const live = editor.editor?.getJSON();
+        if (live && !isEmptyRichDoc(live)) {
+          return {
+            kind: "inline",
+            json: live,
+            revision: handoffRevisionOf(openedItemRef.current),
+          };
+        }
+        return deriveEditorHandoffFromItem(openedItemRef.current);
+      },
+      persistInBackground: () => {
+        if (editor.dirty) void persistFlushRef.current?.();
+      },
+    });
+  }, [editor.dirty, editor.editRevision, editor.editor]);
+  const restoreWorkingDocument = useCallback(
+    (payload: unknown) => {
+      const reversed = convertUmoToRichDoc(payload);
+      return editor.restoreRecovery(reversed.ok ? reversed.data : payload);
+    },
+    [editor.restoreRecovery],
+  );
   const [importError, setImportError] = useState("");
   /**
    * 上传/拖进来的文件先归一化：`.doc`/`.rtf`/`.odt` 这类先转成 DOCX 再进编辑器
@@ -438,7 +448,9 @@ function RichDocLegacyRoute({
         },
         mode: {
           current: "normal",
-          setMode: setEditorMode,
+          setMode: (next) => {
+            setEditorMode(next);
+          },
         },
         pages: { proLabel: "Umo" },
         directDownload: {
@@ -512,7 +524,7 @@ function RichDocLegacyRoute({
             ready: Boolean(editor.editor) && !editor.loading,
             capture: () =>
               editor.sourceReady ? editor.editor?.getJSON() || null : null,
-            restore: editor.restoreRecovery,
+            restore: restoreWorkingDocument,
           },
         },
       }}

@@ -17,7 +17,7 @@ test('real RichDoc pro adapter waits for revision 4 and rejects a revision 3 sna
     host.message({ type: 'recovery-snapshot', recoveryId: request.recoveryId, ok: true, snapshot: { revision: 3, payload: { text: 'third' } } });
     host.message({ type: 'dirty', dirty: true, revision: 4 });
     const adapter = host.render();
-    assert.equal(adapter.persistence.draft.schema, 'oceanleo.richdoc.pro.v1');
+    assert.equal(adapter.persistence.draft.schema, 'oceanleo.richdoc.edit.v1');
     let finished = false;
     const capture = adapter.persistence.draft.captureRevision(4).then(value => { finished = true; return value; });
     request = host.posted.findLast(m => m.type === 'recovery-capture');

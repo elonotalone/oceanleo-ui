@@ -26,13 +26,19 @@ test('mode entry awaits version/session gate and does not bypass it through lega
   } finally { gate(); normal(); }
 });
 
-test('failed draft recovery/version gate blocks both mode entry and mode exit', async () => {
+test('failed draft recovery/version gate still blocks mode entry; leave-pro never locks', async () => {
   const item = { id: 'e9-failed-gate', key: 'e9-failed-gate', meta: {} };
   const normal = handoff.bindNormalFaceHandoff(item.key, { getHandoff: () => ({ kind: 'inline', json: {} }) });
-  const gate = bindAdvancedDraftGate(item.key, async () => ({ ok: false, error: 'restore first' }));
+  let gateCalls = 0;
+  const gate = bindAdvancedDraftGate(item.key, async () => {
+    gateCalls += 1;
+    return { ok: false, error: 'restore first' };
+  });
   try {
     assert.equal((await handoff.captureBeforeEnterPro(item)).ok, false);
-    assert.equal(await handoff.saveBeforeLeavePro(item.key), false);
+    assert.equal(await handoff.saveBeforeLeavePro(item.key), true);
+    await Promise.resolve();
+    assert.ok(gateCalls >= 2, 'leave-pro must kick the same draft gate even when it fails');
   } finally { gate(); normal(); }
 });
 

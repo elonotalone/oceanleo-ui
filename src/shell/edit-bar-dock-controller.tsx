@@ -148,9 +148,11 @@ function clampUnit(value: number): number {
 type FirstPressStamp = { releasedAt: number; x: number; y: number };
 
 /**
- * 展开胶囊：直接双击，第二下按住移动即拖，不需要额外的选择点击。
- * 第一下 click 立即生效且不留选中态；从松开起 400ms 内、两次按下相距
- * 不超过 12px 才算双击。确认拖动时恢复第一下改变的开关状态。
+ * 展开胶囊：第一下按下-松开是普通点击，不画圈、不留选中。
+ * 松开后 400ms 内、两次按下相距 ≤12px 的第二下：按住并移动即拖。
+ * 第二下没移动就松开：第二次普通点击，且不记成新的第一下
+ * （否则还要再点第三下才能拖）。确认拖动时恢复第一下改变的开关状态。
+ * 黄圈 / moveMode 只在过了拖动阈值、dragging 为真时出现。
  * 收起圆仍是按下即拖。
  */
 
@@ -207,7 +209,7 @@ export interface EditBarDockController {
   position: FloatingToolbarPoint;
   presentation: EditBarPresentation;
   collapsed: boolean;
-  /** 按住拖的进行中：条子跟手，松手落下，Esc 取消。 */
+  /** 真正拖动中才为真。第二下刚按下未过阈值时为假，不画黄圈。 */
   moveMode: boolean;
   /** 第二下按住未移动，条被轻微抬起。 */
   lifted: boolean;
@@ -1086,6 +1088,10 @@ export function useEditBarDockController({
         moved: false,
       };
       setDragging(true);
+      // 展开态黄圈跟拖走走：按下未过阈值时不置 moveMode。收起圆按住即拖，不画圈。
+      if (presentationRef.current === "expanded") {
+        setMoveMode(true);
+      }
     },
     [adoptVisualPositionAsLogical, readDockTargetBounds],
   );
@@ -1305,7 +1311,6 @@ export function useEditBarDockController({
     ) => {
       if (typeof window === "undefined") return;
       armedSessionCleanupRef.current?.();
-      setMoveMode(true);
       setLifted(false);
       try {
         toolbarRef.current?.setPointerCapture?.(pointerId);
@@ -1314,11 +1319,6 @@ export function useEditBarDockController({
       }
       const threshold = dragStartThreshold(pointerType);
       const origin = eventElement(target);
-      const clickSnapshot = origin ? {
-        target: origin,
-        pressed: origin.getAttribute("aria-pressed"),
-        expanded: origin.getAttribute("aria-expanded"),
-      } : null;
       let phase: "armed" | "dragging" = "armed";
       let didLift = false;
       let closed = false;
@@ -1374,8 +1374,8 @@ export function useEditBarDockController({
         if (phase === "armed" && dist < threshold) {
           finishSession();
           finishDrag(pointerId);
-          firstClickRef.current = clickSnapshot;
-          rememberFirstPress(event.timeStamp, clientX, clientY);
+          // 第二次普通点击：不要记成新的第一下，否则还要再点第三下才能拖。
+          clearFirstPress();
           if (origin && toolbarRef.current?.contains(origin)) {
             replayClickRef.current = origin;
             origin.dispatchEvent(
@@ -1443,7 +1443,6 @@ export function useEditBarDockController({
     [
       abortArmed,
       clearFirstPress,
-      rememberFirstPress,
       finishDrag,
       releaseCapture,
       revertFirstClickState,
@@ -1511,7 +1510,8 @@ export function useEditBarDockController({
 
   /**
    * 第一下照常点击，不置选中态。松开后 400ms 内、距第一次按下点 12px 内
-   * 的第二下进入会话；按住移动达阈值才拖，过时或过远则重新计作第一下。
+   * 的第二下进入会话；按住移动达阈值才拖。第二下松开不移动则是第二次
+   * 普通点击，不记成新的第一下。过时或过远的按下才重新计作第一下。
    * 监听同步挂上，不放进 effect，快速第二下也能接住。
    */
   const onPointerDown = useCallback(

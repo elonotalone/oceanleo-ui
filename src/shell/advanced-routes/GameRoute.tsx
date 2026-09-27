@@ -11,6 +11,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -98,6 +99,81 @@ export interface GameBundleDocument {
   skeletonVersion: string;
   prompt: string;
   origin: GameRevisionOrigin;
+}
+
+/** 普通面与 Code 面共用的一份可恢复工作文档。 */
+export const GAME_WORKING_DOCUMENT_SCHEMA = "oceanleo.game.edit.v1";
+
+export type GameWorkingDocument = GameBundleDocument & {
+  source?: string;
+  paramDeclarations?: Record<string, unknown> | null;
+};
+
+const GAME_WORKING_HEADS = new Map<string, GameWorkingDocument>();
+
+export function gameWorkingHeadKey(item: {
+  artifactId?: string;
+  id?: string;
+  key?: string;
+}): string {
+  return String(item.artifactId || item.key || item.id || "");
+}
+
+export function stashGameWorkingDocument(
+  item: { artifactId?: string; id?: string; key?: string },
+  doc: GameWorkingDocument | null,
+): void {
+  const key = gameWorkingHeadKey(item);
+  if (!key) return;
+  if (!doc) GAME_WORKING_HEADS.delete(key);
+  else GAME_WORKING_HEADS.set(key, doc);
+}
+
+export function peekGameWorkingDocument(item: {
+  artifactId?: string;
+  id?: string;
+  key?: string;
+}): GameWorkingDocument | null {
+  return GAME_WORKING_HEADS.get(gameWorkingHeadKey(item)) ?? null;
+}
+
+export function asGameWorkingDocument(
+  payload: unknown,
+): GameWorkingDocument | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  const origin = value.origin;
+  if (origin != null && origin !== "" && !isAllowedGameRevisionOrigin(origin)) {
+    return null;
+  }
+  const source = typeof value.source === "string" ? value.source : "";
+  const envelopeUrl = String(value.envelopeUrl || "").trim();
+  const envelopeDigest = String(value.envelopeDigest || "").trim();
+  if (!source && (!envelopeUrl || !envelopeDigest)) return null;
+  return {
+    envelopeUrl,
+    envelopeDigest,
+    bundleFormat: "html",
+    coverUrl: String(value.coverUrl || ""),
+    coverDigest: String(value.coverDigest || ""),
+    manifestUrl: String(value.manifestUrl || ""),
+    manifestDigest: String(value.manifestDigest || ""),
+    engineApiVersion: String(value.engineApiVersion || ""),
+    skeletonVersion: String(value.skeletonVersion || ""),
+    prompt: String(value.prompt || ""),
+    origin: isAllowedGameRevisionOrigin(origin) ? origin : "ai",
+    ...(source ? { source } : {}),
+    ...(value.paramDeclarations !== undefined
+      ? {
+          paramDeclarations:
+            value.paramDeclarations &&
+            typeof value.paramDeclarations === "object" &&
+            !Array.isArray(value.paramDeclarations)
+              ? (value.paramDeclarations as Record<string, unknown>)
+              : null,
+        }
+      : {}),
+  };
 }
 
 // 沙箱宿主槽位在 `../game-editor/preview-host.ts`：legacy 与 next 共用同一模块实例。
@@ -214,6 +290,10 @@ function GameLegacyRoute({
 }) {
   const session = useAdvancedSession();
   const [history, setHistory] = useState<GameBundleDocument[]>(() => {
+    const stashed = peekGameWorkingDocument(item);
+    if (stashed?.envelopeUrl && stashed.envelopeDigest) {
+      return [stashed];
+    }
     const initial = documentFromItem(item);
     return initial ? [initial] : [];
   });
@@ -227,6 +307,18 @@ function GameLegacyRoute({
 
   const document_ = history[cursor] || null;
   const editRevision = `${cursor}:${document_?.envelopeDigest || "empty"}`;
+
+  useEffect(() => {
+    if (!document_) return;
+    const stashed = peekGameWorkingDocument(item);
+    stashGameWorkingDocument(item, {
+      ...document_,
+      ...(stashed?.source ? { source: stashed.source } : {}),
+      ...(stashed?.paramDeclarations !== undefined
+        ? { paramDeclarations: stashed.paramDeclarations }
+        : {}),
+    });
+  }, [document_, item]);
 
   const iterate = useCallback(async () => {
     const draft = prompt.trim();
@@ -291,22 +383,21 @@ function GameLegacyRoute({
       };
     }
     if (!isDurableLibraryItem(item)) {
-      return {
-        ok: true as const,
-        item: advancedSavedItem(item, {
-          url: document_.envelopeUrl,
-          versionId: document_.envelopeDigest,
-          previewUrl: document_.coverUrl,
-          thumbUrl: document_.coverUrl,
-          meta: {
-            editor: GAME_EDITOR_CAPABILITY,
-            editor_project_schema: GAME_PROJECT_SCHEMA,
-            generation_prompt: document_.prompt,
-            engine_api_version: document_.engineApiVersion,
-            skeleton_version: document_.skeletonVersion,
-          },
-        }),
-      };
+      const next = advancedSavedItem(item, {
+        url: document_.envelopeUrl,
+        versionId: document_.envelopeDigest,
+        previewUrl: document_.coverUrl,
+        thumbUrl: document_.coverUrl,
+        meta: {
+          editor: GAME_EDITOR_CAPABILITY,
+          editor_project_schema: GAME_PROJECT_SCHEMA,
+          generation_prompt: document_.prompt,
+          engine_api_version: document_.engineApiVersion,
+          skeleton_version: document_.skeletonVersion,
+        },
+      });
+      stashGameWorkingDocument(next, { ...document_ });
+      return { ok: true as const, item: next };
     }
     if (!document_.coverUrl || !document_.coverDigest) {
       return {
@@ -367,6 +458,12 @@ function GameLegacyRoute({
         },
       });
       setDirty(false);
+      stashGameWorkingDocument(committed, {
+        ...document_,
+        envelopeUrl: committed.url || document_.envelopeUrl,
+        envelopeDigest:
+          committed.revisionId || document_.envelopeDigest,
+      });
       return { ok: true as const, item: committed };
     } catch (caught) {
       return {
@@ -532,19 +629,28 @@ function GameLegacyRoute({
           editRevision,
           flush,
           recovery: {
-            draftSchema: "oceanleo.game.edit.v1",
+            draftSchema: GAME_WORKING_DOCUMENT_SCHEMA,
             key: advancedRecoveryKey("game", item),
             ready: !busy,
-            capture: () => (document_ ? { ...document_ } : null),
+            capture: () => {
+              if (!document_) return null;
+              const stashed = peekGameWorkingDocument(item);
+              const working: GameWorkingDocument = {
+                ...document_,
+                ...(stashed?.source ? { source: stashed.source } : {}),
+                ...(stashed?.paramDeclarations !== undefined
+                  ? { paramDeclarations: stashed.paramDeclarations }
+                  : {}),
+              };
+              stashGameWorkingDocument(item, working);
+              return working;
+            },
             restore: (payload) => {
-              const restored = payload as GameBundleDocument | null;
-              if (
-                !restored?.envelopeUrl ||
-                !restored.envelopeDigest ||
-                !isAllowedGameRevisionOrigin(restored.origin)
-              ) {
+              const restored = asGameWorkingDocument(payload);
+              if (!restored?.envelopeUrl || !restored.envelopeDigest) {
                 return false;
               }
+              stashGameWorkingDocument(item, restored);
               setHistory((entries) => [...entries, restored]);
               setCursor((value) => value + 1);
               return true;

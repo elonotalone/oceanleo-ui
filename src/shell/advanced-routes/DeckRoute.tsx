@@ -510,7 +510,9 @@ function DeckLegacyRoute({
         },
         mode: {
           current: "normal",
-          setMode: setEditorMode,
+          setMode: (next) => {
+            setEditorMode(next);
+          },
         },
         pages: { proLabel: "PPTist" },
         directDownload: {

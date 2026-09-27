@@ -81,7 +81,6 @@ function AudioGated(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="audio"
-      handoffItemKey={w19ItemKey("audio", props.item)}
       beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
       renderNormal={() => (
         <AudioLegacyRoute {...props} enterProRef={enterProRef} />

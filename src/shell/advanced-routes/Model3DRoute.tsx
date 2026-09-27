@@ -87,7 +87,6 @@ function Model3DLegacyRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="threed"
-      handoffItemKey={w19ItemKey("threed", props.item)}
       beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
       renderNormal={() => (
         <Model3DModelRoute {...props} enterProRef={enterProRef} />

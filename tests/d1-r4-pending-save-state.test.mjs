@@ -17,7 +17,7 @@ function render(ready) {
       recovery: { key: "draft", ready, capture: noop, restore: noop },
     } },
     autoSaveState: "saved", activeLibraryPanelId: null,
-    onBack: noop, onOpenLibrary: noop, onRetrySave: noop, onSaveNow: noop, onTriggerAction: noop,
+    onBack: noop, onOpenLibrary: noop, onRetrySave: noop, onTriggerAction: noop,
   }));
 }
 
@@ -26,9 +26,9 @@ test("D1 R4: before the draft receipt, the shared header does not claim saved or
   assert.doesNotMatch(pending, /已保存|data-workspace-save-launcher|data-workspace-save-menu/);
 });
 
-test("D1 R4: the confirmed draft retains its original saved status and save menu", () => {
+test("D1 R4: the confirmed draft retains its original saved status", () => {
   const confirmed = render(true);
   assert.match(confirmed, /已保存/);
   assert.match(confirmed, /data-workspace-save-launcher/);
-  assert.match(confirmed, /aria-haspopup="menu"/);
+  assert.doesNotMatch(confirmed, /aria-haspopup="menu"/);
 });

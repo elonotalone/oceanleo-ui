@@ -490,6 +490,8 @@ export function RichDocHostedRoute({
 
   const applyMode = useCallback(
     (next: EditorMode) => {
+      // Mode switch must complete even if a later flush fails. The shell
+      // flush owns save status; this function never awaits it.
       setMode(next);
       sendToEditor(buildSetModeMessage(instanceId, next));
       sendToEditor(
@@ -680,9 +682,9 @@ export function RichDocHostedRoute({
           dirty,
           editRevision,
           flush,
-          draft: { schema: "oceanleo.richdoc.pro.v1", capture: () => null, captureRevision: captureDraftRevision },
+          draft: { schema: "oceanleo.richdoc.edit.v1", capture: () => null, captureRevision: captureDraftRevision },
           recovery: {
-            draftSchema: "oceanleo.richdoc.pro.v1",
+            draftSchema: "oceanleo.richdoc.edit.v1",
             key: advancedRecoveryKey("richdoc", item),
             ready: ready && source != null,
             capture: () => cachedRef.current?.generation === generationRef.current ? cachedRef.current.payload

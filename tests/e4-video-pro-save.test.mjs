@@ -254,3 +254,33 @@ test("the professional stage's actual save input satisfies the video contract", 
   assert.equal(plan.ok, true, plan.error);
   assert.deepEqual(plan.renditions.map(({ purpose }) => purpose), ["preview", "editor_manifest"]);
 });
+
+test("pro and normal video faces share oceanleo.video-timeline.edit.v1", async (t) => {
+  environment(t);
+  const node = VideoDesigncomboStage({ item: item(), siteId: "video", onClose() {} });
+  assert.equal(node.props.adapter.persistence.recovery.draftSchema, "oceanleo.video-timeline.edit.v1");
+  assert.equal(node.props.adapter.persistence.autoSave, true);
+});
+
+test("switching to normal does not write the leave-pro lock copy", async (t) => {
+  const state = environment(t);
+  const node = VideoDesigncomboStage({ item: item(), siteId: "video", onClose() {} });
+  state.statuses.length = 0;
+  await node.props.adapter.mode.setMode("normal");
+  assert.equal(
+    state.statuses.includes("专业编辑里的修改还没保存成功，请重试。"),
+    false,
+  );
+});
+
+test("professional save writes the same video item, not a second work", async (t) => {
+  const state = environment(t);
+  const source = { ...item(), artifactId: "vid-root", revisionId: "r0" };
+  const node = VideoDesigncomboStage({ item: source, siteId: "video", onClose() {} });
+  await node.props.adapter.persistence.flush();
+  assert.equal(state.saved.length, 1);
+  assert.equal(state.saved[0].item.artifactId, "vid-root");
+  assert.equal(state.saved[0].item.id, source.id);
+  assert.equal(state.saved[0].artifactRevision.artifactType, "video");
+  assert.equal(state.saved[0].artifactRevision.editor, "video-timeline");
+});

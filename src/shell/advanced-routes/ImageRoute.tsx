@@ -67,6 +67,7 @@ import { ImagePhotopeaHost } from "../image-editor/ImagePhotopeaHost";
 import { clearLocalImageDraft } from "../image-editor/editor-persistence";
 import {
   bindNormalFaceHandoff,
+  bindProFaceHandoff,
   captureBeforeEnterPro,
   handoffItemKey,
   handoffRevisionOf,
@@ -217,18 +218,19 @@ export function ImageRoute({
     [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  const photopeaCloud =
+    showPhotopea ||
+    photopeaStatus.phase === "saving" ||
+    photopeaStatus.phase === "error";
   const saveBeforeNewConversation = useCallback(async () => {
-    if (showPhotopea) {
+    if (showPhotopea || photopeaSession.active()) {
       try {
         const next = await photopeaSession.save();
         return { ok: true as const, item: next };
       } catch (caught) {
         return {
           ok: false as const,
-          error:
-            caught instanceof Error
-              ? caught.message
-              : "专业编辑还没确认保存。",
+          error: caught instanceof Error ? caught.message : undefined,
         };
       }
     }
@@ -270,7 +272,13 @@ export function ImageRoute({
             : "图片 revision 回执无法固定到当前 artifact head。",
       };
     }
-  }, [activeItem, editor.error, editor.save, showPhotopea, photopeaSession]);
+  }, [activeItem, editor.error, editor.save, photopeaSession, showPhotopea]);
+  useEffect(() => {
+    return bindProFaceHandoff(handoffItemKey(activeItem), {
+      hasUnsavedChanges: () => photopeaCloud || editor.dirty,
+      flush: async () => (await saveBeforeNewConversation()).ok,
+    });
+  }, [activeItem, editor.dirty, photopeaCloud, saveBeforeNewConversation]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       setImportNotice("");
@@ -427,23 +435,18 @@ export function ImageRoute({
       return;
     }
     if (next === "normal" && pluginMode === "pro") {
-      void (async () => {
-        try {
-          await photopeaSession.leave();
-        } catch (caught) {
-          setImportNotice(
-            caught instanceof Error
-              ? caught.message
-              : "专业编辑还没确认保存。",
-          );
-          return;
-        }
-        setPluginModeState("normal");
-      })();
+      setPluginModeState("normal");
+      void Promise.resolve(saveBeforeNewConversation()).catch(() => {});
       return;
     }
     setPluginModeState(next);
-  }, [activeItem, frozenCanvasUrl, pluginMode, photopeaSession, makePhotopeaSession]);
+  }, [
+    activeItem,
+    frozenCanvasUrl,
+    makePhotopeaSession,
+    pluginMode,
+    saveBeforeNewConversation,
+  ]);
 
 
   /**
@@ -732,19 +735,18 @@ export function ImageRoute({
           </div>
         ),
         status:
-          (showPhotopea ? photopeaStatus.message : "") ||
           editor.error ||
           importNotice ||
           editor.notice ||
           (editor.loading ? "正在载入图片编辑器" : ""),
         persistence: {
-          // Photopea has no mutation feed. Fabric's dirty/revision cannot
-          // confirm that the iframe's latest edits reached the server.
-          autoSave: !showPhotopea,
-          confirmation: showPhotopea
+          // Photopea has no mutation feed. Unconfirmed stays on the cloud.
+          // After leaving pro, keep the cloud on this flush until export settles.
+          autoSave: !photopeaCloud,
+          confirmation: photopeaCloud
             ? { state: photopeaStatus.phase, message: photopeaStatus.message }
             : undefined,
-          dirty: showPhotopea || editor.dirty,
+          dirty: photopeaCloud || editor.dirty,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
         },

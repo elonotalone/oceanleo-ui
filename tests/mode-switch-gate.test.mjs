@@ -525,44 +525,45 @@ test("E7: cancel entering never invokes pro flush", async () => {
   } finally { await m.unmount(); }
 });
 
-test("E7 plugin gate: saved revision mounts only after flush; failed L0 returns pro and retry returns normal", async () => {
+test("E7 plugin gate: failed shared flush still leaves pro; no lock-back toast", async () => {
   handoff.resetEditorHandoffForTests();
   let dirty = true;
-  let succeed = false;
   let finish;
+  let flushCalls = 0;
   const unbind = handoff.bindProFaceHandoff("gate-item", {
     hasUnsavedChanges: () => dirty,
-    flush: () => new Promise(resolve => { finish = () => {
-      if (succeed) {
-        handoff.reportProSaved("gate-item", { key: "gate-item", revisionId: "new" });
-        dirty = false;
-      }
-      resolve(succeed);
-    }; }),
+    flush: () => new Promise((resolve) => {
+      finish = () => {
+        flushCalls += 1;
+        resolve(false);
+      };
+    }),
   });
   const container = document.createElement("div"); document.body.append(container);
   const root = createRoot(container);
-  let mountedRevision;
   function Normal() {
-    mountedRevision = handoff.peekProSavedRevision("gate-item")?.revisionId;
     useModeSwitchReady(true);
-    return h("p", { "data-normal-revision": mountedRevision });
+    return h("p", { "data-normal-face": "" });
   }
   try {
+    assert.equal(await handoff.saveBeforeLeavePro("gate-item"), true, "编译后的 saveBeforeLeavePro 必须立刻放行");
     await act(async () => {
       __setPluginMode("pro");
       root.render(h(PluginModeSwitchGate, { pluginId: "deck", handoffItemKey: "gate-item", renderNormal: () => h(Normal), renderPro: () => h(Face, { name: "pro", ready: true }) }));
     });
     await act(async () => __setPluginMode("normal"));
-    assert.equal(container.querySelector("[data-normal-revision]"), null);
-    await act(async () => finish());
-    assert.equal(container.querySelector("[data-mode-switch-gate]").dataset.modeSwitchTarget, "pro");
-    assert.equal(container.querySelector("[data-normal-revision]"), null);
-    succeed = true;
-    await act(async () => container.querySelector("[data-mode-switch-handoff-error] button").click());
-    await act(async () => finish());
-    assert.equal(mountedRevision, "new");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.ok(
+      container.querySelector("[data-normal-face]"),
+      `flush 失败也必须切到普通面；got ${container.innerHTML.slice(0, 400)}`,
+    );
     assert.equal(container.querySelector("[data-mode-switch-gate]").dataset.modeSwitchShown, "normal");
+    assert.equal(container.querySelector("[data-mode-switch-handoff-error]"), null);
+    await act(async () => finish?.());
+    assert.equal(container.querySelector("[data-mode-switch-gate]").dataset.modeSwitchShown, "normal");
+    assert.ok(flushCalls >= 1, "切面必须踢同一条 flush");
   } finally { await act(async () => root.unmount()); container.remove(); unbind(); }
 });
 

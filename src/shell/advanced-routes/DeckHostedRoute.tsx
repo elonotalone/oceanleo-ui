@@ -7,10 +7,12 @@ import {
   useModeSwitchHandoff,
   useModeSwitchReady,
 } from "./mode-switch-gate";
+import { DECK_DRAFT_SCHEMA } from "../advanced-draft-deck";
 import {
   ENTER_PRO_NOT_READY,
   handoffItemKey,
   hostedSaveTimeoutMs,
+  libraryItemFromProSave,
   materializeHandoffJson,
   bindProFaceHandoff,
   reportProSaved,
@@ -23,6 +25,7 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import {
   deckDocumentToPptist,
   PPTIST_CARRIER_FORMAT,
+  pptistToDeckDocument,
 } from "../doc-editors/deck-pptist-carrier";
 import { normalizeDeckDocument } from "../doc-editors/deck-schema";
 import { importPptxDeck } from "../doc-editors/pptx-deck-import";
@@ -192,6 +195,9 @@ function toHostedDocument(source: unknown, title: string): Record<string, unknow
     source && typeof source === "object" && !Array.isArray(source)
       ? (source as Record<string, unknown>)
       : null;
+  if (record && record.deck && typeof record.deck === "object") {
+    return toHostedDocument(record.deck, title);
+  }
   if (record && record.format === PPTIST_CARRIER_FORMAT && Array.isArray(record.slides)) {
     return stripUndefined(record) as Record<string, unknown>;
   }
@@ -443,6 +449,24 @@ export function DeckHostedRoute({
     }
   }, [contentIdentity, instanceId, item.title, mode, reportModeSwitchFailure, sendToEditor, source, sourceReady]);
 
+  const reportWorkingHandoff = useCallback(
+    (payload: unknown, revision: number) => {
+      try {
+        const deck = pptistToDeckDocument(payload, persistedItemRef.current.title || item.title);
+        reportProSaved(
+          handoffItemKey(item),
+          libraryItemFromProSave(persistedItemRef.current, {
+            deck,
+            revision: String(revision),
+          }),
+        );
+      } catch {
+        /* keep the last confirmed handoff; flush still owns durable save */
+      }
+    },
+    [item],
+  );
+
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const message = acceptEditorFrameMessage(event, {
@@ -518,6 +542,7 @@ export function DeckHostedRoute({
         draftChannelRef.current!.accept(revision, payload);
         snapshotRef.current = payload;
         setSnapshot(payload);
+        if (revision !== savedRevisionRef.current) reportWorkingHandoff(payload, revision);
         const waiting = saveWaitRef.current;
         if (waiting?.id === recoveryId) waiting.finish(payload);
         return;
@@ -525,7 +550,7 @@ export function DeckHostedRoute({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [contentIdentity, editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure]);
+  }, [contentIdentity, editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure, reportWorkingHandoff]);
 
   useEffect(() => {
     if (!ready) return;
@@ -548,6 +573,8 @@ export function DeckHostedRoute({
 
   const applyMode = useCallback(
     (next: EditorMode) => {
+      // Mode switch must complete even if a later flush fails. The shell
+      // flush owns save status; this function never awaits it.
       setMode(next);
       sendToEditor(buildSetModeMessage(instanceId, next));
       sendToEditor(
@@ -600,7 +627,6 @@ export function DeckHostedRoute({
         return { ok: false, error: "文件已切换，请重新打开查看保存结果。" };
       }
       if (!result.ok) {
-        if (mountedRef.current) setStatus(result.error);
         sendToEditor({ type: "save-result", ok: false, saveId, message: result.error });
         return result;
       }
@@ -745,9 +771,9 @@ export function DeckHostedRoute({
           dirty: documentOpened && dirty,
           editRevision,
           flush,
-          draft: { schema: "oceanleo.deck.pro.v1", capture: () => null, captureRevision: captureDraftRevision },
+          draft: { schema: DECK_DRAFT_SCHEMA, capture: () => null, captureRevision: captureDraftRevision },
           recovery: {
-            draftSchema: "oceanleo.deck.pro.v1",
+            draftSchema: DECK_DRAFT_SCHEMA,
             key: advancedRecoveryKey("deck", item),
             ready: documentOpened && sourceReady,
             capture: () => openedContentIdentityRef.current !== contentIdentity ? null

@@ -62,7 +62,6 @@ function ChartLegacyRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="chart-editor"
-      handoffItemKey={w19ItemKey("chart-editor", props.item)}
       beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
       renderNormal={() => (
         <ChartLegacyFace {...props} enterProRef={enterProRef} />
@@ -418,6 +417,7 @@ function ChartLegacyBody({
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,
+          autoSave: true,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.chart.edit.v1",

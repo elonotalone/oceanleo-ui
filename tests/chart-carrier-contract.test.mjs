@@ -866,3 +866,15 @@ test("R6 拒绝文案归 W3:本 owner 未改 workbench-routes.ts", () => {
   const routes = repoFile("../src/shell/workbench-routes.ts");
   assert.match(routes, /ECharts option 源/);
 });
+
+test("普通面与专业面共用 oceanleo.chart.edit.v1，切面不锁人", () => {
+  const route = repoFile("../src/shell/advanced-routes/ChartRoute.tsx");
+  const leaf = repoFile("../src/shell/chart-editor/ChartNextStage.tsx");
+  assert.match(route, /draftSchema:\s*"oceanleo\.chart\.edit\.v1"/);
+  assert.match(leaf, /draftSchema:\s*"oceanleo\.chart\.edit\.v1"/);
+  assert.doesNotMatch(route, /oceanleo\.chart\.pro\.v1/);
+  assert.doesNotMatch(leaf, /oceanleo\.chart\.pro\.v1/);
+  assert.doesNotMatch(leaf, /saveBeforeLeavePro/);
+  assert.doesNotMatch(leaf, /专业编辑里的修改还没保存成功/);
+  assert.doesNotMatch(route, /handoffItemKey=/);
+});

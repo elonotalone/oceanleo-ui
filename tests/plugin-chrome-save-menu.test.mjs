@@ -4,7 +4,7 @@
 //   · 编辑栏文档段只收 `group === "edit"`（缺省）；save / download 一律不进编辑栏；
 //     `adapter.upload` 不再在编辑栏长出「从本地添加到画布」。
 //   · 第一行 `save-state` 槽是一个保存菜单：本体显示状态，点开列出 save 组动作；
-//     没有 save 组但有 `persistence.flush` 时只列「立即保存」。
+//     没有 save 组时云朵只是状态，不弹只含「立即保存」的菜单。
 //   · 素材库抽屉（use-inline-advanced-panels 的 materials 面板）第一项是「从本地上传」，
 //     点它触发壳里那个隐藏 <input type=file>。
 //   · 第一行可点击元素仍然全部落在 GLOBAL_ROW_SLOTS（6 槽不变；close 已换成 maximize）。
@@ -365,7 +365,7 @@ test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单
   });
 });
 
-test("没有 save 组但能刷盘时，保存菜单只有「立即保存」，点它走 flush", async () => {
+test("没有 save 组即使能刷盘，云朵也只是状态，不弹「立即保存」菜单", async () => {
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   await resetStores();
   globalThis.__x1AutoSaveState = "saved";
@@ -388,17 +388,20 @@ test("没有 save 组但能刷盘时，保存菜单只有「立即保存」，�
     );
     const launcher = find("[data-workspace-save-launcher]");
     assert.ok(launcher);
+    assert.match(launcher.textContent || "", /已保存/, "云朵应仍显示已保存");
+    assert.equal(launcher.getAttribute("aria-haspopup"), null);
     await click(launcher);
-    const menu = window.document.querySelector("[data-workspace-save-menu]");
-    assert.ok(menu, "保存菜单没点开");
-    const items = [...menu.querySelectorAll("[data-workspace-save-action-id]")];
-    assert.deepEqual(
-      items.map((node) => node.dataset.workspaceSaveActionId),
-      ["flush-now"],
+    assert.equal(
+      window.document.querySelector("[data-workspace-save-menu]"),
+      null,
+      "无 save 组时不该弹出保存菜单",
     );
-    assert.match(items[0].textContent || "", /立即保存/);
-    await click(items[0]);
-    assert.equal(globalThis.__x1FlushCalls, 1, "「立即保存」没有触发 flush");
+    assert.equal(
+      window.document.querySelector('[data-workspace-save-action-id="flush-now"]'),
+      null,
+    );
+    assert.doesNotMatch(launcher.textContent || "", /立即保存/);
+    assert.equal(globalThis.__x1FlushCalls, 0, "点云朵不该触发 flush");
   });
 });
 

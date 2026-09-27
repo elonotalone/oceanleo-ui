@@ -234,7 +234,7 @@ export async function persistPhotopeaDocument(input: {
           ? "image/gif"
           : "image/png";
   const extension = kind === "jpeg" ? "jpg" : kind;
-  const title = `${input.item.title || "图片"}-编辑版`;
+  const title = input.item.title || "图片";
   const fileStem =
     title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 120) || "image";
   const file = new File([input.bytes], `${fileStem}.${extension}`, { type: mime });

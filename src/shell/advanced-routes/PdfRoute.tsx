@@ -11,7 +11,6 @@ import {
   stashW19EnterHandoff,
   useW19ProSavedRevision,
   w19ItemKey,
-  W19_PRO_SAVED_AS_NEW_VERSION,
 } from "./w19-handoff-store";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
@@ -268,19 +267,8 @@ export function PdfRoute({
                 text: "此文档无文本层，只能按页浏览与标注，无法全文检索或复制文字。",
                 severity: "info" as const,
               },
-              {
-                id: "w19-pro-saved-as-new-version",
-                text: W19_PRO_SAVED_AS_NEW_VERSION,
-                severity: "info" as const,
-              },
             ]
-          : [
-              {
-                id: "w19-pro-saved-as-new-version",
-                text: W19_PRO_SAVED_AS_NEW_VERSION,
-                severity: "info" as const,
-              },
-            ],
+          : [],
         // flag=`next` 或专业模式走 EmbedPDF 叶子（普通模式我们自己画、专业
         // 模式换成上游即用查看器，**同一份字节**）。`effectiveCore` 判定保留，
         // 两面之间经同一个过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
@@ -324,7 +312,6 @@ export function PdfRoute({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
-            draftSchema: "oceanleo.pdf.edit.v1",
             key: advancedRecoveryKey("pdf", item),
             ready: !editor.loading && !editor.processing,
             capture: editor.captureRecovery,

@@ -18,8 +18,6 @@ export interface PluginGlobalRowProps {
   onBack(): void;
   onOpenLibrary(id: WorkspaceLibraryPanelId): void;
   onRetrySave(): void;
-  /** 保存菜单「立即保存」（无 save 组动作时）。 */
-  onSaveNow?(): void | Promise<void>;
   onClose?(): void;
   onUploadFiles?(files: File[]): void;
 }
@@ -43,7 +41,6 @@ export function PluginGlobalRow(props: PluginGlobalRowProps) {
         onBack={props.onBack}
         onOpenLibrary={props.onOpenLibrary}
         onRetrySave={props.onRetrySave}
-        onSaveNow={props.onSaveNow}
         onClose={props.onClose}
         onTriggerAction={triggerMenuAction}
         onUploadFiles={props.onUploadFiles}

@@ -12,32 +12,60 @@ test("E7 binder: absent and clean faces never flush", async () => {
   const unbind = api.bindProFaceHandoff("a", { hasUnsavedChanges: () => false, flush: async () => { calls++; return true; } });
   assert.equal(await api.saveBeforeLeavePro("a"), true);
   assert.equal(api.hasUnsavedProChanges("a"), false);
+  await Promise.resolve();
   assert.equal(calls, 0);
   unbind();
 });
 
-test("E7 binder: item isolation, failure, dirty revision protection, cleanup ownership and abort", async () => {
+test("E7 binder: leave-pro always returns true and only kicks the current flush", async () => {
   api.resetEditorHandoffForTests();
-  let dirty = true;
-  const old = api.bindProFaceHandoff("a", { hasUnsavedChanges: () => true, flush: async () => false });
-  const current = api.bindProFaceHandoff("a", { hasUnsavedChanges: () => dirty, flush: async () => true });
-  old();
+  let aCalls = 0;
+  let bCalls = 0;
+  const stale = api.bindProFaceHandoff("a", {
+    hasUnsavedChanges: () => true,
+    flush: async () => {
+      aCalls += 1;
+      return false;
+    },
+  });
+  const current = api.bindProFaceHandoff("a", {
+    hasUnsavedChanges: () => true,
+    flush: async () => {
+      aCalls += 1;
+      return false;
+    },
+  });
+  stale();
   assert.equal(api.hasUnsavedProChanges("a"), true);
-  assert.equal(await api.saveBeforeLeavePro("a"), false, "a newer dirty revision must block leaving");
+  assert.equal(await api.saveBeforeLeavePro("a"), true, "failed flush must not lock leave");
+  await Promise.resolve();
+  assert.equal(aCalls, 1, "only the current binder is kicked");
+  const other = api.bindProFaceHandoff("b", {
+    hasUnsavedChanges: () => true,
+    flush: async () => {
+      bCalls += 1;
+      return true;
+    },
+  });
   assert.equal(await api.saveBeforeLeavePro("b"), true);
+  await Promise.resolve();
+  assert.equal(bCalls, 1);
+  assert.equal(aCalls, 1);
   current();
-  let finish;
+  other();
+
   const abort = new AbortController();
-  const clean = api.bindProFaceHandoff("a", { hasUnsavedChanges: () => dirty, flush: () => new Promise(r => finish = r) });
-  const pending = api.saveBeforeLeavePro("a", abort.signal);
-  abort.abort(); dirty = false; finish(true);
-  assert.equal(await pending, false);
-  clean();
-  const failure = api.bindProFaceHandoff("a", { hasUnsavedChanges: () => true, flush: async () => false });
-  assert.equal(await api.saveBeforeLeavePro("a"), false);
-  failure();
-  dirty = true;
-  const success = api.bindProFaceHandoff("a", { hasUnsavedChanges: () => dirty, flush: async () => { dirty = false; return true; } });
-  assert.equal(await api.saveBeforeLeavePro("a"), true);
-  success();
+  abort.abort();
+  let abortedCalls = 0;
+  const aborted = api.bindProFaceHandoff("a", {
+    hasUnsavedChanges: () => true,
+    flush: async () => {
+      abortedCalls += 1;
+      return true;
+    },
+  });
+  assert.equal(await api.saveBeforeLeavePro("a", abort.signal), true);
+  await Promise.resolve();
+  assert.equal(abortedCalls, 0, "already-aborted leave does not flush");
+  aborted();
 });

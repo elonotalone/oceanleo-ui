@@ -83,6 +83,8 @@ interface RemoteChoice {
 
 const DESIGN_SOURCE_ACK_TYPE = "design-source-ack";
 const DESIGN_HANDSHAKE_TIMEOUT_MS = 20_000;
+/** One working-document schema for both canvas faces. Never a .pro.v1 twin. */
+const DESIGN_CANVAS_WORKING_SCHEMA = "oceanleo.design.canvas.v1";
 
 interface DesignSourceBinding {
   rendition: ArtifactRendition;
@@ -682,6 +684,7 @@ export function EmbeddedRoute({
     [],
   );
   const applyEditorMode = useCallback((next: EditorMode) => {
+    // Same instance and the same flush. Switching never waits on a save.
     setEditorMode(next);
   }, []);
   useEffect(() => {
@@ -1641,6 +1644,7 @@ export function EmbeddedRoute({
           editRevision,
           // Website Apply must stay clickable until the user/harness applies the
           // session draft; debounce autosave previously save→auto-Applied first.
+          // Pro mode uses this same flush. Do not add a second confirmation.
           autoSave: hostedMediaType !== "website",
           flush:
             carrierOpenRejection || carrierSaveRejection
@@ -1657,7 +1661,10 @@ export function EmbeddedRoute({
                   })
                 : saveBeforeNewConversation,
           recovery: {
-            draftSchema: hostedMediaType === "canvas" ? "oceanleo.design.canvas.v1" : undefined,
+            draftSchema:
+              hostedMediaType === "canvas"
+                ? DESIGN_CANVAS_WORKING_SCHEMA
+                : undefined,
             captureRevision: async (revision) => {
               const remote = remoteRevisionRef.current;
               if (remote === null) return null;

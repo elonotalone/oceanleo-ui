@@ -17,7 +17,7 @@ import {
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
 import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
-import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   peekW19EnterHandoff,
   reportW19ProSaved,
@@ -484,16 +484,13 @@ export function VideoDesigncomboStage({
       },
     });
     if (!saved.ok) {
-      setStatus(saved.error || "时间线草稿保存失败");
-      return null;
+      return { ok: false as const, error: saved.error || "时间线草稿保存失败" };
     }
     saveItemRef.current = saved.item || advancedSavedItem(saveItemRef.current, { url: saved.url, versionId: saved.versionId });
     if (editRevisionRef.current !== savingRevision) {
-      setStatus("还有更新的修改尚未保存。");
-      return null;
+      return { ok: false as const, error: "还有更新的修改尚未保存。" };
     }
     setDirty(false);
-    setStatus("已保存");
     return saved;
   }, [editRevision, item, readonly, siteId]);
 
@@ -554,10 +551,13 @@ export function VideoDesigncomboStage({
 
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await saveDraft();
-    if (!saved?.url) {
+    if (!saved || !saved.ok || !saved.url) {
       return {
         ok: false as const,
-        error: status || "时间线草稿保存失败",
+        error:
+          saved && "error" in saved && saved.error
+            ? saved.error
+            : "时间线草稿保存失败",
       };
     }
     const next = saved.item || advancedSavedItem(saveItemRef.current, {
@@ -570,16 +570,12 @@ export function VideoDesigncomboStage({
     });
     reportW19ProSaved(w19ItemKey("video-timeline", item), next);
     return { ok: true as const, item: next };
-  }, [item, saveDraft, status]);
+  }, [item, saveDraft]);
 
   const proFlush = useProFaceSave(w19ItemKey("video-timeline", item), dirty, editRevision, saveBeforeNewConversation);
-  const applyMode = useCallback(async (next: EditorMode) => {
-    if (next === "normal" && !await saveBeforeLeavePro(w19ItemKey("video-timeline", item))) {
-      setStatus("专业编辑里的修改还没保存成功，请重试。");
-      return;
-    }
+  const applyMode = useCallback((next: EditorMode) => {
     setMode(next);
-  }, [item]);
+  }, []);
 
   return (
     <AdvancedWorkbenchShell
@@ -755,7 +751,7 @@ export function VideoDesigncomboStage({
           flush: proFlush,
           recovery: {
             key: advancedRecoveryKey("video-timeline", item),
-            draftSchema: "oceanleo.video-timeline.pro.v1",
+            draftSchema: "oceanleo.video-timeline.edit.v1",
             ready: !loading,
             capture: () => (readonly ? null : cloneOpenVideoProject(projectRef.current)),
             restore: (payload) => {

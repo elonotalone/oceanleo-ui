@@ -886,7 +886,9 @@ export function GridUniverStage({
         },
         mode: {
           current: mode,
-          setMode,
+          setMode: (next) => {
+            setMode(next);
+          },
         },
         pages: { proLabel: GRID_PRO_LABEL },
         directDownload: {

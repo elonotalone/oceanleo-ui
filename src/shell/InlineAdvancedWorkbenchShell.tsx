@@ -343,8 +343,8 @@ export function InlineAdvancedWorkbenchShell({
     });
   }, [advancedSession, editorDirty]);
 
-  // An editor without a mutation feed must capture on every explicit save.
-  // A covered Fabric revision says nothing about the current Photopea image.
+  // confirmation 只影响显式重试（云朵「保存失败，点击重试」），不影响关闭。
+  // 关闭永远走 leaveAdvancedWorkbench，不等待 flush。
   const flushForExplicitSave = adapter.persistence?.confirmation
     ? adapter.persistence.flush
     : autoSave.flushLatest;
@@ -385,10 +385,6 @@ export function InlineAdvancedWorkbenchShell({
   const activeLibraryPanelId =
     workspacePane?.activeLibraryPanelId ||
     (materialsDrawerOpen ? ("materials" as const) : null);
-  const saveNow = useCallback(
-    () => void flushForExplicitSave(),
-    [flushForExplicitSave],
-  );
   const actionBar = useMemo(
     () => (
       <InlineAdvancedWorkbenchHeader
@@ -408,7 +404,6 @@ export function InlineAdvancedWorkbenchShell({
         onOpenTransientPanel={openTransientPanel}
         onOpenLibrary={openLibraryPanel}
         onRetrySave={() => void (adapter.persistence?.confirmation ? flushForExplicitSave() : autoSave.retry())}
-        onSaveNow={saveNow}
         onUploadFiles={(files) => void performUpload(files)}
       />
     ),
@@ -429,7 +424,6 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel,
       performUpload,
       requestClose,
-      saveNow,
       siteId,
     ],
   );

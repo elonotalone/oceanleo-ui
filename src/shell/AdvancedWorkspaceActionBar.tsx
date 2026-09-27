@@ -5,10 +5,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { Button, IconButton } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
-import {
-  actionGroup,
-  type AdvancedWorkbenchAction,
-} from "./advanced-workbench-chrome";
+import { actionGroup } from "./advanced-workbench-chrome";
 import { AnchoredPopover } from "./anchored-popover";
 import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
@@ -35,9 +32,6 @@ function toggleEditorBrowserFullscreen() {
   void target.requestFullscreen?.();
 }
 
-/** 保存菜单里「立即保存」这一项的 id（无 save 组动作、但有 `persistence.flush` 时出现）。 */
-export const SAVE_NOW_ACTION_ID = "flush-now";
-
 export function AdvancedWorkspaceActionBar({
   adapter,
   autoSaveState: observedAutoSaveState,
@@ -50,7 +44,6 @@ export function AdvancedWorkspaceActionBar({
   onBack,
   onOpenLibrary,
   onRetrySave,
-  onSaveNow,
   onClose,
   onTriggerAction,
 }: {
@@ -69,8 +62,6 @@ export function AdvancedWorkspaceActionBar({
   onOpenTools?: () => void;
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
   onRetrySave: () => void;
-  /** 「立即保存」：宿主把 `persistence.flush` 的最新一次刷盘接到这里。 */
-  onSaveNow?: () => void | Promise<void>;
   onClose?: () => void;
   onTriggerAction: (
     action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
@@ -122,23 +113,10 @@ export function AdvancedWorkspaceActionBar({
     ...(adapter.directDownload ? [adapter.directDownload] : []),
     ...actions.filter((action) => action.group === "download"),
   ];
-  // 保存菜单（规范 v2 §2）：有 save 组就列 save 组；没有且能刷盘就只列「立即保存」。
-  const declaredSaveActions = actions.filter(
+  // 保存菜单只列真实 save 组。没有 save 组时云朵只报状态；失败可点重试。不再合成「立即保存」。
+  const saveActions = actions.filter(
     (action) => actionGroup(action) === "save",
   );
-  const saveActions: AdvancedWorkbenchAction[] =
-    declaredSaveActions.length > 0
-      ? declaredSaveActions
-      : adapter.persistence?.flush && onSaveNow
-        ? [
-            {
-              id: SAVE_NOW_ACTION_ID,
-              label: "立即保存",
-              icon: "file",
-              onTrigger: onSaveNow,
-            },
-          ]
-        : [];
   const idBase = useId().replace(/:/g, "");
   const downloadMenuId = `workspace-download-${idBase}`;
   const saveMenuId = `workspace-save-${idBase}`;

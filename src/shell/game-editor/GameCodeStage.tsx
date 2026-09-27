@@ -51,6 +51,12 @@ import {
 } from "./game-preview-controls";
 import { useGamePreviewHost } from "./preview-host";
 import { gameModeUnavailable, gamePagesAdapter } from "./game-pages";
+import {
+  GAME_WORKING_DOCUMENT_SCHEMA,
+  asGameWorkingDocument,
+  peekGameWorkingDocument,
+  stashGameWorkingDocument,
+} from "../advanced-routes/GameRoute";
 
 const GAME_EDITOR_CAPABILITY = "game-editor";
 const EMPTY_DOC =
@@ -76,6 +82,44 @@ function coverOf(item: AdvancedContentWorkbenchProps["item"]): {
     return { url: cover?.url || "", digest: cover?.digest || "" };
   }
   return { url: "", digest: "" };
+}
+
+function workingDocumentFromCode(
+  item: AdvancedContentWorkbenchProps["item"],
+  fields: {
+    source: string;
+    origin: string;
+    prompt: string;
+    skeletonVersion: string;
+    engineApiVersion: string;
+    paramDeclarations: GameParamDeclarations | null;
+  },
+) {
+  const cover = coverOf(item);
+  return {
+    envelopeUrl: envelopeUrlOf(item),
+    envelopeDigest: isDurableLibraryItem(item)
+      ? String(
+          (item.artifact.renditions.full || item.artifact.renditions.source)
+            ?.digest || "local",
+        )
+      : String(item.meta.envelope_digest || item.revisionId || "local"),
+    bundleFormat: "html" as const,
+    coverUrl: cover.url,
+    coverDigest: cover.digest,
+    manifestUrl: isDurableLibraryItem(item)
+      ? String(item.artifact.renditions.editor_manifest?.url || "")
+      : "",
+    manifestDigest: isDurableLibraryItem(item)
+      ? String(item.artifact.renditions.editor_manifest?.digest || "")
+      : "",
+    engineApiVersion: fields.engineApiVersion,
+    skeletonVersion: fields.skeletonVersion,
+    prompt: fields.prompt,
+    origin: (fields.origin === "remix" ? "remix" : "ai") as "ai" | "remix",
+    source: fields.source,
+    paramDeclarations: fields.paramDeclarations,
+  };
 }
 
 export function GameCodeStage({
@@ -124,6 +168,26 @@ export function GameCodeStage({
   }, []);
 
   useEffect(() => {
+    const stashed = peekGameWorkingDocument(item);
+    if (stashed?.source?.trim()) {
+      setSource(stashed.source);
+      if (stashed.origin) setOrigin(stashed.origin);
+      if (typeof stashed.prompt === "string") setPrompt(stashed.prompt);
+      if (typeof stashed.skeletonVersion === "string") {
+        setSkeletonVersion(stashed.skeletonVersion);
+      }
+      if (typeof stashed.engineApiVersion === "string") {
+        setEngineApiVersion(stashed.engineApiVersion);
+      }
+      if (stashed.paramDeclarations !== undefined) {
+        const declared = readGameParamDeclarations({
+          paramDeclarations: stashed.paramDeclarations,
+        });
+        setParamDeclarations(declared);
+        if (declared) setParamValues(resolveGameParamValues(declared));
+      }
+      return;
+    }
     const url = envelopeUrlOf(item);
     const inline =
       typeof item.meta.game_source === "string" ? item.meta.game_source : "";
@@ -183,6 +247,28 @@ export function GameCodeStage({
     setEditRevision((value) => value + 1);
     setDirty(true);
   }, []);
+
+  useEffect(() => {
+    stashGameWorkingDocument(
+      item,
+      workingDocumentFromCode(item, {
+        source,
+        origin,
+        prompt,
+        skeletonVersion,
+        engineApiVersion,
+        paramDeclarations,
+      }),
+    );
+  }, [
+    engineApiVersion,
+    item,
+    origin,
+    paramDeclarations,
+    prompt,
+    skeletonVersion,
+    source,
+  ]);
 
   const runControl = useCallback((action: "run" | "stop" | "reload") => {
     setPlayback((current) => planGamePreviewControl(current, action));
@@ -335,6 +421,17 @@ export function GameCodeStage({
     );
     if (!saved.ok) return { ok: false as const, error: saved.error };
     setDirty(false);
+    stashGameWorkingDocument(
+      saved.item,
+      workingDocumentFromCode(saved.item, {
+        source,
+        origin,
+        prompt,
+        skeletonVersion,
+        engineApiVersion,
+        paramDeclarations,
+      }),
+    );
     return { ok: true as const, item: saved.item };
   }, [
     chipsManifest.chips,
@@ -491,19 +588,41 @@ export function GameCodeStage({
           editRevision,
           flush,
           recovery: {
-            draftSchema: "oceanleo.game.code.v1",
+            draftSchema: GAME_WORKING_DOCUMENT_SCHEMA,
             key: advancedRecoveryKey("game", item),
             ready: true,
-            capture: () => ({ source, origin, prompt, skeletonVersion, engineApiVersion, paramDeclarations }),
+            capture: () => {
+              const working = workingDocumentFromCode(item, {
+                source,
+                origin,
+                prompt,
+                skeletonVersion,
+                engineApiVersion,
+                paramDeclarations,
+              });
+              stashGameWorkingDocument(item, working);
+              return working;
+            },
             restore: (payload) => {
-              const next = payload as { source?: string; origin?: string; prompt?: string; skeletonVersion?: string; engineApiVersion?: string; paramDeclarations?: GameParamDeclarations | null } | null;
-              if (!next?.source) return false;
-              setSource(next.source);
+              const next = asGameWorkingDocument(payload);
+              if (!next?.source && !next?.envelopeUrl) return false;
+              if (next.source) setSource(next.source);
               if (next.origin) setOrigin(next.origin);
               if (typeof next.prompt === "string") setPrompt(next.prompt);
-              if (typeof next.skeletonVersion === "string") setSkeletonVersion(next.skeletonVersion);
-              if (typeof next.engineApiVersion === "string") setEngineApiVersion(next.engineApiVersion);
-              if (next.paramDeclarations !== undefined) setParamDeclarations(next.paramDeclarations);
+              if (typeof next.skeletonVersion === "string") {
+                setSkeletonVersion(next.skeletonVersion);
+              }
+              if (typeof next.engineApiVersion === "string") {
+                setEngineApiVersion(next.engineApiVersion);
+              }
+              if (next.paramDeclarations !== undefined) {
+                const declared = readGameParamDeclarations({
+                  paramDeclarations: next.paramDeclarations,
+                });
+                setParamDeclarations(declared);
+                if (declared) setParamValues(resolveGameParamValues(declared));
+              }
+              stashGameWorkingDocument(item, next);
               bump();
               return true;
             },

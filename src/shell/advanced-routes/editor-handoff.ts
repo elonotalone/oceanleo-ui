@@ -77,21 +77,33 @@ export function hasUnsavedProChanges(itemKey: string): boolean {
   return proFaceBinders.get(itemKey)?.hasUnsavedChanges() ?? false;
 }
 
+/**
+ * Kick the one shared flush for this material. Never blocks `setMode`:
+ * callers switch first; failure belongs to the cloud (autosave state).
+ * When a draft gate is bound, that is the only persist — do not also run
+ * a second pro-face binder save.
+ */
 export async function saveBeforeLeavePro(itemKey: string, signal?: AbortSignal): Promise<boolean> {
-  if (signal?.aborted) return false;
-  try {
-    const draftGate = flushAdvancedDraftGate(itemKey);
-    if (draftGate) {
-      const saved = await draftGate;
-      if (!saved.ok || signal?.aborted) return false;
-      if (saved.item) reportProSaved(itemKey, saved.item);
-    }
-    const binder = proFaceBinders.get(itemKey);
-    if (!binder || !binder.hasUnsavedChanges()) return true;
-    return await binder.flush() && !signal?.aborted && !binder.hasUnsavedChanges();
-  } catch {
-    return false;
+  if (!itemKey || signal?.aborted) return true;
+  void persistThroughSharedFlush(itemKey);
+  return true;
+}
+
+function persistThroughSharedFlush(itemKey: string): void {
+  const draftGate = flushAdvancedDraftGate(itemKey);
+  if (draftGate) {
+    void draftGate
+      .then((saved) => {
+        if (saved.ok && saved.item) reportProSaved(itemKey, saved.item);
+      })
+      .catch(() => {});
+    return;
   }
+  const binder = proFaceBinders.get(itemKey);
+  if (!binder || !binder.hasUnsavedChanges()) return;
+  void Promise.resolve()
+    .then(() => binder.flush())
+    .catch(() => {});
 }
 
 const normalFaceBinders = new Map<string, NormalFaceHandoffBinder>();

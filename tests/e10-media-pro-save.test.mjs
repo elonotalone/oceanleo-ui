@@ -58,7 +58,7 @@ const common = {
 const audioStubs = {
   ...common,
   './audio-playlist-mount': dataModule('export const mountWaveformPlaylist=async()=>({emit(){},getDuration:()=>1,getTimeSelection:()=>({start:0,end:1}),trackCount:()=>1});'),
-  './audio-workbench-utils': dataModule('export const encodeWav=buffer=>{globalThis.__e10.encoded.push(buffer.marker);return new Blob([new Uint8Array([buffer.marker])])}; export const applyAudioOperation=buffer=>buffer;'),
+  './audio-workbench-utils': dataModule('export const encodeWav=buffer=>{globalThis.__e10.encoded.push(buffer.marker);return new Blob([new Uint8Array([buffer.marker])])}; export const applyAudioOperation=buffer=>buffer; export const validAudioProject=value=>Boolean(value&&value.sourceUrl);'),
   './AudioPlaylistToolbar': noop('AudioPlaylistToolbar'), './AudioTranscriptPanel': noop('AudioTranscriptPanel'),
 };
 const modelStubs = {
@@ -133,7 +133,7 @@ async function mount(t, kind) {
 }
 
 for(const kind of ['chart-editor','video-timeline']) {
-  test(`E10 ${kind}: real Stage registers save, clean leave skips upload, dirty leave waits for success`,async t=>{
+  test(`E10 ${kind}: real Stage registers save, clean leave skips upload, dirty leave kicks flush without waiting`,async t=>{
     const s=await mount(t,kind);
     assert.equal(await handoff.saveBeforeLeavePro(s.key),true);assert.equal(s.saved.length,0);
     await act(async()=>{if(kind==='chart-editor')s.edit();else s.adapter.persistence.recovery.restore(emptyOpenVideoProject());});
@@ -141,15 +141,18 @@ for(const kind of ['chart-editor','video-timeline']) {
     let finish;const base=s.save;s.save=input=>new Promise(resolve=>{finish=async()=>resolve(await base(input))});
     let done=false;let pending;
     await act(async()=>{pending=handoff.saveBeforeLeavePro(s.key).then(result=>{done=true;return result});await Promise.resolve();});
-    assert.equal(typeof finish,'function','leave must invoke professional save');assert.equal(done,false);
-    await act(async()=>{await finish();assert.equal(await pending,true)});
+    assert.equal(await pending,true);assert.equal(done,true);
+    assert.equal(typeof finish,'function','leave must invoke the same professional save');
+    await act(async()=>{await finish();});
     assert.equal(s.saved.length,1);
     await s.unmount();assert.equal((await s.adapter.persistence.flush()).ok,true);assert.equal(s.saved.length,1);
   });
-  test(`E10 ${kind}: local normal switch remains pro after failed save`,async t=>{
+  test(`E10 ${kind}: local normal switch leaves pro even after failed save`,async t=>{
     const s=await mount(t,kind);await s.mode('pro');
     await act(async()=>{if(kind==='chart-editor')s.edit();else s.adapter.persistence.recovery.restore(emptyOpenVideoProject());});
-    s.save=async()=>({ok:false,error:'offline'});await s.mode('normal');assert.equal(s.adapter.mode.current,'pro');
+    s.save=async()=>({ok:false,error:'offline'});await s.mode('normal');assert.equal(s.adapter.mode.current,'normal');
+    assert.equal(s.adapter.persistence.recovery.draftSchema, kind==='chart-editor' ? 'oceanleo.chart.edit.v1' : 'oceanleo.video-timeline.edit.v1');
+    assert.equal(document.body.textContent.includes('专业编辑里的修改还没保存成功，请重试。'), false);
   });
 }
 
@@ -166,7 +169,8 @@ test('E10 audio: trusted dirty requests latest bytes; no stale encoding; two com
 test('E10 audio: outdated request/revision snapshots and local mode switch cannot discard dirty edits',async t=>{
   const s=await mount(t,'audio');await s.enter();await s.dirty(1);
   const old=s.posted.findLast(m=>m.type==='save-request');await s.dirty(2);await s.snapshot(3,1,old);
-  assert.equal((await s.flush()).ok,false);await s.mode('normal');assert.equal(s.adapter.mode.current,'pro');
+  assert.equal((await s.flush()).ok,false);await s.mode('normal');assert.equal(s.adapter.mode.current,'normal');
+  assert.equal(String(s.adapter.status || '').includes('专业编辑里的修改还没保存成功'), false);
   await s.snapshot(9,1);assert.equal((await s.flush()).ok,false);
 });
 
@@ -206,11 +210,13 @@ for(const kind of ['audio','threed','video-timeline']) {
   });
 }
 for(const kind of ['audio','threed']) {
-  test(`E10 ${kind}: local switch waits for successful persistence and shares the same flush`,async t=>{
+  test(`E10 ${kind}: local switch leaves pro even after failed save and shares the same flush`,async t=>{
     const s=await mount(t,kind);await s.enter();await s.dirty(1);await s.snapshot(7);
-    const base=s.save;s.save=async()=>({ok:false,error:'offline'});await s.mode('normal');assert.equal(s.adapter.mode.current,'pro');
-    s.save=base;await s.mode('normal');assert.equal(s.adapter.mode.current,'normal');assert.equal(s.saved.length,1);
-    assert.equal((await s.flush()).ok,true);assert.equal(s.saved.length,1);
+    const base=s.save;s.save=async()=>({ok:false,error:'offline'});await s.mode('normal');
+    assert.equal(s.adapter.mode.current,'normal');
+    assert.equal(String(s.adapter.status || '').includes('专业编辑里的修改还没保存成功'), false);
+    s.save=base;assert.equal((await s.flush()).ok,true);assert.equal(s.saved.length,1);
+    assert.equal(s.saved[0].item.artifactId,'asset');
   });
 }
 
