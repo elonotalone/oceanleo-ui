@@ -14,7 +14,8 @@ import {
   useModeSwitchHandoff,
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
-import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
+import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   reportW19ProSaved,
   peekW19EnterHandoff,
@@ -122,6 +123,15 @@ export function AudioPlaylistStage({
   const playlistRootRef = useRef<HTMLDivElement | null>(null);
   const portRef = useRef<AudioPlaylistPort | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
+  const saveItemRef = useRef(item);
+  const committedRevisionRef = useRef("");
+  const editRevisionRef = useRef(0);
+  const hostedGenerationRef = useRef(0);
+  const decodedGenerationRef = useRef(0);
+  const hostedRevisionRef = useRef<number | string | undefined>(undefined);
+  const snapshotSequenceRef = useRef(0);
+  const snapshotRequestRef = useRef<{ id: string; generation: number; revision?: number | string } | null>(null);
+
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [status, setStatus] = useState("");
   const [ready, setReady] = useState(false);
@@ -168,6 +178,8 @@ export function AudioPlaylistStage({
   }, [instanceId, item.title]);
 
   useEffect(() => {
+    if (item.revisionId && item.revisionId === committedRevisionRef.current) return;
+    saveItemRef.current = item;
     if (
       editorSource.status === "loading" &&
       (!pendingHandoff || pendingHandoff.kind === "empty")
@@ -272,7 +284,7 @@ export function AudioPlaylistStage({
   }, [applied.showHostedEditor, instanceId, item.title, ready, readonly]);
 
   const bump = useCallback(() => {
-    setEditRevision((value) => value + 1);
+    setEditRevision(++editRevisionRef.current);
     setDirty(true);
   }, []);
 
@@ -327,7 +339,11 @@ export function AudioPlaylistStage({
   );
 
   const applyMode = useCallback(
-    (next: EditorMode) => {
+    async (next: EditorMode) => {
+      if (next === "normal" && !await saveBeforeLeavePro(w19ItemKey("audio", item))) {
+        setStatus("专业编辑里的修改还没保存成功，请重试。");
+        return;
+      }
       const appliedNext = applyAudioNextMode(instanceId, next);
       setMode(appliedNext.mode);
       const frame = iframeHolderRef.current?.contentWindow || null;
@@ -352,10 +368,10 @@ export function AudioPlaylistStage({
         }
       } else {
         postAudioSetMode(frame, instanceId, "normal");
-        postAudioSaveRequest(frame, instanceId, `save-${Date.now().toString(36)}`);
+
       }
     },
-    [instanceId, item.title, ready, readonly],
+    [instanceId, item, ready, readonly],
   );
 
   const convertLegacy = useCallback(() => {
@@ -391,9 +407,21 @@ export function AudioPlaylistStage({
       });
   }, [item.meta.editor_project_url]);
 
+  const requestHostedSnapshot = useCallback(() => {
+    const generation = hostedGenerationRef.current;
+    const id = `audio-${instanceId}-${++snapshotSequenceRef.current}`;
+    snapshotRequestRef.current = { id, generation, revision: hostedRevisionRef.current };
+    postAudioSaveRequest(iframeHolderRef.current?.contentWindow || null, instanceId, id);
+  }, [instanceId]);
+
   const save = useCallback(async () => {
     if (readonly) {
       return { ok: false as const, error: AUDIO_LEGACY_READONLY_NOTICE };
+    }
+    const savingRevision = editRevisionRef.current;
+    if (hostedGenerationRef.current !== decodedGenerationRef.current) {
+      requestHostedSnapshot();
+      return { ok: false as const, error: "专业内核还没有把最新音频交回来，请重试。" };
     }
     const buffer = bufferRef.current;
     if (!buffer) {
@@ -403,8 +431,9 @@ export function AudioPlaylistStage({
     const file = new File([wav], `${item.title || "audio"}.wav`, {
       type: "audio/wav",
     });
+    const saveItem = saveItemRef.current;
     const saved = await saveFileToLibrary({
-      item,
+      item: saveItem,
       siteId,
       fallbackSite: "audio",
       title: item.title || "audio",
@@ -413,7 +442,12 @@ export function AudioPlaylistStage({
       sourceMediaType: "audio/wav",
       mediaType: "audio",
       kind: "audio",
-      idempotencyKey: `audio-next:${item.id}:${editRevision}`,
+      idempotencyKey: `audio-next:${saveItem.artifactId || saveItem.id}:${saveItem.revisionId || "legacy"}:${savingRevision}`,
+      artifactRevision: {
+        artifactType: "audio",
+        editor: "audio-editor",
+        provenance: { editorRevision: savingRevision },
+      },
       deliveryProjectSchema: AUDIO_NEXT_PROJECT_SCHEMA,
       editorManifest: {
         id: "audio-editor",
@@ -432,16 +466,30 @@ export function AudioPlaylistStage({
       },
     });
     if (!saved.ok) return { ok: false as const, error: saved.error || "保存失败" };
-    const next = advancedSavedItem(item, {
+    const next = saved.item || advancedSavedItem(saveItem, {
       url: saved.url,
       versionId: saved.versionId,
     });
+    saveItemRef.current = next;
+    committedRevisionRef.current = next.revisionId || "";
+    if (editRevisionRef.current !== savingRevision) {
+      return { ok: false as const, error: "还有更新的音频修改尚未保存。" };
+    }
+    setDirty(false);
     reportW19ProSaved(w19ItemKey("audio", item), next);
     return {
       ok: true as const,
       item: next,
     };
-  }, [chipsManifest.chips, editRevision, item, readonly, siteId]);
+  }, [chipsManifest.chips, editRevision, item, readonly, requestHostedSnapshot, siteId]);
+
+  const proFlush = useProFaceSave(w19ItemKey("audio", item), dirty, editRevision, save);
+  const onHostedDirty = useCallback((revision?: number | string) => {
+    hostedGenerationRef.current += 1;
+    hostedRevisionRef.current = revision;
+    bump();
+    requestHostedSnapshot();
+  }, [bump, requestHostedSnapshot]);
 
   const transcribe = useCallback(async () => {
     const buffer = bufferRef.current;
@@ -669,23 +717,29 @@ export function AudioPlaylistStage({
                   src={hostedSrc}
                   title="AudioMass"
                   onReady={() => setReady(true)}
-                  onSnapshot={(payload) => {
-                    if (!payload.audioBase64) return;
-                    const bytes = base64ToBytes(payload.audioBase64);
-                    const copy = new ArrayBuffer(bytes.byteLength);
-                    new Uint8Array(copy).set(bytes);
-                    const blob = new Blob([copy], {
-                      type: payload.mime || "audio/wav",
-                    });
-                    setSourceBlob(blob);
-                    void blob.arrayBuffer().then(async (buffer) => {
+                  onDirty={onHostedDirty}
+                  onSnapshot={async (payload) => {
+                    const request = snapshotRequestRef.current;
+                    if (!request || payload.recoveryId !== request.id || !payload.audioBase64) return;
+                    if (request.revision != null && payload.revision !== request.revision) return;
+                    snapshotRequestRef.current = null;
+                    try {
+                      const bytes = base64ToBytes(payload.audioBase64);
+                      const copy = new ArrayBuffer(bytes.byteLength);
+                      new Uint8Array(copy).set(bytes);
+                      const blob = new Blob([copy], { type: payload.mime || "audio/wav" });
                       const ctx = new AudioContext();
-                      const decoded = await ctx.decodeAudioData(buffer.slice(0));
-                      await ctx.close();
+                      let decoded: AudioBuffer;
+                      try { decoded = await ctx.decodeAudioData(copy); }
+                      finally { await ctx.close(); }
+                      if (hostedGenerationRef.current !== request.generation) return;
                       bufferRef.current = decoded;
+                      decodedGenerationRef.current = request.generation;
+                      setSourceBlob(blob);
                       setDuration(decoded.duration);
-                      bump();
-                    });
+                    } catch {
+                      setStatus("最新音频快照读取失败，请重试。");
+                    }
                   }}
                   onError={setStatus}
                 />
@@ -708,7 +762,7 @@ export function AudioPlaylistStage({
           dirty,
           editRevision,
           autoSave: !readonly,
-          flush: save,
+          flush: proFlush,
           recovery: {
             key: advancedRecoveryKey("audio", item),
             ready: Boolean(bufferRef.current),

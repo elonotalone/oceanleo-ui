@@ -16,7 +16,8 @@ import {
   useModeSwitchFailure,
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
-import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
+import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   peekW19EnterHandoff,
   reportW19ProSaved,
@@ -133,13 +134,21 @@ export function Model3DNextStage({
   const importedDirtyRef = useRef(false);
   const saveItemRef = useRef(item);
   const committedRevisionRef = useRef("");
+  const hostedGenerationRef = useRef(0);
+  const hostedCacheRef = useRef<{ generation: number; bytes: ArrayBuffer } | null>(null);
+  const captureFlightRef = useRef<Promise<void> | null>(null);
+  const captureSequenceRef = useRef(0);
+  const mountedRef = useRef(true);
   const pendingCaptureRef = useRef<{
     id: string;
+    generation: number;
     resolve: (bytes: ArrayBuffer | null) => void;
     timer?: number;
   } | null>(null);
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [view, setView] = useState<Model3DNextViewState>(defaultModel3DNextView);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [savedEditRevision, setSavedEditRevision] = useState(0);
   const [objectUrl, setObjectUrl] = useState("");
   const [gltfBytes, setGltfBytes] = useState<ArrayBuffer | null>(null);
@@ -164,6 +173,19 @@ export function Model3DNextStage({
   const showHosted = applied.showHostedEditor && Boolean(hostedSrc) && frameMounted;
   // 过渡门的 ready 信号（plugin-ui U4）：专业面等 three.js editor 的协议 ready，普通面等模型 URL 就位。
   useModeSwitchReady(mode === "pro" ? modelReady : Boolean(objectUrl));
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const pending = pendingCaptureRef.current;
+      pendingCaptureRef.current = null;
+      if (pending) {
+        window.clearTimeout(pending.timer);
+        pending.resolve(null);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     saveItemRef.current = item;
@@ -278,9 +300,10 @@ export function Model3DNextStage({
     (reason: string): Promise<ArrayBuffer | null> => {
       if (pendingCaptureRef.current) return Promise.resolve(null);
       const frame = iframeHolderRef.current?.contentWindow || null;
-      const recoveryId = `${reason}-${Date.now().toString(36)}`.slice(0, 128);
+      if (!mountedRef.current) return Promise.resolve(null);
+      const recoveryId = `${reason}-${instanceId}-${++captureSequenceRef.current}`.slice(0, 128);
       return new Promise((resolve) => {
-        pendingCaptureRef.current = { id: recoveryId, resolve };
+        pendingCaptureRef.current = { id: recoveryId, generation: hostedGenerationRef.current, resolve };
         const sent = postModel3DRecoveryCapture(frame, instanceId, recoveryId);
         if (!sent) {
           pendingCaptureRef.current = null;
@@ -298,25 +321,39 @@ export function Model3DNextStage({
     [instanceId],
   );
 
+  const cacheHosted = useCallback(() => {
+    if (captureFlightRef.current) return captureFlightRef.current;
+    const run = async () => {
+      do {
+        const generation = hostedGenerationRef.current;
+        const bytes = await requestHostedCapture("cache");
+        if (!bytes || generation === hostedGenerationRef.current) return;
+      } while (mountedRef.current);
+    };
+    const flight = run();
+    captureFlightRef.current = flight;
+    void flight.finally(() => {
+      if (captureFlightRef.current === flight) captureFlightRef.current = null;
+    }).catch(() => {});
+    return flight;
+  }, [requestHostedCapture]);
+
   const applyMode = useCallback(
-    (next: EditorMode) => {
+    async (next: EditorMode) => {
       const appliedNext = applyModel3DNextMode(instanceId, next);
       if (appliedNext.showHostedEditor) {
         setFrameMounted(true);
         setMode("pro");
         return;
       }
-      setMode("normal");
-      if (frameMounted) {
-        postModel3DSetMode(
-          iframeHolderRef.current?.contentWindow || null,
-          instanceId,
-          "normal",
-        );
-        void requestHostedCapture("leave-pro");
+      if (!await saveBeforeLeavePro(w19ItemKey("threed", item))) {
+        setStatus("专业编辑里的修改还没保存成功，请重试。");
+        return;
       }
+      setMode("normal");
+      if (frameMounted) postModel3DSetMode(iframeHolderRef.current?.contentWindow || null, instanceId, "normal");
     },
-    [frameMounted, instanceId, requestHostedCapture],
+    [frameMounted, instanceId, item],
   );
 
   useEffect(() => {
@@ -369,10 +406,13 @@ export function Model3DNextStage({
     if (readonly) {
       return { ok: false as const, error: MODEL3D_LEGACY_READONLY_NOTICE };
     }
+    const savingGeneration = hostedGenerationRef.current;
+    const savingRevision = viewRef.current.revision;
     let bytes = gltfBytes;
     let savedFormat = format;
-    if (mode === "pro" && frameMounted) {
-      bytes = await requestHostedCapture("save");
+    if ((mode === "pro" && frameMounted) || savingGeneration > 0) {
+      if (hostedCacheRef.current?.generation !== savingGeneration && mountedRef.current) await cacheHosted();
+      bytes = hostedCacheRef.current?.generation === savingGeneration ? hostedCacheRef.current.bytes : null;
       savedFormat = "glb";
       if (!bytes) {
         return { ok: false as const, error: "专业内核还没有把模型交回来。" };
@@ -426,7 +466,10 @@ export function Model3DNextStage({
       : advancedSavedItem(saveItem, { url: saved.url, versionId: saved.versionId });
     saveItemRef.current = next;
     committedRevisionRef.current = next.revisionId || "";
-    setSavedEditRevision(view.revision);
+    if (hostedGenerationRef.current !== savingGeneration || viewRef.current.revision !== savingRevision) {
+      return { ok: false as const, error: "还有更新的模型修改尚未保存。" };
+    }
+    setSavedEditRevision(savingRevision);
     reportW19ProSaved(w19ItemKey("threed", item), next);
     return { ok: true as const, item: next };
   }, [
@@ -437,10 +480,12 @@ export function Model3DNextStage({
     item,
     mode,
     readonly,
-    requestHostedCapture,
+    cacheHosted,
     siteId,
     view,
   ]);
+
+  const proFlush = useProFaceSave(w19ItemKey("threed", item), view.revision > savedEditRevision, view.revision, save);
 
   usePluginCommandSurface(
     useMemo(
@@ -618,7 +663,9 @@ export function Model3DNextStage({
                         importedDirtyRef.current = true;
                         return;
                       }
+                      hostedGenerationRef.current += 1;
                       setView((current) => ({ ...current, revision: current.revision + 1 }));
+                      void cacheHosted();
                     }}
                     onSnapshot={(payload) => {
                       const pending = pendingCaptureRef.current;
@@ -629,7 +676,10 @@ export function Model3DNextStage({
                       try {
                         if (payload.ok && payload.gltfBase64) {
                           bytes = arrayBufferFromView(base64ToBytes(payload.gltfBase64));
-                          applyGltfBytes(bytes, "glb");
+                          if (pending.generation === hostedGenerationRef.current) {
+                            hostedCacheRef.current = { generation: pending.generation, bytes };
+                            applyGltfBytes(bytes, "glb");
+                          }
                         }
                       } catch {
                         bytes = null;
@@ -655,7 +705,7 @@ export function Model3DNextStage({
           dirty: view.revision > savedEditRevision,
           editRevision: view.revision,
           autoSave: !readonly,
-          flush: save,
+          flush: proFlush,
           recovery: {
             key: advancedRecoveryKey("threed", item),
             ready: Boolean(gltfBytes),

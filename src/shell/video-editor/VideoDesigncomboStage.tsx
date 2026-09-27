@@ -16,7 +16,8 @@ import {
   useModeSwitchHandoff,
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
-import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
+import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   peekW19EnterHandoff,
   reportW19ProSaved,
@@ -26,6 +27,7 @@ import {
   W19_PRO_SAVED_AS_NEW_VERSION,
 } from "../advanced-routes/w19-handoff-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -117,6 +119,8 @@ export function VideoDesigncomboStage({
   const [playheadUs, setPlayheadUs] = useState(0);
   const [editRevision, setEditRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const editRevisionRef = useRef(0);
+  const saveItemRef = useRef(item);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -144,7 +148,7 @@ export function VideoDesigncomboStage({
       const normalized = normalizeOpenVideoProject(next);
       projectRef.current = normalized;
       setProject(normalized);
-      setEditRevision((value) => value + 1);
+      setEditRevision(++editRevisionRef.current);
       setDirty(true);
       engineRef.current?.setDoc(openVideoToTimelineDoc(normalized));
     },
@@ -366,7 +370,7 @@ export function VideoDesigncomboStage({
     setConversion("converted");
     setConversionNotice(planned.summary);
     setDirty(true);
-    setEditRevision((value) => value + 1);
+    setEditRevision(++editRevisionRef.current);
   }, [conversion, item.title, legacyDoc]);
 
   const selected = selectedClipId ? project.clips[selectedClipId] || null : null;
@@ -408,6 +412,7 @@ export function VideoDesigncomboStage({
   );
 
   const exportVideo = useCallback(async () => {
+    if (!(await ensureAdvancedDraftExport(item.key || item.id))) return "";
     if (readonly) {
       setStatus(VIDEO_LEGACY_READONLY_NOTICE);
       return "";
@@ -433,13 +438,14 @@ export function VideoDesigncomboStage({
     } finally {
       setExporting(false);
     }
-  }, [item.id, item.title, readonly, siteId]);
+  }, [item.id, item.key, item.title, readonly, siteId]);
 
   const saveDraft = useCallback(async () => {
     if (readonly) {
       setStatus(VIDEO_LEGACY_READONLY_NOTICE);
       return null;
     }
+    const savingRevision = editRevisionRef.current;
     const snapshot = cloneOpenVideoProject(projectRef.current);
     const title = `${item.title || "视频"}-编辑版`;
     const createPreview = createVideoDesigncomboPreview({
@@ -450,11 +456,11 @@ export function VideoDesigncomboStage({
       frameReady: previewReadyRef.current,
     });
     const saved = await saveProjectWorkingHead({
-      item,
+      item: saveItemRef.current,
       siteId,
       fallbackSite: "oceanleo",
       title,
-      idempotencyKey: `video-openvideo:${editRevision}:${String(item.id).slice(-80)}`,
+      idempotencyKey: `video-openvideo:${savingRevision}:${String(item.id).slice(-80)}`,
       workingHeadUrl: item.url || "",
       mediaType: "video",
       kind: "video",
@@ -479,6 +485,11 @@ export function VideoDesigncomboStage({
     });
     if (!saved.ok) {
       setStatus(saved.error || "时间线草稿保存失败");
+      return null;
+    }
+    saveItemRef.current = saved.item || advancedSavedItem(saveItemRef.current, { url: saved.url, versionId: saved.versionId });
+    if (editRevisionRef.current !== savingRevision) {
+      setStatus("还有更新的修改尚未保存。");
       return null;
     }
     setDirty(false);
@@ -549,7 +560,7 @@ export function VideoDesigncomboStage({
         error: status || "时间线草稿保存失败",
       };
     }
-    const next = advancedSavedItem(item, {
+    const next = saved.item || advancedSavedItem(saveItemRef.current, {
       url: saved.url,
       versionId: saved.versionId,
       meta: {
@@ -560,6 +571,15 @@ export function VideoDesigncomboStage({
     reportW19ProSaved(w19ItemKey("video-timeline", item), next);
     return { ok: true as const, item: next };
   }, [item, saveDraft, status]);
+
+  const proFlush = useProFaceSave(w19ItemKey("video-timeline", item), dirty, editRevision, saveBeforeNewConversation);
+  const applyMode = useCallback(async (next: EditorMode) => {
+    if (next === "normal" && !await saveBeforeLeavePro(w19ItemKey("video-timeline", item))) {
+      setStatus("专业编辑里的修改还没保存成功，请重试。");
+      return;
+    }
+    setMode(next);
+  }, [item]);
 
   return (
     <AdvancedWorkbenchShell
@@ -598,7 +618,7 @@ export function VideoDesigncomboStage({
             redoRef.current.push(cloneOpenVideoProject(projectRef.current));
             projectRef.current = previous;
             setProject(previous);
-            setEditRevision((value) => value + 1);
+            setEditRevision(++editRevisionRef.current);
           },
           redo: () => {
             const following = redoRef.current.pop();
@@ -606,12 +626,12 @@ export function VideoDesigncomboStage({
             undoRef.current.push(cloneOpenVideoProject(projectRef.current));
             projectRef.current = following;
             setProject(following);
-            setEditRevision((value) => value + 1);
+            setEditRevision(++editRevisionRef.current);
           },
         },
         mode: {
           current: mode,
-          setMode,
+          setMode: applyMode,
         },
         notices: [
           {
@@ -732,16 +752,15 @@ export function VideoDesigncomboStage({
           dirty,
           editRevision,
           autoSave: !readonly,
-          flush: saveBeforeNewConversation,
+          flush: proFlush,
           recovery: {
             key: advancedRecoveryKey("video-timeline", item),
+            draftSchema: "oceanleo.video-timeline.pro.v1",
             ready: !loading,
             capture: () => (readonly ? null : cloneOpenVideoProject(projectRef.current)),
             restore: (payload) => {
               if (!isOpenVideoProject(payload)) return false;
-              projectRef.current = normalizeOpenVideoProject(payload);
-              setProject(projectRef.current);
-              setDirty(true);
+              commit(payload);
               return true;
             },
           },

@@ -200,7 +200,7 @@ const { VideoDesigncomboStage } = await import(await compileModule(
       export const useEffect = () => {};
     `),
     "../advanced-routes/mode-switch-gate": functions(["useModeSwitchHandoff", "useModeSwitchReady"]),
-    "../advanced-routes/editor-handoff": dataModule(`export const useEditorHandoffSource = () => ({ status: "ready", source: null });`),
+    "../advanced-routes/editor-handoff": dataModule(`export const useEditorHandoffSource = () => ({ status: "ready", source: null }); export const bindProFaceHandoff = () => () => {}; export const saveBeforeLeavePro = async () => true;`),
     "../advanced-routes/w19-handoff-store": dataModule(`
       export const W19_PRO_SAVED_AS_NEW_VERSION = "";
       export const peekW19EnterHandoff = () => null;

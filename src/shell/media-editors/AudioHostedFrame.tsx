@@ -32,6 +32,7 @@ export function AudioHostedFrame({
   title,
   iframeRef,
   onReady,
+  onDirty,
   onSnapshot,
   onError,
 }: {
@@ -41,7 +42,8 @@ export function AudioHostedFrame({
   title: string;
   iframeRef?: RefObject<HTMLIFrameElement | null>;
   onReady: () => void;
-  onSnapshot: (payload: { audioBase64?: string; mime?: string; revision?: number }) => void;
+  onDirty?: (revision?: number | string) => void;
+  onSnapshot: (payload: { audioBase64?: string; mime?: string; revision?: number | string; recoveryId?: string }) => void;
   onError: (message: string) => void;
 }) {
   const innerRef = useRef<HTMLIFrameElement>(null);
@@ -74,6 +76,10 @@ export function AudioHostedFrame({
         onReady();
         return;
       }
+      if (accepted.type === "dirty" && accepted.dirty) {
+        onDirty?.(accepted.revision);
+        return;
+      }
       if (accepted.type === "recovery-snapshot") {
         const snapshot = accepted.ok ? accepted.snapshot : null;
         const payload =
@@ -84,8 +90,8 @@ export function AudioHostedFrame({
           audioBase64:
             typeof payload?.audioBase64 === "string" ? payload.audioBase64 : "",
           mime: typeof payload?.mime === "string" ? payload.mime : "audio/wav",
-          revision:
-            typeof snapshot?.revision === "number" ? snapshot.revision : 0,
+          revision: snapshot?.revision,
+          recoveryId: accepted.recoveryId,
         });
         return;
       }
@@ -95,7 +101,7 @@ export function AudioHostedFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [iframe, instanceId, onError, onReady, onSnapshot]);
+  }, [iframe, instanceId, onError, onReady, onDirty, onSnapshot]);
 
   void send;
   void hostOrigin;

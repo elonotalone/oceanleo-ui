@@ -815,7 +815,7 @@ function moduleSpecifiers(body) {
 function directorySpecifiers(url) {
   let names;
   try {
-    names = readdirSync(url);
+    names = readdirSync(url, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => entry.name);
   } catch {
     return null;
   }

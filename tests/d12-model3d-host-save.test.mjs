@@ -32,7 +32,7 @@ const item = {
 const compiled = await compileModule('src/shell/media-editors/Model3DNextStage.tsx', {
   '../AdvancedWorkbenchShell': stub(`import {useEffect} from ${react}; export function AdvancedWorkbenchShell({adapter}) { globalThis.d12.adapter=adapter; useEffect(()=>{globalThis.d12.controller.observe({dirty:adapter.persistence.dirty,revision:adapter.persistence.editRevision});},[adapter.persistence.dirty,adapter.persistence.editRevision]); return adapter.stage; }`),
   '../advanced-routes/mode-switch-gate': stub(`export function useModeSwitchHandoff(){return globalThis.d12.handoff;} export function useModeSwitchFailure(){return globalThis.d12.failure;} export function useModeSwitchReady(ready){globalThis.d12.ready=ready;}`),
-  '../advanced-routes/editor-handoff': stub('export function useEditorHandoffSource(){return globalThis.d12.source;}'),
+  '../advanced-routes/editor-handoff': stub('export function useEditorHandoffSource(){return globalThis.d12.source;} export const bindProFaceHandoff=()=>()=>{}; export const saveBeforeLeavePro=async()=>true;'),
   '../advanced-routes/w19-handoff-store': stub('export function peekW19EnterHandoff(){return null;} export function resolveW19Handoff(item,source){return source;} export function w19ItemKey(){return "model";} export function reportW19ProSaved(key,item){globalThis.d12.reported=item;}'),
   '../doc-editors/doc-io': stub('export async function saveFileToLibrary(input){globalThis.d12.inputs.push(input);return globalThis.d12.save(input);}'),
   '../plugin-command': stub('export function usePluginCommandSurface(){}'),

@@ -14,7 +14,8 @@ import {
   useModeSwitchHandoff,
   useModeSwitchReady,
 } from "../advanced-routes/mode-switch-gate";
-import { useEditorHandoffSource } from "../advanced-routes/editor-handoff";
+import { useProFaceSave } from "../advanced-routes/use-pro-face-save";
+import { saveBeforeLeavePro, useEditorHandoffSource } from "../advanced-routes/editor-handoff";
 import {
   applyW19HandoffToItem,
   peekW19EnterHandoff,
@@ -23,6 +24,7 @@ import {
   w19ItemKey,
 } from "../advanced-routes/w19-handoff-store";
 import { advancedSavedItem } from "../advanced-session";
+import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import type { EditorMode } from "../hosted-editor/index";
@@ -136,14 +138,18 @@ export function ChartNextStage({
     if (codeTouchedRef.current) setCodeError(parsed.reason);
   }, [chrome.codeModeVisible, code, editor.document]);
 
-  const setMode = useCallback((next: EditorMode) => {
+  const setMode = useCallback(async (next: EditorMode) => {
+    if (next === "normal" && !await saveBeforeLeavePro(w19ItemKey("chart-editor", item))) {
+      setExportError("专业编辑里的修改还没保存成功，请重试。");
+      return;
+    }
     const applied = applyChartNextMode(CHART_NEXT_INSTANCE_ID, next);
     setModeState(applied.mode);
     if (applied.codeModeVisible) {
       codeTouchedRef.current = false;
       setCodeError("");
     }
-  }, []);
+  }, [item]);
 
   const exportUnavailable =
     editor.loading ||
@@ -205,7 +211,10 @@ export function ChartNextStage({
     },
     [item],
   );
+  const revisionRef = useRef(editor.editRevision);
+  revisionRef.current = editor.editRevision;
   const saveBeforeNewConversation = useCallback(async () => {
+    const savingRevision = revisionRef.current;
     const saved = await editor.save();
     if (!saved) {
       return {
@@ -217,10 +226,12 @@ export function ChartNextStage({
             : "图表保存失败"),
       };
     }
+    if (revisionRef.current !== savingRevision) return { ok: false as const, error: "还有更新的图表修改尚未保存。" };
     const next = buildSavedItem(saved);
     reportW19ProSaved(w19ItemKey("chart-editor", item), next);
     return { ok: true as const, item: next };
   }, [buildSavedItem, editor, item]);
+  const proFlush = useProFaceSave(w19ItemKey("chart-editor", item), editor.dirty, editor.editRevision, saveBeforeNewConversation);
   const importLocalData = useCallback(
     async (files: File[]) => {
       const file = files[0];
@@ -253,6 +264,7 @@ export function ChartNextStage({
   );
   const exportImage = useCallback(
     async (format: "png" | "svg") => {
+      if (!(await ensureAdvancedDraftExport(item.key || item.id))) return;
       if (exportBusyRef.current) return;
       exportBusyRef.current = true;
       setExporting(true);
@@ -302,9 +314,10 @@ export function ChartNextStage({
         setExporting(false);
       }
     },
-    [editor.document, item.title],
+    [editor.document, item.id, item.key, item.title],
   );
-  const exportJson = useCallback(() => {
+  const exportJson = useCallback(async () => {
+    if (!(await ensureAdvancedDraftExport(item.key || item.id))) return;
     setExportError("");
     try {
       const snapshot = structuredClone(editor.document);
@@ -318,8 +331,9 @@ export function ChartNextStage({
         caught instanceof Error ? caught.message : "图表 JSON 导出失败",
       );
     }
-  }, [editor.document, item.title]);
-  const exportHtml = useCallback(() => {
+  }, [editor.document, item.id, item.key, item.title]);
+  const exportHtml = useCallback(async () => {
+    if (!(await ensureAdvancedDraftExport(item.key || item.id))) return;
     setExportError("");
     try {
       const artifact = chartTypedArtifactFromDocument(editor.document);
@@ -333,15 +347,15 @@ export function ChartNextStage({
         caught instanceof Error ? caught.message : "图表 HTML 导出失败",
       );
     }
-  }, [editor.document, item.title]);
+  }, [editor.document, item.id, item.key, item.title]);
   const deliver = useCallback(
     async (format: string) => {
       if (format === "json") {
-        exportJson();
+        await exportJson();
         return;
       }
       if (format === "html") {
-        exportHtml();
+        await exportHtml();
         return;
       }
       await exportImage(format === "svg" ? "svg" : "png");
@@ -575,9 +589,10 @@ export function ChartNextStage({
         persistence: {
           dirty: editor.dirty,
           editRevision: editor.editRevision,
-          flush: saveBeforeNewConversation,
+          flush: proFlush,
           recovery: {
             key: advancedRecoveryKey("chart-editor@1", item),
+            draftSchema: "oceanleo.chart.pro.v1",
             ready: !editor.loading,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.document) : null,

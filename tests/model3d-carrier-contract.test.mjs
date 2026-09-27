@@ -3,8 +3,8 @@
  * 规格:docs/specs/oceanleo-material-and-game-v1/L1-carriers/model-3d.md
  */
 import assert from "node:assert/strict";
-import { readFileSync, realpathSync, statSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -217,16 +217,8 @@ test("§1.2 three 版本锁:每个 addon 都能在 node_modules 指出真实文�
   assert.equal(MODEL3D_EXTENSION_LOADERS.KHR_draco_mesh_compression, "DRACOLoader.js");
   assert.equal(MODEL3D_EXTENSION_LOADERS.KHR_texture_basisu, "KTX2Loader.js");
 
-  const addonCount = Number(
-    execFileSync(
-      "bash",
-      [
-        "-c",
-        `find ${JSON.stringify(threeRoot)}/examples/jsm -name '*.js' | wc -l`,
-      ],
-      { encoding: "utf8" },
-    ).trim(),
-  );
+  const addonCount = readdirSync(resolvePath(threeRoot, "examples/jsm"), { recursive: true })
+    .filter(name => String(name).endsWith(".js")).length;
   assert.equal(addonCount, MODEL3D_THREE_ADDON_FILE_COUNT);
   console.log(`[§1.2 版本锁凭据] three@${installed.version}\n  ${evidence.join("\n  ")}`);
 });
