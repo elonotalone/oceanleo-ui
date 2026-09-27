@@ -39,6 +39,7 @@ import type { SelectionCommand } from "../selection-context";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { saveProjectWorkingHead } from "../doc-editors/doc-io";
 import { TimelinePreviewEngine } from "./preview-engine";
+import { createVideoDesigncomboPreview } from "./designcombo-save-preview";
 import { renderTimeline } from "./render-client";
 import { visualDownloadFormats } from "../media-editors/visual-formats";
 import {
@@ -102,6 +103,7 @@ export function VideoDesigncomboStage({
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<TimelinePreviewEngine | null>(null);
+  const previewReadyRef = useRef(false);
   const projectRef = useRef<OpenVideoProject>(emptyOpenVideoProject());
   const undoRef = useRef<OpenVideoProject[]>([]);
   const redoRef = useRef<OpenVideoProject[]>([]);
@@ -332,11 +334,13 @@ export function VideoDesigncomboStage({
     const engine = new TimelinePreviewEngine(openVideoToTimelineDoc(projectRef.current));
     engineRef.current = engine;
     engine.attachCanvas(canvasRef.current);
+    engine.onFrameReady = (ready) => { previewReadyRef.current = ready; };
     engine.onTick = (ms) => setPlayheadUs(msToUs(ms));
     return () => {
       engine.attachCanvas(null);
       engine.dispose();
       engineRef.current = null;
+      previewReadyRef.current = false;
     };
   }, []);
 
@@ -438,6 +442,13 @@ export function VideoDesigncomboStage({
     }
     const snapshot = cloneOpenVideoProject(projectRef.current);
     const title = `${item.title || "视频"}-编辑版`;
+    const createPreview = createVideoDesigncomboPreview({
+      project: snapshot,
+      item,
+      title,
+      engine: engineRef.current,
+      frameReady: previewReadyRef.current,
+    });
     const saved = await saveProjectWorkingHead({
       item,
       siteId,
@@ -459,6 +470,7 @@ export function VideoDesigncomboStage({
         id: "video-timeline",
         format: OPENVIDEO_PROJECT_SCHEMA,
       },
+      createPreview,
       artifactRevision: {
         artifactType: "video",
         editor: "video-timeline",
