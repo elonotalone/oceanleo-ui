@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -113,9 +114,8 @@ export function InlineAdvancedWorkbenchShell({
     dockRootRef: editBarDockRef,
     resetKey: `${adapter.id}:${item.key || item.id}`,
   });
-  const ownerIdRef = useRef(
-    `inline-editor:${adapter.id}:${item.key || item.id}`,
-  );
+  const instanceId = useId();
+  const ownerIdRef = useRef(`inline-editor:${instanceId}`);
   /**
    * 编辑栏是用来编辑一件素材的。非编辑类插件没有素材输入、自身即体验
    * （`_COMMON.md` §3.2），所以地图、地球仪、台账这些打开之后上方**没有编辑栏**
@@ -425,14 +425,13 @@ export function InlineAdvancedWorkbenchShell({
   );
   useLayoutEffect(() => {
     if (!rightPaneSlot) return;
-    rightPaneSlot.setRightFrameless(false);
-    rightPaneSlot.setRightEditorHeader(true);
-    rightPaneSlot.setRightLabel(headerSlotNode);
-    return () => {
-      rightPaneSlot.clearRightLabel(headerSlotNode);
-      rightPaneSlot.setRightEditorHeader(false);
-      rightPaneSlot.setRightFrameless(false);
-    };
+    const owner = ownerIdRef.current;
+    rightPaneSlot.setRightPaneClaim(owner, {
+      label: headerSlotNode,
+      editorHeader: true,
+      frameless: false,
+    });
+    return () => rightPaneSlot.clearRightPaneClaim(owner);
   }, [headerSlotNode, rightPaneSlot]);
 
   const editorViewport = adapter.nativeChrome?.viewport

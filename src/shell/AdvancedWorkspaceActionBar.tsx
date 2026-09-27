@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { Button, IconButton } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
@@ -22,6 +22,8 @@ function browserFullscreenAvailable(): boolean {
   if (document.fullscreenEnabled === false) return false;
   return typeof document.documentElement?.requestFullscreen === "function";
 }
+
+const subscribeWithoutPane = () => () => {};
 
 function toggleEditorBrowserFullscreen() {
   if (typeof document === "undefined") return;
@@ -80,6 +82,11 @@ export function AdvancedWorkspaceActionBar({
 }) {
   const tt = useUI();
   const rightPaneSlot = useRightPaneSlot();
+  const rightMaximized = useSyncExternalStore(
+    rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
+    () => rightPaneSlot?.rightMaximized === true,
+    () => false,
+  );
   const [browserFullscreen, setBrowserFullscreen] = useState(false);
   useEffect(() => {
     if (rightPaneSlot) return;
@@ -90,9 +97,9 @@ export function AdvancedWorkspaceActionBar({
   }, [rightPaneSlot]);
   const maximize = rightPaneSlot
     ? {
-        pressed: rightPaneSlot.rightMaximized === true,
+        pressed: rightMaximized,
         label: tt(
-          rightPaneSlot.rightMaximized ? "退出右侧全屏" : "右侧全屏",
+          rightMaximized ? "退出右侧全屏" : "右侧全屏",
         ),
         toggle: () => rightPaneSlot.toggleRightMaximized(),
       }

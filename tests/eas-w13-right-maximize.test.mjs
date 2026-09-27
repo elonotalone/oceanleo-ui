@@ -138,27 +138,12 @@ const pageStoreStubUrl = dataModule(`
   }
 `);
 
-const {
-  SplitWorkspace,
-  useRightPaneSlot,
-  useWorkspacePane,
-  useRegisterConsoleAgentFocus,
-} = await import(
-  await compileModule("src/shell/SplitWorkspace.tsx", {
-    "../i18n/ui/useUI": uiStubUrl,
-    "./icons": iconsStubUrl,
-    "./EditBarDockHost": dockStubUrl,
-  })
-);
-
-const actionBarSplitStubUrl = dataModule(`
-  export function useRightPaneSlot() {
-    return globalThis.__w13RightPaneSlot === undefined
-      ? null
-      : globalThis.__w13RightPaneSlot;
-  }
-  export function useWorkspacePane() { return null; }
-`);
+const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
+  "../i18n/ui/useUI": uiStubUrl,
+  "./icons": iconsStubUrl,
+  "./EditBarDockHost": dockStubUrl,
+});
+const { SplitWorkspace, useRightPaneSlot, useWorkspacePane, useRegisterConsoleAgentFocus } = await import(splitUrl);
 
 const { AdvancedWorkspaceActionBar } = await import(
   await compileModule("src/shell/AdvancedWorkspaceActionBar.tsx", {
@@ -167,7 +152,7 @@ const { AdvancedWorkspaceActionBar } = await import(
     "./AdvancedEditorIcon": iconStubUrl,
     "./anchored-popover": popoverStubUrl,
     "./plugin-theme": themeStubUrl,
-    "./SplitWorkspace": actionBarSplitStubUrl,
+    "./SplitWorkspace": splitUrl,
   })
 );
 
@@ -188,15 +173,6 @@ const gestureLayerStubUrl = dataModule(`
     return children;
   }
 `);
-const frameSplitStubUrl = dataModule(`
-  export function useConsoleAgentFocus() { return null; }
-  export function useRightPaneSlot() {
-    return globalThis.__w13FrameSlot === undefined
-      ? null
-      : globalThis.__w13FrameSlot;
-  }
-`);
-
 const { PluginChromeFrame } = await import(
   await compileModule("src/shell/plugin-chrome/PluginChromeFrame.tsx", {
     "../../i18n/ui/useUI": uiStubUrl,
@@ -204,7 +180,7 @@ const { PluginChromeFrame } = await import(
     "../plugin-theme": themeStubUrl,
     "./agent-drawer-panel": agentPanelStubUrl,
     "./PluginAgentPanel": agentPanelStubUrl,
-    "../SplitWorkspace": frameSplitStubUrl,
+    "../SplitWorkspace": splitUrl,
     "../PluginChromeEditBarGestureLayer": gestureLayerStubUrl,
     "../FloatingContextToolbar": floatingToolbarStubUrl,
     "./PluginGlobalRow": globalRowStubUrl,
@@ -330,7 +306,7 @@ async function mountSplit(extraRight) {
   };
 }
 
-async function mountActionBar() {
+async function mountActionBar(withSplit = false) {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
@@ -338,21 +314,20 @@ async function mountActionBar() {
   const closed = { n: 0 };
   const render = async () => {
     await act(async () => {
-      root.render(
-        React.createElement(AdvancedWorkspaceActionBar, {
-          adapter: adapterFixture(),
-          autoSaveState: "saved",
-          activeLibraryPanelId: null,
-          showClose: true,
-          onBack() {},
-          onOpenLibrary() {},
-          onRetrySave() {},
-          onClose: () => {
-            closed.n += 1;
-          },
-          onTriggerAction() {},
-        }),
-      );
+      const bar = React.createElement(AdvancedWorkspaceActionBar, {
+        adapter: adapterFixture(),
+        autoSaveState: "saved",
+        activeLibraryPanelId: null,
+        showClose: true,
+        onBack() {},
+        onOpenLibrary() {},
+        onRetrySave() {},
+        onClose: () => { closed.n += 1; },
+        onTriggerAction() {},
+      });
+      root.render(withSplit ? React.createElement(SplitWorkspace, {
+        left: "chat", right: bar, library: { open: true }, fillParent: true,
+      }) : bar);
     });
   };
   await render();
@@ -360,42 +335,6 @@ async function mountActionBar() {
     container,
     closed,
     render,
-    async unmount() {
-      await act(async () => root.unmount());
-      container.remove();
-    },
-  };
-}
-
-async function mountFrame(props) {
-  const { createRoot } = await import("react-dom/client");
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const closed = { n: 0 };
-  const fullscreen = { n: 0 };
-  await act(async () => {
-    root.render(
-      React.createElement(PluginChromeFrame, {
-        pluginId: "design-canvas",
-        title: "设计画布",
-        window: {
-          onClose: () => {
-            closed.n += 1;
-          },
-          onToggleFullscreen: () => {
-            fullscreen.n += 1;
-          },
-        },
-        children: React.createElement("div", { "data-test-stage": true }),
-        ...props,
-      }),
-    );
-  });
-  return {
-    container,
-    closed,
-    fullscreen,
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -539,26 +478,8 @@ test("编辑器打开期间右栏标题行没有关闭 ✕", async () => {
   }
 });
 
-test("顶栏 maximize 槽的 aria-pressed 跟右侧全屏状态走", async () => {
-  const slot = {
-    rightMaximized: false,
-    toggleRightMaximized() {
-      this.rightMaximized = !this.rightMaximized;
-    },
-    setRightMaximized(value) {
-      this.rightMaximized = value;
-    },
-    setRightLabel() {},
-    clearRightLabel() {},
-    setRightFrameless() {},
-    setRightEditorHeader() {},
-    editBarLayerRef: { current: null },
-    editBarDockRef: { current: null },
-    setEditBarDockPresentation() {},
-    clearEditBarDockPresentation() {},
-  };
-  globalThis.__w13RightPaneSlot = slot;
-  const mounted = await mountActionBar();
+test("顶栏 maximize 槽的 aria-pressed 跟真实 SplitWorkspace 状态走", async () => {
+  const mounted = await mountActionBar(true);
   try {
     assert.equal(
       mounted.container.querySelector('[data-global-row-slot="close"]'),
@@ -575,7 +496,6 @@ test("顶栏 maximize 槽的 aria-pressed 跟右侧全屏状态走", async () =>
     assert.equal(button.getAttribute("aria-label"), "右侧全屏");
 
     await act(async () => button.click());
-    await mounted.render();
     const pressed = mounted.container.querySelector(
       '[data-global-row-slot="maximize"] button',
     );
@@ -583,13 +503,11 @@ test("顶栏 maximize 槽的 aria-pressed 跟右侧全屏状态走", async () =>
     assert.equal(pressed.getAttribute("aria-label"), "退出右侧全屏");
     assert.equal(mounted.closed.n, 0, "点右侧全屏走了 onClose");
   } finally {
-    globalThis.__w13RightPaneSlot = undefined;
     await mounted.unmount();
   }
 });
 
 test("没有 slot 时点按钮调用 requestFullscreen，而不是 onClose", async () => {
-  globalThis.__w13RightPaneSlot = null;
   const calls = [];
   const proto = window.HTMLElement.prototype;
   const previous = proto.requestFullscreen;
@@ -619,36 +537,29 @@ test("没有 slot 时点按钮调用 requestFullscreen，而不是 onClose", asy
     if (previous) proto.requestFullscreen = previous;
     else delete proto.requestFullscreen;
     host.remove();
-    globalThis.__w13RightPaneSlot = undefined;
     await mounted.unmount();
   }
 });
 
-test("抽出 App 的自画顶栏去掉关闭，分栏里是右侧全屏", async () => {
-  const slot = {
-    rightMaximized: false,
-    toggleRightMaximized() {
-      this.rightMaximized = !this.rightMaximized;
-    },
-    setRightMaximized() {},
-  };
-  globalThis.__w13FrameSlot = slot;
-  const mounted = await mountFrame();
+test("抽出 App 的自画顶栏去掉关闭，真实分栏里是右侧全屏", async () => {
+  const closed = {n: 0};
+  const fullscreen = {n: 0};
+  const mounted = await mountSplit(React.createElement(PluginChromeFrame, {
+    pluginId: "design-canvas", title: "设计画布",
+    window: {onClose() {closed.n += 1;}, onToggleFullscreen() {fullscreen.n += 1;}},
+  }));
   try {
     const close = [...mounted.container.querySelectorAll("button")].find(
-      (button) => (button.getAttribute("aria-label") || "") === "关闭",
+      (button) => button.getAttribute("aria-label") === "关闭",
     );
     assert.equal(close, undefined, "PluginChromeFrame 还在画关闭");
-    const maximize = mounted.container.querySelector(
-      'button[aria-label="右侧全屏"]',
-    );
-    assert.ok(maximize, "分栏里的自画顶栏没有右侧全屏");
+    const maximize = mounted.container.querySelector('button[aria-label="右侧全屏"]');
+    assert.ok(maximize);
     await act(async () => maximize.click());
-    assert.equal(slot.rightMaximized, true);
-    assert.equal(mounted.closed.n, 0);
-    assert.equal(mounted.fullscreen.n, 0, "有 slot 时不该走浏览器全屏回调");
-  } finally {
-    globalThis.__w13FrameSlot = undefined;
-    await mounted.unmount();
-  }
+    assert.equal(mounted.container.querySelector('[data-workspace-split]').dataset.workspaceMaximized, "library");
+    assert.equal(maximize.getAttribute("aria-label"), "退出右侧全屏");
+    assert.equal(maximize.querySelector('[data-icon]').dataset.icon, "fullscreen-exit");
+    assert.equal(closed.n, 0);
+    assert.equal(fullscreen.n, 0, "有 slot 时不该走浏览器全屏回调");
+  } finally { await mounted.unmount(); }
 });

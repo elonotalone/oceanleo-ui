@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -64,6 +65,7 @@ export type PluginChromeOwner = "host" | "self";
 
 const EDITOR_V1 = "oceanleo.editor.v1";
 const EDITOR_V2 = "oceanleo.editor.v2";
+const subscribeWithoutPane = () => () => {};
 
 /** `?embed=1` 即嵌入。宿主 `buildEditorEmbedUrl` 对三家 iframe 都会写这个参数。 */
 export function readPluginChromeFromSearch(
@@ -263,14 +265,12 @@ export function PluginChromeFrame({
     typeof SplitWorkspaceMod.useRightPaneSlot === "function"
       ? SplitWorkspaceMod.useRightPaneSlot()
       : null;
-  const rightPaneSlotRef = useRef(rightPaneSlot);
-  rightPaneSlotRef.current = rightPaneSlot;
+  const rightMaximized = useSyncExternalStore(
+    rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
+    () => rightPaneSlot?.rightMaximized === true,
+    () => false,
+  );
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
-  useEffect(() => {
-    return () => {
-      rightPaneSlotRef.current?.setRightMaximized?.(false);
-    };
-  }, []);
   useEffect(() => {
     if (rightPaneSlot || windowActions?.onToggleFullscreen) return;
     const sync = () => setNativeFullscreen(Boolean(document.fullscreenElement));
@@ -358,9 +358,9 @@ export function PluginChromeFrame({
   const agentActive = layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
   const maximize = rightPaneSlot
     ? {
-        pressed: rightPaneSlot.rightMaximized === true,
+        pressed: rightMaximized,
         label: tt(
-          rightPaneSlot.rightMaximized ? "退出右侧全屏" : "右侧全屏",
+          rightMaximized ? "退出右侧全屏" : "右侧全屏",
         ),
         onClick: () => rightPaneSlot.toggleRightMaximized(),
       }

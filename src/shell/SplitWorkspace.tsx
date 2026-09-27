@@ -110,14 +110,23 @@ export function useRegisterConsoleAgentFocus(
 // PaneHeader 标题位**（同左栏「操作台|agent」开关的做法），自身不再画边框 → 内容直接
 // 贴右栏框、无中间嵌套层。
 // ----------------------------------------------------------------------------
+export interface RightPanePresentation {
+  label: ReactNode;
+  editorHeader: boolean;
+  frameless: boolean;
+}
+
 export interface RightPaneSlot {
-  /** 用一个节点替换右栏标题（「结果」文字）。传 null 恢复默认。 */
+  /** 编辑器实例认领顶栏；释放时恢复仍在的最近认领。owner 必须按实例唯一。 */
+  setRightPaneClaim: (owner: string, presentation: RightPanePresentation) => void;
+  clearRightPaneClaim: (owner: string) => void;
+  /** 底层标题（ResultCanvas）；外壳认领期间只更新底层，不夺取顶栏。 */
   setRightLabel: (node: ReactNode | null) => void;
-  /** 仅当当前标题仍由该节点持有时清理，避免切换编辑器时旧 cleanup 覆盖新标题。 */
+  /** 仅清理仍等于该节点的底层标题；不会清理任何外壳认领。 */
   clearRightLabel: (node: ReactNode) => void;
   /** 编辑器接管右侧主画布时隐藏库标题栏，避免库 chrome 再包一层编辑器。 */
   setRightFrameless: (frameless: boolean) => void;
-  /** 进阶编辑器把共享 action bar 装进原生 PaneHeader，并自行提供返回动作。 */
+  /** 底层正在打开编辑器；外壳挂载后由认领值接管。 */
   setRightEditorHeader: (active: boolean) => void;
   /** 右栏内覆盖 action row、停靠区与画布的稳定编辑栏浮层根。 */
   editBarLayerRef: RefObject<HTMLElement | null>;
@@ -128,6 +137,7 @@ export interface RightPaneSlot {
   clearEditBarDockPresentation: (ownerId: string) => void;
   /** 右栏占满工作区，左栏隐藏但保持挂载。没有分栏时调用方应退回浏览器全屏。 */
   rightMaximized: boolean;
+  subscribeRightMaximized: (listener: () => void) => () => void;
   toggleRightMaximized: () => void;
   setRightMaximized: (value: boolean) => void;
 }
@@ -397,25 +407,53 @@ export function SplitWorkspace({
       baseLeftLabel
     );
   // 右栏标题覆盖（ResultCanvas 通过 context 装入标签条 → 去框中框）。
-  const [rightLabelOverride, setRightLabelOverride] = useState<ReactNode | null>(null);
-  const [rightFrameless, setRightFrameless] = useState(false);
-  const [rightEditorHeader, setRightEditorHeader] = useState(false);
+  const [baseRightLabel, setRightLabelOverride] = useState<ReactNode | null>(null);
+  const [baseRightFrameless, setRightFrameless] = useState(false);
+  const [baseRightEditorHeader, setRightEditorHeader] = useState(false);
+  const [rightPaneClaims, setRightPaneClaims] = useState(
+    () => new Map<string, RightPanePresentation>(),
+  );
+  const activeRightClaim = Array.from(rightPaneClaims.values()).at(-1);
+  const rightLabelOverride = activeRightClaim ? activeRightClaim.label : baseRightLabel;
+  const rightFrameless = activeRightClaim?.frameless ?? baseRightFrameless;
+  const rightEditorHeader = activeRightClaim?.editorHeader ?? baseRightEditorHeader;
   const [rightMaximized, setRightMaximizedState] = useState(false);
   const rightMaximizedRef = useRef(false);
   rightMaximizedRef.current = rightMaximized;
+  const maximizeListeners = useRef(new Set<() => void>());
+  useLayoutEffect(() => {
+    maximizeListeners.current.forEach((listener) => listener());
+  }, [rightMaximized]);
   const setRightMaximized = useCallback((value: boolean) => {
     setRightMaximizedState(value);
   }, []);
   const toggleRightMaximized = useCallback(() => {
     setRightMaximizedState((current) => !current);
   }, []);
-  const wasRightEditorHeaderRef = useRef(false);
+  const rightWorkbenchActive = rightEditorHeader || rightFrameless;
+  const wasRightWorkbenchActiveRef = useRef(false);
   const editBarLayerRef = useRef<HTMLElement>(null);
   const editBarDockRef = useRef<HTMLDivElement>(null);
-  const [editBarDockPresentation, setEditBarDockPresentation] =
-    useState<EditBarDockPresentation | null>(null);
+  const [editBarDockClaims, setEditBarDockClaims] = useState(
+    () => new Map<string, EditBarDockPresentation>(),
+  );
+  const editBarDockPresentation = Array.from(editBarDockClaims.values()).at(-1) ?? null;
   const rightSlot = useMemo<RightPaneSlot>(
     () => ({
+      setRightPaneClaim: (owner, presentation) =>
+        setRightPaneClaims((current) => {
+          const next = new Map(current);
+          next.delete(owner);
+          next.set(owner, presentation);
+          return next;
+        }),
+      clearRightPaneClaim: (owner) =>
+        setRightPaneClaims((current) => {
+          if (!current.has(owner)) return current;
+          const next = new Map(current);
+          next.delete(owner);
+          return next;
+        }),
       setRightLabel: (node) => setRightLabelOverride(node),
       clearRightLabel: (node) =>
         setRightLabelOverride((current) => (current === node ? null : current)),
@@ -424,13 +462,25 @@ export function SplitWorkspace({
       editBarLayerRef,
       editBarDockRef,
       setEditBarDockPresentation: (state) =>
-        setEditBarDockPresentation(state),
+        setEditBarDockClaims((current) => {
+          const next = new Map(current);
+          next.delete(state.ownerId);
+          next.set(state.ownerId, state);
+          return next;
+        }),
       clearEditBarDockPresentation: (ownerId) =>
-        setEditBarDockPresentation((current) =>
-          current?.ownerId === ownerId ? null : current,
-        ),
+        setEditBarDockClaims((current) => {
+          if (!current.has(ownerId)) return current;
+          const next = new Map(current);
+          next.delete(ownerId);
+          return next;
+        }),
       get rightMaximized() {
         return rightMaximizedRef.current;
+      },
+      subscribeRightMaximized: (listener) => {
+        maximizeListeners.current.add(listener);
+        return () => { maximizeListeners.current.delete(listener); };
       },
       toggleRightMaximized,
       setRightMaximized,
@@ -457,11 +507,13 @@ export function SplitWorkspace({
     }
   }, [hasRight]);
   useEffect(() => {
-    if (wasRightEditorHeaderRef.current && !rightEditorHeader) {
+    // The workspace owns fullscreen lifetime, including self-chromed plugin
+    // pages. An outgoing editor must not reset another editor's fullscreen.
+    if (wasRightWorkbenchActiveRef.current && !rightWorkbenchActive) {
       setRightMaximizedState(false);
     }
-    wasRightEditorHeaderRef.current = rightEditorHeader;
-  }, [rightEditorHeader]);
+    wasRightWorkbenchActiveRef.current = rightWorkbenchActive;
+  }, [rightWorkbenchActive]);
   useEffect(() => {
     if (!rightMaximized) return;
     const onKeyDown = (event: KeyboardEvent) => {

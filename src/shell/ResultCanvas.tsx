@@ -703,19 +703,7 @@ export function ResultCanvas({
       </PluginModuleErrorBoundary>
     </div>
   ) : null;
-  const foregroundContent = pluginContent || (artifactSaveError ? (
-      <div className="flex h-full min-h-0 flex-col">
-        <div
-          role="alert"
-          className="shrink-0 border-b border-rose-500/25 bg-rose-500/10 px-3 py-2 text-[11px] leading-relaxed text-rose-700"
-        >
-          {artifactSaveError}
-        </div>
-        <div className="min-h-0 flex-1">{editorContent}</div>
-      </div>
-    ) : (
-      editorContent || viewerContent
-    ));
+  const foregroundContent = pluginContent || editorContent || viewerContent;
   const foregroundVisible = Boolean(foregroundContent);
   // 登记 workbenchOpen：右上角「模型组合」选择框据此让位，不再压在面板页签上。
   //   - 前台一露出来（编辑器 / 详情预览 / 插件模块）就登记；编辑器自己也会登记一份
@@ -756,6 +744,14 @@ export function ResultCanvas({
           className="absolute inset-0 min-h-0 overflow-hidden"
         >
           {foregroundContent}
+          {!pluginContent && artifactSaveError && (
+            <div
+              role="alert"
+              className="absolute inset-x-0 top-0 z-50 border-b border-rose-500/25 bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-700"
+            >
+              {artifactSaveError}
+            </div>
+          )}
         </div>
       )}
     </div>

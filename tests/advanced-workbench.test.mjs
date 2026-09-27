@@ -319,7 +319,8 @@ test("live inspector panels refresh through a guarded store without render loops
   const host = source("../src/shell/selection-inspector-host.tsx");
   assert.match(store, /Object\.is\(store\.node, node\)/);
   assert.match(shell, /updateTransientPanel/);
-  assert.match(shell, /rightPaneSlot\.setRightLabel\(headerSlotNode\)/);
+  assert.match(shell, /rightPaneSlot\.setRightPaneClaim\(owner,\s*\{\s*label:\s*headerSlotNode/);
+  assert.match(shell, /rightPaneSlot\.clearRightPaneClaim\(owner\)/);
   assert.match(shell, /createPortal\(actionBar, headerHost\)/);
   assert.doesNotMatch(shell, /publishLiveReactNode\(/);
   assert.match(host, /layout\??\.updateTransientPanel/);
