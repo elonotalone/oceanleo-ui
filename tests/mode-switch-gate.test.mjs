@@ -79,6 +79,10 @@ const pluginModeStub = dataModule(`
     return { mode: current, pro: current === "pro", pluginId, setMode: __setPluginMode, toggle() {} };
   }
 `);
+const handoffUrl = await compileModule("src/shell/advanced-routes/editor-handoff.ts", {
+  "../office-editor/useOfficeArtifactSource": dataModule(`export function useOfficeArtifactSource() { return {}; }`),
+});
+const handoff = await import(handoffUrl);
 const gateUrl = await compileModule(
   "src/shell/advanced-routes/mode-switch-gate.tsx",
   {
@@ -86,6 +90,7 @@ const gateUrl = await compileModule(
       `export function useUI() { return (key) => key; }`,
     ),
     "../plugin-chrome/plugin-mode": pluginModeStub,
+    "./editor-handoff": handoffUrl,
   },
 );
 const { __setPluginMode } = await import(pluginModeStub);
@@ -95,6 +100,7 @@ const {
   useModeSwitchFailure,
   useModeSwitchReady,
   MODE_SWITCH_FALLBACK_MS,
+  LEAVE_PRO_FALLBACK_MS,
 } = await import(gateUrl);
 const { createRoot } = await import("react-dom/client");
 
@@ -117,7 +123,7 @@ function Face({ name, ready, withChrome = false }) {
   );
 }
 
-function Host({ initialPro = false, fallbackMs, beforeEnterPro, withChrome, expose }) {
+function Host({ initialPro = false, fallbackMs, beforeEnterPro, beforeLeavePro, leaveFallbackMs, withChrome, expose }) {
   const [pro, setPro] = useState(initialPro);
   const [proReady, setProReady] = useState(false);
   const [normalReady, setNormalReady] = useState(false);
@@ -126,6 +132,8 @@ function Host({ initialPro = false, fallbackMs, beforeEnterPro, withChrome, expo
     pro,
     fallbackMs,
     beforeEnterPro,
+    beforeLeavePro,
+    leaveFallbackMs,
     renderNormal: () => h(Face, { name: "normal", ready: normalReady, withChrome }),
     renderPro: () => h(Face, { name: "pro", ready: proReady, withChrome }),
   });
@@ -161,6 +169,7 @@ function isHiddenPending(node) {
 
 test("默认兜底给冷启动留足余量", () => {
   assert.equal(MODE_SWITCH_FALLBACK_MS, 60000);
+  assert.equal(LEAVE_PRO_FALLBACK_MS, 20000);
 });
 
 test("(a) 切 pro：同一 tick 内旧面仍在、覆盖层出现、新面已挂但不可见（不是 display:none）", async () => {
@@ -460,4 +469,113 @@ test("门外调 useModeSwitchReady 是 noop（flag=next 直出 stage 时无副�
     await act(async () => root.unmount());
     container.remove();
   }
+});
+
+
+test("E7: normal never mounts before pro flush succeeds", async () => {
+  let finish;
+  let calls = 0;
+  const m = await mount({ initialPro: true, beforeLeavePro: () => { calls++; return new Promise(r => finish = r); } });
+  try {
+    await act(async () => m.controls().setPro(false));
+    assert.equal(m.q("[data-face=normal]"), null);
+    assert.equal(calls, 1);
+    assert.match(m.q("[data-mode-switch-pending]").textContent, /正在保存专业编辑里的修改/);
+    await act(async () => finish(true));
+    assert.ok(m.q("[data-face=normal]"));
+    await act(async () => m.controls().setNormalReady(true));
+    assert.equal(m.q("[data-face=pro]"), null);
+  } finally { await m.unmount(); }
+});
+
+test("E7: failed pro flush retains pro and retry saves again", async () => {
+  let calls = 0;
+  const m = await mount({ initialPro: true, beforeLeavePro: async () => ++calls > 1 });
+  try {
+    await act(async () => m.controls().setPro(false));
+    assert.equal(m.q("[data-face=normal]"), null);
+    assert.ok(m.q("[data-face=pro]"));
+    assert.ok(m.q("[data-mode-switch-handoff-error]"));
+    await act(async () => m.q("[data-mode-switch-handoff-error] button").click());
+    assert.equal(calls, 2);
+    assert.ok(m.q("[data-face=normal]"));
+  } finally { await m.unmount(); }
+});
+
+test("E7: pro flush timeout retains pro and ignores late success", async () => {
+  let finish;
+  const m = await mount({ initialPro: true, leaveFallbackMs: 10, beforeLeavePro: () => new Promise(r => finish = r) });
+  try {
+    await act(async () => m.controls().setPro(false));
+    await act(async () => new Promise(r => setTimeout(r, 30)));
+    assert.ok(m.q("[data-mode-switch-handoff-error]"));
+    await act(async () => finish(true));
+    assert.equal(m.q("[data-face=normal]"), null);
+  } finally { await m.unmount(); }
+});
+
+test("E7: cancel entering never invokes pro flush", async () => {
+  let calls = 0;
+  const m = await mount({ beforeEnterPro: () => new Promise(() => {}), beforeLeavePro: async () => { calls++; return true; } });
+  try {
+    await act(async () => m.controls().setPro(true));
+    await act(async () => m.controls().setPro(false));
+    assert.equal(calls, 0);
+    assert.equal(m.q("[data-face=pro]"), null);
+  } finally { await m.unmount(); }
+});
+
+test("E7 plugin gate: saved revision mounts only after flush; failed L0 returns pro and retry returns normal", async () => {
+  handoff.resetEditorHandoffForTests();
+  let dirty = true;
+  let succeed = false;
+  let finish;
+  const unbind = handoff.bindProFaceHandoff("gate-item", {
+    hasUnsavedChanges: () => dirty,
+    flush: () => new Promise(resolve => { finish = () => {
+      if (succeed) {
+        handoff.reportProSaved("gate-item", { key: "gate-item", revisionId: "new" });
+        dirty = false;
+      }
+      resolve(succeed);
+    }; }),
+  });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  let mountedRevision;
+  function Normal() {
+    mountedRevision = handoff.peekProSavedRevision("gate-item")?.revisionId;
+    useModeSwitchReady(true);
+    return h("p", { "data-normal-revision": mountedRevision });
+  }
+  try {
+    await act(async () => {
+      __setPluginMode("pro");
+      root.render(h(PluginModeSwitchGate, { pluginId: "deck", handoffItemKey: "gate-item", renderNormal: () => h(Normal), renderPro: () => h(Face, { name: "pro", ready: true }) }));
+    });
+    await act(async () => __setPluginMode("normal"));
+    assert.equal(container.querySelector("[data-normal-revision]"), null);
+    await act(async () => finish());
+    assert.equal(container.querySelector("[data-mode-switch-gate]").dataset.modeSwitchTarget, "pro");
+    assert.equal(container.querySelector("[data-normal-revision]"), null);
+    succeed = true;
+    await act(async () => container.querySelector("[data-mode-switch-handoff-error] button").click());
+    await act(async () => finish());
+    assert.equal(mountedRevision, "new");
+    assert.equal(container.querySelector("[data-mode-switch-gate]").dataset.modeSwitchShown, "normal");
+  } finally { await act(async () => root.unmount()); container.remove(); unbind(); }
+});
+
+test("E7 plugin gate: clean pro switches immediately without flush", async () => {
+  let calls = 0;
+  const unbind = handoff.bindProFaceHandoff("clean-item", { hasUnsavedChanges: () => false, flush: async () => { calls++; return true; } });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { __setPluginMode("pro"); root.render(h(PluginModeSwitchGate, { pluginId: "deck", handoffItemKey: "clean-item", renderNormal: () => h(Face, { name: "normal", ready: true }), renderPro: () => h(Face, { name: "pro", ready: true }) })); });
+    await act(async () => __setPluginMode("normal"));
+    assert.ok(container.querySelector("[data-face=normal]"));
+    assert.equal(container.querySelector("[data-face=pro]"), null);
+    assert.equal(calls, 0);
+  } finally { await act(async () => root.unmount()); container.remove(); unbind(); }
 });

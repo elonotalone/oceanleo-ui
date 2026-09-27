@@ -45,6 +45,9 @@ import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import type { PluginThemeId } from "../plugin-theme";
 import {
   ENTER_PRO_NOT_READY,
+  LEAVE_PRO_SAVE_FAILED,
+  hasUnsavedProChanges as hasBoundUnsavedProChanges,
+  saveBeforeLeavePro,
   type BeforeEnterPro,
   type EditorHandoff,
 } from "./editor-handoff";
@@ -53,6 +56,7 @@ export type ModeSwitchFace = "normal" | "pro";
 
 /** 进专业面的整次尝试最多 60 秒，包括交接和等待 ready。 */
 export const MODE_SWITCH_FALLBACK_MS = 60_000;
+export const LEAVE_PRO_FALLBACK_MS = 20_000;
 
 /** 门从当前面里找舞台节点用的选择器（顺序即优先级）。 */
 export const MODE_SWITCH_STAGE_SELECTOR =
@@ -108,6 +112,11 @@ export interface ModeSwitchGateProps {
   beforeEnterPro?: BeforeEnterPro | (() => Promise<unknown>);
   /** Deck must capture the normal document even when the saved page starts on pro. */
   captureOnMount?: boolean;
+  beforeLeavePro?: (signal?: AbortSignal) => Promise<boolean>;
+  hasUnsavedProChanges?: () => boolean;
+  onLeaveProFailed?: () => void;
+  onRetryLeavePro?: () => void;
+  leaveFallbackMs?: number;
   /** 进专业面失败时（调用方用来把 L0 模式拨回「编辑」）。 */
   onEnterProFailed?: () => void;
   /** 点提示上的「重试」时（调用方再把 L0 拨去「专业编辑」）。 */
@@ -122,6 +131,11 @@ export function ModeSwitchGate({
   renderPro,
   beforeEnterPro,
   captureOnMount = false,
+  beforeLeavePro,
+  hasUnsavedProChanges,
+  onLeaveProFailed,
+  onRetryLeavePro,
+  leaveFallbackMs = LEAVE_PRO_FALLBACK_MS,
   onEnterProFailed,
   onRetryEnterPro,
   fallbackMs = MODE_SWITCH_FALLBACK_MS,
@@ -137,18 +151,32 @@ export function ModeSwitchGate({
   const [enterBlocked, setEnterBlocked] = useState(false);
   const [enterAttempt, setEnterAttempt] = useState(0);
   const enterBlockedRef = useRef(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveBlocked, setLeaveBlocked] = useState(false);
+  const [leaveError, setLeaveError] = useState(false);
+  const [leaveAttempt, setLeaveAttempt] = useState(0);
+  const leaveRequiredRef = useRef<boolean | null>(null);
+  if (target === "pro" || shown === "normal") leaveRequiredRef.current = null;
+  else if (leaveRequiredRef.current === null) {
+    leaveRequiredRef.current = Boolean(beforeLeavePro && (hasUnsavedProChanges?.() ?? true));
+  }
+  const leaveRequired = leaveRequiredRef.current === true;
   const pending: ModeSwitchFace | null =
-    !enterBlocked && target !== shown ? target : null;
+    !enterBlocked && !leaveBlocked && target !== shown ? target : null;
 
   // 子组件的 passive effect 先于父组件跑；待命面挂上去的那一帧就可能发信号。
   // 用 layout effect 更新目标（layout 阶段整体先于 passive 阶段），信号回调本身保持稳定。
   const targetRef = useRef(target);
-  const callbacksRef = useRef({ onEnterProFailed, onRetryEnterPro });
+  const callbacksRef = useRef({ onEnterProFailed, onRetryEnterPro, onLeaveProFailed, onRetryLeavePro });
   useLayoutEffect(() => {
-    callbacksRef.current = { onEnterProFailed, onRetryEnterPro };
+    callbacksRef.current = { onEnterProFailed, onRetryEnterPro, onLeaveProFailed, onRetryLeavePro };
   });
   useLayoutEffect(() => {
     targetRef.current = target;
+    if (target === "pro") {
+      setLeaveOpen(false);
+      setLeaveBlocked(false);
+    }
     // A failed attempt remains blocked until the user returns to normal or retries.
     if (target === "normal") {
       setGateOpen(false);
@@ -159,6 +187,7 @@ export function ModeSwitchGate({
   const commitPending = useCallback(() => {
     if (enterBlockedRef.current) return;
     setShown(targetRef.current);
+    setLeaveOpen(false);
     setGateOpen(false);
   }, []);
 
@@ -174,7 +203,45 @@ export function ModeSwitchGate({
   );
 
   useEffect(() => {
-    if (!pending) return;
+    if (pending !== "normal" || !leaveRequired || !beforeLeavePro) return;
+    let alive = true;
+    const attempt = new AbortController();
+    setLeaveOpen(false);
+    setLeaveError(false);
+    const fail = () => {
+      if (!alive) return;
+      alive = false;
+      attempt.abort();
+      setLeaveBlocked(true);
+      setLeaveError(true);
+      setLeaveOpen(false);
+      callbacksRef.current.onLeaveProFailed?.();
+    };
+    const timer = window.setTimeout(fail, leaveFallbackMs);
+    Promise.resolve().then(() => beforeLeavePro(attempt.signal)).then((ok) => {
+      if (!alive) return;
+      if (!ok) { fail(); return; }
+      window.clearTimeout(timer);
+      setLeaveOpen(true);
+    }).catch(fail);
+    return () => {
+      alive = false;
+      attempt.abort();
+      window.clearTimeout(timer);
+    };
+    // Capture the callback once per attempt, just like beforeEnterPro.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, leaveRequired, leaveAttempt, leaveFallbackMs]);
+
+  const retryLeavePro = useCallback(() => {
+    setLeaveBlocked(false);
+    setLeaveError(false);
+    setLeaveAttempt(value => value + 1);
+    callbacksRef.current.onRetryLeavePro?.();
+  }, []);
+
+  useEffect(() => {
+    if (!pending || (pending === "normal" && leaveRequired && !leaveOpen)) return;
     let alive = true;
     const attempt = new AbortController();
     if (pending === "pro" && beforeEnterPro) {
@@ -227,7 +294,7 @@ export function ModeSwitchGate({
     };
     // beforeEnterPro 有意不进依赖：它只在切换那一刻取一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, fallbackMs, commitPending, enterAttempt, failEnterPro]);
+  }, [pending, fallbackMs, commitPending, enterAttempt, failEnterPro, leaveRequired, leaveOpen]);
 
   const retryEnterPro = useCallback(() => {
     enterBlockedRef.current = false;
@@ -256,9 +323,9 @@ export function ModeSwitchGate({
 
   const mountPro =
     shown === "pro" || (pending === "pro" && (!beforeEnterPro || gateOpen) && !enterBlocked);
-  const mountNormal = shown === "normal" || pending === "normal";
+  const mountNormal = shown === "normal" || (pending === "normal" && (!leaveRequired || leaveOpen));
 
-  const overlay = pending ? <ModeSwitchPendingOverlay target={pending} /> : null;
+  const overlay = pending ? <ModeSwitchPendingOverlay target={pending} saving={pending === "normal" && leaveRequired && !leaveOpen} /> : null;
 
   return (
     <div
@@ -295,6 +362,7 @@ export function ModeSwitchGate({
       )}
       {overlay &&
         (overlayHost ? createPortal(overlay, overlayHost) : overlay)}
+      {leaveError ? <ModeSwitchHandoffError message={LEAVE_PRO_SAVE_FAILED} onRetry={retryLeavePro} /> : null}
       {enterError ? (
         <ModeSwitchHandoffError
           message={enterError}
@@ -309,6 +377,7 @@ export interface PluginModeSwitchGateProps
   extends Omit<ModeSwitchGateProps, "pro"> {
   /** 读哪个插件的 L0 模式（`usePluginMode(pluginId).pro`）。 */
   pluginId: PluginThemeId;
+  handoffItemKey?: string;
 }
 
 /**
@@ -318,6 +387,9 @@ export interface PluginModeSwitchGateProps
  */
 export function PluginModeSwitchGate({
   pluginId,
+  handoffItemKey,
+  onLeaveProFailed,
+  onRetryLeavePro,
   onEnterProFailed,
   onRetryEnterPro,
   ...rest
@@ -326,6 +398,16 @@ export function PluginModeSwitchGate({
   return (
     <ModeSwitchGate
       pro={pro}
+      beforeLeavePro={handoffItemKey ? (signal) => saveBeforeLeavePro(handoffItemKey, signal) : undefined}
+      hasUnsavedProChanges={handoffItemKey ? () => hasBoundUnsavedProChanges(handoffItemKey) : undefined}
+      onLeaveProFailed={() => {
+        onLeaveProFailed?.();
+        setMode("pro");
+      }}
+      onRetryLeavePro={() => {
+        onRetryLeavePro?.();
+        setMode("normal");
+      }}
       onEnterProFailed={() => {
         onEnterProFailed?.();
         setMode("normal");
@@ -411,10 +493,10 @@ function ModeSwitchHandoffError({
   );
 }
 
-function ModeSwitchPendingOverlay({ target }: { target: ModeSwitchFace }) {
+function ModeSwitchPendingOverlay({ target, saving = false }: { target: ModeSwitchFace; saving?: boolean }) {
   const tt = useUI();
   const label =
-    target === "pro" ? tt("正在切换到专业编辑…") : tt("正在切换到编辑…");
+    saving ? tt("正在保存专业编辑里的修改…") : target === "pro" ? tt("正在切换到专业编辑…") : tt("正在切换到编辑…");
   return (
     <div
       role="status"

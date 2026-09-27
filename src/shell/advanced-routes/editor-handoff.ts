@@ -56,6 +56,37 @@ export type NormalFaceHandoffBinder = {
   persistInBackground?: () => void;
 };
 
+export type ProFaceHandoffBinder = {
+  hasUnsavedChanges: () => boolean;
+  flush: () => Promise<boolean>;
+};
+
+export const LEAVE_PRO_SAVE_FAILED = "专业编辑里的修改还没保存成功，请重试。";
+const proFaceBinders = new Map<string, ProFaceHandoffBinder>();
+
+export function bindProFaceHandoff(itemKey: string, binder: ProFaceHandoffBinder): () => void {
+  if (!itemKey) return () => {};
+  proFaceBinders.set(itemKey, binder);
+  return () => {
+    if (proFaceBinders.get(itemKey) === binder) proFaceBinders.delete(itemKey);
+  };
+}
+
+export function hasUnsavedProChanges(itemKey: string): boolean {
+  return proFaceBinders.get(itemKey)?.hasUnsavedChanges() ?? false;
+}
+
+export async function saveBeforeLeavePro(itemKey: string, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
+  const binder = proFaceBinders.get(itemKey);
+  if (!binder || !binder.hasUnsavedChanges()) return true;
+  try {
+    return await binder.flush() && !signal?.aborted && !binder.hasUnsavedChanges();
+  } catch {
+    return false;
+  }
+}
+
 const normalFaceBinders = new Map<string, NormalFaceHandoffBinder>();
 const normalFaceListeners = new Set<() => void>();
 const proSavedItems = new Map<string, LibraryItem>();
@@ -473,6 +504,7 @@ export async function materializeHandoffJson(
 /** Test-only: wipe binders and saved revisions. */
 export function resetEditorHandoffForTests(): void {
   normalFaceBinders.clear();
+  proFaceBinders.clear();
   proSavedItems.clear();
   notifyProSaved();
 }

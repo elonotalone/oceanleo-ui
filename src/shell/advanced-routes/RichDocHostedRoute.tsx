@@ -40,6 +40,7 @@ import {
 } from "../hosted-editor/index";
 import { editorToolLabel } from "../workbench-routes";
 import {
+  bindProFaceHandoff,
   handoffItemKey,
   openHostedSaveGate,
   peekNormalFaceHandoff,
@@ -177,6 +178,19 @@ export function RichDocHostedRoute({
     null,
   );
   const appliedHandoffKeyRef = useRef("");
+  const mountedRef = useRef(true);
+  const persistedItemRef = useRef(item);
+  const savedGenerationRef = useRef<number | null>(null);
+  const dirtyRef = useRef(false);
+  const generationRef = useRef(0);
+  const revisionRef = useRef<string | number | undefined>(undefined);
+  const capturesRef = useRef(new Map<string, { generation: number; revision: string | number | undefined }>());
+  const cachedRef = useRef<{ generation: number; payload: unknown; recoveryId: string } | null>(null);
+  const flightRef = useRef<ReturnType<typeof persistUmoPayload> | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,24 +358,31 @@ export function RichDocHostedRoute({
         return;
       }
       if (message.type === "dirty") {
-        setDirty(message.dirty === true);
-        if (message.revision !== undefined) {
-          const next =
-            typeof message.revision === "number"
-              ? message.revision
-              : editRevision + 1;
-          setEditRevision(next);
-        }
+        // Editor-local clean is not proof that the server has committed this edit.
+        if (message.dirty !== true) return;
+        dirtyRef.current = true;
+        generationRef.current += 1;
+        revisionRef.current = message.revision;
+        setDirty(true);
+        setEditRevision(generationRef.current);
+        const recoveryId = `rd-cache-${instanceId}-${generationRef.current}`;
+        capturesRef.current.clear();
+        capturesRef.current.set(recoveryId, { generation: generationRef.current, revision: message.revision });
+        sendToEditor({ type: "recovery-capture", recoveryId });
         return;
       }
       if (message.type === "recovery-snapshot" && message.ok) {
-        // 契约快照是 `{ revision, payload }`；正文在 payload 里。
-        const payload = message.snapshot?.payload ?? message.snapshot ?? null;
-        setSnapshot(payload);
-        setDirty(false);
-        const gate = saveGateRef.current;
         const recoveryId = String(message.recoveryId || "");
-        if (gate && (!recoveryId || recoveryId === gate.saveId)) {
+        const requested = capturesRef.current.get(recoveryId);
+        if (!requested || requested.generation !== generationRef.current ||
+            (requested.revision !== undefined && message.snapshot?.revision !== requested.revision)) return;
+        capturesRef.current.delete(recoveryId);
+        const payload = message.snapshot?.payload ?? null;
+        if (payload == null) return;
+        cachedRef.current = { generation: requested.generation, payload, recoveryId };
+        setSnapshot(payload);
+        const gate = saveGateRef.current;
+        if (gate && recoveryId === gate.saveId) {
           gate.acceptSnapshot(payload);
           gate.acceptSaveResult();
         }
@@ -474,57 +495,92 @@ export function RichDocHostedRoute({
     [instanceId, sendToEditor],
   );
 
-  const flush = useCallback(async () => {
-    if (!source) {
-      return { ok: false as const, error: "文件还没成功载入，不能保存。" };
-    }
-    const gate = openHostedSaveGate();
-    saveGateRef.current = gate;
-    const sent = sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "save-request",
-      instanceId,
-      saveId: gate.saveId,
-    });
-    sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "recovery-capture",
-      instanceId,
-      recoveryId: gate.saveId,
-    });
-    if (!sent) {
-      return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
-    }
-    const waited = await gate.wait();
-    if (!waited.ok) {
-      return { ok: false as const, error: waited.error };
-    }
-    const saved = await persistUmoPayload({
-      item,
-      siteId,
-      payload: waited.snapshot,
-    });
-    sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "save-result",
-      instanceId,
-      ok: saved.ok,
-      message: saved.ok ? "已保存" : saved.error,
-      saveId: gate.saveId,
-      ...(saved.ok && saved.item.url && /^https:/i.test(saved.item.url)
-        ? { url: saved.item.url }
-        : {}),
-      ...(saved.ok && saved.item.artifactId
-        ? { artifactId: saved.item.artifactId }
-        : {}),
-      ...(saved.ok && saved.item.revisionId
-        ? { revisionId: saved.item.revisionId }
-        : {}),
-    });
-    if (!saved.ok) return saved;
-    reportProSaved(handoffItemKey(item), saved.item);
-    return { ok: true as const, item: saved.item };
+  const flush = useCallback(() => {
+    if (flightRef.current) return flightRef.current;
+    const run = async () => {
+      if (savedGenerationRef.current === generationRef.current && !dirtyRef.current) {
+        return { ok: true as const, item: persistedItemRef.current };
+      }
+      if (!source) {
+        return { ok: false as const, error: "文件还没成功载入，不能保存。" };
+      }
+      const generation = generationRef.current;
+      let payload: unknown;
+      let saveId = "";
+      if (cachedRef.current?.generation === generation) {
+        payload = cachedRef.current.payload;
+        saveId = cachedRef.current.recoveryId;
+      } else {
+        if (!mountedRef.current) return { ok: false as const, error: "最新修改还没取得快照，不能确认已保存。" };
+        const gate = openHostedSaveGate();
+        saveId = gate.saveId;
+        saveGateRef.current = gate;
+        capturesRef.current.set(gate.saveId, { generation, revision: revisionRef.current });
+        const sent = sendToEditor({ type: "recovery-capture", recoveryId: gate.saveId });
+        if (!sent) return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
+        const waited = await gate.wait();
+        if (!waited.ok) return { ok: false as const, error: waited.error };
+        payload = waited.snapshot;
+      }
+      const saved = await persistUmoPayload({
+        item: persistedItemRef.current,
+        siteId,
+        payload,
+      });
+      if (!saved.ok) return saved;
+      persistedItemRef.current = saved.item;
+      if (generationRef.current !== generation) return { ok: false as const, error: "还有更新的修改尚未保存。" };
+      savedGenerationRef.current = generation;
+      dirtyRef.current = false;
+      if (mountedRef.current) setDirty(false);
+      sendToEditor({
+        protocol: EDITOR_PROTOCOL,
+        type: "save-result",
+        instanceId,
+        ok: saved.ok,
+        message: "已保存",
+        saveId,
+        ...(saved.ok && saved.item.url && /^https:/i.test(saved.item.url)
+          ? { url: saved.item.url }
+          : {}),
+        ...(saved.ok && saved.item.artifactId
+          ? { artifactId: saved.item.artifactId }
+          : {}),
+        ...(saved.ok && saved.item.revisionId
+          ? { revisionId: saved.item.revisionId }
+          : {}),
+      });
+      reportProSaved(handoffItemKey(item), saved.item);
+      return { ok: true as const, item: saved.item };
+    };
+    const flight = run();
+    flightRef.current = flight;
+    void flight.finally(() => { if (flightRef.current === flight) flightRef.current = null; }).catch(() => {});
+    return flight;
   }, [instanceId, item, sendToEditor, siteId, source]);
+
+  useEffect(() => bindProFaceHandoff(handoffItemKey(item), {
+    hasUnsavedChanges: () => dirtyRef.current,
+    flush: async () => (await flush()).ok && !dirtyRef.current,
+  }), [item, flush]);
+
+  useEffect(() => {
+    const saveDirty = () => {
+      if (!dirtyRef.current) return;
+      void flush().catch(() => {
+        // Keep dirty: page lifecycle events are not a durable save receipt.
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") saveDirty();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", saveDirty);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", saveDirty);
+    };
+  }, [flush]);
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 

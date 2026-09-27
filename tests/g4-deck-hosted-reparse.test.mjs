@@ -65,6 +65,7 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
     export function openHostedSaveGate() { throw new Error("save not used in this test"); }
     export function libraryItemFromProSave(item) { return item; }
     export function reportProSaved() {}
+    export function bindProFaceHandoff() { return () => {}; }
   `),
   "../AdvancedWorkbenchShell": dataModule(`
     import React from ${JSON.stringify(reactUrl)};

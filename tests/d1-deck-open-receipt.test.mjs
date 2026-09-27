@@ -46,11 +46,12 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
   "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
 
   "./mode-switch-gate": dataModule(`
-    export function useModeSwitchFailure() {}
+    export function useModeSwitchFailure() { return () => {}; }
     export function useModeSwitchHandoff() { return globalThis.__d1Handoff || null; }
     export function useModeSwitchReady(ready) { globalThis.__d1Opened = ready; }
   `),
   "./editor-handoff": dataModule(`
+    export function bindProFaceHandoff() { return () => {}; }
     export const ENTER_PRO_NOT_READY = "还没准备好";
     export function handoffItemKey(item) { return String(item.key || item.id || ""); }
     const resolvedByItem = new WeakMap();

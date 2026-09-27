@@ -82,6 +82,8 @@ const handoffUrl = await compileModule(
 );
 const {
   bindNormalFaceHandoff,
+  hasUnsavedProChanges,
+  saveBeforeLeavePro,
   captureBeforeEnterPro,
   libraryItemFromProSave,
   peekProSavedRevision,
@@ -105,7 +107,7 @@ const shellStubUrl = dataModule(`
 const hostedUrl = await compileModule(
   "src/shell/advanced-routes/DeckHostedRoute.tsx",
   {
-  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
+  "./deck-hosted-save": dataModule(`export async function saveHostedDeck(...args) { return globalThis.__w17SaveHostedDeck(...args); }`),
 
     "../AdvancedWorkbenchShell": shellStubUrl,
     "../workbench-routes": dataModule(`
@@ -166,11 +168,11 @@ async function confirmHostedOpen(hosted) {
   const instanceId = new URL(iframe.src).searchParams.get("instance");
   const sent = [];
   iframe.contentWindow.postMessage = message => sent.push(message);
-  const send = data => {
+  const send = (data, overrides = {}) => {
     const event = new window.Event("message");
     Object.defineProperties(event, {
-      origin: { value: "https://slides.oceanleo.app" },
-      source: { value: iframe.contentWindow },
+      origin: { value: overrides.origin ?? "https://slides.oceanleo.app" },
+      source: { value: overrides.source ?? iframe.contentWindow },
       data: { value: { protocol: "oceanleo.editor.v1", instanceId, ...data } },
     });
     window.dispatchEvent(event);
@@ -183,6 +185,7 @@ async function confirmHostedOpen(hosted) {
   assert.ok(opening, "整份稿尚未交给专业编辑器");
   await act(async () => send({ type: "recovery-result", recoveryId: opening.recoveryId, ok: true }));
   assert.equal(hosted.adapter().persistence.recovery.ready, true);
+  return { send, sent };
 }
 
 test.afterEach(() => {
@@ -360,6 +363,163 @@ test("restore 生效：交回快照后 capture 能再拿到同一份", async () 
     const captured = recovery.capture();
     assert.equal(captured?.slides?.[0]?.id, "restored");
   } finally {
+    await hosted.unmount();
+  }
+});
+
+
+test("E7: latest captured deck survives unmount and saves durably", async () => {
+  const hosted = await mountHosted();
+  const { send, sent } = await confirmHostedOpen(hosted);
+  const payload = JSON.parse(JSON.stringify(deckDocumentToPptist(sampleDeck())));
+  await act(async () => send({ type: "dirty", dirty: true, revision: 1 }));
+  const capture = sent.findLast(message => message.type === "recovery-capture");
+  assert.ok(capture, "dirty must capture before iframe disappears");
+  await act(async () => send({ type: "recovery-snapshot", recoveryId: capture.recoveryId, ok: true, snapshot: { revision: 1, payload } }));
+  const flush = hosted.adapter().persistence.flush;
+  await hosted.unmount();
+  let saved = null;
+  globalThis.__w17SaveHostedDeck = async (item, document) => {
+    saved = document;
+    return { ok: true, item: { ...item, revisionId: "durable-e7" } };
+  };
+  const result = await flush();
+  assert.equal(result.ok, true);
+  assert.deepEqual(saved, payload);
+  assert.equal(peekProSavedRevision("deck-w17").revisionId, "durable-e7");
+});
+
+test("E7: stale cache after a newer dirty fails immediately after unmount", async () => {
+  const hosted = await mountHosted();
+  const { send, sent } = await confirmHostedOpen(hosted);
+  await act(async () => send({ type: "dirty", dirty: true, revision: 1 }));
+  const capture = sent.findLast(message => message.type === "recovery-capture");
+  assert.ok(capture);
+  await act(async () => send({ type: "recovery-snapshot", recoveryId: capture.recoveryId, ok: true, snapshot: { revision: 1, payload: JSON.parse(JSON.stringify(deckDocumentToPptist(sampleDeck()))) } }));
+  await act(async () => send({ type: "dirty", dirty: true, revision: 2 }));
+  const flush = hosted.adapter().persistence.flush;
+  await hosted.unmount();
+  globalThis.__w17SaveHostedDeck = async () => { assert.fail("stale snapshot cannot save latest edit"); };
+  const result = await flush();
+  assert.equal(result.ok, false);
+});
+
+
+// UC-6: docs/architecture/oceanleo-untrusted-content-isolation.md — reject foreign iframe messages.
+test("E7: foreign origin/source and uncorrelated snapshots cannot become durable cache", async () => {
+  const hosted = await mountHosted();
+  const { send, sent } = await confirmHostedOpen(hosted);
+  await act(async () => send({ type: "dirty", dirty: true, revision: 1 }));
+  const capture = sent.findLast(message => message.type === "recovery-capture");
+  const response = { type: "recovery-snapshot", recoveryId: capture.recoveryId, ok: true, snapshot: { revision: 1, payload: JSON.parse(JSON.stringify(deckDocumentToPptist(sampleDeck()))) } };
+  await act(async () => {
+    send(response, { origin: "https://attacker.test" });
+    send(response, { source: {} });
+    send({ ...response, recoveryId: "unknown-request" });
+    send({ ...response, snapshot: { ...response.snapshot, revision: 0 } });
+  });
+  const flush = hosted.adapter().persistence.flush;
+  await hosted.unmount();
+  globalThis.__w17SaveHostedDeck = async () => { assert.fail("untrusted cache saved"); };
+  assert.equal((await flush()).ok, false);
+});
+
+test("E7: concurrent flush is shared and a newer edit during upload stays unsaved", async () => {
+  const hosted = await mountHosted();
+  try {
+    const { send, sent } = await confirmHostedOpen(hosted);
+    await act(async () => send({ type: "dirty", dirty: true, revision: 1 }));
+    const capture = sent.findLast(message => message.type === "recovery-capture");
+    await act(async () => send({ type: "recovery-snapshot", recoveryId: capture.recoveryId, ok: true, snapshot: { revision: 1, payload: JSON.parse(JSON.stringify(deckDocumentToPptist(sampleDeck()))) } }));
+    let finish;
+    let calls = 0;
+    globalThis.__w17SaveHostedDeck = item => { calls++; return new Promise(resolve => { finish = () => resolve({ ok: true, item: { ...item, revisionId: "partial" } }); }); };
+    const flush = hosted.adapter().persistence.flush;
+    const first = flush();
+    const second = flush();
+    assert.equal(first, second);
+    assert.equal(calls, 1);
+    await act(async () => send({ type: "dirty", dirty: true, revision: 2 }));
+    finish();
+    assert.equal((await first).ok, false);
+    assert.equal(hosted.adapter().persistence.dirty, true);
+  } finally { await hosted.unmount(); }
+});
+
+
+test("E7: unmount cancels a pending iframe wait without waiting for timeout", { timeout: 1000 }, async () => {
+  const hosted = await mountHosted();
+  await confirmHostedOpen(hosted);
+  const pending = hosted.adapter().persistence.flush();
+  await hosted.unmount();
+  const result = await pending;
+  assert.equal(result.ok, false);
+});
+
+test("E7: clean standby pro face leaves without invoking any save", async () => {
+  const hosted = await mountHosted();
+  globalThis.__w17SaveHostedDeck = async () => { assert.fail("clean standby must not save"); };
+  try {
+    assert.equal(hasUnsavedProChanges("deck-w17"), false);
+    assert.equal(await saveBeforeLeavePro("deck-w17"), true);
+    assert.equal(hosted.adapter().persistence.dirty, false);
+  } finally { await hosted.unmount(); }
+});
+
+test("E7: gate save followed by background flush reuses committed revision", async () => {
+  const hosted = await mountHosted();
+  const { send, sent } = await confirmHostedOpen(hosted);
+  await act(async () => send({ type: "dirty", dirty: true, revision: 1 }));
+  const capture = sent.findLast(message => message.type === "recovery-capture");
+  await act(async () => send({ type: "recovery-snapshot", recoveryId: capture.recoveryId, ok: true, snapshot: { revision: 1, payload: JSON.parse(JSON.stringify(deckDocumentToPptist(sampleDeck()))) } }));
+  let saves = 0;
+  globalThis.__w17SaveHostedDeck = async item => {
+    saves++;
+    return { ok: true, item: { ...item, revisionId: "committed-once" } };
+  };
+  const backgroundFlush = hosted.adapter().persistence.flush;
+  await act(async () => assert.equal(await saveBeforeLeavePro("deck-w17"), true));
+  await hosted.unmount();
+  const result = await backgroundFlush();
+  assert.equal(result.ok, true);
+  assert.equal(result.item.revisionId, "committed-once");
+  assert.equal(saves, 1);
+});
+
+test("E7: hidden/pagehide save dirty deck once and ignore clean deck", async () => {
+  const hosted = await mountHosted();
+  let saves = 0;
+  globalThis.__w17SaveHostedDeck = async item => {
+    saves++;
+    return { ok: true, item: { ...item, revisionId: "hidden-save" } };
+  };
+  const visibility = Object.getOwnPropertyDescriptor(document, "visibilityState");
+  try {
+    const { send, sent } = await confirmHostedOpen(hosted);
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    await act(async () => {
+      document.dispatchEvent(new window.Event("visibilitychange"));
+      window.dispatchEvent(new window.Event("pagehide"));
+    });
+    assert.equal(saves, 0);
+    const dirtyAndCapture = async revision => {
+      await act(async () => send({ type: "dirty", dirty: true, revision }));
+      const capture = sent.findLast(message => message.type === "recovery-capture");
+      await act(async () => send({ type: "recovery-snapshot", recoveryId: capture.recoveryId, ok: true, snapshot: { revision, payload: JSON.parse(JSON.stringify(deckDocumentToPptist(sampleDeck()))) } }));
+    };
+    await dirtyAndCapture(1);
+    await act(async () => document.dispatchEvent(new window.Event("visibilitychange")));
+    assert.equal(saves, 1, "hidden document must flush dirty deck");
+    await dirtyAndCapture(2);
+    await act(async () => {
+      window.dispatchEvent(new window.Event("pagehide"));
+      document.dispatchEvent(new window.Event("visibilitychange"));
+    });
+    assert.equal(saves, 2, "pagehide must save next edit and duplicate hidden event must share flush");
+    assert.equal(hosted.adapter().persistence.dirty, false);
+  } finally {
+    if (visibility) Object.defineProperty(document, "visibilityState", visibility);
+    else delete document.visibilityState;
     await hosted.unmount();
   }
 });

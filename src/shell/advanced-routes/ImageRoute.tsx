@@ -416,6 +416,7 @@ export function ImageRoute({
               ? caught.message
               : "专业编辑还没确认保存。",
           );
+          return;
         }
         setPluginModeState("normal");
       })();

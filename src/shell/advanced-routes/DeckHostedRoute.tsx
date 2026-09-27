@@ -12,7 +12,7 @@ import {
   handoffItemKey,
   hostedSaveTimeoutMs,
   materializeHandoffJson,
-  openHostedSaveGate,
+  bindProFaceHandoff,
   reportProSaved,
   useEditorHandoffSource,
 } from "./editor-handoff";
@@ -234,9 +234,21 @@ export function DeckHostedRoute({
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
-  const saveGateRef = useRef<ReturnType<typeof openHostedSaveGate> | null>(
-    null,
-  );
+  const mountedRef = useRef(true);
+  const savedRevisionRef = useRef(0);
+  const lastSavedRef = useRef<{ revision: number; item: typeof item } | null>(null);
+  const captureSequenceRef = useRef(0);
+  const capturesRef = useRef(new Map<string, number>());
+  const cachedRef = useRef<{ revision: number; payload: unknown } | null>(null);
+  const saveWaitRef = useRef<{ id: string; finish: (payload: unknown) => void } | null>(null);
+  const inFlightRef = useRef<Promise<{ ok: boolean; error?: string; item?: typeof item }> | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      saveWaitRef.current?.finish(null);
+    };
+  }, []);
   const gateHandoff = useModeSwitchHandoff();
   const reportModeSwitchFailure = useModeSwitchFailure();
   const resolved = useEditorHandoffSource(item, gateHandoff);
@@ -261,7 +273,11 @@ export function DeckHostedRoute({
     editRevisionRef.current = 0;
     openedContentIdentityRef.current = null;
     openingIdRef.current = null;
-    saveGateRef.current = null;
+    saveWaitRef.current?.finish(null);
+    capturesRef.current.clear();
+    cachedRef.current = null;
+    savedRevisionRef.current = 0;
+    lastSavedRef.current = null;
     snapshotRef.current = null;
     setSnapshot(null);
     setDirty(false);
@@ -466,9 +482,16 @@ export function DeckHostedRoute({
         // Only a committed host revision can clear dirty. The core's clean
         // echo may arrive after newer edits while an upload is in flight.
         if (message.dirty !== true) return;
-        setDirty(true);
-        editRevisionRef.current = typeof message.revision === "number"
+        const revision = typeof message.revision === "number"
           ? message.revision : editRevisionRef.current + 1;
+        if (revision <= editRevisionRef.current) return;
+        setDirty(true);
+        editRevisionRef.current = revision;
+        saveWaitRef.current?.finish(null);
+        const recoveryId = `capture-${instanceId}-${++captureSequenceRef.current}`;
+        capturesRef.current.clear();
+        capturesRef.current.set(recoveryId, revision);
+        sendToEditor({ type: "recovery-capture", recoveryId });
         setEditRevision(editRevisionRef.current);
         return;
       }
@@ -478,15 +501,18 @@ export function DeckHostedRoute({
         return;
       }
       if (message.type === "recovery-snapshot" && message.ok) {
+        const recoveryId = String(message.recoveryId || "");
+        const revision = capturesRef.current.get(recoveryId);
+        if (revision === undefined || message.snapshot?.revision !== revision ||
+            revision !== editRevisionRef.current) return;
+        capturesRef.current.delete(recoveryId);
         const payload = message.snapshot?.payload ?? null;
+        if (payload == null) return;
+        cachedRef.current = { revision, payload };
         snapshotRef.current = payload;
         setSnapshot(payload);
-        const gate = saveGateRef.current;
-        const recoveryId = String(message.recoveryId || "");
-        if (gate && (!recoveryId || recoveryId === gate.saveId)) {
-          gate.acceptSnapshot(payload);
-          gate.acceptSaveResult();
-        }
+        const waiting = saveWaitRef.current;
+        if (waiting?.id === recoveryId) waiting.finish(payload);
         return;
       }
     };
@@ -527,63 +553,92 @@ export function DeckHostedRoute({
     [instanceId, sendToEditor],
   );
 
-  const flush = useCallback(async () => {
-    if (!sourceReady || openedContentIdentityRef.current !== contentIdentity) {
-      return { ok: false as const, error: "文件还没成功载入，不能保存。" };
-    }
-    const gate = openHostedSaveGate({ timeoutMs: hostedSaveTimeoutMs() });
-    const savingRevision = editRevisionRef.current;
-    saveGateRef.current = gate;
-    const sent = sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "save-request",
-      instanceId,
-      saveId: gate.saveId,
-    });
-    sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "recovery-capture",
-      instanceId,
-      recoveryId: gate.saveId,
-    });
-    if (!sent) {
-      return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
-    }
-    const confirmed = await gate.wait();
-    if (!confirmed.ok) {
-      return { ok: false as const, error: confirmed.error };
-    }
-    if (openedContentIdentityRef.current !== contentIdentity || saveGateRef.current !== gate) {
-      return { ok: false as const, error: "文件已切换，不能保存上一份稿。" };
-    }
-    const payload = confirmed.snapshot;
-    snapshotRef.current = payload;
-    setSnapshot(payload);
-    const result = await saveHostedDeck(persistedItemRef.current, payload, siteId, savingRevision);
-    if (openedContentIdentityRef.current !== contentIdentity || saveGateRef.current !== gate) {
-      return { ok: false as const, error: "文件已切换，请重新打开查看保存结果。" };
-    }
-    if (!result.ok) {
-      setStatus(result.error);
-      sendToEditor({ type: "save-result", ok: false, saveId: gate.saveId, message: result.error });
-      return result;
-    }
-    const savedItem = result.item;
-    persistedItemRef.current = savedItem;
-    if (editRevisionRef.current === savingRevision) setDirty(false);
-    setStatus("");
-    sendToEditor({
-      protocol: EDITOR_PROTOCOL,
-      type: "save-result",
-      instanceId,
-      ok: true,
-      message: "已保存",
-      saveId: gate.saveId,
-      revision: savedItem.revisionId,
-    });
-    reportProSaved(handoffItemKey(item), savedItem);
-    return { ok: true as const, item: savedItem };
+  const flush = useCallback(() => {
+    if (inFlightRef.current) return inFlightRef.current;
+    const operation = (async () => {
+      if (!sourceReady || openedContentIdentityRef.current !== contentIdentity) {
+        return { ok: false, error: "文件还没成功载入，不能保存。" };
+      }
+      const savingRevision = editRevisionRef.current;
+      if (lastSavedRef.current?.revision === savingRevision) {
+        return { ok: true, item: lastSavedRef.current.item };
+      }
+      const saveId = `save-${instanceId}-${++captureSequenceRef.current}`;
+      let payload = cachedRef.current?.revision === savingRevision
+        ? cachedRef.current.payload : null;
+      if (payload == null && mountedRef.current) {
+        payload = await new Promise<unknown>((resolve) => {
+          const finish = (value: unknown) => {
+            clearTimeout(timer);
+            if (saveWaitRef.current?.id === saveId) saveWaitRef.current = null;
+            capturesRef.current.delete(saveId);
+            resolve(value);
+          };
+          const timer = setTimeout(() => finish(null), hostedSaveTimeoutMs());
+          saveWaitRef.current = { id: saveId, finish };
+          capturesRef.current.set(saveId, savingRevision);
+          const sent = sendToEditor({ type: "save-request", saveId });
+          sendToEditor({ type: "recovery-capture", recoveryId: saveId });
+          if (!sent) finish(null);
+        });
+      }
+      if (payload == null || savingRevision !== editRevisionRef.current) {
+        return { ok: false, error: "最新修改尚未取得快照，未保存，请重试。" };
+      }
+      if (openedContentIdentityRef.current !== contentIdentity) {
+        return { ok: false, error: "文件已切换，不能保存上一份稿。" };
+      }
+      const result = await saveHostedDeck(persistedItemRef.current, payload, siteId, savingRevision);
+      if (openedContentIdentityRef.current !== contentIdentity) {
+        return { ok: false, error: "文件已切换，请重新打开查看保存结果。" };
+      }
+      if (!result.ok) {
+        if (mountedRef.current) setStatus(result.error);
+        sendToEditor({ type: "save-result", ok: false, saveId, message: result.error });
+        return result;
+      }
+      persistedItemRef.current = result.item;
+      savedRevisionRef.current = savingRevision;
+      lastSavedRef.current = { revision: savingRevision, item: result.item };
+      reportProSaved(handoffItemKey(item), result.item);
+      if (savingRevision !== editRevisionRef.current) {
+        return { ok: false, error: "保存期间有新的修改，正在等待再次保存。" };
+      }
+      if (mountedRef.current) {
+        setDirty(false);
+        setStatus("");
+      }
+      sendToEditor({ type: "save-result", ok: true, saveId, message: "已保存", revision: result.item.revisionId });
+      return { ok: true, item: result.item };
+    })();
+    inFlightRef.current = operation;
+    void operation.finally(() => {
+      if (inFlightRef.current === operation) inFlightRef.current = null;
+    }).catch(() => {});
+    return operation;
   }, [contentIdentity, instanceId, item, sendToEditor, siteId, sourceReady]);
+
+  useEffect(() => bindProFaceHandoff(handoffItemKey(item), {
+    hasUnsavedChanges: () => editRevisionRef.current > savedRevisionRef.current,
+    flush: async () => (await flush()).ok,
+  }), [item, flush]);
+
+  useEffect(() => {
+    const flushOnLeave = () => {
+      if (editRevisionRef.current <= savedRevisionRef.current) return;
+      // Visibility and pagehide can arrive together; flush shares its in-flight save.
+      void flush().catch(() => {});
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushOnLeave();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flushOnLeave);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flushOnLeave);
+    };
+  }, [flush]);
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 

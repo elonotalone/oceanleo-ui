@@ -61,6 +61,7 @@ function ChartLegacyRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="chart-editor"
+      handoffItemKey={w19ItemKey("chart-editor", props.item)}
       beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
       renderNormal={() => (
         <ChartLegacyFace {...props} enterProRef={enterProRef} />

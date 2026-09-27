@@ -257,6 +257,10 @@ const routesStubUrl = dataModule(`
 `);
 const editorHandoffStubUrl = dataModule(`
   export const ENTER_PRO_NOT_READY = "还没准备好，稍后再切换";
+  export const LEAVE_PRO_SAVE_FAILED = "专业编辑里的修改还没保存成功，请重试。";
+  export function bindProFaceHandoff() { return () => {}; }
+  export function hasUnsavedProChanges() { return false; }
+  export async function saveBeforeLeavePro() { return true; }
   const EMPTY_HANDOFF = { kind: "empty" };
   const READY_EMPTY = { status: "ready", source: EMPTY_HANDOFF };
   export function handoffItemKey(item) { return (item && (item.key || item.id)) || ""; }

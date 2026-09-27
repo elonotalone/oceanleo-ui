@@ -76,6 +76,7 @@ export function RichDocRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="richdoc"
+      handoffItemKey={handoffItemKey(props.item)}
       beforeEnterPro={() => captureBeforeEnterPro(props.item)}
       renderNormal={() => <RichDocLegacyRoute {...props} />}
       renderPro={() => (

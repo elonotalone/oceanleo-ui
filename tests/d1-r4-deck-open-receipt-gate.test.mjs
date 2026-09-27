@@ -54,6 +54,7 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
     export function useModeSwitchReady(ready) { globalThis.__d1Opened = ready; }
   `),
   "./editor-handoff": dataModule(`
+    export function bindProFaceHandoff() { return () => {}; }
     export const ENTER_PRO_NOT_READY = "还没准备好";
     export function handoffItemKey(item) { return String(item.key || item.id || ""); }
     const resolvedByItem = new WeakMap();
@@ -264,7 +265,7 @@ test("D1 R4: before the matching draft receipt, reject dirty/content and all sav
     const savedDraft = { format: "pptist", slides: [{ id: "user-edited" }] };
     let saving;
     await act(async () => { saving = p.flush(); });
-    await act(async () => f.send({ type: "recovery-snapshot", recoveryId: "d1-save", ok: true, snapshot: { payload: savedDraft } }));
+    await act(async () => f.send({ type: "recovery-snapshot", recoveryId: f.recorder.messages.findLast(m => m.type === "recovery-capture").recoveryId, ok: true, snapshot: { revision: 24, payload: savedDraft } }));
     assert.equal((await saving).ok, true);
   } finally { await f.view.unmount(); }
 });
@@ -318,7 +319,7 @@ test("D1 R5: server failure stays dirty, never acknowledges saved; later saves u
       globalThis.__d1Save = (...args) => new Promise(resolve => { finish = value => { complete?.(...args); resolve(value); }; });
       let saving;
       await act(async () => { saving = globalThis.__d1Persistence.flush(); });
-      await act(async () => f.send({type:"recovery-snapshot", recoveryId:"d1-save", ok:true, snapshot:{payload:HANDOFF.json}}));
+      await act(async () => f.send({type:"recovery-snapshot", recoveryId:f.recorder.messages.findLast(m => m.type === "recovery-capture").recoveryId, ok:true, snapshot:{revision:globalThis.__d1Persistence.editRevision,payload:HANDOFF.json}}));
       assert.equal(globalThis.__d1Persistence.dirty,true,"capture is not durable saving");
       assert.ok(finish);
       return {finish, saving};

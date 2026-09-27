@@ -105,6 +105,7 @@ function VideoTimelineGated(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="video-timeline"
+      handoffItemKey={w19ItemKey("video-timeline", props.item)}
       beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
       renderNormal={() => (
         <VideoTimelineLegacyRoute {...props} enterProRef={enterProRef} />

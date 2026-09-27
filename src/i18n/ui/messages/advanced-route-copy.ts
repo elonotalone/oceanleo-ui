@@ -52,6 +52,8 @@ export const ADVANCED_ROUTE_COPY_SOURCE = {
   // ---- 模式切换过渡门（ModeSwitchGate，plugin-ui U4） ----
   switchingToPro: "正在切换到专业编辑…",
   switchingToEdit: "正在切换到编辑…",
+  savingProChanges: "正在保存专业编辑里的修改…",
+  leaveProSaveFailed: "专业编辑里的修改还没保存成功，请重试。",
 };
 
 export type AdvancedRouteCopyName = keyof typeof ADVANCED_ROUTE_COPY_SOURCE;
@@ -91,6 +93,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Editor error",
     switchingToPro: "Switching to Pro edit…",
     switchingToEdit: "Switching to Edit…",
+    savingProChanges: "Saving changes from Pro edit…",
+    leaveProSaveFailed: "Changes from Pro edit could not be saved. Please retry.",
   },
   de: {
     title: "Erweiterte Werkzeuge",
@@ -121,6 +125,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Editor-Fehler",
     switchingToPro: "Wechsel zur Profi-Bearbeitung…",
     switchingToEdit: "Wechsel zur Bearbeitung…",
+    savingProChanges: "Änderungen aus der Profi-Bearbeitung werden gespeichert…",
+    leaveProSaveFailed: "Die Änderungen konnten nicht gespeichert werden. Bitte erneut versuchen.",
   },
   fr: {
     title: "Outils avancés",
@@ -151,6 +157,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Erreur de l'éditeur",
     switchingToPro: "Passage à l'édition pro…",
     switchingToEdit: "Passage à l'édition…",
+    savingProChanges: "Enregistrement des modifications de l’édition pro…",
+    leaveProSaveFailed: "Les modifications n’ont pas pu être enregistrées. Réessayez.",
   },
   it: {
     title: "Strumenti avanzati",
@@ -181,6 +189,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Errore dell'editor",
     switchingToPro: "Passaggio alla modifica pro…",
     switchingToEdit: "Passaggio alla modifica…",
+    savingProChanges: "Salvataggio delle modifiche della modalità pro…",
+    leaveProSaveFailed: "Impossibile salvare le modifiche. Riprova.",
   },
   es: {
     title: "Herramientas avanzadas",
@@ -211,6 +221,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Error del editor",
     switchingToPro: "Cambiando a edición pro…",
     switchingToEdit: "Cambiando a edición…",
+    savingProChanges: "Guardando los cambios de la edición pro…",
+    leaveProSaveFailed: "No se pudieron guardar los cambios. Vuelve a intentarlo.",
   },
   "es-419": {
     title: "Herramientas avanzadas",
@@ -241,6 +253,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Error del editor",
     switchingToPro: "Cambiando a edición pro…",
     switchingToEdit: "Cambiando a edición…",
+    savingProChanges: "Guardando los cambios de la edición pro…",
+    leaveProSaveFailed: "No se pudieron guardar los cambios. Vuelve a intentarlo.",
   },
   "pt-BR": {
     title: "Ferramentas avançadas",
@@ -271,6 +285,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Erro do editor",
     switchingToPro: "Mudando para edição pro…",
     switchingToEdit: "Mudando para edição…",
+    savingProChanges: "Salvando alterações da edição pro…",
+    leaveProSaveFailed: "Não foi possível salvar as alterações. Tente novamente.",
   },
   "pt-PT": {
     title: "Ferramentas avançadas",
@@ -301,6 +317,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Erro do editor",
     switchingToPro: "A mudar para edição pro…",
     switchingToEdit: "A mudar para edição…",
+    savingProChanges: "A guardar alterações da edição pro…",
+    leaveProSaveFailed: "Não foi possível guardar as alterações. Tente novamente.",
   },
   vi: {
     title: "Công cụ nâng cao",
@@ -331,6 +349,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Lỗi trình chỉnh sửa",
     switchingToPro: "Đang chuyển sang chỉnh sửa chuyên nghiệp…",
     switchingToEdit: "Đang chuyển sang chỉnh sửa…",
+    savingProChanges: "Đang lưu thay đổi trong trình chỉnh sửa chuyên nghiệp…",
+    leaveProSaveFailed: "Chưa lưu được thay đổi. Vui lòng thử lại.",
   },
   tr: {
     title: "Gelişmiş araçlar",
@@ -361,6 +381,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · Düzenleyici hatası",
     switchingToPro: "Pro düzenlemeye geçiliyor…",
     switchingToEdit: "Düzenlemeye geçiliyor…",
+    savingProChanges: "Pro düzenlemedeki değişiklikler kaydediliyor…",
+    leaveProSaveFailed: "Değişiklikler kaydedilemedi. Lütfen tekrar deneyin.",
   },
   "zh-TW": {
     title: "進階功能",
@@ -391,6 +413,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · 編輯器錯誤",
     switchingToPro: "正在切換到專業編輯…",
     switchingToEdit: "正在切換到編輯…",
+    savingProChanges: "正在儲存專業編輯裡的修改…",
+    leaveProSaveFailed: "專業編輯裡的修改還沒儲存成功，請重試。",
   },
   ja: {
     title: "高度なツール",
@@ -421,6 +445,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · エディターのエラー",
     switchingToPro: "プロ編集に切り替えています…",
     switchingToEdit: "編集に切り替えています…",
+    savingProChanges: "プロ編集の変更を保存しています…",
+    leaveProSaveFailed: "変更を保存できませんでした。再試行してください。",
   },
   ko: {
     title: "고급 도구",
@@ -451,6 +477,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · 편집기 오류",
     switchingToPro: "프로 편집으로 전환 중…",
     switchingToEdit: "편집으로 전환 중…",
+    savingProChanges: "프로 편집의 변경 사항을 저장 중…",
+    leaveProSaveFailed: "변경 사항을 저장하지 못했습니다. 다시 시도하세요.",
   },
   ar: {
     title: "الأدوات المتقدمة",
@@ -481,6 +509,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · خطأ في المحرر",
     switchingToPro: "جارٍ التبديل إلى التحرير الاحترافي…",
     switchingToEdit: "جارٍ التبديل إلى التحرير…",
+    savingProChanges: "جارٍ حفظ تغييرات التحرير الاحترافي…",
+    leaveProSaveFailed: "تعذر حفظ التغييرات. يُرجى إعادة المحاولة.",
   },
   th: {
     title: "เครื่องมือขั้นสูง",
@@ -511,6 +541,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · ข้อผิดพลาดของตัวแก้ไข",
     switchingToPro: "กำลังสลับไปแก้ไขระดับโปร…",
     switchingToEdit: "กำลังสลับไปแก้ไข…",
+    savingProChanges: "กำลังบันทึกการเปลี่ยนแปลงจากการแก้ไขระดับโปร…",
+    leaveProSaveFailed: "บันทึกการเปลี่ยนแปลงไม่สำเร็จ โปรดลองอีกครั้ง",
   },
   hi: {
     title: "उन्नत टूल",
@@ -541,6 +573,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     editorErrorDialog: "{title} · एडिटर त्रुटि",
     switchingToPro: "प्रो संपादन पर स्विच हो रहा है…",
     switchingToEdit: "संपादन पर स्विच हो रहा है…",
+    savingProChanges: "प्रो संपादन के बदलाव सहेजे जा रहे हैं…",
+    leaveProSaveFailed: "बदलाव सहेजे नहीं जा सके। कृपया फिर से कोशिश करें।",
   },
 };
 

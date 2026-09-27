@@ -15,6 +15,7 @@ import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 import {
   bindNormalFaceHandoff,
+  handoffItemKey,
   captureBeforeEnterPro,
   useProSavedRevision,
 } from "./editor-handoff";
@@ -103,6 +104,7 @@ export function DeckRoute(props: AdvancedContentWorkbenchProps) {
   return (
     <PluginModeSwitchGate
       pluginId="deck"
+      handoffItemKey={handoffItemKey(props.item)}
       captureOnMount
       beforeEnterPro={(signal) => captureBeforeEnterPro(props.item, { waitForReady: true, signal })}
       renderNormal={() => <DeckLegacyRoute {...props} />}
@@ -153,10 +155,10 @@ function DeckLegacyRoute({
                   : String(liveRevisionRef.current),
             },
       persistInBackground: () => {
-        if (editor.dirty && !editor.sourceFailed && !editor.loading && !officeSource.loading) void editor.save();
+        if (editor.dirty && !editor.sourceFailed && !editor.loading && !officeSource.loading) editor.persistInBackground();
       },
     });
-  }, [editor.dirty, editor.loading, editor.save, editor.sourceFailed, officeSource.loading, item.id, item.key]);
+  }, [editor.dirty, editor.loading, editor.persistInBackground, editor.sourceFailed, officeSource.loading, item.id, item.key]);
   const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");
@@ -358,10 +360,11 @@ function DeckLegacyRoute({
           return editor.error || "";
         }
         if (extension === "json") {
-          editor.downloadJson();
+          await editor.downloadJson();
           return "";
         }
         if (extension === "pdf") {
+          await editor.flushBeforeExport();
           const title = editor.deck.title || item.title || "presentation";
           return await downloadConvertedCopy({
             source: await buildDeckPptxBlob(editor.deck),
@@ -382,6 +385,7 @@ function DeckLegacyRoute({
       editor.downloadJson,
       editor.error,
       editor.exportPptx,
+      editor.flushBeforeExport,
       item.title,
     ],
   );
@@ -601,6 +605,7 @@ function DeckLegacyRoute({
           dirty: editor.dirty,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
+          draft: editor.draft,
           recovery: {
             key: advancedRecoveryKey("deck", item),
             ready: !editor.loading,
