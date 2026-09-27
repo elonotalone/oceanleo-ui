@@ -21,6 +21,7 @@ import type {
   VideoCanvasNode,
 } from "./video-canvas-schema";
 import { flushVideoCanvasGraph } from "./video-canvas-leave";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 
 export {
   VIDEO_CANVAS_DUAL_ENGINE_HANDOFF,
@@ -231,6 +232,19 @@ export function VideoCanvasStage({
           editRevision,
           autoSave: true,
           flush: () => flushVideoCanvasGraph(item, graph),
+          recovery: {
+            draftSchema: liveCanvasBase ? undefined : "oceanleo.workflow.graph.v1",
+            key: advancedRecoveryKey("video-canvas", item),
+            ready: !liveCanvasBase,
+            capture: () => liveCanvasBase ? null : graph,
+            restore: (payload) => {
+              const restored = payload as VideoCanvasGraph | null;
+              if (!restored || !Array.isArray(restored.nodes) || !Array.isArray(restored.edges)) return false;
+              setGraph(restored);
+              setEditRevision(value => value + 1);
+              return true;
+            },
+          },
         },
       }}
       onClose={onClose}

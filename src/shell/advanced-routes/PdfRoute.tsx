@@ -1,5 +1,6 @@
 "use client";
 
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport } from "../advanced-draft-gates";
 import { useCallback, useMemo, useState } from "react";
 import { useEditorHandoffSource } from "./editor-handoff";
 import {
@@ -191,6 +192,7 @@ export function PdfRoute({
   );
   const downloadAs = useCallback(
     async (extension: string): Promise<string> => {
+      if (!await ensureAdvancedDraftExport(item.key || item.id)) return "";
       if (extension !== "pdf") {
         return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
       }
@@ -249,7 +251,7 @@ export function PdfRoute({
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.pdf[0].label}`,
           icon: "download",
           disabled: editor.loading || editor.processing,
-          onTrigger: editor.download,
+          onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.download),
         },
         upload: {
           accept: docFamilyAcceptAttribute("pdf"),
@@ -322,6 +324,7 @@ export function PdfRoute({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.pdf.edit.v1",
             key: advancedRecoveryKey("pdf", item),
             ready: !editor.loading && !editor.processing,
             capture: editor.captureRecovery,

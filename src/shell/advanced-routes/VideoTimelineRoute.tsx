@@ -1,5 +1,6 @@
 "use client";
 
+import { ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
 import {
   useCallback,
   useEffect,
@@ -171,6 +172,7 @@ function VideoTimelineLegacyBody({
    */
   const deliver = useCallback(
     async (format: string) => {
+      if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
       setDeliverNotice("");
       const rendered = editor.exportedUrl || (await editor.exportVideo());
       if (format === "mp4") {
@@ -279,6 +281,8 @@ function VideoTimelineLegacyBody({
   useModeSwitchReady(!editor.loadingSource);
   useEffect(() => {
     enterProRef.current = async () => {
+      const gate = await flushAdvancedDraftGate(item.key || item.id);
+      if (gate && !gate.ok) return gate;
       const handoff = editor.sourceReady
         ? {
             kind: "inline" as const,
@@ -287,7 +291,7 @@ function VideoTimelineLegacyBody({
           }
         : resolveW19Handoff(item, null);
       stashW19EnterHandoff(w19ItemKey("video-timeline", sourceItem), handoff);
-      return { ok: true, handoff, item };
+      return { ok: true, handoff, item: gate?.item ?? item };
     };
     return () => {
       enterProRef.current = null;
@@ -343,6 +347,7 @@ function VideoTimelineLegacyBody({
           disabled:
             busy || editor.loadingSource || !editor.sourceReady,
           onTrigger: async () => {
+            if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
             await editor.exportVideo();
           },
         },
@@ -406,6 +411,7 @@ function VideoTimelineLegacyBody({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.video-timeline.edit.v1",
             key: advancedRecoveryKey("video-timeline", item),
             ready: !editor.loadingSource,
             capture: () =>

@@ -491,14 +491,20 @@ export function GameCodeStage({
           editRevision,
           flush,
           recovery: {
+            draftSchema: "oceanleo.game.code.v1",
             key: advancedRecoveryKey("game", item),
             ready: true,
-            capture: () => ({ source, origin, playback }),
+            capture: () => ({ source, origin, prompt, skeletonVersion, engineApiVersion, paramDeclarations }),
             restore: (payload) => {
-              const next = payload as { source?: string; origin?: string } | null;
+              const next = payload as { source?: string; origin?: string; prompt?: string; skeletonVersion?: string; engineApiVersion?: string; paramDeclarations?: GameParamDeclarations | null } | null;
               if (!next?.source) return false;
               setSource(next.source);
               if (next.origin) setOrigin(next.origin);
+              if (typeof next.prompt === "string") setPrompt(next.prompt);
+              if (typeof next.skeletonVersion === "string") setSkeletonVersion(next.skeletonVersion);
+              if (typeof next.engineApiVersion === "string") setEngineApiVersion(next.engineApiVersion);
+              if (next.paramDeclarations !== undefined) setParamDeclarations(next.paramDeclarations);
+              bump();
               return true;
             },
           },

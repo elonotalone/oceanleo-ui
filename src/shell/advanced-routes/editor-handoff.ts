@@ -1,5 +1,6 @@
 "use client";
 
+import { flushAdvancedDraftGate } from "../advanced-draft-gates";
 import { useMemo, useSyncExternalStore } from "react";
 
 import type { LibraryItem } from "../library-data";
@@ -78,9 +79,15 @@ export function hasUnsavedProChanges(itemKey: string): boolean {
 
 export async function saveBeforeLeavePro(itemKey: string, signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return false;
-  const binder = proFaceBinders.get(itemKey);
-  if (!binder || !binder.hasUnsavedChanges()) return true;
   try {
+    const draftGate = flushAdvancedDraftGate(itemKey);
+    if (draftGate) {
+      const saved = await draftGate;
+      if (!saved.ok || signal?.aborted) return false;
+      if (saved.item) reportProSaved(itemKey, saved.item);
+    }
+    const binder = proFaceBinders.get(itemKey);
+    if (!binder || !binder.hasUnsavedChanges()) return true;
     return await binder.flush() && !signal?.aborted && !binder.hasUnsavedChanges();
   } catch {
     return false;
@@ -277,8 +284,14 @@ export async function captureBeforeEnterPro(
     return { ok: false, error: ENTER_PRO_NOT_READY };
   }
   if (binder) {
+    const draftGate = flushAdvancedDraftGate(key);
+    if (draftGate) {
+      const saved = await draftGate;
+      if (!saved.ok) return { ok: false, error: saved.error || ENTER_PRO_NOT_READY };
+      if (saved.item) item = saved.item;
+    }
     try {
-      binder.persistInBackground?.();
+      if (!draftGate) binder.persistInBackground?.();
     } catch {
       /* background save must not block the switch */
     }

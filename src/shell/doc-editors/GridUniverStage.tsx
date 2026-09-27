@@ -16,6 +16,7 @@
  * 提交之外（见挂载 effect 的 cleanup 注释）。
  */
 
+import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
 import {
   useCallback,
   useEffect,
@@ -564,6 +565,7 @@ export function GridUniverStage({
   );
 
   const exportXlsx = useCallback(async () => {
+    if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
     if (xlsxExportBusyRef.current) return;
     xlsxExportBusyRef.current = true;
     setXlsxExporting(true);
@@ -581,6 +583,7 @@ export function GridUniverStage({
 
   const downloadAs = useCallback(
     async (extension: string): Promise<string> => {
+      if (!await ensureAdvancedDraftExport(item.key || item.id)) return "";
       try {
         if (extension === "xlsx") {
           await exportXlsx();
@@ -958,6 +961,7 @@ export function GridUniverStage({
           autoSave: !readonly,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.grid.univer.v1",
             key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
             ready: snapshotReady && !loading,
             capture: () => currentSnapshot(),

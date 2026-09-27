@@ -1,5 +1,6 @@
 "use client";
 
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
 import {
   useCallback,
   useEffect,
@@ -109,6 +110,7 @@ function AudioLegacyRoute({
   /** wav 本地出；mp3 / m4a 拿同一份 wav 去后端转一道再下载。 */
   const deliver = useCallback(
     async (format: string) => {
+      if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
       if (format === "wav") {
         editor.download();
         return;
@@ -210,6 +212,8 @@ function AudioLegacyRoute({
   useModeSwitchReady(!editor.loading);
   useEffect(() => {
     enterProRef.current = async () => {
+      const gate = await flushAdvancedDraftGate(item.key || item.id);
+      if (gate && !gate.ok) return gate;
       const blob = editor.wavBlob();
       const handoff = blob
         ? {
@@ -220,7 +224,7 @@ function AudioLegacyRoute({
           }
         : resolveW19Handoff(item, null);
       stashW19EnterHandoff(w19ItemKey("audio", item), handoff);
-      return { ok: true, handoff, item: saved ?? item };
+      return { ok: true, handoff, item: gate?.item ?? saved ?? item };
     };
     return () => {
       enterProRef.current = null;
@@ -267,7 +271,7 @@ function AudioLegacyRoute({
           label: visualDownloadFormats("audio")[0].label,
           icon: "download",
           disabled: editor.loading || deliverBusy,
-          onTrigger: editor.download,
+          onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.download),
         },
         actions: visualDownloadFormats("audio")
           .slice(1)
@@ -295,6 +299,7 @@ function AudioLegacyRoute({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.audio.edit.v1",
             key: advancedRecoveryKey("audio", item),
             ready: !editor.loading,
             capture: editor.captureRecovery,

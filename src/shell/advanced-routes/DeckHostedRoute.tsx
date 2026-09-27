@@ -18,6 +18,7 @@ import {
 } from "./editor-handoff";
 import { saveHostedDeck } from "./deck-hosted-save";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { AdvancedHostedDraftChannel } from "../advanced-draft-hosted";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import {
   deckDocumentToPptist,
@@ -219,6 +220,9 @@ export function DeckHostedRoute({
   const openedContentIdentityRef = useRef<string | null>(null);
   const openingSequenceRef = useRef(0);
   const [dirty, setDirty] = useState(false);
+  const draftChannelRef = useRef<AdvancedHostedDraftChannel | null>(null);
+  if (!draftChannelRef.current) draftChannelRef.current = new AdvancedHostedDraftChannel();
+  useEffect(() => () => draftChannelRef.current?.dispose(), []);
   const [editRevision, setEditRevision] = useState(0);
   const editRevisionRef = useRef(0);
   const persistedItemRef = useRef(item);
@@ -447,6 +451,7 @@ export function DeckHostedRoute({
         instanceId,
       });
       if (!message) return;
+      if (draftChannelRef.current!.acceptRestore(message)) return;
       if (message.type === "ready") {
         frameLoadedRef.current = true;
         setFrameLoaded(true);
@@ -487,6 +492,7 @@ export function DeckHostedRoute({
         if (revision <= editRevisionRef.current) return;
         setDirty(true);
         editRevisionRef.current = revision;
+        draftChannelRef.current!.advance(revision);
         saveWaitRef.current?.finish(null);
         const recoveryId = `capture-${instanceId}-${++captureSequenceRef.current}`;
         capturesRef.current.clear();
@@ -509,6 +515,7 @@ export function DeckHostedRoute({
         const payload = message.snapshot?.payload ?? null;
         if (payload == null) return;
         cachedRef.current = { revision, payload };
+        draftChannelRef.current!.accept(revision, payload);
         snapshotRef.current = payload;
         setSnapshot(payload);
         const waiting = saveWaitRef.current;
@@ -642,6 +649,17 @@ export function DeckHostedRoute({
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 
+  const captureDraftRevision = useCallback(async (revision: string | number) => {
+    if (!sourceReady || openedContentIdentityRef.current !== contentIdentity || revision !== editRevisionRef.current) return null;
+    const cached = cachedRef.current;
+    if (cached?.revision === revision) return { revision, payload: cached.payload };
+    return draftChannelRef.current!.capture(revision, () => {
+      const recoveryId = `draft-${instanceId}-${++captureSequenceRef.current}`;
+      capturesRef.current.set(recoveryId, Number(revision));
+      return sendToEditor({ type: "recovery-capture", recoveryId });
+    });
+  }, [contentIdentity, instanceId, sendToEditor, sourceReady]);
+
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -727,25 +745,25 @@ export function DeckHostedRoute({
           dirty: documentOpened && dirty,
           editRevision,
           flush,
+          draft: { schema: "oceanleo.deck.pro.v1", capture: () => null, captureRevision: captureDraftRevision },
           recovery: {
+            draftSchema: "oceanleo.deck.pro.v1",
             key: advancedRecoveryKey("deck", item),
             ready: documentOpened && sourceReady,
-            capture: () => openedContentIdentityRef.current === contentIdentity
-              ? snapshotRef.current || sourceRef.current
-              : null,
-            restore: (payload) => {
+            capture: () => openedContentIdentityRef.current !== contentIdentity ? null
+              : cachedRef.current?.revision === editRevisionRef.current ? cachedRef.current.payload
+              : captureDraftRevision(editRevisionRef.current).then(captured => captured?.payload ?? null),
+            captureRevision: captureDraftRevision,
+            restore: async (payload) => {
               if (!sourceReady || openedContentIdentityRef.current !== contentIdentity || payload == null) return false;
+              const restored = await draftChannelRef.current!.restore(payload, editRevisionRef.current + 1, sendToEditor);
+              if (typeof restored !== "number" || !mountedRef.current) return false;
+              editRevisionRef.current = restored;
+              cachedRef.current = { revision: restored, payload };
               snapshotRef.current = payload;
-              sourceRef.current = payload;
               setSnapshot(payload);
-              setSource(payload);
-              sendToEditor({
-                protocol: EDITOR_PROTOCOL,
-                type: "recovery-restore",
-                instanceId,
-                recoveryId: `restore-${Date.now().toString(36)}`,
-                snapshot: { revision: editRevision, payload },
-              });
+              setEditRevision(restored);
+              setDirty(true);
               return true;
             },
           },

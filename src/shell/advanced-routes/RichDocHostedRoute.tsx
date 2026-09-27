@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useModeSwitchHandoff, useModeSwitchReady } from "./mode-switch-gate";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { AdvancedHostedDraftChannel } from "../advanced-draft-hosted";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
@@ -150,6 +151,9 @@ export function RichDocHostedRoute({
   modeRef.current = mode;
   const [ready, setReady] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const draftChannelRef = useRef<AdvancedHostedDraftChannel | null>(null);
+  if (!draftChannelRef.current) draftChannelRef.current = new AdvancedHostedDraftChannel();
+  useEffect(() => () => draftChannelRef.current?.dispose(), []);
   const [editRevision, setEditRevision] = useState(0);
   const [status, setStatus] = useState("");
   const [convertError, setConvertError] = useState("");
@@ -350,6 +354,7 @@ export function RichDocHostedRoute({
         instanceId,
       });
       if (!message) return;
+      if (draftChannelRef.current!.acceptRestore(message)) return;
       if (message.type === "ready") {
         frameLoadedRef.current = true;
         setFrameLoaded(true);
@@ -362,6 +367,7 @@ export function RichDocHostedRoute({
         if (message.dirty !== true) return;
         dirtyRef.current = true;
         generationRef.current += 1;
+        draftChannelRef.current!.advance(generationRef.current);
         revisionRef.current = message.revision;
         setDirty(true);
         setEditRevision(generationRef.current);
@@ -380,6 +386,7 @@ export function RichDocHostedRoute({
         const payload = message.snapshot?.payload ?? null;
         if (payload == null) return;
         cachedRef.current = { generation: requested.generation, payload, recoveryId };
+        draftChannelRef.current!.accept(requested.generation, payload);
         setSnapshot(payload);
         const gate = saveGateRef.current;
         if (gate && recoveryId === gate.saveId) {
@@ -584,6 +591,17 @@ export function RichDocHostedRoute({
 
   const frameSandbox = embedEditorFrameSandbox(embedBase);
 
+  const captureDraftRevision = useCallback(async (revision: string | number) => {
+    if (!ready || source == null || revision !== generationRef.current) return null;
+    const cached = cachedRef.current;
+    if (cached?.generation === revision) return { revision, payload: cached.payload };
+    return draftChannelRef.current!.capture(revision, () => {
+      const recoveryId = `rd-draft-${instanceId}-${generationRef.current}-${Date.now().toString(36)}`;
+      capturesRef.current.set(recoveryId, { generation: generationRef.current, revision: revisionRef.current });
+      return sendToEditor({ type: "recovery-capture", recoveryId });
+    });
+  }, [instanceId, ready, sendToEditor, source]);
+
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -662,11 +680,27 @@ export function RichDocHostedRoute({
           dirty,
           editRevision,
           flush,
+          draft: { schema: "oceanleo.richdoc.pro.v1", capture: () => null, captureRevision: captureDraftRevision },
           recovery: {
+            draftSchema: "oceanleo.richdoc.pro.v1",
             key: advancedRecoveryKey("richdoc", item),
             ready: ready && source != null,
-            capture: () => snapshot || converted || source,
-            restore: () => false,
+            capture: () => cachedRef.current?.generation === generationRef.current ? cachedRef.current.payload
+              : captureDraftRevision(generationRef.current).then(captured => captured?.payload ?? null),
+            captureRevision: captureDraftRevision,
+            restore: async (payload) => {
+              if (!ready || source == null || payload == null) return false;
+              const restored = await draftChannelRef.current!.restore(payload, generationRef.current + 1, sendToEditor);
+              if (restored === null || !mountedRef.current) return false;
+              revisionRef.current = restored;
+              generationRef.current += 1;
+              cachedRef.current = { generation: generationRef.current, payload, recoveryId: "server-draft" };
+              dirtyRef.current = true;
+              setSnapshot(payload);
+              setDirty(true);
+              setEditRevision(generationRef.current);
+              return true;
+            },
           },
         },
       }}

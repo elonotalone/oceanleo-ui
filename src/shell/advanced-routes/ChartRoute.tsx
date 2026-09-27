@@ -1,5 +1,6 @@
 "use client";
 
+import { ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
 import {
   useCallback,
   useEffect,
@@ -129,6 +130,8 @@ function ChartLegacyBody({
   useModeSwitchReady(!editor.loading);
   useEffect(() => {
     enterProRef.current = async () => {
+      const gate = await flushAdvancedDraftGate(item.key || item.id);
+      if (gate && !gate.ok) return gate;
       const handoff = editor.sourceReady
         ? {
             kind: "inline" as const,
@@ -137,7 +140,7 @@ function ChartLegacyBody({
           }
         : resolveW19Handoff(item, null);
       stashW19EnterHandoff(w19ItemKey("chart-editor", sourceItem), handoff);
-      return { ok: true, handoff, item };
+      return { ok: true, handoff, item: gate?.item ?? item };
     };
     return () => {
       enterProRef.current = null;
@@ -243,6 +246,7 @@ function ChartLegacyBody({
     [editor.importCsv, editor.importXlsx],
   );
   const exportImage = useCallback(async (format: "png" | "svg") => {
+    if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
     if (exportBusyRef.current) return;
     exportBusyRef.current = true;
     setExporting(true);
@@ -290,7 +294,8 @@ function ChartLegacyBody({
       setExporting(false);
     }
   }, [editor.document, item.title]);
-  const exportJson = useCallback(() => {
+  const exportJson = useCallback(async () => {
+    if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
     setExportError("");
     try {
       const snapshot = structuredClone(editor.document);
@@ -415,6 +420,7 @@ function ChartLegacyBody({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.chart.edit.v1",
             key: advancedRecoveryKey("chart-editor@1", item),
             ready: !editor.loading,
             capture: () =>

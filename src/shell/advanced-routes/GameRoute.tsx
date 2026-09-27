@@ -532,6 +532,7 @@ function GameLegacyRoute({
           editRevision,
           flush,
           recovery: {
+            draftSchema: "oceanleo.game.edit.v1",
             key: advancedRecoveryKey("game", item),
             ready: !busy,
             capture: () => (document_ ? { ...document_ } : null),

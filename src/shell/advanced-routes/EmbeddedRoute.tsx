@@ -1,5 +1,6 @@
 "use client";
 
+import { afterAdvancedDraftExport } from "../advanced-draft-gates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
@@ -1632,7 +1633,7 @@ export function EmbeddedRoute({
             ? () => Promise.reject(new Error(designHandshakeError))
             : carrierOpenRejection
               ? () => Promise.reject(new Error(carrierOpenRejection))
-              : requestRemoteExport,
+              : () => afterAdvancedDraftExport(item.key || item.id, requestRemoteExport),
         },
         actions: remoteActions,
         persistence: {
@@ -1656,6 +1657,14 @@ export function EmbeddedRoute({
                   })
                 : saveBeforeNewConversation,
           recovery: {
+            draftSchema: hostedMediaType === "canvas" ? "oceanleo.design.canvas.v1" : undefined,
+            captureRevision: async (revision) => {
+              const remote = remoteRevisionRef.current;
+              if (remote === null) return null;
+              const payload = await captureEmbeddedRecovery();
+              return Object.is(payload.revision, remote) && Object.is(remoteRevisionRef.current, remote)
+                ? { revision, payload } : null;
+            },
             key: advancedRecoveryKey(embeddedAdapterId, item),
             ready:
               designHandshakeReady &&

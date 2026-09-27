@@ -351,7 +351,7 @@ test("flush 在没有 save-result 时超时返回 ok: false（不再发出去就
 test("restore 生效：交回快照后 capture 能再拿到同一份", async () => {
   const hosted = await mountHosted();
   try {
-    await confirmHostedOpen(hosted);
+    const { send, sent } = await confirmHostedOpen(hosted);
     const recovery = hosted.adapter()?.persistence?.recovery;
     assert.ok(recovery, "专业面没有 recovery");
     const snapshot = {
@@ -359,8 +359,13 @@ test("restore 生效：交回快照后 capture 能再拿到同一份", async () 
       slides: [{ id: "restored", elements: [] }],
     };
     const restored = recovery.restore(snapshot);
-    assert.notEqual(restored, false, "restore 还是直接 return false");
-    const captured = recovery.capture();
+    assert.equal(typeof restored.then, "function", "iframe 确认载入前必须等恢复回执");
+    const request = sent.findLast(message => message.type === "recovery-restore");
+    await act(async () => {
+      send({ type: "recovery-result", recoveryId: request.recoveryId, ok: true, revision: 1 });
+      assert.equal(await restored, true);
+    });
+    const captured = hosted.adapter().persistence.recovery.capture();
     assert.equal(captured?.slides?.[0]?.id, "restored");
   } finally {
     await hosted.unmount();

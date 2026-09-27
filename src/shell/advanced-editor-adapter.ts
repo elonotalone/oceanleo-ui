@@ -26,6 +26,11 @@ export interface AdvancedEditorPersistenceAdapter {
   /** Monotonic editor mutation revision, never a saved URL or timestamp. */
   editRevision: string | number;
   dirty: boolean;
+  /** Editors without a mutation feed cannot confirm the latest visible state. */
+  confirmation?: {
+    state: "unconfirmed" | "saving" | "error";
+    message: string;
+  };
   /**
    * When false, the shell keeps close/beforeunload dirty guards and explicit
    * flush, but does not debounce-autosave. Website visual drafts need an
@@ -41,13 +46,23 @@ export interface AdvancedEditorPersistenceAdapter {
 export interface AdvancedEditorDraftAdapter {
   schema: string;
   capture: () => unknown | null | Promise<unknown | null>;
+  /** Async/iframe capture must receipt the payload's actual editor revision. */
+  captureRevision?: (revision: AdvancedEditRevision) => AdvancedDraftCapture | null | Promise<AdvancedDraftCapture | null>;
   /** Already loaded from the server, still awaiting complete version publication. */
   restoredRevision?: AdvancedEditRevision;
   /** Bind version gates for editor-owned download/export commands. */
   bindFlush?: (flush: (() => Promise<AdvancedFlushResult>) | null) => void;
 }
 
+export interface AdvancedDraftCapture {
+  revision: AdvancedEditRevision;
+  payload: unknown;
+}
+
 export interface AdvancedEditorRecoveryAdapter {
+  /** Explicit per-face payload contract; never inferred from adapter id/key. */
+  draftSchema?: string;
+  captureRevision?: AdvancedEditorDraftAdapter["captureRevision"];
   /** Root material + concrete version; stale drafts cannot cross versions. */
   key: string;
   ready: boolean;

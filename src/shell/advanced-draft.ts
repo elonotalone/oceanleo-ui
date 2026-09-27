@@ -13,6 +13,12 @@ export interface AdvancedDraftPointer {
   savedAt: string;
 }
 export interface AdvancedDraftIdentity { rootId: string; baseRevisionId: string }
+export interface AdvancedDraftVersionCoverage {
+  schema: string;
+  /** A reopened editor has its own mutation counter; clear only this exact
+   * restored receipt, never a later upload from another edit/device. */
+  restored?: AdvancedDraftPointer;
+}
 export function advancedDraftIdentity(item: LibraryItem): AdvancedDraftIdentity {
   return {
     rootId: String(item.meta.root_asset_id || item.meta.parent_asset_id || item.id || item.key).trim().slice(0, 512),
@@ -38,8 +44,16 @@ export function advancedDraftCovers(covered: AdvancedEditRevision | undefined, r
 /** A newer full working document remains valid on the just-published base. */
 export function advancedDraftAfterVersion(
   draft: AdvancedDraftPointer | null, covered: AdvancedEditRevision | undefined, baseRevisionId: string,
+  coverage?: AdvancedDraftVersionCoverage,
 ): AdvancedDraftPointer | null {
-  if (!draft || covered === undefined || advancedDraftCovers(covered, draft.editRevision)) return null;
+  if (!draft) return null;
+  // Some graph carriers can only persist a session head, not publish a new
+  // artifact version. Their server draft remains the durable working document.
+  if (coverage && draft.baseRevisionId === baseRevisionId) return draft;
+  if (coverage && draft.schema !== coverage.schema) return { ...draft, baseRevisionId };
+  if (coverage?.restored && draft.url === coverage.restored.url &&
+      draft.savedAt === coverage.restored.savedAt && Object.is(draft.editRevision, coverage.restored.editRevision)) return null;
+  if (covered === undefined || advancedDraftCovers(covered, draft.editRevision)) return null;
   return { ...draft, baseRevisionId };
 }
 

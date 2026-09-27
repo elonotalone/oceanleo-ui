@@ -54,6 +54,8 @@ export const ADVANCED_ROUTE_COPY_SOURCE = {
   switchingToEdit: "正在切换到编辑…",
   savingProChanges: "正在保存专业编辑里的修改…",
   leaveProSaveFailed: "专业编辑里的修改还没保存成功，请重试。",
+  serverDraftReadFailed: "最新服务器草稿暂时无法恢复，自动保存已暂停。请点重试。",
+  serverDraftOtherFace: "最新修改在另一个编辑面，请切换到那个编辑面继续。当前自动保存已暂停。",
 };
 
 export type AdvancedRouteCopyName = keyof typeof ADVANCED_ROUTE_COPY_SOURCE;
@@ -95,6 +97,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Switching to Edit…",
     savingProChanges: "Saving changes from Pro edit…",
     leaveProSaveFailed: "Changes from Pro edit could not be saved. Please retry.",
+    serverDraftReadFailed: "The latest server draft could not be restored. Autosave is paused. Please retry.",
+    serverDraftOtherFace: "Your latest changes are in the other editing view. Switch to that view to continue. Autosave is paused here.",
   },
   de: {
     title: "Erweiterte Werkzeuge",
@@ -127,6 +131,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Wechsel zur Bearbeitung…",
     savingProChanges: "Änderungen aus der Profi-Bearbeitung werden gespeichert…",
     leaveProSaveFailed: "Die Änderungen konnten nicht gespeichert werden. Bitte erneut versuchen.",
+    serverDraftReadFailed: "Der neueste Serverentwurf konnte nicht geladen werden. Automatisches Speichern pausiert. Bitte erneut versuchen.",
+    serverDraftOtherFace: "Die neuesten Änderungen befinden sich in der anderen Bearbeitungsansicht. Wechseln Sie dorthin. Automatisches Speichern pausiert hier.",
   },
   fr: {
     title: "Outils avancés",
@@ -159,6 +165,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Passage à l'édition…",
     savingProChanges: "Enregistrement des modifications de l’édition pro…",
     leaveProSaveFailed: "Les modifications n’ont pas pu être enregistrées. Réessayez.",
+    serverDraftReadFailed: "Le dernier brouillon serveur ne peut pas être restauré. L’enregistrement automatique est suspendu. Réessayez.",
+    serverDraftOtherFace: "Les dernières modifications sont dans l’autre vue d’édition. Passez à cette vue. L’enregistrement automatique est suspendu ici.",
   },
   it: {
     title: "Strumenti avanzati",
@@ -191,6 +199,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Passaggio alla modifica…",
     savingProChanges: "Salvataggio delle modifiche della modalità pro…",
     leaveProSaveFailed: "Impossibile salvare le modifiche. Riprova.",
+    serverDraftReadFailed: "Impossibile ripristinare l’ultima bozza sul server. Il salvataggio automatico è sospeso. Riprova.",
+    serverDraftOtherFace: "Le ultime modifiche sono nell’altra vista di modifica. Passa a quella vista. Il salvataggio automatico è sospeso qui.",
   },
   es: {
     title: "Herramientas avanzadas",
@@ -223,6 +233,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Cambiando a edición…",
     savingProChanges: "Guardando los cambios de la edición pro…",
     leaveProSaveFailed: "No se pudieron guardar los cambios. Vuelve a intentarlo.",
+    serverDraftReadFailed: "No se pudo restaurar el último borrador del servidor. El guardado automático está pausado. Reinténtalo.",
+    serverDraftOtherFace: "Los últimos cambios están en la otra vista de edición. Cambia a ella para continuar. El guardado automático está pausado aquí.",
   },
   "es-419": {
     title: "Herramientas avanzadas",
@@ -255,6 +267,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Cambiando a edición…",
     savingProChanges: "Guardando los cambios de la edición pro…",
     leaveProSaveFailed: "No se pudieron guardar los cambios. Vuelve a intentarlo.",
+    serverDraftReadFailed: "No se pudo restaurar el último borrador del servidor. El guardado automático está pausado. Reinténtalo.",
+    serverDraftOtherFace: "Los últimos cambios están en la otra vista de edición. Cambia a ella para continuar. El guardado automático está pausado aquí.",
   },
   "pt-BR": {
     title: "Ferramentas avançadas",
@@ -287,6 +301,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Mudando para edição…",
     savingProChanges: "Salvando alterações da edição pro…",
     leaveProSaveFailed: "Não foi possível salvar as alterações. Tente novamente.",
+    serverDraftReadFailed: "Não foi possível restaurar o último rascunho do servidor. O salvamento automático está pausado. Tente novamente.",
+    serverDraftOtherFace: "As últimas alterações estão na outra visualização de edição. Mude para ela para continuar. O salvamento automático está pausado aqui.",
   },
   "pt-PT": {
     title: "Ferramentas avançadas",
@@ -319,6 +335,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "A mudar para edição…",
     savingProChanges: "A guardar alterações da edição pro…",
     leaveProSaveFailed: "Não foi possível guardar as alterações. Tente novamente.",
+    serverDraftReadFailed: "Não foi possível restaurar o último rascunho do servidor. A gravação automática está em pausa. Tente novamente.",
+    serverDraftOtherFace: "As últimas alterações estão na outra vista de edição. Mude para essa vista para continuar. A gravação automática está em pausa aqui.",
   },
   vi: {
     title: "Công cụ nâng cao",
@@ -351,6 +369,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Đang chuyển sang chỉnh sửa…",
     savingProChanges: "Đang lưu thay đổi trong trình chỉnh sửa chuyên nghiệp…",
     leaveProSaveFailed: "Chưa lưu được thay đổi. Vui lòng thử lại.",
+    serverDraftReadFailed: "Không thể khôi phục bản nháp mới nhất trên máy chủ. Đã tạm dừng tự động lưu. Hãy thử lại.",
+    serverDraftOtherFace: "Các thay đổi mới nhất ở chế độ chỉnh sửa khác. Hãy chuyển sang đó để tiếp tục. Tự động lưu ở đây đã tạm dừng.",
   },
   tr: {
     title: "Gelişmiş araçlar",
@@ -383,6 +403,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "Düzenlemeye geçiliyor…",
     savingProChanges: "Pro düzenlemedeki değişiklikler kaydediliyor…",
     leaveProSaveFailed: "Değişiklikler kaydedilemedi. Lütfen tekrar deneyin.",
+    serverDraftReadFailed: "Sunucudaki son taslak geri yüklenemedi. Otomatik kaydetme duraklatıldı. Yeniden deneyin.",
+    serverDraftOtherFace: "Son değişiklikler diğer düzenleme görünümünde. Devam etmek için o görünüme geçin. Burada otomatik kaydetme duraklatıldı.",
   },
   "zh-TW": {
     title: "進階功能",
@@ -415,6 +437,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "正在切換到編輯…",
     savingProChanges: "正在儲存專業編輯裡的修改…",
     leaveProSaveFailed: "專業編輯裡的修改還沒儲存成功，請重試。",
+    serverDraftReadFailed: "無法還原最新的伺服器草稿，自動儲存已暫停。請重試。",
+    serverDraftOtherFace: "最新修改在另一個編輯介面，請切換至該介面繼續。目前自動儲存已暫停。",
   },
   ja: {
     title: "高度なツール",
@@ -447,6 +471,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "編集に切り替えています…",
     savingProChanges: "プロ編集の変更を保存しています…",
     leaveProSaveFailed: "変更を保存できませんでした。再試行してください。",
+    serverDraftReadFailed: "サーバーの最新の下書きを復元できません。自動保存は一時停止中です。再試行してください。",
+    serverDraftOtherFace: "最新の変更は別の編集画面にあります。その画面に切り替えてください。この画面の自動保存は一時停止中です。",
   },
   ko: {
     title: "고급 도구",
@@ -479,6 +505,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "편집으로 전환 중…",
     savingProChanges: "프로 편집의 변경 사항을 저장 중…",
     leaveProSaveFailed: "변경 사항을 저장하지 못했습니다. 다시 시도하세요.",
+    serverDraftReadFailed: "서버의 최신 초안을 복원할 수 없습니다. 자동 저장이 일시 중지되었습니다. 다시 시도하세요.",
+    serverDraftOtherFace: "최신 변경 사항은 다른 편집 화면에 있습니다. 해당 화면으로 전환하세요. 여기서는 자동 저장이 일시 중지됩니다.",
   },
   ar: {
     title: "الأدوات المتقدمة",
@@ -511,6 +539,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "جارٍ التبديل إلى التحرير…",
     savingProChanges: "جارٍ حفظ تغييرات التحرير الاحترافي…",
     leaveProSaveFailed: "تعذر حفظ التغييرات. يُرجى إعادة المحاولة.",
+    serverDraftReadFailed: "تعذر استعادة أحدث مسودة من الخادم. تم إيقاف الحفظ التلقائي مؤقتًا. أعد المحاولة.",
+    serverDraftOtherFace: "أحدث التغييرات في واجهة التحرير الأخرى. انتقل إليها للمتابعة. الحفظ التلقائي متوقف مؤقتًا هنا.",
   },
   th: {
     title: "เครื่องมือขั้นสูง",
@@ -543,6 +573,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "กำลังสลับไปแก้ไข…",
     savingProChanges: "กำลังบันทึกการเปลี่ยนแปลงจากการแก้ไขระดับโปร…",
     leaveProSaveFailed: "บันทึกการเปลี่ยนแปลงไม่สำเร็จ โปรดลองอีกครั้ง",
+    serverDraftReadFailed: "กู้คืนฉบับร่างล่าสุดจากเซิร์ฟเวอร์ไม่ได้ การบันทึกอัตโนมัติหยุดชั่วคราว โปรดลองอีกครั้ง",
+    serverDraftOtherFace: "การเปลี่ยนแปลงล่าสุดอยู่ในหน้าต่างแก้ไขอีกหน้า โปรดสลับไปหน้านั้น การบันทึกอัตโนมัติของหน้านี้หยุดชั่วคราว",
   },
   hi: {
     title: "उन्नत टूल",
@@ -575,6 +607,8 @@ const ADVANCED_ROUTE_TRANSLATIONS: Record<
     switchingToEdit: "संपादन पर स्विच हो रहा है…",
     savingProChanges: "प्रो संपादन के बदलाव सहेजे जा रहे हैं…",
     leaveProSaveFailed: "बदलाव सहेजे नहीं जा सके। कृपया फिर से कोशिश करें।",
+    serverDraftReadFailed: "सर्वर का नवीनतम ड्राफ़्ट बहाल नहीं हुआ। अपने-आप सहेजना रुका हुआ है। फिर कोशिश करें।",
+    serverDraftOtherFace: "नवीनतम बदलाव दूसरे संपादन दृश्य में हैं। जारी रखने के लिए उस दृश्य पर जाएँ। यहाँ अपने-आप सहेजना रुका हुआ है।",
   },
 };
 

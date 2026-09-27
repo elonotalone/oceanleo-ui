@@ -16,7 +16,7 @@ export interface AdvancedPersistenceSnapshot {
 }
 
 export interface AdvancedPersistenceControllerOptions<Item> {
-  draft?: { saveRevision: (revision: AdvancedEditRevision) => Promise<boolean> | boolean };
+  draft?: { saveRevision: (revision: AdvancedEditRevision) => Promise<boolean | "full-save"> | boolean | "full-save" };
   draftDebounceMs?: number;
   versionIdleMs?: number;
   debounceMs?: number;

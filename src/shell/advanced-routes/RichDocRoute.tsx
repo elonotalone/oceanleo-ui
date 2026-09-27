@@ -1,5 +1,6 @@
 "use client";
 
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport } from "../advanced-draft-gates";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { resolveEditorCore } from "../editor-core-flags";
@@ -330,6 +331,7 @@ function RichDocLegacyRoute({
   /** 一个后缀 → 一次下载。返回空串表示成功，非空是要显示的原因。 */
   const downloadAs = useCallback(
     async (extension: string): Promise<string> => {
+      if (!await ensureAdvancedDraftExport(item.key || item.id)) return "";
       setExportError("");
       try {
         switch (extension) {
@@ -444,7 +446,7 @@ function RichDocLegacyRoute({
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label}`,
           icon: "download",
           disabled: downloadDisabled,
-          onTrigger: editor.exportDoc,
+          onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.exportDoc),
         },
         // 第一条格式是主交付物，已经由 directDownload 呈现；其余每个格式一条菜单项。
         actions: [
@@ -471,7 +473,7 @@ function RichDocLegacyRoute({
             label: "转公众号排版",
             group: "download" as const,
             disabled: downloadDisabled,
-            onTrigger: exportWechat,
+            onTrigger: () => afterAdvancedDraftExport(item.key || item.id, exportWechat),
           },
         ],
         upload: {
@@ -505,6 +507,7 @@ function RichDocLegacyRoute({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.richdoc.edit.v1",
             key: advancedRecoveryKey("richdoc", item),
             ready: Boolean(editor.editor) && !editor.loading,
             capture: () =>

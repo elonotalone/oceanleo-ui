@@ -97,7 +97,14 @@ export class AdvancedDraftController<Item> {
     const revision = this.latest;
     const run = (async () => {
       try {
-        if (!await this.options.draft!.saveRevision(revision)) throw new Error("draft snapshot failed");
+        const saved = await this.options.draft!.saveRevision(revision);
+        if (saved === "full-save") {
+          // Unsafe/non-portable payloads use the complete version pipeline and
+          // cannot acknowledge anything until it and the session commit finish.
+          await this.runVersion();
+          return;
+        }
+        if (!saved) throw new Error("draft snapshot failed");
         if (this.disposed) return;
         // A version may already have acknowledged a newer edit while the upload ran.
         if (same(this.latest, revision)) {
@@ -166,8 +173,9 @@ export class AdvancedDraftController<Item> {
         if (!this.forceVersion) return result;
       } catch (error) {
         if (this.disposed) return { ok: false, error: "persistence disposed" };
-        if (this.versionRetries < (this.options.maxRetries ?? 3)) this.scheduleVersion(this.retryDelay(this.versionRetries++));
-        if (!same(this.latest, this.acknowledged) && this.state !== "error") this.setState("saving");
+        const retrying = this.versionRetries < (this.options.maxRetries ?? 3);
+        if (retrying) this.scheduleVersion(this.retryDelay(this.versionRetries++));
+        if (!same(this.latest, this.acknowledged)) this.setState(retrying ? "saving" : "error");
         this.forceVersion = false;
         return { ok: false, error: error instanceof Error ? error.message : "advanced persistence failed" };
       }

@@ -1,7 +1,7 @@
 "use client";
 
 import { ADVANCED_DRAFT_META_KEY, AdvancedDraftSnapshotQueue, advancedDraftIdentity,
-  advancedDraftAfterVersion, advancedDraftCovers, type AdvancedDraftPointer } from "./advanced-draft";
+  advancedDraftAfterVersion, advancedDraftCovers, type AdvancedDraftPointer, type AdvancedDraftVersionCoverage } from "./advanced-draft";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -370,6 +370,7 @@ function AdvancedContentWorkbenchRuntime(
   workspaceRef.current = workspace;
   const draftQueueRef = useRef(new AdvancedDraftSnapshotQueue());
   const versionCoveredRef = useRef<AdvancedEditRevision | undefined>(undefined);
+  const versionSchemaRef = useRef<string | undefined>(undefined);
   const openingDraftRef = useRef({
     item: activeItem, sessionId: restoredSessionId,
     pointer: advancedDraftFromSnapshot(workspace.session?.snapshot, activeItem),
@@ -495,7 +496,7 @@ function AdvancedContentWorkbenchRuntime(
         const material = materialRef.current;
         const identity = advancedDraftIdentity(material);
         if (!active || active.id !== expectedSessionId || draft.rootId !== identity.rootId) return false;
-        if (advancedDraftCovers(versionCoveredRef.current, draft.editRevision)) return true;
+        if (versionSchemaRef.current === draft.schema && advancedDraftCovers(versionCoveredRef.current, draft.editRevision)) return true;
         const pointer = { ...draft, baseRevisionId: identity.baseRevisionId };
         const snapshot = editorHost.embedded
           ? withInlineEditorHistoryHead(active.snapshot, material, route.type, currentWorkspace.taskId, pointer)
@@ -511,7 +512,7 @@ function AdvancedContentWorkbenchRuntime(
     [editorHost.embedded, route.type, workspace.sessionId],
   );
   const recordSavedItem = useCallback(
-    async (savedItem: LibraryItem, coveredRevision?: AdvancedEditRevision) => {
+    async (savedItem: LibraryItem, coveredRevision?: AdvancedEditRevision, coverage?: AdvancedDraftVersionCoverage) => {
       const expectedSessionId = workspace.sessionId;
       return draftQueueRef.current.run(async () => {
         const workspace = workspaceRef.current;
@@ -520,7 +521,7 @@ function AdvancedContentWorkbenchRuntime(
         const previousSession = draftQueueRef.current.current(workspace.session);
         const draft = advancedDraftAfterVersion(
           advancedDraftFromSnapshot(previousSession?.snapshot, previousItem),
-          coveredRevision, advancedDraftIdentity(savedItem).baseRevisionId,
+          coveredRevision, advancedDraftIdentity(savedItem).baseRevisionId, coverage,
         );
         if (editorHost.embedded) {
           const active = previousSession || await workspace.ensureActive({ title: savedItem.title, intent: "output" });
@@ -547,6 +548,7 @@ function AdvancedContentWorkbenchRuntime(
         }
         materialRef.current = savedItem;
         versionCoveredRef.current = coveredRevision;
+        versionSchemaRef.current = coverage?.schema;
         editorHost.onSavedItem?.(savedItem);
         return true;
       });

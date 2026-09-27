@@ -1,5 +1,6 @@
 "use client";
 
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
 import {
   useCallback,
   useEffect,
@@ -273,6 +274,7 @@ function Model3DModelRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const deliver = useCallback(
     async (format: string) => {
+      if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
       if (format === "png") {
         await editor.downloadScreenshot();
         return;
@@ -402,6 +404,8 @@ function Model3DModelRoute({
   useModeSwitchReady(!editor.loading);
   useEffect(() => {
     enterProRef.current = async () => {
+      const gate = await flushAdvancedDraftGate(item.key || item.id);
+      if (gate && !gate.ok) return gate;
       const url = editor.sourceUrl;
       const handoff = url
         ? {
@@ -428,7 +432,7 @@ function Model3DModelRoute({
           };
         }
       }
-      return { ok: true, handoff, item: saved ?? item };
+      return { ok: true, handoff, item: gate?.item ?? saved ?? item };
     };
     return () => {
       enterProRef.current = null;
@@ -482,7 +486,7 @@ function Model3DModelRoute({
           icon: "download",
           disabled: !editor.modelLoaded || deliveryBusy,
           busy: editor.downloading,
-          onTrigger: editor.downloadModel,
+          onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.downloadModel),
         },
         actions: [
           {
@@ -492,7 +496,7 @@ function Model3DModelRoute({
             group: "download",
             disabled: !editor.modelLoaded || deliveryBusy,
             busy: editor.capturing,
-            onTrigger: editor.downloadScreenshot,
+            onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.downloadScreenshot),
           },
           // 规范 v2 §6：截图存库是「导出类」动作，住第一行下载菜单，不进编辑栏。
           {
@@ -502,7 +506,7 @@ function Model3DModelRoute({
             group: "download",
             disabled: !editor.modelLoaded || deliveryBusy,
             busy: editor.saving,
-            onTrigger: editor.saveScreenshot,
+            onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.saveScreenshot),
           },
         ],
         upload: {
@@ -524,6 +528,7 @@ function Model3DModelRoute({
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
+            draftSchema: "oceanleo.threed.edit.v1",
             key: advancedRecoveryKey("threed", item),
             ready: !editor.loading,
             capture: () => history.snapshot,

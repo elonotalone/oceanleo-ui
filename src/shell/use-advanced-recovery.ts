@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { advancedDraftRestoredAt, draftRecoveryKey } from "./advanced-draft-recovery";
 import type {
   AdvancedEditRevision,
   AdvancedPersistenceState,
@@ -117,7 +118,7 @@ export function useAdvancedRecovery({
 
   useEffect(() => {
     const active = recoveryRef.current;
-    if (!active?.ready || restoredKeyRef.current === active.key) return;
+    if (!active?.ready || active.draftSchema || restoredKeyRef.current === active.key) return;
     let cancelled = false;
     restoredKeyRef.current = active.key;
     void readAdvancedRecovery(active.key)
@@ -145,11 +146,11 @@ export function useAdvancedRecovery({
     const persist = () => {
       const latest = recoveryRef.current;
       if (!latest?.ready) return;
-      const updatedAt = lastEditAtRef.current || Date.now();
+      const updatedAt = advancedDraftRestoredAt(draftRecoveryKey(latest), revision) ?? (lastEditAtRef.current || Date.now());
       void Promise.resolve(latest.capture())
         .then((payload) =>
           writeAdvancedRecovery({
-            key: latest.key,
+            key: draftRecoveryKey(latest),
             editorId,
             revision,
             updatedAt,
@@ -176,6 +177,6 @@ export function useAdvancedRecovery({
       return;
     }
     hadDirtyRef.current = false;
-    void deleteAdvancedRecovery(active.key).catch(() => undefined);
+    void deleteAdvancedRecovery(draftRecoveryKey(active)).catch(() => undefined);
   }, [dirty, persistenceState, recovery?.key]);
 }

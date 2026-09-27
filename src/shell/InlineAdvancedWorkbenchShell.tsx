@@ -188,6 +188,9 @@ export function InlineAdvancedWorkbenchShell({
     revision: editRevision,
     flush: adapter.persistence?.flush,
     draft: hostAutoSaveEnabled ? adapter.persistence?.draft : undefined,
+    recovery: hostAutoSaveEnabled ? adapter.persistence?.recovery : undefined,
+    item,
+    editorId: adapter.id,
     session: advancedSession,
   });
   const backgroundBusy = useSyncExternalStore(
@@ -340,11 +343,16 @@ export function InlineAdvancedWorkbenchShell({
     });
   }, [advancedSession, editorDirty]);
 
+  // An editor without a mutation feed must capture on every explicit save.
+  // A covered Fabric revision says nothing about the current Photopea image.
+  const flushForExplicitSave = adapter.persistence?.confirmation
+    ? adapter.persistence.flush
+    : autoSave.flushLatest;
   useEffect(() => {
     if (!advancedSession) return;
-    advancedSession.registerFlush(autoSave.flushLatest);
+    advancedSession.registerFlush(flushForExplicitSave);
     return () => advancedSession.registerFlush(null);
-  }, [advancedSession, autoSave.flushLatest]);
+  }, [advancedSession, flushForExplicitSave]);
 
   const editorUnconfirmed = hostAutoSaveEnabled
     ? editorDirty || autoSave.state !== "saved"
@@ -378,8 +386,8 @@ export function InlineAdvancedWorkbenchShell({
     workspacePane?.activeLibraryPanelId ||
     (materialsDrawerOpen ? ("materials" as const) : null);
   const saveNow = useCallback(
-    () => void autoSave.flushLatest(),
-    [autoSave.flushLatest],
+    () => void flushForExplicitSave(),
+    [flushForExplicitSave],
   );
   const actionBar = useMemo(
     () => (
@@ -399,7 +407,7 @@ export function InlineAdvancedWorkbenchShell({
         onCloseDrawer={closeDetail}
         onOpenTransientPanel={openTransientPanel}
         onOpenLibrary={openLibraryPanel}
-        onRetrySave={() => void autoSave.retry()}
+        onRetrySave={() => void (adapter.persistence?.confirmation ? flushForExplicitSave() : autoSave.retry())}
         onSaveNow={saveNow}
         onUploadFiles={(files) => void performUpload(files)}
       />
@@ -410,6 +418,7 @@ export function InlineAdvancedWorkbenchShell({
       effectiveAccent,
       pluginThemeId,
       autoSave.retry,
+      flushForExplicitSave,
       autoSaveError,
       autoSaveState,
       closeDetail,

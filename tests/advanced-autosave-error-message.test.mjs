@@ -57,7 +57,7 @@ test("钩子返回 errorMessage，失败结果带人话字段", () => {
   // 人话失败字段仍必须在同一份返回值里。
   assert.match(
     hook,
-    /return \{ state, errorMessage, flushLatest, retry, handOffToBackground \}/,
+    /errorMessage: restoration\.error \|\| errorMessage, flushLatest, retry, handOffToBackground/,
   );
   assert.match(context, /errorMessage\?: string/);
   assert.match(context, /status\?: number/);
