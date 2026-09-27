@@ -2,7 +2,7 @@
  * 编辑栏三条手势的**逐件**覆盖闸（W31）。
  *
  * 操作员原话三条：
- *   ① 在 edit bar 任何位置（含按键）先单击一下，再按住即拖，松手落下
+ *   ① 在 edit bar 任何位置（含按键）400ms / 12px 内双击，第二下按住移动即拖，松手落下
  *      （计时从第一下松开算；第一下照常触发按键）
  *   ② 点击后缩为一个圆形，再点击展开
  *   ③ 缩小版也可以拖拽到各个位置
@@ -287,7 +287,7 @@ const controllerSource = code(`${SHELL}/edit-bar-dock-controller.tsx`);
 const controlsSource = code(`${SHELL}/EditBarDockControls.tsx`);
 const floatingSource = code(`${SHELL}/FloatingContextToolbar.tsx`);
 
-test("引擎：① 任意处（含按键）先单击再按住即拖；选中状态无期限", () => {
+test("引擎：① 任意处（含按键）在 400ms / 12px 内直接双击拖；无选中态", () => {
   // 判据落在「摊到浮层根节点上」这件事上：第二次按下挂在根的冒泡阶段，
   // 子控件先收到 pointerdown，根再阻断画布。
   assert.match(
@@ -297,12 +297,9 @@ test("引擎：① 任意处（含按键）先单击再按住即拖；选中状�
   );
   assert.match(floatingSource, /onPointerDown=\{controller\.rootProps\.onPointerDown\}/);
   assert.doesNotMatch(controllerSource, /REARM_WINDOW_MS|REARM_SLOP_/);
-  assert.match(controllerSource, /rearmStampRef\.current/);
-  assert.doesNotMatch(
-    controllerSource,
-    /DOUBLE_PRESS_MS/,
-    "400ms 按下到按下的窗口必须删掉——那是「要点三下」的根因",
-  );
+  assert.doesNotMatch(controllerSource, /rearmStampRef|rearmWindow/);
+  assert.match(controllerSource, /now - firstPress\.releasedAt <= DOUBLE_PRESS_MS/);
+  assert.match(controllerSource, /DOUBLE_PRESS_SLOP_PX = 12/);
   assert.doesNotMatch(
     controllerSource,
     /last\.pointerId !== pointerId/,
@@ -333,7 +330,7 @@ test("引擎：① 任意处（含按键）先单击再按住即拖；选中状�
     assert.doesNotMatch(
       controllerSource,
       wholeName(gone),
-      `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「先单击再按住拖」一条`,
+      `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「直接双击拖」一条`,
     );
   }
   assert.equal(
@@ -1024,7 +1021,7 @@ test("W04 场景 C：按键上 150ms 内再按下并拖，快路仍跟手", asyn
   }
 });
 
-test("W04 场景 D：选中后隔 1501ms 仍起拖；第一次按下移动不起拖", async () => {
+test("W04 场景 D：松开后隔 1501ms 不起拖；第一次按下移动不起拖", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   const mounted = await mountFrame(
@@ -1061,7 +1058,7 @@ test("W04 场景 D：选中后隔 1501ms 仍起拖；第一次按下移动不起
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 4100,
     });
 
-    // (d) 松开后 1501ms：已选中状态不失效，第二下移动应拖。
+    // (d) 松开后 1501ms：窗口过期，下一按只是新的第一下。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 5000,
@@ -1074,16 +1071,16 @@ test("W04 场景 D：选中后隔 1501ms 仍起拖；第一次按下移动不起
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 6511,
     });
-    assert.ok(mounted.container.querySelector("[data-edit-bar-move-mode]"), "选中后第二次按下应进入移动模式");
+    assert.equal(mounted.container.querySelector("[data-edit-bar-move-mode]"), null, "超时后不得进入移动模式");
     await moveWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6550,
     });
-    assert.ok(Math.abs(translateOf(bar()).x - before.x) >= 40, "选中后第二次按下再移动应拖走编辑栏");
+    assert.deepEqual(translateOf(bar()), before, "超时后按住移动不拖走编辑栏");
     await upWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6600,
     });
 
-    // 正对照：再次点击后仍可继续拖动。
+    // 正对照：再次直接双击，第二下在松开后 399ms 内即可拖动。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 7000,
@@ -1094,18 +1091,18 @@ test("W04 场景 D：选中后隔 1501ms 仍起拖；第一次按下移动不起
     });
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 8509,
+      clientX: 200, clientY: 70, timeStamp: 7409,
     });
     await moveWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 8550,
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 7450,
     });
     const dragged = translateOf(bar());
     assert.ok(
       Math.abs(dragged.x - before.x) >= 40,
-      `再次选中后应拖动，实际 ${before.x} → ${dragged.x}`,
+      `直接双击后应拖动，实际 ${before.x} → ${dragged.x}`,
     );
     await upWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6500,
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 7500,
     });
   } finally {
     await mounted.unmount();

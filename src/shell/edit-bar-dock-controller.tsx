@@ -60,6 +60,8 @@ const MORPH_SPRING = { stiffness: 190, damping: 24 };
 const FLING_PROJECTION_SECONDS = 0.09;
 const DRAG_START_PX = 4;
 const DRAG_START_TOUCH_PX = 8;
+const DOUBLE_PRESS_MS = 400;
+const DOUBLE_PRESS_SLOP_PX = 12;
 const HOLD_LIFT_MS = 250;
 const CLICK_SWALLOW_MS = 500;
 const CLICK_SWALLOW_SLOP_PX = 12;
@@ -142,11 +144,13 @@ function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-type RearmStamp = { selected: true };
+/** 仅用于识别下一次双击按下；过期后等同于没有记录，不产生可见状态。 */
+type FirstPressStamp = { releasedAt: number; x: number; y: number };
 
 /**
  * 展开胶囊：直接双击，第二下按住移动即拖，不需要额外的选择点击。
- * 第一下 click 立即生效；确认拖动时恢复它改变的开关状态。
+ * 第一下 click 立即生效且不留选中态；从松开起 400ms 内、两次按下相距
+ * 不超过 12px 才算双击。确认拖动时恢复第一下改变的开关状态。
  * 收起圆仍是按下即拖。
  */
 
@@ -205,11 +209,9 @@ export interface EditBarDockController {
   collapsed: boolean;
   /** 按住拖的进行中：条子跟手，松手落下，Esc 取消。 */
   moveMode: boolean;
-  /** 第一次点击后的选中状态。 */
-  rearmWindow: boolean;
   /** 第二下按住未移动，条被轻微抬起。 */
   lifted: boolean;
-  /** 摊到浮层根上：第一下普通点击，选中后再次按下并按住才拖。 */
+  /** 摊到浮层根上：第一下普通点击，400ms / 12px 内第二下按住移动才拖。 */
   rootProps: {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
@@ -257,7 +259,7 @@ export function useEditBarDockController({
   const dragRef = useRef<EditBarDrag | null>(null);
   const rememberedDockBoundsRef = useRef<FloatingToolbarBounds | null>(null);
   const hydratedStorageKeyRef = useRef("");
-  const rearmStampRef = useRef<RearmStamp | null>(null);
+  const firstPressRef = useRef<FirstPressStamp | null>(null);
   const idlePressCleanupRef = useRef<(() => void) | null>(null);
   const armedSessionCleanupRef = useRef<(() => void) | null>(null);
   const replayClickRef = useRef<Element | null>(null);
@@ -287,7 +289,6 @@ export function useEditBarDockController({
     useState<EditBarPresentation>("expanded");
   const [dragging, setDragging] = useState(false);
   const [moveMode, setMoveMode] = useState(false);
-  const [rearmWindow, setRearmWindow] = useState(false);
   const [lifted, setLifted] = useState(false);
   const [dropActive, setDropActive] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
@@ -927,8 +928,8 @@ export function useEditBarDockController({
     });
     presentationRef.current = "collapsed";
     setPresentation("collapsed");
-    rearmStampRef.current = null;
-    setRearmWindow(false);
+    firstPressRef.current = null;
+    firstClickRef.current = null;
     collapsedPositionRef.current = boundedEditBarDockOffset(target);
     commitPosition(collapsedPositionRef.current);
     persistState();
@@ -1257,15 +1258,13 @@ export function useEditBarDockController({
     }
   }, []);
 
-  const clearRearm = useCallback(() => {
-    rearmStampRef.current = null;
+  const clearFirstPress = useCallback(() => {
+    firstPressRef.current = null;
     firstClickRef.current = null;
-    setRearmWindow(false);
   }, []);
 
-  const enterClicked = useCallback(() => {
-    rearmStampRef.current = { selected: true };
-    setRearmWindow(true);
+  const rememberFirstPress = useCallback((releasedAt: number, x: number, y: number) => {
+    firstPressRef.current = { releasedAt, x, y };
   }, []);
 
   const revertFirstClickState = useCallback((target: Element | null) => {
@@ -1371,12 +1370,12 @@ export function useEditBarDockController({
       const handleUp = (event: PointerEvent) => {
         if (closed || !matching(event)) return;
         const dist = Math.hypot(event.clientX - clientX, event.clientY - clientY);
-        const held = event.timeStamp - downT >= HOLD_LIFT_MS || didLift;
-        if (phase === "armed" && dist < threshold && !held) {
+        // 抬起只是按住时的视觉；没有拖动，松开仍是正常的第二次点击。
+        if (phase === "armed" && dist < threshold) {
           finishSession();
           finishDrag(pointerId);
           firstClickRef.current = clickSnapshot;
-          enterClicked();
+          rememberFirstPress(event.timeStamp, clientX, clientY);
           if (origin && toolbarRef.current?.contains(origin)) {
             replayClickRef.current = origin;
             origin.dispatchEvent(
@@ -1404,7 +1403,7 @@ export function useEditBarDockController({
         }
         finishSession();
         finishDrag(pointerId);
-        clearRearm();
+        clearFirstPress();
       };
 
       const handleCancel = (event: PointerEvent) => {
@@ -1443,8 +1442,8 @@ export function useEditBarDockController({
     },
     [
       abortArmed,
-      clearRearm,
-      enterClicked,
+      clearFirstPress,
+      rememberFirstPress,
       finishDrag,
       releaseCapture,
       revertFirstClickState,
@@ -1461,7 +1460,6 @@ export function useEditBarDockController({
       pointerType: string,
       clientX: number,
       clientY: number,
-      downT: number,
     ) => {
       if (typeof window === "undefined") return;
       idlePressCleanupRef.current?.();
@@ -1487,16 +1485,16 @@ export function useEditBarDockController({
         if (!matching(event)) return;
         finish();
         if (moved) {
-          clearRearm();
+          clearFirstPress();
           return;
         }
-        enterClicked();
+        rememberFirstPress(event.timeStamp, clientX, clientY);
       };
 
       const handleCancel = (event: PointerEvent) => {
         if (!matching(event)) return;
         finish();
-        clearRearm();
+        clearFirstPress();
       };
 
       window.addEventListener("pointermove", handleMove, true);
@@ -1508,11 +1506,12 @@ export function useEditBarDockController({
         window.removeEventListener("pointercancel", handleCancel, true);
       };
     },
-    [clearRearm, enterClicked],
+    [clearFirstPress, rememberFirstPress],
   );
 
   /**
-   * 双击的第一下照常点击，第二下按住即拖；无需先选中编辑栏。
+   * 第一下照常点击，不置选中态。松开后 400ms 内、距第一次按下点 12px 内
+   * 的第二下进入会话；按住移动达阈值才拖，过时或过远则重新计作第一下。
    * 监听同步挂上，不放进 effect，快速第二下也能接住。
    */
   const onPointerDown = useCallback(
@@ -1523,7 +1522,14 @@ export function useEditBarDockController({
       const now = Number.isFinite(event.timeStamp) ? event.timeStamp : 0;
       // Bubble phase lets child controls receive pointerdown before the canvas is blocked.
       event.stopPropagation();
-      if (rearmStampRef.current) {
+      const firstPress = firstPressRef.current;
+      firstPressRef.current = null;
+      if (
+        firstPress &&
+        now >= firstPress.releasedAt &&
+        now - firstPress.releasedAt <= DOUBLE_PRESS_MS &&
+        Math.hypot(event.clientX - firstPress.x, event.clientY - firstPress.y) <= DOUBLE_PRESS_SLOP_PX
+      ) {
         attachArmedSession(
           event.pointerId,
           event.pointerType,
@@ -1534,6 +1540,7 @@ export function useEditBarDockController({
         );
         return;
       }
+      firstClickRef.current = null;
       const firstTarget = eventElement(event.target);
       if (firstTarget && toolbarRef.current?.contains(firstTarget)) {
         firstClickRef.current = {
@@ -1547,7 +1554,6 @@ export function useEditBarDockController({
         event.pointerType,
         event.clientX,
         event.clientY,
-        now,
       );
     },
     [attachArmedSession, attachIdlePress],
@@ -1627,34 +1633,6 @@ export function useEditBarDockController({
       toggleDock,
     ],
   );
-
-  // 条外按下、失焦清掉武装。监听同步语义：不进入第二下。
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleOutside = (event: PointerEvent) => {
-      if (dragRef.current) return;
-      if (toolbarRef.current?.contains(event.target as Node)) return;
-      idlePressCleanupRef.current?.();
-      idlePressCleanupRef.current = null;
-      armedSessionCleanupRef.current?.();
-      armedSessionCleanupRef.current = null;
-      setMoveMode(false);
-      setLifted(false);
-      clearRearm();
-    };
-    const handleBlur = () => {
-      if (dragRef.current || moveMode) return;
-      idlePressCleanupRef.current?.();
-      idlePressCleanupRef.current = null;
-      clearRearm();
-    };
-    window.addEventListener("pointerdown", handleOutside, true);
-    window.addEventListener("blur", handleBlur);
-    return () => {
-      window.removeEventListener("pointerdown", handleOutside, true);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, [clearRearm]);
 
   const collapsedProps = useMemo(
     () => ({
@@ -1772,9 +1750,8 @@ export function useEditBarDockController({
     setPresentation(nextPresentation);
     setDropActive(false);
     finishDrag();
-    rearmStampRef.current = null;
+    firstPressRef.current = null;
     firstClickRef.current = null;
-    setRearmWindow(false);
     hydratedStorageKeyRef.current = storageKey;
     commitPosition(positionForOffset(nextOffset));
   }, [
@@ -1888,7 +1865,7 @@ export function useEditBarDockController({
   useEffect(
     () => () => {
       dragRef.current = null;
-      rearmStampRef.current = null;
+      firstPressRef.current = null;
       idlePressCleanupRef.current?.();
       armedSessionCleanupRef.current?.();
       firstClickRef.current = null;
@@ -1955,7 +1932,6 @@ export function useEditBarDockController({
     presentation,
     collapsed: presentation === "collapsed",
     moveMode,
-    rearmWindow,
     lifted,
     rootProps,
     collapsedProps,

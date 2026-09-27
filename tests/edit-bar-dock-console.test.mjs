@@ -315,7 +315,7 @@ async function pointer(target, type, values) {
   });
 }
 
-// 左右两个 ⠿ 手柄已取消。展开胶囊：先单击一下，再按住拖动。
+// 左右两个 ⠿ 手柄已取消。展开胶囊：400ms / 12px 内双击，第二下按住移动即拖。
 // 第一次 down/up 不改位置；窗口内第二次 down 武装，按住或移动才跟手。
 let grabClock = 10_000;
 async function grab(target, clientX, clientY) {
@@ -662,7 +662,7 @@ function installDockHarnessRects() {
   };
 }
 
-test("松开后超过 1500ms：仍可起拖；DOM 里没有选中态", async () => {
+test("松开后超过 400ms：不能起拖；DOM 里没有选中态", async () => {
   window.localStorage.clear();
   const restoreRect = installDockHarnessRects();
   const mounted = await createMounted(DockHarness, {
@@ -673,15 +673,16 @@ test("松开后超过 1500ms：仍可起拖；DOM 里没有选中态", async () 
   try {
     const before = bar().style.transform;
     await pressTwiceOutsideWindow(bar(), 120, 60);
-    assert.ok(
+    assert.equal(
       mounted.container.querySelector("[data-edit-bar-move-mode]"),
-      "松开后 1501ms 的第二次按下应保持可拖",
+      null,
+      "松开后 1501ms 的下一次按下不能起拖",
     );
     await moveTo(bar(), 400, 300);
-    assert.notEqual(bar().style.transform, before, "第二次按下再移动应跟手");
+    assert.equal(bar().style.transform, before, "超时后的按下移动不拖走条子");
     assert.equal(
       mounted.container.querySelector(
-        "[data-edit-bar-selected], [data-edit-bar-selected-ring]",
+        "[data-edit-bar-armed], [data-edit-bar-selected], [data-edit-bar-selected-ring]",
       ),
       null,
       "DOM 里不许出现选中态属性——这个概念已删",

@@ -1,5 +1,5 @@
 /**
- * W11：先单击一下，再按住即可拖动。选中状态不设时间窗口。
+ * E1 更新 W11：400ms / 12px 内直接双击拖动，单击不留下选中状态。
  * 全部指针回放走 Chromium 顺序助手；13 个插件 id + 三个 PluginChromeFrame 宿主各跑主路径。
  */
 import assert from "node:assert/strict";
@@ -148,10 +148,6 @@ async function settleSprings() {
   });
 }
 
-function resetHint() {
-  globalThis.__oceanleoEditBarRearmHintShown = false;
-}
-
 function translateOf(element) {
   const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(element?.style.transform || "");
   return match ? { x: Number(match[1]), y: Number(match[2]) } : null;
@@ -251,19 +247,20 @@ async function holdDrag(target, clock, { pointerId, pointerType, from, to, after
   return down;
 }
 
-test("源码门禁：controller 里没有 DOUBLE_PRESS_MS / .detail / dblclick", () => {
+test("源码门禁：400ms / 12px 双按窗口，不依赖 .detail / dblclick 或选中态", () => {
   const src = readFileSync(resolve(REPO, "src/shell/edit-bar-dock-controller.tsx"), "utf8");
-  assert.doesNotMatch(src, /DOUBLE_PRESS_MS/);
+  assert.match(src, /DOUBLE_PRESS_MS = 400/);
+  assert.match(src, /DOUBLE_PRESS_SLOP_PX = 12/);
+  assert.doesNotMatch(src, /RearmStamp|rearmWindow|setRearmWindow/);
   assert.doesNotMatch(src, /\.detail\b/);
   assert.doesNotMatch(src, /dblclick/i);
   assert.doesNotMatch(src, /REARM_WINDOW_MS|REARM_SLOP_/);
 });
 
 for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
-  test(`主路径 · ${pluginId}：松开后 150 / 800 / 1499 / 10000 ms 再按住就能拖`, async () => {
+  test(`主路径 · ${pluginId}：松开后 400ms 内能拖，超过窗口不能拖`, async () => {
     window.localStorage.clear();
     resetPointerCaptureShim();
-    resetHint();
     const restore = installRectStub();
     const mounted = await mountFrame(pluginId);
     const anywhere = () => mounted.container.querySelector("[data-test-edit-bar]");
@@ -271,14 +268,15 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
     try {
       assert.ok(anywhere() && bar(), "条和内容必须在");
       assert.match(bar().className, /touch-none/, "条根必须 touch-action: none");
-      for (const gap of [150, 800, 1499, 10000]) {
+      for (const gap of [150, 399, 400, 401, 800, 1499, 10000]) {
         const { clock, restoreTimers } = beginClock(10_000 + gap);
         try {
+          await settleSprings();
           const before = translateOf(bar());
           await act(async () => {
             tap(anywhere(), { clock, clientX: 400, clientY: 70, pointerId: 1 });
           });
-          assert.ok(bar().hasAttribute("data-edit-bar-armed"), `${gap}ms 前第一下松开后应武装`);
+          assert.equal(bar().hasAttribute("data-edit-bar-armed"), false, "第一下松开不留选中态");
           await holdDrag(anywhere(), clock, {
             pointerId: 1,
             pointerType: "mouse",
@@ -288,10 +286,11 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
           });
           const dragged = translateOf(bar());
           assert.ok(before && dragged, "必须量得到位置");
-          assert.ok(
-            Math.abs(dragged.x - before.x) >= 40,
-            `${pluginId} 隔 ${gap}ms 应拖动，实际 ${before.x} → ${dragged.x}`,
-          );
+          if (gap <= 400) {
+            assert.ok(Math.abs(dragged.x - before.x) >= 40, `${pluginId} 隔 ${gap}ms 应拖动`);
+          } else {
+            assert.deepEqual(dragged, before, `${pluginId} 隔 ${gap}ms 不应拖动`);
+          }
           clock.now += 16;
           await act(async () => {
             pointerUp(anywhere(), { clock, pointerId: 1, clientX: 460, clientY: 70 });
@@ -307,10 +306,9 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
   });
 }
 
-test("隔 1501 ms：第二下仍可拖，且拖动不触发按钮", async () => {
+test("隔 1501 ms：下一按是普通按压，移动不拖走编辑栏", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
-  resetHint();
   const restore = installRectStub();
   let clicks = 0;
   const mounted = await mountFrame(
@@ -338,12 +336,12 @@ test("隔 1501 ms：第二下仍可拖，且拖动不触发按钮", async () => 
       afterMs: 1501,
     });
     const draggedAfterLongGap = translateOf(barOf(mounted.container));
-    assert.ok(Math.abs(draggedAfterLongGap.x - before.x) >= 40, "1501ms 后第二下按住仍应拖");
+    assert.deepEqual(draggedAfterLongGap, before, "1501ms 后必须作为新的第一下，移动不起拖");
     clock.now += 16;
     await act(async () => {
       pointerUp(btn, { clock, pointerId: 1, clientX: 260, clientY: 70 });
     });
-    assert.equal(clicks, 1, "拖动那一下不得再次触发按钮");
+    assert.equal(clicks, 2, "普通按压的兼容 click 不被当作拖后点击吞掉");
     } finally {
       restoreTimers();
     }
@@ -353,10 +351,9 @@ test("隔 1501 ms：第二下仍可拖，且拖动不触发按钮", async () => 
   }
 });
 
-test("第一下加粗恰好一次；第二下按住或拖动 onClick 0；快速点撤销两次", async () => {
+test("第一下加粗恰好一次；第二下拖动不点击；快速点撤销两次", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
-  resetHint();
   const restore = installRectStub();
   let bold = 0;
   let undo = 0;
@@ -474,10 +471,9 @@ for (const initial of ["false", "true"]) {
   }
 }
 
-test("第二下按住 300ms 不动：没有 click，带 data-edit-bar-lifted；Esc 归位", async () => {
+test("第二下按住 300ms 不动：按住期间没有 click，带 data-edit-bar-lifted；Esc 归位", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
-  resetHint();
   const restore = installRectStub();
   let clicks = 0;
   const mounted = await mountFrame(
@@ -533,7 +529,6 @@ test("第二下按住 300ms 不动：没有 click，带 data-edit-bar-lifted；E
 test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；buttons 0 结束", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
-  resetHint();
   const restore = installRectStub();
   const mounted = await mountFrame("pdf");
   try {
@@ -632,10 +627,9 @@ test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；bu
   }
 });
 
-test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住拖提示一次", async () => {
+test("单击不留选中态；换到远处滑块不会拖动；单次按住移动不弹提示", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
-  resetHint();
   const restore = installRectStub();
   let slider = 0;
   const mounted = await mountFrame(
@@ -663,12 +657,12 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
     await act(async () => {
       tap(anywhere, { clock, clientX: 400, clientY: 70, pointerId: 1 });
     });
-    assert.ok(bar().hasAttribute("data-edit-bar-armed"));
+    assert.equal(bar().hasAttribute("data-edit-bar-armed"), false, "单击不留 armed 属性");
     clock.now += 40;
     await act(async () => {
       pointerDown(stage, { clock, pointerId: 9, clientX: 20, clientY: 400 });
     });
-    assert.equal(bar().hasAttribute("data-edit-bar-armed"), false, "条外按下必须清掉武装");
+    assert.equal(bar().hasAttribute("data-edit-bar-armed"), false, "条外按下前后都没有 armed 属性");
 
     await act(async () => {
       tap(anywhere, { clock, clientX: 400, clientY: 70, pointerId: 1 });
@@ -681,13 +675,12 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
       to: { x: 300, y: 70 },
       afterMs: 80,
     });
-    assert.ok(Math.abs(translateOf(bar()).x - before.x) >= 40, "条上任意位置第二下都应可拖动");
+    assert.deepEqual(translateOf(bar()), before, "相距 160px 的按下不是双击，滑块按压不拖走条子");
     clock.now += 16;
     await act(async () => {
       pointerUp(range, { clock, pointerId: 4, clientX: 300, clientY: 70 });
     });
 
-    resetHint();
     clock.now += 40;
     await act(async () => {
       pointerDown(stage, { clock, pointerId: 8, clientX: 20, clientY: 400 });
@@ -735,7 +728,6 @@ test("条外按下清掉 CLICKED；滑块上第二下条不动；没先点按住
 test("全程跟随：15 步累计指针位移 150px，编辑条位置误差不超过 4px", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
-  resetHint();
   const restore = installRectStub();
   const mounted = await mountFrame("deck");
   try {

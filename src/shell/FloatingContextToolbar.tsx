@@ -441,7 +441,6 @@ export function FloatingContextToolbar({
           onClickCapture={controller.rootProps.onClickCapture}
           onKeyDown={controller.rootProps.onKeyDown}
           aria-keyshortcuts={controller.rootProps["aria-keyshortcuts"]}
-          data-edit-bar-armed={controller.rearmWindow || undefined}
           data-edit-bar-lifted={controller.lifted || undefined}
           className="pointer-events-auto absolute left-0 top-0 inline-flex w-fit max-w-[calc(100%-1rem)] overflow-visible will-change-transform touch-none"
           // transform 刻意不在这里写：位置由控制器的 paintMotion() 一处写入，
