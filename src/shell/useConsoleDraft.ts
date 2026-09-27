@@ -23,6 +23,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { workspaceSnapshotsEqual as statesEqual } from "./workspace-session-model";
 import {
   loadConsoleDraft,
   saveConsoleDraft,
@@ -75,15 +76,6 @@ export interface UseConsoleDraftReturn {
   restoreError: string | null;
 }
 
-function statesEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
-}
-
 export function useConsoleDraft<S extends Record<string, unknown>>({
   siteId,
   appId,
@@ -122,8 +114,10 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
   // 每个 app 是否已完成「首次恢复」——防止恢复动作把 state 改了又被当成用户改动存回去，
   // 也防止对同一 app 反复恢复。切 app（appId 变）时复位。
   const readyRef = useRef<string>("");
-  // 恢复动作刚写回 state 的那一拍：跳过它触发的保存。
-  const justRestoredRef = useRef(false);
+  // Keep the pre-restore render until setState commits; StrictMode may replay
+  // effects for that same render before the restored state arrives.
+  const justRestoredRef = useRef<S | null>(null);
+  const observedStateRef = useRef<{ state: S; schemaVersion: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const versionScopeRef = useRef("");
   const dirtyVersionRef = useRef(0);
@@ -158,6 +152,7 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
       dirtyVersionRef.current = 0;
       persistedVersionRef.current = 0;
       pendingStateRef.current = null;
+      observedStateRef.current = null;
     }
     void (async () => {
       setRestoreError(null);
@@ -184,10 +179,12 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
                 setRestoreError("工作会话快照格式无效，未自动恢复。");
               }
             } else {
-              justRestoredRef.current = true;
+              justRestoredRef.current = state;
               // snapshot 是完整 state，但旧版本/agent-only session 可能只有部分字段或 {}。
               // 以当前初值补齐缺省键，避免把表单恢复成缺字段对象。
-              setState({ ...initialRef.current, ...restored });
+              const restoredState = { ...initialRef.current, ...restored };
+              observedStateRef.current = { state: structuredClone(restoredState), schemaVersion };
+              setState(restoredState);
             }
           } catch {
             setRestoreError("工作会话快照迁移失败，未覆盖当前操作台。");
@@ -208,8 +205,10 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
       if (!alive) return;
       readyRef.current = key;
       if (draft && draft.state && typeof draft.state === "object") {
-        justRestoredRef.current = true;
-        setState({ ...initialRef.current, ...(draft.state as S) });
+        justRestoredRef.current = state;
+        const restoredState = { ...initialRef.current, ...(draft.state as S) };
+        observedStateRef.current = { state: structuredClone(restoredState), schemaVersion };
+        setState(restoredState);
       }
     })();
     return () => {
@@ -320,10 +319,14 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
     // 还没完成首次恢复：不存（避免用初值覆盖掉云端草稿）。
     if (readyRef.current !== key) return;
     // 恢复动作触发的这次变化：跳过（不是用户改的）。
-    if (justRestoredRef.current) {
-      justRestoredRef.current = false;
-      return;
-    }
+    if (justRestoredRef.current === state) return;
+    justRestoredRef.current = null;
+    // The actual restored value is the baseline, not a user edit.
+    if (
+      !pendingStateRef.current &&
+      observedStateRef.current?.schemaVersion === schemaVersion &&
+      statesEqual(state, observedStateRef.current.state)
+    ) return;
     let pendingState: S;
     try {
       pendingState = JSON.parse(JSON.stringify(state)) as S;
@@ -332,6 +335,7 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
       return;
     }
     dirtyVersionRef.current += 1;
+    observedStateRef.current = { state: pendingState, schemaVersion };
     pendingStateRef.current = { key, state: pendingState, workspace };
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
@@ -387,11 +391,12 @@ export function useConsoleDraft<S extends Record<string, unknown>>({
       }
       await clearConsoleDraft(siteId, appId);
       readyRef.current = "";
-      justRestoredRef.current = false;
+      justRestoredRef.current = null;
       versionScopeRef.current = "";
       dirtyVersionRef.current = 0;
       persistedVersionRef.current = 0;
       pendingStateRef.current = null;
+      observedStateRef.current = null;
       setState(initialState);
       resetDone = true;
       return true;

@@ -38,6 +38,7 @@ import {
 } from "react";
 import { AgentTranscriptBubble } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
+import { workspaceSnapshotsEqual } from "./workspace-session-model";
 import {
   isLiveAction,
   ownTaskActionMark,
@@ -795,7 +796,10 @@ export function FunctionAgentChat({
       setError(tt("当前操作台状态无法保存为工作会话。"));
       return false;
     }
-    if (serialized === sessionSnapshotBaselineRef.current) return true;
+    if (workspaceSnapshotsEqual(
+      snapshot,
+      JSON.parse(sessionSnapshotBaselineRef.current || "{}"),
+    )) return true;
     const result = await workspace.saveSnapshot(
       snapshot,
       sessionSchemaVersion,
@@ -862,7 +866,10 @@ export function FunctionAgentChat({
     } catch {
       return;
     }
-    if (serialized === sessionSnapshotBaselineRef.current) {
+    if (workspaceSnapshotsEqual(
+      snapshot,
+      JSON.parse(sessionSnapshotBaselineRef.current || "{}"),
+    )) {
       sessionSnapshotFlushRef.current = null;
       return;
     }

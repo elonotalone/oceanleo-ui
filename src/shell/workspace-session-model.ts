@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  isAppSessionApiUnavailableStatus,
-  type AppSession,
-  type AppSessionSurface,
-} from "../lib/app-session";
+import type { AppSession, AppSessionSurface } from "../lib/app-session";
 export {
   isArchivedAppSession,
   isStaleSessionResponse,
@@ -237,14 +233,25 @@ export function availabilityForSessionFailure(
   status?: number,
 ): Exclude<WorkspaceSessionAvailability, "loading" | "ready"> {
   if (status === 401) return "signed-out";
-  if (isAppSessionApiUnavailableStatus(status)) return "unsupported";
+  // Keep this model (including snapshot comparison) independent of API I/O.
+  if (status === 404 || status === 405 || status === 501) return "unsupported";
   return "error";
 }
 
 export function workspaceSnapshotsEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   try {
-    return JSON.stringify(a) === JSON.stringify(b);
+    // JSON object key order is not content. Arrays still retain their order,
+    // and JSON serialization keeps the comparison aligned with the request body.
+    const ordered = (_key: string, value: unknown): unknown =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.keys(value).sort().map((key) => [
+              key, (value as Record<string, unknown>)[key],
+            ]),
+          )
+        : value;
+    return JSON.stringify(a, ordered) === JSON.stringify(b, ordered);
   } catch {
     return false;
   }

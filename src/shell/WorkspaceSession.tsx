@@ -153,6 +153,12 @@ export function WorkspaceSessionProvider({
 
   const sessionRef = useRef<AppSession | null>(session);
   sessionRef.current = session;
+  // Keep a detached server baseline: restored runtime objects may be edited
+  // in place, and must never make an unsaved change look already persisted.
+  const confirmedSessionRef = useRef<AppSession | null | undefined>(undefined);
+  if (confirmedSessionRef.current === undefined) {
+    confirmedSessionRef.current = initialSession ? structuredClone(initialSession) : null;
+  }
   const availabilityRef = useRef(availability);
   availabilityRef.current = availability;
   const errorRef = useRef(error);
@@ -176,6 +182,7 @@ export function WorkspaceSessionProvider({
       const previous = sessionRef.current;
       if (isStaleSessionResponse(previous, next)) return;
       const previousId = previous?.id;
+      confirmedSessionRef.current = structuredClone(next);
       sessionRef.current = next;
       setSession(next);
       if (previousId !== next.id) {
@@ -191,6 +198,7 @@ export function WorkspaceSessionProvider({
   );
 
   const clearCurrent = useCallback(() => {
+    confirmedSessionRef.current = null;
     sessionRef.current = null;
     setSession(null);
     setLinkedTaskId(null);
@@ -240,6 +248,7 @@ export function WorkspaceSessionProvider({
     identityRef.current = identity;
     ensurePromiseRef.current = null;
     mutationQueueRef.current = Promise.resolve();
+    confirmedSessionRef.current = null;
     sessionRef.current = null;
     setSession(null);
     setLinkedTaskId(null);
@@ -269,6 +278,7 @@ export function WorkspaceSessionProvider({
       };
     }
     if (!site || !app) {
+      confirmedSessionRef.current = null;
       sessionRef.current = null;
       setSession(null);
       availabilityRef.current = "error";
@@ -589,9 +599,22 @@ export function WorkspaceSessionProvider({
           };
         }
 
+        // Compare inside the mutation queue, after earlier writes have settled.
+        // Only acknowledged server state can suppress a network write.
+        const confirmed = confirmedSessionRef.current;
+        if (
+          confirmed?.id === active.id &&
+          confirmed.schema_version === schemaVersion &&
+          (options.title === undefined || options.title === confirmed.title) &&
+          workspaceSnapshotsEqual(confirmed.snapshot, recordSnapshot)
+        ) {
+          return { ok: true, session: active };
+        }
+
         if (
           !beforeEnsure &&
           active.schema_version === schemaVersion &&
+          (options.title === undefined || options.title === active.title) &&
           (workspaceSnapshotsEqual(active.snapshot, recordSnapshot) ||
             snapshotCoversRecord(active.snapshot, recordSnapshot))
         ) {
