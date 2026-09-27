@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
-import type { DeckElement, DeckSlide } from "./deck-schema";
+import type { DeckAspect, DeckElement, DeckSlide } from "./deck-schema";
+import { deckFontSizeCqi } from "./deck-text-scale";
 
 export function deckShapeClipPath(shape?: string): string | undefined {
   switch (shape) {
@@ -91,6 +92,7 @@ function DeckEditableText({
 
 export function DeckElementContent({
   element,
+  aspect = "16:9",
   miniature = false,
   editing = false,
   onCommitText,
@@ -98,6 +100,7 @@ export function DeckElementContent({
   onCancelEditing,
 }: {
   element: DeckElement;
+  aspect?: DeckAspect;
   miniature?: boolean;
   editing?: boolean;
   onCommitText?: (text: string) => void;
@@ -126,9 +129,7 @@ export function DeckElementContent({
         style={{
           background: element.fill || "#ffffff",
           color: element.color || "#292524",
-          fontSize: miniature
-            ? undefined
-            : `${Math.max(0.45, (element.fontSize || 16) / 7.2)}cqi`,
+          fontSize: `${deckFontSizeCqi(element.fontSize || 16, aspect)}cqi`,
           fontWeight: element.bold ? 700 : 400,
           fontStyle: element.italic ? "italic" : "normal",
           textDecoration: element.underline ? "underline" : "none",
@@ -308,9 +309,7 @@ export function DeckElementContent({
     textAlign: element.align || "left",
     color: element.color,
     fontFamily: element.fontFamily,
-    fontSize: miniature
-      ? undefined
-      : `${Math.max(0.55, (element.fontSize || 18) / 7.2)}cqi`,
+    fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
     fontWeight: element.bold ? 700 : 400,
     fontStyle: element.italic ? "italic" : "normal",
     textDecoration: element.underline ? "underline" : "none",
@@ -337,7 +336,7 @@ export function DeckElementContent({
   );
 }
 
-export function MiniDeckElementLayer({ slide }: { slide: DeckSlide }) {
+export function MiniDeckElementLayer({ slide, aspect = "16:9" }: { slide: DeckSlide; aspect?: DeckAspect }) {
   return (
     <>
       {slide.elements.map((element) => (
@@ -374,7 +373,7 @@ export function MiniDeckElementLayer({ slide }: { slide: DeckSlide }) {
                 : undefined,
           }}
         >
-          <DeckElementContent element={element} miniature />
+          <DeckElementContent element={element} aspect={aspect} miniature />
         </span>
       ))}
     </>

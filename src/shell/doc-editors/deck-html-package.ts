@@ -7,6 +7,7 @@
  */
 
 import { validateDeckIr } from "./deck-ir";
+import { deckFontSizePx } from "./deck-text-scale";
 import type {
   DeckIrChart,
   DeckIrDocument,
@@ -86,6 +87,7 @@ interface DeckPackLike {
 }
 
 interface ResolvedDeckStyle {
+  aspect: DeckHtmlAspect;
   palette: Record<DeckThemeSlot, string>;
   fontMajor: string;
   fontMinor: string;
@@ -159,6 +161,7 @@ async function packFor(packId: string | undefined): Promise<DeckPackLike | null>
 async function resolveStyle(
   project: DeckIrDocument,
   packId: string | undefined,
+  aspect: DeckHtmlAspect,
 ): Promise<ResolvedDeckStyle> {
   const pack = await packFor(packId);
   const palette: Record<DeckThemeSlot, string> = {
@@ -202,6 +205,7 @@ async function resolveStyle(
     : [];
 
   return {
+    aspect,
     palette,
     fontMajor,
     fontMinor,
@@ -289,8 +293,11 @@ function fontFamily(style: ResolvedDeckStyle, role: DeckFontRole): string {
 }
 
 function fontPixels(role: DeckFontRole, style: ResolvedDeckStyle): number {
-  // 1 pt = 12,700 EMU and this canvas uses 10,000 EMU per CSS pixel.
-  return Number((((DECK_FONT_SIZES[role] / 100) * 1.27) * style.fontScale).toFixed(3));
+  return Number(deckFontSizePx(
+    (DECK_FONT_SIZES[role] / 100) * style.fontScale,
+    style.aspect,
+    DECK_GRID.pageWidth / 10_000,
+  ).toFixed(3));
 }
 
 function textRun(text: string): string {
@@ -978,7 +985,7 @@ export async function buildDeckHtml(
   const aspect: DeckHtmlAspect =
     options.aspect === "4:3" || extended.aspect === "4:3" ? "4:3" : "16:9";
   const packId = options.packId || extended.packId;
-  const style = await resolveStyle(source, packId);
+  const style = await resolveStyle(source, packId, aspect);
   const references = resolveAssets(source, options.assets);
   const pageWidth = Number((DECK_GRID.pageWidth / 10_000).toFixed(3));
   const pageHeight = Number(

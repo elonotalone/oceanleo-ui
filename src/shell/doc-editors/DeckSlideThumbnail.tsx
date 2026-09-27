@@ -183,7 +183,10 @@ function DeckSlidePaintView({
               style={deckElementFrameStyle(element)}
             >
               <div className="h-full w-full overflow-hidden rounded-[inherit]">
-                <DeckElementContent element={element} />
+                <DeckElementContent
+                  element={element}
+                  aspect={pageWidth / pageHeight < 1.5 ? "4:3" : "16:9"}
+                />
               </div>
             </div>
           ))

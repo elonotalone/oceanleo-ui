@@ -31,6 +31,7 @@ import type {
 } from "./deck-schema";
 import { deckId, emptyDeckSlide, normalizeDeckDocument } from "./deck-schema";
 import { packById, type DeckPack } from "./deck-packs";
+import { deckFontSizePt, deckFontSizePx } from "./deck-text-scale";
 
 /** `AI_PPT_SCHEMA.md` 的逻辑画布宽度。 */
 export const PPTIST_VIEWPORT_WIDTH = 1000;
@@ -200,9 +201,10 @@ function hex(color: string | undefined, fallback: string): string {
 function toRichText(
   text: string,
   element: DeckElement,
+  aspect: DeckDocument["aspect"],
 ): string {
   const styles: string[] = [];
-  if (element.fontSize) styles.push(`font-size:${element.fontSize}px`);
+  if (element.fontSize) styles.push(`font-size:${deckFontSizePx(element.fontSize, aspect, PPTIST_VIEWPORT_WIDTH)}px`);
   if (element.color) styles.push(`color:${element.color}`);
   if (element.fontFamily) styles.push(`font-family:${element.fontFamily}`);
   if (element.bold) styles.push("font-weight:bold");
@@ -262,7 +264,7 @@ function convertElement(
     return {
       ...base,
       type: "text",
-      content: toRichText(element.text || "", element),
+      content: toRichText(element.text || "", element, aspect),
       defaultFontName: element.fontFamily || "",
       defaultColor: hex(element.color, "#333333"),
       fill: element.fill,
@@ -310,7 +312,7 @@ function convertElement(
       outline,
       text: element.text
         ? {
-            content: toRichText(element.text, element),
+            content: toRichText(element.text, element, aspect),
             defaultFontName: element.fontFamily || "",
             defaultColor: hex(element.color, "#333333"),
             align: "middle",
@@ -549,7 +551,8 @@ function firstSpanStyle(html: string): {
     const found = style.match(new RegExp(`${name}\\s*:\\s*([^;]+)`, "i"));
     return found ? found[1].trim() : "";
   };
-  const fontSize = Number.parseFloat(pick("font-size"));
+  // The first style may be the paragraph's alignment; size lives on its span.
+  const fontSize = Number.parseFloat(html.match(/font-size\s*:\s*([\d.]+)/i)?.[1] || "");
   return {
     color: pick("color") || undefined,
     fontFamily: pick("font-family") || undefined,
@@ -606,6 +609,7 @@ function placeholderElement(
 function reverseElement(
   raw: Record<string, unknown>,
   pageHeight: number,
+  aspect: DeckDocument["aspect"],
   order: number,
   warnings: string[],
 ): DeckElement {
@@ -626,7 +630,9 @@ function reverseElement(
       color: styles.color || (typeof raw.defaultColor === "string"
         ? raw.defaultColor
         : undefined),
-      fontSize: styles.fontSize,
+      fontSize: styles.fontSize === undefined
+        ? undefined
+        : deckFontSizePt(styles.fontSize, aspect, PPTIST_VIEWPORT_WIDTH),
       bold: styles.bold,
       italic: styles.italic,
       underline: styles.underline,
@@ -659,12 +665,16 @@ function reverseElement(
   if (type === "shape") {
     const text = recordOf(raw.text);
     const html = typeof text?.content === "string" ? text.content : "";
+    const styles = firstSpanStyle(html);
     return {
       ...geometry,
       type: "shape",
       shape: "rect",
       fill: typeof raw.fill === "string" ? raw.fill : undefined,
       text: html ? pptistRichTextToPlain(html) : undefined,
+      fontSize: styles.fontSize === undefined
+        ? undefined
+        : deckFontSizePt(styles.fontSize, aspect, PPTIST_VIEWPORT_WIDTH),
       fontFamily: typeof text?.defaultFontName === "string"
         ? text.defaultFontName
         : undefined,
@@ -739,7 +749,7 @@ export function pptistToDeckDocument(
     const slide = recordOf(raw) || {};
     const elements = (Array.isArray(slide.elements) ? slide.elements : []).map(
       (element, order) =>
-        reverseElement(recordOf(element) || {}, pageHeight, order, warnings),
+        reverseElement(recordOf(element) || {}, pageHeight, aspect, order, warnings),
     );
     const textTitle = elements.find(
       (element) => element.type === "text" && element.text,

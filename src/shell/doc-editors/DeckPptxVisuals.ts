@@ -1,4 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { deckFontSizePx } from "./deck-text-scale";
 
 import type {
   DeckAspect,
@@ -207,7 +208,12 @@ export function deckPptxTableImageData(
   const border = escapeXml(element.borderColor || "#d1d5db");
   const fontFamily = escapeXml(element.fontFamily || "Arial, sans-serif");
   const borderWidth = Math.max(1, finite(element.borderWidth, 1) * 2);
-  const fontSize = clamp(finite(element.fontSize, 16) * 2.5, 18, 96);
+  // The SVG spans the table, so recover the corresponding full slide width.
+  const fontSize = deckFontSizePx(
+    finite(element.fontSize, 16),
+    aspect,
+    (width * 100) / Math.max(0.1, element.width),
+  );
   const lineHeight = fontSize * clamp(finite(element.lineHeight, 1.15), 0.7, 4);
   const letterSpacing = finite(element.letterSpacing, 0) * 2.5;
   const radius =

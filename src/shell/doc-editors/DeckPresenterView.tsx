@@ -159,7 +159,7 @@ function slideLabel(slide: DeckSlide | undefined, index: number): string {
  * 不碰 context 也不调 `useUI()`，所以在第二个窗口的独立 root 里是安全的。
  * `editing` 默认 false，拿不到任何写回口。
  */
-function PositionedPresenterSlide({ slide }: { slide: DeckSlide }) {
+function PositionedPresenterSlide({ slide, aspect }: { slide: DeckSlide; aspect: DeckDocument["aspect"] }) {
   return (
     <>
       {[...slide.elements]
@@ -209,7 +209,7 @@ function PositionedPresenterSlide({ slide }: { slide: DeckSlide }) {
                 className="h-full w-full overflow-hidden rounded-[inherit]"
                 style={{ animation: deckElementAnimationStyle(element) }}
               >
-                <DeckElementContent element={element} />
+                <DeckElementContent element={element} aspect={aspect} />
               </div>
             </div>
           );
@@ -366,7 +366,7 @@ function PresenterSlideSurface({
           style={{ animation: deckSlideTransitionStyle(slide) }}
         >
           {slide.elements.length > 0 ? (
-            <PositionedPresenterSlide slide={slide} />
+            <PositionedPresenterSlide slide={slide} aspect={deck.aspect} />
           ) : (
             <LegacyPresenterSlide deck={deck} slide={slide} />
           )}

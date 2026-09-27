@@ -317,6 +317,7 @@ function PositionedSlideCanvas({
               >
                 <DeckElementContent
                   element={rendered}
+                  aspect={editor.deck.aspect}
                   editing={editing}
                   onCancelEditing={() => editor.endTextEditing()}
                   onCommitText={(text) => {

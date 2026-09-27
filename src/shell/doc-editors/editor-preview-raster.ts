@@ -15,6 +15,7 @@
 // ============================================================================
 
 import type { DeckDocument, DeckElement, DeckSlide } from "./deck-schema";
+import { deckFontSizePx } from "./deck-text-scale";
 import type { GridSheet } from "./grid-model";
 
 export const EDITOR_PREVIEW_MEDIA_TYPE = "image/png";
@@ -96,8 +97,8 @@ function wrapText(
 const PREVIEW_FONT_STACK =
   '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
 
-function previewFont(sizePx: number, bold = false): string {
-  return `${bold ? "600 " : ""}${Math.max(8, Math.round(sizePx))}px ${PREVIEW_FONT_STACK}`;
+function previewFont(sizePx: number, bold = false, exactSize = false): string {
+  return `${bold ? "600 " : ""}${exactSize ? sizePx : Math.max(8, Math.round(sizePx))}px ${PREVIEW_FONT_STACK}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,7 @@ function deckElementText(element: DeckElement): string {
 function drawDeckSlide(
   target: RasterTarget,
   slide: DeckSlide,
+  aspect: DeckDocument["aspect"],
   background: string,
   textColor: string,
 ): void {
@@ -140,11 +142,12 @@ function drawDeckSlide(
       const text = deckElementText(element);
       if (!text) continue;
       context.fillStyle = element.color || textColor;
-      const fontSize =
-        Number(element.fontSize) > 0
-          ? (Number(element.fontSize) / 100) * canvas.height
-          : canvas.height * 0.045;
-      context.font = previewFont(fontSize, Boolean(element.bold));
+      const fontSize = deckFontSizePx(
+        Number(element.fontSize) > 0 ? Number(element.fontSize) : element.type === "table" ? 16 : 18,
+        aspect,
+        canvas.width,
+      );
+      context.font = previewFont(fontSize, Boolean(element.bold), true);
       context.textBaseline = "top";
       const lineHeight = fontSize * 1.35;
       const lines = wrapText(
@@ -206,6 +209,7 @@ export async function renderDeckPreviewPng(
   drawDeckSlide(
     target,
     slide,
+    deck.aspect,
     slide.background || master?.background || "#ffffff",
     master?.textColor || "#0f172a",
   );
