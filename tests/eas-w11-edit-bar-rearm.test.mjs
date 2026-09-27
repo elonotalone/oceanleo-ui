@@ -526,7 +526,7 @@ test("第二下按住 300ms 不动：按住期间没有 click，带 data-edit-ba
   }
 });
 
-test("两下松开后第三下不拖；触屏换 pointerId；pointercancel 归位；buttons 0 结束", async () => {
+test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；buttons 0 结束", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
   const restore = installRectStub();
@@ -586,7 +586,7 @@ test("两下松开后第三下不拖；触屏换 pointerId；pointercancel 归�
       to: { x: 470, y: 70 },
       afterMs: 80,
     });
-    assert.ok(Math.abs(translateOf(bar()).x - before.x) < 1, "两下都松开后第三下移动不拖");
+    assert.ok(Math.abs(translateOf(bar()).x - before.x) >= 40, "双击后再按住应能拖");
     clock.now += 16;
     await act(async () => {
       pointerUp(anywhere, { clock, pointerId: 1, clientX: 470, clientY: 70 });

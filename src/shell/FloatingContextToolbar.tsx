@@ -427,9 +427,7 @@ export function FloatingContextToolbar({
         data-edit-bar-mode={controller.mode}
         data-edit-bar-presentation={controller.presentation}
           data-edit-bar-dragging={controller.dragging || undefined}
-          data-edit-bar-move-mode={
-            (controller.dragging && controller.moveMode) || undefined
-          }
+          data-edit-bar-move-mode={controller.moveMode || undefined}
         className="pointer-events-none absolute inset-0 overflow-visible"
       >
         <div
@@ -497,8 +495,8 @@ export function FloatingContextToolbar({
               </EditBarRow>
             )}
           </div>
-          {controller.dragging && controller.moveMode && (
-            // 黄圈只在真正拖的时候出现；第二下刚按下未过阈值不画。
+          {controller.moveMode && (
+            // 按住拖的这一段只提供视觉反馈；控制器在阈值后吞掉 click。
             <div
               aria-hidden="true"
               data-edit-bar-move-shield

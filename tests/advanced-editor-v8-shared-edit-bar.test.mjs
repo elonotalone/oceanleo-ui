@@ -597,8 +597,11 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     assert.equal(liveController.dragging, false, "第一次按下不得改任何拖拽状态");
     assert.equal(offset(), "0,0", "第一次按下抬起不得改位置");
     await pointer(tool, "pointerdown", toolPress(4020));
-    assert.equal(liveController.moveMode, false, "第二下刚按下未过阈值不得置 moveMode");
-    assert.equal(liveController.dragging, false);
+    assert.equal(
+      liveController.moveMode,
+      true,
+      "武装窗口内对按键第二次按下必须进入按住拖",
+    );
     await pointer(window, "pointermove", {
       pointerId: 1,
       pointerType: "mouse",
@@ -606,8 +609,6 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       clientY: 40,
       timeStamp: 4100,
     });
-    assert.equal(liveController.moveMode, true);
-    assert.equal(liveController.dragging, true);
     assert.equal(offset(), "20,20", "按键上双击起拖后 offset 必须跟手");
     await pointer(window, "pointerup", {
       pointerId: 1,
@@ -637,7 +638,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await pointer(tool, "pointerdown", toolPress(4500));
     await pointer(tool, "pointerup", toolPress(4510));
     await pointer(tool, "pointerdown", toolPress(4600));
-    assert.equal(liveController.moveMode, false, "第二下刚按下不画圈");
+    assert.equal(liveController.moveMode, true, "第二次按下先武装");
     await pointer(window, "pointerup", { ...toolPress(4650) });
     assert.equal(liveController.moveMode, false, "快速第二下松开后离开武装");
     assert.equal(offset(), "0,0", "快速第二下不得拖走条子");
@@ -688,7 +689,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await pointer(bar(), "pointerdown", {
       pointerId: 12, pointerType: "touch", clientX: 12, clientY: 10, timeStamp: 9200,
     });
-    assert.equal(liveController.moveMode, false, "触控第二下刚按下未过阈值不得置 moveMode");
+    assert.equal(liveController.moveMode, true, "触控第二次按下（pointerId 不同）必须起拖");
     await pointer(window, "pointermove", {
       pointerId: 12,
       pointerType: "touch",

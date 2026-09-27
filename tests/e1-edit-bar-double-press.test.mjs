@@ -309,52 +309,6 @@ test("第二下不移动就松开：两次点击都生效且只各一次", async
   } finally { await h.close(); }
 });
 
-function moveModeLayer(bar) {
-  return bar.closest("[data-workspace-floating-toolbar], [data-workspace-docked-toolbar]");
-}
-
-test("一下点击 + 第二下移动即拖；拖之前没有 move-mode 圈", async () => {
-  const h = await mountBar();
-  try {
-    await h.first();
-    assert.equal(h.clicks, 1);
-    await h.second();
-    assert.equal(h.controller.dragging, false, "第二下刚按下未过阈值不得起拖");
-    assert.equal(h.controller.moveMode, false, "第二下刚按下不得置 moveMode");
-    assert.equal(moveModeLayer(h.bar)?.hasAttribute("data-edit-bar-move-mode"), false);
-    assert.equal(h.bar.querySelector("[data-edit-bar-move-shield]"), null);
-    await h.move();
-    assert.equal(h.controller.dragging, true, "第二下移动即拖，不要第三下");
-    assert.equal(h.controller.moveMode, true);
-    assert.equal(moveModeLayer(h.bar)?.hasAttribute("data-edit-bar-move-mode"), true);
-    assert.ok(h.bar.querySelector("[data-edit-bar-move-shield]"), "真正拖时才画圈");
-    await h.up();
-    assert.equal(h.controller.dragging, false);
-    assert.equal(h.controller.moveMode, false);
-    assert.equal(h.bar.querySelector("[data-edit-bar-move-shield]"), null);
-  } finally { await h.close(); }
-});
-
-test("两下都松开后第三下移动不拖；之后再按才是新的第一下", async () => {
-  const h = await mountBar();
-  try {
-    await h.first();
-    await h.second();
-    await h.up(200);
-    assert.equal(h.clicks, 2);
-    await h.second({ gap: 80 });
-    await h.move();
-    assert.equal(h.controller.dragging, false, "两下点完，第三下移动不得起拖");
-    assert.equal(h.controller.moveMode, false);
-    await h.up();
-    await h.first();
-    await h.second({ gap: 80 });
-    await h.move();
-    assert.equal(h.controller.dragging, true, "全新第一下之后，第二下移动应能拖");
-    await h.up();
-  } finally { await h.close(); }
-});
-
 test("超时或超距的按下成为新的第一下，下次邻近快速按下可以拖", async () => {
   for (const [gap, x] of [[401, 200], [120, 240]]) {
     const h = await mountBar();
