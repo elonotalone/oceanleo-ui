@@ -1,83 +1,19 @@
 "use client";
 
-/**
- * Photopea 免费版 iframe。只在专业模式由 ImagePhotopeaHost 挂上。
- *
- * UC-3：sandbox 走 photopeaFrameSandbox() → UNTRUSTED_FRAME_SANDBOX，
- * 不含 allow-same-origin。
- * UC-6：收信 origin + source；发信 targetOrigin 必须是 PHOTOPEA_ORIGIN。
- */
-import { useCallback, useEffect, useReducer, useRef } from "react";
-import {
-  PHOTOPEA_INITIAL_STATE,
-  PHOTOPEA_ORIGIN,
-  classifyPhotopeaMessage,
-  isPhotopeaFrameSource,
-  photopeaLaunchUrl,
-  photopeaReducer,
-  postToPhotopea,
-  type PhotopeaLaunchOptions,
-} from "./photopea-bridge";
-import { photopeaFrameSandbox } from "./photopea-mount";
+import { useEffect, useRef } from "react";
+import type { PhotopeaLaunchOptions } from "./photopea-bridge";
+import type { PhotopeaSession } from "./photopea-session";
 
-export function PhotopeaFrame({
-  documentDataUrl,
-  theme,
-  onDocument,
-  exportRequestId,
-}: PhotopeaLaunchOptions & {
-  onDocument?: (bytes: ArrayBuffer) => void;
-  exportRequestId?: number;
+/** React owns only the positioning anchor. The session owns the real iframe. */
+export function PhotopeaFrame({ documentDataUrl, theme, session }: PhotopeaLaunchOptions & {
+  session: PhotopeaSession;
 }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [state, dispatch] = useReducer(photopeaReducer, PHOTOPEA_INITIAL_STATE);
-  const sandbox = photopeaFrameSandbox();
-
+  const anchor = useRef<HTMLDivElement>(null);
+  const launch = useRef({ documentDataUrl, theme });
+  launch.current = { documentDataUrl, theme };
   useEffect(() => {
-    dispatch({ type: "open" });
-    return () => {
-      dispatch({ type: "close" });
-    };
-  }, []);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (!isPhotopeaFrameSource(event, iframeRef.current?.contentWindow)) {
-        return;
-      }
-      const message = classifyPhotopeaMessage(event);
-      dispatch({ type: "message", message });
-      if (message.kind === "document") onDocument?.(message.bytes);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [onDocument]);
-
-  const requestExport = useCallback(() => {
-    dispatch({ type: "request-export" });
-    postToPhotopea(
-      iframeRef.current?.contentWindow ?? null,
-      'app.activeDocument.saveToOE("png");',
-      PHOTOPEA_ORIGIN,
-    );
-  }, []);
-
-  useEffect(() => {
-    if (!exportRequestId) return;
-    requestExport();
-  }, [exportRequestId, requestExport]);
-
-  void state;
-
-  return (
-    <iframe
-      ref={iframeRef}
-      title="Photopea"
-      src={photopeaLaunchUrl({ documentDataUrl, theme })}
-      sandbox={sandbox}
-      referrerPolicy="no-referrer"
-      data-testid="image-photopea-frame"
-      className="h-full min-h-[280px] w-full border-0"
-    />
-  );
+    if (!anchor.current) return;
+    return session.attach(anchor.current, launch.current);
+  }, [session]);
+  return <div ref={anchor} className="h-full min-h-[280px] w-full" data-testid="image-photopea-anchor" />;
 }

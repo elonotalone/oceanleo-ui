@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useAdvancedSession } from "../advanced-session-context";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import {
   advancedCommittedRevisionItem,
@@ -73,10 +74,9 @@ import {
   useProSavedRevision,
 } from "./editor-handoff";
 import {
-  createPhotopeaSaveRoundtrip,
-  persistPhotopeaDocument,
   toPhotopeaDocumentRef,
 } from "./image-pro-handoff";
+import { createPhotopeaSession } from "../image-editor/photopea-session";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
   imageDesignChipManifestEntries,
@@ -104,8 +104,19 @@ export function ImageRoute({
   const editor = useFabricImageEditor(activeItem, siteId);
   const [importNotice, setImportNotice] = useState("");
   const [documentDataUrl, setDocumentDataUrl] = useState<string | undefined>();
-  const [exportRequestId, setExportRequestId] = useState(0);
-  const photopeaSaveRef = useRef(createPhotopeaSaveRoundtrip());
+  const advancedSession = useAdvancedSession();
+  const makePhotopeaSession = useCallback((opened = activeItem) => createPhotopeaSession({
+    item: opened,
+    siteId,
+    recordSavedItem: advancedSession ? (saved) => advancedSession.recordSavedItem(saved) : undefined,
+    onSaved: (saved) => {
+      clearLocalImageDraft(opened);
+      reportProSaved(handoffItemKey(opened), saved);
+    },
+  }), [activeItem, siteId, advancedSession]);
+  const [photopeaSession, setPhotopeaSession] = useState(() => makePhotopeaSession(item));
+  const photopeaStatus = useSyncExternalStore(photopeaSession.subscribe, photopeaSession.snapshot, photopeaSession.snapshot);
+  const photopeaItemKey = useRef(handoffItemKey(item));
   /**
    * L0 专业模式（W01：`normal | pro`）。第二行「专业编辑」页切到这里；
    * 打开时用 `currentPluginMode("image")` 记住的档位，之后只走 `setEditorMode`。
@@ -115,6 +126,14 @@ export function ImageRoute({
     () => rememberedImagePluginMode(),
   );
   const { showPhotopea } = applyImageL0Mode(pluginMode);
+  useEffect(() => {
+    const nextKey = handoffItemKey(item);
+    if (photopeaItemKey.current === nextKey) return;
+    photopeaItemKey.current = nextKey;
+    setDocumentDataUrl(undefined);
+    setPluginModeState("normal");
+    setPhotopeaSession(makePhotopeaSession(item));
+  }, [item, makePhotopeaSession]);
   /**
    * 画布内结构 / 皮肤（photo | design）。不占 L0 槽。
    * 点开关走 `applyCanvasViewClick` → `switchEditorMode` → `planEditorModeSwitch`。
@@ -200,10 +219,8 @@ export function ImageRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     if (showPhotopea) {
-      const waiting = photopeaSaveRef.current.expect();
-      setExportRequestId((value) => value + 1);
       try {
-        const next = await waiting;
+        const next = await photopeaSession.save();
         return { ok: true as const, item: next };
       } catch (caught) {
         return {
@@ -253,7 +270,7 @@ export function ImageRoute({
             : "图片 revision 回执无法固定到当前 artifact head。",
       };
     }
-  }, [activeItem, editor.error, editor.save, showPhotopea]);
+  }, [activeItem, editor.error, editor.save, showPhotopea, photopeaSession]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       setImportNotice("");
@@ -391,8 +408,13 @@ export function ImageRoute({
               "";
           }
           const ref = await toPhotopeaDocumentRef(url);
-          if (ref.ok) setDocumentDataUrl(ref.documentDataUrl);
-          else setImportNotice(ref.error);
+          if (!ref.ok) {
+            setImportNotice(ref.error);
+            return;
+          }
+          setImportNotice("");
+          setDocumentDataUrl(ref.documentDataUrl);
+          setPhotopeaSession(makePhotopeaSession());
           setPluginModeState("pro");
         } catch (caught) {
           setImportNotice(
@@ -406,10 +428,8 @@ export function ImageRoute({
     }
     if (next === "normal" && pluginMode === "pro") {
       void (async () => {
-        const waiting = photopeaSaveRef.current.expect();
-        setExportRequestId((value) => value + 1);
         try {
-          await waiting;
+          await photopeaSession.leave();
         } catch (caught) {
           setImportNotice(
             caught instanceof Error
@@ -423,27 +443,8 @@ export function ImageRoute({
       return;
     }
     setPluginModeState(next);
-  }, [activeItem, frozenCanvasUrl, pluginMode]);
+  }, [activeItem, frozenCanvasUrl, pluginMode, photopeaSession, makePhotopeaSession]);
 
-  const onPhotopeaDocument = useCallback(
-    async (bytes: ArrayBuffer) => {
-      const saved = await persistPhotopeaDocument({
-        item: activeItem,
-        siteId,
-        bytes,
-      });
-      if (!saved.ok) {
-        setImportNotice(saved.error);
-        photopeaSaveRef.current.settle(saved);
-        return;
-      }
-      clearLocalImageDraft(activeItem);
-      setActiveItem(saved.item);
-      reportProSaved(handoffItemKey(activeItem), saved.item);
-      photopeaSaveRef.current.settle(saved);
-    },
-    [activeItem, siteId],
-  );
 
   /**
    * Lets the edit bar and the agent reach the same AI capabilities the panel
@@ -710,9 +711,8 @@ export function ImageRoute({
             <div className="relative min-h-0 flex-1">
               <FabricImageStage editor={editor} accent={accent} />
               <ImagePhotopeaHost showPhotopea={showPhotopea}
-                documentDataUrl={documentDataUrl}
-                onDocument={onPhotopeaDocument}
-                exportRequestId={exportRequestId}
+                documentDataUrl={documentDataUrl || activeItem.previewUrl || activeItem.url}
+                session={photopeaSession}
               />
             </div>
             {/* 结构 / 皮肤：画布右下角、与宿主缩放控件同组（规范 v2 §1），
@@ -732,12 +732,19 @@ export function ImageRoute({
           </div>
         ),
         status:
+          (showPhotopea ? photopeaStatus.message : "") ||
           editor.error ||
           importNotice ||
           editor.notice ||
           (editor.loading ? "正在载入图片编辑器" : ""),
         persistence: {
-          dirty: editor.dirty,
+          // Photopea has no mutation feed. Fabric's dirty/revision cannot
+          // confirm that the iframe's latest edits reached the server.
+          autoSave: !showPhotopea,
+          confirmation: showPhotopea
+            ? { state: photopeaStatus.phase, message: photopeaStatus.message }
+            : undefined,
+          dirty: showPhotopea || editor.dirty,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
         },

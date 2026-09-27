@@ -31,9 +31,7 @@ function toggleEditorBrowserFullscreen() {
     void document.exitFullscreen?.();
     return;
   }
-  const target =
-    document.querySelector<HTMLElement>("[data-inline-editor]") ||
-    document.documentElement;
+  const target = document.documentElement;
   void target.requestFullscreen?.();
 }
 
@@ -42,7 +40,7 @@ export const SAVE_NOW_ACTION_ID = "flush-now";
 
 export function AdvancedWorkspaceActionBar({
   adapter,
-  autoSaveState,
+  autoSaveState: observedAutoSaveState,
   autoSaveError,
   activeLibraryPanelId,
   pluginThemeId = null,
@@ -81,6 +79,8 @@ export function AdvancedWorkspaceActionBar({
   onUploadFiles?: (files: File[]) => void;
 }) {
   const tt = useUI();
+  const confirmation = adapter.persistence?.confirmation;
+  const autoSaveState = confirmation?.state ?? observedAutoSaveState;
   const rightPaneSlot = useRightPaneSlot();
   const rightMaximized = useSyncExternalStore(
     rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
@@ -143,7 +143,9 @@ export function AdvancedWorkspaceActionBar({
   const downloadMenuId = `workspace-download-${idBase}`;
   const saveMenuId = `workspace-save-${idBase}`;
   const saveStateLabel = tt(
-    autoSaveState === "saving"
+    autoSaveState === "unconfirmed"
+      ? "尚未确认保存"
+      : autoSaveState === "saving"
       ? "正在自动保存"
       : autoSaveState === "error"
         ? "保存遇到问题"
@@ -151,8 +153,8 @@ export function AdvancedWorkspaceActionBar({
   );
   const saveErrorTitle =
     autoSaveState === "error"
-      ? autoSaveError || tt("保存失败，点击重试")
-      : undefined;
+      ? confirmation?.message || autoSaveError || tt("保存失败，点击重试")
+      : confirmation?.message;
   const saveMenuAvailable = saveActions.length > 0 || autoSaveState === "error";
 
   const triggerAction = async (
@@ -238,7 +240,9 @@ export function AdvancedWorkspaceActionBar({
                   ? "var(--awb-danger,#dc2626)"
                   : autoSaveState === "saving"
                     ? "var(--awb-warn,#d97706)"
-                    : "var(--awb-ok,#059669)",
+                    : autoSaveState === "unconfirmed"
+                      ? "var(--awb-muted,#737373)"
+                      : "var(--awb-ok,#059669)",
             }}
           >
             <CloudAutoSaveIcon
@@ -435,7 +439,7 @@ function CloudAutoSaveIcon({
   state,
   className = "",
 }: {
-  state: AdvancedAutoSaveState;
+  state: AdvancedAutoSaveState | "unconfirmed";
   className?: string;
 }) {
   return (

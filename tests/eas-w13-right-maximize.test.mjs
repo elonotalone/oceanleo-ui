@@ -532,7 +532,11 @@ test("没有 slot 时点按钮调用 requestFullscreen，而不是 onClose", asy
     await act(async () => button.click());
     assert.equal(mounted.closed.n, 0, "没有 slot 时点按钮仍走了 onClose");
     assert.ok(calls.length > 0, "没有调用 requestFullscreen");
-    assert.equal(calls[0], host, "全屏目标不是编辑器根");
+    assert.equal(
+      calls[0],
+      document.documentElement,
+      "无右侧栏时全屏必须罩住整页，才能带上固定在 body 里的专业编辑 iframe",
+    );
   } finally {
     if (previous) proto.requestFullscreen = previous;
     else delete proto.requestFullscreen;

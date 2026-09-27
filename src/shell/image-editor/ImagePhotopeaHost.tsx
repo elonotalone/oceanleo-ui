@@ -6,18 +6,17 @@
  */
 import { PhotopeaFrame } from "./PhotopeaFrame";
 import { planPhotopeaMount } from "./photopea-mount";
+import type { PhotopeaSession } from "./photopea-session";
 import type { PhotopeaLaunchOptions } from "./photopea-bridge";
 
 export function ImagePhotopeaHost({
   showPhotopea,
   documentDataUrl,
   theme,
-  onDocument,
-  exportRequestId,
+  session,
 }: PhotopeaLaunchOptions & {
   showPhotopea: boolean;
-  onDocument?: (bytes: ArrayBuffer) => void;
-  exportRequestId?: number;
+  session: PhotopeaSession;
 }) {
   const planned = planPhotopeaMount(showPhotopea);
   if (!planned.mount) return null;
@@ -29,8 +28,7 @@ export function ImagePhotopeaHost({
       <PhotopeaFrame
         documentDataUrl={documentDataUrl}
         theme={theme}
-        onDocument={onDocument}
-        exportRequestId={exportRequestId}
+        session={session}
       />
     </div>
   );

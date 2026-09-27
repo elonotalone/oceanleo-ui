@@ -33,7 +33,8 @@ const read = (relative) =>
   readFileSync(new URL(`../${relative}`, import.meta.url), "utf8");
 
 const hostSrc = read("src/shell/image-editor/ImagePhotopeaHost.tsx");
-const frameSrc = read("src/shell/image-editor/PhotopeaFrame.tsx");
+const frameSrc = read("src/shell/image-editor/photopea-session.ts");
+import { createPhotopeaSession } from "../src/shell/image-editor/photopea-session.ts";
 const switchSrc = read("src/shell/image-editor/ImageCanvasViewSwitch.tsx");
 
 test("pro 档才允许挂 Photopea，normal 档不允许", () => {
@@ -58,9 +59,9 @@ test("Host 必须问 planPhotopeaMount，Frame 必须走共享沙箱与精确 or
   // UC-3 / UC-6
   assert.match(hostSrc, /planPhotopeaMount\(showPhotopea\)/);
   assert.match(hostSrc, /if \(!planned\.mount\) return null/);
-  assert.match(frameSrc, /sandbox=\{sandbox\}/);
+  assert.match(frameSrc, /setAttribute\("sandbox", photopeaFrameSandbox\(\)\)/);
   assert.match(frameSrc, /photopeaFrameSandbox\(\)/);
-  assert.match(frameSrc, /referrerPolicy="no-referrer"/);
+  assert.match(frameSrc, /setAttribute\("referrerpolicy", "no-referrer"\)/);
   assert.match(frameSrc, /postToPhotopea\(/);
   assert.match(frameSrc, /PHOTOPEA_ORIGIN/);
   assert.equal(
@@ -170,6 +171,7 @@ async function mountCompiled(entry, element) {
   };
 }
 
+// UC-3: the untrusted Photopea frame must not exist on the Edit face.
 test("普通模式不得出现 Photopea iframe", async () => {
   const mounted = await mountCompiled(
     "src/shell/image-editor/ImagePhotopeaHost.tsx",
@@ -188,21 +190,32 @@ test("普通模式不得出现 Photopea iframe", async () => {
   }
 });
 
+// UC-3: the pro face mounts Photopea with photopeaFrameSandbox() only.
 test("专业模式必须出现 Photopea iframe", async () => {
+  const item = { id: "mount-photopea", key: "mount-photopea", meta: {} };
+  const session = createPhotopeaSession({ item, siteId: "image", saveDocument: async () => ({ ok: true, item, digest: "fixture", unchanged: false }) });
   const mounted = await mountCompiled(
     "src/shell/image-editor/ImagePhotopeaHost.tsx",
     (mod) =>
-      React.createElement(mod.ImagePhotopeaHost, { showPhotopea: true }),
+      React.createElement(mod.ImagePhotopeaHost, { showPhotopea: true, session }),
   );
+  const frame = window.document.querySelector("[data-testid=image-photopea-frame]");
   try {
-    assertLivePhotopeaIframe(
-      mounted.container.querySelector("[data-testid=image-photopea-frame]"),
-    );
+    assertLivePhotopeaIframe(frame);
   } finally {
+    let script = "";
+    frame.contentWindow.postMessage = (value) => { script = value; };
+    const message = (data) => window.dispatchEvent(new window.MessageEvent("message", { data, origin: PHOTOPEA_ORIGIN, source: frame.contentWindow }));
+    message("done");
+    const closing = session.leave();
+    message(JSON.parse(script.match(/app\.echoToOE\(("[^"]+")\)/)[1]));
+    message(new ArrayBuffer(8));
+    await closing;
     await mounted.unmount();
   }
 });
 
+// UC-3: switching canvas chrome must not create a second Photopea frame.
 test("点皮肤必须切过去，并且不得改文档", async () => {
   const document = Object.freeze({ title: "同一份文件", n: 7 });
   const mounted = await mountCompiled(

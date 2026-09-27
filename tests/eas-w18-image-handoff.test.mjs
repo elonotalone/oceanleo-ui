@@ -18,7 +18,7 @@ const host = readFileSync("src/shell/image-editor/ImagePhotopeaHost.tsx", "utf8"
 const frame = readFileSync("src/shell/image-editor/PhotopeaFrame.tsx", "utf8");
 
 function pngBytes() {
-  return Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).buffer;
+  return Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=", "base64")).buffer;
 }
 
 function item(overrides = {}) {
@@ -138,7 +138,7 @@ test("交给快速面的 item 去掉旧 Fabric 工程指针", () => {
 
 test("ImageRoute 把当前图像和回传交给 Photopea", () => {
   assert.match(route, /documentDataUrl=\{/);
-  assert.match(route, /onDocument=\{/);
+  assert.match(route, /session=\{/);
   assert.match(route, /<ImagePhotopeaHost showPhotopea=\{showPhotopea\}/);
   assert.equal(/photopea\.com/i.test(route), false);
   assert.equal(/setShowPhotopea|togglePro|proSwitch/.test(route), false);
@@ -146,7 +146,10 @@ test("ImageRoute 把当前图像和回传交给 Photopea", () => {
 
 test("PhotopeaFrame 按 PNG 要回当前文档", () => {
   assert.match(host, /documentDataUrl=\{documentDataUrl\}/);
-  assert.match(host, /onDocument=\{onDocument\}/);
-  assert.match(frame, /saveToOE\("png"\)/);
-  assert.match(frame, /postToPhotopea\(/);
+  assert.match(host, /session=\{session\}/);
+  const session = readFileSync("src/shell/image-editor/photopea-session.ts", "utf8");
+  const handoff = readFileSync("src/shell/advanced-routes/image-pro-handoff.ts", "utf8");
+  assert.match(handoff, /saveToOE\("png"\)/);
+  assert.match(session, /postToPhotopea\(/);
+  assert.match(frame, /session.attach\(/);
 });

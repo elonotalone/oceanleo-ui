@@ -93,23 +93,68 @@ function bytesToBase64(bytes: ArrayBuffer): string {
   return btoa(binary);
 }
 
+/** SHA-256 identifies the exported content, never a clock tick or cache write. */
+export async function photopeaContentDigest(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function dataUrlDigest(url: string): Promise<string | undefined> {
+  const match = /^data:image\/[^;,]+;base64,(.*)$/s.exec(url);
+  if (!match) return undefined;
+  try {
+    const binary = atob(match[1]);
+    return await photopeaContentDigest(Uint8Array.from(binary, (char) => char.charCodeAt(0)).buffer);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Reject truncated containers as well as PSD/unknown replies. */
+function usableImage(bytes: ArrayBuffer, kind: ImageBytesKind): boolean {
+  const view = new Uint8Array(bytes);
+  if (kind === "png") {
+    if (view.length < 57 || ![137,80,78,71,13,10,26,10].every((v, i) => view[i] === v)) return false;
+    const data = new DataView(bytes);
+    let imageData = false;
+    let header = false;
+    for (let offset = 8; offset + 12 <= view.length;) {
+      const size = data.getUint32(offset);
+      const end = offset + 12 + size;
+      if (end > view.length) return false;
+      const tag = String.fromCharCode(...view.subarray(offset + 4, offset + 8));
+      if (offset === 8) {
+        if (tag !== "IHDR" || size !== 13 || !data.getUint32(offset + 8) || !data.getUint32(offset + 12)) return false;
+        header = true;
+      }
+      if (tag === "IDAT" && size > 0) imageData = true;
+      if (tag === "IEND") return header && imageData && size === 0 && end === view.length;
+      offset = end;
+    }
+    return false;
+  }
+  if (kind === "jpeg") return view.length > 20 && view[view.length - 2] === 0xff && view[view.length - 1] === 0xd9;
+  if (kind === "gif") return view.length > 13 && view[view.length - 1] === 0x3b;
+  if (kind === "webp") return view.length > 20 && new DataView(bytes).getUint32(4, true) + 8 === view.length;
+  return false;
+}
+
 export async function toPhotopeaDocumentRef(
   url: string,
   deps: { fetchImpl?: typeof fetch } = {},
-): Promise<{ ok: true; documentDataUrl: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; documentDataUrl: string; digest?: string } | { ok: false; error: string }> {
   if (!url) return { ok: false, error: "当前没有可交给专业编辑的图像。" };
   if (url.startsWith("data:")) {
-    return url.length <= PHOTOPEA_DATA_URL_MAX_CHARS
-      ? { ok: true, documentDataUrl: url }
-      : { ok: true, documentDataUrl: url };
+    return { ok: true, documentDataUrl: url, digest: await dataUrlDigest(url) };
   }
   const fetchImpl = deps.fetchImpl ?? fetch;
   try {
-    const response = await fetchImpl(url, { cache: "no-store" });
+    const response = await fetchImpl(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!response.ok) {
       return { ok: true, documentDataUrl: url };
     }
     const bytes = await response.arrayBuffer();
+    const digest = await photopeaContentDigest(bytes);
     const declared = (response.headers.get("content-type") || "")
       .split(";")[0]
       .trim()
@@ -117,9 +162,9 @@ export async function toPhotopeaDocumentRef(
     const mime = /^image\/[a-z0-9.+-]+$/.test(declared) ? declared : "image/png";
     const dataUrl = `data:${mime};base64,${bytesToBase64(bytes)}`;
     if (dataUrl.length > PHOTOPEA_DATA_URL_MAX_CHARS) {
-      return { ok: true, documentDataUrl: url };
+      return { ok: true, documentDataUrl: url, digest };
     }
-    return { ok: true, documentDataUrl: dataUrl };
+    return { ok: true, documentDataUrl: dataUrl, digest };
   } catch {
     return { ok: true, documentDataUrl: url };
   }
@@ -127,8 +172,10 @@ export async function toPhotopeaDocumentRef(
 
 export function createPhotopeaSaveRoundtrip(timeoutMs = PHOTOPEA_SAVE_TIMEOUT_MS): {
   expect: () => Promise<LibraryItem>;
+  received: () => void;
   settle: (result: { ok: true; item: LibraryItem } | { ok: false; error: string }) => boolean;
 } {
+  let promise: Promise<LibraryItem> | null = null;
   let pending: {
     resolve: (item: LibraryItem) => void;
     reject: (error: Error) => void;
@@ -136,17 +183,18 @@ export function createPhotopeaSaveRoundtrip(timeoutMs = PHOTOPEA_SAVE_TIMEOUT_MS
   } | null = null;
   return {
     expect() {
-      return new Promise((resolve, reject) => {
-        if (pending) {
-          clearTimeout(pending.timer);
-          pending.reject(new Error("专业编辑还没确认保存。"));
-        }
+      if (pending && promise) return promise;
+      promise = new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending = null;
           reject(new Error("专业编辑还没确认保存。"));
         }, timeoutMs);
         pending = { resolve, reject, timer };
       });
+      return promise;
+    },
+    received() {
+      if (pending) clearTimeout(pending.timer);
     },
     settle(result) {
       if (!pending) return false;
@@ -164,13 +212,18 @@ export async function persistPhotopeaDocument(input: {
   item: LibraryItem;
   siteId: string;
   bytes: ArrayBuffer;
+  confirmedDigest?: string;
   save?: (args: Parameters<typeof saveFileToLibrary>[0]) => Promise<SaveToLibraryResult>;
-}): Promise<{ ok: true; item: LibraryItem } | { ok: false; error: string }> {
+}): Promise<{ ok: true; item: LibraryItem; digest: string; unchanged: boolean } | { ok: false; error: string; retryExport?: boolean }> {
   const blocked = photopeaRevisionBlockedReason(input.item);
   if (blocked) return { ok: false, error: blocked };
   const kind = sniffImageBytes(input.bytes);
-  if (kind === "psd" || kind === "unknown") {
-    return { ok: false, error: "专业编辑没有带回可用的图片。" };
+  if (!usableImage(input.bytes, kind)) {
+    return { ok: false, error: "专业编辑没有带回可用的图片。", retryExport: true };
+  }
+  const digest = await photopeaContentDigest(input.bytes);
+  if (digest === input.confirmedDigest) {
+    return { ok: true, item: input.item, digest, unchanged: true };
   }
   const mime =
     kind === "jpeg"
@@ -200,7 +253,7 @@ export async function persistPhotopeaDocument(input: {
     title,
     mediaType: "image",
     kind: "image",
-    idempotencyKey: `photopea:${cleaned.revisionId || cleaned.id}:${Date.now().toString(36)}`,
+    idempotencyKey: `photopea:${cleaned.artifactId || cleaned.id}:${cleaned.revisionId || "new"}:${digest}`,
     meta: {
       editor: "photopea",
       editor_capability: "image-editor",
@@ -220,12 +273,19 @@ export async function persistPhotopeaDocument(input: {
   const next = stripFabricProjectPointers(result.item || cleaned);
   return {
     ok: true,
+    digest,
+    unchanged: false,
     item: {
       ...next,
       url: result.url || next.url,
       previewUrl: result.url || next.previewUrl,
       artifactId: result.artifactId || next.artifactId,
       revisionId: result.revisionId || next.revisionId,
+      ...(next.artifact ? { artifact: {
+        ...next.artifact,
+        artifactId: result.artifactId || next.artifact.artifactId,
+        revisionId: result.revisionId || next.artifact.revisionId,
+      } } : {}),
     },
   };
 }
