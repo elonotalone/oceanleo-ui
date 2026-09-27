@@ -280,10 +280,10 @@ test("advanced first row is PluginGlobalRow chrome with fixed direct download", 
   const header = source("../src/shell/InlineAdvancedWorkbenchHeader.tsx");
   const bar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   assert.match(split, /setRightEditorHeader/);
-  assert.match(shell, /rightPaneSlot\.setRightLabel\(headerSlotNode\)/);
+  assert.match(shell, /rightPaneSlot\.setRightPaneClaim\(owner,\s*\{\s*label:\s*headerSlotNode,\s*editorHeader:\s*true/);
   assert.match(shell, /createPortal\(actionBar, headerHost\)/);
   assert.doesNotMatch(shell, /publishLiveReactNode\(/);
-  assert.match(shell, /rightPaneSlot\.setRightEditorHeader\(true\)/);
+  assert.match(shell, /rightPaneSlot\.clearRightPaneClaim\(owner\)/);
   assert.doesNotMatch(shell, /absolute left-2 right-2 top-2/);
   assert.match(header, /<PluginGlobalRow/);
   assert.match(header, /<PluginPageRow/);
