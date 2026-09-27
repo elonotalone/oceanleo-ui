@@ -121,6 +121,7 @@ export async function loadRichDocHtml(
       officePackageKindForItem(item) === "docx" || ext === "docx";
     if (url && isDocx) {
       const { arrayBuffer } = await fetchValidatedOfficePackage(url, "docx", {
+        item,
         maxBytes: 64 * 1024 * 1024,
         onAccessDenied: onSourceAccessError,
       });

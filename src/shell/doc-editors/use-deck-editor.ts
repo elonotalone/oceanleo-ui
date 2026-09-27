@@ -578,6 +578,7 @@ async function loadDeck(
       deliveryUrl,
       "pptx",
       {
+        item,
         maxBytes: 64 * 1024 * 1024,
         signal,
         onAccessDenied: onSourceAccessError,

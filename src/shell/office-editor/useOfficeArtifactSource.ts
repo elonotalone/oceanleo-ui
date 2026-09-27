@@ -10,7 +10,7 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "../library-data";
-import { officeRenditionPurposes } from "../doc-editors/office-file";
+import { officePackageKindForItem, officeRenditionPurposes } from "../doc-editors/office-file";
 import {
   loadOfficeSource,
   peekOfficeSource,
@@ -48,8 +48,10 @@ export function useOfficeArtifactSource(item: LibraryItem) {
   ]);
 
   useEffect(() => {
-    if (!sourceUrl) return;
-    void loadOfficeSource(sourceUrl, sourceRevision, item);
+    if (!sourceUrl || !officePackageKindForItem(item)) return;
+    void loadOfficeSource(sourceUrl, sourceRevision, item).catch(() => {
+      // The editor's own read reports failures and refreshes expired access.
+    });
   }, [item, sourceRevision, sourceUrl]);
 
   return {

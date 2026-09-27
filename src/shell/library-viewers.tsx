@@ -38,6 +38,7 @@ import {
   officePackageKindForItem,
   officeViewerRenditionPurposes,
 } from "./doc-editors/office-file";
+import { officeSourceCacheKey } from "./office-editor/office-source-identity";
 import { importPptxDeck } from "./doc-editors/pptx-deck-import";
 import { absoluteMediaUrl } from "../lib/media-proxy";
 import { DeckSlideThumbnail } from "./doc-editors/DeckSlideThumbnail";
@@ -911,7 +912,26 @@ function PptViewer({
   // 就重下重解一次，还会把已渲好的幻灯片清空。`tt` 在这里只用于失败文案，所以一律只存
   // 中文原文（词典 key），翻译推迟到渲染（下面两处 `tt(error)`）；抛出的 Error 也照此
   // 办理，它的 message 最终就落进同一个 `error`。
+  const sourceRef = useRef({ item, onResourceError });
+  sourceRef.current = { item, onResourceError };
+  const failedSourceRef = useRef({ url: "", retry: 0 });
+  if (failedSourceRef.current.url && failedSourceRef.current.url !== item.url) {
+    failedSourceRef.current.url = "";
+    failedSourceRef.current.retry++;
+  }
+  const accessRetry = failedSourceRef.current.retry;
+  const sourceIdentity = officeSourceCacheKey(
+    structuredSourceUrl || item.url || "",
+    item.revisionId || item.artifact?.revisionId || "",
+    item,
+  );
+
   useEffect(() => {
+    const { item } = sourceRef.current;
+    const onResourceError = () => {
+      failedSourceRef.current.url = item.url || "";
+      sourceRef.current.onResourceError?.();
+    };
     const node = host.current;
     if (!node) return;
     node.replaceChildren();
@@ -926,6 +946,7 @@ function PptViewer({
       return;
     }
     let cancelled = false;
+    const abort = new AbortController();
     let previewer: PptxPreviewInstance | null = null;
     let stopThumbnailPass: (() => void) | null = null;
     setState("loading");
@@ -963,6 +984,8 @@ function PptViewer({
           item.url!,
           "pptx",
           {
+            item,
+            signal: abort.signal,
             maxBytes: 64 * 1024 * 1024,
             onAccessDenied: onResourceError,
           },
@@ -1030,13 +1053,10 @@ function PptViewer({
         }
         const outline: PptxRenderedSlide[] = model.slides.map(
           (slide, index) => {
-            const metadata = structuredSlides[index];
             return {
               id: `pptx-slide-${index + 1}`,
               index,
               label:
-                stringValue(metadata?.title) ||
-                stringValue(metadata?.label) ||
                 readableSlideName(slide.name) ||
                 `第 ${index + 1} 页`,
               thumbnail: null,
@@ -1081,18 +1101,20 @@ function PptViewer({
     })();
     return () => {
       cancelled = true;
+      abort.abort();
       stopThumbnailPass?.();
       if (previewerRef.current === previewer) previewerRef.current = null;
       previewer?.destroy();
       host.current?.replaceChildren();
     };
-  }, [attempt, item.url, onResourceError, structuredSlides, structuredSourceUrl]);
+  }, [attempt, accessRetry, sourceIdentity]);
 
   const layoutSlides = useMemo<DeckPreviewLayoutSlide[]>(() => {
     if (state === "ready") {
       return renderedSlides.map((slide) => ({
         id: slide.id,
-        label: slide.label,
+        label: stringValue(structuredSlides[slide.index]?.title) ||
+          stringValue(structuredSlides[slide.index]?.label) || slide.label,
         thumbnail: slide.nativeSlide ? (
           <div className="aspect-video overflow-hidden rounded bg-white shadow-sm">
             <DeckSlideThumbnail
@@ -1303,7 +1325,26 @@ function SpreadsheetViewer({
   const [loading, setLoading] = useState(Boolean(item.url));
   const [attempt, setAttempt] = useState(0);
 
+  const sourceRef = useRef({ item, onResourceError });
+  sourceRef.current = { item, onResourceError };
+  const failedSourceRef = useRef({ url: "", retry: 0 });
+  if (failedSourceRef.current.url && failedSourceRef.current.url !== item.url) {
+    failedSourceRef.current.url = "";
+    failedSourceRef.current.retry++;
+  }
+  const accessRetry = failedSourceRef.current.retry;
+  const sourceIdentity = officeSourceCacheKey(
+    item.url || "",
+    item.revisionId || item.artifact?.revisionId || "",
+    item,
+  );
+
   useEffect(() => {
+    const { item } = sourceRef.current;
+    const onResourceError = () => {
+      failedSourceRef.current.url = item.url || "";
+      sourceRef.current.onResourceError?.();
+    };
     if (!item.url) {
       const rows = Array.isArray(item.meta.rows)
         ? (item.meta.rows as unknown[][])
@@ -1313,15 +1354,19 @@ function SpreadsheetViewer({
       return;
     }
     let cancelled = false;
+    const abort = new AbortController();
     setLoading(true);
     setError("");
     void (async () => {
       try {
         const data = await fetchValidatedSpreadsheetSource(item.url!, item, {
+          signal: abort.signal,
           maxBytes: 64 * 1024 * 1024,
           onAccessDenied: onResourceError,
         });
+        if (cancelled) return;
         const XLSX = await import("xlsx");
+        if (cancelled) return;
         const workbook = XLSX.read(data, { dense: true });
         const parsed = workbook.SheetNames.map((name) => ({
           name,
@@ -1344,8 +1389,9 @@ function SpreadsheetViewer({
     })();
     return () => {
       cancelled = true;
+      abort.abort();
     };
-  }, [attempt, item, onResourceError]);
+  }, [attempt, accessRetry, sourceIdentity]);
 
   if (loading) return <LoadingView label={tt("正在读取工作簿…")} />;
   if (error || sheets.length === 0)
@@ -1437,9 +1483,29 @@ function DocumentViewer({
   const [loading, setLoading] = useState(isDocx);
   const [attempt, setAttempt] = useState(0);
 
+  const sourceRef = useRef({ item, onResourceError });
+  sourceRef.current = { item, onResourceError };
+  const failedSourceRef = useRef({ url: "", retry: 0 });
+  if (failedSourceRef.current.url && failedSourceRef.current.url !== item.url) {
+    failedSourceRef.current.url = "";
+    failedSourceRef.current.retry++;
+  }
+  const accessRetry = failedSourceRef.current.retry;
+  const sourceIdentity = officeSourceCacheKey(
+    item.url || "",
+    item.revisionId || item.artifact?.revisionId || "",
+    item,
+  );
+
   useEffect(() => {
+    const { item } = sourceRef.current;
+    const onResourceError = () => {
+      failedSourceRef.current.url = item.url || "";
+      sourceRef.current.onResourceError?.();
+    };
     if (!item.url || !isDocx) return;
     let cancelled = false;
+    const abort = new AbortController();
     setLoading(true);
     setError("");
     void (async () => {
@@ -1448,11 +1514,15 @@ function DocumentViewer({
           item.url!,
           "docx",
           {
+            item,
+            signal: abort.signal,
             maxBytes: 64 * 1024 * 1024,
             onAccessDenied: onResourceError,
           },
         );
+        if (cancelled) return;
         const module = await import("mammoth");
+        if (cancelled) return;
         const result = await module.default.convertToHtml(
           { arrayBuffer },
           { convertImage: module.default.images.dataUri },
@@ -1467,8 +1537,9 @@ function DocumentViewer({
     })();
     return () => {
       cancelled = true;
+      abort.abort();
     };
-  }, [attempt, isDocx, item.url, onResourceError]);
+  }, [attempt, accessRetry, isDocx, sourceIdentity]);
 
   useEffect(() => {
     if (!isDocx) {
@@ -1917,7 +1988,19 @@ function LibraryItemViewerBody({
     viewerItem,
     officeViewerRenditionPurposes(viewerItem),
   );
-  const resolvedItem = withResolvedRendition(viewerItem, rendition);
+  const resolved = withResolvedRendition(viewerItem, rendition);
+  const resolvedItem = resolved.artifact && rendition.rendition && rendition.purpose
+    ? {
+        ...resolved,
+        artifact: {
+          ...resolved.artifact,
+          renditions: {
+            ...resolved.artifact.renditions,
+            [rendition.purpose]: rendition.rendition,
+          },
+        },
+      }
+    : resolved;
   const url =
     rendition.url || resolvedItem.previewUrl || resolvedItem.url;
   if (preparedOffice.loading) {

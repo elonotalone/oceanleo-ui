@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { loadOfficeBytes } from "../office-editor/office-byte-store";
 
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import {
@@ -398,45 +399,33 @@ export function notifyOfficeAccessDenied(
   if (isOfficeAccessDeniedError(reason)) onAccessDenied?.();
 }
 
-/**
- * office 包的取字节缓存语义。
- *
- * 原来这里写死 `no-store`。`[实测 2026-08-07]` 服务端自己对两种 rendition 地址发
- * 的缓存头是相反的（见 `officeViewerRenditionPurposes` 的注释），所以客户端**没有
- * 理由单方面否决**：`"default"` 就是「照服务端说的办」。
- *
- * 为什么这样不会串味，逐条：
- *   · 缓存键是完整 URL。内容寻址地址里写死了 `artifactId` + `revisionId` +
- *     `purpose`，**换一个 revision 就是换一个键**，物理上命中不了旧包。
- *   · 不可缓存的那种地址是 opaque grant，token 内容是
- *     `{"artifact":…,"revision":…,"purpose":…,"sub":"oceanleo:anonymous","exp":…,"nonce":…}`
- *     —— **`sub`（主体）在键里面**，A 用户命中 B 用户的包同样不可能；而且服务端
- *     对它回 `private, no-store`，`"default"` 会照办、根本不存。
- *   · 过期签名：grant 过期后服务端换发的是**另一个** URL（`exp`/`nonce` 都变），
- *     旧键从此无人请求，不存在「拿着过期地址去命中缓存」这回事。
- * 刻意**不用** `force-cache`：那会连服务端标短命的响应也强行复用，正是上面第二条
- * 要避免的。`"default"` 把新鲜度判断留给服务端。
- */
+/** Honor transport cache headers; Office package consumers additionally share
+ * bounded in-memory bytes by artifact/revision/purpose (never by decoded grants). */
 const OFFICE_PACKAGE_CACHE_MODE: RequestCache = "default";
 
 export async function fetchValidatedOfficePackage(
   url: string,
   kind: OfficePackageKind,
   options: {
+    item?: LibraryItem;
     maxBytes?: number;
     signal?: AbortSignal;
     onAccessDenied?: () => void;
   } = {},
 ): Promise<{ blob: Blob; arrayBuffer: ArrayBuffer }> {
   try {
-    const blob = await fetchMediaBlob(url, {
-      cache: OFFICE_PACKAGE_CACHE_MODE,
-      maxBytes: options.maxBytes,
-      signal: options.signal,
-    });
+    const result = await loadOfficeBytes(
+      url,
+      options.item?.revisionId || options.item?.artifact?.revisionId || "",
+      options.item,
+      {
+        kind, maxBytes: options.maxBytes, signal: options.signal,
+        validate: (bytes, contentType) => validateOfficePackageBytes(bytes, kind, contentType),
+      },
+    );
     return {
-      blob,
-      arrayBuffer: await validateOfficePackageBlob(blob, kind),
+      blob: new Blob([result.bytes], { type: result.contentType || "" }),
+      arrayBuffer: result.bytes,
     };
   } catch (caught) {
     if (isOfficeAccessDeniedError(caught)) {
@@ -462,7 +451,7 @@ export async function fetchValidatedSpreadsheetSource(
 ): Promise<ArrayBuffer> {
   if (officePackageKindForItem(item) === "xlsx") {
     return (
-      await fetchValidatedOfficePackage(url, "xlsx", options)
+      await fetchValidatedOfficePackage(url, "xlsx", { ...options, item })
     ).arrayBuffer;
   }
   try {
