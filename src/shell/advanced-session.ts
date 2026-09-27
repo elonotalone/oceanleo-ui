@@ -1,3 +1,4 @@
+import { ADVANCED_DRAFT_META_KEY, advancedDraftIdentity, normalizeAdvancedDraftPointer, type AdvancedDraftPointer } from "./advanced-draft";
 import type { AppSession } from "../lib/app-session";
 import { currentDomainProfile } from "../contracts/domain-family";
 import {
@@ -172,6 +173,7 @@ export interface AdvancedSessionSnapshot extends Record<string, unknown> {
     artifact?: ArtifactProjection;
   };
   task_id: string | null;
+  draft?: AdvancedDraftPointer;
 }
 
 function jsonSafeMeta(meta: Record<string, unknown>): Record<string, unknown> {
@@ -576,6 +578,7 @@ export function advancedSessionSnapshot(
   item: LibraryItem,
   route: EditorRoute["type"],
   taskId?: string | null,
+  draft?: AdvancedDraftPointer | null,
 ): AdvancedSessionSnapshot {
   const rootId = advancedRootItemId(item);
   const durableArtifact = durableArtifactForSnapshot(item);
@@ -612,6 +615,7 @@ export function advancedSessionSnapshot(
       ...(durableArtifact || {}),
     },
     task_id: taskId?.trim() || null,
+    ...(draft ? { draft } : {}),
   };
 }
 
@@ -622,6 +626,7 @@ interface InlineEditorHistoryEntry {
     route: EditorRoute["type"];
     task_id: string | null;
     item: AdvancedSessionSnapshot["item"];
+    draft?: AdvancedDraftPointer;
   };
 }
 
@@ -637,6 +642,7 @@ export function withInlineEditorHistoryHead(
   item: LibraryItem,
   route: EditorRoute["type"],
   taskId?: string | null,
+  draft?: AdvancedDraftPointer | null,
 ): Record<string, unknown> {
   const base =
     currentSnapshot &&
@@ -669,6 +675,7 @@ export function withInlineEditorHistoryHead(
         route,
         task_id: taskId?.trim() || null,
         item: serialized.item,
+        ...(draft ? { draft } : {}),
       },
     },
   };
@@ -779,6 +786,7 @@ export function inlineEditorItemsFromSession(
       feature_id: feature.id,
       task_id: head.task_id,
       item: raw,
+      draft: head.draft,
     };
     const restored = advancedItemFromSession({
       ...session,
@@ -951,6 +959,8 @@ export function advancedSnapshotFromSession(
     feature_id: feature.id,
     item,
     task_id: taskId,
+    ...(normalizeAdvancedDraftPointer(record.draft, advancedDraftIdentity(restored))
+      ? { draft: normalizeAdvancedDraftPointer(record.draft, advancedDraftIdentity(restored))! } : {}),
   };
 }
 
@@ -965,7 +975,19 @@ export function advancedItemFromSession(
         meta: {
           ...snapshot.item.meta,
           parent_asset_id: snapshot.item.id,
+          ...(snapshot.draft ? { [ADVANCED_DRAFT_META_KEY]: snapshot.draft } : {}),
         },
       }
     : null;
+}
+
+/** Read only the pointer for this exact material and concrete base version. */
+export function advancedDraftFromSnapshot(snapshot: unknown, item: LibraryItem): AdvancedDraftPointer | null {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+  const raw = snapshot as Record<string, unknown>;
+  const identity = advancedDraftIdentity(item);
+  if (raw.kind === ADVANCED_SESSION_KIND) return normalizeAdvancedDraftPointer(raw.draft, identity);
+  const state = raw[INLINE_EDITOR_HISTORY_KEY] as Partial<InlineEditorHistoryState> | undefined;
+  if (state?.version !== INLINE_EDITOR_HISTORY_VERSION) return null;
+  return normalizeAdvancedDraftPointer(state.heads?.[stableDigest(identity.rootId)]?.head?.draft, identity);
 }

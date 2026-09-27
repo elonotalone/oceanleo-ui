@@ -1,3 +1,4 @@
+import type { AdvancedEditRevision } from "./advanced-persistence-controller";
 import type { ReactNode } from "react";
 
 import type { EditorMode } from "./hosted-editor";
@@ -34,6 +35,16 @@ export interface AdvancedEditorPersistenceAdapter {
   /** Serializes and persists the revision current when this function starts. */
   flush: () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
   recovery?: AdvancedEditorRecoveryAdapter;
+  draft?: AdvancedEditorDraftAdapter;
+}
+
+export interface AdvancedEditorDraftAdapter {
+  schema: string;
+  capture: () => unknown | null | Promise<unknown | null>;
+  /** Already loaded from the server, still awaiting complete version publication. */
+  restoredRevision?: AdvancedEditRevision;
+  /** Bind version gates for editor-owned download/export commands. */
+  bindFlush?: (flush: (() => Promise<AdvancedFlushResult>) | null) => void;
 }
 
 export interface AdvancedEditorRecoveryAdapter {
@@ -41,7 +52,7 @@ export interface AdvancedEditorRecoveryAdapter {
   key: string;
   ready: boolean;
   capture: () => unknown | Promise<unknown>;
-  restore: (payload: unknown) => boolean | void | Promise<boolean | void>;
+  restore: (payload: unknown, updatedAt?: number) => boolean | void | Promise<boolean | void>;
 }
 
 export interface AdvancedEditorNativeChrome {

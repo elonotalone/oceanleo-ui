@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AdvancedEditorDraftAdapter } from "./advanced-editor-adapter";
+import { uploadAdvancedDraft, type AdvancedDraftPointer } from "./advanced-draft";
 import { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
 import type {
   AdvancedFlushResult,
@@ -101,16 +103,28 @@ export function useAdvancedAutoSave({
   dirty,
   revision,
   flush,
+  draft,
   session,
 }: {
   key?: string;
   dirty: boolean;
   revision: AdvancedEditRevision;
   flush?: () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
+  draft?: AdvancedEditorDraftAdapter;
   session: AdvancedSessionActions | null;
 }) {
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const controllerRef = useRef<AdvancedPersistenceController<LibraryItem> | null>(null);
+  // A session can be created by the first dirty edit. Let that already-running
+  // legacy save finish before enabling drafts on the next observation.
+  const currentController = controllerRef.current;
+  const draftEnabled = Boolean(draft && session?.sessionId && session.recordDraft &&
+    (!currentController || currentController.hasDraftTier() || !currentController.hasUnconfirmedWork()));
+  const uploadedDraftRef = useRef<{ revision: AdvancedEditRevision; sessionId: string; pointer: AdvancedDraftPointer } | null>(null);
   const flushRef = useRef(flush);
   const sessionRef = useRef(session);
+  const versionSessionsRef = useRef(new Map<AdvancedEditRevision, AdvancedSessionActions | null>());
   const mountedRef = useRef(true);
   const latestRevisionRef = useRef(revision);
   const dirtyRef = useRef(dirty);
@@ -131,10 +145,35 @@ export function useAdvancedAutoSave({
     return next;
   }, []);
 
+  const saveDraft = useCallback(async (targetRevision: AdvancedEditRevision): Promise<boolean> => {
+    const activeDraft = draftRef.current;
+    const activeSession = sessionRef.current;
+    if (!activeDraft || !activeSession?.sessionId || !activeSession.recordDraft) return false;
+    let uploaded = uploadedDraftRef.current;
+    if (!uploaded || !sameRevision(uploaded.revision, targetRevision) || uploaded.sessionId !== activeSession.sessionId) {
+      const item = activeSession.snapshot().item;
+      const payload = await activeDraft.capture();
+      if (!sameRevision(latestRevisionRef.current, targetRevision)) return false;
+      const pointer = await uploadAdvancedDraft({
+        identity: { rootId: item.id, baseRevisionId: String(item.revisionId || item.meta.revision_id || item.versionId) },
+        schema: activeDraft.schema, revision: targetRevision, payload, siteId: item.siteId, title: item.title,
+      });
+      uploaded = { revision: targetRevision, sessionId: activeSession.sessionId, pointer };
+      uploadedDraftRef.current = uploaded;
+    }
+    // Pin the destination captured before upload; a navigation must never move
+    // this receipt into the next session through a mutable React ref.
+    return activeSession.recordDraft(uploaded.pointer);
+  }, []);
+
   const bindController = useCallback(
     (controller: AdvancedPersistenceController<LibraryItem>) => {
       controller.rebind({
+        ...(draftEnabled ? { draft: { saveRevision: saveDraft } } : {}),
         flushRevision: (targetRevision) => {
+          if (draftEnabled && !versionSessionsRef.current.has(targetRevision)) {
+            versionSessionsRef.current.set(targetRevision, sessionRef.current);
+          }
           const activeFlush = flushRef.current;
           if (!activeFlush) {
             return rememberFlush({
@@ -152,9 +191,13 @@ export function useAdvancedAutoSave({
             rememberFlush(await activeFlush()),
           );
         },
-        recordSavedItem: async (item) => {
-          const activeSession = sessionRef.current;
-          return activeSession ? activeSession.recordSavedItem(item) : true;
+        recordSavedItem: async (item, coveredRevision) => {
+          const activeSession = draftEnabled ? versionSessionsRef.current.get(coveredRevision) : sessionRef.current;
+          const recorded = activeSession ? await (draftEnabled
+            ? activeSession.recordSavedItem(item, coveredRevision)
+            : activeSession.recordSavedItem(item)) : true;
+          if (recorded) versionSessionsRef.current.delete(coveredRevision);
+          return recorded;
         },
         onStateChange: (next) => {
           if (!mountedRef.current) return;
@@ -163,11 +206,12 @@ export function useAdvancedAutoSave({
         },
       });
     },
-    [rememberFlush],
+    [draftEnabled, rememberFlush, saveDraft],
   );
 
   const makeController = useCallback(() => {
     const controller = new AdvancedPersistenceController<LibraryItem>({
+      ...(draftEnabled ? { draft: { saveRevision: saveDraft } } : {}),
       flushRevision: async () => ({
         ok: false,
         error: "自动保存控制器尚未绑定",
@@ -176,14 +220,12 @@ export function useAdvancedAutoSave({
     });
     bindController(controller);
     return controller;
-  }, [bindController]);
-  const controllerRef =
-    useRef<AdvancedPersistenceController<LibraryItem> | null>(null);
+  }, [bindController, draftEnabled, saveDraft]);
   if (!controllerRef.current) controllerRef.current = makeController();
 
   useEffect(() => {
     mountedRef.current = true;
-    const taken = key ? takeBack(key) : null;
+    const taken = key ? takeBack(key, draftEnabled) : null;
     if (taken && taken !== controllerRef.current) {
       controllerRef.current?.dispose();
       controllerRef.current = taken;
@@ -197,6 +239,7 @@ export function useAdvancedAutoSave({
       controller.observe({
         revision: latestRevisionRef.current,
         dirty: dirtyRef.current,
+        restoredDraft: draftEnabled && sameRevision(draftRef.current?.restoredRevision, latestRevisionRef.current),
       });
     }
     return () => {
@@ -211,15 +254,17 @@ export function useAdvancedAutoSave({
       }
       active.dispose();
     };
-  }, [bindController, key, makeController]);
+  }, [bindController, draftEnabled, key, makeController]);
 
   const wasDirtyRef = useRef(dirty);
   useEffect(() => {
     // 干净 → 脏 = 用户真的又改了；上一轮成功覆盖到的 revision 不再作数。
     if (dirty && !wasDirtyRef.current) ledgerRef.current?.forgetCovered();
     wasDirtyRef.current = dirty;
-    controllerRef.current?.observe({ revision, dirty });
-  }, [dirty, revision]);
+    controllerRef.current?.observe({ revision, dirty,
+      restoredDraft: draftEnabled && sameRevision(draft?.restoredRevision, revision),
+    });
+  }, [dirty, draft?.restoredRevision, draftEnabled, revision]);
 
   const flushLatest = useCallback(
     async (): Promise<AdvancedFlushResult> =>
@@ -247,6 +292,19 @@ export function useAdvancedAutoSave({
     controller.markHandedOff();
     handOff(key, controller);
   }, [key]);
+
+  useEffect(() => {
+    if (!draftEnabled || !draft?.bindFlush) return;
+    draft.bindFlush(flushLatest);
+    return () => draft.bindFlush?.(null);
+  }, [draft?.bindFlush, draftEnabled, flushLatest]);
+
+  useEffect(() => {
+    if (!draftEnabled) return;
+    const onPageHide = () => { void controllerRef.current?.flushLatest(); };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [draftEnabled]);
 
   return { state, errorMessage, flushLatest, retry, handOffToBackground };
 }

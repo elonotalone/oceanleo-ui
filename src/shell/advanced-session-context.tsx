@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { AdvancedDraftPointer } from "./advanced-draft";
+import type { AdvancedEditRevision } from "./advanced-persistence-controller";
 import type { AppSession } from "../lib/app-session";
 import type { AdvancedSessionSnapshot } from "./advanced-session";
 import type { LibraryItem } from "./library-data";
@@ -24,7 +26,8 @@ export interface AdvancedSessionActions {
   navigate: (sessionId: string) => void;
   startNew: () => Promise<AppSession | null>;
   renameTitle: (title: string) => Promise<boolean>;
-  recordSavedItem: (item: LibraryItem) => Promise<boolean>;
+  recordSavedItem: (item: LibraryItem, coveredRevision?: AdvancedEditRevision) => Promise<boolean>;
+  recordDraft?: (draft: AdvancedDraftPointer) => Promise<boolean>;
   registerFlush: (
     flush: (() => Promise<AdvancedFlushResult> | AdvancedFlushResult) | null,
   ) => void;

@@ -1,5 +1,9 @@
 "use client";
 
+import type { AdvancedEditorDraftAdapter } from "../advanced-editor-adapter";
+import type { AdvancedFlushResult } from "../advanced-session-context";
+import { ADVANCED_DRAFT_META_KEY, type AdvancedDraftPointer } from "../advanced-draft";
+import { DECK_DRAFT_SCHEMA, loadDeckServerDraft } from "../advanced-draft-deck";
 import { unzipSync } from "fflate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -167,10 +171,13 @@ export interface DeckEditorState {
   reload: () => void;
   /** 用本地上传的 PPTX 顶掉当前演示文稿（.ppt/.odp 由调用方先归一化成 pptx）。 */
   importSource: (file: File) => Promise<void>;
-  downloadJson: () => void;
+  downloadJson: () => Promise<void>;
+  draft: AdvancedEditorDraftAdapter;
+  flushBeforeExport: () => Promise<void>;
+  persistInBackground: () => void;
   exportPptx: () => Promise<void>;
   save: () => Promise<PersistedEditorVersion | null>;
-  restoreRecovery: (payload: unknown) => boolean;
+  restoreRecovery: (payload: unknown, updatedAt?: number) => boolean;
 }
 
 /**
@@ -515,6 +522,7 @@ function initialSource(
 }
 
 interface DeckLoad {
+  serverDraft?: AdvancedDraftPointer;
   deck: DeckDocument;
   draft: DeckDraftState | null;
 }
@@ -525,6 +533,8 @@ async function loadDeck(
   signal?: AbortSignal,
   onSourceAccessError?: () => void,
 ): Promise<DeckLoad> {
+  const serverDraft = await loadDeckServerDraft(item, signal);
+  if (serverDraft) return serverDraft;
   const projectUrl = deckProjectUrlFor(item);
   let projectError: unknown;
   if (projectUrl) {
@@ -698,7 +708,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
   const pinnedDeck = cloneDeckDocument(deck);
   const pptx = new PptxGenJS();
   pptx.layout =
-    pinnedDeck.aspect === "4:3" ? "LAYOUT_4X3" : "LAYOUT_WIDE";
+    pinnedDeck.aspect === "4:3" ? "LAYOUT_4x3" : "LAYOUT_WIDE";
   pptx.author = "OceanLeo";
   pptx.subject = pinnedDeck.title;
   pptx.title = pinnedDeck.title;
@@ -1599,6 +1609,7 @@ export function deckSourceLoadKey(
     item.previewUrl || "",
     deckProjectUrlFor(item),
     deckDeliveryUrlFor(item),
+    item.meta[ADVANCED_DRAFT_META_KEY] ?? null,
     // `loadDeck` picks the unpacker by extension, so the format hints are load
     // inputs too: leaving them out turns "reloads too often" into "never
     // reloads when the same address is re-typed as another format".
@@ -1668,6 +1679,14 @@ export function useDeckEditor(
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
   const sourceFailedRef = useRef(false);
+  const sourceLoadingRef = useRef(true);
+  const serverDraftRef = useRef<AdvancedDraftPointer | null>(null);
+  const exportFlushRef = useRef<(() => Promise<AdvancedFlushResult>) | null>(null);
+  const bindDraftFlush = useCallback((flush: (() => Promise<AdvancedFlushResult>) | null) => { exportFlushRef.current = flush; }, []);
+  const flushBeforeExport = useCallback(async () => {
+    const result = await exportFlushRef.current?.();
+    if (result && !result.ok) throw new Error(result.error || "保存版本失败，请重试后导出");
+  }, []);
   const persistedItemRef = useRef(item);
   const preparedSaveRef = useRef<{
     key: string;
@@ -1728,6 +1747,8 @@ export function useDeckEditor(
     setError("");
     setSourceFailed(false);
     sourceFailedRef.current = false;
+    sourceLoadingRef.current = true;
+    serverDraftRef.current = null;
     setNotice("");
     revisionRef.current = 0;
     persistedItemRef.current = source;
@@ -1740,6 +1761,11 @@ export function useDeckEditor(
         if (abort.signal.aborted) return;
         const next = loaded.deck;
         draftRef.current = loaded.draft;
+        serverDraftRef.current = loaded.serverDraft || null;
+        if (loaded.serverDraft) {
+          revisionRef.current = typeof loaded.serverDraft.editRevision === "number" ? loaded.serverDraft.editRevision : 1;
+          setDirty(true);
+        }
         deckRef.current = next;
         activeRef.current = next.slides[0].id;
         selectedElementRef.current = "";
@@ -1763,7 +1789,7 @@ export function useDeckEditor(
         }
       })
       .finally(() => {
-        if (!abort.signal.aborted) setLoading(false);
+        if (!abort.signal.aborted) { sourceLoadingRef.current = false; setLoading(false); }
       });
     return () => {
       mountedRef.current = false;
@@ -2450,6 +2476,7 @@ export function useDeckEditor(
     setExporting(true);
     setError("");
     try {
+      await flushBeforeExport();
       const { blob, notes } = await buildDelivery(deckRef.current);
       downloadBlob(`${deckRef.current.title || "演示文稿"}.pptx`, blob);
       setNotice(
@@ -2462,7 +2489,7 @@ export function useDeckEditor(
     } finally {
       if (mountedRef.current) setExporting(false);
     }
-  }, [buildDelivery, exporting, tt]);
+  }, [buildDelivery, exporting, flushBeforeExport, tt]);
 
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (savingRef.current || sourceFailedRef.current) return null;
@@ -2586,8 +2613,7 @@ export function useDeckEditor(
         }
         setNotice("");
       }
-      return mountedRef.current
-        ? {
+      return {
             url: result.url,
             versionId: result.versionId,
             projectUrl: result.projectUrl,
@@ -2603,8 +2629,7 @@ export function useDeckEditor(
             item: handoff,
             preparedProject: result.preparedProject,
             preparedDelivery: result.preparedDelivery,
-          }
-        : null;
+          };
     } catch (caught) {
       // Keep the in-memory deck, dirty flag, and reusable upload receipts.
       // A failed publish must not discard the page the user just edited.
@@ -2653,7 +2678,9 @@ export function useDeckEditor(
   );
 
   const restoreRecovery = useCallback(
-    (payload: unknown): boolean => {
+    (payload: unknown, updatedAt?: number): boolean => {
+      if (updatedAt !== undefined && serverDraftRef.current &&
+          Date.parse(serverDraftRef.current.savedAt) >= updatedAt) return false;
       if (sourceFailedRef.current) return false;
       if (
         !payload ||
@@ -2682,6 +2709,22 @@ export function useDeckEditor(
     exporting,
     dirty,
     editRevision: revisionRef.current,
+    draft: {
+      schema: DECK_DRAFT_SCHEMA,
+      capture: () => sourceLoadingRef.current || sourceFailedRef.current ? null : {
+        deck: cloneDeckDocument(deckRef.current),
+        draft: draftRef.current ? structuredClone(draftRef.current) : null,
+      },
+      restoredRevision: serverDraftRef.current ? (typeof serverDraftRef.current.editRevision === "number" ? serverDraftRef.current.editRevision : 1) : undefined,
+      bindFlush: bindDraftFlush,
+    },
+    flushBeforeExport,
+    persistInBackground: () => {
+      // Reuse the host controller (and its session commit) when draft saving is
+      // connected. The unconnected legacy route keeps its existing behavior.
+      const saving = exportFlushRef.current ? exportFlushRef.current() : save();
+      void saving.catch(() => undefined);
+    },
     error,
     sourceFailed,
     notice,
@@ -2792,12 +2835,14 @@ export function useDeckEditor(
     redo,
     reload,
     importSource,
-    downloadJson: () =>
+    downloadJson: async () => {
+      await flushBeforeExport();
       downloadText(
         `${deckRef.current.title || "演示文稿"}.oceanleo-deck.v1.json`,
         JSON.stringify(deckRef.current, null, 2),
         "application/json",
-      ),
+      );
+    },
     exportPptx,
     save,
     restoreRecovery,

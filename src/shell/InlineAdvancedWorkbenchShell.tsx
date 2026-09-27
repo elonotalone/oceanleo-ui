@@ -187,6 +187,7 @@ export function InlineAdvancedWorkbenchShell({
     dirty: hostAutoSaveEnabled ? editorDirty : false,
     revision: editRevision,
     flush: adapter.persistence?.flush,
+    draft: hostAutoSaveEnabled ? adapter.persistence?.draft : undefined,
     session: advancedSession,
   });
   const backgroundBusy = useSyncExternalStore(

@@ -153,10 +153,14 @@ export function handOff(
 
 export function takeBack(
   key: string,
+  draftTier?: boolean,
 ): BackgroundController | null {
   if (!key) return null;
   const job = jobs.get(key);
   if (!job) return null;
+  // Normal PPT and hosted PPTist have different document/revision sources.
+  // Keep the originating controller until it publishes its captured version.
+  if (draftTier !== undefined && job.controller.hasDraftTier() !== draftTier) return null;
   jobs.delete(key);
   job.controller.clearHandedOff();
   emit();

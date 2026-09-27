@@ -1,3 +1,5 @@
+import { AdvancedDraftController } from "./advanced-draft-controller";
+
 export type AdvancedPersistenceState = "saved" | "saving" | "error";
 export type AdvancedEditRevision = string | number;
 
@@ -13,7 +15,10 @@ export interface AdvancedPersistenceSnapshot {
   running: boolean;
 }
 
-interface AdvancedPersistenceControllerOptions<Item> {
+export interface AdvancedPersistenceControllerOptions<Item> {
+  draft?: { saveRevision: (revision: AdvancedEditRevision) => Promise<boolean> | boolean };
+  draftDebounceMs?: number;
+  versionIdleMs?: number;
   debounceMs?: number;
   maxRetries?: number;
   retryDelays?: readonly number[];
@@ -48,6 +53,7 @@ function errorMessage(error: unknown): string {
  * editor models so race behavior can be proved with deterministic timers.
  */
 export class AdvancedPersistenceController<Item = unknown> {
+  private readonly draftController?: AdvancedDraftController<Item>;
   private readonly debounceMs: number;
   private maxRetries: number;
   private retryDelays: readonly number[];
@@ -75,6 +81,7 @@ export class AdvancedPersistenceController<Item = unknown> {
   private handedOff = false;
 
   constructor(options: AdvancedPersistenceControllerOptions<Item>) {
+    if (options.draft) this.draftController = new AdvancedDraftController(options);
     this.debounceMs = Math.max(0, options.debounceMs ?? 1_600);
     this.maxRetries = Math.max(0, options.maxRetries ?? 3);
     this.retryDelays = options.retryDelays ?? [1_500, 4_000, 9_000];
@@ -92,7 +99,9 @@ export class AdvancedPersistenceController<Item = unknown> {
   observe(input: {
     revision: AdvancedEditRevision;
     dirty: boolean;
+    restoredDraft?: boolean;
   }): void {
+    if (this.draftController) return this.draftController.observe(input);
     if (this.disposed) return;
     const changed =
       !this.observed || !sameRevision(this.latestRevision, input.revision);
@@ -134,6 +143,7 @@ export class AdvancedPersistenceController<Item = unknown> {
   }
 
   flushLatest(): Promise<AdvancedPersistenceResult<Item>> {
+    if (this.draftController) return this.draftController.flushLatest();
     if (this.disposed) {
       return Promise.resolve({ ok: false, error: "persistence disposed" });
     }
@@ -148,11 +158,13 @@ export class AdvancedPersistenceController<Item = unknown> {
   }
 
   retry(): Promise<AdvancedPersistenceResult<Item>> {
+    if (this.draftController) return this.draftController.retry();
     this.retryCount = 0;
     return this.flushLatest();
   }
 
   hasUnconfirmedWork(): boolean {
+    if (this.draftController) return this.draftController.hasUnconfirmedWork();
     if (this.disposed) return false;
     if (this.dirty) return true;
     if (this.state === "saving" || this.state === "error") return true;
@@ -164,15 +176,20 @@ export class AdvancedPersistenceController<Item = unknown> {
     );
   }
 
+  hasDraftTier(): boolean { return Boolean(this.draftController); }
+
   markHandedOff(): void {
+    if (this.draftController) return this.draftController.markHandedOff();
     this.handedOff = true;
   }
 
   clearHandedOff(): void {
+    if (this.draftController) return this.draftController.clearHandedOff();
     this.handedOff = false;
   }
 
   isHandedOff(): boolean {
+    if (this.draftController) return this.draftController.isHandedOff();
     return this.handedOff;
   }
 
@@ -181,6 +198,7 @@ export class AdvancedPersistenceController<Item = unknown> {
    * （测试台架），避免手一交出去就被改成 5s+ 的定时重试。
    */
   prepareBackgroundRetries(): void {
+    if (this.draftController) return this.draftController.prepareBackgroundRetries();
     if (this.maxRetries === 0) return;
     this.maxRetries = Math.max(this.maxRetries, 3);
     this.retryDelays = [5_000, 10_000, 15_000];
@@ -190,20 +208,23 @@ export class AdvancedPersistenceController<Item = unknown> {
     next: Partial<
       Pick<
         AdvancedPersistenceControllerOptions<Item>,
-        "flushRevision" | "recordSavedItem" | "onStateChange"
+        "flushRevision" | "recordSavedItem" | "onStateChange" | "draft"
       >
     >,
   ): void {
+    if (this.draftController) return this.draftController.rebind(next);
     if (next.flushRevision) this.flushRevision = next.flushRevision;
     if (next.recordSavedItem) this.recordSavedItem = next.recordSavedItem;
     if (next.onStateChange !== undefined) this.onStateChange = next.onStateChange;
   }
 
   whenIdle(): Promise<unknown> {
+    if (this.draftController) return this.draftController.whenIdle();
     return this.drainPromise ?? Promise.resolve();
   }
 
   snapshot(): AdvancedPersistenceSnapshot {
+    if (this.draftController) return this.draftController.snapshot();
     return {
       state: this.state,
       latestRevision: this.latestRevision,
@@ -214,14 +235,17 @@ export class AdvancedPersistenceController<Item = unknown> {
   }
 
   hasScheduledWork(): boolean {
+    if (this.draftController) return this.draftController.hasScheduledWork();
     return this.timer !== undefined;
   }
 
   isBusy(): boolean {
+    if (this.draftController) return this.draftController.isBusy();
     return Boolean(this.drainPromise) || this.timer !== undefined;
   }
 
   dispose(): void {
+    if (this.draftController) return this.draftController.dispose();
     this.disposed = true;
     this.clearTimer();
   }

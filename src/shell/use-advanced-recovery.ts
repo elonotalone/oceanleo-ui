@@ -129,7 +129,7 @@ export function useAdvancedRecovery({
           await deleteAdvancedRecovery(record.key).catch(() => undefined);
           return;
         }
-        const restored = await latest.restore(record.payload);
+        const restored = await latest.restore(record.payload, record.updatedAt);
         if (restored !== false) hadDirtyRef.current = true;
       })
       .catch(() => undefined);
