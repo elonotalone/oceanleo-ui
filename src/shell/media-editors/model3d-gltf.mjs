@@ -2,11 +2,12 @@ import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { restoreModel3DNames } from "./model3d-gltf-names.mjs";
 
 const loader = () => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 
 export async function loadModel3DUrl(url, onProgress) {
-  return loader().loadAsync(url, onProgress);
+  return loader().loadAsync(url, onProgress).then(restoreModel3DNames);
 }
 
 export async function parseModel3DGlb(source, resourcePath = "") {
@@ -23,7 +24,7 @@ export async function parseModel3DGlb(source, resourcePath = "") {
   } else {
     throw new TypeError("GLB source must be a Blob, ArrayBuffer, or typed array");
   }
-  return loader().parseAsync(buffer, resourcePath);
+  return loader().parseAsync(buffer, resourcePath).then(restoreModel3DNames);
 }
 
 export async function exportModel3DGlb(scene, animations = []) {

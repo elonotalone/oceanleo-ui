@@ -8,6 +8,7 @@ import "./model3d-gltf-node-shim.mjs";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { exportModel3DGlb, parseModel3DGlb } from "./model3d-gltf.mjs";
+import { restoreModel3DNames } from "./model3d-gltf-names.mjs";
 
 const loader = () => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 
@@ -212,7 +213,7 @@ export function roundtripFixtureGltf() {
 
 export async function parseGltfJsonDocument(doc) {
   const text = JSON.stringify(doc);
-  return loader().parseAsync(text, "");
+  return loader().parseAsync(text, "").then(restoreModel3DNames);
 }
 
 /**
