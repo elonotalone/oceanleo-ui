@@ -409,18 +409,47 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
             { value: "ask", name: "Ask" },
             { value: "agent", name: "Agent" },
           ],
+        }, {
+          id: "fast",
+          name: "fast",
+          category: "fast",
+          current: true,
+          options: [
+            { value: true, name: "Fast" },
+            { value: false, name: "Standard" },
+          ],
+        }, {
+          id: "thought_level",
+          name: "thinking",
+          category: "thought_level",
+          current: "high",
+          options: [
+            { value: "fast", name: "fast" },
+            { value: "high", name: "high" },
+            { value: "xhigh", name: "extra high" },
+          ],
         }],
       });
     });
     const model = view.host.querySelector("[data-oceanleo-cc-model]");
     const mode = view.host.querySelector("[data-oceanleo-cc-mode]");
+    const fast = view.host.querySelector('[data-oceanleo-cc-config="fast"]');
+    const thinking = view.host.querySelector('[data-oceanleo-cc-config="thought_level"]');
     assert.equal(model.value, "b");
     assert.equal(mode.value, "ask");
+    assert.equal(fast.value, "true");
+    assert.equal(thinking.value, "high");
+    assert.match(Array.from(thinking.options).map((row) => row.textContent).join(" "), /fast/);
+    assert.match(Array.from(thinking.options).map((row) => row.textContent).join(" "), /high/);
     await act(async () => {
       setControlValue(model, "a");
       setControlValue(mode, "agent");
+      setControlValue(fast, "false");
+      setControlValue(thinking, "fast");
     });
     assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "mode" && frame.value === "agent"));
+    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast" && frame.value === false));
+    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level" && frame.value === "fast"));
 
     const input = view.host.querySelector("[data-oceanleo-cc-dialog-input]");
     await fillText(input, "hello");

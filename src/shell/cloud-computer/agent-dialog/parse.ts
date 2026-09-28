@@ -33,6 +33,13 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function optionWire(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
 const TOOL_KINDS = new Set<ToolKind>([
   "read",
   "edit",
@@ -164,12 +171,13 @@ export function parseConfigOptions(raw: unknown): DialogConfigOption[] {
     if (Array.isArray(row.options)) {
       for (const rawOption of row.options) {
         const option = asRecord(rawOption);
-        if (!option || !str(option.value)) continue;
-        const value = str(option.value);
+        if (!option) continue;
+        const value = optionWire(option.value);
+        if (!value) continue;
         options.push({ value, name: str(option.name) || value });
       }
     }
-    const current = typeof row.current === "boolean" ? row.current : str(row.current);
+    const current = typeof row.current === "boolean" ? row.current : (optionWire(row.current) || str(row.current));
     const rawType = str(row.type);
     const type =
       rawType === "bool" || typeof current === "boolean"

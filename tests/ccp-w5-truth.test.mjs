@@ -7,8 +7,8 @@ import { compileModule } from "./helpers/module-bench.mjs";
 const require = createRequire(import.meta.url);
 const parseUrl = await compileModule("src/shell/cloud-computer/agent-dialog/parse.ts");
 const noticeUrl = await compileModule("src/shell/cloud-computer/agent-dialog/notice.ts");
-const { parsePrograms, parseModels } = await import(parseUrl);
-const { hiddenModelCopy, modelGroups, noticeCopy, noticeAction } = await import(noticeUrl);
+const { parsePrograms, parseModels, parseConfigOptions } = await import(parseUrl);
+const { boolParamLabel, hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy, noticeAction } = await import(noticeUrl);
 
 const tt = (value, vars) => value.replace(/\{(\w+)\}/g, (_, key) => String(vars?.[key] ?? `{${key}}`));
 
@@ -50,4 +50,35 @@ test("unusable models are hidden and grouped by provider", () => {
 test("provider credit notice names the provider and has no action", () => {
   assert.match(noticeCopy(tt, "provider_needs_credits", null, "nous"), /Nous Portal/);
   assert.equal(noticeAction("provider_needs_credits"), null);
+});
+
+test("config options keep Fast/High wires as selectable strings", () => {
+  const options = parseConfigOptions([
+    {
+      id: "fast",
+      name: "fast",
+      category: "fast",
+      current: true,
+      options: [{ value: true, name: "Fast" }, { value: false, name: "Standard" }],
+    },
+    {
+      id: "thought_level",
+      name: "thinking",
+      category: "thought_level",
+      current: "high",
+      options: [
+        { value: "fast", name: "fast" },
+        { value: "high", name: "high" },
+        { value: "xhigh", name: "extra high" },
+      ],
+    },
+    { id: "mode", name: "mode", category: "mode", current: "agent", options: [{ value: "agent", name: "Agent" }] },
+  ]);
+  assert.equal(options[0].options[0].value, "true");
+  assert.equal(options[0].type, "bool");
+  const params = modelParamOptions(options, "mode");
+  assert.deepEqual(params.map((row) => row.id), ["fast", "thought_level"]);
+  assert.equal(boolParamLabel(options[0], true, tt), "Fast");
+  assert.equal(modelDisplayName({ id: "composer-2.5[fast=true]", name: "composer-2.5[fast=true]", default: false }), "composer-2.5 · fast");
+  assert.equal(modelDisplayName({ id: "grok-4.6[effort=high]", name: "grok-4.6[effort=high]", default: false }), "grok-4.6 · high");
 });

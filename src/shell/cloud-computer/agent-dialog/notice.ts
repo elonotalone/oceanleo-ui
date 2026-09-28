@@ -1,4 +1,4 @@
-import type { DialogModel } from "./types";
+import type { DialogConfigOption, DialogModel } from "./types";
 // 错误帧按 code 换成用户能照着做的一句话。原文不进日志，这里也不拼用户说过的字。
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
@@ -112,4 +112,41 @@ export function hiddenModelCopy(tt: Translate, models: DialogModel[]): string[] 
     if (model.reason === "no_credentials") return tt("{provider} 尚未认证，相关模型已隐藏。", { provider });
     return tt("当前不可用的模型已隐藏。");
   }))];
+}
+
+export function modelDisplayName(model: DialogModel): string {
+  const raw = model.name || model.id;
+  const match = raw.match(/^([^[]+)((?:\[[^\]]+\])+)$/);
+  if (!match) return raw;
+  const params = [...match[2].matchAll(/\[([^=\]]+)=([^\]]+)\]/g)].map(([, key, value]) => {
+    if (key === "fast") return value === "true" ? "fast" : value === "false" ? "standard" : value;
+    if (key === "effort" || key === "thought_level" || key === "thinking") return value;
+    return `${key}=${value}`;
+  }).filter(Boolean);
+  return params.length ? `${match[1].trim()} · ${params.join(" · ")}` : raw;
+}
+
+export function modelParamOptions(
+  options: DialogConfigOption[],
+  modeId?: string,
+): DialogConfigOption[] {
+  return options.filter((option) => {
+    if (!option.id || option.id === "model" || option.id === modeId) return false;
+    if (option.category === "mode" || option.category === "model") return false;
+    const hay = `${option.id} ${option.category}`.toLowerCase();
+    return /fast|effort|think|thought|variant|max.?mode/.test(hay);
+  });
+}
+
+export function boolParamLabel(
+  option: DialogConfigOption,
+  value: boolean,
+  tt: Translate,
+): string {
+  const wire = value ? "true" : "false";
+  const named = option.options.find((choice) => choice.value === wire)?.name;
+  if (named && named !== "true" && named !== "false") return named;
+  const hay = `${option.id} ${option.category}`.toLowerCase();
+  if (hay.includes("fast")) return value ? tt("fast") : tt("standard");
+  return value ? tt("开") : tt("关");
 }
