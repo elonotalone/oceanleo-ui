@@ -150,8 +150,16 @@ export type TurnItem =
       submitted: boolean;
     };
 
+export type DialogAttachment = {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  data: string;
+};
+
 export type AgentDialogMessage =
-  | { kind: "user"; id: string; text: string; replay?: boolean }
+  | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: { name: string; mime: string }[] }
   | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
@@ -208,6 +216,8 @@ export type DialogState = {
   sessions: DialogSession[];
   sessionsSupported: boolean | null;
   activeSession: string;
+  serverActiveSession: string;
+  busySession: string;
   sessionLoading: boolean;
   install: InstallState;
   login: LoginState;
@@ -241,6 +251,9 @@ export type AgentDialogController = {
   requestSessions: () => void;
   openSession: (id: string) => void;
   newSession: (cwd?: string) => void;
+  attachments: DialogAttachment[];
+  addAttachments: (files: File[]) => void;
+  removeAttachment: (id: string) => void;
   fresh: boolean;
   setFresh: (value: boolean) => void;
   install: InstallState;

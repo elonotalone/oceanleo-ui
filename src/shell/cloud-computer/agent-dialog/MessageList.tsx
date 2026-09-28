@@ -503,9 +503,20 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                     <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
                   </svg>
                 </span>
-                <p className="min-w-0 whitespace-pre-wrap break-words rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50 [overflow-wrap:anywhere]">
-                  {message.text}
-                </p>
+                <div className="min-w-0 rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50">
+                  {message.text ? (
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
+                  ) : null}
+                  {message.attachments?.length ? (
+                    <ul className="mt-1.5 flex flex-wrap gap-1.5 text-[12px] opacity-80" data-oceanleo-cc-user-files="">
+                      {message.attachments.map((item) => (
+                        <li key={item.name} className="rounded-md bg-black/5 px-1.5 py-0.5 dark:bg-white/10">
+                          {item.name}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               </div>
             );
           }

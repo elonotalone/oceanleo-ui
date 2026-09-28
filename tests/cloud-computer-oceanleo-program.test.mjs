@@ -480,6 +480,40 @@ test("reducer：login_failed 带 code；agent_busy 兜底收尾开着的登录�
   assert.equal(state.agentBusy, true);
 });
 
+test("reducer：transcript 立刻换成服务端历史；另一路 session 的 agent_busy 不禁用当前输入", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "session-loading", id: "s-keep", messages: [{ kind: "user", id: "u1", text: "cached" }] });
+  assert.equal(state.messages[0].text, "cached");
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "transcript",
+      program: "cursor",
+      acp_session: "s-keep",
+      frames: [
+        { t: "user_message", program: "cursor", text: "hello", acp_session: "s-keep" },
+        { t: "turn_start", program: "cursor", acp_session: "s-keep" },
+        { t: "delta", program: "cursor", text: "world", acp_session: "s-keep" },
+        { t: "done", program: "cursor", stop: "end_turn", acp_session: "s-keep" },
+      ],
+    },
+  });
+  assert.equal(state.activeSession, "s-keep");
+  assert.equal(state.sessionLoading, false);
+  assert.equal(state.messages[0].kind, "user");
+  assert.equal(state.messages[0].text, "hello");
+  const turn = state.messages.find((message) => message.kind === "turn");
+  assert.ok(turn);
+  assert.equal(turn.items.some((item) => item.kind === "assistant" && item.text === "world"), true);
+
+  state = applyDialog(state, { type: "frame", frame: { t: "sessions", program: "cursor", supported: true, sessions: [{ id: "s-keep", title: "hello" }], active: "s-keep" } });
+  assert.equal(state.serverActiveSession, "s-keep");
+
+  state = applyDialog(state, { type: "frame", frame: { t: "error", program: "cursor", code: "agent_busy", acp_session: "s-other" } });
+  assert.equal(state.agentBusy, false);
+});
+
 test("reducer：未知帧忽略（不报 dialog_unreachable），busy 时不许切程序", () => {
   let state = initialDialogState();
   const before = state;

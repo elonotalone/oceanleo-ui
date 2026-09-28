@@ -81,6 +81,8 @@ export function initialDialogState(): DialogState {
     sessions: [],
     sessionsSupported: null,
     activeSession: "",
+    serverActiveSession: "",
+    busySession: "",
     sessionLoading: false,
     install: blankInstall(),
     login: blankLogin(),
@@ -95,13 +97,13 @@ export type DialogEvent =
   | { type: "program"; program: AgentProgram }
   | { type: "send-began" }
   | { type: "send-failed" }
-  | { type: "user"; text: string }
+  | { type: "user"; text: string; attachments?: { name: string; mime: string }[] }
   | { type: "cancel-local" }
   | { type: "clear-offline" }
   | { type: "set-model"; id: string }
   | { type: "set-mode"; value: string }
   | { type: "set-config"; id: string; value: string | boolean }
-  | { type: "session-loading"; id: string }
+  | { type: "session-loading"; id: string; messages?: AgentDialogMessage[] }
   | { type: "sessions-unavailable" }
   | { type: "open-install"; program: WsProgram }
   | { type: "close-install" }
@@ -118,6 +120,19 @@ export type DialogEvent =
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function parseUserAttachments(raw: unknown): { name: string; mime: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { name: string; mime: string }[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as { name?: unknown; mime?: unknown };
+    const name = typeof row.name === "string" ? row.name : "";
+    if (!name) continue;
+    out.push({ name, mime: typeof row.mime === "string" ? row.mime : "" });
+  }
+  return out;
 }
 
 function forCurrent(state: DialogState, frame: Record<string, unknown>): boolean {
@@ -307,6 +322,7 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
 
 function onDone(state: DialogState, frame: Record<string, unknown>): DialogState {
   const stop = str(frame.stop);
+  const session = str(frame.acp_session);
   const messages = state.messages.slice();
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -315,7 +331,14 @@ function onDone(state: DialogState, frame: Record<string, unknown>): DialogState
       break;
     }
   }
-  return { ...state, messages, busy: false, agentBusy: false };
+  const matches = !session || !state.activeSession || session === state.activeSession;
+  return {
+    ...state,
+    messages,
+    busy: matches ? false : state.busy,
+    agentBusy: matches ? false : state.agentBusy,
+    busySession: matches ? "" : state.busySession,
+  };
 }
 
 function storedNoticeText(message: AgentDialogMessage): string {
@@ -355,12 +378,15 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
     ...(typeof frame.model === "string" ? { model: frame.model } : {}),
   };
   const notice = text ? { ...base, text } : base;
+  const session = str(frame.acp_session);
+  const matches = !session || !state.activeSession || session === state.activeSession;
   return {
     ...state,
-    busy: false,
-    agentBusy: code === "agent_busy",
+    busy: matches ? false : state.busy,
+    agentBusy: code === "agent_busy" ? matches : state.agentBusy,
+    busySession: code === "agent_busy" && matches ? state.activeSession : state.busySession,
     offline: code === "computer_offline" ? true : state.offline,
-    messages: same ? state.messages : [...state.messages, notice],
+    messages: same || !matches ? state.messages : [...state.messages, notice],
   };
 }
 
@@ -451,15 +477,34 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       ...state,
       sessionsSupported: frame.supported !== false,
       sessions: frame.supported === false ? [] : parseSessions(frame.sessions),
+      serverActiveSession: str(frame.active),
     };
   }
-  if (kind === "session_opened") {
-    return {
-      ...rememberSession(state, frame),
-      activeSession: str(frame.acp_session),
+  if (kind === "transcript") {
+    const session = str(frame.acp_session);
+    const frames = Array.isArray(frame.frames) ? frame.frames : [];
+    let next: DialogState = {
+      ...state,
+      activeSession: session || state.activeSession,
       sessionLoading: false,
+      messages: [],
       busy: false,
       agentBusy: false,
+    };
+    for (const raw of frames) {
+      const item = asRecord(raw);
+      if (item) next = onFrame(next, item);
+    }
+    return rememberSession(next, frame);
+  }
+  if (kind === "session_opened") {
+    const session = str(frame.acp_session);
+    return {
+      ...rememberSession(state, frame),
+      activeSession: session,
+      sessionLoading: false,
+      busy: state.busySession === session ? state.busy : false,
+      agentBusy: state.busySession === session ? state.agentBusy : false,
     };
   }
   if (kind === "models") {
@@ -483,16 +528,40 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   }
   if (kind === "user_message") {
     const text = str(frame.text);
-    if (!text) return state;
+    const attachments = parseUserAttachments(frame.attachments);
+    if (!text && attachments.length === 0) return state;
+    const last = state.messages[state.messages.length - 1];
+    if (
+      frame.replay !== true &&
+      last &&
+      last.kind === "user" &&
+      last.text === text
+    ) {
+      if (attachments.length && !last.attachments?.length) {
+        return {
+          ...state,
+          messages: state.messages.slice(0, -1).concat({ ...last, attachments }),
+        };
+      }
+      return state;
+    }
     return {
       ...state,
       messages: [
         ...state.messages,
-        { kind: "user", id: nextId(), text, replay: frame.replay === true },
+        { kind: "user", id: nextId(), text, replay: frame.replay === true, ...(attachments.length ? { attachments } : {}) },
       ],
     };
   }
-  if (kind === "turn_start") return onTurnStart(state, frame);
+  if (kind === "turn_start") {
+    const started = onTurnStart(state, frame);
+    const session = str(frame.acp_session);
+    return {
+      ...started,
+      busy: true,
+      busySession: session || started.activeSession,
+    };
+  }
   if (kind === "delta") return appendText(state, "assistant", str(frame.text));
   if (kind === "thought") return appendText(state, "thought", str(frame.text));
   if (kind === "tool") return onTool(state, frame);
@@ -534,7 +603,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessionLoading: false,
       };
     case "send-began":
-      return { ...state, busy: true };
+      return { ...state, busy: true, busySession: state.activeSession };
     case "send-failed":
       return {
         ...state,
@@ -545,10 +614,16 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       return {
         ...state,
         busy: true,
-        messages: [...state.messages, { kind: "user", id: nextId(), text: event.text }],
+        busySession: state.activeSession,
+        messages: [...state.messages, {
+          kind: "user",
+          id: nextId(),
+          text: event.text,
+          ...(event.attachments?.length ? { attachments: event.attachments } : {}),
+        }],
       };
     case "cancel-local":
-      return { ...state, busy: false, agentBusy: false };
+      return { ...state, busy: false, agentBusy: false, busySession: "" };
     case "clear-offline":
       // 已不在离线就原样返回：调用方可能在 effect 里每次挂载都发，别白造一帧渲染。
       return state.offline ? { ...state, offline: false } : state;
@@ -574,9 +649,9 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         ...state,
         activeSession: event.id,
         sessionLoading: true,
-        messages: [],
-        busy: false,
-        agentBusy: false,
+        messages: event.messages ?? [],
+        busy: state.busySession === event.id ? state.busy : false,
+        agentBusy: state.busySession === event.id ? state.agentBusy : false,
         commands: [],
       };
     case "sessions-unavailable":

@@ -18,6 +18,7 @@ import type {
   AgentDialogController,
   AgentDialogMessage,
   AgentProgram,
+  DialogAttachment,
   WsProgram,
 } from "./types";
 
@@ -93,12 +94,15 @@ export function useAgentDialog({
     }, undefined, () => hydratePresentation(computerId, { ...initialDialogState(), program: mountProgram }),
   );
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
   const [fresh, setFresh] = useState(false);
   const [computerName, setComputerName] = useState("");
 
   const stateRef = useRef(state);
   const draftRef = useRef(draft);
+  const attachmentsRef = useRef(attachments);
   const freshRef = useRef(fresh);
+  const openSessionRef = useRef<(id: string) => void>(() => {});
   const enabledRef = useRef(enabled);
   const activeRef = useRef(active);
   const oceanleoReadyRef = useRef(oceanleoReady);
@@ -130,7 +134,11 @@ export function useAgentDialog({
   const messagesCacheRef = useRef(new Map<string, AgentDialogMessage[]>());
 
   stateRef.current = state;
+  if (state.program && state.activeSession) {
+    messagesCacheRef.current.set(`${state.program}::${state.activeSession}`, state.messages);
+  }
   draftRef.current = draft;
+  attachmentsRef.current = attachments;
   freshRef.current = fresh;
   enabledRef.current = enabled;
   activeRef.current = active;
@@ -171,7 +179,34 @@ export function useAgentDialog({
       const parsed = applyDialog({ ...stateRef.current, program: frame.program }, { type: "frame", frame });
       cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
     }
-    dispatch({ type: "frame", frame });
+    const frameSession = typeof frame.acp_session === "string" ? frame.acp_session : "";
+    const talk = frame.t === "user_message" || frame.t === "turn_start" || frame.t === "delta" || frame.t === "thought" || frame.t === "tool" || frame.t === "plan" || frame.t === "usage" || frame.t === "done" || frame.t === "transcript";
+    if (
+      talk &&
+      frameSession &&
+      stateRef.current.activeSession &&
+      frameSession !== stateRef.current.activeSession
+    ) {
+      const key = `${stateRef.current.program ?? ""}::${frameSession}`;
+      const shadow = applyDialog(
+        {
+          ...initialDialogState(),
+          program: stateRef.current.program,
+          activeSession: frameSession,
+          messages: messagesCacheRef.current.get(key) ?? [],
+        },
+        { type: "frame", frame },
+      );
+      messagesCacheRef.current.set(key, shadow.messages);
+    } else {
+      dispatch({ type: "frame", frame });
+    }
+    if (frame.t === "sessions") {
+      const active = typeof frame.active === "string" ? frame.active.trim() : "";
+      if (active && !stateRef.current.activeSession && !stateRef.current.sessionLoading) {
+        queueMicrotask(() => openSessionRef.current(active));
+      }
+    }
     if (frame.t === "install_done" || frame.t === "login_done") {
       sendJson(socketRef.current, { t: "status" });
     }
@@ -453,8 +488,9 @@ export function useAgentDialog({
     const computerId = computerIdRef.current;
     if (!computerId) return;
     if (stateRef.current.busy || stateRef.current.offline) return;
+    const pendingFiles = attachmentsRef.current;
     const text = draftRef.current.trim();
-    if (!text) return;
+    if (!text && pendingFiles.length === 0) return;
     // 后端 turn 上限 8000：超了明说，不静默截断（WS 程序的 32000 是另一条协议）。
     if (text.length > MAX_OCEAN_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program: "oceanleo" });
@@ -464,8 +500,14 @@ export function useAgentDialog({
     clearOceanWait();
     // 与 WS send 同款乐观写：dispatch 到重渲染之间再按发送不能发出第二句。
     stateRef.current = { ...stateRef.current, busy: true };
-    dispatch({ type: "user", text });
+    const named = pendingFiles.map((item) => ({ name: item.name, mime: item.mime }));
+    const fileNote = pendingFiles.length
+      ? `${text ? "\n\n" : ""}` + pendingFiles.map((item) => `[attached file: ${item.name}]`).join("\n")
+      : "";
+    const outgoing = `${text}${fileNote}`;
+    dispatch({ type: "user", text: outgoing, attachments: named });
     setDraft("");
+    setAttachments([]);
     const freshTurn = freshRef.current;
     setFresh(false);
     if (freshTurn) {
@@ -482,7 +524,7 @@ export function useAgentDialog({
     );
     oceanSendRef.current = { baseUsers };
     const result = await agentTurn(computerId, {
-      text,
+      text: outgoing,
       shell_session_id: sessionIdRef.current || undefined,
     });
     if (gen !== oceanGen.current) return;
@@ -607,7 +649,12 @@ export function useAgentDialog({
       const prev = stateRef.current.program;
       // 同一程序再选一次（如对话中点当前 agent 的齿轮）不能清掉模型、会话和消息。
       if (prev === next) return;
-      if (prev) messagesCacheRef.current.set(prev, stateRef.current.messages);
+      if (prev) {
+        messagesCacheRef.current.set(prev, stateRef.current.messages);
+        if (stateRef.current.activeSession) {
+          messagesCacheRef.current.set(`${prev}::${stateRef.current.activeSession}`, stateRef.current.messages);
+        }
+      }
       dispatch({ type: "program", program: next });
       dispatch({
         type: "messages-replace",
@@ -640,16 +687,21 @@ export function useAgentDialog({
       return;
     }
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
-    if (stateRef.current.busy || stateRef.current.agentBusy || stateRef.current.offline) return;
+    const current = stateRef.current;
+    const thisBusy =
+      (current.busy || current.agentBusy) &&
+      (!current.busySession || current.busySession === current.activeSession);
+    if (thisBusy || current.offline) return;
     const text = draftRef.current.trim();
-    if (!text) return;
+    const files = attachmentsRef.current;
+    if (!text && files.length === 0) return;
     if (text.length > MAX_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program });
       return;
     }
-    stateRef.current = { ...stateRef.current, busy: true };
-    const model = stateRef.current.selectedModel;
-    const mode = stateRef.current.selectedMode;
+    stateRef.current = { ...current, busy: true, busySession: current.activeSession };
+    const model = current.selectedModel;
+    const mode = current.selectedMode;
     const freshTurn = freshRef.current;
     dispatch({ type: "send-began" });
     const socket = await ensureOpen();
@@ -665,9 +717,17 @@ export function useAgentDialog({
     if (model) frame.model = model;
     if (mode) frame.mode = mode;
     if (freshTurn) frame.fresh = true;
+    if (files.length) {
+      frame.files = files.map((item) => ({ name: item.name, mime: item.mime, data: item.data }));
+    }
     socket.send(JSON.stringify(frame));
-    dispatch({ type: "user", text });
+    dispatch({
+      type: "user",
+      text,
+      attachments: files.map((item) => ({ name: item.name, mime: item.mime })),
+    });
     setDraft("");
+    setAttachments([]);
     setFresh(false);
   }, [ensureOpen]);
 
@@ -693,7 +753,9 @@ export function useAgentDialog({
       return;
     }
     if (usesDialogSocket(program, localOceanleoRef.current)) {
-      sendJson(socketRef.current, { t: "cancel", program });
+      const frame: Record<string, unknown> = { t: "cancel", program };
+      if (stateRef.current.activeSession) frame.acp_session = stateRef.current.activeSession;
+      sendJson(socketRef.current, frame);
     }
     dispatch({ type: "cancel-local" });
   }, [applyOceanDetail, clearOceanWait]);
@@ -726,16 +788,22 @@ export function useAgentDialog({
     const acpSession = id.trim();
     const program = stateRef.current.program;
     if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
+    const cacheKey = `${program}::${acpSession}`;
+    if (stateRef.current.activeSession && stateRef.current.activeSession !== acpSession) {
+      messagesCacheRef.current.set(
+        `${program}::${stateRef.current.activeSession}`,
+        stateRef.current.messages,
+      );
+    }
+    const cached = messagesCacheRef.current.get(cacheKey);
     stateRef.current = {
       ...stateRef.current,
       activeSession: acpSession,
       sessionLoading: true,
-      messages: [],
+      messages: cached ?? stateRef.current.messages,
       commands: [],
-      busy: false,
-      agentBusy: false,
     };
-    dispatch({ type: "session-loading", id: acpSession });
+    dispatch({ type: "session-loading", id: acpSession, messages: cached });
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) {
@@ -745,6 +813,7 @@ export function useAgentDialog({
       sendJson(socket, { t: "open_session", program, acp_session: acpSession });
     })();
   }, [ensureOpen]);
+  openSessionRef.current = openSession;
 
   const newSession = useCallback((cwd?: string) => {
     const program = stateRef.current.program;
@@ -937,6 +1006,44 @@ export function useAgentDialog({
     setFresh(value);
   }, []);
 
+  const addAttachments = useCallback((files: File[]) => {
+    const next: DialogAttachment[] = [];
+    let remaining = files;
+    void Promise.all(
+      remaining.slice(0, 20).map(
+        (file) =>
+          new Promise<DialogAttachment | null>((resolve) => {
+            if (file.size > 8 * 1024 * 1024) {
+              resolve(null);
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = String(reader.result || "");
+              const comma = result.indexOf(",");
+              resolve({
+                id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+                name: file.name || "file",
+                mime: file.type || "application/octet-stream",
+                size: file.size,
+                data: comma >= 0 ? result.slice(comma + 1) : result,
+              });
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    ).then((rows) => {
+      const kept = rows.filter((item): item is DialogAttachment => item !== null);
+      if (!kept.length) return;
+      setAttachments((current) => [...current, ...kept].slice(0, 20));
+    });
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((current) => current.filter((item) => item.id !== id));
+  }, []);
+
   return {
     program: state.program,
     setProgram,
@@ -965,6 +1072,9 @@ export function useAgentDialog({
     requestSessions,
     openSession,
     newSession,
+    attachments,
+    addAttachments,
+    removeAttachment,
     fresh,
     setFresh: setFreshValue,
     install: state.install,

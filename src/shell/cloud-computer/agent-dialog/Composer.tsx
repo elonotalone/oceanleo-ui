@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ClipboardEvent } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getTask } from "../../../lib/agent";
 import { shellSessionFromTask } from "../../history-model";
@@ -91,6 +91,9 @@ export function Composer({
   const commandQuery = dialog.draft.startsWith("/")
     ? dialog.draft.slice(1).trimStart().toLocaleLowerCase()
     : null;
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const canAttach = typeof dialog.addAttachments === "function";
   const commandMatches = commandQuery === null
     ? []
     : dialog.commands.filter((command) => {
@@ -99,23 +102,66 @@ export function Composer({
       }).slice(0, 8);
   return (
     <form
-      className={`border-t p-3 ${tone.border}`}
+      className={`relative border-t p-3 ${tone.border}`}
       onSubmit={(event) => {
         event.preventDefault();
         void dialog.send();
       }}
+      onDragEnter={(event: DragEvent) => {
+        if (!canAttach || !event.dataTransfer?.types.includes("Files")) return;
+        event.preventDefault();
+        setDragOver(true);
+      }}
+      onDragOver={(event: DragEvent) => {
+        if (!canAttach) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event: DragEvent) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+        setDragOver(false);
+      }}
+      onDrop={(event: DragEvent) => {
+        if (!canAttach) return;
+        event.preventDefault();
+        setDragOver(false);
+        dialog.addAttachments(Array.from(event.dataTransfer?.files || []));
+      }}
     >
+      {dragOver ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))] bg-[color-mix(in_srgb,var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))_8%,transparent)] text-sm">
+          {tt("松手即可添加文件")}
+        </div>
+      ) : null}
       {creditNotice ? <div className={`mb-2 text-[12px] ${tone.muted}`} data-oceanleo-credit-recovery="">
         <p>{noticeCopy(tt, creditNotice.code, null, creditNotice.provider)}</p>
         {alternative ? <button type="button" className={`mt-1 h-11 rounded-lg px-2 text-[13px] ${tone.hover}`} onClick={() => dialog.setSelectedModel(alternative.id)}>{tt("换成 {model}", { model: alternative.name })}</button> : null}
       </div> : null}
       <div className="flex items-end gap-2">
         <div className="relative flex min-w-0 flex-1 flex-col gap-2">
+          {dialog.attachments?.length ? (
+            <ul className="flex flex-wrap gap-1.5" data-oceanleo-cc-attachments="">
+              {dialog.attachments.map((item) => (
+                <li key={item.id} className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${tone.border}`}>
+                  <span className="max-w-[12rem] truncate">{item.name}</span>
+                  <button type="button" className={tone.muted} onClick={() => dialog.removeAttachment(item.id)} aria-label={tt("移除文件")}>
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <textarea
             data-oceanleo-cc-dialog-input=""
             value={dialog.draft}
             disabled={dialog.agentBusy || dialog.offline}
             onChange={(event) => dialog.setDraft(event.target.value)}
+            onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+              const files = Array.from(event.clipboardData?.files || []);
+              if (!canAttach || !files.length) return;
+              event.preventDefault();
+              dialog.addAttachments(files);
+            }}
             onKeyDown={(event) => {
               if (
                 event.key === "Enter" &&
@@ -153,6 +199,31 @@ export function Composer({
             </ul>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
+            {canAttach ? (
+              <>
+                <button
+                  type="button"
+                  data-oceanleo-cc-attach=""
+                  aria-label={tt("添加文件")}
+                  title={tt("添加文件")}
+                  disabled={dialog.offline}
+                  onClick={() => fileRef.current?.click()}
+                  className={`flex size-8 items-center justify-center rounded-lg text-lg leading-none ${tone.muted} ${tone.hover} disabled:opacity-40`}
+                >
+                  +
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(event) => {
+                    dialog.addAttachments(Array.from(event.target.files || []));
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </>
+            ) : null}
             {/* 全站唯一的 leo 入口（合同 I5）：Shell 对话框左下角同一颗 ✦ leo
                 按钮，深色底用 tone="dark"；context 带这台电脑，leo 建的任务挂上来。 */}
             <LeoEntryButton
