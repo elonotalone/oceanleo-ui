@@ -286,8 +286,8 @@ export interface OrgMembershipProps {
   loadInvitePreview?: (code: string) => Promise<InvitePreview>;
   /** 嵌在别的页里时不带整页的大标题。 */
   embedded?: boolean;
-  /** 只渲染这一段。`join-create` 给设置里的组织栏用：加入 + 创建，不要「我的组织」列表。 */
-  only?: "orgs" | "join" | "views" | "join-create";
+  /** 只渲染这一段。设置里的组织栏用三个页签分别渲染我的组织 / 创建 / 加入。 */
+  only?: "orgs" | "join" | "views" | "create" | "join-create";
   className?: string;
 }
 
@@ -474,7 +474,7 @@ export function OrgMembership({
 
   const showList = !only || only === "orgs";
   const showCreateInOrgs = !only || only === "orgs";
-  const showCreateAlone = only === "join-create";
+  const showCreateAlone = only === "create" || only === "join-create";
   const showJoin = !only || only === "join" || only === "join-create";
   const showViews = !only || only === "views";
   const show = (section: "orgs" | "join" | "views") => {

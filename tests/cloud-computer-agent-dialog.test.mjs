@@ -440,6 +440,17 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     assert.equal(mode.value, "ask");
     assert.equal(fast.value, "true");
     assert.equal(thinking.value, "high");
+    const thinkingChip = view.host.querySelector('[data-oceanleo-cc-tuning-chip="thought_level"]');
+    assert.match(thinkingChip.textContent || "", /high/i);
+    await click(thinkingChip);
+    assert.match(thinkingChip.textContent || "", /thinking/i);
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-tuning-menu]"));
+    await click(view.host.querySelector('[data-oceanleo-cc-tuning-choice="xhigh"]'));
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]').value, "xhigh");
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-tuning-menu]"), null);
+    await act(async () => {
+      setControlValue(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]'), "high");
+    });
     assert.match(Array.from(thinking.options).map((row) => row.textContent).join(" "), /fast/);
     assert.match(Array.from(thinking.options).map((row) => row.textContent).join(" "), /high/);
     await act(async () => {

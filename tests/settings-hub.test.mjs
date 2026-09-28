@@ -125,9 +125,14 @@ const securityStubUrl = dataModule(`
 `);
 const orgStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function OrgMembership() {
-    return React.createElement("div", { "data-testid": "org-membership" },
-      "创建组织", "《OceanLeo 企业服务协议》");
+  export function OrgMembership(props) {
+    const only = props && props.only;
+    const copy = only === "create"
+      ? "创建组织《OceanLeo 企业服务协议》"
+      : only === "join"
+        ? "加入组织"
+        : "谁看过我";
+    return React.createElement("div", { "data-testid": "org-membership", "data-org-only": only || "" }, copy);
   }
 `);
 const orgPageStubUrl = dataModule(`
@@ -258,17 +263,30 @@ test("tab=org 含 OrgPage 与加入/创建", async () => {
   const view = await render(React.createElement(SettingsHub, { defaultTab: "org" }));
   assert.ok(view.host.querySelector("[data-testid=org-page]"));
   assert.ok(view.host.querySelector("[data-org-settings-block=mine]"));
-  assert.ok(view.host.querySelector("[data-org-settings-block=join-create]"));
-  assert.ok(view.host.querySelector("[data-testid=org-membership]"));
+  assert.ok(view.host.querySelector("[data-org-settings-tabs]"));
+  assert.equal(view.host.querySelector("[data-org-settings-tab=mine]").getAttribute("aria-selected"), "true");
+  assert.equal(view.host.querySelector("[data-org-settings-block=create]"), null);
+  assert.equal(view.host.querySelector("[data-org-settings-block=join]"), null);
+  await act(async () => {
+    view.host.querySelector("[data-org-settings-tab=create]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.ok(view.host.querySelector("[data-org-settings-block=create]"));
   assert.ok(view.text().includes("创建组织"));
+  await act(async () => {
+    view.host.querySelector("[data-org-settings-tab=join]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.ok(view.host.querySelector("[data-org-settings-block=join]"));
+  assert.ok(view.text().includes("加入组织"));
   view.cleanup();
 });
 
-test("OrgSection 嵌入 OrgPage 与 join-create，不再链到独立 /org", () => {
+test("OrgSection 嵌入 OrgPage 与三个页签，不再链到独立 /org", () => {
   const src = readFileSync(new URL("../src/pages/settings/sections/OrgSection.tsx", import.meta.url), "utf8");
   assert.match(src, /<OrgPage embedded/);
-  assert.match(src, /only="join-create"/);
+  assert.match(src, /only="create"/);
+  assert.match(src, /only="join"/);
   assert.match(src, /only="views"/);
+  assert.match(src, /data-org-settings-tabs/);
   assert.doesNotMatch(src, /href=\{orgHref\}|href="\/org"/);
 });
 

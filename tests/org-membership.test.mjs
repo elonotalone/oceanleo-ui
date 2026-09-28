@@ -106,6 +106,16 @@ const orgApiStub = (withPreview) =>
   export async function requestJoin(code) { count("requestJoin:" + code); return g().requestJoin(code); }
   export async function getMyOrgUsage(orgId) { count("getMyOrgUsage:" + orgId); return g().getMyOrgUsage(orgId); }
   export async function createOrg(body) { count("createOrg:" + (body && body.name || "") + ":" + (body && body.agreementVersion || "")); return g().createOrg(body); }
+  export async function createInvite() { count("createInvite"); return { code: "inv" }; }
+  export async function decideJoinRequest() { count("decideJoinRequest"); }
+  export async function getOrg(id) { count("getOrg:" + id); return { id, name: "org", role: "owner", canViewOrgPage: true }; }
+  export async function getOrgUsage() { return { windowDays: 7, points: [], byModel: [] }; }
+  export async function listJoinRequests() { return []; }
+  export async function listMembers() { return []; }
+  export function normalizeOrgUsage(raw) { return raw || { windowDays: 7, points: [], byModel: [] }; }
+  export async function setMemberCap() {}
+  export async function setMemberPermission() {}
+  export async function updateOrg() {}
   ${withPreview ? `export async function getInvitePreview(code) { count("getInvitePreview:" + code); return g().getInvitePreview(code); }` : ""}
 `);
 
@@ -602,7 +612,9 @@ test("AccountPage：默认（账户）栏不暴露组织内容；切到组织栏
   assert.ok(orgTab, "左栏要有「组织」项");
   await none.click(orgTab);
   assert.ok(none.q('[data-settings-pane="org"]'), "点组织栏后右侧是组织面板");
+  assert.ok(none.q('[data-org-settings-tabs]'), "组织栏顶部要有三个页签");
   assert.ok(none.q('[data-org-membership="1"]'), "网关已上线：组织栏里有我的组织");
+  await none.click(none.q('[data-org-settings-tab="create"]'));
   assert.ok(none.q('[data-org-create="1"]'), "网关已上线：组织栏里能建组织");
   none.cleanup();
 
@@ -610,6 +622,7 @@ test("AccountPage：默认（账户）栏不暴露组织内容；切到组织栏
   const some = await render(React.createElement(AccountPage), scenario({ listMyOrgs: async () => [ORG_A] }));
   await some.click(some.q('[data-settings-item="org"]'));
   assert.ok(some.q('[data-org-membership="1"]'));
+  await some.click(some.q('[data-org-settings-tab="create"]'));
   assert.ok(some.q('[data-org-create="1"]'), "已有组织也能再创建一家");
   some.cleanup();
 });
@@ -629,7 +642,7 @@ test("AccountPage：org-api 整条路 404（路由未上线）时组织栏安静
   assert.equal(view.q('[data-org-membership="1"]'), null);
   await view.click(view.q('[data-settings-item="org"]'));
   assert.equal(view.q('[data-org-membership="1"]'), null, "路由未上线：组织栏不摆半成品");
-  assert.ok(!view.text().includes("还没上线"));
+  assert.equal(view.q('[data-org-create="1"]'), null);
   view.cleanup();
 });
 

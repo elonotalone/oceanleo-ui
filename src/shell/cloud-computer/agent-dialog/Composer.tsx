@@ -9,11 +9,11 @@ import { hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noti
 import {
   coerceOptionValue,
   mergeLiveParams,
+  optionChoiceName,
   optionCurrentWire,
   readModelParamMemory,
   rememberModelParam,
   restoresForModel,
-  tuningSummary,
   writeModelParamMemory,
 } from "./model-param-memory";
 import { tone } from "../server-page/tone";
@@ -70,6 +70,81 @@ function commandText(name: string): string {
   return name.startsWith("/") ? name : `/${name}`;
 }
 
+function ComposerTuningChip({
+  configId,
+  mode = false,
+  category,
+  current,
+  currentName,
+  options,
+  open,
+  onToggle,
+  onPick,
+}: {
+  configId?: string;
+  mode?: boolean;
+  category: string;
+  current: string;
+  currentName: string;
+  options: { value: string; name: string }[];
+  open: boolean;
+  onToggle: () => void;
+  onPick: (wire: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        data-oceanleo-cc-tuning-chip={mode ? "mode" : configId}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={onToggle}
+        className={`rounded-lg px-2 py-1 text-[12px] ${open ? tone.chipActive : `${tone.muted} ${tone.hover}`}`}
+      >
+        {open ? category : currentName || current}
+      </button>
+      {open ? (
+        <div
+          className={`absolute bottom-full left-0 z-20 mb-1 min-w-28 overflow-hidden rounded-lg border py-1 shadow-xl ${tone.border} ${tone.panel}`}
+          data-oceanleo-cc-tuning-menu=""
+          role="listbox"
+        >
+          {options.map((choice) => (
+            <button
+              type="button"
+              key={choice.value}
+              role="option"
+              aria-selected={choice.value === current}
+              data-oceanleo-cc-tuning-choice={choice.value}
+              className={`block w-full px-3 py-1 text-left text-[12px] ${
+                choice.value === current ? tone.chipActive : tone.hover
+              }`}
+              onClick={() => onPick(choice.value)}
+            >
+              {choice.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <select
+        aria-hidden="true"
+        tabIndex={-1}
+        className="sr-only"
+        data-oceanleo-cc-mode={mode ? "" : undefined}
+        data-oceanleo-cc-config={mode ? undefined : configId}
+        value={current}
+        onChange={(event) => onPick(event.currentTarget.value)}
+      >
+        {options.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function Composer({
   dialog,
   context,
@@ -91,6 +166,8 @@ export function Composer({
     };
   }, []);
   const restoreKey = useRef("");
+  const tuningRef = useRef<HTMLDivElement>(null);
+  const [openTuning, setOpenTuning] = useState<string | null>(null);
   useEffect(() => {
     const program = dialog.program;
     const model = dialog.selectedModel;
@@ -112,6 +189,21 @@ export function Composer({
       dialog.setConfig(option.id, coerceOptionValue(option, wire));
     }
   }, [dialog.program, dialog.selectedModel, dialog.configOptions, dialog.mode?.id, dialog.computerId, dialog.setConfig, shellInfo.computerId]);
+  useEffect(() => {
+    if (!openTuning) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!tuningRef.current?.contains(event.target as Node)) setOpenTuning(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenTuning(null);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openTuning]);
   // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
   if (!dialog.program) return null;
   const lastMessage = dialog.messages[dialog.messages.length - 1];
@@ -122,7 +214,6 @@ export function Composer({
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
   const showTuning = tuningParams.length > 0 || Boolean(dialog.mode && dialog.mode.options.length > 0);
   const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
-  const summary = tuningSummary(tuningParams, dialog.mode?.options.length ? tuningModeName : "");
   const leoContext: LeoContext = context ?? { page: "shell", ...shellInfo };
   const commandQuery = dialog.draft.startsWith("/")
     ? dialog.draft.slice(1).trimStart().toLocaleLowerCase()
@@ -287,22 +378,25 @@ export function Composer({
 </label>
             ) : null}
             {showTuning ? (
-              <details
-                className={`min-w-40 rounded-lg border px-2 py-1 ${tone.border}`}
+              <div
+                ref={tuningRef}
+                className="flex flex-wrap items-center gap-1"
                 data-oceanleo-cc-tuning=""
               >
-                <summary className={`cursor-pointer select-none text-[12px] ${tone.muted}`}>
-                  {summary || tt("参数")}
-                </summary>
-                <div className="mt-1 flex flex-col gap-1">
-                {tuningParams.map((option) => (
-                  <label key={option.id} className={`flex items-center justify-between gap-2 text-[12px] ${tone.muted}`}>
-                    <span className="min-w-0 truncate">{option.name || option.id}</span>
-                    <select
-                      data-oceanleo-cc-config={option.id}
-                      value={optionCurrentWire(option)}
-                      onChange={(event) => {
-                        const raw = event.currentTarget.value;
+                {tuningParams.map((option) => {
+                  const current = optionCurrentWire(option);
+                  return (
+                    <ComposerTuningChip
+                      key={option.id}
+                      configId={option.id}
+                      category={option.name || option.id}
+                      current={current}
+                      currentName={optionChoiceName(option)}
+                      options={option.options}
+                      open={openTuning === option.id}
+                      onToggle={() => setOpenTuning((id) => (id === option.id ? null : option.id))}
+                      onPick={(raw) => {
+                        setOpenTuning(null);
                         const program = dialog.program;
                         if (program && dialog.selectedModel) {
                           rememberModelParam(
@@ -315,35 +409,25 @@ export function Composer({
                         }
                         dialog.setConfig(option.id, coerceOptionValue(option, raw));
                       }}
-                      className={`min-w-0 flex-1 rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
-                    >
-                      {option.options.map((choice) => (
-                        <option key={choice.value} value={choice.value}>
-                          {choice.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
+                    />
+                  );
+                })}
                 {dialog.mode && dialog.mode.options.length > 0 ? (
-                  <label className={`flex items-center justify-between gap-2 text-[12px] ${tone.muted}`}>
-                    <span className="min-w-0 truncate">{dialog.mode.name || tt("模式")}</span>
-                    <select
-                      data-oceanleo-cc-mode=""
-                      value={dialog.selectedMode}
-                      onChange={(event) => dialog.setMode(event.target.value)}
-                      className={`min-w-0 flex-1 rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
-                    >
-                      {dialog.mode.options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <ComposerTuningChip
+                    mode
+                    category={dialog.mode.name || tt("模式")}
+                    current={dialog.selectedMode}
+                    currentName={tuningModeName}
+                    options={dialog.mode.options}
+                    open={openTuning === "mode"}
+                    onToggle={() => setOpenTuning((id) => (id === "mode" ? null : "mode"))}
+                    onPick={(raw) => {
+                      setOpenTuning(null);
+                      dialog.setMode(raw);
+                    }}
+                  />
                 ) : null}
-                </div>
-              </details>
+              </div>
             ) : null}
             {showFresh ? <button
               type="button"
