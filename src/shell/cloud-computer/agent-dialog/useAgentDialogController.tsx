@@ -1045,6 +1045,7 @@ export function useAgentDialog({
   }, []);
 
   return {
+    computerId,
     program: state.program,
     setProgram,
     computerName,

@@ -225,6 +225,7 @@ export type DialogState = {
 };
 
 export type AgentDialogController = {
+  computerId?: string;
   program: AgentProgram | null;
   setProgram: (program: AgentProgram) => void;
   messages: AgentDialogMessage[];

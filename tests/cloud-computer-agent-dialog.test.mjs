@@ -435,6 +435,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     const mode = view.host.querySelector("[data-oceanleo-cc-mode]");
     const fast = view.host.querySelector('[data-oceanleo-cc-config="fast"]');
     const thinking = view.host.querySelector('[data-oceanleo-cc-config="thought_level"]');
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-tuning]"));
     assert.equal(model.value, "b");
     assert.equal(mode.value, "ask");
     assert.equal(fast.value, "true");
@@ -481,6 +482,72 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     });
     assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]'), null);
     assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]').value, "high");
+    await act(async () => {
+      setControlValue(model, "b");
+      view.socket().server({
+        t: "config",
+        program: "cursor",
+        options: [{
+          id: "mode",
+          name: "模式",
+          category: "mode",
+          current: "agent",
+          options: [
+            { value: "ask", name: "Ask" },
+            { value: "agent", name: "Agent" },
+          ],
+        }, {
+          id: "fast",
+          name: "fast",
+          category: "fast",
+          current: true,
+          options: [
+            { value: true, name: "Fast" },
+            { value: false, name: "Standard" },
+          ],
+        }, {
+          id: "thought_level",
+          name: "thinking",
+          category: "thought_level",
+          current: "high",
+          options: [
+            { value: "fast", name: "fast" },
+            { value: "high", name: "high" },
+            { value: "xhigh", name: "extra high" },
+          ],
+        }],
+      });
+    });
+    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level" && frame.value === "fast"));
+    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast" && frame.value === false));
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]').value, "fast");
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]').value, "false");
+    await act(async () => {
+      setControlValue(model, "a");
+      view.socket().server({
+        t: "config",
+        program: "cursor",
+        options: [{
+          id: "mode",
+          name: "模式",
+          category: "mode",
+          current: "agent",
+          options: [
+            { value: "ask", name: "Ask" },
+            { value: "agent", name: "Agent" },
+          ],
+        }, {
+          id: "thought_level",
+          name: "thinking",
+          category: "thought_level",
+          current: "high",
+          options: [
+            { value: "high", name: "high" },
+            { value: "xhigh", name: "extra high" },
+          ],
+        }],
+      });
+    });
 
     const input = view.host.querySelector("[data-oceanleo-cc-dialog-input]");
     await fillText(input, "hello");

@@ -6,6 +6,16 @@ import { getTask } from "../../../lib/agent";
 import { shellSessionFromTask } from "../../history-model";
 import { LeoEntryButton, type LeoContext } from "../../LeoEntryButton";
 import { hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy } from "./notice";
+import {
+  coerceOptionValue,
+  mergeLiveParams,
+  optionCurrentWire,
+  readModelParamMemory,
+  rememberModelParam,
+  restoresForModel,
+  tuningSummary,
+  writeModelParamMemory,
+} from "./model-param-memory";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -80,6 +90,28 @@ export function Composer({
       alive = false;
     };
   }, []);
+  const restoreKey = useRef("");
+  useEffect(() => {
+    const program = dialog.program;
+    const model = dialog.selectedModel;
+    if (!program || !model) return;
+    const params = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
+    if (!params.length) return;
+    const computerId = dialog.computerId || shellInfo.computerId || "";
+    const memory = readModelParamMemory(computerId, program);
+    const merged = mergeLiveParams(memory[model], params);
+    const live = params.map((option) => `${option.id}:${optionCurrentWire(option)}`).join("|");
+    const key = `${computerId}:${program}:${model}:${live}:${JSON.stringify(merged)}`;
+    if (restoreKey.current === key) return;
+    restoreKey.current = key;
+    if (JSON.stringify(memory[model] || {}) !== JSON.stringify(merged)) {
+      memory[model] = merged;
+      writeModelParamMemory(computerId, program, memory);
+    }
+    for (const { option, wire } of restoresForModel(params, merged)) {
+      dialog.setConfig(option.id, coerceOptionValue(option, wire));
+    }
+  }, [dialog.program, dialog.selectedModel, dialog.configOptions, dialog.mode?.id, dialog.computerId, dialog.setConfig, shellInfo.computerId]);
   // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
   if (!dialog.program) return null;
   const lastMessage = dialog.messages[dialog.messages.length - 1];
@@ -87,6 +119,10 @@ export function Composer({
   const alternative = dialog.models.find((model) => model.usable !== false && model.id !== creditNotice?.model && model.id !== dialog.selectedModel);
   const showModels = dialog.models.length > 0;
   const showStop = dialog.busy || dialog.agentBusy;
+  const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
+  const showTuning = tuningParams.length > 0 || Boolean(dialog.mode && dialog.mode.options.length > 0);
+  const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
+  const summary = tuningSummary(tuningParams, dialog.mode?.options.length ? tuningModeName : "");
   const leoContext: LeoContext = context ?? { page: "shell", ...shellInfo };
   const commandQuery = dialog.draft.startsWith("/")
     ? dialog.draft.slice(1).trimStart().toLocaleLowerCase()
@@ -250,42 +286,64 @@ export function Composer({
                 {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
 </label>
             ) : null}
-            {modelParamOptions(dialog.configOptions || [], dialog.mode?.id).map((option) => (
-              <label key={option.id} className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
-                {option.name || option.id}
-                <select
-                  data-oceanleo-cc-config={option.id}
-                  value={option.type === "bool" ? String(option.current === true) : String(option.current)}
-                  onChange={(event) => {
-                    const raw = event.currentTarget.value;
-                    dialog.setConfig(option.id, option.type === "bool" ? raw === "true" : raw);
-                  }}
-                  className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
-                >
-                  {option.options.map((choice) => (
-                    <option key={choice.value} value={choice.value}>
-                      {choice.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-            {dialog.mode && dialog.mode.options.length > 0 ? (
-              <label className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
-                {dialog.mode.name || tt("模式")}
-                <select
-                  data-oceanleo-cc-mode=""
-                  value={dialog.selectedMode}
-                  onChange={(event) => dialog.setMode(event.target.value)}
-                  className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
-                >
-                  {dialog.mode.options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {showTuning ? (
+              <details
+                className={`min-w-40 rounded-lg border px-2 py-1 ${tone.border}`}
+                data-oceanleo-cc-tuning=""
+              >
+                <summary className={`cursor-pointer select-none text-[12px] ${tone.muted}`}>
+                  {summary || tt("参数")}
+                </summary>
+                <div className="mt-1 flex flex-col gap-1">
+                {tuningParams.map((option) => (
+                  <label key={option.id} className={`flex items-center justify-between gap-2 text-[12px] ${tone.muted}`}>
+                    <span className="min-w-0 truncate">{option.name || option.id}</span>
+                    <select
+                      data-oceanleo-cc-config={option.id}
+                      value={optionCurrentWire(option)}
+                      onChange={(event) => {
+                        const raw = event.currentTarget.value;
+                        const program = dialog.program;
+                        if (program && dialog.selectedModel) {
+                          rememberModelParam(
+                            dialog.computerId || shellInfo.computerId || "",
+                            program,
+                            dialog.selectedModel,
+                            option.id,
+                            raw,
+                          );
+                        }
+                        dialog.setConfig(option.id, coerceOptionValue(option, raw));
+                      }}
+                      className={`min-w-0 flex-1 rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
+                    >
+                      {option.options.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                {dialog.mode && dialog.mode.options.length > 0 ? (
+                  <label className={`flex items-center justify-between gap-2 text-[12px] ${tone.muted}`}>
+                    <span className="min-w-0 truncate">{dialog.mode.name || tt("模式")}</span>
+                    <select
+                      data-oceanleo-cc-mode=""
+                      value={dialog.selectedMode}
+                      onChange={(event) => dialog.setMode(event.target.value)}
+                      className={`min-w-0 flex-1 rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
+                    >
+                      {dialog.mode.options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                </div>
+              </details>
             ) : null}
             {showFresh ? <button
               type="button"

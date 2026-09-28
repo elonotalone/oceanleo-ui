@@ -7,8 +7,10 @@ import { compileModule } from "./helpers/module-bench.mjs";
 const require = createRequire(import.meta.url);
 const parseUrl = await compileModule("src/shell/cloud-computer/agent-dialog/parse.ts");
 const noticeUrl = await compileModule("src/shell/cloud-computer/agent-dialog/notice.ts");
+const memoryUrl = await compileModule("src/shell/cloud-computer/agent-dialog/model-param-memory.ts");
 const { parsePrograms, parseModels, parseConfigOptions } = await import(parseUrl);
 const { boolParamLabel, hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy, noticeAction } = await import(noticeUrl);
+const { mergeLiveParams, restoresForModel, tuningSummary } = await import(memoryUrl);
 
 const tt = (value, vars) => value.replace(/\{(\w+)\}/g, (_, key) => String(vars?.[key] ?? `{${key}}`));
 
@@ -92,4 +94,31 @@ test("config options keep Fast/High wires as selectable strings", () => {
     { id: "thought_level", name: "thinking", category: "thought_level", current: "high", options: [{ value: "high", name: "high" }, { value: "xhigh", name: "extra high" }] },
   ]);
   assert.deepEqual(modelParamOptions(later, "mode").map((row) => row.id), ["thought_level"]);
+});
+
+test("remembered extra high restores only while the live model still offers it", () => {
+  const withXhigh = parseConfigOptions([{
+    id: "thought_level",
+    name: "thinking",
+    category: "thought_level",
+    current: "high",
+    options: [
+      { value: "high", name: "high" },
+      { value: "xhigh", name: "extra high" },
+    ],
+  }])[0];
+  const restored = restoresForModel([withXhigh], { thought_level: "xhigh" });
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].wire, "xhigh");
+  const onlyHigh = parseConfigOptions([{
+    id: "thought_level",
+    name: "thinking",
+    category: "thought_level",
+    current: "high",
+    options: [{ value: "high", name: "high" }],
+  }])[0];
+  assert.equal(restoresForModel([onlyHigh], { thought_level: "xhigh" }).length, 0);
+  assert.equal(mergeLiveParams({ thought_level: "xhigh", fast: "true" }, [onlyHigh]).fast, "true");
+  assert.equal(mergeLiveParams({ thought_level: "xhigh" }, [onlyHigh]).thought_level, "high");
+  assert.equal(tuningSummary([{ ...withXhigh, current: "xhigh" }], "Agent"), "extra high · Agent");
 });
