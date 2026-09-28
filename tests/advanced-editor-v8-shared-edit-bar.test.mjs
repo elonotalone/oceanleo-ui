@@ -409,7 +409,7 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
       readFile(resolve("src/shell/InlineAdvancedWorkbenchHeader.tsx"), "utf8"),
     ]);
   const editBarSource = floatingSource + controllerSource + controlsSource;
-  // 左右两个 ⠿ 手柄已取消：拖拽改为在条上双击并按住拖、松手落下。
+  // 左右两个 ⠿ 手柄已取消：拖拽改为在条上按下即拖、松手落下。
   assert.doesNotMatch(editBarSource, /data-floating-toolbar-handle/);
   assert.match(editBarSource, /data-edit-bar-collapse/);
   assert.match(editBarSource, /data-edit-bar-collapsed-pill/);
@@ -423,7 +423,7 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
   assert.match(headerSource, /focusAdvancedToolsTrigger\(adapter\.id\)/);
 });
 
-test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt 键盘移动、收起可拖可展开", async () => {
+test("移动模式与收起圆共享同一套位置状态：按下即拖、Alt 键盘移动、收起可拖可展开", async () => {
   const dockStateUrl = pathToFileURL(
     resolve("src/shell/edit-bar-dock-state.ts"),
   ).href;
@@ -563,8 +563,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await key(bar(), "Home", { altKey: true });
     assert.equal(offset(), "0,0");
 
-    // 从完全空闲态对一个按键做 down→up→down（间隔在双击窗口内）：
-    // 第二下立刻跟手；第一下 onClick 生效；松手不再多调一次。
+    // 轻点按键：onClick 生效，抬起后不留拖拽。
     const tool = mounted.container.querySelector("[data-test-edit-bar-tool]");
     assert.ok(tool, "测试按键必须在条上");
     const toolPress = (timeStamp) => ({
@@ -587,20 +586,20 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
         }),
       );
     });
-    assert.equal(toolClicks, 1, "第一下按键 onClick 必须立刻生效");
+    assert.equal(toolClicks, 1, "轻点按键 onClick 必须立刻生效");
     assert.equal(
       "selected" in liveController,
       false,
       "控制器不再有 selected 字段——「第一下选中」这个概念已删",
     );
-    assert.equal(liveController.moveMode, false, "第一次按下不得起拖");
-    assert.equal(liveController.dragging, false, "第一次按下不得改任何拖拽状态");
-    assert.equal(offset(), "0,0", "第一次按下抬起不得改位置");
+    assert.equal(liveController.moveMode, false, "轻点抬起后不得还在拖");
+    assert.equal(liveController.dragging, false, "轻点抬起不得改任何拖拽状态");
+    assert.equal(offset(), "0,0", "轻点抬起不得改位置");
     await pointer(tool, "pointerdown", toolPress(4020));
     assert.equal(
       liveController.moveMode,
       true,
-      "武装窗口内对按键第二次按下必须进入按住拖",
+      "第一次按下就必须进入按住拖",
     );
     await pointer(window, "pointermove", {
       pointerId: 1,
@@ -609,7 +608,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       clientY: 40,
       timeStamp: 4100,
     });
-    assert.equal(offset(), "20,20", "按键上双击起拖后 offset 必须跟手");
+    assert.equal(offset(), "20,20", "按键上按下起拖后 offset 必须跟手");
     await pointer(window, "pointerup", {
       pointerId: 1,
       pointerType: "mouse",
@@ -634,22 +633,19 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
     await key(bar(), "Home", { altKey: true });
     assert.equal(offset(), "0,0");
 
-    // 第二次按下很快抬起、没移动：仍是普通点击。旧断言「立刻起拖并吞 click」是错的。
+    // 按下很快抬起、没移动：仍是普通点击。
     await pointer(tool, "pointerdown", toolPress(4500));
-    await pointer(tool, "pointerup", toolPress(4510));
-    await pointer(tool, "pointerdown", toolPress(4600));
-    assert.equal(liveController.moveMode, true, "第二次按下先武装");
-    await pointer(window, "pointerup", { ...toolPress(4650) });
-    assert.equal(liveController.moveMode, false, "快速第二下松开后离开武装");
-    assert.equal(offset(), "0,0", "快速第二下不得拖走条子");
-    assert.equal(toolClicks, 2, "快速第二下必须再激活一次按键");
+    assert.equal(liveController.moveMode, true, "按下先武装");
+    await pointer(window, "pointerup", { ...toolPress(4550) });
+    assert.equal(liveController.moveMode, false, "没移动松开后离开武装");
+    assert.equal(offset(), "0,0", "没移动松开不得拖走条子");
+    assert.equal(toolClicks, 2, "没移动松开必须再激活一次按键");
 
-    // 单击后不留持续状态；超过 400ms 的按下重新计作第一下。
     await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 5000 });
     await pointer(bar(), "pointerup", { ...press(200, 200), timeStamp: 5010 });
     assert.equal("rearmWindow" in liveController, false);
 
-    // 单次按下再移动，不能启动拖拽。
+    // 单次按下再移动，启动拖拽。
     await pointer(bar(), "pointerdown", { ...press(200, 200), timeStamp: 6620 });
     await pointer(window, "pointermove", {
       pointerId: 1,
@@ -658,18 +654,20 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       clientY: 220,
       timeStamp: 6670,
     });
-    assert.equal(offset(), "0,0", "第一次按下后移动指针不得拖走编辑栏");
-    assert.equal(liveController.moveMode, false, "单次按下移动也不得进入移动模式");
+    assert.equal(offset(), "30,20", "第一次按下后移动指针必须拖走编辑栏");
+    assert.equal(liveController.moveMode, true, "单次按下移动必须进入移动模式");
     await pointer(window, "pointerup", { ...press(230, 220), timeStamp: 6720 });
+    await key(bar(), "Home", { altKey: true });
+    assert.equal(offset(), "0,0");
 
-    // 第一下松开 1501ms 后已过期，下一按不进入拖动会话。
+    // 轻点后隔 1501ms 再按下，仍进入拖动会话。
     await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 7000 });
     await pointer(bar(), "pointerup", { ...press(10, 10), timeStamp: 7010 });
     await pointer(bar(), "pointerdown", { ...press(10, 10), timeStamp: 8511 });
-    assert.equal(liveController.moveMode, false, "松开后 1501ms 的下一按不进入按住拖");
+    assert.equal(liveController.moveMode, true, "松开后 1501ms 的下一按仍进入按住拖");
     await pointer(window, "pointerup", { ...press(10, 10), timeStamp: 8520 });
     assert.equal(liveController.moveMode, false);
-    assert.equal(offset(), "0,0", "第二下没移动就松开不得拖走条子");
+    assert.equal(offset(), "0,0", "下一按没移动就松开不得拖走条子");
     await pointer(mounted.container.querySelector("[data-handle-stage]"), "pointerdown", {
       pointerId: 4,
       pointerType: "mouse",
@@ -679,17 +677,11 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       timeStamp: 8600,
     });
 
-    // 触控：两次 pointerId 不同也算同一条上的两次按下。
-    await pointer(bar(), "pointerdown", {
-      pointerId: 11, pointerType: "touch", clientX: 10, clientY: 10, timeStamp: 9000,
-    });
-    await pointer(bar(), "pointerup", {
-      pointerId: 11, pointerType: "touch", clientX: 10, clientY: 10, timeStamp: 9010,
-    });
+    // 触控：第一次按下换 pointerId 也能拖。
     await pointer(bar(), "pointerdown", {
       pointerId: 12, pointerType: "touch", clientX: 12, clientY: 10, timeStamp: 9200,
     });
-    assert.equal(liveController.moveMode, true, "触控第二次按下（pointerId 不同）必须起拖");
+    assert.equal(liveController.moveMode, true, "触控第一次按下必须起拖");
     await pointer(window, "pointermove", {
       pointerId: 12,
       pointerType: "touch",
@@ -697,7 +689,7 @@ test("移动模式与收起圆共享同一套位置状态：双击拖动、Alt �
       clientY: 20,
       timeStamp: 9250,
     });
-    assert.equal(offset(), "20,10", "触控第二次按下后跟手");
+    assert.equal(offset(), "20,10", "触控第一次按下后跟手");
     await pointer(window, "pointerup", {
       pointerId: 12, pointerType: "touch", clientX: 32, clientY: 20, timeStamp: 9300,
     });
@@ -1272,7 +1264,7 @@ test("每个插件的 edit bar 最右侧都是 AI，点击切到左侧 agent 抽
       "agent",
     );
     assert.equal(agent.getAttribute("aria-pressed"), "false");
-    // 双击拖动不能被 AI 按钮吞掉，所以它必须自报是可交互控件。
+    // 按下即拖不能被 AI 按钮吞掉，所以它必须自报是可交互控件。
     assert.ok(agent.hasAttribute("data-edit-bar-interactive"));
 
     await click(agent);
@@ -1331,7 +1323,7 @@ test("撤销重做归编辑栏，顶栏不再有第二份", async () => {
     const undo = mounted.container.querySelector("[data-edit-bar-history-undo]");
     const redo = mounted.container.querySelector("[data-edit-bar-history-redo]");
     assert.ok(undo && redo);
-    // 双击拖动不能被这两个按钮吞掉，所以它们必须自报可交互。
+    // 按下即拖不能被这两个按钮吞掉，所以它们必须自报可交互。
     assert.ok(undo.hasAttribute("data-edit-bar-interactive"));
     assert.ok(redo.hasAttribute("data-edit-bar-interactive"));
     // 不可用时是禁用，不是消失：按钮位置恒定，用户才不用每次重新找。

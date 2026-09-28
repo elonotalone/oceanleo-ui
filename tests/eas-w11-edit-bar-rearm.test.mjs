@@ -1,5 +1,5 @@
 /**
- * E1 更新 W11：400ms / 12px 内直接双击拖动，单击不留下选中状态。
+ * E1 更新 W11：按下即拖（产品名「双击即可拖拽」），轻点不留下选中状态。
  * 全部指针回放走 Chromium 顺序助手；13 个插件 id + 三个 PluginChromeFrame 宿主各跑主路径。
  */
 import assert from "node:assert/strict";
@@ -247,10 +247,10 @@ async function holdDrag(target, clock, { pointerId, pointerType, from, to, after
   return down;
 }
 
-test("源码门禁：400ms / 12px 双按窗口，不依赖 .detail / dblclick 或选中态", () => {
+test("源码门禁：按下即进入拖动会话，不依赖 .detail / dblclick、选中态或 400ms 窗口", () => {
   const src = readFileSync(resolve(REPO, "src/shell/edit-bar-dock-controller.tsx"), "utf8");
-  assert.match(src, /DOUBLE_PRESS_MS = 400/);
-  assert.match(src, /DOUBLE_PRESS_SLOP_PX = 12/);
+  assert.match(src, /attachArmedSession\(/);
+  assert.doesNotMatch(src, /DOUBLE_PRESS_MS|DOUBLE_PRESS_SLOP_PX|firstPressRef/);
   assert.doesNotMatch(src, /RearmStamp|rearmWindow|setRearmWindow/);
   assert.doesNotMatch(src, /\.detail\b/);
   assert.doesNotMatch(src, /dblclick/i);
@@ -258,7 +258,7 @@ test("源码门禁：400ms / 12px 双按窗口，不依赖 .detail / dblclick �
 });
 
 for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
-  test(`主路径 · ${pluginId}：松开后 400ms 内能拖，超过窗口不能拖`, async () => {
+  test(`主路径 · ${pluginId}：第一次按下移动就能拖`, async () => {
     window.localStorage.clear();
     resetPointerCaptureShim();
     const restore = installRectStub();
@@ -268,36 +268,30 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
     try {
       assert.ok(anywhere() && bar(), "条和内容必须在");
       assert.match(bar().className, /touch-none/, "条根必须 touch-action: none");
-      for (const gap of [150, 399, 400, 401, 800, 1499, 10000]) {
-        const { clock, restoreTimers } = beginClock(10_000 + gap);
-        try {
-          await settleSprings();
-          const before = translateOf(bar());
-          await act(async () => {
-            tap(anywhere(), { clock, clientX: 400, clientY: 70, pointerId: 1 });
-          });
-          assert.equal(bar().hasAttribute("data-edit-bar-armed"), false, "第一下松开不留选中态");
-          await holdDrag(anywhere(), clock, {
-            pointerId: 1,
-            pointerType: "mouse",
-            from: { x: 400, y: 70 },
-            to: { x: 460, y: 70 },
-            afterMs: gap,
-          });
-          const dragged = translateOf(bar());
-          assert.ok(before && dragged, "必须量得到位置");
-          if (gap <= 400) {
-            assert.ok(Math.abs(dragged.x - before.x) >= 40, `${pluginId} 隔 ${gap}ms 应拖动`);
-          } else {
-            assert.deepEqual(dragged, before, `${pluginId} 隔 ${gap}ms 不应拖动`);
-          }
-          clock.now += 16;
-          await act(async () => {
-            pointerUp(anywhere(), { clock, pointerId: 1, clientX: 460, clientY: 70 });
-          });
-        } finally {
-          restoreTimers();
-        }
+      const { clock, restoreTimers } = beginClock(10_000);
+      try {
+        await settleSprings();
+        const before = translateOf(bar());
+        await holdDrag(anywhere(), clock, {
+          pointerId: 1,
+          pointerType: "mouse",
+          from: { x: 400, y: 70 },
+          to: { x: 460, y: 70 },
+          afterMs: 0,
+        });
+        const dragged = translateOf(bar());
+        assert.ok(before && dragged, "必须量得到位置");
+        assert.ok(Math.abs(dragged.x - before.x) >= 40, `${pluginId} 第一次按下应拖动`);
+        clock.now += 16;
+        await act(async () => {
+          pointerUp(anywhere(), { clock, pointerId: 1, clientX: 460, clientY: 70 });
+        });
+        await act(async () => {
+          tap(anywhere(), { clock, clientX: 400, clientY: 70, pointerId: 2 });
+        });
+        assert.equal(bar().hasAttribute("data-edit-bar-armed"), false, "轻点松开不留选中态");
+      } finally {
+        restoreTimers();
       }
     } finally {
       await mounted.unmount();
@@ -306,7 +300,7 @@ for (const pluginId of [...PLUGIN_IDS, ...CHROME_HOSTS]) {
   });
 }
 
-test("隔 1501 ms：下一按是普通按压，移动不拖走编辑栏", async () => {
+test("隔 1501 ms 再按下移动：仍能拖，已完成的轻点不被吞也不被撤销成第二次点击", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
   const restore = installRectStub();
@@ -336,12 +330,12 @@ test("隔 1501 ms：下一按是普通按压，移动不拖走编辑栏", async 
       afterMs: 1501,
     });
     const draggedAfterLongGap = translateOf(barOf(mounted.container));
-    assert.deepEqual(draggedAfterLongGap, before, "1501ms 后必须作为新的第一下，移动不起拖");
+    assert.ok(Math.abs(draggedAfterLongGap.x - before.x) >= 40, "1501ms 后按下移动仍须起拖");
     clock.now += 16;
     await act(async () => {
       pointerUp(btn, { clock, pointerId: 1, clientX: 260, clientY: 70 });
     });
-    assert.equal(clicks, 2, "普通按压的兼容 click 不被当作拖后点击吞掉");
+    assert.equal(clicks, 1, "拖拽松开不得再点加粗");
     } finally {
       restoreTimers();
     }
@@ -416,7 +410,7 @@ test("第一下加粗恰好一次；第二下拖动不点击；快速点撤销�
 
 for (const initial of ["false", "true"]) {
   for (const hit of ["button", "icon"]) {
-    test(`首次双击即拖、连续重拖不改按钮：初始 ${initial}，命中 ${hit}`, async () => {
+    test(`第一次按住拖、连续重拖不改按钮：初始 ${initial}，命中 ${hit}`, async () => {
       window.localStorage.clear();
       resetPointerCaptureShim();
       const restore = installRectStub();
@@ -440,23 +434,36 @@ for (const initial of ["false", "true"]) {
       try {
         const button = mounted.container.querySelector("[data-test-toggle]");
         const target = hit === "icon" ? button.querySelector("[data-test-icon]") : button;
+        await act(async () => {
+          tap(target, { clock, clientX: 180, clientY: 70, pointerId: 1 });
+        });
+        assert.equal(
+          button.getAttribute("aria-pressed"),
+          initial === "true" ? "false" : "true",
+          "单击按钮照常只切换一次",
+        );
+        button.setAttribute("aria-pressed", initial);
         for (let gesture = 0; gesture < 2; gesture += 1) {
           await settleSprings();
           const before = translateOf(barOf(mounted.container));
           clock.now += 600;
-          await act(async () => {
-            tap(target, { clock, clientX: 180, clientY: 70, pointerId: 1 });
-          });
-          assert.equal(button.getAttribute("aria-pressed"), initial === "true" ? "false" : "true", "单击按钮照常只切换一次");
           await holdDrag(target, clock, {
             pointerId: 1,
             pointerType: "mouse",
             from: { x: 180, y: 70 },
             to: { x: 240, y: 70 },
-            afterMs: 120,
+            afterMs: 0,
           });
-          assert.equal(Math.round(translateOf(barOf(mounted.container)).x - before.x), 60, "两次按下就跟手，无预先选择");
-          assert.equal(button.getAttribute("aria-pressed"), initial, "双击拖动恢复初始开关状态");
+          assert.equal(
+            Math.round(translateOf(barOf(mounted.container)).x - before.x),
+            60,
+            "第一次按下就跟手，无预先选择",
+          );
+          assert.equal(
+            button.getAttribute("aria-pressed"),
+            initial,
+            "按住拖不得改开关状态",
+          );
           clock.now += 16;
           await act(async () => {
             pointerUp(target, { clock, pointerId: 1, clientX: 240, clientY: 70 });
@@ -471,7 +478,7 @@ for (const initial of ["false", "true"]) {
   }
 }
 
-test("第二下按住 300ms 不动：按住期间没有 click，带 data-edit-bar-lifted；Esc 归位", async () => {
+test("按下后按住 300ms 不动：按住期间没有 click，带 data-edit-bar-lifted；Esc 归位", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
   const restore = installRectStub();
@@ -627,7 +634,7 @@ test("双击后再按住能拖；触屏换 pointerId；pointercancel 归位；bu
   }
 });
 
-test("单击不留选中态；换到远处滑块不会拖动；单次按住移动不弹提示", async () => {
+test("单击不留选中态；滑块上按下也会拖；单次按住移动不弹提示", async () => {
   window.localStorage.clear();
   resetPointerCaptureShim();
   const restore = installRectStub();
@@ -675,7 +682,10 @@ test("单击不留选中态；换到远处滑块不会拖动；单次按住移�
       to: { x: 300, y: 70 },
       afterMs: 80,
     });
-    assert.deepEqual(translateOf(bar()), before, "相距 160px 的按下不是双击，滑块按压不拖走条子");
+    assert.ok(
+      Math.abs(translateOf(bar()).x - before.x) >= 40,
+      "滑块上也是按下即拖，移动会拖走条子",
+    );
     clock.now += 16;
     await act(async () => {
       pointerUp(range, { clock, pointerId: 4, clientX: 300, clientY: 70 });

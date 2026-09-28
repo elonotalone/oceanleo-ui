@@ -315,8 +315,7 @@ async function pointer(target, type, values) {
   });
 }
 
-// 左右两个 ⠿ 手柄已取消。展开胶囊：400ms / 12px 内双击，第二下按住移动即拖。
-// 第一次 down/up 不改位置；窗口内第二次 down 武装，按住或移动才跟手。
+// 左右两个 ⠿ 手柄已取消。展开胶囊：按下即拖，轻点仍是点击。
 let grabClock = 10_000;
 async function grab(target, clientX, clientY) {
   const t0 = (grabClock += 1000);
@@ -328,12 +327,10 @@ async function grab(target, clientX, clientY) {
     clientY,
   };
   await pointer(target, "pointerdown", { ...press, timeStamp: t0 });
-  await pointer(target, "pointerup", { ...press, timeStamp: t0 + 10 });
-  await pointer(target, "pointerdown", { ...press, timeStamp: t0 + 20 });
 }
 
-/** 第一下松开后超过 1500ms，第二下仍应进入拖动。 */
-async function pressTwiceOutsideWindow(target, clientX, clientY) {
+/** 轻点后再隔很久按下，仍应进入拖动。 */
+async function pressAfterLongGap(target, clientX, clientY) {
   const t0 = (grabClock += 1000);
   const press = {
     pointerId: 1,
@@ -662,7 +659,7 @@ function installDockHarnessRects() {
   };
 }
 
-test("松开后超过 400ms：不能起拖；DOM 里没有选中态", async () => {
+test("松开后隔 1501ms 再按下：仍能起拖；DOM 里没有选中态", async () => {
   window.localStorage.clear();
   const restoreRect = installDockHarnessRects();
   const mounted = await createMounted(DockHarness, {
@@ -672,14 +669,13 @@ test("松开后超过 400ms：不能起拖；DOM 里没有选中态", async () =
     mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
   try {
     const before = bar().style.transform;
-    await pressTwiceOutsideWindow(bar(), 120, 60);
-    assert.equal(
+    await pressAfterLongGap(bar(), 120, 60);
+    assert.ok(
       mounted.container.querySelector("[data-edit-bar-move-mode]"),
-      null,
-      "松开后 1501ms 的下一次按下不能起拖",
+      "松开后 1501ms 的下一次按下仍须进入移动模式",
     );
     await moveTo(bar(), 400, 300);
-    assert.equal(bar().style.transform, before, "超时后的按下移动不拖走条子");
+    assert.notEqual(bar().style.transform, before, "超时后的按下移动仍须拖走条子");
     assert.equal(
       mounted.container.querySelector(
         "[data-edit-bar-armed], [data-edit-bar-selected], [data-edit-bar-selected-ring]",
@@ -715,7 +711,7 @@ test("Ctrl/⌘+. 收起：一次按键立刻收成圆；栏里没有「收起编
   }
 });
 
-test("第二次按下进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
+test("第一次按下进入移动模式：拖出、回停靠、Esc 取消、键盘移动、收起为圆再展开", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:dock-cycle";
   const restoreRect = installDockHarnessRects();

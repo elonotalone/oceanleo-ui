@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   createPointerVelocityTracker,
   createSpring,
@@ -60,8 +61,6 @@ const MORPH_SPRING = { stiffness: 190, damping: 24 };
 const FLING_PROJECTION_SECONDS = 0.09;
 const DRAG_START_PX = 4;
 const DRAG_START_TOUCH_PX = 8;
-const DOUBLE_PRESS_MS = 400;
-const DOUBLE_PRESS_SLOP_PX = 12;
 const HOLD_LIFT_MS = 250;
 const CLICK_SWALLOW_MS = 500;
 const CLICK_SWALLOW_SLOP_PX = 12;
@@ -144,15 +143,16 @@ function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-/** 仅用于识别下一次双击按下；过期后等同于没有记录，不产生可见状态。 */
-type FirstPressStamp = { releasedAt: number; x: number; y: number };
+function eventNow(event: { timeStamp: number }): number {
+  return Number.isFinite(event.timeStamp) ? event.timeStamp : 0;
+}
 
 /**
- * 展开胶囊：直接双击，第二下按住移动即拖，不需要额外的选择点击。
- * 第一下 click 立即生效且不留选中态；从松开起 400ms 内、两次按下相距
- * 不超过 12px 才算双击。确认拖动时恢复第一下改变的开关状态。
- * 收起圆仍是按下即拖。
+ * 产品名「双击即可拖拽」：展开栏按下即进入拖动会话，不必先点一下。
+ * 按住移动达阈值才拖；没移动就松开，仍是一次普通点击。
+ * 测试夹具保留空导出，旧用例重置入口不再有跨实例印记。
  */
+export function resetEditBarDoublePressStamp() {}
 
 interface EditBarDrag {
   pointerId: number;
@@ -209,9 +209,9 @@ export interface EditBarDockController {
   collapsed: boolean;
   /** 按住拖的进行中：条子跟手，松手落下，Esc 取消。 */
   moveMode: boolean;
-  /** 第二下按住未移动，条被轻微抬起。 */
+  /** 按住未移动，条被轻微抬起。 */
   lifted: boolean;
-  /** 摊到浮层根上：第一下普通点击，400ms / 12px 内第二下按住移动才拖。 */
+  /** 摊到浮层根上：按下即武装，移动达阈值才拖，轻点仍是点击。 */
   rootProps: {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
     onClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
@@ -259,8 +259,6 @@ export function useEditBarDockController({
   const dragRef = useRef<EditBarDrag | null>(null);
   const rememberedDockBoundsRef = useRef<FloatingToolbarBounds | null>(null);
   const hydratedStorageKeyRef = useRef("");
-  const firstPressRef = useRef<FirstPressStamp | null>(null);
-  const idlePressCleanupRef = useRef<(() => void) | null>(null);
   const armedSessionCleanupRef = useRef<(() => void) | null>(null);
   const replayClickRef = useRef<Element | null>(null);
   const suppressClickRef = useRef<FloatingToolbarPoint | null>(null);
@@ -928,7 +926,6 @@ export function useEditBarDockController({
     });
     presentationRef.current = "collapsed";
     setPresentation("collapsed");
-    firstPressRef.current = null;
     firstClickRef.current = null;
     collapsedPositionRef.current = boundedEditBarDockOffset(target);
     commitPosition(collapsedPositionRef.current);
@@ -1258,13 +1255,8 @@ export function useEditBarDockController({
     }
   }, []);
 
-  const clearFirstPress = useCallback(() => {
-    firstPressRef.current = null;
+  const clearFirstClick = useCallback(() => {
     firstClickRef.current = null;
-  }, []);
-
-  const rememberFirstPress = useCallback((releasedAt: number, x: number, y: number) => {
-    firstPressRef.current = { releasedAt, x, y };
   }, []);
 
   const revertFirstClickState = useCallback((target: Element | null) => {
@@ -1305,8 +1297,13 @@ export function useEditBarDockController({
     ) => {
       if (typeof window === "undefined") return;
       armedSessionCleanupRef.current?.();
-      setMoveMode(true);
-      setLifted(false);
+      // 光圈 DOM 必须在 setPointerCapture 之前进树。先 setState 再捕获时，
+      // Chromium 会在插入 shield 子节点时丢掉 capture，handleLost 若 abort，
+      // 按下的光圈会在下一帧被清掉。
+      flushSync(() => {
+        setMoveMode(true);
+        setLifted(false);
+      });
       try {
         toolbarRef.current?.setPointerCapture?.(pointerId);
       } catch {
@@ -1319,6 +1316,7 @@ export function useEditBarDockController({
         pressed: origin.getAttribute("aria-pressed"),
         expanded: origin.getAttribute("aria-expanded"),
       } : null;
+      firstClickRef.current = clickSnapshot;
       let phase: "armed" | "dragging" = "armed";
       let didLift = false;
       let closed = false;
@@ -1342,10 +1340,8 @@ export function useEditBarDockController({
 
       const handleMove = (event: PointerEvent) => {
         if (closed || !matching(event)) return;
-        if (pointerType === "mouse" && event.buttons === 0) {
-          handleUp(event);
-          return;
-        }
+        if (event.buttons === 0) return;
+        // 丢掉 capture 时 Chromium 会补一次 buttons=0 的 move。那不是抬起。
         const dist = Math.hypot(event.clientX - clientX, event.clientY - clientY);
         const held = event.timeStamp - downT >= HOLD_LIFT_MS;
         if (phase === "armed" && held && !didLift) {
@@ -1370,12 +1366,10 @@ export function useEditBarDockController({
       const handleUp = (event: PointerEvent) => {
         if (closed || !matching(event)) return;
         const dist = Math.hypot(event.clientX - clientX, event.clientY - clientY);
-        // 抬起只是按住时的视觉；没有拖动，松开仍是正常的第二次点击。
+        // 没拖动：松开仍是一次普通点击。
         if (phase === "armed" && dist < threshold) {
           finishSession();
           finishDrag(pointerId);
-          firstClickRef.current = clickSnapshot;
-          rememberFirstPress(event.timeStamp, clientX, clientY);
           if (origin && toolbarRef.current?.contains(origin)) {
             replayClickRef.current = origin;
             origin.dispatchEvent(
@@ -1386,9 +1380,6 @@ export function useEditBarDockController({
                 clientY: event.clientY,
               }),
             );
-            // Pointer capture may still produce the browser's compatibility
-            // click after this synchronous replay. Swallow that duplicate at
-            // the same point; the button has already fired exactly once.
             swallowNextClick(event.clientX, event.clientY);
           }
           return;
@@ -1403,7 +1394,7 @@ export function useEditBarDockController({
         }
         finishSession();
         finishDrag(pointerId);
-        clearFirstPress();
+        clearFirstClick();
       };
 
       const handleCancel = (event: PointerEvent) => {
@@ -1412,10 +1403,17 @@ export function useEditBarDockController({
         abortArmed(pointerId);
       };
 
+      let recapturing = false;
       const handleLost = (event: PointerEvent) => {
-        if (closed || !matching(event)) return;
-        finishSession();
-        abortArmed(pointerId);
+        if (closed || !matching(event) || recapturing) return;
+        recapturing = true;
+        try {
+          toolbarRef.current?.setPointerCapture?.(pointerId);
+        } catch {
+          // 没有指针捕获时窗口监听仍然跟手。
+        } finally {
+          recapturing = false;
+        }
       };
 
       const handleKey = (event: globalThis.KeyboardEvent) => {
@@ -1442,8 +1440,7 @@ export function useEditBarDockController({
     },
     [
       abortArmed,
-      clearFirstPress,
-      rememberFirstPress,
+      clearFirstClick,
       finishDrag,
       releaseCapture,
       revertFirstClickState,
@@ -1454,109 +1451,26 @@ export function useEditBarDockController({
     ],
   );
 
-  const attachIdlePress = useCallback(
-    (
-      pointerId: number,
-      pointerType: string,
-      clientX: number,
-      clientY: number,
-    ) => {
-      if (typeof window === "undefined") return;
-      idlePressCleanupRef.current?.();
-      const threshold = dragStartThreshold(pointerType);
-      let moved = false;
-
-      const matching = (event: PointerEvent) => event.pointerId === pointerId;
-
-      const finish = () => {
-        idlePressCleanupRef.current?.();
-        idlePressCleanupRef.current = null;
-      };
-
-      const handleMove = (event: PointerEvent) => {
-        if (!matching(event)) return;
-        if (Math.hypot(event.clientX - clientX, event.clientY - clientY) < threshold) {
-          return;
-        }
-        moved = true;
-      };
-
-      const handleUp = (event: PointerEvent) => {
-        if (!matching(event)) return;
-        finish();
-        if (moved) {
-          clearFirstPress();
-          return;
-        }
-        rememberFirstPress(event.timeStamp, clientX, clientY);
-      };
-
-      const handleCancel = (event: PointerEvent) => {
-        if (!matching(event)) return;
-        finish();
-        clearFirstPress();
-      };
-
-      window.addEventListener("pointermove", handleMove, true);
-      window.addEventListener("pointerup", handleUp, true);
-      window.addEventListener("pointercancel", handleCancel, true);
-      idlePressCleanupRef.current = () => {
-        window.removeEventListener("pointermove", handleMove, true);
-        window.removeEventListener("pointerup", handleUp, true);
-        window.removeEventListener("pointercancel", handleCancel, true);
-      };
-    },
-    [clearFirstPress, rememberFirstPress],
-  );
-
   /**
-   * 第一下照常点击，不置选中态。松开后 400ms 内、距第一次按下点 12px 内
-   * 的第二下进入会话；按住移动达阈值才拖，过时或过远则重新计作第一下。
-   * 监听同步挂上，不放进 effect，快速第二下也能接住。
+   * 按下即拖。轻点不挪仍是点击。
    */
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (presentationRef.current === "collapsed") return;
       if (dragRef.current) return;
-      const now = Number.isFinite(event.timeStamp) ? event.timeStamp : 0;
-      // Bubble phase lets child controls receive pointerdown before the canvas is blocked.
+      const now = eventNow(event);
       event.stopPropagation();
-      const firstPress = firstPressRef.current;
-      firstPressRef.current = null;
-      if (
-        firstPress &&
-        now >= firstPress.releasedAt &&
-        now - firstPress.releasedAt <= DOUBLE_PRESS_MS &&
-        Math.hypot(event.clientX - firstPress.x, event.clientY - firstPress.y) <= DOUBLE_PRESS_SLOP_PX
-      ) {
-        attachArmedSession(
-          event.pointerId,
-          event.pointerType,
-          event.clientX,
-          event.clientY,
-          now,
-          event.target,
-        );
-        return;
-      }
-      firstClickRef.current = null;
-      const firstTarget = eventElement(event.target);
-      if (firstTarget && toolbarRef.current?.contains(firstTarget)) {
-        firstClickRef.current = {
-          target: firstTarget,
-          pressed: firstTarget.getAttribute("aria-pressed"),
-          expanded: firstTarget.getAttribute("aria-expanded"),
-        };
-      }
-      attachIdlePress(
+      attachArmedSession(
         event.pointerId,
         event.pointerType,
         event.clientX,
         event.clientY,
+        now,
+        event.target,
       );
     },
-    [attachArmedSession, attachIdlePress],
+    [attachArmedSession],
   );
 
   const onClickCapture = useCallback(
@@ -1750,7 +1664,6 @@ export function useEditBarDockController({
     setPresentation(nextPresentation);
     setDropActive(false);
     finishDrag();
-    firstPressRef.current = null;
     firstClickRef.current = null;
     hydratedStorageKeyRef.current = storageKey;
     commitPosition(positionForOffset(nextOffset));
@@ -1865,8 +1778,6 @@ export function useEditBarDockController({
   useEffect(
     () => () => {
       dragRef.current = null;
-      firstPressRef.current = null;
-      idlePressCleanupRef.current?.();
       armedSessionCleanupRef.current?.();
       firstClickRef.current = null;
     },
@@ -1904,12 +1815,7 @@ export function useEditBarDockController({
       onKeyDown: onRootKeyDown,
       "aria-keyshortcuts": rootKeyShortcuts,
     }),
-    [
-          onClickCapture,
-          onPointerDown,
-      onRootKeyDown,
-      rootKeyShortcuts,
-    ],
+    [onClickCapture, onPointerDown, onRootKeyDown, rootKeyShortcuts],
   );
 
   return {

@@ -1,4 +1,4 @@
-/** E1: bounded double press, exercised through the real controller and toolbar. */
+/** E1: press-to-drag edit bar, exercised through the real controller and toolbar. */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -8,9 +8,8 @@ import React, { act, useRef } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   createPointerClock, installClockTimers, pointerDown, pointerMove,
-  pointerUp, resetPointerCaptureShim, tap,
+  pointerUp, resetPointerCaptureShim,
 } from "./helpers/chromium-pointer-sequence.mjs";
-
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
@@ -110,9 +109,11 @@ const floatingUrl = await compileModule(
 );
 const { FloatingContextToolbar, useFloatingContextToolbar } =
   await import(floatingUrl);
+const { resetEditBarDoublePressStamp } = await import(controllerUrl);
 
 async function mountBar(attribute = "aria-pressed") {
   window.localStorage.clear();
+  resetEditBarDoublePressStamp();
   resetPointerCaptureShim();
   const clock = createPointerClock(1000);
   const restoreTimers = installClockTimers(clock);
@@ -149,37 +150,44 @@ async function mountBar(attribute = "aria-pressed") {
   document.body.append(container);
   const { createRoot } = await import("react-dom/client");
   const root = createRoot(container);
-  await act(async () => root.render(React.createElement(Harness)));
-  const button = container.querySelector("[data-test-toggle]");
-  const bar = container.querySelector("[data-workspace-edit-bar-toolbar]");
-  const icon = button.querySelector("[data-test-icon]");
-  async function first({ duration = 20, pointerType = "mouse", x = 200, y = 100 } = {}) {
+  let harnessKey = 0;
+  await act(async () => root.render(React.createElement(Harness, { key: harnessKey })));
+  const liveButton = () => container.querySelector("[data-test-toggle]");
+  const liveBar = () => container.querySelector("[data-workspace-edit-bar-toolbar]");
+  const liveIcon = () => liveButton()?.querySelector("[data-test-icon]");
+  async function tap({ duration = 20, pointerType = "mouse", x = 200, y = 100 } = {}) {
     await act(async () => {
-      const down = pointerDown(icon, { clock, pointerType, pointerId: 1, clientX: x, clientY: y });
+      const down = pointerDown(liveIcon(), { clock, pointerType, pointerId: 1, clientX: x, clientY: y });
       clock.now += duration;
-      pointerUp(icon, { clock, pointerType, pointerId: 1, clientX: x, clientY: y, downPrevented: down.prevented });
+      pointerUp(liveIcon(), { clock, pointerType, pointerId: 1, clientX: x, clientY: y, downPrevented: down.prevented });
     });
   }
-  async function second({ gap = 120, x = 200, y = 100, pointerType = "mouse" } = {}) {
+  async function press({ pointerType = "mouse", x = 200, y = 100, pointerId = 1 } = {}) {
     await act(async () => {
-      clock.now += gap;
-      pointerDown(icon, { clock, pointerType, pointerId: 2, clientX: x, clientY: y });
+      pointerDown(liveIcon(), { clock, pointerType, pointerId, clientX: x, clientY: y });
     });
   }
-  async function move(x = 260, y = 100, pointerType = "mouse") {
-    await act(async () => {
-      clock.now += 16;
-      pointerMove(icon, { clock, pointerType, pointerId: 2, clientX: x, clientY: y });
-    });
-  }
-  async function up(x = 260, y = 100, pointerType = "mouse") {
+  async function move(x = 260, y = 100, pointerType = "mouse", pointerId = 1) {
     await act(async () => {
       clock.now += 16;
-      pointerUp(icon, { clock, pointerType, pointerId: 2, clientX: x, clientY: y, clickCount: 2 });
+      pointerMove(liveIcon(), { clock, pointerType, pointerId, clientX: x, clientY: y });
     });
+  }
+  async function up(x = 260, y = 100, pointerType = "mouse", pointerId = 1) {
+    await act(async () => {
+      clock.now += 16;
+      pointerUp(liveIcon(), { clock, pointerType, pointerId, clientX: x, clientY: y });
+    });
+  }
+  async function remount() {
+    harnessKey += 1;
+    await act(async () => root.render(React.createElement(Harness, { key: harnessKey })));
   }
   return {
-    bar, button, icon, clock, first, second, move, up,
+    get bar() { return liveBar(); },
+    get button() { return liveButton(); },
+    get icon() { return liveIcon(); },
+    clock, tap, press, move, up, remount,
     get controller() { return controller; },
     get clicks() { return clicks; },
     get renders() { return renders; },
@@ -193,70 +201,154 @@ async function mountBar(attribute = "aria-pressed") {
   };
 }
 
-test("单击只触发按钮，不重渲染控制器、不留 armed/selected 属性或 rearmWindow", async () => {
+test("栏重挂后第一次按下仍出光圈并可拖", async () => {
   const h = await mountBar();
   try {
-    const renders = h.renders;
-    await h.first();
+    await h.tap();
+    await h.remount();
+    await h.press();
+    assert.ok(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      "重挂后第一次按下必须走进武装",
+    );
+    await h.move();
+    assert.equal(h.controller.dragging, true, "重挂后按住移动必须起拖");
+  } finally { await h.close(); }
+});
+
+test("合成事件 timeStamp 与栏上时钟不是同一纪元，按下仍进入武装", async () => {
+  const h = await mountBar();
+  try {
+    await act(async () => {
+      pointerDown(h.icon, {
+        clock: { now: 1 },
+        pointerType: "mouse",
+        pointerId: 1,
+        clientX: 200,
+        clientY: 100,
+      });
+    });
+    assert.equal(h.controller.moveMode, true, "合成按下必须进入武装");
+    assert.ok(h.bar.querySelector("[data-edit-bar-move-shield]"));
+  } finally { await h.close(); }
+});
+
+test("第一次按下移动 4px 即起拖", async () => {
+  const h = await mountBar();
+  try {
+    await h.press();
+    await act(async () => {
+      h.clock.now += 10;
+      pointerMove(h.icon, { clock: h.clock, pointerId: 1, clientX: 204, clientY: 100 });
+    });
+    assert.equal(h.controller.dragging, true, "第一次按下移动达鼠标阈值必须起拖");
+  } finally { await h.close(); }
+});
+
+test("按下出光圈，长按保持，按住移动可拖", async () => {
+  const h = await mountBar();
+  try {
+    await h.press();
+    assert.ok(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      "按下必须立刻出光圈",
+    );
+    await act(async () => { h.clock.now += 300; });
+    assert.ok(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      "长按期间光圈必须保持",
+    );
+    await h.move();
+    assert.equal(h.controller.dragging, true, "长按移动必须起拖");
+    assert.ok(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      "拖的过程中光圈必须还在",
+    );
+  } finally { await h.close(); }
+});
+
+test("按下后 buttons=0 的 pointermove 不得当成抬起", async () => {
+  const h = await mountBar();
+  try {
+    await h.press();
+    await act(async () => {
+      const move = new Event("pointermove", { bubbles: true, cancelable: true });
+      Object.defineProperty(move, "pointerId", { value: 1 });
+      Object.defineProperty(move, "buttons", { value: 0 });
+      Object.defineProperty(move, "clientX", { value: 200 });
+      Object.defineProperty(move, "clientY", { value: 100 });
+      Object.defineProperty(move, "timeStamp", { value: h.clock.now });
+      window.dispatchEvent(move);
+    });
+    assert.equal(h.controller.moveMode, true, "假抬起不得结束武装");
+    assert.ok(h.bar.querySelector("[data-edit-bar-move-shield]"), "假抬起不得灭光圈");
+    await h.move();
+    assert.equal(h.controller.dragging, true, "假抬起之后仍可按住拖");
+  } finally { await h.close(); }
+});
+
+test("轻点只触发按钮，不留 armed/selected 属性或 rearmWindow", async () => {
+  const h = await mountBar();
+  try {
+    await h.tap();
     assert.equal(h.clicks, 1);
     assert.equal(h.button.getAttribute("aria-pressed"), "true");
     assert.deepEqual(h.bar.getAttributeNames().filter((name) => /^data-edit-bar-(armed|selected)/.test(name)), []);
     assert.equal("rearmWindow" in h.controller, false);
-    assert.equal(h.renders, renders, "单击不得触发编辑栏状态更新");
+    assert.equal(h.controller.moveMode, false);
+    assert.equal(h.bar.querySelector("[data-edit-bar-move-shield]"), null);
   } finally { await h.close(); }
 });
 
 for (const attribute of ["aria-pressed", "aria-expanded"]) {
-  test(`首次直接双击拖：图标命中回退 ${attribute}，第二下松开不点击`, async () => {
+  test(`第一次按住拖：图标命中不切换 ${attribute}，松开不点击`, async () => {
     const h = await mountBar(attribute);
     try {
-      await h.first();
-      assert.equal(h.clicks, 1);
-      await h.second();
+      await h.press();
       await h.move();
-      assert.equal(h.controller.dragging, true, "无需任何额外单击，第二下移动立即拖");
+      assert.equal(h.controller.dragging, true, "第一次按下移动立即拖");
       assert.equal(h.button.getAttribute(attribute), "false");
-      assert.equal(h.clicks, 2, "只有首击和恢复开关的点击");
+      assert.equal(h.clicks, 0, "起拖不得点击按钮");
       await h.up();
-      assert.equal(h.clicks, 2, "拖完第二下不得点击按钮");
+      assert.equal(h.clicks, 0, "拖完松开不得点击按钮");
       assert.equal(h.controller.dragging, false);
     } finally { await h.close(); }
   });
 }
 
-for (const gap of [399, 400, 401, 1501, 10000]) {
-  test(`第一下松开后 ${gap}ms：${gap <= 400 ? "可拖" : "不能拖"}`, async () => {
+for (const gap of [0, 399, 400, 401, 1501, 10000]) {
+  test(`轻点后再隔 ${gap}ms 按下移动：仍可拖`, async () => {
     const h = await mountBar();
     try {
-      await h.first();
-      await h.second({ gap });
+      await h.tap();
+      assert.equal(h.button.getAttribute("aria-pressed"), "true");
+      h.clock.now += gap;
+      await h.press();
       await h.move();
-      assert.equal(h.controller.dragging, gap <= 400);
-      assert.equal(h.controller.moveMode, gap <= 400);
-      if (gap > 400) assert.equal(h.button.getAttribute("aria-pressed"), "true", "不能回退过期的第一次点击");
+      assert.equal(h.controller.dragging, true);
+      assert.equal(h.controller.moveMode, true);
+      assert.equal(h.button.getAttribute("aria-pressed"), "true", "已完成的轻点不得被随后的拖拽撤销");
       await h.up();
     } finally { await h.close(); }
   });
 }
 
-for (const [dx, dy, expected] of [[12, 0, true], [13, 0, false], [0, 13, false], [9, 9, false]]) {
-  test(`两次按下相距 (${dx}, ${dy})px：拖动=${expected}`, async () => {
+for (const [dx, dy] of [[12, 0], [13, 0], [0, 13], [9, 9]]) {
+  test(`按在距原点 (${dx}, ${dy})px 处仍能拖`, async () => {
     const h = await mountBar();
     try {
-      await h.first();
-      await h.second({ x: 200 + dx, y: 100 + dy });
+      await h.press({ x: 200 + dx, y: 100 + dy });
       await h.move(260 + dx, 100 + dy);
-      assert.equal(h.controller.dragging, expected);
+      assert.equal(h.controller.dragging, true);
       await h.up(260 + dx, 100 + dy);
     } finally { await h.close(); }
   });
 }
 
-test("400ms 从首次松开计时，第二下按住超过窗口仍可拖", async () => {
+test("按住超过抬起阈值后移动仍可拖", async () => {
   const h = await mountBar();
   try {
-    await h.first({ duration: 900 });
-    await h.second({ gap: 399 });
+    await h.press();
     await act(async () => { h.clock.now += 500; });
     assert.equal(h.bar.hasAttribute("data-edit-bar-lifted"), true);
     await h.move();
@@ -265,28 +357,12 @@ test("400ms 从首次松开计时，第二下按住超过窗口仍可拖", async
   } finally { await h.close(); }
 });
 
-test("距离比较两次按下点，不用首次松开点", async () => {
-  const h = await mountBar();
-  try {
-    await act(async () => {
-      pointerDown(h.icon, { clock: h.clock, pointerId: 1, clientX: 200, clientY: 100 });
-      h.clock.now += 16;
-      pointerUp(h.icon, { clock: h.clock, pointerId: 1, clientX: 203, clientY: 100 });
-    });
-    await h.second({ x: 213 });
-    await h.move(270);
-    assert.equal(h.controller.dragging, false, "相距 13px，尽管离松开点只有 10px");
-    await h.up(270);
-  } finally { await h.close(); }
-});
-
 for (const pointerType of ["mouse", "touch"]) {
-  test(`${pointerType}：第二下移动阈值 ${pointerType === "touch" ? 8 : 4}px`, async () => {
+  test(`${pointerType}：第一次按下移动阈值 ${pointerType === "touch" ? 8 : 4}px`, async () => {
     const h = await mountBar();
     const threshold = pointerType === "touch" ? 8 : 4;
     try {
-      await h.first({ pointerType });
-      await h.second({ pointerType });
+      await h.press({ pointerType });
       await h.move(200 + threshold - 1, 100, pointerType);
       assert.equal(h.controller.dragging, false);
       await h.move(200 + threshold, 100, pointerType);
@@ -296,48 +372,60 @@ for (const pointerType of ["mouse", "touch"]) {
   });
 }
 
-test("第二下不移动就松开：两次点击都生效且只各一次", async () => {
+test("不移动就松开：点击恰好一次", async () => {
   const h = await mountBar();
   try {
-    await h.first();
-    await h.second();
+    await h.press();
     await h.up(200);
-    assert.equal(h.clicks, 2);
-    assert.equal(h.button.getAttribute("aria-pressed"), "false");
+    assert.equal(h.clicks, 1);
+    assert.equal(h.button.getAttribute("aria-pressed"), "true");
     assert.equal(h.controller.dragging, false);
     assert.equal(h.controller.moveMode, false);
   } finally { await h.close(); }
 });
 
-test("超时或超距的按下成为新的第一下，下次邻近快速按下可以拖", async () => {
-  for (const [gap, x] of [[401, 200], [120, 240]]) {
-    const h = await mountBar();
-    try {
-      await h.first();
-      await act(async () => {
-        h.clock.now += gap;
-        tap(h.icon, { clock: h.clock, pointerId: 1, clientX: x, clientY: 100 });
-      });
-      assert.equal(h.clicks, 2);
-      await h.second({ x });
-      await h.move(x + 60);
-      assert.equal(h.controller.dragging, true);
-      assert.equal(h.button.getAttribute("aria-pressed"), "true", "只回退新的第一下");
-      await h.up(x + 60);
-    } finally { await h.close(); }
-  }
-});
-
-test("第二下按住 300ms 没移动：保留抬起视觉，松开仍是第二次正常点击", async () => {
+test("按下立刻出光圈；插入光圈丢掉 capture 不得清掉；抬起才消失", async () => {
   const h = await mountBar();
   try {
-    await h.first();
-    await h.second();
+    await h.press();
+    assert.equal(h.controller.moveMode, true, "按下必须进入 moveMode");
+    assert.ok(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      "按下当下必须画出光圈",
+    );
+    await act(async () => {
+      const lost = new Event("lostpointercapture", { bubbles: true });
+      Object.defineProperty(lost, "pointerId", { value: 1 });
+      h.bar.dispatchEvent(lost);
+    });
+    assert.equal(
+      h.controller.moveMode,
+      true,
+      "光圈 DOM 插入导致的 lostpointercapture 不得结束武装",
+    );
+    assert.ok(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      "丢失捕获后光圈必须还在",
+    );
+    await h.up(200);
+    assert.equal(h.controller.moveMode, false, "抬起才离开 moveMode");
+    assert.equal(
+      h.bar.querySelector("[data-edit-bar-move-shield]"),
+      null,
+      "抬起光圈必须消失",
+    );
+  } finally { await h.close(); }
+});
+
+test("按住 300ms 没移动：保留抬起视觉，松开仍是一次正常点击", async () => {
+  const h = await mountBar();
+  try {
+    await h.press();
     await act(async () => { h.clock.now += 300; });
     assert.equal(h.bar.hasAttribute("data-edit-bar-lifted"), true);
-    assert.equal(h.clicks, 1, "按住时不提前点击");
+    assert.equal(h.clicks, 0, "按住时不提前点击");
     await h.up(200);
-    assert.equal(h.clicks, 2, "没发生拖动，松开仍应点击");
+    assert.equal(h.clicks, 1, "没发生拖动，松开仍应点击");
     assert.equal(h.bar.hasAttribute("data-edit-bar-lifted"), false);
   } finally { await h.close(); }
 });

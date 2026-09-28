@@ -293,7 +293,7 @@ export function EditBarRow({
       role="toolbar"
       aria-label={tt("编辑栏")}
       className="pointer-events-auto relative inline-flex max-w-full flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap"
-      style={editBarPillStyle()}
+      style={editBarPillStyle(Boolean(controller.lifted || controller.moveMode || controller.dragging))}
     >
       {history && (
         <div

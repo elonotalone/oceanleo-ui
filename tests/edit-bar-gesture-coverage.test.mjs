@@ -2,8 +2,8 @@
  * 编辑栏三条手势的**逐件**覆盖闸（W31）。
  *
  * 操作员原话三条：
- *   ① 在 edit bar 任何位置（含按键）400ms / 12px 内双击，第二下按住移动即拖，松手落下
- *      （计时从第一下松开算；第一下照常触发按键）
+ *   ① 在 edit bar 任何位置（含按键）按下即拖，松手落下；轻点仍是点击
+ *      （产品名「双击即可拖拽」= 这一次按下就能拖，不必先点一下）
  *   ② 点击后缩为一个圆形，再点击展开
  *   ③ 缩小版也可以拖拽到各个位置
  *
@@ -25,7 +25,7 @@
  *
  * 3. **有一段是真渲染**。`V4` 判出的「引擎活着但屏幕上进不去」是本波头号形态，
  *    只查源码文本抓不到它。所以三件 extracted 走的那条新路径在 jsdom 里
- *    真的双击一次、真的点一次收起、真的拖一次圆——判据是「用户做得到吗」。
+ *    真的按下拖一次、真的点一次收起、真的拖一次圆——判据是「用户做得到吗」。
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -287,19 +287,18 @@ const controllerSource = code(`${SHELL}/edit-bar-dock-controller.tsx`);
 const controlsSource = code(`${SHELL}/EditBarDockControls.tsx`);
 const floatingSource = code(`${SHELL}/FloatingContextToolbar.tsx`);
 
-test("引擎：① 任意处（含按键）在 400ms / 12px 内直接双击拖；无选中态", () => {
-  // 判据落在「摊到浮层根节点上」这件事上：第二次按下挂在根的冒泡阶段，
+test("引擎：① 任意处（含按键）按下即拖；无选中态", () => {
+  // 判据落在「摊到浮层根节点上」这件事上：按下挂在根的冒泡阶段，
   // 子控件先收到 pointerdown，根再阻断画布。
   assert.match(
     controllerSource,
     /const onPointerDown = useCallback/,
-    "按下判定不在根节点上，第二次按下无法统一进入拖动协议",
+    "按下判定不在根节点上，无法统一进入拖动协议",
   );
   assert.match(floatingSource, /onPointerDown=\{controller\.rootProps\.onPointerDown\}/);
   assert.doesNotMatch(controllerSource, /REARM_WINDOW_MS|REARM_SLOP_/);
   assert.doesNotMatch(controllerSource, /rearmStampRef|rearmWindow/);
-  assert.match(controllerSource, /now - firstPress\.releasedAt <= DOUBLE_PRESS_MS/);
-  assert.match(controllerSource, /DOUBLE_PRESS_SLOP_PX = 12/);
+  assert.doesNotMatch(controllerSource, /DOUBLE_PRESS_MS|DOUBLE_PRESS_SLOP_PX|firstPressRef/);
   assert.doesNotMatch(
     controllerSource,
     /last\.pointerId !== pointerId/,
@@ -308,7 +307,7 @@ test("引擎：① 任意处（含按键）在 400ms / 12px 内直接双击拖�
   assert.match(
     controllerSource,
     /attachArmedSession\(/,
-    "窗口内第二次按下必须进入武装，再按住或移动才拖",
+    "第一次按下必须进入武装，再按住或移动才拖",
   );
   assert.equal(
     /armPendingClick/.test(controllerSource),
@@ -330,7 +329,7 @@ test("引擎：① 任意处（含按键）在 400ms / 12px 内直接双击拖�
     assert.doesNotMatch(
       controllerSource,
       wholeName(gone),
-      `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「直接双击拖」一条`,
+      `控制器里又出现了 ${gone}——「第一下选中 / 待拖」已删，只剩「按下即拖」一条`,
     );
   }
   assert.equal(
@@ -343,7 +342,7 @@ test("引擎：① 任意处（含按键）在 400ms / 12px 内直接双击拖�
   assert.match(
     floatingSource,
     /onPointerDown=\{controller\.rootProps\.onPointerDown\}/,
-    "浮层根没有把第二次按下的判定摊上去——那就只有某一小块能拖了",
+    "浮层根没有把按下的判定摊上去——那就只有某一小块能拖了",
   );
   assert.doesNotMatch(
     floatingSource,
@@ -704,7 +703,7 @@ function translateOf(element) {
 
 /** 三件 extracted 插件走的是同一个 frame，逐件跑一遍才是「逐件可达」。 */
 for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
-  test(`真渲染 · ${pluginId}：第二次按下拖得动、点得出圆、圆也拖得动`, async () => {
+  test(`真渲染 · ${pluginId}：第一次按下拖得动、点得出圆、圆也拖得动`, async () => {
     window.localStorage.clear();
     const restoreRect = installRectStub();
     const mounted = await mountFrame(pluginId);
@@ -721,7 +720,7 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
         "AI 键必须还在（契约 §9：接手势不许把它弄丢）",
       );
 
-      // ① 在条上「任意位置」按两下拖——这里刻意选插件填进来的那段内容，
+      // ① 在条上「任意位置」按下拖——这里刻意选插件填进来的那段内容，
       //    而不是某个专用手柄，因为诉求原话就是「任何位置」。
       const anywhere = container.querySelector("[data-test-edit-bar]");
       assert.ok(anywhere, "插件填进来的 edit bar 内容不在");
@@ -736,16 +735,16 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
         pointerId: 1, pointerType: "mouse", button: 0,
         clientX: 400, clientY: 70, timeStamp: 1010,
       });
-      // (e) 第一下之后 DOM 里不许出现任何选中态。
+      // (e) 轻点之后 DOM 里不许出现任何选中态。
       assert.equal(
         container.querySelector("[data-edit-bar-selected], [data-edit-bar-selected-ring]"),
         null,
-        "第一次按下抬起后不许出现选中光环——这个概念已删",
+        "轻点抬起后不许出现选中光环——这个概念已删",
       );
       assert.deepEqual(
         translateOf(bar()),
         before,
-        "第一次按下抬起不得改位置",
+        "轻点抬起不得改位置",
       );
       await pointer(anywhere, "pointerdown", {
         pointerId: 1, pointerType: "mouse", button: 0,
@@ -763,8 +762,8 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
       const dragged = translateOf(bar());
       assert.ok(
         dragged && (dragged.x !== before.x || dragged.y !== before.y),
-        `第二次按下之后拖不动：${JSON.stringify(before)} → ${JSON.stringify(dragged)}。` +
-          "诉求原话是「直接双击 edit bar 的任何一个位置……就可以拖拽」",
+        `按下之后拖不动：${JSON.stringify(before)} → ${JSON.stringify(dragged)}。` +
+          "产品是按下 edit bar 的任何一个位置就可以拖拽",
       );
       // 松手落下，别把按住拖拽留给下一段。
       await act(async () => {
@@ -838,7 +837,7 @@ for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
  *   A：按键上，松开后 350ms
  *   B：空白上，松开后 350ms
  *   C：按键上，松开后 150ms（快路）
- *   D：松开后 1501ms 不起拖；单次按下移动也不起拖
+ *   D：松开后 1501ms 再按下仍能拖；第一次按下移动就能拖
  * ========================================================================= */
 
 async function moveWindow(values) {
@@ -1021,7 +1020,7 @@ test("W04 场景 C：按键上 150ms 内再按下并拖，快路仍跟手", asyn
   }
 });
 
-test("W04 场景 D：松开后隔 1501ms 不起拖；第一次按下移动不起拖", async () => {
+test("W04 场景 D：第一次按下移动就能拖；隔 1501ms 再按下仍能拖", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   const mounted = await mountFrame(
@@ -1040,7 +1039,6 @@ test("W04 场景 D：松开后隔 1501ms 不起拖；第一次按下移动不起
     const before = translateOf(bar());
     assert.ok(before, "必须量得到位置");
 
-    // (b) 单次按下再移动：没有「待拖」，条子不许动。
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 4000,
@@ -1048,17 +1046,16 @@ test("W04 场景 D：松开后隔 1501ms 不起拖；第一次按下移动不起
     await moveWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 4050,
     });
-    assert.deepEqual(translateOf(bar()), before, "单次按下后移动不得拖走编辑栏");
-    assert.equal(
-      mounted.container.querySelector("[data-edit-bar-move-mode]"),
-      null,
-      "单次按下后移动不得进入移动模式",
+    const firstDrag = translateOf(bar());
+    assert.ok(
+      firstDrag && Math.abs(firstDrag.x - before.x) >= 40,
+      "第一次按下后移动必须拖走编辑栏",
     );
     await upWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 4100,
     });
 
-    // (d) 松开后 1501ms：窗口过期，下一按只是新的第一下。
+    const parked = translateOf(bar());
     await pointer(btn, "pointerdown", {
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 5000,
@@ -1071,38 +1068,20 @@ test("W04 场景 D：松开后隔 1501ms 不起拖；第一次按下移动不起
       pointerId: 1, pointerType: "mouse", button: 0,
       clientX: 200, clientY: 70, timeStamp: 6511,
     });
-    assert.equal(mounted.container.querySelector("[data-edit-bar-move-mode]"), null, "超时后不得进入移动模式");
+    assert.ok(
+      mounted.container.querySelector("[data-edit-bar-move-mode]"),
+      "超时后再按下仍须进入移动模式",
+    );
     await moveWindow({
       pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6550,
     });
-    assert.deepEqual(translateOf(bar()), before, "超时后按住移动不拖走编辑栏");
-    await upWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6600,
-    });
-
-    // 正对照：再次直接双击，第二下在松开后 399ms 内即可拖动。
-    await pointer(btn, "pointerdown", {
-      pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 7000,
-    });
-    await pointer(btn, "pointerup", {
-      pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 7010,
-    });
-    await pointer(btn, "pointerdown", {
-      pointerId: 1, pointerType: "mouse", button: 0,
-      clientX: 200, clientY: 70, timeStamp: 7409,
-    });
-    await moveWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 7450,
-    });
     const dragged = translateOf(bar());
     assert.ok(
-      Math.abs(dragged.x - before.x) >= 40,
-      `直接双击后应拖动，实际 ${before.x} → ${dragged.x}`,
+      parked && dragged && Math.abs(dragged.x - parked.x) >= 40,
+      `隔 1501ms 再按下应拖动，实际 ${parked.x} → ${dragged.x}`,
     );
     await upWindow({
-      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 7500,
+      pointerId: 1, clientX: 260, clientY: 70, timeStamp: 6600,
     });
   } finally {
     await mounted.unmount();
