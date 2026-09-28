@@ -35,8 +35,8 @@ export type DeviceStatusView = {
   pendingCount: number;
   empty: boolean;
   downloadHref: "/download";
-  manageHref: "/devices";
-  pendingHref: "/devices?tab=cloud";
+  manageHref: "/settings/devices";
+  pendingHref: "/settings/devices";
 };
 
 type GatewayResult<T> = { ok: boolean; data?: T };
@@ -83,8 +83,8 @@ export function buildDeviceStatusView(
     pendingCount,
     empty: devices.length === 0 && listed.length === 0,
     downloadHref: "/download",
-    manageHref: "/devices",
-    pendingHref: "/devices?tab=cloud",
+    manageHref: "/settings/devices",
+    pendingHref: "/settings/devices",
   };
 }
 

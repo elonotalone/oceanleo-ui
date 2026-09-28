@@ -33,7 +33,7 @@ export interface OrgMcpConnection {
 }
 
 /** 设置窗「插件与连接器」面板；浮层的连接 / 管理都进这里，不整页跳 /plugins。 */
-export const PLUGINS_SETTINGS_HREF = "#settings/plugins";
+export const PLUGINS_SETTINGS_HREF = "/settings/plugins";
 
 export type PopoverConnectorKind = "connect" | "toggle" | "connected";
 

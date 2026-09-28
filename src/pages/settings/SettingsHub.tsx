@@ -24,7 +24,13 @@ import { GeneralSection } from "./sections/GeneralSection";
 import { AccountSection } from "./sections/AccountSection";
 import { BillingSection } from "./sections/BillingSection";
 import { OrgSection } from "./sections/OrgSection";
-import { canonicalSettingsTab, isReservedSettingsTab, resolveSettingsTab } from "./settings-tabs";
+import {
+  canonicalSettingsTab,
+  isReservedSettingsTab,
+  resolveSettingsTab,
+  settingsPath,
+  tabFromSettingsLocation,
+} from "./settings-tabs";
 
 export type SettingsSection = {
   id: string;
@@ -88,30 +94,14 @@ function withoutShadowedSections(sections: SettingsSection[]): SettingsSection[]
   });
 }
 
-function SettingsHomeLink({ label }: { label: string }) {
-  return (
-    <a
-      href="/"
-      className="mb-3 inline-block text-[13px] font-medium text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline"
-    >
-      {label}
-    </a>
-  );
-}
-
 function tabFromLocation(fallback: string): string {
   if (typeof window === "undefined") return fallback;
-  const tab = new URLSearchParams(window.location.search).get("tab");
-  return tab && tab.trim() ? tab.trim() : fallback;
+  return tabFromSettingsLocation(window.location.href, [], fallback);
 }
 
-// 只改 `?tab=`，不换页面：走 history.replaceState 即可，不依赖 next/navigation 的
-// app router（AccountPage 会被 36 个站在各种壳里渲染，测试里也常没有 router）。
 function writeTab(tab: string) {
   if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  url.searchParams.set("tab", tab);
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  window.history.replaceState(null, "", settingsPath(tab));
 }
 
 export function SettingsHub({
@@ -348,7 +338,6 @@ export function SettingsHub({
   if (resetLanding) {
     return (
       <div className="px-8 py-6">
-        <SettingsHomeLink label={tt("回到首页")} />
         <PasswordResetPage currentHref={href} onDone={onSignedIn} />
       </div>
     );
@@ -358,7 +347,6 @@ export function SettingsHub({
     const notice = loginUnavailableNotice();
     return (
       <div className="px-8 py-6">
-        <SettingsHomeLink label={tt("回到首页")} />
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
           {tt("设置")}
         </h1>
@@ -376,7 +364,6 @@ export function SettingsHub({
     if (guestPrompt === "notice") {
       return (
         <div className="px-8 py-6">
-          <SettingsHomeLink label={tt("回到首页")} />
           <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
             {tt("设置")}
           </h1>
@@ -391,7 +378,6 @@ export function SettingsHub({
         {showAuth && (
           <AuthDialog onClose={() => setShowAuth(false)} onSuccess={handleSignedIn} />
         )}
-        <SettingsHomeLink label={tt("回到首页")} />
         <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
           {tt("设置")}
         </h1>
@@ -426,7 +412,6 @@ export function SettingsHub({
 
   return (
     <div className="px-6 py-6 md:px-8" data-settings-hub>
-      <SettingsHomeLink label={tt("回到首页")} />
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("设置")}</h1>
       <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-start">
         <SettingsNav

@@ -130,6 +130,12 @@ const orgStubUrl = dataModule(`
       "创建组织", "《OceanLeo 企业服务协议》");
   }
 `);
+const orgPageStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function OrgPage() {
+    return React.createElement("div", { "data-testid": "org-page" }, "组织看板");
+  }
+`);
 const authDialogStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function AuthDialog() {
@@ -160,6 +166,7 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "../GeneralPage": generalStubUrl,
   "../AccountSecurityPage": securityStubUrl,
   "../OrgMembership": orgStubUrl,
+  "../OrgPage": orgPageStubUrl,
   "../ApiPage": paneStub("ApiPage", "pane-api"),
   "../DevicesPage": paneStub("DevicesPage", "pane-devices"),
   "../PluginsPage": paneStub("PluginsPage", "pane-plugins"),
@@ -178,6 +185,7 @@ const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "./GeneralPage": generalStubUrl,
   "./AccountSecurityPage": securityStubUrl,
   "./OrgMembership": orgStubUrl,
+  "./OrgPage": orgPageStubUrl,
   "./ApiPage": paneStub("ApiPage", "pane-api"),
   "./DevicesPage": paneStub("DevicesPage", "pane-devices"),
   "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
@@ -246,11 +254,22 @@ test("tab=account 有安全内容与退出，不含创建组织或企业服务�
   view.cleanup();
 });
 
-test("tab=org 含 OrgMembership", async () => {
+test("tab=org 含 OrgPage 与加入/创建", async () => {
   const view = await render(React.createElement(SettingsHub, { defaultTab: "org" }));
+  assert.ok(view.host.querySelector("[data-testid=org-page]"));
+  assert.ok(view.host.querySelector("[data-org-settings-block=mine]"));
+  assert.ok(view.host.querySelector("[data-org-settings-block=join-create]"));
   assert.ok(view.host.querySelector("[data-testid=org-membership]"));
   assert.ok(view.text().includes("创建组织"));
   view.cleanup();
+});
+
+test("OrgSection 嵌入 OrgPage 与 join-create，不再链到独立 /org", () => {
+  const src = readFileSync(new URL("../src/pages/settings/sections/OrgSection.tsx", import.meta.url), "utf8");
+  assert.match(src, /<OrgPage embedded/);
+  assert.match(src, /only="join-create"/);
+  assert.match(src, /only="views"/);
+  assert.doesNotMatch(src, /href=\{orgHref\}|href="\/org"/);
 });
 
 test("AccountPage 不传 props 时默认 account 栏", async () => {

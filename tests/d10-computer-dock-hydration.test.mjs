@@ -27,7 +27,9 @@ const { ComputerDock } = await import(await compileModule("src/shell/cloud-compu
   "../../lib/cloud-computer-api": apiStub,
   "../../i18n/ui/useUI": dataModule("export function useUI() { return value => value; }"),
   "../../contracts/domain-family": dataModule('export function currentDomainFamily() { return "com"; }'),
-  "./server-page/href": dataModule('export function devicesCloudHref() { return "/devices"; } export function serverPageHref(id) { return "/server/" + id; }'),
+  "../../facades/devices": dataModule("export const devicesFacade = { listDevices: async () => ({ ok: true, data: [] }) };"),
+  "../account/SettingsModalHost": dataModule("export function openSettingsModal() {}"),
+  "./server-page/href": dataModule('export function devicesCloudHref() { return "/settings/devices"; } export function serverPageHref(id) { return "/server/" + id; }'),
   "next/navigation": dataModule("export function useRouter() { return { push() {} }; }"),
   "./CreateComputerDialog": dialogs,
   "./ConnectServerDialog": dialogs,
@@ -116,9 +118,8 @@ for (const cached of [false, true]) {
       const host = dom.window.document.getElementById("root");
       await act(async () => { root = hydrateRoot(host, element, { onRecoverableError: error => errors.push(String(error)) }); });
       assert.deepEqual(errors, [], "browser-only storage must not change the first hydration render");
-      assert.match(host.textContent, /Remembered PC/, "restore the remembered name after mounting even while the network waits");
+      assert.match(host.textContent, /设备/, "按钮始终是设备，不把记住的电脑名写在按键上");
       assert.equal(Boolean(host.querySelector("[data-oceanleo-cc-dock-waiting]")), !cached);
-      assert.equal(Boolean(host.querySelector("[data-oceanleo-cc-dock-mounted]")), cached);
       assert.equal(host.textContent.includes("接入云电脑"), false);
     } finally {
       if (root) await act(async () => root.unmount());

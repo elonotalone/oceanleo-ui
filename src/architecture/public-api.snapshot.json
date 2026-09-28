@@ -2315,6 +2315,12 @@
         },
         {
           "kind": "named",
+          "name": "canonicalSettingsTab",
+          "importedName": "canonicalSettingsTab",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
           "name": "CloudComputersPage",
           "importedName": "CloudComputersPage",
           "source": "./CloudComputersPage"
@@ -2381,6 +2387,24 @@
         },
         {
           "kind": "named",
+          "name": "isReservedSettingsTab",
+          "importedName": "isReservedSettingsTab",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
+          "name": "isSettingsLocation",
+          "importedName": "isSettingsLocation",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
+          "name": "isSettingsPathname",
+          "importedName": "isSettingsPathname",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
           "name": "JOIN_STATE_COPY",
           "importedName": "JOIN_STATE_COPY",
           "source": "./OrgMembership"
@@ -2426,6 +2450,18 @@
           "name": "MyOrgUsage",
           "importedName": "MyOrgUsage",
           "source": "./OrgMembership"
+        },
+        {
+          "kind": "named",
+          "name": "navigateSettingsOrHref",
+          "importedName": "navigateSettingsOrHref",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
+          "name": "openSettingsModal",
+          "importedName": "openSettingsModal",
+          "source": "./settings/settings-tabs"
         },
         {
           "kind": "named",
@@ -2543,6 +2579,12 @@
         },
         {
           "kind": "named",
+          "name": "resolveSettingsTab",
+          "importedName": "resolveSettingsTab",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
           "name": "securityErrorCopy",
           "importedName": "securityErrorCopy",
           "source": "./AccountSecurityPage"
@@ -2552,6 +2594,24 @@
           "name": "securityEventCopy",
           "importedName": "securityEventCopy",
           "source": "./AccountSecurityPage"
+        },
+        {
+          "kind": "named",
+          "name": "SETTINGS_BUILTIN_TABS",
+          "importedName": "SETTINGS_BUILTIN_TABS",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
+          "name": "SETTINGS_TAB_ALIASES",
+          "importedName": "SETTINGS_TAB_ALIASES",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
+          "name": "SettingsBuiltinTab",
+          "importedName": "SettingsBuiltinTab",
+          "source": "./settings/settings-tabs"
         },
         {
           "kind": "named",
@@ -2585,9 +2645,21 @@
         },
         {
           "kind": "named",
+          "name": "settingsPath",
+          "importedName": "settingsPath",
+          "source": "./settings/settings-tabs"
+        },
+        {
+          "kind": "named",
           "name": "SettingsSection",
           "importedName": "SettingsSection",
           "source": "./settings/SettingsHub"
+        },
+        {
+          "kind": "named",
+          "name": "tabFromSettingsLocation",
+          "importedName": "tabFromSettingsLocation",
+          "source": "./settings/settings-tabs"
         },
         {
           "kind": "named",
@@ -6382,6 +6454,11 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "asGameWorkingDocument",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "GAME_DUAL_ENGINE_HANDOFF",
           "importedName": "GAME_DUAL_ENGINE_HANDOFF",
           "source": ""
@@ -6409,6 +6486,11 @@
         {
           "kind": "named",
           "name": "GAME_SOURCE_MEDIA_TYPE",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "GAME_WORKING_DOCUMENT_SCHEMA",
           "source": ""
         },
         {
@@ -6442,7 +6524,17 @@
         },
         {
           "kind": "named",
+          "name": "gameWorkingHeadKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "isAllowedGameRevisionOrigin",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "peekGameWorkingDocument",
           "source": ""
         },
         {
@@ -6454,6 +6546,11 @@
           "kind": "named",
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "stashGameWorkingDocument",
           "source": ""
         },
         {
@@ -6479,6 +6576,11 @@
         {
           "kind": "type",
           "name": "GameRevisionOrigin",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GameWorkingDocument",
           "source": ""
         }
       ]
@@ -6635,6 +6737,11 @@
         {
           "kind": "named",
           "name": "threeDSubtypeFor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "withoutWithheldLibraryThumbnail",
           "source": ""
         },
         {

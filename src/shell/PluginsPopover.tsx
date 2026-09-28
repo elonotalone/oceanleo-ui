@@ -4,9 +4,11 @@ import { useEffect, useState, type RefObject } from "react";
 import { getUserEmail } from "../lib/auth";
 import { useUI } from "../i18n/ui/useUI";
 import { AuthDialog } from "../pages/AuthDialog";
+import { navigateSettingsOrHref, openSettingsModal } from "../pages/settings/settings-tabs";
 import { AnchoredPopover } from "./anchored-popover";
 import {
   buildPopoverConnectors,
+  PLUGINS_SETTINGS_HREF,
   usePluginsCatalog,
   type OrgMcpConnection,
   type PopoverConnector,
@@ -71,7 +73,7 @@ export function PluginsPopover({
 
   function closeThenGo(href: string) {
     onClose();
-    if (typeof window !== "undefined") window.location.href = href;
+    navigateSettingsOrHref(href);
   }
 
   function connectionOf(row: PopoverConnector): OrgMcpConnection | undefined {
@@ -212,7 +214,11 @@ export function PluginsPopover({
                         <a
                           href={row.manageHref}
                           data-connector-manage
-                          onClick={onClose}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            onClose();
+                            navigateSettingsOrHref(row.manageHref);
+                          }}
                           className="text-[12px] font-medium text-neutral-600 hover:text-neutral-900"
                         >
                           {tt("管理")}
@@ -225,11 +231,14 @@ export function PluginsPopover({
             </ul>
           )}
         </div>
-        {/* 与 openSettingsModal("plugins") 同一个地址；不 import 它，是为了不把整个设置窗拖进输入框的模块图。 */}
         <a
-          href="#settings/plugins"
+          href={PLUGINS_SETTINGS_HREF}
           data-plugins-add-connector
-          onClick={onClose}
+          onClick={(event) => {
+            event.preventDefault();
+            onClose();
+            openSettingsModal("plugins");
+          }}
           className="block shrink-0 border-t border-neutral-100 px-4 py-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
         >
           + {tt("添加连接器")}

@@ -31,7 +31,7 @@ export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
   return <div data-sidebar-account-cluster className={`flex min-w-0 items-center gap-1 ${props.compact ? "w-full flex-col" : ""}`}>
     <AccountMenu name={props.name} email={props.email} balanceText={props.balanceText}
       compact={props.compact} signedIn={props.signedIn}
-      orgHref={props.orgHref ?? href("/org")}
+      orgHref={props.orgHref ?? href("/settings/org")}
       homeHref={props.homeHref ?? href("/")}
       helpHref={props.helpHref === null ? null : props.helpHref ?? href("/help")}
       docsHref={props.docsHref ?? href("/help")}

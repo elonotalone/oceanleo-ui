@@ -35,6 +35,20 @@ export { SettingsPage } from "./SettingsPage";
 export type { SettingsPageProps } from "./SettingsPage";
 export { SettingsHub } from "./settings/SettingsHub";
 export type { SettingsHubProps, SettingsSection } from "./settings/SettingsHub";
+export {
+  canonicalSettingsTab,
+  isReservedSettingsTab,
+  isSettingsLocation,
+  isSettingsPathname,
+  navigateSettingsOrHref,
+  openSettingsModal,
+  resolveSettingsTab,
+  settingsPath,
+  tabFromSettingsLocation,
+  SETTINGS_BUILTIN_TABS,
+  SETTINGS_TAB_ALIASES,
+} from "./settings/settings-tabs";
+export type { SettingsBuiltinTab } from "./settings/settings-tabs";
 export { GeneralPage } from "./GeneralPage";
 export type { GeneralPageProps } from "./GeneralPage";
 export { MyDatabasePage, MyDatabasePanel } from "./MyDatabasePage";

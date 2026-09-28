@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   cloudComputerApi,
   type CloudComputerClient,
   type Computer,
 } from "../../lib/cloud-computer-api";
-import * as ccApi from "../../lib/cloud-computer-api";
 import { currentDomainFamily } from "../../contracts/domain-family";
+import { devicesFacade, type Device } from "../../facades/devices";
 import { useUI } from "../../i18n/ui/useUI";
 import { AnchoredPopover } from "../anchored-popover";
+import { openSettingsModal } from "../account/SettingsModalHost";
 import { ConnectServerDialog } from "./ConnectServerDialog";
 import { CreateComputerDialog } from "./CreateComputerDialog";
 import {
@@ -19,8 +20,17 @@ import {
   isPendingComputer,
   type ComputerDisplayState,
 } from "./computer-state";
-import { devicesCloudHref, serverPageHref } from "./server-page/href";
+import { serverPageHref } from "./server-page/href";
 import { useCloudComputers } from "./useCloudComputers";
+
+const PLATFORM_LABEL: Record<Device["platform"], string> = {
+  windows: "Windows",
+  macos: "macOS",
+  linux: "Linux",
+  android: "Android",
+  ios: "iOS",
+  harmony: "HarmonyOS",
+};
 
 function statusWord(state: ComputerDisplayState, tt: (zh: string) => string): string {
   if (state === "ready") return tt("在线");
@@ -46,199 +56,172 @@ export function ComputerDock({
   const tt = useUI();
   const router = useRouter();
   const hidden = currentDomainFamily() === "cn";
-  const { computers, mounted, mountedId, rememberedId, setMountedId, refresh, loading } =
+  const { computers, mountedId, setMountedId, refresh, loading } =
     useCloudComputers({ client, computers: computersProp });
-  const [rememberedName, setRememberedName] = useState("");
-  useEffect(() => {
-    // Browser storage is unavailable during SSR; restore it after the matching first render.
-    setRememberedName(
-      typeof ccApi.readMountedComputerName === "function" ? ccApi.readMountedComputerName() : "",
-    );
-  }, []);
-  const mountedHref = mounted ? serverPageHref(mounted.id) : devicesCloudHref();
-  const openMounted = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.defaultPrevented) return;
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return;
-    }
-    event.preventDefault();
-    router.push(mountedHref);
-  };
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
-  const [switchOpen, setSwitchOpen] = useState(false);
-  const connectBtnRef = useRef<HTMLButtonElement>(null);
-  const connectPanelRef = useRef<HTMLDivElement>(null);
-  const switchBtnRef = useRef<HTMLButtonElement>(null);
-  const switchPanelRef = useRef<HTMLDivElement>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void devicesFacade.listDevices().then((result) => {
+      if (!alive) return;
+      setDevices(result.ok && result.data ? result.data : []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   if (hidden) return null;
 
   const connected = computers.filter(isConnectedComputer);
   const pending = computers.filter(isPendingComputer);
   const failed = computers.filter((item) => computerDisplayState(item) === "error");
-  const empty = connected.length === 0;
-  const failedOnly = empty && pending.length === 0 && failed.length > 0;
-  const mountedState = mounted ? computerDisplayState(mounted) : null;
-
-  if (loading) {
-    return (
-      <div className="relative" data-oceanleo-cc-dock>
-        <div
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-400"
-          data-oceanleo-cc-dock-waiting={rememberedId ? "remembered" : "pending"}
-          aria-busy="true"
-        >
-          <ComputerGlyph />
-          <span className="max-w-[120px] truncate">{rememberedName || "…"}</span>
-        </div>
-      </div>
-    );
-  }
+  const emptyCloud = connected.length === 0;
+  const failedOnly = emptyCloud && pending.length === 0 && failed.length > 0;
 
   return (
     <div className="relative" data-oceanleo-cc-dock>
-      {empty ? (
-        <>
-          <button
-            ref={connectBtnRef}
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
-            aria-label={failedOnly ? tt("开通失败") : tt("接入云电脑")}
-            data-oceanleo-cc-dock-empty
-          >
-            <ComputerGlyph />
-            {failedOnly ? tt("开通失败") : tt("接入云电脑")}
-          </button>
-          <AnchoredPopover
-            open={menuOpen}
-            anchorRef={connectBtnRef}
-            panelRef={connectPanelRef}
-            onClose={() => setMenuOpen(false)}
-            align="start"
-            role="menu"
-            ariaLabel={tt("接入云电脑")}
-            className="z-[80] min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
-          >
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
-              onClick={() => {
-                setMenuOpen(false);
-                setCreateOpen(true);
-              }}
-            >
-              {tt("购买云电脑")}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50"
-              onClick={() => {
-                setMenuOpen(false);
-                setConnectOpen(true);
-              }}
-            >
-              {tt("连接我的服务器")}
-            </button>
-            {pending.length > 0 && (
-              <a
-                href={devicesCloudHref()}
-                role="menuitem"
-                className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
-                data-oceanleo-cc-dock-pending-progress
-                onClick={() => setMenuOpen(false)}
-              >
-                {tt("接入进行中 · 查看进度")}
-              </a>
-            )}
-            {failedOnly && (
-              <a
-                href={devicesCloudHref()}
-                role="menuitem"
-                className="block w-full px-3 py-2 text-left text-[12px] text-neutral-400 hover:bg-neutral-50"
-                data-oceanleo-cc-dock-failed
-                onClick={() => setMenuOpen(false)}
-              >
-                {tt("开通失败")}
-              </a>
-            )}
-          </AnchoredPopover>
-        </>
-      ) : (
-        <div className="flex items-center gap-1">
-          <a
-            href={mountedHref}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-100"
-            data-oceanleo-cc-dock-mounted
-            data-oceanleo-cc-status={mountedState || ""}
-            aria-label={mounted?.name || tt("接入云电脑")}
-            onClick={openMounted}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                mountedState ? statusDotClass(mountedState) : "bg-neutral-300"
-              }`}
-              data-oceanleo-cc-online={mountedState === "ready" ? "1" : "0"}
-            />
-            <span className="max-w-[120px] truncate">
-              {mounted?.name || tt("接入云电脑")}
-            </span>
-            {mountedState ? (
-              <span className="text-neutral-500">{statusWord(mountedState, tt)}</span>
-            ) : null}
-          </a>
-          {connected.length > 1 && (
-            <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
+        aria-label={tt("设备")}
+        aria-expanded={open}
+        data-oceanleo-cc-dock-trigger
+        data-oceanleo-cc-dock-empty={emptyCloud && !loading ? "" : undefined}
+        data-oceanleo-cc-dock-waiting={loading ? (mountedId ? "remembered" : "pending") : undefined}
+      >
+        <ComputerGlyph />
+        {tt("设备")}
+      </button>
+      <AnchoredPopover
+        open={open}
+        anchorRef={btnRef}
+        panelRef={panelRef}
+        onClose={() => setOpen(false)}
+        align="start"
+        role="dialog"
+        ariaLabel={tt("设备")}
+        className="z-[80] w-[min(280px,calc(100vw-2rem))] rounded-xl border border-neutral-200 bg-white py-2 shadow-lg"
+      >
+        <div ref={panelRef} className="px-1">
+          <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+            {tt("云服务器")}
+          </p>
+          {loading && <p className="px-2 py-1.5 text-[12px] text-neutral-400">…</p>}
+          {!loading && emptyCloud && (
+            <div className="px-1 pb-1">
               <button
-                ref={switchBtnRef}
                 type="button"
-                onClick={() => setSwitchOpen((open) => !open)}
-                className="rounded-lg px-1 py-1 text-neutral-500 hover:bg-neutral-100"
-                aria-label={tt("接入云电脑")}
-                data-oceanleo-cc-switch-toggle
+                className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
+                onClick={() => {
+                  setOpen(false);
+                  setCreateOpen(true);
+                }}
               >
-                <CaretGlyph />
+                {tt("购买云电脑")}
               </button>
-              <AnchoredPopover
-                open={switchOpen}
-                anchorRef={switchBtnRef}
-                panelRef={switchPanelRef}
-                onClose={() => setSwitchOpen(false)}
-                align="start"
-                role="menu"
-                className="z-[80] min-w-[200px] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
-                attributes={{ "data-oceanleo-cc-switch-list": "" }}
+              <button
+                type="button"
+                className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
+                onClick={() => {
+                  setOpen(false);
+                  setConnectOpen(true);
+                }}
               >
-                {connected.map((item) => {
-                  const state = computerDisplayState(item);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="menuitem"
-                      data-oceanleo-cc-switch-item={item.id}
-                      className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-neutral-50 ${
-                        item.id === mountedId ? "font-medium" : ""
-                      }`}
-                      onClick={() => {
-                        setMountedId(item.id);
-                        setSwitchOpen(false);
-                      }}
-                    >
-                      {item.name}
-                      {statusWord(state, tt) ? ` · ${statusWord(state, tt)}` : ""}
-                    </button>
-                  );
-                })}
-              </AnchoredPopover>
-            </>
+                {tt("连接我的服务器")}
+              </button>
+              {pending.length > 0 && (
+                <p className="px-2 py-1 text-[12px] text-neutral-400" data-oceanleo-cc-dock-pending-progress>
+                  {tt("接入进行中 · 查看进度")}
+                </p>
+              )}
+              {failedOnly && (
+                <p className="px-2 py-1 text-[12px] text-neutral-400" data-oceanleo-cc-dock-failed>
+                  {tt("开通失败")}
+                </p>
+              )}
+              {pending.length === 0 && !failedOnly && (
+                <p className="px-2 py-1 text-[12px] text-neutral-400">{tt("还没有云服务器")}</p>
+              )}
+            </div>
           )}
+          {!loading &&
+            connected.map((item) => {
+              const state = computerDisplayState(item);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-oceanleo-cc-dock-mounted={item.id === mountedId ? "" : undefined}
+                  data-oceanleo-cc-switch-item={item.id}
+                  data-oceanleo-cc-status={state}
+                  data-oceanleo-cc-online={state === "ready" ? "1" : "0"}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50 ${
+                    item.id === mountedId ? "font-medium" : ""
+                  }`}
+                  onClick={() => {
+                    setMountedId(item.id);
+                    setOpen(false);
+                    router.push(serverPageHref(item.id));
+                  }}
+                >
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(state)}`} />
+                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  {statusWord(state, tt) ? (
+                    <span className="shrink-0 text-neutral-500">{statusWord(state, tt)}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+
+          <p className="mt-2 px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+            {tt("客户端设备")}
+          </p>
+          {devices.length === 0 && (
+            <div className="px-1">
+              <p className="px-2 py-1 text-[12px] text-neutral-400">{tt("还没有客户端设备")}</p>
+              <button
+                type="button"
+                className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
+                onClick={() => {
+                  setOpen(false);
+                  openSettingsModal("devices");
+                }}
+              >
+                {tt("配对客户端")}
+              </button>
+            </div>
+          )}
+          {devices.map((item) => (
+            <button
+              key={item.device_id}
+              type="button"
+              data-oceanleo-device-client={item.device_id}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
+              onClick={() => {
+                setOpen(false);
+                openSettingsModal("devices");
+              }}
+            >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.online ? "bg-emerald-500" : "bg-neutral-300"}`}
+              />
+              <span className="min-w-0 flex-1 truncate">{item.device_name || PLATFORM_LABEL[item.platform]}</span>
+              <span className="shrink-0 text-neutral-500">
+                {item.online ? tt("在线") : tt("离线")}
+              </span>
+            </button>
+          ))}
         </div>
-      )}
+      </AnchoredPopover>
       {createOpen && (
         <CreateComputerDialog
           client={client}
@@ -275,19 +258,6 @@ function ComputerGlyph() {
     >
       <rect x="3" y="5" width="18" height="12" rx="2" />
       <path d="M8 19h8M12 17v2" />
-    </svg>
-  );
-}
-
-function CaretGlyph() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className="h-3.5 w-3.5"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M5.5 7.5 L10 12 L14.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }

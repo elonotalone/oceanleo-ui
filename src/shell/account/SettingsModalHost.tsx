@@ -3,85 +3,105 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { SettingsModal } from "../../pages/settings/SettingsModal";
-import type { SettingsSection } from "../../pages/settings/SettingsHub";
-import { resolveSettingsTab } from "../../pages/settings/settings-tabs";
+import type { SettingsHubProps, SettingsSection } from "../../pages/settings/SettingsHub";
+import {
+  isSettingsPathname,
+  openSettingsModal,
+  resolveSettingsTab,
+  settingsPath,
+  tabFromSettingsLocation,
+} from "../../pages/settings/settings-tabs";
 
-function tabFromHash(): string | null {
-  if (typeof window === "undefined") return null;
-  const match = window.location.hash.match(/^#settings(?:\/([^/]+))?$/);
-  if (!match) return null;
-  try { return decodeURIComponent(match[1] || "general"); } catch { return "general"; }
-}
-
-export function openSettingsModal(tab = "general") {
-  window.location.hash = `settings/${encodeURIComponent(tab)}`;
-}
+export { openSettingsModal };
 
 function extraIdsOf(sections?: SettingsSection[]): string[] {
   return (sections ?? []).map((section) => section.id);
 }
 
-function writeSettingsHash(tab: string) {
-  const next = `#settings/${encodeURIComponent(tab)}`;
-  if (window.location.hash === next) return;
-  window.history.replaceState(window.history.state, "", next);
+function locationHref(): string {
+  return typeof window === "undefined" ? "https://oceanleo.com/" : window.location.href;
 }
 
-export function SettingsModalHost({ extraSections, orgHref, showRequestStat = false, onSignedOut }: {
+function herePath(): string {
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+export function SettingsModalHost({ extraSections, orgHref, showRequestStat = false, extraStats, onSignedOut }: {
   extraSections?: SettingsSection[];
   orgHref?: string;
   showRequestStat?: boolean;
+  extraStats?: SettingsHubProps["extraStats"];
   onSignedOut?: () => void;
 } = {}) {
   const pathname = usePathname();
   const [tab, setTab] = useState<string | null>(null);
-  const pathRef = useRef(pathname);
   const extraRef = useRef(extraSections);
   extraRef.current = extraSections;
 
   useEffect(() => {
-    const applyHash = () => {
-      const raw = tabFromHash();
-      if (raw === null) {
+    const apply = () => {
+      const href = locationHref();
+      const extras = extraIdsOf(extraRef.current);
+      const hashMatch = typeof window !== "undefined"
+        ? window.location.hash.match(/^#settings(?:\/([^/]*))?$/)
+        : null;
+
+      if (hashMatch && !isSettingsPathname(window.location.pathname)) {
+        const raw = (() => {
+          try { return decodeURIComponent(hashMatch[1] || "general"); } catch { return "general"; }
+        })();
+        openSettingsModal(raw);
+        return;
+      }
+
+      if (!isSettingsPathname(window.location.pathname) && !hashMatch) {
         setTab(null);
         return;
       }
-      const resolved = resolveSettingsTab(raw, extraIdsOf(extraRef.current));
-      if (resolved !== raw) writeSettingsHash(resolved);
+
+      const resolved = tabFromSettingsLocation(href, extras);
+      const canonical = settingsPath(resolved);
+      if (isSettingsPathname(window.location.pathname) && herePath() !== canonical) {
+        window.history.replaceState(
+          { ...(window.history.state as object), settingsOverlay: true },
+          "",
+          canonical,
+        );
+      }
       setTab(resolved);
     };
 
-    if (pathRef.current !== pathname) {
-      pathRef.current = pathname;
-      if (tabFromHash() !== null) {
-        window.history.replaceState(
-          window.history.state,
-          "",
-          `${window.location.pathname}${window.location.search}`,
-        );
-      }
-      setTab(null);
-    }
-
-    applyHash();
-    window.addEventListener("hashchange", applyHash);
-    window.addEventListener("popstate", applyHash);
+    apply();
+    window.addEventListener("hashchange", apply);
+    window.addEventListener("popstate", apply);
     return () => {
-      window.removeEventListener("hashchange", applyHash);
-      window.removeEventListener("popstate", applyHash);
+      window.removeEventListener("hashchange", apply);
+      window.removeEventListener("popstate", apply);
     };
   }, [pathname]);
 
   function close() {
-    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+    if (typeof window === "undefined") return;
+    const overlay = Boolean((window.history.state as { settingsOverlay?: boolean } | null)?.settingsOverlay);
+    if (overlay && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    if (isSettingsPathname(window.location.pathname)) {
+      window.history.replaceState(window.history.state, "", "/");
+      window.dispatchEvent(new Event("popstate"));
+    }
     setTab(null);
   }
 
   return <SettingsModal open={tab !== null} initialTab={tab || "general"} onClose={close}
-    extraSections={extraSections} orgHref={orgHref} showRequestStat={showRequestStat}
+    extraSections={extraSections} extraStats={extraStats} orgHref={orgHref} showRequestStat={showRequestStat}
     onTabChange={(next) => {
       const resolved = resolveSettingsTab(next, extraIdsOf(extraSections));
-      writeSettingsHash(resolved);
+      const canonical = settingsPath(resolved);
+      if (herePath() !== canonical) {
+        window.history.replaceState({ ...(window.history.state as object), settingsOverlay: true }, "", canonical);
+      }
       setTab(resolved);
     }} onSignedOut={() => { close(); onSignedOut?.(); }} />;
 }

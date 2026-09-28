@@ -293,7 +293,7 @@ test("小窗里每种状态的文案与设备页、坞一致；接入中那一�
     );
     assert.ok(pending, `小窗写着：${view.text()}`);
     assert.equal(pending.textContent, "3 台接入中");
-    assert.equal(pending.getAttribute("href"), `${PORTAL}/devices?tab=cloud`);
+    assert.equal(pending.getAttribute("href"), `${PORTAL}/settings/devices`);
     for (const gone of ["releasing", "released", "removed"]) {
       assert.ok(!view.rows().some((text) => text.startsWith(gone)), gone);
     }

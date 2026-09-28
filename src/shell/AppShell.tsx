@@ -1015,10 +1015,6 @@ function AppShellInner({
 
   // ── topbar 布局：无侧边栏。顶部一条 bar——左=站名(+模型选择)，右=余额+账户。
   //    用于单页操作台站（侧栏原本只有一个功能按键，无站级导航可留）。
-  if (pathname === "/settings") {
-    return <div data-settings-center>{children}<SettingsModalHost />{leoShell}</div>;
-  }
-
   if (layout === "topbar") {
     return (
       <div className="leo-safe-shell flex min-h-screen flex-col bg-transparent" data-oceanleo-shell>

@@ -106,6 +106,8 @@ const { ComputerDock } = await import(
     "../../i18n/ui/useUI": uiStub,
     "../../contracts/domain-family": domainStub,
     "../../lib/cloud-computer-api": apiStub,
+    "../../facades/devices": dataModule(`export const devicesFacade = { listDevices: async () => ({ ok: true, data: [] }) };`),
+    "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
     "./CreateComputerDialog": dialogStub,
     "./ConnectServerDialog": dialogStub,
     "../anchored-popover": popoverStub,
@@ -218,7 +220,7 @@ test("错误帧的 text 留在 notice 上，有 text 就显示这句", async () 
   }
 });
 
-test("loading 且记住了名字 elon：显示 elon，不显示接入云电脑", async () => {
+test("loading 且记住了名字 elon：按钮仍是设备，不显示接入云电脑", async () => {
   globalThis.__ccMountedName = "elon";
   globalThis.__ccMountedId = "cc_1";
   globalThis.__ccWrittenName = "";
@@ -229,7 +231,7 @@ test("loading 且记住了名字 elon：显示 elon，不显示接入云电脑",
   };
   const view = await renderDock({ client: globalThis.__ccApi });
   try {
-    assert.equal(view.text().includes("elon"), true);
+    assert.equal(view.text().includes("设备"), true);
     assert.equal(view.text().includes("接入云电脑"), false);
   } finally {
     await view.cleanup();
@@ -246,7 +248,7 @@ test("loading 且没有记住名字：只显示省略号，不显示接入云电
   };
   const view = await renderDock({ client: globalThis.__ccApi });
   try {
-    assert.equal(view.text().includes("…"), true);
+    assert.equal(view.text().includes("设备"), true);
     assert.equal(view.text().includes("接入云电脑"), false);
     assert.equal(view.text().includes("elon"), false);
   } finally {

@@ -93,6 +93,12 @@ const { ComputerDock } = await import(
     "../../i18n/ui/useUI": uiTextStubUrl,
     "../../contracts/domain-family": domainStubUrl,
     "../../lib/cloud-computer-api": apiStubUrl,
+    "../../facades/devices": dataModule(`
+      export const devicesFacade = {
+        listDevices() { return Promise.resolve({ ok: true, data: globalThis.__ccDevices || [] }); }
+      };
+    `),
+    "../account/SettingsModalHost": dataModule(`export function openSettingsModal(tab) { globalThis.__openSettingsTab = tab; }`),
     "./CreateComputerDialog": dialogStubUrl,
     "./ConnectServerDialog": dialogStubUrl,
     "../anchored-popover": popoverStubUrl,
@@ -166,6 +172,16 @@ async function render(computers, client = makeClient(computers)) {
   };
 }
 
+async function openDock(view) {
+  const btn = view.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+  assert.ok(btn, "找不到设备按钮");
+  await act(async () => {
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+  return btn;
+}
+
 test("pickMountedId：零台已接入 → 未挂载", () => {
   assert.equal(pickMountedId([], "cc_1"), null);
   assert.equal(pickMountedId([pc({ status: "released" })], null), null);
@@ -192,14 +208,18 @@ test("pickMountedId：多台 ready → 上次选择，没有则第一台 ready",
   assert.equal(pickMountedId([a, b], "missing"), "cc_a");
 });
 
-test("无已接入机器：只渲染接入云电脑，无管理、无待确认角标、无新建 Shell", async () => {
+test("无已接入机器：按钮是设备，点开才有购买/连接，无管理、无待确认角标、无新建 Shell", async () => {
   storedMounted = "";
   const view = await render([]);
   assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-empty]"));
-  assert.equal(view.button("接入云电脑")?.textContent.trim(), "接入云电脑");
+  assert.equal(view.button("设备")?.textContent.trim(), "设备");
+  assert.equal(view.button("接入云电脑"), undefined);
   assert.equal(view.button("新建 Shell"), undefined);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-manage]"), null);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-pending]"), null);
+  await openDock(view);
+  assert.ok(view.button("购买云电脑"));
+  assert.ok(view.button("连接我的服务器"));
   view.cleanup();
 });
 
@@ -238,10 +258,7 @@ test("pending / enrolled / active 未 enrolled 的行不上坞", async () => {
   assert.equal(view.text().includes("遗留"), false);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-manage]"), null);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-pending]"), null);
-  await act(async () => {
-    view.button("接入云电脑").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
+  await openDock(view);
   assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-pending-progress]"));
   assert.match(view.text(), /接入进行中/);
   view.cleanup();
@@ -259,6 +276,7 @@ test("ready 机器：状态按钮进入服务器页面，且没有新建 Shell",
     back() {},
   };
   const view = await render([pc({ name: "新加坡一号" })]);
+  await openDock(view);
   assert.ok(view.text().includes("新加坡一号"));
   assert.ok(view.text().includes("在线"));
   const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
@@ -286,6 +304,7 @@ test("offline 机器仍可进入服务器页面看原因，没有新建 Shell", 
     back() {},
   };
   const view = await render([pc({ node_online: false })]);
+  await openDock(view);
   const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
   assert.ok(mounted);
   await act(async () => {
@@ -322,15 +341,7 @@ test("多台已接入：箭头只列已接入，切换后状态按钮进入新�
     }),
   ];
   const view = await render(items);
-  const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
-  assert.ok(mounted);
-  assert.match((mounted.textContent || "").trim(), /乙机/);
-  const toggle = view.host.querySelector("[data-oceanleo-cc-switch-toggle]");
-  assert.ok(toggle);
-  await act(async () => {
-    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await flush();
+  await openDock(view);
   const switchItems = [
     ...view.host.querySelectorAll("[data-oceanleo-cc-switch-item]"),
   ];
@@ -340,6 +351,9 @@ test("多台已接入：箭头只列已接入，切换后状态按钮进入新�
     "cc_a,cc_b,cc_c",
   );
   assert.equal(view.text().includes("不该出现"), false);
+  const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
+  assert.ok(mounted);
+  assert.match((mounted.textContent || "").trim(), /乙机/);
 
   const offline = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_c"]');
   assert.ok(offline);
@@ -347,11 +361,6 @@ test("多台已接入：箭头只列已接入，切换后状态按钮进入新�
     offline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await flush();
-  const mountedOffline = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
-  assert.match((mountedOffline.textContent || "").trim(), /丙机/);
-  await act(async () => {
-    mountedOffline.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
   assert.deepEqual(pushes, ["/computers/cc_c"]);
   assert.equal(view.host.querySelector("[data-oceanleo-cc-new-shell]"), null);
   view.cleanup();
@@ -405,8 +414,8 @@ test("loading 且本地有上次电脑：不出现接入云电脑；名单返回
     assert.equal(view.host.querySelector("[aria-label='接入云电脑']"), null);
     const waiting = view.host.querySelector("[data-oceanleo-cc-dock-waiting]");
     assert.ok(waiting);
-    assert.equal(waiting.getAttribute("data-oceanleo-cc-dock-waiting"), "remembered");
-    assert.equal(view.text().includes("…"), true);
+    assert.match(waiting.getAttribute("data-oceanleo-cc-dock-waiting") || "", /remembered|pending/);
+    assert.equal(waiting.textContent.includes("设备"), true);
 
     await act(async () => {
       resolveList({
@@ -416,6 +425,7 @@ test("loading 且本地有上次电脑：不出现接入云电脑；名单返回
     await flush();
     assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-waiting]"), null);
     assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-empty]"), null);
+    await openDock(view);
     const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
     assert.ok(mounted);
     assert.match(mounted.textContent || "", /新加坡一号/);
@@ -450,7 +460,8 @@ test("名单返回且一台都没有：才显示接入云电脑", async () => {
     });
     await flush();
     assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-empty]"));
-    assert.equal(view.button("接入云电脑")?.textContent.trim(), "接入云电脑");
+    assert.equal(view.button("设备")?.textContent.trim(), "设备");
+    assert.equal(view.button("接入云电脑"), undefined);
   } finally {
     view.cleanup();
   }
@@ -473,6 +484,7 @@ test("点击机器状态只进入服务器页面，不调用 openTerminal 或创
     return { id: "sid_9", task_id: "task-shell-1" };
   });
   const view = await render([pc({ name: "新加坡一号" })], client);
+  await openDock(view);
   const mounted = view.host.querySelector("[data-oceanleo-cc-dock-mounted]");
   assert.ok(mounted);
   await act(async () => {

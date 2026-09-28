@@ -41,6 +41,14 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://ppt.oceanleo.com/agent",
 });
 const { window } = dom;
+if (typeof window.PopStateEvent !== "function") {
+  window.PopStateEvent = class PopStateEvent extends window.Event {
+    constructor(type, init = {}) {
+      super(type);
+      this.state = init?.state ?? null;
+    }
+  };
+}
 for (const [name, value] of Object.entries({
   window,
   document: window.document,
@@ -50,6 +58,7 @@ for (const [name, value] of Object.entries({
   Element: window.Element,
   Node: window.Node,
   Event: window.Event,
+  PopStateEvent: window.PopStateEvent,
   MouseEvent: window.MouseEvent,
   KeyboardEvent: window.KeyboardEvent,
   FocusEvent: window.FocusEvent,
@@ -140,6 +149,8 @@ const STUBS = {
   "../../pages/GeneralPage": marker("GeneralSettingsBody", "general-body"),
   "../../pages/AccountSecurityPage": marker("AccountSecurityPage", "security-panel"),
   "../../pages/OrgMembership": marker("OrgMembership", "org-membership"),
+  "../../pages/OrgPage": marker("OrgPage", "org-page"),
+  "../OrgPage": marker("OrgPage", "org-page"),
   "../../pages/ApiPage": marker("ApiPage", "pane-api"),
   "../../pages/DevicesPage": marker("DevicesPage", "pane-devices"),
   "../../pages/PluginsPage": marker("PluginsPage", "pane-plugins"),
@@ -150,6 +161,11 @@ const { SettingsModalHost, openSettingsModal } = await import(
   await compileModule("src/shell/account/SettingsModalHost.tsx", STUBS)
 );
 const { SettingsHub } = await import(await compileModule("src/pages/settings/SettingsHub.tsx", STUBS));
+const {
+  settingsPath,
+  tabFromSettingsLocation,
+  isSettingsPathname,
+} = await import(await compileModule("src/pages/settings/settings-tabs.ts"));
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -200,6 +216,18 @@ const CAPABILITIES = [
   { id: "devices", testId: "pane-devices", label: "我的设备" },
 ];
 
+test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
+  assert.equal(settingsPath("org", "https://oceanleo.com/"), "/settings/org");
+  assert.equal(settingsPath("memory", "https://oceanleo.com/?x=1"), "/settings/personalization?x=1");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/org"), "org");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/agent#settings/plugins"), "plugins");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=devices"), "devices");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=memory"), "personalization");
+  assert.equal(isSettingsPathname("/settings/org"), true);
+  assert.equal(isSettingsPathname("/settings/api"), false);
+  assert.equal(isSettingsPathname("/settings/api/"), false);
+});
+
 test("设置窗里点「AI 模型」「插件与连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   await open("general");
@@ -228,25 +256,38 @@ test("设置窗里点「AI 模型」「插件与连接器」「我的设备」�
       "page",
       "当前项高亮",
     );
-    assert.equal(window.location.pathname, "/agent", "背后的页面不动");
-    assert.equal(window.location.hash, `#settings/${id}`, "地址只换 #settings/<tab>");
+    assert.equal(window.location.pathname, `/settings/${id}`, "地址换成 /settings/<tab>");
+    assert.equal(window.location.hash, "", "不再用 #settings");
   }
+  await view.cleanup();
+});
+
+test("设置卡片左上角可以放大，放大后仍是同一张卡片", async () => {
+  const view = await mount(React.createElement(SettingsModalHost), "/agent");
+  await open("general");
+  const panel = dialog();
+  assert.ok(panel);
+  assert.equal(panel.getAttribute("data-settings-expanded"), "0");
+  await click(panel.querySelector("[data-settings-expand]"), "expand");
+  assert.ok(dialog(), "放大不关窗");
+  assert.equal(dialog().getAttribute("data-settings-expanded"), "1");
   await view.cleanup();
 });
 
 test("openSettingsModal：personalization、plugins、旧地址 memory 分别落在个性化 / 插件 / 个性化面板", async () => {
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   const cases = [
-    { tab: "personalization", testId: "pane-personalization", item: "personalization", hash: "#settings/personalization" },
-    { tab: "plugins", testId: "pane-plugins", item: "plugins", hash: "#settings/plugins" },
-    { tab: "memory", testId: "pane-personalization", item: "personalization", hash: "#settings/personalization" },
+    { tab: "personalization", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
+    { tab: "plugins", testId: "pane-plugins", item: "plugins", path: "/settings/plugins" },
+    { tab: "memory", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
   ];
-  for (const { tab, testId, item, hash } of cases) {
+  for (const { tab, testId, item, path } of cases) {
     await open(tab);
     assert.ok(dialog(), `openSettingsModal("${tab}") 应当打开设置窗`);
     assert.ok(pane(testId), `openSettingsModal("${tab}") 应当落在 ${testId}`);
     assert.equal(inDialog(`[data-settings-item="${item}"]`)?.getAttribute("aria-current"), "page");
-    assert.equal(window.location.hash, hash, `openSettingsModal("${tab}") 之后地址是 ${hash}`);
+    assert.equal(window.location.pathname, path, `openSettingsModal("${tab}") 之后地址是 ${path}`);
+    assert.equal(window.location.hash, "");
   }
 
   const personalization = inDialog('[data-settings-item="personalization"]');
@@ -277,14 +318,19 @@ test("旧书签 #settings/memory 与未知 tab：分别落在个性化与通用�
   });
   await settle();
   assert.ok(pane("pane-personalization"), "#settings/memory 应当打开个性化面板");
-  assert.equal(window.location.hash, "#settings/personalization");
+  assert.equal(window.location.pathname, "/settings/personalization");
+  assert.equal(window.location.hash, "");
   await bookmark.cleanup();
 
   const unknown = await mount(React.createElement(SettingsModalHost), "/agent");
-  await open("no-such-tab");
-  assert.ok(pane("general-body"), "未知 tab 回落「通用」");
-  assert.equal(window.location.hash, "#settings/general");
-  await unknown.cleanup();
+  try {
+    await open("no-such-tab");
+    assert.ok(pane("general-body"), "未知 tab 回落「通用」");
+    assert.equal(window.location.pathname, "/settings/general");
+    assert.equal(window.location.hash, "");
+  } finally {
+    await unknown.cleanup();
+  }
 });
 
 test("设置窗开着时背后页面导航（pushState）→ 设置窗关闭；换 tab 的 replaceState 不关窗", async () => {
@@ -292,7 +338,8 @@ test("设置窗开着时背后页面导航（pushState）→ 设置窗关闭；�
   await open("plugins");
   assert.ok(dialog(), "设置窗先打开");
   await click(inDialog('[data-settings-item="models"]'), "models");
-  assert.ok(dialog(), "换 tab 只改 hash（replaceState），设置窗不该关");
+  assert.ok(dialog(), "换 tab 只改 /settings/<tab>（replaceState），设置窗不该关");
+  assert.equal(window.location.pathname, "/settings/models");
 
   await act(async () => {
     window.history.pushState(null, "", "/projects");
@@ -314,8 +361,9 @@ test("设置窗开着时浏览器后退 → 设置窗关闭", async () => {
     window.history.back();
   });
   await settle(10);
+  assert.equal(window.location.pathname, "/agent");
   assert.equal(window.location.hash, "");
-  assert.equal(dialog() === null, true, "后退到没有 #settings 的那一条，设置窗关掉");
+  assert.equal(dialog() === null, true, "后退到打开设置窗之前的那一页，设置窗关掉");
   await view.cleanup();
 });
 
@@ -332,7 +380,7 @@ test("extraSections 与内置同 id（含旧 id memory）：内置优先，控�
     ];
     const view = await mount(React.createElement(SettingsModalHost, { extraSections }), "/agent");
     await open("plugins");
-    assert.ok(pane("pane-plugins"), "#settings/plugins 打开的是内置插件面板");
+    assert.ok(pane("pane-plugins"), "/settings/plugins 打开的是内置插件面板");
     assert.equal(pane("legacy-plugins") === null, true);
     const labels = [...dialog().querySelectorAll("[data-settings-item]")].map((node) => node.textContent);
     assert.ok(!labels.includes("旧插件"), `同 id 的站点项不该出现在导航里：${labels.join(" / ")}`);

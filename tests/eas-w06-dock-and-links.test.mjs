@@ -147,13 +147,21 @@ const terminalStub = dataModule(`
 const { isPendingComputer, computerDisplayState } = await import(
   await compileModule("src/shell/cloud-computer/computer-state.ts")
 );
-const { serverPageHref } = await import(
+const { serverPageHref, devicesCloudHref } = await import(
   await compileModule("src/shell/cloud-computer/server-page/href.ts")
 );
 const { ComputerDock } = await import(
   await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
     "../../i18n/ui/useUI": uiStub,
     "../../lib/cloud-computer-api": apiStub,
+    "../../facades/devices": dataModule(`
+      export const devicesFacade = { listDevices: async () => ({ ok: true, data: [] }) };
+    `),
+    "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
+    "../../contracts/domain-family": dataModule(`
+      export function currentDomainFamily() { return "com"; }
+      export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+    `),
     "./CreateComputerDialog": dialogStub,
     "./ConnectServerDialog": dialogStub,
     "../anchored-popover": popoverStub,
@@ -350,21 +358,33 @@ test("坞只有开通失败机器时写「开通失败」，不写「接入进�
 test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 origin 下是相对路径", async () => {
   setPageUrl(`${SUBSITE}/`);
   assert.equal(serverPageHref("cc_ready"), `${PORTAL}/computers/cc_ready`);
+  assert.equal(devicesCloudHref(), `${PORTAL}/settings/devices`);
 
   const dockSub = await openEmptyDock([FAILED]);
   try {
     const failedLink = dockSub.host.querySelector("[data-oceanleo-cc-dock-failed]");
     assert.ok(failedLink);
-    assert.equal(failedLink.getAttribute("href"), `${PORTAL}/devices?tab=cloud`);
+    assert.match(failedLink.textContent || "", /开通失败/);
   } finally {
     dockSub.cleanup();
   }
 
+  const subPushes = [];
+  globalThis.__w06Router = { push(href) { subPushes.push(href); }, replace() {}, refresh() {}, back() {} };
   const mountedSub = await renderDock([READY]);
   try {
+    const trigger = mountedSub.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+    assert.ok(trigger);
+    await act(async () => {
+      trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
     const mounted = mountedSub.host.querySelector("[data-oceanleo-cc-dock-mounted]");
     assert.ok(mounted);
-    assert.equal(mounted.getAttribute("href"), `${PORTAL}/computers/cc_ready`);
+    await act(async () => {
+      mounted.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(subPushes.at(-1), `${PORTAL}/computers/cc_ready`);
   } finally {
     mountedSub.cleanup();
   }
@@ -375,28 +395,39 @@ test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 or
       (node.textContent || "").includes("查看我的设备"),
     );
     assert.ok(link, "服务器页离线态没有「查看我的设备」");
-    assert.equal(link.getAttribute("href"), `${PORTAL}/devices?tab=cloud`);
+    assert.equal(link.getAttribute("href"), `${PORTAL}/settings/devices`);
   } finally {
     serverSub.cleanup();
   }
 
   setPageUrl(`${PORTAL}/`);
   assert.equal(serverPageHref("cc_ready"), "/computers/cc_ready");
+  assert.equal(devicesCloudHref(), "/settings/devices");
 
   const dockPortal = await openEmptyDock([PROVISIONING]);
   try {
     const pending = dockPortal.host.querySelector("[data-oceanleo-cc-dock-pending-progress]");
     assert.ok(pending);
-    assert.equal(pending.getAttribute("href"), "/devices?tab=cloud");
+    assert.match(pending.textContent || "", /接入进行中/);
   } finally {
     dockPortal.cleanup();
   }
 
+  const portalPushes = [];
+  globalThis.__w06Router = { push(href) { portalPushes.push(href); }, replace() {}, refresh() {}, back() {} };
   const mountedPortal = await renderDock([READY]);
   try {
+    const trigger = mountedPortal.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+    await act(async () => {
+      trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
     const mounted = mountedPortal.host.querySelector("[data-oceanleo-cc-dock-mounted]");
     assert.ok(mounted);
-    assert.equal(mounted.getAttribute("href"), "/computers/cc_ready");
+    await act(async () => {
+      mounted.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(portalPushes.at(-1), "/computers/cc_ready");
   } finally {
     mountedPortal.cleanup();
   }
@@ -407,7 +438,7 @@ test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 or
       (node.textContent || "").includes("查看我的设备"),
     );
     assert.ok(link);
-    assert.equal(link.getAttribute("href"), "/devices?tab=cloud");
+    assert.equal(link.getAttribute("href"), "/settings/devices");
   } finally {
     serverPortal.cleanup();
   }

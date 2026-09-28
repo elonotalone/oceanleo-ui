@@ -286,8 +286,8 @@ export interface OrgMembershipProps {
   loadInvitePreview?: (code: string) => Promise<InvitePreview>;
   /** 嵌在别的页里时不带整页的大标题。 */
   embedded?: boolean;
-  /** 只渲染这一段（`/join` 落地页只要「加入组织」那一段时用）。默认三段全渲染。 */
-  only?: "orgs" | "join" | "views";
+  /** 只渲染这一段。`join-create` 给设置里的组织栏用：加入 + 创建，不要「我的组织」列表。 */
+  only?: "orgs" | "join" | "views" | "join-create";
   className?: string;
 }
 
@@ -472,7 +472,16 @@ export function OrgMembership({
 
   if (hideWhenEmpty && !visible) return null;
 
-  const show = (section: "orgs" | "join" | "views") => !only || only === section;
+  const showList = !only || only === "orgs";
+  const showCreateInOrgs = !only || only === "orgs";
+  const showCreateAlone = only === "join-create";
+  const showJoin = !only || only === "join" || only === "join-create";
+  const showViews = !only || only === "views";
+  const show = (section: "orgs" | "join" | "views") => {
+    if (section === "orgs") return showList;
+    if (section === "join") return showJoin;
+    return showViews;
+  };
   const sectionClass = "mt-6 rounded-xl border border-neutral-200 p-4";
   const titleClass = "text-[13px] font-semibold text-neutral-900";
   const subtleClass = "text-[12px] text-neutral-500";
@@ -536,7 +545,7 @@ export function OrgMembership({
               })}
             </ul>
           )}
-          {orgs.status === "ok" && (
+          {showCreateInOrgs && orgs.status === "ok" && (
             <form
               className="mt-4 border-t border-neutral-100 pt-4"
               data-org-create="1"
@@ -661,6 +670,63 @@ export function OrgMembership({
                 : joinStateCopy(join.state, tt, { org: join.orgName || tt("这个组织") })}
             </p>
           )}
+        </div>
+      )}
+
+      {showCreateAlone && (
+        <div className={sectionClass} data-org-section="create">
+          <form
+            data-org-create="1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitCreate();
+            }}
+          >
+            <p className={titleClass}>{tt("创建组织")}</p>
+            <input
+              type="text"
+              value={createName}
+              onChange={(e) => {
+                setCreateName(e.target.value);
+                if (createError) setCreateError(undefined);
+              }}
+              placeholder={tt("组织名")}
+              aria-label={tt("组织名")}
+              autoComplete="organization"
+              className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
+            />
+            <label className="mt-3 flex items-start gap-2 text-[12px] leading-relaxed text-neutral-700">
+              <input
+                type="checkbox"
+                checked={createAgreed}
+                onChange={(e) => setCreateAgreed(e.target.checked)}
+                data-org-create-agree="1"
+                className="mt-0.5"
+              />
+              <span>
+                {tt("我已阅读并同意")}
+                <a
+                  href="/org/agreement"
+                  className="mx-0.5 text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-700"
+                >
+                  {tt("《OceanLeo 企业服务协议》")}
+                </a>
+              </span>
+            </label>
+            <button
+              type="submit"
+              data-org-create-submit="1"
+              disabled={!createName.trim() || !createAgreed || createBusy}
+              className="mt-3 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
+            >
+              {createBusy ? tt("创建中…") : tt("创建")}
+            </button>
+            {createError && (
+              <p className="mt-2 text-[13px] text-rose-700" role="status" data-org-create-error="1">
+                {orgErrorCopy(createError, tt)}
+              </p>
+            )}
+          </form>
         </div>
       )}
 
