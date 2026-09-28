@@ -5,7 +5,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { getTask } from "../../../lib/agent";
 import { shellSessionFromTask } from "../../history-model";
 import { LeoEntryButton, type LeoContext } from "../../LeoEntryButton";
-import { boolParamLabel, hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy } from "./notice";
+import { hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy } from "./notice";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -250,35 +250,26 @@ export function Composer({
                 {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
 </label>
             ) : null}
-            {modelParamOptions(dialog.configOptions || [], dialog.mode?.id).map((option) => {
-              const choices = option.type === "bool"
-                ? [
-                    { value: "true", name: boolParamLabel(option, true, tt) },
-                    { value: "false", name: boolParamLabel(option, false, tt) },
-                  ]
-                : option.options;
-              if (!choices.length) return null;
-              return (
-                <label key={option.id} className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
-                  {option.name || option.id}
-                  <select
-                    data-oceanleo-cc-config={option.id}
-                    value={option.type === "bool" ? String(option.current === true) : String(option.current)}
-                    onChange={(event) => {
-                      const raw = event.currentTarget.value;
-                      dialog.setConfig(option.id, option.type === "bool" ? raw === "true" : raw);
-                    }}
-                    className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
-                  >
-                    {choices.map((choice) => (
-                      <option key={choice.value} value={choice.value}>
-                        {choice.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
+            {modelParamOptions(dialog.configOptions || [], dialog.mode?.id).map((option) => (
+              <label key={option.id} className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
+                {option.name || option.id}
+                <select
+                  data-oceanleo-cc-config={option.id}
+                  value={option.type === "bool" ? String(option.current === true) : String(option.current)}
+                  onChange={(event) => {
+                    const raw = event.currentTarget.value;
+                    dialog.setConfig(option.id, option.type === "bool" ? raw === "true" : raw);
+                  }}
+                  className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
+                >
+                  {option.options.map((choice) => (
+                    <option key={choice.value} value={choice.value}>
+                      {choice.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
             {dialog.mode && dialog.mode.options.length > 0 ? (
               <label className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
                 {dialog.mode.name || tt("模式")}

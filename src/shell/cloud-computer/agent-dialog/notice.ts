@@ -126,13 +126,17 @@ export function modelDisplayName(model: DialogModel): string {
   return params.length ? `${match[1].trim()} · ${params.join(" · ")}` : raw;
 }
 
+export function isModelFamilyConfig(option: DialogConfigOption, modeId?: string): boolean {
+  return option.id === "model" || option.category === "model" || option.id === modeId || option.category === "mode";
+}
+
 export function modelParamOptions(
   options: DialogConfigOption[],
   modeId?: string,
 ): DialogConfigOption[] {
   return options.filter((option) => {
-    if (!option.id || option.id === "model" || option.id === modeId) return false;
-    if (option.category === "mode" || option.category === "model") return false;
+    if (!option.id || isModelFamilyConfig(option, modeId)) return false;
+    if (option.options.length < 2) return false;
     const hay = `${option.id} ${option.category}`.toLowerCase();
     return /fast|effort|think|thought|variant|max.?mode/.test(hay);
   });

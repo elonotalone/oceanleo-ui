@@ -16,6 +16,7 @@ import {
   parseTool,
   toolTitleOf,
 } from "./parse";
+import { isModelFamilyConfig } from "./notice";
 import type {
   AgentDialogMessage,
   AgentProgram,
@@ -628,13 +629,23 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       // 已不在离线就原样返回：调用方可能在 effect 里每次挂载都发，别白造一帧渲染。
       return state.offline ? { ...state, offline: false } : state;
     case "set-model":
-      return { ...state, selectedModel: event.id };
+      return {
+        ...state,
+        selectedModel: event.id,
+        // Fast/High belong to the current model. Drop them until the next
+        // config frame; a leftover Fast selector would lie about the new model.
+        configOptions: state.configOptions.filter((option) => isModelFamilyConfig(option, state.mode?.id)),
+      };
     case "set-mode":
       return { ...state, selectedMode: event.value };
     case "set-config":
       return {
         ...state,
-        configOptions: state.configOptions.map((option) =>
+        configOptions: (
+          event.id === "model"
+            ? state.configOptions.filter((option) => isModelFamilyConfig(option, state.mode?.id))
+            : state.configOptions
+        ).map((option) =>
           option.id === event.id ? { ...option, current: event.value } : option,
         ),
         mode:

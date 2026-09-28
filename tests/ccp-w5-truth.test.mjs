@@ -81,4 +81,15 @@ test("config options keep Fast/High wires as selectable strings", () => {
   assert.equal(boolParamLabel(options[0], true, tt), "Fast");
   assert.equal(modelDisplayName({ id: "composer-2.5[fast=true]", name: "composer-2.5[fast=true]", default: false }), "composer-2.5 · fast");
   assert.equal(modelDisplayName({ id: "grok-4.6[effort=high]", name: "grok-4.6[effort=high]", default: false }), "grok-4.6 · high");
+
+  const noFast = parseConfigOptions([
+    { id: "mode", name: "mode", category: "mode", current: "agent", options: [{ value: "agent", name: "Agent" }] },
+    { id: "fast", name: "fast", category: "fast", current: true, options: [{ value: true, name: "Fast" }] },
+  ]);
+  assert.deepEqual(modelParamOptions(noFast, "mode").map((row) => row.id), [], "a single Fast value is not a picker");
+
+  const later = parseConfigOptions([
+    { id: "thought_level", name: "thinking", category: "thought_level", current: "high", options: [{ value: "high", name: "high" }, { value: "xhigh", name: "extra high" }] },
+  ]);
+  assert.deepEqual(modelParamOptions(later, "mode").map((row) => row.id), ["thought_level"]);
 });

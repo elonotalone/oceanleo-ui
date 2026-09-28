@@ -442,14 +442,45 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     assert.match(Array.from(thinking.options).map((row) => row.textContent).join(" "), /fast/);
     assert.match(Array.from(thinking.options).map((row) => row.textContent).join(" "), /high/);
     await act(async () => {
-      setControlValue(model, "a");
-      setControlValue(mode, "agent");
       setControlValue(fast, "false");
       setControlValue(thinking, "fast");
+      setControlValue(mode, "agent");
     });
     assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "mode" && frame.value === "agent"));
     assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast" && frame.value === false));
     assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level" && frame.value === "fast"));
+    await act(async () => {
+      setControlValue(model, "a");
+    });
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]'), null);
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]'), null);
+    await act(async () => {
+      view.socket().server({
+        t: "config",
+        program: "cursor",
+        options: [{
+          id: "mode",
+          name: "模式",
+          category: "mode",
+          current: "agent",
+          options: [
+            { value: "ask", name: "Ask" },
+            { value: "agent", name: "Agent" },
+          ],
+        }, {
+          id: "thought_level",
+          name: "thinking",
+          category: "thought_level",
+          current: "high",
+          options: [
+            { value: "high", name: "high" },
+            { value: "xhigh", name: "extra high" },
+          ],
+        }],
+      });
+    });
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]'), null);
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]').value, "high");
 
     const input = view.host.querySelector("[data-oceanleo-cc-dialog-input]");
     await fillText(input, "hello");
