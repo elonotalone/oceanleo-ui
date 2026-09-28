@@ -359,7 +359,7 @@ export function Composer({
               className="dark:text-neutral-300 dark:hover:bg-neutral-800"
             />
             {showModels ? (
-              <label className={`flex flex-wrap items-center gap-1 text-[12px] ${tone.muted}`}>
+              <label className={`flex items-center gap-1 text-[12px] ${tone.muted}`}>
                 {tt("模型")}
                 <select
                   data-oceanleo-cc-model=""
@@ -372,10 +372,7 @@ export function Composer({
                     <optgroup key={group.label} label={group.label}>{group.models.map((model) => <option key={model.id} value={model.id}>{modelDisplayName(model)}</option>)}</optgroup>
                   ) : group.models.map((model) => <option key={model.id} value={model.id}>{modelDisplayName(model)}</option>))}
                 </select>
-              
-                {hiddenModelCopy(tt, dialog.models).map((copy) => <span key={copy} className={`block text-[12px] ${tone.muted}`} data-oceanleo-hidden-models="">{copy}</span>)}
-                {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
-</label>
+              </label>
             ) : null}
             {showTuning ? (
               <div
@@ -391,7 +388,7 @@ export function Composer({
                       configId={option.id}
                       category={option.name || option.id}
                       current={current}
-                      currentName={optionChoiceName(option)}
+                      currentName={optionChoiceName(option) || option.name || option.id}
                       options={option.options}
                       open={openTuning === option.id}
                       onToggle={() => setOpenTuning((id) => (id === option.id ? null : option.id))}
@@ -428,6 +425,12 @@ export function Composer({
                   />
                 ) : null}
               </div>
+            ) : null}
+            {showModels ? (
+              <>
+                {hiddenModelCopy(tt, dialog.models).map((copy) => <span key={copy} className={`block text-[12px] ${tone.muted}`} data-oceanleo-hidden-models="">{copy}</span>)}
+                {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
+              </>
             ) : null}
             {showFresh ? <button
               type="button"

@@ -268,6 +268,12 @@ test("重连间隔、安装目录、提问退化和行级 diff", () => {
   assert.equal(installDirPayload("/opt/tools", "none"), "");
   assert.equal(normalizeQuestions({ weird: true }).mode, "text");
   assert.equal(normalizeQuestions([{ prompt: "选一个", options: [{ id: "a", label: "甲" }] }]).mode, "fields");
+  const nested = normalizeQuestions({
+    title: "Need input",
+    questions: [{ id: "q1", prompt: "Which mode?", options: [{ id: "agent", label: "Agent" }] }],
+  });
+  assert.equal(nested.mode, "fields");
+  assert.equal(nested.fields[0].id, "q1");
   const rows = lineDiff("a\nb\n", "a\nc\n");
   assert.deepEqual(rows.filter((row) => row.op !== " ").map((row) => `${row.op}${row.text}`), ["-b", "+c"]);
 

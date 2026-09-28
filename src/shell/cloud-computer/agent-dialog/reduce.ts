@@ -314,6 +314,7 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
         id: nextId(),
         questionId,
         title: str(frame.title),
+        detail: str(frame.detail),
         questions: frame.questions,
         submitted: false,
       },

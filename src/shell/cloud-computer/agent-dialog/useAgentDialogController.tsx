@@ -938,7 +938,10 @@ export function useAgentDialog({
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) return;
-      sendJson(socket, { t: "set_config", program, id: "model", value: id });
+      const modelOption = stateRef.current.configOptions.find(
+        (option) => option.id === "model" || option.category === "model",
+      );
+      sendJson(socket, { t: "set_config", program, id: modelOption?.id || "model", value: id });
     })();
   }, [ensureOpen]);
 

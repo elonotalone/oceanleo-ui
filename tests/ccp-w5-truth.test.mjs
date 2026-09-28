@@ -94,6 +94,23 @@ test("config options keep Fast/High wires as selectable strings", () => {
     { id: "thought_level", name: "thinking", category: "thought_level", current: "high", options: [{ value: "high", name: "high" }, { value: "xhigh", name: "extra high" }] },
   ]);
   assert.deepEqual(modelParamOptions(later, "mode").map((row) => row.id), ["thought_level"]);
+
+  const liveCursor = parseConfigOptions([
+    { configId: "fast", name: "Fast", category: "model_config", type: "boolean", current: false },
+    {
+      configId: "reasoning",
+      name: "Reasoning",
+      category: "model_config",
+      current: "medium",
+      options: [
+        { value: "low", name: "Low" },
+        { value: "medium", name: "Medium" },
+        { value: "high", name: "High" },
+      ],
+    },
+  ]);
+  assert.deepEqual(modelParamOptions(liveCursor, "mode").map((row) => row.id), ["fast", "reasoning"]);
+  assert.equal(liveCursor[0].options.length, 2);
 });
 
 test("remembered extra high restores only while the live model still offers it", () => {

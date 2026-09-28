@@ -177,6 +177,16 @@ function QuestionView({
     );
   }
   const ready = parsed.fields.every((field) => (values[field.id] ?? "").trim() !== "");
+  const selectedIds = (raw: string) =>
+    raw.split(",").map((part) => part.trim()).filter(Boolean);
+  const toggleValue = (field: (typeof parsed.fields)[number], optionId: string) => {
+    setValues((current) => {
+      if (!field.allowMultiple) return { ...current, [field.id]: optionId };
+      const have = selectedIds(current[field.id] ?? "");
+      const next = have.includes(optionId) ? have.filter((id) => id !== optionId) : [...have, optionId];
+      return { ...current, [field.id]: next.join(",") };
+    });
+  };
   return (
     <form
       data-oceanleo-cc-question={item.questionId}
@@ -187,28 +197,42 @@ function QuestionView({
         onSubmit(item.questionId, values);
       }}
     >
-      {item.title ? <p className="text-[13px]">{item.title}</p> : null}
+      <p className="text-[13px]">{item.title || tt("需要你回答")}</p>
+      {item.detail ? (
+        <pre className={`max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] ${tone.muted}`}>
+          {item.detail}
+        </pre>
+      ) : null}
       {parsed.fields.map((field) => (
         <fieldset key={field.id} className="space-y-1">
           <legend className={`text-[12px] ${tone.muted}`}>{field.title}</legend>
           {field.options.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
-              {field.options.map((option) => (
+              {field.options.map((option) => {
+                const pressed = selectedIds(values[field.id] ?? "").includes(option.id);
+                const label =
+                  field.id === "__plan__" && option.id === "accepted"
+                    ? tt("接受计划")
+                    : field.id === "__plan__" && option.id === "rejected"
+                      ? tt("拒绝")
+                      : option.label;
+                return (
                 <button
                   key={option.id}
                   type="button"
                   data-oceanleo-cc-question-option={option.id}
-                  aria-pressed={values[field.id] === option.id}
-                  onClick={() => setValues((current) => ({ ...current, [field.id]: option.id }))}
+                  aria-pressed={pressed}
+                  onClick={() => toggleValue(field, option.id)}
                   className={`rounded-lg px-2 py-1 text-[12px] ${
-                    values[field.id] === option.id
+                    pressed
                       ? tone.chipActive
                       : `border ${tone.border} ${tone.hover}`
                   }`}
                 >
-                  {option.label}
+                  {label}
                 </button>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <input
@@ -447,6 +471,23 @@ const AGENT_AVATAR = {
   hermes: { mark: "H", color: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300" },
 };
 
+function isBlockingPrompt(item: TurnItem): boolean {
+  if (item.kind === "permission") return !item.chosen && !item.auto;
+  if (item.kind === "question") return !item.submitted;
+  return false;
+}
+
+function blockingPrompts(messages: AgentDialogMessage[]): TurnItem[] {
+  const out: TurnItem[] = [];
+  for (const message of messages) {
+    if (message.kind !== "turn") continue;
+    for (const item of message.items) {
+      if (isBlockingPrompt(item)) out.push(item);
+    }
+  }
+  return out;
+}
+
 export function MessageList({ dialog }: { dialog: AgentDialogController }) {
   const tt = useUI();
   const ref = useRef<HTMLDivElement>(null);
@@ -527,14 +568,25 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                 {avatar.mark}
               </span>
               <div className="min-w-0 flex-1 space-y-2 break-words [overflow-wrap:anywhere]">
-                {message.items.map((item) => (
-                  <ItemView key={item.id} item={item} dialog={dialog} />
-                ))}
+                {message.items.map((item) =>
+                  isBlockingPrompt(item) ? null : (
+                    <ItemView key={item.id} item={item} dialog={dialog} />
+                  ),
+                )}
               </div>
             </div>
           );
         })}
       </div>
+      {blockingPrompts(dialog.messages).map((item) => (
+        <div
+          key={item.id}
+          data-oceanleo-cc-prompt-dock=""
+          className={`shrink-0 border-t px-3 py-2 ${tone.border} ${tone.panel}`}
+        >
+          <ItemView item={item} dialog={dialog} />
+        </div>
+      ))}
       {showLatest ? (
         <button
           type="button"

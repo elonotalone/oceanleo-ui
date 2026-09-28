@@ -139,7 +139,7 @@ export function parseMode(raw: unknown): ModeOption | null {
   for (const item of raw) {
     const row = asRecord(item);
     if (!row) continue;
-    const id = str(row.id);
+    const id = str(row.id) || str(row.configId);
     const category = str(row.category);
     if (category !== "mode" && id !== "mode") continue;
     const options: { value: string; name: string }[] = [];
@@ -161,33 +161,48 @@ export function parseMode(raw: unknown): ModeOption | null {
   return null;
 }
 
+function flattenConfigChoices(raw: unknown): { value: string; name: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const options: { value: string; name: string }[] = [];
+  for (const rawOption of raw) {
+    const option = asRecord(rawOption);
+    if (!option) continue;
+    if (Array.isArray(option.options) && option.value === undefined) {
+      options.push(...flattenConfigChoices(option.options));
+      continue;
+    }
+    const value = optionWire(option.value);
+    if (!value) continue;
+    options.push({ value, name: str(option.name) || value });
+  }
+  return options;
+}
+
 export function parseConfigOptions(raw: unknown): DialogConfigOption[] {
   if (!Array.isArray(raw)) return [];
   const out: DialogConfigOption[] = [];
   for (const item of raw) {
     const row = asRecord(item);
-    if (!row || !str(row.id)) continue;
-    const options: { value: string; name: string }[] = [];
-    if (Array.isArray(row.options)) {
-      for (const rawOption of row.options) {
-        const option = asRecord(rawOption);
-        if (!option) continue;
-        const value = optionWire(option.value);
-        if (!value) continue;
-        options.push({ value, name: str(option.name) || value });
-      }
-    }
-    const current = typeof row.current === "boolean" ? row.current : (optionWire(row.current) || str(row.current));
+    if (!row) continue;
+    const id = str(row.id) || str(row.configId);
+    if (!id) continue;
+    const options = flattenConfigChoices(row.options);
+    const rawCurrent = row.current !== undefined ? row.current : row.currentValue;
+    const current = typeof rawCurrent === "boolean" ? rawCurrent : (optionWire(rawCurrent) || str(rawCurrent));
     const rawType = str(row.type);
+    const booleanType = rawType === "bool" || rawType === "boolean" || typeof current === "boolean";
+    if (booleanType && options.length === 0) {
+      options.push({ value: "true", name: "true" }, { value: "false", name: "false" });
+    }
     const type =
-      rawType === "bool" || typeof current === "boolean"
+      booleanType
         ? "bool"
         : rawType === "select" || options.length > 0
           ? "select"
           : "text";
     out.push({
-      id: str(row.id),
-      name: str(row.name) || str(row.id),
+      id,
+      name: str(row.name) || id,
       category: str(row.category),
       type,
       current,

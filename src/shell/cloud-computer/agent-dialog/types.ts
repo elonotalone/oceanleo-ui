@@ -146,6 +146,7 @@ export type TurnItem =
       id: string;
       questionId: string;
       title: string;
+      detail: string;
       questions: unknown;
       submitted: boolean;
     };

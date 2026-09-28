@@ -1,4 +1,6 @@
 // Cursor 的提问结构不固定。认得出「标题 + 选项」就按项渲染，否则整张卡退成一个文本框。
+// cursor/ask_question 把题目数组放在 `{ questions: [...] }` 里，不能把整个 params 对象
+// 当成数组——否则界面只剩「需要你回答」，选项丢失，回包也不被 Cursor 认。
 
 import { asRecord } from "./parse";
 
@@ -6,6 +8,7 @@ export type QuestionField = {
   id: string;
   title: string;
   options: { id: string; label: string }[];
+  allowMultiple: boolean;
 };
 
 export type QuestionForm =
@@ -43,17 +46,31 @@ function readOptions(raw: unknown): { id: string; label: string }[] | null {
   return options;
 }
 
+/** Cursor 把题目放在 params.questions；老帧也可能直接给数组。 */
+export function questionItemsOf(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  const rec = asRecord(raw);
+  if (rec && Array.isArray(rec.questions)) return rec.questions;
+  return [];
+}
+
 export function normalizeQuestions(raw: unknown): QuestionForm {
-  if (!Array.isArray(raw) || raw.length === 0) return { mode: "text" };
+  const list = questionItemsOf(raw);
+  if (list.length === 0) return { mode: "text" };
   const fields: QuestionField[] = [];
-  for (let index = 0; index < raw.length; index += 1) {
-    const item = asRecord(raw[index]);
+  for (let index = 0; index < list.length; index += 1) {
+    const item = asRecord(list[index]);
     if (!item) return { mode: "text" };
     const title = firstText(item.prompt, item.question, item.title, item.text, item.label);
     if (!title) return { mode: "text" };
     const options = readOptions(item.options ?? item.choices);
     if (!options) return { mode: "text" };
-    fields.push({ id: firstText(item.id) || `q${index}`, title, options });
+    fields.push({
+      id: firstText(item.id) || `q${index}`,
+      title,
+      options,
+      allowMultiple: item.allowMultiple === true,
+    });
   }
   return { mode: "fields", fields };
 }

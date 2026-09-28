@@ -137,8 +137,10 @@ export function modelParamOptions(
   return options.filter((option) => {
     if (!option.id || isModelFamilyConfig(option, modeId)) return false;
     if (option.options.length < 2) return false;
-    const hay = `${option.id} ${option.category}`.toLowerCase();
-    return /fast|effort|think|thought|variant|max.?mode/.test(hay);
+    const category = option.category.toLowerCase();
+    if (category === "model_config" || category === "thought_level") return true;
+    const hay = `${option.id} ${option.category} ${option.name}`.toLowerCase();
+    return /fast|effort|think|thought|reason|speed|variant|max.?mode/.test(hay);
   });
 }
 
