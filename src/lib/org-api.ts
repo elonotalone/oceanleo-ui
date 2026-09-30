@@ -77,12 +77,15 @@ export type OrgApiCode =
 export class OrgApiError extends Error {
   readonly code: OrgApiCode;
   readonly status: number;
+  /** 网关 body 里的原因（`detail` 等）；没有就空串，界面再退到 `orgErrorCopy(code)`。 */
+  readonly detail: string;
 
-  constructor(code: OrgApiCode, status = 0) {
+  constructor(code: OrgApiCode, status = 0, detail = "") {
     super(`org-api: ${code} (HTTP ${status})`);
     this.name = "OrgApiError";
     this.code = code;
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -247,6 +250,31 @@ async function call<T>(
   };
 }
 
+function failureDetail(data: unknown): string {
+  if (typeof data === "string" && data.trim()) return data.trim();
+  if (!data || typeof data !== "object") return "";
+  const rec = data as Record<string, unknown>;
+  const detail = rec.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const row = item as Record<string, unknown>;
+          if (typeof row.msg === "string") return row.msg;
+          if (typeof row.message === "string") return row.message;
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  if (typeof rec.error === "string" && rec.error.trim()) return rec.error.trim();
+  if (typeof rec.message === "string" && rec.message.trim()) return rec.message.trim();
+  return "";
+}
+
 /** 失败就抛。主请求用这个；补充请求用 `call()` 自己吞掉失败。 */
 async function must<T>(
   path: string,
@@ -255,7 +283,7 @@ async function must<T>(
 ): Promise<T> {
   const res = await call<T>(path, init, notFoundMeans);
   if (!res.ok || res.data === undefined) {
-    throw new OrgApiError(res.code || "unknown", res.status);
+    throw new OrgApiError(res.code || "unknown", res.status, failureDetail(res.data));
   }
   return res.data;
 }
@@ -998,6 +1026,7 @@ export interface OrgMcpConnectBody {
   endpoint?: string;
   label?: string;
   memberVisible?: boolean;
+  forwardMemberIdentity?: boolean;
 }
 
 /**
@@ -1022,6 +1051,7 @@ export async function upsertOrgMcpConnection(
           endpoint: str(body.endpoint).trim(),
           label: str(body.label).trim() || connectorId,
           member_visible: body.memberVisible !== false,
+          forward_member_identity: body.forwardMemberIdentity === true,
         }),
       },
       "not_available",

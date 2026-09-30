@@ -143,6 +143,14 @@ export async function getMcpConnections(): Promise<McpConnection[]> {
   return (data?.connections || []) as McpConnection[];
 }
 
+const CONNECT_MCP_TIMEOUT_MS = 35_000;
+
+function isAbortLike(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = (error as { name?: string }).name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
 export async function connectMcp(input: {
   connector_id: string;
   token?: string;
@@ -152,15 +160,22 @@ export async function connectMcp(input: {
 }): Promise<{ ok: boolean; error?: string; tools_count?: number }> {
   const headers = await authHeader();
   if (!headers.Authorization) return { ok: false, error: "请先登录" };
-  const res = await fetch(`${GATEWAY_BASE}/v1/mcp/connect`, {
-    credentials: "include",
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
-  return { ok: true, tools_count: data?.tools_count };
+  try {
+    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/connect`, {
+      credentials: "include",
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(CONNECT_MCP_TIMEOUT_MS),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
+    return { ok: true, tools_count: data?.tools_count };
+  } catch (err) {
+    if (isAbortLike(err)) return { ok: false, error: "连接超时，请重试" };
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message || "连接失败" };
+  }
 }
 
 /**

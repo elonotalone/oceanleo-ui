@@ -11,19 +11,21 @@
 // 自动出现，成员不填凭证也删不掉。没有组织的人看到的页面与今天逐像素一致。
 // ============================================================================
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { currencySymbol } from "../lib/money";
 import {
   upsertOrgMcpConnection,
   type OrgSummary,
 } from "../lib/org-api";
+import { getMcpRegistry } from "../lib/mcp-api";
 import { PageHeader } from "./PageHeader";
 import { ConnectorsSection } from "./plugins/ConnectorsSection";
+import { workspaceMcpForwardsIdentityByDefault } from "./plugins/connector-logic";
+import { InTreeDialog } from "./plugins/parts";
 import { SkillsSection } from "./plugins/SkillsSection";
 import { useUI } from "../i18n/ui/useUI";
 import {
   canManageOrgMcp,
-  quietOrg,
   shouldRenderOrgSection,
   usePluginsCatalog,
 } from "../shell/usePluginsCatalog";
@@ -302,12 +304,22 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
   );
 }
 
+function orgConnectErrorText(error: unknown, tt: (zh: string) => string): string {
+  if (error && typeof error === "object") {
+    const rec = error as { detail?: unknown; message?: unknown };
+    if (typeof rec.detail === "string" && rec.detail.trim()) return rec.detail.trim();
+    if (typeof rec.message === "string" && rec.message.trim() && !rec.message.startsWith("org-api:")) {
+      return rec.message.trim();
+    }
+  }
+  return tt("连接失败，请检查地址与凭证后重试。");
+}
+
 /**
  * 「为组织连接」对话框。
  *
- * 共享页这一份历史上没有个人连接对话框（个人连接在主站自绘那份里），所以这里按
- * 主站同一组字段自建一份最小的：连接器、服务地址、凭证、名称。凭证只往网关送一次，
- * 之后连管理员自己也读不回来。
+ * 从目录里选连接器（默认 `custom`），不要让人把人名当成 Connector ID。凭证只往
+ * 网关送一次，之后连管理员自己也读不回来。失败原因写在对话框里，不靠 toast。
  */
 function OrgConnectDialog({
   orgs,
@@ -322,129 +334,180 @@ function OrgConnectDialog({
 }) {
   const tt = useUI();
   const [orgId, setOrgId] = useState(initialOrgId);
-  const [connectorId, setConnectorId] = useState("");
+  const [connectors, setConnectors] = useState<{ id: string; name: string }[]>([
+    { id: "custom", name: "自建服务" },
+  ]);
+  const [connectorId, setConnectorId] = useState("custom");
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
   const [label, setLabel] = useState("");
   const [memberVisible, setMemberVisible] = useState(true);
+  const [forwardTouched, setForwardTouched] = useState(false);
+  const [forwardMemberIdentity, setForwardMemberIdentity] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failedMessage, setFailedMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void getMcpRegistry().then((result) => {
+      if (cancelled) return;
+      const items = (result.items || []).map((row) => ({ id: row.id, name: row.name || row.id }));
+      const hasCustom = items.some((row) => row.id === "custom");
+      setConnectors(hasCustom ? items : [{ id: "custom", name: "自建服务" }, ...items]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function setEndpointValue(value: string) {
+    setEndpoint(value);
+    if (!forwardTouched) {
+      setForwardMemberIdentity(workspaceMcpForwardsIdentityByDefault(value));
+    }
+  }
 
   async function submit() {
     if (!connectorId.trim()) return;
     setSubmitting(true);
-    setFailed(false);
-    // body 是 org-api 的 `OrgMcpConnectBody`（camelCase）；snake_case 转换在 org-api 里做。
-    const res = await quietOrg(() =>
-      upsertOrgMcpConnection(orgId, {
+    setFailedMessage("");
+    try {
+      await upsertOrgMcpConnection(orgId, {
         connectorId: connectorId.trim(),
         endpoint: endpoint.trim(),
         token: token.trim(),
         label: label.trim() || connectorId.trim(),
         memberVisible,
-      }),
-    );
-    setSubmitting(false);
-    if (res === null) {
-      setFailed(true);
-      return;
+        forwardMemberIdentity,
+      });
+      await onConnected();
+    } catch (err) {
+      setFailedMessage(orgConnectErrorText(err, tt));
+    } finally {
+      setSubmitting(false);
     }
-    await onConnected();
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-      <div data-org-mcp-dialog className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-[16px] font-semibold text-neutral-900">{tt("为组织连接 MCP")}</h3>
+    <InTreeDialog onClose={onClose} testId="org-mcp-dialog">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-[16px] font-semibold text-neutral-900">{tt("为组织连接 MCP")}</h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="space-y-3">
+        {orgs.length > 1 && (
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("连给哪个组织")}</label>
+            <select
+              data-org-mcp-org-select
+              value={orgId}
+              onChange={(e) => setOrgId(e.target.value)}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+            >
+              {orgs.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("连接器")}</label>
+          <select
+            data-org-mcp-connector-select
+            value={connectorId}
+            onChange={(e) => setConnectorId(e.target.value)}
+            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+          >
+            {connectors.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("MCP 服务地址（你的专属 URL）")}</label>
+          <input
+            data-org-mcp-endpoint
+            value={endpoint}
+            onChange={(e) => setEndpointValue(e.target.value)}
+            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">Token / API Key</label>
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("名称")}</label>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-[13px] text-neutral-700">
+          <input
+            type="checkbox"
+            checked={memberVisible}
+            onChange={(e) => setMemberVisible(e.target.checked)}
+          />
+          {tt("成员可见")}
+        </label>
+        <label data-org-mcp-dialog-forward-identity className="flex max-w-full items-start gap-2 text-[13px] text-neutral-700">
+          <input
+            type="checkbox"
+            checked={forwardMemberIdentity}
+            onChange={(e) => {
+              setForwardTouched(true);
+              setForwardMemberIdentity(e.target.checked);
+            }}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="block">{tt("把成员身份转给这台服务器")}</span>
+            <span className="mt-0.5 block text-[11px] text-neutral-500">
+              {tt("开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本组织。")}
+            </span>
+          </span>
+        </label>
+        {failedMessage ? (
+          <p data-org-mcp-error className="text-[12px] text-red-600">
+            {failedMessage}
+          </p>
+        ) : null}
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            data-org-mcp-submit
+            disabled={submitting || !connectorId.trim()}
+            onClick={() => void submit()}
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+          >
+            {submitting ? tt("连接中…") : tt("连接并验证")}
+          </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+            className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50"
           >
-            ✕
+            {tt("取消")}
           </button>
         </div>
-        <div className="space-y-3">
-          {orgs.length > 1 && (
-            <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("连给哪个组织")}</label>
-              <select
-                value={orgId}
-                onChange={(e) => setOrgId(e.target.value)}
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
-              >
-                {orgs.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("连接器标识")}</label>
-            <input
-              value={connectorId}
-              onChange={(e) => setConnectorId(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("MCP 服务地址（你的专属 URL）")}</label>
-            <input
-              value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">Token / API Key</label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("名称")}</label>
-            <input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-neutral-400"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-[13px] text-neutral-700">
-            <input
-              type="checkbox"
-              checked={memberVisible}
-              onChange={(e) => setMemberVisible(e.target.checked)}
-            />
-            {tt("成员可见")}
-          </label>
-          {failed && (
-            <p className="text-[12px] text-red-600">{tt("连接失败，请检查地址与凭证后重试。")}</p>
-          )}
-          <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              disabled={submitting || !connectorId.trim()}
-              onClick={() => void submit()}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
-            >
-              {submitting ? tt("连接中…") : tt("连接并验证")}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50"
-            >
-              {tt("取消")}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </InTreeDialog>
   );
 }

@@ -58,13 +58,17 @@ const mcpApiStub = dataModule(`
   export async function getMcpRegistry() {
     return { items: [
       { id: "github", name: "GitHub", desc: "代码托管", icon: "🐙", category: "开发", transport: "sse", auth: "oauth", auth_header: "", needs_endpoint: false, endpoint: "", help_url: "", docs: "GitHub MCP", supports_oauth: true },
-      { id: "custom", name: "自建服务", desc: "贴凭证", icon: "🔌", category: "其他", transport: "sse", auth: "token", auth_header: "", needs_endpoint: true, endpoint: "", help_url: "https://example.com/help", docs: "自建", supports_oauth: false },
+      { id: "custom", name: "自建服务", desc: "贴凭证", icon: "🔌", category: "其他", transport: "sse", auth: "url+token", auth_header: "", needs_endpoint: true, endpoint: "", help_url: "https://example.com/help", docs: "自建", supports_oauth: true },
     ] };
   }
   export async function getMcpConnections() {
     return [{ id: "c1", connector_id: "custom", label: "自建服务", endpoint: "https://mcp.example.com", auth_header: "", fingerprint: "ab12", tools_count: 3, enabled: true }];
   }
-  export async function connectMcp() { return { ok: true, tools_count: 1 }; }
+  export async function connectMcp(input) {
+    const hook = globalThis.__W2_MCP_CONNECT__;
+    if (typeof hook === "function") return hook(input);
+    return { ok: true, tools_count: 1 };
+  }
   export async function startMcpOauth() { return { ok: false, error: "stub" }; }
   export async function disconnectMcp() { return { ok: true }; }
   export async function toggleMcp() { return { ok: true }; }
@@ -164,8 +168,8 @@ async function withDom(run, url = "https://ppt.oceanleo.com/plugins") {
       render,
       container,
       window,
-      find: (selector) => container.querySelector(selector),
-      findAll: (selector) => [...container.querySelectorAll(selector)],
+      find: (selector) => window.document.querySelector(selector),
+      findAll: (selector) => [...window.document.querySelectorAll(selector)],
       click: (node) => {
         assert.ok(node, "点不到目标");
         return act(async () => node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
@@ -174,6 +178,7 @@ async function withDom(run, url = "https://ppt.oceanleo.com/plugins") {
   } finally {
     await act(async () => root.unmount());
     window.close();
+    delete globalThis.__W2_MCP_CONNECT__;
     for (const undo of restore.reverse()) undo();
     delete globalThis.IS_REACT_ACT_ENVIRONMENT;
   }
@@ -214,5 +219,35 @@ test("页面上的 OAuth 回跳 origin 等于当前来源，且不含通配", as
     const origin = node.getAttribute("data-mcp-oauth-return-origin") || "";
     assert.equal(origin, "https://ppt.oceanleo.com");
     assert.ok(!origin.includes("*"), `回跳 origin 含通配：${origin}`);
+  });
+});
+
+test("自定义 MCP（id=custom）主按钮是凭证连接，一键授权不在主路径", async () => {
+  await withDom(async ({ render, find, click }) => {
+    await render();
+    await click(find('[data-mcp-connector="custom"]'));
+    const dialog = find('[data-in-tree-dialog="mcp-connect"]');
+    assert.ok(dialog, "连接对话框必须出现");
+    const connectBtn = dialog.querySelector("button[data-mcp-connect]");
+    assert.ok(connectBtn, "custom 的主路径必须是凭证按钮");
+    assert.match(connectBtn.textContent || "", /用凭证连接并验证/);
+    assert.equal(dialog.querySelector("[data-mcp-oauth]"), null, "一键授权不能当 custom 的主按钮");
+  });
+});
+
+test("凭证连接失败时，网关原因写在对话框里，不依赖 toast", async () => {
+  globalThis.__W2_MCP_CONNECT__ = async () => ({ ok: false, error: "连接失败：探针 502" });
+  await withDom(async ({ render, find, click }) => {
+    await render();
+    await click(find('[data-mcp-connector="custom"]'));
+    const dialog = find('[data-in-tree-dialog="mcp-connect"]');
+    assert.ok(dialog);
+    await click(dialog.querySelector("button[data-mcp-connect]"));
+    const status = find("[data-mcp-connect-status]");
+    assert.ok(status, "失败必须出现在对话框内的状态区");
+    assert.equal(status.getAttribute("data-mcp-connect-status"), "error");
+    assert.match(status.textContent || "", /连接失败：探针 502/);
+    assert.match(dialog.textContent || "", /连接失败：探针 502/);
+    assert.equal(find("[data-leo-toast-viewport]"), null, "失败不依赖 toast");
   });
 });

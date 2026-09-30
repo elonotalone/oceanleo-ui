@@ -47,7 +47,7 @@ const orgApiStub = dataModule(`
   export async function listMyOrgs() { count("listMyOrgs"); return g().listMyOrgs(); }
   export async function listInheritedMcp() { count("listInheritedMcp"); return g().listInheritedMcp(); }
   export async function listOrgMcpConnections(orgId) { count("listOrgMcpConnections:" + orgId); return g().listOrgMcpConnections(orgId); }
-  export async function upsertOrgMcpConnection(orgId, body) { count("upsertOrgMcpConnection:" + orgId); return g().upsertOrgMcpConnection(orgId, body); }
+  export async function upsertOrgMcpConnection(orgId, body) { count("upsertOrgMcpConnection:" + orgId); g().lastUpsert = { orgId, body }; return g().upsertOrgMcpConnection(orgId, body); }
   export async function patchOrgMcpConnection(orgId, connectorId, patch) { count("patchOrgMcpConnection:" + orgId + ":" + connectorId + ":" + JSON.stringify(patch)); return g().patchOrgMcpConnection(orgId, connectorId, patch); }
   export async function deleteOrgMcpConnection(orgId, connectorId) { count("deleteOrgMcpConnection:" + orgId + ":" + connectorId); return g().deleteOrgMcpConnection(orgId, connectorId); }
   export async function setOrgMcpForwardIdentity(orgId, connectorId, forward) { count("setOrgMcpForwardIdentity:" + orgId + ":" + connectorId + ":" + JSON.stringify(forward)); return g().setOrgMcpForwardIdentity(orgId, connectorId, forward); }
@@ -68,7 +68,12 @@ const mcpApiStub = dataModule(`
   export function mcpOauthMessageOrigin() { return "https://api.oceanleo.com"; }
   export function mcpOauthOpensPortalPage() { return false; }
   export function mcpOauthPortalPageHref() { return "https://oceanleo.com/plugins"; }
-  export async function getMcpRegistry() { return { items: [] }; }
+  export async function getMcpRegistry() {
+    return { items: [
+      { id: "custom", name: "自建服务", desc: "贴凭证", icon: "🔌", category: "其他", transport: "sse", auth: "url+token", auth_header: "", needs_endpoint: true, endpoint: "", help_url: "", docs: "", supports_oauth: false },
+      { id: "github", name: "GitHub", desc: "代码托管", icon: "🐙", category: "开发", transport: "sse", auth: "oauth", auth_header: "", needs_endpoint: false, endpoint: "", help_url: "", docs: "", supports_oauth: true },
+    ] };
+  }
   export async function getMcpConnections() { return []; }
   export async function connectMcp() { return { ok: true }; }
   export async function startMcpOauth() { return { ok: false }; }
@@ -197,6 +202,7 @@ async function withDom(run, { orgApi = {} } = {}) {
 
   globalThis.__W15_ORG_API__ = {
     calls: [],
+    lastUpsert: null,
     listMyOrgs: async () => [],
     listInheritedMcp: async () => ({ connections: [] }),
     listOrgMcpConnections: async () => ({ connections: [] }),
@@ -228,10 +234,11 @@ async function withDom(run, { orgApi = {} } = {}) {
       container,
       html: () => container.innerHTML,
       text: () => container.textContent,
-      find: (selector) => container.querySelector(selector),
-      findAll: (selector) => [...container.querySelectorAll(selector)],
+      find: (selector) => window.document.querySelector(selector),
+      findAll: (selector) => [...window.document.querySelectorAll(selector)],
       buttons: (root = container) => [...root.querySelectorAll("button")].map((b) => b.textContent.trim()),
       calls: () => globalThis.__W15_ORG_API__.calls,
+      lastUpsert: () => globalThis.__W15_ORG_API__.lastUpsert,
       fetchCalls: () => fetchCalls,
       click: (node) => {
         assert.ok(node, "点不到目标");
@@ -442,7 +449,7 @@ test("管理员视角：启用/停用、成员可见、断开、为组织连接�
       // 点「为组织连接」→ 对话框出现，且只有一个组织时不出下拉。
       await click(find("[data-org-mcp-connect-entry]"));
       assert.ok(find("[data-org-mcp-dialog]"), "对话框必须出现");
-      assert.equal(find("[data-org-mcp-dialog] select"), null, "单组织不出「连给哪个组织」下拉");
+      assert.equal(find("[data-org-mcp-dialog] [data-org-mcp-org-select]"), null, "单组织不出「连给哪个组织」下拉");
 
       assert.equal(fetchCalls(), 0, "整个过程插件页自己一次 fetch 都没发（A3）");
     },
@@ -466,7 +473,7 @@ test("多组织管理员：「为组织连接」对话框出「连给哪个组�
     async ({ render, find, findAll, click }) => {
       await render();
       await click(find("[data-org-mcp-connect-entry]"));
-      const options = findAll("[data-org-mcp-dialog] select option");
+      const options = findAll("[data-org-mcp-org-select] option");
       assert.deepEqual(
         options.map((o) => [o.value, o.textContent]),
         [
@@ -562,5 +569,95 @@ test("org_name 优先于 listMyOrgs 按 id 补的名字", async () => {
         listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "极目野光", "amap")] }),
       },
     },
+  );
+});
+
+async function fillInput(node, value) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  setter.call(node, value);
+  await act(async () => node.dispatchEvent(new window.Event("input", { bubbles: true })));
+}
+
+test("为组织连接：目录下拉含 custom，提交送 connectorId=custom 而不是显示名", async () => {
+  await withDom(
+    async ({ render, find, findAll, click, settle, lastUpsert, fetchCalls }) => {
+      await render();
+      await click(find("[data-org-mcp-connect-entry]"));
+      await settle();
+      const select = find("[data-org-mcp-connector-select]");
+      assert.ok(select, "必须从目录选连接器");
+      const options = findAll("[data-org-mcp-connector-select] option").map((o) => [o.value, o.textContent]);
+      assert.ok(options.some(([id]) => id === "custom"), `目录必须含 custom，实际：${JSON.stringify(options)}`);
+      assert.equal(select.value, "custom", "默认选 custom");
+      await click(find("[data-org-mcp-submit]"));
+      await settle();
+      assert.equal(lastUpsert()?.body?.connectorId, "custom");
+      assert.notEqual(lastUpsert()?.body?.connectorId, "自建服务");
+      assert.equal(fetchCalls(), 0, "组织侧只走 org-api，不自建 fetch");
+    },
+    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "admin")] } },
+  );
+});
+
+test("为组织连接失败：网关原因写在对话框里，不只翻一个失败旗", async () => {
+  await withDom(
+    async ({ render, find, click, settle }) => {
+      await render();
+      await click(find("[data-org-mcp-connect-entry]"));
+      await settle();
+      await click(find("[data-org-mcp-submit]"));
+      await settle();
+      const dialog = find("[data-org-mcp-dialog]");
+      assert.ok(dialog);
+      const error = find("[data-org-mcp-error]");
+      assert.ok(error, "失败必须出现在对话框里");
+      assert.match(error.textContent || "", /连接失败：is_valid 拒绝了 test1111/);
+      assert.match(dialog.textContent || "", /连接失败：is_valid 拒绝了 test1111/);
+      assert.ok(find("[data-org-mcp-dialog]"), "失败后对话框还在");
+    },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
+        upsertOrgMcpConnection: async () => {
+          const err = new Error("连接失败：is_valid 拒绝了 test1111");
+          err.detail = "连接失败：is_valid 拒绝了 test1111";
+          throw err;
+        },
+      },
+    },
+  );
+});
+
+test("为组织连接可以送 forwardMemberIdentity: true", async () => {
+  await withDom(
+    async ({ render, find, click, settle, lastUpsert }) => {
+      await render();
+      await click(find("[data-org-mcp-connect-entry]"));
+      await settle();
+      const box = find("[data-org-mcp-dialog-forward-identity] input");
+      assert.ok(box, "对话框要有转发身份开关");
+      assert.equal(box.checked, false, "默认关（端点还不是 workspace-mcp）");
+      await click(box);
+      await click(find("[data-org-mcp-submit]"));
+      await settle();
+      assert.equal(lastUpsert()?.body?.forwardMemberIdentity, true);
+      assert.equal(lastUpsert()?.body?.connectorId, "custom");
+    },
+    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "admin")] } },
+  );
+});
+
+test("端点是 workspace-mcp.oceandino.com 时，转发身份默认勾上", async () => {
+  await withDom(
+    async ({ render, find, click, settle }) => {
+      await render();
+      await click(find("[data-org-mcp-connect-entry]"));
+      await settle();
+      const box = find("[data-org-mcp-dialog-forward-identity] input");
+      assert.equal(box.checked, false);
+      await fillInput(find("[data-org-mcp-endpoint]"), "https://workspace-mcp.oceandino.com/mcp");
+      assert.equal(box.checked, true, "工作区 MCP 默认转发成员身份");
+    },
+    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "admin")] } },
   );
 });

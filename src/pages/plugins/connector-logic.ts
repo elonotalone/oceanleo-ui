@@ -49,6 +49,28 @@ export function showOneClickButton(supportsOauth: boolean | undefined): boolean 
   return Boolean(supportsOauth);
 }
 
+/**
+ * 自定义 MCP（`id === "custom"`，凭证 auth）没有登录页，一键授权不能当主按钮。
+ * 其它连接器仍按 `supports_oauth` 决定主路径。
+ */
+export function credentialsArePrimaryPath(connector: {
+  id: string;
+  supports_oauth?: boolean;
+}): boolean {
+  return connector.id === "custom" || !showOneClickButton(connector.supports_oauth);
+}
+
+const WORKSPACE_MCP_HOST = "workspace-mcp.oceandino.com";
+
+/** 连 OceanLeo 工作区 MCP 时，默认把成员身份转给这台服务器。 */
+export function workspaceMcpForwardsIdentityByDefault(endpoint: string): boolean {
+  try {
+    return new URL(endpoint.trim()).hostname.toLowerCase() === WORKSPACE_MCP_HOST;
+  } catch {
+    return false;
+  }
+}
+
 export function oneClickDisabled(
   needsEndpoint: boolean,
   endpoint: string,

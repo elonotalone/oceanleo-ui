@@ -26,6 +26,7 @@ import {
   connectorIdFromLocationHash,
   filterRegistryItems,
   groupRegistryByCategory,
+  credentialsArePrimaryPath,
   helpUrlIsPrimaryPath,
   isConnectionStale,
   oauthConnectionLanded,
@@ -62,6 +63,8 @@ export function ConnectorsSection({
   const [probing, setProbing] = useState(false);
   const [probeFailed, setProbeFailed] = useState(false);
   const [probeError, setProbeError] = useState("");
+  const [connectError, setConnectError] = useState("");
+  const [connectToolsCount, setConnectToolsCount] = useState<number | null>(null);
   const oauthPopupRef = useRef<Window | null>(null);
   const oauthSettledRef = useRef(false);
   const oauthStartedAtRef = useRef<number | null>(null);
@@ -124,6 +127,8 @@ export function ConnectorsSection({
       setShowAdvanced(false);
       setProbeFailed(false);
       setProbeError("");
+      setConnectError("");
+      setConnectToolsCount(null);
       if (existing) void runProbe(c.id, true);
     },
     [connByConnector, runProbe],
@@ -256,29 +261,38 @@ export function ConnectorsSection({
     const c = selected;
     if (!c) return;
     if (c.needs_endpoint && !connUrl.trim()) {
-      toast.error(tt("该连接器需要填写专属的 MCP 服务地址"));
+      setConnectToolsCount(null);
+      setConnectError(tt("该连接器需要填写专属的 MCP 服务地址"));
       return;
     }
     const needsToken = c.auth !== "url" && c.auth !== "none";
     if (needsToken && !connToken.trim() && !connByConnector.get(c.id)) {
-      toast.error(tt("请填写该连接器所需的 Token / API Key"));
+      setConnectToolsCount(null);
+      setConnectError(tt("请填写该连接器所需的 Token / API Key"));
       return;
     }
     setConnecting(true);
-    const res = await connectMcp({
-      connector_id: c.id,
-      token: connToken.trim(),
-      endpoint: connUrl.trim(),
-      label: connLabel.trim() || c.name,
-    });
-    setConnecting(false);
-    if (!res.ok) {
-      toast.error(res.error || tt("连接失败"));
-      return;
+    setConnectError("");
+    setConnectToolsCount(null);
+    try {
+      const res = await connectMcp({
+        connector_id: c.id,
+        token: connToken.trim(),
+        endpoint: connUrl.trim(),
+        label: connLabel.trim() || c.name,
+      });
+      if (!res.ok) {
+        setConnectError(res.error || tt("连接失败"));
+        return;
+      }
+      setConnectToolsCount(res.tools_count ?? 0);
+      await loadConnections();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setConnectError(message || tt("连接失败"));
+    } finally {
+      setConnecting(false);
     }
-    toast.success(tt("已连接 {name}（发现 {n} 个工具）", { name: c.name, n: res.tools_count ?? 0 }));
-    setSelected(null);
-    await loadConnections();
   }
 
   async function handleDisconnect(connectorId: string) {
@@ -398,6 +412,8 @@ export function ConnectorsSection({
           probing={probing}
           probeFailed={probeFailed}
           probeError={probeError}
+          connectError={connectError}
+          connectToolsCount={connectToolsCount}
           onToken={setConnToken}
           onUrl={setConnUrl}
           onLabel={setConnLabel}
@@ -480,6 +496,8 @@ function ConnectorDialog({
   probing,
   probeFailed,
   probeError,
+  connectError,
+  connectToolsCount,
   onToken,
   onUrl,
   onLabel,
@@ -502,6 +520,8 @@ function ConnectorDialog({
   probing: boolean;
   probeFailed: boolean;
   probeError: string;
+  connectError: string;
+  connectToolsCount: number | null;
   onToken: (v: string) => void;
   onUrl: (v: string) => void;
   onLabel: (v: string) => void;
@@ -516,7 +536,28 @@ function ConnectorDialog({
   const tt = useUI();
   const needsToken = connector.auth !== "url" && connector.auth !== "none";
   const oauth = showOneClickButton(connector.supports_oauth);
+  const credentialsPrimary = credentialsArePrimaryPath(connector);
   const stale = probeFailed;
+  const connectLabel = connecting
+    ? tt("连接中…")
+    : connector.id === "custom"
+      ? tt("用凭证连接并验证")
+      : stale || connection
+        ? tt("重新连接 / 更新")
+        : tt("连接并验证");
+  const connectStatus = connecting
+    ? { kind: "connecting" as const, text: tt("连接中…") }
+    : connectError
+      ? { kind: "error" as const, text: connectError }
+      : connectToolsCount !== null
+        ? {
+            kind: "ok" as const,
+            text: tt("已连接 {name}（发现 {n} 个工具）", {
+              name: connector.name,
+              n: connectToolsCount,
+            }),
+          }
+        : null;
   const manageButtons = connection ? (
     <>
       <button
@@ -606,7 +647,7 @@ function ConnectorDialog({
       {connector.docs ? (
         <div className="mb-4 text-[13px] leading-relaxed text-neutral-700">{connector.docs}</div>
       ) : null}
-      {!oauth && helpUrlIsPrimaryPath(false) && (
+      {credentialsPrimary && helpUrlIsPrimaryPath(false) && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-950">
           <p>{tt("这家需要你自己去 {name} 拿凭证，不能一键授权。", { name: connector.name })}</p>
           {connector.help_url ? (
@@ -627,8 +668,62 @@ function ConnectorDialog({
           {probeError ? <p className="mt-1 text-[12px] text-red-700">{probeError}</p> : null}
         </div>
       )}
+      {connectStatus ? (
+        <div
+          data-mcp-connect-status={connectStatus.kind}
+          className={`mb-4 rounded-lg border p-3 text-[13px] ${
+            connectStatus.kind === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : connectStatus.kind === "ok"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-neutral-200 bg-neutral-50 text-neutral-700"
+          }`}
+        >
+          {connectStatus.text}
+        </div>
+      ) : null}
       <div className="space-y-3">
-        {oauth ? (
+        {credentialsPrimary ? (
+          <>
+            {manualFields}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                data-mcp-connect
+                disabled={connecting}
+                onClick={onConnect}
+                className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+              >
+                {connectLabel}
+              </button>
+              {manageButtons}
+            </div>
+            {oauth ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onAdvanced}
+                  className="text-[12px] text-neutral-500 underline hover:text-neutral-700"
+                >
+                  {showAdvanced ? tt("收起") : tt("高级：一键授权")}
+                </button>
+                {showAdvanced && (
+                  <div className="space-y-3 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                    <button
+                      type="button"
+                      data-mcp-oauth
+                      disabled={oneClickDisabled(connector.needs_endpoint, connUrl, authorizing)}
+                      onClick={onOauth}
+                      className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-[13px] font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-60"
+                    >
+                      {tt(primaryOauthLabel({ authorizing, connected: Boolean(connection), stale }))}
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </>
+        ) : (
           <>
             {connector.needs_endpoint && (
               <div>
@@ -690,22 +785,6 @@ function ConnectorDialog({
                 </button>
               </div>
             )}
-          </>
-        ) : (
-          <>
-            {manualFields}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                data-mcp-connect
-                disabled={connecting}
-                onClick={onConnect}
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
-              >
-                {connecting ? tt("连接中…") : stale || connection ? tt("重新连接 / 更新") : tt("连接并验证")}
-              </button>
-              {manageButtons}
-            </div>
           </>
         )}
         {connection && (
