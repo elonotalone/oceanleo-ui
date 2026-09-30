@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { currentDomainFamily, currentDomainProfile } from "../../contracts/domain-family";
+import { currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import type { Computer } from "../../lib/cloud-computer-api";
 import type { ComputerDisplayState } from "../cloud-computer/computer-state";
@@ -93,9 +93,8 @@ export function DeviceStatusPopover({ className = "" }: { className?: string }) 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
-    const hideCloud = currentDomainFamily() === "cn";
     const devices: PairedDevice[] = await fetchPairedDevices();
-    const computers: Computer[] = hideCloud ? [] : await fetchStatusComputers();
+    const computers: Computer[] = await fetchStatusComputers();
     setView(buildDeviceStatusView(devices, computers));
   }, []);
 

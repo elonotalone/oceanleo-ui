@@ -71,7 +71,7 @@ const STUBS = {
     }
   `),
   "../../contracts/domain-family": dataModule(`
-    export function currentDomainFamily() { return "com"; }
+    export function currentDomainFamily() { return globalThis.__w06Family || "com"; }
     export function currentDomainProfile() { return { portalOrigin: ${JSON.stringify(PORTAL)} }; }
   `),
   "./AnchoredFixedPopover": dataModule(`
@@ -298,6 +298,30 @@ test("小窗里每种状态的文案与设备页、坞一致；接入中那一�
       assert.ok(!view.rows().some((text) => text.startsWith(gone)), gone);
     }
   } finally {
+    view.cleanup();
+  }
+});
+
+test("国内版小窗仍拉云电脑名单，不把云电脑藏掉", async () => {
+  globalThis.__w06Family = "cn";
+  const view = await openPopover({
+    computers: [
+      row({
+        id: "cc_hz",
+        name: "杭州",
+        source: "aliyun",
+        status: "active",
+        enrolled_at: ENROLLED,
+        confirmed_at: CONFIRMED,
+        node_online: true,
+      }),
+    ],
+  });
+  try {
+    assert.deepEqual(requests, [`${GATEWAY}/v1/computers`]);
+    assert.deepEqual(view.rows(), ["杭州在线"]);
+  } finally {
+    globalThis.__w06Family = "com";
     view.cleanup();
   }
 });

@@ -459,11 +459,16 @@ test("节点升级先确认，再请求升级并轮询到在线且版本变化",
   }
 });
 
-test(".cn 版本不渲染云电脑页面并回首页", async () => {
+test(".cn 版本仍渲染云电脑页面，不回首页", async () => {
   const view = await renderPage({ domain: "cn" });
   try {
-    assert.equal(view.host.innerHTML, "");
-    assert.deepEqual(view.replaces, ["/"]);
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-server-page]")?.getAttribute(
+        "data-oceanleo-server-page",
+      ),
+      "cc_1",
+    );
+    assert.deepEqual(view.replaces, []);
   } finally {
     view.cleanup();
   }

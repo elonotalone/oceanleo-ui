@@ -8,7 +8,6 @@ import {
   type Computer,
   type NodeInfo,
 } from "../../../lib/cloud-computer-api";
-import { currentDomainFamily } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
 import { AcpCard } from "../agent-dialog/AcpCard";
@@ -141,14 +140,6 @@ async function waitForNodeUpgrade(
 }
 
 export function ServerPage(props: ServerPageProps) {
-  const router = useRouter();
-  const hidden = currentDomainFamily() === "cn";
-
-  useEffect(() => {
-    if (hidden) router.replace("/");
-  }, [hidden, router]);
-
-  if (hidden) return null;
   return <ServerPageContent key={props.computerId} {...props} />;
 }
 

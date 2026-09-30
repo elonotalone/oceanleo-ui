@@ -10,7 +10,6 @@ import {
   type DevicesFacade,
 } from "../facades/devices";
 import type { CloudComputerClient } from "../lib/cloud-computer-api";
-import { currentDomainFamily } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 import { CloudComputersSection } from "./CloudComputersPage";
@@ -89,7 +88,6 @@ export function DevicesPage({
   variant = "page",
 }: DevicesPageProps) {
   const tt = useUI();
-  const cn = currentDomainFamily() === "cn";
   const pane = variant === "pane";
   const tab = resolveDevicesTab(initialTab, !pane);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -389,12 +387,10 @@ export function DevicesPage({
           )}
         </section>
 
-        {!cn && (
-          <CloudComputersSection
-            {...(cloudClient ? { client: cloudClient } : {})}
-            autoFocus={tab === "cloud"}
-          />
-        )}
+        <CloudComputersSection
+          {...(cloudClient ? { client: cloudClient } : {})}
+          autoFocus={tab === "cloud"}
+        />
 
         <details className="rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4">
           <summary className="cursor-pointer text-[13px] font-medium text-neutral-800">

@@ -66,6 +66,22 @@ const pageHeaderStubUrl = dataModule(`
     return React.createElement("h1", null, title);
   }
 `);
+const domainStubUrl = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = globalThis.__devicesFamily || "com";
+  export function currentDomainFamily() { return globalThis.__devicesFamily || "com"; }
+  export function currentDomainProfile() {
+    const family = currentDomainFamily();
+    return {
+      family,
+      portalOrigin: family === "cn" ? "https://oceanleo.cn" : "https://oceanleo.com",
+      gatewayOrigin: "",
+      cookieDomain: "",
+      registrableDomain: family === "cn" ? "oceanleo.cn" : "oceanleo.com",
+    };
+  }
+  export function domainProfileForHost() { return currentDomainProfile(); }
+  export function familyForHost() { return currentDomainFamily(); }
+`);
 const confirmDialogStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function ConfirmDialog() {
@@ -91,6 +107,7 @@ const { DevicesPage } = await import(
     "../i18n/ui/useUI": uiTextStubUrl,
     "../ui": confirmDialogStubUrl,
     "./PageHeader": pageHeaderStubUrl,
+    "../contracts/domain-family": domainStubUrl,
     "../shell/cloud-computer/CreateComputerDialog": dialogStubUrl,
     "../shell/cloud-computer/ConnectServerDialog": dialogStubUrl,
   })
@@ -187,4 +204,24 @@ test("window.location.search tab=cloud 时同样挂载云电脑区块", async ()
   assert.ok(view.host.querySelector("[data-oceanleo-cc-section]"));
   assert.ok(view.host.querySelector("[data-oceanleo-cc-empty]"));
   view.cleanup();
+});
+
+test("国内版 stub currentDomainFamily=cn 仍挂载云电脑区块", async () => {
+  globalThis.__devicesFamily = "cn";
+  const view = await render({
+    initialTab: "cloud",
+    cloudClient: makeCloudClient([]),
+  });
+  try {
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-section]"));
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-cc-edition]")?.getAttribute(
+        "data-oceanleo-cc-edition",
+      ),
+      "cn",
+    );
+  } finally {
+    globalThis.__devicesFamily = "com";
+    view.cleanup();
+  }
 });
