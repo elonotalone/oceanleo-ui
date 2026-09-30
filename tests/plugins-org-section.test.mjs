@@ -101,12 +101,18 @@ const uiStub = dataModule(`
   }
 `);
 
+const domainStub = dataModule(`
+  export function currentDomainFamily() { return "com"; }
+  export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+`);
+
 const OVERRIDES = {
   "../lib/org-api": orgApiStub,
   "../lib/database": databaseStub,
   "../lib/mcp-api": mcpApiStub,
   "./plugins/skills-api": skillsStub,
   "../i18n/ui/useUI": uiStub,
+  "../contracts/domain-family": domainStub,
 };
 
 const lazyStub = dataModule(
@@ -306,7 +312,10 @@ test("零组织：整页没有组织区，且不碰 fetch", async () => {
     await render();
     assert.equal(find("[data-org-mcp-section]"), null, "零组织不该出现组织区");
     assert.ok(!text().includes("组织提供"), "零组织不该出现「组织提供」字样");
-    assert.ok(text().includes("高德地图"), "目录网格本身要正常渲染");
+    assert.equal(find("[data-mcp-catalog]"), null, "COM 不渲染阿里云市场网格");
+    assert.ok(!text().includes("高德地图"), "COM 不得出现国内货架名");
+    assert.ok(find("[data-plugins-skills]"), "技能区仍在");
+    assert.ok(find("[data-plugins-connectors]"), "连接器仍在");
     assert.equal(fetchCalls(), 0, "插件页自己一次 fetch 都不许发（A3）");
     assert.deepEqual(calls(), ["listMyOrgs"], "零组织时只问一次 listMyOrgs，不再问连接");
   });

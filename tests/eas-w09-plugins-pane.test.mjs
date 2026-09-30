@@ -79,12 +79,18 @@ const lazyStub = dataModule(
     "export const __stub = true;\n",
 );
 
+const domainStub = dataModule(`
+  export function currentDomainFamily() { return "com"; }
+  export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+`);
+
 const OVERRIDES = {
   "../lib/org-api": orgApiStub,
   "../lib/database": databaseStub,
   "../lib/mcp-api": mcpApiStub,
   "./plugins/skills-api": skillsStub,
   "../i18n/ui/useUI": uiStub,
+  "../contracts/domain-family": domainStub,
 };
 
 const { PluginsPage } = await import(
@@ -162,11 +168,13 @@ function backButtons(findAll) {
 }
 
 test("pane 形态：没有统一页头（没有「返回」键、没有 h1）", async () => {
-  await withDom(async ({ render, find, findAll }) => {
+  await withDom(async ({ render, find, findAll, container }) => {
     await render({ variant: "pane" });
     assert.equal(backButtons(findAll).length, 0, "设置窗面板里不该有页头的「返回」键");
     assert.equal(find("h1"), null, "面板自己有标题，pane 形态不该再渲染页头 h1");
     assert.ok(find("[data-plugins-pane]"), "pane 形态的根节点要带 data-plugins-pane，宿主据此认面板");
+    assert.equal(find("[data-mcp-catalog]"), null, "COM pane 不渲染阿里云市场网格");
+    assert.ok(!container.textContent.includes("高德地图"), "COM 不得出现国内货架名");
   });
 });
 

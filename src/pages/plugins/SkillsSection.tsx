@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { currentDomainProfile } from "../../contracts/domain-family";
+import { currentDomainFamily, currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { Switch, useToast } from "../../ui";
 import { InTreeDialog } from "./parts";
@@ -20,9 +20,15 @@ import {
   type RecentTask,
   type Skill,
 } from "./skills-api";
+import * as skillsApi from "./skills-api";
 
 /** 只有门户首页在打开时读这个键、把内容回填进输入框；子站首页不读。 */
 export const COMPOSER_PROMPT_KEY = "oceanleo_composer_prompt";
+
+function officialLibrary(): readonly { name: string; content: string }[] {
+  if (currentDomainFamily() === "cn") return skillsApi.OFFICIAL_SKILLS || OFFICIAL_SKILLS || [];
+  return skillsApi.OFFICIAL_SKILLS_COM || [];
+}
 
 function isPortalOrigin(): boolean {
   if (typeof window === "undefined") return false;
@@ -363,9 +369,10 @@ export function SkillsSection({ search }: { search: string }) {
               </button>
             </div>
             <div className="space-y-2">
-              {OFFICIAL_SKILLS.map((s) => (
+              {officialLibrary().map((s) => (
                 <div
                   key={s.name}
+                  data-official-skill={s.name}
                   className="flex items-center justify-between rounded-lg border border-neutral-200 px-3 py-2.5"
                 >
                   <div className="min-w-0 pr-3">

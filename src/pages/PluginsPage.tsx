@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { useEffect, useState, type ReactNode } from "react";
-import { currencySymbol } from "../lib/money";
+import { currencySymbol, formatMinor } from "../lib/money";
 import {
   upsertOrgMcpConnection,
   type OrgSummary,
@@ -20,6 +20,7 @@ import {
 import { getMcpRegistry } from "../lib/mcp-api";
 import { PageHeader } from "./PageHeader";
 import { ConnectorsSection } from "./plugins/ConnectorsSection";
+import { ConnectorIcon } from "./plugins/connector-icons";
 import { workspaceMcpForwardsIdentityByDefault } from "./plugins/connector-logic";
 import { InTreeDialog } from "./plugins/parts";
 import { SkillsSection } from "./plugins/SkillsSection";
@@ -64,6 +65,21 @@ function pluginPriceSymbol(currency: string | undefined): string {
   return currencySymbol(raw);
 }
 
+/** 市场报价是主单位 float；最多 4 位小数，去掉长尾。有 amount_minor 时走账本格式。 */
+function formatCatalogPrice(
+  price: number | string,
+  currency: string | undefined,
+  amountMinor?: number,
+): string {
+  if (typeof amountMinor === "number" && Number.isFinite(amountMinor)) {
+    return formatMinor(amountMinor, currency);
+  }
+  const n = typeof price === "number" ? price : Number(String(price).trim());
+  if (!Number.isFinite(n)) return `${pluginPriceSymbol(currency)}${price}`;
+  const trimmed = n.toFixed(4).replace(/\.?0+$/, "");
+  return `${pluginPriceSymbol(currency)}${trimmed}`;
+}
+
 export interface PluginsPageProps {
   accent?: string;
   title?: ReactNode;
@@ -82,6 +98,7 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
     items,
     loading,
     error,
+    showMarketplace,
     orgs,
     orgConnections,
     refreshOrgConnections,
@@ -150,9 +167,7 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
                       className="rounded-2xl border border-neutral-200 bg-white p-4"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-lg">
-                          {row.icon}
-                        </div>
+                        <ConnectorIcon icon={row.icon} id={row.connectorId} label={row.label} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-[14px] font-semibold text-neutral-900">{row.label}</span>
@@ -249,42 +264,75 @@ export function PluginsPage({ accent = "#4f46e5", title, variant = "page" }: Plu
 
         <SkillsSection search={q} />
 
-        {error ? (
-          <p className="mt-8 text-center text-sm text-neutral-500">{error}</p>
-        ) : loading ? (
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-2xl bg-neutral-100" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="mt-8 text-center text-sm text-neutral-500">{tt("没有匹配的连接器。")}</p>
-        ) : (
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {filtered.map((it, i) => (
-              <a
-                key={it.code || i}
-                href={it.detail_url || "#"}
-                target={it.detail_url ? "_blank" : undefined}
-                rel="noreferrer"
-                className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-[14px] font-semibold text-neutral-900">{it.name || it.code}</span>
-                  {it.free ? (
-                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">{tt("免费")}</span>
-                  ) : it.price != null && it.price !== "" ? (
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: `${accent}1a`, color: accent }}>
-                      {pluginPriceSymbol(it.currency)}{it.price}/{it.unit || tt("次")}
-                    </span>
-                  ) : null}
-                </div>
-                {it.vendor && <span className="mt-0.5 text-[12px] text-neutral-400">{it.vendor}</span>}
-                {it.description && <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">{it.description}</p>}
-              </a>
-            ))}
-          </div>
-        )}
+        {showMarketplace ? (
+          error ? (
+            <p className="mt-8 text-center text-sm text-neutral-500">{error}</p>
+          ) : loading ? (
+            <div data-mcp-catalog className="mt-6 grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-24 animate-pulse rounded-2xl bg-neutral-100" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <p data-mcp-catalog className="mt-8 text-center text-sm text-neutral-500">
+              {tt("没有匹配的连接器。")}
+            </p>
+          ) : (
+            <div data-mcp-catalog data-mcp-catalog-grid className="mt-6 grid gap-3 sm:grid-cols-2">
+              {filtered.map((it, i) => (
+                <a
+                  key={it.code || i}
+                  data-mcp-catalog-card={it.code || it.name || ""}
+                  href={it.detail_url || "#"}
+                  target={it.detail_url ? "_blank" : undefined}
+                  rel="noreferrer"
+                  className="group flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex items-start gap-3">
+                    {it.image_url ? (
+                      <img
+                        data-mcp-catalog-image
+                        src={it.image_url}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <ConnectorIcon id={it.code} label={it.name || it.vendor || it.code} />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[14px] font-semibold text-neutral-900">
+                          {it.name || it.code}
+                        </span>
+                        {it.free ? (
+                          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
+                            {tt("免费")}
+                          </span>
+                        ) : it.price != null && it.price !== "" ? (
+                          <span
+                            data-mcp-catalog-price
+                            className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                            style={{ background: `${accent}1a`, color: accent }}
+                          >
+                            {formatCatalogPrice(it.price, it.currency, it.amount_minor)}/{it.unit || tt("次")}
+                          </span>
+                        ) : null}
+                      </div>
+                      {it.vendor && (
+                        <span className="mt-0.5 block text-[12px] text-neutral-400">{it.vendor}</span>
+                      )}
+                    </div>
+                  </div>
+                  {it.description && (
+                    <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
+                      {it.description}
+                    </p>
+                  )}
+                </a>
+              ))}
+            </div>
+          )
+        ) : null}
 
         <ConnectorsSection search={q} oauthOnly={oauthOnly} />
       </div>

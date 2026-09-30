@@ -35,6 +35,7 @@ import {
   primaryOauthLabel,
   showOneClickButton,
 } from "./connector-logic";
+import { ConnectorIcon } from "./connector-icons";
 import { InTreeDialog } from "./parts";
 
 export function ConnectorsSection({
@@ -470,9 +471,7 @@ function ConnectorCard({
         </span>
       ) : null}
       <div className="flex gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-lg">
-          {connector.icon}
-        </div>
+        <ConnectorIcon icon={connector.icon} id={connector.id} label={connector.name} />
         <div className="min-w-0 pr-16">
           <p className="text-[13px] font-medium text-neutral-900">{connector.name}</p>
           <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
@@ -632,7 +631,7 @@ function ConnectorDialog({
     <InTreeDialog onClose={onClose} wide testId="mcp-connect">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-3xl">{connector.icon}</span>
+          <ConnectorIcon icon={connector.icon} id={connector.id} label={connector.name} size="lg" />
           <h3 className="text-[18px] font-semibold text-neutral-900">{connector.name}</h3>
         </div>
         <button

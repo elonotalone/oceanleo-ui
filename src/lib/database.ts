@@ -852,6 +852,8 @@ export interface McpItem {
   free?: boolean;
   detail_url?: string;
   description?: string;
+  image_url?: string;
+  amount_minor?: number;
 }
 
 export async function getMcpCatalog(): Promise<Result<{ items: McpItem[] }>> {

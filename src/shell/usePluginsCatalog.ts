@@ -4,6 +4,7 @@
 // 请求只走 lib/database.getMcpCatalog 与 lib/org-api，这里不自建 fetch。
 
 import { useCallback, useEffect, useState } from "react";
+import { currentDomainFamily } from "../contracts/domain-family";
 import { getMcpCatalog, type McpItem } from "../lib/database";
 import {
   deleteOrgMcpConnection,
@@ -230,6 +231,8 @@ export interface PluginsCatalogState {
   items: McpItem[];
   loading: boolean;
   error: string | null;
+  /** CN 才拉阿里云市场目录；COM 为 false，页面不得渲染那片网格。 */
+  showMarketplace: boolean;
   reload: () => void;
   orgs: OrgSummary[];
   orgConnections: OrgMcpConnection[];
@@ -243,16 +246,27 @@ export interface PluginsCatalogState {
   setForwardIdentity: (row: OrgMcpConnection, forward: boolean) => Promise<void>;
 }
 
+function marketplaceEnabled(): boolean {
+  return currentDomainFamily() === "cn";
+}
+
 export function usePluginsCatalog(): PluginsCatalogState {
   const tt = useUI();
+  const showMarketplace = marketplaceEnabled();
   const [items, setItems] = useState<McpItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(showMarketplace);
   const [error, setError] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [orgConnections, setOrgConnections] = useState<OrgMcpConnection[]>([]);
   const [busyConnector, setBusyConnector] = useState("");
 
   const reload = useCallback(() => {
+    if (!marketplaceEnabled()) {
+      setItems([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     void getMcpCatalog().then((r) => {
@@ -266,6 +280,12 @@ export function usePluginsCatalog(): PluginsCatalogState {
   }, [tt]);
 
   useEffect(() => {
+    if (!marketplaceEnabled()) {
+      setItems([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let alive = true;
     void (async () => {
       const r = await getMcpCatalog();
@@ -359,6 +379,7 @@ export function usePluginsCatalog(): PluginsCatalogState {
     items,
     loading,
     error,
+    showMarketplace,
     reload,
     orgs,
     orgConnections,

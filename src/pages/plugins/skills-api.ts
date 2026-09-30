@@ -33,6 +33,35 @@ export const OFFICIAL_SKILLS: readonly { name: string; content: string }[] = [
   { name: "数据清洗", content: "对提供的数据集进行清洗：识别并处理缺失值与异常值、统一格式、去重、生成数据质量报告，并输出清洗后的结果说明。" },
 ];
 
+/** COM 官方库：合同英文名。SkillsSection 按 `currentDomainFamily()` 选用。 */
+export const OFFICIAL_SKILLS_COM: readonly { name: string; content: string }[] = [
+  {
+    name: "Research report",
+    content:
+      "Do in-depth web research on the given topic and write a structured report with: an executive summary, key findings (with data and sources), trend analysis, and conclusions plus recommendations.",
+  },
+  {
+    name: "Slide deck",
+    content:
+      "Create a professional 10-12 page slide deck on the given topic, including a cover, agenda, key-point slides, data visualization suggestions, a summary, and speaker notes.",
+  },
+  {
+    name: "Competitor analysis",
+    content:
+      "Analyze competitors in the given industry or product: list the main players, compare features, pricing, positioning, and strengths/weaknesses, then output a comparison table and differentiation opportunities.",
+  },
+  {
+    name: "Weekly recap",
+    content:
+      "Summarize the past week's key information and data into a concise weekly recap: highlights, important progress, follow-ups, and next week's plan.",
+  },
+  {
+    name: "Data cleanup",
+    content:
+      "Clean the provided dataset: find and handle missing and outlier values, unify formats, remove duplicates, produce a data-quality report, and describe the cleaned result.",
+  },
+];
+
 function messageOf(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) {
     const message = (error as { message?: unknown }).message;
