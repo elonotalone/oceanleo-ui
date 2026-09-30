@@ -6,10 +6,14 @@ import {
   type CloudComputerClient,
   type ComputerCatalog,
 } from "../../lib/cloud-computer-api";
-import { currentDomainFamily } from "../../contracts/domain-family";
 import { formatMinor, useLedgerCurrency } from "../../lib/money";
 import { useUI } from "../../i18n/ui/useUI";
 import { Modal } from "../../ui";
+import {
+  pickDefaultRegionId,
+  pickDefaultTierId,
+  visibleCatalogTiers,
+} from "./catalog-ui";
 
 const COST_HREF = "/cost";
 
@@ -47,7 +51,7 @@ function hourlyMinor(
   diskGb: number,
 ): { amount_minor: number; currency: string } | null {
   const tier = catalog.tiers.find((item) => item.id === tierId);
-  if (!tier) return null;
+  if (!tier?.hourly) return null;
   const disk = diskGb * catalog.disk.hourly_per_gb.amount_minor;
   return {
     amount_minor: tier.hourly.amount_minor + disk,
@@ -67,7 +71,6 @@ export function CreateComputerDialog({
   loadCredits?: CreditsLoader;
 }) {
   const tt = useUI();
-  const cn = currentDomainFamily() === "cn";
   const ledgerCurrency = useLedgerCurrency();
   const [catalog, setCatalog] = useState<ComputerCatalog | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -75,6 +78,8 @@ export function CreateComputerDialog({
   const [regionId, setRegionId] = useState("");
   const [tierId, setTierId] = useState("");
   const [diskGb, setDiskGb] = useState(40);
+  const [minVcpu, setMinVcpu] = useState("");
+  const [minMemoryGb, setMinMemoryGb] = useState("");
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [step, setStep] = useState<CheckoutStep>("catalog");
@@ -82,28 +87,29 @@ export function CreateComputerDialog({
   const [creditsError, setCreditsError] = useState<string | null>(null);
   const [insufficient, setInsufficient] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
+  const catalogGen = useRef(0);
 
   useEffect(() => {
-    if (cn) return;
     let alive = true;
+    const gen = ++catalogGen.current;
     client
       .getCatalog()
       .then((data) => {
-        if (!alive) return;
+        if (!alive || gen !== catalogGen.current) return;
         setCatalog(data);
-        setRegionId(data.regions[0]?.id || "");
-        const firstLive = data.tiers.find((tier) => tier.available);
-        setTierId((firstLive || data.tiers[0])?.id || "");
+        setRegionId(pickDefaultRegionId(data));
+        setTierId(pickDefaultTierId(data.tiers));
         setDiskGb(data.disk.min_gb);
+        setLoadError(null);
       })
       .catch((err: unknown) => {
-        if (!alive) return;
+        if (!alive || gen !== catalogGen.current) return;
         setLoadError(err instanceof Error ? err.message : String(err));
       });
     return () => {
       alive = false;
     };
-  }, [client, cn]);
+  }, [client]);
 
   const tier = catalog?.tiers.find((item) => item.id === tierId) ?? null;
   const price = catalog ? hourlyMinor(catalog, tierId, diskGb) : null;
@@ -113,13 +119,40 @@ export function CreateComputerDialog({
   const knownShort =
     sameCurrency && credits !== null && credits.balance_minor < reserveMinor;
 
+  const visibleTiers = useMemo(() => {
+    if (!catalog) return [];
+    return visibleCatalogTiers(catalog.tiers, {
+      minVcpu: minVcpu ? Number(minVcpu) : null,
+      minMemoryGb: minMemoryGb ? Number(minMemoryGb) : null,
+    });
+  }, [catalog, minVcpu, minMemoryGb]);
+
   const monthlyFromHourly = useMemo(() => {
-    if (!tier) return null;
-    return formatMinor(tier.monthly_estimate.amount_minor, tier.monthly_estimate.currency);
+    if (!tier?.monthly_estimate) return null;
+    return formatMinor(
+      tier.monthly_estimate.amount_minor,
+      tier.monthly_estimate.currency,
+    );
   }, [tier]);
 
+  async function reloadForRegion(nextRegionId: string) {
+    const gen = ++catalogGen.current;
+    setLoadError(null);
+    try {
+      const data = await client.getCatalog(nextRegionId);
+      if (gen !== catalogGen.current) return;
+      setCatalog(data);
+      setRegionId(nextRegionId);
+      setTierId(pickDefaultTierId(data.tiers));
+      setDiskGb(data.disk.min_gb);
+    } catch (err: unknown) {
+      if (gen !== catalogGen.current) return;
+      setLoadError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function goCheckout() {
-    if (cn || !tier || !tier.available) return;
+    if (!tier || !tier.available) return;
     const trimmed = (nameRef.current?.value || name).trim();
     if (!trimmed) {
       setSubmitError(tt("请填写电脑名字"));
@@ -153,7 +186,7 @@ export function CreateComputerDialog({
   }
 
   async function payAndCreate() {
-    if (cn || !tier || !tier.available || knownShort) return;
+    if (!tier || !tier.available || knownShort || !regionId) return;
     const trimmed = name.trim();
     if (!trimmed) {
       setSubmitError(tt("请填写电脑名字"));
@@ -166,6 +199,7 @@ export function CreateComputerDialog({
         name: trimmed,
         tier_id: tier.id,
         disk_gb: diskGb,
+        region_id: regionId,
       });
       onCreated();
       setStep("result");
@@ -205,9 +239,7 @@ export function CreateComputerDialog({
               ? tt("购买云电脑")
               : tt("购买云电脑")}
         </h2>
-        {cn ? (
-          <p className="mt-3 text-[13px] text-neutral-500">{tt("此功能在当前站点不可用")}</p>
-        ) : loadError ? (
+        {loadError ? (
           <p className="mt-3 text-[13px] text-rose-600">{tt(loadError)}</p>
         ) : !catalog ? (
           <p className="mt-3 text-[13px] text-neutral-500">{tt("正在加载档位…")}</p>
@@ -226,7 +258,7 @@ export function CreateComputerDialog({
               </button>
             </div>
           </div>
-        ) : step === "checkout" && price ? (
+        ) : step === "checkout" ? (
           <div className="mt-4 space-y-4" data-oceanleo-cc-checkout>
             <p className="text-[13px] text-neutral-700">
               {name.trim()} · {tier?.label} · {diskGb} GB
@@ -235,13 +267,17 @@ export function CreateComputerDialog({
               <div className="flex justify-between gap-3">
                 <dt className="text-neutral-500">{tt("每小时")}</dt>
                 <dd data-oceanleo-cc-hourly>
-                  {formatMinor(price.amount_minor, price.currency)}
+                  {price
+                    ? formatMinor(price.amount_minor, price.currency)
+                    : tt("选中后显示价格")}
                 </dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-neutral-500">{tt("每天")}</dt>
                 <dd data-oceanleo-cc-daily>
-                  {formatMinor(price.amount_minor * 24, price.currency)}
+                  {price
+                    ? formatMinor(price.amount_minor * 24, price.currency)
+                    : tt("选中后显示价格")}
                 </dd>
               </div>
               <div className="flex justify-between gap-3">
@@ -294,7 +330,7 @@ export function CreateComputerDialog({
                   type="button"
                   data-oceanleo-cc-checkout-pay
                   onClick={() => void payAndCreate()}
-                  disabled={busy || !tier?.available}
+                  disabled={busy || !tier?.available || !regionId}
                   className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
                 >
                   {busy ? tt("创建中…") : tt("确认支付并创建")}
@@ -318,7 +354,12 @@ export function CreateComputerDialog({
               {tt("地域")}
               <select
                 value={regionId}
-                onChange={(event) => setRegionId(event.target.value)}
+                data-oceanleo-cc-region
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setRegionId(next);
+                  void reloadForRegion(next);
+                }}
                 className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
                 aria-label={tt("地域")}
               >
@@ -329,46 +370,98 @@ export function CreateComputerDialog({
                 ))}
               </select>
             </label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {catalog.tiers.map((item) => {
-                const selected = item.id === tierId;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled={!item.available}
-                    onClick={() => setTierId(item.id)}
-                    data-oceanleo-cc-tier={item.id}
-                    data-available={item.available ? "1" : "0"}
-                    className={`rounded-2xl border px-3 py-3 text-left text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                      !item.available
-                        ? "cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400"
-                        : selected
-                          ? "border-neutral-900 bg-neutral-900 text-white"
-                          : "border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300"
-                    }`}
-                  >
-                    <div className="font-medium">{item.label}</div>
-                    <div className="mt-1 opacity-80">
-                      {item.vcpu} vCPU / {item.memory_gb} GB
-                    </div>
-                    <div className="mt-1">
-                      {formatMinor(item.hourly.amount_minor, item.hourly.currency)}
-                      {tt("/小时")}
-                    </div>
-                    <div className="opacity-80">
-                      {tt("折合每月")}{" "}
-                      {formatMinor(
-                        item.monthly_estimate.amount_minor,
-                        item.monthly_estimate.currency,
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[12px] text-neutral-600">
+                {tt("核数")}
+                <select
+                  value={minVcpu}
+                  data-oceanleo-cc-vcpu-filter
+                  onChange={(event) => setMinVcpu(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none"
+                  aria-label={tt("核数")}
+                >
+                  <option value="">{tt("不限")}</option>
+                  <option value="2">2 vCPU</option>
+                  <option value="4">4 vCPU</option>
+                  <option value="8">8 vCPU</option>
+                </select>
+              </label>
+              <label className="block text-[12px] text-neutral-600">
+                {tt("内存")}
+                <select
+                  value={minMemoryGb}
+                  data-oceanleo-cc-memory-filter
+                  onChange={(event) => setMinMemoryGb(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none"
+                  aria-label={tt("内存")}
+                >
+                  <option value="">{tt("不限")}</option>
+                  <option value="4">4 GB</option>
+                  <option value="8">8 GB</option>
+                  <option value="16">16 GB</option>
+                  <option value="32">32 GB</option>
+                </select>
+              </label>
+            </div>
+            <div
+              className="max-h-64 overflow-y-auto pr-1"
+              data-oceanleo-cc-tier-list
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                {visibleTiers.map((item) => {
+                  const selected = item.id === tierId;
+                  const recommended = Boolean(item.recommended);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={!item.available}
+                      onClick={() => setTierId(item.id)}
+                      data-oceanleo-cc-tier={item.id}
+                      data-available={item.available ? "1" : "0"}
+                      data-oceanleo-cc-tier-recommended={recommended ? "1" : undefined}
+                      className={`rounded-2xl border px-3 py-3 text-left text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                        !item.available
+                          ? "cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400"
+                          : selected
+                            ? "border-neutral-900 bg-neutral-900 text-white"
+                            : recommended
+                              ? "border-amber-300 bg-amber-50 text-neutral-800 hover:border-amber-400"
+                              : "border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium">{item.label}</div>
+                        {recommended ? (
+                          <span className={selected ? "opacity-80" : "text-amber-800"}>
+                            {tt("推荐")}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 opacity-80">
+                        {item.vcpu} vCPU / {item.memory_gb} GB
+                      </div>
+                      <div className="mt-1">
+                        {item.hourly
+                          ? `${formatMinor(item.hourly.amount_minor, item.hourly.currency)}${tt("/小时")}`
+                          : tt("选中后显示价格")}
+                      </div>
+                      {item.hourly && item.monthly_estimate ? (
+                        <div className="opacity-80">
+                          {tt("折合每月")}{" "}
+                          {formatMinor(
+                            item.monthly_estimate.amount_minor,
+                            item.monthly_estimate.currency,
+                          )}
+                        </div>
+                      ) : null}
+                      {!item.available && (
+                        <div className="mt-1">{tt("暂无库存")}</div>
                       )}
-                    </div>
-                    {!item.available && (
-                      <div className="mt-1">{tt("暂无库存")}</div>
-                    )}
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <label className="block text-[12px] text-neutral-600">
               {tt("系统盘")} {diskGb} GB
@@ -385,7 +478,7 @@ export function CreateComputerDialog({
             </label>
             <p className="text-[12px] leading-relaxed text-neutral-500">
               {tt("按阿里云成本价计费，OceanLeo 不加价；按小时从钱包扣")}
-              {tier && monthlyFromHourly ? (
+              {tier && monthlyFromHourly && tier.hourly ? (
                 <>
                   {" · "}
                   {formatMinor(tier.hourly.amount_minor, tier.hourly.currency)}

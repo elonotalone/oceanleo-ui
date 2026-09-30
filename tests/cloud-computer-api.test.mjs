@@ -47,16 +47,38 @@ test("listComputers 打 GET /v1/computers 并带 Bearer", async () => {
   assert.equal(data.items[0].id, "cc_1");
 });
 
-test("createAliyunComputer 请求体是 name/tier_id/disk_gb", async () => {
+test("createAliyunComputer 请求体是 name/tier_id/disk_gb/region_id", async () => {
   const calls = installFetch(() => jsonResponse(200, { id: "cc_2", name: "sg" }));
-  await createAliyunComputer({ name: "sg", tier_id: "ecs.e-c1m2.large", disk_gb: 40 });
+  await createAliyunComputer({
+    name: "sg",
+    tier_id: "ecs.e-c1m2.large",
+    disk_gb: 40,
+    region_id: "ap-southeast-1",
+  });
   assert.match(calls[0].url, /\/v1\/computers\/aliyun$/);
   assert.equal(calls[0].init.method, "POST");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     name: "sg",
     tier_id: "ecs.e-c1m2.large",
     disk_gb: 40,
+    region_id: "ap-southeast-1",
   });
+});
+
+test("getCatalog 省略地域时无 query，传入则带 region_id", async () => {
+  const calls = installFetch(() => jsonResponse(200, { regions: [], tiers: [] }));
+  await getCatalog();
+  await getCatalog("ap-southeast-1");
+  await getCatalog("  cn-hangzhou  ");
+  assert.equal(calls[0].url, "https://api.example.test/v1/computers/catalog");
+  assert.equal(
+    calls[1].url,
+    "https://api.example.test/v1/computers/catalog?region_id=ap-southeast-1",
+  );
+  assert.equal(
+    calls[2].url,
+    "https://api.example.test/v1/computers/catalog?region_id=cn-hangzhou",
+  );
 });
 
 test("createByoComputer / catalog / 详情 / 改名 / 停机开机 / 删除 / 事件 / enroll / 终端 / 用量", async () => {
@@ -127,7 +149,7 @@ test("错误从 detail.code 映射为 CloudComputerError", async () => {
     }),
   );
   await assert.rejects(
-    () => createAliyunComputer({ name: "x", tier_id: "t", disk_gb: 40 }),
+    () => createAliyunComputer({ name: "x", tier_id: "t", disk_gb: 40, region_id: "ap-southeast-1" }),
     (err) => {
       assert.ok(err instanceof CloudComputerError);
       assert.equal(err.code, "insufficient_balance");

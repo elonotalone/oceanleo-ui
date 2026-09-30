@@ -57,7 +57,7 @@ const uiTextStubUrl = dataModule(`
   }
 `);
 const domainStubUrl = dataModule(`
-  export function currentDomainFamily() { return "com"; }
+  export function currentDomainFamily() { return globalThis.__ccDomainFamily || "com"; }
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
 `);
 const dialogStubUrl = dataModule(`
@@ -495,4 +495,24 @@ test("点击机器状态只进入服务器页面，不调用 openTerminal 或创
   assert.deepEqual(pushes, ["/computers/cc_1"]);
   assert.equal(view.text().includes("新建 Shell"), false);
   view.cleanup();
+});
+
+test("国内版 stub currentDomainFamily=cn 仍渲染坞和购买云电脑", async () => {
+  storedMounted = "";
+  globalThis.__ccDomainFamily = "cn";
+  try {
+    const view = await render([]);
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-dock]"));
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-cc-edition]")?.getAttribute("data-oceanleo-cc-edition"),
+      "cn",
+    );
+    assert.equal(view.text().includes("此功能在当前站点不可用"), false);
+    await openDock(view);
+    assert.ok(view.button("购买云电脑"));
+    assert.ok(view.button("连接我的服务器"));
+    view.cleanup();
+  } finally {
+    globalThis.__ccDomainFamily = "com";
+  }
 });

@@ -83,7 +83,6 @@ export function CloudComputersSection({
 }: CloudComputersSectionProps) {
   const api = client ?? cloudComputerApi;
   const tt = useUI();
-  const cn = currentDomainFamily() === "cn";
   const sectionRef = useRef<HTMLElement | null>(null);
   const [computers, setComputers] = useState<Computer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,6 +207,7 @@ export function CloudComputersSection({
       className="space-y-4"
       data-oceanleo-cc-section
       data-oceanleo-cc-page=""
+      data-oceanleo-cc-edition={currentDomainFamily()}
     >
       {confirmRelease && (
         <ConfirmDialog
@@ -247,27 +247,15 @@ export function CloudComputersSection({
         <h2 className="text-[15px] font-semibold text-neutral-900">
           {tt("云电脑")}
         </h2>
-        {!cn && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              data-oceanleo-cc-buy
-              onClick={() => setCreateOpen(true)}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
-            >
-              {tt("购买云电脑")}
-            </button>
-            <button
-              type="button"
-              data-oceanleo-cc-connect
-              onClick={() => openConnect(null)}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
-            >
-              {tt("连接我的服务器")}
-            </button>
-          </div>
-        )}
-        {cn && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-oceanleo-cc-buy
+            onClick={() => setCreateOpen(true)}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
+          >
+            {tt("购买云电脑")}
+          </button>
           <button
             type="button"
             data-oceanleo-cc-connect
@@ -276,14 +264,9 @@ export function CloudComputersSection({
           >
             {tt("连接我的服务器")}
           </button>
-        )}
+        </div>
       </div>
 
-      {cn && (
-        <p className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-600">
-          {tt("此功能在当前站点不可用")}
-        </p>
-      )}
       {pageError && (
         <p className="text-[13px] text-rose-600">{tt(pageError)}</p>
       )}

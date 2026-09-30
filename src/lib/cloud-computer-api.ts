@@ -126,6 +126,13 @@ export type CatalogRegion = {
   id: string;
   zone_id: string;
   label: string;
+  recommended?: boolean;
+};
+
+export type CatalogHourlyPrice = {
+  cny: number;
+  amount_minor: number;
+  currency: string;
 };
 
 export type CatalogTier = {
@@ -134,13 +141,17 @@ export type CatalogTier = {
   vcpu: number;
   memory_gb: number;
   label: string;
+  family?: string;
   available: boolean;
-  hourly: { cny: number; amount_minor: number; currency: string };
-  monthly_estimate: MoneyAmount;
+  recommended?: boolean;
+  /** Quote miss: list the SKU with specs, never a fake 0. */
+  hourly: CatalogHourlyPrice | null;
+  monthly_estimate?: MoneyAmount | null;
 };
 
 export type ComputerCatalog = {
   regions: CatalogRegion[];
+  recommended_region_id?: string;
   tiers: CatalogTier[];
   disk: {
     min_gb: number;
@@ -422,14 +433,19 @@ export function listComputers() {
   return ccRequest<{ items: Computer[] }>("/v1/computers");
 }
 
-export function getCatalog() {
-  return ccRequest<ComputerCatalog>("/v1/computers/catalog");
+export function getCatalog(regionId?: string) {
+  const trimmed = (regionId ?? "").trim();
+  const query = trimmed
+    ? `?${new URLSearchParams({ region_id: trimmed }).toString()}`
+    : "";
+  return ccRequest<ComputerCatalog>(`/v1/computers/catalog${query}`);
 }
 
 export function createAliyunComputer(body: {
   name: string;
   tier_id: string;
   disk_gb: number;
+  region_id: string;
 }) {
   return ccRequest<Computer>("/v1/computers/aliyun", {
     method: "POST",

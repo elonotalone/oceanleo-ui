@@ -89,6 +89,22 @@ const { CloudComputersPage, CloudComputersSection } = await import(
     "./PageHeader": pageHeaderStubUrl,
     "../shell/cloud-computer/CreateComputerDialog": dialogStubUrl,
     "../shell/cloud-computer/ConnectServerDialog": dialogStubUrl,
+    "../contracts/domain-family": dataModule(`
+      export const CONFIGURED_DOMAIN_FAMILY = globalThis.__ccDomainFamily || "com";
+      export function currentDomainFamily() { return globalThis.__ccDomainFamily || "com"; }
+      export function currentDomainProfile() {
+        const family = currentDomainFamily();
+        return {
+          family,
+          portalOrigin: family === "cn" ? "https://oceanleo.cn" : "https://oceanleo.com",
+          gatewayOrigin: "",
+          cookieDomain: "",
+          registrableDomain: family === "cn" ? "oceanleo.cn" : "oceanleo.com",
+        };
+      }
+      export function domainProfileForHost() { return currentDomainProfile(); }
+      export function familyForHost() { return currentDomainFamily(); }
+    `),
   })
 );
 
@@ -320,4 +336,22 @@ test("CloudComputersSection 单独渲染时同样拆开接入中与资产卡", a
   assert.equal(host.querySelector("[data-oceanleo-cc-connected-list]"), null);
   act(() => root.unmount());
   host.remove();
+});
+
+test("国内版 stub currentDomainFamily=cn 仍渲染购买云电脑，不再显示不可用", async () => {
+  globalThis.__ccDomainFamily = "cn";
+  try {
+    const view = await render(makeClient([]));
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-cc-edition]")?.getAttribute("data-oceanleo-cc-edition"),
+      "cn",
+    );
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-buy]"));
+    assert.ok(view.button("购买云电脑"));
+    assert.ok(view.button("连接我的服务器"));
+    assert.equal(view.text().includes("此功能在当前站点不可用"), false);
+    view.cleanup();
+  } finally {
+    globalThis.__ccDomainFamily = "com";
+  }
 });

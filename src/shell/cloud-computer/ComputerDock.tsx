@@ -55,7 +55,6 @@ export function ComputerDock({
 }) {
   const tt = useUI();
   const router = useRouter();
-  const hidden = currentDomainFamily() === "cn";
   const { computers, mountedId, setMountedId, refresh, loading } =
     useCloudComputers({ client, computers: computersProp });
   const [open, setOpen] = useState(false);
@@ -77,8 +76,6 @@ export function ComputerDock({
     };
   }, [open]);
 
-  if (hidden) return null;
-
   const connected = computers.filter(isConnectedComputer);
   const pending = computers.filter(isPendingComputer);
   const failed = computers.filter((item) => computerDisplayState(item) === "error");
@@ -86,7 +83,11 @@ export function ComputerDock({
   const failedOnly = emptyCloud && pending.length === 0 && failed.length > 0;
 
   return (
-    <div className="relative" data-oceanleo-cc-dock>
+    <div
+      className="relative"
+      data-oceanleo-cc-dock
+      data-oceanleo-cc-edition={currentDomainFamily()}
+    >
       <button
         ref={btnRef}
         type="button"
