@@ -14,6 +14,8 @@ const SOURCE = {
   contentSamples: "内容示例",
   memory: "记忆",
   backToHome: "回到首页",
+  cost: "费用",
+  modelsMarket: "模型市场",
 } as const;
 
 export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
@@ -28,6 +30,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Content samples",
     memory: "Memory",
     backToHome: "Back to home",
+    cost: "Cost",
+    modelsMarket: "Model marketplace",
   },
   de: {
     usageAndBilling: "Nutzung & Abrechnung",
@@ -40,6 +44,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Inhaltsbeispiele",
     memory: "Gedächtnis",
     backToHome: "Zur Startseite",
+    cost: "Kosten",
+    modelsMarket: "Modellmarkt",
   },
   es: {
     usageAndBilling: "Uso y facturación",
@@ -52,6 +58,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Ejemplos de contenido",
     memory: "Memoria",
     backToHome: "Volver al inicio",
+    cost: "Coste",
+    modelsMarket: "Mercado de modelos",
   },
   "es-419": {
     usageAndBilling: "Uso y facturación",
@@ -64,6 +72,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Ejemplos de contenido",
     memory: "Memoria",
     backToHome: "Volver al inicio",
+    cost: "Costo",
+    modelsMarket: "Mercado de modelos",
   },
   fr: {
     usageAndBilling: "Usage et facturation",
@@ -76,6 +86,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Exemples de contenu",
     memory: "Mémoire",
     backToHome: "Retour à l’accueil",
+    cost: "Coût",
+    modelsMarket: "Marché des modèles",
   },
   it: {
     usageAndBilling: "Utilizzo e fatturazione",
@@ -88,6 +100,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Esempi di contenuto",
     memory: "Memoria",
     backToHome: "Torna alla home",
+    cost: "Costo",
+    modelsMarket: "Mercato dei modelli",
   },
   "pt-BR": {
     usageAndBilling: "Uso e faturamento",
@@ -100,6 +114,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Exemplos de conteúdo",
     memory: "Memória",
     backToHome: "Voltar ao início",
+    cost: "Custo",
+    modelsMarket: "Mercado de modelos",
   },
   "pt-PT": {
     usageAndBilling: "Utilização e faturação",
@@ -112,6 +128,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Exemplos de conteúdo",
     memory: "Memória",
     backToHome: "Voltar ao início",
+    cost: "Custo",
+    modelsMarket: "Mercado de modelos",
   },
   vi: {
     usageAndBilling: "Sử dụng & thanh toán",
@@ -124,6 +142,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "Mẫu nội dung",
     memory: "Trí nhớ",
     backToHome: "Về trang chủ",
+    cost: "Chi phí",
+    modelsMarket: "Chợ mô hình",
   },
   tr: {
     usageAndBilling: "Kullanım ve faturalama",
@@ -136,6 +156,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "İçerik örnekleri",
     memory: "Bellek",
     backToHome: "Ana sayfaya dön",
+    cost: "Maliyet",
+    modelsMarket: "Model pazarı",
   },
   "zh-TW": {
     usageAndBilling: "用量與帳單",
@@ -148,6 +170,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "內容示例",
     memory: "記憶",
     backToHome: "回到首頁",
+    cost: "費用",
+    modelsMarket: "模型市場",
   },
   ja: {
     usageAndBilling: "利用状況と請求",
@@ -160,6 +184,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "コンテンツ例",
     memory: "記憶",
     backToHome: "ホームに戻る",
+    cost: "費用",
+    modelsMarket: "モデル市場",
   },
   ko: {
     usageAndBilling: "사용량 및 결제",
@@ -172,6 +198,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "콘텐츠 예시",
     memory: "기억",
     backToHome: "홈으로 돌아가기",
+    cost: "비용",
+    modelsMarket: "모델 마켓",
   },
   ar: {
     usageAndBilling: "الاستخدام والفوترة",
@@ -184,6 +212,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "أمثلة المحتوى",
     memory: "الذاكرة",
     backToHome: "العودة إلى الصفحة الرئيسية",
+    cost: "التكلفة",
+    modelsMarket: "سوق النماذج",
   },
   th: {
     usageAndBilling: "การใช้งานและการเรียกเก็บเงิน",
@@ -196,6 +226,8 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "ตัวอย่างเนื้อหา",
     memory: "ความจำ",
     backToHome: "กลับหน้าแรก",
+    cost: "ค่าใช้จ่าย",
+    modelsMarket: "ตลาดโมเดล",
   },
   hi: {
     usageAndBilling: "उपयोग और बिलिंग",
@@ -208,5 +240,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     contentSamples: "सामग्री उदाहरण",
     memory: "स्मृति",
     backToHome: "होम पर वापस जाएँ",
+    cost: "लागत",
+    modelsMarket: "मॉडल बाज़ार",
   },
 });
