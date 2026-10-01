@@ -26,12 +26,13 @@ function herePath(): string {
   return `${window.location.pathname}${window.location.search}`;
 }
 
-export function SettingsModalHost({ extraSections, orgHref, showRequestStat = false, extraStats, onSignedOut }: {
+export function SettingsModalHost({ extraSections, orgHref, showRequestStat = false, extraStats, onSignedOut, wallet }: {
   extraSections?: SettingsSection[];
   orgHref?: string;
   showRequestStat?: boolean;
   extraStats?: SettingsHubProps["extraStats"];
   onSignedOut?: () => void;
+  wallet?: SettingsHubProps["wallet"];
 } = {}) {
   const pathname = usePathname();
   const [tab, setTab] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
 
   return <SettingsModal open={tab !== null} initialTab={tab || "general"} onClose={close}
     extraSections={extraSections} extraStats={extraStats} orgHref={orgHref} showRequestStat={showRequestStat}
+    wallet={wallet}
     onTabChange={(next) => {
       const resolved = resolveSettingsTab(next, extraIdsOf(extraSections));
       const canonical = settingsPath(resolved);
