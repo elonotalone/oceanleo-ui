@@ -1,5 +1,5 @@
 // 插件页分版：COM 不拉、不渲染国内云市场；CN 卡片有图/商家/截断价；
-// 官方技能中英分列；连接器卡用 SVG / 字母块，不再画 emoji。
+// 官方技能中英分列；连接器卡用官方品牌文件，不再画 emoji / 手画 path。
 //
 // 跑法（必须带 loader）：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
@@ -275,7 +275,7 @@ test("COM 官方库英文名；CN 官方库中文名", async () => {
   }, "cn");
 });
 
-test("连接器卡不渲染 🐙 📄；github / notion 走品牌 SVG", async () => {
+test("连接器卡不渲染 🐙 📄；github / notion 走官方品牌文件", async () => {
   await withDom(async ({ render, find }) => {
     await render();
     const github = find('[data-mcp-connector="github"]');
@@ -286,7 +286,7 @@ test("连接器卡不渲染 🐙 📄；github / notion 走品牌 SVG", async ()
     assert.ok(!notion.textContent.includes("📄"));
     assert.equal(github.querySelector('[data-connector-icon-kind="brand"]')?.getAttribute("data-connector-icon"), "github");
     assert.equal(notion.querySelector('[data-connector-icon-kind="brand"]')?.getAttribute("data-connector-icon"), "notion");
-    assert.ok(github.querySelector("svg"), "品牌标是内联 SVG");
-    assert.ok(notion.querySelector("svg"));
+    assert.ok(github.querySelector("img"), "品牌标是官方文件");
+    assert.ok(notion.querySelector("img"));
   }, "com");
 });

@@ -1,0 +1,716 @@
+{
+  "tencent-docs": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://docs.qq.com&size=128",
+    "spec": "gfav:docs.qq.com",
+    "bytes": "1433",
+    "mime": "image/png"
+  },
+  "tencent-meeting": {
+    "source": "https://cdn.meeting.tencent.com/assets/next-website/logo128.png",
+    "spec": "url:https://cdn.meeting.tencent.com/assets/next-website/logo128.png",
+    "bytes": "13689",
+    "mime": "image/png"
+  },
+  "wecom": {
+    "source": "https://wwcdn.weixin.qq.com/node/wwnl/wwnl/style/images/independent/favicon/favicon_48h$c976bd14.png",
+    "spec": "url:https://wwcdn.weixin.qq.com/node/wwnl/wwnl/style/images/independent/favicon/favicon_48h$c976bd14.png",
+    "bytes": "1823",
+    "mime": "image/png"
+  },
+  "weixin-drive": {
+    "source": "https://img.weiyun.com/vipstyle/nr/box/img/favicon.ico?max_age=31536000",
+    "spec": "url:https://img.weiyun.com/vipstyle/nr/box/img/favicon.ico?max_age=31536000",
+    "bytes": "2600",
+    "mime": "image/png"
+  },
+  "tencent-survey": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://wj.qq.com&size=128",
+    "spec": "gfav:wj.qq.com",
+    "bytes": "1156",
+    "mime": "image/png"
+  },
+  "tencent-qidian": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://qidian.qq.com&size=128",
+    "spec": "gfav:qidian.qq.com",
+    "bytes": "762",
+    "mime": "image/png"
+  },
+  "ima-kb": {
+    "source": "https://fe-static.ima.myqcloud.com/ima/assets/chat/favicon.svg",
+    "spec": "url:https://fe-static.ima.myqcloud.com/ima/assets/chat/favicon.svg",
+    "bytes": "3104",
+    "mime": "image/svg+xml"
+  },
+  "lexiang-kb": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://work.weixin.qq.com&size=128",
+    "spec": "gfav:work.weixin.qq.com",
+    "bytes": "1991",
+    "mime": "image/png"
+  },
+  "fubangshou": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://work.weixin.qq.com&size=128",
+    "spec": "gfav:work.weixin.qq.com",
+    "bytes": "1991",
+    "mime": "image/png"
+  },
+  "cnb": {
+    "source": "https://cnb.cool/images/favicon.svg",
+    "spec": "url:https://cnb.cool/images/favicon.svg",
+    "bytes": "2266",
+    "mime": "image/svg+xml"
+  },
+  "edgeone-pages": {
+    "source": "https://edgeone.ai/128.png",
+    "spec": "url:https://edgeone.ai/128.png",
+    "bytes": "4757",
+    "mime": "image/png"
+  },
+  "cloudbase": {
+    "source": "https://www.cloudbase.net/img/favicon.png",
+    "spec": "url:https://www.cloudbase.net/img/favicon.png",
+    "bytes": "5560",
+    "mime": "image/png"
+  },
+  "qingflow": {
+    "source": "https://qingflow.com/favicon.ico",
+    "spec": "url:https://qingflow.com/favicon.ico",
+    "bytes": "16958",
+    "mime": "image/x-icon"
+  },
+  "qq-mail": {
+    "source": "simple-icons:qq",
+    "spec": "si:qq",
+    "bytes": "665",
+    "mime": "image/svg+xml"
+  },
+  "netease-mail": {
+    "source": "https://mail.163.com/favicon.ico",
+    "spec": "url:https://mail.163.com/favicon.ico",
+    "bytes": "1766",
+    "mime": "image/png"
+  },
+  "feishu": {
+    "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/lark.svg",
+    "spec": "di:lark",
+    "bytes": "4614",
+    "mime": "image/svg+xml"
+  },
+  "dingtalk": {
+    "source": "https://gw.alicdn.com/imgextra/i3/O1CN014ZbI6ZTEhdC0ttN2_!!6000000003783-2-tps-444-444.png",
+    "spec": "url:https://gw.alicdn.com/imgextra/i3/O1CN014ZbI6ZTEhdC0ttN2_!!6000000003783-2-tps-444-444.png",
+    "bytes": "11431",
+    "mime": "image/png"
+  },
+  "tapd": {
+    "source": "https://www.tapd.cn/favicon_new.png",
+    "spec": "url:https://www.tapd.cn/favicon_new.png",
+    "bytes": "995",
+    "mime": "image/png"
+  },
+  "wps-docs": {
+    "source": "https://www.wps.cn/favicon.ico",
+    "spec": "url:https://www.wps.cn/favicon.ico",
+    "bytes": "4286",
+    "mime": "image/x-icon"
+  },
+  "baidu-pan": {
+    "source": "simple-icons:baidu",
+    "spec": "si:baidu",
+    "bytes": "1406",
+    "mime": "image/svg+xml"
+  },
+  "tdx": {
+    "source": "https://www.tdx.com.cn/templates/tdxOfficial/images/favicon.ico",
+    "spec": "url:https://www.tdx.com.cn/templates/tdxOfficial/images/favicon.ico",
+    "bytes": "67646",
+    "mime": "image/x-icon"
+  },
+  "tianyancha": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://www.tianyancha.com&size=128",
+    "spec": "gfav:www.tianyancha.com",
+    "bytes": "1910",
+    "mime": "image/png"
+  },
+  "qichacha": {
+    "source": "https://qcc-static.qcc.com/resources/web/omaterial/favicon.png",
+    "spec": "url:https://qcc-static.qcc.com/resources/web/omaterial/favicon.png",
+    "bytes": "4086",
+    "mime": "image/png"
+  },
+  "hundsun": {
+    "source": "https://www.gildata.com/assets/logo-DSZmfQOO.png",
+    "spec": "url:https://www.gildata.com/assets/logo-DSZmfQOO.png",
+    "bytes": "7471",
+    "mime": "image/png"
+  },
+  "zte-icloud-report": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://www.zte.com.cn&size=128",
+    "spec": "gfav:www.zte.com.cn",
+    "bytes": "311",
+    "mime": "image/png"
+  },
+  "pkulaw": {
+    "source": "https://www.pkulaw.com/favicon.ico",
+    "spec": "url:https://www.pkulaw.com/favicon.ico",
+    "bytes": "4286",
+    "mime": "image/x-icon"
+  },
+  "huayu-law": {
+    "source": "https://gongwen.thunisoft.com/IntelligentEditor/file/logo",
+    "spec": "url:https://gongwen.thunisoft.com/IntelligentEditor/file/logo",
+    "bytes": "2732",
+    "mime": "image/png"
+  },
+  "neocrm": {
+    "source": "https://www.neocrm.com/wp-content/uploads/2026/03/logo_72_72.png",
+    "spec": "url:https://www.neocrm.com/wp-content/uploads/2026/03/logo_72_72.png",
+    "bytes": "2793",
+    "mime": "image/png"
+  },
+  "weishi-scrm": {
+    "source": "https://www.weishi100.com/img/weishi.ico",
+    "spec": "url:https://www.weishi100.com/img/weishi.ico",
+    "bytes": "1309",
+    "mime": "image/png"
+  },
+  "xiaoetong": {
+    "source": "https://commonresource-1252524126.cdn.xiaoeknow.com/image/lhyaurs50zil.ico",
+    "spec": "url:https://commonresource-1252524126.cdn.xiaoeknow.com/image/lhyaurs50zil.ico",
+    "bytes": "2870",
+    "mime": "image/png"
+  },
+  "ctrip": {
+    "source": "simple-icons:tripdotcom",
+    "spec": "si:tripdotcom",
+    "bytes": "766",
+    "mime": "image/svg+xml"
+  },
+  "github": {
+    "source": "simple-icons:github",
+    "spec": "si:github",
+    "bytes": "837",
+    "mime": "image/svg+xml"
+  },
+  "notion": {
+    "source": "simple-icons:notion",
+    "spec": "si:notion",
+    "bytes": "993",
+    "mime": "image/svg+xml"
+  },
+  "openai": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/openai-icon.svg",
+    "spec": "gb:openai-icon",
+    "bytes": "3741",
+    "mime": "image/svg+xml"
+  },
+  "anthropic": {
+    "source": "simple-icons:anthropic",
+    "spec": "si:anthropic",
+    "bytes": "296",
+    "mime": "image/svg+xml"
+  },
+  "google-gemini": {
+    "source": "simple-icons:googlegemini",
+    "spec": "si:googlegemini",
+    "bytes": "416",
+    "mime": "image/svg+xml"
+  },
+  "grok": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/grok.svg",
+    "spec": "gb:grok",
+    "bytes": "3265",
+    "mime": "image/svg+xml"
+  },
+  "openrouter": {
+    "source": "simple-icons:openrouter",
+    "spec": "si:openrouter",
+    "bytes": "699",
+    "mime": "image/svg+xml"
+  },
+  "perplexity": {
+    "source": "simple-icons:perplexity",
+    "spec": "si:perplexity",
+    "bytes": "633",
+    "mime": "image/svg+xml"
+  },
+  "cohere": {
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.74.0/icons/cohere-color.svg",
+    "spec": "lobe:cohere-color",
+    "bytes": "769",
+    "mime": "image/svg+xml"
+  },
+  "huggingface": {
+    "source": "simple-icons:huggingface",
+    "spec": "si:huggingface",
+    "bytes": "3042",
+    "mime": "image/svg+xml"
+  },
+  "elevenlabs": {
+    "source": "simple-icons:elevenlabs",
+    "spec": "si:elevenlabs",
+    "bytes": "173",
+    "mime": "image/svg+xml"
+  },
+  "heygen": {
+    "source": "https://www.heygen.com/favicon.ico?favicon.2m321y0geyyfh.ico",
+    "spec": "url:https://www.heygen.com/favicon.ico?favicon.2m321y0geyyfh.ico",
+    "bytes": "15406",
+    "mime": "image/x-icon"
+  },
+  "kling": {
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.74.0/icons/kling-color.svg",
+    "spec": "lobe:kling-color",
+    "bytes": "2237",
+    "mime": "image/svg+xml"
+  },
+  "flux": {
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.74.0/icons/bfl.svg",
+    "spec": "lobe:bfl",
+    "bytes": "387",
+    "mime": "image/svg+xml"
+  },
+  "tripo": {
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.74.0/icons/tripo-color.svg",
+    "spec": "lobe:tripo-color",
+    "bytes": "1029",
+    "mime": "image/svg+xml"
+  },
+  "slack": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/slack-icon.svg",
+    "spec": "gb:slack-icon",
+    "bytes": "2807",
+    "mime": "image/svg+xml"
+  },
+  "asana": {
+    "source": "simple-icons:asana",
+    "spec": "si:asana",
+    "bytes": "456",
+    "mime": "image/svg+xml"
+  },
+  "linear": {
+    "source": "simple-icons:linear",
+    "spec": "si:linear",
+    "bytes": "468",
+    "mime": "image/svg+xml"
+  },
+  "atlassian": {
+    "source": "simple-icons:atlassian",
+    "spec": "si:atlassian",
+    "bytes": "393",
+    "mime": "image/svg+xml"
+  },
+  "monday": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/monday-icon.svg",
+    "spec": "gb:monday-icon",
+    "bytes": "1404",
+    "mime": "image/svg+xml"
+  },
+  "clickup": {
+    "source": "simple-icons:clickup",
+    "spec": "si:clickup",
+    "bytes": "355",
+    "mime": "image/svg+xml"
+  },
+  "todoist": {
+    "source": "simple-icons:todoist",
+    "spec": "si:todoist",
+    "bytes": "879",
+    "mime": "image/svg+xml"
+  },
+  "airtable": {
+    "source": "simple-icons:airtable",
+    "spec": "si:airtable",
+    "bytes": "667",
+    "mime": "image/svg+xml"
+  },
+  "fireflies": {
+    "source": "https://fireflies.ai/icon.png",
+    "spec": "url:https://fireflies.ai/icon.png",
+    "bytes": "86298",
+    "mime": "image/png"
+  },
+  "granola": {
+    "source": "https://www.granola.ai/favicon/favicon.svg",
+    "spec": "url:https://www.granola.ai/favicon/favicon.svg",
+    "bytes": "41099",
+    "mime": "image/svg+xml"
+  },
+  "tldv": {
+    "source": "https://tldv.io/faviconV2.png",
+    "spec": "url:https://tldv.io/faviconV2.png",
+    "bytes": "635",
+    "mime": "image/png"
+  },
+  "gmail": {
+    "source": "https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png",
+    "spec": "url:https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png",
+    "bytes": "1227",
+    "mime": "image/png"
+  },
+  "google-calendar": {
+    "source": "https://www.gstatic.com/images/branding/productlogos/calendar_2020q4/v13/192px.svg",
+    "spec": "url:https://www.gstatic.com/images/branding/productlogos/calendar_2020q4/v13/192px.svg",
+    "bytes": "1634",
+    "mime": "image/svg+xml"
+  },
+  "google-drive": {
+    "source": "https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png",
+    "spec": "url:https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png",
+    "bytes": "2168",
+    "mime": "image/png"
+  },
+  "outlook-mail": {
+    "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/microsoft-outlook.svg",
+    "spec": "di:microsoft-outlook",
+    "bytes": "4365",
+    "mime": "image/svg+xml"
+  },
+  "outlook-calendar": {
+    "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/microsoft-outlook.svg",
+    "spec": "di:microsoft-outlook",
+    "bytes": "4365",
+    "mime": "image/svg+xml"
+  },
+  "dropbox": {
+    "source": "simple-icons:dropbox",
+    "spec": "si:dropbox",
+    "bytes": "351",
+    "mime": "image/svg+xml"
+  },
+  "sentry": {
+    "source": "simple-icons:sentry",
+    "spec": "si:sentry",
+    "bytes": "701",
+    "mime": "image/svg+xml"
+  },
+  "vercel": {
+    "source": "simple-icons:vercel",
+    "spec": "si:vercel",
+    "bytes": "147",
+    "mime": "image/svg+xml"
+  },
+  "cloudflare": {
+    "source": "simple-icons:cloudflare",
+    "spec": "si:cloudflare",
+    "bytes": "1193",
+    "mime": "image/svg+xml"
+  },
+  "supabase": {
+    "source": "simple-icons:supabase",
+    "spec": "si:supabase",
+    "bytes": "318",
+    "mime": "image/svg+xml"
+  },
+  "neon": {
+    "source": "simple-icons:neon",
+    "spec": "si:neon",
+    "bytes": "208",
+    "mime": "image/svg+xml"
+  },
+  "prisma-postgres": {
+    "source": "simple-icons:prisma",
+    "spec": "si:prisma",
+    "bytes": "583",
+    "mime": "image/svg+xml"
+  },
+  "webflow": {
+    "source": "simple-icons:webflow",
+    "spec": "si:webflow",
+    "bytes": "309",
+    "mime": "image/svg+xml"
+  },
+  "wix": {
+    "source": "simple-icons:wix",
+    "spec": "si:wix",
+    "bytes": "808",
+    "mime": "image/svg+xml"
+  },
+  "playwright": {
+    "source": "https://playwright.dev/img/playwright-logo.svg",
+    "spec": "url:https://playwright.dev/img/playwright-logo.svg",
+    "bytes": "5033",
+    "mime": "image/svg+xml"
+  },
+  "zapier": {
+    "source": "simple-icons:zapier",
+    "spec": "si:zapier",
+    "bytes": "2847",
+    "mime": "image/svg+xml"
+  },
+  "make": {
+    "source": "simple-icons:make",
+    "spec": "si:make",
+    "bytes": "613",
+    "mime": "image/svg+xml"
+  },
+  "n8n": {
+    "source": "simple-icons:n8n",
+    "spec": "si:n8n",
+    "bytes": "1588",
+    "mime": "image/svg+xml"
+  },
+  "apify": {
+    "source": "https://apify.com/icon0.svg",
+    "spec": "url:https://apify.com/icon0.svg",
+    "bytes": "774",
+    "mime": "image/svg+xml"
+  },
+  "firecrawl": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/firecrawl.svg",
+    "spec": "gb:firecrawl",
+    "bytes": "6222",
+    "mime": "image/svg+xml"
+  },
+  "browser": {
+    "source": "lucide:app-window",
+    "spec": "inline:app-window",
+    "bytes": "227",
+    "mime": "image/svg+xml"
+  },
+  "hubspot": {
+    "source": "simple-icons:hubspot",
+    "spec": "si:hubspot",
+    "bytes": "678",
+    "mime": "image/svg+xml"
+  },
+  "intercom": {
+    "source": "simple-icons:intercom",
+    "spec": "si:intercom",
+    "bytes": "998",
+    "mime": "image/svg+xml"
+  },
+  "close-crm": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/close.svg",
+    "spec": "gb:close",
+    "bytes": "32718",
+    "mime": "image/svg+xml"
+  },
+  "apollo": {
+    "source": "https://www.apollo.io/icon.svg",
+    "spec": "url:https://www.apollo.io/icon.svg",
+    "bytes": "9423",
+    "mime": "image/svg+xml"
+  },
+  "mailchimp": {
+    "source": "simple-icons:mailchimp",
+    "spec": "si:mailchimp",
+    "bytes": "4193",
+    "mime": "image/svg+xml"
+  },
+  "stripe": {
+    "source": "simple-icons:stripe",
+    "spec": "si:stripe",
+    "bytes": "603",
+    "mime": "image/svg+xml"
+  },
+  "paypal": {
+    "source": "simple-icons:paypal",
+    "spec": "si:paypal",
+    "bytes": "467",
+    "mime": "image/svg+xml"
+  },
+  "xero": {
+    "source": "simple-icons:xero",
+    "spec": "si:xero",
+    "bytes": "1813",
+    "mime": "image/svg+xml"
+  },
+  "revenuecat": {
+    "source": "simple-icons:revenuecat",
+    "spec": "si:revenuecat",
+    "bytes": "1512",
+    "mime": "image/svg+xml"
+  },
+  "polygon": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://polygon.io&size=128",
+    "spec": "gfav:polygon.io",
+    "bytes": "655",
+    "mime": "image/png"
+  },
+  "ahrefs": {
+    "source": "https://static.ahrefs.com/favicon.svg?v=2",
+    "spec": "url:https://static.ahrefs.com/favicon.svg?v=2",
+    "bytes": "509",
+    "mime": "image/svg+xml"
+  },
+  "similarweb": {
+    "source": "simple-icons:similarweb",
+    "spec": "si:similarweb",
+    "bytes": "867",
+    "mime": "image/svg+xml"
+  },
+  "zoominfo": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://www.zoominfo.com&size=128",
+    "spec": "gfav:www.zoominfo.com",
+    "bytes": "441",
+    "mime": "image/png"
+  },
+  "metabase": {
+    "source": "simple-icons:metabase",
+    "spec": "si:metabase",
+    "bytes": "3717",
+    "mime": "image/svg+xml"
+  },
+  "posthog": {
+    "source": "simple-icons:posthog",
+    "spec": "si:posthog",
+    "bytes": "1011",
+    "mime": "image/svg+xml"
+  },
+  "canva": {
+    "source": "https://static.canva.com/static/images/android-192x192-2.png",
+    "spec": "url:https://static.canva.com/static/images/android-192x192-2.png",
+    "bytes": "26676",
+    "mime": "image/png"
+  },
+  "figma": {
+    "source": "simple-icons:figma",
+    "spec": "si:figma",
+    "bytes": "1108",
+    "mime": "image/svg+xml"
+  },
+  "miro": {
+    "source": "simple-icons:miro",
+    "spec": "si:miro",
+    "bytes": "274",
+    "mime": "image/svg+xml"
+  },
+  "cloudinary": {
+    "source": "simple-icons:cloudinary",
+    "spec": "si:cloudinary",
+    "bytes": "1665",
+    "mime": "image/svg+xml"
+  },
+  "gitlab": {
+    "source": "simple-icons:gitlab",
+    "spec": "si:gitlab",
+    "bytes": "588",
+    "mime": "image/svg+xml"
+  },
+  "jam": {
+    "source": "https://framerusercontent.com/images/3zAY5a6TukbdTWkNAkTDO1Yqpc.svg",
+    "spec": "url:https://framerusercontent.com/images/3zAY5a6TukbdTWkNAkTDO1Yqpc.svg",
+    "bytes": "1771",
+    "mime": "image/svg+xml"
+  },
+  "netlify": {
+    "source": "simple-icons:netlify",
+    "spec": "si:netlify",
+    "bytes": "671",
+    "mime": "image/svg+xml"
+  },
+  "datadog": {
+    "source": "simple-icons:datadog",
+    "spec": "si:datadog",
+    "bytes": "3013",
+    "mime": "image/svg+xml"
+  },
+  "pagerduty": {
+    "source": "simple-icons:pagerduty",
+    "spec": "si:pagerduty",
+    "bytes": "408",
+    "mime": "image/svg+xml"
+  },
+  "amplitude": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/amplitude.svg",
+    "spec": "gb:amplitude",
+    "bytes": "8754",
+    "mime": "image/svg+xml"
+  },
+  "mixpanel": {
+    "source": "simple-icons:mixpanel",
+    "spec": "si:mixpanel",
+    "bytes": "907",
+    "mime": "image/svg+xml"
+  },
+  "explorium": {
+    "source": "https://www.explorium.ai/wp-content/themes/moveo-theme/assets/icon/explorium-favicon-2026.svg",
+    "spec": "url:https://www.explorium.ai/wp-content/themes/moveo-theme/assets/icon/explorium-favicon-2026.svg",
+    "bytes": "796",
+    "mime": "image/svg+xml"
+  },
+  "attio": {
+    "source": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://attio.com&size=128",
+    "spec": "gfav:attio.com",
+    "bytes": "1386",
+    "mime": "image/png"
+  },
+  "plaid": {
+    "source": "https://plaid.com/assets/img/favicons/apple-touch-icon.png",
+    "spec": "url:https://plaid.com/assets/img/favicons/apple-touch-icon.png",
+    "bytes": "15186",
+    "mime": "image/png"
+  },
+  "ramp": {
+    "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/ramp.svg",
+    "spec": "di:ramp",
+    "bytes": "763",
+    "mime": "image/svg+xml"
+  },
+  "box": {
+    "source": "simple-icons:box",
+    "spec": "si:box",
+    "bytes": "1050",
+    "mime": "image/svg+xml"
+  },
+  "docusign": {
+    "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docusign.svg",
+    "spec": "di:docusign",
+    "bytes": "824",
+    "mime": "image/svg+xml"
+  },
+  "square": {
+    "source": "simple-icons:square",
+    "spec": "si:square",
+    "bytes": "474",
+    "mime": "image/svg+xml"
+  },
+  "semrush": {
+    "source": "simple-icons:semrush",
+    "spec": "si:semrush",
+    "bytes": "944",
+    "mime": "image/svg+xml"
+  },
+  "indeed": {
+    "source": "simple-icons:indeed",
+    "spec": "si:indeed",
+    "bytes": "889",
+    "mime": "image/svg+xml"
+  },
+  "shopify": {
+    "source": "simple-icons:shopify",
+    "spec": "si:shopify",
+    "bytes": "1249",
+    "mime": "image/svg+xml"
+  },
+  "salesforce": {
+    "source": "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/salesforce.svg",
+    "spec": "gb:salesforce",
+    "bytes": "18292",
+    "mime": "image/svg+xml"
+  },
+  "dify": {
+    "source": "simple-icons:dify",
+    "spec": "si:dify",
+    "bytes": "658",
+    "mime": "image/svg+xml"
+  },
+  "serena": {
+    "source": "https://raw.githubusercontent.com/oraios/serena/main/src/serena/resources/dashboard/serena-icon-64.png",
+    "spec": "url:https://raw.githubusercontent.com/oraios/serena/main/src/serena/resources/dashboard/serena-icon-64.png",
+    "bytes": "5286",
+    "mime": "image/png"
+  },
+  "jsonbin": {
+    "source": "https://jsonbin.io/images/favicon.png",
+    "spec": "url:https://jsonbin.io/images/favicon.png",
+    "bytes": "4064",
+    "mime": "image/png"
+  },
+  "custom": {
+    "source": "https://modelcontextprotocol.io/mintlify-assets/_mintlify/favicons/mcp/ebiVJzri-bsiCfVZ/_generated/favicon/android-chrome-192x192.png",
+    "spec": "url:https://modelcontextprotocol.io/mintlify-assets/_mintlify/favicons/mcp/ebiVJzri-bsiCfVZ/_generated/favicon/android-chrome-192x192.png",
+    "bytes": "3055",
+    "mime": "image/png"
+  }
+}
