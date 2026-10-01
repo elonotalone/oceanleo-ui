@@ -7,7 +7,8 @@ export const SETTINGS_BUILTIN_TABS = [
   "account",
   "personalization",
   "billing",
-  "models",
+  "cost",
+  "api",
   "plugins",
   "devices",
   "org",
@@ -18,6 +19,7 @@ export type SettingsBuiltinTab = (typeof SETTINGS_BUILTIN_TABS)[number];
 /** 退役的 id → 现在承接它的内置栏目。旧书签与旧调用方（`openSettingsModal("memory")`）靠它落地。 */
 export const SETTINGS_TAB_ALIASES: Readonly<Record<string, SettingsBuiltinTab>> = {
   memory: "personalization",
+  models: "api",
 };
 
 const BUILTIN = new Set<string>(SETTINGS_BUILTIN_TABS);
@@ -52,8 +54,8 @@ export function resolveSettingsTab(
 export function isSettingsPathname(pathname: string): boolean {
   if (pathname === "/settings" || pathname === "/settings/") return true;
   const match = pathname.match(/^\/settings\/([^/]+)\/?$/);
-  // `/settings/api` 仍是跳到 `/api` 的旧书签，不是设置卡片里的一栏。
-  return Boolean(match?.[1] && match[1] !== "api");
+  // 操作员要求只留 /settings/api：这一栏就是 AI 模型，不再踢去整页 /api。
+  return Boolean(match?.[1]);
 }
 
 export function settingsPath(tab: string, href?: string): string {
