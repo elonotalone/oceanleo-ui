@@ -124,7 +124,7 @@ export function ConnectorsSection({
       setSelected(c);
       setConnToken("");
       setConnUrl(existing?.endpoint || "");
-      setConnLabel(existing?.label || c.name);
+      setConnLabel(existing?.label || tt(c.name));
       setShowAdvanced(false);
       setProbeFailed(false);
       setProbeError("");
@@ -132,7 +132,7 @@ export function ConnectorsSection({
       setConnectToolsCount(null);
       if (existing) void runProbe(c.id, true);
     },
-    [connByConnector, runProbe],
+    [connByConnector, runProbe, tt],
   );
 
   const openedHashRef = useRef("");
@@ -280,7 +280,7 @@ export function ConnectorsSection({
         connector_id: c.id,
         token: connToken.trim(),
         endpoint: connUrl.trim(),
-        label: connLabel.trim() || c.name,
+        label: connLabel.trim() || tt(c.name),
       });
       if (!res.ok) {
         setConnectError(res.error || tt("连接失败"));
@@ -471,11 +471,11 @@ function ConnectorCard({
         </span>
       ) : null}
       <div className="flex gap-3">
-        <ConnectorIcon icon={connector.icon} id={connector.id} label={connector.name} />
+        <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} />
         <div className="min-w-0 pr-16">
-          <p className="text-[13px] font-medium text-neutral-900">{connector.name}</p>
+          <p className="text-[13px] font-medium text-neutral-900">{tt(connector.name)}</p>
           <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
-            {connector.desc}
+            {tt(connector.desc)}
           </p>
         </div>
       </div>
@@ -552,7 +552,7 @@ function ConnectorDialog({
         ? {
             kind: "ok" as const,
             text: tt("已连接 {name}（发现 {n} 个工具）", {
-              name: connector.name,
+              name: tt(connector.name),
               n: connectToolsCount,
             }),
           }
@@ -631,8 +631,8 @@ function ConnectorDialog({
     <InTreeDialog onClose={onClose} wide testId="mcp-connect">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <ConnectorIcon icon={connector.icon} id={connector.id} label={connector.name} size="lg" />
-          <h3 className="text-[18px] font-semibold text-neutral-900">{connector.name}</h3>
+          <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} size="lg" />
+          <h3 className="text-[18px] font-semibold text-neutral-900">{tt(connector.name)}</h3>
         </div>
         <button
           type="button"
@@ -644,11 +644,11 @@ function ConnectorDialog({
         </button>
       </div>
       {connector.docs ? (
-        <div className="mb-4 text-[13px] leading-relaxed text-neutral-700">{connector.docs}</div>
+        <div className="mb-4 text-[13px] leading-relaxed text-neutral-700">{tt(connector.docs)}</div>
       ) : null}
       {credentialsPrimary && helpUrlIsPrimaryPath(false) && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-950">
-          <p>{tt("这家需要你自己去 {name} 拿凭证，不能一键授权。", { name: connector.name })}</p>
+          <p>{tt("这家需要你自己去 {name} 拿凭证，不能一键授权。", { name: tt(connector.name) })}</p>
           {connector.help_url ? (
             <a
               href={connector.help_url}
@@ -750,7 +750,7 @@ function ConnectorDialog({
             </div>
             <p className="text-[12px] text-neutral-500">
               {tt("点「一键授权」将跳转 {name} 官方页面登录并授权，无需手动复制凭证。", {
-                name: connector.name,
+                name: tt(connector.name),
               })}
             </p>
             <button
