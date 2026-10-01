@@ -14,10 +14,41 @@ import {
 } from "../lib/auth";
 import { formatMoney } from "../lib/money";
 import { useUI } from "../i18n/ui/useUI";
-import { currentDomainProfile } from "../contracts/domain-family";
+import { ApiGuidePage } from "./ApiGuidePage";
 import { ByokKeys } from "./ByokKeys";
 import { ModelGroupManager } from "./ModelCapabilityMarket";
 import { PageHeader } from "./PageHeader";
+
+const API_PANES = [
+  { id: "models", label: "模型市场" },
+  { id: "guide", label: "指导文档" },
+] as const;
+
+type ApiPane = (typeof API_PANES)[number]["id"];
+
+function readApiPane(href?: string): ApiPane {
+  try {
+    const url = new URL(
+      href || (typeof window !== "undefined" ? window.location.href : "https://oceanleo.com/"),
+      "https://oceanleo.com",
+    );
+    return url.searchParams.get("guide") === "1" ? "guide" : "models";
+  } catch {
+    return "models";
+  }
+}
+
+function writeGuideQuery(on: boolean) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (on) url.searchParams.set("guide", "1");
+  else url.searchParams.delete("guide");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (here !== next) {
+    window.history.replaceState(window.history.state, "", next);
+  }
+}
 
 const num = (value: unknown) => {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -48,15 +79,14 @@ export interface ApiPageProps {
 /** Shared AI-model market page used by the main site and every subsite. */
 export function ApiPage({
   onLogin,
-  // 门户在两个家族里都存在，所以这里按家族拼即可，不需要「暂未开放」态。
-  // `.com` 站解析出来的仍是 https://oceanleo.com/billing（逐字不变）。
-  billingHref = `${currentDomainProfile().portalOrigin}/billing`,
+  billingHref = "/settings/billing",
   variant = "page",
 }: ApiPageProps = {}) {
   const tt = useUI();
   const pane = variant === "pane";
   const frameClass = pane ? "min-h-0" : "px-8 py-6";
   const paneMark = pane ? "" : undefined;
+  const [apiPane, setApiPane] = useState<ApiPane>(() => readApiPane());
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
@@ -91,6 +121,19 @@ export function ApiPage({
     });
   }, [user]);
 
+  useEffect(() => {
+    function sync() {
+      setApiPane(readApiPane());
+    }
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  function selectApiPane(next: ApiPane) {
+    setApiPane(next);
+    writeGuideQuery(next === "guide");
+  }
+
   if (!oceanleoConfigured()) {
     const notice = loginUnavailableNotice();
     return (
@@ -107,10 +150,8 @@ export function ApiPage({
   }
 
   const providers = catalog?.providers || [];
-  return (
-    <div className={frameClass} data-api-pane={paneMark}>
-      {!pane && <PageHeader title={tt("AI 模型")} />}
-      <div className={pane ? "max-w-3xl space-y-8" : "mx-auto mt-6 max-w-3xl space-y-8"}>
+  const market = (
+    <>
         <section className="v-fade-up">
           <div className="rounded-2xl border border-neutral-200 p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">
@@ -125,12 +166,14 @@ export function ApiPage({
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {!pane && (
                 <a
-                  href="/api/guide"
+                  href="/settings/api?guide=1"
                   className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                 >
                   {tt("指导文档")}
                 </a>
+                )}
                 {checked && !user && onLogin ? (
                   <button
                     type="button"
@@ -218,7 +261,45 @@ export function ApiPage({
             {tt("登录后即可创建具名组合，并在全家桶按同一兜底顺序使用。")}
           </p>
         )}
-      </div>
+    </>
+  );
+
+  return (
+    <div className={frameClass} data-api-pane={paneMark}>
+      {!pane && <PageHeader title={tt("AI 模型")} />}
+      {pane ? (
+        <div className="max-w-3xl space-y-6">
+          <div className="flex gap-1" data-api-settings-tabs="" role="tablist">
+            {API_PANES.map((item) => {
+              const active = apiPane === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  data-api-settings-tab={item.id}
+                  aria-selected={active}
+                  className={`rounded-lg px-3 py-2 text-[13px] font-medium ${
+                    active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
+                  }`}
+                  onClick={() => selectApiPane(item.id)}
+                >
+                  {tt(item.label)}
+                </button>
+              );
+            })}
+          </div>
+          {apiPane === "guide" ? (
+            <div data-api-guide="">
+              <ApiGuidePage />
+            </div>
+          ) : (
+            <div className="space-y-8">{market}</div>
+          )}
+        </div>
+      ) : (
+        <div className="mx-auto mt-6 max-w-3xl space-y-8">{market}</div>
+      )}
     </div>
   );
 }

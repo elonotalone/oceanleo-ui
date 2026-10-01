@@ -23,6 +23,7 @@ import { PersonalizationSection } from "./personalization/PersonalizationSection
 import { GeneralSection } from "./sections/GeneralSection";
 import { AccountSection } from "./sections/AccountSection";
 import { BillingSection } from "./sections/BillingSection";
+import { CostSection } from "./sections/CostSection";
 import { OrgSection } from "./sections/OrgSection";
 import {
   canonicalSettingsTab,
@@ -61,6 +62,8 @@ export type SettingsHubProps = {
   showRequestStat?: boolean;
   orgHref?: string;
   extraStats?: { value: ReactNode; label: string }[];
+  /** 用量与账单栏里、柱状图下面的钱包/充值块（门户传入）。 */
+  wallet?: ReactNode;
   onSignedIn?: () => void;
   onSignedOut?: () => void;
   currentHref?: string;
@@ -116,6 +119,7 @@ export function SettingsHub({
   showRequestStat = true,
   orgHref,
   extraStats = [],
+  wallet,
   onSignedIn,
   onSignedOut,
   currentHref,
@@ -249,12 +253,18 @@ export function SettingsHub({
         id: "billing",
         group: "settings",
         label: tt("用量与账单"),
-        render: () => <BillingSection stats={stats} />,
+        render: () => <BillingSection stats={stats} wallet={wallet} />,
+      },
+      {
+        id: "cost",
+        group: "settings",
+        label: tt("费用"),
+        render: () => <CostSection />,
       },
     ];
     const caps: SettingsSection[] = [
       {
-        id: "models",
+        id: "api",
         group: "capabilities",
         label: tt("AI 模型"),
         render: () => <ApiPage variant="pane" />,
@@ -296,7 +306,7 @@ export function SettingsHub({
       render: () => <OrgSection orgHref={orgHref} />,
     };
     return [...builtin, ...caps, ...capsByHref.values(), org, ...withoutShadowedSections(extraSections)];
-  }, [tt, email, onSignedOut, stats, menu, orgHref, extraSections]);
+  }, [tt, email, onSignedOut, stats, wallet, menu, orgHref, extraSections]);
 
   const groups = useMemo<SettingsNavGroup[]>(() => {
     const labels: Record<SettingsSection["group"], string> = {

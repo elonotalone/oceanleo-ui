@@ -2,7 +2,9 @@ export { ApiPage } from "./ApiPage";
 export type { ApiPageProps } from "./ApiPage";
 export { ApiGuidePage } from "./ApiGuidePage";
 export { UsageHistory } from "./UsageHistory";
-export { CostPage } from "./CostPage";
+export { CostPage, UsageBarChart } from "./CostPage";
+export { BillingSection } from "./settings/sections/BillingSection";
+export { CostSection } from "./settings/sections/CostSection";
 export { PageHeader } from "./PageHeader";
 export { ByokKeys } from "./ByokKeys";
 // 共享登录 UI（W10 owner）：邮箱密码 / 中国手机号 OTP / 微信扫码三方式，全家桶

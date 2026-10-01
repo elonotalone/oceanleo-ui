@@ -88,7 +88,7 @@ function bucketByDay(events: CreditEvent[], days: number): DayBucket[] {
   return Array.from(map.values());
 }
 
-function UsageBarChart({ events }: { events: CreditEvent[] }) {
+export function UsageBarChart({ events }: { events: CreditEvent[] }) {
   const tt = useUI();
   const ledger = useLedgerCurrency();
   const [hover, setHover] = useState<number | null>(null);
@@ -104,7 +104,7 @@ function UsageBarChart({ events }: { events: CreditEvent[] }) {
   }, [events, ledger]);
 
   return (
-    <div className="rounded-2xl border border-neutral-200 p-5">
+    <div data-usage-chart className="rounded-2xl border border-neutral-200 p-5">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-[14px] font-semibold text-neutral-900">{tt("近 30 天消费")}</h2>
         <span className="text-[12px] tabular-nums text-neutral-500">
@@ -183,8 +183,14 @@ function UsageBarChart({ events }: { events: CreditEvent[] }) {
   );
 }
 
-export function CostPage() {
+export function CostPage({
+  variant = "page",
+}: {
+  /** `page`：整页 /cost。`pane`：嵌在设置卡里，不渲染 PageHeader。 */
+  variant?: "page" | "pane";
+} = {}) {
   const tt = useUI();
+  const pane = variant === "pane";
   const [events, setEvents] = useState<CreditEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -196,10 +202,10 @@ export function CostPage() {
   }, []);
 
   return (
-    <div className="px-8 py-6">
-      <PageHeader title="Cost" />
+    <div className={pane ? "min-h-0" : "px-8 py-6"}>
+      {!pane && <PageHeader title="Cost" />}
 
-      <div className="mx-auto mt-8 max-w-3xl space-y-8">
+      <div className={pane ? "max-w-3xl space-y-8" : "mx-auto mt-8 max-w-3xl space-y-8"}>
         {!loaded ? (
           <p className="py-16 text-center text-[13px] text-neutral-400">{tt("加载中…")}</p>
         ) : (
