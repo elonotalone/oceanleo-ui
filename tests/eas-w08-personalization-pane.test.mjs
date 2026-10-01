@@ -228,6 +228,10 @@ async function click(el) {
   await flush();
 }
 
+async function openPane(host, id) {
+  await click(host.querySelector(`[data-personalization-settings-tab="${id}"]`));
+}
+
 async function typeInto(el, value) {
   assert.ok(el, "input target");
   const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
@@ -277,6 +281,7 @@ test("自定义指令 1500 字可提交、1501 字与未改动时「确认」禁
   setupApi();
   const { host, unmount } = await mount();
   try {
+    await openPane(host, "instructions");
     const box = host.querySelector("[data-personalization-instructions]");
     const submit = host.querySelector("[data-personalization-instructions-submit]");
     assert.ok(box && submit);
@@ -352,13 +357,53 @@ test("后端 404 时显示「还没启用」而不是错误；记忆列表仍可
   });
   const { host, unmount } = await mount();
   try {
-    const infos = [...host.querySelectorAll('[data-personalization-note="info"]')];
-    assert.ok(infos.length >= 2, "toggle + instructions + import 都应说明还没启用");
-    assert.ok(infos.every((node) => node.textContent.includes(NOT_AVAILABLE)));
+    const memoryInfos = [
+      ...host.querySelectorAll('[data-personalization-section="memory"] [data-personalization-note="info"]'),
+    ];
+    assert.equal(memoryInfos.length, 2, "toggle + import 在记忆区说明还没启用");
+    assert.ok(memoryInfos.every((node) => node.textContent.includes(NOT_AVAILABLE)));
+    assert.equal(host.querySelector('[data-personalization-section="instructions"]'), null);
     assert.equal(host.querySelector('[data-personalization-note="error"]'), null);
     assert.equal(host.querySelector('[data-personalization-card="memory-toggle"] [role="switch"]'), null);
     assert.ok(host.querySelector("[data-personalization-memory-count]"));
     assert.match(host.querySelector('[data-personalization-card="memories"]').textContent, /先给结论/);
+
+    await openPane(host, "instructions");
+    const instructionInfos = [
+      ...host.querySelectorAll('[data-personalization-section="instructions"] [data-personalization-note="info"]'),
+    ];
+    assert.equal(instructionInfos.length, 1, "指令区单独说明还没启用");
+    assert.ok(instructionInfos[0].textContent.includes(NOT_AVAILABLE));
+    assert.equal(host.querySelector('[data-personalization-section="memory"]'), null);
+  } finally {
+    await unmount();
+  }
+});
+
+test("默认只挂记忆区；点「自定义指令」后记忆卸掉、指令区出现", async () => {
+  setupApi();
+  const { host, unmount } = await mount();
+  try {
+    const tabs = host.querySelector("[data-personalization-settings-tabs]");
+    assert.ok(tabs);
+    assert.equal(tabs.getAttribute("role"), "tablist");
+    const memoryTab = host.querySelector('[data-personalization-settings-tab="memory"]');
+    const instructionsTab = host.querySelector('[data-personalization-settings-tab="instructions"]');
+    assert.ok(memoryTab && instructionsTab);
+    assert.equal(memoryTab.getAttribute("role"), "tab");
+    assert.equal(instructionsTab.getAttribute("role"), "tab");
+    assert.equal(memoryTab.getAttribute("aria-selected"), "true");
+    assert.equal(instructionsTab.getAttribute("aria-selected"), "false");
+    assert.ok(host.querySelector('[data-personalization-section="memory"]'));
+    assert.ok(host.querySelector('[data-personalization-card="memory-toggle"]'));
+    assert.equal(host.querySelector('[data-personalization-section="instructions"]'), null);
+
+    await click(instructionsTab);
+    assert.equal(host.querySelector('[data-personalization-section="memory"]'), null);
+    assert.ok(host.querySelector('[data-personalization-section="instructions"]'));
+    assert.ok(host.querySelector("[data-personalization-instructions]"));
+    assert.equal(memoryTab.getAttribute("aria-selected"), "false");
+    assert.equal(instructionsTab.getAttribute("aria-selected"), "true");
   } finally {
     await unmount();
   }

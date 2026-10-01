@@ -1,8 +1,8 @@
 "use client";
 
-// 设置窗「个性化」面板：主站与所有子站同一份。上半是记忆（总开关、来自对话的记忆、
-// 从其他 AI 导入），下半是自定义指令。偏好与记忆分两路读：个性化端点比记忆 CRUD
-// 晚上线，旧网关上前者 404 时开关与指令区只说「还没启用」，记忆列表照常可用。
+// 设置窗「个性化」面板：主站与所有子站同一份。顶部两块切换（记忆 / 自定义指令），
+// 一次只挂一块。偏好与记忆分两路读：个性化端点比记忆 CRUD 晚上线，旧网关上前者
+// 404 时开关与指令区只说「还没启用」，记忆列表照常可用。
 
 import { useCallback, useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -20,12 +20,20 @@ import { MemoryToggleCard } from "./MemoryToggleCard";
 import { PRIMARY, accentStyle } from "./parts";
 import type { MemoriesState, PrefsState } from "./state";
 
+const PERSONALIZATION_PANES = [
+  { id: "memory", label: "记忆" },
+  { id: "instructions", label: "自定义指令" },
+] as const;
+
+type PersonalizationPane = (typeof PERSONALIZATION_PANES)[number]["id"];
+
 export type PersonalizationSectionProps = {
   accent?: string;
 };
 
 export function PersonalizationSection({ accent }: PersonalizationSectionProps) {
   const tt = useUI();
+  const [pane, setPane] = useState<PersonalizationPane>("memory");
   const [prefs, setPrefs] = useState<PrefsState>({ status: "loading" });
   const [memories, setMemories] = useState<MemoriesState>({ status: "loading" });
   const [prefsLoads, setPrefsLoads] = useState(0);
@@ -90,25 +98,49 @@ export function PersonalizationSection({ accent }: PersonalizationSectionProps) 
     prefs.status === "loading" ? null : !(prefs.status === "failed" && prefs.code === "not_available");
 
   return (
-    <div data-settings-pane="personalization" className="space-y-8">
-      <section className="space-y-3" data-personalization-section="memory">
-        <h3 className="text-[15px] font-semibold text-neutral-900">{tt("记忆")}</h3>
-        <MemoryToggleCard prefs={prefs} onPrefsChange={updatePrefs} onRetry={reloadPrefs} />
-        <MemoryListCard
+    <div data-settings-pane="personalization" className="space-y-4">
+      <div className="flex gap-1" data-personalization-settings-tabs="" role="tablist">
+        {PERSONALIZATION_PANES.map((item) => {
+          const active = pane === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              data-personalization-settings-tab={item.id}
+              aria-selected={active}
+              className={`rounded-lg px-3 py-2 text-[13px] font-medium ${
+                active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
+              }`}
+              onClick={() => setPane(item.id)}
+            >
+              {tt(item.label)}
+            </button>
+          );
+        })}
+      </div>
+      {pane === "memory" ? (
+        <section className="space-y-3" data-personalization-section="memory">
+          <h3 className="text-[15px] font-semibold text-neutral-900">{tt("记忆")}</h3>
+          <MemoryToggleCard prefs={prefs} onPrefsChange={updatePrefs} onRetry={reloadPrefs} />
+          <MemoryListCard
+            accent={accent}
+            memories={memories}
+            onMemoriesChange={updateMemories}
+            onRetry={retryMemories}
+          />
+          <MemoryImportRow accent={accent} available={importAvailable} onImported={reloadMemories} />
+        </section>
+      ) : null}
+      {pane === "instructions" ? (
+        <CustomInstructionsCard
           accent={accent}
-          memories={memories}
-          onMemoriesChange={updateMemories}
-          onRetry={retryMemories}
+          prefs={prefs}
+          loadKey={prefsLoads}
+          onPrefsChange={updatePrefs}
+          onRetry={reloadPrefs}
         />
-        <MemoryImportRow accent={accent} available={importAvailable} onImported={reloadMemories} />
-      </section>
-      <CustomInstructionsCard
-        accent={accent}
-        prefs={prefs}
-        loadKey={prefsLoads}
-        onPrefsChange={updatePrefs}
-        onRetry={reloadPrefs}
-      />
+      ) : null}
     </div>
   );
 }
