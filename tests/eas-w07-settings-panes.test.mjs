@@ -155,6 +155,8 @@ const STUBS = {
   "../../pages/DevicesPage": marker("DevicesPage", "pane-devices"),
   "../../pages/PluginsPage": marker("PluginsPage", "pane-plugins"),
   "../../pages/settings/personalization/PersonalizationSection": marker("PersonalizationSection", "pane-personalization"),
+  "./sections/BillingSection": marker("BillingSection", "pane-billing"),
+  "./sections/CostSection": marker("CostSection", "pane-cost"),
 };
 
 const { SettingsModalHost, openSettingsModal } = await import(
@@ -211,7 +213,7 @@ async function click(node, what) {
 }
 
 const CAPABILITIES = [
-  { id: "models", testId: "pane-api", label: "AI 模型" },
+  { id: "api", testId: "pane-api", label: "AI 模型" },
   { id: "plugins", testId: "pane-plugins", label: "插件与连接器" },
   { id: "devices", testId: "pane-devices", label: "我的设备" },
 ];
@@ -224,8 +226,9 @@ test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=devices"), "devices");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=memory"), "personalization");
   assert.equal(isSettingsPathname("/settings/org"), true);
-  assert.equal(isSettingsPathname("/settings/api"), false);
-  assert.equal(isSettingsPathname("/settings/api/"), false);
+  // 操作员要求只留 /settings/api：旧断言把它当成跳 /api 的书签，那条已经作废。
+  assert.equal(isSettingsPathname("/settings/api"), true);
+  assert.equal(isSettingsPathname("/settings/api/"), true);
 });
 
 test("设置窗里点「AI 模型」「插件与连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
@@ -337,9 +340,9 @@ test("设置窗开着时背后页面导航（pushState）→ 设置窗关闭；�
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   await open("plugins");
   assert.ok(dialog(), "设置窗先打开");
-  await click(inDialog('[data-settings-item="models"]'), "models");
+  await click(inDialog('[data-settings-item="api"]'), "api");
   assert.ok(dialog(), "换 tab 只改 /settings/<tab>（replaceState），设置窗不该关");
-  assert.equal(window.location.pathname, "/settings/models");
+  assert.equal(window.location.pathname, "/settings/api");
 
   await act(async () => {
     window.history.pushState(null, "", "/projects");

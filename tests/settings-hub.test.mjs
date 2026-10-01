@@ -176,6 +176,8 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "../DevicesPage": paneStub("DevicesPage", "pane-devices"),
   "../PluginsPage": paneStub("PluginsPage", "pane-plugins"),
   "./personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
+  "./sections/BillingSection": paneStub("BillingSection", "pane-billing"),
+  "./sections/CostSection": paneStub("CostSection", "pane-cost"),
 });
 const { SettingsHub } = await import(hubUrl);
 
@@ -195,6 +197,8 @@ const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "./DevicesPage": paneStub("DevicesPage", "pane-devices"),
   "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
   "./settings/personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
+  "./settings/sections/BillingSection": paneStub("BillingSection", "pane-billing"),
+  "./settings/sections/CostSection": paneStub("CostSection", "pane-cost"),
 });
 const { AccountPage } = await import(accountUrl);
 
