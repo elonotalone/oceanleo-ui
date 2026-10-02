@@ -159,6 +159,7 @@ export const SETTINGS_I18N_SOURCE = {
   "一次充值，全站所有编辑器通用": "一次充值，全站所有编辑器通用",
   "数百个模型，按每次真实用量扣费": "数百个模型，按每次真实用量扣费",
   "60 天内可自助退还未用完的余额": "60 天内可自助退还未用完的余额",
+  "一次余额，OceanLeo 系列网站通用": "一次余额，OceanLeo 系列网站通用",
 } as const;
 
 export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
@@ -319,6 +320,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "One top-up works across every OceanLeo editor.",
     "数百个模型，按每次真实用量扣费": "Hundreds of models, billed only for what you actually use.",
     "60 天内可自助退还未用完的余额": "Self-serve refund of unused balance for 60 days after top-up.",
+    "一次余额，OceanLeo 系列网站通用": "One balance works across the OceanLeo family of sites.",
   },
   "de": {
     "还没有知识库条目": "Noch keine Wissenseinträge",
@@ -477,6 +479,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Eine Aufladung gilt in allen OceanLeo-Editoren.",
     "数百个模型，按每次真实用量扣费": "Hunderte Modelle, Abzug nur nach echtem Verbrauch jeder Nutzung.",
     "60 天内可自助退还未用完的余额": "60 Tage nach dem Aufladen Selbstbedienungserstattung des unverbrauchten Guthabens.",
+    "一次余额，OceanLeo 系列网站通用": "Ein Guthaben gilt auf allen Websites der OceanLeo-Familie.",
   },
   "es": {
     "还没有知识库条目": "Aún no hay entradas de conocimiento",
@@ -635,6 +638,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Una recarga vale en todos los editores de OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Cientos de modelos, cobro solo por el uso real de cada vez.",
     "60 天内可自助退还未用完的余额": "Reembolso en autoservicio del saldo no usado durante 60 días.",
+    "一次余额，OceanLeo 系列网站通用": "Un saldo funciona en todos los sitios de la familia OceanLeo.",
   },
   "es-419": {
     "还没有知识库条目": "Todavía no hay entradas de conocimiento",
@@ -793,6 +797,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Una recarga vale en todos los editores de OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Cientos de modelos, cobro solo por el uso real de cada vez.",
     "60 天内可自助退还未用完的余额": "Reembolso en autoservicio del saldo no usado durante 60 días.",
+    "一次余额，OceanLeo 系列网站通用": "Un saldo sirve en todos los sitios de la familia OceanLeo.",
   },
   "fr": {
     "还没有知识库条目": "Pas encore d’entrées de connaissances",
@@ -951,6 +956,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Une recharge fonctionne dans tous les éditeurs OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Des centaines de modèles, débit uniquement selon l’usage réel de chaque appel.",
     "60 天内可自助退还未用完的余额": "Remboursement en libre-service du solde inutilisé pendant 60 jours après la recharge.",
+    "一次余额，OceanLeo 系列网站通用": "Un solde fonctionne sur tous les sites de la famille OceanLeo.",
   },
   "it": {
     "还没有知识库条目": "Nessuna voce di conoscenza ancora",
@@ -1109,6 +1115,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Una ricarica vale in tutti gli editor OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Centinaia di modelli, addebito solo per l’uso reale di ogni volta.",
     "60 天内可自助退还未用完的余额": "Rimborso fai da te del saldo non usato entro 60 giorni dalla ricarica.",
+    "一次余额，OceanLeo 系列网站通用": "Un saldo funziona su tutti i siti della famiglia OceanLeo.",
   },
   "pt-BR": {
     "还没有知识库条目": "Ainda não há entradas de conhecimento",
@@ -1267,6 +1274,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Uma recarga vale em todos os editores OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Centenas de modelos, cobrança só pelo uso real de cada vez.",
     "60 天内可自助退还未用完的余额": "Reembolso self-service do saldo não usado por 60 dias após recarregar.",
+    "一次余额，OceanLeo 系列网站通用": "Um saldo funciona em todos os sites da família OceanLeo.",
   },
   "pt-PT": {
     "还没有知识库条目": "Ainda não há entradas de conhecimento",
@@ -1425,6 +1433,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Um carregamento vale em todos os editores OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Centenas de modelos, cobrança só pelo uso real de cada vez.",
     "60 天内可自助退还未用完的余额": "Reembolso self-service do saldo não usado durante 60 dias após carregar.",
+    "一次余额，OceanLeo 系列网站通用": "Um saldo funciona em todos os sítios da família OceanLeo.",
   },
   "vi": {
     "还没有知识库条目": "Chưa có mục kiến thức nào",
@@ -1583,6 +1592,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Nạp một lần, dùng chung mọi trình chỉnh sửa OceanLeo.",
     "数百个模型，按每次真实用量扣费": "Hàng trăm mô hình, trừ phí theo lượng dùng thật mỗi lần.",
     "60 天内可自助退还未用完的余额": "Trong 60 ngày có thể tự hoàn số dư chưa dùng hết.",
+    "一次余额，OceanLeo 系列网站通用": "Một số dư dùng chung trên các trang thuộc họ OceanLeo.",
   },
   "tr": {
     "还没有知识库条目": "Henüz bilgi girişi yok",
@@ -1741,6 +1751,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "Bir yükleme tüm OceanLeo düzenleyicilerinde geçerli.",
     "数百个模型，按每次真实用量扣费": "Yüzlerce model, yalnızca her seferki gerçek kullanımdan düşülür.",
     "60 天内可自助退还未用完的余额": "Yüklemeden sonra 60 gün kullanılmayan bakiyeyi self-servis iade.",
+    "一次余额，OceanLeo 系列网站通用": "Bir bakiye OceanLeo ailesindeki tüm sitelerde geçerlidir.",
   },
   "zh-TW": {
     "还没有知识库条目": "還沒有知識庫條目",
@@ -1899,6 +1910,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "一次儲值，全站所有編輯器通用",
     "数百个模型，按每次真实用量扣费": "數百個模型，按每次真實用量扣費",
     "60 天内可自助退还未用完的余额": "60 天內可自助退還未用完的餘額",
+    "一次余额，OceanLeo 系列网站通用": "一次餘額，OceanLeo 系列網站通用",
   },
   "ja": {
     "还没有知识库条目": "ナレッジ項目はまだありません",
@@ -2057,6 +2069,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "一度のチャージで、すべての OceanLeo エディターで使えます。",
     "数百个模型，按每次真实用量扣费": "数百のモデル。毎回の実使用量だけを引きます。",
     "60 天内可自助退还未用完的余额": "チャージ後 60 日以内は、未使用残高をセルフ返金できます。",
+    "一次余额，OceanLeo 系列网站通用": "ひとつの残高は、OceanLeo ファミリーのすべてのサイトで使えます。",
   },
   "ko": {
     "还没有知识库条目": "지식 항목이 아직 없습니다",
@@ -2215,6 +2228,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "한 번 충전하면 모든 OceanLeo 편집기에서 통용됩니다.",
     "数百个模型，按每次真实用量扣费": "수백 개 모델, 매번 실제 사용량만 차감합니다.",
     "60 天内可自助退还未用完的余额": "충전 후 60일 안에 쓰지 않은 잔액을 셀프 환불할 수 있습니다.",
+    "一次余额，OceanLeo 系列网站通用": "하나의 잔액은 OceanLeo 패밀리의 모든 사이트에서 통용됩니다.",
   },
   "ar": {
     "还没有知识库条目": "لا توجد إدخالات معرفة بعد",
@@ -2373,6 +2387,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "شحنة واحدة تعمل في كل محررات OceanLeo.",
     "数百个模型，按每次真实用量扣费": "مئات النماذج، يُخصم فقط حسب الاستخدام الحقيقي في كل مرة.",
     "60 天内可自助退还未用完的余额": "استرداد ذاتي للرصيد غير المستخدم خلال 60 يومًا بعد الشحن.",
+    "一次余额，OceanLeo 系列网站通用": "رصيد واحد يعمل في كل مواقع عائلة OceanLeo.",
   },
   "th": {
     "还没有知识库条目": "ยังไม่มีรายการความรู้",
@@ -2531,6 +2546,7 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "เติมครั้งเดียว ใช้ได้ทุกตัวแก้ไข OceanLeo",
     "数百个模型，按每次真实用量扣费": "หลายร้อยโมเดล หักตามปริมาณใช้จริงแต่ละครั้ง",
     "60 天内可自助退还未用完的余额": "ภายใน 60 วันหลังเติม คืนเองได้สำหรับยอดที่ยังไม่ใช้หมด",
+    "一次余额，OceanLeo 系列网站通用": "ยอดเดียวใช้ได้กับทุกเว็บไซต์ในตระกูล OceanLeo",
   },
   "hi": {
     "还没有知识库条目": "अभी कोई ज्ञान प्रविष्टि नहीं है",
@@ -2689,5 +2705,6 @@ export const SETTINGS_I18N_MESSAGES = assembleCopy(SETTINGS_I18N_SOURCE, {
     "一次充值，全站所有编辑器通用": "एक टॉप-अप सभी OceanLeo संपादकों में चलता है।",
     "数百个模型，按每次真实用量扣费": "सैकड़ों मॉडल, हर बार असली उपयोग जितना ही कटता है।",
     "60 天内可自助退还未用完的余额": "टॉप-अप के 60 दिन तक बचे बैलेंस का सेल्फ-सर्व रिफंड।",
+    "一次余额，OceanLeo 系列网站通用": "एक बैलेंस OceanLeo परिवार की सभी साइटों पर चलता है।",
   },
 });
