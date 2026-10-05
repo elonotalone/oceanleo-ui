@@ -176,6 +176,7 @@ test("403 reauth_required 出现重新登录按钮", async () => {
     code: "reauth_required",
     error: "为了保护你的钥匙，请重新登录后再添加",
   });
+  await clickLabeled(view.host, "添加");
   await clickLabeled(view.host, "探测");
   assert.ok(view.text().includes("为了保护你的钥匙，请重新登录后再添加"));
   const button = [...view.host.querySelectorAll("button")].find(
@@ -191,6 +192,7 @@ test("其它 4xx 只显示原来的错误，不出现重新登录按钮", async 
     status: 400,
     error: "未知服务商，不能在此使用。",
   });
+  await clickLabeled(view.host, "添加");
   await clickLabeled(view.host, "探测");
   assert.ok(view.text().includes("未知服务商，不能在此使用。"));
   const button = [...view.host.querySelectorAll("button")].find(

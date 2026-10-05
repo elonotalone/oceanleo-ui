@@ -31,6 +31,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "閘道尚未啟用 BYOK，請稍後再試。",
     loginToConfigure: "登入後即可設定自己的 key",
     howToBringKey: "怎麼自己帶金鑰",
+    addKey: "新增金鑰",
+    noKeysYet: "還沒有自帶金鑰",
   },
   ja: {
     storageNotice:
@@ -58,6 +60,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "ゲートウェイはまだ BYOK を有効にしていません。しばらくしてからやり直してください。",
     loginToConfigure: "ログインすると自分のキーを設定できます",
     howToBringKey: "自分のキーの使い方",
+    addKey: "キーを追加",
+    noKeysYet: "まだキーがない",
   },
   ko: {
     storageNotice:
@@ -85,6 +89,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "게이트웨이가 아직 BYOK를 켜지 않았습니다. 잠시 후 다시 시도하세요.",
     loginToConfigure: "로그인하면 자신의 키를 설정할 수 있습니다",
     howToBringKey: "내 키를 쓰는 방법",
+    addKey: "키 추가",
+    noKeysYet: "아직 키가 없음",
   },
   ar: {
     storageNotice:
@@ -112,6 +118,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "البوابة لم تُفعّل BYOK بعد. حاول لاحقًا.",
     loginToConfigure: "سجّل الدخول لضبط مفتاحك",
     howToBringKey: "كيف تستخدم مفتاحك",
+    addKey: "أضف مفتاحًا",
+    noKeysYet: "لا مفتاح بعد",
   },
   hi: {
     storageNotice:
@@ -139,6 +147,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "गेटवे ने अभी BYOK चालू नहीं किया। बाद में फिर कोशिश करें।",
     loginToConfigure: "लॉगिन करके अपनी key सेट करें",
     howToBringKey: "अपनी key कैसे लगाएँ",
+    addKey: "key जोड़ें",
+    noKeysYet: "अभी कोई key नहीं",
   },
   th: {
     storageNotice:
@@ -166,6 +176,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "เกตเวย์ยังไม่ได้เปิด BYOK โปรดลองใหม่ภายหลัง",
     loginToConfigure: "เข้าสู่ระบบเพื่อตั้งค่าคีย์ของคุณ",
     howToBringKey: "วิธีใช้คีย์ของคุณ",
+    addKey: "เพิ่มคีย์",
+    noKeysYet: "ยังไม่มีคีย์",
   },
   vi: {
     storageNotice:
@@ -193,6 +205,8 @@ export const BYOK_COPY_EASTERN = {
     gatewayNotEnabled: "Cổng chưa bật BYOK. Vui lòng thử lại sau.",
     loginToConfigure: "Đăng nhập để cấu hình key của bạn",
     howToBringKey: "Cách dùng key của bạn",
+    addKey: "Thêm key",
+    noKeysYet: "Chưa có key",
   },
 } satisfies Record<
   "zh-TW" | "ja" | "ko" | "ar" | "hi" | "th" | "vi",

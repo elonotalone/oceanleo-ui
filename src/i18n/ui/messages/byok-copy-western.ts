@@ -30,6 +30,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "The gateway has not enabled BYOK yet. Please try again later.",
     loginToConfigure: "Sign in to configure your own key",
     howToBringKey: "How to bring your own key",
+    addKey: "Add a key",
+    noKeysYet: "No key added yet",
   },
   de: {
     storageNotice:
@@ -58,6 +60,8 @@ export const BYOK_COPY_WESTERN = {
       "Das Gateway hat BYOK noch nicht aktiviert. Bitte später erneut versuchen.",
     loginToConfigure: "Melde dich an, um deinen eigenen Key einzurichten",
     howToBringKey: "So hinterlegst du einen eigenen Key",
+    addKey: "Key hinzufügen",
+    noKeysYet: "Noch kein eigener Key",
   },
   es: {
     storageNotice:
@@ -85,6 +89,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "La pasarela aún no ha activado BYOK. Inténtalo más tarde.",
     loginToConfigure: "Inicia sesión para configurar tu propia clave",
     howToBringKey: "Cómo usar tu propia clave",
+    addKey: "Añadir clave",
+    noKeysYet: "Aún no hay clave",
   },
   "es-419": {
     storageNotice:
@@ -112,6 +118,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "La pasarela todavía no habilitó BYOK. Inténtalo más tarde.",
     loginToConfigure: "Inicia sesión para configurar tu propia clave",
     howToBringKey: "Cómo usar tu propia clave",
+    addKey: "Añadir clave",
+    noKeysYet: "Aún no hay clave",
   },
   fr: {
     storageNotice:
@@ -140,6 +148,8 @@ export const BYOK_COPY_WESTERN = {
       "La passerelle n’a pas encore activé BYOK. Réessayez plus tard.",
     loginToConfigure: "Connectez-vous pour configurer votre propre clé",
     howToBringKey: "Comment apporter votre propre clé",
+    addKey: "Ajouter une clé",
+    noKeysYet: "Aucune clé pour l’instant",
   },
   it: {
     storageNotice:
@@ -167,6 +177,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "Il gateway non ha ancora abilitato BYOK. Riprova più tardi.",
     loginToConfigure: "Accedi per configurare la tua chiave",
     howToBringKey: "Come usare la tua chiave",
+    addKey: "Aggiungi chiave",
+    noKeysYet: "Nessuna chiave",
   },
   "pt-BR": {
     storageNotice:
@@ -194,6 +206,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "A gateway ainda não ativou o BYOK. Tente de novo mais tarde.",
     loginToConfigure: "Entre para configurar sua própria chave",
     howToBringKey: "Como usar sua própria chave",
+    addKey: "Adicionar chave",
+    noKeysYet: "Ainda sem chave",
   },
   "pt-PT": {
     storageNotice:
@@ -221,6 +235,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "A gateway ainda não ativou o BYOK. Tenta novamente mais tarde.",
     loginToConfigure: "Inicia sessão para configurares a tua própria chave",
     howToBringKey: "Como usares a tua própria chave",
+    addKey: "Adicionar chave",
+    noKeysYet: "Ainda sem chave",
   },
   tr: {
     storageNotice:
@@ -248,6 +264,8 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled: "Ağ geçidi henüz BYOK’u açmadı. Lütfen sonra yeniden dene.",
     loginToConfigure: "Kendi anahtarını yapılandırmak için giriş yap",
     howToBringKey: "Kendi anahtarını nasıl kullanırsın",
+    addKey: "Anahtar ekle",
+    noKeysYet: "Henüz anahtar yok",
   },
 } satisfies Record<
   "en" | "de" | "es" | "es-419" | "fr" | "it" | "pt-BR" | "pt-PT" | "tr",

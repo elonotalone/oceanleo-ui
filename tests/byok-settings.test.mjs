@@ -183,6 +183,42 @@ test("enabled:false 时出现网关尚未启用 BYOK", async () => {
   view.cleanup();
 });
 
+async function click(host, selector) {
+  const node = host.querySelector(selector);
+  assert.ok(node, selector);
+  await act(async () => {
+    node.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
+}
+
+test("没有已存 key 时不出现已配置的厂商空表，也不摊开空输入框", async () => {
+  const view = await render({
+    enabled: true,
+    providers: [],
+    limits: { max_providers: 8 },
+  });
+  assert.equal(view.host.querySelector("[data-byok-configured]"), null);
+  assert.equal(view.text().includes("已配置的厂商"), false);
+  assert.equal(view.host.querySelector("[data-byok-editor]")?.getAttribute("data-byok-editor"), "none");
+  assert.ok(view.host.querySelector("[data-byok-add]"));
+  assert.match(view.text(), /还没有自带密钥/);
+  assert.equal(view.host.querySelector("[data-byok-form]"), null);
+  assert.equal(view.host.querySelector("input"), null);
+  assert.equal(view.host.querySelector("textarea"), null);
+  const help = view.host.querySelector("[data-byok-help]");
+  assert.ok(help);
+  assert.match(help.getAttribute("href") || "", /\/a\/bring-your-own-key/);
+  await click(view.host, "[data-byok-add]");
+  assert.equal(view.host.querySelector("[data-byok-editor]")?.getAttribute("data-byok-editor"), "add");
+  assert.ok(view.host.querySelector("[data-byok-form]"));
+  assert.ok(view.host.querySelector("input[type=password]"));
+  await click(view.host, "[data-byok-cancel]");
+  assert.equal(view.host.querySelector("[data-byok-form]"), null);
+  assert.equal(view.host.querySelector("input[type=password]"), null);
+  view.cleanup();
+});
+
 test("enabled:true 列表出现指纹且不出现 sk-test", async () => {
   const view = await render({
     enabled: true,
@@ -201,6 +237,21 @@ test("enabled:true 列表出现指纹且不出现 sk-test", async () => {
   });
   assert.ok(view.text().includes("sk-…ab3f"));
   assert.equal(view.text().includes("sk-test"), false);
+  const configured = view.host.querySelector("[data-byok-configured]");
+  assert.ok(configured);
+  assert.equal(view.host.querySelector("[data-byok-form]"), null);
+  assert.equal(view.host.querySelector("input[type=password]"), null);
+  assert.ok(view.host.querySelector("[data-byok-delete=openai]"));
+  await click(view.host, "[data-byok-add]");
+  const form = view.host.querySelector("[data-byok-form]");
+  assert.ok(form, "点添加后才出现填写表单");
+  assert.equal(
+    Boolean(configured.compareDocumentPosition(form) & window.Node.DOCUMENT_POSITION_FOLLOWING),
+    true,
+    "已存 key 的清单要在填写表单上面",
+  );
+  await click(view.host, "[data-byok-cancel]");
+  assert.equal(view.host.querySelector("[data-byok-form]"), null);
   const help = view.host.querySelector("[data-byok-help]");
   assert.ok(help, "设置页要有指向帮助中心的自带密钥说明");
   assert.match(help.getAttribute("href") || "", /\/a\/bring-your-own-key/);

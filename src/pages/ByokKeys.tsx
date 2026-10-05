@@ -8,7 +8,7 @@
 // 前端只看得到指纹。一个厂商一把配置。
 // ============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   getKeyProviders,
   getByok,
@@ -65,80 +65,30 @@ function endpointOf(provider: KeyProvider | undefined): string {
   return KNOWN_BASE_URL[provider.id] || "";
 }
 
-// ---------------------------------------------------------------------------
-// Cursor（编码 agent）—— 不是聊天厂商，走自己的 /v1/cursor 端点（W17）
-// ---------------------------------------------------------------------------
-// key 与其它厂商一样只进这台设备的密封 cookie；写入口是 PUT /v1/cursor/key
-// （/v1/byok/cursor 故意不收，因为 cursor 不是聊天模型厂商），撤销复用
-// DELETE /v1/byok/cursor（下面表格的「删除」）。首页不用这把 key 开 Cursor。
-// 这一页的规矩是不往任何浏览器存储写东西。
-// `../lib/auth` 与 `../lib/auth/client` 在既有测试里被替身成极少几个导出，
-// 所以这里的网关请求用运行时 import() 取 accessToken / GATEWAY_BASE，不加静态命名导入。
-const CURSOR_PROVIDER = "cursor";
-const CURSOR_KEY_PREFIX = "crsr_";
+const RING =
+  "outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45";
+const QUIET_BTN =
+  `rounded-lg border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-800 transition hover:bg-neutral-50 ${RING}`;
+const ROW = "flex items-start justify-between gap-4 py-3";
 
-type CursorResult<T> = {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  status?: number;
-  code?: string;
-};
-
-async function cursorRequest<T>(path: string, init?: RequestInit): Promise<CursorResult<T>> {
-  let token: string | null = null;
-  let base = "";
-  try {
-    const client = await import("../lib/auth/client");
-    const config = await import("../lib/auth/config");
-    token = typeof client.accessToken === "function" ? await client.accessToken() : null;
-    base = typeof config.GATEWAY_BASE === "string" ? config.GATEWAY_BASE : "";
-  } catch {
-    return { ok: false, error: "未登录", status: 401 };
-  }
-  if (!token) return { ok: false, error: "未登录", status: 401 };
-  let res: Response;
-  try {
-    res = await fetch(`${base}${path}`, {
-      ...init,
-      headers: {
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${token}`,
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      },
-      cache: "no-store",
-      credentials: "include",
-    });
-  } catch {
-    return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
-  }
-  let data: unknown = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* non-JSON */
-  }
-  if (!res.ok) {
-    const detail = (data as { detail?: unknown } | null)?.detail;
-    if (detail && typeof detail === "object" && !Array.isArray(detail)) {
-      const rec = detail as { code?: unknown; message?: unknown };
-      return {
-        ok: false,
-        status: res.status,
-        code: typeof rec.code === "string" ? rec.code : undefined,
-        error:
-          typeof rec.message === "string" && rec.message.trim()
-            ? rec.message
-            : `HTTP ${res.status}`,
-      };
-    }
-    return {
-      ok: false,
-      status: res.status,
-      error: typeof detail === "string" && detail ? detail : `HTTP ${res.status}`,
-    };
-  }
-  return { ok: true, data: data as T };
+function ByokRow({
+  title,
+  detail,
+  action,
+}: {
+  title: string;
+  detail?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className={ROW}>
+      <div className="min-w-0 pr-4">
+        <p className="text-[13px] font-medium text-neutral-900">{title}</p>
+        {detail}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
 }
 
 export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
@@ -152,16 +102,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   const [error, setError] = useState("");
   const [authDenied, setAuthDenied] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
-
-  // Cursor 段（独立于上面的聊天厂商表单）
-  const [cursorKey, setCursorKey] = useState("");
-  const [cursorBusy, setCursorBusy] = useState(false);
-  const [cursorError, setCursorError] = useState("");
-  const [cursorReauth, setCursorReauth] = useState(false);
-  const [cursorVerified, setCursorVerified] = useState<{ name: string; email: string } | null>(
-    null,
-  );
-  const cursorSaved = !!status?.providers?.some((row) => row.provider === CURSOR_PROVIDER);
+  const [editor, setEditor] = useState<"none" | "add">("none");
 
   const selected = useMemo(
     () => providers.find((provider) => provider.id === form.provider),
@@ -174,17 +115,8 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   useEffect(() => {
     getKeyProviders().then((result) => {
       if (result.ok && result.data) {
-        const list = result.data.providers || [];
+        const list = (result.data.providers || []).filter((provider) => provider.id !== "cursor");
         setProviders(list);
-        setForm((prev) => {
-          const nextProvider = prev.provider || list[0]?.id || "";
-          const nextSelected = list.find((provider) => provider.id === nextProvider);
-          return {
-            ...prev,
-            provider: nextProvider,
-            baseUrl: isCustomProvider(nextSelected) ? prev.baseUrl : endpointOf(nextSelected),
-          };
-        });
       }
     });
   }, []);
@@ -200,6 +132,31 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       else if (result.error) setError(result.error);
     });
   }, [loggedIn]);
+
+  function formForProvider(id: string): ByokForm {
+    const nextSelected = providers.find((provider) => provider.id === id);
+    return {
+      ...emptyForm(id),
+      baseUrl: isCustomProvider(nextSelected) ? "" : endpointOf(nextSelected),
+    };
+  }
+
+  function openAdd() {
+    const first = providers[0];
+    setForm(formForProvider(first?.id || ""));
+    setProbeModels([]);
+    setError("");
+    setReauthRequired(false);
+    setEditor("add");
+  }
+
+  function closeAdd() {
+    setEditor("none");
+    setForm(emptyForm());
+    setProbeModels([]);
+    setError("");
+    setReauthRequired(false);
+  }
 
   function pickProvider(id: string) {
     const nextSelected = providers.find((provider) => provider.id === id);
@@ -292,12 +249,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     }
     if (result.data) setStatus(result.data);
     else await refreshStatus();
-    const nextSelected = providers.find((provider) => provider.id === form.provider);
-    setForm({
-      ...emptyForm(form.provider),
-      baseUrl: isCustomProvider(nextSelected) ? "" : endpointOf(nextSelected),
-    });
-    setProbeModels([]);
+    closeAdd();
   }
 
   async function onDelete(provider: string) {
@@ -305,95 +257,23 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     if (result.ok) {
       if (result.data) setStatus(result.data);
       else await refreshStatus();
-      if (provider === CURSOR_PROVIDER) {
-        setCursorVerified(null);
-        setCursorError("");
-      }
       return;
     }
     setError(result.error || tt("添加失败"));
   }
 
-  // --- Cursor ---------------------------------------------------------------
-  function cursorFailureText(result: CursorResult<unknown>): string {
-    switch (result.code) {
-      case "invalid_key":
-        return tt("Cursor 拒绝了这把 key（无效或已撤销），请重新生成后再保存。");
-      case "github_not_connected":
-        return tt("你的 Cursor 账号还没有连通 GitHub：请在 Cursor Dashboard → Integrations 里连接后重试。");
-      case "quota":
-        return tt("Cursor 额度或频率受限，请稍后再试。");
-      case "timeout":
-        return tt("连接 Cursor 超时，请稍后再试。");
-      case "cursor_key_invalid":
-        return result.error || tt("这不是 Cursor 的 API Key（应以 crsr_ 开头）。");
-      default:
-        return result.error || tt("操作失败");
-    }
-  }
-
-  async function onCursorVerify(): Promise<boolean> {
-    const result = await cursorRequest<{ ok: boolean; name: string; email: string }>(
-      "/v1/cursor/verify",
-      { method: "POST" },
-    );
-    if (!result.ok) {
-      setCursorVerified(null);
-      setCursorError(cursorFailureText(result));
-      return false;
-    }
-    setCursorVerified({ name: result.data?.name || "", email: result.data?.email || "" });
-    return true;
-  }
-
-  async function onCursorSave() {
-    setCursorError("");
-    setCursorReauth(false);
-    const key = cursorKey.trim();
-    if (!key) {
-      setCursorError(tt("请填入 Cursor API key"));
-      return;
-    }
-    if (!key.startsWith(CURSOR_KEY_PREFIX)) {
-      setCursorError(tt("这不是 Cursor 的 API Key（应以 crsr_ 开头）。"));
-      return;
-    }
-    setCursorBusy(true);
-    const put = await cursorRequest<ByokStatus>("/v1/cursor/key", {
-      method: "PUT",
-      body: JSON.stringify({ api_key: key }),
-    });
-    if (!put.ok) {
-      setCursorBusy(false);
-      if (put.status === 403 && put.code === "reauth_required") {
-        setCursorReauth(true);
-        setCursorError(put.error || "为了保护你的钥匙，请重新登录后再添加");
-        return;
-      }
-      setCursorError(cursorFailureText(put));
-      return;
-    }
-    // key 已密封进 cookie；输入框立刻清空，不在内存里多留一刻。
-    setCursorKey("");
-    if (put.data) setStatus(put.data);
-    else await refreshStatus();
-    await onCursorVerify();
-    setCursorBusy(false);
-  }
-
-  async function onCursorRecheck() {
-    setCursorError("");
-    setCursorBusy(true);
-    await onCursorVerify();
-    setCursorBusy(false);
-  }
-
   const inputClass =
     "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-800 outline-none focus:border-neutral-400 disabled:bg-neutral-50 disabled:text-neutral-400";
+  const configured = (status?.providers || []).filter((row) => row.provider !== "cursor");
+  const gatewayOn = !!status?.enabled;
 
   return (
-    <section className="v-fade-up" style={{ animationDelay: "30ms" }}>
-      <div className="mb-3">
+    <section
+      className="v-fade-up space-y-1"
+      style={{ animationDelay: "30ms" }}
+      data-byok-editor={editor}
+    >
+      <div className="mb-2">
         <h2 className="text-[14px] font-semibold text-neutral-900">
           {tt("自带 API key（BYOK）")}
           <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
@@ -427,14 +307,81 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       ) : (
         <>
           {status && !status.enabled && (
-            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
+            <div className="mb-1 rounded-xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
               {tt("网关尚未启用 BYOK，请稍后再试。")}
             </div>
           )}
 
+          {configured.length > 0 ? (
+            <div data-byok-configured="">
+              {configured.map((row) => {
+                const capLabels = (row.caps || [])
+                  .map((cap) => CAP_OPTIONS.find((item) => item.id === cap)?.label || cap)
+                  .map((label) => tt(label))
+                  .join(" · ");
+                const model = row.model ? row.model : tt("厂商默认");
+                return (
+                  <ByokRow
+                    key={row.provider}
+                    title={row.name || row.provider}
+                    detail={
+                      <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-400">
+                        <span className="font-mono text-neutral-500">{row.fingerprint}</span>
+                        {" · "}
+                        {model}
+                        {capLabels ? ` · ${capLabels}` : ""}
+                      </p>
+                    }
+                    action={
+                      <button
+                        type="button"
+                        data-byok-delete={row.provider}
+                        disabled={!gatewayOn}
+                        onClick={() => onDelete(row.provider)}
+                        className={QUIET_BTN}
+                      >
+                        {tt("删除")}
+                      </button>
+                    }
+                  />
+                );
+              })}
+            </div>
+          ) : null}
+
+          <ByokRow
+            title={tt("添加密钥")}
+            detail={
+              configured.length === 0 ? (
+                <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-400">
+                  {tt("还没有自带密钥")}
+                </p>
+              ) : null
+            }
+            action={
+              editor === "add" ? (
+                <button type="button" data-byok-cancel="" className={QUIET_BTN} onClick={closeAdd}>
+                  {tt("取消")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-byok-add=""
+                  className={QUIET_BTN}
+                  disabled={!gatewayOn}
+                  onClick={openAdd}
+                >
+                  {tt("添加")}
+                </button>
+              )
+            }
+          />
+
+          {editor === "add" ? (
           <fieldset
+            data-byok-form=""
             disabled={formDisabled}
-            className="mb-3 space-y-3 rounded-2xl border border-neutral-200 p-4"
+            className="space-y-3 pb-3"
           >
             <div>
               <label className="mb-1 block text-[12px] font-medium text-neutral-700">
@@ -453,21 +400,26 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               </select>
             </div>
 
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                {tt("接口地址")}
-              </label>
-              <input
-                type="text"
-                value={form.baseUrl}
-                readOnly={!custom}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, baseUrl: event.target.value }))
-                }
-                placeholder={custom ? "https://api.example.com/v1" : undefined}
-                className={inputClass}
-              />
-            </div>
+            {custom ? (
+              <div>
+                <label className="mb-1 block text-[12px] font-medium text-neutral-700">
+                  {tt("接口地址")}
+                </label>
+                <input
+                  type="text"
+                  value={form.baseUrl}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, baseUrl: event.target.value }))
+                  }
+                  placeholder="https://api.example.com/v1"
+                  className={inputClass}
+                />
+              </div>
+            ) : form.baseUrl ? (
+              <p className="text-[12px] leading-relaxed text-neutral-400">
+                {tt("接口地址")} {form.baseUrl}
+              </p>
+            ) : null}
 
             <div>
               <label className="mb-1 block text-[12px] font-medium text-neutral-700">
@@ -579,175 +531,19 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               </button>
             ) : null}
 
-            <button
-              type="button"
-              disabled={formDisabled}
-              onClick={onSave}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
-            >
-              {saving ? tt("保存中…") : tt("保存")}
-            </button>
-          </fieldset>
-
-          <fieldset
-            disabled={!status?.enabled || cursorBusy}
-            className="mb-3 space-y-3 rounded-2xl border border-neutral-200 p-4"
-          >
-            <div>
-              <h3 className="text-[13px] font-semibold text-neutral-800">
-                Cursor
-                <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
-                  {tt("编码 agent，不是聊天模型")}
-                </span>
-              </h3>
-              <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-500">
-                {tt(
-                  "首页不用这把 key 开 Cursor。要在自己的电脑上用，从 Shell 的「用对话界面继续」进去。",
-                )}
-              </p>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                Cursor API Key
-              </label>
-              <input
-                type="password"
-                value={cursorKey}
-                onChange={(event) => setCursorKey(event.target.value)}
-                placeholder={tt("粘贴 crsr_ 开头的 key")}
-                autoComplete="off"
-                className={inputClass}
-              />
-              <a
-                href="https://cursor.com/dashboard?tab=integrations"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block text-[11px] text-blue-600 hover:underline"
-              >
-                {tt("去 Cursor Dashboard → Integrations → User API Keys 生成 →")}
-              </a>
-            </div>
-
-            {cursorSaved ? (
-              <p className="text-[12px] text-neutral-600">
-                {cursorVerified ? (
-                  <>
-                    {tt("已校验：")}
-                    <span className="font-medium text-neutral-900">
-                      {cursorVerified.name || tt("（未命名 key）")}
-                    </span>
-                    {cursorVerified.email ? (
-                      <span className="text-neutral-500">{` · ${cursorVerified.email}`}</span>
-                    ) : null}
-                  </>
-                ) : (
-                  tt("Cursor key 已保存在这台设备。")
-                )}
-              </p>
-            ) : null}
-
-            {cursorError ? <p className="text-[12px] text-rose-600">{cursorError}</p> : null}
-            {cursorReauth ? (
+            <div className="flex justify-end">
               <button
                 type="button"
-                onClick={onReauth}
-                className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
+                data-byok-save=""
+                disabled={formDisabled}
+                onClick={onSave}
+                className={QUIET_BTN}
               >
-                {tt("重新登录")}
+                {saving ? tt("保存中…") : tt("保存")}
               </button>
-            ) : null}
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!status?.enabled || cursorBusy}
-                onClick={onCursorSave}
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:opacity-50"
-              >
-                {cursorBusy ? tt("保存中…") : tt("保存并校验")}
-              </button>
-              {cursorSaved ? (
-                <button
-                  type="button"
-                  disabled={!status?.enabled || cursorBusy}
-                  onClick={onCursorRecheck}
-                  className="rounded-lg border border-neutral-200 px-3 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  {tt("重新校验")}
-                </button>
-              ) : null}
             </div>
           </fieldset>
-
-          <div>
-            <h3 className="mb-2 text-[13px] font-semibold text-neutral-800">
-              {tt("已配置的厂商")}
-            </h3>
-            {(status?.providers || []).length === 0 ? (
-              <div className="rounded-xl border border-dashed border-neutral-300 p-4 text-center text-[13px] text-neutral-400">
-                —
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-2xl border border-neutral-200">
-                <table className="w-full text-left text-[12px]">
-                  <thead className="bg-neutral-50 text-neutral-500">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">{tt("厂商")}</th>
-                      <th className="px-3 py-2 font-medium">{tt("指纹")}</th>
-                      <th className="px-3 py-2 font-medium">{tt("模型名称")}</th>
-                      <th className="px-3 py-2 font-medium">{tt("能力")}</th>
-                      <th className="px-3 py-2 text-right font-medium" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100">
-                    {(status?.providers || []).map((row) => (
-                      <tr key={row.provider} className="text-neutral-700">
-                        <td className="px-3 py-2.5 font-medium text-neutral-900">
-                          {row.name || row.provider}
-                        </td>
-                        <td className="px-3 py-2.5 font-mono text-neutral-500">
-                          {row.fingerprint}
-                        </td>
-                        <td className="px-3 py-2.5 text-neutral-500">
-                          {row.provider === CURSOR_PROVIDER
-                            ? tt("编码 agent（不用于聊天）")
-                            : row.model
-                              ? row.model
-                              : tt("厂商默认")}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex flex-wrap gap-1">
-                            {(row.caps || []).map((cap) => (
-                              <span
-                                key={cap}
-                                className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700"
-                              >
-                                {tt(
-                                  CAP_OPTIONS.find((item) => item.id === cap)?.label ||
-                                    cap,
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <button
-                            type="button"
-                            disabled={!status?.enabled}
-                            onClick={() => onDelete(row.provider)}
-                            className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-rose-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            {tt("删除")}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          ) : null}
         </>
       )}
     </section>

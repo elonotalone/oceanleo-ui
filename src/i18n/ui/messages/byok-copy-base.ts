@@ -31,6 +31,8 @@ export const BYOK_COPY_SOURCE = {
   gatewayNotEnabled: "网关尚未启用 BYOK，请稍后再试。",
   loginToConfigure: "登录后即可配置自己的 key",
   howToBringKey: "怎么自己带密钥",
+  addKey: "添加密钥",
+  noKeysYet: "还没有自带密钥",
 } as const;
 
 export type ByokCopyName = keyof typeof BYOK_COPY_SOURCE;
