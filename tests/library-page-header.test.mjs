@@ -46,6 +46,9 @@ test("full-page library drops the intro and 22px title; search sits in LibrarySc
   assert.match(mine, /APP_PAGE_TITLE_CLASS/);
   assert.match(scope, /header\?:/);
   assert.match(scope, /\{header\}/);
+  assert.doesNotMatch(scope, /云端库/);
+  assert.doesNotMatch(scope, /本地库/);
+  assert.doesNotMatch(scope, /aria-label="库位置"/);
 });
 
 test("history, file library, and database pages use AppPageHeader without intro copy", () => {
@@ -65,7 +68,7 @@ test("history, file library, and database pages use AppPageHeader without intro 
   assert.doesNotMatch(advanced, /独立于普通 App 的专业编辑空间/);
 });
 
-test("LibraryScope renders header above the cloud/local nav", async () => {
+test("LibraryScope renders header above the library body with no cloud/local nav", async () => {
   const require = createRequire(import.meta.url);
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
@@ -133,10 +136,12 @@ test("LibraryScope renders header above the cloud/local nav", async () => {
   });
   const html = host.innerHTML;
   const headerAt = html.indexOf("我的库");
-  const navAt = html.indexOf("云端库");
+  const bodyAt = html.indexOf("data-cloud-body");
   assert.ok(headerAt >= 0, "header title must render");
-  assert.ok(navAt >= 0, "cloud/local nav must render");
-  assert.ok(headerAt < navAt, "title must sit above 云端库");
+  assert.ok(bodyAt >= 0, "library body must render");
+  assert.ok(headerAt < bodyAt, "title must sit above the library body");
+  assert.equal(html.indexOf("云端库"), -1);
+  assert.equal(html.indexOf("本地库"), -1);
   assert.match(html, new RegExp(literal(TITLE_CLASS)));
   root.unmount();
 });

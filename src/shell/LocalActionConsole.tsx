@@ -52,8 +52,8 @@ type LocalActionRequest = {
 export interface LocalActionConsoleProps {
   device: LibraryDevice | null;
   /**
-   * 宿主已经问过的已授权目录。给了就不再问第二遍（库页就是这种情况）；
-   * 不给（/devices 页）时动作台自己问一次。
+   * 宿主已经问过的已授权目录。给了就不再问第二遍；
+   * 不给（设置「我的设备」）时动作台自己问一次。
    */
   basePath?: string;
   devicesHref?: string;

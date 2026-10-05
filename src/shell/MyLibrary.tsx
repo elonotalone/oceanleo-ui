@@ -22,7 +22,6 @@ import {
   artifactTypeForLibraryKind,
   inferLibraryKind,
   isDurableLibraryItem,
-  libraryItemCloudReference,
   libraryItemIdentityKey,
   type LibraryItem,
   type LibraryKind,
@@ -390,8 +389,8 @@ export interface MyLibraryProps {
   /** W5 device facade + W7 fs.list task adapter for device-bound libraries. */
   libraryScope?: LibraryScopeIntegration;
   /**
-   * Full-page library title. When set, title + search sit in `LibraryScope.header`
-   * above the cloud/local nav. Embedded shelves omit this so no page title appears.
+   * Full-page library title. When set, title + search sit in `LibraryScope.header`.
+   * Embedded shelves omit this so no page title appears.
    */
   pageTitle?: ReactNode;
 }
@@ -1075,23 +1074,6 @@ export function MyLibrary({
       removeItem,
     ],
   );
-  const cloudItems = useMemo(
-    () => items.map(libraryItemCloudReference),
-    [items],
-  );
-  const openCloudCopy = useCallback(
-    (itemId: string) => {
-      if (libraryScope?.onOpenCloudItem) {
-        libraryScope.onOpenCloudItem(itemId);
-        return;
-      }
-      const item = items.find(
-        (candidate) => (candidate.artifactId || candidate.id) === itemId,
-      );
-      if (item) openLibraryItem(item);
-    },
-    [items, libraryScope, openLibraryItem],
-  );
   const failureCopy = myLibraryFailure(failureStatus, failureMessage);
   const toolbar = (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1162,8 +1144,6 @@ export function MyLibrary({
   return (
     <LibraryScope
       {...libraryScope}
-      cloudItems={libraryScope?.cloudItems || cloudItems}
-      onOpenCloudItem={openCloudCopy}
       header={
         <div className="mb-3 shrink-0">
           <LibraryToolbar

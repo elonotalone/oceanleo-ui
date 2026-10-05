@@ -97,8 +97,7 @@ stubs['./MyLibrary'] = mine;
 const artifactLibrary = await compileModule('src/shell/ArtifactLibrary.tsx', stubs);
 const portal = await compileModule('/root/projects/oceanleo/app/library/page.tsx', {
   '@/app/_components/clone-shell': dataModule(`export function CloneShell({ children }) { return children; }`),
-  './local-task-panel': dataModule(`export function LocalTaskSlot() { return null; }`),
-  '@oceanleo/ui/shell': dataModule(`export { ArtifactLibrary } from ${JSON.stringify(artifactLibrary)}; export function LibraryLocalScopeProvider({ children }) { return children; }`),
+  '@oceanleo/ui/shell': dataModule(`export { ArtifactLibrary } from ${JSON.stringify(artifactLibrary)};`),
 });
 const { default: LibraryPage } = await import(portal);
 

@@ -722,7 +722,7 @@ export { LocalTaskLauncher } from './LocalTaskLauncher';
 export { LocalFileHandoffLauncher, type LocalFileHandoffLauncherProps } from './LocalTaskLauncher';
 export { LocalTaskProgress } from './LocalTaskProgress';
 // 本机能力的产品面（W09，2026-08-20）：文件树 + 统一动作台。六个动作的表单与状态只有
-// 这一份，站点两个入口（/devices、/library 的本地库插槽）只负责挂载。
+// 这一份，站点入口（设置「我的设备」）只负责挂载。Library 不再分云端/本地库。
 export { LocalFileTree, humanizeGrantedKinds, type LocalFileTreeProps } from './LocalFileTree';
 export {
   LocalActionConsole,
