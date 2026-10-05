@@ -296,15 +296,16 @@ test("公开列表把搜索与场景拼进真实网关请求，不依赖在线�
 test("搜索与横排场景标签会真的缩小卡片结果", async () => {
   await withDom(async ({ container, render, click, input }) => {
     await render(React.createElement(MarketHarness));
-    assert.match(container.textContent, /平台一共有 37 个现成的活/);
+    assert.doesNotMatch(container.textContent, /平台一共有/);
+    assert.doesNotMatch(container.textContent, /跨站搜索，找到后加入工作台/);
     assert.equal(container.querySelectorAll("[data-market-app]").length, 3);
 
-    await input(container.querySelector("[data-app-market-search]"), "简历");
+    await input(container.querySelector('input[type="search"]'), "简历");
     assert.equal(container.querySelectorAll("[data-market-app]").length, 1);
     assert.match(container.textContent, /简历生成器/);
     assert.doesNotMatch(container.textContent, /营销海报/);
 
-    await input(container.querySelector("[data-app-market-search]"), "");
+    await input(container.querySelector('input[type="search"]'), "");
     const scene = [...container.querySelectorAll("[data-app-market-scenes] button")]
       .find((button) => button.textContent.includes("营销"));
     await click(scene);

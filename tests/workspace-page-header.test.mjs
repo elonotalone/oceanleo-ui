@@ -97,3 +97,20 @@ test("渲染后标题 17px 在搜索左侧，介绍句不在 markup，belowToolb
   assert.ok(titleAt >= 0 && searchAt > titleAt, "标题必须出现在搜索框之前");
   assert.ok(tabsAt > searchAt, "分区 tab 必须在搜索行之下");
 });
+
+test("Playground 把标题|搜索交给各分区，市场不再写介绍句", () => {
+  assert.match(playground, /renderSites\(listChrome\)/);
+  assert.match(playground, /toolbarLeading=\{pageTitle\}/);
+  assert.doesNotMatch(playground, /function PlaygroundHeader/);
+  const market = source("../src/shell/AppMarket.tsx");
+  assert.doesNotMatch(market, /平台一共有/);
+  assert.doesNotMatch(market, /跨站搜索，找到后加入工作台/);
+  assert.match(market, /toolbarLeading/);
+  assert.match(market, /hideView/);
+});
+
+test("工作台网站 tab 把 chrome 交给 renderSites，空态不再解释 app/agent", () => {
+  assert.match(workspace, /renderSites\(listChrome\)/);
+  assert.doesNotMatch(workspace, /一整套操作台/);
+  assert.doesNotMatch(workspace, /纯聊天助手/);
+});

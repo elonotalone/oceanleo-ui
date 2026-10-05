@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties, type MouseEvent } from "react";
+import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import {
   installApp,
   marketAppOpenUrl,
@@ -10,6 +10,7 @@ import {
 } from "../lib/app-market";
 import { capabilityImageThumbUrl } from "../lib/app-capability-image";
 import { useUI } from "../i18n/ui/useUI";
+import { LibraryToolbar } from "./LibraryLayout";
 
 export { marketAppOpenUrl as appMarketOpenUrl };
 
@@ -32,6 +33,10 @@ export interface AppMarketProps {
   onInstalledChange: (appId: string, installed: boolean) => void;
   onRetry?: () => void;
   onRequestLogin?: () => void;
+  /** 页头左侧（Manus：小标题与搜索同一行）。 */
+  toolbarLeading?: ReactNode;
+  /** 搜索行下方（Playground 把分区 tab 放这里）。 */
+  belowToolbar?: ReactNode;
 }
 
 function normalized(value: string): string {
@@ -110,6 +115,8 @@ export function AppMarket({
   onInstalledChange,
   onRetry,
   onRequestLogin,
+  toolbarLeading,
+  belowToolbar,
 }: AppMarketProps) {
   const tt = useUI();
   const [pendingAppId, setPendingAppId] = useState("");
@@ -180,31 +187,21 @@ export function AppMarket({
   }
 
   return (
-    <section data-app-market aria-busy={loading}>
-      <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-stone-200/80 bg-white/80 p-5 shadow-sm sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-[18px] font-semibold tracking-tight text-stone-900">
-            {tt("平台一共有 {count} 个现成的活", { count: total })}
-          </h2>
-          <p className="mt-1 text-[13px] text-stone-500">
-            {tt("跨站搜索，找到后加入工作台。")}
-          </p>
-        </div>
-        <label className="flex min-w-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm sm:w-80">
-          <span aria-hidden="true" className="text-stone-400">
-            ⌕
-          </span>
-          <span className="sr-only">{tt("搜索应用")}</span>
-          <input
-            data-app-market-search
-            type="search"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={tt("搜一搜，例如：简历")}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
-          />
-        </label>
-      </div>
+    <section data-app-market data-app-market-total={total} aria-busy={loading}>
+      <LibraryToolbar
+        search={query}
+        setSearch={(value) =>
+          onQueryChange(typeof value === "function" ? value(query) : value)
+        }
+        view="grid"
+        setView={() => {}}
+        placeholder={tt("搜一搜，例如：简历")}
+        tt={tt}
+        leading={toolbarLeading}
+        hideView
+      />
+      <span className="sr-only">{tt("搜索应用")}</span>
+      {belowToolbar ? <div className="mb-5 mt-3">{belowToolbar}</div> : null}
 
       <div data-app-market-scenes className="mb-3 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-[12px] font-medium text-stone-500">{tt("按场景看")}</span>

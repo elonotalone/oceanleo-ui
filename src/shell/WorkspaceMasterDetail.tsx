@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import type { ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
+import { LibraryToolbar } from "./LibraryLayout";
 import {
   BackButton,
   WORKSPACE_EMBED_SANDBOX,
@@ -41,6 +42,36 @@ import {
 
 function isMarketAuthError(error: unknown): boolean {
   return error instanceof Error && error.name === "MarketAuthError";
+}
+
+function EmptyDirectoryChrome({
+  pageTitle,
+  tabsBar,
+  children,
+  tt,
+}: {
+  pageTitle: ReactNode;
+  tabsBar: ReactNode;
+  children: ReactNode;
+  tt: (s: string, vars?: Record<string, string | number>) => string;
+}) {
+  const [search, setSearch] = useState("");
+  return (
+    <>
+      <LibraryToolbar
+        search={search}
+        setSearch={setSearch}
+        view="grid"
+        setView={() => {}}
+        placeholder={tt("按名称筛选…")}
+        tt={tt}
+        leading={pageTitle}
+        hideView
+      />
+      <div className="mb-6 mt-3">{tabsBar}</div>
+      {children}
+    </>
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -375,8 +406,12 @@ export function WorkspaceDetail({
    * doctrine v10（2026-06-26）：「网站」分区只列**用户已加入**的站。由消费端注入
    * （持有 lib/sites + localStorage 收藏集），传 savedOnly=true 渲染已加入集。
    * 不传 → 回退到 sites（全家桶全列，旧行为）。
+   * 外壳把标题|搜索行交给注入面，网站 tab 才不会变成「上面一行光秃标题、下面再搜」。
    */
-  renderSites?: () => ReactNode;
+  renderSites?: (chrome: {
+    toolbarLeading?: ReactNode;
+    belowToolbar?: ReactNode;
+  }) => ReactNode;
 }) {
   const tt = useUI();
   const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps(siteOrigin);
@@ -539,8 +574,6 @@ export function WorkspaceDetail({
       <div className="max-w-sm space-y-3">
         <p className="text-sm text-stone-500">
           {tt("还没有{label}。到「Playground」里挑选加入——", { label })}
-          <br />· <b>app</b> = {tt("一整套操作台＋agent，能帮你填表单并生成产物；")}
-          <br />· <b>agent</b> = {tt("纯聊天助手，跟它对话答疑。")}
         </p>
         <a
           href={addAgentHref}
@@ -553,15 +586,20 @@ export function WorkspaceDetail({
     </div>
   );
 
+  const listChrome = { toolbarLeading: pageTitle, belowToolbar: tabsBar };
+  const emptyDirectory = (label: string) => (
+    <EmptyDirectoryChrome pageTitle={pageTitle} tabsBar={tabsBar} tt={tt}>
+      {emptyState(label)}
+    </EmptyDirectoryChrome>
+  );
+
   return (
     <div className={APP_PAGE_FRAME_CLASS}>
       {tab === "site" ? (
         // doctrine v10：只列用户已加入的站（renderSites savedOnly）。未注入则回退列全部。
         renderSites ? (
           <>
-            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
-            <div className="mb-6">{tabsBar}</div>
-            {renderSites()}
+            {renderSites(listChrome)}
           </>
         ) : (
           <AppDirectory
@@ -587,17 +625,9 @@ export function WorkspaceDetail({
             accent={accent}
           />
         ) : needsLogin ? (
-          <>
-            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
-            <div className="mb-6">{tabsBar}</div>
-            {emptyState(" app")}
-          </>
+          emptyDirectory(" app")
         ) : workspaceApps.length === 0 ? (
-          <>
-            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
-            <div className="mb-6">{tabsBar}</div>
-            {emptyState(" app")}
-          </>
+          emptyDirectory(" app")
         ) : (
           <AppDirectory
             toolbarLeading={pageTitle}
@@ -624,11 +654,7 @@ export function WorkspaceDetail({
           accent={accent}
         />
       ) : mySkills.length === 0 ? (
-        <>
-          <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
-          <div className="mb-6">{tabsBar}</div>
-          {emptyState(" agent")}
-        </>
+        emptyDirectory(" agent")
       ) : (
         <AppDirectory
           toolbarLeading={pageTitle}

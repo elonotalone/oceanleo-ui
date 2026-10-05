@@ -25,6 +25,7 @@ import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillPromptPanel } from "./SkillPromptPanel";
 import { PromptCardModal, AddPromptModal } from "./HomeCards";
 import { AppMarket } from "./AppMarket";
+import { LibraryToolbar } from "./LibraryLayout";
 import {
   GENERIC_PROMPTS,
   PROMPT_LIBRARY,
@@ -44,8 +45,8 @@ import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
 import {
-  AppPageHeader,
   APP_PAGE_FRAME_CLASS,
+  APP_PAGE_HEADER_ROW_CLASS,
   APP_PAGE_TITLE_CLASS,
 } from "./AppPageHeader";
 import {
@@ -310,8 +311,13 @@ export function PlaygroundDetail({
   /**
    * 渲染「网站」分区（全家桶站卡片 + AI 智能推荐 + 加入工作台）。由消费端注入
    * （持有 lib/sites 站点清单 + /v1/recommend 网关）。不传 → 不显示「网站」tab。
+   * 外壳把标题|搜索行交给注入面：消费端把 toolbarLeading / belowToolbar 传给
+   * 第一份 AppDirectory，这样网站 tab 与 app/agent 同一套页头。
    */
-  renderSites?: () => ReactNode;
+  renderSites?: (chrome: {
+    toolbarLeading?: ReactNode;
+    belowToolbar?: ReactNode;
+  }) => ReactNode;
   /** 市场里未登录用户点「加入工作台」时打开消费端自己的登录入口。 */
   onRequestLogin?: () => void;
 }) {
@@ -422,6 +428,19 @@ export function PlaygroundDetail({
     [active, siteOrigin],
   );
 
+  const pageTitle = (
+    <h1 className={APP_PAGE_TITLE_CLASS}>{tt("Playground")}</h1>
+  );
+  const tabsBar = (
+    <PlaygroundTabs
+      tab={tab}
+      setTab={setTab}
+      hasSites={!!renderSites}
+      hasBoard={!!renderBoard}
+    />
+  );
+  const listChrome = { toolbarLeading: pageTitle, belowToolbar: tabsBar };
+
   async function addToWorkspace() {
     if (!active || saving) return;
     setSaving(true);
@@ -489,16 +508,7 @@ export function PlaygroundDetail({
   if (tab === "site" && renderSites) {
     return (
       <div className={APP_PAGE_FRAME_CLASS}>
-        <PlaygroundHeader />
-        <div className="mb-6">
-          <PlaygroundTabs
-            tab={tab}
-            setTab={setTab}
-            hasSites={!!renderSites}
-            hasBoard={!!renderBoard}
-          />
-        </div>
-        {renderSites()}
+        {renderSites(listChrome)}
       </div>
     );
   }
@@ -508,16 +518,7 @@ export function PlaygroundDetail({
   if (tab === "prompt") {
     return (
       <div className={APP_PAGE_FRAME_CLASS}>
-        <PlaygroundHeader />
-        <div className="mb-6">
-          <PlaygroundTabs
-            tab={tab}
-            setTab={setTab}
-            hasSites={!!renderSites}
-            hasBoard={!!renderBoard}
-          />
-        </div>
-        <PromptZone accent={accent} />
+        <PromptZone accent={accent} {...listChrome} />
       </div>
     );
   }
@@ -541,10 +542,8 @@ export function PlaygroundDetail({
     if (!renderBoard) {
       return (
         <div className={APP_PAGE_FRAME_CLASS}>
-          <PlaygroundHeader />
-          <div className="mb-6">
-            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
-          </div>
+          <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
+          <div className="mb-6">{tabsBar}</div>
           <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
             {tab === "organization" ? tt("组织编排") : tt("流程编排")}画布即将开放。
           </div>
@@ -561,10 +560,10 @@ export function PlaygroundDetail({
       >
         {!boardEditing && (
           <>
-            <PlaygroundHeader />
-            <div className="mb-6">
-              <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
-            </div>
+            <header className={APP_PAGE_HEADER_ROW_CLASS}>
+              {pageTitle}
+            </header>
+            <div className="mb-6">{tabsBar}</div>
           </>
         )}
         {/* board 永远是该 div 的最后一个子节点：boardEditing 翻转时它的相对位置不变，
@@ -580,16 +579,9 @@ export function PlaygroundDetail({
   if (tab === "app") {
     return (
       <div className={APP_PAGE_FRAME_CLASS}>
-        <PlaygroundHeader />
-        <div className="mb-6">
-          <PlaygroundTabs
-            tab={tab}
-            setTab={setTab}
-            hasSites={!!renderSites}
-            hasBoard={!!renderBoard}
-          />
-        </div>
         <AppMarket
+          toolbarLeading={pageTitle}
+          belowToolbar={tabsBar}
           items={market.items}
           total={market.total}
           scenes={market.scenes}
@@ -615,10 +607,10 @@ export function PlaygroundDetail({
   return (
     <div className={APP_PAGE_FRAME_CLASS}>
       <AppDirectory
-        toolbarLeading={<h1 className={APP_PAGE_TITLE_CLASS}>Playground</h1>}
+        toolbarLeading={pageTitle}
         belowToolbar={
           <>
-            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+            {tabsBar}
             <AiRecommendBox
               candidates={items.map((it) => ({
                 id: it.id,
@@ -717,12 +709,8 @@ export function PlaygroundDetail({
   );
 }
 
-// Playground 小标题。操作员 2026-06-24：打开 organization / workflow 目录
-// 时这段标题不能消失，所以抽成共用组件，目录页与 org/workflow 分区都渲染它。
-function PlaygroundHeader() {
-  return <AppPageHeader title="Playground" />;
-}
-
+// Playground 分区 tab。目录页、prompt、organization / workflow 共用；标题走
+// pageTitle + LibraryToolbar.leading，和组织编排画布打开时隐藏的是这一整段 chrome。
 function PlaygroundTabs({
   tab,
   setTab,
@@ -775,7 +763,15 @@ function PlaygroundTabs({
 // ---------------------------------------------------------------------------
 const PLAYGROUND_PROMPT_SCOPE = "playground";
 
-function PromptZone({ accent }: { accent: string }) {
+function PromptZone({
+  accent,
+  toolbarLeading,
+  belowToolbar,
+}: {
+  accent: string;
+  toolbarLeading?: ReactNode;
+  belowToolbar?: ReactNode;
+}) {
   const tt = useUI();
   // playground 自己 scope 的自建卡（可编辑/删除）。
   const [custom, setCustom] = useState<PromptCard[]>([]);
@@ -875,9 +871,19 @@ function PromptZone({ accent }: { accent: string }) {
 
   return (
     <section>
-      {/* 工具条：分类 chips + 关键词筛选 */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+      <LibraryToolbar
+        search={filter}
+        setSearch={setFilter}
+        view="grid"
+        setView={() => {}}
+        placeholder={tt("按名称筛选…")}
+        tt={tt}
+        leading={toolbarLeading}
+        hideView
+      />
+      {belowToolbar ? <div className="mb-4 mt-3">{belowToolbar}</div> : null}
+      {/* 分类 chips 在标题|搜索和分区 tab 之下 */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
           {["__all__", ...categories].map((c) => {
             const on = cat === c;
             return (
@@ -894,28 +900,6 @@ function PromptZone({ accent }: { accent: string }) {
               </button>
             );
           })}
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-stone-200/90 bg-white/80 px-3 py-1.5 shadow-sm">
-          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 shrink-0 text-stone-400">
-            <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
-            <path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder={tt("按名称筛选…")}
-            className="w-40 bg-transparent text-[13px] text-stone-800 outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
-          />
-          {filter && (
-            <button
-              type="button"
-              onClick={() => setFilter("")}
-              className="shrink-0 rounded-full px-1.5 text-[12px] text-stone-400 hover:bg-stone-100 hover:text-stone-600"
-            >
-              ✕
-            </button>
-          )}
-        </div>
       </div>
 
       {copied && (

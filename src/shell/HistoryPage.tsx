@@ -15,11 +15,12 @@
 //      DELETE /v1/agent/tasks/{id}（连带消息 / 产出级联删除）。
 // ============================================================================
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
+import { LibraryToolbar } from "./LibraryLayout";
 
 export interface HistoryPageProps {
   accent?: string;
@@ -68,6 +69,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AgentTask | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -103,9 +105,29 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
     }
   }
 
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return items;
+    return items.filter((task) =>
+      `${task.title || ""} ${task.site_id || ""} ${task.mode || ""}`
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [items, query]);
+
   return (
     <div className={`${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`}>
-      <AppPageHeader title={title ?? "我的任务"} />
+      <AppPageHeader title={title ?? "我的任务"}>
+        <LibraryToolbar
+          search={query}
+          setSearch={setQuery}
+          view="grid"
+          setView={() => {}}
+          placeholder={tt("搜索")}
+          tt={tt}
+          hideView
+        />
+      </AppPageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error ? (
@@ -116,11 +138,11 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
               <div key={i} className="h-16 animate-pulse rounded-xl bg-stone-100" />
             ))}
           </div>
-        ) : items.length === 0 ? (
+        ) : shown.length === 0 ? (
           <Empty text={tt("还没有任务。去工作台完成第一份工作吧。")} />
         ) : (
           <div className="space-y-2">
-            {items.map((t) => {
+            {shown.map((t) => {
               const st = STATUS_LABEL[t.status] || { text: t.status, cls: "bg-stone-100 text-stone-500" };
               const removing = deletingId === t.id;
               return (

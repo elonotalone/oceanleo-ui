@@ -30,6 +30,8 @@ export interface LibraryToolbarProps {
   tt: TT;
   actions?: ReactNode;
   leading?: ReactNode;
+  /** 不要网格/列表切换（市场、任务列表这种本来就只有一种排布）。 */
+  hideView?: boolean;
 }
 
 /**
@@ -46,6 +48,7 @@ export function LibraryToolbar({
   tt,
   actions,
   leading,
+  hideView = false,
 }: LibraryToolbarProps) {
   const searchId = useId();
   const rest = (
@@ -88,6 +91,7 @@ export function LibraryToolbar({
           </button>
         )}
       </div>
+      {hideView ? null : (
       <div
         className="flex shrink-0 items-center rounded-lg bg-[var(--surface,#f5f5f5)] p-0.5"
         role="group"
@@ -129,6 +133,7 @@ export function LibraryToolbar({
           </svg>
         </button>
       </div>
+      )}
     </>
   );
   return (
