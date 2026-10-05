@@ -1,20 +1,5 @@
-// 插件页「组织提供」分区（W15，2026-09-20）的判据。
-//
-// 企业版之后插件页多一块「组织给我的」：管理员在组织里连一次，成员这里自动出现，
-// 成员不填 key、也删不掉。这份测试判六件事，前两件是**反方向**的：
-//
-//   ① **零组织的人一个字节都不该多渲染。** 今天全部用户都在这一支上；把整页渲染两遍
-//      （org-api 给空表 / org-api 整条路 404 抛错），逐字比 innerHTML，还要与「压根没有
-//      组织区」的形状一致（页面里没有 `data-org-mcp-section`）。
-//   ② **端点 404 / 抛错时不报错、不出现。** `org-api` 的纪律是失败抛 `OrgApiError`；
-//      插件页必须把它吞成「没有」，不能把一句错误甩到目录网格上面。
-//   ③ 成员视角：只读——没有「断开」按钮、没有管理控件，有「由组织 X 提供」。
-//   ④ 管理员视角：有启用/停用、成员可见、断开，以及「为组织连接」入口。
-//   ⑤ 文案「由组织 {name} 提供」按组织名插值。
-//   ⑥ **A3：组织侧请求只走 `org-api` 五个函数。** 用替身计数：成员一次 `listInheritedMcp`、
-//      管理员再按组织补 `listOrgMcpConnections`；点「断开」走 `deleteOrgMcpConnection`；
-//      点「停用」走 `patchOrgMcpConnection`；且 `globalThis.fetch` 一次都没被碰——
-//      判据 5「全波 /v1/orgs 只有一个出口」的落点就是这一条。
+// 插件页不再画组织共用连接器。那一块只在组织页。
+// 这里钉死：无论有没有组织、是不是管理员，插件页都没有 `data-org-mcp-section`。
 //
 // 跑法（**必须带 loader**）：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
@@ -157,7 +142,7 @@ function notAvailable() {
   throw err;
 }
 
-async function withDom(run, { orgApi = {} } = {}) {
+async function withDom(run, { orgApi = {}, payerOrgId = "" } = {}) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvasModule = require.cache[canvasEntry];
@@ -197,6 +182,8 @@ async function withDom(run, { orgApi = {} } = {}) {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
   globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+  if (payerOrgId) window.localStorage.setItem("oceanleo.payer.last", payerOrgId);
+  else window.localStorage.removeItem("oceanleo.payer.last");
 
   // 判据⑥：插件页自己不许碰 fetch。真发了就是又自建了一份出口。
   let fetchCalls = 0;
@@ -293,19 +280,14 @@ test("normalizeOrgMcpConnections：认 W08 的 {connections:[snake_case]}，也�
   assert.deepEqual(normalizeOrgMcpConnections("garbage"), []);
 });
 
-test("shouldRenderOrgSection：零组织不渲染；有连接渲染；没连接时只给管理员留入口", () => {
+test("shouldRenderOrgSection：插件页永远不画组织共用连接器", () => {
+  const admin = org("o1", "A", "admin");
+  const member = org("o1", "A", "member");
+  const rows = normalizeOrgMcpConnections([inheritedRow("o1", "A", "amap")]);
   assert.equal(shouldRenderOrgSection({ orgs: [], connections: [] }), false);
-  assert.equal(shouldRenderOrgSection({ orgs: [org("o1", "A", "member")], connections: [] }), false);
-  assert.equal(shouldRenderOrgSection({ orgs: [org("o1", "A", "admin")], connections: [] }), true);
-  assert.equal(
-    shouldRenderOrgSection({ orgs: [org("o1", "A", "member")], connections: normalizeOrgMcpConnections([inheritedRow("o1", "A", "amap")]) }),
-    true,
-  );
+  assert.equal(shouldRenderOrgSection({ orgs: [admin], connections: [] }), false);
+  assert.equal(shouldRenderOrgSection({ orgs: [member], connections: rows }), false);
 });
-
-// ————————————————————————————————————————————————————————————————
-// 2. 判据①②：零组织 / 端点没上线 → 与今天逐字一致
-// ————————————————————————————————————————————————————————————————
 
 test("零组织：整页没有组织区，且不碰 fetch", async () => {
   await withDom(async ({ render, find, text, fetchCalls, calls }) => {
@@ -313,7 +295,6 @@ test("零组织：整页没有组织区，且不碰 fetch", async () => {
     assert.equal(find("[data-org-mcp-section]"), null, "零组织不该出现组织区");
     assert.ok(!text().includes("组织提供"), "零组织不该出现「组织提供」字样");
     assert.equal(find("[data-mcp-catalog]"), null, "COM 不渲染阿里云市场网格");
-    assert.ok(!text().includes("高德地图"), "COM 不得出现国内货架名");
     assert.ok(find("[data-plugins-skills]"), "技能区仍在");
     assert.ok(find("[data-plugins-connectors]"), "连接器仍在");
     assert.equal(fetchCalls(), 0, "插件页自己一次 fetch 都不许发（A3）");
@@ -339,54 +320,29 @@ test("端点 404（org-api 抛 not_available）：不报错、不出现，innerH
   assert.equal(whenDown, baseline, "组织 API 整条路没上线时，页面必须与没有组织的人逐字一致");
 });
 
-test("有组织但 mcp 端点 404：成员视角不渲染组织区；管理员视角只留「为组织连接」入口", async () => {
+test("有组织的管理员 / 成员：插件页仍然没有组织区，没有「为组织连接」", async () => {
   await withDom(
-    async ({ render, find }) => {
+    async ({ render, find, text }) => {
       await render();
-      assert.equal(find("[data-org-mcp-section]"), null, "成员一条连接都拿不到就不该看到组织区");
+      assert.equal(find("[data-org-mcp-section]"), null);
+      assert.equal(find("[data-org-mcp-connect-entry]"), null);
+      assert.ok(!text().includes("为组织连接"));
+      assert.ok(!text().includes("组织提供"));
     },
-    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "member")], listInheritedMcp: notAvailable } },
+    {
+      orgApi: {
+        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
+        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+        listOrgMcpConnections: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
+      },
+    },
   );
   await withDom(
     async ({ render, find, text }) => {
       await render();
-      assert.ok(find("[data-org-mcp-section]"), "管理员要看到组织区，否则「为组织连接」永远点不到");
-      assert.ok(find("[data-org-mcp-connect-entry]"), "管理员要有「为组织连接」入口");
-      assert.ok(text().includes("这个组织还没有连接任何 MCP 服务器。"));
+      assert.equal(find("[data-org-mcp-section]"), null);
       assert.equal(find("[data-org-mcp-row]"), null);
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
-        listInheritedMcp: notAvailable,
-        listOrgMcpConnections: notAvailable,
-      },
-    },
-  );
-});
-
-// ————————————————————————————————————————————————————————————————
-// 3. 判据③⑤：成员视角只读 + 「由组织 X 提供」
-// ————————————————————————————————————————————————————————————————
-
-test("成员视角：有「由组织 海狮科技 提供」，没有断开 / 管理控件 / 为组织连接", async () => {
-  await withDom(
-    async ({ render, find, findAll, text, buttons, calls, fetchCalls }) => {
-      await render();
-      const section = find("[data-org-mcp-section]");
-      assert.ok(section, "成员继承到了连接，组织区必须出现");
-      assert.equal(findAll("[data-org-mcp-row]").length, 1);
-      assert.ok(text().includes("由组织 海狮科技 提供"), "文案必须带组织名");
-      assert.ok(text().includes("7 个工具"));
-      assert.ok(text().includes("组织提供的连接由管理员统一管理，你可以直接使用，不需要填凭证。"));
-      assert.equal(find("[data-org-mcp-manage]"), null, "成员不能有管理控件");
-      assert.equal(find("[data-org-mcp-connect-entry]"), null, "成员不能有「为组织连接」");
-      const labels = buttons(section);
-      for (const forbidden of ["断开", "停用", "启用", "成员可见", "为组织连接"]) {
-        assert.ok(!labels.includes(forbidden), `成员视角不该有「${forbidden}」按钮，实际：${labels.join(" | ")}`);
-      }
-      assert.deepEqual(calls(), ["listMyOrgs", "listInheritedMcp"], "成员只走 listInheritedMcp，不去问组织连接表");
-      assert.equal(fetchCalls(), 0);
+      assert.ok(!text().includes("由组织 海狮科技 提供"));
     },
     {
       orgApi: {
@@ -394,279 +350,5 @@ test("成员视角：有「由组织 海狮科技 提供」，没有断开 / 管
         listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
       },
     },
-  );
-});
-
-test("成员视角：网关 available 行只带 org_id 不带 org_name（W08 实测形状）时，组织名从 listMyOrgs 按 id 补", async () => {
-  await withDom(
-    async ({ render, text }) => {
-      await render();
-      assert.ok(text().includes("由组织 海狮科技 提供"), `组织名必须按 org_id 补出来，实际：${text()}`);
-      assert.ok(!text().includes("由组织  提供"), "不许出现空组织名");
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "member")],
-        listInheritedMcp: async () => ({ connections: [{ ...inheritedRow("o1", "", "amap"), org_name: undefined }] }),
-      },
-    },
-  );
-});
-
-// ————————————————————————————————————————————————————————————————
-// 4. 判据④⑥：管理员视角有控件；控件只走 org-api
-// ————————————————————————————————————————————————————————————————
-
-test("管理员视角：启用/停用、成员可见、断开、为组织连接都在；点击只走 org-api", async () => {
-  await withDom(
-    async ({ render, find, findAll, buttons, click, settle, calls, fetchCalls }) => {
-      await render();
-      const section = find("[data-org-mcp-section]");
-      assert.ok(section);
-      assert.ok(find("[data-org-mcp-connect-entry]"), "管理员要有「为组织连接」");
-      const rows = findAll("[data-org-mcp-row]");
-      assert.equal(rows.length, 2, "available 与 connections 同一条按 org:connector 合并，隐藏的那条只有管理员看得到");
-      const manage = find("[data-org-mcp-manage]");
-      assert.ok(manage, "管理员要有管理控件");
-      const labels = buttons(section);
-      for (const required of ["停用", "成员可见", "断开", "为组织连接"]) {
-        assert.ok(labels.includes(required), `管理员视角缺「${required}」，实际：${labels.join(" | ")}`);
-      }
-      assert.deepEqual(
-        calls(),
-        ["listMyOrgs", "listInheritedMcp", "listOrgMcpConnections:o1"],
-        "管理员先走 listInheritedMcp，再按组织补 listOrgMcpConnections",
-      );
-
-      // 点「停用」→ patchOrgMcpConnection(orgId, connectorId, {enabled:false})，随后刷新列表。
-      const stop = [...manage.querySelectorAll("button")].find((b) => b.textContent.trim() === "停用");
-      await click(stop);
-      await settle();
-      assert.ok(
-        calls().includes('patchOrgMcpConnection:o1:amap:{"enabled":false}'),
-        `停用要走 patchOrgMcpConnection，实际：${calls().join(" | ")}`,
-      );
-
-      // 点「断开」→ deleteOrgMcpConnection(orgId, connectorId)。
-      const disconnect = [...find("[data-org-mcp-manage]").querySelectorAll("button")].find(
-        (b) => b.textContent.trim() === "断开",
-      );
-      await click(disconnect);
-      await settle();
-      assert.ok(calls().includes("deleteOrgMcpConnection:o1:amap"), `断开要走 deleteOrgMcpConnection，实际：${calls().join(" | ")}`);
-
-      // 点「为组织连接」→ 对话框出现，且只有一个组织时不出下拉。
-      await click(find("[data-org-mcp-connect-entry]"));
-      assert.ok(find("[data-org-mcp-dialog]"), "对话框必须出现");
-      assert.equal(find("[data-org-mcp-dialog] [data-org-mcp-org-select]"), null, "单组织不出「连给哪个组织」下拉");
-
-      assert.equal(fetchCalls(), 0, "整个过程插件页自己一次 fetch 都没发（A3）");
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
-        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
-        listOrgMcpConnections: async () => ({
-          connections: [
-            inheritedRow("o1", "海狮科技", "amap"),
-            inheritedRow("o1", "海狮科技", "tavily", { member_visible: false }),
-          ],
-        }),
-      },
-    },
-  );
-});
-
-test("多组织管理员：「为组织连接」对话框出「连给哪个组织」下拉，选项 = 可管理的组织", async () => {
-  await withDom(
-    async ({ render, find, findAll, click }) => {
-      await render();
-      await click(find("[data-org-mcp-connect-entry]"));
-      const options = findAll("[data-org-mcp-org-select] option");
-      assert.deepEqual(
-        options.map((o) => [o.value, o.textContent]),
-        [
-          ["o1", "海狮科技"],
-          ["o2", "蓝鲸传媒"],
-        ],
-        "只列 owner/admin 的组织；member 的那家不该出现",
-      );
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "owner"), org("o2", "蓝鲸传媒", "admin"), org("o3", "小虾", "member")],
-      },
-    },
-  );
-});
-
-// ————————————————————————————————————————————————————————————————
-// 5. W25：转发成员身份开关 + org_name 优先于按 id 补名
-// ————————————————————————————————————————————————————————————————
-
-test("管理员视角：每条组织连接有「把成员身份转给这台服务器」开关，默认关", async () => {
-  await withDom(
-    async ({ render, find }) => {
-      await render();
-      const sw = find("[data-org-mcp-forward-identity] input");
-      assert.ok(sw, "管理员要看到转发身份开关");
-      assert.equal(sw.checked, false, "默认关");
-      assert.ok(find("[data-org-mcp-forward-identity]").textContent.includes("把成员身份转给这台服务器"));
-      assert.ok(
-        find("[data-org-mcp-forward-identity]").textContent.includes("开了以后服务器知道是哪位成员在操作"),
-      );
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
-        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
-        listOrgMcpConnections: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
-      },
-    },
-  );
-});
-
-test("成员视角：没有转发身份开关", async () => {
-  await withDom(
-    async ({ render, find }) => {
-      await render();
-      assert.ok(find("[data-org-mcp-row]"));
-      assert.equal(find("[data-org-mcp-forward-identity]"), null);
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "member")],
-        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
-      },
-    },
-  );
-});
-
-test("点转发身份开关：调用 setOrgMcpForwardIdentity(orgId, connectorId, true)，不碰 fetch", async () => {
-  await withDom(
-    async ({ render, find, click, settle, calls, fetchCalls }) => {
-      await render();
-      const sw = find("[data-org-mcp-forward-identity] input");
-      await click(sw);
-      await settle();
-      assert.ok(
-        calls().includes("setOrgMcpForwardIdentity:o1:amap:true"),
-        `要点开关走 setOrgMcpForwardIdentity，实际：${calls().join(" | ")}`,
-      );
-      assert.equal(fetchCalls(), 0, "插件页自己不许 fetch（A3）");
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
-        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
-        listOrgMcpConnections: async () => ({ connections: [inheritedRow("o1", "海狮科技", "amap")] }),
-      },
-    },
-  );
-});
-
-test("org_name 优先于 listMyOrgs 按 id 补的名字", async () => {
-  await withDom(
-    async ({ render, text }) => {
-      await render();
-      assert.ok(text().includes("由组织 极目野光 提供"), `行上的 org_name 必须赢，实际：${text()}`);
-      assert.ok(!text().includes("由组织 海狮科技 提供"), "不许退回去用 listMyOrgs 的名字");
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "member")],
-        listInheritedMcp: async () => ({ connections: [inheritedRow("o1", "极目野光", "amap")] }),
-      },
-    },
-  );
-});
-
-async function fillInput(node, value) {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-  setter.call(node, value);
-  await act(async () => node.dispatchEvent(new window.Event("input", { bubbles: true })));
-}
-
-test("为组织连接：目录下拉含 custom，提交送 connectorId=custom 而不是显示名", async () => {
-  await withDom(
-    async ({ render, find, findAll, click, settle, lastUpsert, fetchCalls }) => {
-      await render();
-      await click(find("[data-org-mcp-connect-entry]"));
-      await settle();
-      const select = find("[data-org-mcp-connector-select]");
-      assert.ok(select, "必须从目录选连接器");
-      const options = findAll("[data-org-mcp-connector-select] option").map((o) => [o.value, o.textContent]);
-      assert.ok(options.some(([id]) => id === "custom"), `目录必须含 custom，实际：${JSON.stringify(options)}`);
-      assert.equal(select.value, "custom", "默认选 custom");
-      await click(find("[data-org-mcp-submit]"));
-      await settle();
-      assert.equal(lastUpsert()?.body?.connectorId, "custom");
-      assert.notEqual(lastUpsert()?.body?.connectorId, "自建服务");
-      assert.equal(fetchCalls(), 0, "组织侧只走 org-api，不自建 fetch");
-    },
-    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "admin")] } },
-  );
-});
-
-test("为组织连接失败：网关原因写在对话框里，不只翻一个失败旗", async () => {
-  await withDom(
-    async ({ render, find, click, settle }) => {
-      await render();
-      await click(find("[data-org-mcp-connect-entry]"));
-      await settle();
-      await click(find("[data-org-mcp-submit]"));
-      await settle();
-      const dialog = find("[data-org-mcp-dialog]");
-      assert.ok(dialog);
-      const error = find("[data-org-mcp-error]");
-      assert.ok(error, "失败必须出现在对话框里");
-      assert.match(error.textContent || "", /连接失败：is_valid 拒绝了 test1111/);
-      assert.match(dialog.textContent || "", /连接失败：is_valid 拒绝了 test1111/);
-      assert.ok(find("[data-org-mcp-dialog]"), "失败后对话框还在");
-    },
-    {
-      orgApi: {
-        listMyOrgs: async () => [org("o1", "海狮科技", "admin")],
-        upsertOrgMcpConnection: async () => {
-          const err = new Error("连接失败：is_valid 拒绝了 test1111");
-          err.detail = "连接失败：is_valid 拒绝了 test1111";
-          throw err;
-        },
-      },
-    },
-  );
-});
-
-test("为组织连接可以送 forwardMemberIdentity: true", async () => {
-  await withDom(
-    async ({ render, find, click, settle, lastUpsert }) => {
-      await render();
-      await click(find("[data-org-mcp-connect-entry]"));
-      await settle();
-      const box = find("[data-org-mcp-dialog-forward-identity] input");
-      assert.ok(box, "对话框要有转发身份开关");
-      assert.equal(box.checked, false, "默认关（端点还不是 workspace-mcp）");
-      await click(box);
-      await click(find("[data-org-mcp-submit]"));
-      await settle();
-      assert.equal(lastUpsert()?.body?.forwardMemberIdentity, true);
-      assert.equal(lastUpsert()?.body?.connectorId, "custom");
-    },
-    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "admin")] } },
-  );
-});
-
-test("端点是 workspace-mcp.oceandino.com 时，转发身份默认勾上", async () => {
-  await withDom(
-    async ({ render, find, click, settle }) => {
-      await render();
-      await click(find("[data-org-mcp-connect-entry]"));
-      await settle();
-      const box = find("[data-org-mcp-dialog-forward-identity] input");
-      assert.equal(box.checked, false);
-      await fillInput(find("[data-org-mcp-endpoint]"), "https://workspace-mcp.oceandino.com/mcp");
-      assert.equal(box.checked, true, "工作区 MCP 默认转发成员身份");
-    },
-    { orgApi: { listMyOrgs: async () => [org("o1", "海狮科技", "admin")] } },
   );
 });

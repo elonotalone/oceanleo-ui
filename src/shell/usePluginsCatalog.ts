@@ -114,19 +114,13 @@ export function normalizeOrgMcpConnections(
 }
 
 /**
- * 这一块出不出现。
- *
- * 任务书写的是「零组织或零组织连接时整块不渲染」，理由是**没有组织的人看到的页面
- * 与今天完全一致**。照字面还会多挡掉一种人：组织刚建好、一条连接都还没有的管理员
- * —— 那样「为组织连接」这个入口永远点不到，整个功能不可达。所以判定分两半：
- * 有连接就渲染；没有连接时只给管得了事的人渲染那个入口。普通用户两条都不满足。
+ * 插件页不画组织共用连接器。那一块只出现在组织页，也只在组织页里设置。
  */
-export function shouldRenderOrgSection(input: {
+export function shouldRenderOrgSection(_input: {
   orgs: OrgSummary[];
   connections: OrgMcpConnection[];
 }): boolean {
-  if (input.connections.length > 0) return true;
-  return input.orgs.some((org) => canManageOrgMcp(org.role));
+  return false;
 }
 
 /**

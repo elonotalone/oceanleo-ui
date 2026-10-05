@@ -11,8 +11,9 @@
 // `_COMMON §3.3`：owner 恒真，其余看 `ent_org_members.can_view_org_page`）。没这个权限的人
 // 看到的是一句「你没有查看这个组织的权限」——**不渲染空表**，也不发成员表的请求。
 //
-// 多组织：一个人可能同时是 A 的 owner、B 的普通成员。顶部一个切换器（`listMyOrgs()`），
-// 当前组织写进 URL 的 `?org=<id>`，刷新后保持；URL 没带时选第一个能进的组织。
+// 多组织：一个人可能同时是 A 的 owner、B 的普通成员。顶部用和组织设置标签同一套
+//  pill 切换（`listMyOrgs()`），当前组织写进 URL 的 `?org=<id>`，刷新后保持；URL 没带
+// 时选第一个能进的组织。组织共用的连接器只在这一页出现、也只在这一页设置。
 //
 // 取数只走 `../lib/org-api`（全波唯一的组织 API 出口，`_COMMON §3.8`；本文件里不许出现
 // 网关路径字面量，测试按此断言）。每一块各自
@@ -54,6 +55,7 @@ import {
 import { formatMinor } from "../lib/money";
 import { useUI } from "../i18n/ui/useUI";
 import { PageHeader } from "./PageHeader";
+import { OrgMcpSection } from "./org/OrgMcpSection";
 
 // ---------------------------------------------------------------------------
 // 纯函数（测试直接判这些；组件只是把它们画出来）
@@ -531,22 +533,30 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
         </p>
       )}
       {orgs.status === "ok" && orgRows.length > 1 && (
-        <div className="mt-4 flex items-center gap-2" data-org-switcher="1">
-          <label className={subtleClass} htmlFor="org-page-switcher">
-            {tt("当前组织")}
-          </label>
-          <select
-            id="org-page-switcher"
-            value={currentId}
-            onChange={(e) => setRequestedId(e.target.value)}
-            className={inputClass}
-          >
-            {orgRows.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name || org.id} · {tt(roleCopy(org.role))}
-              </option>
-            ))}
-          </select>
+        <div
+          className="mt-4 flex flex-wrap gap-1"
+          data-org-switcher="1"
+          role="tablist"
+          aria-label={tt("当前组织")}
+        >
+          {orgRows.map((org) => {
+            const active = org.id === currentId;
+            return (
+              <button
+                key={org.id}
+                type="button"
+                role="tab"
+                data-org-switcher-item={org.id}
+                aria-selected={active}
+                onClick={() => setRequestedId(org.id)}
+                className={`rounded-lg px-3 py-2 text-[13px] font-medium ${
+                  active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
+                }`}
+              >
+                {org.name || org.id}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -666,6 +676,8 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
               </form>
             )}
           </div>
+
+          <OrgMcpSection key={currentId} orgId={currentId} orgName={current.name} role={role} />
 
           {/* ② 成员表 */}
           <div className={sectionClass} data-org-section="members">

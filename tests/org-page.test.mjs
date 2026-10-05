@@ -220,6 +220,7 @@ const uiStub = dataModule(`
 const OVERRIDES = {
   "../lib/org-api": orgApiStub,
   "../i18n/ui/useUI": uiStub,
+  "./org/OrgMcpSection": dataModule(`export function OrgMcpSection(){ return null; }`),
 };
 
 const {
@@ -559,19 +560,18 @@ test("被授予 view_org_page 的普通成员：只读成员表；没有权限�
 test("多组织：URL ?org= 点名的优先；切换器换一家写回 ?org=；单组织不出切换器", async () => {
   const two = [org("o1", "海狮科技", "owner"), org("o2", "蓝鲸", "member", { canViewOrgPage: true })];
   await withDom(
-    async ({ window, render, find, findAll, calls }) => {
+    async ({ window, render, find, findAll, calls, click }) => {
       await render();
-      const select = find("[data-org-switcher] select");
-      assert.ok(select, "两家以上有切换器");
-      assert.equal(select.value, "o2", "URL 点名的 o2 优先于第一家");
-      assert.equal(findAll("option").length, 2);
+      const switcher = find("[data-org-switcher]");
+      assert.ok(switcher, "两家以上有切换器");
+      assert.equal(find("[data-org-switcher] select"), null, "不用系统下拉");
+      assert.equal(find("[data-org-switcher-item='o2']").getAttribute("aria-selected"), "true", "URL 点名的 o2 优先于第一家");
+      assert.equal(findAll("[data-org-switcher-item]").length, 2);
+      assert.ok(!switcher.textContent.includes("当前组织"), "组织名自己就是切换，不再旁标「当前组织」");
       assert.equal(find("[data-org-name]").textContent, "蓝鲸");
       assert.equal(new URL(window.location.href).searchParams.get("org"), "o2");
 
-      await act(async () => {
-        select.value = "o1";
-        select.dispatchEvent(new window.Event("change", { bubbles: true }));
-      });
+      await click(find("[data-org-switcher-item='o1']"));
       for (let i = 0; i < 5; i += 1) await act(async () => {});
       assert.equal(new URL(window.location.href).searchParams.get("org"), "o1", "切换后写回 URL");
       assert.equal(find("[data-org-name]").textContent, "海狮科技");
