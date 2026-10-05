@@ -1,7 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
+import { LibraryToolbar } from "./LibraryLayout";
 import {
   uploadFile,
   type AssetItem,
@@ -380,6 +389,11 @@ export interface MyLibraryProps {
   onMaterialDragEnd?: () => void;
   /** W5 device facade + W7 fs.list task adapter for device-bound libraries. */
   libraryScope?: LibraryScopeIntegration;
+  /**
+   * Full-page library title. When set, title + search sit in `LibraryScope.header`
+   * above the cloud/local nav. Embedded shelves omit this so no page title appears.
+   */
+  pageTitle?: ReactNode;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -407,8 +421,11 @@ export function MyLibrary({
   onMaterialDragStart,
   onMaterialDragEnd,
   libraryScope,
+  pageTitle,
 }: MyLibraryProps) {
   const tt = useUI();
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1147,12 +1164,35 @@ export function MyLibrary({
       {...libraryScope}
       cloudItems={libraryScope?.cloudItems || cloudItems}
       onOpenCloudItem={openCloudCopy}
+      header={
+        <div className="mb-3 shrink-0">
+          <LibraryToolbar
+            search={libraryQuery}
+            setSearch={setLibraryQuery}
+            view={libraryView}
+            setView={setLibraryView}
+            actions={toolbar}
+            placeholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
+            tt={tt}
+            leading={
+              pageTitle ? (
+                <h1 className={APP_PAGE_TITLE_CLASS}>
+                  {typeof pageTitle === "string" ? tt(pageTitle) : pageTitle}
+                </h1>
+              ) : undefined
+            }
+          />
+        </div>
+      }
     >
       <div className="relative h-full min-h-0">
         <WorkspaceLibrary
           entries={entries}
           accent={accent}
           action={action}
+          query={libraryQuery}
+          onQueryChange={setLibraryQuery}
+          hideToolbar
           category={category}
           onCategoryChange={onCategoryChange}
           taskId={taskId}

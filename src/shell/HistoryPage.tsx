@@ -19,6 +19,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
 export interface HistoryPageProps {
   accent?: string;
@@ -103,15 +104,10 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
   }
 
   return (
-    <div className="flex h-[calc(100dvh-1px)] flex-col px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("我的任务")}</h1>
-      <p className="mt-1 text-[13px] text-neutral-500">
-        {siteId
-          ? tt("本站每次对话 / 工作都会记录在这里，点开可回看推导过程与结果。")
-          : tt("全家桶各站的每次对话 / 工作都会记录在这里，点开可回看推导过程与结果。")}
-      </p>
+    <div className={`${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`}>
+      <AppPageHeader title={title ?? "我的任务"} />
 
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {error ? (
           <Empty text={error} />
         ) : loading ? (

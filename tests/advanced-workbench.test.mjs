@@ -660,7 +660,7 @@ test("full-page library and right workspace share the heterogeneous My Library",
   const advancedShell = source("../src/shell/InlineEditorMaterialPanel.tsx");
   const i18n = source("../src/i18n/ui/useUI.ts");
   assert.match(artifacts, /<MyLibrary/);
-  assert.match(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
+  assert.doesNotMatch(artifacts, /作品、网站、任务交付物和上传文件统一保存在这里/);
   assert.match(mine, /listMyArtifacts/);
   assert.match(mine, /limit: 100/);
   assert.match(mine, /ownerPrincipalId/);

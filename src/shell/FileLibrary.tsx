@@ -34,6 +34,7 @@ import {
   LibraryScope,
   type LibraryScopeIntegration,
 } from "./library-scope";
+import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
 export type LibraryTab = "files" | "works" | "assets" | "knowledge";
 type Tab = LibraryTab;
@@ -99,21 +100,15 @@ export function FileLibrary({
   return (
     <LibraryScope
       {...libraryScope}
-      className={fill ? "h-full" : "h-[calc(100dvh-1px)]"}
+      className={fill ? "h-full" : `${APP_PAGE_FRAME_CLASS} min-h-[calc(100dvh-1px)]`}
+      header={
+        !hideHeader && !fill ? (
+          <AppPageHeader title={title ?? "文件库"} />
+        ) : undefined
+      }
     >
-      <div className={`flex h-full flex-col ${hideHeader ? "px-4 py-4" : "px-8 pb-6 pt-16"}`}>
-      {!hideHeader && (
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("文件库")}</h1>
-            <p className="mt-1 text-[13px] text-neutral-500">
-              {tt("上传文件供本站 AI 使用；作品 / 素材 / 知识库全 OceanLeo 系列共享，跨站可见。")}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className={`flex flex-wrap items-center gap-3 ${hideHeader ? "" : "mt-5"}`}>
+      <div className={`flex h-full min-h-0 flex-col ${hideHeader || fill ? "px-4 py-4" : ""}`}>
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
           {TABS.map((t) => (
             <button

@@ -29,6 +29,7 @@ import {
 } from "../lib/database";
 import { StorageCapacityStrip } from "../shell/StorageCapacityStrip";
 import { useUI } from "../i18n/ui/useUI";
+import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "../shell/AppPageHeader";
 
 type Tab = "works" | "assets" | "knowledge";
 
@@ -370,14 +371,10 @@ export interface MyDatabasePageProps {
 }
 
 export function MyDatabasePage({ accent = "#4f46e5", title }: MyDatabasePageProps) {
-  const tt = useUI();
   return (
-    <div className="flex h-[calc(100dvh-1px)] flex-col px-8 py-6">
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{title ?? tt("我的数据库")}</h1>
-      <p className="mt-1 text-[13px] text-neutral-500">
-        {tt("你在全 OceanLeo 系列里产出的作品、上传的素材与知识库，统一汇集于此，跨站可用。")}
-      </p>
-      <div className="mt-5 min-h-0 flex-1">
+    <div className={`${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`}>
+      <AppPageHeader title={title ?? "我的数据库"} />
+      <div className="min-h-0 flex-1">
         <MyDatabasePanel accent={accent} />
       </div>
     </div>

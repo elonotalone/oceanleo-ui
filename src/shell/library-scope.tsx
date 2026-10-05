@@ -103,6 +103,8 @@ export function LibraryLocalScopeProvider({
 export interface LibraryScopeProps extends LibraryScopeIntegration {
   children: ReactNode;
   className?: string;
+  /** Rendered above the cloud/local nav (page title + search). */
+  header?: ReactNode;
 }
 
 type LibraryScopeId = "cloud" | "local-empty" | `device:${string}`;
@@ -354,6 +356,7 @@ function LocalLibraryPanel({
 export function LibraryScope({
   children,
   className = "",
+  header,
   devices: controlledDevices,
   snapshots: controlledSnapshots,
   cloudItems = [],
@@ -440,6 +443,7 @@ export function LibraryScope({
 
   return (
     <div className={`flex h-full min-h-0 flex-col ${className}`} data-library-scope={activeScope}>
+      {header}
       <nav aria-label="库位置" className="mb-4 flex shrink-0 flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-stone-50 p-2">
         <button
           type="button"

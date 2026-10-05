@@ -18,6 +18,7 @@ import {
   type WorkItem,
 } from "../lib/database";
 import { useUI } from "../i18n/ui/useUI";
+import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   advancedItemFromSession,
@@ -132,20 +133,14 @@ function FeatureCard({
 }
 
 export function AdvancedFeatureCatalog() {
-  const tt = useUI();
   return (
-    <main className="min-h-screen bg-[var(--surface,#fafaf9)] px-5 py-8 sm:px-8 lg:px-10">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-screen bg-[var(--surface,#fafaf9)]">
+      <div className={APP_PAGE_FRAME_CLASS}>
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-600">
           Advanced features
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--fg,#0c0a09)]">
-          {tt("高级功能")}
-        </h1>
-        <p className="mt-3 max-w-2xl text-[14px] leading-7 text-[var(--muted,#78716c)]">
-          {tt("独立于普通 App 的专业编辑空间。选择功能后可上传文件，或从跨站我的库继续已有内容。")}
-        </p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <AppPageHeader title="高级功能" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {ADVANCED_FEATURES.map((feature) => (
             <FeatureCard key={feature.id} feature={feature} />
           ))}

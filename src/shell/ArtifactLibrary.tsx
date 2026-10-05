@@ -35,6 +35,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
 import { MyLibrary } from "./MyLibrary";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
+import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
 export interface ArtifactItem {
   id: string;
@@ -223,21 +224,15 @@ const CATEGORY_FILTER: Record<string, ArtifactFilter> = {
  * tab content; ResultCanvas replaces those tabs with MyLibrary centrally.
  */
 export function ArtifactLibrary(props: ArtifactLibraryProps) {
-  const tt = useUI();
   if (props.fill) return <ArtifactLibraryLegacy {...props} />;
   const filter = props.filter || "all";
   return (
-    <div className="mx-auto flex h-[100dvh] min-h-0 w-full max-w-6xl flex-col px-6 py-8">
-      <h1 className="shrink-0 text-[22px] font-semibold tracking-tight text-neutral-900">
-        {tt("我的库")}
-      </h1>
-      <p className="mt-1 shrink-0 text-[13px] text-neutral-500">
-        {tt("作品、网站、任务交付物和上传文件统一保存在这里。")}
-      </p>
-      <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+    <div className={`${APP_PAGE_FRAME_CLASS} h-[100dvh]`}>
+      <div className="min-h-0 flex-1 overflow-hidden">
         <MyLibrary
           accent={props.accent}
           plain
+          pageTitle="我的库"
           category={FILTER_CATEGORY[filter]}
           onlyFavorites={filter === "favorites"}
           onCategoryChange={(category) =>
@@ -489,10 +484,6 @@ function ArtifactLibraryLegacy({
     return tt(KIND_LABELS[kind] || kind || "文件");
   }
 
-  const filterLabel = tt(
-    ARTIFACT_FILTERS.find((f) => f.id === filter)?.label || "我的库",
-  );
-
   return (
     // fill（内嵌右栏「库·文件库」，宗旨 v18，操作员 2026-07-07 三次校正）：**与「素材库」
     // (MaterialLibrary `relative min-h-full`) 逐字对齐**——`relative min-h-full w-full`，**绝不
@@ -623,31 +614,15 @@ function ArtifactLibraryLegacy({
           `absolute inset-0` 预览浮层随之撑高、下方大片空白。隐藏后 flow 高塌缩到可见高。 */}
       {!(selected && fill) && (
         <>
-      {/* 受控整页形态才有大标题（页面标题）；非受控（右栏内嵌 fill）无标题，搜索行上移，
-          与「导航 / 素材库」一致（宗旨 v17）。搜索行统一走 LibraryToolbar（右对齐窄框 +
-          网格/列表切换），三分区搜索框尺寸/位置一致。 */}
-      {controlledFilter !== undefined ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(filterLabel)}</h1>
-          <LibraryToolbar
-            search={search}
-            setSearch={setSearch}
-            view={view}
-            setView={setView}
-            placeholder={tt("搜索文件")}
-            tt={tt}
-          />
-        </div>
-      ) : (
-        <LibraryToolbar
-          search={search}
-          setSearch={setSearch}
-          view={view}
-          setView={setView}
-          placeholder={tt("搜索文件")}
-          tt={tt}
-        />
-      )}
+      {/* fill 内嵌形态不放页标题，避免右栏突然冒出大标题。搜索行走 LibraryToolbar。 */}
+      <LibraryToolbar
+        search={search}
+        setSearch={setSearch}
+        view={view}
+        setView={setView}
+        placeholder={tt("搜索文件")}
+        tt={tt}
+      />
 
       {/* v5：文件类型永远在右侧页面顶部横排；不得再移到任何侧栏。
           宗旨 v22：hideChips（跨站只读库标签）时不渲染——标签本身即类型。 */}
