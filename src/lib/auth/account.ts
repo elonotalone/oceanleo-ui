@@ -128,6 +128,7 @@ export interface PricingMeta {
   source_url?: string;
   source_file?: string;
   generated_at?: string;
+  checked_at?: string;
   model_count?: number;
   currency: string;
   library: string;
@@ -305,6 +306,29 @@ export interface ModelPrice {
   // raw cell text from the official doc (audit/debug):
   raw_input?: string;
   raw_output?: string;
+  /** 此刻实际价（账本币种）；缺省时页面回落到上面的基础字段。 */
+  current?: ModelPriceCurrent;
+  rules?: ModelPriceRule[];
+  next_change_at?: string | null;
+  checked_at?: string;
+}
+
+export interface ModelPriceCurrent {
+  input_per_m?: number | null;
+  output_per_m?: number | null;
+  cache_hit_per_m?: number | null;
+  price_per_unit?: number | null;
+  applied?: string[];
+}
+
+export interface ModelPriceRule {
+  kind?: "tier" | "window" | "promo" | "mode" | "variant" | string;
+  label?: string;
+  detail?: string;
+  input_per_m?: number | null;
+  output_per_m?: number | null;
+  cache_hit_per_m?: number | null;
+  price_per_unit?: number | null;
 }
 
 export interface CatalogModel {
@@ -320,6 +344,11 @@ export interface CatalogModel {
   capability_labels: string[];
   unpriced: boolean;
   price: ModelPrice;
+  canonical?: string;
+  status?: string;
+  selectable?: boolean;
+  checked_at?: string;
+  source_url?: string;
 }
 
 // One provider's models within a category (the picker groups by provider so a
@@ -358,6 +387,16 @@ export interface ProviderMeta {
   source_kind: string;
   generated_at: string;
   model_count: number;
+  checked_at?: string;
+}
+
+export interface DelistedCatalogEntry {
+  key: string;
+  label?: string;
+  provider?: string;
+  provider_label?: string;
+  category?: string;
+  removed_at?: string;
 }
 
 export interface ModelCatalog {
@@ -372,6 +411,8 @@ export interface ModelCatalog {
   pricing: PricingMeta;
   updated_at: string;
   model_count: number;
+  delisted?: DelistedCatalogEntry[];
+  status_labels?: Record<string, string>;
 }
 
 function normalizePrice(
@@ -397,6 +438,10 @@ function normalizePrice(
     price_cny_per_unit: pricePerUnit,
     raw_input: p.raw_input || "",
     raw_output: p.raw_output || "",
+    current: p.current,
+    rules: Array.isArray(p.rules) ? p.rules : undefined,
+    next_change_at: p.next_change_at,
+    checked_at: p.checked_at || "",
   };
 }
 
@@ -421,6 +466,11 @@ function normalizeModel(
     capability_labels: Array.isArray(x.capability_labels) ? x.capability_labels : [],
     unpriced: Boolean(x.unpriced),
     price: normalizePrice(x.price, currency),
+    canonical: x.canonical || "",
+    status: x.status || "",
+    selectable: x.selectable,
+    checked_at: x.checked_at || "",
+    source_url: x.source_url || "",
   };
 }
 
@@ -437,6 +487,7 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
       source_kind: p?.source_kind || "",
       generated_at: p?.generated_at || "",
       model_count: num(p?.model_count),
+      checked_at: p?.checked_at || "",
     })),
     groups: groups.map((g) => ({
       id: g?.id || "",
@@ -492,12 +543,27 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
       source_url: r.pricing?.source_url || "",
       source_file: r.pricing?.source_file || "",
       generated_at: r.pricing?.generated_at || "",
+      checked_at: r.pricing?.checked_at || "",
       model_count: num(r.pricing?.model_count),
       currency: r.pricing?.currency || "CNY",
       library: r.pricing?.library || "",
     },
     updated_at: r.updated_at || r.pricing?.generated_at || "",
     model_count: num(r.model_count, num(r.pricing?.model_count)),
+    delisted: Array.isArray(r.delisted)
+      ? r.delisted.map((item) => ({
+        key: item?.key || "",
+        label: item?.label || "",
+        provider: item?.provider || "",
+        provider_label: item?.provider_label || "",
+        category: item?.category || "",
+        removed_at: item?.removed_at || "",
+      }))
+      : undefined,
+    status_labels:
+      r.status_labels && typeof r.status_labels === "object"
+        ? r.status_labels
+        : undefined,
   };
 }
 
@@ -575,6 +641,12 @@ export async function setModelTier(tier: ModelTierId) {
 
 export type ModelGroupKind = "preset" | "custom";
 
+export interface ModelGroupEntry {
+  key: string;
+  label?: string;
+  status?: string;
+}
+
 export interface ModelGroup {
   key: string;
   id: string;
@@ -584,12 +656,16 @@ export interface ModelGroup {
   selection: CapabilitySelection;
   created_at?: string;
   updated_at?: string;
+  /** /groups 下架条目：带 status/label，供已选列表灰显。 */
+  entries?: ModelGroupEntry[];
+  items?: ModelGroupEntry[];
 }
 
 export interface ModelGroupsPayload extends ModelSelectionPayload {
   groups: ModelGroup[];
   active_group_key: string;
   default_group_key: string;
+  byok_providers?: string[];
 }
 
 export const MODEL_GROUP_CHANGED_EVENT = "oceanleo:model-group-changed";

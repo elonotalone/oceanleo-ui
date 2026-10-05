@@ -6,13 +6,13 @@ import {
   browserClient,
   oceanleoConfigured,
   loginUnavailableNotice,
-  getCredits,
   getModelCatalog,
   pricingDocUrl,
+  type CatalogGroup,
   type ModelCatalog,
-  type WalletInfo,
+  type ProviderMeta,
 } from "../lib/auth";
-import { formatMoney } from "../lib/money";
+import { checkedAgo } from "../lib/model-search";
 import { useUI } from "../i18n/ui/useUI";
 import { ApiGuidePage } from "./ApiGuidePage";
 import { ByokKeys } from "./ByokKeys";
@@ -20,8 +20,8 @@ import { ModelGroupManager } from "./ModelCapabilityMarket";
 import { PageHeader } from "./PageHeader";
 
 const API_PANES = [
-  { id: "models", label: "模型市场" },
-  { id: "guide", label: "指导文档" },
+  { id: "selection", label: "模型选择" },
+  { id: "byok", label: "自带 API key（BYOK）" },
 ] as const;
 
 type ApiPane = (typeof API_PANES)[number]["id"];
@@ -32,28 +32,28 @@ function readApiPane(href?: string): ApiPane {
       href || (typeof window !== "undefined" ? window.location.href : "https://oceanleo.com/"),
       "https://oceanleo.com",
     );
-    return url.searchParams.get("guide") === "1" ? "guide" : "models";
+    const raw = url.searchParams.get("pane") || "";
+    if (raw === "byok" || raw === "guide" || url.searchParams.get("guide") === "1") {
+      return "byok";
+    }
+    return "selection";
   } catch {
-    return "models";
+    return "selection";
   }
 }
 
-function writeGuideQuery(on: boolean) {
+function writeApiPane(next: ApiPane) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  if (on) url.searchParams.set("guide", "1");
-  else url.searchParams.delete("guide");
-  const next = `${url.pathname}${url.search}${url.hash}`;
+  url.searchParams.delete("guide");
+  if (next === "byok") url.searchParams.set("pane", "byok");
+  else url.searchParams.delete("pane");
+  const href = `${url.pathname}${url.search}${url.hash}`;
   const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (here !== next) {
-    window.history.replaceState(window.history.state, "", next);
+  if (here !== href) {
+    window.history.replaceState(window.history.state, "", href);
   }
 }
-
-const num = (value: unknown) => {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
 
 function fmtTime(iso: string) {
   if (!iso) return "";
@@ -63,6 +63,38 @@ function fmtTime(iso: string) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
     date.getDate(),
   )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function catalogSourceProviders(catalog: ModelCatalog | null): ProviderMeta[] {
+  const seen = new Map<string, ProviderMeta>();
+  for (const provider of catalog?.providers || []) {
+    if (provider.id) seen.set(provider.id, provider);
+  }
+  const absorb = (id: string, label: string, sourceUrl: string, updatedAt: string, count: number) => {
+    if (!id || seen.has(id)) return;
+    seen.set(id, {
+      id,
+      label: label || id,
+      source_url: sourceUrl || "",
+      source_kind: "",
+      generated_at: updatedAt || "",
+      model_count: count,
+    });
+  };
+  const walk = (groups: CatalogGroup[] | undefined) => {
+    for (const group of groups || []) {
+      for (const block of group.providers || []) {
+        absorb(block.id, block.label, block.source_url, block.updated_at, block.models?.length || 0);
+      }
+      for (const capability of group.capabilities || []) {
+        for (const block of capability.providers || []) {
+          absorb(block.id, block.label, block.source_url, block.updated_at, block.models?.length || 0);
+        }
+      }
+    }
+  };
+  walk(catalog?.groups);
+  return [...seen.values()];
 }
 
 export interface ApiPageProps {
@@ -82,6 +114,8 @@ export function ApiPage({
   billingHref = "/settings/billing",
   variant = "page",
 }: ApiPageProps = {}) {
+  void onLogin;
+  void billingHref;
   const tt = useUI();
   const pane = variant === "pane";
   const frameClass = pane ? "min-h-0" : "px-8 py-6";
@@ -89,7 +123,6 @@ export function ApiPage({
   const [apiPane, setApiPane] = useState<ApiPane>(() => readApiPane());
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
-  const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
 
   useEffect(() => {
@@ -115,13 +148,6 @@ export function ApiPage({
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    void getCredits().then((result) => {
-      if (result.ok && result.data) setWallet(result.data);
-    });
-  }, [user]);
-
-  useEffect(() => {
     function sync() {
       setApiPane(readApiPane());
     }
@@ -131,7 +157,7 @@ export function ApiPage({
 
   function selectApiPane(next: ApiPane) {
     setApiPane(next);
-    writeGuideQuery(next === "guide");
+    writeApiPane(next);
   }
 
   if (!oceanleoConfigured()) {
@@ -149,157 +175,118 @@ export function ApiPage({
     );
   }
 
-  const providers = catalog?.providers || [];
-  const market = (
-    <>
-        <section className="v-fade-up">
-          <div className="rounded-2xl border border-neutral-200 p-5">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-[12px] text-neutral-500">{tt("token 余额")}</p>
-                <p className="mt-1 text-[26px] font-semibold tabular-nums text-neutral-900">
-                  {wallet
-                    ? formatMoney(num(wallet.balance ?? wallet.balance_yuan), wallet.currency, 4)
-                    : checked && !user
-                      ? tt("登录后查看")
-                      : "…"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {!pane && (
-                <a
-                  href="/settings/api?guide=1"
-                  className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
-                >
-                  {tt("指导文档")}
-                </a>
-                )}
-                {checked && !user && onLogin ? (
-                  <button
-                    type="button"
-                    onClick={onLogin}
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
-                  >
-                    {tt("登录 / 注册")}
-                  </button>
-                ) : (
+  const providers = catalogSourceProviders(catalog);
+  const tabs = (
+    <div className="flex gap-1" data-api-settings-tabs="" role="tablist">
+      {API_PANES.map((item) => {
+        const active = apiPane === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            data-api-settings-tab={item.id}
+            aria-selected={active}
+            className={`rounded-lg px-3 py-2 text-[13px] font-medium ${
+              active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
+            }`}
+            onClick={() => selectApiPane(item.id)}
+          >
+            {tt(item.label)}
+          </button>
+        );
+      })}
+    </div>
+  );
+  const selection = (
+    <div className="space-y-8" data-api-selection="">
+      <ModelGroupManager catalog={catalog} user={!!user} />
+      <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
+        <div className="rounded-2xl border border-neutral-200 p-5">
+          <p className="text-[13px] font-semibold text-neutral-900">{tt("价格数据来源")}</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
+            {tt("价格来自各厂商官方实时源，每小时自动更新。共收录")}{" "}
+            <span className="font-medium text-neutral-700">
+              {catalog?.model_count || 0}
+            </span>{" "}
+            {tt("个模型。")}
+          </p>
+          <div className="mt-3 space-y-2.5">
+            {providers.map((provider) => {
+              const checkedAt = provider.checked_at || catalog?.pricing?.checked_at;
+              const ago = checkedAt ? checkedAgo(checkedAt) : null;
+              const agoKey =
+                ago?.unit === "minute"
+                  ? "{n} 分钟前核对过"
+                  : ago?.unit === "hour"
+                    ? "{n} 小时前核对过"
+                    : "{n} 天前核对过";
+              return (
+              <div key={provider.id} className="flex flex-wrap items-center gap-2">
+                <span className="min-w-[88px] text-[12px] font-medium text-neutral-800">
+                  {tt(provider.label)}
+                </span>
+                <span className="text-[11px] tabular-nums text-neutral-400">
+                  {tt("{n} 个 · 更新 {time}", {
+                    n: provider.model_count,
+                    time: fmtTime(provider.generated_at) || "—",
+                  })}
+                </span>
+                {ago ? (
+                  <span data-provider-checked={provider.id} className="text-[11px] text-neutral-400">
+                    {tt(agoKey, { n: ago.n })}
+                  </span>
+                ) : null}
+                {(["html", "pdf", "source"] as const).map((kind) => (
                   <a
-                    href={billingHref}
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
+                    key={kind}
+                    href={pricingDocUrl(provider.id, kind)}
+                    target={kind === "html" ? "_blank" : undefined}
+                    rel={kind === "html" ? "noreferrer" : undefined}
+                    className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
                   >
-                    {tt("充值")}
+                    {kind === "html" ? tt("在线查看") : kind === "source" ? tt("原始数据") : "PDF"}
+                  </a>
+                ))}
+                {provider.source_url && (
+                  <a
+                    href={provider.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
+                  >
+                    {tt("官方页 ↗")}
                   </a>
                 )}
               </div>
-            </div>
-            <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-[12px] leading-relaxed text-emerald-800">
-              {tt("计费规则：你支付的费用 = 该模型对应厂商的官方 token 市场价。")}
-              <span className="font-semibold">{tt("OceanLeo 不加价、不抽成")}</span>
-              {tt("。每笔调用都可审计；使用自己的厂商 API key（BYOK）则不扣钱包。")}
-              {" "}
-              {tt("密钥只以加密形式保存在你这台设备的浏览器里，OceanLeo 服务器不保存。")}
-            </div>
+              );
+            })}
           </div>
-        </section>
-
-        <ByokKeys loggedIn={!!user} />
-
-        <ModelGroupManager catalog={catalog} user={!!user} />
-
-        {/* 审计来源放全页最底：先完成余额/key/组合管理，再按需查看价格证据。 */}
-        <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
-          <div className="rounded-2xl border border-neutral-200 p-5">
-            <p className="text-[13px] font-semibold text-neutral-900">{tt("价格数据来源")}</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
-              {tt("百炼/火山为官方价格页确定性解析，OpenRouter 为其官方 API 实时价。共收录")}{" "}
-              <span className="font-medium text-neutral-700">
-                {catalog?.model_count || 0}
-              </span>{" "}
-              {tt("个模型。")}
-            </p>
-            <div className="mt-3 space-y-2.5">
-              {providers.map((provider) => (
-                <div key={provider.id} className="flex flex-wrap items-center gap-2">
-                  <span className="min-w-[88px] text-[12px] font-medium text-neutral-800">
-                    {provider.label}
-                  </span>
-                  <span className="text-[11px] tabular-nums text-neutral-400">
-                    {tt("{n} 个 · 更新 {time}", {
-                      n: provider.model_count,
-                      time: fmtTime(provider.generated_at) || "—",
-                    })}
-                  </span>
-                  {(["html", "pdf", "source"] as const).map((kind) => (
-                    <a
-                      key={kind}
-                      href={pricingDocUrl(provider.id, kind)}
-                      target={kind === "html" ? "_blank" : undefined}
-                      rel={kind === "html" ? "noreferrer" : undefined}
-                      className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
-                    >
-                      {kind === "html" ? tt("在线查看") : kind === "source" ? tt("原始数据") : "PDF"}
-                    </a>
-                  ))}
-                  {provider.source_url && (
-                    <a
-                      href={provider.source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
-                    >
-                      {tt("官方页 ↗")}
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {checked && !user && (
-          <p className="pb-4 text-center text-[12px] text-neutral-400">
-            {tt("登录后即可创建具名组合，并在全家桶按同一兜底顺序使用。")}
-          </p>
-        )}
-    </>
+        </div>
+      </section>
+      {checked && !user && (
+        <p className="pb-4 text-center text-[12px] text-neutral-400">
+          {tt("登录后即可创建具名组合，并在全家桶按同一兜底顺序使用。")}
+        </p>
+      )}
+    </div>
+  );
+  const byok = (
+    <div className="space-y-8" data-api-byok="">
+      <ByokKeys loggedIn={!!user} />
+      <div data-api-guide="">
+        <ApiGuidePage variant="section" />
+      </div>
+    </div>
   );
 
   return (
     <div className={frameClass} data-api-pane={paneMark}>
       {!pane && <PageHeader title={tt("AI 模型")} />}
-      {pane ? (
-        <div className="max-w-3xl space-y-6">
-          <div className="flex gap-1" data-api-settings-tabs="" role="tablist">
-            {API_PANES.map((item) => {
-              const active = apiPane === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  data-api-settings-tab={item.id}
-                  aria-selected={active}
-                  className={`rounded-lg px-3 py-2 text-[13px] font-medium ${
-                    active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
-                  }`}
-                  onClick={() => selectApiPane(item.id)}
-                >
-                  {tt(item.label)}
-                </button>
-              );
-            })}
-          </div>
-          {apiPane === "guide" ? (
-            <div data-api-guide="">
-              <ApiGuidePage />
-            </div>
-          ) : (
-            <div className="space-y-8">{market}</div>
-          )}
-        </div>
-      ) : (
-        <div className="mx-auto mt-6 max-w-3xl space-y-8">{market}</div>
-      )}
+      <div className={`${pane ? "" : "mx-auto mt-6 "}max-w-3xl space-y-6`}>
+        {tabs}
+        {apiPane === "byok" ? byok : selection}
+      </div>
     </div>
   );
 }

@@ -1,22 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createModelGroup,
   deleteModelGroup,
   getModelGroups,
   MODEL_GROUP_CHANGED_EVENT,
+  setActiveModelGroup,
   updateModelGroup,
   type CapabilitySelection,
   type CatalogCapability,
   type CatalogModel,
+  type CatalogProviderBlock,
   type ModelCatalog,
   type ModelGroup,
   type ModelGroupsPayload,
+  type ModelPriceRule,
 } from "../lib/auth";
+import {
+  PROVIDER_DISPLAY_ORDER,
+  canSelect,
+  checkedAgo,
+  groupOffers,
+  matchesModel,
+} from "../lib/model-search";
 import { currencySymbol } from "../lib/money";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
-import { ConfirmDialog } from "../ui";
+import { ConfirmDialog, FloatingMenu, FloatingMenuItem } from "../ui";
 
 const ALL_PROVIDERS = "__all__";
 
@@ -49,6 +59,97 @@ function flatten(block: CatalogCapability) {
   return block.providers.flatMap((provider) => provider.models || []);
 }
 
+function flattenProviders(providers: CatalogProviderBlock[] | undefined) {
+  return (providers || []).flatMap((provider) => provider.models || []);
+}
+
+function allCatalogModels(catalog: ModelCatalog | null): CatalogModel[] {
+  const byKey = new Map<string, CatalogModel>();
+  for (const group of catalog?.groups || []) {
+    for (const model of flattenProviders(group.providers)) {
+      if (model.key) byKey.set(model.key, model);
+    }
+    for (const capability of group.capabilities || []) {
+      for (const model of flatten(capability)) {
+        if (model.key) byKey.set(model.key, model);
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+const DEFAULT_STATUS_LABELS: Record<string, string> = {
+  available: "可用",
+  not_opened: "暂未开通",
+  unpriced: "价未公布",
+  byok_only: "需自带 Key",
+  no_adapter: "暂不支持调用",
+  delisted: "已下架",
+};
+
+function statusLabel(
+  status: string | undefined,
+  catalog: ModelCatalog | null,
+  tt: UITranslate,
+) {
+  if (!status) return "";
+  const raw = catalog?.status_labels?.[status] || DEFAULT_STATUS_LABELS[status] || status;
+  return tt(raw);
+}
+
+function checkedAgoText(iso: string | undefined, tt: UITranslate, now?: Date) {
+  if (!iso) return "";
+  const ago = checkedAgo(iso, now || new Date());
+  const key =
+    ago.unit === "minute"
+      ? "{n} 分钟前核对过"
+      : ago.unit === "hour"
+        ? "{n} 小时前核对过"
+        : "{n} 天前核对过";
+  return tt(key, { n: ago.n });
+}
+
+function formatRuleLine(rule: ModelPriceRule, currency: string, tt: UITranslate) {
+  const label = rule.label ? tt(rule.label) : "";
+  const detail = rule.detail ? tt(rule.detail) : "";
+  let prices = "";
+  if (rule.input_per_m != null || rule.output_per_m != null) {
+    const input = rule.input_per_m != null ? money(num(rule.input_per_m), currency) : "";
+    const output = rule.output_per_m != null ? money(num(rule.output_per_m), currency) : "";
+    if (input && output) prices = `${input} / ${output}`;
+    else if (output) prices = tt("输出 {output}", { output });
+    else prices = input;
+  } else if (rule.price_per_unit != null) {
+    prices = money(num(rule.price_per_unit), currency);
+  }
+  return [label, detail, prices].filter(Boolean).join(" ");
+}
+
+type SelectedRow =
+  | { kind: "live"; key: string; model: CatalogModel }
+  | { kind: "delisted"; key: string; label: string };
+
+function resolveSelectedRows(
+  keys: string[],
+  byKey: Map<string, CatalogModel>,
+  catalog: ModelCatalog | null,
+  group: ModelGroup | undefined,
+): SelectedRow[] {
+  const entries = group?.entries || group?.items || [];
+  return keys.map((key) => {
+    const model = byKey.get(key);
+    if (model) return { kind: "live" as const, key, model };
+    const entry = entries.find((item) => item.key === key);
+    const delisted = catalog?.delisted?.find((item) => item.key === key);
+    const fromEntry = entry?.status === "delisted" ? entry.label : "";
+    const label =
+      fromEntry
+      || delisted?.label
+      || (key.includes(":") ? key.slice(key.indexOf(":") + 1) : key);
+    return { kind: "delisted" as const, key, label };
+  });
+}
+
 const num = (value: unknown) => {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -66,22 +167,33 @@ function money(value: number, currency: string) {
 }
 
 function priceText(model: CatalogModel, tt: UITranslate) {
-  if (model.unpriced) return tt("免费 / 未公布");
+  if (model.unpriced || model.status === "unpriced") return tt("价未公布");
   if (!model.price) return "—";
   // 价格所在货币由网关的 pricing 元数据决定（.cn = CNY、.com = USD）；没说就是 CNY。
   const currency = model.price.currency || "CNY";
+  const current = model.price.current;
+  const applied = (current?.applied || []).filter(Boolean);
+  const appliedText = applied.length
+    ? ` ${applied.map((label) => tt(label)).join(" ")}`
+    : "";
   if (model.price.billing === "job") {
     // 网关的单位标签形如 "USD/次" / "CNY/1M tokens"；货币码已由符号表达，这里只留 "/次"。
     const unit = (model.price.unit || `${currency}/次`).replace(/^[A-Z]{3}\//, "/");
-    return `${money(num(model.price.price_per_unit ?? model.price.price_cny_per_unit), currency)} ${unit}`;
+    const value = num(
+      current?.price_per_unit ?? model.price.price_per_unit ?? model.price.price_cny_per_unit,
+    );
+    return `${money(value, currency)} ${unit}${appliedText}`;
   }
-  return `输入 ${money(
-    num(model.price.input_per_m ?? model.price.input_cny_per_m),
-    currency,
-  )} · 输出 ${money(
-    num(model.price.output_per_m ?? model.price.output_cny_per_m),
-    currency,
-  )} / 百万 token`;
+  return `${tt("输入 {input} · 输出 {output} / 百万 token", {
+    input: money(
+      num(current?.input_per_m ?? model.price.input_per_m ?? model.price.input_cny_per_m),
+      currency,
+    ),
+    output: money(
+      num(current?.output_per_m ?? model.price.output_per_m ?? model.price.output_cny_per_m),
+      currency,
+    ),
+  })}${appliedText}`;
 }
 
 function fallbackLabel(index: number, tt: UITranslate) {
@@ -91,9 +203,11 @@ function fallbackLabel(index: number, tt: UITranslate) {
 export function ModelGroupManager({
   catalog,
   user,
+  initialMarketQuery = "",
 }: {
   catalog: ModelCatalog | null;
   user: boolean;
+  initialMarketQuery?: string;
 }) {
   const tt = useUI();
   const [payload, setPayload] = useState<ModelGroupsPayload | null>(null);
@@ -104,6 +218,7 @@ export function ModelGroupManager({
   const [draft, setDraft] = useState<CapabilitySelection>({});
   const [provider, setProvider] = useState(ALL_PROVIDERS);
   const [query, setQuery] = useState("");
+  const [marketQuery, setMarketQuery] = useState(initialMarketQuery);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -111,6 +226,9 @@ export function ModelGroupManager({
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [menuKey, setMenuKey] = useState("");
+  const [pendingDeleteKey, setPendingDeleteKey] = useState("");
+  const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   // 依赖里刻意没有 `tt`：模型组合与语言无关，换语言不该重新拉一次 `getModelGroups()`
   //（还会把 `viewKey` 打回服务端的 active 组，丢掉用户当前正在看的那一组）。
@@ -173,15 +291,19 @@ export function ModelGroupManager({
   const byKey = useMemo(() => {
     const index = new Map<string, CatalogModel>();
     for (const catalogGroup of catalogGroups) {
-      for (const model of catalogGroup.providers.flatMap((item) => item.models || [])) {
-        index.set(model.key, model);
+      for (const model of flattenProviders(catalogGroup.providers)) {
+        if (model.key) index.set(model.key, model);
+      }
+      for (const item of catalogGroup.capabilities || []) {
+        for (const model of flatten(item)) {
+          if (model.key && !index.has(model.key)) index.set(model.key, model);
+        }
       }
     }
     return index;
   }, [catalogGroups]);
-  const selectedModels = selectedKeys
-    .map((key) => byKey.get(key))
-    .filter((model): model is CatalogModel => Boolean(model));
+  const selectedRows = resolveSelectedRows(selectedKeys, byKey, catalog, group);
+  const byokProviders = payload?.byok_providers || [];
   const providerIds = capability?.providers.map((item) => item.id) || [];
   const effectiveProvider =
     provider !== ALL_PROVIDERS && !providerIds.includes(provider)
@@ -189,16 +311,19 @@ export function ModelGroupManager({
       : provider;
   const allModels = (capability ? flatten(capability) : [])
     .filter((model) => effectiveProvider === ALL_PROVIDERS || model.provider === effectiveProvider)
-    .filter((model) => {
-      const normalized = query.trim().toLowerCase();
-      return !normalized || [
-        model.label,
-        model.id,
-        model.provider_label,
-        ...model.capability_labels,
-      ].some((value) => (value || "").toLowerCase().includes(normalized));
-    });
-  const customCount = groups.filter((item) => item.kind === "custom").length;
+    .filter((model) => !query.trim() || matchesModel(query, model));
+  const offerGroups = groupOffers(allModels, PROVIDER_DISPLAY_ORDER);
+  const catalogModels = useMemo(() => allCatalogModels(catalog), [catalog]);
+  const marketHits = useMemo(() => {
+    const needle = marketQuery.trim();
+    if (!needle) return [];
+    return groupOffers(
+      catalogModels.filter((model) => matchesModel(needle, model)),
+      PROVIDER_DISPLAY_ORDER,
+    );
+  }, [catalogModels, marketQuery]);
+  const menuGroup = groups.find((item) => item.key === menuKey);
+  const pendingDelete = groups.find((item) => item.key === pendingDeleteKey);
 
   function chooseGroup(key: string) {
     if (editing || busy) return;
@@ -208,15 +333,29 @@ export function ModelGroupManager({
     setProvider(ALL_PROVIDERS);
     setQuery("");
     setRenaming(false);
+    setMenuKey("");
     setError("");
   }
 
-  function beginEdit() {
-    if (!group?.editable) return;
-    setDraft(cloneSelection(group.selection));
+  function beginEdit(item = group) {
+    if (!item?.editable) return;
+    setViewKey(item.key);
+    setDraft(cloneSelection(item.selection));
     setEditing(true);
+    setRenaming(false);
     setProvider(ALL_PROVIDERS);
     setQuery("");
+    setMenuKey("");
+    setError("");
+  }
+
+  function beginRename(item = group) {
+    if (!item || item.kind !== "custom") return;
+    setViewKey(item.key);
+    setRenameName(item.name);
+    setRenaming(true);
+    setEditing(false);
+    setMenuKey("");
     setError("");
   }
 
@@ -300,15 +439,35 @@ export function ModelGroupManager({
     }
   }
 
+  async function activateGroup(item: ModelGroup) {
+    if (payload?.active_group_key === item.key) {
+      setMenuKey("");
+      return;
+    }
+    setBusy("activate");
+    setError("");
+    const result = await setActiveModelGroup(item.key);
+    setBusy("");
+    if (result.ok && result.data) {
+      setPayload(result.data);
+      setMenuKey("");
+    } else {
+      setError(result.error || tt("切换模型组合失败"));
+    }
+  }
+
   async function removeGroup() {
-    if (!group || group.kind !== "custom") return;
+    const target = pendingDelete || group;
+    if (!target || target.kind !== "custom") return;
     setBusy("delete");
     setError("");
-    const result = await deleteModelGroup(group.id);
+    const result = await deleteModelGroup(target.id);
     setBusy("");
     if (result.ok && result.data) {
       setPayload(result.data);
       setViewKey(result.data.active_group_key || "preset:pro");
+      setPendingDeleteKey("");
+      setMenuKey("");
     } else {
       setError(result.error || tt("删除模型组合失败"));
     }
@@ -324,47 +483,103 @@ export function ModelGroupManager({
 
   return (
     <section className="v-fade-up">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-[14px] font-semibold text-neutral-900">
-            {tt("我的模型选择")}
-            <span className="ml-2 text-[11px] font-normal text-neutral-400">
-              {tt("{n} 个自定义组合", { n: customCount })}
-            </span>
-          </h2>
-          <p className="mt-1 text-[11px] text-neutral-400">
-            {tt("在这里管理组合；真正生效的组合请在每个页面右上角切换。")}
+      <div data-model-price-search="" className="mb-8">
+        <h2 className="text-[14px] font-semibold text-neutral-900">{tt("搜模型查价")}</h2>
+        <input
+          type="search"
+          data-model-price-search-input=""
+          value={marketQuery}
+          onChange={(event) => setMarketQuery(event.target.value)}
+          placeholder={tt("输入模型名，如 glm 5.1、deepseek v3.2、kimi")}
+          className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] outline-none placeholder:text-neutral-400 focus:border-neutral-400"
+        />
+        {!marketQuery.trim() ? (
+          <p data-model-price-search-hint="" className="mt-2 text-[12px] text-neutral-400">
+            {tt("输入模型名即可查看各家价格与此刻能否选用。")}
           </p>
-        </div>
-        {payload?.active_group_key === group.key && (
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
-            {tt("当前全站使用")}
-          </span>
+        ) : (
+          <div data-model-price-search-results="" className="mt-3 space-y-2">
+            {marketHits.length === 0 ? (
+              <p className="text-[12px] text-neutral-400">{tt("没有匹配的模型。")}</p>
+            ) : (
+              marketHits.map((hit) => (
+                <OfferGroupRow
+                  key={hit.canonical}
+                  label={hit.label}
+                  category={hit.category}
+                  offers={hit.offers}
+                  catalog={catalog}
+                  tt={tt}
+                  byokProviders={byokProviders}
+                />
+              ))
+            )}
+          </div>
         )}
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[14px] font-semibold text-neutral-900">{tt("我的模型选择")}</h2>
+        {payload?.active_group_key ? (
+          <span
+            data-model-group-active=""
+            className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+          >
+            {tt("当前在所有 OceanLeo 站点使用")}
+          </span>
+        ) : null}
       </div>
 
       <div className="mb-3 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-2">
         <div className="flex flex-wrap gap-1.5">
-          {groups.map((item) => (
-            <button
+          {groups.map((item) => {
+            const selected = item.key === group.key;
+            const live = payload?.active_group_key === item.key;
+            return (
+            <div
               key={item.key}
-              type="button"
-              disabled={editing || !!busy}
-              onClick={() => chooseGroup(item.key)}
-              className={`rounded-lg border px-3 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-default ${
- item.key === group.key
- ? "border-neutral-900 bg-neutral-900 text-white"
- : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
- }`}
+              data-model-group-chip={item.key}
+              data-model-group-live={live ? "true" : undefined}
+              className={`inline-flex items-center rounded-lg border text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                selected
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+              }`}
             >
-              {item.name}
-              {item.kind === "custom" && (
-                <span className={item.key === group.key ? "ml-1 text-white/65" : "ml-1 text-indigo-500"}>
-                  · {tt("自定义")}
-                </span>
-              )}
-            </button>
-          ))}
+              <button
+                type="button"
+                disabled={editing || !!busy}
+                onClick={() => chooseGroup(item.key)}
+                className="rounded-lg px-3 py-1.5 disabled:cursor-default"
+              >
+                {item.name}
+                {item.kind === "custom" && (
+                  <span className={selected ? "ml-1 text-white/65" : "ml-1 text-indigo-500"}>
+                    · {tt("自定义")}
+                  </span>
+                )}
+              </button>
+              {user ? (
+                <button
+                  type="button"
+                  ref={menuKey === item.key ? menuAnchorRef : undefined}
+                  disabled={editing || !!busy}
+                  aria-label={tt("组合操作")}
+                  data-model-group-menu={item.key}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    menuAnchorRef.current = event.currentTarget;
+                    setMenuKey((current) => (current === item.key ? "" : item.key));
+                  }}
+                  className={`mr-1 inline-flex h-6 w-6 items-center justify-center rounded-md disabled:cursor-default ${
+                    selected ? "text-white/80 hover:bg-white/10" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                  }`}
+                >
+                  <KebabIcon />
+                </button>
+              ) : null}
+            </div>
+            );
+          })}
           {user && !editing && (
             <button
               type="button"
@@ -400,9 +615,88 @@ export function ModelGroupManager({
             </button>
           </div>
         )}
+        {renaming && group.kind === "custom" && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-2">
+            <input
+              autoFocus
+              value={renameName}
+              maxLength={40}
+              onChange={(event) => setRenameName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void saveRename();
+                if (event.key === "Escape") setRenaming(false);
+              }}
+              className="min-w-[180px] flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] outline-none focus:border-neutral-400"
+            />
+            <button type="button" onClick={() => void saveRename()} className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white">
+              {tt("保存")}
+            </button>
+            <button type="button" onClick={() => setRenaming(false)} className="px-2 py-1.5 text-[12px] text-neutral-400 hover:text-neutral-700">
+              {tt("取消")}
+            </button>
+          </div>
+        )}
+        <FloatingMenu
+          open={!!menuGroup}
+          anchorRef={menuAnchorRef}
+          onClose={() => setMenuKey("")}
+          align="end"
+          width={200}
+          zClassName="z-[180]"
+          ariaLabel={tt("组合操作")}
+        >
+          <FloatingMenuItem
+            label={tt("设为默认")}
+            disabled={!!busy || payload?.active_group_key === menuGroup?.key}
+            selected={payload?.active_group_key === menuGroup?.key}
+            onSelect={() => {
+              if (menuGroup) void activateGroup(menuGroup);
+            }}
+          />
+          {menuGroup?.kind === "custom" ? (
+            <>
+              <FloatingMenuItem
+                label={tt("改名")}
+                disabled={!!busy}
+                onSelect={() => beginRename(menuGroup)}
+              />
+              <FloatingMenuItem
+                label={tt("编辑组合")}
+                disabled={!!busy}
+                onSelect={() => beginEdit(menuGroup)}
+              />
+              <FloatingMenuItem
+                label={tt("删除")}
+                danger
+                disabled={!!busy}
+                onSelect={() => {
+                  setPendingDeleteKey(menuGroup.key);
+                  setMenuKey("");
+                  setConfirmingDelete(true);
+                }}
+              />
+            </>
+          ) : null}
+        </FloatingMenu>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-neutral-200">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p data-model-group-fallback="" className="text-[11px] font-medium text-amber-700">
+          {tt("从上到下依次尝试：主用不可用时自动使用下一项。")}
+        </p>
+        <div className="flex items-center gap-1.5">
+          {group.kind === "preset" ? (
+            <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-500">{tt("平台只读组合")}</span>
+          ) : editing ? (
+            <>
+              <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50">{tt("取消")}</button>
+              <button type="button" disabled={busy === "save"} onClick={() => void saveEdit()} className="rounded-lg bg-neutral-900 px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">{busy === "save" ? tt("保存中…") : tt("保存组合")}</button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div data-model-group-table="" className="overflow-hidden rounded-2xl border border-neutral-200">
         <div className="flex flex-col sm:flex-row">
           <div className="shrink-0 border-b border-neutral-100 bg-neutral-50/60 p-2 sm:w-[148px] sm:border-b-0 sm:border-r">
             <div className="flex gap-1.5 overflow-x-auto sm:flex-col sm:gap-1 sm:overflow-visible">
@@ -458,63 +752,33 @@ export function ModelGroupManager({
                 );
               })}
             </div>
-            <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="text-[11px] text-neutral-400">{tt(capability.description)}</p>
-                <p className="mt-0.5 text-[11px] font-medium text-amber-700">
-                  {tt("从上到下依次尝试：主用不可用时自动使用下一项。")}
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {group.kind === "preset" ? (
-                  <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-500">{tt("平台只读组合")}</span>
-                ) : editing ? (
-                  <>
-                    <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50">{tt("取消")}</button>
-                    <button type="button" disabled={busy === "save"} onClick={() => void saveEdit()} className="rounded-lg bg-neutral-900 px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">{busy === "save" ? tt("保存中…") : tt("保存组合")}</button>
-                  </>
-                ) : renaming ? (
-                  <>
-                    <input value={renameName} maxLength={40} onChange={(event) => setRenameName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void saveRename()} className="w-36 rounded-lg border border-neutral-200 px-2.5 py-1 text-[11px] outline-none focus:border-neutral-400" />
-                    <button type="button" onClick={() => void saveRename()} className="rounded-lg bg-neutral-900 px-2.5 py-1 text-[11px] text-white">{tt("保存")}</button>
-                    <button type="button" onClick={() => setRenaming(false)} className="px-1.5 py-1 text-[11px] text-neutral-400">{tt("取消")}</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" onClick={() => { setRenaming(true); setRenameName(group.name); }} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50">{tt("改名")}</button>
-                    <button type="button" onClick={beginEdit} className="rounded-lg bg-neutral-900 px-3 py-1 text-[11px] font-medium text-white">{tt("编辑组合")}</button>
-                    <button type="button" onClick={() => setConfirmingDelete(true)} className="rounded-lg px-2 py-1 text-[11px] text-rose-500 hover:bg-rose-50">{tt("删除")}</button>
-                    {confirmingDelete && (
-                      <ConfirmDialog
-                        title={tt("确定删除模型组合「{name}」吗？", { name: group.name })}
-                        body={tt("组合里的模型搭配会被删除且无法恢复；已经跑过的任务不受影响。")}
-                        confirmLabel={tt("删除")}
-                        danger
-                        onConfirm={async () => {
-                          setConfirmingDelete(false);
-                          await removeGroup();
-                        }}
-                        onCancel={() => setConfirmingDelete(false)}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+            <p className="mb-2 text-[11px] text-neutral-400">{tt(capability.description)}</p>
 
             <div className="overflow-hidden rounded-xl border border-neutral-200">
-              {selectedModels.map((model, index) => (
-                <SelectedModelRow
-                  key={model.key}
-                  model={model}
-                  index={index}
-                  tt={tt}
-                  editing={editing}
-                  onMove={(direction) => moveModel(index, direction)}
-                  onRemove={() => toggleModel(model.key)}
-                  first={index === 0}
-                  last={index === selectedModels.length - 1}
-                />
+              {selectedRows.map((row, index) => (
+                row.kind === "delisted" ? (
+                  <DelistedModelRow
+                    key={row.key}
+                    rowKey={row.key}
+                    label={row.label}
+                    index={index}
+                    tt={tt}
+                    editing={editing}
+                    onRemove={() => toggleModel(row.key)}
+                  />
+                ) : (
+                  <SelectedModelRow
+                    key={row.key}
+                    model={row.model}
+                    index={index}
+                    tt={tt}
+                    editing={editing}
+                    onMove={(direction) => moveModel(index, direction)}
+                    onRemove={() => toggleModel(row.key)}
+                    first={index === 0}
+                    last={index === selectedRows.length - 1}
+                  />
+                )
               ))}
             </div>
 
@@ -523,27 +787,61 @@ export function ModelGroupManager({
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   <button type="button" onClick={() => setProvider(ALL_PROVIDERS)} className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === ALL_PROVIDERS ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}>{tt("全部供应商")}</button>
                   {capability.providers.map((item) => (
-                    <button key={item.id} type="button" onClick={() => setProvider(item.id)} className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === item.id ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}>{item.label}</button>
+                    <button key={item.id} type="button" onClick={() => setProvider(item.id)} className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === item.id ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}>{tt(item.label)}</button>
                   ))}
                 </div>
                 <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tt("搜索全部可用模型…")} className="mb-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] outline-none placeholder:text-neutral-400 focus:border-neutral-400" />
-                <div className="max-h-[360px] overflow-y-auto rounded-xl border border-neutral-200 bg-white">
-                  {allModels.map((model, index) => {
-                    const selectedIndex = selectedKeys.indexOf(model.key);
-                    return (
-                      <button key={model.key} type="button" onClick={() => toggleModel(model.key)} className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 ${index ? "border-t border-neutral-100" : ""}`}>
-                        <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-[5px] border text-[10px] ${selectedIndex >= 0 ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 text-transparent"}`}>✓</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span className="truncate text-[13px] font-medium text-neutral-900">{model.label}</span>
-                            <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{model.provider_label}</span>
+                <div data-model-edit-offers="" className="max-h-[360px] overflow-y-auto rounded-xl border border-neutral-200 bg-white">
+                  {offerGroups.map((hit, index) => (
+                    <div
+                      key={hit.canonical}
+                      data-model-edit-row={hit.canonical}
+                      className={`px-3.5 py-2.5 ${index ? "border-t border-neutral-100" : ""}`}
+                    >
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="truncate text-[13px] font-medium text-neutral-900">{hit.label}</span>
+                        {hit.category ? (
+                          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">
+                            {tt(catalogGroups.find((item) => item.id === hit.category)?.label || hit.category)}
                           </span>
-                        </span>
-                        {selectedIndex >= 0 && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{fallbackLabel(selectedIndex, tt)}</span>}
-                        <span className="shrink-0 whitespace-nowrap text-[11px] text-neutral-500">{priceText(model, tt)}</span>
-                      </button>
-                    );
-                  })}
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {hit.offers.map((model) => {
+                          const selectedIndex = selectedKeys.indexOf(model.key);
+                          const selectable = canSelect(model, byokProviders);
+                          return (
+                            <button
+                              key={model.key}
+                              type="button"
+                              data-model-offer={model.key}
+                              data-model-offer-disabled={selectable ? undefined : "true"}
+                              disabled={!selectable}
+                              onClick={() => toggleModel(model.key)}
+                              className={`rounded-lg border px-2.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${
+                                selectedIndex >= 0
+                                  ? "border-neutral-900 bg-neutral-900 text-white"
+                                  : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                              }`}
+                            >
+                              <span className="block text-[11px] font-medium">{tt(model.provider_label)}</span>
+                              <span className={`block text-[11px] ${selectedIndex >= 0 ? "text-white/80" : "text-neutral-500"}`}>
+                                {priceText(model, tt)}
+                              </span>
+                              {!selectable ? (
+                                <span data-model-status={model.status || "unavailable"} className="mt-0.5 block text-[10px] text-amber-700">
+                                  {statusLabel(model.status || (model.unpriced ? "unpriced" : ""), catalog, tt)}
+                                </span>
+                              ) : null}
+                              {selectedIndex >= 0 ? (
+                                <span className="mt-0.5 block text-[10px] text-amber-200">{fallbackLabel(selectedIndex, tt)}</span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -556,7 +854,33 @@ export function ModelGroupManager({
           {tt("登录后即可创建、命名和编辑多个自定义模型组合。")}
         </p>
       )}
+      {confirmingDelete && pendingDelete && (
+        <ConfirmDialog
+          title={tt("确定删除模型组合「{name}」吗？", { name: pendingDelete.name })}
+          body={tt("组合里的模型搭配会被删除且无法恢复；已经跑过的任务不受影响。")}
+          confirmLabel={tt("删除")}
+          danger
+          onConfirm={async () => {
+            setConfirmingDelete(false);
+            await removeGroup();
+          }}
+          onCancel={() => {
+            setConfirmingDelete(false);
+            setPendingDeleteKey("");
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function KebabIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <circle cx="8" cy="3.5" r="1.25" />
+      <circle cx="8" cy="8" r="1.25" />
+      <circle cx="8" cy="12.5" r="1.25" />
+    </svg>
   );
 }
 
@@ -585,7 +909,7 @@ function SelectedModelRow({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium text-neutral-900">{model.label}</span>
-          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{model.provider_label}</span>
+          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{tt(model.provider_label)}</span>
         </span>
       </span>
       <span className="shrink-0 whitespace-nowrap text-[11px] text-neutral-500">{priceText(model, tt)}</span>
@@ -596,6 +920,110 @@ function SelectedModelRow({
           <button type="button" onClick={onRemove} aria-label={tt("移除")} className="rounded p-1 text-rose-400 hover:bg-rose-50">×</button>
         </span>
       )}
+    </div>
+  );
+}
+
+function DelistedModelRow({
+  rowKey,
+  label,
+  index,
+  tt,
+  editing,
+  onRemove,
+}: {
+  rowKey: string;
+  label: string;
+  index: number;
+  tt: UITranslate;
+  editing: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      data-model-delisted={rowKey}
+      className={`flex items-center gap-3 px-3.5 py-2.5 text-neutral-400 ${index ? "border-t border-neutral-100" : ""}`}
+    >
+      <span className="min-w-0 flex-1 truncate text-[13px]">
+        {label} · {tt("已下架")}
+      </span>
+      {editing && (
+        <button type="button" onClick={onRemove} aria-label={tt("移除")} className="rounded p-1 text-rose-400 hover:bg-rose-50">×</button>
+      )}
+    </div>
+  );
+}
+
+function OfferGroupRow({
+  label,
+  category,
+  offers,
+  catalog,
+  tt,
+  byokProviders,
+}: {
+  label: string;
+  category: string;
+  offers: CatalogModel[];
+  catalog: ModelCatalog | null;
+  tt: UITranslate;
+  byokProviders: string[];
+}) {
+  const categoryLabel =
+    catalog?.groups.find((group) => group.id === category)?.label || category;
+  return (
+    <div data-model-offer-row="" className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="truncate text-[13px] font-medium text-neutral-900">{label}</span>
+        {categoryLabel ? (
+          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">
+            {tt(categoryLabel)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {offers.map((model) => {
+          const selectable = canSelect(model, byokProviders);
+          const currency = model.price?.currency || "CNY";
+          const rules = model.price?.rules || [];
+          const checked = checkedAgoText(model.checked_at || model.price?.checked_at, tt);
+          const official = model.source_url;
+          return (
+            <div
+              key={model.key}
+              data-model-offer={model.key}
+              data-model-offer-disabled={selectable ? undefined : "true"}
+              className={`min-w-[140px] rounded-lg border px-2.5 py-1.5 ${
+                selectable ? "border-neutral-200 bg-neutral-50" : "border-neutral-200 bg-neutral-50 opacity-70"
+              }`}
+            >
+              <span className="block text-[11px] font-medium text-neutral-800">{tt(model.provider_label)}</span>
+              <span className="block text-[11px] text-neutral-600">{priceText(model, tt)}</span>
+              {rules.map((rule, index) => (
+                <span key={`${rule.kind || "rule"}-${index}`} className="block text-[10px] text-neutral-400">
+                  {formatRuleLine(rule, currency, tt)}
+                </span>
+              ))}
+              <span data-model-status={model.status || ""} className="mt-0.5 block text-[10px] text-neutral-500">
+                {statusLabel(model.status || (model.unpriced ? "unpriced" : "available"), catalog, tt)}
+              </span>
+              {checked ? (
+                <span data-model-checked="" className="block text-[10px] text-neutral-400">{checked}</span>
+              ) : null}
+              {official ? (
+                <a
+                  href={official}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-0.5 block text-[10px] text-neutral-500 underline"
+                >
+                  {tt("官方价目")}
+                </a>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

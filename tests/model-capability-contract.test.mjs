@@ -49,8 +49,8 @@ test("模型组合 API 支持具名 CRUD 与全局活跃指针", () => {
 test("我的模型选择在同一板块查看与编辑完整能力目录", () => {
   assert.match(manager, /export function ModelGroupManager/);
   assert.match(manager, /category\.capabilities\.map/);
-  assert.match(manager, /selectedModels\.map/);
-  assert.match(manager, /allModels\.map/);
+  assert.match(manager, /selectedRows\.map/);
+  assert.match(manager, /offerGroups\.map/);
   assert.match(manager, /编辑组合/);
   assert.match(manager, /保存组合/);
   assert.match(manager, /\+ 新建自定义组合/);
@@ -64,6 +64,8 @@ test("预设只读，自定义组合可命名删除并按上下顺序兜底", ()
   assert.match(manager, /平台只读组合/);
   assert.match(manager, /moveModel\(index, direction\)/);
   assert.match(manager, /从上到下依次尝试/);
+  assert.match(manager, /data-model-group-fallback/);
+  assert.match(manager, /data-model-group-table/);
   assert.match(manager, /fallbackLabel/);
   assert.match(manager, /updateModelGroup\(group\.id, \{ selection: draft \}\)/);
 });
@@ -87,11 +89,22 @@ test("每站右上角恢复全局模型组合切换器，不发送一次性模�
   assert.doesNotMatch(operatorConsole, /<ModelPicker/);
 });
 
+test("同名合并行、不可选禁用、已下架灰显、价未公布", () => {
+  assert.match(manager, /groupOffers\(allModels/);
+  assert.match(manager, /data-model-offer-disabled/);
+  assert.match(manager, /data-model-delisted/);
+  assert.match(manager, /已下架/);
+  assert.match(manager, /价未公布/);
+  assert.match(manager, /搜模型查价/);
+  assert.match(manager, /canSelect\(model, byokProviders\)/);
+  assert.doesNotMatch(manager, /免费 \/ 未公布/);
+});
+
 test("AI 模型页删除用量记录与独立市场，价格来源位于组合管理之后", () => {
   assert.match(page, /title=\{tt\("AI 模型"\)\}/);
   // 2026-09-24 W07：能力项「AI 模型」是设置窗面板，不是 /api 链接。旧断言
   // `label: tt("AI 模型"), href: "/api"` 钉住的正是点了没反应、子站 404 的那条缺陷。
-  assert.match(accountPage, /id: "api"/);
+  assert.match(accountPage, /id: "ai-models"/);
   assert.match(accountPage, /label: tt\("AI 模型"\)/);
   assert.match(accountPage, /<ApiPage variant="pane"/);
   assert.doesNotMatch(accountPage, /href: "\/api"/);
