@@ -22,6 +22,7 @@ import {
   type LibraryItem,
 } from "./library-data";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
+import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import {
   consumeWorkspaceAction,
   type WorkspaceActionEnvelope,
@@ -85,6 +86,10 @@ export interface WorkspaceLibraryProps {
    * affecting 我的库 / Navigator surfaces that still need chips.
    */
   hideCategoryChips?: boolean;
+  /** Same-row title for full-page libraries; omitted in embedded shelves. */
+  pageTitle?: ReactNode;
+  /** Skip the search/view toolbar (host already rendered AppPageHeader). */
+  hideToolbar?: boolean;
   toolbarActions?: ReactNode;
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
@@ -303,6 +308,8 @@ export function WorkspaceLibrary({
   onCategoryChange,
   primaryCategoryIds,
   hideCategoryChips = false,
+  pageTitle,
+  hideToolbar = false,
   toolbarActions,
   siteId = "",
   appId = "",
@@ -912,7 +919,7 @@ export function WorkspaceLibrary({
 
   // 工具条先成型再排卡片：这样「卡片区」在源码里仍然是整份文件的最后一段，
   // shelf-quiet 门禁（`typed-artifact-contract.test.mjs`）扫的正是那一段。
-  const shelfToolbar = (
+  const shelfToolbar = hideToolbar ? null : (
     <LibraryToolbar
       search={search}
       setSearch={setSearch}
@@ -921,6 +928,13 @@ export function WorkspaceLibrary({
       actions={toolbarActions}
       placeholder={tt(searchPlaceholder)}
       tt={tt}
+      leading={
+        pageTitle ? (
+          <h1 className={APP_PAGE_TITLE_CLASS}>
+            {typeof pageTitle === "string" ? tt(pageTitle) : pageTitle}
+          </h1>
+        ) : undefined
+      }
     />
   );
 

@@ -1,4 +1,4 @@
-export { AppShell, PageTitle } from "./AppShell";
+export { AppShell, PageTitle, AppPageHeader, APP_PAGE_TITLE_CLASS, APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS } from "./AppShell";
 // 工作台 iframe 内嵌「外壳闪屏」pre-paint 杀手（root layout 放一次）。
 export { EmbedChrome } from "./EmbedChrome";
 export type {

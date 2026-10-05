@@ -3093,6 +3093,24 @@
         },
         {
           "kind": "named",
+          "name": "APP_PAGE_FRAME_CLASS",
+          "importedName": "APP_PAGE_FRAME_CLASS",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "APP_PAGE_HEADER_ROW_CLASS",
+          "importedName": "APP_PAGE_HEADER_ROW_CLASS",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
+          "name": "APP_PAGE_TITLE_CLASS",
+          "importedName": "APP_PAGE_TITLE_CLASS",
+          "source": "./AppShell"
+        },
+        {
+          "kind": "named",
           "name": "AppCapabilityBar",
           "importedName": "AppCapabilityBar",
           "source": "./AppCapabilityBar"
@@ -3216,6 +3234,12 @@
           "name": "appendOperatorRemark",
           "importedName": "appendOperatorRemark",
           "source": "../lib/operator-remark"
+        },
+        {
+          "kind": "named",
+          "name": "AppPageHeader",
+          "importedName": "AppPageHeader",
+          "source": "./AppShell"
         },
         {
           "kind": "named",

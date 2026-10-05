@@ -46,6 +46,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { helpCenterUrl } from "../lib/help-url";
 import { usePresenceHeartbeat } from "../lib/presence";
 import { PhoneBindGate } from "../pages/PhoneBindGate";
+import { AppPageHeader } from "./AppPageHeader";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
 // 直接引样式表而不是往 theme/ui.css 里塞：ui.css 是 build:css 的产物，
 // 改它要重跑构建，而消费站拿到的就是这份源码（transpilePackages）。
@@ -1160,8 +1161,13 @@ function AppShellInner({
   );
 }
 
+export {
+  AppPageHeader,
+  APP_PAGE_TITLE_CLASS,
+  APP_PAGE_FRAME_CLASS,
+  APP_PAGE_HEADER_ROW_CLASS,
+} from "./AppPageHeader";
+
 export function PageTitle({ children }: { children: ReactNode }) {
-  return (
-    <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{children}</h1>
-  );
+  return <AppPageHeader title={children} />;
 }

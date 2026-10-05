@@ -29,6 +29,7 @@ export interface LibraryToolbarProps {
   placeholder: string;
   tt: TT;
   actions?: ReactNode;
+  leading?: ReactNode;
 }
 
 /**
@@ -44,10 +45,11 @@ export function LibraryToolbar({
   placeholder,
   tt,
   actions,
+  leading,
 }: LibraryToolbarProps) {
   const searchId = useId();
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+  const rest = (
+    <>
       {actions}
       <label className="sr-only" htmlFor={searchId}>
         {placeholder}
@@ -127,6 +129,22 @@ export function LibraryToolbar({
           </svg>
         </button>
       </div>
+    </>
+  );
+  return (
+    <div
+      className={
+        leading
+          ? "flex flex-wrap items-center gap-2"
+          : "flex flex-wrap items-center justify-end gap-2"
+      }
+    >
+      {leading}
+      {leading ? (
+        <div className="ml-auto flex flex-wrap items-center gap-2">{rest}</div>
+      ) : (
+        rest
+      )}
     </div>
   );
 }
