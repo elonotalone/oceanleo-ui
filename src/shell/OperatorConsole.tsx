@@ -19,6 +19,10 @@ import { GuideProvider } from "./guide-context";
 import { type FunctionGuide } from "./NavigatorGuide";
 import { promptCardsForSite } from "./home-cards";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  APP_PAGE_FRAME_CLASS,
+  APP_PAGE_TITLE_CLASS,
+} from "./AppPageHeader";
 import { OperatorRemarkProvider } from "./OperatorRemark";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { appCapabilityEntries } from "./app-capability-entry";
@@ -198,7 +202,7 @@ export function OperatorConsole({
   className = "",
   directory = true,
   directoryTitle,
-  directorySubtitle,
+  directorySubtitle: _directorySubtitle,
   directoryGroups,
   siteId = "",
   skillTab: _skillTab,
@@ -209,6 +213,7 @@ export function OperatorConsole({
 }: OperatorConsoleProps) {
   const tt = useUI();
   void _skillTab; // 宗旨 v9：skill 删除，目录页只剩 app。保留 prop 仅为向后兼容。
+  void _directorySubtitle; // Manus 列表页：目录副标题不渲染，prop 保留以免消费端 typecheck 红。
   // 「库」= 右版面显隐开关（右版面内容 = 各功能的 canvas，即该站自己的结果/库）。
   // 宗旨 v12.2（操作员 2026-07-05）：**内嵌（solo/embed）也要显示「库 + 导航」**——
   // playground/主站工作台内嵌的 app 之前被 hideTabs 砍掉库和导航，看起来比真实站落后
@@ -339,25 +344,15 @@ export function OperatorConsole({
       (f) => (f.scenes?.length ?? 0) > 0,
     );
     return (
-      <div className={`mx-auto w-full max-w-6xl px-6 py-8 ${className}`}>
-        {(directoryTitle || directorySubtitle) && (
-          <div className="mb-5">
-            <div className="min-w-0">
-              {directoryTitle && (
-                <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
-                  {typeof directoryTitle === "string" ? tt(directoryTitle) : directoryTitle}
-                </h1>
-              )}
-              {directorySubtitle && (
-                <p className="mt-1 text-[13px] text-neutral-500">
-                  {typeof directorySubtitle === "string" ? tt(directorySubtitle) : directorySubtitle}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
+      <div className={`${APP_PAGE_FRAME_CLASS} ${className}`}>
         <AppDirectory
+          toolbarLeading={
+            directoryTitle ? (
+              <h1 className={APP_PAGE_TITLE_CLASS}>
+                {typeof directoryTitle === "string" ? tt(directoryTitle) : directoryTitle}
+              </h1>
+            ) : undefined
+          }
           items={items}
           accent={accent}
           // 主按钮文案不在这里定：`AppDirectory` 有唯一的默认词条（`OPEN_LABEL_KEY`）。

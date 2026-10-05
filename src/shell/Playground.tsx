@@ -44,6 +44,11 @@ import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
 import {
+  AppPageHeader,
+  APP_PAGE_FRAME_CLASS,
+  APP_PAGE_TITLE_CLASS,
+} from "./AppPageHeader";
+import {
   TRUSTED_EMBED_EDITOR_SANDBOX,
   isTrustedInteractiveViewerUrl,
 } from "./editor-sandbox-origin";
@@ -480,13 +485,11 @@ export function PlaygroundDetail({
   }
 
   // ── 网站分区（doctrine v10）：全家桶站卡片 + AI 智能推荐，由消费端 renderSites 注入。
-  //   与 app/agent 目录同一套外层版式（mx-auto max-w-6xl + 标题 + tab）。
+  //   与 app/agent 目录同一套外层版式（APP_PAGE_FRAME_CLASS + 标题 + tab）。
   if (tab === "site" && renderSites) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="mb-5">
-          <PlaygroundHeader />
-        </div>
+      <div className={APP_PAGE_FRAME_CLASS}>
+        <PlaygroundHeader />
         <div className="mb-6">
           <PlaygroundTabs
             tab={tab}
@@ -504,10 +507,8 @@ export function PlaygroundDetail({
   //   右上角预览/编辑/保存。与其余分区同一套外层版式。
   if (tab === "prompt") {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="mb-5">
-          <PlaygroundHeader />
-        </div>
+      <div className={APP_PAGE_FRAME_CLASS}>
+        <PlaygroundHeader />
         <div className="mb-6">
           <PlaygroundTabs
             tab={tab}
@@ -523,7 +524,7 @@ export function PlaygroundDetail({
 
   // ── organization / workflow 分区 ──
   //   目录页（boardEditing=false）：与 app/agent **完全同一套外层版式**
-  //     （mx-auto max-w-6xl px-6 py-8 + 标题 + tab），切 tab 时位置纹丝不动。
+  //     （APP_PAGE_FRAME_CLASS + 标题 + tab），切 tab 时位置纹丝不动。
   //   编辑器（boardEditing=true）：换成**全宽满高**外层（h-[calc(100dvh-1px)]，无
   //     max-w / padding / 标题 / tab），编辑器铺满 <main> 区。<main> 本身就在侧栏
   //     右侧，所以左侧侧栏始终在。
@@ -539,10 +540,8 @@ export function PlaygroundDetail({
   if (tab === "organization" || tab === "workflow") {
     if (!renderBoard) {
       return (
-        <div className="mx-auto w-full max-w-6xl px-6 py-8">
-          <div className="mb-5">
-            <PlaygroundHeader />
-          </div>
+        <div className={APP_PAGE_FRAME_CLASS}>
+          <PlaygroundHeader />
           <div className="mb-6">
             <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
           </div>
@@ -557,14 +556,12 @@ export function PlaygroundDetail({
         className={
           boardEditing
             ? "h-[calc(100dvh-1px)] w-full"
-            : "mx-auto w-full max-w-6xl px-6 py-8"
+            : APP_PAGE_FRAME_CLASS
         }
       >
         {!boardEditing && (
           <>
-            <div className="mb-5">
-              <PlaygroundHeader />
-            </div>
+            <PlaygroundHeader />
             <div className="mb-6">
               <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
             </div>
@@ -582,10 +579,8 @@ export function PlaygroundDetail({
   // ── app 市场：跨站成品 app，不再把三十几个功能站 agent 当成 app 清单。 ──
   if (tab === "app") {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="mb-5">
-          <PlaygroundHeader />
-        </div>
+      <div className={APP_PAGE_FRAME_CLASS}>
+        <PlaygroundHeader />
         <div className="mb-6">
           <PlaygroundTabs
             tab={tab}
@@ -618,33 +613,29 @@ export function PlaygroundDetail({
 
   // ── 目录页：app / agent 二选一 + 统一目录 ──
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 py-8">
-      <div className="mb-5">
-        <PlaygroundHeader />
-      </div>
-
-      <div className="mb-6">
-        <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
-      </div>
-
-      {/* doctrine v11：AI 智能推荐（按分区定制文案，候选 = 当前分区全部条目）。 */}
-      <AiRecommendBox
-        candidates={items.map((it) => ({
-          id: it.id,
-          name: it.name,
-          tagline: it.tagline,
-          capabilities: it.capabilities,
-          category: it.category,
-        }))}
-        kindLabel="agent"
-        placeholder={tt("说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品")}
-        examples={[tt("帮我写一份商业计划"), tt("做竞品分析"), tt("优化我的小红书文案")]}
-        accent={accent}
-        onRecommend={(recs: ItemRecommendation[]) => setRecIds(recs.map((r) => r.id))}
-        onClear={() => setRecIds(null)}
-      />
-
+    <div className={APP_PAGE_FRAME_CLASS}>
       <AppDirectory
+        toolbarLeading={<h1 className={APP_PAGE_TITLE_CLASS}>Playground</h1>}
+        belowToolbar={
+          <>
+            <PlaygroundTabs tab={tab} setTab={setTab} hasSites={!!renderSites} hasBoard={!!renderBoard} />
+            <AiRecommendBox
+              candidates={items.map((it) => ({
+                id: it.id,
+                name: it.name,
+                tagline: it.tagline,
+                capabilities: it.capabilities,
+                category: it.category,
+              }))}
+              kindLabel="agent"
+              placeholder={tt("说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品")}
+              examples={[tt("帮我写一份商业计划"), tt("做竞品分析"), tt("优化我的小红书文案")]}
+              accent={accent}
+              onRecommend={(recs: ItemRecommendation[]) => setRecIds(recs.map((r) => r.id))}
+              onClear={() => setRecIds(null)}
+            />
+          </>
+        }
         items={items}
         leadingCards={agentLeadingCards}
         accent={accent}
@@ -726,18 +717,10 @@ export function PlaygroundDetail({
   );
 }
 
-// Playground 标题 + 一句话介绍。操作员 2026-06-24：打开 organization / workflow 目录
-// 时这段文案不能消失，所以抽成共用组件，目录页与 org/workflow 分区都渲染它。
+// Playground 小标题。操作员 2026-06-24：打开 organization / workflow 目录
+// 时这段标题不能消失，所以抽成共用组件，目录页与 org/workflow 分区都渲染它。
 function PlaygroundHeader() {
-  const tt = useUI();
-  return (
-    <>
-      <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">Playground</h1>
-      <p className="mt-1 text-[13px] text-neutral-500">
-        {tt("浏览全家桶")} <b>{tt("网站")}</b>{tt("（或用 AI 智能推荐找站）、挑一个")} <b>app</b>{tt("（能填操作台、出产物）或")} <b>agent</b>{tt("（人格预设 + 可调工具的工作单元）直接试玩；或在")} <b>organization</b> / <b>workflow</b> {tt("里可视化搭一支会协作的 agent 团队。")}
-      </p>
-    </>
-  );
+  return <AppPageHeader title="Playground" />;
 }
 
 function PlaygroundTabs({

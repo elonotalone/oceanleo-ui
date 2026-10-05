@@ -17,7 +17,7 @@
 // 选择页（app / skill / 网站）。各处只是 items 不同、onOpen/onAdd 行为不同。
 // ============================================================================
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   classify,
   nativeOptions,
@@ -122,6 +122,15 @@ export interface AppDirectoryProps {
   emptyText?: string;
   /** 顶部右侧自定义插槽（如 AI 推荐搜索框已在外面时留空）。 */
   toolbarExtra?: React.ReactNode;
+  /**
+   * 页头左侧（Manus 列表页：小标题与搜索同一行）。有值时交给 LibraryToolbar.leading。
+   */
+  toolbarLeading?: ReactNode;
+  /**
+   * 搜索行下方、分类 chips 上方。工作台 / Playground 把分区 tab 放这里，
+   * 这样 DOM 顺序是：标题|搜索 → 分区 tab → 分类 chips / 卡片。
+   */
+  belowToolbar?: ReactNode;
   /** compact：不渲染分类器工具条 + chips，只渲染卡片网格（用于「推荐」这种小列表）。 */
   compact?: boolean;
   /**
@@ -180,6 +189,8 @@ export function AppDirectory({
   loading = false,
   emptyText,
   toolbarExtra,
+  toolbarLeading,
+  belowToolbar,
   compact = false,
   nativeFirst = false,
   nativeLabel,
@@ -322,8 +333,44 @@ export function AppDirectory({
     <div className="space-y-5">
       {!compact && (
       <>
-      {/* ── 第一层：能力大板块 tab（宗旨 v21）。groups 存在才渲染，横排大 pill，最醒目。
-          选中某板块 → 卡片 + 第二层场景 chips 都收窄到该板块。 ── */}
+      {/* ── 顶部工具条：有 toolbarLeading 时标题在左、搜索在右（同一行）──
+          场景模式（宗旨 v14）不显示「按行业/按内容」切换器，横排 chips 直接是场景词。 */}
+      <LibraryToolbar
+        search={filter}
+        setSearch={setFilter}
+        view={view}
+        setView={setView}
+        placeholder={tt("按名称筛选…")}
+        tt={tt}
+        leading={toolbarLeading}
+        actions={
+          <>
+          {!sceneMode && (
+          <div className="inline-flex rounded-xl bg-stone-100 p-1">
+            {modeTabs.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => switchMode(m.id)}
+                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+ mode === m.id
+ ? "bg-white text-stone-900 shadow-sm"
+ : "text-stone-500 hover:text-stone-700"
+ }`}
+              >
+                {tt(m.label)}
+              </button>
+            ))}
+          </div>
+          )}
+          {toolbarExtra}
+          </>
+        }
+      />
+
+      {belowToolbar}
+
+      {/* ── 第一层：能力大板块 tab（宗旨 v21）。在标题|搜索和分区 tab 之下。 ── */}
       {groupMode && groupTabs.length > 1 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/70 pb-3">
           {groupTabs.map((g) => {
@@ -349,40 +396,6 @@ export function AppDirectory({
           })}
         </div>
       )}
-
-      {/* ── 顶部工具条：分类方式二选一/三选一 + 关键词筛选 ──
-          场景模式（宗旨 v14）不显示「按行业/按内容」切换器，横排 chips 直接是场景词。 */}
-      <LibraryToolbar
-        search={filter}
-        setSearch={setFilter}
-        view={view}
-        setView={setView}
-        placeholder={tt("按名称筛选…")}
-        tt={tt}
-        actions={
-          <>
-          {!sceneMode && (
-          <div className="inline-flex rounded-xl bg-stone-100 p-1">
-            {modeTabs.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => switchMode(m.id)}
-                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- mode === m.id
- ? "bg-white text-stone-900 shadow-sm"
- : "text-stone-500 hover:text-stone-700"
- }`}
-              >
-                {tt(m.label)}
-              </button>
-            ))}
-          </div>
-          )}
-          {toolbarExtra}
-          </>
-        }
-      />
 
       {/* ── 分类 chips（横排在右侧主区顶部，替代左侧窄侧栏）──
           场景模式用 sceneChips（各站自定义场景词）；否则用全局二元分类 chips。 */}

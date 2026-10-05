@@ -33,6 +33,11 @@ import {
 } from "../lib/app-market";
 import { capabilityImageKey } from "../lib/app-capability-image";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  APP_PAGE_FRAME_CLASS,
+  APP_PAGE_HEADER_ROW_CLASS,
+  APP_PAGE_TITLE_CLASS,
+} from "./AppPageHeader";
 
 function isMarketAuthError(error: unknown): boolean {
   return error instanceof Error && error.name === "MarketAuthError";
@@ -405,22 +410,33 @@ export function WorkspaceDetail({
         ] as { id: WorkspaceTab; label: string }[])
       : []),
   ];
+  const pageTitle = (
+    <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
+  );
   const tabsBar = (
-    <div className="inline-flex rounded-xl bg-neutral-100 p-1">
-      {TABS.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => setTab(t.id)}
-          className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="inline-flex rounded-xl bg-neutral-100 p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  tab === t.id
  ? "bg-white text-neutral-900 shadow-sm"
  : "text-neutral-500 hover:text-neutral-700"
  }`}
-        >
-          {t.label}
-        </button>
-      ))}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <a
+        href={addAgentHref}
+        className="text-[13px] font-medium text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-sky-600"
+      >
+        {tt("＋ 添加 app / agent")}
+      </a>
     </div>
   );
 
@@ -464,7 +480,7 @@ export function WorkspaceDetail({
   //   同一树位置（不 remount）。
   if (renderBoard && (tab === "organization" || tab === "workflow")) {
     // 关键修（2026-07-09）：进入 board **编辑器**（boardEditing）时，编辑器以
-    // absolute inset-0 铺满内容区，此时这段「工作台 / 你加入的…」标题 + 顶部 tab 条
+    // absolute inset-0 铺满内容区，此时这段「工作台」标题 + 顶部 tab 条
     // 若仍渲染就会残留在编辑器上方（操作员截图 2b38a316 的 bug）。boardEditing 之前
     // 被 set 了却从不读——现在读它：编辑器打开就隐藏标题+tabs，只留全屏编辑器；回到
     // 目录（boardEditing=false）再显示。
@@ -473,18 +489,13 @@ export function WorkspaceDetail({
         className={
           boardEditing
             ? "relative w-full"
-            : "mx-auto w-full max-w-6xl px-6 py-8"
+            : APP_PAGE_FRAME_CLASS
         }
         style={boardEditing ? { height: "calc(100dvh - 1px)" } : undefined}
       >
         {!boardEditing && (
           <>
-            <div className="mb-5">
-              <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("工作台")}</h1>
-              <p className="mt-1 text-[13px] text-neutral-500">
-                {tt("你加入的")} <b>{tt("网站 / app / agent")}</b>{tt("，点开即用；或在")} <b>{tt("organization / workflow")}</b> {tt("里搭一支会协作的 agent 团队。")}
-              </p>
-            </div>
+            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
             <div className="mb-6">{tabsBar}</div>
           </>
         )}
@@ -543,30 +554,19 @@ export function WorkspaceDetail({
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 py-8">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("工作台")}</h1>
-          <p className="mt-1 text-[13px] text-neutral-500">
-            {tt("你加入的")} <b>{tt("网站 / app / agent")}</b>{tt("，点开即用；或在")} <b>{tt("organization / workflow")}</b> {tt("里搭一支会协作的 agent 团队。")}
-          </p>
-        </div>
-        <a
-          href={addAgentHref}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 px-3.5 py-2 text-[13px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-sky-300 hover:text-sky-600"
-        >
-          {tt("＋ 添加 app / agent")}
-        </a>
-      </div>
-
-      <div className="mb-6">{tabsBar}</div>
-
+    <div className={APP_PAGE_FRAME_CLASS}>
       {tab === "site" ? (
         // doctrine v10：只列用户已加入的站（renderSites savedOnly）。未注入则回退列全部。
         renderSites ? (
-          renderSites()
+          <>
+            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
+            <div className="mb-6">{tabsBar}</div>
+            {renderSites()}
+          </>
         ) : (
           <AppDirectory
+            toolbarLeading={pageTitle}
+            belowToolbar={tabsBar}
             items={siteItems}
             accent={accent}
             openLabel={tt("打开")}
@@ -579,13 +579,29 @@ export function WorkspaceDetail({
         )
       ) : tab === "app" ? (
         loading ? (
-          <AppDirectory items={[]} loading accent={accent} />
+          <AppDirectory
+            toolbarLeading={pageTitle}
+            belowToolbar={tabsBar}
+            items={[]}
+            loading
+            accent={accent}
+          />
         ) : needsLogin ? (
-          emptyState(" app")
+          <>
+            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
+            <div className="mb-6">{tabsBar}</div>
+            {emptyState(" app")}
+          </>
         ) : workspaceApps.length === 0 ? (
-          emptyState(" app")
+          <>
+            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
+            <div className="mb-6">{tabsBar}</div>
+            {emptyState(" app")}
+          </>
         ) : (
           <AppDirectory
+            toolbarLeading={pageTitle}
+            belowToolbar={tabsBar}
             items={appItems}
             accent={accent}
             openLabel={tt("打开")}
@@ -600,11 +616,23 @@ export function WorkspaceDetail({
           />
         )
       ) : loading ? (
-        <AppDirectory items={[]} loading accent={accent} />
+        <AppDirectory
+          toolbarLeading={pageTitle}
+          belowToolbar={tabsBar}
+          items={[]}
+          loading
+          accent={accent}
+        />
       ) : mySkills.length === 0 ? (
-        emptyState(" agent")
+        <>
+          <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
+          <div className="mb-6">{tabsBar}</div>
+          {emptyState(" agent")}
+        </>
       ) : (
         <AppDirectory
+          toolbarLeading={pageTitle}
+          belowToolbar={tabsBar}
           items={skillItems}
           accent={accent}
           openLabel={tt("打开")}
