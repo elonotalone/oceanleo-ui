@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   browserClient,
   oceanleoConfigured,
   loginUnavailableNotice,
   getUserEmail,
-  getUserId,
   getCredits,
   getCreditHistory,
   getUsageBySite,
@@ -15,32 +14,24 @@ import {
 import { formatMoney, normalizeCurrency, type LedgerCurrency } from "../../lib/money";
 import { useUI } from "../../i18n/ui/useUI";
 import { ApiPage } from "../ApiPage";
-import { AuthPanel } from "../AuthDialog";
+import { AuthDialog } from "../AuthDialog";
 import { DevicesPage } from "../DevicesPage";
 import { PasswordResetPage } from "../PasswordResetPage";
 import { PluginsPage } from "../PluginsPage";
 import { SettingsNav, type SettingsNavGroup } from "./SettingsNav";
 import { PersonalizationSection } from "./personalization/PersonalizationSection";
-import { MailSection } from "./mail/MailSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AccountSection } from "./sections/AccountSection";
 import { BillingSection } from "./sections/BillingSection";
+import { CostSection } from "./sections/CostSection";
 import { OrgSection, type OrgPane } from "./sections/OrgSection";
-import { SettingsBackButton } from "./SettingsBackButton";
 import {
-  accountSettingsPath,
-  accountSettingsView,
   canonicalSettingsTab,
   isReservedSettingsTab,
-  readSettingsBillingView,
-  rememberSettingsBillingView,
   resolveSettingsTab,
   settingsPath,
   tabFromSettingsLocation,
-  type AccountSettingsView,
-  type BillingPaneView,
 } from "./settings-tabs";
-import type { AccountSectionProfile } from "./sections/AccountSection";
 
 export type SettingsSection = {
   id: string;
@@ -59,7 +50,6 @@ export type SettingsHubProps = {
   onTabChange?: (tab: string) => void;
   defaultTab?: string;
   extraSections?: SettingsSection[];
-  /** @deprecated 账户页不再显示计划标签；保留以免旧调用方类型报错。 */
   planLabel?: string | null;
   menu?: {
     label: string;
@@ -72,7 +62,7 @@ export type SettingsHubProps = {
   showRequestStat?: boolean;
   orgHref?: string;
   extraStats?: { value: ReactNode; label: string }[];
-  /** 充值页里的钱包/金额与支付方式（门户传入）。用量页不渲染这块。 */
+  /** 用量与账单栏里、柱状图下面的钱包/充值块（门户传入）。 */
   wallet?: ReactNode;
   onSignedIn?: () => void;
   onSignedOut?: () => void;
@@ -80,17 +70,7 @@ export type SettingsHubProps = {
   guestPrompt?: "auth" | "notice";
 };
 
-const SKIP_MENU_HREFS = new Set([
-  "/general",
-  "/settings",
-  "/cost",
-  "/usage-details",
-  "/topup",
-  "/org",
-  "/team",
-  "/account",
-  "",
-]);
+const SKIP_MENU_HREFS = new Set(["/general", "/settings", "/cost", "/org", "/team", "/account", ""]);
 /** 旧账号菜单里指向这几页的项（站内或主站外链）已由内置面板承接。 */
 const PANE_MENU_PATHS = new Set(["/api", "/plugins", "/devices"]);
 
@@ -124,45 +104,7 @@ function tabFromLocation(fallback: string): string {
 
 function writeTab(tab: string) {
   if (typeof window === "undefined") return;
-  const prev = (window.history.state as object) || {};
-  window.history.replaceState(prev, "", settingsPath(tab));
-}
-
-type AccountProfileReader = () => Promise<
-  | AccountSectionProfile
-  | { profile?: AccountSectionProfile; error?: string }
-  | null
-  | undefined
->;
-
-async function readAccountProfile(): Promise<AccountSectionProfile | null> {
-  try {
-    const auth = (await import("../../lib/auth")) as {
-      getAccountProfile?: AccountProfileReader;
-    };
-    if (typeof auth.getAccountProfile !== "function") return null;
-    const box = await auth.getAccountProfile();
-    if (!box || typeof box !== "object") return null;
-    if ("profile" in box) return box.profile ?? null;
-    if ("userId" in box) return box as AccountSectionProfile;
-    return null;
-  } catch {
-    /* W1 尚未把 getAccountProfile 挂到桶上 */
-  }
-  return null;
-}
-
-function headingForAccountView(view: AccountSettingsView): string {
-  switch (view) {
-    case "sign-in-methods":
-      return "管理登录方式";
-    case "login-devices":
-      return "已连接的设备";
-    case "security":
-      return "账号安全";
-    default:
-      return "账户";
-  }
+  window.history.replaceState(null, "", settingsPath(tab));
 }
 
 export function SettingsHub({
@@ -171,6 +113,7 @@ export function SettingsHub({
   onTabChange,
   defaultTab = "general",
   extraSections = [],
+  planLabel,
   menu,
   onSignInClick,
   showRequestStat = true,
@@ -196,43 +139,29 @@ export function SettingsHub({
       fallbackTab,
     ),
   );
-  const [accountView, setAccountView] = useState<AccountSettingsView>(() =>
-    accountSettingsView(href),
-  );
-  const [profile, setProfile] = useState<AccountSectionProfile | null>(null);
+  const [orgInitialPane, setOrgInitialPane] = useState<OrgPane>("mine");
   const [email, setEmail] = useState<string | null>(null);
-  const [signedIn, setSignedIn] = useState(false);
-  const signedInRef = useRef(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [currency, setCurrency] = useState<LedgerCurrency>("CNY");
   const [monthSpend, setMonthSpend] = useState<number | null>(null);
   const [requests, setRequests] = useState<number | null>(null);
   const [checked, setChecked] = useState(() => !configured);
-  const [orgInitialPane, setOrgInitialPane] = useState<OrgPane>("mine");
-  const [billingView, setBillingView] = useState<BillingPaneView>(() => readSettingsBillingView(href));
-  const loadAccountRef = useRef<() => Promise<void>>(async () => {});
-
-  function applySession(next: { email: string | null; signedIn: boolean }) {
-    signedInRef.current = next.signedIn;
-    setSignedIn(next.signedIn);
-    setEmail(next.email);
-  }
+  const [showAuth, setShowAuth] = useState(false);
 
   useEffect(() => {
     if (variant === "modal") {
-      const next = resolveSettingsTab(initialTab || fallbackTab, extraIds, fallbackTab);
-      setTab(next);
-      setAccountView(accountSettingsView(typeof window !== "undefined" ? window.location.href : href));
-      if (next === "billing") setBillingView(readSettingsBillingView());
+      setTab(resolveSettingsTab(initialTab || fallbackTab, extraIds, fallbackTab));
     }
-  }, [variant, initialTab, fallbackTab, extraIds, href]);
+  }, [variant, initialTab, fallbackTab, extraIds]);
+
+  useEffect(() => {
+    if (variant === "modal" && checked && !email && guestPrompt === "auth") setShowAuth(true);
+  }, [variant, checked, email, guestPrompt]);
 
   useEffect(() => {
     if (variant === "modal") return;
     function onPop() {
       setTab(resolveSettingsTab(tabFromLocation(fallbackTab), extraIds, fallbackTab));
-      setAccountView(accountSettingsView(window.location.href));
-      setBillingView(readSettingsBillingView());
     }
     if (typeof window === "undefined") return;
     window.addEventListener("popstate", onPop);
@@ -240,29 +169,12 @@ export function SettingsHub({
   }, [fallbackTab, variant, extraIds]);
 
   useEffect(() => {
-    if (variant !== "page" || typeof window === "undefined") return;
-    if (resolveSettingsTab(tabFromLocation(fallbackTab), extraIds, fallbackTab) !== "billing") return;
-    const view = readSettingsBillingView();
-    setBillingView(view);
-    if (window.location.pathname.replace(/\/+$/, "") !== "/settings/billing") {
-      rememberSettingsBillingView(view);
-    }
-  }, [variant, fallbackTab, extraIds]);
-
-  useEffect(() => {
     if (!configured) return;
     async function load() {
-      const [e, id] = await Promise.all([getUserEmail(), getUserId()]);
-      if (id) {
-        applySession({ email: e, signedIn: true });
-        const nextProfile = await readAccountProfile();
-        if (nextProfile) setProfile(nextProfile);
-      } else if (!signedInRef.current) {
-        applySession({ email: null, signedIn: false });
-        setProfile(null);
-      }
+      const e = await getUserEmail();
+      setEmail(e);
       setChecked(true);
-      if (!id) return;
+      if (!e) return;
       const c = await getCredits();
       if (c.ok && c.data) {
         setCredits(Number(c.data.balance ?? c.data.balance_yuan ?? 0));
@@ -288,23 +200,12 @@ export function SettingsHub({
         if (u.ok && u.data) setRequests(u.data.total?.requests ?? 0);
       }
     }
-    loadAccountRef.current = load;
     load();
     const c = browserClient();
     if (!c) return;
-    const { data: sub } = c.auth.onAuthStateChange((event, s) => {
-      if (event === "SIGNED_OUT") {
-        applySession({ email: null, signedIn: false });
-        setProfile(null);
-        return;
-      }
-      if (s?.user) {
-        applySession({ email: s.user.email ?? null, signedIn: true });
-        void readAccountProfile().then((nextProfile) => {
-          if (nextProfile) setProfile(nextProfile);
-        });
-      }
-    });
+    const { data: sub } = c.auth.onAuthStateChange((_e, s) =>
+      setEmail(s?.user?.email ?? null),
+    );
     return () => sub.subscription.unsubscribe();
   }, [configured, showRequestStat]);
 
@@ -327,18 +228,7 @@ export function SettingsHub({
       : []),
     ...extraStats,
   ];
-  function goAccountView(view: AccountSettingsView) {
-    setTab("account");
-    setAccountView(view);
-    if (typeof window !== "undefined") {
-      window.history.replaceState(
-        { ...(window.history.state as object), settingsOverlay: true },
-        "",
-        accountSettingsPath(view),
-      );
-    }
-    if (variant === "modal") onTabChange?.("account");
-  }
+  const resolvedPlanLabel = planLabel === undefined ? tt("免费计划") : planLabel;
 
   const sections = useMemo<SettingsSection[]>(() => {
     const builtin: SettingsSection[] = [
@@ -352,20 +242,7 @@ export function SettingsHub({
         id: "account",
         group: "settings",
         label: tt("账户"),
-        render: () => (
-          <AccountSection
-            email={email}
-            onSignedOut={onSignedOut}
-            view={accountView}
-            profile={profile}
-            credits={credits}
-            currency={currency}
-            onOpenSignInMethods={() => goAccountView("sign-in-methods")}
-            onOpenDevices={() => goAccountView("login-devices")}
-            onOpenTopup={() => selectTab("billing", { billingView: "topup" })}
-            onProfileChange={(next) => setProfile(next)}
-          />
-        ),
+        render: () => <AccountSection email={email} onSignedOut={onSignedOut} />,
       },
       {
         id: "personalization",
@@ -377,22 +254,18 @@ export function SettingsHub({
         id: "billing",
         group: "settings",
         label: tt("用量与账单"),
-        render: () => (
-          <BillingSection
-            stats={stats}
-            wallet={wallet}
-            view={billingView}
-            onViewChange={(next) => {
-              setBillingView(next);
-              rememberSettingsBillingView(next);
-            }}
-          />
-        ),
+        render: () => <BillingSection stats={stats} wallet={wallet} />,
+      },
+      {
+        id: "cost",
+        group: "settings",
+        label: tt("费用"),
+        render: () => <CostSection />,
       },
     ];
     const caps: SettingsSection[] = [
       {
-        id: "ai-models",
+        id: "api",
         group: "capabilities",
         label: tt("AI 模型"),
         render: () => <ApiPage variant="pane" />,
@@ -402,12 +275,6 @@ export function SettingsHub({
         group: "capabilities",
         label: tt("插件与连接器"),
         render: () => <PluginsPage variant="pane" />,
-      },
-      {
-        id: "mail",
-        group: "capabilities",
-        label: tt("邮件"),
-        render: () => <MailSection variant="pane" />,
       },
       {
         id: "devices",
@@ -440,22 +307,7 @@ export function SettingsHub({
       render: () => <OrgSection orgHref={orgHref} initialPane={orgInitialPane} />,
     };
     return [...builtin, ...caps, ...capsByHref.values(), org, ...withoutShadowedSections(extraSections)];
-  }, [
-    tt,
-    email,
-    onSignedOut,
-    stats,
-    wallet,
-    menu,
-    orgHref,
-    extraSections,
-    accountView,
-    profile,
-    credits,
-    currency,
-    orgInitialPane,
-    billingView,
-  ]);
+  }, [tt, email, onSignedOut, stats, wallet, menu, orgHref, extraSections, orgInitialPane]);
 
   const groups = useMemo<SettingsNavGroup[]>(() => {
     const labels: Record<SettingsSection["group"], string> = {
@@ -480,60 +332,19 @@ export function SettingsHub({
     paneSections.find((s) => s.id === requested) ??
     paneSections.find((s) => s.id === fallbackTab) ??
     paneSections[0];
-  const navActiveId = active?.id ?? fallbackTab;
 
-  function selectTab(id: string, options?: { orgPane?: OrgPane; billingView?: BillingPaneView }) {
+  function selectTab(id: string, opts?: { orgPane?: OrgPane }) {
     const next = resolveSettingsTab(id, paneIds, fallbackTab);
-    setOrgInitialPane(next === "team" ? (options?.orgPane ?? "mine") : "mine");
-    if (next === "billing") {
-      if (options?.billingView) {
-        setBillingView(options.billingView);
-        rememberSettingsBillingView(options.billingView);
-      } else if (tab !== "billing") {
-        setBillingView("overview");
-        rememberSettingsBillingView("overview");
-      }
-    }
+    if (opts?.orgPane) setOrgInitialPane(opts.orgPane);
     setTab(next);
-    if (next === "account") {
-      goAccountView("home");
-      return;
-    }
-    setAccountView("home");
     if (variant === "modal") onTabChange?.(next);
     else writeTab(next);
   }
 
-  function paneHeading() {
-    const nestedAccount = active?.id === "account" && accountView !== "home";
-    const title = nestedAccount ? tt(headingForAccountView(accountView)) : active?.label;
-    return (
-      <div
-        className={`mb-6 flex w-full items-center gap-2 ${
-          variant === "modal" ? "pr-20" : ""
-        } ${nestedAccount ? "border-b border-neutral-200 pb-3" : ""}`}
-      >
-        {nestedAccount ? (
-          <SettingsBackButton onClick={() => goAccountView("home")} label="账户" />
-        ) : null}
-        <h2
-          data-settings-pane-title=""
-          className="text-[24px] font-semibold tracking-tight text-neutral-900"
-        >
-          {title}
-        </h2>
-      </div>
-    );
-  }
-
   function handleSignedIn() {
-    // Never location.reload(): LeoDev keeps the new session in an in-tab overlay.
-    // A reload drops it and the guest latch puts Sign in back on screen.
-    signedInRef.current = true;
-    setSignedIn(true);
-    setChecked(true);
-    onSignedIn?.();
-    void loadAccountRef.current();
+    setShowAuth(false);
+    if (onSignedIn) onSignedIn();
+    else if (typeof window !== "undefined") window.location.reload();
   }
 
   if (resetLanding) {
@@ -561,7 +372,7 @@ export function SettingsHub({
     );
   }
 
-  if (checked && !signedIn) {
+  if (checked && !email) {
     if (guestPrompt === "notice") {
       return (
         <div className="px-8 py-6">
@@ -575,77 +386,58 @@ export function SettingsHub({
       );
     }
     return (
-      <div
-        data-settings-guest-auth=""
-        className={
-          variant === "modal"
-            ? "flex h-full min-h-0 w-full flex-col overflow-y-auto text-neutral-900"
-            : "flex min-h-[70vh] w-full flex-col overflow-y-auto text-neutral-900"
-        }
-        style={{
-          backgroundColor: "#f4f4f5",
-          backgroundImage: "radial-gradient(#d4d4d8 1px, transparent 1px)",
-          backgroundSize: "16px 16px",
-        }}
-      >
-        <div
-          className={
-            variant === "modal"
-              ? "flex min-h-full w-full flex-col items-center justify-center px-6 pb-10 pt-16"
-              : "flex min-h-[70vh] w-full flex-col items-center justify-center px-6 py-16"
-          }
-        >
-        {onSignInClick ? (
-          <div className="v-fade-up mx-auto mt-8 max-w-sm text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 text-2xl">
-              👤
-            </div>
-            <h2 className="mt-5 text-[17px] font-semibold text-neutral-900">{tt("尚未登录")}</h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
-              {tt("登录后即可查看 token 余额与用量。")}
-              <br />
-              {tt("一次登录，全家桶所有 AI 应用通用。")}
-            </p>
-            <button
-              type="button"
-              onClick={onSignInClick}
-              className="mt-6 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99]"
-            >
-              {tt("登录")}
-            </button>
-          </div>
-        ) : (
-          <AuthPanel onSuccess={handleSignedIn} />
+      <div className="px-8 py-6">
+        {showAuth && (
+          <AuthDialog onClose={() => setShowAuth(false)} onSuccess={handleSignedIn} />
         )}
+        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">
+          {tt("设置")}
+        </h1>
+        <div className="v-fade-up mx-auto mt-16 max-w-sm text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 text-2xl">
+            👤
+          </div>
+          <h2 className="mt-5 text-[17px] font-semibold text-neutral-900">{tt("尚未登录")}</h2>
+          <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
+            {tt("登录后即可查看 token 余额与用量。")}
+            <br />
+            {tt("一次登录，全家桶所有 AI 应用通用。")}
+          </p>
+          <button
+            type="button"
+            onClick={onSignInClick ?? (() => setShowAuth(true))}
+            className="mt-6 w-full rounded-xl bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99]"
+          >
+            {tt("登录")}
+          </button>
         </div>
       </div>
     );
   }
 
   if (variant === "modal") {
-    return <div data-settings-hub data-settings-variant="modal" className="flex h-full min-h-0 flex-col gap-4 overflow-visible p-5 text-neutral-900 dark:text-neutral-100 md:flex-row md:gap-0 md:p-0">
-      <div data-settings-nav-rail="" className="shrink-0 overflow-hidden px-5 pt-5 md:flex md:h-full md:w-60 md:flex-col md:border-r md:border-neutral-200 md:pl-5 md:pr-0.5 md:py-6">
-        <SettingsNav groups={groups} activeId={navActiveId} onSelect={selectTab} displayName={profile?.displayName} avatarUrl={profile?.avatarUrl} userEmail={email} onCreateOrganization={() => selectTab("team", { orgPane: "create" })} />
-      </div>
-      <div data-settings-pane-scroll="" className="v-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-5 pt-5 md:px-7 md:py-6">{paneHeading()}{active?.render?.()}</div>
+    return <div data-settings-hub data-settings-variant="modal" className="flex h-full min-h-0 flex-col gap-4 p-5 pt-14 text-neutral-900 dark:text-neutral-100 sm:flex-row sm:gap-6 sm:p-6 sm:pt-14">
+      <div className="min-h-0 shrink-0 overflow-auto sm:w-56"><SettingsNav groups={groups} activeId={active?.id ?? fallbackTab} onSelect={selectTab} userEmail={email} planLabel={resolvedPlanLabel} onCreateOrganization={() => selectTab("team", { orgPane: "create" })} /></div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"><h2 className="mb-4 text-[16px] font-semibold">{active?.label}</h2>{active?.render?.()}</div>
     </div>;
   }
 
   return (
     <div className="px-6 py-6 md:px-8" data-settings-hub>
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("设置")}</h1>
-      <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-start md:gap-0">
+      <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-start">
         <SettingsNav
           groups={groups}
-          activeId={navActiveId}
+          activeId={active?.id ?? fallbackTab}
           onSelect={selectTab}
-          displayName={profile?.displayName}
-          avatarUrl={profile?.avatarUrl}
           userEmail={email}
+          planLabel={resolvedPlanLabel}
           onCreateOrganization={() => selectTab("team", { orgPane: "create" })}
         />
-        <div className="min-w-0 flex-1 md:border-l md:border-neutral-200 md:pl-7">
-          {paneHeading()}
+        <div className="min-w-0 flex-1">
+          <h2 className="mb-4 text-[16px] font-semibold text-neutral-900">
+            {active?.label}
+          </h2>
           {active?.render?.()}
         </div>
       </div>
