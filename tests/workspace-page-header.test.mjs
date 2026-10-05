@@ -33,6 +33,7 @@ test("工作台 / Playground 源码不含介绍拼句", () => {
   assert.doesNotMatch(workspace, /浏览全家桶/);
   assert.doesNotMatch(playground, /点开即用/);
   assert.doesNotMatch(playground, /浏览全家桶/);
+  assert.doesNotMatch(playground, /<AiRecommendBox/);
 });
 
 test("页标题 class 为合同 17px，不再写 22px 页标题", () => {

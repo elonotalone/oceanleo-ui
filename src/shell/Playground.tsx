@@ -13,13 +13,12 @@
 //     技术标识层不改；只改面向用户的标签 / 文案）。
 //   - 点一个条目 → 右侧整页换成它的内嵌功能区（iframe），右上角出现「← 返回」回到
 //     目录页；模型偏好统一在「AI 模型」页管理。
-//   - doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（站卡片 + AI 智能推荐）
+//   - doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（站卡片）
 //     并入这里，成为第一个 tab。站点清单由消费端经 renderSites 注入，/all-sites 路由删除。
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
-import { AiRecommendBox } from "./AiRecommendBox";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillPromptPanel } from "./SkillPromptPanel";
@@ -42,7 +41,6 @@ import {
 } from "../lib/app-market";
 import { brandColorFor, tintOf } from "../lib/brand-color";
 import { siteIconFor, siteBrandColorFor } from "./site-icons";
-import type { ItemRecommendation } from "../lib/recommend";
 import { useUI } from "../i18n/ui/useUI";
 import {
   APP_PAGE_FRAME_CLASS,
@@ -269,7 +267,7 @@ function useMarketApps(): MarketController {
 //   workflow    ：流程编排图（可导入 organization、可直接导入单个 agent）。
 // 这两块的重型画布（React Flow grid-snap）由消费端（oceanleo 主站）通过 renderBoard
 // 注入——这样 @xyflow/react 依赖只落在主站，不强加给全部 @oceanleo/ui 消费站。
-// doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（全家桶站卡片 + AI 智能推荐）
+// doctrine v10（2026-06-26）：原 /all-sites 的「网站」分区（全家桶站卡片）
 //   并入 playground，成为第一个 tab。站点清单 + 推荐网关是消费端 lib/sites 的事，所以
 //   由消费端通过 renderSites 注入（与 renderBoard 同一范式），不把 SITES 耦合进本包。
 // doctrine v12（2026-06-30）「客户端 app」一级 tab：已于 2026-09-05 删除，失真设备框预览不再提供。
@@ -309,8 +307,8 @@ export function PlaygroundDetail({
    */
   renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
   /**
-   * 渲染「网站」分区（全家桶站卡片 + AI 智能推荐 + 加入工作台）。由消费端注入
-   * （持有 lib/sites 站点清单 + /v1/recommend 网关）。不传 → 不显示「网站」tab。
+   * 渲染「网站」分区（全家桶站卡片 + 加入工作台）。由消费端注入
+   * （持有 lib/sites 站点清单）。不传 → 不显示「网站」tab。
    * 外壳把标题|搜索行交给注入面：消费端把 toolbarLeading / belowToolbar 传给
    * 第一份 AppDirectory，这样网站 tab 与 app/agent 同一套页头。
    */
@@ -335,8 +333,6 @@ export function PlaygroundDetail({
   const [boardEditing, setBoardEditing] = useState(false);
   // doctrine v11：点卡片先弹详情弹窗（WorkBuddy 式），点「召唤」才进内嵌功能区。
   const [detailId, setDetailId] = useState<string>("");
-  // doctrine v11：AI 推荐命中的 id 顺序（置顶高亮）；空 = 未推荐，显示全部。
-  const [recIds, setRecIds] = useState<string[] | null>(null);
   // 2026-07-02：卡片右上角「查看/编辑 prompt」→ SkillPromptPanel（modal 形态）。
   const [promptOf, setPromptOf] = useState<AgentDef | null>(null);
 
@@ -376,22 +372,8 @@ export function PlaygroundDetail({
       site_id: a.site_id,
       category: a.category,
     }));
-    // AI 推荐命中时，把命中项按匹配度置顶（其余保持原序）。
-    if (recIds && recIds.length) {
-      const rank = new Map(recIds.map((id, i) => [id, i]));
-      return [...base].sort((x, y) => {
-        const rx = rank.has(x.id) ? rank.get(x.id)! : Number.MAX_SAFE_INTEGER;
-        const ry = rank.has(y.id) ? rank.get(y.id)! : Number.MAX_SAFE_INTEGER;
-        return rx - ry;
-      });
-    }
     return base;
-  }, [list, tab, accent, recIds]);
-
-  // 切 tab 时清掉推荐高亮（不同分区候选集不同）。
-  useEffect(() => {
-    setRecIds(null);
-  }, [tab]);
+  }, [list, tab, accent]);
 
   const detailAgent = useMemo(
     () => agents.find((a) => a.agent_id === detailId) || null,
@@ -503,7 +485,7 @@ export function PlaygroundDetail({
     );
   }
 
-  // ── 网站分区（doctrine v10）：全家桶站卡片 + AI 智能推荐，由消费端 renderSites 注入。
+  // ── 网站分区（doctrine v10）：全家桶站卡片，由消费端 renderSites 注入。
   //   与 app/agent 目录同一套外层版式（APP_PAGE_FRAME_CLASS + 标题 + tab）。
   if (tab === "site" && renderSites) {
     return (
@@ -608,26 +590,7 @@ export function PlaygroundDetail({
     <div className={APP_PAGE_FRAME_CLASS}>
       <AppDirectory
         toolbarLeading={pageTitle}
-        belowToolbar={
-          <>
-            {tabsBar}
-            <AiRecommendBox
-              candidates={items.map((it) => ({
-                id: it.id,
-                name: it.name,
-                tagline: it.tagline,
-                capabilities: it.capabilities,
-                category: it.category,
-              }))}
-              kindLabel="agent"
-              placeholder={tt("说说你想做什么，AI 帮你推荐最合适的 agent…  例如：帮我分析竞品")}
-              examples={[tt("帮我写一份商业计划"), tt("做竞品分析"), tt("优化我的小红书文案")]}
-              accent={accent}
-              onRecommend={(recs: ItemRecommendation[]) => setRecIds(recs.map((r) => r.id))}
-              onClear={() => setRecIds(null)}
-            />
-          </>
-        }
+        belowToolbar={tabsBar}
         items={items}
         leadingCards={agentLeadingCards}
         accent={accent}
