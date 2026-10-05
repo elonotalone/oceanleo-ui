@@ -49,6 +49,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-09-14 W8：国内版绑手机文案两边同时加。
   // 2026-09-20 W19：企业版 + MCP 能力面文案两边同时加。
   // 2026-09-22 leo 面板重做（W5A）：leo-panel-copy 两边同时加（父整合补登）。
+  // 2026-10-04：模型目录能力名 / 价格来源两边同时加。
   const [
     base,
     recent,
@@ -66,6 +67,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     enterprise,
     phoneBind,
     shellOverhaul,
+    catalog,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -83,6 +85,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./enterprise-copy"),
     import("./phone-bind-copy"),
     import("./shell-overhaul-copy"),
+    import("./model-catalog-copy"),
   ]);
   return {
     ...base.default,
@@ -103,5 +106,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...phoneBind.PHONE_BIND_MESSAGES[locale],
     ...shellOverhaul.SHELL_OVERHAUL_MESSAGES[locale],
     ...LEO_PANEL_MESSAGES[locale],
+    ...catalog.MODEL_CATALOG_MESSAGES[locale],
   };
 };

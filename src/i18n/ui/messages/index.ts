@@ -37,6 +37,7 @@ import { ENTERPRISE_COPY_MESSAGES } from "./enterprise-copy";
 import { PHONE_BIND_MESSAGES } from "./phone-bind-copy";
 import { SHELL_OVERHAUL_MESSAGES } from "./shell-overhaul-copy";
 import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
+import { MODEL_CATALOG_MESSAGES } from "./model-catalog-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -58,6 +59,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.zh,
     ...SHELL_OVERHAUL_MESSAGES.zh,
     ...LEO_PANEL_MESSAGES.zh,
+    ...MODEL_CATALOG_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -78,6 +80,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.en,
     ...SHELL_OVERHAUL_MESSAGES.en,
     ...LEO_PANEL_MESSAGES.en,
+    ...MODEL_CATALOG_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -98,6 +101,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.ja,
     ...SHELL_OVERHAUL_MESSAGES.ja,
     ...LEO_PANEL_MESSAGES.ja,
+    ...MODEL_CATALOG_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -118,6 +122,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.ko,
     ...SHELL_OVERHAUL_MESSAGES.ko,
     ...LEO_PANEL_MESSAGES.ko,
+    ...MODEL_CATALOG_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -138,6 +143,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.fr,
     ...SHELL_OVERHAUL_MESSAGES.fr,
     ...LEO_PANEL_MESSAGES.fr,
+    ...MODEL_CATALOG_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -158,6 +164,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.de,
     ...SHELL_OVERHAUL_MESSAGES.de,
     ...LEO_PANEL_MESSAGES.de,
+    ...MODEL_CATALOG_MESSAGES.de,
   },
   it: {
     ...it,
@@ -178,6 +185,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.it,
     ...SHELL_OVERHAUL_MESSAGES.it,
     ...LEO_PANEL_MESSAGES.it,
+    ...MODEL_CATALOG_MESSAGES.it,
   },
   es: {
     ...es,
@@ -198,6 +206,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.es,
     ...SHELL_OVERHAUL_MESSAGES.es,
     ...LEO_PANEL_MESSAGES.es,
+    ...MODEL_CATALOG_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -218,6 +227,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES["es-419"],
     ...SHELL_OVERHAUL_MESSAGES["es-419"],
     ...LEO_PANEL_MESSAGES["es-419"],
+    ...MODEL_CATALOG_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -238,6 +248,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES["pt-BR"],
     ...SHELL_OVERHAUL_MESSAGES["pt-BR"],
     ...LEO_PANEL_MESSAGES["pt-BR"],
+    ...MODEL_CATALOG_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -258,6 +269,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES["pt-PT"],
     ...SHELL_OVERHAUL_MESSAGES["pt-PT"],
     ...LEO_PANEL_MESSAGES["pt-PT"],
+    ...MODEL_CATALOG_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -278,6 +290,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.vi,
     ...SHELL_OVERHAUL_MESSAGES.vi,
     ...LEO_PANEL_MESSAGES.vi,
+    ...MODEL_CATALOG_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -298,6 +311,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.tr,
     ...SHELL_OVERHAUL_MESSAGES.tr,
     ...LEO_PANEL_MESSAGES.tr,
+    ...MODEL_CATALOG_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -318,6 +332,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES["zh-TW"],
     ...SHELL_OVERHAUL_MESSAGES["zh-TW"],
     ...LEO_PANEL_MESSAGES["zh-TW"],
+    ...MODEL_CATALOG_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -338,6 +353,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.ar,
     ...SHELL_OVERHAUL_MESSAGES.ar,
     ...LEO_PANEL_MESSAGES.ar,
+    ...MODEL_CATALOG_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -358,6 +374,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.th,
     ...SHELL_OVERHAUL_MESSAGES.th,
     ...LEO_PANEL_MESSAGES.th,
+    ...MODEL_CATALOG_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -378,5 +395,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...PHONE_BIND_MESSAGES.hi,
     ...SHELL_OVERHAUL_MESSAGES.hi,
     ...LEO_PANEL_MESSAGES.hi,
+    ...MODEL_CATALOG_MESSAGES.hi,
   },
 };
