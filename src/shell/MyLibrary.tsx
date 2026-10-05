@@ -1192,6 +1192,8 @@ export function MyLibrary({
           action={action}
           query={libraryQuery}
           onQueryChange={setLibraryQuery}
+          view={libraryView}
+          onViewChange={setLibraryView}
           hideToolbar
           category={category}
           onCategoryChange={onCategoryChange}

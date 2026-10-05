@@ -723,7 +723,7 @@ export function MaterialLibrary({
         className={`h-full min-h-0 ${className}`}
         data-material-shelf-state="loading"
       >
-        <MaterialShelfSkeleton toolbar={toolbar} plain={plain} />
+        <MaterialShelfSkeleton toolbar={toolbar} plain={plain} pageTitle={pageTitle} />
       </div>
     );
   }

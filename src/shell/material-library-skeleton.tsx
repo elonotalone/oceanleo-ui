@@ -13,6 +13,7 @@
 
 import type { ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 
 const SKELETON_CARDS = 6;
 
@@ -21,6 +22,7 @@ export function MaterialShelfSkeleton({
   className = "",
   cards = SKELETON_CARDS,
   plain = false,
+  pageTitle,
 }: {
   /** 分区轴与次级筛选照常渲染：它们不依赖请求结果，闪掉反而更晃眼。 */
   toolbar?: ReactNode;
@@ -31,6 +33,7 @@ export function MaterialShelfSkeleton({
    * 骨架与货架必须吃同一个值 —— 只改货架的话，底板会在首帧闪一下再消失。
    */
   plain?: boolean;
+  pageTitle?: ReactNode;
 }) {
   const tt = useUI();
   return (
@@ -44,6 +47,9 @@ export function MaterialShelfSkeleton({
       aria-live="polite"
       aria-label={tt("素材加载中")}
     >
+      {pageTitle ? (
+        <h1 className={`${APP_PAGE_TITLE_CLASS} mb-3 shrink-0`}>{pageTitle}</h1>
+      ) : null}
       {toolbar}
       <div className="min-h-0 flex-1 overflow-hidden pt-3">
         <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">

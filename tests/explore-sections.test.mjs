@@ -65,6 +65,9 @@ const OVERRIDES = {
             typeof props.entryActions === "function",
           ),
         },
+        props.pageTitle
+          ? createElement("h1", null, props.pageTitle)
+          : null,
         props.toolbarActions,
         probe
           ? createElement(
@@ -123,7 +126,7 @@ function captureErrors(run) {
   }
 }
 
-test("零配置：只传 site key 就能渲染，标题与副标题由共享包按 app 目录推导", () => {
+test("零配置：只传 site key 就能渲染，标题由共享包按 app 目录推导", () => {
   resetSiteAppDirectories();
   resetExploreSiteKeyWarnings();
   registerSiteAppDirectory("word", WORD_APPS);
@@ -131,8 +134,7 @@ test("零配置：只传 site key 就能渲染，标题与副标题由共享包�
   assert.match(html, /data-explore-shape="zero-config"/);
   assert.match(html, /data-explore-site-key="word"/);
   assert.match(html, /探索 · 素材/);
-  // 5 个成品 app（agent 被排除），副标题是推导出来的，不是站点写的。
-  assert.match(html, /按工作台场景浏览本站 5 个 app 的素材。/);
+  assert.doesNotMatch(html, /按工作台场景浏览本站/);
   // 站点没传任何作废 props，就不该有漂移标记。
   assert.doesNotMatch(html, /data-explore-legacy-props/);
   assert.doesNotMatch(html, /data-explore-missing-app-directory/);

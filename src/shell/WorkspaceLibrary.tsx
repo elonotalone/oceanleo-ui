@@ -76,6 +76,8 @@ export interface WorkspaceLibraryProps {
   action?: WorkspaceActionEnvelope | null;
   query?: string;
   onQueryChange?: (query: string) => void;
+  view?: "grid" | "list";
+  onViewChange?: (view: "grid" | "list") => void;
   category?: string;
   onCategoryChange?: (category: string) => void;
   /** Categories kept visible before the user expands the remote catalog. */
@@ -304,6 +306,8 @@ export function WorkspaceLibrary({
   action,
   query,
   onQueryChange,
+  view: controlledView,
+  onViewChange,
   category: controlledCategory,
   onCategoryChange,
   primaryCategoryIds,
@@ -343,13 +347,19 @@ export function WorkspaceLibrary({
     if (query === undefined) setInternalSearch(next);
     onQueryChange?.(next);
   };
+  const [internalView, setInternalView] = useState<"grid" | "list">("grid");
+  const view = controlledView ?? internalView;
+  const setView: Dispatch<SetStateAction<"grid" | "list">> = (value) => {
+    const next = typeof value === "function" ? value(view) : value;
+    if (controlledView === undefined) setInternalView(next);
+    onViewChange?.(next);
+  };
   const [internalCategory, setInternalCategory] = useState("all");
   const category = controlledCategory ?? internalCategory;
   const setCategory = (next: string) => {
     if (controlledCategory === undefined) setInternalCategory(next);
     onCategoryChange?.(next);
   };
-  const [view, setView] = useState<"grid" | "list">("grid");
   const [selectedId, setSelectedId] = useState("");
   const [viewerNonce, setViewerNonce] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
