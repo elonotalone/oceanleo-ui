@@ -231,18 +231,24 @@ async function withDom(run, { orgApi = {}, role = "admin", orgName = "海狮科�
   }
 }
 
-test("管理员：组织页有共用连接器区和「为组织连接」，空列表时仍留入口", async () => {
+test("管理员：组织页有共用连接器区和「添加连接器」，空列表时仍留入口", async () => {
   await withDom(async ({ render, find, text, fetchCalls }) => {
     await render();
     assert.ok(find("[data-org-mcp-section]"));
     assert.ok(find("[data-org-mcp-connect-entry]"));
-    assert.ok(text().includes("这个组织还没有连接任何 MCP 服务器。"));
+    assert.ok(text().includes("共用连接器"));
+    assert.ok(text().includes("添加连接器"));
+    assert.ok(text().includes("还没有共用连接器。"));
+    assert.ok(text().includes("连一次，这个组织里的人都能用，不用各自再填密钥。"));
+    assert.ok(!text().includes("组织提供"));
+    assert.ok(!text().includes("为组织连接"));
+    assert.ok(!text().includes("MCP"));
     assert.equal(find("[data-org-mcp-row]"), null);
     assert.equal(fetchCalls(), 0);
   });
 });
 
-test("mcp 端点 404：管理员仍留入口；成员只看到空状态，没有为组织连接", async () => {
+test("mcp 端点 404：管理员仍留入口；成员只看到空状态，没有添加连接器", async () => {
   await withDom(
     async ({ render, find }) => {
       await render();
@@ -262,17 +268,19 @@ test("mcp 端点 404：管理员仍留入口；成员只看到空状态，没有
   );
 });
 
-test("成员：只读，有「由组织 海狮科技 提供」，没有断开 / 为组织连接", async () => {
+test("成员：只读，没有断开 / 添加连接器", async () => {
   await withDom(
     async ({ render, find, findAll, text, buttons, calls, fetchCalls }) => {
       await render();
       assert.ok(find("[data-org-mcp-section]"));
       assert.equal(findAll("[data-org-mcp-row]").length, 1);
-      assert.ok(text().includes("由组织 海狮科技 提供"));
+      assert.ok(text().includes("7 个工具"));
+      assert.ok(text().includes("管理员连好的工具，你可以直接用。"));
+      assert.ok(!text().includes("由组织"));
       assert.equal(find("[data-org-mcp-manage]"), null);
       assert.equal(find("[data-org-mcp-connect-entry]"), null);
       const labels = buttons(find("[data-org-mcp-section]"));
-      for (const forbidden of ["断开", "停用", "启用", "成员可见", "为组织连接"]) {
+      for (const forbidden of ["断开", "停用", "启用", "成员可见", "添加连接器", "为组织连接"]) {
         assert.ok(!labels.includes(forbidden), `成员不该有「${forbidden}」`);
       }
       assert.deepEqual(calls(), ["listInheritedMcp"]);
@@ -285,14 +293,14 @@ test("成员：只读，有「由组织 海狮科技 提供」，没有断开 / 
   );
 });
 
-test("管理员：启用/停用、成员可见、断开、为组织连接都在；点击只走 org-api", async () => {
+test("管理员：启用/停用、成员可见、断开、添加连接器都在；点击只走 org-api", async () => {
   await withDom(
     async ({ render, find, findAll, buttons, click, settle, calls, fetchCalls }) => {
       await render();
       assert.ok(find("[data-org-mcp-connect-entry]"));
       assert.equal(findAll("[data-org-mcp-row]").length, 2);
       const labels = buttons(find("[data-org-mcp-section]"));
-      for (const required of ["停用", "成员可见", "断开", "为组织连接"]) {
+      for (const required of ["停用", "成员可见", "断开", "添加连接器"]) {
         assert.ok(labels.includes(required), `缺「${required}」，实际：${labels.join(" | ")}`);
       }
       assert.deepEqual(calls(), ["listInheritedMcp", "listOrgMcpConnections:o1"]);
@@ -326,7 +334,7 @@ test("管理员：启用/停用、成员可见、断开、为组织连接都在�
   );
 });
 
-test("为组织连接：目录含 custom，提交送 connectorId=custom", async () => {
+test("添加连接器：目录含 custom，提交送 connectorId=custom", async () => {
   await withDom(async ({ render, find, findAll, click, settle, lastUpsert, fetchCalls }) => {
     await render();
     await click(find("[data-org-mcp-connect-entry]"));
@@ -343,7 +351,7 @@ test("为组织连接：目录含 custom，提交送 connectorId=custom", async 
   });
 });
 
-test("为组织连接失败：原因写在对话框里", async () => {
+test("添加连接器失败：原因写在对话框里", async () => {
   await withDom(
     async ({ render, find, click, settle }) => {
       await render();
@@ -419,7 +427,7 @@ test("只列出当前组织的连接，不混入别的组织", async () => {
       assert.equal(findAll("[data-org-mcp-row]").length, 1);
       assert.ok(find("[data-org-mcp-row='amap']"));
       assert.equal(find("[data-org-mcp-row='tavily']"), null);
-      assert.ok(text().includes("由组织 海狮科技 提供"));
+      assert.ok(text().includes("7 个工具"));
       assert.ok(!text().includes("蓝鲸"));
     },
     {

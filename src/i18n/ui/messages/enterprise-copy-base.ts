@@ -46,47 +46,24 @@ export const ENTERPRISE_COPY_SOURCE = {
   approve: "通过",
   reject: "驳回",
 
-  // --- ByokKeys (Cursor / 自带 key) ---
-  cursorKeySaved: "Cursor key 已保存在这台设备。",
-  cursorRejectedKey:
-    "Cursor 拒绝了这把 key（无效或已撤销），请重新生成后再保存。",
-  cursorQuota: "Cursor 额度或频率受限，请稍后再试。",
-  cursorGithubNotConnected:
-    "你的 Cursor 账号还没有连通 GitHub：请在 Cursor Dashboard → Integrations 里连接后重试。",
-  saveAndVerify: "保存并校验",
-  getCursorKeyLink:
-    "去 Cursor Dashboard → Integrations → User API Keys 生成 →",
-  verifiedAs: "已校验：",
-  pasteCrsrKey: "粘贴 crsr_ 开头的 key",
-  codingAgentNotChat: "编码 agent（不用于聊天）",
-  codingAgentNotChatModel: "编码 agent，不是聊天模型",
-  enterCursorApiKey: "请填入 Cursor API key",
-  notCursorApiKey: "这不是 Cursor 的 API Key（应以 crsr_ 开头）。",
-  cursorTimeout: "连接 Cursor 超时，请稍后再试。",
-  recheck: "重新校验",
-  unnamedKey: "（未命名 key）",
-
-  // --- PluginsPage ---
+  // --- OrgMcpSection（组织页共用连接器；「添加连接器」沿用插件浮层同一句） ---
+  orgSharedConnectors: "共用连接器",
+  orgSharedConnectorsHintAdmin:
+    "连一次，这个组织里的人都能用，不用各自再填密钥。",
+  orgSharedConnectorsHintMember: "管理员连好的工具，你可以直接用。",
+  orgSharedConnectorsEmpty: "还没有共用连接器。",
+  orgSharedServerUrl: "服务地址",
+  orgSharedSecret: "密钥",
+  orgSharedCustomService: "自建服务",
+  orgSharedConnectorKind: "连接器",
   mcpEndpointUrl: "MCP 服务地址（你的专属 URL）",
   toolsCountN: "{n} 个工具",
-  connectForOrg: "为组织连接",
-  connectMcpForOrg: "为组织连接 MCP",
-  connectOnceMembersInherit:
-    "在组织里连一次，组织成员的插件页会自动出现这条连接，成员不用各自填凭证。",
   disabled: "已停用",
   enabled: "已启用",
   visibleToMembers: "成员可见",
-  disconnect: "断开",
-  providedByOrg: "由组织 {name} 提供",
-  providedByOrgHeading: "组织提供",
-  orgConnectionsManaged:
-    "组织提供的连接由管理员统一管理，你可以直接使用，不需要填凭证。",
-  orgHasNoMcp: "这个组织还没有连接任何 MCP 服务器。",
   connecting: "连接中…",
-  connectorId: "连接器标识",
   connectFailedRetry: "连接失败，请检查地址与凭证后重试。",
   connectAndVerify: "连接并验证",
-  whichOrgToConnect: "连给哪个组织",
 
   // --- OrgMembership ---
   youWillJoinOrg: "你将申请加入「{org}」",

@@ -81,8 +81,8 @@ export function OrgMcpSection({
 
   return (
     <section data-org-section="mcp" data-org-mcp-section className="mt-6 rounded-xl border border-neutral-200 p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[13px] font-semibold text-neutral-900">{tt("组织提供")}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13px] font-semibold text-neutral-900">{tt("共用连接器")}</p>
         {manageable ? (
           <button
             type="button"
@@ -90,19 +90,17 @@ export function OrgMcpSection({
             onClick={() => setConnecting(true)}
             className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800"
           >
-            {tt("为组织连接")}
+            {tt("添加连接器")}
           </button>
         ) : null}
       </div>
-      <p className="mb-3 mt-0.5 text-[12px] text-neutral-500">
+      <p className="mt-0.5 text-[12px] text-neutral-500">
         {manageable
-          ? tt("在组织里连一次，组织成员就能用，不用各自填凭证。")
-          : tt("组织提供的连接由管理员统一管理，你可以直接使用，不需要填凭证。")}
+          ? tt("连一次，这个组织里的人都能用，不用各自再填密钥。")
+          : tt("管理员连好的工具，你可以直接用。")}
       </p>
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-neutral-300 p-6 text-center">
-          <p className="text-[13px] text-neutral-500">{tt("这个组织还没有连接任何 MCP 服务器。")}</p>
-        </div>
+        <p className="mt-2 text-[12px] text-neutral-500">{tt("还没有共用连接器。")}</p>
       ) : (
         <div className="grid gap-3">
           {rows.map((row) => {
@@ -127,8 +125,6 @@ export function OrgMcpSection({
                       </span>
                     </div>
                     <p className="mt-0.5 text-[12px] text-neutral-500">
-                      {tt("由组织 {name} 提供", { name: row.orgName })}
-                      {" · "}
                       {tt("{n} 个工具", { n: row.toolsCount })}
                     </p>
                   </div>
@@ -220,8 +216,9 @@ function OrgConnectDialog({
   onConnected: () => void | Promise<void>;
 }) {
   const tt = useUI();
+  const customServiceName = tt("自建服务");
   const [connectors, setConnectors] = useState<{ id: string; name: string }[]>([
-    { id: "custom", name: "自建服务" },
+    { id: "custom", name: customServiceName },
   ]);
   const [connectorId, setConnectorId] = useState("custom");
   const [endpoint, setEndpoint] = useState("");
@@ -239,12 +236,12 @@ function OrgConnectDialog({
       if (cancelled) return;
       const items = (result.items || []).map((row) => ({ id: row.id, name: row.name || row.id }));
       const hasCustom = items.some((row) => row.id === "custom");
-      setConnectors(hasCustom ? items : [{ id: "custom", name: "自建服务" }, ...items]);
+      setConnectors(hasCustom ? items : [{ id: "custom", name: customServiceName }, ...items]);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [customServiceName]);
 
   function setEndpointValue(value: string) {
     setEndpoint(value);
@@ -277,7 +274,7 @@ function OrgConnectDialog({
   return (
     <InTreeDialog onClose={onClose} testId="org-mcp-dialog">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[16px] font-semibold text-neutral-900">{tt("为组织连接 MCP")}</h3>
+        <h3 className="text-[16px] font-semibold text-neutral-900">{tt("添加连接器")}</h3>
         <button
           type="button"
           onClick={onClose}
@@ -303,7 +300,7 @@ function OrgConnectDialog({
           </select>
         </div>
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("MCP 服务地址（你的专属 URL）")}</label>
+          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("服务地址")}</label>
           <input
             data-org-mcp-endpoint
             value={endpoint}
@@ -312,7 +309,7 @@ function OrgConnectDialog({
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">Token / API Key</label>
+          <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("密钥")}</label>
           <input
             type="password"
             value={token}
