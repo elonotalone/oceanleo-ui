@@ -50,6 +50,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-09-20 W19：企业版 + MCP 能力面文案两边同时加。
   // 2026-09-22 leo 面板重做（W5A）：leo-panel-copy 两边同时加（父整合补登）。
   // 2026-10-04：模型目录能力名 / 价格来源两边同时加。
+  // 2026-10-05 work-chat：消息 / 多人同改 / 工作回放总表两边同时加。
   const [
     base,
     recent,
@@ -68,6 +69,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     phoneBind,
     shellOverhaul,
     catalog,
+    workChat,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -86,6 +88,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./phone-bind-copy"),
     import("./shell-overhaul-copy"),
     import("./model-catalog-copy"),
+    import("./work-chat-copy"),
   ]);
   return {
     ...base.default,
@@ -107,5 +110,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...shellOverhaul.SHELL_OVERHAUL_MESSAGES[locale],
     ...LEO_PANEL_MESSAGES[locale],
     ...catalog.MODEL_CATALOG_MESSAGES[locale],
+    ...workChat.WORK_CHAT_MESSAGES[locale],
   };
 };
