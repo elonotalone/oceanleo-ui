@@ -12,6 +12,9 @@ const HELP_CENTER_HOSTS = new Set([
   "www.help.oceanleo.cn",
 ]);
 
+/** 帮助中心「怎么自己带密钥」；设置页与旧 /api/guide 都链到这里。 */
+export const HELP_BYOK_ARTICLE_PATH = "/a/bring-your-own-key";
+
 /**
  * True when this host *is* the help center. The shell 「帮助与反馈」
  * control must not render there (it would point at the same site).

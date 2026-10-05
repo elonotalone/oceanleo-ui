@@ -30,6 +30,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "廠商預設",
     gatewayNotEnabled: "閘道尚未啟用 BYOK，請稍後再試。",
     loginToConfigure: "登入後即可設定自己的 key",
+    howToBringKey: "怎麼自己帶金鑰",
   },
   ja: {
     storageNotice:
@@ -56,6 +57,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "ベンダー既定",
     gatewayNotEnabled: "ゲートウェイはまだ BYOK を有効にしていません。しばらくしてからやり直してください。",
     loginToConfigure: "ログインすると自分のキーを設定できます",
+    howToBringKey: "自分のキーの使い方",
   },
   ko: {
     storageNotice:
@@ -82,6 +84,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "공급사 기본값",
     gatewayNotEnabled: "게이트웨이가 아직 BYOK를 켜지 않았습니다. 잠시 후 다시 시도하세요.",
     loginToConfigure: "로그인하면 자신의 키를 설정할 수 있습니다",
+    howToBringKey: "내 키를 쓰는 방법",
   },
   ar: {
     storageNotice:
@@ -108,6 +111,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "قيمة المزوّد",
     gatewayNotEnabled: "البوابة لم تُفعّل BYOK بعد. حاول لاحقًا.",
     loginToConfigure: "سجّل الدخول لضبط مفتاحك",
+    howToBringKey: "كيف تستخدم مفتاحك",
   },
   hi: {
     storageNotice:
@@ -134,6 +138,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "विक्रेता डिफ़ॉल्ट",
     gatewayNotEnabled: "गेटवे ने अभी BYOK चालू नहीं किया। बाद में फिर कोशिश करें।",
     loginToConfigure: "लॉगिन करके अपनी key सेट करें",
+    howToBringKey: "अपनी key कैसे लगाएँ",
   },
   th: {
     storageNotice:
@@ -160,6 +165,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "ค่าเริ่มต้นของผู้ให้บริการ",
     gatewayNotEnabled: "เกตเวย์ยังไม่ได้เปิด BYOK โปรดลองใหม่ภายหลัง",
     loginToConfigure: "เข้าสู่ระบบเพื่อตั้งค่าคีย์ของคุณ",
+    howToBringKey: "วิธีใช้คีย์ของคุณ",
   },
   vi: {
     storageNotice:
@@ -186,6 +192,7 @@ export const BYOK_COPY_EASTERN = {
     providerDefault: "Mặc định nhà cung cấp",
     gatewayNotEnabled: "Cổng chưa bật BYOK. Vui lòng thử lại sau.",
     loginToConfigure: "Đăng nhập để cấu hình key của bạn",
+    howToBringKey: "Cách dùng key của bạn",
   },
 } satisfies Record<
   "zh-TW" | "ja" | "ko" | "ar" | "hi" | "th" | "vi",

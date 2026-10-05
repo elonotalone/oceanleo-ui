@@ -24,6 +24,11 @@ if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
 else delete require.cache[canvasEntry];
 
 const byokSource = readFileSync(new URL("../src/pages/ByokKeys.tsx", import.meta.url), "utf8");
+const apiPageSource = readFileSync(new URL("../src/pages/ApiPage.tsx", import.meta.url), "utf8");
+const guidePageSource = readFileSync(
+  new URL("../src/pages/ApiGuidePage.tsx", import.meta.url),
+  "utf8",
+);
 const accountSource = readFileSync(
   new URL("../src/lib/auth/account.ts", import.meta.url),
   "utf8",
@@ -40,6 +45,19 @@ test("ByokKeys 走密封 cookie 客户端，不把 key 写入 JS 存储", () => 
   assert.doesNotMatch(byokSource, /localStorage/);
   assert.doesNotMatch(byokSource, /sessionStorage/);
   assert.doesNotMatch(byokSource, /indexedDB/);
+  assert.match(byokSource, /HELP_BYOK_ARTICLE_PATH/);
+  assert.match(byokSource, /data-byok-help/);
+  assert.doesNotMatch(byokSource, /指导文档/);
+});
+
+test("ApiPage 不再嵌指导文档；ApiGuidePage 不再列厂商", () => {
+  assert.doesNotMatch(apiPageSource, /ApiGuidePage/);
+  assert.doesNotMatch(guidePageSource, /PLATFORMS/);
+  assert.doesNotMatch(
+    guidePageSource,
+    /阿里云百炼|DeepSeek|OpenRouter|火山方舟|Anthropic/,
+  );
+  assert.match(guidePageSource, /HELP_BYOK_ARTICLE_PATH/);
 });
 
 test("account.ts 删除 /v1/keys 增删查，authed 带 credentials include", () => {
@@ -183,5 +201,8 @@ test("enabled:true 列表出现指纹且不出现 sk-test", async () => {
   });
   assert.ok(view.text().includes("sk-…ab3f"));
   assert.equal(view.text().includes("sk-test"), false);
+  const help = view.host.querySelector("[data-byok-help]");
+  assert.ok(help, "设置页要有指向帮助中心的自带密钥说明");
+  assert.match(help.getAttribute("href") || "", /\/a\/bring-your-own-key/);
   view.cleanup();
 });

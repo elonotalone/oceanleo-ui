@@ -30,6 +30,7 @@ export const BYOK_COPY_SOURCE = {
   providerDefault: "厂商默认",
   gatewayNotEnabled: "网关尚未启用 BYOK，请稍后再试。",
   loginToConfigure: "登录后即可配置自己的 key",
+  howToBringKey: "怎么自己带密钥",
 } as const;
 
 export type ByokCopyName = keyof typeof BYOK_COPY_SOURCE;

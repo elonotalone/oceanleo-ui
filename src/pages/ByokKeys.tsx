@@ -20,6 +20,7 @@ import {
   type ByokCap,
 } from "../lib/auth";
 import { useUI } from "../i18n/ui/useUI";
+import { HELP_BYOK_ARTICLE_PATH, helpCenterUrl } from "../lib/help-url";
 
 const CAP_OPTIONS: { id: ByokCap; label: string }[] = [
   { id: "tools", label: "工具调用" },
@@ -403,6 +404,19 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
           {tt(
             "你的 key 只以加密形式保存在这台设备的浏览器里，OceanLeo 服务器不保存；每次调用随请求经过 OceanLeo 网关转发给厂商，网关用完即弃、不记录。换设备需重填，清除站点数据会丢失。",
           )}
+        </p>
+        <p className="mt-2">
+          <a
+            data-byok-help=""
+            href={helpCenterUrl({
+              host: typeof window !== "undefined" ? window.location.host : undefined,
+              path: HELP_BYOK_ARTICLE_PATH,
+              from: "settings-byok",
+            })}
+            className="text-[12px] font-medium text-neutral-700 underline underline-offset-2"
+          >
+            {tt("怎么自己带密钥")}
+          </a>
         </p>
       </div>
 

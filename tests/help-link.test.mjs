@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { helpCenterUrl, isHelpCenterHost } from "../src/lib/help-url.ts";
+import {
+  HELP_BYOK_ARTICLE_PATH,
+  helpCenterUrl,
+  isHelpCenterHost,
+} from "../src/lib/help-url.ts";
 
 test(".com 子站 → help.oceanleo.com", () => {
   assert.equal(
@@ -47,6 +51,18 @@ test("siteKey + from 按顺序编码进 query", () => {
       from,
     }),
     `https://help.oceanleo.com/?site=agent&from=${encodeURIComponent(from)}`,
+  );
+});
+
+test("自带密钥说明走帮助中心文章路径", () => {
+  assert.equal(HELP_BYOK_ARTICLE_PATH, "/a/bring-your-own-key");
+  assert.equal(
+    helpCenterUrl({ host: "website.oceanleo.com", path: HELP_BYOK_ARTICLE_PATH, from: "settings-byok" }),
+    "https://help.oceanleo.com/a/bring-your-own-key?from=settings-byok",
+  );
+  assert.equal(
+    helpCenterUrl({ host: "website.oceanleo.cn", path: HELP_BYOK_ARTICLE_PATH }),
+    "https://help.oceanleo.cn/a/bring-your-own-key",
   );
 });
 

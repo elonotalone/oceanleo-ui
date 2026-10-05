@@ -29,6 +29,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Vendor default",
     gatewayNotEnabled: "The gateway has not enabled BYOK yet. Please try again later.",
     loginToConfigure: "Sign in to configure your own key",
+    howToBringKey: "How to bring your own key",
   },
   de: {
     storageNotice:
@@ -56,6 +57,7 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled:
       "Das Gateway hat BYOK noch nicht aktiviert. Bitte später erneut versuchen.",
     loginToConfigure: "Melde dich an, um deinen eigenen Key einzurichten",
+    howToBringKey: "So hinterlegst du einen eigenen Key",
   },
   es: {
     storageNotice:
@@ -82,6 +84,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Valor del proveedor",
     gatewayNotEnabled: "La pasarela aún no ha activado BYOK. Inténtalo más tarde.",
     loginToConfigure: "Inicia sesión para configurar tu propia clave",
+    howToBringKey: "Cómo usar tu propia clave",
   },
   "es-419": {
     storageNotice:
@@ -108,6 +111,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Valor del proveedor",
     gatewayNotEnabled: "La pasarela todavía no habilitó BYOK. Inténtalo más tarde.",
     loginToConfigure: "Inicia sesión para configurar tu propia clave",
+    howToBringKey: "Cómo usar tu propia clave",
   },
   fr: {
     storageNotice:
@@ -135,6 +139,7 @@ export const BYOK_COPY_WESTERN = {
     gatewayNotEnabled:
       "La passerelle n’a pas encore activé BYOK. Réessayez plus tard.",
     loginToConfigure: "Connectez-vous pour configurer votre propre clé",
+    howToBringKey: "Comment apporter votre propre clé",
   },
   it: {
     storageNotice:
@@ -161,6 +166,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Valore del fornitore",
     gatewayNotEnabled: "Il gateway non ha ancora abilitato BYOK. Riprova più tardi.",
     loginToConfigure: "Accedi per configurare la tua chiave",
+    howToBringKey: "Come usare la tua chiave",
   },
   "pt-BR": {
     storageNotice:
@@ -187,6 +193,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Padrão do fornecedor",
     gatewayNotEnabled: "A gateway ainda não ativou o BYOK. Tente de novo mais tarde.",
     loginToConfigure: "Entre para configurar sua própria chave",
+    howToBringKey: "Como usar sua própria chave",
   },
   "pt-PT": {
     storageNotice:
@@ -213,6 +220,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Valor do fornecedor",
     gatewayNotEnabled: "A gateway ainda não ativou o BYOK. Tenta novamente mais tarde.",
     loginToConfigure: "Inicia sessão para configurares a tua própria chave",
+    howToBringKey: "Como usares a tua própria chave",
   },
   tr: {
     storageNotice:
@@ -239,6 +247,7 @@ export const BYOK_COPY_WESTERN = {
     providerDefault: "Sağlayıcı varsayılanı",
     gatewayNotEnabled: "Ağ geçidi henüz BYOK’u açmadı. Lütfen sonra yeniden dene.",
     loginToConfigure: "Kendi anahtarını yapılandırmak için giriş yap",
+    howToBringKey: "Kendi anahtarını nasıl kullanırsın",
   },
 } satisfies Record<
   "en" | "de" | "es" | "es-419" | "fr" | "it" | "pt-BR" | "pt-PT" | "tr",

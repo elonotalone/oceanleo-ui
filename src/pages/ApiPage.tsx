@@ -14,7 +14,6 @@ import {
 } from "../lib/auth";
 import { checkedAgo } from "../lib/model-search";
 import { useUI } from "../i18n/ui/useUI";
-import { ApiGuidePage } from "./ApiGuidePage";
 import { ByokKeys } from "./ByokKeys";
 import { ModelGroupManager } from "./ModelCapabilityMarket";
 import { PageHeader } from "./PageHeader";
@@ -274,9 +273,6 @@ export function ApiPage({
   const byok = (
     <div className="space-y-8" data-api-byok="">
       <ByokKeys loggedIn={!!user} />
-      <div data-api-guide="">
-        <ApiGuidePage variant="section" />
-      </div>
     </div>
   );
 
