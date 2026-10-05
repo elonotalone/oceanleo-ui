@@ -133,7 +133,7 @@ export function MaterialLibrary({
   onMaterialDragEnd,
   allowAdvancedOnSelect = true,
   onOpenItem,
-  emptyCta,
+  emptyCta, pageTitle,
 }: MaterialLibraryProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
@@ -792,6 +792,7 @@ export function MaterialLibrary({
       entryActions={facetShelf.entryActions}
       onOpenItem={openPreparedItem}
       className={className}
+      pageTitle={pageTitle}
     />
   );
 }

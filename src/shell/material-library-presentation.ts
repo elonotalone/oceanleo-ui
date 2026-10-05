@@ -104,6 +104,8 @@ export interface MaterialLibraryProps {
    * `materialLevelEmptyDescription`）的默认值一个字未改，不传就完全是今天的样子。
    */
   emptyCta?: ReactNode;
+  /** Full-page title; forwarded to WorkspaceLibrary.pageTitle. */
+  pageTitle?: ReactNode;
 }
 
 /**

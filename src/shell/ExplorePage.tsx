@@ -18,6 +18,7 @@ import {
   type ExploreArtifactClass,
 } from "./explore-artifact-class";
 import type { LibraryItem } from "./library-data";
+import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 import { MaterialLibrary } from "./MaterialLibrary";
 import {
   materialTypesCsv,
@@ -28,7 +29,6 @@ import {
   EXPLORE_TITLE,
   MATERIAL_SCENE_OTHER_ID,
   exploreEmptyHint,
-  exploreSubtitle,
   readSiteAppDirectory,
   subscribeSiteAppDirectories,
   type SceneSelection,
@@ -306,16 +306,8 @@ export function ExplorePage(props: ExplorePageProps) {
       {...(scopeReady && !directory
         ? { "data-explore-missing-app-directory": resolvedSiteKey }
         : {})}
-      className={`mx-auto flex min-h-0 w-full max-w-6xl flex-col px-6 py-7 ${className}`}
+      className={`${APP_PAGE_FRAME_CLASS} ${className}`}
     >
-      <header className="mb-4 shrink-0">
-        <h1 className="text-[22px] font-semibold tracking-tight text-[var(--fg,#171717)]">
-          {tt(EXPLORE_TITLE)}
-        </h1>
-        <p className="mt-1 text-[13px] text-[var(--muted,#737373)]">
-          {tt(exploreSubtitle(directory))}
-        </p>
-      </header>
       {/*
         缺 siteKey 是**接线错误**，不是空货架：D1 之后没有全平台那一层可退，照常渲染
         只会得到一屏别站素材顶着「本站素材」的招牌。所以这里 fail-closed —— 不挂货架，
@@ -350,6 +342,7 @@ export function ExplorePage(props: ExplorePageProps) {
         <MaterialLibrary
           materials={[]}
           plain
+          pageTitle={tt(EXPLORE_TITLE)}
           accent={accent}
           action={action}
           siteId={resolvedSiteKey}
