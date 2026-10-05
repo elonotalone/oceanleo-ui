@@ -1,10 +1,10 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 企业版组织的唯一 API 客户端（契约 `_COMMON.md §3.8`）
+// @oceanleo/ui — 企业版团队的唯一 API 客户端（契约 `_COMMON.md §3.8`）
 // ----------------------------------------------------------------------------
-// 组织页（OrgPage）、付费主体选择器（PayerSelector）、成员侧面板（OrgMembership）、
-// 插件页的组织连接都从这里取数。**全波只有这一份 fetch**：谁再写第二份，401 的处理、
+// 团队页（OrgPage）、付费主体选择器（PayerSelector）、成员侧面板（OrgMembership）、
+// 插件页的团队连接都从这里取数。**全波只有这一份 fetch**：谁再写第二份，401 的处理、
 // 「端点还没上线」的判定、snake_case → camelCase 的归一化就会各说一套，而这三件事
 // 每一件做错都不是崩，是界面安静地说谎。
 //
@@ -24,7 +24,7 @@
 //    不能走成 `forbidden`（界面说「你没权限」）—— 后者会让负责人以为自己被降权了。
 //
 // 3. **后端字段可能缺失 / 为 null / 是字符串。** 每个字段都过一次归一化，网关返回
-//    什么形状都不许把组织页打白。金额一律 minor（分 / 美分，`_COMMON §3.1`），
+//    什么形状都不许把团队页打白。金额一律 minor（分 / 美分，`_COMMON §3.1`），
 //    前端不做任何货币换算。
 // ============================================================================
 
@@ -104,11 +104,11 @@ export function orgErrorCopy(
     case "signed_out":
       return tt("登录状态失效了，请重新登录。");
     case "forbidden":
-      return tt("你没有查看这个组织的权限。");
+      return tt("你没有查看这个团队的权限。");
     case "not_available":
       return tt("这一块还没上线，过些天再来看。");
     case "not_found":
-      return tt("这个组织已经不在了。");
+      return tt("这个团队已经不在了。");
     case "offline":
       return tt("连不上服务器，检查一下网络再试。");
     case "rate_limited":
@@ -309,7 +309,7 @@ function shareOrgList<T>(path: string, read: () => Promise<T>): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// 1 组织与成员（W01 / W05）
+// 1 团队与成员（W01 / W05）
 // ---------------------------------------------------------------------------
 
 export interface OrgSummary {
@@ -329,14 +329,14 @@ function normalizeSummary(raw: unknown): OrgSummary {
     name: str(row.name),
     role,
     // owner 恒真（`_COMMON §3.3`）。网关漏给这两个布尔列时，owner 也必须进得去
-    // 自己的组织页 —— 否则建组织的人第一次打开就看到「你没有权限」。
+    // 自己的团队页 —— 否则建团队的人第一次打开就看到「你没有权限」。
     canViewOrgPage: role === "owner" || bool(firstPresent(row.can_view_org_page, row.canViewOrgPage)),
     canViewAllTasks: role === "owner" || bool(firstPresent(row.can_view_all_tasks, row.canViewAllTasks)),
     currency: str(row.currency).trim().toUpperCase(),
   };
 }
 
-/** 我的全部活跃组织（`GET /v1/orgs`）。一个人可能同时是 A 的 owner、B 的成员。 */
+/** 我的全部活跃团队（`GET /v1/orgs`）。一个人可能同时是 A 的 owner、B 的成员。 */
 export function listMyOrgs(): Promise<OrgSummary[]> {
   return shareOrgList("/v1/orgs", async () => {
     const data = await must<unknown>("/v1/orgs");
@@ -347,10 +347,10 @@ export function listMyOrgs(): Promise<OrgSummary[]> {
 }
 
 /**
- * 一个组织的详情 + 钱包（`GET /v1/orgs/{id}` ＋ `GET /v1/orgs/{id}/overview`）。
+ * 一个团队的详情 + 钱包（`GET /v1/orgs/{id}` ＋ `GET /v1/orgs/{id}/overview`）。
  *
  * 余额与最低起充在 W05 的 overview 里；那条路由没上线时**不让整页失败** ——
- * 组织名、我的角色、权限位是 W01 给的，拿到了就该渲染，充值那一块自己说
+ * 团队名、我的角色、权限位是 W01 给的，拿到了就该渲染，充值那一块自己说
  * 「还没上线」。所以 overview 走 `call()` 吞失败，只有 W01 那条失败才抛。
  */
 export async function getOrg(orgId: string): Promise<OrgDetail> {
@@ -399,7 +399,7 @@ export async function getOrg(orgId: string): Promise<OrgDetail> {
 
 /**
  * `getOrg()` 的返回：`§3.8` 钉死的 `OrgSummary & { balanceMinor; minTopupMinor }`
- * 再加组织页顶部要的开票抬头与概览数字（W01 `GET /{org}` 与 W05 `/overview` 里
+ * 再加团队页顶部要的开票抬头与概览数字（W01 `GET /{org}` 与 W05 `/overview` 里
  * 真有的字段）。只加不改：契约那几列一个不少、类型不变。
  */
 export interface OrgDetail extends OrgSummary {
@@ -410,7 +410,7 @@ export interface OrgDetail extends OrgSummary {
   /** `active` | `suspended`。 */
   status: string;
   requireApproval: boolean;
-  /** 本月组织总花费（minor）；overview 没上线时 0。 */
+  /** 本月团队总花费（minor）；overview 没上线时 0。 */
   monthMinor: number;
   memberCount: number;
   pendingCount: number;
@@ -419,7 +419,7 @@ export interface OrgDetail extends OrgSummary {
 }
 
 /**
- * 改组织名 / 开票抬头 / 税号 / 审批开关（`PATCH /v1/orgs/{org}`，W01）。
+ * 改团队名 / 开票抬头 / 税号 / 审批开关（`PATCH /v1/orgs/{org}`，W01）。
  * 名称、抬头、税号只有 owner 能改；`requireApproval` owner 与 admin 都能改 ——
  * 权限判在网关，这里只负责把没给的字段不发出去。
  */
@@ -453,7 +453,7 @@ export interface OrgMemberRow {
   capMinor: number | null;
   /**
    * 成员行上的两个权限布尔（`_COMMON §3.2` 的列；W01 `GET /members` 与 W05
-   * `/members/usage` 都回）。组织页的权限勾就画它们。契约里的七列一个不少，这两个
+   * `/members/usage` 都回）。团队页的权限勾就画它们。契约里的七列一个不少，这两个
    * 是**只加**的可选项：网关没回时是 `undefined`，不是 `false`（勾就不乱画）。
    */
   canViewOrgPage?: boolean;
@@ -667,7 +667,7 @@ export function inviteUrlFor(code: string): string {
  * `joinOutcomeOf()` 按 HTTP 语义映射成五种入组状态。
  *
  * 网关这条路允许未登录读；但 `call()` 没 token 会先回 `signed_out`，所以这里**不经过**
- * `call()` 的 token 前置判断 —— 未登录的员工也应看到组织名，然后再去登录。
+ * `call()` 的 token 前置判断 —— 未登录的员工也应看到团队名，然后再去登录。
  */
 export async function getInvitePreview(
   code: string,
@@ -705,8 +705,8 @@ export type OrgJoinStatus = "pending" | "joined" | "rejected";
 
 /**
  * 拿邀请码申请入组（`POST /v1/orgs/invites/{code}:request`）。
- * 组织的 `require_approval = false` 时后端直接放人进去，于是 status 是 `joined`；
- * 已经在组织里的人后端也回 `joined`。负责人驳回过、且组织不许再申请时后端回
+ * 团队的 `require_approval = false` 时后端直接放人进去，于是 status 是 `joined`；
+ * 已经在团队里的人后端也回 `joined`。负责人驳回过、且团队不许再申请时后端回
  * `rejected`（或 HTTP 403 —— 那条路走抛，`status` 保真给 `joinOutcomeOf()`）。
  */
 export async function requestJoin(
@@ -730,7 +730,7 @@ export async function requestJoin(
 }
 
 // ---------------------------------------------------------------------------
-// 3 组织任务、查看审计、成果（W06 / W07）
+// 3 团队任务、查看审计、成果（W06 / W07）
 // ---------------------------------------------------------------------------
 
 export interface OrgTaskRow {
@@ -760,7 +760,7 @@ export function normalizeOrgTaskRows(value: unknown): OrgTaskRow[] {
 }
 
 /**
- * 组织范围内的任务（`GET /v1/orgs/{org}/tasks`）。
+ * 团队范围内的任务（`GET /v1/orgs/{org}/tasks`）。
  *
  * **只有扣费事件带 `meta.org_id` 的工作才会出现在这里**（`_COMMON §3.6`，W06 的
  * 判据）。个人钱包付费的东西永远不进这个列表 —— 那是对外承诺，不是过滤条件，
@@ -788,7 +788,7 @@ export interface OrgViewRow {
 
 /**
  * 「谁看过我」（`GET /v1/orgs/me/views`）。任何登录用户都读得到自己的这份记录，
- * 不需要任何组织权限 —— 这是我们敢做全量可见的前提，所以它不能被权限挡住。
+ * 不需要任何团队权限 —— 这是我们敢做全量可见的前提，所以它不能被权限挡住。
  */
 export async function listViewsOfMe(): Promise<OrgViewRow[]> {
   const data = await must<unknown>("/v1/orgs/me/views");
@@ -828,7 +828,7 @@ export function normalizeOrgAssetRows(value: unknown): OrgAssetRow[] {
   });
 }
 
-/** 组织的成果库（`GET /v1/orgs/{org}/assets`，W07）。 */
+/** 团队的成果库（`GET /v1/orgs/{org}/assets`，W07）。 */
 export function listOrgAssets(orgId: string): Promise<unknown[]> {
   if (!orgId) return Promise.reject(new OrgApiError("not_found", 404));
   const path = orgPath(orgId, "/assets");
@@ -951,11 +951,11 @@ export async function getMyOrgUsage(
 }
 
 // ---------------------------------------------------------------------------
-// 6 组织级 MCP 连接（裁定 A3，W08 的 `ent_org_mcp_router.py`）
+// 6 团队级 MCP 连接（裁定 A3，W08 的 `ent_org_mcp_router.py`）
 // ---------------------------------------------------------------------------
 
 /**
- * 一条组织级 MCP 连接（无密文 —— 凭据只在网关里，前端永远拿不到）。
+ * 一条团队级 MCP 连接（无密文 —— 凭据只在网关里，前端永远拿不到）。
  * 字段名与 W15 已落的 `PluginsPage.tsx` 那份归一化一致，换成 import 时渲染层不动。
  */
 export interface OrgMcpConnectionRow {
@@ -1010,7 +1010,7 @@ export async function listInheritedMcp(): Promise<OrgMcpConnectionRow[]> {
 
 /**
  * 一家公司连过的服务器（`GET /v1/orgs/{org}/mcp/connections`）。管理员看全部；
- * 能看组织页的普通成员只看到 `member_visible` 的那几台（过滤在网关做）。
+ * 能看团队页的普通成员只看到 `member_visible` 的那几台（过滤在网关做）。
  */
 export async function listOrgMcpConnections(orgId: string): Promise<OrgMcpConnectionRow[]> {
   if (!orgId) throw new OrgApiError("not_found", 404);
@@ -1030,7 +1030,7 @@ export interface OrgMcpConnectBody {
 }
 
 /**
- * 为组织连一台 MCP 服务器（网关先 `tools/list` 探测一次，通了才落库）。
+ * 为团队连一台 MCP 服务器（网关先 `tools/list` 探测一次，通了才落库）。
  * 返回落库后的那一行 + 探测到的工具数。需要 `manage_members`。
  */
 export async function upsertOrgMcpConnection(
@@ -1099,10 +1099,10 @@ export async function deleteOrgMcpConnection(orgId: string, connectorId: string)
 // 7 企业版第二波（`_COMMON-r5.md` §3.3 / §3.4）
 // ---------------------------------------------------------------------------
 // 请求体字段名以后端 router 为准：资产是 camelCase（`PublishBody` / `GrantBody`），
-// MCP 补丁是 snake_case（`forward_member_identity`），建组织现有字段是 camelCase，
+// MCP 补丁是 snake_case（`forward_member_identity`），建团队现有字段是 camelCase，
 // 协议版本按 §3.4 发 `agreement_version`（W28 落库），并兼发 `agreementVersion`。
 
-/** 企业服务协议当前版本。建组织必须勾选并带上这个字符串。 */
+/** 企业服务协议当前版本。建团队必须勾选并带上这个字符串。 */
 export const ENTERPRISE_AGREEMENT_VERSION = "2026-09-20";
 
 function agreementRequiredOf(body: unknown): boolean {
@@ -1113,7 +1113,7 @@ function agreementRequiredOf(body: unknown): boolean {
 }
 
 /**
- * 发布一件成果到组织库（`POST /v1/orgs/{org}/assets`）。
+ * 发布一件成果到团队库（`POST /v1/orgs/{org}/assets`）。
  *
  * 前端签名是 `{ kind, title, url, sourceRef? }`；网关 `PublishBody` 要的是
  * `assetKind` + `assetRef`（`sourceRef` 优先，否则用 `url`）。
@@ -1148,7 +1148,7 @@ export async function publishOrgAsset(
   return { id };
 }
 
-/** 从组织库撤下（`DELETE /v1/orgs/{org}/assets/{asset}`）。不删源文件。 */
+/** 从团队库撤下（`DELETE /v1/orgs/{org}/assets/{asset}`）。不删源文件。 */
 export async function revokeOrgAsset(orgId: string, assetId: string): Promise<void> {
   if (!orgId || !assetId) throw new OrgApiError("not_found", 404);
   await must<unknown>(
@@ -1159,7 +1159,7 @@ export async function revokeOrgAsset(orgId: string, assetId: string): Promise<vo
 }
 
 /**
- * 把一件组织成果授权给某个成员读（`POST …/assets/{asset}/grants`）。
+ * 把一件团队成果授权给某个成员读（`POST …/assets/{asset}/grants`）。
  * `GrantBody` 要 `subjectKind` / `subjectId` / `capability`；本导出只暴露成员 + 读。
  */
 export async function grantOrgAsset(orgId: string, assetId: string, userId: string): Promise<void> {
@@ -1225,7 +1225,7 @@ export async function revokeOrgAssetGrant(
 }
 
 /**
- * 是否把成员身份转发给这台组织 MCP（`PATCH …/mcp/connections/{connector}`）。
+ * 是否把成员身份转发给这台团队 MCP（`PATCH …/mcp/connections/{connector}`）。
  * 默认关；管理员显式打开才转发（A14）。
  */
 export async function setOrgMcpForwardIdentity(
@@ -1242,7 +1242,7 @@ export async function setOrgMcpForwardIdentity(
 }
 
 /**
- * 建组织（`POST /v1/orgs`）。`agreementVersion` 必须等于 `ENTERPRISE_AGREEMENT_VERSION`；
+ * 建团队（`POST /v1/orgs`）。`agreementVersion` 必须等于 `ENTERPRISE_AGREEMENT_VERSION`；
  * 网关 422 `agreement_required` 时抛 `OrgApiError`，码就是 `agreement_required`。
  */
 export async function createOrg(body: {

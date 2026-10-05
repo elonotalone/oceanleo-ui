@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // 全家桶 36 个 consumer 的单一事实源。各站 account/page.tsx 只需把它包进自己的
 // <AppShell> / <SiteShell>。2026-09-21 起内部渲染 SettingsHub，默认 tab=account；
-// 组织内容只在组织栏出现。props 签名保持不变。
+// 团队内容只在团队栏出现。props 签名保持不变。
 // ============================================================================
 
 import type { ReactNode } from "react";
@@ -40,16 +40,16 @@ export interface AccountPageProps {
    * 主站用 extraStats 放「任务数」占第三格时传 false，避免挤成四格。
    */
   showRequestStat?: boolean;
-  /** 用户卡片里的计划标签，默认「免费计划」；传 null 隐藏。 */
+  /** @deprecated 账户页不再显示计划标签；保留以免旧调用方类型报错。 */
   planLabel?: string | null;
-  /** 菜单下方的额外区块（如主站的「记忆」）。进入设置中心「数据与组织」分组。 */
+  /** 菜单下方的额外区块（如主站的「记忆」）。进入设置中心「数据与团队」分组。 */
   extraSections?: ReactNode;
   /**
    * 未登录时点「登录」的回调。**不传时就地打开共享 AuthDialog**，
    * 绝不跳首页——传入自定义实现时也不得退化成跳转。
    */
   onSignInClick?: () => void;
-  /** 登录成功后的回调（默认刷新当前页，让全站进入登录态）。 */
+  /** 登录成功后的回调。默认就地切到已登录账户，不整页刷新。 */
   onSignedIn?: () => void;
   /** 退出后跳转（默认刷新当前页）。 */
   onSignedOut?: () => void;

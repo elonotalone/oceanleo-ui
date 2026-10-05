@@ -4,7 +4,7 @@ export { ApiGuidePage } from "./ApiGuidePage";
 export { UsageHistory } from "./UsageHistory";
 export { CostPage, UsageBarChart } from "./CostPage";
 export { BillingSection } from "./settings/sections/BillingSection";
-export { CostSection } from "./settings/sections/CostSection";
+export { UsageDetailsSection, CostSection } from "./settings/sections/UsageDetailsSection";
 export { PageHeader } from "./PageHeader";
 export { ByokKeys } from "./ByokKeys";
 // 共享登录 UI（W10 owner）：邮箱密码 / 中国手机号 OTP / 微信扫码三方式，全家桶
@@ -66,7 +66,7 @@ export {
   CloudComputersSection,
   type CloudComputersSectionProps,
 } from "./CloudComputersPage";
-// 企业版（2026-09，W11）：组织页（负责人看板；被授予 view_org_page 的成员也能进）。
+// 企业版（2026-09，W11）：团队页（负责人看板；被授予 view_org_page 的成员也能进）。
 // 取数只走 lib/org-api。成员侧面板 OrgMembership 在下面（W13）。
 export { OrgPage } from "./OrgPage";
 export type { OrgPageProps } from "./OrgPage";

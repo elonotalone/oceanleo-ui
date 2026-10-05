@@ -2023,7 +2023,7 @@ function AgentChatInner({
   const orgTab: CanvasTab | null = renderOrgPanel
     ? {
         id: "org",
-        label: tt("组织"),
+        label: tt("组织编排"),
         content: <div className="h-full">{renderOrgPanel({ messages, running })}</div>,
       }
     : null;

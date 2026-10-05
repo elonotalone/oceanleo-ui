@@ -9,15 +9,15 @@ export const ENTERPRISE_COPY_SOURCE = {
   daysN: "{n} 天",
   capUpdated: "上限已更新",
   tasks: "任务",
-  noOrgPagePermission: "你没有查看这个组织的权限。",
+  noOrgPagePermission: "你没有查看这个团队的权限。",
   notInAnyOrgGoAccount:
-    "你还不属于任何组织。拿到负责人发的邀请链接后，在账户页申请加入。",
+    "你还不属于任何团队。拿到负责人发的邀请链接后，在账户页申请加入。",
   topupNotReady: "充值还没上线",
   copyFailedManual: "复制失败，请手动选中链接复制。",
   approved: "已通过",
   rejected: "已驳回",
   invoiceTitle: "开票抬头",
-  currentOrg: "当前组织",
+  currentOrg: "当前团队",
   pendingJoinRequests: "待审批的入组申请",
   outcomes: "成果",
   myRole: "我的身份",
@@ -33,9 +33,9 @@ export const ENTERPRISE_COPY_SOURCE = {
   noPendingRequests: "没有待审批的申请",
   createInviteLink: "生成邀请链接",
   viewAllTasks: "看全部任务",
-  viewOrgPage: "看组织页",
-  orgBalance: "组织余额",
-  orgName: "组织名",
+  viewOrgPage: "看团队页",
+  orgBalance: "团队余额",
+  orgName: "团队名",
   editInvoice: "编辑抬头",
   spend: "花费",
   role: "角色",
@@ -46,10 +46,10 @@ export const ENTERPRISE_COPY_SOURCE = {
   approve: "通过",
   reject: "驳回",
 
-  // --- OrgMcpSection（组织页共用连接器；「添加连接器」沿用插件浮层同一句） ---
+  // --- OrgMcpSection（团队页共用连接器；「添加连接器」沿用插件浮层同一句） ---
   orgSharedConnectors: "共用连接器",
   orgSharedConnectorsHintAdmin:
-    "连一次，这个组织里的人都能用，不用各自再填密钥。",
+    "连一次，这个团队里的人都能用，不用各自再填密钥。",
   orgSharedConnectorsHintMember: "管理员连好的工具，你可以直接用。",
   orgSharedConnectorsEmpty: "还没有共用连接器。",
   orgSharedServerUrl: "服务地址",
@@ -68,9 +68,9 @@ export const ENTERPRISE_COPY_SOURCE = {
   // --- OrgMembership ---
   youWillJoinOrg: "你将申请加入「{org}」",
   notInAnyOrgApplyBelow:
-    "你还不属于任何组织。拿到负责人发的邀请链接后，在下面申请加入。",
-  whatOrgCanSee: "加入后这个组织能看到什么",
-  joinOrg: "加入组织",
+    "你还不属于任何团队。拿到负责人发的邀请链接后，在下面申请加入。",
+  whatOrgCanSee: "加入后这个团队能看到什么",
+  joinOrg: "加入团队",
   capReached: "已达上限",
   pasteInviteCode:
     "把负责人发给你的邀请码贴在这里；从邀请链接打开时会自动带入。",
@@ -80,10 +80,10 @@ export const ENTERPRISE_COPY_SOURCE = {
   requestToJoin: "申请加入",
   admin: "管理员",
   orgAdminViewAudit:
-    "组织管理员每次打开你用组织钱包做的任务，都会在这里留一条记录。",
+    "团队管理员每次打开你用团队钱包做的任务，都会在这里留一条记录。",
   whoViewedMe: "谁看过我",
   noOneViewedYet: "还没有人看过",
-  thisOrg: "这个组织",
+  thisOrg: "这个团队",
   inviteCode: "邀请码",
   joinsImmediately: "（申请后立即加入）",
   needsOwnerApproval: "（需负责人通过）",
@@ -96,45 +96,52 @@ export const ENTERPRISE_COPY_SOURCE = {
 
   // --- PayerSelector ---
   personalWallet: "个人钱包",
-  orgGoneFallback: "之前选的组织已停用，或你已不在该组织里。",
+  orgGoneFallback: "之前选的团队已停用，或你已不在该团队里。",
   switchedToPersonal: "已切回个人钱包",
   whoPaysThisTime: "这次谁付钱",
 
   // --- AccountPage ---
-  myOrgsMenuDesc: "你所在的组织、本月在每个组织花了多少、谁看过你的任务",
-  myOrgs: "我的组织",
+  myOrgsMenuDesc: "你所在的团队、本月在每个团队花了多少、谁看过你的任务",
+  myOrgs: "我的团队",
 
   // --- W24 OrgMembership / org-api ---
-  orgGone: "这个组织已经不在了。",
+  orgGone: "这个团队已经不在了。",
   agreeRequired: "请先阅读并勾选《OceanLeo 企业服务协议》。",
   joinDisclosurePaid:
-    "用组织钱包付费的任务，组织管理员可以查看全部内容；用你个人钱包付费的任务，组织永远看不到。",
+    "用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。",
   joinDisclosureAudit: "每次查看都会留下记录，你可以在下面看到谁看过。",
   joinPending:
-    "申请已提交，等负责人通过。通过后这里会出现这个组织，你也会收到一条站内通知。",
-  joinJoined: "已加入「{org}」。现在可以在发任务时选择用这个组织的钱包付费。",
+    "申请已提交，等负责人通过。通过后这里会出现这个团队，你也会收到一条站内通知。",
+  joinJoined: "已加入「{org}」。现在可以在发任务时选择用这个团队的钱包付费。",
   joinRejected:
-    "申请没有通过。负责人驳回了你的申请，或这个组织暂停了加入；有疑问请直接联系负责人。",
+    "申请没有通过。负责人驳回了你的申请，或这个团队暂停了加入；有疑问请直接联系负责人。",
   joinExpired: "这条邀请链接已经过期或被撤销了。请负责人重新生成一条再发给你。",
-  joinAlreadyMember: "你已经在这个组织里了，不需要再申请。",
-  createOrg: "创建组织",
+  joinAlreadyMember: "你已经在这个团队里了，不需要再申请。",
+  createOrg: "创建团队",
   iHaveReadAndAgree: "我已阅读并同意",
   enterpriseAgreementLink: "《OceanLeo 企业服务协议》",
-  orgMemberRole: "组织成员",
+  orgMemberRole: "团队成员",
 
   // --- W25 PluginsPage ---
   forwardMemberIdentity: "把成员身份转给这台服务器",
   forwardMemberIdentityHint:
-    "开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本组织。",
+    "开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本团队。",
 
   // --- W23 OrgPage / PublishToOrgButton ---
   withdrawAsset: "撤回",
-  orgLibrary: "组织库",
-  orgLibraryEmpty: "组织库还是空的。成员可以从工作台把成果发布进来。",
-  publishToOrg: "发布到组织",
-  alreadyInNamedOrgLibrary: "已在 {name} 组织库",
-  alreadyInNOrgLibraries: "已在 {n} 个组织库",
+  orgLibrary: "团队库",
+  orgLibraryEmpty: "团队库还是空的。成员可以从工作台把成果发布进来。",
+  publishToOrg: "发布到团队",
+  alreadyInNamedOrgLibrary: "已在 {name} 团队库",
+  alreadyInNOrgLibraries: "已在 {n} 个团队库",
+  signInToJoin: "登录后申请加入",
+  orgInviteLinkHint:
+    "你打开的是一条团队邀请链接。登录后邀请码会自动带入，不用再找负责人要一次。",
+  loginThenJoinHint: "登录后可以贴上负责人发给你的邀请码申请加入团队。",
+  goToMyOrgs: "去我的团队",
+  pendingOrgsInAccount: "申请中或已通过的团队，都能在账户页的「我的团队」里看到。",
 } as const;
+
 
 export type EnterpriseCopyName = keyof typeof ENTERPRISE_COPY_SOURCE;
 export type EnterpriseCopyMessages = Record<EnterpriseCopyName, string>;

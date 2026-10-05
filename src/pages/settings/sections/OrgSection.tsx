@@ -1,24 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { OrgMembership } from "../../OrgMembership";
 import { OrgPage } from "../../OrgPage";
 import { useUI } from "../../../i18n/ui/useUI";
 
 const ORG_PANES = [
-  { id: "mine", label: "我的组织" },
-  { id: "create", label: "创建组织" },
-  { id: "join", label: "加入组织" },
+  { id: "mine", label: "我的团队" },
+  { id: "create", label: "创建团队" },
+  { id: "join", label: "加入团队" },
 ] as const;
 
-type OrgPane = (typeof ORG_PANES)[number]["id"];
+export type OrgPane = (typeof ORG_PANES)[number]["id"];
 
-export function OrgSection({ orgHref: _orgHref }: { orgHref?: string }) {
+export function OrgSection({
+  orgHref: _orgHref,
+  initialPane = "mine",
+}: {
+  orgHref?: string;
+  initialPane?: OrgPane;
+}) {
   void _orgHref;
   const tt = useUI();
-  const [pane, setPane] = useState<OrgPane>("mine");
+  const [pane, setPane] = useState<OrgPane>(initialPane);
+  useEffect(() => {
+    setPane(initialPane);
+  }, [initialPane]);
   return (
-    <div data-settings-pane="org" className="space-y-4">
+    <div data-settings-pane="team" className="space-y-4">
       <div
         className="flex gap-1"
         data-org-settings-tabs=""
@@ -46,7 +55,7 @@ export function OrgSection({ orgHref: _orgHref }: { orgHref?: string }) {
       {pane === "mine" ? (
         <section data-org-settings-block="mine" className="space-y-3">
           <p className="text-[12px] text-neutral-500">
-            {tt("你所在的组织、本月在每个组织花了多少、谁看过你的任务")}
+            {tt("你所在的团队、本月在每个团队花了多少、谁看过你的任务")}
           </p>
           <OrgPage embedded />
           <OrgMembership embedded hideWhenEmpty only="views" />

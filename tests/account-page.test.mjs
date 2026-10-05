@@ -77,6 +77,7 @@ const authStubUrl = dataModule(`
   export function oceanleoConfigured() { return s().configured; }
   export function browserClient() { return s().configured ? s().client : null; }
   export async function getUserEmail() { return s().email; }
+  export async function getUserId() { return s().email ? "user-1" : null; }
   export async function getCredits() { return s().credits; }
   export async function getCreditHistory(limit) {
     s().creditHistoryLimit = limit;
@@ -87,6 +88,7 @@ const authStubUrl = dataModule(`
     s().usageCalls = (s().usageCalls || 0) + 1;
     return s().usage;
   }
+  export async function getAudit() { return { ok: false }; }
   export async function signOutEverywhere() { s().signedOut = true; }
   // 「登不上时说什么」的单一事实源（真身在 src/lib/auth/config.ts）。桩按场景给：
   // 不给就退回真身在非 cn 家族下的那两句。
@@ -113,6 +115,9 @@ const confirmStubUrl = dataModule(`
       React.createElement("button", { onClick: onConfirm }, "confirm"),
     );
   }
+  export function Modal({ children, title }) {
+    return React.createElement("div", { "data-testid": "modal" }, title, children);
+  }
 `);
 
 // W10 的 AuthDialog 由本仓 src/pages/AuthDialog.tsx 提供；这里只按契约 stub
@@ -126,6 +131,14 @@ const authDialogStubUrl = dataModule(`
       { "data-testid": "auth-dialog" },
       React.createElement("button", { onClick: onSuccess }, "ok"),
       React.createElement("button", { onClick: onClose }, "close"),
+    );
+  }
+  export function AuthPanel({ onSuccess }) {
+    globalThis.__authPanelMounts = (globalThis.__authPanelMounts || 0) + 1;
+    return React.createElement(
+      "div",
+      { "data-testid": "auth-panel", "data-auth-panel": "" },
+      React.createElement("button", { onClick: onSuccess }, "ok"),
     );
   }
 `);
@@ -203,7 +216,7 @@ const orgStubUrl = dataModule(`
       "div",
       { "data-testid": "org-membership" },
       "你还没有加入任何组织",
-      "创建组织",
+      "创建团队",
       "我已阅读并同意《OceanLeo 企业服务协议》",
     );
   }
@@ -214,6 +227,49 @@ const paneStub = (exportName, testId) => dataModule(`
   export function ${exportName}() {
     return React.createElement("div", { "data-testid": ${JSON.stringify(testId)} });
   }
+`);
+
+const accountHomeStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function AccountHome({ onSignedOut }) {
+    const [open, setOpen] = React.useState(false);
+    return React.createElement(
+      "div",
+      { "data-settings-pane": "account", "data-account-home": "" },
+      React.createElement("button", {
+        "data-account-sign-out": "",
+        onClick: () => setOpen(true),
+      }, "退出登录"),
+      open
+        ? React.createElement(
+            "div",
+            { "data-testid": "confirm-dialog" },
+            React.createElement("p", null, "这将退出全部 OceanLeo 站点。"),
+            React.createElement("button", {
+              onClick: () => {
+                globalThis.__authStub.signedOut = true;
+                onSignedOut?.();
+              },
+            }, "confirm"),
+          )
+        : null,
+    );
+  }
+  export default AccountHome;
+`);
+const signInMethodsStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function SignInMethodsPage() {
+    return React.createElement("div", { "data-sign-in-methods": "" });
+  }
+  export default SignInMethodsPage;
+`);
+const loginDevicesStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function LoginDevicesPage() {
+    return React.createElement("div", { "data-login-devices": "" });
+  }
+  export default LoginDevicesPage;
 `);
 
 const COMPONENT_STUBS = {
@@ -227,11 +283,16 @@ const COMPONENT_STUBS = {
   "../ui": confirmStubUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./AuthDialog": authDialogStubUrl,
+  "../AuthDialog": authDialogStubUrl,
   "./PageHeader": pageHeaderStubUrl,
   "./ApiPage": paneStub("ApiPage", "pane-api"),
   "./DevicesPage": paneStub("DevicesPage", "pane-devices"),
   "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
   "./settings/personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
+  "./settings/mail/MailSection": paneStub("MailSection", "pane-mail"),
+  "../account/AccountHome": accountHomeStubUrl,
+  "../account/SignInMethodsPage": signInMethodsStubUrl,
+  "../account/LoginDevicesPage": loginDevicesStubUrl,
 };
 
 /** 本文件所有组件共用这套替身；每次调用还能再补几条。 */
@@ -371,19 +432,22 @@ test("showRequestStat=false 时第三格让位给 extraStats（主站的「任�
   view.cleanup();
 });
 
-/* ---------- 超集第 2 项：用户卡片「免费计划」 ---------- */
+/* ---------- 超集第 2 项：账户页不写计划 / 积分 ---------- */
 
-test("用户卡片默认带「免费计划」标签，planLabel=null 才隐藏", async () => {
+test("账户页与侧栏都不出现免费计划、升级、积分、免费积分", async () => {
   const shown = await render(React.createElement(AccountPage), signedInStub());
-  assert.ok(shown.text().includes("免费计划"));
+  assert.equal(shown.text().includes("免费计划"), false);
+  assert.equal(shown.text().includes("升级"), false);
+  assert.equal(shown.text().includes("积分"), false);
+  assert.equal(shown.text().includes("免费积分"), false);
   shown.cleanup();
 
-  const hidden = await render(
-    React.createElement(AccountPage, { planLabel: null }),
+  const forced = await render(
+    React.createElement(AccountPage, { planLabel: "免费计划" }),
     signedInStub(),
   );
-  assert.ok(!hidden.text().includes("免费计划"));
-  hidden.cleanup();
+  assert.equal(forced.text().includes("免费计划"), false);
+  forced.cleanup();
 });
 
 /* ---------- 超集第 3 项：菜单项 external 外链 ---------- */
@@ -434,14 +498,22 @@ test("「账号安全」不是链接：共享包没有路由，写成 href 就�
   view.cleanup();
 });
 
-test("AccountPage 默认打开账户栏：安全中心与退出在场，组织文案不在", async () => {
+test("AccountPage 默认打开账户栏：不再嵌入安全中心，账户首页与退出在场", async () => {
   const stub = signedInStub();
   const view = await render(React.createElement(AccountPage), stub);
-  const panel = view.host.querySelector("[data-testid=security-panel]");
-  assert.ok(panel, "默认账户栏没有渲染安全中心");
-  assert.equal(panel.getAttribute("data-embedded"), "true");
-  assert.ok(view.buttonByText("退出登录"));
-  assert.equal(view.text().includes("创建组织"), false);
+  assert.equal(
+    view.host.querySelector("[data-testid=security-panel]"),
+    null,
+    "账户首页不应再整页嵌入安全中心",
+  );
+  assert.equal(
+    view.host.querySelector('[data-security-section="devices"]'),
+    null,
+    "账户首页不应再出现登录设备块",
+  );
+  assert.ok(view.host.querySelector("[data-settings-pane=account]"), "默认账户栏没有渲染账户首页");
+  assert.ok(view.host.querySelector("[data-account-sign-out]"), "退出入口应在账户首页");
+  assert.equal(view.text().includes("创建团队"), false);
   assert.equal(view.text().includes("企业服务协议"), false);
   assert.equal(view.host.querySelector("[data-testid=org-membership]"), null);
   view.cleanup();
@@ -512,22 +584,17 @@ test("境内版给的是「还没开放」这句人话，不提环境变量", as
 
 /* ---------- 操作员点名的缺陷：登录按钮必须就地起作用 ---------- */
 
-test("未登录且没传 onSignInClick 时，点「登录」就地打开 AuthDialog，不跳首页", async () => {
+test("未登录且没传 onSignInClick 时，登录板块就地铺在设置卡上，不跳首页", async () => {
   const view = await render(
     React.createElement(AccountPage),
     signedInStub({ email: null }),
   );
-  assert.ok(view.text().includes("尚未登录"));
-  // 死路的两个形态：跳首页的 CTA、以及点了什么都不发生。
+  assert.ok(view.host.querySelector("[data-settings-guest-auth]"));
+  assert.ok(view.host.querySelector("[data-testid=auth-panel]"));
   assert.ok(!view.text().includes("返回首页登录"));
   assert.equal([...view.host.querySelectorAll('a[href="/"]')].some((link) => link.textContent?.includes("登录")), false);
-
-  const button = view.buttonByText("登录");
-  assert.ok(button);
   assert.equal(view.host.querySelector('[data-testid="auth-dialog"]'), null);
-  await view.click(button);
-  assert.ok(view.host.querySelector('[data-testid="auth-dialog"]'));
-  assert.equal(globalThis.__authDialogMounts > 0, true);
+  assert.equal(globalThis.__authPanelMounts > 0, true);
   view.cleanup();
 });
 
@@ -549,11 +616,9 @@ test("登录成功后回调 onSignedIn（站点据此刷新，而不是留在空
     React.createElement(AccountPage, { onSignedIn: () => { signedIn += 1; } }),
     signedInStub({ email: null }),
   );
-  await view.click(view.buttonByText("登录"));
-  const ok = [...view.host.querySelectorAll('[data-testid="auth-dialog"] button')][0];
+  const ok = [...view.host.querySelectorAll('[data-testid="auth-panel"] button')][0];
   await view.click(ok);
   assert.equal(signedIn, 1);
-  assert.equal(view.host.querySelector('[data-testid="auth-dialog"]'), null);
   view.cleanup();
 });
 
@@ -566,7 +631,7 @@ test("退出登录走 signOutEverywhere（全家桶一起退），并回调 onSi
     React.createElement(AccountPage, { onSignedOut: () => { out += 1; } }),
     stub,
   );
-  await view.click(view.buttonByText("退出登录"));
+  await view.click(view.host.querySelector("[data-account-sign-out]"));
   const dialog = view.host.querySelector('[data-testid="confirm-dialog"]');
   assert.ok(dialog.textContent.includes("这将退出全部 OceanLeo 站点。"));
   await view.click(dialog.querySelector("button"));
@@ -597,34 +662,32 @@ test("SettingsPage 未登录时给明确提示，而不是一张邮箱为「—�
   view.cleanup();
 });
 
-test("SettingsPage 默认带「知识库」入口，knowledgeBaseLink=false 时让位给 extraSections", async () => {
-  const withLink = await render(React.createElement(SettingsPage), signedInStub());
-  const knowledgeItem = withLink.host.querySelector("[data-settings-item=knowledge-link]");
-  assert.ok(knowledgeItem, "知识库入口没有出现在数据分组");
-  await withLink.click(knowledgeItem);
-  assert.ok(withLink.text().includes("前往主站管理知识库 →"));
-  withLink.cleanup();
+test("SettingsPage 不再带知识库入口；extraSections 仍进数据分组", async () => {
+  const bare = await render(React.createElement(SettingsPage), signedInStub());
+  assert.ok(!bare.host.querySelector("[data-settings-item=knowledge-link]"));
+  assert.ok(!bare.host.querySelector("[data-settings-item=knowledge]"));
+  assert.ok(!bare.text().includes("前往主站管理知识库 →"));
+  bare.cleanup();
 
   const own = await render(
     React.createElement(SettingsPage, {
-      knowledgeBaseLink: false,
-      extraSections: React.createElement("section", null, "主站真·知识库"),
+      extraSections: React.createElement("section", null, "站点额外区块"),
     }),
     signedInStub(),
   );
   assert.ok(!own.host.querySelector("[data-settings-item=knowledge-link]"));
   await own.click(own.host.querySelector("[data-settings-item=extras]"));
   assert.ok(!own.text().includes("前往主站管理知识库 →"));
-  assert.ok(own.text().includes("主站真·知识库"));
+  assert.ok(own.text().includes("站点额外区块"));
   own.cleanup();
 });
 
-test("tab=org 才出现组织栏，创建组织与企业服务协议只在这里", async () => {
+test("tab=org 才出现团队栏，创建团队与企业服务协议只在这里", async () => {
   const view = await render(React.createElement(AccountPage), signedInStub());
-  assert.equal(view.text().includes("创建组织"), false);
-  await view.click(view.host.querySelector("[data-settings-item=org]"));
+  assert.equal(view.text().includes("创建团队"), false);
+  await view.click(view.host.querySelector("[data-settings-item=team]"));
   assert.ok(view.host.querySelector("[data-testid=org-membership]"));
-  assert.ok(view.text().includes("创建组织"));
+  assert.ok(view.text().includes("创建团队"));
   assert.ok(view.text().includes("《OceanLeo 企业服务协议》"));
   view.cleanup();
 });
@@ -634,9 +697,9 @@ test("tab=org 才出现组织栏，创建组织与企业服务协议只在这里
 //   1. AccountPage 的 showRequestStat 默认值改成 false
 //      → 「三格统计的第三格是「近 30 天请求」」失败：cards.length 2 !== 3
 //   2. 把 onSignInClick ?? (() => setShowAuth(true)) 改回裸 onSignInClick
-//      → 「点「登录」就地打开 AuthDialog」失败：auth-dialog 仍为 null
-//   3. 把 resolvedPlanLabel 改成恒等于 planLabel（丢默认「免费计划」）
-//      → 「用户卡片默认带「免费计划」标签」失败
+//      → 「未登录时登录板块就地铺在设置卡上」失败：guest auth panel 仍为 null
+//   3. 把「免费计划」重新画回侧栏或账户卡
+//      → 「账户页与侧栏都不出现免费计划」失败
 //   4. 把 external 分支删掉、统一走 Link
 //      → 「菜单项 external 走原生 <a target=_blank>」失败：target 为 null
 //   5. 去掉 SettingsPage 的 !configured 早返回

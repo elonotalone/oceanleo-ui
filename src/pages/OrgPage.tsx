@@ -1,28 +1,28 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 企业版「组织页」（负责人看板，W11）
+// @oceanleo/ui — 企业版「团队页」（负责人看板，W11）
 // ----------------------------------------------------------------------------
-// 负责人打开一页看完：组织余额与充值入口、每个成员一行（用量 / 任务数 / 成果数 /
+// 负责人打开一页看完：团队余额与充值入口、每个成员一行（用量 / 任务数 / 成果数 /
 // 最后活跃 / 每月上限）、待审批的入组申请、近 1/7/30 天用量趋势与按模型分布、
 // 邀请链接生成。四块从上到下：① 顶部 ② 成员表 ③ 审批与邀请 ④ 用量。
 //
 // **这一页不是只有 owner 能进。** 被授予 `view_org_page` 的任何成员都能进（操作员要求；
 // `_COMMON §3.3`：owner 恒真，其余看 `ent_org_members.can_view_org_page`）。没这个权限的人
-// 看到的是一句「你没有查看这个组织的权限」——**不渲染空表**，也不发成员表的请求。
+// 看到的是一句「你没有查看这个团队的权限」——**不渲染空表**，也不发成员表的请求。
 //
-// 多组织：一个人可能同时是 A 的 owner、B 的普通成员。顶部用和组织设置标签同一套
-//  pill 切换（`listMyOrgs()`），当前组织写进 URL 的 `?org=<id>`，刷新后保持；URL 没带
-// 时选第一个能进的组织。组织共用的连接器只在这一页出现、也只在这一页设置。
+// 多团队：一个人可能同时是 A 的 owner、B 的普通成员。顶部用和团队设置标签同一套
+//  pill 切换（`listMyOrgs()`），当前团队写进 URL 的 `?org=<id>`，刷新后保持；URL 没带
+// 时选第一个能进的团队。团队共用的连接器只在这一页出现、也只在这一页设置。
 //
-// 取数只走 `../lib/org-api`（全波唯一的组织 API 出口，`_COMMON §3.8`；本文件里不许出现
+// 取数只走 `../lib/org-api`（全波唯一的团队 API 出口，`_COMMON §3.8`；本文件里不许出现
 // 网关路径字面量，测试按此断言）。每一块各自
 // 加载、各自失败：W05 的 overview 没上线时余额那一块说「还没上线」，成员表照常；
 // W09 的充值路由本波没落，充值按钮在没人接 `onTopup` 时显示「充值还没上线」。
 // 失败只显示 `orgErrorCopy(code)` 的人话，不把英文 error 甩到页面上。
 //
 // 谁能改什么（权限判在网关，这里只决定画不画控件，画错了网关会 403）：
-//   · 抬头 / 税号 / 组织名：owner；
+//   · 抬头 / 税号 / 团队名：owner；
 //   · 成员的两个权限勾：owner / admin（`manage_members`）；
 //   · 每月上限：owner（`manage_wallet`）；
 //   · 通过 / 驳回申请、生成邀请：owner / admin。
@@ -88,7 +88,7 @@ export function withOrgParam(href: string, orgId: string): string {
   }
 }
 
-/** 这个人能不能进这家的组织页（owner 恒真；其余看 `can_view_org_page`）。 */
+/** 这个人能不能进这家的团队页（owner 恒真；其余看 `can_view_org_page`）。 */
 export function canViewOrgPage(org: Pick<OrgSummary, "role" | "canViewOrgPage"> | null | undefined): boolean {
   if (!org) return false;
   return org.role === "owner" || org.canViewOrgPage === true;
@@ -105,7 +105,7 @@ export function canManageWallet(role: OrgRole | string): boolean {
 }
 
 /**
- * 从「我的组织」里挑当前要看的那一家：
+ * 从「我的团队」里挑当前要看的那一家：
  *   1. URL / props 点名的那家，只要它在列表里（哪怕没权限——那要显示的是「没权限」，不是悄悄换一家）；
  *   2. 否则第一家能进的；
  *   3. 否则第一家（会显示「没权限」）；一家都没有给 null。
@@ -223,7 +223,7 @@ async function loadOrgLibraryApi(): Promise<OrgLibraryApi> {
 type Loaded<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; code: OrgApiCode };
 
 export interface OrgPageProps {
-  /** 点名要看的组织（优先级低于 URL 的 `?org=`）。 */
+  /** 点名要看的团队（优先级低于 URL 的 `?org=`）。 */
   orgId?: string;
   /** 充值按钮的去处。不传时按钮显示「充值还没上线」并禁用（W09 的充值路由本波未落）。 */
   onTopup?: (org: OrgDetail) => void;
@@ -274,7 +274,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
   const [capDraft, setCapDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string>("");
 
-  // ① 我的组织
+  // ① 我的团队
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -353,7 +353,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
     }
   }, []);
 
-  // ②③ 组织详情 / 成员 / 待审批 —— 只在有权限时发。没权限的人一条请求都不发。
+  // ②③ 团队详情 / 成员 / 待审批 —— 只在有权限时发。没权限的人一条请求都不发。
   useEffect(() => {
     if (!currentId || !allowed) return;
     setDetail({ status: "loading" });
@@ -518,9 +518,9 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
 
   return (
     <section className={className} data-org-page="1">
-      {!embedded && <PageHeader title="组织" onBack={onBack} />}
+      {!embedded && <PageHeader title={tt("团队")} onBack={onBack} />}
 
-      {/* 组织切换器 */}
+      {/* 团队切换器 */}
       {orgs.status === "loading" && <p className={`mt-4 ${subtleClass}`}>…</p>}
       {orgs.status === "error" && (
         <p className={`mt-4 ${subtleClass}`} data-org-page-state="error">
@@ -529,7 +529,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
       )}
       {orgs.status === "ok" && orgRows.length === 0 && (
         <p className={`mt-4 ${subtleClass}`} data-org-page-state="none">
-          {tt("你还不属于任何组织。拿到负责人发的邀请链接后，在账户页申请加入。")}
+          {tt("你还不属于任何团队。拿到负责人发的邀请链接后，在账户页申请加入。")}
         </p>
       )}
       {orgs.status === "ok" && orgRows.length > 1 && (
@@ -537,7 +537,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
           className="mt-4 flex flex-wrap gap-1"
           data-org-switcher="1"
           role="tablist"
-          aria-label={tt("当前组织")}
+          aria-label={tt("当前团队")}
         >
           {orgRows.map((org) => {
             const active = org.id === currentId;
@@ -563,7 +563,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
       {/* 无权限：一句话，不渲染空表 */}
       {current && !allowed && (
         <p className="mt-4 text-[13px] text-neutral-700" role="status" data-org-page-state="forbidden">
-          {tt("你没有查看这个组织的权限。")}
+          {tt("你没有查看这个团队的权限。")}
         </p>
       )}
 
@@ -579,7 +579,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
             </p>
           )}
 
-          {/* ① 顶部：组织名、抬头 / 税号、余额、充值 */}
+          {/* ① 顶部：团队名、抬头 / 税号、余额、充值 */}
           <div className={sectionClass} data-org-section="header">
             {detail.status === "loading" && <p className={subtleClass}>…</p>}
             {detail.status === "error" && <p className={subtleClass}>{tt(orgErrorCopy(detail.code))}</p>}
@@ -603,7 +603,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                   )}
                 </div>
                 <div className="text-right">
-                  <p className={subtleClass}>{tt("组织余额")}</p>
+                  <p className={subtleClass}>{tt("团队余额")}</p>
                   <p className="text-[20px] font-semibold tabular-nums text-neutral-900" data-org-balance="1">
                     {detail.data.overviewAvailable ? money(detail.data.balanceMinor) : tt("还没上线")}
                   </p>
@@ -642,7 +642,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                 }}
               >
                 <label className="grid gap-1">
-                  <span className={subtleClass}>{tt("组织名")}</span>
+                  <span className={subtleClass}>{tt("团队名")}</span>
                   <input
                     className={inputClass}
                     value={draft.name}
@@ -758,7 +758,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                                   onChange={(e) => void togglePermission(row, "view_org_page", e.target.checked)}
                                   data-org-perm="view_org_page"
                                 />
-                                {tt("看组织页")}
+                                {tt("看团队页")}
                               </label>
                               <label className="inline-flex items-center gap-1">
                                 <input
@@ -781,13 +781,13 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
             )}
           </div>
 
-          {/* 组织库：成员发布进来的成果。发布者或负责人可撤；负责人可授权给成员。 */}
+          {/* 团队库：成员发布进来的成果。发布者或负责人可撤；负责人可授权给成员。 */}
           <div className={sectionClass} data-org-section="library">
-            <p className={titleClass}>{tt("组织库")}</p>
+            <p className={titleClass}>{tt("团队库")}</p>
             <span className="sr-only">
-              {tt("发布到组织")}
-              {tt("已在 {name} 组织库")}
-              {tt("已在 {n} 个组织库")}
+              {tt("发布到团队")}
+              {tt("已在 {name} 团队库")}
+              {tt("已在 {n} 个团队库")}
             </span>
             {library.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
             {library.status === "error" && (
@@ -795,7 +795,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
             )}
             {library.status === "ok" && library.data.length === 0 && (
               <p className={`mt-2 ${subtleClass}`} data-org-library-empty="1">
-                {tt("组织库还是空的。成员可以从工作台把成果发布进来。")}
+                {tt("团队库还是空的。成员可以从工作台把成果发布进来。")}
               </p>
             )}
             {library.status === "ok" && library.data.length > 0 && (

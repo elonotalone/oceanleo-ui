@@ -7,10 +7,10 @@
 //
 // 与 ChatGPT / Kimi / WPS 的差异点就在这里：它们让人「切工作区」——切过去之前
 // 发的任务算私人的、切过去之后算公司的，一个人同时给两家干活就得来回切，切错了
-// 钱就记错账。OceanLeo 不切：一个人可以同时属于任意多个组织，**只在按下发送键
+// 钱就记错账。OceanLeo 不切：一个人可以同时属于任意多个团队，**只在按下发送键
 // 的那一刻选一次谁付钱**，选完就在输入框下沿一直显示着，不改变别的任何东西。
 //
-// 因此本组件的默认态必须是「不存在」：没进过任何组织的人（今天全部用户）
+// 因此本组件的默认态必须是「不存在」：没进过任何团队的人（今天全部用户）
 // `listMyOrgs()` 返回空数组，这里 **return null**，输入框那一排与改动前逐字相同。
 // 这是 W12 验收证据里「渲染差异为零」那一条的实现根据。
 //
@@ -36,7 +36,7 @@ export { PAYER_LAST_KEY, PERSONAL_PAYER };
 export interface PayerSelectorProps {
   /** 当前付费主体的 `org_id`；空串 = 个人钱包。 */
   value: string;
-  /** 用户改选、或组织失效被强制回落时触发。参数即要随请求发出的 `org_id`。 */
+  /** 用户改选、或团队失效被强制回落时触发。参数即要随请求发出的 `org_id`。 */
   onChange: (orgId: string) => void;
   className?: string;
 }
@@ -44,7 +44,7 @@ export interface PayerSelectorProps {
 /**
  * 受控组件。只有一个选项（个人）时不渲染任何 DOM。
  *
- * 余额是**附带信息**：读失败就只显示组织名，不显示错误、不挡住选择。
+ * 余额是**附带信息**：读失败就只显示团队名，不显示错误、不挡住选择。
  * 发任务这条路上，「余额查询挂了」绝不能变成「不让发任务」。
  */
 export function PayerSelector({ value, onChange, className = "" }: PayerSelectorProps) {
@@ -53,7 +53,7 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [balanceText, setBalanceText] = useState("");
-  // 强制回落只提示一次：组织停用后，用户每敲一个字都弹一条 toast 是灾难。
+  // 强制回落只提示一次：团队停用后，用户每敲一个字都弹一条 toast 是灾难。
   const warnedRef = useRef("");
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
         setOrgs(Array.isArray(list) ? list : []);
       })
       .catch(() => {
-        // 拉不到组织列表 = 当作没有组织，控件不出现，输入框回到今天的样子。
+        // 拉不到团队列表 = 当作没有团队，控件不出现，输入框回到今天的样子。
         if (!cancelled) setOrgs([]);
       })
       .finally(() => {
@@ -76,9 +76,9 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
   }, []);
 
   // ── 记忆与回落 ───────────────────────────────────────────────────────────
-  // 两件事在同一个效应里，因为它们判的是同一个东西：`value` 指的那个组织**现在**
-  // 还在不在我的活跃组织列表里。`listMyOrgs()` 按契约只返回活跃成员关系
-  // （`_COMMON.md §3.3 orgs_of`），所以「组织被停用」与「我被移出组织」在这里
+  // 两件事在同一个效应里，因为它们判的是同一个东西：`value` 指的那个团队**现在**
+  // 还在不在我的活跃团队列表里。`listMyOrgs()` 按契约只返回活跃成员关系
+  // （`_COMMON.md §3.3 orgs_of`），所以「团队被停用」与「我被移出团队」在这里
   // 是同一个现象：它不在列表里了。
   useEffect(() => {
     if (!loaded) return; // 列表还没到之前，任何判断都会把合法选择误杀成回落
@@ -89,7 +89,7 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
         warnedRef.current = value;
         toast.info(
           tt("已切回个人钱包"),
-          tt("之前选的组织已停用，或你已不在该组织里。"),
+          tt("之前选的团队已停用，或你已不在该团队里。"),
         );
       }
       persistPayerOrgId(PERSONAL_PAYER);
@@ -106,8 +106,8 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, orgs, value, onChange]);
 
-  // ── 选中组织的余额 ───────────────────────────────────────────────────────
-  // 只查当前选中的那一个，不是每个组织都查：这一排是输入框的附属信息，
+  // ── 选中团队的余额 ───────────────────────────────────────────────────────
+  // 只查当前选中的那一个，不是每个团队都查：这一排是输入框的附属信息，
   // 不值得为它在每次打开首页时打 N 个请求。
   useEffect(() => {
     if (!value) {
@@ -138,7 +138,7 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
     [onChange],
   );
 
-  // 「只有一个选项」= 只有个人钱包。此人没进过任何组织 → 一个字节都不渲染。
+  // 「只有一个选项」= 只有个人钱包。此人没进过任何团队 → 一个字节都不渲染。
   if (orgs.length === 0) return null;
 
   const personalLabel = tt("个人钱包");
@@ -167,7 +167,7 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
         <IconChevronDown />
       </span>
       {/* 余额跟在控件右边而不是塞进 option 文本里：`<option>` 在各平台上都不让
-          排版，塞进去会把组织名挤没；放外面还能在窄屏上单独隐藏（P3）。 */}
+          排版，塞进去会把团队名挤没；放外面还能在窄屏上单独隐藏（P3）。 */}
       {selected && balanceText && (
         <span className="ml-1.5 hidden shrink-0 text-[11px] tabular-nums text-neutral-400 sm:inline">
           {balanceText}

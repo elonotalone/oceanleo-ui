@@ -4,14 +4,14 @@
 // @oceanleo/ui — 企业版「成员侧」面板（W13）
 // ----------------------------------------------------------------------------
 // 员工这一侧的全部体验，一个可独立使用的面板，三段：
-//   ① 我的组织：每行组织名、我的角色、本月花费 / 上限、状态；
-//   ② 加入组织：输入邀请码或从链接自动带入，申请前**必须**看到「加入后这个组织能看到
+//   ① 我的团队：每行团队名、我的角色、本月花费 / 上限、状态；
+//   ② 加入团队：输入邀请码或从链接自动带入，申请前**必须**看到「加入后这个团队能看到
 //      什么」的告知（合规前提，文案见 ORG_JOIN_DISCLOSURE，不许省）；
 //   ③ 谁看过我：管理员每次读我的任务详情都留一条记录，这里全列出来。
 //
 // 三个挂载点：`/join?code=<code>`（主站落地页，W13 的 oceanleo/app/join/page.tsx）、
-// 账户页的 extraSections（`AccountPage.tsx`，无组织且无邀请码时**渲染为 null**，
-// 让无组织用户的账户页与今天逐字节一致）、以及组织页（W11 的 OrgPage 可直接嵌）。
+// 账户页的 extraSections（`AccountPage.tsx`，无团队且无邀请码时**渲染为 null**，
+// 让无团队用户的账户页与今天逐字节一致）、以及团队页（W11 的 OrgPage 可直接嵌）。
 //
 // 取数只走 `../lib/org-api`（W11，全波唯一的 /v1/orgs 出口，`_COMMON §3.8`）。
 // 两处契约与本文件并行落地，所以做成**可注入**，默认实现都指向 `org-api.ts`：
@@ -49,7 +49,7 @@ export interface MyOrgUsage {
   capMinor: number | null;
 }
 
-/** 邀请码公开预览（W02 的 `GET /v1/orgs/invites/{code}`：只回组织名与是否需审批）。 */
+/** 邀请码公开预览（W02 的 `GET /v1/orgs/invites/{code}`：只回团队名与是否需审批）。 */
 export interface InvitePreview {
   orgName: string;
   requireApproval: boolean;
@@ -66,7 +66,7 @@ export type JoinState =
   | "joined" // 已通过
   | "rejected" // 被驳回
   | "expired" // 链接过期 / 被撤销
-  | "already_member" // 你已经在这个组织里了
+  | "already_member" // 你已经在这个团队里了
   | "error";
 
 /**
@@ -74,17 +74,17 @@ export type JoinState =
  * 三句拆开只是为了词典 key 短一点，渲染时连成一段。
  */
 export const ORG_JOIN_DISCLOSURE: readonly string[] = [
-  "用组织钱包付费的任务，组织管理员可以查看全部内容；用你个人钱包付费的任务，组织永远看不到。",
+  "用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。",
   "每次查看都会留下记录，你可以在下面看到谁看过。",
 ];
 
 /** 五种状态的文案（中文原文即词典 key）。`{org}` 由渲染处替换。 */
 export const JOIN_STATE_COPY: Record<Exclude<JoinState, "idle" | "submitting" | "error">, string> = {
-  pending: "申请已提交，等负责人通过。通过后这里会出现这个组织，你也会收到一条站内通知。",
-  joined: "已加入「{org}」。现在可以在发任务时选择用这个组织的钱包付费。",
-  rejected: "申请没有通过。负责人驳回了你的申请，或这个组织暂停了加入；有疑问请直接联系负责人。",
+  pending: "申请已提交，等负责人通过。通过后这里会出现这个团队，你也会收到一条站内通知。",
+  joined: "已加入「{org}」。现在可以在发任务时选择用这个团队的钱包付费。",
+  rejected: "申请没有通过。负责人驳回了你的申请，或这个团队暂停了加入；有疑问请直接联系负责人。",
   expired: "这条邀请链接已经过期或被撤销了。请负责人重新生成一条再发给你。",
-  already_member: "你已经在这个组织里了，不需要再申请。",
+  already_member: "你已经在这个团队里了，不需要再申请。",
 };
 
 type CopyFn = (zh: string, vars?: Record<string, string | number>) => string;
@@ -98,20 +98,20 @@ export function joinStateCopy(
   switch (state) {
     case "pending":
       return tt(
-        "申请已提交，等负责人通过。通过后这里会出现这个组织，你也会收到一条站内通知。",
+        "申请已提交，等负责人通过。通过后这里会出现这个团队，你也会收到一条站内通知。",
         vars,
       );
     case "joined":
-      return tt("已加入「{org}」。现在可以在发任务时选择用这个组织的钱包付费。", vars);
+      return tt("已加入「{org}」。现在可以在发任务时选择用这个团队的钱包付费。", vars);
     case "rejected":
       return tt(
-        "申请没有通过。负责人驳回了你的申请，或这个组织暂停了加入；有疑问请直接联系负责人。",
+        "申请没有通过。负责人驳回了你的申请，或这个团队暂停了加入；有疑问请直接联系负责人。",
         vars,
       );
     case "expired":
       return tt("这条邀请链接已经过期或被撤销了。请负责人重新生成一条再发给你。", vars);
     case "already_member":
-      return tt("你已经在这个组织里了，不需要再申请。", vars);
+      return tt("你已经在这个团队里了，不需要再申请。", vars);
   }
 }
 
@@ -236,7 +236,7 @@ async function defaultLoadMyUsage(orgId: string): Promise<MyOrgUsage> {
 }
 
 /**
- * 邀请码公开预览（A13：W02 的 `GET /v1/orgs/invites/{code}`，只回组织名与是否需审批）。
+ * 邀请码公开预览（A13：W02 的 `GET /v1/orgs/invites/{code}`，只回团队名与是否需审批）。
  * 导出还没落地时抛 `not_available`；面板对预览失败的处理是**静默不显示**（申请照常可点），
  * 所以这一条永远不会挡住申请入组。
  */
@@ -272,21 +272,21 @@ export interface OrgMembershipProps {
   /** 从邀请链接带进来的邀请码（`/join?code=`）。传了就预填并记进会话。 */
   inviteCode?: string;
   /**
-   * 无组织且无邀请码时渲染 null（账户页用，让无组织用户的账户页与今天零差异）。
-   * 默认 false：`/join` 与组织页永远渲染完整面板。
+   * 无团队且无邀请码时渲染 null（账户页用，让无团队用户的账户页与今天零差异）。
+   * 默认 false：`/join` 与团队页永远渲染完整面板。
    */
   hideWhenEmpty?: boolean;
-  /** 「这个面板此刻有没有东西可看」变化时回调（账户页据此决定要不要加「我的组织」菜单项）。 */
+  /** 「这个面板此刻有没有东西可看」变化时回调（账户页据此决定要不要加「我的团队」菜单项）。 */
   onVisibilityChange?: (visible: boolean) => void;
-  /** 申请通过（直接入组）后的回调，带组织名。 */
+  /** 申请通过（直接入组）后的回调，带团队名。 */
   onJoined?: (orgName: string) => void;
   /** 成员自查用量。默认 `getMyOrgUsage(orgId)`（A2）。 */
   loadMyUsage?: (orgId: string) => Promise<MyOrgUsage>;
-  /** 邀请码公开预览。默认 `getInvitePreview(code)`（A13）；申请前显示组织名与是否需审批。 */
+  /** 邀请码公开预览。默认 `getInvitePreview(code)`（A13）；申请前显示团队名与是否需审批。 */
   loadInvitePreview?: (code: string) => Promise<InvitePreview>;
   /** 嵌在别的页里时不带整页的大标题。 */
   embedded?: boolean;
-  /** 只渲染这一段。设置里的组织栏用三个页签分别渲染我的组织 / 创建 / 加入。 */
+  /** 只渲染这一段。设置里的团队栏用三个页签分别渲染我的团队 / 创建 / 加入。 */
   only?: "orgs" | "join" | "views" | "create" | "join-create";
   className?: string;
 }
@@ -296,7 +296,20 @@ type Loaded<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "
 function roleCopy(role: OrgRole, tt: CopyFn = (zh) => zh): string {
   if (role === "owner") return tt("负责人");
   if (role === "admin") return tt("管理员");
-  return tt("组织成员");
+  return tt("团队成员");
+}
+
+/** Portal `/join` 落地页也用这些句；写在这里是为了企业版词典能扫到。 */
+export function joinLandingCopy(tt: CopyFn) {
+  return {
+    signInToJoin: tt("登录后申请加入"),
+    orgInviteLinkHint: tt(
+      "你打开的是一条团队邀请链接。登录后邀请码会自动带入，不用再找负责人要一次。",
+    ),
+    loginThenJoinHint: tt("登录后可以贴上负责人发给你的邀请码申请加入团队。"),
+    goToMyOrgs: tt("去我的团队"),
+    pendingOrgsInAccount: tt("申请中或已通过的团队，都能在账户页的「我的团队」里看到。"),
+  };
 }
 
 function whenCopy(iso: string): string {
@@ -356,7 +369,7 @@ export function OrgMembership({
     void (async () => {
       const rows = await reloadOrgs();
       if (cancelled) return;
-      // 用量逐组织取，失败只影响那一行的两个数字，不影响别的行、不影响面板。
+      // 用量逐团队取，失败只影响那一行的两个数字，不影响别的行、不影响面板。
       await Promise.all(
         rows.map(async (org) => {
           try {
@@ -414,8 +427,8 @@ export function OrgMembership({
   const orgRows = orgs.status === "ok" ? orgs.data : [];
   const hasOrgs = orgRows.length > 0;
   const hasCode = Boolean(code.trim());
-  // 网关已上线就可以建组织（空列表也要露出勾协议的表单）。加载中先藏，避免账户页闪一下；
-  // 整条 /v1/orgs 还没上线（error）时仍按「没有」算，与第一波无组织零差异一致。
+  // 网关已上线就可以建团队（空列表也要露出勾协议的表单）。加载中先藏，避免账户页闪一下；
+  // 整条 /v1/orgs 还没上线（error）时仍按「没有」算，与第一波无团队零差异一致。
   const visible = orgs.status === "loading" ? false : hasOrgs || hasCode || orgs.status === "ok";
 
   useEffect(() => {
@@ -489,19 +502,19 @@ export function OrgMembership({
   return (
     <section className={className} data-org-membership="1">
       {!embedded && (
-        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("我的组织")}</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt("我的团队")}</h1>
       )}
 
-      {/* ① 我的组织 */}
+      {/* ① 我的团队 */}
       {show("orgs") && (
         <div className={sectionClass} data-org-section="orgs">
-          <p className={titleClass}>{tt("我的组织")}</p>
+          <p className={titleClass}>{tt("我的团队")}</p>
           {orgs.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
           {orgs.status === "error" && (
             <p className={`mt-2 ${subtleClass}`}>{orgErrorCopy(orgs.code, tt)}</p>
           )}
           {orgs.status === "ok" && !hasOrgs && (
-            <p className={`mt-2 ${subtleClass}`}>{tt("你还不属于任何组织。拿到负责人发的邀请链接后，在下面申请加入。")}</p>
+            <p className={`mt-2 ${subtleClass}`}>{tt("你还不属于任何团队。拿到负责人发的邀请链接后，在下面申请加入。")}</p>
           )}
           {orgs.status === "ok" && hasOrgs && (
             <ul className="mt-2 divide-y divide-neutral-100">
@@ -554,7 +567,7 @@ export function OrgMembership({
                 void submitCreate();
               }}
             >
-              <p className={titleClass}>{tt("创建组织")}</p>
+              <p className={titleClass}>{tt("创建团队")}</p>
               <input
                 type="text"
                 value={createName}
@@ -562,8 +575,8 @@ export function OrgMembership({
                   setCreateName(e.target.value);
                   if (createError) setCreateError(undefined);
                 }}
-                placeholder={tt("组织名")}
-                aria-label={tt("组织名")}
+                placeholder={tt("团队名")}
+                aria-label={tt("团队名")}
                 autoComplete="organization"
                 className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
               />
@@ -603,10 +616,10 @@ export function OrgMembership({
         </div>
       )}
 
-      {/* ② 加入组织 */}
+      {/* ② 加入团队 */}
       {show("join") && (
         <div className={sectionClass} data-org-section="join">
-          <p className={titleClass}>{tt("加入组织")}</p>
+          <p className={titleClass}>{tt("加入团队")}</p>
           <p className={`mt-1 ${subtleClass}`}>
             {tt("把负责人发给你的邀请码贴在这里；从邀请链接打开时会自动带入。")}
           </p>
@@ -646,9 +659,9 @@ export function OrgMembership({
             role="note"
             data-org-disclosure="1"
           >
-            <p className="font-medium">{tt("加入后这个组织能看到什么")}</p>
+            <p className="font-medium">{tt("加入后这个团队能看到什么")}</p>
             <p className="mt-1">
-              {tt("用组织钱包付费的任务，组织管理员可以查看全部内容；用你个人钱包付费的任务，组织永远看不到。")}
+              {tt("用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。")}
               {tt("每次查看都会留下记录，你可以在下面看到谁看过。")}
             </p>
           </div>
@@ -667,7 +680,7 @@ export function OrgMembership({
             >
               {join.state === "error"
                 ? orgErrorCopy(join.code, tt)
-                : joinStateCopy(join.state, tt, { org: join.orgName || tt("这个组织") })}
+                : joinStateCopy(join.state, tt, { org: join.orgName || tt("这个团队") })}
             </p>
           )}
         </div>
@@ -682,7 +695,7 @@ export function OrgMembership({
               void submitCreate();
             }}
           >
-            <p className={titleClass}>{tt("创建组织")}</p>
+            <p className={titleClass}>{tt("创建团队")}</p>
             <input
               type="text"
               value={createName}
@@ -690,8 +703,8 @@ export function OrgMembership({
                 setCreateName(e.target.value);
                 if (createError) setCreateError(undefined);
               }}
-              placeholder={tt("组织名")}
-              aria-label={tt("组织名")}
+              placeholder={tt("团队名")}
+              aria-label={tt("团队名")}
               autoComplete="organization"
               className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
             />
@@ -735,7 +748,7 @@ export function OrgMembership({
         <div className={sectionClass} data-org-section="views">
           <p className={titleClass}>{tt("谁看过我")}</p>
           <p className={`mt-1 ${subtleClass}`}>
-            {tt("组织管理员每次打开你用组织钱包做的任务，都会在这里留一条记录。")}
+            {tt("团队管理员每次打开你用团队钱包做的任务，都会在这里留一条记录。")}
           </p>
           {views.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
           {views.status === "error" && (

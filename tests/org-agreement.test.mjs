@@ -65,9 +65,9 @@ const { OrgAgreement, ENTERPRISE_AGREEMENT_SECTIONS } = agreementModule;
 
 const REQUIRED_TITLE_BITS = [
   "服务范围与付费主体",
-  "组织能看到什么",
+  "团队能看到什么",
   "数据不用于训练",
-  "成员离开与组织停用",
+  "成员离开与团队停用",
   "发票与采购",
   "争议与终止",
 ];

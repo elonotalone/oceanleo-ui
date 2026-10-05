@@ -1,15 +1,15 @@
 // OrgMembership / AccountPage 组织区判据（W13，企业版成员侧）。
 //
 // 判的是员工这一侧看到什么、点了之后被说成什么：
-//   ① 三段都在：我的组织 / 加入组织 / 谁看过我（`data-org-section`）；
-//   ② 合规告知两句**逐字**在「加入组织」段里（任务书 P1 ②，不许省）；
+//   ① 三段都在：我的团队 / 加入团队 / 谁看过我（`data-org-section`）；
+//   ② 合规告知两句**逐字**在「加入团队」段里（任务书 P1 ②，不许省）；
 //   ③ 五种入组状态各有明确文案：已通过 / 申请中 / 被驳回（后端 `rejected` 或 HTTP 403）/
 //      链接过期或被撤销（HTTP 404 / 410）/ 你已经在这个组织里了（HTTP 409）；
 //   ④ A2：`loadMyUsage` 不注入时走 `org-api` 的 `getMyOrgUsage`，行上显示本月花费 / 上限；
 //   ⑤ A13：`loadInvitePreview` 不注入时走 `org-api` 的 `getInvitePreview`，申请前显示组织名；
 //      替身里没有这个导出时静默不预览、申请照常能点（W11 落地前后都不炸）；
 //   ⑥ 无组织无邀请码 + `hideWhenEmpty` → 渲染 null，`onVisibilityChange(false)`；
-//   ⑦ `AccountPage` 无组织时不出现「我的组织」菜单项，也没有组织面板（无组织用户零差异）。
+//   ⑦ `AccountPage` 无组织时不出现「我的团队」菜单项，也没有团队面板（无组织用户零差异）。
 //
 // `org-api` 全部打替身（形状照 `03-arbitration.md` A2/A13 与 `_COMMON §3.8`）：判的是面板怎么用它，
 // 不是它自己。`globalThis.fetch` 一次都不许被碰——判据 5「/v1/orgs 只有一个出口」。
@@ -94,7 +94,7 @@ const orgApiStub = (withPreview) =>
   export function orgErrorCopy(code) {
     switch (code) {
       case "not_available": return "这一块还没上线，过些天再来看。";
-      case "forbidden": return "你没有查看这个组织的权限。";
+      case "forbidden": return "你没有查看这个团队的权限。";
       case "offline": return "连不上服务器，检查一下网络再试。";
       case "agreement_required": return "请先阅读并勾选《OceanLeo 企业服务协议》。";
       default: return "这一步没有完成，请稍后重试。";
@@ -194,11 +194,11 @@ async function render(element, s) {
 
 /* ---------- ① 三段都在 ---------- */
 
-test("面板三段齐全：我的组织 / 加入组织 / 谁看过我；空列表说「还没有人看过」", async () => {
+test("面板三段齐全：我的团队 / 加入团队 / 谁看过我；空列表说「还没有人看过」", async () => {
   const s = scenario({ listMyOrgs: async () => [ORG_A] });
   const view = await render(React.createElement(OrgMembership), s);
-  assert.ok(view.q('[data-org-section="orgs"]'), "缺「我的组织」段");
-  assert.ok(view.q('[data-org-section="join"]'), "缺「加入组织」段");
+  assert.ok(view.q('[data-org-section="orgs"]'), "缺「我的团队」段");
+  assert.ok(view.q('[data-org-section="join"]'), "缺「加入团队」段");
   assert.ok(view.q('[data-org-section="views"]'), "缺「谁看过我」段");
   assert.ok(view.q('[data-org-row="org-a"]'));
   assert.ok(view.text().includes("海狮设计"));
@@ -225,14 +225,14 @@ test("「谁看过我」列出查看者邮箱与所属组织名", async () => {
 
 /* ---------- ② 合规告知逐字 ---------- */
 
-test("合规告知两句逐字出现在「加入组织」段里", async () => {
+test("合规告知两句逐字出现在「加入团队」段里", async () => {
   const view = await render(React.createElement(OrgMembership), scenario());
   const note = view.q('[data-org-disclosure="1"]');
   assert.ok(note, "缺告知块");
-  assert.equal(note.closest('[data-org-section="join"]') !== null, true, "告知必须在「加入组织」段里");
+  assert.equal(note.closest('[data-org-section="join"]') !== null, true, "告知必须在「加入团队」段里");
   const text = note.textContent || "";
   assert.ok(
-    text.includes("用组织钱包付费的任务，组织管理员可以查看全部内容；用你个人钱包付费的任务，组织永远看不到。"),
+    text.includes("用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。"),
   );
   assert.ok(text.includes("每次查看都会留下记录，你可以在下面看到谁看过。"));
   for (const sentence of ORG_JOIN_DISCLOSURE) assert.ok(text.includes(sentence));
@@ -275,7 +275,7 @@ test("已通过：status=joined → 「已加入「海狮设计」」，重新�
   const status = view.q('[data-org-join-state="joined"]');
   assert.ok(status, "缺已通过文案");
   assert.ok(status.textContent.includes("已加入「海狮设计」"));
-  assert.ok(view.q('[data-org-row="org-a"]'), "通过后「我的组织」里要出现它");
+  assert.ok(view.q('[data-org-row="org-a"]'), "通过后「我的团队」里要出现它");
   assert.deepEqual(seen, ["海狮设计"]);
   assert.equal(window.sessionStorage.getItem("oceanleo:org-invite-code"), null);
   assert.ok(s.calls.includes("requestJoin:INV-1"));
@@ -345,7 +345,7 @@ test("你已经在这个组织里了：HTTP 409 → 明确文案", async () => {
   await view.click(view.applyButton());
   const status = view.q('[data-org-join-state="already_member"]');
   assert.ok(status);
-  assert.ok(status.textContent.includes("你已经在这个组织里了"));
+  assert.ok(status.textContent.includes("你已经在这个团队里了"));
   view.cleanup();
 });
 
@@ -443,13 +443,13 @@ test("A13：org-api 还没有 getInvitePreview 导出时（W11 未落地）不�
 
 /* ---------- ⑥ hideWhenEmpty ---------- */
 
-test("hideWhenEmpty：网关已上线但还没有组织 → 露出建组织表单；整条路由挂了仍渲染 null", async () => {
+test("hideWhenEmpty：网关已上线但还没有组织 → 露出建团队表单；整条路由挂了仍渲染 null", async () => {
   const seen = [];
   const empty = await render(
     React.createElement(OrgMembership, { hideWhenEmpty: true, onVisibilityChange: (v) => seen.push(v) }),
     scenario(),
   );
-  assert.ok(empty.q('[data-org-membership="1"]'), "已上线的空列表要能建组织");
+  assert.ok(empty.q('[data-org-membership="1"]'), "已上线的空列表要能建团队");
   assert.ok(empty.q('[data-org-create="1"]'));
   assert.equal(seen.at(-1), true);
   empty.cleanup();
@@ -489,17 +489,17 @@ test("hideWhenEmpty：无组织但会话里有邀请码 → 面板出现（账�
   window.sessionStorage.clear();
 });
 
-/* ---------- 建组织：勾选协议 + 422 ---------- */
+/* ---------- 建团队：勾选协议 + 422 ---------- */
 
-test("建组织：不勾协议时提交按钮灰；勾了并填了名字才能点；请求带 agreementVersion", async () => {
+test("建团队：不勾协议时提交按钮灰；勾了并填了名字才能点；请求带 agreementVersion", async () => {
   const s = scenario();
   const view = await render(React.createElement(OrgMembership), s);
   const form = view.q('[data-org-create="1"]');
-  assert.ok(form, "缺建组织表单");
+  assert.ok(form, "缺建团队表单");
   const link = form.querySelector('a[href="/org/agreement"]');
   assert.ok(link, "协议链接必须指向 /org/agreement");
   assert.ok((link.textContent || "").includes("OceanLeo 企业服务协议"));
-  const name = form.querySelector('input[aria-label="组织名"]');
+  const name = form.querySelector('input[aria-label="团队名"]');
   const agree = form.querySelector('[data-org-create-agree="1"]');
   const submit = form.querySelector('[data-org-create-submit="1"]');
   assert.ok(name && agree && submit);
@@ -513,7 +513,7 @@ test("建组织：不勾协议时提交按钮灰；勾了并填了名字才能�
   view.cleanup();
 });
 
-test("建组织：422 agreement_required 显示人话", async () => {
+test("建团队：422 agreement_required 显示人话", async () => {
   const { OrgApiError } = await import(orgApiWithPreview);
   const s = scenario({
     createOrg: async () => {
@@ -522,7 +522,7 @@ test("建组织：422 agreement_required 显示人话", async () => {
   });
   const view = await render(React.createElement(OrgMembership), s);
   const form = view.q('[data-org-create="1"]');
-  await view.type(form.querySelector('input[aria-label="组织名"]'), "Leo Labs");
+  await view.type(form.querySelector('input[aria-label="团队名"]'), "Leo Labs");
   await view.click(form.querySelector('[data-org-create-agree="1"]'));
   await view.click(form.querySelector('[data-org-create-submit="1"]'));
   const err = view.q('[data-org-create-error="1"]');
@@ -589,6 +589,7 @@ const { AccountPage } = await import(
     "./DevicesPage": stubComponent("DevicesPage", "pane-devices"),
     "./PluginsPage": stubComponent("PluginsPage", "pane-plugins"),
     "./settings/personalization/PersonalizationSection": stubComponent("PersonalizationSection", "pane-personalization"),
+    "./settings/mail/MailSection": stubComponent("MailSection", "pane-mail"),
   })
 );
 
@@ -600,34 +601,34 @@ function accountAuthStub() {
 }
 
 // 2026-09-21 操作员定案：组织内容不许直接暴露在账户默认视图里；账户页变成设置中心，
-// 组织只在「组织」栏出现。下面两条按新契约写：默认栏零组织内容，组织栏才有。
-test("AccountPage：默认（账户）栏不暴露组织内容；切到组织栏才出现「我的组织」与建组织表单", async () => {
+// 组织只在「组织」栏出现。下面两条按新契约写：默认栏零组织内容，团队栏才有。
+test("AccountPage：默认（账户）栏不暴露组织内容；切到团队栏才出现「我的团队」与建团队表单", async () => {
   globalThis.__authStub = accountAuthStub();
   const none = await render(React.createElement(AccountPage), scenario());
   assert.ok(none.q("[data-settings-hub]"), "账户页应是设置中心");
   assert.ok(none.q('[data-settings-item="account"][aria-current="page"]'), "默认落在账户栏");
   assert.equal(none.q('[data-org-membership="1"]'), null, "账户栏不许直接摆组织内容");
-  assert.equal(none.q('[data-org-create="1"]'), null, "账户栏不许直接摆建组织表单");
-  const orgTab = none.q('[data-settings-item="org"]');
-  assert.ok(orgTab, "左栏要有「组织」项");
+  assert.equal(none.q('[data-org-create="1"]'), null, "账户栏不许直接摆建团队表单");
+  const orgTab = none.q('[data-settings-item="team"]');
+  assert.ok(orgTab, "左栏要有「团队」项");
   await none.click(orgTab);
-  assert.ok(none.q('[data-settings-pane="org"]'), "点组织栏后右侧是组织面板");
-  assert.ok(none.q('[data-org-settings-tabs]'), "组织栏顶部要有三个页签");
-  assert.ok(none.q('[data-org-membership="1"]'), "网关已上线：组织栏里有我的组织");
+  assert.ok(none.q('[data-settings-pane="team"]'), "点团队栏后右侧是团队面板");
+  assert.ok(none.q('[data-org-settings-tabs]'), "团队栏顶部要有三个页签");
+  assert.ok(none.q('[data-org-membership="1"]'), "网关已上线：团队栏里有我的团队");
   await none.click(none.q('[data-org-settings-tab="create"]'));
-  assert.ok(none.q('[data-org-create="1"]'), "网关已上线：组织栏里能建组织");
+  assert.ok(none.q('[data-org-create="1"]'), "网关已上线：团队栏里能建团队");
   none.cleanup();
 
   globalThis.__authStub = accountAuthStub();
   const some = await render(React.createElement(AccountPage), scenario({ listMyOrgs: async () => [ORG_A] }));
-  await some.click(some.q('[data-settings-item="org"]'));
+  await some.click(some.q('[data-settings-item="team"]'));
   assert.ok(some.q('[data-org-membership="1"]'));
   await some.click(some.q('[data-org-settings-tab="create"]'));
   assert.ok(some.q('[data-org-create="1"]'), "已有组织也能再创建一家");
   some.cleanup();
 });
 
-test("AccountPage：org-api 整条路 404（路由未上线）时组织栏安静，不报错", async () => {
+test("AccountPage：org-api 整条路 404（路由未上线）时团队栏安静，不报错", async () => {
   const { OrgApiError } = await import(orgApiWithPreview);
   globalThis.__authStub = accountAuthStub();
   const down = scenario({
@@ -640,8 +641,8 @@ test("AccountPage：org-api 整条路 404（路由未上线）时组织栏安静
   });
   const view = await render(React.createElement(AccountPage), down);
   assert.equal(view.q('[data-org-membership="1"]'), null);
-  await view.click(view.q('[data-settings-item="org"]'));
-  assert.equal(view.q('[data-org-membership="1"]'), null, "路由未上线：组织栏不摆半成品");
+  await view.click(view.q('[data-settings-item="team"]'));
+  assert.equal(view.q('[data-org-membership="1"]'), null, "路由未上线：团队栏不摆半成品");
   assert.equal(view.q('[data-org-create="1"]'), null);
   view.cleanup();
 });

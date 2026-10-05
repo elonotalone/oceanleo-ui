@@ -1,11 +1,11 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 把一件个人成果发布进组织库（W23）
+// @oceanleo/ui — 把一件个人成果发布进团队库（W23）
 // ----------------------------------------------------------------------------
-// 工作台成果卡菜单、历史详情成果行共用这一颗。没进过任何组织的人 **一个字节
+// 工作台成果卡菜单、历史详情成果行共用这一颗。没进过任何团队的人 **一个字节
 // 都不渲染**：`listMyOrgs()` 空数组 → return null，并且不再发 publish / list
-// / revoke。口径照抄 `PayerSelector.tsx`（零组织 = 控件不存在）。
+// / revoke。口径照抄 `PayerSelector.tsx`（零团队 = 控件不存在）。
 //
 // 取数只走 `../lib/org-api`，本文件没有 fetch、没有网关路径字面量。
 // ============================================================================
@@ -121,10 +121,10 @@ export function PublishToOrgButton({
   const unpublished = orgs.filter((org) => !hits.some((hit) => hit.orgId === org.id));
   const label =
     hits.length === 1
-      ? tt("已在 {name} 组织库", { name: hits[0]?.orgName || "" })
+      ? tt("已在 {name} 团队库", { name: hits[0]?.orgName || "" })
       : hits.length > 1
-        ? tt("已在 {n} 个组织库", { n: hits.length })
-        : tt("发布到组织");
+        ? tt("已在 {n} 个团队库", { n: hits.length })
+        : tt("发布到团队");
 
   async function publishTo(org: OrgSummary) {
     if (busy) return;
@@ -199,7 +199,7 @@ export function PublishToOrgButton({
               data-publish-org={org.id}
               onClick={() => void publishTo(org)}
             >
-              {tt("发布到组织")} · {org.name || org.id}
+              {tt("发布到团队")} · {org.name || org.id}
             </button>
           ))}
           {hits.map((hit) => (

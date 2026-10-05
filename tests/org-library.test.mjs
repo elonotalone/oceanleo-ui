@@ -52,6 +52,12 @@ const orgApiStub = dataModule(`
   export async function grantOrgAsset(orgId, assetId, userId) { count("grantOrgAsset", orgId, assetId, userId); return g().grantOrgAsset?.(orgId, assetId, userId); }
   export async function listOrgAssetGrants(orgId, assetId) { count("listOrgAssetGrants", orgId, assetId); return g().listOrgAssetGrants?.(orgId, assetId) || []; }
   export async function revokeOrgAssetGrant(orgId, assetId, userId) { count("revokeOrgAssetGrant", orgId, assetId, userId); return g().revokeOrgAssetGrant?.(orgId, assetId, userId); }
+  export async function listInheritedMcp() { return []; }
+  export async function listOrgMcpConnections() { return []; }
+  export async function deleteOrgMcpConnection() {}
+  export async function patchOrgMcpConnection() { return null; }
+  export async function upsertOrgMcpConnection() { return null; }
+  export async function setOrgMcpForwardIdentity() {}
 `);
 
 const { PublishToOrgButton, assetRowMatchesPublish } = await import(
@@ -240,8 +246,8 @@ test("一组织：点击 → publishOrgAsset 被调且参数正确", async () =>
     async ({ render, find, click, calls, fetchCalls, settle }) => {
       await render(React.createElement(PublishToOrgButton, body));
       const button = find("[data-publish-to-org-main]");
-      assert.ok(button, "有组织时应渲染发布按钮");
-      assert.match(button.textContent, /发布到组织/);
+      assert.ok(button, "有团队时应渲染发布按钮");
+      assert.match(button.textContent, /发布到团队/);
       await click(button);
       await settle();
       const published = calls().find((c) => c[0] === "publishOrgAsset");

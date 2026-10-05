@@ -96,7 +96,7 @@ export function OrgMcpSection({
       </div>
       <p className="mt-0.5 text-[12px] text-neutral-500">
         {manageable
-          ? tt("连一次，这个组织里的人都能用，不用各自再填密钥。")
+          ? tt("连一次，这个团队里的人都能用，不用各自再填密钥。")
           : tt("管理员连好的工具，你可以直接用。")}
       </p>
       {rows.length === 0 ? (
@@ -162,7 +162,7 @@ export function OrgMcpSection({
                       <span>
                         <span className="block">{tt("把成员身份转给这台服务器")}</span>
                         <span className="mt-0.5 block text-[11px] text-neutral-500">
-                          {tt("开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本组织。")}
+                          {tt("开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本团队。")}
                         </span>
                       </span>
                     </label>
@@ -342,7 +342,7 @@ function OrgConnectDialog({
           <span>
             <span className="block">{tt("把成员身份转给这台服务器")}</span>
             <span className="mt-0.5 block text-[11px] text-neutral-500">
-              {tt("开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本组织。")}
+              {tt("开了以后服务器知道是哪位成员在操作、各看各的工作区；关着时服务器只知道是本团队。")}
             </span>
           </span>
         </label>

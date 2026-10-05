@@ -63,7 +63,7 @@ export function AccountMenu(props: AccountMenuProps) {
     window.dispatchEvent(new StorageEvent("storage", { key: PAYER_LAST_KEY, newValue: id || null }));
     setIdentitiesOpen(false);
   };
-  const roleLabel = (role: OrgSummary["role"]) => role === "owner" ? tt("所有者") : role === "admin" ? tt("管理员") : tt("组织成员");
+  const roleLabel = (role: OrgSummary["role"]) => role === "owner" ? tt("所有者") : role === "admin" ? tt("管理员") : tt("团队成员");
   const selected = orgs.find((org) => org.id === payer);
   const identity = selected ? `${selected.name} · ${roleLabel(selected.role)}` : tt("个人");
   const avatar = props.avatar ?? <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-800 text-[11px] text-white">{(props.name || props.email || "?")[0].toUpperCase()}</span>;
@@ -71,12 +71,19 @@ export function AccountMenu(props: AccountMenuProps) {
     <FloatingMenuItem label={tt("个人")} selected={!selected} trailing={!selected ? "✓" : undefined} onSelect={() => select(PERSONAL_PAYER)} />
     {orgs.map((org) => <FloatingMenuItem key={org.id} label={org.name} description={roleLabel(org.role)} selected={payer === org.id} trailing={payer === org.id ? "✓" : undefined} onSelect={() => select(org.id)} />)}
     <FloatingMenuSeparator />
-    <FloatingMenuItem icon="+" label={tt("创建团队")} onSelect={() => { close(); props.onOpenSettings("org"); }} />
+    <FloatingMenuItem icon="+" label={tt("创建团队")} onSelect={() => { close(); props.onOpenSettings("team"); }} />
   </>;
   const settings = (tab: string) => { close(); props.onOpenSettings(tab); };
   const personalizationTab = props.personalizationTab === undefined ? "personalization" : props.personalizationTab;
   return <>
-    <button ref={anchorRef} type="button" data-account-trigger aria-haspopup="menu" aria-expanded={open} aria-label={props.name} title={props.name} onClick={() => { setOpen(!open); setIdentitiesOpen(false); }} className={`leo-tap-row flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 dark:text-neutral-100 dark:hover:bg-neutral-800 ${props.compact ? "w-full justify-center" : "flex-1"}`}>
+    <button ref={anchorRef} type="button" data-account-trigger aria-haspopup={signedIn ? "menu" : undefined} aria-expanded={signedIn ? open : undefined} aria-label={props.name} title={props.name} onClick={() => {
+      if (!signedIn) {
+        props.onOpenSettings("account");
+        return;
+      }
+      setOpen(!open);
+      setIdentitiesOpen(false);
+    }} className={`leo-tap-row flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 dark:text-neutral-100 dark:hover:bg-neutral-800 ${props.compact ? "w-full justify-center" : "flex-1"}`}>
       {avatar}{!props.compact && <span className="truncate text-[13px] font-medium">{props.name}</span>}
     </button>
     <FloatingMenu open={open} anchorRef={anchorRef} onClose={close} preferredPlacement="above" align="start" width={280} ariaLabel={tt("账户")}>

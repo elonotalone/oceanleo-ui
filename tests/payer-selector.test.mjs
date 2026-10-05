@@ -41,6 +41,11 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 // 测试不等 W11，W11 落地之后也不需要改。
 const orgApiStub = dataModule(`
   const g = () => globalThis.__W12_ORG_API__;
+  export class OrgApiError extends Error {
+    constructor(code, status = 0) { super("org-api: " + code); this.code = code; this.status = status; }
+  }
+  export function orgApiCode(e) { return e instanceof OrgApiError ? e.code : "offline"; }
+  export function orgErrorCopy(code) { return "ERR:" + code; }
   export async function listMyOrgs() { return g().listMyOrgs(); }
   export async function getOrg(orgId) { return g().getOrg(orgId); }
   ${ORG_MCP_STUB_SOURCE}
@@ -512,7 +517,7 @@ test("选择器挂在左组（会换行的那半边），发送键那半边不�
         onSubmit() {},
       });
       const selector = find("[data-payer-selector]");
-      assert.ok(selector, "有组织时选择器必须出现");
+      assert.ok(selector, "有团队时选择器必须出现");
 
       // 左组是 `flex-wrap` 的那一半；右组装着 `shrink-0` 的发送键。
       // 选择器一旦跑进右组，窄屏上就会去挤发送键——这正是 P3 要挡的那件事。

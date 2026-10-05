@@ -1,7 +1,7 @@
 "use client";
 
 import { AccountMenu } from "../AccountMenu";
-import { currentDomainProfile } from "../../contracts/domain-family";
+import { portalHref } from "../../contracts/domain-family";
 import { signOutEverywhere } from "../../lib/auth/client";
 import { DeviceStatusPopover } from "./DeviceStatusPopover";
 import { NotificationBell } from "./NotificationBell";
@@ -24,14 +24,12 @@ export interface SidebarAccountClusterProps {
 }
 
 export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
-  const portal = currentDomainProfile().portalOrigin;
-  const local = typeof window !== "undefined" && window.location.origin === portal;
-  const href = (path: string) => local ? path : `${portal}${path}`;
+  const href = (path: string) => portalHref(path);
   const signOut = props.onSignOut ?? (() => { void signOutEverywhere().then(() => window.location.assign(href("/"))); });
   return <div data-sidebar-account-cluster className={`flex min-w-0 items-center gap-1 ${props.compact ? "w-full flex-col" : ""}`}>
     <AccountMenu name={props.name} email={props.email} balanceText={props.balanceText}
       compact={props.compact} signedIn={props.signedIn}
-      orgHref={props.orgHref ?? href("/settings/org")}
+      orgHref={props.orgHref ?? href("/settings/team")}
       homeHref={props.homeHref ?? href("/")}
       helpHref={props.helpHref === null ? null : props.helpHref ?? href("/help")}
       docsHref={props.docsHref ?? href("/help")}

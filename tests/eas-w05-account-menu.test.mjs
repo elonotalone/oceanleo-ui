@@ -196,3 +196,47 @@ test("helpHref={null} 时菜单里不出现「获取帮助」，其余外链不�
     await menu.unmount();
   }
 });
+
+test("身份子菜单没有别的团队时出现创建团队，源码写创建团队", async () => {
+  const menu = await mountMenu();
+  try {
+    const switcher = window.document.querySelector("[data-identity-switch]");
+    assert.ok(switcher, "账号菜单里没有身份切换钮");
+    await act(async () => {
+      switcher.closest("button").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    await act(() => new Promise((resolve) => window.requestAnimationFrame(resolve)));
+    const identityMenu = window.document.querySelector('[role="menu"][aria-label="个人"]');
+    assert.ok(identityMenu, "点身份行之后子菜单没有打开");
+    assert.ok(identityMenu.textContent.includes("创建团队"));
+    assert.equal(identityMenu.textContent.includes("创建组织"), false);
+  } finally {
+    await menu.unmount();
+  }
+});
+
+test("未登录点账户钮直接打开登录板块，不弹出账号菜单", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = window.document.createElement("div");
+  window.document.body.append(container);
+  const root = createRoot(container);
+  const opened = [];
+  await act(async () => {
+    root.render(
+      React.createElement(AccountMenu, {
+        ...BASE_PROPS,
+        name: "登录",
+        signedIn: false,
+        onOpenSettings: (tab) => opened.push(tab),
+      }),
+    );
+  });
+  const trigger = container.querySelector("[data-account-trigger]");
+  await act(async () => {
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.deepEqual(opened, ["account"]);
+  assert.equal(window.document.querySelector('[role="menu"][aria-label="账户"]'), null);
+  await act(async () => root.unmount());
+  container.remove();
+});

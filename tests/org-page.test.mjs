@@ -445,7 +445,7 @@ test("无权限：只显示一句话，不渲染成员表，成员表 / 详情 /
       await render();
       const state = find('[data-org-page-state="forbidden"]');
       assert.ok(state, "应有无权限状态");
-      assert.equal(state.textContent, "你没有查看这个组织的权限。");
+      assert.equal(state.textContent, "你没有查看这个团队的权限。");
       assert.equal(find("[data-org-members-table]"), null, "不渲染成员表");
       assert.equal(find('[data-org-section="members"]'), null, "连成员区都不渲染");
       assert.equal(find('[data-org-section="usage"]'), null);
@@ -567,7 +567,7 @@ test("多组织：URL ?org= 点名的优先；切换器换一家写回 ?org=；�
       assert.equal(find("[data-org-switcher] select"), null, "不用系统下拉");
       assert.equal(find("[data-org-switcher-item='o2']").getAttribute("aria-selected"), "true", "URL 点名的 o2 优先于第一家");
       assert.equal(findAll("[data-org-switcher-item]").length, 2);
-      assert.ok(!switcher.textContent.includes("当前组织"), "组织名自己就是切换，不再旁标「当前组织」");
+      assert.ok(!switcher.textContent.includes("当前团队"), "团队名自己就是切换，不再旁标「当前团队」");
       assert.equal(find("[data-org-name]").textContent, "蓝鲸");
       assert.equal(new URL(window.location.href).searchParams.get("org"), "o2");
 

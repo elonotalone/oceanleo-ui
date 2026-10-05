@@ -124,12 +124,32 @@ const authStub = dataModule(`
     return { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } };
   }
   export async function getUserEmail() { return "designer@oceanleo.com"; }
+  export async function getUserId() { return "user-1"; }
   export async function getCredits() { return { ok: true, data: { balance: 12.5, currency: "CNY" } }; }
   export async function getCreditHistory() { return { ok: true, data: { events: [] } }; }
   export async function getUsageBySite() { return { ok: true, data: { total: { requests: 3 } } }; }
   export async function signOutEverywhere() {}
   export function loginUnavailableNotice() { return null; }
   export function isPasswordResetLanding() { return false; }
+`);
+const uiWidgetsStub = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function ConfirmDialog(props) {
+    return React.createElement("div", { "data-testid": "confirm", "data-variant": props.variant ?? "" });
+  }
+  export function Modal({ children }) {
+    return React.createElement("div", { role: "dialog", "data-modal": "" }, children);
+  }
+  export function ButtonSpinner() { return null; }
+`);
+const authDialogStub = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function AuthDialog(props) {
+    return React.createElement("div", { "data-testid": "auth-dialog", "data-variant": props.variant ?? "" });
+  }
+  export function AuthPanel() {
+    return React.createElement("div", { "data-testid": "auth-panel", "data-auth-panel": "" });
+  }
 `);
 const marker = (exportName, testId) => dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -143,8 +163,9 @@ const STUBS = {
   "next/link": linkStub,
   "../../lib/auth": authStub,
   "../../i18n/ui/useUI": uiStub,
-  "../../ui": marker("ConfirmDialog", "confirm"),
-  "../../pages/AuthDialog": marker("AuthDialog", "auth-dialog"),
+  "../../ui": uiWidgetsStub,
+  "../../pages/AuthDialog": authDialogStub,
+  "../AuthDialog": authDialogStub,
   "../../pages/PasswordResetPage": marker("PasswordResetPage", "reset-page"),
   "../../pages/GeneralPage": marker("GeneralSettingsBody", "general-body"),
   "../../pages/AccountSecurityPage": marker("AccountSecurityPage", "security-panel"),
@@ -155,8 +176,12 @@ const STUBS = {
   "../../pages/DevicesPage": marker("DevicesPage", "pane-devices"),
   "../../pages/PluginsPage": marker("PluginsPage", "pane-plugins"),
   "../../pages/settings/personalization/PersonalizationSection": marker("PersonalizationSection", "pane-personalization"),
+  "../../pages/settings/mail/MailSection": marker("MailSection", "pane-mail"),
+  "./mail/MailSection": marker("MailSection", "pane-mail"),
+  "./sections/AccountSection": marker("AccountSection", "pane-account"),
   "./sections/BillingSection": marker("BillingSection", "pane-billing"),
-  "./sections/CostSection": marker("CostSection", "pane-cost"),
+  "./sections/UsageDetailsSection": marker("UsageDetailsSection", "pane-usage-details"),
+  "./sections/TopUpSection": marker("TopUpSection", "pane-topup"),
 };
 
 const { SettingsModalHost, openSettingsModal } = await import(
@@ -213,22 +238,33 @@ async function click(node, what) {
 }
 
 const CAPABILITIES = [
-  { id: "api", testId: "pane-api", label: "AI 模型" },
+  { id: "ai-models", testId: "pane-api", label: "AI 模型" },
   { id: "plugins", testId: "pane-plugins", label: "插件与连接器" },
+  { id: "mail", testId: "pane-mail", label: "邮件" },
   { id: "devices", testId: "pane-devices", label: "我的设备" },
 ];
 
 test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
-  assert.equal(settingsPath("org", "https://oceanleo.com/"), "/settings/org");
+  assert.equal(settingsPath("org", "https://oceanleo.com/"), "/settings/team");
+  assert.equal(settingsPath("team", "https://oceanleo.com/"), "/settings/team");
+  assert.equal(settingsPath("team", "https://oceanleo.com/"), "/settings/team");
   assert.equal(settingsPath("memory", "https://oceanleo.com/?x=1"), "/settings/personalization?x=1");
-  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/org"), "org");
+  assert.equal(settingsPath("knowledge", "https://oceanleo.com/"), "/settings/personalization");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/org"), "team");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/team"), "team");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/agent#settings/plugins"), "plugins");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=devices"), "devices");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=memory"), "personalization");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/knowledge"), "personalization");
+  assert.equal(settingsPath("cost", "https://oceanleo.com/"), "/settings/billing");
+  assert.equal(settingsPath("topup", "https://oceanleo.com/"), "/settings/billing");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/usage-details"), "billing");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/topup"), "billing");
   assert.equal(isSettingsPathname("/settings/org"), true);
-  // 操作员要求只留 /settings/api：旧断言把它当成跳 /api 的书签，那条已经作废。
+  assert.equal(isSettingsPathname("/settings/team"), true);
+  assert.equal(isSettingsPathname("/settings/ai-models"), true);
+  assert.equal(isSettingsPathname("/settings/ai-models/"), true);
   assert.equal(isSettingsPathname("/settings/api"), true);
-  assert.equal(isSettingsPathname("/settings/api/"), true);
 });
 
 test("设置窗里点「AI 模型」「插件与连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
@@ -283,6 +319,9 @@ test("openSettingsModal：personalization、plugins、旧地址 memory 分别落
     { tab: "personalization", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
     { tab: "plugins", testId: "pane-plugins", item: "plugins", path: "/settings/plugins" },
     { tab: "memory", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
+    { tab: "knowledge", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
+    { tab: "topup", testId: "pane-billing", item: "billing", path: "/settings/billing" },
+    { tab: "cost", testId: "pane-billing", item: "billing", path: "/settings/billing" },
   ];
   for (const { tab, testId, item, path } of cases) {
     await open(tab);
@@ -340,9 +379,9 @@ test("设置窗开着时背后页面导航（pushState）→ 设置窗关闭；�
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   await open("plugins");
   assert.ok(dialog(), "设置窗先打开");
-  await click(inDialog('[data-settings-item="api"]'), "api");
+  await click(inDialog('[data-settings-item="ai-models"]'), "ai-models");
   assert.ok(dialog(), "换 tab 只改 /settings/<tab>（replaceState），设置窗不该关");
-  assert.equal(window.location.pathname, "/settings/api");
+  assert.equal(window.location.pathname, "/settings/ai-models");
 
   await act(async () => {
     window.history.pushState(null, "", "/projects");
@@ -379,7 +418,8 @@ test("extraSections 与内置同 id（含旧 id memory）：内置优先，控�
     const extraSections = [
       { id: "plugins", group: "data", label: "旧插件", render: legacy("legacy-plugins") },
       { id: "memory", group: "data", label: "记忆", render: legacy("legacy-memory") },
-      { id: "knowledge", group: "data", label: "知识库", render: legacy("knowledge") },
+      { id: "knowledge", group: "data", label: "知识库", render: legacy("legacy-knowledge") },
+      { id: "notes", group: "data", label: "备注", render: legacy("notes") },
     ];
     const view = await mount(React.createElement(SettingsModalHost, { extraSections }), "/agent");
     await open("plugins");
@@ -388,19 +428,23 @@ test("extraSections 与内置同 id（含旧 id memory）：内置优先，控�
     const labels = [...dialog().querySelectorAll("[data-settings-item]")].map((node) => node.textContent);
     assert.ok(!labels.includes("旧插件"), `同 id 的站点项不该出现在导航里：${labels.join(" / ")}`);
     assert.ok(!labels.includes("记忆"), `旧 id memory 已并入个性化，不该再出现：${labels.join(" / ")}`);
-    assert.ok(labels.includes("知识库"), "不冲突的站点项照常出现");
+    assert.ok(!labels.includes("知识库"), `旧 id knowledge 已并入个性化，不该再出现：${labels.join(" / ")}`);
+    assert.ok(labels.includes("备注"), "不冲突的站点项照常出现");
 
     await open("memory");
     assert.ok(pane("pane-personalization"));
-    await click(inDialog('[data-settings-item="knowledge"]'), "knowledge");
-    assert.ok(pane("knowledge"));
+    await open("knowledge");
+    assert.ok(pane("pane-personalization"), "/settings/knowledge 落到个性化");
+    await click(inDialog('[data-settings-item="notes"]'), "notes");
+    assert.ok(pane("notes"));
     await open("plugins");
 
     const plugins = warnings.filter((line) => line.includes('"plugins"'));
     const memory = warnings.filter((line) => line.includes('"memory"'));
+    const knowledge = warnings.filter((line) => line.includes('"knowledge"'));
     assert.equal(plugins.length, 1, `plugins 只警告一次：${JSON.stringify(warnings)}`);
     assert.equal(memory.length, 1, `memory 只警告一次：${JSON.stringify(warnings)}`);
-    assert.equal(warnings.some((line) => line.includes('"knowledge"')), false);
+    assert.equal(knowledge.length, 1, `knowledge 只警告一次：${JSON.stringify(warnings)}`);
     await view.cleanup();
   } finally {
     console.warn = originalWarn;

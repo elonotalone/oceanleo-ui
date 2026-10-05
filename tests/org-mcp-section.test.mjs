@@ -131,7 +131,7 @@ async function withDom(run, { orgApi = {}, role = "admin", orgName = "海狮科�
   virtualConsole.on("jsdomError", () => {});
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     pretendToBeVisual: true,
-    url: "https://oceanleo.com/settings/org?org=o1",
+    url: "https://oceanleo.com/settings/team?org=o1",
     virtualConsole,
   });
   const { window } = dom;
@@ -239,7 +239,7 @@ test("管理员：组织页有共用连接器区和「添加连接器」，空�
     assert.ok(text().includes("共用连接器"));
     assert.ok(text().includes("添加连接器"));
     assert.ok(text().includes("还没有共用连接器。"));
-    assert.ok(text().includes("连一次，这个组织里的人都能用，不用各自再填密钥。"));
+    assert.ok(text().includes("连一次，这个团队里的人都能用，不用各自再填密钥。"));
     assert.ok(!text().includes("组织提供"));
     assert.ok(!text().includes("为组织连接"));
     assert.ok(!text().includes("MCP"));
@@ -420,7 +420,7 @@ test("端点是 workspace-mcp.oceandino.com 时，转发身份默认勾上", asy
   });
 });
 
-test("只列出当前组织的连接，不混入别的组织", async () => {
+test("只列出当前组织的连接，不混入别的团队", async () => {
   await withDom(
     async ({ render, find, findAll, text }) => {
       await render();
