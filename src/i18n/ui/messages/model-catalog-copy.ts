@@ -82,6 +82,9 @@ const sourceKeys = {
   idleWindow: "闲时",
   thinkingMode: "思考模式",
   modeOutput: "输出 {output}",
+  emptyClassNotOpened: "这一类暂未开通",
+  emptyClassNeedsByok: "这一类需自带 Key",
+  emptyClassNoneInEdition: "本版暂无这一类模型",
 } as const;
 
 type MessageName = keyof typeof sourceKeys;
@@ -174,6 +177,9 @@ const en: LocaleMessages = {
   idleWindow: "Off-peak",
   thinkingMode: "Thinking mode",
   modeOutput: "Out {output}",
+  emptyClassNotOpened: "This category is not opened yet",
+  emptyClassNeedsByok: "This category needs your own key",
+  emptyClassNoneInEdition: "This edition has no models in this category",
 };
 
 const ja: LocaleMessages = {
@@ -260,6 +266,9 @@ const ja: LocaleMessages = {
   idleWindow: "閑散時間",
   thinkingMode: "思考モード",
   modeOutput: "出力 {output}",
+  emptyClassNotOpened: "この種類はまだ開通していません",
+  emptyClassNeedsByok: "この種類は自分のキーが必要です",
+  emptyClassNoneInEdition: "この版にはこの種類のモデルがありません",
 };
 
 const ko: LocaleMessages = {
@@ -346,6 +355,9 @@ const ko: LocaleMessages = {
   idleWindow: "한가한 시간",
   thinkingMode: "사고 모드",
   modeOutput: "출력 {output}",
+  emptyClassNotOpened: "이 종류는 아직 개통되지 않았습니다",
+  emptyClassNeedsByok: "이 종류는 직접 키가 필요합니다",
+  emptyClassNoneInEdition: "이 버전에는 이 종류의 모델이 없습니다",
 };
 
 const zhTW: LocaleMessages = {
@@ -431,6 +443,9 @@ const zhTW: LocaleMessages = {
   idleWindow: "閒時",
   thinkingMode: "思考模式",
   modeOutput: "輸出 {output}",
+  emptyClassNotOpened: "這一類暫未開通",
+  emptyClassNeedsByok: "這一類需自帶 Key",
+  emptyClassNoneInEdition: "本版暫無這一類模型",
 };
 
 const de: LocaleMessages = {
@@ -495,6 +510,9 @@ const de: LocaleMessages = {
     "Die Preise stammen aus den offiziellen Live-Quellen der Anbieter und werden stündlich aktualisiert. Der Katalog umfasst",
   providerUpdated: "{n} Modelle · aktualisiert {time}",
   tokenPrice: "Ein {input} · aus {output} / 1 Mio. Tokens",
+  emptyClassNotOpened: "Diese Kategorie ist noch nicht freigeschaltet",
+  emptyClassNeedsByok: "Diese Kategorie braucht deinen eigenen Key",
+  emptyClassNoneInEdition: "Diese Ausgabe hat in dieser Kategorie keine Modelle",
 };
 
 const fr: LocaleMessages = {
@@ -559,6 +577,9 @@ const fr: LocaleMessages = {
     "Les prix viennent des sources officielles en direct de chaque fournisseur et sont mis à jour chaque heure. Le catalogue couvre",
   providerUpdated: "{n} modèles · mis à jour {time}",
   tokenPrice: "Entrée {input} · sortie {output} / 1 M de tokens",
+  emptyClassNotOpened: "Cette catégorie n’est pas encore ouverte",
+  emptyClassNeedsByok: "Cette catégorie nécessite votre propre clé",
+  emptyClassNoneInEdition: "Cette édition n’a aucun modèle dans cette catégorie",
 };
 
 const es: LocaleMessages = {
@@ -623,6 +644,9 @@ const es: LocaleMessages = {
     "Los precios vienen de la fuente oficial en vivo de cada proveedor y se actualizan cada hora. El catálogo cubre",
   providerUpdated: "{n} modelos · actualizado {time}",
   tokenPrice: "Entrada {input} · salida {output} / 1 M de tokens",
+  emptyClassNotOpened: "Esta categoría aún no está abierta",
+  emptyClassNeedsByok: "Esta categoría necesita tu propia clave",
+  emptyClassNoneInEdition: "Esta edición no tiene modelos en esta categoría",
 };
 
 const it: LocaleMessages = {
@@ -687,6 +711,9 @@ const it: LocaleMessages = {
     "I prezzi arrivano dalle fonti ufficiali in tempo reale di ciascun fornitore e si aggiornano ogni ora. Il catalogo copre",
   providerUpdated: "{n} modelli · aggiornato {time}",
   tokenPrice: "In {input} · out {output} / 1 M di token",
+  emptyClassNotOpened: "Questa categoria non è ancora aperta",
+  emptyClassNeedsByok: "Questa categoria richiede la tua chiave",
+  emptyClassNoneInEdition: "Questa edizione non ha modelli in questa categoria",
 };
 
 const ptBR: LocaleMessages = {
@@ -751,6 +778,9 @@ const ptBR: LocaleMessages = {
     "Os preços vêm da fonte oficial ao vivo de cada fornecedor e são atualizados a cada hora. O catálogo cobre",
   providerUpdated: "{n} modelos · atualizado {time}",
   tokenPrice: "Entrada {input} · saída {output} / 1 mi de tokens",
+  emptyClassNotOpened: "Esta categoria ainda não está aberta",
+  emptyClassNeedsByok: "Esta categoria precisa da sua própria chave",
+  emptyClassNoneInEdition: "Esta edição não tem modelos nesta categoria",
 };
 
 const vi: LocaleMessages = {
@@ -815,6 +845,9 @@ const vi: LocaleMessages = {
     "Giá đến từ nguồn chính thức theo thời gian thực của từng nhà cung cấp và được cập nhật mỗi giờ. Danh mục gồm",
   providerUpdated: "{n} mô hình · cập nhật {time}",
   tokenPrice: "Vào {input} · ra {output} / 1 triệu token",
+  emptyClassNotOpened: "Loại này chưa được mở",
+  emptyClassNeedsByok: "Loại này cần key của bạn",
+  emptyClassNoneInEdition: "Bản này không có mô hình loại này",
 };
 
 const tr: LocaleMessages = {
@@ -879,6 +912,9 @@ const tr: LocaleMessages = {
     "Fiyatlar her sağlayıcının resmi canlı kaynağından gelir ve saatte bir güncellenir. Katalog şunları kapsar",
   providerUpdated: "{n} model · güncellendi {time}",
   tokenPrice: "Giriş {input} · çıkış {output} / 1 milyon token",
+  emptyClassNotOpened: "Bu kategori henüz açılmadı",
+  emptyClassNeedsByok: "Bu kategori kendi anahtarını gerektirir",
+  emptyClassNoneInEdition: "Bu sürümde bu kategoride model yok",
 };
 
 const ar: LocaleMessages = {
@@ -943,6 +979,9 @@ const ar: LocaleMessages = {
     "الأسعار تأتي من المصدر الرسمي المباشر لكل مورّد وتُحدَّث كل ساعة. الكتالوج يشمل",
   providerUpdated: "{n} نماذج · محدّث {time}",
   tokenPrice: "دخل {input} · خرج {output} / مليون رمز",
+  emptyClassNotOpened: "هذا النوع غير مفتوح بعد",
+  emptyClassNeedsByok: "هذا النوع يحتاج إلى مفتاحك",
+  emptyClassNoneInEdition: "لا توجد نماذج من هذا النوع في هذه النسخة",
 };
 
 const th: LocaleMessages = {
@@ -1007,6 +1046,9 @@ const th: LocaleMessages = {
     "ราคามาจากแหล่งทางการแบบเรียลไทม์ของแต่ละผู้ให้บริการ และอัปเดตทุกชั่วโมง แคตตาล็อกครอบคลุม",
   providerUpdated: "{n} โมเดล · อัปเดต {time}",
   tokenPrice: "เข้า {input} · ออก {output} / 1 ล้านโทเคน",
+  emptyClassNotOpened: "หมวดนี้ยังไม่เปิดให้ใช้",
+  emptyClassNeedsByok: "หมวดนี้ต้องใช้คีย์ของคุณเอง",
+  emptyClassNoneInEdition: "รุ่นนี้ยังไม่มีโมเดลในหมวดนี้",
 };
 
 const hi: LocaleMessages = {
@@ -1071,6 +1113,9 @@ const hi: LocaleMessages = {
     "कीमतें हर विक्रेता के आधिकारिक लाइव स्रोत से आती हैं और हर घंटे अपडेट होती हैं। कैटलॉग में शामिल हैं",
   providerUpdated: "{n} मॉडल · अपडेट {time}",
   tokenPrice: "इन {input} · आउट {output} / 10 लाख टोकन",
+  emptyClassNotOpened: "यह श्रेणी अभी नहीं खुली",
+  emptyClassNeedsByok: "इस श्रेणी के लिए आपकी अपनी कुंजी चाहिए",
+  emptyClassNoneInEdition: "इस संस्करण में इस श्रेणी के मॉडल नहीं हैं",
 };
 
 const translations = {

@@ -570,7 +570,8 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
 // sessionStorage key for the catalog snapshot (instant render on repeat loads
 // within a tab session). The HTTP layer already caches the network response;
 // this avoids even the re-parse/normalize on quick back-and-forth navigation.
-const CATALOG_CACHE_KEY = "oceanleo_model_catalog_v3";
+// v4 busts the v3 snapshot so a tab no longer paints the old 807-model catalog.
+const CATALOG_CACHE_KEY = "oceanleo_model_catalog_v4";
 
 function readCachedCatalog(): ModelCatalog | null {
   if (typeof window === "undefined") return null;

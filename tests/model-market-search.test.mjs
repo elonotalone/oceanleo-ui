@@ -56,6 +56,68 @@ test("matchesModel：glm 5.1 命中 ZHIPU/GLM-5.1 与 z-ai/glm-5.1", () => {
   );
 });
 
+test("groupOffers 里 tripo、stability 排在 azure 之后、openai 之前", () => {
+  assert.deepEqual(
+    [...PROVIDER_DISPLAY_ORDER],
+    [
+      "bailian",
+      "volcano",
+      "tencent",
+      "baidu",
+      "alibaba_intl",
+      "deepinfra",
+      "openrouter",
+      "azure",
+      "tripo",
+      "stability",
+      "openai",
+      "anthropic",
+    ],
+  );
+  const groups = groupOffers([
+    {
+      key: "openai:shared-model",
+      id: "shared-model",
+      provider: "openai",
+      label: "Shared",
+      category: "threed",
+    },
+    {
+      key: "tripo:shared-model",
+      id: "shared-model",
+      provider: "tripo",
+      label: "Shared",
+      category: "threed",
+    },
+    {
+      key: "azure:shared-model",
+      id: "shared-model",
+      provider: "azure",
+      label: "Shared",
+      category: "threed",
+    },
+    {
+      key: "stability:shared-model",
+      id: "shared-model",
+      provider: "stability",
+      label: "Shared",
+      category: "threed",
+    },
+    {
+      key: "anthropic:shared-model",
+      id: "shared-model",
+      provider: "anthropic",
+      label: "Shared",
+      category: "threed",
+    },
+  ]);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(
+    groups[0].offers.map((item) => item.provider),
+    ["azure", "tripo", "stability", "openai", "anthropic"],
+  );
+});
+
 test("groupOffers 按 canonical(id) 合并并按 §1 厂商顺序排", () => {
   const groups = groupOffers(
     [

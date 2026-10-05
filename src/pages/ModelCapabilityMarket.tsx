@@ -59,6 +59,55 @@ function flatten(block: CatalogCapability) {
   return block.providers.flatMap((provider) => provider.models || []);
 }
 
+export type EmptyCapabilityReason = "not_opened" | "byok_only" | "none";
+
+const EMPTY_REASON_PRIORITY: readonly EmptyCapabilityReason[] = [
+  "not_opened",
+  "byok_only",
+  "none",
+];
+
+/** Preset empty-row copy: not_opened first, then unpaid BYOK, else none in this edition. */
+export function emptyCapabilityReason(
+  capability: CatalogCapability | undefined,
+  byokProviders: readonly string[] = [],
+): EmptyCapabilityReason {
+  const models = capability ? flatten(capability) : [];
+  if (models.some((model) => model.status === "not_opened")) return "not_opened";
+  const needsByok = models.some(
+    (model) =>
+      model.status === "byok_only"
+      && !byokProviders.includes(model.provider || ""),
+  );
+  if (needsByok) return "byok_only";
+  return "none";
+}
+
+export function emptyCategoryReason(
+  capabilities: CatalogCapability[] | undefined,
+  byokProviders: readonly string[] = [],
+): EmptyCapabilityReason {
+  const reasons = (capabilities || []).map((item) =>
+    emptyCapabilityReason(item, byokProviders),
+  );
+  if (!reasons.length) return "none";
+  const counts: Record<EmptyCapabilityReason, number> = {
+    not_opened: 0,
+    byok_only: 0,
+    none: 0,
+  };
+  for (const reason of reasons) counts[reason] += 1;
+  return EMPTY_REASON_PRIORITY.reduce((best, current) =>
+    counts[current] > counts[best] ? current : best,
+  );
+}
+
+function emptyReasonText(reason: EmptyCapabilityReason, tt: UITranslate): string {
+  if (reason === "not_opened") return tt("这一类暂未开通");
+  if (reason === "byok_only") return tt("这一类需自带 Key");
+  return tt("本版暂无这一类模型");
+}
+
 function flattenProviders(providers: CatalogProviderBlock[] | undefined) {
   return (providers || []).flatMap((provider) => provider.models || []);
 }
@@ -706,22 +755,40 @@ export function ModelGroupManager({
                   0,
                 );
                 const active = item.id === category.id;
+                const emptyReason =
+                  group.kind === "preset" && count === 0
+                    ? emptyCategoryReason(item.capabilities, byokProviders)
+                    : null;
                 return (
                   <button
                     key={item.id}
                     type="button"
+                    data-model-cat={item.id}
                     onClick={() => {
                       setActiveCategory(item.id);
                       setActiveCapability(item.capabilities[0]?.id || "");
                       setProvider(ALL_PROVIDERS);
                       setQuery("");
                     }}
-                    className={`flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] sm:w-full ${
+                    className={`flex shrink-0 flex-col items-stretch rounded-lg px-3 py-2 text-left text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] sm:w-full ${
  active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-200/60"
  }`}
                   >
-                    <span>{tt(item.label)}</span>
-                    <span className={active ? "text-[11px] text-white/65" : "text-[11px] text-neutral-400"}>✓{count}</span>
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span>{tt(item.label)}</span>
+                      <span className={active ? "text-[11px] text-white/65" : "text-[11px] text-neutral-400"}>✓{count}</span>
+                    </span>
+                    {emptyReason ? (
+                      <span
+                        data-empty-cat-reason={item.id}
+                        data-empty-reason={emptyReason}
+                        className={`mt-0.5 text-left text-[10px] font-normal ${
+                          active ? "text-amber-100" : "text-amber-700"
+                        }`}
+                      >
+                        {emptyReasonText(emptyReason, tt)}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -733,21 +800,39 @@ export function ModelGroupManager({
               {category.capabilities.map((item) => {
                 const active = item.id === capability.id;
                 const count = (selection[category.id]?.[item.id] || []).length;
+                const emptyReason =
+                  group.kind === "preset" && count === 0
+                    ? emptyCapabilityReason(item, byokProviders)
+                    : null;
                 return (
                   <button
                     key={item.id}
                     type="button"
+                    data-model-cap={item.id}
                     onClick={() => {
                       setActiveCapability(item.id);
                       setProvider(ALL_PROVIDERS);
                       setQuery("");
                     }}
-                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-left text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  active ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
  }`}
                   >
-                    {tt(item.label)}
-                    <span className={active ? "ml-1 text-emerald-200" : "ml-1 text-emerald-600"}>✓{count}</span>
+                    <span>
+                      {tt(item.label)}
+                      <span className={active ? "ml-1 text-emerald-200" : "ml-1 text-emerald-600"}>✓{count}</span>
+                    </span>
+                    {emptyReason ? (
+                      <span
+                        data-empty-cap-reason={item.id}
+                        data-empty-reason={emptyReason}
+                        className={`mt-0.5 block text-[10px] font-normal ${
+                          active ? "text-amber-100" : "text-amber-700"
+                        }`}
+                      >
+                        {emptyReasonText(emptyReason, tt)}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

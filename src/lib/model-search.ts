@@ -10,6 +10,8 @@ export const PROVIDER_DISPLAY_ORDER: readonly string[] = [
   "deepinfra",
   "openrouter",
   "azure",
+  "tripo",
+  "stability",
   "openai",
   "anthropic",
 ];
