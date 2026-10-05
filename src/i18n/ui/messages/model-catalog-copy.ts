@@ -84,6 +84,7 @@ const sourceKeys = {
   modeOutput: "输出 {output}",
   emptyClassNotOpened: "这一类暂未开通",
   emptyClassNeedsByok: "这一类需自带 Key",
+  emptyClassNoAdapter: "这一类暂不支持调用",
   emptyClassNoneInEdition: "本版暂无这一类模型",
 } as const;
 
@@ -179,6 +180,7 @@ const en: LocaleMessages = {
   modeOutput: "Out {output}",
   emptyClassNotOpened: "This category is not opened yet",
   emptyClassNeedsByok: "This category needs your own key",
+  emptyClassNoAdapter: "This category cannot be called yet",
   emptyClassNoneInEdition: "This edition has no models in this category",
 };
 
@@ -268,6 +270,7 @@ const ja: LocaleMessages = {
   modeOutput: "出力 {output}",
   emptyClassNotOpened: "この種類はまだ開通していません",
   emptyClassNeedsByok: "この種類は自分のキーが必要です",
+  emptyClassNoAdapter: "この種類はまだ呼び出しできません",
   emptyClassNoneInEdition: "この版にはこの種類のモデルがありません",
 };
 
@@ -357,6 +360,7 @@ const ko: LocaleMessages = {
   modeOutput: "출력 {output}",
   emptyClassNotOpened: "이 종류는 아직 개통되지 않았습니다",
   emptyClassNeedsByok: "이 종류는 직접 키가 필요합니다",
+  emptyClassNoAdapter: "이 종류는 아직 호출할 수 없습니다",
   emptyClassNoneInEdition: "이 버전에는 이 종류의 모델이 없습니다",
 };
 
@@ -445,6 +449,7 @@ const zhTW: LocaleMessages = {
   modeOutput: "輸出 {output}",
   emptyClassNotOpened: "這一類暫未開通",
   emptyClassNeedsByok: "這一類需自帶 Key",
+  emptyClassNoAdapter: "這一類暫不支援呼叫",
   emptyClassNoneInEdition: "本版暫無這一類模型",
 };
 
@@ -512,6 +517,7 @@ const de: LocaleMessages = {
   tokenPrice: "Ein {input} · aus {output} / 1 Mio. Tokens",
   emptyClassNotOpened: "Diese Kategorie ist noch nicht freigeschaltet",
   emptyClassNeedsByok: "Diese Kategorie braucht deinen eigenen Key",
+  emptyClassNoAdapter: "Diese Kategorie kann noch nicht aufgerufen werden",
   emptyClassNoneInEdition: "Diese Ausgabe hat in dieser Kategorie keine Modelle",
 };
 
@@ -579,6 +585,7 @@ const fr: LocaleMessages = {
   tokenPrice: "Entrée {input} · sortie {output} / 1 M de tokens",
   emptyClassNotOpened: "Cette catégorie n’est pas encore ouverte",
   emptyClassNeedsByok: "Cette catégorie nécessite votre propre clé",
+  emptyClassNoAdapter: "Cette catégorie ne peut pas encore être appelée",
   emptyClassNoneInEdition: "Cette édition n’a aucun modèle dans cette catégorie",
 };
 
@@ -646,6 +653,7 @@ const es: LocaleMessages = {
   tokenPrice: "Entrada {input} · salida {output} / 1 M de tokens",
   emptyClassNotOpened: "Esta categoría aún no está abierta",
   emptyClassNeedsByok: "Esta categoría necesita tu propia clave",
+  emptyClassNoAdapter: "Esta categoría aún no admite llamadas",
   emptyClassNoneInEdition: "Esta edición no tiene modelos en esta categoría",
 };
 
@@ -713,6 +721,7 @@ const it: LocaleMessages = {
   tokenPrice: "In {input} · out {output} / 1 M di token",
   emptyClassNotOpened: "Questa categoria non è ancora aperta",
   emptyClassNeedsByok: "Questa categoria richiede la tua chiave",
+  emptyClassNoAdapter: "Questa categoria non può ancora essere chiamata",
   emptyClassNoneInEdition: "Questa edizione non ha modelli in questa categoria",
 };
 
@@ -780,6 +789,7 @@ const ptBR: LocaleMessages = {
   tokenPrice: "Entrada {input} · saída {output} / 1 mi de tokens",
   emptyClassNotOpened: "Esta categoria ainda não está aberta",
   emptyClassNeedsByok: "Esta categoria precisa da sua própria chave",
+  emptyClassNoAdapter: "Esta categoria ainda não pode ser chamada",
   emptyClassNoneInEdition: "Esta edição não tem modelos nesta categoria",
 };
 
@@ -847,6 +857,7 @@ const vi: LocaleMessages = {
   tokenPrice: "Vào {input} · ra {output} / 1 triệu token",
   emptyClassNotOpened: "Loại này chưa được mở",
   emptyClassNeedsByok: "Loại này cần key của bạn",
+  emptyClassNoAdapter: "Loại này tạm chưa hỗ trợ gọi",
   emptyClassNoneInEdition: "Bản này không có mô hình loại này",
 };
 
@@ -914,6 +925,7 @@ const tr: LocaleMessages = {
   tokenPrice: "Giriş {input} · çıkış {output} / 1 milyon token",
   emptyClassNotOpened: "Bu kategori henüz açılmadı",
   emptyClassNeedsByok: "Bu kategori kendi anahtarını gerektirir",
+  emptyClassNoAdapter: "Bu kategori henüz çağrılamaz",
   emptyClassNoneInEdition: "Bu sürümde bu kategoride model yok",
 };
 
@@ -981,6 +993,7 @@ const ar: LocaleMessages = {
   tokenPrice: "دخل {input} · خرج {output} / مليون رمز",
   emptyClassNotOpened: "هذا النوع غير مفتوح بعد",
   emptyClassNeedsByok: "هذا النوع يحتاج إلى مفتاحك",
+  emptyClassNoAdapter: "هذا النوع لا يدعم الاستدعاء بعد",
   emptyClassNoneInEdition: "لا توجد نماذج من هذا النوع في هذه النسخة",
 };
 
@@ -1048,6 +1061,7 @@ const th: LocaleMessages = {
   tokenPrice: "เข้า {input} · ออก {output} / 1 ล้านโทเคน",
   emptyClassNotOpened: "หมวดนี้ยังไม่เปิดให้ใช้",
   emptyClassNeedsByok: "หมวดนี้ต้องใช้คีย์ของคุณเอง",
+  emptyClassNoAdapter: "หมวดนี้ยังไม่รองรับการเรียกใช้",
   emptyClassNoneInEdition: "รุ่นนี้ยังไม่มีโมเดลในหมวดนี้",
 };
 
@@ -1115,6 +1129,7 @@ const hi: LocaleMessages = {
   tokenPrice: "इन {input} · आउट {output} / 10 लाख टोकन",
   emptyClassNotOpened: "यह श्रेणी अभी नहीं खुली",
   emptyClassNeedsByok: "इस श्रेणी के लिए आपकी अपनी कुंजी चाहिए",
+  emptyClassNoAdapter: "यह श्रेणी अभी कॉल नहीं की जा सकती",
   emptyClassNoneInEdition: "इस संस्करण में इस श्रेणी के मॉडल नहीं हैं",
 };
 

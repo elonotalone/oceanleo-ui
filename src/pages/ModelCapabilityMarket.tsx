@@ -59,15 +59,16 @@ function flatten(block: CatalogCapability) {
   return block.providers.flatMap((provider) => provider.models || []);
 }
 
-export type EmptyCapabilityReason = "not_opened" | "byok_only" | "none";
+export type EmptyCapabilityReason = "not_opened" | "byok_only" | "no_adapter" | "none";
 
 const EMPTY_REASON_PRIORITY: readonly EmptyCapabilityReason[] = [
   "not_opened",
   "byok_only",
+  "no_adapter",
   "none",
 ];
 
-/** Preset empty-row copy: not_opened first, then unpaid BYOK, else none in this edition. */
+/** Preset empty-row copy: not_opened first, then unpaid BYOK, then no_adapter, else none. */
 export function emptyCapabilityReason(
   capability: CatalogCapability | undefined,
   byokProviders: readonly string[] = [],
@@ -80,6 +81,12 @@ export function emptyCapabilityReason(
       && !byokProviders.includes(model.provider || ""),
   );
   if (needsByok) return "byok_only";
+  if (
+    models.length > 0
+    && models.every((model) => model.status === "no_adapter")
+  ) {
+    return "no_adapter";
+  }
   return "none";
 }
 
@@ -94,6 +101,7 @@ export function emptyCategoryReason(
   const counts: Record<EmptyCapabilityReason, number> = {
     not_opened: 0,
     byok_only: 0,
+    no_adapter: 0,
     none: 0,
   };
   for (const reason of reasons) counts[reason] += 1;
@@ -105,6 +113,7 @@ export function emptyCategoryReason(
 function emptyReasonText(reason: EmptyCapabilityReason, tt: UITranslate): string {
   if (reason === "not_opened") return tt("这一类暂未开通");
   if (reason === "byok_only") return tt("这一类需自带 Key");
+  if (reason === "no_adapter") return tt("这一类暂不支持调用");
   return tt("本版暂无这一类模型");
 }
 
