@@ -436,11 +436,11 @@ export function useAudioPersistence({
     [replayProject],
   );
   const applyRemoteProject = useCallback(
-    (project: AudioProjectData): Promise<boolean> => replayProject(project, "remote"),
+    (project: unknown): Promise<boolean> => replayProject(project, "remote"),
     [replayProject],
   );
   const applyLocalProject = useCallback(
-    (project: AudioProjectData): Promise<boolean> => replayProject(project, "local"),
+    (project: unknown): Promise<boolean> => replayProject(project, "local"),
     [replayProject],
   );
 

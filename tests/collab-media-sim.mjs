@@ -36,6 +36,42 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+class TestPointerEvent extends window.MouseEvent {
+  constructor(type, init = {}) {
+    super(type, { bubbles: true, cancelable: true, ...init });
+    Object.defineProperties(this, {
+      pointerId: { value: init.pointerId ?? 1 },
+      pointerType: { value: init.pointerType ?? "mouse" },
+      isPrimary: { value: init.isPrimary ?? true },
+    });
+  }
+}
+window.PointerEvent = TestPointerEvent;
+globalThis.PointerEvent = TestPointerEvent;
+{
+  const captures = new WeakMap();
+  window.Element.prototype.setPointerCapture = function setPointerCapture(id) {
+    const ids = captures.get(this) || new Set();
+    ids.add(id);
+    captures.set(this, ids);
+  };
+  window.Element.prototype.hasPointerCapture = function hasPointerCapture(id) {
+    return captures.get(this)?.has(id) ?? false;
+  };
+  window.Element.prototype.releasePointerCapture = function releasePointerCapture(id) {
+    captures.get(this)?.delete(id);
+  };
+}
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+
+/** 在 act 里往元素上发一个指针事件。 */
+export async function pointer(target, type, init = {}) {
+  await act(async () => {
+    target.dispatchEvent(new TestPointerEvent(type, init));
+  });
+}
+
 export { React, act, window };
 export const document = window.document;
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
