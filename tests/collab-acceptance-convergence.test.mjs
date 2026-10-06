@@ -546,6 +546,18 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canvasGraphFromEntities, canvasGraphToEntities } from "../src/shell/collab/adapters/workflow.ts";
+import {
+  VIEW_ONLY_REFUSAL,
+  guardPluginSurface,
+} from "../src/shell/collab/adapters/visual-readonly.ts";
+import { buildDeckCommandSurface, buildPdfCommandSurface, buildRichDocCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
+import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
+import { createChartCommandSurface } from "../src/shell/chart-editor/chart-command-surface.ts";
+import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
+import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
+import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
+import { createGameAgentSurface } from "../src/shell/game-editor/game-agent-gate.ts";
+import { runGridAgentCommand } from "../src/shell/doc-editors/grid-univer/agent-write-gate.ts";
 
 const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = (rel) => readFileSync(join(UI_ROOT, "src/shell", rel), "utf8");
@@ -614,11 +626,24 @@ test("[F05] PDF：两人同时各加批注都在；甲删第 3 页，乙在第 5
 });
 
 // ------------------------------------------------------------------ F06 流程图
-test("[F06] 流程图：外壳不再整图上锁、只读不再 inert 冻住画布", () => {
+test("[F06] 流程图：路径 B — collab 不由只读推出 inert、useEntityCollab 在用、旧画布回落允许锁；只读人能拖能缩放（外壳能验到的部分）", () => {
   const stage = src("workflow-carrier/VideoCanvasStage.tsx");
-  assert.doesNotMatch(stage, /useLockedEditCollab\s*\(/, "VideoCanvasStage 还在整图上锁");
+  assert.match(stage, /useEntityCollab\s*[<(]/, "新画布要走 useEntityCollab（按节点连线合并）");
+  assert.match(stage, /useLockedEditCollab\s*\(/, "旧画布不认协同消息，探测失败后必须能退回一次一人锁");
   const inertDef = /const canvasInert\s*=([\s\S]{0,260}?);/.exec(stage)?.[1] ?? "";
-  assert.doesNotMatch(inertDef, /readOnly|viewer|canWrite|role/i, `只读的人被 inert 冻住，连拖动、缩放都做不了：canvasInert =${inertDef.trim()}`);
+  assert.match(
+    inertDef,
+    /mode === "detect" \? true : mode === "collab" \? !controlReady : lockedEdit\.readOnly/,
+    `canvasInert 必须是 detect→true / collab→!controlReady / lock→lockedEdit.readOnly，实际：${inertDef.trim()}`,
+  );
+  const collabArm = /mode === "collab" \? ([^:]+):/.exec(inertDef)?.[1] ?? "";
+  assert.doesNotMatch(collabArm, /readOnly|viewer|canWrite|role/i, `collab 分支 inert 不得由只读推出：${collabArm.trim()}`);
+  const canvasInert = (mode, controlReady, lockedReadOnly) =>
+    mode === "detect" ? true : mode === "collab" ? !controlReady : lockedReadOnly;
+  assert.equal(canvasInert("collab", true, true), false, "只读查看者、新画布已对齐：外壳不 inert，能平移、缩放");
+  assert.equal(canvasInert("collab", false, false), true, "对齐未完成：整块 inert");
+  assert.equal(canvasInert("lock", true, true), true, "旧画布回落：只读仍 inert");
+  assert.equal(canvasInert("detect", true, false), true, "探测期 inert");
 });
 
 test("[F06] 流程图：两人同时加节点与连线都在；甲删节点，乙连到它的线不留断线", () => {
@@ -783,4 +808,353 @@ test("[只读/16] 浮条：每个 *ContextToolbar 拿到只读状态（传 prop�
     }
   }
   assert.deepEqual(bad, [], bad.join("\n"));
+});
+
+function dummyCommandParams(spec) {
+  return Object.fromEntries(
+    (spec.params || []).map((param) => [
+      param.key,
+      param.type === "enum" ? param.enumValues?.[0]?.value ?? "x" : param.type === "number" ? 1 : "x",
+    ]),
+  );
+}
+
+function recordCalls() {
+  const calls = [];
+  const record =
+    (name, result) =>
+    (...args) => {
+      calls.push([name, ...args]);
+      return typeof result === "function" ? result(...args) : result;
+    };
+  return { calls, record };
+}
+
+async function assertWrappedReadonly(family, inner, editorCalls) {
+  const ran = [];
+  const instrumented = {
+    ...inner,
+    run(id, params) {
+      ran.push(id);
+      return inner.run(id, params);
+    },
+  };
+  const surface = guardPluginSurface(instrumented, true);
+  const mutating = surface.describe().filter((spec) => spec.mutates);
+  assert.ok(mutating.length >= 1, `${family}: 应有会改作品的指令`);
+  const spec = mutating[0];
+  const result = await surface.run(spec.id, dummyCommandParams(spec));
+  assert.equal(result.ok, false, `${family}: ${spec.id} 只读时应被拒`);
+  assert.equal(result.message, VIEW_ONLY_REFUSAL, family);
+  assert.deepEqual(ran, [], `${family}: 原 run 不得被调用`);
+  if (editorCalls) assert.deepEqual(editorCalls, [], `${family}: 文档/编辑器不得被改`);
+}
+
+test("[只读/16] 能拿到构造函数的指令面：只读时改动指令被拒、原 run 不跑、文档不变", async (t) => {
+  const noopDownload = { download: async () => "" };
+  const conclusions = [];
+
+  const pdfCalls = [];
+  const pdfEditor = {
+    readerState: "text-ready",
+    failure: null,
+    textLayer: { status: "ready", present: true, totalCharacters: 9, coveragePageRatio: 1, extractor: "pdfjs" },
+    manifest: null,
+    searchFullText: () => [],
+    pageNumber: 2,
+    pageCount: 6,
+    rotation: 0,
+    zoom: 100,
+    annotations: [],
+    loading: false,
+    rendering: false,
+    processing: false,
+    dirty: false,
+    editRevision: 1,
+    error: "",
+    notice: "",
+    goToPage: (...args) => pdfCalls.push(["goToPage", ...args]),
+    extractPages: async (...args) => pdfCalls.push(["extractPages", ...args]),
+    deleteCurrentPage: async () => pdfCalls.push(["deleteCurrentPage"]),
+    rotateCurrentPage: async (...args) => pdfCalls.push(["rotateCurrentPage", ...args]),
+    addBlankPage: async () => pdfCalls.push(["addBlankPage"]),
+    moveCurrentPage: async () => pdfCalls.push(["moveCurrentPage"]),
+    movePage: async (...args) => pdfCalls.push(["movePage", ...args]),
+    save: async () => pdfCalls.push(["save"]),
+    saveCopy: async () => pdfCalls.push(["saveCopy"]),
+    download: () => pdfCalls.push(["download"]),
+  };
+  await assertWrappedReadonly("pdf", buildPdfCommandSurface(pdfEditor, noopDownload), pdfCalls);
+  conclusions.push("pdf: 行为（buildPdfCommandSurface + guardPluginSurface）");
+
+  const deckCalls = [];
+  const deckEditor = new Proxy(
+    {
+      loading: false,
+      dirty: false,
+      editRevision: 1,
+      error: "",
+      activeIndex: 0,
+      deck: { slides: [{ id: "s1", title: "A" }, { id: "s2", title: "B" }] },
+    },
+    {
+      get(target, key) {
+        if (key in target) return target[key];
+        if (typeof key === "symbol") return undefined;
+        return (...args) => deckCalls.push([String(key), ...args]);
+      },
+    },
+  );
+  await assertWrappedReadonly("deck", buildDeckCommandSurface(deckEditor, noopDownload), deckCalls);
+  conclusions.push("deck: 行为（buildDeckCommandSurface + guardPluginSurface）");
+
+  const richTouched = [];
+  const richSpy = {
+    chain() {
+      richTouched.push("chain");
+      return this;
+    },
+    focus() {
+      return this;
+    },
+    insertContentAt() {
+      return this;
+    },
+    run() {
+      return true;
+    },
+  };
+  const richEditor = {
+    editor: richSpy,
+    item: { title: "t", meta: {} },
+    siteId: "",
+    loading: false,
+    importing: false,
+    saving: false,
+    dirty: false,
+    sourceReady: true,
+    editRevision: 1,
+    error: "",
+    sourceFailed: false,
+    savedUrl: "",
+    source: "url-docx",
+    words: 1,
+    chars: 1,
+    save: async () => null,
+    exportDoc: async () => {},
+    exportMarkdown: async () => {},
+    exportHtml: async () => {},
+    exportText: () => {},
+  };
+  await assertWrappedReadonly("richdoc", buildRichDocCommandSurface(richEditor, noopDownload), richTouched);
+  conclusions.push("richdoc: 行为（buildRichDocCommandSurface + guardPluginSurface）");
+
+  const image = recordCalls();
+  const imageEditor = {
+    loading: false,
+    cropping: false,
+    error: "",
+    dirty: false,
+    editRevision: 1,
+    doc: { width: 1080, height: 720 },
+    canvasBackground: "#ffffff",
+    layers: [{ id: "l1", locked: false, selected: true, kind: "text" }],
+    selected: { id: "l1", kind: "text" },
+    zoom: 1,
+    exportFormat: "png",
+    exportQuality: 90,
+    collab: { readOnly: true },
+    startCrop: image.record("startCrop"),
+    setCropRatio: image.record("setCropRatio"),
+    confirmCrop: image.record("confirmCrop", async () => undefined),
+    resizeDoc: image.record("resizeDoc"),
+    rotateTarget: image.record("rotateTarget"),
+    addText: image.record("addText"),
+    setSelectedText: image.record("setSelectedText"),
+    setCanvasBackground: image.record("setCanvasBackground"),
+  };
+  const imageSurface = createImageCommandSurface({
+    editor: imageEditor,
+    deliver: async () => undefined,
+    runAi: async () => ({ ok: true, message: "x" }),
+  });
+  {
+    const mutating = imageSurface.describe().filter((spec) => spec.mutates);
+    assert.ok(mutating.length >= 1, "image: 应有会改作品的指令");
+    const spec = mutating[0];
+    const result = await imageSurface.run(spec.id, dummyCommandParams(spec));
+    assert.equal(result.ok, false, `image: ${spec.id}`);
+    assert.equal(result.message, VIEW_ONLY_REFUSAL);
+    assert.deepEqual(image.calls, [], "image: 画布不得被改");
+  }
+  conclusions.push("image: 行为（createImageCommandSurface 内置 guardVisualCommands）");
+
+  const chart = recordCalls();
+  const chartEditor = {
+    loading: false,
+    sourceReady: true,
+    carrierState: "ready",
+    error: "",
+    dirty: false,
+    editRevision: 1,
+    readOnly: true,
+    activeSeriesId: "series-1",
+    document: {
+      option: {
+        title: { text: "t" },
+        legend: { show: true },
+        xAxis: { data: ["a"] },
+        series: [{ id: "series-1", name: "N", type: "bar", data: [1] }],
+      },
+    },
+    patchSeries: chart.record("patchSeries"),
+    setTitle: chart.record("setTitle"),
+    setLegend: chart.record("setLegend"),
+    addSeries: chart.record("addSeries"),
+    removeSeries: chart.record("removeSeries"),
+  };
+  const chartSurface = createChartCommandSurface({ editor: chartEditor, deliver: async () => undefined });
+  {
+    const mutating = chartSurface.describe().filter((spec) => spec.mutates);
+    assert.ok(mutating.length >= 1, "chart: 应有会改作品的指令");
+    const spec = mutating[0];
+    const result = await chartSurface.run(spec.id, dummyCommandParams(spec));
+    assert.equal(result.ok, false, `chart: ${spec.id}`);
+    assert.equal(result.message, VIEW_ONLY_REFUSAL);
+    assert.deepEqual(chart.calls, [], "chart: 文档不得被改");
+  }
+  conclusions.push("chart: 行为（createChartCommandSurface 内置 guardVisualCommands）");
+
+  const video = recordCalls();
+  const videoEditor = {
+    loadingSource: false,
+    sourceReady: true,
+    exporting: false,
+    error: "",
+    dirty: false,
+    editRevision: 1,
+    durationMs: 10_000,
+    playheadMs: 1_000,
+    playing: false,
+    selectedClipId: "clip-a",
+    doc: {
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      tracks: [{ id: "track-v", kind: "video", clips: [{ id: "clip-a", start_ms: 0, duration_ms: 6_000, source_url: "https://cdn.example.com/a.mp4" }] }],
+    },
+    cutRange: video.record("cutRange", true),
+    deleteClip: video.record("deleteClip", true),
+    patchClip: video.record("patchClip"),
+    setClipSpeed: video.record("setClipSpeed"),
+    addMediaUrl: video.record("addMediaUrl", async () => undefined),
+    seek: video.record("seek"),
+  };
+  await assertWrappedReadonly("video", createVideoCommandSurface({ editor: videoEditor, deliver: async () => undefined }), video.calls);
+  conclusions.push("video: 行为（createVideoCommandSurface + guardPluginSurface）");
+
+  const audio = recordCalls();
+  const audioEditor = {
+    loading: false,
+    error: "",
+    dirty: false,
+    editRevision: 1,
+    duration: 30,
+    currentTime: 4,
+    playing: false,
+    selection: null,
+    fadeDuration: 1.5,
+    gain: 100,
+    editRange: audio.record("editRange", async () => true),
+    applyGainRange: audio.record("applyGainRange", async () => true),
+    applyFade: audio.record("applyFade"),
+    seekTo: audio.record("seekTo"),
+  };
+  await assertWrappedReadonly("audio", createAudioCommandSurface({ editor: audioEditor, deliver: async () => undefined }), audio.calls);
+  conclusions.push("audio: 行为（createAudioCommandSurface + guardPluginSurface）");
+
+  const model = recordCalls();
+  const modelEditor = {
+    loading: false,
+    modelLoaded: true,
+    downloading: false,
+    capturing: false,
+    saving: false,
+    dirty: false,
+    editRevision: 1,
+    sourceFormat: "glb",
+    azimuth: 30,
+    elevation: 12,
+    zoom: 100,
+    autoRotate: false,
+    background: "#101010",
+    animations: ["Idle"],
+    animationPlaying: false,
+    sceneNodes: [{ id: "n1" }],
+    materials: [{ name: "m1" }],
+    annotations: [],
+    setOrbit: model.record("setOrbit"),
+    setZoom: model.record("setZoom"),
+    resetCamera: model.record("resetCamera"),
+    setAutoRotate: model.record("setAutoRotate"),
+    selectAnimation: model.record("selectAnimation"),
+    setAnimationPlaying: model.record("setAnimationPlaying"),
+  };
+  await assertWrappedReadonly("model3d", createModel3DCommandSurface({ editor: modelEditor, deliver: async () => undefined }), model.calls);
+  conclusions.push("model3d: 行为（createModel3DCommandSurface + guardPluginSurface）");
+
+  const gameWrites = [];
+  const gameSurface = createGameAgentSurface({
+    source: () => "<!doctype html><html><body><script>void 0</script></body></html>",
+    revision: () => 1,
+    writeSource(next) {
+      gameWrites.push(next);
+    },
+    params: () => ({ lives: { label: "生命", min: 1, max: 9, step: 1, default: 3 } }),
+    writeParams() {
+      gameWrites.push("params");
+    },
+  });
+  await assertWrappedReadonly("game", gameSurface, gameWrites);
+  conclusions.push("game: 行为（createGameAgentSurface + guardPluginSurface）");
+
+  const gridWrites = [];
+  const gridResult = runGridAgentCommand({
+    id: "grid.set-cell",
+    params: { row: 0, column: 0, value: "x" },
+    port: {
+      getRange: () => ({
+        getValue: () => "old",
+        setValue: (v) => gridWrites.push(v),
+      }),
+    },
+    revision: 1,
+    readonly: true,
+    readonlyNotice: "现在是只读状态，不能修改。",
+    submit: () => gridWrites.push("submit"),
+  });
+  assert.equal(gridResult.ok, false, "grid: set-cell 只读时应被拒");
+  assert.match(String(gridResult.message), /只读/, "grid: 拒绝原因应说明只读");
+  assert.deepEqual(gridWrites, [], "grid: 表格不得被写、不得送审阅");
+  conclusions.push("grid: 行为（runGridAgentCommand readonly）");
+
+  const workflowSrc = src("workflow-carrier/VideoCanvasStage.tsx");
+  assert.match(workflowSrc, /guardPluginSurface\(\s*\{[\s\S]*editorId:\s*WORKFLOW_EDITOR_ID[\s\S]*\},\s*collabReadOnly,/);
+  const workflowRan = [];
+  const workflowRaw = {
+    editorId: "workflow",
+    describe: () => [{ id: "workflow.add-node", label: "加节点", summary: "", mutates: true }],
+    state: () => ({ revision: 1 }),
+    run: (id, params) => {
+      workflowRan.push([id, params]);
+      return { ok: true, message: "wrote" };
+    },
+  };
+  const blocked = await guardPluginSurface(workflowRaw, true).run("workflow.add-node", {});
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.message, VIEW_ONLY_REFUSAL);
+  assert.deepEqual(workflowRan, []);
+  conclusions.push("workflow: 只能静态（指令面写在 VideoCanvasStage 内）；闸行为用同形 surface + guardPluginSurface 验过");
+
+  t.diagnostic(conclusions.join("\n"));
 });

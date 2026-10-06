@@ -245,6 +245,62 @@ import { fileURLToPath } from "node:url";
 
 const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const readSrc = (rel) => readFileSync(join(UI_ROOT, rel), "utf8");
+
+// 去掉行注释与块注释，保留字符串与模板字符串里的字面量。扫描回放模板时用，避免把注释里的举例 tt("中文模板 {n}") 当成真模板。
+function stripJsComments(source) {
+  let out = "";
+  for (let i = 0; i < source.length; ) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const quote = ch;
+      out += ch;
+      i += 1;
+      while (i < source.length) {
+        const cur = source[i];
+        out += cur;
+        if (cur === "\\") {
+          if (i + 1 < source.length) {
+            out += source[i + 1];
+            i += 2;
+            continue;
+          }
+        }
+        if (cur === quote) {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < source.length && source[i] !== "\n") i += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] === "\n") out += "\n";
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+function scanReplayNoteTemplates(source) {
+  const text = stripJsComments(source);
+  const scanned = new Set();
+  for (const m of text.matchAll(/\bzh:\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) if (CJK.test(m[2])) scanned.add(m[2]);
+  for (const m of text.matchAll(/\btt\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) if (CJK.test(m[2])) scanned.add(m[2]);
+  return scanned;
+}
 const CJK = /[\u4e00-\u9fff]/;
 // 假翻译：不带任何中文，只回显变量；只要输出里还有中文，就说明有句子没走 tt()
 const enTt = (zh, vars) => `EN${vars ? ":" + Object.values(vars).join(",") : ""}`;
@@ -362,6 +418,124 @@ test("[F04] 英文界面：12 个编辑器族的回放说明全部走 tt，输�
   assert.deepEqual(silent, [], `这些编辑器族典型改动没有生成任何说明：${silent.join(",")}`);
 });
 
+test("[F04] en/ja：逐族回放说明、章节标题、专业模式进出不是未翻译的中文", async (t) => {
+  const copy = await import("../src/i18n/ui/messages/work-replay-copy.ts");
+  const apply = (template, vars) =>
+    vars ? String(template).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : template;
+  const zhTt = (zh, vars) => apply(zh, vars);
+  const localeTt = (locale) => (zh, vars) => apply(copy.WORK_REPLAY_MESSAGES[locale][zh] ?? zh, vars);
+  const stubs = {
+    "../../../../i18n/ui/useUI": dataModule(`export function useUI(){ return (t)=>t; }`),
+  };
+  const Yd = (build) => {
+    const d = new Y.Doc();
+    build(d);
+    return d;
+  };
+  const rect = (x, y) => ({ origin: { x, y }, size: { width: 100, height: 20 } });
+  const vecSvg = (n) => `<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>${"<rect width='1' height='1'/>".repeat(n)}</svg>`;
+  const textDoc = (s) =>
+    Yd((d) => {
+      const t = new Y.XmlText();
+      t.insert(0, s);
+      d.getXmlFragment(RICHDOC_COLLAB_FIELD).insert(0, [t]);
+    });
+  const pairs = {
+    richdoc: [richDocFromY(textDoc("hello")), richDocFromY(textDoc("hello world, more words here"))],
+    grid: [
+      gridFromEntities(gridToEntities(asciiSheet({ 0: { 0: { v: "a", t: 1 } } })), null),
+      gridFromEntities(gridToEntities(asciiSheet({ 0: { 0: { v: "b", t: 1 }, 1: { v: 2, t: 2 } }, 1: { 0: { v: "c", t: 1 } } })), null),
+    ],
+    deck: [
+      deckFromEntities(deckToEntities({ title: "T", aspect: "16:9", theme: "paper", slides: [{ id: "s1", title: "A", body: "x", bullets: [], notes: "", layout: "title-body", background: "", elements: [] }] }), null),
+      deckFromEntities(
+        deckToEntities({
+          title: "T",
+          aspect: "16:9",
+          theme: "dark",
+          slides: [
+            { id: "s1", title: "B", body: "x", bullets: [], notes: "n", layout: "title-body", background: "", elements: [] },
+            { id: "s2", title: "C", body: "y", bullets: [], notes: "", layout: "title-body", background: "", elements: [] },
+          ],
+        }),
+        null,
+      ),
+    ],
+    image: [
+      { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 0, top: 0, width: 5, height: 5, fill: "#fff" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
+      { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
+    ],
+    chart: [
+      { schema: "oceanleo.chart.v1", version: 1, title: "A", option: { series: [{ id: "s1", name: "N", type: "bar", data: [1, 2] }] } },
+      { schema: "oceanleo.chart.v1", version: 1, title: "B", option: { series: [{ id: "s1", name: "N", type: "line", data: [1, 2] }, { id: "s2", name: "M", type: "bar", data: [3] }] } },
+    ],
+    vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
+    game: [
+      { pages: [{ id: "main", label: "main", code: "a()" }], origin: "ai" },
+      { pages: [{ id: "main", label: "main", code: "a();\nb();\nc();" }, { id: "two", label: "two", code: "" }], origin: "ai" },
+    ],
+    model3d: [
+      { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: true }], view: { annotations: [] } },
+      { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: false }, { id: "o2", kind: "visibility", target: "Chair", visible: false }], view: { annotations: [{ id: "n1", text: "note" }] } },
+    ],
+    audio: [
+      { sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 1, end: 9 }] },
+      { sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 2, end: 8 }, { type: "fade", edge: "in", duration: 0.5 }] },
+    ],
+    video: [
+      { width: 1280, height: 720, fps: 30, tracks: [{ id: "tv", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 1000 }] }] },
+      { width: 1280, height: 720, fps: 30, tracks: [{ id: "tv", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 2000 }, { id: "c2", start_ms: 2000, duration_ms: 500 }] }] },
+    ],
+    pdf: [
+      { pages: [{ index: 0, widthPt: 612, heightPt: 792 }], annotations: [{ id: "a1", pageIndex: 0, typeName: "HIGHLIGHT", rect: rect(5, 6), contents: "x" }], fields: {} },
+      { pages: [{ index: 0, widthPt: 612, heightPt: 792 }], annotations: [{ id: "a1", pageIndex: 0, typeName: "HIGHLIGHT", rect: rect(5, 6), contents: "y" }, { id: "a2", pageIndex: 0, typeName: "TEXT", rect: rect(9, 9), contents: "z" }], fields: { name: "v" } },
+    ],
+    workflow: [
+      { nodes: [{ id: "n1", kind: "trim", label: "A", x: 0, y: 0, ports: { inputs: [], outputs: [] } }], edges: [] },
+      { nodes: [{ id: "n1", kind: "trim", label: "B", x: 5, y: 0, ports: { inputs: [], outputs: [] } }, { id: "n2", kind: "trim", label: "C", x: 9, y: 0, ports: { inputs: [], outputs: [] } }], edges: [{ id: "e1", fromNodeId: "n1", fromPort: "o", toNodeId: "n2", toPort: "i" }] },
+    ],
+  };
+  const leaks = [];
+  const rows = [];
+  for (const [kind, [prev, next]] of Object.entries(pairs)) {
+    const renderer = (await import(await compileModule(`src/shell/replay/work/frames/${kind}.tsx`, stubs))).default;
+    const zh = renderer.describeChange(prev, next, zhTt);
+    const en = renderer.describeChange(prev, next, localeTt("en"));
+    const ja = renderer.describeChange(prev, next, localeTt("ja"));
+    rows.push(`${kind} | zh=${zh} | en=${en} | ja=${ja}`);
+    if (zh == null || en == null || ja == null) leaks.push(`${kind}: 缺说明 zh=${zh} en=${en} ja=${ja}`);
+    else {
+      if (CJK.test(en)) leaks.push(`${kind} en 仍有中文：${en}`);
+      if (ja === zh) leaks.push(`${kind} ja 仍是中文原文：${ja}`);
+    }
+  }
+  const chapterTitle = localizeChapterTitleFor();
+  const lockText = localizeEventTextFor();
+  const chapter = {
+    zh: chapterTitle(zhTt, "周一 上午 · 周报", { weekday: 0, half: "am", source_title: "Report" }),
+    en: chapterTitle(localeTt("en"), "周一 上午 · 周报", { weekday: 0, half: "am", source_title: "Report" }),
+    ja: chapterTitle(localeTt("ja"), "周一 上午 · 周报", { weekday: 0, half: "am", source_title: "Report" }),
+  };
+  const enter = {
+    zh: lockText(zhTt, { kind: "lock", code: "pro_mode.enter", text: "进入专业模式" }),
+    en: lockText(localeTt("en"), { kind: "lock", code: "pro_mode.enter", text: "进入专业模式" }),
+    ja: lockText(localeTt("ja"), { kind: "lock", code: "pro_mode.enter", text: "进入专业模式" }),
+  };
+  const exit = {
+    zh: lockText(zhTt, { kind: "lock", code: "pro_mode.exit", text: "退出专业模式" }),
+    en: lockText(localeTt("en"), { kind: "lock", code: "pro_mode.exit", text: "退出专业模式" }),
+    ja: lockText(localeTt("ja"), { kind: "lock", code: "pro_mode.exit", text: "退出专业模式" }),
+  };
+  rows.push(`chapter | zh=${chapter.zh} | en=${chapter.en} | ja=${chapter.ja}`);
+  rows.push(`pro_mode.enter | zh=${enter.zh} | en=${enter.en} | ja=${enter.ja}`);
+  rows.push(`pro_mode.exit | zh=${exit.zh} | en=${exit.en} | ja=${exit.ja}`);
+  t.diagnostic(rows.join("\n"));
+  if (CJK.test(chapter.en) || chapter.ja === chapter.zh) leaks.push(`章节标题 en=${chapter.en} ja=${chapter.ja}`);
+  if (CJK.test(String(enter.en)) || enter.ja === enter.zh) leaks.push(`进入专业模式 en=${enter.en} ja=${enter.ja}`);
+  if (CJK.test(String(exit.en)) || exit.ja === exit.zh) leaks.push(`退出专业模式 en=${exit.en} ja=${exit.ja}`);
+  assert.deepEqual(leaks, [], `en/ja 仍有未翻译中文：\n${leaks.join("\n")}`);
+});
+
 test("[F04] 章节标题、锁事件、空档在英文下不是中文", () => {
   const chapterTitle = localizeChapterTitleFor();
   assert.ok(chapterTitle, "WorkReplayTimeline 要导出 localizeChapterTitle");
@@ -380,17 +554,31 @@ test("[F04] 17 种语言：回放说明模板与章节/锁事件词条，en 无�
   const copy = await import("../src/i18n/ui/messages/work-replay-copy.ts");
   const fixed = ["进入专业模式", "退出专业模式", "跳过 {span}", "周一", "周二", "周三", "周四", "周五", "周六", "周日", "上午", "下午"];
   const keys = [...new Set([...copy.REPLAY_NOTE_TEMPLATES, ...fixed])];
-  // 适配器 *ChangeNote() 能产出的每一个 zh 模板、各 frame 里 tt("…") 的每一个字面量，都要在分表里（第一轮漏掉的就是这类检查）
+  const { writeFileSync, unlinkSync } = await import("node:fs");
+  const probePath = join(UI_ROOT, "tests", ".v12-replay-scan-probe.tmp.ts");
+  const probeKey = "V12扫描探针：缺译样本 {n}";
+  writeFileSync(
+    probePath,
+    `// tt("中文模板 {n}", { n: 1 })\n/* tt("中文模板 {n}") */\nexport const n = tt("${probeKey}", { n: 1 });\nconst note = { zh: "V12扫描探针：zh 缺译样本" };\n`,
+  );
+  try {
+    const probeScan = scanReplayNoteTemplates(readFileSync(probePath, "utf8"));
+    assert.ok(probeScan.has(probeKey), "去掉注释后仍应抓到真模板（探针）");
+    assert.ok(probeScan.has("V12扫描探针：zh 缺译样本"), "去掉注释后仍应抓到 zh: 真模板");
+    assert.ok(!probeScan.has("中文模板 {n}"), "注释里的 tt(\"中文模板 {n}\") 不得再被当成真模板");
+    assert.ok(!Object.keys(copy.WORK_REPLAY_MESSAGES.en).includes(probeKey), "探针不得事先写进分表，否则验不到扫描还能抓缺译");
+  } finally {
+    unlinkSync(probePath);
+  }
   const scanned = new Set();
   const files = [
     ...["chart", "image", "vector", "deck", "richdoc", "grid", "audio", "video", "game", "model3d", "pdf", "workflow"].map((k) => `src/shell/collab/adapters/${k}.ts`),
     ...["audio", "chart", "deck", "game", "grid", "image", "model3d", "pdf", "richdoc", "vector", "video", "workflow", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
   ];
   for (const rel of files) {
-    const text = readSrc(rel);
-    for (const m of text.matchAll(/\bzh:\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) if (CJK.test(m[2])) scanned.add(m[2]);
-    for (const m of text.matchAll(/\btt\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) if (CJK.test(m[2])) scanned.add(m[2]);
+    for (const key of scanReplayNoteTemplates(readSrc(rel))) scanned.add(key);
   }
+  assert.ok(!scanned.has("中文模板 {n}"), "注释举例「中文模板 {n}」去掉注释后不应进扫描结果");
   assert.ok(scanned.size >= 20, `扫描到的说明模板太少（${scanned.size}），测试自己坏了`);
   const known = new Set(Object.keys(copy.WORK_REPLAY_MESSAGES.en));
   const missingFromTable = [...scanned].filter((k) => !known.has(k));
