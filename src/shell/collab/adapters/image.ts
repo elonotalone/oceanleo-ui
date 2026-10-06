@@ -263,7 +263,13 @@ export function imageBoxes(snapshot: ImageSnapshot | null | undefined): Array<Im
     .filter((box) => (box.raw.oceanleoRole as string | undefined) !== "background");
 }
 
-const KIND_ZH: Record<ImageObjectKind, string> = { text: "文字", image: "图片", shape: "形状", draw: "画笔", other: "其他" };
+const ADDED_ZH: Record<ImageObjectKind, string> = {
+  text: "新增了一个文字图层",
+  image: "新增了一个图片图层",
+  shape: "新增了一个形状图层",
+  draw: "新增了一个画笔图层",
+  other: "新增了一个图层",
+};
 
 interface ChangeNote {
   zh: string;
@@ -280,7 +286,7 @@ export function imageChangeNote(prevRaw: unknown, nextRaw: unknown): ChangeNote 
   const before = byId(prev);
   if (delta.added.size === 1) {
     const kind = imageObjectKind(after.get([...delta.added][0]) as FabricJson);
-    return { zh: `新增了一个${KIND_ZH[kind]}图层` };
+    return { zh: ADDED_ZH[kind] };
   }
   if (delta.added.size > 1) return { zh: "新增了 {n} 个图层", vars: { n: delta.added.size } };
   if (delta.removed.size) return { zh: "删除了 {n} 个图层", vars: { n: delta.removed.size } };
