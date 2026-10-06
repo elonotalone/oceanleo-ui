@@ -96,6 +96,7 @@ const SOURCE = {
   "隐藏这些章节": "隐藏这些章节",
   "项目回放需要你同意": "项目回放需要你同意",
   "（空）": "（空）",
+  "中文模板 {n}": "中文模板 {n}",
 } as const;
 
 const BASE_MESSAGES = assembleCopy(SOURCE, {
@@ -188,6 +189,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Hide these chapters",
     "项目回放需要你同意": "A project replay needs your consent",
     "（空）": "(empty)",
+    "中文模板 {n}": "Chinese template {n}",
   },
   de: {
     "Team 管理员": "Team-Admin",
@@ -278,6 +280,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Diese Kapitel ausblenden",
     "项目回放需要你同意": "Ein Projekt-Replay braucht deine Zustimmung",
     "（空）": "(leer)",
+    "中文模板 {n}": "Chinesische Vorlage {n}",
   },
   es: {
     "Team 管理员": "Administrador del equipo",
@@ -368,6 +371,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Ocultar estos capítulos",
     "项目回放需要你同意": "Una reproducción del proyecto necesita tu consentimiento",
     "（空）": "(vacío)",
+    "中文模板 {n}": "Plantilla en chino {n}",
   },
   "es-419": {
     "Team 管理员": "Administrador del equipo",
@@ -458,6 +462,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Ocultar estos capítulos",
     "项目回放需要你同意": "Una reproducción del proyecto necesita tu consentimiento",
     "（空）": "(vacío)",
+    "中文模板 {n}": "Plantilla en chino {n}",
   },
   fr: {
     "Team 管理员": "Administrateur de l'équipe",
@@ -548,6 +553,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Masquer ces chapitres",
     "项目回放需要你同意": "Une relecture de projet nécessite votre accord",
     "（空）": "(vide)",
+    "中文模板 {n}": "Modèle chinois {n}",
   },
   it: {
     "Team 管理员": "Amministratore del team",
@@ -638,6 +644,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Nascondi questi capitoli",
     "项目回放需要你同意": "Una replay di progetto richiede il tuo consenso",
     "（空）": "(vuoto)",
+    "中文模板 {n}": "Modello cinese {n}",
   },
   "pt-BR": {
     "Team 管理员": "Administrador da equipe",
@@ -728,6 +735,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Ocultar estes capítulos",
     "项目回放需要你同意": "Um replay de projeto precisa da sua concordância",
     "（空）": "(vazio)",
+    "中文模板 {n}": "Modelo chinês {n}",
   },
   "pt-PT": {
     "Team 管理员": "Administrador da equipe",
@@ -818,6 +826,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Ocultar estes capítulos",
     "项目回放需要你同意": "Um replay de projeto precisa da sua concordância",
     "（空）": "(vazio)",
+    "中文模板 {n}": "Modelo chinês {n}",
   },
   vi: {
     "Team 管理员": "Quản trị viên Team",
@@ -908,6 +917,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Ẩn các chương này",
     "项目回放需要你同意": "Bản xem lại dự án cần bạn đồng ý",
     "（空）": "(trống)",
+    "中文模板 {n}": "Mẫu tiếng Trung {n}",
   },
   tr: {
     "Team 管理员": "Takım yöneticisi",
@@ -998,6 +1008,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "Bu bölümleri gizle",
     "项目回放需要你同意": "Bir proje tekrarı için onayın gerekiyor",
     "（空）": "(boş)",
+    "中文模板 {n}": "Çince şablon {n}",
   },
   "zh-TW": {
     "Team 管理员": "Team 管理員",
@@ -1088,6 +1099,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "隱藏這些章節",
     "项目回放需要你同意": "專案回放需要你同意",
     "（空）": "（空）",
+    "中文模板 {n}": "中文範本 {n}",
   },
   ja: {
     "Team 管理员": "Team 管理者",
@@ -1178,6 +1190,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "これらの章を非表示にする",
     "项目回放需要你同意": "プロジェクトのリプレイにはあなたの同意が必要です",
     "（空）": "（空）",
+    "中文模板 {n}": "中国語テンプレート {n}",
   },
   ko: {
     "Team 管理员": "Team 관리자",
@@ -1268,6 +1281,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "이 챕터 숨기기",
     "项目回放需要你同意": "프로젝트 리플레이에 동의가 필요합니다",
     "（空）": "(비어 있음)",
+    "中文模板 {n}": "중국어 템플릿 {n}",
   },
   ar: {
     "Team 管理员": "مشرف الفريق",
@@ -1358,6 +1372,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "إخفاء هذه الفصول",
     "项目回放需要你同意": "إعادة تشغيل المشروع تحتاج إلى موافقتك",
     "（空）": "(فارغ)",
+    "中文模板 {n}": "قالب صيني {n}",
   },
   th: {
     "Team 管理员": "ผู้ดูแล Team",
@@ -1448,6 +1463,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "ซ่อนบทเหล่านี้",
     "项目回放需要你同意": "รีเพลย์โครงการต้องได้รับอนุญาตจากคุณ",
     "（空）": "(ว่าง)",
+    "中文模板 {n}": "เทมเพลตภาษาจีน {n}",
   },
   hi: {
     "Team 管理员": "Team एडमिन",
@@ -1538,6 +1554,7 @@ const BASE_MESSAGES = assembleCopy(SOURCE, {
     "隐藏这些章节": "इन अध्यायों को छिपाएँ",
     "项目回放需要你同意": "प्रोजेक्ट रीप्ले के लिए आपकी सहमति ज़रूरी है",
     "（空）": "(खाली)",
+    "中文模板 {n}": "चीनी टेम्पलेट {n}",
   },
 });
 
@@ -3077,24 +3094,6 @@ const NOTE_TRANSLATIONS: Record<string, Record<NoteLocale, string>> = {
     "ar": "تم ضبط الصفوف أو الأعمدة أو التنسيق",
     "th": "ปรับแถว คอลัมน์ หรือรูปแบบ",
     "hi": "पंक्तियाँ, कॉलम या फ़ॉर्मैट समायोजित किए गए",
-  },
-  "中文模板 {n}": {
-    "en": "Chinese template {n}",
-    "de": "Chinesische Vorlage {n}",
-    "es": "Plantilla en chino {n}",
-    "es-419": "Plantilla en chino {n}",
-    "fr": "Modèle chinois {n}",
-    "it": "Modello cinese {n}",
-    "pt-BR": "Modelo chinês {n}",
-    "pt-PT": "Modelo chinês {n}",
-    "vi": "Mẫu tiếng Trung {n}",
-    "tr": "Çince şablon {n}",
-    "zh-TW": "中文範本 {n}",
-    "ja": "中国語テンプレート {n}",
-    "ko": "중국어 템플릿 {n}",
-    "ar": "قالب صيني {n}",
-    "th": "เทมเพลตภาษาจีน {n}",
-    "hi": "चीनी टेम्पलेट {n}",
   },
   "音频": {
     "en": "Audio",
