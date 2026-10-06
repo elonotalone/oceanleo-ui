@@ -176,19 +176,29 @@ test("C-4 §0.3: the two operation modules export exactly the surveyed API", asy
   // `appendPdfAnnotation`（按 draft 落一条）与 `addPdfAnnotation`（对外的那一层）。
   // 原来那两个 `addPdfTextAnnotationAt` / `addPdfHighlightAnnotation` 现在是它们的特例。
   // 清单锁照旧是全等——多一个少一个都红，只是把这次**有意的**扩面登记进来。
+  // 多人同改（F05）：按稳定 id 读写批注需要「对已打开的 PDFDocument 直接操作」的一组入口
+  // （`*InDocument`、`findPdfAnnotationPage`），同样是有意的扩面；原有 14 个入口一个没动。
   assert.deepEqual(exported(annotations).sort(), [
     "addPdfAnnotation",
     "addPdfHighlightAnnotation",
     "addPdfTextAnnotationAt",
     "appendPdfAnnotation",
     "deletePdfAnnotation",
+    "ensurePdfAnnotationIdsInDocument",
+    "findPdfAnnotationPage",
+    "hasPdfAnnotationInDocument",
     "listPdfAnnotations",
+    "listPdfAnnotationsInDocument",
     "movePdfAnnotation",
+    "movePdfAnnotationInDocument",
     "normalizedVisualRect",
     "pdfPageGeometry",
     "pdfPointToVisual",
     "pdfRectToVisual",
+    "removePdfAnnotationInDocument",
+    "setPdfAnnotationStyleInDocument",
     "updatePdfAnnotation",
+    "updatePdfAnnotationContentsInDocument",
     "visualPointToPdf",
     "visualRectToPdf",
   ]);
@@ -885,7 +895,11 @@ test("§5.1 (3/3) 可下载: download hands back the source bytes as application
   assert.equal(manifest.permissions.downloadable, true);
   assert.equal(manifest.permissions.encrypted, false);
   const route = await source("src/shell/advanced-routes/PdfRoute.tsx");
-  assert.match(route, /directDownload:[\s\S]*onTrigger:\s*editor\.download/);
+  // 下载走草稿导出闸门（afterAdvancedDraftExport），闸门放行后才调 editor.download。
+  assert.match(
+    route,
+    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([^)]*editor\.download\)/,
+  );
   const pageActions = await source(
     "src/shell/media-editors/use-pdf-page-actions.ts",
   );

@@ -53,8 +53,12 @@ test("PDF text actions are icon+tooltip controls and unsupported crop is hidden"
   assert.match(toolbar, /icon:\s*"download"/);
   assert.doesNotMatch(toolbar, /id:\s*"crop"/);
   assert.doesNotMatch(operations, /cropPdfPage|setCropBox/);
-  assert.match(route, /history:\s*\{[\s\S]*undo:\s*editor\.undo/);
-  assert.match(route, /directDownload:[\s\S]*onTrigger:\s*editor\.download/);
+  // 多人同改后撤销挂在 collabEditor 上（只读时是空操作的那一层），其余仍是同一个撤销栈。
+  assert.match(route, /history:\s*\{[\s\S]*undo:\s*(?:collabEditor|editor)\.undo/);
+  assert.match(
+    route,
+    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([^)]*editor\.download\)/,
+  );
   assert.match(route, /capture:\s*editor\.captureRecovery/);
   assert.match(route, /restore:\s*editor\.restoreRecovery/);
 });

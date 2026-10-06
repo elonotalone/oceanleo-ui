@@ -80,6 +80,8 @@ export function usePdfOffice({
   >({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formFlatten, setFormFlatten] = useState(false);
+  // 多人同改：别人填的字段会让字节换版、表单重读一遍；自己填到一半还没「应用」的字段不能被冲掉。
+  const stagedFieldsRef = useRef<Set<string>>(new Set());
   const [officeTool, setOfficeTool] = useState<PdfOfficeTool>("none");
   const [savedSignatures, setSavedSignatures] = useState<PdfSavedSignature[]>(
     () => loadSavedSignatures(),
@@ -102,11 +104,16 @@ export function usePdfOffice({
       .then((fields) => {
         if (cancelled) return;
         setFormFields(fields);
-        const initial: Record<string, string | boolean | string[]> = {};
-        for (const field of fields) {
-          initial[field.name] = field.value;
-        }
-        setFormValuesState(initial);
+        setFormValuesState((current) => {
+          const initial: Record<string, string | boolean | string[]> = {};
+          for (const field of fields) {
+            initial[field.name] =
+              stagedFieldsRef.current.has(field.name) && field.name in current
+                ? current[field.name]!
+                : field.value;
+          }
+          return initial;
+        });
         setFormErrors({});
       })
       .catch(() => {
@@ -124,6 +131,7 @@ export function usePdfOffice({
 
   const setFormValue = useCallback(
     (name: string, value: string | boolean | string[]) => {
+      stagedFieldsRef.current.add(name);
       setFormValuesState((current) => ({ ...current, [name]: value }));
       setFormErrors((current) => {
         if (!current[name]) return current;
@@ -142,8 +150,13 @@ export function usePdfOffice({
       setError(tt("请先修正表单校验错误"));
       return;
     }
-    await runMutation(async (bytes) => {
-      const next = await fillPdfForm(bytes, formValues, formFlatten);
+    // 只写自己动过的字段：别人同时填的其他字段不被这一份（可能已过期的）表单值覆盖。没动过任何字段（只想定稿）才整份写。
+    const staged = stagedFieldsRef.current;
+    const valuesToWrite = staged.size
+      ? Object.fromEntries(Object.entries(formValues).filter(([name]) => staged.has(name)))
+      : formValues;
+    const committed = await runMutation(async (bytes) => {
+      const next = await fillPdfForm(bytes, valuesToWrite, formFlatten);
       return {
         bytes: next,
         notice: formFlatten
@@ -151,6 +164,7 @@ export function usePdfOffice({
           : tt("表单已填写，字段仍可编辑"),
       };
     });
+    if (committed) stagedFieldsRef.current.clear();
   }, [formFields, formFlatten, formValues, runMutation, setError, tt]);
 
   const saveSignatureFromPng = useCallback(

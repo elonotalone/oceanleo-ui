@@ -114,7 +114,8 @@ export function PdfOfficePanel({
   editor: PdfOfficeWorkbenchState;
 }) {
   const tt = useUI();
-  const busy = editor.loading || editor.processing || editor.saving;
+  const busy =
+    editor.loading || editor.processing || editor.saving || editor.collabReadOnly === true;
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const [signatureLabel, setSignatureLabel] = useState(SIGNATURE_IMAGE_LABEL);
   const [confirmingRedaction, setConfirmingRedaction] = useState(false);

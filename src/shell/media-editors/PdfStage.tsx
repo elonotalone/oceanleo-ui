@@ -209,6 +209,7 @@ export function PdfStage({
           {editor.pageWidth > 0 && editor.pageHeight > 0 && (
             <div
               data-pdf-annotation-layer
+              data-collab-readonly={editor.collabReadOnly ? "true" : undefined}
               className={`absolute inset-0 z-20 touch-none ${
                 editor.annotationTool === "select"
                   ? "cursor-default"
@@ -233,6 +234,8 @@ export function PdfStage({
                   event.preventDefault();
                   event.currentTarget.setPointerCapture(event.pointerId);
                   editor.selectAnnotation(annotation.id);
+                  // 只读（别人在调整页面 / 只有查看权限）：能选中看内容，不能拖。
+                  if (editor.collabReadOnly) return;
                   setAnnotationDrag({
                     id: annotation.id,
                     pointerId: event.pointerId,

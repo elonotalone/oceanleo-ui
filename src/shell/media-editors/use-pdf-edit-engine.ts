@@ -81,22 +81,34 @@ export function usePdfMutationRunner({
     async (
       mutation: PdfMutation,
     ): Promise<PdfMutationResult | null> => {
-      const current = bytesRef.current;
-      if (!current || processingRef.current) return null;
+      const first = bytesRef.current;
+      if (!first || processingRef.current) return null;
       processingRef.current = true;
       const processingToken = ++processingTokenRef.current;
       setProcessing(true);
       setError("");
       setNotice("");
       const generation = sourceGenerationRef.current;
-      const before: PdfSnapshot = {
-        bytes: Uint8Array.from(current),
-        pageNumber,
-        pageCount,
-      };
       try {
-        const result = await mutation(Uint8Array.from(current));
-        const count = await inspectPdf(result.bytes);
+        // 多人同改：别人的批注会在这期间被静默补进本地字节（`replaceBytesSilently`）。
+        // 这次编辑是在旧字节上算的，直接落下会把补进来的东西冲掉，所以字节被换过就在新字节上重做（最多 3 次）。
+        let result: PdfMutationResult | null = null;
+        let before: PdfSnapshot | null = null;
+        let count = 0;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const current = bytesRef.current;
+          if (!current) return null;
+          before = {
+            bytes: Uint8Array.from(current),
+            pageNumber,
+            pageCount,
+          };
+          result = await mutation(Uint8Array.from(current));
+          count = await inspectPdf(result.bytes);
+          if (bytesRef.current === current) break;
+          if (attempt === 3) throw new Error(tt("文档刚被同事更新，请再试一次"));
+        }
+        if (!result || !before) return null;
         if (!aliveRef.current || generation !== sourceGenerationRef.current) {
           return null;
         }

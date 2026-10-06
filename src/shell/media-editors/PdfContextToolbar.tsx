@@ -24,7 +24,9 @@ export function PdfContextToolbar({
   const tt = useUI();
   const [officeOpen, setOfficeOpen] = useState(false);
   const officeAnchorRef = useRef<HTMLButtonElement | null>(null);
-  const busy = editor.loading || editor.processing || editor.saving;
+  // 多人同改只读（别人在调整页面 / 只有查看权限）：改动入口全部灰掉，翻页、缩放、选字复制不受影响。
+  const busy =
+    editor.loading || editor.processing || editor.saving || editor.collabReadOnly === true;
   const context = useMemo<SelectionContext>(() => {
     const selected = editor.selectedAnnotation;
     const selectedIndex = selected

@@ -165,6 +165,18 @@ export interface PdfWorkbenchState {
   saving: boolean;
   dirty: boolean;
   editRevision: number;
+  /** 文档字节的版本号：载入、本地编辑、别人的改动落地都会变（协同对齐器据此判断要不要再对齐一次）。 */
+  documentVersion?: number;
+  /**
+   * 多人同改：把别人的改动静默并进当前字节（不进撤销栈、不清选区）。
+   * 本地正在编辑时返回 "busy"，调用方稍后重来。
+   */
+  replaceBytesSilently?: (
+    transform: (current: Uint8Array) => Promise<Uint8Array | null>,
+    options?: { markDirty?: boolean },
+  ) => Promise<"applied" | "unchanged" | "busy">;
+  /** 多人同改：只读（只有查看权限，或别人正在调整页面）。界面把改动入口灰掉。 */
+  collabReadOnly?: boolean;
   canUndo: boolean;
   canRedo: boolean;
   error: string;

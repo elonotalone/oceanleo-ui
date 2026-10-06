@@ -36,7 +36,7 @@ import {
 } from "../media-editors/pdf-workbench-utils";
 import { editorToolLabel } from "../workbench-routes";
 import { useUI } from "../../i18n/ui/useUI";
-import { useLockedEditCollab } from "../collab/adapters/use-entity-collab";
+import { usePdfCollab, usePdfCollabEditor } from "../collab/adapters/use-pdf-collab";
 import { buildPdfCommandSurface } from "../doc-editors/doc-family-commands";
 import {
   DOC_FAMILY_DOWNLOAD_FORMATS,
@@ -63,14 +63,6 @@ const PdfNextStage = dynamic(
     ),
   { ssr: false, loading: () => null },
 );
-
-/** 协同只读时覆盖撤销/重做：不可用且点了不动。 */
-const COLLAB_READONLY_HISTORY = {
-  canUndo: false,
-  canRedo: false,
-  undo: () => {},
-  redo: () => {},
-};
 
 /** 旧核舞台 + 切回「编辑」时的 ready 信号：页数解析出来就算首帧可见。 */
 function PdfLegacyFace({
@@ -105,20 +97,21 @@ export function PdfRoute({
     () => applyW19HandoffToItem(liveItem, source),
     [liveItem, source],
   );
-  const editor = usePdfWorkbench(workbenchItem, siteId);
-  const tt = useUI();
-  // ---- 多人同改（W14）：PDF 是一次一人。持锁的人改，其他人只读；他保存后这里自动换成新版。
-  // 原因：PDF 文档是整份字节（pdf-lib 写出），工作台没有「按标注 id 写入」的入口，无法把两个人的
-  // 标注合进同一份字节而不整份覆盖。合并粒度的适配器（collab/adapters/pdf.ts）只给回放画面用。
-  const lockedEdit = useLockedEditCollab({
-    item,
-    editorKind: "pdf",
-    onExternalItem: (next) => reportW19ProSaved(w19ItemKey("pdf", item), next),
-  });
-  const collabReadOnly = lockedEdit.readOnly;
   // 双核 flag 顶层判一次（`editor-core-flags.ts` 三条纪律的第 1 条）：
   // 默认 `legacy`，翻到 `next` 才拉起 EmbedPDF 那个叶子。
   const core = resolveEditorCore("pdf");
+  const tt = useUI();
+  // ---- 多人同改（work-chat F05）：默认的旧核按批注同改（批注、表单字段、页 id 都在字节里，
+  // 别人的批注静默并进本地字节，谁保存都包含双方的）；整页级改动先拿锁、别人只读；
+  // 新核还没有按批注写入的入口，保持整份上锁。细节见 `collab/adapters/use-pdf-collab.ts`。
+  const collab = usePdfCollab({
+    item,
+    core,
+    onExternalItem: (next) => reportW19ProSaved(w19ItemKey("pdf", item), next),
+  });
+  const editor = usePdfWorkbench(workbenchItem, siteId, undefined, collab.workbenchHooks);
+  const collabEditor = usePdfCollabEditor(collab, editor);
+  const collabReadOnly = collab.readOnly;
   // L0 专业模式（R3）：默认普通，唯一入口是宿主经 adapter 的 `setMode`。
   // Native 件不发 postMessage —— 那是 Hosted 件的路（契约 v2 §4）。
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
@@ -131,8 +124,8 @@ export function PdfRoute({
    * `legacy` 档拿到的是**同一个对象**，旧核那条路一个字节不变。
    */
   const nextCoreEditor = useMemo(
-    () => pdfNextEditorFacade(editor, effectiveCore, setNextCoreFailure),
-    [effectiveCore, editor],
+    () => pdfNextEditorFacade(collabEditor, effectiveCore, setNextCoreFailure),
+    [effectiveCore, collabEditor],
   );
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
@@ -153,7 +146,7 @@ export function PdfRoute({
         const blob = await fetchMediaBlob(url, {
           maxBytes: 96 * 1024 * 1024,
         });
-        await editor.mergePdf(
+        await collabEditor.mergePdf(
           new File([blob], `${material.title || "document"}.pdf`, {
             type: "application/pdf",
           }),
@@ -161,15 +154,15 @@ export function PdfRoute({
         );
       },
     }),
-    [collabReadOnly, editor.mergePdf],
+    [collabReadOnly, collabEditor.mergePdf],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     // 只读（别人持锁）或不是该存档的一端：不落库，别人保存后这里会自动更新。
-    if (!lockedEdit.mayWrite) return { ok: true as const, item };
+    if (!collab.mayWrite) return { ok: true as const, item };
     const copied = await editor.saveCopy();
     if (!copied) return { ok: false as const };
-    if (copied.versionId) lockedEdit.markSaved(String(copied.versionId));
+    if (copied.versionId) collab.markSaved(String(copied.versionId));
     const next = advancedSavedItem(item, {
       url: copied.url,
       versionId: copied.versionId,
@@ -181,7 +174,7 @@ export function PdfRoute({
     });
     reportW19ProSaved(w19ItemKey("pdf", item), next);
     return { ok: true as const, item: next };
-  }, [editor.saveCopy, item, lockedEdit.markSaved, lockedEdit.mayWrite]);
+  }, [editor.saveCopy, item, collab.markSaved, collab.mayWrite]);
   const enterPdfPro = useCallback(async () => {
     const bytes = editor.currentBytes();
     const handoff = bytes
@@ -208,10 +201,10 @@ export function PdfRoute({
           setImportError(outcome.message);
           continue;
         }
-        await editor.mergePdf(outcome.file, "after-current");
+        await collabEditor.mergePdf(outcome.file, "after-current");
       }
     },
-    [editor.mergePdf],
+    [collabEditor.mergePdf],
   );
   const downloadAs = useCallback(
     async (extension: string): Promise<string> => {
@@ -234,7 +227,7 @@ export function PdfRoute({
       siteId={siteId}
       accent={accent}
       adapter={{
-        collab: lockedEdit.collab,
+        collab: collab.collab,
         id: "pdf",
         label: editorToolLabel({ type: "pdf" }),
         toolbox: {
@@ -246,15 +239,15 @@ export function PdfRoute({
             </div>
           ),
         },
-        contextToolbar: collabReadOnly ? null : (
+        // 只读时工具栏仍在，只是改动入口灰掉（editor.collabReadOnly）。
+        contextToolbar: (
           <PdfContextToolbar editor={nextCoreEditor} accent={accent} />
         ),
         history: {
-          canUndo: editor.canUndo,
-          canRedo: editor.canRedo,
-          undo: editor.undo,
-          redo: editor.redo,
-          ...(collabReadOnly ? COLLAB_READONLY_HISTORY : {}),
+          canUndo: collabEditor.canUndo,
+          canRedo: collabEditor.canRedo,
+          undo: collabEditor.undo,
+          redo: collabEditor.redo,
         },
         // L3 专业模式 = EmbedPDF 的即用查看器（R4）。**同一个文档实例**：
         // 两个模式吃的是同一份 `editor.currentBytes()`，切换不重新载入、不丢改动。
@@ -322,7 +315,7 @@ export function PdfRoute({
               setPluginMode("pdf", "pro");
             }}
             renderNormal={() => (
-              <PdfLegacyFace editor={editor} accent={accent} />
+              <PdfLegacyFace editor={collabEditor} accent={accent} />
             )}
             renderPro={() => (
               <PdfNextStage
@@ -339,11 +332,17 @@ export function PdfRoute({
         // §6: a failed load reaches the shell status bar with its code, so the
         // route never presents an empty stage with no stated reason.
         status:
-          (collabReadOnly && lockedEdit.lockHolderName
-            ? tt("「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。", {
-                name: lockedEdit.lockHolderName,
-              })
+          (collabReadOnly && collab.lockHolderName
+            ? collab.mode === "whole"
+              ? tt("「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。", {
+                  name: collab.lockHolderName,
+                })
+              : tt("「{name}」正在调整页面，你现在只能看；他保存后这里会自动更新。", {
+                  name: collab.lockHolderName,
+                })
             : "") ||
+          (collab.isViewer ? tt("你只有查看权限，只能看、翻页和复制文字。") : "") ||
+          collab.notice ||
           importError ||
           nextCoreFailure ||
           editor.error ||
@@ -351,9 +350,9 @@ export function PdfRoute({
           editor.notice ||
           (editor.loading ? "正在载入 PDF" : ""),
         persistence: {
-          dirty: lockedEdit.mayWrite ? editor.dirty : false,
+          dirty: collab.mayWrite ? editor.dirty : false,
           editRevision: editor.editRevision,
-          autoSave: lockedEdit.mayWrite,
+          autoSave: collab.mayWrite,
           flush: saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey("pdf", item),

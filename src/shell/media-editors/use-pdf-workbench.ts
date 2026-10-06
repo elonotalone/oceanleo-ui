@@ -31,15 +31,38 @@ import {
   usePdfMutationRunner,
   usePdfSnapshotRestore,
 } from "./use-pdf-edit-engine";
+import { inspectPdf } from "./pdf-operations";
 import { usePdfPageActions } from "./use-pdf-page-actions";
 import { usePdfViewPipeline } from "./use-pdf-view-pipeline";
 const MAX_PDF_BYTES = 256 * 1024 * 1024;
+
+/**
+ * 多人同改（work-chat F05）接进工作台的几个钩子。不在协同里就不传，工作台的行为一个字节不变。
+ * 实现在 `collab/adapters/use-pdf-collab.ts`（对齐器 `pdf-collab-sync.ts`）。
+ */
+export interface PdfWorkbenchCollabHooks {
+  /**
+   * 载入（或别人保存了新页结构后重新载入）完成、字节落下之前：补页 id / 批注 id，
+   * 重新载入时（`previous` 非空）把当前的批注按原样带到新字节上。返回要用的字节。
+   */
+  prepareLoaded?: (bytes: Uint8Array, previous: Uint8Array | null) => Promise<Uint8Array>;
+  /** 撤销 / 重做拿到旧快照字节后：补回别人的批注，只撤自己的。 */
+  adjustRestored?: (restored: Uint8Array, current: Uint8Array) => Promise<Uint8Array>;
+  /** 保存之前：把共享文档里的批注并进字节（谁保存都包含双方的）。 */
+  beforeSave?: () => Promise<void>;
+  /** 区分各人保存的幂等键，免得两个人的「第 N 次编辑」撞上同一把键。 */
+  saveKeySalt?: string;
+}
+
 export function usePdfWorkbench(
   item: LibraryItem,
   siteId = "",
   onSaved?: (url: string) => void,
+  collabHooks?: PdfWorkbenchCollabHooks,
 ): PdfOfficeWorkbenchState {
   const tt = useUI();
+  const collabRef = useRef<PdfWorkbenchCollabHooks | undefined>(collabHooks);
+  collabRef.current = collabHooks;
   // `tt` 是 i18n provider 所有的函数，进 effect 依赖就是 W13 在 `dcc0a7d` 里治掉的
   // 自锁引信。本文件有两笔账要一起还：
   //   1) 下面那个源装载 effect（`[…, tt]`）体里写了一整屏 state，`tt` 一换身份就把
@@ -146,6 +169,7 @@ export function usePdfWorkbench(
     savingTokenRef.current += 1;
     processingRef.current = false;
     savingRef.current = false;
+    const previousBytes = bytesRef.current;
     bytesRef.current = null;
     revisionRef.current = 0;
     undoRef.current = [];
@@ -181,7 +205,17 @@ export function usePdfWorkbench(
           throw new Error(translate("PDF 没有可显示的页面"));
         }
         if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
-        bytesRef.current = loaded.bytes;
+        let landed = loaded.bytes;
+        const prepare = collabRef.current?.prepareLoaded;
+        if (prepare) {
+          try {
+            landed = await prepare(loaded.bytes, previousBytes);
+          } catch {
+            landed = loaded.bytes;
+          }
+          if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
+        }
+        bytesRef.current = landed;
         setSourceUrl(loaded.durableUrl);
         setPageCount(loaded.pageCount);
         if (loaded.blank) setNotice(translate("已创建一页空白 PDF"));
@@ -300,6 +334,40 @@ export function usePdfWorkbench(
     setSavedUrl,
   });
 
+  /**
+   * 撤销 / 重做落下旧快照。协同里先把别人的批注补回旧字节（本地撤销只撤自己的）；
+   * 补的过程中字节被别人的改动静默换过就按新的当前字节再补一次。
+   */
+  const landSnapshot = useCallback(
+    (snapshot: PdfSnapshot, noticeText: string, current: Uint8Array) => {
+      const adjust = collabRef.current?.adjustRestored;
+      if (!adjust) {
+        restoreSnapshot(snapshot, noticeText);
+        return;
+      }
+      processingRef.current = true;
+      const generation = sourceGenerationRef.current;
+      void (async () => {
+        let base = current;
+        let landed = snapshot.bytes;
+        try {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            landed = await adjust(snapshot.bytes, base);
+            if (bytesRef.current === base || !bytesRef.current) break;
+            base = bytesRef.current;
+          }
+        } catch {
+          landed = snapshot.bytes;
+        } finally {
+          processingRef.current = false;
+        }
+        if (!aliveRef.current || generation !== sourceGenerationRef.current) return;
+        restoreSnapshot({ ...snapshot, bytes: landed }, noticeText);
+      })();
+    },
+    [restoreSnapshot],
+  );
+
   const undo = useCallback(() => {
     const current = bytesRef.current;
     const previous = undoRef.current.pop();
@@ -313,8 +381,8 @@ export function usePdfWorkbench(
       },
       undoRef.current,
     );
-    restoreSnapshot(previous, tt("已撤销上一步"));
-  }, [pageCount, pageNumber, restoreSnapshot, tt]);
+    landSnapshot(previous, tt("已撤销上一步"), current);
+  }, [landSnapshot, pageCount, pageNumber, tt]);
 
   const redo = useCallback(() => {
     const current = bytesRef.current;
@@ -329,8 +397,40 @@ export function usePdfWorkbench(
       },
       redoRef.current,
     );
-    restoreSnapshot(next, tt("已重做"));
-  }, [pageCount, pageNumber, restoreSnapshot, tt]);
+    landSnapshot(next, tt("已重做"), current);
+  }, [landSnapshot, pageCount, pageNumber, tt]);
+
+  /**
+   * 多人同改：把别人的改动静默并进当前字节。不进撤销栈、不清选区、不动页码；
+   * 本地正有一次编辑在跑或字节在这期间被换过就返回 "busy"，调用方稍后重来。
+   */
+  const replaceBytesSilently = useCallback(
+    async (
+      transform: (current: Uint8Array) => Promise<Uint8Array | null>,
+      replaceOptions?: { markDirty?: boolean },
+    ): Promise<"applied" | "unchanged" | "busy"> => {
+      const current = bytesRef.current;
+      if (!current || processingRef.current) return "busy";
+      const generation = sourceGenerationRef.current;
+      const next = await transform(Uint8Array.from(current));
+      if (!aliveRef.current || generation !== sourceGenerationRef.current) return "unchanged";
+      if (processingRef.current || bytesRef.current !== current) return "busy";
+      if (!next) return "unchanged";
+      const count = await inspectPdf(next);
+      if (processingRef.current || bytesRef.current !== current) return "busy";
+      bytesRef.current = next;
+      revisionRef.current += 1;
+      setPageCount(count);
+      setPageNumber((value) => clamp(value, 1, count));
+      if (replaceOptions?.markDirty !== false) {
+        setDirty(true);
+        setSavedUrl("");
+      }
+      setDocumentRevision((value) => value + 1);
+      return "applied";
+    },
+    [],
+  );
 
   const goToPage = useCallback(
     (value: number) => setPageNumber(clamp(Math.round(value), 1, Math.max(1, pageCount))),
@@ -362,6 +462,16 @@ export function usePdfWorkbench(
   });
 
   const saveCopy = useCallback(async (): Promise<PersistedEditorVersion | null> => {
+    if (!bytesRef.current || savingRef.current) return null;
+    // 多人同改：保存前先把共享文档里的批注并进字节，写出去的一份包含双方的。
+    const beforeSave = collabRef.current?.beforeSave;
+    if (beforeSave) {
+      try {
+        await beforeSave();
+      } catch {
+        /* 对齐失败不拦保存：字节里至少有本地已经收到的 */
+      }
+    }
     const bytes = bytesRef.current;
     if (!bytes || savingRef.current) return null;
     const generation = sourceGenerationRef.current;
@@ -387,7 +497,7 @@ export function usePdfWorkbench(
         title,
         mediaType: "doc",
         kind: "pdf",
-        idempotencyKey: `pdf:${item.id}:${savingRevision}`,
+        idempotencyKey: `pdf:${item.id}:${savingRevision}${collabRef.current?.saveKeySalt ? `:${collabRef.current.saveKeySalt}` : ""}`,
         meta: {
           editor: "pdf-native-v1",
           editor_capability: "pdf-editor",
@@ -515,6 +625,8 @@ export function usePdfWorkbench(
     saving,
     dirty,
     editRevision: revisionRef.current,
+    documentVersion: documentRevision,
+    replaceBytesSilently,
     canUndo,
     canRedo,
     error,
