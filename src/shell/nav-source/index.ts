@@ -38,6 +38,7 @@ export type NavPageId =
   | "talent"
   | "plugins"
   | "schedules"
+  | "messages"
   | "devices"
   | "download";
 
@@ -60,6 +61,7 @@ export type NavIconId =
   | "talent"
   | "plugins"
   | "clock"
+  | "messages"
   | "device"
   | "download";
 
@@ -76,7 +78,8 @@ export type NavOption =
   | "withExplore"
   | "withWorkspace"
   | "withPlayground"
-  | "withTalent";
+  | "withTalent"
+  | "withMessages";
 
 /** 一个菜单项在**某一套外壳**里的落位。同一项在两套外壳里可以有不同落位。 */
 export interface NavPlacement {
@@ -98,6 +101,11 @@ export interface NavPlacement {
 
 export interface NavSourceEntry {
   id: NavPageId;
+  /**
+   * 纯动作项（没有页面）：点击触发一个动作而不是跳转，所以**没有 href**。
+   * 目前只有 `"messages"`（打开消息浮层）。消费方把它映射成 `onClick`。
+   */
+  action?: "messages";
   /**
    * 站内逻辑路由（不含 basePath）。
    * 站**外**子站（`external: true`）不写地址：它的 origin 由域名家族在运行时解析，
@@ -169,6 +177,19 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     },
   },
   {
+    // 消息：打开浮层的动作项，没有页面。默认不显示——调用方传 `withMessages: imEnabledHere()`
+    // 才出现，所以境内站与未登录天然看不到它。文案用界面词表（17 语言在 im-shell-copy）。
+    id: "messages",
+    action: "messages",
+    labelKey: "消息",
+    labelSource: "ui",
+    iconId: "messages",
+    placements: {
+      workspace: { order: 25, option: "withMessages", optionDefault: false },
+      portal: { order: 45, option: "withMessages", optionDefault: false },
+    },
+  },
+  {
     id: "workspace",
     href: "/workspace",
     labelKey: "workspace",
@@ -219,6 +240,8 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
 /** 派生出来的一行：调用方只需把 `iconId` / `labelKey` 换成自己的节点与文案。 */
 export interface ResolvedNavEntry {
   id: NavPageId;
+  /** 动作项（无 href）：点击触发动作，如 `"messages"` 打开消息浮层。 */
+  action?: "messages";
   /** 站外项这里是 `undefined`，地址由调用方解析后填入。 */
   href?: string;
   external: boolean;
@@ -270,6 +293,7 @@ export function navEntries(
       return {
         id: entry.id,
         href: entry.href,
+        ...(entry.action ? { action: entry.action } : {}),
         external: entry.external ?? false,
         labelKey: placement.labelKey ?? entry.labelKey,
         labelSource: placement.labelSource ?? entry.labelSource ?? "nav",
