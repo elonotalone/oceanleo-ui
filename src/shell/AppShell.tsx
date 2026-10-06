@@ -38,6 +38,7 @@ import { ToastProvider } from "../ui";
 import { IconPanel, IconSearch } from "./icons";
 import { SidebarAccountCluster } from "./account/SidebarAccountCluster";
 import { SettingsModalHost, openSettingsModal } from "./account/SettingsModalHost";
+import { MessagesHost } from "./messages/MessagesHost";
 import { LeoShellMount } from "./leo/LeoShellMount";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
@@ -1044,6 +1045,7 @@ function AppShellInner({
           </div>
         </main>
         <SettingsModalHost />
+        <MessagesHost />
         <PhoneBindGate />
         {leoShell}
       </div>
@@ -1155,6 +1157,7 @@ function AppShellInner({
         </main>
       </div>
       <SettingsModalHost />
+      <MessagesHost />
       <PhoneBindGate />
       {leoShell}
     </div>
