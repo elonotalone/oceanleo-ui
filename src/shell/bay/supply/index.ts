@@ -13,9 +13,7 @@ export function ProfilePane(_props: BayPaneProps): null {
   return null;
 }
 
-export function CheckoutPane(_props: BayPaneProps): null {
-  return null;
-}
+export { CheckoutPane } from "./CheckoutPane";
 
 export function BayProfilePublic(_props: { data: BayProfilePublicData }): null {
   return null;

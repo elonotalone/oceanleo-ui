@@ -7,10 +7,8 @@
 import { useMemo, useState } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
-import type { UITranslate } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
 import { rememberCheckoutAddons } from "../../../lib/bay/checkout";
-import { fetchBayCategoryFields, requiredFieldsOf } from "../../../lib/bay/directory";
 import {
   enabledAddons,
   enabledTiers,
@@ -20,7 +18,6 @@ import {
   reportBayService,
   serviceSelection,
   defaultTier,
-  type BayRequiredFieldValue,
   type BayServiceDetail,
   type BayServiceMedia,
   type BayServiceTier,
@@ -28,7 +25,7 @@ import {
 import { openTradeThread } from "../deal";
 import { openBay, requireBayLogin, type BayLayout, type BayPaneProps } from "../shell/bay-state";
 import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel } from "./format";
-import { FavoriteButton, PaneLoading, PaneMessage, ReportBox, ReviewList, Section, SellerCard } from "./parts";
+import { DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, ReviewList, Section, SellerCard } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
 
 export function ServicePane({ target, layout }: BayPaneProps) {
@@ -43,13 +40,6 @@ export function ServicePane({ target, layout }: BayPaneProps) {
     return <PaneMessage text={text} onRetry={service.reload} />;
   }
   return <ServiceDetailView service={service.data} viewerId={viewer.data} layout={layout} />;
-}
-
-function fieldValueText(tt: UITranslate, value: BayRequiredFieldValue | undefined): string {
-  if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) return tt("卖家未填写");
-  if (typeof value === "boolean") return value ? tt("是") : tt("否");
-  if (Array.isArray(value)) return value.join(", ");
-  return String(value);
 }
 
 function MediaView({ media }: { media: BayServiceMedia }) {
@@ -119,7 +109,6 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
   const [activeMedia, setActiveMedia] = useState(0);
   const [talking, setTalking] = useState(false);
   const [error, setError] = useState("");
-  const categories = useBayResource("bay-category-fields", fetchBayCategoryFields);
   const selection = serviceSelection(service, tierName, addonIds);
   const owner = isOwnService(service, viewerId);
   const currency = selection.tier?.currency || service.currency;
@@ -131,8 +120,6 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     if (list.length || !cover) return list;
     return [{ id: "cover", kind: "image" as const, url: cover, poster_url: null, caption: service.title }];
   }, [service]);
-  const fields = requiredFieldsOf((categories.data || []).find((item) => item.slug === service.category));
-  const values = service.required_fields || {};
 
   function order() {
     if (!selection.tier || !requireBayLogin()) return;
@@ -262,18 +249,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
         {service.description ? <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{service.description}</p> : null}
       </section>
 
-      {fields.length ? (
-        <Section title={tt("什么叫完成")} hint={tt("卖家挂牌时写明的交付标准，有争议时按这几项核对。")}>
-          <dl className="grid gap-2 sm:grid-cols-2">
-            {fields.map((field) => (
-              <div key={field.key} className="rounded-lg bg-neutral-50 p-2.5">
-                <dt className="text-[11px] text-neutral-500">{tt(field.label_zh)}</dt>
-                <dd className="mt-0.5 break-words text-[13px] text-neutral-800">{fieldValueText(tt, values[field.key])}</dd>
-              </div>
-            ))}
-          </dl>
-        </Section>
-      ) : null}
+      <DoneMeans service={service} />
 
       <Section title={tt("选择档位")}>
         {tiers.length ? (

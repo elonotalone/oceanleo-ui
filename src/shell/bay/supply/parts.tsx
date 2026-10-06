@@ -7,10 +7,10 @@ import { useState, type ReactNode } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import type { UITranslate } from "../../../i18n/ui/useUI";
-import { profileDisplayName, type BayPublicProfile, type BayReview } from "../../../lib/bay/directory";
+import { fetchBayCategoryFields, profileDisplayName, requiredFieldsOf, type BayPublicProfile, type BayReview } from "../../../lib/bay/directory";
 import { isBayFavorite, toggleBayFavorite, type BayFavoriteKind } from "../../../lib/bay/favorites";
 import { getBayReputation, practiceTitleFor, reputationHighlights, selfDescribedRoleOf, verifiedPracticeTitles } from "../../../lib/bay/reputation";
-import { BAY_REPORT_REASONS, type BayReportReason } from "../../../lib/bay/services";
+import { BAY_REPORT_REASONS, type BayReportReason, type BayRequiredFieldValue, type BayService } from "../../../lib/bay/services";
 import { openBay, requireBayLogin } from "../shell/bay-state";
 import { initialOf, ratingShort, responseTimeText, safeHttpUrl } from "./format";
 import { errorText, useBayResource } from "./use-bay-resource";
@@ -259,6 +259,34 @@ export function SellerCard({ seller }: { seller: BayPublicProfile }) {
         ))}
       </p>
     </section>
+  );
+}
+
+function fieldValueText(tt: UITranslate, value: BayRequiredFieldValue | undefined): string {
+  if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) return tt("卖家未填写");
+  if (typeof value === "boolean") return value ? tt("是") : tt("否");
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
+}
+
+/** 类目的「什么叫完成」字段 + 卖家挂牌时填的值。类目没有必填字段时不画。 */
+export function DoneMeans({ service }: { service: Pick<BayService, "category" | "required_fields"> }) {
+  const tt = useUI();
+  const categories = useBayResource("bay-category-fields", fetchBayCategoryFields);
+  const fields = requiredFieldsOf((categories.data || []).find((item) => item.slug === service.category));
+  const values = service.required_fields || {};
+  if (!fields.length) return null;
+  return (
+    <Section title={tt("什么叫完成")} hint={tt("卖家挂牌时写明的交付标准，有争议时按这几项核对。")}>
+      <dl data-bay-done-means className="grid gap-2 sm:grid-cols-2">
+        {fields.map((field) => (
+          <div key={field.key} className="rounded-lg bg-neutral-50 p-2.5">
+            <dt className="text-[11px] text-neutral-500">{tt(field.label_zh)}</dt>
+            <dd className="mt-0.5 break-words text-[13px] text-neutral-800">{fieldValueText(tt, values[field.key])}</dd>
+          </div>
+        ))}
+      </dl>
+    </Section>
   );
 }
 
