@@ -124,6 +124,16 @@ const OPS = [
   { kind: "reorder", sheetId: "s1", start: 0, order: [3, 2, 1, 0, 7, 6, 5, 4], cols: 6 },
 ];
 
+test("清单自检：OPS 覆盖 insert/remove/move/reorder——表变空时下面那批引擎对照用例会静默不注册", () => {
+  // `table-driven-registration-guard` 判据 2：按命名表 for-of 注册的用例必须配长度正对照。
+  // 缺真 Univer 时引擎对照会 skip；这条永远跑，表变空当场红。
+  assert.equal(OPS.length, 15, `OPS 应有 15 条结构操作，实测 ${OPS.length} 条`);
+  const kinds = new Set(OPS.map((op) => op.kind));
+  for (const kind of ["insert", "remove", "move", "reorder"]) {
+    assert.equal(kinds.has(kind), true, `OPS 里至少要有一条 ${kind}，整类被删时下面那批用例会少注册`);
+  }
+});
+
 for (const op of OPS) {
   const label =
     op.kind === "reorder"
