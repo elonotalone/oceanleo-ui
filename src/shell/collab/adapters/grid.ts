@@ -11,6 +11,56 @@
 // meta：`workbook`（名字等）、`sheetOrder`、`sheet:<id>`（每张表一份，行高列宽/合并/冻结在里面）、`resources`。
 // 同一单元格不同字段并发修改都保留，同一字段后写者胜（由 W11 的实体绑定保证）。
 
+import {
+  GRID_LAYOUT_COLS_PREFIX,
+  GRID_LAYOUT_FORMAT,
+  GRID_LAYOUT_FORMAT_KEY,
+  GRID_LAYOUT_ROWS_PREFIX,
+  applyGridStructureOp,
+  cloneGridLayout,
+  fitGridLayout,
+  gridSheetDims,
+  gridCellIdKey,
+  gridSheetMetaFromIds,
+  gridSheetMetaToIds,
+  indexMap,
+  initialGridLayout,
+  newGridLayoutId,
+  parseGridCellIdKey,
+  planGridRemote,
+  stableStringify,
+  strayGridId,
+  type GridLayout,
+  type GridLayoutStore,
+  type GridMetaOp,
+  type GridPlanEntities,
+  type GridRemotePlan,
+  type GridStructureOp,
+} from "../../doc-editors/grid-univer/collab-layout-model";
+
+import {
+  executeRemotePlan,
+  structureEventFromCommand,
+} from "../../doc-editors/grid-univer/collab-univer-ops";
+
+export { stableStringify };
+export {
+  GRID_LAYOUT_FORMAT,
+  GRID_LAYOUT_FORMAT_KEY,
+  gridCellIdKey,
+  initialGridLayout,
+  parseGridCellIdKey,
+  planGridRemote,
+} from "../../doc-editors/grid-univer/collab-layout-model";
+export type {
+  GridAxis,
+  GridLayout,
+  GridMetaOp,
+  GridRemotePlan,
+  GridSheetLayout,
+  GridStructureOp,
+} from "../../doc-editors/grid-univer/collab-layout-model";
+
 export const GRID_COLLAB_ROOT = "oceanleo:grid";
 export const GRID_COLLAB_EDITOR_KIND = "grid";
 
@@ -30,6 +80,11 @@ export interface GridEntityInput {
   order: string[];
   entities: Record<string, Record<string, unknown>>;
   meta: Record<string, unknown>;
+  /**
+   * 第二轮 F10：每张工作表的行 id 顺序 / 列 id 顺序。有它，格子键是 `sheet!rowId!colId`；
+   * 没有（老文档、回放里录下来的老格式），格子键是 `sheet!row!col`（按位置）。
+   */
+  layout?: GridLayout;
 }
 
 /** 与 Univer `IWorkbookData` 兼容的宽松形状（本文件不 import Univer）。 */
@@ -60,20 +115,6 @@ function isRec(value: unknown): value is Rec {
 function clone<T>(value: T): T {
   if (value === undefined) return value;
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-/** 键顺序固定的 JSON，用来比较两个值是否相同。 */
-export function stableStringify(value: Json): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  if (isRec(value)) {
-    const keys = Object.keys(value)
-      .filter((key) => value[key] !== undefined)
-      .sort();
-    return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value === undefined ? null : value);
 }
 
 export function gridCellKey(sheetId: string, row: number, col: number): string {
@@ -165,8 +206,12 @@ function numericKeys(record: Rec): number[] {
     .sort((a, b) => a - b);
 }
 
-/** 快照 → 实体（`bindJsonState` 的 `toEntities`）。 */
-export function gridToEntities(state: GridWorkbookSnapshot): {
+/**
+ * 快照 → 实体（`bindJsonState` 的 `toEntities`）。
+ * 给了 `layout`：格子按行列 id 存（`sheet!rowId!colId`），行高列宽 / 合并区域也按 id 存，行列数由布局决定；
+ * 不给：和第一轮一样按位置存。
+ */
+export function gridToEntities(state: GridWorkbookSnapshot, layout?: GridLayout): {
   order: string[];
   entities: Record<string, Record<string, unknown>>;
   meta: Record<string, unknown>;
@@ -196,7 +241,8 @@ export function gridToEntities(state: GridWorkbookSnapshot): {
       sheetMeta[key] = clone(value);
     }
     sheetMeta.id = sheetId;
-    meta[`${SHEET_META_PREFIX}${sheetId}`] = sheetMeta;
+    const ls = layout ? (layout[sheetId] ?? { rows: [], cols: [] }) : null;
+    meta[`${SHEET_META_PREFIX}${sheetId}`] = ls ? gridSheetMetaToIds(sheetMeta, ls) : sheetMeta;
 
     const cellData = isRec(sheet.cellData) ? (sheet.cellData as Rec) : {};
     for (const row of numericKeys(cellData)) {
@@ -205,7 +251,13 @@ export function gridToEntities(state: GridWorkbookSnapshot): {
       for (const col of numericKeys(line)) {
         const fields = gridCellToFields(line[String(col)], styles);
         if (!fields) continue;
-        const key = gridCellKey(sheetId, row, col);
+        const key = ls
+          ? gridCellIdKey(
+              sheetId,
+              ls.rows[row] ?? strayGridId("row", row),
+              ls.cols[col] ?? strayGridId("col", col),
+            )
+          : gridCellKey(sheetId, row, col);
         entities[key] = fields as Record<string, unknown>;
         order.push(key);
       }
@@ -247,7 +299,12 @@ export function gridFromEntities(
   const sheets: Record<string, Rec> = {};
   for (const sheetId of sheetOrder) {
     const sheetMeta = meta[`${SHEET_META_PREFIX}${sheetId}`];
-    const sheet: Rec = isRec(sheetMeta) ? clone(sheetMeta) : { id: sheetId };
+    const ids = input.layout ? (input.layout[sheetId] ?? { rows: [], cols: [] }) : null;
+    const sheet: Rec = isRec(sheetMeta)
+      ? ids
+        ? gridSheetMetaFromIds(sheetMeta, ids)
+        : clone(sheetMeta)
+      : { id: sheetId };
     sheet.id = sheetId;
     sheet.cellData = {};
     const before = prev?.sheets?.[sheetId];
@@ -259,8 +316,29 @@ export function gridFromEntities(
     sheets[sheetId] = sheet;
   }
 
+  const layoutIndex = new Map<string, { rows: Map<string, number>; cols: Map<string, number> }>();
   for (const [key, fields] of Object.entries(input.entities ?? {})) {
-    const parsed = parseGridCellKey(key);
+    let parsed: { sheetId: string; row: number; col: number } | null;
+    if (input.layout) {
+      const idKey = parseGridCellIdKey(key);
+      parsed = null;
+      if (idKey && input.layout[idKey.sheetId]) {
+        let index = layoutIndex.get(idKey.sheetId);
+        if (!index) {
+          index = {
+            rows: indexMap(input.layout[idKey.sheetId]!.rows),
+            cols: indexMap(input.layout[idKey.sheetId]!.cols),
+          };
+          layoutIndex.set(idKey.sheetId, index);
+        }
+        const row = index.rows.get(idKey.rowId);
+        const col = index.cols.get(idKey.colId);
+        // 行或列已被删掉：格子随之丢弃。
+        if (row !== undefined && col !== undefined) parsed = { sheetId: idKey.sheetId, row, col };
+      }
+    } else {
+      parsed = parseGridCellKey(key);
+    }
     if (!parsed || !isRec(fields)) continue;
     const sheet = sheets[parsed.sheetId];
     if (!sheet) continue; // 工作表已被别人删掉：它的格子一并丢弃
@@ -402,7 +480,57 @@ export function readGridEntityState(doc: unknown, rootName = GRID_COLLAB_ROOT): 
     }
   }
   const metaJson = metaRaw?.toJSON?.();
-  return { order, entities, meta: isRec(metaJson) ? metaJson : {} };
+  const state: GridEntityInput = { order, entities, meta: isRec(metaJson) ? metaJson : {} };
+  const layout = readGridLayout(root);
+  if (layout) state.layout = layout;
+  return state;
+}
+
+/** 根 Map 里有行列 id 格式标记时，读出每张工作表的行 / 列 id 顺序（按第一次出现去重）；老格式返回 null。 */
+function readGridLayout(root: YMapLike): GridLayout | null {
+  if (root.get(GRID_LAYOUT_FORMAT_KEY) !== GRID_LAYOUT_FORMAT) return null;
+  const layout: GridLayout = {};
+  const keys = root.keys ? Array.from(root.keys()) : [];
+  const idsOf = (key: string): string[] => {
+    const arr = root.get(key) as YMapLike | undefined;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const id of (arr?.toArray?.() ?? []) as unknown[]) {
+      if (typeof id === "string" && !seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+    return out;
+  };
+  for (const key of keys) {
+    let axis: "rows" | "cols" | null = null;
+    let sheetId = "";
+    if (key.startsWith(GRID_LAYOUT_ROWS_PREFIX)) {
+      axis = "rows";
+      sheetId = key.slice(GRID_LAYOUT_ROWS_PREFIX.length);
+    } else if (key.startsWith(GRID_LAYOUT_COLS_PREFIX)) {
+      axis = "cols";
+      sheetId = key.slice(GRID_LAYOUT_COLS_PREFIX.length);
+    }
+    if (!axis || !sheetId) continue;
+    const sheet = (layout[sheetId] ??= { rows: [], cols: [] });
+    sheet[axis] = idsOf(key);
+  }
+  return layout;
+}
+
+/**
+ * 老格式（按位置存格子）的共享文档 → 行列 id 格式：返回确定性的行列 id（r0 r1 … / c0 c1 …）和用它重新编码的实体。
+ * 纯函数、结果只取决于输入，所以两个客户端同时迁移得到完全相同的内容（写进同一个文档不会重复）。
+ */
+export function migrateGridEntities(input: GridEntityInput): {
+  layout: GridLayout;
+  encoded: { order: string[]; entities: Record<string, Record<string, unknown>>; meta: Record<string, unknown> };
+} {
+  const snapshot = gridFromEntities({ ...input, layout: undefined }, null);
+  const layout = initialGridLayout(snapshot);
+  return { layout, encoded: gridToEntities(snapshot, layout) };
 }
 
 export function gridFromY(doc: unknown): GridWorkbookSnapshot {
@@ -555,8 +683,16 @@ export interface GridSelectionRange {
 export interface GridAwarenessSelection {
   /** 契约规定的 `selection`：被选中的实体 id（最多 100 个）。 */
   selection: string[];
-  /** 完整范围，画描边用（大范围不展开成 id）。 */
-  selectionRanges: Array<GridSelectionRange & { sheetId: string }>;
+  /** 完整范围，画描边用（大范围不展开成 id）。行列 id 格式下附带两端的行列 id，别人那边的描边跟着行列走。 */
+  selectionRanges: Array<
+    GridSelectionRange & {
+      sheetId: string;
+      startRowId?: string;
+      endRowId?: string;
+      startColumnId?: string;
+      endColumnId?: string;
+    }
+  >;
 }
 
 export const GRID_SELECTION_ID_CAP = 100;
@@ -564,22 +700,47 @@ export const GRID_SELECTION_ID_CAP = 100;
 export function gridSelectionToAwareness(
   sheetId: string,
   ranges: readonly GridSelectionRange[],
+  layout?: GridLayout | null,
 ): GridAwarenessSelection {
   const selection: string[] = [];
   const selectionRanges: GridAwarenessSelection["selectionRanges"] = [];
+  const ls = layout?.[sheetId];
   for (const range of ranges.slice(0, 20)) {
     const startRow = Math.max(0, Math.min(range.startRow, range.endRow));
     const endRow = Math.max(range.startRow, range.endRow);
     const startColumn = Math.max(0, Math.min(range.startColumn, range.endColumn));
     const endColumn = Math.max(range.startColumn, range.endColumn);
-    selectionRanges.push({ sheetId, startRow, endRow, startColumn, endColumn });
+    const entry: GridAwarenessSelection["selectionRanges"][number] = {
+      sheetId,
+      startRow,
+      endRow,
+      startColumn,
+      endColumn,
+    };
+    if (ls) {
+      const sr = ls.rows[startRow];
+      const er = ls.rows[endRow];
+      const sc = ls.cols[startColumn];
+      const ec = ls.cols[endColumn];
+      if (sr && er && sc && ec) {
+        entry.startRowId = sr;
+        entry.endRowId = er;
+        entry.startColumnId = sc;
+        entry.endColumnId = ec;
+      }
+    }
+    selectionRanges.push(entry);
     for (let row = startRow; row <= endRow && selection.length < GRID_SELECTION_ID_CAP; row += 1) {
       for (
         let col = startColumn;
         col <= endColumn && selection.length < GRID_SELECTION_ID_CAP;
         col += 1
       ) {
-        selection.push(gridCellKey(sheetId, row, col));
+        const rowId = ls?.rows[row];
+        const colId = ls?.cols[col];
+        selection.push(
+          ls && rowId && colId ? gridCellIdKey(sheetId, rowId, colId) : gridCellKey(sheetId, row, col),
+        );
       }
     }
   }
@@ -614,8 +775,11 @@ function finiteInt(value: unknown): number | null {
     : null;
 }
 
-/** 从感知状态里取出别人的选中格子（不含自己）。 */
-export function gridPeerSelections(awareness: AwarenessLike): GridPeerSelection[] {
+/** 从感知状态里取出别人的选中格子（不含自己）。给了 `layout` 且对方带了行列 id，按 id 解析位置（行列被挪动后描边跟着走）。 */
+export function gridPeerSelections(
+  awareness: AwarenessLike,
+  layout?: GridLayout | null,
+): GridPeerSelection[] {
   const out: GridPeerSelection[] = [];
   for (const [clientId, state] of awareness.getStates()) {
     if (clientId === awareness.clientID || !isRec(state)) continue;
@@ -624,6 +788,29 @@ export function gridPeerSelections(awareness: AwarenessLike): GridPeerSelection[
     const ranges: GridPeerSelection["ranges"] = [];
     for (const item of raw.slice(0, 20)) {
       if (!isRec(item) || typeof item.sheetId !== "string") continue;
+      const ls = layout?.[item.sheetId];
+      if (
+        ls &&
+        typeof item.startRowId === "string" &&
+        typeof item.endRowId === "string" &&
+        typeof item.startColumnId === "string" &&
+        typeof item.endColumnId === "string"
+      ) {
+        const sr = ls.rows.indexOf(item.startRowId);
+        const er = ls.rows.indexOf(item.endRowId);
+        const sc = ls.cols.indexOf(item.startColumnId);
+        const ec = ls.cols.indexOf(item.endColumnId);
+        if (sr >= 0 && er >= 0 && sc >= 0 && ec >= 0) {
+          ranges.push({
+            sheetId: item.sheetId,
+            startRow: Math.min(sr, er),
+            endRow: Math.max(sr, er),
+            startColumn: Math.min(sc, ec),
+            endColumn: Math.max(sc, ec),
+          });
+          continue;
+        }
+      }
       const startRow = finiteInt(item.startRow);
       const endRow = finiteInt(item.endRow);
       const startColumn = finiteInt(item.startColumn);
@@ -727,11 +914,39 @@ export function createGridUniverPort(options: {
     return () => handle?.dispose();
   };
 
+  const snapshotNow = (): GridWorkbookSnapshot => {
+    const wb = workbook();
+    const data = wb?.save?.() ?? wb?.getSnapshot?.();
+    return isRec(data) ? (cloneJson(data) as GridWorkbookSnapshot) : { sheetOrder: [], sheets: {} };
+  };
+
   return {
-    getSnapshot() {
-      const wb = workbook();
-      const data = wb?.save?.() ?? wb?.getSnapshot?.();
-      return isRec(data) ? (cloneJson(data) as GridWorkbookSnapshot) : { sheetOrder: [], sheets: {} };
+    getSnapshot: snapshotNow,
+    onLocalStructure(cb) {
+      return subscribe((event) => {
+        if (muted > 0) return;
+        const op = structureEventFromCommand(event, {
+          unitId: workbook()?.getId?.(),
+          getSnapshot: snapshotNow,
+        });
+        if (op) cb(op);
+      });
+    },
+    applyRemotePlan(plan) {
+      const api = options.getApi();
+      const unitId = workbook()?.getId?.();
+      if (!api?.syncExecuteCommand || !unitId) return false;
+      muted += 1;
+      try {
+        return executeRemotePlan(plan, {
+          api,
+          unitId,
+          snapshot: snapshotNow(),
+          cellValue: (cell) => gridFieldsToCell(cell),
+        });
+      } finally {
+        muted -= 1;
+      }
     },
     applyCellChanges(changes) {
       const api = options.getApi();
@@ -841,6 +1056,13 @@ export interface GridCollabPort {
   onLocalSelection(cb: (sheetId: string, ranges: GridSelectionRange[]) => void): () => void;
   /** 在画布上描出别人选中的格子。 */
   highlightPeers(peers: readonly GridPeerSelection[]): void;
+  /** 用户自己插入 / 删除 / 移动了行列，或对整行做了排序（第二轮 F10）；写入远端变化时不应触发。 */
+  onLocalStructure?(cb: (op: GridStructureOp) => void): () => void;
+  /**
+   * 在画布上增量执行远端变化的计划（行列结构、行高列宽、合并区域、格子、工作表增删改名），
+   * 不整张替换工作簿；任何一步失败返回 false，绑定器随即退回整张替换。
+   */
+  applyRemotePlan?(plan: GridRemotePlan): boolean;
 }
 
 export interface GridCollabRoomLike {
@@ -889,12 +1111,21 @@ export interface GridCollabBinderOptions {
     toEntities: typeof gridToEntities;
     fromEntities: typeof gridFromEntities;
   }) => GridJsonBinding;
+  /**
+   * 第二轮 F10：行列 id 布局的存取。给了它，格子按行列 id 存，插入 / 删除 / 排序行列不再整张推送；
+   * 老格式文档在第一次打开时就地迁移。不给就和第一轮一样按位置存、结构变化整张替换。
+   */
+  layoutStore?: GridLayoutStore;
+  /** 新行 / 新列的 id 生成器（测试注入固定序列）。 */
+  newId?: () => string;
   /** 本地变更合并后再推的等待毫秒数。 */
   debounceMs?: number;
   setTimer?: (cb: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   /** 本地改了内容 / 收进了别人的改动（保存者据此知道「文档变了、该存」）。 */
   onActivity?: (origin: "local" | "remote") => void;
+  /** 远端变化只能整张替换工作簿时调用（界面据此提示「表格已重新载入」）。 */
+  onFullReplace?: (reason: string) => void;
 }
 
 export interface GridCollabBinder {
@@ -902,43 +1133,90 @@ export interface GridCollabBinder {
   flush(): void;
   /** 外部新版本（AI、专业模式存的）：整本换进画布，并整张写进协同文档。 */
   adopt(snapshot: GridWorkbookSnapshot): void;
+  /** 画布现在的行列 id 布局；还在老格式（没有布局存储）时是 null。 */
+  getLayout(): GridLayout | null;
   destroy(): void;
+}
+
+function planEntities(
+  encoded: { entities: Record<string, Record<string, unknown>>; meta: Record<string, unknown> },
+  layout: GridLayout | null,
+): GridPlanEntities {
+  return { entities: encoded.entities, meta: encoded.meta, ...(layout ? { layout } : {}) };
 }
 
 /**
  * 把一个 Univer 舞台接进协同房间：
  * - 种子：`needsSeed` 的客户端把当前工作簿写进去再 `completeSeed`；
- * - 本地变更 → 合并后整本 `push`（W11 按实体做差异，只改动变化的格子）；
- * - 远端状态 → 与「上次同步的状态」求差：只有格子变化就逐格写回，工作表结构变化才整本替换；
- *   尚未推出去的本地变更保留（叠在远端状态上）；
+ * - 本地变更 → 合并后 `push`（W11 按实体做差异，只改动变化的格子）；
+ * - 远端状态 → 与「上次同步的状态」求差。第一轮：只有格子变化就逐格写回，工作表结构变化才整本替换。
+ *   第二轮（给了 `layoutStore`）：格子按行列 id 存，本地插入 / 删除 / 移动行列、整行排序马上写进行列顺序，
+ *   远端的行列变化翻译成 Univer 命令在本地增量执行（`planGridRemote` + `port.applyRemotePlan`），
+ *   只有翻译不了的变化（冻结、条件格式等）才整本替换；
  * - 选区：本地选区写进感知（`selection` + `selectionRanges`），别人的选区交给 `port.highlightPeers`。
  */
 export function createGridCollabBinder(options: GridCollabBinderOptions): GridCollabBinder {
   const { room, port } = options;
+  const store = options.layoutStore ?? null;
+  const makeId = options.newId ?? newGridLayoutId;
   const debounceMs = options.debounceMs ?? 250;
   const setTimer =
     options.setTimer ?? ((cb: () => void, ms: number) => setTimeout(cb, ms));
   const clearTimer =
     options.clearTimer ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>));
 
+  /** 行列 id 布局（画布现在的）；null = 还在老格式（或没有布局存储）。 */
+  let layout: GridLayout | null = null;
+  /** 行列 id 格式下，上次与协同文档对齐的状态（按 id 存的格子与 meta）。 */
+  let baseIds: GridPlanEntities | null = null;
+  let lastEncoded: ReturnType<typeof gridToEntities> | null = null;
+
+  const toEntities = ((state: GridWorkbookSnapshot) => {
+    const encoded = gridToEntities(state, layout ?? undefined);
+    lastEncoded = encoded;
+    return encoded;
+  }) as typeof gridToEntities;
+  const fromEntities = ((input: GridEntityInput, prev: GridWorkbookSnapshot | null) => {
+    const stored = store?.read() ?? null;
+    return gridFromEntities(stored ? { ...input, layout: stored } : input, prev);
+  }) as typeof gridFromEntities;
+
   const binding = options.bind({
     room,
     rootName: GRID_COLLAB_ROOT,
-    toEntities: gridToEntities,
-    fromEntities: gridFromEntities,
+    toEntities: store ? toEntities : gridToEntities,
+    fromEntities: store ? fromEntities : gridFromEntities,
   });
 
   let destroyed = false;
   let applyingRemote = 0;
   let timer: unknown = null;
-  /** 上一次与协同文档对齐的状态（推出去的，或收进来的）。 */
+  /** 一次推送里用到的「画布 → 行列 id」映射由 layout 决定；这里是老格式下上次与协同文档对齐的状态。 */
   let base: GridWorkbookSnapshot = port.getSnapshot();
+
+  /** 让行列布局与画布对齐（行列数变了、新建了工作表）；有变化就写进协同文档。 */
+  const reconcileLayout = (live: GridWorkbookSnapshot) => {
+    if (!layout || !store) return;
+    const fit = fitGridLayout(live, layout, makeId);
+    if (!fit.changed) return;
+    layout = fit.layout;
+    store.sync(layout, fit.removed);
+  };
 
   const pushNow = () => {
     if (destroyed) return;
     timer = null;
     const live = port.getSnapshot();
-    binding.push(live);
+    if (layout && store) {
+      lastEncoded = null;
+      store.batch(() => {
+        reconcileLayout(live);
+        binding.push(live);
+      });
+      baseIds = planEntities(lastEncoded ?? gridToEntities(live, layout), layout);
+    } else {
+      binding.push(live);
+    }
     base = live;
   };
 
@@ -951,7 +1229,18 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
 
   const disposeLocal = port.onLocalChange(schedulePush);
 
-  const applyRemote = (remote: GridWorkbookSnapshot) => {
+  /** 本地用户插入 / 删除 / 移动了行列（或整行排序）：马上写进行列顺序，格子随后按 id 推。 */
+  const disposeStructure =
+    port.onLocalStructure?.((event) => {
+      if (destroyed || applyingRemote > 0 || !store || !layout) return;
+      const applied = applyGridStructureOp(layout, event, makeId);
+      layout = applied.layout;
+      store.applyLocal(applied.op);
+      schedulePush();
+    }) ?? (() => {});
+
+  // ── 老格式：按位置比较，结构变化整本替换（第一轮的做法） ──
+  const applyRemoteLegacy = (remote: GridWorkbookSnapshot) => {
     if (destroyed) return;
     const delta = diffGridSnapshots(base, remote);
     if (!delta.structural && delta.cells.length === 0) return;
@@ -966,6 +1255,7 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
           ? remote
           : applyGridCellChanges(remote, pending.cells);
         port.replaceWorkbook(target);
+        options.onFullReplace?.("legacy-structure");
         base = remote;
         if (pending.cells.length > 0 && !pending.structural) {
           if (timer !== null) clearTimer(timer);
@@ -979,6 +1269,136 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
       applyingRemote -= 1;
     }
   };
+
+  /** 老格式文档第一次进入行列 id 格式（我们自己迁移，或别人迁移了）：以文档里的布局为准，重建对齐基线。 */
+  const adoptLayout = (stored: GridLayout) => {
+    layout = stored;
+    const live = port.getSnapshot();
+    baseIds = planEntities(gridToEntities(live, layout), layout);
+    base = live;
+  };
+
+  // ── 行列 id 格式：按 id 比较，行列结构增量翻译 ──
+  const dimsMatch = (snapshot: GridWorkbookSnapshot, want: GridLayout, skip: ReadonlySet<string>) => {
+    for (const [sheetId, ids] of Object.entries(want)) {
+      const sheet = snapshot.sheets?.[sheetId];
+      if (!sheet || skip.has(sheetId)) continue;
+      const dims = gridSheetDims(sheet as Rec);
+      if (dims.rows !== ids.rows.length || dims.cols !== ids.cols.length) return false;
+    }
+    return true;
+  };
+
+  const applyRemoteIds = () => {
+    if (destroyed || !store || !layout) return;
+    store.dedupe();
+    const live = port.getSnapshot();
+    reconcileLayout(live);
+    const stored = store.read();
+    if (!stored) return;
+    const state = readGridEntityState(room.doc);
+    const remote: GridEntityInput = { ...state, layout: stored };
+    const remoteSnapshot = gridFromEntities(remote, live);
+    const before = baseIds ?? planEntities(gridToEntities(live, layout), layout);
+    const plan = planGridRemote({
+      base: before,
+      localLayout: layout,
+      remote,
+      remoteSnapshot,
+      live,
+    });
+    // 本地新建、还没推出去的工作表：不在 base 里，保留它们的行列布局。
+    const knownSheets = new Set(
+      Object.keys(before.meta)
+        .filter((key) => key.startsWith(SHEET_META_PREFIX))
+        .map((key) => key.slice(SHEET_META_PREFIX.length)),
+    );
+    const localOnly: GridLayout = {};
+    for (const [sheetId, ids] of Object.entries(layout)) {
+      if (!knownSheets.has(sheetId) && !(sheetId in stored)) localOnly[sheetId] = ids;
+    }
+    const nextBase = planEntities({ entities: remote.entities, meta: remote.meta }, stored);
+    if (plan.empty) {
+      layout = { ...stored, ...localOnly };
+      baseIds = nextBase;
+      return;
+    }
+    options.onActivity?.("remote");
+    applyingRemote += 1;
+    let replaced = false;
+    try {
+      let done = false;
+      if (!plan.fallback && port.applyRemotePlan) {
+        try {
+          done = port.applyRemotePlan(plan);
+        } catch {
+          done = false;
+        }
+        if (done && plan.structure.length > 0) {
+          done = dimsMatch(port.getSnapshot(), stored, new Set(Object.keys(localOnly)));
+        }
+      }
+      if (!done) {
+        replaced = true;
+        // 本地还没推出去的格子改动叠在远端状态上；本地改了工作表设置时远端为准。
+        const liveEntities = gridToEntities(live, layout);
+        const pendingMeta = stableStringify(before.meta) !== stableStringify(liveEntities.meta);
+        const entities: Record<string, Record<string, unknown>> = { ...remote.entities };
+        let pendingCount = 0;
+        if (!pendingMeta) {
+          const have = (key: string) => {
+            const id = parseGridCellIdKey(key);
+            const ids = id ? stored[id.sheetId] : undefined;
+            return Boolean(id && ids && ids.rows.includes(id.rowId) && ids.cols.includes(id.colId));
+          };
+          for (const [key, fields] of Object.entries(liveEntities.entities)) {
+            const was = before.entities[key];
+            if (was && stableStringify(was) === stableStringify(fields)) continue;
+            if (!have(key)) continue;
+            entities[key] = fields;
+            pendingCount += 1;
+          }
+          for (const key of Object.keys(before.entities)) {
+            if (key in liveEntities.entities || !(key in entities) || !have(key)) continue;
+            delete entities[key];
+            pendingCount += 1;
+          }
+        }
+        const target = gridFromEntities(
+          { order: Object.keys(entities), entities, meta: remote.meta, layout: stored },
+          live,
+        );
+        port.replaceWorkbook(target);
+        options.onFullReplace?.(plan.reason || "apply-failed");
+        if (pendingCount > 0) {
+          if (timer !== null) clearTimer(timer);
+          timer = setTimer(pushNow, 0);
+        }
+      }
+    } finally {
+      applyingRemote -= 1;
+    }
+    layout = replaced ? stored : { ...stored, ...localOnly };
+    baseIds = nextBase;
+    onAwareness();
+  };
+
+  const applyRemote = (remote: GridWorkbookSnapshot) => {
+    if (destroyed) return;
+    const stored = store?.read() ?? null;
+    if (!store || !stored) {
+      applyRemoteLegacy(remote);
+      return;
+    }
+    if (!layout) {
+      // 第一次看到行列 id 格式：内容与画布做一次按位置的比较，然后以文档里的布局为准。
+      applyRemoteLegacy(remote);
+      adoptLayout(stored);
+      initialApplied = true;
+      return;
+    }
+    applyRemoteIds();
+  };
   const disposeRemote = binding.onRemote(applyRemote);
 
   // 非播种者：同步完成后把协同文档里的状态读出来换进画布（之后的变化走 onRemote）。
@@ -988,25 +1408,36 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
     const state = binding.read?.();
     if (!state) return;
     initialApplied = true;
-    applyRemote(state);
+    applyRemoteLegacy(state);
+    if (!store) return;
+    let stored = store.read();
+    if (!stored && store.canWrite() && store.isLegacy() && store.migrate()) stored = store.read();
+    if (stored) adoptLayout(stored);
   };
   const disposeRoom = room.subscribe(applyInitial);
 
   const disposeSelection = port.onLocalSelection((sheetId, ranges) => {
     if (destroyed) return;
-    const payload = gridSelectionToAwareness(sheetId, ranges);
+    const payload = gridSelectionToAwareness(sheetId, ranges, layout);
     room.awareness.setLocalStateField("selection", payload.selection);
     room.awareness.setLocalStateField("selectionRanges", payload.selectionRanges);
   });
 
-  const onAwareness = () => {
-    if (!destroyed) port.highlightPeers(gridPeerSelections(room.awareness));
-  };
+  function onAwareness() {
+    if (!destroyed) port.highlightPeers(gridPeerSelections(room.awareness, layout));
+  }
   room.awareness.on("change", onAwareness);
 
   if (room.needsSeed) {
-    binding.seed(port.getSnapshot());
+    const live = port.getSnapshot();
+    if (store) {
+      layout = initialGridLayout(live);
+      store.seed(layout);
+    }
+    lastEncoded = null;
+    binding.seed(live);
     base = port.getSnapshot();
+    if (layout) baseIds = planEntities(lastEncoded ?? gridToEntities(live, layout), layout);
   } else {
     applyInitial();
   }
@@ -1030,11 +1461,13 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
       }
       pushNow();
     },
+    getLayout: () => (layout ? cloneGridLayout(layout) : null),
     destroy() {
       if (destroyed) return;
       if (timer !== null) clearTimer(timer);
       destroyed = true;
       disposeLocal();
+      disposeStructure();
       disposeRemote();
       disposeRoom();
       disposeSelection();
