@@ -146,10 +146,26 @@ test("@ 候选里的 leo", async () => {
 });
 
 // ── 文案 ────────────────────────────────────────────────────────────────
+// im-leo-copy.ts 借用 shell-overhaul-copy-shared 的 assembleCopy。编译台把无扩展名的相对导入
+// 交给 node 原生加载会找不到，所以这里给它一份同语义的替身（17 语种表、zh 取原文）。
+const copyStubs = {
+  "./shell-overhaul-copy-shared": dataModule(`
+    const LOCALES = ["de","en","es","es-419","fr","it","pt-BR","pt-PT","vi","tr","zh","zh-TW","ja","ko","ar","th","hi"];
+    export function assembleCopy(source, translations) {
+      return Object.fromEntries(LOCALES.map((locale) => [
+        locale,
+        Object.fromEntries(Object.keys(source).map((name) => [
+          source[name],
+          (locale === "zh" ? source : translations[locale])[name],
+        ])),
+      ]));
+    }
+  `),
+};
 const LOCALES = ["de", "en", "es", "es-419", "fr", "it", "pt-BR", "pt-PT", "vi", "tr", "zh", "zh-TW", "ja", "ko", "ar", "th", "hi"];
 
 test("文案：17 种语言写全，占位符不丢", async () => {
-  const { IM_LEO_ZH, IM_LEO_MESSAGES } = await import(await compileModule("src/i18n/ui/messages/im-leo-copy.ts", {}));
+  const { IM_LEO_ZH, IM_LEO_MESSAGES } = await import(await compileModule("src/i18n/ui/messages/im-leo-copy.ts", copyStubs));
   assert.deepEqual(Object.keys(IM_LEO_MESSAGES).sort(), [...LOCALES].sort());
   const zhKeys = Object.values(IM_LEO_ZH);
   for (const locale of LOCALES) {
@@ -164,7 +180,7 @@ test("文案：17 种语言写全，占位符不丢", async () => {
 });
 
 test("文案：组件里每个 tt() 原文，要么在 W06 分表里，要么是词典里早就有的键", async () => {
-  const { IM_LEO_ZH } = await import(await compileModule("src/i18n/ui/messages/im-leo-copy.ts", {}));
+  const { IM_LEO_ZH } = await import(await compileModule("src/i18n/ui/messages/im-leo-copy.ts", copyStubs));
   const mine = new Set(Object.values(IM_LEO_ZH));
   const existing = new Set();
   const dir = "src/i18n/ui/messages";
