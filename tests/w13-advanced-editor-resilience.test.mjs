@@ -109,10 +109,12 @@ test("PDF blank creation is explicit and disposed page loads release resources",
   assert.equal(blank.pageCount, 1);
   assert.ok(blank.bytes.byteLength > 0);
 
-  const [workbench, preview] = await Promise.all([
+  const [workbenchMain, workbenchCollab, preview] = await Promise.all([
     source("src/shell/media-editors/use-pdf-workbench.ts"),
+    source("src/shell/media-editors/use-pdf-workbench-collab.ts"),
     source("src/shell/media-editors/use-pdf-preview-render.ts"),
   ]);
+  const workbench = workbenchMain + workbenchCollab;
   assert.match(workbench, /item\.source === "creation"/);
   assert.match(workbench, /allowBlank:\s*allowBlankSource/);
   assert.match(workbench, /catch \(caught\) \{[\s\S]*PDF 本地草稿恢复失败/);

@@ -146,7 +146,9 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const audio =
     source("../src/shell/media-editors/AudioWorkbench.tsx") +
     source("../src/shell/media-editors/use-audio-persistence.ts");
-  const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
+  const pdf =
+    source("../src/shell/media-editors/use-pdf-workbench.ts") +
+    source("../src/shell/media-editors/use-pdf-workbench-collab.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
   assert.match(shell, /useState\(""\)/);

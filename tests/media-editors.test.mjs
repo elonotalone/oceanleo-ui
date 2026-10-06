@@ -166,6 +166,8 @@ test("each media editor source file stays below the 600-line component limit", (
     "use-pdf-preview-render.ts",
     "use-pdf-view-pipeline.ts",
     "use-pdf-workbench.ts",
+    // F15：F05 协同接线从 `use-pdf-workbench.ts` 再拆出的模块。不登记则同上。
+    "use-pdf-workbench-collab.ts",
   ]);
   for (const filename of readdirSync(directory)) {
     if (!taskFiles.has(filename)) continue;

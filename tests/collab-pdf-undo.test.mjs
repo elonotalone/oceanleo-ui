@@ -277,7 +277,10 @@ test("只有查看权限的人：本地字节怎么变也不写进共享文档",
 });
 
 test("接线的静态保证：静默替换不碰撤销栈；撤销经 adjustRestored；只读冻结改动入口、整页动作先拿锁", async () => {
-  const workbench = await readFile(resolve("src/shell/media-editors/use-pdf-workbench.ts"), "utf8");
+  const workbench = [
+    await readFile(resolve("src/shell/media-editors/use-pdf-workbench.ts"), "utf8"),
+    await readFile(resolve("src/shell/media-editors/use-pdf-workbench-collab.ts"), "utf8"),
+  ].join("\n");
   const body = workbench.slice(
     workbench.indexOf("const replaceBytesSilently"),
     workbench.indexOf("const goToPage"),
