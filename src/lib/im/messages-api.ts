@@ -98,6 +98,13 @@ export function createMessagesApi(fetcher: ImFetcher) {
     me(): Promise<{ profile: ImProfile }> {
       return fetcher("/v1/im/me");
     },
+    async profiles(ids: string[]): Promise<ImProfile[]> {
+      if (ids.length === 0) return [];
+      const result = await fetcher<{ items: ImProfile[] }>(
+        `/v1/im/profiles${queryString({ ids: ids.slice(0, 100).join(",") })}`,
+      );
+      return result?.items ?? [];
+    },
     getConversation(conversationId: string): Promise<ImConversationDetail> {
       return fetcher(`/v1/im/conversations/${encodeURIComponent(conversationId)}`);
     },

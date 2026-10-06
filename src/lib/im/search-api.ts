@@ -1,7 +1,7 @@
 // 消息搜索接口（契约 §4.2 `GET /v1/im/search`）。W09 持有。
 
 import { imFetch } from "./client";
-import type { ImConversationKind, ImMessageKind, ImPage, ImSearchHit } from "./types";
+import type { ImConversationKind, ImMessageKind, ImPage, ImProfile, ImSearchHit } from "./types";
 import type { ImFetcher } from "./messages-api";
 
 /** 搜索至少要这么多个字符（契约：q ≥ 2 个字符）。 */
@@ -46,6 +46,11 @@ export function createSearchApi(fetcher: ImFetcher) {
   return {
     search(params: SearchParams): Promise<ImPage<ImSearchHit>> {
       return fetcher(buildSearchPath(params));
+    },
+    /** 「发送人」筛选的候选：我能直接私聊的人。 */
+    async directory(): Promise<ImProfile[]> {
+      const result = await fetcher<{ items: ImProfile[] }>("/v1/im/directory");
+      return result?.items ?? [];
     },
   };
 }

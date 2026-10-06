@@ -674,3 +674,99 @@ export function isPlaceholder(message: ImMessage): boolean {
 export function attachmentSummary(attachments: ImAttachment[]): string {
   return attachments.map((a) => a.name).join(", ");
 }
+
+// ── 消息流的行：日期分隔、未读分隔线、头像合并 ───────────────────────────────
+/** 同一个人这么久内的连续消息合并头像。 */
+export const GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+export type MessageRow =
+  | { type: "day"; key: string; day: string }
+  | { type: "unread"; key: string }
+  | { type: "message"; key: string; message: ImMessage; grouped: boolean; pending: PendingMessage | null };
+
+/** 本地日历日（用户所在时区）。 */
+export function dayKey(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function groupable(message: ImMessage): boolean {
+  return message.sender_kind === "user" && message.kind !== "system" && !message.recalled_at && message.hidden_reason === null;
+}
+
+/**
+ * 把消息变成行：
+ * - 跨天插日期分隔；
+ * - `unreadAfterSeq` 之后的第一条别人的消息前插「未读」分隔线（0 / null = 不画）；
+ * - 同一人 5 分钟内、同一天、中间没有分隔线的连续消息合并头像。
+ */
+export function buildRows(
+  messages: ImMessage[],
+  pending: PendingMessage[],
+  options: { unreadAfterSeq?: number | null; viewerId?: string | null } = {},
+): MessageRow[] {
+  const rows: MessageRow[] = [];
+  let previous: ImMessage | null = null;
+  let unreadDrawn = false;
+  const entries: Array<{ message: ImMessage; pending: PendingMessage | null }> = [
+    ...messages.map((message) => ({ message, pending: null })),
+    ...pending.map((entry) => ({ message: entry.message, pending: entry })),
+  ];
+  for (const entry of entries) {
+    const { message } = entry;
+    let separated = false;
+    const day = dayKey(message.created_at);
+    if (day && (!previous || dayKey(previous.created_at) !== day)) {
+      rows.push({ type: "day", key: `day:${day}`, day });
+      separated = true;
+    }
+    if (
+      !unreadDrawn &&
+      options.unreadAfterSeq != null &&
+      !entry.pending &&
+      message.seq > options.unreadAfterSeq &&
+      message.sender_id !== options.viewerId
+    ) {
+      rows.push({ type: "unread", key: "unread" });
+      unreadDrawn = true;
+      separated = true;
+    }
+    const grouped =
+      !separated &&
+      previous !== null &&
+      groupable(previous) &&
+      groupable(message) &&
+      previous.sender_id === message.sender_id &&
+      Date.parse(message.created_at) - Date.parse(previous.created_at) <= GROUP_WINDOW_MS &&
+      Date.parse(message.created_at) >= Date.parse(previous.created_at);
+    rows.push({
+      type: "message",
+      key: entry.pending ? `pending:${entry.pending.clientId}` : message.id,
+      message,
+      grouped,
+      pending: entry.pending,
+    });
+    previous = message;
+  }
+  return rows;
+}
+
+/**
+ * 未读分隔线的位置：详情里有 `last_read_seq` 就直接用；没有就按 `unread_count`
+ * 从末尾往前数「别人发的」那么多条，返回它前一条的 seq。
+ */
+export function unreadBoundary(
+  messages: ImMessage[],
+  options: { lastReadSeq?: number | null; unreadCount?: number; viewerId?: string | null },
+): number | null {
+  if (typeof options.lastReadSeq === "number" && options.lastReadSeq >= 0) {
+    return messages.some((m) => m.seq > options.lastReadSeq!) ? options.lastReadSeq : null;
+  }
+  const count = options.unreadCount ?? 0;
+  if (count <= 0) return null;
+  const others = messages.filter((m) => m.sender_id !== options.viewerId && m.sender_kind !== "system");
+  if (others.length === 0) return null;
+  const first = others[Math.max(0, others.length - count)];
+  return first.seq - 1;
+}
