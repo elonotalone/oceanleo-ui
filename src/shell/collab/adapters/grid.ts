@@ -288,9 +288,9 @@ export function gridFromEntities(
   return snapshot;
 }
 
-/** 规范形式：样式展开成内联、去掉空格子与本机视图状态。两份「内容相同」的快照规范化后全等。 */
+/** 规范形式：样式展开成内联、去掉空格子、本机视图状态与工作簿 id。两份「内容相同」的快照规范化后全等。 */
 export function normalizeGridSnapshot(state: GridWorkbookSnapshot): GridWorkbookSnapshot {
-  return gridFromEntities(gridToEntities(state), state);
+  return gridFromEntities(gridToEntities(state), null);
 }
 
 export interface GridCellChange {

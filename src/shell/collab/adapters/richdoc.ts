@@ -390,8 +390,11 @@ export function richDocBlockText(node: RichDocNode): string {
   return parts.join(sep);
 }
 
-/** 把块数组按首尾相同的部分裁掉，返回中间不同的区间。 */
-function changedWindow(prev: RichDocNode[], next: RichDocNode[]) {
+/**
+ * 两组块的差异：按块内容做最长公共子序列，剩下的就是「这边有、那边没有」的块。
+ * 块很多时（> 25 万格）退回成只裁首尾相同的部分，保证回放不卡。
+ */
+function blockDiff(prev: RichDocNode[], next: RichDocNode[]) {
   const a = prev.map((node) => stable(node));
   const b = next.map((node) => stable(node));
   let head = 0;
@@ -404,17 +407,49 @@ function changedWindow(prev: RichDocNode[], next: RichDocNode[]) {
   ) {
     tail += 1;
   }
-  return { head, prevEnd: a.length - tail, nextEnd: b.length - tail };
+  const midA = a.slice(head, a.length - tail);
+  const midB = b.slice(head, b.length - tail);
+  const keptA = new Set<number>();
+  const keptB = new Set<number>();
+  if (midA.length * midB.length <= 250_000 && midA.length > 0 && midB.length > 0) {
+    const width = midB.length + 1;
+    const table = new Uint32Array((midA.length + 1) * width);
+    for (let i = midA.length - 1; i >= 0; i -= 1) {
+      for (let j = midB.length - 1; j >= 0; j -= 1) {
+        table[i * width + j] =
+          midA[i] === midB[j]
+            ? table[(i + 1) * width + j + 1] + 1
+            : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < midA.length && j < midB.length) {
+      if (midA[i] === midB[j]) {
+        keptA.add(i);
+        keptB.add(j);
+        i += 1;
+        j += 1;
+      } else if (table[(i + 1) * width + j] >= table[i * width + j + 1]) i += 1;
+      else j += 1;
+    }
+  }
+  const removed: number[] = [];
+  const added: number[] = [];
+  midA.forEach((_, i) => {
+    if (!keptA.has(i)) removed.push(head + i);
+  });
+  midB.forEach((_, j) => {
+    if (!keptB.has(j)) added.push(head + j);
+  });
+  return { removed, added };
 }
 
 /** 新快照里相对上一帧有变化的块下标（画法用来在左侧加作者色竖条）。 */
 export function richDocChangedBlocks(prev: unknown, next: unknown): Set<number> {
   const before = normalizeRichDocJson(prev).content;
   const after = normalizeRichDocJson(next).content;
-  const { head, nextEnd } = changedWindow(before, after);
-  const out = new Set<number>();
-  for (let i = head; i < nextEnd; i += 1) out.add(i);
-  return out;
+  return new Set(blockDiff(before, after).added);
 }
 
 export type RichDocTranslate = (zh: string, vars?: Record<string, string | number>) => string;
@@ -430,10 +465,10 @@ export function describeRichDocChange(
 ): string | null {
   const before = normalizeRichDocJson(prev).content;
   const after = normalizeRichDocJson(next).content;
-  const { head, prevEnd, nextEnd } = changedWindow(before, after);
-  const oldMid = before.slice(head, prevEnd);
-  const newMid = after.slice(head, nextEnd);
-  if (oldMid.length === 0 && newMid.length === 0) return null;
+  const { removed: oldIndexes, added: newIndexes } = blockDiff(before, after);
+  if (oldIndexes.length === 0 && newIndexes.length === 0) return null;
+  const oldMid = oldIndexes.map((i) => before[i]);
+  const newMid = newIndexes.map((i) => after[i]);
   const paired = Math.min(oldMid.length, newMid.length);
   const added = newMid.length - paired;
   const removed = oldMid.length - paired;
