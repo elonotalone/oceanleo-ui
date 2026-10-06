@@ -103,16 +103,31 @@ export function applyMention(
   return { text: next, caret: active.start + insert.length };
 }
 
-/** 发消息时：只带仍然留在正文里的那些被选中的 @。 */
+// 手打的 @leo：@ 或全角＠，可选一个空格，leo（不分大小写）。
+// 前面不能紧贴字母数字（foo@leo 不算），后面不能紧跟拉丁字母/数字/下划线（@leonard 不算）；
+// 紧跟中文（@leo你好）算数，因为中文输入时 @ 和正文之间通常不留空格。
+const TYPED_LEO_MENTION = /(?:^|[^A-Za-z0-9_])[@\uFF20][ \u3000]?leo(?![A-Za-z0-9_\u00C0-\u024F])/i;
+
+/** 正文里有没有手打的 @leo（不经过候选下拉）。 */
+export function hasTypedLeoMention(text: string): boolean {
+  return TYPED_LEO_MENTION.test(text);
+}
+
+/**
+ * 发消息时：只带仍然留在正文里的那些被选中的 @。
+ * `mention_leo` 另有文本兜底：用户没打开下拉、直接手打 `@leo` 也算（仅当会话开着 leo，
+ * 与 `mentionCandidates` 里 leo 候选的出现条件一致）。后端只信这个布尔，不解析正文。
+ */
 export function collectMentions(
   text: string,
   picked: MentionCandidate[],
+  leoEnabled: boolean = true,
 ): { mentions: string[]; mention_all: boolean; mention_leo: boolean } {
   const present = picked.filter((candidate) => text.includes(`@${candidate.label}`));
   return {
     mentions: Array.from(new Set(present.filter((c) => c.kind === "user").map((c) => c.id))),
     mention_all: present.some((c) => c.kind === "all"),
-    mention_leo: present.some((c) => c.kind === "leo"),
+    mention_leo: present.some((c) => c.kind === "leo") || (leoEnabled && hasTypedLeoMention(text)),
   };
 }
 

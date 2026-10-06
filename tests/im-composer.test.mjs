@@ -111,6 +111,38 @@ test("选中候选：替换成「@名字 」并记录；发送时只带仍在正
   assert.equal(collectMentions("@所有人 开会", [all]).mention_all, true);
 });
 
+// ── 手打 @leo（不经过候选下拉）──────────────────────────────────────────
+test("手打 @leo、没选过候选：mention_leo 为 true（二轮：leo 不回复的静默失败）", () => {
+  assert.deepEqual(collectMentions("@leo 你好", []), { mentions: [], mention_all: false, mention_leo: true });
+  assert.equal(collectMentions("你好 @leo，帮我看看", []).mention_leo, true);
+  assert.equal(collectMentions("@leo", []).mention_leo, true);
+  assert.equal(collectMentions("@leo你好", []).mention_leo, true);
+  assert.equal(collectMentions("(@leo)", []).mention_leo, true);
+});
+
+test("手打 @leo 的大小写、全角、带空格变体都认", () => {
+  for (const text of ["@Leo 你好", "@LEO 你好", "＠leo 你好", "＠Leo你好", "@ leo 你好", "@\u3000leo 你好"]) {
+    assert.equal(collectMentions(text, []).mention_leo, true, text);
+  }
+});
+
+test("形似但不是 leo 的不误判：@leonard、@leonardo、subtleorganism、邮箱、没有 @ 的 leo、数字或下划线紧跟", () => {
+  for (const text of ["@leonard 你好", "@leonardo", "@Leonard", "@ leonard", "subtleorganism", "see subtleo", "foo@leo.com", "leo 你好", "@le o", "@leo1", "@leo_x"]) {
+    assert.equal(collectMentions(text, []).mention_leo, false, text);
+  }
+});
+
+test("会话没开 leo 时，手打 @leo 不算；从下拉选中的路径不受影响", () => {
+  assert.equal(collectMentions("@leo 你好", [], false).mention_leo, false);
+  assert.equal(collectMentions("@leo 你好", []).mention_leo, true);
+  const leo = { id: "leo", label: "leo", kind: "leo" };
+  assert.equal(collectMentions("@leo 你好", [leo], false).mention_leo, true);
+  // 手打 @leo 不影响 @某人 和 @所有人
+  const alice = { id: "u1", label: "Alice", kind: "user" };
+  assert.deepEqual(collectMentions("@leo 问问 @Alice", [alice]), { mentions: ["u1"], mention_all: false, mention_leo: true });
+  assert.deepEqual(collectMentions("@leonard 你好", []), { mentions: [], mention_all: false, mention_leo: false });
+});
+
 // ── Enter / Shift+Enter ──────────────────────────────────────────────────
 test("Enter 发送；Shift+Enter 换行；输入法组词中不处理", () => {
   assert.equal(composerKeyAction({ key: "Enter" }), "send");

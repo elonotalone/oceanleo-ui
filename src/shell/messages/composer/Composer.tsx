@@ -188,10 +188,8 @@ export function Composer(props: ComposerProps) {
   );
   useEffect(() => setActiveIndex(0), [active?.query, candidates.length]);
 
-  const mentionsLeo = useMemo(
-    () => picked.some((c) => c.kind === "leo" && text.includes(`@${c.label}`)),
-    [picked, text],
-  );
+  const leoEnabled = Boolean(conversation?.leo_enabled) && conversation?.kind !== "talent";
+  const mentionsLeo = useMemo(() => collectMentions(text, picked, leoEnabled).mention_leo, [picked, text, leoEnabled]);
 
   // ── 上传 ────────────────────────────────────────────────────────────────
   const runUpload = useCallback((job: UploadJob) => {
@@ -281,7 +279,7 @@ export function Composer(props: ComposerProps) {
       }
       return;
     }
-    const mentions = collectMentions(trimmed, picked);
+    const mentions = collectMentions(trimmed, picked, leoEnabled);
     const teamPayer = mentions.mention_leo && payer?.kind === "team" ? payer.org_id : null;
     const kind = readyAttachments.length > 0 ? messageKindForAttachments(readyAttachments) : "text";
     const input: Omit<SendMessageInput, "client_id"> = {
