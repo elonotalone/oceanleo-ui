@@ -49,7 +49,7 @@ export function NewConversationDialog({ open, onClose, onCreated, presetMemberId
 
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "dm", label: tt("私聊") },
-    { id: "group", label: tt("群组") },
+    { id: "group", label: tt("群聊") },
     ...(orgs.length > 0 || projectId ? [{ id: "team" as const, label: tt("Team / 项目") }] : []),
   ];
 

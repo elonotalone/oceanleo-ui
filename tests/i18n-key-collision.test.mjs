@@ -105,3 +105,58 @@ test("服务器页分表不改写全站词典，也不互相改写", async () =>
   assert.deepEqual(conflicts, [], `发现 ${conflicts.length} 个改写：\n${conflicts.join("\n")}`);
   assert.equal(seen["登录"], "Log in");
 });
+
+// work-chat（消息 / 多人同改 / 工作回放）11 张分表各归一个工作单元，互相不知道对方的
+// 词典内容；汇总顺序见 work-chat-copy.ts 的 PARTS 数组（后者覆盖前者，Object.assign
+// 语义）。同一个中文键在两张表里翻译不一样时，后汇总的会悄悄赢，界面哪边先渲染就看哪边
+// 的表在 PARTS 里更靠后——这不是产品决定的，是巧合。2026-10-06 集成时发现过 9 处这种
+// 重复登记（见 docs/work-logs/2026-10/work-chat/signals/PARENT-arbitration.md A-17），
+// 8 处是同义重复（已删掉较早汇总、较晚覆盖那张表的重复登记，只留一份定义，不改行为）、
+// 1 处是真的两种含义撞了同一个中文词（"群组"：创建会话对话框里指"群聊"这一种类型 vs
+// 收件箱筛选页里指"群组"这一类对话的筛选 tab，已把前者的中文源串改成"群聊"拆开）。
+const WORK_CHAT_FRAGMENTS = [
+  ["im-shell-copy", "IM_SHELL_MESSAGES"],
+  ["im-conversation-copy", "IM_CONVERSATION_MESSAGES"],
+  ["im-people-copy", "IM_PEOPLE_MESSAGES"],
+  ["im-notify-copy", "IM_NOTIFY_MESSAGES"],
+  ["im-leo-copy", "IM_LEO_MESSAGES"],
+  ["im-talent-copy", "IM_TALENT_MESSAGES"],
+  ["collab-copy", "COLLAB_MESSAGES"],
+  ["collab-docs-copy", "COLLAB_DOCS_MESSAGES"],
+  ["collab-visual-copy", "COLLAB_VISUAL_MESSAGES"],
+  ["collab-media-copy", "COLLAB_MEDIA_MESSAGES"],
+  ["work-replay-copy", "WORK_REPLAY_MESSAGES"],
+];
+
+// 每一项都必须说明为什么同一中文键在两张 work-chat 分表里可以故意有不同英文——这代表
+// 两处字面相同的中文背后其实是不同的产品含义，拆键成本大于加一条有说明的豁免时才用。
+const WORK_CHAT_ALLOWED_OVERRIDES = new Map([]);
+
+test("work-chat 11 张分表不改写全站词典，也不互相改写", async () => {
+  const { UI_MESSAGES } = await import(new URL("index.ts", messagesDir));
+  const seen = { ...UI_MESSAGES.en };
+  const owner = {};
+  const conflicts = [];
+  for (const [file, name] of WORK_CHAT_FRAGMENTS) {
+    const module = await import(new URL(`${file}.ts`, messagesDir));
+    const dictionary = module[name]?.en;
+    assert.ok(dictionary && typeof dictionary === "object", `${name}.en 不是词典`);
+    for (const [key, translated] of Object.entries(dictionary)) {
+      if (Object.prototype.hasOwnProperty.call(seen, key) && seen[key] !== translated) {
+        const id = `${name}:${key}`;
+        const reason = WORK_CHAT_ALLOWED_OVERRIDES.get(id);
+        if (!reason) {
+          conflicts.push(
+            `${id}\n  ${owner[key] ?? "UI_MESSAGES"}: ${seen[key]}\n  ${name}: ${translated}`,
+          );
+        } else {
+          assert.ok(reason.trim().length >= 12, `${id} 的白名单理由不够具体`);
+        }
+      }
+      seen[key] = translated;
+      owner[key] = name;
+    }
+  }
+  assert.deepEqual(conflicts, [], `发现 ${conflicts.length} 个 work-chat 分表间的改写：\n${conflicts.join("\n")}`);
+  assert.equal(seen["登录"], "Log in");
+});
