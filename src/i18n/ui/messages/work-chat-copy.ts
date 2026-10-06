@@ -13,6 +13,9 @@ import { COLLAB_DOCS_MESSAGES } from "./collab-docs-copy";
 import { COLLAB_VISUAL_MESSAGES } from "./collab-visual-copy";
 import { COLLAB_MEDIA_MESSAGES } from "./collab-media-copy";
 import { WORK_REPLAY_MESSAGES } from "./work-replay-copy";
+import { COLLAB_PDF_MESSAGES } from "./collab-pdf-copy";
+import { COLLAB_WORKFLOW_MESSAGES } from "./collab-workflow-copy";
+import { COLLAB_GRID_MESSAGES } from "./collab-grid-copy";
 
 const PARTS = [
   IM_SHELL_MESSAGES,
@@ -26,6 +29,9 @@ const PARTS = [
   COLLAB_VISUAL_MESSAGES,
   COLLAB_MEDIA_MESSAGES,
   WORK_REPLAY_MESSAGES,
+  COLLAB_PDF_MESSAGES,
+  COLLAB_WORKFLOW_MESSAGES,
+  COLLAB_GRID_MESSAGES,
 ];
 
 export const WORK_CHAT_MESSAGES: Record<Locale, Record<string, string>> =
