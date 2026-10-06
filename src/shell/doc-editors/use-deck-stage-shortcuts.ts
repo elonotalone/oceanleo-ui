@@ -22,6 +22,20 @@ export function useDeckStageShortcuts(
       ) {
         return;
       }
+      // 只能查看：翻页照旧；撤销 / 复制 / 删除 / 方向键挪动一律不动作（也不拦浏览器默认键）
+      if (currentEditor.readOnly) {
+        if (event.key === "PageUp") {
+          event.preventDefault();
+          const previous =
+            currentEditor.deck.slides[currentEditor.activeIndex - 1];
+          if (previous) currentEditor.selectSlide(previous.id);
+        } else if (event.key === "PageDown") {
+          event.preventDefault();
+          const next = currentEditor.deck.slides[currentEditor.activeIndex + 1];
+          if (next) currentEditor.selectSlide(next.id);
+        }
+        return;
+      }
       const command = event.ctrlKey || event.metaKey;
       if (command && event.key.toLowerCase() === "z") {
         event.preventDefault();

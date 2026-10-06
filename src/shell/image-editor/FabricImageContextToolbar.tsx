@@ -12,15 +12,20 @@ import { fabricImageFilterControls } from "./fabric-image-filter-controls";
 import { dispatchFabricImageCommand } from "./fabric-image-commands";
 import { imageToolbarCommandAllowed } from "./image-mutation-policy";
 import type { FabricImageEditorState } from "./types";
+import { viewOnlyContext } from "../collab/adapters/visual-readonly";
 
 export function FabricImageContextToolbar({
   editor,
   accent = "#4f46e5",
+  readOnly: readOnlyProp,
 }: {
-  editor: FabricImageEditorState;
+  editor: FabricImageEditorState & { collab?: { readOnly: boolean } };
   accent?: string;
+  /** 只能查看（浏览者，或别人正占着编辑）：改动类控件全灰、悬停提示「你只能查看」。缺省取编辑器自己的只读状态。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
+  const readOnly = readOnlyProp ?? Boolean(editor.collab?.readOnly);
   const selected = editor.selected;
   const filters = editor.filterInfo?.settings;
   const hasLockedLayers = editor.layers.some((layer) => layer.locked);
@@ -553,7 +558,14 @@ export function FabricImageContextToolbar({
     tt,
   ]);
 
+  // 这条浮条里没有纯查看类控件（缩放、导出在宿主栏）：只读时整条灰掉
+  const viewContext = useMemo(
+    () => viewOnlyContext(context, readOnly, tt),
+    [context, readOnly, tt],
+  );
+
   const command = (message: SelectionCommand) => {
+    if (readOnly) return;
     if (!context) return;
     if (message.selectionId !== context.id) return;
     if (message.transactionId && message.phase === "start") {
@@ -572,7 +584,7 @@ export function FabricImageContextToolbar({
 
   return (
     <SelectionToolbar
-      context={context}
+      context={viewContext}
       onCommand={command}
       accent={accent}
     />

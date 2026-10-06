@@ -8,6 +8,9 @@
  *   - 打开作品开房间；进入编辑就 `acquireLock()`，拿到的人编辑，别人只读；
  *   - 只读的人看到提示，画布盖一层透明遮罩（点不进 iframe）；
  *   - 编辑者每次保存，房间里的其他人收到 `onExternalRevision`，这里读出那个版本，调用方据此换上新版本刷新画面；
+ *   - 但本地有没保存的改动时（`localDirty`）不换：换上就会重新挂载画布，把没保存的改动冲掉。这时只记下
+ *     `pendingRevision`，由调用方画提示条，让用户选「保存我的」（照常保存，形成新版本，新版本自然盖过它）
+ *     或「看新版本」（`acceptPendingRevision`：放弃本地改动，重新载入）；没有本地改动时照旧自动刷新；
  *   - 自动保存只在「持有编辑权」时跑（别人都是只读，不会有第二份未保存的改动）；存成功后 `markSaved`。
  *
  * 不在协同里（没开房间 / 离线 / 被拒）时一切照旧：`readOnly` 恒为 false，`canSave` 恒为 true。
@@ -40,6 +43,12 @@ export interface VectorCollab {
   revisionItem: LibraryItem | null;
   /** 每收到一次别人保存就 +1，用来让嵌入画布重新挂载。 */
   revisionNonce: number;
+  /** 本地有没保存的改动时收到的外部新版本（暂存，未换上）；没有时为 null。 */
+  pendingRevision: LibraryItem | null;
+  /** 「看新版本」：放弃本地改动，换上暂存的新版本（让画布重新挂载）。没有暂存时什么也不做。 */
+  acceptPendingRevision(): boolean;
+  /** 我自己保存成功了：我的版本比暂存的新，丢掉暂存。 */
+  dropPendingRevision(): void;
   /** 存成功后告诉房间这一版已落库。 */
   markSaved(revisionId: string): void;
 }
@@ -48,6 +57,8 @@ export function useVectorCollab(opts: {
   /** 只有 vector_image 为 true；别的嵌入画布（网站、流程图）传 false，什么都不开。 */
   enabled: boolean;
   item: { artifactId?: string; title?: string };
+  /** 画布里有没保存的本地改动。缺省 false（照旧：新版本到了就换）。 */
+  localDirty?: boolean;
 }): VectorCollab {
   const imOn = useImEnabled();
   const artifactId = String(opts.item.artifactId || "");
@@ -61,7 +72,10 @@ export function useVectorCollab(opts: {
   const [acquired, setAcquired] = useState(false);
   const [revisionItem, setRevisionItem] = useState<LibraryItem | null>(null);
   const [revisionNonce, setRevisionNonce] = useState(0);
+  const [pending, setPending] = useState<{ item: LibraryItem; revisionId: string } | null>(null);
   const acquiringRef = useRef(false);
+  const dirtyRef = useRef(Boolean(opts.localDirty));
+  dirtyRef.current = Boolean(opts.localDirty);
 
   const synced = room?.status === "synced";
   const viewer = room?.role === "viewer";
@@ -114,6 +128,11 @@ export function useVectorCollab(opts: {
         .then((result) => {
           const data = (result as { data?: LibraryItem }).data;
           if (!data) return;
+          if (decideExternalRevision({ localDirty: dirtyRef.current }) === "hold") {
+            // 最新的外部版本覆盖更早暂存的那个；room.markSaved 等用户选了再调
+            setPending({ item: data, revisionId });
+            return;
+          }
           setRevisionItem(data);
           setRevisionNonce((value) => value + 1);
           room.markSaved(revisionId);
@@ -128,6 +147,21 @@ export function useVectorCollab(opts: {
     },
     [room],
   );
+
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const acceptPendingRevision = useCallback((): boolean => {
+    const held = pendingRef.current;
+    if (!held) return false;
+    setPending(null);
+    setRevisionItem(held.item);
+    setRevisionNonce((value) => value + 1);
+    if (room && held.revisionId) room.markSaved(held.revisionId);
+    return true;
+  }, [room]);
+  const dropPendingRevision = useCallback(() => {
+    setPending(null);
+  }, []);
 
   const inRoom = Boolean(room) && synced;
   const readOnly = inRoom && !acquired;
@@ -144,6 +178,17 @@ export function useVectorCollab(opts: {
     canSave: !room || !synced || acquired,
     revisionItem,
     revisionNonce,
+    pendingRevision: pending?.item ?? null,
+    acceptPendingRevision,
+    dropPendingRevision,
     markSaved,
   };
+}
+
+/**
+ * 外部新版本到了：本地有没保存的改动就「hold」（暂存、出提示条，不重新挂载画布），否则「apply」（自动刷新）。
+ * 单独导出成纯函数，测试直接断言这条规则。
+ */
+export function decideExternalRevision(state: { localDirty: boolean }): "apply" | "hold" {
+  return state.localDirty ? "hold" : "apply";
 }

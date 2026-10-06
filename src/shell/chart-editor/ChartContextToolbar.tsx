@@ -15,6 +15,7 @@ import {
   type ChartSeriesType,
 } from "./chart-schema";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
+import { viewOnlyContext } from "../collab/adapters/visual-readonly";
 import {
   applyChartAdvancedCommand,
   chartAdvancedControls,
@@ -33,14 +34,21 @@ const SERIES_OPTIONS: Array<{ value: ChartSeriesType; label: string }> = [
   { value: "candlestick", label: "K 线" },
 ];
 
+/** 只读时仍可用的控件：切换「当前系列」只是看哪条线，不改图表。 */
+const CHART_VIEW_ONLY_KEEP = ["series-selector"] as const;
+
 export function ChartContextToolbar({
   editor,
   accent = "#4f46e5",
+  readOnly: readOnlyProp,
 }: {
   editor: ChartWorkbenchState;
   accent?: string;
+  /** 只能查看（浏览者，或别人正占着编辑）：改动类控件全灰、悬停提示「你只能查看」。缺省取编辑器自己的只读状态。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
+  const readOnly = readOnlyProp ?? editor.readOnly;
   const option = editor.document.option;
   const legendTextStyle =
     option.legend.textStyle &&
@@ -333,8 +341,15 @@ export function ChartContextToolbar({
     tt,
   ]);
 
+  const viewContext = useMemo(
+    () => viewOnlyContext(context, readOnly, tt, CHART_VIEW_ONLY_KEEP),
+    [context, readOnly, tt],
+  );
+
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
+    // 只能查看：只放行「切换当前系列」这类纯查看的命令
+    if (readOnly && !(CHART_VIEW_ONLY_KEEP as readonly string[]).includes(message.controlId)) return;
     if (
       message.selectionRevision !== undefined &&
       message.selectionRevision !== editor.editRevision
@@ -439,7 +454,7 @@ export function ChartContextToolbar({
   };
   return (
     <SelectionToolbar
-      context={context}
+      context={viewContext}
       onCommand={command}
       accent={accent}
     />

@@ -70,6 +70,11 @@ import {
 } from "../collab/adapters/deck";
 import { useEntityCollab } from "../collab/adapters/use-entity-collab";
 import { useCollabSelections } from "../collab/adapters/visual-selection";
+import {
+  guardPluginSurface,
+  viewOnlyUploadHandler,
+} from "../collab/adapters/visual-readonly";
+import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
 import { editorToolLabel } from "../workbench-routes";
 import { buildDeckCommandSurface } from "../doc-editors/doc-family-commands";
 import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
@@ -181,6 +186,8 @@ function DeckLegacyRoute({
   useEffect(() => {
     setCollabReadOnly(collab.readOnly);
   }, [collab.readOnly]);
+  // 工具条、面板、指令面、上传入口都按这一个值灰掉（编辑内核另有同一条拒绝，这里让入口自己就不动作）
+  const viewOnly = collab.readOnly || editor.readOnly;
   const selectionKeys = useMemo(
     () => [
       editor.activeSlide.id,
@@ -444,8 +451,12 @@ function DeckLegacyRoute({
       item.title,
     ],
   );
+  // 只能查看：Leo 的「帮我改」从指令面进来，会改作品的指令在这一层直接拒绝
   usePluginCommandSurface(
-    buildDeckCommandSurface(editor, { download: downloadAs }),
+    guardPluginSurface(
+      buildDeckCommandSurface(editor, { download: downloadAs }),
+      viewOnly,
+    ),
   );
   return (
     <AdvancedWorkbenchShell
@@ -461,13 +472,13 @@ function DeckLegacyRoute({
             id: "deck-design",
             label: "模板",
             icon: "templates",
-            content: <DeckDesignPanel editor={editor} accent={accent} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckDesignPanel editor={editor} accent={accent} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-elements",
             label: "元素",
             icon: "elements",
-            content: <DeckElementsPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckElementsPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-draw",
@@ -475,11 +486,13 @@ function DeckLegacyRoute({
             icon: "draw",
             hiddenFromRail: true,
             content: (
-              <DeckDrawPanel
-                style={inkStyle}
-                onStyleChange={setInkStyle}
-                onToolChange={setActiveTool}
-              />
+              <VisualViewOnlyPanel readOnly={viewOnly}>
+                <DeckDrawPanel
+                  style={inkStyle}
+                  onStyleChange={setInkStyle}
+                  onToolChange={setActiveTool}
+                />
+              </VisualViewOnlyPanel>
             ),
           },
           {
@@ -487,71 +500,72 @@ function DeckLegacyRoute({
             label: "线条",
             icon: "line",
             hiddenFromRail: true,
-            content: <DeckLinePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckLinePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-notes",
             label: "便签",
             icon: "note",
             hiddenFromRail: true,
-            content: <DeckNotesPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckNotesPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-text",
             label: "文字",
             icon: "text",
-            content: <DeckTextPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckTextPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-signature",
             label: "签名",
             icon: "signature",
             hiddenFromRail: true,
-            content: <DeckSignaturePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckSignaturePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-tables",
             label: "表格",
             icon: "table",
             hiddenFromRail: true,
-            content: <DeckTablePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckTablePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-uploads",
             label: "上传",
             icon: "uploads",
-            content: <DeckUploadPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckUploadPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-layers",
             label: "图层",
             icon: "layers",
-            content: <DeckLayersPanel editor={editor} accent={accent} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckLayersPanel editor={editor} accent={accent} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-effects",
             label: "效果",
             icon: "effects",
             hiddenFromRail: true,
-            content: <DeckEffectsPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckEffectsPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "deck-fonts",
             label: "字体",
             icon: "font",
             hiddenFromRail: true,
-            content: <DeckFontPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckFontPanel editor={editor} /></VisualViewOnlyPanel>,
           },
         ],
         contextToolbar: (
           <DeckContextToolbar
             editor={editor}
             accent={accent}
+            readOnly={viewOnly}
           />
         ),
         history: {
-          canUndo: editor.canUndo,
-          canRedo: editor.canRedo,
+          canUndo: editor.canUndo && !viewOnly,
+          canRedo: editor.canRedo && !viewOnly,
           undo: editor.undo,
           redo: editor.redo,
         },
@@ -622,7 +636,7 @@ function DeckLegacyRoute({
         upload: {
           accept: docFamilyAcceptAttribute("deck"),
           multiple: true,
-          onFiles: addLocalFiles,
+          onFiles: viewOnlyUploadHandler(viewOnly, addLocalFiles),
         },
         stage: editor.sourceFailed ? (
           <EditorSourceFailurePanel

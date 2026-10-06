@@ -426,6 +426,8 @@ export function useChartWorkbench(
 
   const replaceFromMaterial = useCallback(
     async (action: "insert" | "replace" | "apply" | "merge", material: LibraryItem) => {
+      // 只能查看：不取素材、不留一句假的「已替换」提示（mutate 本来也会拒绝）
+      if (readOnlyRef.current) return;
       const incoming = await loadChartDocument(material);
       mutate((current) => {
         if (action === "replace" || action === "apply") return incoming;
@@ -640,6 +642,7 @@ export function useChartWorkbench(
     importCsv: (csv) =>
       mutate((current) => replaceChartData(current, chartDocumentFromCsv(csv))),
     importXlsx: async (bytes, options) => {
+      if (readOnlyRef.current) return;
       if (!sourceReadyRef.current) {
         setError(tt("图表源尚未成功载入；已阻止修改示例回退内容"));
         return;

@@ -35,6 +35,8 @@ import {
 } from "../collab/adapters/chart";
 import { useEntityCollab } from "../collab/adapters/use-entity-collab";
 import { safeSelectionColor, useCollabSelections } from "../collab/adapters/visual-selection";
+import { viewOnlyUploadHandler } from "../collab/adapters/visual-readonly";
+import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
 import type { ChartDocumentV1 } from "../chart-editor/chart-schema";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
@@ -161,6 +163,8 @@ function ChartLegacyBody({
   useEffect(() => {
     setCollabReadOnly(collab.readOnly);
   }, [collab.readOnly]);
+  // 工具条、侧边面板、上传入口都按这一个值灰掉（内核与指令面另有同一条拒绝）
+  const viewOnly = collab.readOnly || editor.readOnly;
   const selectionKeys = useMemo(
     () => chartSelectionKeys(editor.activeSeriesId ? [editor.activeSeriesId] : []),
     [editor.activeSeriesId],
@@ -391,14 +395,18 @@ function ChartLegacyBody({
         toolbox: {
           label: "数据与系列",
           icon: "timeline",
-          content: <ChartControls editor={editor} />,
+          content: (
+            <VisualViewOnlyPanel readOnly={viewOnly}>
+              <ChartControls editor={editor} />
+            </VisualViewOnlyPanel>
+          ),
         },
         contextToolbar: (
-          <ChartContextToolbar editor={editor} accent={accent} />
+          <ChartContextToolbar editor={editor} accent={accent} readOnly={viewOnly} />
         ),
         history: {
-          canUndo: editor.canUndo,
-          canRedo: editor.canRedo,
+          canUndo: editor.canUndo && !viewOnly,
+          canRedo: editor.canRedo && !viewOnly,
           undo: editor.undo,
           redo: editor.redo,
         },
@@ -438,7 +446,7 @@ function ChartLegacyBody({
         upload: {
           accept:
             ".csv,.tsv,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          onFiles: importLocalData,
+          onFiles: viewOnlyUploadHandler(viewOnly, importLocalData),
         },
         stage:
           !editor.loading && !editor.sourceReady ? (

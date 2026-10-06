@@ -21,6 +21,7 @@ import {
 import { chartTypedArtifactFromRangeSnapshot } from "./chart-next-artifact";
 import { chartToolsManifestChips } from "./chart-next-l4-chips";
 import type { ChartWorkbenchState } from "./use-chart-workbench";
+import { guardVisualCommands } from "../collab/adapters/visual-readonly";
 
 const EDITOR_ID = "chart-editor@1";
 
@@ -409,7 +410,9 @@ export function createChartCommandSurface(
 ): PluginCommandSurfaceInput {
   return createVisualCommandSurface({
     editorId: EDITOR_ID,
-    commands: () => chartCommandDefinitions(deps),
+    // 只能查看：会改图表的指令（Leo 的「帮我改」）在这一层直接拒绝，导出等查看类照常
+    commands: () =>
+      guardVisualCommands(chartCommandDefinitions(deps), deps.editor.readOnly),
     state: () => chartCommandState(deps.editor),
   });
 }

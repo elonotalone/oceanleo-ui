@@ -1176,6 +1176,11 @@ export function useFabricImageEditor(
 
   const runAiEdit = useCallback(async () => {
     if (aiBusyRef.current || !aiPrompt.trim()) return;
+    // 只能查看：不导出画布、不调模型（controller 的 readOnly 也会拒绝替换，但那时钱已经花了）
+    if (optionsRef.current.collab?.readOnly) {
+      setError("你现在只能查看，不能修改这个作品。");
+      return;
+    }
     if (viewRef.current.layers.some((layer) => layer.locked)) {
       setError("请先解锁图层，再让 AI 替换整个画布");
       return;

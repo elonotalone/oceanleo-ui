@@ -53,6 +53,11 @@ import { useFabricImageEditor } from "../image-editor/use-fabric-image-editor";
 import { IMAGE_COLLAB_ROOT, imageFromEntities, imageToEntities, type ImageSnapshot } from "../collab/adapters/image";
 import { useEntityCollab } from "../collab/adapters/use-entity-collab";
 import { useCollabSelections } from "../collab/adapters/visual-selection";
+import {
+  VIEW_ONLY_REFUSAL,
+  viewOnlyUploadHandler,
+} from "../collab/adapters/visual-readonly";
+import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -159,6 +164,8 @@ export function ImageRoute({
   useEffect(() => {
     setCollabReadOnly(collab.readOnly);
   }, [collab.readOnly]);
+  // 工具条、侧边面板、素材入口、AI 入口、上传都按这一个值灰掉（画布控制器与指令面另有同一条拒绝）
+  const viewOnly = collab.readOnly || editor.collab.readOnly;
   const selectedLayerIds = useMemo(
     () => editor.layers.filter((layer) => layer.selected).map((layer) => layer.id),
     [editor.layers],
@@ -249,6 +256,7 @@ export function ImageRoute({
         );
       },
       mutate: async (action, material, placement) => {
+        if (viewOnly) throw new Error(VIEW_ONLY_REFUSAL);
         const candidates = [
           material.previewUrl,
           material.thumbUrl,
@@ -276,7 +284,7 @@ export function ImageRoute({
         }
       },
     }),
-    [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl],
+    [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl, viewOnly],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const photopeaCloud =
@@ -517,6 +525,8 @@ export function ImageRoute({
    */
   const runAi = useMemo<AiCommandRunner>(
     () => async (request) => {
+      // 只能查看：不抠图、不排 AI 任务（面板与指令面也各挡一次，这里是最后一道）
+      if (viewOnly) return { ok: false, message: VIEW_ONLY_REFUSAL };
       if (request.id === "remove-bg") {
         // Cut-out is the one capability that goes straight to the gateway: no
         // parameters, one image out, no recipe lineage. Everything else needs
@@ -551,12 +561,12 @@ export function ImageRoute({
         message: "参数没问题，已在左侧「AI 能力」面板里排上，进度与用量都在那里。",
       };
     },
-    [editor.addImageFromUrl, frozenCanvasUrl, removeBgExecutor],
+    [editor.addImageFromUrl, frozenCanvasUrl, removeBgExecutor, viewOnly],
   );
   usePluginCommandSurface(
     useMemo(
-      () => createImageCommandSurface({ editor, deliver, runAi }),
-      [deliver, editor, runAi],
+      () => createImageCommandSurface({ editor, deliver, runAi, readOnly: viewOnly }),
+      [deliver, editor, runAi, viewOnly],
     ),
   );
 
@@ -614,63 +624,65 @@ export function ImageRoute({
             id: "image-ai",
             label: "AI 能力",
             icon: "ai",
-            content: <FabricImageAiPanel editor={editor} host={aiHost} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageAiPanel editor={editor} host={aiHost} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-brush",
             label: "画笔",
             icon: "draw",
             hiddenFromRail: true,
-            content: <FabricImageBrushPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageBrushPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-shapes",
             label: "形状",
             icon: "shape",
             hiddenFromRail: true,
-            content: <FabricImageShapePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageShapePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-lines",
             label: "线条",
             icon: "line",
             hiddenFromRail: true,
-            content: <FabricImageLinePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageLinePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-notes",
             label: "便签",
             icon: "note",
             hiddenFromRail: true,
-            content: <FabricImageNotePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageNotePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-text",
             label: "文字",
             icon: "text",
             hiddenFromRail: true,
-            content: <FabricImageTextPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageTextPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-signature",
             label: "签名",
             icon: "signature",
             hiddenFromRail: true,
-            content: <FabricImageSignaturePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageSignaturePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-tables",
             label: "表格",
             icon: "table",
             hiddenFromRail: true,
-            content: <FabricImageTablePanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageTablePanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-layers",
             label: "图层",
             icon: "layers",
             content: (
-              <FabricImageControls editor={editor} sections={["layers"]} />
+              <VisualViewOnlyPanel readOnly={viewOnly}>
+                <FabricImageControls editor={editor} sections={["layers"]} />
+              </VisualViewOnlyPanel>
             ),
           },
           {
@@ -678,7 +690,9 @@ export function ImageRoute({
             label: "尺寸与背景",
             icon: "templates",
             content: (
-              <FabricImageControls editor={editor} sections={["canvas"]} />
+              <VisualViewOnlyPanel readOnly={viewOnly}>
+                <FabricImageControls editor={editor} sections={["canvas"]} />
+              </VisualViewOnlyPanel>
             ),
           },
           {
@@ -686,14 +700,14 @@ export function ImageRoute({
             label: "图片调整",
             icon: "filter",
             hiddenFromRail: true,
-            content: <FabricImageFilterPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageFilterPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-fonts",
             label: "字体",
             icon: "font",
             hiddenFromRail: true,
-            content: <FabricImageFontPanel editor={editor} />,
+            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageFontPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-export",
@@ -704,11 +718,11 @@ export function ImageRoute({
           },
         ],
         contextToolbar: editor.selected ? (
-          <FabricImageContextToolbar editor={editor} accent={accent} />
+          <FabricImageContextToolbar editor={editor} accent={accent} readOnly={viewOnly} />
         ) : null,
         history: {
-          canUndo: editor.canUndo,
-          canRedo: editor.canRedo,
+          canUndo: editor.canUndo && !viewOnly,
+          canRedo: editor.canRedo && !viewOnly,
           undo: editor.undo,
           redo: editor.redo,
         },
@@ -763,7 +777,7 @@ export function ImageRoute({
         upload: {
           accept: visualUploadAccept("image"),
           multiple: true,
-          onFiles: addLocalImages,
+          onFiles: viewOnlyUploadHandler(viewOnly, addLocalImages),
         },
         stage: (
           <div

@@ -2755,6 +2755,8 @@ export function useDeckEditor(
    */
   const importSource = useCallback(
     async (file: File) => {
+      // 只能查看：不解析、不提示「已接进编辑器」（commit 本来也会拒绝，但那样会留一句假的成功提示）
+      if (readOnlyRef.current) return;
       setError("");
       try {
         const bytes = await validateOfficePackageBlob(file, "pptx");

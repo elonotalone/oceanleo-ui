@@ -74,6 +74,7 @@ import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { usePluginPage } from "../plugin-chrome/plugin-page-store";
 import { useUI } from "../../i18n/ui/useUI";
 import { useVectorCollab } from "../collab/adapters/use-vector-collab";
+import { VectorFrameGuard, VectorNewVersionBar } from "../collab/adapters/VectorCollabChrome";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 import { VideoCanvasRoute } from "./VideoCanvasRoute";
 
@@ -431,7 +432,10 @@ export function EmbeddedRoute({
   // 矢量图（嵌入画布里 artifactType = vector_image）：多人「一次一个人」。网站与流程图不开房间。
   const tt = useUI();
   const vectorImage = hostedMediaType === "canvas" && item.artifactType === "vector_image";
-  const vectorCollab = useVectorCollab({ enabled: vectorImage, item });
+  // 画布里有没保存的本地改动（dirty）时，外面来了新版本不重新挂载画布，改出提示条（见 VectorNewVersionBar）
+  const vectorCollab = useVectorCollab({ enabled: vectorImage, item, localDirty: dirty });
+  const [vectorKeepFailed, setVectorKeepFailed] = useState(false);
+  const [vectorKeepBusy, setVectorKeepBusy] = useState(false);
   const embeddedEditorBase = route.type === "embed" ? route.base : "";
   const embeddedAdapterId =
     hostedMediaType === "website"
@@ -1202,6 +1206,11 @@ export function EmbeddedRoute({
       if (vectorImage && result.ok && result.item?.revisionId) {
         vectorCollab.markSaved(String(result.item.revisionId));
       }
+      // 我自己存成功了：我的版本比暂存的外部版本新，提示条不再需要
+      if (vectorImage && result.ok) {
+        vectorCollab.dropPendingRevision();
+        setVectorKeepFailed(false);
+      }
       if (
         saveResolverRef.current &&
         result.saveId === pendingSaveIdRef.current
@@ -1213,8 +1222,31 @@ export function EmbeddedRoute({
         );
       }
     },
-    [settleSave, vectorImage, vectorCollab.markSaved],
+    [settleSave, vectorImage, vectorCollab.markSaved, vectorCollab.dropPendingRevision],
   );
+  /** 提示条「保存我的」：照常存一次（形成新版本）；存成功由 handleSaveResult 收掉提示条。 */
+  const keepMyVectorEdits = useCallback(async () => {
+    setVectorKeepFailed(false);
+    setVectorKeepBusy(true);
+    try {
+      const result = await saveBeforeNewConversation();
+      if (!result.ok) setVectorKeepFailed(true);
+    } finally {
+      setVectorKeepBusy(false);
+    }
+  }, [saveBeforeNewConversation]);
+  /** 提示条「看新版本」：放弃本地改动，换上新版本（画布重新挂载），宿主这边的「未保存」记号一并清掉。 */
+  const seeNewVectorRevision = useCallback(() => {
+    if (!vectorCollab.acceptPendingRevision()) return;
+    setVectorKeepFailed(false);
+    setDirty(false);
+    setEmbeddedRecoveryReady(false);
+    setEditRevision(0);
+    lastDirtyRevisionRef.current = null;
+    remoteRevisionRef.current = null;
+    recoveryGenerationRef.current += 1;
+    recoverySnapshotRef.current = null;
+  }, [vectorCollab.acceptPendingRevision]);
   const requestEditorClose = useCallback(() => {
     setCloseRequestRevision((value) => value + 1);
   }, []);
@@ -1549,6 +1581,8 @@ export function EmbeddedRoute({
                     : "waiting-for-source-receipt"
               }
             >
+              {/* 矢量图只读：画布 inert，iframe 拿不到键盘和鼠标的编辑输入；其他嵌入画布原样 */}
+              <VectorFrameGuard enabled={vectorImage} readOnly={vectorImage && vectorCollab.readOnly}>
               <EmbedEditorPane
                 key={`${embeddedItem.key}:${
                   designSourceBinding?.rendition.digest || ""
@@ -1584,6 +1618,15 @@ export function EmbeddedRoute({
                 onSaveResult={handleSaveResult}
                 saveRequestId={saveRequestId}
               />
+              </VectorFrameGuard>
+              {vectorImage && vectorCollab.pendingRevision && (
+                <VectorNewVersionBar
+                  onKeepMine={() => void keepMyVectorEdits()}
+                  onSeeNew={seeNewVectorRevision}
+                  saveFailed={vectorKeepFailed}
+                  busy={vectorKeepBusy}
+                />
+              )}
               {vectorImage && vectorCollab.readOnly && (
                 <VectorReadOnlyCover
                   message={

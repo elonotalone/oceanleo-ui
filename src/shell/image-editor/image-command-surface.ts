@@ -24,6 +24,7 @@ import {
   visualDownloadFormats,
 } from "../media-editors/visual-formats";
 import type { CropRatio, FabricImageEditorState, TextPreset } from "./types";
+import { guardVisualCommands } from "../collab/adapters/visual-readonly";
 import {
   imageAiCommandDefinitions,
   type AiCommandRunner,
@@ -57,6 +58,8 @@ export interface ImageCommandDeps {
    * 记着上一次就是这么踩的）。
    */
   runAi?: AiCommandRunner;
+  /** 只能查看（浏览者，或别人正占着编辑）：会改画布的指令一律拒绝。 */
+  readOnly?: boolean;
 }
 
 export function imageCommandDefinitions(
@@ -318,7 +321,12 @@ export function createImageCommandSurface(
 ): PluginCommandSurfaceInput {
   return createVisualCommandSurface({
     editorId: EDITOR_ID,
-    commands: () => imageCommandDefinitions(deps),
+    // 只能查看：会改画布的指令（含四个 AI 能力，Leo 的「帮我改」）在这一层直接拒绝，导出照常
+    commands: () =>
+      guardVisualCommands(
+        imageCommandDefinitions(deps),
+        Boolean(deps.readOnly),
+      ),
     state: () => imageCommandState(deps.editor),
   });
 }
