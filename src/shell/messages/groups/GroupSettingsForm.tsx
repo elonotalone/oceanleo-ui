@@ -2,12 +2,13 @@
 
 // 群资料与群规则：名字、简介、头像、入群审批、成员能否拉人、leo 开关。只有 owner / admin 看得到可改的表单。
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { Switch } from "../../../ui";
 import { patchConversation } from "../../../lib/im/groups-api";
 import { reasonOf } from "../../../lib/im/people-api";
 import type { ImConversationDetail } from "../../../lib/im/types";
+import { UploadError, uploadAttachment } from "../composer/upload";
 import { GroupAvatar } from "./GroupAvatar";
 
 export interface GroupSettingsFormProps {
@@ -23,6 +24,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
   const [description, setDescription] = useState(detail.description);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTitle(detail.title);
@@ -42,6 +44,27 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
       setDescription(detail.description);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function pickAvatar(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      // 走 W09 的 upload.ts：init → 直传 → finalize，不另写一套
+      const attachment = await uploadAttachment(file, { kind: "image" });
+      await patchConversation(detail.id, { avatar_url: attachment.url });
+      onSaved();
+    } catch (e) {
+      if (e instanceof UploadError) {
+        setNote(e.code === "too_large" ? tt("图片太大了，请换一张。") : tt("头像上传失败，请稍后再试。"));
+      } else {
+        setNote(reasonOf(e, tt("没成功，请稍后再试。")));
+      }
+    } finally {
+      setBusy(false);
+      if (fileInput.current) fileInput.current.value = "";
     }
   }
 
@@ -71,13 +94,20 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
     >
       <div className="flex items-center gap-3">
         <GroupAvatar name={detail.title} src={detail.avatar_url} seed={detail.id} size={48} />
-        {/* 头像上传走 W09 的 upload.ts；它落地前先禁用 */}
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          hidden
+          data-field="avatar-file"
+          onChange={(e) => void pickAvatar(e.target.files?.[0])}
+        />
         <button
           type="button"
-          disabled
+          disabled={busy}
           data-action="upload-avatar"
-          title={tt("头像上传暂时不可用")}
-          className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-400"
+          onClick={() => fileInput.current?.click()}
+          className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
         >
           {tt("更换头像")}
         </button>

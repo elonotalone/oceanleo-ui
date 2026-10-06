@@ -140,12 +140,20 @@ async function mount(element, im) {
   return api;
 }
 
+const uploadStub = dataModule(`
+  export class UploadError extends Error { constructor(code) { super(code); this.code = code; } }
+  export async function uploadAttachment(file, options) { return globalThis.__UPLOAD(file, options); }
+`);
+const { UploadError } = await import(uploadStub);
+
 const STUBS = {
   "../../../i18n/ui/useUI": uiHookStub,
   "../../../ui": uiPrimitivesStub,
   "../../../lib/im/client": imClientStub,
   "../realtime/hooks": imHooksStub,
   "../report/ReportDialog": nullComponentStub("ReportDialog"),
+  // W09 的上传（init → 直传 → finalize）：这里只验证头像走它，结果用 globalThis.__UPLOAD 给。
+  "../composer/upload": uploadStub,
 };
 
 const { ConversationInfoPanel } = await import(await compileModule("src/shell/messages/groups/ConversationInfoPanel.tsx", STUBS));
@@ -373,4 +381,47 @@ test("退出与解散：都要二次确认，成功后关闭面板", async () =>
     }
   }
   assert.equal(closed, 2);
+});
+
+test("换头像：走 W09 的上传，拿到地址后写进群资料；上传失败显示原因，不改群资料", async () => {
+  const pick = async (view, file) => {
+    const input = view.q('[data-field="avatar-file"]');
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => { input.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await settle();
+  };
+  const file = { name: "a.png", size: 1000, type: "image/png" };
+  {
+    const seen = [];
+    globalThis.__UPLOAD = async (f, options) => { seen.push([f.name, options.kind]); return { kind: "image", url: "https://cdn.example/a.png", name: f.name, size: 1000, mime: "image/png" }; };
+    const { view, im } = await open("admin", {}, { "PATCH /v1/im/conversations/c1": {} });
+    try {
+      assert.equal(view.q('[data-action="upload-avatar"]').disabled, false);
+      await pick(view, file);
+      assert.deepEqual(seen, [["a.png", "image"]]);
+      const patch = im.fetch.calls.find((c) => c.method === "PATCH");
+      assert.deepEqual(patch.json, { avatar_url: "https://cdn.example/a.png" });
+    } finally {
+      view.cleanup();
+    }
+  }
+  {
+    globalThis.__UPLOAD = async () => { throw new UploadError("too_large"); };
+    const { view, im } = await open("admin", {}, { "PATCH /v1/im/conversations/c1": {} });
+    try {
+      await pick(view, file);
+      assert.match(view.q("[data-settings-note]").textContent, /图片太大了/);
+      assert.ok(!im.fetch.calls.some((c) => c.method === "PATCH"), "上传失败不改群资料");
+    } finally {
+      view.cleanup();
+    }
+  }
+  {
+    const { view } = await open("member");
+    try {
+      assert.equal(view.q('[data-action="upload-avatar"]'), null, "普通成员不能换群头像");
+    } finally {
+      view.cleanup();
+    }
+  }
 });
