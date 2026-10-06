@@ -450,3 +450,68 @@ test("PPT 「新建一页」按钮（舞台栏与页面栏）只读时 disabled 
   assert.ok(gate < shortcuts.indexOf("currentEditor.deleteElement()"));
   assert.ok(gate < shortcuts.indexOf("patchElementTransient"));
 });
+
+// ---------------------------------------------------------------- 真渲染：用真的 SelectionToolbar 画出来看按钮
+
+/** 渲染结果里「还能点」的改动类控件：没 disabled 的、不是「打开面板」的 button / select / input。 */
+function enabledMutatingTags(html, allowLabels = []) {
+  const tags = html.match(/<(?:button|select|input|textarea)\b[^>]*>/g) || [];
+  return tags.filter((tag) => {
+    if (/\sdisabled=""/.test(tag)) return false;
+    if (/tabindex="-1"/.test(tag)) return false; // 量宽用的隐藏副本，用户点不到
+    if (/aria-haspopup="dialog"/.test(tag)) return false; // 打开面板的入口：面板里的控件另有 disabled
+    if (/data-edit-bar-interactive/.test(tag)) return false; // 「更多属性」入口
+    if (allowLabels.some((label) => tag.includes(`aria-label="${label}"`))) return false;
+    return true;
+  });
+}
+
+test("真渲染：图表浮条只读时，除「切换当前系列」与打开面板的入口外没有可点的改动按钮；可写时有", async () => {
+  const { ChartContextToolbar } = await import(
+    await compileModule("src/shell/chart-editor/ChartContextToolbar.tsx", { "../../i18n/ui/useUI": useUiStub })
+  );
+  const locked = renderToStaticMarkup(
+    React.createElement(ChartContextToolbar, { editor: chartEditorWith(false).editor, readOnly: true }),
+  );
+  assert.match(locked, /disabled=""/);
+  assert.match(locked, /title="图例：你只能查看"/);
+  assert.deepEqual(enabledMutatingTags(locked, ["当前系列（单选）"]), []);
+  assert.match(locked, /aria-label="当前系列（单选）"/, "查看类控件仍在");
+  const open = renderToStaticMarkup(
+    React.createElement(ChartContextToolbar, { editor: chartEditorWith(false).editor, readOnly: false }),
+  );
+  assert.ok(enabledMutatingTags(open, ["当前系列（单选）"]).length > 0, "可写时应有可点的改动按钮（证明上面的空数组不是渲染不出东西）");
+  assert.doesNotMatch(open, /你只能查看/);
+});
+
+for (const selectedType of ["text", "shape", "image"]) {
+  test(`真渲染：PPT 浮条（选中${selectedType}）只读时没有可点的改动按钮；可写时有`, async () => {
+    const { DeckContextToolbar } = await import(
+      await compileModule("src/shell/doc-editors/DeckContextToolbar.tsx", { "../../i18n/ui/useUI": useUiStub })
+    );
+    const locked = renderToStaticMarkup(
+      React.createElement(DeckContextToolbar, { editor: deckEditorWith(selectedType).editor, readOnly: true }),
+    );
+    assert.match(locked, /你只能查看/);
+    assert.deepEqual(enabledMutatingTags(locked), []);
+    const open = renderToStaticMarkup(
+      React.createElement(DeckContextToolbar, { editor: deckEditorWith(selectedType).editor, readOnly: false }),
+    );
+    assert.ok(enabledMutatingTags(open).length > 0);
+  });
+}
+
+test("真渲染：图片浮条只读时没有可点的改动按钮；可写时有", async () => {
+  const { FabricImageContextToolbar } = await import(
+    await compileModule("src/shell/image-editor/FabricImageContextToolbar.tsx", { "../../i18n/ui/useUI": useUiStub })
+  );
+  const locked = renderToStaticMarkup(
+    React.createElement(FabricImageContextToolbar, { editor: imageEditorWith().editor, readOnly: true }),
+  );
+  assert.match(locked, /你只能查看/);
+  assert.deepEqual(enabledMutatingTags(locked), []);
+  const open = renderToStaticMarkup(
+    React.createElement(FabricImageContextToolbar, { editor: imageEditorWith().editor, readOnly: false }),
+  );
+  assert.ok(enabledMutatingTags(open).length > 0);
+});
