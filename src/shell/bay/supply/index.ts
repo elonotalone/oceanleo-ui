@@ -1,14 +1,8 @@
 import type { BayProfilePublicData, BayServicePublicData } from "../../../lib/bay/public";
-import type { BayFeedCardProps } from "../needs";
 import type { BayPaneProps } from "../shell/bay-state";
 
-export function ServiceCard(_props: BayFeedCardProps): null {
-  return null;
-}
-
-export function ConsultCard(_props: BayFeedCardProps): null {
-  return null;
-}
+export { ServiceCard } from "./ServiceCard";
+export { ConsultCard } from "./ConsultCard";
 
 export function ServicePane(_props: BayPaneProps): null {
   return null;
