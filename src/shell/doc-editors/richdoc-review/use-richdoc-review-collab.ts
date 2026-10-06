@@ -47,9 +47,11 @@ export function useRichDocReviewCollab(options: UseRichDocReviewCollabOptions): 
   activeRef.current = active;
   const liveRef = useRef(live);
   liveRef.current = live;
-  const writable = !richDocReviewReadOnly({ active, live, readOnly });
-  const writableRef = useRef(writable);
-  writableRef.current = writable;
+  // 往共享里灌（播种、补进导入的批注）只看房间给不给写；「还没同步完」不拦：
+  // 播种者恰恰是在 seed 阶段（还没到 live）把工程档里的批注灌进去的。
+  // 加评论、回复这些用户动作另有 `readOnly`（含没同步完）拦着。
+  const writableRef = useRef(!readOnly);
+  writableRef.current = !readOnly;
 
   const collabRef = useRef<RichDocReviewCollab | null>(null);
   const doc = room ? room.doc : null;

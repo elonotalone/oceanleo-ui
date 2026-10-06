@@ -488,6 +488,29 @@ test("首次播种：第一个人载入工程档，把里面的评论灌进共�
   assert.deepEqual(a.view(), c.view());
 });
 
+test("播种者在 seed 阶段（房间还没到 live）载入工程档，评论照样灌进去；这时用户动作仍是只读", () => {
+  const world = new World();
+  const file = {
+    review: { version: 1, trackChangesEnabled: true, comments: [commentRecord("c1", "旧评论")] },
+  };
+  const a = world.join("甲", { body: bodyWithAnchors("c1"), manualHydrate: true });
+  a.setRoom({ live: false });
+  assert.equal(a.api.readOnly, true, "没同步完：用户动作只读");
+  a.act((api) => api.hydrateFromProject(file));
+  assert.equal(readSharedReview(a.doc).seeded, true);
+  assert.deepEqual(readSharedReview(a.doc).comments.map((c) => c.id), ["c1"]);
+  assert.equal(readSharedReview(a.doc).trackChangesEnabled, true);
+  a.act((api) => api.replyToComment("c1", "seed 阶段不能回复"));
+  assert.equal(a.comment("c1").replies.length, 0);
+  // 房间只读（viewer）的人载入，不往共享里灌
+  const fresh = new World();
+  const lone = fresh.join("只读先到", { body: bodyWithAnchors("c1"), manualHydrate: true });
+  lone.setRoom({ readOnly: true });
+  lone.act((api) => api.hydrateFromProject(file));
+  assert.equal(readSharedReview(lone.doc).seeded, false, "只读的人不播种");
+  assert.deepEqual(lone.comments.map((c) => c.id), ["c1"], "但自己仍能看到工程档里的批注");
+});
+
 test("后加入的人载入的是旧工程档：以共享为准（已解决的不退回、已删除的不复活）", () => {
   const world = new World();
   const file = {
@@ -669,6 +692,24 @@ test("没变化的合并返回同一个引用（React 不用重渲染）", () =>
   const shared = readSharedReview(doc);
   const first = mergeSharedIntoSidecar(emptyReviewSidecar(), shared);
   assert.equal(mergeSharedIntoSidecar(first, shared), first);
+});
+
+test("源码：侧栏与工具栏的批注、修订按钮在只读时灰掉；路由只在协同里换成房间里的自己做作者", () => {
+  const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
+  const rail = read(`${REVIEW_DIR}RichDocCommentRail.tsx`);
+  assert.ok((rail.match(/disabled=\{readOnly/g) || []).length >= 8, "侧栏的 8 个动作按钮都按只读灰掉");
+  const toolbar = read("../src/shell/doc-editors/RichDocContextToolbar.tsx");
+  for (const id of ["add-comment", "toggle-track-changes", "delete-tracked", "accept-all-changes", "reject-all-changes"]) {
+    const at = toolbar.indexOf(`id: "richdoc.${id}"`);
+    assert.ok(at > 0, id);
+    assert.match(toolbar.slice(at, at + 520), /reviewReadOnly/, `${id} 只读时灰掉`);
+    assert.match(toolbar, new RegExp(`case "richdoc\\.${id}"[\\s\\S]{0,160}if \\(reviewReadOnly\\) break;`), `${id} 命令入口也拦`);
+  }
+  const route = read("../src/shell/advanced-routes/RichDocRoute.tsx");
+  assert.match(route, /useRichDocReviewCollab\(\{[\s\S]*?review: editor\.review/);
+  assert.match(route, /author: String\(collabRoom\.self\.id\)/);
+  const copy = read("../src/i18n/ui/messages/collab-docs-copy.ts");
+  assert.equal((copy.match(/reviewReadOnly:/g) || []).length, 17, "17 种语言都有只读说明");
 });
 
 test("源码：每个会改评论或修订的入口都先查只读；共享字段名与布局固定", () => {
