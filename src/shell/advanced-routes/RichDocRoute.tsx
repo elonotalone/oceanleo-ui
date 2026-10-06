@@ -12,10 +12,8 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
-import {
-  RichDocCommentRail,
-  RichDocReviewReadOnlyContext,
-} from "../doc-editors/richdoc-review/RichDocCommentRail";
+import { RichDocCommentRail } from "../doc-editors/richdoc-review/RichDocCommentRail";
+import { RichDocReviewReadOnlyContext } from "../doc-editors/richdoc-review/review-readonly-context";
 import { useRichDocReviewCollab } from "../doc-editors/richdoc-review/use-richdoc-review-collab";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { RichDocStage } from "../doc-editors/RichDocStage";

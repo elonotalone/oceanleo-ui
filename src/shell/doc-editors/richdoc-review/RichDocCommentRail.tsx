@@ -17,13 +17,17 @@
 // 三枚 44 高的两字按钮横排约 190px，不需要折行。
 // ============================================================================
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { Button } from "../../../ui/Button";
 import { RICHDOC_REVIEW_CSS } from "./review-marks";
+import { RichDocReviewReadOnlyContext } from "./review-readonly-context";
 import type { RichDocCommentView } from "./review-types";
 import type { RichDocChangeView } from "./track-changes";
+
+/** 只读状态走独立模块；本文件再导出，避免路由从被桩掉的侧栏路径 import context。 */
+export { RichDocReviewReadOnlyContext } from "./review-readonly-context";
 
 const RAIL_CSS = `
 .oleo-review-rail{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px;padding:12px;overflow-y:auto}
@@ -71,13 +75,6 @@ function shortWhen(value: string): string {
     parsed.getHours(),
   ).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
-
-/**
- * 协同里只读（只能看）：回复、解决、重开、删除、接受、拒绝全部灰掉，顶部给一句说明。
- * 走 context 而不是 prop：侧栏的 12 个 prop 与引擎 API 逐条一一对应（接线表测试钉着），
- * 「只读」不是引擎 API 的一个成员，而是房间给的状态。
- */
-export const RichDocReviewReadOnlyContext = createContext(false);
 
 export interface RichDocCommentRailProps {
   comments: RichDocCommentView[];
