@@ -26,6 +26,8 @@ import * as collab from "../src/shell/doc-editors/richdoc-review/review-collab.t
 import * as marks from "../src/shell/doc-editors/richdoc-review/review-marks.ts";
 import * as types from "../src/shell/doc-editors/richdoc-review/review-types.ts";
 import * as track from "../src/shell/doc-editors/richdoc-review/track-changes.ts";
+import { buildRichDocCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
+import { guardPluginSurface, VIEW_ONLY_REFUSAL } from "../src/shell/collab/adapters/visual-readonly.ts";
 
 const {
   RICHDOC_REVIEW_COLLAB_FIELD,
@@ -720,4 +722,65 @@ test("源码：每个会改评论或修订的入口都先查只读；共享字�
   assert.equal(RICHDOC_REVIEW_COLLAB_META_FIELD, "oceanleo:richdoc-review-meta");
   // 正文字段不动（F04 的回放读它）
   assert.equal(readFileSync(new URL("../src/shell/collab/adapters/richdoc.ts", import.meta.url), "utf8").includes('"oceanleo:richdoc"'), true);
+});
+
+test("只读时 Leo 的帮改入口也被挡住：会改正文的指令一律拒绝，不碰编辑器；看现状照常", async () => {
+  const touched = [];
+  const spy = new Proxy(function () {}, {
+    get(_target, key) {
+      if (key === Symbol.toPrimitive) return () => "";
+      touched.push(String(key));
+      return spy;
+    },
+    apply() {
+      touched.push("(call)");
+      return spy;
+    },
+  });
+  const editorState = {
+    editor: spy,
+    item: { title: "季度报告", meta: {} },
+    siteId: "",
+    loading: false,
+    importing: false,
+    saving: false,
+    dirty: false,
+    sourceReady: true,
+    editRevision: 1,
+    error: "",
+    sourceFailed: false,
+    savedUrl: "",
+    source: "url-docx",
+    words: 1,
+    chars: 1,
+    save: async () => null,
+    exportDoc: async () => {},
+    exportMarkdown: async () => {},
+    exportHtml: async () => {},
+    exportText: () => {},
+  };
+  const raw = buildRichDocCommandSurface(editorState, { download: async () => "" });
+  const specs = raw.describe();
+  const mutating = specs.filter((spec) => spec.mutates);
+  assert.ok(mutating.length >= 3, "富文档至少有几条会改正文的指令");
+
+  const guarded = guardPluginSurface(raw, true);
+  touched.length = 0;
+  for (const spec of mutating) {
+    const result = await guarded.run(spec.id, { text: "被偷偷改了", level: "2" });
+    assert.equal(result.ok, false, `${spec.id} 只读时竟然执行了`);
+    assert.equal(result.message, VIEW_ONLY_REFUSAL);
+  }
+  assert.deepEqual(touched, [], "被拒的指令没有碰到编辑器");
+  assert.deepEqual(guarded.describe().map((spec) => spec.id), specs.map((spec) => spec.id), "describe 原样");
+  assert.deepEqual(guarded.state(), raw.state(), "state 原样");
+  // 不只读：同一个包装原样放行（不拦）
+  assert.equal(guardPluginSurface(raw, false), raw);
+
+  const route = readFileSync(new URL("../src/shell/advanced-routes/RichDocRoute.tsx", import.meta.url), "utf8");
+  assert.match(
+    route,
+    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) =>\s*guardPluginSurface\(\s*buildRichDocCommandSurface\(editor, \{ download: downloadAs \}\),\s*editor\.collabReadOnly,/,
+    "路由把指令面包在只读闸里，条件是房间只读",
+  );
 });

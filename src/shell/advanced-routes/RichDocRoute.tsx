@@ -39,6 +39,7 @@ import {
 import { isDurableLibraryItem } from "../library-data";
 import { useOfficeArtifactSource } from "../office-editor";
 import { imEnabledHere } from "../../lib/im/client";
+import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { useCollabRoom, useCollabSaveGate } from "../collab";
 import { RICHDOC_COLLAB_EDITOR_KIND } from "../collab/adapters/richdoc";
 import { editorToolLabel } from "../workbench-routes";
@@ -421,8 +422,17 @@ function RichDocLegacyRoute({
       exportStructuredJson,
     ],
   );
+  // 只读（viewer、专业模式锁在别人手里）时，Leo 的帮改入口不能绕过灰掉的按钮：
+  // 会改正文的指令在这里直接拒绝，describe / state 照旧让 agent 看得到现状。
   usePluginCommandSurface(
-    buildRichDocCommandSurface(editor, { download: downloadAs }),
+    useMemo(
+      () =>
+        guardPluginSurface(
+          buildRichDocCommandSurface(editor, { download: downloadAs }),
+          editor.collabReadOnly,
+        ),
+      [editor, downloadAs],
+    ),
   );
   const downloadDisabled =
     !editor.editor || editor.loading || !editor.sourceReady;
