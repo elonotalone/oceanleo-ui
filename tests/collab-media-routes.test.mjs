@@ -24,9 +24,8 @@ test("三个编辑器都保留 restoreRecovery 原行为，另有各自的远端
   const video = source("video-editor/use-video-timeline.ts");
   assert.match(video, /restoreRecovery/);
   assert.match(video, /applyRemoteDoc/);
-  const audio = source("media-editors/use-audio-persistence.ts");
-  assert.match(audio, /restoreRecovery/);
-  assert.match(audio, /applyRemoteProject/);
+  assert.match(source("media-editors/use-audio-persistence.ts"), /restoreRecovery/);
+  assert.match(source("media-editors/use-audio-remote-apply.ts"), /applyRemoteProject/);
   const model = source("media-editors/use-model3d-workbench.ts");
   assert.match(model, /restoreRecovery/);
   assert.match(model, /已恢复上次未同步的本地草稿/);
@@ -38,10 +37,11 @@ test("远端改动入口不标未保存、不加改动版本号、不弹提示",
   const remote = /const applyRemoteDoc = useCallback\([^]*?\n  \}, \[\]\);/.exec(video)?.[0] ?? "";
   assert.ok(remote.length > 100, "找到 applyRemoteDoc");
   assert.doesNotMatch(remote, /setDirty|revisionRef\.current \+= 1|setNotice|undoStack|redoStack/);
-  const audio = source("media-editors/use-audio-persistence.ts");
-  const remoteBranch = /if \(mode === "remote"\) \{[^]*?return true;\n\s*\}/.exec(audio)?.[0] ?? "";
-  assert.ok(remoteBranch.length > 50, "找到音频的 remote 分支");
-  assert.doesNotMatch(remoteBranch, /setDirty|revisionRef\.current \+= 1|setError|undoRef\.current = \[\]/);
+  const audio = source("media-editors/use-audio-remote-apply.ts");
+  const remoteBranch = /operationsRef\.current = \[\.\.\.project\.operations\];[^]*?bumpContent\(\);/.exec(audio)?.[0] ?? "";
+  assert.match(remoteBranch, /if \(mode === "local"\)/, "改动版本号与未保存标记只在本端撤销 / 重做时设置");
+  assert.doesNotMatch(audio, /undoRef|redoRef|setCanUndo/, "不碰本机撤销栈");
+  assert.match(audio, /if \(!quiet\) \{\s*setError/, "对方的改动失败时不弹错误");
 });
 
 test("新增文案：17 种语言都有，且不含「上线」", () => {

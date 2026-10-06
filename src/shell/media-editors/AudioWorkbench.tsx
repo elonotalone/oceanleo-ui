@@ -27,6 +27,7 @@ import {
 import { assertBlobSource } from "./source-integrity.mjs";
 import { useAudioMutations } from "./use-audio-mutations";
 import { useAudioPersistence } from "./use-audio-persistence";
+import { useAudioRemoteApply } from "./use-audio-remote-apply";
 import { useAudioWaveLoader } from "./use-audio-wave-loader";
 
 export type { AudioEditOperation } from "./audio-operations";
@@ -460,11 +461,7 @@ export function useAudioWorkbench(
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [item.title]);
 
-  const { save, captureRecovery, restoreRecovery, applyRemoteProject, applyLocalProject } = useAudioPersistence({
-    mutatingRef,
-    remoteReplayRef,
-    reloadWaveformKeepView,
-    bumpContent,
+  const { save, captureRecovery, restoreRecovery } = useAudioPersistence({
     item,
     siteId,
     requiresExistingSource,
@@ -485,6 +482,24 @@ export function useAudioWorkbench(
     setDirty,
     setCanUndo,
     setCanRedo,
+    tt,
+  });
+  // 多人同改：对方的改动 / 「只撤自己」的撤销结果走这里，不经 restoreRecovery（它会清撤销栈、标未保存、弹提示）。
+  const { applyRemoteProject, applyLocalProject } = useAudioRemoteApply({
+    item,
+    siteId,
+    requiresExistingSource,
+    bufferRef,
+    sourceUrlRef,
+    operationsRef,
+    mutatingRef,
+    remoteReplayRef,
+    revisionRef,
+    reloadWaveformKeepView,
+    bumpContent,
+    setError,
+    setSavedUrl,
+    setDirty,
     tt,
   });
 

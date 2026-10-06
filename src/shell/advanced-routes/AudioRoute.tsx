@@ -25,6 +25,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { usePluginCommandSurface } from "../plugin-command";
+import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { createAudioCommandSurface } from "../media-editors/audio-command-surface";
 import {
   convertMediaBlob,
@@ -258,8 +259,12 @@ function AudioLegacyRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   usePluginCommandSurface(
     useMemo(
-      () => createAudioCommandSurface({ editor: view, deliver }),
-      [deliver, view],
+      () =>
+        guardPluginSurface(
+          createAudioCommandSurface({ editor: view, deliver }),
+          collabReadOnly,
+        ),
+      [collabReadOnly, deliver, view],
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {

@@ -59,6 +59,9 @@ const stubs = {
 const { useAudioPersistence } = await import(
   await compileModule("src/shell/media-editors/use-audio-persistence.ts", stubs)
 );
+const { useAudioRemoteApply } = await import(
+  await compileModule("src/shell/media-editors/use-audio-remote-apply.ts", stubs)
+);
 const { useAudioMutations } = await import(
   await compileModule("src/shell/media-editors/use-audio-mutations.ts", stubs)
 );
@@ -128,6 +131,10 @@ function makeClient(key, captured) {
       workingHeadUrlRef,
       savingRef,
       setSaving,
+    });
+    const remote = useAudioRemoteApply({
+      ...shared,
+      requiresExistingSource: false,
       reloadWaveformKeepView,
       bumpContent,
     });
@@ -146,8 +153,8 @@ function makeClient(key, captured) {
       fromEntities: (input, prev) => adapter.audioFromEntities(input, prev),
       local: collabLocal,
       historyCoalesceMs: 0,
-      applyRemote: (state) => persistence.applyRemoteProject(state),
-      applyLocal: (state) => persistence.applyLocalProject(state),
+      applyRemote: (state) => remote.applyRemoteProject(state),
+      applyLocal: (state) => remote.applyLocalProject(state),
     });
     captured[key] = {
       collab,
