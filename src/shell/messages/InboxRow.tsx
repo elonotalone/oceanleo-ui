@@ -1,9 +1,11 @@
 "use client";
 
 // 收件箱的一行：头像（群为拼图）、标题、「外部」标记、最后一条、时间、未读与 @ 角标、免打扰图标、草稿提示。
+import { avatarMembersOf } from "../../lib/im/types";
 import type { ImConversationSummary } from "../../lib/im/types";
 import { useUI } from "../../i18n/ui/useUI";
 import { formatBadge } from "./realtime/store";
+import { GroupAvatar } from "./groups/GroupAvatar";
 
 const TILE_COLORS = ["#38bdf8", "#818cf8", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#2dd4bf"];
 
@@ -31,6 +33,11 @@ export function avatarTiles(item: ImConversationSummary): string[] {
 export function Avatar({ item, size = 40 }: { item: ImConversationSummary; size?: number }) {
   const url = item.avatar_url || (item.kind === "dm" || item.kind === "talent" ? item.peer?.avatar_url : null);
   const box = { width: size, height: size };
+  // 群 / Team 群 / 项目群：没有自己上传的头像、但服务端给了成员头像时，用同一个拼图组件。
+  const members = item.kind === "dm" || item.kind === "talent" ? [] : avatarMembersOf(item.avatar_members);
+  if (!url && members.length > 0) {
+    return <GroupAvatar name={conversationTitle(item)} seed={item.id} size={size} members={members} />;
+  }
   if (url) {
     // 只用 <img> 指向服务端给的头像地址，不内联任何 HTML。
     return (

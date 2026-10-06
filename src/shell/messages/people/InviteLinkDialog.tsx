@@ -17,6 +17,7 @@ import {
   useLoader,
 } from "../../../lib/im/people-api";
 import type { ImInviteLink } from "../../../lib/im/types";
+import { InviteQrCode } from "./InviteQrCode";
 
 export interface InviteLinkDialogProps {
   onClose: () => void;
@@ -36,6 +37,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [qrFor, setQrFor] = useState<string | null>(null);
 
   const mine = (links.data ?? []).filter((l) => l.kind === kind && !isDead(l));
 
@@ -51,6 +53,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
         expires_in_hours: INVITE_EXPIRY_CHOICES[expiryIdx]?.hours ?? null,
       });
       await copy(link.url);
+      setQrFor(link.code);
       links.reload();
     } catch (e) {
       setNote(reasonOf(e, tt("没成功，请稍后再试。")));
@@ -146,7 +149,21 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
                       className="w-full truncate rounded border border-neutral-100 bg-neutral-50 px-2 py-1 text-[12px] text-neutral-700"
                     />
                     <p className="mt-0.5 text-[11px] text-neutral-400">{describe(l, tt)}</p>
+                    {qrFor === l.code && (
+                      <div className="mt-2" data-invite-qr-slot={l.code}>
+                        <InviteQrCode url={l.url} fileLabel={kind === "group" ? tt("邀请二维码-加入群聊") : tt("邀请二维码-加联系人")} />
+                      </div>
+                    )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setQrFor(qrFor === l.code ? null : l.code)}
+                    aria-expanded={qrFor === l.code}
+                    data-action="toggle-qr"
+                    className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                  >
+                    {qrFor === l.code ? tt("隐藏二维码") : tt("显示二维码")}
+                  </button>
                   <button type="button" onClick={() => copy(l.url)} data-action="copy" className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50">
                     {copied === l.url ? tt("已复制") : tt("复制")}
                   </button>

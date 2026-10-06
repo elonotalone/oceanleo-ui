@@ -1,5 +1,6 @@
 // 收件箱与未读的 REST（work-chat 契约 §4.1）。
 import { imFetch } from "./client";
+import { avatarMembersOf } from "./types";
 import type { ImConversationSummary, ImPage, ImUnread } from "./types";
 
 export const INBOX_FILTERS = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"] as const;
@@ -17,11 +18,21 @@ export function conversationsPath(filter: string, cursor?: string | null, limit 
   return `/v1/im/conversations?${params.toString()}`;
 }
 
-export function fetchConversations(
+export async function fetchConversations(
   filter: string,
   cursor?: string | null,
 ): Promise<ImPage<ImConversationSummary>> {
-  return imFetch<ImPage<ImConversationSummary>>(conversationsPath(filter, cursor));
+  const page = await imFetch<ImPage<ImConversationSummary>>(conversationsPath(filter, cursor));
+  if (!page || !Array.isArray(page.items)) return page;
+  // 群头像拼图成员：服务端给了就收拾成安全形状（最多 4 个、头像只认 https）；没给的行原样不动。
+  return {
+    ...page,
+    items: page.items.map((row) =>
+      row && Array.isArray((row as { avatar_members?: unknown }).avatar_members)
+        ? { ...row, avatar_members: avatarMembersOf(row.avatar_members) }
+        : row,
+    ),
+  };
 }
 
 export function fetchUnread(): Promise<ImUnread> {

@@ -4,6 +4,7 @@
 // 成员邀请此后沿用 Team 现有的流程，不在这里另起一套。
 
 import { useState } from "react";
+import { portalHref } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import { Modal } from "../../../ui";
 import { upgradeToTeam } from "../../../lib/im/groups-api";
@@ -47,7 +48,16 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
             <p className="mt-2 text-[13px] leading-relaxed text-neutral-600" data-upgrade-result>
               {tt("已升级成 Team。群里的其他人会收到 Team 邀请；之后要加人，请到 Team 页面邀请。")}
             </p>
-            <div className="mt-5 flex justify-end">
+            <a
+              href={portalHref(`/org?org=${encodeURIComponent(orgId)}`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-action="open-team-page"
+              className="mt-2 inline-flex min-h-11 items-center text-[13px] text-sky-700 underline underline-offset-2 hover:text-sky-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+            >
+              {tt("打开 Team 页面")}
+            </a>
+            <div className="mt-3 flex justify-end">
               <button type="button" onClick={() => onDone({ orgId })} data-action="done" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
                 {tt("好")}
               </button>

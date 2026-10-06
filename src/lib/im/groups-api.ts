@@ -1,6 +1,7 @@
 // 群组与会话信息的接口封装（work-chat 契约 §4.1）+ 按角色决定「显示哪些按钮」的纯函数（§9.3 / §9.4）。
 
 import { imFetch } from "./client";
+import { avatarMembersOf } from "./types";
 import type {
   ImConversationDetail,
   ImJoinRequest,
@@ -137,7 +138,21 @@ export async function openProjectConversation(projectId: string): Promise<string
 }
 
 export async function getConversationDetail(id: string): Promise<ImConversationDetail> {
-  return imFetch<ImConversationDetail>(`/v1/im/conversations/${encodeURIComponent(id)}`);
+  const detail = await imFetch<ImConversationDetail>(`/v1/im/conversations/${encodeURIComponent(id)}`);
+  // 头像拼图成员：服务端给了就收拾成安全形状（最多 4 个、头像只认 https）。
+  if (detail && Array.isArray((detail as { avatar_members?: unknown }).avatar_members)) {
+    return { ...detail, avatar_members: avatarMembersOf(detail.avatar_members) };
+  }
+  return detail;
+}
+
+/** 我在这个 Team 里是 owner / admin 吗（决定信息面板上出现「邀请同事加入 Team」还是「请 Team 管理员邀请」）。 */
+export function isTeamAdminOf(
+  orgs: ReadonlyArray<{ id: string; role: string }> | null | undefined,
+  orgId: string | null | undefined,
+): boolean {
+  if (!orgId || !orgs) return false;
+  return orgs.some((o) => o.id === orgId && (o.role === "owner" || o.role === "admin"));
 }
 
 export async function patchConversation(

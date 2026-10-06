@@ -40,11 +40,55 @@ export interface ImLastMessage {
   created_at: string;
 }
 
+/** 群类会话头像拼图用的成员（服务端最多给 4 个；界面再截一次，不信任条数）。 */
+export interface ImAvatarMember {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
+export const AVATAR_MEMBERS_MAX = 4;
+
+/** 头像地址只认 `https:`：别的协议、相对路径、data: 一律当没有（拼图里改画名字首字）。 */
+export function httpsAvatarUrl(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const text = url.trim();
+  if (!/^https:\/\//i.test(text)) return null;
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "https:" && parsed.hostname ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 把服务端给的 `avatar_members` 收拾成安全的形状：丢掉缺 user_id 的、去重、最多 4 个、头像地址只留 https。 */
+export function avatarMembersOf(raw: unknown): ImAvatarMember[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: ImAvatarMember[] = [];
+  for (const item of raw) {
+    if (out.length >= AVATAR_MEMBERS_MAX) break;
+    const row = (item ?? {}) as Record<string, unknown>;
+    const id = typeof row.user_id === "string" ? row.user_id : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      user_id: id,
+      display_name: typeof row.display_name === "string" ? row.display_name : "",
+      avatar_url: httpsAvatarUrl(row.avatar_url),
+    });
+  }
+  return out;
+}
+
 export interface ImConversationSummary {
   id: string;
   kind: ImConversationKind;
   title: string;
   avatar_url: string | null;
+  /** 群 / Team 群 / 项目群：最多 4 个成员，给头像拼图用（F01 提供；老服务端没有就缺省）。 */
+  avatar_members?: ImAvatarMember[];
   peer: ImProfile | null;
   member_count: number;
   last_message: ImLastMessage | null;

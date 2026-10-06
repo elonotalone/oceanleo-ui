@@ -5,7 +5,9 @@
 
 import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { portalHref } from "../../../contracts/domain-family";
 import { ConfirmDialog } from "../../../ui";
+import { listMyOrgs } from "../../../lib/org-api";
 import {
   MUTE_CHOICES,
   NOTIFY_CHOICES,
@@ -13,6 +15,7 @@ import {
   conversationCaps,
   dissolveConversation,
   getConversationDetail,
+  isTeamAdminOf,
   mutedUntilFromHours,
   patchMySettings,
   removeMember,
@@ -28,6 +31,7 @@ import { GroupAvatar } from "./GroupAvatar";
 import { GroupSettingsForm } from "./GroupSettingsForm";
 import { JoinRequestsList } from "./JoinRequestsList";
 import { MemberList } from "./MemberList";
+import { TeamInviteDialog } from "./TeamInviteDialog";
 import { UpgradeToTeamDialog } from "./UpgradeToTeamDialog";
 
 export interface ConversationInfoPanelProps {
@@ -37,6 +41,10 @@ export interface ConversationInfoPanelProps {
 }
 
 const sectionTitle = "px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-neutral-400";
+const pillBtn =
+  "inline-flex min-h-11 items-center rounded-lg border border-neutral-200 px-3 text-[12px] text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
+const linkBtn =
+  "inline-flex min-h-11 items-center text-[12px] text-sky-700 underline underline-offset-2 hover:text-sky-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
 const rowBtn = "w-full px-3 py-2 text-left text-[13px] hover:bg-neutral-50 disabled:opacity-50";
 
 export function ConversationInfoPanel({ conversationId, onClose, onOpenConversation }: ConversationInfoPanelProps) {
@@ -56,6 +64,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
   const [addNote, setAddNote] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [teamInviteOpen, setTeamInviteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [confirm, setConfirm] = useState<"leave" | "dissolve" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,6 +74,9 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
   const myUserId = me.data?.user_id ?? null;
   const caps = useMemo(() => (detail ? conversationCaps(detail) : null), [detail]);
   const existingIds = useMemo(() => (detail?.members ?? []).map((m) => m.user_id), [detail]);
+  // Team 群：我在这个 Team 里是不是 owner / admin（决定直接邀请同事，还是请管理员邀请）。
+  const teamOrgId = detail?.kind === "team" ? (detail.org_id ?? null) : null;
+  const myOrgs = useLoader(() => (teamOrgId ? listMyOrgs() : Promise.resolve(null)), [teamOrgId]);
 
   if (!detail || !caps) {
     return (
@@ -121,7 +133,13 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
       <PanelHeader title={tt("会话信息")} onClose={onClose} closeLabel={tt("关闭")} />
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
         <div className="flex items-center gap-3 px-3 py-3">
-          <GroupAvatar name={title} src={isDm ? (peer?.avatar_url ?? null) : detail.avatar_url} seed={detail.id} size={56} />
+          <GroupAvatar
+            name={title}
+            src={isDm ? (peer?.avatar_url ?? null) : detail.avatar_url}
+            members={isDm ? undefined : detail.avatar_members}
+            seed={detail.id}
+            size={56}
+          />
           <div className="min-w-0">
             <h3 className="truncate text-[16px] font-semibold text-neutral-900" data-info-title>
               {title}
@@ -175,9 +193,41 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
               </div>
             )}
             {!caps.isManual && (
-              <p className="px-3 pt-2 text-[11px] text-neutral-400" data-synced-hint>
-                {detail.kind === "team" ? tt("成员跟 Team 自动同步。要加人，请到 Team 页面。") : tt("成员跟项目自动同步。要加人，请到项目里添加。")}
-              </p>
+              <div className="px-3 pt-2" data-synced-box>
+                <p className="text-[11px] text-neutral-400" data-synced-hint>
+                  {detail.kind === "team" ? tt("成员跟 Team 自动同步。") : tt("成员跟项目自动同步。")}
+                </p>
+                {!detail.dissolved && detail.my_role !== null && detail.kind === "team" && teamOrgId && isTeamAdminOf(myOrgs.data, teamOrgId) && (
+                  <button type="button" onClick={() => setTeamInviteOpen(true)} data-action="invite-team" className={`${pillBtn} mt-1`}>
+                    {tt("邀请同事加入 Team")}
+                  </button>
+                )}
+                {!detail.dissolved && detail.my_role !== null && detail.kind === "team" && !myOrgs.loading && !isTeamAdminOf(myOrgs.data, teamOrgId) && (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2" data-team-invite-hint>
+                    <span className="text-[12px] text-neutral-600">{tt("请 Team 管理员邀请")}</span>
+                    <a
+                      href={portalHref(teamOrgId ? `/org?org=${encodeURIComponent(teamOrgId)}` : "/org")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-action="open-team-page"
+                      className={linkBtn}
+                    >
+                      {tt("打开 Team 页面")}
+                    </a>
+                  </div>
+                )}
+                {!detail.dissolved && detail.my_role !== null && detail.kind === "project" && (
+                  <a
+                    href={portalHref(detail.project_id ? `/projects/${encodeURIComponent(detail.project_id)}` : "/projects")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-action="open-project"
+                    className={`${linkBtn} mt-1`}
+                  >
+                    {tt("打开项目")}
+                  </a>
+                )}
+              </div>
             )}
 
             {caps.canApproveJoins && (detail.pending_join_requests > 0 || detail.join_approval) && (
@@ -316,6 +366,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
           }}
         />
       )}
+      {teamInviteOpen && teamOrgId && <TeamInviteDialog orgId={teamOrgId} teamName={detail.title} onClose={() => setTeamInviteOpen(false)} />}
       {reportOpen && <ReportDialog target={{ kind: "conversation", id: detail.id, label: detail.title }} onClose={() => setReportOpen(false)} />}
       {confirm === "leave" && (
         <ConfirmDialog
