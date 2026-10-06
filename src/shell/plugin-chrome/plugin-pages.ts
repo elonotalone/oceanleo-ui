@@ -111,6 +111,7 @@ export const GLOBAL_ROW_SLOTS = Object.freeze([
   "download",
   "theme",
   "maximize",
+  "collab",
 ] as const);
 
 export type GlobalRowSlot = (typeof GLOBAL_ROW_SLOTS)[number];
