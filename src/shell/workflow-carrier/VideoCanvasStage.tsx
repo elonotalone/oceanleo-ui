@@ -24,6 +24,7 @@ import { flushVideoCanvasGraph } from "./video-canvas-leave";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { useUI } from "../../i18n/ui/useUI";
 import { useEntityCollab, useLockedEditCollab } from "../collab/adapters/use-entity-collab";
+import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import {
   CanvasCollabLink,
   WORKFLOW_ROOT,
@@ -396,65 +397,69 @@ export function VideoCanvasStage({
 
   usePluginCommandSurface(
     useMemo(
-      () => ({
-        editorId: WORKFLOW_EDITOR_ID,
-        describe: () =>
-          WORKFLOW_AGENT_CHIPS.map((chip) => ({
-            id: chip.id,
-            label: chip.label,
-            summary: chip.prompt.slice(0, 120),
-            mutates: true,
-          })),
-        state: () => ({
-          mode: "normal",
-          revision: editRevision,
-          nodes: graph.nodes.length,
-          edges: graph.edges.length,
-          chips: chipsManifest.chips.map((chip) => chip.id),
-        }),
-        run: (id, params) => {
-          const proposed =
-            params && typeof params.proposedGraph === "object"
-              ? (params.proposedGraph as VideoCanvasGraph)
-              : undefined;
-          const dispatched = dispatchWorkflowAgentChip({
-            chipId: id,
-            origin: params?.origin,
-            graph,
-            revision: editRevision,
-            proposedGraph: proposed,
-          });
-          if (dispatched.parked) {
-            return {
-              ok: true,
-              message: "改动已送审阅，你点接受之前流程图一个节点都不会变。",
+      () =>
+        guardPluginSurface(
+          {
+            editorId: WORKFLOW_EDITOR_ID,
+            describe: () =>
+              WORKFLOW_AGENT_CHIPS.map((chip) => ({
+                id: chip.id,
+                label: chip.label,
+                summary: chip.prompt.slice(0, 120),
+                mutates: true,
+              })),
+            state: () => ({
+              mode: "normal",
               revision: editRevision,
-            };
-          }
-          if (dispatched.route.kind === "reject") {
-            return {
-              ok: false,
-              message: dispatched.route.reason,
-              revision: editRevision,
-            };
-          }
-          if (dispatched.graph !== graph) {
-            setGraph(dispatched.graph);
-            setEditRevision((n) => n + 1);
-            return {
-              ok: true,
-              message: "改动已写入画布。",
-              revision: editRevision + 1,
-            };
-          }
-          return {
-            ok: true,
-            message: "这条动作没有改图。",
-            revision: editRevision,
-          };
-        },
-      }),
-      [chipsManifest.chips, editRevision, graph],
+              nodes: graph.nodes.length,
+              edges: graph.edges.length,
+              chips: chipsManifest.chips.map((chip) => chip.id),
+            }),
+            run: (id, params) => {
+              const proposed =
+                params && typeof params.proposedGraph === "object"
+                  ? (params.proposedGraph as VideoCanvasGraph)
+                  : undefined;
+              const dispatched = dispatchWorkflowAgentChip({
+                chipId: id,
+                origin: params?.origin,
+                graph,
+                revision: editRevision,
+                proposedGraph: proposed,
+              });
+              if (dispatched.parked) {
+                return {
+                  ok: true,
+                  message: "改动已送审阅，你点接受之前流程图一个节点都不会变。",
+                  revision: editRevision,
+                };
+              }
+              if (dispatched.route.kind === "reject") {
+                return {
+                  ok: false,
+                  message: dispatched.route.reason,
+                  revision: editRevision,
+                };
+              }
+              if (dispatched.graph !== graph) {
+                setGraph(dispatched.graph);
+                setEditRevision((n) => n + 1);
+                return {
+                  ok: true,
+                  message: "改动已写入画布。",
+                  revision: editRevision + 1,
+                };
+              }
+              return {
+                ok: true,
+                message: "这条动作没有改图。",
+                revision: editRevision,
+              };
+            },
+          },
+          collabReadOnly,
+        ),
+      [chipsManifest.chips, editRevision, graph, collabReadOnly],
     ),
   );
 
