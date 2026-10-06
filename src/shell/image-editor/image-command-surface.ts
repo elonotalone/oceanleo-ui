@@ -48,7 +48,8 @@ const TEXT_PRESETS: readonly { value: TextPreset; label: string }[] = [
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 export interface ImageCommandDeps {
-  editor: FabricImageEditorState;
+  /** `collab.readOnly` 为真（浏览者，或别人正占着编辑）时，会改画布的指令一律拒绝。 */
+  editor: FabricImageEditorState & { collab?: { readOnly: boolean } };
   /** 由路由提供：按格式与质量把当前画布交到用户手上。 */
   deliver: (format: string, quality: number) => Promise<void>;
   /**
@@ -58,8 +59,6 @@ export interface ImageCommandDeps {
    * 记着上一次就是这么踩的）。
    */
   runAi?: AiCommandRunner;
-  /** 只能查看（浏览者，或别人正占着编辑）：会改画布的指令一律拒绝。 */
-  readOnly?: boolean;
 }
 
 export function imageCommandDefinitions(
@@ -325,7 +324,7 @@ export function createImageCommandSurface(
     commands: () =>
       guardVisualCommands(
         imageCommandDefinitions(deps),
-        Boolean(deps.readOnly),
+        Boolean(deps.editor.collab?.readOnly),
       ),
     state: () => imageCommandState(deps.editor),
   });

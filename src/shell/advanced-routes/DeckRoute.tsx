@@ -76,7 +76,7 @@ import {
 } from "../collab/adapters/visual-readonly";
 import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
 import { editorToolLabel } from "../workbench-routes";
-import { buildDeckCommandSurface } from "../doc-editors/doc-family-commands";
+import { buildDeckCommandSurface as buildRawDeckCommandSurface } from "../doc-editors/doc-family-commands";
 import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
 import {
   DOC_FAMILY_DOWNLOAD_FORMATS,
@@ -98,6 +98,18 @@ const DeckHostedRoute = lazy(() =>
     default: module.DeckHostedRoute,
   })),
 );
+
+/**
+ * PPT 的指令面（Leo 的「帮我改」从这里进来）。只能查看时，会改文稿的指令在这一层直接拒绝，
+ * 导出等查看类指令照常；指令表本身在 doc-family-commands.ts，不在这里动。
+ */
+function buildDeckCommandSurface(
+  editor: Parameters<typeof buildRawDeckCommandSurface>[0],
+  deps: Parameters<typeof buildRawDeckCommandSurface>[1],
+  readOnly: boolean,
+) {
+  return guardPluginSurface(buildRawDeckCommandSurface(editor, deps), readOnly);
+}
 
 /**
  * 双核分发口。**flag 只在这里判一次**，判完各走各的组件。
@@ -453,10 +465,7 @@ function DeckLegacyRoute({
   );
   // 只能查看：Leo 的「帮我改」从指令面进来，会改作品的指令在这一层直接拒绝
   usePluginCommandSurface(
-    guardPluginSurface(
-      buildDeckCommandSurface(editor, { download: downloadAs }),
-      viewOnly,
-    ),
+    buildDeckCommandSurface(editor, { download: downloadAs }, viewOnly),
   );
   return (
     <AdvancedWorkbenchShell

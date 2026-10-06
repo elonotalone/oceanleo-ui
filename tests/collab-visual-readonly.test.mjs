@@ -18,6 +18,8 @@ import {
 } from "../src/shell/collab/adapters/visual-readonly.ts";
 import { createChartCommandSurface } from "../src/shell/chart-editor/chart-command-surface.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
+import { buildDeckCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
+import { readFileSync } from "node:fs";
 
 const tt = (key, vars) => key.replace(/\{(\w+)\}/g, (_m, name) => String(vars?.[name] ?? ""));
 const useUiStub = dataModule(
@@ -337,11 +339,11 @@ test("图片浮条：只读时每个控件 disabled 并带「你只能查看」�
 test("图片指令面（Leo 帮我改，含 AI 能力）：只读时全部 mutates 指令拒绝，导出照常", async () => {
   const ranAi = [];
   const { editor, calls } = imageEditorWith();
+  editor.collab = { readOnly: true };
   const surface = createImageCommandSurface({
     editor,
     deliver: async () => undefined,
     runAi: async (request) => (ranAi.push(request.id), { ok: true, message: "排上了" }),
-    readOnly: true,
   });
   const mutating = surface.describe().filter((spec) => spec.mutates);
   assert.ok(mutating.length >= 5, "应当同时列出基础编辑与 AI 指令");
@@ -360,4 +362,63 @@ test("图片指令面（Leo 帮我改，含 AI 能力）：只读时全部 mutat
   assert.deepEqual(ranAi, []);
   const exported = await surface.run("image.export", { format: "png" });
   assert.equal(exported.ok, true);
+});
+
+// ---------------------------------------------------------------- PPT 指令面（Leo 帮我改）
+
+test("PPT 指令面：只读时（经 DeckRoute 的闸）mutates 指令全部拒绝且不碰文稿，导出类照常", async () => {
+  const { editor, calls } = deckEditorWith(null);
+  Object.assign(editor, { loading: false, dirty: false, editRevision: 5, error: "" });
+  const downloads = [];
+  const raw = buildDeckCommandSurface(editor, { download: async (ext) => (downloads.push(ext), "") });
+  const guarded = guardPluginSurface(raw, true);
+  const specs = guarded.describe();
+  const mutating = specs.filter((spec) => spec.mutates);
+  assert.ok(mutating.length >= 3, "PPT 应当有多条会改文稿的指令");
+  for (const spec of mutating) {
+    const params = Object.fromEntries(
+      (spec.params || []).map((param) => [
+        param.key,
+        param.type === "enum" ? param.enumValues[0].value : param.type === "number" ? 1 : "x",
+      ]),
+    );
+    const result = await guarded.run(spec.id, params);
+    assert.equal(result.ok, false, `${spec.id} 只读时应拒绝`);
+    assert.equal(result.message, VIEW_ONLY_REFUSAL);
+  }
+  assert.deepEqual(calls, []);
+  const viewSpec = specs.find((spec) => !spec.mutates);
+  assert.ok(viewSpec, "应保留查看类指令");
+});
+
+test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / 撤销都吃同一个 viewOnly", () => {
+  const src = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
+  assert.match(src, /usePluginCommandSurface\(\s*buildDeckCommandSurface\(editor, \{ download: downloadAs \}, viewOnly\)/);
+  assert.match(src, /guardPluginSurface\(buildRawDeckCommandSurface\(editor, deps\), readOnly\)/);
+  assert.match(src, /<DeckContextToolbar[\s\S]*?readOnly=\{viewOnly\}/);
+  assert.match(src, /viewOnlyUploadHandler\(viewOnly, addLocalFiles\)/);
+  assert.match(src, /canUndo: editor\.canUndo && !viewOnly/);
+  assert.equal((src.match(/<VisualViewOnlyPanel readOnly=\{viewOnly\}>/g) || []).length, 12, "十二个面板都包了只读外壳");
+});
+
+test("ChartRoute / ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 viewOnly；图片素材与 AI 入口各挡一次", () => {
+  const chart = readFileSync(new URL("../src/shell/advanced-routes/ChartRoute.tsx", import.meta.url), "utf8");
+  assert.match(chart, /<ChartContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
+  assert.match(chart, /<VisualViewOnlyPanel readOnly=\{viewOnly\}>\s*<ChartControls/);
+  assert.match(chart, /viewOnlyUploadHandler\(viewOnly, importLocalData\)/);
+  assert.match(chart, /canUndo: editor\.canUndo && !viewOnly/);
+  const image = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
+  assert.match(image, /<FabricImageContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
+  assert.match(image, /viewOnlyUploadHandler\(viewOnly, addLocalImages\)/);
+  assert.match(image, /if \(viewOnly\) return \{ ok: false, message: VIEW_ONLY_REFUSAL \};/);
+  assert.match(image, /if \(viewOnly\) throw new Error\(VIEW_ONLY_REFUSAL\);/);
+  assert.match(image, /<VisualViewOnlyPanel readOnly=\{viewOnly\}><FabricImageAiPanel/);
+  // 导出面板是查看类，不包
+  assert.doesNotMatch(image, /<VisualViewOnlyPanel[^>]*><FabricImageExportPanel/);
+  // 内核入口：AI 改图在导出画布、调模型之前就挡住
+  const hook = readFileSync(new URL("../src/shell/image-editor/use-fabric-image-editor.ts", import.meta.url), "utf8");
+  const start = hook.indexOf("const runAiEdit = useCallback");
+  assert.ok(start > 0);
+  const body = hook.slice(start, start + 700);
+  assert.ok(body.indexOf("optionsRef.current.collab?.readOnly") > 0 && body.indexOf("optionsRef.current.collab?.readOnly") < body.indexOf("makeExportBlob"));
 });

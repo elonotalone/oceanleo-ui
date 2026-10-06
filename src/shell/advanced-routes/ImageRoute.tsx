@@ -565,8 +565,8 @@ export function ImageRoute({
   );
   usePluginCommandSurface(
     useMemo(
-      () => createImageCommandSurface({ editor, deliver, runAi, readOnly: viewOnly }),
-      [deliver, editor, runAi, viewOnly],
+      () => createImageCommandSurface({ editor, deliver, runAi }),
+      [deliver, editor, runAi],
     ),
   );
 

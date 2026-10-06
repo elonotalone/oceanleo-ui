@@ -42,11 +42,9 @@ export function DeckContextToolbar({
 }: {
   editor: DeckEditorState;
   accent?: string;
-  /** 只能查看（浏览者，或别人正占着编辑）：改动类控件全灰、悬停提示「你只能查看」。缺省取编辑器自己的只读状态。 */
-  readOnly?: boolean;
+  readOnly?: boolean; // 只能查看：整条灰掉、悬停「你只能查看」；缺省取 editor.readOnly
 }) {
   const tt = useUI();
-  const readOnly = readOnlyProp ?? editor.readOnly;
   const element = editor.selectedElement;
   const slide = editor.activeSlide;
   const context = useMemo<SelectionContext | null>(() => {
@@ -574,14 +572,10 @@ export function DeckContextToolbar({
       ),
     };
   }, [editor.activeIndex, editor.deck.slides.length, element, slide, tt]);
-  // 这条工具条里没有纯查看类控件（翻页、缩放、放映都在别处）：只读时整条灰掉
-  const viewContext = useMemo(
-    () => viewOnlyContext(context, readOnly, tt),
-    [context, readOnly, tt],
-  );
+  const viewContext = useMemo(() => viewOnlyContext(context, readOnlyProp ?? editor.readOnly, tt), [context, readOnlyProp, editor.readOnly, tt]);
 
   const command = (message: SelectionCommand) => {
-    if (readOnly) return;
+    if (readOnlyProp ?? editor.readOnly) return;
     if (!context || message.selectionId !== context.id) return;
     if (element && !deckToolbarControlAllowed(element, message.controlId)) {
       return;
