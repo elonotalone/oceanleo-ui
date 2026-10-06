@@ -557,6 +557,14 @@ export async function listPdfAnnotations(
   pageIndex: number,
 ): Promise<PdfAnnotationView[]> {
   const document = await loadPdf(bytes);
+  return listPdfAnnotationsInDocument(document, pageIndex);
+}
+
+/** Same as {@link listPdfAnnotations} on an already loaded document (co-editing reads every page in one load). */
+export function listPdfAnnotationsInDocument(
+  document: PDFDocument,
+  pageIndex: number,
+): PdfAnnotationView[] {
   const geometry = pdfPageGeometry(document, pageIndex);
   return pageAnnotations(document, pageIndex).flatMap((entry) => {
     const kind = annotationKind(entry.dictionary, entry.subtype);
@@ -650,6 +658,8 @@ export interface PdfAnnotationDraft {
    */
   stampImageCrop?: PdfVisualRect;
   author?: string;
+  /** 多人同改：别人已经创建的批注按它原来的 id 写进本地字节（缺省则生成新 id）。 */
+  id?: string;
 }
 
 function formatNumber(value: number): string {
@@ -1086,7 +1096,7 @@ export async function appendPdfAnnotation(
     throw new Error("批注内容不能为空");
   }
   const shape = await buildAnnotationShape(document, draft, geometry, color);
-  const id = freshAnnotationId();
+  const id = (draft.id || "").trim() || freshAnnotationId();
   const opacity = Math.max(
     0,
     Math.min(1, draft.opacity ?? DEFAULT_OPACITY[draft.kind]),
@@ -1167,10 +1177,21 @@ export async function movePdfAnnotation(
   id: string,
   rect: PdfVisualRect,
 ): Promise<Uint8Array> {
+  const document = await loadPdf(bytes);
+  movePdfAnnotationInDocument(document, pageIndex, id, rect);
+  return savePdf(document);
+}
+
+/** Same as {@link movePdfAnnotation} on an already loaded document; the caller saves. */
+export function movePdfAnnotationInDocument(
+  document: PDFDocument,
+  pageIndex: number,
+  id: string,
+  rect: PdfVisualRect,
+): void {
   if (rect.width <= 0 || rect.height <= 0) {
     throw new Error("批注区域无效");
   }
-  const document = await loadPdf(bytes);
   const geometry = pdfPageGeometry(document, pageIndex);
   const located = locateAnnotation(document, pageIndex, id);
   const box = visualRectToPdf(rect, geometry);
@@ -1237,7 +1258,6 @@ export async function movePdfAnnotation(
       }
     }
   }
-  return savePdf(document);
 }
 
 export async function updatePdfAnnotation(
@@ -1275,4 +1295,102 @@ export async function deletePdfAnnotation(
     page.node.Annots()?.remove(located.index);
   }
   return savePdf(document);
+}
+
+// ---------------------------------------------------------------------------
+// 多人同改（work-chat 第二轮 F05）：按批注 id 在已载入的文档里写入 / 删除 / 补 id。
+// 下面几个都只改传入的 `document`，调用方负责一次 save。
+// ---------------------------------------------------------------------------
+
+/** 这条批注（按 NM id）是否已经在这一页上。 */
+export function hasPdfAnnotationInDocument(
+  document: PDFDocument,
+  pageIndex: number,
+  id: string,
+): boolean {
+  return pageAnnotations(document, pageIndex).some(
+    (entry) => annotationId(entry.dictionary, entry.reference, entry.index) === id,
+  );
+}
+
+/** 在整份文档里找这条批注在哪一页（-1 = 没有）。 */
+export function findPdfAnnotationPage(document: PDFDocument, id: string): number {
+  for (let pageIndex = 0; pageIndex < document.getPageCount(); pageIndex += 1) {
+    if (hasPdfAnnotationInDocument(document, pageIndex, id)) return pageIndex;
+  }
+  return -1;
+}
+
+export function updatePdfAnnotationContentsInDocument(
+  document: PDFDocument,
+  pageIndex: number,
+  id: string,
+  contents: string,
+): void {
+  const located = locateAnnotation(document, pageIndex, id);
+  const text = contents.trim().slice(0, 2_000);
+  if (located.subtype === "Text" && !text) {
+    throw new Error("文字批注内容不能为空");
+  }
+  located.dictionary.set(PDFName.of("Contents"), PDFHexString.fromText(text));
+}
+
+export function setPdfAnnotationStyleInDocument(
+  document: PDFDocument,
+  pageIndex: number,
+  id: string,
+  style: { color?: string; opacity?: number },
+): void {
+  const located = locateAnnotation(document, pageIndex, id);
+  if (typeof style.color === "string" && /^#[0-9a-fA-F]{6}$/.test(style.color)) {
+    located.dictionary.set(
+      PDFName.of("C"),
+      document.context.obj(pdfColorChannels(style.color)),
+    );
+  }
+  if (typeof style.opacity === "number" && Number.isFinite(style.opacity)) {
+    located.dictionary.set(
+      PDFName.of("CA"),
+      PDFNumber.of(Math.max(0, Math.min(1, style.opacity))),
+    );
+  }
+}
+
+export function removePdfAnnotationInDocument(
+  document: PDFDocument,
+  pageIndex: number,
+  id: string,
+): void {
+  const located = locateAnnotation(document, pageIndex, id);
+  const page = document.getPage(pageIndex);
+  if (located.reference) page.node.removeAnnot(located.reference);
+  else page.node.Annots()?.remove(located.index);
+}
+
+/**
+ * 给本地能编辑的批注补上稳定 id（NM）：原文件里自带的批注没有 NM，id 退化成 `ref:`/`direct:`，
+ * 两个客户端、保存前后都对不上。补成 `<prefix>-<页序号>-<页内序号>`，同一份字节上所有客户端算出同一个值。
+ * 返回补了几条。
+ */
+export function ensurePdfAnnotationIdsInDocument(
+  document: PDFDocument,
+  pageIdOf: (pageIndex: number) => string,
+): number {
+  let patched = 0;
+  for (let pageIndex = 0; pageIndex < document.getPageCount(); pageIndex += 1) {
+    const pageId = pageIdOf(pageIndex);
+    for (const entry of pageAnnotations(document, pageIndex)) {
+      if (!annotationKind(entry.dictionary, entry.subtype)) continue;
+      const existing = decodeText(
+        entry.dictionary.lookupMaybe(PDFName.of("NM"), PDFString, PDFHexString),
+      );
+      if (existing) continue;
+      entry.dictionary.set(
+        PDFName.of("NM"),
+        PDFHexString.fromText(`orig-${pageId}-${entry.index}`),
+      );
+      patched += 1;
+    }
+  }
+  return patched;
 }

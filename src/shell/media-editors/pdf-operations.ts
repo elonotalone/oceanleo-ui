@@ -1,10 +1,13 @@
 "use client";
 
 import {
+  PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFRef,
   degrees,
+  type PDFPage,
 } from "pdf-lib";
 import { PDF_READER_PALETTE } from "./pdf-workbench-utils";
 
@@ -21,6 +24,24 @@ const LOAD_OPTIONS = {
   ignoreEncryption: false,
   updateMetadata: false,
 } as const;
+
+/**
+ * 合并进来的页：去掉带过来的页 id（多人同改时页 id 由本端重新补），
+ * 页上批注的 id（NM）换成新的，免得合并同一份文件的另一份拷贝时两条批注共用一个 id。
+ */
+function rekeyPdfPageForMerge(document: PDFDocument, page: PDFPage): void {
+  page.node.delete(PDFName.of("OLPageId"));
+  const annotations = page.node.Annots();
+  if (!annotations) return;
+  for (let index = 0; index < annotations.size(); index += 1) {
+    const raw = annotations.get(index);
+    const dictionary =
+      raw instanceof PDFRef ? document.context.lookup(raw, PDFDict) : raw instanceof PDFDict ? raw : null;
+    if (!dictionary || !dictionary.has(PDFName.of("NM"))) continue;
+    const fresh = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    dictionary.set(PDFName.of("NM"), PDFHexString.fromText(`oceanleo-${fresh}`));
+  }
+}
 
 function copyBytes(bytes: Uint8Array): Uint8Array {
   return Uint8Array.from(bytes);
@@ -181,6 +202,8 @@ export async function mergePdfBytes(
     insertAfterIndex == null
       ? document.getPageCount() - 1
       : Math.max(-1, Math.min(document.getPageCount() - 1, insertAfterIndex));
+  // 合进来的页是新页：不带原来的页 id / 批注 id（合并自己的另一份拷贝时否则会撞 id）。
+  copied.forEach((page) => rekeyPdfPageForMerge(document, page));
   copied.forEach((page, offset) => document.insertPage(after + 1 + offset, page));
   return { bytes: await savePdf(document), insertedCount: incomingCount };
 }
