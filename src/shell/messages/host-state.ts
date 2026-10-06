@@ -8,6 +8,9 @@
 import { useSyncExternalStore } from "react";
 
 export type MessagesView = "inbox" | "people" | "search" | "settings";
+export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people", "search", "settings"];
+/** 收件箱筛选的合法值；与 `lib/im/inbox-api.ts` 的 `INBOX_FILTERS` 相同（测试里对拍，host-state 保持纯、不引入鉴权依赖）。 */
+export const INBOX_FILTER_IDS: readonly string[] = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"];
 export type MessagesLayoutKind = "docked" | "full" | "mobile";
 
 export interface MessagesTarget {
@@ -136,6 +139,8 @@ export interface HostState {
   setEnabled(enabled: boolean): void;
   setExpanded(expanded: boolean): void;
   setView(view: MessagesView): void;
+  /** 记下收件箱当前的筛选（用户在列表里点了筛选）；只认白名单，不写地址栏。 */
+  setFilter(filter: string): void;
   setDockWidth(width: number): void;
   /** 打开某会话（浮层内部切换；不新增历史记录）。 */
   showConversation(conversationId: string | null, seq?: number | null): void;
@@ -363,6 +368,10 @@ export function createHostState(env: HostEnv): HostState {
       commit({ view, conversationId: view === "inbox" ? s.conversationId : null, highlightSeq: null });
       writeUrl("replace");
     },
+    setFilter(filter) {
+      if (!INBOX_FILTER_IDS.includes(filter)) return;
+      commit({ filter });
+    },
     setDockWidth(width) {
       const next = clampDockWidth(width);
       commit({ dockWidth: next });
@@ -394,15 +403,35 @@ export function createHostState(env: HostEnv): HostState {
     },
     attach() {
       const offPop = env.on("popstate", () => applyLocation());
-      const offOpen = env.on(IM_OPEN_EVENT, (event: { detail?: { conversationId?: unknown; seq?: unknown } }) => {
-        const detail = event?.detail ?? {};
-        const conversationId =
-          typeof detail.conversationId === "string" && CONVERSATION_ID.test(detail.conversationId)
-            ? detail.conversationId
-            : undefined;
-        const seq = typeof detail.seq === "number" && Number.isFinite(detail.seq) ? detail.seq : undefined;
-        open(conversationId ? { conversationId, seq } : {});
-      });
+      const offOpen = env.on(
+        IM_OPEN_EVENT,
+        (event: { detail?: { conversationId?: unknown; seq?: unknown; view?: unknown; filter?: unknown } }) => {
+          const detail = event?.detail ?? {};
+          const conversationId =
+            typeof detail.conversationId === "string" && CONVERSATION_ID.test(detail.conversationId)
+              ? detail.conversationId
+              : undefined;
+          const seq = typeof detail.seq === "number" && Number.isFinite(detail.seq) ? detail.seq : undefined;
+          // view / filter 只认白名单，别的值忽略（退回默认），不会把任意字符串带进状态。
+          const view =
+            typeof detail.view === "string" && (MESSAGES_VIEWS as readonly string[]).includes(detail.view)
+              ? (detail.view as MessagesView)
+              : undefined;
+          const filter =
+            typeof detail.filter === "string" && (INBOX_FILTER_IDS as readonly string[]).includes(detail.filter)
+              ? detail.filter
+              : undefined;
+          const target: MessagesTarget = {};
+          if (conversationId) {
+            target.conversationId = conversationId;
+            if (seq !== undefined) target.seq = seq;
+          } else if (view) {
+            target.view = view;
+          }
+          if (filter) target.filter = filter;
+          open(target);
+        },
+      );
       const offResize = env.on("resize", () => {
         commit({ narrow: env.viewportWidth() <= MOBILE_MAX_WIDTH });
       });

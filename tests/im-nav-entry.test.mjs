@@ -85,7 +85,7 @@ test("共享外壳只多四个导出；MessagesHost 在不可用时什么都不�
   assert.match(host, /<WorkReplayHost \/>/);
   // 连接与深链监听都只在 enabled 时挂上
   assert.match(host, /if \(!enabled\) return undefined;\s*const host = hostState\(\);/);
-  assert.match(host, /if \(!enabled\) return undefined;\s*return attachImRealtime\(\);/);
+  assert.match(host, /if \(!enabled\) \{\s*publishImDisabled\(\);\s*return undefined;\s*\}\s*return attachImRealtime\(\);/);
 });
 
 test("消息外壳不渲染任何 HTML 字符串", () => {

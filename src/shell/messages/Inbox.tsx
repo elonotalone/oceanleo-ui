@@ -71,8 +71,9 @@ export function Inbox(props: InboxProps) {
     const store = imStore();
     const want = props.initialFilter || "all";
     if (!store.inbox().loaded || store.inbox().filter !== want) void store.loadInbox(want);
+    // 外部（如 talent 的「在全部消息里查看」）带着新的 filter 再次打开时，也要切过去。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [props.initialFilter]);
 
   // 打开 / 切回收件箱、重连之后，各取一次草稿。
   useEffect(() => {

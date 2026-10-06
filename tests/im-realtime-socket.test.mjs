@@ -10,6 +10,12 @@ import {
   backoffDelay,
   createImSocket,
 } from "../src/shell/messages/realtime/socket.ts";
+import {
+  IM_CONNECTION_EVENT,
+  IM_CONNECTION_GLOBAL,
+  IM_EVENT_EVENT,
+  createWindowBridge,
+} from "../src/shell/messages/realtime/broadcast.ts";
 import { imEnabledFor, imSocketUrl } from "../src/shell/messages/messages-family.ts";
 
 function harness({ tokens = ["tok-1"], hidden = false, random = () => 0.5 } = {}) {
@@ -310,4 +316,93 @@ test("网关地址 → ws 地址；境内与未登录不可用", () => {
   assert.equal(imEnabledFor("com", false), false);
   assert.equal(imEnabledFor("com", true), true);
   assert.equal(imEnabledFor("ws", true), true);
+});
+
+// ---- 给旧版站点（talent）的 window 转播 ----
+
+function fakeWindow() {
+  const target = new EventTarget();
+  const log = [];
+  for (const name of [IM_CONNECTION_EVENT, IM_EVENT_EVENT]) {
+    target.addEventListener(name, (e) => log.push({ name: e.type, detail: e.detail }));
+  }
+  const win = { dispatchEvent: (e) => target.dispatchEvent(e) };
+  return { win, log };
+}
+const makeEvent = (name, detail) => new CustomEvent(name, { detail });
+
+test("转播：连接状态写进 window 全局并派发 oceanleo:im-connection，只取四种值", async () => {
+  const h = harness();
+  const socket = createImSocket(h.deps);
+  const { win, log } = fakeWindow();
+  const bridge = createWindowBridge({ socket, win, makeEvent });
+  assert.equal(win[IM_CONNECTION_GLOBAL], "closed", "挂上时先把当前状态告诉对方");
+  await connectReady(h, socket);
+  assert.equal(win[IM_CONNECTION_GLOBAL], "open");
+  const states = log.filter((x) => x.name === IM_CONNECTION_EVENT).map((x) => x.detail);
+  assert.deepEqual(states, ["closed", "connecting", "open"]);
+  for (const state of states) assert.ok(["open", "connecting", "closed", "disabled"].includes(state));
+  // 断线 → 对外是「正在连接」（自动重连中），每次变化都派发，相同状态不重复
+  h.sockets.at(-1).drop();
+  assert.equal(win[IM_CONNECTION_GLOBAL], "connecting");
+  const after = log.filter((x) => x.name === IM_CONNECTION_EVENT).map((x) => x.detail);
+  assert.deepEqual(after, ["closed", "connecting", "open", "connecting"]);
+  // 主动停掉 → closed
+  socket.stop();
+  assert.equal(win[IM_CONNECTION_GLOBAL], "closed");
+  for (let i = 1; i < after.length; i += 1) assert.notEqual(after[i], after[i - 1], "不发重复状态");
+  bridge.detach();
+});
+
+test("转播：只有 message.created / message.updated 派发 oceanleo:im-event；typing、presence 等不转播", async () => {
+  const h = harness();
+  const socket = createImSocket(h.deps);
+  const { win, log } = fakeWindow();
+  createWindowBridge({ socket, win, makeEvent });
+  const ws = await connectReady(h, socket);
+  const created = { type: "message.created", conversation_id: "c1", message: { id: "m1", seq: 5 } };
+  const updated = { type: "message.updated", conversation_id: "c1", message: { id: "m1", seq: 5 } };
+  ws.recv({ type: "event", event: created });
+  ws.recv({ type: "event", event: { type: "typing", conversation_id: "c1", user_id: "u2" } });
+  ws.recv({ type: "event", event: { type: "presence", user_id: "u2", status: "active" } });
+  ws.recv({ type: "event", event: updated });
+  ws.recv({ type: "event", event: { type: "unread.updated", conversation_id: "c1" } });
+  const events = log.filter((x) => x.name === IM_EVENT_EVENT);
+  assert.deepEqual(events.map((x) => x.detail.type), ["message.created", "message.updated"]);
+  assert.deepEqual(events[0].detail, created);
+  assert.deepEqual(events[1].detail, updated);
+});
+
+test("转播：只在同页派发 CustomEvent，不碰 postMessage；detach 后状态变 disabled 且不再转播", async () => {
+  const h = harness();
+  const socket = createImSocket(h.deps);
+  const { win, log } = fakeWindow();
+  win.postMessage = () => assert.fail("不得跨窗口发消息");
+  const bridge = createWindowBridge({ socket, win, makeEvent });
+  const ws = await connectReady(h, socket);
+  bridge.detach();
+  assert.equal(win[IM_CONNECTION_GLOBAL], "disabled");
+  assert.equal(log.filter((x) => x.name === IM_CONNECTION_EVENT).at(-1).detail, "disabled");
+  const before = log.length;
+  ws.recv({ type: "event", event: { type: "message.created", conversation_id: "c1", message: { id: "m2", seq: 6 } } });
+  assert.equal(log.length, before, "detach 之后不再转播");
+});
+
+test("转播：地址不可用（境内 / 未登录）→ 全局是 disabled；监听器抛错不影响通道", async () => {
+  const h = harness();
+  h.deps.url = () => null;
+  const socket = createImSocket(h.deps);
+  const { win } = fakeWindow();
+  const bridge = createWindowBridge({ socket, win, makeEvent });
+  socket.start();
+  await h.flush();
+  assert.equal(win[IM_CONNECTION_GLOBAL], "disabled");
+  assert.equal(h.sockets.length, 0);
+  bridge.publish("disabled"); // 重复发布无副作用
+  const throwing = { dispatchEvent: () => { throw new Error("boom"); } };
+  const h2 = harness();
+  const socket2 = createImSocket(h2.deps);
+  createWindowBridge({ socket: socket2, win: throwing, makeEvent });
+  const ws = await connectReady(h2, socket2);
+  assert.doesNotThrow(() => ws.recv({ type: "event", event: { type: "message.created", conversation_id: "c", message: { id: "m", seq: 1 } } }));
 });

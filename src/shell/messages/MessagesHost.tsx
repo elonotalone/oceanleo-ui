@@ -16,7 +16,7 @@ import { closeMessages, hostState, useMessagesHost, type MessagesView } from "./
 import { MessagesLayout } from "./MessagesLayout";
 import { PeopleView } from "./people/PeopleView";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { attachImRealtime, imStore } from "./realtime/hooks";
+import { attachImRealtime, imStore, publishImDisabled } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
 import { SettingsView } from "./SettingsView";
 import { TalentConversationView } from "./talent/TalentConversationView";
@@ -43,7 +43,10 @@ export function MessagesHost() {
 
   // 实时连接：可用时就连（侧栏角标要实时），不依赖浮层是否打开。
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled) {
+      publishImDisabled();
+      return undefined;
+    }
     return attachImRealtime();
   }, [enabled]);
 
@@ -105,6 +108,7 @@ function MessagesOverlay() {
       <Inbox
         activeConversationId={state.conversationId}
         initialFilter={state.filter}
+        onFilterChange={(next) => host.setFilter(next)}
         onOpenConversation={openConversation}
         onNew={() => setNewOpen(true)}
         onSearch={() => setView("search")}

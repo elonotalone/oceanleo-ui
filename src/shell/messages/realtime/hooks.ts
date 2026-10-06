@@ -8,6 +8,7 @@ import { fetchConversations, fetchUnread } from "../../../lib/im/inbox-api";
 import type { ImEvent, ImPresence, ImProfile, ImUnread } from "../../../lib/im/types";
 import { imSocketUrl } from "../messages-family";
 import { maybeShowDesktopNotification } from "../notify/desktop-notify";
+import { createWindowBridge, type WindowBridge } from "./broadcast";
 import { createImSocket, type ImSocket, type WebSocketLike } from "./socket";
 import { createImStore, emptyInbox, type ImConnectionState, type ImStore, type InboxState } from "./store";
 
@@ -60,6 +61,7 @@ export function attachImRealtime(): () => void {
   if (typeof window === "undefined") return () => {};
   const { socket, store } = getRuntime();
   store.start();
+  const bridge = windowBridge(socket);
 
   let lastActivityPing = 0;
   const onActivity = () => {
@@ -79,8 +81,33 @@ export function attachImRealtime(): () => void {
     for (const name of ACTIVITY_EVENTS) window.removeEventListener(name, onActivity, { capture: true });
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener(AUTH_STATE_EVENT, onAuth);
+    bridge.detach();
     store.stop();
   };
+}
+
+function windowBridge(socket: ImSocket): WindowBridge {
+  return createWindowBridge({
+    socket,
+    win: window as unknown as Parameters<typeof createWindowBridge>[0]["win"],
+    makeEvent: (name, detail) => new CustomEvent(name, { detail }),
+  });
+}
+
+/**
+ * 本页没有实时通道（境内站点、未登录）：告诉旧版站点「disabled」，让它们继续轮询。
+ * 已经 attach 过的页面由 `attachImRealtime` 自己管。
+ */
+export function publishImDisabled(): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, unknown>;
+  if (win.__oceanleoImConnection === "disabled") return;
+  win.__oceanleoImConnection = "disabled";
+  try {
+    window.dispatchEvent(new CustomEvent("oceanleo:im-connection", { detail: "disabled" }));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function useImEvent<T extends ImEvent["type"]>(

@@ -2,8 +2,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { INBOX_FILTERS } from "../src/lib/im/inbox-api.ts";
 import {
   IM_OPEN_EVENT,
+  INBOX_FILTER_IDS,
+  MESSAGES_VIEWS,
   buildImSearch,
   clampDockWidth,
   createHostState,
@@ -202,6 +205,66 @@ test("oceanleo:im-open 事件（W03 桌面通知点击）打开对应会话；�
   assert.equal(host.getSnapshot().open, true);
   assert.equal(host.getSnapshot().conversationId, "c77");
   assert.equal(host.getSnapshot().highlightSeq, 8);
+});
+
+test("oceanleo:im-open 读 detail.view / detail.filter：talent 直接打开收件箱并选中「交易」筛选", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  host.attach();
+  sim.fire(IM_OPEN_EVENT, { detail: { view: "inbox", filter: "talent" } });
+  const snap = host.getSnapshot();
+  assert.equal(snap.open, true);
+  assert.equal(snap.view, "inbox");
+  assert.equal(snap.filter, "talent");
+  assert.equal(snap.conversationId, null);
+  // 已经打开时再来一次别的筛选：切过去；带 view 也生效
+  sim.fire(IM_OPEN_EVENT, { detail: { view: "people", filter: "unread" } });
+  assert.equal(host.getSnapshot().view, "people");
+  assert.equal(host.getSnapshot().filter, "unread");
+});
+
+test("oceanleo:im-open 的 view / filter 非法值被忽略，退回默认", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  host.attach();
+  sim.fire(IM_OPEN_EVENT, { detail: { view: "<script>", filter: "../../etc" } });
+  let snap = host.getSnapshot();
+  assert.equal(snap.open, true);
+  assert.equal(snap.view, "inbox");
+  assert.equal(snap.filter, "all");
+  sim.fire(IM_OPEN_EVENT, { detail: { view: 7, filter: { a: 1 } } });
+  snap = host.getSnapshot();
+  assert.equal(snap.view, "inbox");
+  assert.equal(snap.filter, "all");
+  // 一个合法一个非法：合法的生效
+  host.close();
+  sim.fire(IM_OPEN_EVENT, { detail: { view: "bogus", filter: "team" } });
+  assert.equal(host.getSnapshot().view, "inbox");
+  assert.equal(host.getSnapshot().filter, "team");
+});
+
+test("会话 id 与 view/filter 同时给：打开会话，filter 仍记下；setFilter 只认白名单", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  host.attach();
+  sim.fire(IM_OPEN_EVENT, { detail: { conversationId: "talent:9", seq: 3, view: "people", filter: "talent" } });
+  const snap = host.getSnapshot();
+  assert.equal(snap.conversationId, "talent:9");
+  assert.equal(snap.view, "inbox", "有会话 id 时一定是收件箱视图");
+  assert.equal(snap.filter, "talent");
+  assert.equal(snap.highlightSeq, 3);
+  host.setFilter("project");
+  assert.equal(host.getSnapshot().filter, "project");
+  host.setFilter("nope");
+  assert.equal(host.getSnapshot().filter, "project");
+});
+
+test("host-state 的筛选白名单与收件箱 API 的 INBOX_FILTERS 一致", () => {
+  assert.deepEqual([...INBOX_FILTER_IDS], [...INBOX_FILTERS]);
+  assert.deepEqual([...MESSAGES_VIEWS].sort(), ["inbox", "people", "search", "settings"]);
 });
 
 test("?im_invite 打开收件箱并交出邀请码；处理完清掉", () => {
