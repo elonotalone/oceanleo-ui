@@ -197,7 +197,7 @@ test("commands the new core cannot do are refused at the editor, for every entry
   // L1 的两处 `void` 调用必须接住（否则一次点击留下未处理的 promise 拒绝）。
   assert.match(
     route,
-    /usePluginCommandSurface\(\s*buildPdfCommandSurface\(nextCoreEditor,/,
+    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) =>\s*guardPluginSurface\(\s*buildPdfCommandSurface\(nextCoreEditor,/,
   );
   assert.match(route, /<PdfControls editor=\{nextCoreEditor\} \/>/);
   assert.match(

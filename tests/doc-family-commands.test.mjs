@@ -736,7 +736,10 @@ test("四条路由源码真的把指令面挂上去了", () => {
     const text = readFileSync(join(ROUTES, file), "utf8");
     assert.match(
       text,
-      new RegExp(`usePluginCommandSurface\\(\\s*${builder}\\(`),
+      // PDF 的指令面外面包了一层只读闸（guardPluginSurface，F05），其余原样。
+      new RegExp(
+        `usePluginCommandSurface\\(\\s*(?:useMemo\\(\\s*\\(\\) =>\\s*guardPluginSurface\\(\\s*)?${builder}\\(`,
+      ),
       `${file} 没有用 usePluginCommandSurface(${builder}(…)) 挂上指令面`,
     );
   }

@@ -37,6 +37,7 @@ import {
 import { editorToolLabel } from "../workbench-routes";
 import { useUI } from "../../i18n/ui/useUI";
 import { usePdfCollab, usePdfCollabEditor } from "../collab/adapters/use-pdf-collab";
+import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { buildPdfCommandSurface } from "../doc-editors/doc-family-commands";
 import {
   DOC_FAMILY_DOWNLOAD_FORMATS,
@@ -217,8 +218,16 @@ export function PdfRoute({
     },
     [editor.download],
   );
+  // 只读（只有查看权限 / 别人正在调整页面）：会改文档的指令一律拒绝，不靠冻结后的 editor 静默吞掉。
   usePluginCommandSurface(
-    buildPdfCommandSurface(nextCoreEditor, { download: downloadAs }),
+    useMemo(
+      () =>
+        guardPluginSurface(
+          buildPdfCommandSurface(nextCoreEditor, { download: downloadAs }),
+          collabReadOnly,
+        ),
+      [nextCoreEditor, downloadAs, collabReadOnly],
+    ),
   );
   return (
     <AdvancedWorkbenchShell
