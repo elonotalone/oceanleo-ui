@@ -161,6 +161,25 @@ export function structureEventFromCommand(
   return { kind: "reorder", sheetId, start: startRow, order: perm, cols: 0 };
 }
 
+/** 远端新建的工作表插进来时，Univer 要求这些字段都在（缺了 `freeze` 会直接抛错）。 */
+const NEW_SHEET_DEFAULTS: Rec = {
+  freeze: { xSplit: 0, ySplit: 0, startRow: -1, startColumn: -1 },
+  mergeData: [],
+  cellData: {},
+  rowData: {},
+  columnData: {},
+  zoomRatio: 1,
+  scrollTop: 0,
+  scrollLeft: 0,
+  defaultColumnWidth: 88,
+  defaultRowHeight: 24,
+  hidden: 0,
+  showGridlines: 1,
+  rightToLeft: 0,
+  rowHeader: { width: 46, hidden: 0 },
+  columnHeader: { height: 20, hidden: 0 },
+};
+
 export interface UniverCommandRunner {
   syncExecuteCommand?(id: string, params?: Rec, options?: Rec): unknown;
 }
@@ -201,10 +220,14 @@ export function executeRemotePlan(
   };
 
   const metaOf = (kind: GridMetaOp["kind"]) => plan.meta.filter((op) => op.kind === kind);
+  // 工作表顺序在本地跟踪：`set-worksheet-order` 需要 `fromOrder`（缺了会把第 0 张当成要移动的那张）。
+  const sheetOrder: string[] = [...(((ctx.snapshot as Rec | null)?.sheetOrder as string[] | undefined) ?? [])];
 
   for (const op of metaOf("sheet-remove")) {
     if (op.kind !== "sheet-remove") continue;
     if (!run(UNIVER_REMOVE_SHEET, { subUnitId: op.sheetId, subUnitName: op.name })) return false;
+    const at = sheetOrder.indexOf(op.sheetId);
+    if (at >= 0) sheetOrder.splice(at, 1);
   }
 
   for (const op of plan.structure) {
@@ -291,9 +314,9 @@ export function executeRemotePlan(
 
   for (const op of plan.meta) {
     if (op.kind === "sheet-insert") {
-      if (!run(UNIVER_INSERT_SHEET, { index: op.index, sheet: JSON.parse(JSON.stringify(op.sheet)) })) {
-        return false;
-      }
+      const sheet = { ...NEW_SHEET_DEFAULTS, ...JSON.parse(JSON.stringify(op.sheet)) };
+      if (!run(UNIVER_INSERT_SHEET, { index: op.index, sheet })) return false;
+      sheetOrder.splice(Math.min(Math.max(0, op.index), sheetOrder.length), 0, op.sheetId);
     } else if (op.kind === "sheet-name") {
       if (!run(UNIVER_SET_SHEET_NAME, { subUnitId: op.sheetId, name: op.name })) return false;
     } else if (op.kind === "workbook-name") {
@@ -302,9 +325,14 @@ export function executeRemotePlan(
   }
   for (const op of plan.meta) {
     if (op.kind !== "sheet-order") continue;
-    op.order.forEach((sheetId, index) => {
-      run(UNIVER_SET_SHEET_ORDER, { subUnitId: sheetId, order: index });
-    });
+    for (let index = 0; index < op.order.length; index += 1) {
+      const sheetId = op.order[index];
+      const fromOrder = sheetOrder.indexOf(sheetId);
+      if (fromOrder < 0 || fromOrder === index) continue;
+      if (!run(UNIVER_SET_SHEET_ORDER, { subUnitId: sheetId, order: index, fromOrder })) return false;
+      sheetOrder.splice(fromOrder, 1);
+      sheetOrder.splice(index, 0, sheetId);
+    }
   }
   return true;
 }

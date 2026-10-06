@@ -97,6 +97,7 @@ import {
   type GridUniverCollabApi,
   type GridWorkbookSnapshot,
 } from "../collab/adapters/grid";
+import { createGridLayoutStore } from "./grid-univer/collab-layout-store";
 import { useUI } from "../../i18n/ui/useUI";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -263,6 +264,8 @@ export function GridUniverStage({
   });
   const collabSaveGate = useCollabSaveGate(collabRoom);
   const collabViewOnly = useCollabReadOnly(collabRoom);
+  const collabViewOnlyRef = useRef(collabViewOnly);
+  collabViewOnlyRef.current = collabViewOnly;
   const collabWasLiveRef = useRef(false);
   const collabPhase = gridCollabPhase({
     room: collabRoom,
@@ -587,6 +590,12 @@ export function GridUniverStage({
         }) as unknown as ReturnType<
           Parameters<typeof createGridCollabBinder>[0]["bind"]
         >,
+      // 行列按 id 存：两个人同时插行、删列、排序互相不冲掉；老格式文档第一次打开时就地迁移。
+      layoutStore: createGridLayoutStore({
+        doc: room.doc,
+        canWrite: () => !collabViewOnlyRef.current,
+      }),
+      onFullReplace: () => setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。")),
       onActivity: () => {
         setEditRevision((value) => value + 1);
         setDirty(true);
