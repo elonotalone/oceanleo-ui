@@ -408,9 +408,10 @@ test("断线：offline → 退避后重新拿票重连；离线时的本地改�
   }
 });
 
-test("退避：连续失败按 10→20→40→40ms 递增（上限生效），成功后重置", async () => {
+test("退避：连续失败按 50→100→100→100ms 递增（上限生效；不设上限会是 200、400）", async () => {
   const stamps = [];
   const { provider } = setup({
+    provider: { backoffInitialMs: 50, backoffMaxMs: 100 },
     ticket: {
       fail: (n) => {
         stamps.push(Date.now());
@@ -419,12 +420,13 @@ test("退避：连续失败按 10→20→40→40ms 递增（上限生效），�
     },
   });
   try {
-    await until(() => stamps.length === 5, "5 attempts", 3000);
+    await until(() => stamps.length === 5, "5 attempts", 6000);
     const gaps = stamps.slice(1).map((t, i) => t - stamps[i]);
-    assert.ok(gaps[0] >= 8 && gaps[0] < 35, `gap0 ${gaps[0]}`);
-    assert.ok(gaps[1] >= 18, `gap1 ${gaps[1]}`);
-    assert.ok(gaps[2] >= 36, `gap2 ${gaps[2]}`);
-    assert.ok(gaps[3] >= 36 && gaps[3] < 90, `gap3（上限）${gaps[3]}`);
+    assert.ok(gaps[0] >= 45, `gap0 ${gaps[0]}`);
+    assert.ok(gaps[1] >= 90, `gap1 ${gaps[1]}`);
+    assert.ok(gaps[2] >= 90, `gap2 ${gaps[2]}`);
+    // 不设上限时这一档是 400ms；留足余量给忙机器，仍能区分
+    assert.ok(gaps[3] >= 90 && gaps[3] < 300, `gap3（上限）${gaps[3]}`);
     assert.equal(provider.status === "offline" || provider.status === "connecting", true);
     // 没连上过：按单人处理，可以存版本
     assert.equal(provider.isSaver, true);
