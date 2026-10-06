@@ -537,3 +537,250 @@ test("一次一人：矢量/流程图/PDF 的抢锁语义（先到的人持锁�
   a.releaseLock();
   assert.equal(await b.acquireLock(), true);
 });
+
+// =============================================================================
+// 第二轮（V12）：F05–F10 的完成标准。第一段先写好；还没交付的条目会红，交付后变绿。
+// 读码类断言只检查「调用点在不在」，行为类断言走真实适配器与 yjs。
+// =============================================================================
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { canvasGraphFromEntities, canvasGraphToEntities } from "../src/shell/collab/adapters/workflow.ts";
+
+const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const src = (rel) => readFileSync(join(UI_ROOT, "src/shell", rel), "utf8");
+const has = (rel) => existsSync(join(UI_ROOT, "src/shell", rel));
+
+/** 两个客户端共用一份文档的最小夹具：同一组实体根，各自 bindJsonState。 */
+function twoPeers({ root, toEntities, fromEntities, seed }) {
+  const aDoc = new Y.Doc();
+  const bDoc = new Y.Doc();
+  const net = link(aDoc, bDoc);
+  writeJsonStateRoot(aDoc, root, toEntities(seed));
+  net.flush();
+  const bindA = bindJsonState({ room: makeRoom(aDoc), rootName: root, toEntities, fromEntities });
+  const bindB = bindJsonState({
+    room: makeRoom(bDoc, { self: { id: "u2", name: "乙", color: "hsl(2, 70%, 45%)", avatar_url: null } }),
+    rootName: root,
+    toEntities,
+    fromEntities,
+  });
+  const read = (doc) => fromEntities(readJsonStateRoot(doc, root), seed);
+  return { aDoc, bDoc, net, bindA, bindB, read, destroy: () => (bindA.destroy(), bindB.destroy()) };
+}
+
+// ------------------------------------------------------------------ F05 PDF
+test("[F05] PDF：不再整份上锁；默认编辑器接了按批注合并的协同", () => {
+  const route = src("advanced-routes/PdfRoute.tsx");
+  assert.doesNotMatch(route, /useLockedEditCollab\s*\(/, "PdfRoute 还在用整份上锁（第二个人只能看）");
+  assert.match(route, /usePdfCollab\s*\(/, "PdfRoute 要接 usePdfCollab（按批注合并）");
+  assert.ok(has("collab/adapters/use-pdf-collab.ts"), "缺 use-pdf-collab.ts");
+});
+
+test("[F05] PDF：两人同时各加批注都在；甲删第 3 页，乙在第 5 页的批注仍在原来那一页", () => {
+  const rect = (x) => ({ origin: { x, y: 10 }, size: { width: 50, height: 10 } });
+  const seed = {
+    pageIds: ["p1", "p2", "p3", "p4", "p5"],
+    pages: [0, 1, 2, 3, 4].map((index) => ({ index, widthPt: 612, heightPt: 792 })),
+    annotations: [{ id: "a0", pageId: "p1", pageIndex: 0, typeName: "TEXT", rect: rect(1), contents: "base" }],
+    fields: {},
+  };
+  const { net, bindA, bindB, read, aDoc, bDoc, destroy } = twoPeers({ root: PDF_ROOT, toEntities: pdfToEntities, fromEntities: pdfFromEntities, seed });
+  const a0 = read(aDoc);
+  const b0 = read(bDoc);
+  // 甲：在第 2 页划重点；乙：在第 5 页加便签。同一时间发出，中间不同步
+  const a1 = { ...a0, annotations: [...a0.annotations, { id: "a-hl", pageId: "p2", pageIndex: 1, typeName: "HIGHLIGHT", rect: rect(2), contents: "" }] };
+  const b1 = { ...b0, annotations: [...b0.annotations, { id: "b-note", pageId: "p5", pageIndex: 4, typeName: "TEXT", rect: rect(3), contents: "乙的便签" }] };
+  bindA.push(a1);
+  bindB.push(b1);
+  net.flush();
+  const merged = read(aDoc);
+  assert.equal(canon(merged), canon(read(bDoc)), "两边不一致");
+  assert.deepEqual(merged.annotations.map((x) => x.id).sort(), ["a-hl", "a0", "b-note"], "双方的批注都应在");
+  // 甲删第 3 页（p3）
+  const afterDelete = {
+    ...merged,
+    pageIds: merged.pageIds.filter((id) => id !== "p3"),
+    pages: merged.pages.slice(0, 4).map((page, index) => ({ ...page, index })),
+  };
+  bindA.push(afterDelete);
+  net.flush();
+  const final = read(bDoc);
+  const note = final.annotations.find((x) => x.id === "b-note");
+  assert.ok(note, "乙的批注被删页冲掉了");
+  assert.equal(note.pageId, "p5", "批注应仍挂在原来的页 id 上");
+  assert.equal(final.pageIds[note.pageIndex], "p5", "页码要由页 id 算回：删第 3 页后 p5 变成第 4 页");
+  destroy();
+});
+
+// ------------------------------------------------------------------ F06 流程图
+test("[F06] 流程图：外壳不再整图上锁、只读不再 inert 冻住画布", () => {
+  const stage = src("workflow-carrier/VideoCanvasStage.tsx");
+  assert.doesNotMatch(stage, /useLockedEditCollab\s*\(/, "VideoCanvasStage 还在整图上锁");
+  const inertDef = /const canvasInert\s*=([\s\S]{0,260}?);/.exec(stage)?.[1] ?? "";
+  assert.doesNotMatch(inertDef, /readOnly|viewer|canWrite|role/i, `只读的人被 inert 冻住，连拖动、缩放都做不了：canvasInert =${inertDef.trim()}`);
+});
+
+test("[F06] 流程图：两人同时加节点与连线都在；甲删节点，乙连到它的线不留断线", () => {
+  const node = (id, x) => ({ nodeId: id, id, title: id, position: { x, y: 0 }, kind: "trim" });
+  const seed = { nodes: [node("n1", 0), node("n2", 100), node("n3", 200)], edges: [{ edgeId: "e1", id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }] };
+  const toE = canvasGraphToEntities;
+  const fromE = (input, prev) => canvasGraphFromEntities(input, prev);
+  const { net, bindA, bindB, read, aDoc, bDoc, destroy } = twoPeers({ root: WORKFLOW_ROOT, toEntities: toE, fromEntities: fromE, seed });
+  const a0 = read(aDoc);
+  const b0 = read(bDoc);
+  bindA.push({ ...a0, nodes: [...a0.nodes, node("n4", 300)] });
+  bindB.push({ ...b0, edges: [...b0.edges, { edgeId: "e2", id: "e2", sourceNodeId: "n2", targetNodeId: "n3" }, { edgeId: "e3", id: "e3", sourceNodeId: "n3", targetNodeId: "n1" }] });
+  net.flush();
+  const merged = read(aDoc);
+  assert.equal(canon(merged), canon(read(bDoc)), "加节点/连线后两边不一致");
+  assert.deepEqual(merged.nodes.map((n) => n.id).sort(), ["n1", "n2", "n3", "n4"]);
+  assert.deepEqual(merged.edges.map((e) => e.id).sort(), ["e1", "e2", "e3"]);
+  // 甲删 n3；乙同时又连了一条 n1→n3
+  const a1 = read(aDoc);
+  const b1 = read(bDoc);
+  bindA.push({ ...a1, nodes: a1.nodes.filter((n) => n.id !== "n3"), edges: a1.edges.filter((e) => e.sourceNodeId !== "n3" && e.targetNodeId !== "n3") });
+  bindB.push({ ...b1, edges: [...b1.edges, { edgeId: "e9", id: "e9", sourceNodeId: "n1", targetNodeId: "n3" }] });
+  net.flush();
+  for (const doc of [aDoc, bDoc]) {
+    const g = read(doc);
+    const ids = new Set(g.nodes.map((n) => n.id));
+    const dangling = g.edges.filter((e) => !ids.has(e.sourceNodeId) || !ids.has(e.targetNodeId)).map((e) => e.id);
+    assert.deepEqual(dangling, [], `删节点后留下了断线：${dangling.join(",")}`);
+  }
+  assert.equal(canon(read(aDoc)), canon(read(bDoc)));
+  destroy();
+});
+
+// ------------------------------------------------------------------ F07 视频、音频、3D
+test("[F07] 视频/音频/3D：远端改动不走 restoreRecovery（不清撤销栈、不标未保存）", () => {
+  const routes = { video: "advanced-routes/VideoTimelineRoute.tsx", audio: "advanced-routes/AudioRoute.tsx", model3d: "advanced-routes/Model3DRoute.tsx" };
+  const bad = [];
+  for (const [name, rel] of Object.entries(routes)) {
+    const text = src(rel);
+    for (const m of text.matchAll(/applyRemote\b[^\n]*=>?\s*[{(]|applyRemote:\s*[^\n]*/g)) {
+      const body = text.slice(m.index, m.index + 700);
+      if (/restoreRecovery/.test(body)) bad.push(`${name}: applyRemote 附近调用了 restoreRecovery`);
+    }
+    if (!/applyRemote(Doc|Project|Scene)\b/.test(text)) bad.push(`${name}: 没有专门接远端改动的入口（applyRemoteDoc/Project/Scene）`);
+  }
+  assert.deepEqual(bad, [], bad.join("\n"));
+});
+
+test("[F07] 视频/音频/3D：只读不再整块 inert；撤销栈按自己的改动记", () => {
+  const routes = ["advanced-routes/VideoTimelineRoute.tsx", "advanced-routes/AudioRoute.tsx", "advanced-routes/Model3DRoute.tsx"];
+  const bad = routes.filter((rel) => /\binert\b\s*=/.test(src(rel)));
+  assert.deepEqual(bad, [], `这些路由只读时仍整块 inert（连播放、转视角都点不了）：${bad.join(", ")}`);
+  assert.ok(has("video-editor/entity-undo.ts"), "缺「只撤自己」的撤销栈模块 entity-undo.ts");
+});
+
+// ------------------------------------------------------------------ F08 PPT、图表、图片、矢量图
+test("[F08] PPT/图表/图片：浮条与面板拿到只读；矢量图只读 inert、未保存时外部新版本出提示", () => {
+  for (const [name, rel, tag] of [
+    ["deck", "advanced-routes/DeckRoute.tsx", "DeckContextToolbar"],
+    ["chart", "advanced-routes/ChartRoute.tsx", "ChartContextToolbar"],
+    ["image", "advanced-routes/ImageRoute.tsx", "FabricImageContextToolbar"],
+  ]) {
+    const m = new RegExp(`<${tag}\\b([\\s\\S]*?)/>`).exec(src(rel));
+    assert.ok(m, `${name}: 找不到 <${tag}>`);
+    assert.match(m[1], /readOnly=/, `${name}: <${tag}> 没拿到 readOnly`);
+  }
+  const embedded = src("advanced-routes/EmbeddedRoute.tsx");
+  assert.match(embedded, /inert/, "矢量图只读时 iframe 要 inert");
+  const copy = readFileSync(join(UI_ROOT, "src/i18n/ui/messages/collab-visual-copy.ts"), "utf8");
+  for (const phrase of ["保存我的", "看新版本"]) assert.ok(copy.includes(phrase), `collab-visual-copy.ts 缺「${phrase}」`);
+});
+
+// ------------------------------------------------------------------ F09 文档评论
+test("[F09] 文档评论：评论、回复、解决进共享文档；只读不能写评论", () => {
+  assert.ok(has("doc-editors/richdoc-review/review-collab.ts"), "缺 review-collab.ts（评论共享层）");
+  assert.ok(has("doc-editors/richdoc-review/use-richdoc-review-collab.ts"), "缺 use-richdoc-review-collab.ts");
+  const route = src("advanced-routes/RichDocRoute.tsx");
+  assert.match(route, /useRichDocReviewCollab|use-richdoc-review-collab/, "RichDocRoute 没接评论协同");
+  const collabSrc = has("doc-editors/richdoc-review/review-collab.ts") ? src("doc-editors/richdoc-review/review-collab.ts") : "";
+  assert.match(collabSrc, /richdoc-review/, "评论字段名应是 oceanleo:richdoc-review");
+  assert.match(collabSrc, /replies/, "回复要按回复 id 存（两人同时回复两条都在）");
+});
+
+// ------------------------------------------------------------------ F10 表格结构
+test("[F10] 表格：老格式（按位置）读出的快照形状不变；远端结构变化不整张替换", () => {
+  const snapshot = {
+    id: "wb",
+    name: "B",
+    sheetOrder: ["s1"],
+    sheets: { s1: { id: "s1", name: "D", rowCount: 10, columnCount: 4, cellData: { 0: { 0: { v: "a", t: 1 } }, 7: { 2: { v: 9, t: 2 } } } } },
+  };
+  const back = gridFromEntities(gridToEntities(snapshot), null);
+  assert.equal(back.sheets.s1.cellData[7][2].v, 9, "往返后第 8 行 C 列的值丢了/错位");
+  // 老格式实体：键是「表!行!列」
+  const old = gridFromEntities({ order: ["s1!7!2"], entities: { "s1!7!2": { v: 9, t: 2 } }, meta: { sheetOrder: ["s1"], "sheet:s1": { id: "s1", name: "D", rowCount: 10, columnCount: 4 } } }, null);
+  assert.equal(old.sheets.s1.cellData[7][2].v, 9, "读不懂老格式");
+  // 远端结构变化走增量命令（collab-univer-ops），不是 port.replaceWorkbook 整张替换
+  const stage = src("doc-editors/GridUniverStage.tsx") + src("collab/adapters/grid.ts");
+  assert.match(stage, /collab-univer-ops|applyStructural|collabUniverOps/, "表格协同没有接增量结构命令（collab-univer-ops），远端结构变化只能整张替换");
+  assert.ok(has("doc-editors/grid-univer/collab-layout-model.ts"), "缺行列稳定 id 的模型（collab-layout-model.ts）");
+});
+
+// ------------------------------------------------------------------ 第 16 条：只读一致性（全部编辑器族）
+const SURFACE_FILES = {
+  richdoc: "advanced-routes/RichDocRoute.tsx",
+  grid: "doc-editors/GridUniverStage.tsx",
+  deck: "advanced-routes/DeckRoute.tsx",
+  image: "advanced-routes/ImageRoute.tsx",
+  chart: "advanced-routes/ChartRoute.tsx",
+  game: "game-editor/GameCodeStage.tsx",
+  model3d: "advanced-routes/Model3DRoute.tsx",
+  audio: "advanced-routes/AudioRoute.tsx",
+  pdf: "advanced-routes/PdfRoute.tsx",
+  video: "advanced-routes/VideoTimelineRoute.tsx",
+  workflow: "workflow-carrier/VideoCanvasStage.tsx",
+};
+
+// 指令面的构造在别的文件里的族：路由里没写只读，只要构造文件里写了也算挡住
+const SURFACE_BUILDERS = {
+  richdoc: ["doc-editors/doc-family-commands.ts"],
+  pdf: ["doc-editors/doc-family-commands.ts"],
+  chart: ["chart-editor/chart-command-surface.ts"],
+  image: ["image-editor/image-command-surface.ts"],
+  model3d: ["media-editors/model3d-command-surface.ts"],
+  audio: ["media-editors/audio-command-surface.ts", "media-editors/visual-command-kit.ts"],
+  video: ["video-editor/video-command-surface.ts", "media-editors/visual-command-kit.ts"],
+  game: ["game-editor/game-agent-gate.ts"],
+};
+const READ_ONLY_GUARD = /readonly:\s|readonlyNotice|\.readOnly\b|\breadOnly\b|\bviewOnly\b|guardPluginSurface|guardVisualCommands|editBlocked/;
+
+for (const [family, rel] of Object.entries(SURFACE_FILES)) {
+  test(`[只读/16] ${family}：Leo「帮我改」的指令入口在只读时被挡住`, () => {
+    const text = src(rel);
+    const calls = [...text.matchAll(/usePluginCommandSurface\s*\(/g)];
+    assert.ok(calls.length > 0, `${rel} 没有注册 Leo 指令入口`);
+    const builders = (SURFACE_BUILDERS[family] ?? []).filter(has).map(src).join("\n");
+    for (const call of calls) {
+      // 只看调用本身的实参（到下一个 `);` 为止）与这一族的指令面构造文件，不看周围别处的 readOnly
+      const rest = text.slice(call.index);
+      const around = rest.slice(0, Math.max(1, rest.indexOf(");") + 2));
+      assert.ok(
+        READ_ONLY_GUARD.test(around) || READ_ONLY_GUARD.test(builders),
+        `${family}（${rel}）：Leo 指令入口没有只读判断（路由与指令面构造文件都没有），只读用户让 Leo 改会直接改动作品`,
+      );
+    }
+  });
+}
+
+test("[只读/16] 浮条：每个 *ContextToolbar 拿到只读状态（传 prop，或组件自己读 editor 里的 collabReadOnly）", () => {
+  const files = ["RichDocRoute", "DeckRoute", "ChartRoute", "ImageRoute", "GridRoute", "GameRoute", "PdfRoute", "AudioRoute", "Model3DRoute", "VideoTimelineRoute"];
+  const bad = [];
+  for (const name of files) {
+    const rel = `advanced-routes/${name}.tsx`;
+    const text = src(rel);
+    for (const m of text.matchAll(/<([A-Za-z0-9]*ContextToolbar)\b([\s\S]*?)\/>/g)) {
+      if (/readOnly=|viewOnly=/.test(m[2])) continue;
+      // 组件自己读 editor 状态里的只读：看它的源文件
+      const imp = new RegExp(`import\\s*\\{[^}]*\\b${m[1]}\\b[^}]*\\}\\s*from\\s*"(\\.[^"]+)"`).exec(text);
+      const file = imp ? join(dirname(rel), imp[1]).replace(/\\/g, "/") : null;
+      const comp = file && (has(`${file}.tsx`) ? src(`${file}.tsx`) : "");
+      if (!comp || !/\b(readOnly|collabReadOnly|viewOnly)\b/.test(comp)) bad.push(`${name}: <${m[1]}> 既没传只读，组件本身也不读只读状态`);
+    }
+  }
+  assert.deepEqual(bad, [], bad.join("\n"));
+});
