@@ -96,6 +96,11 @@ function readReply(value: unknown): RichDocCommentReply | null {
   };
 }
 
+/** 读单条批注（协同字段里的远端数据也走这一条，同样的长度上限）。 */
+export function readReviewComment(value: unknown): RichDocCommentRecord | null {
+  return readComment(value);
+}
+
 function readComment(value: unknown): RichDocCommentRecord | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;

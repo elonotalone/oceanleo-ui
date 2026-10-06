@@ -12,7 +12,11 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
 import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
 import { RichDocControls } from "../doc-editors/RichDocControls";
-import { RichDocCommentRail } from "../doc-editors/richdoc-review/RichDocCommentRail";
+import {
+  RichDocCommentRail,
+  RichDocReviewReadOnlyContext,
+} from "../doc-editors/richdoc-review/RichDocCommentRail";
+import { useRichDocReviewCollab } from "../doc-editors/richdoc-review/use-richdoc-review-collab";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText } from "../doc-editors/doc-io";
@@ -127,9 +131,24 @@ function RichDocLegacyRoute({
     officeSource.item,
     siteId,
     officeSource.resourceFailed,
-    undefined,
+    // 协同里谁写的批注要看得出来：作者取房间里的自己（不传就是匿名 local，两个人分不清）。
+    collabRoom
+      ? {
+          author: String(collabRoom.self.id),
+          authorName: String(collabRoom.self.name || ""),
+        }
+      : undefined,
     { room: collabRoom },
   );
+  // 批注的内容、回复、已解决接进房间的共享评论字段（F09）；没有房间或房间被拒时什么都不做。
+  useRichDocReviewCollab({
+    review: editor.review,
+    editor: editor.editor,
+    room: collabRoom,
+    active: editor.collabPhase !== "off",
+    live: editor.collabPhase === "live",
+    readOnly: editor.collabReadOnly,
+  });
   const persistFlushRef = useRef<(() => Promise<{ ok: boolean }>) | null>(null);
   const [exportError, setExportError] = useState("");
   // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
@@ -442,20 +461,24 @@ function RichDocLegacyRoute({
             label: "批注",
             icon: "note",
             content: (
-              <RichDocCommentRail
-                comments={editor.review.comments}
-                changes={editor.review.changes}
-                activeCommentId={editor.review.activeCommentId}
-                trackChangesEnabled={editor.review.trackChangesEnabled}
-                onFocusComment={editor.review.focusComment}
-                onReply={editor.review.replyToComment}
-                onResolve={editor.review.resolveComment}
-                onRemove={editor.review.removeComment}
-                onAcceptChange={editor.review.acceptChange}
-                onRejectChange={editor.review.rejectChange}
-                onAcceptAll={editor.review.acceptAllChanges}
-                onRejectAll={editor.review.rejectAllChanges}
-              />
+              <RichDocReviewReadOnlyContext.Provider
+                value={editor.review.readOnly}
+              >
+                <RichDocCommentRail
+                  comments={editor.review.comments}
+                  changes={editor.review.changes}
+                  activeCommentId={editor.review.activeCommentId}
+                  trackChangesEnabled={editor.review.trackChangesEnabled}
+                  onFocusComment={editor.review.focusComment}
+                  onReply={editor.review.replyToComment}
+                  onResolve={editor.review.resolveComment}
+                  onRemove={editor.review.removeComment}
+                  onAcceptChange={editor.review.acceptChange}
+                  onRejectChange={editor.review.rejectChange}
+                  onAcceptAll={editor.review.acceptAllChanges}
+                  onRejectAll={editor.review.rejectAllChanges}
+                />
+              </RichDocReviewReadOnlyContext.Provider>
             ),
           },
         ],

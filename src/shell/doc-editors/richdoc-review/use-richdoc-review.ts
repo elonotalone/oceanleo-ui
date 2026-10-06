@@ -9,6 +9,11 @@
 // 为什么范围是每次现算而不是缓存：见 `review-anchors.ts` 的文件头。
 // `reconcileCommentSidecar` 在无变化时返回同一个引用，所以 `setSidecar`
 // 拿到相同引用时 React 会跳过重渲染——每次按键都会走这里，这一条是必需的。
+//
+// 多人同改（F09）：本地 sidecar 始终是共享评论的镜像。所有改动经 `commit`：同步更新
+// `sidecarRef`（不等渲染）再通知桥（`attachCollab`）写进共享；远端的变化经
+// `replaceSidecar` 落进来，不回写。保存时取的就是这份镜像，所以谁保存都包含双方的评论。
+// 桥没装（单人、离线、房间被拒）时，一切与改动前相同。
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,8 +57,18 @@ export interface UseRichDocReviewOptions {
   attribution: RichDocAttribution;
 }
 
+/** 多人同改的桥（`review-collab.ts` 的 `RichDocReviewCollab` 实现它）。 */
+export interface RichDocReviewCollabBridge {
+  onLocalCommit(prev: RichDocReviewSidecar, next: RichDocReviewSidecar): void;
+  adoptHydration(file: RichDocReviewSidecar): RichDocReviewSidecar;
+  /** 房间已同步完、共享评论可信。没同步完时不补做采用（会把还没到的共享当成「没播种」）。 */
+  ready(): boolean;
+}
+
 export interface RichDocReviewApi {
   sidecar: RichDocReviewSidecar;
+  /** 协同里没有写权限（只读、没同步完）：加评论、回复、解决、删除、修订全部不生效。 */
+  readOnly: boolean;
   /** 按正文位置排好序的批注，孤儿沉底。侧栏与正文的「位置对齐」就是它。 */
   comments: RichDocCommentView[];
   changes: RichDocChangeView[];
@@ -82,7 +97,13 @@ export interface RichDocReviewApi {
   deleteSelectionTracked: () => void;
   /** 载入工程档时把 sidecar 读回来。 */
   hydrateFromProject: (payload: unknown) => void;
+  /** 远端状态落到本地（与正文结算一次；不回写共享）。 */
   replaceSidecar: (next: RichDocReviewSidecar) => void;
+  /** 此刻的 sidecar（同步读，不等渲染）。 */
+  getSidecar: () => RichDocReviewSidecar;
+  /** 装上协同桥；返回卸载函数。 */
+  attachCollab: (bridge: RichDocReviewCollabBridge) => () => void;
+  setCollabReadOnly: (readOnly: boolean) => void;
 }
 
 export function useRichDocReview(
@@ -93,6 +114,36 @@ export function useRichDocReview(
     emptyReviewSidecar,
   );
   const [activeCommentId, setActiveCommentId] = useState("");
+
+  // `sidecarRef` 与 state 同步更新：协同桥与「同一轮里连点两下」都要读到最新值，
+  // 不能等下一次渲染。
+  const sidecarRef = useRef<RichDocReviewSidecar>(sidecar);
+  const editorRef = useRef<Editor | null>(editor);
+  editorRef.current = editor;
+  const bridgeRef = useRef<RichDocReviewCollabBridge | null>(null);
+  /** 最近一次从工程档读出来的 sidecar：桥晚于载入装上时要补做一次采用。 */
+  const projectSidecarRef = useRef<RichDocReviewSidecar | null>(null);
+  const readOnlyRef = useRef(false);
+  const [readOnly, setReadOnlyState] = useState(false);
+
+  /**
+   * 所有 sidecar 变化的唯一入口。`silent` = 不通知桥：远端落地、结算孤儿（它由正文推出，
+   * 不进共享）。
+   */
+  const commit = useCallback(
+    (
+      update: (current: RichDocReviewSidecar) => RichDocReviewSidecar,
+      silent = false,
+    ) => {
+      const prev = sidecarRef.current;
+      const next = update(prev);
+      if (next === prev) return;
+      sidecarRef.current = next;
+      setSidecar(next);
+      if (!silent) bridgeRef.current?.onLocalCommit(prev, next);
+    },
+    [],
+  );
 
   const attributionRef = useRef(attribution);
   useEffect(() => {
@@ -110,11 +161,11 @@ export function useRichDocReview(
   // 无变化时 `reconcileCommentSidecar` 返回同一个引用 ⇒ `setSidecar` 是空转。
   useEffect(() => {
     if (!editor) return;
-    setSidecar((current) => {
+    commit((current) => {
       if (!current.comments.length) return current;
       return reconcileCommentSidecar(editor.state.doc, current).sidecar;
-    });
-  }, [editor, revision]);
+    }, true);
+  }, [commit, editor, revision]);
 
   const comments = useMemo(() => {
     if (!editor) return [];
@@ -138,7 +189,7 @@ export function useRichDocReview(
 
   const addComment = useCallback(
     (body: string): string => {
-      if (!editor) return "";
+      if (!editor || readOnlyRef.current) return "";
       const { from, to } = editor.state.selection;
       // 批注必须锚在一段文字上。没有选区就没有锚点，建出来的当场是孤儿。
       if (to <= from) return "";
@@ -158,36 +209,44 @@ export function useRichDocReview(
       // 加锚点不是一次内容修改，不该被录成一处修订。
       markTrackingHandled(tr, "add-comment");
       editor.view.dispatch(tr);
-      setSidecar((current) => addCommentToSidecar(current, record));
+      commit((current) => addCommentToSidecar(current, record));
       setActiveCommentId(record.id);
       return record.id;
     },
-    [editor],
+    [commit, editor],
   );
 
-  const replyToComment = useCallback((commentId: string, body: string) => {
-    if (!body.trim()) return;
-    setSidecar((current) =>
-      addReplyToSidecar(current, commentId, {
-        ...attributionRef.current,
-        body,
-      }),
-    );
-  }, []);
+  const replyToComment = useCallback(
+    (commentId: string, body: string) => {
+      if (!body.trim() || readOnlyRef.current) return;
+      commit((current) =>
+        addReplyToSidecar(current, commentId, {
+          ...attributionRef.current,
+          body,
+        }),
+      );
+    },
+    [commit],
+  );
 
-  const resolveComment = useCallback((commentId: string, resolved: boolean) => {
-    setSidecar((current) =>
-      setCommentResolved(
-        current,
-        commentId,
-        resolved,
-        attributionRef.current.author,
-      ),
-    );
-  }, []);
+  const resolveComment = useCallback(
+    (commentId: string, resolved: boolean) => {
+      if (readOnlyRef.current) return;
+      commit((current) =>
+        setCommentResolved(
+          current,
+          commentId,
+          resolved,
+          attributionRef.current.author,
+        ),
+      );
+    },
+    [commit],
+  );
 
   const removeComment = useCallback(
     (commentId: string) => {
+      if (readOnlyRef.current) return;
       // 删批注 = 摘正文锚点 + 从 sidecar 移除，两件事在同一次交互里做完，
       // 否则会留下一个指不到任何记录的锚点（正文上一段莫名其妙的高亮）。
       if (editor) {
@@ -205,10 +264,10 @@ export function useRichDocReview(
           editor.view.dispatch(tr);
         }
       }
-      setSidecar((current) => removeCommentFromSidecar(current, commentId));
+      commit((current) => removeCommentFromSidecar(current, commentId));
       setActiveCommentId((current) => (current === commentId ? "" : current));
     },
-    [editor, sidecar],
+    [commit, editor, sidecar],
   );
 
   const focusComment = useCallback(
@@ -258,7 +317,7 @@ export function useRichDocReview(
 
   const acceptOne = useCallback(
     (changeId: string) => {
-      if (!editor) return;
+      if (!editor || readOnlyRef.current) return;
       const tr = editor.state.tr;
       if (acceptChange(tr, changeId)) editor.view.dispatch(tr);
     },
@@ -267,7 +326,7 @@ export function useRichDocReview(
 
   const rejectOne = useCallback(
     (changeId: string) => {
-      if (!editor) return;
+      if (!editor || readOnlyRef.current) return;
       const tr = editor.state.tr;
       if (rejectChange(tr, changeId)) editor.view.dispatch(tr);
     },
@@ -275,19 +334,19 @@ export function useRichDocReview(
   );
 
   const acceptEvery = useCallback(() => {
-    if (!editor) return;
+    if (!editor || readOnlyRef.current) return;
     const tr = editor.state.tr;
     if (acceptAllChanges(tr)) editor.view.dispatch(tr);
   }, [editor]);
 
   const rejectEvery = useCallback(() => {
-    if (!editor) return;
+    if (!editor || readOnlyRef.current) return;
     const tr = editor.state.tr;
     if (rejectAllChanges(tr)) editor.view.dispatch(tr);
   }, [editor]);
 
   const deleteSelectionTracked = useCallback(() => {
-    if (!editor) return;
+    if (!editor || readOnlyRef.current) return;
     const { from, to } = editor.state.selection;
     if (to <= from) return;
     const tr = editor.state.tr;
@@ -297,14 +356,65 @@ export function useRichDocReview(
   }, [editor]);
 
   const hydrateFromProject = useCallback((payload: unknown) => {
-    setSidecar(readReviewSidecar(payload));
+    const fromFile = readReviewSidecar(payload);
+    projectSidecarRef.current = fromFile;
+    // 协同里：共享评论已播种就以共享为准，没播种由这里灌一次；单人 = 工程档原样。
+    const next = bridgeRef.current
+      ? bridgeRef.current.adoptHydration(fromFile)
+      : fromFile;
+    sidecarRef.current = next;
+    setSidecar(next);
     setActiveCommentId("");
   }, []);
 
-  const setEnabled = useCallback((next: boolean) => {
-    // 只改开关。**既有标记一个都不动** —— 任务书点名最容易做错的一处，
-    // 这里没有、也不许有任何清标记的调用。
-    setSidecar((current) => setTrackChangesEnabled(current, next));
+  const setEnabled = useCallback(
+    (next: boolean) => {
+      if (readOnlyRef.current) return;
+      // 只改开关。**既有标记一个都不动** —— 任务书点名最容易做错的一处，
+      // 这里没有、也不许有任何清标记的调用。
+      commit((current) => setTrackChangesEnabled(current, next));
+    },
+    [commit],
+  );
+
+  const replaceSidecar = useCallback(
+    (next: RichDocReviewSidecar) => {
+      // 远端的批注可能比它的锚点先到：落地前与正文结算一次，
+      // 锚点随后到达时再由编辑后的结算摘掉孤儿标记。
+      commit(() => {
+        const instance = editorRef.current;
+        return instance && next.comments.length
+          ? reconcileCommentSidecar(instance.state.doc, next).sidecar
+          : next;
+      }, true);
+    },
+    [commit],
+  );
+
+  const getSidecar = useCallback(() => sidecarRef.current, []);
+
+  const attachCollab = useCallback(
+    (bridge: RichDocReviewCollabBridge) => {
+      bridgeRef.current = bridge;
+      const fromFile = projectSidecarRef.current;
+      // 工程档先于桥载入完：补做一次采用（正常顺序是桥先装上，这里是兜底）。
+      if (fromFile && bridge.ready()) {
+        const next = bridge.adoptHydration(fromFile);
+        if (next !== fromFile) {
+          sidecarRef.current = next;
+          setSidecar(next);
+        }
+      }
+      return () => {
+        if (bridgeRef.current === bridge) bridgeRef.current = null;
+      };
+    },
+    [],
+  );
+
+  const setCollabReadOnly = useCallback((next: boolean) => {
+    readOnlyRef.current = next;
+    setReadOnlyState(next);
   }, []);
 
   const orphanedCount = useMemo(
@@ -318,6 +428,7 @@ export function useRichDocReview(
 
   return {
     sidecar,
+    readOnly,
     comments,
     changes,
     trackChangesEnabled: sidecar.trackChangesEnabled,
@@ -339,6 +450,9 @@ export function useRichDocReview(
     rejectAllChanges: rejectEvery,
     deleteSelectionTracked,
     hydrateFromProject,
-    replaceSidecar: setSidecar,
+    replaceSidecar,
+    getSidecar,
+    attachCollab,
+    setCollabReadOnly,
   };
 }

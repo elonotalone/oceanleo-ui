@@ -17,7 +17,7 @@
 // 三枚 44 高的两字按钮横排约 190px，不需要折行。
 // ============================================================================
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { Button } from "../../../ui/Button";
@@ -72,6 +72,13 @@ function shortWhen(value: string): string {
   ).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
 }
 
+/**
+ * 协同里只读（只能看）：回复、解决、重开、删除、接受、拒绝全部灰掉，顶部给一句说明。
+ * 走 context 而不是 prop：侧栏的 12 个 prop 与引擎 API 逐条一一对应（接线表测试钉着），
+ * 「只读」不是引擎 API 的一个成员，而是房间给的状态。
+ */
+export const RichDocReviewReadOnlyContext = createContext(false);
+
 export interface RichDocCommentRailProps {
   comments: RichDocCommentView[];
   changes: RichDocChangeView[];
@@ -89,6 +96,7 @@ export interface RichDocCommentRailProps {
 
 export function RichDocCommentRail(props: RichDocCommentRailProps) {
   const tt = useUI();
+  const readOnly = useContext(RichDocReviewReadOnlyContext);
   useReviewStyles();
   const [replyingTo, setReplyingTo] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
@@ -162,6 +170,7 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
         >
           <Button
             variant="ghost"
+            disabled={readOnly}
             onClick={() => {
               setReplyingTo(replyingTo === view.id ? "" : view.id);
               setReplyDraft("");
@@ -171,18 +180,20 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
           </Button>
           <Button
             variant="ghost"
+            disabled={readOnly}
             onClick={() => props.onResolve(view.id, !view.resolved)}
           >
             {view.resolved ? tt("重开") : tt("解决")}
           </Button>
           <Button
             variant="ghost"
+            disabled={readOnly}
             onClick={() => props.onRemove(view.id)}
           >
             {tt("删除")}
           </Button>
         </div>
-        {replyingTo === view.id ? (
+        {replyingTo === view.id && !readOnly ? (
           <div
             className="oleo-review-reply-form"
             onClick={(event) => event.stopPropagation()}
@@ -194,7 +205,7 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
             />
             <Button
               variant="primary"
-              disabled={!replyDraft.trim()}
+              disabled={readOnly || !replyDraft.trim()}
               onClick={() => {
                 props.onReply(view.id, replyDraft);
                 setReplyDraft("");
@@ -211,6 +222,11 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
 
   return (
     <aside className="oleo-review-rail" aria-label={tt("批注与修订")}>
+      {readOnly ? (
+        <div className="oleo-review-rail__empty" role="note">
+          {tt("只读状态下可以看批注，但不能添加、回复、解决或删除。")}
+        </div>
+      ) : null}
       <div className="oleo-review-rail__group">
         <div className="oleo-review-rail__title">
           {tt("批注")}
@@ -248,10 +264,18 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
         {props.changes.length ? (
           <>
             <div className="oleo-review-card__actions">
-              <Button variant="secondary" onClick={props.onAcceptAll}>
+              <Button
+                variant="secondary"
+                disabled={readOnly}
+                onClick={props.onAcceptAll}
+              >
                 {tt("全部接受")}
               </Button>
-              <Button variant="secondary" onClick={props.onRejectAll}>
+              <Button
+                variant="secondary"
+                disabled={readOnly}
+                onClick={props.onRejectAll}
+              >
                 {tt("全部拒绝")}
               </Button>
             </div>
@@ -281,12 +305,14 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
                 <div className="oleo-review-card__actions">
                   <Button
                     variant="ghost"
+                    disabled={readOnly}
                     onClick={() => props.onAcceptChange(change.changeId)}
                   >
                     {tt("接受")}
                   </Button>
                   <Button
                     variant="ghost"
+                    disabled={readOnly}
                     onClick={() => props.onRejectChange(change.changeId)}
                   >
                     {tt("拒绝")}

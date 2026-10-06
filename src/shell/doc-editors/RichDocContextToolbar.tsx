@@ -37,6 +37,8 @@ export function RichDocContextToolbar({
 }) {
   const tt = useUI();
   const editor = state.editor;
+  // 协同里只读（viewer、专业模式锁在别人手里、还没同步完）：批注与修订的几项灰掉。
+  const reviewReadOnly = Boolean(state.collabReadOnly || state.review?.readOnly);
   useEditorState({
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
@@ -478,7 +480,9 @@ export function RichDocContextToolbar({
           icon: "note",
           // 没有选区时批注锚不上，建出来当场是孤儿。灰掉比建完再报错干脆，
           // 也就不需要 W14 设想的那条 notify 通道。
-          disabled: !(state.review?.hasSelection ?? false),
+          // 协同里只读的人能看批注，不能加（F09）。
+          disabled:
+            reviewReadOnly || !(state.review?.hasSelection ?? false),
           placement: "more",
           slot: "inspector",
           inspectorGroup: "richdoc-review",
@@ -489,6 +493,7 @@ export function RichDocContextToolbar({
           id: "richdoc.toggle-track-changes",
           kind: "toggle",
           value: state.review?.trackChangesEnabled ?? false,
+          disabled: reviewReadOnly,
           label: tt("修订模式"),
           icon: "case",
           placement: "more",
@@ -502,7 +507,8 @@ export function RichDocContextToolbar({
           kind: "action",
           label: tt("删除（留痕）"),
           icon: "case",
-          disabled: !(state.review?.hasSelection ?? false),
+          disabled:
+            reviewReadOnly || !(state.review?.hasSelection ?? false),
           placement: "more",
           slot: "inspector",
           inspectorGroup: "richdoc-review",
@@ -514,6 +520,7 @@ export function RichDocContextToolbar({
           kind: "action",
           label: tt("全部接受修订"),
           icon: "case",
+          disabled: reviewReadOnly,
           placement: "more",
           slot: "inspector",
           inspectorGroup: "richdoc-review",
@@ -525,6 +532,7 @@ export function RichDocContextToolbar({
           kind: "action",
           label: tt("全部拒绝修订"),
           icon: "case",
+          disabled: reviewReadOnly,
           placement: "more",
           slot: "inspector",
           inspectorGroup: "richdoc-review",
@@ -681,6 +689,7 @@ export function RichDocContextToolbar({
     state.editRevision,
     state.review?.hasSelection,
     state.review?.trackChangesEnabled,
+    reviewReadOnly,
     tt,
   ]);
 
@@ -881,22 +890,27 @@ export function RichDocContextToolbar({
       // --- 批注与修订（W14-request.md §1）---------------------------------
       // 审阅层自己开事务，这里不接 `chain`，纯转调 `RichDocReviewApi`。
       case "richdoc.add-comment": {
+        if (reviewReadOnly) break;
         const body = String(message.value || "").trim();
         if (body) state.review?.addComment(body);
         break;
       }
       case "richdoc.toggle-track-changes":
+        if (reviewReadOnly) break;
         // 现取当前值再取反。关掉修订模式**不会**清除既有标记：
         // 开关状态与「文档里有没有修订」是两件独立的事。
         state.review?.setTrackChangesEnabled(!state.review.trackChangesEnabled);
         break;
       case "richdoc.delete-tracked":
+        if (reviewReadOnly) break;
         state.review?.deleteSelectionTracked();
         break;
       case "richdoc.accept-all-changes":
+        if (reviewReadOnly) break;
         state.review?.acceptAllChanges();
         break;
       case "richdoc.reject-all-changes":
+        if (reviewReadOnly) break;
         state.review?.rejectAllChanges();
         break;
     }

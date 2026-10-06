@@ -20,6 +20,7 @@ const SOURCE = {
   adjustedGrid: "调整了表格的行列或格式",
   syncing: "正在与协作者同步…",
   readOnlyNow: "现在是只读状态，不能修改。",
+  reviewReadOnly: "只读状态下可以看批注，但不能添加、回复、解决或删除。",
 } as const;
 
 export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
@@ -39,6 +40,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Adjusted rows, columns or formatting",
     syncing: "Syncing with collaborators…",
     readOnlyNow: "This is read-only right now, so it can't be edited.",
+    reviewReadOnly: "In read-only mode you can read comments but can't add, reply to, resolve or delete them.",
   },
   de: {
     addedParas: "{n} Absätze hinzugefügt",
@@ -56,6 +58,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Zeilen, Spalten oder Formatierung angepasst",
     syncing: "Wird mit Mitwirkenden synchronisiert…",
     readOnlyNow: "Gerade nur lesbar – Änderungen sind nicht möglich.",
+    reviewReadOnly: "Im Lesemodus kannst du Kommentare lesen, aber nicht hinzufügen, beantworten, erledigen oder löschen.",
   },
   es: {
     addedParas: "Se añadieron {n} párrafos",
@@ -73,6 +76,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Se ajustaron filas, columnas o formato",
     syncing: "Sincronizando con los colaboradores…",
     readOnlyNow: "Ahora está en solo lectura y no se puede editar.",
+    reviewReadOnly: "En modo de solo lectura puedes ver los comentarios, pero no añadir, responder, resolver ni eliminar.",
   },
   "es-419": {
     addedParas: "Se agregaron {n} párrafos",
@@ -90,6 +94,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Se ajustaron filas, columnas o formato",
     syncing: "Sincronizando con los colaboradores…",
     readOnlyNow: "Ahora está en solo lectura y no se puede editar.",
+    reviewReadOnly: "En modo de solo lectura puedes ver los comentarios, pero no agregar, responder, resolver ni eliminar.",
   },
   fr: {
     addedParas: "{n} paragraphes ajoutés",
@@ -107,6 +112,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Lignes, colonnes ou mise en forme ajustées",
     syncing: "Synchronisation avec les collaborateurs…",
     readOnlyNow: "En lecture seule pour le moment : modification impossible.",
+    reviewReadOnly: "En lecture seule, vous pouvez lire les commentaires, mais pas en ajouter, y répondre, les résoudre ni les supprimer.",
   },
   it: {
     addedParas: "Aggiunti {n} paragrafi",
@@ -124,6 +130,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Regolati righe, colonne o formattazione",
     syncing: "Sincronizzazione con i collaboratori…",
     readOnlyNow: "Al momento è in sola lettura e non si può modificare.",
+    reviewReadOnly: "In sola lettura puoi leggere i commenti, ma non aggiungerli, rispondere, risolverli o eliminarli.",
   },
   "pt-BR": {
     addedParas: "{n} parágrafos adicionados",
@@ -141,6 +148,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Linhas, colunas ou formatação ajustadas",
     syncing: "Sincronizando com os colaboradores…",
     readOnlyNow: "Está somente para leitura agora e não pode ser editado.",
+    reviewReadOnly: "No modo somente leitura, você vê os comentários, mas não pode adicionar, responder, resolver nem excluir.",
   },
   "pt-PT": {
     addedParas: "{n} parágrafos adicionados",
@@ -158,6 +166,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Linhas, colunas ou formatação ajustadas",
     syncing: "A sincronizar com os colaboradores…",
     readOnlyNow: "Está só de leitura neste momento e não pode ser editado.",
+    reviewReadOnly: "No modo só de leitura, pode ver os comentários, mas não pode adicionar, responder, resolver nem eliminar.",
   },
   vi: {
     addedParas: "Đã thêm {n} đoạn",
@@ -175,6 +184,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Đã chỉnh hàng, cột hoặc định dạng",
     syncing: "Đang đồng bộ với người cộng tác…",
     readOnlyNow: "Hiện chỉ có thể xem, không thể chỉnh sửa.",
+    reviewReadOnly: "Ở chế độ chỉ xem, bạn đọc được bình luận nhưng không thể thêm, trả lời, đánh dấu đã xử lý hay xóa.",
   },
   tr: {
     addedParas: "{n} paragraf eklendi",
@@ -192,6 +202,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "Satırlar, sütunlar veya biçimlendirme ayarlandı",
     syncing: "Ortak çalışanlarla eşitleniyor…",
     readOnlyNow: "Şu anda salt okunur, düzenlenemez.",
+    reviewReadOnly: "Salt okunur modda yorumları okuyabilirsiniz ancak yorum ekleyemez, yanıtlayamaz, çözüldü olarak işaretleyemez veya silemezsiniz.",
   },
   "zh-TW": {
     addedParas: "新增 {n} 段",
@@ -209,6 +220,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "調整了表格的列、欄或格式",
     syncing: "正在與協作者同步…",
     readOnlyNow: "現在是唯讀狀態，無法修改。",
+    reviewReadOnly: "唯讀狀態下可以查看批註，但不能新增、回覆、標為已解決或刪除。",
   },
   ja: {
     addedParas: "{n} 段落を追加",
@@ -226,6 +238,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "行・列・書式を調整",
     syncing: "共同編集者と同期しています…",
     readOnlyNow: "現在は読み取り専用のため、編集できません。",
+    reviewReadOnly: "閲覧専用の間はコメントを読めますが、追加・返信・解決・削除はできません。",
   },
   ko: {
     addedParas: "{n}개 단락 추가",
@@ -243,6 +256,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "행, 열 또는 서식 조정",
     syncing: "공동 작업자와 동기화하는 중…",
     readOnlyNow: "지금은 읽기 전용이라 수정할 수 없어요.",
+    reviewReadOnly: "읽기 전용에서는 댓글을 볼 수 있지만 추가, 답글, 해결 처리, 삭제는 할 수 없습니다.",
   },
   ar: {
     addedParas: "تمت إضافة {n} فقرات",
@@ -260,6 +274,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "تم ضبط الصفوف أو الأعمدة أو التنسيق",
     syncing: "جارٍ المزامنة مع المتعاونين…",
     readOnlyNow: "المستند للقراءة فقط حاليًا ولا يمكن تعديله.",
+    reviewReadOnly: "في وضع القراءة فقط يمكنك الاطلاع على التعليقات، لكن لا يمكنك إضافتها أو الرد عليها أو وضع علامة تم الحل عليها أو حذفها.",
   },
   th: {
     addedParas: "เพิ่ม {n} ย่อหน้า",
@@ -277,6 +292,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "ปรับแถว คอลัมน์ หรือรูปแบบ",
     syncing: "กำลังซิงก์กับผู้ร่วมงาน…",
     readOnlyNow: "ตอนนี้เป็นโหมดอ่านอย่างเดียว แก้ไขไม่ได้",
+    reviewReadOnly: "ในโหมดอ่านอย่างเดียว คุณดูความคิดเห็นได้ แต่เพิ่ม ตอบกลับ ทำเครื่องหมายว่าแก้แล้ว หรือลบไม่ได้",
   },
   hi: {
     addedParas: "{n} अनुच्छेद जोड़े गए",
@@ -294,5 +310,6 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     adjustedGrid: "पंक्तियाँ, कॉलम या फ़ॉर्मैट समायोजित किए गए",
     syncing: "सहयोगियों के साथ सिंक हो रहा है…",
     readOnlyNow: "अभी यह केवल पढ़ने के लिए है, इसमें बदलाव नहीं किया जा सकता।",
+    reviewReadOnly: "केवल-पढ़ने वाले मोड में आप टिप्पणियाँ देख सकते हैं, लेकिन जोड़ नहीं सकते, जवाब नहीं दे सकते, हल नहीं कर सकते या हटा नहीं सकते।",
   },
 });
