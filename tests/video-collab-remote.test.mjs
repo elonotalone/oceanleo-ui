@@ -352,3 +352,49 @@ test("视频（只读）：能拖播放头、播放、缩放时间线；改内�
 });
 
 void document;
+
+test("视频（只读）：片段浮条的每个改动控件置灰并提示「你只能查看」，命令不生效", async () => {
+  const calls = [];
+  const toolbar = await import(
+    await compileModule("src/shell/video-editor/VideoTimelineContextToolbar.tsx", {
+      "../../i18n/ui/useUI": useUiStub,
+      "../SelectionToolbar": dataModule(`
+        export function SelectionToolbar({ context, onCommand }) {
+          globalThis.__videoSelection = { context, onCommand };
+          return null;
+        }
+      `),
+    })
+  );
+  const doc = DOC();
+  const located = { clip: doc.tracks[0].clips[0], track: doc.tracks[0] };
+  const state = new Proxy(
+    { selected: located },
+    {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        return typeof prop === "string" ? (...args) => calls.push([prop, ...args]) : undefined;
+      },
+    },
+  );
+  const readOnly = await mount(h(toolbar.VideoTimelineContextToolbar, { state, readOnly: true }));
+  try {
+    const { context, onCommand } = globalThis.__videoSelection;
+    assert.ok(context.controls.length >= 8, "素材片段的控件都在");
+    assert.ok(context.controls.every((control) => control.disabled === true), "每个控件都置灰");
+    assert.ok(context.controls.every((control) => control.unavailableReason === "你只能查看"));
+    for (const control of context.controls) onCommand({ selectionId: context.id, controlId: control.id, value: 1 });
+    assert.deepEqual(calls, [], "只读时命令不触发任何改动");
+  } finally {
+    await readOnly.unmount();
+  }
+  const editable = await mount(h(toolbar.VideoTimelineContextToolbar, { state, readOnly: false }));
+  try {
+    const { context, onCommand } = globalThis.__videoSelection;
+    assert.ok(context.controls.every((control) => control.disabled !== true), "非只读时控件可用");
+    onCommand({ selectionId: context.id, controlId: "delete" });
+    assert.ok(calls.some((call) => call[0] === "deleteSelectedClip"));
+  } finally {
+    await editable.unmount();
+  }
+});

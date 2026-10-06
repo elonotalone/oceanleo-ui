@@ -12,6 +12,7 @@ import {
   MIN_CLIP_MS,
   availableTimelineDurationMs,
 } from "./timeline-model";
+import { viewOnlyContext } from "../collab/adapters/visual-readonly";
 import type { VideoTimelineState } from "./use-video-timeline";
 import type { TimelineClip, TimelineTextStyle, TransitionType } from "./types";
 
@@ -22,9 +23,12 @@ function number(value: SelectionCommand["value"], fallback = 0): number {
 export function VideoTimelineContextToolbar({
   state,
   accent = "#4f46e5",
+  readOnly = false,
 }: {
   state: VideoTimelineState;
   accent?: string;
+  /** 只能查看：浮条里所有改片段的控件置灰并提示「你只能查看」，命令也不生效（播放 / 拖播放头在舞台上，不受影响）。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const located = state.selected;
@@ -345,13 +349,17 @@ export function VideoTimelineContextToolbar({
     };
   }, [located, tt]);
 
-  if (!context || !located) return null;
+  const viewContext = useMemo(
+    () => viewOnlyContext(context, readOnly, tt),
+    [context, readOnly, tt],
+  );
+  if (!viewContext || !located) return null;
   const { clip, track } = located;
   const patch = (next: Partial<TimelineClip>) => state.patchClip(clip.id, next);
   const patchStyle = (next: Partial<TimelineTextStyle>) =>
     patch({ style: { ...(clip.style || {}), ...next } });
   const command = (message: SelectionCommand) => {
-    if (message.selectionId !== clip.id) return;
+    if (readOnly || message.selectionId !== clip.id) return;
     const gesture = (mutate: () => void, commit: () => void) => {
       if (!message.transactionId) {
         commit();
@@ -496,7 +504,7 @@ export function VideoTimelineContextToolbar({
 
   return (
     <SelectionToolbar
-      context={context}
+      context={viewContext}
       onCommand={command}
       accent={accent}
     />

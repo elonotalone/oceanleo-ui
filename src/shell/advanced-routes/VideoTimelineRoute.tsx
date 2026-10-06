@@ -377,8 +377,8 @@ function VideoTimelineLegacyBody({
           content: <VideoTimelineControls state={view} accent={accent} readOnly={collabReadOnly} />,
         },
         contextToolbar: (
-          editor.sourceReady && !collabReadOnly ? (
-            <VideoTimelineContextToolbar state={view} accent={accent} />
+          editor.sourceReady ? (
+            <VideoTimelineContextToolbar state={view} accent={accent} readOnly={collabReadOnly} />
           ) : null
         ),
         history: {
