@@ -26,6 +26,16 @@ import {
   type ChartSaveResult,
 } from "../chart-editor/use-chart-workbench";
 import { downloadText } from "../doc-editors/doc-io";
+import {
+  CHART_COLLAB_ROOT,
+  chartFromEntities,
+  chartSelectionKeys,
+  chartSeriesKey,
+  chartToEntities,
+} from "../collab/adapters/chart";
+import { useEntityCollab } from "../collab/adapters/use-entity-collab";
+import { safeSelectionColor, useCollabSelections } from "../collab/adapters/visual-selection";
+import type { ChartDocumentV1 } from "../chart-editor/chart-schema";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -115,7 +125,47 @@ function ChartLegacyBody({
   enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
   sourceItem: AdvancedContentWorkbenchProps["item"];
 }) {
-  const editor = useChartWorkbench(item, siteId);
+  // 多人同改：编辑器先于房间创建（房间要读图表文档），所以「只读」「存成功」走 state / ref 回填。
+  const [collabReadOnly, setCollabReadOnly] = useState(false);
+  const collabSavedRef = useRef<(revisionId: string) => void>(() => undefined);
+  const collabOptions = useMemo(
+    () => ({
+      readOnly: collabReadOnly,
+      onSaved: (revisionId: string) => collabSavedRef.current(revisionId),
+    }),
+    [collabReadOnly],
+  );
+  const editor = useChartWorkbench(item, siteId, collabOptions);
+  const adoptingRevisionRef = useRef(false);
+  const collab = useEntityCollab<ChartDocumentV1>({
+    item: { artifactId: item.artifactId, title: item.title },
+    editorKind: "chart",
+    rootName: CHART_COLLAB_ROOT,
+    toEntities: chartToEntities,
+    fromEntities: chartFromEntities,
+    local: editor.loading || !editor.sourceReady ? null : editor.document,
+    applyRemote: (state) => {
+      editor.applyRemoteDocument(state);
+      if (adoptingRevisionRef.current) {
+        adoptingRevisionRef.current = false;
+        editor.markCollabSaved();
+      }
+    },
+    loadRevision: async (revisionId) => {
+      const loaded = await editor.adoptExternalRevision(String(item.artifactId || ""), revisionId);
+      adoptingRevisionRef.current = Boolean(loaded);
+      return loaded;
+    },
+  });
+  collabSavedRef.current = collab.markSaved;
+  useEffect(() => {
+    setCollabReadOnly(collab.readOnly);
+  }, [collab.readOnly]);
+  const selectionKeys = useMemo(
+    () => chartSelectionKeys(editor.activeSeriesId ? [editor.activeSeriesId] : []),
+    [editor.activeSeriesId],
+  );
+  const peerSelections = useCollabSelections(collab.room, selectionKeys);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const exportBusyRef = useRef(false);
@@ -407,15 +457,20 @@ function ChartLegacyBody({
               </p>
             </div>
           ) : (
-            <ChartStage editor={editor} />
+            <div className="relative h-full min-h-0">
+              <ChartStage editor={editor} />
+              <ChartPeerSelections editor={editor} peers={peerSelections} />
+            </div>
           ),
         status:
           exportError ||
           editor.error ||
           editor.notice ||
           (editor.loading ? "正在载入结构化图表…" : ""),
+        collab: collab.collab,
         persistence: {
-          dirty: editor.dirty,
+          // 房间里只有存档人自动保存；别的人改了也由存档人那边存
+          dirty: editor.dirty && collab.saveGate,
           editRevision: editor.editRevision,
           autoSave: true,
           flush: saveBeforeNewConversation,
@@ -431,5 +486,39 @@ function ChartLegacyBody({
       }}
       onClose={onClose}
     />
+  );
+}
+
+/**
+ * 多人同改：别人此刻选中了哪个系列。用他的颜色标一个小条（名字 · 系列名），画在图表左上角；
+ * 只是画出来，不拦鼠标。
+ */
+function ChartPeerSelections({
+  editor,
+  peers,
+}: {
+  editor: ReturnType<typeof useChartWorkbench>;
+  peers: ReadonlyArray<{ userId: string; name: string; color: string; keys: string[] }>;
+}) {
+  const names = new Map(editor.document.option.series.map((series) => [chartSeriesKey(series.id), series.name || series.id]));
+  const rows = peers.flatMap((peer) =>
+    peer.keys
+      .filter((key) => names.has(key))
+      .map((key) => ({ id: `${peer.userId}:${key}`, who: peer.name, color: safeSelectionColor(peer.color), series: String(names.get(key)) })),
+  );
+  if (!rows.length) return null;
+  return (
+    <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[60%] flex-col gap-1" aria-hidden="true">
+      {rows.map((row) => (
+        <span
+          key={row.id}
+          data-collab-peer-selection={row.id}
+          className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] leading-4 text-white shadow"
+          style={{ background: row.color }}
+        >
+          {row.who || "…"} · {row.series}
+        </span>
+      ))}
+    </div>
   );
 }

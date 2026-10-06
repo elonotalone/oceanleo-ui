@@ -35,7 +35,8 @@ import {
   type ChartSeries,
   type ChartXlsxIngestOptions,
 } from "./chart-schema";
-import { ChartDocumentHistory } from "./chart-history";
+import { chartRebase } from "../collab/adapters/chart";
+import { getArtifactItem } from "../artifact-client";
 import {
   CHART_EDITOR_ID,
   CHART_OPTION_FORMAT,
@@ -65,6 +66,53 @@ const EMPTY_DOCUMENT = normalizeChartDocument({
   yAxis: { type: "value" },
   series: [{ id: "series-1", name: "系列 1", type: "bar", data: [12, 20, 16] }],
 });
+
+const CHART_HISTORY_LIMIT = 80;
+
+const cloneChartDocument = (value: ChartDocumentV1): ChartDocumentV1 =>
+  JSON.parse(JSON.stringify(value)) as ChartDocumentV1;
+
+/**
+ * 与 `ChartDocumentHistory` 同一套语义（选中不进栈、每次成功修改记一份、上限 80），
+ * 多一个 `rebase`：别人的改动按系列 / 配置块套进栈里的旧版本，这样本人撤销不会把别人的改动一起撤掉。
+ */
+class CollabChartHistory {
+  #past: ChartDocumentV1[] = [];
+  #future: ChartDocumentV1[] = [];
+  get canUndo(): boolean {
+    return this.#past.length > 0;
+  }
+  get canRedo(): boolean {
+    return this.#future.length > 0;
+  }
+  reset(): void {
+    this.#past = [];
+    this.#future = [];
+  }
+  record(before: ChartDocumentV1, after: ChartDocumentV1): boolean {
+    if (JSON.stringify(before) === JSON.stringify(after)) return false;
+    this.#past = [...this.#past, cloneChartDocument(before)].slice(-CHART_HISTORY_LIMIT);
+    this.#future = [];
+    return true;
+  }
+  undo(current: ChartDocumentV1): ChartDocumentV1 | null {
+    const previous = this.#past.pop();
+    if (!previous) return null;
+    this.#future.push(cloneChartDocument(current));
+    return cloneChartDocument(previous);
+  }
+  redo(current: ChartDocumentV1): ChartDocumentV1 | null {
+    const next = this.#future.pop();
+    if (!next) return null;
+    this.#past.push(cloneChartDocument(current));
+    return cloneChartDocument(next);
+  }
+  rebase(base: ChartDocumentV1, remote: ChartDocumentV1): void {
+    const apply = (value: ChartDocumentV1) => chartRebase(value, base, remote);
+    this.#past = this.#past.map(apply);
+    this.#future = this.#future.map(apply);
+  }
+}
 
 export interface ChartWorkbenchState {
   document: ChartDocumentV1;
@@ -107,6 +155,14 @@ export interface ChartWorkbenchState {
   redo: () => void;
   save: () => Promise<ChartSaveResult | null>;
   restoreRecovery: (payload: unknown) => boolean;
+  /** 多人同改：浏览者、或别人在专业模式编辑——一切改文档的入口都不动作。 */
+  readOnly: boolean;
+  /** 多人同改：把别人的最新状态套进来；保住选中的系列、撤销栈（别人的改动同时套进栈里的旧版本）。 */
+  applyRemoteDocument: (next: ChartDocumentV1) => void;
+  /** 多人同改：别人保存了新版本（AI / 专业模式）。读出该版本并把「已保存的基线」换成它；读不到返回 null。 */
+  adoptExternalRevision: (artifactId: string, revisionId: string) => Promise<ChartDocumentV1 | null>;
+  /** 多人同改：这一版已被房间里的存档人落库，清掉「未保存」。 */
+  markCollabSaved: () => void;
 }
 
 export function chartEditorManifest(): EditorManifestV1 {
@@ -134,8 +190,14 @@ function chartArtifactInputIdentity(item: LibraryItem): string {
 export function useChartWorkbench(
   item: LibraryItem,
   siteId = "",
+  /** 多人同改：`readOnly` 只能看；`onSaved` 存成功后告诉房间这一版已落库（新版本 id）。 */
+  collab?: { readOnly?: boolean; onSaved?: (revisionId: string) => void },
 ): ChartWorkbenchState {
   const tt = useUI();
+  const readOnlyRef = useRef(Boolean(collab?.readOnly));
+  readOnlyRef.current = Boolean(collab?.readOnly);
+  const onSavedRef = useRef(collab?.onSaved);
+  onSavedRef.current = collab?.onSaved;
   // `tt` 是 i18n provider 所有的函数。它进下面那个装载 effect 的依赖，等于把 W13 在
   // `dcc0a7d` 里治掉的自锁循环重新装上引信：effect 体里写 state → 重渲染 → `tt` 换
   // 身份 → 再装载一次，`setLoading(false)` 永远轮不到。语言切换与「要不要重读这份
@@ -155,7 +217,7 @@ export function useChartWorkbench(
   const aliveRef = useRef(true);
   const revisionRef = useRef(0);
   const documentRef = useRef<ChartDocumentV1>(EMPTY_DOCUMENT);
-  const historyRef = useRef(new ChartDocumentHistory());
+  const historyRef = useRef(new CollabChartHistory());
   const saveBusyRef = useRef(false);
   const dirtyRef = useRef(false);
   const sourceReadyRef = useRef(false);
@@ -262,6 +324,7 @@ export function useChartWorkbench(
 
   const mutate = useCallback(
     (producer: (value: ChartDocumentV1) => ChartDocumentV1) => {
+      if (readOnlyRef.current) return;
       if (!sourceReadyRef.current) {
         setError(tt("图表源尚未成功载入；已阻止修改示例回退内容"));
         return;
@@ -305,11 +368,59 @@ export function useChartWorkbench(
     setError("");
   }, [setCarrierState, updateDirty]);
 
+  const applyRemoteDocument = useCallback(
+    (incoming: ChartDocumentV1) => {
+      if (!sourceReadyRef.current) return;
+      let next: ChartDocumentV1;
+      try {
+        next = normalizeChartDocument(incoming);
+      } catch {
+        return;
+      }
+      const before = documentRef.current;
+      if (JSON.stringify(before) === JSON.stringify(next)) return;
+      historyRef.current.rebase(before, next);
+      documentRef.current = next;
+      revisionRef.current += 1;
+      setDocument(next);
+      // 别人的改动让这份图表和库里最近一版不同：存档人要存
+      updateDirty(true);
+      setCarrierState("dirty");
+    },
+    [setCarrierState, updateDirty],
+  );
+
+  const adoptExternalRevision = useCallback(
+    async (artifactId: string, revisionId: string): Promise<ChartDocumentV1 | null> => {
+      try {
+        const result = await getArtifactItem(artifactId, revisionId);
+        const revisionItem = (result as { data?: LibraryItem }).data;
+        if (!revisionItem) return null;
+        const loaded = await loadChartDocument(revisionItem);
+        artifactHeadRef.current = revisionItem;
+        workingHeadUrlRef.current = String(
+          revisionItem.meta.editor_working_head_url || revisionItem.url || revisionItem.previewUrl || "",
+        );
+        return loaded;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const markCollabSaved = useCallback(() => {
+    updateDirty(false);
+    setCarrierState("ready");
+  }, [setCarrierState, updateDirty]);
+
   const undo = useCallback(() => {
+    if (readOnlyRef.current) return;
     applyHistoryDocument(historyRef.current.undo(documentRef.current));
   }, [applyHistoryDocument]);
 
   const redo = useCallback(() => {
+    if (readOnlyRef.current) return;
     applyHistoryDocument(historyRef.current.redo(documentRef.current));
   }, [applyHistoryDocument]);
 
@@ -399,6 +510,8 @@ export function useChartWorkbench(
         }
         setNotice("");
       }
+      const savedRevisionId = String(result.item?.revisionId || result.revisionId || result.versionId || "");
+      if (savedRevisionId) onSavedRef.current?.(savedRevisionId);
       return result;
     } catch (caught) {
       if (aliveRef.current) {
@@ -543,5 +656,9 @@ export function useChartWorkbench(
     redo,
     save,
     restoreRecovery,
+    readOnly: Boolean(collab?.readOnly),
+    applyRemoteDocument,
+    adoptExternalRevision,
+    markCollabSaved,
   };
 }

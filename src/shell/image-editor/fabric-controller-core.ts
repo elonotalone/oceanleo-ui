@@ -53,6 +53,7 @@ import {
   type ImageEdgeSnapResult,
   type ImageEdgeSnapState,
 } from "./editor-runtime";
+import { imageChangedObjects, imageRebaseSnapshot } from "../collab/adapters/image";
 import {
   imageObjectMutationAllowed,
   type ImageObjectMutationIntent,
@@ -79,6 +80,8 @@ export interface FabricControllerView {
 export interface ControllerCallbacks {
   onChange: (view: FabricControllerView) => void;
   onDocumentChange?: () => void;
+  /** 多人同改：别人的改动已逐对象套进画布（不是本地的一步编辑，不进撤销栈）。 */
+  onRemoteApplied?: () => void;
   onError: (message: string) => void;
 }
 
@@ -118,6 +121,10 @@ export class FabricEditorCore {
   protected restoring = false;
   protected destroyed = false;
   private gestureBase: EditorSnapshot | null = null;
+  /** 多人同改里只能看：画布不选中、不拖动，任何改动立刻回到上一个快照。 */
+  protected readOnly = false;
+  private remoteLatest: EditorSnapshot | null = null;
+  private remoteBusy = false;
   private panning = false;
   private imageEdgeSnapTarget: FabricObject | null = null;
   private imageEdgeSnapState: ImageEdgeSnapState = emptyImageEdgeSnapState();
@@ -579,7 +586,7 @@ export class FabricEditorCore {
 
   protected applyTool(): void {
     this.canvas.isDrawingMode =
-      this.activeTool === "draw" || this.activeTool === "erase";
+      !this.readOnly && (this.activeTool === "draw" || this.activeTool === "erase");
     this.canvas.selection = false;
     this.updateBrush();
     if (this.activeTool !== "select") this.canvas.discardActiveObject();
@@ -727,6 +734,10 @@ export class FabricEditorCore {
 
   protected commit(): void {
     if (this.destroyed || this.restoring) return;
+    if (this.readOnly) {
+      void this.restore(this.currentSnapshot, false);
+      return;
+    }
     ensureLayerOrder(this.canvas);
     const next = captureSnapshot(this.canvas, this.doc, this.canvasBackground);
     if (snapshotKey(next) === snapshotKey(this.currentSnapshot)) {
@@ -760,7 +771,7 @@ export class FabricEditorCore {
   }
 
   beginGesture(): boolean {
-    if (!this.destroyed && !this.restoring && !this.gestureBase) {
+    if (!this.destroyed && !this.restoring && !this.gestureBase && !this.readOnly) {
       this.gestureBase = this.currentSnapshot;
       return true;
     }
@@ -974,9 +985,199 @@ export class FabricEditorCore {
           this.callbacks.onDocumentChange?.();
         }
         this.emit();
+        if (this.remoteLatest && !this.remoteBusy && !this.destroyed) void this.drainRemote();
       }
     }
     return restored;
+  }
+
+  // ------------------------------------------------------------ 多人同改（work-chat W13）
+
+  /** 协同用的画布现状：不含裁剪框这类只在本机存在的临时对象。 */
+  getCollabSnapshot(): EditorSnapshot {
+    const snapshot = captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+    const objects = Array.isArray(snapshot.json.objects) ? (snapshot.json.objects as Array<Record<string, unknown>>) : [];
+    return {
+      ...snapshot,
+      json: { ...snapshot.json, objects: objects.filter((object) => object?.oceanleoRole !== "crop") },
+    };
+  }
+
+  /** 旧稿里没有稳定 id 的对象补上 id（协同按 id 对齐对象）。补 id 不算一次编辑。 */
+  ensureObjectIds(): boolean {
+    if (this.destroyed) return false;
+    let changed = false;
+    for (const object of this.canvas.getObjects()) {
+      if (!(object as EditorObject).oceanleoId) {
+        setEditorObjectId(object);
+        changed = true;
+      }
+    }
+    if (changed && !this.gestureBase) {
+      this.currentSnapshot = captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+    }
+    return changed;
+  }
+
+  setReadOnly(value: boolean): void {
+    if (this.destroyed || this.readOnly === value) return;
+    this.readOnly = value;
+    this.canvas.skipTargetFind = value;
+    if (value) {
+      this.canvas.discardActiveObject();
+      this.canvas.isDrawingMode = false;
+    } else {
+      this.applyTool();
+    }
+    this.canvas.requestRenderAll();
+    this.emit();
+  }
+
+  /** 别人的对象在画布上的外框（页面 CSS 像素，相对画布容器），用来描出他的选择。 */
+  collabObjectBoxes(ids: readonly string[]): Array<{ id: string; left: number; top: number; width: number; height: number }> {
+    if (this.destroyed || !ids.length) return [];
+    const wanted = new Set(ids);
+    const out: Array<{ id: string; left: number; top: number; width: number; height: number }> = [];
+    for (const object of this.canvas.getObjects()) {
+      const id = (object as EditorObject).oceanleoId;
+      if (!id || !wanted.has(id)) continue;
+      const rect = object.getBoundingRect();
+      out.push({ id, left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    }
+    return out;
+  }
+
+  /**
+   * 把别人的最新画布状态逐对象套进来：只替换变了的对象、只增删多出/少掉的对象，
+   * 不重建整张画布；你当前的选中、正在拖动 / 编辑文字的那个对象、撤销栈都留着
+   * （别人的改动同时套进撤销栈里的旧快照，你的撤销不会把他的改动一并撤掉）。
+   * 连着来的多次状态只处理最新一份。
+   */
+  applyRemote(remote: EditorSnapshot): Promise<boolean> {
+    if (this.destroyed) return Promise.resolve(false);
+    this.remoteLatest = remote;
+    if (this.remoteBusy || this.restoring) return Promise.resolve(false);
+    return this.drainRemote();
+  }
+
+  private async drainRemote(): Promise<boolean> {
+    this.remoteBusy = true;
+    let applied = false;
+    try {
+      while (this.remoteLatest && !this.destroyed && !this.restoring) {
+        const next = this.remoteLatest;
+        this.remoteLatest = null;
+        try {
+          applied = (await this.applyRemoteOnce(next)) || applied;
+        } catch (caught) {
+          this.callbacks.onError(caught instanceof Error ? caught.message : "同步别人的改动失败");
+        }
+      }
+    } finally {
+      this.remoteBusy = false;
+    }
+    return applied;
+  }
+
+  private async applyRemoteOnce(remote: EditorSnapshot): Promise<boolean> {
+    const before = this.getCollabSnapshot();
+    const delta = imageChangedObjects(before, remote);
+    const docChanged =
+      before.doc.width !== remote.doc.width ||
+      before.doc.height !== remote.doc.height ||
+      before.canvasBackground !== remote.canvasBackground;
+    const metaRest = (value: EditorSnapshot) => JSON.stringify({ ...value.json, objects: undefined });
+    if (!delta.changed.size && !delta.removed.size && !docChanged) {
+      // 只有顺序可能变了：下面统一按远端顺序理一遍
+      const ids = (value: EditorSnapshot) =>
+        ((value.json.objects as Array<Record<string, unknown>>) ?? []).map((object) => String(object.oceanleoId ?? ""));
+      if (ids(before).join("|") === ids(remote).join("|") && metaRest(before) === metaRest(remote)) return false;
+    }
+    const remoteObjects = ((remote.json.objects as Array<Record<string, unknown>>) ?? []).filter(
+      (object) => object && typeof object === "object",
+    );
+    const remoteById = new Map(remoteObjects.map((object) => [String(object.oceanleoId ?? ""), object]));
+    const gestureIds = this.gestureBase
+      ? new Set(
+          ((this.gestureBase.json.objects as Array<Record<string, unknown>>) ?? []).map((object) =>
+            String(object.oceanleoId ?? ""),
+          ),
+        )
+      : null;
+    const active = this.canvas.getActiveObject() as (EditorObject & { isEditing?: boolean }) | undefined;
+    // 本人此刻正在动的对象：别人对它的改动先不覆盖（本人这一手结束后会推送，后写者胜）
+    const heldId = active && (this.gestureBase || active.isEditing) ? active.oceanleoId : undefined;
+    const toBuild = [...delta.changed].filter((id) => remoteById.has(id) && id !== heldId);
+    const built = toBuild.length
+      ? await this.fabric.util.enlivenObjects<FabricObject>(toBuild.map((id) => remoteById.get(id) as Record<string, unknown>))
+      : [];
+    if (this.destroyed || this.restoring) {
+      built.forEach((object) => object.dispose?.());
+      this.remoteLatest = this.remoteLatest ?? remote;
+      return false;
+    }
+    const builtById = new Map<string, FabricObject>();
+    built.forEach((object, index) => builtById.set(toBuild[index], object));
+
+    // —— 下面同步完成，期间不会插进本地的提交 ——
+    this.restoring = true;
+    try {
+      const canvas = this.canvas;
+      const current = new Map<string, FabricObject>();
+      for (const object of canvas.getObjects()) {
+        const id = (object as EditorObject).oceanleoId;
+        if (id) current.set(id, object);
+      }
+      const activeId = active?.oceanleoId;
+      let reselect: FabricObject | null = null;
+      for (const id of delta.removed) {
+        const object = current.get(id);
+        if (!object || id === heldId) continue;
+        if (gestureIds && !gestureIds.has(id)) continue; // 本人这一手里新出现的对象
+        if ((object as EditorObject).oceanleoRole === "crop") continue;
+        if (id === activeId) canvas.discardActiveObject();
+        canvas.remove(object);
+        current.delete(id);
+      }
+      for (const [id, next] of builtById) {
+        const old = current.get(id);
+        this.styleObject(next);
+        if (old) {
+          const index = canvas.getObjects().indexOf(old);
+          canvas.remove(old);
+          canvas.insertAt(index < 0 ? canvas.getObjects().length : index, next);
+          if (id === activeId) reselect = next;
+        } else {
+          canvas.add(next);
+        }
+        current.set(id, next);
+      }
+      // 叠放顺序跟远端一致（本机独有的对象保持在原位）
+      remoteObjects.forEach((object, index) => {
+        const target = current.get(String(object.oceanleoId ?? ""));
+        if (target && canvas.getObjects()[index] !== target) canvas.moveObjectTo(target, index);
+      });
+      if (docChanged) {
+        this.doc = clampDocument(remote.doc.width, remote.doc.height);
+        this.canvasBackground = remote.canvasBackground;
+        this.zoom = fitViewport(canvas, this.doc, this.container);
+      }
+      restoreLockFlags(canvas);
+      ensureLayerOrder(canvas);
+      if (reselect) canvas.setActiveObject(reselect);
+      const rebase = (value: EditorSnapshot): EditorSnapshot =>
+        imageRebaseSnapshot(value, before, remote) as EditorSnapshot;
+      this.undoStack = this.undoStack.map(rebase);
+      this.redoStack = this.redoStack.map(rebase);
+      if (this.gestureBase) this.gestureBase = rebase(this.gestureBase);
+      else this.currentSnapshot = captureSnapshot(canvas, this.doc, this.canvasBackground);
+      canvas.requestRenderAll();
+    } finally {
+      this.restoring = false;
+    }
+    this.emit();
+    this.callbacks.onRemoteApplied?.();
+    return true;
   }
 
   getSnapshot(): EditorSnapshot {

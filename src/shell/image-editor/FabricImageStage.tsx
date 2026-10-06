@@ -7,6 +7,8 @@ import {
   preferredUnlockedImageLayerId,
 } from "./editor-runtime";
 import type { FabricImageEditorState } from "./types";
+import type { FabricImageCollabHandle } from "./use-fabric-image-editor";
+import { safeSelectionColor, type PeerSelection } from "../collab/adapters/visual-selection";
 
 type GeometryProbe = {
   x: number;
@@ -30,12 +32,17 @@ function finiteGeometry(
   return { x, y, width, height };
 }
 
+const NO_PEERS: readonly PeerSelection[] = [];
+
 export function FabricImageStage({
   editor,
   accent = "#4f46e5",
+  peers = NO_PEERS,
 }: {
-  editor: FabricImageEditorState;
+  editor: FabricImageEditorState & { collab?: FabricImageCollabHandle };
   accent?: string;
+  /** 多人同改：房间里别人的选择（颜色 + 名字），没有协同时不传。 */
+  peers?: readonly PeerSelection[];
 }) {
   const tt = useUI();
   const unlockedImageCount = countUnlockedImageLayers(editor.layers);
@@ -56,6 +63,7 @@ export function FabricImageStage({
       ) {
         return;
       }
+      if (editor.collab?.readOnly) return;
       const command = event.metaKey || event.ctrlKey;
       if (command && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -165,6 +173,7 @@ export function FabricImageStage({
         style={{ backgroundColor: "var(--advanced-stage-bg,#f4f1e8)" }}
       >
         <canvas ref={editor.stageCanvasRef} aria-label={tt("图片编辑画布")} />
+        <PeerSelectionBoxes editor={editor} peers={peers} />
         {editor.loading && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-[var(--advanced-stage-bg,#f4f1e8)]/90">
             <div className="text-center">
@@ -182,6 +191,62 @@ export function FabricImageStage({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 多人同改：别人选中的图层，用他的颜色描边并标名字。外框每次随画布重绘量一遍
+ * （缩放、别人移动了图层都会触发重画），只画不拦鼠标。
+ */
+function PeerSelectionBoxes({
+  editor,
+  peers,
+}: {
+  editor: FabricImageEditorState & { collab?: FabricImageCollabHandle };
+  peers: readonly PeerSelection[];
+}) {
+  const collab = editor.collab;
+  if (!collab || !peers.length) return null;
+  const ids = Array.from(new Set(peers.flatMap((peer) => peer.keys)));
+  const boxes = new Map(collab.objectBoxes(ids).map((box) => [box.id, box]));
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+      aria-hidden="true"
+      data-collab-peer-layer={collab.tick}
+      data-editor-zoom={Number(editor.zoom.toFixed(4))}
+    >
+      {peers.flatMap((peer, peerIndex) =>
+        peer.keys.flatMap((key) => {
+          const box = boxes.get(key);
+          if (!box) return [];
+          const color = safeSelectionColor(peer.color);
+          const grow = 2 + peerIndex * 3;
+          return [
+            <div
+              key={`${peer.userId}:${key}`}
+              data-collab-peer-selection={peer.userId}
+              className="absolute"
+              style={{
+                left: box.left - grow,
+                top: box.top - grow,
+                width: box.width + grow * 2,
+                height: box.height + grow * 2,
+                border: `2px solid ${color}`,
+                borderRadius: 2,
+              }}
+            >
+              <span
+                className="absolute left-[-2px] top-0 max-w-[12em] -translate-y-full overflow-hidden text-ellipsis whitespace-nowrap rounded-t px-1 text-[10px] leading-4 text-white"
+                style={{ background: color }}
+              >
+                {peer.name || "…"}
+              </span>
+            </div>,
+          ];
+        }),
+      )}
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { fetchMediaBlob } from "../../lib/media-proxy";
 import type { LibraryItem } from "../library-data";
 import type { WorkbenchMaterialPlacement } from "../workbench-material-provider";
 import { officeExtensionForItem } from "../workbench-routes";
+import { deckRebase } from "../collab/adapters/deck";
+import { getArtifactItem } from "../artifact-client";
 import {
   centeredDeckPlacement,
   clientPointToDeckPercent,
@@ -178,6 +180,17 @@ export interface DeckEditorState {
   exportPptx: () => Promise<void>;
   save: () => Promise<PersistedEditorVersion | null>;
   restoreRecovery: (payload: unknown, updatedAt?: number) => boolean;
+  /**
+   * 多人同改：把别人的最新状态套进编辑器。保住本人的选中页 / 选中元素、撤销栈（别人的改动同时套进栈里的旧快照，
+   * 本地撤销不会撤掉别人的改动）；本人正在拖动的那一手保留。不触发本地的「新一步」历史。
+   */
+  applyRemoteDeck: (next: DeckDocument) => void;
+  /** 多人同改：别人保存了新版本（AI / 专业模式）。读出该版本的文稿并把本地「已保存的基线」换成它；读不到返回 null。 */
+  adoptExternalRevision: (artifactId: string, revisionId: string) => Promise<DeckDocument | null>;
+  /** 多人同改里只能看（浏览者，或别人在专业模式编辑）：画布不让拖动、不进文字编辑。 */
+  readOnly: boolean;
+  /** 多人同改：这一版已被房间里的存档人落库，清掉「未保存」。 */
+  markCollabSaved: () => void;
 }
 
 /**
@@ -1649,8 +1662,17 @@ export function useDeckEditor(
   siteId = "",
   previewContent?: unknown,
   onSourceAccessError?: () => void,
+  /**
+   * 多人同改：`readOnly` = 浏览者、或别人在专业模式编辑——一切改文档的入口都不动作；
+   * `onSaved` = 存成功后告诉房间这一版已落库（新版本 id）。
+   */
+  collab?: { readOnly?: boolean; onSaved?: (revisionId: string) => void },
 ): DeckEditorState {
   const tt = useUI();
+  const readOnlyRef = useRef(Boolean(collab?.readOnly));
+  readOnlyRef.current = Boolean(collab?.readOnly);
+  const onSavedRef = useRef(collab?.onSaved);
+  onSavedRef.current = collab?.onSaved;
   const initial = useMemo(
     () => normalizeDeckDocument(initialSource(item, previewContent), item.title),
     [item, previewContent],
@@ -1672,6 +1694,8 @@ export function useDeckEditor(
   const deckRef = useRef(deck);
   const activeRef = useRef(activeId);
   const selectedElementRef = useRef(selectedElementId);
+  const textEditingRef = useRef(textEditingElementId);
+  textEditingRef.current = textEditingElementId;
   const undoRef = useRef<Snapshot[]>([]);
   const redoRef = useRef<Snapshot[]>([]);
   const gestureRef = useRef<Snapshot | null>(null);
@@ -1824,6 +1848,7 @@ export function useDeckEditor(
 
   const commit = useCallback(
     (update: (current: DeckDocument) => DeckDocument, nextActive?: string) => {
+      if (readOnlyRef.current) return false;
       const base = snapshot();
       const next = update(cloneDeckDocument(base.deck));
       const resolvedActive = nextActive || base.activeId || next.slides[0].id;
@@ -1853,6 +1878,7 @@ export function useDeckEditor(
 
   const applyTransient = useCallback(
     (update: (current: DeckDocument) => DeckDocument) => {
+      if (readOnlyRef.current) return false;
       const current = deckRef.current;
       const next = update(cloneDeckDocument(current));
       if (deckDocumentsEqual(next, current)) return false;
@@ -1864,6 +1890,7 @@ export function useDeckEditor(
     [],
   );
   const beginGesture = useCallback(() => {
+    if (readOnlyRef.current) return;
     if (!gestureRef.current) gestureRef.current = snapshot();
   }, [snapshot]);
   const endGesture = useCallback(() => {
@@ -2083,6 +2110,7 @@ export function useDeckEditor(
   }, []);
 
   const beginTextEditing = useCallback((elementId: string) => {
+    if (readOnlyRef.current) return;
     if (!elementId) return;
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
@@ -2425,7 +2453,75 @@ export function useDeckEditor(
     patchElement(current.id, { locked: !current.locked });
   }, [patchElement]);
 
+  const applyRemoteDeck = useCallback((incoming: DeckDocument) => {
+    const current = deckRef.current;
+    const gesture = gestureRef.current;
+    // 没有进行中的手势时，当前文稿就是「应用前」的基线；拖动中以手势开始时的文稿为基线，
+    // 这样别人的变化 = 基线 → incoming，本人这一手 = 基线 → 此刻。
+    const before = gesture ? gesture.deck : current;
+    const remote = cloneDeckDocument(incoming);
+    const next = gesture ? deckRebase(remote, gesture.deck, current) : remote;
+    if (deckDocumentsEqual(next, current)) return;
+    const rebaseSnapshot = (value: Snapshot): Snapshot => {
+      const rebased = deckRebase(value.deck, before, remote);
+      return rebased === value.deck ? value : { ...value, deck: rebased };
+    };
+    undoRef.current = undoRef.current.map(rebaseSnapshot);
+    redoRef.current = redoRef.current.map(rebaseSnapshot);
+    if (gesture) gestureRef.current = rebaseSnapshot(gesture);
+    // 选中页：还在就留着；被别人删了就落到原来位置附近的页
+    let active = activeRef.current;
+    if (!next.slides.some((slide) => slide.id === active)) {
+      const oldIndex = current.slides.findIndex((slide) => slide.id === active);
+      active = next.slides[Math.min(Math.max(oldIndex, 0), next.slides.length - 1)]?.id || next.slides[0].id;
+    }
+    const activeSlide = next.slides.find((slide) => slide.id === active);
+    const selected = activeSlide?.elements.some((element) => element.id === selectedElementRef.current)
+      ? selectedElementRef.current
+      : "";
+    deckRef.current = next;
+    activeRef.current = active;
+    selectedElementRef.current = selected;
+    setDeckState(next);
+    setActiveId(active);
+    setSelectedElementId(selected);
+    if (
+      textEditingRef.current &&
+      !activeSlide?.elements.some((element) => element.id === textEditingRef.current)
+    ) {
+      setTextEditingElementId("");
+    }
+    // 别人的改动让这份文稿和库里最近一版不同：存档人要存，所以记一次未保存（只在存档人那里真的会存）。
+    revisionRef.current += 1;
+    setDirty(true);
+    setHistoryRevision((value) => value + 1);
+  }, []);
+
+  const adoptExternalRevision = useCallback(
+    async (artifactId: string, revisionId: string): Promise<DeckDocument | null> => {
+      try {
+        const result = await getArtifactItem(artifactId, revisionId);
+        const revisionItem = (result as { data?: LibraryItem }).data;
+        if (!revisionItem) return null;
+        const loaded = await loadDeck(revisionItem, undefined, undefined, undefined);
+        persistedItemRef.current = revisionItem;
+        workingHeadUrlRef.current = deckProjectUrlFor(revisionItem) || revisionItem.previewUrl || "";
+        preparedSaveRef.current = null;
+        draftRef.current = loaded.draft;
+        return loaded.deck;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const markCollabSaved = useCallback(() => {
+    setDirty(false);
+  }, []);
+
   const undo = useCallback(() => {
+    if (readOnlyRef.current) return;
     const previous = undoRef.current.pop();
     if (!previous) return;
     redoRef.current.push(snapshot());
@@ -2436,6 +2532,7 @@ export function useDeckEditor(
   }, [applySnapshot, snapshot]);
 
   const redo = useCallback(() => {
+    if (readOnlyRef.current) return;
     const next = redoRef.current.pop();
     if (!next) return;
     undoRef.current.push(snapshot());
@@ -2613,6 +2710,8 @@ export function useDeckEditor(
         }
         setNotice("");
       }
+      const savedRevisionId = String(handoff.revisionId || result.versionId || "");
+      if (savedRevisionId) onSavedRef.current?.(savedRevisionId);
       return {
             url: result.url,
             versionId: result.versionId,
@@ -2712,6 +2811,10 @@ export function useDeckEditor(
       restoredRevision: serverDraftRef.current ? (typeof serverDraftRef.current.editRevision === "number" ? serverDraftRef.current.editRevision : 1) : undefined,
       bindFlush: bindDraftFlush,
     },
+    applyRemoteDeck,
+    adoptExternalRevision,
+    markCollabSaved,
+    readOnly: Boolean(collab?.readOnly),
     flushBeforeExport,
     persistInBackground: () => {
       // Reuse the host controller (and its session commit) when draft saving is

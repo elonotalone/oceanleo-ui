@@ -72,6 +72,8 @@ import {
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { usePluginPage } from "../plugin-chrome/plugin-page-store";
+import { useUI } from "../../i18n/ui/useUI";
+import { useVectorCollab } from "../collab/adapters/use-vector-collab";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 import { VideoCanvasRoute } from "./VideoCanvasRoute";
 
@@ -426,6 +428,10 @@ export function EmbeddedRoute({
   const [designHandshakeError, setDesignHandshakeError] = useState("");
   const designFrameContainerRef = useRef<HTMLDivElement>(null);
   const hostedMediaType = route.type === "embed" ? route.mediaType : null;
+  // 矢量图（嵌入画布里 artifactType = vector_image）：多人「一次一个人」。网站与流程图不开房间。
+  const tt = useUI();
+  const vectorImage = hostedMediaType === "canvas" && item.artifactType === "vector_image";
+  const vectorCollab = useVectorCollab({ enabled: vectorImage, item });
   const embeddedEditorBase = route.type === "embed" ? route.base : "";
   const embeddedAdapterId =
     hostedMediaType === "website"
@@ -632,7 +638,8 @@ export function EmbeddedRoute({
       !designSourceBinding ||
       !isDurableLibraryItem(item)
     ) {
-      return item;
+      // 矢量图：编辑者保存后，别人这里换上他保存的那个版本
+      return vectorImage && vectorCollab.revisionItem ? vectorCollab.revisionItem : item;
     }
     const scene = item.artifact.scene;
     const source = designSourceBinding.rendition;
@@ -667,7 +674,7 @@ export function EmbeddedRoute({
         requires_typed_artifact_commit: true,
       },
     };
-  }, [designComposite, designSourceBinding, item]);
+  }, [designComposite, designSourceBinding, item, vectorImage, vectorCollab.revisionItem]);
   useEffect(() => {
     setRemoteViewport(null);
     setViewportCommand(null);
@@ -1192,6 +1199,9 @@ export function EmbeddedRoute({
   );
   const handleSaveResult = useCallback(
     (result: { ok: boolean; saveId?: string; item?: LibraryItem }) => {
+      if (vectorImage && result.ok && result.item?.revisionId) {
+        vectorCollab.markSaved(String(result.item.revisionId));
+      }
       if (
         saveResolverRef.current &&
         result.saveId === pendingSaveIdRef.current
@@ -1203,7 +1213,7 @@ export function EmbeddedRoute({
         );
       }
     },
-    [settleSave],
+    [settleSave, vectorImage, vectorCollab.markSaved],
   );
   const requestEditorClose = useCallback(() => {
     setCloseRequestRevision((value) => value + 1);
@@ -1489,6 +1499,7 @@ export function EmbeddedRoute({
       accent={accent}
       adapter={{
         id: embeddedAdapterId,
+        collab: vectorImage ? vectorCollab.collab : undefined,
         label: editorToolLabel(route),
         mode: {
           current: editorMode,
@@ -1543,7 +1554,7 @@ export function EmbeddedRoute({
                   designSourceBinding?.rendition.digest || ""
                 }:${designSourceBinding?.handshakeId || ""}:${
                   item.artifact?.scene?.closureDigest || ""
-                }`}
+                }${vectorImage ? `:v${vectorCollab.revisionNonce}` : ""}`}
                 item={embeddedItem}
                 editorBase={route.base}
                 mediaType={route.mediaType}
@@ -1573,6 +1584,19 @@ export function EmbeddedRoute({
                 onSaveResult={handleSaveResult}
                 saveRequestId={saveRequestId}
               />
+              {vectorImage && vectorCollab.readOnly && (
+                <VectorReadOnlyCover
+                  message={
+                    vectorCollab.viewer
+                      ? tt("你只有查看权限，这张矢量图不能编辑。")
+                      : vectorCollab.holderName
+                        ? tt("{name} 正在编辑这张矢量图，你先看着；他每次保存，这里都会更新。", {
+                            name: vectorCollab.holderName,
+                          })
+                        : tt("正在争取编辑权…")
+                  }
+                />
+              )}
               {designComposite && !designHandshakeReady && (
                 <div
                   className="absolute inset-0 z-[27] grid place-items-center bg-[var(--surface,#f5f5f4)]/95 p-6 text-center backdrop-blur-sm"
@@ -1640,12 +1664,13 @@ export function EmbeddedRoute({
         },
         actions: remoteActions,
         persistence: {
-          dirty,
+          // 矢量图：只有持有编辑权的人自动保存
+          dirty: dirty && (!vectorImage || vectorCollab.canSave),
           editRevision,
           // Website Apply must stay clickable until the user/harness applies the
           // session draft; debounce autosave previously save→auto-Applied first.
           // Pro mode uses this same flush. Do not add a second confirmation.
-          autoSave: hostedMediaType !== "website",
+          autoSave: hostedMediaType !== "website" && (!vectorImage || vectorCollab.canSave),
           flush:
             carrierOpenRejection || carrierSaveRejection
               ? async () => ({
@@ -1729,5 +1754,30 @@ export function EmbeddedRoute({
       }}
       onClose={onClose}
     />
+  );
+}
+
+/**
+ * 矢量图只读时盖在嵌入画布上的透明遮罩：点不进画布，焦点从画布里移出来，顶上一条人话提示。
+ * 不新增任何 postMessage 动词，也不改 iframe 本身。
+ */
+function VectorReadOnlyCover({ message }: { message: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+  }, []);
+  return (
+    <div
+      ref={ref}
+      tabIndex={-1}
+      role="status"
+      data-vector-readonly="true"
+      className="absolute inset-0 z-[26] cursor-not-allowed"
+      onKeyDownCapture={(event) => event.stopPropagation()}
+    >
+      <p className="pointer-events-none absolute left-1/2 top-3 max-w-[90%] -translate-x-1/2 rounded-lg bg-[var(--card,#fff)]/95 px-3 py-2 text-center text-[11px] text-[var(--muted,#78716c)] shadow-sm">
+        {message}
+      </p>
+    </div>
   );
 }

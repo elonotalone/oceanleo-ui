@@ -11,7 +11,8 @@
 //
 // 纯函数，不依赖 React / 浏览器 / yjs；React 部分在 src/shell/replay/work/frames/chart.tsx。
 import type { ChartDocumentV1 } from "../../chart-editor/chart-schema";
-import { normalizeChartDocument } from "../../chart-editor/chart-schema";
+// 注意：本文件不 import chart-schema 的运行时代码（只要类型）。ChartRoute 会 import 这里，而 `chart-next-wiring` 一类测试用桩替换 chart-schema；
+// 版本 JSON 的归一化由调用方传入（回放画法传 `normalizeChartDocument`）。
 
 export const CHART_COLLAB_ROOT = "oceanleo:chart";
 
@@ -215,10 +216,13 @@ export function chartFromY(doc: unknown): ChartDocumentV1 | null {
   return state.order.length || state.entities[CHART_BLOCKS.option] ? chartFromEntities(state, null) : null;
 }
 
-/** 版本 JSON → 快照（用图表编辑器自己的归一化；读不懂返回 null）。 */
-export function chartFromRevision(json: unknown): ChartDocumentV1 | null {
+/** 版本 JSON → 快照（`normalize` = 图表编辑器自己的 `normalizeChartDocument`；读不懂返回 null）。 */
+export function chartFromRevision(
+  json: unknown,
+  normalize: (value: unknown) => ChartDocumentV1,
+): ChartDocumentV1 | null {
   try {
-    return normalizeChartDocument(json);
+    return normalize(json);
   } catch {
     return null;
   }

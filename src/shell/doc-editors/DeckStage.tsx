@@ -29,8 +29,11 @@ import {
 } from "./DeckElementContent";
 import {
   DeckElementSelectionChrome,
+  DeckPeerSelectionMarks,
   type DeckResizeHandleSpec,
 } from "./DeckElementSelectionChrome";
+import { deckElementKey } from "../collab/adapters/deck";
+import { peersSelecting, type PeerSelection } from "../collab/adapters/visual-selection";
 import { DeckLegacySlideLayout } from "./DeckLegacySlideLayout";
 import { DeckSlideThumbnail } from "./DeckSlideThumbnail";
 import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
@@ -56,6 +59,8 @@ interface ElementInteraction {
   preview: Partial<DeckElement>;
 }
 
+const NO_PEERS: readonly PeerSelection[] = [];
+
 const RESIZE_HANDLES: DeckResizeHandleSpec[] = [
   { id: "nw", className: "-left-1.5 -top-1.5", cursor: "nwse-resize" },
   { id: "n", className: "left-1/2 -top-1.5 -translate-x-1/2", cursor: "ns-resize" },
@@ -71,10 +76,12 @@ function PositionedSlideCanvas({
   editor,
   activeTool,
   inkStyle,
+  peers,
 }: {
   editor: DeckEditorState;
   activeTool: string;
   inkStyle: DeckInkStyle;
+  peers: readonly PeerSelection[];
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [interaction, setInteraction] = useState<ElementInteraction | null>(
@@ -105,13 +112,14 @@ function PositionedSlideCanvas({
   // Surface a discoverable editable text target as soon as the slide opens so
   // production acceptance (and users) are not stuck on image-only selection chrome.
   useEffect(() => {
-    if (activeTool === "draw") return;
+    if (activeTool === "draw" || editor.readOnly) return;
     if (!primaryEditableText) return;
     if (textSurfaceActivatedForSlide.current === slide.id) return;
     textSurfaceActivatedForSlide.current = slide.id;
     editor.beginTextEditing(primaryEditableText.id);
   }, [
     activeTool,
+    editor.readOnly,
     editor.beginTextEditing,
     primaryEditableText,
     slide.id,
@@ -238,7 +246,8 @@ function PositionedSlideCanvas({
                 if (
                   editing ||
                   !deckTextEditKeyStartsEditing(event.key) ||
-                  !textEditability.textBearing
+                  !textEditability.textBearing ||
+                  editor.readOnly
                 ) {
                   return;
                 }
@@ -249,6 +258,7 @@ function PositionedSlideCanvas({
               onPointerDown={(event) => {
                 editor.selectElement(element.id);
                 event.currentTarget.focus({ preventScroll: true });
+                if (editor.readOnly) return;
                 if (event.detail >= 2 && textEditability.editable) {
                   event.preventDefault();
                   event.stopPropagation();
@@ -260,6 +270,7 @@ function PositionedSlideCanvas({
               onDoubleClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
+                if (editor.readOnly) return;
                 if (textEditability.editable) {
                   beginTextEditing(element.id);
                   return;
@@ -336,7 +347,10 @@ function PositionedSlideCanvas({
                   }}
                 />
               </div>
-              {selected && (
+              <DeckPeerSelectionMarks
+                peers={peersSelecting(peers, deckElementKey(slide.id, element.id))}
+              />
+              {selected && !editor.readOnly && (
                 <>
                   <DeckElementSelectionChrome
                     element={element}
@@ -380,10 +394,12 @@ function SlideCanvas({
   editor,
   activeTool,
   inkStyle,
+  peers,
 }: {
   editor: DeckEditorState;
   activeTool: string;
   inkStyle: DeckInkStyle;
+  peers: readonly PeerSelection[];
 }) {
   const slide = editor.activeSlide;
 
@@ -393,6 +409,7 @@ function SlideCanvas({
         editor={editor}
         activeTool={activeTool}
         inkStyle={inkStyle}
+        peers={peers}
       />
     );
   }
@@ -411,6 +428,7 @@ export function DeckStage({
     width: 4,
     opacity: 1,
   },
+  peers = NO_PEERS,
 }: {
   editor: DeckEditorState;
   accent?: string;
@@ -418,6 +436,8 @@ export function DeckStage({
   onZoomChange?: (value: number) => void;
   activeTool?: string;
   inkStyle?: DeckInkStyle;
+  /** 多人同改：房间里别人的选择（颜色 + 名字），没有协同时不传。 */
+  peers?: readonly PeerSelection[];
 }) {
   const tt = useUI();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -543,6 +563,7 @@ export function DeckStage({
               editor={editor}
               activeTool={activeTool}
               inkStyle={inkStyle}
+              peers={peers}
             />
           </div>
         </DeckPreviewLayout>

@@ -62,6 +62,14 @@ import {
 } from "../doc-editors/use-deck-editor";
 import { useUI } from "../../i18n/ui/useUI";
 import { useOfficeArtifactSource } from "../office-editor";
+import {
+  DECK_COLLAB_ROOT,
+  deckElementKey,
+  deckFromEntities,
+  deckToEntities,
+} from "../collab/adapters/deck";
+import { useEntityCollab } from "../collab/adapters/use-entity-collab";
+import { useCollabSelections } from "../collab/adapters/visual-selection";
 import { editorToolLabel } from "../workbench-routes";
 import { buildDeckCommandSurface } from "../doc-editors/doc-family-commands";
 import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
@@ -130,12 +138,59 @@ function DeckLegacyRoute({
   const proSaved = useProSavedRevision(item.key || item.id);
   const workingItem = proSaved ?? item;
   const officeSource = useOfficeArtifactSource(workingItem);
+  // 多人同改：编辑器先于房间创建（房间要读编辑器的文稿），所以「只读」「存成功」两件事走 state / ref 回填。
+  const [collabReadOnly, setCollabReadOnly] = useState(false);
+  const collabSavedRef = useRef<(revisionId: string) => void>(() => undefined);
+  const collabOptions = useMemo(
+    () => ({
+      readOnly: collabReadOnly,
+      onSaved: (revisionId: string) => collabSavedRef.current(revisionId),
+    }),
+    [collabReadOnly],
+  );
   const editor = useDeckEditor(
     officeSource.item,
     siteId,
     previewContent,
     officeSource.resourceFailed,
+    collabOptions,
   );
+  const adoptingRevisionRef = useRef(false);
+  const collab = useEntityCollab({
+    item: { artifactId: item.artifactId, title: item.title },
+    editorKind: "deck",
+    rootName: DECK_COLLAB_ROOT,
+    toEntities: deckToEntities,
+    fromEntities: deckFromEntities,
+    local: editor.loading || editor.sourceFailed || officeSource.loading ? null : editor.deck,
+    applyRemote: (state) => {
+      editor.applyRemoteDeck(state);
+      // 外部新版本已经落库：别再存一份重复的
+      if (adoptingRevisionRef.current) {
+        adoptingRevisionRef.current = false;
+        editor.markCollabSaved();
+      }
+    },
+    loadRevision: async (revisionId) => {
+      const deck = await editor.adoptExternalRevision(String(item.artifactId || ""), revisionId);
+      adoptingRevisionRef.current = Boolean(deck);
+      return deck;
+    },
+  });
+  collabSavedRef.current = collab.markSaved;
+  useEffect(() => {
+    setCollabReadOnly(collab.readOnly);
+  }, [collab.readOnly]);
+  const selectionKeys = useMemo(
+    () => [
+      editor.activeSlide.id,
+      ...(editor.selectedElementId
+        ? [deckElementKey(editor.activeSlide.id, editor.selectedElementId)]
+        : []),
+    ],
+    [editor.activeSlide.id, editor.selectedElementId],
+  );
+  const peerSelections = useCollabSelections(collab.room, selectionKeys);
   const liveDeckRef = useRef(editor.deck);
   liveDeckRef.current = editor.deck;
   const liveRevisionRef = useRef(editor.editRevision);
@@ -155,10 +210,10 @@ function DeckLegacyRoute({
                   : String(liveRevisionRef.current),
             },
       persistInBackground: () => {
-        if (editor.dirty && !editor.sourceFailed && !editor.loading && !officeSource.loading) editor.persistInBackground();
+        if (editor.dirty && !editor.sourceFailed && collab.saveGate && !editor.loading && !officeSource.loading) editor.persistInBackground();
       },
     });
-  }, [editor.dirty, editor.loading, editor.persistInBackground, editor.sourceFailed, officeSource.loading, item.id, item.key]);
+  }, [editor.dirty, collab.saveGate, editor.loading, editor.persistInBackground, editor.sourceFailed, officeSource.loading, item.id, item.key]);
   const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");
@@ -593,6 +648,7 @@ function DeckLegacyRoute({
             onZoomChange={setZoom}
             activeTool={activeTool}
             inkStyle={inkStyle}
+            peers={peerSelections}
           />
         ),
         status:
@@ -603,8 +659,10 @@ function DeckLegacyRoute({
           editor.error ||
           editor.notice ||
           (editor.loading || officeSource.loading ? "正在载入演示文稿" : ""),
+        collab: collab.collab,
         persistence: {
-          dirty: editor.dirty,
+          // 房间里只有存档人自动保存；别的人改了也由存档人那边存
+          dirty: editor.dirty && collab.saveGate,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           draft: editor.draft,

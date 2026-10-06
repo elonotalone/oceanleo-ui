@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
 import { chartExportOption } from "../../../chart-editor/chart-render";
-import type { ChartDocumentV1 } from "../../../chart-editor/chart-schema";
+import { normalizeChartDocument, type ChartDocumentV1 } from "../../../chart-editor/chart-schema";
 import {
   chartChangedSeries,
   chartDescribeChange,
@@ -55,7 +55,7 @@ function ChartFrame({ snapshot, prev, width, height, authorColor }: ReplayFrameP
 const renderer: ReplayFrameRenderer | null = {
   kind: "chart",
   fromY: (doc) => chartFromY(doc),
-  fromRevision: (json) => chartFromRevision(json),
+  fromRevision: (json) => chartFromRevision(json, normalizeChartDocument),
   Frame: ChartFrame,
   describeChange: chartDescribeChange,
   toArtifactJson: chartToArtifactJson,

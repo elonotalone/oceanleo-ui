@@ -50,6 +50,9 @@ import { GATEWAY_BASE } from "../../lib/auth/config";
 import { payerRequestFields } from "../../lib/payer";
 import { FabricImageStage } from "../image-editor/FabricImageStage";
 import { useFabricImageEditor } from "../image-editor/use-fabric-image-editor";
+import { IMAGE_COLLAB_ROOT, imageFromEntities, imageToEntities, type ImageSnapshot } from "../collab/adapters/image";
+import { useEntityCollab } from "../collab/adapters/use-entity-collab";
+import { useCollabSelections } from "../collab/adapters/visual-selection";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -102,7 +105,65 @@ export function ImageRoute({
   useEffect(() => {
     if (proSaved) setActiveItem(proSaved);
   }, [proSaved]);
-  const editor = useFabricImageEditor(activeItem, siteId);
+  // 多人同改：画布编辑器先创建（房间要读画布），所以「只读」「存成功」「本地多了一步」走 state / ref 回填。
+  const [collabReadOnly, setCollabReadOnly] = useState<boolean>(false);
+  const [localSnapshot, setLocalSnapshot] = useState<ImageSnapshot | null>(null);
+  const collabSavedRef = useRef<(revisionId: string) => void>(() => undefined);
+  const editorCollabRef = useRef<ReturnType<typeof useFabricImageEditor>["collab"] | null>(null);
+  const collabOptions = useMemo(
+    () => ({
+      readOnly: collabReadOnly,
+      onLocalChange: () => {
+        const handle = editorCollabRef.current;
+        if (!handle) return;
+        handle.ensureIds();
+        setLocalSnapshot(handle.snapshot());
+      },
+      onSavedRevision: (revisionId: string) => collabSavedRef.current(revisionId),
+    }),
+    [collabReadOnly],
+  );
+  const editor = useFabricImageEditor(activeItem, siteId, { collab: collabOptions });
+  editorCollabRef.current = editor.collab;
+  // 载入完成：补齐旧稿对象的 id，把画布现状交给协同层（它据此种子或对齐）
+  useEffect(() => {
+    if (editor.loading) {
+      setLocalSnapshot(null);
+      return;
+    }
+    editor.collab.ensureIds();
+    setLocalSnapshot(editor.collab.snapshot());
+  }, [editor.loading]);
+  const adoptingRevisionRef = useRef(false);
+  const collab = useEntityCollab<ImageSnapshot>({
+    item: { artifactId: activeItem.artifactId, title: activeItem.title },
+    editorKind: "image",
+    rootName: IMAGE_COLLAB_ROOT,
+    toEntities: imageToEntities,
+    fromEntities: imageFromEntities,
+    local: editor.loading ? null : localSnapshot,
+    applyRemote: (state) => {
+      editor.collab.applyRemote(state);
+      if (adoptingRevisionRef.current) {
+        adoptingRevisionRef.current = false;
+        editor.collab.markClean();
+      }
+    },
+    loadRevision: async (revisionId) => {
+      const snapshot = await editor.collab.adoptRevision(String(activeItem.artifactId || ""), revisionId);
+      adoptingRevisionRef.current = Boolean(snapshot);
+      return snapshot;
+    },
+  });
+  collabSavedRef.current = collab.markSaved;
+  useEffect(() => {
+    setCollabReadOnly(collab.readOnly);
+  }, [collab.readOnly]);
+  const selectedLayerIds = useMemo(
+    () => editor.layers.filter((layer) => layer.selected).map((layer) => layer.id),
+    [editor.layers],
+  );
+  const peerSelections = useCollabSelections(collab.room, selectedLayerIds);
   const [importNotice, setImportNotice] = useState("");
   const [documentDataUrl, setDocumentDataUrl] = useState<string | undefined>();
   const advancedSession = useAdvancedSession();
@@ -391,10 +452,10 @@ export function ImageRoute({
         };
       },
       persistInBackground: () => {
-        if (editor.dirty) void editor.save();
+        if (editor.dirty && collab.saveGate) void editor.save();
       },
     });
-  }, [activeItem, editor.dirty, editor.save, editor.savedUrl]);
+  }, [activeItem, collab.saveGate, editor.dirty, editor.save, editor.savedUrl]);
 
   const setEditorMode = useCallback((mode: EditorMode) => {
     const next = applyImageL0Mode(mode).mode;
@@ -712,7 +773,7 @@ export function ImageRoute({
             data-canvas-view={designMode.mode}
           >
             <div className="relative min-h-0 flex-1">
-              <FabricImageStage editor={editor} accent={accent} />
+              <FabricImageStage editor={editor} accent={accent} peers={peerSelections} />
               <ImagePhotopeaHost showPhotopea={showPhotopea}
                 documentDataUrl={documentDataUrl || activeItem.previewUrl || activeItem.url}
                 session={photopeaSession}
@@ -739,6 +800,7 @@ export function ImageRoute({
           importNotice ||
           editor.notice ||
           (editor.loading ? "正在载入图片编辑器" : ""),
+        collab: collab.collab,
         persistence: {
           // Photopea has no mutation feed. Unconfirmed stays on the cloud.
           // After leaving pro, keep the cloud on this flush until export settles.
@@ -746,7 +808,7 @@ export function ImageRoute({
           confirmation: photopeaCloud
             ? { state: photopeaStatus.phase, message: photopeaStatus.message }
             : undefined,
-          dirty: photopeaCloud || editor.dirty,
+          dirty: photopeaCloud || (editor.dirty && collab.saveGate),
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
         },

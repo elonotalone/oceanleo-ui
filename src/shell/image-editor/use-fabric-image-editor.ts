@@ -18,7 +18,8 @@ import {
 import { advancedEditorSourceFor } from "../advanced-features";
 import { DEFAULT_LOSSY_QUALITY } from "../media-editors/visual-formats";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
-import { refreshArtifactRendition } from "../artifact-client";
+import { getArtifactItem, refreshArtifactRendition } from "../artifact-client";
+import type { ImageSnapshot } from "../collab/adapters/image";
 import {
   renditionNeedsRefresh,
   type ArtifactRendition,
@@ -499,11 +500,36 @@ function imageArtifactInputIdentity(item: LibraryItem): string {
       )}`;
 }
 
+/** 多人同改：路由从外面传进来的几个开关与回调。 */
+export interface FabricImageCollabOptions {
+  /** 浏览者、或别人在专业模式编辑：画布不选中不拖动，任何改动立刻还原。 */
+  readOnly?: boolean;
+  /** 本地多了一步编辑（拖完、改完、加了图层……）；路由据此把最新画布推给房间。 */
+  onLocalChange?: () => void;
+  /** 存成功后告诉房间这一版已落库（新版本 id）。 */
+  onSavedRevision?: (revisionId: string) => void;
+}
+
+export interface FabricImageCollabHandle {
+  readOnly: boolean;
+  /** 随别人的改动套进画布而递增，用来让「别人的选择框」重新量位置。 */
+  tick: number;
+  /** 协同用的画布现状（不含裁剪框）；画布还没起来时为 null。 */
+  snapshot(): ImageSnapshot | null;
+  ensureIds(): void;
+  applyRemote(snapshot: ImageSnapshot): void;
+  objectBoxes(ids: readonly string[]): Array<{ id: string; left: number; top: number; width: number; height: number }>;
+  /** 读出别人保存的新版本（AI / 专业模式）并把「已保存的基线」换成它；读不到返回 null。 */
+  adoptRevision(artifactId: string, revisionId: string): Promise<ImageSnapshot | null>;
+  /** 这一版已被房间里的存档人落库：清掉「未保存」。 */
+  markClean(): void;
+}
+
 export function useFabricImageEditor(
   item: LibraryItem,
   siteId = "",
-  options: FabricImageEditorOptions = {},
-): FabricImageEditorState {
+  options: FabricImageEditorOptions & { collab?: FabricImageCollabOptions } = {},
+): FabricImageEditorState & { collab: FabricImageCollabHandle } {
   const [canvasElement, setCanvasElement] =
     useState<HTMLCanvasElement | null>(null);
   const [view, setView] = useState<FabricControllerView>(INITIAL_VIEW);
@@ -525,6 +551,7 @@ export function useFabricImageEditor(
   const [exportQuality, setExportQualityState] = useState(DEFAULT_LOSSY_QUALITY);
   const [exportScale, setExportScaleState] = useState(1);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [collabTick, setCollabTick] = useState(0);
 
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FabricEditorController | null>(null);
@@ -653,6 +680,14 @@ export function useFabricImageEditor(
               setSavedUrl("");
               setSavedProjectUrl("");
               setSavedAt("");
+              optionsRef.current.collab?.onLocalChange?.();
+            },
+            onRemoteApplied: () => {
+              if (cancelled) return;
+              // 别人的改动：这份画布和库里最近一版不同了——存档人要存；不是本地的一步编辑
+              revisionRef.current += 1;
+              updateDirty(true);
+              setCollabTick((value) => value + 1);
             },
             onError: (message) => {
               if (!cancelled) setError(message);
@@ -1104,6 +1139,8 @@ export function useFabricImageEditor(
       }
       setNotice("");
       optionsRef.current.onSaved?.(saved.previewUrl);
+      const savedRevisionId = String(saved.item?.revisionId || saved.versionId || "");
+      if (savedRevisionId) optionsRef.current.collab?.onSavedRevision?.(savedRevisionId);
       return {
         url: saved.previewUrl,
         projectUrl: saved.projectUrl,
@@ -1205,7 +1242,58 @@ export function useFabricImageEditor(
 
   const controller = () => controllerRef.current;
 
+  const collabReadOnly = Boolean(options.collab?.readOnly);
+  useEffect(() => {
+    controllerRef.current?.setReadOnly(collabReadOnly);
+  }, [collabReadOnly, loading]);
+  const collabHandle: FabricImageCollabHandle = {
+    readOnly: collabReadOnly,
+    tick: collabTick,
+    snapshot: () => (controllerRef.current ? (controllerRef.current.getCollabSnapshot() as ImageSnapshot) : null),
+    ensureIds: () => {
+      controllerRef.current?.ensureObjectIds();
+    },
+    applyRemote: (snapshot) => {
+      void controllerRef.current?.applyRemote(snapshot as never);
+    },
+    objectBoxes: (ids) => controllerRef.current?.collabObjectBoxes(ids) ?? [],
+    adoptRevision: async (artifactId, revisionId) => {
+      try {
+        const result = await getArtifactItem(artifactId, revisionId);
+        const revisionItem = (result as { data?: LibraryItem }).data;
+        if (!revisionItem || revisionItem.artifactType === "composite_image") return null;
+        const source = advancedEditorSourceFor(revisionItem);
+        const url =
+          typeof revisionItem.meta.fabric_document_url === "string"
+            ? revisionItem.meta.fabric_document_url
+            : typeof revisionItem.meta.editor_project_url === "string"
+              ? revisionItem.meta.editor_project_url
+              : source?.structured
+                ? source.url
+                : "";
+        if (!url) return null;
+        const abort = makeAbort();
+        try {
+          const project = await loadEditableImageProject(url, abort.signal);
+          artifactHeadRef.current = revisionItem;
+          workingHeadUrlRef.current = String(
+            revisionItem.meta.editor_working_head_url || source?.url || revisionItem.url || revisionItem.previewUrl || "",
+          );
+          return project.snapshot as ImageSnapshot;
+        } finally {
+          finishAbort(abort);
+        }
+      } catch {
+        return null;
+      }
+    },
+    markClean: () => {
+      updateDirty(false);
+    },
+  };
+
   return {
+    collab: collabHandle,
     loading,
     saving,
     aiBusy,

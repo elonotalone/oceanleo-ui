@@ -3,6 +3,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { DeckResizeHandle } from "./deck-geometry";
 import type { DeckElement } from "./deck-schema";
+import { safeSelectionColor, type PeerSelection } from "../collab/adapters/visual-selection";
 
 export type DeckElementInteractionMode = "move" | "resize" | "rotate";
 
@@ -54,6 +55,41 @@ export function DeckElementSelectionChrome({
           />
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * 多人同改：别人选中了这个元素 —— 用他的颜色描边，并在左上角标他的名字。
+ * 只是画出来：不拦鼠标、不进键盘顺序，颜色只认按用户 id 算出的 hsl。
+ */
+export function DeckPeerSelectionMarks({ peers }: { peers: readonly PeerSelection[] }) {
+  if (!peers.length) return null;
+  return (
+    <>
+      {peers.map((peer, index) => {
+        const color = safeSelectionColor(peer.color);
+        return (
+          <span
+            key={peer.userId}
+            aria-hidden="true"
+            data-deck-peer-selection={peer.userId}
+            className="pointer-events-none absolute z-[19]"
+            style={{
+              inset: -2 - index * 3,
+              border: `2px solid ${color}`,
+              borderRadius: 2,
+            }}
+          >
+            <span
+              className="absolute left-[-2px] top-0 max-w-[12em] -translate-y-full overflow-hidden text-ellipsis whitespace-nowrap rounded-t px-1 text-[10px] leading-4 text-white"
+              style={{ background: color }}
+            >
+              {peer.name || "…"}
+            </span>
+          </span>
+        );
+      })}
     </>
   );
 }

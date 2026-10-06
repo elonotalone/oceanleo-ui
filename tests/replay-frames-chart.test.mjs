@@ -47,9 +47,9 @@ function yDocOf(chart) {
 
 test("fromRevision（版本 JSON）与 fromY（协同文档）对同一内容得到等价快照", () => {
   const chart = makeChart();
-  assert.equal(canon(chartFromRevision(chart)), canon(chartFromY(yDocOf(chart))));
-  assert.equal(chartFromRevision({ schema: "bogus" }), null);
-  assert.equal(chartFromRevision(null), null);
+  assert.equal(canon(chartFromRevision(chart, normalizeChartDocument)), canon(chartFromY(yDocOf(chart))));
+  assert.equal(chartFromRevision({ schema: "bogus" }, normalizeChartDocument), null);
+  assert.equal(chartFromRevision(null, normalizeChartDocument), null);
   assert.equal(chartFromY(new Y.Doc()), null);
 });
 
@@ -89,7 +89,7 @@ test("toArtifactJson 往返：还原成图表编辑器能打开的 JSON，再读
   const chart = makeChart();
   const artifact = chartToArtifactJson(chart);
   assert.equal(canon(normalizeChartDocument(artifact)), canon(chart));
-  assert.equal(canon(chartFromRevision(artifact)), canon(chart));
+  assert.equal(canon(chartFromRevision(artifact, normalizeChartDocument)), canon(chart));
   assert.equal(chartToArtifactJson(null), null);
 });
 
