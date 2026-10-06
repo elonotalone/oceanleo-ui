@@ -113,6 +113,7 @@ const appShellUrl = await compileModule("src/shell/AppShell.tsx", {
     export function SettingsModalHost(){ return null; }
     export function openSettingsModal(tab = "general"){ (globalThis.__W05_SETTINGS_OPENED__ ??= []).push(tab); }
   `),
+  "./messages/MessagesHost": dataModule("export function MessagesHost(){ return null; }"),
   "./leo/LeoShellMount": dataModule(`
     import React from ${JSON.stringify(reactUrl)};
     export function LeoShellMount(props){
