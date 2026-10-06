@@ -26,6 +26,7 @@ import {
 import { useRouter, usePathname } from "next/navigation";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { IconSearch } from "./icons";
+import { CollabTaskPresence } from "./collab/CollabActionSlot";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
 import { type MaterialItem } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
@@ -1723,6 +1724,7 @@ function AgentChatInner({
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}
+      <CollabTaskPresence taskId={taskId} />
       {headerExtra}
       {searchControl}
       {/* 「分享」：点它整页进入选段模式（对标 Kimi）。只在这里出现一次。 */}

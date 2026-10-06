@@ -98,3 +98,5 @@ export { CollabInviteButton } from "./CollabInviteButton";
 export { colorForUser, fnv1a32 } from "./color";
 export { grantCoeditToConversation } from "./grants-api";
 export { collabEditorKindForAdapter } from "./collab-editor-kinds";
+export { attachProModeLock, decideProEntry } from "./pro-mode-lock";
+export { CollabActionSlot, CollabTaskPresence } from "./CollabActionSlot";

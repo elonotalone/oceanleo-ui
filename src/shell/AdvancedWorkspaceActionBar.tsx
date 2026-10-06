@@ -7,6 +7,7 @@ import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { actionGroup } from "./advanced-workbench-chrome";
 import { AnchoredPopover } from "./anchored-popover";
+import { CollabActionSlot } from "./collab/CollabActionSlot";
 import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import {
@@ -194,6 +195,7 @@ export function AdvancedWorkspaceActionBar({
         <span className="min-w-4 flex-1" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        <CollabActionSlot collab={adapter.collab} pluginThemeId={pluginThemeId} />
         {adapter.persistence?.recovery?.ready !== false ? (
         <div data-global-row-slot="save-state">
           {/* 保存菜单：按钮本体只说状态；点开才有动作。无任何可点动作时它只是状态，不弹菜单。 */}

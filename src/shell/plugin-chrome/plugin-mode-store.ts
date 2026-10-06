@@ -80,7 +80,21 @@ export function currentPluginMode(pluginId: PluginThemeId): EditorMode {
   return value;
 }
 
-export function setPluginMode(pluginId: PluginThemeId, mode: EditorMode) {
+/**
+ * 进专业模式前的把关（多人同改的「专业模式锁」，work-chat W11）。返回 false 或 resolve 为 false
+ * = 拦下；返回 Promise 时模式在它 resolve 为 true 之后才真正切换。没有注册把关的插件行为不变。
+ */
+export type ProModeGuard = () => boolean | Promise<boolean>;
+const proModeGuards = new Map<PluginThemeId, ProModeGuard>();
+
+export function registerProModeGuard(pluginId: PluginThemeId, guard: ProModeGuard): () => void {
+  proModeGuards.set(pluginId, guard);
+  return () => {
+    if (proModeGuards.get(pluginId) === guard) proModeGuards.delete(pluginId);
+  };
+}
+
+function applyPluginMode(pluginId: PluginThemeId, mode: EditorMode) {
   modeCache.set(pluginId, mode);
   try {
     window.localStorage.setItem(pluginModeStorageKey(pluginId), mode);
@@ -88,6 +102,26 @@ export function setPluginMode(pluginId: PluginThemeId, mode: EditorMode) {
     /* 存储不可用时本次会话内仍即时生效，只是不持久。 */
   }
   notify(pluginId);
+}
+
+/** 所有「普通 ⇄ 专业」切换（顶栏开关、页签、PDF 的重试……）最终都走这里，所以锁只加在这一处。 */
+export function setPluginMode(pluginId: PluginThemeId, mode: EditorMode) {
+  const guard = mode === "pro" && currentPluginMode(pluginId) !== "pro" ? proModeGuards.get(pluginId) : undefined;
+  if (guard) {
+    const verdict = guard();
+    if (verdict === true) {
+      applyPluginMode(pluginId, mode);
+    } else if (verdict !== false) {
+      verdict.then(
+        (ok) => {
+          if (ok) applyPluginMode(pluginId, mode);
+        },
+        () => {},
+      );
+    }
+    return;
+  }
+  applyPluginMode(pluginId, mode);
 }
 
 export function subscribePluginMode(
