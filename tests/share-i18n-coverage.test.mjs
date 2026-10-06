@@ -25,6 +25,7 @@ import {
   SHARE_CARD_WIDTH,
   layoutShareCard,
 } from "../src/shell/share/share-layout.ts";
+import { stripJsComments } from "./helpers/strip-js-comments.mjs";
 
 const TRANSLATED_LOCALES = LOCALES.filter((locale) => locale !== "zh");
 const SHELL = fileURLToPath(new URL("../src/shell/", import.meta.url));
@@ -49,7 +50,6 @@ const PRE_EXISTING_GAPS = new Set([
   "将从所选消息之前创建新分支；原对话保持不变。",
   "已处理的确认",
   "当前会话为只读状态。",
-  "成员",
   "暂无成员",
   "请确认后继续。",
   "需要你确认",
@@ -83,7 +83,8 @@ function needsTranslation(key) {
 function ttLiterals() {
   const keys = new Map();
   for (const [file, source] of SOURCES) {
-    for (const match of source.matchAll(/\btt\(\s*"((?:[^"\\]|\\.)*)"/g)) {
+    const text = stripJsComments(source);
+    for (const match of text.matchAll(/\btt\(\s*"((?:[^"\\]|\\.)*)"/g)) {
       const key = JSON.parse(`"${match[1]}"`);
       if (!needsTranslation(key)) continue;
       if (!keys.has(key)) keys.set(key, new Set());
