@@ -79,6 +79,7 @@ test("收起后真画出图标轨，点「我的任务」会展开并露出任�
     "./icons": iconsStubUrl,
     "./account/SidebarAccountCluster": dataModule("export function SidebarAccountCluster(){ return null; }"),
     "./account/SettingsModalHost": dataModule("export function SettingsModalHost(){ return null; } export function openSettingsModal(){}"),
+    "./messages/MessagesHost": dataModule("export function MessagesHost(){ return null; }"),
     "./WorkspaceSelection": dataModule(
       "export function WorkspaceSelectionProvider({ children }){ return children; }",
     ),

@@ -273,7 +273,7 @@ function assertGlobalRowAllowlist(row) {
       `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS（close→maximize）里`,
     );
   }
-  assert.equal(GLOBAL_ROW_SLOTS.length, 6, "第一行槽位数变了");
+  assert.equal(GLOBAL_ROW_SLOTS.length, 7, "第一行槽位数变了");
 }
 
 test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单、upload 不进编辑栏", async () => {
