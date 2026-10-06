@@ -4,6 +4,7 @@
 // 新的覆盖旧的，不会一屏堆满。点击回到这个标签页并打开那个会话：W08 的 `openMessages`
 // 落地前，统一派发 `oceanleo:im-open` 事件（W08 监听），不 import 还不存在的模块。
 
+import { dispatchImOpen, installImOpenBridge } from "./push-subscribe";
 import {
   DEFAULT_IM_SETTINGS,
   cachedImSettings,
@@ -17,17 +18,11 @@ export interface DesktopNotificationInput {
   icon?: string | null;
 }
 
-/** 点通知（本页的桌面通知或推送 SW 的 `im.open`）后要打开某个会话时派发的 window 事件。 */
-export const IM_OPEN_EVENT = "oceanleo:im-open";
+export { IM_OPEN_EVENT, dispatchImOpen, type ImOpenDetail } from "./push-subscribe";
 
-export interface ImOpenDetail {
-  conversationId: string;
-}
-
-export function dispatchImOpen(detail: ImOpenDetail): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent<ImOpenDetail>(IM_OPEN_EVENT, { detail }));
-}
+// 这个模块只要被消息浮层引进来（它要调 maybeShowDesktopNotification），就顺手接上 Service Worker 的
+// `im.open` 消息：点推送通知 → 已开着的门户标签页收到 → 转成 `oceanleo:im-open` 事件。幂等。
+if (typeof window !== "undefined") installImOpenBridge();
 
 function safeIcon(icon: string | null | undefined): string | undefined {
   return typeof icon === "string" && /^https:\/\//i.test(icon) ? icon : undefined;
