@@ -34,6 +34,8 @@ export interface Model3DCollabSnapshot {
   checkpointUrl: string;
   operations: Model3DCollabOperation[];
   provenance?: unknown;
+  /** 版本里带的封面缩略图地址（有就画，没有不画）。 */
+  posterUrl?: string;
   view: Record<string, unknown> & { annotations?: Model3DCollabAnnotation[] };
 }
 
@@ -172,6 +174,7 @@ export function model3dFromRevisionJson(json: unknown): Model3DCollabSnapshot {
     checkpointUrl,
     operations,
     ...(record.provenance !== undefined ? { provenance: record.provenance } : {}),
+    ...(typeof record.posterUrl === "string" && record.posterUrl ? { posterUrl: record.posterUrl } : {}),
     view: view as Model3DCollabSnapshot["view"],
   };
 }

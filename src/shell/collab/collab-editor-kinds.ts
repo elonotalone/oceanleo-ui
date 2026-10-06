@@ -17,7 +17,8 @@ const BY_ADAPTER: Readonly<Record<string, ImEditorKind | null>> = {
   audio: "audio",
   pdf: "pdf",
   "video-timeline": "video",
-  "video-canvas": "video",
+  // video-canvas 适配器的作品类型是 workflow（流程图），不是视频（artifact-contract.ts 的 video_canvas 条目）。
+  "video-canvas": "workflow",
   website: null,
   none: null,
 };

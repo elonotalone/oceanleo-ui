@@ -69,6 +69,8 @@ export interface JsonStateBinding<T> {
   push(state: T): void;
   seed(state: T): void;
   onRemote(cb: (state: T) => void): () => void;
+  /** 此刻文档里的状态；文档里还没有这套状态（没种过）返回 null。同步完成后绑定时用它取初始画面。 */
+  read(): T | null;
   destroy(): void;
 }
 
@@ -78,8 +80,17 @@ export interface EditorCollabBinding {
 }
 
 export type { UseCollabRoomOptions } from "./use-collab-room";
-export { useCollabRoom, useCollabReadOnly, useCollabSaveGate } from "./use-collab-room";
-export { bindJsonState } from "./bind-json-state";
+export { useCollabRoom, useCollabRoomVersion, useCollabReadOnly, useCollabSaveGate } from "./use-collab-room";
+export { isCollabReadOnly, canSaveVersion } from "./provider";
+export {
+  bindJsonState,
+  readJsonStateRoot,
+  readJsonStateRoot as readEntityState,
+  writeJsonStateRoot,
+  writeJsonStateRoot as writeEntityState,
+  hasJsonStateRoot,
+} from "./bind-json-state";
+export type { JsonStateSnapshot } from "./bind-json-state";
 export { bindTextarea } from "./bind-textarea";
 export { CollabPresenceBar } from "./CollabPresenceBar";
 export { CollabLockBanner } from "./CollabLockBanner";
