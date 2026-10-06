@@ -69,8 +69,8 @@ import {
   useHostReviewActions,
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
-import { HumanHandoffButton } from "./HumanHandoffButton";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
+import { setBayTaskContext } from "./bay/shell/bay-state";
 import {
   createTask,
   branchTask,
@@ -762,6 +762,15 @@ function AgentChatInner({
   useEffect(() => {
     if (taskId) noteFirstVisibleReply(taskId, messages);
   }, [taskId, messages]);
+
+  // 左侧栏「叫真人」在任务页自动带上当前任务；只读（别人的任务、回放）不带。
+  useEffect(() => {
+    if (!taskId || readOnly) return undefined;
+    return () => setBayTaskContext(null);
+  }, [taskId, readOnly]);
+  useEffect(() => {
+    if (taskId && !readOnly) setBayTaskContext({ taskId, messages });
+  }, [taskId, readOnly, messages]);
 
   // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
   // 不要求宿主重新挂载 AgentChat；切到无 task 的新 session 时也不能残留上一段消息。
@@ -1972,15 +1981,6 @@ function AgentChatInner({
               >
                 {tt("取消")}
               </button>
-            </div>
-          )}
-          {!readOnly && (
-            <div className="flex justify-end">
-              <HumanHandoffButton
-                originRef={taskId || ""}
-                messages={messages}
-                accent={accent}
-              />
             </div>
           )}
           <LeoComposer

@@ -161,31 +161,45 @@ function normalizeFilter(filter: BayFeedFilter | undefined): BayFeedFilter {
   return out;
 }
 
+let lastDirection: "forward" | "back" = "forward";
+
+/** 最近一次切换是往前推还是返回（窄浮窗的滑入方向用）。 */
+export function bayLastNavDirection(): "forward" | "back" {
+  return lastDirection;
+}
+
 /** 改目标栈；返回是否真的往前推了一层（用来决定 push 还是 replace 地址）。 */
 function navigate(target: BayTarget): boolean {
   if (target.kind === "feed") {
     const filter = target.filter ? normalizeFilter(target.filter) : store.filter;
+    if (store.stack.length) lastDirection = "back";
     commit({ filter: sameBayTarget({ kind: "feed", filter }, { kind: "feed", filter: store.filter }) ? store.filter : filter, stack: [] });
     return false;
   }
   const top = store.stack[store.stack.length - 1];
   if (top && sameBayTarget(top, target)) return false;
+  lastDirection = "forward";
   commit({ stack: [...store.stack, target].slice(-MAX_STACK) });
   return true;
 }
 
 function applyPageTarget(target: BayTarget | null): void {
   if (!target || target.kind === "feed") {
-    if (store.stack.length) commit({ stack: [] });
+    if (store.stack.length) {
+      lastDirection = "back";
+      commit({ stack: [] });
+    }
     return;
   }
   const below = store.stack[store.stack.length - 2];
   if (below && sameBayTarget(below, target)) {
+    lastDirection = "back";
     commit({ stack: store.stack.slice(0, -1) });
     return;
   }
   const top = store.stack[store.stack.length - 1];
   if (top && sameBayTarget(top, target)) return;
+  lastDirection = "forward";
   commit({ stack: [target] });
 }
 
@@ -249,8 +263,21 @@ export function openBay(target: BayTarget = { kind: "feed" }): void {
   requestOverlay();
 }
 
+/** 换掉当前这一层详情，不新增返回层（「我的」里切分区用）；停在信息流时等同 openBay。 */
+export function replaceBay(target: BayTarget): void {
+  if (!store.stack.length || target.kind === "feed") {
+    openBay(target);
+    return;
+  }
+  const top = store.stack[store.stack.length - 1];
+  if (top && sameBayTarget(top, target)) return;
+  commit({ stack: [...store.stack.slice(0, -1), target] });
+  if (onBayPage()) writePageUrl(target, "replace");
+}
+
 export function bayBack(): void {
   if (!store.stack.length) return;
+  lastDirection = "back";
   if (onBayPage()) {
     const w = win();
     const depth = historyState().bayDepth;
@@ -338,6 +365,15 @@ export function bayEnabledHere(): boolean {
   } catch {
     return false;
   }
+}
+
+function subscribeNever(): () => void {
+  return () => {};
+}
+
+/** 响应式版本：服务端与水合首帧为 false，避免境内外判断不一致造成水合错位。 */
+export function useBayEnabled(): boolean {
+  return useSyncExternalStore(subscribeNever, bayEnabledHere, () => false);
 }
 
 const authListeners = new Set<() => void>();
