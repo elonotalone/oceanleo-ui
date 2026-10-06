@@ -39,6 +39,7 @@ import {
   type ReplayStep,
 } from "./replay-model";
 import { fetchSharedReplay, type SharedReplay } from "./share-client";
+import { WorkReplayPlayer } from "./work/WorkReplayPlayer";
 
 export interface AgentReplayPageProps {
   /** 分享 id；给了就去 `GET /v1/share/<id>` 取数。 */
@@ -68,7 +69,40 @@ function initialLoadState(props: AgentReplayPageProps): LoadState {
   return { phase: "ready", replay: REPLAY_SAMPLE };
 }
 
+/** 工作回放的分享码前缀（work-chat 契约 §7.1）。 */
+const WORK_REPLAY_SHARE_PREFIX = "w_";
+
+/**
+ * 分享码属于哪一类回放：`w_` 开头 = 工作回放（`/v1/replays/work/public/<code>`），
+ * 其余 = AI 对话回放（`/v1/share/<id>`，行为不变）。
+ */
+export function replayRouteFor(shareId: string | null | undefined): "work" | "task" {
+  const code = String(shareId ?? "").trim();
+  return code.startsWith(WORK_REPLAY_SHARE_PREFIX) && code.length > WORK_REPLAY_SHARE_PREFIX.length
+    ? "work"
+    : "task";
+}
+
+/**
+ * 分享页入口。分享码以 `w_` 开头 = 一段「工作回放」（work-chat W05），走 `/v1/replays/work/public/<code>`
+ * 并渲染 `WorkReplayPlayer`；其余分享码（AI 对话回放）行为完全不变。
+ */
 export function AgentReplayPage(props: AgentReplayPageProps) {
+  if (!props.replay && replayRouteFor(props.shareId) === "work") {
+    return (
+      <div className="h-[100dvh] w-full">
+        <WorkReplayPlayer
+          publicCode={props.shareId}
+          publicFetch={{ gatewayBase: props.gatewayBase, fetchImpl: props.fetchImpl }}
+          autoPlay={props.autoPlay !== false}
+        />
+      </div>
+    );
+  }
+  return <AgentTaskReplayPage {...props} />;
+}
+
+function AgentTaskReplayPage(props: AgentReplayPageProps) {
   const {
     shareId,
     replay,

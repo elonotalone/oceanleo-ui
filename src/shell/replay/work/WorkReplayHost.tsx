@@ -1,11 +1,26 @@
 "use client";
 
-// 全局唯一的工作回放播放层（W08 挂在消息浮层旁）。监听 openWorkReplay 派发的窗口事件，弹出全屏播放层。
-import { useEffect, useState } from "react";
+// 全局唯一的工作回放播放层（W08 挂在消息浮层旁，契约 §8.2）：
+// 1) 监听 openWorkReplay 派发的窗口事件，弹出全屏播放层（盖在消息浮层之上）；
+// 2) 自己监听 `replay.consent`（W08 的 useImEvent），收到就弹同意提示——不需要别人再挂任何东西。
+import { useCallback, useEffect, useState } from "react";
+import type { ImProfile } from "../../../lib/im/types";
+import { useImEvent } from "../../messages/realtime/hooks";
 import { WORK_REPLAY_OPEN_EVENT } from "./open-work-replay";
+import { ReplayConsentPrompt } from "./ReplayConsentPrompt";
+import { WorkReplayPlayer } from "./WorkReplayPlayer";
+
+interface PendingConsent {
+  replayId: string;
+  title: string;
+  from: ImProfile | null;
+}
+
+const LAYER_Z = 2147483000;
 
 export function WorkReplayHost() {
   const [replayId, setReplayId] = useState<string | null>(null);
+  const [consents, setConsents] = useState<PendingConsent[]>([]);
 
   useEffect(() => {
     const onOpen = (event: Event) => {
@@ -16,17 +31,51 @@ export function WorkReplayHost() {
     return () => window.removeEventListener(WORK_REPLAY_OPEN_EVENT, onOpen);
   }, []);
 
-  if (!replayId) return null;
+  useEffect(() => {
+    if (!replayId) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReplayId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [replayId]);
+
+  useImEvent("replay.consent", (event) => {
+    setConsents((current) =>
+      current.some((item) => item.replayId === event.replay_id)
+        ? current
+        : [...current, { replayId: event.replay_id, title: event.title, from: event.from ?? null }],
+    );
+  });
+
+  const closeConsent = useCallback((id: string) => {
+    setConsents((current) => current.filter((item) => item.replayId !== id));
+  }, []);
+
+  const consent = consents[0] ?? null;
+  if (!replayId && !consent) return null;
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      data-work-replay-layer={replayId}
-      style={{ position: "fixed", inset: 0, zIndex: 2147483000, background: "#0b0d12" }}
-    >
-      <button type="button" onClick={() => setReplayId(null)} aria-label="close">
-        ×
-      </button>
-    </div>
+    <>
+      {replayId ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-work-replay-layer={replayId}
+          className="fixed inset-0 bg-white"
+          style={{ zIndex: LAYER_Z }}
+        >
+          <WorkReplayPlayer replayId={replayId} onClose={() => setReplayId(null)} />
+        </div>
+      ) : null}
+      {consent ? (
+        <ReplayConsentPrompt
+          key={consent.replayId}
+          replayId={consent.replayId}
+          title={consent.title}
+          from={consent.from}
+          onDone={() => closeConsent(consent.replayId)}
+        />
+      ) : null}
+    </>
   );
 }
