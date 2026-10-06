@@ -99,20 +99,32 @@ export function videoFromEntities(
   };
 }
 
-/** 从 Y.Doc 里读出实体根（鸭子类型，不 import yjs）。 */
+/**
+ * 从 Y.Doc 里读出实体根（鸭子类型，不 import yjs，纯 .ts 里就能用）。
+ * 布局与 W11 的 `readJsonStateRoot`（collab/bind-json-state.ts）一致：
+ * `doc.getMap(rootName)` 下 `order`（Y.Array）/ `entities`（Y.Map of Y.Map）/ `meta`（Y.Map）；
+ * 顺序按第一次出现去重、丢掉没有实体的 id。
+ */
 export function readEntityRoot(doc: unknown, rootName: string): Required<EntityDoc> {
-  const d = doc as {
-    getArray(name: string): { toArray(): unknown[] };
-    getMap(name: string): { toJSON(): unknown };
-  };
-  const order = d.getArray(`${rootName}:order`).toArray().map(String);
-  const entities = d.getMap(`${rootName}:entities`).toJSON();
-  const meta = d.getMap(`${rootName}:meta`).toJSON();
-  return {
-    order,
-    entities: (isRecord(entities) ? entities : {}) as Record<string, Record<string, unknown>>,
-    meta: isRecord(meta) ? meta : {},
-  };
+  const d = doc as { share: Map<string, unknown>; getMap(name: string): { get(key: string): unknown } };
+  const out: Required<EntityDoc> = { order: [], entities: {}, meta: {} };
+  if (!d.share.has(rootName)) return out;
+  const root = d.getMap(rootName);
+  const entities = root.get("entities") as { forEach(cb: (value: { toJSON(): unknown }, key: string) => void): void } | undefined;
+  entities?.forEach?.((entity, id) => {
+    const json = entity?.toJSON?.();
+    if (isRecord(json)) out.entities[id] = json;
+  });
+  const order = root.get("order") as { toArray(): unknown[] } | undefined;
+  const seen = new Set<string>();
+  for (const id of order?.toArray?.() ?? []) {
+    if (typeof id !== "string" || seen.has(id) || !(id in out.entities)) continue;
+    seen.add(id);
+    out.order.push(id);
+  }
+  const meta = (root.get("meta") as { toJSON(): unknown } | undefined)?.toJSON?.();
+  if (isRecord(meta)) out.meta = meta;
+  return out;
 }
 
 export function videoFromYDoc(doc: unknown): TimelineDoc {

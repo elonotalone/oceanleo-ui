@@ -1,61 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as Y from "yjs";
+import { writeJsonStateRoot, readJsonStateRoot } from "../src/shell/collab/bind-json-state.ts";
 import {
   GAME_ROOT, GAME_MAIN_PAGE, gameTextName, gameToEntities, gameFromEntities, gameFromYDoc,
   gameFromRevisionJson, gameChangedLines, gameDescribeChange, gameToArtifactJson, gameInitialState,
 } from "../src/shell/collab/adapters/game.ts";
 
-// 协同参考实现：按契约 §8.4 的实体型布局（<root>:order / <root>:entities / <root>:meta）把状态写进 Y.Doc。
-// W11 的 bindJsonState 内部结构契约没写死，这里是测试用的最小替身；适配器本身不依赖它。
-const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
-function writeShape(doc, root, shape, origin) {
-  doc.transact(() => {
-    const order = doc.getArray(`${root}:order`);
-    const entities = doc.getMap(`${root}:entities`);
-    const meta = doc.getMap(`${root}:meta`);
-    const wanted = new Set(shape.order);
-    for (let i = order.length - 1; i >= 0; i -= 1) {
-      if (!wanted.has(order.get(i))) order.delete(i, 1);
-    }
-    const present = new Set(order.toArray());
-    // 按目标顺序补齐缺的键：插在它前一个键之后
-    shape.order.forEach((key, index) => {
-      if (present.has(key)) return;
-      const at = index === 0 ? 0 : order.toArray().indexOf(shape.order[index - 1]) + 1;
-      order.insert(Math.max(0, at), [key]);
-      present.add(key);
-    });
-    for (const key of [...entities.keys()]) if (!wanted.has(key)) entities.delete(key);
-    for (const key of shape.order) {
-      let entity = entities.get(key);
-      if (!entity) {
-        entity = new Y.Map();
-        entities.set(key, entity);
-      }
-      const fields = shape.entities[key] ?? {};
-      for (const name of [...entity.keys()]) if (!(name in fields)) entity.delete(name);
-      for (const [name, value] of Object.entries(fields)) {
-        if (!same(entity.get(name), value)) entity.set(name, clone(value));
-      }
-    }
-    const metaWanted = shape.meta ?? {};
-    for (const name of [...meta.keys()]) if (!(name in metaWanted)) meta.delete(name);
-    for (const [name, value] of Object.entries(metaWanted)) {
-      if (!same(meta.get(name), value)) meta.set(name, clone(value));
-    }
-  }, origin);
-}
-
-function readShape(doc, root) {
-  return {
-    order: doc.getArray(`${root}:order`).toArray(),
-    entities: doc.getMap(`${root}:entities`).toJSON(),
-    meta: doc.getMap(`${root}:meta`).toJSON(),
-  };
-}
+// 用 W11 的真实现（collab/bind-json-state.ts）读写实体根：`writeJsonStateRoot` / `readJsonStateRoot`。
+// 适配器自己的 `readEntityRoot`（鸭子类型）要和它读出同样的东西，下面各测试里都有对照。
+const writeShape = (doc, root, shape, origin) => writeJsonStateRoot(doc, root, shape, origin);
+const readShape = (doc, root) => readJsonStateRoot(doc, root);
 
 function connect(a, b) {
   // 双向同步一次：各自把对方没有的更新发过去
