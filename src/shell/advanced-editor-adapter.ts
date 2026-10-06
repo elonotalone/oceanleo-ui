@@ -13,6 +13,7 @@ import type { WorkbenchIconName } from "./AdvancedEditorIcon";
 import type { SelectionPanelAction } from "./selection-context";
 import type { EditorAdapterId } from "./workbench-routes";
 import type { AdvancedEditorPagesAdapter } from "./plugin-chrome/plugin-pages";
+import type { EditorCollabBinding } from "./collab";
 
 export interface AdvancedWorkbenchDrawer {
   id: string;
@@ -170,4 +171,9 @@ export interface AdvancedEditorAdapter {
   upload?: AdvancedEditorUploadAdapter;
   persistence?: AdvancedEditorPersistenceAdapter;
   closeRequestRevision?: number;
+  /**
+   * 多人同改（work-chat W11）。编辑器路由 `useCollabRoom(...)` 后把 `{ room, artifact }`
+   * 放这里；动作栏据此画头像、锁提示、邀请一起改、生成回放。没在协同时 `room` 为 null。
+   */
+  collab?: EditorCollabBinding;
 }
