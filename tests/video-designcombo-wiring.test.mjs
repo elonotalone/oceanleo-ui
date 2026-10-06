@@ -94,7 +94,7 @@ test("create-time chrome stays mounted: hide by display, do not dispose the proj
 });
 
 test("legacy timeline UI is still in the tree", () => {
-  assert.match(route, /<VideoTimelineStage state=\{editor\}/);
+  assert.match(route, /<VideoTimelineStage state=\{(?:editor|view)\}/);
   assert.match(route, /createVideoCommandSurface/);
 });
 

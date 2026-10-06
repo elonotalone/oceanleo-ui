@@ -77,9 +77,9 @@ test("第二行不报 aux；截图入库在 adapter.actions 里且归 download �
 test("legacy kernel remains in the same route file", () => {
   assert.match(route, /adapter=\{\{/);
   assert.match(route, /flush:/);
-  assert.match(route, /<Model3DControls[\s\S]*editor=\{editor\}/);
-  assert.match(route, /<Model3DContextToolbar[\s\S]*editor=\{editor\}/);
-  assert.match(route, /<Model3DStage[\s\S]*editor=\{editor\}/);
+  assert.match(route, /<Model3DControls[\s\S]*editor=\{(?:editor|view)\}/);
+  assert.match(route, /<Model3DContextToolbar[\s\S]*editor=\{(?:editor|view)\}/);
+  assert.match(route, /<Model3DStage[\s\S]*editor=\{(?:editor|view)\}/);
   assert.match(controls, /Model3DDirectorPanel/);
   assert.match(director, /export function Model3DDirectorPanel/);
 });

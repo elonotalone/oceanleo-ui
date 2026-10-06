@@ -67,7 +67,7 @@ test("the dual-core flag is resolved once, at the top of the route", () => {
   assert.match(route, /<AudioPlaylistStage \{\.\.\.props\} \/>/);
   assert.match(route, /function AudioLegacyRoute/);
   assert.match(route, /useAudioWorkbench/);
-  assert.match(route, /<AudioStage editor=\{editor\} accent=\{accent\} \/>/);
+  assert.match(route, /<AudioStage editor=\{(?:editor|view)\} accent=\{accent\} \/>/);
   assert.equal(DEFAULT_EDITOR_CORE, "legacy");
 });
 

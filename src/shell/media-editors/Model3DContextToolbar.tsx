@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef } from "react";
+import { isModel3DViewOnlyControl, lockModel3DControls } from "./model3d-readonly";
 import { useUI } from "../../i18n/ui/useUI";
 import { SelectionCommandTransaction } from "../selection-command-transaction";
 import { SelectionToolbar } from "../SelectionToolbar";
@@ -22,16 +23,6 @@ const inspector = (
   inspectorLabel: label,
   inspectorIcon: icon,
 });
-
-/** 只能看时仍可用的控件：只动我自己的相机（不同步给别人），或只切换「看哪个材质」。 */
-const VIEW_ONLY_CONTROLS: ReadonlySet<string> = new Set([
-  "azimuth",
-  "elevation",
-  "zoom",
-  "auto-rotate",
-  "reset-camera",
-  "material-select",
-]);
 
 export function Model3DContextToolbar({
   editor,
@@ -499,24 +490,13 @@ export function Model3DContextToolbar({
       id: selection?.id || "active-model",
       label: selection?.name || editor.title || tt("3D 模型"),
       revision: editor.editRevision,
-      controls: readOnly
-        ? controls.map((control) =>
-            VIEW_ONLY_CONTROLS.has(control.id)
-              ? control
-              : {
-                  ...control,
-                  disabled: true,
-                  unavailableReason: tt("只能查看，不能修改"),
-                },
-          )
-        : controls,
+      controls: lockModel3DControls(controls, readOnly, tt("只能查看，不能修改")),
     };
   }, [editor, readOnly, selectedAnnotation, selectedMaterial, selection, tt]);
 
   const command = (message: SelectionCommand) => {
     if (message.selectionId !== context.id) return;
-    // 只读时只放行「看」的控件：我自己的相机、材质槽的选择。
-    if (readOnly && !VIEW_ONLY_CONTROLS.has(message.controlId)) return;
+    if (readOnly && !isModel3DViewOnlyControl(message.controlId)) return;
     const continuingTransaction = transactionRef.current.continues(message);
     if (
       message.selectionRevision !== undefined &&
@@ -526,17 +506,15 @@ export function Model3DContextToolbar({
       return;
     }
     const gesture = (mutate: () => void) =>
-      readOnly
-        ? mutate()
-        : transactionRef.current.run(
-            message,
-            {
-              begin: editor.beginGesture,
-              commit: editor.commitGesture,
-              cancel: editor.cancelGesture,
-            },
-            mutate,
-          );
+      readOnly ? mutate() : transactionRef.current.run(
+        message,
+        {
+          begin: editor.beginGesture,
+          commit: editor.commitGesture,
+          cancel: editor.cancelGesture,
+        },
+        mutate,
+      );
     const value =
       typeof message.value === "number" && Number.isFinite(message.value)
         ? message.value
