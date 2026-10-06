@@ -642,6 +642,190 @@ export function gridPeerSelections(awareness: AwarenessLike): GridPeerSelection[
   return out;
 }
 
+// ── Univer 端口（只依赖鸭子类型的 facade，不 import Univer） ────────────────
+
+const SET_RANGE_VALUES_MUTATION = "sheet.mutation.set-range-values";
+const SET_SELECTIONS_OPERATION = "sheet.operation.set-selections";
+/** 这些 mutation 不改文档内容（切换活动表、滚动、缩放、公式引擎内部状态），不算本地改动。 */
+const NON_CONTENT_COMMAND =
+  /formula\.|set-worksheet-active|scroll|zoom|selection|activate|render|set-active/;
+
+export function isGridContentCommand(id: unknown): boolean {
+  return typeof id === "string" && id.includes(".mutation.") && !NON_CONTENT_COMMAND.test(id);
+}
+
+interface DisposableLike {
+  dispose(): void;
+}
+
+interface UniverSheetLike {
+  getSheetId?(): string;
+  getRange?(row: number, col: number, rows: number, cols: number): unknown;
+  highlightRanges?(ranges: unknown[], style?: Rec, primary?: unknown): DisposableLike | undefined;
+}
+
+interface UniverWorkbookLike {
+  getId?(): string;
+  save?(): unknown;
+  getSnapshot?(): unknown;
+  getSheetBySheetId?(id: string): UniverSheetLike | null | undefined;
+  getSheets?(): UniverSheetLike[];
+}
+
+export interface GridUniverCollabApi {
+  Event?: { CommandExecuted?: string } & Rec;
+  addEvent?(event: string, cb: (params: Rec) => void): DisposableLike | undefined;
+  onCommandExecuted?(cb: (command: Rec) => void): DisposableLike | undefined;
+  syncExecuteCommand?(id: string, params?: Rec, options?: Rec): unknown;
+  getActiveWorkbook?(): UniverWorkbookLike | null | undefined;
+}
+
+/** 把 `#rgb(a)` 或 `hsl(…)` 变成带透明度的颜色；不认识的回落成默认色。 */
+export function colorWithAlpha(color: string, alpha: number): string {
+  const safe = safePeerColor(color);
+  const hex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?$/.exec(safe);
+  if (hex) {
+    const raw = hex[1].length === 3 ? hex[1].split("").map((c) => c + c).join("") : hex[1];
+    const n = Number.parseInt(raw, 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+  const hsl = /^hsl\((.+)\)$/.exec(safe);
+  if (hsl) return `hsla(${hsl[1]}, ${alpha})`;
+  return `rgba(99, 102, 241, ${alpha})`;
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * 把 Univer 的 facade 包成 `GridCollabPort`：
+ * - 读：`workbook.save()`；
+ * - 写别人的格子：`syncExecuteCommand("sheet.mutation.set-range-values")`——mutation 不进本机撤销栈，
+ *   写入期间屏蔽本地变更事件，所以不会回推；
+ * - 别人的选区：`worksheet.highlightRanges`（他的颜色描边 + 淡底）。
+ */
+export function createGridUniverPort(options: {
+  getApi: () => GridUniverCollabApi | null | undefined;
+  /** 整本替换（舞台负责建新簿、卸旧簿、恢复界面档位）。 */
+  replaceWorkbook: (snapshot: GridWorkbookSnapshot) => void;
+}): GridCollabPort {
+  let muted = 0;
+  let highlights: DisposableLike[] = [];
+  let highlightKey = "";
+
+  const workbook = () => options.getApi()?.getActiveWorkbook?.() ?? null;
+
+  const subscribe = (cb: (event: Rec) => void): (() => void) => {
+    const api = options.getApi();
+    if (!api) return () => {};
+    const name = api.Event?.CommandExecuted;
+    const handle =
+      api.addEvent && name
+        ? api.addEvent(name, cb)
+        : api.onCommandExecuted?.((command) => cb(command));
+    return () => handle?.dispose();
+  };
+
+  return {
+    getSnapshot() {
+      const wb = workbook();
+      const data = wb?.save?.() ?? wb?.getSnapshot?.();
+      return isRec(data) ? (cloneJson(data) as GridWorkbookSnapshot) : { sheetOrder: [], sheets: {} };
+    },
+    applyCellChanges(changes) {
+      const api = options.getApi();
+      const wb = workbook();
+      const unitId = wb?.getId?.();
+      if (!api?.syncExecuteCommand || !unitId) return;
+      const bySheet = new Map<string, Record<number, Record<number, unknown>>>();
+      for (const change of changes) {
+        const rows = bySheet.get(change.sheetId) ?? {};
+        (rows[change.row] ??= {})[change.col] = change.cell ? gridFieldsToCell(change.cell as Rec) : null;
+        bySheet.set(change.sheetId, rows);
+      }
+      muted += 1;
+      try {
+        for (const [subUnitId, cellValue] of bySheet) {
+          api.syncExecuteCommand(SET_RANGE_VALUES_MUTATION, { unitId, subUnitId, cellValue });
+        }
+      } finally {
+        muted -= 1;
+      }
+    },
+    replaceWorkbook(snapshot) {
+      muted += 1;
+      try {
+        options.replaceWorkbook(snapshot);
+      } finally {
+        muted -= 1;
+      }
+      highlightKey = "";
+    },
+    onLocalChange(cb) {
+      return subscribe((event) => {
+        if (muted > 0 || !isGridContentCommand(event.id)) return;
+        cb();
+      });
+    },
+    onLocalSelection(cb) {
+      return subscribe((event) => {
+        if (muted > 0 || event.id !== SET_SELECTIONS_OPERATION || !isRec(event.params)) return;
+        const params = event.params;
+        const sheetId = typeof params.subUnitId === "string" ? params.subUnitId : "";
+        const selections = Array.isArray(params.selections) ? params.selections : [];
+        const ranges: GridSelectionRange[] = [];
+        for (const item of selections) {
+          const range = isRec(item) && isRec(item.range) ? item.range : null;
+          if (!range) continue;
+          const startRow = finiteInt(range.startRow);
+          const endRow = finiteInt(range.endRow);
+          const startColumn = finiteInt(range.startColumn);
+          const endColumn = finiteInt(range.endColumn);
+          if (startRow === null || endRow === null || startColumn === null || endColumn === null) continue;
+          ranges.push({ startRow, endRow, startColumn, endColumn });
+        }
+        if (sheetId && ranges.length > 0) cb(sheetId, ranges);
+      });
+    },
+    highlightPeers(peers) {
+      const key = stableStringify(peers);
+      if (key === highlightKey) return;
+      highlightKey = key;
+      for (const handle of highlights) {
+        try {
+          handle.dispose();
+        } catch {
+          // 工作簿已被替换时旧描边可能已不在，忽略。
+        }
+      }
+      highlights = [];
+      const wb = workbook();
+      if (!wb) return;
+      for (const peer of peers) {
+        for (const range of peer.ranges) {
+          const sheet =
+            wb.getSheetBySheetId?.(range.sheetId) ??
+            wb.getSheets?.().find((candidate) => candidate.getSheetId?.() === range.sheetId);
+          if (!sheet?.highlightRanges || !sheet.getRange) continue;
+          const target = sheet.getRange(
+            range.startRow,
+            range.startColumn,
+            range.endRow - range.startRow + 1,
+            range.endColumn - range.startColumn + 1,
+          );
+          const handle = sheet.highlightRanges([target], {
+            stroke: peer.color,
+            strokeWidth: 2,
+            fill: colorWithAlpha(peer.color, 0.12),
+          });
+          if (handle) highlights.push(handle);
+        }
+      }
+    },
+  };
+}
+
 // ── 绑定器 ──────────────────────────────────────────────────────────────────
 
 export interface GridCollabPort {
@@ -668,10 +852,30 @@ export interface GridCollabRoomLike {
   subscribe(cb: () => void): () => void;
 }
 
+export type GridCollabPhase = "off" | "waiting" | "live";
+
+/**
+ * 表格在协同里是否可以编辑：不在协同里 → off；播种者建好绑定器就是 live；
+ * 其余人要等到同步完成（`synced`）才 live，断线后继续编辑不退回等待。
+ */
+export function gridCollabPhase(input: {
+  room: { status: string; needsSeed: boolean } | null | undefined;
+  wasLive?: boolean;
+}): GridCollabPhase {
+  const { room } = input;
+  if (!room || room.status === "denied" || room.status === "disabled") return "off";
+  if (room.needsSeed) return "live";
+  if (room.status === "synced") return "live";
+  return input.wasLive ? "live" : "waiting";
+}
+
 export interface GridJsonBinding {
   push(state: GridWorkbookSnapshot): void;
+  /** W11 的 `seed` 自己会 `completeSeed([rootName])`。 */
   seed(state: GridWorkbookSnapshot): void;
   onRemote(cb: (state: GridWorkbookSnapshot) => void): () => void;
+  /** 读出协同文档里现有的状态；文档里还没有内容时返回 null。 */
+  read?(): GridWorkbookSnapshot | null;
   destroy(): void;
 }
 
@@ -694,6 +898,8 @@ export interface GridCollabBinderOptions {
 export interface GridCollabBinder {
   /** 立刻把还没推出去的本地变更推出去。 */
   flush(): void;
+  /** 外部新版本（AI、专业模式存的）：整本换进画布，并整张写进协同文档。 */
+  adopt(snapshot: GridWorkbookSnapshot): void;
   destroy(): void;
 }
 
@@ -742,7 +948,7 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
 
   const disposeLocal = port.onLocalChange(schedulePush);
 
-  const disposeRemote = binding.onRemote((remote) => {
+  const applyRemote = (remote: GridWorkbookSnapshot) => {
     if (destroyed) return;
     const delta = diffGridSnapshots(base, remote);
     if (!delta.structural && delta.cells.length === 0) return;
@@ -768,7 +974,19 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
     } finally {
       applyingRemote -= 1;
     }
-  });
+  };
+  const disposeRemote = binding.onRemote(applyRemote);
+
+  // 非播种者：同步完成后把协同文档里的状态读出来换进画布（之后的变化走 onRemote）。
+  let initialApplied = false;
+  const applyInitial = () => {
+    if (initialApplied || destroyed || room.needsSeed || room.status !== "synced") return;
+    const state = binding.read?.();
+    if (!state) return;
+    initialApplied = true;
+    applyRemote(state);
+  };
+  const disposeRoom = room.subscribe(applyInitial);
 
   const disposeSelection = port.onLocalSelection((sheetId, ranges) => {
     if (destroyed) return;
@@ -784,8 +1002,9 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
 
   if (room.needsSeed) {
     binding.seed(port.getSnapshot());
-    room.completeSeed([GRID_COLLAB_ROOT]);
     base = port.getSnapshot();
+  } else {
+    applyInitial();
   }
 
   return {
@@ -795,12 +1014,25 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
         pushNow();
       }
     },
+    adopt(snapshot) {
+      if (destroyed) return;
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+      applyingRemote += 1;
+      try {
+        port.replaceWorkbook(snapshot);
+      } finally {
+        applyingRemote -= 1;
+      }
+      pushNow();
+    },
     destroy() {
       if (destroyed) return;
       if (timer !== null) clearTimer(timer);
       destroyed = true;
       disposeLocal();
       disposeRemote();
+      disposeRoom();
       disposeSelection();
       room.awareness.off("change", onAwareness);
       port.highlightPeers([]);

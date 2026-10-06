@@ -5,11 +5,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { bindJsonState, readJsonStateRoot, writeJsonStateRoot } from "../src/shell/collab/bind-json-state.ts";
 import {
   GRID_COLLAB_ROOT,
+  gridCollabPhase,
   GRID_SELECTION_ID_CAP,
   applyGridCellChanges,
+  colorWithAlpha,
   createGridCollabBinder,
+  createGridUniverPort,
+  isGridContentCommand,
   diffGridSnapshots,
   gridCellKey,
   gridFromEntities,
@@ -249,6 +254,8 @@ function harness({ needsSeed = false } = {}) {
   const seeded = [];
   const calls = { applyCells: [], replace: [], highlights: [] };
   let remoteCb = null;
+  let doc = null;
+  const roomListeners = new Set();
   let localCb = null;
   let selectionCb = null;
   const timers = [];
@@ -261,7 +268,10 @@ function harness({ needsSeed = false } = {}) {
     completeSeed(roots) {
       this.completed.push(roots);
     },
-    subscribe: () => () => {},
+    subscribe: (cb) => {
+      roomListeners.add(cb);
+      return () => roomListeners.delete(cb);
+    },
   };
   const port = {
     getSnapshot: () => structuredClone(live),
@@ -295,7 +305,11 @@ function harness({ needsSeed = false } = {}) {
       assert.equal(opts.toEntities, gridToEntities);
       return {
         push: (state) => pushed.push(state),
-        seed: (state) => seeded.push(state),
+        seed: (state) => {
+          seeded.push(state);
+          room.completeSeed([opts.rootName]);
+        },
+        read: () => doc,
         onRemote: (cb) => {
           remoteCb = cb;
           return () => {
@@ -330,6 +344,13 @@ function harness({ needsSeed = false } = {}) {
     selection: (sheetId, ranges) => selectionCb?.(sheetId, ranges),
     remote: (state) => remoteCb?.(state),
     hasRemote: () => remoteCb !== null,
+    setDoc: (state) => {
+      doc = state;
+    },
+    setStatus: (status) => {
+      room.status = status;
+      roomListeners.forEach((cb) => cb());
+    },
     fireTimers: () => {
       for (const t of timers.splice(0)) if (!t.cancelled) t.cb();
     },
@@ -343,6 +364,33 @@ test("绑定器：needsSeed 的客户端写种子并 completeSeed；其余客户
   const other = harness({ needsSeed: false });
   assert.equal(other.seeded.length, 0);
   assert.deepEqual(other.room.completed, []);
+});
+
+test("绑定器：非播种者等到 synced 再把协同文档的状态换进画布；没内容时不动", () => {
+  const h = harness({ needsSeed: false });
+  h.room.status = "syncing";
+  h.setStatus("syncing");
+  assert.equal(h.calls.applyCells.length + h.calls.replace.length, 0, "同步完成前不动画布");
+  const remote = workbook();
+  remote.sheets.s1.cellData[0][1] = { v: 321, t: 2 };
+  h.setDoc(null);
+  h.setStatus("synced");
+  assert.equal(h.calls.applyCells.length, 0, "文档里还没有内容就不动");
+  h.setDoc(remote);
+  h.setStatus("synced");
+  assert.equal(h.calls.applyCells.length, 1);
+  assert.equal(h.getLive().sheets.s1.cellData[0][1].v, 321);
+  h.setStatus("synced");
+  assert.equal(h.calls.applyCells.length, 1, "只换一次");
+});
+
+test("协同阶段：不在协同里 off；播种者与已同步的人 live；其余等待", () => {
+  assert.equal(gridCollabPhase({ room: null }), "off");
+  assert.equal(gridCollabPhase({ room: { status: "denied", needsSeed: false } }), "off");
+  assert.equal(gridCollabPhase({ room: { status: "syncing", needsSeed: true } }), "live");
+  assert.equal(gridCollabPhase({ room: { status: "synced", needsSeed: false } }), "live");
+  assert.equal(gridCollabPhase({ room: { status: "syncing", needsSeed: false } }), "waiting");
+  assert.equal(gridCollabPhase({ room: { status: "offline", needsSeed: false }, wasLive: true }), "live");
 });
 
 test("绑定器：本地变更合并到一次 push；写入远端变化时不回推", () => {
@@ -403,6 +451,21 @@ test("绑定器：选区写进感知；别人的选区变化触发描边；销�
   assert.deepEqual(h.calls.highlights.at(-1), [], "销毁时清掉别人的描边");
 });
 
+test("绑定器：adopt 把外部新版本整本换进画布并整张推出去，不留待发定时器", () => {
+  const h = harness();
+  const local = workbook();
+  local.sheets.s1.cellData[0][1] = { v: 1, t: 2 };
+  h.setLive(local);
+  h.local();
+  const external = workbook();
+  external.sheets.s1.name = "AI 改的名字";
+  h.binder.adopt(external);
+  assert.equal(h.calls.replace.length, 1);
+  assert.equal(h.pushed.length, 1);
+  assert.equal(h.pushed[0].sheets.s1.name, "AI 改的名字");
+  assert.equal(h.timers.filter((t) => !t.cancelled).length, 0);
+});
+
 test("绑定器：flush 立刻推出待发变更", () => {
   const h = harness();
   const next = workbook();
@@ -424,44 +487,15 @@ try {
   Y = null;
 }
 
-/** 仲裁 A-3 的布局：`doc.getMap(root)` 下 order(Y.Array) / entities(Y.Map<Y.Map>) / meta(Y.Map)。 */
+/** 用 W11 的写入函数（仲裁 A-3 的布局：order / entities / meta）。 */
 function pushEntities(doc, encoded) {
-  doc.transact(() => {
-    const root = doc.getMap(GRID_COLLAB_ROOT);
-    const ensure = (name, make) => {
-      let node = root.get(name);
-      if (!node) {
-        node = make();
-        root.set(name, node);
-      }
-      return node;
-    };
-    const entities = ensure("entities", () => new Y.Map());
-    const order = ensure("order", () => new Y.Array());
-    const meta = ensure("meta", () => new Y.Map());
-    for (const [key, fields] of Object.entries(encoded.entities)) {
-      let entity = entities.get(key);
-      if (!entity) {
-        entity = new Y.Map();
-        entities.set(key, entity);
-      }
-      for (const [field, value] of Object.entries(fields)) {
-        if (stableStringify(entity.get(field)) !== stableStringify(value)) entity.set(field, value);
-      }
-      for (const field of [...entity.keys()]) if (!(field in fields)) entity.delete(field);
-    }
-    for (const key of [...entities.keys()]) if (!(key in encoded.entities)) entities.delete(key);
-    const present = new Set(order.toArray());
-    for (const key of encoded.order) if (!present.has(key)) order.push([key]);
-    for (const [key, value] of Object.entries(encoded.meta)) {
-      if (stableStringify(meta.get(key)) !== stableStringify(value)) meta.set(key, value);
-    }
-    for (const key of [...meta.keys()]) if (!(key in encoded.meta)) meta.delete(key);
-  });
+  writeJsonStateRoot(doc, GRID_COLLAB_ROOT, encoded);
 }
 
 function readEntities(doc) {
-  return readGridEntityState(doc);
+  const own = readGridEntityState(doc);
+  assert.deepEqual(own, readJsonStateRoot(doc, GRID_COLLAB_ROOT), "自带的读取与 W11 的 readJsonStateRoot 等价");
+  return own;
 }
 
 function sync(a, b) {
@@ -562,4 +596,270 @@ test("并发：整表结构变更（插入行）由发起方整张重推，收�
   assert.equal(merged.sheets.s1.rowCount, 101);
   assert.equal(merged.sheets.s1.cellData[4][0].v, "合计", "原第 3 行的格子已下移到第 4 行");
   assert.equal(merged.sheets.s2.cellData[1][1].v, false);
+});
+
+// ── 真实的 bindJsonState + 绑定器，两个房间之间 ──────────────────────────────
+
+function fakeRoom(needsSeed) {
+  const doc = new Y.Doc();
+  const states = new Map();
+  const listeners = new Set();
+  const awareness = {
+    clientID: doc.clientID,
+    getStates: () => states,
+    on: () => {},
+    off: () => {},
+    setLocalStateField: () => {},
+  };
+  const room = {
+    roomKey: "artifact:test",
+    doc,
+    awareness,
+    role: "editor",
+    status: "syncing",
+    self: { id: "u", name: "我", color: "#111", avatar_url: null },
+    needsSeed,
+    isSaver: needsSeed,
+    lock: null,
+    peers: [],
+    seeded: [],
+    completeSeed(roots) {
+      this.seeded.push(roots);
+    },
+    subscribe(cb) {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    setStatus(status) {
+      this.status = status;
+      listeners.forEach((cb) => cb());
+    },
+  };
+  return room;
+}
+
+function livePort(initial) {
+  let live = structuredClone(initial);
+  let localCb = null;
+  const port = {
+    getSnapshot: () => structuredClone(live),
+    applyCellChanges: (changes) => {
+      live = applyGridCellChanges(live, changes);
+    },
+    replaceWorkbook: (snapshot) => {
+      live = structuredClone(snapshot);
+    },
+    onLocalChange: (cb) => {
+      localCb = cb;
+      return () => {};
+    },
+    onLocalSelection: () => () => {},
+    highlightPeers: () => {},
+  };
+  return {
+    port,
+    get: () => live,
+    edit(mutator) {
+      const next = structuredClone(live);
+      mutator(next);
+      live = next;
+      localCb?.();
+    },
+  };
+}
+
+test("端到端（真 bindJsonState）：A 播种，B 同步后拿到同一本；A 改格子，B 立刻看到；B 加工作表，A 整本替换", { skip: !Y }, async () => {
+  const roomA = fakeRoom(true);
+  const roomB = fakeRoom(false);
+  const relay = (from, to) =>
+    from.doc.on("update", (update, origin) => {
+      if (origin !== "relay") Y.applyUpdate(to.doc, update, "relay");
+    });
+  relay(roomA, roomB);
+  relay(roomB, roomA);
+
+  const a = livePort(workbook());
+  const timers = [];
+  const options = (room, live) => ({
+    room,
+    port: live.port,
+    bind: bindJsonState,
+    debounceMs: 10,
+    setTimer: (cb) => {
+      timers.push(cb);
+      return cb;
+    },
+    clearTimer: (handle) => {
+      const at = timers.indexOf(handle);
+      if (at >= 0) timers.splice(at, 1);
+    },
+  });
+  const binderA = createGridCollabBinder(options(roomA, a));
+  assert.deepEqual(roomA.seeded, [[GRID_COLLAB_ROOT]], "播种者种完通知服务端");
+
+  const emptyOnB = livePort({ id: "wb-b", name: "本地读到的旧内容", sheetOrder: ["x"], sheets: { x: { id: "x", name: "旧", cellData: {} } } });
+  const binderB = createGridCollabBinder(options(roomB, emptyOnB));
+  roomB.setStatus("synced");
+  assert.deepEqual(gridToEntities(emptyOnB.get()), gridToEntities(workbook()), "B 同步后画布换成协同文档里的工作簿");
+
+  a.edit((next) => {
+    next.sheets.s1.cellData[0][1] = { v: 777, t: 2 };
+  });
+  timers.splice(0).forEach((cb) => cb());
+  assert.equal(emptyOnB.get().sheets.s1.cellData[0][1].v, 777, "A 的改动 B 立刻看到");
+
+  emptyOnB.edit((next) => {
+    next.sheetOrder.push("s3");
+    next.sheets.s3 = { id: "s3", name: "B 加的表", rowCount: 10, columnCount: 5, cellData: { 0: { 0: { v: "hi", t: 1 } } } };
+  });
+  timers.splice(0).forEach((cb) => cb());
+  assert.deepEqual(a.get().sheetOrder, ["s1", "s2", "s3"]);
+  assert.equal(a.get().sheets.s3.cellData[0][0].v, "hi");
+  binderA.destroy();
+  binderB.destroy();
+});
+
+// ── Univer 端口（假 facade） ─────────────────────────────────────────────────
+
+function fakeUniverApi(initial) {
+  const events = [];
+  const commands = [];
+  const highlighted = [];
+  const sheetFor = (id) => ({
+    getSheetId: () => id,
+    getRange: (row, col, rows, cols) => ({ row, col, rows, cols, id }),
+    highlightRanges: (ranges, style) => {
+      const handle = { disposed: false, ranges, style, dispose() { this.disposed = true; } };
+      highlighted.push(handle);
+      return handle;
+    },
+  });
+  const workbook = {
+    getId: () => "unit-1",
+    save: () => structuredClone(initial),
+    getSheetBySheetId: (id) => (initial.sheets[id] ? sheetFor(id) : null),
+  };
+  const api = {
+    Event: { CommandExecuted: "CommandExecuted" },
+    addEvent(name, cb) {
+      assert.equal(name, "CommandExecuted");
+      events.push(cb);
+      return { dispose: () => events.splice(events.indexOf(cb), 1) };
+    },
+    syncExecuteCommand(id, params) {
+      commands.push({ id, params });
+      // 真实 Univer 会同步广播这条 mutation
+      for (const cb of [...events]) cb({ id, params });
+      return true;
+    },
+    getActiveWorkbook: () => workbook,
+  };
+  return { api, events, commands, highlighted };
+}
+
+test("端口：哪些命令算本地改了内容", () => {
+  for (const id of [
+    "sheet.mutation.set-range-values",
+    "sheet.mutation.insert-row",
+    "sheet.mutation.remove-col",
+    "sheet.mutation.set-worksheet-name",
+    "sheet.mutation.add-worksheet-merge",
+    "sheet.mutation.add-conditional-rule",
+    "data-validation.mutation.addRule",
+  ]) {
+    assert.equal(isGridContentCommand(id), true, id);
+  }
+  for (const id of [
+    "sheet.mutation.set-worksheet-active",
+    "sheet.operation.set-selections",
+    "sheet.command.set-range-values",
+    "formula.mutation.set-formula-calculation-start",
+    "sheet.operation.set-scroll",
+    undefined,
+    42,
+  ]) {
+    assert.equal(isGridContentCommand(id), false, String(id));
+  }
+});
+
+test("端口：写别人的格子走 set-range-values mutation，清空的格子给 null，写入期间不触发本地变更", () => {
+  const fake = fakeUniverApi(workbook());
+  const port = createGridUniverPort({ getApi: () => fake.api, replaceWorkbook: () => {} });
+  let local = 0;
+  port.onLocalChange(() => {
+    local += 1;
+  });
+  port.applyCellChanges([
+    { sheetId: "s1", row: 0, col: 1, cell: { v: 5, t: 2, s: { bl: 1 } } },
+    { sheetId: "s1", row: 3, col: 0, cell: null },
+    { sheetId: "s2", row: 1, col: 1, cell: { f: "=A1", v: 9 } },
+  ]);
+  assert.equal(fake.commands.length, 2, "每张工作表一条 mutation");
+  const first = fake.commands.find((c) => c.params.subUnitId === "s1");
+  assert.equal(first.id, "sheet.mutation.set-range-values");
+  assert.equal(first.params.unitId, "unit-1");
+  assert.deepEqual(first.params.cellValue, { 0: { 1: { v: 5, t: 2, s: { bl: 1 } } }, 3: { 0: null } });
+  assert.deepEqual(fake.commands.find((c) => c.params.subUnitId === "s2").params.cellValue, {
+    1: { 1: { f: "=A1", v: 9 } },
+  });
+  assert.equal(local, 0, "写入远端变化时不触发本地变更");
+
+  // 用户自己的改动照常触发
+  fake.api.syncExecuteCommand("sheet.mutation.set-range-values", {});
+  assert.equal(local, 1);
+});
+
+test("端口：本地选区事件解析成范围；坏参数忽略", () => {
+  const fake = fakeUniverApi(workbook());
+  const port = createGridUniverPort({ getApi: () => fake.api, replaceWorkbook: () => {} });
+  const seen = [];
+  const off = port.onLocalSelection((sheetId, ranges) => seen.push([sheetId, ranges]));
+  const fire = (params) => fake.events.forEach((cb) => cb({ id: "sheet.operation.set-selections", params }));
+  fire({ subUnitId: "s1", selections: [{ range: { startRow: 1, endRow: 2, startColumn: 0, endColumn: 3 } }] });
+  fire({ subUnitId: "s1", selections: [{ range: { startRow: "x", endRow: 2, startColumn: 0, endColumn: 3 } }] });
+  fire({ selections: [] });
+  assert.deepEqual(seen, [["s1", [{ startRow: 1, endRow: 2, startColumn: 0, endColumn: 3 }]]]);
+  off();
+  assert.equal(fake.events.length, 0);
+});
+
+test("端口：别人的选区用他的颜色描边；同样的选区不重复画；变化时先撤掉旧的", () => {
+  const fake = fakeUniverApi(workbook());
+  const port = createGridUniverPort({ getApi: () => fake.api, replaceWorkbook: () => {} });
+  const peers = [
+    { userId: "u2", name: "小王", color: "#336699", ranges: [{ sheetId: "s1", startRow: 1, endRow: 2, startColumn: 0, endColumn: 1 }] },
+  ];
+  port.highlightPeers(peers);
+  assert.equal(fake.highlighted.length, 1);
+  assert.deepEqual(fake.highlighted[0].ranges[0], { row: 1, col: 0, rows: 2, cols: 2, id: "s1" });
+  assert.equal(fake.highlighted[0].style.stroke, "#336699");
+  assert.equal(fake.highlighted[0].style.fill, "rgba(51, 102, 153, 0.12)");
+  port.highlightPeers(peers);
+  assert.equal(fake.highlighted.length, 1, "没变化不重画");
+  port.highlightPeers([]);
+  assert.equal(fake.highlighted[0].disposed, true);
+  port.highlightPeers([{ ...peers[0], ranges: [{ sheetId: "ghost", startRow: 0, endRow: 0, startColumn: 0, endColumn: 0 }] }]);
+  assert.equal(fake.highlighted.length, 1, "不存在的工作表直接跳过");
+  assert.equal(colorWithAlpha("hsl(120, 70%, 45%)", 0.3), "hsla(120, 70%, 45%, 0.3)");
+  assert.equal(colorWithAlpha("javascript:1", 0.3), "rgba(99, 102, 241, 0.3)");
+});
+
+test("端口：整本替换期间也屏蔽本地变更；快照读的是 workbook.save()", () => {
+  const fake = fakeUniverApi(workbook());
+  let local = 0;
+  const port = createGridUniverPort({
+    getApi: () => fake.api,
+    replaceWorkbook: () => {
+      fake.api.syncExecuteCommand("sheet.mutation.insert-sheet", {});
+    },
+  });
+  port.onLocalChange(() => {
+    local += 1;
+  });
+  port.replaceWorkbook({ sheetOrder: [], sheets: {} });
+  assert.equal(local, 0);
+  const snapshot = port.getSnapshot();
+  assert.equal(snapshot.sheets.s1.name, "收入");
+  snapshot.sheets.s1.name = "被改";
+  assert.equal(port.getSnapshot().sheets.s1.name, "收入", "返回的是拷贝");
 });
