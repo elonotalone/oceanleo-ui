@@ -471,3 +471,131 @@ export function canvasControlState(input: {
   if (!settled) return { readOnly: true, canSave: false };
   return { readOnly: input.readOnly, canSave: input.saveGate };
 }
+
+// ============================================================================
+// 外壳 ↔ 画布的收发状态机（无 React，可单测）。
+//
+// 三件事：
+//  1) 抓取：一次只在途一个；抓回来时若期间有补丁入队（或还在发送），这份就是旧的，丢掉，不当作「本端状态」。
+//  2) 补丁/控制消息排队：画布的 `recovery-restore` 一次只处理一条（外壳组件只发当前的 recoveryRestore），
+//     收到 `recovery-result` 才发下一条。
+//  3) 基线：画布此刻被认为持有的图；远端新状态与基线求字段差异，只发差异。
+// ============================================================================
+
+export type CanvasCaptureOutcome =
+  | { kind: "ignored" }
+  /** 画布回了别的格式（旧画布不认协同）。 */
+  | { kind: "legacy" }
+  /** 画布回了失败（没载入好等）。 */
+  | { kind: "failed" }
+  /** 期间有补丁入队：这份是旧的。 */
+  | { kind: "stale" }
+  | { kind: "notLoaded" }
+  | { kind: "state"; graph: CanvasCollabGraph };
+
+export interface CanvasRestoreItem {
+  recoveryId: string;
+  snapshot: { revision: number; payload: CanvasCollabPayload };
+}
+
+export class CanvasCollabLink {
+  baseline: CanvasCollabGraph | null = null;
+  /** 因单个实体太大而没能同步的个数（累计）。 */
+  skipped = 0;
+  /** 画布拒收 / 应用失败的消息条数（累计）。 */
+  failures = 0;
+  private generation = 0;
+  private seq = 0;
+  private inflight: { id: string; generation: number } | null = null;
+  private queue: CanvasRestoreItem[] = [];
+
+  private readonly prefix: string;
+
+  constructor(prefix = "canvas-collab") {
+    this.prefix = prefix;
+  }
+
+  private nextId(kind: string): string {
+    this.seq += 1;
+    return `${this.prefix}-${kind}-${this.seq}`;
+  }
+
+  /** 排队中或发送中的消息数。 */
+  get pending(): number {
+    return this.queue.length;
+  }
+
+  /** 要抓一次画布：返回请求号；已有一个在途返回 null（调用方稍后再试）。 */
+  beginCapture(): string | null {
+    if (this.inflight) return null;
+    const id = this.nextId("cap");
+    this.inflight = { id, generation: this.generation };
+    return id;
+  }
+
+  /** 当前在途的抓取（用于超时判断）。 */
+  get capturing(): boolean {
+    return this.inflight !== null;
+  }
+
+  /** 放弃在途的抓取（超时）。 */
+  abandonCapture(): void {
+    this.inflight = null;
+  }
+
+  receiveCapture(result: { recoveryId: string; ok: boolean; snapshot?: unknown }): CanvasCaptureOutcome {
+    if (!this.inflight || this.inflight.id !== result.recoveryId) return { kind: "ignored" };
+    const issued = this.inflight.generation;
+    this.inflight = null;
+    if (!result.ok) return { kind: "failed" };
+    const parsed = parseCanvasCapture(result.snapshot);
+    if (!parsed) return { kind: "legacy" };
+    if (issued !== this.generation || this.queue.length > 0) return { kind: "stale" };
+    if (!parsed.loaded) return { kind: "notLoaded" };
+    this.baseline = parsed.graph;
+    return { kind: "state", graph: parsed.graph };
+  }
+
+  private enqueue(payload: CanvasCollabPayload): void {
+    this.queue.push({ recoveryId: this.nextId("rst"), snapshot: { revision: this.seq, payload } });
+  }
+
+  /** 房间里的新状态 → 与基线求字段差异 → 分块入队。返回入队的消息条数。 */
+  applyRemote(state: CanvasCollabGraph, options: { markDirty?: boolean } = {}): number {
+    const patch = canvasGraphDiff(this.baseline, state);
+    this.baseline = state;
+    if (canvasPatchIsEmpty(patch)) return 0;
+    const { payloads, skipped } = canvasPatchToPayloads(patch, { markDirty: options.markDirty !== false });
+    this.skipped += skipped;
+    for (const payload of payloads) this.enqueue(payload);
+    if (payloads.length > 0) this.generation += 1;
+    return payloads.length;
+  }
+
+  /** 排一条控制消息（只读 / 保存闸 / 立刻保存）。不改图，所以不让在途的抓取作废。 */
+  sendControl(state: { readOnly: boolean; canSave: boolean; flush?: boolean }): void {
+    this.enqueue(canvasControlPayload(state));
+  }
+
+  /** 此刻该交给画布的那一条（没有就是 null）。 */
+  head(): CanvasRestoreItem | null {
+    return this.queue[0] ?? null;
+  }
+
+  /** 画布回了 `recovery-result`。返回这条是不是队首、成没成功。 */
+  receiveRestoreResult(result: { recoveryId: string; ok: boolean }): { matched: boolean; ok: boolean; drained: boolean } {
+    const head = this.queue[0];
+    if (!head || head.recoveryId !== result.recoveryId) return { matched: false, ok: false, drained: false };
+    this.queue.shift();
+    if (!result.ok) this.failures += 1;
+    return { matched: true, ok: result.ok, drained: this.queue.length === 0 };
+  }
+
+  /** 画布换了一次（iframe 重载）：基线、队列、在途抓取全部作废。 */
+  reset(): void {
+    this.baseline = null;
+    this.queue = [];
+    this.inflight = null;
+    this.generation += 1;
+  }
+}
