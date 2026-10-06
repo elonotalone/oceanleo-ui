@@ -3,6 +3,7 @@
 // 侧栏「消息」的图标 + 未读角标。图标是自带的内联 SVG（风格同 shell/icons.tsx：柔和渐变底 + currentColor 描边）。
 import type { ReactNode } from "react";
 import { useImUnread } from "./realtime/hooks";
+import { formatBadge } from "./realtime/store";
 
 function BubbleIcon({ className = "h-4 w-4" }: { className?: string }): ReactNode {
   return (
@@ -27,11 +28,6 @@ function BubbleIcon({ className = "h-4 w-4" }: { className?: string }): ReactNod
       <path d="M8.5 9.5h7M8.5 12.5h4.5" />
     </svg>
   );
-}
-
-export function formatBadge(count: number): string {
-  if (!Number.isFinite(count) || count <= 0) return "";
-  return count > 99 ? "99+" : String(Math.floor(count));
 }
 
 export function MessagesNavIcon({ className }: { className?: string }) {
