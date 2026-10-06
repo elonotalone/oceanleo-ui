@@ -234,6 +234,80 @@ export function deckFromEntities(
   return deck;
 }
 
+/**
+ * 把「changed 相对 base 的变化」按实体套进 target，返回新的整份文稿：
+ * - 远端改动要套进撤销/重做栈里的旧快照（`target`=旧快照，`base`=应用前，`changed`=远端状态），
+ *   这样本地撤销只会撤自己的改动，不会把别人的改动一起撤掉；
+ * - 本人正在拖动时远端到达：把本人这一手的改动（`base`=手势开始，`changed`=此刻本地）套回远端状态上。
+ * 逐实体比较，没变的实体一律保持 target 里的样子。
+ */
+export function deckRebase(target: DeckDocument, base: DeckDocument, changed: DeckDocument): DeckDocument {
+  const t = deckToEntities(target);
+  const b = deckToEntities(base);
+  const c = deckToEntities(changed);
+  const entities: Record<string, Record<string, unknown>> = { ...t.entities };
+  const meta: Record<string, unknown> = { ...t.meta };
+  let order = t.order.slice();
+  let touched = false;
+  const keys = new Set([...Object.keys(b.entities), ...Object.keys(c.entities)]);
+  const slideKeys = (state: EntityState) => state.order.filter((key) => state.entities[key]?.kind === "slide");
+  for (const key of keys) {
+    const before = b.entities[key];
+    const after = c.entities[key];
+    if (sameJson(before, after)) continue;
+    touched = true;
+    if (!after) {
+      delete entities[key];
+      order = order.filter((item) => item !== key);
+      continue;
+    }
+    entities[key] = after;
+    if (order.includes(key)) continue;
+    if (after.kind === "slide") {
+      const sequence = slideKeys(c);
+      let at = 0;
+      for (let i = sequence.indexOf(key) - 1; i >= 0; i -= 1) {
+        const neighbour = order.indexOf(sequence[i]);
+        if (neighbour >= 0) {
+          at = neighbour + 1;
+          break;
+        }
+      }
+      order.splice(at, 0, key);
+    } else {
+      order.push(key);
+    }
+  }
+  if (!sameJson(slideKeys(b), slideKeys(c))) {
+    // 页顺序被调过：以 changed 的页顺序为准，target 独有的页跟在它们原来的前一页后面
+    touched = true;
+    const wanted = slideKeys(c).filter((key) => entities[key]);
+    const others = order.filter((key) => entities[key]?.kind !== "slide");
+    const current = order.filter((key) => entities[key]?.kind === "slide");
+    const merged = wanted.slice();
+    current.forEach((key, index) => {
+      if (merged.includes(key)) return;
+      let at = 0;
+      for (let i = index - 1; i >= 0; i -= 1) {
+        const neighbour = merged.indexOf(current[i]);
+        if (neighbour >= 0) {
+          at = neighbour + 1;
+          break;
+        }
+      }
+      merged.splice(at, 0, key);
+    });
+    order = [...merged, ...others];
+  }
+  for (const key of new Set([...Object.keys(b.meta), ...Object.keys(c.meta)])) {
+    if (sameJson(b.meta[key], c.meta[key])) continue;
+    touched = true;
+    meta[key] = c.meta[key];
+  }
+  if (!touched) return target;
+  return deckFromEntities({ order, entities, meta }, target);
+}
+
 /** 选中框同步用：把一组元素 id 变成实体 key 列表。 */
 export function deckSelectionKeys(slideId: string, elementIds: readonly string[]): string[] {
   return elementIds.filter(Boolean).map((id) => deckElementKey(slideId, id));

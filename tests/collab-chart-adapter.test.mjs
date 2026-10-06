@@ -9,6 +9,7 @@ import {
   CHART_COLLAB_ROOT as ROOT,
   chartFromEntities,
   chartFromY,
+  chartRebase,
   chartSeriesKey,
   chartToEntities,
 } from "../src/shell/collab/adapters/chart.ts";
@@ -152,4 +153,24 @@ test("新增 / 删除 / 重排系列收敛，两端一致；坐标轴与图例�
 test("选择键：系列 id → 实体 key", () => {
   assert.equal(chartSeriesKey("s-a"), "series:s-a");
   assert.ok(chartToEntities(makeChart()).order.includes("series:s-a"));
+});
+
+test("chartRebase：别人的改动套进旧快照，本地撤销不撤掉别人的；系列顺序/新增/删除跟着变", () => {
+  const base = makeChart();
+  const remote = clone(base);
+  remote.option.title.text = "别人改的标题";
+  seriesById(remote, "s-b").name = "华南（改）";
+  remote.option.series = remote.option.series.filter((s) => s.id !== "s-c");
+  remote.option.series.push({ id: "s-new", name: "新系列", type: "line", data: [1, 2, 3] });
+  const old = clone(base);
+  seriesById(old, "s-a").name = "本人旧名字"; // 撤销栈里本人当时的版本
+  const rebased = chartRebase(old, base, remote);
+  assert.equal(seriesById(rebased, "s-a").name, "本人旧名字");
+  assert.equal(rebased.option.title.text, "别人改的标题");
+  assert.equal(seriesById(rebased, "s-b").name, "华南（改）");
+  assert.deepEqual(rebased.option.series.map((s) => s.id), ["s-a", "s-b", "s-new"]);
+  assert.equal(chartRebase(old, base, base), old);
+  const reordered = clone(base);
+  reordered.option.series.reverse();
+  assert.deepEqual(chartRebase(clone(base), base, reordered).option.series.map((s) => s.id), ["s-c", "s-b", "s-a"]);
 });

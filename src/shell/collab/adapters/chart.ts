@@ -141,6 +141,68 @@ export function chartFromEntities(input: EntityState, prev: ChartDocumentV1 | nu
   return doc as unknown as ChartDocumentV1;
 }
 
+/**
+ * 把「changed 相对 base 的变化」按实体套进 target（撤销/重做栈里的旧版本），返回新文档：
+ * 本人撤销只会撤自己改的，不会把别人的改动一起撤掉。没有变化原样返回 target。
+ */
+export function chartRebase(target: ChartDocumentV1, base: ChartDocumentV1, changed: ChartDocumentV1): ChartDocumentV1 {
+  const t = chartToEntities(target);
+  const b = chartToEntities(base);
+  const c = chartToEntities(changed);
+  const entities: Record<string, Rec> = { ...t.entities };
+  let order = t.order.slice();
+  let touched = false;
+  const seriesKeys = (state: EntityState) => state.order.filter((key) => state.entities[key]?.kind === "series");
+  for (const key of new Set([...Object.keys(b.entities), ...Object.keys(c.entities)])) {
+    if (sameJson(b.entities[key], c.entities[key])) continue;
+    touched = true;
+    const after = c.entities[key];
+    if (!after) {
+      delete entities[key];
+      order = order.filter((item) => item !== key);
+      continue;
+    }
+    entities[key] = after;
+    if (order.includes(key)) continue;
+    if (after.kind === "series") {
+      const sequence = seriesKeys(c);
+      let at = 0;
+      for (let i = sequence.indexOf(key) - 1; i >= 0; i -= 1) {
+        const neighbour = order.indexOf(sequence[i]);
+        if (neighbour >= 0) {
+          at = neighbour + 1;
+          break;
+        }
+      }
+      order.splice(at, 0, key);
+    } else {
+      order.push(key);
+    }
+  }
+  if (!sameJson(seriesKeys(b), seriesKeys(c))) {
+    touched = true;
+    const wanted = seriesKeys(c).filter((key) => entities[key]);
+    const others = order.filter((key) => entities[key]?.kind !== "series");
+    const current = order.filter((key) => entities[key]?.kind === "series");
+    const merged = wanted.slice();
+    current.forEach((key, index) => {
+      if (merged.includes(key)) return;
+      let at = 0;
+      for (let i = index - 1; i >= 0; i -= 1) {
+        const neighbour = merged.indexOf(current[i]);
+        if (neighbour >= 0) {
+          at = neighbour + 1;
+          break;
+        }
+      }
+      merged.splice(at, 0, key);
+    });
+    order = [...merged, ...others];
+  }
+  if (!touched) return target;
+  return chartFromEntities({ order, entities, meta: t.meta }, target);
+}
+
 /** awareness 的选择：选中的系列 → 实体 key。 */
 export function chartSelectionKeys(seriesIds: readonly string[]): string[] {
   return seriesIds.filter(Boolean).map(chartSeriesKey);

@@ -10,8 +10,10 @@ import {
   deckElementKey,
   deckFromEntities,
   deckFromY,
+  deckRebase,
   deckToEntities,
 } from "../src/shell/collab/adapters/deck.ts";
+import { peersSelecting, readPeerSelections, safeSelectionColor } from "../src/shell/collab/adapters/visual-selection.ts";
 
 // ---- 用 W11 的真实现写读实体根（collab/bind-json-state.ts）：只写变化的字段、被删的字段/实体随之删除
 function writeState(doc, state, _last) {
@@ -267,4 +269,61 @@ test("真 bindJsonState：viewer 的推送被丢弃", () => {
   bind.push(makeDeck());
   assert.equal(readJsonStateRoot(doc, DECK_COLLAB_ROOT).order.length, 0);
   bind.destroy();
+});
+
+const cloneDeck = (d) => JSON.parse(JSON.stringify(d));
+
+test("deckRebase：别人的改动套进旧快照，本地撤销不会撤掉别人的改动", () => {
+  const base = makeDeck();
+  const remote = cloneDeck(base);
+  remote.slides[1].title = "别人改的标题";
+  remote.slides[3].elements = remote.slides[3].elements.filter((e) => e.id !== "s4-box");
+  remote.slides.splice(5, 0, { ...cloneDeck(base.slides[0]), id: "slide-new", title: "别人新加", elements: [] });
+  // 旧快照：本人在撤销栈里的一份（本人当时改过第 1 页标题）
+  const old = cloneDeck(base);
+  old.slides[0].title = "本人旧标题";
+  const rebased = deckRebase(old, base, remote);
+  assert.equal(rebased.slides[0].title, "本人旧标题", "本人的改动留着");
+  assert.equal(rebased.slides[1].title, "别人改的标题");
+  assert.equal(rebased.slides[3].elements.some((e) => e.id === "s4-box"), false);
+  assert.deepEqual(rebased.slides.map((s) => s.id), ["slide-1", "slide-2", "slide-3", "slide-4", "slide-5", "slide-new"]);
+  assert.equal(deckRebase(old, base, base), old, "没变化就原样返回");
+});
+
+test("deckRebase：本人拖动中远端到达，把本人这一手套回远端状态", () => {
+  const gestureBase = makeDeck();
+  const local = cloneDeck(gestureBase);
+  local.slides[0].elements[0].x = 40; // 本人正在拖
+  const remote = cloneDeck(gestureBase);
+  remote.slides[2].title = "别人改第 3 页";
+  const merged = deckRebase(remote, gestureBase, local);
+  assert.equal(merged.slides[0].elements[0].x, 40);
+  assert.equal(merged.slides[2].title, "别人改第 3 页");
+});
+
+test("deckRebase：页被别人调了顺序，旧快照跟着调", () => {
+  const base = makeDeck();
+  const remote = cloneDeck(base);
+  remote.slides.reverse();
+  const rebased = deckRebase(cloneDeck(base), base, remote);
+  assert.deepEqual(rebased.slides.map((s) => s.id), remote.slides.map((s) => s.id));
+});
+
+test("看见别人：读 awareness 里别人的选择，颜色按用户 id 重算、自己和脏数据不算", () => {
+  const states = new Map([
+    [1, { user: { id: "me", name: "我" }, selection: ["slide-1"] }],
+    [2, { user: { id: "u2", name: "乙", color: "red; background:url(x)" }, selection: ["slide-2", "slide-2::s2-title", 7, ""] }],
+    [3, { user: { id: "u2", name: "乙" }, selection: ["slide-3::s3-box"] }],
+    [4, { user: { id: "me", name: "我（另一个标签页）" }, selection: ["slide-4"] }],
+    [5, { selection: ["slide-5"] }],
+    [6, { user: { id: "u6", name: "丙" }, selection: "不是数组" }],
+  ]);
+  const peers = readPeerSelections({ clientID: 1, getStates: () => states }, "me");
+  assert.deepEqual(peers.map((p) => p.userId), ["u2", "u6"]);
+  assert.deepEqual(peers[0].keys, ["slide-2", "slide-2::s2-title", "slide-3::s3-box"], "同一人多个标签页合并");
+  assert.match(peers[0].color, /^hsl\(\d+, 70%, 45%\)$/);
+  assert.deepEqual(peers[1].keys, []);
+  assert.deepEqual(peersSelecting(peers, deckElementKey("slide-2", "s2-title")).map((p) => p.name), ["乙"]);
+  assert.equal(safeSelectionColor("red; background:url(x)"), "#6366f1");
+  assert.equal(safeSelectionColor(peers[0].color), peers[0].color);
 });

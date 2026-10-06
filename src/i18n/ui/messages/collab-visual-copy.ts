@@ -58,6 +58,7 @@ const SOURCE = {
   vectorChanged: "改了矢量图",
   vectorLocked: "{name} 正在编辑这张矢量图，你先看着；他每次保存，这里都会更新。",
   lockWaiting: "正在争取编辑权…",
+  vectorViewOnly: "你只有查看权限，这张矢量图不能编辑。",
 } as const;
 
 export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
@@ -116,6 +117,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Changed the vector graphic",
     vectorLocked: "{name} is editing this vector graphic. You can only watch for now; it updates every time they save.",
     lockWaiting: "Requesting edit access…",
+    vectorViewOnly: "You have view-only access, so this vector image can't be edited.",
   },
   de: {
     deckCreated: "Präsentation erstellt",
@@ -172,6 +174,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Vektorgrafik geändert",
     vectorLocked: "{name} bearbeitet diese Vektorgrafik. Du kannst gerade nur zusehen; sie aktualisiert sich bei jedem Speichern.",
     lockWaiting: "Bearbeitungsrecht wird angefordert …",
+    vectorViewOnly: "Du hast nur Leserechte, daher kann diese Vektorgrafik nicht bearbeitet werden.",
   },
   es: {
     deckCreated: "Se creó la presentación",
@@ -228,6 +231,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Se cambió el gráfico vectorial",
     vectorLocked: "{name} está editando este gráfico vectorial. Por ahora solo puedes mirar; se actualiza cada vez que guarda.",
     lockWaiting: "Solicitando permiso de edición…",
+    vectorViewOnly: "Solo tienes permiso de lectura, así que esta imagen vectorial no se puede editar.",
   },
   "es-419": {
     deckCreated: "Se creó la presentación",
@@ -284,6 +288,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Se cambió el gráfico vectorial",
     vectorLocked: "{name} está editando este gráfico vectorial. Por ahora solo puedes mirar; se actualiza cada vez que guarda.",
     lockWaiting: "Pidiendo permiso de edición…",
+    vectorViewOnly: "Solo tienes permiso de lectura, así que esta imagen vectorial no se puede editar.",
   },
   fr: {
     deckCreated: "Présentation créée",
@@ -340,6 +345,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Image vectorielle modifiée",
     vectorLocked: "{name} modifie cette image vectorielle. Pour l'instant, vous pouvez seulement regarder ; elle se met à jour à chaque enregistrement.",
     lockWaiting: "Demande des droits de modification…",
+    vectorViewOnly: "Vous n'avez qu'un accès en lecture : cette image vectorielle ne peut pas être modifiée.",
   },
   it: {
     deckCreated: "Presentazione creata",
@@ -396,6 +402,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Modificata la grafica vettoriale",
     vectorLocked: "{name} sta modificando questa grafica vettoriale. Per ora puoi solo guardare; si aggiorna a ogni salvataggio.",
     lockWaiting: "Richiesta del permesso di modifica…",
+    vectorViewOnly: "Hai solo l'accesso in lettura, quindi questa immagine vettoriale non può essere modificata.",
   },
   "pt-BR": {
     deckCreated: "Apresentação criada",
@@ -452,6 +459,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Imagem vetorial alterada",
     vectorLocked: "{name} está editando esta imagem vetorial. Por enquanto você só pode assistir; ela é atualizada a cada salvamento.",
     lockWaiting: "Pedindo permissão de edição…",
+    vectorViewOnly: "Você só tem permissão de leitura, então esta imagem vetorial não pode ser editada.",
   },
   "pt-PT": {
     deckCreated: "Apresentação criada",
@@ -508,6 +516,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Imagem vetorial alterada",
     vectorLocked: "{name} está a editar esta imagem vetorial. Por agora só pode ver; é atualizada sempre que a pessoa guarda.",
     lockWaiting: "A pedir permissão de edição…",
+    vectorViewOnly: "Só tem permissão de leitura, por isso esta imagem vetorial não pode ser editada.",
   },
   vi: {
     deckCreated: "Đã tạo bản trình chiếu",
@@ -564,6 +573,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Đã sửa ảnh vector",
     vectorLocked: "{name} đang chỉnh sửa ảnh vector này. Hiện bạn chỉ xem được; ảnh sẽ cập nhật mỗi lần họ lưu.",
     lockWaiting: "Đang xin quyền chỉnh sửa…",
+    vectorViewOnly: "Bạn chỉ có quyền xem nên không thể chỉnh sửa ảnh vector này.",
   },
   tr: {
     deckCreated: "Sunum oluşturuldu",
@@ -620,6 +630,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "Vektör grafik değiştirildi",
     vectorLocked: "{name} bu vektör grafiği düzenliyor. Şimdilik yalnızca izleyebilirsin; her kaydettiğinde güncellenir.",
     lockWaiting: "Düzenleme izni isteniyor…",
+    vectorViewOnly: "Yalnızca görüntüleme izniniz var, bu yüzden bu vektör görseli düzenlenemez.",
   },
   "zh-TW": {
     deckCreated: "建立了簡報",
@@ -676,6 +687,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "改了向量圖",
     vectorLocked: "{name} 正在編輯這張向量圖，你先看著；他每次儲存，這裡都會更新。",
     lockWaiting: "正在爭取編輯權…",
+    vectorViewOnly: "你只有檢視權限，這張向量圖不能編輯。",
   },
   ja: {
     deckCreated: "プレゼンテーションを作成しました",
@@ -732,6 +744,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "ベクター画像を変更しました",
     vectorLocked: "{name} さんがこのベクター画像を編集中です。今は閲覧のみで、保存のたびに更新されます。",
     lockWaiting: "編集権限をリクエストしています…",
+    vectorViewOnly: "閲覧権限のみのため、このベクター画像は編集できません。",
   },
   ko: {
     deckCreated: "프레젠테이션을 만들었습니다",
@@ -788,6 +801,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "벡터 이미지를 바꿨습니다",
     vectorLocked: "{name}님이 이 벡터 이미지를 편집 중입니다. 지금은 보기만 할 수 있으며, 저장할 때마다 업데이트됩니다.",
     lockWaiting: "편집 권한을 요청하는 중…",
+    vectorViewOnly: "보기 권한만 있어서 이 벡터 이미지는 편집할 수 없습니다.",
   },
   ar: {
     deckCreated: "تم إنشاء العرض التقديمي",
@@ -844,6 +858,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "تم تغيير الصورة المتجهة",
     vectorLocked: "{name} يعدّل هذه الصورة المتجهة. يمكنك المشاهدة فقط الآن، وتتحدّث الصورة عند كل حفظ.",
     lockWaiting: "جارٍ طلب صلاحية التعديل…",
+    vectorViewOnly: "لديك صلاحية العرض فقط، لذا لا يمكن تعديل هذه الصورة المتجهة.",
   },
   th: {
     deckCreated: "สร้างงานนำเสนอแล้ว",
@@ -900,6 +915,7 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "เปลี่ยนภาพเวกเตอร์",
     vectorLocked: "{name} กำลังแก้ไขภาพเวกเตอร์นี้ ตอนนี้คุณดูได้อย่างเดียว และภาพจะอัปเดตทุกครั้งที่เขาบันทึก",
     lockWaiting: "กำลังขอสิทธิ์แก้ไข…",
+    vectorViewOnly: "คุณมีสิทธิ์ดูเท่านั้น จึงแก้ไขภาพเวกเตอร์นี้ไม่ได้",
   },
   hi: {
     deckCreated: "प्रेज़ेंटेशन बनाया गया",
@@ -956,5 +972,6 @@ export const COLLAB_VISUAL_MESSAGES = assembleCopy(SOURCE, {
     vectorChanged: "वेक्टर चित्र बदला गया",
     vectorLocked: "{name} इस वेक्टर चित्र को संपादित कर रहे हैं। अभी आप केवल देख सकते हैं; हर बार सहेजने पर यह अपडेट हो जाता है।",
     lockWaiting: "संपादन की अनुमति माँगी जा रही है…",
+    vectorViewOnly: "आपके पास केवल देखने की अनुमति है, इसलिए यह वेक्टर छवि संपादित नहीं की जा सकती।",
   },
 });
