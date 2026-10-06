@@ -1,7 +1,7 @@
 // 图表的多人同改适配器 + 回放纯函数（work-chat W13，契约 §8.4 / §9.15）。
 //
 // 实体模型：
-//   order    = 系列顺序（`series:<系列 id>` 列表）；
+//   order    = 全部实体 key：先是 `series:<系列 id>`（先后 = 系列顺序），再是下面的配置块 key（W11 的绑定只保留 order 里列出的实体）；
 //   系列实体  key = `series:<id>`，字段 = 该系列 JSON 的顶层键（name/type/data/color/label/stack/markLine…）；
 //   配置块    `block:title`（option.title）、`block:xAxis`、`block:yAxis`（单轴 shape="single" + 轴字段，双轴 shape="array" + axes）、
 //             `block:legend`、`block:dataset`（有才有）、`block:option`（option 里其余键：color、tooltip…）、`block:doc`（文档顶层其余键：schema、title、indicators…）；
@@ -94,6 +94,7 @@ export function chartToEntities(document: ChartDocumentV1): EntityState {
   if (dataset !== undefined && dataset !== null) entities[CHART_BLOCKS.dataset] = withKind("dataset", asRec(dataset));
   entities[CHART_BLOCKS.option] = withKind("option", optionRest);
   entities[CHART_BLOCKS.doc] = withKind("doc", docRest);
+  for (const key of Object.values(CHART_BLOCKS)) if (entities[key]) order.push(key);
   return { order, entities, meta: {} };
 }
 

@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as Y from "yjs";
+import { readJsonStateRoot, writeJsonStateRoot } from "../src/shell/collab/bind-json-state.ts";
 import { normalizeChartDocument } from "../src/shell/chart-editor/chart-schema.ts";
 import {
   CHART_BLOCKS,
@@ -12,45 +13,9 @@ import {
   chartToEntities,
 } from "../src/shell/collab/adapters/chart.ts";
 
-// ---- 测试用的「实体绑定」：与 W11 bindJsonState 同一布局、只写变化的字段
-function writeState(doc, state, last) {
-  const root = doc.getMap(ROOT);
-  doc.transact(() => {
-    let order = root.get("order");
-    if (!(order instanceof Y.Array)) root.set("order", (order = new Y.Array()));
-    let entities = root.get("entities");
-    if (!(entities instanceof Y.Map)) root.set("entities", (entities = new Y.Map()));
-    let meta = root.get("meta");
-    if (!(meta instanceof Y.Map)) root.set("meta", (meta = new Y.Map()));
-    const before = last?.entities ?? {};
-    for (const key of Object.keys(before)) if (!(key in state.entities)) entities.delete(key);
-    for (const [key, fields] of Object.entries(state.entities)) {
-      let ent = entities.get(key);
-      if (!(ent instanceof Y.Map)) entities.set(key, (ent = new Y.Map()));
-      for (const [name, value] of Object.entries(fields)) {
-        if (JSON.stringify(before[key]?.[name]) !== JSON.stringify(value) || !ent.has(name)) ent.set(name, value);
-      }
-    }
-    for (const [name, value] of Object.entries(state.meta)) {
-      if (JSON.stringify(last?.meta?.[name]) !== JSON.stringify(value) || !meta.has(name)) meta.set(name, value);
-    }
-    const have = order.toJSON();
-    if (JSON.stringify(have) !== JSON.stringify(state.order)) {
-      // 删掉不在目标里的，再把缺的按位置插入（移动 = 删 + 插）
-      for (let i = have.length - 1; i >= 0; i -= 1) {
-        if (!state.order.includes(have[i]) || have.indexOf(have[i]) !== i) order.delete(i, 1);
-      }
-      const now = order.toJSON();
-      state.order.forEach((id, index) => {
-        if (now[index] !== id) {
-          const at = now.indexOf(id);
-          if (at >= 0) { order.delete(at, 1); now.splice(at, 1); }
-          order.insert(Math.min(index, now.length), [id]);
-          now.splice(Math.min(index, now.length), 0, id);
-        }
-      });
-    }
-  });
+// ---- 用 W11 的真实现写读实体根（collab/bind-json-state.ts）：只写变化的字段、被删的字段/实体随之删除
+function writeState(doc, state, _last) {
+  writeJsonStateRoot(doc, ROOT, state);
 }
 
 function sync(a, b) {

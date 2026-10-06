@@ -1,7 +1,8 @@
 // PPT（演示文稿）的多人同改适配器 + 回放的纯函数（work-chat W13，契约 §8.4 / §9.15）。
 //
 // 实体模型（契约 §8.4「每个实体一个 Y.Map、顺序一个 Y.Array」）：
-//   order    = 页顺序（页 id 列表）；
+//   order    = 全部实体 key：先是页 id（它们在 order 里的先后 = 页顺序），再是各页元素的 key（位置无意义，
+//              但必须在 order 里——W11 的绑定只保留 order 里列出的实体）；
 //   页实体    key = 页 id，{kind:"slide", title, body, bullets, notes, layout, background, transition, masterId, image}；
 //   元素实体  key = `${页 id}::${元素 id}`，{kind:"element", slideId, ...DeckElement 的全部字段}；
 //   meta      = 整份演示文稿的顶层字段（标题、比例、主题、母版、导入警告、专业模式源）。
@@ -102,6 +103,7 @@ function field(value: unknown): unknown {
 
 export function deckToEntities(deck: DeckDocument): EntityState {
   const order: string[] = [];
+  const elementKeys: string[] = [];
   const entities: Record<string, Record<string, unknown>> = {};
   for (const slide of deck.slides) {
     if (!slide.id || entities[slide.id]) continue; // 重复 id 的页只收第一份
@@ -123,8 +125,10 @@ export function deckToEntities(deck: DeckDocument): EntityState {
         if (!(name in row)) row[name] = field(raw[name]);
       }
       entities[key] = row;
+      elementKeys.push(key);
     }
   }
+  order.push(...elementKeys);
   const meta: Record<string, unknown> = {
     title: deck.title,
     aspect: deck.aspect,

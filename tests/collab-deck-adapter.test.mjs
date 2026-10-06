@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as Y from "yjs";
+import { bindJsonState, readJsonStateRoot, writeJsonStateRoot } from "../src/shell/collab/bind-json-state.ts";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
 import {
   DECK_COLLAB_ROOT,
@@ -12,45 +13,9 @@ import {
   deckToEntities,
 } from "../src/shell/collab/adapters/deck.ts";
 
-// ---- 测试用的「实体绑定」：与 W11 bindJsonState 同一布局、只写变化的字段
-function writeState(doc, state, last) {
-  const root = doc.getMap(DECK_COLLAB_ROOT);
-  doc.transact(() => {
-    let order = root.get("order");
-    if (!(order instanceof Y.Array)) root.set("order", (order = new Y.Array()));
-    let entities = root.get("entities");
-    if (!(entities instanceof Y.Map)) root.set("entities", (entities = new Y.Map()));
-    let meta = root.get("meta");
-    if (!(meta instanceof Y.Map)) root.set("meta", (meta = new Y.Map()));
-    const before = last?.entities ?? {};
-    for (const key of Object.keys(before)) if (!(key in state.entities)) entities.delete(key);
-    for (const [key, fields] of Object.entries(state.entities)) {
-      let ent = entities.get(key);
-      if (!(ent instanceof Y.Map)) entities.set(key, (ent = new Y.Map()));
-      for (const [name, value] of Object.entries(fields)) {
-        if (JSON.stringify(before[key]?.[name]) !== JSON.stringify(value) || !ent.has(name)) ent.set(name, value);
-      }
-    }
-    for (const [name, value] of Object.entries(state.meta)) {
-      if (JSON.stringify(last?.meta?.[name]) !== JSON.stringify(value) || !meta.has(name)) meta.set(name, value);
-    }
-    const have = order.toJSON();
-    if (JSON.stringify(have) !== JSON.stringify(state.order)) {
-      // 删掉不在目标里的，再把缺的按位置插入（移动 = 删 + 插）
-      for (let i = have.length - 1; i >= 0; i -= 1) {
-        if (!state.order.includes(have[i]) || have.indexOf(have[i]) !== i) order.delete(i, 1);
-      }
-      const now = order.toJSON();
-      state.order.forEach((id, index) => {
-        if (now[index] !== id) {
-          const at = now.indexOf(id);
-          if (at >= 0) { order.delete(at, 1); now.splice(at, 1); }
-          order.insert(Math.min(index, now.length), [id]);
-          now.splice(Math.min(index, now.length), 0, id);
-        }
-      });
-    }
-  });
+// ---- 用 W11 的真实现写读实体根（collab/bind-json-state.ts）：只写变化的字段、被删的字段/实体随之删除
+function writeState(doc, state, _last) {
+  writeJsonStateRoot(doc, DECK_COLLAB_ROOT, state);
 }
 
 function sync(a, b) {
@@ -238,4 +203,68 @@ test("空文档不会交给编辑器（至少保留一页）", () => {
   assert.ok(empty.slides.length >= 1);
   const prev = makeDeck();
   assert.equal(deckFromEntities({ order: [], entities: {}, meta: {} }, prev), prev);
+});
+
+test("自带的读取（fromY 用）与 W11 的 readJsonStateRoot 等价", () => {
+  const { a } = pair();
+  assert.equal(canon(deckFromY(a)), canon(deckFromEntities(readJsonStateRoot(a, DECK_COLLAB_ROOT), null)));
+});
+
+// ---- 接上 W11 真实的 bindJsonState：种子、远端回调、本地推送
+function fakeRoom(doc, extra = {}) {
+  return {
+    roomKey: "artifact:deck-test",
+    doc,
+    role: "editor",
+    status: "synced",
+    self: { id: "u1", name: "甲", color: "hsl(1, 70%, 45%)", avatar_url: null },
+    needsSeed: false,
+    lock: null,
+    seeded: [],
+    completeSeed(roots) {
+      this.seeded.push(roots);
+      this.needsSeed = false;
+    },
+    ...extra,
+  };
+}
+
+test("真 bindJsonState：A 种子，B 收到整份 PPT；B 改第 2 页标题，A 的回调收到且其余不变", () => {
+  const docA = new Y.Doc();
+  const docB = new Y.Doc();
+  const roomA = fakeRoom(docA, { needsSeed: true });
+  const roomB = fakeRoom(docB);
+  const deck = makeDeck();
+  const opts = (room) => ({ room, rootName: DECK_COLLAB_ROOT, toEntities: deckToEntities, fromEntities: deckFromEntities });
+  const bindA = bindJsonState(opts(roomA));
+  const bindB = bindJsonState(opts(roomB));
+  const gotA = [];
+  const gotB = [];
+  bindA.onRemote((state) => gotA.push(state));
+  bindB.onRemote((state) => gotB.push(state));
+  bindA.seed(deck);
+  assert.deepEqual(roomA.seeded, [[DECK_COLLAB_ROOT]]);
+  sync(docA, docB);
+  assert.equal(gotB.length >= 1, true);
+  assert.equal(canon(gotB.at(-1)), canon(deck));
+  assert.equal(gotA.length, 0, "自己种的子不回调自己");
+  const edited = clone(gotB.at(-1));
+  edited.slides[1].title = "B 改的标题";
+  bindB.push(edited);
+  sync(docA, docB);
+  assert.equal(gotA.length >= 1, true);
+  const remote = gotA.at(-1);
+  assert.equal(remote.slides[1].title, "B 改的标题");
+  assert.equal(canon({ ...remote, slides: remote.slides.filter((_, i) => i !== 1) }), canon({ ...deck, slides: deck.slides.filter((_, i) => i !== 1) }));
+  bindA.destroy();
+  bindB.destroy();
+});
+
+test("真 bindJsonState：viewer 的推送被丢弃", () => {
+  const doc = new Y.Doc();
+  const room = fakeRoom(doc, { role: "viewer" });
+  const bind = bindJsonState({ room, rootName: DECK_COLLAB_ROOT, toEntities: deckToEntities, fromEntities: deckFromEntities });
+  bind.push(makeDeck());
+  assert.equal(readJsonStateRoot(doc, DECK_COLLAB_ROOT).order.length, 0);
+  bind.destroy();
 });

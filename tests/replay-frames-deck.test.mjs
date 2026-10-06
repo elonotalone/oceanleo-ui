@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import * as Y from "yjs";
+import { writeJsonStateRoot } from "../src/shell/collab/bind-json-state.ts";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
 import {
   DECK_COLLAB_ROOT,
@@ -41,23 +42,7 @@ function makeDeck() {
 
 function yDocOf(deck) {
   const doc = new Y.Doc();
-  const state = deckToEntities(deck);
-  const root = doc.getMap(DECK_COLLAB_ROOT);
-  doc.transact(() => {
-    const order = new Y.Array();
-    order.push(state.order);
-    const entities = new Y.Map();
-    for (const [key, fields] of Object.entries(state.entities)) {
-      const ent = new Y.Map();
-      for (const [name, value] of Object.entries(fields)) ent.set(name, value);
-      entities.set(key, ent);
-    }
-    const meta = new Y.Map();
-    for (const [name, value] of Object.entries(state.meta)) meta.set(name, value);
-    root.set("order", order);
-    root.set("entities", entities);
-    root.set("meta", meta);
-  });
+  writeJsonStateRoot(doc, DECK_COLLAB_ROOT, deckToEntities(deck));
   return doc;
 }
 
