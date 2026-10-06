@@ -99,8 +99,19 @@ export function richDocSelectionRender(user: Record<string, unknown>): {
   return {
     nodeName: "span",
     class: "oleo-richdoc-selection",
-    style: `background-color: ${color}33`,
+    style: `background-color: ${translucent(color)}`,
   };
+}
+
+/** 给白名单颜色加 20% 透明度：`#rgb`/`#rrggbb[aa]` 与 `hsl(…)` 各有各的写法。 */
+function translucent(color: string): string {
+  const hsl = /^hsl\(\s*([\d.]+)\s*,\s*([\d.]+%)\s*,\s*([\d.]+%)\s*\)$/.exec(color);
+  if (hsl) return `hsla(${hsl[1]}, ${hsl[2]}, ${hsl[3]}, 0.2)`;
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(color);
+  if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}33`;
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) return `${color}33`;
+  // 4/5/7/8 位（自带透明度）等罕见写法：回落到默认色，不拼接。
+  return "#6366f133";
 }
 
 // ── 阶段判断 ────────────────────────────────────────────────────────────────

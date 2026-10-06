@@ -19,6 +19,7 @@ const SOURCE = {
   clearedCells: "清空了 {n} 个单元格",
   adjustedGrid: "调整了表格的行列或格式",
   syncing: "正在与协作者同步…",
+  readOnlyNow: "现在是只读状态，不能修改。",
 } as const;
 
 export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
@@ -37,6 +38,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "Cleared {n} cells",
     adjustedGrid: "Adjusted rows, columns or formatting",
     syncing: "Syncing with collaborators…",
+    readOnlyNow: "This is read-only right now, so it can't be edited.",
   },
   de: {
     addedParas: "{n} Absätze hinzugefügt",
@@ -53,6 +55,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} Zellen geleert",
     adjustedGrid: "Zeilen, Spalten oder Formatierung angepasst",
     syncing: "Wird mit Mitwirkenden synchronisiert…",
+    readOnlyNow: "Gerade nur lesbar – Änderungen sind nicht möglich.",
   },
   es: {
     addedParas: "Se añadieron {n} párrafos",
@@ -69,6 +72,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "Se vaciaron {n} celdas",
     adjustedGrid: "Se ajustaron filas, columnas o formato",
     syncing: "Sincronizando con los colaboradores…",
+    readOnlyNow: "Ahora está en solo lectura y no se puede editar.",
   },
   "es-419": {
     addedParas: "Se agregaron {n} párrafos",
@@ -85,6 +89,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "Se vaciaron {n} celdas",
     adjustedGrid: "Se ajustaron filas, columnas o formato",
     syncing: "Sincronizando con los colaboradores…",
+    readOnlyNow: "Ahora está en solo lectura y no se puede editar.",
   },
   fr: {
     addedParas: "{n} paragraphes ajoutés",
@@ -101,6 +106,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} cellules vidées",
     adjustedGrid: "Lignes, colonnes ou mise en forme ajustées",
     syncing: "Synchronisation avec les collaborateurs…",
+    readOnlyNow: "En lecture seule pour le moment : modification impossible.",
   },
   it: {
     addedParas: "Aggiunti {n} paragrafi",
@@ -117,6 +123,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "Svuotate {n} celle",
     adjustedGrid: "Regolati righe, colonne o formattazione",
     syncing: "Sincronizzazione con i collaboratori…",
+    readOnlyNow: "Al momento è in sola lettura e non si può modificare.",
   },
   "pt-BR": {
     addedParas: "{n} parágrafos adicionados",
@@ -133,6 +140,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} células limpas",
     adjustedGrid: "Linhas, colunas ou formatação ajustadas",
     syncing: "Sincronizando com os colaboradores…",
+    readOnlyNow: "Está somente para leitura agora e não pode ser editado.",
   },
   "pt-PT": {
     addedParas: "{n} parágrafos adicionados",
@@ -149,6 +157,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} células limpas",
     adjustedGrid: "Linhas, colunas ou formatação ajustadas",
     syncing: "A sincronizar com os colaboradores…",
+    readOnlyNow: "Está só de leitura neste momento e não pode ser editado.",
   },
   vi: {
     addedParas: "Đã thêm {n} đoạn",
@@ -165,6 +174,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "Đã xóa nội dung {n} ô",
     adjustedGrid: "Đã chỉnh hàng, cột hoặc định dạng",
     syncing: "Đang đồng bộ với người cộng tác…",
+    readOnlyNow: "Hiện chỉ có thể xem, không thể chỉnh sửa.",
   },
   tr: {
     addedParas: "{n} paragraf eklendi",
@@ -181,6 +191,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} hücre temizlendi",
     adjustedGrid: "Satırlar, sütunlar veya biçimlendirme ayarlandı",
     syncing: "Ortak çalışanlarla eşitleniyor…",
+    readOnlyNow: "Şu anda salt okunur, düzenlenemez.",
   },
   "zh-TW": {
     addedParas: "新增 {n} 段",
@@ -197,6 +208,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "清空了 {n} 個儲存格",
     adjustedGrid: "調整了表格的列、欄或格式",
     syncing: "正在與協作者同步…",
+    readOnlyNow: "現在是唯讀狀態，無法修改。",
   },
   ja: {
     addedParas: "{n} 段落を追加",
@@ -213,6 +225,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} 個のセルを消去",
     adjustedGrid: "行・列・書式を調整",
     syncing: "共同編集者と同期しています…",
+    readOnlyNow: "現在は読み取り専用のため、編集できません。",
   },
   ko: {
     addedParas: "{n}개 단락 추가",
@@ -229,6 +242,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "셀 {n}개 비움",
     adjustedGrid: "행, 열 또는 서식 조정",
     syncing: "공동 작업자와 동기화하는 중…",
+    readOnlyNow: "지금은 읽기 전용이라 수정할 수 없어요.",
   },
   ar: {
     addedParas: "تمت إضافة {n} فقرات",
@@ -245,6 +259,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "تم مسح {n} خلايا",
     adjustedGrid: "تم ضبط الصفوف أو الأعمدة أو التنسيق",
     syncing: "جارٍ المزامنة مع المتعاونين…",
+    readOnlyNow: "المستند للقراءة فقط حاليًا ولا يمكن تعديله.",
   },
   th: {
     addedParas: "เพิ่ม {n} ย่อหน้า",
@@ -261,6 +276,7 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "ล้าง {n} เซลล์",
     adjustedGrid: "ปรับแถว คอลัมน์ หรือรูปแบบ",
     syncing: "กำลังซิงก์กับผู้ร่วมงาน…",
+    readOnlyNow: "ตอนนี้เป็นโหมดอ่านอย่างเดียว แก้ไขไม่ได้",
   },
   hi: {
     addedParas: "{n} अनुच्छेद जोड़े गए",
@@ -277,5 +293,6 @@ export const COLLAB_DOCS_MESSAGES = assembleCopy(SOURCE, {
     clearedCells: "{n} सेल खाली किए गए",
     adjustedGrid: "पंक्तियाँ, कॉलम या फ़ॉर्मैट समायोजित किए गए",
     syncing: "सहयोगियों के साथ सिंक हो रहा है…",
+    readOnlyNow: "अभी यह केवल पढ़ने के लिए है, इसमें बदलाव नहीं किया जा सकता।",
   },
 });

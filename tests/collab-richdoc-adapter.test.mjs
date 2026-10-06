@@ -193,6 +193,12 @@ test("别人的光标：名字当纯文本、颜色过白名单，不出现 inne
     name: "A".repeat(40),
     color: "#6366f1",
   });
+  assert.equal(richDocSelectionRender({ color: "#abc" }).style, "background-color: #aabbcc33");
+  assert.equal(
+    richDocSelectionRender({ color: "hsl(200, 70%, 45%)" }).style,
+    "background-color: hsla(200, 70%, 45%, 0.2)",
+  );
+  assert.equal(richDocSelectionRender({ color: "#12345678" }).style, "background-color: #6366f133");
   assert.deepEqual(richDocSelectionRender({ color: "#123456" }), {
     nodeName: "span",
     class: "oleo-richdoc-selection",

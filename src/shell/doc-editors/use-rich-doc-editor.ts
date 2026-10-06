@@ -12,8 +12,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, type Editor } from "@tiptap/react";
-import type { JSONContent } from "@tiptap/core";
+import { Extension, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import { Plugin, type Transaction } from "@tiptap/pm/state";
+import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { TableKit } from "@tiptap/extension-table";
 import { Image } from "@tiptap/extension-image";
 import { TextAlign } from "@tiptap/extension-text-align";
@@ -27,6 +31,20 @@ import { Highlight } from "@tiptap/extension-highlight";
 import type { LibraryItem } from "../library-data";
 import { uploadFile } from "../../lib/database";
 import { useUI } from "../../i18n/ui/useUI";
+import { getArtifactItem } from "../artifact-client";
+import { useCollabReadOnly, type CollabRoom } from "../collab";
+import {
+  RICHDOC_COLLAB_FIELD,
+  followRichDocExternalRevisions,
+  renderRichDocCaret,
+  richDocCaretUser,
+  richDocCollabPhase,
+  richDocEditable,
+  richDocSelectionRender,
+  saveRichDocWithRoom,
+  seedRichDoc,
+  type RichDocCollabPhase,
+} from "../collab/adapters/richdoc";
 import {
   downloadBlob,
   downloadText,
@@ -118,7 +136,48 @@ export interface RichDocEditorState {
   unsetLink: () => void;
   clearFormat: () => void;
   restoreRecovery: (payload: unknown) => boolean;
+  /** 多人同改的进度；不在协同里是 `"off"`。 */
+  collabPhase: RichDocCollabPhase;
+  /** 在协同房间里只有查看权限，或专业模式锁在别人手里。 */
+  collabReadOnly: boolean;
 }
+
+/** 协同接入：房间由路由从 `useCollabRoom` 取来，传 null 就是单人编辑。 */
+export interface RichDocCollabInput {
+  room: CollabRoom | null;
+}
+
+/** 外部新版本没有工程档时，按普通文档源读（docx / 文本）；读不出来返回 null。 */
+async function readRichDocRevisionFallback(
+  revision: LibraryItem,
+  onAccessError: () => void,
+): Promise<{ json?: JSONContent; html: string; item: LibraryItem } | null> {
+  const result = await loadRichDocHtml(revision, onAccessError);
+  if (result.error) return null;
+  return { json: result.json, html: result.html, item: revision };
+}
+
+/**
+ * 别人的改动（协同文档里的远端事务）不是「我」敲的字：开着修订模式也不该把它们记成我的插入/删除。
+ * 修订录制器会跳过 `addToHistory === false` 的事务；这个扩展排在它前面，给远端事务盖上这个章。
+ */
+const RichDocRemoteUntracked = Extension.create({
+  name: "richdocRemoteUntracked",
+  priority: 1000,
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        appendTransaction(transactions: readonly Transaction[]) {
+          for (const tr of transactions) {
+            const sync = tr.getMeta("y-sync$") as { isChangeOrigin?: boolean } | undefined;
+            if (sync?.isChangeOrigin) tr.setMeta("addToHistory", false);
+          }
+          return null;
+        },
+      }),
+    ];
+  },
+});
 
 const RICHDOC_PROJECT_SCHEMA = "tiptap-json@1";
 export const RICHDOC_SOURCE_FORMAT = "docx";
@@ -234,6 +293,8 @@ export function useRichDocEditor(
   onSourceAccessError?: () => void,
   /** 谁在审阅。缺省是本机匿名作者——没有登录态不该挡住批注。 */
   author?: RichDocAttribution,
+  /** 多人同改（work-chat W12）。不传或 room 为 null：单人编辑，行为与以前一致。 */
+  collab?: RichDocCollabInput,
 ): RichDocEditorState {
   const tt = useUI();
   const [loading, setLoading] = useState(true);
@@ -285,10 +346,18 @@ export function useRichDocEditor(
     authorName: "",
   });
 
+  const collabRoom = collab?.room ?? null;
+  const collabRoomRef = useRef<CollabRoom | null>(collabRoom);
+  collabRoomRef.current = collabRoom;
+  const [collabSeeded, setCollabSeeded] = useState(false);
+  const collabWasLiveRef = useRef(false);
+
   const extensions = useMemo(
     () => [
       StarterKit.configure({
         link: { openOnClick: false, autolink: true },
+        // 协同扩展自带 undo/redo（只撤销自己的改动），两套撤销栈不能同时在。
+        ...(collabRoom ? { undoRedo: false as const } : {}),
       }),
       TableKit.configure({ table: { resizable: false } }),
       Image.configure({ inline: false, allowBase64: true }),
@@ -314,39 +383,64 @@ export function useRichDocEditor(
         isEnabled: () => trackChangesEnabledRef.current,
         getAttribution: () => attributionRef.current,
       }),
+      ...(collabRoom
+        ? [
+            RichDocRemoteUntracked,
+            Collaboration.configure({
+              document: collabRoom.doc,
+              field: RICHDOC_COLLAB_FIELD,
+            }),
+            CollaborationCaret.configure({
+              provider: { awareness: collabRoom.awareness },
+              user: richDocCaretUser(collabRoom.self),
+              render: renderRichDocCaret,
+              selectionRender: richDocSelectionRender,
+            }),
+          ]
+        : []),
     ],
-    [],
+    // 房间换了才重建编辑器（扩展数组一变 tiptap 会整个重建）；其余值都走 ref。
+    [collabRoom],
   );
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    extensions,
-    content: "<p></p>",
-    editorProps: {
-      attributes: {
-        class: "oleo-richdoc",
-        spellcheck: "true",
-        role: "textbox",
-        "aria-multiline": "true",
-        "aria-label": tt("文档编辑区"),
+  /** 这个房间是否真的在管这篇文档（denied / disabled 时退回单人编辑）。 */
+  const collabHandlesRef = useRef(false);
+
+  const editor = useEditor(
+    {
+      immediatelyRender: false,
+      extensions,
+      // 协同里内容归房间：不给初始内容，否则每个人都会往共享文档里写一份。
+      content: collabRoom ? undefined : "<p></p>",
+      editorProps: {
+        attributes: {
+          class: "oleo-richdoc",
+          spellcheck: "true",
+          role: "textbox",
+          "aria-multiline": "true",
+          "aria-label": tt("文档编辑区"),
+        },
+      },
+      onUpdate: ({ editor: instance }) => {
+        if (!sourceReadyRef.current) {
+          // 协同里这条更新多半是别人的内容进来了：绝不能用空白去覆盖共享文档。
+          if (collabHandlesRef.current) return;
+          instance.commands.setContent("<p></p>", { emitUpdate: false });
+          setError(tt("文档源尚未成功载入；已阻止修改空白回退内容"));
+          return;
+        }
+        setCounts(countText(instance.getText()));
+        revisionRef.current += 1;
+        setReviewRevision((value) => value + 1);
+        setDirty(true);
+        setSavedUrl("");
+      },
+      onSelectionUpdate: () => {
+        setReviewRevision((value) => value + 1);
       },
     },
-    onUpdate: ({ editor: instance }) => {
-      if (!sourceReadyRef.current) {
-        instance.commands.setContent("<p></p>", { emitUpdate: false });
-        setError(tt("文档源尚未成功载入；已阻止修改空白回退内容"));
-        return;
-      }
-      setCounts(countText(instance.getText()));
-      revisionRef.current += 1;
-      setReviewRevision((value) => value + 1);
-      setDirty(true);
-      setSavedUrl("");
-    },
-    onSelectionUpdate: () => {
-      setReviewRevision((value) => value + 1);
-    },
-  });
+    [collabRoom],
+  );
 
   const review = useRichDocReview({
     editor,
@@ -456,8 +550,135 @@ export function useRichDocEditor(
   }, []);
 
   const hydrateReview = review.hydrateFromProject;
+
+  // ── 多人同改（work-chat W12）：阶段、可编辑、播种、同步后放行、外部新版本 ──
+  const collabReadOnly = useCollabReadOnly(collabRoom);
+  const collabPhase = richDocCollabPhase({
+    room: collabRoom,
+    contentReady: Boolean(loaded) && sourceReady,
+    seeded: collabSeeded,
+    wasLive: collabWasLiveRef.current,
+  });
+  const collabHandles = Boolean(collabRoom) && collabPhase !== "off";
+  collabHandlesRef.current = collabHandles;
+  useEffect(() => {
+    if (collabPhase === "live") collabWasLiveRef.current = true;
+    if (collabPhase === "off") collabWasLiveRef.current = false;
+  }, [collabPhase]);
+  /** 载入结果里已经处理过（播种或消费）的那一份。 */
+  const collabAppliedRef = useRef<RichDocLoadResult | null>(null);
+  /** 用户主动导入的文件产生的载入结果：协同里要替换整篇，别的载入结果不动共享文档。 */
+  const importedLoadRef = useRef<RichDocLoadResult | null>(null);
+  useEffect(() => {
+    collabAppliedRef.current = null;
+    setCollabSeeded(false);
+    collabWasLiveRef.current = false;
+  }, [collabRoom]);
+
+  useEffect(() => {
+    if (!editor || !collabRoom) return;
+    editor.setEditable(richDocEditable(collabPhase, collabReadOnly));
+  }, [editor, collabRoom, collabPhase, collabReadOnly]);
+
+  useEffect(() => {
+    if (!editor || !collabRoom || !collabHandles || !loaded) return;
+    if (collabAppliedRef.current === loaded) return;
+    const finish = () => {
+      collabAppliedRef.current = loaded;
+      hydrateReview(loaded.json);
+      setCounts(countText(editor.getText()));
+      setReviewRevision((value) => value + 1);
+      setLoading(false);
+    };
+    if (collabPhase === "seed") {
+      seedRichDoc({
+        room: collabRoom,
+        setContent: () =>
+          editor.commands.setContent(loaded.json || loaded.html, {
+            emitUpdate: false,
+          }),
+        // 种子写进去之后清撤销栈：别人撤销不该撤到「空白文档」。
+        clearUndo: () => {
+          yUndoPluginKey.getState(editor.state)?.undoManager?.clear();
+        },
+      });
+      setCollabSeeded(true);
+      finish();
+      return;
+    }
+    if (collabPhase !== "live") return;
+    if (importedLoadRef.current === loaded) {
+      editor.commands.setContent(loaded.json || loaded.html, {
+        emitUpdate: false,
+      });
+    }
+    // 其余情形：内容以协同文档为准，这份自己读来的内容只用来装审阅侧栏。
+    finish();
+  }, [collabHandles, collabPhase, collabRoom, editor, hydrateReview, loaded]);
+
+  // 非播种者自己的源读不出来也没关系：文档在房间里，别因此把人挡在外面。
+  useEffect(() => {
+    if (!collabHandles || collabPhase !== "live" || sourceReadyRef.current) return;
+    sourceReadyRef.current = true;
+    setSourceReady(true);
+    setSourceFailed(false);
+    setError("");
+    setLoading(false);
+  }, [collabHandles, collabPhase]);
+
+  // 别人（AI / 专业模式）存了新版本：只有保存者收到。读出来整篇换进房间，不再多存一份。
+  useEffect(() => {
+    if (!editor || !collabRoom || !collabHandles) return undefined;
+    return followRichDocExternalRevisions<{
+      json?: JSONContent;
+      html: string;
+      item: LibraryItem;
+    }>({
+      room: collabRoom,
+      read: async (revisionId) => {
+        const artifactId = String(
+          persistedItemRef.current.artifactId || itemRef.current.artifactId || "",
+        );
+        if (!artifactId) return null;
+        const fetched = await getArtifactItem(artifactId, revisionId);
+        if (!fetched.ok || !fetched.data) return null;
+        const revision = fetched.data;
+        const projectUrl = String(revision.meta.editor_project_url || "").trim();
+        if (projectUrl) {
+          const json = await loadEditorProject<JSONContent>(
+            projectUrl,
+            RICHDOC_PROJECT_SCHEMA,
+          );
+          return { json, html: "", item: revision };
+        }
+        return readRichDocRevisionFallback(revision, notifySourceAccessError);
+      },
+      apply: (content) => {
+        editor.commands.setContent(content.json || content.html, {
+          emitUpdate: false,
+        });
+        hydrateReview(content.json);
+        persistedItemRef.current = content.item;
+        workingHeadUrlRef.current = String(
+          content.item.meta.editor_working_head_url ||
+            content.item.url ||
+            content.item.previewUrl ||
+            workingHeadUrlRef.current,
+        );
+        setCounts(countText(editor.getText()));
+        setReviewRevision((value) => value + 1);
+      },
+      markClean: () => {
+        setDirty(false);
+        setSavedUrl("");
+      },
+    });
+  }, [collabHandles, collabRoom, editor, hydrateReview, notifySourceAccessError]);
+
   useEffect(() => {
     if (!editor || !loaded) return;
+    // 协同里装内容归上面的播种 / 同步流程；房间拒绝（denied）时才退回这条单人路径。
+    if (collabHandles) return;
     editor.commands.setContent(loaded.json || loaded.html, {
       emitUpdate: false,
     });
@@ -467,7 +688,7 @@ export function useRichDocEditor(
     setCounts(countText(editor.getText()));
     setReviewRevision((value) => value + 1);
     setLoading(false);
-  }, [editor, hydrateReview, loaded]);
+  }, [collabHandles, editor, hydrateReview, loaded]);
 
   const baseTitle = item.title || tt("文档");
 
@@ -557,6 +778,7 @@ export function useRichDocEditor(
         setSourceFailed(false);
         sourceReadyRef.current = true;
         setSourceReady(true);
+        importedLoadRef.current = result;
         setLoaded(result);
       } catch (caught) {
         setError(
@@ -711,6 +933,13 @@ export function useRichDocEditor(
     }
   }, [editor, siteId, baseTitle, reviewSidecar, tt]);
 
+  /** 协同里只有房间里的保存者存版本，存完告诉房间是哪个版本；不在协同里原样存。 */
+  const saveInRoom = useCallback(async (): Promise<PersistedEditorVersion | null> => {
+    const room = collabHandlesRef.current ? collabRoomRef.current : null;
+    const outcome = await saveRichDocWithRoom({ room, save });
+    return outcome.result;
+  }, [save]);
+
   const uploadImage = useCallback(
     async (file: File) => {
       if (!editor || !requireSourceReady()) return;
@@ -812,7 +1041,7 @@ export function useRichDocEditor(
     words: counts.words,
     chars: counts.chars,
     reload,
-    save,
+    save: saveInRoom,
     exportMarkdown,
     exportHtml,
     exportDoc,
@@ -825,5 +1054,7 @@ export function useRichDocEditor(
     unsetLink,
     clearFormat,
     restoreRecovery,
+    collabPhase,
+    collabReadOnly,
   };
 }

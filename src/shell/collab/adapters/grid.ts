@@ -893,6 +893,8 @@ export interface GridCollabBinderOptions {
   debounceMs?: number;
   setTimer?: (cb: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
+  /** 本地改了内容 / 收进了别人的改动（保存者据此知道「文档变了、该存」）。 */
+  onActivity?: (origin: "local" | "remote") => void;
 }
 
 export interface GridCollabBinder {
@@ -942,6 +944,7 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
 
   const schedulePush = () => {
     if (destroyed || applyingRemote > 0) return;
+    options.onActivity?.("local");
     if (timer !== null) clearTimer(timer);
     timer = setTimer(pushNow, debounceMs);
   };
@@ -952,6 +955,7 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
     if (destroyed) return;
     const delta = diffGridSnapshots(base, remote);
     if (!delta.structural && delta.cells.length === 0) return;
+    options.onActivity?.("remote");
     const live = port.getSnapshot();
     applyingRemote += 1;
     try {

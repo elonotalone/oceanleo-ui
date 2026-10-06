@@ -34,6 +34,9 @@ import {
 } from "../doc-editors/use-rich-doc-editor";
 import { isDurableLibraryItem } from "../library-data";
 import { useOfficeArtifactSource } from "../office-editor";
+import { imEnabledHere } from "../../lib/im/client";
+import { useCollabRoom, useCollabSaveGate } from "../collab";
+import { RICHDOC_COLLAB_EDITOR_KIND } from "../collab/adapters/richdoc";
 import { editorToolLabel } from "../workbench-routes";
 import {
   useWorkbenchMaterialAdapter,
@@ -111,10 +114,21 @@ function RichDocLegacyRoute({
     setProTick((value) => value + 1);
   }, [proSaved]);
   const officeSource = useOfficeArtifactSource(openedItemRef.current);
+  // 多人同改（work-chat W12）：房间由 W11 提供；没有 artifactId 或没开协同就是单人编辑。
+  const collabRoom = useCollabRoom({
+    resource: item.artifactId
+      ? { kind: "artifact", id: String(item.artifactId) }
+      : null,
+    editorKind: RICHDOC_COLLAB_EDITOR_KIND,
+    enabled: imEnabledHere(),
+  });
+  const collabSaveGate = useCollabSaveGate(collabRoom);
   const editor = useRichDocEditor(
     officeSource.item,
     siteId,
     officeSource.resourceFailed,
+    undefined,
+    { room: collabRoom },
   );
   const persistFlushRef = useRef<(() => Promise<{ ok: boolean }>) | null>(null);
   const [exportError, setExportError] = useState("");
@@ -169,6 +183,8 @@ function RichDocLegacyRoute({
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
+    // 协同里不是保存者：没有要存的东西（保存者会存），别拦住「新开一轮对话」。
+    if (!collabSaveGate) return { ok: true as const, item };
     const saved = await editor.save();
     if (!saved) {
       return {
@@ -228,7 +244,7 @@ function RichDocLegacyRoute({
       ok: true as const,
       item: richDocSavedItemForHandoff(receipt || item, saved),
     };
-  }, [editor.error, editor.save, item]);
+  }, [collabSaveGate, editor.error, editor.save, item]);
   persistFlushRef.current = saveBeforeNewConversation;
   useEffect(() => {
     return bindNormalFaceHandoff(handoffItemKey(openedItemRef.current), {
@@ -400,6 +416,16 @@ function RichDocLegacyRoute({
       adapter={{
         id: "richdoc",
         label: editorToolLabel({ type: "richdoc" }),
+        collab: {
+          room: collabRoom,
+          artifact: item.artifactId
+            ? {
+                id: String(item.artifactId),
+                title: item.title || "",
+                editorKind: RICHDOC_COLLAB_EDITOR_KIND,
+              }
+            : null,
+        },
         // 申报了 `drawers` 之后 `resolveInlineAdvancedDrawers` 就直接返回它，
         // `toolbox` 那条合成回落整段不再执行（`inline-advanced-shell-helpers.ts:22`）。
         // 所以「插入」必须在这里原样重申一遍，漏了它插入面板当场从界面上消失。
@@ -513,10 +539,17 @@ function RichDocLegacyRoute({
             Boolean(item.url || item.artifactId) &&
             officeSource.error) ||
           editor.error ||
+          (editor.collabPhase === "connecting" ||
+          editor.collabPhase === "wait-sync" ||
+          editor.collabPhase === "load-source"
+            ? "正在与协作者同步…"
+            : "") ||
           (editor.loading || officeSource.loading ? "正在载入文档" : ""),
         persistence: {
-          dirty: editor.dirty,
+          // 协同里只有保存者自动存版本；别人的改动由它存，这里也不报「未保存」。
+          dirty: collabSaveGate ? editor.dirty : false,
           editRevision: editor.editRevision,
+          autoSave: collabSaveGate,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.richdoc.edit.v1",

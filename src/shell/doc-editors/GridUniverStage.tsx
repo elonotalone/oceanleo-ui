@@ -62,6 +62,7 @@ import "@univerjs/preset-sheets-note/lib/index.css";
 import type { IWorkbookData } from "@univerjs/presets";
 
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import type { LibraryItem } from "../library-data";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -77,6 +78,25 @@ import {
 } from "./doc-family-formats";
 import { importDocFamilyFile } from "./doc-family-import";
 import { useOfficeArtifactSource } from "../office-editor";
+import { getArtifactItem } from "../artifact-client";
+import { imEnabledHere } from "../../lib/im/client";
+import {
+  bindJsonState,
+  useCollabReadOnly,
+  useCollabRoom,
+  useCollabSaveGate,
+} from "../collab";
+import {
+  GRID_COLLAB_EDITOR_KIND,
+  createGridCollabBinder,
+  createGridUniverPort,
+  gridCollabPhase,
+  gridFromEntities,
+  gridToEntities,
+  type GridCollabBinder,
+  type GridUniverCollabApi,
+  type GridWorkbookSnapshot,
+} from "../collab/adapters/grid";
 import { useUI } from "../../i18n/ui/useUI";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -166,6 +186,27 @@ function emptySnapshot(title: string): Partial<IWorkbookData> {
   return gridSheetsToUniverSnapshot([emptyGridSheet()], { name: title }).data;
 }
 
+/** 协同里别人（AI / 专业模式）存的新版本：读成 Univer 工作簿快照；读不出来返回 null。 */
+async function readGridRevisionSnapshot(
+  revision: LibraryItem,
+  title: string,
+): Promise<Partial<IWorkbookData> | null> {
+  const schema = String(revision.meta.editor_project_schema || "");
+  const url = String(revision.meta.editor_project_url || "");
+  if (schema === GRID_UNIVER_PROJECT_SCHEMA && url) {
+    return loadEditorProject<Partial<IWorkbookData>>(url, GRID_UNIVER_PROJECT_SCHEMA);
+  }
+  const officeSheets = await loadGridSheets(revision);
+  const planned = planGridSameDocumentOpen({
+    schema,
+    title,
+    univerSnapshot: null,
+    legacySheets: null,
+    officeSheets,
+  });
+  return planned.snapshot || null;
+}
+
 export function GridUniverStage({
   item,
   taskId,
@@ -211,6 +252,38 @@ export function GridUniverStage({
     conversion === "readonly" ||
     conversion === "converting" ||
     conversion === "failed";
+
+  // ── 多人同改（work-chat W12）：房间由 W11 提供，这里只接线 ──
+  const collabRoom = useCollabRoom({
+    resource: item.artifactId
+      ? { kind: "artifact", id: String(item.artifactId) }
+      : null,
+    editorKind: GRID_COLLAB_EDITOR_KIND,
+    enabled: imEnabledHere(),
+  });
+  const collabSaveGate = useCollabSaveGate(collabRoom);
+  const collabViewOnly = useCollabReadOnly(collabRoom);
+  const collabWasLiveRef = useRef(false);
+  const collabPhase = gridCollabPhase({
+    room: collabRoom,
+    wasLive: collabWasLiveRef.current,
+  });
+  useEffect(() => {
+    if (collabPhase === "live") collabWasLiveRef.current = true;
+    if (collabPhase === "off") collabWasLiveRef.current = false;
+  }, [collabPhase]);
+  const collabOn = collabPhase !== "off";
+  /** 还在等第一次同步，或者在房间里只有查看权限 / 专业模式锁在别人手里：画布不让改。 */
+  const collabBlocked =
+    collabOn && (collabPhase === "waiting" || collabViewOnly);
+  const editBlocked = readonly || collabBlocked;
+  const editBlockedRef = useRef(editBlocked);
+  editBlockedRef.current = editBlocked;
+  const collabOnRef = useRef(collabOn);
+  collabOnRef.current = collabOn;
+  const collabBinderRef = useRef<GridCollabBinder | null>(null);
+  /** 别人存了新版本后，下一次保存要以它为基线（否则版本冲突）。 */
+  const externalItemRef = useRef<LibraryItem | null>(null);
 
   const chipsManifest = useMemo(() => gridToolsManifestChips(), []);
 
@@ -304,6 +377,8 @@ export function GridUniverStage({
           );
         }
         if (cancelled) return;
+        // 协同里画布内容归房间管：整本替换会被当成本地改动推给所有人。
+        if (collabOnRef.current && handleRef.current) return;
         const planned = planGridSameDocumentOpen({
           schema,
           title,
@@ -423,7 +498,7 @@ export function GridUniverStage({
     applyChrome(modeRef.current);
     const workbook = api.getActiveWorkbook?.();
     (workbook as { setEditable?: (value: boolean) => void } | null)?.setEditable?.(
-      !readonly,
+      !editBlockedRef.current,
     );
     return parkForDispose;
 
@@ -474,9 +549,95 @@ export function GridUniverStage({
   useEffect(() => {
     const workbook = handleRef.current?.api.getActiveWorkbook?.();
     (workbook as { setEditable?: (value: boolean) => void } | null)?.setEditable?.(
-      !readonly,
+      !editBlocked,
     );
-  }, [readonly]);
+  }, [editBlocked]);
+
+  /**
+   * 协同绑定：画布建好后把它接进房间。播种 / 同步 / 本地变更 / 选区全在
+   * `createGridCollabBinder`（可单测）；这里只给它真实的 Univer 端口。
+   * 依赖里只放「是否在协同」，同步状态的变化由绑定器自己订阅房间处理。
+   */
+  useEffect(() => {
+    if (!collabRoom || !collabOn || !snapshotReady) return undefined;
+    if (!handleRef.current) return undefined;
+    const room = collabRoom;
+    const port = createGridUniverPort({
+      getApi: () => handleRef.current?.api as unknown as GridUniverCollabApi,
+      replaceWorkbook: (next: GridWorkbookSnapshot) => {
+        const api = handleRef.current?.api;
+        if (!api) return;
+        const payload = structuredClone(next) as Partial<IWorkbookData>;
+        replaceUniverWorkbookWithSnapshot(api, payload);
+        snapshotRef.current = payload;
+        applyChrome(modeRef.current);
+        const workbook = api.getActiveWorkbook?.();
+        (
+          workbook as { setEditable?: (value: boolean) => void } | null
+        )?.setEditable?.(!editBlockedRef.current);
+      },
+    });
+    const binder = createGridCollabBinder({
+      room,
+      port,
+      bind: (opts) =>
+        bindJsonState<GridWorkbookSnapshot>({
+          ...opts,
+          room,
+        }) as unknown as ReturnType<
+          Parameters<typeof createGridCollabBinder>[0]["bind"]
+        >,
+      onActivity: () => {
+        setEditRevision((value) => value + 1);
+        setDirty(true);
+      },
+    });
+    collabBinderRef.current = binder;
+    return () => {
+      binder.destroy();
+      if (collabBinderRef.current === binder) collabBinderRef.current = null;
+    };
+    // applyChrome 稳定；room 换了或协同开关变了才重绑。
+  }, [applyChrome, collabOn, collabRoom, snapshotReady]);
+
+  /** 别人（AI / 专业模式）存了新版本：只有保存者收到；把新版本整本换进画布并写回房间。 */
+  useEffect(() => {
+    if (!collabRoom || !collabOn) return undefined;
+    const artifactId = item.artifactId ? String(item.artifactId) : "";
+    if (!artifactId) return undefined;
+    let alive = true;
+    let ticket = 0;
+    const off = collabRoom.onExternalRevision((revisionId) => {
+      ticket += 1;
+      const mine = ticket;
+      void (async () => {
+        const fetched = await getArtifactItem(artifactId, revisionId);
+        if (!alive || mine !== ticket || !fetched.ok || !fetched.data) return;
+        const revision = fetched.data as LibraryItem;
+        const snapshot = await readGridRevisionSnapshot(
+          revision,
+          revision.title || ttRef.current("工作簿"),
+        );
+        if (!alive || mine !== ticket || !snapshot) return;
+        const binder = collabBinderRef.current;
+        if (!binder) return;
+        binder.adopt(snapshot as GridWorkbookSnapshot);
+        externalItemRef.current = revision;
+        collabRoom.markSaved(revisionId);
+        setDirty(false);
+      })().catch(() => {
+        // 读不出新版本：保持当前画布，下一次有新版本再试。
+      });
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [collabOn, collabRoom, item.artifactId]);
+
+  useEffect(() => {
+    externalItemRef.current = null;
+  }, [item.revisionId]);
 
   const currentSnapshot = useCallback((): Partial<IWorkbookData> => {
     const workbook = handleRef.current?.api.getActiveWorkbook?.() as
@@ -520,6 +681,10 @@ export function GridUniverStage({
         setStatus(tt(GRID_LEGACY_READONLY_NOTICE));
         return;
       }
+      if (collabBlocked) {
+        setStatus(tt(collabPhase === "waiting" ? "正在与协作者同步…" : "现在是只读状态，不能修改。"));
+        return;
+      }
       const port = livePort();
       if (!port) {
         setStatus(tt("表格内核还没准备好。"));
@@ -541,7 +706,7 @@ export function GridUniverStage({
       setCanUndo(true);
       setCanRedo(false);
     },
-    [bumpHistory, livePort, readonly],
+    [bumpHistory, collabBlocked, collabPhase, livePort, readonly, tt],
   );
 
   const undo = useCallback(() => {
@@ -626,6 +791,10 @@ export function GridUniverStage({
       setStatus(tt(GRID_LEGACY_READONLY_NOTICE));
       return null;
     }
+    // 协同里只有房间里的保存者存版本；别人的画布内容会经房间同步给它。
+    if (!collabSaveGate) return null;
+    collabBinderRef.current?.flush();
+    const baseItem = externalItemRef.current ?? item;
     const snapshot = currentSnapshot();
     snapshotRef.current = snapshot;
     const notes = { dropped: [] as string[] };
@@ -635,7 +804,7 @@ export function GridUniverStage({
       title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "workbook";
     try {
       const result = await saveFileToLibrary({
-        item,
+        item: baseItem,
         siteId,
         fallbackSite: "excel",
         idempotencyKey: `grid-univer:${editRevision}:${String(item.id).slice(-80)}`,
@@ -686,15 +855,29 @@ export function GridUniverStage({
         return null;
       }
       setDirty(false);
+      externalItemRef.current = null;
+      if (collabRoom && result.revisionId) collabRoom.markSaved(result.revisionId);
       setStatus(gridUniverOutboundWarning(notes));
       return result;
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : tt("保存失败"));
       return null;
     }
-  }, [chipsManifest.chips, currentSnapshot, editRevision, item, readonly, siteId, tt]);
+  }, [
+    chipsManifest.chips,
+    collabRoom,
+    collabSaveGate,
+    currentSnapshot,
+    editRevision,
+    item,
+    readonly,
+    siteId,
+    tt,
+  ]);
 
   const saveBeforeNewConversation = useCallback(async () => {
+    // 协同里不是保存者：没有要存的东西，别拦住「新开一轮对话」。
+    if (!collabSaveGate) return { ok: true as const, item };
     const saved = await save();
     if (!saved) {
       return { ok: false as const, error: status || undefined };
@@ -713,7 +896,7 @@ export function GridUniverStage({
         },
       }),
     };
-  }, [item, save, status]);
+  }, [collabSaveGate, item, save, status]);
 
   /**
    * 「重新计算」（规范 v2 §6 grid 行）。Univer 的公式引擎自己会算，但 `TODAY()` /
@@ -744,7 +927,7 @@ export function GridUniverStage({
         {
           recalculate,
           loading: loading || !snapshotReady,
-          readonly,
+          readonly: editBlocked,
           sourceFailed: Boolean(officeSource.error),
           reload: officeSource.retry,
         },
@@ -754,7 +937,7 @@ export function GridUniverStage({
       loading,
       officeSource.error,
       officeSource.retry,
-      readonly,
+      editBlocked,
       recalculate,
       snapshotReady,
       tt,
@@ -765,6 +948,10 @@ export function GridUniverStage({
     async (files: File[]) => {
       const file = files[0];
       if (!file) return;
+      if (editBlockedRef.current) {
+        setStatus(ttRef.current("现在是只读状态，不能修改。"));
+        return;
+      }
       const outcome = await importDocFamilyFile(file, "grid");
       if (!outcome.ok) {
         setStatus(outcome.message);
@@ -844,8 +1031,10 @@ export function GridUniverStage({
         params,
         port: livePort(),
         revision: editRevision,
-        readonly,
-        readonlyNotice: tt(GRID_LEGACY_READONLY_NOTICE),
+        readonly: editBlocked,
+        readonlyNotice: tt(
+          readonly ? GRID_LEGACY_READONLY_NOTICE : "现在是只读状态，不能修改。",
+        ),
         submit: submitAgentReviewProposal,
         onWrite: bumpHistory,
       }),
@@ -870,6 +1059,16 @@ export function GridUniverStage({
       adapter={{
         id: "grid",
         label: editorToolLabel({ type: "grid" }),
+        collab: {
+          room: collabRoom,
+          artifact: item.artifactId
+            ? {
+                id: String(item.artifactId),
+                title: item.title || "",
+                editorKind: GRID_COLLAB_EDITOR_KIND,
+              }
+            : null,
+        },
         contextToolbar:
           readonly ? null : (
             <SelectionToolbar
@@ -952,6 +1151,7 @@ export function GridUniverStage({
         ),
         status:
           conversionNotice ||
+          (collabPhase === "waiting" ? tt("正在与协作者同步…") : "") ||
           (officeSource.error
             ? gridSourceFailureMessage(officeSource.error, tt)
             : "") ||
@@ -960,7 +1160,8 @@ export function GridUniverStage({
         persistence: {
           dirty,
           editRevision,
-          autoSave: !readonly,
+          // 协同里只有保存者自动存版本；别人的改动由它存。
+          autoSave: !readonly && collabSaveGate,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.grid.univer.v1",
