@@ -4,7 +4,7 @@
 // 一条「音频」底轨，上面每条编辑操作一个片段（按起止秒画；没有区间的画成整段细条）。
 import { useUI } from "../../../../i18n/ui/useUI";
 import {
-  audioDescribeChange,
+  type AudioCollabOperation,
   audioFromRevisionJson,
   audioFromYDoc,
   audioOperationIds,
@@ -13,6 +13,7 @@ import {
   type AudioCollabState,
 } from "../../../collab/adapters/audio";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { joinNotes, plainChangeTranslate, type ChangeTranslate } from "./notes";
 
 const TYPE_LABEL: Record<string, string> = {
   crop: "裁剪",
@@ -81,12 +82,33 @@ function AudioFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" }: 
   );
 }
 
+/** 这一步改了什么（剪辑操作的增减）。 */
+export function describeAudioChange(prev: unknown, next: unknown, tt?: ChangeTranslate): string | null {
+  if (!isRecord(next) || !Array.isArray(next.operations)) return null;
+  const nextOps = next.operations as AudioCollabOperation[];
+  const prevOps = isRecord(prev) && Array.isArray(prev.operations) ? (prev.operations as AudioCollabOperation[]) : [];
+  const before = new Set(audioOperationIds(prevOps));
+  const after = audioOperationIds(nextOps);
+  const afterSet = new Set(after);
+  const added = after.filter((id) => !before.has(id)).length;
+  const removed = [...before].filter((id) => !afterSet.has(id)).length;
+  const t = tt ?? plainChangeTranslate;
+  const parts: string[] = [];
+  if (added) parts.push(t("加了 {n} 个剪辑操作", { n: added }));
+  if (removed) parts.push(t("撤掉了 {n} 个剪辑操作", { n: removed }));
+  return joinNotes(tt, parts);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const renderer: ReplayFrameRenderer = {
   kind: "audio",
   fromY: audioFromYDoc,
   fromRevision: audioFromRevisionJson,
   Frame: AudioFrame,
-  describeChange: audioDescribeChange,
+  describeChange: describeAudioChange,
   toArtifactJson: audioToArtifactJson,
 };
 

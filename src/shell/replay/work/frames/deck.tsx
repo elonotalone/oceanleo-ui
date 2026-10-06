@@ -4,12 +4,13 @@
 // 只用 React 画只读缩略：用现有的 DeckSlideThumbnail 画当前页，变化的元素用作者的颜色描边。
 // 不执行任何用户 HTML/JS，不用 iframe，不用 dangerouslySetInnerHTML。
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { noteText } from "./notes";
 import { DeckSlideThumbnail } from "../../../doc-editors/DeckSlideThumbnail";
 import { DECK_PREVIEW_LOGICAL_WIDTH } from "../../../doc-editors/deck-preview-geometry";
 import { deckMasterFor, deckTheme, type DeckDocument } from "../../../doc-editors/deck-schema";
 import {
   deckChangedElements,
-  deckDescribeChange,
+  deckChangeNote,
   deckFocusSlideIndex,
   deckFromRevision,
   deckFromY,
@@ -73,7 +74,7 @@ const renderer: ReplayFrameRenderer | null = {
   fromY: (doc) => deckFromY(doc),
   fromRevision: (json) => deckFromRevision(json),
   Frame: DeckFrame,
-  describeChange: deckDescribeChange,
+  describeChange: (prev, next, tt) => noteText(tt, deckChangeNote(prev, next)),
   toArtifactJson: deckToArtifactJson,
 };
 

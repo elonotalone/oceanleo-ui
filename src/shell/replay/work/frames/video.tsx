@@ -4,7 +4,6 @@
 // 每条轨道一行，片段按起止画成条；这一步变过的片段用作者颜色描边。
 import { useUI } from "../../../../i18n/ui/useUI";
 import {
-  videoDescribeChange,
   videoDiff,
   videoFromRevisionJson,
   videoFromYDoc,
@@ -12,6 +11,7 @@ import {
 } from "../../../collab/adapters/video";
 import type { TimelineDoc } from "../../../video-editor/types";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { joinNotes, plainChangeTranslate, type ChangeTranslate } from "./notes";
 
 const KIND_COLOR: Record<string, string> = { video: "#3b82f6", audio: "#10b981", text: "#f59e0b", image: "#a855f7" };
 const KIND_LABEL: Record<string, string> = { video: "视频", audio: "音频", text: "字幕", image: "图片" };
@@ -70,12 +70,33 @@ function VideoFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" }: 
   );
 }
 
+/** 这一步改了什么（时间线）。适配器那份是中文模板字符串，这里改成 `tt` 模板。 */
+export function describeVideoChange(prev: unknown, next: unknown, tt?: ChangeTranslate): string | null {
+  if (!isRecord(next) || !Array.isArray(next.tracks)) return null;
+  const nextDoc = next as unknown as TimelineDoc;
+  const prevDoc = isRecord(prev) && Array.isArray(prev.tracks) ? (prev as unknown as TimelineDoc) : null;
+  const { added, removed, changed } = videoDiff(prevDoc, nextDoc);
+  const t = tt ?? plainChangeTranslate;
+  const parts: string[] = [];
+  if (added.length) parts.push(t("新增了 {n} 段", { n: added.length }));
+  if (removed.length) parts.push(t("删掉了 {n} 段", { n: removed.length }));
+  if (changed.length) parts.push(t("调整了 {n} 段", { n: changed.length }));
+  const prevTracks = prevDoc?.tracks.length ?? nextDoc.tracks.length;
+  if (nextDoc.tracks.length > prevTracks) parts.push(t("加了 {n} 条轨道", { n: nextDoc.tracks.length - prevTracks }));
+  if (nextDoc.tracks.length < prevTracks) parts.push(t("去掉了 {n} 条轨道", { n: prevTracks - nextDoc.tracks.length }));
+  return joinNotes(tt, parts);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const renderer: ReplayFrameRenderer = {
   kind: "video",
   fromY: videoFromYDoc,
   fromRevision: videoFromRevisionJson,
   Frame: VideoFrame,
-  describeChange: videoDescribeChange,
+  describeChange: describeVideoChange,
   toArtifactJson: videoToArtifactJson,
 };
 

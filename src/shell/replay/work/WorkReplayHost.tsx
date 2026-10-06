@@ -4,9 +4,11 @@
 // 1) 监听 openWorkReplay 派发的窗口事件，弹出全屏播放层（盖在消息浮层之上）；
 // 2) 自己监听 `replay.consent`（W08 的 useImEvent），收到就弹同意提示——不需要别人再挂任何东西。
 import { useCallback, useEffect, useState } from "react";
+import { useUI } from "../../../i18n/ui/useUI";
 import type { ImProfile } from "../../../lib/im/types";
 import { useImEvent } from "../../messages/realtime/hooks";
 import { WORK_REPLAY_OPEN_EVENT } from "./open-work-replay";
+import { canForkKind, createReplayArtifact, type ForkArtifactInput } from "./fork-artifact";
 import { ReplayConsentPrompt } from "./ReplayConsentPrompt";
 import { WorkReplayPlayer } from "./WorkReplayPlayer";
 
@@ -21,6 +23,9 @@ const LAYER_Z = 2147483000;
 export function WorkReplayHost() {
   const [replayId, setReplayId] = useState<string | null>(null);
   const [consents, setConsents] = useState<PendingConsent[]>([]);
+  const tt = useUI();
+  // 「从这一步接手」：存成查看者自己库里的新作品（只有 video / audio 两族能存，见 fork-artifact.ts）。
+  const createArtifact = useCallback((input: ForkArtifactInput) => createReplayArtifact(input, { tt }), [tt]);
 
   useEffect(() => {
     const onOpen = (event: Event) => {
@@ -64,7 +69,7 @@ export function WorkReplayHost() {
           className="fixed inset-0 bg-white"
           style={{ zIndex: LAYER_Z }}
         >
-          <WorkReplayPlayer replayId={replayId} onClose={() => setReplayId(null)} />
+          <WorkReplayPlayer replayId={replayId} onClose={() => setReplayId(null)} createArtifact={createArtifact} canForkKind={canForkKind} />
         </div>
       ) : null}
       {consent ? (

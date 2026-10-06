@@ -6,11 +6,12 @@
 // 不用 iframe，不用 dangerouslySetInnerHTML。
 import { useEffect, useRef } from "react";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { noteText } from "./notes";
 import { chartExportOption } from "../../../chart-editor/chart-render";
 import { normalizeChartDocument, type ChartDocumentV1 } from "../../../chart-editor/chart-schema";
 import {
   chartChangedSeries,
-  chartDescribeChange,
+  chartChangeNote,
   chartFromRevision,
   chartFromY,
   chartToArtifactJson,
@@ -57,7 +58,7 @@ const renderer: ReplayFrameRenderer | null = {
   fromY: (doc) => chartFromY(doc),
   fromRevision: (json) => chartFromRevision(json, normalizeChartDocument),
   Frame: ChartFrame,
-  describeChange: chartDescribeChange,
+  describeChange: (prev, next, tt) => noteText(tt, chartChangeNote(prev, next)),
   toArtifactJson: chartToArtifactJson,
 };
 

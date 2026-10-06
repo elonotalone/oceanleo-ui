@@ -467,6 +467,7 @@ function isImageAttachment(attachment: { url?: string; mime?: string; media_type
 
 /** 分享页只画图片和文件链接，所有 URL 先限制为 http(s)，不把任意协议交给 DOM。 */
 function ReplayMedia({ step }: { step: ReplayStep }) {
+  const tt = useUI();
   const images = [safeMediaUrl(step.imageUrl)]
     .concat(
       step.attachments
@@ -499,7 +500,7 @@ function ReplayMedia({ step }: { step: ReplayStep }) {
       ))}
       {files.map((attachment, index) => {
         const url = safeMediaUrl(attachment.url);
-        const label = attachment.name || attachment.url || "附件";
+        const label = attachment.name || attachment.url || tt("附件");
         return url ? (
           <a
             key={`${label}-${index}`}

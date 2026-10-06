@@ -52,7 +52,7 @@ export function ReplayTrimEditor({ data, onApply, onClose }: ReplayTrimEditorPro
           >
             {selectable.map((chapter) => (
               <option key={chapter.id} value={chapter.id}>
-                {localizeChapterTitle(tt, chapter.title)}
+                {localizeChapterTitle(tt, chapter.title, chapter.title_parts)}
               </option>
             ))}
           </select>
@@ -67,7 +67,7 @@ export function ReplayTrimEditor({ data, onApply, onClose }: ReplayTrimEditorPro
           >
             {selectable.map((chapter) => (
               <option key={chapter.id} value={chapter.id}>
-                {localizeChapterTitle(tt, chapter.title)}
+                {localizeChapterTitle(tt, chapter.title, chapter.title_parts)}
               </option>
             ))}
           </select>
@@ -83,7 +83,7 @@ export function ReplayTrimEditor({ data, onApply, onClose }: ReplayTrimEditorPro
               checked={hidden.includes(chapter.id)}
               onChange={() => setHidden((current) => toggleHiddenChapter(current, chapter.id))}
             />
-            <span className="truncate">{localizeChapterTitle(tt, chapter.title)}</span>
+            <span className="truncate">{localizeChapterTitle(tt, chapter.title, chapter.title_parts)}</span>
           </label>
         ))}
       </fieldset>

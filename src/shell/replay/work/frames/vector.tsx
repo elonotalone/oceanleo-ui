@@ -4,8 +4,9 @@
 // SVG 只经 <img src="data:image/svg+xml;base64,…">（或已托管地址）显示：图片方式加载的 SVG 不执行脚本；
 // 绝不把 SVG 插进 DOM，不用 iframe，不用 dangerouslySetInnerHTML。
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { noteText } from "./notes";
 import {
-  vectorDescribeChange,
+  vectorChangeNote,
   vectorFromRevision,
   vectorImageSrc,
   vectorToArtifactJson,
@@ -38,7 +39,7 @@ const renderer: ReplayFrameRenderer | null = {
   kind: "vector",
   fromRevision: (json) => vectorFromRevision(json),
   Frame: VectorFrame,
-  describeChange: vectorDescribeChange,
+  describeChange: (prev, next, tt) => noteText(tt, vectorChangeNote(prev, next)),
   toArtifactJson: vectorToArtifactJson,
 };
 

@@ -216,7 +216,7 @@ const renderer: ReplayFrameRenderer | null = {
   fromY: (doc) => richDocFromY(doc),
   fromRevision: (json) => richDocFromRevision(json),
   Frame,
-  describeChange: (prev, next) => describeRichDocChange(prev, next),
+  describeChange: (prev, next, tt) => describeRichDocChange(prev, next, tt),
   toArtifactJson: (snapshot) => richDocToArtifactJson(snapshot),
 };
 

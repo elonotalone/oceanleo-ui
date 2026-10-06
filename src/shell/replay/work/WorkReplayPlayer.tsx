@@ -7,6 +7,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { Markdown, TypewriterMarkdown } from "../../Markdown";
 import type { ImEditorKind } from "../../../lib/im/types";
 import type { ReplayFrameRenderer } from "./frame-types";
+import { safeOpenPath } from "./fork-artifact";
 import { FallbackFrame } from "./frames/fallback";
 import { loadFrameRenderer } from "./frames";
 import {
@@ -43,7 +44,7 @@ import { ReplayShareDialog } from "./ReplayShareDialog";
 import { ReplayTrimEditor } from "./ReplayTrimEditor";
 import { ReplayViewsPanel } from "./ReplayViewsPanel";
 import { createTrailReconstructor, loadYjs, snapshotAt, type TrailReconstructor, type YjsLike, type YjsLoader } from "./trail-reconstruct";
-import { WorkReplayTimeline, localizeChapterTitle, localizeGap } from "./WorkReplayTimeline";
+import { WorkReplayTimeline, localizeChapterTitle, localizeEventText, localizeGap } from "./WorkReplayTimeline";
 
 export interface ForkInput {
   editorKind: ImEditorKind;
@@ -63,6 +64,8 @@ export interface WorkReplayPlayerProps {
   onClose?: () => void;
   /** 「从这一步接手」把还原出的作品 JSON 存成查看者自己的新作品。没给就如实告诉用户暂时做不到。 */
   createArtifact?: (input: ForkInput) => Promise<ForkResult>;
+  /** 哪些编辑器族能接手；没给 = 都显示（只要有 `createArtifact`）。不能接手的族不显示按钮。 */
+  canForkKind?: (kind: ImEditorKind) => boolean;
   loadYjsImpl?: YjsLoader;
   publicFetch?: PublicFetchOptions;
   autoPlay?: boolean;
@@ -84,7 +87,7 @@ interface Detail {
 }
 
 export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
-  const { replayId, publicCode, onClose, createArtifact, publicFetch, autoPlay = true } = props;
+  const { replayId, publicCode, onClose, createArtifact, canForkKind, publicFetch, autoPlay = true } = props;
   const loadYjsFn = props.loadYjsImpl ?? loadYjs;
   const tt = useUI();
   const isPublic = Boolean(publicCode);
@@ -100,7 +103,9 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
   const [yjs, setYjs] = useState<YjsLike | null>(null);
   const [panel, setPanel] = useState<"views" | "share" | "trim" | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
-  const [forkState, setForkState] = useState<{ phase: "idle" } | { phase: "busy" } | { phase: "error"; message: string }>({
+  const [forkState, setForkState] = useState<
+    { phase: "idle" } | { phase: "busy" } | { phase: "error"; message: string } | { phase: "done"; openPath: string | null }
+  >({
     phase: "idle",
   });
   const reconstructors = useRef(new Map<string, TrailReconstructor>());
@@ -251,7 +256,7 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
   const stage = useMemo(() => {
     if (!sample || !focus || !data) return null;
     const state = sample.states[focus];
-    const captionText = sample.event?.text ?? null;
+    const captionText = localizeEventText(tt, sample.event);
     if (!renderer || !focusFrames || typeof focusFrames === "string") {
       return { kind: "fallback" as const, snapshot: null, prev: null, caption: captionText };
     }
@@ -266,7 +271,7 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
       const prev = snapshotAt(reconstructor, prevSeq, renderer.fromY);
       const snapshot = snapshotAt(reconstructor, seq, renderer.fromY);
       if (snapshot === null) return { kind: "fallback" as const, snapshot: null, prev: null, caption: captionText };
-      return { kind: "renderer" as const, snapshot, prev, caption: renderer.describeChange?.(prev, snapshot) ?? captionText };
+      return { kind: "renderer" as const, snapshot, prev, caption: renderer.describeChange?.(prev, snapshot, tt) ?? captionText };
     }
     const byId = new Map(focusFrames.items.map((item) => [item.revision_id, item.json] as const));
     const current = state?.revisionId ? byId.get(state.revisionId) : undefined;
@@ -274,10 +279,10 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
     if (renderer.fromRevision && current !== undefined && current !== null) {
       const snapshot = renderer.fromRevision(current);
       const prev = before !== undefined && before !== null ? renderer.fromRevision(before) : null;
-      return { kind: "renderer" as const, snapshot, prev, caption: renderer.describeChange?.(prev, snapshot) ?? captionText };
+      return { kind: "renderer" as const, snapshot, prev, caption: renderer.describeChange?.(prev, snapshot, tt) ?? captionText };
     }
     return { kind: "fallback" as const, snapshot: current ?? null, prev: before ?? null, caption: captionText };
-  }, [sample, focus, data, renderer, focusFrames, reconstructorFor, detailSeq, detail]);
+  }, [sample, focus, data, renderer, focusFrames, reconstructorFor, detailSeq, detail, tt]);
 
   const focusTitle = data?.sources.find((source) => source.key === focus)?.title ?? "";
   const authorColor = useMemo(() => {
@@ -379,8 +384,7 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
       }
       const result = await createArtifact({ editorKind: kind, title: tt("{title}（接手）", { title: data.replay.title || tt("工作回放") }), json });
       if (result.ok) {
-        setForkState({ phase: "idle" });
-        if (result.openPath && typeof window !== "undefined") window.location.assign(result.openPath);
+        setForkState({ phase: "done", openPath: safeOpenPath(result.openPath) });
       } else {
         setForkState({ phase: "error", message: result.error });
       }
@@ -417,7 +421,13 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
   const bubbles = bubblesAt(data, clock.t);
   const currentEvent = sample.event;
   const showGap = currentEvent?.kind === "gap" && clock.t < currentEvent.t_ms + currentEvent.dur_ms;
-  const canFork = data.viewer.can_fork && !isPublic;
+  // 接手要三样都在：服务端说这个人能接手、不是公开页、调用方给了存作品的函数；
+  // 再加一条：当前画面这一族真的存得成（存不成的族不显示按钮，免得点了才失败）。
+  const canFork =
+    data.viewer.can_fork &&
+    !isPublic &&
+    Boolean(createArtifact) &&
+    (!canForkKind || (focusKind !== null && canForkKind(focusKind)));
   const hasUndone = data.replay.show_undone;
 
   return (
@@ -513,7 +523,7 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
           <div className="flex items-center gap-3 text-[12px] text-stone-500">
             {sample.chapter ? (
               <span data-replay-chapter-title className="truncate">
-                {localizeChapterTitle(tt, sample.chapter.title)}
+                {localizeChapterTitle(tt, sample.chapter.title, sample.chapter.title_parts)}
               </span>
             ) : null}
             {sample.chapter && !detail ? (
@@ -557,6 +567,16 @@ export function WorkReplayPlayer(props: WorkReplayPlayerProps) {
           {forkState.phase === "error" ? (
             <p data-replay-fork-error className="text-[12px] text-rose-600">
               {forkState.message}
+            </p>
+          ) : null}
+          {forkState.phase === "done" ? (
+            <p data-replay-fork-done className="flex items-center gap-2 text-[12px] text-emerald-700">
+              <span>{tt("已存到你的库")}</span>
+              {forkState.openPath ? (
+                <a data-replay-fork-open href={forkState.openPath} className="rounded-md border border-emerald-300 px-2 py-0.5 hover:bg-white">
+                  {tt("打开")}
+                </a>
+              ) : null}
             </p>
           ) : null}
         </main>

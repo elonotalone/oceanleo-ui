@@ -4,7 +4,6 @@
 // 这一步动过的节点用作者颜色标出。不加载模型、不跑 three.js。
 import { useUI } from "../../../../i18n/ui/useUI";
 import {
-  model3dDescribeChange,
   model3dDiff,
   model3dFromRevisionJson,
   model3dFromYDoc,
@@ -13,6 +12,7 @@ import {
   type Model3DCollabSnapshot,
 } from "../../../collab/adapters/model3d";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { joinNotes, plainChangeTranslate, type ChangeTranslate } from "./notes";
 
 const KIND_LABEL: Record<string, string> = {
   transform: "变换",
@@ -79,12 +79,29 @@ function Model3DFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" }
   );
 }
 
+/** 这一步改了什么（场景节点、批注）。 */
+export function describeModel3dChange(prev: unknown, next: unknown, tt?: ChangeTranslate): string | null {
+  if (!isRecord(next) || !Array.isArray(next.operations)) return null;
+  const before = isRecord(prev) && Array.isArray(prev.operations) ? (prev as unknown as Model3DCollabSnapshot) : null;
+  const diff = model3dDiff(before, next as unknown as Model3DCollabSnapshot);
+  const t = tt ?? plainChangeTranslate;
+  const parts: string[] = [];
+  if (diff.touchedNodes.length) parts.push(t("动了 {n} 个场景节点", { n: diff.touchedNodes.length }));
+  if (diff.annotationsAdded) parts.push(t("加了 {n} 条批注", { n: diff.annotationsAdded }));
+  if (diff.annotationsChanged) parts.push(t("改了 {n} 条批注", { n: diff.annotationsChanged }));
+  return joinNotes(tt, parts);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const renderer: ReplayFrameRenderer = {
   kind: "model3d",
   fromY: model3dFromYDoc,
   fromRevision: model3dFromRevisionJson,
   Frame: Model3DFrame,
-  describeChange: model3dDescribeChange,
+  describeChange: describeModel3dChange,
   toArtifactJson: model3dToArtifactJson,
 };
 

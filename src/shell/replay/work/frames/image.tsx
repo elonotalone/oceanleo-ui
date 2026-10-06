@@ -6,10 +6,11 @@
 // 不执行任何用户 HTML/JS，不用 iframe，不用 dangerouslySetInnerHTML。
 import type { CSSProperties } from "react";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { noteText } from "./notes";
 import {
   imageBoxes,
   imageChangedObjects,
-  imageDescribeChange,
+  imageChangeNote,
   imageFromRevision,
   imageFromY,
   imageSafeSrc,
@@ -106,7 +107,7 @@ const renderer: ReplayFrameRenderer | null = {
   fromY: (doc) => imageFromY(doc),
   fromRevision: (json) => imageFromRevision(json),
   Frame: ImageFrame,
-  describeChange: imageDescribeChange,
+  describeChange: (prev, next, tt) => noteText(tt, imageChangeNote(prev, next)),
   toArtifactJson: imageToArtifactJson,
 };
 

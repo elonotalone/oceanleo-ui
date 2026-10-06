@@ -4,7 +4,6 @@
 // 纯 React/SVG 元素（不插入外来 SVG 字符串）；这一步新增或改过的节点、连线用作者颜色描边。
 import { useUI } from "../../../../i18n/ui/useUI";
 import {
-  workflowDescribeChange,
   workflowDiff,
   workflowFromRevisionJson,
   workflowFromYDoc,
@@ -12,6 +11,7 @@ import {
 } from "../../../collab/adapters/workflow";
 import type { VideoCanvasGraph } from "../../../workflow-carrier/video-canvas-schema";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { joinNotes, plainChangeTranslate, type ChangeTranslate } from "./notes";
 
 const NODE_W = 150;
 const NODE_H = 52;
@@ -87,12 +87,32 @@ function WorkflowFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" 
   );
 }
 
+/** 这一步改了什么（节点、连线）。 */
+export function describeWorkflowChange(prev: unknown, next: unknown, tt?: ChangeTranslate): string | null {
+  if (!isRecord(next) || !Array.isArray(next.nodes)) return null;
+  const before = isRecord(prev) && Array.isArray(prev.nodes) ? (prev as unknown as VideoCanvasGraph) : null;
+  const d = workflowDiff(before, next as unknown as VideoCanvasGraph);
+  const t = tt ?? plainChangeTranslate;
+  const parts: string[] = [];
+  if (d.nodesAdded.length) parts.push(t("新增了 {n} 个节点", { n: d.nodesAdded.length }));
+  if (d.nodesRemoved.length) parts.push(t("删了 {n} 个节点", { n: d.nodesRemoved.length }));
+  if (d.nodesChanged.length) parts.push(t("改了 {n} 个节点", { n: d.nodesChanged.length }));
+  if (d.edgesAdded.length) parts.push(t("连了 {n} 条线", { n: d.edgesAdded.length }));
+  if (d.edgesRemoved.length) parts.push(t("断了 {n} 条线", { n: d.edgesRemoved.length }));
+  if (d.edgesChanged.length) parts.push(t("改了 {n} 条线", { n: d.edgesChanged.length }));
+  return joinNotes(tt, parts);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const renderer: ReplayFrameRenderer = {
   kind: "workflow",
   fromY: workflowFromYDoc,
   fromRevision: workflowFromRevisionJson,
   Frame: WorkflowFrame,
-  describeChange: workflowDescribeChange,
+  describeChange: describeWorkflowChange,
   toArtifactJson: workflowToArtifactJson,
 };
 

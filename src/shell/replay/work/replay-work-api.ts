@@ -19,13 +19,24 @@ export interface WorkReplayEvent {
   seq_to: number | null;
   revision_id: string | null;
   text: string | null;
+  /** 机器可读的事件代码（锁事件：`pro_mode.enter` / `pro_mode.exit`）。没有就退回 `text`。 */
+  code?: string | null;
   undone: boolean;
   editor_kind: ImEditorKind | null;
+}
+
+/** 章节标题的结构化部件：界面按查看者的语言自己拼；没有就显示后端的中文 `title`。 */
+export interface WorkReplayChapterTitleParts {
+  /** 0 = 周一 … 6 = 周日。 */
+  weekday: number;
+  half: "am" | "pm";
+  source_title: string;
 }
 
 export interface WorkReplayChapter {
   id: string;
   title: string;
+  title_parts?: WorkReplayChapterTitleParts | null;
   day: string;
   start_ms: number;
   end_ms: number;

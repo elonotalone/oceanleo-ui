@@ -112,7 +112,7 @@ const renderer: ReplayFrameRenderer | null = {
   fromY: (doc) => gridFromY(doc),
   fromRevision: (json) => gridFromRevision(json),
   Frame,
-  describeChange: (prev, next) => describeGridChange(prev, next),
+  describeChange: (prev, next, tt) => describeGridChange(prev, next, tt),
   toArtifactJson: (snapshot) => gridToArtifactJson(snapshot),
 };
 

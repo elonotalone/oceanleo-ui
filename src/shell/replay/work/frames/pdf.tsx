@@ -5,13 +5,13 @@
 import { useUI } from "../../../../i18n/ui/useUI";
 import {
   pdfAnnotationsOnPage,
-  pdfDescribeChange,
   pdfFromRevisionJson,
   pdfFromYDoc,
   pdfToArtifactJson,
   type PdfCollabState,
 } from "../../../collab/adapters/pdf";
 import type { ReplayFrameProps, ReplayFrameRenderer } from "../frame-types";
+import { joinNotes, plainChangeTranslate, type ChangeTranslate } from "./notes";
 
 const FILL: Record<string, string> = {
   HIGHLIGHT: "rgba(250, 204, 21, 0.45)",
@@ -84,12 +84,46 @@ function PdfFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" }: Re
   );
 }
 
+/** 这一步改了什么（批注、表单项）。 */
+export function describePdfChange(prev: unknown, next: unknown, tt?: ChangeTranslate): string | null {
+  if (!isRecord(next) || !Array.isArray(next.annotations)) return null;
+  const nextState = next as unknown as PdfCollabState;
+  const prevState = isRecord(prev) && Array.isArray(prev.annotations) ? (prev as unknown as PdfCollabState) : null;
+  const before = new Map((prevState?.annotations ?? []).map((a) => [a.id, a]));
+  const after = new Map(nextState.annotations.map((a) => [a.id, a]));
+  const added = [...after.keys()].filter((id) => !before.has(id));
+  const removed = [...before.keys()].filter((id) => !after.has(id));
+  const changed = [...after.keys()].filter(
+    (id) => before.has(id) && JSON.stringify(before.get(id)) !== JSON.stringify(after.get(id)),
+  );
+  const pagesTouched = new Set<number>();
+  for (const id of [...added, ...changed]) pagesTouched.add(after.get(id)!.pageIndex);
+  const fieldsBefore = prevState?.fields ?? {};
+  const fieldsChanged = Object.entries(nextState.fields ?? {}).filter(([name, value]) => fieldsBefore[name] !== value).length;
+  const t = tt ?? plainChangeTranslate;
+  const parts: string[] = [];
+  if (added.length) {
+    const pages = [...pagesTouched].map((n) => n + 1).sort((a, b) => a - b).join(", ");
+    parts.push(t("第 {pages} 页新增了 {n} 条批注", { pages, n: added.length }));
+    if (changed.length) parts.push(t("改了 {n} 条批注", { n: changed.length }));
+  } else if (changed.length) {
+    parts.push(t("改了 {n} 条批注", { n: changed.length }));
+  }
+  if (removed.length) parts.push(t("删了 {n} 条批注", { n: removed.length }));
+  if (fieldsChanged) parts.push(t("填了 {n} 个表单项", { n: fieldsChanged }));
+  return joinNotes(tt, parts);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const renderer: ReplayFrameRenderer = {
   kind: "pdf",
   fromY: pdfFromYDoc,
   fromRevision: pdfFromRevisionJson,
   Frame: PdfFrame,
-  describeChange: pdfDescribeChange,
+  describeChange: describePdfChange,
   toArtifactJson: pdfToArtifactJson,
 };
 

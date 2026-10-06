@@ -3,7 +3,7 @@
 // 回放播放器底部的时间轴：章节块、日期标记、「跳过」标记、倍速、拖动（work-chat 契约 §7.2 / §8.2）。
 import { useCallback, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { useUI, type UITranslate } from "../../../i18n/ui/useUI";
-import type { WorkReplay } from "./replay-work-api";
+import type { WorkReplay, WorkReplayChapterTitleParts } from "./replay-work-api";
 import {
   REPLAY_SPEEDS,
   type ChapterWeekday,
@@ -45,11 +45,41 @@ function weekdayLabel(tt: UITranslate, weekday: ChapterWeekday): string {
   }
 }
 
-export function localizeChapterTitle(tt: UITranslate, title: string): string {
+const WEEKDAYS_ZH: readonly ChapterWeekday[] = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
+/**
+ * 章节标题按查看者的语言拼。优先用后端给的 `title_parts`（结构化，不依赖中文格式）；
+ * 老后端没有它时才解析中文 `title`；两样都认不出就原样显示。
+ */
+export function localizeChapterTitle(
+  tt: UITranslate,
+  title: string,
+  titleParts?: WorkReplayChapterTitleParts | null,
+): string {
+  if (titleParts && Number.isInteger(titleParts.weekday) && (titleParts.half === "am" || titleParts.half === "pm")) {
+    const weekday = WEEKDAYS_ZH[titleParts.weekday];
+    if (weekday) {
+      const half = titleParts.half === "am" ? tt("上午") : tt("下午");
+      return `${weekdayLabel(tt, weekday)} ${half} · ${titleParts.source_title || tt("工作")}`;
+    }
+  }
   const parts = parseChapterTitle(title);
   if (!parts) return title;
   const half = parts.half === "上午" ? tt("上午") : tt("下午");
   return `${weekdayLabel(tt, parts.weekday)} ${half} · ${parts.name || tt("工作")}`;
+}
+
+/** 事件的一句话说明：锁事件按 `code` 本地化，没有 `code` 再用后端的中文 `text`。 */
+export function localizeEventText(
+  tt: UITranslate,
+  event: { kind?: string; code?: string | null; text?: string | null } | null | undefined,
+): string | null {
+  if (!event) return null;
+  if (event.kind === "lock" || event.code) {
+    if (event.code === "pro_mode.enter") return tt("进入专业模式");
+    if (event.code === "pro_mode.exit") return tt("退出专业模式");
+  }
+  return event.text ?? null;
 }
 
 export function formatDayLabel(tt: UITranslate, date: string): string {
@@ -158,7 +188,7 @@ export function WorkReplayTimeline(props: WorkReplayTimelineProps) {
               type="button"
               data-replay-chapter={mark.id}
               data-active={activeChapterId === mark.id ? "true" : undefined}
-              title={localizeChapterTitle(tt, chapter.title)}
+              title={localizeChapterTitle(tt, chapter.title, chapter.title_parts)}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => onChapter(mark.id)}
               className={`absolute top-0 h-full overflow-hidden rounded-md border px-1 text-left text-[11px] leading-9 ${
@@ -168,7 +198,7 @@ export function WorkReplayTimeline(props: WorkReplayTimelineProps) {
               }`}
               style={{ left: `${mark.left * 100}%`, width: `max(${mark.width * 100}%, 6px)` }}
             >
-              <span className="truncate">{localizeChapterTitle(tt, chapter.title)}</span>
+              <span className="truncate">{localizeChapterTitle(tt, chapter.title, chapter.title_parts)}</span>
             </button>
           );
         })}
