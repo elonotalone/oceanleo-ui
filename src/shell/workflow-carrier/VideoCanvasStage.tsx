@@ -48,6 +48,10 @@ import {
 } from "./l4-chips";
 import { dispatchWorkflowAgentChip } from "./agent-route";
 import { EmbedEditorPane, embedEditorBase } from "../workbench-embed";
+import type { EmbedEditorPaneProps } from "../workbench-embed-types";
+
+// 补丁 / 控制消息的载荷是纯 JSON（测试锁住），协议类型的索引签名比我们的接口更严，在这里一处收口。
+type EmbedRecoveryRestore = EmbedEditorPaneProps["recoveryRestore"];
 
 export const WORKFLOW_STAGE_ATTR = "data-workflow-stage";
 export const WORKFLOW_MODE_ATTR = "data-workflow-mode";
@@ -538,7 +542,7 @@ export function VideoCanvasStage({
                   siteId={siteId}
                   recoveryCaptureRequestId={mode === "lock" ? "" : captureId}
                   onRecoverySnapshot={mode === "lock" ? undefined : onRecoverySnapshot}
-                  recoveryRestore={mode === "lock" ? null : head}
+                  recoveryRestore={mode === "lock" ? null : (head as unknown as EmbedRecoveryRestore)}
                   onRecoveryResult={mode === "lock" ? undefined : onRecoveryResult}
                   onProjectManifest={mode === "lock" ? undefined : onCanvasChanged}
                   onDirtyChange={mode === "lock" ? undefined : onCanvasDirty}
