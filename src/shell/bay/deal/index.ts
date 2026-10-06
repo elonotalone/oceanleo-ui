@@ -12,8 +12,5 @@ export interface TradeThreadSubject {
   userId?: string;
 }
 
-export function DealConversationView(_props: DealConversationViewProps): null {
-  return null;
-}
-
-export async function openTradeThread(_subject: TradeThreadSubject): Promise<void> {}
+export { DealConversationView } from "./DealConversationView";
+export { openTradeThread } from "./open-trade-thread";

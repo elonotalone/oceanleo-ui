@@ -402,6 +402,76 @@ export async function listBlockedUserIds(): Promise<Set<string>> {
   return out;
 }
 
+// ---- 会话的主题 -----------------------------------------------------------------
+
+/** 会话主题的 id：服务 / 需求会话的 `subject_ref` 是「主题 id:双方 id」，取第一段；合同、求助就是它本身。 */
+export function dealSubjectId(thread: Pick<DealThread, "kind" | "subject_ref" | "contract_id">): string | null {
+  const ref = (thread.subject_ref || "").trim();
+  switch (thread.kind) {
+    case "service":
+    case "demand": {
+      const id = ref.split(":", 1)[0];
+      return isDealId(id) ? id : null;
+    }
+    case "contract": {
+      const id = (thread.contract_id || ref).trim();
+      return isDealId(id) ? id : null;
+    }
+    case "handoff":
+      return isDealId(ref) ? ref : null;
+    default:
+      return null;
+  }
+}
+
+/** 主题信息：判断谁是卖家、头部显示主题名。取不到不报错，交给调用方按「不知道」处理。 */
+export interface DealSubjectInfo {
+  kind: "service" | "demand" | "contract" | "handoff" | "direct";
+  id: string | null;
+  title: string;
+  ownerId: string | null;
+  /** 需求详情的 `is_owner`（以查看者为准）；没有就是 null。 */
+  viewerIsOwner: boolean | null;
+  /** 合同详情的 `my_role`；没有就是 null。 */
+  viewerRole: "buyer" | "seller" | null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+export async function fetchDealSubjectInfo(
+  thread: Pick<DealThread, "kind" | "subject_ref" | "contract_id" | "title">,
+): Promise<DealSubjectInfo> {
+  const id = dealSubjectId(thread);
+  const kind = (["service", "demand", "contract", "handoff"].includes(thread.kind) ? thread.kind : "direct") as DealSubjectInfo["kind"];
+  const base: DealSubjectInfo = { kind, id, title: thread.title || "", ownerId: null, viewerIsOwner: null, viewerRole: null };
+  if (!id) return base;
+  try {
+    if (kind === "service") {
+      const row = record((await bayGet<{ service?: unknown }>(`/v1/talent/services/${enc(id)}`, { anonymous: true }))?.service);
+      return { ...base, title: text(row?.title, 200) || base.title, ownerId: ownerIdOf(row, "seller") };
+    }
+    if (kind === "demand") {
+      const row = record((await bayGet<{ demand?: unknown }>(`/v1/talent/demands/${enc(id)}`, { anonymous: true }))?.demand);
+      return {
+        ...base,
+        title: text(row?.title, 200) || base.title,
+        ownerId: ownerIdOf(row, "buyer", "author"),
+        viewerIsOwner: typeof row?.is_owner === "boolean" ? row.is_owner : null,
+      };
+    }
+    if (kind === "contract") {
+      const row = record((await bayGet<{ contract?: unknown }>(`/v1/talent/contracts/${enc(id)}`))?.contract);
+      const role = row?.my_role === "buyer" || row?.my_role === "seller" ? row.my_role : null;
+      return { ...base, title: text(row?.title, 200) || base.title, viewerRole: role };
+    }
+  } catch {
+    return base;
+  }
+  return base;
+}
+
 // ---- 按主题找或建会话 -------------------------------------------------------------
 
 export interface DealSubject {
