@@ -61,6 +61,7 @@ import {
   useCollabSaveGate,
 } from "../collab";
 import { GAME_MAIN_PAGE, gameTextName } from "../collab/adapters/game";
+import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { fetchRevisionJson } from "../collab/adapters/use-entity-collab";
 import {
   GAME_WORKING_DOCUMENT_SCHEMA,
@@ -441,7 +442,10 @@ export function GameCodeStage({
   );
 
   usePluginCommandSurface(
-    useMemo(() => createGameAgentSurface(agentPort), [agentPort]),
+    useMemo(
+      () => guardPluginSurface(createGameAgentSurface(agentPort), collabReadOnly),
+      [agentPort, collabReadOnly],
+    ),
   );
 
   const onCodeSelect = useCallback(
