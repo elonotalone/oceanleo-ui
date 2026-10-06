@@ -1,18 +1,7 @@
-import type { BayFeedItem, BayWorkRef } from "../../../lib/bay/types";
+import type { BayWorkRef } from "../../../lib/bay/types";
 import type { BayPaneProps } from "../shell/bay-state";
 
-export interface BayFeedCardProps {
-  item: BayFeedItem;
-  onOpen: () => void;
-}
-
-export function DemandCard(_props: BayFeedCardProps): null {
-  return null;
-}
-
-export function HelpRequestCard(_props: BayFeedCardProps): null {
-  return null;
-}
+export { DemandCard, HelpRequestCard, type BayFeedCardProps } from "./NeedCards";
 
 export function DemandPane(_props: BayPaneProps): null {
   return null;
