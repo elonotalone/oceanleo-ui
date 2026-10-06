@@ -503,9 +503,10 @@ export function DeckStage({
             <button
               type="button"
               onClick={editor.addSlide}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]"
+              disabled={editor.readOnly}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)] disabled:opacity-35"
               aria-label={tt("新建一页")}
-              title={tt("新建一页")}
+              title={editor.readOnly ? tt("你只能查看") : tt("新建一页")}
             >
               <AdvancedEditorIcon name="add" className="h-4 w-4" />
             </button>

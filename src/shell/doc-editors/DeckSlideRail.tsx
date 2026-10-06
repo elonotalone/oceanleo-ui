@@ -18,8 +18,9 @@ export function DeckSlideRail({ editor }: { editor: DeckEditorState }) {
         <button
           type="button"
           onClick={editor.addSlide}
-          className="grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-          title={tt("新建一页")}
+          disabled={editor.readOnly}
+          className="grid h-7 w-7 place-items-center rounded-lg text-[var(--muted,#78716c)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] disabled:opacity-35"
+          title={editor.readOnly ? tt("你只能查看") : tt("新建一页")}
         >
           <AdvancedEditorIcon name="add" className="h-4 w-4" />
         </button>
