@@ -35,6 +35,7 @@ import {
 import {
   captureModel3DRouteSnapshot,
   Model3DRouteHistory,
+  type Model3DRouteSnapshot,
 } from "../media-editors/Model3DRouteHistory";
 import { isModel3DSourceItem } from "../media-editors/model3d-workbench-defaults";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -42,6 +43,14 @@ import { createModel3DCommandSurface } from "../media-editors/model3d-command-su
 import { visualImportPlan } from "../media-editors/visual-formats";
 import { assertBlobSource } from "../media-editors/source-integrity.mjs";
 import { editorToolLabel } from "../workbench-routes";
+import { fetchRevisionJson, useEntityCollab } from "../collab/adapters/use-entity-collab";
+import {
+  MODEL3D_ROOT,
+  model3dFromEntities,
+  model3dFromRevisionJson,
+  model3dToEntities,
+  type Model3DCollabSnapshot,
+} from "../collab/adapters/model3d";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -192,6 +201,30 @@ function useModel3DDocumentHistory(
   const undo = useCallback(() => restore("undo"), [restore]);
   const redo = useCallback(() => restore("redo"), [restore]);
 
+  /**
+   * 同房间的人改了场景：按远端状态恢复，但保留我自己的镜头；
+   * 走「观察到的修订不记入撤销」这条路，所以我按撤销不会把别人的改动撤掉。
+   */
+  const applyRemote = useCallback(
+    (target: Model3DRouteSnapshot) => {
+      const current = captureModel3DRouteSnapshot(editor);
+      const next: Model3DRouteSnapshot = {
+        ...target,
+        view: {
+          ...target.view,
+          azimuth: current.view.azimuth,
+          elevation: current.view.elevation,
+          zoom: current.view.zoom,
+          autoRotate: current.view.autoRotate,
+        },
+      };
+      skipObservedRevisionRef.current = true;
+      const restored: unknown = editor.restoreRecovery(next);
+      if (restored === false) skipObservedRevisionRef.current = false;
+    },
+    [editor],
+  );
+
   return {
     canUndo: historyRef.current.canUndo,
     canRedo: historyRef.current.canRedo,
@@ -199,6 +232,7 @@ function useModel3DDocumentHistory(
     redo,
     snapshot,
     error,
+    applyRemote,
   };
 }
 
@@ -222,13 +256,35 @@ function Model3DModelRoute({
   );
   const deliveryBusy =
     editor.downloading || editor.capturing || editor.saving;
+  // ---- 多人同改（W14）：合并粒度 = 场景节点上的一个属性；镜头不同步。
+  const loadRevision = useCallback(
+    async (revisionId: string) => {
+      const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
+        String(found.meta.editor_project_url || ""),
+      );
+      return json ? (model3dFromRevisionJson(json) as unknown as Model3DRouteSnapshot) : null;
+    },
+    [item.artifactId],
+  );
+  const collab = useEntityCollab<Model3DRouteSnapshot>({
+    item,
+    editorKind: "model3d",
+    rootName: MODEL3D_ROOT,
+    toEntities: (state) => model3dToEntities(state as unknown as Model3DCollabSnapshot),
+    fromEntities: (input, prev) =>
+      model3dFromEntities(input, prev as unknown as Model3DCollabSnapshot | null) as unknown as Model3DRouteSnapshot,
+    local: editor.loading || !editor.modelLoaded ? null : history.snapshot,
+    applyRemote: history.applyRemote,
+    loadRevision,
+  });
+  const collabReadOnly = collab.readOnly;
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "model3d-materials@2",
       actions: ["replace"],
       accepts: (material) => {
         const url = material.url || material.previewUrl || "";
-        return Boolean(url) && isModel3DSourceItem(material);
+        return !collabReadOnly && Boolean(url) && isModel3DSourceItem(material);
       },
       mutate: async (_action, material) => {
         const url = material.url || material.previewUrl || "";
@@ -268,7 +324,7 @@ function Model3DModelRoute({
         );
       },
     }),
-    [editor.importModel, editor.openModelUrl],
+    [collabReadOnly, editor.importModel, editor.openModelUrl],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const deliver = useCallback(
@@ -374,11 +430,14 @@ function Model3DModelRoute({
     ],
   );
   const saveBeforeNewConversation = useCallback(async () => {
+    // 协同房间里只有存档人落库；其余端的改动已在房间里。
+    if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
     const saved = await editor.saveCopy();
+    if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
       ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const };
-  }, [buildSavedItem, editor.saveCopy]);
+  }, [buildSavedItem, collab.markSaved, collab.saveGate, collabReadOnly, editor.saveCopy, item]);
   const [importRejection, setImportRejection] = useState("");
   const importLocalModel = useCallback(
     async (files: File[]) => {
@@ -444,27 +503,34 @@ function Model3DModelRoute({
       siteId={siteId}
       accent={accent}
       adapter={{
+        collab: collab.collab,
         id: "threed",
         label: editorToolLabel({ type: "threed" }),
         toolbox: {
           label: "场景",
           icon: "shape",
           content: (
-            <Model3DControls
-              editor={editor}
-              showDeliveryActions={false}
-              showSelectionActions={false}
-            />
+            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
+              <Model3DControls
+                editor={editor}
+                showDeliveryActions={false}
+                showSelectionActions={false}
+              />
+            </div>
           ),
         },
-        contextToolbar: (
+        contextToolbar: collabReadOnly ? null : (
           <Model3DContextToolbar editor={editor} accent={accent} />
         ),
         history: {
-          canUndo: history.canUndo,
-          canRedo: history.canRedo,
-          undo: history.undo,
-          redo: history.redo,
+          canUndo: history.canUndo && !collabReadOnly,
+          canRedo: history.canRedo && !collabReadOnly,
+          undo: () => {
+            if (!collabReadOnly) history.undo();
+          },
+          redo: () => {
+            if (!collabReadOnly) history.redo();
+          },
         },
         mode: {
           current: "normal",
@@ -508,12 +574,20 @@ function Model3DModelRoute({
             onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.saveScreenshot),
           },
         ],
-        upload: {
-          // 只收真能打开的两种；别的格式在 importLocalModel 里给一句人话。
-          accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
-          onFiles: importLocalModel,
-        },
-        stage: <Model3DStage editor={editor} showNativeControls={false} />,
+        upload: collabReadOnly
+          ? undefined
+          : {
+              // 只收真能打开的两种；别的格式在 importLocalModel 里给一句人话。
+              accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
+              onFiles: importLocalModel,
+            },
+        stage: collabReadOnly ? (
+          <div inert data-collab-readonly="true" className="h-full min-h-0">
+            <Model3DStage editor={editor} showNativeControls={false} />
+          </div>
+        ) : (
+          <Model3DStage editor={editor} showNativeControls={false} />
+        ),
         status:
           importRejection ||
           history.error ||
@@ -523,7 +597,7 @@ function Model3DModelRoute({
             ? `正在载入 3D 模型${editor.progress > 0 ? ` ${Math.round(editor.progress * 100)}%` : ""}`
             : ""),
         persistence: {
-          dirty: editor.dirty,
+          dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {

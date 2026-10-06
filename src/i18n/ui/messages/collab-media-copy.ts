@@ -24,6 +24,7 @@ const SOURCE = {
   noAnnotations: "还没有批注",
   timelineEmpty: "时间线是空的",
   flowEmpty: "流程图是空的",
+  peerAtLine: "{name} 在第 {n} 行",
   someoneEditing: "「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。",
 } as const;
 
@@ -53,6 +54,7 @@ const TRANSLATIONS: Record<Name, readonly [string, string, string, string, strin
   noAnnotations: ["No annotations yet", "Noch keine Anmerkungen", "Aún no hay anotaciones", "Aún no hay anotaciones", "Pas encore d'annotations", "Ancora nessuna annotazione", "Ainda não há anotações", "Ainda não há anotações", "Chưa có chú thích", "Henüz açıklama yok", "還沒有批註", "まだ注釈がありません", "아직 주석이 없습니다", "لا توجد تعليقات توضيحية بعد", "ยังไม่มีหมายเหตุ", "अभी कोई टिप्पणी नहीं है"],
   timelineEmpty: ["The timeline is empty", "Die Zeitleiste ist leer", "La línea de tiempo está vacía", "La línea de tiempo está vacía", "La timeline est vide", "La timeline è vuota", "A linha do tempo está vazia", "A linha do tempo está vazia", "Dòng thời gian trống", "Zaman çizelgesi boş", "時間軸是空的", "タイムラインは空です", "타임라인이 비어 있습니다", "الخط الزمني فارغ", "ไทม์ไลน์ว่างเปล่า", "टाइमलाइन खाली है"],
   flowEmpty: ["The flowchart is empty", "Das Flussdiagramm ist leer", "El diagrama de flujo está vacío", "El diagrama de flujo está vacío", "L'organigramme est vide", "Il diagramma di flusso è vuoto", "O fluxograma está vazio", "O fluxograma está vazio", "Sơ đồ quy trình trống", "Akış şeması boş", "流程圖是空的", "フローチャートは空です", "순서도가 비어 있습니다", "مخطط التدفق فارغ", "ผังงานว่างเปล่า", "फ़्लोचार्ट खाली है"],
+  peerAtLine: ["{name} is on line {n}", "{name} ist in Zeile {n}", "{name} está en la línea {n}", "{name} está en la línea {n}", "{name} est à la ligne {n}", "{name} è alla riga {n}", "{name} está na linha {n}", "{name} está na linha {n}", "{name} đang ở dòng {n}", "{name} {n}. satırda", "{name} 在第 {n} 行", "{name} さんは {n} 行目", "{name}님이 {n}번째 줄에 있음", "{name} في السطر {n}", "{name} อยู่ที่บรรทัด {n}", "{name} पंक्ति {n} पर हैं"],
   someoneEditing: [
     "{name} is editing this work. You can only view it for now; it updates here after they save.",
     "{name} bearbeitet dieses Werk. Du kannst es vorerst nur ansehen; nach dem Speichern wird es hier automatisch aktualisiert.",

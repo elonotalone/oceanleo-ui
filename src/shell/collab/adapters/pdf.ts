@@ -80,7 +80,7 @@ export function pdfFromEntities(
     seen.add(key);
     const entity = input.entities[key];
     if (!isRecord(entity)) continue;
-    if (key.startsWith(ANN)) annotations.push({ ...(entity as Omit<PdfCollabAnnotation, "id">), id: key.slice(ANN.length) });
+    if (key.startsWith(ANN)) annotations.push({ ...entity, id: key.slice(ANN.length) } as unknown as PdfCollabAnnotation);
     else if (key.startsWith(FIELD)) fields[key.slice(FIELD.length)] = String(entity.value ?? "");
   }
   const pages = Array.isArray(input.meta?.pages) ? (input.meta?.pages as PdfCollabPage[]) : prev?.pages ?? [];

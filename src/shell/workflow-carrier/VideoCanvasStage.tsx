@@ -22,6 +22,8 @@ import type {
 } from "./video-canvas-schema";
 import { flushVideoCanvasGraph } from "./video-canvas-leave";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { useUI } from "../../i18n/ui/useUI";
+import { useLockedEditCollab } from "../collab/adapters/use-entity-collab";
 
 export {
   VIDEO_CANVAS_DUAL_ENGINE_HANDOFF,
@@ -99,13 +101,28 @@ export function VideoCanvasStage({
   accent = "#0d9488",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const tt = useUI();
+  // 别人保存新版后用它换掉画布的来源条目（画布嵌在 video 站里，由条目地址重新载入）。
+  const [externalItem, setExternalItem] = useState<LibraryItem | null>(null);
+  useEffect(() => {
+    setExternalItem(null);
+  }, [item]);
+  const shownItem = externalItem ?? item;
+  // ---- 多人同改（W14）：流程图是一次一人。画布是 video 站里的 React Flow（iframe），
+  // 本仓拿不到它的节点与连线数据，也没有「把远端改动应用进去」的入口，所以不能合并，只能轮流。
+  const lockedEdit = useLockedEditCollab({
+    item,
+    editorKind: "workflow",
+    onExternalItem: setExternalItem,
+  });
+  const collabReadOnly = lockedEdit.readOnly;
   const [graph, setGraph] = useState<VideoCanvasGraph>(() => graphFromItem(item));
   const [editRevision, setEditRevision] = useState(0);
   const chipsManifest = useMemo(() => workflowToolsManifestChips(), []);
 
   useEffect(() => {
-    setGraph(graphFromItem(item));
-  }, [item]);
+    setGraph(graphFromItem(shownItem));
+  }, [shownItem]);
 
   useEffect(() => {
     rememberEditorChips("workflow", chipsManifest.chips);
@@ -180,7 +197,7 @@ export function VideoCanvasStage({
     ),
   );
 
-  const liveCanvasBase = item ? embedEditorBase(item) : "";
+  const liveCanvasBase = shownItem ? embedEditorBase(shownItem) : "";
 
   if (!item) {
     return <div data-testid="workflow-missing-item">没有打开的流程图。</div>;
@@ -193,6 +210,7 @@ export function VideoCanvasStage({
       siteId={siteId}
       accent={accent}
       adapter={{
+        collab: lockedEdit.collab,
         id: "video-canvas",
         label: "工作流",
         mode: {
@@ -212,10 +230,12 @@ export function VideoCanvasStage({
             {liveCanvasBase ? (
               <div
                 data-testid="workflow-react-flow-canvas"
+                inert={collabReadOnly || undefined}
+                data-collab-readonly={collabReadOnly ? "true" : undefined}
                 className="h-full min-h-[240px] w-full"
               >
                 <EmbedEditorPane
-                  item={item}
+                  item={shownItem}
                   editorBase={liveCanvasBase}
                   mediaType="video_canvas"
                   siteId={siteId}
@@ -226,12 +246,24 @@ export function VideoCanvasStage({
             )}
           </div>
         ),
-        status: "",
+        status:
+          collabReadOnly && lockedEdit.lockHolderName
+            ? tt("「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。", {
+                name: lockedEdit.lockHolderName,
+              })
+            : "",
         persistence: {
-          dirty: editRevision > 0,
+          dirty: lockedEdit.mayWrite ? editRevision > 0 : false,
           editRevision,
+          // 保持 true：只读端 dirty 恒为 false 且 flush 不落库，自动保存不会产生任何写入。
           autoSave: true,
-          flush: () => flushVideoCanvasGraph(item, graph),
+          flush: () => {
+            // 只读（别人持锁）时不落库；别人保存后这里会自动更新。
+            if (!lockedEdit.mayWrite) return { ok: true as const, item };
+            const saved = flushVideoCanvasGraph(item, graph);
+            if (saved.item.revisionId) lockedEdit.markSaved(String(saved.item.revisionId));
+            return saved;
+          },
           recovery: {
             draftSchema: liveCanvasBase ? undefined : "oceanleo.workflow.graph.v1",
             key: advancedRecoveryKey("video-canvas", item),

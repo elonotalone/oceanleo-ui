@@ -35,6 +35,8 @@ import {
   PDF_MIN_ZOOM,
 } from "../media-editors/pdf-workbench-utils";
 import { editorToolLabel } from "../workbench-routes";
+import { useUI } from "../../i18n/ui/useUI";
+import { useLockedEditCollab } from "../collab/adapters/use-entity-collab";
 import { buildPdfCommandSurface } from "../doc-editors/doc-family-commands";
 import {
   DOC_FAMILY_DOWNLOAD_FORMATS,
@@ -61,6 +63,14 @@ const PdfNextStage = dynamic(
     ),
   { ssr: false, loading: () => null },
 );
+
+/** 协同只读时覆盖撤销/重做：不可用且点了不动。 */
+const COLLAB_READONLY_HISTORY = {
+  canUndo: false,
+  canRedo: false,
+  undo: () => {},
+  redo: () => {},
+};
 
 /** 旧核舞台 + 切回「编辑」时的 ready 信号：页数解析出来就算首帧可见。 */
 function PdfLegacyFace({
@@ -96,6 +106,16 @@ export function PdfRoute({
     [liveItem, source],
   );
   const editor = usePdfWorkbench(workbenchItem, siteId);
+  const tt = useUI();
+  // ---- 多人同改（W14）：PDF 是一次一人。持锁的人改，其他人只读；他保存后这里自动换成新版。
+  // 原因：PDF 文档是整份字节（pdf-lib 写出），工作台没有「按标注 id 写入」的入口，无法把两个人的
+  // 标注合进同一份字节而不整份覆盖。合并粒度的适配器（collab/adapters/pdf.ts）只给回放画面用。
+  const lockedEdit = useLockedEditCollab({
+    item,
+    editorKind: "pdf",
+    onExternalItem: (next) => reportW19ProSaved(w19ItemKey("pdf", item), next),
+  });
+  const collabReadOnly = lockedEdit.readOnly;
   // 双核 flag 顶层判一次（`editor-core-flags.ts` 三条纪律的第 1 条）：
   // 默认 `legacy`，翻到 `next` 才拉起 EmbedPDF 那个叶子。
   const core = resolveEditorCore("pdf");
@@ -119,6 +139,7 @@ export function PdfRoute({
       id: "pdf-materials@2",
       actions: ["merge"],
       accepts: (material) => {
+        if (collabReadOnly) return false;
         const url = material.url || material.previewUrl || "";
         return (
           String(material.meta.format || "").toLowerCase() === "pdf" ||
@@ -140,12 +161,15 @@ export function PdfRoute({
         );
       },
     }),
-    [editor.mergePdf],
+    [collabReadOnly, editor.mergePdf],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
+    // 只读（别人持锁）或不是该存档的一端：不落库，别人保存后这里会自动更新。
+    if (!lockedEdit.mayWrite) return { ok: true as const, item };
     const copied = await editor.saveCopy();
     if (!copied) return { ok: false as const };
+    if (copied.versionId) lockedEdit.markSaved(String(copied.versionId));
     const next = advancedSavedItem(item, {
       url: copied.url,
       versionId: copied.versionId,
@@ -157,7 +181,7 @@ export function PdfRoute({
     });
     reportW19ProSaved(w19ItemKey("pdf", item), next);
     return { ok: true as const, item: next };
-  }, [editor.saveCopy, item]);
+  }, [editor.saveCopy, item, lockedEdit.markSaved, lockedEdit.mayWrite]);
   const enterPdfPro = useCallback(async () => {
     const bytes = editor.currentBytes();
     const handoff = bytes
@@ -210,14 +234,19 @@ export function PdfRoute({
       siteId={siteId}
       accent={accent}
       adapter={{
+        collab: lockedEdit.collab,
         id: "pdf",
         label: editorToolLabel({ type: "pdf" }),
         toolbox: {
           label: "页面",
           icon: "pages",
-          content: <PdfControls editor={nextCoreEditor} />,
+          content: (
+            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
+              <PdfControls editor={nextCoreEditor} />
+            </div>
+          ),
         },
-        contextToolbar: (
+        contextToolbar: collabReadOnly ? null : (
           <PdfContextToolbar editor={nextCoreEditor} accent={accent} />
         ),
         history: {
@@ -225,6 +254,7 @@ export function PdfRoute({
           canRedo: editor.canRedo,
           undo: editor.undo,
           redo: editor.redo,
+          ...(collabReadOnly ? COLLAB_READONLY_HISTORY : {}),
         },
         // L3 专业模式 = EmbedPDF 的即用查看器（R4）。**同一个文档实例**：
         // 两个模式吃的是同一份 `editor.currentBytes()`，切换不重新载入、不丢改动。
@@ -252,11 +282,13 @@ export function PdfRoute({
           disabled: editor.loading || editor.processing,
           onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.download),
         },
-        upload: {
-          accept: docFamilyAcceptAttribute("pdf"),
-          multiple: true,
-          onFiles: mergeLocalFiles,
-        },
+        upload: collabReadOnly
+          ? undefined
+          : {
+              accept: docFamilyAcceptAttribute("pdf"),
+              multiple: true,
+              onFiles: mergeLocalFiles,
+            },
         // §2.4 SC 1.4.5 / F2：扫描件必须说明自己没有文本层。规范 v2 §1 之后
         // 这句提示不再是画布顶部的黑条，而是宿主 PluginChromeNotices 的左下角小胶囊
         // （id 与 PDF_FAILURE_CODES 的 `pdf-no-text-layer` 同名，验收脚本按它找）。
@@ -273,6 +305,11 @@ export function PdfRoute({
         // 模式换成上游即用查看器，**同一份字节**）。`effectiveCore` 判定保留，
         // 两面之间经同一个过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
         stage: (
+          // 只读时舞台不做 inert：旁观者要能翻页、缩放；改动入口（工具栏、浮条、导入、撤销）已在只读时关掉。
+          <div
+            data-collab-readonly={collabReadOnly ? "true" : undefined}
+            className="h-full min-h-0"
+          >
           <ModeSwitchGate
             pro={effectiveCore === "next"}
             beforeEnterPro={enterPdfPro}
@@ -297,10 +334,16 @@ export function PdfRoute({
               />
             )}
           />
+          </div>
         ),
         // §6: a failed load reaches the shell status bar with its code, so the
         // route never presents an empty stage with no stated reason.
         status:
+          (collabReadOnly && lockedEdit.lockHolderName
+            ? tt("「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。", {
+                name: lockedEdit.lockHolderName,
+              })
+            : "") ||
           importError ||
           nextCoreFailure ||
           editor.error ||
@@ -308,8 +351,9 @@ export function PdfRoute({
           editor.notice ||
           (editor.loading ? "正在载入 PDF" : ""),
         persistence: {
-          dirty: editor.dirty,
+          dirty: lockedEdit.mayWrite ? editor.dirty : false,
           editRevision: editor.editRevision,
+          autoSave: lockedEdit.mayWrite,
           flush: saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey("pdf", item),

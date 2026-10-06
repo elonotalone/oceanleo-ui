@@ -46,6 +46,15 @@ import {
   type WorkbenchMaterialPlacement,
 } from "../workbench-material-provider";
 import { timelineMsAtClientPoint } from "../video-editor/timeline-viewport";
+import type { TimelineDoc } from "../video-editor/types";
+import { useUI } from "../../i18n/ui/useUI";
+import { fetchRevisionJson, useEntityCollab } from "../collab/adapters/use-entity-collab";
+import {
+  VIDEO_ROOT,
+  videoFromEntities,
+  videoFromRevisionJson,
+  videoToEntities,
+} from "../collab/adapters/video";
 
 /**
  * Next-core leaf. The import() literal must stay in this file so the bundler
@@ -160,6 +169,42 @@ function VideoTimelineLegacyBody({
   sourceItem: AdvancedContentWorkbenchProps["item"];
 }) {
   const editor = useVideoTimeline(item, siteId);
+  const tt = useUI();
+  // ---- 多人同改（W14）：片段为粒度；远端改动经 restoreRecovery 回灌，并保住本地选中与播放头。
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const remoteAppliedRef = useRef(false);
+  const applyRemote = useCallback((next: TimelineDoc) => {
+    const current = editorRef.current;
+    const selectedId = current.selectedClipId;
+    const playhead = current.playheadMs;
+    remoteAppliedRef.current = true;
+    if (!current.restoreRecovery(next)) return;
+    if (selectedId && next.tracks.some((track) => track.clips.some((clip) => clip.id === selectedId))) {
+      current.selectClip(selectedId);
+    }
+    if (playhead > 0) current.seek(playhead);
+  }, []);
+  const loadRevision = useCallback(
+    async (revisionId: string) => {
+      const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
+        String(found.meta.editor_project_url || found.url || ""),
+      );
+      return json ? videoFromRevisionJson(json) : null;
+    },
+    [item.artifactId],
+  );
+  const collab = useEntityCollab<TimelineDoc>({
+    item,
+    editorKind: "video",
+    rootName: VIDEO_ROOT,
+    toEntities: videoToEntities,
+    fromEntities: (input, prev) => videoFromEntities(input, prev),
+    local: editor.sourceReady ? editor.doc : null,
+    applyRemote,
+    loadRevision,
+  });
+  const collabReadOnly = collab.readOnly;
   const sourceStopped = !editor.loadingSource && !editor.sourceReady;
   const sourcePending = editor.loadingSource && !editor.sourceReady;
   const [deliverNotice, setDeliverNotice] = useState("");
@@ -207,7 +252,7 @@ function VideoTimelineLegacyBody({
       id: "video-timeline-materials@2",
       actions: ["insert"],
       accepts: (material) => {
-        if (editor.loadingSource) return false;
+        if (editor.loadingSource || collabReadOnly) return false;
         const url =
           material.url || material.previewUrl || material.thumbUrl || "";
         const mime = String(material.meta.mime || "").toLowerCase();
@@ -232,7 +277,7 @@ function VideoTimelineLegacyBody({
         );
       },
     }),
-    [editor.addMediaUrl, editor.loadingSource, editor.playheadMs],
+    [collabReadOnly, editor.addMediaUrl, editor.loadingSource, editor.playheadMs],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   usePluginCommandSurface(
@@ -242,7 +287,10 @@ function VideoTimelineLegacyBody({
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {
+    // 协同房间里只有存档人落库；其余端的改动已在房间里，保存交给存档人。
+    if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
     const saved = await editor.saveDraft();
+    if (saved?.url && saved.versionId) collab.markSaved(String(saved.versionId));
     return saved?.url
       ? {
           ok: true as const,
@@ -263,7 +311,7 @@ function VideoTimelineLegacyBody({
               ? "时间线源未成功载入，未保存空回退工程。"
               : "时间线草稿保存失败"),
         };
-  }, [editor.error, editor.saveDraft, editor.sourceReady, item]);
+  }, [collab.markSaved, collab.saveGate, collabReadOnly, editor.error, editor.saveDraft, editor.sourceReady, item]);
   const addLocalMedia = useCallback(
     async (files: File[]) => {
       setDeliverNotice("");
@@ -303,26 +351,31 @@ function VideoTimelineLegacyBody({
       siteId={siteId}
       accent={accent}
       adapter={{
+        collab: collab.collab,
         id: "video-timeline",
         label: editorToolLabel(editorRouteFor(item)),
         toolbox: {
           label: "媒体与轨道",
           icon: "timeline",
-          content: <VideoTimelineControls state={editor} accent={accent} />,
+          content: (
+            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
+              <VideoTimelineControls state={editor} accent={accent} />
+            </div>
+          ),
         },
         contextToolbar: (
-          editor.sourceReady ? (
+          editor.sourceReady && !collabReadOnly ? (
             <VideoTimelineContextToolbar state={editor} accent={accent} />
           ) : null
         ),
         history: {
-          canUndo: editor.sourceReady && editor.canUndo,
-          canRedo: editor.sourceReady && editor.canRedo,
+          canUndo: editor.sourceReady && editor.canUndo && !collabReadOnly,
+          canRedo: editor.sourceReady && editor.canRedo && !collabReadOnly,
           undo: () => {
-            if (editor.sourceReady) editor.undo();
+            if (editor.sourceReady && !collabReadOnly) editor.undo();
           },
           redo: () => {
-            if (editor.sourceReady) editor.redo();
+            if (editor.sourceReady && !collabReadOnly) editor.redo();
           },
         },
         mode: {
@@ -375,7 +428,7 @@ function VideoTimelineLegacyBody({
               ]
             : []),
         ],
-        upload: editor.loadingSource
+        upload: editor.loadingSource || collabReadOnly
           ? undefined
           : {
               accept: visualUploadAccept("video-timeline"),
@@ -398,17 +451,23 @@ function VideoTimelineLegacyBody({
               "时间线源未成功载入，空回退工程已停止编辑与导出。可导入经过验证的媒体或恢复本地草稿。"}
           </div>
         ) : (
-          <VideoTimelineStage state={editor} accent={accent} />
+          <div
+            inert={collabReadOnly || undefined}
+            data-collab-readonly={collabReadOnly ? "true" : undefined}
+            className="h-full min-h-0"
+          >
+            <VideoTimelineStage state={editor} accent={accent} />
+          </div>
         ),
         status:
           editor.error ||
           deliverNotice ||
-          editor.notice ||
+          (remoteAppliedRef.current && editor.notice === tt("已恢复上次未同步的本地草稿") ? "" : editor.notice) ||
           (sourcePending ? "正在验证时间线工程与媒体源…" : ""),
         persistence: {
-          dirty: editor.dirty,
+          dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
           editRevision: editor.editRevision,
-          autoSave: true,
+          autoSave: collab.saveGate && !collabReadOnly,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.video-timeline.edit.v1",
@@ -416,7 +475,10 @@ function VideoTimelineLegacyBody({
             ready: !editor.loadingSource,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.doc) : null,
-            restore: editor.restoreRecovery,
+            restore: (payload: unknown) => {
+              remoteAppliedRef.current = false;
+              return editor.restoreRecovery(payload);
+            },
           },
         },
       }}

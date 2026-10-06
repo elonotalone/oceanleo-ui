@@ -43,6 +43,14 @@ import {
   useAudioWorkbench,
 } from "../media-editors/AudioWorkbench";
 import { editorToolLabel } from "../workbench-routes";
+import { fetchRevisionJson, useEntityCollab } from "../collab/adapters/use-entity-collab";
+import {
+  AUDIO_ROOT,
+  audioFromEntities,
+  audioFromRevisionJson,
+  audioToEntities,
+  type AudioCollabState,
+} from "../collab/adapters/audio";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -90,6 +98,14 @@ function AudioGated(props: AdvancedContentWorkbenchProps) {
   );
 }
 
+/** 协同只读时覆盖撤销/重做：不可用且点了不动。 */
+const COLLAB_READONLY_HISTORY = {
+  canUndo: false,
+  canRedo: false,
+  undo: () => {},
+  redo: () => {},
+};
+
 function AudioLegacyRoute({
   item,
   previewContent,
@@ -106,6 +122,56 @@ function AudioLegacyRoute({
   const editor = useAudioWorkbench(saved ?? item, siteId);
   const [deliverBusy, setDeliverBusy] = useState(false);
   const [deliverNotice, setDeliverNotice] = useState("");
+  // ---- 多人同改（W14）：合并粒度 = 一条编辑操作；远端改动经 restoreRecovery 重放（会清掉本地撤销栈）。
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const collabLocal = useMemo(
+    () => (editor.loading ? null : (editor.captureRecovery() as AudioCollabState | null)),
+    // editRevision 随每次编辑递增；captureRecovery 读的是 ref，所以以它作为变化信号。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor.loading, editor.editRevision],
+  );
+  const restoreBusyRef = useRef(false);
+  const restorePendingRef = useRef<AudioCollabState | null>(null);
+  const applyRemote = useCallback((next: AudioCollabState) => {
+    // 重放要重新解码音频，期间到达的新远端状态只留最新一份，做完再接着放。
+    restorePendingRef.current = next;
+    if (restoreBusyRef.current) return;
+    restoreBusyRef.current = true;
+    void (async () => {
+      try {
+        while (restorePendingRef.current) {
+          const target = restorePendingRef.current;
+          restorePendingRef.current = null;
+          await editorRef.current.restoreRecovery(target);
+        }
+      } catch {
+        // 恢复失败时保持当前画面；下一次远端改动再试。
+      } finally {
+        restoreBusyRef.current = false;
+      }
+    })();
+  }, []);
+  const loadRevision = useCallback(
+    async (revisionId: string) => {
+      const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
+        String(found.meta.editor_project_url || ""),
+      );
+      return json ? audioFromRevisionJson(json) : null;
+    },
+    [item.artifactId],
+  );
+  const collab = useEntityCollab<AudioCollabState>({
+    item,
+    editorKind: "audio",
+    rootName: AUDIO_ROOT,
+    toEntities: audioToEntities,
+    fromEntities: (input, prev) => audioFromEntities(input, prev),
+    local: collabLocal,
+    applyRemote,
+    loadRevision,
+  });
+  const collabReadOnly = collab.readOnly;
   /** wav 本地出；mp3 / m4a 拿同一份 wav 去后端转一道再下载。 */
   const deliver = useCallback(
     async (format: string) => {
@@ -147,6 +213,7 @@ function AudioLegacyRoute({
       id: "audio-materials@2",
       actions: ["replace"],
       accepts: (material) => {
+        if (collabReadOnly) return false;
         const url = material.url || material.previewUrl || "";
         return (
           material.kind === "audio" ||
@@ -169,7 +236,7 @@ function AudioLegacyRoute({
         );
       },
     }),
-    [editor.importSource],
+    [collabReadOnly, editor.importSource],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
   usePluginCommandSurface(
@@ -179,7 +246,10 @@ function AudioLegacyRoute({
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {
+    // 协同房间里只有存档人落库；其余端的改动已在房间里。
+    if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
     const saved = await editor.save();
+    if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
       ? {
           ok: true as const,
@@ -193,7 +263,7 @@ function AudioLegacyRoute({
           }),
         }
       : { ok: false as const };
-  }, [editor.save, item]);
+  }, [collab.markSaved, collab.saveGate, collabReadOnly, editor.save, item]);
   const importLocalAudio = useCallback(
     async (files: File[]) => {
       setDeliverNotice("");
@@ -236,14 +306,19 @@ function AudioLegacyRoute({
       siteId={siteId}
       accent={accent}
       adapter={{
+        collab: collab.collab,
         id: "audio",
         label: editorToolLabel({ type: "audio" }),
         toolbox: {
           label: "音轨工具",
           icon: "timeline",
-          content: <AudioControls editor={editor} accent={accent} />,
+          content: (
+            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
+              <AudioControls editor={editor} accent={accent} />
+            </div>
+          ),
         },
-        contextToolbar: (
+        contextToolbar: collabReadOnly ? null : (
           <AudioContextToolbar editor={editor} accent={accent} />
         ),
         history: {
@@ -251,6 +326,7 @@ function AudioLegacyRoute({
           canRedo: editor.canRedo,
           undo: editor.undo,
           redo: editor.redo,
+          ...(collabReadOnly ? COLLAB_READONLY_HISTORY : {}),
         },
         viewport: {
           value: Math.round((editor.zoom / 30) * 100),
@@ -284,17 +360,25 @@ function AudioLegacyRoute({
             disabled: editor.loading || deliverBusy,
             onTrigger: () => deliver(entry.format).catch(() => undefined),
           })),
-        upload: {
-          accept: visualUploadAccept("audio"),
-          onFiles: importLocalAudio,
-        },
-        stage: <AudioStage editor={editor} accent={accent} />,
+        upload: collabReadOnly
+          ? undefined
+          : {
+              accept: visualUploadAccept("audio"),
+              onFiles: importLocalAudio,
+            },
+        stage: collabReadOnly ? (
+          <div inert data-collab-readonly="true" className="h-full min-h-0">
+            <AudioStage editor={editor} accent={accent} />
+          </div>
+        ) : (
+          <AudioStage editor={editor} accent={accent} />
+        ),
         status:
           editor.error ||
           deliverNotice ||
           (editor.loading ? "正在载入音频" : ""),
         persistence: {
-          dirty: editor.dirty,
+          dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
