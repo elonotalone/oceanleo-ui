@@ -16,6 +16,8 @@ export type FloatingMenuProps = {
   width?: number;
   ariaLabel?: string;
   className?: string;
+  /** Stacking class; defaults to z-50. Call sites that sit above the shell pass a higher z. */
+  zClassName?: string;
   children: ReactNode;
 };
 
@@ -29,6 +31,7 @@ export function FloatingMenu({
   width = 224,
   ariaLabel,
   className = "",
+  zClassName = "z-50",
   children,
 }: FloatingMenuProps) {
   return (
@@ -42,7 +45,7 @@ export function FloatingMenu({
       preferredPlacement={preferredPlacement}
       side={side}
       initialFocusSelector='[role="menuitem"]:not([aria-disabled="true"]):not(:disabled)'
-      className={`z-50 overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-1 shadow-[0_8px_32px_rgba(0,0,0,0.14)] dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100 ${className}`}
+      className={`${zClassName} overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-1 shadow-[0_8px_32px_rgba(0,0,0,0.14)] dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100 ${className}`}
       style={{ width }}
     >
       {children}

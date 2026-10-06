@@ -396,6 +396,15 @@ export function currentDomainProfile(): DomainFamilyProfile {
   return { ...base, gatewayOrigin };
 }
 
+/** Path on the current family's portal. Same-origin stays relative; other origins get the portal origin prefixed. */
+export function portalHref(path: string): string {
+  const portalOrigin = currentDomainProfile().portalOrigin;
+  if (typeof window === "undefined" || window.location.origin === portalOrigin) {
+    return path;
+  }
+  return `${portalOrigin}${path}`;
+}
+
 /**
  * `family` 里是否**确实存在** `subsite` 这个子站。
  *
