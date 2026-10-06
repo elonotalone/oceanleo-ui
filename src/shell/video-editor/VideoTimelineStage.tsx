@@ -37,9 +37,12 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export function VideoTimelineStage({
   state,
   accent = "#4f46e5",
+  readOnly = false,
 }: {
   state: VideoTimelineState;
   accent?: string;
+  /** 只能看：保留播放、暂停、逐帧、拖播放头、缩放；撤销、分割、删除这些改内容的快捷键不响应。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -78,6 +81,10 @@ export function VideoTimelineStage({
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (isEditableTarget(event.target)) return;
       const key = event.key.toLowerCase();
+      if (readOnly && (key === "delete" || key === "backspace" || key === "s" || key === "z")) {
+        // 只读：不改内容的键（空格、方向键）才响应。
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && key === "z") {
         event.preventDefault();
         if (event.shiftKey) state.redo();
@@ -109,12 +116,13 @@ export function VideoTimelineStage({
         state.stepFrame(1);
       }
     },
-    [state],
+    [readOnly, state],
   );
 
   return (
     <div
       ref={stageRef}
+      data-collab-readonly={readOnly ? "true" : undefined}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.currentTarget.focus()}
@@ -167,7 +175,9 @@ export function VideoTimelineStage({
             <span className="text-[var(--awb-danger)]">{state.error}</span>
           ) : (
             state.notice ||
-            tt("空格播放 · S 分割 · Delete 删除 · Ctrl+Z 撤销 · Ctrl+滚轮缩放")
+            (readOnly
+              ? tt("空格播放 · ←/→ 逐帧 · Ctrl+滚轮缩放")
+              : tt("空格播放 · S 分割 · Delete 删除 · Ctrl+Z 撤销 · Ctrl+滚轮缩放"))
           )}
         </span>
         <div
@@ -215,7 +225,7 @@ export function VideoTimelineStage({
 
       {/* 时间线 */}
       <div className="flex min-h-0 flex-[2] flex-col">
-        <TimelineArea state={state} accent={accent} />
+        <TimelineArea state={state} accent={accent} readOnly={readOnly} />
       </div>
     </div>
   );

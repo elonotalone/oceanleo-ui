@@ -90,9 +90,12 @@ interface DragState {
 export function TimelineArea({
   state,
   accent = "#4f46e5",
+  readOnly = false,
 }: {
   state: VideoTimelineState;
   accent?: string;
+  /** 只能看（协同里没有编辑权限）：能拖播放头、缩放、选中片段看属性；不能拖动、裁剪、删轨道。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const {
@@ -235,6 +238,7 @@ export function TimelineArea({
       event.preventDefault();
       cancelActiveDrag();
       state.selectClip(clip.id);
+      if (readOnly) return;
       state.beginGesture();
       dragRef.current = {
         mode,
@@ -251,7 +255,7 @@ export function TimelineArea({
         settleClipGesture("cancel", event.pointerId);
       }
     },
-    [cancelActiveDrag, settleClipGesture, state],
+    [cancelActiveDrag, readOnly, settleClipGesture, state],
   );
 
   const onClipPointerMove = useCallback(
@@ -413,7 +417,7 @@ export function TimelineArea({
                 {tt(KIND_LABEL[track.kind])}
                 {isBaseVideo ? ` · ${tt("基底")}` : ""}
               </span>
-              {!isBaseVideo && (
+              {!isBaseVideo && !readOnly && (
                 <button
                   type="button"
                   onClick={() => state.removeTrack(track.id)}
@@ -438,6 +442,7 @@ export function TimelineArea({
           ref={contentRef}
           data-video-timeline-content
           data-px-per-second={pxPerSecond}
+          data-collab-readonly={readOnly ? "true" : undefined}
           className="relative"
           style={{ width: contentWidth }}
         >
@@ -506,7 +511,9 @@ export function TimelineArea({
                     onPointerUp={onClipPointerUp}
                     onPointerCancel={onClipPointerCancel}
                     onLostPointerCapture={onClipPointerCancel}
-                    className="group absolute top-1 bottom-1 cursor-grab overflow-hidden rounded-md border text-[10px] active:cursor-grabbing"
+                    className={`group absolute top-1 bottom-1 overflow-hidden rounded-md border text-[10px] ${
+                      readOnly ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+                    }`}
                     style={{
                       left: msToPx(clip.start_ms),
                       width,
@@ -541,7 +548,9 @@ export function TimelineArea({
                         {clip.muted ? ` · ${tt("静音")}` : ""}
                       </span>
                     </div>
-                    {/* trim 手柄 */}
+                    {/* trim 手柄（只读时不画） */}
+                    {!readOnly && (
+                      <>
                     <div
                       onPointerDown={(event) =>
                         onClipPointerDown(event, track, clip, "trim-start")
@@ -565,6 +574,8 @@ export function TimelineArea({
                       className="absolute inset-y-0 right-0 cursor-ew-resize bg-black/15 opacity-0 group-hover:opacity-100"
                       style={{ width: Math.min(HIT_AREA_PX, Math.max(6, width / 2)) }}
                     />
+                      </>
+                    )}
                   </div>
                 );
               })}

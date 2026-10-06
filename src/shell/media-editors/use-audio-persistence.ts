@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject } from "react";
+import { useCallback, useRef, type MutableRefObject } from "react";
 
 import { uploadFile } from "../../lib/database";
 import {
@@ -87,7 +87,20 @@ interface AudioPersistenceOptions {
   setCanUndo: (value: boolean) => void;
   setCanRedo: (value: boolean) => void;
   tt: UITranslate;
+  /** 协同：一条编辑正在做；远端回灌要等它做完。 */
+  mutatingRef?: MutableRefObject<boolean>;
+  /** 协同：远端改动正在回灌；这期间本端新编辑先不接。 */
+  remoteReplayRef?: MutableRefObject<boolean>;
+  /** 协同：重载波形但保住选区与播放位置。 */
+  reloadWaveformKeepView?: (next: AudioBuffer) => Promise<void>;
+  /** 协同：远端改动落到编辑器上后调用（让协同胶水重新读本端状态）。 */
+  bumpContent?: () => void;
 }
+
+/** 重放一份工程的三种用途：恢复本地草稿 / 套用对方的改动 / 撤销重做算出来的本端改动。 */
+export type AudioReplayMode = "recovery" | "remote" | "local";
+
+const REMOTE_WAIT_MS = 15_000;
 
 export function useAudioPersistence({
   item,
@@ -111,7 +124,13 @@ export function useAudioPersistence({
   setCanUndo,
   setCanRedo,
   tt,
+  mutatingRef,
+  remoteReplayRef,
+  reloadWaveformKeepView,
+  bumpContent,
 }: AudioPersistenceOptions) {
+  // 最近一次解码出来的「源文件」：对方每改一处都要重放，源没换就不重新下载解码。
+  const decodedSourceRef = useRef<{ url: string; buffer: AudioBuffer } | null>(null);
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     const source = bufferRef.current;
     if (!source || savingRef.current) return null;
@@ -252,12 +271,14 @@ export function useAudioPersistence({
     [bufferRef, operationsRef, sourceUrlRef],
   );
 
-  const restoreRecovery = useCallback(
-    async (payload: unknown): Promise<boolean> => {
+  const replayProject = useCallback(
+    async (payload: unknown, mode: AudioReplayMode): Promise<boolean> => {
+      const quiet = mode === "remote";
       let project: AudioProjectData;
       if (validAudioProject(payload)) {
         project = payload;
       } else if (
+        mode === "recovery" &&
         payload instanceof Blob &&
         payload.size <= MAX_AUDIO_FILE_BYTES
       ) {
@@ -287,10 +308,22 @@ export function useAudioPersistence({
         return false;
       }
       if (requiresExistingSource && !project.sourceUrl.trim()) {
-        setError(
-          tt("当前音频 revision 的恢复草稿缺少源文件；已阻止用静音占位替代"),
-        );
+        if (!quiet) {
+          setError(
+            tt("当前音频 revision 的恢复草稿缺少源文件；已阻止用静音占位替代"),
+          );
+        }
         return false;
+      }
+      const guarded = mode !== "recovery" && Boolean(remoteReplayRef);
+      if (guarded && remoteReplayRef) {
+        // 本端有一条编辑正在做：对方的改动等它落定再套上去（否则两边互相盖）；撤销 / 重做则直接放弃这一次。
+        const waitUntil = Date.now() + (quiet ? REMOTE_WAIT_MS : 0);
+        while (mutatingRef?.current && Date.now() < waitUntil) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        if (mutatingRef?.current) return false;
+        remoteReplayRef.current = true;
       }
       let context: AudioContext | null = null;
       try {
@@ -305,36 +338,47 @@ export function useAudioPersistence({
                 registerAsset: false,
               })
           : "";
-        const blob = durableUrl
-          ? await fetchMediaBlob(durableUrl, {
-              maxBytes: MAX_AUDIO_FILE_BYTES,
-            })
-          : encodeWav(
-              new AudioBuffer({
-                length: 44_100,
-                numberOfChannels: 1,
-                sampleRate: 44_100,
-              }),
-            );
-        await assertBlobSource(blob, "audio");
         let decoded: AudioBuffer;
-        try {
-          decoded = await context.decodeAudioData(
-            (await blob.arrayBuffer()).slice(0),
-          );
-        } catch {
-          throw new Error(
-            tt("恢复源虽有正确音频签名，但没有浏览器可解码的音轨"),
-          );
+        const cached = decodedSourceRef.current;
+        if (durableUrl && cached && cached.url === durableUrl) {
+          decoded = cached.buffer;
+        } else {
+          const blob = durableUrl
+            ? await fetchMediaBlob(durableUrl, {
+                maxBytes: MAX_AUDIO_FILE_BYTES,
+              })
+            : encodeWav(
+                new AudioBuffer({
+                  length: 44_100,
+                  numberOfChannels: 1,
+                  sampleRate: 44_100,
+                }),
+              );
+          await assertBlobSource(blob, "audio");
+          try {
+            decoded = await context.decodeAudioData(
+              (await blob.arrayBuffer()).slice(0),
+            );
+          } catch {
+            throw new Error(
+              tt("恢复源虽有正确音频签名，但没有浏览器可解码的音轨"),
+            );
+          }
+          if (durableUrl) decodedSourceRef.current = { url: durableUrl, buffer: decoded };
         }
         for (const operation of project.operations) {
           decoded = applyAudioOperation(decoded, operation);
         }
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) return false;
-        await reloadWaveform(decoded);
+        await (mode === "recovery" ? reloadWaveform : (reloadWaveformKeepView ?? reloadWaveform))(decoded);
         bufferRef.current = decoded;
         sourceUrlRef.current = durableUrl;
         operationsRef.current = [...project.operations];
+        if (mode === "remote") {
+          // 对方的改动：不动我的撤销栈、不标未保存、不加编辑修订号（所以不会触发自动保存）。
+          bumpContent?.();
+          return true;
+        }
         undoRef.current = [];
         redoRef.current = [];
         undoOperationsRef.current = [];
@@ -344,31 +388,40 @@ export function useAudioPersistence({
         setCanRedo(false);
         setDirty(true);
         setSavedUrl("");
+        bumpContent?.();
         return true;
       } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : tt("音频本地草稿恢复失败"),
-        );
+        if (!quiet) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : tt("音频本地草稿恢复失败"),
+          );
+        }
         return false;
       } finally {
+        if (guarded && remoteReplayRef) remoteReplayRef.current = false;
         await context?.close().catch(() => undefined);
       }
     },
     [
       bufferRef,
+      bumpContent,
       item.id,
       item.title,
+      mutatingRef,
       operationsRef,
       redoOperationsRef,
       redoRef,
       reloadWaveform,
+      reloadWaveformKeepView,
+      remoteReplayRef,
       requiresExistingSource,
       revisionRef,
       setCanRedo,
       setCanUndo,
       setDirty,
+      setError,
       setSavedUrl,
       siteId,
       sourceUrlRef,
@@ -378,5 +431,18 @@ export function useAudioPersistence({
     ],
   );
 
-  return { save, captureRecovery, restoreRecovery };
+  const restoreRecovery = useCallback(
+    (payload: unknown): Promise<boolean> => replayProject(payload, "recovery"),
+    [replayProject],
+  );
+  const applyRemoteProject = useCallback(
+    (project: AudioProjectData): Promise<boolean> => replayProject(project, "remote"),
+    [replayProject],
+  );
+  const applyLocalProject = useCallback(
+    (project: AudioProjectData): Promise<boolean> => replayProject(project, "local"),
+    [replayProject],
+  );
+
+  return { save, captureRecovery, restoreRecovery, applyRemoteProject, applyLocalProject };
 }

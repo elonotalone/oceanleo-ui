@@ -184,6 +184,8 @@ export class Model3DSceneRuntime {
     onProgress?: (progress: number) => void;
   }): Promise<Model3DPlayblastCapture>;
   setSelectedNode(id: string): void;
+  /** 只读：保留转视角、缩放、平移、点选；去掉会改场景的手柄。 */
+  setReadOnly(value: boolean): void;
   setTransformMode(mode: Model3DTransformMode): void;
   beginGesture(controlId: string): boolean;
   commitGesture(): boolean;

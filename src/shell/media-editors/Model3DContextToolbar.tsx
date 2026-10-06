@@ -26,9 +26,12 @@ const inspector = (
 export function Model3DContextToolbar({
   editor,
   accent = "#4f46e5",
+  readOnly = false,
 }: {
   editor: Model3DWorkbenchState;
   accent?: string;
+  /** 只能看：所有改内容的控件置灰（悬停说明原因），命令不生效。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const selection = editor.selectedNode;
@@ -486,12 +489,18 @@ export function Model3DContextToolbar({
       id: selection?.id || "active-model",
       label: selection?.name || editor.title || tt("3D 模型"),
       revision: editor.editRevision,
-      controls,
+      controls: readOnly
+        ? controls.map((control) => ({
+            ...control,
+            disabled: true,
+            unavailableReason: tt("只能查看，不能修改"),
+          }))
+        : controls,
     };
-  }, [editor, selectedAnnotation, selectedMaterial, selection, tt]);
+  }, [editor, readOnly, selectedAnnotation, selectedMaterial, selection, tt]);
 
   const command = (message: SelectionCommand) => {
-    if (message.selectionId !== context.id) return;
+    if (readOnly || message.selectionId !== context.id) return;
     const continuingTransaction = transactionRef.current.continues(message);
     if (
       message.selectionRevision !== undefined &&

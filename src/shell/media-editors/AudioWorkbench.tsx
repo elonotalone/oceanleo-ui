@@ -77,6 +77,11 @@ export function useAudioWorkbench(
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // 协同：对方的改动落到编辑器上时 +1（不动 editRevision，免得触发自动保存）。
+  const [contentVersion, setContentVersion] = useState(0);
+  const mutatingRef = useRef(false);
+  const remoteReplayRef = useRef(false);
+  const selectionRef = useRef<AudioSelection | null>(null);
   const requiresExistingSource =
     item.source === "artifact" ||
     isDurableLibraryItem(item) ||
@@ -122,6 +127,8 @@ export function useAudioWorkbench(
     tt,
   });
 
+  selectionRef.current = selection;
+
   const reloadWaveform = useCallback(async (next: AudioBuffer) => {
     const wave = waveRef.current;
     if (!wave) return;
@@ -143,7 +150,35 @@ export function useAudioWorkbench(
     }
   }, []);
 
+  /** 对方的改动 / 撤销结果要重载波形时用：选区、播放位置、是否在播都保住。 */
+  const reloadWaveformKeepView = useCallback(
+    async (next: AudioBuffer) => {
+      const wave = waveRef.current;
+      const time = wave?.getCurrentTime() ?? 0;
+      const wasPlaying = Boolean(wave?.isPlaying());
+      const keptSelection = selectionRef.current;
+      await reloadWaveform(next);
+      const total = next.duration;
+      if (wave) {
+        const target = Math.max(0, Math.min(time, total));
+        wave.setTime(target);
+        setCurrentTime(target);
+        if (wasPlaying) void wave.play().catch(() => undefined);
+      }
+      if (keptSelection && keptSelection.start < total) {
+        regionsRef.current?.addRegion({
+          start: keptSelection.start,
+          end: Math.min(keptSelection.end, total),
+        });
+      }
+    },
+    [reloadWaveform],
+  );
+  const bumpContent = useCallback(() => setContentVersion((value) => value + 1), []);
+
   const commit = useAudioMutations({
+    mutatingRef,
+    remoteReplayRef,
     item,
     siteId,
     bufferRef,
@@ -425,7 +460,11 @@ export function useAudioWorkbench(
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [item.title]);
 
-  const { save, captureRecovery, restoreRecovery } = useAudioPersistence({
+  const { save, captureRecovery, restoreRecovery, applyRemoteProject, applyLocalProject } = useAudioPersistence({
+    mutatingRef,
+    remoteReplayRef,
+    reloadWaveformKeepView,
+    bumpContent,
     item,
     siteId,
     requiresExistingSource,
@@ -478,6 +517,7 @@ export function useAudioWorkbench(
     canRedo,
     dirty,
     editRevision: revisionRef.current,
+    contentVersion,
     playPause: () => {
       void waveRef.current?.playPause().catch(() => setError(tt("播放失败")));
     },
@@ -526,5 +566,7 @@ export function useAudioWorkbench(
     save,
     captureRecovery,
     restoreRecovery,
+    applyRemoteProject,
+    applyLocalProject,
   };
 }

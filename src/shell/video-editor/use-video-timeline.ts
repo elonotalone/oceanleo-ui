@@ -167,6 +167,17 @@ export interface VideoTimelineState {
   exportVideo: () => Promise<string>;
   cancelExport: () => void;
   restoreRecovery: (payload: unknown) => boolean;
+  /**
+   * 多人同改：把对方的改动套进来。只替换文档，保留选中（片段还在时）、播放头和缩放；
+   * 不动撤销 / 重做栈，不标「未保存」、不加编辑修订号（所以不触发自动保存）、不弹提示。
+   * 与 `restoreRecovery`（恢复本地草稿）分开。
+   */
+  applyRemoteDoc: (payload: unknown) => boolean;
+  /**
+   * 多人同改：撤销 / 重做算出来的文档，当作本端改动应用（标未保存、走自动保存），
+   * 但不进编辑器自己的撤销栈（协同时撤销栈由 use-entity-collab 管，只记我自己的改动）。
+   */
+  applyLocalDoc: (payload: unknown) => boolean;
 }
 
 function trackKindForMedia(kind: "video" | "audio" | "image"): TrackKind {
@@ -1392,6 +1403,32 @@ export function useVideoTimeline(
     [markSourceReady, tt],
   );
 
+  const applyRemoteDoc = useCallback((payload: unknown): boolean => {
+    if (!isTimelineDoc(payload)) return false;
+    const next = normalizeTimelineDoc(structuredClone(payload));
+    docRef.current = next;
+    setDocState(next);
+    // 我正拖着某个片段时对方的改动到了：拖动的「当前画面」换成合并后的文档，起点（取消时回到的地方）不变。
+    if (gestureState.current) {
+      gestureState.current = { ...gestureState.current, document: next };
+    }
+    setSelectedClipId((current) => (current && findClip(next, current) ? current : ""));
+    return true;
+  }, []);
+
+  const applyLocalDoc = useCallback((payload: unknown): boolean => {
+    if (!isTimelineDoc(payload)) return false;
+    const next = normalizeTimelineDoc(structuredClone(payload));
+    docRef.current = next;
+    setDocState(next);
+    setSelectedClipId((current) => (current && findClip(next, current) ? current : ""));
+    revisionRef.current += 1;
+    setDirty(true);
+    setDraftSavedUrl("");
+    setHistoryVersion((value) => value + 1);
+    return true;
+  }, []);
+
   // -------------------------------------------------------------- derived
 
   const durationMs = useMemo(() => docDurationMs(doc), [doc]);
@@ -1464,5 +1501,7 @@ export function useVideoTimeline(
     exportVideo,
     cancelExport,
     restoreRecovery,
+    applyRemoteDoc,
+    applyLocalDoc,
   };
 }

@@ -7,12 +7,23 @@
  * 适配器的 toEntities / fromEntities。本 hook 负责：开房间、种子、首次对齐、本地改动推送、远端改动回灌（不回环）、
  * 只读、保存闸、外部版本。
  *
- * 不在这里处理：选区与撤销栈的保留（编辑器各自在 `applyRemote` 里做）、`markSaved`（保存成功处调 `markSaved`）。
+ * 不在这里处理：选区的保留（编辑器各自在 `applyRemote` 里做）、`markSaved`（保存成功处调 `markSaved`）。
+ *
+ * 撤销只撤自己（F07）：本 hook 在房间里替编辑器记「我这一步改了哪些实体」，`history.undo()` 只把
+ * 「现在仍是我当时写下的值」的实体改回去，对方改过 / 删掉的跳过并给一句提示。需要编辑器交出
+ * `applyLocal`（把撤销结果当作本端改动应用：标未保存、走自动保存、不进编辑器自己的撤销栈）。
+ * 不在房间里时 `history.active` 为 false，编辑器照旧用自己原生的撤销。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ImEditorKind } from "../../../lib/im/types";
 import { useImEnabled } from "../../../lib/im/client";
+import { useUI } from "../../../i18n/ui/useUI";
 import type { LibraryItem } from "../../library-data";
+import {
+  EntityEditSession,
+  EntityUndoStack,
+  type EntityRecord,
+} from "../../video-editor/entity-undo";
 import {
   bindJsonState,
   useCollabReadOnly,
@@ -38,14 +49,43 @@ export interface UseEntityCollabOptions<T> {
   ): T;
   /** 本地当前状态；源没载入完（或本来就没有可协同的状态）时为 null，此时什么都不推、不种。 */
   local: T | null;
-  /** 把远端状态应用进编辑器。要自己保住本地选中与播放头；不要因此把「已保存」标成未保存之外的状态。 */
-  applyRemote(state: T): void;
+  /**
+   * 把远端状态应用进编辑器。要自己保住本地选中、播放头 / 视角和撤销栈；
+   * 不许标「未保存」、不许触发自动保存、不许弹提示（远端改动不是我的改动）。
+   * 返回 Promise 时（例如音频要重新解码）在它结束前本端不往房间推送，避免把旧状态推回去。
+   */
+  applyRemote(state: T): void | Promise<void>;
+  /**
+   * 把「撤销 / 重做」算出来的状态当作本端改动应用进编辑器：标未保存、走自动保存、
+   * 不进编辑器自己的撤销栈（栈在本 hook 里）。不给就没有协同撤销（`history.active` 为 false）。
+   */
+  applyLocal?: (state: T) => void | Promise<void>;
+  /** 撤销要把某个实体放回去之前问一句（例如片段所属的轨道还在不在）；false 就跳过它。 */
+  canRestoreEntity?: (id: string, entity: EntityRecord, doc: EntityShape) => boolean;
+  /** 连续两步在这么多毫秒内碰同一批实体就合成一步（拖动、拖滑杆）；默认 400。 */
+  historyCoalesceMs?: number;
   /** 取某个外部版本的状态（AI 或别人另存的新版）；null = 取不到。 */
   loadRevision?: (revisionId: string) => Promise<T | null>;
 }
 
+export interface EntityCollabHistory {
+  /** 在房间里且编辑器交了 `applyLocal`：用这里的撤销，不用编辑器原生的。 */
+  active: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** 我自己的撤销 / 重做栈深（对方的改动从不进栈）。 */
+  undoDepth: number;
+  redoDepth: number;
+  undo(): void;
+  redo(): void;
+  /** 撤销时有实体因为对方改过而跳过的一句提示；空串 = 没有。 */
+  notice: string;
+  clearNotice(): void;
+}
+
 export interface EntityCollab {
   room: CollabRoom | null;
+  history: EntityCollabHistory;
   readOnly: boolean;
   /** 自动保存闸：false 时本端不自动保存（由房间里的存档人保存）。 */
   saveGate: boolean;
@@ -62,6 +102,7 @@ function stableKey(shape: EntityShape): string {
 
 export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityCollab {
   const { item, editorKind, rootName, local } = opts;
+  const tt = useUI();
   const imOn = useImEnabled();
   const artifactId = String(item.artifactId || "");
   const room = useCollabRoom({
@@ -81,11 +122,41 @@ export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityColla
   const [binding, setBinding] = useState<JsonStateBinding<T> | null>(null);
   const aligned = useRef(false);
   const lastKey = useRef("");
+  // 「我自己的」撤销栈：只记本端改动，对方的改动从不进栈。
+  const sessionRef = useRef<EntityEditSession<T> | null>(null);
+  if (!sessionRef.current) {
+    sessionRef.current = new EntityEditSession<T>({
+      toEntities: (state) => optsRef.current.toEntities(state),
+      fromEntities: (input, prev) => optsRef.current.fromEntities(input, prev),
+      canRestore: (id, entity, doc) => optsRef.current.canRestoreEntity?.(id, entity, doc) ?? true,
+      stack: new EntityUndoStack({ coalesceMs: opts.historyCoalesceMs }),
+    });
+  }
+  const session = sessionRef.current;
+  const [historyTick, setHistoryTick] = useState(0);
+  const [historyNotice, setHistoryNotice] = useState("");
+  // 远端状态异步应用（音频要重新解码）期间不把旧状态推回房间。
+  const remoteBusy = useRef(0);
+  const [busyTick, setBusyTick] = useState(0);
+  const runRemote = useCallback((state: T) => {
+    const result = optsRef.current.applyRemote(state);
+    if (result && typeof (result as Promise<void>).then === "function") {
+      remoteBusy.current += 1;
+      const done = () => {
+        remoteBusy.current -= 1;
+        setBusyTick((value) => value + 1);
+      };
+      (result as Promise<void>).then(done, done);
+    }
+  }, []);
 
   // 开绑定（房间换了就重来）。
   useEffect(() => {
     aligned.current = false;
     lastKey.current = "";
+    session.reset();
+    setHistoryNotice("");
+    setHistoryTick((value) => value + 1);
     if (!room) {
       setBinding(null);
       return undefined;
@@ -99,14 +170,15 @@ export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityColla
     setBinding(next);
     const off = next.onRemote((state) => {
       lastKey.current = stableKey(optsRef.current.toEntities(state));
-      optsRef.current.applyRemote(state);
+      session.noteKnown(state);
+      runRemote(state);
     });
     return () => {
       off();
       next.destroy();
       setBinding(null);
     };
-  }, [room, rootName]);
+  }, [room, rootName, runRemote, session]);
 
   // 首次对齐：我是第一个 → 种；否则等 synced 后取房间里的状态应用到编辑器。
   const synced = room?.status === "synced";
@@ -119,6 +191,7 @@ export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityColla
     if (needsSeed) {
       binding.seed(current);
       lastKey.current = stableKey(optsRef.current.toEntities(current));
+      session.noteKnown(current);
       aligned.current = true;
       return;
     }
@@ -126,22 +199,28 @@ export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityColla
     if (remote === null) return; // 另一端正在种，等它
     aligned.current = true;
     const key = stableKey(optsRef.current.toEntities(remote));
+    session.noteKnown(remote);
     if (stableKey(optsRef.current.toEntities(current)) === key) {
       lastKey.current = key;
       return;
     }
     lastKey.current = key;
-    optsRef.current.applyRemote(remote);
-  }, [room, binding, synced, needsSeed, local]);
+    runRemote(remote);
+  }, [room, binding, synced, needsSeed, local, runRemote, session]);
 
-  // 本地改动 → 推送。
+  // 本地改动 → 记进我的撤销栈、推送。
   useEffect(() => {
     if (!room || !binding || !aligned.current || readOnly || local === null) return;
+    if (remoteBusy.current > 0) return;
     const key = stableKey(optsRef.current.toEntities(local));
     if (key === lastKey.current) return;
     lastKey.current = key;
+    if (session.noteLocal(local)) {
+      setHistoryNotice("");
+      setHistoryTick((value) => value + 1);
+    }
     binding.push(local);
-  }, [room, binding, readOnly, local, synced]);
+  }, [room, binding, readOnly, local, synced, busyTick, session]);
 
   // 外部版本：取来、应用、推进文档、标记已保存。
   useEffect(() => {
@@ -153,13 +232,63 @@ export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityColla
         .then((state) => {
           if (!state) return;
           lastKey.current = stableKey(optsRef.current.toEntities(state));
-          optsRef.current.applyRemote(state);
+          session.noteKnown(state);
+          runRemote(state);
           binding.push(state);
           room.markSaved(revisionId);
         })
         .catch(() => undefined);
     });
-  }, [room, binding]);
+  }, [room, binding, runRemote, session]);
+
+  const runHistory = useCallback(
+    (direction: "undo" | "redo") => {
+      const state = localRef.current;
+      const apply = optsRef.current.applyLocal;
+      if (!room || !apply || state === null || !aligned.current || remoteBusy.current > 0) return;
+      const result = direction === "undo" ? session.undo(state) : session.redo(state);
+      if (result.empty) return;
+      setHistoryTick((value) => value + 1);
+      const undoing = direction === "undo";
+      if (!result.state) {
+        setHistoryNotice(
+          undoing
+            ? tt("对方已经改过这一步涉及的内容，这一步没有撤销，你们两边的改动都还在。")
+            : tt("对方已经改过这一步涉及的内容，这一步没有重做，你们两边的改动都还在。"),
+        );
+        return;
+      }
+      setHistoryNotice(
+        result.skipped > 0
+          ? undoing
+            ? tt("有 {n} 处对方已经改过，这几处没有动，其余已撤销。", { n: result.skipped })
+            : tt("有 {n} 处对方已经改过，这几处没有动，其余已重做。", { n: result.skipped })
+          : "",
+      );
+      if (stableKey(optsRef.current.toEntities(result.state)) === stableKey(optsRef.current.toEntities(state))) {
+        session.releaseSuppression();
+        return;
+      }
+      void apply(result.state);
+    },
+    [room, session, tt],
+  );
+  const undo = useCallback(() => runHistory("undo"), [runHistory]);
+  const redo = useCallback(() => runHistory("redo"), [runHistory]);
+  const clearNotice = useCallback(() => setHistoryNotice(""), []);
+  void historyTick;
+  const historyActive = Boolean(room) && Boolean(opts.applyLocal);
+  const history: EntityCollabHistory = {
+    active: historyActive,
+    canUndo: historyActive && !readOnly && session.stack.canUndo,
+    canRedo: historyActive && !readOnly && session.stack.canRedo,
+    undoDepth: session.stack.undoDepth,
+    redoDepth: session.stack.redoDepth,
+    undo,
+    redo,
+    notice: historyNotice,
+    clearNotice,
+  };
 
   const collab = useMemo<EditorCollabBinding | undefined>(
     () =>
@@ -176,6 +305,7 @@ export function useEntityCollab<T>(opts: UseEntityCollabOptions<T>): EntityColla
   );
   return {
     room,
+    history,
     readOnly,
     saveGate,
     collab,

@@ -54,9 +54,12 @@ function ToolButton({
 export function VideoTimelineControls({
   state,
   accent = "#4f46e5",
+  readOnly = false,
 }: {
   state: VideoTimelineState;
   accent?: string;
+  /** 只能看：整块改内容的入口（加素材、分割、加轨、画布、封面）置灰不可点。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -64,7 +67,12 @@ export function VideoTimelineControls({
   const [showUrlInput, setShowUrlInput] = useState(false);
 
   return (
-    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
+    <fieldset
+      disabled={readOnly}
+      aria-disabled={readOnly || undefined}
+      data-collab-readonly={readOnly ? "true" : undefined}
+      className={`m-0 min-w-0 space-y-4 border-0 bg-[var(--card,#fff)] p-4${readOnly ? " opacity-60" : ""}`}
+    >
       {/* 素材 */}
       <section>
         <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">{tt("素材")}</p>
@@ -249,6 +257,6 @@ export function VideoTimelineControls({
           <p className="text-[10px] text-[var(--muted,#78716c)]">{tt("草稿已保存到我的库")}</p>
         )}
       </section>
-    </div>
+    </fieldset>
   );
 }

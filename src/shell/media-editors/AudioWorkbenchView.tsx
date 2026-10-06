@@ -112,20 +112,31 @@ function AudioIconButton({
 
 export function AudioControls({
   editor,
+  readOnly = false,
 }: {
   editor: AudioWorkbenchState;
   accent?: string;
+  /** 只能看：导入 / 替换音频置灰；播放、暂停、试听速度、跳转、音量、波形缩放照常。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   return (
-    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
+    <div
+      data-collab-readonly={readOnly ? "true" : undefined}
+      className="space-y-4 bg-[var(--card,#fff)] p-4"
+    >
       <section>
         <p className="mb-2 text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("音频源")}
         </p>
         <label
-          title={tt("导入或替换音频")}
-          className="grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+          title={readOnly ? tt("只能查看，不能修改") : tt("导入或替换音频")}
+          aria-disabled={readOnly || undefined}
+          className={`grid h-9 w-9 place-items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-[var(--fg-2,#57534e)] ${
+            readOnly
+              ? "cursor-not-allowed opacity-40"
+              : "cursor-pointer hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
+          }`}
         >
           <AudioToolIcon name="import" />
           <span className="sr-only">{tt("导入或替换音频")}</span>
@@ -133,6 +144,7 @@ export function AudioControls({
             type="file"
             aria-label={tt("导入或替换音频")}
             accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus,.aac"
+            disabled={readOnly}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];

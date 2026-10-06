@@ -1140,8 +1140,24 @@ export class Model3DSceneRuntime {
     this.selected = next && next !== this.contentScene ? next : null;
     this.selectedMaterialIndex =
       editablePbrMaterials(this.selected)[0]?.index ?? 0;
-    if (this.selected) this.transform.attach(this.selected);
+    // 只读（协同里没有编辑权限）：能点选看属性，但不挂移动 / 旋转 / 缩放手柄。
+    if (this.selected && !this.readOnly) this.transform.attach(this.selected);
     else this.transform.detach();
+    this.emitSnapshot();
+  }
+
+  /** 只读：保留转视角、缩放、平移、点选；去掉会改场景的手柄。 */
+  setReadOnly(value) {
+    const next = Boolean(value);
+    if (next === Boolean(this.readOnly)) return;
+    this.readOnly = next;
+    this.transform.enabled = !next;
+    if (next) {
+      this.cancelGesture();
+      this.transform.detach();
+    } else if (this.selected) {
+      this.transform.attach(this.selected);
+    }
     this.emitSnapshot();
   }
 

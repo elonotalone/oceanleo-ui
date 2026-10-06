@@ -55,6 +55,8 @@ export interface AudioWorkbenchState {
   canRedo: boolean;
   dirty: boolean;
   editRevision: number;
+  /** 协同：对方的改动落到编辑器上就 +1；与 editRevision 分开，所以不会触发自动保存。 */
+  contentVersion: number;
   playPause: () => void;
   stop: () => void;
   setPlaybackSpeed: (value: number) => void;
@@ -87,6 +89,13 @@ export interface AudioWorkbenchState {
   save: () => Promise<PersistedEditorVersion | null>;
   captureRecovery: () => AudioProjectData | null;
   restoreRecovery: (payload: unknown) => Promise<boolean>;
+  /**
+   * 多人同改：把对方的改动（工程 = 源文件 + 编辑操作序列）重放上来。保住选区、播放位置和我自己的撤销栈；
+   * 不标「未保存」、不加编辑修订号、不弹提示。
+   */
+  applyRemoteProject: (project: AudioProjectData) => Promise<boolean>;
+  /** 多人同改：撤销 / 重做算出的工程，当作本端改动应用（标未保存、走自动保存）。 */
+  applyLocalProject: (project: AudioProjectData) => Promise<boolean>;
 }
 
 export interface AudioWorkbenchProps {

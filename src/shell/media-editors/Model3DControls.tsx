@@ -32,6 +32,28 @@ function ActionButton({
   );
 }
 
+/** 只读时把一块改内容的入口整体置灰（原生 fieldset：里面的按钮、输入框一起禁用）。 */
+function Lock({
+  readOnly,
+  className = "",
+  children,
+}: {
+  readOnly: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset
+      disabled={readOnly}
+      aria-disabled={readOnly || undefined}
+      data-collab-readonly={readOnly ? "true" : undefined}
+      className={`m-0 min-w-0 border-0 p-0 ${className}${readOnly ? " opacity-60" : ""}`}
+    >
+      {children}
+    </fieldset>
+  );
+}
+
 const TEXTURE_SLOTS: Array<{
   id: Model3DTextureSlot;
   label: string;
@@ -97,10 +119,13 @@ export function Model3DControls({
   editor,
   showDeliveryActions = true,
   showSelectionActions = true,
+  readOnly = false,
 }: {
   editor: Model3DWorkbenchState;
   showDeliveryActions?: boolean;
   showSelectionActions?: boolean;
+  /** 只能看：导入、增删节点、导演、贴图、标注这些改内容的入口置灰；场景树点选照常。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const busy =
@@ -114,7 +139,7 @@ export function Model3DControls({
   );
   return (
     <div className="space-y-4 bg-[var(--card,#fff)] p-4">
-      <section className="space-y-2">
+      <Lock readOnly={readOnly} className="block space-y-2">
         <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("3D 模型")}
         </p>
@@ -135,7 +160,7 @@ export function Model3DControls({
         <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
           {tt("Three.js 拥有可编辑场景；保存会导出新的自包含 GLB。")}
         </p>
-      </section>
+      </Lock>
 
       <section className="space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">
         <div className="flex items-center justify-between">
@@ -180,6 +205,7 @@ export function Model3DControls({
             </p>
           )}
         </div>
+        <Lock readOnly={readOnly} className="block space-y-2">
         <div className="grid grid-cols-2 gap-1.5">
           <ActionButton
             disabled={!editor.modelLoaded || busy}
@@ -220,12 +246,15 @@ export function Model3DControls({
             </ActionButton>
           </div>
         )}
+        </Lock>
       </section>
 
-      <Model3DDirectorPanel editor={editor} />
+      <Lock readOnly={readOnly} className="block">
+        <Model3DDirectorPanel editor={editor} />
+      </Lock>
 
       {selectedMaterial && (
-        <section className="space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">
+        <Lock readOnly={readOnly} className="block space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">
           <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
             {tt("PBR 纹理槽")}
           </p>
@@ -243,10 +272,10 @@ export function Model3DControls({
               />
             ))}
           </div>
-        </section>
+        </Lock>
       )}
 
-      <section className="space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">
+      <Lock readOnly={readOnly} className="block space-y-2 border-t border-[var(--border,#e7e5e4)] pt-3">
         <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("模型标注")}
         </p>
@@ -266,7 +295,7 @@ export function Model3DControls({
             ? tt("请点击模型表面…")
             : tt("点击模型放置标注")}
         </ActionButton>
-      </section>
+      </Lock>
 
       {showDeliveryActions && (
         <section className="space-y-1.5 border-t border-[var(--border,#e7e5e4)] pt-3">

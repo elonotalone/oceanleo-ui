@@ -60,6 +60,10 @@ export function useModel3DWorkbench(
   const [notice, setNotice] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
   const [dirty, setDirty] = useState(false);
+  // 协同：没有编辑权限时只留「看」：转视角、缩放、平移、点选，不挂会改场景的手柄。
+  const [readOnlyFlag, setReadOnlyFlag] = useState(false);
+  // 协同：对方的改动要整体重载场景时，记住我选中的节点（重载后按节点 id 选回去）。
+  const keptSelectionRef = useRef("");
   const [sourceProvenance, setSourceProvenance] =
     useState<Model3DSourceProvenance>(() =>
       normalizeModel3DSourceProvenance(null));
@@ -291,6 +295,86 @@ export function useModel3DWorkbench(
     return true;
   }, [applyView, markDirty, sidecar.annotations, sourceUrl, tt]);
 
+  /**
+   * 多人同改：套用一份新的场景状态（检查点 + 操作日志 + 视图 + 批注）。
+   * - 镜头（方位、仰角、缩放、自转）是我自己的，永远保留；
+   * - 场景本身没变（只是曝光、背景、批注之类的视图参数变了）就不重载模型；
+   * - `remote`：对方的改动，不标「未保存」、不加编辑修订号、不弹提示；
+   * - `local`：撤销 / 重做算出来的我自己的改动，标「未保存」（走自动保存）。
+   */
+  const replaceScene = useCallback(
+    (payload: unknown, mode: "remote" | "local"): boolean => {
+      const recovered = normalizeModel3DProjectRecovery(
+        payload,
+        {
+          ...viewRef.current,
+          sourceUrl,
+          annotations: sidecar.annotations,
+        },
+        sourceUrl,
+      );
+      if (!recovered) return false;
+      const current = viewRef.current;
+      const nextView = {
+        ...recovered.view,
+        azimuth: current.azimuth,
+        elevation: current.elevation,
+        zoom: current.zoom,
+        autoRotate: current.autoRotate,
+      };
+      const runtime = runtimeRef.current;
+      const sameScene =
+        Boolean(runtime) &&
+        loadedSourceRef.current === sourceUrl &&
+        recovered.checkpointUrl === sourceUrl &&
+        JSON.stringify(recovered.operations) ===
+          JSON.stringify(runtime?.getOperationJournal() ?? []);
+      if (!sameScene) {
+        const scene = runtime as unknown as {
+          selected?: unknown;
+          editorId?: (object: unknown) => string;
+        } | null;
+        keptSelectionRef.current =
+          scene?.selected && scene.editorId ? scene.editorId(scene.selected) : "";
+        sourceGenerationRef.current += 1;
+        loadedSourceRef.current = "";
+        pendingOperationsRef.current = recovered.operations;
+        runtime?.clear();
+        setSourceProvenance(recovered.provenance);
+        setSourceUrl(recovered.checkpointUrl);
+        setReloadToken((value) => value + 1);
+      }
+      applyView(nextView);
+      if (mode === "local") markDirty();
+      return true;
+    },
+    [applyView, markDirty, sidecar.annotations, sourceUrl],
+  );
+  const applyRemoteScene = useCallback(
+    (payload: unknown) => replaceScene(payload, "remote"),
+    [replaceScene],
+  );
+  const applyLocalScene = useCallback(
+    (payload: unknown) => replaceScene(payload, "local"),
+    [replaceScene],
+  );
+
+  // 重载完成后把我选中的节点选回去（节点还在时）。
+  useEffect(() => {
+    if (!modelReady || !keptSelectionRef.current) return;
+    const id = keptSelectionRef.current;
+    keptSelectionRef.current = "";
+    const scene = runtimeRef.current as unknown as {
+      objectByEditorId?: (id: string) => { uuid: string } | null;
+    } | null;
+    const node = scene?.objectByEditorId?.(id);
+    if (node) runtimeRef.current?.setSelectedNode(node.uuid);
+  }, [modelReady]);
+
+  useEffect(() => {
+    if (runtimeReady) runtimeRef.current?.setReadOnly(readOnlyFlag);
+  }, [readOnlyFlag, runtimeReady]);
+
   const selectedMaterial =
     runtimeState.selection?.materials.find((entry) => entry.selected) || null;
   return {
@@ -469,5 +553,8 @@ export function useModel3DWorkbench(
     downloadModel: mediaActions.downloadModel,
     saveCopy,
     restoreRecovery,
+    applyRemoteScene,
+    applyLocalScene,
+    setReadOnly: setReadOnlyFlag,
   };
 }

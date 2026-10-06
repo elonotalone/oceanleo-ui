@@ -39,6 +39,7 @@ import {
   VideoTimelineContextToolbar,
   VideoTimelineStage,
   useVideoTimeline,
+  type VideoTimelineState,
 } from "../video-editor";
 import {
   useWorkbenchMaterialAdapter,
@@ -47,13 +48,13 @@ import {
 } from "../workbench-material-provider";
 import { timelineMsAtClientPoint } from "../video-editor/timeline-viewport";
 import type { TimelineDoc } from "../video-editor/types";
-import { useUI } from "../../i18n/ui/useUI";
 import { fetchRevisionJson, useEntityCollab } from "../collab/adapters/use-entity-collab";
 import {
   VIDEO_ROOT,
   videoFromEntities,
   videoFromRevisionJson,
   videoToEntities,
+  videoTrackKey,
 } from "../collab/adapters/video";
 
 /**
@@ -169,22 +170,21 @@ function VideoTimelineLegacyBody({
   sourceItem: AdvancedContentWorkbenchProps["item"];
 }) {
   const editor = useVideoTimeline(item, siteId);
-  const tt = useUI();
-  // ---- 多人同改（W14）：片段为粒度；远端改动经 restoreRecovery 回灌，并保住本地选中与播放头。
   const editorRef = useRef(editor);
   editorRef.current = editor;
-  const remoteAppliedRef = useRef(false);
+  // ---- 多人同改（W14 / F07）：片段为粒度。远端改动经 applyRemoteDoc 套进来：保住选中、播放头和我自己的撤销栈，
+  // 不标「未保存」、不触发自动保存、不弹「已恢复草稿」；撤销只撤我自己的改动（见 use-entity-collab 的 history）。
   const applyRemote = useCallback((next: TimelineDoc) => {
-    const current = editorRef.current;
-    const selectedId = current.selectedClipId;
-    const playhead = current.playheadMs;
-    remoteAppliedRef.current = true;
-    if (!current.restoreRecovery(next)) return;
-    if (selectedId && next.tracks.some((track) => track.clips.some((clip) => clip.id === selectedId))) {
-      current.selectClip(selectedId);
-    }
-    if (playhead > 0) current.seek(playhead);
+    editorRef.current.applyRemoteDoc(next);
   }, []);
+  const applyLocal = useCallback((next: TimelineDoc) => {
+    editorRef.current.applyLocalDoc(next);
+  }, []);
+  const canRestoreEntity = useCallback(
+    (id: string, entity: Record<string, unknown>, doc: { entities: Record<string, unknown> }) =>
+      !id.startsWith("c:") || Boolean(doc.entities[videoTrackKey(String(entity.trackId))]),
+    [],
+  );
   const loadRevision = useCallback(
     async (revisionId: string) => {
       const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
@@ -202,9 +202,21 @@ function VideoTimelineLegacyBody({
     fromEntities: (input, prev) => videoFromEntities(input, prev),
     local: editor.sourceReady ? editor.doc : null,
     applyRemote,
+    applyLocal,
+    canRestoreEntity,
     loadRevision,
   });
   const collabReadOnly = collab.readOnly;
+  // 房间里撤销 / 重做只撤我自己的改动：舞台、工具栏、快捷键、指令面都拿这份覆盖了历史入口的编辑器视图。
+  const view: VideoTimelineState = collab.history.active
+    ? {
+        ...editor,
+        undo: collab.history.undo,
+        redo: collab.history.redo,
+        canUndo: collab.history.canUndo,
+        canRedo: collab.history.canRedo,
+      }
+    : editor;
   const sourceStopped = !editor.loadingSource && !editor.sourceReady;
   const sourcePending = editor.loadingSource && !editor.sourceReady;
   const [deliverNotice, setDeliverNotice] = useState("");
@@ -282,8 +294,8 @@ function VideoTimelineLegacyBody({
   useWorkbenchMaterialAdapter(materialAdapter);
   usePluginCommandSurface(
     useMemo(
-      () => createVideoCommandSurface({ editor, deliver }),
-      [deliver, editor],
+      () => createVideoCommandSurface({ editor: view, deliver }),
+      [deliver, view],
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {
@@ -357,25 +369,21 @@ function VideoTimelineLegacyBody({
         toolbox: {
           label: "媒体与轨道",
           icon: "timeline",
-          content: (
-            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
-              <VideoTimelineControls state={editor} accent={accent} />
-            </div>
-          ),
+          content: <VideoTimelineControls state={view} accent={accent} readOnly={collabReadOnly} />,
         },
         contextToolbar: (
           editor.sourceReady && !collabReadOnly ? (
-            <VideoTimelineContextToolbar state={editor} accent={accent} />
+            <VideoTimelineContextToolbar state={view} accent={accent} />
           ) : null
         ),
         history: {
-          canUndo: editor.sourceReady && editor.canUndo && !collabReadOnly,
-          canRedo: editor.sourceReady && editor.canRedo && !collabReadOnly,
+          canUndo: editor.sourceReady && view.canUndo && !collabReadOnly,
+          canRedo: editor.sourceReady && view.canRedo && !collabReadOnly,
           undo: () => {
-            if (editor.sourceReady && !collabReadOnly) editor.undo();
+            if (editor.sourceReady && !collabReadOnly) view.undo();
           },
           redo: () => {
-            if (editor.sourceReady && !collabReadOnly) editor.redo();
+            if (editor.sourceReady && !collabReadOnly) view.redo();
           },
         },
         mode: {
@@ -451,18 +459,13 @@ function VideoTimelineLegacyBody({
               "时间线源未成功载入，空回退工程已停止编辑与导出。可导入经过验证的媒体或恢复本地草稿。"}
           </div>
         ) : (
-          <div
-            inert={collabReadOnly || undefined}
-            data-collab-readonly={collabReadOnly ? "true" : undefined}
-            className="h-full min-h-0"
-          >
-            <VideoTimelineStage state={editor} accent={accent} />
-          </div>
+          <VideoTimelineStage state={view} accent={accent} readOnly={collabReadOnly} />
         ),
         status:
           editor.error ||
           deliverNotice ||
-          (remoteAppliedRef.current && editor.notice === tt("已恢复上次未同步的本地草稿") ? "" : editor.notice) ||
+          collab.history.notice ||
+          editor.notice ||
           (sourcePending ? "正在验证时间线工程与媒体源…" : ""),
         persistence: {
           dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
@@ -475,10 +478,7 @@ function VideoTimelineLegacyBody({
             ready: !editor.loadingSource,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.doc) : null,
-            restore: (payload: unknown) => {
-              remoteAppliedRef.current = false;
-              return editor.restoreRecovery(payload);
-            },
+            restore: (payload: unknown) => editor.restoreRecovery(payload),
           },
         },
       }}

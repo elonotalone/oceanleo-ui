@@ -45,6 +45,10 @@ interface AudioMutationOptions {
   setCanUndo: (value: boolean) => void;
   setCanRedo: (value: boolean) => void;
   tt: UITranslate;
+  /** 协同：一条编辑正在做（远端回灌要等它做完）。不给就用内部的。 */
+  mutatingRef?: MutableRefObject<boolean>;
+  /** 协同：远端改动正在回灌（这期间本端新编辑先不接，免得被回灌盖掉）。 */
+  remoteReplayRef?: MutableRefObject<boolean>;
 }
 
 async function uploadRenderedCheckpoint({
@@ -112,8 +116,11 @@ export function useAudioMutations({
   setCanUndo,
   setCanRedo,
   tt,
+  mutatingRef: sharedMutatingRef,
+  remoteReplayRef,
 }: AudioMutationOptions): (operation: AudioEditOperation) => Promise<boolean> {
-  const mutatingRef = useRef(false);
+  const ownMutatingRef = useRef(false);
+  const mutatingRef = sharedMutatingRef ?? ownMutatingRef;
 
   return useCallback(
     async (operation: AudioEditOperation): Promise<boolean> => {
@@ -121,6 +128,10 @@ export function useAudioMutations({
       if (!current) return false;
       if (mutatingRef.current) {
         setError(tt("上一项音频编辑仍在安全处理，本次操作未应用，请稍后重试"));
+        return false;
+      }
+      if (remoteReplayRef?.current) {
+        setError(tt("正在同步对方的改动，本次操作未应用，请稍后重试"));
         return false;
       }
 
@@ -198,10 +209,12 @@ export function useAudioMutations({
     [
       bufferRef,
       item,
+      mutatingRef,
       operationsRef,
       redoOperationsRef,
       redoRef,
       reloadWaveform,
+      remoteReplayRef,
       revisionRef,
       setCanRedo,
       setCanUndo,

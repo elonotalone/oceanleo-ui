@@ -155,4 +155,13 @@ export interface Model3DWorkbenchState {
   downloadModel: () => Promise<void>;
   saveCopy: () => Promise<PersistedModel3DVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
+  /**
+   * 多人同改：套用对方的改动。保住我的镜头（方位、仰角、缩放、自转）和选中的节点；
+   * 不标「未保存」、不加编辑修订号、不弹提示。场景本身没变（只是视图参数）就不重载模型。
+   */
+  applyRemoteScene: (payload: unknown) => boolean;
+  /** 多人同改：撤销 / 重做算出的场景，当作我自己的改动应用（标未保存、走自动保存）。 */
+  applyLocalScene: (payload: unknown) => boolean;
+  /** 多人同改：没有编辑权限时设成只读（能转视角、缩放、平移、点选；没有改场景的手柄）。 */
+  setReadOnly: (value: boolean) => void;
 }

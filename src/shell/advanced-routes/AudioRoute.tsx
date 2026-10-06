@@ -41,6 +41,7 @@ import {
   AudioControls,
   AudioStage,
   useAudioWorkbench,
+  type AudioWorkbenchState,
 } from "../media-editors/AudioWorkbench";
 import { editorToolLabel } from "../workbench-routes";
 import { fetchRevisionJson, useEntityCollab } from "../collab/adapters/use-entity-collab";
@@ -122,35 +123,40 @@ function AudioLegacyRoute({
   const editor = useAudioWorkbench(saved ?? item, siteId);
   const [deliverBusy, setDeliverBusy] = useState(false);
   const [deliverNotice, setDeliverNotice] = useState("");
-  // ---- 多人同改（W14）：合并粒度 = 一条编辑操作；远端改动经 restoreRecovery 重放（会清掉本地撤销栈）。
+  // ---- 多人同改（W14 / F07）：合并粒度 = 一条编辑操作。对方的改动经 applyRemoteProject 重放上来：
+  // 保住选区、播放位置和我自己的撤销栈，不标「未保存」、不触发自动保存；撤销只撤我自己的操作（见 use-entity-collab 的 history）。
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const collabLocal = useMemo(
     () => (editor.loading ? null : (editor.captureRecovery() as AudioCollabState | null)),
-    // editRevision 随每次编辑递增；captureRecovery 读的是 ref，所以以它作为变化信号。
+    // editRevision 随本端每次编辑递增、contentVersion 随对方改动落地递增；captureRecovery 读的是 ref，所以以它们作为变化信号。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor.loading, editor.editRevision],
+    [editor.loading, editor.editRevision, editor.contentVersion],
   );
-  const restoreBusyRef = useRef(false);
-  const restorePendingRef = useRef<AudioCollabState | null>(null);
-  const applyRemote = useCallback((next: AudioCollabState) => {
+  const remotePendingRef = useRef<AudioCollabState | null>(null);
+  const remoteRunRef = useRef<Promise<void> | null>(null);
+  const applyRemote = useCallback((next: AudioCollabState): Promise<void> => {
     // 重放要重新解码音频，期间到达的新远端状态只留最新一份，做完再接着放。
-    restorePendingRef.current = next;
-    if (restoreBusyRef.current) return;
-    restoreBusyRef.current = true;
-    void (async () => {
+    remotePendingRef.current = next;
+    if (remoteRunRef.current) return remoteRunRef.current;
+    const run = (async () => {
       try {
-        while (restorePendingRef.current) {
-          const target = restorePendingRef.current;
-          restorePendingRef.current = null;
-          await editorRef.current.restoreRecovery(target);
+        while (remotePendingRef.current) {
+          const target = remotePendingRef.current;
+          remotePendingRef.current = null;
+          await editorRef.current.applyRemoteProject(target);
         }
       } catch {
-        // 恢复失败时保持当前画面；下一次远端改动再试。
+        // 重放失败时保持当前画面；下一次远端改动再试。
       } finally {
-        restoreBusyRef.current = false;
+        remoteRunRef.current = null;
       }
     })();
+    remoteRunRef.current = run;
+    return run;
+  }, []);
+  const applyLocal = useCallback(async (next: AudioCollabState): Promise<void> => {
+    await editorRef.current.applyLocalProject(next);
   }, []);
   const loadRevision = useCallback(
     async (revisionId: string) => {
@@ -169,9 +175,20 @@ function AudioLegacyRoute({
     fromEntities: (input, prev) => audioFromEntities(input, prev),
     local: collabLocal,
     applyRemote,
+    applyLocal,
     loadRevision,
   });
   const collabReadOnly = collab.readOnly;
+  // 房间里撤销 / 重做只撤我自己的操作：舞台、工具栏、指令面都拿这份覆盖了历史入口的编辑器视图。
+  const view: AudioWorkbenchState = collab.history.active
+    ? {
+        ...editor,
+        undo: collab.history.undo,
+        redo: collab.history.redo,
+        canUndo: collab.history.canUndo,
+        canRedo: collab.history.canRedo,
+      }
+    : editor;
   /** wav 本地出；mp3 / m4a 拿同一份 wav 去后端转一道再下载。 */
   const deliver = useCallback(
     async (format: string) => {
@@ -241,8 +258,8 @@ function AudioLegacyRoute({
   useWorkbenchMaterialAdapter(materialAdapter);
   usePluginCommandSurface(
     useMemo(
-      () => createAudioCommandSurface({ editor, deliver }),
-      [deliver, editor],
+      () => createAudioCommandSurface({ editor: view, deliver }),
+      [deliver, view],
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {
@@ -312,20 +329,14 @@ function AudioLegacyRoute({
         toolbox: {
           label: "音轨工具",
           icon: "timeline",
-          content: (
-            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
-              <AudioControls editor={editor} accent={accent} />
-            </div>
-          ),
+          content: <AudioControls editor={view} accent={accent} readOnly={collabReadOnly} />,
         },
-        contextToolbar: collabReadOnly ? null : (
-          <AudioContextToolbar editor={editor} accent={accent} />
-        ),
+        contextToolbar: <AudioContextToolbar editor={view} accent={accent} readOnly={collabReadOnly} />,
         history: {
-          canUndo: editor.canUndo,
-          canRedo: editor.canRedo,
-          undo: editor.undo,
-          redo: editor.redo,
+          canUndo: view.canUndo,
+          canRedo: view.canRedo,
+          undo: view.undo,
+          redo: view.redo,
           ...(collabReadOnly ? COLLAB_READONLY_HISTORY : {}),
         },
         viewport: {
@@ -366,16 +377,11 @@ function AudioLegacyRoute({
               accept: visualUploadAccept("audio"),
               onFiles: importLocalAudio,
             },
-        stage: collabReadOnly ? (
-          <div inert data-collab-readonly="true" className="h-full min-h-0">
-            <AudioStage editor={editor} accent={accent} />
-          </div>
-        ) : (
-          <AudioStage editor={editor} accent={accent} />
-        ),
+        stage: <AudioStage editor={view} accent={accent} />,
         status:
           editor.error ||
           deliverNotice ||
+          collab.history.notice ||
           (editor.loading ? "正在载入音频" : ""),
         persistence: {
           dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,

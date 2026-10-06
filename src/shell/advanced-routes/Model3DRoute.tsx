@@ -201,30 +201,6 @@ function useModel3DDocumentHistory(
   const undo = useCallback(() => restore("undo"), [restore]);
   const redo = useCallback(() => restore("redo"), [restore]);
 
-  /**
-   * 同房间的人改了场景：按远端状态恢复，但保留我自己的镜头；
-   * 走「观察到的修订不记入撤销」这条路，所以我按撤销不会把别人的改动撤掉。
-   */
-  const applyRemote = useCallback(
-    (target: Model3DRouteSnapshot) => {
-      const current = captureModel3DRouteSnapshot(editor);
-      const next: Model3DRouteSnapshot = {
-        ...target,
-        view: {
-          ...target.view,
-          azimuth: current.view.azimuth,
-          elevation: current.view.elevation,
-          zoom: current.view.zoom,
-          autoRotate: current.view.autoRotate,
-        },
-      };
-      skipObservedRevisionRef.current = true;
-      const restored: unknown = editor.restoreRecovery(next);
-      if (restored === false) skipObservedRevisionRef.current = false;
-    },
-    [editor],
-  );
-
   return {
     canUndo: historyRef.current.canUndo,
     canRedo: historyRef.current.canRedo,
@@ -232,7 +208,6 @@ function useModel3DDocumentHistory(
     redo,
     snapshot,
     error,
-    applyRemote,
   };
 }
 
@@ -256,7 +231,9 @@ function Model3DModelRoute({
   );
   const deliveryBusy =
     editor.downloading || editor.capturing || editor.saving;
-  // ---- 多人同改（W14）：合并粒度 = 场景节点上的一个属性；镜头不同步。
+  // ---- 多人同改（W14 / F07）：合并粒度 = 场景节点上的一个属性；镜头不同步。
+  // 对方的改动经 applyRemoteScene 套进来：保住我的镜头、选中的节点和我自己的撤销栈，不标「未保存」、
+  // 不触发自动保存、不弹提示；撤销只撤我自己的改动（见 use-entity-collab 的 history）。
   const loadRevision = useCallback(
     async (revisionId: string) => {
       const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
@@ -274,10 +251,30 @@ function Model3DModelRoute({
     fromEntities: (input, prev) =>
       model3dFromEntities(input, prev as unknown as Model3DCollabSnapshot | null) as unknown as Model3DRouteSnapshot,
     local: editor.loading || !editor.modelLoaded ? null : history.snapshot,
-    applyRemote: history.applyRemote,
+    applyRemote: (state) => {
+      editor.applyRemoteScene(state);
+    },
+    applyLocal: (state) => {
+      editor.applyLocalScene(state);
+    },
     loadRevision,
   });
   const collabReadOnly = collab.readOnly;
+  // 只读：能转视角、缩放、平移、点选；不挂会改场景的手柄。
+  const setEditorReadOnly = editor.setReadOnly;
+  useEffect(() => {
+    setEditorReadOnly(collabReadOnly);
+  }, [collabReadOnly, setEditorReadOnly]);
+  // 房间里撤销 / 重做只撤我自己的改动：舞台、工具栏、指令面都拿这份覆盖了历史入口的编辑器视图。
+  const view: Model3DEditorState = collab.history.active
+    ? {
+        ...editor,
+        undo: collab.history.undo,
+        redo: collab.history.redo,
+        canUndo: collab.history.canUndo,
+        canRedo: collab.history.canRedo,
+      }
+    : editor;
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "model3d-materials@2",
@@ -340,8 +337,8 @@ function Model3DModelRoute({
   );
   usePluginCommandSurface(
     useMemo(
-      () => createModel3DCommandSurface({ editor, deliver }),
-      [deliver, editor],
+      () => createModel3DCommandSurface({ editor: view, deliver }),
+      [deliver, view],
     ),
   );
   const buildSavedItem = useCallback(
@@ -510,26 +507,29 @@ function Model3DModelRoute({
           label: "场景",
           icon: "shape",
           content: (
-            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
-              <Model3DControls
-                editor={editor}
-                showDeliveryActions={false}
-                showSelectionActions={false}
-              />
-            </div>
+            <Model3DControls
+              editor={view}
+              showDeliveryActions={false}
+              showSelectionActions={false}
+              readOnly={collabReadOnly}
+            />
           ),
         },
-        contextToolbar: collabReadOnly ? null : (
-          <Model3DContextToolbar editor={editor} accent={accent} />
+        contextToolbar: (
+          <Model3DContextToolbar editor={view} accent={accent} readOnly={collabReadOnly} />
         ),
         history: {
-          canUndo: history.canUndo && !collabReadOnly,
-          canRedo: history.canRedo && !collabReadOnly,
+          canUndo: (collab.history.active ? collab.history.canUndo : history.canUndo) && !collabReadOnly,
+          canRedo: (collab.history.active ? collab.history.canRedo : history.canRedo) && !collabReadOnly,
           undo: () => {
-            if (!collabReadOnly) history.undo();
+            if (collabReadOnly) return;
+            if (collab.history.active) collab.history.undo();
+            else history.undo();
           },
           redo: () => {
-            if (!collabReadOnly) history.redo();
+            if (collabReadOnly) return;
+            if (collab.history.active) collab.history.redo();
+            else history.redo();
           },
         },
         mode: {
@@ -581,16 +581,11 @@ function Model3DModelRoute({
               accept: ".glb,.gltf,model/gltf-binary,model/gltf+json",
               onFiles: importLocalModel,
             },
-        stage: collabReadOnly ? (
-          <div inert data-collab-readonly="true" className="h-full min-h-0">
-            <Model3DStage editor={editor} showNativeControls={false} />
-          </div>
-        ) : (
-          <Model3DStage editor={editor} showNativeControls={false} />
-        ),
+        stage: <Model3DStage editor={view} showNativeControls={false} />,
         status:
           importRejection ||
           history.error ||
+          collab.history.notice ||
           editor.error ||
           editor.notice ||
           (editor.loading

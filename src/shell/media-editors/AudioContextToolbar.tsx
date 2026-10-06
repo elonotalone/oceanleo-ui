@@ -12,14 +12,17 @@ import type { AudioWorkbenchState } from "./AudioWorkbench";
 export function AudioContextToolbar({
   editor,
   accent = "#4f46e5",
+  readOnly = false,
 }: {
   editor: AudioWorkbenchState;
   accent?: string;
+  /** 只能看：所有改内容的控件置灰（悬停说明原因），点击和命令都不生效。 */
+  readOnly?: boolean;
 }) {
   const tt = useUI();
   const selection = editor.selection;
-  const context = useMemo<SelectionContext>(
-    () => ({
+  const context = useMemo<SelectionContext>(() => {
+    const built: SelectionContext = {
       version: 1,
       kind: selection ? "audio-region" : "audio-track",
       id: selection
@@ -182,8 +185,18 @@ export function AudioContextToolbar({
           inspectorIcon: "effects",
         },
       ],
-    }),
-    [
+    };
+    if (!readOnly) return built;
+    return {
+      ...built,
+      controls: built.controls.map((control) => ({
+        ...control,
+        disabled: true,
+        unavailableReason: tt("只能查看，不能修改"),
+      })),
+    };
+  }, [
+      readOnly,
       editor.effectSpeed,
       editor.fadeDuration,
       editor.gain,
@@ -193,10 +206,9 @@ export function AudioContextToolbar({
       editor.midEq,
       selection,
       tt,
-    ],
-  );
+  ]);
   const command = (message: SelectionCommand) => {
-    if (message.selectionId !== context.id) return;
+    if (readOnly || message.selectionId !== context.id) return;
     switch (message.controlId) {
       case "crop":
         editor.cropSelection();
