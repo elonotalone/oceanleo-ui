@@ -69,6 +69,8 @@ export interface ImConversationDetail extends ImConversationSummary {
   members: ImMember[];
   pinned_count: number;
   pending_join_requests: number;
+  /** 当前查看者自己读到的位置（未读分隔线用）。 */
+  last_read_seq?: number;
   created_at: string;
 }
 
