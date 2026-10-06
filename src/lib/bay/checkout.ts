@@ -44,6 +44,17 @@ export interface BayOrderContract {
 
 export const BAY_CHECKOUT_LIMITS = { title: 200, what: 10000, notes: 5000, links: 20 } as const;
 
+// 服务页上勾的加购带到下单页（深链 `checkout:<id>[:<tier>]` 只带档位）。只在本页内存里，换页即忘。
+const addonDrafts = new Map<string, string[]>();
+
+export function rememberCheckoutAddons(serviceId: string, addonIds: Iterable<string>): void {
+  addonDrafts.set(serviceId, Array.from(new Set(Array.from(addonIds).filter(Boolean))));
+}
+
+export function recallCheckoutAddons(serviceId: string): string[] {
+  return addonDrafts.get(serviceId) ?? [];
+}
+
 export function emptyCheckoutForm(title = ""): BayCheckoutForm {
   return { title, what: "", links: "", deadline: "", notes: "" };
 }

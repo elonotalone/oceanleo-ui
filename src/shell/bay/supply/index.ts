@@ -3,10 +3,7 @@ import type { BayPaneProps } from "../shell/bay-state";
 
 export { ServiceCard } from "./ServiceCard";
 export { ConsultCard } from "./ConsultCard";
-
-export function ServicePane(_props: BayPaneProps): null {
-  return null;
-}
+export { ServicePane } from "./ServicePane";
 
 export function ConsultPane(_props: BayPaneProps): null {
   return null;

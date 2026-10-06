@@ -22,7 +22,27 @@ const httpStub = dataModule(`
   const no = async () => { throw new Error("network is stubbed"); };
   export const bayGet = no, bayPost = no, bayPatch = no, bayDelete = no;
 `);
-const stubs = { "../../../i18n/ui/useUI": uiStub, "../../../lib/bay/http": httpStub };
+const stateStub = dataModule(`
+  export function openBay(){}
+  export function requireBayLogin(){ return true; }
+  export function bayBack(){}
+`);
+const authStub = dataModule(`export async function getUserId(){ return null; }`);
+const dealStub = dataModule(`export async function openTradeThread(){} export function DealConversationView(){ return null; }`);
+const settingsStub = dataModule(`export async function ensureBayTerms(){ return true; }`);
+const paymentsStub = dataModule(`
+  export async function fetchBayPaymentConfig(){ return { enabled: false, buyer_ready: false, seller_ready: false, currency: "usd" }; }
+  export async function startBayPayment(){ throw new Error("must not pay in tests"); }
+`);
+const stubs = {
+  "../../../i18n/ui/useUI": uiStub,
+  "../../../lib/bay/http": httpStub,
+  "../../../lib/bay/payments": paymentsStub,
+  "../../../lib/auth/client": authStub,
+  "../shell/bay-state": stateStub,
+  "../deal": dealStub,
+  "../settings": settingsStub,
+};
 const { ServiceCard } = await import(await compileModule("src/shell/bay/supply/ServiceCard.tsx", stubs));
 const { ConsultCard } = await import(await compileModule("src/shell/bay/supply/ConsultCard.tsx", stubs));
 const supply = await import(await compileModule("src/shell/bay/supply/index.ts", stubs));
