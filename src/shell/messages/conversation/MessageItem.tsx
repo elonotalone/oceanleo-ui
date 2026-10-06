@@ -5,6 +5,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
+import { ConfirmDialog } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { LeoMessageBody, LeoNoticeLine } from "../leo/LeoMessageBody";
@@ -115,6 +116,7 @@ export function MessageItem(props: MessageItemProps) {
   const tt = useUI();
   const locale = useLocale();
   const [touchOpen, setTouchOpen] = useState(false);
+  const [recallOpen, setRecallOpen] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (message.kind === "system" || message.sender_kind === "system") {
@@ -143,7 +145,8 @@ export function MessageItem(props: MessageItemProps) {
     onCopyLink: () => handlers.onCopyLink(message),
     onTogglePin: () => handlers.onTogglePin(message),
     onEdit: () => handlers.onEdit(message),
-    onRecall: () => handlers.onRecall(message),
+    // 撤回先在站内确认框里确认，确认后才真正撤回（不用浏览器原生弹窗：手机上难看，嵌入环境里还会被拦掉）。
+    onRecall: () => setRecallOpen(true),
     onReport: () => handlers.onReport(message),
   };
 
@@ -340,6 +343,18 @@ export function MessageItem(props: MessageItemProps) {
           />
         </div>
       ) : null}
+      {recallOpen ? (
+        <ConfirmDialog
+          title={tt("撤回这条消息？撤回后所有人都看不到内容。")}
+          confirmLabel={tt("撤回")}
+          danger
+          onConfirm={() => {
+            setRecallOpen(false);
+            handlers.onRecall(message);
+          }}
+          onCancel={() => setRecallOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -392,9 +407,8 @@ export function useMessageHandlers(options: {
       onJumpToMessage,
       onReact: (message, emoji) => void store.toggleReaction(message.id, emoji),
       onTogglePin: (message) => void store.togglePin(message.id, message.pinned),
-      onRecall: (message) => {
-        if (window.confirm(tt("撤回这条消息？撤回后所有人都看不到内容。"))) void store.recall(message.id);
-      },
+      // 确认由 MessageItem 的 ConfirmDialog 负责；走到这里就是已经确认过了。
+      onRecall: (message) => void store.recall(message.id),
       onCopyText: (message) => void copy(message.body, tt("已复制")),
       onCopyLink: (message) =>
         void copy(messageLink(window.location.href, conversationId, message.seq), tt("已复制链接")),

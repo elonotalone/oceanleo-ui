@@ -72,8 +72,9 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
     };
   }, [roomKey]);
 
-  const origin = typeof window === "undefined" ? "https://localhost" : window.location.origin;
-  const target = resolveCardTarget(card.open_path, origin);
+  // 服务端渲染时没有 window，也就没有「当前站」可解析：不猜一个本机地址兜底，卡片不给可点的「打开」。
+  const origin = typeof window === "undefined" ? null : window.location.origin;
+  const target = origin ? resolveCardTarget(card.open_path, origin) : null;
   const thumb = safeMediaUrl(card.thumb_url);
   const kindLabel = card.editor_kind ? tt(EDITOR_KIND_LABEL[card.editor_kind]) : tt("作品");
 
@@ -103,7 +104,7 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
         </span>
       </span>
       <span className="flex shrink-0 items-center">
-        {coedit === "no_access" || !target ? (
+        {!origin ? null : coedit === "no_access" || !target ? (
           <span className="text-[12px] text-neutral-400">{tt("没有权限")}</span>
         ) : (
           <a

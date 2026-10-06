@@ -22,7 +22,7 @@ const SOURCE = {
   desktop: "桌面通知",
   desktopHint: "页面在后台时，在电脑上弹出新消息提醒。",
   sound: "提示音",
-  soundHint: "收到新消息时响一声。",
+  soundHint: "新消息到达时响一声（自己发的、正在看的会话和已静音的会话不响）。",
   exactTimes: "回放里显示精确时刻",
   exactTimesHint: "别人看你的工作回放时也能看到具体时刻；默认只显示日期和活跃时长。",
   permissionDenied: "浏览器拒绝了通知权限，请在浏览器的网站设置里允许通知后再试。",
@@ -52,7 +52,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Desktop notifications",
     desktopHint: "Show a new-message alert on your computer while the page is in the background.",
     sound: "Alert sound",
-    soundHint: "Play a sound when a new message arrives.",
+    soundHint: "Plays a short sound when a new message arrives (not for your own messages, the conversation you are viewing, or muted conversations).",
     exactTimes: "Show exact times in replays",
     exactTimesHint:
       "When others watch your work replay they can also see exact times; by default they only see dates and active time.",
@@ -82,7 +82,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Desktop-Benachrichtigungen",
     desktopHint: "Zeigt auf deinem Computer eine Benachrichtigung über neue Nachrichten, während die Seite im Hintergrund ist.",
     sound: "Signalton",
-    soundHint: "Spielt einen Ton ab, wenn eine neue Nachricht eintrifft.",
+    soundHint: "Spielt einen kurzen Ton ab, wenn eine neue Nachricht eintrifft (nicht bei eigenen Nachrichten, der gerade geöffneten Unterhaltung oder stummgeschalteten Unterhaltungen).",
     exactTimes: "Genaue Uhrzeiten in Wiedergaben anzeigen",
     exactTimesHint:
       "Wenn andere deine Arbeitswiedergabe ansehen, sehen sie auch genaue Uhrzeiten; standardmäßig sehen sie nur Datum und aktive Zeit.",
@@ -112,7 +112,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Notificaciones de escritorio",
     desktopHint: "Muestra un aviso de mensaje nuevo en tu ordenador mientras la página está en segundo plano.",
     sound: "Sonido de aviso",
-    soundHint: "Reproduce un sonido cuando llega un mensaje nuevo.",
+    soundHint: "Reproduce un sonido breve cuando llega un mensaje nuevo (no con tus propios mensajes, la conversación que estás viendo ni las conversaciones silenciadas).",
     exactTimes: "Mostrar horas exactas en las repeticiones",
     exactTimesHint:
       "Cuando otras personas vean la repetición de tu trabajo también verán las horas exactas; por defecto solo ven fechas y tiempo activo.",
@@ -142,7 +142,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Notificaciones de escritorio",
     desktopHint: "Muestra un aviso de mensaje nuevo en tu computadora mientras la página está en segundo plano.",
     sound: "Sonido de aviso",
-    soundHint: "Reproduce un sonido cuando llega un mensaje nuevo.",
+    soundHint: "Reproduce un sonido breve cuando llega un mensaje nuevo (no con tus propios mensajes, la conversación que estás viendo ni las conversaciones silenciadas).",
     exactTimes: "Mostrar la hora exacta en las repeticiones",
     exactTimesHint:
       "Cuando otras personas vean la repetición de tu trabajo también verán la hora exacta; por defecto solo ven fechas y tiempo activo.",
@@ -172,7 +172,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Notifications de bureau",
     desktopHint: "Affiche une alerte de nouveau message sur votre ordinateur quand la page est en arrière-plan.",
     sound: "Son d'alerte",
-    soundHint: "Émet un son à l'arrivée d'un nouveau message.",
+    soundHint: "Émet un bref son à l'arrivée d'un nouveau message (pas pour vos propres messages, la conversation affichée ni les conversations en sourdine).",
     exactTimes: "Afficher les heures exactes dans les relectures",
     exactTimesHint:
       "Quand d'autres personnes regardent la relecture de votre travail, elles voient aussi les heures exactes ; par défaut elles ne voient que les dates et le temps actif.",
@@ -202,7 +202,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Notifiche desktop",
     desktopHint: "Mostra un avviso di nuovo messaggio sul computer mentre la pagina è in background.",
     sound: "Suono di avviso",
-    soundHint: "Riproduce un suono quando arriva un nuovo messaggio.",
+    soundHint: "Riproduce un breve suono quando arriva un nuovo messaggio (non per i tuoi messaggi, la conversazione che stai guardando o le conversazioni silenziate).",
     exactTimes: "Mostra gli orari esatti nelle riproduzioni",
     exactTimesHint:
       "Quando altri guardano la riproduzione del tuo lavoro vedono anche gli orari esatti; per impostazione predefinita vedono solo date e tempo attivo.",
@@ -232,7 +232,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Notificações na área de trabalho",
     desktopHint: "Mostra um alerta de nova mensagem no computador enquanto a página está em segundo plano.",
     sound: "Som de alerta",
-    soundHint: "Toca um som quando chega uma nova mensagem.",
+    soundHint: "Toca um som curto quando chega uma nova mensagem (não para suas próprias mensagens, a conversa que você está vendo ou conversas silenciadas).",
     exactTimes: "Mostrar horários exatos nas reproduções",
     exactTimesHint:
       "Quando outras pessoas assistirem à reprodução do seu trabalho, também verão os horários exatos; por padrão, veem apenas datas e tempo ativo.",
@@ -262,7 +262,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Notificações no ambiente de trabalho",
     desktopHint: "Mostra um alerta de nova mensagem no computador enquanto a página está em segundo plano.",
     sound: "Som de alerta",
-    soundHint: "Reproduz um som quando chega uma nova mensagem.",
+    soundHint: "Reproduz um som curto quando chega uma nova mensagem (não para as suas próprias mensagens, a conversa que está a ver ou conversas silenciadas).",
     exactTimes: "Mostrar horas exatas nas reproduções",
     exactTimesHint:
       "Quando outras pessoas virem a reprodução do seu trabalho, também veem as horas exatas; por predefinição, veem apenas datas e tempo ativo.",
@@ -292,7 +292,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Thông báo trên máy tính",
     desktopHint: "Hiện thông báo tin nhắn mới trên máy tính khi trang đang chạy nền.",
     sound: "Âm thanh nhắc",
-    soundHint: "Phát âm thanh khi có tin nhắn mới.",
+    soundHint: "Phát một âm thanh ngắn khi có tin nhắn mới (không phát với tin nhắn của bạn, cuộc trò chuyện đang xem hoặc cuộc trò chuyện đã tắt tiếng).",
     exactTimes: "Hiện thời điểm chính xác trong bản phát lại",
     exactTimesHint:
       "Khi người khác xem bản phát lại công việc của bạn, họ cũng thấy thời điểm chính xác; mặc định họ chỉ thấy ngày và thời gian hoạt động.",
@@ -322,7 +322,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "Masaüstü bildirimleri",
     desktopHint: "Sayfa arka plandayken bilgisayarınızda yeni mesaj uyarısı gösterir.",
     sound: "Uyarı sesi",
-    soundHint: "Yeni mesaj geldiğinde ses çalar.",
+    soundHint: "Yeni mesaj geldiğinde kısa bir ses çalar (kendi mesajlarınız, baktığınız konuşma ve sessize alınmış konuşmalar için çalmaz).",
     exactTimes: "Tekrar oynatmalarda kesin saatleri göster",
     exactTimesHint:
       "Başkaları çalışma tekrarınızı izlerken kesin saatleri de görür; varsayılan olarak yalnızca tarihleri ve etkin süreyi görürler.",
@@ -350,7 +350,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "桌面通知",
     desktopHint: "頁面在背景時，在電腦上彈出新訊息提醒。",
     sound: "提示音",
-    soundHint: "收到新訊息時響一聲。",
+    soundHint: "新訊息送達時響一聲（自己發的、正在看的對話和已靜音的對話不響）。",
     exactTimes: "回放裡顯示精確時刻",
     exactTimesHint: "別人觀看你的工作回放時也能看到具體時刻；預設只顯示日期和活躍時長。",
     permissionDenied: "瀏覽器拒絕了通知權限，請在瀏覽器的網站設定裡允許通知後再試。",
@@ -378,7 +378,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "デスクトップ通知",
     desktopHint: "ページがバックグラウンドにあるとき、パソコンに新着メッセージの通知を表示します。",
     sound: "通知音",
-    soundHint: "新着メッセージが届くと音を鳴らします。",
+    soundHint: "新着メッセージが届くと短い音を鳴らします（自分の送信、表示中の会話、ミュート中の会話では鳴りません）。",
     exactTimes: "リプレイに正確な時刻を表示",
     exactTimesHint:
       "ほかの人があなたの作業リプレイを見るとき、正確な時刻も表示されます。既定では日付とアクティブ時間のみ表示されます。",
@@ -408,7 +408,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "데스크톱 알림",
     desktopHint: "페이지가 백그라운드에 있을 때 컴퓨터에 새 메시지 알림을 표시합니다.",
     sound: "알림음",
-    soundHint: "새 메시지가 도착하면 소리를 냅니다.",
+    soundHint: "새 메시지가 도착하면 짧은 소리를 냅니다(내가 보낸 메시지, 보고 있는 대화, 음소거한 대화는 제외).",
     exactTimes: "다시 보기에 정확한 시각 표시",
     exactTimesHint:
       "다른 사람이 내 작업 다시 보기를 볼 때 정확한 시각도 보입니다. 기본값에서는 날짜와 활동 시간만 보입니다.",
@@ -438,7 +438,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "إشعارات سطح المكتب",
     desktopHint: "يعرض تنبيهًا برسالة جديدة على الكمبيوتر أثناء بقاء الصفحة في الخلفية.",
     sound: "صوت التنبيه",
-    soundHint: "يشغّل صوتًا عند وصول رسالة جديدة.",
+    soundHint: "يشغّل صوتًا قصيرًا عند وصول رسالة جديدة (لا يعمل مع رسائلك أو المحادثة التي تشاهدها أو المحادثات المكتومة).",
     exactTimes: "إظهار الأوقات الدقيقة في الإعادات",
     exactTimesHint:
       "عندما يشاهد الآخرون إعادة عملك يرون الأوقات الدقيقة أيضًا؛ وافتراضيًا يرون التواريخ ومدة النشاط فقط.",
@@ -468,7 +468,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "การแจ้งเตือนบนเดสก์ท็อป",
     desktopHint: "แสดงการแจ้งเตือนข้อความใหม่บนคอมพิวเตอร์เมื่อหน้าเว็บอยู่เบื้องหลัง",
     sound: "เสียงแจ้งเตือน",
-    soundHint: "เล่นเสียงเมื่อมีข้อความใหม่เข้ามา",
+    soundHint: "เล่นเสียงสั้น ๆ เมื่อมีข้อความใหม่เข้ามา (ไม่เล่นสำหรับข้อความของคุณเอง บทสนทนาที่กำลังดูอยู่ หรือบทสนทนาที่ปิดเสียง)",
     exactTimes: "แสดงเวลาที่แน่นอนในการเล่นซ้ำ",
     exactTimesHint:
       "เมื่อคนอื่นดูการเล่นซ้ำงานของคุณ จะเห็นเวลาที่แน่นอนด้วย ค่าเริ่มต้นจะเห็นเพียงวันที่และเวลาที่ใช้งานอยู่",
@@ -498,7 +498,7 @@ export const IM_NOTIFY_MESSAGES = assembleCopy(SOURCE, {
     desktop: "डेस्कटॉप सूचनाएँ",
     desktopHint: "पेज बैकग्राउंड में होने पर कंप्यूटर पर नए संदेश की सूचना दिखाता है।",
     sound: "सूचना ध्वनि",
-    soundHint: "नया संदेश आने पर ध्वनि बजती है।",
+    soundHint: "नया संदेश आने पर छोटी ध्वनि बजती है (आपके अपने संदेश, जो बातचीत आप देख रहे हैं और म्यूट की गई बातचीत के लिए नहीं बजती)।",
     exactTimes: "रीप्ले में सटीक समय दिखाएँ",
     exactTimesHint:
       "जब दूसरे आपके कार्य का रीप्ले देखते हैं तो उन्हें सटीक समय भी दिखता है; डिफ़ॉल्ट रूप से उन्हें केवल तारीख़ें और सक्रिय समय दिखता है।",

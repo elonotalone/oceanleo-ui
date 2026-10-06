@@ -6,6 +6,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
+import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
 import { WorkReplayHost } from "../replay/work/WorkReplayHost";
 import { ConversationView } from "./conversation/ConversationView";
 import { ConversationInfoPanel } from "./groups/ConversationInfoPanel";
@@ -14,6 +15,8 @@ import { Inbox } from "./Inbox";
 import { InviteAcceptDialog } from "./invite/InviteAcceptDialog";
 import { closeMessages, hostState, useMessagesHost, type MessagesView } from "./host-state";
 import { MessagesLayout } from "./MessagesLayout";
+import { attachMessageSound, createBrowserMessageSound } from "./notify/sound";
+import { attachBrowserTitleBadge } from "./notify/title-badge";
 import { PeopleView } from "./people/PeopleView";
 import { PrivacyNotice } from "./PrivacyNotice";
 import { attachImRealtime, imStore, publishImDisabled } from "./realtime/hooks";
@@ -48,6 +51,37 @@ export function MessagesHost() {
       return undefined;
     }
     return attachImRealtime();
+  }, [enabled]);
+
+  // 标签页标题前的未读数（静音会话不计入，数字来自状态仓的 unread.total）。
+  // 消息不可用（境内、未登录）时整段不挂，标题一个字都不动。
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const badge = attachBrowserTitleBadge();
+    if (!badge) return undefined;
+    const store = imStore();
+    const sync = () => badge.setCount(store.unread()?.total ?? 0);
+    sync();
+    const off = store.subscribe(sync);
+    return () => {
+      off();
+      badge.detach();
+    };
+  }, [enabled]);
+
+  // 新消息提示音：设置里开着才响；规则与节流见 notify/sound.ts。
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return undefined;
+    refreshImSettingsInBackground();
+    return attachMessageSound({
+      store: imStore(),
+      sound: createBrowserMessageSound(),
+      getSettings: () => {
+        refreshImSettingsInBackground();
+        return cachedImSettings();
+      },
+      gestureTarget: window,
+    });
   }, [enabled]);
 
   // 前台会话：浮层开着、选中了会话、标签页可见 → 这个会话的新消息不计未读。

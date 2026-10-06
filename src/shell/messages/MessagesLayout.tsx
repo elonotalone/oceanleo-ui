@@ -103,8 +103,11 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     body = <div className="flex min-h-0 flex-1 flex-col">{showDetail && detail ? detail : list}</div>;
   }
 
+  // z-[999]：共用的 Modal / ConfirmDialog 是 z-[1000]，浮层若比它高，撤回确认、移除成员确认
+  // 这些站内对话框会被压在浮层下面看不见。ReportDialog 自带 z-[1200]，不受影响。
+  // 焦点：容器 tabIndex=-1 只为让 Esc 在浮层内生效；键盘用户落在容器上时给一圈看得见的内描边。
   const baseClass =
-    "fixed z-[1100] flex flex-col bg-white text-black shadow-2xl outline-none dark:bg-neutral-900 dark:text-white";
+    "fixed z-[999] flex flex-col bg-white text-black shadow-2xl focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-500 dark:bg-neutral-900 dark:text-white";
   const style =
     layout === "docked"
       ? { top: 0, right: 0, bottom: 0, width: Math.min(DOCK_MAX, Math.max(DOCK_MIN, dockWidth)) }

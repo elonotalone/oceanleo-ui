@@ -31,6 +31,7 @@ function SwitchButton({
   onChange: (next: boolean) => void;
 }) {
   return (
+    // 按钮本身是 44px 的点击区（手机上好点），看得见的开关轨道是里面的 36×20。
     <button
       type="button"
       role="switch"
@@ -38,15 +39,19 @@ function SwitchButton({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50 ${
-        checked ? "bg-neutral-900" : "bg-neutral-300"
-      }`}
+      className="inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50"
     >
       <span
-        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-          checked ? "translate-x-[18px]" : "translate-x-[3px]"
+        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+          checked ? "bg-neutral-900" : "bg-neutral-300"
         }`}
-      />
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-[18px]" : "translate-x-[3px]"
+          }`}
+        />
+      </span>
     </button>
   );
 }
@@ -66,7 +71,7 @@ function Row({
         <div className="text-[13px] font-medium text-neutral-900">{title}</div>
         <p className="mt-0.5 text-[12px] leading-5 text-neutral-500">{hint}</p>
       </div>
-      <div className="pt-0.5">{children}</div>
+      <div className="shrink-0">{children}</div>
     </div>
   );
 }
@@ -254,7 +259,7 @@ export function NotifySettingsPanel() {
             onChange={(next) => void toggle("desktop_notifications", next)}
           />
         </Row>
-        <Row title={tt("提示音")} hint={tt("收到新消息时响一声。")}>
+        <Row title={tt("提示音")} hint={tt("新消息到达时响一声（自己发的、正在看的会话和已静音的会话不响）。")}>
           <SwitchButton
             label={tt("提示音")}
             checked={settings.sound}

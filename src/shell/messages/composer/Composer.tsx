@@ -520,7 +520,7 @@ export function Composer(props: ComposerProps) {
               aria-haspopup="menu"
               aria-expanded={plusOpen}
               aria-label={tt("更多")}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[18px] text-neutral-500 hover:bg-neutral-100"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-[18px] text-neutral-500 hover:bg-neutral-100 md:h-8 md:w-8"
             >
               +
             </button>
@@ -563,7 +563,7 @@ export function Composer(props: ComposerProps) {
               onClick={() => setEmojiOpen((v) => !v)}
               aria-label={tt("表情")}
               aria-expanded={emojiOpen}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[17px] text-neutral-500 hover:bg-neutral-100"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-[17px] text-neutral-500 hover:bg-neutral-100 md:h-8 md:w-8"
             >
               ☺
             </button>

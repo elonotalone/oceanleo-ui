@@ -47,7 +47,7 @@ export interface MessageActionHandlers {
 }
 
 const buttonClass =
-  "flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[12.5px] text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900";
+  "flex h-11 min-w-11 items-center justify-center rounded-md px-1.5 text-[12.5px] text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 md:h-7 md:min-w-7";
 
 export function MessageActions({
   message,
