@@ -1,10 +1,6 @@
-import type { BayPaneProps } from "../shell/bay-state";
+export { MyServicesPane } from "./MyServicesPane";
 
-export function MyServicesPane(_props: BayPaneProps): null {
-  return null;
-}
-
-export function ServiceEditorPane(_props: BayPaneProps): null {
+export function ServiceEditorPane(_props: import("../shell/bay-state").BayPaneProps): null {
   return null;
 }
 
