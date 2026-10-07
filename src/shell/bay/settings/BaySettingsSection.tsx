@@ -3,7 +3,8 @@
 // 设置窗「OceanLeo Bay」栏：卖家资料、资质审核、钱、规则与条款。境内不渲染。
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { BaySellerProfileSection, BayVettingSection } from "../seller";
+import { BaySellerProfileSection } from "../seller/BaySellerProfileSection";
+import { BayVettingSection } from "../seller/BayVettingSection";
 import { bayEnabledHere } from "../shell/bay-state";
 import { BayMoneySection } from "./BayMoneySection";
 import { BayTermsOverview } from "./BayTermsOverview";

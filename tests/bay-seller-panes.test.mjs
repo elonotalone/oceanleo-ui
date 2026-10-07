@@ -100,6 +100,7 @@ const sellerStubs = {
   "../shell/bay-links": linksStub,
   "../settings": settingsStub,
   "../needs": needsStub,
+  "../needs/LibraryWorkPicker": needsStub,
 };
 
 const { MyServicesPane } = await import(await compileModule("src/shell/bay/seller/MyServicesPane.tsx", sellerStubs));

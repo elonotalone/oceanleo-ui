@@ -104,6 +104,8 @@ async function loadSection() {
     "../../../lib/bay/http": httpStub,
     "../shell/bay-state": stateStub,
     "../seller": sellerStub,
+    "../seller/BaySellerProfileSection": sellerStub,
+    "../seller/BayVettingSection": sellerStub,
     "../../../i18n/ui/useUI": uiStub,
   });
   return import(`${url}?case=${Math.random().toString(36).slice(2)}`);

@@ -20,7 +20,7 @@ import {
   type BaySellerProfileInput,
   type BayShowcaseItem,
 } from "../../../lib/bay/seller";
-import { pickLibraryWork } from "../needs";
+import { pickLibraryWork } from "../needs/LibraryWorkPicker";
 import { HiddenByPlatformNotice, INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
 
 function splitList(value: string): string[] {
