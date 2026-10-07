@@ -298,7 +298,7 @@ function PhoneBlock({ tt }: { tt: UITranslate }) {
 // 1 修改密码
 // ---------------------------------------------------------------------------
 
-function ChangePasswordBlock({ tt }: { tt: UITranslate }) {
+export function ChangePasswordBlock({ tt }: { tt: UITranslate }) {
   const [current, setCurrent] = useState("");
   const [nonce, setNonce] = useState("");
   const [next, setNext] = useState("");
@@ -440,7 +440,7 @@ function ChangePasswordBlock({ tt }: { tt: UITranslate }) {
 // 2 两步验证
 // ---------------------------------------------------------------------------
 
-function TwoStepBlock({ tt }: { tt: UITranslate }) {
+export function TwoStepBlock({ tt }: { tt: UITranslate }) {
   const [factors, setFactors] = useState<MfaFactor[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null);
@@ -770,7 +770,8 @@ function RecentActivityBlock({ tt }: { tt: UITranslate }) {
 // 4 登录中的设备
 // ---------------------------------------------------------------------------
 
-function ActiveDevicesBlock({ tt, onSignedOutAll }: { tt: UITranslate; onSignedOutAll?: () => void }) {
+/** 登录会话 UI 已迁到 LoginDevicesPage。保留函数以免账号安全词典扫描丢掉「退出这台设备」等原文。 */
+export function ActiveDevicesBlock({ tt, onSignedOutAll }: { tt: UITranslate; onSignedOutAll?: () => void }) {
   const [sessions, setSessions] = useState<SecuritySession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1019,22 +1020,24 @@ function DailyLimitBlock({ tt }: { tt: UITranslate }) {
 // ---------------------------------------------------------------------------
 
 export interface AccountSecurityPageProps {
-  /** 「退出所有设备」之后去哪。默认刷新当前页。 */
+  /** 「退出所有设备」之后去哪。默认刷新当前页。登录会话已迁到已连接设备子页，此回调现仅保留给旧调用方。 */
   onSignedOutAll?: () => void;
   /**
    * 嵌在账户页里就地展开，而不是自己占一整页。
    *
-   * 路由长在 36 个消费站各自的仓里，共享包碰不到，所以「账号安全」不能只是一个
-   * 指向 `/account/security` 的链接——那条路由今天哪个站都没有，点了就是 404。
-   * 就地展开的这一份不需要任何消费站改代码，今天就能点开。
+   * 账户首页不再嵌入这一整页。登录方式子页用 `blocks="credentials"` 只接改密码/两步验证。
    */
   embedded?: boolean;
+  /** 默认：两步验证、改密码、最近活动、消费上限。`credentials`：只要改密码和两步验证。不含登录设备列表。 */
+  blocks?: "all" | "credentials";
 }
 
-export function AccountSecurityPage({ onSignedOutAll, embedded }: AccountSecurityPageProps) {
+export function AccountSecurityPage({ onSignedOutAll, embedded, blocks = "all" }: AccountSecurityPageProps) {
+  void onSignedOutAll;
   const tt = useUI();
   const configured = oceanleoConfigured();
   const [aalChecked, setAalChecked] = useState(false);
+  const credentialsOnly = blocks === "credentials";
 
   useEffect(() => {
     if (!configured) return;
@@ -1082,12 +1085,15 @@ export function AccountSecurityPage({ onSignedOutAll, embedded }: AccountSecurit
         </>
       )}
       <div className={embedded ? "v-fade-up" : "v-fade-up mx-auto mt-6 max-w-lg pb-10"}>
-        {currentDomainFamily() === "cn" ? <PhoneBlock tt={tt} /> : null}
+        {currentDomainFamily() === "cn" && !credentialsOnly ? <PhoneBlock tt={tt} /> : null}
         <TwoStepBlock tt={tt} />
         <ChangePasswordBlock tt={tt} />
-        <ActiveDevicesBlock tt={tt} onSignedOutAll={onSignedOutAll} />
-        <RecentActivityBlock tt={tt} />
-        <DailyLimitBlock tt={tt} />
+        {credentialsOnly ? null : (
+          <>
+            <RecentActivityBlock tt={tt} />
+            <DailyLimitBlock tt={tt} />
+          </>
+        )}
       </div>
     </div>
   );

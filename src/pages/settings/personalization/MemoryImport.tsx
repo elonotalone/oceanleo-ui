@@ -61,7 +61,7 @@ export function MemoryImportRow({
   const tt = useUI();
   const [open, setOpen] = useState(false);
   return (
-    <div className={CARD} data-personalization-card="memory-import">
+    <div className={`${CARD} h-full`} data-personalization-card="memory-import">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className={CARD_TITLE}>{tt("从其他 AI 导入记忆")}</p>

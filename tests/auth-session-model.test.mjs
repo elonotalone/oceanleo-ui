@@ -12,9 +12,13 @@ import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import {
+  COM_AUTH_COOKIE_KEY,
+  CN_AUTH_COOKIE_KEY,
+  COM_IDENTITY_URL,
   cookieDomainFor,
   cookieOptions,
   isLeoDevPreviewHost,
+  resolveSupabaseUrl,
 } from "../src/lib/auth/config.ts";
 import { compileModule } from "./helpers/module-bench.mjs";
 
@@ -90,6 +94,7 @@ test("非 oceanleo.com 的 host 一律 host-only（undefined）", () => {
 test("cookieOptions 只在 oceanleo.com 上带 domain，且不谎称 httpOnly", () => {
   const shared = cookieOptions("ppt.oceanleo.com");
   assert.equal(shared.domain, ".oceanleo.com");
+  assert.equal(shared.name, COM_AUTH_COOKIE_KEY);
   assert.equal(shared.path, "/");
   assert.equal(shared.secure, true);
   // lax 而非 strict：strict 会打断微信回跳 / 邮件确认链接的第一跳。
@@ -392,8 +397,10 @@ test("C5/3 env 覆盖只能在本族内生效，跨族与用户内容域一律 f
 test("C5/1+2 cookieOptions 层：两族各自只下发本族 domain，其余属性不变", () => {
   const com = cookieOptions("www.oceanleo.com");
   assert.equal(com.domain, ".oceanleo.com");
+  assert.equal(com.name, COM_AUTH_COOKIE_KEY);
   const cn = cookieOptions("ppt.oceanleo.cn");
   assert.equal(cn.domain, ".oceanleo.cn");
+  assert.equal(cn.name, CN_AUTH_COOKIE_KEY);
   // 会话模型的其余部分两族一致、且与改动前一致。
   for (const opts of [com, cn]) {
     assert.equal(opts.path, "/");
@@ -625,6 +632,15 @@ test("C5 ThemeScript 内联脚本按家族清影子 cookie（实际执行，不�
   assert.ok(inline.includes("oceanbizs.com"), "内联脚本必须带上 ws 家族的可注册域");
   // 历史写法：写死长度 13 的 slice。它一旦回来，加第三个家族时就会静默失效。
   assert.equal(inline.includes("slice(-13)"), false, "不得写死后缀长度");
+  const themeServer = await readFile(
+    new URL("../src/theme/server.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(themeServer, /export \{ ThemeScript \} from "\.\/ThemeScript"/);
+  assert.doesNotMatch(
+    await readFile(new URL("../src/theme/ThemeScript.tsx", import.meta.url), "utf8"),
+    /^["']use client["']/,
+  );
 
   const runFor = (hostname) => {
     const writes = [];
@@ -741,6 +757,8 @@ test("LeoDev capability host may read family SSO but must never write it", () =>
   );
   assert.match(clientSource, /isLeoDevPreviewHost/);
   assert.match(clientSource, /autoRefreshToken:\s*true/);
+  assert.match(clientSource, /detectSessionInUrl:\s*true/);
+  assert.doesNotMatch(clientSource, /detectSessionInUrl:\s*!preview/);
   assert.match(clientSource, /createLeoDevPreviewCookieJar/);
   assert.match(clientSource, /never write family SSO from a capability hostname/);
 });
@@ -760,6 +778,11 @@ test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头"
 test("全局登出失败时兜底清掉本地会话", () => {
   assert.match(clientSource, /signOut\(\{\s*scope:\s*"global"\s*\}\)/);
   assert.match(clientSource, /signOut\(\{\s*scope:\s*"local"\s*\}\)/);
+  assert.match(clientSource, /writePreviewGuestLatch/);
+  assert.match(
+    clientSource,
+    /Local only\. `global` would revoke the shared operator refresh token/,
+  );
 });
 
 // —————————————————————————————————————————————————————————————————————
@@ -803,6 +826,16 @@ test("共享包里只有一处直接调 Supabase 身份 API（按实现特征清
   );
   // 清点本身没有空转：那个唯一实现确实被认出来了。
   assert.match(packageSources.get("lib/auth/client.ts"), IDENTITY_API);
+  assert.match(
+    packageSources.get("lib/auth/client.ts"),
+    /microsoft:\s*"azure"/,
+    "产品上的 Microsoft 必须映射到 Supabase azure，不能另起一套身份调用",
+  );
+  assert.match(
+    packageSources.get("lib/auth/client.ts"),
+    /provider === "microsoft"[\s\S]*scopes:\s*"email profile offline_access"/,
+    "Microsoft 登录必须向 Azure 要 email/profile，否则没有邮箱建不成账号",
+  );
 });
 
 // UC-7 §8.7（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -817,9 +850,11 @@ test("共享登录 UI 只消费 lib/auth，不自建 Supabase 客户端、不碰
   );
   for (const symbol of [
     "signIn",
+    "signUp",
     "sendPhoneOtp",
     "verifyPhoneOtp",
     "wechatLoginUrl",
+    "startOauthSignIn",
     "normalizeCnPhone",
     "oceanleoConfigured",
   ]) {
@@ -838,4 +873,22 @@ test("共享登录 UI 只消费 lib/auth，不自建 Supabase 客户端、不碰
   assert.doesNotMatch(code, /https:\/\/[\w.-]*oceanleo\.com/);
   // httpOnly 是显式的 false（config.ts），登录 UI 这一侧不得有任何相关"加固"。
   assert.doesNotMatch(code, /httpOnly/);
+});
+
+// UC-NONE
+// Rewrites the legacy supabase.co identity host to auth.oceanleo.com so the client talks to first-party GoTrue; it does not set cookie Domain, iframe sandbox, CORS, or where user content is served.
+test("legacy supabase.co identity URL is rewritten to auth.oceanleo.com", () => {
+  assert.equal(
+    resolveSupabaseUrl("https://kvrtcumcmhyqhmawpzyc.supabase.co"),
+    COM_IDENTITY_URL,
+  );
+  assert.equal(
+    resolveSupabaseUrl("https://kvrtcumcmhyqhmawpzyc.supabase.co/"),
+    COM_IDENTITY_URL,
+  );
+  assert.equal(
+    resolveSupabaseUrl("https://id-cn.dev.oceanleo.com"),
+    "https://id-cn.dev.oceanleo.com",
+  );
+  assert.equal(resolveSupabaseUrl(""), "");
 });

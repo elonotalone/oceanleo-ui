@@ -49,6 +49,7 @@ export async function verifyPhoneChange() { return { error: "登录服务尚未�
 export async function sendPhoneOtp() { return { error: "登录服务尚未配置" }; }
 export async function verifyPhoneOtp() { return { error: "登录服务尚未配置" }; }
 export async function signIn() { return { error: "登录服务尚未配置" }; }
+export async function signUp() { return { error: "登录服务尚未配置" }; }
 export async function wechatLoginUrl() { return { error: "登录服务尚未配置" }; }
 export async function startOauthSignIn() { return { error: "登录服务尚未配置" }; }
 export async function sendPasswordReset() { return { error: "登录服务尚未配置" }; }

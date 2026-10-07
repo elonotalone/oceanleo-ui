@@ -380,6 +380,89 @@ test("后端 404 时显示「还没启用」而不是错误；记忆列表仍可
   }
 });
 
+test("记忆页自上而下且无重复副标题；自己添加不在记忆列", async () => {
+  setupApi();
+  const { host, unmount } = await mount();
+  try {
+    const section = host.querySelector('[data-personalization-section="memory"]');
+    assert.ok(section);
+    assert.ok(section.hasAttribute("data-personalization-memory-cols"));
+    assert.ok(section.className.includes("space-y-3"));
+    assert.equal(section.className.includes("grid-cols-3"), false);
+    const cards = [...section.querySelectorAll("[data-personalization-card]")].map((node) =>
+      node.getAttribute("data-personalization-card"),
+    );
+    assert.deepEqual(cards, ["memory-import", "memory-toggle", "memories"]);
+    assert.equal(section.querySelector("h3"), null);
+    assert.equal(host.querySelector("[data-personalization-memory-add]"), null);
+    assert.doesNotMatch(host.textContent, /手动添加/);
+    assert.match(host.querySelector("[data-personalization-memory-empty]").textContent, /还没有记忆/);
+
+    await openPane(host, "instructions");
+    const instructions = host.querySelector('[data-personalization-section="instructions"]');
+    assert.ok(instructions);
+    assert.equal(instructions.querySelector("h3"), null);
+    assert.ok(host.querySelector("[data-personalization-instructions]"));
+  } finally {
+    await unmount();
+  }
+});
+
+test("记忆列可改内容并调用 updateMemory", async () => {
+  const patches = [];
+  setupApi({
+    async listMemories() {
+      return {
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "m1",
+            kind: "preference",
+            content: "先给结论",
+            site_id: null,
+            enabled: true,
+            use_count: 1,
+            last_used_at: null,
+            created_at: "2026-09-24T00:00:00Z",
+          },
+        ],
+      };
+    },
+    async updateMemory(id, patch) {
+      patches.push({ id, patch });
+      return {
+        ok: true,
+        status: 200,
+        data: {
+          id,
+          kind: "preference",
+          content: patch.content ?? "先给结论",
+          site_id: null,
+          enabled: true,
+          use_count: 1,
+          last_used_at: null,
+          created_at: "2026-09-24T00:00:00Z",
+        },
+      };
+    },
+  });
+  const { host, unmount } = await mount();
+  try {
+    const box = host.querySelector("[data-personalization-memory-content=m1]");
+    assert.ok(box);
+    assert.equal(box.value, "先给结论");
+    await typeInto(box, "先给结论，再列步骤");
+    await act(async () => {
+      box.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+    });
+    await flush();
+    assert.deepEqual(patches, [{ id: "m1", patch: { content: "先给结论，再列步骤" } }]);
+  } finally {
+    await unmount();
+  }
+});
+
 test("默认只挂记忆区；点「自定义指令」后记忆卸掉、指令区出现", async () => {
   setupApi();
   const { host, unmount } = await mount();

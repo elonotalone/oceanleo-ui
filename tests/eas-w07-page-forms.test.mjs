@@ -169,30 +169,18 @@ const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 </button>
 <h1 class="text-[22px] font-semibold tracking-tight text-neutral-900">AI 模型</h1>
 </div>
-<div class="mx-auto mt-6 max-w-3xl space-y-8">
-<section class="v-fade-up">
-<div class="rounded-2xl border border-neutral-200 p-5">
-<div class="flex flex-wrap items-end justify-between gap-4">
-<div>
-<p class="text-[12px] text-neutral-500">token 余额</p>
-<p class="mt-1 text-[26px] font-semibold tabular-nums text-neutral-900">¥12.5000</p>
+<div class="mx-auto mt-6 max-w-3xl space-y-6">
+<div class="flex gap-1" data-api-settings-tabs="" role="tablist">
+<button type="button" role="tab" data-api-settings-tab="selection" aria-selected="true" class="rounded-lg px-3 py-2 text-[13px] font-medium bg-neutral-900 text-white">模型选择</button>
+<button type="button" role="tab" data-api-settings-tab="byok" aria-selected="false" class="rounded-lg px-3 py-2 text-[13px] font-medium text-neutral-600 hover:bg-neutral-100">自带 API key（BYOK）</button>
 </div>
-<div class="flex items-center gap-2">
-<a href="/api/guide" class="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50">指导文档</a>
-<a href="https://oceanleo.com/billing" class="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800">充值</a>
-</div>
-</div>
-<div class="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-[12px] leading-relaxed text-emerald-800">计费规则：你支付的费用 = 该模型对应厂商的官方 token 市场价。<span class="font-semibold">OceanLeo 不加价、不抽成</span>。每笔调用都可审计；使用自己的厂商 API key（BYOK）则不扣钱包。 密钥只以加密形式保存在你这台设备的浏览器里，OceanLeo 服务器不保存。</div>
-</div>
-</section>
-<div data-stub="byok" data-logged-in="true">
-</div>
+<div class="space-y-8" data-api-selection="">
 <div data-stub="model-groups" data-user="true">
 </div>
 <section class="v-fade-up" style="animation-delay: 40ms;">
 <div class="rounded-2xl border border-neutral-200 p-5">
 <p class="text-[13px] font-semibold text-neutral-900">价格数据来源</p>
-<p class="mt-1 text-[12px] leading-relaxed text-neutral-500">百炼/火山为官方价格页确定性解析，OpenRouter 为其官方 API 实时价。共收录 <span class="font-medium text-neutral-700">42</span> 个模型。</p>
+<p class="mt-1 text-[12px] leading-relaxed text-neutral-500">价格来自各厂商官方实时源，每小时自动更新。共收录 <span class="font-medium text-neutral-700">42</span> 个模型。</p>
 <div class="mt-3 space-y-2.5">
 <div class="flex flex-wrap items-center gap-2">
 <span class="min-w-[88px] text-[12px] font-medium text-neutral-800">百炼</span>
@@ -212,6 +200,7 @@ const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 </div>
 </div>
 </section>
+</div>
 </div>
 </div>`;
 
@@ -327,7 +316,7 @@ test("DevicesPage page 形态（缺省与 variant=page）与改动前逐字相�
 
 test("ApiPage pane 形态：没有页头与整页外边距，正文与独立页逐字相同", async () => {
   const page = await render(React.createElement(ApiPage), "/agent");
-  const pageBody = bodyOf(page, "div.max-w-3xl");
+  const pageSelection = bodyOf(page, "[data-api-selection]");
   await page.cleanup();
 
   const pane = await render(React.createElement(ApiPage, { variant: "pane" }), "/agent");
@@ -337,7 +326,10 @@ test("ApiPage pane 形态：没有页头与整页外边距，正文与独立页�
   const rootClass = pane.rootClass();
   assert.doesNotMatch(rootClass, /\bpx-8\b|\bpy-6\b|h-screen/, `pane 根节点不该带整页外边距或整屏高度：${rootClass}`);
   assert.match(rootClass, /\bmin-h-0\b/, `pane 根节点要能在面板区里收缩：${rootClass}`);
-  assert.equal(bodyOf(pane, "div.max-w-3xl"), pageBody, "pane 的正文要与独立页逐字相同");
+  assert.ok(pane.find("[data-api-settings-tabs]"), "设置窗里的 AI 模型面板要有模型选择 / BYOK 页签");
+  assert.ok(pane.find("[data-api-settings-tab=selection]"));
+  assert.ok(pane.find("[data-api-settings-tab=byok]"));
+  assert.equal(bodyOf(pane, "[data-api-selection]"), pageSelection, "pane 的模型选择正文要与独立页逐字相同");
   await pane.cleanup();
 });
 

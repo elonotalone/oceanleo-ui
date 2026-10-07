@@ -2,6 +2,7 @@ export * from "./config";
 export * from "./client";
 export * from "./account";
 export * from "./account-security";
+export * from "./account-identity";
 export * from "./preview-cookies";
 export * from "./autosave-error-message";
 // middleware.ts is server-only (imports next/server); import it directly from

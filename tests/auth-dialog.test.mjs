@@ -10,8 +10,8 @@
 //   ③ SMS provider / 微信 key 未配时给可读降级提示（上游给的是
 //      `Unsupported phone provider` / 网关 501），**不是白屏、不是英文原文**；
 //   ④ oceanleoConfigured() 为假时走「登录服务尚未配置」分支且不渲染表单；
-//   ⑤ **没有任何注册入口**（注册 2026-06-15 已由 DB 触发器关闭），
-//      底部固定「目前仅开放被邀请的账号登录。」；
+//   ⑤ **登录和注册都在这一扇门**：第一屏没有登录/注册开关，密码在下一步；
+//      对不上已有账号时用同一组邮箱密码走 signUp；
 //   ⑥ 17 语：源码里每条 tt() 中文字面量在 17 份词典里都有译文，
 //      zh 是 key===值，15 个非中文 locale 真的翻了（无占位、无汉字残留），
 //      zh-TW 该改的改了，`{seconds}` 插值符 17 语一个不丢。
@@ -53,6 +53,7 @@ const authStubUrl = dataModule(`
   const g = () => globalThis.__W10_AUTH__;
   export const oceanleoConfigured = (...a) => g().oceanleoConfigured(...a);
   export const signIn = (...a) => g().signIn(...a);
+  export const signUp = (...a) => g().signUp(...a);
   export const sendPhoneOtp = (...a) => g().sendPhoneOtp(...a);
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
@@ -72,9 +73,35 @@ const authStubUrl = dataModule(`
 // 用真的那一份（组件的本地格式校验必须和后端归一化同源，不能各判各的）。
 const supabaseStubUrl = dataModule("export function createBrowserClient(){ return null; }");
 
+const captchaStubUrl = dataModule(`
+  export const CAPTCHA_VERIFYING_MESSAGE = "正在进行安全验证…";
+  export const CAPTCHA_FAILED_MESSAGE = "安全验证没有通过，请重试";
+  export const CAPTCHA_LOAD_FAILED_MESSAGE = "安全验证组件加载失败，请刷新页面重试";
+  export function isCaptchaConfigured() {
+    return globalThis.__W10_CAPTCHA_ON__ === true;
+  }
+  export function mapCaptchaError(raw) {
+    const text = String(raw || "");
+    if (/captcha/i.test(text) || text.includes("安全验证")) return CAPTCHA_FAILED_MESSAGE;
+    return text;
+  }
+  export function peekCaptchaToken() { return globalThis.__W10_CAPTCHA_TOKEN__ || null; }
+  export function clearCaptchaToken() { globalThis.__W10_CAPTCHA_TOKEN__ = null; }
+  export async function getCaptchaToken() { return globalThis.__W10_CAPTCHA_TOKEN__ || null; }
+  export function mountCheckboxCaptcha(el, onChange) {
+    if (el && typeof el.setAttribute === "function") el.setAttribute("data-auth-captcha-widget", "1");
+    globalThis.__W10_CAPTCHA_SOLVE__ = (token) => {
+      globalThis.__W10_CAPTCHA_TOKEN__ = token;
+      onChange(token);
+    };
+    return () => { globalThis.__W10_CAPTCHA_SOLVE__ = undefined; };
+  }
+`);
+
 const OVERRIDES = {
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/auth/client": authStubUrl,
+  "../lib/auth/captcha": captchaStubUrl,
   "react-dom": reactDomUrl,
 };
 
@@ -92,6 +119,9 @@ const {
   AUTH_METHODS_INTL,
   authMethodsForFamily,
   AUTH_DIALOG_COPY,
+  AUTH_COLUMN_PX,
+  AUTH_TERMS_HREF,
+  AUTH_PRIVACY_HREF,
   authErrorCopy,
   totpErrorCopy,
   wechatRedirectTarget,
@@ -159,6 +189,10 @@ test("authErrorCopy 把上游原始错误翻成能照做的中文（未配 ≠ �
     "Google 登录暂未开放：还没有配置，请改用邮箱登录。",
   );
   assert.equal(
+    authErrorCopy("microsoft", "provider is not configured"),
+    "Microsoft 登录暂未开放：还没有配置，请改用邮箱登录。",
+  );
+  assert.equal(
     authErrorCopy("apple", "provider is not configured"),
     "Apple 登录暂未开放：还没有配置，请改用邮箱登录。",
   );
@@ -212,12 +246,12 @@ test("totpErrorCopy 认得 client.ts 的未配串——两步验证那屏不许�
   assert.equal(totpErrorCopy("登录服务尚未配置"), "两步验证现在开不了，稍后再试。");
 });
 
-test("AUTH_METHODS 顺序固定：邮箱 → 手机号 → 微信 → Google → Apple", () => {
-  assert.deepEqual([...AUTH_METHODS], ["email", "phone", "wechat", "google", "apple"]);
+test("AUTH_METHODS 顺序固定：邮箱 → 手机号 → 微信 → Google → Microsoft → Apple", () => {
+  assert.deepEqual([...AUTH_METHODS], ["email", "phone", "wechat", "google", "microsoft", "apple"]);
   assert.deepEqual([...AUTH_METHODS_CN], ["email", "phone", "wechat"]);
-  assert.deepEqual([...AUTH_METHODS_INTL], ["email", "google", "apple"]);
+  assert.deepEqual([...AUTH_METHODS_INTL], ["email", "google", "microsoft", "apple"]);
   assert.deepEqual([...authMethodsForFamily("cn")], ["email", "phone", "wechat"]);
-  assert.deepEqual([...authMethodsForFamily("com")], ["email", "google", "apple"]);
+  assert.deepEqual([...authMethodsForFamily("com")], ["email", "google", "microsoft", "apple"]);
 });
 
 // ————————————————————————————————————————————————————————————————
@@ -233,6 +267,10 @@ function defaultAuth() {
     normalizeCnPhone,
     async signIn(email, password) {
       this.calls.push(["signIn", email, password]);
+      return { error: "Invalid login credentials" };
+    },
+    async signUp(email, password) {
+      this.calls.push(["signUp", email, password]);
       return { error: "Invalid login credentials" };
     },
     async sendPhoneOtp(phone) {
@@ -316,6 +354,9 @@ async function withDom(run, { auth = defaultAuth(), url = SUBSITE_URL } = {}) {
   globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
   globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
   globalThis.__W10_AUTH__ = auth;
+  globalThis.__W10_CAPTCHA_ON__ = false;
+  globalThis.__W10_CAPTCHA_TOKEN__ = null;
+  globalThis.__W10_CAPTCHA_SOLVE__ = undefined;
 
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
@@ -357,6 +398,9 @@ async function withDom(run, { auth = defaultAuth(), url = SUBSITE_URL } = {}) {
     container.remove();
     window.close();
     delete globalThis.__W10_AUTH__;
+    delete globalThis.__W10_CAPTCHA_ON__;
+    delete globalThis.__W10_CAPTCHA_TOKEN__;
+    delete globalThis.__W10_CAPTCHA_SOLVE__;
     for (const undo of restore.reverse()) undo();
     delete globalThis.IS_REACT_ACT_ENVIRONMENT;
   }
@@ -366,21 +410,92 @@ async function withDom(run, { auth = defaultAuth(), url = SUBSITE_URL } = {}) {
 // 3. 三个 tab 真实可用
 // ————————————————————————————————————————————————————————————————
 
-test("国外默认 tab：邮箱 / Google / Apple", async () => {
-  await withDom(async ({ render, find, findAll, click }) => {
+test("国外默认：第一屏只有继续，邮箱与 Google / Microsoft / Apple 并排，密码在下一步", async () => {
+  await withDom(async ({ render, find, findAll, type, submit }) => {
     await render(AuthPanel, { onClose() {} });
-    assert.deepEqual(
-      findAll("[data-auth-method-tab]").map((n) => n.getAttribute("data-auth-method-tab")),
-      ["email", "google", "apple"],
-    );
+    assert.equal(find("[data-auth-mode-tab]"), null);
     assert.ok(find('[data-auth-form="email"]'));
-    await click('[data-auth-method-tab="google"]');
     assert.ok(find('[data-auth-form="google"]'));
-    await click('[data-auth-method-tab="apple"]');
+    assert.ok(find('[data-auth-form="microsoft"]'));
     assert.ok(find('[data-auth-form="apple"]'));
-    assert.equal(find('[data-auth-method-tab="wechat"]'), null);
-    assert.equal(find('[data-auth-method-tab="phone"]'), null);
+    assert.deepEqual(
+      findAll("[data-auth-oauth-stack] [data-auth-form]").map((n) => n.getAttribute("data-auth-form")),
+      ["google", "microsoft", "apple"],
+    );
+    assert.ok(find("[data-auth-oauth-stack]"));
+    assert.ok(find("[data-auth-oauth-mark]"));
+    assert.equal(find("[data-auth-oauth-mark] svg").getAttribute("width"), "20");
+    assert.equal(find("[data-auth-oauth-mark] svg").getAttribute("height"), "20");
+    assert.equal(findAll("[data-auth-oauth-mark] svg").length, 3);
+    assert.match(find('[data-auth-form="microsoft"]').textContent, /使用 Microsoft 继续/);
+    assert.equal(AUTH_COLUMN_PX, 360);
+    assert.equal(find("[data-auth-column]").style.maxWidth, "360px");
+    assert.equal(find("[data-auth-method-tab]"), null);
+    assert.equal(find("[data-auth-invite-only]"), null);
+    assert.equal(find("#oceanleo-auth-password"), null, "第一屏不出现密码");
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').textContent, "继续");
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "false");
+    assert.equal(find("[data-auth-captcha]"), null);
+    assert.ok(find("[data-auth-legal]"));
+    assert.equal(find("[data-auth-terms]").getAttribute("href"), AUTH_TERMS_HREF);
+    assert.equal(find("[data-auth-privacy]").getAttribute("href"), AUTH_PRIVACY_HREF);
+    assert.equal(find('[data-auth-form="email"]').getAttribute("data-auth-email-step"), "identify");
+    await type("#oceanleo-auth-email", "a@b.co");
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "true");
+    await submit('[data-auth-form="email"]');
+    assert.equal(find('[data-auth-form="email"]').getAttribute("data-auth-email-step"), "password");
+    assert.ok(find("#oceanleo-auth-password"));
+    assert.equal(find("[data-auth-oauth-stack]"), null, "密码步不得再挤着三颗登录钮");
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "false");
+    await type("#oceanleo-auth-password", "hunter2hunter2");
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "true");
+    assert.ok(find("[data-auth-legal]"));
   });
+});
+
+test("第一屏就有真人验证，邮箱和验证都齐了继续才变黑", async () => {
+  await withDom(async ({ render, find, type, submit }) => {
+    globalThis.__W10_CAPTCHA_ON__ = true;
+    await render(AuthPanel, { onClose() {} });
+    await act(async () => {});
+    assert.ok(find("[data-auth-captcha]"), "第一屏一打开就要有验证，不等邮箱");
+    assert.equal(find("[data-auth-captcha]").style.backgroundColor, "", "验证框不得再垫一层白卡片");
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "false");
+    await type("#oceanleo-auth-email", "elonlee63@gmail.com");
+    assert.equal(
+      find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"),
+      "false",
+      "只填邮箱、没过验证时继续仍是灰的",
+    );
+    await submit('[data-auth-form="email"]');
+    assert.equal(find('[data-auth-form="email"]').getAttribute("data-auth-email-step"), "identify");
+    assert.equal(typeof globalThis.__W10_CAPTCHA_SOLVE__, "function");
+    await act(async () => globalThis.__W10_CAPTCHA_SOLVE__("tok-human"));
+    assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "true");
+    await submit('[data-auth-form="email"]');
+    assert.equal(find('[data-auth-form="email"]').getAttribute("data-auth-email-step"), "password");
+    assert.equal(find("[data-auth-oauth-stack]"), null);
+    assert.equal(find("[data-auth-captcha]"), null, "密码步不再重复验证");
+  });
+});
+
+test("国内第一屏没有真人验证，邮箱有效继续就变黑", async () => {
+  await withDom(
+    async ({ render, find, type }) => {
+      globalThis.__W10_CAPTCHA_ON__ = true;
+      await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS_CN });
+      await act(async () => {});
+      assert.equal(find("[data-auth-captcha]"), null, "国内不画验证框");
+      assert.equal(find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"), "false");
+      await type("#oceanleo-auth-email", "user@oceanleo.cn");
+      assert.equal(
+        find('[data-auth-form="email"] [data-auth-submit]').getAttribute("data-auth-submit-ready"),
+        "true",
+        "国内只填邮箱继续就该亮",
+      );
+    },
+    { url: "https://oceanleo.cn/" },
+  );
 });
 
 test("国内 methods 子集：邮箱 / 手机号 / 微信", async () => {
@@ -393,6 +508,10 @@ test("国内 methods 子集：邮箱 / 手机号 / 微信", async () => {
     // 默认邮箱。
     assert.ok(find('[data-auth-form="email"]'));
     assert.equal(find("[data-auth-active-method]").getAttribute("data-auth-active-method"), "email");
+    assert.equal(find('[data-auth-form="google"]'), null);
+    assert.equal(find('[data-auth-form="microsoft"]'), null);
+    assert.equal(find('[data-auth-form="apple"]'), null);
+    assert.equal(find("[data-auth-oauth-stack]"), null);
 
     await click('[data-auth-method-tab="phone"]');
     assert.ok(find('[data-auth-form="phone"]'), "切到手机号后应渲染手机号表单");
@@ -419,6 +538,7 @@ test("邮箱密码：提交把值交给 lib/auth 的 signIn，成功后回调并
         onSuccess: () => { succeeded += 1; },
       });
       await type("#oceanleo-auth-email", "invited@oceanleo.com");
+      await submit('[data-auth-form="email"]');
       await type("#oceanleo-auth-password", "hunter2hunter2");
       await submit('[data-auth-form="email"]');
       assert.deepEqual(auth.calls, [["signIn", "invited@oceanleo.com", "hunter2hunter2"]]);
@@ -435,6 +555,7 @@ test("邮箱密码：失败给可读中文，不是 Supabase 的英文原话", a
     async ({ render, type, submit, find }) => {
       await render(AuthPanel, { onClose() {} });
       await type("#oceanleo-auth-email", "who@oceanleo.com");
+      await submit('[data-auth-form="email"]');
       await type("#oceanleo-auth-password", "wrongpass");
       await submit('[data-auth-form="email"]');
       const error = find("[data-auth-error]");
@@ -493,7 +614,7 @@ test("手机号 OTP：SMS provider 未配 → 可读降级提示而不是白屏"
       );
       // 白屏的形态是「表单没了、也没有话」——这里两样都在。
       assert.ok(find('[data-auth-form="phone"]'), "降级后表单仍在");
-      assert.ok(text().includes("目前仅开放被邀请的账号登录。"));
+      assert.equal(find("[data-auth-mode-tab]"), null);
     },
     { auth },
   );
@@ -572,26 +693,52 @@ test("Google 未配：可读降级，不跳转", async () => {
   );
 });
 
+test("Microsoft 未配：可读降级，不跳转", async () => {
+  const auth = defaultAuth();
+  await withDom(
+    async ({ render, find, click, navigations }) => {
+      await render(AuthPanel, { onClose() {}, defaultMethod: "microsoft" });
+      await click('[data-auth-form="microsoft"] [data-auth-submit]');
+      assert.equal(
+        find("[data-auth-error]").textContent,
+        "Microsoft 登录暂未开放：还没有配置，请改用邮箱登录。",
+      );
+      assert.deepEqual(navigations, [], "拿不到 url 时不得跳转");
+    },
+    { auth },
+  );
+});
+
 // ————————————————————————————————————————————————————————————————
 // 4. 产品红线：无注册入口 / 未配置分支 / Modal 外壳
 // ————————————————————————————————————————————————————————————————
 
-test("不提供开放注册入口，底部固定「目前仅开放被邀请的账号登录。」", async () => {
-  await withDom(async ({ render, find, text, click }) => {
-    await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS });
-    for (const method of AUTH_METHODS) {
-      if (method !== "email") await click(`[data-auth-method-tab="${method}"]`);
-      assert.ok(
-        find("[data-auth-invite-only]"),
-        `${method} tab 下必须仍有「仅开放被邀请」提示`,
-      );
-      assert.equal(find("[data-auth-invite-only]").textContent, "目前仅开放被邀请的账号登录。");
-      const body = text();
-      assert.doesNotMatch(body, /注册|去注册|创建账号|sign\s?up/i, `${method} tab 出现了注册入口`);
-    }
-  });
-  // 源码层面也钉一次：注册函数一次都不能出现。
-  assert.doesNotMatch(dialogSource, /signUp|signInWithOAuth|resetPasswordForEmail/);
+test("登录与注册都在这一扇门：第一屏不选方式，未知账号在密码步创建", async () => {
+  const auth = defaultAuth();
+  auth.signUp = async function (email, password) {
+    this.calls.push(["signUp", email, password]);
+    return { data: { session: { access_token: "created" } } };
+  };
+  await withDom(
+    async ({ render, find, text, type, submit }) => {
+      await render(AuthPanel, { onClose() {}, methods: AUTH_METHODS });
+      assert.equal(find("[data-auth-invite-only]"), null);
+      assert.equal(find("[data-auth-mode-tab]"), null);
+      assert.match(text(), /登录或注册/);
+      assert.equal(find("#oceanleo-auth-password"), null);
+      await type("#oceanleo-auth-email", "new@oceanleo.com");
+      await submit('[data-auth-form="email"]');
+      await type("#oceanleo-auth-password", "hunter2hunter2");
+      await submit('[data-auth-form="email"]');
+      assert.deepEqual(auth.calls, [
+        ["signIn", "new@oceanleo.com", "hunter2hunter2"],
+        ["signUp", "new@oceanleo.com", "hunter2hunter2"],
+      ]);
+    },
+    { auth },
+  );
+  assert.match(dialogSource, /signUp\(/);
+  assert.doesNotMatch(dialogSource, /signInWithOAuth|resetPasswordForEmail/);
 });
 
 test("oceanleoConfigured() 为假：明确的「登录服务尚未配置」分支，且不渲染表单", async () => {
@@ -618,7 +765,7 @@ test("AuthDialog 走共享 Modal（遮罩 / aria-modal / 标题关联）", async
     assert.ok(dialog, "AuthDialog 必须是真 modal");
     const labelledBy = dialog.getAttribute("aria-labelledby");
     assert.ok(labelledBy, "缺 aria-labelledby");
-    assert.equal(window.document.getElementById(labelledBy)?.textContent, "登录 OceanLeo");
+    assert.equal(window.document.getElementById(labelledBy)?.textContent, "登录或注册");
     assert.ok(find("[data-auth-panel]"));
     assert.ok(find("[data-auth-close]"), "浮层形态必须有关闭键");
   });
@@ -734,7 +881,7 @@ test("AUTH_DIALOG_COPY 覆盖组件里所有 tt() 中文字面量（词条清单
     .map(([, literal]) => literal)
     .filter((literal) => /[\u4e00-\u9fff]/.test(literal));
   // 组件真的在用这些词条，否则下面的循环会空转成一条永远为真的断言。
-  for (const expected of ["登录 OceanLeo", "验证并登录", "使用微信扫码登录 OceanLeo。", "目前仅开放被邀请的账号登录。"]) {
+  for (const expected of ["登录或注册", "验证并登录", "使用微信扫码登录 OceanLeo。", "继续", "服务条款", "隐私政策"]) {
     assert.ok(literals.includes(expected), `组件应通过 tt("${expected}") 取文案`);
   }
   const copy = new Set(AUTH_DIALOG_COPY);

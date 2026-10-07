@@ -44,7 +44,7 @@ export function MemoryToggleCard({
   const enabled = prefs.status === "ready" && prefs.prefs.memory_enabled;
 
   return (
-    <div className={CARD} data-personalization-card="memory-toggle">
+    <div className={`${CARD} h-full`} data-personalization-card="memory-toggle">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className={CARD_TITLE}>{tt("生成对话记忆")}</p>

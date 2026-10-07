@@ -32,7 +32,6 @@ export function CustomInstructionsCard({
   const tt = useUI();
   return (
     <section className="space-y-3" data-personalization-section="instructions">
-      <h3 className="text-[15px] font-semibold text-neutral-900">{tt("自定义指令")}</h3>
       <div className={CARD} data-personalization-card="instructions">
         <p className="text-[12px] leading-relaxed text-neutral-500">
           {tt("告诉 OceanLeo 你希望它怎么回答：称呼、语气、格式、需要避免的事")}

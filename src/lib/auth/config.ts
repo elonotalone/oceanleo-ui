@@ -43,10 +43,25 @@ import {
   familyForHost,
 } from "../../contracts/domain-family";
 
-export const SUPABASE_URL =
+/** First-party GoTrue host. Replaces the public `*.supabase.co` project URL. */
+export const COM_IDENTITY_URL = "https://auth.oceanleo.com";
+const LEGACY_COM_IDENTITY_URL = "https://kvrtcumcmhyqhmawpzyc.supabase.co";
+/** @supabase/ssr names cookies from the URL hostname; pin the project-ref
+ *  name so switching the identity host does not drop family SSO. */
+export const COM_AUTH_COOKIE_KEY = "sb-kvrtcumcmhyqhmawpzyc-auth-token";
+export const CN_AUTH_COOKIE_KEY = "sb-id-cn-auth-token";
+
+export function resolveSupabaseUrl(raw: string | null | undefined): string {
+  const trimmed = String(raw || "").trim().replace(/\/+$/, "");
+  if (trimmed === LEGACY_COM_IDENTITY_URL) return COM_IDENTITY_URL;
+  return trimmed;
+}
+
+export const SUPABASE_URL = resolveSupabaseUrl(
   process.env.NEXT_PUBLIC_OCEANLEO_SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "";
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "",
+);
 
 export const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_OCEANLEO_ANON_KEY ||
@@ -123,9 +138,15 @@ export function cookieDomainFor(host: string | null | undefined): string | undef
 
 // Shared cookie options. `domain` is filled in per-request from the Host header
 // (server/middleware) or window.location.host (browser).
+export function authCookieNameFor(host: string | null | undefined): string {
+  const family = CONFIGURED_DOMAIN_FAMILY || familyForHost(host);
+  return family === "cn" ? CN_AUTH_COOKIE_KEY : COM_AUTH_COOKIE_KEY;
+}
+
 export function cookieOptions(host: string | null | undefined) {
   const domain = cookieDomainFor(host);
   return {
+    name: authCookieNameFor(host),
     ...(domain ? { domain } : {}),
     path: "/",
     // `lax` 而不是 `strict`：strict 会让「从站外顶层导航回来的第一跳」不带

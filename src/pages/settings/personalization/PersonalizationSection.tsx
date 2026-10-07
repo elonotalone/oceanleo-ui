@@ -1,8 +1,9 @@
 "use client";
 
 // 设置窗「个性化」面板：主站与所有子站同一份。顶部两块切换（记忆 / 自定义指令），
-// 一次只挂一块。偏好与记忆分两路读：个性化端点比记忆 CRUD 晚上线，旧网关上前者
-// 404 时开关与指令区只说「还没启用」，记忆列表照常可用。
+// 一次只挂一块。记忆页自上而下：导入 / 生成开关 / 可编辑列表；自己写规矩只在指令页。
+// 偏好与记忆分两路读：个性化端点比记忆 CRUD 晚上线，旧网关上前者 404 时开关与
+// 指令区只说「还没启用」，记忆列表照常可用。
 
 import { useCallback, useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -120,16 +121,18 @@ export function PersonalizationSection({ accent }: PersonalizationSectionProps) 
         })}
       </div>
       {pane === "memory" ? (
-        <section className="space-y-3" data-personalization-section="memory">
-          <h3 className="text-[15px] font-semibold text-neutral-900">{tt("记忆")}</h3>
+        <section
+          className="space-y-3"
+          data-personalization-section="memory"
+          data-personalization-memory-cols=""
+        >
+          <MemoryImportRow accent={accent} available={importAvailable} onImported={reloadMemories} />
           <MemoryToggleCard prefs={prefs} onPrefsChange={updatePrefs} onRetry={reloadPrefs} />
           <MemoryListCard
-            accent={accent}
             memories={memories}
             onMemoriesChange={updateMemories}
             onRetry={retryMemories}
           />
-          <MemoryImportRow accent={accent} available={importAvailable} onImported={reloadMemories} />
         </section>
       ) : null}
       {pane === "instructions" ? (

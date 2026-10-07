@@ -9,7 +9,11 @@ test("all AppShell layouts share account, device and notification controls", () 
   assert.match(shell, /renderAccountCluster\(true\)/);
   assert.match(shell, /<SettingsModalHost/);
   assert.doesNotMatch(shell, /creditsCapsule|renderAccountButton|renderCredits/);
-  assert.match(src("../src/shell/account/SidebarAccountCluster.tsx"), /props\.compact \? "w-full flex-col"/);
+  const cluster = src("../src/shell/account/SidebarAccountCluster.tsx");
+  assert.match(cluster, /props\.compact \? "w-full flex-col gap-2"/);
+  assert.match(cluster, /justify-between gap-3/);
+  assert.match(cluster, /data-sidebar-account-actions[\s\S]*gap-3/);
+  assert.match(src("../src/shell/AccountMenu.tsx"), /max-w-\[7\.5rem\]/);
   assert.match(exports, /export \* from "\.\/account"/);
   const accountExports = src("../src/shell/account/index.ts");
   for (const name of ["SidebarAccountCluster", "DeviceStatusPopover", "NotificationBell", "SettingsModalHost", "openSettingsModal"]) assert.match(accountExports, new RegExp(name));

@@ -11,7 +11,10 @@ import {
   configured,
   isLeoDevPreviewHost,
 } from "./config";
-import { createLeoDevPreviewCookieJar } from "./preview-cookies";
+import {
+  createLeoDevPreviewCookieJar,
+  writePreviewGuestLatch,
+} from "./preview-cookies";
 import { getCaptchaToken, mapCaptchaError } from "./captcha";
 
 // Browser Supabase client for the OceanLeo shared identity. Stores the auth
@@ -24,6 +27,7 @@ import { getCaptchaToken, mapCaptchaError } from "./captcha";
 
 let _client: SupabaseClient | null = null;
 let _accessToken: string | null = null;
+let _previewJar: ReturnType<typeof createLeoDevPreviewCookieJar> | null = null;
 
 export function browserClient(): SupabaseClient | null {
   if (!configured()) return null;
@@ -37,15 +41,18 @@ export function browserClient(): SupabaseClient | null {
         typeof document === "undefined" ? "" : document.cookie,
       )
     : null;
+  _previewJar = previewCookies;
   _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: cookieOptions(host),
     global: { fetch: authFetch },
     auth: {
       // Always refresh. Preview still must not persist the result onto
       // Domain=.oceanleo.com — a failed refresh used to sign the operator
-      // out of every family site.
+      // out of every family site. detectSessionInUrl stays on so Google /
+      // Microsoft / Apple / magic-link / password-reset returns on a LeoDev
+      // host can establish a tab session in the overlay jar.
       autoRefreshToken: true,
-      detectSessionInUrl: !preview,
+      detectSessionInUrl: true,
     },
     ...(previewCookies
       ? {
@@ -116,6 +123,23 @@ export async function signIn(email: string, password: string) {
     email,
     password,
     ...(captcha.captchaToken ? { options: captcha } : {}),
+  });
+  _accessToken = data.session?.access_token ?? null;
+  return { data, error: mapCaptchaError(error?.message) };
+}
+
+export async function signUp(email: string, password: string) {
+  const c = browserClient();
+  if (!c) return { error: "登录服务尚未配置" };
+  const captcha = await captchaOptions();
+  const { data, error } = await c.auth.signUp({
+    email,
+    password,
+    options: {
+      ...(captcha.captchaToken ? captcha : {}),
+      emailRedirectTo:
+        typeof window !== "undefined" ? window.location.origin : undefined,
+    },
   });
   _accessToken = data.session?.access_token ?? null;
   return { data, error: mapCaptchaError(error?.message) };
@@ -330,12 +354,19 @@ export async function wechatLoginUrl(redirect?: string): Promise<{ url?: string;
   }
 }
 
-// --- Google / Apple（Supabase 内置 OAuth）------------------------------------
+// --- Google / Apple / Microsoft（Supabase 内置 OAuth）------------------------
+// Microsoft 在产品上叫 Microsoft，Supabase 的 provider id 是 azure。
 // 未在项目里打开对应 provider 时，signInWithOAuth 会失败。调用方必须把错误
 // 翻成人话，不能把英文原文甩到登录门上。skipBrowserRedirect：拿到 url 再跳，
 // 和微信同一条「子站登录后回子站」的回跳（redirectTo = 当前页）。
 
-export type OauthProvider = "google" | "apple";
+export type OauthProvider = "google" | "apple" | "microsoft";
+
+const OAUTH_TO_SUPABASE = {
+  google: "google",
+  apple: "apple",
+  microsoft: "azure",
+} as const;
 
 export async function startOauthSignIn(
   provider: OauthProvider,
@@ -347,10 +378,14 @@ export async function startOauthSignIn(
     (redirect || "").trim() || (typeof window !== "undefined" ? window.location.href : "");
   try {
     const { data, error } = await c.auth.signInWithOAuth({
-      provider,
+      provider: OAUTH_TO_SUPABASE[provider],
       options: {
         redirectTo: redirectTo || undefined,
         skipBrowserRedirect: true,
+        // GoTrue 默认只向 Azure 要 openid；没有 email/profile 时微软不回邮箱，进不了账号。
+        ...(provider === "microsoft"
+          ? { scopes: "email profile offline_access" }
+          : {}),
       },
     });
     if (error) return { error: error.message };
@@ -600,7 +635,18 @@ export function needsMfaChallenge(aal: AalState): boolean {
 }
 
 export async function signOutEverywhere(): Promise<void> {
+  const host = typeof window !== "undefined" ? window.location.host : "";
+  const preview = isLeoDevPreviewHost(host);
   const c = browserClient();
+  if (preview) {
+    // Local only. `global` would revoke the shared operator refresh token
+    // that LeoDev injects for every new preview browser.
+    if (c) await c.auth.signOut({ scope: "local" }).catch(() => {});
+    _accessToken = null;
+    writePreviewGuestLatch();
+    _previewJar?.clear();
+    return;
+  }
   if (!c) {
     _accessToken = null;
     return;

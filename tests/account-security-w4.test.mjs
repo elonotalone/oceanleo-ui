@@ -61,6 +61,7 @@ const clientStubUrl = dataModule(`
   export async function accessToken() { return "test-token"; }
   export const oceanleoConfigured = () => true;
   export const signIn = (...a) => g().signIn(...a);
+  export const signUp = (...a) => g().signUp?.(...a) ?? {};
   export const sendPhoneOtp = (...a) => g().sendPhoneOtp(...a);
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
@@ -110,6 +111,17 @@ const securityPageUrl = await compileModule("src/pages/AccountSecurityPage.tsx",
 const dialogUrl = await compileModule("src/pages/AuthDialog.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/auth/client": clientStubUrl,
+  "../lib/auth/captcha": dataModule(`
+    export const CAPTCHA_VERIFYING_MESSAGE = "正在进行安全验证…";
+    export const CAPTCHA_FAILED_MESSAGE = "安全验证没有通过，请重试";
+    export const CAPTCHA_LOAD_FAILED_MESSAGE = "安全验证组件加载失败，请刷新页面重试";
+    export function isCaptchaConfigured() { return false; }
+    export function mapCaptchaError(raw) { return raw; }
+    export function peekCaptchaToken() { return null; }
+    export function clearCaptchaToken() {}
+    export async function getCaptchaToken() { return null; }
+    export function mountCheckboxCaptcha() { return () => {}; }
+  `),
   "react-dom": reactDomUrl,
 });
 
@@ -288,6 +300,7 @@ test("有已验证因子时，密码通过之后必须多出 6 位码那一屏�
     async ({ render, type, submit, find, text }) => {
       await render(AuthPanel, { onClose() {}, onSuccess: () => { succeeded += 1; } });
       await type("#oceanleo-auth-email", "invited@oceanleo.com");
+      await submit('[data-auth-form="email"]');
       await type("#oceanleo-auth-password", "hunter2hunter2");
       await submit('[data-auth-form="email"]');
 
@@ -312,6 +325,7 @@ test("没有因子时绝不能多出这一屏（多拦一屏就是把人锁在�
     async ({ render, type, submit, find }) => {
       await render(AuthPanel, { onClose() {}, onSuccess: () => { succeeded += 1; } });
       await type("#oceanleo-auth-email", "invited@oceanleo.com");
+      await submit('[data-auth-form="email"]');
       await type("#oceanleo-auth-password", "hunter2hunter2");
       await submit('[data-auth-form="email"]');
       assert.equal(find('[data-auth-form="mfa"]'), null, "没开 2FA 的人不该被多问一遍");
@@ -330,6 +344,7 @@ test("取不到会话等级时放行，不拦（拦错的代价是把人锁在�
     async ({ render, type, submit, find }) => {
       await render(AuthPanel, { onClose() {}, onSuccess: () => { succeeded += 1; } });
       await type("#oceanleo-auth-email", "invited@oceanleo.com");
+      await submit('[data-auth-form="email"]');
       await type("#oceanleo-auth-password", "hunter2hunter2");
       await submit('[data-auth-form="email"]');
       assert.equal(find('[data-auth-form="mfa"]'), null);
@@ -344,7 +359,9 @@ test("忘记密码：入口在邮箱页，填了邮箱之后给的是诚实的�
   await withDom(
     async ({ render, click, type, submit, find, text }) => {
       await render(AuthPanel, { onClose() {} });
-      assert.ok(find("[data-auth-forgot]"), "邮箱页必须有找回密码入口");
+      await type("#oceanleo-auth-email", "who@oceanleo.com");
+      await submit('[data-auth-form="email"]');
+      assert.ok(find("[data-auth-forgot]"), "填了邮箱之后，密码这一步才有找回密码");
       await click("[data-auth-forgot]");
       assert.ok(find('[data-auth-form="forgot"]'));
 
@@ -444,7 +461,6 @@ test("账号安全区块不把完整 IP 渲染到 DOM——网关回归了也不
       await render(AccountSecurityPage, {});
       const rendered = html();
       assert.ok(findAll("[data-security-events] li").length >= 2, "活动列表没渲染出来，断言会空转");
-      assert.ok(findAll("[data-security-sessions] li").length >= 1, "设备列表没渲染出来，断言会空转");
 
       assert.doesNotMatch(rendered, /203\.0\.113\.77/, "完整 IPv4 进了 DOM");
       assert.doesNotMatch(rendered, /8a2e:370:7334/, "完整 IPv6 进了 DOM");
@@ -461,7 +477,7 @@ test("账号安全区块不把完整 IP 渲染到 DOM——网关回归了也不
   );
 });
 
-test("当前设备标出来且不给踢自己的键；别的设备才有「退出这台设备」", async () => {
+test("账号安全页不再内嵌登录设备列表（已迁到 /settings/account/login-devices）", async () => {
   const routes = {
     "/v1/account/security/sessions": {
       sessions: [
@@ -487,14 +503,11 @@ test("当前设备标出来且不给踢自己的键；别的设备才有「退�
   await withDom(
     async ({ render, find }) => {
       await render(AccountSecurityPage, {});
-      assert.ok(find("[data-security-current]"), "当前设备必须标出来");
-      assert.equal(
-        find('[data-security-revoke="here"]'),
-        null,
-        "当前设备不给踢自己的键——要退就用「退出所有设备」",
-      );
-      assert.ok(find('[data-security-revoke="there"]'), "别的设备必须有退出键");
-      assert.ok(find("[data-security-signout-all]"), "「退出所有设备」这条退路必须在");
+      assert.equal(find('[data-security-section="devices"]'), null, "安全页不应再画登录设备块");
+      assert.equal(find("[data-security-sessions]"), null);
+      assert.equal(find("[data-security-current]"), null);
+      assert.ok(find('[data-security-section="activity"]'), "最近活动仍由账号安全页提供");
+      assert.ok(find('[data-security-section="limit"]'), "消费上限仍由账号安全页提供");
     },
     { routes },
   );
@@ -505,10 +518,10 @@ test("接口全挂（404 = W3 还没上线）也不白屏：每一块各说一�
     async ({ render, find, findAll, text }) => {
       await render(AccountSecurityPage, {}); // routes 为空 → 全部 404
       assert.ok(find("[data-security-page]"), "整页必须还在");
-      // 五块区域一块不少。
+      // 设备列表已从本页拆走，剩下四块：两步验证、改密码、最近活动、消费上限。
       assert.deepEqual(
         findAll("[data-security-section]").map((n) => n.getAttribute("data-security-section")),
-        ["two-step", "password", "devices", "activity", "limit"],
+        ["two-step", "password", "activity", "limit"],
       );
       const body = text();
       assert.ok(body.includes("这一块还没上线，过些天再来看。"), `没给出人话：${body}`);

@@ -27,7 +27,6 @@ export function SettingsNav({
   avatarUrl,
   userEmail,
   onCreateOrganization,
-  planLabel: _planLabel,
 }: {
   groups: SettingsNavGroup[];
   activeId: string;
@@ -37,10 +36,7 @@ export function SettingsNav({
   avatarUrl?: string | null;
   userEmail: string | null;
   onCreateOrganization?: () => void;
-  /** 旧调用方还传计划名；身份卡不再展示这一行。 */
-  planLabel?: string | null;
 }) {
-  void _planLabel;
   return (
     <nav data-settings-nav className="flex min-h-0 w-full flex-col overflow-hidden md:h-full" aria-label="settings">
       <div data-settings-identity-wrap="" className="mb-3 w-fit max-w-full shrink-0 overflow-visible">

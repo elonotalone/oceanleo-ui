@@ -3,8 +3,8 @@
 // ============================================================================
 // @oceanleo/ui — 全家桶统一登录 UI
 // 国内默认：邮箱 / 中国手机号短信 / 微信扫码
-// 国外默认：邮箱 / Google / Apple
-// 五种方式都在 AUTH_METHODS 里；调用方可传 methods 取子集。
+// 国外默认：邮箱 / Google / Microsoft / Apple
+// 六种方式都在 AUTH_METHODS 里；调用方可传 methods 取子集。
 // ----------------------------------------------------------------------------
 // 为什么在共享包里（附录 3 §3，2026-07-29）：此前 35 份分叉、七种命名散在 32 个站
 // 仓里，其中 33 份只有邮箱密码，微信只有门户有，11 份还是死代码。本组件是门户
@@ -18,9 +18,9 @@
 // 成立的前提（docs/architecture/oceanleo-cross-subdomain-sso.md §3.3「对称式」）。
 //
 // 三条产品红线：
-//   1. **没有注册入口**。注册 2026-06-15 已由 DB 触发器硬关，被邀请的邮箱/手机号
-//      直接首次登录即可（0022_signup_allow_invited.sql）。底部固定一行
-//      「目前仅开放被邀请的账号登录。」
+//   1. **登录和注册都在这一扇门**。第一屏不先选登录还是注册：标题已是
+//      「登录或注册」，下面是 Google / Microsoft / Apple，或只填邮箱再继续。密码在下一步。
+//      已有账号走 `signIn()`，没有的账号用同一组邮箱密码走 `signUp()`。
 //   2. **微信回跳默认取当前页**，子站登录后回子站，绝不弹回门户。
 //   3. **降级要可读**：SMS provider / 微信开放平台 key 是操作员后配的，未配时
 //      上游给的是 `Unsupported phone provider` / 网关 501。直接把英文原文甩给
@@ -49,9 +49,11 @@ import {
   sendPasswordReset,
   sendPhoneOtp,
   signIn,
+  signUp,
   verifyPhoneOtp,
   startOauthSignIn,
   wechatLoginUrl,
+  type OauthProvider,
 } from "../lib/auth/client";
 import { loginUnavailableNotice } from "../lib/auth/config";
 import { currentDomainFamily, type DomainFamily } from "../contracts/domain-family";
@@ -61,10 +63,12 @@ import {
   CAPTCHA_FAILED_MESSAGE,
   CAPTCHA_LOAD_FAILED_MESSAGE,
   CAPTCHA_VERIFYING_MESSAGE,
+  clearCaptchaToken,
   isCaptchaConfigured,
+  mountCheckboxCaptcha,
 } from "../lib/auth/captcha";
 
-export type AuthMethod = "email" | "phone" | "wechat" | "google" | "apple";
+export type AuthMethod = "email" | "phone" | "wechat" | "google" | "microsoft" | "apple";
 
 /** 全部登录方式的固定顺序。调用方可用 `methods` 取子集，但顺序由这里定。 */
 export const AUTH_METHODS: readonly AuthMethod[] = [
@@ -72,13 +76,14 @@ export const AUTH_METHODS: readonly AuthMethod[] = [
   "phone",
   "wechat",
   "google",
+  "microsoft",
   "apple",
 ];
 
 export const AUTH_METHODS_CN: readonly AuthMethod[] = ["email", "phone", "wechat"];
-export const AUTH_METHODS_INTL: readonly AuthMethod[] = ["email", "google", "apple"];
+export const AUTH_METHODS_INTL: readonly AuthMethod[] = ["email", "google", "microsoft", "apple"];
 
-/** 按域名家族选默认门面。境内不露 Google/Apple，国外不露微信/手机号。邮箱两边都留。 */
+/** 按域名家族选默认门面。境内不露 Google/Microsoft/Apple，国外不露微信/手机号。邮箱两边都留。 */
 export function authMethodsForFamily(family: DomainFamily | undefined): readonly AuthMethod[] {
   return family === "cn" ? AUTH_METHODS_CN : AUTH_METHODS_INTL;
 }
@@ -96,6 +101,7 @@ const ERROR_COPY = {
   smsUnconfigured: "短信登录暂未开放：短信服务尚未配置，请改用邮箱登录。",
   wechatUnconfigured: "微信登录暂未开放：微信开放平台尚未配置，请改用邮箱或手机号登录。",
   googleUnconfigured: "Google 登录暂未开放：还没有配置，请改用邮箱登录。",
+  microsoftUnconfigured: "Microsoft 登录暂未开放：还没有配置，请改用邮箱登录。",
   appleUnconfigured: "Apple 登录暂未开放：还没有配置，请改用邮箱登录。",
   network: "网络错误：无法连接到登录服务，请稍后重试。",
   badCredentials: "邮箱或密码不正确。",
@@ -111,20 +117,30 @@ const ERROR_COPY = {
 /** 本组件用到的全部中文文案（含 tt() 字面量与错误表）。17 语守卫的清单。 */
 export const AUTH_DIALOG_COPY: readonly string[] = [
   "登录 OceanLeo",
+  "登录或注册",
+  "开始使用 OceanLeo",
+  "继续",
+  "输入你的邮箱地址",
   "关闭",
   "登录方式",
   "邮箱",
   "手机号",
   "微信",
   "Google",
+  "Microsoft",
   "Apple",
   "使用 Google 继续",
+  "使用 Microsoft 继续",
   "使用 Apple 继续",
   "密码",
   "至少 6 位",
   "登录",
+  "注册",
+  "或",
   "处理中...",
   "登录成功",
+  "注册成功",
+  "请查收验证邮件后再登录。",
   "中国大陆手机号",
   "验证码",
   "6 位验证码",
@@ -157,6 +173,9 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "验证码不对，或者已经过了它 30 秒的有效期。",
   "两步验证现在开不了，稍后再试。",
   CAPTCHA_VERIFYING_MESSAGE,
+  "继续即表示你同意我们的{terms}，并已阅读{privacy}。",
+  "服务条款",
+  "隐私政策",
   ...Object.values(ERROR_COPY),
 ];
 
@@ -196,7 +215,7 @@ const NETWORK_PATTERNS = [
  */
 const UNCONFIGURED_PATTERNS = [
   /unsupported\s+phone\s+provider/i,
-  /(sms|phone|otp|wechat|weixin|google|apple)[^.]{0,40}(provider|service|login)[^.]{0,20}(not|isn't|is not)\s+(configured|enabled|supported|available)/i,
+  /(sms|phone|otp|wechat|weixin|google|apple|microsoft|azure)[^.]{0,40}(provider|service|login)[^.]{0,20}(not|isn't|is not)\s+(configured|enabled|supported|available)/i,
   /provider[^.]{0,20}(not enabled|is disabled|not configured|not supported)/i,
   /not implemented/i,
   /\b501\b/,
@@ -265,6 +284,7 @@ export function authErrorCopy(method: AuthMethod, raw?: string): string {
     if (method === "wechat") return ERROR_COPY.wechatUnconfigured;
     if (method === "phone") return ERROR_COPY.smsUnconfigured;
     if (method === "google") return ERROR_COPY.googleUnconfigured;
+    if (method === "microsoft") return ERROR_COPY.microsoftUnconfigured;
     if (method === "apple") return ERROR_COPY.appleUnconfigured;
     return ERROR_COPY.generic;
   }
@@ -312,7 +332,7 @@ export interface AuthDialogProps {
   methods?: readonly AuthMethod[];
   /** 微信回跳地址，默认当前页（见 `wechatRedirectTarget`）。 */
   wechatRedirect?: string;
-  /** 标题，默认「登录 OceanLeo」。 */
+  /** 标题，默认「登录或注册」。 */
   title?: string;
   /** 成功后是否自动关闭，默认 true。 */
   closeOnSuccess?: boolean;
@@ -329,11 +349,20 @@ export interface AuthPanelProps extends Omit<AuthDialogProps, "onClose"> {
   titleId?: string;
 }
 
+/** 登录列宽。必须写进 style，不能靠 Tailwind 任意值——预览站的 CSS 扫不到就会把整列拉满。 */
+export const AUTH_COLUMN_PX = 360;
+
+export const AUTH_TERMS_HREF = "/terms";
+export const AUTH_PRIVACY_HREF = "/privacy";
+
+const SUBMIT_IDLE_STYLE = { backgroundColor: "#8c8c8c" };
+const SUBMIT_READY_STYLE = { backgroundColor: "#171717" };
+
 /** 全家桶统一登录浮层。带 Modal 外壳（遮罩 / Esc / 焦点陷阱由 `../ui` 提供）。 */
 export function AuthDialog({ onClose, ...rest }: AuthDialogProps): ReactElement {
   const titleId = useId();
   return (
-    <Modal onClose={onClose} className="max-w-md" labelledBy={titleId}>
+    <Modal onClose={onClose} className="w-full max-w-lg" labelledBy={titleId}>
       <AuthPanel {...rest} onClose={onClose} titleId={titleId} />
     </Modal>
   );
@@ -363,6 +392,12 @@ export function AuthPanel({
   const enabled = available.length > 0 ? available : AUTH_METHODS;
   const initial = enabled.includes(defaultMethod) ? defaultMethod : enabled[0];
   const [method, setMethod] = useState<AuthMethod>(initial);
+  const [emailStep, setEmailStep] = useState<"identify" | "password">("identify");
+  const oauthMethods = enabled.filter(isOauthMethod);
+  const formMethods = enabled.filter(isFormMethod);
+  const showOauthStack = oauthMethods.length > 0 && emailStep === "identify";
+  const showFormTabs = formMethods.length > 1;
+  const activeForm = formMethods.includes(method as FormMethod) ? (method as FormMethod) : formMethods[0];
 
   /**
    * 这道门现在有三种画面：
@@ -395,22 +430,34 @@ export function AuthPanel({
   }, [finish]);
 
   return (
-    <div data-auth-panel className={`p-6 ${className}`}>
-      <div className="mb-5 flex items-center justify-between">
-        <h2 id={titleId} className="text-[18px] font-semibold text-neutral-900">
-          {title || tt("登录 OceanLeo")}
-        </h2>
+    <div
+      data-auth-panel
+      data-auth-column=""
+      className={className}
+      style={{ maxWidth: AUTH_COLUMN_PX, width: "100%", marginInline: "auto" }}
+    >
+      <div className="relative mb-8 text-center">
         {onClose && (
           <button
             type="button"
             onClick={onClose}
             aria-label={tt("关闭")}
             data-auth-close
-            className="rounded p-1 text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
+            className="absolute right-0 top-0 rounded p-1 text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
           >
             ✕
           </button>
         )}
+        <h2
+          id={titleId}
+          className="font-semibold tracking-tight text-neutral-900"
+          style={{ fontSize: 28, lineHeight: 1.2 }}
+        >
+          {title || tt("登录或注册")}
+        </h2>
+        <p className="mt-2 text-[15px] leading-relaxed text-neutral-500">
+          {tt("开始使用 OceanLeo")}
+        </p>
       </div>
 
       {!configured ? (
@@ -434,21 +481,45 @@ export function AuthPanel({
         <MfaChallengeForm tt={tt} onDone={finish} />
       ) : (
         <>
-          {enabled.length > 1 && (
+          {showOauthStack && (
+            <div className="space-y-3" data-auth-oauth-stack="">
+              {oauthMethods.map((id) => (
+                <OauthPanel
+                  key={id}
+                  tt={tt}
+                  provider={id}
+                  redirect={wechatRedirect}
+                />
+              ))}
+            </div>
+          )}
+
+          {showOauthStack && formMethods.length > 0 && (
+            <div className="my-6 flex items-center gap-4 text-[13px] text-neutral-400" data-auth-or="">
+              <span className="h-px flex-1 bg-neutral-300" />
+              {tt("或")}
+              <span className="h-px flex-1 bg-neutral-300" />
+            </div>
+          )}
+
+          {showFormTabs && (
             <div
               className="mb-5 flex rounded-xl bg-neutral-100 p-1"
               role="tablist"
               aria-label={tt("登录方式")}
-              data-auth-active-method={method}
+              data-auth-active-method={activeForm}
             >
-              {enabled.map((id) => (
+              {formMethods.map((id) => (
                 <button
                   key={id}
                   type="button"
                   role="tab"
                   aria-selected={method === id}
                   data-auth-method-tab={id}
-                  onClick={() => setMethod(id)}
+                  onClick={() => {
+                    setMethod(id);
+                    setEmailStep("identify");
+                  }}
                   className={`flex-1 rounded-lg py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                     method === id
                       ? "bg-white text-neutral-900 shadow-sm"
@@ -461,36 +532,35 @@ export function AuthPanel({
             </div>
           )}
 
-          {method === "email" && (
+          {activeForm === "email" && formMethods.includes("email") && (
             <EmailForm
               tt={tt}
               onDone={afterCredentials}
               onForgotPassword={() => setView("forgot")}
+              onStepChange={setEmailStep}
             />
           )}
-          {method === "phone" && <PhoneForm tt={tt} onDone={afterCredentials} />}
-          {method === "wechat" && <WechatPanel tt={tt} redirect={wechatRedirect} />}
-          {method === "google" && (
-            <OauthPanel tt={tt} provider="google" redirect={wechatRedirect} />
+          {activeForm === "phone" && (
+            <PhoneForm tt={tt} onDone={afterCredentials} />
           )}
-          {method === "apple" && (
-            <OauthPanel tt={tt} provider="apple" redirect={wechatRedirect} />
+          {activeForm === "wechat" && (
+            <WechatPanel tt={tt} redirect={wechatRedirect} />
           )}
-
-          <p className="mt-4 text-center text-[11px] leading-relaxed text-neutral-400">
-            {tt("一次登录，全家桶所有 AI 应用通用。")}
-          </p>
-          {/* 注册已关闭（2026-06-15，DB 触发器）：这里**不放**任何注册入口。 */}
-          <p
-            data-auth-invite-only
-            className="mt-1 text-center text-[11px] text-neutral-400"
-          >
-            {tt("目前仅开放被邀请的账号登录。")}
-          </p>
+          <LegalNote tt={tt} />
         </>
       )}
     </div>
   );
+}
+
+type FormMethod = "email" | "phone" | "wechat";
+
+function isFormMethod(method: AuthMethod): method is FormMethod {
+  return method === "email" || method === "phone" || method === "wechat";
+}
+
+function isOauthMethod(method: AuthMethod): method is OauthProvider {
+  return method === "google" || method === "microsoft" || method === "apple";
 }
 
 function methodLabel(method: AuthMethod): string {
@@ -498,13 +568,22 @@ function methodLabel(method: AuthMethod): string {
   if (method === "phone") return "手机号";
   if (method === "wechat") return "微信";
   if (method === "google") return "Google";
+  if (method === "microsoft") return "Microsoft";
   return "Apple";
 }
 
+const OAUTH_CONTINUE: Record<OauthProvider, string> = {
+  google: "使用 Google 继续",
+  microsoft: "使用 Microsoft 继续",
+  apple: "使用 Apple 继续",
+};
+
 const FIELD_CLASS =
-  "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100";
+  "w-full rounded-2xl border-0 bg-white px-4 py-3.5 text-[15px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-neutral-400";
+const FIELD_STYLE = { boxShadow: "0 0 0 1px rgba(15,15,15,0.12)" };
 const SUBMIT_CLASS =
-  "w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60";
+  "w-full rounded-full py-3.5 text-[15px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:opacity-90 active:scale-[0.99] disabled:cursor-not-allowed";
+const SUBMIT_STYLE = SUBMIT_IDLE_STYLE;
 
 function ErrorNote({ text }: { text: string }) {
   return (
@@ -541,41 +620,185 @@ function CaptchaBusyLabel({ tt }: { tt: UITranslate }) {
 /** 凭据通过后的回调。可能要 await（要先问一次会话等级够不够）。 */
 type CredentialsDone = () => void | Promise<void>;
 
+/**
+ * 只有「这组邮箱密码对不上已有账号」才接着尝试注册。
+ * 网络、验证码、频率、邮箱未验证都停在登录失败，避免把一次故障再打成注册。
+ */
+function shouldCreateAccount(raw?: string): boolean {
+  const text = (raw || "").trim();
+  if (!text) return false;
+  if (/email not confirmed/i.test(text)) return false;
+  if (matchesAny(text, NETWORK_PATTERNS)) return false;
+  if (matchesAny(text, RATE_LIMIT_PATTERNS)) return false;
+  if (matchesAny(text, CAPTCHA_PATTERNS)) return false;
+  return /invalid login credentials/i.test(text) || /invalid_credentials/i.test(text) || /user not found/i.test(text);
+}
+
+const ALREADY_REGISTERED = /already (been )?registered|user already exists|email address.+already/i;
+
+function emailLooksValid(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function submitStyle(ready: boolean): { backgroundColor: string } {
+  return ready ? SUBMIT_READY_STYLE : SUBMIT_IDLE_STYLE;
+}
+
+function LegalNote({ tt }: { tt: UITranslate }) {
+  const template = tt("继续即表示你同意我们的{terms}，并已阅读{privacy}。");
+  const termsLabel = tt("服务条款");
+  const privacyLabel = tt("隐私政策");
+  const nodes: Array<string | ReactElement> = [];
+  const re = /\{(terms|privacy)\}/g;
+  let last = 0;
+  let match: RegExpExecArray | null = re.exec(template);
+  while (match) {
+    if (match.index > last) nodes.push(template.slice(last, match.index));
+    if (match[1] === "terms") {
+      nodes.push(
+        <a
+          key="terms"
+          href={AUTH_TERMS_HREF}
+          data-auth-terms=""
+          className="underline underline-offset-2 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-700"
+        >
+          {termsLabel}
+        </a>,
+      );
+    } else {
+      nodes.push(
+        <a
+          key="privacy"
+          href={AUTH_PRIVACY_HREF}
+          data-auth-privacy=""
+          className="underline underline-offset-2 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-700"
+        >
+          {privacyLabel}
+        </a>,
+      );
+    }
+    last = match.index + match[0].length;
+    match = re.exec(template);
+  }
+  if (last < template.length) nodes.push(template.slice(last));
+  return (
+    <p
+      data-auth-legal=""
+      className="mt-8 text-center text-[12px] leading-relaxed text-neutral-400"
+    >
+      {nodes}
+    </p>
+  );
+}
+
+function CaptchaBox({ onToken }: { onToken: (token: string | null) => void }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const onTokenRef = useRef(onToken);
+  onTokenRef.current = onToken;
+
+  useEffect(() => {
+    if (!isCaptchaConfigured()) {
+      onTokenRef.current(null);
+      return;
+    }
+    const el = hostRef.current;
+    if (!el) return;
+    return mountCheckboxCaptcha(el, (token) => {
+      onTokenRef.current(token);
+    });
+  }, []);
+
+  if (!isCaptchaConfigured()) return null;
+  return (
+    <div
+      ref={hostRef}
+      data-auth-captcha=""
+      className="flex w-full items-center justify-center"
+    />
+  );
+}
+
 function EmailForm({
   tt,
   onDone,
   onForgotPassword,
+  onStepChange,
 }: {
   tt: UITranslate;
   onDone: CredentialsDone;
   onForgotPassword: () => void;
+  onStepChange: (step: "identify" | "password") => void;
 }) {
+  const [step, setStep] = useState<"identify" | "password">("identify");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [pendingVerify, setPendingVerify] = useState(false);
+  const emailReady = emailLooksValid(email);
+  const captchaRequired =
+    currentDomainFamily() !== "cn" && isCaptchaConfigured();
+  const identifyReady = emailReady && (!captchaRequired || Boolean(captchaToken));
+  const passwordReady = password.trim().length >= 6;
+
+  function goIdentify() {
+    clearCaptchaToken();
+    setCaptchaToken(null);
+    setError("");
+    setPendingVerify(false);
+    setStep("identify");
+    onStepChange("identify");
+  }
+
+  function continueToPassword(e: FormEvent) {
+    e.preventDefault();
+    if (!identifyReady) return;
+    setError("");
+    setStep("password");
+    onStepChange("password");
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!passwordReady) return;
     setError("");
+    setPendingVerify(false);
     setLoading(true);
-    const result = await signIn(email, password);
+    const signed = await signIn(email, password);
+    if (!signed.error) {
+      setLoading(false);
+      setDone(true);
+      await onDone();
+      return;
+    }
+    if (!shouldCreateAccount(signed.error)) {
+      setLoading(false);
+      setError(tt(authErrorCopy("email", signed.error)));
+      return;
+    }
+    const created = await signUp(email, password);
     setLoading(false);
-    if (result.error) {
-      setError(tt(authErrorCopy("email", result.error)));
+    if (created.error) {
+      if (ALREADY_REGISTERED.test(created.error)) {
+        setError(tt(ERROR_COPY.badCredentials));
+        return;
+      }
+      setError(tt(authErrorCopy("email", created.error)));
+      return;
+    }
+    if (!created.data?.session) {
+      setPendingVerify(true);
       return;
     }
     setDone(true);
     await onDone();
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="email">
-      <div>
-        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700" htmlFor="oceanleo-auth-email">
-          {tt("邮箱")}
-        </label>
+  if (step === "identify") {
+    return (
+      <form onSubmit={continueToPassword} className="space-y-4" data-auth-form="email" data-auth-email-step="identify">
         <input
           id="oceanleo-auth-email"
           type="email"
@@ -584,38 +807,67 @@ function EmailForm({
           onChange={(e) => setEmail(e.target.value)}
           required
           className={FIELD_CLASS}
-          placeholder="your@email.com"
+          style={FIELD_STYLE}
+          placeholder={tt("输入你的邮箱地址")}
         />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700" htmlFor="oceanleo-auth-password">
-          {tt("密码")}
-        </label>
-        <input
-          id="oceanleo-auth-password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={6}
-          className={FIELD_CLASS}
-          placeholder={tt("至少 6 位")}
-        />
-      </div>
+        {captchaRequired ? <CaptchaBox onToken={setCaptchaToken} /> : null}
+        <button
+          type="submit"
+          data-auth-submit
+          data-auth-submit-ready={identifyReady ? "true" : "false"}
+          disabled={!identifyReady}
+          className={SUBMIT_CLASS}
+          style={submitStyle(identifyReady)}
+        >
+          {tt("继续")}
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4" data-auth-form="email" data-auth-email-step="password">
+      <p className="text-center text-[14px] text-neutral-500">{email}</p>
+      <input
+        id="oceanleo-auth-password"
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        minLength={6}
+        className={FIELD_CLASS}
+        style={FIELD_STYLE}
+        placeholder={tt("密码")}
+      />
       {error && <ErrorNote text={error} />}
+      {pendingVerify && <Notice text={tt("请查收验证邮件后再登录。")} />}
       {done && <Notice text={tt("登录成功")} />}
-      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
-        {loading ? <CaptchaBusyLabel tt={tt} /> : tt("登录")}
+      <button
+        type="submit"
+        data-auth-submit
+        data-auth-submit-ready={passwordReady && !loading ? "true" : "false"}
+        disabled={loading || !passwordReady}
+        className={SUBMIT_CLASS}
+        style={submitStyle(passwordReady)}
+      >
+        {loading ? <CaptchaBusyLabel tt={tt} /> : tt("继续")}
       </button>
-      {/* 忘了密码在这之前是绝路：整个共享登录组件里没有任何找回入口。 */}
       <button
         type="button"
         data-auth-forgot
         onClick={onForgotPassword}
-        className="w-full text-center text-[12px] text-neutral-500 underline-offset-2 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-800 hover:underline"
+        className="w-full text-center text-[13px] text-neutral-500 underline-offset-2 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-800 hover:underline"
       >
         {tt("忘记密码？")}
+      </button>
+      <button
+        type="button"
+        data-auth-back
+        onClick={goIdentify}
+        className="w-full text-center text-[13px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-neutral-800"
+      >
+        {tt("返回登录")}
       </button>
     </form>
   );
@@ -694,11 +946,12 @@ function ForgotPasswordForm({ tt, onBack }: { tt: UITranslate; onBack: () => voi
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className={FIELD_CLASS}
+          style={FIELD_STYLE}
           placeholder="your@email.com"
         />
       </div>
       {error && <ErrorNote text={error} />}
-      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
+      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
         {loading ? <CaptchaBusyLabel tt={tt} /> : tt("发送重置链接")}
       </button>
       <button
@@ -772,10 +1025,11 @@ function MfaChallengeForm({ tt, onDone }: { tt: UITranslate; onDone: () => void 
         onChange={(e) => setCode(e.target.value)}
         required
         className={`${FIELD_CLASS} text-center text-[18px] tracking-[0.4em] tabular-nums`}
+        style={FIELD_STYLE}
         placeholder={tt("6 位数字")}
       />
       {error && <ErrorNote text={error} />}
-      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
+      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
         {loading ? <ButtonSpinner label={tt("处理中...")} /> : tt("验证并登录")}
       </button>
     </form>
@@ -875,6 +1129,7 @@ function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: CredentialsDone })
           onChange={(e) => setPhone(e.target.value)}
           required
           className={FIELD_CLASS}
+          style={FIELD_STYLE}
           placeholder={tt("中国大陆手机号")}
         />
       </div>
@@ -893,6 +1148,7 @@ function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: CredentialsDone })
               onChange={(e) => setCode(e.target.value)}
               required
               className={FIELD_CLASS}
+              style={FIELD_STYLE}
               placeholder={tt("6 位验证码")}
             />
             <button
@@ -909,7 +1165,7 @@ function PhoneForm({ tt, onDone }: { tt: UITranslate; onDone: CredentialsDone })
       )}
       {error && <ErrorNote text={error} />}
       {!error && notice && <Notice text={notice} />}
-      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS}>
+      <button type="submit" disabled={loading} data-auth-submit className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
         {loading ? (
           <CaptchaBusyLabel tt={tt} />
         ) : sent ? (
@@ -968,18 +1224,49 @@ function WechatPanel({ tt, redirect }: { tt: UITranslate; redirect?: string }) {
   );
 }
 
+function OauthGlyph({ provider }: { provider: OauthProvider }) {
+  if (provider === "google") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+      </svg>
+    );
+  }
+  if (provider === "microsoft") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true">
+        <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+        <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+        <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+        <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M16.37 12.23c-.03-3.04 2.48-4.5 2.59-4.57-1.41-2.06-3.61-2.34-4.39-2.37-1.87-.19-3.65 1.1-4.6 1.1-.95 0-2.41-1.07-3.97-1.04-2.04.03-3.92 1.19-4.97 3.01-2.12 3.68-.54 9.13 1.52 12.11 1.01 1.46 2.21 3.1 3.79 3.04 1.52-.06 2.09-.98 3.93-.98 1.84 0 2.36.98 3.97.95 1.64-.03 2.68-1.49 3.68-2.96 1.16-1.69 1.64-3.33 1.67-3.41-.04-.02-3.2-1.23-3.23-4.88zM13.5 3.72c.84-1.02 1.4-2.43 1.25-3.84-1.21.05-2.67.8-3.54 1.82-.78.9-1.46 2.35-1.28 3.74 1.35.1 2.73-.69 3.57-1.72z"
+      />
+    </svg>
+  );
+}
+
 function OauthPanel({
   tt,
   provider,
   redirect,
 }: {
   tt: UITranslate;
-  provider: "google" | "apple";
+  provider: OauthProvider;
   redirect?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const label = provider === "google" ? "使用 Google 继续" : "使用 Apple 继续";
+  const label = OAUTH_CONTINUE[provider];
 
   async function go() {
     setError("");
@@ -994,8 +1281,7 @@ function OauthPanel({
   }
 
   return (
-    <div className="space-y-4 text-center" data-auth-form={provider}>
-      <p className="text-[13px] text-neutral-500">{tt(label)}</p>
+    <div className="space-y-2" data-auth-form={provider}>
       {error && (
         <div
           data-auth-error
@@ -1010,9 +1296,20 @@ function OauthPanel({
         data-auth-submit
         onClick={() => void go()}
         disabled={loading}
-        className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-800 active:scale-[0.99] disabled:opacity-60"
+        className="flex w-full items-center rounded-2xl bg-white py-3.5 pl-4 pr-4 text-[15px] font-medium text-neutral-900 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-50 active:scale-[0.99] disabled:opacity-60"
+        style={{ boxShadow: "0 1px 2px rgba(15,15,15,0.06), 0 0 0 1px rgba(15,15,15,0.08)" }}
       >
-        {loading ? <ButtonSpinner label={tt("跳转中...")} /> : tt(label)}
+        {loading ? (
+          <ButtonSpinner label={tt("跳转中...")} />
+        ) : (
+          <>
+            <span data-auth-oauth-mark="" className="flex w-8 shrink-0 items-center justify-start">
+              <OauthGlyph provider={provider} />
+            </span>
+            <span className="min-w-0 flex-1 text-center">{tt(label)}</span>
+            <span className="w-8 shrink-0" aria-hidden="true" />
+          </>
+        )}
       </button>
     </div>
   );

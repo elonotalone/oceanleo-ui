@@ -1,9 +1,10 @@
-// hCaptcha wiring for login / OTP / password reset (security-overhaul W4).
+// Turnstile wiring for international login (China sends no token).
 //
-// 判三件事，全是用户能不能登上去的：
-//   ① 脚本按家族选域：.cn → cn1.hcaptcha.com（apihost/endpoint 同域），其它 → js.hcaptcha.com，都带 render=explicit。
-//   ② window.hcaptcha 在 → token 进 options.captchaToken；不在 / 超时 → 调用照常发出且不抛（开关未开时不能把人挡在门外）。
-//   ③ 上游 captcha 报错翻成「安全验证没有通过，请重试」。
+// 判四件事，全是用户能不能登上去的：
+//   ① 海外脚本走 challenges.cloudflare.com/turnstile，render=explicit；国内不插脚本。
+//   ② 国内 isCaptchaConfigured 为假，getCaptchaToken 立即 null。
+//   ③ 可见框拿到的 token 进 options.captchaToken；没有 token 调用照常发出且不抛。
+//   ④ 上游 captcha 报错翻成「安全验证没有通过，请重试」。
 //
 // 跑法（不要 pnpm test：package.json 会先展开 tests/*.test.mjs 再跑全量）：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
@@ -25,32 +26,26 @@ import {
   CAPTCHA_FAILED_MESSAGE,
   CAPTCHA_LOAD_FAILED_MESSAGE,
   CAPTCHA_VERIFYING_MESSAGE,
-  HCAPTCHA_SITEKEY,
-  hcaptchaScriptSrc,
+  TURNSTILE_SITEKEY,
+  captchaEnabledForFamily,
   isCaptchaConfigured,
   mapCaptchaError,
+  turnstileScriptSrc,
 } from "../src/lib/auth/captcha.ts";
 
-test("sitekey 是公开值且 isCaptchaConfigured 为真", () => {
-  assert.equal(HCAPTCHA_SITEKEY, "f638949a-afa8-4142-8fbe-fb3abdeacf3a");
+test("sitekey 是公开值且海外 isCaptchaConfigured 为真、国内为假", () => {
+  assert.equal(TURNSTILE_SITEKEY, "0x4AAAAAAFK-cPFBHQyr7ke8");
+  assert.equal(captchaEnabledForFamily("com"), true);
+  assert.equal(captchaEnabledForFamily("ws"), true);
+  assert.equal(captchaEnabledForFamily("cn"), false);
   assert.equal(isCaptchaConfigured(), true);
 });
 
-test("edition=cn 用 cn1 域，query 带 render=explicit、apihost、endpoint", () => {
-  const src = hcaptchaScriptSrc("cn");
-  assert.match(src, /^https:\/\/cn1\.hcaptcha\.com\/1\/api\.js\?/);
+test("Turnstile 脚本走 challenges.cloudflare.com，explicit，不走 hCaptcha", () => {
+  const src = turnstileScriptSrc();
+  assert.match(src, /^https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?/);
   assert.match(src, /render=explicit/);
-  assert.match(src, /apihost=https%3A%2F%2Fcn1\.hcaptcha\.com/);
-  assert.match(src, /endpoint=https%3A%2F%2Fcn1\.hcaptcha\.com/);
-  assert.doesNotMatch(src, /js\.hcaptcha\.com/);
-});
-
-test("非 cn 用 js.hcaptcha.com，不带大陆接入点", () => {
-  const src = hcaptchaScriptSrc("com");
-  assert.match(src, /^https:\/\/js\.hcaptcha\.com\/1\/api\.js\?/);
-  assert.match(src, /render=explicit/);
-  assert.doesNotMatch(src, /cn1\.hcaptcha\.com/);
-  assert.doesNotMatch(src, /apihost=/);
+  assert.doesNotMatch(src, /hcaptcha/i);
 });
 
 test("mapCaptchaError 把 captcha 原文翻成可重试的人话", () => {
@@ -130,48 +125,138 @@ async function loadCaptchaModule(overrides = {}) {
   return import(url);
 }
 
-test("window.hcaptcha 存在时 getCaptchaToken 返回 token 且不抛", async () => {
-  installDom();
-  globalThis.hcaptcha = {
-    render() {
-      return "w1";
+function fakeContainer() {
+  return {
+    isConnected: true,
+    attrs: Object.create(null),
+    getAttribute(name) {
+      return this.attrs[name];
     },
-    async execute() {
-      return { response: "tok-present" };
+    setAttribute(name, value) {
+      this.attrs[name] = String(value);
+    },
+    removeAttribute(name) {
+      delete this.attrs[name];
+    },
+    replaceChildren() {},
+  };
+}
+
+function installTurnstile({ widgets, renders }) {
+  globalThis.turnstile = {
+    render(el, params) {
+      if (widgets.has(el)) {
+        throw new Error("Already rendered into this container");
+      }
+      renders.value += 1;
+      const id = `w${renders.value}`;
+      widgets.set(el, id);
+      queueMicrotask(() => {
+        if (typeof params?.callback === "function") params.callback(`tok-${id}`);
+      });
+      return id;
+    },
+    remove(id) {
+      for (const [el, wid] of [...widgets]) {
+        if (String(wid) === String(id)) widgets.delete(el);
+      }
     },
     reset() {},
   };
-  const { getCaptchaToken } = await loadCaptchaModule();
+}
+
+test("可见框给出 token 后 getCaptchaToken 把它交出去", async () => {
+  installDom();
+  const widgets = new Map();
+  const renders = { value: 0 };
+  installTurnstile({ widgets, renders });
+  const { mountCheckboxCaptcha, getCaptchaToken } = await loadCaptchaModule();
+  const container = fakeContainer();
+  let seen = null;
+  mountCheckboxCaptcha(container, (token) => {
+    seen = token;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(seen, "tok-w1");
   const token = await getCaptchaToken();
-  assert.equal(token, "tok-present");
+  assert.equal(token, "tok-w1");
+  const again = await getCaptchaToken();
+  assert.equal(again, null);
 });
 
-test("hCaptcha 不存在 / 超时：返回 null 且不抛", async () => {
+test("同一容器卸载再挂：不会二次 render", async () => {
+  installDom();
+  const widgets = new Map();
+  const renders = { value: 0 };
+  installTurnstile({ widgets, renders });
+  const { mountCheckboxCaptcha } = await loadCaptchaModule();
+  const container = fakeContainer();
+  const stopEarly = mountCheckboxCaptcha(container, () => {});
+  stopEarly();
+  const stopLive = mountCheckboxCaptcha(container, () => {});
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(widgets.size, 1);
+  assert.equal(renders.value, 1);
+  stopLive();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const stopAgain = mountCheckboxCaptcha(container, () => {});
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(widgets.size, 1);
+  assert.equal(renders.value, 2);
+  stopAgain();
+});
+
+test("模块状态丢失后同一容器仍能挂：凭 data-oceanleo-turnstile-id 先 remove", async () => {
+  installDom();
+  const widgets = new Map();
+  const renders = { value: 0 };
+  installTurnstile({ widgets, renders });
+  const container = fakeContainer();
+  const { mountCheckboxCaptcha: mountA } = await loadCaptchaModule();
+  mountA(container, () => {});
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(widgets.size, 1);
+  const { mountCheckboxCaptcha: mountB } = await loadCaptchaModule();
+  const stopB = mountB(container, () => {});
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(widgets.size, 1);
+  assert.equal(renders.value, 2);
+  stopB();
+});
+
+test("Turnstile 脚本超时：可见挂载回调 null 且不抛", async () => {
   const created = installDom({ fireScript: false });
-  delete globalThis.hcaptcha;
+  delete globalThis.turnstile;
   const familyStub = dataModule(`export function currentDomainFamily() { return "com"; }`);
-  const { getCaptchaToken, captchaConfig } = await loadCaptchaModule({
+  const { mountCheckboxCaptcha, captchaConfig } = await loadCaptchaModule({
     "../../contracts/domain-family": familyStub,
   });
   captchaConfig.loadTimeoutMs = 20;
-  const token = await getCaptchaToken();
-  assert.equal(token, null);
-  assert.ok(created.some((el) => /js\.hcaptcha\.com/.test(String(el.src || ""))));
+  let seen = "unset";
+  mountCheckboxCaptcha(fakeContainer(), (token) => {
+    seen = token;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(seen, null);
+  assert.ok(
+    created.some((el) => /challenges\.cloudflare\.com\/turnstile/.test(String(el.src || ""))),
+  );
 });
 
-test("edition=cn 时加载脚本走 cn1 域", async () => {
+test("国内 getCaptchaToken 立即 null，不插 Turnstile 脚本", async () => {
   const created = installDom({ fireScript: true });
-  delete globalThis.hcaptcha;
+  delete globalThis.turnstile;
   const familyStub = dataModule(`export function currentDomainFamily() { return "cn"; }`);
-  const { getCaptchaToken } = await loadCaptchaModule({
+  const { getCaptchaToken, isCaptchaConfigured } = await loadCaptchaModule({
     "../../contracts/domain-family": familyStub,
   });
-  // onload 回调触发后 API 仍缺 → null，但脚本 URL 必须是大陆接入点。
+  assert.equal(isCaptchaConfigured(), false);
   const token = await getCaptchaToken();
   assert.equal(token, null);
-  const script = created.find((el) => /hcaptcha/.test(String(el.src || "")));
-  assert.ok(script, "应当插入 hCaptcha 脚本");
-  assert.match(String(script.src), /cn1\.hcaptcha\.com/);
+  assert.equal(
+    created.filter((el) => /turnstile|hcaptcha/i.test(String(el.src || ""))).length,
+    0,
+  );
 });
 
 function configStub() {
@@ -280,6 +365,7 @@ test("AuthDialog 把 captcha 上游错误映射成可重试文案", async () => 
     "../lib/auth/client": dataModule(`
       export function oceanleoConfigured() { return true; }
       export async function signIn() { return {}; }
+      export async function signUp() { return {}; }
       export async function sendPhoneOtp() { return {}; }
       export async function verifyPhoneOtp() { return {}; }
       export async function wechatLoginUrl() { return {}; }

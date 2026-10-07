@@ -226,6 +226,8 @@ export interface SecuritySession {
   deviceLabel: string;
   /** 这台就是你现在用的。当前设备不给「退出这台」，要退就用「退出所有设备」。 */
   current: boolean;
+  /** 城市名。网关有才给；空字符串表示没有，界面不许编造。 */
+  location?: string;
 }
 
 export async function getSecuritySessions(): Promise<SecurityApiResult<SecuritySession[]>> {
@@ -248,6 +250,7 @@ export async function getSecuritySessions(): Promise<SecurityApiResult<SecurityS
         ipMasked: maskIp(r.ip_masked),
         deviceLabel: deviceLabel(r.device_label),
         current: r.current === true,
+        location: str(r.location),
       };
     }),
   };
