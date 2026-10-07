@@ -252,6 +252,8 @@ test("首屏：头部、交易卡、消息；文件只认 https、新窗口打�
   assert.ok(!view.host.innerHTML.includes("talent.oceanleo.com"));
   assert.ok(!view.host.textContent.includes("在 talent 打开"));
   assert.ok(view.q("[data-deal-composer]"), "没签约时有输入框");
+  assert.equal(view.q("[data-bay-deal-thread]").getAttribute("data-bay-deal-thread"), "t1");
+  assert.ok(view.q("[data-bay-deal-composer][data-composer-input]"), "交易输入框有独立标记，保留 data-composer-input");
   assert.equal(view.q('[data-action="toggle-offer"]'), null, "买家看不到发报价");
   assert.ok(view.q('[data-offer-action="accept"]'), "买家能接受报价");
   await view.unmount();
@@ -354,6 +356,8 @@ test("会话不存在 / 没登录 / 非法 id 的状态", async () => {
   reset();
   view = await mount({ threadId: "../etc", layout: "docked" });
   assert.equal(view.q("[data-deal-view]").getAttribute("data-deal-view"), "invalid");
+  assert.ok(view.q("[data-bay-deal-thread]"), "无效 id 仍有 data-bay-deal-thread");
+  assert.equal(view.q("[data-bay-deal-thread]").getAttribute("data-bay-deal-thread"), "");
   assert.equal(W.calls.length, 0, "非法 id 不发请求");
   await view.unmount();
 });

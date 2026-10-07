@@ -169,6 +169,7 @@ export function DealComposer({
           placeholder={tt("写点什么…")}
           aria-label={tt("消息内容")}
           data-composer-input
+          data-bay-deal-composer
           className="max-h-32 min-h-[38px] min-w-0 flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[14px] text-neutral-900"
         />
         <button

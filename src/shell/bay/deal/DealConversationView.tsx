@@ -226,7 +226,11 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
 
   if (!validId) {
     return (
-      <div data-deal-view="invalid" className="flex h-full items-center justify-center p-6 text-[13px] text-neutral-500">
+      <div
+        data-deal-view="invalid"
+        data-bay-deal-thread=""
+        className="flex h-full items-center justify-center p-6 text-[13px] text-neutral-500"
+      >
         {tt("这个会话打不开。")}
       </div>
     );
@@ -433,7 +437,11 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
   );
 
   return (
-    <div data-deal-view={layout} className="flex h-full min-h-0 flex-col bg-white text-neutral-900">
+    <div
+      data-deal-view={layout}
+      data-bay-deal-thread={threadId}
+      className="flex h-full min-h-0 flex-col bg-white text-neutral-900"
+    >
       {header}
       {wide ? (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
