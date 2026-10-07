@@ -110,7 +110,11 @@ const SOURCE = {
   payNow: "去付款 · {price}",
 };
 
-export const BAY_SUPPLY_MESSAGES = assembleCopy(SOURCE, {
+const PUBLIC_SOURCE = {
+  vettingExpired: "核验已过期",
+};
+
+const BAY_SUPPLY_CORE = assembleCopy(SOURCE, {
   "zh-TW": {
     priceNegotiable: "面議",
     priceFrom: "{price} 起",
@@ -1824,3 +1828,29 @@ export const BAY_SUPPLY_MESSAGES = assembleCopy(SOURCE, {
     payNow: "Thanh toán · {price}",
   },
 });
+
+const BAY_SUPPLY_PUBLIC = assembleCopy(PUBLIC_SOURCE, {
+  "zh-TW": { vettingExpired: "核驗已過期" },
+  en: { vettingExpired: "Verification expired" },
+  ja: { vettingExpired: "確認の有効期限切れ" },
+  ko: { vettingExpired: "검증 만료" },
+  fr: { vettingExpired: "Vérification expirée" },
+  de: { vettingExpired: "Prüfung abgelaufen" },
+  it: { vettingExpired: "Verifica scaduta" },
+  es: { vettingExpired: "Verificación caducada" },
+  "es-419": { vettingExpired: "Verificación vencida" },
+  "pt-BR": { vettingExpired: "Verificação vencida" },
+  "pt-PT": { vettingExpired: "Verificação expirada" },
+  ar: { vettingExpired: "انتهت صلاحية التحقق" },
+  hi: { vettingExpired: "सत्यापन समाप्त" },
+  th: { vettingExpired: "การยืนยันหมดอายุ" },
+  tr: { vettingExpired: "Doğrulama süresi doldu" },
+  vi: { vettingExpired: "Xác minh đã hết hạn" },
+});
+
+export const BAY_SUPPLY_MESSAGES = Object.fromEntries(
+  (Object.keys(BAY_SUPPLY_CORE) as Array<keyof typeof BAY_SUPPLY_CORE>).map((locale) => [
+    locale,
+    { ...BAY_SUPPLY_CORE[locale], ...BAY_SUPPLY_PUBLIC[locale] },
+  ]),
+) as typeof BAY_SUPPLY_CORE;
