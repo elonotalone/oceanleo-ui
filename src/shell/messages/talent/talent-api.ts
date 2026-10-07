@@ -141,7 +141,7 @@ export function offerActionsFor(offer: Pick<TalentOffer, "state" | "from_user_id
   return { accept: pending && toMe, decline: pending && toMe, withdraw: pending && mine };
 }
 
-// ---- 交易会话在 Bay 打开 ---------------------------------------------------------
+// ---- 交易会话在 LeoBay 打开 ---------------------------------------------------------
 
 /** 站内 `/bay?bay=conversation:`；境内没有 Bay，不给链接。 */
 export function talentThreadUrl(threadId: string): string | null {

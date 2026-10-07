@@ -1,7 +1,7 @@
 "use client";
 
 // Bay 的详情：按当前目标渲染需求、供给、交易、订单、卖家几块的窗格；交易会话用 DealConversationView；
-// 「我的」五个分区；设置交给共用设置窗。
+// 「我的」四个分区；设置交给共用设置窗。
 // 浮窗里（BayDetail）顶上一条返回栏，返回滑回列表。/bay 页的返回键与标题在页头那一行（见 BayPage），
 // 页面只取这里的正文（BayDetailPane），所以页面上不会出现两个返回键、两个标题。
 import type { ReactNode } from "react";
@@ -26,8 +26,8 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
   profile: "用户主页",
   order: "订单详情",
   conversation: "交易会话",
-  "post-need": "发需求",
-  "call-human": "叫真人",
+  "post-need": "找人帮忙",
+  "call-human": "找人帮忙",
   propose: "报价",
   checkout: "下单",
   "service-editor": "发布服务",

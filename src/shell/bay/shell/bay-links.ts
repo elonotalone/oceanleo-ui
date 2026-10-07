@@ -8,6 +8,7 @@ import type { BayMineTab, BayTarget } from "./bay-state";
 
 export const BAY_PARAM = "bay";
 export const BAY_MINE_TABS: readonly BayMineTab[] = ["needs", "proposals", "services", "orders", "help"];
+export const BAY_MINE_UI_TABS: readonly BayMineTab[] = ["needs", "proposals", "services", "orders"];
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
 export const BAY_FEED_KINDS: readonly ("all" | "demand" | "service" | "help" | "consult")[] = [
   "all",

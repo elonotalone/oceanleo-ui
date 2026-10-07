@@ -1,10 +1,15 @@
 // 消息浮层的开合状态（work-chat 契约 §8.3）。纯 TS：不碰 DOM 全局，浏览器能力经 HostEnv 注入，
 // 所以 tests/im-host-state.test.mjs 能用假的 history/location 跑真实实现。
 //
+// 关掉浮层时记住栏目和会话（`oceanleo:leochat:last`）；再开或刷新后停在原处。
+// 整页 `/leochat` 或 `/bay` 在场时不弹小窗：`open()` 把请求交给整页，`applyLocation` 不消费深链。
+//
 // 深链：任何站 `?im=<会话 id>`（可带 `&im_seq=<seq>`）、`?im=inbox`、`?im=people`、`?im_invite=<code>`。
 // 浮层不是路由：侧栏打开不写 `?im=`。带着深链进来时 applyLocation 打开一次，随后 replaceState 清掉。
 // 切页由外壳 closeMessages，不把 `?im=` 带到下一页。
 import { useSyncExternalStore } from "react";
+import { isLeoChatPagePath } from "../leochat/leochat-links";
+import { leoChatPageMounted, sendLeoChatPageRequest } from "../leochat/page-presence";
 
 export type MessagesView = "inbox" | "people" | "bay";
 export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people", "bay"];
@@ -41,6 +46,7 @@ export const IM_INVITE_PARAM = "im_invite";
 export const IM_OPEN_EVENT = "oceanleo:im-open";
 export const DOCK_WIDTH_KEY = "oceanleo:im:dock-width";
 export const OVERLAY_OFFSET_KEY = "oceanleo:im:overlay-offset";
+export const LAST_VIEW_KEY = "oceanleo:leochat:last";
 export const DOCK_MIN = 360;
 export const DOCK_MAX = 720;
 export const DOCK_DEFAULT = 420;
@@ -213,10 +219,26 @@ export function createHostState(env: HostEnv): HostState {
     }
   })();
 
+  const storedLast = (() => {
+    try {
+      const raw = env.storage?.getItem(LAST_VIEW_KEY);
+      if (!raw) return { view: "inbox" as MessagesView, conversationId: null as string | null };
+      const value = JSON.parse(raw) as { view?: unknown; conversationId?: unknown };
+      const view =
+        typeof value?.view === "string" && (MESSAGES_VIEWS as readonly string[]).includes(value.view)
+          ? (value.view as MessagesView)
+          : "inbox";
+      const conversationId = typeof value?.conversationId === "string" ? value.conversationId : null;
+      return { view, conversationId };
+    } catch {
+      return { view: "inbox" as MessagesView, conversationId: null as string | null };
+    }
+  })();
+
   let s: Internal = {
     open: false,
-    conversationId: null,
-    view: "inbox",
+    conversationId: storedLast.conversationId,
+    view: storedLast.view,
     filter: "all",
     highlightSeq: null,
     inviteCode: null,
@@ -245,12 +267,22 @@ export function createHostState(env: HostEnv): HostState {
     };
   }
 
+  function persistLast(view: MessagesView, conversationId: string | null): void {
+    try {
+      env.storage?.setItem(LAST_VIEW_KEY, JSON.stringify({ view, conversationId }));
+    } catch {
+      /* 隐私模式 */
+    }
+  }
+
   function commit(patch: Partial<Internal>): void {
     const next = { ...s, ...patch };
     const changed = (Object.keys(next) as (keyof Internal)[]).some((key) => next[key] !== s[key]);
     if (!changed) return;
+    const lastChanged = next.view !== s.view || next.conversationId !== s.conversationId;
     s = next;
     snapshot = derive(s);
+    if (lastChanged) persistLast(s.view, s.conversationId);
     for (const listener of Array.from(listeners)) listener();
   }
 
@@ -276,17 +308,30 @@ export function createHostState(env: HostEnv): HostState {
     }
   }
 
+  function resolveOpen(target: MessagesTarget): { view: MessagesView; conversationId: string | null } {
+    if (target.conversationId) return { view: "inbox", conversationId: target.conversationId };
+    if (target.view) return { view: target.view, conversationId: s.conversationId };
+    return { view: s.view, conversationId: s.conversationId };
+  }
+
   function open(target: MessagesTarget = {}): void {
     if (!s.enabled) return;
+    const resolved = resolveOpen(target);
+    if (leoChatPageMounted()) {
+      const accepted = sendLeoChatPageRequest({
+        tab: resolved.view,
+        conversationId: resolved.conversationId,
+        seq: target.seq ?? null,
+      });
+      if (accepted) return;
+    }
     const wasOpen = s.open;
-    const conversationId = target.conversationId ?? null;
-    const view: MessagesView = conversationId ? "inbox" : target.view ?? (wasOpen ? s.view : "inbox");
     commit({
       open: true,
-      conversationId,
-      view,
-      filter: target.filter ?? (wasOpen ? s.filter : "all"),
-      highlightSeq: conversationId && typeof target.seq === "number" ? target.seq : null,
+      conversationId: resolved.conversationId,
+      view: resolved.view,
+      filter: target.filter ?? s.filter,
+      highlightSeq: resolved.conversationId && typeof target.seq === "number" ? target.seq : null,
       inviteCode: wasOpen ? s.inviteCode : null,
     });
     // 浮层不是页面：侧栏打开不写 ?im=inbox。地址栏只在进来时带着深链，applyLocation 消费后清掉。
@@ -294,17 +339,18 @@ export function createHostState(env: HostEnv): HostState {
 
   function close(): void {
     if (!s.open) return;
-    commit({ open: false, conversationId: null, highlightSeq: null, inviteCode: null, view: "inbox" });
+    commit({ open: false, highlightSeq: null, inviteCode: null });
     stripUrl();
   }
 
   function applyLocation(closeIfMissing = true): void {
     // 前进/后退以地址栏为准。深链只用来打开一次，随后从地址栏清掉，浮层不是路由。
     const loc = env.getLocation();
+    if (isLeoChatPagePath(loc.pathname)) return;
     const link = parseImDeepLink(loc.search);
     if (link.kind === "none") {
       if (s.open && closeIfMissing) {
-        commit({ open: false, conversationId: null, highlightSeq: null, inviteCode: null, view: "inbox" });
+        commit({ open: false, highlightSeq: null, inviteCode: null });
       }
       return;
     }
@@ -334,7 +380,7 @@ export function createHostState(env: HostEnv): HostState {
       commit({ enabled });
       if (enabled) applyLocation(false);
       else if (s.open) {
-        commit({ open: false, conversationId: null, highlightSeq: null, inviteCode: null, view: "inbox" });
+        commit({ open: false, highlightSeq: null, inviteCode: null });
       }
     },
     setExpanded(expanded) {
@@ -343,7 +389,7 @@ export function createHostState(env: HostEnv): HostState {
     setView(view) {
       if (!s.open) return;
       if (!MESSAGES_VIEWS.includes(view)) return;
-      commit({ view, conversationId: view === "inbox" ? s.conversationId : null, highlightSeq: null });
+      commit({ view });
     },
     setFilter(filter) {
       if (!INBOX_FILTER_IDS.includes(filter)) return;

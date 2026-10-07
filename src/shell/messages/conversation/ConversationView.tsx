@@ -3,6 +3,7 @@
 // 会话：消息流、输入框、线程、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { ImApiError } from "../../../lib/im/client";
 import { messagesApi } from "../../../lib/im/messages-api";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { Composer } from "../composer/Composer";
@@ -25,6 +26,11 @@ export interface ConversationViewProps {
   onBack?: () => void;
   onOpenInfo?: () => void;
   highlightSeq?: number | null;
+  /**
+   * 这条会话当前这个人打不开（不存在，或不是成员）。LeoChat 会记住上次停在哪条会话，
+   * 换了账号、被移出群之后那条记录就失效了：调用方据此退回列表，而不是停在一块空白上。
+   */
+  onUnavailable?: () => void;
 }
 
 // ── 我是谁（整个页面只问一次）─────────────────────────────────────────────
@@ -57,13 +63,18 @@ export function useViewerId(): string | null {
 }
 
 /** 会话详情（成员、角色、leo 开关）；成员变化 / 会话更新时重新取。 */
-function useConversationDetail(conversationId: string): ImConversationDetail | null {
+function useConversationDetail(conversationId: string, onUnavailable?: () => void): ImConversationDetail | null {
   const [detail, setDetail] = useState<ImConversationDetail | null>(null);
+  const unavailableRef = useRef(onUnavailable);
+  unavailableRef.current = onUnavailable;
   const load = useCallback(() => {
     void messagesApi
       .getConversation(conversationId)
       .then(setDetail)
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        // 断网、超时不算：只有服务端明说「没有这条」或「你不在里面」才退回列表。
+        if (error instanceof ImApiError && (error.status === 403 || error.status === 404)) unavailableRef.current?.();
+      });
   }, [conversationId]);
   useEffect(() => {
     setDetail(null);
@@ -109,10 +120,10 @@ function useProfileMap(
   return useMemo(() => ({ ...extra, ...base }), [extra, base]);
 }
 
-export function ConversationView({ conversationId, layout, onBack, onOpenInfo, highlightSeq = null }: ConversationViewProps) {
+export function ConversationView({ conversationId, layout, onBack, onOpenInfo, highlightSeq = null, onUnavailable }: ConversationViewProps) {
   const tt = useUI();
   const viewerId = useViewerId();
-  const conversation = useConversationDetail(conversationId);
+  const conversation = useConversationDetail(conversationId, onUnavailable);
 
   const store = useMemo(
     () => (viewerId ? getConversationStore({ api: messagesApi, conversationId, viewerId }) : null),

@@ -19,15 +19,15 @@ import { PersonAvatar, PresenceDot } from "../groups/GroupAvatar";
 import { useImEvent, usePresence } from "../realtime/hooks";
 
 export interface ContactListProps {
+  query: string;
   onOpenProfile: (userId: string) => void;
   onOpenConversation: (conversationId: string) => void;
 }
 
 const PRESENCE_COPY: Record<ImPresence, string> = { online: "在线", away: "离开", offline: "离线" };
 
-export function ContactList({ onOpenProfile, onOpenConversation }: ContactListProps) {
+export function ContactList({ query, onOpenProfile, onOpenConversation }: ContactListProps) {
   const tt = useUI();
-  const [query, setQuery] = useState("");
   const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const contacts = useLoader(listContacts, []);
@@ -70,7 +70,7 @@ export function ContactList({ onOpenProfile, onOpenConversation }: ContactListPr
             <PersonAvatar name={p.display_name} src={p.avatar_url} seed={p.user_id} size={36} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] text-neutral-900">{p.display_name}</span>
+            <span className="block truncate text-[13px] font-semibold tracking-tight">{p.display_name}</span>
             <span className="flex items-center gap-1.5 text-[12px] text-neutral-500">
               <PresenceDot presence={state} />
               {tt(PRESENCE_COPY[state])}
@@ -82,7 +82,7 @@ export function ContactList({ onOpenProfile, onOpenConversation }: ContactListPr
           type="button"
           onClick={() => chat(p.user_id)}
           data-action="dm"
-          className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-white"
+          className="rounded-lg px-2 py-1 text-[12px] text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
         >
           {tt("私聊")}
         </button>
@@ -91,7 +91,7 @@ export function ContactList({ onOpenProfile, onOpenConversation }: ContactListPr
             type="button"
             onClick={() => setRemoving({ id: p.user_id, name: p.display_name })}
             data-action="remove-contact"
-            className="rounded-lg px-2 py-1 text-[12px] text-neutral-400 hover:text-red-600"
+            className="rounded-lg px-2 py-1 text-[12px] text-neutral-500 hover:bg-neutral-100 hover:text-red-600"
           >
             {tt("删除")}
           </button>
@@ -102,16 +102,6 @@ export function ContactList({ onOpenProfile, onOpenConversation }: ContactListPr
 
   return (
     <div className="flex min-h-0 flex-col" data-contact-list>
-      <div className="px-3 pb-2">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={tt("按名字搜索")}
-          aria-label={tt("搜索")}
-          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
-        />
-      </div>
       {note && (
         <p role="status" className="px-3 pb-2 text-[12px] text-red-600">
           {note}
@@ -125,7 +115,7 @@ export function ContactList({ onOpenProfile, onOpenConversation }: ContactListPr
               ? tt("加载中…")
               : query.trim()
                 ? tt("没有找到。")
-                : tt("还没有联系人。生成一个邀请链接发给朋友吧。")}
+                : tt("还没有联系人。点右上角的 + 添加。")}
           </p>
         ) : (
           <ul data-contacts>{sorted.map((c) => row({ ...c.profile, user_id: c.user_id }, "", true))}</ul>

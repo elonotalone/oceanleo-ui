@@ -272,7 +272,7 @@ test("接受报价：先过买家条款，再接受；付款没就绪写「付�
   assert.equal(view.q('[data-action="pay"]'), null);
   assert.match(view.q("[data-deal-notice]").textContent, /报价已被接受，订单已生成。/);
   await view.click("[data-deal-card]");
-  assert.deepEqual(W.openBay.at(-1), { kind: "order", id: "c1" }, "点交易卡在 Bay 里打开订单");
+  assert.deepEqual(W.openBay.at(-1), { kind: "order", id: "c1" }, "点交易卡在 LeoBay 里打开订单");
   await view.unmount();
 });
 
@@ -362,7 +362,7 @@ test("会话不存在 / 没登录 / 非法 id 的状态", async () => {
   await view.unmount();
 });
 
-test("openTradeThread：没登录走登录、不发请求；登录后找或建会话并在 Bay 里打开", async () => {
+test("openTradeThread：没登录走登录、不发请求；登录后找或建会话并在 LeoBay 里打开", async () => {
   reset();
   W.signedIn = false;
   await openTradeThread({ kind: "service", subjectRef: "s1" });

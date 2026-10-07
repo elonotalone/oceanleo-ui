@@ -8,6 +8,8 @@ import test from "node:test";
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+globalThis.React = React;
+
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -107,6 +109,32 @@ const pickerStub = dataModule(`
     return globalThis.__bayPicked ?? null;
   }
 `);
+const uiBarrelStub = dataModule(`
+  const R = globalThis.React;
+  export function Modal({ children }){ return children; }
+  export function Select({ options, value, onChange }){
+    const current = (options || []).find((row) => row.id === value);
+    return R.createElement(
+      "div",
+      null,
+      R.createElement("button", { type: "button", "data-select-value": value || "" }, current && current.label ? current.label : "请选择"),
+      (options || []).map((row) =>
+        R.createElement(
+          "button",
+          {
+            key: row.id,
+            type: "button",
+            "data-select-option": row.id,
+            "data-bay-category": row.id,
+            "aria-checked": row.id === value ? "true" : "false",
+            onClick: () => onChange(row.id),
+          },
+          row.label,
+        ),
+      ),
+    );
+  }
+`);
 
 const stubs = {
   "../../../i18n/ui/useUI": uiStub,
@@ -117,6 +145,7 @@ const stubs = {
   "../settings": settingsStub,
   "../../../contracts/domain-family": domainStub,
   "../../../ui/Toast": toastStub,
+  "../../../ui": uiBarrelStub,
   "../../../lib/money": moneyStub,
   "./LibraryWorkPicker": pickerStub,
 };
@@ -124,6 +153,7 @@ const stubs = {
 const { CallHumanPane } = await import(await compileModule("src/shell/bay/needs/CallHumanPane.tsx", stubs));
 const { HelpRequestPane } = await import(await compileModule("src/shell/bay/needs/HelpRequestPane.tsx", stubs));
 const { MyHelpRequestsPane } = await import(await compileModule("src/shell/bay/needs/MyHelpRequestsPane.tsx", stubs));
+const { MyNeedsPane } = await import(await compileModule("src/shell/bay/needs/MyNeedsPane.tsx", stubs));
 const handoffCtx = await import(await compileModule("src/shell/bay/needs/handoff-context.tsx", stubs));
 const talent = await import(await compileModule("src/api/talent-handoff.ts", { "../lib/agent": agentStub, "../lib/money": moneyStub }));
 
@@ -248,7 +278,7 @@ test("叫真人：未登录点提交走登录；登录后请求体带 posted_sit
   reset();
   globalThis.__baySignedIn = false;
   const guest = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
-  await guest.type("[data-bay-handoff-brief]", "海报改一下层次和字号");
+  await guest.type("[data-bay-help-text]", "海报改一下层次和字号");
   await guest.click("[data-bay-submit]");
   assert.equal(globalThis.__bayLoginAsked, 1);
   assert.equal(globalThis.__bayHttpCalls.filter((call) => call.method === "POST").length, 0);
@@ -257,8 +287,9 @@ test("叫真人：未登录点提交走登录；登录后请求体带 posted_sit
   reset();
   globalThis.__bayPicked = { kind: "task", id: "task-9" };
   const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
+  await view.click("[data-bay-help-more]");
   await view.click("[data-bay-pick-work]");
-  await view.type("[data-bay-handoff-brief]", "海报改一下层次和字号");
+  await view.type("[data-bay-help-text]", "海报改一下层次和字号");
   await view.click("[data-bay-submit]");
   assert.deepEqual(globalThis.__bayTermsAsked, ["buyer"]);
   const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
@@ -285,7 +316,7 @@ test("任务页叫真人：自动带当前任务，逐条勾选，默认一条�
   assert.ok(view.host.querySelector('[data-bay-handoff-pick="message:7"]'));
   assert.equal(view.host.querySelector('[data-bay-handoff-pick="message:7"]').checked, false);
   await view.click('[data-bay-handoff-pick="message:7"]');
-  await view.type("[data-bay-handoff-brief]", "封面层次再压一压");
+  await view.type("[data-bay-help-text]", "封面层次再压一压");
   await view.click("[data-bay-submit]");
   const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
   assert.equal(created.body.origin_kind, "conversation");
@@ -314,7 +345,7 @@ test("求助详情：勾选内容纯文本、去处理异站显示、认领先�
   await same.unmount();
 });
 
-test("未登录看求助走登录；我的求助点开 Bay", async () => {
+test("未登录看求助走登录；我发出的里求助行点开 Bay", async () => {
   reset();
   globalThis.__baySignedIn = false;
   const guest = await mount(React.createElement(HelpRequestPane, { target: { kind: "help", id: "h1" }, layout: "docked", siteKey: "design" }));
@@ -322,7 +353,7 @@ test("未登录看求助走登录；我的求助点开 Bay", async () => {
   await guest.unmount();
 
   reset();
-  const mine = await mount(React.createElement(MyHelpRequestsPane, { target: { kind: "mine", tab: "help" }, layout: "docked", siteKey: "design" }));
+  const mine = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "needs" }, layout: "docked", siteKey: "design" }));
   await mine.click("[data-bay-my-help-row='h1']");
   assert.deepEqual(globalThis.__bayOpened, [{ kind: "help", id: "h1" }]);
   await mine.unmount();

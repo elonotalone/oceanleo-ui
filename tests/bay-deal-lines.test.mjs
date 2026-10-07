@@ -50,7 +50,7 @@ test("每个事件都有文案与动作映射，文案互不相同", () => {
   assert.equal(lines.dealLineText(fakeTT, "no.such.event"), null);
 });
 
-test("动作目标：订单 / 需求 / 求助在 Bay 打开，项目群在消息窗打开，资料与核验去设置", () => {
+test("动作目标：订单 / 需求 / 求助在 LeoBay 打开，项目群在消息窗打开，资料与核验去设置", () => {
   const order = lines.resolveDealLine(fakeTT, { body: "x", meta: { event: "payment.held", contract_id: "c_1" } });
   assert.deepEqual(order.action, { kind: "order", label: "查看订单", target: { kind: "order", id: "c_1" } });
 

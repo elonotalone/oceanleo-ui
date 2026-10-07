@@ -471,7 +471,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       setHiddenMessage(hidden ? result.moderation_message || "" : "");
       setRejection("");
       setDirty(false);
-      toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("服务已上架，买家现在能在 Bay 里看到它"));
+      toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("服务已上架，买家现在能在 LeoBay 里看到它"));
     } catch (error) {
       reportFailure(error, tt("上架没有通过，请按提示修改后再试。"));
     } finally {
@@ -682,7 +682,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         return (
           <section className="space-y-4" data-bay-step="publish">
             <div>
-              <p className="mb-2 text-[12px] font-semibold text-stone-500">{tt("买家在 Bay 列表里看到的样子")}</p>
+              <p className="mb-2 text-[12px] font-semibold text-stone-500">{tt("买家在 LeoBay 列表里看到的样子")}</p>
               <ServiceCard item={previewFeedItem(draft, { profile, siteKey: postedSite, currency, model: selectedModel })} onOpen={() => {}} />
               <TierPreview draft={draft} currency={currency} />
             </div>

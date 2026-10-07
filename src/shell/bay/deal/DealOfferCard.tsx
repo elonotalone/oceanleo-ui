@@ -1,7 +1,7 @@
 "use client";
 
 // 会话里的一份报价：价格、天数、修改次数、范围。收到的人能接受 / 拒绝，发出的人能撤回，只在等待回复时。
-// 接受后显示「订单已生成」和「查看订单」（在 Bay 里打开）；这里没有付款按钮。内容一律当纯文字。
+// 接受后显示「订单已生成」和「查看订单」（在 LeoBay 里打开）；这里没有付款按钮。内容一律当纯文字。
 
 import { useUI, type UITranslate } from "../../../i18n/ui/useUI";
 import { offerPermissions, type DealOffer, type DealOfferAction, type DealOfferState } from "../../../lib/bay/threads";

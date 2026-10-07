@@ -9,6 +9,8 @@ import test from "node:test";
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+globalThis.React = React;
+
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -92,7 +94,32 @@ const toastStub = dataModule(`
   };
   export function useToast(){ return api; }
 `);
-const uiBarrelStub = dataModule(`export function Modal({ children }){ return children; }`);
+const uiBarrelStub = dataModule(`
+  const R = globalThis.React;
+  export function Modal({ children }){ return children; }
+  export function Select({ options, value, onChange }){
+    const current = (options || []).find((row) => row.id === value);
+    return R.createElement(
+      "div",
+      null,
+      R.createElement("button", { type: "button", "data-select-value": value || "" }, current && current.label ? current.label : "请选择"),
+      (options || []).map((row) =>
+        R.createElement(
+          "button",
+          {
+            key: row.id,
+            type: "button",
+            "data-select-option": row.id,
+            "data-bay-category": row.id,
+            "aria-checked": row.id === value ? "true" : "false",
+            onClick: () => onChange(row.id),
+          },
+          row.label,
+        ),
+      ),
+    );
+  }
+`);
 const pickerStub = dataModule(`
   export function LibraryWorkPickerHost(){ return null; }
   export async function pickLibraryWork(){
@@ -187,8 +214,7 @@ const paneProps = (siteKey, category) => ({
 });
 
 async function fillRequired(view) {
-  await view.type("[data-bay-demand-editor] input", "给新品做一份演示稿");
-  await view.type("[data-bay-demand-editor] textarea", "需要十五页，含财务预测和英文版说明文字。");
+  await view.type("[data-bay-help-text]", "给新品做一份演示稿\n需要十五页，含财务预测和英文版说明文字。");
 }
 
 test("目标不是发需求时什么都不画", () => {
@@ -217,7 +243,7 @@ test("类目按站预选；门户为空；答疑类目不出现", async () => {
   reset();
   const portal = await mount(React.createElement(PostNeedPane, paneProps("oceanleo")));
   assert.equal(portal.host.querySelector('[data-bay-category][aria-checked="true"]'), null);
-  assert.match(portal.host.textContent, /先选一个类目/);
+  assert.match(portal.host.textContent, /请选择/);
   await portal.unmount();
 });
 
@@ -225,7 +251,7 @@ test("未登录点发布只弹登录，不发请求、不过条款", async () =>
   reset();
   globalThis.__baySignedIn = false;
   const view = await mount(React.createElement(PostNeedPane, paneProps("ppt")));
-  assert.match(view.host.textContent, /登录后才能发需求/);
+  assert.match(view.host.textContent, /登录后才能找人帮忙/);
   await fillRequired(view);
   await view.click("[data-bay-submit]");
   assert.equal(globalThis.__bayLoginAsked, 1);
@@ -239,7 +265,8 @@ test("发布请求体带 posted_site 与 attached_work；先过买家条款", as
   globalThis.__bayPicked = { kind: "task", id: "task-9" };
   const view = await mount(React.createElement(PostNeedPane, paneProps("ppt")));
   await fillRequired(view);
-  await view.click("[data-bay-attach-work] button");
+  await view.click("[data-bay-help-more]");
+  await view.click("[data-bay-pick-work]");
   assert.equal(globalThis.__bayPickAsked, 1);
   await view.click("[data-bay-submit]");
   assert.deepEqual(globalThis.__bayTermsAsked, ["buyer"]);

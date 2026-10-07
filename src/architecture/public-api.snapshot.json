@@ -6316,6 +6316,10 @@
         },
         {
           "kind": "star",
+          "source": "./leochat"
+        },
+        {
+          "kind": "star",
           "source": "./local-task-client"
         },
         {

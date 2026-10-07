@@ -93,6 +93,9 @@ function reset() {
     if (method === "GET" && String(path).startsWith("/v1/talent/proposals/mine")) {
       return { items: [{ id: "p1", demand_id: "d1", price_fen: 80000, currency: "CNY", status: "pending", created_at: new Date().toISOString(), demand: { id: "d1", title: "做一份路演稿", status: "open", category: "doc", posted_site: "ppt" } }], next_cursor: null };
     }
+    if (method === "GET" && String(path).startsWith("/v1/talent/handoffs/mine")) {
+      return { items: [], next_cursor: null };
+    }
     return {};
   };
 }

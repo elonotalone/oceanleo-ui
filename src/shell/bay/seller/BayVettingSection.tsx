@@ -1,6 +1,6 @@
 "use client";
 
-// 设置里「OceanLeo Bay」的资质审核：提交材料、看进度、被拒后申诉。按窄宽度排版。
+// 设置里「LeoBay」的资质审核：提交材料、看进度、被拒后申诉。按窄宽度排版。
 // 医疗、法律、宠物医疗不出现。不收证件照片、身份证号。申诉不带正文。
 
 import { useCallback, useEffect, useState } from "react";

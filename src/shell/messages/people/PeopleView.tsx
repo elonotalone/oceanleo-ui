@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { listContactRequests, listGroupInvites, useLoader } from "../../../lib/im/people-api";
-import { NewConversationDialog } from "../groups/NewConversationDialog";
+import { PanelToolbar } from "../../leochat/PanelToolbar";
 import { useImEvent } from "../realtime/hooks";
 import { BlockedList } from "./BlockedList";
 import { ContactList } from "./ContactList";
@@ -22,8 +22,8 @@ type Tab = "contacts" | "requests" | "blocked";
 export function PeopleView({ onOpenConversation }: PeopleViewProps) {
   const tt = useUI();
   const [tab, setTab] = useState<Tab>("contacts");
+  const [query, setQuery] = useState("");
   const [inviting, setInviting] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
 
   // 「请求」页签上的待处理数：收到的联系人请求 + 拉群邀请
@@ -45,15 +45,14 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-people-view>
-      <div className="flex items-center justify-end gap-1 px-3 py-2">
-        <button type="button" onClick={() => setCreating(true)} data-action="new-conversation" className="rounded-lg px-2.5 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900">
-          {tt("新建聊天")}
-        </button>
-        <button type="button" onClick={() => setInviting(true)} data-action="invite" className="rounded-lg px-2.5 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900">
-          {tt("邀请别人")}
-        </button>
-      </div>
-      <div role="tablist" data-im-filter-row className="flex gap-0.5 overflow-x-auto px-2 pb-1.5">
+      <PanelToolbar
+        search={query}
+        onSearch={setQuery}
+        placeholder={tt("按名字搜索")}
+        plusLabel={tt("添加联系人")}
+        actions={[{ id: "add-contact", label: tt("添加联系人"), onSelect: () => setInviting(true) }]}
+      />
+      <div role="tablist" data-im-filter-row className="flex flex-wrap gap-0.5 px-2 py-1.5">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -74,23 +73,13 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
         ))}
       </div>
       <div className="min-h-0 flex-1">
-        {tab === "contacts" && <ContactList onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} />}
+        {tab === "contacts" && <ContactList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} />}
         {tab === "requests" && (
-          <RequestsList onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} onChanged={refreshCounts} />
+          <RequestsList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} onChanged={refreshCounts} />
         )}
-        {tab === "blocked" && <BlockedList />}
+        {tab === "blocked" && <BlockedList query={query} />}
       </div>
       {inviting && <InviteLinkDialog onClose={() => setInviting(false)} />}
-      {creating && (
-        <NewConversationDialog
-          open
-          onClose={() => setCreating(false)}
-          onCreated={(id) => {
-            setCreating(false);
-            onOpenConversation(id);
-          }}
-        />
-      )}
       {profileId && (
         <ProfileCard
           userId={profileId}

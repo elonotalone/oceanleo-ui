@@ -1,7 +1,7 @@
 "use client";
 
 // 交易会话的输入框：文字走 talent 现有接口。Enter 发送、Shift+Enter 换行（输入法组字时 Enter 不发送）。
-// 报价、合同、付款等复杂动作与上传附件，给「在 Bay 打开」的链接。
+// 报价、合同、付款等复杂动作与上传附件，给「在 LeoBay 打开」的链接。
 
 import { useState, type KeyboardEvent } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -74,7 +74,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
         <p className="pt-1.5 text-[11.5px] text-neutral-500">
           {tt("发报价、传文件、签合同和付款，请")}
           <a href={openUrl} target="_blank" rel="noopener noreferrer" data-composer-open className="font-medium text-neutral-800 underline-offset-2 hover:underline">
-            {tt("在 Bay 打开")}
+            {tt("在 LeoBay 打开")}
           </a>
         </p>
       )}

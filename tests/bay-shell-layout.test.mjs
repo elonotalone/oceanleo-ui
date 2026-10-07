@@ -1,9 +1,10 @@
-// oceanleo-bay 版式（2026-10-07 重做）：/bay 页与浮窗 Bay 视图渲染出来之后要满足的几条。
-//   1. 每个操作在一个界面里只出现一次（发需求、我的、发布服务、整页打开；叫真人只在侧栏）。
-//   2. /bay 页用标准页框与 17px 标题行；逛的时候信息流是整页宽的卡片网格，没有空着的「详情」栏。
-//   3. 点开一条：整页换成「返回 + 标题」和一张正文卡；信息流只藏起来、不卸载。
+// LeoBay 版式（2026-10-08 LeoChat 重做后）：小窗的 LeoBay 栏与整页的 LeoBay 栏渲染出来之后要满足的几条。
+//   1. 小窗三栏头部同一个样子：第一行「搜索框 + 一个 + 号」，第二行筛选；LeoBay 的 + 号里是「找人帮忙」「发布服务」。
+//      每个操作在一个界面里只出现一次；「发需求」「叫真人」这两个旧叫法不再出现。
+//   2. 整页的 LeoBay 栏不带页框和页标题（那是 LeoChat 整页的）；逛的时候信息流是整页宽的卡片网格。
+//   3. 点开一条：换成「返回 + 标题」和一张正文卡；信息流只藏起来、不卸载。
 //   4. 筛选行在任何语言下都不出横向滚动条、不截断（允许换行）。
-//   5. 四种卡在网格里是同一种卡片外形，在浮窗里是同一种整行外形。
+//   5. 四种卡在网格里是同一种卡片外形，在小窗里是同一种整行外形。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,12 +19,11 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const src = (rel) => readFileSync(join(REPO, "src", rel), "utf8");
 
-// ---- 替身：界面状态、数据、卡片、窗格都由测试给，渲染的是真的 BayList / BayPage / BayDetail / BayMine ----
+// ---- 替身：界面状态、数据、卡片、窗格都由测试给，渲染的是真的 BayList / LeoBaySection / BayDetail / BayMine ----
 
 const state = {
   current: { kind: "feed" },
   filter: { kind: "all" },
-  onPage: false,
   signedIn: true,
   feed: null,
   categories: {
@@ -47,7 +47,6 @@ function feedOf(patch = {}) {
 function reset(patch = {}) {
   state.current = { kind: "feed" };
   state.filter = { kind: "all" };
-  state.onPage = false;
   state.signedIn = true;
   state.feed = feedOf();
   Object.assign(state, patch);
@@ -67,7 +66,6 @@ const stateStub = dataModule(`
   export function registerBayPage(){ return () => {}; }
   export function bayEnabledHere(){ return true; }
   export function useBayFilter(){ return s().filter; }
-  export function useBayPageMounted(){ return s().onPage; }
   export function useBaySignedIn(){ return s().signedIn; }
   export function useBaySiteKey(){ return "oceanleo"; }
   export function useBayState(){ return { current: s().current, canGoBack: s().current.kind !== "feed" }; }
@@ -110,7 +108,10 @@ const dealStub = dataModule(`
     return createElement("section", { "data-stub-conversation": threadId, "data-layout": layout, "data-has-back": onBack ? "true" : "false" });
   }
 `);
+const motionStub = dataModule(`export function useBaySlideIn(){ return { current: null }; }`);
+const authHostStub = dataModule(`export function BayAuthHost(){ return null; }`);
 
+// 替身按「那条 import 的原文」认。同一份文件从 src/shell/bay/shell 和 src/shell/leochat 两处引，原文不同，各写一条。
 const stubs = {
   "next-intl": dataModule(`export function useLocale(){ return "zh"; }`),
   "../../../i18n/ui/useUI": uiStub,
@@ -122,14 +123,26 @@ const stubs = {
   "../settings": paneModule({ BaySettingsPane: "settings" }),
   "./bay-state": stateStub,
   "./use-bay-data": dataStub,
-  "./bay-expand": dataModule(`export function bayPageHref(){ return "/bay"; } export function useBayExpand(){ return () => {}; }`),
-  "./bay-motion": dataModule(`export function useBaySlideIn(){ return { current: null }; }`),
-  "./bay-auth-host": dataModule(`export function BayAuthHost(){ return null; }`),
+  "./bay-motion": motionStub,
+};
+const pageStubs = {
+  ...stubs,
+  "../../i18n/ui/useUI": uiStub,
+  "../bay/deal/DealConversationView": dealStub,
+  "../bay/needs/LibraryWorkPicker": dataModule(`export function LibraryWorkPickerHost(){ return null; }`),
+  "../bay/shell/bay-auth-host": authHostStub,
+  "../bay/shell/bay-state": stateStub,
 };
 
 const { BayList, BayFeed } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
-const { BayPageBody } = await import(await compileModule("src/shell/bay/shell/BayPage.tsx", stubs));
 const { BayDetail, bayDetailTitleKey } = await import(await compileModule("src/shell/bay/shell/BayDetail.tsx", stubs));
+const { BayMineTabs } = await import(await compileModule("src/shell/bay/shell/BayMine.tsx", stubs));
+const { LeoBaySection, LeoBayHeaderActions } = await import(await compileModule("src/shell/leochat/page-leobay.tsx", pageStubs));
+
+/** 整页的 LeoBay 栏：正文（LeoBaySection）加上整页画在页头右边的那组操作（只在停在信息流时有）。 */
+function Section(props = {}) {
+  return React.createElement(LeoBaySection, { active: true, ...props });
+}
 
 const html = (node) => renderToStaticMarkup(node);
 const count = (text, pattern) => (text.match(pattern) || []).length;
@@ -144,68 +157,59 @@ function feedItems() {
   ];
 }
 
-// ---- 浮窗 -------------------------------------------------------------------------
+// ---- 小窗 -------------------------------------------------------------------------
 
-test("浮窗空列表：发需求、我的、发布服务、整页打开各一个；没有叫真人", () => {
+test("小窗空列表：第一行只有搜索框和一个 + 号；我的一个；没有发需求、叫真人、整页打开", () => {
   reset();
   const out = html(React.createElement(BayList, { layout: "docked" }));
-  for (const action of ["post-need", "mine", "publish-service", "open-page"]) {
-    assert.equal(count(out, new RegExp(`data-bay-action="${action}"`, "g")), 1, action);
+  assert.equal(count(out, /data-leochat-toolbar/g), 1);
+  assert.equal(count(out, /data-leochat-search/g), 1);
+  assert.equal(count(out, /data-leochat-plus(?=[\s=>])/g), 1);
+  assert.match(out, /<button[^>]*data-leochat-plus[^>]*aria-haspopup="menu"/, "+ 号里不止一项，点开是菜单");
+  assert.equal(count(out, /data-bay-action="mine"/g), 1);
+  for (const gone of ["post-need", "open-page", "call-human", "publish-service"]) {
+    assert.equal(count(out, new RegExp(`data-bay-action="${gone}"`, "g")), 0, gone);
   }
-  assert.equal(count(out, /data-bay-action="call-human"/g), 0);
-  assert.equal(count(out, /发需求/g), 1, "「发需求」三个字只出现一次");
-  assert.equal(count(out, /发布服务/g), 1);
-  assert.equal(count(out, /叫真人/g), 0);
-  assert.match(out, /<a href="\/bay"[^>]*data-bay-action="open-page"/);
+  assert.equal(count(out, /发需求|叫真人/g), 0);
   assert.match(out, /data-bay-empty="pristine"/);
-  assert.match(out, /Bay 里还没有内容/);
 });
 
-test("浮窗有内容时：四种都是整行；发布服务不再出现；发需求仍只有一个", () => {
+test("小窗有内容时：四种都是整行", () => {
   reset({ feed: feedOf({ items: feedItems() }) });
   const out = html(React.createElement(BayList, { layout: "docked" }));
   assert.equal(count(out, /data-stub-card=/g), 4);
   assert.equal(count(out, /data-variant="row"/g), 4);
-  assert.equal(count(out, /data-bay-action="publish-service"/g), 0);
-  assert.equal(count(out, /data-bay-action="post-need"/g), 1);
   assert.doesNotMatch(out, /data-bay-empty/);
 });
 
-test("浮窗筛选后没结果：给清除筛选，不给发布服务", () => {
+test("小窗筛选后没结果：给清除筛选", () => {
   reset({ filter: { kind: "demand" } });
   const out = html(React.createElement(BayList, { layout: "docked" }));
   assert.match(out, /data-bay-empty="filtered"/);
   assert.match(out, /data-bay-clear-filters/);
-  assert.equal(count(out, /data-bay-action="publish-service"/g), 0);
 });
 
-test("浮窗：人已经在 /bay 页上时不再给「整页打开」", () => {
-  reset({ onPage: true });
-  const out = html(React.createElement(BayList, { layout: "docked" }));
-  assert.equal(count(out, /data-bay-action="open-page"/g), 0);
-});
-
-test("浮窗筛选行：五个种类加一个类目按钮；类目收起；整块没有横向滚动容器", () => {
+test("小窗筛选行：四个种类（没有求助），右端类目和我的各一个；整块没有横向滚动容器", () => {
   reset();
   const out = html(React.createElement(BayList, { layout: "docked" }));
   const kinds = out.match(/<div role="tablist"[^>]*data-bay-kinds="overlay"[^>]*>/);
   assert.ok(kinds, "有种类筛选行");
   assert.match(kinds[0], /data-im-filter-row/);
   assert.match(kinds[0], /flex-wrap/);
-  assert.equal(count(out, /role="tab"/g), 5);
+  assert.equal(count(out, /role="tab"/g), 4);
+  assert.doesNotMatch(out, />求助</);
   assert.equal(count(out, /data-bay-category-toggle/g), 1);
   assert.doesNotMatch(out, /data-bay-category-panel/);
   assert.doesNotMatch(out, /data-category="design"/, "类目没展开时不铺在列表上面");
   assert.doesNotMatch(out, /overflow-x-auto/);
-  assert.doesNotMatch(out, /\btruncate\b[^>]*>发需求/);
 });
 
-test("浮窗详情：一条返回栏（返回 + 标题）；停在信息流时不渲染；交易会话自己带头", () => {
+test("小窗详情：一条返回栏（返回 + 标题）；停在信息流时不渲染；交易会话自己带头", () => {
   reset({ current: { kind: "post-need" } });
   const out = html(React.createElement(BayDetail, { layout: "docked" }));
   assert.equal(count(out, /data-bay-detail-bar/g), 1);
   assert.match(out, /aria-label="返回"/);
-  assert.match(out, />发需求</);
+  assert.match(out, />找人帮忙</);
   assert.match(out, /data-stub-pane="post-need"/);
 
   reset();
@@ -218,43 +222,43 @@ test("浮窗详情：一条返回栏（返回 + 标题）；停在信息流时�
   assert.match(chat, /data-stub-conversation="t1"[^>]*data-has-back="true"/);
 });
 
-// ---- /bay 页 ----------------------------------------------------------------------
+// ---- 整页的 LeoBay 栏 ----------------------------------------------------------------
 
-test("/bay 页逛的时候：标准页框、一个 17px 标题、操作各一个、没有叫真人", () => {
+test("整页 LeoBay 栏逛的时候：不带页框和页标题；页头那组操作里我的、发布服务、找人帮忙各一个", () => {
   reset();
-  const out = html(React.createElement(BayPageBody, { accent: "#0ea5e9" }));
-  const root = out.match(/^<div class="([^"]*)" data-bay-page="browse"/);
-  assert.ok(root, "最外层是页框");
-  for (const cls of ["mx-auto", "max-w-6xl", "px-4", "pt-3", "pb-5", "flex-col"]) assert.ok(root[1].split(/\s+/).includes(cls), cls);
-  assert.equal(count(out, /<h1/g), 1);
-  assert.match(out, /<h1 class="text-\[17px\] font-semibold tracking-tight text-neutral-900">OceanLeo Bay<\/h1>/);
-  assert.equal(count(out, /data-bay-action="post-need"/g), 1);
-  assert.equal(count(out, /data-bay-action="mine"/g), 1);
-  assert.equal(count(out, /data-bay-action="call-human"/g), 0);
-  assert.equal(count(out, /叫真人/g), 0);
-  assert.equal(count(out, /发需求/g), 1);
+  const out = html(Section({ accent: "#0ea5e9" }));
+  assert.match(out, /^<div class="flex min-h-0 flex-1 flex-col" data-bay-page="browse"/);
+  assert.doesNotMatch(out, /max-w-6xl/, "页框是 LeoChat 整页的，这里不再套一层");
+  assert.equal(count(out, /<h1/g), 0, "页标题是 LeoChat 整页的");
   assert.doesNotMatch(out, /data-bay-detail-empty|data-bay-page-detail/, "逛的时候没有详情栏，也没有它的占位");
+
+  const actions = html(React.createElement(LeoBayHeaderActions));
+  for (const action of ["mine", "publish-service", "get-help"]) {
+    assert.equal(count(actions, new RegExp(`data-bay-action="${action}"`, "g")), 1, action);
+  }
+  assert.equal(count(actions, /找人帮忙/g), 1);
+  assert.equal(count(actions + out, /发需求|叫真人/g), 0);
+  assert.equal(count(actions + out, /data-bay-action="(?:post-need|call-human)"/g), 0);
 });
 
-test("/bay 页的「发布服务」：宽屏在标题行，手机在空列表下面，两处靠断点互斥", () => {
+test("整页的「发布服务」：宽屏在页头，手机在空列表下面，两处靠断点互斥", () => {
   reset();
-  const out = html(React.createElement(BayPageBody, {}));
-  const buttons = [...out.matchAll(/<button[^>]*data-bay-action="publish-service"[^>]*class="([^"]*)"/g)].map((m) => m[1].split(/\s+/));
-  assert.equal(buttons.length, 2);
-  const desktop = buttons.find((cls) => cls.includes("hidden") && cls.includes("sm:inline-flex"));
-  const phone = buttons.find((cls) => cls.includes("inline-flex") && cls.includes("sm:hidden"));
-  assert.ok(desktop, "标题行那个在手机上藏起来");
-  assert.ok(phone, "空列表那个只在手机上出现");
-  assert.notEqual(desktop, phone);
+  const classesOf = (markup) =>
+    [...markup.matchAll(/<button[^>]*data-bay-action="publish-service"[^>]*class="([^"]*)"/g)].map((m) => m[1].split(/\s+/));
+  const header = classesOf(html(React.createElement(LeoBayHeaderActions)));
+  const body = classesOf(html(Section()));
+  assert.equal(header.length, 1);
+  assert.equal(body.length, 1);
+  assert.ok(header[0].includes("hidden") && header[0].includes("sm:inline-flex"), "页头那个在手机上藏起来");
+  assert.ok(body[0].includes("inline-flex") && body[0].includes("sm:hidden"), "空列表那个只在手机上出现");
 
   reset({ feed: feedOf({ items: feedItems() }) });
-  const filled = html(React.createElement(BayPageBody, {}));
-  assert.equal(count(filled, /data-bay-action="publish-service"/g), 1, "有内容时只剩标题行那个");
+  assert.equal(count(html(Section()), /data-bay-action="publish-service"/g), 0, "有内容时正文里不再有");
 });
 
-test("/bay 页信息流：卡片网格；种类是会换行的分段标签；类目直接摆出来；没有横向滚动容器和固定宽的栏", () => {
+test("整页信息流：卡片网格；种类是会换行的分段标签（四个）；类目直接摆出来；没有横向滚动容器和固定宽的栏", () => {
   reset({ feed: feedOf({ items: feedItems() }) });
-  const out = html(React.createElement(BayPageBody, { accent: "#0ea5e9" }));
+  const out = html(Section({ accent: "#0ea5e9" }));
   assert.match(out, /<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">/);
   assert.equal(count(out, /data-variant="card"/g), 4);
   assert.equal(count(out, /data-variant="row"/g), 0);
@@ -262,6 +266,7 @@ test("/bay 页信息流：卡片网格；种类是会换行的分段标签；类
   assert.ok(kinds);
   assert.match(kinds[1], /flex-wrap/);
   assert.match(kinds[1], /rounded-xl bg-neutral-100 p-1/);
+  assert.equal(count(out, /role="tab"/g), 4);
   assert.match(out, /<div class="mb-4 hidden sm:block"><div role="group"[^>]*data-bay-categories="chips"/);
   assert.equal(count(out, /data-category="design"/g), 1);
   assert.match(out, /<button[^>]*data-bay-category-toggle[^>]*class="[^"]*sm:hidden/);
@@ -270,15 +275,16 @@ test("/bay 页信息流：卡片网格；种类是会换行的分段标签；类
   assert.match(out, /type="search"/);
 });
 
-test("/bay 页点开一条：返回 + 标题一行、正文一张卡；信息流藏起来但还在", () => {
+test("整页点开一条：返回 + 标题一行、正文一张卡；信息流藏起来但还在", () => {
   reset({ current: { kind: "post-need" } });
-  const out = html(React.createElement(BayPageBody, {}));
-  assert.match(out, /^<div class="[^"]*max-w-6xl[^"]*" data-bay-page="detail"/);
+  const out = html(Section());
+  assert.match(out, /^<div class="flex min-h-0 flex-1 flex-col" data-bay-page="detail"/);
   assert.match(out, /<div class="hidden" data-bay-page-browse="true">/);
   assert.equal(count(out, /data-bay-page-back/g), 1);
   assert.match(out, /data-bay-page-detail-header/);
   const visible = out.slice(out.indexOf("data-bay-page-detail-header"));
-  assert.match(visible, /<h1 class="min-w-0 truncate text-\[17px\] font-semibold tracking-tight text-neutral-900">发需求<\/h1>/);
+  assert.match(visible, /<h2 class="min-w-0 truncate text-\[17px\] font-semibold tracking-tight text-neutral-900">找人帮忙<\/h2>/);
+  assert.equal(count(out, /<h1/g), 0, "整页只有 LeoChat 一个一级标题");
   assert.equal(count(visible, /data-bay-action=/g), 0, "详情视图里没有再放一套全局操作");
   const card = out.match(/<div class="([^"]*)" data-bay-page-detail="post-need">/);
   assert.ok(card);
@@ -286,29 +292,29 @@ test("/bay 页点开一条：返回 + 标题一行、正文一张卡；信息流
   assert.match(out, /data-stub-pane="post-need"/);
 });
 
-test("/bay 页详情宽度：服务、下单、会话用满页框；其余收在易读宽度；会话占满高度且不带第二个返回键", () => {
+test("整页详情宽度：服务、下单、会话用满页框；其余收在易读宽度；会话占满高度且不带第二个返回键", () => {
   for (const target of [{ kind: "service", id: "s1" }, { kind: "checkout", serviceId: "s1" }]) {
     reset({ current: target });
-    const card = html(React.createElement(BayPageBody, {})).match(new RegExp(`<div class="([^"]*)" data-bay-page-detail="${target.kind}">`));
+    const card = html(Section()).match(new RegExp(`<div class="([^"]*)" data-bay-page-detail="${target.kind}">`));
     assert.ok(card && !card[1].includes("max-w-3xl"), target.kind);
   }
   for (const target of [{ kind: "demand", id: "d1" }, { kind: "mine", tab: "needs" }, { kind: "service-editor" }]) {
     reset({ current: target });
-    const card = html(React.createElement(BayPageBody, {})).match(new RegExp(`<div class="([^"]*)" data-bay-page-detail="${target.kind}">`));
+    const card = html(Section()).match(new RegExp(`<div class="([^"]*)" data-bay-page-detail="${target.kind}">`));
     assert.ok(card && card[1].includes("max-w-3xl"), target.kind);
   }
   reset({ current: { kind: "conversation", threadId: "t9" } });
-  const chat = html(React.createElement(BayPageBody, {}));
+  const chat = html(Section());
   const card = chat.match(/<div class="([^"]*)" data-bay-page-detail="conversation">/);
   assert.ok(card && card[1].split(/\s+/).includes("flex-1") && !card[1].includes("max-w-3xl"));
   assert.match(chat, /data-stub-conversation="t9"[^>]*data-layout="page"[^>]*data-has-back="false"/);
   assert.equal(count(chat, /data-bay-page-back/g), 1);
-  assert.match(chat, />交易会话<\/h1>/);
+  assert.match(chat, />交易会话<\/h2>/);
 });
 
-test("「我的」分区标签：/bay 页是分段标签，浮窗是筛选行；都会换行", () => {
+test("「我的」四个分区：整页是分段标签，小窗是筛选行；都会换行；旧的「我的求助」深链落在「我发出的」", () => {
   reset({ current: { kind: "mine", tab: "orders" } });
-  const page = html(React.createElement(BayPageBody, {}));
+  const page = html(Section());
   const pageTabs = page.match(/<div role="tablist"[^>]*data-bay-mine-tabs="page"[^>]*class="([^"]*)"/);
   assert.ok(pageTabs && /flex-wrap/.test(pageTabs[1]) && /rounded-xl bg-neutral-100 p-1/.test(pageTabs[1]));
   assert.match(page, /data-stub-pane="mine-orders"/);
@@ -316,6 +322,16 @@ test("「我的」分区标签：/bay 页是分段标签，浮窗是筛选行；
   const overlayTabs = overlay.match(/<div role="tablist"[^>]*data-bay-mine-tabs="overlay"[^>]*>/);
   assert.ok(overlayTabs && /data-im-filter-row/.test(overlayTabs[0]) && /flex-wrap/.test(overlayTabs[0]));
   assert.doesNotMatch(page + overlay, /overflow-x-auto/);
+
+  for (const variant of ["page", "overlay"]) {
+    const tabs = html(React.createElement(BayMineTabs, { tab: "help", variant }));
+    assert.deepEqual([...tabs.matchAll(/data-mine-tab="([a-z]+)"/g)].map((m) => m[1]), ["needs", "proposals", "services", "orders"], variant);
+    assert.match(tabs, /aria-selected="true"[^>]*data-mine-tab="needs"/, `${variant}：旧深链高亮「我发出的」`);
+    assert.match(tabs, />我发出的</);
+    assert.doesNotMatch(tabs, /我的求助|我的需求/);
+  }
+  reset({ current: { kind: "mine", tab: "help" } });
+  assert.match(html(Section()), /data-stub-pane="mine-needs"/);
 });
 
 test("标题：每种目标都有；编辑已有服务叫「编辑服务」；信息流没有标题", () => {
@@ -323,6 +339,8 @@ test("标题：每种目标都有；编辑已有服务叫「编辑服务」；�
   assert.equal(bayDetailTitleKey({ kind: "service-editor" }), "发布服务");
   assert.equal(bayDetailTitleKey({ kind: "service-editor", serviceId: "s1" }), "编辑服务");
   assert.equal(bayDetailTitleKey({ kind: "conversation", threadId: "t" }), "交易会话");
+  assert.equal(bayDetailTitleKey({ kind: "post-need" }), "找人帮忙");
+  assert.equal(bayDetailTitleKey({ kind: "call-human" }), "找人帮忙", "发需求和叫真人是同一张表单、同一个名字");
   for (const kind of ["demand", "service", "help", "consult", "profile", "order", "post-need", "call-human", "propose", "checkout", "mine", "settings"]) {
     assert.ok(bayDetailTitleKey({ kind }), kind);
   }
@@ -342,16 +360,19 @@ test("信息流状态：首屏是骨架，出错给重试，加载更多是一�
 
 // ---- 源码层面 ---------------------------------------------------------------------
 
-test("外壳四个文件：版式只靠样式断点，不量窗口宽；不用品牌蓝实心块；没有横向滚动条容器", () => {
-  const page = src("shell/bay/shell/BayPage.tsx");
-  assert.doesNotMatch(page, /innerWidth|addEventListener\("resize"|useWidth/);
-  for (const name of ["BayPage.tsx", "BayList.tsx", "BayDetail.tsx", "BayMine.tsx"]) {
-    const text = src(`shell/bay/shell/${name}`);
+test("LeoBay 的四个界面文件：版式只靠样式断点，不量窗口宽；不用品牌蓝实心块；没有横向滚动条容器", () => {
+  const files = ["shell/leochat/page-leobay.tsx", "shell/bay/shell/BayList.tsx", "shell/bay/shell/BayDetail.tsx", "shell/bay/shell/BayMine.tsx"];
+  assert.doesNotMatch(src(files[0]), /innerWidth|addEventListener\("resize"|useWidth/);
+  for (const name of files) {
+    const text = src(name);
     assert.doesNotMatch(text, /bg-sky-500|bg-sky-600/, `${name} 用了品牌蓝实心块`);
     assert.doesNotMatch(text, /overflow-x-auto/, `${name} 有横向滚动容器`);
-    assert.doesNotMatch(text, /kind: "call-human"/, `${name} 里又放了一个叫真人`);
+    assert.doesNotMatch(text, /kind: "call-human"/, `${name} 里又放了一个单独的叫真人`);
+    assert.doesNotMatch(text, /OceanLeo Bay/, `${name} 还在用旧名字`);
   }
   assert.doesNotMatch(src("shell/bay/shell/BayDetail.tsx"), /BayDetailEmpty|BayEmptyActions/);
+  const bayPage = src("shell/bay/shell/BayPage.tsx");
+  assert.match(bayPage, /<LeoChatPage siteKey=\{siteKey\} accent=\{accent\} initialTab="bay" \/>/, "/bay 就是 LeoChat 整页停在 LeoBay 栏");
 });
 
 // ---- 真卡片的两种外形 ----------------------------------------------------------------
@@ -414,7 +435,7 @@ test("四种卡在网格里是同一种卡片：整张一个按钮、圆角描�
   }
 });
 
-test("四种卡在浮窗里是同一种整行：下边线、同一档标题字号、带种类小标", () => {
+test("四种卡在小窗里是同一种整行：下边线、同一档标题字号、带种类小标", () => {
   const titles = new Set();
   for (const [kind, Card, label] of CARDS) {
     const out = html(React.createElement(Card, { item: realItem({ kind }), onOpen() {} }));
@@ -491,20 +512,21 @@ test("自检：打架比对器认得出截断遇上块级、两个上边距，�
 test("渲染出来的每个元素：没有两个类在抢同一个属性", () => {
   const pages = [];
   reset();
-  pages.push(["浮窗空列表", html(React.createElement(BayList, { layout: "docked" }))]);
+  pages.push(["小窗空列表", html(React.createElement(BayList, { layout: "docked" }))]);
   reset({ filter: { kind: "service", category: "design", q: "logo" } });
-  pages.push(["浮窗筛选后", html(React.createElement(BayList, { layout: "docked" }))]);
+  pages.push(["小窗筛选后", html(React.createElement(BayList, { layout: "docked" }))]);
   reset({ feed: feedOf({ items: feedItems(), hasMore: true }) });
-  pages.push(["浮窗有内容", html(React.createElement(BayList, { layout: "mobile" }))]);
-  pages.push(["页面有内容", html(React.createElement(BayPageBody, { accent: "#0ea5e9" }))]);
+  pages.push(["小窗有内容", html(React.createElement(BayList, { layout: "mobile" }))]);
+  pages.push(["整页有内容", html(Section({ accent: "#0ea5e9" }))]);
+  pages.push(["整页页头操作", html(React.createElement(LeoBayHeaderActions))]);
   reset({ filter: { kind: "all", category: "design" } });
-  pages.push(["页面选了类目", html(React.createElement(BayPageBody, {}))]);
+  pages.push(["整页选了类目", html(Section())]);
   reset({ feed: feedOf({ loading: true, loaded: false }) });
-  pages.push(["页面加载中", html(React.createElement(BayPageBody, {}))]);
+  pages.push(["整页加载中", html(Section())]);
   for (const current of [{ kind: "post-need" }, { kind: "mine", tab: "services" }, { kind: "service", id: "s1" }, { kind: "conversation", threadId: "t1" }]) {
     reset({ current });
-    pages.push([`页面详情 ${current.kind}`, html(React.createElement(BayPageBody, {}))]);
-    pages.push([`浮窗详情 ${current.kind}`, html(React.createElement(BayDetail, { layout: "docked" }))]);
+    pages.push([`整页详情 ${current.kind}`, html(Section())]);
+    pages.push([`小窗详情 ${current.kind}`, html(React.createElement(BayDetail, { layout: "docked" }))]);
   }
   reset({ signedIn: false, current: { kind: "mine", tab: "needs" } });
   pages.push(["未登录的我的", html(React.createElement(BayDetail, { layout: "docked" }))]);

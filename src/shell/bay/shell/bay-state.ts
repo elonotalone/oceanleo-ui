@@ -12,7 +12,8 @@ import {
 import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
 import { IM_OPEN_EVENT, hostState } from "../../messages/host-state";
-import { BAY_FEED_KINDS, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, isBayPath, parseBayDeepLink, sameBayTarget } from "./bay-links";
+import { isLeoChatPagePath } from "../../leochat/leochat-links";
+import { BAY_FEED_KINDS, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget } from "./bay-links";
 
 export type BayLayout = "docked" | "full" | "mobile" | "page";
 
@@ -504,7 +505,7 @@ export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
 let pageOff: (() => void) | null = null;
 
 /**
- * 在 `/bay` 页上点了一个仍然指向本页的链接（侧栏的「OceanLeo Bay」、别处的 `/bay?bay=…`）：
+ * 在整页上点了一个仍然指向本页的链接（侧栏的「LeoChat」、别处的 `/bay?bay=…`）：
  * 站内跳转只换地址、不重挂页面，所以这里按链接带的目标换页内详情；没带目标就回信息流。
  */
 function onSamePageLinkClick(event: MouseEvent): void {
@@ -556,8 +557,8 @@ let linkOff: (() => void) | null = null;
 function consumeDeepLink(): void {
   const w = win();
   if (!w) return;
-  // `/bay` 页自己读 `?bay=`（registerBayPage）；这里只管别的页面。
-  if (isBayPath(w.location.pathname) || onBayPage()) return;
+  // `/leochat` 与 `/bay` 页自己读 `?bay=`（registerBayPage）；这里只管别的页面。
+  if (isLeoChatPagePath(w.location.pathname) || onBayPage()) return;
   const target = parseBayDeepLink(w.location.search);
   if (!target) return;
   stripBayParam();

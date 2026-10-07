@@ -249,3 +249,32 @@ test("信息流请求：参数白名单、匿名可调；待办数要登录", as
   assert.equal(calls[0].anonymous, true);
   assert.equal(calls[1].anonymous, false);
 });
+
+test("consumeDeepLink：路径是 /leochat 时不清掉 ?bay=、不请求小窗", async () => {
+  const state = await loadState("com");
+  const replaced = [];
+  const events = [];
+  const location = { pathname: "/leochat", search: "?bay=demand:d1", hash: "" };
+  globalThis.window = {
+    location,
+    history: {
+      state: {},
+      replaceState(_s, _t, url) {
+        replaced.push(url);
+      },
+      pushState() {},
+    },
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent(ev) {
+      events.push(ev);
+      return true;
+    },
+  };
+  const off = state.attachBayDeepLinks();
+  assert.deepEqual(replaced, []);
+  assert.equal(location.search, "?bay=demand:d1");
+  assert.equal(state.bayStateSnapshot().current.kind, "feed");
+  assert.equal(events.length, 0);
+  off();
+});

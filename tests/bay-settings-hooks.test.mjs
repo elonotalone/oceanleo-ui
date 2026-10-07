@@ -13,13 +13,13 @@ test("SETTINGS_BUILTIN_TABS 在 billing 后面有 bay", () => {
   assert.match(text, /"billing",\s*"bay",/);
 });
 
-test("SettingsHub：海外 builtin 有 OceanLeo Bay，境内不加", () => {
+test("SettingsHub：海外 builtin 有 LeoBay，境内不加", () => {
   const text = src("pages/settings/SettingsHub.tsx");
   assert.match(text, /import \{ BaySettingsSection \} from "\.\.\/\.\.\/shell\/bay\/settings"/);
   assert.match(text, /import \{ bayEnabledHere \} from "\.\.\/\.\.\/shell\/bay\/shell\/bay-state"/);
   assert.match(text, /bayEnabledHere\(\)/);
   assert.match(text, /id: "bay"/);
-  assert.match(text, /label: tt\("OceanLeo Bay"\)/);
+  assert.match(text, /label: "LeoBay"/);
   assert.match(text, /<BaySettingsSection \/>/);
 });
 

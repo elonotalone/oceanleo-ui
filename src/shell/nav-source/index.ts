@@ -40,6 +40,7 @@ export type NavPageId =
   | "plugins"
   | "schedules"
   | "messages"
+  | "leochat"
   | "devices"
   | "download";
 
@@ -105,7 +106,7 @@ export interface NavSourceEntry {
   id: NavPageId;
   /**
    * 纯动作项（没有页面）：点击触发一个动作而不是跳转，所以**没有 href**。
-   * 目前只有 `"messages"`（打开消息浮层）。消费方把它映射成 `onClick`。
+   * 目前没有动作项。消费方把它映射成 `onClick`。
    */
   action?: "messages";
   /**
@@ -167,29 +168,16 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     placements: { portal: { order: 30, iconId: "folder" } },
   },
   {
-    id: "bay",
-    href: "/bay",
-    labelKey: "OceanLeo Bay",
-    labelSource: "ui",
-    iconId: "bay",
-    // 紧挨「项目」：成交后的活仍然回到门户项目里进行。
-    // 站内路由，不再是站外项：境内不出现由外壳用 `bayEnabledHere()` 拦掉（门户 clone-shell 与各站入口都走它）。
-    placements: {
-      // 门户外壳沿用「人」的图标（门户 PORTAL_NAV 同值）；这里声明出来，两套外壳的对账才认。
-      portal: { order: 40, iconId: "talent" },
-    },
-  },
-  {
-    // 消息：打开浮层的动作项，没有页面。默认不显示——调用方传 `withMessages: imEnabledHere()`
-    // 才出现，所以境内站与未登录天然看不到它。文案用界面词表（17 语言在 im-shell-copy）。
-    id: "messages",
-    action: "messages",
-    labelKey: "消息",
+    // LeoChat：聊天、联系人、LeoBay 三个栏目的整页（小窗的大页面版）。只在门户侧栏占一行；
+    // 各子站的入口是账号行里的 LeoChat 图标（小窗），小窗顶栏可以跳到本站的 /leochat。
+    // 境内不出现：由外壳用 `bayEnabledHere()` 拦掉。
+    id: "leochat",
+    href: "/leochat",
+    labelKey: "LeoChat",
     labelSource: "ui",
     iconId: "messages",
     placements: {
-      workspace: { order: 25, option: "withMessages", optionDefault: false },
-      portal: { order: 45, option: "withMessages", optionDefault: false },
+      portal: { order: 40 },
     },
   },
   {

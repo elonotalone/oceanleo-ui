@@ -18,7 +18,7 @@ export const FILTER_LABELS: ReadonlyArray<{ id: InboxFilter; label: string }> = 
 export function InboxFilters({ value, onChange }: { value: string; onChange: (filter: InboxFilter) => void }) {
   const tt = useUI();
   return (
-    <div role="tablist" aria-label={tt("筛选会话")} data-im-filter-row className="flex gap-0.5 overflow-x-auto px-2 py-1.5">
+    <div role="tablist" aria-label={tt("筛选会话")} data-im-filter-row className="flex flex-wrap gap-0.5 px-2 py-1.5">
       {FILTER_LABELS.map((entry) => {
         const active = entry.id === value;
         return (

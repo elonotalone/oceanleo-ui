@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchDraftConversationIds, type InboxFilter } from "../../lib/im/inbox-api";
 import { searchQueryReady } from "../../lib/im/search-api";
+import { PanelToolbar } from "../leochat/PanelToolbar";
 import { InboxFilters } from "./InboxFilters";
 import { InboxRow } from "./InboxRow";
-import { ImPlusIcon } from "./messages-surface";
+import { InviteLinkDialog } from "./people/InviteLinkDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
 
@@ -25,6 +26,7 @@ export function Inbox(props: InboxProps) {
   const connection = useImConnection();
   const [drafts, setDrafts] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
+  const [inviting, setInviting] = useState(false);
   const filter = inbox.filter;
   const searching = searchQueryReady(search);
 
@@ -59,17 +61,16 @@ export function Inbox(props: InboxProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="messages-inbox">
-      <div className="px-1.5 pt-1.5">
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={tt("搜索消息")}
-          aria-label={tt("搜索消息")}
-          data-inbox-search=""
-          className="w-full rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none dark:bg-white/10"
-        />
-      </div>
+      <PanelToolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder={tt("搜索消息")}
+        plusLabel={tt("新建")}
+        actions={[
+          { id: "new-chat", label: tt("新建聊天"), onSelect: props.onNew },
+          { id: "add-contact", label: tt("添加联系人"), onSelect: () => setInviting(true) },
+        ]}
+      />
       {searching ? (
         <SearchView
           query={search}
@@ -80,20 +81,7 @@ export function Inbox(props: InboxProps) {
         />
       ) : (
       <>
-      <div className="flex items-center gap-0.5 pr-1.5">
-        <div className="min-w-0 flex-1">
-          <InboxFilters value={filter} onChange={changeFilter} />
-        </div>
-        <button
-          type="button"
-          data-im-chrome-btn
-          onClick={props.onNew}
-          aria-label={tt("新建聊天")}
-          title={tt("新建聊天")}
-        >
-          <ImPlusIcon />
-        </button>
-      </div>
+      <InboxFilters value={filter} onChange={changeFilter} />
       <div
         className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(event) => {
@@ -147,6 +135,7 @@ export function Inbox(props: InboxProps) {
       </div>
       </>
       )}
+      {inviting ? <InviteLinkDialog onClose={() => setInviting(false)} /> : null}
     </div>
   );
 }

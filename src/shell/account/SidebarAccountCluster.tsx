@@ -4,7 +4,7 @@ import { AccountMenu } from "../AccountMenu";
 import { portalHref } from "../../contracts/domain-family";
 import { signOutEverywhere } from "../../lib/auth/client";
 import { DeviceStatusPopover } from "./DeviceStatusPopover";
-import { BayNavIcon } from "../bay/shell/BayNavIcon";
+import { LeoChatButton } from "../leochat/LeoChatButton";
 import { NotificationBell } from "./NotificationBell";
 import { openSettingsModal } from "./SettingsModalHost";
 
@@ -40,7 +40,7 @@ export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
     <div data-sidebar-account-actions className={`flex shrink-0 items-center ${props.compact ? "flex-col gap-2" : "gap-3"}`}>
       <DeviceStatusPopover className="leo-tap-target-inner" />
       <NotificationBell className="leo-tap-target-inner" />
-      <BayNavIcon className="leo-tap-target-inner" />
+      <LeoChatButton className="leo-tap-target-inner" />
     </div>
   </div>;
 }

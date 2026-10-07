@@ -399,7 +399,7 @@ export function SettingsHub({
             {
               id: "bay",
               group: "settings" as const,
-              label: tt("OceanLeo Bay"),
+              label: "LeoBay",
               render: () => <BaySettingsSection />,
             },
           ]

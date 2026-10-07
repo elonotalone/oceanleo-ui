@@ -148,10 +148,24 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
   assert.ok(!noExplore.includes("explore"));
 
   // 门户：talent 默认关（境内域名家族里没有这个子站）。
-  const portal = navEntries("portal").map((e) => e.id);
-  assert.ok(!portal.includes("talent"), "不再有站外 talent 项（真人协作已并入各站的 OceanLeo Bay）");
-  assert.ok(portal.includes("bay"), "Bay 是门户的站内路由项；境内不出现由外壳用 bayEnabledHere() 拦");
-  assert.ok(navEntries("portal", { withTalent: true }).map((e) => e.id).includes("bay"));
+  const portal = navEntries("portal");
+  const portalIds = portal.map((e) => e.id);
+  assert.ok(!portalIds.includes("talent"), "不再有站外 talent 项（真人协作已并入各站的 LeoBay）");
+  assert.ok(!portalIds.includes("bay"), "门户主导航不再有 bay 行");
+  assert.ok(!portalIds.includes("messages"), "门户主导航不再有 messages 行");
+  const leochat = portal.find((e) => e.id === "leochat");
+  assert.ok(leochat, "门户主导航有 leochat");
+  assert.equal(leochat.href, "/leochat");
+  assert.equal(leochat.iconId, "messages");
+  assert.ok(
+    portalIds.indexOf("projects") < portalIds.indexOf("leochat") &&
+      portalIds.indexOf("leochat") < portalIds.indexOf("workspace"),
+    "leochat 排在 projects 之后、workspace 之前",
+  );
+  const workspaceIds = navEntries("workspace").map((e) => e.id);
+  assert.ok(!workspaceIds.includes("leochat"), "子站导航没有 leochat");
+  assert.ok(!workspaceIds.includes("bay"), "子站导航没有 bay");
+  assert.ok(!workspaceIds.includes("messages"), "子站导航没有 messages");
 });
 
 test("navEntries: 分区隔离——footer 项不会漏进主导航", () => {

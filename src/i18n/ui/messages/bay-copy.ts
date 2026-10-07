@@ -9,6 +9,7 @@ import { BAY_ORDERS_MESSAGES } from "./bay-orders-copy";
 import { BAY_SELLER_MESSAGES } from "./bay-seller-copy";
 import { BAY_MONEY_MESSAGES } from "./bay-money-copy";
 import { BAY_PORTAL_MESSAGES } from "./bay-portal-copy";
+import { LEOCHAT_PAGE_MESSAGES } from "./leochat-page-copy";
 
 const PARTS = [
   BAY_SHELL_MESSAGES,
@@ -19,6 +20,7 @@ const PARTS = [
   BAY_SELLER_MESSAGES,
   BAY_MONEY_MESSAGES,
   BAY_PORTAL_MESSAGES,
+  LEOCHAT_PAGE_MESSAGES,
 ];
 
 export const BAY_MESSAGES: Record<Locale, Record<string, string>> =

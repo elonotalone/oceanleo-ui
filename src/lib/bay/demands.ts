@@ -1,4 +1,4 @@
-// OceanLeo Bay 需求与报价客户端（W04）。页面不直接请求网关，所有读写都从这里经 http.ts 出去。
+// LeoBay 需求与报价客户端（W04）。页面不直接请求网关，所有读写都从这里经 http.ts 出去。
 // 逻辑照 talent 站 lib/talent/demands.ts；Bay 额外记下发布站点（posted_site）与附带作品（attached_work）。
 
 import { authed } from "../agent";

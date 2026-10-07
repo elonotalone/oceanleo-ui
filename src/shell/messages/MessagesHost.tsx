@@ -4,15 +4,18 @@
 // 境内站与未登录：什么都不渲染、不连接、不监听深链。
 // 浮层里：聊天 / 联系人 / Bay 三个视图 + 右侧会话；聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import { useUI } from "../../i18n/ui/useUI";
+import { usePathname, useRouter } from "next/navigation";
 import { useImEnabled } from "../../lib/im/client";
 import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
 import { DealConversationView } from "../bay/deal";
 import { BayGuestHost } from "../bay/shell/BayGuestHost";
-import { BayIcon } from "../bay/shell/bay-icons";
+import { formatBayParam } from "../bay/shell/bay-links";
 import { BayView } from "../bay/shell/BayView";
-import { bayEnabledHere, useBayHasDetail } from "../bay/shell/bay-state";
+import { bayEnabledHere, useBayHasDetail, useBaySignedIn, useBayState } from "../bay/shell/bay-state";
+import { LeoChatTabs } from "../leochat/LeoChatTabs";
+import { leoChatPageHref } from "../leochat/leochat-links";
+import { useBayNeedsAction } from "../leochat/leochat-store";
+import { leoChatPageMounted } from "../leochat/page-presence";
 import { WorkReplayHost } from "../replay/work/WorkReplayHost";
 import { ConversationView } from "./conversation/ConversationView";
 import { ConversationInfoPanel } from "./groups/ConversationInfoPanel";
@@ -29,37 +32,6 @@ import { attachImRealtime, imStore, publishImDisabled, useImUnread } from "./rea
 
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
-}
-
-const tabSvg = {
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  className: "h-5 w-5",
-  "aria-hidden": true,
-};
-
-function ViewTabIcon({ view }: { view: MessagesView }) {
-  if (view === "bay") {
-    return <BayIcon className="h-5 w-5" />;
-  }
-  if (view === "inbox") {
-    return (
-      <svg {...tabSvg}>
-        <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.2 3.4a.6.6 0 0 1-1-.47V16h-.3A2.5 2.5 0 0 1 4 13.5z" />
-        <path d="M8.5 9.5h7M8.5 12.5h4.5" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...tabSvg}>
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M3.5 19c.6-3.2 2.9-4.8 5.5-4.8s4.9 1.6 5.5 4.8M16 11.2a3 3 0 1 0 0-6M17.5 14.6c1.8.5 3 1.9 3.5 4.4" />
-    </svg>
-  );
 }
 
 export function MessagesHost() {
@@ -131,6 +103,7 @@ export function MessagesHost() {
     if (!enabled) return undefined;
     const store = imStore();
     const sync = () => {
+      if (leoChatPageMounted()) return;
       const foreground =
         state.open && state.view === "inbox" && state.conversationId && !document.hidden ? state.conversationId : null;
       store.setForegroundConversation(foreground);
@@ -140,7 +113,7 @@ export function MessagesHost() {
     document.addEventListener("visibilitychange", sync);
     return () => {
       document.removeEventListener("visibilitychange", sync);
-      store.setForegroundConversation(null);
+      if (!leoChatPageMounted()) store.setForegroundConversation(null);
     };
   }, [enabled, state.open, state.view, state.conversationId]);
 
@@ -154,10 +127,13 @@ export function MessagesHost() {
 }
 
 function MessagesOverlay() {
-  const tt = useUI();
   const state = useMessagesHost();
   const host = hostState();
   const unread = useImUnread();
+  const router = useRouter();
+  const bay = useBayState();
+  const signedIn = useBaySignedIn();
+  const bayNeeds = useBayNeedsAction(signedIn);
   const [newOpen, setNewOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [shown, setShown] = useState(state.open);
@@ -186,12 +162,6 @@ function MessagesOverlay() {
   const openConversation = (id: string) => host.showConversation(id);
   const talent = state.conversationId ? isTalentConversationId(state.conversationId) : false;
 
-  const tabs: ReadonlyArray<{ id: MessagesView; label: string; badge?: number }> = [
-    { id: "inbox", label: "聊天" },
-    { id: "people", label: "联系人", badge: unread?.requests ?? 0 },
-    { id: "bay", label: "Bay" },
-  ];
-
   let list: ReactNode;
   if (state.view === "inbox") {
     list = (
@@ -211,36 +181,26 @@ function MessagesOverlay() {
 
   const listWithTabs = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div role="tablist" aria-label={tt("消息")} data-im-icon-tabs className="flex shrink-0 items-center border-b border-black/10 dark:border-white/10">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-label={tt(tab.label)}
-            title={tt(tab.label)}
-            aria-selected={state.view === tab.id}
-            data-view={tab.id}
-            onClick={() => setView(tab.id)}
-            className="relative flex flex-1 items-center justify-center py-3"
-          >
-            <ViewTabIcon view={tab.id} />
-            {tab.badge && tab.badge > 0 ? (
-              <span className="absolute right-[calc(50%-1.45rem)] top-1 min-w-[1rem] rounded-full bg-neutral-900 px-1 text-center text-[10px] font-semibold leading-4 text-white dark:bg-white dark:text-neutral-900">
-                {tab.badge > 99 ? "99+" : tab.badge}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
+      <LeoChatTabs
+        active={state.view}
+        onSelect={setView}
+        badges={{ inbox: unread?.total ?? 0, people: unread?.requests ?? 0, bay: bayNeeds }}
+      />
       <div key={state.view} data-im-view-body className="flex min-h-0 flex-1 flex-col">
         {list}
       </div>
     </div>
   );
 
+  const bayParam = bay.current.kind === "feed" ? null : formatBayParam(bay.current);
+  const pageHref = leoChatPageHref({
+    tab: state.view,
+    conversationId: state.conversationId,
+    bay: bayParam,
+  });
+
   let detail: ReactNode = null;
-  if (state.conversationId) {
+  if (state.view === "inbox" && state.conversationId) {
     const conversation = talent ? (
       <DealConversationView
         key={state.conversationId}
@@ -256,6 +216,7 @@ function MessagesOverlay() {
         onBack={() => host.showConversation(null)}
         onOpenInfo={() => setInfoOpen(true)}
         highlightSeq={state.highlightSeq}
+        onUnavailable={() => host.showConversation(null)}
       />
     );
     detail =
@@ -297,6 +258,9 @@ function MessagesOverlay() {
         onExitComplete={() => {
           if (!state.open) setShown(false);
         }}
+        title="LeoChat"
+        pageHref={pageHref}
+        onOpenPage={() => router.push(pageHref)}
         list={listWithTabs}
         detail={detail}
         showDetail={

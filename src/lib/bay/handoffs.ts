@@ -1,4 +1,4 @@
-// OceanLeo Bay 求助客户端（W04）：发求助、收件箱、认领、授权面、撤回、转合同。
+// LeoBay 求助客户端（W04）：发求助、收件箱、认领、授权面、撤回、转合同。
 // 形状照 talent 站 lib/talent/handoffs.ts；Bay 额外记下发布站点（posted_site）与附带作品（attached_work）。
 // 授权语义不变：context 是白名单，没勾的内容对方认领之后也读不到；撤回立即生效。
 

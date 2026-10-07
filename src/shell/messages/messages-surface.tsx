@@ -30,6 +30,14 @@ export function ImCloseIcon() {
   );
 }
 
+export function ImOpenPageIcon() {
+  return (
+    <Icon>
+      <path d="M14 5h5v5M19 5l-8 8M11 6H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-4" />
+    </Icon>
+  );
+}
+
 export function ImExpandIcon() {
   return (
     <Icon>
@@ -188,17 +196,21 @@ html.dark [data-im-chrome-btn]:hover { background: var(--leo-d-card-2); color: v
 }
 html.dark [data-im-icon-tabs] { border-bottom-color: var(--leo-d-border); }
 [data-im-icon-tabs] [role="tab"] {
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
   color: rgba(15, 15, 15, 0.62);
-  border-bottom: none;
+  border-bottom: 2px solid transparent;
 }
 [data-im-icon-tabs] [role="tab"] svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   stroke-width: 2;
 }
 [data-im-icon-tabs] [role="tab"][aria-selected="true"] {
   color: #0a0a0a;
   background: transparent;
+  border-bottom-color: #0a0a0a;
 }
 [data-im-icon-tabs] [role="tab"][aria-selected="true"] svg {
   stroke-width: 2.45;
@@ -208,7 +220,11 @@ html.dark [data-im-icon-tabs] { border-bottom-color: var(--leo-d-border); }
   color: #0a0a0a;
 }
 html.dark [data-im-icon-tabs] [role="tab"] { color: rgba(255, 255, 255, 0.62); }
-html.dark [data-im-icon-tabs] [role="tab"][aria-selected="true"],
+html.dark [data-im-icon-tabs] [role="tab"][aria-selected="true"] {
+  color: #fff;
+  background: transparent;
+  border-bottom-color: #fff;
+}
 html.dark [data-im-icon-tabs] [role="tab"]:hover { color: #fff; background: transparent; }
 
 [data-im-view-body] {

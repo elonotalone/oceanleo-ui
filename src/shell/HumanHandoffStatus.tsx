@@ -190,7 +190,7 @@ export function HumanHandoffStatus({
                     onClick={() => openBay({ kind: "help", id: handoff.id })}
                     className="font-medium underline underline-offset-2"
                   >
-                    {tt("在 Bay 里打开")}
+                    {tt("在 LeoBay 里打开")}
                   </button>
                   <span aria-hidden="true">·</span>
                   <button

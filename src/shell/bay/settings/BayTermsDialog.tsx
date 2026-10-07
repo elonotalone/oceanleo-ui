@@ -106,7 +106,7 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
         <header className="flex items-start gap-3 border-b border-neutral-200 px-5 py-4 dark:border-neutral-700">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-sky-600 dark:text-sky-300">
-              OceanLeo Bay · {tt("使用条款")}
+              LeoBay · {tt("使用条款")}
               {current ? ` · ${tt("版本 {version}", { version: current.version })}` : ""}
             </p>
             <h2 id={titleId} className="mt-1 text-base font-semibold">

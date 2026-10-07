@@ -82,12 +82,12 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
     <Modal onClose={onClose} className="max-w-md" labelledBy="im-invite-title">
       <div className="p-5" data-invite-link-dialog data-kind={kind}>
         <h3 id="im-invite-title" className="text-[15px] font-semibold text-neutral-900">
-          {kind === "group" ? tt("群邀请链接") : tt("邀请别人")}
+          {kind === "group" ? tt("群邀请链接") : tt("添加联系人")}
         </h3>
         <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
           {kind === "group"
             ? tt("拿到链接的人点开、登录后就能进群。")
-            : tt("把链接发给任何人（微信、邮件都行）。对方点开、登录后，你们就成为联系人。")}
+            : tt("把链接或二维码发给对方（微信、邮件都行）。对方打开并登录后，你们就成为联系人。")}
         </p>
 
         <div className="mt-4 grid grid-cols-2 gap-3 text-[12px] text-neutral-600">

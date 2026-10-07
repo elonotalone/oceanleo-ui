@@ -29,9 +29,11 @@ test("MessagesLayout：层级用行内 zIndex，不靠 Tailwind 任意值（消�
   assert.match(layout, /isolation:\s*["']isolate["']/);
 });
 
-test("MessagesLayout：顶栏没有「消息」两字，只留拖和关", () => {
+test("MessagesLayout：顶栏有标题和跳转链接，仍没有放大键", () => {
   const layout = src("shell/messages/MessagesLayout.tsx");
-  assert.doesNotMatch(layout, /tracking-tight">\{tt\("消息"\)\}/);
+  assert.match(layout, /text-\[13px\] font-semibold tracking-tight/);
+  assert.match(layout, /data-leochat-open-page/);
+  assert.match(layout, /ImOpenPageIcon/);
   assert.doesNotMatch(layout, /ImExpandIcon|ImCollapseIcon|onToggleExpand|放大到全屏/);
   assert.match(layout, /data-im-drag-handle/);
   assert.match(layout, /ImCloseIcon/);
@@ -73,36 +75,31 @@ test("MessagesNavIcon：不用 SVG url(#id) 渐变，View Transition 复制 DOM 
   assert.doesNotMatch(icon, /id="lgi-messages"/);
 });
 
-test("MessagesHost：切页关掉浮层；三个视图是图标页签，顺序聊天、联系人、Bay；聊天页才有新建和搜索", () => {
+test("MessagesHost：切页关掉浮层；栏目顺序仍是聊天、联系人、Bay；聊天页才有新建和搜索", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /usePathname/);
   assert.match(host, /if \(hostState\(\)\.getSnapshot\(\)\.open\) closeMessages\(\)/);
-  assert.match(host, /data-im-icon-tabs/);
-  assert.match(host, /<ViewTabIcon view=\{tab\.id\} \/>/);
-  assert.match(host, /aria-label=\{tt\(tab\.label\)\}/);
-  assert.match(host, /label: "聊天"/);
+  assert.match(host, /<LeoChatTabs/);
   assert.doesNotMatch(host, /label: "收件箱"/);
   assert.doesNotMatch(host, /headerTrailing/);
   assert.doesNotMatch(host, /ImPlusIcon/);
-  const tabRow = host.slice(host.indexOf("data-im-icon-tabs"), host.indexOf("data-im-view-body"));
-  assert.doesNotMatch(tabRow, /ImPlusIcon/);
-  assert.doesNotMatch(tabRow, /新建聊天/);
-  assert.doesNotMatch(host, />\s*\{tt\(tab\.label\)\}\s*</);
   assert.doesNotMatch(host, /onSearch=\{\(\) => setView\("search"\)\}/);
   assert.doesNotMatch(host, /onPeople=\{\(\) => setView\("people"\)\}/);
   assert.doesNotMatch(host, /onSettings=\{\(\) => setView\("settings"\)\}/);
   assert.doesNotMatch(host, /id: "settings", label: "设置"/);
   assert.doesNotMatch(host, /SettingsView/);
   assert.doesNotMatch(host, /id: "search"/);
-  const tabs = host.slice(host.indexOf("const tabs"), host.indexOf("let list"));
+  const tabs = src("shell/leochat/LeoChatTabs.tsx");
   assert.match(tabs, /id: "inbox"[\s\S]*id: "people"[\s\S]*id: "bay"/);
+  assert.match(tabs, /label: "聊天"/);
+  assert.match(tabs, /label: "联系人"/);
+  assert.match(tabs, /label: "LeoBay"/);
   assert.equal(tabs.indexOf('id: "inbox"') < tabs.indexOf('id: "people"'), true);
   assert.equal(tabs.indexOf('id: "people"') < tabs.indexOf('id: "bay"'), true);
 
   const inbox = src("shell/messages/Inbox.tsx");
   assert.match(inbox, /onNew/);
   assert.match(inbox, /新建聊天/);
-  assert.match(inbox, /ImPlusIcon/);
   assert.match(inbox, /搜索消息/);
   assert.match(inbox, /SearchView/);
   assert.doesNotMatch(inbox, /onPeople/);
@@ -145,12 +142,9 @@ test("MessagesLayout：开窗从左下长出来，进会话是推入，关掉会
   assert.doesNotMatch(surface, /left var\(--leo-dur/);
 });
 
-test("通知铃铛在消息可用时打开消息浮层，不另开通知面板", () => {
+test("海外有 LeoChat 时铃铛不渲染，境内才是通知列表", () => {
   const bell = src("shell/account/NotificationBell.tsx");
-  assert.match(bell, /openMessages\(\)/);
-  assert.match(bell, /openBay\(\{ kind: "feed" \}\)/);
-  assert.match(bell, /if \(imOn\) \{/);
-  assert.match(bell, /if \(bayOn\) \{/);
-  assert.match(bell, /open=\{open && !messagesEntry\}/);
-  assert.match(bell, /aria-label=\{messagesEntry \? tt\("消息"\) : tt\("通知"\)\}/);
+  assert.match(bell, /if \(imOn \|\| bayOn\) return null/);
+  assert.doesNotMatch(bell, /openMessages/);
+  assert.doesNotMatch(bell, /openBay/);
 });

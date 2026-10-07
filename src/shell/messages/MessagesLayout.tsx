@@ -1,6 +1,6 @@
 "use client";
 
-// 消息浮层：圆角悬浮版面，顶栏按下即拖（阈值与编辑栏相同），贴底时变矮而不是抹平圆角。顶栏只留关闭。
+// 消息浮层：圆角悬浮版面，顶栏按下即拖（阈值与编辑栏相同），贴底时变矮而不是抹平圆角。顶栏：标题、跳转整页、关闭。
 // 按键只在焦点落在浮层内时处理：Esc 关浮层，其余按键不再向文档冒泡。
 import {
   useCallback,
@@ -8,13 +8,14 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
 import { DOCK_MAX, DOCK_MIN, clampDockWidth, type MessagesLayoutKind } from "./host-state";
-import { ImCloseIcon, ensureMessagesSurfaceStyles } from "./messages-surface";
+import { ImCloseIcon, ImOpenPageIcon, ensureMessagesSurfaceStyles } from "./messages-surface";
 import {
   MESSAGES_DEFAULT_HEIGHT_PX,
   MESSAGES_OVERLAY_RADIUS_PX,
@@ -34,6 +35,9 @@ export interface MessagesLayoutProps {
   onClose: () => void;
   overlayState: "open" | "closed";
   onExitComplete: () => void;
+  title: string;
+  pageHref?: string | null;
+  onOpenPage?: () => void;
   /** 左栏：聊天 / 联系人 / Bay。 */
   list: ReactNode;
   /** 右栏：当前会话；没有选中会话时为 null。 */
@@ -66,6 +70,9 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     onClose,
     overlayState,
     onExitComplete,
+    title,
+    pageHref,
+    onOpenPage,
     list,
     detail,
     showDetail,
@@ -313,6 +320,12 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     };
   };
 
+  const onOpenPageClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    onOpenPage?.();
+  };
+
   const header = (
     <div
       ref={handleRef}
@@ -321,7 +334,21 @@ export function MessagesLayout(props: MessagesLayoutProps) {
       onDragStart={(event) => event.preventDefault()}
       className="flex h-12 shrink-0 cursor-grab select-none touch-none items-center justify-end gap-2 border-b border-black/10 px-3 active:cursor-grabbing dark:border-white/10"
     >
+      <span className="text-[13px] font-semibold tracking-tight">{title}</span>
       <div className="min-h-[1px] min-w-0 flex-1" aria-hidden />
+      {pageHref ? (
+        <a
+          href={pageHref}
+          data-im-no-drag
+          data-im-chrome-btn
+          data-leochat-open-page
+          aria-label={tt("在整页打开")}
+          title={tt("在整页打开")}
+          onClick={onOpenPageClick}
+        >
+          <ImOpenPageIcon />
+        </a>
+      ) : null}
       <button
         type="button"
         data-im-no-drag
@@ -364,7 +391,7 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     <div
       ref={rootRef}
       role="dialog"
-      aria-label={tt("消息")}
+      aria-label={title}
       data-testid="messages-overlay"
       data-layout={layout}
       data-im-overlay-state={overlayState}

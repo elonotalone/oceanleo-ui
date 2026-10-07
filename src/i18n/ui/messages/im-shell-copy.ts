@@ -47,6 +47,7 @@ const SOURCE = {
   previewArtifact: "[作品]",
   previewReplay: "[工作回放]",
   previewCard: "[卡片]",
+  leoChatUnread: "LeoChat：{n} 条新消息或待办",
 } as const;
 
 export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
@@ -94,6 +95,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Work]",
     previewReplay: "[Work replay]",
     previewCard: "[Card]",
+    leoChatUnread: "LeoChat: {n} new messages or tasks",
   },
   de: {
     messages: "Nachrichten",
@@ -139,6 +141,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Werk]",
     previewReplay: "[Arbeitswiedergabe]",
     previewCard: "[Karte]",
+    leoChatUnread: "LeoChat: {n} neue Nachrichten oder Aufgaben",
   },
   es: {
     messages: "Mensajes",
@@ -184,6 +187,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Obra]",
     previewReplay: "[Repetición de trabajo]",
     previewCard: "[Tarjeta]",
+    leoChatUnread: "LeoChat: {n} mensajes o pendientes nuevos",
   },
   "es-419": {
     messages: "Mensajes",
@@ -229,6 +233,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Obra]",
     previewReplay: "[Repetición de trabajo]",
     previewCard: "[Tarjeta]",
+    leoChatUnread: "LeoChat: {n} mensajes o pendientes nuevos",
   },
   fr: {
     messages: "Messages",
@@ -274,6 +279,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Œuvre]",
     previewReplay: "[Relecture du travail]",
     previewCard: "[Carte]",
+    leoChatUnread: "LeoChat : {n} nouveaux messages ou tâches",
   },
   it: {
     messages: "Messaggi",
@@ -319,6 +325,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Opera]",
     previewReplay: "[Replay del lavoro]",
     previewCard: "[Scheda]",
+    leoChatUnread: "LeoChat: {n} nuovi messaggi o attività",
   },
   "pt-BR": {
     messages: "Mensagens",
@@ -364,6 +371,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Trabalho]",
     previewReplay: "[Replay do trabalho]",
     previewCard: "[Cartão]",
+    leoChatUnread: "LeoChat: {n} novas mensagens ou pendências",
   },
   "pt-PT": {
     messages: "Mensagens",
@@ -409,6 +417,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Trabalho]",
     previewReplay: "[Repetição do trabalho]",
     previewCard: "[Cartão]",
+    leoChatUnread: "LeoChat: {n} novas mensagens ou pendências",
   },
   vi: {
     messages: "Tin nhắn",
@@ -454,6 +463,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Tác phẩm]",
     previewReplay: "[Phát lại công việc]",
     previewCard: "[Thẻ]",
+    leoChatUnread: "LeoChat: {n} tin nhắn hoặc việc mới",
   },
   tr: {
     messages: "Mesajlar",
@@ -499,6 +509,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[Çalışma]",
     previewReplay: "[Çalışma tekrarı]",
     previewCard: "[Kart]",
+    leoChatUnread: "LeoChat: {n} yeni mesaj veya iş",
   },
   "zh-TW": {
     messages: "訊息",
@@ -544,6 +555,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[作品]",
     previewReplay: "[工作回放]",
     previewCard: "[卡片]",
+    leoChatUnread: "LeoChat：{n} 則新訊息或待辦",
   },
   ja: {
     messages: "メッセージ",
@@ -589,6 +601,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[作品]",
     previewReplay: "[作業リプレイ]",
     previewCard: "[カード]",
+    leoChatUnread: "LeoChat：新着または未処理が {n} 件",
   },
   ko: {
     messages: "메시지",
@@ -634,6 +647,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[작품]",
     previewReplay: "[작업 리플레이]",
     previewCard: "[카드]",
+    leoChatUnread: "LeoChat: 새 메시지 또는 할 일 {n}개",
   },
   ar: {
     messages: "الرسائل",
@@ -679,6 +693,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[عمل]",
     previewReplay: "[إعادة عرض العمل]",
     previewCard: "[بطاقة]",
+    leoChatUnread: "LeoChat: {n} رسائل أو مهام جديدة",
   },
   th: {
     messages: "ข้อความ",
@@ -724,6 +739,7 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[ผลงาน]",
     previewReplay: "[เล่นซ้ำงาน]",
     previewCard: "[การ์ด]",
+    leoChatUnread: "LeoChat: ข้อความหรืองานใหม่ {n} รายการ",
   },
   hi: {
     messages: "संदेश",
@@ -769,5 +785,6 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewArtifact: "[कृति]",
     previewReplay: "[कार्य रीप्ले]",
     previewCard: "[कार्ड]",
+    leoChatUnread: "LeoChat: {n} नए संदेश या काम",
   },
 });

@@ -15,34 +15,30 @@ test("host-state：MessagesView 与深链认 bay", () => {
   assert.match(text, /raw === "bay"/);
 });
 
-test("MessagesHost：未登录海外开 BayGuestHost；图标行有 Bay；talent 会话走 DealConversationView", () => {
+test("MessagesHost：未登录海外开 BayGuestHost；talent 会话走 DealConversationView", () => {
   const text = src("shell/messages/MessagesHost.tsx");
   assert.match(text, /if \(!enabled\) return bayEnabledHere\(\) \? <BayGuestHost \/> : null;/);
-  assert.match(text, /\{ id: "bay", label: "Bay" \}/);
+  assert.match(text, /<LeoChatTabs/);
   assert.match(text, /state\.view === "bay"/);
   assert.match(text, /<BayView part="list"/);
   assert.match(text, /<BayView part="detail"/);
-  // 去 /bay 整页的入口在 Bay 视图自己的那一行里（不依赖浮窗顶栏有没有放大键）。
-  const list = src("shell/bay/shell/BayList.tsx");
-  assert.match(list, /href=\{bayPageHref\(\)\}/);
-  assert.match(list, /data-bay-action="open-page"/);
+  const layout = src("shell/messages/MessagesLayout.tsx");
+  assert.match(layout, /data-leochat-open-page/);
   assert.match(text, /<DealConversationView/);
   assert.match(text, /threadId=\{state\.conversationId\.replace\(\/\^talent:\/, ""\)\}/);
   assert.doesNotMatch(text, /TalentConversationView/);
 });
 
-test("SidebarAccountCluster：铃铛后有 BayNavIcon", () => {
+test("SidebarAccountCluster：铃铛后有 LeoChatButton，没有 BayNavIcon", () => {
   const text = src("shell/account/SidebarAccountCluster.tsx");
   assert.match(text, /<NotificationBell className="leo-tap-target-inner" \/>/);
-  assert.match(text, /<BayNavIcon className="leo-tap-target-inner" \/>/);
+  assert.match(text, /<LeoChatButton className="leo-tap-target-inner" \/>/);
+  assert.doesNotMatch(text, /<BayNavIcon/);
 });
 
-test("AppShell：账号行上方有叫真人，窄栏是 compact，顶栏没有", () => {
+test("AppShell：不再出现 CallHumanButton", () => {
   const text = src("shell/AppShell.tsx");
-  assert.match(text, /<CallHumanButton siteKey=\{shellSiteKey \|\| "oceanleo"\} \/>/);
-  assert.match(text, /<CallHumanButton siteKey=\{shellSiteKey \|\| "oceanleo"\} compact \/>/);
-  const topbar = text.slice(text.indexOf('if (layout === "topbar")'));
-  assert.doesNotMatch(topbar, /CallHumanButton/);
+  assert.doesNotMatch(text, /CallHumanButton/);
 });
 
 test("MessageItem：talent_order 卡渲染 BayOrderCard", () => {
@@ -52,13 +48,12 @@ test("MessageItem：talent_order 卡渲染 BayOrderCard", () => {
   assert.match(text, /compact/);
 });
 
-test("nav-source：门户 talent 行改成站内 /bay", () => {
+test("nav-source：门户侧栏是 LeoChat 整页，不再占 Bay/消息行", () => {
   const text = src("shell/nav-source/index.ts");
-  assert.match(text, /id: "bay"/);
-  assert.match(text, /href: "\/bay"/);
-  assert.match(text, /labelKey: "OceanLeo Bay"/);
-  assert.match(text, /iconId: "bay"/);
-  assert.doesNotMatch(text, /id: "talent"/);
+  assert.match(text, /id: "leochat"/);
+  assert.match(text, /href: "\/leochat"/);
+  assert.match(text, /labelKey: "LeoChat"/);
+  assert.doesNotMatch(text, /labelKey: "OceanLeo Bay"/);
 });
 
 test("shell/index：导出 bay", () => {

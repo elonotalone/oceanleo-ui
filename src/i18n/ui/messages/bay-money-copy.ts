@@ -1,4 +1,4 @@
-// 2026-10-06 oceanleo-bay 波 W09 的分表（设置里的 OceanLeo Bay：钱、条款）。只由 W09 改；登记在 bay-copy.ts。
+// 2026-10-06 oceanleo-bay 波 W09 的分表（设置里的 LeoBay：钱、条款）。只由 W09 改；登记在 bay-copy.ts。
 // 「钱」「关闭」「重试」「登录」「收入」「时间」「订单」「金额」「订单详情」「正在加载…」走基础词典或外壳分表。
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 

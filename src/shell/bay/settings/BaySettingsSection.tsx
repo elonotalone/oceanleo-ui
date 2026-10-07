@@ -1,6 +1,6 @@
 "use client";
 
-// 设置窗「OceanLeo Bay」栏：卖家资料、资质审核、钱、规则与条款。境内不渲染。
+// 设置窗「LeoBay」栏：卖家资料、资质审核、钱、规则与条款。境内不渲染。
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { BaySellerProfileSection } from "../seller/BaySellerProfileSection";
@@ -56,7 +56,7 @@ export function BaySettingsSection({ pane }: { pane?: BaySettingsPaneName }) {
 
   return (
     <div className="flex flex-col gap-4" data-bay-settings-section={block}>
-      <nav className="flex flex-wrap gap-1" aria-label="OceanLeo Bay">
+      <nav className="flex flex-wrap gap-1" aria-label="LeoBay">
         {BAY_SETTINGS_BLOCKS.map((id) => {
           const active = block === id;
           return (

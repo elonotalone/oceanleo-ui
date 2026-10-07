@@ -1,6 +1,6 @@
 "use client";
 
-// 输入框：多行文字、@ 候选、表情、附件（粘贴 / 拖拽 / 选择）、语音、「+」（分享作品 / 工作回放）、草稿、引用与编辑。
+// 输入框：多行文字、@ 候选、表情、附件（粘贴 / 拖拽 / 选择）、语音、回形针（分享作品 / 工作回放）、草稿、引用与编辑。
 // Enter 发送 / Shift+Enter 换行（手机上 Enter 换行、按钮发送）。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -14,7 +14,7 @@ import { sendTyping } from "../realtime/hooks";
 import { ArtifactPickerDialog } from "./ArtifactPickerDialog";
 import { AttachmentTray } from "./AttachmentTray";
 import { EmojiPicker } from "./EmojiPicker";
-import { ImCloseIcon, ImEmojiIcon, ImPlusIcon, ImSendIcon } from "../messages-surface";
+import { ImCloseIcon, ImEmojiIcon, ImSendIcon } from "../messages-surface";
 import {
   MentionPicker,
   activeMentionQuery,
@@ -87,6 +87,18 @@ function isCoarsePointer(): boolean {
 
 function filesFrom(list: FileList | File[] | null | undefined): File[] {
   return list ? Array.from(list) : [];
+}
+
+function PaperclipIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path
+        d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export function Composer(props: ComposerProps) {
@@ -523,10 +535,11 @@ export function Composer(props: ComposerProps) {
               onClick={() => setPlusOpen((v) => !v)}
               aria-haspopup="menu"
               aria-expanded={plusOpen}
-              aria-label={tt("更多")}
+              aria-label={tt("发文件或作品")}
+              title={tt("发文件或作品")}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
             >
-              <ImPlusIcon />
+              <PaperclipIcon />
             </button>
             {plusOpen ? (
               <div role="menu" className="absolute bottom-9 left-0 z-30 min-w-[160px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">

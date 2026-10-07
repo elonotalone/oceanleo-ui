@@ -1,6 +1,6 @@
 "use client";
 
-// 设置里「OceanLeo Bay」的卖家资料 + 作品集。按窄宽度排版。不做所在时区。
+// 设置里「LeoBay」的卖家资料 + 作品集。按窄宽度排版。不做所在时区。
 // 作品集从「我的库」挑作品（pickLibraryWork）；弹窗宿主由外壳挂。
 
 import { useCallback, useEffect, useState } from "react";

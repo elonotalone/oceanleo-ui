@@ -3,9 +3,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { INBOX_FILTERS } from "../src/lib/im/inbox-api.ts";
+import { onLeoChatPageRequest, registerLeoChatPage } from "../src/shell/leochat/page-presence.ts";
 import {
   IM_OPEN_EVENT,
   INBOX_FILTER_IDS,
+  LAST_VIEW_KEY,
   MESSAGES_VIEWS,
   buildImSearch,
   clampDockWidth,
@@ -316,4 +318,79 @@ test("悬浮位置记在 storage；同页重挂不关浮层、位置不变；打
     makeEnv({ url: "https://oceanleo.com/explore", storedOffset: { x: 80, y: 40 } }).env,
   );
   assert.deepEqual(remembered.getSnapshot().overlayOffset, { x: 80, y: 40 });
+});
+
+test("关掉再开停在原栏目和原会话；切栏目不清会话", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  host.attach();
+  host.open({ conversationId: "c1" });
+  host.setView("people");
+  assert.equal(host.getSnapshot().view, "people");
+  assert.equal(host.getSnapshot().conversationId, "c1");
+  host.close();
+  assert.equal(host.getSnapshot().open, false);
+  assert.equal(host.getSnapshot().view, "people");
+  assert.equal(host.getSnapshot().conversationId, "c1");
+  host.open();
+  assert.equal(host.getSnapshot().open, true);
+  assert.equal(host.getSnapshot().view, "people");
+  assert.equal(host.getSnapshot().conversationId, "c1");
+});
+
+test("存储往返：写入后新建 host 能读回；格式不对用默认", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  host.open({ conversationId: "keep-me" });
+  host.setView("bay");
+  assert.equal(JSON.parse(sim.storage.get(LAST_VIEW_KEY)).view, "bay");
+  const next = createHostState(sim.env);
+  assert.equal(next.getSnapshot().view, "bay");
+  assert.equal(next.getSnapshot().conversationId, "keep-me");
+  assert.equal(next.getSnapshot().open, false);
+
+  const bad = makeEnv();
+  bad.env.storage.setItem(LAST_VIEW_KEY, "not-json");
+  const fromBad = createHostState(bad.env);
+  assert.equal(fromBad.getSnapshot().view, "inbox");
+  assert.equal(fromBad.getSnapshot().conversationId, null);
+
+  const wrong = makeEnv();
+  wrong.env.storage.setItem(LAST_VIEW_KEY, JSON.stringify({ view: "search", conversationId: 12 }));
+  const fromWrong = createHostState(wrong.env);
+  assert.equal(fromWrong.getSnapshot().view, "inbox");
+  assert.equal(fromWrong.getSnapshot().conversationId, null);
+});
+
+test("整页在场时 open 不置 open，请求被整页收到", () => {
+  const received = [];
+  const unreg = registerLeoChatPage();
+  const off = onLeoChatPageRequest((req) => received.push(req));
+  try {
+    const sim = makeEnv();
+    const host = createHostState(sim.env);
+    host.setEnabled(true);
+    host.open({ conversationId: "c9", seq: 4 });
+    assert.equal(host.getSnapshot().open, false);
+    assert.equal(received.length, 1);
+    assert.equal(received[0].tab, "inbox");
+    assert.equal(received[0].conversationId, "c9");
+    assert.equal(received[0].seq, 4);
+  } finally {
+    off();
+    unreg();
+  }
+});
+
+test("路径是 /leochat 或 /bay 时 applyLocation 不打开也不清地址栏", () => {
+  for (const url of ["https://oceanleo.com/leochat?im=c1", "https://oceanleo.com/bay?im=c1"]) {
+    const sim = makeEnv({ url });
+    const host = createHostState(sim.env);
+    host.setEnabled(true);
+    host.attach();
+    assert.equal(host.getSnapshot().open, false);
+    assert.match(sim.current().url, /im=c1/);
+  }
 });

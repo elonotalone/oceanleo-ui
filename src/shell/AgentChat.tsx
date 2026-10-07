@@ -43,7 +43,7 @@ import {
   agentArtifactLabels,
 } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
-import { LeoComposer } from "./LeoComposer";
+import { LeoComposer, type ComposerMenuItem } from "./LeoComposer";
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
 import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
@@ -70,7 +70,8 @@ import {
 } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
-import { setBayTaskContext } from "./bay/shell/bay-state";
+import { CallHumanIcon } from "./bay/shell/bay-icons";
+import { openBay, setBayTaskContext, useBayEnabled } from "./bay/shell/bay-state";
 import {
   createTask,
   branchTask,
@@ -763,7 +764,7 @@ function AgentChatInner({
     if (taskId) noteFirstVisibleReply(taskId, messages);
   }, [taskId, messages]);
 
-  // 左侧栏「叫真人」在任务页自动带上当前任务；只读（别人的任务、回放）不带。
+  // 「找人帮忙」在任务页自动带上当前任务；只读（别人的任务、回放）不带。
   useEffect(() => {
     if (!taskId || readOnly) return undefined;
     return () => setBayTaskContext(null);
@@ -771,6 +772,23 @@ function AgentChatInner({
   useEffect(() => {
     if (taskId && !readOnly) setBayTaskContext({ taskId, messages });
   }, [taskId, readOnly, messages]);
+  // 任务页的直达入口：输入框「＋」菜单里的「找人帮忙」，点开就是带着当前任务的那张表单。
+  // 境内没有 LeoBay、只读任务不能求助，这两种情况菜单里不出现。
+  const bayEnabled = useBayEnabled();
+  const getHelpMenu = useMemo<ComposerMenuItem[] | undefined>(
+    () =>
+      bayEnabled && taskId && !readOnly
+        ? [
+            {
+              id: "get-help",
+              label: tt("找人帮忙"),
+              icon: <CallHumanIcon className="h-4 w-4" />,
+              onClick: () => openBay({ kind: "call-human" }),
+            },
+          ]
+        : undefined,
+    [bayEnabled, taskId, readOnly, tt],
+  );
 
   // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
   // 不要求宿主重新挂载 AgentChat；切到无 task 的新 session 时也不能残留上一段消息。
@@ -2005,6 +2023,7 @@ function AgentChatInner({
             attachments={toolsOn ? atts.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onVoiceTranscript={handleVoiceTranscript}
+            attachMenuExtra={getHelpMenu}
           />
             </>
           )}

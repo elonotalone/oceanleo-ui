@@ -1,7 +1,6 @@
 "use client";
 
-// 账号旁的消息入口（海外站）。点开 Messages 浮层；未登录时打开同一扇窗的 Bay 访客页。
-// 境内没有消息/Bay，才退回原来的站内通知列表。
+// 境内账号旁的通知列表。海外由 LeoChat 图标负责，本组件不渲染。
 //
 // 2026-09-21：面板必须 portal 到 document.body 并用 position:fixed 往上弹。侧栏是
 // h-screen overflow-hidden，原先 absolute top-10 往下弹会整块掉出可视区。
@@ -10,10 +9,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { portalHref } from "../../contracts/domain-family";
 import { useImEnabled } from "../../lib/im/client";
-import { openBay, useBayEnabled } from "../bay/shell/bay-state";
-import { openMessages } from "../messages/host-state";
-import { useImUnread } from "../messages/realtime/hooks";
-import { formatBadge } from "../messages/realtime/store";
+import { useBayEnabled } from "../bay/shell/bay-state";
+import { AnchoredFixedPopover } from "./AnchoredFixedPopover";
 
 import {
   listNotifications,
@@ -21,7 +18,6 @@ import {
   notificationUnreadCount,
   type NotificationItem,
 } from "../../api/notifications";
-import { AnchoredFixedPopover } from "./AnchoredFixedPopover";
 
 function IconBell({ className }: { className?: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className} aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 9h18c0-1-3-2-3-9ZM10 21h4" /></svg>;
@@ -48,20 +44,12 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   const tt = useUI();
   const imOn = useImEnabled();
   const bayOn = useBayEnabled();
-  const messagesEntry = imOn || bayOn;
-  const imUnread = useImUnread();
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const badge = imOn
-    ? formatBadge(imUnread?.total ?? 0)
-    : bayOn
-      ? ""
-      : unread > 0
-        ? String(unread > 99 ? "99+" : unread)
-        : "";
+  const badge = unread > 0 ? String(unread > 99 ? "99+" : unread) : "";
 
   const refreshCount = useCallback(async () => {
     const result = await notificationUnreadCount();
@@ -81,16 +69,6 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   }, []);
 
   const toggle = async () => {
-    if (imOn) {
-      setOpen(false);
-      openMessages();
-      return;
-    }
-    if (bayOn) {
-      setOpen(false);
-      openBay({ kind: "feed" });
-      return;
-    }
     const next = !open;
     setOpen(next);
     if (!next) return;
@@ -121,15 +99,17 @@ export function NotificationBell({ className = "" }: { className?: string }) {
     );
   };
 
+  if (imOn || bayOn) return null;
+
   return (
     <div className={`relative ${className}`}>
       <button
         ref={buttonRef}
         type="button"
         onClick={() => void toggle()}
-        aria-label={messagesEntry ? tt("消息") : tt("通知")}
-        aria-haspopup={messagesEntry ? undefined : "dialog"}
-        aria-expanded={messagesEntry ? undefined : open}
+        aria-label={tt("通知")}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
         <IconBell className="h-4 w-4" />
@@ -141,7 +121,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
       </button>
 
       <AnchoredFixedPopover
-        open={open && !messagesEntry}
+        open={open}
         anchorRef={buttonRef}
         onClose={closePanel}
         width={320}

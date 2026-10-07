@@ -47,7 +47,7 @@ function errorMessage(error: unknown): string | null {
   return typeof message === "string" && message ? message : null;
 }
 
-/** 头部「回到主题」去哪：服务 / 需求 / 求助在 Bay 里打开；订单会话打开订单；私聊打开对方主页。 */
+/** 头部「回到主题」去哪：服务 / 需求 / 求助在 LeoBay 里打开；订单会话打开订单；私聊打开对方主页。 */
 export function subjectTarget(
   kind: string,
   subjectId: string | null,

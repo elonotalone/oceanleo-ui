@@ -7,12 +7,13 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { listBlocks, reasonOf, unblockUser, useLoader } from "../../../lib/im/people-api";
 import { PersonAvatar } from "../groups/GroupAvatar";
 
-export function BlockedList() {
+export function BlockedList({ query }: { query?: string }) {
   const tt = useUI();
   const blocks = useLoader(listBlocks, []);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const items = blocks.data ?? [];
+  const needle = (query ?? "").trim().toLocaleLowerCase();
+  const items = (blocks.data ?? []).filter((p) => !needle || p.display_name.toLocaleLowerCase().includes(needle));
 
   async function unblock(userId: string) {
     setBusy(userId);

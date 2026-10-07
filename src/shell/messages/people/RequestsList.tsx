@@ -16,6 +16,7 @@ import { GroupAvatar, PersonAvatar } from "../groups/GroupAvatar";
 import { useImEvent } from "../realtime/hooks";
 
 export interface RequestsListProps {
+  query?: string;
   onOpenProfile?: (userId: string) => void;
   onOpenConversation?: (conversationId: string) => void;
   /** 处理完一条后通知上层（刷新角标） */
@@ -25,7 +26,7 @@ export interface RequestsListProps {
 const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-white disabled:opacity-50";
 const btnPrimary = "rounded-lg bg-neutral-900 px-2.5 py-1 text-[12px] font-medium text-white disabled:opacity-50";
 
-export function RequestsList({ onOpenProfile, onOpenConversation, onChanged }: RequestsListProps) {
+export function RequestsList({ query, onOpenProfile, onOpenConversation, onChanged }: RequestsListProps) {
   const tt = useUI();
   const incoming = useLoader(() => listContactRequests("in"), []);
   const outgoing = useLoader(() => listContactRequests("out"), []);
@@ -56,9 +57,11 @@ export function RequestsList({ onOpenProfile, onOpenConversation, onChanged }: R
     }
   }
 
-  const pendingIn = (incoming.data ?? []).filter((r) => r.status === "pending");
-  const pendingOut = (outgoing.data ?? []).filter((r) => r.status === "pending");
-  const groupInvites = invites.data ?? [];
+  const needle = (query ?? "").trim().toLocaleLowerCase();
+  const hit = (name: string) => !needle || name.toLocaleLowerCase().includes(needle);
+  const pendingIn = (incoming.data ?? []).filter((r) => r.status === "pending" && hit(r.from.display_name));
+  const pendingOut = (outgoing.data ?? []).filter((r) => r.status === "pending" && hit(r.to.display_name));
+  const groupInvites = (invites.data ?? []).filter((g) => hit(g.conversation.title));
   const empty = pendingIn.length + pendingOut.length + groupInvites.length === 0;
 
   return (
