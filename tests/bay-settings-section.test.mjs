@@ -8,6 +8,7 @@ import test from "node:test";
 
 import React, { act } from "react";
 
+import { BAY_MONEY_MESSAGES } from "../src/i18n/ui/messages/bay-money-copy.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -74,8 +75,10 @@ const settingsTabsStub = dataModule(`
 const uiStub = dataModule(`
   export function useUI() {
     return (zh, vars) => {
-      if (!vars) return zh;
-      return zh.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+      const table = globalThis.__bayTtTable;
+      let out = table && table[zh] ? table[zh] : zh;
+      if (!vars) return out;
+      return out.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
     };
   }
 `);
@@ -96,6 +99,7 @@ function bench(routes = {}) {
   globalThis.__bayEnabled = true;
   globalThis.__bayLoginCalls = 0;
   globalThis.__bayOpenSettings = [];
+  globalThis.__bayTtTable = undefined;
   return globalThis.__bayBench;
 }
 
@@ -147,6 +151,44 @@ test("没就绪：钱页写「暂未开放」，没有任何可点的绑卡、�
   assert.equal(globalThis.__bayBench.calls.some((call) => call.method === "POST"), false);
   root.unmount();
   host.remove();
+});
+
+test("英文 locale：网关中文 blockers 不出现「到收益页」或「Stripe 完成核验」", async () => {
+  document.documentElement.lang = "en";
+  bench({
+    "GET /v1/talent/payments/config": DEV_CONFIG,
+    "GET /v1/talent/ledger": { items: [], page: 1, limit: 20, total: 0, has_more: false, total_in_fen: 0, total_out_fen: 0, monthly: [] },
+    "GET /v1/talent/ledger/summary": { currency: "USD", month: "2026-10", month_in_fen: 0, lifetime_in_fen: 0, ongoing_contract_amount_fen: 0, ongoing_contract_count: 0, monthly: [] },
+    "GET /v1/talent/payout-account": { edition: "intl", provider: "none", state: "none", verified_subject_kind: null, last_checked_at: null },
+    "GET /v1/talent/paid-work-eligibility": {
+      eligible: false,
+      reason: "到收益页选择收款国家并开通收款账户，由 Stripe 完成核验。",
+      blockers: [
+        "到收益页选择收款国家并开通收款账户，由 Stripe 完成核验。",
+        "收款暂未开放",
+        "由 Stripe 完成核验",
+      ],
+    },
+  });
+  globalThis.__bayTtTable = BAY_MONEY_MESSAGES.en;
+  const { BaySettingsSection } = await loadSection();
+  const { host, root } = await render(React.createElement(BaySettingsSection, { pane: "money" }));
+  assert.equal(host.textContent.includes("到收益页"), false, host.textContent);
+  assert.equal(host.textContent.includes("Stripe 完成核验"), false, host.textContent);
+  assert.match(host.textContent, /Payouts are not available yet/);
+  assert.match(host.textContent, /Account setup is not available yet/);
+  assert.equal(host.querySelector("[data-bay-money-blocker]"), null);
+  const buttons = [...host.querySelectorAll("button")].map((el) => el.textContent.trim());
+  for (const label of ["绑卡", "开户", "提现", "付款", "Set up", "Open account", "Withdraw"]) {
+    assert.equal(
+      buttons.some((text) => text === label || text.startsWith(label)),
+      false,
+      `出现了可点的「${label}」：${buttons.join(" | ")}`,
+    );
+  }
+  root.unmount();
+  host.remove();
+  document.documentElement.lang = "zh";
 });
 
 test("openBaySettings('money') 记下这一块并打开设置窗的 bay 栏", async () => {

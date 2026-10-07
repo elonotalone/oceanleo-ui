@@ -167,7 +167,7 @@ test("账本与收款账户：查询参数白名单、金额归一、通道未�
   assert.equal((await money.fetchBayLedgerSummary()).month_in_fen, 12352);
   assert.equal(await money.fetchBayPayoutAccount(), null);
   const eligibility = await money.fetchBayPaidWorkEligibility();
-  assert.deepEqual(money.bayPayoutBlockerLines(eligibility, null), ["收款通道尚未接入"]);
+  assert.deepEqual(money.bayPayoutBlockerLines(eligibility, null), ["放款通道尚未接入"]);
   const csv = money.bayLedgerCsv(page.items, {
     headers: ["时间", "对方", "订单", "事件", "收支", "金额", "状态", "备注"],
     event: (event) => money.BAY_LEDGER_EVENT_LABELS[event],
@@ -178,4 +178,35 @@ test("账本与收款账户：查询参数白名单、金额归一、通道未�
   assert.match(csv, /"123\.45"/);
   assert.equal(money.formatBayFen(123450, "CNY"), "¥1,234.50");
   assert.equal(money.bayPayoutAccountStateLabel("none"), "还没有收款账户");
+});
+
+test("关闭收款类网关 blocker 映射到词表，不把收益页原句留下", async () => {
+  bench({});
+  const money = await freshModule("src/lib/bay/money.ts");
+  const long = "到收益页选择收款国家并开通收款账户，由 Stripe 完成核验。";
+  assert.deepEqual(
+    money.bayPayoutBlockerLines({ eligible: false, reason: "", blockers: [long] }, null),
+    ["开户暂未开放"],
+  );
+  assert.deepEqual(
+    money.bayPayoutBlockerLines({ eligible: false, reason: "", blockers: ["由 Stripe 完成核验"] }, null),
+    ["开户暂未开放"],
+  );
+  assert.deepEqual(
+    money.bayPayoutBlockerLines({ eligible: false, reason: "", blockers: ["收款暂未开放"] }, null),
+    ["收款暂未开放"],
+  );
+  assert.deepEqual(
+    money.bayPayoutBlockerLines({ eligible: false, reason: long, blockers: [] }, null),
+    ["开户暂未开放"],
+  );
+  assert.deepEqual(
+    money.bayPayoutBlockerLines(
+      { eligible: false, reason: "", blockers: [long, "收款暂未开放", "放款通道尚未接入"] },
+      { edition: "intl", provider: "none", state: "none", verified_subject_kind: null, last_checked_at: null },
+    ),
+    ["开户暂未开放", "收款暂未开放", "放款通道尚未接入"],
+  );
+  assert.deepEqual(money.bayVisiblePayoutBlockerLines(["开户暂未开放", "放款通道尚未接入"], false), ["放款通道尚未接入"]);
+  assert.deepEqual(money.bayVisiblePayoutBlockerLines(["开户暂未开放"], true), ["开户暂未开放"]);
 });

@@ -277,12 +277,55 @@ export async function fetchBayPaidWorkEligibility(): Promise<BayPaidWorkEligibil
   }
 }
 
-/** 收款没就绪时卡片里的几行原因：以网关 blockers 为准，这里只兜底。 */
+/** 平台没开放收款时，网关 blockers 里会出现的中文原句片段（不进词表、不往界面摊）。 */
+const CLOSED_PAYOUT_ONBOARD_MARKERS = [
+  "到收益页选择收款国家并开通收款账户",
+  "由 Stripe 完成核验",
+] as const;
+
+const CLOSED_PAYOUT_COPY = {
+  payout: "收款暂未开放",
+  onboard: "开户暂未开放",
+  withdraw: "提现暂未开放",
+  rail: "放款通道尚未接入",
+} as const;
+
+/** 把网关 blocker 收成词表里已有的中文 key；对不上的原样留下，调用方再 tt()。 */
+export function mapBayPayoutBlockerLine(line: string): string {
+  const text = line.trim();
+  if (!text) return "";
+  if (CLOSED_PAYOUT_ONBOARD_MARKERS.some((marker) => text.includes(marker))) return CLOSED_PAYOUT_COPY.onboard;
+  if (text.includes(CLOSED_PAYOUT_COPY.payout)) return CLOSED_PAYOUT_COPY.payout;
+  if (text.includes("放款通道尚未接入") || text.includes("收款通道尚未接入")) return CLOSED_PAYOUT_COPY.rail;
+  return text;
+}
+
+function uniqueLines(lines: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (!line || seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+  }
+  return out;
+}
+
+/** 收款没就绪时卡片里的几行原因：关闭收款类网关原文映射到已翻译词条，其余原样留下。 */
 export function bayPayoutBlockerLines(eligibility: BayPaidWorkEligibility | null, account: BayPayoutAccount | null): string[] {
-  if (eligibility?.blockers.length) return eligibility.blockers;
-  if (eligibility?.reason.trim()) return [eligibility.reason.trim()];
-  if (account && account.provider === "none") return ["放款通道尚未接入"];
-  return [];
+  const raw =
+    eligibility?.blockers.length ? eligibility.blockers
+    : eligibility?.reason.trim() ? [eligibility.reason.trim()]
+    : account && account.provider === "none" ? [CLOSED_PAYOUT_COPY.rail]
+    : [];
+  return uniqueLines(raw.map(mapBayPayoutBlockerLine));
+}
+
+/** 钱页收款卡已经写了「暂未开放」三句时，不要把映射后的同一句再画一遍。 */
+export function bayVisiblePayoutBlockerLines(lines: string[], sellerReady: boolean): string[] {
+  if (sellerReady) return lines;
+  const alreadyOnCard = new Set<string>([CLOSED_PAYOUT_COPY.payout, CLOSED_PAYOUT_COPY.onboard, CLOSED_PAYOUT_COPY.withdraw]);
+  return lines.filter((line) => !alreadyOnCard.has(line));
 }
 
 export const BAY_PAYOUT_ACCOUNT_STATE_LABELS: Readonly<Record<string, string>> = {
@@ -291,7 +334,7 @@ export const BAY_PAYOUT_ACCOUNT_STATE_LABELS: Readonly<Record<string, string>> =
   pending: "通道审核中",
   active: "可以收款",
   restricted: "收款受限",
-  disabled: "收款已停用",
+  disabled: "已停用",
 };
 
 export function bayPayoutAccountStateLabel(state: string | null | undefined): string {

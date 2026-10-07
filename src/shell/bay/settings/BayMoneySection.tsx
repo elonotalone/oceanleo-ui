@@ -12,6 +12,7 @@ import {
   bayMoneyNotice,
   bayPayoutAccountStateLabel,
   bayPayoutBlockerLines,
+  bayVisiblePayoutBlockerLines,
   downloadBayLedgerCsv,
   fetchBayLedger,
   fetchBayLedgerSummary,
@@ -252,8 +253,8 @@ export function BayMoneySection() {
           ) : (
             <ClosedNote>{tt("收款暂未开放")}</ClosedNote>
           )}
-          {data.blockers.map((line) => (
-            <p key={line} className="mt-1 text-[12px] text-neutral-500">
+          {bayVisiblePayoutBlockerLines(data.blockers, data.sellerReady).map((line) => (
+            <p key={line} className="mt-1 text-[12px] text-neutral-500" data-bay-money-blocker="">
               {tt(line)}
             </p>
           ))}
