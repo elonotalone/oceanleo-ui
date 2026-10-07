@@ -117,7 +117,7 @@ test("条款：状态解析、没登录是 401、同意时带版本号", async (
   const status = await terms.fetchBayTermsStatus();
   assert.equal(status.accepted, false);
   assert.equal(status.current.version, 3);
-  assert.deepEqual(status.current.sections.map((s) => [s.key, s.title_zh]), [["how_it_works", "如何运作"], ["fees", "费用：不抽佣"]]);
+  assert.deepEqual(status.current.sections.map((s) => [s.key, s.title_zh]), [["how_it_works", "如何运作"], ["fees", "费用"]]);
   assert.deepEqual(status.acceptance, { version: 2, accepted_at: "2026-08-01T00:00:00Z" });
   assert.equal(terms.bayTermsUpToDate(status), false);
 

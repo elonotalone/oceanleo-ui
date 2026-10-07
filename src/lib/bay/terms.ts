@@ -32,15 +32,17 @@ export interface BayTermsStatus {
   error: string | null;
 }
 
+// 与网关当前版本的分节标题一致（界面按标题查译文）。
 const FALLBACK_TITLES: Readonly<Record<string, string>> = {
-  how_it_works: "如何运作",
-  fees: "费用：不抽佣",
-  off_platform: "站外交易：平台的立场",
-  dispute: "争议评估与平台裁定",
-  dispute_forum: "第三方争议解决",
-  verification: "身份核验由收款通道承担",
-  data_residency: "数据驻留与不用于训练",
+  knowledge_only: "平台提供的是知识答疑",
+  how_it_works: "市场怎么运转",
+  fees: "费用",
+  off_platform: "站外交易",
+  dispute: "纠纷处理",
+  verification: "身份核验",
+  data_residency: "数据存放",
   privacy: "隐私",
+  dispute_forum: "第三方争议解决",
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -121,7 +123,7 @@ export async function fetchBayTermsCurrent(): Promise<{ current: BayTermsDocumen
     const data = record(await bayGet<unknown>("/v1/talent/terms/current", { anonymous: true }));
     return { current: bayTermsDocumentFrom(data?.current) ?? bayTermsDocumentFrom(data), error: null };
   } catch (error) {
-    return { current: null, error: error instanceof Error && error.message ? error.message : "当前条款加载失败" };
+    return { current: null, error: error instanceof Error && error.message ? error.message : "条款加载失败，请稍后重试" };
   }
 }
 
@@ -130,7 +132,7 @@ export async function fetchBayTermsStatus(): Promise<BayTermsStatus> {
   try {
     return statusFrom(await bayGet<unknown>("/v1/talent/terms/status"));
   } catch (error) {
-    return failed(error, "签署状态加载失败");
+    return failed(error, "同意记录加载失败，请稍后重试");
   }
 }
 
@@ -149,7 +151,7 @@ export async function acceptBayTerms(version?: number | null): Promise<BayTermsS
       data?.accepted === true && Boolean(acceptance) && (!status.current || acceptance?.version === status.current.version);
     return status;
   } catch (error) {
-    return failed(error, "签署失败，请稍后重试");
+    return failed(error, "没能记下你的同意，请稍后重试");
   }
 }
 
