@@ -9,6 +9,7 @@ import {
   currentDomainProfile,
   currentFamilySubsiteOrigin,
 } from "../../../contracts/domain-family";
+import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
 import { IM_OPEN_EVENT, hostState } from "../../messages/host-state";
 import { BAY_FEED_KINDS, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, isBayPath, parseBayDeepLink, sameBayTarget } from "./bay-links";
@@ -448,6 +449,36 @@ export function useBayLoginRequested(): boolean {
 
 // ---- 跨站地址 -------------------------------------------------------------------
 
+function pageHrefHost(): { hostname: string; origin: string } | null {
+  const w = win();
+  if (!w) return null;
+  try {
+    const loc = w.location;
+    const hostname = String(loc?.hostname || loc?.host || "")
+      .trim()
+      .toLowerCase();
+    const origin = String(loc?.origin || "").trim();
+    if (!hostname || !origin) return null;
+    return { hostname, origin };
+  } catch {
+    return null;
+  }
+}
+
+/** LeoDev 槽：跨站也停在当前页 origin。正式宿主返回 null，仍按家族子站拼。 */
+function leoDevStayOrigin(): string | null {
+  const page = pageHrefHost();
+  if (!page) return null;
+  let originHost = "";
+  try {
+    originHost = new URL(page.origin).hostname;
+  } catch {
+    return null;
+  }
+  if (!isLeoDevPreviewHost(page.hostname) || !isLeoDevPreviewHost(originHost)) return null;
+  return page.origin.replace(/\/+$/, "");
+}
+
 /** 那个站的 `/bay?bay=…` 绝对地址；当前家族没有那个子站时落到同家族门户。 */
 export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
   let portalOrigin = "https://oceanleo.com";
@@ -456,7 +487,11 @@ export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
   } catch {
     /* 用缺省家族 */
   }
-  return bayHrefWith(siteKey, target, { portalOrigin, subsiteOrigin: (label) => currentFamilySubsiteOrigin(label) });
+  return bayHrefWith(siteKey, target, {
+    portalOrigin,
+    subsiteOrigin: (label) => currentFamilySubsiteOrigin(label),
+    stayOnOrigin: leoDevStayOrigin(),
+  });
 }
 
 // ---- /bay 页与深链 -----------------------------------------------------------------

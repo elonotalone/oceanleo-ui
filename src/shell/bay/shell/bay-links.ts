@@ -208,25 +208,41 @@ export function baySubsiteLabel(siteKey: string | null | undefined): string | nu
   return SUBSITE_LABEL[key] ?? key;
 }
 
+function stripOriginSlash(origin: string): string {
+  return origin.replace(/\/+$/, "");
+}
+
 /**
  * 某站 `/bay?bay=…` 的绝对地址。`subsiteOrigin` 给当前家族里那个子站的 origin（家族里没有就是 undefined），
  * 拿不到子站时落到同家族门户的 `/bay`，不跨家族拼地址。
+ *
+ * `stayOnOrigin`：LeoDev 槽把跨站「去某站处理」钉在当前页 origin，不再拼正式子站。
+ * 只由 `bayHrefOnSite` 在确认宿主是 `p-<32hex>.dev.oceanleo.com` 之后传入。
  */
 export function bayHrefWith(
   siteKey: string,
   target: BayTarget,
-  origins: { portalOrigin: string; subsiteOrigin: (label: string) => string | undefined },
+  origins: {
+    portalOrigin: string;
+    subsiteOrigin: (label: string) => string | undefined;
+    stayOnOrigin?: string | null;
+  },
 ): string {
-  const label = baySubsiteLabel(siteKey);
+  const stay = typeof origins.stayOnOrigin === "string" ? stripOriginSlash(origins.stayOnOrigin.trim()) : "";
   let origin = origins.portalOrigin;
-  if (label) {
-    try {
-      origin = origins.subsiteOrigin(label) || origins.portalOrigin;
-    } catch {
-      origin = origins.portalOrigin;
+  if (stay) {
+    origin = stay;
+  } else {
+    const label = baySubsiteLabel(siteKey);
+    if (label) {
+      try {
+        origin = origins.subsiteOrigin(label) || origins.portalOrigin;
+      } catch {
+        origin = origins.portalOrigin;
+      }
     }
   }
-  return `${origin.replace(/\/+$/, "")}/bay${buildBaySearch("", target.kind === "feed" ? null : target) || `?${BAY_PARAM}=feed`}`;
+  return `${stripOriginSlash(origin)}/bay${buildBaySearch("", target.kind === "feed" ? null : target) || `?${BAY_PARAM}=feed`}`;
 }
 
 export function sameBayTarget(a: BayTarget, b: BayTarget): boolean {

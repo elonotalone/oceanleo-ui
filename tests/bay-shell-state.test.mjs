@@ -12,6 +12,13 @@ export function cachedAccessToken() { return null; }
 export async function accessToken() { return null; }
 `);
 
+const AUTH_CONFIG = dataModule(`
+export function isLeoDevPreviewHost(host) {
+  const h = String(host || "").trim().toLowerCase().replace(/\\.$/, "").split(":")[0];
+  return /^p-[0-9a-f]{32}\\.dev\\.oceanleo\\.com$/.test(h);
+}
+`);
+
 function familyStub(family) {
   return dataModule(`
 export function currentDomainFamily() { return ${JSON.stringify(family)}; }
@@ -25,6 +32,7 @@ async function loadState(family = "com") {
     await compileModule("src/shell/bay/shell/bay-state.ts", {
       "../../../contracts/domain-family": familyStub(family),
       "../../../lib/auth/client": AUTH_SIGNED_OUT,
+      "../../../lib/auth/config": AUTH_CONFIG,
     })
   );
 }
@@ -135,6 +143,11 @@ test("跨站地址：子站按子域标签拼，门户与未知站落到门户",
   assert.equal(links.bayHrefWith("Bad Key!", { kind: "feed" }, origins), "https://oceanleo.com/bay?bay=feed");
   const noSubsites = { portalOrigin: "https://oceanbizs.com", subsiteOrigin: () => undefined };
   assert.equal(links.bayHrefWith("video", { kind: "feed" }, noSubsites), "https://oceanbizs.com/bay?bay=feed");
+  const slot = "https://p-9eb457fcce0b00b75abc9133119f56f8.dev.oceanleo.com";
+  const stay = { ...origins, stayOnOrigin: slot };
+  assert.equal(links.bayHrefWith("ppt", { kind: "demand", id: "d1" }, stay), `${slot}/bay?bay=demand:d1`);
+  assert.equal(links.bayHrefWith("video", { kind: "feed" }, stay), `${slot}/bay?bay=feed`);
+  assert.equal(links.bayHrefWith("oceanleo", { kind: "service", id: "s1" }, stay), `${slot}/bay?bay=service:s1`);
 });
 
 test("境内 bayEnabledHere() 为 false；海外未登录为 true", async () => {
