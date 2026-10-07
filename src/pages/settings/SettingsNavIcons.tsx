@@ -45,6 +45,13 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M10.2 4h3.3v3.2" />
     </NavIcon>
   ),
+  bay: (
+    <NavIcon>
+      <path d="M2.6 6.4 8 3.4l5.4 3" />
+      <path d="M3.4 6.4h9.2v6.8H3.4z" />
+      <path d="M6.6 13.2V9.2h2.8v4" />
+    </NavIcon>
+  ),
   "ai-models": (
     <NavIcon>
       <path d="M8 2.8v2.2M8 11v2.2M2.8 8h2.2M11 8h2.2" />
