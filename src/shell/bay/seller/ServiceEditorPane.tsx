@@ -173,7 +173,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         if (!alive) return;
         const service = (services.items || []).find((row) => row.id === routeId);
         if (!service) {
-          setLoad({ loading: false, error: "这项服务不存在，或已经被删除。" });
+          setLoad({ loading: false, error: tt("这项服务不存在，或已经被删除。") });
           return;
         }
         setPricing(pricingBody);
@@ -182,7 +182,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         setDirty(false);
         setLoad({ loading: false, error: "" });
       } catch (error) {
-        if (alive) setLoad({ loading: false, error: errorText(error) || "服务加载失败，请稍后再试。" });
+        if (alive) setLoad({ loading: false, error: errorText(error) || tt("服务加载失败，请稍后再试。") });
       }
     })();
     return () => {
@@ -296,7 +296,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     const input = serviceInput(draft, selectedModel);
     const body = draft.serviceId ? await updateMyService(draft.serviceId, input) : await createMyService(input, postedSite);
     const saved = body.service;
-    if (!saved?.id) throw new Error("草稿保存失败，请稍后再试。");
+    if (!saved?.id) throw new Error(tt("草稿保存失败，请稍后再试。"));
     setDraft((current) => ({ ...current, serviceId: saved.id, status: saved.status || current.status, moderationHidden: saved.moderation_hidden === true || current.moderationHidden }));
     return saved.id;
   }
@@ -463,7 +463,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       setDirty(false);
       toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("服务已上架，买家现在能在 Bay 里看到它"));
     } catch (error) {
-      reportFailure(error, "上架没有通过，请按提示修改后再试。");
+      reportFailure(error, tt("上架没有通过，请按提示修改后再试。"));
     } finally {
       setSaving(false);
     }
@@ -477,7 +477,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       setDraft((current) => ({ ...current, status: "paused" }));
       toast.success(tt("已暂停，买家暂时看不到这项服务"));
     } catch (error) {
-      reportFailure(error, "暂停失败，请稍后再试。");
+      reportFailure(error, tt("暂停失败，请稍后再试。"));
     } finally {
       setSaving(false);
     }
@@ -492,7 +492,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       toast.success(tt("服务已删除"));
       openBay({ kind: "mine", tab: "services" });
     } catch (error) {
-      reportFailure(error, "删除失败，请稍后再试。");
+      reportFailure(error, tt("删除失败，请稍后再试。"));
     } finally {
       setSaving(false);
     }

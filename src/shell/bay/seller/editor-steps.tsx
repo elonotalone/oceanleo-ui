@@ -62,8 +62,8 @@ export function OverreachHintList({ text }: { text: string }) {
       {hints.map((hint) => (
         <li key={`${hint.kind}-${hint.term}`} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
           {hint.kind === "title"
-            ? tt("「{term}」是执业称谓，没有对应执业资质不能这样写，改成事实性的身份描述。", { term: hint.term })
-            : tt("「{term}」需要单独许可才能经营，平台不承接，这项服务会被退回。", { term: hint.term })}
+            ? tt("「{term}」是执业称谓，没有对应执业资质不能这样写，改成事实性的身份描述。", { term: tt(hint.term) })
+            : tt("「{term}」需要单独许可才能经营，平台不承接，这项服务会被退回。", { term: tt(hint.term) })}
         </li>
       ))}
     </ul>
