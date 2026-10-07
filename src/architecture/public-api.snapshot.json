@@ -30,6 +30,7 @@
     "./shell/advanced-routes/GameRoute": "./src/shell/advanced-routes/GameRoute.tsx",
     "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
+    "./shell/EmbedChrome": "./src/shell/EmbedChrome.tsx",
     "./shell/FloatingContextToolbar": "./src/shell/FloatingContextToolbar.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
@@ -1317,6 +1318,10 @@
       "declarations": [
         {
           "kind": "star",
+          "source": "./account-identity"
+        },
+        {
+          "kind": "star",
           "source": "./account-security"
         },
         {
@@ -1810,6 +1815,11 @@
         },
         {
           "kind": "named",
+          "name": "signUp",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "startOauthSignIn",
           "source": ""
         },
@@ -1875,6 +1885,26 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "authCookieNameFor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "CN_AUTH_COOKIE_KEY",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "COM_AUTH_COOKIE_KEY",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "COM_IDENTITY_URL",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "configured",
           "source": ""
         },
@@ -1906,6 +1936,11 @@
         {
           "kind": "named",
           "name": "loginUnavailableNoticeFor",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "resolveSupabaseUrl",
           "source": ""
         },
         {
@@ -3642,6 +3677,12 @@
           "name": "CATALOG_APP_QUERY_KEY",
           "importedName": "CATALOG_APP_QUERY_KEY",
           "source": "./site-catalog-controller"
+        },
+        {
+          "kind": "named",
+          "name": "closeMessages",
+          "importedName": "closeMessages",
+          "source": "./messages/host-state"
         },
         {
           "kind": "named",
@@ -5877,6 +5918,12 @@
         },
         {
           "kind": "named",
+          "name": "useImEnabled",
+          "importedName": "useImEnabled",
+          "source": "../lib/im/client"
+        },
+        {
+          "kind": "named",
           "name": "useLeftPaneSlot",
           "importedName": "useLeftPaneSlot",
           "source": "./SplitWorkspace"
@@ -6875,6 +6922,16 @@
         {
           "kind": "type",
           "name": "ArtifactTargetActionEvidence",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/EmbedChrome": {
+      "target": "./src/shell/EmbedChrome.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "EmbedChrome",
           "source": ""
         }
       ]
@@ -8702,6 +8759,12 @@
           "name": "ThemeMode",
           "importedName": "ThemeMode",
           "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "ThemeScript",
+          "importedName": "ThemeScript",
+          "source": "./ThemeScript"
         }
       ]
     },
