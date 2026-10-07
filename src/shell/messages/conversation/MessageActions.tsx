@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImMessage } from "../../../lib/im/types";
 import { EmojiPicker } from "../composer/EmojiPicker";
+import { ImEmojiIcon, ImMoreIcon, ImQuoteIcon, ImThreadIcon } from "../messages-surface";
 import { QUICK_REACTIONS } from "./ReactionBar";
 
 export interface MessageActionPermissions {
@@ -47,7 +48,7 @@ export interface MessageActionHandlers {
 }
 
 const buttonClass =
-  "flex h-11 min-w-11 items-center justify-center rounded-md px-1.5 text-[12.5px] text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 md:h-7 md:min-w-7";
+  "flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900";
 
 export function MessageActions({
   message,
@@ -87,7 +88,7 @@ export function MessageActions({
 
   return (
     <div
-      className="relative flex items-center gap-0.5 rounded-lg border border-neutral-200 bg-white px-1 py-0.5 shadow-sm"
+      className="relative flex items-center gap-0.5"
       data-message-actions=""
     >
       {permissions.canReact
@@ -109,7 +110,7 @@ export function MessageActions({
               setPickerOpen((value) => !value);
             }}
           >
-            ☺
+            <ImEmojiIcon />
           </button>
           {pickerOpen ? (
             <div className="absolute right-0 top-8">
@@ -125,13 +126,13 @@ export function MessageActions({
         </div>
       ) : null}
       {permissions.canReact ? (
-        <button type="button" className={buttonClass} onClick={handlers.onQuote}>
-          {tt("引用")}
+        <button type="button" className={buttonClass} onClick={handlers.onQuote} aria-label={tt("引用")} title={tt("引用")}>
+          <ImQuoteIcon />
         </button>
       ) : null}
       {permissions.canThread ? (
-        <button type="button" className={buttonClass} onClick={handlers.onThread}>
-          {tt("线程")}
+        <button type="button" className={buttonClass} onClick={handlers.onThread} aria-label={tt("线程")} title={tt("线程")}>
+          <ImThreadIcon />
         </button>
       ) : null}
       <div className="relative">
@@ -146,7 +147,7 @@ export function MessageActions({
             setMenuOpen((value) => !value);
           }}
         >
-          ⋯
+          <ImMoreIcon />
         </button>
         {menuOpen ? (
           <div role="menu" className="absolute right-0 top-8 z-30 min-w-[132px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">

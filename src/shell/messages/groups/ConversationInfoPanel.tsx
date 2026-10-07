@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { portalHref } from "../../../contracts/domain-family";
 import { ConfirmDialog } from "../../../ui";
+import { ImCloseIcon } from "../messages-surface";
 import { listMyOrgs } from "../../../lib/org-api";
 import {
   MUTE_CHOICES,
@@ -44,7 +45,7 @@ const sectionTitle = "px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-
 const pillBtn =
   "inline-flex min-h-11 items-center rounded-lg border border-neutral-200 px-3 text-[12px] text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
 const linkBtn =
-  "inline-flex min-h-11 items-center text-[12px] text-sky-700 underline underline-offset-2 hover:text-sky-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
+  "inline-flex min-h-11 items-center text-[12px] text-neutral-800 underline underline-offset-2 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
 const rowBtn = "w-full px-3 py-2 text-left text-[13px] hover:bg-neutral-50 disabled:opacity-50";
 
 export function ConversationInfoPanel({ conversationId, onClose, onOpenConversation }: ConversationInfoPanelProps) {
@@ -403,8 +404,8 @@ function PanelHeader({ title, onClose, closeLabel }: { title: string; onClose: (
   return (
     <div className="flex items-center gap-2 border-b border-neutral-100 px-3 py-2.5">
       <h2 className="flex-1 text-[14px] font-semibold text-neutral-900">{title}</h2>
-      <button type="button" onClick={onClose} aria-label={closeLabel} data-action="close-panel" className="rounded-lg px-2 py-1 text-[16px] leading-none text-neutral-500 hover:bg-neutral-50">
-        ×
+      <button type="button" onClick={onClose} aria-label={closeLabel} data-action="close-panel" data-im-chrome-btn>
+        <ImCloseIcon />
       </button>
     </div>
   );

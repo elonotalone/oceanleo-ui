@@ -123,16 +123,14 @@ export function InboxRow({
       data-conversation-id={item.id}
       aria-current={active ? "true" : undefined}
       onClick={() => onOpen(item.id)}
-      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-        active ? "bg-sky-500/10" : "hover:bg-black/5 dark:hover:bg-white/5"
-      }`}
+      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
     >
       <Avatar item={item} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{title}</span>
+          <span className="truncate text-[13px] font-semibold tracking-tight">{title}</span>
           {item.has_external ? (
-            <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400">
+            <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
               {tt("外部")}
             </span>
           ) : null}
@@ -142,26 +140,26 @@ export function InboxRow({
             </span>
           ) : null}
         </span>
-        <span className="mt-0.5 flex items-center gap-1 text-xs text-black/50 dark:text-white/50">
+        <span className="mt-0.5 flex items-center gap-1 text-[12px] text-black/40 dark:text-white/40">
           {hasDraft ? <span className="shrink-0 text-red-500">{tt("[草稿]")}</span> : null}
           <span className="truncate">{preview}</span>
         </span>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-1">
-        <span className="text-[11px] text-black/40 dark:text-white/40">
+        <span className="text-[12px] text-black/35 dark:text-white/35">
           {item.last_activity_at ? formatRowTime(item.last_activity_at, new Date(), tt("昨天")) : ""}
         </span>
         <span className="flex items-center gap-1">
           {mention ? (
-            <span className="rounded-full bg-red-500 px-1.5 text-[10px] font-semibold leading-4 text-white" aria-label={tt("有人@你")}>
+            <span className="text-[11px] font-semibold text-black/70 dark:text-white/70" aria-label={tt("有人@你")}>
               @
             </span>
           ) : null}
           {unread ? (
             <span
-              className={`min-w-[1.1rem] rounded-full px-1.5 text-center text-[10px] font-semibold leading-4 text-white ${
-                item.muted ? "bg-black/30 dark:bg-white/30" : "bg-sky-500"
-              }`}
+              data-im-unread=""
+              data-im-unread-count={unread === "1" ? undefined : unread}
+              className={`rounded-full ${item.muted ? "opacity-40" : ""}`}
             >
               {unread}
             </span>

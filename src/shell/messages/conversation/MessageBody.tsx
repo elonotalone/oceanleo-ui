@@ -49,7 +49,7 @@ export function MessageBody({
   );
   if (!message.body) return null;
   return (
-    <div className="space-y-1 text-[14px] leading-6 text-neutral-900" data-message-body="">
+    <div className="space-y-1 text-[14px] leading-[1.55] text-neutral-900" data-message-body="">
       {nodes}
       {highlight}
     </div>

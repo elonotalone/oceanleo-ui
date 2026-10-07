@@ -21,7 +21,12 @@ export function TypingLine({ names }: { names: string[] }) {
   else if (shown.length === 2) text = tt("{a} 和 {b} 正在输入…", { a: shown[0], b: shown[1] });
   else text = tt("{name} 正在输入…", { name: shown[0] });
   return (
-    <div className="h-5 truncate px-4 text-[11.5px] text-neutral-400" role="status" aria-live="polite">
+    <div className="flex h-5 items-center gap-1.5 truncate px-4 text-[12px] text-neutral-400" role="status" aria-live="polite">
+      <span className="inline-flex gap-0.5" aria-hidden="true">
+        <span className="v-typing-dot" />
+        <span className="v-typing-dot" />
+        <span className="v-typing-dot" />
+      </span>
       {text}
     </div>
   );

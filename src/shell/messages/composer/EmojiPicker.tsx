@@ -43,14 +43,14 @@ export function EmojiPicker({
       ref={ref}
       role="dialog"
       aria-label={tt("选择表情")}
-      className="z-30 grid w-[290px] max-w-[calc(100vw-1rem)] grid-cols-6 gap-0.5 rounded-xl border border-neutral-200 bg-white p-2 shadow-lg md:w-[248px] md:grid-cols-8"
+      className="z-30 grid w-[248px] max-w-[calc(100vw-1rem)] grid-cols-8 gap-0.5 rounded-xl border border-neutral-200/80 bg-white p-1.5 shadow-lg"
     >
       {EMOJI_SET.map((emoji) => (
         <button
           key={emoji}
           type="button"
           onClick={() => onPick(emoji)}
-          className="flex h-11 w-11 items-center justify-center rounded-md text-[17px] hover:bg-neutral-100 md:h-7 md:w-7"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-[16px] hover:bg-neutral-100"
         >
           {emoji}
         </button>

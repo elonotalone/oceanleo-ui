@@ -139,7 +139,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                     {tt(PRESENCE_COPY[presence])}
                   </span>
                   {member?.external && (
-                    <span data-external-badge className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">
+                    <span data-external-badge className="text-[11px] text-neutral-400">
                       {tt("外部")}
                     </span>
                   )}

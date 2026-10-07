@@ -6,6 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { messagesApi } from "../../../lib/im/messages-api";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { Composer } from "../composer/Composer";
+import { ImCloseIcon } from "../messages-surface";
 import { useImResync } from "../realtime/hooks";
 import { MessageItem, useMessageHandlers } from "./MessageItem";
 import { MessageList, useStoreEvents } from "./MessageList";
@@ -65,7 +66,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
   return (
     <aside
       className={
-        "flex min-h-0 flex-col bg-white " +
+        "flex min-h-0 flex-col " +
         (layout === "full"
           ? "w-[360px] shrink-0 border-l border-neutral-200"
           : "absolute inset-0 z-20")
@@ -75,8 +76,8 @@ export function ThreadPanel(props: ThreadPanelProps) {
     >
       <header className="flex items-center justify-between border-b border-neutral-200 px-4 py-2.5">
         <h3 className="text-[14px] font-semibold text-neutral-900">{tt("线程")}</h3>
-        <button type="button" onClick={onClose} aria-label={tt("关闭")} className="text-neutral-400 hover:text-neutral-700">
-          ✕
+        <button type="button" data-im-chrome-btn onClick={onClose} aria-label={tt("关闭")}>
+          <ImCloseIcon />
         </button>
       </header>
       <div className="max-h-[40%] shrink-0 overflow-y-auto border-b border-neutral-100 py-1">

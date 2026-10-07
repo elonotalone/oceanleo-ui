@@ -53,7 +53,7 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
               target="_blank"
               rel="noopener noreferrer"
               data-action="open-team-page"
-              className="mt-2 inline-flex min-h-11 items-center text-[13px] text-sky-700 underline underline-offset-2 hover:text-sky-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+              className="mt-2 inline-flex min-h-11 items-center text-[13px] text-neutral-800 underline underline-offset-2 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
             >
               {tt("打开 Team 页面")}
             </a>

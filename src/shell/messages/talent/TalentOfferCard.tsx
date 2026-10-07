@@ -62,7 +62,7 @@ export function TalentOfferCard({ card, offer, viewerId, busy = false, error = n
                 ? "bg-emerald-50 text-emerald-700"
                 : settled
                   ? "bg-neutral-100 text-neutral-500"
-                  : "bg-amber-50 text-amber-700")
+                  : "bg-neutral-100 text-neutral-600")
             }
           >
             {offerStateLabel(tt, offer.state)}
@@ -137,7 +137,7 @@ export function TalentOfferCard({ card, offer, viewerId, busy = false, error = n
           target="_blank"
           rel="noopener noreferrer"
           data-offer-open
-          className="mt-2 inline-block text-[12px] text-sky-700 underline underline-offset-2 hover:text-sky-800"
+          className="mt-2 inline-block text-[12px] font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-900"
         >
           {tt("在 talent 打开")}
         </a>

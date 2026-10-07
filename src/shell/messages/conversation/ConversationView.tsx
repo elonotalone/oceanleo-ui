@@ -7,6 +7,7 @@ import { messagesApi } from "../../../lib/im/messages-api";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
+import { ImBackIcon, ImInfoIcon } from "../messages-surface";
 import { ProfileCard } from "../people/ProfileCard";
 import { useImEvent, useImResync, usePresence } from "../realtime/hooks";
 import { ReportDialog } from "../report/ReportDialog";
@@ -283,37 +284,37 @@ function ConversationBody(props: ConversationViewProps & {
   const peerPresence = peerId ? presence[peerId] : undefined;
 
   return (
-    <div className="relative flex h-full min-h-0 bg-white" data-conversation-view={conversationId}>
+    <div className="relative flex h-full min-h-0" data-conversation-view={conversationId}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-3 py-2.5">
+        <header className="flex shrink-0 items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
           {onBack ? (
-            <button type="button" onClick={onBack} aria-label={tt("返回")} className="rounded-md px-1.5 py-1 text-neutral-500 hover:bg-neutral-100">
-              ‹
+            <button type="button" data-im-chrome-btn onClick={onBack} aria-label={tt("返回")}>
+              <ImBackIcon />
             </button>
           ) : null}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 px-1">
             <div className="flex items-center gap-1.5">
               {peerPresence ? (
                 <span
                   className={
-                    "h-2 w-2 shrink-0 rounded-full " +
-                    (peerPresence === "online" ? "bg-emerald-500" : peerPresence === "away" ? "bg-amber-400" : "bg-neutral-300")
+                    "h-1.5 w-1.5 shrink-0 rounded-full " +
+                    (peerPresence === "online" ? "bg-emerald-500" : peerPresence === "away" ? "bg-neutral-400" : "bg-neutral-300")
                   }
                   title={peerPresence === "online" ? tt("在线") : peerPresence === "away" ? tt("离开") : tt("离线")}
                 />
               ) : null}
-              <h2 className="truncate text-[14.5px] font-semibold text-neutral-900">{title}</h2>
+              <h2 className="truncate text-[13px] font-semibold tracking-tight text-neutral-900">{title}</h2>
               {conversation?.has_external ? (
-                <span className="shrink-0 rounded bg-neutral-100 px-1 text-[10.5px] text-neutral-500">{tt("含外部成员")}</span>
+                <span className="shrink-0 text-[11px] text-neutral-400">{tt("含外部成员")}</span>
               ) : null}
             </div>
             {conversation && conversation.kind !== "dm" ? (
-              <div className="text-[11.5px] text-neutral-400">{tt("{n} 位成员", { n: conversation.member_count })}</div>
+              <div className="text-[12px] text-neutral-400">{tt("{n} 位成员", { n: conversation.member_count })}</div>
             ) : null}
           </div>
           {onOpenInfo ? (
-            <button type="button" onClick={onOpenInfo} className="rounded-md px-2 py-1 text-[12.5px] text-neutral-500 hover:bg-neutral-100">
-              {tt("详情")}
+            <button type="button" data-im-chrome-btn onClick={onOpenInfo} aria-label={tt("详情")} title={tt("详情")}>
+              <ImInfoIcon />
             </button>
           ) : null}
         </header>

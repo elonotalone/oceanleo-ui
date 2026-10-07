@@ -3,6 +3,7 @@
 // 输入框上方的附件托盘：每个文件一行，进度、取消、失败重试、移除。
 import { useUI } from "../../../i18n/ui/useUI";
 import { formatBytes } from "../conversation/AttachmentView";
+import { ImCloseIcon } from "../messages-surface";
 import type { UploadErrorCode, UploadJob } from "./upload";
 
 function errorText(tt: (zh: string, vars?: Record<string, string | number>) => string, code: UploadErrorCode | null): string {
@@ -45,7 +46,7 @@ export function AttachmentTray({
               {job.status === "uploading" ? (
                 <>
                   <span className="mr-2 inline-block h-1 w-24 overflow-hidden rounded-full bg-neutral-200 align-middle">
-                    <span className="block h-full bg-sky-500" style={{ width: `${Math.round(job.ratio * 100)}%` }} />
+                    <span className="block h-full bg-neutral-900" style={{ width: `${Math.round(job.ratio * 100)}%` }} />
                   </span>
                   {Math.round(job.ratio * 100)}% · {formatBytes(job.file.size)}
                 </>
@@ -60,13 +61,13 @@ export function AttachmentTray({
             </button>
           ) : null}
           {job.status === "failed" && job.error !== "too_large" && job.error !== "empty" ? (
-            <button type="button" onClick={() => onRetry(job.id)} className="shrink-0 text-sky-700 hover:underline">
+            <button type="button" onClick={() => onRetry(job.id)} className="shrink-0 text-neutral-700 hover:underline">
               {tt("重试")}
             </button>
           ) : null}
           {job.status !== "uploading" ? (
             <button type="button" onClick={() => onRemove(job.id)} aria-label={tt("移除")} className="shrink-0 text-neutral-400 hover:text-neutral-700">
-              ✕
+              <ImCloseIcon />
             </button>
           ) : null}
         </li>

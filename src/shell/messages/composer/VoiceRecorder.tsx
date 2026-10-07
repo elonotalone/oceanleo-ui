@@ -120,8 +120,8 @@ export function VoiceRecorder({
 
   if (recording) {
     return (
-      <div className="flex items-center gap-2 rounded-full bg-red-50 px-2.5 py-1 text-[12.5px] text-red-700" data-recording="">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+      <div className="flex items-center gap-2 px-1 py-1 text-[12px] text-neutral-500" data-recording="">
+        <span data-im-record-dot="" />
         <span className="tabular-nums">
           {formatClockMs(elapsed)} / {formatClockMs(MAX_VOICE_MS)}
         </span>
@@ -131,7 +131,7 @@ export function VoiceRecorder({
         <button
           type="button"
           onClick={() => stop(false)}
-          className="rounded-full bg-red-600 px-2.5 py-0.5 text-white"
+          className="rounded-full bg-neutral-900 px-2.5 py-0.5 text-[12px] text-white"
         >
           {tt("发送语音")}
         </button>
@@ -155,7 +155,7 @@ export function VoiceRecorder({
         document.addEventListener("pointerup", onUp);
         void start();
       }}
-      className="flex h-11 w-11 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40 md:h-8 md:w-8"
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-40"
     >
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
         <rect x="9" y="3" width="6" height="12" rx="3" />

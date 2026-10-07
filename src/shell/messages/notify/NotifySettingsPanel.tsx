@@ -39,15 +39,15 @@ function SwitchButton({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50"
+            className="inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50"
     >
       <span
-        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)] ${
           checked ? "bg-neutral-900" : "bg-neutral-300"
         }`}
       >
         <span
-          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)] ${
             checked ? "translate-x-[18px]" : "translate-x-[3px]"
           }`}
         />

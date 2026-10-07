@@ -2,9 +2,8 @@
 // 所以 tests/im-host-state.test.mjs 能用假的 history/location 跑真实实现。
 //
 // 深链：任何站 `?im=<会话 id>`（可带 `&im_seq=<seq>`）、`?im=inbox`、`?im=people`、`?im_invite=<code>`。
-// 开合用 history.pushState：返回键关浮层，不刷新页面。
-// 注意：Next 的 App Router 在 popstate 里遇到「没有 __NA 的 history.state」会整页重载，
-// 所以我们 pushState 时必须把现有 state 原样带上（只多一个 imOverlay 标记）。
+// 浮层不是路由：侧栏打开不写 `?im=`。带着深链进来时 applyLocation 打开一次，随后 replaceState 清掉。
+// 切页由外壳 closeMessages，不把 `?im=` 带到下一页。
 import { useSyncExternalStore } from "react";
 
 export type MessagesView = "inbox" | "bay" | "people" | "search" | "settings";
@@ -33,6 +32,7 @@ export interface MessagesHostSnapshot {
   narrow: boolean;
   dockWidth: number;
   enabled: boolean;
+  overlayOffset: { x: number; y: number } | null;
 }
 
 export const IM_PARAM = "im";
@@ -40,6 +40,7 @@ export const IM_SEQ_PARAM = "im_seq";
 export const IM_INVITE_PARAM = "im_invite";
 export const IM_OPEN_EVENT = "oceanleo:im-open";
 export const DOCK_WIDTH_KEY = "oceanleo:im:dock-width";
+export const OVERLAY_OFFSET_KEY = "oceanleo:im:overlay-offset";
 export const DOCK_MIN = 360;
 export const DOCK_MAX = 720;
 export const DOCK_DEFAULT = 420;
@@ -120,6 +121,19 @@ export function clampDockWidth(value: number): number {
   return Math.min(DOCK_MAX, Math.max(DOCK_MIN, Math.round(value)));
 }
 
+export function parseOverlayOffset(raw: string | null): { x: number; y: number } | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    const x = Number(value?.x);
+    const y = Number(value?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x: Math.round(x), y: Math.round(y) };
+  } catch {
+    return null;
+  }
+}
+
 export interface HostEnv {
   getLocation(): { pathname: string; search: string; hash: string };
   history: {
@@ -145,6 +159,7 @@ export interface HostState {
   /** 记下收件箱当前的筛选（用户在列表里点了筛选）；只认白名单，不写地址栏。 */
   setFilter(filter: string): void;
   setDockWidth(width: number): void;
+  setOverlayOffset(offset: { x: number; y: number } | null): void;
   /** 打开某会话（浮层内部切换；不新增历史记录）。 */
   showConversation(conversationId: string | null, seq?: number | null): void;
   clearInvite(): void;
@@ -165,6 +180,7 @@ interface Internal {
   narrow: boolean;
   dockWidth: number;
   enabled: boolean;
+  overlayOffset: { x: number; y: number } | null;
 }
 
 function noopEnv(): HostEnv {
@@ -177,13 +193,8 @@ function noopEnv(): HostEnv {
   };
 }
 
-function isOverlayState(state: unknown): boolean {
-  return Boolean(state && typeof state === "object" && (state as { imOverlay?: unknown }).imOverlay === true);
-}
-
 export function createHostState(env: HostEnv): HostState {
   const listeners = new Set<() => void>();
-  let pushed = false; // 当前历史记录是不是我们 push 出来的那一条
 
   const stored = (() => {
     try {
@@ -191,6 +202,14 @@ export function createHostState(env: HostEnv): HostState {
       return raw ? clampDockWidth(Number(raw)) : DOCK_DEFAULT;
     } catch {
       return DOCK_DEFAULT;
+    }
+  })();
+
+  const storedOffset = (() => {
+    try {
+      return parseOverlayOffset(env.storage?.getItem(OVERLAY_OFFSET_KEY) ?? null);
+    } catch {
+      return null;
     }
   })();
 
@@ -205,6 +224,7 @@ export function createHostState(env: HostEnv): HostState {
     narrow: env.viewportWidth() <= MOBILE_MAX_WIDTH,
     dockWidth: stored,
     enabled: false,
+    overlayOffset: storedOffset,
   };
   let snapshot: MessagesHostSnapshot = derive(s);
 
@@ -221,6 +241,7 @@ export function createHostState(env: HostEnv): HostState {
       narrow: v.narrow,
       dockWidth: v.dockWidth,
       enabled: v.enabled,
+      overlayOffset: v.overlayOffset,
     };
   }
 
@@ -236,40 +257,6 @@ export function createHostState(env: HostEnv): HostState {
   function urlFor(search: string): string {
     const loc = env.getLocation();
     return `${loc.pathname}${search}${loc.hash || ""}`;
-  }
-
-  function currentUrlTarget(): { target: MessagesTarget; inviteCode: string | null } {
-    return {
-      target: {
-        conversationId: s.conversationId ?? undefined,
-        seq: s.highlightSeq ?? undefined,
-        view: s.view,
-      },
-      inviteCode: s.inviteCode,
-    };
-  }
-
-  function writeUrl(mode: "push" | "replace"): void {
-    const loc = env.getLocation();
-    const search = buildImSearch(loc.search, currentUrlTarget());
-    const prev = (env.history.state && typeof env.history.state === "object" ? env.history.state : {}) as Record<
-      string,
-      unknown
-    >;
-    try {
-      if (mode === "push") {
-        env.history.pushState({ ...prev, imOverlay: true }, "", urlFor(search));
-        pushed = true;
-      } else {
-        env.history.replaceState(
-          pushed ? { ...prev, imOverlay: true } : { ...prev },
-          "",
-          urlFor(search),
-        );
-      }
-    } catch {
-      /* 沙箱/旧浏览器不让改历史时，浮层照常开合，只是没有深链 */
-    }
   }
 
   function stripUrl(): void {
@@ -302,39 +289,26 @@ export function createHostState(env: HostEnv): HostState {
       highlightSeq: conversationId && typeof target.seq === "number" ? target.seq : null,
       inviteCode: wasOpen ? s.inviteCode : null,
     });
-    writeUrl(wasOpen ? "replace" : "push");
+    // 浮层不是页面：侧栏打开不写 ?im=inbox。地址栏只在进来时带着深链，applyLocation 消费后清掉。
   }
 
   function close(): void {
     if (!s.open) return;
-    const wasPushed = pushed && isOverlayState(env.history.state);
     commit({ open: false, conversationId: null, highlightSeq: null, inviteCode: null, view: "inbox" });
-    if (wasPushed) {
-      pushed = false;
-      try {
-        env.history.back();
-      } catch {
-        stripUrl();
-      }
-    } else {
-      pushed = false;
-      stripUrl();
-    }
+    stripUrl();
   }
 
-  function applyLocation(): void {
-    // 前进/后退或初次进入时，以地址栏为准。
+  function applyLocation(closeIfMissing = true): void {
+    // 前进/后退以地址栏为准。深链只用来打开一次，随后从地址栏清掉，浮层不是路由。
     const loc = env.getLocation();
     const link = parseImDeepLink(loc.search);
     if (link.kind === "none") {
-      if (s.open) {
-        pushed = false;
+      if (s.open && closeIfMissing) {
         commit({ open: false, conversationId: null, highlightSeq: null, inviteCode: null, view: "inbox" });
       }
       return;
     }
     if (!s.enabled) return;
-    pushed = isOverlayState(env.history.state);
     commit({
       open: true,
       conversationId: link.target.conversationId ?? null,
@@ -342,6 +316,7 @@ export function createHostState(env: HostEnv): HostState {
       highlightSeq: typeof link.target.seq === "number" ? link.target.seq : null,
       inviteCode: link.inviteCode,
     });
+    stripUrl();
   }
 
   return {
@@ -357,10 +332,9 @@ export function createHostState(env: HostEnv): HostState {
     setEnabled(enabled) {
       if (enabled === s.enabled) return;
       commit({ enabled });
-      if (enabled) applyLocation();
+      if (enabled) applyLocation(false);
       else if (s.open) {
         commit({ open: false, conversationId: null, highlightSeq: null, inviteCode: null, view: "inbox" });
-        pushed = false;
       }
     },
     setExpanded(expanded) {
@@ -369,7 +343,6 @@ export function createHostState(env: HostEnv): HostState {
     setView(view) {
       if (!s.open) return;
       commit({ view, conversationId: view === "inbox" ? s.conversationId : null, highlightSeq: null });
-      writeUrl("replace");
     },
     setFilter(filter) {
       if (!INBOX_FILTER_IDS.includes(filter)) return;
@@ -384,6 +357,19 @@ export function createHostState(env: HostEnv): HostState {
         /* 隐私模式 */
       }
     },
+    setOverlayOffset(offset) {
+      const next =
+        offset && Number.isFinite(offset.x) && Number.isFinite(offset.y)
+          ? { x: Math.round(offset.x), y: Math.round(offset.y) }
+          : null;
+      commit({ overlayOffset: next });
+      try {
+        if (next) env.storage?.setItem(OVERLAY_OFFSET_KEY, JSON.stringify(next));
+        else env.storage?.setItem(OVERLAY_OFFSET_KEY, "");
+      } catch {
+        /* 隐私模式 */
+      }
+    },
     showConversation(conversationId, seq = null) {
       if (!s.open) return;
       commit({
@@ -391,12 +377,10 @@ export function createHostState(env: HostEnv): HostState {
         view: "inbox",
         highlightSeq: conversationId && typeof seq === "number" ? seq : null,
       });
-      writeUrl("replace");
     },
     clearInvite() {
       if (!s.inviteCode) return;
       commit({ inviteCode: null });
-      if (s.open) writeUrl("replace");
     },
     clearHighlight() {
       commit({ highlightSeq: null });
@@ -405,7 +389,7 @@ export function createHostState(env: HostEnv): HostState {
       commit({ narrow: env.viewportWidth() <= MOBILE_MAX_WIDTH });
     },
     attach() {
-      const offPop = env.on("popstate", () => applyLocation());
+      const offPop = env.on("popstate", () => applyLocation(true));
       const offOpen = env.on(
         IM_OPEN_EVENT,
         (event: { detail?: { conversationId?: unknown; seq?: unknown; view?: unknown; filter?: unknown } }) => {
@@ -438,7 +422,7 @@ export function createHostState(env: HostEnv): HostState {
       const offResize = env.on("resize", () => {
         commit({ narrow: env.viewportWidth() <= MOBILE_MAX_WIDTH });
       });
-      applyLocation();
+      applyLocation(false);
       return () => {
         offPop();
         offOpen();
@@ -499,6 +483,7 @@ const SERVER_SNAPSHOT: MessagesHostSnapshot = {
   narrow: false,
   dockWidth: DOCK_DEFAULT,
   enabled: false,
+  overlayOffset: null,
 };
 
 export function openMessages(target?: MessagesTarget): void {

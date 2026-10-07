@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImMessage, ImProfile } from "../../../lib/im/types";
 import { useImConnection, useImEvent } from "../realtime/hooks";
+import { ImBackIcon, ImMoreIcon } from "../messages-surface";
 import { ReportDialog } from "../report/ReportDialog";
 import { TalentComposer } from "./TalentComposer";
 import { TalentMessageList } from "./TalentMessageList";
@@ -238,24 +239,24 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
   }
 
   return (
-    <div data-talent-view={layout} className="flex h-full min-h-0 flex-col bg-white text-neutral-900">
-      <header className="flex items-center gap-2 border-b border-neutral-200 px-3 py-2">
+    <div data-talent-view={layout} className="flex h-full min-h-0 flex-col text-neutral-900">
+      <header className="flex items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
         {onBack && layout !== "full" && (
           <button
             type="button"
             data-action="back"
+            data-im-chrome-btn
             onClick={onBack}
             aria-label={tt("返回")}
-            className="rounded-lg px-2 py-1 text-[14px] text-neutral-600 hover:bg-neutral-100"
           >
-            ‹
+            <ImBackIcon />
           </button>
         )}
-        <div className="min-w-0 flex-1">
-          <p data-talent-title className="truncate text-[15px] font-semibold">
+        <div className="min-w-0 flex-1 px-1">
+          <p data-talent-title className="truncate text-[13px] font-semibold tracking-tight">
             {title}
           </p>
-          <p className="text-[11px] text-neutral-500">{tt("交易会话")}</p>
+          <p className="text-[12px] text-neutral-400">{tt("交易会话")}</p>
         </div>
         {openUrl && (
           <a
@@ -263,7 +264,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
             target="_blank"
             rel="noopener noreferrer"
             data-talent-open
-            className="text-[12px] text-sky-700 underline underline-offset-2 hover:text-sky-800"
+            className="text-[12px] text-neutral-600 underline-offset-2 hover:underline"
           >
             {tt("在 talent 打开")}
           </a>
@@ -271,9 +272,10 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
         <details className="relative">
           <summary
             aria-label={tt("更多")}
-            className="cursor-pointer list-none rounded-lg px-2 py-1 text-[14px] text-neutral-600 hover:bg-neutral-100"
+            className="cursor-pointer list-none"
+            data-im-chrome-btn
           >
-            ⋯
+            <ImMoreIcon />
           </summary>
           <div className="absolute right-0 z-10 mt-1 w-40 rounded-lg border border-neutral-200 bg-white py-1 text-[13px] shadow-lg">
             {peerId && (
@@ -299,7 +301,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
       </header>
 
       {state.contactHint && (
-        <p data-contact-hint className="bg-amber-50 px-3 py-1.5 text-[12px] text-amber-800">
+        <p data-contact-hint className="px-3 py-1.5 text-[12px] text-neutral-500">
           {tt("对话里出现了联系方式。站外成交平台不担保，请尽量在平台内完成交易。")}
         </p>
       )}

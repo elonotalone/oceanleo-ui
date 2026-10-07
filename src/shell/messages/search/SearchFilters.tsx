@@ -77,7 +77,7 @@ export function filtersActive(filters: SearchFilterState): boolean {
 }
 
 const selectClass =
-  "min-w-0 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-[12.5px] text-neutral-700 focus:border-neutral-400 focus:outline-none";
+  "min-w-0 rounded-lg border-0 bg-neutral-100/80 px-2 py-1.5 text-[12px] text-neutral-700 focus:outline-none";
 
 export function SearchFilters({
   value,

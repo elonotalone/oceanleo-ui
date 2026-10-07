@@ -13,12 +13,18 @@ import {
   parseImDeepLink,
 } from "../src/shell/messages/host-state.ts";
 
-function makeEnv({ url = "https://oceanleo.com/library?tab=a#x", width = 1280, stored = null } = {}) {
+function makeEnv({
+  url = "https://oceanleo.com/library?tab=a#x",
+  width = 1280,
+  stored = null,
+  storedOffset = null,
+} = {}) {
   const entries = [{ url, state: { __NA: true, tree: [1] } }];
   let index = 0;
   const handlers = new Map();
   const calls = { push: 0, replace: 0, back: 0 };
   const storage = new Map(stored ? [["oceanleo:im:dock-width", String(stored)]] : []);
+  if (storedOffset) storage.set("oceanleo:im:overlay-offset", JSON.stringify(storedOffset));
   const fire = (type, event = {}) => {
     for (const handler of Array.from(handlers.get(type) ?? [])) handler(event);
   };
@@ -97,7 +103,7 @@ test("buildImSearch 保留别的参数、清掉旧的 im 参数", () => {
   assert.equal(buildImSearch("", { target: { view: "inbox" }, inviteCode: "Abcdef12" }), "?im=inbox&im_invite=Abcdef12");
 });
 
-test("打开用 pushState 并保留 Next 的 history.state；返回键关闭，不刷新", () => {
+test("打开不写地址栏；浮层内切换会话也不写", () => {
   const sim = makeEnv();
   const host = createHostState(sim.env);
   host.setEnabled(true);
@@ -105,51 +111,36 @@ test("打开用 pushState 并保留 Next 的 history.state；返回键关闭，�
   assert.equal(host.getSnapshot().open, false);
 
   host.open({ conversationId: "c1", seq: 5 });
-  assert.equal(sim.calls.push, 1);
+  assert.equal(sim.calls.push, 0);
+  assert.equal(sim.calls.replace, 0);
   assert.equal(host.getSnapshot().open, true);
   assert.equal(host.getSnapshot().conversationId, "c1");
   assert.equal(host.getSnapshot().highlightSeq, 5);
-  assert.equal(sim.current().url, "https://oceanleo.com/library?tab=a&im=c1&im_seq=5#x");
-  // Next 的 App Router 靠 __NA 判断「这是我的历史记录」，丢了就整页重载
-  assert.equal(sim.current().state.__NA, true);
-  assert.deepEqual(sim.current().state.tree, [1]);
-  assert.equal(sim.current().state.imOverlay, true);
-
-  // 浏览器返回键 = popstate，回到没有 im 参数的那条
-  sim.env.history.back();
-  assert.equal(host.getSnapshot().open, false);
   assert.equal(sim.current().url, "https://oceanleo.com/library?tab=a#x");
-});
 
-test("浮层内切换会话只 replaceState，不堆历史记录", () => {
-  const sim = makeEnv();
-  const host = createHostState(sim.env);
-  host.setEnabled(true);
-  host.attach();
-  host.open({ view: "inbox" });
-  assert.equal(sim.count(), 2);
   host.showConversation("c2");
   host.showConversation("c3", 11);
-  assert.equal(sim.count(), 2, "历史记录条数不变");
-  assert.equal(sim.calls.push, 1);
-  assert.match(sim.current().url, /im=c3&im_seq=11/);
+  assert.equal(sim.count(), 1, "历史记录条数不变");
+  assert.equal(sim.calls.push, 0);
+  assert.equal(sim.current().url, "https://oceanleo.com/library?tab=a#x");
   host.open({ view: "people" });
-  assert.equal(sim.count(), 2);
-  assert.match(sim.current().url, /im=people/);
+  assert.equal(host.getSnapshot().view, "people");
+  assert.doesNotMatch(sim.current().url, /im=/);
 });
 
-test("closeMessages：自己 push 出来的那条用 back 退掉；URL 上带进来的深链用 replaceState 清掉", () => {
+test("closeMessages：不用 history.back；地址栏里带进来的深链用 replaceState 清掉", () => {
   const a = makeEnv();
   const hostA = createHostState(a.env);
   hostA.setEnabled(true);
   hostA.attach();
   hostA.open({ conversationId: "c1" });
   hostA.close();
-  assert.equal(a.calls.back, 1);
+  assert.equal(a.calls.back, 0);
+  assert.equal(a.calls.push, 0);
   assert.equal(hostA.getSnapshot().open, false);
   assert.equal(a.current().url, "https://oceanleo.com/library?tab=a#x");
 
-  // 页面本来就带着 ?im=：没有可退的记录，只清参数
+  // 页面本来就带着 ?im=：消费后清参数，浮层打开
   const b = makeEnv({ url: "https://oceanleo.com/library?im=c9&im_seq=2" });
   const hostB = createHostState(b.env);
   hostB.attach();
@@ -159,9 +150,9 @@ test("closeMessages：自己 push 出来的那条用 back 退掉；URL 上带进
   assert.equal(hostB.getSnapshot().conversationId, "c9");
   assert.equal(hostB.getSnapshot().highlightSeq, 2);
   assert.equal(b.calls.push, 0);
+  assert.equal(b.current().url, "https://oceanleo.com/library");
   hostB.close();
   assert.equal(b.calls.back, 0);
-  assert.equal(b.current().url, "https://oceanleo.com/library");
   assert.equal(hostB.getSnapshot().open, false);
 });
 
@@ -302,4 +293,27 @@ test("布局：手机 < 768 单栏，桌面默认停靠，可放大到全屏；�
   const remembered = createHostState(makeEnv({ stored: 600 }).env);
   assert.equal(remembered.getSnapshot().dockWidth, 600);
   assert.equal(clampDockWidth(Number.NaN), 420);
+});
+
+test("悬浮位置记在 storage；同页重挂不关浮层、位置不变；打开不把 ?im= 写进地址栏", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  const detach = host.attach();
+  host.open({ view: "inbox" });
+  host.setOverlayOffset({ x: 80, y: 40 });
+  assert.equal(host.getSnapshot().open, true);
+  assert.deepEqual(host.getSnapshot().overlayOffset, { x: 80, y: 40 });
+  assert.equal(sim.storage.get("oceanleo:im:overlay-offset"), JSON.stringify({ x: 80, y: 40 }));
+  assert.doesNotMatch(sim.current().url, /im=/);
+
+  detach();
+  host.attach();
+  assert.equal(host.getSnapshot().open, true, "同页重挂不得关浮层");
+  assert.deepEqual(host.getSnapshot().overlayOffset, { x: 80, y: 40 });
+
+  const remembered = createHostState(
+    makeEnv({ url: "https://oceanleo.com/explore", storedOffset: { x: 80, y: 40 } }).env,
+  );
+  assert.deepEqual(remembered.getSnapshot().overlayOffset, { x: 80, y: 40 });
 });

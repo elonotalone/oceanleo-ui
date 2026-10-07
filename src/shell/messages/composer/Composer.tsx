@@ -14,6 +14,7 @@ import { sendTyping } from "../realtime/hooks";
 import { ArtifactPickerDialog } from "./ArtifactPickerDialog";
 import { AttachmentTray } from "./AttachmentTray";
 import { EmojiPicker } from "./EmojiPicker";
+import { ImCloseIcon, ImEmojiIcon, ImPlusIcon, ImSendIcon } from "../messages-surface";
 import {
   MentionPicker,
   activeMentionQuery,
@@ -433,7 +434,7 @@ export function Composer(props: ComposerProps) {
 
   if (disabled && disabledReason) {
     return (
-      <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-3 text-center text-[13px] text-neutral-500" data-composer-disabled="">
+      <div className="border-t border-neutral-200/80 px-4 py-3 text-center text-[13px] text-neutral-500" data-composer-disabled="">
         {disabledReason}
       </div>
     );
@@ -442,7 +443,7 @@ export function Composer(props: ComposerProps) {
   const quoteName = quoteLabel ?? "";
   return (
     <div
-      className={"relative border-t border-neutral-200 bg-white " + (dragging ? "ring-2 ring-inset ring-sky-300" : "")}
+      className={"relative border-t border-neutral-200/80 " + (dragging ? "ring-2 ring-inset ring-neutral-300" : "")}
       onDragOver={(event) => {
         if (event.dataTransfer?.types?.includes("Files")) {
           event.preventDefault();
@@ -459,9 +460,10 @@ export function Composer(props: ComposerProps) {
         }
       }}
       data-composer=""
+      data-im-composer=""
     >
       {editing ? (
-        <div className="flex items-center justify-between bg-amber-50 px-3 py-1.5 text-[12px] text-amber-800">
+        <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-500">
           <span>{tt("正在编辑消息")}</span>
           <button type="button" onClick={onCancelEdit} className="underline">
             {tt("取消")}
@@ -469,14 +471,14 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       {quote && !editing ? (
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-neutral-50 px-3 py-1.5 text-[12px] text-neutral-500">
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[12px] text-neutral-500">
           <span className="min-w-0 truncate">
             {tt("回复")} <b className="font-medium text-neutral-700">{quoteName}</b>
             {"："}
             {plainTextOf(quote.body).replace(/\s+/g, " ").slice(0, 60) || quote.card?.title || quote.attachments[0]?.name || ""}
           </span>
-          <button type="button" onClick={onClearQuote} aria-label={tt("取消引用")} className="shrink-0 text-neutral-400 hover:text-neutral-700">
-            ✕
+          <button type="button" onClick={onClearQuote} aria-label={tt("取消引用")} data-im-chrome-btn className="shrink-0">
+            <ImCloseIcon />
           </button>
         </div>
       ) : null}
@@ -495,6 +497,7 @@ export function Composer(props: ComposerProps) {
           onHover={setActiveIndex}
           hintFor={hintFor}
         />
+        <div className="rounded-[14px] bg-black/[0.04] dark:bg-white/[0.06]">
         <textarea
           ref={textareaRef}
           value={text}
@@ -510,8 +513,9 @@ export function Composer(props: ComposerProps) {
           onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          className="max-h-44 min-h-[40px] w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[14px] leading-[22px] text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none"
+          className="max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3 py-2 text-[14px] leading-[22px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
         />
+        </div>
         <div className="mt-1.5 flex items-center gap-1">
           <div className="relative">
             <button
@@ -520,9 +524,9 @@ export function Composer(props: ComposerProps) {
               aria-haspopup="menu"
               aria-expanded={plusOpen}
               aria-label={tt("更多")}
-              className="flex h-11 w-11 items-center justify-center rounded-md text-[18px] text-neutral-500 hover:bg-neutral-100 md:h-8 md:w-8"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
             >
-              +
+              <ImPlusIcon />
             </button>
             {plusOpen ? (
               <div role="menu" className="absolute bottom-9 left-0 z-30 min-w-[160px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
@@ -563,9 +567,9 @@ export function Composer(props: ComposerProps) {
               onClick={() => setEmojiOpen((v) => !v)}
               aria-label={tt("表情")}
               aria-expanded={emojiOpen}
-              className="flex h-11 w-11 items-center justify-center rounded-md text-[17px] text-neutral-500 hover:bg-neutral-100 md:h-8 md:w-8"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
             >
-              ☺
+              <ImEmojiIcon />
             </button>
             {emojiOpen ? (
               <div className="absolute bottom-9 left-0">
@@ -596,10 +600,13 @@ export function Composer(props: ComposerProps) {
             type="button"
             disabled={!canSend}
             onClick={() => void submit()}
-            className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] text-white transition-opacity disabled:opacity-30"
+            className={editing ? "rounded-lg px-3 py-1.5 text-[13px] font-medium text-neutral-900 disabled:opacity-30" : "disabled:opacity-20"}
             data-send-button=""
+            data-im-send={editing ? undefined : ""}
+            aria-label={editing ? tt("保存") : tt("发送")}
+            title={editing ? tt("保存") : tt("发送")}
           >
-            {editing ? tt("保存") : tt("发送")}
+            {editing ? tt("保存") : <ImSendIcon />}
           </button>
         </div>
       </div>

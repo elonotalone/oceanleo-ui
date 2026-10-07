@@ -31,10 +31,8 @@ function DayDivider({ day }: { day: string }) {
         ? tt("昨天")
         : new Intl.DateTimeFormat(locale, { dateStyle: "full" }).format(date);
   return (
-    <div className="my-3 flex items-center gap-3 px-4 text-[11.5px] text-neutral-400" data-day-divider={day}>
-      <span className="h-px flex-1 bg-neutral-200" />
-      <span>{label}</span>
-      <span className="h-px flex-1 bg-neutral-200" />
+    <div className="my-3 px-4 text-center text-[12px] text-neutral-400" data-day-divider={day}>
+      {label}
     </div>
   );
 }
@@ -217,10 +215,8 @@ export function MessageList(props: MessageListProps) {
           if (row.type === "day") return <DayDivider key={row.key} day={row.day} />;
           if (row.type === "unread") {
             return (
-              <div key={row.key} className="my-2 flex items-center gap-3 px-4 text-[11.5px] text-red-500" data-unread-divider="">
-                <span className="h-px flex-1 bg-red-200" />
-                <span>{tt("以下为未读消息")}</span>
-                <span className="h-px flex-1 bg-red-200" />
+              <div key={row.key} className="my-2 px-4 text-center text-[12px] text-neutral-400" data-unread-divider="">
+                {tt("以下为未读消息")}
               </div>
             );
           }
@@ -255,7 +251,7 @@ export function MessageList(props: MessageListProps) {
             if (snapshot.hasMoreAfter) void store.loadLatest().then(scrollToBottom);
             else scrollToBottom();
           }}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-neutral-900 px-3.5 py-1.5 text-[12.5px] text-white shadow-lg hover:bg-neutral-700"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white dark:bg-white dark:text-neutral-900"
           data-new-messages=""
         >
           {newCount > 0 ? tt("{n} 条新消息", { n: newCount }) : tt("回到最新消息")}

@@ -308,7 +308,7 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
             href: node.href,
             target: "_blank",
             rel: "noopener noreferrer",
-            className: "break-all text-sky-700 underline underline-offset-2 hover:text-sky-800",
+            className: "break-all text-neutral-800 underline underline-offset-2 hover:text-neutral-900",
           },
           node.text,
         );
@@ -326,8 +326,8 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
             "data-mention": mention.kind,
             className:
               "inline rounded px-1 font-medium " +
-              (self ? "bg-amber-100 text-amber-900" : "bg-sky-50 text-sky-800") +
-              (clickable ? " cursor-pointer hover:bg-sky-100" : ""),
+              (self ? "bg-neutral-200 text-neutral-900" : "bg-neutral-100 text-neutral-700") +
+              (clickable ? " cursor-pointer hover:bg-neutral-200" : ""),
           },
           `@${mention.label}`,
         );

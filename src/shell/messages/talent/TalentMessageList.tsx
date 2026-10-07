@@ -65,7 +65,7 @@ function AttachmentView({ attachment }: { attachment: ImAttachment }) {
       rel="noopener noreferrer"
       download
       data-attachment={attachment.kind}
-      className="block max-w-full truncate text-[13px] text-sky-700 underline underline-offset-2"
+      className="block max-w-full truncate text-[13px] text-neutral-700 underline-offset-2 hover:underline"
     >
       {name}
     </a>

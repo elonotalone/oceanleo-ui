@@ -178,7 +178,7 @@ export function MemberPicker({
                 <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-900">{p.display_name}</span>
                 {label && (
                   <span
-                    className={`shrink-0 text-[11px] ${status === "direct" ? "text-emerald-600" : status === "consent" ? "text-amber-600" : "text-neutral-400"}`}
+                    className={`shrink-0 text-[11px] ${status === "direct" ? "text-neutral-700" : status === "consent" ? "text-neutral-500" : "text-neutral-400"}`}
                   >
                     {label}
                   </span>

@@ -97,9 +97,9 @@ export function LeoMessageBody({ message, streamingText }: LeoMessageBodyProps) 
       ) : streaming ? (
         <div className="flex items-center gap-1.5 text-[13px] text-neutral-400" data-leo-thinking="">
           <span className="inline-flex gap-0.5" aria-hidden="true">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-300" />
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-300 [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-300 [animation-delay:300ms]" />
+            <span className="v-typing-dot" />
+            <span className="v-typing-dot" />
+            <span className="v-typing-dot" />
           </span>
           {tt("leo 正在回复…")}
         </div>
@@ -110,7 +110,7 @@ export function LeoMessageBody({ message, streamingText }: LeoMessageBodyProps) 
           onClick={stop}
           disabled={stopping}
           data-leo-stop=""
-          className="mt-1.5 rounded-md border border-neutral-200 px-2 py-0.5 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+          className="mt-1.5 rounded-md px-2 py-0.5 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
         >
           {tt("停止")}
         </button>

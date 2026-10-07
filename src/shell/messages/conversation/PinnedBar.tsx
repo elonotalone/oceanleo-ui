@@ -32,14 +32,14 @@ export function PinnedBar({
   const latest = pins[pins.length - 1];
   const fallback = tt("[消息]");
   return (
-    <div className="relative border-b border-neutral-200 bg-amber-50/60" data-pinned-bar="">
+    <div className="relative border-b border-neutral-200/80" data-pinned-bar="">
       <div className="flex items-center gap-2 px-3 py-1.5 text-[12.5px]">
         <button
           type="button"
           onClick={() => onJump(latest)}
           className="min-w-0 flex-1 truncate text-left text-neutral-700 hover:text-neutral-900"
         >
-          <span className="mr-1.5 font-medium text-amber-700">{tt("置顶")}</span>
+          <span className="mr-1.5 font-medium text-neutral-500">{tt("置顶")}</span>
           {previewOf(latest, fallback)}
         </button>
         {pins.length > 1 ? (
@@ -47,14 +47,14 @@ export function PinnedBar({
             type="button"
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
-            className="shrink-0 rounded px-1.5 py-0.5 text-[11.5px] text-neutral-500 hover:bg-amber-100"
+            className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-neutral-400 hover:bg-neutral-100"
           >
             {tt("共 {n} 条", { n: pins.length })}
           </button>
         ) : null}
       </div>
       {open ? (
-        <ul className="max-h-56 overflow-y-auto border-t border-amber-100 bg-white">
+        <ul className="max-h-56 overflow-y-auto border-t border-neutral-100 bg-white dark:border-white/10 dark:bg-neutral-900">
           {[...pins].reverse().map((pin) => (
             <li key={pin.id} className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] hover:bg-neutral-50">
               <button

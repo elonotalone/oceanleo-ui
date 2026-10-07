@@ -41,7 +41,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
   }
 
   return (
-    <div data-talent-composer className="border-t border-neutral-200 px-3 py-2">
+    <div data-talent-composer className="border-t border-neutral-200/80 px-3 py-2">
       {error && (
         <p role="alert" data-composer-error className="pb-1 text-[12px] text-red-600">
           {error}
@@ -58,14 +58,14 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
           placeholder={tt("写点什么…")}
           aria-label={tt("消息内容")}
           data-composer-input
-          className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[14px] text-neutral-900"
+          className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl bg-black/[0.04] px-3 py-2 text-[14px] text-neutral-900 focus:outline-none dark:bg-white/[0.06]"
         />
         <button
           type="button"
           disabled={disabled || busy || !value.trim()}
           data-action="send"
           onClick={() => void submit()}
-          className="rounded-xl bg-neutral-900 px-4 py-2 text-[13px] text-white hover:bg-neutral-800 disabled:opacity-40"
+          className="px-2 py-1.5 text-[13px] font-semibold text-neutral-900 disabled:opacity-30"
         >
           {tt("发送")}
         </button>
@@ -73,7 +73,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
       {openUrl && (
         <p className="pt-1.5 text-[11.5px] text-neutral-500">
           {tt("发报价、传文件、签合同和付款，请")}
-          <a href={openUrl} target="_blank" rel="noopener noreferrer" data-composer-open className="text-sky-700 underline underline-offset-2">
+          <a href={openUrl} target="_blank" rel="noopener noreferrer" data-composer-open className="font-medium text-neutral-800 underline-offset-2 hover:underline">
             {tt("在 talent 打开")}
           </a>
         </p>

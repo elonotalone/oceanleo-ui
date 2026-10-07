@@ -104,7 +104,7 @@ export function NewConversationDialog({ open, onClose, onCreated, presetMemberId
             <p className="text-[14px] text-neutral-800">
               {tt("群已创建。已加入 {n} 人，{m} 人等待同意。", { n: done.added, m: done.pending })}
             </p>
-            {done.refused > 0 && <p className="mt-1 text-[12px] text-amber-700">{tt("有 {n} 人没能加入（可能已拉黑）。", { n: done.refused })}</p>}
+            {done.refused > 0 && <p className="mt-1 text-[12px] text-neutral-500">{tt("有 {n} 人没能加入（可能已拉黑）。", { n: done.refused })}</p>}
             <div className="mt-5 flex justify-end">
               <button type="button" onClick={() => onCreated(done.id)} data-action="enter" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
                 {tt("进入群聊")}

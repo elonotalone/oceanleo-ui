@@ -88,7 +88,7 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
                       </span>
                     )}
                     {m.external && (
-                      <span data-external-badge className="rounded bg-amber-50 px-1.5 text-[10px] leading-4 text-amber-700">
+                      <span data-external-badge className="text-[11px] leading-4 text-neutral-400">
                         {tt("外部")}
                       </span>
                     )}

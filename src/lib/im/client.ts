@@ -1,6 +1,6 @@
 // 消息板块的网关客户端（work-chat 契约 §4 / §8.3）：带 token、网关地址；错误抛 ImApiError。
 // 只用 lib/auth 已提交的出口：GATEWAY_BASE、accessToken、cachedAccessToken、AUTH_STATE_EVENT。
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { currentDomainFamily } from "../../contracts/domain-family";
 import { GATEWAY_BASE } from "../auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../auth/client";
@@ -70,9 +70,17 @@ export function subscribeImEnabled(listener: () => void): () => void {
   };
 }
 
-/** 响应式版本：服务端与水合首帧恒为 false，登录后变 true。 */
+/** 响应式版本：服务端与水合首帧恒为 false，避免登录态把「消息」灌进 HTML。
+ *  挂载之后一律读 `imEnabledHere()`：`useTransition` / View Transition 期间
+ *  `useSyncExternalStore` 会短暂回到 getServerSnapshot=false，侧栏「消息」会
+ *  从新快照里消失、比其它按键晚一拍才回来。 */
 export function useImEnabled(): boolean {
-  return useSyncExternalStore(subscribeImEnabled, imEnabledHere, () => false);
+  const snapshot = useSyncExternalStore(subscribeImEnabled, imEnabledHere, () => false);
+  const [client, setClient] = useState(false);
+  useEffect(() => {
+    setClient(true);
+  }, []);
+  return client ? imEnabledHere() : snapshot;
 }
 
 function apiUrl(path: string): string {

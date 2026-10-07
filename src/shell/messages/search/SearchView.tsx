@@ -83,7 +83,7 @@ function Highlighted({ segments }: { segments: HighlightSegment[] }) {
     <>
       {segments.map((segment, index) =>
         segment.hit ? (
-          <mark key={index} data-search-hit="" className="rounded bg-amber-100 px-0.5 text-neutral-900">
+          <mark key={index} data-search-hit="" className="bg-transparent font-semibold text-neutral-900">
             {segment.text}
           </mark>
         ) : (
@@ -211,7 +211,7 @@ export function SearchView({ initialQuery = "", conversationId = null, onOpenRes
         onChange={(event) => setQuery(event.target.value)}
         placeholder={tt("搜索消息")}
         aria-label={tt("搜索消息")}
-        className="rounded-lg border border-neutral-200 px-3 py-2 text-[13.5px] focus:border-neutral-400 focus:outline-none"
+        className="rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none"
       />
       <SearchFilters
         value={conversationId ? { ...filters, conversationId } : filters}

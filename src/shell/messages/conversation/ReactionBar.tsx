@@ -31,7 +31,7 @@ export function ReactionBar({
           className={
             "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] leading-5 transition-colors " +
             (reaction.mine
-              ? "border-sky-300 bg-sky-50 text-sky-800"
+              ? "border-neutral-900 bg-neutral-100 text-neutral-900"
               : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300")
           }
         >

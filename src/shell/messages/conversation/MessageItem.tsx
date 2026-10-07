@@ -119,6 +119,7 @@ export function MessageItem(props: MessageItemProps) {
   const [touchOpen, setTouchOpen] = useState(false);
   const [recallOpen, setRecallOpen] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enterRef = useRef<"" | "own" | "peer" | null>(null);
 
   if (message.kind === "system" || message.sender_kind === "system") {
     return <SystemLine message={message} />;
@@ -131,6 +132,13 @@ export function MessageItem(props: MessageItemProps) {
     conversation?.members.find((member) => member.user_id === message.sender_id)?.external,
   );
   const mine = Boolean(viewerId) && message.sender_id === viewerId;
+  if (enterRef.current === null) {
+    if (pending) enterRef.current = "own";
+    else {
+      const age = Date.now() - Date.parse(message.created_at);
+      enterRef.current = Number.isFinite(age) && age >= 0 && age < 2500 ? (mine ? "own" : "peer") : "";
+    }
+  }
   const recalled = Boolean(message.recalled_at);
   const hidden = message.hidden_reason === "moderation";
   const blockedHidden = message.hidden_reason === "blocked";
@@ -249,11 +257,12 @@ export function MessageItem(props: MessageItemProps) {
       onPointerCancel={endPress}
       onPointerMove={endPress}
       onMouseLeave={() => setTouchOpen(false)}
+      data-sending={pending?.status === "sending" ? "" : undefined}
+      data-im-enter={enterRef.current || undefined}
       className={
-        "group relative flex gap-2.5 px-4 transition-colors " +
+        "group relative flex gap-2.5 px-4 " +
         (showHeader ? "pt-2 " : "pt-0.5 ") +
-        (highlighted ? "bg-amber-50 " : "hover:bg-neutral-50/70 ") +
-        (pending?.status === "sending" ? "opacity-60" : "")
+        (highlighted ? "bg-neutral-100/80 dark:bg-white/5 " : "")
       }
     >
       <div className="w-9 shrink-0">
@@ -278,13 +287,13 @@ export function MessageItem(props: MessageItemProps) {
               type="button"
               disabled={isLeo || !message.sender_id}
               onClick={() => message.sender_id && handlers.onOpenProfile(message.sender_id)}
-              className="truncate text-[13.5px] font-semibold text-neutral-900 enabled:hover:underline"
+              className="truncate text-[13px] font-semibold tracking-tight text-neutral-900 enabled:hover:underline"
             >
               {senderName}
             </button>
-            {isLeo ? <span className="rounded bg-violet-50 px-1 text-[10.5px] text-violet-600">AI</span> : null}
-            {external ? <span className="rounded bg-neutral-100 px-1 text-[10.5px] text-neutral-500">{tt("外部")}</span> : null}
-            <time dateTime={message.created_at} title={fullTime} className="text-[11.5px] text-neutral-400">
+            {isLeo ? <span className="text-[11px] text-neutral-400">leo</span> : null}
+            {external ? <span className="text-[11px] text-neutral-400">{tt("外部")}</span> : null}
+            <time dateTime={message.created_at} title={fullTime} className="text-[12px] text-neutral-400">
               {timeLabel}
             </time>
           </div>
@@ -300,7 +309,7 @@ export function MessageItem(props: MessageItemProps) {
           <button
             type="button"
             onClick={() => handlers.onThread(message)}
-            className="mt-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[12px] text-sky-700 hover:bg-sky-50"
+            className="mt-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-white/5"
             data-thread-summary=""
           >
             <span className="flex -space-x-1">

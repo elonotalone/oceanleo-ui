@@ -12,6 +12,7 @@ import { grantCoeditToConversation } from "../../collab/grants-api";
 import type { LibraryItem } from "../../library-data";
 import { editorCapabilityFor } from "../../workbench-routes";
 import { safeMediaUrl } from "../conversation/AttachmentView";
+import { ImCloseIcon } from "../messages-surface";
 
 /** 作品 → 契约里的编辑器族；这个作品不在 12 族里（如网站）就是 null，不能一起改。 */
 export function editorKindOfItem(item: LibraryItem): ImEditorKind | null {
@@ -120,15 +121,15 @@ export function ArtifactPickerDialog({
       <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold text-neutral-900">{tt("分享作品")}</h2>
-          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label={tt("关闭")}>
-            ✕
+          <button type="button" onClick={onClose} data-im-chrome-btn aria-label={tt("关闭")}>
+            <ImCloseIcon />
           </button>
         </div>
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={tt("搜索我的作品")}
-          className="mb-2 rounded-lg border border-neutral-200 px-3 py-2 text-[13px] focus:border-neutral-400 focus:outline-none"
+        className="mb-2 rounded-lg bg-neutral-100/80 px-3 py-2 text-[13px] focus:outline-none"
           autoFocus
         />
         <div className="min-h-[160px] flex-1 overflow-y-auto">
@@ -147,7 +148,7 @@ export function ArtifactPickerDialog({
                     aria-pressed={active}
                     className={
                       "flex w-full items-center gap-3 rounded-lg border px-2 py-1.5 text-left " +
-                      (active ? "border-sky-400 bg-sky-50" : "border-transparent hover:bg-neutral-50")
+                      (active ? "border-neutral-300 bg-neutral-100" : "border-transparent hover:bg-neutral-50")
                     }
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-neutral-100 text-[10px] text-neutral-400">

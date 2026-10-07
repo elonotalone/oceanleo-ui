@@ -1,33 +1,22 @@
 "use client";
 
-// 浮层里的设置页：提醒设置（W03）、拉黑名单入口、隐私说明。
+// 浮层里的设置页：提醒设置（W03）、拉黑名单入口、隐私说明。顶栏图标页签已经标明这是设置，这里不再重复标题和返回。
 import { useUI } from "../../i18n/ui/useUI";
 import { NotifySettingsPanel } from "./notify/NotifySettingsPanel";
 import { PrivacySummary } from "./PrivacyNotice";
 
-export function SettingsView({ onOpenBlocks, onBack }: { onOpenBlocks: () => void; onBack: () => void }) {
+export function SettingsView({ onOpenBlocks }: { onOpenBlocks: () => void }) {
   const tt = useUI();
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="messages-settings">
-      <div className="flex items-center gap-2 border-b border-black/10 px-3 py-2 dark:border-white/10">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={tt("返回")}
-          className="rounded-md px-2 py-1 text-sm text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
-        >
-          ←
-        </button>
-        <div className="text-sm font-semibold">{tt("消息设置")}</div>
-      </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <section>
-          <div className="mb-2 text-sm font-medium">{tt("提醒")}</div>
+          <div className="mb-2 text-[13px] font-semibold tracking-tight">{tt("提醒")}</div>
           <NotifySettingsPanel />
         </section>
         <section>
-          <div className="mb-2 text-sm font-medium">{tt("拉黑名单")}</div>
-          <p className="mb-2 text-xs text-black/55 dark:text-white/55">
+          <div className="mb-2 text-[13px] font-semibold tracking-tight">{tt("拉黑名单")}</div>
+          <p className="mb-2 text-[12px] text-black/45 dark:text-white/45">
             {tt("被你拉黑的人不能私聊你、不能拉你进群、不能给你发联系人请求。")}
           </p>
           <button
@@ -39,7 +28,7 @@ export function SettingsView({ onOpenBlocks, onBack }: { onOpenBlocks: () => voi
           </button>
         </section>
         <section>
-          <div className="mb-2 text-sm font-medium">{tt("隐私说明")}</div>
+          <div className="mb-2 text-[13px] font-semibold tracking-tight">{tt("隐私说明")}</div>
           <PrivacySummary />
         </section>
       </div>
