@@ -394,14 +394,15 @@ function targetFor(
   }
 }
 
-function looksLikeTalentLink(text: string): boolean {
-  const bannedOpen = ["在 ", "talent", " 打开"].join("");
-  return /talent\.oceanleo\.com/i.test(text) || text.includes(bannedOpen);
+function looksLikeTalentLink(tt: UITranslate, text: string): boolean {
+  if (/talent\.oceanleo\.com/i.test(text)) return true;
+  if (/在\s*talent\s*打开/.test(text)) return true;
+  return text.includes(tt("在 {site} 打开", { site: "talent" }));
 }
 
 function fallbackBody(tt: UITranslate, body: string): string {
   const trimmed = body.trim();
-  if (!trimmed || looksLikeTalentLink(trimmed)) return tt(UNKNOWN_DEAL_LINE_TEXT);
+  if (!trimmed || looksLikeTalentLink(tt, trimmed)) return tt(UNKNOWN_DEAL_LINE_TEXT);
   return trimmed;
 }
 
