@@ -285,6 +285,7 @@ test("付款没就绪：谁都不能付款，只给提示", () => {
   assert.equal(orders.orderActionsFor(unpaid, CLOSED).setupPayment, false);
   assert.equal(orders.nextActionText(tt, unpaid, ENABLED_NOT_READY), "付款暂未开放");
   assert.equal(orders.canPayOrder(unpaid, READY), true);
+  assert.equal(orders.canPayOrder(unpaid, { enabled: false, buyer_ready: true }), true, "按钮只按 buyer_ready，不看 enabled");
   assert.equal(orders.canPayOrder({ ...unpaid, my_role: "seller" }, READY), false, "卖家永远不付款");
   assert.equal(orders.canPayOrder({ ...unpaid, payment_state: "escrow_held" }, READY), false, "已托管不再付");
   assert.equal(orders.canPayOrder({ ...unpaid, total_fen: 0 }, READY), false, "免费单不付款");

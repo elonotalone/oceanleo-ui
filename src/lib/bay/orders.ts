@@ -488,9 +488,9 @@ export function contractPaymentsOn(order: Pick<BayOrder, "payment_state" | "tota
   return Boolean(order.payment_state) && order.payment_state !== "disabled" && Number(order.total_fen || 0) > 0;
 }
 
-/** 买家此刻能不能点「去付款」：付款已就绪、这单有钱要付、还没付、合同已生效。 */
+/** 买家此刻能不能点「去付款」：只看 buyer_ready，不看 enabled；这单有钱要付、还没付、合同已生效。 */
 export function canPayOrder(order: BayOrder, gate: BayOrderPaymentsGate | null | undefined): boolean {
-  if (!gate || !gate.enabled || !gate.buyer_ready) return false;
+  if (!gate || !gate.buyer_ready) return false;
   if (orderRoleOf(order) !== "buyer") return false;
   if (Number(order.total_fen || 0) <= 0) return false;
   if (order.payment_state !== "unfunded") return false;

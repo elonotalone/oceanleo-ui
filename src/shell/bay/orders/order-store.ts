@@ -154,7 +154,7 @@ export function loadBayPaymentsGate(): Promise<BayOrderPaymentsGate> {
   if (!gatePromise) {
     gatePromise = fetchBayPaymentConfig().then(
       (config) => {
-        gateValue = { enabled: Boolean(config?.enabled), buyer_ready: Boolean(config?.enabled && config?.buyer_ready) };
+        gateValue = { enabled: Boolean(config?.enabled), buyer_ready: Boolean(config?.buyer_ready) };
         emit();
         return gateValue;
       },
