@@ -192,6 +192,7 @@ export const PLUGIN_CHROME_COPY_SOURCE = {
   websiteViewportPhone: "手机",
   websiteViewportTablet: "平板",
   websiteViewportDesktop: "桌面",
+  websiteTrySite: "试用网站",
   // X5（2026-09-06）：站编辑器零自画 chrome 后仍留在 iframe 内的文案 —— manifest 的
   // 保存槽动作（套用/放弃草稿及其 busy 态）、数据库/文件存储两个视图、独立打开时的极简栏
   // （仅能改源码 / 打开网站 / 预览路由），以及死预览会话的「预览已停止」卡

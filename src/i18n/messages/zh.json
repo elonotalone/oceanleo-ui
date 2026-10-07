@@ -3,7 +3,7 @@
     "appName": "OceanLeo",
     "login": "登录 / 注册",
     "logout": "退出登录",
-    "loggedOut": "未登录",
+    "loggedOut": "登录",
     "cancel": "取消",
     "confirm": "确认",
     "delete": "删除",

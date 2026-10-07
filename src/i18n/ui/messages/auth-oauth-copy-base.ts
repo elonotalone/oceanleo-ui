@@ -1,14 +1,17 @@
-// Google / Apple 登录门面文案。单独成册：少一条译文，非中文用户点这两钮会看到中文。
+// Google / Microsoft / Apple 登录门面文案。单独成册：少一条译文，非中文用户点这些钮会看到中文。
 // 已经在词典里的「跳转中...」「邮箱」「登录失败，请稍后重试。」不在这里重复。
 
 import { LOCALES, type Locale } from "../../config";
 
 export const AUTH_OAUTH_COPY_SOURCE = {
   google: "Google",
+  microsoft: "Microsoft",
   apple: "Apple",
   googleContinue: "使用 Google 继续",
+  microsoftContinue: "使用 Microsoft 继续",
   appleContinue: "使用 Apple 继续",
   googleUnconfigured: "Google 登录暂未开放：还没有配置，请改用邮箱登录。",
+  microsoftUnconfigured: "Microsoft 登录暂未开放：还没有配置，请改用邮箱登录。",
   appleUnconfigured: "Apple 登录暂未开放：还没有配置，请改用邮箱登录。",
 } as const;
 

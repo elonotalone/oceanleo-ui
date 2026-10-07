@@ -45,6 +45,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-09-01 又漂了一次：editor-panels / workbench-office 只进了总表。
   // 2026-09-06 X4：advanced-route 两边同时加。
   // 2026-09-14 W4：auth-captcha 两边同时加。
+  // 2026-10-01：登录门条款脚注两边同时加。
   // 2026-09-14 W4：byok-reauth（W5 申请的两条）两边同时加。
   // 2026-09-14 W8：国内版绑手机文案两边同时加。
   // 2026-09-20 W19：企业版 + MCP 能力面文案两边同时加。
@@ -58,6 +59,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     share,
     accountSecurity,
     authOauth,
+    authLegal,
     pluginChrome,
     workbenchOffice,
     editorPanels,
@@ -78,6 +80,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./share-copy"),
     import("./account-security-copy"),
     import("./auth-oauth-copy"),
+    import("./auth-legal-copy"),
     import("./plugin-chrome-copy"),
     import("./workbench-office-copy"),
     import("./editor-panels-copy"),
@@ -100,6 +103,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...share.SHARE_COPY_MESSAGES[locale],
     ...accountSecurity.ACCOUNT_SECURITY_MESSAGES[locale],
     ...authOauth.AUTH_OAUTH_MESSAGES[locale],
+    ...authLegal.AUTH_LEGAL_MESSAGES[locale],
     ...pluginChrome.PLUGIN_CHROME_MESSAGES[locale],
     ...workbenchOffice.WORKBENCH_OFFICE_MESSAGES[locale],
     ...editorPanels.EDITOR_PANELS_MESSAGES[locale],

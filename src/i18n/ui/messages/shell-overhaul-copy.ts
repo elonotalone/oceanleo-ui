@@ -51,6 +51,8 @@ import { EAS_W23_MESSAGES } from "./eas-w23-copy";
 import { REGRESSION_0924_MESSAGES } from "./regression-0924-copy";
 import { SETTINGS_I18N_MESSAGES } from "./settings-i18n-copy";
 import { MCP_CATALOG_MESSAGES } from "./mcp-catalog-copy";
+import { ACCOUNT_LAYOUT_MESSAGES } from "./account-layout-copy";
+import { MAIL_BOT_MESSAGES } from "./mail-bot-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -102,6 +104,8 @@ const PARTS = [
   REGRESSION_0924_MESSAGES,
   SETTINGS_I18N_MESSAGES,
   MCP_CATALOG_MESSAGES,
+  ACCOUNT_LAYOUT_MESSAGES,
+  MAIL_BOT_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

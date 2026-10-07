@@ -3,7 +3,7 @@
     "appName": "OceanLeo",
     "login": "Entrar / Cadastrar",
     "logout": "Sair",
-    "loggedOut": "Não conectado",
+    "loggedOut": "Entrar",
     "cancel": "Cancelar",
     "confirm": "Confirmar",
     "delete": "Excluir",
