@@ -38,6 +38,7 @@ import { ToastProvider } from "../ui";
 import { IconPanel, IconSearch } from "./icons";
 import { SidebarAccountCluster } from "./account/SidebarAccountCluster";
 import { SettingsModalHost, openSettingsModal } from "./account/SettingsModalHost";
+import { CallHumanButton } from "./bay/shell/CallHumanButton";
 import { MessagesHost } from "./messages/MessagesHost";
 import { LeoShellMount } from "./leo/LeoShellMount";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
@@ -953,6 +954,7 @@ function AppShellInner({
         className="shrink-0 border-t border-neutral-200/70 px-3 pb-4 pt-3"
         data-oceanleo-pinned-account
       >
+        <CallHumanButton siteKey={shellSiteKey || "oceanleo"} />
         {accountRow}
       </div>
     </>
@@ -987,6 +989,7 @@ function AppShellInner({
       <div className="mt-auto space-y-3 px-3 pb-4 pt-3">
         {/* 主题 + 语言切换器（全家桶壳内单一事实源，账户区上方） */}
         {renderSwitchers()}
+        <CallHumanButton siteKey={shellSiteKey || "oceanleo"} />
         {accountRow}
       </div>
     </>
@@ -1010,6 +1013,7 @@ function AppShellInner({
         </div>
       </nav>
       <div className="shrink-0 px-1 pb-3 pt-2">
+        <CallHumanButton siteKey={shellSiteKey || "oceanleo"} compact />
         {renderAccountCluster(true)}
       </div>
     </>

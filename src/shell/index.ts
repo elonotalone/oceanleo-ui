@@ -532,6 +532,7 @@ export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentLibrar
 // 单独导出是给别的场景（工作台、企业任务、设置页）复用同一套授权与闸门语义用的。
 // 上下文默认一条都不勾、可逐条撤回；agent 雇人默认全关且每个决定都能被人推翻。
 export { HumanHandoffButton, handoffContextCandidates, type HumanHandoffButtonProps } from "./HumanHandoffButton";
+export * from "./bay";
 export { HumanHandoffDialog } from "./HumanHandoffDialog";
 export type {
   HumanHandoffDialogProps,

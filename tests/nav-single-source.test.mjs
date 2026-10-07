@@ -147,10 +147,12 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
   const noExplore = navEntries("workspace", { withExplore: false }).map((e) => e.id);
   assert.ok(!noExplore.includes("explore"));
 
-  // 门户：talent 默认关（境内域名家族里没有这个子站）。
+  // 门户：「真人协作」已并入各站的 OceanLeo Bay（站内 /bay），不再有站外的 talent 项；
+  // 境内不出现 Bay 由外壳用 bayEnabledHere() 拦，不靠导航数据里的开关。
   const portal = navEntries("portal").map((e) => e.id);
-  assert.ok(!portal.includes("talent"), "talent 默认不渲染");
-  assert.ok(navEntries("portal", { withTalent: true }).map((e) => e.id).includes("talent"));
+  assert.ok(!portal.includes("talent"), "不再有站外 talent 项（真人协作已并入各站的 OceanLeo Bay）");
+  assert.ok(portal.includes("bay"), "Bay 是门户的站内路由项；境内不出现由外壳用 bayEnabledHere() 拦");
+  assert.ok(navEntries("portal", { withTalent: true }).map((e) => e.id).includes("bay"));
 });
 
 test("navEntries: 分区隔离——footer 项不会漏进主导航", () => {

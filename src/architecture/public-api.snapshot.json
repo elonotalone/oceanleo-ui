@@ -4,6 +4,8 @@
   "packageExports": {
     ".": "./src/index.ts",
     "./artifact": "./src/facades/artifact.ts",
+    "./bay/public": "./src/lib/bay/public.ts",
+    "./bay/public-views": "./src/shell/bay/supply/public-views.ts",
     "./browser": "./src/facades/browser.ts",
     "./contracts": "./src/contracts/index.ts",
     "./facades": "./src/facades/index.ts",
@@ -28,6 +30,7 @@
     "./shell/advanced-routes/GameRoute": "./src/shell/advanced-routes/GameRoute.tsx",
     "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
+    "./shell/FloatingContextToolbar": "./src/shell/FloatingContextToolbar.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
     "./shell/nav-source": "./src/shell/nav-source/index.ts",
@@ -234,6 +237,145 @@
         {
           "kind": "star",
           "source": "../shell/artifact-contract"
+        }
+      ]
+    },
+    "./bay/public": {
+      "target": "./src/lib/bay/public.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "BAY_PUBLIC_REVALIDATE_SECONDS",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "BayPublicFetchError",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "fetchBayProfilePublic",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "fetchBayServicePublic",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "toBayProfilePublic",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "toBayServicePublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayProfilePublicData",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayPublicAuthor",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayPublicMediaKind",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayPublicPriceTier",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayPublicVettingEntry",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayPublicVettingState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayReviewPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServiceAddonPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServiceFaqPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServiceMediaPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServicePublicData",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServiceSellerPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServiceSummaryPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayServiceTierPublic",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "BayShowcasePublic",
+          "source": ""
+        }
+      ]
+    },
+    "./bay/public-views": {
+      "target": "./src/shell/bay/supply/public-views.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "BayProfilePublic",
+          "importedName": "BayProfilePublic",
+          "source": "./BayProfilePublic"
+        },
+        {
+          "kind": "named",
+          "name": "BayProfilePublicData",
+          "importedName": "BayProfilePublicData",
+          "source": "../../../lib/bay/public"
+        },
+        {
+          "kind": "named",
+          "name": "BayServicePublic",
+          "importedName": "BayServicePublic",
+          "source": "./BayServicePublic"
+        },
+        {
+          "kind": "named",
+          "name": "BayServicePublicData",
+          "importedName": "BayServicePublicData",
+          "source": "../../../lib/bay/public"
         }
       ]
     },
@@ -1422,6 +1564,11 @@
         },
         {
           "kind": "type",
+          "name": "DelistedCatalogEntry",
+          "source": ""
+        },
+        {
+          "kind": "type",
           "name": "KeyProvider",
           "source": ""
         },
@@ -1437,6 +1584,11 @@
         },
         {
           "kind": "type",
+          "name": "ModelGroupEntry",
+          "source": ""
+        },
+        {
+          "kind": "type",
           "name": "ModelGroupKind",
           "source": ""
         },
@@ -1448,6 +1600,16 @@
         {
           "kind": "type",
           "name": "ModelPrice",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelPriceCurrent",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelPriceRule",
           "source": ""
         },
         {
@@ -2309,6 +2471,12 @@
         },
         {
           "kind": "named",
+          "name": "BillingSection",
+          "importedName": "BillingSection",
+          "source": "./settings/sections/BillingSection"
+        },
+        {
+          "kind": "named",
           "name": "ByokKeys",
           "importedName": "ByokKeys",
           "source": "./ByokKeys"
@@ -2336,6 +2504,12 @@
           "name": "CostPage",
           "importedName": "CostPage",
           "source": "./CostPage"
+        },
+        {
+          "kind": "named",
+          "name": "CostSection",
+          "importedName": "CostSection",
+          "source": "./settings/sections/UsageDetailsSection"
         },
         {
           "kind": "named",
@@ -2666,6 +2840,18 @@
           "name": "totpErrorCopy",
           "importedName": "totpErrorCopy",
           "source": "./AuthDialog"
+        },
+        {
+          "kind": "named",
+          "name": "UsageBarChart",
+          "importedName": "UsageBarChart",
+          "source": "./CostPage"
+        },
+        {
+          "kind": "named",
+          "name": "UsageDetailsSection",
+          "importedName": "UsageDetailsSection",
+          "source": "./settings/sections/UsageDetailsSection"
         },
         {
           "kind": "named",
@@ -6071,6 +6257,10 @@
         },
         {
           "kind": "star",
+          "source": "./bay"
+        },
+        {
+          "kind": "star",
           "source": "./editor-protocol"
         },
         {
@@ -6685,6 +6875,37 @@
         {
           "kind": "type",
           "name": "ArtifactTargetActionEvidence",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/FloatingContextToolbar": {
+      "target": "./src/shell/FloatingContextToolbar.tsx",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "EditBarRow",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "FloatingContextToolbar",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "useFloatingContextToolbar",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "useInsideEditBarRow",
+          "importedName": "useInsideEditBarRow",
+          "source": "./edit-bar-row-context"
+        },
+        {
+          "kind": "type",
+          "name": "FloatingContextToolbarController",
           "source": ""
         }
       ]

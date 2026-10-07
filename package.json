@@ -46,6 +46,8 @@
     "./pages": "./src/pages/index.ts",
     "./ui": "./src/ui/index.tsx",
     "./lib": "./src/lib/index.ts",
+    "./bay/public": "./src/lib/bay/public.ts",
+    "./bay/public-views": "./src/shell/bay/supply/public-views.ts",
     "./lib/auth": "./src/lib/auth/index.ts",
     "./lib/auth/middleware": "./src/lib/auth/middleware.ts",
     "./lib/motion": "./src/lib/motion/index.ts",

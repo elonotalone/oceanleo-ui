@@ -1970,7 +1970,7 @@ const BAY_SUPPLY_CONSULT = assembleCopy(CONSULT_SOURCE, {
     consultBooking: "Creating the Q&A contract…",
     consultBookAction: "Book Q&A",
     consultNeedDisclaimer: "This field needs a platform-issued disclaimer before buyers can see what the conversation will and will not cover.",
-    publicNetwork: "Network error. Please try again later.",
+    publicNetwork: "Network error, please try again later.",
     publicUnavailable: "The service is temporarily unavailable. Please try again later.",
     publicBadBody: "The response could not be read.",
   },

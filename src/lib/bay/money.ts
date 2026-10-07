@@ -291,7 +291,7 @@ export const BAY_PAYOUT_ACCOUNT_STATE_LABELS: Readonly<Record<string, string>> =
   pending: "通道审核中",
   active: "可以收款",
   restricted: "收款受限",
-  disabled: "已停用",
+  disabled: "收款已停用",
 };
 
 export function bayPayoutAccountStateLabel(state: string | null | undefined): string {

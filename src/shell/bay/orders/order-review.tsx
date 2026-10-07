@@ -153,7 +153,7 @@ export function OrderReviewSection({
             <article key={item.id} data-bay-review={item.id} className="rounded-xl border border-neutral-200 p-3">
               <p className="text-[12.5px] font-medium text-neutral-800">
                 {item.author_role === "buyer" ? tt("买家评价") : tt("卖家评价")}
-                {item.rating ? <span className="ms-2 text-neutral-500">{tt("{n} 分", { n: item.rating })}</span> : null}
+                {item.rating ? <span className="ms-2 text-neutral-500">{tt("{n} 评分", { n: item.rating })}</span> : null}
                 {item.created_at ? <span className="ms-2 text-[11.5px] text-neutral-400">{formatDate(item.created_at)}</span> : null}
               </p>
               {item.body ? <p className="mt-1 whitespace-pre-wrap break-words text-[13px] text-neutral-700">{item.body}</p> : null}

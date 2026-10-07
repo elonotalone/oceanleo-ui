@@ -24,7 +24,8 @@ test("withMessages 为 true：出现，且位置固定（租户站在探索与�
   assert.deepEqual(ws, ["home", "explore", "messages", "workspace", "library", "history", "playground"]);
   const portal = navEntries("portal", { withMessages: true, withTalent: true }).map((e) => e.id);
   const at = portal.indexOf("messages");
-  assert.ok(at > portal.indexOf("talent") && at < portal.indexOf("workspace"), portal.join(","));
+  assert.ok(portal.indexOf("bay") >= 0, "Bay 在门户导航里");
+  assert.ok(at > portal.indexOf("bay") && at < portal.indexOf("workspace"), portal.join(","));
 });
 
 test("动作项：有 action、没有 href、不是外链；图标与文案来源按声明", () => {
@@ -81,7 +82,7 @@ test("共享外壳只多四个导出；MessagesHost 在不可用时什么都不�
   assert.match(index, /export \{ MessagesNavIcon \} from "\.\/messages\/MessagesNavIcon"/);
   assert.match(index, /export \{ imEnabledHere \} from "\.\.\/lib\/im\/client"/);
   const host = src("shell/messages/MessagesHost.tsx");
-  assert.match(host, /if \(!enabled\) return null;/);
+  assert.match(host, /if \(!enabled\) return bayEnabledHere\(\) \? <BayGuestHost \/> : null;/);
   assert.match(host, /<WorkReplayHost \/>/);
   // 连接与深链监听都只在 enabled 时挂上
   assert.match(host, /if \(!enabled\) return undefined;\s*const host = hostState\(\);/);

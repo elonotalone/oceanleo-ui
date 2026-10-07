@@ -7,6 +7,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
+import { DealConversationView } from "../bay/deal";
+import { BayGuestHost } from "../bay/shell/BayGuestHost";
+import { bayPageHref } from "../bay/shell/bay-expand";
+import { BayView } from "../bay/shell/BayView";
+import { bayEnabledHere, useBayHasDetail } from "../bay/shell/bay-state";
 import { WorkReplayHost } from "../replay/work/WorkReplayHost";
 import { ConversationView } from "./conversation/ConversationView";
 import { ConversationInfoPanel } from "./groups/ConversationInfoPanel";
@@ -22,7 +27,6 @@ import { PrivacyNotice } from "./PrivacyNotice";
 import { attachImRealtime, imStore, publishImDisabled } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
 import { SettingsView } from "./SettingsView";
-import { TalentConversationView } from "./talent/TalentConversationView";
 
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
@@ -102,7 +106,7 @@ export function MessagesHost() {
     };
   }, [enabled, state.open, state.view, state.conversationId]);
 
-  if (!enabled) return null;
+  if (!enabled) return bayEnabledHere() ? <BayGuestHost /> : null;
   return (
     <>
       <MessagesOverlay />
@@ -123,6 +127,8 @@ function MessagesOverlay() {
     setInfoOpen(false);
   }, [state.conversationId]);
 
+  const bayHasDetail = useBayHasDetail();
+
   if (!state.open) return null;
 
   const setView = (view: MessagesView) => host.setView(view);
@@ -131,6 +137,7 @@ function MessagesOverlay() {
 
   const tabs: ReadonlyArray<{ id: MessagesView; label: string }> = [
     { id: "inbox", label: "收件箱" },
+    { id: "bay", label: "Bay" },
     { id: "people", label: "联系人" },
     { id: "search", label: "搜索" },
     { id: "settings", label: "设置" },
@@ -150,6 +157,8 @@ function MessagesOverlay() {
         onSettings={() => setView("settings")}
       />
     );
+  } else if (state.view === "bay") {
+    list = <BayView part="list" layout={state.layout} />;
   } else if (state.view === "people") {
     list = <PeopleView onOpenConversation={openConversation} />;
   } else if (state.view === "search") {
@@ -191,9 +200,9 @@ function MessagesOverlay() {
   let detail: ReactNode = null;
   if (state.conversationId) {
     const conversation = talent ? (
-      <TalentConversationView
+      <DealConversationView
         key={state.conversationId}
-        conversationId={state.conversationId}
+        threadId={state.conversationId.replace(/^talent:/, "")}
         layout={state.layout}
         onBack={() => host.showConversation(null)}
       />
@@ -229,6 +238,8 @@ function MessagesOverlay() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">{conversation}</div>
       );
+  } else if (state.view === "bay") {
+    detail = <BayView part="detail" layout={state.layout} />;
   }
 
   return (
@@ -238,10 +249,17 @@ function MessagesOverlay() {
         dockWidth={state.dockWidth}
         onDockWidth={(width) => host.setDockWidth(width)}
         onClose={closeMessages}
-        onToggleExpand={() => host.setExpanded(!state.expanded)}
+        onToggleExpand={
+          state.view === "bay"
+            ? () => { window.location.assign(bayPageHref()); }
+            : () => host.setExpanded(!state.expanded)
+        }
         list={listWithTabs}
         detail={detail}
-        showDetail={Boolean(state.conversationId) && state.view === "inbox"}
+        showDetail={
+          (Boolean(state.conversationId) && state.view === "inbox") ||
+          (state.view === "bay" && bayHasDetail)
+        }
       >
         <PrivacyNotice />
       </MessagesLayout>

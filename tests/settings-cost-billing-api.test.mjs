@@ -102,6 +102,10 @@ const confirmStub = dataModule(`
   export function ConfirmDialog() {
     return React.createElement("div", { "data-testid": "confirm-dialog" });
   }
+  export function Modal({ children }) {
+    return React.createElement("div", { role: "dialog", "data-modal": "" }, children);
+  }
+  export function ButtonSpinner() { return null; }
 `);
 const paneStub = (exportName, testId) => dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -215,7 +219,9 @@ test("isSettingsPathname / resolve / settingsPath：api 是设置栏，models �
   assert.equal(SETTINGS_BUILTIN_TABS.includes("org"), false);
   assert.equal(SETTINGS_BUILTIN_TABS.includes("models"), false);
   const billingAt = SETTINGS_BUILTIN_TABS.indexOf("billing");
-  assert.equal(SETTINGS_BUILTIN_TABS[billingAt + 1], "cost");
+  assert.equal(SETTINGS_BUILTIN_TABS[billingAt + 1], "bay");
+  assert.equal(SETTINGS_BUILTIN_TABS[billingAt + 2], "cost");
+  assert.ok(SETTINGS_BUILTIN_TABS.includes("bay"));
 });
 
 test("SettingsHub 打开用量与账单 / 费用两栏", async () => {

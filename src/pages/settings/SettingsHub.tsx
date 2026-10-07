@@ -22,6 +22,8 @@ import { SettingsNav, type SettingsNavGroup } from "./SettingsNav";
 import { PersonalizationSection } from "./personalization/PersonalizationSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { AccountSection } from "./sections/AccountSection";
+import { BaySettingsSection } from "../../shell/bay/settings";
+import { bayEnabledHere } from "../../shell/bay/shell/bay-state";
 import { BillingSection } from "./sections/BillingSection";
 import { CostSection } from "./sections/CostSection";
 import { OrgSection, type OrgPane } from "./sections/OrgSection";
@@ -282,6 +284,16 @@ export function SettingsHub({
         label: tt("我的设备"),
         render: () => <DevicesPage variant="pane" />,
       },
+      ...(bayEnabledHere()
+        ? [
+            {
+              id: "bay",
+              group: "settings" as const,
+              label: tt("OceanLeo Bay"),
+              render: () => <BaySettingsSection />,
+            },
+          ]
+        : []),
     ];
     const takenLabels = new Set([...builtin, ...caps].map((section) => section.label));
     const capsByHref = new Map<string, SettingsSection>();

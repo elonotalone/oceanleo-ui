@@ -7,6 +7,7 @@ export const SETTINGS_BUILTIN_TABS = [
   "account",
   "personalization",
   "billing",
+  "bay",
   "cost",
   "api",
   "plugins",

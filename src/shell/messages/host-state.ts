@@ -7,8 +7,8 @@
 // 所以我们 pushState 时必须把现有 state 原样带上（只多一个 imOverlay 标记）。
 import { useSyncExternalStore } from "react";
 
-export type MessagesView = "inbox" | "people" | "search" | "settings";
-export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people", "search", "settings"];
+export type MessagesView = "inbox" | "bay" | "people" | "search" | "settings";
+export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "bay", "people", "search", "settings"];
 /** 收件箱筛选的合法值；与 `lib/im/inbox-api.ts` 的 `INBOX_FILTERS` 相同（测试里对拍，host-state 保持纯、不引入鉴权依赖）。 */
 export const INBOX_FILTER_IDS: readonly string[] = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"];
 export type MessagesLayoutKind = "docked" | "full" | "mobile";
@@ -67,6 +67,9 @@ export function parseImDeepLink(search: string): ImDeepLink {
   let valid = false;
   if (raw === "inbox") {
     target.view = "inbox";
+    valid = true;
+  } else if (raw === "bay") {
+    target.view = "bay";
     valid = true;
   } else if (raw === "people") {
     target.view = "people";

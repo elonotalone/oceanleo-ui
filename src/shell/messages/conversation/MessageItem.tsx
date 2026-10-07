@@ -15,6 +15,7 @@ import { MessageActions, actionPermissions, type MessageActionHandlers } from ".
 import { MessageBody } from "./MessageBody";
 import { DmReadReceipt, MentionReadReceipt } from "./ReadReceipt";
 import { ReactionBar } from "./ReactionBar";
+import { BayOrderCard } from "../../bay/orders/BayOrderCard";
 import { ReplayCardView } from "./ReplayCardView";
 import { SystemLine } from "./SystemLine";
 import type { ConversationStore, LeoNoticeCode, PendingMessage } from "./conversation-store";
@@ -222,6 +223,14 @@ export function MessageItem(props: MessageItemProps) {
         {message.card?.type === "replay" ? (
           <div className="mt-1">
             <ReplayCardView card={message.card} />
+          </div>
+        ) : null}
+        {(message.card as { type?: string; id?: string } | undefined)?.type === "talent_order" ? (
+          <div className="mt-1">
+            <BayOrderCard
+              contractId={String((message.card as { id?: string }).id ?? "")}
+              compact
+            />
           </div>
         ) : null}
       </>

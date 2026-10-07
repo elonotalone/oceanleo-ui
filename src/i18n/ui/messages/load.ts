@@ -70,6 +70,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     shellOverhaul,
     catalog,
     workChat,
+    bay,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -89,6 +90,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./shell-overhaul-copy"),
     import("./model-catalog-copy"),
     import("./work-chat-copy"),
+    import("./bay-copy"),
   ]);
   return {
     ...base.default,
@@ -111,5 +113,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...LEO_PANEL_MESSAGES[locale],
     ...catalog.MODEL_CATALOG_MESSAGES[locale],
     ...workChat.WORK_CHAT_MESSAGES[locale],
+    ...bay.BAY_MESSAGES[locale],
   };
 };

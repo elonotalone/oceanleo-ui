@@ -432,7 +432,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     proposalCount: "{n} quotes",
     minutesAgo: "{n} minutes ago",
     jobsDone: "{n} jobs done",
-    daysDelivery: "{n}-day delivery",
+    daysDelivery: "Delivery in {n} days",
     daysAgo: "{n} days ago",
     dueInDays: "Due in {n} days",
     hoursAgo: "{n} hours ago",
