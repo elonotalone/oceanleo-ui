@@ -15,7 +15,8 @@ const clientStub = dataModule(`
   export class ImApiError extends Error {}
 `);
 const familyStub = dataModule(`
-  export function currentFamilySubsiteOrigin(subsite){ return subsite === "talent" ? "https://talent.oceanleo.com" : undefined; }
+  export function currentDomainFamily(){ return "com"; }
+  export function currentFamilySubsiteOrigin(){ return undefined; }
 `);
 const hooksStub = dataModule(`
   export function useImEvent(){}
@@ -154,14 +155,14 @@ test("请求拼装：读、发、已读、报价动作都走 talent 现有接口
   assert.deepEqual(calls.slice(3).map((c) => c.path), ["/v1/talent/offers/of1/accept", "/v1/talent/offers/of1/decline", "/v1/talent/offers/of1/withdraw"]);
 });
 
-test("「在 talent 打开」地址来自当前域名家族的子站；没有 talent 子站就不给链接", async () => {
-  assert.equal(api.talentThreadUrl("th1"), "https://talent.oceanleo.com/messages?thread=th1");
-  const noSiteUrl = await compileModule("src/shell/messages/talent/talent-api.ts", {
+test("交易会话地址是站内 Bay，境内不给链接", async () => {
+  assert.equal(api.talentThreadUrl("th1"), "/bay?bay=conversation:th1");
+  const cnUrl = await compileModule("src/shell/messages/talent/talent-api.ts", {
     "../../../lib/im/client": clientStub,
-    "../../../contracts/domain-family": dataModule("export function currentFamilySubsiteOrigin(){ return undefined; }"),
+    "../../../contracts/domain-family": dataModule("export function currentDomainFamily(){ return \"cn\"; }"),
   });
-  const bare = await import(noSiteUrl);
-  assert.equal(bare.talentThreadUrl("th1"), null);
+  const cn = await import(cnUrl);
+  assert.equal(cn.talentThreadUrl("th1"), null);
 });
 
 test("谁是「我」：从报价双方或消息里排除对方", () => {
@@ -247,8 +248,8 @@ test("报价卡：买家看到接受/拒绝，卖家看到撤回，已处理的�
   const unlimited = render({ offer: offer({ revisions: -1 }), viewerId: BUYER });
   assert.match(unlimited, /不限改稿/);
 
-  const withLink = render({ offer: offer(), viewerId: BUYER, openUrl: "https://talent.oceanleo.com/messages?thread=th1" });
-  assert.match(withLink, /href="https:\/\/talent\.oceanleo\.com\/messages\?thread=th1"/);
+  const withLink = render({ offer: offer(), viewerId: BUYER, openUrl: "/bay?bay=conversation:th1" });
+  assert.match(withLink, /href="\/bay\?bay=conversation:th1"/);
   const noLink = render({ offer: offer(), viewerId: BUYER, openUrl: null });
   assert.equal(noLink.includes("data-offer-open"), false);
 
@@ -262,7 +263,7 @@ test("会话视图：首帧是加载中；会话 id 不对时给出说明而不�
   assert.match(loading, /data-talent-view="full"/);
   assert.match(loading, /data-talent-loading/);
   assert.match(loading, /交易会话/);
-  assert.match(loading, /href="https:\/\/talent\.oceanleo\.com\/messages\?thread=th1"/);
+  assert.match(loading, /href="\/bay\?bay=conversation:th1"/);
 
   const invalid = html(React.createElement(TalentConversationView, { conversationId: "dm-123", layout: "docked" }));
   assert.match(invalid, /data-talent-view="invalid"/);

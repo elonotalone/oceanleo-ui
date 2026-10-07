@@ -1,9 +1,9 @@
 // 交易会话（talent）接口层：收发走 talent 现有接口 `/v1/talent/threads/...`，规则一条不改（契约 §4.7、§9.10）。
 // 同一套规则由服务端校验：报价只在双方会话、合同与付款等交易动作按 talent 原规则。
 // 本文件只做请求拼装、talent 消息行 → `ImMessage` 的映射（与后端 `app/im/talent_bridge.py` 同一口径）、
-// 以及「在 talent 打开」的链接地址；没有界面逻辑。
+// 以及交易会话在 Bay 里的地址；没有界面逻辑。
 
-import { currentFamilySubsiteOrigin } from "../../../contracts/domain-family";
+import { currentDomainFamily } from "../../../contracts/domain-family";
 import { imFetch } from "../../../lib/im/client";
 import type { ImAttachment, ImCard, ImMessage, ImMessageKind, ImProfile } from "../../../lib/im/types";
 
@@ -141,18 +141,18 @@ export function offerActionsFor(offer: Pick<TalentOffer, "state" | "from_user_id
   return { accept: pending && toMe, decline: pending && toMe, withdraw: pending && mine };
 }
 
-// ---- 「在 talent 打开」 ---------------------------------------------------------
+// ---- 交易会话在 Bay 打开 ---------------------------------------------------------
 
-/** 当前域名家族里 talent 子站的会话地址；该家族没有 talent 子站时返回 null（不给链接，不去别的家族拼）。 */
+/** 站内 `/bay?bay=conversation:`；境内没有 Bay，不给链接。 */
 export function talentThreadUrl(threadId: string): string | null {
-  let origin: string | undefined;
+  const id = (threadId || "").trim();
+  if (!id || !/^[A-Za-z0-9_-]{1,80}$/.test(id)) return null;
   try {
-    origin = currentFamilySubsiteOrigin("talent");
+    if (currentDomainFamily() === "cn") return null;
   } catch {
-    origin = undefined;
+    return null;
   }
-  if (!origin) return null;
-  return `${origin}/messages?thread=${encodeURIComponent(threadId)}`;
+  return `/bay?bay=conversation:${id}`;
 }
 
 // ---- talent 行 → ImMessage ------------------------------------------------------

@@ -17,7 +17,7 @@ export interface TalentOfferCardProps {
   busy?: boolean;
   error?: string | null;
   onAct: (offerId: string, action: TalentOfferAction) => void;
-  /** 「在 talent 打开」；该域名家族没有 talent 子站时为 null，不画链接。 */
+  /** 「在 Bay 打开」；境内没有 Bay 时为 null，不画链接。 */
   openUrl?: string | null;
 }
 
@@ -83,7 +83,7 @@ export function TalentOfferCard({ card, offer, viewerId, busy = false, error = n
             <p className="mt-1.5 line-clamp-4 whitespace-pre-wrap break-words text-[12.5px] text-neutral-600">{offer.description}</p>
           ) : null}
           {offer.contract_id && offer.state === "accepted" ? (
-            <p className="mt-1.5 text-[12px] text-neutral-500">{tt("草稿订单已生成，可在 talent 的订单里继续。")}</p>
+            <p className="mt-1.5 text-[12px] text-neutral-500">{tt("草稿订单已生成，可在 Bay 的订单里继续。")}</p>
           ) : null}
         </>
       ) : card.subtitle ? (
@@ -139,7 +139,7 @@ export function TalentOfferCard({ card, offer, viewerId, busy = false, error = n
           data-offer-open
           className="mt-2 inline-block text-[12px] font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-900"
         >
-          {tt("在 talent 打开")}
+          {tt("在 Bay 打开")}
         </a>
       )}
     </div>

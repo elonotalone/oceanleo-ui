@@ -266,7 +266,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
             data-talent-open
             className="text-[12px] text-neutral-600 underline-offset-2 hover:underline"
           >
-            {tt("在 talent 打开")}
+            {tt("在 Bay 打开")}
           </a>
         )}
         <details className="relative">
