@@ -1,5 +1,5 @@
 // 2026-10-06 oceanleo-bay 波 W09 的分表（设置里的 OceanLeo Bay：钱、条款）。只由 W09 改；登记在 bay-copy.ts。
-// 「钱」「关闭」「重试」「登录」「收入」「支出」「时间」「订单」「金额」「订单详情」「正在加载…」走基础词典或外壳分表。
+// 「钱」「关闭」「重试」「登录」「收入」「时间」「订单」「金额」「订单详情」「正在加载…」走基础词典或外壳分表。
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
@@ -97,6 +97,7 @@ const SOURCE = {
   csvEvent: "事件",
   csvDir: "收支",
   csvNote: "备注",
+  outlay: "支出",
 } as const;
 
 export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
@@ -195,6 +196,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "事件",
     csvDir: "收支",
     csvNote: "備註",
+    outlay: "支出",
   },
   en: {
     sellerProfile: "Seller profile",
@@ -291,6 +293,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Event",
     csvDir: "In / out",
     csvNote: "Note",
+    outlay: "Expenses",
   },
   ja: {
     sellerProfile: "出品者プロフィール",
@@ -327,15 +330,15 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     cardOnFile: "登録カード · {brand} ·••• {last4}",
     cardExp: "有効期限 {month}/{year}",
     cardFallback: "カード",
-    channelFeeLine: "決済手数料は約 {percent}% + {fixed}（Stripe の実費。当プラットフォームは上乗せしません）",
+    channelFeeLine: "決済手数料は約 {percent}% + {fixed}です（Stripe の実費であり、本プラットフォームは上乗せしません）",
     payoutCountries: "受取可能な国：{list}",
     payoutState: "受取口座の状態：{state}",
     withdrawClosed: "出金はまだ利用できません",
     onboardClosed: "口座開設はまだ利用できません",
     bindClosed: "カード登録はまだ利用できません",
-    feeNote: "当プラットフォームは手数料を取りません。注文金額は全額が出品者に渡ります",
+    feeNote: "本プラットフォームは手数料をいただきません。注文金額は一分も差し引かず、すべて受注者に渡ります",
     moneyNoticeOff: "以下の金額は記録であり、使えるお金ではありません。現在は代理決済をしていません",
-    moneyNoticeOn: "注文代金は Stripe が預かり、検収後にあなたの Stripe 受取口座へ移ります。当プラットフォームは手数料を取りません。",
+    moneyNoticeOn: "注文代金は Stripe が預かり、検収後にあなたの Stripe 受取口座へ直接振り込まれます。本プラットフォームは手数料をいただきません。",
     recorded: "記録済み",
     viewStatement: "明細書を見る",
     orderStatement: "注文明細書",
@@ -360,7 +363,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     payoutDisabled: "停止中",
     payoutUnknown: "状態不明",
     payoutBlocker: "送金経路がまだつながっていません",
-    channelFeeNote: "決済手数料（Stripe の実費。当プラットフォームは利益にしません）",
+    channelFeeNote: "決済手数料（Stripe の実費。本プラットフォームはこれを利益にしません）",
     useTerms: "利用規約",
     versionLabel: "版 {version}",
     agreeFirst: "続ける前に利用規約に同意してください",
@@ -387,6 +390,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "できごと",
     csvDir: "収支",
     csvNote: "メモ",
+    outlay: "出費",
   },
   ko: {
     sellerProfile: "판매자 프로필",
@@ -483,6 +487,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "사건",
     csvDir: "수입/지출",
     csvNote: "메모",
+    outlay: "지출",
   },
   fr: {
     sellerProfile: "Profil vendeur",
@@ -579,6 +584,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Événement",
     csvDir: "Entrée / sortie",
     csvNote: "Note",
+    outlay: "Dépenses",
   },
   de: {
     sellerProfile: "Verkäuferprofil",
@@ -675,6 +681,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Ereignis",
     csvDir: "Ein / Aus",
     csvNote: "Notiz",
+    outlay: "Ausgaben",
   },
   it: {
     sellerProfile: "Profilo venditore",
@@ -771,6 +778,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Evento",
     csvDir: "Entrate / uscite",
     csvNote: "Nota",
+    outlay: "Uscite",
   },
   es: {
     sellerProfile: "Perfil de vendedor",
@@ -867,6 +875,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Evento",
     csvDir: "Entrada / salida",
     csvNote: "Nota",
+    outlay: "Gastos",
   },
   "es-419": {
     sellerProfile: "Perfil de vendedor",
@@ -963,6 +972,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Evento",
     csvDir: "Entrada / salida",
     csvNote: "Nota",
+    outlay: "Gastos",
   },
   "pt-BR": {
     sellerProfile: "Perfil do vendedor",
@@ -1059,6 +1069,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Evento",
     csvDir: "Entrada / saída",
     csvNote: "Nota",
+    outlay: "Despesas",
   },
   "pt-PT": {
     sellerProfile: "Perfil do vendedor",
@@ -1155,6 +1166,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Evento",
     csvDir: "Entrada / saída",
     csvNote: "Nota",
+    outlay: "Despesas",
   },
   ar: {
     sellerProfile: "ملف البائع",
@@ -1199,7 +1211,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     bindClosed: "ربط البطاقة غير متاح بعد",
     feeNote: "المنصة لا تقتطع عمولة: مبلغ الطلب يذهب بالكامل للمنفّذ",
     moneyNoticeOff: "هذه المبالغ قيود دفترية وليست مالًا قابلاً للاستخدام: المنصة لا تقبض ولا تدفع بعد",
-    moneyNoticeOn: "Stripe تحتفظ بمبلغ الطلب وتحوّله إلى حساب Stripe بعد القبول؛ المنصة لا تقتطع شيئًا.",
+    moneyNoticeOn: "Stripe تحتفظ بمبلغ الطلب وتحوّله إلى حساب Stripe الخاص بك بعد القبول؛ المنصة لا تقتطع شيئًا.",
     recorded: "مُسجَّل",
     viewStatement: "عرض الكشف",
     orderStatement: "كشف الطلب",
@@ -1251,6 +1263,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "الحدث",
     csvDir: "دخل / خرج",
     csvNote: "ملاحظة",
+    outlay: "مصروفات",
   },
   hi: {
     sellerProfile: "विक्रेता प्रोफ़ाइल",
@@ -1284,7 +1297,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     termsZhOnly: "शर्तों का मुख्य पाठ केवल चीनी में है; खंड शीर्षक इंटरफ़ेस भाषा के अनुसार बदलते हैं।",
     signInForTerms: "अपनी स्वीकृति देखने के लिए साइन इन करें",
     signInForMoney: "भुगतान तरीके, खर्च और आय देखने के लिए साइन इन करें",
-    cardOnFile: "सेव कार्ड · {brand} ·••• {last4}",
+    cardOnFile: "सहेजा गया कार्ड · {brand} ·••• {last4}",
     cardExp: "समाप्ति {month}/{year}",
     cardFallback: "कार्ड",
     channelFeeLine: "भुगतान शुल्क लगभग {percent}% + {fixed} (Stripe लागत; प्लेटफ़ॉर्म मार्कअप नहीं जोड़ता)",
@@ -1301,7 +1314,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     orderStatement: "ऑर्डर विवरण",
     counterparty: "दूसरा पक्ष: {name}",
     orderAmount: "दर्ज ऑर्डर राशि",
-    platformCut: "प्लेटफ़ॉर्म हिस्सा",
+    platformCut: "प्लेटफ़ॉर्म कमीशन",
     ledgerStatus: "बही स्थिति",
     tierLine: "पैकेज: {title}",
     addonLine: "अतिरिक्त: {title}",
@@ -1324,8 +1337,8 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     useTerms: "उपयोग की शर्तें",
     versionLabel: "संस्करण {version}",
     agreeFirst: "आगे बढ़ने से पहले शर्तें स्वीकार करें",
-    sellerScope: "कोट, सेवा प्रकाशित करना और ऑर्डर लेना इन्हीं शर्तों पर है। एक बार स्वीकार करना काफी है।",
-    buyerScope: "अनुरोध पोस्ट करना, ऑर्डर देना और कोट स्वीकार करना इन्हीं शर्तों पर है। एक बार स्वीकार करना काफी है।",
+    sellerScope: "कोटेशन, सेवा प्रकाशित करना और ऑर्डर लेना इन्हीं शर्तों पर है। एक बार स्वीकार करना काफी है।",
+    buyerScope: "अनुरोध पोस्ट करना, ऑर्डर देना और कोटेशन स्वीकार करना इन्हीं शर्तों पर है। एक बार स्वीकार करना काफी है।",
     effectiveAt: "लागू: {time}",
     termsLoadFailed: "शर्तें लोड नहीं हो सकीं। बाद में फिर कोशिश करें",
     termsUpdated: "आपने संस्करण {version} ({time}) स्वीकार किया। शर्तें बदल गई हैं, नई स्वीकृति चाहिए।",
@@ -1347,6 +1360,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "घटना",
     csvDir: "आवक / जावक",
     csvNote: "नोट",
+    outlay: "खर्च",
   },
   th: {
     sellerProfile: "โปรไฟล์ผู้ขาย",
@@ -1389,7 +1403,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     withdrawClosed: "การถอนเงินยังไม่เปิด",
     onboardClosed: "การเปิดบัญชียังไม่เปิด",
     bindClosed: "การผูกบัตรยังไม่เปิด",
-    feeNote: "แพลตฟอร์มไม่หักค่าคอม ยอดคำสั่งซื้อทั้งหมดเป็นของผู้รับงาน",
+    feeNote: "แพลตฟอร์มไม่หักค่าคอมมิชชัน ยอดคำสั่งซื้อทั้งหมดเป็นของผู้รับงาน",
     moneyNoticeOff: "ยอดด้านล่างเป็นบันทึก ไม่ใช่เงินที่ใช้ได้ แพลตฟอร์มยังไม่รับหรือจ่ายแทน",
     moneyNoticeOn: "Stripe ถือเงินคำสั่งซื้อและโอนเข้าบัญชี Stripe ของคุณหลังตรวจรับ แพลตฟอร์มไม่หักอะไร",
     recorded: "บันทึกแล้ว",
@@ -1443,6 +1457,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "เหตุการณ์",
     csvDir: "รับ / จ่าย",
     csvNote: "หมายเหตุ",
+    outlay: "รายจ่าย",
   },
   tr: {
     sellerProfile: "Satıcı profili",
@@ -1539,6 +1554,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     csvEvent: "Olay",
     csvDir: "Giriş / çıkış",
     csvNote: "Not",
+    outlay: "Gider",
   },
   vi: {
     sellerProfile: "Hồ sơ người bán",
@@ -1587,9 +1603,9 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     recorded: "Đã ghi",
     viewStatement: "Xem sao kê",
     orderStatement: "Sao kê đơn",
-    counterparty: "Bên kia: {name}",
+    counterparty: "Đối phương: {name}",
     orderAmount: "Số tiền đơn đã ghi",
-    platformCut: "Phần nền tảng",
+    platformCut: "Hoa hồng nền tảng",
     ledgerStatus: "Trạng thái sổ",
     tierLine: "Gói: {title}",
     addonLine: "Thêm: {title}",
@@ -1622,7 +1638,7 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     recording: "Đang lưu…",
     agreeContinue: "Đồng ý và tiếp tục",
     secKnowledge: "Nền tảng cung cấp câu trả lời kiến thức",
-    secHow: "Chợ vận hành thế nào",
+    secHow: "Thị trường hoạt động thế nào",
     secFees: "Phí",
     secOff: "Giao dịch ngoài nền tảng",
     secDispute: "Tranh chấp",
@@ -1631,10 +1647,11 @@ export const BAY_MONEY_MESSAGES = assembleCopy(SOURCE, {
     secPrivacy: "Quyền riêng tư",
     secForum: "Diễn đàn tranh chấp bên thứ ba",
     secFull: "Toàn bộ điều khoản",
-    csvPeer: "Bên kia",
+    csvPeer: "Đối phương",
     csvEvent: "Sự kiện",
     csvDir: "Thu / chi",
     csvNote: "Ghi chú",
+    outlay: "Chi",
   },
 });
  
