@@ -47,7 +47,7 @@ export async function bayGet<T>(path: string, opts?: { anonymous?: boolean; sign
   if (result.status !== 401) throw errorFrom(result.status ?? 0, result.detail, result.error);
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}${path}`, { signal: opts.signal, cache: "no-store" });
+    res = await fetch(`${GATEWAY_BASE}${path}`, { signal: opts.signal, cache: "no-store", credentials: "include" });
   } catch (error) {
     if (isAbortError(error, opts.signal)) throw abortError(error);
     throw new BayApiError("网络错误，请稍后再试。", 0);

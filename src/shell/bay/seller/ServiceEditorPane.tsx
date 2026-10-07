@@ -48,6 +48,7 @@ import {
   type BaySellerProfile,
   type BayServicePricing,
 } from "../../../lib/bay/seller";
+import { ConfirmDialog } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
 import { openBaySettings, ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, useBaySiteKey, type BayPaneProps } from "../shell/bay-state";
@@ -128,6 +129,8 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const [domainNonce, setDomainNonce] = useState(0);
   const [promptNonce, setPromptNonce] = useState(0);
   const [modelNonce, setModelNonce] = useState(0);
+  const [pendingLeave, setPendingLeave] = useState<EditorStep | null>(null);
+  const [pendingDelete, setPendingDelete] = useState(false);
   const termsOk = useRef(false);
 
   // ---- 载入 ----------------------------------------------------------------------
@@ -262,6 +265,11 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     setDirty(true);
   }
 
+  function applyGoTo(next: EditorStep) {
+    if (next === "fields") setDraft((current) => ({ ...current, fieldValues: prefillFieldsFromTiers(specs, current.fieldValues, current.tiers) }));
+    setStep(next);
+  }
+
   function goTo(next: EditorStep) {
     const index = steps.indexOf(next);
     if (index < 0 || next === currentStep) return;
@@ -270,9 +278,11 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       toast.info(tt("先保存「它是什么」这一步，草稿建好后才能往后填。"));
       return;
     }
-    if (dirty && !isLocalStep(currentStep, draft.catalogKind) && typeof window !== "undefined" && !window.confirm(tt("这一步还有没保存的修改，确定先离开？"))) return;
-    if (next === "fields") setDraft((current) => ({ ...current, fieldValues: prefillFieldsFromTiers(specs, current.fieldValues, current.tiers) }));
-    setStep(next);
+    if (dirty && !isLocalStep(currentStep, draft.catalogKind)) {
+      setPendingLeave(next);
+      return;
+    }
+    applyGoTo(next);
   }
 
   // ---- 保存 ----------------------------------------------------------------------
@@ -483,9 +493,14 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     }
   }
 
-  async function remove() {
+  function remove() {
     if (saving || !draft.serviceId) return;
-    if (typeof window !== "undefined" && !window.confirm(tt("确定删除「{title}」？价格档、加购项、作品图会一起删除。", { title: draft.title || tt("未命名服务") }))) return;
+    setPendingDelete(true);
+  }
+
+  async function confirmRemove() {
+    if (saving || !draft.serviceId) return;
+    setPendingDelete(false);
     setSaving(true);
     try {
       await deleteMyService(draft.serviceId);
@@ -768,10 +783,30 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
               {tt("重新上架")}
             </button>
           ) : null}
-          <button type="button" disabled={saving} onClick={() => void remove()} className={DANGER_BUTTON} data-bay-action="remove">
+          <button type="button" disabled={saving} onClick={() => remove()} className={DANGER_BUTTON} data-bay-action="remove">
             {tt("删除")}
           </button>
         </div>
+      ) : null}
+
+      {pendingLeave ? (
+        <ConfirmDialog
+          title={tt("这一步还有没保存的修改，确定先离开？")}
+          onConfirm={() => {
+            const next = pendingLeave;
+            setPendingLeave(null);
+            applyGoTo(next);
+          }}
+          onCancel={() => setPendingLeave(null)}
+        />
+      ) : null}
+      {pendingDelete ? (
+        <ConfirmDialog
+          title={tt("确定删除「{title}」？价格档、加购项、作品图会一起删除。", { title: draft.title || tt("未命名服务") })}
+          danger
+          onConfirm={() => void confirmRemove()}
+          onCancel={() => setPendingDelete(false)}
+        />
       ) : null}
     </section>
   );

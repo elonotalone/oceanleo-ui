@@ -40,7 +40,14 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
  * `v0.216.0` 已追上树上的 exports。再有人在 tag 之后加子路径、忘了发版，
  * 下面那条正向断言会把新路径报出来。
  */
-const UNRELEASED_EXPORTS = Object.freeze([]);
+const UNRELEASED_EXPORTS = Object.freeze([
+  // R5-UI-C：Bay 公开页要用；开发阶段不发版，先显式记账。
+  "./bay/public",
+  // R5-UI-C：Bay 公开页视图；同上，尚未打进最新 tag。
+  "./bay/public-views",
+  // R5-UI-C 代为登记：./shell/EmbedChrome 是他人的，同样未进最新 tag。
+  "./shell/EmbedChrome",
+]);
 
 function git(...args) {
   return execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();

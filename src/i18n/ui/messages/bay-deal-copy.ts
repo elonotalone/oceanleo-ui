@@ -347,7 +347,7 @@ export const BAY_DEAL_MESSAGES = assembleCopy(SOURCE, {
     viewOrder: "View order",
     viewDemand: "View request",
     viewHelp: "View help request",
-    openProject: "Open project group",
+    openProject: "Open project chat",
     viewSellerProfile: "View seller profile",
     viewVetting: "View credential review",
     missingContract: "Missing contract",

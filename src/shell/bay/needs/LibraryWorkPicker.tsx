@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { filterLibraryWorks, libraryWorkRef, listLibraryWorks, type BayLibraryWork } from "../../../lib/bay/library";
 import type { BayWorkRef } from "../../../lib/bay/types";
@@ -83,6 +83,8 @@ export function LibraryWorkPickerHost() {
 
 function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (work: BayWorkRef | null) => void }) {
   const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
   const titleId = useId();
   const [works, setWorks] = useState<BayLibraryWork[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,13 +99,14 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
       (reason: unknown) => {
         if (!alive) return;
         setWorks([]);
-        setError(errorText(tt, reason, tt("没能读到你的作品，请稍后再试。")));
+        const translate = ttRef.current;
+        setError(errorText(translate, reason, translate("没能读到你的作品，请稍后再试。")));
       },
     );
     return () => {
       alive = false;
     };
-  }, [tt]);
+  }, []);
 
   const shown = useMemo(() => filterLibraryWorks(works || [], query), [works, query]);
 

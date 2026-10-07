@@ -101,7 +101,7 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="flex max-h-[min(720px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+        className="flex max-h-[min(720px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
       >
         <header className="flex items-start gap-3 border-b border-neutral-200 px-5 py-4 dark:border-neutral-700">
           <div className="min-w-0 flex-1">

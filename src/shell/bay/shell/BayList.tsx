@@ -52,7 +52,7 @@ function ActionButton(props: { label: string; icon: ReactNode; onClick: () => vo
       type="button"
       onClick={props.onClick}
       data-bay-action={props.testId}
-      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-black/5 px-2 py-1.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
+      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-black/5 px-2 py-1.5 text-xs font-medium text-black/70 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
     >
       {props.icon}
       <span className="truncate">{props.label}</span>
@@ -123,7 +123,7 @@ export function BaySearch({ filter }: { filter: BayFeedFilter }) {
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) commit(text);
           }}
-          className="min-w-0 flex-1 bg-transparent text-xs text-black outline-none placeholder:text-neutral-400 dark:text-white dark:placeholder:text-neutral-500"
+          className="min-w-0 flex-1 bg-transparent text-xs text-black outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-stone-300/70 dark:text-white dark:placeholder:text-neutral-500"
         />
       </label>
     </div>
@@ -145,7 +145,7 @@ export function BayKindFilters({ filter }: { filter: BayFeedFilter }) {
             aria-selected={active}
             data-kind={kind}
             onClick={() => setBayFilter({ ...filter, kind })}
-            className={`shrink-0 rounded-full px-3 py-1 text-xs transition-colors ${
+            className={`shrink-0 rounded-full px-3 py-1 text-xs transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
               active
                 ? "bg-sky-500 text-white"
                 : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
@@ -179,7 +179,7 @@ export function BayCategoryCards({ filter, variant = "row" }: { filter: BayFeedF
               aria-pressed={active}
               data-category={category.slug}
               onClick={() => toggle(category.slug)}
-              className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                 active
                   ? "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300"
                   : "text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/5"
@@ -208,7 +208,7 @@ export function BayCategoryCards({ filter, variant = "row" }: { filter: BayFeedF
                 aria-pressed={active}
                 data-category={category.slug}
                 onClick={() => toggle(category.slug)}
-                className={`flex w-20 shrink-0 flex-col items-center gap-1 rounded-xl border px-1.5 py-2 text-center transition-colors ${
+                className={`flex w-20 shrink-0 flex-col items-center gap-1 rounded-xl border px-1.5 py-2 text-center transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                   active
                     ? "border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300"
                     : "border-black/10 text-black/70 hover:bg-black/5 dark:border-white/10 dark:text-white/70 dark:hover:bg-white/5"

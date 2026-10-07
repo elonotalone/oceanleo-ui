@@ -3,7 +3,7 @@
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
-  "{n} 评分": "{n} 评分",
+  "{n} 分": "{n} 分",
   "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项",
   "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡",
   "一口价交付": "一口价交付",
@@ -198,7 +198,7 @@ const SOURCE = {
 
 export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
   "zh-TW": {
-    "{n} 评分": "{n} 評分",
+    "{n} 分": "{n} 分",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "「完成」只表示驗收通過並記了一筆帳，平台沒有代收也沒有代付任何款項",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "「完成」表示驗收通過；錢已從買家卡扣出，驗收後打到接單方的銀行卡",
     "一口价交付": "一口價交付",
@@ -391,7 +391,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "驗收，或要求修改",
   },
   en: {
-    "{n} 评分": "{n} pts",
+    "{n} 分": "{n} pts",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“Complete” only means the delivery was accepted and a record was kept. The platform did not collect or pay any money.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“Complete” means the delivery was accepted. Money already left the buyer’s card and goes to the seller’s bank after acceptance.",
     "一口价交付": "Fixed-price delivery",
@@ -513,7 +513,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "每个里程碑单独验收，逐段算完成": "Each milestone is accepted on its own; completion is counted stage by stage",
     "每小时": "Per hour",
     "沟通": "Communication",
-    "没有权限": "No permission",
+    "没有权限": "No access",
     "由双方在合同里约定": "Agreed by both sides in the contract",
     "由平台的人复核整件事并给出裁定；这一层任何时候都能请求，不因为已给出评估而关闭。": "A person at the platform reviews the whole matter and rules. You can ask for this layer at any time; an assessment does not close it.",
     "登录后才能查看我的订单。": "Sign in to see your orders.",
@@ -584,7 +584,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Accept, or request changes",
   },
   ja: {
-    "{n} 评分": "{n} 点",
+    "{n} 分": "{n} 点",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "「完了」は検収通過と記帳だけです。プラットフォームは代金を預かりも支払いもしていません。",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "「完了」は検収通過を意味します。代金は買い手のカードから引き落と済みで、検収後に受注者の口座へ入ります。",
     "一口价交付": "定額納品",
@@ -777,7 +777,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "検収するか、修正を求める",
   },
   ko: {
-    "{n} 评分": "{n}점",
+    "{n} 分": "{n}점",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "「완료」는 검수 통과와 장부 기록일 뿐입니다. 플랫폼은 돈을 대신 받거나 지급하지 않았습니다.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "「완료」는 검수 통과입니다. 돈은 이미 구매자 카드에서 빠졌고 검수 후 수주자 계좌로 갑니다.",
     "一口价交付": "고정가 납품",
@@ -970,7 +970,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "검수하거나 수정을 요청",
   },
   fr: {
-    "{n} 评分": "{n} pts",
+    "{n} 分": "{n} pts",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "« Terminé » signifie seulement accepté et consigné. La plateforme n’a ni encaissé ni versé d’argent.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "« Terminé » signifie accepté. L’argent a déjà quitté la carte de l’acheteur et ira sur le compte du prestataire après acceptation.",
     "一口价交付": "Livraison à prix fixe",
@@ -1163,7 +1163,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Accepter, ou demander des modifications",
   },
   de: {
-    "{n} 评分": "{n} Pkt.",
+    "{n} 分": "{n} Pkt.",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "„Fertig“ heißt nur abgenommen und gebucht. Die Plattform hat kein Geld entgegengenommen oder ausgezahlt.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "„Fertig“ heißt abgenommen. Das Geld ist schon von der Käuferkarte runter und geht nach Abnahme auf das Konto der Auftragnehmerseite.",
     "一口价交付": "Pauschallieferung",
@@ -1356,7 +1356,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Abnehmen oder Änderungen verlangen",
   },
   it: {
-    "{n} 评分": "{n} pt",
+    "{n} 分": "{n} pt",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "«Completato» significa solo accettato e registrato. La piattaforma non ha incassato né versato denaro.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "«Completato» significa accettato. I soldi sono già usciti dalla carta dell’acquirente e vanno sul conto del prestatore dopo l’accettazione.",
     "一口价交付": "Consegna a prezzo fisso",
@@ -1549,7 +1549,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Accetta, oppure chiedi modifiche",
   },
   es: {
-    "{n} 评分": "{n} pts",
+    "{n} 分": "{n} pts",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "«Completado» solo significa aceptado y apuntado. La plataforma no cobró ni pagó nada.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "«Completado» significa aceptado. El dinero ya salió de la tarjeta del comprador y va a la cuenta de quien hizo el trabajo tras la revisión.",
     "一口价交付": "Entrega a precio cerrado",
@@ -1742,7 +1742,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Aceptar, o pedir cambios",
   },
   "es-419": {
-    "{n} 评分": "{n} pts",
+    "{n} 分": "{n} pts",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "«Completado» solo significa aceptado y apuntado. La plataforma no cobró ni pagó nada.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "«Completado» significa aceptado. El dinero ya salió de la tarjeta del comprador y va a la cuenta de quien hizo el trabajo tras la revisión.",
     "一口价交付": "Entrega a precio cerrado",
@@ -1935,7 +1935,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Aceptar, o pedir cambios",
   },
   "pt-BR": {
-    "{n} 评分": "{n} pts",
+    "{n} 分": "{n} pts",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“Concluído” só significa aceito e registrado. A plataforma não recebeu nem pagou nenhum valor.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“Concluído” significa aceito. O dinheiro já saiu do cartão do comprador e vai para a conta de quem executou após o aceite.",
     "一口价交付": "Entrega a preço fixo",
@@ -2128,7 +2128,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Aceitar, ou pedir alterações",
   },
   "pt-PT": {
-    "{n} 评分": "{n} pts",
+    "{n} 分": "{n} pts",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“Concluído” só significa aceite e registado. A plataforma não recebeu nem pagou nenhum valor.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“Concluído” significa aceite. O dinheiro já saiu do cartão do comprador e vai para a conta de quem executou após a aceitação.",
     "一口价交付": "Entrega a preço fixo",
@@ -2321,7 +2321,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Aceitar, ou pedir alterações",
   },
   ar: {
-    "{n} 评分": "{n} نقطة",
+    "{n} 分": "{n} نقطة",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "«مكتمل» يعني القبول والقيد فقط. المنصة لم تقبض ولم تدفع أي مبلغ.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "«مكتمل» يعني القبول. المال خُصم من بطاقة المشتري ويذهب إلى حساب من نفّذ العمل بعد القبول.",
     "一口价交付": "تسليم بسعر ثابت",
@@ -2514,7 +2514,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "اقبل أو اطلب تعديلاً",
   },
   hi: {
-    "{n} 评分": "{n} अंक",
+    "{n} 分": "{n} अंक",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“पूरा” सिर्फ़ स्वीकृति और हिसाब है। प्लेटफ़ॉर्म ने कोई पैसा न लिया न दिया।",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“पूरा” का मतलब स्वीकृति है। पैसा खरीदार के कार्ड से कट चुका है और स्वीकृति के बाद काम लेने वाले के बैंक में जाएगा।",
     "一口价交付": "निश्चित कीमत डिलीवरी",
@@ -2707,7 +2707,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "स्वीकार करें, या बदलाव माँगें",
   },
   th: {
-    "{n} 评分": "{n} คะแนน",
+    "{n} 分": "{n} คะแนน",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“เสร็จ” แปลว่าตรวจรับและลงบัญชีเท่านั้น แพลตฟอร์มไม่ได้เก็บหรือจ่ายเงินใด",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“เสร็จ” แปลว่าตรวจรับผ่าน เงินหักจากบัตรผู้ซื้อแล้ว และโอนเข้าบัญชีผู้รับงานหลังตรวจรับ",
     "一口价交付": "ส่งมอบราคาตายตัว",
@@ -2900,7 +2900,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "ตรวจรับ หรือขอแก้",
   },
   tr: {
-    "{n} 评分": "{n} puan",
+    "{n} 分": "{n} puan",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“Tamam” yalnızca kabul ve kayıt demektir. Platform para almadı ve ödemedi.",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“Tamam” kabul demektir. Para alıcının kartından çekilmiştir; kabul sonrası işi alanın bankasına gider.",
     "一口价交付": "Sabit fiyatlı teslim",
@@ -3093,7 +3093,7 @@ export const BAY_ORDERS_MESSAGES = assembleCopy(SOURCE, {
     "验收，或要求修改": "Kabul et veya değişiklik iste",
   },
   vi: {
-    "{n} 评分": "{n} điểm",
+    "{n} 分": "{n} điểm",
     "「完成」只表示验收通过并记了一笔账，平台没有代收也没有代付任何款项": "“Xong” chỉ nghĩa nghiệm thu và ghi sổ; nền tảng không thu cũng không trả khoản nào",
     "「完成」表示验收通过；钱已从买家卡扣出，验收后打到接单方的银行卡": "“Xong” nghĩa là nghiệm thu đạt; tiền đã trừ thẻ người mua, sau nghiệm thu vào tài khoản bên nhận việc",
     "一口价交付": "Giao trọn gói",

@@ -2,9 +2,14 @@
 
 // 窄浮窗「列表 → 详情」推进、返回滑回。用 Web Animations，不依赖主题 CSS；系统要求减少动效时不动。
 import { useLayoutEffect, useRef } from "react";
+import { MOTION_EASING_TOKENS } from "../../../theme/motion";
 import { bayLastNavDirection } from "./bay-state";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? () => {} : useLayoutEffect;
+
+/** Web Animations 的 easing 不吃 `var(--leo-ease-*)`，取令牌在 JS 里的值（入场用 decelerate）。 */
+const SLIDE_EASE =
+  MOTION_EASING_TOKENS.find((token) => token.name === "--leo-ease-decelerate")?.value ?? "ease-out";
 
 function reducedMotion(): boolean {
   try {
@@ -28,7 +33,7 @@ export function useBaySlideIn<T extends HTMLElement>(enabled: boolean, part: "li
         { transform: `translateX(${from})`, opacity: 0.4 },
         { transform: "translateX(0)", opacity: 1 },
       ],
-      { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+      { duration: 180, easing: SLIDE_EASE },
     );
   }, [enabled, part, trigger]);
   return ref;

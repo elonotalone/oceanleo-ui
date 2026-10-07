@@ -3,7 +3,7 @@
 // 「叫真人」表单：说明、预算、类目按站预选；任务页逐条勾选当前任务内容并自动带上任务；
 // 别处从「我的库」挑一个或什么都不带。提交前先过买家条款。不自带返回栏。
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { HANDOFF_BRIEF_MAX_LENGTH, fenFromYuanInput, formatFen, type HandoffMode } from "../../../api/talent-handoff";
 import { useLedgerCurrency } from "../../../lib/money";
@@ -30,6 +30,8 @@ export function CallHumanPane({ target, siteKey }: BayPaneProps) {
 
 function CallHumanBody({ siteKey, presetCategory }: { siteKey: string; presetCategory?: string }) {
   const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
   const toast = useToast();
   const ledger = useLedgerCurrency();
   const signedIn = useBaySignedIn();
@@ -55,9 +57,9 @@ function CallHumanBody({ siteKey, presetCategory }: { siteKey: string; presetCat
 
   useEffect(() => {
     if (task?.taskId && !work) {
-      setWork({ kind: "task", id: task.taskId, site_key: siteKey, title: tt("当前任务") });
+      setWork({ kind: "task", id: task.taskId, site_key: siteKey, title: ttRef.current("当前任务") });
     }
-  }, [siteKey, task?.taskId, tt, work]);
+  }, [siteKey, task?.taskId, work]);
 
   const candidates = useMemo(() => (task?.messages ? candidatesFromTaskMessages(task.messages) : []), [task]);
   const grant = useMemo(() => selectedHandoffRefs(candidates, selected), [candidates, selected]);

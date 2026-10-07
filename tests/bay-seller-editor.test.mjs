@@ -3,8 +3,9 @@
 // 且返回 false 不上架、受限领域（医疗、法律、宠物医疗）的类目与领域不出现、答疑上架带 posted_site、
 // 预览卡数据、载入已有服务的映射。网络、条款、站点状态全是桩。
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
@@ -93,12 +94,24 @@ const stateStub = dataModule(`
 `);
 const supplyStub = dataModule(`export function ServiceCard({ item }) { globalThis.__bayPreview = item; return null; }`);
 const domainStub = dataModule(`export function portalHref(path) { return "https://oceanleo.com" + path; }`);
+const reactHref = pathToFileURL(require.resolve("react")).href;
+const confirmStub = dataModule(`
+  import { createElement as h } from ${JSON.stringify(reactHref)};
+  export function ConfirmDialog({ title, body, confirmLabel = "确认", cancelLabel = "取消", danger, onConfirm, onCancel }) {
+    return h("div", { role: "dialog", "data-bay-confirm": "", "data-danger": danger ? "1" : "0" },
+      h("p", { "data-bay-confirm-title": "" }, title),
+      body ? h("p", { "data-bay-confirm-body": "" }, body) : null,
+      h("button", { type: "button", "data-bay-confirm-cancel": "", onClick: onCancel }, cancelLabel),
+      h("button", { type: "button", "data-bay-confirm-ok": "", onClick: onConfirm }, confirmLabel));
+  }
+`);
 
 const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
   "../../../lib/agent": agentStub,
   "../../../lib/bay/categories": categoriesStub,
+  "../../../ui": confirmStub,
   "../../../ui/Toast": toastStub,
   "../../../contracts/domain-family": domainStub,
   "../settings": settingsStub,
@@ -519,6 +532,55 @@ test("预览卡：买家在信息流里看到的价格区间、币种、封面�
   assert.equal(model.normalizeCurrency(undefined), "USD");
   assert.equal(model.toFen("12.345"), 1235);
   assert.equal(model.toFen("-3"), 0);
+});
+
+test("源码里不再有 window.confirm", () => {
+  const source = readFileSync(fileURLToPath(new URL("../src/shell/bay/seller/ServiceEditorPane.tsx", import.meta.url)), "utf8");
+  assert.equal(source.includes("window.confirm"), false);
+  assert.equal(source.includes("window.alert"), false);
+  assert.equal(source.includes("window.prompt"), false);
+  assert.match(source, /<ConfirmDialog/);
+});
+
+test("删除路径：点删除后出现确认弹窗、点取消没有发出 DELETE、点确认才发", async () => {
+  reset();
+  const view = await mount({ kind: "service-editor", serviceId: "s1" });
+  assert.equal(view.host.querySelector("[data-bay-confirm]"), null);
+  await view.click('[data-bay-action="remove"]');
+  assert.match(view.find("[data-bay-confirm-title]").textContent, /确定删除「品牌 Logo 设计」/);
+  assert.equal(view.find("[data-bay-confirm]").getAttribute("data-danger"), "1");
+  await view.click("[data-bay-confirm-cancel]");
+  assert.equal(view.host.querySelector("[data-bay-confirm]"), null);
+  assert.deepEqual(calls("DELETE"), [], "取消删除：不发请求");
+  assert.equal(view.find("[data-bay-editor-status]").getAttribute("data-bay-editor-status"), "draft");
+
+  await view.click('[data-bay-action="remove"]');
+  await view.click("[data-bay-confirm-ok]");
+  assert.deepEqual(
+    calls("DELETE").map((call) => call.path),
+    ["/v1/talent/me/services/s1"],
+  );
+  assert.equal(globalThis.__bayToasts.at(-1).title, "服务已删除");
+  assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "services" });
+  await view.unmount();
+});
+
+test("离开脏步骤：取消则仍在原步骤，草稿不丢；确认才走", async () => {
+  reset();
+  const view = await mount({ kind: "service-editor", serviceId: "s1" });
+  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "basics");
+  await view.setValue('[data-bay-field="title"]', "改过的标题");
+  await view.click('[data-bay-step-chip="model"]');
+  assert.match(view.find("[data-bay-confirm-title]").textContent, /这一步还有没保存的修改，确定先离开？/);
+  await view.click("[data-bay-confirm-cancel]");
+  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "basics", "取消：留在原步骤");
+  assert.equal(view.find('[data-bay-field="title"]').value, "改过的标题", "取消：草稿不丢");
+  assert.equal(view.host.querySelector("[data-bay-confirm]"), null);
+
+  await view.click('[data-bay-step-chip="model"]');
+  await view.click("[data-bay-confirm-ok]");
+  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "model");
+  await view.unmount();
 });
 
 test("交付约定：交期、改稿次数为空时用第一档的数字补上，填过的不动", () => {

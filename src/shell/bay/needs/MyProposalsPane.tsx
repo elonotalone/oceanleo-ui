@@ -10,7 +10,7 @@ import { budgetText, demandStatusText, proposalStatusText, timeAgoText } from ".
 import { BTN_SECONDARY, LoginPrompt, PaneBody, PaneLoading, PaneNotice, errorText, useNeedLoader } from "./need-ui";
 
 const ROW =
-  "block w-full border-b border-black/5 px-3 py-2.5 text-left hover:bg-black/5 focus-visible:outline-none dark:border-white/10 dark:hover:bg-white/5";
+  "block w-full border-b border-black/5 px-3 py-2.5 text-left hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 dark:border-white/10 dark:hover:bg-white/5";
 
 export function MyProposalsPane({ target }: BayPaneProps) {
   if (target.kind !== "mine" || target.tab !== "proposals") return null;
