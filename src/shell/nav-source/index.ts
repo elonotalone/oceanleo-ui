@@ -36,6 +36,7 @@ export type NavPageId =
   | "playground"
   | "projects"
   | "talent"
+  | "bay"
   | "plugins"
   | "schedules"
   | "messages"
@@ -59,6 +60,7 @@ export type NavIconId =
   | "panel"
   | "folder"
   | "talent"
+  | "bay"
   | "plugins"
   | "clock"
   | "messages"
@@ -165,15 +167,16 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     placements: { portal: { order: 30, iconId: "folder" } },
   },
   {
-    id: "talent",
-    external: true,
-    labelKey: "真人协作",
+    id: "bay",
+    href: "/bay",
+    labelKey: "OceanLeo Bay",
     labelSource: "ui",
-    iconId: "talent",
+    iconId: "bay",
     // 紧挨「项目」：成交后的活仍然回到门户项目里进行。
-    // 当前域名家族里没有这个子站（境内）时整条不渲染 —— 见 `external` 的注释。
+    // 站内路由，不再是站外项：境内不出现由外壳用 `bayEnabledHere()` 拦掉（门户 clone-shell 与各站入口都走它）。
     placements: {
-      portal: { order: 40, option: "withTalent", optionDefault: false },
+      // 门户外壳沿用「人」的图标（门户 PORTAL_NAV 同值）；这里声明出来，两套外壳的对账才认。
+      portal: { order: 40, iconId: "talent" },
     },
   },
   {

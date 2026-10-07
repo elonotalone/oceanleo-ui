@@ -137,13 +137,25 @@ const marker = (exportName, testId) => dataModule(`
     return React.createElement("div", { "data-testid": ${JSON.stringify(testId)}, "data-variant": props.variant ?? "" });
   }
 `);
+// Bay 的 LibraryWorkPicker（结算设置→卖家资料的叫真人作品选择器）真实编译时要用到 Modal/ButtonSpinner；
+// 这两项是 ../../ui 的真实导出，这里补全，不然它们在替身里缺失会把 Modal 的具名导入判成语法错误。
+const uiWidgetsStub = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function ConfirmDialog(props) {
+    return React.createElement("div", { "data-testid": "confirm", "data-variant": props.variant ?? "" });
+  }
+  export function Modal({ children }) {
+    return React.createElement("div", { role: "dialog", "data-modal": "" }, children);
+  }
+  export function ButtonSpinner() { return null; }
+`);
 
 const STUBS = {
   "next/navigation": navigationStub,
   "next/link": linkStub,
   "../../lib/auth": authStub,
   "../../i18n/ui/useUI": uiStub,
-  "../../ui": marker("ConfirmDialog", "confirm"),
+  "../../ui": uiWidgetsStub,
   "../../pages/AuthDialog": marker("AuthDialog", "auth-dialog"),
   "../../pages/PasswordResetPage": marker("PasswordResetPage", "reset-page"),
   "../../pages/GeneralPage": marker("GeneralSettingsBody", "general-body"),

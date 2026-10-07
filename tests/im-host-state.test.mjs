@@ -264,7 +264,7 @@ test("会话 id 与 view/filter 同时给：打开会话，filter 仍记下；se
 
 test("host-state 的筛选白名单与收件箱 API 的 INBOX_FILTERS 一致", () => {
   assert.deepEqual([...INBOX_FILTER_IDS], [...INBOX_FILTERS]);
-  assert.deepEqual([...MESSAGES_VIEWS].sort(), ["inbox", "people", "search", "settings"]);
+  assert.deepEqual([...MESSAGES_VIEWS].sort(), ["bay", "inbox", "people", "search", "settings"]);
 });
 
 test("?im_invite 打开收件箱并交出邀请码；处理完清掉", () => {
