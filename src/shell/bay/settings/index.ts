@@ -1,4 +1,4 @@
-export type { BaySettingsPaneName as BaySettingsPane } from "./settings-pane-store";
+export type { BaySettingsPaneName } from "./settings-pane-store";
 export { ensureBayTerms } from "./terms-flow";
 export type { BayTermsScope } from "./BayTermsDialog";
 export { BaySettingsSection } from "./BaySettingsSection";
