@@ -83,6 +83,14 @@ export function deliveryDaysText(tt: UITranslate, days: number | null | undefine
   return typeof days === "number" && days > 0 ? tt("{n} 天交付", { n: days }) : tt("交期面议");
 }
 
+export function handoffStateText(tt: UITranslate, state: string | null | undefined): string {
+  if (state === "claimed") return tt("已被接住");
+  if (state === "contracted") return tt("已谈成合同");
+  if (state === "cancelled") return tt("已撤回");
+  if (state === "expired") return tt("已过期");
+  return tt("等人接住");
+}
+
 /** 站 key → 产品名（不翻译；只有 aitools 随界面语言）；认不出的站退回「这个站」。名字只来自 W03 的 `baySiteName`，本目录不留站名表。 */
 export function siteLabel(tt: UITranslate, siteKey: string | null | undefined): string {
   return baySiteName(siteKey, tt) ?? tt("这个站");

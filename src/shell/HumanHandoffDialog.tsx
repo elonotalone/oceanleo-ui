@@ -17,17 +17,22 @@ import { useUI } from "../i18n/ui/useUI";
 import { useLedgerCurrency } from "../lib/money";
 import {
   HANDOFF_BRIEF_MAX_LENGTH,
-  HANDOFF_CONTEXT_MAX_ITEMS,
   createHandoff,
   fenFromYuanInput,
   formatFen,
-  listTalentCategories,
   notifyTalentHandoffChanged,
   type Handoff,
   type HandoffMode,
   type HandoffOriginKind,
-  type TalentCategory,
 } from "../api/talent-handoff";
+import { useBaySiteKey, useBayTaskContext } from "./bay/shell/bay-state";
+import {
+  HandoffContextPicker,
+  selectedHandoffRefs,
+  toggleHandoffPick,
+} from "./bay/needs/handoff-context";
+import { defaultNeedCategory, useNeedCategories } from "./bay/needs/need-categories";
+import { CategoryChooser } from "./bay/needs/need-ui";
 
 /** 一条可以被勾选交出去的上下文（由宿主从当前会话摘出来）。 */
 export interface HandoffContextCandidate {
@@ -52,16 +57,6 @@ export interface HumanHandoffDialogProps {
   onCreated?: (handoff: Handoff) => void;
 }
 
-/**
- * 品类目录（§3.4，W03 供给）拿不到时的兜底。`other` 是 `_COMMON.md` §4 品类清单里
- * 真实存在的 slug，所以兜底不会造出一个后端不认的品类。
- */
-const FALLBACK_CATEGORY: TalentCategory = { slug: "other", name_zh: "其他" };
-
-function candidateKey(candidate: HandoffContextCandidate): string {
-  return `${candidate.kind}:${candidate.ref}`;
-}
-
 export function HumanHandoffDialog({
   originRef,
   originKind = "conversation",
@@ -74,12 +69,13 @@ export function HumanHandoffDialog({
   // 用户填的预算是账本货币的主单位；符号跟网关最近说过的账本货币走（未知 = CNY）。
   const ledger = useLedgerCurrency();
   const titleId = useId();
+  const siteKey = useBaySiteKey();
+  const task = useBayTaskContext();
+  const { response, categories, loading: categoriesLoading } = useNeedCategories();
   // 默认全不选：这个空 Set 就是本屏的产品判据，任何「顺手先帮用户勾上」都是回归。
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [categories, setCategories] = useState<TalentCategory[]>([
-    FALLBACK_CATEGORY,
-  ]);
-  const [category, setCategory] = useState(FALLBACK_CATEGORY.slug);
+  const [category, setCategory] = useState("");
+  const [categoryTouched, setCategoryTouched] = useState(false);
   const [brief, setBrief] = useState("");
   const [budgetYuan, setBudgetYuan] = useState("");
   const [mode, setMode] = useState<HandoffMode>("open");
@@ -88,65 +84,20 @@ export function HumanHandoffDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    void listTalentCategories().then((result) => {
-      if (cancelled) return;
-      const items = (result.data?.items || []).filter((item) => item?.slug);
-      if (!result.ok || items.length === 0) return;
-      setCategories(items);
-      setCategory((current) =>
-        items.some((item) => item.slug === current) ? current : items[0].slug,
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (categoryTouched || !response) return;
+    setCategory(defaultNeedCategory(siteKey, response) || "");
+  }, [categoryTouched, response, siteKey]);
 
-  const messageCandidates = useMemo(
-    () => candidates.filter((item) => item.kind === "message"),
-    [candidates],
-  );
-  const artifactCandidates = useMemo(
-    () => candidates.filter((item) => item.kind === "artifact"),
-    [candidates],
-  );
-  const selectedMessages = useMemo(
-    () =>
-      messageCandidates
-        .filter((item) => selected.has(candidateKey(item)))
-        .map((item) => item.ref),
-    [messageCandidates, selected],
-  );
-  const selectedArtifacts = useMemo(
-    () =>
-      artifactCandidates
-        .filter((item) => selected.has(candidateKey(item)))
-        .map((item) => item.ref),
-    [artifactCandidates, selected],
-  );
+  const grant = useMemo(() => selectedHandoffRefs(candidates, selected), [candidates, selected]);
 
-  const toggle = useCallback((candidate: HandoffContextCandidate) => {
-    const key = candidateKey(candidate);
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(key)) {
-        next.delete(key);
-        return next;
-      }
-      const sameKind = [...next].filter((entry) =>
-        entry.startsWith(`${candidate.kind}:`),
-      );
-      // 合同 §3.1：每类 ≤50 条。挡在这里，而不是让服务端替我们截断。
-      if (sameKind.length >= HANDOFF_CONTEXT_MAX_ITEMS) return current;
-      next.add(key);
-      return next;
-    });
+  const toggle = useCallback((item: HandoffContextCandidate) => {
+    setSelected((current) => toggleHandoffPick(current, item));
   }, []);
 
   const budgetFen = fenFromYuanInput(budgetYuan);
   const canSubmit =
     Boolean(brief.trim()) &&
+    Boolean(category) &&
     !busy &&
     (mode === "open" || Boolean(invitedHandle.trim()));
 
@@ -162,7 +113,9 @@ export function HumanHandoffDialog({
       budget_fen: budgetFen,
       mode,
       invited_handle: mode === "invited" ? invitedHandle : null,
-      context: { messages: selectedMessages, artifacts: selectedArtifacts },
+      context: grant,
+      posted_site: siteKey,
+      attached_work: task?.taskId ? { kind: "task", id: task.taskId } : null,
     });
     setBusy(false);
     if (!result.ok || !result.data?.handoff) {
@@ -187,12 +140,13 @@ export function HumanHandoffDialog({
     onCreated,
     originKind,
     originRef,
-    selectedArtifacts,
-    selectedMessages,
+    grant,
+    siteKey,
+    task?.taskId,
     tt,
   ]);
 
-  const selectedCount = selectedMessages.length + selectedArtifacts.length;
+  const selectedCount = grant.messages.length + grant.artifacts.length;
 
   return (
     <Modal onClose={onClose} labelledBy={titleId} className="max-w-xl">
@@ -230,68 +184,22 @@ export function HumanHandoffDialog({
                 {tt("已选 {n} 条", { n: selectedCount })}
               </span>
             </div>
-            {candidates.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-stone-200 px-3 py-4 text-center text-[12px] text-stone-400">
-                {tt("这段对话还没有可以交出去的内容；你也可以只写一句话请人来。")}
-              </p>
-            ) : (
-              <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-stone-200 p-1.5">
-                {[...messageCandidates, ...artifactCandidates].map(
-                  (candidate) => {
-                    const key = candidateKey(candidate);
-                    const checked = selected.has(key);
-                    return (
-                      <label
-                        key={key}
-                        className={`flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- checked ? "bg-stone-100" : "hover:bg-stone-50"
- }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggle(candidate)}
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                          style={{ accentColor: accent }}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5">
-                            <span className="truncate text-[13px] font-medium text-stone-700">
-                              {candidate.label}
-                            </span>
-                            {candidate.kind === "artifact" && (
-                              <span className="shrink-0 rounded bg-stone-200/70 px-1 text-[10px] text-stone-600">
-                                {tt("产物")}
-                              </span>
-                            )}
-                          </span>
-                          <span className="mt-0.5 line-clamp-2 block text-[12px] leading-4 text-stone-500">
-                            {candidate.preview}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  },
-                )}
-              </div>
-            )}
+            <HandoffContextPicker items={candidates} selected={selected} onToggle={toggle} />
           </section>
 
           <section className="space-y-2">
             <h3 className="text-[13px] font-medium text-stone-700">
               {tt("请什么样的人")}
             </h3>
-            <select
+            <CategoryChooser
+              categories={categories}
               value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-700 outline-none focus:border-stone-400"
-            >
-              {categories.map((item) => (
-                <option key={item.slug} value={item.slug}>
-                  {item.name_zh || item.slug}
-                </option>
-              ))}
-            </select>
+              loading={categoriesLoading}
+              onChange={(slug) => {
+                setCategory(slug);
+                setCategoryTouched(true);
+              }}
+            />
           </section>
 
           <section className="space-y-2">

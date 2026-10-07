@@ -63,6 +63,8 @@ export interface Handoff {
   contract_id: string | null;
   expires_at: string | null;
   created_at: string;
+  posted_site?: string | null;
+  attached_work?: { kind: "task"; id: string; site_key?: string; title?: string } | null;
 }
 
 /** 已授权给对方的那一条上下文（授权面的唯一事实源来自服务端，不是本地勾选状态）。 */
@@ -90,6 +92,8 @@ export interface CreateHandoffInput {
   /** mode="invited" 时必填：要请的那个人的 handle。 */
   invited_handle?: string | null;
   context: HandoffContextGrant;
+  posted_site?: string | null;
+  attached_work?: { kind: "task"; id: string } | null;
 }
 
 /** 合同 §3.1：`brief` ≤4000、`origin_ref` ≤500、context 每类 ≤50 条。 */
@@ -252,6 +256,11 @@ export function createHandoff(
         ? (input.invited_handle || "").trim() || null
         : null,
     context: normalizeHandoffContext(input.context),
+    posted_site: String(input.posted_site || "").trim() || null,
+    attached_work:
+      input.attached_work?.kind === "task" && String(input.attached_work.id || "").trim()
+        ? { kind: "task" as const, id: String(input.attached_work.id).trim() }
+        : null,
   };
   return authed<{ handoff: Handoff }>("/v1/talent/handoffs", {
     method: "POST",

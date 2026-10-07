@@ -26,6 +26,7 @@ import {
   type Handoff,
   type HandoffContextItem,
 } from "../api/talent-handoff";
+import { openBay } from "./bay/shell/bay-state";
 
 /** 还「活着」的求助才值得占对话流里的位置；过期/取消的不再显示。 */
 const LIVE_STATES: ReadonlySet<Handoff["state"]> = new Set([
@@ -183,6 +184,14 @@ export function HumanHandoffStatus({
                       </button>
                     </>
                   )}
+                  <span aria-hidden="true">·</span>
+                  <button
+                    type="button"
+                    onClick={() => openBay({ kind: "help", id: handoff.id })}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    {tt("在 Bay 里打开")}
+                  </button>
                   <span aria-hidden="true">·</span>
                   <button
                     type="button"
