@@ -66,8 +66,10 @@ function item(extra = {}) {
 }
 
 test("类目只列交付型：答疑类目（含医疗）一律不出现", () => {
-  const slugs = cats.deliveryCategories(CATEGORIES).map((row) => row.slug);
+  const slugs = cats.needCategories(CATEGORIES).map((row) => row.slug);
   assert.deepEqual(slugs, ["design", "doc", "other"]);
+  assert.equal(cats.isNeedCategory("consult-career", CATEGORIES), false);
+  assert.equal(cats.isNeedCategory("doc", CATEGORIES), true);
 });
 
 test("默认类目按站读 site_defaults；门户为空；指向答疑类目的默认值不认", () => {
@@ -80,7 +82,7 @@ test("默认类目按站读 site_defaults；门户为空；指向答疑类目的
 });
 
 test("需求卡：标题、摘要、类目、预算、报价数、发布者、发布时间", () => {
-  cats.resetNeedCategoriesForTests(CATEGORIES);
+  cats.primeNeedCategoriesForTests(CATEGORIES);
   const html = renderToStaticMarkup(React.createElement(cards.DemandCard, { item: item(), onOpen() {} }));
   assert.match(html, /data-bay-card="demand"/);
   assert.match(html, /做一份路演稿/);
@@ -121,6 +123,19 @@ test("求助卡：状态、类目、附有作品；用户文字按纯文本出",
   assert.match(html, /&lt;img src=x/);
 });
 
+test("卡片是整行列表项：整张是一个按钮、自带下边线、不画圆角边框和白底（选中底色归外壳）", () => {
+  for (const Card of [cards.DemandCard, cards.HelpRequestCard]) {
+    const html = renderToStaticMarkup(React.createElement(Card, { item: item(), onOpen() {} }));
+    assert.equal((html.match(/<button/g) || []).length, 1, "整张卡只有一个可点的按钮");
+    const root = html.match(/^<button[^>]*class="([^"]*)"/);
+    assert.ok(root, "最外层就是那个按钮");
+    assert.match(root[1], /\bborder-b\b/);
+    assert.match(root[1], /\bw-full\b/);
+    const classes = root[1].split(/\s+/);
+    assert.ok(!classes.some((name) => name.startsWith("rounded") || name === "bg-white" || name === "border"), root[1]);
+  }
+});
+
 test("needs 目录与 lib 里没有 dangerouslySetInnerHTML / innerHTML", () => {
   const root = fileURLToPath(new URL("../src/", import.meta.url));
   const files = [];
@@ -132,7 +147,7 @@ test("needs 目录与 lib 里没有 dangerouslySetInnerHTML / innerHTML", () => 
     }
   };
   walk(join(root, "shell/bay/needs"));
-  files.push(join(root, "lib/bay/demands.ts"), join(root, "lib/bay/handoffs.ts"));
+  files.push(join(root, "lib/bay/demands.ts"), join(root, "lib/bay/handoffs.ts"), join(root, "lib/bay/library.ts"));
   for (const file of files) {
     const text = readFileSync(file, "utf8");
     assert.doesNotMatch(text, /dangerouslySetInnerHTML|innerHTML/, file);

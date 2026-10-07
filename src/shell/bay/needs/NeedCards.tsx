@@ -10,8 +10,9 @@ export interface BayFeedCardProps {
   onOpen: () => void;
 }
 
+/** 信息流里的一整行（参照收件箱的一行）：自带内边距与下边线；选中底色由 Bay 外壳的外层给。 */
 const CARD_CLASS =
-  "group block w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-3 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300";
+  "group block w-full border-b border-black/5 px-3 py-2.5 text-left transition-colors hover:bg-black/5 focus-visible:bg-black/5 focus-visible:outline-none dark:border-white/10 dark:hover:bg-white/5 dark:focus-visible:bg-white/5";
 
 function AttachedWorkBadge() {
   const tt = useUI();

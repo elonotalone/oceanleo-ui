@@ -1,6 +1,7 @@
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import { formatBayFen } from "../../../lib/bay/demands";
 import type { BayPrice } from "../../../lib/bay/types";
+import { baySiteName } from "./site-names";
 
 export function budgetText(
   tt: UITranslate,
@@ -51,9 +52,8 @@ export function authorName(tt: UITranslate, author: { display_name?: string | nu
   return handle ? `@${handle}` : tt("OceanLeo 用户");
 }
 
-/** 站 key → 产品名（LeoSlides 一类）。拿不到就退回「这个站」。 */
-export function siteLabel(tt: UITranslate, siteKey: string | null | undefined, names: Record<string, string>): string {
-  const key = (siteKey || "").trim();
-  if (!key) return tt("这个站");
-  return names[key] || key;
+/** 站 key → 产品名（LeoSlides 一类）；认不出的站退回「这个站」。 */
+export function siteLabel(tt: UITranslate, siteKey: string | null | undefined): string {
+  const name = baySiteName(siteKey);
+  return name ? tt(name) : tt("这个站");
 }
