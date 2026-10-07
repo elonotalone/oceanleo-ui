@@ -3,6 +3,7 @@
 // `?bay=<kind>[:<参数>]`：feed、demand:<id>、service:<id>、help:<id>、consult:<id>、profile:<handle>、
 // order:<id>、conversation:<threadId>、post-need[:<category>]、call-human[:<category>]、propose:<demandId>、
 // checkout:<serviceId>[:<tier>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]。认不出的值一律当没有。
+import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { BayMineTab, BayTarget } from "./bay-state";
 
 export const BAY_PARAM = "bay";
@@ -29,6 +30,57 @@ const SUBSITE_LABEL: Readonly<Record<string, string>> = {
   ppt: "slide",
   threed: "3d",
 };
+
+/**
+ * 站 key → 产品名（门户 `lib/sites.tsx` 的 `name`），产品名不翻译。覆盖 Bay 的全部站：35 个子站 + 门户。
+ * 只有 aitools 在门户里叫「AI 工具导航」，不是品牌名，界面里经 `tt` 显示。
+ */
+const SITE_NAMES: Readonly<Record<string, string>> = {
+  agent: "LeoAgent",
+  website: "Website",
+  prompt: "LeoPrompt",
+  ecommerce: "LeoStudio",
+  ppt: "LeoSlides",
+  excel: "LeoSheet",
+  word: "LeoDoc",
+  converter: "LeoConvert",
+  aihuman: "LeoHuman",
+  image: "LeoImage",
+  video: "LeoVideo",
+  resume: "LeoResume",
+  bizdev: "LeoBizDev",
+  logo: "LeoLogo",
+  interior: "LeoInterior",
+  chat: "LeoChat",
+  threed: "Leo3D",
+  music: "LeoMusic",
+  meeting: "LeoMeeting",
+  paper: "LeoPaper",
+  notebook: "LeoNote",
+  law: "LeoLaw",
+  study: "LeoStudy",
+  edu: "LeoEdu",
+  novel: "LeoNovel",
+  script: "LeoScript",
+  design: "LeoDesign",
+  make: "LeoMake",
+  search: "LeoSearch",
+  finance: "LeoFinance",
+  med: "LeoMed",
+  travel: "LeoTravel",
+  game: "LeoPlay",
+  aitools: "AI 工具导航",
+  asset: "LeoAsset",
+  oceanleo: "OceanLeo",
+};
+
+/** 站 key → 产品名（`ppt` → LeoSlides）；未知 key 返回 null。传了 `tt` 时 aitools 按界面语言显示。 */
+export function baySiteName(siteKey: string | null | undefined, tt?: UITranslate): string | null {
+  const key = typeof siteKey === "string" ? siteKey.trim().toLowerCase() : "";
+  if (!key || !Object.prototype.hasOwnProperty.call(SITE_NAMES, key)) return null;
+  if (key === "aitools" && tt) return tt("AI 工具导航");
+  return SITE_NAMES[key];
+}
 
 export function isBayCategorySlug(value: unknown): value is string {
   return typeof value === "string" && SLUG.test(value);

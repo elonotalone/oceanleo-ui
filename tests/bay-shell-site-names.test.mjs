@@ -1,0 +1,82 @@
+// W03（oceanleo-bay）：站名只有一份——`baySiteName(siteKey)`，名字与门户 `lib/sites.tsx` 一致，产品名不翻译。
+import test from "node:test";
+import assert from "node:assert/strict";
+
+const links = await import("../src/shell/bay/shell/bay-links.ts");
+
+/** Bay 的全部站：清册 `scripts/oceanleo-sites.tsv` 去掉 talent（与网关 `app/talent/bay_sites.py` 的 BAY_SITE_KEYS 同序）。 */
+const EXPECTED = {
+  agent: "LeoAgent",
+  website: "Website",
+  prompt: "LeoPrompt",
+  ecommerce: "LeoStudio",
+  ppt: "LeoSlides",
+  excel: "LeoSheet",
+  word: "LeoDoc",
+  converter: "LeoConvert",
+  aihuman: "LeoHuman",
+  image: "LeoImage",
+  video: "LeoVideo",
+  resume: "LeoResume",
+  bizdev: "LeoBizDev",
+  logo: "LeoLogo",
+  interior: "LeoInterior",
+  chat: "LeoChat",
+  threed: "Leo3D",
+  music: "LeoMusic",
+  meeting: "LeoMeeting",
+  paper: "LeoPaper",
+  notebook: "LeoNote",
+  law: "LeoLaw",
+  study: "LeoStudy",
+  edu: "LeoEdu",
+  novel: "LeoNovel",
+  script: "LeoScript",
+  design: "LeoDesign",
+  make: "LeoMake",
+  search: "LeoSearch",
+  finance: "LeoFinance",
+  med: "LeoMed",
+  travel: "LeoTravel",
+  game: "LeoPlay",
+  aitools: "AI 工具导航",
+  asset: "LeoAsset",
+  oceanleo: "OceanLeo",
+};
+
+test("全部 36 个站 key 都有产品名，且与门户站名一致", () => {
+  assert.equal(Object.keys(EXPECTED).length, 36);
+  for (const [key, name] of Object.entries(EXPECTED)) {
+    assert.equal(links.baySiteName(key), name, key);
+  }
+});
+
+test("站名不翻译：传了 tt 也原样；只有 aitools 经 tt 显示", () => {
+  const seen = [];
+  const tt = (zh) => {
+    seen.push(zh);
+    return `[${zh}]`;
+  };
+  assert.equal(links.baySiteName("ppt", tt), "LeoSlides");
+  assert.equal(links.baySiteName("threed", tt), "Leo3D");
+  assert.equal(links.baySiteName("oceanleo", tt), "OceanLeo");
+  assert.equal(links.baySiteName("aitools", tt), "[AI 工具导航]");
+  assert.deepEqual(seen, ["AI 工具导航"]);
+});
+
+test("大小写与空白按同一个 key 认；未知、talent、空值返回 null", () => {
+  assert.equal(links.baySiteName("  PPT "), "LeoSlides");
+  for (const bad of ["talent", "trade", "dev", "slide", "3d", "e-commerce", "", "   ", null, undefined, "toString", "__proto__", "constructor"]) {
+    assert.equal(links.baySiteName(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("站名与子域标签各管各的：标签不同的三站名字照常", () => {
+  assert.equal(links.baySubsiteLabel("ppt"), "slide");
+  assert.equal(links.baySiteName("ppt"), "LeoSlides");
+  assert.equal(links.baySubsiteLabel("ecommerce"), "e-commerce");
+  assert.equal(links.baySiteName("ecommerce"), "LeoStudio");
+  assert.equal(links.baySubsiteLabel("threed"), "3d");
+  assert.equal(links.baySiteName("threed"), "Leo3D");
+  assert.equal(links.baySubsiteLabel("oceanleo"), null);
+});

@@ -1,5 +1,5 @@
 export * from "./bay-state";
-export { BAY_PARAM, formatBayParam, parseBayParam, parseBayDeepLink } from "./bay-links";
+export { BAY_PARAM, baySiteName, baySubsiteLabel, formatBayParam, parseBayParam, parseBayDeepLink } from "./bay-links";
 export { bayPageHref, useBayExpand } from "./bay-expand";
 export { BayIcon, CallHumanIcon } from "./bay-icons";
 export { BayView } from "./BayView";
