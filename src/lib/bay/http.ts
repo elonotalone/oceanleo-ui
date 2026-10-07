@@ -20,6 +20,19 @@ function errorFrom(status: number, detail: unknown, fallback?: string): BayApiEr
   return new BayApiError(message, status, typeof d?.code === "string" ? d.code : null);
 }
 
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  if (!error || typeof error !== "object") return false;
+  return (error as { name?: unknown }).name === "AbortError";
+}
+
+function abortError(cause?: unknown): Error {
+  if (cause instanceof Error && cause.name === "AbortError") return cause;
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const result = await authed<T>(path, init);
   if (!result.ok) throw errorFrom(result.status ?? 0, result.detail, result.error);
@@ -29,12 +42,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 export async function bayGet<T>(path: string, opts?: { anonymous?: boolean; signal?: AbortSignal }): Promise<T> {
   if (!opts?.anonymous) return call<T>(path, { signal: opts?.signal });
   const result = await authed<T>(path, { signal: opts.signal });
+  if (isAbortError(null, opts.signal)) throw abortError();
   if (result.ok) return result.data as T;
   if (result.status !== 401) throw errorFrom(result.status ?? 0, result.detail, result.error);
   let res: Response;
   try {
     res = await fetch(`${GATEWAY_BASE}${path}`, { signal: opts.signal, cache: "no-store" });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error, opts.signal)) throw abortError(error);
     throw new BayApiError("网络错误，请稍后再试。", 0);
   }
   let data: unknown = null;

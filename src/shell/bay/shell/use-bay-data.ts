@@ -3,7 +3,7 @@
 // 左栏的数据：信息流分页（筛选变了从头取，登录态变了也重取——求助只给专家看）与交付类目。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { deliveryCategories, fetchBayCategories } from "../../../lib/bay/categories";
-import { fetchBayFeed } from "../../../lib/bay/feed";
+import { bayFeedErrorText, classifyBayFeedCaught, fetchBayFeed } from "../../../lib/bay/feed";
 import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
 import type { BayFeedFilter } from "./bay-state";
 
@@ -15,10 +15,6 @@ export interface BayFeedView {
   hasMore: boolean;
   loadMore: () => void;
   retry: () => void;
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : "加载失败，请稍后再试。";
 }
 
 function mergeItems(prev: BayFeedItem[], next: BayFeedItem[]): BayFeedItem[] {
@@ -56,8 +52,17 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
         setItems((prev) => (from ? mergeItems(prev, page.items) : page.items));
         setCursor(page.next_cursor);
       } catch (caught) {
-        if (request !== requestRef.current || controller?.signal.aborted) return;
-        setError(errorText(caught));
+        const action = classifyBayFeedCaught(caught, {
+          stale: request !== requestRef.current,
+          aborted: Boolean(controller?.signal.aborted),
+        });
+        if (action === "ignore") return;
+        if (action === "empty") {
+          if (!from) setItems([]);
+          setCursor(null);
+          return;
+        }
+        setError(bayFeedErrorText(caught));
       } finally {
         if (request === requestRef.current) {
           setLoading(false);
