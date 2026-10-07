@@ -379,6 +379,31 @@ test("openTradeThread：没登录走登录、不发请求；登录后找或建�
   assert.equal(W.openBay.length, 0);
 });
 
+test("契约 §4.4 例外：自带头部、接 onBack；四种 layout 都排得开", async () => {
+  reset();
+  const back = [];
+  for (const layout of ["docked", "full", "mobile", "page"]) {
+    const view = await mount({ threadId: "t1", layout, onBack: () => back.push(layout) });
+    assert.equal(view.q("[data-deal-view]").getAttribute("data-deal-view"), layout);
+    assert.ok(view.q("[data-deal-title]"), `${layout} 没有头部`);
+    if (layout === "full") {
+      assert.equal(view.q('[data-action="back"]'), null, "放大浮窗不画返回（外框自己有）");
+    } else {
+      assert.ok(view.q('[data-action="back"]'), `${layout} 应接 onBack`);
+    }
+    if (layout === "page" || layout === "full") {
+      assert.ok(view.q("[data-deal-aside]"), `${layout} 交易卡应在右侧`);
+    } else {
+      assert.equal(view.q("[data-deal-aside]"), null, `${layout} 交易卡在顶上，不另开右栏`);
+    }
+    await view.unmount();
+  }
+  const view = await mount({ threadId: "t1", layout: "docked", onBack: () => back.push("click") });
+  await view.click('[data-action="back"]');
+  assert.deepEqual(back.filter((item) => item === "click"), ["click"]);
+  await view.unmount();
+});
+
 test("talent-api.ts 原有导出一个不少", async () => {
   const runtime = [
     "TALENT_CONVERSATION_PREFIX", "TALENT_BODY_LIMIT", "TALENT_PAGE_SIZE", "parseTalentConversationId", "talentConversationId",

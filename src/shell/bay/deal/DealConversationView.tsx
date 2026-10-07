@@ -127,7 +127,7 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
     let live = true;
     void fetchBayPaymentConfig()
       .then((config) => {
-        if (live) setPaymentReady(Boolean(config.enabled && config.buyer_ready));
+        if (live) setPaymentReady(Boolean(config.buyer_ready));
       })
       .catch(() => {
         if (live) setPaymentReady(false);

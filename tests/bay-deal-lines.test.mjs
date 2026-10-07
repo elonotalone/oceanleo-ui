@@ -96,6 +96,59 @@ test("没见过的事件退回服务端的中文兜底；报价旧事件也能�
   assert.deepEqual(legacy.action?.target, { kind: "order", id: "c_2" });
 });
 
+test("两套事件名逐个有文案和动作；同名按 meta 拆开；未知事件不崩、不出 talent 链接", () => {
+  const seen = new Map();
+  for (const event of [...lines.DEAL_EVENTS, ...lines.OFFER_EVENTS]) {
+    const text = lines.dealLineText(fakeTT, event);
+    assert.ok(text && text.trim(), `${event} 通知/报价名没有文案`);
+    seen.set(text, event);
+  }
+  for (const item of lines.legacyDealLineCases()) {
+    const classified = lines.classifyDealLine(item.event, item.meta);
+    assert.equal(classified.family, item.family, `${item.event} ${JSON.stringify(item.meta)} 家族不对`);
+    const resolved = lines.resolveDealLine(fakeTT, { body: "服务端兜底", meta: { event: item.event, ...item.meta } }, "c_fallback");
+    assert.ok(resolved.text && resolved.text !== "服务端兜底", `${item.event} 没有自己的大白话`);
+    assert.ok(!resolved.text.includes("talent.oceanleo.com"), `${item.event} 文案带了 talent 站`);
+    assert.ok(!resolved.text.includes("在 talent 打开"), `${item.event} 文案带了「在 talent 打开」`);
+    if (item.event !== "revoked") {
+      assert.ok(!seen.has(resolved.text) || seen.get(resolved.text) === item.event, `${item.event} 与 ${seen.get(resolved.text)} 文案重复`);
+      seen.set(resolved.text, item.event);
+    }
+    if (item.action) {
+      assert.equal(resolved.action?.kind, item.action, `${item.event} 动作不对`);
+      assert.ok(resolved.action?.label, `${item.event} 没有动作文字`);
+      assert.ok(!String(resolved.action.label).includes("talent"), `${item.event} 动作指向 talent`);
+    } else {
+      assert.equal(resolved.action, null, `${item.event} 不该有动作`);
+    }
+  }
+
+  const contractAccepted = lines.resolveDealLine(fakeTT, { meta: { event: "accepted", contract_id: "c9" } });
+  assert.equal(contractAccepted.text, "合同已签署生效，双方进入交付阶段。");
+  assert.deepEqual(contractAccepted.action?.target, { kind: "order", id: "c9" });
+
+  const offerAccepted = lines.resolveDealLine(fakeTT, { meta: { event: "accepted", offer_id: "o9" } }, "c9");
+  assert.equal(offerAccepted.text, "买家接受了报价，订单已生成。");
+
+  const helpCancelled = lines.resolveDealLine(fakeTT, { meta: { event: "cancelled", handoff_id: "h9" } });
+  assert.equal(helpCancelled.text, "发起人取消了这次求助，交接的内容已全部收回。");
+  assert.deepEqual(helpCancelled.action?.target, { kind: "help", id: "h9" });
+
+  const contractCancelled = lines.resolveDealLine(fakeTT, { meta: { event: "cancelled", contract_id: "c8" } });
+  assert.equal(contractCancelled.text, "合同已取消。");
+
+  const emptyUnknown = lines.resolveDealLine(fakeTT, { body: "   ", meta: { event: "milestone.foo" } });
+  assert.equal(emptyUnknown.text, "交易有了新进展。");
+  assert.equal(emptyUnknown.action, null);
+
+  const talentBody = lines.resolveDealLine(fakeTT, {
+    body: "去 https://talent.oceanleo.com/orders/1 在 talent 打开",
+    meta: { event: "not.a.real.event" },
+  });
+  assert.equal(talentBody.text, "交易有了新进展。");
+  assert.equal(talentBody.action, null);
+});
+
 const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m,k)=> k in vars ? String(vars[k]) : m) : zh; }",
 );
