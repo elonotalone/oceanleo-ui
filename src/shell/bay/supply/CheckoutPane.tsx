@@ -168,12 +168,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
   const field = "mt-1 w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-neutral-400";
   const formView = (
     <div className="min-w-0">
-      <button type="button" onClick={() => openBay({ kind: "service", id: service.id })} className="text-[12px] text-neutral-500 hover:text-neutral-800">
-        ← {tt("返回服务详情")}
-      </button>
-      <h2 className="mt-2 text-[17px] font-semibold text-neutral-950">{tt("确认服务并填写需求")}</h2>
-
-      <fieldset className="mt-4">
+      <fieldset className="mt-1">
         <legend className="text-[13px] font-semibold text-neutral-900">{tt("选择档位")}</legend>
         <div className="mt-2 space-y-1.5">
           {tiers.map((tier) => (

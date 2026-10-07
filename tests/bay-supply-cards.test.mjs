@@ -82,12 +82,24 @@ test("服务卡：封面、标题、起价、几天交付、评分、卖家", ()
   assert.match(out, /data-bay-seller[^>]*>Leo</);
 });
 
-test("服务卡：没交期字段不编造；没评价说暂无评价；免费与面议", () => {
+test("服务卡：没交期字段不编造；delivery_days 为 null 不显示天数；没评价说暂无评价；免费与面议", () => {
   const out = html(React.createElement(ServiceCard, { item: item({ author: { ...item().author, rating_count: 0 } }), onOpen() {} }));
   assert.doesNotMatch(out, /天交付/);
   assert.match(out, /暂无评价/);
+  assert.doesNotMatch(html(React.createElement(ServiceCard, { item: item({ delivery_days: null }), onOpen() {} })), /天交付/);
   assert.match(html(React.createElement(ServiceCard, { item: item({ price: { min_fen: 0, max_fen: 0, unit: null, currency: "CNY" } }), onOpen() {} })), /免费/);
   assert.match(html(React.createElement(ServiceCard, { item: item({ price: null }), onOpen() {} })), /面议/);
+});
+
+test("服务卡与答疑卡：整行是一个按钮，点整张卡打开", () => {
+  const opened = [];
+  const service = html(React.createElement(ServiceCard, { item: item({ delivery_days: 3 }), onOpen() { opened.push("service"); } }));
+  assert.match(service, /<button[^>]*data-bay-card="service"/);
+  assert.equal((service.match(/<button/g) || []).length, 1);
+  const consultItem = item({ kind: "consult", id: "c1", price: { min_fen: 20000, max_fen: null, unit: "session", currency: "CNY" }, cover_url: null });
+  const consult = html(React.createElement(ConsultCard, { item: consultItem, onOpen() { opened.push("consult"); } }));
+  assert.match(consult, /<button[^>]*data-bay-card="consult"/);
+  assert.equal((consult.match(/<button/g) || []).length, 1);
 });
 
 test("服务卡：用户内容当纯文本，封面只认 http(s)", () => {
