@@ -1,20 +1,34 @@
 "use client";
 
-// Bay「我的」→「我的服务」：按状态分组（被隐藏 / 在架 / 已暂停 / 草稿），空状态给「发布第一个服务」。
-// 全部内容按纯文本渲染。
+// Bay「我的」→「我的服务」：卖家概况 + 按状态分组。窗格不自带返回栏/标题栏/滚动。
+// 钱的数字不在这里出现，只给「去看收款」入口。答疑挂牌只读。
 
 import { useCallback, useEffect, useState } from "react";
+
 import { useUI } from "../../../i18n/ui/useUI";
+import { getUserId } from "../../../lib/auth/client";
 import {
   BAY_SERVICE_GROUP_ORDER,
+  activeOrderCount,
+  awaitingReplyCount,
   groupMyServices,
+  hiddenCaseFor,
   listMyConsults,
+  listMyContentCases,
   listMyServices,
+  listRecentThreads,
+  getSellerStats,
+  type BayContentCase,
   type BayOwnConsult,
   type BayOwnService,
+  type BaySellerStats,
+  type BaySellerThread,
   type BayServiceGroup,
 } from "../../../lib/bay/seller";
+import { openBaySettings } from "../settings";
+import { baySiteName } from "../shell/bay-links";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { HiddenByPlatformNotice } from "./seller-ui";
 
 const GROUP_TITLES: Record<BayServiceGroup, string> = {
   hidden: "被平台隐藏",
@@ -26,6 +40,10 @@ const GROUP_TITLES: Record<BayServiceGroup, string> = {
 interface Loaded {
   services: BayOwnService[];
   consults: BayOwnConsult[];
+  stats: BaySellerStats | null;
+  threads: BaySellerThread[];
+  cases: BayContentCase[];
+  viewerId: string | null;
   error: string;
 }
 
@@ -34,7 +52,6 @@ export function MyServicesPane(_props: BayPaneProps) {
   const signedIn = useBaySignedIn();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [nonce, setNonce] = useState(0);
-
   const reload = useCallback(() => {
     setLoaded(null);
     setNonce((value) => value + 1);
@@ -43,12 +60,29 @@ export function MyServicesPane(_props: BayPaneProps) {
   useEffect(() => {
     if (!signedIn) return;
     let alive = true;
-    void Promise.all([listMyServices(), listMyConsults().catch(() => ({ items: [] as BayOwnConsult[] }))]).then(
-      ([services, consults]) => {
-        if (alive) setLoaded({ services: services.items || [], consults: consults.items || [], error: "" });
+    void Promise.all([
+      listMyServices(),
+      listMyConsults().catch(() => ({ items: [] as BayOwnConsult[] })),
+      getSellerStats().catch(() => null),
+      listRecentThreads().catch(() => ({ threads: [] as BaySellerThread[] })),
+      listMyContentCases().catch(() => [] as BayContentCase[]),
+      getUserId().catch(() => null),
+    ]).then(
+      ([services, consults, stats, threads, cases, viewerId]) => {
+        if (alive) {
+          setLoaded({
+            services: services.items || [],
+            consults: consults.items || [],
+            stats,
+            threads: threads.threads || [],
+            cases,
+            viewerId,
+            error: "",
+          });
+        }
       },
       (error: unknown) => {
-        if (alive) setLoaded({ services: [], consults: [], error: error instanceof Error ? error.message : "" });
+        if (alive) setLoaded({ services: [], consults: [], stats: null, threads: [], cases: [], viewerId: null, error: error instanceof Error ? error.message : "" });
       },
     );
     return () => {
@@ -73,22 +107,37 @@ export function MyServicesPane(_props: BayPaneProps) {
     return (
       <section data-bay-pane="mine-services" role="alert" className="p-4 text-[13px] text-rose-700">
         <p>{tt(loaded.error)}</p>
-        <button type="button" onClick={reload} className="mt-2 font-medium underline underline-offset-2">{tt("重试")}</button>
+        <button type="button" onClick={reload} className="mt-2 font-medium underline underline-offset-2">
+          {tt("重试")}
+        </button>
       </section>
     );
   }
 
   const groups = groupMyServices(loaded.services);
   const empty = loaded.services.length === 0 && loaded.consults.length === 0;
+  const active = activeOrderCount(loaded.stats);
+  const replies = awaitingReplyCount(loaded.threads, loaded.viewerId);
+  const rating = loaded.stats && loaded.stats.rating_count > 0 ? loaded.stats.rating_avg : null;
 
   return (
     <section data-bay-pane="mine-services" className="space-y-4 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-[15px] font-semibold text-stone-900">{tt("我的服务")}</h2>
+      <div data-bay-seller-overview className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <OverviewCell label={tt("进行中的订单")} value={String(active)} />
+        <OverviewCell label={tt("待回复")} value={String(replies)} />
+        <OverviewCell label={tt("评分")} value={rating == null ? tt("暂无评价") : rating.toFixed(1)} />
+        <button type="button" data-bay-money-entry onClick={() => openBaySettings("money")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-left hover:bg-stone-50">
+          <span className="block text-[11px] text-stone-500">{tt("收款与账单")}</span>
+          <span className="mt-1 block text-[13px] font-semibold text-stone-900">{tt("去设置里看")}</span>
+        </button>
+      </div>
+
+      <div className="flex justify-end">
         <button type="button" onClick={() => openBay({ kind: "service-editor" })} className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
           {tt("发布服务")}
         </button>
       </div>
+
       {empty ? (
         <div data-bay-empty="services" className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center">
           <p className="text-[13px] text-stone-600">{tt("还没有发布过服务。把一件你做得好的事变成别人能直接下单的服务。")}</p>
@@ -102,22 +151,64 @@ export function MyServicesPane(_props: BayPaneProps) {
             <h3 className="mb-2 text-[12px] font-semibold text-stone-500">
               {tt(GROUP_TITLES[group])} · {groups[group].length}
             </h3>
-            <ul className="space-y-2">
+            <ul>
               {groups[group].map((service) => (
                 <li key={service.id}>
-                  <button
-                    type="button"
-                    onClick={() => openBay({ kind: "service-editor", serviceId: service.id })}
-                    className="block w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-3 text-left hover:bg-stone-50"
-                  >
-                    <span className="block truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
-                  </button>
+                  {group === "hidden" ? <HiddenByPlatformNotice what="service" caseRow={hiddenCaseFor(loaded.cases, "talent_service", service.id)} /> : null}
+                  <ServiceRow service={service} />
                 </li>
               ))}
             </ul>
           </div>
         ))
       )}
+
+      {loaded.consults.length ? (
+        <div data-bay-group="consults">
+          <h3 className="mb-2 text-[12px] font-semibold text-stone-500">
+            {tt("答疑")} · {loaded.consults.length}
+          </h3>
+          <ul>
+            {loaded.consults.map((consult) => (
+              <li key={consult.id} className="border-b border-stone-100 px-1 py-2.5 text-[13px] text-stone-800">
+                <span className="block font-semibold">{consult.title || tt("未命名服务")}</span>
+                <span className="mt-0.5 block text-[12px] text-stone-500">{tt("答疑上架后暂时不能修改")}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function OverviewCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white px-3 py-2">
+      <p className="text-[11px] text-stone-500">{label}</p>
+      <p className="mt-1 text-[16px] font-semibold text-stone-900">{value}</p>
+    </div>
+  );
+}
+
+function ServiceRow({ service }: { service: BayOwnService }) {
+  const tt = useUI();
+  const site = baySiteName(service.posted_site);
+  return (
+    <button
+      type="button"
+      data-bay-own-service={service.id}
+      onClick={() => openBay({ kind: "service-editor", serviceId: service.id })}
+      className="block w-full border-b border-stone-100 px-1 py-2.5 text-left hover:bg-stone-50"
+    >
+      <span className="block truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
+      {service.summary ? <span className="mt-0.5 line-clamp-2 block text-[12px] text-stone-500">{service.summary}</span> : null}
+      <span className="mt-1 flex flex-wrap gap-x-2 text-[12px] text-stone-500">
+        {service.order_count ? <span>{tt("{n} 份订单", { n: service.order_count })}</span> : null}
+        {service.view_count ? <span>{tt("{n} 次浏览", { n: service.view_count })}</span> : null}
+        {service.delivery_days ? <span>{tt("{n} 天交付", { n: service.delivery_days })}</span> : null}
+        {site ? <span>{site}</span> : null}
+      </span>
+    </button>
   );
 }
