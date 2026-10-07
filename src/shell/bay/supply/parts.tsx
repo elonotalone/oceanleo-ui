@@ -208,11 +208,11 @@ export function ReputationGrid({ handle }: { handle: string }) {
 }
 
 /** 执业称谓只在核验通过时出现；否则只显示自述职业，并标明是自述。 */
-export function PracticeLine({ source, domain }: { source: unknown; domain?: string | null }) {
+export function PracticeLine({ source, domain, fallback }: { source: unknown; domain?: string | null; fallback?: string }) {
   const tt = useUI();
   const titles = domain ? [practiceTitleFor(tt, source, domain)].filter((title): title is string => Boolean(title)) : verifiedPracticeTitles(tt, source);
   const role = selfDescribedRoleOf(source);
-  if (!titles.length && !role) return null;
+  if (!titles.length && !role) return fallback ? <span className="text-[12px] text-neutral-400">{fallback}</span> : null;
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       {titles.map((title) => (

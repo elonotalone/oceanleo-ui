@@ -5,9 +5,7 @@ export { ServiceCard } from "./ServiceCard";
 export { ConsultCard } from "./ConsultCard";
 export { ServicePane } from "./ServicePane";
 
-export function ConsultPane(_props: BayPaneProps): null {
-  return null;
-}
+export { ConsultPane } from "./ConsultPane";
 
 export function ProfilePane(_props: BayPaneProps): null {
   return null;
