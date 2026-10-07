@@ -274,7 +274,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
                     type="checkbox"
                     checked={checked}
                     onChange={(event) => setAddonIds((current) => (event.target.checked ? [...current, addon.id] : current.filter((id) => id !== addon.id)))}
-                    className="mt-0.5 h-4 w-4"
+                    className="mt-0.5"
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block break-words text-[13px] font-medium text-neutral-900">{addon.title}</span>
