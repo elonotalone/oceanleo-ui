@@ -88,6 +88,10 @@ const confirmStubUrl = dataModule(`
     return React.createElement("div", { "data-testid": "confirm-dialog" },
       React.createElement("button", { onClick: onConfirm }, title));
   }
+  export function Modal({ children, labelledBy }) {
+    return React.createElement("div", { role: "dialog", "data-modal": "", "aria-labelledby": labelledBy || undefined }, children);
+  }
+  export function ButtonSpinner() { return null; }
 `);
 const linkStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
