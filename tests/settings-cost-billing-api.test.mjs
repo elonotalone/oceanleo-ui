@@ -176,6 +176,7 @@ const { SettingsHub } = await import(
     "./personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
   "./mail/MailSection": paneStub("MailSection", "pane-mail"),
     "./sections/AccountSection": paneStub("AccountSection", "pane-account"),
+    "./sections/MessagesSection": paneStub("MessagesSection", "pane-messages"),
     "./UsageDetailsSection": usageDetailsStub,
     "./TopUpSection": topUpStub,
   })
@@ -261,6 +262,7 @@ test("isSettingsPathname / resolve / settingsPath：ai-models 是设置栏，api
   assert.equal(SETTINGS_BUILTIN_TABS.includes("topup"), false);
   assert.ok(SETTINGS_BUILTIN_TABS.includes("ai-models"));
   assert.ok(SETTINGS_BUILTIN_TABS.includes("mail"));
+  assert.ok(SETTINGS_BUILTIN_TABS.includes("messages"));
   assert.equal(SETTINGS_TAB_ALIASES.cost, "billing");
   assert.equal(SETTINGS_TAB_ALIASES["usage-details"], "billing");
   assert.equal(SETTINGS_TAB_ALIASES.topup, "billing");

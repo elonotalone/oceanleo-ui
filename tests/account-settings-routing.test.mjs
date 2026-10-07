@@ -196,6 +196,7 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "./personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
   "./mail/MailSection": paneStub("MailSection", "pane-mail"),
   "./sections/BillingSection": paneStub("BillingSection", "pane-billing"),
+  "./sections/MessagesSection": paneStub("MessagesSection", "pane-messages"),
   "./sections/UsageDetailsSection": paneStub("UsageDetailsSection", "pane-usage-details"),
   "./sections/TopUpSection": paneStub("TopUpSection", "pane-topup"),
   "../account/AccountHome": accountHomeStub,

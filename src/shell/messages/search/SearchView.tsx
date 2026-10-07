@@ -14,6 +14,10 @@ import { EMPTY_FILTERS, SearchFilters, filtersToParams, type SearchFilterState }
 
 export interface SearchViewProps {
   initialQuery?: string;
+  /** 受控查询；传入时内部不再自管输入。 */
+  query?: string;
+  onQueryChange?: (query: string) => void;
+  hideInput?: boolean;
   conversationId?: string | null;
   onOpenResult: (conversationId: string, seq: number) => void;
 }
@@ -103,11 +107,23 @@ function previewText(hit: ImSearchHit, fallbacks: { file: string; card: string; 
   return fallbacks.file;
 }
 
-export function SearchView({ initialQuery = "", conversationId = null, onOpenResult }: SearchViewProps) {
+export function SearchView({
+  initialQuery = "",
+  query: queryProp,
+  onQueryChange,
+  hideInput = false,
+  conversationId = null,
+  onOpenResult,
+}: SearchViewProps) {
   const tt = useUI();
   const locale = useLocale();
   const inbox = useImInbox();
-  const [query, setQuery] = useState(initialQuery);
+  const [innerQuery, setInnerQuery] = useState(initialQuery);
+  const query = queryProp ?? innerQuery;
+  const setQuery = (next: string) => {
+    if (onQueryChange) onQueryChange(next);
+    if (queryProp === undefined) setInnerQuery(next);
+  };
   const [filters, setFilters] = useState<SearchFilterState>(EMPTY_FILTERS);
   const [hits, setHits] = useState<ImSearchHit[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -204,15 +220,17 @@ export function SearchView({ initialQuery = "", conversationId = null, onOpenRes
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-3" data-search-view="">
-      <input
-        type="search"
-        value={query}
-        autoFocus
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder={tt("搜索消息")}
-        aria-label={tt("搜索消息")}
-        className="rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none"
-      />
+      {hideInput ? null : (
+        <input
+          type="search"
+          value={query}
+          autoFocus
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={tt("搜索消息")}
+          aria-label={tt("搜索消息")}
+          className="rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none"
+        />
+      )}
       <SearchFilters
         value={conversationId ? { ...filters, conversationId } : filters}
         onChange={setFilters}

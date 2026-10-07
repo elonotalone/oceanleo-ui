@@ -1,10 +1,7 @@
 "use client";
 
-// 站内通知铃铛。父 agent 负责把它挂进门户布局，这里只负责组件本身。
-//
-// 存在的理由很具体：项目邀请此前是静默的——数据库里躺着一行 pending，没有任何人被告知。
-// 熟人之间还能在微信上补一句，真人协作站里两个陌生人之间，没人告诉就等于没发生。
-// 只轮询未读数（60 秒一次），下拉打开时才拉列表：铃铛常驻在布局里，不能每分钟拉 50 行。
+// 账号旁的消息入口（海外站）。点开 Messages 浮层；未登录时打开同一扇窗的 Bay 访客页。
+// 境内没有消息/Bay，才退回原来的站内通知列表。
 //
 // 2026-09-21：面板必须 portal 到 document.body 并用 position:fixed 往上弹。侧栏是
 // h-screen overflow-hidden，原先 absolute top-10 往下弹会整块掉出可视区。
@@ -13,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { portalHref } from "../../contracts/domain-family";
 import { useImEnabled } from "../../lib/im/client";
+import { openBay, useBayEnabled } from "../bay/shell/bay-state";
 import { openMessages } from "../messages/host-state";
 import { useImUnread } from "../messages/realtime/hooks";
 import { formatBadge } from "../messages/realtime/store";
@@ -49,13 +47,21 @@ function messageTime(value: string | null | undefined): string {
 export function NotificationBell({ className = "" }: { className?: string }) {
   const tt = useUI();
   const imOn = useImEnabled();
+  const bayOn = useBayEnabled();
+  const messagesEntry = imOn || bayOn;
   const imUnread = useImUnread();
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const badge = imOn ? formatBadge(imUnread?.total ?? 0) : unread > 0 ? String(unread > 99 ? "99+" : unread) : "";
+  const badge = imOn
+    ? formatBadge(imUnread?.total ?? 0)
+    : bayOn
+      ? ""
+      : unread > 0
+        ? String(unread > 99 ? "99+" : unread)
+        : "";
 
   const refreshCount = useCallback(async () => {
     const result = await notificationUnreadCount();
@@ -63,11 +69,11 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   }, []);
 
   useEffect(() => {
-    if (imOn) return undefined;
+    if (imOn || bayOn) return undefined;
     void refreshCount();
     const timer = setInterval(() => void refreshCount(), COUNT_POLL_MS);
     return () => clearInterval(timer);
-  }, [imOn, refreshCount]);
+  }, [imOn, bayOn, refreshCount]);
 
   const closePanel = useCallback((reason: "escape" | "outside") => {
     setOpen(false);
@@ -78,6 +84,11 @@ export function NotificationBell({ className = "" }: { className?: string }) {
     if (imOn) {
       setOpen(false);
       openMessages();
+      return;
+    }
+    if (bayOn) {
+      setOpen(false);
+      openBay({ kind: "feed" });
       return;
     }
     const next = !open;
@@ -116,9 +127,9 @@ export function NotificationBell({ className = "" }: { className?: string }) {
         ref={buttonRef}
         type="button"
         onClick={() => void toggle()}
-        aria-label={imOn ? tt("消息") : tt("通知")}
-        aria-haspopup={imOn ? undefined : "dialog"}
-        aria-expanded={imOn ? undefined : open}
+        aria-label={messagesEntry ? tt("消息") : tt("通知")}
+        aria-haspopup={messagesEntry ? undefined : "dialog"}
+        aria-expanded={messagesEntry ? undefined : open}
         className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
         <IconBell className="h-4 w-4" />
@@ -130,7 +141,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
       </button>
 
       <AnchoredFixedPopover
-        open={open && !imOn}
+        open={open && !messagesEntry}
         anchorRef={buttonRef}
         onClose={closePanel}
         width={320}

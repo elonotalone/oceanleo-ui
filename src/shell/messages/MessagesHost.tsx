@@ -2,7 +2,7 @@
 
 // 全局唯一的消息浮层（每个站挂一次，在 AppShell / 门户外壳里与 SettingsModalHost 并列）。
 // 境内站与未登录：什么都不渲染、不连接、不监听深链。
-// 浮层里：收件箱 / 联系人 / 搜索 / 设置四个视图 + 右侧会话；同时挂工作回放播放层与邀请对话框。
+// 浮层里：聊天 / 联系人 / Bay 三个视图 + 右侧会话；聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useUI } from "../../i18n/ui/useUI";
@@ -11,7 +11,6 @@ import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/no
 import { DealConversationView } from "../bay/deal";
 import { BayGuestHost } from "../bay/shell/BayGuestHost";
 import { BayIcon } from "../bay/shell/bay-icons";
-import { bayPageHref } from "../bay/shell/bay-expand";
 import { BayView } from "../bay/shell/BayView";
 import { bayEnabledHere, useBayHasDetail } from "../bay/shell/bay-state";
 import { WorkReplayHost } from "../replay/work/WorkReplayHost";
@@ -27,8 +26,7 @@ import { attachBrowserTitleBadge } from "./notify/title-badge";
 import { PeopleView } from "./people/PeopleView";
 import { PrivacyNotice } from "./PrivacyNotice";
 import { attachImRealtime, imStore, publishImDisabled, useImUnread } from "./realtime/hooks";
-import { SearchView } from "./search/SearchView";
-import { SettingsView } from "./SettingsView";
+
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
 }
@@ -56,26 +54,10 @@ function ViewTabIcon({ view }: { view: MessagesView }) {
       </svg>
     );
   }
-  if (view === "people") {
-    return (
-      <svg {...tabSvg}>
-        <circle cx="9" cy="8" r="3.2" />
-        <path d="M3.5 19c.6-3.2 2.9-4.8 5.5-4.8s4.9 1.6 5.5 4.8M16 11.2a3 3 0 1 0 0-6M17.5 14.6c1.8.5 3 1.9 3.5 4.4" />
-      </svg>
-    );
-  }
-  if (view === "search") {
-    return (
-      <svg {...tabSvg}>
-        <circle cx="11" cy="11" r="6.5" />
-        <path d="M20 20l-4.2-4.2" />
-      </svg>
-    );
-  }
   return (
     <svg {...tabSvg}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 19c.6-3.2 2.9-4.8 5.5-4.8s4.9 1.6 5.5 4.8M16 11.2a3 3 0 1 0 0-6M17.5 14.6c1.8.5 3 1.9 3.5 4.4" />
     </svg>
   );
 }
@@ -206,10 +188,8 @@ function MessagesOverlay() {
 
   const tabs: ReadonlyArray<{ id: MessagesView; label: string; badge?: number }> = [
     { id: "inbox", label: "聊天" },
-    { id: "bay", label: "Bay" },
     { id: "people", label: "联系人", badge: unread?.requests ?? 0 },
-    { id: "search", label: "搜索" },
-    { id: "settings", label: "设置" },
+    { id: "bay", label: "Bay" },
   ];
 
   let list: ReactNode;
@@ -219,23 +199,14 @@ function MessagesOverlay() {
         activeConversationId={state.conversationId}
         initialFilter={state.filter}
         onFilterChange={(next) => host.setFilter(next)}
-        onOpenConversation={openConversation}
+        onOpenConversation={(id, seq) => host.showConversation(id, seq ?? null)}
         onNew={() => setNewOpen(true)}
       />
     );
-  } else if (state.view === "bay") {
-    list = <BayView part="list" layout={state.layout} />;
   } else if (state.view === "people") {
     list = <PeopleView onOpenConversation={openConversation} />;
-  } else if (state.view === "search") {
-    list = (
-      <SearchView
-        onOpenResult={(conversationId, seq) => host.showConversation(conversationId, seq)}
-        conversationId={null}
-      />
-    );
   } else {
-    list = <SettingsView onOpenBlocks={() => setView("people")} />;
+    list = <BayView part="list" layout={state.layout} />;
   }
 
   const listWithTabs = (
@@ -322,11 +293,6 @@ function MessagesOverlay() {
         onDockWidth={(width) => host.setDockWidth(width)}
         onOverlayOffset={(offset) => host.setOverlayOffset(offset)}
         onClose={closeMessages}
-        onToggleExpand={
-          state.view === "bay"
-            ? () => { window.location.assign(bayPageHref()); }
-            : () => host.setExpanded(!state.expanded)
-        }
         overlayState={overlayState}
         onExitComplete={() => {
           if (!state.open) setShown(false);

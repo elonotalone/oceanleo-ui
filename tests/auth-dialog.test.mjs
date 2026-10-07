@@ -67,6 +67,7 @@ const authStubUrl = dataModule(`
     if (!aal || !aal.current || !aal.next) return false;
     return aal.current === "aal1" && aal.next === "aal2";
   }
+  export const AUTH_STATE_EVENT = "oceanleo:auth-state";
 `);
 
 // @supabase/ssr 只在真 client.ts 的顶层被 import；`normalizeCnPhone` 是纯函数，
@@ -98,10 +99,20 @@ const captchaStubUrl = dataModule(`
   }
 `);
 
+const settingsStubUrl = dataModule(`
+  export function openSettingsModal(tab) {
+    globalThis.__OPEN_SETTINGS__ = tab;
+    const w = globalThis.window;
+    if (!w || !w.history || typeof w.history.pushState !== "function") return;
+    w.history.pushState({}, "", "/settings/" + String(tab || "general"));
+  }
+`);
+
 const OVERRIDES = {
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/auth/client": authStubUrl,
   "../lib/auth/captcha": captchaStubUrl,
+  "./settings/settings-tabs": settingsStubUrl,
   "react-dom": reactDomUrl,
 };
 
@@ -710,7 +721,7 @@ test("Microsoft 未配：可读降级，不跳转", async () => {
 });
 
 // ————————————————————————————————————————————————————————————————
-// 4. 产品红线：无注册入口 / 未配置分支 / Modal 外壳
+// 4. 产品红线：无注册入口 / 未配置分支 / 打开设置账户页
 // ————————————————————————————————————————————————————————————————
 
 test("登录与注册都在这一扇门：第一屏不选方式，未知账号在密码步创建", async () => {
@@ -758,16 +769,24 @@ test("oceanleoConfigured() 为假：明确的「登录服务尚未配置」分�
   );
 });
 
-test("AuthDialog 走共享 Modal（遮罩 / aria-modal / 标题关联）", async () => {
+test("AuthDialog 打开设置账户登录页，不另开小登录框", async () => {
   await withDom(async ({ render, find, window }) => {
-    await render(AuthDialog, { onClose() {} });
-    const dialog = find('[role="dialog"][aria-modal="true"]');
-    assert.ok(dialog, "AuthDialog 必须是真 modal");
-    const labelledBy = dialog.getAttribute("aria-labelledby");
-    assert.ok(labelledBy, "缺 aria-labelledby");
-    assert.equal(window.document.getElementById(labelledBy)?.textContent, "登录或注册");
-    assert.ok(find("[data-auth-panel]"));
-    assert.ok(find("[data-auth-close]"), "浮层形态必须有关闭键");
+    let closed = 0;
+    let signedIn = 0;
+    await render(AuthDialog, {
+      onClose() {
+        closed += 1;
+      },
+      onSuccess() {
+        signedIn += 1;
+      },
+    });
+    assert.equal(find('[role="dialog"]'), null, "不得再画一份小登录框");
+    assert.equal(find("[data-auth-panel]"), null);
+    assert.equal(window.location.pathname, "/settings/account");
+    assert.ok(closed >= 1, "打开设置页后要放下自己的开关");
+    window.dispatchEvent(new window.Event("oceanleo:auth-state"));
+    assert.equal(signedIn, 1, "登录成功要通知调用方");
   });
 });
 

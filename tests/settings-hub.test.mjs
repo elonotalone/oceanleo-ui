@@ -200,6 +200,7 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "./mail/MailSection": paneStub("MailSection", "pane-mail"),
   "./sections/AccountSection": accountSectionStub,
   "./sections/BillingSection": paneStub("BillingSection", "pane-billing"),
+  "./sections/MessagesSection": paneStub("MessagesSection", "pane-messages"),
   "./sections/UsageDetailsSection": paneStub("UsageDetailsSection", "pane-usage-details"),
   "./sections/TopUpSection": paneStub("TopUpSection", "pane-topup"),
 });
@@ -224,6 +225,7 @@ const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "./settings/mail/MailSection": paneStub("MailSection", "pane-mail"),
   "./settings/sections/AccountSection": accountSectionStub,
   "./settings/sections/BillingSection": paneStub("BillingSection", "pane-billing"),
+  "./settings/sections/MessagesSection": paneStub("MessagesSection", "pane-messages"),
   "./settings/sections/UsageDetailsSection": paneStub("UsageDetailsSection", "pane-usage-details"),
   "./settings/sections/TopUpSection": paneStub("TopUpSection", "pane-topup"),
 });

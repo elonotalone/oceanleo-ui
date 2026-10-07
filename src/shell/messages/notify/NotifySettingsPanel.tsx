@@ -1,6 +1,6 @@
 "use client";
 
-// 消息浮层设置页里的提醒设置（work-chat W03，契约 §8.2；导出名不改）。
+// 设置中心「消息」栏里的提醒设置（work-chat W03，契约 §8.2；导出名不改）。
 // 六个开关：隐身、邮件提醒、浏览器推送、桌面通知、提示音、回放里显示精确时刻。
 // 推送开关比别的多一步：要在门户域里走「请求权限 → 注册 Service Worker → 订阅」，
 // 不在门户域的站只给一条「去 oceanleo.com 开启」的链接。
@@ -170,7 +170,7 @@ export function NotifySettingsPanel() {
 
   if (loadFailed) {
     return (
-      <section data-im-notify-settings="" className="px-4 py-3">
+      <section data-im-notify-settings="" className="py-3">
         <p className="text-[13px] text-neutral-600">{tt("提醒设置没能加载出来。")}</p>
         <button
           type="button"
@@ -184,7 +184,7 @@ export function NotifySettingsPanel() {
   }
   if (!settings) {
     return (
-      <section data-im-notify-settings="" className="px-4 py-3 text-[13px] text-neutral-500">
+      <section data-im-notify-settings="" className="py-3 text-[13px] text-neutral-500">
         {tt("正在加载…")}
       </section>
     );
@@ -194,7 +194,7 @@ export function NotifySettingsPanel() {
   const supported = pushSupported();
 
   return (
-    <section data-im-notify-settings="" aria-label={tt("消息提醒设置")} className="px-4 py-2">
+    <section data-im-notify-settings="" aria-label={tt("消息提醒设置")} className="py-2">
       <h3 className="py-2 text-[14px] font-semibold text-neutral-900">{tt("消息提醒设置")}</h3>
       <div className="divide-y divide-neutral-200/70">
         <Row title={tt("隐身模式")} hint={tt("开启后，别人看到你始终是离线。")}>

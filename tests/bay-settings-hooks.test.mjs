@@ -22,3 +22,18 @@ test("SettingsHub：海外 builtin 有 OceanLeo Bay，境内不加", () => {
   assert.match(text, /label: tt\("OceanLeo Bay"\)/);
   assert.match(text, /<BaySettingsSection \/>/);
 });
+
+test("SETTINGS_BUILTIN_TABS 在 bay 后面有 messages", () => {
+  const text = src("pages/settings/settings-tabs.ts");
+  assert.match(text, /"bay",\s*"messages",/);
+});
+
+test("SettingsHub：海外 builtin 有消息栏，境内不加", () => {
+  const text = src("pages/settings/SettingsHub.tsx");
+  assert.match(text, /import \{ MessagesSection \} from "\.\/sections\/MessagesSection"/);
+  assert.match(text, /import \{ imEnabledFor \} from "\.\.\/\.\.\/shell\/messages\/messages-family"/);
+  assert.match(text, /imEnabledFor\(currentDomainFamily\(\), true\)/);
+  assert.match(text, /id: "messages"/);
+  assert.match(text, /label: tt\("消息"\)/);
+  assert.match(text, /<MessagesSection \/>/);
+});

@@ -40,6 +40,7 @@ import {
   type ReactElement,
 } from "react";
 import {
+  AUTH_STATE_EVENT,
   challengeAndVerify,
   currentAal,
   listMfaFactors,
@@ -57,8 +58,9 @@ import {
 } from "../lib/auth/client";
 import { loginUnavailableNotice } from "../lib/auth/config";
 import { currentDomainFamily, type DomainFamily } from "../contracts/domain-family";
-import { ButtonSpinner, Modal } from "../ui";
+import { ButtonSpinner } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import { openSettingsModal } from "./settings/settings-tabs";
 import {
   CAPTCHA_FAILED_MESSAGE,
   CAPTCHA_LOAD_FAILED_MESSAGE,
@@ -358,14 +360,36 @@ export const AUTH_PRIVACY_HREF = "/privacy";
 const SUBMIT_IDLE_STYLE = { backgroundColor: "#8c8c8c" };
 const SUBMIT_READY_STYLE = { backgroundColor: "#171717" };
 
-/** 全家桶统一登录浮层。带 Modal 外壳（遮罩 / Esc / 焦点陷阱由 `../ui` 提供）。 */
-export function AuthDialog({ onClose, ...rest }: AuthDialogProps): ReactElement {
-  const titleId = useId();
-  return (
-    <Modal onClose={onClose} className="w-full max-w-lg" labelledBy={titleId}>
-      <AuthPanel {...rest} onClose={onClose} titleId={titleId} />
-    </Modal>
-  );
+function browserWindow(): Window | null {
+  if (typeof globalThis === "undefined") return null;
+  const w = (globalThis as { window?: Window }).window;
+  return w && typeof w.addEventListener === "function" ? w : null;
+}
+
+function listenForSignedIn(onSignedIn: () => void): void {
+  const target = browserWindow();
+  if (!target) return;
+  const handler = () => {
+    target.removeEventListener(AUTH_STATE_EVENT, handler);
+    onSignedIn();
+  };
+  target.addEventListener(AUTH_STATE_EVENT, handler);
+}
+
+/**
+ * 打开设置里的账户登录页（`/settings/account` 那一张）。
+ * 不再自绘小登录框：那一页和设置未登录态用的是同一份 `AuthPanel`。
+ */
+export function AuthDialog({ onClose, onSuccess }: AuthDialogProps): ReactElement | null {
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    if (onSuccess) listenForSignedIn(onSuccess);
+    openSettingsModal("account");
+    onClose();
+  }, [onClose, onSuccess]);
+  return null;
 }
 
 /**

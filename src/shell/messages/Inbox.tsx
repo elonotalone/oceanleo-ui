@@ -1,18 +1,20 @@
 "use client";
 
-// 聊天列表：筛选、会话（按最近活动倒序，事件实时更新）、新建聊天。搜索 / 联系人 / 设置在浮层顶栏图标页签里，这里不再重复。
+// 聊天列表：搜索、筛选、会话（按最近活动倒序，事件实时更新）、新建聊天。
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchDraftConversationIds, type InboxFilter } from "../../lib/im/inbox-api";
+import { searchQueryReady } from "../../lib/im/search-api";
 import { InboxFilters } from "./InboxFilters";
 import { InboxRow } from "./InboxRow";
 import { ImPlusIcon } from "./messages-surface";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
+import { SearchView } from "./search/SearchView";
 
 export interface InboxProps {
   activeConversationId: string | null;
   initialFilter?: string;
-  onOpenConversation: (conversationId: string) => void;
+  onOpenConversation: (conversationId: string, seq?: number) => void;
   onFilterChange?: (filter: string) => void;
   onNew: () => void;
 }
@@ -22,7 +24,9 @@ export function Inbox(props: InboxProps) {
   const inbox = useImInbox();
   const connection = useImConnection();
   const [drafts, setDrafts] = useState<Set<string>>(() => new Set());
+  const [search, setSearch] = useState("");
   const filter = inbox.filter;
+  const searching = searchQueryReady(search);
 
   useEffect(() => {
     const store = imStore();
@@ -55,6 +59,27 @@ export function Inbox(props: InboxProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="messages-inbox">
+      <div className="px-1.5 pt-1.5">
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={tt("搜索消息")}
+          aria-label={tt("搜索消息")}
+          data-inbox-search=""
+          className="w-full rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none dark:bg-white/10"
+        />
+      </div>
+      {searching ? (
+        <SearchView
+          query={search}
+          onQueryChange={setSearch}
+          hideInput
+          conversationId={null}
+          onOpenResult={(id, seq) => props.onOpenConversation(id, seq)}
+        />
+      ) : (
+      <>
       <div className="flex items-center gap-0.5 pr-1.5">
         <div className="min-w-0 flex-1">
           <InboxFilters value={filter} onChange={changeFilter} />
@@ -120,6 +145,8 @@ export function Inbox(props: InboxProps) {
           </button>
         ) : null}
       </div>
+      </>
+      )}
     </div>
   );
 }

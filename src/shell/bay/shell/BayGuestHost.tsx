@@ -8,7 +8,6 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { hostState, useMessagesHost } from "../../messages/host-state";
 import { MessagesLayout } from "../../messages/MessagesLayout";
 import { BayAuthHost } from "./bay-auth-host";
-import { useBayExpand } from "./bay-expand";
 import { BayIcon } from "./bay-icons";
 import { attachBayDeepLinks, closeBayOverlay, requireBayLogin, useBayEnabled, useBayHasDetail, useBayOverlayOpen } from "./bay-state";
 import { BayView } from "./BayView";
@@ -46,6 +45,21 @@ function GuestTabs() {
       <button
         type="button"
         role="tab"
+        aria-selected={false}
+        aria-label={tt("联系人")}
+        title={tt("登录后可以聊天")}
+        data-view="people"
+        onClick={() => requireBayLogin()}
+        className="relative flex flex-1 items-center justify-center py-3 text-black/45 dark:text-white/45"
+      >
+        <svg {...tabSvg}>
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19c.6-3.2 2.9-4.8 5.5-4.8s4.9 1.6 5.5 4.8M16 11.2a3 3 0 1 0 0-6M17.5 14.6c1.8.5 3 1.9 3.5 4.4" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        role="tab"
         aria-selected
         aria-label="Bay"
         title="OceanLeo Bay"
@@ -68,7 +82,6 @@ export function BayGuestHost() {
   const open = useBayOverlayOpen();
   const snap = useMessagesHost();
   const hasDetail = useBayHasDetail();
-  const expand = useBayExpand();
   const pathname = usePathname() || "/";
   const pathRef = useRef(pathname);
   const [shown, setShown] = useState(open);
@@ -120,7 +133,6 @@ export function BayGuestHost() {
     dockWidth: snap.dockWidth,
     onDockWidth: (width: number) => host.setDockWidth(width),
     onClose: closeBayOverlay,
-    onToggleExpand: expand,
     list: (
       <div className="flex min-h-0 flex-1 flex-col" data-bay-guest>
         <GuestTabs />

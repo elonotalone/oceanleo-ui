@@ -6,8 +6,8 @@
 // 切页由外壳 closeMessages，不把 `?im=` 带到下一页。
 import { useSyncExternalStore } from "react";
 
-export type MessagesView = "inbox" | "bay" | "people" | "search" | "settings";
-export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "bay", "people", "search", "settings"];
+export type MessagesView = "inbox" | "people" | "bay";
+export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people", "bay"];
 /** 收件箱筛选的合法值；与 `lib/im/inbox-api.ts` 的 `INBOX_FILTERS` 相同（测试里对拍，host-state 保持纯、不引入鉴权依赖）。 */
 export const INBOX_FILTER_IDS: readonly string[] = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"];
 export type MessagesLayoutKind = "docked" | "full" | "mobile";
@@ -342,6 +342,7 @@ export function createHostState(env: HostEnv): HostState {
     },
     setView(view) {
       if (!s.open) return;
+      if (!MESSAGES_VIEWS.includes(view)) return;
       commit({ view, conversationId: view === "inbox" ? s.conversationId : null, highlightSeq: null });
     },
     setFilter(filter) {

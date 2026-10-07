@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
+import { closeBayOverlay } from "../../shell/bay/shell/bay-state";
+import { closeMessages } from "../../shell/messages/host-state";
 import { SettingsHub, type SettingsHubProps } from "./SettingsHub";
 
 export type SettingsModalProps = Omit<SettingsHubProps, "variant" | "onClose"> & { open: boolean; onClose: () => void };
@@ -19,6 +21,11 @@ export function SettingsModal({ open, onClose, ...props }: SettingsModalProps) {
   const [expanded, setExpanded] = useState(false);
   useEffect(() => { if (open) setPresent(true); else setVisible(false); }, [open]);
   useEffect(() => { if (!open) setExpanded(false); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    closeMessages();
+    closeBayOverlay();
+  }, [open]);
   useEffect(() => {
     if (!present || !open) return;
     const frame = requestAnimationFrame(() => setVisible(true));

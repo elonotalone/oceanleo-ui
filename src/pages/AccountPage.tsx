@@ -45,7 +45,7 @@ export interface AccountPageProps {
   /** 菜单下方的额外区块（如主站的「记忆」）。进入设置中心「数据与团队」分组。 */
   extraSections?: ReactNode;
   /**
-   * 未登录时点「登录」的回调。**不传时就地打开共享 AuthDialog**，
+   * 未登录时点「登录」的回调。**不传时就地内嵌共享 AuthPanel**，
    * 绝不跳首页——传入自定义实现时也不得退化成跳转。
    */
   onSignInClick?: () => void;

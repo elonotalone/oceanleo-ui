@@ -590,6 +590,8 @@ const { AccountPage } = await import(
     "./PluginsPage": stubComponent("PluginsPage", "pane-plugins"),
     "./settings/personalization/PersonalizationSection": stubComponent("PersonalizationSection", "pane-personalization"),
     "./settings/mail/MailSection": stubComponent("MailSection", "pane-mail"),
+    "./settings/sections/MessagesSection": stubComponent("MessagesSection", "pane-messages"),
+    "./sections/MessagesSection": stubComponent("MessagesSection", "pane-messages"),
   })
 );
 

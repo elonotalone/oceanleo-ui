@@ -8,6 +8,7 @@ export const SETTINGS_BUILTIN_TABS = [
   "personalization",
   "billing",
   "bay",
+  "messages",
   "ai-models",
   "plugins",
   "mail",

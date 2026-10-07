@@ -256,3 +256,8 @@ test("设置导航有 bay 图标", () => {
   const text = readFileSync(join(REPO, "src", "pages", "settings", "SettingsNavIcons.tsx"), "utf8");
   assert.match(text, /\bbay:\s*\(/);
 });
+
+test("设置导航有 messages 图标", () => {
+  const text = readFileSync(join(REPO, "src", "pages", "settings", "SettingsNavIcons.tsx"), "utf8");
+  assert.match(text, /\bmessages:\s*\(/);
+});

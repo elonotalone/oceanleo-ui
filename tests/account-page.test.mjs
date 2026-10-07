@@ -290,6 +290,8 @@ const COMPONENT_STUBS = {
   "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
   "./settings/personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
   "./settings/mail/MailSection": paneStub("MailSection", "pane-mail"),
+  "./settings/sections/MessagesSection": paneStub("MessagesSection", "pane-messages"),
+  "./sections/MessagesSection": paneStub("MessagesSection", "pane-messages"),
   "../account/AccountHome": accountHomeStubUrl,
   "../account/SignInMethodsPage": signInMethodsStubUrl,
   "../account/LoginDevicesPage": loginDevicesStubUrl,

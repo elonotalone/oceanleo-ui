@@ -1,6 +1,6 @@
 "use client";
 
-// 消息浮层：圆角悬浮版面，标题行按下即拖（阈值与编辑栏相同），贴底时变矮而不是抹平圆角。
+// 消息浮层：圆角悬浮版面，顶栏按下即拖（阈值与编辑栏相同），贴底时变矮而不是抹平圆角。顶栏只留关闭。
 // 按键只在焦点落在浮层内时处理：Esc 关浮层，其余按键不再向文档冒泡。
 import {
   useCallback,
@@ -14,12 +14,7 @@ import {
 import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
 import { DOCK_MAX, DOCK_MIN, clampDockWidth, type MessagesLayoutKind } from "./host-state";
-import {
-  ImCloseIcon,
-  ImCollapseIcon,
-  ImExpandIcon,
-  ensureMessagesSurfaceStyles,
-} from "./messages-surface";
+import { ImCloseIcon, ensureMessagesSurfaceStyles } from "./messages-surface";
 import {
   MESSAGES_DEFAULT_HEIGHT_PX,
   MESSAGES_OVERLAY_RADIUS_PX,
@@ -37,10 +32,9 @@ export interface MessagesLayoutProps {
   onDockWidth: (width: number) => void;
   onOverlayOffset: (offset: OverlayOffset) => void;
   onClose: () => void;
-  onToggleExpand: () => void;
   overlayState: "open" | "closed";
   onExitComplete: () => void;
-  /** 左栏：收件箱 / 联系人 / 搜索 / 设置。 */
+  /** 左栏：聊天 / 联系人 / Bay。 */
   list: ReactNode;
   /** 右栏：当前会话；没有选中会话时为 null。 */
   detail: ReactNode | null;
@@ -70,7 +64,6 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     onDockWidth,
     onOverlayOffset,
     onClose,
-    onToggleExpand,
     overlayState,
     onExitComplete,
     list,
@@ -326,33 +319,19 @@ export function MessagesLayout(props: MessagesLayoutProps) {
       data-im-drag-handle
       onPointerDown={onHeaderPointerDown}
       onDragStart={(event) => event.preventDefault()}
-      className="flex h-12 shrink-0 cursor-grab select-none touch-none items-center justify-between gap-2 border-b border-black/10 px-3 active:cursor-grabbing dark:border-white/10"
+      className="flex h-12 shrink-0 cursor-grab select-none touch-none items-center justify-end gap-2 border-b border-black/10 px-3 active:cursor-grabbing dark:border-white/10"
     >
-      <div className="text-[13px] font-semibold tracking-tight">{tt("消息")}</div>
-      <div className="flex items-center gap-0.5">
-        {layout !== "mobile" ? (
-          <button
-            type="button"
-            data-im-no-drag
-            data-im-chrome-btn
-            onClick={onToggleExpand}
-            aria-label={layout === "full" ? tt("缩回右侧") : tt("放大到全屏")}
-            title={layout === "full" ? tt("缩回右侧") : tt("放大到全屏")}
-          >
-            {layout === "full" ? <ImCollapseIcon /> : <ImExpandIcon />}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          data-im-no-drag
-          data-im-chrome-btn
-          onClick={onClose}
-          aria-label={tt("关闭消息")}
-          title={tt("关闭消息")}
-        >
-          <ImCloseIcon />
-        </button>
-      </div>
+      <div className="min-h-[1px] min-w-0 flex-1" aria-hidden />
+      <button
+        type="button"
+        data-im-no-drag
+        data-im-chrome-btn
+        onClick={onClose}
+        aria-label={tt("关闭")}
+        title={tt("关闭")}
+      >
+        <ImCloseIcon />
+      </button>
     </div>
   );
 

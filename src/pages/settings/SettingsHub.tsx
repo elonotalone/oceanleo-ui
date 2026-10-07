@@ -13,6 +13,7 @@ import {
   isPasswordResetLanding,
 } from "../../lib/auth";
 import { formatMoney, normalizeCurrency, type LedgerCurrency } from "../../lib/money";
+import { currentDomainFamily } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { ApiPage } from "../ApiPage";
 import { AuthPanel } from "../AuthDialog";
@@ -26,7 +27,9 @@ import { GeneralSection } from "./sections/GeneralSection";
 import { AccountSection } from "./sections/AccountSection";
 import { BaySettingsSection } from "../../shell/bay/settings";
 import { bayEnabledHere } from "../../shell/bay/shell/bay-state";
+import { imEnabledFor } from "../../shell/messages/messages-family";
 import { BillingSection } from "./sections/BillingSection";
+import { MessagesSection } from "./sections/MessagesSection";
 import { OrgSection, type OrgPane } from "./sections/OrgSection";
 import { SettingsBackButton } from "./SettingsBackButton";
 import {
@@ -398,6 +401,16 @@ export function SettingsHub({
               group: "settings" as const,
               label: tt("OceanLeo Bay"),
               render: () => <BaySettingsSection />,
+            },
+          ]
+        : []),
+      ...(imEnabledFor(currentDomainFamily(), true)
+        ? [
+            {
+              id: "messages",
+              group: "settings" as const,
+              label: tt("消息"),
+              render: () => <MessagesSection />,
             },
           ]
         : []),

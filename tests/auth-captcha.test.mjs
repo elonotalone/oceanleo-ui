@@ -376,6 +376,7 @@ test("AuthDialog 把 captcha 上游错误映射成可重试文案", async () => 
       export async function listMfaFactors() { return { factors: [] }; }
       export async function challengeAndVerify() { return {}; }
       export function needsMfaChallenge() { return false; }
+      export const AUTH_STATE_EVENT = "oceanleo:auth-state";
     `),
   });
   const { authErrorCopy } = await import(url);

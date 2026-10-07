@@ -22,6 +22,8 @@ test("SettingsModal is a blurred body portal with close and focus handling", () 
   assert.match(modal, /onPointerDown/);
   assert.match(modal, /fromBackdrop && event\.target === event\.currentTarget/);
   assert.match(modal, /✕/);
+  assert.match(modal, /closeMessages\(\)/);
+  assert.match(modal, /closeBayOverlay\(\)/);
 });
 
 test("SettingsHub keeps page variant and uses callback tabs in modal variant", () => {

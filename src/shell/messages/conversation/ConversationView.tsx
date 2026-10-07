@@ -7,7 +7,8 @@ import { messagesApi } from "../../../lib/im/messages-api";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
-import { ImBackIcon, ImInfoIcon } from "../messages-surface";
+import { ImBackIcon, ImInfoIcon, ImSearchIcon } from "../messages-surface";
+import { SearchView } from "../search/SearchView";
 import { ProfileCard } from "../people/ProfileCard";
 import { useImEvent, useImResync, usePresence } from "../realtime/hooks";
 import { ReportDialog } from "../report/ReportDialog";
@@ -148,6 +149,7 @@ function ConversationBody(props: ConversationViewProps & {
   const [threadRoot, setThreadRoot] = useState<ImMessage | null>(null);
   const [reporting, setReporting] = useState<ImMessage | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
   const [unreadAfterSeq, setUnreadAfterSeq] = useState<number | null>(null);
   const unreadFrozen = useRef(false);
@@ -312,6 +314,16 @@ function ConversationBody(props: ConversationViewProps & {
               <div className="text-[12px] text-neutral-400">{tt("{n} 位成员", { n: conversation.member_count })}</div>
             ) : null}
           </div>
+          <button
+            type="button"
+            data-im-chrome-btn
+            onClick={() => setSearchOpen((open) => !open)}
+            aria-label={tt("搜索消息")}
+            title={tt("搜索消息")}
+            aria-pressed={searchOpen}
+          >
+            <ImSearchIcon />
+          </button>
           {onOpenInfo ? (
             <button type="button" data-im-chrome-btn onClick={onOpenInfo} aria-label={tt("详情")} title={tt("详情")}>
               <ImInfoIcon />
@@ -324,20 +336,32 @@ function ConversationBody(props: ConversationViewProps & {
           onJump={(message) => jumpToMessage(message.id, message.seq)}
           onUnpin={(message) => void store.togglePin(message.id, true)}
         />
-        <MessageList
-          store={store}
-          snapshot={snapshot}
-          profiles={profiles}
-          conversation={conversation}
-          viewerId={viewerId}
-          isAdmin={Boolean(isAdmin)}
-          unreadAfterSeq={unreadAfterSeq}
-          highlightSeq={highlightSeq}
-          handlers={handlers}
-          onReachBottom={reportRead}
-          scrollToMessageId={scrollTarget}
-        />
-        <TypingLine names={typing.map((id) => nameOf(id))} />
+        {searchOpen ? (
+          <SearchView
+            conversationId={conversationId}
+            onOpenResult={(_id, seq) => {
+              setSearchOpen(false);
+              openMessages({ conversationId, seq });
+            }}
+          />
+        ) : (
+          <>
+            <MessageList
+              store={store}
+              snapshot={snapshot}
+              profiles={profiles}
+              conversation={conversation}
+              viewerId={viewerId}
+              isAdmin={Boolean(isAdmin)}
+              unreadAfterSeq={unreadAfterSeq}
+              highlightSeq={highlightSeq}
+              handlers={handlers}
+              onReachBottom={reportRead}
+              scrollToMessageId={scrollTarget}
+            />
+            <TypingLine names={typing.map((id) => nameOf(id))} />
+          </>
+        )}
         <Composer
           store={store}
           conversationId={conversationId}

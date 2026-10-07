@@ -180,6 +180,7 @@ const STUBS = {
   "./mail/MailSection": marker("MailSection", "pane-mail"),
   "./sections/AccountSection": marker("AccountSection", "pane-account"),
   "./sections/BillingSection": marker("BillingSection", "pane-billing"),
+  "./sections/MessagesSection": marker("MessagesSection", "pane-messages"),
   "./sections/UsageDetailsSection": marker("UsageDetailsSection", "pane-usage-details"),
   "./sections/TopUpSection": marker("TopUpSection", "pane-topup"),
 };

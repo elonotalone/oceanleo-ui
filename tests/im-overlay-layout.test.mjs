@@ -29,6 +29,14 @@ test("MessagesLayout：层级用行内 zIndex，不靠 Tailwind 任意值（消�
   assert.match(layout, /isolation:\s*["']isolate["']/);
 });
 
+test("MessagesLayout：顶栏没有「消息」两字，只留拖和关", () => {
+  const layout = src("shell/messages/MessagesLayout.tsx");
+  assert.doesNotMatch(layout, /tracking-tight">\{tt\("消息"\)\}/);
+  assert.doesNotMatch(layout, /ImExpandIcon|ImCollapseIcon|onToggleExpand|放大到全屏/);
+  assert.match(layout, /data-im-drag-handle/);
+  assert.match(layout, /ImCloseIcon/);
+});
+
 test("MessagesLayout：标题行按编辑栏的按下即拖；关闭/放大键不拖", () => {
   const layout = src("shell/messages/MessagesLayout.tsx");
   assert.match(layout, /data-im-drag-handle/);
@@ -65,7 +73,7 @@ test("MessagesNavIcon：不用 SVG url(#id) 渐变，View Transition 复制 DOM 
   assert.doesNotMatch(icon, /id="lgi-messages"/);
 });
 
-test("MessagesHost：切页关掉浮层；四个视图是图标页签，聊天页才有新建", () => {
+test("MessagesHost：切页关掉浮层；三个视图是图标页签，顺序聊天、联系人、Bay；聊天页才有新建和搜索", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /usePathname/);
   assert.match(host, /if \(hostState\(\)\.getSnapshot\(\)\.open\) closeMessages\(\)/);
@@ -83,15 +91,22 @@ test("MessagesHost：切页关掉浮层；四个视图是图标页签，聊天�
   assert.doesNotMatch(host, /onSearch=\{\(\) => setView\("search"\)\}/);
   assert.doesNotMatch(host, /onPeople=\{\(\) => setView\("people"\)\}/);
   assert.doesNotMatch(host, /onSettings=\{\(\) => setView\("settings"\)\}/);
+  assert.doesNotMatch(host, /id: "settings", label: "设置"/);
+  assert.doesNotMatch(host, /SettingsView/);
+  assert.doesNotMatch(host, /id: "search"/);
+  const tabs = host.slice(host.indexOf("const tabs"), host.indexOf("let list"));
+  assert.match(tabs, /id: "inbox"[\s\S]*id: "people"[\s\S]*id: "bay"/);
+  assert.equal(tabs.indexOf('id: "inbox"') < tabs.indexOf('id: "people"'), true);
+  assert.equal(tabs.indexOf('id: "people"') < tabs.indexOf('id: "bay"'), true);
 
   const inbox = src("shell/messages/Inbox.tsx");
   assert.match(inbox, /onNew/);
   assert.match(inbox, /新建聊天/);
   assert.match(inbox, /ImPlusIcon/);
-  assert.doesNotMatch(inbox, /onSearch/);
+  assert.match(inbox, /搜索消息/);
+  assert.match(inbox, /SearchView/);
   assert.doesNotMatch(inbox, /onPeople/);
   assert.doesNotMatch(inbox, /onSettings/);
-  assert.doesNotMatch(inbox, /搜索消息/);
   assert.doesNotMatch(inbox, /消息设置/);
 
   const settings = src("shell/messages/SettingsView.tsx");
@@ -100,6 +115,14 @@ test("MessagesHost：切页关掉浮层；四个视图是图标页签，聊天�
 
   const people = src("shell/messages/people/PeopleView.tsx");
   assert.doesNotMatch(people, /tt\("通讯录"\)/);
+  assert.doesNotMatch(people, /SearchView/);
+
+  const conversation = src("shell/messages/conversation/ConversationView.tsx");
+  assert.match(conversation, /ImSearchIcon/);
+  assert.match(conversation, /SearchView/);
+
+  const bay = src("shell/bay/shell/BayView.tsx");
+  assert.doesNotMatch(bay, /from "\.\.\/messages\/search\/SearchView"|from "\.\/search\/SearchView"/);
 });
 
 test("MessagesLayout：开窗从左下长出来，进会话是推入，关掉会收走", () => {
@@ -125,6 +148,9 @@ test("MessagesLayout：开窗从左下长出来，进会话是推入，关掉会
 test("通知铃铛在消息可用时打开消息浮层，不另开通知面板", () => {
   const bell = src("shell/account/NotificationBell.tsx");
   assert.match(bell, /openMessages\(\)/);
+  assert.match(bell, /openBay\(\{ kind: "feed" \}\)/);
   assert.match(bell, /if \(imOn\) \{/);
-  assert.match(bell, /open=\{open && !imOn\}/);
+  assert.match(bell, /if \(bayOn\) \{/);
+  assert.match(bell, /open=\{open && !messagesEntry\}/);
+  assert.match(bell, /aria-label=\{messagesEntry \? tt\("消息"\) : tt\("通知"\)\}/);
 });
