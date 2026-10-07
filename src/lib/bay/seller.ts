@@ -66,12 +66,13 @@ export interface BaySellerProfile {
   categories: string[];
   skills: string[];
   languages: string[];
-  /** 后端暂未保存时区时为 undefined（见 W08 交付「没做完」）。 */
-  timezone?: string | null;
   availability?: string;
   engagement_kinds?: string[];
   hourly_rate_fen?: number | null;
   min_budget_fen?: number | null;
+  offplatform_delivery_opt_in?: boolean;
+  /** 账本币种（网关 `currency.ledger_currency()`），价格都按它的最小单位记。 */
+  currency?: string;
   published: boolean;
   moderation_hidden?: boolean;
   rating_avg?: number | null;
@@ -92,12 +93,39 @@ export interface BaySellerProfileInput {
   categories?: string[];
   skills?: string[];
   languages?: string[];
-  timezone?: string | null;
   availability?: string;
   engagement_kinds?: string[];
   hourly_rate_fen?: number | null;
   min_budget_fen?: number | null;
+  offplatform_delivery_opt_in?: boolean;
   published?: boolean;
+}
+
+const PROFILE_BODY_KEYS = [
+  "handle",
+  "display_name",
+  "avatar_url",
+  "headline",
+  "bio",
+  "categories",
+  "skills",
+  "languages",
+  "availability",
+  "engagement_kinds",
+  "hourly_rate_fen",
+  "min_budget_fen",
+  "offplatform_delivery_opt_in",
+  "published",
+] as const satisfies readonly (keyof BaySellerProfileInput)[];
+
+/** `PUT /me` 整份覆盖且只认这些字段：别的键一律不发，没带的会被网关清成默认值，调用方从已存资料带全。 */
+export function sellerProfileBody(input: BaySellerProfileInput): BaySellerProfileInput {
+  const source = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const body: Record<string, unknown> = {};
+  for (const key of PROFILE_BODY_KEYS) {
+    if (source[key] !== undefined) body[key] = source[key];
+  }
+  return body as unknown as BaySellerProfileInput;
 }
 
 export interface BayOwnService {
@@ -263,7 +291,7 @@ export function getSellerProfile(): Promise<{ profile: BaySellerProfile | null }
 }
 
 export function saveSellerProfile(input: BaySellerProfileInput): Promise<{ profile: BaySellerProfile }> {
-  return bayPut<{ profile: BaySellerProfile }>("/v1/talent/me", input);
+  return bayPut<{ profile: BaySellerProfile }>("/v1/talent/me", sellerProfileBody(input));
 }
 
 export function listMyServices(): Promise<{ items: BayOwnService[] }> {
@@ -288,8 +316,39 @@ export function deleteMyService(serviceId: string): Promise<{ ok: boolean }> {
   return bayDelete<{ ok: boolean }>(servicePath(serviceId));
 }
 
-export function publishMyService(serviceId: string): Promise<{ service: BayOwnService; checks?: string[] }> {
-  return bayPost<{ service: BayOwnService; checks?: string[] }>(`${servicePath(serviceId)}/publish`);
+export interface BayServicePricing {
+  service_id: string;
+  category: string;
+  pricing_model: BayPricingModel | null;
+  required_fields: BayFieldSpec[];
+  values: BayFieldValues;
+  missing: string[];
+}
+
+export interface BayPricingInput {
+  pricing_model: string;
+  fields: BayFieldValues;
+}
+
+/** 计费方式与它要求的交付约定（品类字段 + 计费方式字段）；发布闸门按这一份核对。 */
+export function getServicePricing(serviceId: string): Promise<BayServicePricing> {
+  return bayGet<BayServicePricing>(`${servicePath(serviceId)}/pricing`);
+}
+
+export function saveServicePricing(serviceId: string, input: BayPricingInput): Promise<BayServicePricing> {
+  return bayPut<BayServicePricing>(`${servicePath(serviceId)}/pricing`, input);
+}
+
+export interface BayPublishResult {
+  service: BayOwnService;
+  checks?: string[];
+  moderation_hidden?: boolean;
+  moderation_message?: string;
+}
+
+/** 上架。带上计费方式与交付约定时网关先存再判，一次请求发完。 */
+export function publishMyService(serviceId: string, pricing?: BayPricingInput): Promise<BayPublishResult> {
+  return bayPost<BayPublishResult>(`${servicePath(serviceId)}/publish`, pricing);
 }
 
 /** 暂停（后端把状态改成 paused，买家目录里不再出现，草稿与数据都保留）。 */
@@ -469,6 +528,45 @@ export function listRecentThreads(): Promise<{ threads: BaySellerThread[] }> {
   return bayGet<{ threads: BaySellerThread[] }>("/v1/talent/threads?limit=20");
 }
 
+/** 我名下被处置的内容（被隐藏的原因、能不能反通知/申诉）。申诉流程本身在门户「内容处理记录」页。 */
+export interface BayContentCase {
+  id: string;
+  target_kind: string;
+  target_ref: string;
+  status: string;
+  reason: string;
+  detail: string;
+  hidden: boolean;
+  decision_note: string;
+  actions: string[];
+}
+
+export async function listMyContentCases(): Promise<BayContentCase[]> {
+  const body = await bayGet<{ cases?: unknown[] }>("/v1/moderation/my-cases");
+  const rows = Array.isArray(body?.cases) ? body.cases : [];
+  return rows
+    .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+    .map((row) => ({
+      id: String(row.id || ""),
+      target_kind: String(row.target_kind || ""),
+      target_ref: String(row.target_ref || ""),
+      status: String(row.status || ""),
+      reason: typeof row.reason === "string" ? row.reason : "",
+      detail: typeof row.detail === "string" ? row.detail : "",
+      hidden: row.hidden === true,
+      decision_note: typeof row.decision_note === "string" ? row.decision_note : "",
+      actions: Array.isArray(row.actions) ? row.actions.filter((a): a is string => typeof a === "string") : [],
+    }))
+    .filter((row) => row.id);
+}
+
+export type BayCaseTarget = "talent_service" | "talent_profile" | "talent_showcase";
+
+/** 某条内容当前生效的处置（仍在隐藏中的那一条）。 */
+export function hiddenCaseFor(cases: BayContentCase[] | null | undefined, kind: BayCaseTarget, ref?: string): BayContentCase | null {
+  return (cases || []).find((row) => row.hidden && row.target_kind === kind && (ref === undefined || row.target_ref === ref)) || null;
+}
+
 // ---- 计算 -------------------------------------------------------------------------
 
 export type BayServiceGroup = "hidden" | "draft" | "published" | "paused";
@@ -509,13 +607,20 @@ export function wizardCategories(
     .sort((a, b) => (a.position || 0) - (b.position || 0));
 }
 
-/** 卖家概况：进行中的订单数（等我交付/等对方验收这类还没结束的）。 */
+/** 卖家概况：进行中的订单数（已签约未结束：进行中、已交付待验收、争议中）。 */
 export function activeOrderCount(stats: Pick<BaySellerStats, "orders_by_status" | "pending_orders"> | null | undefined): number {
   if (!stats) return 0;
-  const byStatus = stats.orders_by_status || {};
-  const active = ["active", "in_progress", "delivered", "revision", "pending_payment", "accepted_pending"];
-  const counted = active.reduce((sum, key) => sum + Math.max(0, Number(byStatus[key] || 0)), 0);
-  return counted || Math.max(0, Number(stats.pending_orders || 0));
+  const byStatus = stats.orders_by_status;
+  if (!byStatus || typeof byStatus !== "object" || !Object.keys(byStatus).length) {
+    return Math.max(0, Number(stats.pending_orders || 0));
+  }
+  return ["active", "delivered", "disputed"].reduce((sum, key) => sum + Math.max(0, Number(byStatus[key] || 0)), 0);
+}
+
+/** 卖家概况：等我接单（买家下单或发起协商、还没签约）的数量。 */
+export function awaitingAcceptCount(stats: Pick<BaySellerStats, "orders_by_status"> | null | undefined): number {
+  const byStatus = stats?.orders_by_status || {};
+  return ["draft", "negotiating"].reduce((sum, key) => sum + Math.max(0, Number(byStatus[key] || 0)), 0);
 }
 
 /** 待回复：最后一条消息不是我发的、且有未读的会话数。 */

@@ -1,8 +1,5 @@
 export { MyServicesPane } from "./MyServicesPane";
-
-export function ServiceEditorPane(_props: import("../shell/bay-state").BayPaneProps): null {
-  return null;
-}
+export { ServiceEditorPane } from "./ServiceEditorPane";
 
 export function BaySellerProfileSection(): null {
   return null;

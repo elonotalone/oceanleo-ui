@@ -90,6 +90,29 @@ test("更新服务：PUT 全量载荷，不带 posted_site；后端拒绝理由�
   await assert.rejects(seller.saveSellerProfile({ handle: "a", display_name: "A" }), /已被占用/);
 });
 
+test("资料保存：PUT /me 只发网关认的字段，不发 timezone（仲裁 #10）", async () => {
+  reset(null, () => ({ ok: true, data: { profile: { handle: "leo" } } }));
+  await seller.saveSellerProfile({
+    handle: "leo",
+    display_name: "Leo",
+    headline: "做品牌视觉",
+    bio: "",
+    skills: ["Figma"],
+    languages: ["中文"],
+    availability: "open",
+    offplatform_delivery_opt_in: true,
+    published: true,
+    timezone: "Asia/Shanghai",
+    rating_avg: 4.9,
+  });
+  const call = globalThis.__baySellerCalls[0];
+  assert.equal(call.method, "PUT");
+  assert.equal(call.path, "/v1/talent/me");
+  assert.equal("timezone" in call.body, false);
+  assert.equal("rating_avg" in call.body, false, "统计字段不回写");
+  assert.deepEqual(Object.keys(call.body).sort(), ["availability", "bio", "display_name", "handle", "headline", "languages", "offplatform_delivery_opt_in", "published", "skills"]);
+});
+
 test("档位替换、暂停、上架、删除走对的接口", async () => {
   reset(() => ({}), () => ({ ok: true, data: { items: [] } }));
   await seller.replaceServiceTiers("s1", [{ tier: "basic", title: "基础版", description: "", price_fen: 100, delivery_days: 3, revisions: 1, features: [], enabled: true }]);
@@ -185,6 +208,8 @@ test("作品集：加入用 pickLibraryWork 的返回（task id），排序与�
 
 test("卖家概况：进行中订单、待回复", () => {
   assert.equal(seller.activeOrderCount({ orders_by_status: { active: 2, delivered: 1, completed: 9 }, pending_orders: 0 }), 3);
+  assert.equal(seller.activeOrderCount({ orders_by_status: { draft: 2, negotiating: 1, active: 0 }, pending_orders: 3 }), 0, "没签约的不算进行中");
+  assert.equal(seller.awaitingAcceptCount({ orders_by_status: { draft: 2, negotiating: 1, active: 4 } }), 3);
   assert.equal(seller.activeOrderCount({ orders_by_status: {}, pending_orders: 4 }), 4);
   assert.equal(seller.activeOrderCount(null), 0);
   assert.equal(seller.awaitingReplyCount([{ id: "t1", unread_count: 2 }, { id: "t2", unread_count: 0, last_message: { user_id: "me" } }, { id: "t3", last_message: { user_id: "buyer" } }], "me"), 2);
