@@ -2,6 +2,7 @@
 // key = 简体中文原文。基础词典已有的（加载更多 / 我的 / 登录 / 类目 / 返回 / 重试 / 全部 / 服务 / 我的订单 / 设置 / 其他 /
 // 音频与音乐）不在这里重复；别的分表已有的几条（消息 / 聊天 / 正在加载… / 报价 / 需求 / 清除筛选 / 加载失败 / 答疑）照抄原译文。
 // 「OceanLeo Bay」「Bay」是品牌名，各语种原样保留。
+// 2026-10-07 版式重做：新增「在整页打开」；「交易会话」照抄 im-talent-copy 的译文（/bay 页的页头要用）。
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
@@ -55,6 +56,8 @@ const SOURCE = {
   catMeeting: "会议与纪要",
   catTravel: "行程规划",
   siteAitools: "AI 工具导航",
+  openPage: "在整页打开",
+  dealConversation: "交易会话",
 } as const;
 
 export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
@@ -109,6 +112,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "會議與紀要",
     catTravel: "行程規劃",
     siteAitools: "AI 工具導航",
+    openPage: "在整頁開啟",
+    dealConversation: "交易會話",
   },
   en: {
     emptyFeed: "Nothing in Bay yet. Post the first request or service.",
@@ -161,6 +166,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Meetings & notes",
     catTravel: "Trip planning",
     siteAitools: "AI Tools Directory",
+    openPage: "Open full page",
+    dealConversation: "Deal conversation",
   },
   ja: {
     emptyFeed: "Bay にはまだ何もありません。最初の依頼やサービスを投稿しましょう",
@@ -213,6 +220,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "会議・議事録",
     catTravel: "旅行プラン",
     siteAitools: "AI ツールナビ",
+    openPage: "ページ全体で開く",
+    dealConversation: "取引の会話",
   },
   ko: {
     emptyFeed: "Bay에 아직 아무것도 없어요. 첫 요청이나 서비스를 올려 보세요",
@@ -265,6 +274,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "회의·회의록",
     catTravel: "여행 일정",
     siteAitools: "AI 도구 네비게이션",
+    openPage: "전체 페이지로 열기",
+    dealConversation: "거래 대화",
   },
   fr: {
     emptyFeed: "Rien dans Bay pour l'instant. Publiez la première demande ou le premier service.",
@@ -317,6 +328,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Réunions et comptes rendus",
     catTravel: "Planification de voyage",
     siteAitools: "Annuaire d’outils IA",
+    openPage: "Ouvrir en pleine page",
+    dealConversation: "Conversation de transaction",
   },
   de: {
     emptyFeed: "In Bay gibt es noch nichts. Veröffentliche die erste Anfrage oder den ersten Service.",
@@ -369,6 +382,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Meetings & Protokolle",
     catTravel: "Reiseplanung",
     siteAitools: "KI-Tool-Verzeichnis",
+    openPage: "Als ganze Seite öffnen",
+    dealConversation: "Handelsunterhaltung",
   },
   it: {
     emptyFeed: "Bay è ancora vuoto. Pubblica la prima richiesta o il primo servizio.",
@@ -421,6 +436,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Riunioni e verbali",
     catTravel: "Pianificazione viaggi",
     siteAitools: "Directory di strumenti IA",
+    openPage: "Apri a pagina intera",
+    dealConversation: "Conversazione di trattativa",
   },
   es: {
     emptyFeed: "Todavía no hay nada en Bay. Publica el primer encargo o servicio.",
@@ -473,6 +490,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Reuniones y actas",
     catTravel: "Planificación de viajes",
     siteAitools: "Directorio de herramientas de IA",
+    openPage: "Abrir en página completa",
+    dealConversation: "Conversación de trato",
   },
   "es-419": {
     emptyFeed: "Todavía no hay nada en Bay. Publica el primer pedido o servicio.",
@@ -525,6 +544,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Reuniones y actas",
     catTravel: "Planificación de viajes",
     siteAitools: "Directorio de herramientas de IA",
+    openPage: "Abrir en página completa",
+    dealConversation: "Conversación de trato",
   },
   "pt-BR": {
     emptyFeed: "Ainda não há nada no Bay. Publique o primeiro pedido ou serviço.",
@@ -577,6 +598,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Reuniões e atas",
     catTravel: "Planejamento de viagens",
     siteAitools: "Diretório de ferramentas de IA",
+    openPage: "Abrir em página inteira",
+    dealConversation: "Conversa de negociação",
   },
   "pt-PT": {
     emptyFeed: "Ainda não há nada no Bay. Publique o primeiro pedido ou serviço.",
@@ -629,6 +652,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Reuniões e atas",
     catTravel: "Planeamento de viagens",
     siteAitools: "Diretório de ferramentas de IA",
+    openPage: "Abrir em página inteira",
+    dealConversation: "Conversa de negociação",
   },
   ar: {
     emptyFeed: "لا يوجد شيء في Bay بعد. انشر أول طلب أو خدمة.",
@@ -681,6 +706,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "الاجتماعات والمحاضر",
     catTravel: "تخطيط الرحلات",
     siteAitools: "دليل أدوات الذكاء الاصطناعي",
+    openPage: "فتح في صفحة كاملة",
+    dealConversation: "محادثة صفقة",
   },
   hi: {
     emptyFeed: "Bay में अभी कुछ नहीं है। पहली माँग या सेवा पोस्ट करें।",
@@ -733,6 +760,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "मीटिंग और नोट्स",
     catTravel: "यात्रा योजना",
     siteAitools: "AI टूल्स नेविगेशन",
+    openPage: "पूरे पेज में खोलें",
+    dealConversation: "डील की बातचीत",
   },
   th: {
     emptyFeed: "ยังไม่มีอะไรใน Bay โพสต์คำขอหรือบริการแรกเลย",
@@ -785,6 +814,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "การประชุมและบันทึก",
     catTravel: "วางแผนการเดินทาง",
     siteAitools: "ไดเร็กทอรีเครื่องมือ AI",
+    openPage: "เปิดแบบเต็มหน้า",
+    dealConversation: "การสนทนาเรื่องดีล",
   },
   tr: {
     emptyFeed: "Bay'de henüz bir şey yok. İlk talebi ya da hizmeti sen yayınla.",
@@ -837,6 +868,8 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Toplantı ve tutanak",
     catTravel: "Seyahat planlama",
     siteAitools: "AI araç dizini",
+    openPage: "Tam sayfada aç",
+    dealConversation: "İşlem sohbeti",
   },
   vi: {
     emptyFeed: "Bay chưa có nội dung nào. Hãy đăng nhu cầu hoặc dịch vụ đầu tiên.",
@@ -889,5 +922,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     catMeeting: "Họp & biên bản",
     catTravel: "Lên lịch trình",
     siteAitools: "Danh bạ công cụ AI",
+    openPage: "Mở toàn trang",
+    dealConversation: "Cuộc trò chuyện giao dịch",
   },
 });

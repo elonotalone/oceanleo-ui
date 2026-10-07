@@ -80,7 +80,7 @@ function MyHelpRow({ item }: { item: BayHandoff }) {
       <button type="button" className={ROW} onClick={() => openBay({ kind: "help", id: item.id })} data-bay-my-help-row={item.id}>
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">
-            <span className="line-clamp-2 block text-[14px] font-semibold text-stone-800">{item.brief}</span>
+            <span className="line-clamp-2 text-[14px] font-semibold text-stone-800">{item.brief}</span>
             <span className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-stone-500">
               <span>{handoffStateText(tt, item.state)}</span>
               {category ? <span>{category}</span> : null}

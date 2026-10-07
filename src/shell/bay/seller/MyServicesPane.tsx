@@ -132,11 +132,14 @@ export function MyServicesPane(_props: BayPaneProps) {
         </button>
       </div>
 
-      <div className="flex justify-end">
-        <button type="button" onClick={() => openBay({ kind: "service-editor" })} className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
-          {tt("发布服务")}
-        </button>
-      </div>
+      {/* 一个服务都没有时，下面的空状态里已经有「发布第一个服务」，这里不再放一个。 */}
+      {empty ? null : (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => openBay({ kind: "service-editor" })} data-bay-new-service className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
+            {tt("发布服务")}
+          </button>
+        </div>
+      )}
 
       {empty ? (
         <div data-bay-empty="services" className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center">
@@ -202,7 +205,7 @@ function ServiceRow({ service }: { service: BayOwnService }) {
       className="block w-full border-b border-stone-100 px-1 py-2.5 text-left hover:bg-stone-50"
     >
       <span className="block truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
-      {service.summary ? <span className="mt-0.5 line-clamp-2 block text-[12px] text-stone-500">{service.summary}</span> : null}
+      {service.summary ? <span className="mt-0.5 line-clamp-2 text-[12px] text-stone-500">{service.summary}</span> : null}
       <span className="mt-1 flex flex-wrap gap-x-2 text-[12px] text-stone-500">
         {service.order_count ? <span>{tt("{n} 份订单", { n: service.order_count })}</span> : null}
         {service.view_count ? <span>{tt("{n} 次浏览", { n: service.view_count })}</span> : null}

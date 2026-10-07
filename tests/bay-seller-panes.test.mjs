@@ -190,6 +190,7 @@ test("我的服务：概况、分组、空状态入口；没有返回栏；钱�
   assert.deepEqual(globalThis.__baySettings, ["money"]);
   await view.click('[data-bay-own-service="s1"]');
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "service-editor", serviceId: "s1" });
+    assert.equal(view.host.querySelectorAll("[data-bay-new-service]").length, 1, "有服务时右上角有一个「发布服务」");
   view.unmount();
 });
 
@@ -202,6 +203,10 @@ test("我的服务：空状态引导发布第一个服务", async () => {
   };
   const view = await mount(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "services" }, layout: "page", siteKey: "design" }));
   assert.match(view.host.innerHTML, /data-bay-empty="services"/);
+  // 空状态里已经有「发布第一个服务」，右上角那个「发布服务」不再同时出现。
+  assert.equal(view.host.querySelectorAll("[data-bay-new-service]").length, 0);
+  assert.equal((view.host.innerHTML.match(/发布第一个服务/g) || []).length, 1);
+  assert.equal((view.host.innerHTML.match(/>发布服务</g) || []).length, 0);
   view.unmount();
 });
 

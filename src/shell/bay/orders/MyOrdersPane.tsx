@@ -135,8 +135,8 @@ export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps)
             data-selected={group === key ? "true" : "false"}
             onClick={() => setGroup(key)}
             className={
-              "rounded-full px-2.5 py-1 text-[12px] " +
-              (group === key ? "bg-sky-700 text-white" : "border border-neutral-200 text-neutral-600 hover:bg-neutral-50")
+              "rounded-full border px-2.5 py-1 text-[12px] " +
+              (group === key ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 text-neutral-600 hover:bg-neutral-50")
             }
           >
             {groupLabel(tt, key)}

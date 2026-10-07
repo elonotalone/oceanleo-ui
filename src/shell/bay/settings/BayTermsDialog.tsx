@@ -171,7 +171,7 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
                 onClick={() => void accept()}
                 disabled={busy !== null}
                 data-bay-terms-accept=""
-                className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-wait disabled:opacity-60"
+                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-60"
               >
                 {busy === "accept" ? tt("正在记录…") : tt("同意并继续")}
               </button>

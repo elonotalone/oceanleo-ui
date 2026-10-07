@@ -73,7 +73,7 @@ export function BayTermsGate({ scope, children }: { scope: "buyer" | "seller"; c
                 setError(result.error || "没能记下你的同意，请稍后重试");
               })();
             }}
-            className="rounded-xl bg-sky-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-sky-500 disabled:opacity-60"
+            className="rounded-xl bg-neutral-900 px-4 py-2 text-[13px] font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
           >
             {busy ? tt("正在记录…") : tt("同意并继续")}
           </button>

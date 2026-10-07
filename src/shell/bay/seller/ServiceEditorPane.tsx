@@ -721,7 +721,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         </SellerNotice>
       ) : null}
 
-      <nav aria-label={tt("发布步骤")} className="flex gap-1.5 overflow-x-auto pb-1" data-bay-steps>
+      <nav aria-label={tt("发布步骤")} className="flex flex-wrap gap-1.5" data-bay-steps>
         {steps.map((id, index) => (
           <button
             key={id}

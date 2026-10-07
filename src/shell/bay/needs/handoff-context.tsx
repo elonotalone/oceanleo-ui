@@ -155,7 +155,7 @@ export function HandoffContextPicker({
                   <span className="shrink-0 rounded bg-stone-200/70 px-1 text-[10px] text-stone-600">{tt("产物")}</span>
                 ) : null}
               </span>
-              <span className="mt-0.5 line-clamp-2 block text-[12px] leading-4 text-stone-500">{item.preview}</span>
+              <span className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-stone-500">{item.preview}</span>
             </span>
           </label>
         );

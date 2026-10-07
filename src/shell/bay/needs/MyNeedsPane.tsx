@@ -79,7 +79,7 @@ function MyNeedRow({ item }: { item: BayDemand }) {
       <button type="button" className={ROW} onClick={() => openBay({ kind: "demand", id: item.id })} data-bay-my-need-row={item.id}>
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">
-            <span className="line-clamp-2 block text-[14px] font-semibold text-stone-800">{item.title}</span>
+            <span className="line-clamp-2 text-[14px] font-semibold text-stone-800">{item.title}</span>
             <span className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-stone-500">
               <span>{demandStatusText(tt, item.status)}</span>
               {category ? <span>{category}</span> : null}

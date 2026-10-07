@@ -317,6 +317,11 @@ export function useBayHasDetail(): boolean {
   return useSyncExternalStore(subscribe, () => store.stack.length > 0, () => false);
 }
 
+/** 当前页面是不是 `/bay` 页本身（BayPage 已挂载）。浮窗据此收起「在整页打开」。 */
+export function useBayPageMounted(): boolean {
+  return useSyncExternalStore(subscribe, () => store.pageCount > 0, () => false);
+}
+
 export function useBayFilter(): BayFeedFilter {
   return useSyncExternalStore(subscribe, () => store.filter, () => store.filter);
 }
@@ -498,6 +503,26 @@ export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
 
 let pageOff: (() => void) | null = null;
 
+/**
+ * 在 `/bay` 页上点了一个仍然指向本页的链接（侧栏的「OceanLeo Bay」、别处的 `/bay?bay=…`）：
+ * 站内跳转只换地址、不重挂页面，所以这里按链接带的目标换页内详情；没带目标就回信息流。
+ */
+function onSamePageLinkClick(event: MouseEvent): void {
+  const w = win();
+  if (!w || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const origin = event.target as { closest?: (selector: string) => Element | null } | null;
+  const anchor = origin && typeof origin.closest === "function" ? origin.closest("a[href]") : null;
+  if (!anchor || anchor.getAttribute("target") === "_blank" || anchor.hasAttribute("download")) return;
+  let url: URL;
+  try {
+    url = new URL(anchor.getAttribute("href") || "", w.location.href);
+  } catch {
+    return;
+  }
+  if (url.origin !== w.location.origin || url.pathname !== w.location.pathname) return;
+  applyPageTarget(parseBayDeepLink(url.search));
+}
+
 /** BayPage 挂载时调；返回卸载函数。页上 `?bay=` 驱动页内详情，前进/后退跟着走。 */
 export function registerBayPage(): () => void {
   const w = win();
@@ -506,7 +531,12 @@ export function registerBayPage(): () => void {
     applyPageTarget(parseBayDeepLink(w.location.search));
     const onPop = () => applyPageTarget(parseBayDeepLink(w.location.search));
     w.addEventListener("popstate", onPop);
-    pageOff = () => w.removeEventListener("popstate", onPop);
+    const doc = w.document;
+    doc?.addEventListener("click", onSamePageLinkClick, true);
+    pageOff = () => {
+      w.removeEventListener("popstate", onPop);
+      doc?.removeEventListener("click", onSamePageLinkClick, true);
+    };
   }
   let released = false;
   return () => {

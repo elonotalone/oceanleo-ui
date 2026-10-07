@@ -86,7 +86,7 @@ function MyProposalRow({ item }: { item: BayProposal }) {
       >
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">
-            <span className="line-clamp-2 block text-[14px] font-semibold text-stone-800">
+            <span className="line-clamp-2 text-[14px] font-semibold text-stone-800">
               {demand?.title || tt("一条需求")}
             </span>
             <span className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-stone-500">

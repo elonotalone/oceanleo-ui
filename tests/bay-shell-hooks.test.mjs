@@ -10,7 +10,7 @@ const src = (rel) => readFileSync(join(REPO, "src", rel), "utf8");
 
 test("host-state：MessagesView 与深链认 bay", () => {
   const text = src("shell/messages/host-state.ts");
-  assert.match(text, /export type MessagesView = "[^"]+" \| "bay"/);
+  assert.match(text, /export type MessagesView = (?:"[^"]+" \| )+"bay"/);
   assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \[[^\]]*"[^"]+", "bay"/);
   assert.match(text, /raw === "bay"/);
 });
@@ -22,7 +22,10 @@ test("MessagesHost：未登录海外开 BayGuestHost；图标行有 Bay；talent
   assert.match(text, /state\.view === "bay"/);
   assert.match(text, /<BayView part="list"/);
   assert.match(text, /<BayView part="detail"/);
-  assert.match(text, /window\.location\.assign\(bayPageHref\(\)\)/);
+  // 去 /bay 整页的入口在 Bay 视图自己的那一行里（不依赖浮窗顶栏有没有放大键）。
+  const list = src("shell/bay/shell/BayList.tsx");
+  assert.match(list, /href=\{bayPageHref\(\)\}/);
+  assert.match(list, /data-bay-action="open-page"/);
   assert.match(text, /<DealConversationView/);
   assert.match(text, /threadId=\{state\.conversationId\.replace\(\/\^talent:\/, ""\)\}/);
   assert.doesNotMatch(text, /TalentConversationView/);
