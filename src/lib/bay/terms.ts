@@ -132,7 +132,7 @@ export async function fetchBayTermsStatus(): Promise<BayTermsStatus> {
   try {
     return statusFrom(await bayGet<unknown>("/v1/talent/terms/status"));
   } catch (error) {
-    return failed(error, "同意记录加载失败，请稍后重试");
+    return failed(error, "条款加载失败，请稍后重试");
   }
 }
 
