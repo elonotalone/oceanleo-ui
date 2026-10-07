@@ -11,6 +11,8 @@ export interface HandoffPickItem {
   ref: string;
   label: string;
   preview: string;
+  turn?: number;
+  turnRole?: "user" | "assistant";
 }
 
 const PREVIEW_MAX = 140;
@@ -86,16 +88,20 @@ export function candidatesFromTaskMessages(messages: readonly unknown[]): Handof
       candidates.push({
         kind: "message",
         ref: String(message.id),
-        label: `我说的第 ${userTurn} 句`,
+        label: "我说的第 {n} 句",
         preview: body,
+        turn: userTurn,
+        turnRole: "user",
       });
     } else {
       agentTurn += 1;
       candidates.push({
         kind: "message",
         ref: String(message.id),
-        label: `AI 的第 ${agentTurn} 段回答`,
+        label: "AI 的第 {n} 段回答",
         preview: body,
+        turn: agentTurn,
+        turnRole: "assistant",
       });
     }
   }
@@ -138,7 +144,13 @@ export function HandoffContextPicker({
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5">
-                <span className="truncate text-[13px] font-medium text-stone-700">{tt(item.label)}</span>
+                <span className="truncate text-[13px] font-medium text-stone-700">
+                  {item.turnRole === "user"
+                    ? tt("我说的第 {n} 句", { n: item.turn ?? 0 })
+                    : item.turnRole === "assistant"
+                      ? tt("AI 的第 {n} 段回答", { n: item.turn ?? 0 })
+                      : tt(item.label)}
+                </span>
                 {item.kind === "artifact" ? (
                   <span className="shrink-0 rounded bg-stone-200/70 px-1 text-[10px] text-stone-600">{tt("产物")}</span>
                 ) : null}

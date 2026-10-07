@@ -210,6 +210,8 @@ const SOURCE = {
   budgetMin: "预算下限",
   budgetNeedNumber: "预算要填大于或等于 0 的数字",
   budgetTalk: "预算面议",
+  userSaidLine: "我说的第 {n} 句",
+  aiReplyLine: "AI 的第 {n} 段回答",
 } as const;
 
 export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
@@ -420,6 +422,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "預算下限",
     budgetNeedNumber: "預算要填大於或等於 0 的數字",
     budgetTalk: "預算面議",
+    userSaidLine: "我說的第 {n} 句",
+    aiReplyLine: "AI 的第 {n} 段回覆",
   },
   en: {
     oceanleoUser: "OceanLeo user",
@@ -628,6 +632,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Minimum budget",
     budgetNeedNumber: "Budget must be a number greater than or equal to 0",
     budgetTalk: "Budget to be discussed",
+    userSaidLine: "What I said, line {n}",
+    aiReplyLine: "AI reply {n}",
   },
   ja: {
     oceanleoUser: "OceanLeo ユーザー",
@@ -723,7 +729,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     deadlinePassed: "締切を過ぎています",
     expired: "期限切れ",
     selectedCount: "{n} 件選択",
-    filled: "担当者が決まりました",
+    filled: "受け手が決まりました",
     openForQuotes: "見積もり受付中",
     currentTask: "現在のタスク",
     rising: "成長中",
@@ -836,6 +842,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "予算の下限",
     budgetNeedNumber: "予算は 0 以上の数字にしてください",
     budgetTalk: "予算は相談",
+    userSaidLine: "私が言った {n} 文目",
+    aiReplyLine: "AI の {n} 番目の返答",
   },
   ko: {
     oceanleoUser: "OceanLeo 사용자",
@@ -1044,6 +1052,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "예산 하한",
     budgetNeedNumber: "예산은 0 이상의 숫자여야 합니다",
     budgetTalk: "예산 협의",
+    userSaidLine: "내가 한 {n}번째 말",
+    aiReplyLine: "AI의 {n}번째 답",
   },
   fr: {
     oceanleoUser: "Utilisateur OceanLeo",
@@ -1252,6 +1262,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Budget minimum",
     budgetNeedNumber: "Le budget doit être un nombre supérieur ou égal à 0",
     budgetTalk: "Budget à convenir",
+    userSaidLine: "Ce que j'ai dit, phrase {n}",
+    aiReplyLine: "Réponse {n} de l'IA",
   },
   de: {
     oceanleoUser: "OceanLeo-Nutzer",
@@ -1460,6 +1472,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Minimales Budget",
     budgetNeedNumber: "Das Budget muss eine Zahl größer oder gleich 0 sein",
     budgetTalk: "Budget nach Absprache",
+    userSaidLine: "Was ich gesagt habe, Satz {n}",
+    aiReplyLine: "KI-Antwort {n}",
   },
   it: {
     oceanleoUser: "Utente OceanLeo",
@@ -1668,6 +1682,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Budget minimo",
     budgetNeedNumber: "Il budget deve essere un numero maggiore o uguale a 0",
     budgetTalk: "Budget da concordare",
+    userSaidLine: "Quello che ho detto, frase {n}",
+    aiReplyLine: "Risposta {n} dell'IA",
   },
   es: {
     oceanleoUser: "Usuario de OceanLeo",
@@ -1876,6 +1892,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Presupuesto mínimo",
     budgetNeedNumber: "El presupuesto debe ser un número mayor o igual que 0",
     budgetTalk: "Presupuesto a convenir",
+    userSaidLine: "Lo que dije, frase {n}",
+    aiReplyLine: "Respuesta {n} de la IA",
   },
   "es-419": {
     oceanleoUser: "Usuario de OceanLeo",
@@ -2084,6 +2102,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Presupuesto mínimo",
     budgetNeedNumber: "El presupuesto debe ser un número mayor o igual que 0",
     budgetTalk: "Presupuesto a convenir",
+    userSaidLine: "Lo que dije, frase {n}",
+    aiReplyLine: "Respuesta {n} de la IA",
   },
   "pt-BR": {
     oceanleoUser: "Usuário OceanLeo",
@@ -2292,6 +2312,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Orçamento mínimo",
     budgetNeedNumber: "O orçamento deve ser um número maior ou igual a 0",
     budgetTalk: "Orçamento a combinar",
+    userSaidLine: "O que eu disse, frase {n}",
+    aiReplyLine: "Resposta {n} da IA",
   },
   "pt-PT": {
     oceanleoUser: "Utilizador OceanLeo",
@@ -2500,6 +2522,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Orçamento mínimo",
     budgetNeedNumber: "O orçamento deve ser um número maior ou igual a 0",
     budgetTalk: "Orçamento a combinar",
+    userSaidLine: "O que eu disse, frase {n}",
+    aiReplyLine: "Resposta {n} da IA",
   },
   ar: {
     oceanleoUser: "مستخدم OceanLeo",
@@ -2708,6 +2732,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "الحد الأدنى للميزانية",
     budgetNeedNumber: "يجب أن تكون الميزانية رقمًا أكبر من أو يساوي 0",
     budgetTalk: "الميزانية بالاتفاق",
+    userSaidLine: "ما قلته، الجملة {n}",
+    aiReplyLine: "رد الذكاء {n}",
   },
   hi: {
     oceanleoUser: "OceanLeo उपयोगकर्ता",
@@ -2761,7 +2787,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     closeNeed: "अनुरोध बंद करें",
     closeHint: "कारण लिखें ताकि जिन्होंने प्रस्ताव दिया वे जानें यह अब खुला क्यों नहीं है।",
     planPlaceholder: "बताएं आप कैसे करेंगे, पहले क्या किया है, और उन्हें क्या तैयार रखना चाहिए",
-    detailsPlaceholder: "डिलिवरेबल, स्वीकार मानक, आपके पास पहले से क्या है, और क्या दायरे से बाहर है लिखें",
+    detailsPlaceholder: "लिखें कि क्या देना है, जाँच कैसे होगी, आपके पास पहले से क्या है, और क्या दायरे से बाहर है",
     justPosted: "अभी प्रकाशित",
     budgetEquals: "यानी {amount}",
     handleOnSite: "{site} पर संभालें",
@@ -2916,6 +2942,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "न्यूनतम बजट",
     budgetNeedNumber: "बजट 0 या उससे बड़ी संख्या होनी चाहिए",
     budgetTalk: "बजट बाद में तय",
+    userSaidLine: "मेरी {n}वीं बात",
+    aiReplyLine: "AI का {n}वाँ जवाब",
   },
   th: {
     oceanleoUser: "ผู้ใช้ OceanLeo",
@@ -2969,7 +2997,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     closeNeed: "ปิดคำขอ",
     closeHint: "เขียนเหตุผลเพื่อให้คนที่เสนอราคาทราบว่าทำไมถึงไม่เปิดแล้ว",
     planPlaceholder: "บอกว่าจะทำอย่างไร เคยทำอะไรมา และอีกฝ่ายต้องเตรียมอะไร",
-    detailsPlaceholder: "ระบุของส่ง มารับ มั่นมีอะไรอยู่แล้ว และอะไรอยู่นอกขอบเขต",
+    detailsPlaceholder: "เขียนให้ชัดว่าต้องส่งอะไร ตรวจรับอย่างไร มีอะไรอยู่แล้ว และอะไรอยู่นอกขอบเขต",
     justPosted: "เพิ่งโพสต์",
     budgetEquals: "คือ {amount}",
     handleOnSite: "จัดการบน {site}",
@@ -2998,7 +3026,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     previewThenEditor: "ก่อนสัญญาดูอย่างเดียว หลังสัญญาเปิดในตัวแก้ไขได้",
     closed: "ปิดแล้ว",
     declinedStatus: "ปฏิเสธแล้ว",
-    declinedQuietly: "ปฏิเสธใบเสนอราคานี้แล้ว ไม่ได้ส่งแจ้งตกเป็นกลุ่ม",
+    declinedQuietly: "ปฏิเสธใบเสนอราคานี้แล้ว ไม่ได้ส่งแจ้งปฏิเสธเป็นกลุ่ม",
     accepted: "รับแล้ว",
     withdrawnStatus: "ถอนแล้ว",
     helpCancelled: "ถอนคำขอนี้แล้ว",
@@ -3054,7 +3082,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     noPlanNote: "ไม่มีคำอธิบายวิธีทำ",
     libraryNoMatch: "ไม่พบงานที่ตรง",
     libraryLoadFailed: "อ่านงานของคุณไม่ได้ ลองอีกครั้ง",
-    skillsHint: "คั่นด้วยจุลภาค เช่น PPT, การทำภาพข้อมูล",
+    skillsHint: "คั่นด้วยจุลภาค เช่น PPT, การแสดงข้อมูลด้วยภาพ",
     budgetEmpty: "เว้นว่างไว้เพื่อคุยทีหลัง",
     signInToCallHumanDialog: "เข้าสู่ระบบเพื่อให้คนมารับงาน",
     signInToQuote: "เข้าสู่ระบบเพื่อเสนอราคาหรือติดต่อผู้โพสต์ มีแค่ผู้โพสต์ที่เห็นใบเสนอราคา",
@@ -3124,6 +3152,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "งบต่ำสุด",
     budgetNeedNumber: "งบต้องเป็นตัวเลขมากกว่าหรือเท่ากับ 0",
     budgetTalk: "คุยงบทีหลัง",
+    userSaidLine: "ประโยคที่ {n} ที่ฉันพูด",
+    aiReplyLine: "คำตอบที่ {n} ของ AI",
   },
   tr: {
     oceanleoUser: "OceanLeo kullanıcısı",
@@ -3332,6 +3362,8 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Asgari bütçe",
     budgetNeedNumber: "Bütçe 0 veya daha büyük bir sayı olmalı",
     budgetTalk: "Bütçe konuşulacak",
+    userSaidLine: "Söylediğim {n}. cümle",
+    aiReplyLine: "Yapay zekanın {n}. yanıtı",
   },
   vi: {
     oceanleoUser: "Người dùng OceanLeo",
@@ -3370,7 +3402,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     daysExample: "Ví dụ 5",
     closePlaceholder: "Ví dụ: kế hoạch đổi, tạm không tìm người làm",
     titlePlaceholder: "Ví dụ: bài 15 trang cho buổi ra mắt sản phẩm",
-    stuckPlaceholder: "Ví dụ: Tôi không tự chấm được lịch này và muốn người khác xem giúp.",
+    stuckPlaceholder: "Ví dụ: Tôi không tự đánh giá được lịch này và muốn người khác xem giúp.",
     saveChanges: "Lưu thay đổi",
     saveFailed: "Không lưu được. Thử lại.",
     editQuote: "Sửa báo giá",
@@ -3540,5 +3572,7 @@ export const BAY_NEEDS_MESSAGES = assembleCopy(SOURCE, {
     budgetMin: "Ngân sách tối thiểu",
     budgetNeedNumber: "Ngân sách phải là số lớn hơn hoặc bằng 0",
     budgetTalk: "Ngân sách còn bàn",
+    userSaidLine: "Câu {n} tôi nói",
+    aiReplyLine: "Câu trả lời {n} của AI",
   },
 });

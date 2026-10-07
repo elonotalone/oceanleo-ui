@@ -361,6 +361,10 @@ test("勾选纯函数：默认空、没有全选、每类最多 50", () => {
     { id: 3, role: "user", kind: "text", content: "只要封面" },
   ]);
   assert.deepEqual(fromTask.map((row) => row.ref), ["3"]);
+  const picker = source("shell/bay/needs/handoff-context.tsx");
+  assert.match(picker, /tt\("我说的第 \{n\} 句", \{ n:/);
+  assert.match(picker, /tt\("AI 的第 \{n\} 段回答", \{ n:/);
+  assert.doesNotMatch(picker, /我说的第 \$\{|AI 的第 \$\{/);
 });
 
 test("HumanHandoffDialog 不再默认其他；选中集合仍留在 Dialog", () => {
