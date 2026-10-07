@@ -13,9 +13,7 @@ export function CallHumanPane(_props: BayPaneProps): null {
   return null;
 }
 
-export function ProposePane(_props: BayPaneProps): null {
-  return null;
-}
+export { ProposePane } from "./ProposePane";
 
 export function MyNeedsPane(_props: BayPaneProps): null {
   return null;

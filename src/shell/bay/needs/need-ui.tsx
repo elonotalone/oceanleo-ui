@@ -27,6 +27,13 @@ export function errorStatus(error: unknown): number {
   return error instanceof BayApiError ? error.status : 0;
 }
 
+/** 后端说还没有卖家资料时，把人带到设置里去建。 */
+export function isSellerProfileError(error: unknown): boolean {
+  const code = error instanceof BayApiError ? String(error.code || "") : "";
+  const message = error instanceof Error ? error.message : "";
+  return /profile/i.test(code) || /卖家资料/.test(message);
+}
+
 /**
  * 窗格正文。返回栏、标题与滚动归 Bay 外壳（契约 §4.4），这里只给内边距；
  * `footer` 贴在外壳滚动容器的底边（sticky），不另起滚动。
