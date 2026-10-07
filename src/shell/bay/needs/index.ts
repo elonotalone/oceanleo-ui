@@ -2,10 +2,7 @@ import type { BayPaneProps } from "../shell/bay-state";
 
 export { DemandCard, HelpRequestCard, type BayFeedCardProps } from "./NeedCards";
 export { LibraryWorkPickerHost, pickLibraryWork } from "./LibraryWorkPicker";
-
-export function DemandPane(_props: BayPaneProps): null {
-  return null;
-}
+export { DemandPane } from "./DemandPane";
 
 export function HelpRequestPane(_props: BayPaneProps): null {
   return null;

@@ -1,7 +1,7 @@
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import { formatBayFen } from "../../../lib/bay/demands";
 import type { BayPrice } from "../../../lib/bay/types";
-import { baySiteName } from "./site-names";
+import { baySiteName } from "../shell/bay-links";
 
 export function budgetText(
   tt: UITranslate,
@@ -52,8 +52,38 @@ export function authorName(tt: UITranslate, author: { display_name?: string | nu
   return handle ? `@${handle}` : tt("OceanLeo 用户");
 }
 
-/** 站 key → 产品名（LeoSlides 一类）；认不出的站退回「这个站」。 */
+export function demandStatusText(tt: UITranslate, status: string | null | undefined): string {
+  if (status === "draft") return tt("草稿");
+  if (status === "open") return tt("开放报价");
+  if (status === "filled") return tt("已选定接单人");
+  return tt("已关闭");
+}
+
+export function proposalStatusText(tt: UITranslate, status: string | null | undefined): string {
+  if (status === "accepted") return tt("已接受");
+  if (status === "declined") return tt("已拒绝");
+  if (status === "withdrawn") return tt("已撤回");
+  return tt("等对方回复");
+}
+
+export function ratingText(tt: UITranslate, avg: number | null | undefined, count: number | null | undefined): string {
+  const n = Math.max(0, Math.trunc(Number(count) || 0));
+  if (!n || typeof avg !== "number" || !Number.isFinite(avg)) return tt("暂无评价");
+  return tt("{score} 分 · {n} 条评价", { score: avg.toFixed(1), n });
+}
+
+export function levelText(tt: UITranslate, level: string | null | undefined): string {
+  if (level === "rising") return tt("成长中");
+  if (level === "pro") return tt("资深");
+  if (level === "top") return tt("顶尖");
+  return tt("新伙伴");
+}
+
+export function deliveryDaysText(tt: UITranslate, days: number | null | undefined): string {
+  return typeof days === "number" && days > 0 ? tt("{n} 天交付", { n: days }) : tt("交期面议");
+}
+
+/** 站 key → 产品名（不翻译；只有 aitools 随界面语言）；认不出的站退回「这个站」。名字只来自 W03 的 `baySiteName`，本目录不留站名表。 */
 export function siteLabel(tt: UITranslate, siteKey: string | null | undefined): string {
-  const name = baySiteName(siteKey);
-  return name ? tt(name) : tt("这个站");
+  return baySiteName(siteKey, tt) ?? tt("这个站");
 }
