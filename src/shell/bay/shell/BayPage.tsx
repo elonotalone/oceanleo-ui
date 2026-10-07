@@ -4,6 +4,7 @@
 // 宽屏三段（筛选 / 信息流 / 详情），中屏两段，手机单栏「列表 → 详情」推进。读写 `?bay=`。境内显示暂未开放。
 import { useEffect, useSyncExternalStore } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { LibraryWorkPickerHost } from "../needs";
 import { BayAuthHost } from "./bay-auth-host";
 import { BayIcon } from "./bay-icons";
 import { BAY_MINE_TABS } from "./bay-links";
@@ -187,6 +188,7 @@ export function BayPage({ siteKey, accent }: BayPageProps) {
     <div className="flex flex-col" style={{ height: "100dvh" }} data-bay-page={width}>
       <PageHeader accent={accent} />
       {body}
+      <LibraryWorkPickerHost />
       <BayAuthHost />
     </div>
   );

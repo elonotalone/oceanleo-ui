@@ -2,18 +2,18 @@
 
 // Bay 右栏：按当前目标渲染需求、供给、交易、订单、卖家几块的窗格；交易会话用 DealConversationView；
 // 「我的」五个分区；设置交给共用设置窗。窄浮窗里顶上一条返回栏，返回滑回列表。
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { DealConversationView } from "../deal";
 import { CallHumanPane, DemandPane, HelpRequestPane, PostNeedPane, ProposePane } from "../needs";
 import { OrderPane } from "../orders";
 import { ServiceEditorPane } from "../seller";
-import { openBaySettings } from "../settings";
+import { BaySettingsPane } from "../settings";
 import { CheckoutPane, ConsultPane, ProfilePane, ServicePane } from "../supply";
 import { BayGlyph, BayIcon } from "./bay-icons";
 import { formatBayParam } from "./bay-links";
 import { useBaySlideIn } from "./bay-motion";
-import { bayBack, requireBayLogin, useBaySiteKey, useBayState, type BayLayout, type BayPaneProps, type BayTarget } from "./bay-state";
+import { bayBack, useBaySiteKey, useBayState, type BayLayout, type BayPaneProps, type BayTarget } from "./bay-state";
 import { BayMine } from "./BayMine";
 import { BayEmptyActions } from "./BayList";
 
@@ -61,19 +61,10 @@ function Pane(props: BayPaneProps): ReactNode {
     case "mine":
       return <BayMine tab={target.tab} layout={props.layout} siteKey={props.siteKey} />;
     case "settings":
-      return <SettingsHandoff pane={target.pane} />;
+      return <BaySettingsPane {...props} />;
     default:
       return null;
   }
-}
-
-/** 钱、卖家资料、审核在共用设置窗里：打开它，右栏退回上一层。 */
-function SettingsHandoff({ pane }: { pane?: "profile" | "vetting" | "money" }) {
-  useEffect(() => {
-    if (requireBayLogin()) openBaySettings(pane);
-    bayBack();
-  }, [pane]);
-  return null;
 }
 
 export function BayDetailBar({ title, onBack }: { title: string; onBack: () => void }) {
