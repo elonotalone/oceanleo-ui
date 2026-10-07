@@ -114,6 +114,8 @@ test("报价、接受、拒绝、关闭、邀请链接的路径与请求体", as
   assert.equal(lastCall().opts.anonymous, true, "需求详情不登录也能看");
   await demands.listMyDemands({ status: "all", limit: 20 });
   assert.equal(lastCall().path, "/v1/talent/demands/mine?limit=20");
+  await demands.listMyProposals({ limit: 40, cursor: "c1" });
+  assert.equal(lastCall().path, "/v1/talent/proposals/mine?limit=40&cursor=c1");
 });
 
 test("邀请链接只落在门户 /bay/demands/invite/<token>，带联系方式的 token 一律拒绝", () => {
