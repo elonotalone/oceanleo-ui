@@ -58,6 +58,9 @@ export type ImDeepLink =
   | { kind: "none" }
   | { kind: "open"; target: MessagesTarget; inviteCode: string | null };
 
+/** `?im=` 里已经不再认的栏目名。它们长得像会话 id，所以要点名排除。 */
+const RETIRED_IM_VALUES: ReadonlySet<string> = new Set(["bay"]);
+
 /** 解析 `?im=` / `?im_seq=` / `?im_invite=`。不认的值一律当没有（fail closed）。 */
 export function parseImDeepLink(search: string): ImDeepLink {
   let params: URLSearchParams;
@@ -77,8 +80,8 @@ export function parseImDeepLink(search: string): ImDeepLink {
   } else if (raw === "people") {
     target.view = "people";
     valid = true;
-  } else if (raw === "bay") {
-    // 旧链接 `?im=bay`（小窗里曾经有 LeoBay 栏）：小窗不再有这一栏，这个值当没有——不能把它当成会话 id 去开。
+  } else if (RETIRED_IM_VALUES.has(raw)) {
+    // 旧链接里曾经是栏目名的值（小窗里有过 LeoBay 栏）：当没有——不能把它当成会话 id 去开。
     valid = false;
   } else if (raw && CONVERSATION_ID.test(raw)) {
     target.conversationId = raw;
