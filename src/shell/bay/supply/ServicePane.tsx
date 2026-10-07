@@ -10,6 +10,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
 import { rememberCheckoutAddons } from "../../../lib/bay/checkout";
 import {
+  claimBayService,
   enabledAddons,
   enabledTiers,
   formatBayMoney,
@@ -18,14 +19,16 @@ import {
   reportBayService,
   serviceSelection,
   defaultTier,
+  type BayAttachedWork,
   type BayServiceDetail,
   type BayServiceMedia,
   type BayServiceTier,
 } from "../../../lib/bay/services";
+import type { BayServiceMediaRow } from "../../../lib/bay/seller";
 import { openTradeThread } from "../deal";
 import { openBay, requireBayLogin, type BayLayout, type BayPaneProps } from "../shell/bay-state";
-import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel } from "./format";
-import { DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, ReviewList, Section, SellerCard } from "./parts";
+import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel, workOpenHref } from "./format";
+import { DigitalTerms, DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, ReviewList, Section, SellerCard } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
 
 export function ServicePane({ target, layout }: BayPaneProps) {
@@ -108,11 +111,16 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [activeMedia, setActiveMedia] = useState(0);
   const [talking, setTalking] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] } | null>(null);
   const [error, setError] = useState("");
   const selection = serviceSelection(service, tierName, addonIds);
   const owner = isOwnService(service, viewerId);
   const currency = selection.tier?.currency || service.currency;
   const wide = layout === "page" || layout === "full";
+  const digital = service.listing_kind === "digital";
+  const priceFen = selection.tier?.price_fen ?? service.price_fen ?? 0;
+  const freeDigital = digital && priceFen <= 0;
 
   const media = useMemo(() => {
     const list = (service.media || []).filter((item) => safeHttpUrl(item.url));
@@ -122,9 +130,27 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
   }, [service]);
 
   function order() {
-    if (!selection.tier || !requireBayLogin()) return;
+    if (!requireBayLogin()) return;
+    if (digital) {
+      openBay({ kind: "checkout", serviceId: service.id, ...(selection.tier ? { tier: selection.tier.tier } : {}) });
+      return;
+    }
+    if (!selection.tier) return;
     rememberCheckoutAddons(service.id, addonIds);
     openBay({ kind: "checkout", serviceId: service.id, tier: selection.tier.tier });
+  }
+
+  async function claim() {
+    if (claiming || !requireBayLogin()) return;
+    setClaiming(true);
+    setError("");
+    try {
+      setClaimed(await claimBayService(service.id));
+    } catch (err) {
+      setError(errorText(err) || tt("领取没成功，请稍后再试。"));
+    } finally {
+      setClaiming(false);
+    }
   }
 
   async function talk() {
@@ -140,24 +166,65 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     }
   }
 
+  const workHref = claimed?.work ? workOpenHref(claimed.work) : null;
+  const fileMedia = (claimed?.media || []).filter((row) => row.kind === "file");
+  const primaryAction = owner ? null : freeDigital ? (
+    <button
+      type="button"
+      data-bay-action="claim"
+      disabled={claiming}
+      onClick={() => void claim()}
+      className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+    >
+      {claiming ? tt("正在领取…") : tt("免费获取")}
+    </button>
+  ) : digital ? (
+    <button
+      type="button"
+      data-bay-action="order"
+      onClick={order}
+      className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
+    >
+      {tt("购买")}
+    </button>
+  ) : (
+    <button
+      type="button"
+      data-bay-action="order"
+      disabled={!selection.tier}
+      onClick={order}
+      className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+    >
+      {selection.tier ? tt("立即下单") : tt("暂时无法下单")}
+    </button>
+  );
+
   const summary = (
     <section data-bay-service-summary className="rounded-xl border border-neutral-200 p-3">
-      <p className="text-[11px] text-neutral-500">{tt("当前选择")}</p>
-      <p className="mt-0.5 text-[14px] font-semibold text-neutral-900">
-        {selection.tier ? `${tierLabel(tt, selection.tier.tier)} · ${selection.tier.title}` : tt("暂时无法下单")}
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-neutral-50 p-2.5">
-        <div>
-          <p className="text-[11px] text-neutral-500">{tt("合计")}</p>
-          <p data-bay-total className="mt-0.5 text-[16px] font-semibold text-neutral-900">
-            {selection.tier ? moneyOrFree(tt, selection.totalFen, currency) : "—"}
+      {digital ? (
+        <p data-bay-total className="text-[16px] font-semibold text-neutral-900">
+          {moneyOrFree(tt, priceFen, currency)}
+        </p>
+      ) : (
+        <>
+          <p className="text-[11px] text-neutral-500">{tt("当前选择")}</p>
+          <p className="mt-0.5 text-[14px] font-semibold text-neutral-900">
+            {selection.tier ? `${tierLabel(tt, selection.tier.tier)} · ${selection.tier.title}` : tt("暂时无法下单")}
           </p>
-        </div>
-        <div>
-          <p className="text-[11px] text-neutral-500">{tt("预计交付")}</p>
-          <p className="mt-0.5 text-[16px] font-semibold text-neutral-900">{deliveryDaysText(tt, selection.deliveryDays)}</p>
-        </div>
-      </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-neutral-50 p-2.5">
+            <div>
+              <p className="text-[11px] text-neutral-500">{tt("合计")}</p>
+              <p data-bay-total className="mt-0.5 text-[16px] font-semibold text-neutral-900">
+                {selection.tier ? moneyOrFree(tt, selection.totalFen, currency) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-neutral-500">{tt("预计交付")}</p>
+              <p className="mt-0.5 text-[16px] font-semibold text-neutral-900">{deliveryDaysText(tt, selection.deliveryDays)}</p>
+            </div>
+          </div>
+        </>
+      )}
       <div className="mt-3 grid gap-2">
         {owner ? (
           <>
@@ -173,15 +240,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
           </>
         ) : (
           <>
-            <button
-              type="button"
-              data-bay-action="order"
-              disabled={!selection.tier}
-              onClick={order}
-              className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
-            >
-              {selection.tier ? tt("立即下单") : tt("暂时无法下单")}
-            </button>
+            {primaryAction}
             <button
               type="button"
               data-bay-action="talk"
@@ -193,6 +252,20 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
             </button>
           </>
         )}
+        {workHref ? (
+          <a href={workHref} target="_blank" rel="noopener noreferrer" data-bay-open-work className="text-[13px] font-medium text-neutral-800 underline underline-offset-2">
+            {tt("打开作品")}
+          </a>
+        ) : null}
+        {fileMedia.map((row) => {
+          const url = safeHttpUrl(row.url);
+          if (!url) return null;
+          return (
+            <a key={row.id} href={url} target="_blank" rel="noopener noreferrer" data-bay-download={row.id} className="text-[13px] font-medium text-neutral-800 underline underline-offset-2">
+              {row.caption || tt("下载文件")}
+            </a>
+          );
+        })}
         {error ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
         <div className="flex items-start justify-between gap-2">
           <FavoriteButton kind="service" refId={service.id} />
@@ -249,8 +322,9 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
         {service.description ? <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{service.description}</p> : null}
       </section>
 
-      <DoneMeans service={service} />
+      {digital ? <DigitalTerms license={service.license} /> : <DoneMeans service={service} />}
 
+      {digital ? null : (
       <Section title={tt("选择档位")}>
         {tiers.length ? (
           <div className={wide ? "grid gap-2 md:grid-cols-3" : "grid gap-2"}>
@@ -262,8 +336,9 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
           <p className="text-[12px] text-neutral-500">{tt("暂时无法下单")}</p>
         )}
       </Section>
+      )}
 
-      {addons.length ? (
+      {!digital && addons.length ? (
         <Section title={tt("可选加购")}>
           <div className="space-y-2">
             {addons.map((addon) => {

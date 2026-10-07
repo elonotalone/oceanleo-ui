@@ -8,22 +8,24 @@ import test from "node:test";
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const src = (rel) => readFileSync(join(REPO, "src", rel), "utf8");
 
-test("host-state：MessagesView 与深链认 bay", () => {
+test("host-state：MessagesView 与深链不认 bay", () => {
   const text = src("shell/messages/host-state.ts");
-  assert.match(text, /export type MessagesView = (?:"[^"]+" \| )+"bay"/);
-  assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \[[^\]]*"[^"]+", "bay"/);
-  assert.match(text, /raw === "bay"/);
+  assert.match(text, /export type MessagesView = "inbox" \| "people"/);
+  assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \["inbox", "people"\]/);
+  assert.doesNotMatch(text, /raw === "bay"/);
+  assert.doesNotMatch(text, /view === "bay"/);
 });
 
-test("MessagesHost：未登录海外开 BayGuestHost；talent 会话走 DealConversationView", () => {
+test("MessagesHost：不可用时只渲染登录框宿主；talent 会话走 DealConversationView", () => {
   const text = src("shell/messages/MessagesHost.tsx");
-  assert.match(text, /if \(!enabled\) return bayEnabledHere\(\) \? <BayGuestHost \/> : null;/);
+  assert.match(text, /if \(!enabled\) return <BayAuthHost \/>;/);
   assert.match(text, /<LeoChatTabs/);
-  assert.match(text, /state\.view === "bay"/);
-  assert.match(text, /<BayView part="list"/);
-  assert.match(text, /<BayView part="detail"/);
+  assert.doesNotMatch(text, /state\.view === "bay"/);
+  assert.doesNotMatch(text, /<BayView/);
+  assert.doesNotMatch(text, /BayGuestHost/);
   const layout = src("shell/messages/MessagesLayout.tsx");
-  assert.match(layout, /data-leochat-open-page/);
+  assert.doesNotMatch(layout, /data-leochat-open-page/);
+  assert.match(layout, /onToggleExpand/);
   assert.match(text, /<DealConversationView/);
   assert.match(text, /threadId=\{state\.conversationId\.replace\(\/\^talent:\/, ""\)\}/);
   assert.doesNotMatch(text, /TalentConversationView/);
@@ -48,11 +50,13 @@ test("MessageItem：talent_order 卡渲染 BayOrderCard", () => {
   assert.match(text, /compact/);
 });
 
-test("nav-source：门户侧栏是 LeoChat 整页，不再占 Bay/消息行", () => {
+test("nav-source：侧栏是 LeoBay（原探索位），没有 leochat、没有 explore", () => {
   const text = src("shell/nav-source/index.ts");
-  assert.match(text, /id: "leochat"/);
-  assert.match(text, /href: "\/leochat"/);
-  assert.match(text, /labelKey: "LeoChat"/);
+  assert.match(text, /id: "bay"/);
+  assert.match(text, /href: "\/bay"/);
+  assert.match(text, /labelKey: "LeoBay"/);
+  assert.doesNotMatch(text, /href: "\/leochat"/);
+  assert.doesNotMatch(text, /href: "\/explore"/);
   assert.doesNotMatch(text, /labelKey: "OceanLeo Bay"/);
 });
 

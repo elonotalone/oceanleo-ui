@@ -3,6 +3,10 @@
 
 import { bayGet, bayPost } from "./http";
 import type { BayPublicProfile, BayReview } from "./directory";
+import type { BayListingKind, BayLicense, BayServiceMediaRow } from "./seller";
+import type { BayWorkRef } from "./types";
+
+export type BayAttachedWork = BayWorkRef;
 
 export type BayServiceTierName = "basic" | "standard" | "premium";
 export type BayPriceUnit = "project" | "session" | "hour" | "day" | "month";
@@ -77,6 +81,10 @@ export interface BayService {
   created_at?: string;
   updated_at?: string;
   seller?: BayPublicProfile | null;
+  listing_kind?: BayListingKind;
+  license?: BayLicense | null;
+  has_digital_work?: boolean;
+  official?: boolean;
 }
 
 export interface BayServiceDetail extends BayService {
@@ -90,6 +98,12 @@ export interface BayServiceDetail extends BayService {
 
 export function getBayService(serviceId: string): Promise<{ service: BayServiceDetail }> {
   return bayGet<{ service: BayServiceDetail }>(`/v1/talent/services/${encodeURIComponent(serviceId)}`, { anonymous: true });
+}
+
+export function claimBayService(serviceId: string): Promise<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] }> {
+  return bayPost<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] }>(
+    `/v1/talent/services/${encodeURIComponent(serviceId)}/claim`,
+  );
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = { CNY: "¥", RMB: "¥", USD: "$", EUR: "€", GBP: "£", JPY: "¥", HKD: "HK$" };

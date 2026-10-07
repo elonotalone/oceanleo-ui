@@ -39,6 +39,26 @@ export function PaneMessage({ text, onRetry }: { text: string; onRetry?: () => v
   );
 }
 
+/** 数字商品的授权范围与三条固定条款。 */
+export function DigitalTerms({ license }: { license?: string | null }) {
+  const tt = useUI();
+  const scope = license === "commercial" ? tt("可商用") : license === "personal" ? tt("个人使用") : "";
+  return (
+    <div data-bay-digital-terms className="mt-5 space-y-2 text-[13px] text-neutral-700">
+      {scope ? (
+        <p data-bay-license>
+          {tt("授权范围")}：{scope}
+        </p>
+      ) : null}
+      <ul className="list-disc space-y-1 pl-5">
+        <li>{tt("付款后立即交付")}</li>
+        <li>{tt("已交付的数字商品不退款")}</li>
+        <li>{tt("不得转售原文件")}</li>
+      </ul>
+    </div>
+  );
+}
+
 export function Section({ title, children, hint }: { title: string; children: ReactNode; hint?: string }) {
   return (
     <section className="mt-5">

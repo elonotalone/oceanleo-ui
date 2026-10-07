@@ -81,6 +81,10 @@ const dealStub = dataModule(`
   globalThis.__bayThreads ??= [];
   export async function openTradeThread(subject){ globalThis.__bayThreads.push(subject); }
 `);
+const messagesStub = dataModule(`
+  globalThis.__bayMessages ??= [];
+  export function openMessages(t){ globalThis.__bayMessages.push(t); }
+`);
 const settingsStub = dataModule(`
   globalThis.__bayTermsAsked ??= [];
   globalThis.__baySettingsOpened ??= [];
@@ -142,6 +146,7 @@ const stubs = {
   "../../../lib/agent": agentStub,
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
+  "../../messages/host-state": messagesStub,
   "../settings": settingsStub,
   "../../../contracts/domain-family": domainStub,
   "../../../ui/Toast": toastStub,
@@ -202,6 +207,7 @@ function reset() {
     return {};
   };
   globalThis.__bayOpened = [];
+  globalThis.__bayMessages = [];
   globalThis.__bayLoginAsked = 0;
   globalThis.__baySignedIn = true;
   globalThis.__bayTask = null;
@@ -336,7 +342,8 @@ test("求助详情：勾选内容纯文本、去处理异站显示、认领先�
   assert.equal(handle.getAttribute("href"), "https://ppt.oceanleo.test/bay?bay=help:h1");
   await view.click('[data-bay-action="claim"]');
   assert.deepEqual(globalThis.__bayTermsAsked, ["seller"]);
-  assert.deepEqual(globalThis.__bayOpened, [{ kind: "conversation", threadId: "th1" }]);
+  assert.deepEqual(globalThis.__bayOpened, []);
+  assert.deepEqual(globalThis.__bayMessages, [{ conversationId: "talent:th1" }]);
   await view.unmount();
 
   reset();

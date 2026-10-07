@@ -46,12 +46,17 @@ export function ServiceCard({ item, onOpen, variant }: BayFeedCardProps) {
   const sellerName = item.author.display_name || item.author.handle || "";
   const price = feedPriceLabel(tt, item.price);
   const rating = ratingShort(tt, item.author.rating_avg, item.author.rating_count);
+  const digital = item.listing_kind === "digital";
+  const kindLabel = digital ? tt("数字商品") : tt("服务");
+  const official = item.author.official === true;
 
   if (variant === "card") {
     return (
       <button type="button" data-bay-card="service" data-bay-card-variant="card" data-bay-id={item.id} onClick={onOpen} className={feedCardClass("card")}>
         <span className="flex items-center justify-between gap-3">
-          <span className={feedKindBadgeClass("service")}>{tt("服务")}</span>
+          <span data-bay-kind={digital ? "digital" : "service"} className={feedKindBadgeClass("service")}>
+            {kindLabel}
+          </span>
           <span data-bay-price className={FEED_TILE_PRICE_CLASS}>
             {price}
           </span>
@@ -73,6 +78,11 @@ export function ServiceCard({ item, onOpen, variant }: BayFeedCardProps) {
           <span data-bay-seller className="min-w-0 truncate font-medium text-stone-700">
             {sellerName}
           </span>
+          {official ? (
+            <span data-bay-official className="shrink-0 text-[11px] text-stone-500">
+              {tt("官方")}
+            </span>
+          ) : null}
         </span>
       </button>
     );
@@ -83,7 +93,9 @@ export function ServiceCard({ item, onOpen, variant }: BayFeedCardProps) {
       <span className="flex items-start gap-3">
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className={feedKindBadgeClass("service")}>{tt("服务")}</span>
+            <span data-bay-kind={digital ? "digital" : "service"} className={feedKindBadgeClass("service")}>
+              {kindLabel}
+            </span>
             <span className={FEED_ROW_TITLE_CLASS}>{item.title}</span>
           </span>
           {item.summary ? <span className={FEED_ROW_SUMMARY_CLASS}>{item.summary}</span> : null}
@@ -113,6 +125,11 @@ export function ServiceCard({ item, onOpen, variant }: BayFeedCardProps) {
         <span data-bay-seller className="max-w-[10rem] truncate font-medium text-stone-600">
           {sellerName}
         </span>
+        {official ? (
+          <span data-bay-official className="shrink-0 text-[11px] text-stone-500">
+            {tt("官方")}
+          </span>
+        ) : null}
       </span>
     </button>
   );

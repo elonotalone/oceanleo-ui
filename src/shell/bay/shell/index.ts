@@ -1,12 +1,7 @@
 export * from "./bay-state";
-export { BAY_PARAM, baySiteName, baySubsiteLabel, formatBayParam, parseBayParam, parseBayDeepLink } from "./bay-links";
-export { bayPageHref, useBayExpand } from "./bay-expand";
+export { BAY_PARAM, BAY_KIND_PARAM, baySiteName, baySubsiteLabel, formatBayParam, parseBayParam, parseBayDeepLink } from "./bay-links";
 export { BayIcon, CallHumanIcon } from "./bay-icons";
-export { BayView } from "./BayView";
-export type { BayViewProps } from "./BayView";
-export { BayGuestHost } from "./BayGuestHost";
 export { BayPage } from "./BayPage";
 export type { BayPageProps } from "./BayPage";
-export { BayNavIcon } from "./BayNavIcon";
-export { CallHumanButton } from "./CallHumanButton";
-export type { CallHumanButtonProps } from "./CallHumanButton";
+export { LeoBayPage } from "./LeoBayPage";
+export type { LeoBayPageProps } from "./LeoBayPage";

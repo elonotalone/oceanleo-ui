@@ -93,6 +93,11 @@ export interface ExplorePageProps {
   ) => WorkbenchMaterialActionAvailability;
   onMaterialDragStart?: (item: LibraryItem) => void;
   onMaterialDragEnd?: () => void;
+  /**
+   * 嵌在 LeoBay 的「素材」栏里：不带页框（页框由 LeoBay 页给），货架标题写「官方素材」。
+   * 素材只在 LeoBay 里展示；独立的 `/explore` 页已下线（各站那个地址跳到 `/bay?kind=material`）。
+   */
+  embedded?: boolean;
   /** @deprecated 零配置之后整份被忽略，见 `ExploreConfig`。 */
   config?: ExploreConfig;
   /** @deprecated `siteKey` 的旧拼写；仍然认，但记为漂移。 */
@@ -186,6 +191,7 @@ export function ExplorePage(props: ExplorePageProps) {
     siteKey = "",
     siteId = "",
     appId = "",
+    embedded = false,
     onOpenItem,
     materialActions = [],
     onMaterialAction,
@@ -296,9 +302,11 @@ export function ExplorePage(props: ExplorePageProps) {
     [materialActions],
   );
 
+  const Frame = embedded ? "div" : "main";
   return (
-    <main
+    <Frame
       data-explore-shape="zero-config"
+      data-explore-embedded={embedded ? "true" : undefined}
       data-explore-site-key={resolvedSiteKey}
       {...(legacyProps.length > 0
         ? { "data-explore-legacy-props": legacyProps.join(",") }
@@ -306,7 +314,7 @@ export function ExplorePage(props: ExplorePageProps) {
       {...(scopeReady && !directory
         ? { "data-explore-missing-app-directory": resolvedSiteKey }
         : {})}
-      className={`${APP_PAGE_FRAME_CLASS} ${className}`}
+      className={embedded ? `flex min-h-0 flex-1 flex-col ${className}` : `${APP_PAGE_FRAME_CLASS} ${className}`}
     >
       {/*
         缺 siteKey 是**接线错误**，不是空货架：D1 之后没有全平台那一层可退，照常渲染
@@ -342,7 +350,7 @@ export function ExplorePage(props: ExplorePageProps) {
         <MaterialLibrary
           materials={[]}
           plain
-          pageTitle={tt(EXPLORE_TITLE)}
+          pageTitle={embedded ? tt("官方素材") : tt(EXPLORE_TITLE)}
           accent={accent}
           action={action}
           siteId={resolvedSiteKey}
@@ -370,7 +378,7 @@ export function ExplorePage(props: ExplorePageProps) {
         />
       </section>
       )}
-    </main>
+    </Frame>
   );
 }
 

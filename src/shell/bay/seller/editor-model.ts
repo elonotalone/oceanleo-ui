@@ -11,6 +11,8 @@ import {
   type BayFieldSpec,
   type BayFieldValue,
   type BayFieldValues,
+  type BayLicense,
+  type BayListingKind,
   type BayOwnService,
   type BayPricingInput,
   type BayPricingModel,
@@ -67,6 +69,20 @@ export const STEP_LABELS: Record<EditorStep, string> = {
 export const MIN_DESCRIPTION = 30;
 export const TITLE_MAX = 120;
 export const SUMMARY_MAX = 240;
+
+export type PublishKind = "digital" | "service" | "consult";
+export type PublishSection = "product" | "price" | "terms";
+export const PUBLISH_SECTIONS: PublishSection[] = ["product", "price", "terms"];
+export const SECTION_LABELS: Record<PublishSection, string> = {
+  product: "产品信息",
+  price: "价格",
+  terms: "交付条款",
+};
+export const PUBLISH_KIND_LABELS: Record<PublishKind, string> = {
+  digital: "数字商品",
+  service: "服务",
+  consult: "答疑",
+};
 
 export interface DraftTier {
   tier: BayTierName;
@@ -134,6 +150,11 @@ export interface EditorDraft {
   consultMinutes: number | null;
   scopeNote: string;
   responseWindow: string;
+  listingKind: BayListingKind;
+  license: BayLicense | "";
+  digitalWork: { id: string; title: string } | null;
+  simplePrice: boolean;
+  official: boolean;
 }
 
 let keySeq = 0;
@@ -179,6 +200,11 @@ export function emptyDraft(tt: Translate): EditorDraft {
     consultMinutes: null,
     scopeNote: "",
     responseWindow: "",
+    listingKind: "service",
+    license: "",
+    digitalWork: null,
+    simplePrice: true,
+    official: false,
   };
 }
 
@@ -329,23 +355,52 @@ function priceUnitOf(model: BayPricingModel | undefined): BaySellerPriceUnit {
   return unit === "session" || unit === "hour" || unit === "day" || unit === "month" ? unit : "project";
 }
 
+export function listingPayload(draft: EditorDraft): {
+  listing_kind: BayListingKind;
+  license: BayLicense | null;
+  digital_work: { kind: "task"; id: string } | null;
+} {
+  return {
+    listing_kind: draft.listingKind,
+    license: draft.license === "personal" || draft.license === "commercial" ? draft.license : null,
+    digital_work: draft.listingKind === "digital" && draft.digitalWork?.id ? { kind: "task", id: draft.digitalWork.id } : null,
+  };
+}
+
+export function resolvedPricingModel(draft: EditorDraft): string {
+  if (draft.official) return "free";
+  if (draft.listingKind === "digital" || draft.simplePrice) {
+    return (draft.tiers[0]?.price_fen || 0) === 0 ? "free" : "fixed";
+  }
+  return draft.pricingModel;
+}
+
+export function resolvedPriceFen(draft: EditorDraft): number {
+  if (draft.official) return 0;
+  return enabledTiers(draft)[0]?.price_fen || draft.tiers[0]?.price_fen || 0;
+}
+
 /** `PUT /me/services/{id}` 是整份覆盖：标题、类目、价格、交期、状态每次都带全。 */
 export function serviceInput(draft: EditorDraft, model?: BayPricingModel): BayServiceInput {
   const primary = enabledTiers(draft)[0] || draft.tiers[0];
+  const extra = listingPayload(draft);
   return {
     title: draft.title.trim().slice(0, TITLE_MAX),
     summary: draft.summary.trim().slice(0, SUMMARY_MAX),
     description: draft.description,
-    category: draft.category,
+    category: draft.listingKind === "digital" ? "" : draft.category,
     cover_url: safeHttpUrl(draft.coverUrl),
-    engagement_kind: draft.pricingModel || undefined,
+    engagement_kind: resolvedPricingModel(draft) || undefined,
     delivery_mode: draft.deliveryMode,
-    price_fen: primary?.price_fen || 0,
+    price_fen: resolvedPriceFen(draft),
     price_unit: priceUnitOf(model),
     delivery_days: primary?.delivery_days || null,
     status: draft.serviceId ? draft.status : "draft",
     catalog_kind: "delivery",
     regulated_domain: "none",
+    listing_kind: extra.listing_kind,
+    license: extra.license,
+    digital_work: extra.digital_work,
   };
 }
 
@@ -420,6 +475,9 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
   const faqRows = [...(loaded.faq || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
   const inputsRow = faqRows.find((row) => row.question === marker);
   const pricing = loaded.pricing;
+  const extras = extrasFromService(service);
+  const enabledCount = tiers.filter((tier) => tier.enabled).length;
+  const addonCount = (loaded.addons || []).filter((row) => row.title).length;
   return {
     ...base,
     serviceId: service.id,
@@ -450,6 +508,26 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
     media: [...(loaded.media || [])]
       .sort((a, b) => (a.position || 0) - (b.position || 0))
       .map((row) => ({ key: row.id, id: row.id, kind: row.kind, url: row.url || "", poster_url: row.poster_url || "", caption: row.caption || "" })),
+    listingKind: extras.listingKind,
+    license: extras.license,
+    digitalWork: extras.digitalWork,
+    official: extras.official,
+    simplePrice: extras.listingKind === "digital" || (enabledCount <= 1 && addonCount === 0),
+  };
+}
+
+function extrasFromService(service: BayOwnService): {
+  listingKind: BayListingKind;
+  license: BayLicense | "";
+  digitalWork: { id: string; title: string } | null;
+  official: boolean;
+} {
+  const work = (service as BayOwnService & { digital_work?: { kind?: string; id?: string; title?: string } | null }).digital_work;
+  return {
+    listingKind: service.listing_kind === "digital" ? "digital" : "service",
+    license: service.license === "personal" || service.license === "commercial" ? service.license : "",
+    digitalWork: work && typeof work.id === "string" && work.id ? { id: work.id, title: typeof work.title === "string" ? work.title : "" } : null,
+    official: service.official === true,
   };
 }
 
@@ -511,44 +589,84 @@ export interface PublishCheck {
   done: boolean;
 }
 
-/** 上架前的检查清单，逐项对应网关的发布闸门（网关仍会做最终校验）。 */
-export function publishChecks(draft: EditorDraft, ctx: EditorContext): PublishCheck[] {
-  const profile = ctx.profile;
-  const profileCheck: PublishCheck = profile
-    ? { key: "profile", label: "卖家资料已公开", done: profile.published === true }
-    : { key: "profile", label: "已建好并公开卖家资料", done: false };
-  const title: PublishCheck = { key: "title", label: "标题已填写", done: Boolean(draft.title.trim()) };
-  if (draft.catalogKind === "consult") {
-    return [
-      { key: "profile", label: "已建好卖家资料", done: Boolean(profile) },
-      title,
-      { key: "domain", label: "已选定领域", done: Boolean(draft.domain) && !isSellerRestrictedDomain(draft.domain) && ctx.domainKeys.includes(draft.domain) },
-      { key: "category", label: "已选定这个领域下的类目", done: Boolean(draft.category) },
-      { key: "price", label: "答疑价格大于 0", done: (draft.tiers[0]?.price_fen || 0) > 0 },
-      draft.consultUnit === "session"
-        ? { key: "amount", label: "按次计价，已写明轮次", done: Boolean(draft.consultRounds && draft.consultRounds > 0) }
-        : { key: "amount", label: "按小时计价，已写明分钟数", done: Boolean(draft.consultMinutes && draft.consultMinutes > 0) },
-    ];
+export function publishKindOf(draft: Pick<EditorDraft, "catalogKind" | "listingKind">): PublishKind | "" {
+  if (draft.catalogKind === "consult") return "consult";
+  if (draft.listingKind === "digital") return "digital";
+  if (draft.catalogKind === "delivery") return "service";
+  return "";
+}
+
+export function hasPreviewImage(draft: Pick<EditorDraft, "coverUrl" | "media">): boolean {
+  return Boolean(safeHttpUrl(draft.coverUrl)) || draft.media.some((item) => Boolean(safeHttpUrl(item.url)));
+}
+
+export function termsSpecs(specs: BayFieldSpec[]): BayFieldSpec[] {
+  return specs.filter((spec) => spec.key !== "delivery_days" && spec.key !== "revisions");
+}
+
+/** 每块还差哪些（中文短语）。规则按合同 §1.4。 */
+export function sectionMissing(draft: EditorDraft, ctx: EditorContext): Record<PublishSection, string[]> {
+  const kind = publishKindOf(draft);
+  const product: string[] = [];
+  const price: string[] = [];
+  const terms: string[] = [];
+  const preview = hasPreviewImage(draft);
+  if (kind === "digital") {
+    if (!draft.title.trim()) product.push("标题");
+    if (!preview) product.push("至少一张预览图");
+    if (!draft.digitalWork?.id) product.push("要卖的作品");
+    if (draft.license !== "personal" && draft.license !== "commercial") terms.push("授权范围");
+  } else if (kind === "service") {
+    if (!draft.title.trim()) product.push("标题");
+    const categoryKnown = ctx.categories.some(
+      (row) => row.slug === draft.category && row.catalog_kind === "delivery" && !isSellerRestrictedDomain(row.regulated_domain),
+    );
+    if (!categoryKnown) product.push("分类");
+    if (!preview) product.push("至少一张预览图");
+    if (draft.simplePrice) {
+      if (!(draft.tiers[0]?.delivery_days && draft.tiers[0].delivery_days > 0)) price.push("交付天数");
+    } else {
+      if (!resolvedPricingModel(draft) && !draft.pricingModel) price.push("计费方式");
+      if (!enabledTiers(draft).length) price.push("至少启用一档价格");
+      else if (!pricesLegal({ ...draft, pricingModel: resolvedPricingModel(draft) || draft.pricingModel })) {
+        price.push(draft.pricingModel === "free" ? "免费协作的每档价格都要是 0" : "每档价格都要大于 0");
+      } else if (!pricesOrdered(draft)) price.push("启用的价格档要按基础、标准、高级从低到高");
+    }
+    for (const spec of missingFields(termsSpecs(ctx.specs), draft.fieldValues)) terms.push(spec.label_zh);
+  } else if (kind === "consult") {
+    if (!draft.domain || isSellerRestrictedDomain(draft.domain) || !ctx.domainKeys.includes(draft.domain)) product.push("领域");
+    if (!draft.category) product.push("领域下的类目");
+    if (!draft.title.trim()) product.push("标题");
+    if (!draft.official && !(draft.tiers[0]?.price_fen > 0)) price.push("价格");
+    if (!draft.scopeNote.trim()) terms.push("能答范围");
+    if (draft.consultUnit === "session") {
+      if (!(draft.consultRounds && draft.consultRounds > 0)) terms.push("单次轮次");
+    } else if (!(draft.consultMinutes && draft.consultMinutes > 0)) terms.push("单次时长");
+    if (!draft.responseWindow.trim()) terms.push("最长响应时间");
   }
-  const categoryKnown = ctx.categories.some((row) => row.slug === draft.category && row.catalog_kind === "delivery" && !isSellerRestrictedDomain(row.regulated_domain));
-  const missing = missingFields(ctx.specs, draft.fieldValues);
-  return [
-    profileCheck,
-    title,
-    { key: "category", label: "类目已选择", done: categoryKnown },
-    { key: "model", label: "已选定计费方式", done: Boolean(draft.pricingModel) },
-    ctx.specs.length
-      ? { key: "fields", label: "这个类目的 {n} 项交付约定已填齐", vars: { n: ctx.specs.length }, done: missing.length === 0 }
-      : { key: "fields", label: "这个类目没有必填的交付约定", done: true },
-    {
-      key: "tiers",
-      label: draft.pricingModel === "free" ? "至少启用一档，且免费协作价格为 0" : "至少启用一档，且每档价格大于 0",
-      done: pricesLegal(draft),
-    },
-    { key: "order", label: "启用的价格档按基础、标准、高级递增", done: pricesOrdered(draft) },
-    { key: "media", label: "至少一张作品图或封面", done: Boolean(safeHttpUrl(draft.coverUrl)) || draft.media.some((item) => Boolean(safeHttpUrl(item.url))) },
-    { key: "description", label: "详情不少于 30 字", done: draft.description.trim().length >= MIN_DESCRIPTION },
-  ];
+  return { product, price, terms };
+}
+
+export function missingTotal(missing: Record<PublishSection, string[]>): number {
+  return PUBLISH_SECTIONS.reduce((sum, section) => sum + missing[section].length, 0);
+}
+
+export function firstMissingSection(missing: Record<PublishSection, string[]>): PublishSection | null {
+  return PUBLISH_SECTIONS.find((section) => missing[section].length > 0) || null;
+}
+
+/** 上架前的检查清单：由 sectionMissing 展开。不再拦「先公开卖家资料」。 */
+export function publishChecks(draft: EditorDraft, ctx: EditorContext): PublishCheck[] {
+  if (!publishKindOf(draft)) return [];
+  const missing = sectionMissing(draft, ctx);
+  const checks: PublishCheck[] = [];
+  for (const section of PUBLISH_SECTIONS) {
+    for (const item of missing[section]) {
+      checks.push({ key: `${section}:${item}`, label: item, done: false });
+    }
+  }
+  if (!checks.length) return [{ key: "ready", label: "可以发布了", done: true }];
+  return checks;
 }
 
 export function readyToPublish(checks: PublishCheck[]): boolean {

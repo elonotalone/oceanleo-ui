@@ -209,7 +209,7 @@ test("渲染 DealConversationView 后有 data-bay-deal-thread 与 data-bay-deal-
   await view.unmount();
 });
 
-test("openTradeThread：已登录且 demand+userId 建会话成功时 openBay 进 conversation", async () => {
+test("openTradeThread：已登录且 demand+userId 建会话成功时打开消息小窗并停在 talent:<id>", async () => {
   reset();
   const demandId = "6f1e81b4-d101-4d95-957c-5b5255b31df0";
   const proposerId = "b0b0b0b0-b0b0-40b0-b0b0-b0b0b0b0b0b0";
@@ -217,9 +217,8 @@ test("openTradeThread：已登录且 demand+userId 建会话成功时 openBay �
   W.routes.push({ method: "POST", path: "/v1/talent/threads", reply: { thread: { id: threadId } } });
   await openTradeThread({ kind: "demand", subjectRef: demandId, userId: proposerId });
   assert.equal(W.loginCalls, 1);
-  assert.equal(W.openBay.length, 1);
-  assert.equal(W.openBay[0].kind, "conversation");
-  assert.equal(W.openBay[0].threadId, threadId);
+  assert.equal(W.openBay.length, 0);
+  assert.deepEqual(W.openMessages, [{ conversationId: "talent:" + threadId }]);
   const post = W.calls.find((c) => c.method === "POST" && c.path === "/v1/talent/threads");
   assert.ok(post, "应 POST /v1/talent/threads");
   assert.deepEqual(post.body, { kind: "demand", counterparty_user_id: proposerId, subject_ref: demandId });

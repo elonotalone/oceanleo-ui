@@ -114,7 +114,8 @@ test("两套外壳的差异必须是**声明过的**差异，而不是漂移", (
   const home = navEntryById("home");
   assert.equal(home.placements.portal.labelKey, "newTask");
   assert.equal(home.placements.portal.iconId, "newTask");
-  assert.equal(navEntryById("explore").placements.portal.iconId, "search");
+  // 原「探索」那一行现在是 LeoBay（/bay）；门户侧栏用它自己那套图标里的 talent。
+  assert.equal(navEntryById("bay").placements.portal.iconId, "talent");
   assert.equal(navEntryById("workspace").placements.portal.iconId, "panel");
 
   // 次序差异：门户把 playground 排在 workspace 之后，租户站排在末位。
@@ -137,34 +138,39 @@ test("两套外壳的差异必须是**声明过的**差异，而不是漂移", (
 
 test("navEntries: 可见性开关生效，默认值符合各外壳约定", () => {
   const defaults = navEntries("workspace").map((e) => e.id);
-  // 宗旨 v19：探索恒在首页与工作台之间，且默认开启。
-  assert.deepEqual(defaults, ["home", "explore", "workspace", "library", "history"]);
+  // LeoBay 占原「探索」的位置：恒在首页与工作台之间，且默认开启。
+  assert.deepEqual(defaults, ["home", "bay", "workspace", "library", "history"]);
   assert.ok(!defaults.includes("playground"), "租户站默认不显示 playground");
 
   const withPg = navEntries("workspace", { withPlayground: true }).map((e) => e.id);
   assert.equal(withPg[withPg.length - 1], "playground");
 
+  // withExplore 是旧名、withBay 是新名，语义都是「显示 LeoBay 这一项」；任一为 false 就不显示。
   const noExplore = navEntries("workspace", { withExplore: false }).map((e) => e.id);
-  assert.ok(!noExplore.includes("explore"));
+  assert.ok(!noExplore.includes("bay"));
+  const noBay = navEntries("workspace", { withBay: false }).map((e) => e.id);
+  assert.ok(!noBay.includes("bay"));
 
   // 门户：talent 默认关（境内域名家族里没有这个子站）。
   const portal = navEntries("portal");
   const portalIds = portal.map((e) => e.id);
   assert.ok(!portalIds.includes("talent"), "不再有站外 talent 项（真人协作已并入各站的 LeoBay）");
-  assert.ok(!portalIds.includes("bay"), "门户主导航不再有 bay 行");
   assert.ok(!portalIds.includes("messages"), "门户主导航不再有 messages 行");
-  const leochat = portal.find((e) => e.id === "leochat");
-  assert.ok(leochat, "门户主导航有 leochat");
-  assert.equal(leochat.href, "/leochat");
-  assert.equal(leochat.iconId, "messages");
+  // LeoChat 只有小窗，没有整页：两套导航里都没有 leochat，也没有 explore（素材并进了 LeoBay）。
+  assert.ok(!portalIds.includes("leochat"), "门户主导航没有 leochat");
+  assert.ok(!portalIds.includes("explore"), "门户主导航没有 explore");
+  const bay = portal.find((e) => e.id === "bay");
+  assert.ok(bay, "门户主导航有 LeoBay");
+  assert.equal(bay.href, "/bay");
+  assert.equal(bay.iconId, "talent");
   assert.ok(
-    portalIds.indexOf("projects") < portalIds.indexOf("leochat") &&
-      portalIds.indexOf("leochat") < portalIds.indexOf("workspace"),
-    "leochat 排在 projects 之后、workspace 之前",
+    portalIds.indexOf("home") < portalIds.indexOf("bay") && portalIds.indexOf("bay") < portalIds.indexOf("projects"),
+    "LeoBay 排在首页之后、项目之前（原「探索」位）",
   );
   const workspaceIds = navEntries("workspace").map((e) => e.id);
   assert.ok(!workspaceIds.includes("leochat"), "子站导航没有 leochat");
-  assert.ok(!workspaceIds.includes("bay"), "子站导航没有 bay");
+  assert.ok(!workspaceIds.includes("explore"), "子站导航没有 explore");
+  assert.ok(workspaceIds.includes("bay"), "子站导航有 LeoBay");
   assert.ok(!workspaceIds.includes("messages"), "子站导航没有 messages");
 });
 

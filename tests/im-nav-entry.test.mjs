@@ -11,7 +11,7 @@ import { imEnabledFor } from "../src/shell/messages/messages-family.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const src = (rel) => readFileSync(join(here, "..", "src", rel), "utf8");
 
-test("导航里不再有消息动作项；门户有 leochat，子站没有 leochat/bay/messages", () => {
+test("导航里是 bay（/bay，原探索位），没有 leochat、没有 explore", () => {
   for (const entry of NAV_SOURCE) {
     assert.equal(entry.action, undefined, `${entry.id} 不应是动作项`);
   }
@@ -28,21 +28,22 @@ test("导航里不再有消息动作项；门户有 leochat，子站没有 leoch
   }
   assert.equal(navEntryById("messages"), undefined);
   assert.equal(NAV_SOURCE.some((e) => e.id === "messages"), false);
-  assert.equal(NAV_SOURCE.some((e) => e.id === "bay"), false);
+  assert.equal(NAV_SOURCE.some((e) => e.id === "leochat"), false);
+  assert.equal(NAV_SOURCE.some((e) => e.id === "explore"), false);
 
   const portal = navEntries("portal");
   const portalIds = portal.map((e) => e.id);
-  const leochat = portal.find((e) => e.id === "leochat");
-  assert.ok(leochat);
-  assert.equal(leochat.href, "/leochat");
-  assert.equal(leochat.iconId, "messages");
-  assert.ok(portalIds.indexOf("projects") < portalIds.indexOf("leochat"));
-  assert.ok(portalIds.indexOf("leochat") < portalIds.indexOf("workspace"));
+  const bay = portal.find((e) => e.id === "bay");
+  assert.ok(bay);
+  assert.equal(bay.href, "/bay");
+  assert.equal(bay.labelKey, "LeoBay");
+  assert.ok(portalIds.indexOf("home") < portalIds.indexOf("bay"));
+  assert.ok(portalIds.indexOf("bay") < portalIds.indexOf("workspace"));
 
   const ws = navEntries("workspace", { withPlayground: true }).map((e) => e.id);
-  assert.deepEqual(ws, ["home", "explore", "workspace", "library", "history", "playground"]);
+  assert.deepEqual(ws, ["home", "bay", "workspace", "library", "history", "playground"]);
   assert.ok(!ws.includes("leochat"));
-  assert.ok(!ws.includes("bay"));
+  assert.ok(!ws.includes("explore"));
   assert.ok(!ws.includes("messages"));
 });
 
@@ -62,14 +63,14 @@ test("租户站 workspaceNav 不再映射侧栏消息动作项", () => {
   assert.doesNotMatch(source, /entry\.action/);
 });
 
-test("共享外壳消息导出；MessagesHost 在不可用时什么都不渲染", () => {
+test("共享外壳消息导出；MessagesHost 在不可用时只渲染登录框宿主", () => {
   const index = src("shell/index.ts");
   assert.match(index, /export \{ MessagesHost \} from "\.\/messages\/MessagesHost"/);
   assert.match(index, /export \{ openMessages, closeMessages \} from "\.\/messages\/host-state"/);
   assert.match(index, /export \{ MessagesNavIcon \} from "\.\/messages\/MessagesNavIcon"/);
   assert.match(index, /export \{ imEnabledHere, useImEnabled \} from "\.\.\/lib\/im\/client"/);
   const host = src("shell/messages/MessagesHost.tsx");
-  assert.match(host, /if \(!enabled\) return bayEnabledHere\(\) \? <BayGuestHost \/> : null;/);
+  assert.match(host, /if \(!enabled\) return <BayAuthHost \/>;/);
   assert.match(host, /<WorkReplayHost \/>/);
   // 连接与深链监听都只在 enabled 时挂上；不可用时关掉状态，cleanup 不再 setEnabled(false)
   assert.match(

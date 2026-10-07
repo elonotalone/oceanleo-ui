@@ -6,7 +6,7 @@
 //        `workspaceTemplatePreviewHref` → /workspace/<appId>?tab=materials&item=…&mode=preview
 //        （`tab` 的取值归接口 A 定义，见 `W2-interface-A.md`：官方模板素材固定
 //         `materials`，`mine` 留给用户自有 artifact；`library` 作为历史别名归一化到 mine）
-//        `exploreAppHref`               → /explore?app=…
+//        `exploreAppHref`               → /bay?kind=material&app=…（LeoBay 的素材栏）
 //   ④ **切换模板时右侧信息与按钮目标同步跟随选中项**（本组件最易回归处，jsdom 真点击）；
 //   ⑤ 无模板 / 无代表 prompt 的 app 上按钮如何降级（「更多」几乎恒在，是唯一去处）；
 //   ⑥ 自带遮罩 / Esc / 打开即聚焦必须保留，且不得改用 `../ui` 的 portal <Modal>；
@@ -239,15 +239,16 @@ test("workspaceTemplatePreviewHref 的输出逐字符锁死", () => {
 });
 
 test("exploreAppHref 的输出逐字符锁死", () => {
-  assert.equal(exploreAppHref("poster"), "/explore?app=poster");
-  assert.equal(exploreAppHref("3d-model"), "/explore?app=3d-model");
-  assert.equal(exploreAppHref("图片生成"), "/explore?app=%E5%9B%BE%E7%89%87%E7%94%9F%E6%88%90");
-  // 空 app → 不带锚点的探索页，而不是 `?app=`（空参数会让 W5 多一条死分支）。
-  assert.equal(exploreAppHref(""), "/explore");
-  assert.equal(exploreAppHref("   "), "/explore");
-  // locale 前缀站传自己的 basePath。
-  assert.equal(exploreAppHref("poster", { basePath: "/ja/explore" }), "/ja/explore?app=poster");
-  assert.equal(exploreAppHref("poster", { basePath: "/ja/explore/" }), "/ja/explore?app=poster");
+  // 素材只在 LeoBay 的「素材」栏里展示（原「探索」页并到了那里）：落点是 /bay?kind=material，可带 app 锚点。
+  assert.equal(exploreAppHref("poster"), "/bay?kind=material&app=poster");
+  assert.equal(exploreAppHref("3d-model"), "/bay?kind=material&app=3d-model");
+  assert.equal(exploreAppHref("图片生成"), "/bay?kind=material&app=%E5%9B%BE%E7%89%87%E7%94%9F%E6%88%90");
+  // 空 appId 退回不带锚点的素材栏，不产出 `&app=`。
+  assert.equal(exploreAppHref(""), "/bay?kind=material");
+  assert.equal(exploreAppHref("   "), "/bay?kind=material");
+  // 调用方传旧地址（locale 前缀站的 /ja/explore）也落到同一张页：/ja/bay。
+  assert.equal(exploreAppHref("poster", { basePath: "/ja/explore" }), "/ja/bay?kind=material&app=poster");
+  assert.equal(exploreAppHref("poster", { basePath: "/ja/explore/" }), "/ja/bay?kind=material&app=poster");
 });
 
 // ————————————————————————————————————————————————————————————————
@@ -465,7 +466,7 @@ test("三按钮目标：预览&编辑指向选中模板的只读预览页，更�
   // 生成类似仍是 app 级 `?fill=preset`，行为不变。
   assert.match(html, /data-showcase-action="similar"[^>]*href="\/workspace\/poster\?fill=preset"/);
   // 更多 = 本站探索页并锚定该 app。
-  assert.match(html, /data-showcase-action="more"[^>]*href="\/explore\?app=poster"/);
+  assert.match(html, /data-showcase-action="more"[^>]*href="\/bay\?kind=material&(?:amp;)?app=poster"/);
   // 预览&编辑刻意**不带** `?fill=preset`：那是「生成类似」的活。
   assert.doesNotMatch(html, /mode=preview[^"]*fill=preset/);
 
@@ -526,7 +527,7 @@ test("无模板 app：预览&编辑退到调用方兜底，没兜底就只剩生
   // 连代表 prompt 都没有（music 站那 22 个）：只剩「更多」——探索页是唯一去处。
   const bare = markup({ templates: [], prompt: "", fillHref: "", title: "氛围音乐", appId: "ambient", fallbackIcon: "🎵" });
   assert.deepEqual(actionsOf(bare), ["more"]);
-  assert.match(bare, /data-showcase-action="more"[^>]*href="\/explore\?app=ambient"/);
+  assert.match(bare, /data-showcase-action="more"[^>]*href="\/bay\?kind=material&(?:amp;)?app=ambient"/);
   assert.doesNotMatch(bare, /<img/);
   assert.match(bare, /🎵/);
   assert.match(bare, /aria-label="关闭"/);
@@ -778,7 +779,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     assert.deepEqual(first.actions.map((a) => a.tag), ["A", "A", "A"]);
     assert.equal(first.actions[0].href, "/workspace/poster?tab=materials&item=art-a&mode=preview");
     assert.equal(first.actions[1].href, "/workspace/poster?fill=preset");
-    assert.equal(first.actions[2].href, "/explore?app=poster");
+    assert.equal(first.actions[2].href, "/bay?kind=material&app=poster");
 
     // ——— 点第二颗缩略图 ———
     await click('[data-template-thumb][data-template-id="poster-b"]');
@@ -794,7 +795,7 @@ test("切换模板：右侧标题/说明/标签与三个按钮的目标全部跟
     // 预览&编辑改指 B 的 artifact；生成类似与更多是 app 级，保持不变。
     assert.equal(second.actions[0].href, "/workspace/poster?tab=materials&item=art-b&mode=preview");
     assert.equal(second.actions[1].href, "/workspace/poster?fill=preset");
-    assert.equal(second.actions[2].href, "/explore?app=poster");
+    assert.equal(second.actions[2].href, "/bay?kind=material&app=poster");
 
     // ——— 切回第一份，确认是真·双向同步而不是「一次性走到 B」———
     await click('[data-template-thumb][data-template-id="poster-a"]');

@@ -3,8 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { INBOX_FILTERS } from "../src/lib/im/inbox-api.ts";
-import { onLeoChatPageRequest, registerLeoChatPage } from "../src/shell/leochat/page-presence.ts";
 import {
+  EXPANDED_KEY,
   IM_OPEN_EVENT,
   INBOX_FILTER_IDS,
   LAST_VIEW_KEY,
@@ -95,6 +95,7 @@ test("深链解析：会话 id、seq、inbox、people、邀请码；不认的值
   assert.equal(parseImDeepLink("?im_invite=ab").kind, "none");
   assert.equal(parseImDeepLink("").kind, "none");
   assert.equal(parseImDeepLink("?foo=1").kind, "none");
+  assert.equal(parseImDeepLink("?im=bay").kind, "none", "?im=bay 当没有");
 });
 
 test("buildImSearch 保留别的参数、清掉旧的 im 参数", () => {
@@ -257,7 +258,7 @@ test("会话 id 与 view/filter 同时给：打开会话，filter 仍记下；se
 
 test("host-state 的筛选白名单与收件箱 API 的 INBOX_FILTERS 一致", () => {
   assert.deepEqual([...INBOX_FILTER_IDS], [...INBOX_FILTERS]);
-  assert.deepEqual([...MESSAGES_VIEWS], ["inbox", "people", "bay"]);
+  assert.deepEqual([...MESSAGES_VIEWS], ["inbox", "people"]);
 });
 
 test("?im_invite 打开收件箱并交出邀请码；处理完清掉", () => {
@@ -339,15 +340,15 @@ test("关掉再开停在原栏目和原会话；切栏目不清会话", () => {
   assert.equal(host.getSnapshot().conversationId, "c1");
 });
 
-test("存储往返：写入后新建 host 能读回；格式不对用默认", () => {
+test("存储往返：写入后新建 host 能读回；存下来的栏目是 bay 时退回聊天", () => {
   const sim = makeEnv();
   const host = createHostState(sim.env);
   host.setEnabled(true);
   host.open({ conversationId: "keep-me" });
-  host.setView("bay");
-  assert.equal(JSON.parse(sim.storage.get(LAST_VIEW_KEY)).view, "bay");
+  host.setView("people");
+  assert.equal(JSON.parse(sim.storage.get(LAST_VIEW_KEY)).view, "people");
   const next = createHostState(sim.env);
-  assert.equal(next.getSnapshot().view, "bay");
+  assert.equal(next.getSnapshot().view, "people");
   assert.equal(next.getSnapshot().conversationId, "keep-me");
   assert.equal(next.getSnapshot().open, false);
 
@@ -362,35 +363,28 @@ test("存储往返：写入后新建 host 能读回；格式不对用默认", ()
   const fromWrong = createHostState(wrong.env);
   assert.equal(fromWrong.getSnapshot().view, "inbox");
   assert.equal(fromWrong.getSnapshot().conversationId, null);
+
+  const leftover = makeEnv();
+  leftover.env.storage.setItem(LAST_VIEW_KEY, JSON.stringify({ view: "bay", conversationId: "c1" }));
+  const fromBay = createHostState(leftover.env);
+  assert.equal(fromBay.getSnapshot().view, "inbox");
+  assert.equal(fromBay.getSnapshot().conversationId, "c1");
 });
 
-test("整页在场时 open 不置 open，请求被整页收到", () => {
-  const received = [];
-  const unreg = registerLeoChatPage();
-  const off = onLeoChatPageRequest((req) => received.push(req));
-  try {
-    const sim = makeEnv();
-    const host = createHostState(sim.env);
-    host.setEnabled(true);
-    host.open({ conversationId: "c9", seq: 4 });
-    assert.equal(host.getSnapshot().open, false);
-    assert.equal(received.length, 1);
-    assert.equal(received[0].tab, "inbox");
-    assert.equal(received[0].conversationId, "c9");
-    assert.equal(received[0].seq, 4);
-  } finally {
-    off();
-    unreg();
-  }
-});
-
-test("路径是 /leochat 或 /bay 时 applyLocation 不打开也不清地址栏", () => {
-  for (const url of ["https://oceanleo.com/leochat?im=c1", "https://oceanleo.com/bay?im=c1"]) {
-    const sim = makeEnv({ url });
-    const host = createHostState(sim.env);
-    host.setEnabled(true);
-    host.attach();
-    assert.equal(host.getSnapshot().open, false);
-    assert.match(sim.current().url, /im=c1/);
-  }
+test("放大状态记住", () => {
+  const sim = makeEnv();
+  const host = createHostState(sim.env);
+  host.setEnabled(true);
+  assert.equal(host.getSnapshot().expanded, false);
+  host.setExpanded(true);
+  assert.equal(host.getSnapshot().layout, "full");
+  assert.equal(sim.storage.get(EXPANDED_KEY), "1");
+  const next = createHostState(sim.env);
+  assert.equal(next.getSnapshot().expanded, true);
+  assert.equal(next.getSnapshot().layout, "full");
+  next.setExpanded(false);
+  assert.equal(sim.storage.get(EXPANDED_KEY), "0");
+  const collapsed = createHostState(sim.env);
+  assert.equal(collapsed.getSnapshot().expanded, false);
+  assert.equal(collapsed.getSnapshot().layout, "docked");
 });

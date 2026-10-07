@@ -21,6 +21,7 @@ import {
 } from "../../../lib/bay/consults";
 import { loadBayPaymentConfig } from "../../../lib/bay/checkout";
 import { profileDisplayName } from "../../../lib/bay/directory";
+import { openMessages } from "../../messages/host-state";
 import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, type BayPaneProps } from "../shell/bay-state";
 import { consultPriceText, consultScopeText } from "./format";
@@ -117,7 +118,7 @@ export function ConsultDetailView({ consult, domain, domainsLoading = false, buy
     try {
       const result = await bookBayConsult(consult.id);
       if (result?.contract?.id) openBay({ kind: "order", id: result.contract.id });
-      else if (result?.thread_id) openBay({ kind: "conversation", threadId: result.thread_id });
+      else if (result?.thread_id) openMessages({ conversationId: "talent:" + result.thread_id });
       else setNotice(tt("已建立答疑合同，接下来在会话里进行"));
     } catch (err) {
       setError(errorText(err) || tt("预约没成功，请稍后再试。"));

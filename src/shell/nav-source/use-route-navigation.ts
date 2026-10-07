@@ -12,7 +12,17 @@ import {
 import { closeMessages } from "../messages/host-state";
 import { fusionMountPrefix } from "../workspace-route";
 
+function pathKey(path: string): string {
+  return (path.split("?")[0] || "/").replace(/\/+$/, "") || "/";
+}
+
+function isBayFamilyPath(path: string): boolean {
+  const p = pathKey(path);
+  return p === "/bay" || p.endsWith("/bay") || p === "/explore" || p.endsWith("/explore");
+}
+
 function pathMatches(pathname: string, href: string, exact?: boolean): boolean {
+  if (!exact && isBayFamilyPath(href) && isBayFamilyPath(pathname)) return true;
   if (exact || href === "/" || href === fusionMountPrefix(href)) {
     return pathname === href;
   }

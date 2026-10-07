@@ -77,6 +77,10 @@ const dealStub = dataModule(`
   globalThis.__bayThreads ??= [];
   export async function openTradeThread(subject){ globalThis.__bayThreads.push(subject); if (globalThis.__bayThreadError) throw new Error(globalThis.__bayThreadError); }
 `);
+const messagesStub = dataModule(`
+  globalThis.__bayMessages ??= [];
+  export function openMessages(t){ globalThis.__bayMessages.push(t); }
+`);
 const settingsStub = dataModule(`
   globalThis.__bayTermsAsked ??= [];
   export async function ensureBayTerms(scope){ globalThis.__bayTermsAsked.push(scope); return globalThis.__bayTermsOk !== false; }
@@ -106,6 +110,7 @@ const stubs = {
   "../../../lib/agent": agentStub,
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
+  "../../messages/host-state": messagesStub,
   "../settings": settingsStub,
   "../../../contracts/domain-family": domainStub,
   "../../../ui/Toast": toastStub,
@@ -176,6 +181,7 @@ function reset() {
   globalThis.__authedCalls = [];
   globalThis.__authedReply = null;
   globalThis.__bayOpened = [];
+  globalThis.__bayMessages = [];
   globalThis.__bayLoginAsked = 0;
   globalThis.__baySignedIn = true;
   globalThis.__bayThreads = [];
@@ -410,7 +416,7 @@ test("发布者：看到全部报价，等回复的排在前面；接受先过�
   globalThis.__bayTermsOk = true;
   await view.click('[data-bay-proposal="pending"] [data-bay-action="accept"]');
   assert.deepEqual(posts().map((call) => call.path), ["/v1/talent/proposals/p1/accept"]);
-  assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "conversation", threadId: "th1" });
+  assert.deepEqual(globalThis.__bayMessages.at(-1), { conversationId: "talent:th1" });
   assert.ok(globalThis.__toasts.some((toast) => toast.kind === "success" && /合同草稿/.test(toast.title) && /没有付款/.test(toast.title)));
   assert.ok(!globalThis.__bayHttpCalls.some((call) => /pay|checkout|stripe/i.test(call.path)), "不触发任何付款");
   await view.unmount();

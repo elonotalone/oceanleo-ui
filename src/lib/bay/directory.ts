@@ -2,6 +2,7 @@
 // 不登录也能看；举报与拉黑要登录。展示文案的拼装放在调用方（tt），这里只给数据与判断。
 
 import { bayGet, bayPost } from "./http";
+import type { BayPageDoc } from "./page-doc";
 import { BAY_REPORT_REASON_TEXT, type BayReportReason, type BayService } from "./services";
 
 export type BayAvailability = "open" | "busy" | "closed";
@@ -32,6 +33,8 @@ export interface BayPublicProfile {
   self_described_role?: string | null;
   practice_vetting?: unknown;
   currency?: string;
+  page_doc?: BayPageDoc | null;
+  official?: boolean;
 }
 
 export interface BayShowcaseItem {

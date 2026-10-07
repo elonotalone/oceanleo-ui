@@ -250,31 +250,40 @@ test("信息流请求：参数白名单、匿名可调；待办数要登录", as
   assert.equal(calls[1].anonymous, false);
 });
 
-test("consumeDeepLink：路径是 /leochat 时不清掉 ?bay=、不请求小窗", async () => {
+test("consumeDeepLink：别的页面带 ?bay= → 跳到 /bay 页", async () => {
   const state = await loadState("com");
+  const assigned = [];
   const replaced = [];
-  const events = [];
-  const location = { pathname: "/leochat", search: "?bay=demand:d1", hash: "" };
+  const location = {
+    pathname: "/library",
+    search: "?bay=demand:d1",
+    hash: "",
+    origin: "https://video.oceanleo.com",
+    href: "https://video.oceanleo.com/library?bay=demand:d1",
+    assign(href) {
+      assigned.push(href);
+    },
+  };
   globalThis.window = {
     location,
     history: {
       state: {},
       replaceState(_s, _t, url) {
         replaced.push(url);
+        const parsed = new URL(url, "https://video.oceanleo.com/library");
+        location.search = parsed.search;
+        location.href = parsed.href;
       },
       pushState() {},
     },
     addEventListener() {},
     removeEventListener() {},
-    dispatchEvent(ev) {
-      events.push(ev);
-      return true;
-    },
   };
   const off = state.attachBayDeepLinks();
-  assert.deepEqual(replaced, []);
-  assert.equal(location.search, "?bay=demand:d1");
-  assert.equal(state.bayStateSnapshot().current.kind, "feed");
-  assert.equal(events.length, 0);
+  assert.equal(location.search, "");
+  assert.ok(replaced.length >= 1, "从原地址清掉 ?bay=");
+  assert.equal(state.bayStateSnapshot().current.kind, "demand");
+  assert.equal(state.bayStateSnapshot().current.id, "d1");
+  assert.deepEqual(assigned, ["/bay?bay=demand:d1"]);
   off();
 });

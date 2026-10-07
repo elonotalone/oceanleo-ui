@@ -42,6 +42,8 @@ const stubs = {
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
   "../settings": settingsStub,
+  "../shell/BayMine": dataModule(`export function BaySignInPrompt(){ return null; } export function BayMine(){ return null; }`),
+  "./ProfilePane": dataModule(`export function ProfilePane(){} export function ProfileDetailView(){}`),
 };
 const { ServiceCard } = await import(await compileModule("src/shell/bay/supply/ServiceCard.tsx", stubs));
 const { ConsultCard } = await import(await compileModule("src/shell/bay/supply/ConsultCard.tsx", stubs));

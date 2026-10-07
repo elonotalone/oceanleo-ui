@@ -1,8 +1,8 @@
 // Bay 的界面状态（oceanleo-bay 契约 §4.2）：目标栈、返回、站点、任务上下文、浮窗请求、登录请求。
 // 模块加载时不碰 window；浏览器能力都在调用时才取，服务端渲染拿到的是空状态。
 //
-// openBay：在 `/bay` 页上（BayPage 已挂载）→ 换页内详情并写 `?bay=`；否则记下目标，派发
-// `oceanleo:im-open`（detail.view = "bay"）让 Messages 浮窗切到 Bay 视图；未登录时由 BayGuestHost 接住。
+// LeoBay 是一张页（各站 `/bay`），不在 LeoChat 小窗里。
+// openBay：在 `/bay` 页上（BayPage 已挂载）→ 换页内详情并写 `?bay=`；在别的页面上 → 记下目标并跳到 `/bay?bay=<目标>`。
 import { useSyncExternalStore } from "react";
 import {
   currentDomainFamily,
@@ -11,16 +11,16 @@ import {
 } from "../../../contracts/domain-family";
 import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
-import { IM_OPEN_EVENT, hostState } from "../../messages/host-state";
-import { isLeoChatPagePath } from "../../leochat/leochat-links";
-import { BAY_FEED_KINDS, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget } from "./bay-links";
+import { hostState } from "../../messages/host-state";
+import { BAY_FEED_KINDS, BAY_KIND_PARAM, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget } from "./bay-links";
 
 export type BayLayout = "docked" | "full" | "mobile" | "page";
 
 export type BayMineTab = "needs" | "proposals" | "services" | "orders" | "help";
 
 export type BayFeedFilter = {
-  kind?: "all" | "demand" | "service" | "help" | "consult";
+  /** `material` = 官方素材货架（不走信息流接口，由页面自己画）。 */
+  kind?: "all" | "material" | "demand" | "service" | "help" | "consult";
   category?: string;
   q?: string;
 };
@@ -59,8 +59,6 @@ interface BayStore {
   stack: BayTarget[];
   siteKey: string;
   task: BayTaskContext | null;
-  /** 有人要求打开 Bay 浮窗（BayGuestHost 据此开合）。 */
-  overlayOpen: boolean;
   loginRequested: boolean;
   pageCount: number;
 }
@@ -73,7 +71,6 @@ let store: BayStore = {
   stack: [],
   siteKey: DEFAULT_SITE,
   task: null,
-  overlayOpen: false,
   loginRequested: false,
   pageCount: 0,
 };
@@ -186,6 +183,12 @@ function navigate(target: BayTarget): boolean {
 }
 
 function applyPageTarget(target: BayTarget | null): void {
+  if (target?.kind === "conversation") {
+    // 旧链接 `?bay=conversation:<id>`：会话在 LeoChat 小窗里开，页面停在信息流。
+    openBayConversation(target.threadId);
+    stripBayParam();
+    return;
+  }
   if (!target || target.kind === "feed") {
     if (store.stack.length) {
       lastDirection = "back";
@@ -205,64 +208,80 @@ function applyPageTarget(target: BayTarget | null): void {
   commit({ stack: [target] });
 }
 
-// ---- 浮窗请求 -------------------------------------------------------------------
+// ---- 从别的页面去 LeoBay ---------------------------------------------------------
 
-let pendingImOpen = false;
-let hostWatch: (() => void) | null = null;
-let hostWasOpen = false;
+let bayNavigator: ((href: string) => void) | null = null;
 
-function watchHost(): void {
-  if (hostWatch || !win()) return;
+/** 外壳把站内跳转（next/navigation 的 router.push）交进来；没交时退回整页跳转。 */
+export function setBayNavigator(navigate: ((href: string) => void) | null): void {
+  bayNavigator = navigate;
+}
+
+/** 当前目标与筛选对应的 `/bay` 地址（站内相对地址）。 */
+export function bayPageHrefNow(): string {
+  const params = new URLSearchParams(buildBaySearch("", view.canGoBack ? view.current : null));
+  const kind = store.filter.kind;
+  if (kind && kind !== "all") params.set(BAY_KIND_PARAM, kind);
+  const text = params.toString().replace(/%3A/gi, ":");
+  return text ? `/bay?${text}` : "/bay";
+}
+
+function goToBayPage(): void {
+  const w = win();
+  if (!w) return;
+  const href = bayPageHrefNow();
+  if (bayNavigator) {
+    bayNavigator(href);
+    return;
+  }
+  try {
+    w.location.assign(href);
+  } catch {
+    /* 沙箱里不让跳：目标已经记下，用户自己进 /bay 时还在 */
+  }
+}
+
+// ---- 交易会话：在 LeoChat 小窗里开 -------------------------------------------------
+
+let pendingConversation: string | null = null;
+let hostOff: (() => void) | null = null;
+
+/** 打开一条交易会话：LeoChat 小窗停在那条会话上。小窗还没就绪（登录态是懒加载的）就等它可用时再开。 */
+export function openBayConversation(threadId: string): void {
+  if (!win() || !threadId) return;
   let host: ReturnType<typeof hostState>;
   try {
     host = hostState();
   } catch {
     return;
   }
-  hostWasOpen = host.getSnapshot().open;
-  hostWatch = host.subscribe(() => {
-    const snap = host.getSnapshot();
-    if (snap.enabled && pendingImOpen) {
-      pendingImOpen = false;
-      dispatchImOpen();
-    }
-    if (hostWasOpen && !snap.open) commit({ overlayOpen: false });
-    hostWasOpen = snap.open;
+  const conversationId = `talent:${threadId}`;
+  if (host.getSnapshot().enabled) {
+    host.open({ conversationId });
+    return;
+  }
+  pendingConversation = conversationId;
+  if (hostOff) return;
+  hostOff = host.subscribe(() => {
+    if (!pendingConversation || !host.getSnapshot().enabled) return;
+    const next = pendingConversation;
+    pendingConversation = null;
+    host.open({ conversationId: next });
   });
 }
 
-function dispatchImOpen(): void {
-  const w = win();
-  if (!w) return;
-  try {
-    w.dispatchEvent(new CustomEvent(IM_OPEN_EVENT, { detail: { view: "bay" } }));
-  } catch {
-    /* 没有 CustomEvent 的环境 */
-  }
-}
-
-function requestOverlay(): void {
-  commit({ overlayOpen: true });
-  watchHost();
-  let enabled = false;
-  try {
-    enabled = hostState().getSnapshot().enabled;
-  } catch {
-    enabled = false;
-  }
-  // 浮窗还没就绪（登录态在内存里是懒加载的）：等它可用时再派发一次。
-  pendingImOpen = !enabled;
-  dispatchImOpen();
-}
-
 export function openBay(target: BayTarget = { kind: "feed" }): void {
+  if (target.kind === "conversation") {
+    openBayConversation(target.threadId);
+    return;
+  }
   const advanced = navigate(target);
   if (onBayPage()) {
     writePageUrl(view.canGoBack ? view.current : null, advanced ? "push" : "replace");
     return;
   }
   if (!bayEnabledHere()) return;
-  requestOverlay();
+  goToBayPage();
 }
 
 /** 换掉当前这一层详情，不新增返回层（「我的」里切分区用）；停在信息流时等同 openBay。 */
@@ -298,16 +317,6 @@ export function bayBack(): void {
   commit({ stack: store.stack.slice(0, -1) });
 }
 
-/** BayGuestHost 的关闭键；已登录时关闭由 Messages 浮窗负责。 */
-export function closeBayOverlay(): void {
-  pendingImOpen = false;
-  commit({ overlayOpen: false });
-}
-
-export function useBayOverlayOpen(): boolean {
-  return useSyncExternalStore(subscribe, () => store.overlayOpen, () => false);
-}
-
 const SERVER_VIEW: BayView = { current: { kind: "feed" }, canGoBack: false };
 
 export function useBayState(): { current: BayTarget; canGoBack: boolean } {
@@ -318,7 +327,7 @@ export function useBayHasDetail(): boolean {
   return useSyncExternalStore(subscribe, () => store.stack.length > 0, () => false);
 }
 
-/** 当前页面是不是 `/bay` 页本身（BayPage 已挂载）。浮窗据此收起「在整页打开」。 */
+/** 当前页面是不是 `/bay` 页本身（BayPage 已挂载）。 */
 export function useBayPageMounted(): boolean {
   return useSyncExternalStore(subscribe, () => store.pageCount > 0, () => false);
 }
@@ -332,6 +341,29 @@ export function setBayFilter(filter: BayFeedFilter): void {
   const next = normalizeFilter(filter);
   if (sameBayTarget({ kind: "feed", filter: next }, { kind: "feed", filter: store.filter })) return;
   commit({ filter: next });
+  if (onBayPage()) writePageKind(next.kind);
+}
+
+/** 把当前种类写进 `/bay` 页的地址（`?kind=material`），刷新或把链接发给别人时停在同一栏。 */
+function writePageKind(kind: BayFeedFilter["kind"]): void {
+  const w = win();
+  if (!w) return;
+  const params = new URLSearchParams(w.location.search);
+  if (kind && kind !== "all") params.set(BAY_KIND_PARAM, kind);
+  else params.delete(BAY_KIND_PARAM);
+  const text = params.toString().replace(/%3A/gi, ":");
+  const next = `${w.location.pathname}${text ? `?${text}` : ""}${w.location.hash || ""}`;
+  if (next === `${w.location.pathname}${w.location.search}${w.location.hash || ""}`) return;
+  try {
+    w.history.replaceState(historyState(), "", next);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readPageKind(search: string): BayFeedFilter["kind"] | null {
+  const raw = new URLSearchParams(search || "").get(BAY_KIND_PARAM);
+  return raw && (BAY_FEED_KINDS as readonly string[]).includes(raw) ? (raw as BayFeedFilter["kind"]) : null;
 }
 
 export function bayStateSnapshot(): { current: BayTarget; canGoBack: boolean } {
@@ -505,7 +537,7 @@ export function bayHrefOnSite(siteKey: string, target: BayTarget): string {
 let pageOff: (() => void) | null = null;
 
 /**
- * 在整页上点了一个仍然指向本页的链接（侧栏的「LeoChat」、别处的 `/bay?bay=…`）：
+ * 在 `/bay` 页上点了一个仍然指向本页的链接（侧栏的「LeoBay」、别处的 `/bay?bay=…`）：
  * 站内跳转只换地址、不重挂页面，所以这里按链接带的目标换页内详情；没带目标就回信息流。
  */
 function onSamePageLinkClick(event: MouseEvent): void {
@@ -521,6 +553,8 @@ function onSamePageLinkClick(event: MouseEvent): void {
     return;
   }
   if (url.origin !== w.location.origin || url.pathname !== w.location.pathname) return;
+  const kind = readPageKind(url.search);
+  if (kind && kind !== store.filter.kind) commit({ filter: normalizeFilter({ ...store.filter, kind }) });
   applyPageTarget(parseBayDeepLink(url.search));
 }
 
@@ -529,8 +563,16 @@ export function registerBayPage(): () => void {
   const w = win();
   commit({ pageCount: store.pageCount + 1 });
   if (w && store.pageCount === 1) {
+    const applyKind = () => {
+      const kind = readPageKind(w.location.search);
+      if (kind && kind !== store.filter.kind) commit({ filter: normalizeFilter({ ...store.filter, kind }) });
+    };
+    applyKind();
     applyPageTarget(parseBayDeepLink(w.location.search));
-    const onPop = () => applyPageTarget(parseBayDeepLink(w.location.search));
+    const onPop = () => {
+      applyKind();
+      applyPageTarget(parseBayDeepLink(w.location.search));
+    };
     w.addEventListener("popstate", onPop);
     const doc = w.document;
     doc?.addEventListener("click", onSamePageLinkClick, true);
@@ -557,19 +599,23 @@ let linkOff: (() => void) | null = null;
 function consumeDeepLink(): void {
   const w = win();
   if (!w) return;
-  // `/leochat` 与 `/bay` 页自己读 `?bay=`（registerBayPage）；这里只管别的页面。
-  if (isLeoChatPagePath(w.location.pathname) || onBayPage()) return;
+  // `/bay` 页自己读 `?bay=`（registerBayPage）；这里只管别的页面。
+  if (onBayPage() || /\/bay\/?$/.test(w.location.pathname)) return;
   const target = parseBayDeepLink(w.location.search);
   if (!target) return;
   stripBayParam();
   if (!bayEnabledHere()) return;
+  if (target.kind === "conversation") {
+    openBayConversation(target.threadId);
+    return;
+  }
   navigate(target);
-  requestOverlay();
+  goToBayPage();
 }
 
 /**
- * 任何页面带 `?bay=` → 打开浮窗的 Bay 视图到那个目标，并从地址栏清掉（浮窗不是路由）。
- * Bay 图标、叫真人按钮、BayGuestHost 都挂它；引用计数，只挂一份监听。
+ * 别的页面带 `?bay=`（旧通知、旧链接）→ 跳到 `/bay` 页的那个目标，并从原地址清掉。
+ * LeoChat 图标挂它（每个页面都有那个图标）；引用计数，只挂一份监听。
  */
 export function attachBayDeepLinks(): () => void {
   const w = win();
@@ -592,3 +638,6 @@ export function attachBayDeepLinks(): () => void {
     }
   };
 }
+
+/** @deprecated LeoBay 不再有浮窗；留着这个空函数是为了设置窗等旧调用方不用同步改。 */
+export function closeBayOverlay(): void {}

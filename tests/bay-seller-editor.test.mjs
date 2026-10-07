@@ -69,6 +69,7 @@ const agentStub = dataModule(`
       return { ok: false, status: error.status || 400, error: error.message };
     }
   }
+  export async function listTasks(){ return { ok: true, data: { items: [] } }; }
 `);
 const categoriesStub = dataModule(`
   export async function fetchBayCategories() {
@@ -117,6 +118,7 @@ const stubs = {
   "../settings": settingsStub,
   "../shell/bay-state": stateStub,
   "../supply": supplyStub,
+  "../needs/LibraryWorkPicker": dataModule(`export async function pickLibraryWork(){ return null; } export function LibraryWorkPickerHost(){ return null; }`),
 };
 const { ServiceEditorPane } = await import(await compileModule("src/shell/bay/seller/ServiceEditorPane.tsx", stubs));
 const model = await import(await compileModule("src/shell/bay/seller/editor-model.ts", stubs));
@@ -231,143 +233,6 @@ async function mount(target) {
 }
 
 const calls = (method, path) => globalThis.__bayCalls.filter((call) => call.method === method && (path === undefined || call.path === path));
-const optionValues = (host, selector) => [...host.querySelectorAll(`${selector} option`)].map((option) => option.value);
-
-test("新建交付服务：类目只有交付类目（受限领域不出现）；标题没填不发请求；存草稿的请求体带 posted_site = 当前站", async () => {
-  reset({ service: null });
-  const view = await mount({ kind: "service-editor" });
-  assert.equal(view.host.querySelector("h2"), null, "窗格不自带标题栏（仲裁 #12）");
-  await view.click('[data-bay-kind="delivery"] input');
-  await view.click('[data-bay-action="next"]');
-  assert.deepEqual(optionValues(view.host, "[data-bay-category-select]"), ["", "design", "video"]);
-
-  await view.click('[data-bay-action="next"]');
-  assert.deepEqual(calls("POST"), [], "标题没填：不建草稿");
-  assert.equal(globalThis.__bayToasts.at(-1).title, "请先填写标题");
-
-  await view.setValue('[data-bay-field="title"]', "  为你的短视频做一套片头  ");
-  await view.click('[data-bay-action="next"]');
-  assert.equal(globalThis.__bayToasts.at(-1).title, "请选择类目");
-  assert.deepEqual(calls("POST"), []);
-
-  await view.setValue("[data-bay-category-select]", "video");
-  await view.click('[data-bay-action="next"]');
-  const created = calls("POST", "/v1/talent/me/services");
-  assert.equal(created.length, 1);
-  assert.equal(created[0].body.posted_site, "video", "新建记下在哪个站发的");
-  assert.equal(created[0].body.title, "为你的短视频做一套片头");
-  assert.equal(created[0].body.category, "video");
-  assert.equal(created[0].body.status, "draft");
-  assert.equal(created[0].body.catalog_kind, "delivery");
-  assert.equal(created[0].body.regulated_domain, "none");
-  assert.equal(globalThis.__bayToasts.at(-1).title, "草稿已建好");
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "model");
-  assert.deepEqual(globalThis.__bayTerms, [], "存草稿不问条款");
-  await view.unmount();
-});
-
-test("没有卖家资料：不能存草稿，提示去建资料（打开设置里的卖家资料）", async () => {
-  reset({ service: null, profile: null });
-  const view = await mount({ kind: "service-editor" });
-  await view.click('[data-bay-kind="delivery"] input');
-  await view.click('[data-bay-action="next"]');
-  await view.setValue('[data-bay-field="title"]', "海报设计");
-  await view.setValue("[data-bay-category-select]", "design");
-  await view.click('[data-bay-action="next"]');
-  assert.deepEqual(calls("POST"), []);
-  assert.equal(globalThis.__bayToasts.at(-1).title, "先建卖家资料，才能保存服务");
-  const link = [...view.host.querySelectorAll("button")].find((button) => button.textContent === "去建资料");
-  assert.ok(link);
-  await act(async () => link.click());
-  assert.deepEqual(globalThis.__baySettingsOpened, ["profile"]);
-  await view.unmount();
-});
-
-test("上架前先过卖家条款：拒绝就不上架、不改服务；同意后才发 publish，带计费方式与交付约定", async () => {
-  reset();
-  const view = await mount({ kind: "service-editor", serviceId: "s1" });
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "basics");
-  assert.equal(view.find('[data-bay-field="title"]').value, "品牌 Logo 设计");
-  await view.click('[data-bay-step-chip="publish"]');
-  assert.deepEqual([...view.host.querySelectorAll('[data-bay-check][data-done="0"]')].map((node) => node.getAttribute("data-bay-check")), []);
-  assert.equal(globalThis.__bayPreview.title, "品牌 Logo 设计", "预览用信息流卡片");
-  assert.deepEqual(globalThis.__bayPreview.price, { min_fen: 12000, max_fen: 12000, unit: "project", currency: "USD" });
-  assert.match(view.find("[data-bay-tier-preview]").textContent, /\$120/);
-
-  globalThis.__bayTermsAccept = false;
-  await view.click('[data-bay-action="publish"]');
-  assert.deepEqual(globalThis.__bayTerms, ["seller"]);
-  assert.deepEqual(calls("POST", "/v1/talent/me/services/s1/publish"), [], "条款没同意：不上架");
-  assert.deepEqual(calls("PUT", "/v1/talent/me/services/s1"), [], "条款没同意：服务也不改");
-  assert.equal(globalThis.__bayToasts.at(-1).title, "没有同意卖家条款，服务还没有上架。");
-  assert.equal(view.find("[data-bay-editor-status]").getAttribute("data-bay-editor-status"), "draft");
-
-  globalThis.__bayTermsAccept = true;
-  await view.click('[data-bay-action="publish"]');
-  assert.deepEqual(globalThis.__bayTerms, ["seller", "seller"]);
-  const update = calls("PUT", "/v1/talent/me/services/s1");
-  assert.equal(update.length, 1);
-  assert.equal("posted_site" in update[0].body, false, "更新不改发布站");
-  assert.equal(update[0].body.title, "品牌 Logo 设计");
-  const published = calls("POST", "/v1/talent/me/services/s1/publish");
-  assert.equal(published.length, 1);
-  assert.deepEqual(published[0].body, { pricing_model: "fixed", fields: { file_formats: ["PNG", "AI"] } });
-  assert.equal(view.find("[data-bay-editor-status]").getAttribute("data-bay-editor-status"), "published");
-  assert.ok(view.host.querySelector('[data-bay-action="pause"]'), "上架后能暂停");
-  await view.unmount();
-});
-
-test("答疑：领域里没有医疗、法律、宠物医疗；类目只列所选领域；上架先过条款，请求体带 posted_site", async () => {
-  reset({ service: null });
-  globalThis.__baySiteKey = "finance";
-  const view = await mount({ kind: "service-editor" });
-  await view.click('[data-bay-kind="consult"] input');
-  await view.click('[data-bay-action="next"]');
-  assert.deepEqual([...view.host.querySelectorAll("[data-bay-domain]")].map((node) => node.getAttribute("data-bay-domain")), ["tax", "career"]);
-  await view.click('[data-bay-domain-input="tax"]');
-  assert.deepEqual(optionValues(view.host, "[data-bay-category-select]"), ["", "tax-basic"]);
-  await view.setValue("[data-bay-category-select]", "tax-basic");
-  await view.click('[data-bay-action="next"]');
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "prompts");
-  await view.click('[data-bay-action="next"]');
-  await view.setValue('[data-bay-field="title"]', "讲清个税汇算里常见的三类问题");
-  await view.click('[data-bay-action="next"]');
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "pricing");
-  await view.click('[data-bay-action="next"]');
-  assert.equal(globalThis.__bayToasts.at(-1).title, "答疑价格要大于 0");
-  await view.setValue('[data-bay-field="consult-price"]', "49");
-  await view.click('[data-bay-action="next"]');
-  assert.equal(globalThis.__bayToasts.at(-1).title, "按次答疑要写明一次包含几轮问答");
-  await view.setValue('[data-bay-field="consult-rounds"]', "3");
-  await view.click('[data-bay-action="next"]');
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "publish");
-  assert.deepEqual(globalThis.__bayCalls.filter((call) => call.method !== "GET"), [], "答疑前几步全在本地，不打网关");
-
-  globalThis.__bayTermsAccept = false;
-  await view.click('[data-bay-action="publish"]');
-  assert.deepEqual(calls("POST", "/v1/talent/consults"), []);
-  globalThis.__bayTermsAccept = true;
-  await view.click('[data-bay-action="publish"]');
-  const created = calls("POST", "/v1/talent/consults");
-  assert.equal(created.length, 1);
-  assert.deepEqual(created[0].body, {
-    category_slug: "tax-basic",
-    regulated_domain: "tax",
-    title: "讲清个税汇算里常见的三类问题",
-    summary: "",
-    scope_note: "",
-    price_fen: 4900,
-    price_unit: "session",
-    rounds: 3,
-    minutes: null,
-    response_window: "",
-    status: "published",
-    posted_site: "finance",
-  });
-  assert.deepEqual(globalThis.__bayTerms, ["seller", "seller"]);
-  assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "services" });
-  await view.unmount();
-});
 
 test("未登录：只给登录入口，不取数", async () => {
   reset();
@@ -425,14 +290,17 @@ test("字段校验：每一步缺什么就拦在本地", () => {
   assert.equal(blocked("pricing", { ...consult, consultUnit: "hour", consultMinutes: null }), "按小时答疑要写明一小时按多少分钟计");
 });
 
-test("上架检查清单：逐项对应网关闸门；资料没公开不能上架", () => {
+test("上架检查清单：逐项对应网关闸门；不再拦「先公开卖家资料」", () => {
   const checks = model.publishChecks(filledDraft(), CTX);
   assert.deepEqual(checks.filter((check) => !check.done).map((check) => check.key), []);
   assert.equal(model.readyToPublish(checks), true);
   const unpublished = model.publishChecks(filledDraft(), { ...CTX, profile: { ...PROFILE, published: false } });
-  assert.deepEqual(unpublished.filter((check) => !check.done).map((check) => check.key), ["profile"]);
+  assert.equal(model.readyToPublish(unpublished), true);
   const thin = model.publishChecks(filledDraft({ description: "太短", coverUrl: "", category: "med-docs" }), CTX);
-  assert.deepEqual(thin.filter((check) => !check.done).map((check) => check.key), ["category", "media", "description"]);
+  assert.deepEqual(
+    thin.filter((check) => !check.done).map((check) => check.key),
+    ["product:分类", "product:至少一张预览图"],
+  );
   assert.equal(model.readyToPublish([]), false);
 });
 
@@ -562,24 +430,6 @@ test("删除路径：点删除后出现确认弹窗、点取消没有发出 DELE
   );
   assert.equal(globalThis.__bayToasts.at(-1).title, "服务已删除");
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "services" });
-  await view.unmount();
-});
-
-test("离开脏步骤：取消则仍在原步骤，草稿不丢；确认才走", async () => {
-  reset();
-  const view = await mount({ kind: "service-editor", serviceId: "s1" });
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "basics");
-  await view.setValue('[data-bay-field="title"]', "改过的标题");
-  await view.click('[data-bay-step-chip="model"]');
-  assert.match(view.find("[data-bay-confirm-title]").textContent, /这一步还有没保存的修改，确定先离开？/);
-  await view.click("[data-bay-confirm-cancel]");
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "basics", "取消：留在原步骤");
-  assert.equal(view.find('[data-bay-field="title"]').value, "改过的标题", "取消：草稿不丢");
-  assert.equal(view.host.querySelector("[data-bay-confirm]"), null);
-
-  await view.click('[data-bay-step-chip="model"]');
-  await view.click("[data-bay-confirm-ok]");
-  assert.equal(view.find('[aria-current="step"]').getAttribute("data-bay-step-chip"), "model");
   await view.unmount();
 });
 

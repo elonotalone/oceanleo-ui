@@ -123,8 +123,9 @@ test("exploreSubtitle 导出仍在，页面源码不再调用", () => {
   assert.doesNotMatch(source, /exploreSubtitle\(/);
   assert.doesNotMatch(source, /py-7/);
   assert.doesNotMatch(source, /text-\[22px\]/);
+  assert.match(source, /embedded\?: boolean/);
   assert.match(source, /APP_PAGE_FRAME_CLASS/);
-  assert.match(source, /pageTitle=\{tt\(EXPLORE_TITLE\)\}/);
+  assert.match(source, /embedded \? tt\("官方素材"\) : tt\(EXPLORE_TITLE\)/);
 });
 
 test("material-library-view 把 pageTitle 透传给货架，且不超过 800 行", () => {

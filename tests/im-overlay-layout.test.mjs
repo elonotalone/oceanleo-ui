@@ -29,12 +29,15 @@ test("MessagesLayout：层级用行内 zIndex，不靠 Tailwind 任意值（消�
   assert.match(layout, /isolation:\s*["']isolate["']/);
 });
 
-test("MessagesLayout：顶栏有标题和跳转链接，仍没有放大键", () => {
+test("MessagesLayout：顶栏有标题和放大键，没有整页打开", () => {
   const layout = src("shell/messages/MessagesLayout.tsx");
-  assert.match(layout, /text-\[13px\] font-semibold tracking-tight/);
-  assert.match(layout, /data-leochat-open-page/);
-  assert.match(layout, /ImOpenPageIcon/);
-  assert.doesNotMatch(layout, /ImExpandIcon|ImCollapseIcon|onToggleExpand|放大到全屏/);
+  assert.match(layout, /text-\[14px\] font-bold tracking-tight/);
+  assert.doesNotMatch(layout, /data-leochat-open-page/);
+  assert.doesNotMatch(layout, /ImOpenPageIcon/);
+  assert.match(layout, /ImExpandIcon/);
+  assert.match(layout, /ImCollapseIcon/);
+  assert.match(layout, /onToggleExpand/);
+  assert.match(layout, /data-leochat-expand/);
   assert.match(layout, /data-im-drag-handle/);
   assert.match(layout, /ImCloseIcon/);
 });
@@ -75,7 +78,7 @@ test("MessagesNavIcon：不用 SVG url(#id) 渐变，View Transition 复制 DOM 
   assert.doesNotMatch(icon, /id="lgi-messages"/);
 });
 
-test("MessagesHost：切页关掉浮层；栏目顺序仍是聊天、联系人、Bay；聊天页才有新建和搜索", () => {
+test("MessagesHost：切页关掉浮层；栏目顺序是聊天、联系人；聊天页才有新建和搜索", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /usePathname/);
   assert.match(host, /if \(hostState\(\)\.getSnapshot\(\)\.open\) closeMessages\(\)/);
@@ -90,12 +93,12 @@ test("MessagesHost：切页关掉浮层；栏目顺序仍是聊天、联系人�
   assert.doesNotMatch(host, /SettingsView/);
   assert.doesNotMatch(host, /id: "search"/);
   const tabs = src("shell/leochat/LeoChatTabs.tsx");
-  assert.match(tabs, /id: "inbox"[\s\S]*id: "people"[\s\S]*id: "bay"/);
+  assert.match(tabs, /id: "inbox"[\s\S]*id: "people"/);
   assert.match(tabs, /label: "聊天"/);
   assert.match(tabs, /label: "联系人"/);
-  assert.match(tabs, /label: "LeoBay"/);
+  assert.doesNotMatch(tabs, /label: "LeoBay"/);
+  assert.doesNotMatch(tabs, /id: "bay"/);
   assert.equal(tabs.indexOf('id: "inbox"') < tabs.indexOf('id: "people"'), true);
-  assert.equal(tabs.indexOf('id: "people"') < tabs.indexOf('id: "bay"'), true);
 
   const inbox = src("shell/messages/Inbox.tsx");
   assert.match(inbox, /onNew/);
@@ -117,9 +120,6 @@ test("MessagesHost：切页关掉浮层；栏目顺序仍是聊天、联系人�
   const conversation = src("shell/messages/conversation/ConversationView.tsx");
   assert.match(conversation, /ImSearchIcon/);
   assert.match(conversation, /SearchView/);
-
-  const bay = src("shell/bay/shell/BayView.tsx");
-  assert.doesNotMatch(bay, /from "\.\.\/messages\/search\/SearchView"|from "\.\/search\/SearchView"/);
 });
 
 test("MessagesLayout：开窗从左下长出来，进会话是推入，关掉会收走", () => {

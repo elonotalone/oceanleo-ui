@@ -533,6 +533,9 @@ export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentLibrar
 // 上下文默认一条都不勾、可逐条撤回；agent 雇人默认全关且每个决定都能被人推翻。
 export { HumanHandoffButton, handoffContextCandidates, type HumanHandoffButtonProps } from "./HumanHandoffButton";
 export * from "./bay";
+export { getBayOfficialPublisher, type BayOfficialPublisher } from "../lib/bay/official";
+export { type BayListingKind, type BayLicense, saveSellerPage } from "../lib/bay/seller";
+export { claimBayService } from "../lib/bay/services";
 export * from "./leochat";
 export { HumanHandoffDialog } from "./HumanHandoffDialog";
 export type {

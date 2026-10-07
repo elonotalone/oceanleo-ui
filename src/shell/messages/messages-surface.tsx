@@ -131,14 +131,61 @@ export function ImEmojiIcon() {
   );
 }
 
+/** LeoChat 的标志：一块渐变圆角方块里的对话气泡。顶栏、放大后的空白处用。 */
+export function LeoChatMark({ large = false }: { large?: boolean }) {
+  return (
+    <span data-leochat-mark={large ? "large" : "small"} aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 4.5c4.4 0 8 2.9 8 6.6s-3.6 6.6-8 6.6c-.9 0-1.7-.1-2.5-.3L5.6 19l.9-3.1C5 14.7 4 13 4 11.1 4 7.4 7.6 4.5 12 4.5z" />
+        <path d="M9 11.1h.01M12 11.1h.01M15 11.1h.01" strokeWidth={2.6} />
+      </svg>
+    </span>
+  );
+}
+
 export const MESSAGES_SURFACE_CSS = `
+:root {
+  --im-accent: #5b5bf6;
+  --im-accent-2: #3b82f6;
+  --im-accent-soft: rgba(91, 91, 246, 0.10);
+  --im-gradient: linear-gradient(135deg, #7c5cff 0%, #5b5bf6 45%, #3b82f6 100%);
+}
+[data-leochat-mark] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: var(--im-gradient);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(91, 91, 246, 0.35);
+}
+[data-leochat-mark] svg { width: 16px; height: 16px; }
+[data-leochat-mark="large"] {
+  width: 64px;
+  height: 64px;
+  border-radius: 22px;
+  box-shadow: 0 14px 32px rgba(91, 91, 246, 0.35);
+}
+[data-leochat-mark="large"] svg { width: 34px; height: 34px; }
+[data-leochat-badge] {
+  background: var(--im-gradient);
+  box-shadow: 0 0 0 2px #fff;
+}
+html.dark [data-leochat-badge] { box-shadow: 0 0 0 2px var(--leo-d-bg); }
+[data-leochat-open="true"] { color: var(--im-accent); background: var(--im-accent-soft); }
+
 [data-testid="messages-overlay"] {
   --im-title: 13px;
   --im-body: 14px;
   --im-meta: 12px;
   background: #fff;
   color: #171717;
-  box-shadow: 0 18px 50px rgba(15, 15, 15, 0.14), 0 0 0 1px rgba(15, 15, 15, 0.06);
+  box-shadow:
+    0 32px 80px rgba(30, 27, 75, 0.22),
+    0 8px 24px rgba(30, 27, 75, 0.10),
+    0 0 0 1px rgba(30, 27, 75, 0.06);
   transform-origin: 0% 100%;
   transition:
     opacity var(--leo-dur-4) var(--leo-ease-decelerate),
@@ -166,8 +213,9 @@ html.dark [data-testid="messages-overlay"] {
 }
 
 [data-testid="messages-overlay"] [data-im-drag-handle] {
-  height: 44px;
-  border-bottom-color: rgba(15, 15, 15, 0.06);
+  height: 52px;
+  border-bottom-color: rgba(30, 27, 75, 0.07);
+  background: linear-gradient(180deg, rgba(91, 91, 246, 0.06) 0%, rgba(91, 91, 246, 0) 100%);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -178,10 +226,10 @@ html.dark [data-testid="messages-overlay"] [data-im-drag-handle] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  color: rgba(15, 15, 15, 0.45);
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: rgba(15, 15, 15, 0.5);
   background: transparent;
 }
 [data-im-chrome-btn]:hover {
@@ -191,41 +239,68 @@ html.dark [data-testid="messages-overlay"] [data-im-drag-handle] {
 html.dark [data-im-chrome-btn] { color: var(--leo-d-muted); }
 html.dark [data-im-chrome-btn]:hover { background: var(--leo-d-card-2); color: var(--leo-d-fg); }
 
-[data-im-icon-tabs] {
-  border-bottom-color: rgba(15, 15, 15, 0.06);
+[data-im-tabs] {
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(30, 27, 75, 0.06);
 }
-html.dark [data-im-icon-tabs] { border-bottom-color: var(--leo-d-border); }
-[data-im-icon-tabs] [role="tab"] {
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(15, 15, 15, 0.62);
-  border-bottom: 2px solid transparent;
+[data-im-tabs] [role="tab"] {
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(15, 15, 15, 0.55);
+  transition:
+    background var(--leo-dur-2) var(--leo-ease-standard),
+    color var(--leo-dur-2) var(--leo-ease-standard),
+    box-shadow var(--leo-dur-2) var(--leo-ease-standard);
 }
-[data-im-icon-tabs] [role="tab"] svg {
-  width: 18px;
-  height: 18px;
-  stroke-width: 2;
+[data-im-tabs] [role="tab"]:hover { color: #171717; }
+[data-im-tabs] [role="tab"][aria-selected="true"] {
+  background: #fff;
+  color: var(--im-accent);
+  box-shadow: 0 1px 4px rgba(30, 27, 75, 0.14);
 }
-[data-im-icon-tabs] [role="tab"][aria-selected="true"] {
-  color: #0a0a0a;
-  background: transparent;
-  border-bottom-color: #0a0a0a;
-}
-[data-im-icon-tabs] [role="tab"][aria-selected="true"] svg {
-  stroke-width: 2.45;
-}
-[data-im-icon-tabs] [role="tab"]:hover {
-  background: rgba(15, 15, 15, 0.04);
-  color: #0a0a0a;
-}
-html.dark [data-im-icon-tabs] [role="tab"] { color: rgba(255, 255, 255, 0.62); }
-html.dark [data-im-icon-tabs] [role="tab"][aria-selected="true"] {
+[data-im-tab-badge] {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--im-gradient);
   color: #fff;
-  background: transparent;
-  border-bottom-color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
-html.dark [data-im-icon-tabs] [role="tab"]:hover { color: #fff; background: transparent; }
+html.dark [data-im-tabs] { background: var(--leo-d-card-2); }
+html.dark [data-im-tabs] [role="tab"] { color: var(--leo-d-muted); }
+html.dark [data-im-tabs] [role="tab"][aria-selected="true"] {
+  background: var(--leo-d-card);
+  color: #a5b4fc;
+}
+
+[data-im-side] {
+  background: #fafaff;
+  border-right-color: rgba(30, 27, 75, 0.07);
+}
+html.dark [data-im-side] { background: transparent; }
+[data-im-empty] { color: #171717; }
+html.dark [data-im-empty] { color: var(--leo-d-fg); }
+
+[data-testid="messages-overlay"] [data-leochat-search] {
+  border-radius: 999px;
+  background: rgba(30, 27, 75, 0.05);
+  padding-left: 14px;
+}
+[data-testid="messages-overlay"] [data-leochat-toolbar] { padding: 10px 10px 2px; gap: 8px; }
+[data-testid="messages-overlay"] [data-leochat-plus] {
+  border-radius: 999px;
+  background: var(--im-gradient);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(91, 91, 246, 0.30);
+}
+[data-testid="messages-overlay"] [data-leochat-plus]:hover { filter: brightness(1.06); }
 
 [data-im-view-body] {
   animation: im-view-in var(--leo-dur-3) var(--leo-ease-decelerate) both;
@@ -277,8 +352,8 @@ html.dark [data-im-icon-tabs] [role="tab"]:hover { color: #fff; background: tran
   padding: 4px 10px;
 }
 [data-im-filter-row] [role="tab"][aria-selected="true"] {
-  background: rgba(15, 15, 15, 0.06);
-  color: #171717;
+  background: var(--im-accent-soft);
+  color: var(--im-accent);
 }
 html.dark [data-im-filter-row] [role="tab"] { color: var(--leo-d-muted); }
 html.dark [data-im-filter-row] [role="tab"][aria-selected="true"] {
@@ -286,8 +361,16 @@ html.dark [data-im-filter-row] [role="tab"][aria-selected="true"] {
   color: var(--leo-d-fg);
 }
 
+[data-testid="inbox-row"] {
+  width: calc(100% - 12px);
+  margin: 1px 6px;
+  border-radius: 14px;
+  transition: background var(--leo-dur-2) var(--leo-ease-standard);
+}
+[data-testid="inbox-row"]:hover { background: rgba(30, 27, 75, 0.045); }
 [data-testid="inbox-row"][aria-current="true"] {
-  background: rgba(15, 15, 15, 0.045);
+  background: var(--im-accent-soft);
+  box-shadow: inset 3px 0 0 var(--im-accent);
 }
 html.dark [data-testid="inbox-row"][aria-current="true"] {
   background: var(--leo-d-card-2);
@@ -296,7 +379,7 @@ html.dark [data-testid="inbox-row"][aria-current="true"] {
   min-width: 8px;
   height: 8px;
   padding: 0;
-  background: #171717;
+  background: var(--im-gradient);
   color: transparent;
   font-size: 0;
   line-height: 0;
@@ -310,8 +393,8 @@ html.dark [data-testid="inbox-row"][aria-current="true"] {
   font-weight: 600;
   line-height: 1.1rem;
 }
-html.dark [data-im-unread] { background: var(--leo-d-fg); color: transparent; }
-html.dark [data-im-unread][data-im-unread-count] { color: var(--leo-d-bg); }
+html.dark [data-im-unread] { color: transparent; }
+html.dark [data-im-unread][data-im-unread-count] { color: #fff; }
 
 [data-im-composer] {
   border-top-color: rgba(15, 15, 15, 0.06);
@@ -319,14 +402,16 @@ html.dark [data-im-unread][data-im-unread-count] { color: var(--leo-d-bg); }
 }
 [data-im-composer] textarea {
   border: none;
-  background: rgba(15, 15, 15, 0.045);
-  border-radius: 14px;
+  background: rgba(30, 27, 75, 0.05);
+  border-radius: 18px;
   box-shadow: none;
+  transition: box-shadow var(--leo-dur-2) var(--leo-ease-standard), background var(--leo-dur-2) var(--leo-ease-standard);
 }
 [data-im-composer] textarea:focus {
   border: none;
   outline: none;
-  background: rgba(15, 15, 15, 0.06);
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--im-accent-soft), 0 0 0 1px var(--im-accent);
 }
 html.dark [data-im-composer] textarea {
   background: var(--leo-d-card-2);
@@ -336,19 +421,17 @@ html.dark [data-im-composer] textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: #171717;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--im-gradient);
   color: #fff;
+  box-shadow: 0 4px 12px rgba(91, 91, 246, 0.30);
 }
 [data-im-send]:disabled {
   opacity: 0.18;
 }
-html.dark [data-im-send] {
-  background: var(--leo-d-fg);
-  color: var(--leo-d-bg);
-}
+[data-im-send]:disabled { box-shadow: none; }
 
 [data-message-id][data-im-enter="own"] {
   animation: im-msg-own var(--leo-dur-3) var(--leo-ease-decelerate) both;

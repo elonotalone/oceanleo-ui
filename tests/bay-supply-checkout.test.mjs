@@ -88,6 +88,8 @@ const stubs = {
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
   "../settings": settingsStub,
+  "../shell/BayMine": dataModule(`export function BaySignInPrompt(){ return null; } export function BayMine(){ return null; }`),
+  "./ProfilePane": dataModule(`export function ProfilePane(){} export function ProfileDetailView(){}`),
 };
 const supply = await import(await compileModule("src/shell/bay/supply/index.ts", stubs));
 const { CheckoutView } = await import(await compileModule("src/shell/bay/supply/CheckoutPane.tsx", stubs));

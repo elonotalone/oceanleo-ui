@@ -136,7 +136,7 @@ export function MyServicesPane(_props: BayPaneProps) {
       {empty ? null : (
         <div className="flex justify-end">
           <button type="button" onClick={() => openBay({ kind: "service-editor" })} data-bay-new-service className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
-            {tt("发布服务")}
+            {tt("发布")}
           </button>
         </div>
       )}
@@ -194,9 +194,16 @@ function OverviewCell({ label, value }: { label: string; value: string }) {
   );
 }
 
+function listingLabel(service: BayOwnService): { kind: "digital" | "service" | "consult"; label: string } {
+  if (service.listing_kind === "digital") return { kind: "digital", label: "数字商品" };
+  if (service.catalog_kind === "consult") return { kind: "consult", label: "答疑" };
+  return { kind: "service", label: "服务" };
+}
+
 function ServiceRow({ service }: { service: BayOwnService }) {
   const tt = useUI();
   const site = baySiteName(service.posted_site);
+  const listing = listingLabel(service);
   return (
     <button
       type="button"
@@ -204,7 +211,12 @@ function ServiceRow({ service }: { service: BayOwnService }) {
       onClick={() => openBay({ kind: "service-editor", serviceId: service.id })}
       className="block w-full border-b border-stone-100 px-1 py-2.5 text-left hover:bg-stone-50"
     >
-      <span className="block truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
+      <span className="flex items-center gap-2">
+        <span data-bay-listing-kind={listing.kind} className="shrink-0 text-[12px] text-neutral-500">
+          {tt(listing.label)}
+        </span>
+        <span className="block min-w-0 truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
+      </span>
       {service.summary ? <span className="mt-0.5 line-clamp-2 text-[12px] text-stone-500">{service.summary}</span> : null}
       <span className="mt-1 flex flex-wrap gap-x-2 text-[12px] text-stone-500">
         {service.order_count ? <span>{tt("{n} 份订单", { n: service.order_count })}</span> : null}

@@ -37,7 +37,7 @@ import {
 import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, type BayLayout, type BayPaneProps } from "../shell/bay-state";
 import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel } from "./format";
-import { DoneMeans, PaneLoading, PaneMessage } from "./parts";
+import { DigitalTerms, DoneMeans, PaneLoading, PaneMessage } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
 
 export function CheckoutPane({ target, layout }: BayPaneProps) {
@@ -97,6 +97,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
   const total = moneyOrFree(tt, selection.totalFen, currency);
   const buyerReady = payment?.buyer_ready === true;
   const wide = layout === "page" || layout === "full";
+  const digital = service.listing_kind === "digital";
 
   function patch(next: Partial<BayCheckoutForm>) {
     setForm((current) => ({ ...current, ...next }));
@@ -135,7 +136,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
     <aside data-bay-checkout-summary className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
       <p className="text-[12px] text-neutral-500">{tt("你正在购买")}</p>
       <p className="mt-0.5 break-words text-[14px] font-semibold text-neutral-900">{service.title}</p>
-      {selection.tier ? (
+      {selection.tier && !digital ? (
         <p className="mt-2 text-[12px] text-neutral-600">
           {tierLabel(tt, selection.tier.tier)} · {selection.tier.title}
           {" · "}
@@ -158,7 +159,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
           {selection.tier ? total : "—"}
         </span>
       </div>
-      <p className="mt-1 text-[12px] text-neutral-500">{deliveryDaysText(tt, selection.deliveryDays)}</p>
+      {digital ? null : <p className="mt-1 text-[12px] text-neutral-500">{deliveryDaysText(tt, selection.deliveryDays)}</p>}
       <p data-bay-pay-hint className="mt-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-[12px] text-neutral-600">
         {buyerReady ? tt("下单后去付款，验收通过后钱才付给卖家。") : tt("付款暂未开放：订单会先建好，开放后在「我的订单」里付款。")}
       </p>
@@ -176,7 +177,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
               <input type="radio" name={`bay-tier-${service.id}`} checked={selection.tier?.tier === tier.tier} onChange={() => setTierName(tier.tier)} />
               <span className="min-w-0 flex-1 break-words text-[13px] text-neutral-800">
                 {tierLabel(tt, tier.tier)} · {tier.title}
-                <span className="ml-1 text-[12px] text-neutral-500">{deliveryDaysText(tt, tier.delivery_days)}</span>
+                {digital ? null : <span className="ml-1 text-[12px] text-neutral-500">{deliveryDaysText(tt, tier.delivery_days)}</span>}
               </span>
               <span className="shrink-0 text-[13px] font-medium text-neutral-900">{moneyOrFree(tt, tier.price_fen, tier.currency || service.currency)}</span>
             </label>
@@ -206,7 +207,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
         </fieldset>
       ) : null}
 
-      <DoneMeans service={service} />
+      {digital ? <DigitalTerms license={service.license} /> : <DoneMeans service={service} />}
 
       <div className="mt-5 space-y-3">
         <label className="block text-[13px] font-medium text-neutral-800">

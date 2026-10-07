@@ -53,13 +53,23 @@ const httpStub = dataModule(`
   export const bayPatch = (path, body) => reply("PATCH", path, body);
   export const bayDelete = (path) => reply("DELETE", path);
 `);
-const authStub = dataModule(`export async function getUserId(){ return globalThis.__bayViewer ?? null; }`);
+const authStub = dataModule(`
+  export async function getUserId(){ return globalThis.__bayViewer ?? null; }
+  export async function accessToken(){ return "t"; }
+  export function cachedAccessToken(){ return "t"; }
+`);
 const stateStub = dataModule(`
   globalThis.__bayOpened ??= [];
   globalThis.__bayLoginAsked ??= 0;
   export function openBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
+  export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
+  export function setBayFilter(){}
   export function bayBack(){}
+`);
+const mineStub = dataModule(`
+  export function BaySignInPrompt({ text }){ return null; }
+  export function BayMine(){ return null; }
 `);
 const dealStub = dataModule(`
   globalThis.__bayThreads ??= [];
@@ -69,9 +79,11 @@ const dealStub = dataModule(`
 const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
+  "../../../lib/agent": dataModule(`export async function authed(){ return { ok: true, data: {} }; } export async function listTasks(){ return { ok: true, data: { items: [] } }; }`),
   "../../../lib/auth/client": authStub,
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
+  "../shell/BayMine": mineStub,
 };
 const { ProfilePane, ProfileDetailView } = await import(await compileModule("src/shell/bay/supply/ProfilePane.tsx", stubs));
 
@@ -148,7 +160,7 @@ const markup = (props) => renderToStaticMarkup(React.createElement(ProfileDetail
 test("主页：名字、简介、服务、作品、评价；有交期显示、null 不显示；没有返回栏", () => {
   reset();
   const out = markup({ page: page(), viewerId: "buyer-1" });
-  assert.match(out, /data-bay-pane="profile"/);
+  assert.match(out, /data-bay-profile="public"/);
   assert.match(out, /Leo/);
   assert.match(out, /十年品牌设计/);
   assert.match(out, /品牌 Logo 设计/);
@@ -157,6 +169,7 @@ test("主页：名字、简介、服务、作品、评价；有交期显示、nu
   assert.match(out, /已交付/);
   assert.match(out, /很好/);
   assert.match(out, /先聊聊/);
+  assert.doesNotMatch(out, /编辑主页/);
   assert.doesNotMatch(out, /返回/);
   const afterPoster = out.split("海报")[1] || "";
   assert.doesNotMatch(afterPoster.split("案例")[0] || afterPoster, /天交付/);
@@ -165,6 +178,8 @@ test("主页：名字、简介、服务、作品、评价；有交期显示、nu
 test("主页：本人看不到先聊聊、举报、拉黑", () => {
   reset();
   const out = markup({ page: page(), viewerId: "seller-1" });
+  assert.match(out, /data-bay-profile="own"/);
+  assert.match(out, /编辑主页/);
   assert.doesNotMatch(out, /data-bay-talk/);
   assert.doesNotMatch(out, /data-bay-report/);
   assert.doesNotMatch(out, /data-bay-block/);

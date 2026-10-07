@@ -15,7 +15,10 @@ export interface BayAuthor {
   verified_level: number;
   rating_avg: number | null;
   rating_count: number;
+  official?: boolean;
 }
+
+export type BayFeedAuthor = BayAuthor;
 
 export interface BayFeedItem {
   kind: BayFeedKind;
@@ -33,6 +36,7 @@ export interface BayFeedItem {
   deadline_at: string | null;
   cover_url: string | null;
   has_attached_work: boolean;
+  listing_kind?: "service" | "digital";
 }
 
 export interface BayFeedPage {

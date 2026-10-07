@@ -1,4 +1,4 @@
-// LeoChat 小窗三栏头部：共用搜索 + + 号；联系人不再「新建聊天 / 邀请别人」；LeoBay 不再顶栏发需求。
+// LeoChat 小窗两栏头部：共用搜索 + + 号；联系人不再「新建聊天 / 邀请别人」。LeoBay 不在小窗里。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -101,38 +101,6 @@ const peopleStubs = {
 
 const { PeopleView } = await import(await compileModule("src/shell/messages/people/PeopleView.tsx", peopleStubs));
 
-const state = {
-  current: { kind: "feed" },
-  filter: { kind: "all" },
-  signedIn: true,
-  feed: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  categories: { categories: [], loading: false, failed: false },
-};
-globalThis.__leoToolbarBay = state;
-
-const bayStubs = {
-  "next-intl": dataModule(`export function useLocale(){ return "zh"; }`),
-  "../../../i18n/ui/useUI": uiStub,
-  "../needs": dataModule(`export function DemandCard(){ return null; } export function HelpRequestCard(){ return null; }`),
-  "../supply": dataModule(`export function ConsultCard(){ return null; } export function ServiceCard(){ return null; }`),
-  "./bay-state": dataModule(`
-    const s = () => globalThis.__leoToolbarBay;
-    export function openBay(){}
-    export function requireBayLogin(){ return true; }
-    export function setBayFilter(){}
-    export function useBayFilter(){ return s().filter; }
-    export function useBaySignedIn(){ return s().signedIn; }
-    export function useBayState(){ return { current: s().current }; }
-  `),
-  "./use-bay-data": dataModule(`
-    export function useBayFeed(){ return globalThis.__leoToolbarBay.feed; }
-    export function useBayCategories(){ return globalThis.__leoToolbarBay.categories; }
-  `),
-  "./bay-motion": dataModule(`export function useBaySlideIn(){ return { current: null }; }`),
-};
-
-const { BayList } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", bayStubs));
-
 function toolbarCounts(out) {
   return {
     toolbar: count(out, /data-leochat-toolbar/g),
@@ -141,7 +109,7 @@ function toolbarCounts(out) {
   };
 }
 
-test("Inbox、PeopleView、BayList 各有一套头部；没有横向滚动容器", () => {
+test("Inbox、PeopleView 各有一套头部；没有横向滚动容器；LeoBay 不在小窗里", () => {
   const inbox = html(
     React.createElement(Inbox, {
       activeConversationId: null,
@@ -150,12 +118,10 @@ test("Inbox、PeopleView、BayList 各有一套头部；没有横向滚动容器
     }),
   );
   const people = html(React.createElement(PeopleView, { onOpenConversation() {} }));
-  const bay = html(React.createElement(BayList, { layout: "docked" }));
 
   for (const [name, out] of [
     ["inbox", inbox],
     ["people", people],
-    ["bay", bay],
   ]) {
     const n = toolbarCounts(out);
     assert.equal(n.toolbar, 1, name);
@@ -166,14 +132,7 @@ test("Inbox、PeopleView、BayList 各有一套头部；没有横向滚动容器
 
   assert.doesNotMatch(people, /新建聊天/);
   assert.doesNotMatch(people, /邀请别人/);
-
-  assert.equal(count(bay, /data-bay-action="post-need"/g), 0);
-  assert.equal(count(bay, /data-bay-action="open-page"/g), 0);
-  assert.equal(count(bay, /data-bay-action="mine"/g), 1);
-  assert.equal(count(bay, />我的</g), 1);
-  assert.equal(count(bay, /data-kind="/g), 4);
-  assert.doesNotMatch(bay, /data-kind="help"/);
-  assert.doesNotMatch(bay, /求助/);
+  assert.doesNotMatch(src("shell/bay/shell/BayList.tsx"), /data-leochat-toolbar/);
 });
 
 test("InviteLinkDialog 联系人那一种的标题是添加联系人", () => {

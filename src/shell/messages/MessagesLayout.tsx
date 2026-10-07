@@ -1,6 +1,7 @@
 "use client";
 
-// 消息浮层：圆角悬浮版面，顶栏按下即拖（阈值与编辑栏相同），贴底时变矮而不是抹平圆角。顶栏：标题、跳转整页、关闭。
+// LeoChat 小窗：圆角悬浮版面，顶栏按下即拖（阈值与编辑栏相同），贴底时变矮而不是抹平圆角。
+// 顶栏：标志 + 名字、栏目（聊天 / 联系人）、放大 / 还原、关闭。放大后是一块居中的大窗口：左列表、右对话。没有整页版。
 // 按键只在焦点落在浮层内时处理：Esc 关浮层，其余按键不再向文档冒泡。
 import {
   useCallback,
@@ -8,14 +9,13 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../i18n/ui/useUI";
 import { DOCK_MAX, DOCK_MIN, clampDockWidth, type MessagesLayoutKind } from "./host-state";
-import { ImCloseIcon, ImOpenPageIcon, ensureMessagesSurfaceStyles } from "./messages-surface";
+import { ImCloseIcon, ImCollapseIcon, ImExpandIcon, LeoChatMark, ensureMessagesSurfaceStyles } from "./messages-surface";
 import {
   MESSAGES_DEFAULT_HEIGHT_PX,
   MESSAGES_OVERLAY_RADIUS_PX,
@@ -36,9 +36,11 @@ export interface MessagesLayoutProps {
   overlayState: "open" | "closed";
   onExitComplete: () => void;
   title: string;
-  pageHref?: string | null;
-  onOpenPage?: () => void;
-  /** 左栏：聊天 / 联系人 / Bay。 */
+  /** 顶栏中间：栏目切换（聊天 / 联系人）。 */
+  tabs?: ReactNode;
+  /** 放大 / 还原；窄屏（mobile）上不显示这个键。 */
+  onToggleExpand?: () => void;
+  /** 左栏：聊天 / 联系人。 */
   list: ReactNode;
   /** 右栏：当前会话；没有选中会话时为 null。 */
   detail: ReactNode | null;
@@ -71,8 +73,8 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     overlayState,
     onExitComplete,
     title,
-    pageHref,
-    onOpenPage,
+    tabs,
+    onToggleExpand,
     list,
     detail,
     showDetail,
@@ -320,45 +322,40 @@ export function MessagesLayout(props: MessagesLayoutProps) {
     };
   };
 
-  const onOpenPageClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    onOpenPage?.();
-  };
-
+  const expandLabel = layout === "full" ? tt("还原成小窗") : tt("放大");
   const header = (
     <div
       ref={handleRef}
       data-im-drag-handle
-      onPointerDown={onHeaderPointerDown}
+      onPointerDown={layout === "docked" ? onHeaderPointerDown : undefined}
       onDragStart={(event) => event.preventDefault()}
-      className="flex h-12 shrink-0 cursor-grab select-none touch-none items-center justify-end gap-2 border-b border-black/10 px-3 active:cursor-grabbing dark:border-white/10"
+      className={`flex shrink-0 select-none items-center gap-3 border-b border-black/10 px-3 dark:border-white/10 ${
+        layout === "docked" ? "cursor-grab touch-none active:cursor-grabbing" : ""
+      }`}
     >
-      <span className="text-[13px] font-semibold tracking-tight">{title}</span>
-      <div className="min-h-[1px] min-w-0 flex-1" aria-hidden />
-      {pageHref ? (
-        <a
-          href={pageHref}
-          data-im-no-drag
-          data-im-chrome-btn
-          data-leochat-open-page
-          aria-label={tt("在整页打开")}
-          title={tt("在整页打开")}
-          onClick={onOpenPageClick}
-        >
-          <ImOpenPageIcon />
-        </a>
-      ) : null}
-      <button
-        type="button"
-        data-im-no-drag
-        data-im-chrome-btn
-        onClick={onClose}
-        aria-label={tt("关闭")}
-        title={tt("关闭")}
-      >
-        <ImCloseIcon />
-      </button>
+      <span className="flex shrink-0 items-center gap-2" data-im-brand>
+        <LeoChatMark />
+        <span className="text-[14px] font-bold tracking-tight">{title}</span>
+      </span>
+      <div className="flex min-w-0 flex-1 justify-center">{tabs}</div>
+      <div className="flex shrink-0 items-center gap-1">
+        {onToggleExpand && layout !== "mobile" ? (
+          <button
+            type="button"
+            data-im-no-drag
+            data-im-chrome-btn
+            data-leochat-expand={layout === "full" ? "collapse" : "expand"}
+            onClick={onToggleExpand}
+            aria-label={expandLabel}
+            title={expandLabel}
+          >
+            {layout === "full" ? <ImCollapseIcon /> : <ImExpandIcon />}
+          </button>
+        ) : null}
+        <button type="button" data-im-no-drag data-im-chrome-btn onClick={onClose} aria-label={tt("关闭")} title={tt("关闭")}>
+          <ImCloseIcon />
+        </button>
+      </div>
     </div>
   );
 
@@ -366,10 +363,16 @@ export function MessagesLayout(props: MessagesLayoutProps) {
   if (layout === "full") {
     body = (
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-[360px] shrink-0 flex-col border-r border-black/10 dark:border-white/10">{list}</div>
+        <div data-im-side className="flex w-[340px] shrink-0 flex-col border-r border-black/10 dark:border-white/10">
+          {list}
+        </div>
         <div className="flex min-w-0 flex-1 flex-col">
           {detail ?? (
-            <div className="m-auto text-sm text-black/45 dark:text-white/45">{tt("选一个会话开始聊天")}</div>
+            <div data-im-empty className="m-auto flex max-w-xs flex-col items-center px-6 text-center">
+              <LeoChatMark large />
+              <p className="mt-4 text-[15px] font-semibold tracking-tight">{tt("选一个会话开始聊天")}</p>
+              <p className="mt-1 text-[13px] text-black/45 dark:text-white/45">{tt("左边是你的聊天和联系人。在 LeoBay 里联系卖家，对话也会出现在这里。")}</p>
+            </div>
           )}
         </div>
       </div>

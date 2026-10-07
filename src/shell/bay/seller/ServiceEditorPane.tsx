@@ -1,10 +1,8 @@
 "use client";
 
-// 「发布服务」向导（移植自 talent `ServiceWizard.tsx`）：选形态 → 填写 → 存草稿 → 预览 → 上架。
-// 新建时记下当前站（posted_site）；上架前先过 ensureBayTerms("seller")，返回 false 就不上架。
-// 编辑已有服务（target.serviceId）、暂停、删除；被平台隐藏时写清原因和申诉入口。
+// 发布：先选种类，再一张表三块（产品信息 / 价格 / 交付条款）。一次存草稿或发布。
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { fetchBayCategories } from "../../../lib/bay/categories";
 import {
@@ -36,9 +34,9 @@ import {
   publishMyService,
   replaceServiceTiers,
   saveServicePricing,
+  saveServiceQuickPrice,
   updateMyService,
   wizardCategories,
-  type BayCatalogKind,
   type BayConsultDomain,
   type BayContentCase,
   type BayDomainPrompts,
@@ -50,52 +48,87 @@ import {
 } from "../../../lib/bay/seller";
 import { ConfirmDialog } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
-import { openBaySettings, ensureBayTerms } from "../settings";
+import { pickLibraryWork } from "../needs/LibraryWorkPicker";
+import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, useBaySiteKey, type BayPaneProps } from "../shell/bay-state";
-import { ServiceCard } from "../supply";
 import {
-  STEP_LABELS,
-  blockedReason,
+  TITLE_MAX,
   clientKey,
   consultInput,
   draftFromLoaded,
   emptyDraft,
   faqRowsForSave,
-  isLocalStep,
-  moneyText,
-  normalizeCurrency,
-  previewFeedItem,
+  firstMissingSection,
+  missingTotal,
   prefillFieldsFromTiers,
   pricingInput,
-  publishChecks,
-  readyToPublish,
+  publishKindOf,
+  PUBLISH_KIND_LABELS,
+  PUBLISH_SECTIONS,
+  resolvedPriceFen,
+  resolvedPricingModel,
+  sectionMissing,
+  SECTION_LABELS,
   serviceInput,
   specsFor,
-  stepsFor,
+  termsSpecs,
   tierRows,
+  toFen,
+  yuanText,
   type EditorContext,
   type EditorDraft,
-  type EditorStep,
+  type PublishKind,
+  type PublishSection,
 } from "./editor-model";
 import {
   AddonsStep,
-  BasicsStep,
+  CategorySelect,
   ConsultPricingStep,
+  ConsultTermsFields,
   DetailsStep,
   DomainStep,
   FaqStep,
   FieldsStep,
-  KindStep,
   MediaStep,
   ModelStep,
+  OverreachHintList,
   PromptsStep,
-  PublishChecklist,
   TiersStep,
 } from "./editor-steps";
-import { DANGER_BUTTON, HiddenByPlatformNotice, LINK_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerNotice } from "./seller-ui";
+import { DANGER_BUTTON, HiddenByPlatformNotice, INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
+
+const BTN_PRIMARY =
+  "inline-flex items-center justify-center rounded-xl bg-neutral-900 px-4 py-3 text-[13px] font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40";
+const BTN_SECONDARY =
+  "inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40";
+const BTN_QUIET = "rounded-xl px-3 py-3 text-[13px] text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900";
+
+const KIND_CARDS: { kind: PublishKind; title: string; blurb: string; items: string[] }[] = [
+  { kind: "digital", title: "数字商品", blurb: "图片、模板、文件，买家付款后立即拿到", items: ["标题和预览图", "一个价格", "授权范围"] },
+  { kind: "service", title: "服务", blurb: "按约定的时间为买家做一件事", items: ["做什么", "价格和交付天数", "交付约定"] },
+  { kind: "consult", title: "答疑", blurb: "按次或按小时回答问题", items: ["领域", "价格", "能答的范围"] },
+];
+
+const SECTION_HINT: Record<PublishKind, Record<PublishSection, string>> = {
+  digital: { product: "标题、预览图和要卖的作品", price: "一个价格，0 就是免费", terms: "授权范围和固定交付规则" },
+  service: { product: "标题、分类、预览图和详情", price: "价格和交付天数", terms: "改稿、交付方式和类目约定" },
+  consult: { product: "领域、标题和介绍", price: "按次或按小时计价", terms: "能答范围、时长和响应时间" },
+};
 
 function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "";
+}
+
+function isOfficialProfile(profile: BaySellerProfile | null): boolean {
+  return profile?.official === true;
+}
+
+function intOrNull(value: string, min: number, max: number): number | null {
+  const digits = value.replace(/[^\d-]/g, "");
+  if (!digits.trim()) return null;
+  const parsed = Number(digits);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
 }
 
 interface Remote<T> {
@@ -112,7 +145,6 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const routeId = target.kind === "service-editor" ? target.serviceId || "" : "";
 
   const [draft, setDraft] = useState<EditorDraft>(() => emptyDraft(tt));
-  const [step, setStep] = useState<EditorStep>("kind");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rejection, setRejection] = useState("");
@@ -129,11 +161,13 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const [domainNonce, setDomainNonce] = useState(0);
   const [promptNonce, setPromptNonce] = useState(0);
   const [modelNonce, setModelNonce] = useState(0);
-  const [pendingLeave, setPendingLeave] = useState<EditorStep | null>(null);
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [faqOpen, setFaqOpen] = useState(false);
+  const [morePricing, setMorePricing] = useState(false);
+  const [highlight, setHighlight] = useState<PublishSection | null>(null);
   const termsOk = useRef(false);
+  const sectionEls = useRef<Partial<Record<PublishSection, HTMLElement | null>>>({});
 
-  // ---- 载入 ----------------------------------------------------------------------
   useEffect(() => {
     if (!signedIn) return;
     let alive = true;
@@ -155,13 +189,18 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       try {
         const [profileBody, categoriesBody] = await Promise.all([getSellerProfile(), fetchBayCategories()]);
         if (!alive) return;
-        setProfile(profileBody.profile || null);
+        const nextProfile = profileBody.profile || null;
+        setProfile(nextProfile);
         setCategories((categoriesBody.flat_items.length ? categoriesBody.flat_items : categoriesBody.items) as BaySellerCategory[]);
         listMyContentCases().then((rows) => alive && setCases(rows), () => {});
         if (!routeId) {
-          setDraft(emptyDraft(tt));
-          setStep("kind");
+          const next = emptyDraft(tt);
+          next.official = isOfficialProfile(nextProfile);
+          setDraft(next);
           setDirty(false);
+          setHighlight(null);
+          setFaqOpen(false);
+          setMorePricing(false);
           setLoad({ loading: false, error: "" });
           return;
         }
@@ -180,9 +219,13 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
           return;
         }
         setPricing(pricingBody);
-        setDraft(draftFromLoaded({ service, tiers: tiers.items || [], addons: addons.items || [], faq: faq.items || [], media: media.items || [], pricing: pricingBody }, tt));
-        setStep("basics");
+        const loaded = draftFromLoaded({ service, tiers: tiers.items || [], addons: addons.items || [], faq: faq.items || [], media: media.items || [], pricing: pricingBody }, tt);
+        loaded.official = loaded.official || isOfficialProfile(nextProfile);
+        setDraft(loaded);
         setDirty(false);
+        setHighlight(null);
+        setFaqOpen(false);
+        setMorePricing(false);
         setLoad({ loading: false, error: "" });
       } catch (error) {
         if (alive) setLoad({ loading: false, error: errorText(error) || tt("服务加载失败，请稍后再试。") });
@@ -191,11 +234,11 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     return () => {
       alive = false;
     };
-    // tt 每次渲染都可能是新函数；只按服务与重试键重新载入。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, routeId, nonce]);
 
-  const isConsult = draft.catalogKind === "consult";
+  const kind = publishKindOf(draft);
+  const isConsult = kind === "consult";
 
   useEffect(() => {
     if (!isConsult) return;
@@ -226,34 +269,48 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     };
   }, [isConsult, draft.domain, promptNonce]);
 
-  // ---- 派生 ----------------------------------------------------------------------
-  const steps = stepsFor(draft.catalogKind);
-  const stepIndex = Math.max(0, steps.indexOf(step));
-  const currentStep = steps[stepIndex];
   const visibleCategories = useMemo(
     () => wizardCategories(categories, isConsult ? "consult" : "delivery", isConsult ? draft.domain : undefined),
     [categories, isConsult, draft.domain],
   );
   const selectedCategory = categories.find((row) => row.slug === draft.category);
   const selectedModel = models.data.find((model) => model.key === draft.pricingModel);
-  const specs = useMemo(() => (isConsult ? [] : specsFor(draft, pricing, selectedCategory)), [isConsult, draft, pricing, selectedCategory]);
+  const specs = useMemo(() => (isConsult || kind === "digital" ? [] : specsFor(draft, pricing, selectedCategory)), [isConsult, kind, draft, pricing, selectedCategory]);
   const ctx: EditorContext = { profile, categories, specs, domainKeys: domains.data.map((row) => row.key) };
-  const checks = publishChecks(draft, ctx);
-  const ready = readyToPublish(checks);
+  const missing = sectionMissing(draft, ctx);
+  const leftover = missingTotal(missing);
   const hiddenCase = hiddenCaseFor(cases, "talent_service", draft.serviceId || undefined);
-  const currency = normalizeCurrency(profile?.currency);
+  const currency = (profile?.currency || "USD").toUpperCase();
   const narrow = layout === "docked" || layout === "mobile";
+  const showPick = !draft.serviceId && !kind;
 
-  // ---- 编辑 ----------------------------------------------------------------------
   const patch = useCallback((next: Partial<EditorDraft>) => {
     setDraft((current) => ({ ...current, ...next }));
     setDirty(true);
   }, []);
 
-  function changeKind(kind: BayCatalogKind) {
+  function pickKind(next: PublishKind) {
     if (draft.serviceId) return;
-    setDraft((current) => ({ ...current, catalogKind: kind, category: "", domain: "", fieldValues: {}, pricingModel: kind === "consult" ? "" : current.pricingModel }));
+    const base = emptyDraft(tt);
+    base.official = draft.official || isOfficialProfile(profile);
+    base.catalogKind = next === "consult" ? "consult" : "delivery";
+    base.listingKind = next === "digital" ? "digital" : "service";
+    base.simplePrice = true;
+    setDraft(base);
     setDirty(true);
+    setHighlight(null);
+    setFaqOpen(false);
+    setMorePricing(false);
+  }
+
+  function pickKindReset() {
+    const next = emptyDraft(tt);
+    next.official = draft.official || isOfficialProfile(profile);
+    setDraft(next);
+    setDirty(false);
+    setHighlight(null);
+    setFaqOpen(false);
+    setMorePricing(false);
   }
 
   function changeCategory(slug: string) {
@@ -261,35 +318,40 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   }
 
   function changeTier(index: number, next: Partial<EditorDraft["tiers"][number]>) {
-    setDraft((current) => ({ ...current, tiers: current.tiers.map((tier, i) => (i === index ? { ...tier, ...next } : tier)) }));
+    setDraft((current) => ({ ...current, simplePrice: false, tiers: current.tiers.map((tier, i) => (i === index ? { ...tier, ...next } : tier)) }));
     setDirty(true);
   }
 
-  function applyGoTo(next: EditorStep) {
-    if (next === "fields") setDraft((current) => ({ ...current, fieldValues: prefillFieldsFromTiers(specs, current.fieldValues, current.tiers) }));
-    setStep(next);
+  function setSimplePrice(fen: number, free: boolean) {
+    const price = draft.official || free ? 0 : fen;
+    setDraft((current) => ({
+      ...current,
+      pricingModel: current.official || free ? "free" : "fixed",
+      tiers: current.tiers.map((tier, index) => (index === 0 ? { ...tier, price_fen: price, enabled: true } : tier)),
+    }));
+    setDirty(true);
   }
 
-  function goTo(next: EditorStep) {
-    const index = steps.indexOf(next);
-    if (index < 0 || next === currentStep) return;
-    const basicsIndex = steps.indexOf("basics");
-    if (!isConsult && !draft.serviceId && basicsIndex >= 0 && index > basicsIndex) {
-      toast.info(tt("先保存「它是什么」这一步，草稿建好后才能往后填。"));
-      return;
-    }
-    if (dirty && !isLocalStep(currentStep, draft.catalogKind)) {
-      setPendingLeave(next);
-      return;
-    }
-    applyGoTo(next);
+  function setDeliveryDays(days: number | null) {
+    setDraft((current) => ({
+      ...current,
+      tiers: current.tiers.map((tier, index) => (index === 0 ? { ...tier, delivery_days: days } : tier)),
+    }));
+    setDirty(true);
   }
 
-  // ---- 保存 ----------------------------------------------------------------------
-  async function termsForPublishedSave(): Promise<boolean> {
-    if (draft.status !== "published" || termsOk.current) return true;
-    termsOk.current = await ensureBayTerms("seller");
-    return termsOk.current;
+  function setRevisions(revisions: number) {
+    setDraft((current) => ({
+      ...current,
+      tiers: current.tiers.map((tier, index) => (index === 0 ? { ...tier, revisions } : tier)),
+    }));
+    setDirty(true);
+  }
+
+  async function pickWork() {
+    const work = await pickLibraryWork({ title: tt("从我的库选") });
+    if (!work) return;
+    patch({ digitalWork: { id: work.id, title: work.title || work.id } });
   }
 
   function reportFailure(error: unknown, fallback: string) {
@@ -300,26 +362,46 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
   async function saveBase(): Promise<string | null> {
     if (!draft.title.trim()) {
-      toast.error(tt("请先填写标题"));
+      setRejection(tt("请先填写标题"));
+      setHighlight("product");
       return null;
     }
     const input = serviceInput(draft, selectedModel);
     const body = draft.serviceId ? await updateMyService(draft.serviceId, input) : await createMyService(input, postedSite);
     const saved = body.service;
     if (!saved?.id) throw new Error(tt("草稿保存失败，请稍后再试。"));
-    setDraft((current) => ({ ...current, serviceId: saved.id, status: saved.status || current.status, moderationHidden: saved.moderation_hidden === true || current.moderationHidden }));
+    const official = draft.official || saved.official === true;
+    setDraft((current) => ({
+      ...current,
+      serviceId: saved.id,
+      status: saved.status || current.status,
+      moderationHidden: saved.moderation_hidden === true || current.moderationHidden,
+      official,
+    }));
     return saved.id;
   }
 
   async function savePricing(sid: string): Promise<void> {
-    const input = pricingInput(draft, specs);
+    const input = pricingInput({ ...draft, pricingModel: resolvedPricingModel(draft) }, specs);
     if (!input) return;
     const body = await saveServicePricing(sid, input);
     setPricing(body);
   }
 
   async function saveTiers(sid: string): Promise<void> {
-    await replaceServiceTiers(sid, tierRows(draft));
+    const simple = draft.simplePrice || draft.listingKind === "digital";
+    if (simple) {
+      const days = draft.listingKind === "digital" ? null : draft.tiers[0]?.delivery_days ?? null;
+      await saveServiceQuickPrice(sid, { price_fen: resolvedPriceFen(draft), delivery_days: days });
+      return;
+    }
+    await replaceServiceTiers(
+      sid,
+      tierRows({
+        ...draft,
+        tiers: draft.official ? draft.tiers.map((tier) => ({ ...tier, price_fen: 0 })) : draft.tiers,
+      }),
+    );
   }
 
   async function saveAddons(sid: string): Promise<void> {
@@ -381,99 +463,66 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     }));
   }
 
-  async function saveCurrentStep() {
+  async function persist(mode: "draft" | "publish") {
     if (saving) return;
-    const blocked = blockedReason(currentStep, draft, ctx);
-    if (blocked) {
-      toast.error(tt(blocked.message, blocked.vars));
-      return;
+    if (mode === "publish") {
+      const first = firstMissingSection(missing);
+      if (first) {
+        setHighlight(first);
+        sectionEls.current[first]?.scrollIntoView?.({ block: "start" });
+        return;
+      }
+      if (!(await ensureBayTerms("seller"))) {
+        toast.info(tt("没有同意卖家条款，服务还没有上架。"));
+        return;
+      }
+      termsOk.current = true;
     }
-    const nextStep = steps[Math.min(steps.length - 1, stepIndex + 1)];
-    if (isLocalStep(currentStep, draft.catalogKind)) {
-      goToAfterSave(nextStep);
-      return;
-    }
-    if (!(await termsForPublishedSave())) return;
     setSaving(true);
+    setRejection("");
     try {
+      if (isConsult) {
+        if (mode === "publish") {
+          await createMyConsult(consultInput(draft, "published"), postedSite);
+          setDirty(false);
+          toast.success(tt("答疑已上架"));
+          openBay({ kind: "mine", tab: "services" });
+          return;
+        }
+        if (!draft.serviceId) {
+          const body = await createMyConsult(consultInput(draft, "draft"), postedSite);
+          const id = body.consult?.id;
+          if (id) setDraft((current) => ({ ...current, serviceId: id, status: "draft" }));
+        }
+        setDirty(false);
+        toast.success(tt("草稿已保存"));
+        return;
+      }
       const created = !draft.serviceId;
       const sid = await saveBase();
       if (!sid) return;
-      if (currentStep === "basics" || currentStep === "model" || currentStep === "fields") await savePricing(sid);
-      if (currentStep === "pricing") await saveTiers(sid);
-      if (currentStep === "addons") await saveAddons(sid);
-      if (currentStep === "details" || currentStep === "faq") await saveFaqs(sid);
-      if (currentStep === "media") await saveMedia(sid);
-      setRejection("");
-      setDirty(false);
-      toast.success(created ? tt("草稿已建好") : tt("这一步已保存"));
-      goToAfterSave(nextStep);
-    } catch (error) {
-      reportFailure(error, "保存失败，请稍后再试。");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function goToAfterSave(next: EditorStep) {
-    if (next === "fields") setDraft((current) => ({ ...current, fieldValues: prefillFieldsFromTiers(specs, current.fieldValues, current.tiers) }));
-    setStep(next);
-  }
-
-  async function saveEverything(sid: string) {
-    await savePricing(sid);
-    await saveTiers(sid);
-    await saveAddons(sid);
-    await saveFaqs(sid);
-    await saveMedia(sid);
-  }
-
-  async function saveAsDraft() {
-    if (saving) return;
-    if (!(await termsForPublishedSave())) return;
-    setSaving(true);
-    try {
-      const sid = await saveBase();
-      if (!sid) return;
-      await saveEverything(sid);
-      setRejection("");
-      setDirty(false);
-      toast.success(draft.status === "published" ? tt("修改已保存") : tt("草稿已保存"));
-    } catch (error) {
-      reportFailure(error, "保存失败，请稍后再试。");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function publish() {
-    if (saving || !ready) return;
-    if (!(await ensureBayTerms("seller"))) {
-      toast.info(tt("没有同意卖家条款，服务还没有上架。"));
-      return;
-    }
-    termsOk.current = true;
-    setSaving(true);
-    try {
-      if (isConsult) {
-        await createMyConsult(consultInput(draft, "published"), postedSite);
-        setDirty(false);
-        toast.success(tt("答疑已上架"));
-        openBay({ kind: "mine", tab: "services" });
-        return;
+      if (kind === "service") {
+        setDraft((current) => ({ ...current, fieldValues: prefillFieldsFromTiers(specs, current.fieldValues, current.tiers), pricingModel: resolvedPricingModel(current) }));
+        await savePricing(sid);
       }
-      const sid = await saveBase();
-      if (!sid) return;
-      await saveEverything(sid);
-      const result = await publishMyService(sid, pricingInput(draft, specs));
-      const hidden = result.moderation_hidden === true || result.service?.moderation_hidden === true;
-      setDraft((current) => ({ ...current, status: "published", moderationHidden: hidden }));
-      setHiddenMessage(hidden ? result.moderation_message || "" : "");
-      setRejection("");
+      await saveTiers(sid);
+      if (kind === "service") {
+        await saveAddons(sid);
+        await saveFaqs(sid);
+      }
+      await saveMedia(sid);
+      if (mode === "publish") {
+        const result = await publishMyService(sid, kind === "service" ? pricingInput({ ...draft, pricingModel: resolvedPricingModel(draft) }, specs) : undefined);
+        const hidden = result.moderation_hidden === true || result.service?.moderation_hidden === true;
+        setDraft((current) => ({ ...current, status: "published", moderationHidden: hidden }));
+        setHiddenMessage(hidden ? result.moderation_message || "" : "");
+        toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("服务已上架，买家现在能在 LeoBay 里看到它"));
+      } else {
+        toast.success(created ? tt("草稿已建好") : draft.status === "published" ? tt("修改已保存") : tt("草稿已保存"));
+      }
       setDirty(false);
-      toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("服务已上架，买家现在能在 LeoBay 里看到它"));
     } catch (error) {
-      reportFailure(error, tt("上架没有通过，请按提示修改后再试。"));
+      reportFailure(error, mode === "publish" ? tt("上架没有通过，请按提示修改后再试。") : "保存失败，请稍后再试。");
     } finally {
       setSaving(false);
     }
@@ -493,11 +542,6 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     }
   }
 
-  function remove() {
-    if (saving || !draft.serviceId) return;
-    setPendingDelete(true);
-  }
-
   async function confirmRemove() {
     if (saving || !draft.serviceId) return;
     setPendingDelete(false);
@@ -513,7 +557,28 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     }
   }
 
-  // ---- 渲染 ----------------------------------------------------------------------
+  const mediaProps = {
+    items: draft.media,
+    coverUrl: draft.coverUrl,
+    onChange: (key: string, next: Partial<EditorDraft["media"][number]>) => patch({ media: draft.media.map((item) => (item.key === key ? { ...item, ...next } : item)) }),
+    onCover: (url: string) => patch({ coverUrl: url }),
+    onAdd: () => patch({ media: [...draft.media, { key: clientKey("media"), kind: "image" as const, url: "", poster_url: "", caption: "" }] }),
+    onRemove: (key: string) => {
+      const row = draft.media.find((item) => item.key === key);
+      patch({
+        media: draft.media.filter((item) => item.key !== key),
+        deletedMediaIds: row?.id ? [...draft.deletedMediaIds, row.id] : draft.deletedMediaIds,
+        coverUrl: row && row.url === draft.coverUrl ? "" : draft.coverUrl,
+      });
+    },
+    onMove: (index: number, direction: -1 | 1) => {
+      const next = [...draft.media];
+      const [row] = next.splice(index, 1);
+      next.splice(index + direction, 0, row);
+      patch({ media: next });
+    },
+  };
+
   if (!signedIn) {
     return (
       <section data-bay-pane="service-editor" className="space-y-3 p-4 text-[13px] text-stone-600">
@@ -538,268 +603,403 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
   const statusLabel = draft.status === "published" ? tt("已上架") : draft.status === "paused" ? tt("已暂停") : tt("草稿");
 
-  function renderStep() {
-    switch (currentStep) {
-      case "kind":
-        return <KindStep selected={draft.catalogKind} locked={Boolean(draft.serviceId)} onSelect={changeKind} />;
-      case "domain":
-        return (
-          <DomainStep
-            domains={domains.data}
-            loading={domains.loading}
-            error={domains.error}
-            onReload={() => setDomainNonce((value) => value + 1)}
-            domain={draft.domain}
-            onDomain={(key) => patch({ domain: key, category: "" })}
-            categories={visibleCategories}
-            category={draft.category}
-            onCategory={changeCategory}
-          />
-        );
-      case "prompts":
-        return (
-          <PromptsStep
-            domainName={tt(domains.data.find((row) => row.key === draft.domain)?.name_zh || "")}
-            prompts={prompts.data}
-            loading={prompts.loading}
-            error={prompts.error}
-            onReload={() => setPromptNonce((value) => value + 1)}
-          />
-        );
-      case "basics":
-        return (
-          <BasicsStep
-            kind={draft.catalogKind || "delivery"}
-            title={draft.title}
-            onTitle={(value) => patch({ title: value })}
-            category={draft.category}
-            onCategory={changeCategory}
-            categories={visibleCategories}
-            summary={draft.summary}
-            onSummary={(value) => patch({ summary: value })}
-            deliveryMode={draft.deliveryMode}
-            onDeliveryMode={(mode) => patch({ deliveryMode: mode })}
-            scopeNote={draft.scopeNote}
-            onScopeNote={(value) => patch({ scopeNote: value })}
-          />
-        );
-      case "model":
-        return (
-          <ModelStep
-            models={models.data}
-            loading={models.loading}
-            error={models.error}
-            onReload={() => setModelNonce((value) => value + 1)}
-            selected={draft.pricingModel}
-            onSelect={(key) => patch({ pricingModel: key, tiers: key === "free" ? draft.tiers.map((tier) => ({ ...tier, price_fen: 0 })) : draft.tiers })}
-          />
-        );
-      case "fields":
-        return (
-          <FieldsStep
-            specs={specs}
-            values={draft.fieldValues}
-            categoryName={tt(selectedCategory?.name_zh || "")}
-            onChange={(key: string, value: BayFieldValue) => patch({ fieldValues: { ...draft.fieldValues, [key]: value } })}
-          />
-        );
-      case "pricing":
-        return isConsult ? (
-          <ConsultPricingStep
-            currency={currency}
-            unit={draft.consultUnit}
-            onUnit={(unit) => patch({ consultUnit: unit })}
-            priceFen={draft.tiers[0]?.price_fen || 0}
-            onPriceFen={(fen) => changeTier(0, { price_fen: fen })}
-            rounds={draft.consultRounds}
-            onRounds={(value) => patch({ consultRounds: value })}
-            minutes={draft.consultMinutes}
-            onMinutes={(value) => patch({ consultMinutes: value })}
-            responseWindow={draft.responseWindow}
-            onResponseWindow={(value) => patch({ responseWindow: value })}
-          />
-        ) : (
-          <TiersStep
-            tiers={draft.tiers}
-            currency={currency}
-            free={draft.pricingModel === "free"}
-            onChange={changeTier}
-            onBasicOnly={() => patch({ tiers: draft.tiers.map((tier, index) => ({ ...tier, enabled: index === 0 })) })}
-          />
-        );
-      case "addons":
-        return (
-          <AddonsStep
-            addons={draft.addons}
-            currency={currency}
-            onChange={(key, next) => patch({ addons: draft.addons.map((addon) => (addon.key === key ? { ...addon, ...next } : addon)) })}
-            onAdd={() => patch({ addons: [...draft.addons, { key: clientKey("addon"), title: "", description: "", price_fen: 0, extra_days: 0, enabled: true }] })}
-            onRemove={(key) => {
-              const row = draft.addons.find((addon) => addon.key === key);
-              patch({ addons: draft.addons.filter((addon) => addon.key !== key), deletedAddonIds: row?.id ? [...draft.deletedAddonIds, row.id] : draft.deletedAddonIds });
-            }}
-          />
-        );
-      case "details":
-        return <DetailsStep description={draft.description} onDescription={(value) => patch({ description: value })} buyerInputs={draft.buyerInputs} onBuyerInputs={(value) => patch({ buyerInputs: value })} />;
-      case "faq":
-        return (
-          <FaqStep
-            items={draft.faqs}
-            onChange={(key, next) => patch({ faqs: draft.faqs.map((faq) => (faq.key === key ? { ...faq, ...next } : faq)) })}
-            onAdd={() => patch({ faqs: [...draft.faqs, { key: clientKey("faq"), question: "", answer: "" }] })}
-            onRemove={(key) => {
-              const row = draft.faqs.find((faq) => faq.key === key);
-              patch({ faqs: draft.faqs.filter((faq) => faq.key !== key), deletedFaqIds: row?.id ? [...draft.deletedFaqIds, row.id] : draft.deletedFaqIds });
-            }}
-          />
-        );
-      case "media":
-        return (
-          <MediaStep
-            items={draft.media}
-            coverUrl={draft.coverUrl}
-            onChange={(key, next) => patch({ media: draft.media.map((item) => (item.key === key ? { ...item, ...next } : item)) })}
-            onCover={(url) => patch({ coverUrl: url })}
-            onAdd={() => patch({ media: [...draft.media, { key: clientKey("media"), kind: "image", url: "", poster_url: "", caption: "" }] })}
-            onRemove={(key) => {
-              const row = draft.media.find((item) => item.key === key);
-              patch({
-                media: draft.media.filter((item) => item.key !== key),
-                deletedMediaIds: row?.id ? [...draft.deletedMediaIds, row.id] : draft.deletedMediaIds,
-                coverUrl: row && row.url === draft.coverUrl ? "" : draft.coverUrl,
-              });
-            }}
-            onMove={(index, direction) => {
-              const next = [...draft.media];
-              const [row] = next.splice(index, 1);
-              next.splice(index + direction, 0, row);
-              patch({ media: next });
-            }}
-          />
-        );
-      case "publish":
-        return (
-          <section className="space-y-4" data-bay-step="publish">
-            <div>
-              <p className="mb-2 text-[12px] font-semibold text-stone-500">{tt("买家在 LeoBay 列表里看到的样子")}</p>
-              <ServiceCard item={previewFeedItem(draft, { profile, siteKey: postedSite, currency, model: selectedModel })} onOpen={() => {}} />
-              <TierPreview draft={draft} currency={currency} />
-            </div>
-            <PublishChecklist checks={checks} />
-            {!profile || !profile.published ? (
-              <SellerNotice tone="warn">
-                {profile ? tt("还差一步：公开你的卖家资料，服务才能上架。") : tt("先建好并公开卖家资料，服务才能上架。")}{" "}
-                <button type="button" onClick={() => openBaySettings("profile")} className={LINK_BUTTON}>
-                  {profile ? tt("去公开资料") : tt("去建资料")}
-                </button>
-              </SellerNotice>
-            ) : null}
-            {isConsult ? <SellerNotice>{tt("答疑上架后暂时不能修改；要改内容，先在「我的服务」里另发一条。")}</SellerNotice> : null}
-          </section>
-        );
-      default:
-        return null;
-    }
+  if (showPick) {
+    return (
+      <section data-bay-pane="service-editor" data-bay-publish="pick" className={`space-y-6 p-5 sm:p-8 ${narrow ? "" : "mx-auto w-full max-w-4xl"}`}>
+        <div>
+          <h3 className="text-[24px] font-extrabold tracking-tight text-neutral-900 sm:text-[28px]">{tt("你要发布什么？")}</h3>
+          <p className="mt-1.5 text-[14px] text-neutral-500">{tt("选一种就行。每一种只问它该问的那几项。")}</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {KIND_CARDS.map((card) => (
+            <button
+              key={card.kind}
+              type="button"
+              data-bay-kind={card.kind}
+              onClick={() => pickKind(card.kind)}
+              className={`group flex flex-col rounded-3xl p-6 text-left shadow-sm ring-1 ring-black/5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] ${KIND_CARD_TONE[card.kind].card}`}
+            >
+              <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-[22px] font-extrabold text-white shadow-md ${KIND_CARD_TONE[card.kind].badge}`} aria-hidden>
+                {KIND_CARD_TONE[card.kind].glyph}
+              </span>
+              <span className="mt-4 block text-[19px] font-extrabold tracking-tight text-neutral-900">{tt(card.title)}</span>
+              <span className="mt-1 block text-[13px] leading-5 text-neutral-600">{tt(card.blurb)}</span>
+              <ul className="mt-4 space-y-1.5 text-[13px] text-neutral-700">
+                {card.items.map((item) => (
+                  <li key={item} className="flex items-start gap-2">
+                    <span aria-hidden className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${KIND_CARD_TONE[card.kind].badge}`} />
+                    <span>{tt(item)}</span>
+                  </li>
+                ))}
+              </ul>
+              <span className="mt-5 inline-flex items-center gap-1 text-[13px] font-bold text-neutral-900">
+                {tt("就发这个")} <span aria-hidden>→</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
   }
 
+  const publishKind = kind as PublishKind;
+
   return (
-    <section data-bay-pane="service-editor" className={`space-y-4 p-4 ${narrow ? "" : "mx-auto max-w-2xl"}`}>
-      <p className="text-[11.5px] font-medium text-stone-500" data-bay-editor-status={draft.status}>
-        {tt("第 {n} 步，共 {total} 步", { n: stepIndex + 1, total: steps.length })} · {statusLabel}
-        {dirty ? ` · ${tt("有没保存的修改")}` : ""}
-      </p>
+    <section data-bay-pane="service-editor" data-bay-publish="form" className={`space-y-4 p-4 sm:p-6 ${narrow ? "" : "mx-auto w-full max-w-3xl"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-600" data-bay-editor-status={draft.status}>
+          <span className={`rounded-full px-3 py-1.5 text-[12px] font-bold text-white ${KIND_CARD_TONE[publishKind].badge}`}>{tt(PUBLISH_KIND_LABELS[publishKind])}</span>
+          <span className="rounded-full bg-neutral-100 px-3 py-1.5 text-[12px] font-semibold text-neutral-700">{statusLabel}</span>
+          {dirty ? <span className="text-[12px] text-amber-600">{tt("有没保存的修改")}</span> : null}
+        </p>
+        {!draft.serviceId ? (
+          <button type="button" data-bay-switch-kind onClick={() => pickKindReset()} className={BTN_QUIET}>
+            {tt("换一种")}
+          </button>
+        ) : null}
+      </div>
 
       {draft.moderationHidden ? <HiddenByPlatformNotice what="service" caseRow={hiddenCase} /> : null}
       {hiddenMessage && !hiddenCase ? <SellerNotice tone="warn">{hiddenMessage}</SellerNotice> : null}
-      {!profile && currentStep !== "kind" ? (
-        <SellerNotice tone="warn">
-          {tt("还没有卖家资料：先建资料，才能保存服务。")}{" "}
-          <button type="button" onClick={() => openBaySettings("profile")} className={LINK_BUTTON}>
-            {tt("去建资料")}
-          </button>
-        </SellerNotice>
-      ) : null}
 
-      <nav aria-label={tt("发布步骤")} className="flex flex-wrap gap-1.5" data-bay-steps>
-        {steps.map((id, index) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => goTo(id)}
-            data-bay-step-chip={id}
-            aria-current={id === currentStep ? "step" : undefined}
-            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] ${id === currentStep ? "border-stone-900 bg-stone-900 font-semibold text-white" : "border-stone-200 bg-white text-stone-600"}`}
-          >
-            {index + 1}. {tt(STEP_LABELS[id])}
-          </button>
-        ))}
-      </nav>
+      <div className="space-y-4">
+        <SectionCard
+          index={1}
+          section="product"
+          missing={missing.product}
+          highlight={highlight === "product"}
+          hint={tt(SECTION_HINT[publishKind].product)}
+          onRef={(node) => {
+            sectionEls.current.product = node;
+          }}
+        >
+          {publishKind === "consult" ? (
+            <>
+              <DomainStep
+                plain
+                domains={domains.data}
+                loading={domains.loading}
+                error={domains.error}
+                onReload={() => setDomainNonce((value) => value + 1)}
+                domain={draft.domain}
+                onDomain={(key) => patch({ domain: key, category: "" })}
+                categories={visibleCategories}
+                category={draft.category}
+                onCategory={changeCategory}
+              />
+              <SellerField label={tt("标题")} hint={`${draft.title.length}/${TITLE_MAX}`}>
+                <input className={INPUT_CLASS} data-bay-field="title" value={draft.title} maxLength={TITLE_MAX} onChange={(event) => patch({ title: event.target.value })} />
+                <OverreachHintList text={draft.title} />
+              </SellerField>
+              <SellerField label={tt("一句介绍")} hint={`${draft.summary.length}/${TITLE_MAX}`}>
+                <input className={INPUT_CLASS} data-bay-field="summary" value={draft.summary} maxLength={240} onChange={(event) => patch({ summary: event.target.value })} />
+              </SellerField>
+            </>
+          ) : (
+            <>
+              <SellerField label={tt("标题")} hint={`${draft.title.length}/${TITLE_MAX}`}>
+                <input className={INPUT_CLASS} data-bay-field="title" value={draft.title} maxLength={TITLE_MAX} onChange={(event) => patch({ title: event.target.value })} />
+                <OverreachHintList text={draft.title} />
+              </SellerField>
+              {publishKind === "service" ? (
+                <SellerField label={tt("分类")}>
+                  <CategorySelect categories={visibleCategories} value={draft.category} onChange={changeCategory} />
+                </SellerField>
+              ) : null}
+              <MediaStep {...mediaProps} plain imagesOnly />
+              {publishKind === "digital" ? (
+                <div data-bay-digital-work>
+                  {draft.digitalWork ? (
+                    <p className="flex flex-wrap items-center gap-2 text-[13px] text-neutral-700">
+                      <span>{draft.digitalWork.title || draft.digitalWork.id}</span>
+                      <button type="button" onClick={() => void pickWork()} className={BTN_QUIET}>
+                        {tt("换一个")}
+                      </button>
+                    </p>
+                  ) : (
+                    <button type="button" onClick={() => void pickWork()} className={BTN_SECONDARY}>
+                      {tt("从我的库选")}
+                    </button>
+                  )}
+                </div>
+              ) : null}
+              {publishKind === "digital" ? (
+                <SellerField label={tt("一句介绍")}>
+                  <input className={INPUT_CLASS} data-bay-field="summary" value={draft.summary} maxLength={240} onChange={(event) => patch({ summary: event.target.value })} />
+                </SellerField>
+              ) : (
+                <DetailsStep
+                  plain
+                  minChars={0}
+                  showBuyerInputs={false}
+                  description={draft.description}
+                  onDescription={(value) => patch({ description: value })}
+                  buyerInputs={draft.buyerInputs}
+                  onBuyerInputs={(value) => patch({ buyerInputs: value })}
+                />
+              )}
+              {publishKind === "service" ? (
+                <div>
+                  <button type="button" data-bay-faq-toggle aria-expanded={faqOpen} onClick={() => setFaqOpen((open) => !open)} className={BTN_QUIET}>
+                    {tt("添加常见问题")}
+                  </button>
+                  {faqOpen ? (
+                    <FaqStep
+                      plain
+                      items={draft.faqs}
+                      onChange={(key, next) => patch({ faqs: draft.faqs.map((faq) => (faq.key === key ? { ...faq, ...next } : faq)) })}
+                      onAdd={() => patch({ faqs: [...draft.faqs, { key: clientKey("faq"), question: "", answer: "" }] })}
+                      onRemove={(key) => {
+                        const row = draft.faqs.find((faq) => faq.key === key);
+                        patch({ faqs: draft.faqs.filter((faq) => faq.key !== key), deletedFaqIds: row?.id ? [...draft.deletedFaqIds, row.id] : draft.deletedFaqIds });
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          )}
+        </SectionCard>
 
-      {renderStep()}
+        <SectionCard
+          index={2}
+          section="price"
+          missing={missing.price}
+          highlight={highlight === "price"}
+          hint={tt(SECTION_HINT[publishKind].price)}
+          onRef={(node) => {
+            sectionEls.current.price = node;
+          }}
+        >
+          {draft.official ? (
+            <p data-bay-official-free className="text-[13px] text-neutral-600">
+              {tt("官方账号发布的内容一律免费")}
+            </p>
+          ) : publishKind === "consult" ? (
+            <ConsultPricingStep
+              plain
+              includeTerms={false}
+              currency={currency}
+              unit={draft.consultUnit}
+              onUnit={(unit) => patch({ consultUnit: unit })}
+              priceFen={draft.tiers[0]?.price_fen || 0}
+              onPriceFen={(fen) => {
+                setDraft((current) => ({ ...current, tiers: current.tiers.map((tier, index) => (index === 0 ? { ...tier, price_fen: fen } : tier)) }));
+                setDirty(true);
+              }}
+              rounds={draft.consultRounds}
+              onRounds={(value) => patch({ consultRounds: value })}
+              minutes={draft.consultMinutes}
+              onMinutes={(value) => patch({ consultMinutes: value })}
+              responseWindow={draft.responseWindow}
+              onResponseWindow={(value) => patch({ responseWindow: value })}
+            />
+          ) : publishKind === "digital" ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[8rem] flex-1">
+                <SellerField label={tt("价格")}>
+                  <input
+                    className={INPUT_CLASS}
+                    data-bay-field="price"
+                    inputMode="decimal"
+                    disabled={draft.pricingModel === "free"}
+                    value={yuanText(draft.tiers[0]?.price_fen || 0)}
+                    onChange={(event) => setSimplePrice(toFen(event.target.value), false)}
+                  />
+                </SellerField>
+              </div>
+              <label className="flex items-center gap-2 rounded-xl px-3 py-3 text-[13px] text-neutral-700">
+                <input
+                  type="checkbox"
+                  data-bay-free
+                  checked={draft.pricingModel === "free"}
+                  onChange={(event) => setSimplePrice(event.target.checked ? 0 : draft.tiers[0]?.price_fen || 0, event.target.checked)}
+                />
+                {tt("免费")}
+              </label>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-3">
+                <div className="min-w-[8rem] flex-1">
+                  <SellerField label={tt("价格")}>
+                    <input className={INPUT_CLASS} data-bay-field="price" inputMode="decimal" value={yuanText(draft.tiers[0]?.price_fen || 0)} onChange={(event) => setSimplePrice(toFen(event.target.value), false)} />
+                  </SellerField>
+                </div>
+                <div className="min-w-[8rem] flex-1">
+                  <SellerField label={tt("交付天数")}>
+                    <input
+                      className={INPUT_CLASS}
+                      data-bay-field="delivery-days"
+                      inputMode="numeric"
+                      value={draft.tiers[0]?.delivery_days == null ? "" : String(draft.tiers[0].delivery_days)}
+                      onChange={(event) => setDeliveryDays(intOrNull(event.target.value, 1, 365))}
+                    />
+                  </SellerField>
+                </div>
+              </div>
+              <div>
+                <button type="button" data-bay-more-pricing-toggle aria-expanded={morePricing} onClick={() => setMorePricing((open) => !open)} className={BTN_QUIET}>
+                  {tt("更多定价")}
+                </button>
+                {morePricing ? (
+                  <div data-bay-more-pricing className="mt-3 space-y-4">
+                    <ModelStep
+                      plain
+                      models={models.data}
+                      loading={models.loading}
+                      error={models.error}
+                      onReload={() => setModelNonce((value) => value + 1)}
+                      selected={draft.pricingModel}
+                      onSelect={(key) =>
+                        patch({
+                          simplePrice: false,
+                          pricingModel: key,
+                          tiers: key === "free" ? draft.tiers.map((tier) => ({ ...tier, price_fen: 0 })) : draft.tiers,
+                        })
+                      }
+                    />
+                    <TiersStep
+                      plain
+                      tiers={draft.tiers}
+                      currency={currency}
+                      free={draft.pricingModel === "free"}
+                      onChange={changeTier}
+                      onBasicOnly={() => patch({ tiers: draft.tiers.map((tier, index) => ({ ...tier, enabled: index === 0 })) })}
+                    />
+                    <AddonsStep
+                      plain
+                      addons={draft.addons}
+                      currency={currency}
+                      onChange={(key, next) => {
+                        patch({ simplePrice: false, addons: draft.addons.map((addon) => (addon.key === key ? { ...addon, ...next } : addon)) });
+                      }}
+                      onAdd={() => patch({ simplePrice: false, addons: [...draft.addons, { key: clientKey("addon"), title: "", description: "", price_fen: 0, extra_days: 0, enabled: true }] })}
+                      onRemove={(key) => {
+                        const row = draft.addons.find((addon) => addon.key === key);
+                        patch({ addons: draft.addons.filter((addon) => addon.key !== key), deletedAddonIds: row?.id ? [...draft.deletedAddonIds, row.id] : draft.deletedAddonIds });
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          index={3}
+          section="terms"
+          missing={missing.terms}
+          highlight={highlight === "terms"}
+          hint={tt(SECTION_HINT[publishKind].terms)}
+          onRef={(node) => {
+            sectionEls.current.terms = node;
+          }}
+        >
+          {publishKind === "digital" ? (
+            <>
+              <div className="space-y-2" role="radiogroup" data-bay-license-group>
+                {(["personal", "commercial"] as const).map((value) => (
+                  <label key={value} data-bay-license={value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left ${draft.license === value ? "border-neutral-900 bg-neutral-50" : "border-neutral-200 bg-white"}`}>
+                    <input type="radio" name="bay-license" className="mt-1" checked={draft.license === value} onChange={() => patch({ license: value })} />
+                    <span className="text-[13px] font-semibold text-neutral-900">{value === "personal" ? tt("个人使用") : tt("可商用")}</span>
+                  </label>
+                ))}
+              </div>
+              <ul data-bay-digital-terms className="space-y-1 text-[13px] text-neutral-600">
+                <li>{tt("付款后立即交付")}</li>
+                <li>{tt("已交付的数字商品不退款")}</li>
+                <li>{tt("不得转售原文件")}</li>
+              </ul>
+            </>
+          ) : publishKind === "consult" ? (
+            <>
+              <ConsultTermsFields
+                scopeNote={draft.scopeNote}
+                onScopeNote={(value) => patch({ scopeNote: value })}
+                unit={draft.consultUnit}
+                rounds={draft.consultRounds}
+                onRounds={(value) => patch({ consultRounds: value })}
+                minutes={draft.consultMinutes}
+                onMinutes={(value) => patch({ consultMinutes: value })}
+                responseWindow={draft.responseWindow}
+                onResponseWindow={(value) => patch({ responseWindow: value })}
+              />
+              <PromptsStep
+                plain
+                domainName={tt(domains.data.find((row) => row.key === draft.domain)?.name_zh || "")}
+                prompts={prompts.data}
+                loading={prompts.loading}
+                error={prompts.error}
+                onReload={() => setPromptNonce((value) => value + 1)}
+              />
+            </>
+          ) : (
+            <>
+              <SellerField label={tt("改稿次数")} hint={tt("-1 表示不限")}>
+                <input className={INPUT_CLASS} data-bay-field="revisions" inputMode="numeric" value={String(draft.tiers[0]?.revisions ?? 0)} onChange={(event) => setRevisions(intOrNull(event.target.value, -1, 100) ?? 0)} />
+              </SellerField>
+              <SellerField label={tt("需要买家先提供什么")}>
+                <textarea className={TEXTAREA_CLASS} data-bay-field="buyer-inputs" rows={3} maxLength={2000} value={draft.buyerInputs} onChange={(event) => patch({ buyerInputs: event.target.value })} />
+              </SellerField>
+              <SellerField label={tt("交付方式")}>
+                <div className="space-y-2" role="radiogroup">
+                  {(["on_platform", "off_platform"] as const).map((mode) => (
+                    <label key={mode} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left ${draft.deliveryMode === mode ? "border-neutral-900 bg-neutral-50" : "border-neutral-200 bg-white"}`}>
+                      <input type="radio" name="bay-delivery-mode" className="mt-1" checked={draft.deliveryMode === mode} onChange={() => patch({ deliveryMode: mode })} />
+                      <span className="text-[13px] font-semibold text-neutral-900">{mode === "on_platform" ? tt("站内交付") : tt("站外交付")}</span>
+                    </label>
+                  ))}
+                </div>
+              </SellerField>
+              <FieldsStep
+                plain
+                specs={termsSpecs(specs)}
+                values={draft.fieldValues}
+                categoryName={tt(selectedCategory?.name_zh || "")}
+                onChange={(key: string, value: BayFieldValue) => patch({ fieldValues: { ...draft.fieldValues, [key]: value } })}
+              />
+            </>
+          )}
+        </SectionCard>
+      </div>
 
       {rejection ? (
         <SellerNotice tone="error">
-          <span className="font-semibold">{tt("平台没有通过")}</span>
+          <span className="font-semibold">{tt("这一步没有保存成功")}</span>
           <span className="mt-1 block whitespace-pre-wrap">{tt(rejection)}</span>
         </SellerNotice>
       ) : null}
 
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-3">
-        <button type="button" disabled={stepIndex === 0 || saving} onClick={() => goTo(steps[Math.max(0, stepIndex - 1)])} className={SECONDARY_BUTTON} data-bay-action="prev">
-          {tt("上一步")}
-        </button>
+      <footer
+        data-bay-publish-bar
+        className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200/70 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6"
+      >
+        <p className={`text-[13px] font-medium ${leftover ? "text-neutral-500" : "text-emerald-600"}`}>{leftover ? tt("还差 {n} 项就能发布", { n: leftover }) : tt("可以发布了")}</p>
         <div className="flex flex-wrap items-center gap-2">
-          {currentStep === "publish" ? (
-            <>
-              {!isConsult ? (
-                <button type="button" disabled={saving || !draft.title.trim()} onClick={() => void saveAsDraft()} className={SECONDARY_BUTTON} data-bay-action="save-draft">
-                  {draft.status === "published" ? tt("保存修改") : tt("存草稿")}
-                </button>
-              ) : null}
-              {draft.status !== "published" ? (
-                <button type="button" disabled={saving || !ready} onClick={() => void publish()} className={PRIMARY_BUTTON} data-bay-action="publish">
-                  {saving ? tt("正在检查…") : tt("上架")}
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <button type="button" disabled={saving} onClick={() => void saveCurrentStep()} className={PRIMARY_BUTTON} data-bay-action="next">
-              {saving ? tt("保存中…") : isLocalStep(currentStep, draft.catalogKind) ? tt("下一步") : tt("存草稿并继续")}
-            </button>
-          )}
+          <button type="button" disabled={saving} onClick={() => void persist("draft")} className={BTN_SECONDARY} data-bay-action="save-draft">
+            {tt("存草稿")}
+          </button>
+          <button type="button" disabled={saving} onClick={() => void persist("publish")} className={BTN_PRIMARY} data-bay-action="publish">
+            {saving ? tt("正在检查…") : draft.status === "published" ? tt("保存修改") : tt("发布")}
+          </button>
         </div>
       </footer>
 
       {draft.serviceId ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3" data-bay-manage>
+        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3" data-bay-manage>
           {draft.status === "published" ? (
-            <button type="button" disabled={saving} onClick={() => void pause()} className={SECONDARY_BUTTON} data-bay-action="pause">
+            <button type="button" disabled={saving} onClick={() => void pause()} className={BTN_SECONDARY} data-bay-action="pause">
               {tt("暂停接单")}
             </button>
           ) : null}
-          {draft.status === "paused" ? (
-            <button type="button" disabled={saving} onClick={() => setStep("publish")} className={SECONDARY_BUTTON} data-bay-action="republish">
-              {tt("重新上架")}
-            </button>
-          ) : null}
-          <button type="button" disabled={saving} onClick={() => remove()} className={DANGER_BUTTON} data-bay-action="remove">
+          <button type="button" disabled={saving} onClick={() => setPendingDelete(true)} className={DANGER_BUTTON} data-bay-action="remove">
             {tt("删除")}
           </button>
         </div>
       ) : null}
 
-      {pendingLeave ? (
-        <ConfirmDialog
-          title={tt("这一步还有没保存的修改，确定先离开？")}
-          onConfirm={() => {
-            const next = pendingLeave;
-            setPendingLeave(null);
-            applyGoTo(next);
-          }}
-          onCancel={() => setPendingLeave(null)}
-        />
-      ) : null}
       {pendingDelete ? (
         <ConfirmDialog
           title={tt("确定删除「{title}」？价格档、加购项、作品图会一起删除。", { title: draft.title || tt("未命名服务") })}
@@ -812,27 +1012,67 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   );
 }
 
-function TierPreview({ draft, currency }: { draft: EditorDraft; currency: string }) {
+/** 三种发布各自的颜色：数字商品橙、服务蓝、答疑紫（与 LeoBay 页种类前的小色点同一套）。 */
+const KIND_CARD_TONE: Readonly<Record<PublishKind, { card: string; badge: string; glyph: string }>> = {
+  digital: { card: "bg-gradient-to-br from-orange-50 to-amber-50", badge: "bg-orange-500", glyph: "◆" },
+  service: { card: "bg-gradient-to-br from-sky-50 to-cyan-50", badge: "bg-sky-500", glyph: "✦" },
+  consult: { card: "bg-gradient-to-br from-violet-50 to-fuchsia-50", badge: "bg-violet-500", glyph: "?" },
+};
+
+const SECTION_TONE: Readonly<Record<PublishSection, string>> = {
+  product: "bg-sky-500",
+  price: "bg-orange-500",
+  terms: "bg-violet-500",
+};
+
+function SectionCard({
+  index,
+  section,
+  missing,
+  highlight,
+  hint,
+  onRef,
+  children,
+}: {
+  index: number;
+  section: PublishSection;
+  missing: string[];
+  highlight: boolean;
+  hint: string;
+  onRef: (node: HTMLElement | null) => void;
+  children: ReactNode;
+}) {
   const tt = useUI();
-  const rows = draft.catalogKind === "consult" ? draft.tiers.slice(0, 1) : draft.tiers.filter((tier) => tier.enabled);
-  if (!rows.length) return null;
+  const done = missing.length === 0;
   return (
-    <ul className="mt-2 space-y-1.5" data-bay-tier-preview>
-      {rows.map((tier) => (
-        <li key={tier.tier} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-[12.5px] text-stone-700">
-          <span className="font-semibold text-stone-900">{draft.catalogKind === "consult" ? draft.title || tt("答疑") : tier.title || tt("未命名价格档")}</span>
-          <span className="ml-2">{moneyText(tier.price_fen, currency)}</span>
-          {draft.catalogKind === "consult" ? (
-            <span className="ml-2 text-stone-500">
-              {draft.consultUnit === "session" ? tt("每次 {n} 轮问答", { n: draft.consultRounds ?? "—" }) : tt("每小时按 {n} 分钟计", { n: draft.consultMinutes ?? "—" })}
-            </span>
-          ) : (
-            <span className="ml-2 text-stone-500">
-              {tier.delivery_days ? tt("{n} 天交付", { n: tier.delivery_days }) : tt("交期面议")} · {tier.revisions === -1 ? tt("不限修改") : tt("修改 {n} 次", { n: tier.revisions })}
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
+    <section
+      ref={onRef}
+      data-bay-section={section}
+      data-bay-section-done={done ? "true" : "false"}
+      className={`scroll-mt-4 rounded-3xl bg-white p-5 shadow-sm ring-1 sm:p-6 ${highlight ? "ring-2 ring-rose-400" : "ring-black/5"}`}
+    >
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-[14px] font-extrabold text-white shadow-sm ${done ? "bg-emerald-500" : SECTION_TONE[section]}`}
+          >
+            {done ? "✓" : index}
+          </span>
+          <div>
+            <h3 className="text-[18px] font-extrabold tracking-tight text-neutral-900">{tt(SECTION_LABELS[section])}</h3>
+            <p className="mt-0.5 text-[13px] text-neutral-500">{hint}</p>
+          </div>
+        </div>
+        <p
+          className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
+            highlight ? "bg-rose-50 text-rose-600" : done ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
+          }`}
+        >
+          {done ? tt("已填好") : tt("还差 {n} 项", { n: missing.length })}
+        </p>
+      </header>
+      {highlight && missing.length ? <p className="mb-3 text-[12.5px] text-rose-600">{missing.map((item) => tt(item)).join("、")}</p> : null}
+      <div className="space-y-4">{children}</div>
+    </section>
   );
 }

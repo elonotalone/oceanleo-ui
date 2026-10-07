@@ -22,6 +22,7 @@ import {
   type BayProposal,
 } from "../../../lib/bay/demands";
 import { useToast } from "../../../ui/Toast";
+import { openMessages } from "../../messages/host-state";
 import { openTradeThread } from "../deal";
 import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
@@ -90,7 +91,7 @@ async function copyText(text: string): Promise<boolean> {
 
 async function openDealAfterAccept(contract: { id: string; thread_id?: string | null }): Promise<void> {
   if (contract.thread_id) {
-    openBay({ kind: "conversation", threadId: contract.thread_id });
+    openMessages({ conversationId: "talent:" + contract.thread_id });
     return;
   }
   try {

@@ -1,18 +1,16 @@
 // 消息浮层的开合状态（work-chat 契约 §8.3）。纯 TS：不碰 DOM 全局，浏览器能力经 HostEnv 注入，
 // 所以 tests/im-host-state.test.mjs 能用假的 history/location 跑真实实现。
 //
-// 关掉浮层时记住栏目和会话（`oceanleo:leochat:last`）；再开或刷新后停在原处。
-// 整页 `/leochat` 或 `/bay` 在场时不弹小窗：`open()` 把请求交给整页，`applyLocation` 不消费深链。
+// 关掉浮层时记住栏目和会话（`oceanleo:leochat:last`）；再开或刷新后停在原处。放大 / 还原也记住（`oceanleo:leochat:expanded`）。
+// LeoChat 只有小窗，没有整页；LeoBay 是一张独立的页（`/bay`），不在小窗里。
 //
 // 深链：任何站 `?im=<会话 id>`（可带 `&im_seq=<seq>`）、`?im=inbox`、`?im=people`、`?im_invite=<code>`。
 // 浮层不是路由：侧栏打开不写 `?im=`。带着深链进来时 applyLocation 打开一次，随后 replaceState 清掉。
 // 切页由外壳 closeMessages，不把 `?im=` 带到下一页。
 import { useSyncExternalStore } from "react";
-import { isLeoChatPagePath } from "../leochat/leochat-links";
-import { leoChatPageMounted, sendLeoChatPageRequest } from "../leochat/page-presence";
 
-export type MessagesView = "inbox" | "people" | "bay";
-export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people", "bay"];
+export type MessagesView = "inbox" | "people";
+export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people"];
 /** 收件箱筛选的合法值；与 `lib/im/inbox-api.ts` 的 `INBOX_FILTERS` 相同（测试里对拍，host-state 保持纯、不引入鉴权依赖）。 */
 export const INBOX_FILTER_IDS: readonly string[] = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"];
 export type MessagesLayoutKind = "docked" | "full" | "mobile";
@@ -47,6 +45,7 @@ export const IM_OPEN_EVENT = "oceanleo:im-open";
 export const DOCK_WIDTH_KEY = "oceanleo:im:dock-width";
 export const OVERLAY_OFFSET_KEY = "oceanleo:im:overlay-offset";
 export const LAST_VIEW_KEY = "oceanleo:leochat:last";
+export const EXPANDED_KEY = "oceanleo:leochat:expanded";
 export const DOCK_MIN = 360;
 export const DOCK_MAX = 720;
 export const DOCK_DEFAULT = 420;
@@ -75,12 +74,12 @@ export function parseImDeepLink(search: string): ImDeepLink {
   if (raw === "inbox") {
     target.view = "inbox";
     valid = true;
-  } else if (raw === "bay") {
-    target.view = "bay";
-    valid = true;
   } else if (raw === "people") {
     target.view = "people";
     valid = true;
+  } else if (raw === "bay") {
+    // 旧链接 `?im=bay`（小窗里曾经有 LeoBay 栏）：小窗不再有这一栏，这个值当没有——不能把它当成会话 id 去开。
+    valid = false;
   } else if (raw && CONVERSATION_ID.test(raw)) {
     target.conversationId = raw;
     valid = true;
@@ -235,6 +234,14 @@ export function createHostState(env: HostEnv): HostState {
     }
   })();
 
+  const storedExpanded = (() => {
+    try {
+      return env.storage?.getItem(EXPANDED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  })();
+
   let s: Internal = {
     open: false,
     conversationId: storedLast.conversationId,
@@ -242,7 +249,7 @@ export function createHostState(env: HostEnv): HostState {
     filter: "all",
     highlightSeq: null,
     inviteCode: null,
-    expanded: false,
+    expanded: storedExpanded,
     narrow: env.viewportWidth() <= MOBILE_MAX_WIDTH,
     dockWidth: stored,
     enabled: false,
@@ -317,14 +324,6 @@ export function createHostState(env: HostEnv): HostState {
   function open(target: MessagesTarget = {}): void {
     if (!s.enabled) return;
     const resolved = resolveOpen(target);
-    if (leoChatPageMounted()) {
-      const accepted = sendLeoChatPageRequest({
-        tab: resolved.view,
-        conversationId: resolved.conversationId,
-        seq: target.seq ?? null,
-      });
-      if (accepted) return;
-    }
     const wasOpen = s.open;
     commit({
       open: true,
@@ -346,7 +345,6 @@ export function createHostState(env: HostEnv): HostState {
   function applyLocation(closeIfMissing = true): void {
     // 前进/后退以地址栏为准。深链只用来打开一次，随后从地址栏清掉，浮层不是路由。
     const loc = env.getLocation();
-    if (isLeoChatPagePath(loc.pathname)) return;
     const link = parseImDeepLink(loc.search);
     if (link.kind === "none") {
       if (s.open && closeIfMissing) {
@@ -385,6 +383,11 @@ export function createHostState(env: HostEnv): HostState {
     },
     setExpanded(expanded) {
       commit({ expanded });
+      try {
+        env.storage?.setItem(EXPANDED_KEY, expanded ? "1" : "0");
+      } catch {
+        /* 隐私模式：只是不记住 */
+      }
     },
     setView(view) {
       if (!s.open) return;

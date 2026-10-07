@@ -48,6 +48,11 @@ const SOURCE = {
   previewReplay: "[工作回放]",
   previewCard: "[卡片]",
   leoChatUnread: "LeoChat：{n} 条新消息或待办",
+
+  unreadCount: "{n} 条未读",
+  restoreMini: "还原成小窗",
+  pickHint: "左边是你的聊天和联系人。在 LeoBay 里联系卖家，对话也会出现在这里。",
+  leoChatNew: "LeoChat：{n} 条新消息",
 } as const;
 
 export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
@@ -96,7 +101,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Work replay]",
     previewCard: "[Card]",
     leoChatUnread: "LeoChat: {n} new messages or tasks",
-  },
+  
+    unreadCount: "{n} unread",
+    restoreMini: "Back to mini window",
+    pickHint: "Chats and people are on the left. When you message a seller in LeoBay, the thread shows up here too.",
+    leoChatNew: "LeoChat: {n} new messages",
+},
   de: {
     messages: "Nachrichten",
     inboxTab: "Chat",
@@ -142,7 +152,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Arbeitswiedergabe]",
     previewCard: "[Karte]",
     leoChatUnread: "LeoChat: {n} neue Nachrichten oder Aufgaben",
-  },
+  
+    unreadCount: "{n} ungelesen",
+    restoreMini: "Zurück zum Mini-Fenster",
+    pickHint: "Links sind Chats und Kontakte. Schreibst du in LeoBay einem Verkäufer, erscheint das Gespräch auch hier.",
+    leoChatNew: "LeoChat: {n} neue Nachrichten",
+},
   es: {
     messages: "Mensajes",
     inboxTab: "Chat",
@@ -188,7 +203,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Repetición de trabajo]",
     previewCard: "[Tarjeta]",
     leoChatUnread: "LeoChat: {n} mensajes o pendientes nuevos",
-  },
+  
+    unreadCount: "{n} sin leer",
+    restoreMini: "Volver a la ventana pequeña",
+    pickHint: "A la izquierda, chats y contactos. Si escribes a un vendedor en LeoBay, el hilo también sale aquí.",
+    leoChatNew: "LeoChat: {n} mensajes nuevos",
+},
   "es-419": {
     messages: "Mensajes",
     inboxTab: "Chat",
@@ -234,7 +254,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Repetición de trabajo]",
     previewCard: "[Tarjeta]",
     leoChatUnread: "LeoChat: {n} mensajes o pendientes nuevos",
-  },
+  
+    unreadCount: "{n} sin leer",
+    restoreMini: "Volver a la ventana pequeña",
+    pickHint: "A la izquierda, chats y contactos. Si escribes a un vendedor en LeoBay, el hilo también sale aquí.",
+    leoChatNew: "LeoChat: {n} mensajes nuevos",
+},
   fr: {
     messages: "Messages",
     inboxTab: "Discussion",
@@ -280,7 +305,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Relecture du travail]",
     previewCard: "[Carte]",
     leoChatUnread: "LeoChat : {n} nouveaux messages ou tâches",
-  },
+  
+    unreadCount: "{n} non lus",
+    restoreMini: "Revenir à la mini-fenêtre",
+    pickHint: "À gauche : discussions et contacts. Un message à un vendeur dans LeoBay apparaît aussi ici.",
+    leoChatNew: "LeoChat : {n} nouveaux messages",
+},
   it: {
     messages: "Messaggi",
     inboxTab: "Chat",
@@ -326,7 +356,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Replay del lavoro]",
     previewCard: "[Scheda]",
     leoChatUnread: "LeoChat: {n} nuovi messaggi o attività",
-  },
+  
+    unreadCount: "{n} non letti",
+    restoreMini: "Torna alla mini finestra",
+    pickHint: "A sinistra chat e contatti. Se scrivi a un venditore in LeoBay, la conversazione compare anche qui.",
+    leoChatNew: "LeoChat: {n} nuovi messaggi",
+},
   "pt-BR": {
     messages: "Mensagens",
     inboxTab: "Chat",
@@ -372,7 +407,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Replay do trabalho]",
     previewCard: "[Cartão]",
     leoChatUnread: "LeoChat: {n} novas mensagens ou pendências",
-  },
+  
+    unreadCount: "{n} não lidas",
+    restoreMini: "Voltar à janela pequena",
+    pickHint: "À esquerda: chats e contatos. Se você falar com um vendedor no LeoBay, a conversa também aparece aqui.",
+    leoChatNew: "LeoChat: {n} mensagens novas",
+},
   "pt-PT": {
     messages: "Mensagens",
     inboxTab: "Chat",
@@ -418,7 +458,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Repetição do trabalho]",
     previewCard: "[Cartão]",
     leoChatUnread: "LeoChat: {n} novas mensagens ou pendências",
-  },
+  
+    unreadCount: "{n} por ler",
+    restoreMini: "Voltar à janela pequena",
+    pickHint: "À esquerda: chats e contactos. Se falar com um vendedor no LeoBay, a conversa também aparece aqui.",
+    leoChatNew: "LeoChat: {n} mensagens novas",
+},
   vi: {
     messages: "Tin nhắn",
     inboxTab: "Trò chuyện",
@@ -464,7 +509,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Phát lại công việc]",
     previewCard: "[Thẻ]",
     leoChatUnread: "LeoChat: {n} tin nhắn hoặc việc mới",
-  },
+  
+    unreadCount: "{n} chưa đọc",
+    restoreMini: "Về cửa sổ nhỏ",
+    pickHint: "Bên trái là chat và danh bạ. Nhắn người bán trên LeoBay thì hội thoại cũng hiện ở đây.",
+    leoChatNew: "LeoChat: {n} tin nhắn mới",
+},
   tr: {
     messages: "Mesajlar",
     inboxTab: "Sohbet",
@@ -510,7 +560,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[Çalışma tekrarı]",
     previewCard: "[Kart]",
     leoChatUnread: "LeoChat: {n} yeni mesaj veya iş",
-  },
+  
+    unreadCount: "{n} okunmamış",
+    restoreMini: "Küçük pencereye dön",
+    pickHint: "Solda sohbetler ve kişiler. LeoBay’de satıcıya yazınca konuşma burada da görünür.",
+    leoChatNew: "LeoChat: {n} yeni mesaj",
+},
   "zh-TW": {
     messages: "訊息",
     inboxTab: "聊天",
@@ -556,7 +611,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[工作回放]",
     previewCard: "[卡片]",
     leoChatUnread: "LeoChat：{n} 則新訊息或待辦",
-  },
+  
+    unreadCount: "{n} 則未讀",
+    restoreMini: "還原成小窗",
+    pickHint: "左邊是你的聊天和聯絡人。在 LeoBay 裡聯絡賣家，對話也會出現在這裡。",
+    leoChatNew: "LeoChat：{n} 則新訊息",
+},
   ja: {
     messages: "メッセージ",
     inboxTab: "チャット",
@@ -602,7 +662,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[作業リプレイ]",
     previewCard: "[カード]",
     leoChatUnread: "LeoChat：新着または未処理が {n} 件",
-  },
+  
+    unreadCount: "未読 {n} 件",
+    restoreMini: "小窓に戻す",
+    pickHint: "左はチャットと連絡先。LeoBayで売り手に連絡した会話もここに出ます。",
+    leoChatNew: "LeoChat：新着 {n} 件",
+},
   ko: {
     messages: "메시지",
     inboxTab: "채팅",
@@ -648,7 +713,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[작업 리플레이]",
     previewCard: "[카드]",
     leoChatUnread: "LeoChat: 새 메시지 또는 할 일 {n}개",
-  },
+  
+    unreadCount: "읽지 않음 {n}",
+    restoreMini: "작은 창으로",
+    pickHint: "왼쪽이 채팅과 연락처예요. LeoBay에서 판매자에게 연락한 대화도 여기에 나와요.",
+    leoChatNew: "LeoChat: 새 메시지 {n}개",
+},
   ar: {
     messages: "الرسائل",
     inboxTab: "محادثة",
@@ -694,7 +764,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[إعادة عرض العمل]",
     previewCard: "[بطاقة]",
     leoChatUnread: "LeoChat: {n} رسائل أو مهام جديدة",
-  },
+  
+    unreadCount: "{n} غير مقروءة",
+    restoreMini: "العودة إلى النافذة الصغيرة",
+    pickHint: "اليسار للمحادثات وجهات الاتصال. مراسلة بائع في LeoBay تظهر هنا أيضًا.",
+    leoChatNew: "LeoChat: {n} رسائل جديدة",
+},
   th: {
     messages: "ข้อความ",
     inboxTab: "แชต",
@@ -740,7 +815,12 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[เล่นซ้ำงาน]",
     previewCard: "[การ์ด]",
     leoChatUnread: "LeoChat: ข้อความหรืองานใหม่ {n} รายการ",
-  },
+  
+    unreadCount: "ยังไม่อ่าน {n}",
+    restoreMini: "กลับเป็นหน้าต่างเล็ก",
+    pickHint: "ซ้ายคือแชทกับผู้ติดต่อ คุยกับผู้ขายใน LeoBay ก็โผล่ที่นี่",
+    leoChatNew: "LeoChat: ข้อความใหม่ {n}",
+},
   hi: {
     messages: "संदेश",
     inboxTab: "चैट",
@@ -786,5 +866,10 @@ export const IM_SHELL_MESSAGES = assembleCopy(SOURCE, {
     previewReplay: "[कार्य रीप्ले]",
     previewCard: "[कार्ड]",
     leoChatUnread: "LeoChat: {n} नए संदेश या काम",
-  },
+  
+    unreadCount: "{n} अपठित",
+    restoreMini: "छोटी विंडो पर वापस",
+    pickHint: "बाएँ चैट और संपर्क हैं। LeoBay में विक्रेता से बात भी यहीं दिखती है।",
+    leoChatNew: "LeoChat: {n} नए संदेश",
+},
 });

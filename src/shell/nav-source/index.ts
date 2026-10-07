@@ -6,7 +6,7 @@
 //   B. 门户 `oceanleo/app/_components/clone-shell.tsx` 的 `usePrimaryNav()`：
 //      主站 oceanleo.com 走这套（它比功能站多出项目/Playground/插件/计划四项，
 //      当初套不进 `workspaceNav()`，于是整份复制着手写）。
-// 两套不同步，而且**已经真实发病过一次**：`/explore` 页 2026-07-27 就建好并部署，
+// 两套不同步，而且**已经真实发病过一次**：`/bay` 页（原 `/explore`）上线后
 // 门户侧栏却一直没有入口，用户只能手打 URL 才进得去（`clone-shell.tsx` 的注释里
 // 由作者本人记录在案）。
 //
@@ -76,9 +76,14 @@ export type NavIconId =
  */
 export type NavLabelSource = "nav" | "ui";
 
-/** 可见性开关。带 `option` 的项由调用方按站点情况决定显示与否。 */
+/**
+ * 可见性开关。带 `option` 的项由调用方按站点情况决定显示与否。
+ * `withExplore` 是旧名，语义是「显示 LeoBay 这一项」；`withBay` 与它同义。
+ * 两者任一为 false 就不显示。
+ */
 export type NavOption =
   | "withExplore"
+  | "withBay"
   | "withWorkspace"
   | "withPlayground"
   | "withTalent"
@@ -149,14 +154,16 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     },
   },
   {
-    id: "explore",
-    href: "/explore",
-    labelKey: "explore",
-    iconId: "explore",
+    id: "bay",
+    href: "/bay",
+    labelKey: "LeoBay",
+    labelSource: "ui",
+    iconId: "bay",
     placements: {
-      // 宗旨 v19（操作员 2026-07-08）：「探索」恒在首页与工作台之间。
+      // 原「探索」的位置：恒在首页与工作台之间。withExplore 是旧名，语义是显示 LeoBay。
       workspace: { order: 20, option: "withExplore", optionDefault: true },
-      portal: { order: 20, iconId: "search" },
+      // 门户侧栏用它自己那套图标里的一枚（`portal-nav.ts` 的 iconId 必须与这里逐字一致）。
+      portal: { order: 20, iconId: "talent" },
     },
   },
   {
@@ -166,19 +173,6 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     iconId: "folder",
     // 门户独有：租户站没有跨站项目的概念。
     placements: { portal: { order: 30, iconId: "folder" } },
-  },
-  {
-    // LeoChat：聊天、联系人、LeoBay 三个栏目的整页（小窗的大页面版）。只在门户侧栏占一行；
-    // 各子站的入口是账号行里的 LeoChat 图标（小窗），小窗顶栏可以跳到本站的 /leochat。
-    // 境内不出现：由外壳用 `bayEnabledHere()` 拦掉。
-    id: "leochat",
-    href: "/leochat",
-    labelKey: "LeoChat",
-    labelSource: "ui",
-    iconId: "messages",
-    placements: {
-      portal: { order: 40 },
-    },
   },
   {
     id: "workspace",
@@ -251,6 +245,12 @@ function placementVisible(
   options: NavResolveOptions,
 ): boolean {
   if (!placement.option) return true;
+  if (placement.option === "withExplore" || placement.option === "withBay") {
+    if (options.withExplore === false || options.withBay === false) return false;
+    if (typeof options.withExplore === "boolean") return options.withExplore;
+    if (typeof options.withBay === "boolean") return options.withBay;
+    return placement.optionDefault ?? true;
+  }
   const explicit = options[placement.option];
   if (typeof explicit === "boolean") return explicit;
   return placement.optionDefault ?? true;

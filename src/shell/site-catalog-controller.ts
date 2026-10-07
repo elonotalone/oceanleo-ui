@@ -464,8 +464,13 @@ export {
   isLibraryDeepLinkSearch,
 } from "./workspace-route";
 
-/** 探索页默认路径。locale 前缀站请传自己的 `basePath`。 */
-export const EXPLORE_BASE_PATH = "/explore";
+/**
+ * 素材货架所在的页。素材只在 LeoBay 的「素材」栏里展示（原来的「探索」页并到了那里），
+ * 所以这个常量的值是 `/bay`；名字留着是因为各站还在 import 它。locale 前缀站请传自己的 `basePath`。
+ */
+export const EXPLORE_BASE_PATH = "/bay";
+/** `/bay?kind=material`：让 LeoBay 页停在素材栏。 */
+const MATERIALS_KIND_QUERY = "kind=material";
 
 // ── 「预览&编辑」深链缺 app 锚点时的可见降级（V5 残余 R-3）────────────────────
 // `?app=` 看着像可选装饰，其实是**承重**的：库预览面板挂在 app 操作台的右栏里
@@ -546,18 +551,22 @@ export function workspaceTemplatePreviewHref(
 }
 
 /**
- * 合同 §3.1：「更多」落点 = `/explore?app=<appId>`。
+ * 「更多」落点 = `/bay?kind=material&app=<appId>`（LeoBay 的素材栏，锚定该 app）。
  *
- * 探索页据此把「此 app」那一段顶到首屏（合同 §0.6）。appId 为空时退回不带锚点的探索页，
- * 而不是产出 `?app=`：空参数会让 W5 那边多一条「有 app 参数但取不到 app」的分支。
+ * 素材货架据此把「此 app」那一段顶到首屏。appId 为空时退回不带锚点的素材栏，
+ * 而不是产出 `&app=`：空参数会让货架多一条「有 app 参数但取不到 app」的分支。
  */
 export function exploreAppHref(
   appId: string,
   options?: { basePath?: string },
 ): string {
-  const base = (options?.basePath || EXPLORE_BASE_PATH).replace(/\/+$/, "") || EXPLORE_BASE_PATH;
+  // 调用方传进来的旧地址（`/ja/explore`）也落到同一张页上：`/ja/bay`。
+  const base =
+    (options?.basePath || EXPLORE_BASE_PATH).replace(/\/+$/, "").replace(/\/explore$/, "/bay") || EXPLORE_BASE_PATH;
   const id = deepLinkAppSegment(appId);
-  return id ? `${base}?${CATALOG_APP_QUERY_KEY}=${encodeURIComponent(id)}` : base;
+  return id
+    ? `${base}?${MATERIALS_KIND_QUERY}&${CATALOG_APP_QUERY_KEY}=${encodeURIComponent(id)}`
+    : `${base}?${MATERIALS_KIND_QUERY}`;
 }
 
 // ── 「下载」前端链（合同 §3；端点 = W7 的 template_materials_router）───────────

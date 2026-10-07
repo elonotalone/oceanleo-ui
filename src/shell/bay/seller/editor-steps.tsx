@@ -37,6 +37,15 @@ const OPTION_CLASS = "flex cursor-pointer items-start gap-3 rounded-xl border p-
 const OPTION_ON = "border-stone-900 bg-stone-50";
 const OPTION_OFF = "border-stone-200 bg-white";
 
+function StepFrame({ title, hint, plain, children }: { title: string; hint?: string; plain?: boolean; children: ReactNode }) {
+  if (plain) return <div className="space-y-4">{children}</div>;
+  return (
+    <SellerCard title={title} hint={hint}>
+      {children}
+    </SellerCard>
+  );
+}
+
 function intOrNull(value: string, min: number, max: number): number | null {
   const digits = value.replace(/[^\d-]/g, "");
   if (!digits.trim()) return null;
@@ -112,6 +121,7 @@ export function DomainStep({
   categories,
   category,
   onCategory,
+  plain,
 }: {
   domains: BayConsultDomain[];
   loading: boolean;
@@ -122,10 +132,11 @@ export function DomainStep({
   categories: BaySellerCategory[];
   category: string;
   onCategory: (slug: string) => void;
+  plain?: boolean;
 }) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("选领域")} hint={tt("领域决定买家怎么提问、哪些话不能说。")}>
+    <StepFrame title={tt("选领域")} hint={tt("领域决定买家怎么提问、哪些话不能说。")} plain={plain}>
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : domains.length === 0 ? (
@@ -154,7 +165,7 @@ export function DomainStep({
           {categories.length === 0 ? <p className="mt-1 text-[12px] text-amber-700">{tt("这个领域下还没有可选的类目，换一个领域试试。")}</p> : null}
         </SellerField>
       ) : null}
-    </SellerCard>
+    </StepFrame>
   );
 }
 
@@ -173,10 +184,24 @@ export function CategorySelect({ categories, value, onChange }: { categories: Ba
 }
 
 /** 平台按领域给定的提问方式与声明：只读，卖家不能改写。 */
-export function PromptsStep({ domainName, prompts, loading, error, onReload }: { domainName: string; prompts: BayDomainPrompts | null; loading: boolean; error: string; onReload: () => void }) {
+export function PromptsStep({
+  domainName,
+  prompts,
+  loading,
+  error,
+  onReload,
+  plain,
+}: {
+  domainName: string;
+  prompts: BayDomainPrompts | null;
+  loading: boolean;
+  error: string;
+  onReload: () => void;
+  plain?: boolean;
+}) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("提问方式")} hint={tt("「{domain}」里买家会被这样引导提问；这些内容由平台统一给定，不能改写。", { domain: domainName })}>
+    <StepFrame title={tt("提问方式")} hint={tt("「{domain}」里买家会被这样引导提问；这些内容由平台统一给定，不能改写。", { domain: domainName })} plain={plain}>
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : !prompts ? (
@@ -195,7 +220,7 @@ export function PromptsStep({ domainName, prompts, loading, error, onReload }: {
           <ReadOnlyBlock label={tt("上架后展示给买家的声明")}>{prompts.answer_disclaimer}</ReadOnlyBlock>
         </div>
       )}
-    </SellerCard>
+    </StepFrame>
   );
 }
 
@@ -285,10 +310,26 @@ export function BasicsStep({
 
 // ---- 计费方式 ---------------------------------------------------------------------
 
-export function ModelStep({ models, loading, error, onReload, selected, onSelect }: { models: BayPricingModel[]; loading: boolean; error: string; onReload: () => void; selected: string; onSelect: (key: string) => void }) {
+export function ModelStep({
+  models,
+  loading,
+  error,
+  onReload,
+  selected,
+  onSelect,
+  plain,
+}: {
+  models: BayPricingModel[];
+  loading: boolean;
+  error: string;
+  onReload: () => void;
+  selected: string;
+  onSelect: (key: string) => void;
+  plain?: boolean;
+}) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("计费方式")} hint={tt("从平台给定的几种里选一种，它决定怎么结算、几天自动验收。本平台不抽佣。")}>
+    <StepFrame title={tt("计费方式")} hint={tt("从平台给定的几种里选一种，它决定怎么结算、几天自动验收。本平台不抽佣。")} plain={plain}>
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : models.length === 0 ? (
@@ -314,16 +355,28 @@ export function ModelStep({ models, loading, error, onReload, selected, onSelect
           ))}
         </div>
       )}
-    </SellerCard>
+    </StepFrame>
   );
 }
 
 // ---- 交付约定 ---------------------------------------------------------------------
 
-export function FieldsStep({ specs, values, onChange, categoryName }: { specs: BayFieldSpec[]; values: BayFieldValues; onChange: (key: string, value: BayFieldValue) => void; categoryName: string }) {
+export function FieldsStep({
+  specs,
+  values,
+  onChange,
+  categoryName,
+  plain,
+}: {
+  specs: BayFieldSpec[];
+  values: BayFieldValues;
+  onChange: (key: string, value: BayFieldValue) => void;
+  categoryName: string;
+  plain?: boolean;
+}) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("交付约定")} hint={tt("「{category}」要写清这几项；它们会展示给买家，也是有争议时核对的依据。", { category: categoryName || tt("这个类目") })}>
+    <StepFrame title={tt("交付约定")} hint={tt("「{category}」要写清这几项；它们会展示给买家，也是有争议时核对的依据。", { category: categoryName || tt("这个类目") })} plain={plain}>
       {specs.length === 0 ? (
         <SellerEmpty>{tt("这个类目没有必填的交付约定，可以直接继续。")}</SellerEmpty>
       ) : (
@@ -333,7 +386,7 @@ export function FieldsStep({ specs, values, onChange, categoryName }: { specs: B
           ))}
         </div>
       )}
-    </SellerCard>
+    </StepFrame>
   );
 }
 
@@ -396,10 +449,24 @@ function RequiredField({ spec, value, onChange }: { spec: BayFieldSpec; value: B
 
 const TIER_LABEL: Record<DraftTier["tier"], string> = { basic: "基础档", standard: "标准档", premium: "高级档" };
 
-export function TiersStep({ tiers, onChange, onBasicOnly, free, currency }: { tiers: DraftTier[]; onChange: (index: number, patch: Partial<DraftTier>) => void; onBasicOnly: () => void; free: boolean; currency: string }) {
+export function TiersStep({
+  tiers,
+  onChange,
+  onBasicOnly,
+  free,
+  currency,
+  plain,
+}: {
+  tiers: DraftTier[];
+  onChange: (index: number, patch: Partial<DraftTier>) => void;
+  onBasicOnly: () => void;
+  free: boolean;
+  currency: string;
+  plain?: boolean;
+}) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("价格与交期")} hint={free ? tt("免费协作：每档价格都是 0。") : tt("最多三档。价格、交付天数、修改次数和包含的内容都会直接展示给买家。")}>
+    <StepFrame title={tt("价格与交期")} hint={free ? tt("免费协作：每档价格都是 0。") : tt("最多三档。价格、交付天数、修改次数和包含的内容都会直接展示给买家。")} plain={plain}>
       <div className="flex justify-end">
         <button type="button" onClick={onBasicOnly} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-stone-700">
           {tt("只用一档")}
@@ -448,7 +515,7 @@ export function TiersStep({ tiers, onChange, onBasicOnly, free, currency }: { ti
           </article>
         ))}
       </div>
-    </SellerCard>
+    </StepFrame>
   );
 }
 
@@ -464,6 +531,8 @@ export function ConsultPricingStep({
   responseWindow,
   onResponseWindow,
   currency,
+  plain,
+  includeTerms = true,
 }: {
   currency: string;
   unit: BayConsultUnit;
@@ -476,10 +545,12 @@ export function ConsultPricingStep({
   onMinutes: (value: number | null) => void;
   responseWindow: string;
   onResponseWindow: (value: string) => void;
+  plain?: boolean;
+  includeTerms?: boolean;
 }) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("价格")} hint={tt("答疑只有两种计价：按次、按小时。本平台不抽佣。")}>
+    <StepFrame title={tt("价格")} hint={tt("答疑只有两种计价：按次、按小时。本平台不抽佣。")} plain={plain}>
       <div className="space-y-2" role="radiogroup">
         {(["session", "hour"] as BayConsultUnit[]).map((value) => (
           <label key={value} className={`${OPTION_CLASS} ${unit === value ? OPTION_ON : OPTION_OFF}`}>
@@ -496,6 +567,53 @@ export function ConsultPricingStep({
       <SellerField label={unit === "session" ? tt("每次价格（{currency}）", { currency }) : tt("每小时价格（{currency}）", { currency })}>
         <input className={INPUT_CLASS} data-bay-field="consult-price" inputMode="decimal" value={yuanText(priceFen)} onChange={(event) => onPriceFen(toFen(event.target.value))} />
       </SellerField>
+      {includeTerms ? (
+        <>
+          {unit === "session" ? (
+            <SellerField label={tt("一次包含几轮问答")}>
+              <input className={INPUT_CLASS} data-bay-field="consult-rounds" inputMode="numeric" value={rounds == null ? "" : String(rounds)} onChange={(event) => onRounds(intOrNull(event.target.value, 1, 50))} />
+            </SellerField>
+          ) : (
+            <SellerField label={tt("一小时按多少分钟计")}>
+              <input className={INPUT_CLASS} data-bay-field="consult-minutes" inputMode="numeric" value={minutes == null ? "" : String(minutes)} onChange={(event) => onMinutes(intOrNull(event.target.value, 5, 600))} />
+            </SellerField>
+          )}
+          <SellerField label={tt("多久内回复")} hint={tt("例如：24 小时内")}>
+            <input className={INPUT_CLASS} data-bay-field="consult-window" value={responseWindow} maxLength={60} onChange={(event) => onResponseWindow(event.target.value)} />
+          </SellerField>
+        </>
+      ) : null}
+    </StepFrame>
+  );
+}
+
+export function ConsultTermsFields({
+  scopeNote,
+  onScopeNote,
+  unit,
+  rounds,
+  onRounds,
+  minutes,
+  onMinutes,
+  responseWindow,
+  onResponseWindow,
+}: {
+  scopeNote: string;
+  onScopeNote: (value: string) => void;
+  unit: BayConsultUnit;
+  rounds: number | null;
+  onRounds: (value: number | null) => void;
+  minutes: number | null;
+  onMinutes: (value: number | null) => void;
+  responseWindow: string;
+  onResponseWindow: (value: string) => void;
+}) {
+  const tt = useUI();
+  return (
+    <div className="space-y-4">
+      <SellerField label={tt("能答范围")} hint={tt("哪些问题能答、哪些不在范围内")}>
+        <textarea className={TEXTAREA_CLASS} data-bay-field="scope" rows={3} maxLength={1000} value={scopeNote} onChange={(event) => onScopeNote(event.target.value)} />
+      </SellerField>
       {unit === "session" ? (
         <SellerField label={tt("一次包含几轮问答")}>
           <input className={INPUT_CLASS} data-bay-field="consult-rounds" inputMode="numeric" value={rounds == null ? "" : String(rounds)} onChange={(event) => onRounds(intOrNull(event.target.value, 1, 50))} />
@@ -505,19 +623,33 @@ export function ConsultPricingStep({
           <input className={INPUT_CLASS} data-bay-field="consult-minutes" inputMode="numeric" value={minutes == null ? "" : String(minutes)} onChange={(event) => onMinutes(intOrNull(event.target.value, 5, 600))} />
         </SellerField>
       )}
-      <SellerField label={tt("多久内回复")} hint={tt("例如：24 小时内")}>
-        <input className={INPUT_CLASS} value={responseWindow} maxLength={60} onChange={(event) => onResponseWindow(event.target.value)} />
+      <SellerField label={tt("最长响应时间")} hint={tt("例如：24 小时内")}>
+        <input className={INPUT_CLASS} data-bay-field="consult-window" value={responseWindow} maxLength={60} onChange={(event) => onResponseWindow(event.target.value)} />
       </SellerField>
-    </SellerCard>
+    </div>
   );
 }
 
 // ---- 加购、详情、常见问题、作品图 ------------------------------------------------------
 
-export function AddonsStep({ addons, onChange, onAdd, onRemove, currency }: { addons: DraftAddon[]; onChange: (key: string, patch: Partial<DraftAddon>) => void; onAdd: () => void; onRemove: (key: string) => void; currency: string }) {
+export function AddonsStep({
+  addons,
+  onChange,
+  onAdd,
+  onRemove,
+  currency,
+  plain,
+}: {
+  addons: DraftAddon[];
+  onChange: (key: string, patch: Partial<DraftAddon>) => void;
+  onAdd: () => void;
+  onRemove: (key: string) => void;
+  currency: string;
+  plain?: boolean;
+}) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("加购项")} hint={tt("把加急、源文件、多一个版本写成可选项，买家不用反复问价。")}>
+    <StepFrame title={tt("加购项")} hint={tt("把加急、源文件、多一个版本写成可选项，买家不用反复问价。")} plain={plain}>
       {addons.length === 0 ? <SellerEmpty>{tt("还没有加购项；价格档已经包含全部内容的话可以直接继续。")}</SellerEmpty> : null}
       {addons.map((addon) => (
         <article key={addon.key} className="space-y-3 rounded-xl border border-stone-200 p-3">
@@ -549,29 +681,62 @@ export function AddonsStep({ addons, onChange, onAdd, onRemove, currency }: { ad
       <button type="button" onClick={onAdd} className={SECONDARY_BUTTON}>
         {tt("添加加购项")}
       </button>
-    </SellerCard>
+    </StepFrame>
   );
 }
 
-export function DetailsStep({ description, onDescription, buyerInputs, onBuyerInputs }: { description: string; onDescription: (value: string) => void; buyerInputs: string; onBuyerInputs: (value: string) => void }) {
+export function DetailsStep({
+  description,
+  onDescription,
+  buyerInputs,
+  onBuyerInputs,
+  plain,
+  showBuyerInputs = true,
+  minChars = MIN_DESCRIPTION,
+}: {
+  description: string;
+  onDescription: (value: string) => void;
+  buyerInputs: string;
+  onBuyerInputs: (value: string) => void;
+  plain?: boolean;
+  showBuyerInputs?: boolean;
+  minChars?: number;
+}) {
   const tt = useUI();
   const length = description.trim().length;
   return (
-    <SellerCard title={tt("详情")} hint={tt("写清交付边界、合作方式、不包含什么。上架至少需要 30 个字。")}>
-      <SellerField label={tt("服务详情")} hint={<span className={length >= MIN_DESCRIPTION ? "text-emerald-700" : "text-amber-700"}>{tt("{n} 字 / 至少 30 字", { n: length })}</span>}>
-        <textarea className={TEXTAREA_CLASS} rows={8} maxLength={20000} value={description} onChange={(event) => onDescription(event.target.value)} />
+    <StepFrame title={tt("详情")} hint={minChars > 0 ? tt("写清交付边界、合作方式、不包含什么。上架至少需要 30 个字。") : tt("写清交付边界、合作方式、不包含什么。")} plain={plain}>
+      <SellerField
+        label={tt("服务详情")}
+        hint={minChars > 0 ? <span className={length >= minChars ? "text-emerald-700" : "text-amber-700"}>{tt("{n} 字 / 至少 30 字", { n: length })}</span> : undefined}
+      >
+        <textarea className={TEXTAREA_CLASS} data-bay-field="description" rows={8} maxLength={20000} value={description} onChange={(event) => onDescription(event.target.value)} />
       </SellerField>
-      <SellerField label={tt("开始前需要买家提供什么")} hint={tt("会作为常见问题第一条展示给买家")}>
-        <textarea className={TEXTAREA_CLASS} rows={3} maxLength={2000} value={buyerInputs} onChange={(event) => onBuyerInputs(event.target.value)} placeholder={tt("例如：品牌名称与标志、参考案例、使用场景")} />
-      </SellerField>
-    </SellerCard>
+      {showBuyerInputs ? (
+        <SellerField label={tt("开始前需要买家提供什么")} hint={tt("会作为常见问题第一条展示给买家")}>
+          <textarea className={TEXTAREA_CLASS} data-bay-field="buyer-inputs" rows={3} maxLength={2000} value={buyerInputs} onChange={(event) => onBuyerInputs(event.target.value)} placeholder={tt("例如：品牌名称与标志、参考案例、使用场景")} />
+        </SellerField>
+      ) : null}
+    </StepFrame>
   );
 }
 
-export function FaqStep({ items, onChange, onAdd, onRemove }: { items: DraftFaq[]; onChange: (key: string, patch: Partial<DraftFaq>) => void; onAdd: () => void; onRemove: (key: string) => void }) {
+export function FaqStep({
+  items,
+  onChange,
+  onAdd,
+  onRemove,
+  plain,
+}: {
+  items: DraftFaq[];
+  onChange: (key: string, patch: Partial<DraftFaq>) => void;
+  onAdd: () => void;
+  onRemove: (key: string) => void;
+  plain?: boolean;
+}) {
   const tt = useUI();
   return (
-    <SellerCard title={tt("常见问题")} hint={tt("提前回答交付格式、修改范围、开始条件，少一些下单前的来回。")}>
+    <StepFrame title={tt("常见问题")} hint={tt("提前回答交付格式、修改范围、开始条件，少一些下单前的来回。")} plain={plain}>
       {items.length === 0 ? <SellerEmpty>{tt("还没有常见问题，没有要补充的也可以直接继续。")}</SellerEmpty> : null}
       {items.map((item, index) => (
         <article key={item.key} className="space-y-3 rounded-xl border border-stone-200 p-3">
@@ -592,7 +757,7 @@ export function FaqStep({ items, onChange, onAdd, onRemove }: { items: DraftFaq[
       <button type="button" onClick={onAdd} className={SECONDARY_BUTTON}>
         {tt("添加问题")}
       </button>
-    </SellerCard>
+    </StepFrame>
   );
 }
 
@@ -607,6 +772,8 @@ export function MediaStep({
   onAdd,
   onRemove,
   onMove,
+  plain,
+  imagesOnly,
 }: {
   items: DraftMedia[];
   coverUrl: string;
@@ -615,10 +782,13 @@ export function MediaStep({
   onAdd: () => void;
   onRemove: (key: string) => void;
   onMove: (index: number, direction: -1 | 1) => void;
+  plain?: boolean;
+  imagesOnly?: boolean;
 }) {
   const tt = useUI();
+  const kinds = imagesOnly ? (["image"] as BayServiceMediaKind[]) : MEDIA_KINDS;
   return (
-    <SellerCard title={tt("作品图")} hint={tt("粘贴公开可访问的 https 地址，排好顺序，选一张作为列表里的封面。")}>
+    <StepFrame title={tt("作品图")} hint={tt("粘贴公开可访问的 https 地址，排好顺序，选一张作为列表里的封面。")} plain={plain}>
       {items.length === 0 ? <SellerEmpty>{tt("还没有作品图。上架前至少放一张。")}</SellerEmpty> : null}
       {items.map((item, index) => {
         const safe = safeHttpUrl(item.url);
@@ -628,17 +798,19 @@ export function MediaStep({
               {item.kind === "image" && safe ? <img src={safe} alt="" className="h-full w-full object-cover" loading="lazy" /> : <span>{safe ? tt(MEDIA_KIND_LABEL[item.kind]) : tt("填好地址后这里会显示预览")}</span>}
             </div>
             <div className="flex flex-wrap gap-3">
-              <div className="w-28">
-                <SellerField label={tt("类型")}>
-                  <select className={INPUT_CLASS} value={item.kind} onChange={(event) => onChange(item.key, { kind: event.target.value as BayServiceMediaKind })}>
-                    {MEDIA_KINDS.map((kind) => (
-                      <option key={kind} value={kind}>
-                        {tt(MEDIA_KIND_LABEL[kind])}
-                      </option>
-                    ))}
-                  </select>
-                </SellerField>
-              </div>
+              {imagesOnly ? null : (
+                <div className="w-28">
+                  <SellerField label={tt("类型")}>
+                    <select className={INPUT_CLASS} value={item.kind} onChange={(event) => onChange(item.key, { kind: event.target.value as BayServiceMediaKind })}>
+                      {kinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {tt(MEDIA_KIND_LABEL[kind])}
+                        </option>
+                      ))}
+                    </select>
+                  </SellerField>
+                </div>
+              )}
               <div className="min-w-[10rem] flex-1">
                 <SellerField label={tt("地址")}>
                   <input className={INPUT_CLASS} value={item.url} maxLength={1024} placeholder="https://" onChange={(event) => onChange(item.key, { url: event.target.value })} />
@@ -670,7 +842,7 @@ export function MediaStep({
       <button type="button" onClick={onAdd} className={SECONDARY_BUTTON}>
         {tt("添加作品图")}
       </button>
-    </SellerCard>
+    </StepFrame>
   );
 }
 

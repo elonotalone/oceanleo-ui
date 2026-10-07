@@ -17,8 +17,8 @@
 // ----------------------------------------------------------------------------
 // W24 2026-08-31：本文件**不再自己持有那张表**。哪几页、什么次序、什么路由、
 // 什么图标、受哪个开关控制，全部来自 `./nav-source`——门户 `CloneShell` 与本文件
-// 派生自同一份数据，这是治「两套手写导航不同步」的唯一办法（`/explore` 页
-// 2026-07-27 上线、门户侧栏一个月没有入口，就是那个病的一次真实发作）。
+// 派生自同一份数据，这是治「两套手写导航不同步」的唯一办法（`/bay` 页
+// 上线、门户侧栏一个月没有入口，就是那个病的一次真实发作）。
 // **不要在本文件里再写第二张页面表。** 加一页请改 `nav-source/index.ts`。
 // ============================================================================
 
@@ -30,6 +30,8 @@ import type {
   ShellNavItem,
   ShellSubNav,
 } from "./AppShell";
+import { bayEnabledHere } from "./bay/shell/bay-state";
+import { BayIcon } from "./bay/shell/bay-icons";
 import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles, IconExplore } from "./icons";
 import {
   navEntries,
@@ -38,7 +40,7 @@ import {
   type NavResolveOptions,
 } from "./nav-source";
 
-export type WorkspacePage = "home" | "explore" | "workspace" | "library" | "history" | "playground";
+export type WorkspacePage = "home" | "explore" | "bay" | "workspace" | "library" | "history" | "playground";
 
 export interface WorkspaceNavOptions {
   /** 路由前缀（i18n 站传 "/zh" 之类）。默认 ""。 */
@@ -47,8 +49,10 @@ export interface WorkspaceNavOptions {
   labels?: Partial<Record<WorkspacePage, string>>;
   /** 工作台是否启用（少数站没有「固定模板工作台」，只有 agent 首页）。默认 true。 */
   withWorkspace?: boolean;
-  /** 「探索」页是否启用（宗旨 v19：全家桶默认有本站相关素材浏览页）。默认 true。 */
+  /** 旧名：是否显示 LeoBay 这一项（原「探索」）。与 withBay 同义；任一为 false 就不显示。默认 true。 */
   withExplore?: boolean;
+  /** 是否显示 LeoBay 这一项。与 withExplore 同义；任一为 false 就不显示。默认 true。 */
+  withBay?: boolean;
   /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
   withPlayground?: boolean;
   /** v5：导航项下方原地展开的内容；标准用法是 history → 任务列表。 */
@@ -63,7 +67,8 @@ export interface WorkspaceNavOptions {
 /** 缺翻译时兜底的中文源串（**文案**兜底，不是页面表）。 */
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   home: "新建",
-  explore: "探索",
+  explore: "LeoBay",
+  bay: "LeoBay",
   workspace: "工作台",
   library: "我的库",
   history: "我的任务",
@@ -74,6 +79,7 @@ const DEFAULT_LABELS: Record<WorkspacePage, string> = {
 const ICON_BY_ID: Partial<Record<NavIconId, ReactNode>> = {
   home: <IconHome />,
   explore: <IconExplore />,
+  bay: <BayIcon />,
   workspace: <IconWorkspace />,
   library: <IconLibrary />,
   history: <IconHistory />,
@@ -91,17 +97,24 @@ void _workspacePageIsNavPage;
 /** 取「本外壳认识的全部页」时用：把所有可见性开关都打开。 */
 const ALL_WORKSPACE_PAGES_VISIBLE: NavResolveOptions = {
   withExplore: true,
+  withBay: true,
   withWorkspace: true,
   withPlayground: true,
 };
 
-/** 把 `WorkspaceNavOptions` 的三个开关翻成 `nav-source` 的可见性开关。 */
+/** 把 `WorkspaceNavOptions` 的开关翻成 `nav-source` 的可见性开关。 */
 function resolveOptions(opts: WorkspaceNavOptions): NavResolveOptions {
   return {
     withExplore: opts.withExplore,
+    withBay: opts.withBay,
     withWorkspace: opts.withWorkspace,
     withPlayground: opts.withPlayground,
   };
+}
+
+function isBayFamilyPath(path: string): boolean {
+  const p = path.split("?")[0].replace(/\/+$/, "") || "/";
+  return p === "/bay" || p.endsWith("/bay") || p === "/explore" || p.endsWith("/explore");
 }
 
 /**
@@ -134,17 +147,26 @@ export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   for (const entry of navEntries("workspace", ALL_WORKSPACE_PAGES_VISIBLE)) {
     const page = entry.id as WorkspacePage;
     // labelSource "ui" 的项（如「消息」）取界面词表的中文源串，不进共享 nav namespace。
-    labels[page] = entry.labelSource === "ui" ? tt(entry.labelKey) : safe(page, entry.labelKey);
+    labels[page] =
+      entry.id === "bay" || entry.labelKey === "LeoBay"
+        ? "LeoBay"
+        : entry.labelSource === "ui"
+          ? tt(entry.labelKey)
+          : safe(page, entry.labelKey);
   }
+  if (labels.bay) labels.explore = labels.bay;
   return labels;
 }
 
-/** 构造 AppShell 的导航。顺序：首页 → 探索 → 工作台 → 我的库 → 我的任务 (→ playground)。 */
+/** 构造 AppShell 的导航。顺序：首页 → LeoBay → 工作台 → 我的库 → 我的任务 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };
+  // 境内没有 LeoBay 的交易市场，但素材货架照旧在 `/bay` 这张页上（原「探索」），所以这一项在境内叫「素材」。
+  const bayLabel = bayEnabledHere() ? "LeoBay" : "素材";
   // 哪几页、什么次序、受哪个开关控制 —— 全部来自 nav-source，本文件不再自持。
-  return navEntries("workspace", resolveOptions(opts)).map((entry) => {
+  return navEntries("workspace", resolveOptions(opts))
+    .map((entry) => {
     const p = entry.id as WorkspacePage;
     const legacyHistory =
       entry.supportsDisclosure ? opts.subNav?.history : undefined;
@@ -156,12 +178,17 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
             render: () => legacyHistory.render(() => undefined),
           }
         : undefined);
+    const href = `${base}${entry.href ?? "/"}`;
     return {
-      label: labels[p],
-      href: `${base}${entry.href ?? "/"}`,
+      label: p === "bay" ? bayLabel : labels[p],
+      href,
       icon: ICON_BY_ID[entry.iconId],
       exact: entry.exact,
       disclosure,
+      match:
+        entry.id === "bay"
+          ? (pathname: string) => isBayFamilyPath(pathname.startsWith(base) ? pathname.slice(base.length) || "/" : pathname)
+          : undefined,
     };
   });
 }
@@ -173,6 +200,7 @@ export function pageFromPath(pathname: string, basePath = ""): WorkspacePage {
   for (const entry of navEntries("workspace", ALL_WORKSPACE_PAGES_VISIBLE)) {
     if (entry.exact || !entry.href) continue;
     if (p.startsWith(entry.href)) return entry.id as WorkspacePage;
+    if (entry.id === "bay" && isBayFamilyPath(p)) return "bay";
   }
   return "home";
 }

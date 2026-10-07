@@ -1,26 +1,21 @@
 "use client";
 
-// Bay 的信息流部件，浮窗与 /bay 页共用：搜索、种类筛选、类目筛选、信息流本体。
-// 浮窗（BayList）三栏头部与聊天 / 联系人相同：第一行搜索框 + 一个 + 号，第二行筛选（种类 / 类目 / 我的），下面是列表。
+// LeoBay 页的信息流部件：搜索、种类（全部 / 素材 / 服务 / 需求 / 答疑）、类目、信息流本体。
+// LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
-import { PanelToolbar } from "../../leochat/PanelToolbar";
 import { DemandCard, HelpRequestCard } from "../needs";
 import { ConsultCard, ServiceCard } from "../supply";
 import { BayCategoryIcon, BayIcon } from "./bay-icons";
 import { BAY_FEED_KINDS } from "./bay-links";
-import { useBaySlideIn } from "./bay-motion";
 import {
   openBay,
   requireBayLogin,
   setBayFilter,
-  useBayFilter,
   useBaySignedIn,
-  useBayState,
   type BayFeedFilter,
-  type BayLayout,
   type BayTarget,
 } from "./bay-state";
 import type { BayFeedCardVariant } from "./feed-card-ui";
@@ -28,6 +23,7 @@ import { useBayCategories, useBayFeed } from "./use-bay-data";
 
 const KIND_LABELS: Readonly<Record<(typeof BAY_FEED_KINDS)[number], string>> = {
   all: "全部",
+  material: "素材",
   demand: "需求",
   service: "服务",
   help: "求助",
@@ -36,7 +32,7 @@ const KIND_LABELS: Readonly<Record<(typeof BAY_FEED_KINDS)[number], string>> = {
 
 const SEARCH_DEBOUNCE_MS = 350;
 const SEARCH_MAX_LENGTH = 60;
-const KIND_TABS = ["all", "demand", "service", "consult"] as const;
+const KIND_TABS = ["all", "material", "service", "demand", "consult"] as const;
 
 export function targetForFeedItem(item: BayFeedItem): BayTarget {
   return { kind: item.kind, id: item.id };
@@ -124,35 +120,24 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 
 // ---- 种类 ---------------------------------------------------------------------
 
+/** 每个种类前面的小色点：混在一起逛时一眼分得清。 */
+const KIND_DOT: Readonly<Record<(typeof KIND_TABS)[number], string>> = {
+  all: "#111113",
+  material: "#f97316",
+  service: "#0ea5e9",
+  demand: "#10b981",
+  consult: "#8b5cf6",
+};
+
 /**
- * 种类筛选（全部 / 需求 / 服务 / 答疑）。
- * page：标准页的分段标签；overlay：浮窗里的筛选行（样式与「聊天」视图那一行同一份）。
- * 两种都允许换行，任何语言下都不出横向滚动条、不截断。
+ * 种类（全部 / 素材 / 服务 / 需求 / 答疑）：一排大号胶囊，允许换行，任何语言下都不出横向滚动条、不截断。
+ * 选中的那一个用站点主色填满（没给主色用黑色）。
  */
-export function BayKindTabs({ filter, variant }: { filter: BayFeedFilter; variant: "page" | "overlay" }) {
+export function BayKindTabs({ filter, accent }: { filter: BayFeedFilter; accent?: string; variant?: "page" }) {
   const tt = useUI();
   const value = filter.kind ?? "all";
-  if (variant === "overlay") {
-    return (
-      <div role="tablist" aria-label={tt("筛选种类")} data-bay-kinds="overlay" data-im-filter-row className="flex min-w-0 flex-1 flex-wrap gap-0.5">
-        {KIND_TABS.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            role="tab"
-            aria-selected={kind === value}
-            data-kind={kind}
-            onClick={() => setBayFilter({ ...filter, kind })}
-            className="shrink-0"
-          >
-            {tt(KIND_LABELS[kind])}
-          </button>
-        ))}
-      </div>
-    );
-  }
   return (
-    <div role="tablist" aria-label={tt("筛选种类")} data-bay-kinds="page" className="inline-flex max-w-full flex-wrap rounded-xl bg-neutral-100 p-1">
+    <div role="tablist" aria-label={tt("筛选种类")} data-bay-kinds="page" className="flex max-w-full flex-wrap items-center gap-2">
       {KIND_TABS.map((kind) => {
         const active = kind === value;
         return (
@@ -162,11 +147,13 @@ export function BayKindTabs({ filter, variant }: { filter: BayFeedFilter; varian
             role="tab"
             aria-selected={active}
             data-kind={kind}
-            onClick={() => setBayFilter({ ...filter, kind })}
-            className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-              active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+            onClick={() => setBayFilter({ ...filter, kind, category: kind === "material" ? undefined : filter.category })}
+            style={active ? { background: accent || "#111113" } : undefined}
+            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[14px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-[0.98] ${
+              active ? "text-white shadow-md" : "bg-white text-neutral-600 shadow-sm ring-1 ring-black/5 hover:text-neutral-900 hover:ring-black/15"
             }`}
           >
+            <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: active ? "#ffffff" : KIND_DOT[kind] }} />
             {tt(KIND_LABELS[kind])}
           </button>
         );
@@ -178,11 +165,10 @@ export function BayKindTabs({ filter, variant }: { filter: BayFeedFilter; varian
 // ---- 类目 ---------------------------------------------------------------------
 
 const CHIP_BASE =
-  "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
 /**
- * 16 个交付类目，一排会换行的小标签；再点一次取消。
- * /bay 页直接摆在种类下面；浮窗里收在「类目」按钮后面（见 BayList）。
+ * 16 个交付类目，一排会换行的小标签；再点一次取消。摆在种类下面。
  * `accent` 给了就用它填选中的那一个（/bay 页传站点主色），不给用黑色。
  */
 export function BayCategoryChips({
@@ -233,73 +219,6 @@ export function BayCategoryChips({
   );
 }
 
-const CATEGORY_TOGGLE_CLASS: Readonly<Record<"overlay" | "page", { base: string; lit: string; idle: string }>> = {
-  // 浮窗：与筛选行里的种类同一档大小。
-  overlay: {
-    base: "inline-flex max-w-[11rem] shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]",
-    lit: "bg-black/[0.06] text-neutral-900 dark:bg-white/10 dark:text-white",
-    idle: "text-black/45 hover:bg-black/[0.04] hover:text-neutral-900 dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white",
-  },
-  // /bay 页：只在手机宽度出现（宽屏直接摆出全部类目），与旁边的搜索框同一档大小。
-  page: {
-    base: "inline-flex max-w-[11rem] shrink-0 items-center gap-1 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] sm:hidden",
-    lit: "border-neutral-300 bg-neutral-100 text-neutral-900",
-    idle: "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50",
-  },
-};
-
-/** 按钮里那个小箭头的大小。单独一张表：它是图标的尺寸，不是按钮的高度。 */
-const CATEGORY_TOGGLE_ARROW: Readonly<Record<"overlay" | "page", string>> = {
-  overlay: "h-3 w-3",
-  page: "h-3.5 w-3.5",
-};
-
-/**
- * 「类目」按钮：16 个类目收在它后面，点开才展开，选了就收起。
- * 没选时写「类目」，选了写那个类目的名字。
- */
-export function BayCategoryToggle({
-  filter,
-  open,
-  onToggle,
-  variant,
-}: {
-  filter: BayFeedFilter;
-  open: boolean;
-  onToggle: () => void;
-  variant: "overlay" | "page";
-}) {
-  const tt = useUI();
-  const name = useBayCategoryName();
-  const { categories } = useBayCategories();
-  const selected = filter.category ? categories.find((category) => category.slug === filter.category) : undefined;
-  const look = CATEGORY_TOGGLE_CLASS[variant];
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      title={tt("类目")}
-      data-bay-category-toggle
-      onClick={onToggle}
-      className={`${look.base} ${open || filter.category ? look.lit : look.idle}`}
-    >
-      <span className="truncate">{selected ? name(selected) : tt("类目")}</span>
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-        className={`shrink-0 transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${CATEGORY_TOGGLE_ARROW[variant]} ${open ? "rotate-180" : ""}`}
-      >
-        <path d="M6 9l6 6 6-6" />
-      </svg>
-    </button>
-  );
-}
-
 // ---- 信息流 --------------------------------------------------------------------
 
 function FeedCard({ item, variant }: { item: BayFeedItem; variant: BayFeedCardVariant }) {
@@ -317,9 +236,9 @@ function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
   const tt = useUI();
   if (variant === "grid") {
     return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-feed-loading>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-feed-loading>
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} aria-hidden="true" className="h-40 animate-pulse rounded-2xl border border-stone-200/80 bg-white/70 p-4">
+          <div key={index} aria-hidden="true" className="h-44 animate-pulse rounded-3xl bg-white/70 p-5 shadow-sm ring-1 ring-black/5">
             <div className="h-4 w-14 rounded bg-stone-100" />
             <div className="mt-4 h-4 w-2/3 rounded bg-stone-100" />
             <div className="mt-3 h-3 w-full rounded bg-stone-100" />
@@ -382,7 +301,7 @@ export function BayFeed({
   return (
     <div data-bay-feed={variant}>
       {feed.items.length > 0 ? (
-        <div className={grid ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" : undefined}>
+        <div className={grid ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" : undefined}>
           {feed.items.map((item) => {
             const key = `${item.kind}:${item.id}`;
             const active = key === activeKey;
@@ -442,51 +361,6 @@ export function BayFeed({
           </button>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-// ---- 浮窗左栏 ------------------------------------------------------------------
-
-/** 浮窗里的 Bay：第一行搜索 + + 号，第二行种类 / 类目 / 我的，下面是信息流。 */
-export function BayList({ layout }: { layout: BayLayout }) {
-  const tt = useUI();
-  const filter = useBayFilter();
-  const { current } = useBayState();
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const search = useBaySearchText(filter);
-  const slideRef = useBaySlideIn<HTMLDivElement>(layout === "docked" || layout === "mobile", "list");
-  const mineClass = `${CATEGORY_TOGGLE_CLASS.overlay.base} ${CATEGORY_TOGGLE_CLASS.overlay.idle}`;
-
-  return (
-    <div ref={slideRef} className="flex min-h-0 flex-1 flex-col" data-bay-list data-layout={layout}>
-      <PanelToolbar
-        search={search.text}
-        onSearch={search.change}
-        onSearchCommit={search.commit}
-        maxLength={SEARCH_MAX_LENGTH}
-        placeholder={tt("搜索")}
-        plusLabel={tt("新建")}
-        actions={[
-          { id: "get-help", label: tt("找人帮忙"), onSelect: () => startPostNeed(filter.category) },
-          { id: "publish-service", label: tt("发布服务"), onSelect: startServiceEditor },
-        ]}
-      />
-      <div className="flex shrink-0 items-start gap-1 px-2 py-1.5" data-bay-filters>
-        <BayKindTabs filter={filter} variant="overlay" />
-        <BayCategoryToggle filter={filter} open={categoriesOpen} onToggle={() => setCategoriesOpen((value) => !value)} variant="overlay" />
-        <button type="button" data-bay-action="mine" onClick={openMine} className={mineClass}>
-          {tt("我的")}
-        </button>
-      </div>
-      {categoriesOpen ? (
-        <div className="shrink-0 px-3 pb-2" data-bay-category-panel>
-          <BayCategoryChips filter={filter} onPicked={() => setCategoriesOpen(false)} />
-        </div>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <BayFeed filter={filter} activeKey={activeFeedKey(current)} />
-      </div>
     </div>
   );
 }

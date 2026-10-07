@@ -362,18 +362,20 @@ test("会话不存在 / 没登录 / 非法 id 的状态", async () => {
   await view.unmount();
 });
 
-test("openTradeThread：没登录走登录、不发请求；登录后找或建会话并在 LeoBay 里打开", async () => {
+test("openTradeThread：没登录走登录、不发请求；登录后找或建会话并在消息小窗打开 talent:<id>", async () => {
   reset();
   W.signedIn = false;
   await openTradeThread({ kind: "service", subjectRef: "s1" });
   assert.equal(W.loginCalls, 1);
   assert.equal(W.calls.length, 0);
   assert.equal(W.openBay.length, 0);
+  assert.equal(W.openMessages.length, 0);
 
   reset();
   W.routes.push({ method: "POST", path: "/v1/talent/threads", reply: { thread: { id: "t42" } } });
   await openTradeThread({ kind: "service", subjectRef: "s1" });
-  assert.deepEqual(W.openBay, [{ kind: "conversation", threadId: "t42" }]);
+  assert.deepEqual(W.openBay, []);
+  assert.deepEqual(W.openMessages, [{ conversationId: "talent:t42" }]);
   const post = W.calls.find((c) => c.method === "POST" && c.path === "/v1/talent/threads");
   assert.deepEqual(post.body, { kind: "service", counterparty_user_id: "seller", subject_ref: "s1" });
 
@@ -381,6 +383,7 @@ test("openTradeThread：没登录走登录、不发请求；登录后找或建�
   W.routes.unshift({ method: "GET", path: "/v1/talent/handoffs/h1", reply: { handoff: { id: "h1", thread_id: null } } });
   await assert.rejects(openTradeThread({ kind: "handoff", subjectRef: "h1" }), /还没有人接/);
   assert.equal(W.openBay.length, 0);
+  assert.equal(W.openMessages.length, 0);
 });
 
 test("契约 §4.4 例外：自带头部、接 onBack；四种 layout 都排得开", async () => {

@@ -1,7 +1,7 @@
 // supply 各窗格共用的展示助手：价格、交期、改稿、评分、链接白名单。文案一律 tt 字面量。
 
 import type { UITranslate } from "../../../i18n/ui/useUI";
-import type { BayPrice } from "../../../lib/bay/types";
+import type { BayPrice, BayWorkRef } from "../../../lib/bay/types";
 import { formatBayMoney, type BayServiceTierName } from "../../../lib/bay/services";
 
 /** 只放行 http(s) 地址；其余（javascript:、data: 等）一律不渲染。 */
@@ -15,6 +15,21 @@ export function safeHttpUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function safeSitePath(path: unknown): string | null {
+  if (typeof path !== "string") return null;
+  const value = path.trim();
+  if (!value.startsWith("/") || value.startsWith("//") || value.length > 2000) return null;
+  if (/[\\\s\u0000-\u001f\u007f]/.test(value)) return null;
+  return value;
+}
+
+/** 附带作品的打开地址：https 用 safeHttpUrl；站内路径与 needs 的 workPreviewHref 一样只认绝对路径。 */
+export function workOpenHref(work: Pick<BayWorkRef, "site_key" | "preview_url"> | null | undefined): string | null {
+  const https = safeHttpUrl(work?.preview_url);
+  if (https) return https;
+  return safeSitePath(work?.preview_url);
 }
 
 export function moneyOrFree(tt: UITranslate, fen: number | null | undefined, currency?: string | null): string {

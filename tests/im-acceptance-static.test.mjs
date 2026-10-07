@@ -164,10 +164,7 @@ test("11 境内：家族 cn / 未登录不显示消息；界面外壳默认不�
   assert.match(family, /family === "cn"\) return false/);
   const host = codeOf(join(root, "src/shell/messages/MessagesHost.tsx"));
   assert.match(host, /useImEnabled\(\)/);
-  assert.match(
-    host,
-    /if \(!enabled\) return null|!enabled\b[\s\S]{0,80}return null|!enabled\) return bayEnabledHere\(\) \? <BayGuestHost \/> : null/,
-  );
+  assert.match(host, /if \(!enabled\) return <BayAuthHost \/>;/);
   const client = codeOf(join(root, "src/lib/im/client.ts"));
   assert.match(client, /imEnabledFor\(family, signedIn\)/);
   const nav = codeOf(join(root, "src/shell/nav-source/index.ts"));

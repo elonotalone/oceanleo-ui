@@ -2,20 +2,16 @@
 
 // 全局唯一的消息浮层（每个站挂一次，在 AppShell / 门户外壳里与 SettingsModalHost 并列）。
 // 境内站与未登录：什么都不渲染、不连接、不监听深链。
-// 浮层里：聊天 / 联系人 / Bay 三个视图 + 右侧会话；聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
+// 浮层里：聊天 / 联系人两个栏目 + 会话（交易会话也在这里）；放大后左列表、右对话。LeoBay 不在小窗里，它是 `/bay` 那张页。
+// 聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useImEnabled } from "../../lib/im/client";
 import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
 import { DealConversationView } from "../bay/deal";
-import { BayGuestHost } from "../bay/shell/BayGuestHost";
-import { formatBayParam } from "../bay/shell/bay-links";
-import { BayView } from "../bay/shell/BayView";
-import { bayEnabledHere, useBayHasDetail, useBaySignedIn, useBayState } from "../bay/shell/bay-state";
+import { BayAuthHost } from "../bay/shell/bay-auth-host";
+import { setBayNavigator } from "../bay/shell/bay-state";
 import { LeoChatTabs } from "../leochat/LeoChatTabs";
-import { leoChatPageHref } from "../leochat/leochat-links";
-import { useBayNeedsAction } from "../leochat/leochat-store";
-import { leoChatPageMounted } from "../leochat/page-presence";
 import { WorkReplayHost } from "../replay/work/WorkReplayHost";
 import { ConversationView } from "./conversation/ConversationView";
 import { ConversationInfoPanel } from "./groups/ConversationInfoPanel";
@@ -39,6 +35,14 @@ export function MessagesHost() {
   const state = useMessagesHost();
   const pathname = usePathname() || "/";
   const pathRef = useRef(pathname);
+  const router = useRouter();
+
+  // 别的页面上「去 LeoBay」的动作（任务页的找人帮忙、旧的 ?bay= 链接）= 站内跳到 /bay，不整页刷新。
+  // 这个宿主每个站都挂一次，所以在这里把站内跳转交给 LeoBay。
+  useEffect(() => {
+    setBayNavigator((href) => router.push(href));
+    return () => setBayNavigator(null);
+  }, [router]);
 
   useEffect(() => {
     if (pathRef.current === pathname) return;
@@ -103,7 +107,6 @@ export function MessagesHost() {
     if (!enabled) return undefined;
     const store = imStore();
     const sync = () => {
-      if (leoChatPageMounted()) return;
       const foreground =
         state.open && state.view === "inbox" && state.conversationId && !document.hidden ? state.conversationId : null;
       store.setForegroundConversation(foreground);
@@ -113,15 +116,17 @@ export function MessagesHost() {
     document.addEventListener("visibilitychange", sync);
     return () => {
       document.removeEventListener("visibilitychange", sync);
-      if (!leoChatPageMounted()) store.setForegroundConversation(null);
+      store.setForegroundConversation(null);
     };
   }, [enabled, state.open, state.view, state.conversationId]);
 
-  if (!enabled) return bayEnabledHere() ? <BayGuestHost /> : null;
+  // 登录框宿主：别的页面上点了要登录的 LeoBay 动作时由它弹（/bay 页自己也挂一份，只有最先挂上的渲染）。
+  if (!enabled) return <BayAuthHost />;
   return (
     <>
       <MessagesOverlay />
       <WorkReplayHost />
+      <BayAuthHost />
     </>
   );
 }
@@ -130,10 +135,6 @@ function MessagesOverlay() {
   const state = useMessagesHost();
   const host = hostState();
   const unread = useImUnread();
-  const router = useRouter();
-  const bay = useBayState();
-  const signedIn = useBaySignedIn();
-  const bayNeeds = useBayNeedsAction(signedIn);
   const [newOpen, setNewOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [shown, setShown] = useState(state.open);
@@ -154,8 +155,6 @@ function MessagesOverlay() {
     setInfoOpen(false);
   }, [state.conversationId]);
 
-  const bayHasDetail = useBayHasDetail();
-
   if (!shown) return null;
 
   const setView = (view: MessagesView) => host.setView(view);
@@ -173,34 +172,23 @@ function MessagesOverlay() {
         onNew={() => setNewOpen(true)}
       />
     );
-  } else if (state.view === "people") {
-    list = <PeopleView onOpenConversation={openConversation} />;
   } else {
-    list = <BayView part="list" layout={state.layout} />;
+    list = <PeopleView onOpenConversation={openConversation} />;
   }
 
-  const listWithTabs = (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <LeoChatTabs
-        active={state.view}
-        onSelect={setView}
-        badges={{ inbox: unread?.total ?? 0, people: unread?.requests ?? 0, bay: bayNeeds }}
-      />
-      <div key={state.view} data-im-view-body className="flex min-h-0 flex-1 flex-col">
-        {list}
-      </div>
+  const listBody = (
+    <div key={state.view} data-im-view-body className="flex min-h-0 flex-1 flex-col">
+      {list}
     </div>
   );
+  const tabs = (
+    <LeoChatTabs active={state.view} onSelect={setView} badges={{ inbox: unread?.total ?? 0, people: unread?.requests ?? 0 }} />
+  );
 
-  const bayParam = bay.current.kind === "feed" ? null : formatBayParam(bay.current);
-  const pageHref = leoChatPageHref({
-    tab: state.view,
-    conversationId: state.conversationId,
-    bay: bayParam,
-  });
-
+  // 放大后右边一直是当前会话（左边切到联系人也不收走）；小窗里只有聊天栏会滑进会话。
+  const showConversation = Boolean(state.conversationId) && (state.view === "inbox" || state.layout === "full");
   let detail: ReactNode = null;
-  if (state.view === "inbox" && state.conversationId) {
+  if (showConversation && state.conversationId) {
     const conversation = talent ? (
       <DealConversationView
         key={state.conversationId}
@@ -241,8 +229,6 @@ function MessagesOverlay() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">{conversation}</div>
       );
-  } else if (state.view === "bay") {
-    detail = <BayView part="detail" layout={state.layout} />;
   }
 
   return (
@@ -259,14 +245,11 @@ function MessagesOverlay() {
           if (!state.open) setShown(false);
         }}
         title="LeoChat"
-        pageHref={pageHref}
-        onOpenPage={() => router.push(pageHref)}
-        list={listWithTabs}
+        tabs={tabs}
+        onToggleExpand={() => host.setExpanded(!state.expanded)}
+        list={listBody}
         detail={detail}
-        showDetail={
-          (Boolean(state.conversationId) && state.view === "inbox") ||
-          (state.view === "bay" && bayHasDetail)
-        }
+        showDetail={showConversation}
       >
         <PrivacyNotice />
       </MessagesLayout>

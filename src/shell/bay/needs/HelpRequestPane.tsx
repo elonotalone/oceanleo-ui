@@ -15,6 +15,7 @@ import {
   type BayHandoff,
 } from "../../../lib/bay/handoffs";
 import { useToast } from "../../../ui/Toast";
+import { openMessages } from "../../messages/host-state";
 import { openTradeThread } from "../deal";
 import { ensureBayTerms, openBaySettings } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
@@ -151,7 +152,7 @@ function HelpActions({ handoff, onChanged }: { handoff: BayHandoff; onChanged: (
       const result = await claimBayHandoff(handoff.id);
       toast.success(tt("你接住了这条求助"));
       onChanged();
-      if (result.thread_id) openBay({ kind: "conversation", threadId: result.thread_id });
+      if (result.thread_id) openMessages({ conversationId: "talent:" + result.thread_id });
       else await openTradeThread({ kind: "handoff", subjectRef: handoff.id });
     } catch (reason) {
       if (isSellerProfileError(reason)) {
@@ -194,7 +195,7 @@ function HelpActions({ handoff, onChanged }: { handoff: BayHandoff; onChanged: (
     setBusy("chat");
     setError(null);
     try {
-      if (handoff.thread_id) openBay({ kind: "conversation", threadId: handoff.thread_id });
+      if (handoff.thread_id) openMessages({ conversationId: "talent:" + handoff.thread_id });
       else await openTradeThread({ kind: "handoff", subjectRef: handoff.id });
     } catch (reason) {
       setError(errorText(tt, reason, tt("会话没打开，请稍后再试。")));

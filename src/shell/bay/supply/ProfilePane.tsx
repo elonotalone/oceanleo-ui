@@ -1,87 +1,124 @@
 "use client";
 
-// 个人主页（移植自 talent `app/u/[handle]/page.tsx`，外壳不搬）。
-// 不登录也能看；先聊聊、收藏、举报、拉黑要登录。窗格不自带返回栏/标题栏/滚动。
+// 个人主页窗格：别人的主页（`profile:<handle>`）与我自己的主页（`profile:me`）。
+// 版面由 `page/ProfilePage` 按 `page_doc` 画；本人多一个「编辑主页」，进编辑后是 `page/ProfilePageEditor`。
+// 不登录也能看别人的主页；先聊聊、收藏、举报、拉黑要登录。
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
 import {
   blockBayUser,
   getBayProfile,
-  profileDisplayName,
   reportBayProfile,
-  splitShowcase,
   type BayProfilePage,
-  type BayPublicProfile,
+  type BayReview,
 } from "../../../lib/bay/directory";
+import { defaultPageDoc, normalizePageDoc, type BayPageDoc } from "../../../lib/bay/page-doc";
+import {
+  getSellerProfile,
+  listMyServices,
+  listMyShowcase,
+  saveSellerPage,
+  saveSellerProfile,
+  sellerProfileBody,
+  type BaySellerProfile,
+} from "../../../lib/bay/seller";
 import type { BayService } from "../../../lib/bay/services";
-import type { BayFeedItem } from "../../../lib/bay/types";
 import { openTradeThread } from "../deal";
-import { openBay, requireBayLogin, type BayPaneProps } from "../shell/bay-state";
-import { ratingShort, responseTimeText, safeHttpUrl } from "./format";
-import { Avatar, FavoriteButton, PaneLoading, PaneMessage, PracticeLine, ReputationGrid, ReportBox, ReviewList, Section } from "./parts";
-import { ServiceCard } from "./ServiceCard";
+import { ProfilePage } from "../page/ProfilePage";
+import { ProfilePageEditor } from "../page/ProfilePageEditor";
+import { BaySignInPrompt } from "../shell/BayMine";
+import { openBay, requireBayLogin, setBayFilter, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { FavoriteButton, PaneLoading, PaneMessage, ReportBox } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
+
+/** `profile:me` = 我自己的主页（没有就自动建一份）。 */
+export const BAY_OWN_HANDLE = "me";
+/** 官方发布者的主页地址。 */
+export const BAY_OFFICIAL_HANDLE = "oceanleo";
+
+const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+const ACTION_PRIMARY = `rounded-full bg-neutral-900 px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm ${MOTION} hover:bg-neutral-800 disabled:opacity-50`;
+const ACTION_SECONDARY = `rounded-full border border-neutral-200 bg-white px-5 py-2.5 text-[13px] font-medium text-neutral-700 shadow-sm ${MOTION} hover:bg-neutral-50 disabled:opacity-50`;
+
+interface OwnPage extends BayProfilePage {
+  own: true;
+  seller: BaySellerProfile;
+}
+
+async function loadOwnPage(): Promise<OwnPage> {
+  let { profile } = await getSellerProfile();
+  if (!profile) profile = (await saveSellerPage(null)).profile;
+  const [services, showcase] = await Promise.all([
+    listMyServices().then(
+      (result) => result.items || [],
+      () => [],
+    ),
+    listMyShowcase().then(
+      (result) => result.items || [],
+      () => [],
+    ),
+  ]);
+  let reviews: BayReview[] = [];
+  if (profile.published) {
+    try {
+      reviews = (await getBayProfile(profile.handle)).reviews || [];
+    } catch {
+      reviews = [];
+    }
+  }
+  return {
+    own: true,
+    seller: profile,
+    profile: { ...profile, user_id: profile.user_id || "" } as BayProfilePage["profile"],
+    // 主页上只摆已上架的；草稿在「我的 → 我的服务」里。
+    services: services.filter((service) => service.status === "published" && !service.moderation_hidden) as unknown as BayService[],
+    showcase: showcase as unknown as BayProfilePage["showcase"],
+    reviews,
+  };
+}
+
+function isOwnPage(page: BayProfilePage): page is OwnPage {
+  return (page as Partial<OwnPage>).own === true;
+}
 
 export function ProfilePane({ target }: BayPaneProps) {
   const tt = useUI();
   const handle = target.kind === "profile" ? target.handle : "";
-  const page = useBayResource(handle ? `profile:${handle}` : null, () => getBayProfile(handle));
+  const mine = handle === BAY_OWN_HANDLE;
+  const signedIn = useBaySignedIn();
+  const page = useBayResource<BayProfilePage>(handle && (!mine || signedIn) ? `profile:${handle}` : null, () => (mine ? loadOwnPage() : getBayProfile(handle)));
   const viewer = useBayResource("viewer", () => getUserId());
   if (!handle) return null;
+  if (mine && !signedIn) return <BaySignInPrompt text={tt("登录后就能有一张自己的主页")} />;
   if (page.loading) return <PaneLoading />;
   if (!page.data?.profile) {
     const text = page.status === 404 || !page.error ? tt("这个主页不存在或尚未公开") : tt(page.error);
     return <PaneMessage text={text} onRetry={page.reload} />;
   }
-  return <ProfileDetailView page={page.data} viewerId={viewer.data} />;
+  return <ProfileDetailView page={page.data} viewerId={viewer.data} onChanged={page.reload} />;
 }
 
-function asFeedItem(service: BayService, profile: BayPublicProfile): BayFeedItem & { delivery_days: number | null } {
-  return {
-    kind: "service",
-    id: service.id,
-    title: service.title,
-    summary: service.summary,
-    category: service.category,
-    created_at: service.created_at || "",
-    posted_site: null,
-    handling_site: service.category || "oceanleo",
-    price: {
-      min_fen: service.min_price_fen ?? service.price_fen ?? null,
-      max_fen: null,
-      unit: service.price_unit || "project",
-      currency: service.currency || "CNY",
-    },
-    author: {
-      user_id: profile.user_id,
-      handle: profile.handle,
-      display_name: profile.display_name,
-      avatar_url: profile.avatar_url,
-      verified_level: 0,
-      rating_avg: profile.rating_avg ?? null,
-      rating_count: profile.rating_count ?? 0,
-    },
-    stats: { order_count: service.order_count },
-    status: service.status,
-    deadline_at: null,
-    cover_url: service.cover_url,
-    has_attached_work: false,
-    delivery_days: service.delivery_days,
-  };
-}
-
-export function ProfileDetailView({ page, viewerId }: { page: BayProfilePage; viewerId: string | null }) {
+export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProfilePage; viewerId: string | null; onChanged?: () => void }) {
   const tt = useUI();
-  const { profile, services, showcase, reviews } = page;
-  const name = profileDisplayName(profile);
-  const own = Boolean(viewerId && profile.user_id && viewerId === profile.user_id);
-  const { portfolio, verified } = splitShowcase(showcase);
+  const profile = page.profile as BayProfilePage["profile"] & { page_doc?: unknown; official?: boolean };
+  const own = isOwnPage(page) || Boolean(viewerId && profile.user_id && viewerId === profile.user_id);
+  const [editing, setEditing] = useState(false);
+  const [savedDoc, setSavedDoc] = useState<BayPageDoc | null>(null);
+  const [published, setPublished] = useState(Boolean(profile.published ?? true));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [talkError, setTalkError] = useState("");
   const [blockState, setBlockState] = useState<"idle" | "done" | "busy">("idle");
-  const [blockError, setBlockError] = useState("");
+
+  // 记住这份版面：编辑器拿它当「改之前的样子」来判断有没有改动，所以不能每次重画都换一个新对象。
+  const doc = useMemo(
+    () => savedDoc ?? normalizePageDoc(profile.page_doc) ?? defaultPageDoc(profile, tt),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [savedDoc, profile.page_doc, profile.display_name, profile.headline, profile.bio],
+  );
 
   async function talk() {
     if (!requireBayLogin()) return;
@@ -96,124 +133,131 @@ export function ProfileDetailView({ page, viewerId }: { page: BayProfilePage; vi
   async function block() {
     if (blockState !== "idle" || !requireBayLogin()) return;
     setBlockState("busy");
-    setBlockError("");
     try {
       await blockBayUser(profile.user_id);
       setBlockState("done");
     } catch (error) {
-      setBlockError(errorText(error) || tt("没拉黑成功，请稍后再试。"));
+      setTalkError(errorText(error) || tt("没拉黑成功，请稍后再试。"));
       setBlockState("idle");
     }
   }
 
+  async function save(next: BayPageDoc) {
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const result = await saveSellerPage(next);
+      setSavedDoc(normalizePageDoc(result.profile.page_doc) ?? next);
+      setEditing(false);
+    } catch (error) {
+      setSaveError(errorText(error) || tt("没保存成功，请稍后再试。"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function publish() {
+    if (saving || !isOwnPage(page)) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const seller = page.seller;
+      await saveSellerProfile(
+        sellerProfileBody({
+          handle: seller.handle,
+          display_name: seller.display_name,
+          avatar_url: seller.avatar_url || "",
+          headline: seller.headline || "",
+          bio: seller.bio || "",
+          categories: seller.categories || [],
+          skills: seller.skills || [],
+          languages: seller.languages || [],
+          availability: seller.availability || "open",
+          engagement_kinds: seller.engagement_kinds || ["fixed"],
+          hourly_rate_fen: seller.hourly_rate_fen ?? null,
+          min_budget_fen: seller.min_budget_fen ?? null,
+          published: true,
+        }),
+      );
+      setPublished(true);
+      onChanged?.();
+    } catch (error) {
+      setSaveError(errorText(error) || tt("没公开成功，请稍后再试。"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (own && editing) {
+    return <ProfilePageEditor page={page} initial={doc} saving={saving} error={saveError} onSave={(next) => void save(next)} onCancel={() => setEditing(false)} />;
+  }
+
+  const official = Boolean(profile.official) && profile.handle === BAY_OFFICIAL_HANDLE;
+  const canTalk = !own && Boolean(profile.user_id);
+
+  const actions = own ? (
+    <>
+      {!published ? (
+        <button type="button" data-bay-page-action="publish" disabled={saving} onClick={() => void publish()} className={ACTION_SECONDARY}>
+          {tt("公开主页")}
+        </button>
+      ) : null}
+      <button type="button" data-bay-page-action="settings" onClick={() => openBay({ kind: "settings", pane: "profile" })} className={ACTION_SECONDARY}>
+        {tt("资料")}
+      </button>
+      <button type="button" data-bay-page-action="edit" onClick={() => setEditing(true)} className={ACTION_PRIMARY}>
+        {tt("编辑主页")}
+      </button>
+    </>
+  ) : canTalk ? (
+    <>
+      <button type="button" data-bay-talk onClick={() => void talk()} className={ACTION_PRIMARY}>
+        {tt("先聊聊")}
+      </button>
+      <span className="rounded-full bg-white px-2 py-1 text-neutral-900 shadow-sm">
+        <FavoriteButton kind="profile" refId={profile.user_id} />
+      </span>
+    </>
+  ) : null;
+
   return (
-    <article data-bay-pane="profile" className="px-4 py-4">
-      <div className="flex items-start gap-3">
-        <Avatar url={profile.avatar_url} name={name} size="lg" />
-        <div className="min-w-0 flex-1">
-          <p data-bay-profile-name className="break-words text-[18px] font-semibold text-neutral-950">
-            {name}
-          </p>
-          <p className="text-[12px] text-neutral-500">@{profile.handle}</p>
-          <div className="mt-1">
-            <PracticeLine source={profile} />
-          </div>
-        </div>
-      </div>
-      <p className="mt-3 break-words text-[13px] text-neutral-600">{profile.headline || tt("卖家暂未填写简介。")}</p>
-      {profile.bio ? <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{profile.bio}</p> : null}
-      {(profile.skills || []).length || (profile.languages || []).length || (profile.categories || []).length ? (
-        <p className="mt-2 flex flex-wrap gap-1.5 text-[12px] text-neutral-600">
-          {(profile.categories || []).map((item) => (
-            <span key={`c-${item}`} className="rounded-md bg-neutral-100 px-1.5 py-0.5">
-              {item}
-            </span>
-          ))}
-          {(profile.skills || []).map((item) => (
-            <span key={`s-${item}`} className="rounded-md bg-neutral-100 px-1.5 py-0.5">
-              {item}
-            </span>
-          ))}
-          {(profile.languages || []).map((item) => (
-            <span key={`l-${item}`}>{item}</span>
-          ))}
+    <div className="flex min-h-0 flex-1 flex-col" data-bay-profile={own ? "own" : "public"}>
+      {own && !published ? (
+        <p className="shrink-0 bg-amber-50 px-4 py-2.5 text-center text-[12.5px] text-amber-900" data-bay-page-unpublished>
+          {tt("这张主页现在只有你自己看得到。公开之后别人才能访问，发布商品或服务时也会自动公开。")}
         </p>
       ) : null}
-      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-neutral-500">
-        <span>{ratingShort(tt, profile.rating_avg, profile.rating_count)}</span>
-        <span>{responseTimeText(tt, profile.response_minutes)}</span>
-      </p>
-      {profile.handle ? (
-        <div className="mt-3">
-          <ReputationGrid handle={profile.handle} />
-        </div>
-      ) : null}
-
-      {!own ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button type="button" data-bay-talk onClick={() => void talk()} className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] text-white">
-            {tt("先聊聊")}
-          </button>
-          <FavoriteButton kind="profile" refId={profile.user_id} />
+      {saveError && !editing ? <p className="shrink-0 bg-rose-50 px-4 py-2 text-center text-[12.5px] text-rose-700">{tt(saveError)}</p> : null}
+      {talkError ? <p className="shrink-0 bg-rose-50 px-4 py-2 text-center text-[12.5px] text-rose-700">{tt(talkError)}</p> : null}
+      <ProfilePage
+        page={page}
+        doc={doc}
+        actions={actions}
+        onTalk={canTalk ? () => void talk() : undefined}
+        onBrowseMaterials={
+          official
+            ? () => {
+                setBayFilter({ kind: "material" });
+                openBay({ kind: "feed" });
+              }
+            : undefined
+        }
+      />
+      {canTalk ? (
+        <footer className="flex shrink-0 flex-wrap items-center justify-center gap-4 border-t border-neutral-100 bg-white px-4 py-3 text-neutral-900">
           <ReportBox onSubmit={(reason, detail) => reportBayProfile(profile.user_id, reason, detail)} />
           {blockState === "done" ? (
             <span data-bay-blocked className="text-[12px] text-neutral-500">
               {tt("已拉黑")}
             </span>
           ) : (
-            <button type="button" data-bay-block onClick={() => void block()} className="text-[12px] text-neutral-500 hover:underline">
+            <button type="button" data-bay-block onClick={() => void block()} className={`rounded-lg px-2 py-1.5 text-[12px] text-neutral-500 ${MOTION} hover:bg-neutral-100 hover:text-neutral-900`}>
               {tt("拉黑")}
             </button>
           )}
-        </div>
+        </footer>
       ) : null}
-      {talkError ? <p className="mt-2 text-[12px] text-rose-600">{tt(talkError)}</p> : null}
-      {blockError ? <p className="mt-2 text-[12px] text-rose-600">{tt(blockError)}</p> : null}
-
-      <Section title={tt("服务")}>
-        {services.length ? (
-          <div data-bay-profile-services>
-            {services.map((service) => (
-              <ServiceCard key={service.id} item={asFeedItem(service, profile)} onOpen={() => openBay({ kind: "service", id: service.id })} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-[12px] text-neutral-500">{tt("还没有上架的服务。")}</p>
-        )}
-      </Section>
-
-      {portfolio.length ? (
-        <Section title={tt("作品集")}>
-          {portfolio.map((item) => (
-            <ShowcaseRow key={item.id} title={item.title} summary={item.summary} cover={item.cover_url} />
-          ))}
-        </Section>
-      ) : null}
-
-      {verified.length ? (
-        <Section title={tt("平台见证的交付")}>
-          {verified.map((item) => (
-            <ShowcaseRow key={item.id} title={item.title} summary={item.summary} cover={item.cover_url} />
-          ))}
-        </Section>
-      ) : null}
-
-      <Section title={tt("买家评价")}>
-        <ReviewList reviews={reviews} empty={tt("暂无评价")} />
-      </Section>
-    </article>
-  );
-}
-
-function ShowcaseRow({ title, summary, cover }: { title: string; summary: string; cover: string | null }) {
-  const safe = safeHttpUrl(cover);
-  return (
-    <div data-bay-showcase className="flex items-start gap-3 border-b border-neutral-100 py-2.5">
-      {safe ? <img src={safe} alt="" className="h-12 w-16 shrink-0 rounded object-cover" /> : null}
-      <div className="min-w-0">
-        <p className="break-words text-[13px] font-medium text-neutral-900">{title}</p>
-        {summary ? <p className="mt-0.5 line-clamp-2 break-words text-[12px] text-neutral-500">{summary}</p> : null}
-      </div>
     </div>
   );
 }

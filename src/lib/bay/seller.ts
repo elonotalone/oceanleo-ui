@@ -4,7 +4,11 @@
 
 import { authed } from "../agent";
 import { BayApiError, bayDelete, bayGet, bayPatch, bayPost } from "./http";
+import type { BayPageDoc } from "./page-doc";
 import type { BayCategory, BayWorkRef } from "./types";
+
+export type BayListingKind = "service" | "digital";
+export type BayLicense = "personal" | "commercial";
 
 export type BayServiceStatus = "draft" | "published" | "paused";
 export type BayCatalogKind = "delivery" | "consult";
@@ -82,6 +86,8 @@ export interface BaySellerProfile {
   response_rate?: number | null;
   on_time_rate?: number | null;
   level?: "new" | "rising" | "pro" | "top" | null;
+  page_doc?: BayPageDoc | null;
+  official?: boolean;
 }
 
 export interface BaySellerProfileInput {
@@ -154,6 +160,10 @@ export interface BayOwnService {
   currency?: string;
   created_at?: string;
   updated_at?: string;
+  listing_kind?: BayListingKind;
+  license?: BayLicense | null;
+  has_digital_work?: boolean;
+  official?: boolean;
 }
 
 /** 向导写入的载荷（不含 posted_site：那个只在新建时由 `createMyService` 加上）。 */
@@ -174,6 +184,11 @@ export interface BayServiceInput {
   regulated_domain: string;
   consult_rounds?: number | null;
   consult_minutes?: number | null;
+  listing_kind?: BayListingKind;
+  license?: BayLicense | null;
+  has_digital_work?: boolean;
+  official?: boolean;
+  digital_work?: { kind: "task"; id: string } | null;
 }
 
 export interface BayServiceTierRow {
@@ -294,6 +309,10 @@ export function saveSellerProfile(input: BaySellerProfileInput): Promise<{ profi
   return bayPut<{ profile: BaySellerProfile }>("/v1/talent/me", sellerProfileBody(input));
 }
 
+export function saveSellerPage(doc: BayPageDoc | null): Promise<{ profile: BaySellerProfile }> {
+  return bayPut<{ profile: BaySellerProfile }>("/v1/talent/me/profile/page", { page_doc: doc });
+}
+
 export function listMyServices(): Promise<{ items: BayOwnService[] }> {
   return bayGet<{ items: BayOwnService[] }>("/v1/talent/me/services");
 }
@@ -362,6 +381,16 @@ export function listServiceTiers(serviceId: string): Promise<{ items: BayService
 
 export function replaceServiceTiers(serviceId: string, tiers: BayServiceTierRow[]): Promise<{ items: BayServiceTierRow[] }> {
   return bayPut<{ items: BayServiceTierRow[] }>(`${servicePath(serviceId)}/tiers`, { tiers });
+}
+
+export function saveServiceQuickPrice(
+  serviceId: string,
+  input: { price_fen: number; delivery_days: number | null },
+): Promise<{ items: BayServiceTierRow[] }> {
+  return bayPut<{ items: BayServiceTierRow[] }>(`${servicePath(serviceId)}/tiers`, {
+    price_fen: input.price_fen,
+    delivery_days: input.delivery_days,
+  });
 }
 
 type AddonInput = Omit<BayServiceAddonRow, "id" | "service_id">;
