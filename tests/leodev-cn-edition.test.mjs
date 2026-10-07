@@ -81,6 +81,7 @@ test("UC-7 + UC-3: default env: production .com / LeoDev host behaviour is uncha
     process.stdout.write(JSON.stringify({
       family: family.currentDomainFamily(),
       gateway: family.currentDomainProfile().gatewayOrigin,
+      portal: family.currentDomainProfile().portalOrigin,
       website: family.currentFamilySubsiteOrigin("website"),
       hostFamily: family.familyForHost(host),
       cookieDomain: config.cookieDomainFor(host) ?? null,
@@ -93,10 +94,12 @@ test("UC-7 + UC-3: default env: production .com / LeoDev host behaviour is uncha
       NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "",
       NEXT_PUBLIC_GATEWAY_URL: "",
       NEXT_PUBLIC_OCEANLEO_AIGC_LABEL: "",
+      OCEANLEO_DEV_PREVIEW_HOST: "",
     },
   );
   assert.equal(clean.family, "com");
   assert.equal(clean.gateway, "https://api.oceanleo.com");
+  assert.equal(clean.portal, "https://oceanleo.com");
   assert.equal(clean.website, "https://website.oceanleo.com");
   assert.equal(clean.hostFamily, "com");
   assert.equal(clean.cookieDomain, ".oceanleo.com");
@@ -177,6 +180,132 @@ test("cn slot env: help, gateway overlay, host-only cookie, .cn subsites, LeoDev
   assert.equal(got.comHostCookie, null);
 });
 
+// UC-1 §8.1（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// Overlay host must be a real p-<32hex>.dev.oceanleo.com slot; user.oceanleo.app and lookalikes must not become portalOrigin.
+test("LeoDev portal overlay: preview origin, not oceanleo.com / oceanleo.cn", () => {
+  const fromEnv = probe(
+    `
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    process.stdout.write(JSON.stringify({
+      portal: family.currentDomainProfile().portalOrigin,
+      gateway: family.currentDomainProfile().gatewayOrigin,
+      href: family.portalHref("/settings/vault"),
+    }));
+    `,
+    {
+      NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+      NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "",
+      NEXT_PUBLIC_GATEWAY_URL: "",
+      OCEANLEO_DEV_PREVIEW_HOST: LEODEV_HOST,
+    },
+  );
+  assert.equal(fromEnv.portal, LEODEV_ORIGIN);
+  assert.equal(fromEnv.gateway, "https://api.oceanleo.com");
+  assert.equal(fromEnv.href, "/settings/vault");
+
+  const fromWindow = probe(
+    `
+    globalThis.window = {
+      location: {
+        host: ${JSON.stringify(LEODEV_HOST)},
+        origin: ${JSON.stringify(LEODEV_ORIGIN)},
+      },
+    };
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    process.stdout.write(JSON.stringify({
+      portal: family.currentDomainProfile().portalOrigin,
+      href: family.portalHref("/settings/vault"),
+    }));
+    `,
+    {
+      NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+      NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "",
+      NEXT_PUBLIC_GATEWAY_URL: "",
+      OCEANLEO_DEV_PREVIEW_HOST: "",
+    },
+  );
+  assert.equal(fromWindow.portal, LEODEV_ORIGIN);
+  assert.equal(fromWindow.href, "/settings/vault");
+
+  const sister = probe(
+    `
+    globalThis.window = {
+      location: { host: "ppt.oceanleo.com", origin: "https://ppt.oceanleo.com" },
+    };
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    process.stdout.write(JSON.stringify({
+      portal: family.currentDomainProfile().portalOrigin,
+      href: family.portalHref("/settings/vault"),
+    }));
+    `,
+    {
+      NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+      NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "",
+      NEXT_PUBLIC_GATEWAY_URL: "",
+      OCEANLEO_DEV_PREVIEW_HOST: "",
+    },
+  );
+  assert.equal(sister.portal, "https://oceanleo.com");
+  assert.equal(sister.href, "https://oceanleo.com/settings/vault");
+
+  const livePortal = probe(
+    `
+    globalThis.window = {
+      location: { host: "oceanleo.com", origin: "https://oceanleo.com" },
+    };
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    process.stdout.write(JSON.stringify({
+      href: family.portalHref("/settings/vault"),
+    }));
+    `,
+    {
+      NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+      NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "",
+      NEXT_PUBLIC_GATEWAY_URL: "",
+      OCEANLEO_DEV_PREVIEW_HOST: "",
+    },
+  );
+  assert.equal(livePortal.href, "/settings/vault");
+
+  const cnPreview = probe(
+    `
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    process.stdout.write(JSON.stringify({
+      family: family.currentDomainFamily(),
+      portal: family.currentDomainProfile().portalOrigin,
+      gateway: family.currentDomainProfile().gatewayOrigin,
+    }));
+    `,
+    { ...CN_SLOT_ENV, OCEANLEO_DEV_PREVIEW_HOST: LEODEV_HOST },
+  );
+  assert.equal(cnPreview.family, "cn");
+  assert.equal(cnPreview.portal, LEODEV_ORIGIN);
+  assert.equal(cnPreview.gateway, "https://api-cn.dev.oceanleo.com");
+
+  for (const bad of [
+    "evil.dev.oceanleo.com",
+    "p-nothex.dev.oceanleo.com",
+    "user.oceanleo.app",
+    "oceanleo.com",
+  ]) {
+    const got = probe(
+      `
+      const family = await import(${JSON.stringify(FAMILY_URL)});
+      process.stdout.write(JSON.stringify({
+        portal: family.currentDomainProfile().portalOrigin,
+      }));
+      `,
+      {
+        NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+        NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "",
+        NEXT_PUBLIC_GATEWAY_URL: "",
+        OCEANLEO_DEV_PREVIEW_HOST: bad,
+      },
+    );
+    assert.equal(got.portal, "https://oceanleo.com", bad);
+  }
+});
+
 test("gateway overlay refuses user-content domains and http", () => {
   // UC-1 §8.1 + UC-2：网关 overlay 若接受 oceanleo.app，请求会带着第一方凭据打到 UGC 域.
   const app = probe(
@@ -241,7 +370,7 @@ test("UC-7: preview cookie jar is name-agnostic for sb-id-cn-auth-token and neve
   const jar = createLeoDevPreviewCookieJar(() => {
     writes += 1;
     return raw;
-  });
+  }, null);
   const before = jar.getAll();
   assert.equal(
     before.some((row) => row.name === "sb-id-cn-auth-token" && row.value === "cn-session"),
@@ -275,6 +404,13 @@ test("share client uses GATEWAY_BASE; help-url prefers configured family", () =>
   assert.match(familySrc, /isLeoDevCapabilityHost/);
   assert.match(familySrc, /\^p-\[0-9a-f\]\{32\}\\.dev\\.oceanleo\\.com\$/);
   assert.match(familySrc, /configuredGatewayOrigin/);
+  assert.match(familySrc, /configuredPortalOrigin/);
+  assert.match(familySrc, /OCEANLEO_DEV_PREVIEW_HOST/);
+  assert.match(familySrc, /export function portalHref/);
+  assert.match(
+    source("../src/shell/account/NotificationBell.tsx"),
+    /portalHref\(item\.link\)/,
+  );
 
   const configSrc = source("../src/lib/auth/config.ts");
   assert.match(configSrc, /CONFIGURED_DOMAIN_FAMILY && CONFIGURED_DOMAIN_FAMILY !== family/);

@@ -27,7 +27,7 @@ export interface SidebarAccountClusterProps {
 export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
   const href = (path: string) => portalHref(path);
   const signOut = props.onSignOut ?? (() => { void signOutEverywhere().then(() => window.location.assign(href("/"))); });
-  return <div data-sidebar-account-cluster className={`flex min-w-0 items-center gap-1 ${props.compact ? "w-full flex-col" : ""}`}>
+  return <div data-sidebar-account-cluster className={`flex min-w-0 items-center ${props.compact ? "w-full flex-col gap-2" : "justify-between gap-3"}`}>
     <AccountMenu name={props.name} email={props.email} balanceText={props.balanceText}
       compact={props.compact} signedIn={props.signedIn}
       orgHref={props.orgHref ?? href("/settings/team")}
@@ -37,8 +37,10 @@ export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
       personalizationTab={props.personalizationTab}
       onOpenSettings={props.onOpenSettings ?? openSettingsModal}
       onSignOut={signOut} />
-    <DeviceStatusPopover className="leo-tap-target-inner" />
-    <NotificationBell className="leo-tap-target-inner" />
-    <BayNavIcon className="leo-tap-target-inner" />
+    <div data-sidebar-account-actions className={`flex shrink-0 items-center ${props.compact ? "flex-col gap-2" : "gap-3"}`}>
+      <DeviceStatusPopover className="leo-tap-target-inner" />
+      <NotificationBell className="leo-tap-target-inner" />
+      <BayNavIcon className="leo-tap-target-inner" />
+    </div>
   </div>;
 }

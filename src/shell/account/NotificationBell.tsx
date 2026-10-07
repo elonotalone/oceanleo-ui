@@ -11,7 +11,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { currentDomainProfile } from "../../contracts/domain-family";
+import { portalHref } from "../../contracts/domain-family";
+import { useImEnabled } from "../../lib/im/client";
+import { openMessages } from "../messages/host-state";
+import { useImUnread } from "../messages/realtime/hooks";
+import { formatBadge } from "../messages/realtime/store";
 
 import {
   listNotifications,
@@ -44,11 +48,14 @@ function messageTime(value: string | null | undefined): string {
 
 export function NotificationBell({ className = "" }: { className?: string }) {
   const tt = useUI();
+  const imOn = useImEnabled();
+  const imUnread = useImUnread();
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const badge = imOn ? formatBadge(imUnread?.total ?? 0) : unread > 0 ? String(unread > 99 ? "99+" : unread) : "";
 
   const refreshCount = useCallback(async () => {
     const result = await notificationUnreadCount();
@@ -56,10 +63,11 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   }, []);
 
   useEffect(() => {
+    if (imOn) return undefined;
     void refreshCount();
     const timer = setInterval(() => void refreshCount(), COUNT_POLL_MS);
     return () => clearInterval(timer);
-  }, [refreshCount]);
+  }, [imOn, refreshCount]);
 
   const closePanel = useCallback((reason: "escape" | "outside") => {
     setOpen(false);
@@ -67,6 +75,11 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   }, []);
 
   const toggle = async () => {
+    if (imOn) {
+      setOpen(false);
+      openMessages();
+      return;
+    }
     const next = !open;
     setOpen(next);
     if (!next) return;
@@ -85,7 +98,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
       await markNotificationsRead([item.id]);
       setUnread((current) => Math.max(0, current - 1));
     }
-    if (item.link) window.location.href = item.link.startsWith("/") ? `${currentDomainProfile().portalOrigin}${item.link}` : item.link;
+    if (item.link) window.location.href = item.link.startsWith("/") ? portalHref(item.link) : item.link;
   };
 
   const readAll = async () => {
@@ -103,21 +116,21 @@ export function NotificationBell({ className = "" }: { className?: string }) {
         ref={buttonRef}
         type="button"
         onClick={() => void toggle()}
-        aria-label={tt("通知")}
-        aria-haspopup="dialog"
-        aria-expanded={open}
+        aria-label={imOn ? tt("消息") : tt("通知")}
+        aria-haspopup={imOn ? undefined : "dialog"}
+        aria-expanded={imOn ? undefined : open}
         className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
         <IconBell className="h-4 w-4" />
-        {unread > 0 ? (
+        {badge ? (
           <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white">
-            {unread > 99 ? "99+" : unread}
+            {badge}
           </span>
         ) : null}
       </button>
 
       <AnchoredFixedPopover
-        open={open}
+        open={open && !imOn}
         anchorRef={buttonRef}
         onClose={closePanel}
         width={320}

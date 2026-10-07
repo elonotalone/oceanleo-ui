@@ -8,7 +8,7 @@ export type ServerPageHrefOptions = {
   session?: string;
 };
 
-/** 子站上指向门户；已经在门户 origin 上则保持相对路径。 */
+/** 子站上指向门户；已经在门户 origin（含 LeoDev 预览 overlay）上则保持相对路径。 */
 export function portalHref(path: string): string {
   const portalOrigin = currentDomainProfile().portalOrigin;
   if (typeof window === "undefined" || window.location.origin === portalOrigin) {

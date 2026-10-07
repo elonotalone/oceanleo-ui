@@ -7,6 +7,7 @@ import type { SettingsHubProps, SettingsSection } from "../../pages/settings/Set
 import {
   isSettingsPathname,
   openSettingsModal,
+  readSettingsBillingView,
   resolveSettingsTab,
   settingsPath,
   tabFromSettingsLocation,
@@ -62,9 +63,16 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
 
       const resolved = tabFromSettingsLocation(href, extras);
       const canonical = settingsPath(resolved);
+      const billingView = readSettingsBillingView(href);
+      const prev = (window.history.state as { settingsBillingView?: string } | null) || {};
       if (isSettingsPathname(window.location.pathname) && herePath() !== canonical) {
         window.history.replaceState(
-          { ...(window.history.state as object), settingsOverlay: true },
+          {
+            ...prev,
+            settingsOverlay: true,
+            settingsBillingView:
+              resolved === "billing" && billingView !== "overview" ? billingView : undefined,
+          },
           "",
           canonical,
         );

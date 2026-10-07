@@ -55,5 +55,7 @@ el.style.colorScheme=light?"light":"dark";
 }catch(e){}})();`;
 
 export function ThemeScript() {
+  // Server Component only. Imported from `@oceanleo/ui/theme/server` so Next
+  // does not put this <script> on the client fiber tree (React 19 overlay).
   return <script dangerouslySetInnerHTML={{ __html: INLINE }} suppressHydrationWarning />;
 }

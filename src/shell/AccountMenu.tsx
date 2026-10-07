@@ -83,7 +83,7 @@ export function AccountMenu(props: AccountMenuProps) {
       }
       setOpen(!open);
       setIdentitiesOpen(false);
-    }} className={`leo-tap-row flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 dark:text-neutral-100 dark:hover:bg-neutral-800 ${props.compact ? "w-full justify-center" : "flex-1"}`}>
+    }} className={`leo-tap-row flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 dark:text-neutral-100 dark:hover:bg-neutral-800 ${props.compact ? "w-full justify-center" : "max-w-[7.5rem]"}`}>
       {avatar}{!props.compact && <span className="truncate text-[13px] font-medium">{props.name}</span>}
     </button>
     <FloatingMenu open={open} anchorRef={anchorRef} onClose={close} preferredPlacement="above" align="start" width={280} ariaLabel={tt("账户")}>

@@ -47,6 +47,7 @@ import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { useUI } from "../i18n/ui/useUI";
 import { helpCenterUrl } from "../lib/help-url";
 import { usePresenceHeartbeat } from "../lib/presence";
+import { AUTH_STATE_EVENT } from "../lib/auth/client";
 import { PhoneBindGate } from "../pages/PhoneBindGate";
 import { AppPageHeader } from "./AppPageHeader";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
@@ -225,7 +226,7 @@ export interface AppShellProps {
   stripLocale?: (pathname: string) => string;
   /** localStorage 收起状态 key，建议 "<site>_sidebar_collapsed" */
   collapseKey?: string;
-  /** 当前用户邮箱，无则显示「未登录」 */
+  /** 当前用户邮箱，无则显示「登录」 */
   userEmail?: string | null;
   /** 余额，账本货币主单位（.cn 元 / .com 美元），null = 加载中 */
   credits?: number | null;
@@ -440,7 +441,43 @@ function AppShellInner({
     localStorage.setItem(collapseKey, next ? "1" : "0");
   }
 
-  const accountName = userEmail ? userEmail.split("@")[0] : tt("未登录");
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshName() {
+      try {
+        const auth = (await import("../lib/auth")) as {
+          getAccountProfile?: () => Promise<
+            | { displayName?: string | null }
+            | { profile?: { displayName?: string | null }; error?: string }
+          >;
+        };
+        if (typeof auth.getAccountProfile !== "function") return;
+        const box = await auth.getAccountProfile();
+        let name = "";
+        if (box && typeof box === "object") {
+          if ("profile" in box) {
+            name = String(box.profile?.displayName || "");
+          } else if ("displayName" in box) {
+            name = String(box.displayName || "");
+          }
+        }
+        if (!cancelled) setProfileDisplayName(name.trim());
+      } catch {
+        /* W1 未落地或未登录时侧栏仍用邮箱前缀 */
+      }
+    }
+    void refreshName();
+    if (typeof window === "undefined") return;
+    window.addEventListener(AUTH_STATE_EVENT, refreshName);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AUTH_STATE_EVENT, refreshName);
+    };
+  }, [userEmail]);
+
+  const emailLocal = userEmail ? userEmail.split("@")[0] : "";
+  const accountName = userEmail ? profileDisplayName || emailLocal : tt("登录");
   function renderAccountCluster(compact = false): ReactNode {
     return <SidebarAccountCluster name={accountName} email={userEmail}
       compact={compact} signedIn={Boolean(userEmail)} balanceText={creditsText}
@@ -513,9 +550,15 @@ function AppShellInner({
         ? "bg-neutral-200/80 font-medium text-neutral-900"
         : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
     }`;
-    const style = !rail && active
-      ? { boxShadow: `inset 3px 0 0 ${brand.accent}` }
-      : undefined;
+    const vtName = item.onClick
+      ? "oceanleo-nav-messages"
+      : navHref
+        ? `oceanleo-nav-${navHref.replace(/[^\w-]+/g, "-")}`
+        : undefined;
+    const style = {
+      ...(!rail && active ? { boxShadow: `inset 3px 0 0 ${brand.accent}` } : {}),
+    };
+    const wrapStyle = vtName ? { viewTransitionName: vtName } : undefined;
     const inner = (
       <>
         <span
@@ -623,7 +666,7 @@ function AppShellInner({
       );
     }
     return (
-      <div key={key}>
+      <div key={key} style={wrapStyle}>
         {control}
         {!rail && includeDisclosure && item.disclosure && (
           <div

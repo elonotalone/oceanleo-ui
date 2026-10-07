@@ -25,9 +25,6 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useUI } from "../i18n/ui/useUI";
-import { imEnabledHere, useImEnabled } from "../lib/im/client";
-import { openMessages } from "./messages/host-state";
-import { MessagesNavIcon } from "./messages/MessagesNavIcon";
 import type {
   ShellNavDisclosure,
   ShellNavItem,
@@ -41,7 +38,7 @@ import {
   type NavResolveOptions,
 } from "./nav-source";
 
-export type WorkspacePage = "home" | "explore" | "messages" | "workspace" | "library" | "history" | "playground";
+export type WorkspacePage = "home" | "explore" | "workspace" | "library" | "history" | "playground";
 
 export interface WorkspaceNavOptions {
   /** 路由前缀（i18n 站传 "/zh" 之类）。默认 ""。 */
@@ -54,11 +51,6 @@ export interface WorkspaceNavOptions {
   withExplore?: boolean;
   /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
   withPlayground?: boolean;
-  /**
-   * 是否包含「消息」（打开消息浮层的动作项，没有页面）。不传 = `imEnabledHere()`：
-   * 境内站与未登录自动没有。要在登录后跟着出现，站内请经 `useWorkspaceNavLabels()` 取 labels（它订阅登录态）。
-   */
-  withMessages?: boolean;
   /** v5：导航项下方原地展开的内容；标准用法是 history → 任务列表。 */
   disclosures?: Partial<Record<WorkspacePage, ShellNavDisclosure>>;
   /**
@@ -72,7 +64,6 @@ export interface WorkspaceNavOptions {
 const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   home: "新建",
   explore: "探索",
-  messages: "消息",
   workspace: "工作台",
   library: "我的库",
   history: "我的任务",
@@ -102,7 +93,6 @@ const ALL_WORKSPACE_PAGES_VISIBLE: NavResolveOptions = {
   withExplore: true,
   withWorkspace: true,
   withPlayground: true,
-  withMessages: true,
 };
 
 /** 把 `WorkspaceNavOptions` 的三个开关翻成 `nav-source` 的可见性开关。 */
@@ -111,7 +101,6 @@ function resolveOptions(opts: WorkspaceNavOptions): NavResolveOptions {
     withExplore: opts.withExplore,
     withWorkspace: opts.withWorkspace,
     withPlayground: opts.withPlayground,
-    withMessages: opts.withMessages ?? imEnabledHere(),
   };
 }
 
@@ -125,8 +114,6 @@ function resolveOptions(opts: WorkspaceNavOptions): NavResolveOptions {
 export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   const t = useTranslations("nav");
   const tt = useUI();
-  // 订阅登录态：登录/退出后各站外壳随之重渲染，「消息」才会出现或消失（workspaceNav 每次重渲染重新取值）。
-  useImEnabled();
   // 某个 nav key 在旧翻译包里可能缺失（新加页）。next-intl 缺 key 时的返回值不确定：
   //   - server（走共享 createI18nRequest.getMessageFallback）→ 最后一段，如 "explore"；
   //   - client（NextIntlClientProvider 未接同款 fallback）→ 完整 key，如 "nav.explore"。
@@ -169,14 +156,6 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
             render: () => legacyHistory.render(() => undefined),
           }
         : undefined);
-    if (entry.action === "messages") {
-      // 动作项：没有 href，点击打开消息浮层。
-      return {
-        label: labels[p],
-        icon: <MessagesNavIcon />,
-        onClick: () => openMessages(),
-      };
-    }
     return {
       label: labels[p],
       href: `${base}${entry.href ?? "/"}`,

@@ -177,6 +177,7 @@ html.dark [data-oceanleo-chrome].bg-\[\#f7f7f7\] {
 html.dark .bg-white,
 html.dark .bg-neutral-50,
 html.dark .bg-neutral-100,
+html.dark .md\:bg-neutral-100,
 html.dark .bg-stone-50,
 html.dark .bg-stone-100,
 html.dark .bg-gray-50,
@@ -238,6 +239,7 @@ html.dark .bg-gray-200\/60,
 html.dark .bg-gray-200\/50,
 html.dark .hover\:bg-neutral-50:hover,
 html.dark .hover\:bg-neutral-100:hover,
+html.dark .md\:hover\:bg-neutral-100:hover,
 html.dark .hover\:bg-neutral-200:hover,
 html.dark .hover\:bg-neutral-200\/50:hover,
 html.dark .hover\:bg-neutral-200\/60:hover,
@@ -253,6 +255,7 @@ html.dark .hover\:bg-white:hover {
 /* 文字：三档中性 → 主/次/弱。覆盖 neutral/stone/gray/zinc/slate 全谱（全局）。 */
 html.dark .text-neutral-900,
 html.dark .text-neutral-800,
+html.dark .hover\:text-neutral-800:hover,
 html.dark .text-stone-900,
 html.dark .text-stone-800,
 html.dark .text-gray-900,
@@ -265,6 +268,7 @@ html.dark .text-black {
   color: var(--leo-d-fg) !important;
 }
 html.dark .text-neutral-700,
+html.dark .md\:text-neutral-700,
 html.dark .text-neutral-600,
 html.dark .text-stone-700,
 html.dark .text-stone-600,
@@ -671,6 +675,112 @@ body {
 .v-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.16); }
 .v-scroll::-webkit-scrollbar-track { background: transparent; }
 .v-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.10) transparent; }
+
+/* 设置左栏几何：宽卡里导航按键拉满同一列宽（选中浅灰等宽），
+   身份卡片仍按名字收窄；窄卡是横滑下划线标签。
+   选中圆角/上下箭头不能顶到裁切边。
+   消费端只吃预编译 ui.css，这里用选择器写死，避免工具类漏编后又被裁掉。 */
+[data-settings-identity-wrap],
+[data-settings-identity] {
+  width: fit-content;
+  max-width: 100%;
+  overflow: visible;
+}
+[data-settings-identity-switch] {
+  flex: 0 0 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  overflow: visible;
+}
+[data-settings-nav-scroll] [data-settings-item] {
+  width: fit-content;
+  max-width: 100%;
+}
+@media (max-width: 767px) {
+  [data-settings-group] { display: contents; }
+  [data-settings-group-label] { display: none; }
+  [data-settings-nav-scroll] {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+@media (min-width: 768px) {
+  [data-settings-nav] {
+    width: 15rem;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  [data-settings-nav-rail] {
+    width: 15rem;
+    flex-shrink: 0;
+    overflow: hidden;
+    padding-right: 0.125rem;
+  }
+  [data-settings-nav-rail] [data-settings-nav] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: 100%;
+  }
+  [data-settings-nav-scroll] {
+    align-items: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-right: 0;
+  }
+  [data-settings-group] {
+    width: 100%;
+    max-width: 100%;
+    align-items: stretch;
+  }
+  [data-settings-nav-scroll] [data-settings-item] {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    border-bottom-width: 0;
+    border-radius: 0.5rem;
+  }
+}
+
+/* 深色左栏：md: 前缀的浅灰底/深灰字不会被上面的 .bg-neutral-100 / .text-neutral-700
+   命中，选中项变成浅底浅字，未选中项变成深字贴在近黑底上。这里按令牌重画。 */
+html.dark [data-settings-nav-scroll] [data-settings-item] {
+  color: var(--leo-d-fg-2) !important;
+  background-color: transparent !important;
+}
+html.dark [data-settings-nav-scroll] [data-settings-item]:hover {
+  color: var(--leo-d-fg) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+html.dark [data-settings-nav-scroll] [data-settings-item][aria-current="page"] {
+  color: var(--leo-d-fg) !important;
+  background-color: var(--leo-d-card-2) !important;
+}
+html.dark [data-settings-group-label] {
+  color: var(--leo-d-muted) !important;
+}
+
+[data-personalization-memory-cols] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* 设置窗 portal 到 body，不在 [data-oceanleo-shell] 里，要自己套同一套细浅滚动条。 */
+[data-settings-frame] *::-webkit-scrollbar { width: 3px; height: 3px; }
+[data-settings-frame] *::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 9999px;
+}
+[data-settings-frame] *::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.16); }
+[data-settings-frame] *::-webkit-scrollbar-track { background: transparent; }
+[data-settings-frame] *::-webkit-scrollbar-corner { background: transparent; }
+[data-settings-frame] * { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.10) transparent; }
 
 /* ---------- 全家桶统一：壳内所有滚动区 = 细滚动条 + 稳定滚动槽 ----------
    操作员 2026-06-28（宗旨 v11）：工作台「中＋右」两栏的滚动条统一为细滚动条

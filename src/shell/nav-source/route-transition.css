@@ -42,4 +42,10 @@
       animation: none;
     }
   }
+
+  /* 消息浮层切页时位置、圆角都不能动：它不是页面的一部分。 */
+  ::view-transition-old(oceanleo-messages-overlay),
+  ::view-transition-new(oceanleo-messages-overlay) {
+    animation: none;
+  }
 }

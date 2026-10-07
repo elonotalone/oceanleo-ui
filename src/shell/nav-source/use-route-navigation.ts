@@ -9,6 +9,7 @@ import {
   useTransition,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { closeMessages } from "../messages/host-state";
 import { fusionMountPrefix } from "../workspace-route";
 
 function pathMatches(pathname: string, href: string, exact?: boolean): boolean {
@@ -51,6 +52,7 @@ export function useRouteNavigation(options: RouteNavigationOptions = {}) {
       event?.preventDefault();
       if (pathMatches(logicalPath, href, href === "/")) return;
       options.onNavigate?.();
+      closeMessages();
       pendingRef.current = href;
       setPendingHref(href);
 

@@ -61,6 +61,7 @@
     "./i18n/messages/en.json": "./src/i18n/messages/en.json",
     "./theme": "./src/theme/index.ts",
     "./theme/server": "./src/theme/server.ts",
+    "./shell/EmbedChrome": "./src/shell/EmbedChrome.tsx",
     "./theme/globals.css": "./src/theme/globals.css",
     "./theme/ui.css": "./src/theme/ui.css",
     "./tailwind-preset": "./src/theme/tailwind-preset.ts",

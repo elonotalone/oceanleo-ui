@@ -16,7 +16,7 @@ export type FloatingMenuProps = {
   width?: number;
   ariaLabel?: string;
   className?: string;
-  /** Stacking class; defaults to z-50. Call sites that sit above the shell pass a higher z. */
+  /** Defaults to `z-50`. Settings overlays need `z-[180]` to sit above the settings frame. */
   zClassName?: string;
   children: ReactNode;
 };

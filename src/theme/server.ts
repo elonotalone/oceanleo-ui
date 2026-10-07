@@ -2,9 +2,12 @@
 // 与 client-safe 的 `@oceanleo/ui/theme` 隔离，防止被 client 组件误引而报错。
 //
 //   各站 root layout（server 组件）：
-//     import { getThemeClass } from "@oceanleo/ui/theme/server";
+//     import { getThemeClass, ThemeScript } from "@oceanleo/ui/theme/server";
 //     const { htmlClass } = await getThemeClass();
 //     <html className={htmlClass} suppressHydrationWarning>
+//     <head><ThemeScript /></head>
+// ThemeScript 只从这条 server 入口导出，避免和 ThemeProvider 绑进同一条
+// client 模块图（Next 16 / React 19 会把组件里的 <script> 当成控制台错误）。
 
 import { cookies, headers } from "next/headers";
 import {
@@ -54,6 +57,7 @@ export async function getThemeClass(): Promise<{ htmlClass: string }> {
   return { htmlClass: appearanceToHtmlClass(resolveThemeClass("auto", systemPrefersDark)) };
 }
 
+export { ThemeScript } from "./ThemeScript";
 export {
   THEME_COOKIE,
   THEME_STORAGE_KEY,

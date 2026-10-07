@@ -7,6 +7,9 @@ allowBuilds:
   '@scarf/scarf': false # 遥测上报，明确关闭
   es5-ext: false # postinstall 只打印赞助信息
   protobufjs: false # CLI 用的代码生成，浏览器侧用不到
+  '@parcel/watcher': set this to true or false
+  '@swc/core': set this to true or false
+  sharp: set this to true or false
 
 # ── assistant-ui 冷却期钉（2026-09-03，W01） ─────────────────────────────────
 # pnpm 的 minimumReleaseAge 闸（24h）拦下了 assistant-ui 全家：它们在

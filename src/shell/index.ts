@@ -798,8 +798,8 @@ export { importWithChunkReload } from "../lib/lazy-with-retry";
 
 export { AccountMenu, type AccountMenuProps } from "./AccountMenu";
 export * from "./account";
-// work-chat（W08）：侧栏「消息」的全局浮层与入口。门户从 `@oceanleo/ui/shell` 引这四个。
+// work-chat（W08）：侧栏「消息」的全局浮层与入口。门户从 `@oceanleo/ui/shell` 引这些。
 export { MessagesHost } from "./messages/MessagesHost";
-export { openMessages } from "./messages/host-state";
+export { openMessages, closeMessages } from "./messages/host-state";
 export { MessagesNavIcon } from "./messages/MessagesNavIcon";
-export { imEnabledHere } from "../lib/im/client";
+export { imEnabledHere, useImEnabled } from "../lib/im/client";

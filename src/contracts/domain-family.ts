@@ -388,15 +388,47 @@ function configuredGatewayOrigin(): string | undefined {
   }
 }
 
+/**
+ * LeoDev 槽把当前预览 origin 当成门户 origin。否则通知 / 设置 / 设备链接
+ * 会拼到表里的 `https://oceanleo.com`，把操作员从
+ * `p-<32hex>.dev.oceanleo.com` 丢进生产站。只认 `isLeoDevCapabilityHost`：
+ * `oceanleo.app`、形似 host、非 32 位 hex 槽名都不 overlay。
+ */
+function leoDevPortalOriginFromHost(host: string | null | undefined): string | undefined {
+  const h = normalizeHost(host);
+  if (!isLeoDevCapabilityHost(h)) return undefined;
+  return `https://${h}`;
+}
+
+function configuredPortalOrigin(): string | undefined {
+  if (typeof window !== "undefined" && window.location) {
+    const fromWindow = leoDevPortalOriginFromHost(window.location.host);
+    if (fromWindow) return fromWindow;
+  }
+  return leoDevPortalOriginFromHost(process.env.OCEANLEO_DEV_PREVIEW_HOST);
+}
+
 /** 当前家族的档案。运行时 URL（网关、素材、门户链接）从这里取。 */
 export function currentDomainProfile(): DomainFamilyProfile {
   const base = domainFamilyProfile(currentDomainFamily());
   const gatewayOrigin = configuredGatewayOrigin();
-  if (!gatewayOrigin || gatewayOrigin === base.gatewayOrigin) return base;
-  return { ...base, gatewayOrigin };
+  const portalOrigin = configuredPortalOrigin();
+  const nextGateway =
+    gatewayOrigin && gatewayOrigin !== base.gatewayOrigin ? gatewayOrigin : undefined;
+  const nextPortal =
+    portalOrigin && portalOrigin !== base.portalOrigin ? portalOrigin : undefined;
+  if (!nextGateway && !nextPortal) return base;
+  return {
+    ...base,
+    ...(nextGateway ? { gatewayOrigin: nextGateway } : {}),
+    ...(nextPortal ? { portalOrigin: nextPortal } : {}),
+  };
 }
 
-/** Path on the current family's portal. Same-origin stays relative; other origins get the portal origin prefixed. */
+/**
+ * 子站上指向家族门户；已经在门户 origin（含 LeoDev 预览 overlay）或
+ * 没有 window（SSR）时保持相对路径，避免点开进生产站、也避免 hydration 对不上。
+ */
 export function portalHref(path: string): string {
   const portalOrigin = currentDomainProfile().portalOrigin;
   if (typeof window === "undefined" || window.location.origin === portalOrigin) {
