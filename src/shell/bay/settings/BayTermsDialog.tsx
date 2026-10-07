@@ -12,6 +12,7 @@ import {
   fetchBayTermsStatus,
   type BayTermsStatus,
 } from "../../../lib/bay/terms";
+import { IconButton } from "../../../ui/Button";
 import { BayTermsSections, formatBayTermsTime } from "./terms-text";
 
 export type BayTermsScope = "buyer" | "seller";
@@ -117,15 +118,11 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
                 : tt("发需求、下单、接受报价都以这份条款为准，同意一次即可。")}
             </p>
           </div>
-          <button
-            type="button"
+          <IconButton
             onClick={onCancel}
-            aria-label={tt("关闭")}
-            title={tt("关闭")}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
-          >
-            ×
-          </button>
+            label={tt("关闭")}
+            icon={<span className="text-lg leading-none">×</span>}
+          />
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
