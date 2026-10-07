@@ -13,6 +13,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const lines = await import("../src/shell/bay/deal/deal-lines.ts");
+const copy = await import("../src/i18n/ui/messages/bay-deal-copy.ts");
+const i18n = await import("../src/i18n/config.ts");
 
 const fakeTT = (zh, vars) => (vars ? zh.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : zh);
 
@@ -201,5 +203,42 @@ test("我的目录里没有 talent 站链接、「在 talent 打开」、innerHT
     assert.ok(!source.includes("在 talent 打开"), `${rel} 出现「在 talent 打开」`);
     assert.ok(!/dangerouslySetInnerHTML|\.innerHTML\b|innerHTML\s*=/.test(source), `${rel} 出现 innerHTML`);
     assert.ok(!source.includes("talentThreadUrl"), `${rel} 引用了 talent 站会话地址`);
+  }
+});
+
+const THREAD_ERRORS = [
+  "缺少合同",
+  "这笔订单还没有会话",
+  "缺少求助",
+  "这条求助还没有人接，暂时没有会话",
+  "缺少会话主题",
+  "缺少对方用户",
+  "会话创建失败，请稍后重试",
+];
+
+test("每个事件和 openTradeThread 错误句子都有 17 种语言文案", () => {
+  const locales = i18n.LOCALES;
+  assert.equal(locales.length, 17);
+  const zhTexts = new Set();
+  for (const event of [...lines.DEAL_EVENTS, ...lines.OFFER_EVENTS]) {
+    zhTexts.add(lines.dealLineText(fakeTT, event));
+  }
+  for (const item of lines.legacyDealLineCases()) {
+    zhTexts.add(lines.dealLineText(fakeTT, item.event, item.meta));
+  }
+  zhTexts.add(lines.UNKNOWN_DEAL_LINE_TEXT);
+  zhTexts.add("已签约，之后在项目群里沟通。");
+  for (const text of THREAD_ERRORS) zhTexts.add(text);
+  assert.ok(zhTexts.size >= 50, `事件文案太少：${zhTexts.size}`);
+  for (const zh of zhTexts) {
+    assert.ok(zh && zh.trim(), "空文案");
+    const placeholders = zh.match(/\{\w+\}/g) || [];
+    for (const locale of locales) {
+      const translated = copy.BAY_DEAL_MESSAGES[locale][zh];
+      assert.ok(translated && String(translated).trim(), `${locale} 缺「${zh}」`);
+      for (const token of placeholders) {
+        assert.ok(String(translated).includes(token), `${locale} 「${zh}」丢了 ${token}`);
+      }
+    }
   }
 });
