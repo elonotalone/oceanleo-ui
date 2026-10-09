@@ -333,3 +333,108 @@ test("consumeDeepLink：别的页面带 ?bay= → 跳到 /bay 页", async () => 
   assert.deepEqual(assigned, ["/bay?bay=demand:d1"]);
   off();
 });
+
+test("右侧栏里的 LeoBay 在场：openBay 只换栏内内容，不跳 /bay、不写地址；撤掉后照旧跳页", async () => {
+  const state = await loadState("com");
+  const assigned = [];
+  const replaced = [];
+  const pushed = [];
+  const location = {
+    pathname: "/tasks/1",
+    search: "",
+    hash: "",
+    origin: "https://oceanleo.com",
+    href: "https://oceanleo.com/tasks/1",
+    assign(href) {
+      assigned.push(href);
+    },
+  };
+  globalThis.window = {
+    location,
+    history: {
+      state: {},
+      replaceState(_s, _t, url) {
+        replaced.push(url);
+      },
+      pushState(_s, _t, url) {
+        pushed.push(url);
+      },
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  try {
+    const opened = [];
+    const off = state.registerBayPanel({ openConversation: (id) => opened.push(id) });
+    state.openBay({ kind: "service", id: "s1" });
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "service", id: "s1" });
+    state.openBay({ kind: "profile", handle: "leo" });
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "profile", handle: "leo" });
+    state.setBayFilter({ kind: "demand", category: "ppt" });
+    assert.deepEqual(assigned, [], "栏内逛的时候不离开当前页");
+    assert.deepEqual(pushed, [], "栏内逛的时候不写地址栏");
+    assert.deepEqual(replaced, []);
+    state.bayBack();
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "service", id: "s1" });
+    // 「先聊聊」：交给右侧栏（换到 LeoChat 那一块），两种写法都认。
+    state.openBayConversation("t9");
+    state.openBay({ kind: "conversation", threadId: "t10" });
+    assert.deepEqual(opened, ["talent:t9", "talent:t10"]);
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "service", id: "s1" }, "开会话不动目标栈");
+
+    off();
+    off();
+    state.openBay({ kind: "demand", id: "d2" });
+    assert.deepEqual(assigned, ["/bay?bay=demand:d2&kind=demand"], "右侧栏那一块藏起来之后，别处的 openBay 照旧跳到 /bay 页");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("右侧栏里的 LeoBay：没给会话入口时不拦「先聊聊」；重复登记各算各的", async () => {
+  const state = await loadState("com");
+  const first = state.registerBayPanel();
+  const opened = [];
+  const second = state.registerBayPanel({ openConversation: (id) => opened.push(id) });
+  second();
+  // 带入口的那一个撤了：入口跟着撤，剩下那一个仍然在场（openBay 不跳页），但会话不再被它接走。
+  globalThis.window = {
+    location: { pathname: "/tasks/1", search: "", hash: "", origin: "https://oceanleo.com", href: "https://oceanleo.com/tasks/1", assign() { throw new Error("不该跳页"); } },
+    history: { state: {}, replaceState() {}, pushState() {} },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  try {
+    state.openBay({ kind: "service", id: "s2" });
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "service", id: "s2" });
+    assert.deepEqual(opened, []);
+  } finally {
+    delete globalThis.window;
+    first();
+  }
+});
+
+test("closeBayDetails：只收起详情，不跳页、不写地址", async () => {
+  const state = await loadState("com");
+  const off = state.registerBayPanel();
+  state.openBay({ kind: "service", id: "s1" });
+  state.openBay({ kind: "profile", handle: "leo" });
+  assert.equal(state.bayStateSnapshot().canGoBack, true);
+  off();
+  // 这时右侧栏那一块已经不在场：openBay 会去跳页，closeBayDetails 不会。
+  globalThis.window = {
+    location: { pathname: "/tasks/1", search: "", hash: "", origin: "https://oceanleo.com", href: "https://oceanleo.com/tasks/1", assign() { throw new Error("不该跳页"); } },
+    history: { state: {}, replaceState() { throw new Error("不该写地址"); }, pushState() { throw new Error("不该写地址"); } },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  try {
+    state.closeBayDetails();
+    // 筛选不动（同一份状态在这份测试文件里是共用的，前面的用例改过它）：只看回没回到列表那一层。
+    assert.equal(state.bayStateSnapshot().current.kind, "feed");
+    assert.equal(state.bayStateSnapshot().canGoBack, false);
+    state.closeBayDetails();
+  } finally {
+    delete globalThis.window;
+  }
+});

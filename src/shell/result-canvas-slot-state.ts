@@ -7,6 +7,17 @@
  *
  * 这里**不新增也不删除任何槽位**：槽位表仍然只有 `workspace-actions.ts` 的
  * `FIXED_WORKSPACE_SLOTS` 一份，本模块只从中过滤出可见的那几个。
+ *
+ * 2026-10-09：右侧栏顶上那一行标签换成了卡片首页，所以本模块多管一个值 `layer`——
+ * 此刻给人看的是卡片（home）、选中的那个槽位（slot）、还是 LeoBay / LeoChat 那两块。
+ * 槽位选中值怎么定一行没改；`layer` 只在「明确的请求」到来时变：
+ *   - `select`、总线 / 属性 action、`focusNonce`、宿主改受控 `active` → `slot`；
+ *   - 宿主把 `active` 改成 `"home"` → `home`；
+ *   - 会话快照恢复**不动** `layer`（它只改选中值）。
+ * `layer` 用同一个 hook 里的 state，而不是另起一个计数器让别人去追：这些请求大多发生在
+ * effect 里，多一次无谓的重渲染会让 `actionFor()` 提前变回 null（action 已被消费），
+ * 正在按 id 取素材的那次请求就被取消了（`g3-website-material-restore` 钉着这条）。
+ * 值没变时 `setLayer` 不触发渲染，所以原来停在槽位上的宿主一帧都不多画。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +27,7 @@ import {
   isWorkspaceActionConsumed,
   normalizeWorkspaceAction,
   type WorkspaceActionEnvelope,
+  type WorkspacePanelId,
   type WorkspaceSlotId,
 } from "./workspace-actions";
 import type { RuntimeHydrationValue } from "./workspace-runtime-hydration";
@@ -31,6 +43,14 @@ export interface WorkspaceSlotStateInput {
   onChange?: (id: string) => void;
 }
 
+/** 右侧栏此刻给人看的是哪一层。`slot` = 看 `selected`。 */
+export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId;
+
+/** 受控 `active` 的这两个值表示「卡片首页」，不对应任何槽位。 */
+export function isWorkspaceHomeId(id: string | undefined): boolean {
+  return id === "home" || id === "";
+}
+
 export interface WorkspaceSlotState {
   selected: WorkspaceSlotId;
   visibleSlots: WorkspaceSlotId[];
@@ -38,6 +58,15 @@ export interface WorkspaceSlotState {
   setTemplatePageId: (id: string) => void;
   select: (id: WorkspaceSlotId) => void;
   actionFor: (slot: WorkspaceSlotId) => WorkspaceActionEnvelope | null;
+  /**
+   * 此刻的层。宿主一开始把受控 `active` 给成 `"home"`（各站的 agent 对话页）→ 从卡片开始；
+   * 别的宿主（操作台页，自己管着一组结果标签）→ 从槽位开始，与改版前相同。
+   */
+  layer: WorkspaceLayer;
+  /** 换层（点卡片进 LeoBay / LeoChat、返回卡片）。进槽位请用 `select`。 */
+  setLayer: (layer: WorkspaceLayer) => void;
+  /** 最近一条指向 LeoBay 那一块的 action（`tab === "bay"`）；它不是槽位，不参与选中。 */
+  panelAction: WorkspaceActionEnvelope | null;
 }
 
 export function useWorkspaceSlotState({
@@ -76,6 +105,11 @@ export function useWorkspaceSlotState({
     return active && slotForId(active) === "template" ? active : "";
   });
   const [workspaceAction, setWorkspaceAction] =
+    useState<WorkspaceActionEnvelope | null>(null);
+  const [layer, setLayer] = useState<WorkspaceLayer>(() =>
+    isWorkspaceHomeId(active) ? "home" : "slot",
+  );
+  const [panelAction, setPanelAction] =
     useState<WorkspaceActionEnvelope | null>(null);
   // ── 显式请求 vs 会话恢复的优先级 ────────────────────────────────────────────
   // 深链在挂载那一刻**同步**派发（`useCatalogDeepLink` → 总线 → 下面的监听），可是会话
@@ -148,6 +182,7 @@ export function useWorkspaceSlotState({
     (id: WorkspaceSlotId) => {
       pinExplicitSlot(id);
       applySelection(id);
+      setLayer("slot");
     },
     [applySelection, pinExplicitSlot],
   );
@@ -159,9 +194,15 @@ export function useWorkspaceSlotState({
     }
     if (active === previousActive.current) return;
     previousActive.current = active;
+    // 「回到卡片」不是槽位：不动选中值，只换层。
+    if (isWorkspaceHomeId(active)) {
+      setLayer("home");
+      return;
+    }
     // 这份受控值是快照恢复的一部分，与 `right_tab` 同一优先级：显式 pin 赢，
     // 由下面的恢复 effect 让路并把宿主的值改回 pin 住的栏位。
-    if (hasPendingRestore() && pinnedSlot()) {
+    const restoring = hasPendingRestore();
+    if (restoring && pinnedSlot()) {
       return;
     }
     const requested = slotForId(active);
@@ -169,6 +210,8 @@ export function useWorkspaceSlotState({
       !showTemplate && requested === "template" ? "preview" : requested;
     setInternal(slot);
     if (slot === "template") setTemplatePageId(active);
+    // 恢复带回来的受控值只改选中，不把人从卡片首页拉走。
+    if (!restoring) setLayer("slot");
   }, [active, showTemplate, slotForId]);
 
   useEffect(() => {
@@ -238,9 +281,14 @@ export function useWorkspaceSlotState({
         nonce: String(detail?.nonce || Date.now()),
         action,
       };
+      if (action.tab === "bay") {
+        setPanelAction(envelope);
+        return;
+      }
       setWorkspaceAction(envelope);
       pinExplicitSlot(action.tab);
       applySelection(action.tab);
+      setLayer("slot");
     };
     window.addEventListener(WORKSPACE_ACTION_EVENT, receive);
     return () => window.removeEventListener(WORKSPACE_ACTION_EVENT, receive);
@@ -250,9 +298,14 @@ export function useWorkspaceSlotState({
     if (!externalAction) return;
     const action = normalizeWorkspaceAction(externalAction.action);
     if (!action) return;
+    if (action.tab === "bay") {
+      setPanelAction({ nonce: externalAction.nonce, action });
+      return;
+    }
     setWorkspaceAction({ nonce: externalAction.nonce, action });
     pinExplicitSlot(action.tab);
     applySelection(action.tab);
+    setLayer("slot");
   }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const actionFor = useCallback(
@@ -271,5 +324,8 @@ export function useWorkspaceSlotState({
     setTemplatePageId,
     select,
     actionFor,
+    layer,
+    setLayer,
+    panelAction,
   };
 }

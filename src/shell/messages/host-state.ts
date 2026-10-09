@@ -2,7 +2,13 @@
 // 所以 tests/im-host-state.test.mjs 能用假的 history/location 跑真实实现。
 //
 // 关掉浮层时记住栏目和会话（`oceanleo:leochat:last`）；再开或刷新后停在原处。放大 / 还原也记住（`oceanleo:leochat:expanded`）。
-// LeoChat 只有小窗，没有整页；LeoBay 是一张独立的页（`/bay`），不在小窗里。
+// LeoBay 是一张独立的页（`/bay`），不在小窗里。
+//
+// LeoChat 能在三处显示：左下角图标开的小窗（window）、各站 `/leochat` 整页（page）、对话页右侧栏里的那一块（panel）。
+// 一次只显示一处，三处共用这一份状态（栏目、会话、筛选）：
+//   - 整页 / 右侧栏挂上时 `claimSurface()` 认领；认领期间 `open` 恒为真、`surface` 是认领的那一处（整页压过右侧栏），小窗不画。
+//   - `close()` 只关小窗；`toggleWindow()` 是左下角图标专用（整页在场不动；右侧栏在场 → 接过来开小窗）。
+//   - 最后一处认领释放后 LeoChat 收起，小窗不会自己弹回来。
 //
 // 深链：任何站 `?im=<会话 id>`（可带 `&im_seq=<seq>`）、`?im=inbox`、`?im=people`、`?im_invite=<code>`。
 // 浮层不是路由：侧栏打开不写 `?im=`。带着深链进来时 applyLocation 打开一次，随后 replaceState 清掉。
@@ -14,6 +20,8 @@ export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people"];
 /** 收件箱筛选的合法值；与 `lib/im/inbox-api.ts` 的 `INBOX_FILTERS` 相同（测试里对拍，host-state 保持纯、不引入鉴权依赖）。 */
 export const INBOX_FILTER_IDS: readonly string[] = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"];
 export type MessagesLayoutKind = "docked" | "full" | "mobile";
+/** LeoChat 现在归哪一处显示。没有认领时是小窗。 */
+export type MessagesSurface = "window" | "page" | "panel";
 
 export interface MessagesTarget {
   conversationId?: string;
@@ -36,6 +44,8 @@ export interface MessagesHostSnapshot {
   dockWidth: number;
   enabled: boolean;
   overlayOffset: { x: number; y: number } | null;
+  /** `open` 为真时 LeoChat 显示在哪一处；小窗只在这里是 `"window"` 时画。 */
+  surface: MessagesSurface;
 }
 
 export const IM_PARAM = "im";
@@ -175,6 +185,13 @@ export interface HostState {
   syncViewport(): void;
   /** 挂上 popstate 与 `oceanleo:im-open` 监听；返回卸载函数。 */
   attach(): () => void;
+  /**
+   * 整页（`"page"`）或右侧栏里的那一块（`"panel"`）显示出来时认领 LeoChat；返回释放函数（重复调用只算一次）。
+   * `onEvicted`：这一处被别处接走时调一次（左下角图标把它换成小窗、又来了一个新的右侧栏认领）。被接走之后再释放是空操作。
+   */
+  claimSurface(surface: "page" | "panel", onEvicted?: () => void): () => void;
+  /** 左下角图标：整页在场 → 不动；右侧栏那一处在场 → 接过来开小窗；否则开 / 关小窗。 */
+  toggleWindow(): void;
 }
 
 interface Internal {
@@ -189,6 +206,7 @@ interface Internal {
   dockWidth: number;
   enabled: boolean;
   overlayOffset: { x: number; y: number } | null;
+  surface: MessagesSurface;
 }
 
 function noopEnv(): HostEnv {
@@ -257,8 +275,18 @@ export function createHostState(env: HostEnv): HostState {
     dockWidth: stored,
     enabled: false,
     overlayOffset: storedOffset,
+    surface: "window",
   };
   let snapshot: MessagesHostSnapshot = derive(s);
+
+  // 认领：整页按个数记（切页时新旧两页可能短暂并存），右侧栏只认最后来的那一个。
+  let pageClaims = 0;
+  let panelClaim: { token: object; onEvicted?: () => void } | null = null;
+
+  function claimedSurface(): "page" | "panel" | null {
+    if (pageClaims > 0) return "page";
+    return panelClaim ? "panel" : null;
+  }
 
   function derive(v: Internal): MessagesHostSnapshot {
     return {
@@ -274,7 +302,19 @@ export function createHostState(env: HostEnv): HostState {
       dockWidth: v.dockWidth,
       enabled: v.enabled,
       overlayOffset: v.overlayOffset,
+      surface: v.surface,
     };
+  }
+
+  /** 认领变了之后把 `open` / `surface` 对齐：有认领且可用 → 显示在那一处；最后一处释放 → 收起。 */
+  function syncClaim(wasClaimed: boolean): void {
+    const claimed = claimedSurface();
+    if (claimed) {
+      commit(s.enabled ? { open: true, surface: claimed } : { surface: claimed });
+      return;
+    }
+    if (!wasClaimed) return;
+    commit({ open: false, surface: "window", highlightSeq: null, inviteCode: null });
   }
 
   function persistLast(view: MessagesView, conversationId: string | null): void {
@@ -330,6 +370,8 @@ export function createHostState(env: HostEnv): HostState {
     const wasOpen = s.open;
     commit({
       open: true,
+      // 整页 / 右侧栏认领着时，「打开某栏 / 某会话」就落在那一处，不另开小窗。
+      surface: claimedSurface() ?? "window",
       conversationId: resolved.conversationId,
       view: resolved.view,
       filter: target.filter ?? s.filter,
@@ -340,7 +382,8 @@ export function createHostState(env: HostEnv): HostState {
   }
 
   function close(): void {
-    if (!s.open) return;
+    // 只关小窗：整页和右侧栏那一处不归「关闭」管（切页时外壳照旧调 close，不能把它们收掉）。
+    if (!s.open || s.surface !== "window") return;
     commit({ open: false, highlightSeq: null, inviteCode: null });
     stripUrl();
   }
@@ -350,7 +393,7 @@ export function createHostState(env: HostEnv): HostState {
     const loc = env.getLocation();
     const link = parseImDeepLink(loc.search);
     if (link.kind === "none") {
-      if (s.open && closeIfMissing) {
+      if (s.open && s.surface === "window" && closeIfMissing) {
         commit({ open: false, highlightSeq: null, inviteCode: null });
       }
       return;
@@ -358,6 +401,7 @@ export function createHostState(env: HostEnv): HostState {
     if (!s.enabled) return;
     commit({
       open: true,
+      surface: claimedSurface() ?? "window",
       conversationId: link.target.conversationId ?? null,
       view: link.target.view ?? "inbox",
       highlightSeq: typeof link.target.seq === "number" ? link.target.seq : null,
@@ -379,8 +423,12 @@ export function createHostState(env: HostEnv): HostState {
     setEnabled(enabled) {
       if (enabled === s.enabled) return;
       commit({ enabled });
-      if (enabled) applyLocation(false);
-      else if (s.open) {
+      if (enabled) {
+        applyLocation(false);
+        // 认领比「可用」先到（登录态是懒加载的）：这时把它补显示出来。
+        const claimed = claimedSurface();
+        if (claimed) commit({ open: true, surface: claimed });
+      } else if (s.open) {
         commit({ open: false, highlightSeq: null, inviteCode: null });
       }
     },
@@ -482,6 +530,46 @@ export function createHostState(env: HostEnv): HostState {
         offResize();
       };
     },
+    claimSurface(surface, onEvicted) {
+      const wasClaimed = claimedSurface() !== null;
+      const token = {};
+      // 被顶掉的那一个右侧栏认领；它的回调放到状态对齐之后再调（回调里可能又来读状态）。
+      let displaced: { token: object; onEvicted?: () => void } | null = null;
+      if (surface === "page") {
+        pageClaims += 1;
+      } else {
+        displaced = panelClaim;
+        panelClaim = { token, onEvicted };
+      }
+      syncClaim(wasClaimed);
+      displaced?.onEvicted?.();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        if (surface === "page") {
+          pageClaims = Math.max(0, pageClaims - 1);
+        } else {
+          // 已经被接走（左下角图标开了小窗、或来了新的认领）：这时释放不能再动状态。
+          if (panelClaim?.token !== token) return;
+          panelClaim = null;
+        }
+        syncClaim(true);
+      };
+    },
+    toggleWindow() {
+      if (!s.enabled) return;
+      if (pageClaims > 0) return;
+      if (panelClaim) {
+        const claim = panelClaim;
+        panelClaim = null;
+        commit({ open: true, surface: "window" });
+        claim.onEvicted?.();
+        return;
+      }
+      if (s.open) close();
+      else open();
+    },
   };
 }
 
@@ -537,6 +625,7 @@ const SERVER_SNAPSHOT: MessagesHostSnapshot = {
   dockWidth: DOCK_DEFAULT,
   enabled: false,
   overlayOffset: null,
+  surface: "window",
 };
 
 export function openMessages(target?: MessagesTarget): void {

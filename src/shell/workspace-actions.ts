@@ -12,6 +12,18 @@ export type WorkspaceSlotId =
   | "mine"
   | "browser";
 
+/** 右侧栏里五个槽位之外的两块：LeoBay 缩小版、LeoChat。它们不是槽位，不进 `FIXED_WORKSPACE_SLOTS`。 */
+export type WorkspacePanelId = "bay" | "leochat";
+
+/** 右侧栏此刻显示的是什么：卡片首页、某个槽位，或上面那两块之一。 */
+export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId;
+
+/**
+ * 一条 action 能指向哪里：五个槽位，加上 `bay`（agent 的「找真人」工具让右侧栏显示相关服务）。
+ * LeoChat 没有 agent 入口，所以不在这里。
+ */
+export type WorkspaceActionTab = WorkspaceSlotId | "bay";
+
 /**
  * What the receiver should do with `itemId` once it resolves it.
  *
@@ -31,7 +43,7 @@ const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
 
 export interface WorkspaceActionV1 {
   version: 1;
-  tab: WorkspaceSlotId;
+  tab: WorkspaceActionTab;
   query?: string;
   category?: string;
   itemId?: string;
@@ -47,6 +59,21 @@ export interface WorkspaceActionEnvelope {
   action: WorkspaceActionV1;
 }
 
+/** agent 让右侧栏里的 LeoBay 找相关服务。`nonce` 变了才算一条新请求。 */
+export interface WorkspaceBayRequest {
+  nonce: string;
+  /** 关键词，空格分隔；可以是空串（只按类目找）。 */
+  query: string;
+  /** 站 key；不给就用当前所在的站。 */
+  category?: string;
+}
+
+/** 让右侧栏里的 LeoChat 停在某条会话（「先聊聊」带过来的）。`nonce` 变了才算一条新请求。 */
+export interface WorkspaceChatRequest {
+  nonce: string;
+  conversationId: string;
+}
+
 export const WORKSPACE_ACTION_EVENT = "oceanleo:workspace-action";
 
 export const FIXED_WORKSPACE_SLOTS: readonly WorkspaceSlotId[] = [
@@ -56,6 +83,24 @@ export const FIXED_WORKSPACE_SLOTS: readonly WorkspaceSlotId[] = [
   "mine",
   "browser",
 ] as const;
+
+export const WORKSPACE_PANELS: readonly WorkspacePanelId[] = [
+  "bay",
+  "leochat",
+] as const;
+
+/** action 的 `tab` 白名单：五个槽位 + `bay`。 */
+export const WORKSPACE_ACTION_TABS: readonly WorkspaceActionTab[] = [
+  ...FIXED_WORKSPACE_SLOTS,
+  "bay",
+] as const;
+
+export function isWorkspaceSlotId(value: unknown): value is WorkspaceSlotId {
+  return (
+    typeof value === "string" &&
+    (FIXED_WORKSPACE_SLOTS as readonly string[]).includes(value)
+  );
+}
 
 const SLOT_ALIASES: Record<string, WorkspaceSlotId> = {
   __guide: "template",
@@ -100,8 +145,8 @@ export function normalizeWorkspaceAction(
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   if (Number(raw.version) !== 1) return null;
-  const tab = String(raw.tab || "") as WorkspaceSlotId;
-  if (!FIXED_WORKSPACE_SLOTS.includes(tab)) return null;
+  const tab = String(raw.tab || "") as WorkspaceActionTab;
+  if (!WORKSPACE_ACTION_TABS.includes(tab)) return null;
   const clean = (key: string, max = 500) => {
     const text = typeof raw[key] === "string" ? String(raw[key]).trim() : "";
     return text ? text.slice(0, max) : undefined;

@@ -388,3 +388,128 @@ test("放大状态记住", () => {
   assert.equal(collapsed.getSnapshot().expanded, false);
   assert.equal(collapsed.getSnapshot().layout, "docked");
 });
+
+// ---- LeoChat 一次只显示一处：小窗 / 整页 / 右侧栏（2026-10-09） ----
+
+test("没有认领时是小窗：surface=window；toggleWindow 开、再点关", () => {
+  const { env } = makeEnv();
+  const host = createHostState(env);
+  host.setEnabled(true);
+  assert.equal(host.getSnapshot().surface, "window");
+  host.toggleWindow();
+  assert.equal(host.getSnapshot().open, true);
+  assert.equal(host.getSnapshot().surface, "window");
+  host.toggleWindow();
+  assert.equal(host.getSnapshot().open, false);
+});
+
+test("整页在场：open 恒为真、surface=page；图标不弹小窗；切页时的 close 关不掉它；离开后收起", () => {
+  const { env } = makeEnv({ url: "https://music.oceanleo.com/leochat" });
+  const host = createHostState(env);
+  host.setEnabled(true);
+  const release = host.claimSurface("page");
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [true, "page"]);
+  host.toggleWindow();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [true, "page"]);
+  host.close();
+  assert.equal(host.getSnapshot().open, true, "外壳切页时会调 close：整页不归它管");
+  // 「打开某条会话」落在整页上，不另开小窗。
+  host.open({ conversationId: "c1" });
+  assert.deepEqual([host.getSnapshot().surface, host.getSnapshot().conversationId, host.getSnapshot().view], ["page", "c1", "inbox"]);
+  host.setView("people");
+  assert.equal(host.getSnapshot().view, "people");
+  release();
+  release();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [false, "window"]);
+  assert.equal(host.getSnapshot().conversationId, "c1", "离开整页不清会话：别处再开停在原处");
+});
+
+test("小窗开着时进右侧栏的 LeoChat：小窗让位（surface=panel）；右侧栏那一处收起后不把小窗弹回来", () => {
+  const { env } = makeEnv();
+  const host = createHostState(env);
+  host.setEnabled(true);
+  host.open({ conversationId: "c7" });
+  assert.equal(host.getSnapshot().surface, "window");
+  const release = host.claimSurface("panel");
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface, host.getSnapshot().conversationId], [true, "panel", "c7"]);
+  release();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [false, "window"]);
+});
+
+test("右侧栏里开着时点图标：小窗打开，右侧栏那一处被接走（收到一次通知）；它之后的释放不关小窗", () => {
+  const { env } = makeEnv();
+  const host = createHostState(env);
+  host.setEnabled(true);
+  let evicted = 0;
+  const release = host.claimSurface("panel", () => {
+    evicted += 1;
+  });
+  host.showConversation("c3");
+  host.toggleWindow();
+  assert.equal(evicted, 1);
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface, host.getSnapshot().conversationId], [true, "window", "c3"]);
+  release();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [true, "window"], "被接走之后再释放是空操作");
+  host.toggleWindow();
+  assert.equal(host.getSnapshot().open, false);
+  assert.equal(evicted, 1);
+});
+
+test("新的右侧栏认领顶掉旧的：旧的收到通知，旧的释放不影响新的；整页压过右侧栏", () => {
+  const { env } = makeEnv();
+  const host = createHostState(env);
+  host.setEnabled(true);
+  const log = [];
+  const releaseA = host.claimSurface("panel", () => log.push("a"));
+  const releaseB = host.claimSurface("panel", () => log.push("b"));
+  assert.deepEqual(log, ["a"]);
+  releaseA();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [true, "panel"]);
+  const releasePage = host.claimSurface("page");
+  assert.equal(host.getSnapshot().surface, "page");
+  releasePage();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [true, "panel"], "整页走了，右侧栏那一处还认领着");
+  releaseB();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [false, "window"]);
+  assert.deepEqual(log, ["a"]);
+});
+
+test("认领比「可用」先到（登录态懒加载）：可用之后补显示；不可用时图标无效", () => {
+  const { env } = makeEnv();
+  const host = createHostState(env);
+  const release = host.claimSurface("page");
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [false, "page"]);
+  host.toggleWindow();
+  assert.equal(host.getSnapshot().open, false);
+  host.setEnabled(true);
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface], [true, "page"]);
+  host.setEnabled(false);
+  assert.equal(host.getSnapshot().open, false);
+  release();
+  assert.equal(host.getSnapshot().surface, "window");
+});
+
+test("整页上后退 / 前进（地址里没有 ?im=）不把整页收掉；带着 ?im= 进整页时会话落在整页上", () => {
+  const { env, fire } = makeEnv({ url: "https://oceanleo.com/leochat?im=c9" });
+  const host = createHostState(env);
+  const release = host.claimSurface("page");
+  host.setEnabled(true);
+  const off = host.attach();
+  assert.deepEqual([host.getSnapshot().open, host.getSnapshot().surface, host.getSnapshot().conversationId], [true, "page", "c9"]);
+  fire("popstate");
+  assert.equal(host.getSnapshot().open, true);
+  off();
+  release();
+});
+
+test("oceanleo:im-open 在右侧栏那一处开着时落在右侧栏，不另开小窗", () => {
+  const { env, fire } = makeEnv();
+  const host = createHostState(env);
+  host.setEnabled(true);
+  const off = host.attach();
+  const release = host.claimSurface("panel");
+  fire(IM_OPEN_EVENT, { detail: { conversationId: "talent:t1" } });
+  assert.deepEqual([host.getSnapshot().surface, host.getSnapshot().conversationId], ["panel", "talent:t1"]);
+  release();
+  off();
+});

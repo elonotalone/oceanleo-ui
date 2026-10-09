@@ -1,8 +1,10 @@
 // Bay 的界面状态（oceanleo-bay 契约 §4.2）：目标栈、返回、站点、任务上下文、浮窗请求、登录请求。
 // 模块加载时不碰 window；浏览器能力都在调用时才取，服务端渲染拿到的是空状态。
 //
-// LeoBay 是一张页（各站 `/bay`），不在 LeoChat 小窗里。
-// openBay：在 `/bay` 页上（BayPage 已挂载）→ 换页内详情并写 `?bay=`；在别的页面上 → 记下目标并跳到 `/bay?bay=<目标>`。
+// LeoBay 是一张页（各站 `/bay`），不在 LeoChat 小窗里。对话页的右侧栏里另有一个缩小版（`bay/panel`）。
+// openBay：在 `/bay` 页上（BayPage 已挂载）→ 换页内详情并写 `?bay=`；
+//          右侧栏里的 LeoBay 正显示着（registerBayPanel）→ 只换栏内内容，不跳页、不写地址；
+//          别的情况 → 记下目标并跳到 `/bay?bay=<目标>`。
 import { useSyncExternalStore } from "react";
 import {
   currentDomainFamily,
@@ -68,6 +70,8 @@ interface BayStore {
   task: BayTaskContext | null;
   loginRequested: boolean;
   pageCount: number;
+  /** 右侧栏里的 LeoBay 此刻显示着的个数（一般是 0 或 1）。 */
+  panelCount: number;
 }
 
 const MAX_STACK = 20;
@@ -80,6 +84,7 @@ let store: BayStore = {
   task: null,
   loginRequested: false,
   pageCount: 0,
+  panelCount: 0,
 };
 const listeners = new Set<() => void>();
 
@@ -153,6 +158,11 @@ function stripBayParam(): void {
 
 function onBayPage(): boolean {
   return store.pageCount > 0;
+}
+
+/** 右侧栏里的 LeoBay 正显示着，而且这不是 `/bay` 页本身（页面在场时页面优先）。 */
+function inBayPanel(): boolean {
+  return store.pageCount === 0 && store.panelCount > 0;
 }
 
 // ---- 目标栈 -------------------------------------------------------------------
@@ -256,6 +266,11 @@ let hostOff: (() => void) | null = null;
 /** 打开一条交易会话：LeoChat 小窗停在那条会话上。小窗还没就绪（登录态是懒加载的）就等它可用时再开。 */
 export function openBayConversation(threadId: string): void {
   if (!win() || !threadId) return;
+  // 在右侧栏里逛着：会话也留在右侧栏（换到 LeoChat 那一块），不另弹小窗。
+  if (inBayPanel() && panelConversationOpener) {
+    panelConversationOpener(`talent:${threadId}`);
+    return;
+  }
   let host: ReturnType<typeof hostState>;
   try {
     host = hostState();
@@ -287,6 +302,8 @@ export function openBay(target: BayTarget = { kind: "feed" }): void {
     writePageUrl(view.canGoBack ? view.current : null, advanced ? "push" : "replace");
     return;
   }
+  // 右侧栏里的 LeoBay：目标栈已经换好，栏内自己画，不离开当前页。
+  if (inBayPanel()) return;
   if (!bayEnabledHere()) return;
   goToBayPage();
 }
@@ -301,6 +318,16 @@ export function replaceBay(target: BayTarget): void {
   if (top && sameBayTarget(top, target)) return;
   commit({ stack: [...store.stack.slice(0, -1), target] });
   if (onBayPage()) writePageUrl(target, "replace");
+}
+
+/**
+ * 收起所有详情，回到列表那一层。只动目标栈：不跳页、不写地址栏（右侧栏里的 LeoBay 收到新的
+ * 「找相关服务」请求时用；这时它可能还没来得及登记在场，不能用会跳去 `/bay` 的 `openBay`）。
+ */
+export function closeBayDetails(): void {
+  if (!store.stack.length) return;
+  lastDirection = "back";
+  commit({ stack: [] });
 }
 
 export function bayBack(): void {
@@ -337,6 +364,37 @@ export function useBayHasDetail(): boolean {
 /** 当前页面是不是 `/bay` 页本身（BayPage 已挂载）。 */
 export function useBayPageMounted(): boolean {
   return useSyncExternalStore(subscribe, () => store.pageCount > 0, () => false);
+}
+
+// ---- 右侧栏里的 LeoBay（缩小版） ----------------------------------------------------
+
+let panelConversationOpener: ((conversationId: string) => void) | null = null;
+
+export interface BayPanelRegistration {
+  /** 「先聊聊」：让右侧栏换到 LeoChat 的这条会话（`talent:<threadId>`）。不给就照旧开小窗。 */
+  openConversation?: (conversationId: string) => void;
+}
+
+/**
+ * 右侧栏里的 LeoBay 显示出来时调（藏起来、卸载时调返回的函数）。
+ * 在场期间 `openBay` 只换栏内内容：不跳 `/bay`、不写地址栏；`bayBack` 退一层。`/bay` 页在场时页面优先，这里不起作用。
+ */
+export function registerBayPanel(options: BayPanelRegistration = {}): () => void {
+  const opener = options.openConversation ?? null;
+  commit({ panelCount: store.panelCount + 1 });
+  if (opener) panelConversationOpener = opener;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    commit({ panelCount: Math.max(0, store.panelCount - 1) });
+    if (opener && panelConversationOpener === opener) panelConversationOpener = null;
+  };
+}
+
+/** 右侧栏里的 LeoBay 此刻是不是显示着。 */
+export function useBayPanelMounted(): boolean {
+  return useSyncExternalStore(subscribe, () => store.panelCount > 0, () => false);
 }
 
 export function useBayFilter(): BayFeedFilter {
