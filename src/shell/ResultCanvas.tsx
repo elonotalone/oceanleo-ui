@@ -829,7 +829,11 @@ export function ResultCanvas({
     }
     if (activeCanvasEntry) return;
     rightSlot.setRightEditorHeader(false);
-    rightSlot.setRightLabel(view === "home" ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />);
+    // 卡片首页：去掉右栏顶上那一行。setRightLabel(null) 在 library 模式下会回落到
+    // 「预览」标题，必须连 frameless 一起打开，SplitWorkspace 才不画 header。
+    const onHome = view === "home";
+    rightSlot.setRightFrameless(onHome);
+    rightSlot.setRightLabel(onHome ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />);
     return () => {
       rightSlot.setRightLabel(null);
       rightSlot.setRightFrameless(false);

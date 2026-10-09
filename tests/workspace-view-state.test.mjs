@@ -347,6 +347,8 @@ test("AgentChat：右侧栏从卡片开始；「找真人」的 action 把右侧
   assert.match(source, /if \(action\.tab === "bay"\) setRightOpen\(true\);\s*\n\s*else setLibTab\(action\.tab\);/);
   const canvas = readFileSync(new URL("../src/shell/ResultCanvas.tsx", import.meta.url), "utf8");
   assert.match(canvas, /onHome: \(\) => onChangeRef\.current\?\.\("home"\)/);
-  assert.match(canvas, /setRightLabel\(view === "home" \? null : <WorkspaceViewHeader/);
+  assert.match(canvas, /const onHome = view === "home"/);
+  assert.match(canvas, /setRightFrameless\(onHome\)/);
+  assert.match(canvas, /setRightLabel\(onHome \? null : <WorkspaceViewHeader/);
   assert.doesNotMatch(canvas, /FixedWorkspaceTabs/);
 });
