@@ -50,6 +50,7 @@ import { ConfirmDialog } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
 import { pickLibraryWork } from "../needs/LibraryWorkPicker";
 import { ensureBayTerms } from "../settings";
+import { stripLeoCategoryPrefix } from "../shell/bay-links";
 import { openBay, replaceBay, requireBayLogin, useBaySignedIn, useBaySiteKey, type BayPaneProps } from "../shell/bay-state";
 import {
   TITLE_MAX,
@@ -966,7 +967,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
                 plain
                 specs={termsSpecs(specs)}
                 values={draft.fieldValues}
-                categoryName={tt(selectedCategory?.name_zh || "")}
+                categoryName={stripLeoCategoryPrefix(tt(selectedCategory?.name_zh || ""))}
                 onChange={(key: string, value: BayFieldValue) => patch({ fieldValues: { ...draft.fieldValues, [key]: value } })}
               />
             </>

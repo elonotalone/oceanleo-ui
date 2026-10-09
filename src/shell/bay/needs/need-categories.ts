@@ -6,6 +6,7 @@ import {
   siteDefaultCategory,
 } from "../../../lib/bay/categories";
 import type { BayCategoriesResponse, BayCategory } from "../../../lib/bay/types";
+import { stripLeoCategoryPrefix } from "../shell/bay-links";
 
 let latest: BayCategoriesResponse | null = null;
 
@@ -35,7 +36,7 @@ export function defaultNeedCategory(
 
 export function categoryName(tt: UITranslate, row: Pick<BayCategory, "slug" | "name_zh"> | null | undefined): string {
   if (!row) return "";
-  return row.name_zh ? tt(row.name_zh) : row.slug;
+  return stripLeoCategoryPrefix(row.name_zh ? tt(row.name_zh) : row.slug);
 }
 
 export function categoryNameBySlug(

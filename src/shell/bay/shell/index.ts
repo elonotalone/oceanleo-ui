@@ -1,5 +1,5 @@
 export * from "./bay-state";
-export { BAY_PARAM, BAY_KIND_PARAM, baySiteName, baySubsiteLabel, formatBayParam, parseBayParam, parseBayDeepLink } from "./bay-links";
+export { BAY_PARAM, BAY_KIND_PARAM, baySiteName, bayCategoryLabel, stripLeoCategoryPrefix, baySubsiteLabel, formatBayParam, parseBayParam, parseBayDeepLink } from "./bay-links";
 export { BayIcon, CallHumanIcon } from "./bay-icons";
 export { BayPage } from "./BayPage";
 export type { BayPageProps } from "./BayPage";

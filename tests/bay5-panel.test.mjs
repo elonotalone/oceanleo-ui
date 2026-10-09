@@ -142,7 +142,10 @@ const listStub = dataModule(`
     return { text, change: setText, commit: setText };
   }
   export function useBayCategoryName() {
-    return (c) => c.name_zh || c.slug;
+    return (c) => {
+      const n = c.name_zh || c.slug;
+      return n.startsWith("Leo") && n.length > 3 ? n.slice(3) : n;
+    };
   }
   export function BayViewSwitch() {
     return createElement("div", { "data-bay-view": "stub", role: "tablist" });
@@ -254,7 +257,7 @@ test("没有 request：browse，有搜索框和类目下拉", async () => {
   const select = view.host.querySelector("[data-bay-panel-category]");
   assert.ok(select);
   const labels = [...select.options].map((option) => option.textContent.trim());
-  assert.deepEqual(labels, ["全部类目", "LeoSlides", "LeoMusic", "专业咨询"]);
+  assert.deepEqual(labels, ["全部类目", "Slides", "Music", "专业咨询"]);
   assert.equal(globalThis.__bay5.relatedCalls.length, 0);
   await view.unmount();
 });
@@ -289,7 +292,7 @@ test("有 request、active：发相关服务请求；藏着不发", async () => 
   await view.unmount();
 });
 
-test("match: site 多出说明，含站点产品名", async () => {
+test("match: site 多出说明，含类目标签", async () => {
   resetRelated({
     items: [feedItem("service", "s1", "幻灯片")],
     match: "site",
@@ -298,7 +301,9 @@ test("match: site 多出说明，含站点产品名", async () => {
   });
   const view = await mount(panelEl({ siteKey: "ppt", active: true, request: { nonce: "n3", query: "配乐", category: "ppt" } }));
   await waitFor(() => assert.ok(view.host.querySelector("[data-bay-related-note]")));
-  assert.match(view.host.querySelector("[data-bay-related-note]").textContent, /LeoSlides/);
+  const relatedNote = view.host.querySelector("[data-bay-related-note]").textContent;
+  assert.match(relatedNote, /下面是 Slides 这个类目/);
+  assert.equal(relatedNote.includes("LeoSlides"), false);
   await view.unmount();
 });
 

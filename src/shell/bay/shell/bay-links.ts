@@ -121,6 +121,18 @@ export function baySiteName(siteKey: string | null | undefined, tt?: UITranslate
   return SITE_NAMES[key];
 }
 
+/** Bay 类目标签：产品名去掉开头的 Leo。站点自己仍叫 LeoSlides；Website / 其他不动。 */
+export function stripLeoCategoryPrefix(name: string): string {
+  return name.startsWith("Leo") && name.length > 3 ? name.slice(3) : name;
+}
+
+/** 站 key → 类目标签（`ppt` → Slides）；未知 key 返回 null。 */
+export function bayCategoryLabel(siteKey: string | null | undefined, tt?: UITranslate): string | null {
+  const name = baySiteName(siteKey, tt);
+  if (!name) return null;
+  return stripLeoCategoryPrefix(name);
+}
+
 export function isBayCategorySlug(value: unknown): value is string {
   return typeof value === "string" && SLUG.test(value);
 }

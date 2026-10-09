@@ -6,7 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { fetchBayRelated, type BayRelatedPage } from "../../../lib/bay/related";
 import { ConsultCard, ServiceCard } from "../supply";
 import { startPostNeed } from "../shell/BayList";
-import { baySiteName } from "../shell/bay-links";
+import { bayCategoryLabel } from "../shell/bay-links";
 import { openBay } from "../shell/bay-state";
 import type { BayPanelRequest } from "./BayPanel";
 
@@ -66,7 +66,7 @@ export function RelatedServices({ siteKey, request, active, onBrowseAll }: Relat
       ) : null}
       {page?.match === "site" ? (
         <p data-bay-related-note className="mt-1 text-[12px] text-stone-500">
-          {tt("没有直接匹配的服务，下面是 {site} 这个类目里的服务。", { site: baySiteName(page.site) ?? "" })}
+          {tt("没有直接匹配的服务，下面是 {site} 这个类目里的服务。", { site: bayCategoryLabel(page.site) ?? "" })}
         </p>
       ) : null}
       {status === "loading" ? (

@@ -129,3 +129,18 @@ test("站名与子域标签各管各的：标签不同的三站名字照常", ()
   assert.equal(links.baySiteName("threed"), "Leo3D");
   assert.equal(links.baySubsiteLabel("oceanleo"), null);
 });
+
+test("类目标签去掉开头的 Leo；站点产品名不动", () => {
+  assert.equal(links.stripLeoCategoryPrefix("LeoAgent"), "Agent");
+  assert.equal(links.stripLeoCategoryPrefix("LeoSlides"), "Slides");
+  assert.equal(links.stripLeoCategoryPrefix("Leo3D"), "3D");
+  assert.equal(links.stripLeoCategoryPrefix("Website"), "Website");
+  assert.equal(links.stripLeoCategoryPrefix("OceanLeo"), "OceanLeo");
+  assert.equal(links.bayCategoryLabel("ppt"), "Slides");
+  assert.equal(links.bayCategoryLabel("agent"), "Agent");
+  assert.equal(links.bayCategoryLabel("website"), "Website");
+  assert.equal(links.bayCategoryLabel("threed"), "3D");
+  assert.equal(links.bayCategoryLabel("chat"), "Chat");
+  assert.equal(links.baySiteName("ppt"), "LeoSlides");
+  assert.equal(links.bayCategoryLabel("nope"), null);
+});

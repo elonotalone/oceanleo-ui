@@ -4,6 +4,7 @@
 
 import type { ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { stripLeoCategoryPrefix } from "../shell/bay-links";
 import {
   overreachHints,
   type BayCatalogKind,
@@ -176,7 +177,7 @@ export function CategorySelect({ categories, value, onChange }: { categories: Ba
       <option value="">{tt("请选择类目")}</option>
       {categories.map((item) => (
         <option key={item.slug} value={item.slug}>
-          {tt(item.name_zh)}
+          {stripLeoCategoryPrefix(tt(item.name_zh))}
         </option>
       ))}
     </select>

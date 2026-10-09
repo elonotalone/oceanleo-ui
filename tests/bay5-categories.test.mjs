@@ -60,39 +60,39 @@ const { useBayCategoryName } = await import(
 );
 
 const DELIVERY = [
-  ["agent", "LeoAgent"],
+  ["agent", "Agent"],
   ["website", "Website"],
-  ["prompt", "LeoPrompt"],
-  ["ecommerce", "LeoStudio"],
-  ["ppt", "LeoSlides"],
-  ["excel", "LeoSheet"],
-  ["word", "LeoDoc"],
-  ["converter", "LeoConvert"],
-  ["aihuman", "LeoHuman"],
-  ["image", "LeoImage"],
-  ["video", "LeoVideo"],
-  ["resume", "LeoResume"],
-  ["bizdev", "LeoBizDev"],
-  ["logo", "LeoLogo"],
-  ["interior", "LeoInterior"],
-  ["chat", "LeoChat"],
-  ["threed", "Leo3D"],
-  ["music", "LeoMusic"],
-  ["meeting", "LeoMeeting"],
-  ["paper", "LeoPaper"],
-  ["notebook", "LeoNote"],
-  ["law", "LeoLaw"],
-  ["study", "LeoStudy"],
-  ["edu", "LeoEdu"],
-  ["novel", "LeoNovel"],
-  ["script", "LeoScript"],
-  ["design", "LeoDesign"],
-  ["make", "LeoMake"],
-  ["search", "LeoSearch"],
-  ["finance", "LeoFinance"],
-  ["med", "LeoMed"],
-  ["travel", "LeoTravel"],
-  ["game", "LeoPlay"],
+  ["prompt", "Prompt"],
+  ["ecommerce", "Studio"],
+  ["ppt", "Slides"],
+  ["excel", "Sheet"],
+  ["word", "Doc"],
+  ["converter", "Convert"],
+  ["aihuman", "Human"],
+  ["image", "Image"],
+  ["video", "Video"],
+  ["resume", "Resume"],
+  ["bizdev", "BizDev"],
+  ["logo", "Logo"],
+  ["interior", "Interior"],
+  ["chat", "Chat"],
+  ["threed", "3D"],
+  ["music", "Music"],
+  ["meeting", "Meeting"],
+  ["paper", "Paper"],
+  ["notebook", "Note"],
+  ["law", "Law"],
+  ["study", "Study"],
+  ["edu", "Edu"],
+  ["novel", "Novel"],
+  ["script", "Script"],
+  ["design", "Design"],
+  ["make", "Make"],
+  ["search", "Search"],
+  ["finance", "Finance"],
+  ["med", "Med"],
+  ["travel", "Travel"],
+  ["game", "Play"],
   ["other", "其他"],
 ];
 
@@ -216,19 +216,22 @@ test("needCategories：34 个都在（含 law、med），答疑领域不在", ()
   assert.equal(needsMod.defaultNeedCategory("music", SITE_RESPONSE), "music");
 });
 
-test("useBayCategoryName：产品名中英文都是 LeoSlides；「其他」英文走词典", () => {
+test("useBayCategoryName：去掉 Leo 前缀；Website 不动；「其他」英文走词典", () => {
   function Probe({ category }) {
     const name = useBayCategoryName();
     return React.createElement("span", { "data-name": name(category) });
   }
   const slides = { name_zh: "LeoSlides", name_en: "LeoSlides", slug: "ppt" };
+  const website = { name_zh: "Website", name_en: "Website", slug: "website" };
   const other = { name_zh: "其他", name_en: "Other", slug: "other" };
 
   globalThis.__bay5Locale = "zh";
-  assert.match(renderToStaticMarkup(React.createElement(Probe, { category: slides })), /data-name="LeoSlides"/);
+  assert.match(renderToStaticMarkup(React.createElement(Probe, { category: slides })), /data-name="Slides"/);
+  assert.match(renderToStaticMarkup(React.createElement(Probe, { category: website })), /data-name="Website"/);
   assert.match(renderToStaticMarkup(React.createElement(Probe, { category: other })), /data-name="其他"/);
 
   globalThis.__bay5Locale = "en";
-  assert.match(renderToStaticMarkup(React.createElement(Probe, { category: slides })), /data-name="LeoSlides"/);
+  assert.match(renderToStaticMarkup(React.createElement(Probe, { category: slides })), /data-name="Slides"/);
+  assert.match(renderToStaticMarkup(React.createElement(Probe, { category: website })), /data-name="Website"/);
   assert.match(renderToStaticMarkup(React.createElement(Probe, { category: other })), /data-name="Other"/);
 });

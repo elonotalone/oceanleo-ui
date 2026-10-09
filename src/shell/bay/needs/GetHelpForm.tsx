@@ -21,7 +21,7 @@ import {
   selectedHandoffRefs,
   toggleHandoffPick,
 } from "./handoff-context";
-import { defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
+import { categoryName, defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
 import { siteLabel } from "./need-format";
 import { ATTACHED_WORK_BOX, BTN_PRIMARY, BTN_QUIET, BTN_SECONDARY, Field, INPUT, LoginPrompt, PaneNotice, errorText } from "./need-ui";
 
@@ -189,7 +189,7 @@ export function GetHelpForm(props: GetHelpFormProps) {
             <p className="text-[12px] text-amber-700">{tt("类目暂时读不出来，请稍后再试。")}</p>
           ) : (
             <Select
-              options={categories.map((row) => ({ id: row.slug, label: row.name_zh || row.slug }))}
+              options={categories.map((row) => ({ id: row.slug, label: categoryName(tt, row) }))}
               value={category}
               onChange={(slug) => {
                 setCategory(slug);

@@ -9,7 +9,7 @@ import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
 import { DemandCard, HelpRequestCard } from "../needs";
 import { ConsultCard, ServiceCard } from "../supply";
 import { BayCategoryIcon, BayIcon } from "./bay-icons";
-import { BAY_ADVICE_ZONE } from "./bay-links";
+import { BAY_ADVICE_ZONE, stripLeoCategoryPrefix } from "./bay-links";
 import {
   openBay,
   requireBayLogin,
@@ -28,14 +28,14 @@ export function targetForFeedItem(item: BayFeedItem): BayTarget {
   return { kind: item.kind, id: item.id };
 }
 
-/** 类目名：产品名不翻译（站类目 name_zh === name_en === 产品名，词典没有这些键，中英文都原样）。「其他」在词典里有译文；非中文界面查不到词条时用接口的英文名。 */
+/** 类目名：接口名去掉开头的 Leo，中英文同一套（Slides、Website）。「其他」在词典里有译文；非中文界面查不到词条时用接口的英文名。 */
 export function useBayCategoryName(): (category: Pick<BayCategory, "name_zh" | "name_en" | "slug">) => string {
   const tt = useUI();
   const locale = useLocale();
   return (category) => {
     const translated = tt(category.name_zh);
-    if (translated !== category.name_zh || locale.startsWith("zh")) return translated;
-    return category.name_en || category.name_zh || category.slug;
+    const raw = translated !== category.name_zh || locale.startsWith("zh") ? translated : category.name_en || category.name_zh || category.slug;
+    return stripLeoCategoryPrefix(raw);
   };
 }
 
