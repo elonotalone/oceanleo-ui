@@ -5,10 +5,9 @@
 // **一律**深链到归属 app 的只读预览，包括归属就是当前 app 的那一档 —— `?app=<归属>`
 // 指的正是用户此刻站着的页面，按钮点得动，什么都没发生。
 //
-// 改后一条判据两个分支：
-//   · 归属 app ≠ 当前 app ⇒ 深链过去、落在预览（这是对的，一字未改）；
-//   · 归属 app = 当前 app ⇒ 不深链，就地打开这个类型的编辑插件；
-//     这一类打不开时，「编辑」这颗按钮**不出现**，而不是出现一颗点了原地打转的。
+// 改后：素材货架上点「编辑」一律就地打开这个类型的编辑插件。
+//   归属 app 是哪一个、人是从 Word 还是 Website 走进来，都不把人送去另一个工作台。
+//   这一类打不开时，「编辑」这颗按钮**不出现**，而不是出现一颗点了原地打转的。
 //
 // 这份用例量的是那条判据本身的两个出口：`useMaterialDetailAppPlan().editRoute`
 // （落点）与 `artifactActionMatrix().edit.visible`（可见性的唯一出口）。
@@ -287,37 +286,61 @@ test("同 app 但这一类打不开时，编辑这颗按钮根本不出现", () 
   globalThis.__editorCapabilityAvailable = true;
 });
 
-// ── ③ 跨 app ⇒ 深链过去、落在预览，一字未改 ─────────────────────────────────
+// ── ③ 跨 app / 跨站 ⇒ 仍就地开本类型插件 ─────────────────────────────────
 
-test("素材归属别的 app 时，仍然深链过去落在只读预览", () => {
+test("素材归属别的 app 时，也在当前站就地打开编辑插件，不再深链走", () => {
   globalThis.__editorCapabilityAvailable = true;
   globalThis.__previewHrefCalls = [];
   const item = shelfItem([attribution("deck-maker", "演示制作", 0)]);
   const plan = planFor(item, { appId: "ppt-studio" });
 
-  assert.equal(plan.editRoute, "deep-link");
-  assert.equal(plan.routeEditByApp, true);
+  assert.equal(plan.editRoute, "in-place");
+  assert.equal(plan.routeEditByApp, false);
   assert.equal(plan.editApp.appId, "deck-maker");
+  assert.equal(deepLinkMarkup(plan, item), "");
+  assert.deepEqual(globalThis.__previewHrefCalls, []);
 
-  const markup = deepLinkMarkup(plan, item);
-  assert.match(markup, /data-material-edit-app="deck-maker"/);
-  assert.match(markup, /libraryMode=preview/);
-  assert.deepEqual(globalThis.__previewHrefCalls.at(-1), {
-    appId: "deck-maker",
-    artifactId: item.artifactId,
-  });
-
-  // 归属自己出入口时，动作条上那颗不指名 app 的「编辑」不再出现：
-  // 同一个浮层里不许有两个说法不一样的编辑入口。
-  assert.equal(editStateFor(item, plan).visible, false);
+  const edit = editStateFor(item, plan);
+  assert.equal(edit.visible, true);
+  assert.equal(edit.available, true);
 });
 
-test("页面本身没锚定任何 app 时（explore）照旧深链到归属 app", () => {
+test("页面本身没锚定任何 app 时（explore）也就地开插件", () => {
   globalThis.__editorCapabilityAvailable = true;
   const item = shelfItem([attribution("deck-maker", "演示制作", 0)]);
   const plan = planFor(item, { appId: "" });
-  assert.equal(plan.editRoute, "deep-link");
-  assert.match(deepLinkMarkup(plan, item), /data-material-edit-app="deck-maker"/);
+  assert.equal(plan.editRoute, "in-place");
+  assert.equal(deepLinkMarkup(plan, item), "");
+  assert.equal(editStateFor(item, plan).visible, true);
+});
+
+test("货架条目没有归属 app 时，仍就地打开类型插件，不靠老家才能编辑", () => {
+  globalThis.__editorCapabilityAvailable = true;
+  const item = shelfItem([]);
+  const plan = planFor(item, { appId: "proposal", siteKey: "word" });
+  assert.equal(plan.editRoute, "in-place");
+  assert.equal(plan.routeEditByApp, false);
+  assert.equal(deepLinkMarkup(plan, item), "");
+  assert.equal(editStateFor(item, plan).visible, true);
+});
+
+test("Word 工作台打开网站归属的素材，落点仍是就地编辑插件", () => {
+  globalThis.__editorCapabilityAvailable = true;
+  const item = shelfItem([
+    {
+      appId: "corp-site",
+      siteKey: "website",
+      position: 0,
+      label: "企业官网",
+      origin: true,
+      role: "owner",
+    },
+  ]);
+  const plan = planFor(item, { appId: "proposal", siteKey: "word" });
+  assert.equal(plan.editRoute, "in-place");
+  assert.equal(plan.routeEditByApp, false);
+  assert.equal(deepLinkMarkup(plan, item), "");
+  assert.equal(editStateFor(item, plan).visible, true);
 });
 
 // ── ④ 不是货架的条目 ⇒ 既有行为一字不变 ─────────────────────────────────────

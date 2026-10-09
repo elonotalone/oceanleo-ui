@@ -93,11 +93,10 @@ export interface ArtifactActionMatrixOptions {
   /**
    * 素材货架上「编辑」这一颗的落点（`useMaterialDetailAppPlan().editRoute`）。
    *
-   * - `deep-link`：归属 app 不是当前 app，归属入口自己出那颗按钮，这里就不能再出
-   *   第二颗说法不一样的；隐藏而不是禁用——它此刻明明是能编辑的。
-   * - `in-place`：归属就是当前 app，就地打开编辑插件。**打不开的类型不出按钮**：
-   *   一颗按下去原地打转、或者只吐一句技术理由的按钮，比没有按钮更坏。
-   *   「哪一类打得开」的判据仍是 `editorCapabilityFor`，这里只决定看不看得见。
+   * - `deep-link`：历史取值。判据不再发出；若仍传入，动作条把这颗「编辑」藏掉
+   *   （归属入口那条路已废，避免两颗说法不一样的按钮）。
+   * - `in-place`：就地打开这个类型的编辑插件，不论当前站是不是素材的「老家」。
+   *   **打不开的类型不出按钮**。判据仍是 `editorCapabilityFor`。
    * - 不传或 `none`：不是素材货架（我的库里的作品等），既有行为一字不变。
    */
   materialEditRoute?: "deep-link" | "in-place" | "none";

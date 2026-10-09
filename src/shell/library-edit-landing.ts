@@ -6,8 +6,8 @@
 // 项目 UUID 去 ensure 一条会话，再拿这条会话当 `/history/<id>` 回看，门户
 // history 页在 SITES 里找不到 site_id，就会写出「所属网站已下线」。
 //
-// 本模块是那条落点的唯一出口：全页库按素材类型就地打开编辑器，禁止用对不上
-// 清册的历史会话当落点。explore / 站内工作台的跨 app 深链一字不改。
+// 本模块是那条落点的唯一出口：按素材类型就地打开编辑器，禁止用对不上
+// 清册的历史会话当落点。跨 app 也不再跳到归属工作台。
 // ============================================================================
 
 const PROJECT_OR_SESSION_UUID =
@@ -45,15 +45,14 @@ export function isUnmountablePortalHistorySiteId(siteId: string): boolean {
 }
 
 /**
- * 全页库把跨应用深链收成就地编辑；其余宿主保持传入的 editRoute。
+ * 任何宿主上的「编辑」都就地打开类型插件。跨应用深链曾经把 Word 里的网站素材
+ * 送去 `/workspace/<归属>`，人还在 Word，那个工作台并不存在。
  */
 export function resolveLibraryEditRoute(
   editRoute: LibraryEditRoute,
-  host: LibraryEditHost = {},
+  _host: LibraryEditHost = {},
 ): LibraryEditRoute {
-  if (isFullPageLibraryEditHost(host) && editRoute === "deep-link") {
-    return "in-place";
-  }
+  if (editRoute === "deep-link") return "in-place";
   return editRoute;
 }
 
@@ -62,19 +61,14 @@ export type LibraryEditLanding =
   | { kind: "owning-workbench"; href: string };
 
 /**
- * 编辑落点。全页库永远是类型编辑器；深链只有在仍是 deep-link 且地址不是
- * `/history/` 时才算归属工作台。
+ * 编辑落点永远是当前站的类型编辑器。`owningAppHref` 不再当跳转。
  */
 export function libraryEditLanding(
   editRoute: LibraryEditRoute,
   host: LibraryEditHost = {},
-  owningAppHref = "",
+  _owningAppHref = "",
 ): LibraryEditLanding {
-  const route = resolveLibraryEditRoute(editRoute, host);
-  const href = String(owningAppHref || "").trim();
-  if (route === "deep-link" && href && !isHistorySessionPath(href)) {
-    return { kind: "owning-workbench", href };
-  }
+  void resolveLibraryEditRoute(editRoute, host);
   return { kind: "typed-editor", href: null };
 }
 

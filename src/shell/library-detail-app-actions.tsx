@@ -52,16 +52,15 @@ export interface MaterialDetailAppPlan {
   /**
    * 「编辑」这一颗该往哪走。动作条按它决定谁出按钮，是这条判据的唯一出口。
    *
-   * - `deep-link`：这份素材归属的 app **不是**当前 app。去那边，落在只读预览。
-   * - `in-place`：归属就是当前 app。**不许深链**——深链回同一个页面就是原地打转，
-   *   用户点了「编辑」什么都没发生。这一档要就地打开这个类型的编辑插件。
+   * - `in-place`：素材货架上有可深链身份的条目。就地打开这个类型的编辑插件，
+   *   不论归属 app 是不是当前 app、人是从 Word 还是 Website 走进来。
+   *   跨站跳到归属工作台会让 Word 打不开网站编辑器——那是站的歧视，不是货架该管的事。
    * - `none`：不是素材货架的条目（我的库里的作品），既有行为一字不变。
+   * - `deep-link`：历史取值。判据不再发出；`resolveLibraryEditRoute` 若仍收到会收成就地开。
    */
   editRoute: "deep-link" | "in-place" | "none";
   /**
-   * 归属自己出编辑入口（= `editRoute === "deep-link"`）。为 true 时调用方必须把
-   * 动作条上那颗**不指名 app** 的「编辑」藏掉，否则同一个浮层里会有两个说法
-   * 不一样的编辑入口。
+   * 历史：归属工作台自己出编辑入口。判据不再发 `deep-link`，此字段恒为 false。
    */
   routeEditByApp: boolean;
 }
@@ -186,25 +185,18 @@ export function useMaterialDetailAppPlan({
     const onMaterialShelf =
       shelfItem.meta?.workspace_library_surface === "materials";
     const editApp = resolveEditApp(apps, packAppId, appId);
-    // 深链只在**真的要去别处**时才成立。过去这里对「归属就是当前 app」那一档也
-    // 返回 true，于是 `?app=<归属>` 指回了用户此刻就站着的页面——操作员报的
-    // 「在 slide 站点编辑会重复跳到同一个页面」就是这一幕：按钮点得动，什么都没发生。
-    // 归属就是当前 app 时改走 `in-place`：就地打开这个类型的编辑插件。
-    // 跨 app（以及页面本身没锚定任何 app，例如 explore）一字未改，仍是纯读深链。
-    const crossApp = Boolean(editApp) && (!appId || editApp!.appId !== appId);
+    // 货架上点「编辑」= 在**当前站**打开这个类型的编辑插件。归属 app 只说明
+    // 素材从哪来，不再把人送去另一个工作台。Word 打开网站素材、Website 打开文档，
+    // 都走同一条 in-place。打不开的类型由动作条把按钮藏掉（`artifactActionMatrix`）。
     const editRoute: MaterialDetailAppPlan["editRoute"] =
-      onMaterialShelf && Boolean(artifactId) && apps.length > 0
-        ? crossApp
-          ? "deep-link"
-          : "in-place"
-        : "none";
+      onMaterialShelf && Boolean(artifactId) ? "in-place" : "none";
     return {
       item,
       apps,
       editApp,
       artifactId,
       editRoute,
-      routeEditByApp: editRoute === "deep-link",
+      routeEditByApp: false,
     };
   }, [appId, packAppId, resolved, shelfItem, siteKey]);
 }

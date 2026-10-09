@@ -48,24 +48,24 @@ test("网站素材从门户库编辑不进 /history", () => {
   assert.equal(slides.href, null);
 });
 
-test("站内工作台跨 app 深链仍去归属工作台，只是不许落成 /history/", () => {
+test("站内工作台跨 app 也就地打开类型编辑器，不再去归属工作台", () => {
   const workbench = { appId: "ppt-studio", plain: false };
   assert.equal(isFullPageLibraryEditHost(workbench), false);
-  assert.equal(resolveLibraryEditRoute("deep-link", workbench), "deep-link");
+  assert.equal(resolveLibraryEditRoute("deep-link", workbench), "in-place");
 
   const ok = libraryEditLanding("deep-link", workbench, WEBSITE_OWNING_HREF);
-  assert.equal(ok.kind, "owning-workbench");
-  assert.equal(ok.href, WEBSITE_OWNING_HREF);
+  assert.equal(ok.kind, "typed-editor");
+  assert.equal(ok.href, null);
 
   const rejected = libraryEditLanding("deep-link", workbench, DEAD_HISTORY);
   assert.equal(rejected.kind, "typed-editor");
   assert.equal(rejected.href, null);
 });
 
-test("explore 无 app 且非全页库时深链判据不变", () => {
+test("explore 无 app 时同样收成就地编辑，不深链走", () => {
   const explore = { appId: "", plain: false };
   assert.equal(isFullPageLibraryEditHost(explore), false);
-  assert.equal(resolveLibraryEditRoute("deep-link", explore), "deep-link");
+  assert.equal(resolveLibraryEditRoute("deep-link", explore), "in-place");
 });
 
 test("门户库就地编辑不绑对不上清册的 site_id", () => {

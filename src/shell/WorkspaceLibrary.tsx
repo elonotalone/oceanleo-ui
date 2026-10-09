@@ -609,9 +609,8 @@ export function WorkspaceLibrary({
       setDetailIdentityFailure(message);
     },
   });
-  // 门户 /library 这类全页库没有挂归属工作台：跨应用深链会落到门户
-  // `/workspace/<app>` 或一条对不上清册的 `/history/<session>`。这里收成就地
-  // 类型编辑器。explore / 站内工作台仍用上面算出来的 editRoute。
+  // 编辑一律就地打开类型插件。`resolveLibraryEditRoute` 把历史 deep-link
+  // 收成 in-place，Word 打开网站素材不必再跳到一个本站没有的 `/workspace/<归属>`。
   const hostEditRoute = resolveLibraryEditRoute(detailAppPlan.editRoute, {
     appId,
     plain,
