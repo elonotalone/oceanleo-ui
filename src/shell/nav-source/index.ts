@@ -167,6 +167,18 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     },
   },
   {
+    id: "leochat",
+    href: "/leochat",
+    labelKey: "LeoChat",
+    labelSource: "ui",
+    iconId: "messages",
+    placements: {
+      // 紧跟 LeoBay。境内没有 LeoChat：由调用方（workspaceNav / 门户侧栏）用 bayEnabledHere() 拦掉。
+      workspace: { order: 25, option: "withMessages", optionDefault: true },
+      portal: { order: 25 },
+    },
+  },
+  {
     id: "projects",
     href: "/projects",
     labelKey: "projects",

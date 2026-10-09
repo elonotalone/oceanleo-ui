@@ -106,6 +106,12 @@ const OVERRIDES = {
   "./legacy-workspace-surface-adapter": legacyAdapterStub,
   "./workspace-surface-model": surfaceModelStub,
   "./artifact-client": artifactClientStub,
+  "./bay/shell/bay-state": dataModule("export function useBayEnabled(){ return true; }\n"),
+  "./bay/panel": dataModule("export function BayPanel(){ return null; }\n"),
+  "./leochat/LeoChatPanel": dataModule("export function LeoChatPanel(){ return null; }\n"),
+  "../lib/im/client": dataModule("export function useImEnabled(){ return false; }\n"),
+  "./messages/realtime/hooks": dataModule("export function useImUnread(){ return null; }\n"),
+  "./bay/shell/bay-icons": dataModule("export function BayIcon(){ return null; }\n"),
 };
 
 const controllerUrl = await compileModule(

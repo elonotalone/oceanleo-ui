@@ -145,6 +145,12 @@ const STUBS = {
   "./workbench-material-provider": materialActionsStubUrl,
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
+  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; }`),
+  "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
+  "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
+  "../lib/im/client": dataModule(`export function useImEnabled(){ return false; }`),
+  "./messages/realtime/hooks": dataModule(`export function useImUnread(){ return null; }`),
+  "./bay/shell/bay-icons": dataModule(`export function BayIcon(){ return null; }`),
 };
 const canvasStubs = {...STUBS, "./SplitWorkspace": splitUrl};
 const { ResultCanvas } = await import(await compileModule("src/shell/ResultCanvas.tsx", canvasStubs));
@@ -174,7 +180,7 @@ test("ResultCanvas 保存错误出现和清除均不重挂编辑器、不丢本�
   } finally { await mounted.unmount(); }
 });
 
-test("真实 ResultCanvas 重新设置底层 FixedWorkspaceTabs 不清掉仍在的外壳", async () => {
+test("真实 ResultCanvas 重新设置底层返回行不清掉仍在的外壳", async () => {
   const contents = (active) => React.createElement(React.Fragment, null, canvas(active), shell("A"));
   const mounted = await mount(contents("preview"));
   try {

@@ -566,7 +566,7 @@ function AgentChatInner({
   const readOnly = readOnlyProp || Boolean(workspace?.readOnly);
   // 团队/组织页与所有生成结果都归入固定「预览」槽的卡片，不再占一级标签。
   const hasOrgPanel = Boolean(renderOrgPanel);
-  const [libTab, setLibTab] = useState(hasOrgPanel ? "preview" : "template");
+  const [libTab, setLibTab] = useState(hasOrgPanel ? "preview" : "home");
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(null);
   // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
@@ -802,7 +802,7 @@ function AgentChatInner({
       seenArtRef.current = null;
       seenActionRef.current = null;
       actionHistoryRef.current = null;
-      setLibTab(hasOrgPanel ? "preview" : "template");
+      setLibTab(hasOrgPanel ? "preview" : "home");
       setWorkspaceAction(null);
       setRightOpen(hasOrgPanel);
       setStatus("");
@@ -819,7 +819,7 @@ function AgentChatInner({
     seenArtRef.current = null;
     seenActionRef.current = null;
     if (actionHistoryRef.current?.taskId !== taskId) actionHistoryRef.current = null;
-    setLibTab(hasOrgPanel ? "preview" : "template");
+    setLibTab(hasOrgPanel ? "preview" : "home");
     setWorkspaceAction(null);
     setRightOpen(hasOrgPanel);
     setStatus("");
@@ -1567,7 +1567,9 @@ function AgentChatInner({
         latestActionMessage.meta?.ui_action,
     );
     if (!action) return;
-    setLibTab(action.tab);
+    // 「找真人」的 action 不是槽位：不动受控值，把右侧栏打开，由右侧栏自己进到 LeoBay 那一块。
+    if (action.tab === "bay") setRightOpen(true);
+    else setLibTab(action.tab);
     setWorkspaceAction({
       nonce: `message:${latestActionMessage.id}`,
       action,

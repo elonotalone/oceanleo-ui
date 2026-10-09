@@ -28,7 +28,7 @@ export function targetForFeedItem(item: BayFeedItem): BayTarget {
   return { kind: item.kind, id: item.id };
 }
 
-/** 类目名：先查 17 种语言的词条；非中文界面查不到时用接口的英文名。 */
+/** 类目名：产品名不翻译（站类目 name_zh === name_en === 产品名，词典没有这些键，中英文都原样）。「其他」在词典里有译文；非中文界面查不到词条时用接口的英文名。 */
 export function useBayCategoryName(): (category: Pick<BayCategory, "name_zh" | "name_en" | "slug">) => string {
   const tt = useUI();
   const locale = useLocale();
@@ -157,7 +157,7 @@ const CHIP_BASE =
   "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
 /**
- * 16 个交付类目，一排会换行的小标签；再点一次取消。摆在种类下面。
+ * 33 个功能站 + 「其他」交付类目，一排会换行的小标签；再点一次取消。摆在种类下面。
  * `accent` 给了就用它填选中的那一个（/bay 页传站点主色），不给用黑色。
  */
 export function BayCategoryChips({
@@ -179,7 +179,7 @@ export function BayCategoryChips({
   return (
     <div role="group" aria-label={tt("类目")} data-bay-categories="chips" className="flex flex-wrap items-center gap-2">
       {loading
-        ? Array.from({ length: 8 }).map((_, index) => (
+        ? Array.from({ length: 12 }).map((_, index) => (
             <span key={index} aria-hidden="true" className="h-7 w-24 animate-pulse rounded-lg bg-black/5 dark:bg-white/10" />
           ))
         : (

@@ -138,9 +138,14 @@ test("两套外壳的差异必须是**声明过的**差异，而不是漂移", (
 
 test("navEntries: 可见性开关生效，默认值符合各外壳约定", () => {
   const defaults = navEntries("workspace").map((e) => e.id);
-  // LeoBay 占原「探索」的位置：恒在首页与工作台之间，且默认开启。
-  assert.deepEqual(defaults, ["home", "bay", "workspace", "library", "history"]);
+  // LeoBay 占原「探索」的位置：恒在首页与工作台之间，且默认开启。LeoChat 紧跟 LeoBay。
+  assert.deepEqual(defaults, ["home", "bay", "leochat", "workspace", "library", "history"]);
   assert.ok(!defaults.includes("playground"), "租户站默认不显示 playground");
+  assert.equal(
+    navEntries("workspace", { withMessages: false }).some((e) => e.id === "leochat"),
+    false,
+    "withMessages: false 时没有 LeoChat 这一行",
+  );
 
   const withPg = navEntries("workspace", { withPlayground: true }).map((e) => e.id);
   assert.equal(withPg[withPg.length - 1], "playground");
@@ -156,8 +161,9 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
   const portalIds = portal.map((e) => e.id);
   assert.ok(!portalIds.includes("talent"), "不再有站外 talent 项（真人协作已并入各站的 LeoBay）");
   assert.ok(!portalIds.includes("messages"), "门户主导航不再有 messages 行");
-  // LeoChat 只有小窗，没有整页：两套导航里都没有 leochat，也没有 explore（素材并进了 LeoBay）。
-  assert.ok(!portalIds.includes("leochat"), "门户主导航没有 leochat");
+  // LeoChat 整页在主导航里，紧跟 LeoBay；没有 explore（素材并进了 LeoBay）。
+  assert.ok(portalIds.includes("leochat"), "门户主导航有 leochat");
+  assert.equal(portalIds.indexOf("leochat"), portalIds.indexOf("bay") + 1, "门户 LeoChat 紧跟 LeoBay");
   assert.ok(!portalIds.includes("explore"), "门户主导航没有 explore");
   const bay = portal.find((e) => e.id === "bay");
   assert.ok(bay, "门户主导航有 LeoBay");
@@ -168,7 +174,8 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
     "LeoBay 排在首页之后、项目之前（原「探索」位）",
   );
   const workspaceIds = navEntries("workspace").map((e) => e.id);
-  assert.ok(!workspaceIds.includes("leochat"), "子站导航没有 leochat");
+  assert.ok(workspaceIds.includes("leochat"), "子站导航有 leochat");
+  assert.equal(workspaceIds.indexOf("leochat"), workspaceIds.indexOf("bay") + 1, "子站 LeoChat 紧跟 LeoBay");
   assert.ok(!workspaceIds.includes("explore"), "子站导航没有 explore");
   assert.ok(workspaceIds.includes("bay"), "子站导航有 LeoBay");
   assert.ok(!workspaceIds.includes("messages"), "子站导航没有 messages");

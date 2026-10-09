@@ -207,6 +207,24 @@ const surfaceModelStubUrl = dataModule(`
       : fallback(id);
   }
 `);
+const bayStateStubUrl = dataModule(`
+  export function useBayEnabled() { return true; }
+`);
+const bayPanelStubUrl = dataModule(`
+  export function BayPanel() { return null; }
+`);
+const leoChatPanelStubUrl = dataModule(`
+  export function LeoChatPanel() { return null; }
+`);
+const imClientStubUrl = dataModule(`
+  export function useImEnabled() { return false; }
+`);
+const imUnreadStubUrl = dataModule(`
+  export function useImUnread() { return null; }
+`);
+const bayIconsStubUrl = dataModule(`
+  export function BayIcon() { return null; }
+`);
 
 const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   react: reactUrl,
@@ -230,6 +248,12 @@ const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   "./workbench-material-provider": materialActionsStubUrl,
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
+  "./bay/shell/bay-state": bayStateStubUrl,
+  "./bay/panel": bayPanelStubUrl,
+  "./leochat/LeoChatPanel": leoChatPanelStubUrl,
+  "../lib/im/client": imClientStubUrl,
+  "./messages/realtime/hooks": imUnreadStubUrl,
+  "./bay/shell/bay-icons": bayIconsStubUrl,
 });
 const { ResultCanvas } = await import(resultCanvasUrl);
 
@@ -281,10 +305,14 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     mounted.container.querySelector(`[data-workspace-slot-panel="${slot}"]`);
   const live = (slot) =>
     mounted.container.querySelector(`[data-live-panel="${slot}"]`);
-  const tab = (label) =>
-    [...mounted.container.querySelectorAll("nav button")].find(
-      (button) => button.textContent === label,
-    );
+  const card = (id) =>
+    mounted.container.querySelector(`[data-workspace-card="${id}"]`);
+  const back = () => mounted.container.querySelector("[data-workspace-back]");
+  async function openSlot(id) {
+    const backBtn = back();
+    if (backBtn) await click(backBtn);
+    await click(card(id));
+  }
 
   try {
     assert.deepEqual(globalThis.__resultCanvasMounts, {
@@ -306,20 +334,20 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     await click(
       mounted.container.querySelector('[data-increment-panel="preview"]'),
     );
-    await click(tab("素材库"));
+    await openSlot("materials");
     assert.equal(panel("preview").hidden, true);
     assert.equal(panel("materials").hidden, false);
     await click(
       mounted.container.querySelector('[data-increment-panel="materials"]'),
     );
-    await click(tab("我的库"));
+    await openSlot("mine");
     await click(mounted.container.querySelector('[data-increment-panel="mine"]'));
-    await click(tab("云端浏览器"));
+    await openSlot("browser");
     await click(
       mounted.container.querySelector('[data-increment-panel="browser"]'),
     );
-    await click(tab("生成"));
-    await click(tab("云端浏览器"));
+    await openSlot("preview");
+    await openSlot("browser");
 
     for (const slot of ["preview", "materials", "mine", "browser"]) {
       assert.equal(live(slot), originalNodes[slot], `${slot} DOM instance`);

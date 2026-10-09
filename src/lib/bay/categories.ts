@@ -1,4 +1,5 @@
-// Bay 类目（oceanleo-bay 契约 §3.2）：交付类目卡片、站点默认类目。全项目只认网关返回的这一份，前端不另抄。
+// Bay 类目：交付类目 = 33 个功能站 + other（slug = 站 key）。全项目只认网关返回的这一份，前端不另抄。
+// site_defaults 里功能站默认就是它自己；aitools / asset 为 other；门户 oceanleo 为 null。
 import { bayGet } from "./http";
 import type { BayCategoriesResponse, BayCategory } from "./types";
 
@@ -51,7 +52,7 @@ export function fetchBayCategories(opts?: { force?: boolean }): Promise<BayCateg
   return pending;
 }
 
-/** 顶上那排卡片：16 个交付类目，按 position 排。 */
+/** 顶上那排卡片：33 个功能站 + other，按 position 排。 */
 export function deliveryCategories(data: BayCategoriesResponse | null | undefined): BayCategory[] {
   if (!data) return [];
   const rows = data.flat_items.length ? data.flat_items : data.items;

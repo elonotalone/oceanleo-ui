@@ -1,5 +1,7 @@
-// Bay 外壳用到的图标。类目图标的键跟着网关目录走（`talent_categories.icon`），认不出回落成 dots。
+// Bay 外壳用到的图标。类目图标的键 = 站 key（网关 `icon` 字段）；站点图标优先。
+// 旧图标名留着是为了老数据和「其他」（dots）、「专业咨询」（advice）。认不出回落成 dots。
 import type { ReactNode } from "react";
+import { siteIconFor } from "../../site-icons";
 
 const stroke = {
   viewBox: "0 0 24 24",
@@ -172,6 +174,18 @@ const CATEGORY_PATHS: Record<string, ReactNode> = {
 };
 
 export function BayCategoryIcon({ name, className = "h-5 w-5" }: { name: string | null | undefined; className?: string }) {
+  const siteIcon = name ? siteIconFor(name) : null;
+  if (siteIcon) {
+    return (
+      <span
+        data-bay-category-icon={name}
+        aria-hidden="true"
+        className={`inline-grid shrink-0 place-items-center [&>svg]:h-full [&>svg]:w-full ${className}`}
+      >
+        {siteIcon}
+      </span>
+    );
+  }
   return (
     <svg {...stroke} strokeWidth={1.6} className={className}>
       {(name && CATEGORY_PATHS[name]) || CATEGORY_PATHS.dots}

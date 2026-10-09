@@ -1,4 +1,4 @@
-// 侧栏不再放「消息」动作项；门户主导航是 LeoChat 整页，子站三者都没有。
+// 侧栏不再放「消息」动作项。LeoChat 整页在主导航里（紧跟 LeoBay）；左下角图标仍开小窗。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { imEnabledFor } from "../src/shell/messages/messages-family.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const src = (rel) => readFileSync(join(here, "..", "src", rel), "utf8");
 
-test("导航里是 bay（/bay，原探索位），没有 leochat、没有 explore", () => {
+test("导航里是 bay 和 leochat（紧跟），没有 explore、没有消息动作项", () => {
   for (const entry of NAV_SOURCE) {
     assert.equal(entry.action, undefined, `${entry.id} 不应是动作项`);
   }
@@ -28,21 +28,38 @@ test("导航里是 bay（/bay，原探索位），没有 leochat、没有 explor
   }
   assert.equal(navEntryById("messages"), undefined);
   assert.equal(NAV_SOURCE.some((e) => e.id === "messages"), false);
-  assert.equal(NAV_SOURCE.some((e) => e.id === "leochat"), false);
+  assert.equal(NAV_SOURCE.some((e) => e.id === "leochat"), true);
   assert.equal(NAV_SOURCE.some((e) => e.id === "explore"), false);
 
   const portal = navEntries("portal");
   const portalIds = portal.map((e) => e.id);
   const bay = portal.find((e) => e.id === "bay");
+  const leochat = portal.find((e) => e.id === "leochat");
   assert.ok(bay);
+  assert.ok(leochat);
   assert.equal(bay.href, "/bay");
   assert.equal(bay.labelKey, "LeoBay");
+  assert.equal(leochat.href, "/leochat");
+  assert.equal(leochat.labelKey, "LeoChat");
   assert.ok(portalIds.indexOf("home") < portalIds.indexOf("bay"));
+  assert.equal(portalIds.indexOf("leochat"), portalIds.indexOf("bay") + 1);
   assert.ok(portalIds.indexOf("bay") < portalIds.indexOf("workspace"));
 
-  const ws = navEntries("workspace", { withPlayground: true }).map((e) => e.id);
-  assert.deepEqual(ws, ["home", "bay", "workspace", "library", "history", "playground"]);
-  assert.ok(!ws.includes("leochat"));
+  const ws = navEntries("workspace").map((e) => e.id);
+  assert.deepEqual(ws, ["home", "bay", "leochat", "workspace", "library", "history"]);
+  assert.deepEqual(navEntries("workspace", { withPlayground: true }).map((e) => e.id), [
+    "home",
+    "bay",
+    "leochat",
+    "workspace",
+    "library",
+    "history",
+    "playground",
+  ]);
+  assert.equal(
+    navEntries("workspace", { withMessages: false }).some((e) => e.id === "leochat"),
+    false,
+  );
   assert.ok(!ws.includes("explore"));
   assert.ok(!ws.includes("messages"));
 });
@@ -59,7 +76,7 @@ test("租户站 workspaceNav 不再映射侧栏消息动作项", () => {
   const source = src("shell/WorkspacePages.tsx");
   assert.doesNotMatch(source, /openMessages/);
   assert.doesNotMatch(source, /MessagesNavIcon/);
-  assert.doesNotMatch(source, /withMessages/);
+  assert.match(source, /withMessages/);
   assert.doesNotMatch(source, /entry\.action/);
 });
 

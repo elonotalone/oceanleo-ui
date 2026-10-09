@@ -1,4 +1,4 @@
-// LeoChat 只有小窗：顶栏栏目、放大 / 还原、左列表右对话。没有整页、没有 LeoBay 栏。
+// LeoChat 小窗：顶栏栏目、放大 / 还原、左列表右对话。整页和右侧栏见 leochat4-surfaces；小窗只在 surface === "window" 时画。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
@@ -54,7 +54,7 @@ const { LeoChatTabs } = await import(
   }),
 );
 
-globalThis.__leoChat3 = { imOn: true, open: false, toggles: 0, unread: 0 };
+globalThis.__leoChat3 = { imOn: true, open: false, surface: "window", toggles: 0, unread: 0 };
 const { LeoChatButton } = await import(
   await compileModule("src/shell/leochat/LeoChatButton.tsx", {
     "../../i18n/ui/useUI": uiStub,
@@ -64,7 +64,17 @@ const { LeoChatButton } = await import(
       export function attachBayDeepLinks(){ return () => {}; }
     `),
     "../messages/host-state": dataModule(`
-      export function useMessagesHost(){ return { open: globalThis.__leoChat3.open }; }
+      export function useMessagesHost(){
+        return { open: globalThis.__leoChat3.open, surface: globalThis.__leoChat3.surface || "window" };
+      }
+      export function hostState(){
+        return {
+          toggleWindow(){
+            globalThis.__leoChat3.open = !globalThis.__leoChat3.open;
+            globalThis.__leoChat3.toggles += 1;
+          },
+        };
+      }
       export function openMessages(){ globalThis.__leoChat3.open = true; globalThis.__leoChat3.toggles += 1; }
       export function closeMessages(){ globalThis.__leoChat3.open = false; globalThis.__leoChat3.toggles += 1; }
     `),
@@ -239,18 +249,19 @@ test("放大后联系人栏在左、当前会话仍在右", async () => {
   await view.unmount();
 });
 
-test("源码：放大后切到联系人也不收走当前会话；没有整页打开", () => {
+test("源码：放大后切到联系人也不收走当前会话；按钮调 toggleWindow；小窗只在 surface === window 时画", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /state\.view === "inbox" \|\| state\.layout === "full"/);
+  assert.match(host, /windowOpen = state\.open && state\.surface === "window"/);
   assert.doesNotMatch(host, /data-leochat-open-page/);
-  assert.doesNotMatch(host, /BayView|LeoChatPage|id: "bay"/);
+  assert.doesNotMatch(host, /BayView|id: "bay"/);
   const layout = src("shell/messages/MessagesLayout.tsx");
   assert.match(layout, /onToggleExpand/);
   assert.match(layout, /ImExpandIcon|ImCollapseIcon/);
   assert.doesNotMatch(layout, /data-leochat-open-page/);
   const button = src("shell/leochat/LeoChatButton.tsx");
   assert.match(button, /if \(!imOn\) return null/);
-  assert.match(button, /open \? closeMessages\(\) : openMessages\(\)/);
+  assert.match(button, /hostState\(\)\.toggleWindow\(\)/);
 });
 
 test("源码：记住放大状态；默认高度 660、顶栏 52、圆角 22", () => {
@@ -268,7 +279,7 @@ test("源码：记住放大状态；默认高度 660、顶栏 52、圆角 22", (
 test("MessagesHost：不可用时只渲染登录框宿主；没有 LeoBay 栏", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /if \(!enabled\) return <BayAuthHost \/>;/);
-  assert.doesNotMatch(host, /BayView|BayGuestHost|LeoChatPage/);
+  assert.doesNotMatch(host, /BayView|BayGuestHost/);
   assert.match(host, /isTalentConversationId/);
   assert.match(host, /DealConversationView/);
 });

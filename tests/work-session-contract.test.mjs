@@ -160,9 +160,15 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     artifactAutoStart,
   );
   assert.ok(artifactAutoStart >= 0 && organizationAutoStart > artifactAutoStart);
-  assert.doesNotMatch(
-    agentChatSource.slice(artifactAutoStart, organizationAutoStart),
-    /setRightOpen\(true\)/,
+  // 产物、素材这类 agent 动作不许自己把右侧栏弹开（新产物只在收起的库里更新）。唯一的例外是「找真人」
+  // （2026-10-09）：用户亲口说要真人，右侧栏要把「与我的问题相关的服务」摆出来——整段里只许有
+  // `tab === "bay"` 守着的这一处，多一处就是又有东西在抢着开右栏。
+  assert.deepEqual(
+    agentChatSource
+      .slice(artifactAutoStart, organizationAutoStart)
+      .match(/[^\n]*setRightOpen\(true\)[^\n]*/g)
+      ?.map((line) => line.trim()),
+    ['if (action.tab === "bay") setRightOpen(true);'],
   );
   assert.match(agentChatSource, /setActiveArtifactIds\([\s\S]*?r\.data\.artifacts/);
   assert.match(agentChatSource, /activeArtifactIds\.has\(artifact\.id\)/);

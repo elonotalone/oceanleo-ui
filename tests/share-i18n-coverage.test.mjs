@@ -39,7 +39,6 @@ const SCANNED = ["share", "replay", "AgentChat.tsx", "AgentTranscriptBubble.tsx"
 const PRE_EXISTING_GAPS = new Set([
   "@ 某个成员：只让 TA 处理",
   "@ 谁（可多选）",
-  "云端浏览器",
   "从这里重新开始",
   "分支已创建，但工作会话暂未同步；本次任务仍会继续运行。",
   "创建分支失败",

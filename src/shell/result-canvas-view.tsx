@@ -41,101 +41,32 @@ export function LiveWorkspaceNode({
   return <>{store.node}</>;
 }
 
-export function FixedWorkspaceTabs({
-  slots,
-  selected,
-  onSelect,
-  accent,
-}: {
-  slots: WorkspaceSlotId[];
-  selected: WorkspaceSlotId;
-  onSelect: (slot: WorkspaceSlotId) => void;
-  accent: string;
-}) {
-  const tt = useUI();
-  return (
-    <nav
-      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-xl bg-stone-100 p-1"
-      aria-label={tt("工作区")}
-    >
-      {slots.map((slot) => {
-        const active = selected === slot;
-        return (
-          <button
-            key={slot}
-            type="button"
-            onClick={() => onSelect(slot)}
-            className={`min-w-fit flex-1 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] font-medium transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- active
- ? "bg-white shadow-sm"
- : "text-stone-500 hover:text-stone-700"
- }`}
-            style={active ? { color: accent } : undefined}
-          >
-            {tt(WORKSPACE_SLOT_LABELS[slot])}
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
 /**
- * 右栏没有被 `SplitWorkspace` 接管时的独立外框（自带一条槽位标签条）。原样从
- * `ResultCanvas.tsx` 搬来，class 与 DOM 结构逐字未变；拆分理由只有尺寸闸。
+ * 右栏没有被 `SplitWorkspace` 接管时的独立外框。顶上不再是槽位标签条：
+ * 有 `header` 时画返回行，卡片首页时不画。
  */
 export function StandaloneWorkspaceFrame({
-  slots,
-  selected,
-  onSelect,
-  accent,
+  header,
   className = "",
   children,
 }: {
-  slots: readonly WorkspaceSlotId[];
-  selected: WorkspaceSlotId;
-  onSelect: (slot: WorkspaceSlotId) => void;
-  accent: string;
+  header: ReactNode | null;
   className?: string;
   children: ReactNode;
 }) {
-  const tt = useUI();
   return (
     <section
       className={`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white ${className}`}
       style={{ boxShadow: "0 1px 3px rgba(0,0,0,.035)" }}
     >
-      <nav
-        className="v-scroll shrink-0 overflow-x-auto border-b border-stone-200 bg-stone-50/80 px-2"
-        aria-label={tt("工作区")}
-      >
-        <div className="flex min-w-max items-center">
-          {slots.map((slot) => {
-            const isActive = selected === slot;
-            return (
-              <button
-                key={slot}
-                type="button"
-                onClick={() => onSelect(slot)}
-                aria-current={isActive ? "page" : undefined}
-                className={`relative h-10 whitespace-nowrap px-3 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- isActive
- ? "text-stone-900"
- : "text-stone-400 hover:text-stone-700"
- }`}
-              >
-                {tt(WORKSPACE_SLOT_LABELS[slot])}
-                {isActive && (
-                  <span
-                    className="absolute inset-x-3 bottom-0 h-0.5 rounded-full"
-                    style={{ background: accent }}
-                  />
-                )}
-              </button>
-            );
-          })}
+      {header != null ? (
+        <div
+          data-workspace-frame-header
+          className="flex min-h-[2.5rem] shrink-0 items-center border-b border-stone-200 bg-stone-50/80 px-2 py-1"
+        >
+          {header}
         </div>
-      </nav>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </section>
   );

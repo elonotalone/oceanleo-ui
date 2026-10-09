@@ -79,7 +79,7 @@ const uiStubUrl = dataModule(`
 //   - `splitStubUrl`：/history 真实形态——ResultCanvas 住在 SplitWorkspace 右栏里
 //     （有 rightSlot，页签条由 SplitWorkspace 标题行承载）。右栏本身的登记归
 //     SplitWorkspace，ResultCanvas 只在前台露出时登记。
-//   - `standaloneStubUrl`：没有 SplitWorkspace，ResultCanvas 自带标签条
+//   - `standaloneStubUrl`：没有 SplitWorkspace，ResultCanvas 自带返回行
 //     （StandaloneWorkspaceFrame）住在右上角 → 一挂上就登记。
 const splitStubUrl = dataModule(`
   const slot = {
@@ -231,6 +231,12 @@ const STUBS = {
   "./workbench-material-provider": materialActionsStubUrl,
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
+  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; }`),
+  "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
+  "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
+  "../lib/im/client": dataModule(`export function useImEnabled(){ return false; }`),
+  "./messages/realtime/hooks": dataModule(`export function useImUnread(){ return null; }`),
+  "./bay/shell/bay-icons": dataModule(`export function BayIcon(){ return null; }`),
 };
 const { ResultCanvas } = await import(
   await compileModule("src/shell/ResultCanvas.tsx", {

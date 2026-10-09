@@ -2,7 +2,47 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { compileModule } from "./helpers/module-bench.mjs";
+
 const links = await import("../src/shell/bay/shell/bay-links.ts");
+const { SITE_ICONS } = await import(await compileModule("src/shell/site-icons.tsx"));
+
+/** 合同 §1.1 的 33 个功能站 key，顺序照抄。 */
+const FUNCTION_SITE_KEYS = [
+  "agent",
+  "website",
+  "prompt",
+  "ecommerce",
+  "ppt",
+  "excel",
+  "word",
+  "converter",
+  "aihuman",
+  "image",
+  "video",
+  "resume",
+  "bizdev",
+  "logo",
+  "interior",
+  "chat",
+  "threed",
+  "music",
+  "meeting",
+  "paper",
+  "notebook",
+  "law",
+  "study",
+  "edu",
+  "novel",
+  "script",
+  "design",
+  "make",
+  "search",
+  "finance",
+  "med",
+  "travel",
+  "game",
+];
 
 /** Bay 的全部站：清册 `scripts/oceanleo-sites.tsv` 去掉 talent（与网关 `app/talent/bay_sites.py` 的 BAY_SITE_KEYS 同序）。 */
 const EXPECTED = {
@@ -69,6 +109,15 @@ test("大小写与空白按同一个 key 认；未知、talent、空值返回 nu
   for (const bad of ["talent", "trade", "dev", "slide", "3d", "e-commerce", "", "   ", null, undefined, "toString", "__proto__", "constructor"]) {
     assert.equal(links.baySiteName(bad), null, JSON.stringify(bad));
   }
+});
+
+test("SITE_ICONS 覆盖合同 §1.1 的 33 个功能站；finance 与 money 都在", () => {
+  assert.equal(FUNCTION_SITE_KEYS.length, 33);
+  for (const key of FUNCTION_SITE_KEYS) {
+    assert.ok(SITE_ICONS[key], key);
+  }
+  assert.ok(SITE_ICONS.finance);
+  assert.ok(SITE_ICONS.money);
 });
 
 test("站名与子域标签各管各的：标签不同的三站名字照常", () => {

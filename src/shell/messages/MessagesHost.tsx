@@ -3,6 +3,7 @@
 // 全局唯一的消息浮层（每个站挂一次，在 AppShell / 门户外壳里与 SettingsModalHost 并列）。
 // 境内站与未登录：什么都不渲染、不连接、不监听深链。
 // 浮层里：聊天 / 联系人两个栏目 + 会话（交易会话也在这里）；放大后左列表、右对话。LeoBay 不在小窗里，它是 `/bay` 那张页。
+// LeoChat 还能在整页和右侧栏里显示，一次只显示一处，见 host-state.ts。小窗只在 surface === "window" 时画。
 // 聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -135,20 +136,21 @@ function MessagesOverlay() {
   const state = useMessagesHost();
   const host = hostState();
   const unread = useImUnread();
+  const windowOpen = state.open && state.surface === "window";
   const [newOpen, setNewOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [shown, setShown] = useState(state.open);
-  const [overlayState, setOverlayState] = useState<"open" | "closed">(state.open ? "open" : "closed");
+  const [shown, setShown] = useState(windowOpen);
+  const [overlayState, setOverlayState] = useState<"open" | "closed">(windowOpen ? "open" : "closed");
 
   useEffect(() => {
-    if (state.open) {
+    if (windowOpen) {
       setShown(true);
       const frame = window.requestAnimationFrame(() => setOverlayState("open"));
       return () => window.cancelAnimationFrame(frame);
     }
     setOverlayState("closed");
     return undefined;
-  }, [state.open]);
+  }, [windowOpen]);
 
   // 换了会话就收起信息面板。
   useEffect(() => {
@@ -242,7 +244,7 @@ function MessagesOverlay() {
         onClose={closeMessages}
         overlayState={overlayState}
         onExitComplete={() => {
-          if (!state.open) setShown(false);
+          if (!windowOpen) setShown(false);
         }}
         title="LeoChat"
         tabs={tabs}

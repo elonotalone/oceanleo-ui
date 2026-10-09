@@ -218,6 +218,55 @@ export const SITE_ICONS: Record<string, ReactNode> = {
       <circle cx="8" cy="9" r="1.5" fill="currentColor" />
     </svg>
   ),
+  prompt: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6.8 9.6l2.9 2.4-2.9 2.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.7 14.7h4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  notebook: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <path d="M5 4.5A1.5 1.5 0 016.5 3H18a1 1 0 011 1v16a1 1 0 01-1 1H6.5A1.5 1.5 0 015 19.5v-15z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M8.5 7.5h7M8.5 10.5h4.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="11.5" cy="15.5" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M13.5 17.5l2.2 2.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  edu: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <path d="M12 3L1 8l11 5 9-4.09" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 11.5V16c0 1.4 3.1 2.8 7 2.8s7-1.4 7-2.8v-4.5M21 8v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  finance: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M9 9.5h6M9 12.5h6M12 7.5v9M9.5 16l2.5-3.5L14.5 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0" />
+      <path d="M9.2 8.2L12 12m0 0l2.8-3.8M12 12v5M9.5 13.5h5M9.5 15.5h5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  ),
+  med: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="2" />
+      <path d="M9.5 3h5a1 1 0 011 1v2h-7V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M7.8 14h2l1.4-3 2 6 1.2-3h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  travel: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <path d="M12 21s6.2-6 6.2-10.4a6.2 6.2 0 10-12.4 0C5.8 15 12 21 12 21z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx="12" cy="10.4" r="2.4" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  game: (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <rect x="2.5" y="7" width="19" height="10" rx="4" stroke="currentColor" strokeWidth="1.9" />
+      <path d="M7.4 10.6v2.8M6 12h2.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="15.6" cy="11.2" r="1.05" fill="currentColor" />
+      <circle cx="17.9" cy="13.2" r="1.05" fill="currentColor" />
+    </svg>
+  ),
 };
 
 /**
@@ -307,6 +356,13 @@ export const SITE_BRAND_COLOR: Record<string, string> = {
   search: tailwindClassToHex("to-sky-600")!, // #0284c7
   money: tailwindClassToHex("to-green-700")!, // #15803d
   asset: tailwindClassToHex("to-emerald-600")!, // #059669
+  prompt: tailwindClassToHex("to-purple-600")!, // #9333ea
+  notebook: tailwindClassToHex("to-violet-600")!, // #7c3aed
+  edu: tailwindClassToHex("to-emerald-600")!, // #059669
+  finance: tailwindClassToHex("to-green-700")!, // #15803d
+  med: tailwindClassToHex("to-pink-600")!, // #db2777
+  travel: tailwindClassToHex("to-blue-600")!, // #2563eb
+  game: tailwindClassToHex("to-rose-600")!, // #e11d48
 };
 
 /** site_id → 几何图标节点，缺失返回 null。 */

@@ -13,7 +13,7 @@ export function primeNeedCategoriesForTests(next: BayCategoriesResponse | null):
   latest = next;
 }
 
-/** 需求与求助只列交付类目；答疑类目（含医疗、法律、宠物医疗）一律不出现。 */
+/** 需求与求助只列交付类目（33 站 + other，regulated_domain 均为 none，含 law / med 两个站类目）；答疑领域（c_med_* / c_law_* 等）不在这里。 */
 export function needCategories(response: BayCategoriesResponse | null | undefined): BayCategory[] {
   return bayDeliveryCategories(response).filter(
     (row) => !row.regulated_domain || row.regulated_domain === "none",

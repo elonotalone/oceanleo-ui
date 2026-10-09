@@ -33,6 +33,7 @@ import type {
 import { bayEnabledHere } from "./bay/shell/bay-state";
 import { BayIcon } from "./bay/shell/bay-icons";
 import { IconHome, IconWorkspace, IconLibrary, IconHistory, IconSparkles, IconExplore } from "./icons";
+import { LeoChatGlyph } from "./leochat/LeoChatButton";
 import {
   navEntries,
   type NavIconId,
@@ -40,7 +41,7 @@ import {
   type NavResolveOptions,
 } from "./nav-source";
 
-export type WorkspacePage = "home" | "explore" | "bay" | "workspace" | "library" | "history" | "playground";
+export type WorkspacePage = "home" | "explore" | "bay" | "leochat" | "workspace" | "library" | "history" | "playground";
 
 export interface WorkspaceNavOptions {
   /** 路由前缀（i18n 站传 "/zh" 之类）。默认 ""。 */
@@ -55,6 +56,8 @@ export interface WorkspaceNavOptions {
   withBay?: boolean;
   /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
   withPlayground?: boolean;
+  /** 是否显示 LeoChat 这一行。默认 true。境内由 workspaceNav 再用 bayEnabledHere() 拦掉。 */
+  withMessages?: boolean;
   /** v5：导航项下方原地展开的内容；标准用法是 history → 任务列表。 */
   disclosures?: Partial<Record<WorkspacePage, ShellNavDisclosure>>;
   /**
@@ -69,6 +72,7 @@ const DEFAULT_LABELS: Record<WorkspacePage, string> = {
   home: "新建",
   explore: "LeoBay",
   bay: "LeoBay",
+  leochat: "LeoChat",
   workspace: "工作台",
   library: "我的库",
   history: "我的任务",
@@ -80,6 +84,7 @@ const ICON_BY_ID: Partial<Record<NavIconId, ReactNode>> = {
   home: <IconHome />,
   explore: <IconExplore />,
   bay: <BayIcon />,
+  messages: <LeoChatGlyph className="h-[18px] w-[18px]" />,
   workspace: <IconWorkspace />,
   library: <IconLibrary />,
   history: <IconHistory />,
@@ -100,6 +105,7 @@ const ALL_WORKSPACE_PAGES_VISIBLE: NavResolveOptions = {
   withBay: true,
   withWorkspace: true,
   withPlayground: true,
+  withMessages: true,
 };
 
 /** 把 `WorkspaceNavOptions` 的开关翻成 `nav-source` 的可见性开关。 */
@@ -109,6 +115,7 @@ function resolveOptions(opts: WorkspaceNavOptions): NavResolveOptions {
     withBay: opts.withBay,
     withWorkspace: opts.withWorkspace,
     withPlayground: opts.withPlayground,
+    withMessages: opts.withMessages,
   };
 }
 
@@ -148,17 +155,19 @@ export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
     const page = entry.id as WorkspacePage;
     // labelSource "ui" 的项（如「消息」）取界面词表的中文源串，不进共享 nav namespace。
     labels[page] =
-      entry.id === "bay" || entry.labelKey === "LeoBay"
-        ? "LeoBay"
-        : entry.labelSource === "ui"
-          ? tt(entry.labelKey)
-          : safe(page, entry.labelKey);
+      entry.id === "leochat" || entry.labelKey === "LeoChat"
+        ? "LeoChat"
+        : entry.id === "bay" || entry.labelKey === "LeoBay"
+          ? "LeoBay"
+          : entry.labelSource === "ui"
+            ? tt(entry.labelKey)
+            : safe(page, entry.labelKey);
   }
   if (labels.bay) labels.explore = labels.bay;
   return labels;
 }
 
-/** 构造 AppShell 的导航。顺序：首页 → LeoBay → 工作台 → 我的库 → 我的任务 (→ playground)。 */
+/** 构造 AppShell 的导航。顺序：首页 → LeoBay → LeoChat → 工作台 → 我的库 → 我的任务 (→ playground)。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };
@@ -166,6 +175,7 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const bayLabel = bayEnabledHere() ? "LeoBay" : "素材";
   // 哪几页、什么次序、受哪个开关控制 —— 全部来自 nav-source，本文件不再自持。
   return navEntries("workspace", resolveOptions(opts))
+    .filter((entry) => entry.id !== "leochat" || bayEnabledHere())
     .map((entry) => {
     const p = entry.id as WorkspacePage;
     const legacyHistory =
@@ -180,7 +190,7 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
         : undefined);
     const href = `${base}${entry.href ?? "/"}`;
     return {
-      label: p === "bay" ? bayLabel : labels[p],
+      label: p === "leochat" ? "LeoChat" : p === "bay" ? bayLabel : labels[p],
       href,
       icon: ICON_BY_ID[entry.iconId],
       exact: entry.exact,

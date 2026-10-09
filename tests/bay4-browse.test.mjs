@@ -45,7 +45,11 @@ const pageState = {
   enabled: true,
   feed: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
   categories: {
-    categories: [{ slug: "design", name_zh: "设计与视觉", name_en: "Design", icon: "palette" }],
+    categories: [
+      { slug: "ppt", name_zh: "LeoSlides", name_en: "LeoSlides", icon: "ppt" },
+      { slug: "music", name_zh: "LeoMusic", name_en: "LeoMusic", icon: "music" },
+      { slug: "other", name_zh: "其他", name_en: "Other", icon: "dots" },
+    ],
     loading: false,
     failed: false,
   },
@@ -202,7 +206,7 @@ test("供给下有 data-category=advice，需求下没有", async () => {
   reset({ filter: { kind: "demand" } });
   const demand = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.equal(demand.host.querySelector('[data-category="advice"]'), null);
-  assert.ok(demand.host.querySelector('[data-category="design"]'));
+  assert.ok(demand.host.querySelector('[data-category="ppt"]'));
   await demand.unmount();
 });
 

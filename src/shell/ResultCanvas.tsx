@@ -30,6 +30,11 @@ import {
   type WorkspaceSlotId,
 } from "./workspace-actions";
 import { useWorkspaceSlotState } from "./result-canvas-slot-state";
+import { useWorkspaceViewState } from "./result-canvas-view-state";
+import { useBayEnabled } from "./bay/shell/bay-state";
+import { BayPanel } from "./bay/panel";
+import { LeoChatPanel } from "./leochat/LeoChatPanel";
+import { WorkspaceHome, WorkspaceViewHeader } from "./result-canvas-home";
 import {
   useActiveAppCapability,
   useAppCapabilityControls,
@@ -75,7 +80,6 @@ import {
 import {
   CanvasEmpty,
   CanvasSubTabs,
-  FixedWorkspaceTabs,
   LiveWorkspaceNode,
   StandaloneWorkspaceFrame,
   WORKSPACE_SLOT_LABELS,
@@ -169,6 +173,7 @@ function PluginModuleMount({
 /**
  * Five fixed product slots. Legacy container tabs render directly; only
  * normalized LibraryItems/entries become cards.
+ * 右侧栏顶上不再有标签，层由 `useWorkspaceViewState` 决定。
  */
 export function ResultCanvas({
   tabs,
@@ -425,6 +430,9 @@ export function ResultCanvas({
     setTemplatePageId,
     select,
     actionFor,
+    layer,
+    setLayer,
+    panelAction,
   } = useWorkspaceSlotState({
     active,
     showTemplate,
@@ -435,6 +443,26 @@ export function ResultCanvas({
     callerIdForSlot,
     onChange,
   });
+  const bayOn = useBayEnabled();
+  const panels = useMemo(() => ({ bay: bayOn, leochat: bayOn }), [bayOn]);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat } = useWorkspaceViewState({
+    selected, layer, setLayer, panelAction, select, panels,
+    onHome: () => onChangeRef.current?.("home"),
+  });
+  const bayBackRef = useRef<(() => void) | null>(null);
+  const chatBackRef = useRef<(() => void) | null>(null);
+  const handleBack = useCallback(() => {
+    const inner = view === "bay" ? bayBackRef.current : view === "leochat" ? chatBackRef.current : null;
+    if (inner) inner();
+    else goHome();
+  }, [goHome, view]);
+  const [bayVisited, setBayVisited] = useState(false);
+  const [chatVisited, setChatVisited] = useState(false);
+  useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
+  useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -708,19 +736,23 @@ export function ResultCanvas({
   // 登记 workbenchOpen：右上角「模型组合」选择框据此让位，不再压在面板页签上。
   //   - 前台一露出来（编辑器 / 详情预览 / 插件模块）就登记；编辑器自己也会登记一份
   //     （AdvancedContentWorkbench），计数器语义下互不干扰，这里补的是详情预览与插件模块。
-  //   - 没有 SplitWorkspace 时本组件自带标签条（StandaloneWorkspaceFrame）正好顶在
+  //   - 没有 SplitWorkspace 时本组件自带返回行（StandaloneWorkspaceFrame）正好顶在
   //     右上角，同样是面板可见 → 登记。有 SplitWorkspace 时右栏显隐由它登记。
   useWorkbenchOpenClaim(foregroundVisible || !rightSlot);
   const rightMainContent = (
-    <div className="relative h-full min-h-0 overflow-hidden">
+    <div className="relative h-full min-h-0 overflow-hidden" data-workspace-view={view}>
       <div
         data-result-canvas-slot-stack
         className={`h-full min-h-0 ${foregroundVisible ? "hidden" : "block"}`}
         aria-hidden={foregroundVisible || undefined}
         inert={foregroundVisible || undefined}
       >
+        <div data-workspace-home data-workspace-home-active={!foregroundVisible && view === "home"}
+             hidden={view !== "home"} inert={view !== "home" || undefined} className="h-full min-h-0 overflow-y-auto">
+          <WorkspaceHome slots={visibleSlots} panels={panels} onOpenSlot={openSlot} onOpenPanel={openPanel} previewCount={previewEntries.length} />
+        </div>
         {visibleSlots.map((slot) => {
-          const isActive = !foregroundVisible && selected === slot;
+          const isActive = !foregroundVisible && view === slot;
           return (
             <div
               key={slot}
@@ -737,6 +769,20 @@ export function ResultCanvas({
             </div>
           );
         })}
+        {panels.bay && bayVisited ? (
+          <div data-workspace-panel="bay" data-workspace-panel-active={!foregroundVisible && view === "bay"}
+               hidden={view !== "bay"} inert={view !== "bay" || undefined} className="h-full min-h-0 overflow-hidden">
+            <BayPanel siteKey={effectiveSiteId || "oceanleo"} active={!foregroundVisible && view === "bay"} request={bayRequest}
+                      onBackChange={(back) => { bayBackRef.current = back; }} onOpenConversation={openChat} />
+          </div>
+        ) : null}
+        {panels.leochat && chatVisited ? (
+          <div data-workspace-panel="leochat" data-workspace-panel-active={!foregroundVisible && view === "leochat"}
+               hidden={view !== "leochat"} inert={view !== "leochat" || undefined} className="h-full min-h-0 overflow-hidden">
+            <LeoChatPanel active={!foregroundVisible && view === "leochat"} request={chatRequest}
+                          onBackChange={(back) => { chatBackRef.current = back; }} onEvicted={goHome} />
+          </div>
+        ) : null}
       </div>
       {foregroundVisible && (
         <div
@@ -783,27 +829,19 @@ export function ResultCanvas({
     }
     if (activeCanvasEntry) return;
     rightSlot.setRightEditorHeader(false);
-    rightSlot.setRightLabel(
-      <FixedWorkspaceTabs
-        slots={visibleSlots}
-        selected={selected}
-        onSelect={select}
-        accent={accent}
-      />,
-    );
+    rightSlot.setRightLabel(view === "home" ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />);
     return () => {
       rightSlot.setRightLabel(null);
       rightSlot.setRightFrameless(false);
     };
   }, [
-    accent,
     activeCapability,
     activeCanvasEntry,
     activeCanvasMode,
+    handleBack,
     rightSlot,
-    select,
-    selected,
-    visibleSlots,
+    view,
+    viewTitle,
   ]);
 
   if (rightSlot) {
@@ -818,10 +856,7 @@ export function ResultCanvas({
 
   return (
     <StandaloneWorkspaceFrame
-      slots={visibleSlots}
-      selected={selected}
-      onSelect={select}
-      accent={accent}
+      header={view === "home" ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />}
       className={className}
     >
       {rightMainContent}

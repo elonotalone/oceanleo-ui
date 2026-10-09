@@ -62,7 +62,7 @@ test("底层标题/frameless/editorHeader 写入不覆盖外壳；最后释放�
   try {
     await act(async () => slot.setRightMaximized(true));
     await act(async () => {
-      slot.setRightLabel(React.createElement('span', { 'data-base-tabs': true }, 'FixedWorkspaceTabs'));
+      slot.setRightLabel(React.createElement('span', { 'data-base-tabs': true }, 'WorkspaceHeader'));
       slot.setRightEditorHeader(false);
       slot.setRightFrameless(true);
     });

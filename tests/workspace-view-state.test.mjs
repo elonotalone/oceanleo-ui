@@ -335,3 +335,18 @@ test("已经停在槽位上的宿主：action 之后宿主把受控值回显过�
     assert.equal(api.commits, after + 1, "只有宿主自己那一次重渲染被提交，hook 没有再触发一次");
   });
 });
+
+// ---- 对话页（AgentChat）与右侧栏的两处接线：读源码钉住，改丢了当场红 ----
+test("AgentChat：右侧栏从卡片开始；「找真人」的 action 把右侧栏打开而不改受控值", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
+  // 初值、清空任务、换任务三处都回到卡片（团队对话仍直接进「生成」里的组织卡）。
+  assert.equal([...source.matchAll(/hasOrgPanel \? "preview" : "home"/g)].length, 3);
+  assert.doesNotMatch(source, /hasOrgPanel \? "preview" : "template"/);
+  // bay 不是槽位：只开右侧栏，不把 "bay" 写进受控值（那会被当成未知标签落到「生成」）。
+  assert.match(source, /if \(action\.tab === "bay"\) setRightOpen\(true\);\s*\n\s*else setLibTab\(action\.tab\);/);
+  const canvas = readFileSync(new URL("../src/shell/ResultCanvas.tsx", import.meta.url), "utf8");
+  assert.match(canvas, /onHome: \(\) => onChangeRef\.current\?\.\("home"\)/);
+  assert.match(canvas, /setRightLabel\(view === "home" \? null : <WorkspaceViewHeader/);
+  assert.doesNotMatch(canvas, /FixedWorkspaceTabs/);
+});

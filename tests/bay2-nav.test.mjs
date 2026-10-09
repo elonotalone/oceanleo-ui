@@ -55,6 +55,10 @@ const { workspaceNav, pageFromPath } = await import(
     "../i18n/ui/useUI": uiStub,
     "next-intl": intlStub,
     "./bay/shell/bay-state": bayStateStub,
+    "./leochat/LeoChatButton": dataModule(`
+      export function LeoChatGlyph(){ return null; }
+      export function LeoChatButton(){ return null; }
+    `),
   })
 );
 

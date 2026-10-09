@@ -129,7 +129,10 @@ const slotStateStubUrl = dataModule(`
       templatePageId: "",
       setTemplatePageId() {},
       select() {},
-      actionFor() { return null; }
+      actionFor() { return null; },
+      layer: "slot",
+      setLayer() {},
+      panelAction: null
     };
   }
 `);
@@ -195,7 +198,6 @@ const resultViewStubUrl = dataModule(`
     });
   }
   export function CanvasSubTabs() { return null; }
-  export function FixedWorkspaceTabs() { return null; }
   export function StandaloneWorkspaceFrame({ children }) { return children; }
   export function createLiveWorkspaceNodeStore() {
     return { node: null, version: 0, listeners: new Set() };
@@ -228,6 +230,12 @@ const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
   "./result-canvas-view": resultViewStubUrl,
+  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; }`),
+  "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
+  "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
+  "../lib/im/client": dataModule(`export function useImEnabled(){ return false; }`),
+  "./messages/realtime/hooks": dataModule(`export function useImUnread(){ return null; }`),
+  "./bay/shell/bay-icons": dataModule(`export function BayIcon(){ return null; }`),
 });
 
 const { SplitWorkspace } = await import(splitUrl);

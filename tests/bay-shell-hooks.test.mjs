@@ -50,12 +50,19 @@ test("MessageItem：talent_order 卡渲染 BayOrderCard", () => {
   assert.match(text, /compact/);
 });
 
-test("nav-source：侧栏是 LeoBay（原探索位），没有 leochat、没有 explore", () => {
+// 2026-10-09：LeoChat 有了整页，侧栏里紧跟 LeoBay 多一行 `/leochat`（此前 LeoChat 只有小窗，这里钉的是「没有」）。
+test("nav-source：侧栏是 LeoBay（原探索位），紧跟一行 LeoChat 整页，没有 explore", () => {
   const text = src("shell/nav-source/index.ts");
   assert.match(text, /id: "bay"/);
   assert.match(text, /href: "\/bay"/);
   assert.match(text, /labelKey: "LeoBay"/);
-  assert.doesNotMatch(text, /href: "\/leochat"/);
+  const leochat = /\{\s*id: "leochat",[\s\S]*?\n  \},/.exec(text)?.[0] ?? "";
+  assert.match(leochat, /href: "\/leochat"/);
+  assert.match(leochat, /labelKey: "LeoChat"/);
+  assert.match(leochat, /workspace: \{ order: 25, option: "withMessages", optionDefault: true \}/);
+  assert.match(leochat, /portal: \{ order: 25 \}/);
+  assert.ok(text.indexOf('id: "bay"') < text.indexOf('id: "leochat"'), "LeoChat 排在 LeoBay 后面");
+  assert.equal(text.match(/href: "\/leochat"/g)?.length, 1, "侧栏里 LeoChat 只有一行");
   assert.doesNotMatch(text, /href: "\/explore"/);
   assert.doesNotMatch(text, /labelKey: "OceanLeo Bay"/);
 });
