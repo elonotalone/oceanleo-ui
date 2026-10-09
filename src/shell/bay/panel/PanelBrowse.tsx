@@ -3,8 +3,9 @@
 // 右侧栏里的 LeoBay 浏览：搜索、供给/需求、类目下拉、一行一条信息流。
 import type { ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { BayAssetLibrary } from "../asset/BayAssetLibrary";
 import { BayFeed, BayViewSwitch, openMine, startPublish, useBayCategoryName, useBaySearchText } from "../shell/BayList";
-import { BAY_ADVICE_ZONE } from "../shell/bay-links";
+import { BAY_ADVICE_ZONE, canonicalBayFeedKind } from "../shell/bay-links";
 import { BayGlyph } from "../shell/bay-icons";
 import { setBayFilter, useBayFilter } from "../shell/bay-state";
 import { useBayCategories } from "../shell/use-bay-data";
@@ -19,9 +20,9 @@ const BTN_QUIET = `${BTN} text-stone-600 hover:bg-stone-100 hover:text-stone-900
 const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
 
 export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
-  void siteKey;
   const tt = useUI();
   const filter = useBayFilter();
+  const asset = canonicalBayFeedKind(filter.kind) === "asset";
   const search = useBaySearchText(filter);
   const { categories } = useBayCategories();
   const name = useBayCategoryName();
@@ -71,11 +72,11 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
               {name(category)}
             </option>
           ))}
-          {filter.kind !== "demand" ? <option value={BAY_ADVICE_ZONE}>{tt("专业咨询")}</option> : null}
+          {canonicalBayFeedKind(filter.kind) === "service" ? <option value={BAY_ADVICE_ZONE}>{tt("专业咨询")}</option> : null}
         </select>
       </label>
       <div className="mt-3">
-        <BayFeed filter={filter} activeKey={null} variant="list" />
+        {asset ? <BayAssetLibrary filter={filter} siteKey={siteKey} /> : <BayFeed filter={filter} activeKey={null} variant="list" />}
       </div>
     </section>
   );

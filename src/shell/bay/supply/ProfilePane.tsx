@@ -236,7 +236,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
         onBrowseMaterials={
           official
             ? () => {
-                setBayFilter({ kind: "material" });
+                setBayFilter({ kind: "asset" });
                 openBay({ kind: "feed" });
               }
             : undefined

@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、供给/需求切换、类目（含专业咨询）、信息流本体。
+// LeoBay 页的信息流部件：搜索、服务/素材/需求切换、类目（含专业咨询）、信息流本体。
 // LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocale } from "next-intl";
@@ -9,7 +9,7 @@ import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
 import { DemandCard, HelpRequestCard } from "../needs";
 import { ConsultCard, ServiceCard } from "../supply";
 import { BayCategoryIcon, BayIcon } from "./bay-icons";
-import { BAY_ADVICE_ZONE, stripLeoCategoryPrefix } from "./bay-links";
+import { BAY_ADVICE_ZONE, BAY_FEED_KINDS, canonicalBayFeedKind, stripLeoCategoryPrefix } from "./bay-links";
 import {
   openBay,
   requireBayLogin,
@@ -66,7 +66,7 @@ export function activeFeedKey(target: BayTarget): string | null {
 }
 
 function isDefaultFilter(filter: BayFeedFilter): boolean {
-  return (filter.kind ?? "supply") === "supply" && !filter.category && !filter.q;
+  return canonicalBayFeedKind(filter.kind) === "service" && !filter.category && !filter.q;
 }
 
 // ---- 搜索 ---------------------------------------------------------------------
@@ -114,15 +114,21 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 
 // ---- 种类 ---------------------------------------------------------------------
 
+const VIEW_LABEL: Record<(typeof BAY_FEED_KINDS)[number], string> = {
+  service: "服务",
+  asset: "素材",
+  request: "需求",
+};
+
 /**
- * 供给 / 需求两段小切换。选中的那一个用站点主色填满（没给主色用黑色）。
+ * 服务 / 素材 / 需求三段小切换。选中的那一个用站点主色填满（没给主色用黑色）。
  */
 export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accent?: string }) {
   const tt = useUI();
-  const value = filter.kind === "demand" ? "demand" : "supply";
+  const value = canonicalBayFeedKind(filter.kind);
   return (
-    <div role="tablist" aria-label={tt("看素材与服务还是看需求")} data-bay-view className="flex max-w-full flex-wrap items-center gap-1.5">
-      {(["supply", "demand"] as const).map((kind) => {
+    <div role="tablist" aria-label={tt("看服务、素材还是需求")} data-bay-view className="flex max-w-full flex-wrap items-center gap-1.5">
+      {BAY_FEED_KINDS.map((kind) => {
         const active = kind === value;
         return (
           <button
@@ -135,7 +141,7 @@ export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accen
               setBayFilter({
                 ...filter,
                 kind,
-                category: kind === "demand" && filter.category === BAY_ADVICE_ZONE ? undefined : filter.category,
+                category: kind !== "service" && filter.category === BAY_ADVICE_ZONE ? undefined : filter.category,
               })
             }
             style={active ? { background: accent || "#111113" } : undefined}
@@ -143,7 +149,7 @@ export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accen
               active ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
             }`}
           >
-            {tt(kind === "supply" ? "素材与服务" : "需求")}
+            {tt(VIEW_LABEL[kind])}
           </button>
         );
       })}
@@ -206,7 +212,7 @@ export function BayCategoryChips({
                   </button>
                 );
               })}
-              {filter.kind !== "demand" ? (
+              {canonicalBayFeedKind(filter.kind) === "service" ? (
                 <button
                   type="button"
                   aria-pressed={filter.category === BAY_ADVICE_ZONE}
@@ -349,14 +355,20 @@ export function BayFeed({
           <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-500">
             {pristine
               ? tt("LeoBay 里还没有内容，发第一条需求或服务吧")
-              : tt(filter.kind === "demand" ? "这里还没有需求" : "这里还没有素材和服务")}
+              : tt(
+                  canonicalBayFeedKind(filter.kind) === "request"
+                    ? "这里还没有需求"
+                    : canonicalBayFeedKind(filter.kind) === "asset"
+                      ? "这里还没有素材"
+                      : "这里还没有服务",
+                )}
           </p>
           {pristine ? (
             emptyAction ? (
               <div className="mt-4">{emptyAction}</div>
             ) : null
           ) : (
-            <button type="button" onClick={() => setBayFilter({ kind: "supply" })} className={`mt-4 ${QUIET_BUTTON}`} data-bay-clear-filters>
+            <button type="button" onClick={() => setBayFilter({ kind: "service" })} className={`mt-4 ${QUIET_BUTTON}`} data-bay-clear-filters>
               {tt("清除筛选")}
             </button>
           )}

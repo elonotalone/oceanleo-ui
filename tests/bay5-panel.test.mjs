@@ -186,6 +186,10 @@ const stubs = {
   "../supply": supplyStub,
   "../shell/use-bay-data": dataStub,
   "../needs/LibraryWorkPicker": pickerStub,
+  "../asset/BayAssetLibrary": dataModule(`
+    const createElement = (...args) => globalThis.__bay5React.createElement(...args);
+    export function BayAssetLibrary(){ return createElement("div", { "data-bay-asset-library": "1" }); }
+  `),
 };
 
 const { BayPanel } = await import(await compileModule("src/shell/bay/panel/BayPanel.tsx", stubs));
@@ -242,7 +246,7 @@ async function mount(element) {
       });
       host.remove();
       bayState.closeBayDetails();
-      bayState.setBayFilter({ kind: "supply" });
+      bayState.setBayFilter({ kind: "service" });
       bayState.setBayNavigator(null);
     },
   };

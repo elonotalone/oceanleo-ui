@@ -21,6 +21,7 @@ const { BAY_SELLER_MESSAGES } = await import("../src/i18n/ui/messages/bay-seller
 const { BAY_MONEY_MESSAGES } = await import("../src/i18n/ui/messages/bay-money-copy.ts");
 const { BAY_PORTAL_MESSAGES } = await import("../src/i18n/ui/messages/bay-portal-copy.ts");
 const { LEOCHAT_PAGE_MESSAGES } = await import("../src/i18n/ui/messages/leochat-page-copy.ts");
+const { BAY_ASSET_MESSAGES } = await import("../src/i18n/ui/messages/bay-asset-copy.ts");
 const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 
 const LOCALES = [
@@ -100,6 +101,7 @@ const OTHER_BAY = [
   ["bay-money-copy", BAY_MONEY_MESSAGES],
   ["bay-portal-copy", BAY_PORTAL_MESSAGES],
   ["leochat-page-copy", LEOCHAT_PAGE_MESSAGES],
+  ["bay-asset-copy", BAY_ASSET_MESSAGES],
 ];
 
 function headBase(locale) {

@@ -469,8 +469,8 @@ export {
  * 所以这个常量的值是 `/bay`；名字留着是因为各站还在 import 它。locale 前缀站请传自己的 `basePath`。
  */
 export const EXPLORE_BASE_PATH = "/bay";
-/** `/bay?kind=material`：让 LeoBay 页停在素材栏。 */
-const MATERIALS_KIND_QUERY = "kind=material";
+/** `/bay?kind=asset`：让 LeoBay 页停在素材栏。老链接 `kind=material` 仍被归一到这一栏。 */
+const MATERIALS_KIND_QUERY = "kind=asset";
 
 // ── 「预览&编辑」深链缺 app 锚点时的可见降级（V5 残余 R-3）────────────────────
 // `?app=` 看着像可选装饰，其实是**承重**的：库预览面板挂在 app 操作台的右栏里
@@ -551,7 +551,7 @@ export function workspaceTemplatePreviewHref(
 }
 
 /**
- * 「更多」落点 = `/bay?kind=material&app=<appId>`（LeoBay 的素材栏，锚定该 app）。
+ * 「更多」落点 = `/bay?kind=asset&app=<appId>`（LeoBay 的素材栏，锚定该 app）。
  *
  * 素材货架据此把「此 app」那一段顶到首屏。appId 为空时退回不带锚点的素材栏，
  * 而不是产出 `&app=`：空参数会让货架多一条「有 app 参数但取不到 app」的分支。

@@ -3,7 +3,7 @@
 // `?bay=<kind>[:<参数>]`：feed、demand:<id>、service:<id>、help:<id>、consult:<id>、profile:<handle>、
 // order:<id>、conversation:<threadId>、post-need[:<category>]、call-human[:<category>]、propose:<demandId>、
 // checkout:<serviceId>[:<tier>]、publish[:<category>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]。认不出的值一律当没有。
-// 2026-10-09：`/bay` 页不再按种类分栏，只按类目逛；`?kind=` 只剩「看供给还是看需求」，老值照样认（见 normalizeBayFeedKind）。
+// 2026-10-09：`/bay` 页按 service / asset / request 三栏逛；老 `?kind=` 值照样认（见 normalizeBayFeedKind）。
 // 「我的」改成五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；老的 `mine:<tab>` 值落到对应的新块。
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { BayMineTab, BayTarget } from "./bay-state";
@@ -29,25 +29,35 @@ export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab 
 }
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
 /**
- * `/bay?kind=<值>`：`supply`（默认，不写进地址）= 这个类目里的素材和服务；`demand` = 这个类目里的需求；
- * `material` = 官方素材货架，页面上没有按键通向它，只有各站「更多素材」这类链接会带这个值。
+ * `/bay?kind=<值>`：`service`（默认，不写进地址）= 这个类目里的服务（含答疑）；
+ * `asset` = 素材库（类型、来源分区、文书区）；`request` = 这个类目里的需求（含求助）。
+ * 老值 `supply`/`all`/`consult` → service，`demand`/`help` → request，`material` → asset。
  */
 export const BAY_KIND_PARAM = "kind";
-export const BAY_FEED_KINDS: readonly ("supply" | "demand" | "material")[] = ["supply", "demand", "material"];
-/** 老地址里的种类值：全部 / 服务 / 答疑 → 供给；求助 → 需求。 */
-const LEGACY_FEED_KINDS: Readonly<Record<string, "supply" | "demand">> = {
-  all: "supply",
-  service: "supply",
-  consult: "supply",
-  help: "demand",
+export const BAY_FEED_KINDS = ["service", "asset", "request"] as const;
+export type BayFeedKind = (typeof BAY_FEED_KINDS)[number];
+export const DEFAULT_BAY_FEED_KIND: BayFeedKind = "service";
+/** 老地址里的种类值。 */
+const LEGACY_FEED_KINDS: Readonly<Record<string, BayFeedKind>> = {
+  all: "service",
+  supply: "service",
+  consult: "service",
+  demand: "request",
+  help: "request",
+  material: "asset",
 };
 
-export function normalizeBayFeedKind(raw: string | null | undefined): "supply" | "demand" | "material" | null {
+export function normalizeBayFeedKind(raw: string | null | undefined): BayFeedKind | null {
   const text = typeof raw === "string" ? raw.trim() : "";
   if (!text) return null;
   const kind = BAY_FEED_KINDS.find((value) => value === text);
   if (kind) return kind;
   return Object.prototype.hasOwnProperty.call(LEGACY_FEED_KINDS, text) ? LEGACY_FEED_KINDS[text] : null;
+}
+
+/** 页面或测试可能仍传入老值；落到三栏之一。 */
+export function canonicalBayFeedKind(raw: string | null | undefined): BayFeedKind {
+  return normalizeBayFeedKind(raw) ?? DEFAULT_BAY_FEED_KIND;
 }
 
 /**
@@ -306,7 +316,7 @@ export function sameBayTarget(a: BayTarget, b: BayTarget): boolean {
   if (a.kind === "feed" && b.kind === "feed") {
     const fa = a.filter ?? {};
     const fb = b.filter ?? {};
-    return (fa.kind ?? "supply") === (fb.kind ?? "supply") && (fa.category ?? "") === (fb.category ?? "") && (fa.q ?? "") === (fb.q ?? "");
+    return (fa.kind ?? DEFAULT_BAY_FEED_KIND) === (fb.kind ?? DEFAULT_BAY_FEED_KIND) && (fa.category ?? "") === (fb.category ?? "") && (fa.q ?? "") === (fb.q ?? "");
   }
   return formatBayParam(a) === formatBayParam(b);
 }

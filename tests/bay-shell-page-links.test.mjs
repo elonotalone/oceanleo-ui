@@ -112,8 +112,8 @@ test("默认筛选不往地址里写 kind；?kind=demand 进页面能读回来",
   try {
     const off = state.registerBayPage();
     assert.equal(state.bayStateSnapshot().current.kind, "feed");
-    assert.equal(state.bayStateSnapshot().current.filter?.kind ?? "supply", "supply");
-    assert.equal(win.location.search.includes("kind="), false, "默认 supply 不写 kind");
+    assert.equal(state.bayStateSnapshot().current.filter?.kind ?? "service", "service");
+    assert.equal(win.location.search.includes("kind="), false, "默认 service 不写 kind");
     off();
   } finally {
     delete globalThis.window;
@@ -124,7 +124,7 @@ test("默认筛选不往地址里写 kind；?kind=demand 进页面能读回来",
   try {
     const off = state.registerBayPage();
     assert.equal(state.bayStateSnapshot().current.kind, "feed");
-    assert.equal(state.bayStateSnapshot().current.filter?.kind, "demand");
+    assert.equal(state.bayStateSnapshot().current.filter?.kind, "request");
     off();
   } finally {
     delete globalThis.window;

@@ -14,7 +14,7 @@ import {
 import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
 import { hostState } from "../../messages/host-state";
-import { BAY_KIND_PARAM, normalizeBayFeedKind, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget } from "./bay-links";
+import { BAY_KIND_PARAM, DEFAULT_BAY_FEED_KIND, normalizeBayFeedKind, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget, type BayFeedKind } from "./bay-links";
 
 export type BayLayout = "docked" | "full" | "mobile" | "page";
 
@@ -23,10 +23,10 @@ export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "card";
 
 export type BayFeedFilter = {
   /**
-   * `supply`（默认）= 素材和服务（含答疑）；`demand` = 需求（含求助）；
-   * `material` = 官方素材货架（不走信息流接口，由页面自己画；页面上没有入口，只有带 `?kind=material` 的链接到得了）。
+   * `service`（默认）= 服务（含答疑）；`asset` = 素材库（不走人才信息流）；
+   * `request` = 需求（含求助）。老值 `supply`/`demand`/`material` 在写入时归一。
    */
-  kind?: "supply" | "demand" | "material";
+  kind?: BayFeedKind;
   category?: string;
   q?: string;
 };
@@ -78,7 +78,7 @@ const MAX_STACK = 20;
 const DEFAULT_SITE = "oceanleo";
 
 let store: BayStore = {
-  filter: { kind: "supply" },
+  filter: { kind: DEFAULT_BAY_FEED_KIND },
   stack: [],
   siteKey: DEFAULT_SITE,
   task: null,
@@ -168,9 +168,9 @@ function inBayPanel(): boolean {
 // ---- 目标栈 -------------------------------------------------------------------
 
 function normalizeFilter(filter: BayFeedFilter | undefined): BayFeedFilter {
-  const out: BayFeedFilter = { kind: "supply" };
+  const out: BayFeedFilter = { kind: DEFAULT_BAY_FEED_KIND };
   if (!filter) return out;
-  out.kind = normalizeBayFeedKind(filter.kind) ?? "supply";
+  out.kind = normalizeBayFeedKind(filter.kind) ?? DEFAULT_BAY_FEED_KIND;
   if (isBayCategorySlug(filter.category)) out.category = filter.category;
   const q = typeof filter.q === "string" ? filter.q.trim().slice(0, 60) : "";
   if (q) out.q = q;
@@ -238,7 +238,7 @@ export function setBayNavigator(navigate: ((href: string) => void) | null): void
 export function bayPageHrefNow(): string {
   const params = new URLSearchParams(buildBaySearch("", view.canGoBack ? view.current : null));
   const kind = store.filter.kind;
-  if (kind && kind !== "supply") params.set(BAY_KIND_PARAM, kind);
+  if (kind && kind !== DEFAULT_BAY_FEED_KIND) params.set(BAY_KIND_PARAM, kind);
   const text = params.toString().replace(/%3A/gi, ":");
   return text ? `/bay?${text}` : "/bay";
 }
@@ -409,12 +409,12 @@ export function setBayFilter(filter: BayFeedFilter): void {
   if (onBayPage()) writePageKind(next.kind);
 }
 
-/** 把当前种类写进 `/bay` 页的地址（`?kind=material`），刷新或把链接发给别人时停在同一栏。 */
+/** 把当前种类写进 `/bay` 页的地址（`?kind=asset` / `?kind=request`），刷新或把链接发给别人时停在同一栏。 */
 function writePageKind(kind: BayFeedFilter["kind"]): void {
   const w = win();
   if (!w) return;
   const params = new URLSearchParams(w.location.search);
-  if (kind && kind !== "supply") params.set(BAY_KIND_PARAM, kind);
+  if (kind && kind !== DEFAULT_BAY_FEED_KIND) params.set(BAY_KIND_PARAM, kind);
   else params.delete(BAY_KIND_PARAM);
   const text = params.toString().replace(/%3A/gi, ":");
   const next = `${w.location.pathname}${text ? `?${text}` : ""}${w.location.hash || ""}`;

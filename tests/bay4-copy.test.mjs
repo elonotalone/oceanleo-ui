@@ -15,9 +15,12 @@ const HAN = /[\u4e00-\u9fff]/;
 const SECTION_4 = [
   "素材与服务",
   "看素材与服务还是看需求",
+  "看服务、素材还是需求",
   "专业咨询",
   "搜素材、服务、需求…",
   "这里还没有素材和服务",
+  "这里还没有服务",
+  "这里还没有素材",
   "这里还没有需求",
   "返回 LeoBay",
   "素材",
@@ -77,7 +80,7 @@ function baseHas(locale, key) {
 }
 
 test("合同 §4：16 语齐全、占位符不丢、非中日韩不含汉字", () => {
-  assert.equal(SECTION_4.length, 43);
+  assert.equal(SECTION_4.length, 46);
   const missing = [];
   for (const key of SECTION_4) {
     const placeholders = (key.match(/\{\w+\}/g) || []).sort();

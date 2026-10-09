@@ -40,7 +40,7 @@ const uiStub = dataModule(
 
 const pageState = {
   current: { kind: "feed" },
-  filter: { kind: "supply" },
+  filter: { kind: "service" },
   signedIn: true,
   enabled: true,
   feed: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
@@ -58,7 +58,7 @@ globalThis.__bay4Page = pageState;
 
 function reset(patch = {}) {
   pageState.current = { kind: "feed" };
-  pageState.filter = { kind: "supply" };
+  pageState.filter = { kind: "service" };
   pageState.signedIn = true;
   pageState.enabled = true;
   pageState.feed = { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} };
@@ -123,6 +123,10 @@ const stubs = {
   "next-intl": dataModule(`export function useLocale(){ return "zh"; }`),
   "../../../i18n/ui/useUI": uiStub,
   "../../ExplorePage": exploreStub,
+  "../asset/BayAssetLibrary": dataModule(`
+    const createElement = (...args) => globalThis.__bay4React.createElement(...args);
+    export function BayAssetLibrary(){ return createElement("div", { "data-bay-asset-library": "1" }); }
+  `),
   "../needs/LibraryWorkPicker": dataModule(`export function LibraryWorkPickerHost(){ return null; }`),
   "./bay-auth-host": dataModule(`export function BayAuthHost(){ return null; }`),
   "./bay-state": stateStub,
@@ -186,56 +190,62 @@ test("页头只有两个 data-bay-action：mine 和 publish；没有 data-bay-ki
   await view.unmount();
 });
 
-test("有 data-bay-view 两个 tab", async () => {
+test("有 data-bay-view 三个 tab", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   assert.equal(tabs.getAttribute("role"), "tablist");
   const views = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.getAttribute("data-view"));
-  assert.deepEqual(views, ["supply", "demand"]);
+  assert.deepEqual(views, ["service", "asset", "request"]);
   await view.unmount();
 });
 
-test("供给下有 data-category=advice，需求下没有", async () => {
-  reset({ filter: { kind: "supply" } });
+test("服务下有 data-category=advice，需求下没有", async () => {
+  reset({ filter: { kind: "service" } });
   const supply = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.ok(supply.host.querySelector('[data-category="advice"]'));
   await supply.unmount();
 
-  reset({ filter: { kind: "demand" } });
+  reset({ filter: { kind: "request" } });
   const demand = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.equal(demand.host.querySelector('[data-category="advice"]'), null);
   assert.ok(demand.host.querySelector('[data-category="ppt"]'));
   await demand.unmount();
 });
 
-test("需求视图请求 kind=needs，供给视图请求 kind=supply", async () => {
+test("需求视图请求 kind=needs，服务视图请求 kind=supply", async () => {
   function Probe({ filter }) {
     useBayFeed(filter, false);
-    return React.createElement("span", { "data-feed-probe": filter.kind ?? "supply" });
+    return React.createElement("span", { "data-feed-probe": filter.kind ?? "service" });
   }
 
   globalThis.__bay4FeedCalls = [];
-  const supply = await mount(React.createElement(Probe, { filter: { kind: "supply" } }));
+  const supply = await mount(React.createElement(Probe, { filter: { kind: "service" } }));
   assert.ok(globalThis.__bay4FeedCalls.some((call) => call.kind === "supply"));
   await supply.unmount();
 
   globalThis.__bay4FeedCalls = [];
-  const demand = await mount(React.createElement(Probe, { filter: { kind: "demand" } }));
+  const demand = await mount(React.createElement(Probe, { filter: { kind: "request" } }));
   assert.ok(globalThis.__bay4FeedCalls.some((call) => call.kind === "needs"));
   assert.equal(
-    globalThis.__bay4FeedCalls.some((call) => call.kind === "demand"),
+    globalThis.__bay4FeedCalls.some((call) => call.kind === "demand" || call.kind === "request"),
     false,
   );
   await demand.unmount();
+
+  globalThis.__bay4FeedCalls = [];
+  const asset = await mount(React.createElement(Probe, { filter: { kind: "asset" } }));
+  assert.equal(globalThis.__bay4FeedCalls.length, 0);
+  await asset.unmount();
 });
 
-test("kind=material 时有返回键、没有切换，页面没有官方素材横幅", async () => {
-  reset({ filter: { kind: "material" } });
+test("kind=asset 时有素材库和三类切换，没有返回键，页面没有官方素材横幅", async () => {
+  reset({ filter: { kind: "asset" } });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  assert.ok(view.host.querySelector("[data-bay-materials-back]"));
-  assert.equal(view.host.querySelector("[data-bay-view]"), null);
+  assert.ok(view.host.querySelector("[data-bay-asset-library]"));
+  assert.ok(view.host.querySelector("[data-bay-view]"));
+  assert.equal(view.host.querySelector("[data-bay-materials-back]"), null);
   assert.equal(view.host.querySelector("[data-bay-materials-promo]"), null);
   await view.unmount();
 

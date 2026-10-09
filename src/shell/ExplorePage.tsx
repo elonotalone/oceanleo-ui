@@ -95,7 +95,7 @@ export interface ExplorePageProps {
   onMaterialDragEnd?: () => void;
   /**
    * 嵌在 LeoBay 的「素材」栏里：不带页框（页框由 LeoBay 页给），货架标题写「官方素材」。
-   * 素材只在 LeoBay 里展示；独立的 `/explore` 页已下线（各站那个地址跳到 `/bay?kind=material`）。
+   * 素材只在 LeoBay 里展示；独立的 `/explore` 页已下线（各站那个地址跳到 `/bay?kind=asset`）。
    */
   embedded?: boolean;
   /** @deprecated 零配置之后整份被忽略，见 `ExploreConfig`。 */

@@ -173,7 +173,7 @@ export function MyOrdersPane({
             type="button"
             data-bay-action={role === "buyer" ? "browse-services" : "publish-service"}
             onClick={() =>
-              openBay(role === "buyer" ? { kind: "feed", filter: { kind: "supply" } } : { kind: "publish" })
+              openBay(role === "buyer" ? { kind: "feed", filter: { kind: "service" } } : { kind: "publish" })
             }
             className={"mt-3 " + ORDER_BUTTON}
           >

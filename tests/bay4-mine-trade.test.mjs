@@ -86,6 +86,11 @@ const settingsStub = dataModule(`
 const linksStub = dataModule(`
   export function baySiteName(key){ return key === "design" ? "LeoDesign" : key || null; }
   export function baySubsiteLabel(key){ return key || null; }
+  export function stripLeoCategoryPrefix(name){
+    const text = String(name || "");
+    return text.startsWith("Leo") && text.length > 3 ? text.slice(3) : text;
+  }
+  export function bayCategoryLabel(key){ return key || null; }
 `);
 const paymentsStub = dataModule(`
   export async function fetchBayPaymentConfig() {
@@ -276,7 +281,7 @@ test("我买到的：只出买家订单；空状态是还没有买过东西和�
   assert.match(empty.host.textContent, /你还没有买过东西。/);
   assert.match(empty.host.textContent, /去逛逛/);
   await empty.click("[data-bay-action=browse-services]");
-  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "supply" } });
+  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "service" } });
   await empty.unmount();
 });
 

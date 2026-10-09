@@ -382,7 +382,7 @@ test("我的订单：买家空态去逛逛，卖家空态去发布", async () =>
   assert.ok(view.q("[data-bay-empty=all]"));
   assert.match(view.host.textContent, /去逛逛/);
   await view.click("[data-bay-action=browse-services]");
-  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "supply" } });
+  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "service" } });
   await view.click("[data-bay-role=seller]");
   await view.click("[data-bay-action=publish-service]");
   assert.deepEqual(W.opened.at(-1), { kind: "publish" });

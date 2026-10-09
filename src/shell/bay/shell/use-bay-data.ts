@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { deliveryCategories, fetchBayCategories } from "../../../lib/bay/categories";
 import { bayFeedErrorText, classifyBayFeedCaught, fetchBayFeed } from "../../../lib/bay/feed";
 import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
+import { canonicalBayFeedKind } from "./bay-links";
 import type { BayFeedFilter } from "./bay-state";
 
 export interface BayFeedView {
@@ -30,12 +31,21 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
   const [cursor, setCursor] = useState<string | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const kind = filter.kind === "demand" ? "needs" : "supply";
+  const skipFeed = canonicalBayFeedKind(filter.kind) === "asset";
+  const kind = canonicalBayFeedKind(filter.kind) === "request" ? "needs" : "supply";
   const category = filter.category ?? "";
   const q = filter.q ?? "";
 
   const load = useCallback(
     async (from: string | null) => {
+      if (skipFeed) {
+        setItems([]);
+        setCursor(null);
+        setError(null);
+        setLoading(false);
+        setLoaded(true);
+        return;
+      }
       const request = ++requestRef.current;
       abortRef.current?.abort();
       const controller = typeof AbortController === "undefined" ? null : new AbortController();
@@ -47,7 +57,7 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
         setLoaded(false);
       }
       try {
-        // 页面 supply/缺省/material → 接口 supply；demand → needs。素材货架不走信息流，这里仍按供给请求，页面自己不画这一块。
+        // 页面 service / 缺省 → 接口 supply；request → needs。asset 不走人才信息流。
         const page = await fetchBayFeed({ kind, category, q }, from, { signal: controller?.signal });
         if (request !== requestRef.current) return;
         setItems((prev) => (from ? mergeItems(prev, page.items) : page.items));
@@ -71,7 +81,7 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
         }
       }
     },
-    [kind, category, q],
+    [kind, category, q, skipFeed],
   );
 
   useEffect(() => {

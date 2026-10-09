@@ -339,7 +339,7 @@ test("官方主页点「逛官方素材」停在素材栏", async () => {
   await act(() => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
-  assert.deepEqual(globalThis.__bayFilters.at(-1), { kind: "material" });
+  assert.deepEqual(globalThis.__bayFilters.at(-1), { kind: "asset" });
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "feed" });
   await view.unmount();
 });

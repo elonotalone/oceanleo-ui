@@ -45,7 +45,7 @@ const uiStub = dataModule(
 
 const pageState = {
   current: { kind: "feed" },
-  filter: { kind: "supply" },
+  filter: { kind: "service" },
   signedIn: true,
   enabled: true,
   feed: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
@@ -65,7 +65,7 @@ function feedOf(patch = {}) {
 
 function reset(patch = {}) {
   pageState.current = { kind: "feed" };
-  pageState.filter = { kind: "supply" };
+  pageState.filter = { kind: "service" };
   pageState.signedIn = true;
   pageState.enabled = true;
   pageState.feed = feedOf();
@@ -136,6 +136,10 @@ const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/official": officialStub,
   "../../ExplorePage": exploreStub,
+  "../asset/BayAssetLibrary": dataModule(`
+    const createElement = (...args) => globalThis.__bay3React.createElement(...args);
+    export function BayAssetLibrary(){ return createElement("div", { "data-bay-asset-library": "1" }); }
+  `),
   "../needs/LibraryWorkPicker": dataModule(`export function LibraryWorkPickerHost(){ return null; }`),
   "./bay-auth-host": dataModule(`export function BayAuthHost(){ return null; }`),
   "./bay-state": stateStub,
@@ -220,24 +224,23 @@ test("页头只有「我的」和「发布」两个键", async () => {
   await view.unmount();
 });
 
-test("切换是「素材与服务 / 需求」", async () => {
+test("切换是「服务 / 素材 / 需求」", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   const labels = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.textContent.replace(/\s+/g, ""));
-  assert.deepEqual(labels, ["素材与服务", "需求"]);
+  assert.deepEqual(labels, ["服务", "素材", "需求"]);
   await view.unmount();
 });
 
-test("停在「素材」时渲染素材货架和返回键、不渲染切换类目和信息流", async () => {
-  reset({ filter: { kind: "material" } });
+test("停在「素材」时渲染素材库和三类切换，没有返回键，不渲染人才信息流", async () => {
+  reset({ filter: { kind: "asset" } });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  assert.ok(view.host.querySelector('[data-explore-embedded="true"]'));
-  assert.ok(view.host.querySelector("[data-bay-materials-back]"));
-  assert.equal(view.host.querySelector("[data-bay-materials-publisher]"), null);
-  assert.equal(view.host.querySelector("[data-bay-view]"), null);
-  assert.equal(view.host.querySelector("[data-bay-categories]"), null);
+  assert.ok(view.host.querySelector("[data-bay-asset-library]"));
+  assert.equal(view.host.querySelector("[data-bay-materials-back]"), null);
+  assert.ok(view.host.querySelector("[data-bay-view]"));
+  assert.ok(view.host.querySelector("[data-bay-categories]"));
   assert.equal(view.host.querySelector("[data-bay-feed]"), null);
   await view.unmount();
 });
@@ -253,7 +256,7 @@ test("境内只渲染素材货架", async () => {
   reset({ enabled: false });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.equal(view.host.querySelector('[data-bay-page="materials-only"]')?.getAttribute("data-bay-page"), "materials-only");
-  assert.ok(view.host.querySelector('[data-explore-embedded="true"]'));
+  assert.ok(view.host.querySelector("[data-bay-asset-library]"));
   assert.equal(view.host.querySelector("[data-bay-page-hero]"), null);
   await view.unmount();
 });
@@ -283,7 +286,7 @@ test("?kind=material 进页面后停在素材", async () => {
   const off = bayState.registerBayPage();
   function Probe() {
     const filter = bayState.useBayFilter();
-    return React.createElement("span", { "data-kind": filter.kind ?? "supply" });
+    return React.createElement("span", { "data-kind": filter.kind ?? "service" });
   }
   const host = document.createElement("div");
   document.body.appendChild(host);
@@ -291,7 +294,7 @@ test("?kind=material 进页面后停在素材", async () => {
   await act(() => {
     root.render(React.createElement(Probe));
   });
-  assert.equal(host.querySelector("[data-kind]").getAttribute("data-kind"), "material");
+  assert.equal(host.querySelector("[data-kind]").getAttribute("data-kind"), "asset");
   await act(() => root.unmount());
   host.remove();
   off();
@@ -319,10 +322,10 @@ test("信息流：首屏骨架、出错给重试、加载更多是一个键", ()
 });
 
 test("供给/需求切换行会换行，没有横向滚动容器", () => {
-  const out = html(React.createElement(BayViewSwitch, { filter: { kind: "supply" }, accent: "#0ea5e9" }));
+  const out = html(React.createElement(BayViewSwitch, { filter: { kind: "service" }, accent: "#0ea5e9" }));
   assert.match(out, /flex-wrap/);
   assert.doesNotMatch(out, /overflow-x-auto/);
-  assert.equal(count(out, /role="tab"/g), 2);
+  assert.equal(count(out, /role="tab"/g), 3);
 });
 
 const DISPLAY = new Set(["block", "inline-block", "inline", "flex", "inline-flex", "grid", "inline-grid", "hidden", "contents"]);
@@ -373,7 +376,7 @@ test("自检：打架比对器认得出截断遇上块级、两个上边距，�
   assert.deepEqual(conflictsIn("gap-2 gap-3"), ["gap-2 ↔ gap-3"]);
 });
 
-test("源码是供给/需求切换，没有五种种类标签", () => {
+test("源码是服务/素材/需求切换，没有五种种类标签", () => {
   const list = src("shell/bay/shell/BayList.tsx");
   assert.match(list, /data-bay-view/);
   assert.match(list, /data-view=\{kind\}/);
@@ -396,7 +399,7 @@ test("渲染出来的每个元素：没有两个类在抢同一个属性", async
   const browse = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo", accent: "#0ea5e9" }));
   pages.push(["逛", browse.host.innerHTML]);
   await browse.unmount();
-  reset({ filter: { kind: "material" } });
+  reset({ filter: { kind: "asset" } });
   const material = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   pages.push(["素材", material.host.innerHTML]);
   await material.unmount();
@@ -404,11 +407,11 @@ test("渲染出来的每个元素：没有两个类在抢同一个属性", async
   const detail = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   pages.push(["详情", detail.host.innerHTML]);
   await detail.unmount();
-  reset({ filter: { kind: "supply", category: "design" }, feed: feedOf({ items: feedItems(), hasMore: true }) });
+  reset({ filter: { kind: "service", category: "design" }, feed: feedOf({ items: feedItems(), hasMore: true }) });
   const filtered = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   pages.push(["筛选", filtered.host.innerHTML]);
   await filtered.unmount();
-  pages.push(["切换", html(React.createElement(BayViewSwitch, { filter: { kind: "supply" }, accent: "#0ea5e9" }))]);
+  pages.push(["切换", html(React.createElement(BayViewSwitch, { filter: { kind: "service" }, accent: "#0ea5e9" }))]);
 
   const found = [];
   let checked = 0;
