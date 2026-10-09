@@ -169,13 +169,14 @@ const { bayDetailTitleKey } = await import(
 const { BayMineTabs } = await import(
   await compileModule("src/shell/bay/shell/BayMine.tsx", {
     "../../../i18n/ui/useUI": uiStub,
-    "../needs": dataModule(`
-      export function MyHelpRequestsPane(){ return null; }
-      export function MyNeedsPane(){ return null; }
-      export function MyProposalsPane(){ return null; }
+    "../mine": dataModule(`
+      export function MyPublishedPane(){ return null; }
+      export function MySoldPane(){ return null; }
+      export function MyBoughtPane(){ return null; }
+      export function MyFavoritesPane(){ return null; }
+      export function MyCardPane(){ return null; }
     `),
-    "../orders": dataModule("export function MyOrdersPane(){ return null; }"),
-    "../seller": dataModule("export function MyServicesPane(){ return null; }"),
+    "./bay-links": dataModule(`export const BAY_MINE_UI_TABS = ["published", "sold", "bought", "favorites", "card"];`),
     "./bay-state": stateStub,
   })
 );
@@ -296,7 +297,7 @@ test("展开后三种找谁都在；public 走 demands，open 走 handoffs，inv
   await invited.unmount();
 });
 
-test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；两种目标标题都是找人帮忙", async () => {
+test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 → 需求」进来标题是发需求，叫真人仍是找人帮忙", async () => {
   reset();
   const post = await mount(React.createElement(PostNeedPane, { target: { kind: "post-need" }, layout: "docked", siteKey: "ppt" }));
   assert.ok(post.host.querySelector("[data-bay-get-help]"));
@@ -304,15 +305,20 @@ test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；两种目标标�
   const call = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "ppt" }));
   assert.ok(call.host.querySelector("[data-bay-get-help]"));
   await call.unmount();
-  assert.equal(bayDetailTitleKey({ kind: "post-need" }), "找人帮忙");
+  assert.equal(bayDetailTitleKey({ kind: "post-need" }), "发需求");
+  assert.equal(bayDetailTitleKey({ kind: "publish" }), "发布");
   assert.equal(bayDetailTitleKey({ kind: "call-human" }), "找人帮忙");
 });
 
-test("BayMineTabs 恰好四个分区，help 高亮我发出的", () => {
+test("BayMineTabs 恰好五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；认不出的值高亮我发布的", () => {
   const html = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "help" }));
-  assert.equal([...html.matchAll(/data-mine-tab="/g)].length, 4);
-  assert.doesNotMatch(html, /我的求助/);
-  assert.match(html, /我发出的/);
-  assert.equal(html.includes('data-mine-tab="help"'), false);
-  assert.match(html, /aria-selected="true"[^>]*data-mine-tab="needs"|data-mine-tab="needs"[^>]*aria-selected="true"/);
+  assert.deepEqual(
+    [...html.matchAll(/data-mine-tab="([a-z]+)"/g)].map((match) => match[1]),
+    ["published", "sold", "bought", "favorites", "card"],
+  );
+  for (const label of ["我发布的", "我卖出的", "我买到的", "我的收藏", "个人卡片"]) assert.ok(html.includes(label), label);
+  assert.doesNotMatch(html, /我的求助|我发出的|我的报价|我的服务|我的订单/);
+  assert.match(html, /aria-selected="true"[^>]*data-mine-tab="published"|data-mine-tab="published"[^>]*aria-selected="true"/);
+  const sold = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "sold" }));
+  assert.match(sold, /aria-selected="true"[^>]*data-mine-tab="sold"|data-mine-tab="sold"[^>]*aria-selected="true"/);
 });

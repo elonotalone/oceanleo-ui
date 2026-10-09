@@ -88,7 +88,9 @@ test("在 /bay 页上点指向本页的链接：没带目标回信息流，带�
     assert.equal(state.bayStateSnapshot().canGoBack, false);
 
     clickOn(listeners, "/bay?bay=mine:orders");
-    assert.deepEqual(state.bayStateSnapshot().current, { kind: "mine", tab: "orders" });
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "mine", tab: "bought" });
+    clickOn(listeners, "/bay?bay=publish:design");
+    assert.deepEqual(state.bayStateSnapshot().current, { kind: "publish", category: "design" });
 
     clickOn(listeners, "https://oceanleo.com/bay?bay=service:s1");
     assert.deepEqual(state.bayStateSnapshot().current, { kind: "service", id: "s1" });
@@ -99,6 +101,31 @@ test("在 /bay 页上点指向本页的链接：没带目标回信息流，带�
     release();
     assert.equal(listeners.document.has("click"), false, "离开页面后不再听");
     assert.equal(listeners.window.has("popstate"), false);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("默认筛选不往地址里写 kind；?kind=demand 进页面能读回来", () => {
+  const { win } = fakeWindow("");
+  globalThis.window = win;
+  try {
+    const off = state.registerBayPage();
+    assert.equal(state.bayStateSnapshot().current.kind, "feed");
+    assert.equal(state.bayStateSnapshot().current.filter?.kind ?? "supply", "supply");
+    assert.equal(win.location.search.includes("kind="), false, "默认 supply 不写 kind");
+    off();
+  } finally {
+    delete globalThis.window;
+  }
+
+  const demand = fakeWindow("?kind=demand");
+  globalThis.window = demand.win;
+  try {
+    const off = state.registerBayPage();
+    assert.equal(state.bayStateSnapshot().current.kind, "feed");
+    assert.equal(state.bayStateSnapshot().current.filter?.kind, "demand");
+    off();
   } finally {
     delete globalThis.window;
   }

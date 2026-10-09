@@ -26,6 +26,7 @@ import { openMessages } from "../../messages/host-state";
 import { openTradeThread } from "../deal";
 import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { FavoriteButton } from "../supply/parts";
 import { DemandEditor } from "./DemandEditor";
 import { categoryNameBySlug, useNeedCategories } from "./need-categories";
 import {
@@ -327,6 +328,7 @@ function VisitorSection({
             {tt("撤回报价")}
           </button>
         ) : null}
+        <FavoriteButton kind="demand" refId={demand.id} />
       </div>
       {!open ? <p className="text-[12px] text-stone-400">{tt("这条需求已停止接收报价。")}</p> : null}
       {error ? <PaneNotice tone="error">{error}</PaneNotice> : null}

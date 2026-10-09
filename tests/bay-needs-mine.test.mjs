@@ -122,15 +122,15 @@ async function mount(element) {
   };
 }
 
-test("目标对不上时不画", () => {
-  const props = { target: { kind: "mine", tab: "orders" }, layout: "docked", siteKey: "design" };
+test("不是「我的」不画", () => {
+  const props = { target: { kind: "feed" }, layout: "docked", siteKey: "design" };
   assert.equal(renderToStaticMarkup(React.createElement(MyNeedsPane, props)), "");
   assert.equal(renderToStaticMarkup(React.createElement(MyProposalsPane, props)), "");
 });
 
 test("我的需求：列出我发的，点开详情；未登录先登录", async () => {
   reset();
-  const view = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "needs" }, layout: "docked", siteKey: "design" }));
+  const view = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "published" }, layout: "docked", siteKey: "design" }));
   assert.equal(view.host.querySelector("header"), null);
   assert.match(view.host.textContent, /做一份路演稿/);
   await view.click("[data-bay-my-need-row='d1']");
@@ -139,14 +139,14 @@ test("我的需求：列出我发的，点开详情；未登录先登录", async
 
   reset();
   globalThis.__baySignedIn = false;
-  const guest = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "needs" }, layout: "docked", siteKey: "design" }));
+  const guest = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "published" }, layout: "docked", siteKey: "design" }));
   assert.match(guest.host.textContent, /登录后查看你发出的需求/);
   await guest.unmount();
 });
 
 test("我的报价：请求 proposals/mine，点开对应需求", async () => {
   reset();
-  const view = await mount(React.createElement(MyProposalsPane, { target: { kind: "mine", tab: "proposals" }, layout: "docked", siteKey: "design" }));
+  const view = await mount(React.createElement(MyProposalsPane, { target: { kind: "mine", tab: "sold" }, layout: "docked", siteKey: "design" }));
   const call = globalThis.__bayHttpCalls.find((row) => String(row.path).startsWith("/v1/talent/proposals/mine"));
   assert.ok(call, "必须请求 proposals/mine");
   assert.match(call.path, /\/v1\/talent\/proposals\/mine/);

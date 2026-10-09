@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay 的详情正文：按当前目标渲染需求、供给、订单、卖家几块的窗格；「我的」四个分区；设置交给共用设置窗。
+// LeoBay 的详情正文：按当前目标渲染需求、供给、订单、卖家几块的窗格；「我的」五块；设置交给共用设置窗。
 // 返回键与标题在 `/bay` 页的页头那一行（见 LeoBayPage），这里只出正文，所以页面上不会出现两个返回键、两个标题。
 // 交易会话不在这里：它在 LeoChat 小窗里开。
 import type { ReactNode } from "react";
@@ -20,10 +20,11 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
   profile: "主页",
   order: "订单详情",
   conversation: "交易会话",
-  "post-need": "找人帮忙",
+  "post-need": "发需求",
   "call-human": "找人帮忙",
   propose: "报价",
   checkout: "下单",
+  publish: "发布",
   "service-editor": "发布",
   mine: "我的",
   settings: "设置",
@@ -60,6 +61,7 @@ export function BayDetailPane(props: BayPaneProps): ReactNode {
       return <ProposePane {...props} />;
     case "checkout":
       return <CheckoutPane {...props} />;
+    case "publish":
     case "service-editor":
       return <ServiceEditorPane {...props} />;
     case "mine":

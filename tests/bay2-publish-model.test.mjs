@@ -1,4 +1,4 @@
-// W4：发布表单纯逻辑。三种种类的 sectionMissing、数字商品不要求分类/详情/档位、
+// W4 / W2B：发布表单纯逻辑。三种种类的 sectionMissing、素材也要类目、
 // 服务不要求 30 字、提交载荷带 listing_kind / license / digital_work。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -45,6 +45,7 @@ function digitalDraft(extra = {}) {
     catalogKind: "delivery",
     listingKind: "digital",
     title: "一套图标",
+    category: "design",
     coverUrl: "https://cdn.example.com/a.png",
     digitalWork: { id: "task-1", title: "图标包" },
     license: "personal",
@@ -87,12 +88,12 @@ function consultDraft(extra = {}) {
   };
 }
 
-test("数字商品空草稿：差标题、预览图、要卖的作品、授权范围；价格块不差项", () => {
+test("数字商品空草稿：差标题、分类、预览图、要卖的作品、授权范围；价格块不差项", () => {
   const draft = model.emptyDraft(tt);
   draft.catalogKind = "delivery";
   draft.listingKind = "digital";
   const missing = model.sectionMissing(draft, CTX_BARE);
-  assert.deepEqual(missing.product, ["标题", "至少一张预览图", "要卖的作品"]);
+  assert.deepEqual(missing.product, ["标题", "分类", "至少一张预览图", "要卖的作品"]);
   assert.deepEqual(missing.price, []);
   assert.deepEqual(missing.terms, ["授权范围"]);
 });
@@ -101,9 +102,9 @@ test("数字商品填齐后三块都是空数组", () => {
   assert.deepEqual(model.sectionMissing(digitalDraft(), CTX), { product: [], price: [], terms: [] });
 });
 
-test("数字商品不要求分类、详情、档位", () => {
+test("素材没类目时报分类；不要求详情、档位", () => {
   const missing = model.sectionMissing(digitalDraft({ category: "", description: "", simplePrice: true }), CTX);
-  assert.equal(missing.product.includes("分类"), false);
+  assert.equal(missing.product.includes("分类"), true);
   assert.equal(missing.product.some((item) => item.includes("详情")), false);
   assert.equal(missing.price.some((item) => item.includes("档")), false);
   assert.equal(missing.price.includes("计费方式"), false);
@@ -171,7 +172,7 @@ test("提交载荷带 listing_kind、license、digital_work", () => {
   assert.equal(digital.listing_kind, "digital");
   assert.equal(digital.license, "commercial");
   assert.deepEqual(digital.digital_work, { kind: "task", id: "task-1" });
-  assert.equal(digital.category, "");
+  assert.equal(digital.category, "design");
   const service = model.serviceInput(serviceDraft());
   assert.equal(service.listing_kind, "service");
   assert.equal(service.license, null);
@@ -203,7 +204,7 @@ test("载入已有数字商品：listingKind、license、digitalWork、official�
         id: "s1",
         title: "图标",
         summary: "",
-        category: "",
+        category: "design",
         cover_url: "https://cdn.example.com/a.png",
         price_fen: 0,
         delivery_days: null,
@@ -222,6 +223,7 @@ test("载入已有数字商品：listingKind、license、digitalWork、official�
     tt,
   );
   assert.equal(draft.listingKind, "digital");
+  assert.equal(draft.category, "design");
   assert.equal(draft.license, "commercial");
   assert.deepEqual(draft.digitalWork, { id: "task-9", title: "图标包" });
   assert.equal(draft.official, true);

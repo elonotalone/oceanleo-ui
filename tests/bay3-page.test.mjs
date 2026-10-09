@@ -1,4 +1,4 @@
-// LeoBay `/bay` 这一张页：页头四个键、五种种类、素材货架、openBay 跳页。
+// LeoBay `/bay` 这一张页：页头两个键、供给/需求切换、类目专区、素材货架只走深链。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -45,7 +45,7 @@ const uiStub = dataModule(
 
 const pageState = {
   current: { kind: "feed" },
-  filter: { kind: "all" },
+  filter: { kind: "supply" },
   signedIn: true,
   enabled: true,
   feed: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
@@ -65,7 +65,7 @@ function feedOf(patch = {}) {
 
 function reset(patch = {}) {
   pageState.current = { kind: "feed" };
-  pageState.filter = { kind: "all" };
+  pageState.filter = { kind: "supply" };
   pageState.signedIn = true;
   pageState.enabled = true;
   pageState.feed = feedOf();
@@ -150,7 +150,7 @@ const stubs = {
 };
 
 const { LeoBayPage } = await import(await compileModule("src/shell/bay/shell/LeoBayPage.tsx", stubs));
-const { BayKindTabs, BayFeed } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
+const { BayViewSwitch, BayFeed } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
 
 const AUTH_SIGNED_OUT = dataModule(`
   export const AUTH_STATE_EVENT = "oceanleo:auth-state";
@@ -205,47 +205,47 @@ async function mount(element) {
 const html = (node) => renderToStaticMarkup(node);
 const count = (text, pattern) => (text.match(pattern) || []).length;
 
-test("页头有「我的主页 / 我的 / 找人帮忙 / 发布」四个键", async () => {
+test("页头只有「我的」和「发布」两个键", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const actions = view.host.querySelector("[data-bay-page-actions]");
   assert.ok(actions);
-  assert.equal(count(actions.outerHTML, /data-bay-action="my-page"/g), 1);
-  assert.equal(count(actions.outerHTML, /data-bay-action="mine"/g), 1);
-  assert.equal(count(actions.outerHTML, /data-bay-action="get-help"/g), 1);
-  assert.equal(count(actions.outerHTML, /data-bay-action="publish"/g), 1);
-  assert.match(actions.textContent, /我的主页/);
+  const actionKeys = [...actions.querySelectorAll("[data-bay-action]")].map((node) => node.getAttribute("data-bay-action"));
+  assert.deepEqual(actionKeys, ["mine", "publish"]);
+  assert.equal(count(actions.outerHTML, /data-bay-action="/g), 2);
   assert.match(actions.textContent, /我的/);
-  assert.match(actions.textContent, /找人帮忙/);
   assert.match(actions.textContent, /发布/);
+  assert.doesNotMatch(actions.textContent, /我的主页/);
+  assert.doesNotMatch(actions.textContent, /找人帮忙/);
   await view.unmount();
 });
 
-test("种类是「全部 / 素材 / 服务 / 需求 / 答疑」", async () => {
+test("切换是「素材与服务 / 需求」", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  const tabs = view.host.querySelector('[data-bay-kinds="page"]');
+  const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   const labels = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.textContent.replace(/\s+/g, ""));
-  assert.deepEqual(labels, ["全部", "素材", "服务", "需求", "答疑"]);
+  assert.deepEqual(labels, ["素材与服务", "需求"]);
   await view.unmount();
 });
 
-test("停在「素材」时渲染素材货架和发布者说明、不渲染类目和信息流", async () => {
+test("停在「素材」时渲染素材货架和返回键、不渲染切换类目和信息流", async () => {
   reset({ filter: { kind: "material" } });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.ok(view.host.querySelector('[data-explore-embedded="true"]'));
-  assert.ok(view.host.querySelector("[data-bay-materials-publisher]"));
+  assert.ok(view.host.querySelector("[data-bay-materials-back]"));
+  assert.equal(view.host.querySelector("[data-bay-materials-publisher]"), null);
+  assert.equal(view.host.querySelector("[data-bay-view]"), null);
   assert.equal(view.host.querySelector("[data-bay-categories]"), null);
   assert.equal(view.host.querySelector("[data-bay-feed]"), null);
   await view.unmount();
 });
 
-test("停在「全部」且没筛选时有素材推广条", async () => {
+test("页面上没有官方素材横幅", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  assert.ok(view.host.querySelector("[data-bay-materials-promo]"));
-  assert.match(view.host.querySelector("[data-bay-materials-promo]").textContent, /官方素材/);
+  assert.equal(view.host.querySelector("[data-bay-materials-promo]"), null);
   await view.unmount();
 });
 
@@ -283,7 +283,7 @@ test("?kind=material 进页面后停在素材", async () => {
   const off = bayState.registerBayPage();
   function Probe() {
     const filter = bayState.useBayFilter();
-    return React.createElement("span", { "data-kind": filter.kind ?? "all" });
+    return React.createElement("span", { "data-kind": filter.kind ?? "supply" });
   }
   const host = document.createElement("div");
   document.body.appendChild(host);
@@ -318,11 +318,11 @@ test("信息流：首屏骨架、出错给重试、加载更多是一个键", ()
   assert.equal(count(html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" })), />加载更多</g), 1);
 });
 
-test("种类筛选行会换行，没有横向滚动容器", () => {
-  const out = html(React.createElement(BayKindTabs, { filter: { kind: "all" }, accent: "#0ea5e9" }));
+test("供给/需求切换行会换行，没有横向滚动容器", () => {
+  const out = html(React.createElement(BayViewSwitch, { filter: { kind: "supply" }, accent: "#0ea5e9" }));
   assert.match(out, /flex-wrap/);
   assert.doesNotMatch(out, /overflow-x-auto/);
-  assert.equal(count(out, /role="tab"/g), 5);
+  assert.equal(count(out, /role="tab"/g), 2);
 });
 
 const DISPLAY = new Set(["block", "inline-block", "inline", "flex", "inline-flex", "grid", "inline-grid", "hidden", "contents"]);
@@ -373,12 +373,13 @@ test("自检：打架比对器认得出截断遇上块级、两个上边距，�
   assert.deepEqual(conflictsIn("gap-2 gap-3"), ["gap-2 ↔ gap-3"]);
 });
 
-test("种类源码是全部 / 素材 / 服务 / 需求 / 答疑，没有求助栏", () => {
+test("源码是供给/需求切换，没有五种种类标签", () => {
   const list = src("shell/bay/shell/BayList.tsx");
-  assert.match(list, /\["all", "material", "service", "demand", "consult"\]/);
-  assert.match(list, /material: "素材"/);
-  assert.match(list, /consult: "答疑"/);
-  assert.doesNotMatch(list, /KIND_TABS = \[[^\]]*help/);
+  assert.match(list, /data-bay-view/);
+  assert.match(list, /data-view=\{kind\}/);
+  assert.match(list, /专业咨询/);
+  assert.doesNotMatch(list, /KIND_TABS/);
+  assert.doesNotMatch(list, /data-bay-kinds/);
 });
 
 test("源码：不在 /bay 页上的 openBay 写成 /bay?bay=；交易会话走消息小窗", () => {
@@ -403,11 +404,11 @@ test("渲染出来的每个元素：没有两个类在抢同一个属性", async
   const detail = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   pages.push(["详情", detail.host.innerHTML]);
   await detail.unmount();
-  reset({ filter: { kind: "service", category: "design" }, feed: feedOf({ items: feedItems(), hasMore: true }) });
+  reset({ filter: { kind: "supply", category: "design" }, feed: feedOf({ items: feedItems(), hasMore: true }) });
   const filtered = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   pages.push(["筛选", filtered.host.innerHTML]);
   await filtered.unmount();
-  pages.push(["种类", html(React.createElement(BayKindTabs, { filter: { kind: "all" }, accent: "#0ea5e9" }))]);
+  pages.push(["切换", html(React.createElement(BayViewSwitch, { filter: { kind: "supply" }, accent: "#0ea5e9" }))]);
 
   const found = [];
   let checked = 0;

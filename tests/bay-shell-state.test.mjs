@@ -56,11 +56,13 @@ test("深链：契约 §5 的每一种都能解析，并且能原样写回", () 
     ["checkout:svc1:premium", { kind: "checkout", serviceId: "svc1", tier: "premium" }],
     ["service-editor", { kind: "service-editor" }],
     ["service-editor:svc2", { kind: "service-editor", serviceId: "svc2" }],
-    ["mine:needs", { kind: "mine", tab: "needs" }],
-    ["mine:proposals", { kind: "mine", tab: "proposals" }],
-    ["mine:services", { kind: "mine", tab: "services" }],
-    ["mine:orders", { kind: "mine", tab: "orders" }],
-    ["mine:help", { kind: "mine", tab: "help" }],
+    ["publish", { kind: "publish" }],
+    ["publish:design", { kind: "publish", category: "design" }],
+    ["mine:published", { kind: "mine", tab: "published" }],
+    ["mine:sold", { kind: "mine", tab: "sold" }],
+    ["mine:bought", { kind: "mine", tab: "bought" }],
+    ["mine:favorites", { kind: "mine", tab: "favorites" }],
+    ["mine:card", { kind: "mine", tab: "card" }],
     ["settings", { kind: "settings" }],
     ["settings:profile", { kind: "settings", pane: "profile" }],
     ["settings:vetting", { kind: "settings", pane: "vetting" }],
@@ -114,6 +116,46 @@ test("深链：非法值一律忽略", () => {
   assert.equal(links.parseBayDeepLink(""), null);
 });
 
+test("normalizeBayFeedKind：现用值原样，老值 all/service/consult→supply、help→demand", () => {
+  assert.equal(links.normalizeBayFeedKind("supply"), "supply");
+  assert.equal(links.normalizeBayFeedKind("demand"), "demand");
+  assert.equal(links.normalizeBayFeedKind("material"), "material");
+  assert.equal(links.normalizeBayFeedKind("all"), "supply");
+  assert.equal(links.normalizeBayFeedKind("service"), "supply");
+  assert.equal(links.normalizeBayFeedKind("consult"), "supply");
+  assert.equal(links.normalizeBayFeedKind("help"), "demand");
+  assert.equal(links.normalizeBayFeedKind("bogus"), null);
+  assert.equal(links.normalizeBayFeedKind(""), null);
+});
+
+test("normalizeBayMineTab：现用五块原样，老值 needs/services/help→published、proposals→sold、orders→bought", () => {
+  assert.equal(links.normalizeBayMineTab("published"), "published");
+  assert.equal(links.normalizeBayMineTab("sold"), "sold");
+  assert.equal(links.normalizeBayMineTab("bought"), "bought");
+  assert.equal(links.normalizeBayMineTab("favorites"), "favorites");
+  assert.equal(links.normalizeBayMineTab("card"), "card");
+  assert.equal(links.normalizeBayMineTab("needs"), "published");
+  assert.equal(links.normalizeBayMineTab("services"), "published");
+  assert.equal(links.normalizeBayMineTab("help"), "published");
+  assert.equal(links.normalizeBayMineTab("proposals"), "sold");
+  assert.equal(links.normalizeBayMineTab("orders"), "bought");
+  assert.equal(links.normalizeBayMineTab("all"), null);
+});
+
+test("老 mine 深链能读成新五块，写回去是新值", () => {
+  const legacy = [
+    ["mine:needs", { kind: "mine", tab: "published" }, "mine:published"],
+    ["mine:services", { kind: "mine", tab: "published" }, "mine:published"],
+    ["mine:help", { kind: "mine", tab: "published" }, "mine:published"],
+    ["mine:proposals", { kind: "mine", tab: "sold" }, "mine:sold"],
+    ["mine:orders", { kind: "mine", tab: "bought" }, "mine:bought"],
+  ];
+  for (const [raw, expected, written] of legacy) {
+    assert.deepEqual(links.parseBayParam(raw), expected, raw);
+    assert.equal(links.formatBayParam(expected), written, raw);
+  }
+});
+
 test("查询串：写 bay 时保留别的参数，信息流首页或 null 时去掉 bay", () => {
   assert.equal(links.buildBaySearch("?a=1", { kind: "demand", id: "d1" }), "?a=1&bay=demand:d1");
   assert.equal(links.buildBaySearch("?a=1&bay=order:o1", null), "?a=1");
@@ -160,7 +202,7 @@ test("境内 bayEnabledHere() 为 false；海外未登录为 true", async () => 
 
 test("目标栈：打开详情、返回、回到信息流；任务上下文与站点", async () => {
   const state = await loadState("com");
-  assert.deepEqual(state.bayStateSnapshot(), { current: { kind: "feed", filter: { kind: "all" } }, canGoBack: false });
+  assert.deepEqual(state.bayStateSnapshot(), { current: { kind: "feed", filter: { kind: "supply" } }, canGoBack: false });
   state.openBay({ kind: "demand", id: "d1" });
   assert.deepEqual(state.bayStateSnapshot().current, { kind: "demand", id: "d1" });
   assert.equal(state.bayStateSnapshot().canGoBack, true);
@@ -174,11 +216,15 @@ test("目标栈：打开详情、返回、回到信息流；任务上下文与�
   state.openBay({ kind: "service", id: "s1" });
   state.openBay({ kind: "feed", filter: { kind: "service", category: "design" } });
   assert.deepEqual(state.bayStateSnapshot(), {
-    current: { kind: "feed", filter: { kind: "service", category: "design" } },
+    current: { kind: "feed", filter: { kind: "supply", category: "design" } },
     canGoBack: false,
   });
   state.setBayFilter({ kind: "bogus", category: "Not A Slug", q: "  logo  " });
-  assert.deepEqual(state.bayStateSnapshot().current, { kind: "feed", filter: { kind: "all", q: "logo" } });
+  assert.deepEqual(state.bayStateSnapshot().current, { kind: "feed", filter: { kind: "supply", q: "logo" } });
+  assert.equal(state.bayPageHrefNow(), "/bay", "默认 supply 不往地址里写 kind");
+  state.setBayFilter({ kind: "demand" });
+  assert.equal(state.bayPageHrefNow(), "/bay?kind=demand");
+  state.setBayFilter({ kind: "supply" });
 
   state.setBaySiteKey("video");
   state.setBaySiteKey("../evil");

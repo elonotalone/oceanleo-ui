@@ -79,7 +79,7 @@ export const SECTION_LABELS: Record<PublishSection, string> = {
   terms: "交付条款",
 };
 export const PUBLISH_KIND_LABELS: Record<PublishKind, string> = {
-  digital: "数字商品",
+  digital: "素材",
   service: "服务",
   consult: "答疑",
 };
@@ -388,7 +388,7 @@ export function serviceInput(draft: EditorDraft, model?: BayPricingModel): BaySe
     title: draft.title.trim().slice(0, TITLE_MAX),
     summary: draft.summary.trim().slice(0, SUMMARY_MAX),
     description: draft.description,
-    category: draft.listingKind === "digital" ? "" : draft.category,
+    category: draft.category,
     cover_url: safeHttpUrl(draft.coverUrl),
     engagement_kind: resolvedPricingModel(draft) || undefined,
     delivery_mode: draft.deliveryMode,
@@ -611,16 +611,17 @@ export function sectionMissing(draft: EditorDraft, ctx: EditorContext): Record<P
   const price: string[] = [];
   const terms: string[] = [];
   const preview = hasPreviewImage(draft);
+  const categoryKnown = ctx.categories.some(
+    (row) => row.slug === draft.category && row.catalog_kind === "delivery" && !isSellerRestrictedDomain(row.regulated_domain),
+  );
   if (kind === "digital") {
     if (!draft.title.trim()) product.push("标题");
+    if (!categoryKnown) product.push("分类");
     if (!preview) product.push("至少一张预览图");
     if (!draft.digitalWork?.id) product.push("要卖的作品");
     if (draft.license !== "personal" && draft.license !== "commercial") terms.push("授权范围");
   } else if (kind === "service") {
     if (!draft.title.trim()) product.push("标题");
-    const categoryKnown = ctx.categories.some(
-      (row) => row.slug === draft.category && row.catalog_kind === "delivery" && !isSellerRestrictedDomain(row.regulated_domain),
-    );
     if (!categoryKnown) product.push("分类");
     if (!preview) product.push("至少一张预览图");
     if (draft.simplePrice) {

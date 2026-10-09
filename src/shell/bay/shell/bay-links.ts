@@ -2,24 +2,59 @@
 //
 // `?bay=<kind>[:<参数>]`：feed、demand:<id>、service:<id>、help:<id>、consult:<id>、profile:<handle>、
 // order:<id>、conversation:<threadId>、post-need[:<category>]、call-human[:<category>]、propose:<demandId>、
-// checkout:<serviceId>[:<tier>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]。认不出的值一律当没有。
+// checkout:<serviceId>[:<tier>]、publish[:<category>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]。认不出的值一律当没有。
+// 2026-10-09：`/bay` 页不再按种类分栏，只按类目逛；`?kind=` 只剩「看供给还是看需求」，老值照样认（见 normalizeBayFeedKind）。
+// 「我的」改成五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；老的 `mine:<tab>` 值落到对应的新块。
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { BayMineTab, BayTarget } from "./bay-state";
 
 export const BAY_PARAM = "bay";
-export const BAY_MINE_TABS: readonly BayMineTab[] = ["needs", "proposals", "services", "orders", "help"];
-export const BAY_MINE_UI_TABS: readonly BayMineTab[] = ["needs", "proposals", "services", "orders"];
+export const BAY_MINE_TABS: readonly BayMineTab[] = ["published", "sold", "bought", "favorites", "card"];
+export const BAY_MINE_UI_TABS: readonly BayMineTab[] = BAY_MINE_TABS;
+/** 老链接（通知、邮件、别人存的地址）里的 `mine:<tab>` → 现在的那一块。 */
+const LEGACY_MINE_TABS: Readonly<Record<string, BayMineTab>> = {
+  needs: "published",
+  services: "published",
+  help: "published",
+  proposals: "sold",
+  orders: "bought",
+};
+
+export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab | null {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return null;
+  const tab = BAY_MINE_TABS.find((value) => value === text);
+  if (tab) return tab;
+  return Object.prototype.hasOwnProperty.call(LEGACY_MINE_TABS, text) ? LEGACY_MINE_TABS[text] : null;
+}
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
-/** `/bay?kind=<种类>`：页面停在哪一栏（`material` = 官方素材）。 */
+/**
+ * `/bay?kind=<值>`：`supply`（默认，不写进地址）= 这个类目里的素材和服务；`demand` = 这个类目里的需求；
+ * `material` = 官方素材货架，页面上没有按键通向它，只有各站「更多素材」这类链接会带这个值。
+ */
 export const BAY_KIND_PARAM = "kind";
-export const BAY_FEED_KINDS: readonly ("all" | "material" | "demand" | "service" | "help" | "consult")[] = [
-  "all",
-  "material",
-  "demand",
-  "service",
-  "help",
-  "consult",
-];
+export const BAY_FEED_KINDS: readonly ("supply" | "demand" | "material")[] = ["supply", "demand", "material"];
+/** 老地址里的种类值：全部 / 服务 / 答疑 → 供给；求助 → 需求。 */
+const LEGACY_FEED_KINDS: Readonly<Record<string, "supply" | "demand">> = {
+  all: "supply",
+  service: "supply",
+  consult: "supply",
+  help: "demand",
+};
+
+export function normalizeBayFeedKind(raw: string | null | undefined): "supply" | "demand" | "material" | null {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return null;
+  const kind = BAY_FEED_KINDS.find((value) => value === text);
+  if (kind) return kind;
+  return Object.prototype.hasOwnProperty.call(LEGACY_FEED_KINDS, text) ? LEGACY_FEED_KINDS[text] : null;
+}
+
+/**
+ * 「专业咨询」专区：不属于 16 个交付类目的答疑（财税、心理、学业、职业、产品……）都在这里逛。
+ * 它只是一个逛的入口：发需求、发服务、发素材的类目里没有它。网关的信息流接口认这个值（`category=advice`）。
+ */
+export const BAY_ADVICE_ZONE = "advice";
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const HANDLE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/;
@@ -127,11 +162,14 @@ export function parseBayParam(raw: string | null | undefined): BayTarget | null 
       if (parts.length === 1) return { kind: "checkout", serviceId: parts[0] };
       return TIER.test(parts[1]) ? { kind: "checkout", serviceId: parts[0], tier: parts[1] } : null;
     }
+    case "publish":
+      if (rest === null) return { kind: "publish" };
+      return SLUG.test(rest) ? { kind: "publish", category: rest } : null;
     case "service-editor":
       if (rest === null) return { kind: "service-editor" };
       return ID.test(rest) ? { kind: "service-editor", serviceId: rest } : null;
     case "mine": {
-      const tab = BAY_MINE_TABS.find((value) => value === rest);
+      const tab = normalizeBayMineTab(rest);
       return tab ? { kind: "mine", tab } : null;
     }
     case "settings": {
@@ -166,6 +204,8 @@ export function formatBayParam(target: BayTarget): string {
       return `propose:${target.demandId}`;
     case "checkout":
       return target.tier ? `checkout:${target.serviceId}:${target.tier}` : `checkout:${target.serviceId}`;
+    case "publish":
+      return target.category ? `publish:${target.category}` : "publish";
     case "service-editor":
       return target.serviceId ? `service-editor:${target.serviceId}` : "service-editor";
     case "mine":
@@ -254,7 +294,7 @@ export function sameBayTarget(a: BayTarget, b: BayTarget): boolean {
   if (a.kind === "feed" && b.kind === "feed") {
     const fa = a.filter ?? {};
     const fb = b.filter ?? {};
-    return (fa.kind ?? "all") === (fb.kind ?? "all") && (fa.category ?? "") === (fb.category ?? "") && (fa.q ?? "") === (fb.q ?? "");
+    return (fa.kind ?? "supply") === (fb.kind ?? "supply") && (fa.category ?? "") === (fb.category ?? "") && (fa.q ?? "") === (fb.q ?? "");
   }
   return formatBayParam(a) === formatBayParam(b);
 }

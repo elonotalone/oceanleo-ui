@@ -48,17 +48,22 @@ const stateStub = dataModule(`
   globalThis.__bayLoginAsked ??= 0;
   globalThis.__baySignedIn ??= true;
   export function openBay(target){ globalThis.__bayOpened.push(target); }
+  export function replaceBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
   export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function useBaySiteKey(){ return "design"; }
   export function bayBack(){}
+  export function bayHrefOnSite(){ return ""; }
 `);
 const settingsStub = dataModule(`
   globalThis.__baySettings ??= [];
   export async function ensureBayTerms(){ return true; }
   export function openBaySettings(pane){ globalThis.__baySettings.push(pane); }
 `);
-const linksStub = dataModule(`export function baySiteName(key){ return key === "design" ? "LeoDesign" : key || null; }`);
+const linksStub = dataModule(`
+  export function baySiteName(key){ return key === "design" ? "LeoDesign" : key || null; }
+  export function baySubsiteLabel(key){ return key || null; }
+`);
 const authStub = dataModule(`
   export async function getUserId(){ return globalThis.__bayViewer || "me"; }
   export const AUTH_STATE_EVENT = "oceanleo-auth-state";
@@ -90,6 +95,9 @@ const agentStub = dataModule(`
   }
 `);
 
+const toastStub = dataModule(`export function useToast(){ return { toast(){}, dismiss(){} }; }`);
+const confirmStub = dataModule(`export function ConfirmDialog(){ return null; }`);
+
 const sellerStubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/auth/client": authStub,
@@ -101,6 +109,8 @@ const sellerStubs = {
   "../settings": settingsStub,
   "../needs": needsStub,
   "../needs/LibraryWorkPicker": needsStub,
+  "../../../ui": confirmStub,
+  "../../../ui/Toast": toastStub,
 };
 
 const { MyServicesPane } = await import(await compileModule("src/shell/bay/seller/MyServicesPane.tsx", sellerStubs));
@@ -176,7 +186,7 @@ test("出口：seller 的 index.ts 导出契约里的全部名字", () => {
 
 test("我的服务：概况、分组、空状态入口；没有返回栏；钱只给设置入口", async () => {
   reset();
-  const view = await mount(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "services" }, layout: "docked", siteKey: "design" }));
+  const view = await mount(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "published" }, layout: "docked", siteKey: "design", overview: true }));
   assert.match(view.host.innerHTML, /data-bay-seller-overview/);
   assert.match(view.host.textContent, /进行中的订单/);
   assert.match(view.host.textContent, /3/);
@@ -201,8 +211,9 @@ test("我的服务：空状态引导发布第一个服务", async () => {
     if (path.startsWith("/v1/talent/threads")) return { threads: [] };
     return { items: [], cases: [] };
   };
-  const view = await mount(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "services" }, layout: "page", siteKey: "design" }));
+  const view = await mount(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "published" }, layout: "page", siteKey: "design" }));
   assert.match(view.host.innerHTML, /data-bay-empty="services"/);
+  assert.equal(view.host.querySelector("[data-bay-seller-overview]"), null, "默认不画卖家概况");
   // 空状态里已经有「发布第一个服务」，右上角那个「发布服务」不再同时出现。
   assert.equal(view.host.querySelectorAll("[data-bay-new-service]").length, 0);
   assert.equal((view.host.innerHTML.match(/发布第一个服务/g) || []).length, 1);
@@ -256,7 +267,7 @@ test("资质审核：提交与申诉请求形状；领域选项没有医疗、�
 test("静态：我的服务未登录只给登录", () => {
   reset();
   globalThis.__baySignedIn = false;
-  const out = renderToStaticMarkup(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "services" }, layout: "docked", siteKey: "design" }));
+  const out = renderToStaticMarkup(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "published" }, layout: "docked", siteKey: "design" }));
   assert.match(out, /登录后管理你发布的服务/);
   assert.doesNotMatch(out, /返回/);
 });

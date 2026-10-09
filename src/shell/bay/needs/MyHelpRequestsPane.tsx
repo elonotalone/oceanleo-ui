@@ -14,7 +14,7 @@ const ROW =
   "block w-full border-b border-black/5 px-3 py-2.5 text-left hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 dark:border-white/10 dark:hover:bg-white/5";
 
 export function MyHelpRequestsPane({ target }: BayPaneProps) {
-  if (target.kind !== "mine" || target.tab !== "help") return null;
+  if (target.kind !== "mine") return null;
   return <MyHelpBody />;
 }
 

@@ -2,7 +2,9 @@
 import { bayGet } from "./http";
 import type { BayFeedItem, BayFeedKind, BayFeedPage, BaySummary } from "./types";
 
-export type BayFeedKindFilter = "all" | BayFeedKind;
+/** `supply` = 服务 + 答疑（素材是服务里的数字商品）；`needs` = 需求 + 求助。`/bay` 页只用这两个。 */
+export type BayFeedGroup = "supply" | "needs";
+export type BayFeedKindFilter = "all" | BayFeedGroup | BayFeedKind;
 
 export interface BayFeedQuery {
   kind?: BayFeedKindFilter;
@@ -56,7 +58,8 @@ export function bayFeedErrorText(error: unknown): string {
 
 export function bayFeedPath(filter: BayFeedQuery = {}, cursor?: string | null): string {
   const params = new URLSearchParams();
-  const kind = filter.kind && (filter.kind === "all" || FEED_KINDS.includes(filter.kind)) ? filter.kind : "all";
+  const known = filter.kind === "all" || filter.kind === "supply" || filter.kind === "needs" || FEED_KINDS.includes(filter.kind as BayFeedKind);
+  const kind = filter.kind && known ? filter.kind : "all";
   params.set("kind", kind);
   const category = typeof filter.category === "string" ? filter.category.trim() : "";
   if (SLUG.test(category)) params.set("category", category);

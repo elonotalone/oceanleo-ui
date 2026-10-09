@@ -30,7 +30,7 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
   const [cursor, setCursor] = useState<string | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const kind = filter.kind ?? "all";
+  const kind = filter.kind === "demand" ? "needs" : "supply";
   const category = filter.category ?? "";
   const q = filter.q ?? "";
 
@@ -47,8 +47,8 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
         setLoaded(false);
       }
       try {
-        // 「素材」不走信息流接口（页面画的是官方素材货架）；这里只是不让类型里多出的那个种类传到网关。
-        const page = await fetchBayFeed({ kind: kind === "material" ? "all" : kind, category, q }, from, { signal: controller?.signal });
+        // 页面 supply/缺省/material → 接口 supply；demand → needs。素材货架不走信息流，这里仍按供给请求，页面自己不画这一块。
+        const page = await fetchBayFeed({ kind, category, q }, from, { signal: controller?.signal });
         if (request !== requestRef.current) return;
         setItems((prev) => (from ? mergeItems(prev, page.items) : page.items));
         setCursor(page.next_cursor);

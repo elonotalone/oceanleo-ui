@@ -2,6 +2,7 @@
 
 import { bayDelete, bayGet, bayPost } from "./http";
 import { bayQuery } from "./directory";
+import type { BayTarget } from "../../shell/bay/shell/bay-state";
 
 export type BayFavoriteKind = "profile" | "service" | "demand";
 
@@ -42,4 +43,53 @@ export async function toggleBayFavorite(kind: BayFavoriteKind, ref: string, curr
   }
   await addBayFavorite(kind, ref);
   return true;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** 收藏行标题：服务/需求用 `title`，卖家用显示名或 handle。缺字段时退到 `target_ref`。 */
+export function favoriteTitle(item: BayFavorite): string {
+  const target = asRecord(item.target);
+  if (item.target_kind === "profile") {
+    return asString(target.display_name) || asString(target.handle) || item.target_ref || "";
+  }
+  return asString(target.title) || item.target_ref || "";
+}
+
+/** 收藏行副标题：服务用摘要或卖家名，卖家用一句话，需求用类目代号（界面上换成类目名再显示）。 */
+export function favoriteSubtitle(item: BayFavorite): string {
+  const target = asRecord(item.target);
+  if (item.target_kind === "service") {
+    const summary = asString(target.summary);
+    if (summary) return summary;
+    const seller = asRecord(target.seller);
+    return asString(seller.display_name) || asString(seller.handle);
+  }
+  if (item.target_kind === "profile") return asString(target.headline);
+  if (item.target_kind === "demand") return asString(target.category);
+  return "";
+}
+
+/** 点收藏行要打开的目标；卖家没有 handle 时打不开。 */
+export function favoriteOpenTarget(item: BayFavorite): BayTarget | null {
+  const target = asRecord(item.target);
+  if (item.target_kind === "service") {
+    const id = asString(target.id) || item.target_ref;
+    return id ? { kind: "service", id } : null;
+  }
+  if (item.target_kind === "profile") {
+    const handle = asString(target.handle);
+    return handle ? { kind: "profile", handle } : null;
+  }
+  if (item.target_kind === "demand") {
+    const id = asString(target.id) || item.target_ref;
+    return id ? { kind: "demand", id } : null;
+  }
+  return null;
 }

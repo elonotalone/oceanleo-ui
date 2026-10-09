@@ -39,13 +39,17 @@ function groupLabel(tt: (zh: string) => string, group: BayOrderGroup): string {
   }
 }
 
-export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps) {
+export function MyOrdersPane({
+  target: _target,
+  layout: _layout,
+  fixedRole,
+}: BayPaneProps & { fixedRole?: "buyer" | "seller" }) {
   const tt = useUI();
   const gate = useBayPaymentsGate();
   const [viewer, setViewer] = useState<string | null | undefined>(undefined);
   const [items, setItems] = useState<BayOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [role, setRole] = useState<BayOrderRole>("buyer");
+  const [role, setRole] = useState<BayOrderRole>(fixedRole ?? "buyer");
   const [group, setGroup] = useState<BayOrderGroup>("active");
   const [query, setQuery] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
@@ -72,7 +76,7 @@ export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps)
       .then((rows) => {
         if (!live) return;
         setItems(rows);
-        const nextRole = defaultOrderRole(rows);
+        const nextRole = fixedRole ?? defaultOrderRole(rows);
         setRole(nextRole);
         setGroup(defaultOrderGroup(countOrderGroups(rows.filter((row) => row.my_role === nextRole), gate)));
       })
@@ -86,7 +90,7 @@ export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps)
     };
     // 身份与分组只在重新取数时按默认值落一次；付款闸只影响分组展示，不重取。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewer, reloadTick]);
+  }, [viewer, reloadTick, fixedRole]);
 
   const mine = useMemo(() => (items ?? []).filter((row) => row.my_role === role), [items, role]);
   const counts = useMemo(() => countOrderGroups(mine, gate), [mine, gate]);
@@ -104,28 +108,39 @@ export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps)
   const emptyAll = mine.length === 0;
   const emptyGroup = !emptyAll && visible.length === 0;
 
+  const emptyCopy =
+    fixedRole === "buyer"
+      ? tt("你还没有买过东西。")
+      : fixedRole === "seller"
+        ? tt("你还没有卖出过东西。")
+        : role === "buyer"
+          ? tt("你还没有买过单。")
+          : tt("你还没有卖出过单。");
+
   return (
     <section data-bay-pane="mine-orders" data-role={role} data-group={group} className="flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap gap-2">
-        {(["buyer", "seller"] as const).map((next) => (
-          <button
-            key={next}
-            type="button"
-            data-bay-role={next}
-            data-selected={role === next ? "true" : "false"}
-            onClick={() => {
-              setRole(next);
-              setGroup(defaultOrderGroup(countOrderGroups((items ?? []).filter((row) => row.my_role === next), gate)));
-            }}
-            className={
-              "rounded-lg px-3 py-1 text-[12.5px] font-medium " +
-              (role === next ? "bg-neutral-900 text-white" : "border border-neutral-200 text-neutral-700 hover:bg-neutral-50")
-            }
-          >
-            {next === "buyer" ? tt("我买的") : tt("我卖的")}
-          </button>
-        ))}
-      </div>
+      {fixedRole ? null : (
+        <div className="flex flex-wrap gap-2">
+          {(["buyer", "seller"] as const).map((next) => (
+            <button
+              key={next}
+              type="button"
+              data-bay-role={next}
+              data-selected={role === next ? "true" : "false"}
+              onClick={() => {
+                setRole(next);
+                setGroup(defaultOrderGroup(countOrderGroups((items ?? []).filter((row) => row.my_role === next), gate)));
+              }}
+              className={
+                "rounded-lg px-3 py-1.5 text-[12.5px] font-medium " +
+                (role === next ? "bg-neutral-900 text-white" : "border border-neutral-200 text-neutral-700 hover:bg-neutral-50")
+              }
+            >
+              {next === "buyer" ? tt("我买的") : tt("我卖的")}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5">
         {MY_ORDER_GROUPS.map((key) => (
           <button
@@ -135,7 +150,7 @@ export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps)
             data-selected={group === key ? "true" : "false"}
             onClick={() => setGroup(key)}
             className={
-              "rounded-lg border px-2.5 py-1 text-[12px] font-medium " +
+              "rounded-lg border px-2.5 py-1.5 text-[12px] font-medium " +
               (group === key ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 text-neutral-600 hover:bg-neutral-50")
             }
           >
@@ -153,16 +168,16 @@ export function MyOrdersPane({ target: _target, layout: _layout }: BayPaneProps)
       />
       {emptyAll ? (
         <div data-bay-empty="all" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-[13px] text-neutral-600">
-          <p>{role === "buyer" ? tt("你还没有买过单。") : tt("你还没有卖出过单。")}</p>
+          <p>{emptyCopy}</p>
           <button
             type="button"
             data-bay-action={role === "buyer" ? "browse-services" : "publish-service"}
             onClick={() =>
-              openBay(role === "buyer" ? { kind: "feed", filter: { kind: "service" } } : { kind: "service-editor" })
+              openBay(role === "buyer" ? { kind: "feed", filter: { kind: "supply" } } : { kind: "publish" })
             }
             className={"mt-3 " + ORDER_BUTTON}
           >
-            {role === "buyer" ? tt("去逛服务") : tt("去发布服务")}
+            {role === "buyer" ? tt("去逛逛") : tt("去发布服务")}
           </button>
         </div>
       ) : emptyGroup ? (

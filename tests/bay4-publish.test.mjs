@@ -1,4 +1,4 @@
-// W4：发布表单界面。新草稿先出三张种类卡；选完是一张表三块，没有步骤条。
+// W2：发布入口。三张卡是素材 / 服务 / 需求；服务表单有「服务形式」；类目可预选；需求走 replaceBay。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -133,12 +133,17 @@ function reset() {
   globalThis.__baySiteKey = "video";
   globalThis.__bayCategories = CATEGORIES;
   globalThis.__bayPickedWork = { kind: "task", id: "task-42", title: "季度汇报" };
-  globalThis.__bayRespond = (method, path) => {
+  globalThis.__bayRespond = (method, path, body) => {
     if (method === "GET" && path === "/v1/talent/me") return { profile: PROFILE };
     if (method === "GET" && path === "/v1/talent/pricing-models") return { items: [] };
     if (method === "GET" && path === "/v1/moderation/my-cases") return { cases: [] };
     if (method === "GET" && path === "/v1/talent/domains") return { domains: [{ key: "tax", name_zh: "税务", gated: false }] };
     if (method === "GET" && path === "/v1/talent/me/services") return { items: [] };
+    if (method === "POST" && path === "/v1/talent/me/services") return { service: { id: "s-new", status: "draft", ...body } };
+    if (method === "PUT" && path === "/v1/talent/me/services/s-new/tiers") return { items: [] };
+    if (method === "POST" && path === "/v1/talent/me/services/s-new/media") return { item: { id: "m1", ...body } };
+    if (method === "GET" && path === "/v1/talent/me/services/s-new/media") return { items: [] };
+    if (method === "POST" && path === "/v1/talent/me/services/s-new/publish") return { service: { id: "s-new", status: "published" }, moderation_hidden: false };
     return {};
   };
 }
@@ -158,123 +163,87 @@ async function mount(target = { kind: "service-editor" }) {
     assert.ok(node, `找不到 ${selector}`);
     return node;
   };
+  const setValue = async (selector, value) => {
+    const node = find(selector);
+    const proto = node.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : node.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(node, value);
+    await act(async () => node.dispatchEvent(new window.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })));
+  };
   const click = async (selector) => {
     const node = find(selector);
     await act(async () => node.click());
     await settle();
   };
-  return { host, find, click, unmount: () => act(() => root.unmount()) };
+  return { host, find, setValue, click, unmount: () => act(() => root.unmount()) };
 }
 
-test("新草稿先出三张种类卡", async () => {
+test("三张卡恰好是 digital / service / need，没有 consult", async () => {
   reset();
-  const view = await mount();
-  assert.equal(view.host.querySelector('[data-bay-publish="pick"]')?.getAttribute("data-bay-pane"), "service-editor");
-  assert.ok(view.host.querySelector('[data-bay-kind="digital"]'));
-  assert.ok(view.host.querySelector('[data-bay-kind="service"]'));
-  assert.ok(view.host.querySelector('[data-bay-kind="need"]'));
+  const view = await mount({ kind: "publish" });
+  const kinds = [...view.host.querySelectorAll("[data-bay-kind]")].map((node) => node.getAttribute("data-bay-kind"));
+  assert.deepEqual(kinds, ["digital", "service", "need"]);
   assert.equal(view.host.querySelector('[data-bay-kind="consult"]'), null);
-  assert.equal(view.host.querySelector('[data-bay-publish="form"]'), null);
   await view.unmount();
 });
 
-test("选素材后出三块、没有步骤条、没有档位表", async () => {
+test("选 service 后有服务形式两选项，默认 service 被按下", async () => {
   reset();
-  const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
-  assert.equal(view.find('[data-bay-publish="form"]').getAttribute("data-bay-pane"), "service-editor");
-  assert.ok(view.host.querySelector('[data-bay-section="product"]'));
-  assert.ok(view.host.querySelector('[data-bay-section="price"]'));
-  assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
-  assert.equal(view.host.querySelector("[data-bay-steps]"), null);
-  assert.equal(view.host.querySelector("[data-bay-tier]"), null);
-  assert.match(view.host.textContent, /素材/);
-  assert.ok(view.host.querySelector("[data-bay-category-select]"));
-  await view.unmount();
-});
-
-test("选服务后「更多定价」默认收起", async () => {
-  reset();
-  const view = await mount();
+  const view = await mount({ kind: "publish" });
   await view.click('[data-bay-kind="service"]');
-  assert.equal(view.find("[data-bay-more-pricing-toggle]").getAttribute("aria-expanded"), "false");
-  assert.equal(view.host.querySelector("[data-bay-more-pricing]"), null);
-  assert.equal(view.host.querySelector("[data-bay-tier]"), null);
-  assert.ok(view.host.querySelector("[data-bay-category-select]"));
+  const form = view.find("[data-bay-service-form]");
+  assert.equal(form.querySelector('[data-bay-service-form-option="service"]')?.getAttribute("aria-pressed"), "true");
+  assert.equal(form.querySelector('[data-bay-service-form-option="consult"]')?.getAttribute("aria-pressed"), "false");
   await view.unmount();
 });
 
-test("底部操作栏有「存草稿」「发布」", async () => {
+test("点 consult 后出现答疑表单的领域字段", async () => {
   reset();
-  const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
-  const bar = view.find("[data-bay-publish-bar]");
-  assert.equal(bar.querySelector('[data-bay-action="save-draft"]').textContent, "存草稿");
-  assert.equal(bar.querySelector('[data-bay-action="publish"]').textContent, "发布");
-  await view.unmount();
-});
-
-test("没有步骤条文案；未保存时可换一种", async () => {
-  reset();
-  const view = await mount();
-  await view.click('[data-bay-kind="service"]');
-  assert.equal(view.host.textContent.includes("第 "), false);
-  assert.equal(view.host.textContent.includes("共 "), false);
-  await view.click("[data-bay-switch-kind]");
-  assert.ok(view.host.querySelector('[data-bay-publish="pick"]'));
-  await view.unmount();
-});
-
-test("选服务后再切答疑：仍是三块，没有步骤条", async () => {
-  reset();
-  const view = await mount();
+  const view = await mount({ kind: "publish" });
   await view.click('[data-bay-kind="service"]');
   await view.click('[data-bay-service-form-option="consult"]');
-  assert.ok(view.host.querySelector('[data-bay-section="product"]'));
-  assert.ok(view.host.querySelector('[data-bay-section="price"]'));
-  assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
-  assert.equal(view.host.querySelector("[data-bay-steps]"), null);
-  assert.match(view.host.textContent, /答疑/);
+  assert.equal(view.find('[data-bay-service-form-option="consult"]').getAttribute("aria-pressed"), "true");
+  assert.match(view.host.textContent, /领域/);
+  assert.ok(view.host.querySelector("[data-bay-domains]") || view.host.textContent.includes("正在加载"));
   await view.unmount();
 });
 
-test("素材有授权范围和分类选择，没有档位", async () => {
+test("publish 带 category=design 时，选 service 后类目是 design", async () => {
   reset();
-  const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
-  assert.ok(view.host.querySelector('[data-bay-license="personal"]'));
-  assert.ok(view.host.querySelector('[data-bay-license="commercial"]'));
-  assert.ok(view.host.querySelector("[data-bay-digital-terms]"));
-  assert.ok(view.host.querySelector("[data-bay-category-select]"));
-  assert.equal(view.host.querySelector("[data-bay-tier]"), null);
-  assert.equal(view.host.querySelector("[data-bay-faq-toggle]"), null);
+  const view = await mount({ kind: "publish", category: "design" });
+  await view.click('[data-bay-kind="service"]');
+  assert.equal(view.find("[data-bay-category-select]").value, "design");
   await view.unmount();
 });
 
-test("点发布而有没填的：不弹窗，标出缺项", async () => {
+test("点 need 调 replaceBay，目标是 post-need:design", async () => {
   reset();
-  const view = await mount();
+  const view = await mount({ kind: "publish", category: "design" });
+  await view.click('[data-bay-kind="need"]');
+  assert.deepEqual(globalThis.__bayReplaced, [{ kind: "post-need", category: "design" }]);
+  await view.unmount();
+});
+
+test("publish 带 category=design 时，选素材后类目是 design，填齐后请求体带 design", async () => {
+  reset();
+  const view = await mount({ kind: "publish", category: "design" });
   await view.click('[data-bay-kind="digital"]');
+  assert.equal(view.find("[data-bay-category-select]").value, "design");
+  await view.setValue('[data-bay-field="title"]', "一套图标");
+  const addMedia = [...view.find('[data-bay-section="product"]').querySelectorAll("button")].find((node) => node.textContent === "添加作品图");
+  assert.ok(addMedia, "找不到添加作品图");
+  await act(async () => addMedia.click());
+  await settle();
+  const urlInput = view.host.querySelector('[data-bay-media] input[placeholder="https://"]');
+  assert.ok(urlInput, "找不到作品图地址");
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(urlInput, "https://cdn.example.com/a.png");
+  await act(async () => urlInput.dispatchEvent(new window.Event("input", { bubbles: true })));
+  await settle();
+  await view.click('input[name="bay-service-cover"]');
+  await view.click("[data-bay-digital-work] button");
+  await view.click('[data-bay-license="personal"]');
   await view.click('[data-bay-action="publish"]');
-  assert.deepEqual(globalThis.__bayTerms, [], "缺项时不问条款");
-  assert.equal(view.host.querySelector("[data-bay-confirm]"), null);
-  assert.match(view.find('[data-bay-section="product"]').textContent, /标题/);
-  await view.unmount();
-});
-
-test("素材没选类目时点发布：缺项有分类，不发发布请求", async () => {
-  reset();
-  const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
-  assert.equal(view.find("[data-bay-category-select]").value, "");
-  const before = globalThis.__bayCalls.filter((call) => call.method === "POST").length;
-  await view.click('[data-bay-action="publish"]');
-  assert.match(view.find('[data-bay-section="product"]').textContent, /分类/);
-  assert.deepEqual(globalThis.__bayTerms, [], "缺项时不问条款");
-  assert.equal(
-    globalThis.__bayCalls.filter((call) => call.method === "POST").length,
-    before,
-    "缺分类时不发发布请求",
-  );
+  const created = globalThis.__bayCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/me/services");
+  assert.ok(created, "没有发出创建请求");
+  assert.equal(created.body.category, "design");
   await view.unmount();
 });

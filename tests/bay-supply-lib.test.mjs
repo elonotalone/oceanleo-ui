@@ -87,6 +87,47 @@ test("收藏：列表、加、删、切换的请求形状", async () => {
   assert.deepEqual(calls()[1].body, { target_kind: "profile", target_ref: "u1" });
 });
 
+test("收藏：标题、副标题、打开目标", () => {
+  const service = {
+    id: "f-svc",
+    target_kind: "service",
+    target_ref: "svc-1",
+    created_at: null,
+    target: { id: "svc-1", title: "Logo", summary: "三版", seller: { display_name: "Leo", handle: "leo" } },
+  };
+  const profile = {
+    id: "f-pro",
+    target_kind: "profile",
+    target_ref: "u1",
+    created_at: null,
+    target: { handle: "leo", display_name: "Leo", headline: "十年品牌" },
+  };
+  const demand = {
+    id: "f-dmd",
+    target_kind: "demand",
+    target_ref: "d1",
+    created_at: null,
+    target: { id: "d1", title: "路演稿", category: "doc", status: "open" },
+  };
+  assert.equal(favorites.favoriteTitle(service), "Logo");
+  assert.equal(favorites.favoriteSubtitle(service), "三版");
+  assert.deepEqual(favorites.favoriteOpenTarget(service), { kind: "service", id: "svc-1" });
+  assert.equal(favorites.favoriteTitle(profile), "Leo");
+  assert.equal(favorites.favoriteSubtitle(profile), "十年品牌");
+  assert.deepEqual(favorites.favoriteOpenTarget(profile), { kind: "profile", handle: "leo" });
+  assert.equal(favorites.favoriteTitle(demand), "路演稿");
+  assert.equal(favorites.favoriteSubtitle(demand), "doc");
+  assert.deepEqual(favorites.favoriteOpenTarget(demand), { kind: "demand", id: "d1" });
+  assert.equal(
+    favorites.favoriteTitle({ id: "x", target_kind: "service", target_ref: "svc-9", created_at: null, target: {} }),
+    "svc-9",
+  );
+  assert.equal(
+    favorites.favoriteOpenTarget({ id: "x", target_kind: "profile", target_ref: "u9", created_at: null, target: { display_name: "无名" } }),
+    null,
+  );
+});
+
 test("收藏：查不到（含未登录）当作没收藏，不抛错", async () => {
   reset(() => Promise.reject(Object.assign(new Error("未登录"), { status: 401 })));
   assert.equal(await favorites.isBayFavorite("service", "svc-1"), false);

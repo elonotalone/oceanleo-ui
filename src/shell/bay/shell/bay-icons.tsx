@@ -164,6 +164,11 @@ const CATEGORY_PATHS: Record<string, ReactNode> = {
       <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
     </>
   ),
+  advice: (
+    <>
+      <path d="M5 7.5A3.5 3.5 0 018.5 4h7A3.5 3.5 0 0119 7.5v6A3.5 3.5 0 0115.5 17H11l-4.5 3v-3H8.5A3.5 3.5 0 015 13.5z" />
+    </>
+  ),
 };
 
 export function BayCategoryIcon({ name, className = "h-5 w-5" }: { name: string | null | undefined; className?: string }) {

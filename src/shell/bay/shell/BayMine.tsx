@@ -1,31 +1,30 @@
 "use client";
 
-// 「我的」：我发出的、我的报价、我的服务、我的订单。浮窗右栏与 /bay 页共用；没登录先请登录。
-// 分区标签的外形跟着所在界面走：/bay 页是标准页的分段标签，浮窗里是浮窗的筛选行。两处都允许换行，不出横向滚动条。
+// 「我的」五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片。没登录先请登录。
+// 每一块的正文在 `../mine/` 里，这个文件只管分区标签和登录提示。标签允许换行，不出横向滚动条。
 import { useUI } from "../../../i18n/ui/useUI";
-import { MyNeedsPane, MyProposalsPane } from "../needs";
-import { MyOrdersPane } from "../orders";
-import { MyServicesPane } from "../seller";
+import { MyBoughtPane, MyCardPane, MyFavoritesPane, MyPublishedPane, MySoldPane } from "../mine";
 import { BAY_MINE_UI_TABS } from "./bay-links";
 import { replaceBay, requireBayLogin, useBaySignedIn, type BayLayout, type BayMineTab, type BayPaneProps } from "./bay-state";
 
 const MINE_LABELS: Readonly<Record<BayMineTab, string>> = {
-  needs: "我发出的",
-  proposals: "我的报价",
-  services: "我的服务",
-  orders: "我的订单",
-  help: "我的求助",
+  published: "我发布的",
+  sold: "我卖出的",
+  bought: "我买到的",
+  favorites: "我的收藏",
+  card: "个人卡片",
 };
 
 function shownMineTab(tab: BayMineTab): BayMineTab {
-  return tab === "help" ? "needs" : tab;
+  return BAY_MINE_UI_TABS.includes(tab) ? tab : "published";
 }
 
 function MinePane({ tab, ...props }: BayPaneProps & { tab: BayMineTab }) {
-  if (tab === "needs" || tab === "help") return <MyNeedsPane {...props} target={{ kind: "mine", tab: "needs" }} />;
-  if (tab === "proposals") return <MyProposalsPane {...props} />;
-  if (tab === "services") return <MyServicesPane {...props} />;
-  return <MyOrdersPane {...props} />;
+  if (tab === "sold") return <MySoldPane {...props} />;
+  if (tab === "bought") return <MyBoughtPane {...props} />;
+  if (tab === "favorites") return <MyFavoritesPane {...props} />;
+  if (tab === "card") return <MyCardPane {...props} />;
+  return <MyPublishedPane {...props} />;
 }
 
 export function BayMineTabs({
@@ -102,10 +101,10 @@ export function BayMine({ tab, layout, siteKey }: { tab: BayMineTab; layout: Bay
       <BayMineTabs tab={tab} variant={layout === "page" ? "page" : "overlay"} />
       {signedIn ? (
         <div className="min-h-0 flex-1">
-          <MinePane tab={tab} target={{ kind: "mine", tab }} layout={layout} siteKey={siteKey} />
+          <MinePane tab={shown} target={{ kind: "mine", tab: shown }} layout={layout} siteKey={siteKey} />
         </div>
       ) : (
-        <BaySignInPrompt text={tt("登录后查看你发出的、报价、服务和订单")} />
+        <BaySignInPrompt text={tt("登录后查看你发布的、卖出的、买到的和收藏")} />
       )}
     </div>
   );

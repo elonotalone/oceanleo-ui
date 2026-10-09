@@ -1,7 +1,7 @@
 "use client";
 
-// Bay「我的」→「我的服务」：卖家概况 + 按状态分组。窗格不自带返回栏/标题栏/滚动。
-// 钱的数字不在这里出现，只给「去看收款」入口。答疑挂牌只读。
+// Bay「我的」→ 我上架的素材与服务。概况那一行可单独拿去「我卖出的」用。
+// 窗格不自带返回栏/标题栏/滚动。钱的数字不在这里出现，只给「去看收款」入口。答疑挂牌只读。
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -40,14 +40,54 @@ const GROUP_TITLES: Record<BayServiceGroup, string> = {
 interface Loaded {
   services: BayOwnService[];
   consults: BayOwnConsult[];
-  stats: BaySellerStats | null;
-  threads: BaySellerThread[];
   cases: BayContentCase[];
-  viewerId: string | null;
   error: string;
 }
 
-export function MyServicesPane(_props: BayPaneProps) {
+export function SellerOverview() {
+  const tt = useUI();
+  const signedIn = useBaySignedIn();
+  const [loaded, setLoaded] = useState<{
+    stats: BaySellerStats | null;
+    threads: BaySellerThread[];
+    viewerId: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let alive = true;
+    void Promise.all([
+      getSellerStats().catch(() => null),
+      listRecentThreads().catch(() => ({ threads: [] as BaySellerThread[] })),
+      getUserId().catch(() => null),
+    ]).then(([stats, threads, viewerId]) => {
+      if (alive) setLoaded({ stats, threads: threads.threads || [], viewerId });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [signedIn]);
+
+  if (!signedIn || !loaded) return null;
+
+  const active = activeOrderCount(loaded.stats);
+  const replies = awaitingReplyCount(loaded.threads, loaded.viewerId);
+  const rating = loaded.stats && loaded.stats.rating_count > 0 ? loaded.stats.rating_avg : null;
+
+  return (
+    <div data-bay-seller-overview className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <OverviewCell label={tt("进行中的订单")} value={String(active)} />
+      <OverviewCell label={tt("待回复")} value={String(replies)} />
+      <OverviewCell label={tt("评分")} value={rating == null ? tt("暂无评价") : rating.toFixed(1)} />
+      <button type="button" data-bay-money-entry onClick={() => openBaySettings("money")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-left hover:bg-stone-50">
+        <span className="block text-[11px] text-stone-500">{tt("收款与账单")}</span>
+        <span className="mt-1 block text-[13px] font-semibold text-stone-900">{tt("去设置里看")}</span>
+      </button>
+    </div>
+  );
+}
+
+export function MyServicesPane({ overview = false, hideNew = false }: BayPaneProps & { overview?: boolean; hideNew?: boolean }) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -63,26 +103,20 @@ export function MyServicesPane(_props: BayPaneProps) {
     void Promise.all([
       listMyServices(),
       listMyConsults().catch(() => ({ items: [] as BayOwnConsult[] })),
-      getSellerStats().catch(() => null),
-      listRecentThreads().catch(() => ({ threads: [] as BaySellerThread[] })),
       listMyContentCases().catch(() => [] as BayContentCase[]),
-      getUserId().catch(() => null),
     ]).then(
-      ([services, consults, stats, threads, cases, viewerId]) => {
+      ([services, consults, cases]) => {
         if (alive) {
           setLoaded({
             services: services.items || [],
             consults: consults.items || [],
-            stats,
-            threads: threads.threads || [],
             cases,
-            viewerId,
             error: "",
           });
         }
       },
       (error: unknown) => {
-        if (alive) setLoaded({ services: [], consults: [], stats: null, threads: [], cases: [], viewerId: null, error: error instanceof Error ? error.message : "" });
+        if (alive) setLoaded({ services: [], consults: [], cases: [], error: error instanceof Error ? error.message : "" });
       },
     );
     return () => {
@@ -101,11 +135,21 @@ export function MyServicesPane(_props: BayPaneProps) {
     );
   }
 
-  if (!loaded) return <section data-bay-pane="mine-services" className="p-4 text-[13px] text-stone-500">{tt("正在加载…")}</section>;
+  const overviewRow = overview ? <SellerOverview /> : null;
+
+  if (!loaded) {
+    return (
+      <section data-bay-pane="mine-services" className="space-y-4 p-4">
+        {overviewRow}
+        <p className="text-[13px] text-stone-500">{tt("正在加载…")}</p>
+      </section>
+    );
+  }
 
   if (loaded.error) {
     return (
-      <section data-bay-pane="mine-services" role="alert" className="p-4 text-[13px] text-rose-700">
+      <section data-bay-pane="mine-services" role="alert" className="space-y-4 p-4 text-[13px] text-rose-700">
+        {overviewRow}
         <p>{tt(loaded.error)}</p>
         <button type="button" onClick={reload} className="mt-2 font-medium underline underline-offset-2">
           {tt("重试")}
@@ -116,26 +160,15 @@ export function MyServicesPane(_props: BayPaneProps) {
 
   const groups = groupMyServices(loaded.services);
   const empty = loaded.services.length === 0 && loaded.consults.length === 0;
-  const active = activeOrderCount(loaded.stats);
-  const replies = awaitingReplyCount(loaded.threads, loaded.viewerId);
-  const rating = loaded.stats && loaded.stats.rating_count > 0 ? loaded.stats.rating_avg : null;
 
   return (
     <section data-bay-pane="mine-services" className="space-y-4 p-4">
-      <div data-bay-seller-overview className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <OverviewCell label={tt("进行中的订单")} value={String(active)} />
-        <OverviewCell label={tt("待回复")} value={String(replies)} />
-        <OverviewCell label={tt("评分")} value={rating == null ? tt("暂无评价") : rating.toFixed(1)} />
-        <button type="button" data-bay-money-entry onClick={() => openBaySettings("money")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-left hover:bg-stone-50">
-          <span className="block text-[11px] text-stone-500">{tt("收款与账单")}</span>
-          <span className="mt-1 block text-[13px] font-semibold text-stone-900">{tt("去设置里看")}</span>
-        </button>
-      </div>
+      {overviewRow}
 
-      {/* 一个服务都没有时，下面的空状态里已经有「发布第一个服务」，这里不再放一个。 */}
-      {empty ? null : (
+      {/* 一个服务都没有时，下面的空状态里已经有「发布第一个服务」，这里不再放一个。嵌进「我发布的」时由外层的发布按钮负责。 */}
+      {empty || hideNew ? null : (
         <div className="flex justify-end">
-          <button type="button" onClick={() => openBay({ kind: "service-editor" })} data-bay-new-service className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
+          <button type="button" onClick={() => openBay({ kind: "publish" })} data-bay-new-service className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
             {tt("发布")}
           </button>
         </div>
@@ -144,7 +177,7 @@ export function MyServicesPane(_props: BayPaneProps) {
       {empty ? (
         <div data-bay-empty="services" className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center">
           <p className="text-[13px] text-stone-600">{tt("还没有发布过服务。把一件你做得好的事变成别人能直接下单的服务。")}</p>
-          <button type="button" onClick={() => openBay({ kind: "service-editor" })} className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white">
+          <button type="button" onClick={() => openBay({ kind: "publish" })} className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white">
             {tt("发布第一个服务")}
           </button>
         </div>

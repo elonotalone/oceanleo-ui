@@ -360,7 +360,7 @@ test("未登录看求助走登录；我发出的里求助行点开 Bay", async (
   await guest.unmount();
 
   reset();
-  const mine = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "needs" }, layout: "docked", siteKey: "design" }));
+  const mine = await mount(React.createElement(MyNeedsPane, { target: { kind: "mine", tab: "published" }, layout: "docked", siteKey: "design" }));
   await mine.click("[data-bay-my-help-row='h1']");
   assert.deepEqual(globalThis.__bayOpened, [{ kind: "help", id: "h1" }]);
   await mine.unmount();

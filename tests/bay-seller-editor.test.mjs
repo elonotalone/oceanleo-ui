@@ -89,6 +89,7 @@ const settingsStub = dataModule(`
 `);
 const stateStub = dataModule(`
   export function openBay(target) { (globalThis.__bayOpened ||= []).push(target); }
+  export function replaceBay(target) { (globalThis.__bayReplaced ||= []).push(target); }
   export function requireBayLogin() { return globalThis.__baySignedIn !== false; }
   export function useBaySignedIn() { return globalThis.__baySignedIn !== false; }
   export function useBaySiteKey() { return globalThis.__baySiteKey || "oceanleo"; }
@@ -168,6 +169,7 @@ function reset({ service = existingService(), profile = PROFILE } = {}) {
   globalThis.__bayTerms = [];
   globalThis.__bayTermsAccept = true;
   globalThis.__bayOpened = [];
+  globalThis.__bayReplaced = [];
   globalThis.__baySettingsOpened = [];
   globalThis.__baySignedIn = true;
   globalThis.__baySiteKey = "video";
@@ -429,7 +431,7 @@ test("删除路径：点删除后出现确认弹窗、点取消没有发出 DELE
     ["/v1/talent/me/services/s1"],
   );
   assert.equal(globalThis.__bayToasts.at(-1).title, "服务已删除");
-  assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "services" });
+  assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "published" });
   await view.unmount();
 });
 

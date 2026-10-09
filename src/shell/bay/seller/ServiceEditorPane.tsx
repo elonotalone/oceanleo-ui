@@ -50,7 +50,7 @@ import { ConfirmDialog } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
 import { pickLibraryWork } from "../needs/LibraryWorkPicker";
 import { ensureBayTerms } from "../settings";
-import { openBay, requireBayLogin, useBaySignedIn, useBaySiteKey, type BayPaneProps } from "../shell/bay-state";
+import { openBay, replaceBay, requireBayLogin, useBaySignedIn, useBaySiteKey, type BayPaneProps } from "../shell/bay-state";
 import {
   TITLE_MAX,
   clientKey,
@@ -103,10 +103,12 @@ const BTN_SECONDARY =
   "inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40";
 const BTN_QUIET = "rounded-lg px-3 py-1.5 text-[13px] text-stone-500 hover:bg-stone-100 hover:text-stone-900";
 
-const KIND_CARDS: { kind: PublishKind; title: string; blurb: string; items: string[] }[] = [
-  { kind: "digital", title: "数字商品", blurb: "图片、模板、文件，买家付款后立即拿到", items: ["标题和预览图", "一个价格", "授权范围"] },
-  { kind: "service", title: "服务", blurb: "按约定的时间为买家做一件事", items: ["做什么", "价格和交付天数", "交付约定"] },
-  { kind: "consult", title: "答疑", blurb: "按次或按小时回答问题", items: ["领域", "价格", "能答的范围"] },
+type PickKind = "digital" | "service" | "need";
+
+const KIND_CARDS: { kind: PickKind; title: string; blurb: string; items: string[] }[] = [
+  { kind: "digital", title: "素材", blurb: "图片、模板、文件，买家付款后立即拿到", items: ["标题和预览图", "一个价格", "授权范围"] },
+  { kind: "service", title: "服务", blurb: "为买家做一件事，或者按次、按小时答疑", items: ["做什么", "价格和交付天数", "交付约定"] },
+  { kind: "need", title: "需求", blurb: "说清你要做的事，别人来报价，你来挑", items: ["要做什么", "预算和期限", "报价由你挑"] },
 ];
 
 const SECTION_HINT: Record<PublishKind, Record<PublishSection, string>> = {
@@ -143,6 +145,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const signedIn = useBaySignedIn();
   const postedSite = useBaySiteKey();
   const routeId = target.kind === "service-editor" ? target.serviceId || "" : "";
+  const presetCategory = target.kind === "publish" ? target.category : undefined;
 
   const [draft, setDraft] = useState<EditorDraft>(() => emptyDraft(tt));
   const [dirty, setDirty] = useState(false);
@@ -291,16 +294,28 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
   function pickKind(next: PublishKind) {
     if (draft.serviceId) return;
+    if (publishKindOf(draft) === next) return;
     const base = emptyDraft(tt);
     base.official = draft.official || isOfficialProfile(profile);
     base.catalogKind = next === "consult" ? "consult" : "delivery";
     base.listingKind = next === "digital" ? "digital" : "service";
     base.simplePrice = true;
+    if ((next === "service" || next === "digital") && presetCategory && wizardCategories(categories, "delivery").some((row) => row.slug === presetCategory)) {
+      base.category = presetCategory;
+    }
     setDraft(base);
     setDirty(true);
     setHighlight(null);
     setFaqOpen(false);
     setMorePricing(false);
+  }
+
+  function pickPublishCard(card: PickKind) {
+    if (card === "need") {
+      replaceBay(presetCategory ? { kind: "post-need", category: presetCategory } : { kind: "post-need" });
+      return;
+    }
+    pickKind(card);
   }
 
   function pickKindReset() {
@@ -486,7 +501,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
           await createMyConsult(consultInput(draft, "published"), postedSite);
           setDirty(false);
           toast.success(tt("答疑已上架"));
-          openBay({ kind: "mine", tab: "services" });
+          openBay({ kind: "mine", tab: "published" });
           return;
         }
         if (!draft.serviceId) {
@@ -549,7 +564,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     try {
       await deleteMyService(draft.serviceId);
       toast.success(tt("服务已删除"));
-      openBay({ kind: "mine", tab: "services" });
+      openBay({ kind: "mine", tab: "published" });
     } catch (error) {
       reportFailure(error, tt("删除失败，请稍后再试。"));
     } finally {
@@ -616,7 +631,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
               key={card.kind}
               type="button"
               data-bay-kind={card.kind}
-              onClick={() => pickKind(card.kind)}
+              onClick={() => pickPublishCard(card.kind)}
               className="flex flex-col rounded-xl border border-stone-200 bg-white p-4 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400"
             >
               <span className="block text-[15px] font-semibold tracking-tight text-stone-900">{tt(card.title)}</span>
@@ -664,6 +679,9 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
             sectionEls.current.product = node;
           }}
         >
+          {!draft.serviceId && (publishKind === "service" || publishKind === "consult") ? (
+            <ServiceFormToggle value={publishKind} onPick={(next) => pickKind(next)} />
+          ) : null}
           {publishKind === "consult" ? (
             <>
               <DomainStep
@@ -692,7 +710,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
                 <input className={INPUT_CLASS} data-bay-field="title" value={draft.title} maxLength={TITLE_MAX} onChange={(event) => patch({ title: event.target.value })} />
                 <OverreachHintList text={draft.title} />
               </SellerField>
-              {publishKind === "service" ? (
+              {publishKind === "service" || publishKind === "digital" ? (
                 <SellerField label={tt("分类")}>
                   <CategorySelect categories={visibleCategories} value={draft.category} onChange={changeCategory} />
                 </SellerField>
@@ -1000,6 +1018,34 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         />
       ) : null}
     </section>
+  );
+}
+
+function ServiceFormToggle({ value, onPick }: { value: "service" | "consult"; onPick: (next: "service" | "consult") => void }) {
+  const tt = useUI();
+  const options: { kind: "service" | "consult"; title: string; detail: string }[] = [
+    { kind: "service", title: "做一件事", detail: "按约定的时间交付成果" },
+    { kind: "consult", title: "答疑", detail: "按次或按小时回答问题" },
+  ];
+  return (
+    <div className="space-y-2" data-bay-service-form>
+      <p className="text-[13px] font-medium text-stone-800">{tt("服务形式")}</p>
+      {options.map((option) => (
+        <button
+          key={option.kind}
+          type="button"
+          data-bay-service-form-option={option.kind}
+          aria-pressed={value === option.kind}
+          onClick={() => onPick(option.kind)}
+          className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left ${value === option.kind ? "border-neutral-900 bg-neutral-50" : "border-neutral-200 bg-white"}`}
+        >
+          <span className="min-w-0">
+            <span className="block text-[13px] font-semibold text-neutral-900">{tt(option.title)}</span>
+            <span className="mt-0.5 block text-[12px] leading-5 text-neutral-500">{tt(option.detail)}</span>
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 

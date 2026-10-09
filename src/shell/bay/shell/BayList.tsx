@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、种类（全部 / 素材 / 服务 / 需求 / 答疑）、类目、信息流本体。
+// LeoBay 页的信息流部件：搜索、供给/需求切换、类目（含专业咨询）、信息流本体。
 // LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocale } from "next-intl";
@@ -9,7 +9,7 @@ import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
 import { DemandCard, HelpRequestCard } from "../needs";
 import { ConsultCard, ServiceCard } from "../supply";
 import { BayCategoryIcon, BayIcon } from "./bay-icons";
-import { BAY_FEED_KINDS } from "./bay-links";
+import { BAY_ADVICE_ZONE } from "./bay-links";
 import {
   openBay,
   requireBayLogin,
@@ -21,18 +21,8 @@ import {
 import type { BayFeedCardVariant } from "./feed-card-ui";
 import { useBayCategories, useBayFeed } from "./use-bay-data";
 
-const KIND_LABELS: Readonly<Record<(typeof BAY_FEED_KINDS)[number], string>> = {
-  all: "全部",
-  material: "素材",
-  demand: "需求",
-  service: "服务",
-  help: "求助",
-  consult: "答疑",
-};
-
 const SEARCH_DEBOUNCE_MS = 350;
 const SEARCH_MAX_LENGTH = 60;
-const KIND_TABS = ["all", "material", "service", "demand", "consult"] as const;
 
 export function targetForFeedItem(item: BayFeedItem): BayTarget {
   return { kind: item.kind, id: item.id };
@@ -54,14 +44,18 @@ export function startPostNeed(category?: string): void {
   openBay(category ? { kind: "post-need", category } : { kind: "post-need" });
 }
 
-export function startServiceEditor(): void {
+export function startPublish(category?: string): void {
   if (!requireBayLogin()) return;
-  openBay({ kind: "service-editor" });
+  openBay(category && category !== BAY_ADVICE_ZONE ? { kind: "publish", category } : { kind: "publish" });
+}
+
+export function startServiceEditor(): void {
+  startPublish();
 }
 
 export function openMine(): void {
   if (!requireBayLogin()) return;
-  openBay({ kind: "mine", tab: "needs" });
+  openBay({ kind: "mine", tab: "published" });
 }
 
 export function activeFeedKey(target: BayTarget): string | null {
@@ -72,7 +66,7 @@ export function activeFeedKey(target: BayTarget): string | null {
 }
 
 function isDefaultFilter(filter: BayFeedFilter): boolean {
-  return (filter.kind ?? "all") === "all" && !filter.category && !filter.q;
+  return (filter.kind ?? "supply") === "supply" && !filter.category && !filter.q;
 }
 
 // ---- 搜索 ---------------------------------------------------------------------
@@ -121,15 +115,14 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 // ---- 种类 ---------------------------------------------------------------------
 
 /**
- * 种类（全部 / 素材 / 服务 / 需求 / 答疑）：跟我的库分类同一套小标签。
- * 选中的那一个用站点主色填满（没给主色用黑色）。
+ * 供给 / 需求两段小切换。选中的那一个用站点主色填满（没给主色用黑色）。
  */
-export function BayKindTabs({ filter, accent }: { filter: BayFeedFilter; accent?: string; variant?: "page" }) {
+export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accent?: string }) {
   const tt = useUI();
-  const value = filter.kind ?? "all";
+  const value = filter.kind === "demand" ? "demand" : "supply";
   return (
-    <div role="tablist" aria-label={tt("筛选种类")} data-bay-kinds="page" className="flex max-w-full flex-wrap items-center gap-1.5">
-      {KIND_TABS.map((kind) => {
+    <div role="tablist" aria-label={tt("看素材与服务还是看需求")} data-bay-view className="flex max-w-full flex-wrap items-center gap-1.5">
+      {(["supply", "demand"] as const).map((kind) => {
         const active = kind === value;
         return (
           <button
@@ -137,14 +130,20 @@ export function BayKindTabs({ filter, accent }: { filter: BayFeedFilter; accent?
             type="button"
             role="tab"
             aria-selected={active}
-            data-kind={kind}
-            onClick={() => setBayFilter({ ...filter, kind, category: kind === "material" ? undefined : filter.category })}
+            data-view={kind}
+            onClick={() =>
+              setBayFilter({
+                ...filter,
+                kind,
+                category: kind === "demand" && filter.category === BAY_ADVICE_ZONE ? undefined : filter.category,
+              })
+            }
             style={active ? { background: accent || "#111113" } : undefined}
             className={`rounded-lg px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
               active ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
             }`}
           >
-            {tt(KIND_LABELS[kind])}
+            {tt(kind === "supply" ? "素材与服务" : "需求")}
           </button>
         );
       })}
@@ -183,28 +182,53 @@ export function BayCategoryChips({
         ? Array.from({ length: 8 }).map((_, index) => (
             <span key={index} aria-hidden="true" className="h-7 w-24 animate-pulse rounded-lg bg-black/5 dark:bg-white/10" />
           ))
-        : categories.map((category) => {
-            const active = filter.category === category.slug;
-            return (
-              <button
-                key={category.slug}
-                type="button"
-                aria-pressed={active}
-                data-category={category.slug}
-                onClick={() => {
-                  setBayFilter({ ...filter, category: active ? undefined : category.slug });
-                  onPicked?.();
-                }}
-                className={`${CHIP_BASE} ${
-                  active ? selectedClass : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
-                }`}
-                style={active ? selectedStyle : undefined}
-              >
-                <BayCategoryIcon name={category.icon} className="h-3.5 w-3.5 shrink-0" />
-                <span>{name(category)}</span>
-              </button>
-            );
-          })}
+        : (
+            <>
+              {categories.map((category) => {
+                const active = filter.category === category.slug;
+                return (
+                  <button
+                    key={category.slug}
+                    type="button"
+                    aria-pressed={active}
+                    data-category={category.slug}
+                    onClick={() => {
+                      setBayFilter({ ...filter, category: active ? undefined : category.slug });
+                      onPicked?.();
+                    }}
+                    className={`${CHIP_BASE} ${
+                      active ? selectedClass : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
+                    }`}
+                    style={active ? selectedStyle : undefined}
+                  >
+                    <BayCategoryIcon name={category.icon} className="h-3.5 w-3.5 shrink-0" />
+                    <span>{name(category)}</span>
+                  </button>
+                );
+              })}
+              {filter.kind !== "demand" ? (
+                <button
+                  type="button"
+                  aria-pressed={filter.category === BAY_ADVICE_ZONE}
+                  data-category={BAY_ADVICE_ZONE}
+                  onClick={() => {
+                    const active = filter.category === BAY_ADVICE_ZONE;
+                    setBayFilter({ ...filter, category: active ? undefined : BAY_ADVICE_ZONE });
+                    onPicked?.();
+                  }}
+                  className={`${CHIP_BASE} ${
+                    filter.category === BAY_ADVICE_ZONE
+                      ? selectedClass
+                      : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
+                  }`}
+                  style={filter.category === BAY_ADVICE_ZONE ? selectedStyle : undefined}
+                >
+                  <BayCategoryIcon name="advice" className="h-3.5 w-3.5 shrink-0" />
+                  <span>{tt("专业咨询")}</span>
+                </button>
+              ) : null}
+            </>
+          )}
     </div>
   );
 }
@@ -323,14 +347,16 @@ export function BayFeed({
             <BayIcon className="h-5 w-5" strokeWidth={1.7} />
           </span>
           <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-500">
-            {pristine ? tt("LeoBay 里还没有内容，发第一条需求或服务吧") : tt("没有符合条件的内容")}
+            {pristine
+              ? tt("LeoBay 里还没有内容，发第一条需求或服务吧")
+              : tt(filter.kind === "demand" ? "这里还没有需求" : "这里还没有素材和服务")}
           </p>
           {pristine ? (
             emptyAction ? (
               <div className="mt-4">{emptyAction}</div>
             ) : null
           ) : (
-            <button type="button" onClick={() => setBayFilter({ kind: "all" })} className={`mt-4 ${QUIET_BUTTON}`} data-bay-clear-filters>
+            <button type="button" onClick={() => setBayFilter({ kind: "supply" })} className={`mt-4 ${QUIET_BUTTON}`} data-bay-clear-filters>
               {tt("清除筛选")}
             </button>
           )}

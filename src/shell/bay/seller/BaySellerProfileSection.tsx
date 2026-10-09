@@ -31,7 +31,8 @@ function joinList(items: string[] | undefined): string {
   return (items || []).join("，");
 }
 
-export function BaySellerProfileSection() {
+/** `onSaved`：保存成功后把新资料交给外面（「个人卡片」用它当场刷新上面的预览）。 */
+export function BaySellerProfileSection({ onSaved }: { onSaved?: (profile: BaySellerProfile) => void } = {}) {
   const tt = useUI();
   const [profile, setProfile] = useState<BaySellerProfile | null>(null);
   const [showcase, setShowcase] = useState<BayShowcaseItem[]>([]);
@@ -85,6 +86,7 @@ export function BaySellerProfileSection() {
     try {
       const saved = await saveSellerProfile(sellerProfileBody(form));
       setProfile(saved.profile);
+      onSaved?.(saved.profile);
     } catch (err) {
       setError(err instanceof Error ? err.message : "");
     } finally {

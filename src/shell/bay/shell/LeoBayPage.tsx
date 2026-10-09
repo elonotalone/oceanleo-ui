@@ -1,11 +1,10 @@
 "use client";
 
-// LeoBay：各站 `/bay` 这一张页。页头跟我的库同一套（17px 标题 + 一行动作 + 搜索），下面是种类和货架。
-// 「素材」是官方账号发布的免费素材货架；点开一条，换成「返回 + 标题 + 详情」。
+// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按类目逛素材与服务或需求。
+// 官方素材货架没有页面入口，只有地址带 `?kind=material` 时才显示，顶上有「返回 LeoBay」。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { getBayOfficialPublisher, type BayOfficialPublisher } from "../../../lib/bay/official";
 import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS } from "../../AppPageHeader";
 import { ExplorePage, type ExplorePageProps } from "../../ExplorePage";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
@@ -15,9 +14,7 @@ import { formatBayParam } from "./bay-links";
 import {
   bayBack,
   bayEnabledHere,
-  openBay,
   registerBayPage,
-  requireBayLogin,
   setBayFilter,
   setBaySiteKey,
   useBayFilter,
@@ -27,7 +24,7 @@ import {
   type BayTarget,
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
-import { BayCategoryChips, BayFeed, BayKindTabs, openMine, startPostNeed, startServiceEditor, useBaySearchText } from "./BayList";
+import { BayCategoryChips, BayFeed, BayViewSwitch, openMine, startPublish, useBaySearchText } from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -39,7 +36,7 @@ export type LeoBayMaterialProps = Pick<
 
 export interface LeoBayPageProps {
   siteKey: string;
-  /** 站点主色：页头、选中的种类与类目用它。不传用天蓝。 */
+  /** 站点主色：页头、选中的切换与类目用它。不传用天蓝。 */
   accent?: string;
   /** 素材货架的可选接线。 */
   materials?: LeoBayMaterialProps;
@@ -61,12 +58,7 @@ const BTN =
 const BTN_GHOST = `${BTN} text-stone-600 hover:bg-stone-100 hover:text-stone-900`;
 const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
 
-function openMyPage(): void {
-  if (!requireBayLogin()) return;
-  openBay({ kind: "profile", handle: "me" });
-}
-
-/** 页头：跟我的库同一行——标题、动作、搜索。 */
+/** 页头：标题、两个按键、搜索。素材深链不画搜索。 */
 function Hero({ filter }: { filter: BayFeedFilter }) {
   const tt = useUI();
   const search = useBaySearchText(filter);
@@ -76,16 +68,10 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
       <header className={APP_PAGE_HEADER_ROW_CLASS}>
         <h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2" data-bay-page-actions>
-          <button type="button" onClick={openMyPage} data-bay-action="my-page" className={BTN_GHOST}>
-            {tt("我的主页")}
-          </button>
           <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_GHOST}>
             {tt("我的")}
           </button>
-          <button type="button" onClick={() => startPostNeed(filter.category)} data-bay-action="get-help" className={BTN_GHOST}>
-            {tt("找人帮忙")}
-          </button>
-          <button type="button" onClick={startServiceEditor} data-bay-action="publish" className={BTN_PRIMARY}>
+          <button type="button" onClick={() => startPublish(filter.category)} data-bay-action="publish" className={BTN_PRIMARY}>
             {tt("发布")}
           </button>
         </div>
@@ -97,7 +83,7 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
             type="search"
             value={search.text}
             maxLength={60}
-            placeholder={tt("搜商品、服务、需求…")}
+            placeholder={tt("搜素材、服务、需求…")}
             aria-label={tt("搜索")}
             onChange={(event) => search.change(event.target.value)}
             onKeyDown={(event) => {
@@ -111,56 +97,8 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
   );
 }
 
-/** 「全部」栏顶上的一条：把人带去素材栏。 */
-function MaterialsPromo({ filter }: { filter: BayFeedFilter }) {
-  const tt = useUI();
-  return (
-    <button
-      type="button"
-      data-bay-materials-promo
-      onClick={() => setBayFilter({ ...filter, kind: "material", category: undefined, q: undefined })}
-      className="mb-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-left text-stone-900 hover:border-stone-300"
-    >
-      <span className="min-w-0">
-        <span className="flex flex-wrap items-center gap-2 text-[14px] font-semibold tracking-tight">
-          {tt("官方素材")}
-          <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">{tt("免费")}</span>
-        </span>
-        <span className="mt-0.5 block text-[12px] text-stone-500">{tt("图片、模板、视频、音乐、3D……由 OceanLeo 官方发布，拿去直接用。")}</span>
-      </span>
-      <span className="shrink-0 text-[13px] font-medium text-stone-700">{tt("去逛素材")}</span>
-    </button>
-  );
-}
-
-/** 素材栏顶上的发布者说明：谁发的、多少钱、什么条款。发布者是官方账号（没建主页时用内置身份）。 */
-function MaterialsPublisher() {
-  const tt = useUI();
-  const [publisher, setPublisher] = useState<BayOfficialPublisher | null>(null);
-  useEffect(() => {
-    let active = true;
-    void getBayOfficialPublisher().then((value) => {
-      if (active) setPublisher(value);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-  const handle = publisher?.handle || "oceanleo";
-  return (
-    <div className="mb-3 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-600" data-bay-materials-publisher={handle}>
-      <button type="button" onClick={() => openBay({ kind: "profile", handle })} className={`${BTN_GHOST} gap-1.5`}>
-        {publisher?.display_name || "OceanLeo"}
-        <span className="text-[11px] text-stone-400">{tt("官方")}</span>
-      </button>
-      <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[12px] font-medium text-stone-600">{tt("全部免费")}</span>
-      <span className="min-w-0 text-stone-500">{tt("数字素材：点开就能用、能改；可用于个人和商业作品，不得把原文件转手再卖。")}</span>
-    </div>
-  );
-}
-
 /**
- * 逛 LeoBay：页头、种类、（素材货架 | 类目 + 卡片网格）。
+ * 逛 LeoBay：页头、供给/需求、类目、卡片网格；素材货架只走深链。
  * 看详情时这一整块只是藏起来（`visible` 为 false）；回来时把信息流滚回离开时的位置。
  */
 function Browse({ filter, accent, visible, siteKey, materials }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string; materials?: LeoBayMaterialProps }) {
@@ -190,47 +128,53 @@ function Browse({ filter, accent, visible, siteKey, materials }: { filter: BayFe
       data-bay-page-feed
     >
       <Hero filter={filter} />
-      <div className="mt-5 shrink-0" data-bay-page-filters>
-        <BayKindTabs filter={filter} accent={accent} />
-      </div>
+      {material ? (
+        <div className="mt-3 shrink-0">
+          <button type="button" data-bay-materials-back onClick={() => setBayFilter({ kind: "supply" })} className={BTN_GHOST}>
+            {tt("返回 LeoBay")}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 shrink-0" data-bay-page-filters>
+            <BayViewSwitch filter={filter} accent={accent} />
+          </div>
+          <div className="mt-4 shrink-0">
+            <BayCategoryChips filter={filter} accent={accent} />
+          </div>
+        </>
+      )}
       {/* 素材货架第一次打开后只藏不卸：切去别的种类再回来，筛选和滚动位置都还在。 */}
       {materialVisited ? (
         <div className={material ? "mt-4 flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
-          <MaterialsPublisher />
           <ExplorePage siteKey={siteKey} accent={accent} embedded {...materials} />
         </div>
       ) : null}
       {material ? null : (
-        <>
-          <div className="mt-4 shrink-0">
-            <BayCategoryChips filter={filter} accent={accent} />
-          </div>
-          <div className="mt-5">
-            {(filter.kind ?? "all") === "all" && !filter.q && !filter.category ? <MaterialsPromo filter={filter} /> : null}
-            <BayFeed
-              filter={filter}
-              activeKey={null}
-              variant="grid"
-              emptyAction={
-                <button
-                  type="button"
-                  onClick={startServiceEditor}
-                  data-bay-action="publish"
-                  className={BTN_PRIMARY}
-                >
-                  {tt("发布")}
-                </button>
-              }
-            />
-          </div>
-        </>
+        <div className="mt-5">
+          <BayFeed
+            filter={filter}
+            activeKey={null}
+            variant="grid"
+            emptyAction={
+              <button
+                type="button"
+                onClick={() => startPublish(filter.category)}
+                data-bay-action="publish"
+                className={BTN_PRIMARY}
+              >
+                {tt("发布")}
+              </button>
+            }
+          />
+        </div>
       )}
     </div>
   );
 }
 
 /** 这几种详情铺满页框宽度；其余收在易读的宽度里。 */
-const WIDE_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(["service", "checkout", "profile", "mine", "service-editor"]);
+const WIDE_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(["service", "checkout", "profile", "mine", "service-editor", "publish"]);
 
 /** 点开的那一条：一行「返回 + 标题」，正文在一张卡里（卡内滚动，底部的操作条贴在卡的底边）。 */
 function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed" }>; siteKey: string }) {
@@ -266,7 +210,6 @@ function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed"
 }
 
 export function LeoBayPage({ siteKey, accent = "#0ea5e9", materials }: LeoBayPageProps): ReactElement {
-  const tt = useUI();
   const availability = useAvailability();
   const filter = useBayFilter();
   const { current } = useBayState();

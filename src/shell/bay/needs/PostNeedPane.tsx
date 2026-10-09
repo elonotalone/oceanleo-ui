@@ -1,6 +1,6 @@
 "use client";
 
-// 发需求窗格。表单是「找人帮忙」（公开征集）。这里只包一层，不自带返回栏/标题栏。
+// 发布 → 需求。表单是「找人帮忙」（公开征集）。这里只包一层，不自带返回栏/标题栏。
 
 import { type BayPaneProps } from "../shell/bay-state";
 import { GetHelpForm } from "./GetHelpForm";

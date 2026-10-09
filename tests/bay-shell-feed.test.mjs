@@ -114,3 +114,9 @@ test("useBayFeed 用分类函数消化 401/403/abort", () => {
   assert.match(text, /bayFeedErrorText/);
   assert.doesNotMatch(text, /setError\(errorText\(caught\)\)/);
 });
+
+test("useBayFeed：页面 demand→接口 needs，其余→supply", () => {
+  const text = readFileSync(join(REPO, "src/shell/bay/shell/use-bay-data.ts"), "utf8");
+  assert.match(text, /filter\.kind === "demand" \? "needs" : "supply"/);
+  assert.match(text, /fetchBayFeed\(\{ kind, category, q \}/);
+});

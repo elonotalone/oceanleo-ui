@@ -26,7 +26,7 @@ function createdAtMs(value: string | undefined): number {
 }
 
 export function MyNeedsPane({ target }: BayPaneProps) {
-  if (target.kind !== "mine" || target.tab !== "needs") return null;
+  if (target.kind !== "mine") return null;
   return <MyNeedsBody />;
 }
 

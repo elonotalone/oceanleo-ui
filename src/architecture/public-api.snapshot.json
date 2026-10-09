@@ -3680,6 +3680,12 @@
         },
         {
           "kind": "named",
+          "name": "claimBayService",
+          "importedName": "claimBayService",
+          "source": "../lib/bay/services"
+        },
+        {
+          "kind": "named",
           "name": "closeMessages",
           "importedName": "closeMessages",
           "source": "./messages/host-state"
@@ -4079,6 +4085,12 @@
           "name": "getArtifactItem",
           "importedName": "getArtifactItem",
           "source": "./artifact-client"
+        },
+        {
+          "kind": "named",
+          "name": "getBayOfficialPublisher",
+          "importedName": "getBayOfficialPublisher",
+          "source": "../lib/bay/official"
         },
         {
           "kind": "named",
@@ -5396,6 +5408,12 @@
         },
         {
           "kind": "named",
+          "name": "saveSellerPage",
+          "importedName": "saveSellerPage",
+          "source": "../lib/bay/seller"
+        },
+        {
+          "kind": "named",
           "name": "SceneSelection",
           "importedName": "SceneSelection",
           "source": "./material-scene-axis"
@@ -6399,6 +6417,24 @@
           "name": "ArtifactRendererProps",
           "importedName": "ArtifactRendererProps",
           "source": "./ArtifactRenderer"
+        },
+        {
+          "kind": "type",
+          "name": "BayLicense",
+          "importedName": "BayLicense",
+          "source": "../lib/bay/seller"
+        },
+        {
+          "kind": "type",
+          "name": "BayListingKind",
+          "importedName": "BayListingKind",
+          "source": "../lib/bay/seller"
+        },
+        {
+          "kind": "type",
+          "name": "BayOfficialPublisher",
+          "importedName": "BayOfficialPublisher",
+          "source": "../lib/bay/official"
         },
         {
           "kind": "type",

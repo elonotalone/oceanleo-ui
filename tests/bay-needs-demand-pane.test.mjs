@@ -502,6 +502,21 @@ test("发布者点「编辑需求」换成编辑表单，取消回到详情", as
   await view.unmount();
 });
 
+test("看别人的需求有收藏键，看自己的没有", async () => {
+  reset();
+  respond(demand());
+  const visitor = await mount(React.createElement(DemandPane, paneProps("design")));
+  assert.ok(visitor.host.querySelector("[data-bay-favorite]"), "访客操作区有收藏键");
+  assert.ok(visitor.host.querySelector("[data-bay-demand-visitor] [data-bay-favorite]"));
+  await visitor.unmount();
+
+  reset();
+  respond(demand({ is_owner: true }), []);
+  const owner = await mount(React.createElement(DemandPane, paneProps("design")));
+  assert.equal(owner.host.querySelector("[data-bay-favorite]"), null, "看自己的需求没有收藏键");
+  await owner.unmount();
+});
+
 test("纯函数：邀请链接只落在门户、报价排序等回复的在前", () => {
   assert.equal(paneModule.demandInviteUrl("abc"), "https://oceanleo.test/bay/demands/invite/abc");
   assert.equal(paneModule.demandInviteUrl("me@example.com"), null);

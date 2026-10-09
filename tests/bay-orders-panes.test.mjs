@@ -364,7 +364,7 @@ test("我的订单：买卖切换、空状态、点开一单", async () => {
       ],
     },
   });
-  const view = await mount(React.createElement(MyOrdersPane, { target: { kind: "mine", tab: "orders" }, layout: "docked", siteKey: "ppt" }));
+  const view = await mount(React.createElement(MyOrdersPane, { target: { kind: "mine", tab: "bought" }, layout: "docked", siteKey: "ppt" }));
   assert.equal(view.q("[data-bay-pane=mine-orders]").getAttribute("data-role"), "buyer");
   assert.ok(view.q("[data-bay-order-row=buy-1]"));
   assert.equal(view.q("[data-bay-order-row=sell-1]"), null);
@@ -376,14 +376,15 @@ test("我的订单：买卖切换、空状态、点开一单", async () => {
   await view.unmount();
 });
 
-test("我的订单：买家空态去逛服务，卖家空态去发布服务", async () => {
+test("我的订单：买家空态去逛逛，卖家空态去发布", async () => {
   reset({ "GET /v1/talent/contracts?role=all&limit=200": { items: [] } });
-  const view = await mount(React.createElement(MyOrdersPane, { target: { kind: "mine", tab: "orders" }, layout: "docked", siteKey: "ppt" }));
+  const view = await mount(React.createElement(MyOrdersPane, { target: { kind: "mine", tab: "bought" }, layout: "docked", siteKey: "ppt" }));
   assert.ok(view.q("[data-bay-empty=all]"));
+  assert.match(view.host.textContent, /去逛逛/);
   await view.click("[data-bay-action=browse-services]");
-  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "service" } });
+  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "supply" } });
   await view.click("[data-bay-role=seller]");
   await view.click("[data-bay-action=publish-service]");
-  assert.deepEqual(W.opened.at(-1), { kind: "service-editor" });
+  assert.deepEqual(W.opened.at(-1), { kind: "publish" });
   await view.unmount();
 });
