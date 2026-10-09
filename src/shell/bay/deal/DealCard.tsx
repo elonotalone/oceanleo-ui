@@ -113,7 +113,7 @@ export function DealCard({ model, compact = false, onOpen = null }: DealCardProp
         <span
           data-deal-card-status={model.status}
           className={
-            "shrink-0 rounded-full px-2 py-0.5 text-[11px] " +
+            "shrink-0 rounded-md px-2 py-0.5 text-[11px] " +
             (model.status === "completed" || model.status === "active" || model.status === "delivered"
               ? "bg-emerald-50 text-emerald-700"
               : model.status === "cancelled" || model.status === "offer_declined" || model.status === "offer_withdrawn" || model.status === "offer_expired"
@@ -141,7 +141,7 @@ export function DealCard({ model, compact = false, onOpen = null }: DealCardProp
               (model.next === "pay_unavailable"
                 ? "text-neutral-500"
                 : ACTION_NEXT.has(model.next)
-                  ? "font-medium text-sky-700"
+                  ? "font-medium text-stone-800"
                   : "text-neutral-600")
             }
           >
@@ -150,7 +150,7 @@ export function DealCard({ model, compact = false, onOpen = null }: DealCardProp
         ) : null}
       </div>
       {clickable ? (
-        <span className="mt-1.5 inline-block text-[12px] text-sky-700">
+        <span className="mt-1.5 inline-block text-[12px] font-medium text-stone-700">
           {model.contractId ? tt("查看订单") : tt("查看详情")} ›
         </span>
       ) : null}

@@ -120,24 +120,15 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 
 // ---- 种类 ---------------------------------------------------------------------
 
-/** 每个种类前面的小色点：混在一起逛时一眼分得清。 */
-const KIND_DOT: Readonly<Record<(typeof KIND_TABS)[number], string>> = {
-  all: "#111113",
-  material: "#f97316",
-  service: "#0ea5e9",
-  demand: "#10b981",
-  consult: "#8b5cf6",
-};
-
 /**
- * 种类（全部 / 素材 / 服务 / 需求 / 答疑）：一排大号胶囊，允许换行，任何语言下都不出横向滚动条、不截断。
+ * 种类（全部 / 素材 / 服务 / 需求 / 答疑）：跟我的库分类同一套小标签。
  * 选中的那一个用站点主色填满（没给主色用黑色）。
  */
 export function BayKindTabs({ filter, accent }: { filter: BayFeedFilter; accent?: string; variant?: "page" }) {
   const tt = useUI();
   const value = filter.kind ?? "all";
   return (
-    <div role="tablist" aria-label={tt("筛选种类")} data-bay-kinds="page" className="flex max-w-full flex-wrap items-center gap-2">
+    <div role="tablist" aria-label={tt("筛选种类")} data-bay-kinds="page" className="flex max-w-full flex-wrap items-center gap-1.5">
       {KIND_TABS.map((kind) => {
         const active = kind === value;
         return (
@@ -149,11 +140,10 @@ export function BayKindTabs({ filter, accent }: { filter: BayFeedFilter; accent?
             data-kind={kind}
             onClick={() => setBayFilter({ ...filter, kind, category: kind === "material" ? undefined : filter.category })}
             style={active ? { background: accent || "#111113" } : undefined}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[14px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-[0.98] ${
-              active ? "text-white shadow-md" : "bg-white text-neutral-600 shadow-sm ring-1 ring-black/5 hover:text-neutral-900 hover:ring-black/15"
+            className={`rounded-lg px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+              active ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
             }`}
           >
-            <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: active ? "#ffffff" : KIND_DOT[kind] }} />
             {tt(KIND_LABELS[kind])}
           </button>
         );
@@ -165,7 +155,7 @@ export function BayKindTabs({ filter, accent }: { filter: BayFeedFilter; accent?
 // ---- 类目 ---------------------------------------------------------------------
 
 const CHIP_BASE =
-  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
 /**
  * 16 个交付类目，一排会换行的小标签；再点一次取消。摆在种类下面。
@@ -191,7 +181,7 @@ export function BayCategoryChips({
     <div role="group" aria-label={tt("类目")} data-bay-categories="chips" className="flex flex-wrap items-center gap-2">
       {loading
         ? Array.from({ length: 8 }).map((_, index) => (
-            <span key={index} aria-hidden="true" className="h-7 w-24 animate-pulse rounded-full bg-black/5 dark:bg-white/10" />
+            <span key={index} aria-hidden="true" className="h-7 w-24 animate-pulse rounded-lg bg-black/5 dark:bg-white/10" />
           ))
         : categories.map((category) => {
             const active = filter.category === category.slug;
@@ -238,7 +228,7 @@ function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-feed-loading>
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} aria-hidden="true" className="h-44 animate-pulse rounded-3xl bg-white/70 p-5 shadow-sm ring-1 ring-black/5">
+          <div key={index} aria-hidden="true" className="h-44 animate-pulse rounded-xl border border-stone-200 bg-white p-4">
             <div className="h-4 w-14 rounded bg-stone-100" />
             <div className="mt-4 h-4 w-2/3 rounded bg-stone-100" />
             <div className="mt-3 h-3 w-full rounded bg-stone-100" />

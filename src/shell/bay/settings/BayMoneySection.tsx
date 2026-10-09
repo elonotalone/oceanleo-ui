@@ -158,7 +158,7 @@ export function BayMoneySection() {
         <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-400">
           {tt(error || "加载失败，请稍后再试。")}
         </p>
-        <button type="button" onClick={reload} className="text-[13px] font-medium text-sky-600 hover:underline dark:text-sky-300">
+        <button type="button" onClick={reload} className="text-[13px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950 dark:text-neutral-200">
           {tt("重试")}
         </button>
       </div>
@@ -214,7 +214,7 @@ export function BayMoneySection() {
             <LedgerList items={data.spendItems} locale={locale} empty={tt("还没有流水")} onStatement={(id) => void openStatement(id)} />
           </div>
           {data.spendItems.length ? (
-            <button type="button" onClick={() => exportLedger(data.spendItems, "bay-spend.csv")} className="mt-2 text-[12px] font-medium text-sky-600 hover:underline dark:text-sky-300">
+            <button type="button" onClick={() => exportLedger(data.spendItems, "bay-spend.csv")} className="mt-2 text-[12px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950 dark:text-neutral-200">
               {tt("导出账本")}
             </button>
           ) : null}
@@ -242,7 +242,7 @@ export function BayMoneySection() {
         <MoneyCard id="ledger" title={tt("账本")}>
           <LedgerList items={data.incomeItems} locale={locale} empty={tt("还没有流水")} onStatement={(id) => void openStatement(id)} />
           {data.incomeItems.length ? (
-            <button type="button" onClick={() => exportLedger(data.incomeItems, "bay-income.csv")} className="mt-2 text-[12px] font-medium text-sky-600 hover:underline dark:text-sky-300">
+            <button type="button" onClick={() => exportLedger(data.incomeItems, "bay-income.csv")} className="mt-2 text-[12px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950 dark:text-neutral-200">
               {tt("导出账本")}
             </button>
           ) : null}

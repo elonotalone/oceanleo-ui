@@ -66,10 +66,10 @@ export function BaySettingsSection({ pane }: { pane?: BaySettingsPaneName }) {
               aria-pressed={active}
               data-bay-settings-tab={id}
               onClick={() => setBlock(id)}
-              className={`rounded-lg px-3 py-1.5 text-[13px] ${
+              className={`rounded-lg px-3 py-1.5 text-[13px] font-medium ${
                 active
-                  ? "bg-sky-50 font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                  : "text-neutral-600 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  ? "bg-stone-900 text-white"
+                  : "text-stone-600 hover:bg-stone-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
               }`}
             >
               {tt(BLOCK_LABEL[id])}

@@ -33,7 +33,7 @@ export function BayTermsOverview() {
         <p role="alert" className="text-[13px] text-rose-600">
           {tt(error || "条款加载失败，请稍后重试")}
         </p>
-        <button type="button" onClick={reload} className="text-[13px] font-medium text-sky-600 hover:underline">
+        <button type="button" onClick={reload} className="text-[13px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950">
           {tt("重试")}
         </button>
       </div>

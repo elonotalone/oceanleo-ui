@@ -40,8 +40,8 @@ export const BAY_OWN_HANDLE = "me";
 export const BAY_OFFICIAL_HANDLE = "oceanleo";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const ACTION_PRIMARY = `rounded-full bg-neutral-900 px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm ${MOTION} hover:bg-neutral-800 disabled:opacity-50`;
-const ACTION_SECONDARY = `rounded-full border border-neutral-200 bg-white px-5 py-2.5 text-[13px] font-medium text-neutral-700 shadow-sm ${MOTION} hover:bg-neutral-50 disabled:opacity-50`;
+const ACTION_PRIMARY = `rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
+const ACTION_SECONDARY = `rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
 
 interface OwnPage extends BayProfilePage {
   own: true;
@@ -215,9 +215,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
       <button type="button" data-bay-talk onClick={() => void talk()} className={ACTION_PRIMARY}>
         {tt("先聊聊")}
       </button>
-      <span className="rounded-full bg-white px-2 py-1 text-neutral-900 shadow-sm">
-        <FavoriteButton kind="profile" refId={profile.user_id} />
-      </span>
+      <FavoriteButton kind="profile" refId={profile.user_id} />
     </>
   ) : null;
 

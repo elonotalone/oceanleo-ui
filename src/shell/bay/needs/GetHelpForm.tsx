@@ -23,7 +23,7 @@ import {
 } from "./handoff-context";
 import { defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
 import { siteLabel } from "./need-format";
-import { BTN_PRIMARY, BTN_QUIET, BTN_SECONDARY, Field, INPUT, LoginPrompt, PaneNotice, errorText } from "./need-ui";
+import { ATTACHED_WORK_BOX, BTN_PRIMARY, BTN_QUIET, BTN_SECONDARY, Field, INPUT, LoginPrompt, PaneNotice, errorText } from "./need-ui";
 
 export type GetHelpMode = "public" | "open" | "invited";
 
@@ -276,7 +276,7 @@ export function GetHelpForm(props: GetHelpFormProps) {
           <section className="space-y-2" data-bay-attach-work>
             <h3 className="text-[13px] font-medium text-stone-700">{tt("附一个作品")}</h3>
             {work ? (
-              <div className="flex items-center gap-2 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
+              <div className={`flex items-center gap-2 ${ATTACHED_WORK_BOX}`}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium text-stone-800">
                     {currentTaskAttached ? tt("当前任务") : work.title || tt("一个作品")}

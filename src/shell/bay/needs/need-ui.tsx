@@ -11,11 +11,13 @@ import { handlingHref, workPreviewHref } from "./need-links";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
-export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-xl bg-stone-900 px-3.5 py-2 text-[13px] font-semibold text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
-export const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
+export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
+export const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
 export const BTN_QUIET = `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-stone-500 ${MOTION} hover:bg-stone-100 hover:text-stone-700 disabled:opacity-50`;
-export const INPUT = `w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-700 outline-none ${MOTION} focus:border-stone-400`;
+export const INPUT = `w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-700 outline-none ${MOTION} focus:border-stone-400`;
 export const CHIP = `rounded-lg border px-2.5 py-1 text-[12px] ${MOTION}`;
+export const ATTACHED_WORK_BOX = "rounded-xl border border-stone-200 bg-stone-50 px-3 py-2";
+export const TEXT_LINK = "font-medium text-stone-900 underline underline-offset-2";
 
 /** 后端的中文 `detail.message` 原样过 tt()；没有就用兜底句。 */
 export function errorText(tt: UITranslate, error: unknown, fallback: string): string {
@@ -159,12 +161,12 @@ export function AttachedWorkBlock({ work }: { work: BayWorkRef | null | undefine
   const site = siteLabel(tt, work.site_key);
   const href = workPreviewHref(work);
   return (
-    <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2.5" data-bay-attached-work>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-sky-700">{tt("附带作品")}</p>
+    <div className={`${ATTACHED_WORK_BOX} py-2.5`} data-bay-attached-work>
+      <p className="text-[11px] font-medium text-stone-600">{tt("附带作品")}</p>
       <p className="mt-0.5 truncate text-[13px] font-medium text-stone-800">{work.title || tt("一个作品")}</p>
       <p className="mt-0.5 text-[12px] text-stone-500">
         {href ? (
-          <a href={href} target="_blank" rel="noopener noreferrer" className="font-medium text-sky-700 underline underline-offset-2">
+          <a href={href} target="_blank" rel="noopener noreferrer" className={TEXT_LINK}>
             {tt("在 {site} 只读预览", { site })}
           </a>
         ) : (

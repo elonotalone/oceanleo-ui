@@ -196,7 +196,7 @@ function DemandSummary({ demand }: { demand: BayDemandDetail }) {
       {demand.skills?.length ? (
         <div className="flex flex-wrap gap-1.5">
           {demand.skills.map((skill) => (
-            <span key={skill} className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700">
+            <span key={skill} className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] text-stone-600">
               {skill}
             </span>
           ))}
@@ -217,7 +217,7 @@ function DemandSummary({ demand }: { demand: BayDemandDetail }) {
           <ul className="mt-1 space-y-0.5">
             {links.map((href) => (
               <li key={href}>
-                <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-[12px] text-sky-700 hover:underline">
+                <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-[12px] font-medium text-stone-900 underline underline-offset-2">
                   {href}
                 </a>
               </li>

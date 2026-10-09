@@ -125,7 +125,7 @@ export function DealComposer({
               key={file.key}
               data-file-status={file.status}
               className={
-                "flex max-w-[220px] items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] " +
+                "flex max-w-[220px] items-center gap-1 rounded-lg border px-2 py-0.5 text-[12px] " +
                 (file.status === "failed" ? "border-red-200 text-red-600" : "border-neutral-200 text-neutral-700")
               }
             >
@@ -155,7 +155,7 @@ export function DealComposer({
           aria-label={tt("发文件")}
           title={tt("发文件")}
           onClick={() => inputRef.current?.click()}
-          className="rounded-xl border border-neutral-200 px-2.5 py-2 text-[14px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+          className="rounded-lg border border-neutral-200 px-2.5 py-2 text-[13px] font-medium text-stone-600 hover:bg-stone-50 disabled:opacity-40"
         >
           📎
         </button>
@@ -170,14 +170,14 @@ export function DealComposer({
           aria-label={tt("消息内容")}
           data-composer-input
           data-bay-deal-composer
-          className="max-h-32 min-h-[38px] min-w-0 flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[14px] text-neutral-900"
+          className="max-h-32 min-h-[38px] min-w-0 flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[14px] text-neutral-900"
         />
         <button
           type="button"
           disabled={!canSend}
           data-action="send"
           onClick={() => void submit()}
-          className="rounded-xl bg-neutral-900 px-4 py-2 text-[13px] text-white hover:bg-neutral-800 disabled:opacity-40"
+          className="rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-800 disabled:opacity-40"
         >
           {tt("发送")}
         </button>
@@ -189,7 +189,7 @@ export function DealComposer({
             data-action="toggle-offer"
             aria-expanded={offerOpen}
             onClick={onToggleOffer}
-            className="text-[12px] text-sky-700 hover:text-sky-800"
+            className="text-[12px] font-medium text-stone-700 underline underline-offset-2 hover:text-stone-900"
           >
             {offerOpen ? tt("收起报价") : tt("发报价")}
           </button>

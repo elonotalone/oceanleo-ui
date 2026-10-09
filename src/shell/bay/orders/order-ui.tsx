@@ -16,7 +16,7 @@ export const ORDER_BUTTON_QUIET =
 export const ORDER_BUTTON_DANGER =
   "rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12.5px] text-rose-700 hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50";
 export const ORDER_INPUT =
-  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-sky-400";
+  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-stone-400";
 
 export function orderStatusTone(status: BayOrderStatus | string | undefined): string {
   switch (status) {
@@ -27,7 +27,7 @@ export function orderStatusTone(status: BayOrderStatus | string | undefined): st
     case "disputed":
       return "bg-rose-50 text-rose-700";
     case "delivered":
-      return "bg-sky-50 text-sky-700";
+      return "bg-stone-100 text-stone-600";
     default:
       return "bg-amber-50 text-amber-700";
   }
@@ -36,7 +36,7 @@ export function orderStatusTone(status: BayOrderStatus | string | undefined): st
 export function OrderStatusChip({ status }: { status: BayOrderStatus | string | undefined }) {
   const tt = useUI();
   return (
-    <span data-bay-order-status={status ?? "unknown"} className={"shrink-0 rounded-full px-2 py-0.5 text-[11px] " + orderStatusTone(status)}>
+    <span data-bay-order-status={status ?? "unknown"} className={"shrink-0 rounded-md px-2 py-0.5 text-[11px] " + orderStatusTone(status)}>
       {orderStatusLabel(tt, status)}
     </span>
   );

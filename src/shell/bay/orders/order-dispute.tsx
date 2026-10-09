@@ -121,7 +121,7 @@ export function OrderDisputeSection({
             data-current={layer === item.key ? "true" : "false"}
             className={
               "rounded-xl border px-3 py-2 " +
-              (layer === item.key ? "border-sky-300 bg-sky-50" : "border-neutral-200 bg-white")
+              (layer === item.key ? "border-stone-300 bg-stone-50" : "border-neutral-200 bg-white")
             }
           >
             <p className="text-[12.5px] font-semibold text-neutral-900">{item.title}</p>
@@ -200,7 +200,7 @@ export function OrderDisputeSection({
           ) : null}
 
           {assessment ? (
-            <div data-bay-dispute-assessment className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+            <div data-bay-dispute-assessment className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
               <p className="text-[12.5px] font-semibold">{tt("争议评估")}</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] text-neutral-800">{assessment.rationale_zh}</p>
               {assessment.verdict_hint ? <p className="mt-1 text-[12px] text-neutral-600">{assessment.verdict_hint}</p> : null}

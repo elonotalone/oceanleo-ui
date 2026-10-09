@@ -84,7 +84,7 @@ export function MonthlyBars({
           <div key={item.month} className="flex min-w-0 flex-1 flex-col items-center gap-1">
             <span className="text-[9px] tabular-nums text-neutral-500 dark:text-neutral-400">{compactAmount(value, currency, locale)}</span>
             <div
-              className={`w-full max-w-8 rounded-t ${direction === "in" ? "bg-emerald-500" : "bg-sky-500"}`}
+              className={`w-full max-w-8 rounded-t ${direction === "in" ? "bg-emerald-500" : "bg-stone-400"}`}
               style={{ height }}
               role="img"
               aria-label={`${item.month} ${formatBayFen(value, currency, locale)}`}
@@ -136,7 +136,7 @@ export function LedgerList({
                 <button
                   type="button"
                   onClick={() => onStatement(item.contract_id as string)}
-                  className="mt-1 text-[12px] font-medium text-sky-600 hover:underline dark:text-sky-300"
+                  className="mt-1 text-[12px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950 dark:text-neutral-200"
                 >
                   {tt("查看对账单")}
                 </button>
@@ -144,7 +144,7 @@ export function LedgerList({
             </div>
             <span
               className={`shrink-0 text-[13px] font-semibold tabular-nums ${
-                incoming ? "text-emerald-700 dark:text-emerald-400" : "text-sky-700 dark:text-sky-300"
+                incoming ? "text-emerald-700 dark:text-emerald-400" : "text-stone-700 dark:text-neutral-200"
               }`}
             >
               {incoming ? "+" : "-"}
@@ -171,12 +171,12 @@ export function StatementPanel({
     statement.counterparty?.display_name || (statement.counterparty?.handle ? `@${statement.counterparty.handle}` : "");
   return (
     <section
-      className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 dark:border-sky-900 dark:bg-sky-950/20"
+      className="rounded-xl border border-stone-200 bg-stone-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/40"
       data-bay-statement={statement.contract_id}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium text-sky-700 dark:text-sky-300">{tt("订单对账单")}</p>
+          <p className="text-[11px] font-medium text-stone-500 dark:text-neutral-400">{tt("订单对账单")}</p>
           <h5 className="mt-0.5 break-words text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">
             {statement.title || tt("订单详情")}
           </h5>
@@ -219,7 +219,7 @@ export function StatementPanel({
 
       <h6 className="mt-4 text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{tt("账目时间线")}</h6>
       {statement.timeline.length ? (
-        <ol className="mt-2 space-y-2 border-l-2 border-sky-200 pl-3 dark:border-sky-900">
+        <ol className="mt-2 space-y-2 border-l-2 border-stone-200 pl-3 dark:border-neutral-700">
           {statement.timeline.map((entry) => (
             <li key={entry.id}>
               <p className="text-[12px] font-medium text-neutral-900 dark:text-neutral-100">

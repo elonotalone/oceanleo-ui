@@ -8,15 +8,15 @@ import { useUI } from "../../../i18n/ui/useUI";
 import type { BayContentCase } from "../../../lib/bay/seller";
 
 export const INPUT_CLASS =
-  "h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-[13px] text-stone-900 outline-none focus:border-stone-400";
+  "h-10 w-full rounded-lg border border-stone-200 bg-white px-3 text-[13px] text-stone-900 outline-none focus:border-stone-400";
 export const TEXTAREA_CLASS =
-  "w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] leading-6 text-stone-900 outline-none focus:border-stone-400";
+  "w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] leading-6 text-stone-900 outline-none focus:border-stone-400";
 export const PRIMARY_BUTTON =
-  "inline-flex h-10 items-center justify-center rounded-xl bg-stone-900 px-4 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex h-9 items-center justify-center rounded-lg bg-stone-900 px-3 text-[13px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-40";
 export const SECONDARY_BUTTON =
-  "inline-flex h-10 items-center justify-center rounded-xl border border-stone-200 bg-white px-4 text-[13px] font-medium text-stone-700 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex h-9 items-center justify-center rounded-lg border border-stone-200 bg-white px-3 text-[13px] font-medium text-stone-700 disabled:cursor-not-allowed disabled:opacity-40";
 export const DANGER_BUTTON =
-  "inline-flex h-10 items-center justify-center rounded-xl border border-rose-200 bg-white px-4 text-[13px] font-medium text-rose-600 disabled:opacity-40";
+  "inline-flex h-9 items-center justify-center rounded-lg border border-rose-200 bg-white px-3 text-[13px] font-medium text-rose-600 disabled:opacity-40";
 export const LINK_BUTTON = "font-medium text-stone-900 underline underline-offset-2";
 
 export function SellerField({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
@@ -33,7 +33,7 @@ export function SellerField({ label, hint, children }: { label: string; hint?: R
 
 export function SellerCard({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-stone-200 bg-white p-4">
+    <section className="space-y-4 rounded-xl border border-stone-200 bg-white p-4">
       <div>
         <h3 className="text-[14px] font-semibold text-stone-900">{title}</h3>
         {hint ? <p className="mt-1 text-[12.5px] leading-5 text-stone-500">{hint}</p> : null}

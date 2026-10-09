@@ -32,7 +32,7 @@ export function DealSystemLine({ message, contractId = null, onAction = runDealL
           type="button"
           data-deal-action={line.action.kind}
           onClick={() => line.action && onAction(line.action.target)}
-          className="rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
+          className="rounded-lg border border-neutral-200 bg-white px-2.5 py-0.5 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
         >
           {line.action.label}
         </button>

@@ -306,7 +306,7 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
             type="button"
             data-deal-subject={goSubject.kind}
             onClick={() => openBay(goSubject)}
-            className="block max-w-full truncate text-left text-[11.5px] text-sky-700 hover:text-sky-800"
+            className="block max-w-full truncate text-left text-[11.5px] font-medium text-stone-600 underline underline-offset-2 hover:text-stone-900"
           >
             {subjectLinkLabel(tt, goSubject.kind, subject?.title || thread?.title || "")}
           </button>
@@ -426,9 +426,9 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
         </p>
       ) : null}
       {notice ? (
-        <p role="status" data-deal-notice className="flex items-center justify-between gap-2 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800">
+        <p role="status" data-deal-notice className="flex items-center justify-between gap-2 bg-stone-50 px-3 py-1.5 text-[12px] text-stone-700">
           <span>{notice}</span>
-          <button type="button" aria-label={tt("关闭")} onClick={() => setNotice(null)} className="text-sky-700 hover:text-sky-900">
+          <button type="button" aria-label={tt("关闭")} onClick={() => setNotice(null)} className="text-stone-500 hover:text-stone-800">
             ×
           </button>
         </p>

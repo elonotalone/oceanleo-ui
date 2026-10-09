@@ -66,7 +66,7 @@ export function DealAttachmentView({ attachment }: { attachment: Partial<DealAtt
       rel="noopener noreferrer"
       download
       data-attachment={dealAttachmentKind(attachment.kind)}
-      className="flex max-w-full items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-sky-700 hover:bg-neutral-50"
+      className="flex max-w-full items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-stone-700 hover:bg-stone-50"
     >
       <span aria-hidden="true">📎</span>
       <span className="truncate underline underline-offset-2">{name}</span>

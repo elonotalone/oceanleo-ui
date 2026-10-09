@@ -17,7 +17,7 @@ export function BaySettingsPane({ target }: BayPaneProps) {
           type="button"
           data-bay-open-in-settings=""
           onClick={() => openBaySettings(pane)}
-          className="text-[13px] font-medium text-sky-600 hover:underline dark:text-sky-300"
+          className="text-[13px] font-medium text-stone-800 underline underline-offset-2 hover:text-stone-950 dark:text-neutral-200"
         >
           {tt("在设置中打开")}
         </button>

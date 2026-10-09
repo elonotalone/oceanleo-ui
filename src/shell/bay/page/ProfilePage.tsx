@@ -88,8 +88,8 @@ function AccentButton({ label, onClick, large }: { label: string; onClick?: () =
       disabled={!onClick}
       data-bay-page-cta
       style={accentButton}
-      className={`inline-flex items-center justify-center rounded-full font-semibold shadow-sm ${MOTION} hover:opacity-90 active:scale-[0.98] disabled:cursor-default ${
-        large ? "px-7 py-3 text-[15px]" : "px-5 py-2.5 text-[14px]"
+      className={`inline-flex items-center justify-center rounded-lg font-medium ${MOTION} hover:opacity-90 disabled:cursor-default ${
+        large ? "px-4 py-2 text-[14px]" : "px-3 py-1.5 text-[13px]"
       }`}
     >
       {label}
@@ -107,14 +107,14 @@ function BlockTitle({ block, editing, onBlock, fallback }: { block: BayPageBlock
       onChange={(title) => onBlock?.(block.id, { title })}
       maxLength={200}
       label={tt("版块标题")}
-      className="text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]"
+      className="text-[17px] font-semibold leading-tight tracking-tight"
     />
   );
 }
 
 /** 白底卡：里面放共用的服务卡、评价列表（它们只有浅色一套）。 */
 function LightCard({ children }: { children: ReactNode }) {
-  return <div className="rounded-3xl bg-white p-3 text-neutral-900 shadow-sm ring-1 ring-black/5 sm:p-4">{children}</div>;
+  return <div className="rounded-xl border border-stone-200 bg-white p-3 text-stone-900 sm:p-4">{children}</div>;
 }
 
 function EmptyLine({ text }: { text: string }) {
@@ -186,7 +186,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
             onChange={(title) => patch({ title })}
             maxLength={200}
             label={tt("大标题")}
-            className="text-[34px] font-extrabold leading-[1.08] tracking-tight sm:text-[52px]"
+            className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]"
           />
           <div className="mt-4 max-w-2xl">
             <EditableText
@@ -203,7 +203,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
           {block.cta_label || editing ? (
             <div className="mt-7 flex flex-wrap items-center gap-3">
               {editing ? (
-                <span style={accentButton} className="inline-flex rounded-full px-7 py-3 text-[15px] font-semibold">
+                <span style={accentButton} className="inline-flex rounded-lg px-4 py-2 text-[14px] font-medium">
                   <EditableText
                     as="span"
                     value={block.cta_label ?? ""}
@@ -291,7 +291,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
         <div>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-bay-page-stats>
             {items.map((item, index) => (
-              <div key={index} className="relative rounded-3xl px-5 py-6" style={{ background: "var(--bp-surface)" }}>
+              <div key={index} className="relative rounded-xl px-4 py-4" style={{ background: "var(--bp-surface)" }}>
                 <dd>
                   <EditableText
                     as="div"
@@ -300,7 +300,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
                     onChange={(value) => patch({ items: items.map((row, at) => (at === index ? { ...row, value } : row)) })}
                     maxLength={24}
                     label={tt("数字")}
-                    className="text-[34px] font-extrabold leading-none tracking-tight sm:text-[40px]"
+                    className="text-[22px] font-semibold leading-none tracking-tight"
                     style={{ color: "var(--bp-accent)" }}
                   />
                 </dd>
@@ -323,7 +323,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
               <button
                 type="button"
                 onClick={() => patch({ items: [...items, { value: "0", label: tt("说明") }] })}
-                className={`rounded-3xl border border-dashed px-5 py-6 text-[13px] font-medium ${MOTION} hover:opacity-70`}
+                className={`rounded-xl border border-dashed px-4 py-4 text-[13px] font-medium ${MOTION} hover:opacity-70`}
                 style={{ borderColor: "var(--bp-border)", color: "var(--bp-muted)" }}
               >
                 {tt("加一个数字")}
@@ -366,7 +366,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
                 {items.map((item) => {
                   const cover = safeHttpUrl(item.cover_url);
                   return (
-                    <article key={item.id} data-bay-showcase className="overflow-hidden rounded-3xl" style={{ background: "var(--bp-surface)" }}>
+                    <article key={item.id} data-bay-showcase className="overflow-hidden rounded-xl" style={{ background: "var(--bp-surface)" }}>
                       {cover ? (
                         <img src={cover} alt="" loading="lazy" className="aspect-[4/3] w-full object-cover" />
                       ) : (
@@ -411,7 +411,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
 
     case "contact":
       return (
-        <div className="overflow-hidden rounded-[2rem] px-6 py-10 text-center sm:px-12 sm:py-14" style={{ background: "var(--bp-accent)", color: "var(--bp-accent-ink)" }}>
+        <div className="overflow-hidden rounded-xl px-5 py-8 text-center sm:px-8 sm:py-10" style={{ background: "var(--bp-accent)", color: "var(--bp-accent-ink)" }}>
           <EditableText
             as="h2"
             value={block.title ?? ""}
@@ -419,7 +419,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
             onChange={(title) => patch({ title })}
             maxLength={200}
             label={tt("版块标题")}
-            className="text-[26px] font-extrabold leading-tight tracking-tight sm:text-[34px]"
+            className="text-[17px] font-semibold leading-tight tracking-tight sm:text-[20px]"
           />
           <div className="mx-auto mt-3 max-w-xl">
             <EditableText
@@ -434,7 +434,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
           </div>
           <div className="mt-6 flex justify-center">
             {editing ? (
-              <span className="inline-flex rounded-full bg-white px-7 py-3 text-[15px] font-semibold text-neutral-900">
+              <span className="inline-flex rounded-lg bg-white px-4 py-2 text-[14px] font-medium text-stone-900">
                 <EditableText
                   as="span"
                   value={block.cta_label ?? ""}
@@ -451,7 +451,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
                 onClick={onTalk}
                 disabled={!onTalk}
                 data-bay-page-cta
-                className={`rounded-full bg-white px-7 py-3 text-[15px] font-semibold text-neutral-900 shadow-sm ${MOTION} hover:opacity-90 active:scale-[0.98] disabled:cursor-default`}
+                className={`rounded-lg bg-white px-4 py-2 text-[14px] font-medium text-stone-900 ${MOTION} hover:opacity-90 disabled:cursor-default`}
               >
                 {block.cta_label || tt("先聊聊")}
               </button>
@@ -634,9 +634,9 @@ export function ProfilePage(props: ProfilePageProps) {
         ) : null}
 
         {onBrowseMaterials ? (
-          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-3xl px-6 py-6" style={{ background: "var(--bp-surface)" }} data-bay-page-materials>
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-xl px-4 py-4" style={{ background: "var(--bp-surface)" }} data-bay-page-materials>
             <div className="min-w-0">
-              <p className="text-[18px] font-bold tracking-tight">{tt("官方素材")}</p>
+              <p className="text-[15px] font-semibold tracking-tight">{tt("官方素材")}</p>
               <p className="mt-1 text-[13px]" style={{ color: "var(--bp-muted)" }}>
                 {tt("图片、模板、视频、音乐、3D……全部免费，拿去直接用。")}
               </p>

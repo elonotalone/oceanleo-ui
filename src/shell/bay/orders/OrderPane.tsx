@@ -187,7 +187,7 @@ export function OrderPane({ target }: BayPaneProps) {
           {tt("对方：{name}", { name: counterpartyName(tt, order) })}
           {engagementKindLabel(tt, order.engagement_kind || order.pricing_model) ? ` · ${engagementKindLabel(tt, order.engagement_kind || order.pricing_model)}` : ""}
         </p>
-        <p className="text-[12.5px] text-sky-800">{tt("下一步：{text}", { text: nextActionText(tt, order, gate) })}</p>
+        <p className="text-[12.5px] text-stone-700">{tt("下一步：{text}", { text: nextActionText(tt, order, gate) })}</p>
         <p className="text-[12px] text-neutral-500">{settlementRuleText(tt, order)}</p>
         <p className="text-[12px] text-neutral-500">{paymentsHint(tt, gate.enabled)}</p>
         {order.delivery_mode === "off_platform" ? <p className="text-[12px] text-neutral-500">{offPlatformMoneyRule(tt, gate.enabled)}</p> : null}
@@ -200,7 +200,7 @@ export function OrderPane({ target }: BayPaneProps) {
             href={workLink.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[13px] font-medium text-sky-800 underline underline-offset-2"
+            className="text-[13px] font-medium text-stone-900 underline underline-offset-2"
           >
             {workLink.label}
           </a>
@@ -348,7 +348,7 @@ export function OrderPane({ target }: BayPaneProps) {
                     const href = safeHttpUrl(file.url);
                     return href ? (
                       <li key={`${href}-${index}`}>
-                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-sky-800 underline">
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-[12.5px] font-medium text-stone-900 underline underline-offset-2">
                           {file.name || href}
                         </a>
                       </li>

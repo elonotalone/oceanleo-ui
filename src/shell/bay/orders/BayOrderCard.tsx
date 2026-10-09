@@ -31,7 +31,7 @@ function statusTone(status: BayOrder["status"] | undefined): string {
     case "disputed":
       return "bg-rose-50 text-rose-700";
     case "delivered":
-      return "bg-sky-50 text-sky-700";
+      return "bg-stone-100 text-stone-600";
     default:
       return "bg-amber-50 text-amber-700";
   }
@@ -124,7 +124,7 @@ export function BayOrderCard({ contractId, compact = false }: BayOrderCardProps)
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">{tt("订单")}</span>
         {order ? (
-          <span data-bay-order-status className={"rounded-full px-2 py-0.5 text-[11px] " + statusTone(order.status)}>
+          <span data-bay-order-status className={"rounded-md px-2 py-0.5 text-[11px] " + statusTone(order.status)}>
             {status}
           </span>
         ) : null}
@@ -144,11 +144,11 @@ export function BayOrderCard({ contractId, compact = false }: BayOrderCardProps)
             ) : null}
           </p>
           {next ? (
-            <p data-bay-order-next className="mt-1 text-[12px] text-sky-700">
+            <p data-bay-order-next className="mt-1 text-[12px] text-stone-700">
               {tt("下一步：{text}", { text: next })}
             </p>
           ) : null}
-          {countdown ? <p className="mt-0.5 text-[12px] text-sky-800">{countdown}</p> : null}
+          {countdown ? <p className="mt-0.5 text-[12px] text-stone-600">{countdown}</p> : null}
         </>
       ) : note ? (
         <p className="mt-1 text-[12px] text-neutral-500">{note}</p>

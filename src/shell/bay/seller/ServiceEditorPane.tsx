@@ -98,10 +98,10 @@ import {
 import { DANGER_BUTTON, HiddenByPlatformNotice, INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
 
 const BTN_PRIMARY =
-  "inline-flex items-center justify-center rounded-xl bg-neutral-900 px-4 py-3 text-[13px] font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center justify-center rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40";
 const BTN_SECONDARY =
-  "inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40";
-const BTN_QUIET = "rounded-xl px-3 py-3 text-[13px] text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900";
+  "inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40";
+const BTN_QUIET = "rounded-lg px-3 py-1.5 text-[13px] text-stone-500 hover:bg-stone-100 hover:text-stone-900";
 
 const KIND_CARDS: { kind: PublishKind; title: string; blurb: string; items: string[] }[] = [
   { kind: "digital", title: "数字商品", blurb: "图片、模板、文件，买家付款后立即拿到", items: ["标题和预览图", "一个价格", "授权范围"] },
@@ -607,34 +607,25 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     return (
       <section data-bay-pane="service-editor" data-bay-publish="pick" className={`space-y-6 p-5 sm:p-8 ${narrow ? "" : "mx-auto w-full max-w-4xl"}`}>
         <div>
-          <h3 className="text-[24px] font-extrabold tracking-tight text-neutral-900 sm:text-[28px]">{tt("你要发布什么？")}</h3>
-          <p className="mt-1.5 text-[14px] text-neutral-500">{tt("选一种就行。每一种只问它该问的那几项。")}</p>
+          <h3 className="text-[17px] font-semibold tracking-tight text-stone-900">{tt("你要发布什么？")}</h3>
+          <p className="mt-1 text-[13px] text-stone-500">{tt("选一种就行。每一种只问它该问的那几项。")}</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           {KIND_CARDS.map((card) => (
             <button
               key={card.kind}
               type="button"
               data-bay-kind={card.kind}
               onClick={() => pickKind(card.kind)}
-              className={`group flex flex-col rounded-3xl p-6 text-left shadow-sm ring-1 ring-black/5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] ${KIND_CARD_TONE[card.kind].card}`}
+              className="flex flex-col rounded-xl border border-stone-200 bg-white p-4 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400"
             >
-              <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-[22px] font-extrabold text-white shadow-md ${KIND_CARD_TONE[card.kind].badge}`} aria-hidden>
-                {KIND_CARD_TONE[card.kind].glyph}
-              </span>
-              <span className="mt-4 block text-[19px] font-extrabold tracking-tight text-neutral-900">{tt(card.title)}</span>
-              <span className="mt-1 block text-[13px] leading-5 text-neutral-600">{tt(card.blurb)}</span>
-              <ul className="mt-4 space-y-1.5 text-[13px] text-neutral-700">
+              <span className="block text-[15px] font-semibold tracking-tight text-stone-900">{tt(card.title)}</span>
+              <span className="mt-1 block text-[13px] leading-5 text-stone-500">{tt(card.blurb)}</span>
+              <ul className="mt-3 space-y-1 text-[13px] text-stone-600">
                 {card.items.map((item) => (
-                  <li key={item} className="flex items-start gap-2">
-                    <span aria-hidden className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${KIND_CARD_TONE[card.kind].badge}`} />
-                    <span>{tt(item)}</span>
-                  </li>
+                  <li key={item}>{tt(item)}</li>
                 ))}
               </ul>
-              <span className="mt-5 inline-flex items-center gap-1 text-[13px] font-bold text-neutral-900">
-                {tt("就发这个")} <span aria-hidden>→</span>
-              </span>
             </button>
           ))}
         </div>
@@ -648,8 +639,8 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     <section data-bay-pane="service-editor" data-bay-publish="form" className={`space-y-4 p-4 sm:p-6 ${narrow ? "" : "mx-auto w-full max-w-3xl"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-600" data-bay-editor-status={draft.status}>
-          <span className={`rounded-full px-3 py-1.5 text-[12px] font-bold text-white ${KIND_CARD_TONE[publishKind].badge}`}>{tt(PUBLISH_KIND_LABELS[publishKind])}</span>
-          <span className="rounded-full bg-neutral-100 px-3 py-1.5 text-[12px] font-semibold text-neutral-700">{statusLabel}</span>
+          <span className="rounded-md bg-stone-900 px-2 py-0.5 text-[12px] font-medium text-white">{tt(PUBLISH_KIND_LABELS[publishKind])}</span>
+          <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[12px] font-medium text-stone-600">{statusLabel}</span>
           {dirty ? <span className="text-[12px] text-amber-600">{tt("有没保存的修改")}</span> : null}
         </p>
         {!draft.serviceId ? (
@@ -1012,17 +1003,10 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   );
 }
 
-/** 三种发布各自的颜色：数字商品橙、服务蓝、答疑紫（与 LeoBay 页种类前的小色点同一套）。 */
-const KIND_CARD_TONE: Readonly<Record<PublishKind, { card: string; badge: string; glyph: string }>> = {
-  digital: { card: "bg-gradient-to-br from-orange-50 to-amber-50", badge: "bg-orange-500", glyph: "◆" },
-  service: { card: "bg-gradient-to-br from-sky-50 to-cyan-50", badge: "bg-sky-500", glyph: "✦" },
-  consult: { card: "bg-gradient-to-br from-violet-50 to-fuchsia-50", badge: "bg-violet-500", glyph: "?" },
-};
-
 const SECTION_TONE: Readonly<Record<PublishSection, string>> = {
-  product: "bg-sky-500",
-  price: "bg-orange-500",
-  terms: "bg-violet-500",
+  product: "bg-stone-400",
+  price: "bg-stone-400",
+  terms: "bg-stone-400",
 };
 
 function SectionCard({
@@ -1049,23 +1033,23 @@ function SectionCard({
       ref={onRef}
       data-bay-section={section}
       data-bay-section-done={done ? "true" : "false"}
-      className={`scroll-mt-4 rounded-3xl bg-white p-5 shadow-sm ring-1 sm:p-6 ${highlight ? "ring-2 ring-rose-400" : "ring-black/5"}`}
+      className={`scroll-mt-4 rounded-xl border bg-white p-4 sm:p-5 ${highlight ? "border-rose-300" : "border-stone-200"}`}
     >
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <span
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-[14px] font-extrabold text-white shadow-sm ${done ? "bg-emerald-500" : SECTION_TONE[section]}`}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[12px] font-semibold text-white ${done ? "bg-stone-900" : SECTION_TONE[section]}`}
           >
             {done ? "✓" : index}
           </span>
           <div>
-            <h3 className="text-[18px] font-extrabold tracking-tight text-neutral-900">{tt(SECTION_LABELS[section])}</h3>
-            <p className="mt-0.5 text-[13px] text-neutral-500">{hint}</p>
+            <h3 className="text-[15px] font-semibold tracking-tight text-stone-900">{tt(SECTION_LABELS[section])}</h3>
+            <p className="mt-0.5 text-[13px] text-stone-500">{hint}</p>
           </div>
         </div>
         <p
-          className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
-            highlight ? "bg-rose-50 text-rose-600" : done ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
+          className={`rounded-md px-2 py-0.5 text-[12px] font-medium ${
+            highlight ? "bg-rose-50 text-rose-600" : done ? "bg-stone-100 text-stone-700" : "bg-stone-100 text-stone-500"
           }`}
         >
           {done ? tt("已填好") : tt("还差 {n} 项", { n: missing.length })}

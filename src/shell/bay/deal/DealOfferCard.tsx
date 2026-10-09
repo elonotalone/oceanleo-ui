@@ -63,7 +63,7 @@ export function DealOfferCard({
           <span
             data-offer-state-label
             className={
-              "rounded-full px-2 py-0.5 text-[11px] " +
+              "rounded-md px-2 py-0.5 text-[11px] " +
               (offer.state === "accepted"
                 ? "bg-emerald-50 text-emerald-700"
                 : settled

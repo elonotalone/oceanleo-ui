@@ -34,8 +34,8 @@ import {
 import { ProfilePage } from "./ProfilePage";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const BAR_BUTTON = `rounded-full px-4 py-2 text-[13px] font-medium ${MOTION}`;
-const CHROME_BUTTON = `rounded-full bg-neutral-900 px-3 py-2 text-[12px] font-medium text-white shadow-sm ${MOTION} hover:bg-neutral-700 disabled:opacity-30`;
+const BAR_BUTTON = `rounded-lg px-3 py-1.5 text-[13px] font-medium ${MOTION}`;
+const CHROME_BUTTON = `rounded-lg bg-stone-900 px-3 py-1.5 text-[12px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-30`;
 
 export interface ProfilePageEditorProps {
   page: BayProfilePage;
@@ -82,7 +82,7 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
   return (
     <div className="mx-auto w-full max-w-5xl px-5 pb-10 sm:px-8" data-bay-page-add>
       {open ? (
-        <div className="rounded-3xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-lg">
+        <div className="rounded-xl border border-stone-200 bg-white p-4 text-stone-900">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[14px] font-semibold">{tt("添加版块")}</p>
             <button type="button" onClick={() => setOpen(false)} className={`${BAR_BUTTON} text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900`}>
@@ -99,7 +99,7 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
                   onPick(type);
                   setOpen(false);
                 }}
-                className={`rounded-2xl border border-neutral-200 px-4 py-3 text-left ${MOTION} hover:border-neutral-900 hover:bg-neutral-50`}
+                className={`rounded-xl border border-stone-200 px-4 py-3 text-left ${MOTION} hover:border-stone-400 hover:bg-stone-50`}
               >
                 <span className="block text-[14px] font-semibold">{tt(BAY_PAGE_BLOCK_LABELS[type].name)}</span>
                 <span className="mt-0.5 block text-[12px] text-neutral-500">{tt(BAY_PAGE_BLOCK_LABELS[type].hint)}</span>
@@ -112,7 +112,7 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
           type="button"
           onClick={() => setOpen(true)}
           data-bay-page-add-open
-          className={`flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-neutral-300 bg-white/60 px-4 py-6 text-[14px] font-semibold text-neutral-600 ${MOTION} hover:border-neutral-900 hover:text-neutral-900`}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-4 text-[13px] font-medium text-stone-600 ${MOTION} hover:border-stone-900 hover:text-stone-900`}
         >
           <span aria-hidden className="text-[18px] leading-none">
             +
@@ -138,7 +138,7 @@ export function ProfilePageEditor({ page, initial, saving, error, onSave, onCanc
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
 
   const renderBlockChrome = (block: BayPageBlock, index: number, children: ReactNode) => (
-    <div className="group/block relative rounded-3xl outline-dashed outline-1 outline-offset-8 outline-transparent hover:outline-neutral-400/70 focus-within:outline-neutral-400/70" data-bay-page-block-edit={block.id}>
+    <div className="group/block relative rounded-xl outline-dashed outline-1 outline-offset-8 outline-transparent hover:outline-stone-400/70 focus-within:outline-stone-400/70" data-bay-page-block-edit={block.id}>
       <div className="absolute -top-4 right-0 z-10 flex items-center gap-1.5">
         <span className="rounded-full bg-white px-3 py-2 text-[12px] font-semibold text-neutral-700 shadow-sm ring-1 ring-black/10">{tt(BAY_PAGE_BLOCK_LABELS[block.type].name)}</span>
         <button type="button" disabled={index === 0} onClick={() => setDoc((current) => moveBlock(current, block.id, -1))} className={CHROME_BUTTON} data-bay-page-block-action="up">

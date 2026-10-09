@@ -1,7 +1,7 @@
 "use client";
 
-// LeoBay：各站 `/bay` 这一张页。逛的时候是一块彩色页头（搜索、发布、找人帮忙、我的主页）+ 种类 + 卡片网格；
-// 「素材」这一栏是官方账号发布的免费素材货架（原来的「探索」页并到这里）；点开一条，换成「返回 + 标题 + 详情」。
+// LeoBay：各站 `/bay` 这一张页。页头跟我的库同一套（17px 标题 + 一行动作 + 搜索），下面是种类和货架。
+// 「素材」是官方账号发布的免费素材货架；点开一条，换成「返回 + 标题 + 详情」。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -10,7 +10,7 @@ import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS }
 import { ExplorePage, type ExplorePageProps } from "../../ExplorePage";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
-import { BayGlyph, BayIcon } from "./bay-icons";
+import { BayGlyph } from "./bay-icons";
 import { formatBayParam } from "./bay-links";
 import {
   bayBack,
@@ -30,7 +30,6 @@ import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
 import { BayCategoryChips, BayFeed, BayKindTabs, openMine, startPostNeed, startServiceEditor, useBaySearchText } from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
-const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
 /** 素材货架的可选接线（各站原来传给探索页的那几项：点开、插入、拖拽）。 */
 export type LeoBayMaterialProps = Pick<
@@ -57,70 +56,43 @@ function useAvailability(): Availability {
 }
 
 const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`;
-
-function heroBackground(accent: string): string {
-  return [
-    "radial-gradient(90% 140% at 100% 0%, rgba(236, 72, 153, 0.55) 0%, transparent 55%)",
-    "radial-gradient(70% 120% at 55% 120%, rgba(250, 204, 21, 0.35) 0%, transparent 60%)",
-    `linear-gradient(120deg, ${accent} 0%, #6366f1 60%, #7c3aed 100%)`,
-  ].join(", ");
-}
+const BTN =
+  "inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+const BTN_GHOST = `${BTN} text-stone-600 hover:bg-stone-100 hover:text-stone-900`;
+const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
 
 function openMyPage(): void {
   if (!requireBayLogin()) return;
   openBay({ kind: "profile", handle: "me" });
 }
 
-/** 页头：一块彩色横幅。标题、一句话、搜索框，右边是发布 / 找人帮忙 / 我的主页 / 我的。 */
-function Hero({ filter, accent }: { filter: BayFeedFilter; accent: string }) {
+/** 页头：跟我的库同一行——标题、动作、搜索。 */
+function Hero({ filter }: { filter: BayFeedFilter }) {
   const tt = useUI();
   const search = useBaySearchText(filter);
   const material = filter.kind === "material";
   return (
-    <section
-      data-bay-page-hero
-      className="relative shrink-0 overflow-hidden rounded-[2rem] px-6 py-7 text-white shadow-lg sm:px-10 sm:py-9"
-      style={{ backgroundImage: heroBackground(accent) }}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5">
-        <div className="min-w-0 max-w-2xl">
-          <h1 className="flex items-center gap-2.5 text-[30px] font-extrabold leading-none tracking-tight sm:text-[38px]">
-            <BayIcon className="h-8 w-8 sm:h-9 sm:w-9" strokeWidth={2.2} />
-            LeoBay
-          </h1>
-          <p className="mt-3 text-[15px] leading-relaxed text-white/90 sm:text-[16px]">
-            {tt("免费素材拿去就用；想做的事找人来做；你会做的，摆出来卖。")}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2" data-bay-page-actions>
-          <button type="button" onClick={openMyPage} data-bay-action="my-page" className={`rounded-full bg-white/15 px-4 py-2.5 text-[13px] font-semibold text-white backdrop-blur ${MOTION} hover:bg-white/25`}>
+    <section data-bay-page-hero className="shrink-0">
+      <header className={APP_PAGE_HEADER_ROW_CLASS}>
+        <h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2" data-bay-page-actions>
+          <button type="button" onClick={openMyPage} data-bay-action="my-page" className={BTN_GHOST}>
             {tt("我的主页")}
           </button>
-          <button type="button" onClick={openMine} data-bay-action="mine" className={`rounded-full bg-white/15 px-4 py-2.5 text-[13px] font-semibold text-white backdrop-blur ${MOTION} hover:bg-white/25`}>
+          <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_GHOST}>
             {tt("我的")}
           </button>
-          <button
-            type="button"
-            onClick={() => startPostNeed(filter.category)}
-            data-bay-action="get-help"
-            className={`rounded-full bg-white/15 px-4 py-2.5 text-[13px] font-semibold text-white backdrop-blur ${MOTION} hover:bg-white/25`}
-          >
+          <button type="button" onClick={() => startPostNeed(filter.category)} data-bay-action="get-help" className={BTN_GHOST}>
             {tt("找人帮忙")}
           </button>
-          <button
-            type="button"
-            onClick={startServiceEditor}
-            data-bay-action="publish"
-            className={`inline-flex items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-[14px] font-bold text-neutral-900 shadow-md ${MOTION} hover:bg-neutral-100 active:scale-[0.98]`}
-          >
-            <BayGlyph name="plus" className="h-4 w-4" />
+          <button type="button" onClick={startServiceEditor} data-bay-action="publish" className={BTN_PRIMARY}>
             {tt("发布")}
           </button>
         </div>
-      </div>
+      </header>
       {material ? null : (
-        <label className="mt-6 flex w-full max-w-2xl items-center gap-3 rounded-full bg-white px-5 py-3 text-neutral-900 shadow-md" data-bay-page-search>
-          <BayGlyph name="search" className="h-5 w-5 shrink-0 text-neutral-400" />
+        <label className="mb-1 flex w-full max-w-md items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-stone-900" data-bay-page-search>
+          <BayGlyph name="search" className="h-3.5 w-3.5 shrink-0 text-stone-400" />
           <input
             type="search"
             value={search.text}
@@ -131,7 +103,7 @@ function Hero({ filter, accent }: { filter: BayFeedFilter; accent: string }) {
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) search.commit(event.currentTarget.value);
             }}
-            className="min-w-0 flex-1 rounded-lg border-0 bg-transparent px-1 py-0.5 text-[15px] outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-300"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300"
           />
         </label>
       )}
@@ -147,16 +119,16 @@ function MaterialsPromo({ filter }: { filter: BayFeedFilter }) {
       type="button"
       data-bay-materials-promo
       onClick={() => setBayFilter({ ...filter, kind: "material", category: undefined, q: undefined })}
-      className={`mb-4 flex w-full flex-wrap items-center justify-between gap-4 rounded-3xl bg-gradient-to-r from-amber-100 via-orange-100 to-rose-100 px-6 py-5 text-left text-neutral-900 shadow-sm ring-1 ring-black/5 ${MOTION} hover:-translate-y-0.5 hover:shadow-lg`}
+      className="mb-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-left text-stone-900 hover:border-stone-300"
     >
       <span className="min-w-0">
-        <span className="flex flex-wrap items-center gap-2 text-[17px] font-extrabold tracking-tight">
+        <span className="flex flex-wrap items-center gap-2 text-[14px] font-semibold tracking-tight">
           {tt("官方素材")}
-          <span className="rounded-full bg-neutral-900 px-2.5 py-1 text-[11px] font-semibold text-white">{tt("免费")}</span>
+          <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">{tt("免费")}</span>
         </span>
-        <span className="mt-1 block text-[13px] text-neutral-600">{tt("图片、模板、视频、音乐、3D……由 OceanLeo 官方发布，拿去直接用。")}</span>
+        <span className="mt-0.5 block text-[12px] text-stone-500">{tt("图片、模板、视频、音乐、3D……由 OceanLeo 官方发布，拿去直接用。")}</span>
       </span>
-      <span className="shrink-0 rounded-full bg-white px-5 py-2.5 text-[13px] font-bold shadow-sm">{tt("去逛素材")} →</span>
+      <span className="shrink-0 text-[13px] font-medium text-stone-700">{tt("去逛素材")}</span>
     </button>
   );
 }
@@ -176,18 +148,13 @@ function MaterialsPublisher() {
   }, []);
   const handle = publisher?.handle || "oceanleo";
   return (
-    <div className="mb-3 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-white px-4 py-3 text-[13px] text-neutral-600 shadow-sm ring-1 ring-black/5" data-bay-materials-publisher={handle}>
-      <button
-        type="button"
-        onClick={() => openBay({ kind: "profile", handle })}
-        className={`inline-flex items-center gap-2 rounded-full bg-neutral-900 px-3.5 py-2 text-[12px] font-semibold text-white ${MOTION} hover:bg-neutral-700`}
-      >
-        <BayIcon className="h-3.5 w-3.5" />
+    <div className="mb-3 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-600" data-bay-materials-publisher={handle}>
+      <button type="button" onClick={() => openBay({ kind: "profile", handle })} className={`${BTN_GHOST} gap-1.5`}>
         {publisher?.display_name || "OceanLeo"}
-        <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px]">{tt("官方")}</span>
+        <span className="text-[11px] text-stone-400">{tt("官方")}</span>
       </button>
-      <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[12px] font-semibold text-emerald-700">{tt("全部免费")}</span>
-      <span className="min-w-0">{tt("数字素材：点开就能用、能改；可用于个人和商业作品，不得把原文件转手再卖。")}</span>
+      <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[12px] font-medium text-stone-600">{tt("全部免费")}</span>
+      <span className="min-w-0 text-stone-500">{tt("数字素材：点开就能用、能改；可用于个人和商业作品，不得把原文件转手再卖。")}</span>
     </div>
   );
 }
@@ -222,7 +189,7 @@ function Browse({ filter, accent, visible, siteKey, materials }: { filter: BayFe
       className="-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
       data-bay-page-feed
     >
-      <Hero filter={filter} accent={accent} />
+      <Hero filter={filter} />
       <div className="mt-5 shrink-0" data-bay-page-filters>
         <BayKindTabs filter={filter} accent={accent} />
       </div>
@@ -249,7 +216,7 @@ function Browse({ filter, accent, visible, siteKey, materials }: { filter: BayFe
                   type="button"
                   onClick={startServiceEditor}
                   data-bay-action="publish"
-                  className={`rounded-full bg-neutral-900 px-5 py-2.5 text-[13px] font-semibold text-white ${MOTION} hover:bg-neutral-800`}
+                  className={BTN_PRIMARY}
                 >
                   {tt("发布")}
                 </button>
@@ -278,7 +245,7 @@ function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed"
             type="button"
             onClick={bayBack}
             data-bay-page-back
-            className={`inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-neutral-700 shadow-sm ring-1 ring-black/5 ${MOTION} hover:bg-neutral-50 active:scale-95`}
+            className={`${BTN_GHOST} gap-1`}
           >
             <BayGlyph name="back" className="h-4 w-4" />
             {tt("返回")}
@@ -287,7 +254,7 @@ function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed"
         </div>
       </header>
       <div
-        className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-black/5 ${width}`}
+        className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white ${width}`}
         data-bay-page-detail={target.kind}
       >
         <div key={formatBayParam(target)} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
