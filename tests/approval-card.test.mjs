@@ -117,6 +117,9 @@ test("parseApprovalMessage：坏 JSON / 缺 id / 字段类型错 → null", () =
   );
 });
 
+// UC-NONE
+// 理由：这是请求形状的功能测试，不对应隔离矩阵里的任何一条。出现 Bearer 只是因为客户端带登录令牌；
+// 令牌只发往 GATEWAY_BASE（第一方网关），本用例断言的正是这个地址。
 test("getApproval / listPendingApprovals / decideApproval 的路径、方法、body", async () => {
   const record = {
     id: "appr-1",

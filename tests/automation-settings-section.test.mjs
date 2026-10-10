@@ -105,6 +105,8 @@ function jsonOk(body, status = 200) {
   });
 }
 
+// UC-NONE
+// 理由：这是请求形状的功能测试，不对应隔离矩阵里的任何一条；Bearer 只发往第一方网关地址。
 test("delivery-prefs 走 GET/PUT /v1/delivery/prefs，带 Bearer 与 JSON body", async () => {
   await withFetch(() => jsonOk({ prefs: { task_done_inbox: true, task_done_push: true, task_done_email: false } }), async (calls) => {
     const got = await deliveryApi.getDeliveryPrefs();
@@ -124,6 +126,8 @@ test("delivery-prefs 走 GET/PUT /v1/delivery/prefs，带 Bearer 与 JSON body",
   });
 });
 
+// UC-NONE
+// 理由：这是请求形状的功能测试。查询串逐项 encodeURIComponent 防的是参数串改，不在隔离矩阵的规则里。
 test("action-grants 列表与撤销：DELETE 查询串对 connector_id / tool 做 encodeURIComponent", async () => {
   await withFetch(() => jsonOk({ items: [], ok: true }), async (calls) => {
     await grantsApi.listActionGrants();
@@ -198,6 +202,8 @@ test("ACCOUNT_DELIVERY_MESSAGES 17 语对每个原文都有非空译文；SHELL_
   assert.match(en, /Automat/i);
 });
 
+// UC-1（docs/architecture/oceanleo-untrusted-content-isolation.md）：已发布网站的地址是用户内容域上的链接，
+// 渲染成可点链接前必须是 https；其余形态只显示文字。字节数人话是同一文件里的纯展示函数。
 test("字节数人话与地址校验", () => {
   assert.equal(formatHostedBytes(0), "0 B");
   assert.equal(formatHostedBytes(512), "512 B");
@@ -210,6 +216,8 @@ test("字节数人话与地址校验", () => {
   assert.equal(isSafeHostedUrl(""), false);
 });
 
+// UC-NONE
+// 理由：这是纯状态机的功能测试，不涉及渲染面、域或跨源消息。
 test("开关乐观更新 / 失败回滚，列表移除", () => {
   const prefs = { task_done_inbox: true, task_done_push: true, task_done_email: false };
   const next = applyPrefToggle(prefs, "task_done_email", true);
@@ -353,6 +361,8 @@ async function renderSection() {
   };
 }
 
+// UC-4（docs/architecture/oceanleo-untrusted-content-isolation.md）：网关返回的标题、应用名、动作名只进文本节点；
+// 外链带 rel="noopener noreferrer"，打开的用户内容域页面拿不到本页的 window 句柄。
 test("栏目：三块独立、空态、https 外链、开关失败回滚、列表撤销移除", async () => {
   resetApi({
     grants: [],
