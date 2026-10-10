@@ -11,6 +11,7 @@ export const SETTINGS_BUILTIN_TABS = [
   "messages",
   "ai-models",
   "plugins",
+  "automation",
   "mail",
   "devices",
   "team",

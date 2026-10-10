@@ -30,6 +30,7 @@ import { bayEnabledHere } from "../../shell/bay/shell/bay-state";
 import { imEnabledFor } from "../../shell/messages/messages-family";
 import { BillingSection } from "./sections/BillingSection";
 import { MessagesSection } from "./sections/MessagesSection";
+import { AutomationSettingsSection } from "./sections/AutomationSettingsSection";
 import { OrgSection, type OrgPane } from "./sections/OrgSection";
 import { SettingsBackButton } from "./SettingsBackButton";
 import {
@@ -427,6 +428,12 @@ export function SettingsHub({
         group: "capabilities",
         label: tt("插件与连接器"),
         render: () => <PluginsPage variant="pane" />,
+      },
+      {
+        id: "automation",
+        group: "capabilities",
+        label: tt("自动化与通知"),
+        render: () => <AutomationSettingsSection variant="pane" />,
       },
       {
         id: "mail",

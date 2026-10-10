@@ -69,6 +69,12 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M6.2 3.2v2.3H4.2A1.2 1.2 0 0 0 3 6.7v2.2c0 .7.5 1.2 1.2 1.2h2v2.7c0 .7.5 1.2 1.2 1.2h1.2c.7 0 1.2-.5 1.2-1.2v-2.7h2c.7 0 1.2-.5 1.2-1.2V6.7c0-.7-.5-1.2-1.2-1.2h-2V3.2A1.2 1.2 0 0 0 8.6 2H7.4c-.7 0-1.2.5-1.2 1.2Z" />
     </NavIcon>
   ),
+  automation: (
+    <NavIcon>
+      <circle cx="8" cy="8" r="5.2" />
+      <path d="M8 5.2v3.1l2.2 1.4" />
+    </NavIcon>
+  ),
   mail: (
     <NavIcon>
       <rect x="2.4" y="3.6" width="11.2" height="8.8" rx="1.2" />

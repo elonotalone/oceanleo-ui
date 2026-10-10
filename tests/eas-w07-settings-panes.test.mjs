@@ -177,7 +177,9 @@ const STUBS = {
   "../../pages/PluginsPage": marker("PluginsPage", "pane-plugins"),
   "../../pages/settings/personalization/PersonalizationSection": marker("PersonalizationSection", "pane-personalization"),
   "../../pages/settings/mail/MailSection": marker("MailSection", "pane-mail"),
+  "../../pages/settings/sections/AutomationSettingsSection": marker("AutomationSettingsSection", "pane-automation"),
   "./mail/MailSection": marker("MailSection", "pane-mail"),
+  "./sections/AutomationSettingsSection": marker("AutomationSettingsSection", "pane-automation"),
   "./sections/AccountSection": marker("AccountSection", "pane-account"),
   "./sections/BillingSection": marker("BillingSection", "pane-billing"),
   "./sections/MessagesSection": marker("MessagesSection", "pane-messages"),
@@ -241,6 +243,7 @@ async function click(node, what) {
 const CAPABILITIES = [
   { id: "ai-models", testId: "pane-api", label: "AI 模型" },
   { id: "plugins", testId: "pane-plugins", label: "插件与连接器" },
+  { id: "automation", testId: "pane-automation", label: "自动化与通知" },
   { id: "mail", testId: "pane-mail", label: "邮件" },
   { id: "devices", testId: "pane-devices", label: "我的设备" },
 ];
