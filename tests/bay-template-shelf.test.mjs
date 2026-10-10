@@ -263,3 +263,25 @@ test("官方成品卡片只用 workspaceTemplatePreviewHref，Bay 内不调用 g
   assert.match(CARD, /openHref/);
   assert.match(LIBRARY, /官方成品/);
 });
+
+test("LeoDev 门户上的网站成品链到网站槽，不落到正式站", () => {
+  const path = workspaceTemplatePreviewHref("website", "art-web-1");
+  const slot = "https://p-2f359b967f994a0f3be30693c92d1781.dev.oceanleo.com";
+  const portalHost = "p-62ce000e97d86f914fc8e3877aee3f43.dev.oceanleo.com";
+  const href = officialTemplatePreviewHref("website", "art-web-1", "website", {
+    host: portalHost,
+    embedOriginEnv: `website=${slot}`,
+  });
+  assert.equal(href, `${slot}${path}`);
+  assert.doesNotMatch(href, /website\.oceanleo\.com/);
+  const sameSite = officialTemplatePreviewHref("website", "art-web-1", "website", {
+    host: "p-2f359b967f994a0f3be30693c92d1781.dev.oceanleo.com",
+    embedOriginEnv: `website=${slot}`,
+  });
+  assert.equal(sameSite, `${slot}${path}`);
+  const promptRow = officialTemplatePreviewHref("article", "art-2", "prompt", {
+    host: portalHost,
+    embedOriginEnv: `website=${slot}`,
+  });
+  assert.equal(promptRow, workspaceTemplatePreviewHref("article", "art-2"));
+});

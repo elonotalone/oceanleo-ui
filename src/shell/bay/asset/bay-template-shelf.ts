@@ -13,6 +13,10 @@ import {
   templateMaterialEntryId,
   type TemplateMaterialListing,
 } from "../../material-library-template-source";
+import {
+  isFamilyEmbedOverrideHost,
+  parseFamilyEmbedOriginEnv,
+} from "../../family-embed-origin";
 import { workspaceTemplatePreviewHref } from "../../site-catalog-controller";
 import {
   LIBRARY_ITEM_QUERY_KEY,
@@ -127,11 +131,35 @@ export function originShelfOptional(type: BayAssetType): boolean {
   );
 }
 
+/**
+ * Official cards stay on `workspaceTemplatePreviewHref`.
+ * On a LeoDev portal host the same path 404s (portal /workspace is the desk),
+ * so website / design / video rows use that site's slot origin from
+ * `NEXT_PUBLIC_FAMILY_EMBED_ORIGIN`. Never fall back to the production
+ * subsite from a LeoDev page.
+ */
 export function officialTemplatePreviewHref(
   appId: string,
   artifactId: string,
+  siteKey = "",
+  options?: { host?: string; embedOriginEnv?: string },
 ): string {
-  return workspaceTemplatePreviewHref(appId, artifactId);
+  const path = workspaceTemplatePreviewHref(appId, artifactId);
+  const host =
+    options?.host ??
+    (typeof window !== "undefined" ? window.location.host : "");
+  if (!isFamilyEmbedOverrideHost(host)) return path;
+  const key = siteKey.trim();
+  if (key !== "website" && key !== "design" && key !== "video") return path;
+  const parsed = parseFamilyEmbedOriginEnv(
+    options?.embedOriginEnv ?? process.env.NEXT_PUBLIC_FAMILY_EMBED_ORIGIN,
+  );
+  const origin = parsed.bySubsite[key] || parsed.single;
+  if (!origin) return path;
+  if (typeof window !== "undefined" && window.location.origin === origin) {
+    return path;
+  }
+  return `${origin}${path}`;
 }
 
 export function mineArtifactOpenHref(appId: string, artifactId: string): string {
@@ -191,7 +219,11 @@ export function templateMaterialToBayAsset(
     license: OFFICIAL_LICENSE,
     tags: material.tags,
     category: OFFICIAL_TEMPLATE_CATEGORY,
-    openHref: officialTemplatePreviewHref(material.appId, material.artifactId),
+    openHref: officialTemplatePreviewHref(
+      material.appId,
+      material.artifactId,
+      material.siteKey,
+    ),
     shelfKind: "official",
   };
 }
