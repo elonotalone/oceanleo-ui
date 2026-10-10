@@ -23,7 +23,8 @@ import {
   type BayTarget,
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
-import { BayCategoryChips, BayFeed, BayViewSwitch, openMine, startPublish, useBaySearchText } from "./BayList";
+import { BayToolbarFilterSlot, BayToolbarSlotProvider } from "./BayFilterSelect";
+import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, useBaySearchText } from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -57,10 +58,9 @@ const BTN =
 const BTN_GHOST = `${BTN} text-stone-600 hover:bg-stone-100 hover:text-stone-900`;
 const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
 
-/** 页头：标题、两个按键、搜索。三栏都画搜索。 */
+/** 页头：标题、两个按键。搜索在下面那一行工具条里。 */
 function Hero({ filter }: { filter: BayFeedFilter }) {
   const tt = useUI();
-  const search = useBaySearchText(filter);
   return (
     <section data-bay-page-hero className="shrink-0">
       <header className={APP_PAGE_HEADER_ROW_CLASS}>
@@ -74,28 +74,40 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
           </button>
         </div>
       </header>
-      <label className="mb-1 flex w-full max-w-md items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-stone-900" data-bay-page-search>
-        <BayGlyph name="search" className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-        <input
-          type="search"
-          value={search.text}
-          maxLength={60}
-          placeholder={tt("搜素材、服务、需求…")}
-          aria-label={tt("搜索")}
-          onChange={(event) => search.change(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) search.commit(event.currentTarget.value);
-          }}
-          className="min-w-0 flex-1 border-0 bg-transparent text-[13px] outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300"
-        />
-      </label>
     </section>
   );
 }
 
+/** 工具条右侧的搜索：逻辑仍是 `useBaySearchText`。 */
+function BayPageSearch({ filter }: { filter: BayFeedFilter }) {
+  const tt = useUI();
+  const search = useBaySearchText(filter);
+  return (
+    <label
+      className="flex min-w-0 flex-1 max-w-sm items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-stone-900"
+      data-bay-page-search
+    >
+      <BayGlyph name="search" className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+      <input
+        type="search"
+        value={search.text}
+        maxLength={60}
+        placeholder={tt("搜素材、服务、需求…")}
+        aria-label={tt("搜索")}
+        onChange={(event) => search.change(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) search.commit(event.currentTarget.value);
+        }}
+        className="min-w-0 flex-1 border-0 bg-transparent text-[13px] outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300"
+      />
+    </label>
+  );
+}
+
 /**
- * 逛 LeoBay：页头、服务/素材/需求、类目、卡片网格或素材库。
+ * 逛 LeoBay：页头、一行工具条（种类 / 站点或素材筛选槽 / 搜索）、卡片网格或素材库。
  * 看详情时这一整块只是藏起来（`visible` 为 false）；回来时把信息流滚回离开时的位置。
+ * 工具条和素材库包在同一个 `BayToolbarSlotProvider` 里，素材筛选才能送到那一行。
  */
 function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string }) {
   const tt = useUI();
@@ -115,46 +127,51 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   }, [visible]);
 
   return (
-    <div
-      ref={scrollRef}
-      onScroll={(event) => {
-        if (visibleRef.current) savedTop.current = event.currentTarget.scrollTop;
-      }}
-      className="-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
-      data-bay-page-feed
-    >
-      <Hero filter={filter} />
-      <div className="mt-5 shrink-0" data-bay-page-filters>
-        <BayViewSwitch filter={filter} accent={accent} />
-      </div>
-      <div className="mt-4 shrink-0">
-        <BayCategoryChips filter={filter} accent={accent} />
-      </div>
-      {assetVisited ? (
-        <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
-          <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} />
+    <BayToolbarSlotProvider>
+      <div
+        ref={scrollRef}
+        onScroll={(event) => {
+          if (visibleRef.current) savedTop.current = event.currentTarget.scrollTop;
+        }}
+        className="-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
+        data-bay-page-feed
+      >
+        <Hero filter={filter} />
+        <div
+          className="mt-5 flex shrink-0 flex-nowrap items-center gap-2 overflow-x-auto"
+          data-bay-page-toolbar
+          data-bay-page-filters
+        >
+          <BayViewSwitch filter={filter} accent={accent} />
+          {asset ? <BayToolbarFilterSlot /> : <BayCategorySelect filter={filter} accent={accent} />}
+          <BayPageSearch filter={filter} />
         </div>
-      ) : null}
-      {asset ? null : (
-        <div className="mt-5">
-          <BayFeed
-            filter={filter}
-            activeKey={null}
-            variant="grid"
-            emptyAction={
-              <button
-                type="button"
-                onClick={() => startPublish(filter.category)}
-                data-bay-action="publish"
-                className={BTN_PRIMARY}
-              >
-                {tt("发布")}
-              </button>
-            }
-          />
-        </div>
-      )}
-    </div>
+        {assetVisited ? (
+          <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
+            <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} />
+          </div>
+        ) : null}
+        {asset ? null : (
+          <div className="mt-5">
+            <BayFeed
+              filter={filter}
+              activeKey={null}
+              variant="grid"
+              emptyAction={
+                <button
+                  type="button"
+                  onClick={() => startPublish(filter.category)}
+                  data-bay-action="publish"
+                  className={BTN_PRIMARY}
+                >
+                  {tt("发布")}
+                </button>
+              }
+            />
+          </div>
+        )}
+      </div>
+    </BayToolbarSlotProvider>
   );
 }
 

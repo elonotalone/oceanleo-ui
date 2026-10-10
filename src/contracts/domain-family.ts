@@ -53,7 +53,9 @@ export interface DomainFamilyProfile {
   portalOrigin: string;
   /** API 网关 origin。 */
   gatewayOrigin: string;
-  /** 素材直链 origin。 */
+  /**
+   * 已弃用：asset 站 2026-10 下线，只用于认旧地址，不许再用它生成链接。
+   */
   assetOrigin: string;
   /** 本家族的用户生成内容域。永远不属于本家族，永远不可信。 */
   untrustedContentDomain: string;

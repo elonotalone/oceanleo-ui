@@ -1,8 +1,8 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、服务/素材/需求切换、类目（含专业咨询）、信息流本体。
+// LeoBay 页的信息流部件：搜索、服务/素材/需求分段切换、站点下拉（含专业咨询）、信息流本体。
 // LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
@@ -10,6 +10,7 @@ import { DemandCard, HelpRequestCard } from "../needs";
 import { ConsultCard, ServiceCard } from "../supply";
 import { BayCategoryIcon, BayIcon } from "./bay-icons";
 import { BAY_ADVICE_ZONE, BAY_FEED_KINDS, canonicalBayFeedKind, stripLeoCategoryPrefix } from "./bay-links";
+import { BayFilterSelect, type BayFilterOption } from "./BayFilterSelect";
 import {
   openBay,
   requireBayLogin,
@@ -121,13 +122,18 @@ const VIEW_LABEL: Record<(typeof BAY_FEED_KINDS)[number], string> = {
 };
 
 /**
- * 服务 / 素材 / 需求三段小切换。选中的那一个用站点主色填满（没给主色用黑色）。
+ * 服务 / 素材 / 需求三段切换，三个键连成一组。选中的那一个用站点主色填满（没给主色用黑色）。
  */
 export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accent?: string }) {
   const tt = useUI();
   const value = canonicalBayFeedKind(filter.kind);
   return (
-    <div role="tablist" aria-label={tt("看服务、素材还是需求")} data-bay-view className="flex max-w-full flex-wrap items-center gap-1.5">
+    <div
+      role="tablist"
+      aria-label={tt("看服务、素材还是需求")}
+      data-bay-view
+      className="inline-flex shrink-0 items-center overflow-hidden rounded-lg bg-stone-100"
+    >
       {BAY_FEED_KINDS.map((kind) => {
         const active = kind === value;
         return (
@@ -145,8 +151,8 @@ export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accen
               })
             }
             style={active ? { background: accent || "#111113" } : undefined}
-            className={`rounded-lg px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-              active ? "font-medium text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
+            className={`whitespace-nowrap px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+              active ? "font-medium text-white" : "text-stone-600 hover:bg-stone-200 hover:text-stone-900"
             }`}
           >
             {tt(VIEW_LABEL[kind])}
@@ -159,14 +165,11 @@ export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accen
 
 // ---- 类目 ---------------------------------------------------------------------
 
-const CHIP_BASE =
-  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-
 /**
- * 33 个功能站 + 「其他」交付类目，一排会换行的小标签；再点一次取消。摆在种类下面。
- * `accent` 给了就用它填选中的那一个（/bay 页传站点主色），不给用黑色。
+ * 服务 / 需求栏的「站点」下拉：选项是交付类目，服务栏末尾多一条「专业咨询」。
+ * 选「全部」清掉 category。形态从原来会换行的小标签改成 BayFilterSelect。
  */
-export function BayCategoryChips({
+export function BayCategorySelect({
   filter,
   accent,
   onPicked,
@@ -177,66 +180,49 @@ export function BayCategoryChips({
 }) {
   const tt = useUI();
   const name = useBayCategoryName();
-  const { categories, loading } = useBayCategories();
+  const { categories } = useBayCategories();
+  const options = useMemo<BayFilterOption[]>(() => {
+    const rows: BayFilterOption[] = categories.map((category) => ({
+      value: category.slug,
+      label: name(category),
+      icon: <BayCategoryIcon name={category.icon} className="h-3.5 w-3.5 shrink-0" />,
+    }));
+    if (canonicalBayFeedKind(filter.kind) === "service") {
+      rows.push({
+        value: BAY_ADVICE_ZONE,
+        label: tt("专业咨询"),
+        icon: <BayCategoryIcon name="advice" className="h-3.5 w-3.5 shrink-0" />,
+      });
+    }
+    return rows;
+  }, [categories, filter.kind, name, tt]);
 
-  if (!loading && categories.length === 0) return null;
-  const selectedClass = accent ? "font-medium text-white shadow-sm" : "bg-neutral-900 font-medium text-white shadow-sm";
-  const selectedStyle: CSSProperties | undefined = accent ? { background: accent } : undefined;
   return (
-    <div role="group" aria-label={tt("类目")} data-bay-categories="chips" className="flex flex-wrap items-center gap-2">
-      {loading
-        ? Array.from({ length: 12 }).map((_, index) => (
-            <span key={index} aria-hidden="true" className="h-7 w-24 animate-pulse rounded-lg bg-black/5 dark:bg-white/10" />
-          ))
-        : (
-            <>
-              {categories.map((category) => {
-                const active = filter.category === category.slug;
-                return (
-                  <button
-                    key={category.slug}
-                    type="button"
-                    aria-pressed={active}
-                    data-category={category.slug}
-                    onClick={() => {
-                      setBayFilter({ ...filter, category: active ? undefined : category.slug });
-                      onPicked?.();
-                    }}
-                    className={`${CHIP_BASE} ${
-                      active ? selectedClass : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
-                    }`}
-                    style={active ? selectedStyle : undefined}
-                  >
-                    <BayCategoryIcon name={category.icon} className="h-3.5 w-3.5 shrink-0" />
-                    <span>{name(category)}</span>
-                  </button>
-                );
-              })}
-              {canonicalBayFeedKind(filter.kind) === "service" ? (
-                <button
-                  type="button"
-                  aria-pressed={filter.category === BAY_ADVICE_ZONE}
-                  data-category={BAY_ADVICE_ZONE}
-                  onClick={() => {
-                    const active = filter.category === BAY_ADVICE_ZONE;
-                    setBayFilter({ ...filter, category: active ? undefined : BAY_ADVICE_ZONE });
-                    onPicked?.();
-                  }}
-                  className={`${CHIP_BASE} ${
-                    filter.category === BAY_ADVICE_ZONE
-                      ? selectedClass
-                      : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15"
-                  }`}
-                  style={filter.category === BAY_ADVICE_ZONE ? selectedStyle : undefined}
-                >
-                  <BayCategoryIcon name="advice" className="h-3.5 w-3.5 shrink-0" />
-                  <span>{tt("专业咨询")}</span>
-                </button>
-              ) : null}
-            </>
-          )}
+    <div data-bay-categories="select">
+      <BayFilterSelect
+        label={tt("站点")}
+        name="category"
+        value={filter.category ?? ""}
+        options={options}
+        onChange={(next) => {
+          setBayFilter({ ...filter, category: next || undefined });
+          onPicked?.();
+        }}
+        allLabel={tt("全部")}
+        searchable
+        accent={accent}
+      />
     </div>
   );
+}
+
+/** 旧导出名：归属外若还在 import，渲染同一个站点下拉，避免去改别人的文件。 */
+export function BayCategoryChips(props: {
+  filter: BayFeedFilter;
+  accent?: string;
+  onPicked?: () => void;
+}) {
+  return <BayCategorySelect {...props} />;
 }
 
 // ---- 信息流 --------------------------------------------------------------------

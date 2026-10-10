@@ -1,26 +1,63 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+// 素材栏：把 asset 站首页的浏览搬进来。筛选全部是工具条下拉，不再叠几排小标签。
+// 类型 / 来源 / 目录 / 行业 / 成套写在 BayToolbarFilters 里，送到页面那一行工具条上。
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayFeedFilter } from "../shell/bay-state";
+import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
+import { BayAssetCard } from "./BayAssetCard";
 import { BayAssetDetail } from "./BayAssetDetail";
-import { DOCUMENT_ZONES, documentZonesForType } from "./document-zones";
+import { BayAssetLive } from "./BayAssetLive";
+import { BayAssetSeries } from "./BayAssetSeries";
+import { BayArtifactDeepLink } from "./BayArtifactDeepLink";
+import { BayLicensesView } from "./BayLicensesView";
+import { buildPanelsFromCategories, categoryLabel, PPT_INDUSTRIES } from "./asset-taxonomy";
+import {
+  documentZoneByCategory,
+  documentZoneCategoryKey,
+  documentZonesForType,
+  type DocumentZone,
+} from "./document-zones";
 import {
   APP_ASSET_PRESET,
   BAY_ASSET_TYPE_LABELS,
   BAY_ASSET_TYPE_ORDER,
   defaultAssetTypeForSite,
+  fetchBayAssetById,
   liveSearchAvailable,
-  searchBayLibrary,
-  searchBayLive,
   type BayAsset,
   type BayAssetType,
-  type BayAssetZone,
 } from "./library-client";
+import {
+  defaultZone,
+  hasSeriesFilter,
+  loadTypeOriginIndex,
+  browseViewFor,
+  parseAssetBrowseSearch,
+  replaceBrowseUrl,
+  resetOriginIndexCache,
+  searchAssetsInZone,
+  TYPE_ZONES,
+  ZONE_LABELS,
+  zoneCategories,
+  zoneOrigin,
+  zoneTotal,
+  type TypeOriginIndex,
+  type TypeZone,
+} from "./origin-index";
 
-const CHIP =
-  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const ZONES: readonly BayAssetZone[] = ["owned", "stocked", "live"];
+const PREVIEW_PER_ROW = 6;
+
+function readSearch(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.location.search;
+  } catch {
+    return "";
+  }
+}
 
 function appFromWindow(): string {
   if (typeof window === "undefined") return "";
@@ -32,16 +69,40 @@ function appFromWindow(): string {
 }
 
 function initialType(filter: BayFeedFilter, siteKey: string): BayAssetType {
+  const parsed = parseAssetBrowseSearch(readSearch());
+  if (parsed.type) return parsed.type;
   const app = APP_ASSET_PRESET[appFromWindow()];
   if (app) return app.type;
   return defaultAssetTypeForSite(filter.category || siteKey);
 }
 
-function initialRoom(filter: BayFeedFilter, type: BayAssetType): string {
+function initialCat(filter: BayFeedFilter, type: BayAssetType): string {
+  const parsed = parseAssetBrowseSearch(readSearch());
+  if (parsed.cat) return parsed.cat;
   const app = APP_ASSET_PRESET[appFromWindow()];
-  if (app?.room && documentZonesForType(type).some((zone) => zone.slug === app.room)) return app.room;
-  const match = DOCUMENT_ZONES.find((zone) => zone.slug === filter.category || zone.category === filter.category);
-  return match && match.type === type ? match.slug : "";
+  const roomKey = documentZoneCategoryKey(app?.room);
+  if (roomKey) {
+    const zone = documentZoneByCategory(roomKey);
+    if (zone && zone.type === type) return roomKey;
+  }
+  const fromFilter = documentZoneCategoryKey(filter.category);
+  if (fromFilter) {
+    const zone = documentZoneByCategory(fromFilter);
+    if (zone && zone.type === type) return fromFilter;
+  }
+  return "";
+}
+
+function initialView(type: BayAssetType): TypeZone | null {
+  return browseViewFor(type, parseAssetBrowseSearch(readSearch()));
+}
+
+function initialAssetId(): string {
+  return parseAssetBrowseSearch(readSearch()).asset;
+}
+
+function initialSeries(): boolean {
+  return parseAssetBrowseSearch(readSearch()).series;
 }
 
 export function BayAssetLibrary({
@@ -54,210 +115,711 @@ export function BayAssetLibrary({
   accent?: string;
 }) {
   const tt = useUI();
+  const loadFailedText = tt("加载失败");
   const [type, setType] = useState<BayAssetType>(() => initialType(filter, siteKey));
-  const [zone, setZone] = useState<BayAssetZone>("owned");
-  const [room, setRoom] = useState(() => initialRoom(filter, initialType(filter, siteKey)));
-  const [items, setItems] = useState<BayAsset[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [viewPinned, setViewPinned] = useState(() => initialView(initialType(filter, siteKey)) != null);
+  const [zone, setZone] = useState<TypeZone>(() => initialView(initialType(filter, siteKey)) ?? "owned");
+  const [cat, setCat] = useState(() => initialCat(filter, initialType(filter, siteKey)));
+  const [seriesOn, setSeriesOn] = useState(() => initialSeries());
+  const [industry, setIndustry] = useState("");
+  const [subtab, setSubtab] = useState("");
+  const [index, setIndex] = useState<TypeOriginIndex | null>(null);
+  const [indexError, setIndexError] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [licensesOpen, setLicensesOpen] = useState(false);
   const [active, setActive] = useState<BayAsset | null>(null);
+  const [grid, setGrid] = useState<{
+    key: string;
+    items: BayAsset[];
+    page: number;
+    hasMore: boolean;
+    error: string;
+    loadingMore: boolean;
+  } | null>(null);
   const requestRef = useRef(0);
   const query = filter.q ?? "";
-  const selected = accent ? "font-medium text-white shadow-sm" : "bg-neutral-900 font-medium text-white shadow-sm";
-  const selectedStyle = accent ? { background: accent } : undefined;
-  const rooms = documentZonesForType(type);
   const liveOk = liveSearchAvailable(type);
-  const category = room ? DOCUMENT_ZONES.find((item) => item.slug === room)?.category : undefined;
+  const origin = zoneOrigin(zone);
+  const rooms = documentZonesForType(type);
+  const docZone = documentZoneByCategory(cat);
+  const seriesAvailable = hasSeriesFilter(type, zone);
 
   useEffect(() => {
-    const next = initialType(filter, siteKey);
+    const parsed = parseAssetBrowseSearch(readSearch());
+    const next = parsed.type ?? APP_ASSET_PRESET[appFromWindow()]?.type ?? defaultAssetTypeForSite(filter.category || siteKey);
     setType(next);
-    setRoom(initialRoom(filter, next));
-    setZone("owned");
+    if (!browseViewFor(next, parsed)) {
+      setViewPinned(false);
+      setZone("owned");
+    }
+    if (!parsed.cat) setCat(initialCat(filter, next));
   }, [filter.category, siteKey]);
 
   useEffect(() => {
-    if (zone === "live" && !liveSearchAvailable(type)) setZone("owned");
-    if (!documentZonesForType(type).some((item) => item.slug === room)) setRoom("");
-  }, [type, zone, room]);
-
-  const load = useCallback(
-    async (fromPage: number) => {
-      const request = ++requestRef.current;
-      setLoading(true);
-      if (fromPage === 1) {
-        setItems([]);
-        setError(null);
-      }
-      try {
-        const pageSize = 24;
-        const result =
-          zone === "live"
-            ? await searchBayLive({ q: query, type, page: fromPage, pageSize })
-            : await searchBayLibrary({
-                q: query,
-                type,
-                origin: zone === "owned" ? "first-party" : "external",
-                category,
-                page: fromPage,
-                pageSize,
-              });
-        if (request !== requestRef.current) return;
-        setItems((prev) => (fromPage === 1 ? result.items : [...prev, ...result.items]));
-        setPage(fromPage);
-        setHasMore(result.has_more);
-      } catch (caught) {
-        if (request !== requestRef.current) return;
-        setError(caught instanceof Error && caught.message ? caught.message : "素材没读出来，请稍后再试。");
-        if (fromPage === 1) setItems([]);
-        setHasMore(false);
-      } finally {
-        if (request === requestRef.current) setLoading(false);
-      }
-    },
-    [type, zone, category, query],
-  );
+    let alive = true;
+    setIndex(null);
+    setIndexError(false);
+    loadTypeOriginIndex(type)
+      .then((result) => {
+        if (alive) setIndex(result);
+      })
+      .catch(() => {
+        if (alive) setIndexError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [type]);
 
   useEffect(() => {
-    void load(1);
-    return () => {
-      requestRef.current += 1;
-    };
-  }, [load]);
+    if (!index || index.type !== type) return;
+    if (!viewPinned) {
+      const next = defaultZone(type, {
+        owned: zoneTotal(index, "first-party"),
+        stocked: zoneTotal(index, "external"),
+      });
+      setZone(next);
+    } else if (zone === "live" && !liveOk) {
+      setZone("owned");
+    }
+  }, [index, type, viewPinned, zone, liveOk]);
 
-  const zoneLabel = (value: BayAssetZone) =>
-    value === "owned" ? tt("OceanLeo 自有") : value === "stocked" ? tt("开源专区（已入库）") : tt("实时搜索");
+  useEffect(() => {
+    if (seriesOn && !hasSeriesFilter(type, zone)) setSeriesOn(false);
+  }, [seriesOn, type, zone]);
+
+  useEffect(() => {
+    if (!cat || !index) return;
+    const allowed = new Set([
+      ...documentZonesForType(type).map((item) => item.category),
+      ...(origin ? zoneCategories(index, origin).map((item) => item.key) : []),
+    ]);
+    if (!allowed.has(cat)) {
+      setCat("");
+      setSubtab("");
+    }
+  }, [cat, index, origin, type]);
+
+  useEffect(() => {
+    replaceBrowseUrl({
+      type,
+      view: viewPinned || index ? zone : null,
+      cat: cat || null,
+      series: seriesOn && hasSeriesFilter(type, zone),
+    });
+  }, [type, zone, cat, seriesOn, viewPinned, index]);
+
+  useEffect(() => {
+    const id = initialAssetId();
+    if (!id) return;
+    let alive = true;
+    fetchBayAssetById(id)
+      .then((asset) => {
+        if (alive && asset?.id) setActive(asset);
+      })
+      .catch(() => {
+        /* 深链件读不到就停在列表，不把整栏打成错误页 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const zoneCats = useMemo(
+    () => (index && origin ? zoneCategories(index, origin) : []),
+    [index, origin],
+  );
+  const panels = useMemo(
+    () => buildPanelsFromCategories(type, zoneCats.map((item) => item.key)),
+    [type, zoneCats],
+  );
+  const panel = panels.find((item) => item.key === cat) || null;
+  const countByCat = useMemo(
+    () => new Map(zoneCats.map((item) => [item.key, item.total])),
+    [zoneCats],
+  );
+  const mode: "browse" | "category" | "search" = query
+    ? "search"
+    : cat || (type === "ppt" && industry)
+      ? "category"
+      : "browse";
+
+  const searchKey =
+    licensesOpen || seriesOn || zone === "live" || mode === "browse" || !index || !origin
+      ? null
+      : JSON.stringify([type, zone, cat, subtab, industry, query, reloadTick]);
+  const currentGrid = searchKey && grid?.key === searchKey ? grid : null;
+  const items = currentGrid?.items ?? [];
+  const page = currentGrid?.page ?? 1;
+  const hasMore = currentGrid?.hasMore ?? false;
+  const loading = searchKey !== null && (!currentGrid || currentGrid.loadingMore);
+  const error = currentGrid?.error ?? "";
+
+  useEffect(() => {
+    if (!searchKey || !index || !origin) return;
+    const request = ++requestRef.current;
+    let alive = true;
+    searchAssetsInZone({
+      index,
+      type,
+      origin,
+      q: query,
+      category: query ? undefined : cat || undefined,
+      subtab: query ? undefined : industry || subtab || undefined,
+      page: 1,
+      pageSize: 30,
+    })
+      .then((result) => {
+        if (!alive || request !== requestRef.current) return;
+        setGrid({
+          key: searchKey,
+          items: result.items,
+          page: 1,
+          hasMore: result.has_more,
+          error: "",
+          loadingMore: false,
+        });
+      })
+      .catch((caught) => {
+        if (!alive || request !== requestRef.current) return;
+        setGrid({
+          key: searchKey,
+          items: [],
+          page: 1,
+          hasMore: false,
+          error: caught instanceof Error && caught.message ? caught.message : loadFailedText,
+          loadingMore: false,
+        });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [searchKey, index, origin, type, zone, cat, subtab, industry, query, loadFailedText]);
+
+  const openAsset = useCallback((asset: BayAsset) => {
+    setActive(asset);
+    replaceBrowseUrl({ asset: asset.id });
+  }, []);
+
+  const closeAsset = useCallback(() => {
+    setActive(null);
+    replaceBrowseUrl({ asset: "" });
+  }, []);
+
+  function changeType(next: string) {
+    if (!next || next === type) return;
+    const nextType = next as BayAssetType;
+    setType(nextType);
+    setViewPinned(false);
+    setZone("owned");
+    setIndex(null);
+    setIndexError(false);
+    setCat("");
+    setIndustry("");
+    setSubtab("");
+    setSeriesOn(false);
+    setLicensesOpen(false);
+  }
+
+  function changeZone(next: string) {
+    if (!next || next === zone) return;
+    setViewPinned(true);
+    setZone(next as TypeZone);
+    setCat("");
+    setSubtab("");
+    setIndustry("");
+    setSeriesOn(false);
+    setLicensesOpen(false);
+  }
+
+  function changeCat(next: string) {
+    setCat(next);
+    setSubtab("");
+    setLicensesOpen(false);
+  }
+
+  function loadMore() {
+    if (!currentGrid || currentGrid.loadingMore || !searchKey || !index || !origin) return;
+    const request = ++requestRef.current;
+    const next = page + 1;
+    setGrid((prev) => (prev?.key === searchKey ? { ...prev, error: "", loadingMore: true } : prev));
+    searchAssetsInZone({
+      index,
+      type,
+      origin,
+      q: query,
+      category: query ? undefined : cat || undefined,
+      subtab: query ? undefined : industry || subtab || undefined,
+      page: next,
+      pageSize: 30,
+    })
+      .then((result) => {
+        if (request !== requestRef.current) return;
+        setGrid((prev) =>
+          prev?.key === searchKey
+            ? {
+                ...prev,
+                items: [...prev.items, ...result.items],
+                page: next,
+                hasMore: result.has_more,
+                loadingMore: false,
+              }
+            : prev,
+        );
+      })
+      .catch((caught) => {
+        if (request !== requestRef.current) return;
+        setGrid((prev) =>
+          prev?.key === searchKey
+            ? {
+                ...prev,
+                error: caught instanceof Error && caught.message ? caught.message : loadFailedText,
+                loadingMore: false,
+              }
+            : prev,
+        );
+      });
+  }
+
+  function reloadIndex() {
+    resetOriginIndexCache();
+    setIndex(null);
+    setIndexError(false);
+    loadTypeOriginIndex(type)
+      .then(setIndex)
+      .catch(() => setIndexError(true));
+  }
+
+  const typeOptions: BayFilterOption[] = BAY_ASSET_TYPE_ORDER.map((item) => ({
+    value: item,
+    label: tt(BAY_ASSET_TYPE_LABELS[item]),
+  }));
+  const originOptions: BayFilterOption[] = TYPE_ZONES.map((item) => {
+    const usable = item !== "live" || liveOk;
+    const count =
+      index && item === "owned"
+        ? zoneTotal(index, "first-party")
+        : index && item === "stocked"
+          ? zoneTotal(index, "external")
+          : undefined;
+    return {
+      value: item,
+      label: tt(ZONE_LABELS[item]),
+      count,
+      disabled: !usable,
+      hint: usable ? undefined : tt("此类型没有实时开源上游。"),
+    };
+  });
+  const catOptions: BayFilterOption[] = [];
+  const seenCat = new Set<string>();
+  for (const room of rooms) {
+    seenCat.add(room.category);
+    catOptions.push({
+      value: room.category,
+      label: tt(room.title),
+      count: countByCat.get(room.category),
+    });
+  }
+  for (const item of zoneCats) {
+    if (seenCat.has(item.key)) continue;
+    catOptions.push({
+      value: item.key,
+      label: tt(categoryLabel(item.key)),
+      count: item.total,
+    });
+  }
+  if (cat && !catOptions.some((item) => item.value === cat)) {
+    catOptions.push({ value: cat, label: tt(categoryLabel(cat)) });
+  }
+
+  const previews = useMemo(
+    () =>
+      zoneCats
+        .map((item) => ({ key: item.key, items: item.sample.slice(0, PREVIEW_PER_ROW) }))
+        .filter((item) => item.items.length > 0),
+    [zoneCats],
+  );
+
+  const typeName = tt(BAY_ASSET_TYPE_LABELS[type]);
+  const otherZone: TypeZone = zone === "owned" ? "stocked" : "owned";
+  const otherTotal = index
+    ? zoneTotal(index, otherZone === "owned" ? "first-party" : "external")
+    : 0;
+  const formats = useMemo(() => {
+    if (!docZone) return [];
+    const found = items.map((item) => item.format).filter((value): value is string => Boolean(value));
+    return [...new Set([...docZone.formats, ...found])];
+  }, [docZone, items]);
+
+  const showCategory = zone !== "live" && !seriesOn;
+  const showIndustry = type === "ppt" && zone !== "live" && !seriesOn;
+  const showSeries = seriesAvailable;
 
   return (
     <div data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
-      <div role="group" aria-label={tt("文件类型")} data-bay-asset-types className="flex flex-wrap items-center gap-2">
-        {BAY_ASSET_TYPE_ORDER.map((item) => {
-          const on = item === type;
-          return (
-            <button
-              key={item}
-              type="button"
-              data-asset-type={item}
-              aria-pressed={on}
-              onClick={() => {
-                setType(item);
-                setRoom("");
-              }}
-              className={`${CHIP} ${on ? selected : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70"}`}
-              style={on ? selectedStyle : undefined}
-            >
-              {tt(BAY_ASSET_TYPE_LABELS[item])}
-            </button>
-          );
-        })}
-      </div>
-      <div role="tablist" aria-label={tt("素材来源")} data-bay-asset-zones className="mt-4 flex flex-wrap items-center gap-1.5">
-        {ZONES.map((item) => {
-          const on = item === zone;
-          const usable = item !== "live" || liveOk;
-          const body = zoneLabel(item);
-          const shape = "rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition";
-          if (!usable) {
-            return (
-              <span key={item} aria-disabled="true" title={tt("此类型没有实时开源上游。")} data-asset-zone={item} className={`${shape} cursor-not-allowed bg-stone-50 text-stone-400 ring-1 ring-stone-200`}>
-                {body}
-              </span>
-            );
-          }
-          return (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              data-asset-zone={item}
-              onClick={() => setZone(item)}
-              style={on ? { background: accent || "#111113" } : undefined}
-              className={`${shape} ${on ? "text-white" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50"}`}
-            >
-              {body}
-            </button>
-          );
-        })}
-      </div>
-      {zone === "live" && !liveOk ? (
-        <p className="mt-2 text-[12px] text-stone-500">{tt("此类型没有实时开源上游。")}</p>
-      ) : null}
-      {rooms.length > 0 ? (
-        <div role="group" data-bay-asset-rooms className="mt-4 flex flex-wrap items-center gap-2">
-          {rooms.map((item) => {
-            const on = room === item.slug;
-            return (
-              <button
-                key={item.slug}
-                type="button"
-                data-asset-room={item.slug}
-                aria-pressed={on}
-                onClick={() => setRoom(on ? "" : item.slug)}
-                className={`${CHIP} ${on ? selected : "bg-black/5 text-black/70 hover:bg-black/10 dark:bg-white/10 dark:text-white/70"}`}
-                style={on ? selectedStyle : undefined}
-              >
-                {tt(item.title)}
-              </button>
-            );
-          })}
+      <BayToolbarFilters>
+        <BayFilterSelect
+          name="type"
+          label={tt("类型")}
+          value={type}
+          options={typeOptions}
+          onChange={changeType}
+          accent={accent}
+        />
+        <BayFilterSelect
+          name="view"
+          label={tt("来源")}
+          value={zone}
+          options={originOptions}
+          onChange={changeZone}
+          accent={accent}
+        />
+        {showCategory ? (
+          <BayFilterSelect
+            name="cat"
+            label={tt("目录")}
+            value={cat}
+            options={catOptions}
+            onChange={changeCat}
+            allLabel={tt("全部")}
+            searchable={catOptions.length > 12}
+            accent={accent}
+          />
+        ) : null}
+        {showIndustry ? (
+          <BayFilterSelect
+            name="industry"
+            label={tt("行业")}
+            value={industry}
+            options={PPT_INDUSTRIES.map((item) => ({ value: item.key, label: tt(item.label) }))}
+            onChange={setIndustry}
+            allLabel={tt("全部行业")}
+            accent={accent}
+          />
+        ) : null}
+        {showSeries ? (
+          <BayFilterSelect
+            name="series"
+            label={tt("成套")}
+            value={seriesOn ? "1" : ""}
+            options={[{ value: "1", label: tt("只看成套") }]}
+            onChange={(value) => setSeriesOn(value === "1")}
+            allLabel={tt("全部（含单件）")}
+            accent={accent}
+          />
+        ) : null}
+        <button
+          type="button"
+          data-bay-asset-licenses-open
+          onClick={() => setLicensesOpen(true)}
+          className="h-8 shrink-0 px-2 text-[12px] text-stone-500 hover:text-stone-800"
+        >
+          {tt("授权说明")}
+        </button>
+      </BayToolbarFilters>
+
+      {licensesOpen ? (
+        <div className="mt-4">
+          <BayLicensesView onClose={() => setLicensesOpen(false)} />
         </div>
-      ) : null}
-      {error ? (
+      ) : indexError && zone !== "live" ? (
         <div className="mt-8 flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
-          <p className="text-[13px] text-neutral-500">{tt(error)}</p>
-          <button type="button" onClick={() => void load(1)} className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50">
+          <p className="text-[13px] text-neutral-500">{tt("素材网关暂时读不到，稍后再试。")}</p>
+          <button
+            type="button"
+            onClick={reloadIndex}
+            className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+          >
             {tt("重试")}
           </button>
         </div>
-      ) : null}
-      {!error && !loading && items.length === 0 ? (
-        <p className="mt-12 px-4 text-center text-[13px] text-neutral-500" data-bay-asset-empty>
-          {tt("这里还没有这个分类的素材。")}
-        </p>
-      ) : null}
-      {items.length > 0 ? (
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" data-bay-asset-grid>
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              data-bay-asset-card={item.id}
-              onClick={() => setActive(item)}
-              className="overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition hover:border-stone-300"
-            >
-              <span className="block aspect-square bg-stone-100">
-                {item.thumb_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.thumb_url} alt="" className="h-full w-full object-cover" />
-                ) : null}
-              </span>
-              <span className="block truncate px-2.5 py-2 text-[12px] text-stone-700">{item.title}</span>
-            </button>
-          ))}
+      ) : seriesOn && seriesAvailable && origin ? (
+        <div className="mt-5">
+          <p className="mb-4 text-[12px] text-stone-500">
+            {tt("成组配套、风格统一的「{type}」，整套取用不违和（每套均已人工逐件过目）。", { type: typeName })}
+          </p>
+          <BayAssetSeries type={type} origin={origin} onOpen={openAsset} />
         </div>
-      ) : null}
-      {loading ? (
+      ) : zone === "live" ? (
+        liveOk ? (
+          <div className="mt-5">
+            <BayAssetLive type={type} query={query} onOpen={openAsset} />
+          </div>
+        ) : (
+          <p className="mt-5 text-[12px] text-stone-500">{tt("此类型没有实时开源上游。")}</p>
+        )
+      ) : !index ? (
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
           {Array.from({ length: 8 }).map((_, index) => (
             <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
           ))}
         </div>
-      ) : null}
-      {hasMore && !loading ? (
-        <div className="mt-4 flex justify-center">
-          <button
-            type="button"
-            onClick={() => void load(page + 1)}
-            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            {tt("加载更多")}
-          </button>
+      ) : (
+        <div className="mt-5">
+          {docZone && mode !== "search" ? <DocumentZoneHeader zone={docZone} total={countByCat.get(docZone.category) ?? currentGrid?.items.length} formats={formats} loading={loading && items.length === 0} /> : null}
+          {mode === "category" && panel && panel.subs.length > 1 ? (
+            <div
+              role="tablist"
+              aria-label={tt("二级分类")}
+              data-bay-asset-subtabs
+              className="mb-4 flex flex-nowrap items-center gap-1.5 overflow-x-auto"
+            >
+              {panel.subs.map((item) => {
+                const on = item.key === subtab;
+                return (
+                  <button
+                    key={item.key || "all"}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => setSubtab(item.key)}
+                    className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-medium ${
+                      on ? "bg-stone-900 text-white" : "bg-white text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50"
+                    }`}
+                  >
+                    {tt(item.label)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="mb-4 flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
+              <p className="text-[13px] text-neutral-500">{tt(error)}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setGrid(null);
+                  requestRef.current += 1;
+                  setReloadTick((value) => value + 1);
+                }}
+                className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                {tt("重试")}
+              </button>
+            </div>
+          ) : null}
+
+          {mode === "browse" ? (
+            previews.length === 0 ? (
+              <ZoneEmptyState
+                typeName={typeName}
+                zone={zone}
+                otherZone={otherZone}
+                otherTotal={otherTotal}
+                liveUsable={liveOk}
+                onGoZone={(next) => {
+                  setViewPinned(true);
+                  setZone(next);
+                  setCat("");
+                }}
+              />
+            ) : (
+              <div className="space-y-8" data-bay-asset-zone-home>
+                {previews.map((preview) => {
+                  const cfg = panels.find((item) => item.key === preview.key);
+                  const title = cfg?.label || categoryLabel(preview.key);
+                  return (
+                    <section key={preview.key}>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h2 className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold text-stone-900">
+                          {cfg?.icon ? <span aria-hidden>{cfg.icon}</span> : null}
+                          <span className="truncate">{tt(title)}</span>
+                          <span className="tabular-nums text-[12px] font-normal text-stone-400">
+                            {(countByCat.get(preview.key) ?? 0).toLocaleString("en-US")}
+                          </span>
+                        </h2>
+                        <button
+                          type="button"
+                          onClick={() => changeCat(preview.key)}
+                          className="shrink-0 text-[13px] font-medium text-stone-400 hover:text-sky-600"
+                        >
+                          {tt("查看全部")}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                        {preview.items.map((asset) => (
+                          <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )
+          ) : null}
+
+          {mode !== "browse" ? (
+            <>
+              {loading && items.length === 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+                  ))}
+                </div>
+              ) : items.length === 0 && !error ? (
+                docZone ? (
+                  <div className="rounded-2xl border border-dashed border-stone-300 bg-white px-6 py-16 text-center" data-bay-asset-empty>
+                    <p className="text-[15px] font-medium text-stone-800">{tt("整理中")}</p>
+                    <p className="mt-2 text-[13px] text-stone-500">
+                      {tt("这一区的页面已经做好了，素材还在入库。货到了会排在这里，不会变成空白页或报错页。")}
+                    </p>
+                  </div>
+                ) : (
+                  <ZoneEmptyState
+                    typeName={typeName}
+                    zone={zone}
+                    otherZone={otherZone}
+                    otherTotal={otherTotal}
+                    liveUsable={liveOk}
+                    searching={mode === "search"}
+                    onGoZone={(next) => {
+                      setViewPinned(true);
+                      setZone(next);
+                      setCat("");
+                    }}
+                  />
+                )
+              ) : items.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" data-bay-asset-grid>
+                  {items.map((asset) => (
+                    <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                  ))}
+                </div>
+              ) : null}
+              {loading && items.length > 0 ? (
+                <div className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</div>
+              ) : null}
+              {!loading && hasMore && items.length > 0 ? (
+                <div className="mt-6 text-center">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    {tt("加载更多")}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {active ? <BayAssetDetail asset={active} onClose={closeAsset} /> : null}
+      <BayArtifactDeepLink accent={accent} />
+    </div>
+  );
+}
+
+function DocumentZoneHeader({
+  zone,
+  total,
+  formats,
+  loading,
+}: {
+  zone: DocumentZone;
+  total?: number;
+  formats: string[];
+  loading: boolean;
+}) {
+  const tt = useUI();
+  return (
+    <header className="mb-5" data-bay-asset-doc-zone={zone.slug}>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400">{tt("文档分区")}</p>
+      <h2 className="mt-1 text-lg font-semibold text-stone-900">{tt(zone.title)}</h2>
+      {zone.officialNumbers.length > 0 ? (
+        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <span className="shrink-0 rounded-full bg-sky-600 px-2.5 py-0.5 text-[11px] font-semibold text-white">
+              {tt("官方原文")}
+            </span>
+            {zone.officialNumbers.map((number) => (
+              <span key={number} className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[13px] font-semibold text-sky-900 ring-1 ring-sky-200">
+                {number}
+              </span>
+            ))}
+          </div>
+          {zone.officialSourceNote ? (
+            <p className="mt-2 text-[13px] text-sky-900/80">{tt(zone.officialSourceNote)}</p>
+          ) : null}
         </div>
       ) : null}
-      {active ? <BayAssetDetail asset={active} onClose={() => setActive(null)} /> : null}
+      <dl className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+          <dt className="text-[11px] text-stone-400">{tt("素材数")}</dt>
+          <dd className="mt-1 text-lg font-semibold tabular-nums text-stone-900">
+            {loading || total == null ? "…" : total.toLocaleString("en-US")}
+          </dd>
+        </div>
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+          <dt className="text-[11px] text-stone-400">{tt("许可来源")}</dt>
+          <dd className="mt-1 font-medium text-stone-900">{tt(zone.licenseLabel)}</dd>
+        </div>
+        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+          <dt className="text-[11px] text-stone-400">{tt("可下载格式")}</dt>
+          <dd className="mt-1 font-medium text-stone-900">
+            {formats.map((item) => item.toUpperCase()).join(" · ") || tt("未标注")}
+          </dd>
+        </div>
+      </dl>
+    </header>
+  );
+}
+
+function ZoneEmptyState({
+  typeName,
+  zone,
+  otherZone,
+  otherTotal,
+  liveUsable,
+  searching,
+  onGoZone,
+}: {
+  typeName: string;
+  zone: TypeZone;
+  otherZone: TypeZone;
+  otherTotal: number;
+  liveUsable: boolean;
+  searching?: boolean;
+  onGoZone: (zone: TypeZone) => void;
+}) {
+  const tt = useUI();
+  return (
+    <div className="rounded-xl border border-dashed border-stone-300 px-6 py-16 text-center" data-bay-asset-empty>
+      <p className="text-[13px] text-stone-500">
+        {searching
+          ? tt("「{zone}」里没有匹配的「{type}」。", { zone: tt(ZONE_LABELS[zone]), type: typeName })
+          : zone === "owned"
+            ? tt("OceanLeo 还没有自己做过「{type}」。这一格不是没做，是这一类真的还没有自有件。", { type: typeName })
+            : tt("还没有把开源的「{type}」下载进 OceanLeo 库。这一格不是没做，是这一类还没有已入库的开源件。", {
+                type: typeName,
+              })}
+      </p>
+      <div className="mt-3 flex items-center justify-center gap-2 overflow-x-auto text-[13px]">
+        {otherTotal > 0 ? (
+          <button
+            type="button"
+            onClick={() => onGoZone(otherZone)}
+            className="shrink-0 rounded-lg border border-stone-300 px-4 py-2 text-stone-700 hover:bg-stone-50"
+          >
+            {tt("去「{zone}」看 {n} 件", {
+              zone: tt(ZONE_LABELS[otherZone]),
+              n: otherTotal.toLocaleString("en-US"),
+            })}
+          </button>
+        ) : null}
+        {liveUsable ? (
+          <button
+            type="button"
+            onClick={() => onGoZone("live")}
+            className="shrink-0 rounded-lg border border-stone-300 px-4 py-2 text-stone-700 hover:bg-stone-50"
+          >
+            {tt("去实时搜索全网开源「{type}」", { type: typeName })}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

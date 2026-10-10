@@ -1,12 +1,13 @@
 "use client";
 
-// 右侧栏里的 LeoBay 浏览：搜索、供给/需求、类目下拉、一行一条信息流。
-import type { ReactElement } from "react";
+// 右侧栏里的 LeoBay 浏览：第一行搜索 + 「我的」「发布」；第二行种类切换 + 站点下拉（素材栏不放站点）。
+import { useMemo, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
 import { BayFeed, BayViewSwitch, openMine, startPublish, useBayCategoryName, useBaySearchText } from "../shell/BayList";
+import { BayFilterSelect, type BayFilterOption } from "../shell/BayFilterSelect";
 import { BAY_ADVICE_ZONE, canonicalBayFeedKind } from "../shell/bay-links";
-import { BayGlyph } from "../shell/bay-icons";
+import { BayCategoryIcon, BayGlyph } from "../shell/bay-icons";
 import { setBayFilter, useBayFilter } from "../shell/bay-state";
 import { useBayCategories } from "../shell/use-bay-data";
 
@@ -26,6 +27,21 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
   const search = useBaySearchText(filter);
   const { categories } = useBayCategories();
   const name = useBayCategoryName();
+  const siteOptions = useMemo<BayFilterOption[]>(() => {
+    const rows: BayFilterOption[] = categories.map((category) => ({
+      value: category.slug,
+      label: name(category),
+      icon: <BayCategoryIcon name={category.icon} className="h-3.5 w-3.5 shrink-0" />,
+    }));
+    if (canonicalBayFeedKind(filter.kind) === "service") {
+      rows.push({
+        value: BAY_ADVICE_ZONE,
+        label: tt("专业咨询"),
+        icon: <BayCategoryIcon name="advice" className="h-3.5 w-3.5 shrink-0" />,
+      });
+    }
+    return rows;
+  }, [categories, filter.kind, name, tt]);
 
   return (
     <section data-bay-panel="browse" className="flex h-full min-h-0 flex-col overflow-y-auto p-3">
@@ -55,26 +71,20 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
           {tt("发布")}
         </button>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-nowrap items-center gap-2 overflow-x-auto" data-bay-panel-toolbar>
         <BayViewSwitch filter={filter} />
+        {asset ? null : (
+          <BayFilterSelect
+            label={tt("站点")}
+            name="category"
+            value={filter.category ?? ""}
+            options={siteOptions}
+            onChange={(next) => setBayFilter({ ...filter, category: next || undefined })}
+            allLabel={tt("全部")}
+            searchable
+          />
+        )}
       </div>
-      <label className="mt-3 flex items-center gap-2 text-[12px] text-stone-500">
-        <span>{tt("类目")}</span>
-        <select
-          data-bay-panel-category
-          value={filter.category ?? ""}
-          onChange={(event) => setBayFilter({ ...filter, category: event.target.value || undefined })}
-          className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[13px] text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"
-        >
-          <option value="">{tt("全部类目")}</option>
-          {categories.map((category) => (
-            <option key={category.slug} value={category.slug}>
-              {name(category)}
-            </option>
-          ))}
-          {canonicalBayFeedKind(filter.kind) === "service" ? <option value={BAY_ADVICE_ZONE}>{tt("专业咨询")}</option> : null}
-        </select>
-      </label>
       <div className="mt-3">
         {asset ? <BayAssetLibrary filter={filter} siteKey={siteKey} /> : <BayFeed filter={filter} activeKey={null} variant="list" />}
       </div>

@@ -201,16 +201,30 @@ test("有 data-bay-view 三个 tab", async () => {
   await view.unmount();
 });
 
-test("服务下有 data-category=advice，需求下没有", async () => {
+// 站点收进了工具条上的一个下拉：点开「站点」才看得到选项（选项画在 body 上的浮层里）。
+async function openSiteMenu(host) {
+  const trigger = host.querySelector('[data-bay-filter="category"]');
+  assert.ok(trigger, "工具条上应有「站点」下拉");
+  await act(async () => {
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  const menu = document.querySelector('[data-bay-filter-menu="category"]');
+  assert.ok(menu, "点开后应出现选项单");
+  return { trigger, menu };
+}
+
+test("服务下「站点」下拉里有专业咨询，需求下没有", async () => {
   reset({ filter: { kind: "service" } });
   const supply = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  assert.ok(supply.host.querySelector('[data-category="advice"]'));
+  const supplyMenu = await openSiteMenu(supply.host);
+  assert.ok(supplyMenu.menu.querySelector('[data-value="advice"]'));
   await supply.unmount();
 
   reset({ filter: { kind: "request" } });
   const demand = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  assert.equal(demand.host.querySelector('[data-category="advice"]'), null);
-  assert.ok(demand.host.querySelector('[data-category="ppt"]'));
+  const demandMenu = await openSiteMenu(demand.host);
+  assert.equal(demandMenu.menu.querySelector('[data-value="advice"]'), null);
+  assert.ok(demandMenu.menu.querySelector('[data-value="ppt"]'));
   await demand.unmount();
 });
 

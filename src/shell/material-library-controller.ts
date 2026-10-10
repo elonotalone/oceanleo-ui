@@ -53,8 +53,8 @@ import {
   currentFamilySubsiteOrigin,
 } from "../contracts/domain-family";
 
-// env 仍然优先；没给时按**当前家族**取网关与素材域（contracts/domain-family.ts）。
-// `.com` 与本地开发解析出来的仍是 api./asset.oceanleo.com（逐字不变）。
+// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
+// 素材页链接走当前站 `/bay?kind=asset`；`assetOrigin` 只用来认旧地址，不生成主机链接。
 const GATEWAY =
   (typeof process !== "undefined" &&
     (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
@@ -218,6 +218,7 @@ function designTemplateDocumentUrl(value = ""): string {
   const designOrigin = currentFamilySubsiteOrigin("design");
   if (!designOrigin) return "";
   const designHost = new URL(designOrigin).hostname;
+  // 识别旧地址：历史 tplDoc 仍指向 asset 主机上的 design-templates JSON。
   const assetHost = new URL(currentDomainProfile().assetOrigin).hostname;
   try {
     const actionUrl = new URL(value);
@@ -404,7 +405,7 @@ export function platformToEntry(
       source_url: asset.source_url || "",
       template_doc_url: designTemplateDoc,
       starter_id: starterId,
-      asset_page_url: `${currentDomainProfile().assetOrigin}/materials?asset=${encodeURIComponent(rawId)}`,
+      asset_page_url: `/bay?kind=asset&asset=${encodeURIComponent(rawId)}`,
       // 平台素材这条路径不经 artifact 投影（`asset.*` 是另一套字段），所以热度要在这里
       // 单独放行一次，否则同一份 ambientCG 素材从这个入口进来就没有下载量、排序与
       // artifact 入口不一致。判据与放行名单同源（`artifact-contract.ts`）。
@@ -434,7 +435,7 @@ export function platformToEntry(
       ...(asset.tags || []),
       ...(asset.scene_tags || []),
     ],
-    linkUrl: `${currentDomainProfile().assetOrigin}/materials?asset=${encodeURIComponent(rawId)}`,
+    linkUrl: `/bay?kind=asset&asset=${encodeURIComponent(rawId)}`,
   });
 }
 

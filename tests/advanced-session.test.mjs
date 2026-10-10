@@ -47,18 +47,19 @@ test("blank advanced drafts retain their onboarding identity after resume", () =
   );
 });
 
-test("advanced Design sessions preserve and recover their layered editor route", () => {
+test("advanced Design sessions keep stored template_doc_url and the embed route", () => {
   const routes = readFileSync(
     new URL("../src/shell/workbench-routes.ts", import.meta.url),
     "utf8",
   );
   assert.match(source, /"template_doc_url"/);
-  assert.match(source, /\^site:tpl-\(\[a-z0-9-\]\+\)\$/);
-  // C5 家族化：素材域与 design 内嵌 origin 都按当前家族解析，写死的是路径与
-  // 子站标签；这里锁拼接模板与 pinned 路由落点。
+  // asset 仓没有 /design-templates/doc/<id>.json。不再用 assetOrigin 拼死链；
+  // 已写入 snapshot 的 template_doc_url 仍经 META_KEYS 读出，routes 继续认旧主机。
+  assert.doesNotMatch(source, /assetOrigin/);
+  assert.doesNotMatch(source, /design-templates\/doc/);
   assert.match(
-    source,
-    /assetOrigin\}\/design-templates\/doc\/\$\{legacyTemplate\[1\]\}\.json/,
+    routes,
+    /url\.origin === currentDomainProfile\(\)\.assetOrigin/,
   );
   assert.match(
     routes,

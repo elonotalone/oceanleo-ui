@@ -240,7 +240,8 @@ test("停在「素材」时渲染素材库和三类切换，没有返回键，�
   assert.ok(view.host.querySelector("[data-bay-asset-library]"));
   assert.equal(view.host.querySelector("[data-bay-materials-back]"), null);
   assert.ok(view.host.querySelector("[data-bay-view]"));
-  assert.ok(view.host.querySelector("[data-bay-categories]"));
+  assert.ok(view.host.querySelector("[data-bay-toolbar-slot]"));
+  assert.equal(view.host.querySelector('[data-bay-filter="category"]'), null);
   assert.equal(view.host.querySelector("[data-bay-feed]"), null);
   await view.unmount();
 });
@@ -321,9 +322,10 @@ test("信息流：首屏骨架、出错给重试、加载更多是一个键", ()
   assert.equal(count(html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" })), />加载更多</g), 1);
 });
 
-test("供给/需求切换行会换行，没有横向滚动容器", () => {
+test("服务/素材/需求切换连成一组，自身不换行", () => {
   const out = html(React.createElement(BayViewSwitch, { filter: { kind: "service" }, accent: "#0ea5e9" }));
-  assert.match(out, /flex-wrap/);
+  assert.doesNotMatch(out, /\bflex-wrap\b/);
+  assert.match(out, /inline-flex/);
   assert.doesNotMatch(out, /overflow-x-auto/);
   assert.equal(count(out, /role="tab"/g), 3);
 });

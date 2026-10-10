@@ -1,6 +1,5 @@
 import { ADVANCED_DRAFT_META_KEY, advancedDraftIdentity, normalizeAdvancedDraftPointer, type AdvancedDraftPointer } from "./advanced-draft";
 import type { AppSession } from "../lib/app-session";
-import { currentDomainProfile } from "../contracts/domain-family";
 import {
   lightweightOfficeRouteForExtension,
   type LightweightOfficeRoute,
@@ -886,17 +885,6 @@ export function advancedSnapshotFromSession(
     meta.advanced_editor_route = lightweightRoute;
   } else {
     route = storedRoute;
-  }
-  if (
-    route === "embed" &&
-    siteId === "design" &&
-    typeof meta.template_doc_url !== "string"
-  ) {
-    const legacyTemplate = /^site:tpl-([a-z0-9-]+)$/i.exec(rootId);
-    if (legacyTemplate) {
-      meta.template_doc_url =
-        `${currentDomainProfile().assetOrigin}/design-templates/doc/${legacyTemplate[1]}.json`;
-    }
   }
   // v2 snapshots written before blank/draft became allowlisted lost the
   // website onboarding marker. Recover only source-less website drafts; real

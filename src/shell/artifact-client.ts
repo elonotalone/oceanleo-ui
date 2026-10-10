@@ -2,7 +2,6 @@
 
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
-import { currentDomainProfile } from "../contracts/domain-family";
 import {
   ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
@@ -1030,10 +1029,14 @@ function artifactItemFromProjection(
   options: { forEdit?: boolean } = {},
 ): LibraryItem {
   const item = artifactProjectionToLibraryItem(projection, options);
-  const href = new URL(`${currentDomainProfile().assetOrigin}/materials`);
-  href.searchParams.set("artifactId", projection.artifactId);
-  href.searchParams.set("revisionId", projection.revisionId);
-  href.searchParams.set("taxonomy", projection.artifactType);
+  // 成品不是素材库里的一件素材（没有素材 id），链接带的是成品号 + 版本号，与原来的参数一致。
+  const hrefParams = new URLSearchParams({
+    kind: "asset",
+    artifactId: projection.artifactId,
+    revisionId: projection.revisionId,
+    taxonomy: projection.artifactType,
+  });
+  const href = `/bay?${hrefParams.toString()}`;
   return {
     ...item,
     meta: {
@@ -1042,7 +1045,7 @@ function artifactItemFromProjection(
         ? { editor_source_url: projection.renditions.source.url }
         : {}),
       ...(projection.owner.visibility === "public"
-        ? { asset_page_url: href.toString() }
+        ? { asset_page_url: href }
         : {}),
     },
   };

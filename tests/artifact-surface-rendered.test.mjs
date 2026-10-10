@@ -2231,7 +2231,9 @@ test("artifact detail and edit capability use canonical revisionId query aliases
   assert.equal(current.ok, true);
   assert.equal(current.data?.revisionId, "r1");
   assert.equal(editDecision.ok, true);
-  const detailHref = new URL(detail.data.meta.asset_page_url);
+  // 地址是当前站的相对地址（/bay?kind=asset&…），给一个基址才能解析。
+  const detailHref = new URL(detail.data.meta.asset_page_url, "https://site.invalid");
+  assert.equal(detailHref.pathname, "/bay");
   assert.equal(detailHref.searchParams.get("artifactId"), "revision-contract");
   assert.equal(detailHref.searchParams.get("revisionId"), "r1");
   assert.deepEqual(
@@ -3388,7 +3390,8 @@ test("rendered site shelf uses one scoped endpoint with Primary disabled", async
       hrefFallback.container
         .querySelector('a[aria-label="打开完整素材库"]')
         ?.getAttribute("href"),
-      "https://asset.oceanleo.com/materials",
+      // 调用方还传着旧 asset 站地址时，交给用户的是当前站素材栏。
+      "/bay?kind=asset",
     );
   } finally {
     await hrefFallback.unmount();
@@ -3530,7 +3533,9 @@ test("full material deep link hydrates the exact public artifact revision", asyn
     assert.ok(deepCard);
     const href = new URL(
       deepCard.querySelector("[data-entry-link]")?.getAttribute("href"),
+      "https://site.invalid",
     );
+    assert.equal(href.pathname, "/bay");
     assert.equal(href.searchParams.get("artifactId"), "deep-public");
     assert.equal(href.searchParams.get("revisionId"), "r1");
     assertEveryRenderedMaterialIsEditable(mounted.container);

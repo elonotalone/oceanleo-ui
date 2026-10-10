@@ -29,9 +29,62 @@ import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { currentDomainProfile } from "../contracts/domain-family";
 
-// 素材域按**当前家族**取（contracts/domain-family.ts）：`.com` 站解析出来的仍是
-// https://asset.oceanleo.com/materials（逐字不变），`.cn` 站解析成 asset.oceanleo.cn。
-export const MATERIAL_LIBRARY_BASE = `${currentDomainProfile().assetOrigin}/materials`;
+// 给人点的素材库入口走当前站 Bay 素材栏。旧 asset 主机地址只用于识别。
+export const MATERIAL_LIBRARY_BASE = "/bay?kind=asset";
+
+const RETIRED_ASSET_HOSTS = new Set([
+  "asset.oceanleo.com",
+  "asset.oceanleo.cn",
+]);
+
+function hrefParseBase(): string {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "https://oceanleo.invalid";
+}
+
+function parseLibraryHref(value: string): URL | null {
+  try {
+    return new URL(value, hrefParseBase());
+  } catch {
+    return null;
+  }
+}
+
+function retiredAssetHostname(): string {
+  try {
+    return new URL(currentDomainProfile().assetOrigin).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function isRetiredAssetMaterialsUrl(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  const known =
+    RETIRED_ASSET_HOSTS.has(host) || host === retiredAssetHostname();
+  return url.protocol === "https:" && known && url.pathname === "/materials";
+}
+
+function isBayAssetUrl(url: URL): boolean {
+  return url.pathname === "/bay" && url.searchParams.get("kind") === "asset";
+}
+
+/** 从旧 asset 主机地址或新 Bay 地址里取出素材 id。认不出就空串。 */
+export function materialAssetIdFromHref(value: string): string {
+  const url = parseLibraryHref(value);
+  if (!url) return "";
+  if (!isRetiredAssetMaterialsUrl(url) && !isBayAssetUrl(url)) return "";
+  return (url.searchParams.get("asset") || "").trim();
+}
+
+/** 旧 `…/materials?asset=X` 与新 `/bay?kind=asset&asset=X` 是同一件素材。 */
+export function materialHrefsReferToSameAsset(a: string, b: string): boolean {
+  const left = materialAssetIdFromHref(a);
+  const right = materialAssetIdFromHref(b);
+  return Boolean(left) && left === right;
+}
 
 export interface MaterialLibraryProps {
   materials: MaterialItem[];
@@ -187,35 +240,50 @@ export function materialShelfEmptyCopy(options: {
   };
 }
 
+function materialAssetIdForItem(item: LibraryItem): string {
+  const metaId =
+    typeof item.meta?.asset_id === "string" ? item.meta.asset_id.trim() : "";
+  return (metaId || String(item.id || "")).replace(/^library:/, "").trim();
+}
+
+/**
+ * 「在素材库中查看」的地址：当前站 `/bay` 的素材栏。
+ * 成品（有成品号 + 版本号）带 `artifactId` / `revisionId`，与原来 asset 站地址上的参数同名；
+ * 素材库里的一件素材带 `asset=<素材 id>`，素材栏会直接点开它。
+ */
 export function materialLibraryHref(options: {
   query?: string;
   taxonomy?: ArtifactType | "";
   item?: LibraryItem;
 }): string {
-  const url = new URL(MATERIAL_LIBRARY_BASE);
-  if (options.query?.trim()) url.searchParams.set("q", options.query.trim());
-  if (options.taxonomy) {
-    url.searchParams.set("taxonomy", options.taxonomy);
-  }
+  const params = new URLSearchParams({ kind: "asset" });
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.taxonomy) params.set("taxonomy", options.taxonomy);
   if (options.item && isDurableLibraryItem(options.item)) {
-    url.searchParams.set("artifactId", options.item.artifactId);
-    url.searchParams.set("revisionId", options.item.revisionId);
+    params.set("artifactId", options.item.artifactId);
+    params.set("revisionId", options.item.revisionId);
+  } else if (options.item) {
+    const id = materialAssetIdForItem(options.item);
+    if (id) params.set("asset", id);
   }
-  return url.toString();
+  return `/bay?${params.toString()}`;
 }
 
 export function safeCompleteLibraryHref(value: string | undefined): string {
   if (!value) return "";
-  try {
-    const url = new URL(value, MATERIAL_LIBRARY_BASE);
-    return url.protocol === "https:" &&
-      url.hostname === new URL(currentDomainProfile().assetOrigin).hostname &&
-      url.pathname === "/materials"
-      ? url.toString()
-      : "";
-  } catch {
-    return "";
+  const url = parseLibraryHref(value);
+  if (!url) return "";
+  // 旧 asset 主机的 /materials 地址照样认，但 asset 站已弃用：交出去的是当前站素材栏的同一组参数。
+  if (isRetiredAssetMaterialsUrl(url)) {
+    const params = new URLSearchParams(url.search);
+    params.delete("kind");
+    const rest = params.toString();
+    return rest ? `/bay?kind=asset&${rest}` : MATERIAL_LIBRARY_BASE;
   }
+  if (isBayAssetUrl(url)) {
+    return value.startsWith("/bay") ? value : `/bay${url.search}${url.hash}`;
+  }
+  return "";
 }
 
 /**

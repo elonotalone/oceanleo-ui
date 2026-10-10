@@ -258,10 +258,16 @@ test("没有 request：browse，有搜索框和类目下拉", async () => {
   const root = view.host.querySelector("[data-bay-panel-root]");
   assert.equal(root.getAttribute("data-bay-panel-mode"), "browse");
   assert.ok(view.host.querySelector("[data-bay-panel-search]"));
-  const select = view.host.querySelector("[data-bay-panel-category]");
-  assert.ok(select);
-  const labels = [...select.options].map((option) => option.textContent.trim());
-  assert.deepEqual(labels, ["全部类目", "Slides", "Music", "专业咨询"]);
+  // 类目是工具条上的「站点」下拉：点开才有选项单（画在 body 上的浮层里）。
+  const trigger = view.host.querySelector('[data-bay-filter="category"]');
+  assert.ok(trigger);
+  await act(async () => {
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  const menu = document.querySelector('[data-bay-filter-menu="category"]');
+  assert.ok(menu);
+  const labels = [...menu.querySelectorAll('[role="option"]')].map((option) => option.textContent.trim());
+  assert.deepEqual(labels, ["全部", "Slides", "Music", "专业咨询"]);
   assert.equal(globalThis.__bay5.relatedCalls.length, 0);
   await view.unmount();
 });

@@ -1,4 +1,5 @@
 import { GATEWAY_BASE } from "../../../lib/auth/config";
+import { attachShelfPins, itemMatchesPin } from "./shelf-pins";
 
 export type BayAssetType =
   | "image"
@@ -46,6 +47,19 @@ export interface BayAsset {
   source_url: string;
   license: BayAssetLicense;
   prompt?: string;
+  tags?: string[];
+  oss_key?: string;
+  file_size?: number | null;
+  series_id?: string;
+  series_name?: string;
+}
+
+export interface BaySeries {
+  series_id: string;
+  series_name: string;
+  type: BayAssetType;
+  count: number;
+  covers: string[];
 }
 
 export const BAY_ASSET_TYPE_ORDER: readonly BayAssetType[] = [
@@ -188,19 +202,24 @@ export async function searchBayLibrary(params: {
   type: BayAssetType;
   origin?: BayAssetOrigin;
   category?: string;
+  subtab?: string;
+  seriesId?: string;
   page?: number;
   pageSize?: number;
 }): Promise<BayAssetSearchResult> {
   const page = params.page || 1;
+  const pageSize = params.pageSize || 24;
   const qs = new URLSearchParams({
     q: params.q || "",
     type: params.type,
     license: "commercial",
     page: String(page),
-    page_size: String(params.pageSize || 24),
+    page_size: String(pageSize),
   });
   if (params.origin) qs.set("origin", params.origin);
   if (params.category) qs.set("category", params.category);
+  if (params.subtab) qs.set("subtab", params.subtab);
+  if (params.seriesId) qs.set("series_id", params.seriesId);
   const lib = await getJson<{
     items?: BayAsset[];
     page?: number;
@@ -208,19 +227,70 @@ export async function searchBayLibrary(params: {
     total?: number;
   }>(`/v1/assets/library/search?${qs.toString()}`);
   const raw = Array.isArray(lib.items) ? lib.items : [];
-  const items = params.origin
+  let items = params.origin
     ? raw.filter((item) => item.origin === params.origin)
     : raw;
+  if (params.category) {
+    items = await attachShelfPins({
+      category: params.category,
+      page,
+      items,
+      searchPinned: async (matcher) => {
+        const needle = matcher.titlePrefix || matcher.ossKeyIncludes || "";
+        if (!needle) throw new Error("pinned matcher has no searchable prefix");
+        const pinQs = new URLSearchParams({
+          q: needle,
+          type: params.type,
+          license: "commercial",
+          page: "1",
+          page_size: "8",
+          category: params.category || "",
+        });
+        if (params.origin) pinQs.set("origin", params.origin);
+        const pinLib = await getJson<{ items?: BayAsset[] }>(
+          `/v1/assets/library/search?${pinQs.toString()}`,
+        );
+        const hit = (pinLib.items || []).find((item) => itemMatchesPin(item, matcher));
+        if (!hit) throw new Error("pinned asset not ingested yet");
+        if (params.origin && hit.origin && hit.origin !== params.origin) {
+          throw new Error("pinned asset origin mismatch");
+        }
+        return hit;
+      },
+    });
+  }
   const total = typeof lib.total === "number" ? lib.total : undefined;
   return {
     items,
     page,
     has_more:
       typeof total === "number"
-        ? page * (params.pageSize || 24) < total
-        : items.length >= (params.pageSize || 24),
+        ? page * (lib.page_size || pageSize) < total
+        : items.length >= pageSize,
     total,
   };
+}
+
+export async function listBayCategories(
+  type: BayAssetType,
+  origin?: BayAssetOrigin,
+): Promise<{ categories: string[] }> {
+  const qs = new URLSearchParams({ type });
+  if (origin) qs.set("origin", origin);
+  return getJson<{ categories: string[] }>(`/v1/assets/library/categories?${qs.toString()}`);
+}
+
+export async function listBaySeries(type?: BayAssetType): Promise<{ series: BaySeries[] }> {
+  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+  const data = await getJson<{ series?: BaySeries[] }>(`/v1/assets/library/series${qs}`);
+  return { series: Array.isArray(data.series) ? data.series : [] };
+}
+
+export async function fetchBayAssetById(id: string): Promise<BayAsset> {
+  const raw = (id || "").trim();
+  if (!raw) throw new Error("素材没读出来，请稍后再试。");
+  const assetId = raw.includes(":") ? raw : `library:${raw}`;
+  return getJson<BayAsset>(`/v1/assets/detail?id=${encodeURIComponent(assetId)}`);
 }
 
 export async function searchBayLive(params: {
