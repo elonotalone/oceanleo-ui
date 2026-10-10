@@ -395,6 +395,16 @@ test("源码：不在 /bay 页上的 openBay 写成 /bay?bay=；交易会话走�
   assert.match(state, /kind === "conversation"/);
 });
 
+test("素材栏来源含我的；官方卡走 workspaceTemplatePreviewHref", () => {
+  const library = src("shell/bay/asset/BayAssetLibrary.tsx");
+  const shelf = src("shell/bay/asset/bay-template-shelf.ts");
+  assert.match(library, /data-bay-asset-mine/);
+  assert.match(library, /官方成品/);
+  assert.match(shelf, /workspaceTemplatePreviewHref/);
+  assert.doesNotMatch(library, /getArtifactEditDecision/);
+  assert.doesNotMatch(shelf, /getArtifactEditDecision/);
+});
+
 test("渲染出来的每个元素：没有两个类在抢同一个属性", async () => {
   const pages = [];
   reset();

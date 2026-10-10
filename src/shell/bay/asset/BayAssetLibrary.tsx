@@ -5,7 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import type { BayFeedFilter } from "../shell/bay-state";
+import { useBaySignedIn, type BayFeedFilter } from "../shell/bay-state";
+import { BaySignInPrompt } from "../shell/BayMine";
 import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
 import { BayAssetCard } from "./BayAssetCard";
 import { BayAssetDetail } from "./BayAssetDetail";
@@ -13,6 +14,15 @@ import { BayAssetLive } from "./BayAssetLive";
 import { BayAssetSeries } from "./BayAssetSeries";
 import { BayArtifactDeepLink } from "./BayArtifactDeepLink";
 import { BayLicensesView } from "./BayLicensesView";
+import {
+  BAY_OFFICIAL_PREVIEW_COUNT,
+  BAY_TEMPLATE_PAGE_SIZE,
+  OFFICIAL_TEMPLATE_CATEGORY,
+  listBayMineArtifacts,
+  listBayOfficialTemplates,
+  mergeOwnedAssets,
+  templateArtifactTypeForBay,
+} from "./bay-template-shelf";
 import { buildPanelsFromCategories, categoryLabel, PPT_INDUSTRIES } from "./asset-taxonomy";
 import {
   documentZoneByCategory,
@@ -115,6 +125,7 @@ export function BayAssetLibrary({
   accent?: string;
 }) {
   const tt = useUI();
+  const signedIn = useBaySignedIn();
   const loadFailedText = tt("加载失败");
   const [type, setType] = useState<BayAssetType>(() => initialType(filter, siteKey));
   const [viewPinned, setViewPinned] = useState(() => initialView(initialType(filter, siteKey)) != null);
@@ -137,9 +148,29 @@ export function BayAssetLibrary({
     loadingMore: boolean;
   } | null>(null);
   const requestRef = useRef(0);
+  const officialRef = useRef(0);
+  const mineRef = useRef(0);
   const query = filter.q ?? "";
   const liveOk = liveSearchAvailable(type);
   const origin = zoneOrigin(zone);
+  const officialCat = cat === OFFICIAL_TEMPLATE_CATEGORY;
+  const [official, setOfficial] = useState<{
+    items: BayAsset[];
+    total: number;
+    hasMore: boolean;
+    error: string;
+    loading: boolean;
+    page: number;
+  } | null>(null);
+  const [mineGrid, setMineGrid] = useState<{
+    items: BayAsset[];
+    total: number;
+    hasMore: boolean;
+    error: string;
+    loading: boolean;
+    unauthenticated: boolean;
+    page: number;
+  } | null>(null);
   const rooms = documentZonesForType(type);
   const docZone = documentZoneByCategory(cat);
   const seriesAvailable = hasSeriesFilter(type, zone);
@@ -172,17 +203,114 @@ export function BayAssetLibrary({
   }, [type]);
 
   useEffect(() => {
+    if (zone !== "owned" || licensesOpen || seriesOn) return;
+    if (!templateArtifactTypeForBay(type)) {
+      setOfficial({ items: [], total: 0, hasMore: false, error: "", loading: false, page: 1 });
+      return;
+    }
+    const request = ++officialRef.current;
+    const all = officialCat && !query;
+    setOfficial((prev) => ({
+      items: prev && prev.page === 1 ? prev.items : [],
+      total: prev?.total ?? 0,
+      hasMore: false,
+      error: "",
+      loading: true,
+      page: 1,
+    }));
+    listBayOfficialTemplates({
+      type,
+      q: query,
+      limit: query ? undefined : all ? BAY_TEMPLATE_PAGE_SIZE : BAY_OFFICIAL_PREVIEW_COUNT,
+      offset: 0,
+    })
+      .then((result) => {
+        if (request !== officialRef.current) return;
+        setOfficial({
+          items: result.items,
+          total: result.total,
+          hasMore: result.hasMore,
+          error: "",
+          loading: false,
+          page: 1,
+        });
+      })
+      .catch((caught) => {
+        if (request !== officialRef.current) return;
+        setOfficial({
+          items: [],
+          total: 0,
+          hasMore: false,
+          error: caught instanceof Error && caught.message ? caught.message : loadFailedText,
+          loading: false,
+          page: 1,
+        });
+      });
+  }, [type, zone, officialCat, query, licensesOpen, seriesOn, reloadTick, loadFailedText]);
+
+  useEffect(() => {
+    if (zone !== "mine" || licensesOpen) return;
+    if (!signedIn) {
+      setMineGrid({
+        items: [],
+        total: 0,
+        hasMore: false,
+        error: "",
+        loading: false,
+        unauthenticated: true,
+        page: 1,
+      });
+      return;
+    }
+    const request = ++mineRef.current;
+    setMineGrid({
+      items: [],
+      total: 0,
+      hasMore: false,
+      error: "",
+      loading: true,
+      unauthenticated: false,
+      page: 1,
+    });
+    listBayMineArtifacts({ type, q: query, offset: 0, limit: BAY_TEMPLATE_PAGE_SIZE })
+      .then((result) => {
+        if (request !== mineRef.current) return;
+        setMineGrid({
+          items: result.items,
+          total: result.total,
+          hasMore: result.hasMore,
+          error: "",
+          loading: false,
+          unauthenticated: result.unauthenticated,
+          page: 1,
+        });
+      })
+      .catch((caught) => {
+        if (request !== mineRef.current) return;
+        setMineGrid({
+          items: [],
+          total: 0,
+          hasMore: false,
+          error: caught instanceof Error && caught.message ? caught.message : loadFailedText,
+          loading: false,
+          unauthenticated: false,
+          page: 1,
+        });
+      });
+  }, [type, zone, query, signedIn, licensesOpen, reloadTick, loadFailedText]);
+
+  useEffect(() => {
     if (!index || index.type !== type) return;
     if (!viewPinned) {
       const next = defaultZone(type, {
-        owned: zoneTotal(index, "first-party"),
+        owned: zoneTotal(index, "first-party") + (official?.total ?? 0),
         stocked: zoneTotal(index, "external"),
       });
       setZone(next);
     } else if (zone === "live" && !liveOk) {
       setZone("owned");
     }
-  }, [index, type, viewPinned, zone, liveOk]);
+  }, [index, type, viewPinned, zone, liveOk, official?.total]);
 
   useEffect(() => {
     if (seriesOn && !hasSeriesFilter(type, zone)) setSeriesOn(false);
@@ -193,6 +321,7 @@ export function BayAssetLibrary({
     const allowed = new Set([
       ...documentZonesForType(type).map((item) => item.category),
       ...(origin ? zoneCategories(index, origin).map((item) => item.key) : []),
+      ...(templateArtifactTypeForBay(type) ? [OFFICIAL_TEMPLATE_CATEGORY] : []),
     ]);
     if (!allowed.has(cat)) {
       setCat("");
@@ -245,15 +374,29 @@ export function BayAssetLibrary({
       : "browse";
 
   const searchKey =
-    licensesOpen || seriesOn || zone === "live" || mode === "browse" || !index || !origin
+    licensesOpen ||
+    seriesOn ||
+    zone === "live" ||
+    zone === "mine" ||
+    officialCat ||
+    mode === "browse" ||
+    !index ||
+    !origin
       ? null
       : JSON.stringify([type, zone, cat, subtab, industry, query, reloadTick]);
   const currentGrid = searchKey && grid?.key === searchKey ? grid : null;
-  const items = currentGrid?.items ?? [];
-  const page = currentGrid?.page ?? 1;
-  const hasMore = currentGrid?.hasMore ?? false;
-  const loading = searchKey !== null && (!currentGrid || currentGrid.loadingMore);
-  const error = currentGrid?.error ?? "";
+  const originItems = currentGrid?.items ?? [];
+  const items = officialCat
+    ? official?.items ?? []
+    : zone === "owned" && query
+      ? mergeOwnedAssets(official?.items ?? [], originItems)
+      : originItems;
+  const page = officialCat ? official?.page ?? 1 : currentGrid?.page ?? 1;
+  const hasMore = officialCat ? official?.hasMore ?? false : currentGrid?.hasMore ?? false;
+  const loading = officialCat
+    ? Boolean(official?.loading)
+    : searchKey !== null && (!currentGrid || currentGrid.loadingMore);
+  const error = officialCat ? official?.error ?? "" : currentGrid?.error ?? "";
 
   useEffect(() => {
     if (!searchKey || !index || !origin) return;
@@ -297,6 +440,11 @@ export function BayAssetLibrary({
   }, [searchKey, index, origin, type, zone, cat, subtab, industry, query, loadFailedText]);
 
   const openAsset = useCallback((asset: BayAsset) => {
+    const href = (asset.openHref || "").trim();
+    if (href && typeof window !== "undefined") {
+      window.location.assign(href);
+      return;
+    }
     setActive(asset);
     replaceBrowseUrl({ asset: asset.id });
   }, []);
@@ -338,7 +486,88 @@ export function BayAssetLibrary({
     setLicensesOpen(false);
   }
 
+  function loadMoreOfficial() {
+    if (!official || official.loading || !official.hasMore) return;
+    const request = ++officialRef.current;
+    const next = official.page + 1;
+    const offset = official.items.length;
+    setOfficial((prev) => (prev ? { ...prev, error: "", loading: true } : prev));
+    listBayOfficialTemplates({
+      type,
+      limit: BAY_TEMPLATE_PAGE_SIZE,
+      offset,
+    })
+      .then((result) => {
+        if (request !== officialRef.current) return;
+        setOfficial((prev) =>
+          prev
+            ? {
+                items: [...prev.items, ...result.items],
+                total: result.total,
+                hasMore: result.hasMore,
+                error: "",
+                loading: false,
+                page: next,
+              }
+            : prev,
+        );
+      })
+      .catch((caught) => {
+        if (request !== officialRef.current) return;
+        setOfficial((prev) =>
+          prev
+            ? {
+                ...prev,
+                error: caught instanceof Error && caught.message ? caught.message : loadFailedText,
+                loading: false,
+              }
+            : prev,
+        );
+      });
+  }
+
+  function loadMoreMine() {
+    if (!mineGrid || mineGrid.loading || !mineGrid.hasMore) return;
+    const request = ++mineRef.current;
+    const next = mineGrid.page + 1;
+    const offset = mineGrid.items.length;
+    setMineGrid((prev) => (prev ? { ...prev, error: "", loading: true } : prev));
+    listBayMineArtifacts({ type, q: query, offset, limit: BAY_TEMPLATE_PAGE_SIZE })
+      .then((result) => {
+        if (request !== mineRef.current) return;
+        setMineGrid((prev) =>
+          prev
+            ? {
+                items: [...prev.items, ...result.items],
+                total: result.total,
+                hasMore: result.hasMore,
+                error: "",
+                loading: false,
+                unauthenticated: result.unauthenticated,
+                page: next,
+              }
+            : prev,
+        );
+      })
+      .catch((caught) => {
+        if (request !== mineRef.current) return;
+        setMineGrid((prev) =>
+          prev
+            ? {
+                ...prev,
+                error: caught instanceof Error && caught.message ? caught.message : loadFailedText,
+                loading: false,
+              }
+            : prev,
+        );
+      });
+  }
+
   function loadMore() {
+    if (officialCat) {
+      loadMoreOfficial();
+      return;
+    }
     if (!currentGrid || currentGrid.loadingMore || !searchKey || !index || !origin) return;
     const request = ++requestRef.current;
     const next = page + 1;
@@ -397,11 +626,15 @@ export function BayAssetLibrary({
   const originOptions: BayFilterOption[] = TYPE_ZONES.map((item) => {
     const usable = item !== "live" || liveOk;
     const count =
-      index && item === "owned"
-        ? zoneTotal(index, "first-party")
+      item === "owned"
+        ? (index ? zoneTotal(index, "first-party") : 0) + (official?.total ?? 0)
         : index && item === "stocked"
           ? zoneTotal(index, "external")
-          : undefined;
+          : item === "mine"
+            ? mineGrid?.unauthenticated
+              ? undefined
+              : mineGrid?.total
+            : undefined;
     return {
       value: item,
       label: tt(ZONE_LABELS[item]),
@@ -411,7 +644,16 @@ export function BayAssetLibrary({
     };
   });
   const catOptions: BayFilterOption[] = [];
-  const seenCat = new Set<string>();
+  if (templateArtifactTypeForBay(type) && zone === "owned") {
+    catOptions.push({
+      value: OFFICIAL_TEMPLATE_CATEGORY,
+      label: tt("官方成品"),
+      count: official?.total,
+    });
+  }
+  const seenCat = new Set<string>(
+    templateArtifactTypeForBay(type) ? [OFFICIAL_TEMPLATE_CATEGORY] : [],
+  );
   for (const room of rooms) {
     seenCat.add(room.category);
     catOptions.push({
@@ -451,9 +693,9 @@ export function BayAssetLibrary({
     return [...new Set([...docZone.formats, ...found])];
   }, [docZone, items]);
 
-  const showCategory = zone !== "live" && !seriesOn;
-  const showIndustry = type === "ppt" && zone !== "live" && !seriesOn;
-  const showSeries = seriesAvailable;
+  const showCategory = zone !== "live" && zone !== "mine" && !seriesOn;
+  const showIndustry = type === "ppt" && zone !== "live" && zone !== "mine" && !seriesOn;
+  const showSeries = seriesAvailable && zone !== "mine";
 
   return (
     <div data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
@@ -522,7 +764,59 @@ export function BayAssetLibrary({
         <div className="mt-4">
           <BayLicensesView onClose={() => setLicensesOpen(false)} />
         </div>
-      ) : indexError && zone !== "live" ? (
+      ) : zone === "mine" ? (
+        <div className="mt-5" data-bay-asset-mine>
+          {mineGrid?.unauthenticated || !signedIn ? (
+            <BaySignInPrompt text={tt("登录后查看你这一类的成品。")} />
+          ) : mineGrid?.error ? (
+            <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
+              <p className="text-[13px] text-neutral-500">{tt(mineGrid.error)}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  mineRef.current += 1;
+                  setReloadTick((value) => value + 1);
+                }}
+                className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                {tt("重试")}
+              </button>
+            </div>
+          ) : !mineGrid || (mineGrid.loading && mineGrid.items.length === 0) ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+              ))}
+            </div>
+          ) : mineGrid.items.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-stone-300 px-6 py-16 text-center" data-bay-asset-empty>
+              <p className="text-[13px] text-stone-500">{tt("你还没有这一类的成品。")}</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" data-bay-asset-grid>
+                {mineGrid?.items.map((asset) => (
+                  <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                ))}
+              </div>
+              {mineGrid?.loading ? (
+                <div className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</div>
+              ) : null}
+              {!mineGrid?.loading && mineGrid?.hasMore ? (
+                <div className="mt-6 text-center">
+                  <button
+                    type="button"
+                    onClick={loadMoreMine}
+                    className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    {tt("加载更多")}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : indexError && zone !== "live" && !(official && official.total > 0) ? (
         <div className="mt-8 flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
           <p className="text-[13px] text-neutral-500">{tt("素材网关暂时读不到，稍后再试。")}</p>
           <button
@@ -548,7 +842,7 @@ export function BayAssetLibrary({
         ) : (
           <p className="mt-5 text-[12px] text-stone-500">{tt("此类型没有实时开源上游。")}</p>
         )
-      ) : !index ? (
+      ) : !index && !(official && (official.items.length > 0 || official.total > 0)) ? (
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
           {Array.from({ length: 8 }).map((_, index) => (
             <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
@@ -602,7 +896,7 @@ export function BayAssetLibrary({
           ) : null}
 
           {mode === "browse" ? (
-            previews.length === 0 ? (
+            (official?.total || 0) === 0 && previews.length === 0 ? (
               <ZoneEmptyState
                 typeName={typeName}
                 zone={zone}
@@ -617,6 +911,30 @@ export function BayAssetLibrary({
               />
             ) : (
               <div className="space-y-8" data-bay-asset-zone-home>
+                {official && (official.total > 0 || official.items.length > 0) ? (
+                  <section data-bay-official-templates>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h2 className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold text-stone-900">
+                        <span className="truncate">{tt("官方成品")}</span>
+                        <span className="tabular-nums text-[12px] font-normal text-stone-400">
+                          {official.total.toLocaleString("en-US")}
+                        </span>
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => changeCat(OFFICIAL_TEMPLATE_CATEGORY)}
+                        className="shrink-0 text-[13px] font-medium text-stone-400 hover:text-sky-600"
+                      >
+                        {tt("查看全部")}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                      {official.items.slice(0, BAY_OFFICIAL_PREVIEW_COUNT).map((asset) => (
+                        <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
                 {previews.map((preview) => {
                   const cfg = panels.find((item) => item.key === preview.key);
                   const title = cfg?.label || categoryLabel(preview.key);

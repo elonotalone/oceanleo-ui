@@ -13,12 +13,16 @@ import {
   type BayAssetType,
   type BayAssetZone,
 } from "./library-client";
+import {
+  originLibraryTypeForBay,
+  originShelfOptional,
+} from "./bay-template-shelf";
 import { documentZoneCategoryKey } from "./document-zones";
 
 export type MaterialOrigin = BayAssetOrigin;
 export type TypeZone = BayAssetZone;
 
-export const TYPE_ZONES: readonly TypeZone[] = ["owned", "stocked", "live"];
+export const TYPE_ZONES: readonly TypeZone[] = ["owned", "mine", "stocked", "live"];
 
 export const ZONE_ORIGIN: Record<"owned" | "stocked", MaterialOrigin> = {
   owned: "first-party",
@@ -27,6 +31,7 @@ export const ZONE_ORIGIN: Record<"owned" | "stocked", MaterialOrigin> = {
 
 export const ZONE_LABELS: Record<TypeZone, string> = {
   owned: "OceanLeo 自有",
+  mine: "我的",
   stocked: "开源专区（已入库）",
   live: "实时搜索",
 };
@@ -71,7 +76,9 @@ export interface AssetBrowseParams {
 }
 
 export function zoneOrigin(zone: TypeZone): MaterialOrigin | null {
-  return zone === "live" ? null : ZONE_ORIGIN[zone];
+  if (zone === "owned") return "first-party";
+  if (zone === "stocked") return "external";
+  return null;
 }
 
 export function zoneIsLive(zone: TypeZone): boolean {
@@ -92,7 +99,7 @@ export function hasSeriesFilter(type: BayAssetType, zone: TypeZone): boolean {
 
 export function parseZone(raw: string | null | undefined, type: BayAssetType): TypeZone | null {
   const value = (raw || "").trim();
-  if (value === "owned" || value === "stocked") return value;
+  if (value === "owned" || value === "stocked" || value === "mine") return value;
   if (value === "live" || value === "open") {
     return zoneIsUsable(type, "live") ? "live" : "owned";
   }
@@ -224,7 +231,7 @@ export function resetOriginIndexCache(): void {
 }
 
 async function fetchTotalsByOrigin(
-  type: BayAssetType,
+  type: string,
 ): Promise<Record<MaterialOrigin, number> | null> {
   if (!ORIGIN_FILTER_IS_SERVER_SIDE) return null;
   try {
@@ -249,6 +256,8 @@ async function buildTypeOriginIndex(type: BayAssetType): Promise<TypeOriginIndex
     incomplete: false,
     countsFromServer: false,
   };
+  const libraryType = originLibraryTypeForBay(type);
+  if (!libraryType) return empty;
 
   let keys: string[] = [];
   let shelfTotal = 0;
@@ -257,10 +266,10 @@ async function buildTypeOriginIndex(type: BayAssetType): Promise<TypeOriginIndex
   let extKeys = new Set<string>();
   try {
     const [ownCats, extCats, whole, byOrigin] = await Promise.all([
-      listBayCategories(type, "first-party"),
-      listBayCategories(type, "external"),
-      searchBayLibrary({ q: "", type, page: 1, pageSize: 4 }),
-      fetchTotalsByOrigin(type),
+      listBayCategories(libraryType, "first-party"),
+      listBayCategories(libraryType, "external"),
+      searchBayLibrary({ q: "", type: libraryType, page: 1, pageSize: 4 }),
+      fetchTotalsByOrigin(libraryType),
     ]);
     ownKeys = new Set(ownCats.categories || []);
     extKeys = new Set(extCats.categories || []);
@@ -276,7 +285,7 @@ async function buildTypeOriginIndex(type: BayAssetType): Promise<TypeOriginIndex
       extKeys = new Set();
     }
   } catch {
-    return { ...empty, failed: true };
+    return originShelfOptional(type) ? empty : { ...empty, failed: true };
   }
 
   let dropped = 0;
@@ -286,7 +295,7 @@ async function buildTypeOriginIndex(type: BayAssetType): Promise<TypeOriginIndex
         try {
           const result = await searchBayLibrary({
             q: "",
-            type,
+            type: libraryType,
             category: key,
             page: 1,
             pageSize: SAMPLE_PER_CATEGORY,
@@ -357,10 +366,14 @@ export async function searchAssetsInZone(params: {
   const { index, type, origin, q, category, subtab, seriesId } = params;
   const page = params.page || 1;
   const pageSize = params.pageSize || 30;
+  const libraryType = originLibraryTypeForBay(type);
+  if (!libraryType) {
+    return { items: [], page, has_more: false, total: 0 };
+  }
   const one = (extra: { category?: string; pageSize?: number }) =>
     searchBayLibrary({
       q,
-      type,
+      type: libraryType,
       subtab,
       seriesId,
       origin,

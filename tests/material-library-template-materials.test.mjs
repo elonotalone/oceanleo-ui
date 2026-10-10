@@ -507,6 +507,40 @@ test("没有 siteKey 就不发请求", async () => {
   }
 });
 
+test("只给 artifactType 时 siteKey 可空，请求带 artifactType=，回来后再滤一遍", async () => {
+  invalidateTemplateMaterialCache();
+  const fetchStub = stubFetch(() =>
+    jsonResponse({
+      items: [
+        wireRow({
+          id: "web-1",
+          artifactType: "website",
+          appId: "website",
+          siteKey: "website",
+        }),
+        wireRow({ id: "doc-1", artifactType: "document" }),
+      ],
+    }),
+  );
+  try {
+    const result = await listTemplateMaterials({ artifactType: "website" });
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      result.data.map((material) => material.id),
+      ["web-1"],
+    );
+    assert.equal(fetchStub.calls.length, 1);
+    const requested = new URL(fetchStub.calls[0].url);
+    assert.equal(requested.pathname, "/v1/template-materials");
+    assert.equal(requested.searchParams.get("artifactType"), "website");
+    assert.equal(requested.searchParams.has("siteKey"), false);
+    assert.equal(fetchStub.calls[0].init.credentials, "omit");
+  } finally {
+    fetchStub.restore();
+    invalidateTemplateMaterialCache();
+  }
+});
+
 test("深链会被改写成官方模板的 entry id，WorkspaceLibrary 才开得了那张卡", () => {
   const envelope = {
     nonce: "n1",

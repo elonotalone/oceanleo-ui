@@ -3,6 +3,7 @@ import { attachShelfPins, itemMatchesPin } from "./shelf-pins";
 
 export type BayAssetType =
   | "image"
+  | "poster"
   | "vector"
   | "sticker"
   | "video"
@@ -12,12 +13,16 @@ export type BayAssetType =
   | "font"
   | "ppt"
   | "document"
+  | "pdf"
   | "chart"
+  | "grid"
   | "prompt"
-  | "website";
+  | "website"
+  | "workflow"
+  | "game";
 
 export type BayAssetOrigin = "first-party" | "external";
-export type BayAssetZone = "owned" | "stocked" | "live";
+export type BayAssetZone = "owned" | "mine" | "stocked" | "live";
 
 export interface BayAssetLicense {
   code: string;
@@ -52,6 +57,12 @@ export interface BayAsset {
   file_size?: number | null;
   series_id?: string;
   series_name?: string;
+  /**
+   * 官方成品 / 我的稿点开走这条只读深链，不打开素材详情弹层。
+   * 原件货架件没有这个字段，仍走原来的详情。
+   */
+  openHref?: string;
+  shelfKind?: "official" | "origin" | "mine";
 }
 
 export interface BaySeries {
@@ -64,13 +75,18 @@ export interface BaySeries {
 
 export const BAY_ASSET_TYPE_ORDER: readonly BayAssetType[] = [
   "image",
+  "poster",
   "prompt",
   "chart",
+  "grid",
   "vector",
   "sticker",
   "ppt",
   "document",
+  "pdf",
   "website",
+  "workflow",
+  "game",
   "video",
   "3d",
   "audio",
@@ -79,6 +95,7 @@ export const BAY_ASSET_TYPE_ORDER: readonly BayAssetType[] = [
 
 export const BAY_ASSET_TYPE_LABELS: Record<BayAssetType, string> = {
   image: "图片",
+  poster: "海报",
   vector: "矢量图",
   sticker: "贴纸",
   video: "视频",
@@ -88,9 +105,13 @@ export const BAY_ASSET_TYPE_LABELS: Record<BayAssetType, string> = {
   font: "字体",
   ppt: "PPT 模板",
   document: "文档",
+  pdf: "PDF",
   chart: "图表",
+  grid: "表格",
   prompt: "Prompt 示例",
   website: "网站",
+  workflow: "工作流",
+  game: "游戏",
 };
 
 export const LIVE_SEARCH_TYPES: readonly BayAssetType[] = [
@@ -127,7 +148,7 @@ export const SITE_DEFAULT_ASSET_TYPE: Readonly<Record<string, BayAssetType>> = {
 };
 
 export const APP_ASSET_PRESET: Readonly<Record<string, { type: BayAssetType; room?: string }>> = {
-  poster: { type: "image", room: "poster" },
+  poster: { type: "poster" },
   "longform-poster": { type: "image", room: "poster" },
   "3d-model": { type: "3d" },
   ppt: { type: "ppt" },
@@ -199,7 +220,7 @@ export interface BayAssetSearchResult {
 
 export async function searchBayLibrary(params: {
   q?: string;
-  type: BayAssetType;
+  type: string;
   origin?: BayAssetOrigin;
   category?: string;
   subtab?: string;
@@ -272,7 +293,7 @@ export async function searchBayLibrary(params: {
 }
 
 export async function listBayCategories(
-  type: BayAssetType,
+  type: string,
   origin?: BayAssetOrigin,
 ): Promise<{ categories: string[] }> {
   const qs = new URLSearchParams({ type });

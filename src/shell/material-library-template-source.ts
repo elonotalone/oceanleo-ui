@@ -135,14 +135,29 @@ export function templateMaterialIdForArtifact(artifactId: string): string {
 }
 
 const TEMPLATE_MATERIAL_TTL_MS = 5 * 60_000;
+const TEMPLATE_MATERIAL_MAX_PAGES = 40;
 const BARE_PREVIEW_KEY = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+export interface TemplateMaterialListResult
+  extends ArtifactApiResult<TemplateMaterialListing[]> {
+  total?: number;
+  nextOffset?: number | null;
+  hasMore?: boolean;
+}
+
 const templateMaterialCache = new Map<
   string,
-  { items: TemplateMaterialListing[]; storedAt: number }
+  {
+    items: TemplateMaterialListing[];
+    storedAt: number;
+    total?: number;
+    nextOffset?: number | null;
+    hasMore?: boolean;
+  }
 >();
 const templateMaterialPending = new Map<
   string,
-  Promise<ArtifactApiResult<TemplateMaterialListing[]>>
+  Promise<TemplateMaterialListResult>
 >();
 
 function templateText(value: unknown): string {
@@ -428,8 +443,11 @@ export function filterTemplateMaterials(
 export function templateMaterialRequestKey(
   siteKey: string,
   appId: string,
+  artifactType = "",
+  limit = "",
+  offset = "",
 ): string {
-  return `${siteKey}\u0000${appId}`;
+  return `${siteKey}\u0000${appId}\u0000${artifactType}\u0000${limit}\u0000${offset}`;
 }
 
 export function invalidateTemplateMaterialCache(): void {
@@ -499,14 +517,52 @@ function reportTemplateMaterialDrops(
   console.warn(formatTemplateMaterialDrops(siteKey, appId, tally));
 }
 
-async function fetchTemplateMaterials(
-  siteKey: string,
-  appId: string,
+function listingCount(value: unknown): number | undefined {
+  const size = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(size) && size >= 0 ? Math.floor(size) : undefined;
+}
+
+function listingOffsetParam(value: number | undefined): number | undefined {
+  if (value == null || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.floor(value);
+}
+
+function listingLimitParam(value: number | undefined): number | undefined {
+  if (value == null || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.floor(value);
+}
+
+function nextListingOffset(
+  payload: { nextOffset?: unknown; total?: unknown },
+  offset: number,
+  seen: number,
+): number | null {
+  if (payload.nextOffset === null) return null;
+  const explicit = listingCount(payload.nextOffset);
+  if (explicit != null) return explicit > offset ? explicit : null;
+  const total = listingCount(payload.total);
+  if (total != null && offset + seen < total) return offset + seen;
+  return null;
+}
+
+async function fetchTemplateMaterialsPage(
+  query: {
+    siteKey: string;
+    appId: string;
+    artifactType: string;
+    limit?: number;
+    offset?: number;
+  },
   signal?: AbortSignal,
-): Promise<ArtifactApiResult<TemplateMaterialListing[]>> {
+): Promise<TemplateMaterialListResult> {
   const url = new URL(`${GATEWAY}/v1/template-materials`);
-  url.searchParams.set("siteKey", siteKey);
-  if (appId) url.searchParams.set("appId", appId);
+  if (query.siteKey) url.searchParams.set("siteKey", query.siteKey);
+  if (query.appId) url.searchParams.set("appId", query.appId);
+  if (query.artifactType) url.searchParams.set("artifactType", query.artifactType);
+  const limit = listingLimitParam(query.limit);
+  const offset = listingOffsetParam(query.offset);
+  if (limit != null) url.searchParams.set("limit", String(limit));
+  if (offset != null) url.searchParams.set("offset", String(offset));
   let response: Response;
   try {
     response = await fetch(url.toString(), {
@@ -545,7 +601,12 @@ async function fetchTemplateMaterials(
       status: response.status,
     };
   }
-  const rawItems = (payload as { items?: unknown } | null)?.items;
+  const body = (payload || {}) as {
+    items?: unknown;
+    total?: unknown;
+    nextOffset?: unknown;
+  };
+  const rawItems = body.items;
   if (!Array.isArray(rawItems)) {
     return {
       ok: false,
@@ -560,43 +621,132 @@ async function fetchTemplateMaterials(
     const material = normalizeTemplateMaterial(raw, tally);
     if (material) items.push(material);
   }
-  reportTemplateMaterialDrops(siteKey, appId, tally);
-  return { ok: true, data: items, status: response.status };
+  reportTemplateMaterialDrops(
+    query.siteKey || query.artifactType || "catalog",
+    query.appId,
+    tally,
+  );
+  const filtered = query.artifactType
+    ? items.filter((material) => material.artifactType === query.artifactType)
+    : items;
+  const pageOffset = offset ?? 0;
+  const nextOffset = nextListingOffset(body, pageOffset, rawItems.length);
+  const typeDropped = filtered.length !== items.length;
+  const reportedTotal = listingCount(body.total);
+  const total = typeDropped
+    ? nextOffset == null
+      ? filtered.length
+      : undefined
+    : reportedTotal;
+  return {
+    ok: true,
+    data: filtered,
+    status: response.status,
+    total,
+    nextOffset,
+    hasMore: nextOffset != null,
+  };
+}
+
+async function fetchTemplateMaterials(
+  query: {
+    siteKey: string;
+    appId: string;
+    artifactType: string;
+    limit?: number;
+    offset?: number;
+  },
+  signal?: AbortSignal,
+): Promise<TemplateMaterialListResult> {
+  const first = await fetchTemplateMaterialsPage(query, signal);
+  if (!first.ok || !first.data) return first;
+  const paged = listingLimitParam(query.limit) != null;
+  if (paged || first.nextOffset == null) return first;
+  const items = [...first.data];
+  let nextOffset: number | null = first.nextOffset;
+  let pages = 1;
+  let total = first.total;
+  while (pages < TEMPLATE_MATERIAL_MAX_PAGES) {
+    const pageOffset = nextOffset;
+    if (pageOffset == null) break;
+    const more = await fetchTemplateMaterialsPage(
+      { ...query, offset: pageOffset },
+      signal,
+    );
+    if (!more.ok || !more.data) return more;
+    items.push(...more.data);
+    total = more.total ?? total;
+    nextOffset = more.nextOffset ?? null;
+    pages += 1;
+  }
+  return {
+    ok: true,
+    data: items,
+    status: first.status,
+    total: total ?? items.length,
+    nextOffset,
+    hasMore: nextOffset != null,
+  };
 }
 
 /**
- * 匿名可读的官方模板列表。`siteKey` 必给（全站目录不是产品面）；`appId` 给了就按
- * 「此 app」范围取，深链回退时不给。
+ * 匿名可读的官方模板列表。
+ *
+ * `siteKey` 仍是按站取目录时的必给项；只按类型取（Bay 自有栏）时可以只给
+ * `artifactType`，`siteKey` 可空。两者都不给就不发请求。
+ * 网关若还没认 `artifactType=`，回来后仍按类型再滤一遍。
  */
 export async function listTemplateMaterials(options: {
-  siteKey: string;
+  siteKey?: string;
   appId?: string;
+  artifactType?: ArtifactType;
+  limit?: number;
+  offset?: number;
   signal?: AbortSignal;
   forceRefresh?: boolean;
-}): Promise<ArtifactApiResult<TemplateMaterialListing[]>> {
+}): Promise<TemplateMaterialListResult> {
   const siteKey = (options.siteKey || "").trim();
   const appId = (options.appId || "").trim();
-  if (!siteKey) return { ok: true, data: [] };
-  const key = templateMaterialRequestKey(siteKey, appId);
+  const artifactType = (options.artifactType || "").trim();
+  const limit = listingLimitParam(options.limit);
+  const offset = listingOffsetParam(options.offset);
+  if (!siteKey && !artifactType) return { ok: true, data: [] };
+  const key = templateMaterialRequestKey(
+    siteKey,
+    appId,
+    artifactType,
+    limit == null ? "" : String(limit),
+    offset == null ? "" : String(offset),
+  );
   if (!options.forceRefresh) {
     const cached = templateMaterialCache.get(key);
     if (cached && Date.now() - cached.storedAt < TEMPLATE_MATERIAL_TTL_MS) {
-      return { ok: true, data: cached.items };
+      return {
+        ok: true,
+        data: cached.items,
+        total: cached.total,
+        nextOffset: cached.nextOffset,
+        hasMore: cached.hasMore,
+      };
     }
   }
   const inFlight = options.signal ? null : templateMaterialPending.get(key);
   if (inFlight) return inFlight;
-  const request = fetchTemplateMaterials(siteKey, appId, options.signal).then(
-    (result) => {
-      if (result.ok && result.data) {
-        templateMaterialCache.set(key, {
-          items: result.data,
-          storedAt: Date.now(),
-        });
-      }
-      return result;
-    },
-  );
+  const request = fetchTemplateMaterials(
+    { siteKey, appId, artifactType, limit, offset },
+    options.signal,
+  ).then((result) => {
+    if (result.ok && result.data) {
+      templateMaterialCache.set(key, {
+        items: result.data,
+        storedAt: Date.now(),
+        total: result.total,
+        nextOffset: result.nextOffset,
+        hasMore: result.hasMore,
+      });
+    }
+    return result;
+  });
   if (!options.signal) templateMaterialPending.set(key, request);
   try {
     return await request;

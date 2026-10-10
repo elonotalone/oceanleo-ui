@@ -53,19 +53,13 @@ export function BayAssetCard({ asset, onOpen }: BayAssetCardProps): ReactElement
     asset.type === "sticker" || asset.type === "vector" || asset.type === "font";
   const isPpt = asset.type === "ppt";
   const isChart = asset.type === "chart";
-  const isDocument = asset.type === "document";
+  const isDocument =
+    asset.type === "document" || asset.type === "pdf" || asset.type === "grid";
   const isContain = isChecker || isPpt || isChart || isDocument;
+  const openHref = (asset.openHref || "").trim();
 
-  return (
-    <div
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-      data-bay-asset-card={asset.id}
-    >
-      <button
-        type="button"
-        onClick={() => onOpen(asset)}
-        className="flex flex-col text-left focus:outline-none focus:ring-2 focus:ring-sky-400"
-      >
+  const face = (
+      <>
         <div
           className={`relative aspect-[4/3] w-full overflow-hidden ${
             isChecker
@@ -122,7 +116,32 @@ export function BayAssetCard({ asset, onOpen }: BayAssetCardProps): ReactElement
             </span>
           )}
         </div>
-      </button>
+      </>
+  );
+
+  return (
+    <div
+      className="group relative flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      data-bay-asset-card={asset.id}
+      data-shelf-kind={asset.shelfKind || "origin"}
+    >
+      {openHref ? (
+        <a
+          href={openHref}
+          data-bay-asset-open-href={openHref}
+          className="flex flex-col text-left focus:outline-none focus:ring-2 focus:ring-sky-400"
+        >
+          {face}
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onOpen(asset)}
+          className="flex flex-col text-left focus:outline-none focus:ring-2 focus:ring-sky-400"
+        >
+          {face}
+        </button>
+      )}
     </div>
   );
 }
