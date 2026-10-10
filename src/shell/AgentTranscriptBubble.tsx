@@ -11,6 +11,7 @@ import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
+import { ApprovalCard, parseApprovalMessage } from "./ApprovalCard";
 
 export function agentArtifactLabels(
   tt: UITranslate,
@@ -40,6 +41,10 @@ export interface AgentTranscriptBubbleProps {
   gateActive?: boolean;
   gateBusy?: boolean;
   onGate?: (decision: "approve" | "reject", feedback: string) => void;
+  /** 外发确认卡：任务是否仍在跑（后端还在 90 秒等待里）。 */
+  taskRunning?: boolean;
+  /** 任务已停时，确认成功后发一条后续消息让 agent 接着做。 */
+  onContinue?: () => void;
   /** 选段模式：每条消息左侧长出圆形勾选框，整行可点。 */
   selectMode?: boolean;
   selected?: boolean;
@@ -207,6 +212,8 @@ function TranscriptBody({
   gateActive = false,
   gateBusy = false,
   onGate,
+  taskRunning = false,
+  onContinue,
   highlightQuery,
 }: AgentTranscriptBubbleProps) {
   const tt = useUI();
@@ -253,6 +260,17 @@ function TranscriptBody({
         busy={gateBusy}
         onGate={onGate}
         highlightQuery={highlightQuery}
+      />
+    );
+  }
+  if (message.kind === "approval") {
+    const payload = parseApprovalMessage(message.content);
+    if (!payload) return null;
+    return (
+      <ApprovalCard
+        payload={payload}
+        taskRunning={taskRunning}
+        onContinue={onContinue}
       />
     );
   }

@@ -1913,6 +1913,14 @@ function AgentChatInner({
                 gateActive={item.message.id === activeGateId}
                 gateBusy={gateBusy}
                 onGate={onGate ? handleGate : undefined}
+                taskRunning={running}
+                onContinue={
+                  readOnly
+                    ? undefined
+                    : () => {
+                        void sendSuggestion(tt("已确认，请继续刚才的操作"));
+                      }
+                }
                 selectMode={share.active}
                 selected={share.selectedIds.has(item.message.id)}
                 onSelectToggle={() => share.toggle(item.message.id)}
