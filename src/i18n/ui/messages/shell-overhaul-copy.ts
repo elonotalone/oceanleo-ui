@@ -14,6 +14,8 @@ import { SHELL_ENDED_MESSAGES } from "./shell-ended-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-page-copy";
 import { TERMINAL_CARD_MESSAGES } from "./terminal-card-copy";
 import { ACP_CARD_MESSAGES } from "./acp-card-copy";
+import { APPROVAL_CARD_MESSAGES } from "./approval-card-copy";
+import { ACCOUNT_DELIVERY_MESSAGES } from "./account-delivery-copy";
 import { CCP_W1_MESSAGES } from "./ccp-w1-copy";
 import { CCP_W2_MESSAGES } from "./ccp-w2-copy";
 import { CCP_W3_MESSAGES } from "./ccp-w3-copy";
@@ -106,6 +108,8 @@ const PARTS = [
   MCP_CATALOG_MESSAGES,
   ACCOUNT_LAYOUT_MESSAGES,
   MAIL_BOT_MESSAGES,
+  APPROVAL_CARD_MESSAGES,
+  ACCOUNT_DELIVERY_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
