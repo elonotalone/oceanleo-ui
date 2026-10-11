@@ -24,7 +24,7 @@ export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "card";
 export type BayFeedFilter = {
   /**
    * `service`（默认）= 服务（含答疑）；`asset` = 素材库（不走人才信息流）；
-   * `app` = 作品栏；`request` = 需求（含求助）。老值 `supply`/`demand`/`material` 在写入时归一。
+   * `app` = 作品栏；`lesson` = 课程栏；`request` = 需求（含求助）。老值 `supply`/`demand`/`material` 在写入时归一。
    */
   kind?: BayFeedKind;
   category?: string;
@@ -53,6 +53,14 @@ export type BayTarget =
   | { kind: "app"; id: string }
   /** 上架或编辑一个作品；不带 id 是新上架。 */
   | { kind: "app-editor"; appId?: string }
+  /** 课程详情：大纲、试看、购买、看课。 */
+  | { kind: "lesson"; id: string }
+  /** 套餐详情：几门课打包卖一个价。 */
+  | { kind: "bundle"; id: string }
+  /** 发布或编辑一门课；不带 id 是新建。 */
+  | { kind: "lesson-editor"; lessonId?: string }
+  /** 发布或编辑一个套餐；不带 id 是新建。 */
+  | { kind: "bundle-editor"; bundleId?: string }
   | { kind: "settings"; pane?: "profile" | "vetting" | "money" };
 
 export interface BayPaneProps {
@@ -176,8 +184,8 @@ function normalizeFilter(filter: BayFeedFilter | undefined): BayFeedFilter {
   if (!filter) return out;
   out.kind = normalizeBayFeedKind(filter.kind) ?? DEFAULT_BAY_FEED_KIND;
   if (isBayCategorySlug(filter.category)) out.category = filter.category;
-  // 作品按站点类目筛，但「专业咨询」不是类目，深链 / 回退到作品栏时也要清掉。
-  if (out.kind === "app" && out.category === BAY_ADVICE_ZONE) delete out.category;
+  // 作品 / 课程按站点类目筛，但「专业咨询」不是类目，深链 / 回退到这两栏时也要清掉。
+  if ((out.kind === "app" || out.kind === "lesson") && out.category === BAY_ADVICE_ZONE) delete out.category;
   const q = typeof filter.q === "string" ? filter.q.trim().slice(0, 60) : "";
   if (q) out.q = q;
   return out;

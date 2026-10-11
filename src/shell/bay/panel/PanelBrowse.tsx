@@ -5,7 +5,8 @@ import { useMemo, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
-import { BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, useBayCategoryName, useBaySearchText } from "../shell/BayList";
+import { BayLessonShelf } from "../lessons/BayLessonShelf";
+import { BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, startPublishLesson, useBayCategoryName, useBaySearchText } from "../shell/BayList";
 import { BayFilterSelect, type BayFilterOption } from "../shell/BayFilterSelect";
 import { BAY_ADVICE_ZONE, canonicalBayFeedKind } from "../shell/bay-links";
 import { BayCategoryIcon, BayGlyph } from "../shell/bay-icons";
@@ -27,6 +28,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
   const kind = canonicalBayFeedKind(filter.kind);
   const asset = kind === "asset";
   const app = kind === "app";
+  const lesson = kind === "lesson";
   const search = useBaySearchText(filter);
   const { categories } = useBayCategories();
   const name = useBayCategoryName();
@@ -58,7 +60,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
             type="search"
             value={search.text}
             maxLength={60}
-            placeholder={tt("搜素材、服务、作品、需求…")}
+            placeholder={tt("搜素材、服务、作品、课程、需求…")}
             aria-label={tt("搜索")}
             onChange={(event) => search.change(event.target.value)}
             onKeyDown={(event) => {
@@ -72,7 +74,11 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
         </button>
         <button
           type="button"
-          onClick={() => (app ? startPublishApp() : startPublish(filter.category))}
+          onClick={() => {
+            if (app) startPublishApp();
+            else if (lesson) startPublishLesson();
+            else startPublish(filter.category);
+          }}
           data-bay-action="publish"
           className={BTN_PRIMARY}
         >
@@ -98,6 +104,8 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
           <BayAssetLibrary filter={filter} siteKey={siteKey} />
         ) : app ? (
           <BayAppShelf filter={filter} siteKey={siteKey} accent="#0ea5e9" />
+        ) : lesson ? (
+          <BayLessonShelf filter={filter} siteKey={siteKey} accent="#0ea5e9" />
         ) : (
           <BayFeed filter={filter} activeKey={null} variant="list" />
         )}

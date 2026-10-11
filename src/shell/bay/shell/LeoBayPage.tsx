@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按服务 / 素材 / 作品 / 需求四栏逛。
+// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按服务 / 素材 / 作品 / 课程 / 需求五栏逛。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -8,6 +8,7 @@ import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS }
 import type { ExplorePageProps } from "../../ExplorePage";
 import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
+import { BayLessonShelf } from "../lessons/BayLessonShelf";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
 import { BayGlyph } from "./bay-icons";
@@ -25,7 +26,7 @@ import {
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
 import { BayToolbarFilterSlot, BayToolbarSlotProvider } from "./BayFilterSelect";
-import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, useBaySearchText } from "./BayList";
+import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, startPublishLesson, useBaySearchText } from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -72,7 +73,7 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
           </button>
           <button
             type="button"
-            onClick={() => (canonicalBayFeedKind(filter.kind) === "app" ? startPublishApp() : startPublish(filter.category))}
+            onClick={() => (canonicalBayFeedKind(filter.kind) === "app" ? startPublishApp() : canonicalBayFeedKind(filter.kind) === "lesson" ? startPublishLesson() : startPublish(filter.category))}
             data-bay-action="publish"
             className={BTN_PRIMARY}
           >
@@ -98,7 +99,7 @@ function BayPageSearch({ filter }: { filter: BayFeedFilter }) {
         type="search"
         value={search.text}
         maxLength={60}
-        placeholder={tt("搜素材、服务、作品、需求…")}
+        placeholder={tt("搜素材、服务、作品、课程、需求…")}
         aria-label={tt("搜索")}
         onChange={(event) => search.change(event.target.value)}
         onKeyDown={(event) => {
@@ -124,6 +125,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   const kind = canonicalBayFeedKind(filter.kind);
   const asset = kind === "asset";
   const app = kind === "app";
+  const lesson = kind === "lesson";
   const [assetVisited, setAssetVisited] = useState(asset);
 
   useEffect(() => {
@@ -163,6 +165,10 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           <div className="mt-5">
             <BayAppShelf filter={filter} siteKey={siteKey} accent={accent} />
           </div>
+        ) : lesson ? (
+          <div className="mt-5">
+            <BayLessonShelf filter={filter} siteKey={siteKey} accent={accent} />
+          </div>
         ) : (
           <div className="mt-5">
             <BayFeed
@@ -197,6 +203,10 @@ const WIDE_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(
   "publish",
   "app",
   "app-editor",
+  "lesson",
+  "bundle",
+  "lesson-editor",
+  "bundle-editor",
 ]);
 
 /** 点开的那一条：一行「返回 + 标题」，正文在一张卡里（卡内滚动，底部的操作条贴在卡的底边）。 */

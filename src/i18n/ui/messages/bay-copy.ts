@@ -16,6 +16,10 @@ import { BAY_ASSET_INTO_MESSAGES } from "./bay-asset-into-copy";
 import { BAY_APPS_SHELF_MESSAGES } from "./bay-apps-shelf-copy";
 import { BAY_APPS_DETAIL_MESSAGES } from "./bay-apps-detail-copy";
 import { BAY_APPS_EDITOR_MESSAGES } from "./bay-apps-editor-copy";
+import { BAY_LESSONS_SHELF_MESSAGES } from "./bay-lessons-shelf-copy";
+import { BAY_LESSONS_DETAIL_MESSAGES } from "./bay-lessons-detail-copy";
+import { BAY_LESSONS_EDITOR_MESSAGES } from "./bay-lessons-editor-copy";
+import { BAY_REVIEWS_MESSAGES } from "./bay-reviews-copy";
 
 const PARTS = [
   BAY_SHELL_MESSAGES,
@@ -33,6 +37,10 @@ const PARTS = [
   BAY_APPS_SHELF_MESSAGES,
   BAY_APPS_DETAIL_MESSAGES,
   BAY_APPS_EDITOR_MESSAGES,
+  BAY_LESSONS_SHELF_MESSAGES,
+  BAY_LESSONS_DETAIL_MESSAGES,
+  BAY_LESSONS_EDITOR_MESSAGES,
+  BAY_REVIEWS_MESSAGES,
 ];
 
 export const BAY_MESSAGES: Record<Locale, Record<string, string>> =

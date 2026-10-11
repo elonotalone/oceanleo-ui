@@ -131,7 +131,7 @@ test("服务详情：档位、加购、常见问题、作品图、评价、卖�
   assert.match(out, /data-bay-tier="premium" data-selected="false"/);
   assert.match(out, /data-bay-addon="a1"/);
   assert.match(out, /能开发票吗？/);
-  assert.match(out, /很满意/);
+  assert.match(out, /data-bay-item-reviews/);
   assert.match(out, /data-bay-seller-card/);
   assert.match(out, /十年品牌设计/);
   assert.match(out, /data-bay-total="?[^>]*>¥300</);

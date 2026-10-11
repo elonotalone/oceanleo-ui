@@ -12,8 +12,8 @@ function src(rel) {
   return readFileSync(join(REPO, "src", rel), "utf8");
 }
 
-test("BAY_FEED_KINDS 是四个且顺序是 service / asset / app / request", () => {
-  assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "request"]);
+test("BAY_FEED_KINDS 是五个且顺序是 service / asset / app / lesson / request", () => {
+  assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "lesson", "request"]);
   assert.equal(links.DEFAULT_BAY_FEED_KIND, "service");
 });
 

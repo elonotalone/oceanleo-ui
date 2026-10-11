@@ -159,6 +159,7 @@ const listStub = dataModule(`
   export function openMine() {}
   export function startPublish() {}
   export function startPublishApp() {}
+  export function startPublishLesson() {}
   export function startPostNeed() {}
 `);
 const supplyStub = dataModule(`

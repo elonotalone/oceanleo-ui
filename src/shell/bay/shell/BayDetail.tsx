@@ -15,6 +15,10 @@ import { BayMine } from "./BayMine";
 // 不走 apps/index 桶：桶会把货架和「我的作品」一起拉进来，测试编译台的 BayMine 桩没有 BaySignInPrompt。
 const AppPane = lazy(() => import("../apps/AppPane").then((mod) => ({ default: mod.AppPane })));
 const AppEditorPane = lazy(() => import("../apps/AppEditorPane").then((mod) => ({ default: mod.AppEditorPane })));
+const LessonPane = lazy(() => import("../lessons/LessonPane").then((mod) => ({ default: mod.LessonPane })));
+const BundlePane = lazy(() => import("../lessons/BundlePane").then((mod) => ({ default: mod.BundlePane })));
+const LessonEditorPane = lazy(() => import("../lessons/LessonEditorPane").then((mod) => ({ default: mod.LessonEditorPane })));
+const BundleEditorPane = lazy(() => import("../lessons/BundleEditorPane").then((mod) => ({ default: mod.BundleEditorPane })));
 
 /** 作品的两个窗格是按需加载的；加载那一下给一块骨架，别让页面白一下。 */
 function LazyPaneLoading() {
@@ -43,6 +47,10 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
   mine: "我的",
   app: "作品详情",
   "app-editor": "上架作品",
+  lesson: "课程详情",
+  bundle: "套餐详情",
+  "lesson-editor": "发布课程",
+  "bundle-editor": "发布套餐",
   settings: "设置",
 };
 
@@ -51,6 +59,8 @@ export function bayDetailTitleKey(target: BayTarget): string | null {
   if (target.kind === "feed") return null;
   if (target.kind === "service-editor" && target.serviceId) return "编辑";
   if (target.kind === "app-editor" && target.appId) return "编辑作品";
+  if (target.kind === "lesson-editor" && target.lessonId) return "编辑课程";
+  if (target.kind === "bundle-editor" && target.bundleId) return "编辑套餐";
   return DETAIL_TITLES[target.kind];
 }
 
@@ -93,6 +103,30 @@ export function BayDetailPane(props: BayPaneProps): ReactNode {
       return (
         <Suspense fallback={<LazyPaneLoading />}>
           <AppEditorPane {...props} />
+        </Suspense>
+      );
+    case "lesson":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <LessonPane {...props} />
+        </Suspense>
+      );
+    case "bundle":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <BundlePane {...props} />
+        </Suspense>
+      );
+    case "lesson-editor":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <LessonEditorPane {...props} />
+        </Suspense>
+      );
+    case "bundle-editor":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <BundleEditorPane {...props} />
         </Suspense>
       );
     case "settings":

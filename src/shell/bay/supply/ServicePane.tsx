@@ -28,7 +28,8 @@ import type { BayServiceMediaRow } from "../../../lib/bay/seller";
 import { openTradeThread } from "../deal";
 import { openBay, requireBayLogin, type BayLayout, type BayPaneProps } from "../shell/bay-state";
 import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel, workOpenHref } from "./format";
-import { DigitalTerms, DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, ReviewList, Section, SellerCard } from "./parts";
+import { ItemReviews } from "../reviews/ItemReviews";
+import { DigitalTerms, DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, Section, SellerCard } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
 
 export function ServicePane({ target, layout }: BayPaneProps) {
@@ -382,7 +383,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       ) : null}
 
       <Section title={tt("买家评价")}>
-        <ReviewList reviews={service.reviews || []} empty={tt("这个服务还没有已公开的评价。")} />
+        <ItemReviews itemKind="service" itemId={service.id} />
       </Section>
 
       {wide || !service.seller ? null : (

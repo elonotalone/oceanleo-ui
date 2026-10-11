@@ -12,6 +12,7 @@ import {
   submitBayReview,
   type BayTrustReview,
 } from "../../../lib/bay/reputation";
+import { ReviewComposer } from "../reviews/ReviewComposer";
 import { ORDER_BUTTON, ORDER_BUTTON_QUIET, ORDER_INPUT, OrderNote, useOrderDate } from "./order-ui";
 
 const SCORE_FIELDS = ["rating", "score_communication", "score_quality", "score_timeliness", "score_value"] as const;
@@ -55,6 +56,7 @@ export function OrderReviewSection({
   const [scores, setScores] = useState({ rating: 5, score_communication: 5, score_quality: 5, score_timeliness: 5, score_value: 5 });
   const [body, setBody] = useState("");
   const [reply, setReply] = useState("");
+  const [buyerPublished, setBuyerPublished] = useState(false);
 
   async function reload() {
     const data = await listBayContractReviews(contractId);
@@ -84,11 +86,23 @@ export function OrderReviewSection({
     <section data-bay-order-reviews className="space-y-3">
       <h3 className="text-[13px] font-semibold text-neutral-900">{tt("评价")}</h3>
       {loading ? <p className="text-[12.5px] text-neutral-500">{tt("正在读取评价…")}</p> : null}
-      {!loading && !revealed && mine ? (
+      {buyerPublished ? <OrderNote kind="ok">{tt("评价已公开")}</OrderNote> : null}
+      {!loading && !revealed && mine && !buyerPublished ? (
         <OrderNote kind="info">{tt("你的评价已提交。对方写完之后才会互相看见。")}</OrderNote>
       ) : null}
 
-      {canWrite && !mine ? (
+      {canWrite && !mine && !buyerPublished && viewerRole === "buyer" ? (
+        <ReviewComposer
+          contractId={contractId}
+          onPublished={() => {
+            setBuyerPublished(true);
+            void reload();
+          }}
+          onNotice={onNotice}
+        />
+      ) : null}
+
+      {canWrite && !mine && viewerRole === "seller" ? (
         <form
           data-bay-review-form
           className="space-y-2 rounded-xl border border-neutral-200 p-3"

@@ -1,9 +1,10 @@
 "use client";
 
-// 「我的」→「我发布的」：我上架的素材与服务一段，我发的需求一段，我上架的作品一段。右上角一个「发布」。
+// 「我的」→「我发布的」：我上架的素材与服务一段，我发的需求一段，我上架的作品一段，我的课程一段。右上角一个「发布」。
 import { useEffect, useState, type ComponentType } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { MyAppsPaneProps } from "../apps";
+import type { MyLessonsPaneProps } from "../lessons/MyLessonsPane";
 import { MyNeedsPane } from "../needs/MyNeedsPane";
 import { MyServicesPane } from "../seller/MyServicesPane";
 import { openBay, type BayPaneProps } from "../shell/bay-state";
@@ -32,6 +33,27 @@ function PublishedApps(props: MyAppsPaneProps) {
   return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
 }
 
+function PublishedLessons(props: MyLessonsPaneProps) {
+  const tt = useUI();
+  const [Pane, setPane] = useState<ComponentType<MyLessonsPaneProps> | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void import("../lessons/MyLessonsPane")
+      .then((mod) => {
+        if (alive) setPane(() => mod.MyLessonsPane);
+      })
+      .catch(() => {
+        if (alive) setFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (failed) return <p className="px-4 py-3 text-[13px] text-stone-500">{tt("课程没加载出来，请刷新页面再试。")}</p>;
+  return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
+}
+
 export function MyPublishedPane(props: BayPaneProps) {
   const tt = useUI();
   return (
@@ -57,6 +79,10 @@ export function MyPublishedPane(props: BayPaneProps) {
       <div data-bay-mine-section="apps">
         <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("作品")}</h3>
         <PublishedApps layout={props.layout} siteKey={props.siteKey} />
+      </div>
+      <div data-bay-mine-section="lessons">
+        <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("课程")}</h3>
+        <PublishedLessons layout={props.layout} siteKey={props.siteKey} />
       </div>
     </section>
   );

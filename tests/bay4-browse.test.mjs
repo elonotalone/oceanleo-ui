@@ -190,14 +190,14 @@ test("页头只有两个 data-bay-action：mine 和 publish；没有 data-bay-ki
   await view.unmount();
 });
 
-test("有 data-bay-view 四个 tab", async () => {
+test("有 data-bay-view 五个 tab", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   assert.equal(tabs.getAttribute("role"), "tablist");
   const views = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.getAttribute("data-view"));
-  assert.deepEqual(views, ["service", "asset", "app", "request"]);
+  assert.deepEqual(views, ["service", "asset", "app", "lesson", "request"]);
   await view.unmount();
 });
 

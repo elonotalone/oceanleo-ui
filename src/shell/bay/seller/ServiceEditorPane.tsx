@@ -653,6 +653,15 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
             <span className="block text-[15px] font-semibold tracking-tight text-stone-900">{tt("作品")}</span>
             <span className="mt-1 block text-[13px] leading-5 text-stone-500">{tt("把你做的应用或网站放上来，别人点开就能用")}</span>
           </button>
+          <button
+            type="button"
+            data-bay-publish-lesson
+            onClick={() => openBay({ kind: "lesson-editor" })}
+            className="flex flex-col rounded-xl border border-stone-200 bg-white p-4 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-400"
+          >
+            <span className="block text-[15px] font-semibold tracking-tight text-stone-900">{tt("课程")}</span>
+            <span className="mt-1 block text-[13px] leading-5 text-stone-500">{tt("把你的视频、文档、幻灯片编成一门课来卖")}</span>
+          </button>
         </div>
       </section>
     );
