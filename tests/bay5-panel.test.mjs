@@ -103,7 +103,10 @@ const AUTH_SIGNED_OUT = dataModule(`
   export function cachedAccessToken() { return null; }
   export async function accessToken() { return null; }
 `);
-const AUTH_CONFIG = dataModule(`export function isLeoDevPreviewHost() { return false; }`);
+const AUTH_CONFIG = dataModule(`
+  export function isLeoDevPreviewHost() { return false; }
+  export const GATEWAY_BASE = "";
+`);
 const hostStub = dataModule(`
   export function hostState() {
     return {
@@ -155,6 +158,7 @@ const listStub = dataModule(`
   }
   export function openMine() {}
   export function startPublish() {}
+  export function startPublishApp() {}
   export function startPostNeed() {}
 `);
 const supplyStub = dataModule(`

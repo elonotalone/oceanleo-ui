@@ -3,7 +3,7 @@
 // LeoBay 的详情正文：按当前目标渲染需求、供给、订单、卖家几块的窗格；「我的」五块；设置交给共用设置窗。
 // 返回键与标题在 `/bay` 页的页头那一行（见 LeoBayPage），这里只出正文，所以页面上不会出现两个返回键、两个标题。
 // 交易会话不在这里：它在 LeoChat 小窗里开。
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { CallHumanPane, DemandPane, HelpRequestPane, PostNeedPane, ProposePane } from "../needs";
 import { OrderPane } from "../orders";
 import { ServiceEditorPane } from "../seller";
@@ -11,6 +11,20 @@ import { BaySettingsPane } from "../settings";
 import { CheckoutPane, ConsultPane, ProfilePane, ServicePane } from "../supply";
 import type { BayPaneProps, BayTarget } from "./bay-state";
 import { BayMine } from "./BayMine";
+
+// 不走 apps/index 桶：桶会把货架和「我的作品」一起拉进来，测试编译台的 BayMine 桩没有 BaySignInPrompt。
+const AppPane = lazy(() => import("../apps/AppPane").then((mod) => ({ default: mod.AppPane })));
+const AppEditorPane = lazy(() => import("../apps/AppEditorPane").then((mod) => ({ default: mod.AppEditorPane })));
+
+/** 作品的两个窗格是按需加载的；加载那一下给一块骨架，别让页面白一下。 */
+function LazyPaneLoading() {
+  return (
+    <div data-bay-loading className="space-y-3 p-4" aria-busy="true">
+      <div className="h-40 animate-pulse rounded-xl bg-neutral-100" />
+      <div className="h-5 w-2/3 animate-pulse rounded bg-neutral-100" />
+    </div>
+  );
+}
 
 const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>> = {
   demand: "需求详情",
@@ -27,6 +41,8 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
   publish: "发布",
   "service-editor": "发布",
   mine: "我的",
+  app: "作品详情",
+  "app-editor": "上架作品",
   settings: "设置",
 };
 
@@ -34,6 +50,7 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
 export function bayDetailTitleKey(target: BayTarget): string | null {
   if (target.kind === "feed") return null;
   if (target.kind === "service-editor" && target.serviceId) return "编辑";
+  if (target.kind === "app-editor" && target.appId) return "编辑作品";
   return DETAIL_TITLES[target.kind];
 }
 
@@ -66,6 +83,18 @@ export function BayDetailPane(props: BayPaneProps): ReactNode {
       return <ServiceEditorPane {...props} />;
     case "mine":
       return <BayMine tab={target.tab} layout={props.layout} siteKey={props.siteKey} />;
+    case "app":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <AppPane {...props} />
+        </Suspense>
+      );
+    case "app-editor":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <AppEditorPane {...props} />
+        </Suspense>
+      );
     case "settings":
       return <BaySettingsPane {...props} />;
     default:

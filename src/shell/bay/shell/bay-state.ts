@@ -14,7 +14,7 @@ import {
 import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
 import { hostState } from "../../messages/host-state";
-import { BAY_KIND_PARAM, DEFAULT_BAY_FEED_KIND, normalizeBayFeedKind, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget, type BayFeedKind } from "./bay-links";
+import { BAY_ADVICE_ZONE, BAY_KIND_PARAM, DEFAULT_BAY_FEED_KIND, normalizeBayFeedKind, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget, type BayFeedKind } from "./bay-links";
 
 export type BayLayout = "docked" | "full" | "mobile" | "page";
 
@@ -24,7 +24,7 @@ export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "card";
 export type BayFeedFilter = {
   /**
    * `service`（默认）= 服务（含答疑）；`asset` = 素材库（不走人才信息流）；
-   * `request` = 需求（含求助）。老值 `supply`/`demand`/`material` 在写入时归一。
+   * `app` = 作品栏；`request` = 需求（含求助）。老值 `supply`/`demand`/`material` 在写入时归一。
    */
   kind?: BayFeedKind;
   category?: string;
@@ -49,6 +49,10 @@ export type BayTarget =
   /** 编辑一条已有的素材或服务；不带 id 时与 `publish` 相同。 */
   | { kind: "service-editor"; serviceId?: string }
   | { kind: "mine"; tab: BayMineTab }
+  /** 作品详情：别人上架的应用 / 网站，页内能直接用。 */
+  | { kind: "app"; id: string }
+  /** 上架或编辑一个作品；不带 id 是新上架。 */
+  | { kind: "app-editor"; appId?: string }
   | { kind: "settings"; pane?: "profile" | "vetting" | "money" };
 
 export interface BayPaneProps {
@@ -172,6 +176,8 @@ function normalizeFilter(filter: BayFeedFilter | undefined): BayFeedFilter {
   if (!filter) return out;
   out.kind = normalizeBayFeedKind(filter.kind) ?? DEFAULT_BAY_FEED_KIND;
   if (isBayCategorySlug(filter.category)) out.category = filter.category;
+  // 作品按站点类目筛，但「专业咨询」不是类目，深链 / 回退到作品栏时也要清掉。
+  if (out.kind === "app" && out.category === BAY_ADVICE_ZONE) delete out.category;
   const q = typeof filter.q === "string" ? filter.q.trim().slice(0, 60) : "";
   if (q) out.q = q;
   return out;
@@ -409,7 +415,7 @@ export function setBayFilter(filter: BayFeedFilter): void {
   if (onBayPage()) writePageKind(next.kind);
 }
 
-/** 把当前种类写进 `/bay` 页的地址（`?kind=asset` / `?kind=request`），刷新或把链接发给别人时停在同一栏。 */
+/** 把当前种类写进 `/bay` 页的地址（`?kind=asset` / `?kind=app` / `?kind=request`），刷新或把链接发给别人时停在同一栏。 */
 function writePageKind(kind: BayFeedFilter["kind"]): void {
   const w = win();
   if (!w) return;

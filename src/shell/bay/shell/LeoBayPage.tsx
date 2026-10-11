@@ -1,11 +1,12 @@
 "use client";
 
-// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按服务 / 素材 / 需求三栏逛。
+// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按服务 / 素材 / 作品 / 需求四栏逛。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS } from "../../AppPageHeader";
 import type { ExplorePageProps } from "../../ExplorePage";
+import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
@@ -24,7 +25,7 @@ import {
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
 import { BayToolbarFilterSlot, BayToolbarSlotProvider } from "./BayFilterSelect";
-import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, useBaySearchText } from "./BayList";
+import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, useBaySearchText } from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -69,7 +70,12 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
           <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_GHOST}>
             {tt("我的")}
           </button>
-          <button type="button" onClick={() => startPublish(filter.category)} data-bay-action="publish" className={BTN_PRIMARY}>
+          <button
+            type="button"
+            onClick={() => (canonicalBayFeedKind(filter.kind) === "app" ? startPublishApp() : startPublish(filter.category))}
+            data-bay-action="publish"
+            className={BTN_PRIMARY}
+          >
             {tt("发布")}
           </button>
         </div>
@@ -92,7 +98,7 @@ function BayPageSearch({ filter }: { filter: BayFeedFilter }) {
         type="search"
         value={search.text}
         maxLength={60}
-        placeholder={tt("搜素材、服务、需求…")}
+        placeholder={tt("搜素材、服务、作品、需求…")}
         aria-label={tt("搜索")}
         onChange={(event) => search.change(event.target.value)}
         onKeyDown={(event) => {
@@ -115,7 +121,9 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   const savedTop = useRef(0);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
-  const asset = canonicalBayFeedKind(filter.kind) === "asset";
+  const kind = canonicalBayFeedKind(filter.kind);
+  const asset = kind === "asset";
+  const app = kind === "app";
   const [assetVisited, setAssetVisited] = useState(asset);
 
   useEffect(() => {
@@ -151,7 +159,11 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
             <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} />
           </div>
         ) : null}
-        {asset ? null : (
+        {asset ? null : app ? (
+          <div className="mt-5">
+            <BayAppShelf filter={filter} siteKey={siteKey} accent={accent} />
+          </div>
+        ) : (
           <div className="mt-5">
             <BayFeed
               filter={filter}
@@ -176,7 +188,16 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
 }
 
 /** 这几种详情铺满页框宽度；其余收在易读的宽度里。 */
-const WIDE_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(["service", "checkout", "profile", "mine", "service-editor", "publish"]);
+const WIDE_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>([
+  "service",
+  "checkout",
+  "profile",
+  "mine",
+  "service-editor",
+  "publish",
+  "app",
+  "app-editor",
+]);
 
 /** 点开的那一条：一行「返回 + 标题」，正文在一张卡里（卡内滚动，底部的操作条贴在卡的底边）。 */
 function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed" }>; siteKey: string }) {

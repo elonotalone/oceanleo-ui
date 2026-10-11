@@ -10,6 +10,8 @@ import { listHostedSites, unpublishHostedSite } from "../../../api/hosted-sites"
 import { useUI } from "../../../i18n/ui/useUI";
 import { formatRelativeLastActive } from "../account/device-presentation";
 import { CARD, CARD_DESC, CARD_TITLE, Note, QUIET } from "../personalization/parts";
+import { listHostedSiteOnBay } from "../../../shell/bay/apps/hosted-to-bay";
+import { bayEnabledHere, openBay, useBaySiteKey } from "../../../shell/bay/shell/bay-state";
 import { formatHostedBytes, isSafeHostedUrl } from "./automation/format";
 import { applyPrefToggle, removeGrant, removeHostedSite } from "./automation/state";
 
@@ -263,6 +265,8 @@ function ActionGrantsBlock() {
 
 function HostedSitesBlock() {
   const tt = useUI();
+  const siteKey = useBaySiteKey();
+  const showBay = bayEnabledHere();
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [items, setItems] = useState<HostedSite[]>([]);
   const [reload, setReload] = useState(0);
@@ -303,6 +307,22 @@ function HostedSitesBlock() {
       setItems((current) => removeHostedSite(current, id));
     },
     [busyId, tt],
+  );
+
+  const listToBay = useCallback(
+    async (item: HostedSite) => {
+      if (busyId) return;
+      setBusyId(item.id);
+      setError(null);
+      const result = await listHostedSiteOnBay(item, siteKey);
+      setBusyId(null);
+      if ("error" in result) {
+        setError(tt(result.error));
+        return;
+      }
+      openBay({ kind: "app-editor", appId: result.appId });
+    },
+    [busyId, siteKey, tt],
   );
 
   return (
@@ -400,6 +420,16 @@ function HostedSitesBlock() {
                       >
                         {tt("下线")}
                       </button>
+                      {showBay ? (
+                        <button
+                          type="button"
+                          className={QUIET}
+                          disabled={busyId === item.id}
+                          onClick={() => void listToBay(item)}
+                        >
+                          {tt("上架到 Bay")}
+                        </button>
+                      ) : null}
                     </>
                   )}
                 </div>

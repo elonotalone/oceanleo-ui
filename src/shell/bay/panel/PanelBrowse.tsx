@@ -3,8 +3,9 @@
 // 右侧栏里的 LeoBay 浏览：第一行搜索 + 「我的」「发布」；第二行种类切换 + 站点下拉（素材栏不放站点）。
 import { useMemo, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
-import { BayFeed, BayViewSwitch, openMine, startPublish, useBayCategoryName, useBaySearchText } from "../shell/BayList";
+import { BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, useBayCategoryName, useBaySearchText } from "../shell/BayList";
 import { BayFilterSelect, type BayFilterOption } from "../shell/BayFilterSelect";
 import { BAY_ADVICE_ZONE, canonicalBayFeedKind } from "../shell/bay-links";
 import { BayCategoryIcon, BayGlyph } from "../shell/bay-icons";
@@ -23,7 +24,9 @@ const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
 export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
   const tt = useUI();
   const filter = useBayFilter();
-  const asset = canonicalBayFeedKind(filter.kind) === "asset";
+  const kind = canonicalBayFeedKind(filter.kind);
+  const asset = kind === "asset";
+  const app = kind === "app";
   const search = useBaySearchText(filter);
   const { categories } = useBayCategories();
   const name = useBayCategoryName();
@@ -55,7 +58,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
             type="search"
             value={search.text}
             maxLength={60}
-            placeholder={tt("搜素材、服务、需求…")}
+            placeholder={tt("搜素材、服务、作品、需求…")}
             aria-label={tt("搜索")}
             onChange={(event) => search.change(event.target.value)}
             onKeyDown={(event) => {
@@ -67,7 +70,12 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
         <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_QUIET}>
           {tt("我的")}
         </button>
-        <button type="button" onClick={() => startPublish(filter.category)} data-bay-action="publish" className={BTN_PRIMARY}>
+        <button
+          type="button"
+          onClick={() => (app ? startPublishApp() : startPublish(filter.category))}
+          data-bay-action="publish"
+          className={BTN_PRIMARY}
+        >
           {tt("发布")}
         </button>
       </div>
@@ -86,7 +94,13 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
         )}
       </div>
       <div className="mt-3">
-        {asset ? <BayAssetLibrary filter={filter} siteKey={siteKey} /> : <BayFeed filter={filter} activeKey={null} variant="list" />}
+        {asset ? (
+          <BayAssetLibrary filter={filter} siteKey={siteKey} />
+        ) : app ? (
+          <BayAppShelf filter={filter} siteKey={siteKey} accent="#0ea5e9" />
+        ) : (
+          <BayFeed filter={filter} activeKey={null} variant="list" />
+        )}
       </div>
     </section>
   );

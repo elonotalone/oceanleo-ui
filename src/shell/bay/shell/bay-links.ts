@@ -2,8 +2,9 @@
 //
 // `?bay=<kind>[:<参数>]`：feed、demand:<id>、service:<id>、help:<id>、consult:<id>、profile:<handle>、
 // order:<id>、conversation:<threadId>、post-need[:<category>]、call-human[:<category>]、propose:<demandId>、
-// checkout:<serviceId>[:<tier>]、publish[:<category>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]。认不出的值一律当没有。
-// 2026-10-09：`/bay` 页按 service / asset / request 三栏逛；老 `?kind=` 值照样认（见 normalizeBayFeedKind）。
+// checkout:<serviceId>[:<tier>]、publish[:<category>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]、
+// app:<id>（作品详情）、app-editor[:<id>]（上架 / 编辑作品）。认不出的值一律当没有。
+// 2026-10-11：`/bay` 页按 service / asset / app / request 四栏逛；老 `?kind=` 值照样认（见 normalizeBayFeedKind）。
 // 「我的」改成五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；老的 `mine:<tab>` 值落到对应的新块。
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { BayMineTab, BayTarget } from "./bay-state";
@@ -30,11 +31,11 @@ export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab 
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
 /**
  * `/bay?kind=<值>`：`service`（默认，不写进地址）= 这个类目里的服务（含答疑）；
- * `asset` = 素材库（类型、来源分区、文书区）；`request` = 这个类目里的需求（含求助）。
+ * `asset` = 素材库（类型、来源分区、文书区）；`app` = 作品栏；`request` = 这个类目里的需求（含求助）。
  * 老值 `supply`/`all`/`consult` → service，`demand`/`help` → request，`material` → asset。
  */
 export const BAY_KIND_PARAM = "kind";
-export const BAY_FEED_KINDS = ["service", "asset", "request"] as const;
+export const BAY_FEED_KINDS = ["service", "asset", "app", "request"] as const;
 export type BayFeedKind = (typeof BAY_FEED_KINDS)[number];
 export const DEFAULT_BAY_FEED_KIND: BayFeedKind = "service";
 /** 老地址里的种类值。 */
@@ -55,7 +56,7 @@ export function normalizeBayFeedKind(raw: string | null | undefined): BayFeedKin
   return Object.prototype.hasOwnProperty.call(LEGACY_FEED_KINDS, text) ? LEGACY_FEED_KINDS[text] : null;
 }
 
-/** 页面或测试可能仍传入老值；落到三栏之一。 */
+/** 页面或测试可能仍传入老值；落到四栏之一。 */
 export function canonicalBayFeedKind(raw: string | null | undefined): BayFeedKind {
   return normalizeBayFeedKind(raw) ?? DEFAULT_BAY_FEED_KIND;
 }
@@ -194,6 +195,11 @@ export function parseBayParam(raw: string | null | undefined): BayTarget | null 
       const tab = normalizeBayMineTab(rest);
       return tab ? { kind: "mine", tab } : null;
     }
+    case "app":
+      return rest !== null && ID.test(rest) ? { kind: "app", id: rest } : null;
+    case "app-editor":
+      if (rest === null) return { kind: "app-editor" };
+      return ID.test(rest) ? { kind: "app-editor", appId: rest } : null;
     case "settings": {
       if (rest === null) return { kind: "settings" };
       const pane = BAY_SETTINGS_PANES.find((value) => value === rest);
@@ -232,6 +238,10 @@ export function formatBayParam(target: BayTarget): string {
       return target.serviceId ? `service-editor:${target.serviceId}` : "service-editor";
     case "mine":
       return `mine:${target.tab}`;
+    case "app":
+      return `app:${target.id}`;
+    case "app-editor":
+      return target.appId ? `app-editor:${target.appId}` : "app-editor";
     case "settings":
       return target.pane ? `settings:${target.pane}` : "settings";
   }

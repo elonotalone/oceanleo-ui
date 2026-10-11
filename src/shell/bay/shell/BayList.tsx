@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、服务/素材/需求分段切换、站点下拉（含专业咨询）、信息流本体。
+// LeoBay 页的信息流部件：搜索、服务/素材/作品/需求分段切换、站点下拉（含专业咨询）、信息流本体。
 // LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "next-intl";
@@ -48,6 +48,11 @@ export function startPostNeed(category?: string): void {
 export function startPublish(category?: string): void {
   if (!requireBayLogin()) return;
   openBay(category && category !== BAY_ADVICE_ZONE ? { kind: "publish", category } : { kind: "publish" });
+}
+
+export function startPublishApp(): void {
+  if (!requireBayLogin()) return;
+  openBay({ kind: "app-editor" });
 }
 
 export function startServiceEditor(): void {
@@ -118,11 +123,12 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 const VIEW_LABEL: Record<(typeof BAY_FEED_KINDS)[number], string> = {
   service: "服务",
   asset: "素材",
+  app: "作品",
   request: "需求",
 };
 
 /**
- * 服务 / 素材 / 需求三段切换，三个键连成一组。选中的那一个用站点主色填满（没给主色用黑色）。
+ * 服务 / 素材 / 作品 / 需求四段切换，四个键连成一组。选中的那一个用站点主色填满（没给主色用黑色）。
  */
 export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accent?: string }) {
   const tt = useUI();
@@ -130,7 +136,7 @@ export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accen
   return (
     <div
       role="tablist"
-      aria-label={tt("看服务、素材还是需求")}
+      aria-label={tt("看服务、素材、作品还是需求")}
       data-bay-view
       className="inline-flex shrink-0 items-center overflow-hidden rounded-lg bg-stone-100"
     >
