@@ -56,11 +56,13 @@ test("BAY_APP_FRAME_SANDBOX 逐字等于锁定串，且不含禁止令牌", () =
 });
 
 // UC-3: docs/architecture/oceanleo-untrusted-content-isolation.md
-// iframe 的 sandbox 只能引用常量；源码里再写第二个 sandbox= 就是另一条不受锁的窗口。
-test("AppEmbedFrame 只有一处 sandbox=，且来自常量，并带 no-referrer", () => {
+// iframe 的 sandbox 写成字面量（跨仓扫描器 oceanleo-untrusted-render-scan.py 只能静态读字面量），
+// 且必须与锁定串逐字相同；源码里再写第二个 sandbox= 就是另一条不受锁的窗口。
+test("AppEmbedFrame 只有一处 sandbox=，字面量与锁定串逐字相同，并带 no-referrer", () => {
   const src = source("src/shell/bay/apps/AppEmbedFrame.tsx");
   assert.equal((src.match(/sandbox=/g) || []).length, 1);
-  assert.match(src, /sandbox=\{BAY_APP_FRAME_SANDBOX\}/);
+  assert.ok(src.includes(`sandbox="${LOCKED}"`), "iframe 上的 sandbox 字面量必须与锁定串逐字相同");
+  assert.doesNotMatch(src, /sandbox=\{/, "sandbox 不许写成表达式：扫描器读不出它的值");
   assert.match(src, /referrerPolicy="no-referrer"/);
 });
 

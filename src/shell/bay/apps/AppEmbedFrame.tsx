@@ -1,10 +1,11 @@
 "use client";
 
-// 作品页内窗口。sandbox 只来自 BAY_APP_FRAME_SANDBOX；不注入脚本、不 postMessage、不听 message。
+// 作品页内窗口。不注入脚本、不 postMessage、不听 message。
+// sandbox 在 iframe 上写成字面量（跨仓扫描器要能静态读出它的值），并由源码级断言锁成与
+// app-embed.ts 的 BAY_APP_FRAME_SANDBOX 逐字相同：改一处不改另一处会变红。
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
-import { BAY_APP_FRAME_SANDBOX } from "./app-embed";
 
 // 不给 iframe 加 loading="lazy"：窗口在屏幕下方时浏览器会推迟加载，10 秒的计时会把它误判成没加载出来。
 const LOAD_MS = 10_000;
@@ -81,7 +82,7 @@ export function AppEmbedFrame(props: {
         <iframe
           key={frameKey}
           src={src}
-          sandbox={BAY_APP_FRAME_SANDBOX}
+          sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
           referrerPolicy="no-referrer"
           allow=""
           title={title}
