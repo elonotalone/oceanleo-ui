@@ -9,7 +9,8 @@ import { bayDelete, bayGet, bayPatch, bayPost } from "./http";
 import { bayQuery } from "./directory";
 import type { BayReportReason } from "./services";
 
-export type BayAppSourceKind = "hosted" | "external";
+/** hosted 平台托管的静态站 / external 作者自己的网站 / computer 作者云电脑上的应用（经公开网址）。 */
+export type BayAppSourceKind = "hosted" | "external" | "computer";
 export type BayAppEmbedMode = "embed" | "link";
 export type BayAppStatus = "draft" | "published" | "offline";
 
@@ -37,6 +38,23 @@ export interface BayApp {
   open_count: number;
   published_at: string | null;
   updated_at: string | null;
+  /** free 免费 / one_time 一次买断 / subscription 按月订阅。 */
+  price_model: "free" | "one_time" | "subscription";
+  /** 买断价或月价（分）；免费是 0。 */
+  price_fen: number;
+  /** 免费试用天数；0 = 没有试用。 */
+  trial_days: number;
+  /** 买断的人数加订阅过的人数。 */
+  sales_count: number;
+  rating_avg: number;
+  rating_count: number;
+  /** open = 作品页接受留言；off = 作者关了。 */
+  feedback_mode: "open" | "off";
+  /** 作者开通了「用 OceanLeo 账号登录」。 */
+  login_enabled: boolean;
+  follower_count: number;
+  /** 只在公开列表里带：这张卡占的是「新作品位」。 */
+  fresh?: boolean;
   /** 列表与详情里带：作者的公开名片。 */
   author?: BayAppAuthor | null;
 }
@@ -52,6 +70,10 @@ export interface BayAppAuthor {
 /** 本人看自己的作品时多出来的字段。 */
 export interface BayAppMine extends BayApp {
   hosted_site_id: string | null;
+  /** 来源是云电脑时：用的是哪个公开网址。 */
+  endpoint_id: string | null;
+  /** 作者开了 AI 代答。 */
+  ai_answer: boolean;
   verified_at: string | null;
   verified: boolean;
   moderation_hidden: boolean;
@@ -73,6 +95,8 @@ export interface BayAppDraftInput {
   hosted_site_id?: string;
   /** `external` 时必填。 */
   url?: string;
+  /** `computer` 时必填：`/v1/bay/app-endpoints` 里那一行的 id；作品的地址由网关按它生成。 */
+  endpoint_id?: string;
   title?: string;
   summary?: string;
   description?: string;
@@ -174,13 +198,13 @@ export function reportBayApp(id: string, reason: BayReportReason, detail?: strin
 }
 
 /** 记一次浏览 / 打开；不登录也记。失败不打扰用户：计数丢一次不影响他用作品。 */
-export async function recordBayAppEvent(id: string, kind: BayAppEventKind): Promise<void> {
+export async function recordBayAppEvent(id: string, kind: BayAppEventKind, source = ""): Promise<void> {
   try {
     const token = await accessToken().catch(() => null);
     await fetch(`${GATEWAY_BASE}${one(id)}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ kind }),
+      body: JSON.stringify({ kind, source }),
       cache: "no-store",
       credentials: "include",
       keepalive: true,

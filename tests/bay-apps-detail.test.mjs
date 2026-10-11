@@ -26,8 +26,9 @@ test("AppPane 只走 lib/bay/apps，window.open 带 noopener,noreferrer", () => 
 
 test("AppPane 记 view/open，作者本人不上报，举报走 reportBayApp", () => {
   const pane = source("src/shell/bay/apps/AppPane.tsx");
-  assert.match(pane, /recordBayAppEvent\(app\.id, "view"\)/);
-  assert.match(pane, /recordBayAppEvent\(app\.id, "open"\)/);
+  // 2026-10-11 起每次计数都带上访客的来源（流量来源统计）。
+  assert.match(pane, /recordBayAppEvent\(app\.id, "view", currentBayAppSource\(app\.id, siteKey\)\)/);
+  assert.match(pane, /recordBayAppEvent\(app\.id, "open", currentBayAppSource\(app\.id, siteKey\)\)/);
   assert.match(pane, /viewer\.is_owner/);
   assert.match(pane, /if \(owner \|\| viewedRef\.current\) return;/);
   assert.match(pane, /if \(owner \|\| openedRef\.current\) return;/);

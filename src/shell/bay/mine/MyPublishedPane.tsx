@@ -8,6 +8,7 @@ import type { MyLessonsPaneProps } from "../lessons/MyLessonsPane";
 import { MyNeedsPane } from "../needs/MyNeedsPane";
 import { MyServicesPane } from "../seller/MyServicesPane";
 import { openBay, type BayPaneProps } from "../shell/bay-state";
+import { LazySection } from "./LazySection";
 
 // 按需加载：静态 import ../apps 会经 MyAppsPane → BayMine → mine/index 绕回本文件。
 // 测试编译台把 index.ts 当原生模块，再去拉未编译的 tsx 会炸；加载失败时这一段先空着，供给 / 需求仍能画。
@@ -54,11 +55,21 @@ function PublishedLessons(props: MyLessonsPaneProps) {
   return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
 }
 
+const loadSoldApps = () => import("../apppaid/MySoldAppsPane").then((mod) => mod.MySoldAppsPane);
+
 export function MyPublishedPane(props: BayPaneProps) {
   const tt = useUI();
   return (
     <section data-bay-pane="mine-published" className="space-y-6">
-      <div className="flex justify-end px-4 pt-4">
+      <div className="flex justify-end gap-2 px-4 pt-4">
+        <button
+          type="button"
+          data-bay-mine-dashboard
+          onClick={() => openBay({ kind: "dashboard" })}
+          className="rounded-xl border border-stone-200 px-3 py-1.5 text-[13px] font-semibold text-stone-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
+        >
+          {tt("数据面板")}
+        </button>
         <button
           type="button"
           data-bay-mine-publish
@@ -80,6 +91,7 @@ export function MyPublishedPane(props: BayPaneProps) {
         <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("作品")}</h3>
         <PublishedApps layout={props.layout} siteKey={props.siteKey} />
       </div>
+      <LazySection marker="app-orders" title="作品订单" load={loadSoldApps} />
       <div data-bay-mine-section="lessons">
         <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("课程")}</h3>
         <PublishedLessons layout={props.layout} siteKey={props.siteKey} />

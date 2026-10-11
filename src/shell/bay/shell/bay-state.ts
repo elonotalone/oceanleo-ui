@@ -21,6 +21,10 @@ export type BayLayout = "docked" | "full" | "mobile" | "page";
 /** 「我的」五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片。 */
 export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "card";
 
+/** 「管理作品」页的七个分页。 */
+export const BAY_APP_MANAGE_TABS = ["feedback", "login", "pricing", "releases", "errors", "sources", "endpoint"] as const;
+export type BayAppManageTab = (typeof BAY_APP_MANAGE_TABS)[number];
+
 export type BayFeedFilter = {
   /**
    * `service`（默认）= 服务（含答疑）；`asset` = 素材库（不走人才信息流）；
@@ -61,6 +65,14 @@ export type BayTarget =
   | { kind: "lesson-editor"; lessonId?: string }
   /** 发布或编辑一个套餐；不带 id 是新建。 */
   | { kind: "bundle-editor"; bundleId?: string }
+  /** 作者管理一个作品：留言、登录、收费、更新日志、报错、来源、公开网址。 */
+  | { kind: "app-manage"; appId: string; tab?: BayAppManageTab }
+  /** 作品下的一条留言（报错 / 建议 / 提问）与它的回复。 */
+  | { kind: "app-thread"; id: string }
+  /** 开发者面板：我在 Bay 上卖的全部东西的用户、收入与增长。 */
+  | { kind: "dashboard" }
+  /** 「用 OceanLeo 账号登录某个作品」的授权页；作品发来的参数在地址的查询串里。 */
+  | { kind: "app-login" }
   | { kind: "settings"; pane?: "profile" | "vetting" | "money" };
 
 export interface BayPaneProps {

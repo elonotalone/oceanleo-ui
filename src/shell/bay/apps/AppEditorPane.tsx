@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { listHostedSites, type HostedSite } from "../../../api/hosted-sites";
 import { useUI } from "../../../i18n/ui/useUI";
+import type { BayAppEndpoint } from "../../../lib/bay/app-endpoints";
 import {
   checkBayAppEmbed,
   createBayApp,
@@ -13,6 +14,7 @@ import {
   type BayAppMine,
 } from "../../../lib/bay/apps";
 import { BayApiError } from "../../../lib/bay/http";
+import { EndpointPicker } from "../appendpoint/EndpointPicker";
 import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerField, SellerNotice, TEXTAREA_CLASS } from "../seller/seller-ui";
 import { useBayCategoryName } from "../shell/BayList";
 import { BaySignInPrompt } from "../shell/BayMine";
@@ -26,7 +28,7 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 function emptyDraft(): AppDraft {
-  return { title: "", summary: "", description: "", coverUrl: "", category: "", embedMode: "embed", url: "" };
+  return { title: "", summary: "", description: "", coverUrl: "", category: "", embedMode: "embed", url: "", endpointId: "" };
 }
 
 export function AppEditorPane(props: BayPaneProps): ReactElement | null {
@@ -42,6 +44,8 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
   const [load, setLoad] = useState<{ loading: boolean; error: string }>({ loading: true, error: "" });
   const [urlDraft, setUrlDraft] = useState("");
   const [urlError, setUrlError] = useState("");
+  const [computerPick, setComputerPick] = useState<BayAppEndpoint | null>(null);
+  const [computerError, setComputerError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState<"save" | "publish" | "create" | "embed" | "">("");
 
@@ -148,6 +152,26 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       await enterEditor(body.app.id);
     } catch (error) {
       setUrlError(errorText(error, tt("草稿没建好，请稍后再试。")));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function pickComputer() {
+    if (busy || !computerPick) return;
+    setBusy("create");
+    setComputerError("");
+    setActionError("");
+    try {
+      const body = await createBayApp({
+        source_kind: "computer",
+        endpoint_id: computerPick.id,
+        embed_mode: "link",
+        posted_site: props.siteKey || null,
+      });
+      await enterEditor(body.app.id);
+    } catch (error) {
+      setComputerError(errorText(error, tt("草稿没建好，请稍后再试。")));
     } finally {
       setBusy("");
     }
@@ -272,6 +296,27 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
               </button>
             </div>
           </div>
+          <div data-bay-app-source="computer" className="rounded-xl border border-stone-200 bg-white p-4 sm:col-span-2">
+            <p className="text-[15px] font-semibold text-stone-900">{tt("我的云电脑上的应用")}</p>
+            <div className="mt-3 space-y-3">
+              <EndpointPicker
+                selectedId={computerPick?.id || null}
+                onSelect={setComputerPick}
+                disabled={Boolean(busy)}
+              />
+              {!computerPick ? <p className="text-[12.5px] text-stone-500">{tt("请先选定一个公开网址")}</p> : null}
+              {computerError ? <p className="text-[12.5px] text-rose-600">{computerError}</p> : null}
+              <button
+                type="button"
+                data-bay-endpoint-next
+                disabled={Boolean(busy) || !computerPick}
+                className={PRIMARY_BUTTON}
+                onClick={() => void pickComputer()}
+              >
+                {busy === "create" ? tt("正在打开…") : tt("下一步")}
+              </button>
+            </div>
+          </div>
         </div>
         {actionError ? <SellerNotice tone="error">{actionError}</SellerNotice> : null}
       </section>
@@ -293,6 +338,20 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
           <SellerField label={tt("网站地址")}>
             <input className={INPUT_CLASS} value={draft.url} onChange={(event) => patch({ url: event.target.value })} />
           </SellerField>
+        ) : null}
+
+        {app.source_kind === "computer" ? (
+          <div data-bay-app-computer-url className="space-y-3">
+            <SellerField label={tt("当前公开网址")}>
+              <p className="break-all text-[13px] text-stone-800">{app.url}</p>
+            </SellerField>
+            <EndpointPicker
+              selectedId={draft.endpointId || app.endpoint_id}
+              keepAppId={app.id}
+              onSelect={(row) => patch({ endpointId: row.id })}
+              disabled={Boolean(busy)}
+            />
+          </div>
         ) : null}
 
         <SellerField label={tt("名称")} hint={`${draft.title.length}/80`}>
@@ -346,6 +405,11 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
             ))}
           </div>
         </SellerField>
+        {app.source_kind === "computer" ? (
+          <p data-bay-app-computer-embed-hint className="text-[12.5px] leading-5 text-stone-500">
+            {tt("云电脑上的应用通常需要登录，页内窗口里登录不了")}
+          </p>
+        ) : null}
         {draft.embedMode === "embed" ? (
           <p className="flex flex-wrap items-center gap-2 text-[13px] text-stone-600">
             <span>{tt(embedNote(app))}</span>

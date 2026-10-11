@@ -3,6 +3,8 @@
 // LeoBay「作品」栏的货架：卡片网格。本文件归 U1 单元；组件名与 props 是合同，不许改。
 import { useEffect, useRef, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { rememberBayAppEntry } from "../appinsights/app-source";
+import { shelfOpenEntry } from "../appinsights/insights-model";
 import { BayAppCard } from "./BayAppCard";
 import { useBayApps } from "./use-bay-apps";
 import { openBay, requireBayLogin, type BayFeedFilter } from "../shell/bay-state";
@@ -58,7 +60,11 @@ export function BayAppShelf({ filter, siteKey, accent }: BayAppShelfProps): Reac
       {feed.items.length > 0 ? (
         <div className={GRID}>
           {feed.items.map((app) => (
-            <div key={app.id} className="flex min-w-0">
+            <div
+              key={app.id}
+              className="flex min-w-0"
+              onClickCapture={() => rememberBayAppEntry(app.id, shelfOpenEntry(filter, app))}
+            >
               <BayAppCard app={app} />
             </div>
           ))}

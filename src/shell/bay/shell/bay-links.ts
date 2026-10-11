@@ -4,7 +4,8 @@
 // order:<id>、conversation:<threadId>、post-need[:<category>]、call-human[:<category>]、propose:<demandId>、
 // checkout:<serviceId>[:<tier>]、publish[:<category>]、service-editor[:<id>]、mine:<tab>、settings[:<pane>]、
 // app:<id>（作品详情）、app-editor[:<id>]（上架 / 编辑作品）、lesson:<id>、bundle:<id>（课程 / 套餐详情）、
-// lesson-editor[:<id>]、bundle-editor[:<id>]（发布 / 编辑课程、套餐）。认不出的值一律当没有。
+// lesson-editor[:<id>]、bundle-editor[:<id>]（发布 / 编辑课程、套餐）、app-manage:<id>[:<分页>]（管理作品）、
+// app-thread:<id>（作品下的一条留言）、dashboard（开发者面板）、app-login（账号登录授权页）。认不出的值一律当没有。
 // 2026-10-11：`/bay` 页按 service / asset / app / lesson / request 五栏逛；老 `?kind=` 值照样认（见 normalizeBayFeedKind）。
 // 「我的」改成五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；老的 `mine:<tab>` 值落到对应的新块。
 import type { UITranslate } from "../../../i18n/ui/useUI";
@@ -153,6 +154,8 @@ export function isBaySiteKey(value: unknown): value is string {
   return typeof value === "string" && SITE_KEY.test(value);
 }
 
+const APP_MANAGE_TABS = ["feedback", "login", "pricing", "releases", "errors", "sources", "endpoint"] as const;
+
 /** `?bay=` 的值 → 目标；非法返回 null。 */
 export function parseBayParam(raw: string | null | undefined): BayTarget | null {
   const text = typeof raw === "string" ? raw.trim() : "";
@@ -210,6 +213,20 @@ export function parseBayParam(raw: string | null | undefined): BayTarget | null 
     case "bundle-editor":
       if (rest === null) return { kind: "bundle-editor" };
       return ID.test(rest) ? { kind: "bundle-editor", bundleId: rest } : null;
+    case "app-manage": {
+      if (rest === null) return null;
+      const [appId, tab, extra] = rest.split(":");
+      if (extra !== undefined || !ID.test(appId)) return null;
+      if (tab === undefined) return { kind: "app-manage", appId };
+      const known = APP_MANAGE_TABS.find((value) => value === tab);
+      return known ? { kind: "app-manage", appId, tab: known } : null;
+    }
+    case "app-thread":
+      return rest !== null && ID.test(rest) ? { kind: "app-thread", id: rest } : null;
+    case "dashboard":
+      return rest === null ? { kind: "dashboard" } : null;
+    case "app-login":
+      return rest === null ? { kind: "app-login" } : null;
     case "settings": {
       if (rest === null) return { kind: "settings" };
       const pane = BAY_SETTINGS_PANES.find((value) => value === rest);
@@ -259,6 +276,14 @@ export function formatBayParam(target: BayTarget): string {
       return target.lessonId ? `lesson-editor:${target.lessonId}` : "lesson-editor";
     case "bundle-editor":
       return target.bundleId ? `bundle-editor:${target.bundleId}` : "bundle-editor";
+    case "app-manage":
+      return target.tab ? `app-manage:${target.appId}:${target.tab}` : `app-manage:${target.appId}`;
+    case "app-thread":
+      return `app-thread:${target.id}`;
+    case "dashboard":
+      return "dashboard";
+    case "app-login":
+      return "app-login";
     case "settings":
       return target.pane ? `settings:${target.pane}` : "settings";
   }

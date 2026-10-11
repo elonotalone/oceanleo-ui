@@ -9,6 +9,7 @@ export type AppDraft = {
   category: string;
   embedMode: "embed" | "link";
   url: string;
+  endpointId: string;
 };
 
 const TITLE_LIMIT = 80;
@@ -24,6 +25,7 @@ export function draftFromApp(app: BayAppMine): AppDraft {
     category: app.category || "",
     embedMode: app.embed_mode === "link" ? "link" : "embed",
     url: app.url || "",
+    endpointId: app.endpoint_id || "",
   };
 }
 
@@ -37,6 +39,9 @@ export function patchFromDraft(draft: AppDraft, app: BayAppMine): BayAppPatchInp
   if (draft.category !== (app.category || "")) patch.category = draft.category;
   if (draft.embedMode !== app.embed_mode) patch.embed_mode = draft.embedMode;
   if (app.source_kind === "external" && draft.url !== (app.url || "")) patch.url = draft.url;
+  if (app.source_kind === "computer" && draft.endpointId && draft.endpointId !== (app.endpoint_id || "")) {
+    patch.endpoint_id = draft.endpointId;
+  }
   return patch;
 }
 

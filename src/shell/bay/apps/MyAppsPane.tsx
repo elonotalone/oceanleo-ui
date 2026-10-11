@@ -199,6 +199,9 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
                       <button type="button" className={SECONDARY_BUTTON} onClick={() => openBay({ kind: "app-editor", appId: row.id })}>
                         {tt("编辑")}
                       </button>
+                      <button type="button" data-bay-action="manage" className={SECONDARY_BUTTON} onClick={() => openBay({ kind: "app-manage", appId: row.id })}>
+                        {tt("管理")}
+                      </button>
                       <button type="button" disabled={busyId === row.id} className={SECONDARY_BUTTON} onClick={() => void togglePublish(row)}>
                         {row.status === "published" ? tt("下架") : tt("上架")}
                       </button>

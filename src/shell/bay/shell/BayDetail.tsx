@@ -19,6 +19,10 @@ const LessonPane = lazy(() => import("../lessons/LessonPane").then((mod) => ({ d
 const BundlePane = lazy(() => import("../lessons/BundlePane").then((mod) => ({ default: mod.BundlePane })));
 const LessonEditorPane = lazy(() => import("../lessons/LessonEditorPane").then((mod) => ({ default: mod.LessonEditorPane })));
 const BundleEditorPane = lazy(() => import("../lessons/BundleEditorPane").then((mod) => ({ default: mod.BundleEditorPane })));
+const AppManagePane = lazy(() => import("../apps/AppManagePane").then((mod) => ({ default: mod.AppManagePane })));
+const AppThreadPane = lazy(() => import("../appfeedback/AppThreadPane").then((mod) => ({ default: mod.AppThreadPane })));
+const DashboardPane = lazy(() => import("../dashboard/DashboardPane").then((mod) => ({ default: mod.DashboardPane })));
+const AppLoginConsentPane = lazy(() => import("../applogin/AppLoginConsentPane").then((mod) => ({ default: mod.AppLoginConsentPane })));
 
 /** 作品的两个窗格是按需加载的；加载那一下给一块骨架，别让页面白一下。 */
 function LazyPaneLoading() {
@@ -51,6 +55,10 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
   bundle: "套餐详情",
   "lesson-editor": "发布课程",
   "bundle-editor": "发布套餐",
+  "app-manage": "管理作品",
+  "app-thread": "留言详情",
+  dashboard: "数据面板",
+  "app-login": "登录确认",
   settings: "设置",
 };
 
@@ -127,6 +135,30 @@ export function BayDetailPane(props: BayPaneProps): ReactNode {
       return (
         <Suspense fallback={<LazyPaneLoading />}>
           <BundleEditorPane {...props} />
+        </Suspense>
+      );
+    case "app-manage":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <AppManagePane {...props} />
+        </Suspense>
+      );
+    case "app-thread":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <AppThreadPane {...props} />
+        </Suspense>
+      );
+    case "dashboard":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <DashboardPane {...props} />
+        </Suspense>
+      );
+    case "app-login":
+      return (
+        <Suspense fallback={<LazyPaneLoading />}>
+          <AppLoginConsentPane {...props} />
         </Suspense>
       );
     case "settings":

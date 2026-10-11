@@ -4,7 +4,7 @@
 import { bayDelete, bayGet, bayPost } from "./http";
 import { bayQuery } from "./directory";
 
-export type BayReviewItemKind = "service" | "lesson" | "bundle";
+export type BayReviewItemKind = "service" | "lesson" | "bundle" | "app";
 /** all 全部 / good 好评（4–5 星）/ mid 中评（3 星）/ bad 差评（1–2 星）/ photos 有图 / followup 有追评。 */
 export type BayReviewFilter = "all" | "good" | "mid" | "bad" | "photos" | "followup";
 

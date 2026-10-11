@@ -1,13 +1,22 @@
 "use client";
 
-// 作品详情：简介、作者、页内嵌入窗口、在新窗口打开、举报。本文件归 U2 单元；组件名与 props 是合同，不许改。
-import { useEffect, useRef, type ReactElement } from "react";
+// 作品详情：简介、作者、收费条、页内嵌入窗口、在新窗口打开、更新日志、买家评价、留言与反馈、举报。
+// 收费条、关注、更新日志、留言、登录提示各是别的目录里的组件，按文件路径引用；本文件只负责把它们摆在一起。
+import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getBayApp, recordBayAppEvent, reportBayApp, type BayApp, type BayAppMine } from "../../../lib/bay/apps";
 import { openBay, type BayPaneProps } from "../shell/bay-state";
 import { Avatar, PaneLoading, PaneMessage, ReportBox, Section } from "../supply/parts";
 import { useBayResource } from "../supply/use-bay-resource";
+import { markBayAppOpened, type BayAppAccess } from "../../../lib/bay/app-paid";
+import { AppFeedback } from "../appfeedback/AppFeedback";
+import { currentBayAppSource } from "../appinsights/app-source";
+import { AppLoginHint } from "../applogin/AppLoginHint";
+import { AppPurchaseBar } from "../apppaid/AppPurchaseBar";
+import { AppReleases } from "../appreleases/AppReleases";
+import { FollowButton } from "../appreleases/FollowButton";
+import { ItemReviews } from "../reviews/ItemReviews";
 import { AppEmbedFrame } from "./AppEmbedFrame";
 import { embedDecision, safeAppUrl, type EmbedDecision } from "./app-embed";
 
@@ -21,7 +30,7 @@ export function AppPane(props: BayPaneProps): ReactElement | null {
     const text = resource.status === 404 || !resource.error ? tt("这个作品不存在或已下架") : tt(resource.error);
     return <PaneMessage text={text} onRetry={resource.reload} />;
   }
-  return <AppDetailView payload={resource.data} />;
+  return <AppDetailView payload={resource.data} siteKey={props.siteKey} />;
 }
 
 function isOwnerApp(app: BayApp | BayAppMine): app is BayAppMine {
@@ -35,12 +44,21 @@ function ownerBanner(app: BayApp | BayAppMine, owner: boolean): "hidden" | "offl
   return app.status === "offline" ? "offline" : "draft";
 }
 
-function AppDetailView({ payload }: { payload: { app: BayApp | BayAppMine; viewer: { is_owner: boolean } } }): ReactElement {
+/** 收费作品在没买、没订阅、也不在试用期时不放进窗口；权益还没读出来时同样先不放。免费作品和作者本人不受影响。 */
+export function appLocked(app: Pick<BayApp, "price_model">, owner: boolean, access: Pick<BayAppAccess, "entitled"> | null): boolean {
+  if (owner || app.price_model === "free") return false;
+  return !access || !access.entitled;
+}
+
+function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMine; viewer: { is_owner: boolean } }; siteKey: string }): ReactElement {
   const tt = useUI();
   const { app, viewer } = payload;
   const owner = viewer.is_owner;
   const viewedRef = useRef(false);
   const openedRef = useRef(false);
+  const [access, setAccess] = useState<BayAppAccess | null>(null);
+  const paid = app.price_model !== "free";
+  const locked = appLocked(app, owner, access);
   const parsed = safeAppUrl(app.url);
   const decision = embedDecision(app);
   const banner = ownerBanner(app, owner);
@@ -50,13 +68,15 @@ function AppDetailView({ payload }: { payload: { app: BayApp | BayAppMine; viewe
   useEffect(() => {
     if (owner || viewedRef.current) return;
     viewedRef.current = true;
-    void recordBayAppEvent(app.id, "view");
-  }, [app.id, owner]);
+    void recordBayAppEvent(app.id, "view", currentBayAppSource(app.id, siteKey));
+  }, [app.id, owner, siteKey]);
 
   function recordOpen() {
     if (owner || openedRef.current) return;
     openedRef.current = true;
-    void recordBayAppEvent(app.id, "open");
+    void recordBayAppEvent(app.id, "open", currentBayAppSource(app.id, siteKey));
+    // 买了或订阅了的人第一次真的用上作品：记下来，之后退款要说明理由（没用过的可以直接退）。
+    if (access?.entitled && (access.reason === "purchase" || access.reason === "subscription")) void markBayAppOpened(app.id);
   }
 
   function openExternal() {
@@ -91,6 +111,17 @@ function AppDetailView({ payload }: { payload: { app: BayApp | BayAppMine; viewe
                 {tt("编辑")}
               </button>
             ) : null}
+            {owner ? (
+              <button
+                type="button"
+                data-bay-action="manage"
+                onClick={() => openBay({ kind: "app-manage", appId: app.id })}
+                className="rounded-lg border border-neutral-200 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+              >
+                {tt("管理")}
+              </button>
+            ) : null}
+            <FollowButton appId={app.id} isOwner={owner} />
           </div>
           {app.summary ? <p className="mt-1.5 break-words text-[13px] text-neutral-600">{app.summary}</p> : null}
           {author ? (
@@ -120,7 +151,7 @@ function AppDetailView({ payload }: { payload: { app: BayApp | BayAppMine; viewe
             <span>{tt("{n} 次打开", { n: app.open_count || 0 })}</span>
           </p>
         </div>
-        {parsed ? (
+        {locked ? null : parsed ? (
           <button
             type="button"
             onClick={openExternal}
@@ -133,15 +164,44 @@ function AppDetailView({ payload }: { payload: { app: BayApp | BayAppMine; viewe
         )}
       </div>
 
+      {paid ? (
+        <div className="mt-4">
+          <AppPurchaseBar app={app} isOwner={owner} onAccess={setAccess} />
+        </div>
+      ) : null}
+
       <div className="mt-4">
-        <AppWindow decision={decision} title={app.title} host={app.url_host} onOpenExternal={openExternal} onReady={recordOpen} />
+        {locked ? (
+          <div
+            data-bay-app-locked
+            className="grid min-h-[20rem] place-items-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-10 text-center"
+          >
+            <p className="max-w-[24rem] text-[14px] font-medium text-neutral-800">
+              {app.trial_days > 0 ? tt("这个作品需要购买或开始试用后才能使用") : tt("这个作品需要购买后才能使用")}
+            </p>
+          </div>
+        ) : (
+          <AppWindow decision={decision} title={app.title} host={app.url_host} onOpenExternal={openExternal} onReady={recordOpen} />
+        )}
       </div>
+
+      {app.login_enabled ? <AppLoginHint app={app} /> : null}
 
       {app.description ? (
         <Section title={tt("详细介绍")}>
           <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{app.description}</p>
         </Section>
       ) : null}
+
+      <AppReleases appId={app.id} isOwner={owner} />
+
+      {paid ? (
+        <div className="mt-5" data-bay-app-reviews>
+          <ItemReviews itemKind="app" itemId={app.id} />
+        </div>
+      ) : null}
+
+      <AppFeedback appId={app.id} isOwner={owner} />
 
       {owner ? null : (
         <div className="mt-5">
