@@ -85,7 +85,7 @@ export function AppReleases({ appId, isOwner }: { appId: string; isOwner: boolea
             type="button"
             data-bay-action="write-release"
             onClick={() => openBay({ kind: "app-manage", appId, tab: "releases" })}
-            className="rounded-lg border border-neutral-200 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+            className="rounded-full border border-neutral-900 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
           >
             {tt("写更新")}
           </button>
@@ -102,7 +102,7 @@ export function AppReleases({ appId, isOwner }: { appId: string; isOwner: boolea
             const version = release.version.trim();
             const day = formatReleaseDay(release.created_at);
             return (
-              <li key={release.id} data-bay-app-release={release.id} className="rounded-xl border border-neutral-200 p-3">
+              <li key={release.id} data-bay-app-release={release.id} className="py-2">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   {version ? <span className="text-[12px] font-medium text-neutral-500">{version}</span> : null}
                   <span className="break-words text-[13px] font-semibold text-neutral-900">{release.title}</span>

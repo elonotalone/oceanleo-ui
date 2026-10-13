@@ -11,6 +11,7 @@ import {
   updateBayAppRelease,
   type BayAppRelease,
 } from "../../../lib/bay/app-releases";
+import { BayRevealForm } from "../form";
 import { errorText } from "../supply/use-bay-resource";
 import { applyFollowFromReleasePage, useFollowSnapshot } from "./follow-store";
 import {
@@ -23,6 +24,8 @@ import {
   type ReleaseDraft,
 } from "./releases-model";
 
+const FIELD = "mt-1 w-full rounded-full border border-neutral-900 bg-white px-2 py-1.5 text-[13px]";
+
 function ReleaseFields({
   draft,
   onChange,
@@ -33,42 +36,61 @@ function ReleaseFields({
   disabled: boolean;
 }): ReactElement {
   const tt = useUI();
+  const version = draft.version.trim();
+  const title = draft.title.trim();
+  const body = draft.body.trim();
   return (
-    <div className="space-y-2">
-      <label className="block text-[12px] text-neutral-700">
-        {tt("版本号")}
-        <input
-          value={draft.version}
-          maxLength={40}
-          disabled={disabled}
-          onChange={(event) => onChange({ ...draft, version: event.target.value })}
-          placeholder={tt("例如 1.2.0")}
-          className="mt-1 w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
-        />
-        <span className="mt-0.5 block text-[11px] text-neutral-400">{tt("可选，最多 40 个字")}</span>
-      </label>
-      <label className="block text-[12px] text-neutral-700">
-        {tt("标题")}
-        <input
-          value={draft.title}
-          maxLength={120}
-          disabled={disabled}
-          onChange={(event) => onChange({ ...draft, title: event.target.value })}
-          className="mt-1 w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
-        />
-      </label>
-      <label className="block text-[12px] text-neutral-700">
-        {tt("内容")}
-        <textarea
-          value={draft.body}
-          maxLength={4000}
-          rows={5}
-          disabled={disabled}
-          onChange={(event) => onChange({ ...draft, body: event.target.value })}
-          className="mt-1 w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
-        />
-      </label>
-    </div>
+    <BayRevealForm
+      items={[
+        {
+          id: "version",
+          label: tt("版本号"),
+          done: Boolean(version),
+          optional: true,
+          summary: version || undefined,
+          children: (
+            <input
+              value={draft.version}
+              maxLength={40}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...draft, version: event.target.value })}
+              className={FIELD}
+            />
+          ),
+        },
+        {
+          id: "title",
+          label: tt("标题"),
+          done: title.length >= 2,
+          summary: title || undefined,
+          children: (
+            <input
+              value={draft.title}
+              maxLength={120}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...draft, title: event.target.value })}
+              className={FIELD}
+            />
+          ),
+        },
+        {
+          id: "body",
+          label: tt("内容"),
+          done: body.length >= 1,
+          summary: body || undefined,
+          children: (
+            <textarea
+              value={draft.body}
+              maxLength={4000}
+              rows={5}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...draft, body: event.target.value })}
+              className={FIELD}
+            />
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -209,7 +231,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
       </p>
       <form
         data-bay-release-form
-        className="space-y-3 rounded-xl border border-neutral-200 p-3"
+        className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
           void publish();
@@ -233,7 +255,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
           type="submit"
           data-bay-action="publish-release"
           disabled={publishing}
-          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+          className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
         >
           {publishing ? tt("正在发布…") : tt("发布")}
         </button>
@@ -251,7 +273,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
           const version = release.version.trim();
           const day = formatReleaseDay(release.created_at);
           return (
-            <li key={release.id} data-bay-app-release={release.id} className="rounded-xl border border-neutral-200 p-3">
+            <li key={release.id} data-bay-app-release={release.id} className="py-2">
               {editing ? (
                 <div className="space-y-2">
                   <ReleaseFields draft={editDraft} onChange={setEditDraft} disabled={saving} />
@@ -262,7 +284,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                       data-bay-action="save-release"
                       disabled={saving}
                       onClick={() => void saveEdit()}
-                      className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+                      className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
                     >
                       {saving ? tt("正在保存…") : tt("保存")}
                     </button>
@@ -270,7 +292,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                       type="button"
                       disabled={saving}
                       onClick={() => setEditingId(null)}
-                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+                      className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
                     >
                       {tt("取消")}
                     </button>
@@ -281,7 +303,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     {version ? <span className="text-[12px] font-medium text-neutral-500">{version}</span> : null}
                     <span className="break-words text-[13px] font-semibold text-neutral-900">{release.title}</span>
-                    {day ? <span className="text-[12px] text-neutral-400">{day}</span> : null}
+                    {day ? <span className="text-[12px] text-neutral-600">{day}</span> : null}
                   </div>
                   {release.body ? (
                     <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{release.body}</p>
@@ -294,7 +316,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                       type="button"
                       data-bay-action="edit-release"
                       onClick={() => startEdit(release)}
-                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                      className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
                     >
                       {tt("编辑")}
                     </button>
@@ -305,13 +327,13 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                         setConfirmDeleteId(release.id);
                         setRowError("");
                       }}
-                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                      className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
                     >
                       {tt("删除")}
                     </button>
                   </div>
                   {confirmDeleteId === release.id ? (
-                    <div data-bay-confirm="delete-release" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                    <div data-bay-confirm="delete-release" className="mt-3 space-y-2">
                       <p className="text-[13px] text-neutral-800">{tt("确定删除这条更新？")}</p>
                       {rowError ? <p className="mt-1 text-[12px] text-rose-600">{tt(rowError)}</p> : null}
                       <div className="mt-2 flex flex-wrap justify-end gap-2">
@@ -319,7 +341,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                           type="button"
                           disabled={deletingId === release.id}
                           onClick={() => setConfirmDeleteId(null)}
-                          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+                          className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
                         >
                           {tt("取消")}
                         </button>
@@ -328,7 +350,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
                           data-bay-action="confirm-delete-release"
                           disabled={deletingId === release.id}
                           onClick={() => void remove(release.id)}
-                          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+                          className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
                         >
                           {deletingId === release.id ? tt("正在删除…") : tt("删除")}
                         </button>
@@ -347,7 +369,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
           data-bay-action="load-more-releases"
           disabled={loadingMore}
           onClick={() => void loadMore()}
-          className="w-full rounded-lg border border-neutral-200 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+          className="w-full rounded-full border-0 bg-neutral-200 py-2 text-[13px] text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
         >
           {loadingMore ? tt("正在加载…") : tt("查看全部")}
         </button>

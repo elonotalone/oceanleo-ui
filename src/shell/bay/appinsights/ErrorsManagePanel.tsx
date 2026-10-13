@@ -31,7 +31,7 @@ const FILTER_LABEL: Readonly<Record<BayAppErrorStatus, string>> = {
 };
 
 const BTN =
-  "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
+  "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
 
 function ErrorBars({ days }: { days: { day: string; events: number }[] }): ReactElement {
   const tt = useUI();
@@ -137,7 +137,7 @@ function ErrorCard({
   const [stackOpen, setStackOpen] = useState(false);
   const actions = errorStatusActions(item.status);
   return (
-    <article data-bay-error-card={item.id} data-bay-error-status={item.status} className="space-y-2 rounded-xl border border-neutral-200 bg-white p-3">
+    <article data-bay-error-card={item.id} data-bay-error-status={item.status} className="space-y-2 py-2">
       <code className="block line-clamp-3 break-all text-[12px] text-neutral-900">{item.message}</code>
       <p className="break-all text-[12px] text-neutral-500">{errorLocation(item.source, item.line, item.col)}</p>
       <p className="text-[12px] text-neutral-600">{tt("出现 {count} 次", { count: item.events })}</p>
@@ -274,8 +274,8 @@ export function ErrorsManagePanel({ appId }: { appId: string }): ReactElement {
             onClick={() => setStatus(value)}
             className={
               value === status
-                ? "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white"
-                : "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
+                ? "rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white"
+                : "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
             }
           >
             {tt(FILTER_LABEL[value])}

@@ -40,8 +40,8 @@ export const BAY_OWN_HANDLE = "me";
 export const BAY_OFFICIAL_HANDLE = "oceanleo";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const ACTION_PRIMARY = `rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
-const ACTION_SECONDARY = `rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
+const ACTION_PRIMARY = `rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
+const ACTION_SECONDARY = `rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
 
 interface OwnPage extends BayProfilePage {
   own: true;

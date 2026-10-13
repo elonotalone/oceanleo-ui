@@ -1,4 +1,4 @@
-// U1：作品栏导航——四栏顺序、深链、页头发布与「我发布的」作品段。
+// U1：作品栏导航——URL 五值合同、深链、页头发布与「我发布的」作品段。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,9 +12,13 @@ function src(rel) {
   return readFileSync(join(REPO, "src", rel), "utf8");
 }
 
-test("BAY_FEED_KINDS 是五个且顺序是 service / asset / app / lesson / request", () => {
+test("BAY_FEED_KINDS 常量仍是五值（URL 合同），逛页不要求五个 tab 按钮", () => {
   assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "lesson", "request"]);
   assert.equal(links.DEFAULT_BAY_FEED_KIND, "service");
+  const list = src("shell/bay/shell/BayList.tsx");
+  assert.match(list, /data-bay-browse-intent="sell"/);
+  assert.match(list, /data-bay-browse-intent="buy"/);
+  assert.doesNotMatch(list, /BAY_FEED_KINDS\.map\(/);
 });
 
 test("normalizeBayFeedKind 认 app，老值仍落到原来的栏", () => {
@@ -65,11 +69,14 @@ test("sameBayTarget 对作品详情与上架 / 编辑两种目标", () => {
   assert.equal(links.sameBayTarget({ kind: "app", id: "a1" }, { kind: "app-editor", appId: "a1" }), false);
 });
 
-test("LeoBayPage 作品栏渲染 BayAppShelf，页头发布走 startPublishApp", () => {
+test("LeoBayPage 作品栏渲染 BayAppShelf，页头发布走 startPublish", () => {
   const page = src("shell/bay/shell/LeoBayPage.tsx");
+  const list = src("shell/bay/shell/BayList.tsx");
   assert.match(page, /BayAppShelf/);
-  assert.match(page, /startPublishApp/);
-  assert.match(page, /canonicalBayFeedKind\(filter\.kind\) === "app" \? startPublishApp\(\)/);
+  assert.match(page, /startPublish\(filter\.category, filter\.kind\)/);
+  assert.match(list, /feed === "app"/);
+  assert.match(list, /rememberPublishListing\("app"\)/);
+  assert.match(list, /kind: "publish"/);
 });
 
 test("MyPublishedPane 有作品段并渲染 MyAppsPane", () => {

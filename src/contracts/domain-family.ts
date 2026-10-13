@@ -124,7 +124,8 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
       "aihuman",
       // aitools 不在境内：整站内容在 Supabase 里，境内库没有那批数据，
       // 上线也只是个空目录；且它是一份指向境外 AI 服务的导航，内容合规待定。
-      "asset",
+      // asset 站 2026-10 下线：不在清单里 = 不给链接、不进内嵌白名单。
+      // 旧地址只靠 assetOrigin 认出并改写成 /bay?kind=asset。
       "bizdev",
       "chat",
       "converter",

@@ -119,10 +119,7 @@ export function OrderDisputeSection({
             key={item.key}
             data-dispute-layer={item.key}
             data-current={layer === item.key ? "true" : "false"}
-            className={
-              "rounded-xl border px-3 py-2 " +
-              (layer === item.key ? "border-stone-300 bg-stone-50" : "border-neutral-200 bg-white")
-            }
+            className="py-2"
           >
             <p className="text-[12.5px] font-semibold text-neutral-900">{item.title}</p>
             <p className="mt-0.5 text-[12px] text-neutral-600">{item.what}</p>
@@ -136,7 +133,7 @@ export function OrderDisputeSection({
       {!loading && !dispute && canOpen ? (
         <form
           data-bay-dispute-form
-          className="space-y-2 rounded-xl border border-neutral-200 p-3"
+          className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
             const problem = disputeInputProblem(tt, { contract_id: order.id, detail: story });
@@ -181,7 +178,7 @@ export function OrderDisputeSection({
       ) : null}
 
       {dispute ? (
-        <div data-bay-dispute={dispute.id} data-dispute-state={dispute.state} className="space-y-2 rounded-xl border border-neutral-200 p-3">
+        <div data-bay-dispute={dispute.id} data-dispute-state={dispute.state} className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[13px] font-semibold">{disputeStateLabel(tt, dispute.state)}</p>
             <span className="text-[11.5px] text-neutral-500">{disputeReasonLabel(tt, dispute.reason)}</span>
@@ -221,7 +218,7 @@ export function OrderDisputeSection({
           )}
 
           {split ? (
-            <div data-bay-elapsed-split className="rounded-lg border border-neutral-200 px-3 py-2 text-[12px] text-neutral-600">
+            <div data-bay-elapsed-split className="rounded-full border border-neutral-900 px-3 py-2 text-[12px] text-neutral-600">
               {split.steps.map((step) => (
                 <p key={step}>{step}</p>
               ))}

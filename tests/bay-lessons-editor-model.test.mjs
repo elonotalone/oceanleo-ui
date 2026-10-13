@@ -5,9 +5,11 @@ import {
   bundleProblems,
   bundleTotals,
   draftFromLesson,
+  emptyLessonDraft,
   lessonDraftProblems,
   lessonPatch,
   lessonStatusLabel,
+  lessonTermsWrite,
   moveChapter,
   parseLessonPriceFen,
   refundHoursLeft,
@@ -73,9 +75,35 @@ function purchase(extra = {}) {
 test("draftFromLesson 把空封面、空类目收成空串，价格走 toInput", () => {
   const draft = draftFromLesson(lesson({ cover_url: null, category: null, price_fen: 0 }), toInput);
   assert.equal(draft.coverUrl, "");
+  assert.deepEqual(draft.galleryUrls, []);
   assert.equal(draft.category, "");
   assert.equal(draft.price, "");
   assert.equal(draftFromLesson(lesson({ price_fen: 250 }), toInput).price, "2.5");
+  const emptyTerms = draftFromLesson(lesson({ cover_url: null, category: null, price_fen: 0 }), toInput);
+  assert.equal(emptyTerms.customTerms, "");
+  assert.equal(emptyTerms.audience.mode, "public");
+  assert.equal(emptyTerms.deadlineAt, "");
+  const many = Array.from({ length: 9 }, (_, i) => `https://cdn.example/${i}.png`);
+  const withGallery = draftFromLesson(lesson({ gallery_urls: many, cover_url: many[0] }), toInput);
+  assert.deepEqual(withGallery.galleryUrls, many);
+  assert.equal(withGallery.coverUrl, many[0]);
+});
+
+test("draftFromLesson 读回自定义条款、找谁、截止日期", () => {
+  const draft = draftFromLesson(
+    lesson({
+      custom_terms: "含改稿",
+      audience_mode: "invited",
+      audience_handle: "alice",
+      audience_member_ids: [],
+      deadline_at: "2026-12-01T23:59:59.000Z",
+    }),
+    toInput,
+  );
+  assert.equal(draft.customTerms, "含改稿");
+  assert.equal(draft.audience.mode, "invited");
+  assert.equal(draft.audience.handle, "alice");
+  assert.equal(draft.deadlineAt, "2026-12-01");
 });
 
 test("lessonPatch 只带改过的字段；空封面转 null；价格留空当 0", () => {
@@ -86,16 +114,40 @@ test("lessonPatch 只带改过的字段；空封面转 null；价格留空当 0"
   assert.deepEqual(lessonPatch({ ...draft, summary: "Next" }, row, toFen), { summary: "Next" });
   assert.deepEqual(lessonPatch({ ...draft, description: "More" }, row, toFen), { description: "More" });
   assert.deepEqual(lessonPatch({ ...draft, category: "design" }, row, toFen), { category: "design" });
-  assert.deepEqual(lessonPatch({ ...draft, coverUrl: "" }, row, toFen), { cover_url: null });
+  assert.deepEqual(lessonPatch({ ...draft, coverUrl: "", galleryUrls: [] }, row, toFen), { cover_url: null, gallery_urls: [] });
   assert.deepEqual(lessonPatch({ ...draft, price: "" }, row, toFen), { price_fen: 0 });
   assert.deepEqual(lessonPatch({ ...draft, price: "20" }, row, toFen), { price_fen: 2000 });
+  assert.deepEqual(lessonPatch({ ...draft, customTerms: "含改稿" }, row, toFen), { custom_terms: "含改稿" });
+  assert.deepEqual(lessonPatch({ ...draft, audience: { mode: "invited", handle: "alice", members: [] } }, row, toFen), {
+    audience_mode: "invited",
+    audience_handle: "alice",
+  });
+  assert.deepEqual(
+    lessonPatch({ ...draft, audience: { mode: "group", handle: "", members: [{ userId: "u2", name: "Bob" }] } }, row, toFen),
+    { audience_mode: "group", audience_member_ids: ["u2"] },
+  );
+  const withDeadline = lessonPatch({ ...draft, deadlineAt: "2026-12-01" }, row, toFen);
+  assert.equal(withDeadline.deadline_at, new Date("2026-12-01T23:59:59").toISOString());
+});
+
+test("lessonTermsWrite 新建带全套条款字段；截止日期可空", () => {
+  const draft = { ...emptyLessonDraft(), customTerms: "含改稿", audience: { mode: "group", handle: "", members: [{ userId: "u2", name: "Bob" }] } };
+  assert.deepEqual(lessonTermsWrite(draft), {
+    custom_terms: "含改稿",
+    audience_mode: "group",
+    audience_handle: null,
+    audience_member_ids: ["u2"],
+    deadline_at: null,
+  });
+  assert.equal(lessonTermsWrite({ ...draft, deadlineAt: "2026-12-01" }).deadline_at, new Date("2026-12-01T23:59:59").toISOString());
 });
 
 test("lessonDraftProblems 每一条", () => {
   const ok = { title: "T", summary: "s", description: "", coverUrl: "https://x", category: "website", price: "9" };
-  assert.deepEqual(lessonDraftProblems({ ...ok, title: "" }, toFen), ["请填写名称"]);
-  assert.ok(lessonDraftProblems({ ...ok, title: "x".repeat(81) }, toFen).includes("名称不能超过 80 个字"));
-  assert.ok(lessonDraftProblems({ ...ok, summary: "" }, toFen).includes("请写一句话简介"));
+  assert.deepEqual(lessonDraftProblems({ ...ok, title: "" }, toFen), ["请填写标题"]);
+  assert.ok(lessonDraftProblems({ ...ok, title: "x".repeat(81) }, toFen).includes("标题不能超过 80 个字"));
+  assert.equal(lessonDraftProblems({ ...ok, summary: "" }, toFen).includes("请写一句话简介"), false);
+  assert.ok(lessonDraftProblems({ ...ok, coverUrl: "" }, toFen).includes("至少一张预览图"));
   assert.ok(lessonDraftProblems({ ...ok, summary: "s".repeat(201) }, toFen).includes("一句话简介不能超过 200 个字"));
   assert.ok(lessonDraftProblems({ ...ok, description: "d".repeat(4001) }, toFen).includes("详细介绍不能超过 4000 个字"));
   assert.ok(lessonDraftProblems({ ...ok, coverUrl: "http://x" }, toFen).includes("封面图需要是 https 开头的图片地址"));
@@ -104,6 +156,11 @@ test("lessonDraftProblems 每一条", () => {
   assert.ok(lessonDraftProblems({ ...ok, price: "-1" }, toFen).includes("价格不是合法金额"));
   assert.deepEqual(lessonDraftProblems({ ...ok, price: "" }, toFen), []);
   assert.deepEqual(lessonDraftProblems(ok, toFen), []);
+  assert.ok(lessonDraftProblems({ ...ok, audience: { mode: "invited", handle: "", members: [] } }, toFen).includes("请选择要给谁看"));
+  assert.ok(lessonDraftProblems({ ...ok, audience: { mode: "group", handle: "", members: [] } }, toFen).includes("请选择要给谁看"));
+  assert.deepEqual(lessonDraftProblems({ ...ok, audience: { mode: "invited", handle: "alice", members: [] } }, toFen), []);
+  assert.deepEqual(lessonDraftProblems({ ...ok, audience: { mode: "group", handle: "", members: [{ userId: "u2", name: "Bob" }] } }, toFen), []);
+  assert.deepEqual(lessonDraftProblems({ ...ok, deadlineAt: "2026-12-01" }, toFen), []);
 });
 
 test("moveChapter 到头不动，中间交换，未知 id 原样", () => {
@@ -131,10 +188,11 @@ test("bundleTotals 合计、节省、超价", () => {
 });
 
 test("bundleProblems 每一条", () => {
-  const draft = { title: "T", summary: "s", coverUrl: "", price: "8" };
-  assert.ok(bundleProblems({ ...draft, title: "" }, ["a", "b"], { overpriced: false }).includes("请填写名称"));
-  assert.ok(bundleProblems({ ...draft, title: "x".repeat(81) }, ["a", "b"], { overpriced: false }).includes("名称不能超过 80 个字"));
-  assert.ok(bundleProblems({ ...draft, summary: "" }, ["a", "b"], { overpriced: false }).includes("请写一句话简介"));
+  const draft = { title: "T", summary: "s", coverUrl: "https://x", price: "8" };
+  assert.ok(bundleProblems({ ...draft, title: "" }, ["a", "b"], { overpriced: false }).includes("请填写标题"));
+  assert.ok(bundleProblems({ ...draft, title: "x".repeat(81) }, ["a", "b"], { overpriced: false }).includes("标题不能超过 80 个字"));
+  assert.equal(bundleProblems({ ...draft, summary: "" }, ["a", "b"], { overpriced: false }).includes("请写一句话简介"), false);
+  assert.ok(bundleProblems({ ...draft, coverUrl: "" }, ["a", "b"], { overpriced: false }).includes("至少一张预览图"));
   assert.ok(bundleProblems({ ...draft, summary: "s".repeat(201) }, ["a", "b"], { overpriced: false }).includes("一句话简介不能超过 200 个字"));
   assert.ok(bundleProblems(draft, ["a"], { overpriced: false }).includes("至少要勾选两门课"));
   assert.ok(bundleProblems(draft, Array.from({ length: 21 }, (_, i) => String(i)), { overpriced: false }).includes("一套最多 20 门课"));

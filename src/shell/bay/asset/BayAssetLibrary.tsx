@@ -777,7 +777,7 @@ export function BayAssetLibrary({
                   mineRef.current += 1;
                   setReloadTick((value) => value + 1);
                 }}
-                className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+                className="mt-3 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
               >
                 {tt("重试")}
               </button>
@@ -789,9 +789,7 @@ export function BayAssetLibrary({
               ))}
             </div>
           ) : mineGrid.items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-stone-300 px-6 py-16 text-center" data-bay-asset-empty>
-              <p className="text-[13px] text-stone-500">{tt("你还没有这一类的成品。")}</p>
-            </div>
+            <div data-bay-asset-empty />
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" data-bay-asset-grid>
@@ -807,7 +805,7 @@ export function BayAssetLibrary({
                   <button
                     type="button"
                     onClick={loadMoreMine}
-                    className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+                    className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
                   >
                     {tt("加载更多")}
                   </button>
@@ -822,7 +820,7 @@ export function BayAssetLibrary({
           <button
             type="button"
             onClick={reloadIndex}
-            className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+            className="mt-3 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
           >
             {tt("重试")}
           </button>
@@ -888,7 +886,7 @@ export function BayAssetLibrary({
                   requestRef.current += 1;
                   setReloadTick((value) => value + 1);
                 }}
-                className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+                className="mt-3 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
               >
                 {tt("重试")}
               </button>
@@ -978,12 +976,7 @@ export function BayAssetLibrary({
                 </div>
               ) : items.length === 0 && !error ? (
                 docZone ? (
-                  <div className="rounded-2xl border border-dashed border-stone-300 bg-white px-6 py-16 text-center" data-bay-asset-empty>
-                    <p className="text-[15px] font-medium text-stone-800">{tt("整理中")}</p>
-                    <p className="mt-2 text-[13px] text-stone-500">
-                      {tt("这一区的页面已经做好了，素材还在入库。货到了会排在这里，不会变成空白页或报错页。")}
-                    </p>
-                  </div>
+                  <div data-bay-asset-empty />
                 ) : (
                   <ZoneEmptyState
                     typeName={typeName}
@@ -1014,7 +1007,7 @@ export function BayAssetLibrary({
                   <button
                     type="button"
                     onClick={loadMore}
-                    className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
+                    className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
                   >
                     {tt("加载更多")}
                   </button>
@@ -1065,17 +1058,17 @@ function DocumentZoneHeader({
         </div>
       ) : null}
       <dl className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">
-        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+        <div>
           <dt className="text-[11px] text-stone-400">{tt("素材数")}</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums text-stone-900">
             {loading || total == null ? "…" : total.toLocaleString("en-US")}
           </dd>
         </div>
-        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+        <div>
           <dt className="text-[11px] text-stone-400">{tt("许可来源")}</dt>
           <dd className="mt-1 font-medium text-stone-900">{tt(zone.licenseLabel)}</dd>
         </div>
-        <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+        <div>
           <dt className="text-[11px] text-stone-400">{tt("可下载格式")}</dt>
           <dd className="mt-1 font-medium text-stone-900">
             {formats.map((item) => item.toUpperCase()).join(" · ") || tt("未标注")}
@@ -1092,7 +1085,6 @@ function ZoneEmptyState({
   otherZone,
   otherTotal,
   liveUsable,
-  searching,
   onGoZone,
 }: {
   typeName: string;
@@ -1105,22 +1097,13 @@ function ZoneEmptyState({
 }) {
   const tt = useUI();
   return (
-    <div className="rounded-xl border border-dashed border-stone-300 px-6 py-16 text-center" data-bay-asset-empty>
-      <p className="text-[13px] text-stone-500">
-        {searching
-          ? tt("「{zone}」里没有匹配的「{type}」。", { zone: tt(ZONE_LABELS[zone]), type: typeName })
-          : zone === "owned"
-            ? tt("OceanLeo 还没有自己做过「{type}」。这一格不是没做，是这一类真的还没有自有件。", { type: typeName })
-            : tt("还没有把开源的「{type}」下载进 OceanLeo 库。这一格不是没做，是这一类还没有已入库的开源件。", {
-                type: typeName,
-              })}
-      </p>
-      <div className="mt-3 flex items-center justify-center gap-2 overflow-x-auto text-[13px]">
+    <div data-bay-asset-empty>
+      <div className="flex items-center justify-center gap-2 overflow-x-auto text-[13px]">
         {otherTotal > 0 ? (
           <button
             type="button"
             onClick={() => onGoZone(otherZone)}
-            className="shrink-0 rounded-lg border border-stone-300 px-4 py-2 text-stone-700 hover:bg-stone-50"
+            className="shrink-0 rounded-full border border-neutral-900 px-4 py-2 text-stone-700 hover:bg-stone-50"
           >
             {tt("去「{zone}」看 {n} 件", {
               zone: tt(ZONE_LABELS[otherZone]),
@@ -1132,7 +1115,7 @@ function ZoneEmptyState({
           <button
             type="button"
             onClick={() => onGoZone("live")}
-            className="shrink-0 rounded-lg border border-stone-300 px-4 py-2 text-stone-700 hover:bg-stone-50"
+            className="shrink-0 rounded-full border border-neutral-900 px-4 py-2 text-stone-700 hover:bg-stone-50"
           >
             {tt("去实时搜索全网开源「{type}」", { type: typeName })}
           </button>

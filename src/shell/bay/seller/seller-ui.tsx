@@ -6,25 +6,27 @@ import type { ReactNode } from "react";
 import { portalHref } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayContentCase } from "../../../lib/bay/seller";
+import {
+  BAY_FORM_DANGER_BUTTON_CLASS,
+  BAY_FORM_INPUT_CLASS,
+  BAY_FORM_PRIMARY_BUTTON_CLASS,
+  BAY_FORM_SECONDARY_BUTTON_CLASS,
+  BAY_FORM_TEXTAREA_CLASS,
+} from "../form/form-ui";
 
-export const INPUT_CLASS =
-  "h-10 w-full rounded-lg border border-stone-200 bg-white px-3 text-[13px] text-stone-900 outline-none focus:border-stone-400";
-export const TEXTAREA_CLASS =
-  "w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] leading-6 text-stone-900 outline-none focus:border-stone-400";
-export const PRIMARY_BUTTON =
-  "inline-flex h-9 items-center justify-center rounded-lg bg-stone-900 px-3 text-[13px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-40";
-export const SECONDARY_BUTTON =
-  "inline-flex h-9 items-center justify-center rounded-lg border border-stone-200 bg-white px-3 text-[13px] font-medium text-stone-700 disabled:cursor-not-allowed disabled:opacity-40";
-export const DANGER_BUTTON =
-  "inline-flex h-9 items-center justify-center rounded-lg border border-rose-200 bg-white px-3 text-[13px] font-medium text-rose-600 disabled:opacity-40";
+export const INPUT_CLASS = BAY_FORM_INPUT_CLASS;
+export const TEXTAREA_CLASS = BAY_FORM_TEXTAREA_CLASS;
+export const PRIMARY_BUTTON = BAY_FORM_PRIMARY_BUTTON_CLASS;
+export const SECONDARY_BUTTON = BAY_FORM_SECONDARY_BUTTON_CLASS;
+export const DANGER_BUTTON = BAY_FORM_DANGER_BUTTON_CLASS;
 export const LINK_BUTTON = "font-medium text-stone-900 underline underline-offset-2";
 
 export function SellerField({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[13px] font-medium text-stone-800">
+      <span className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[13px] font-medium text-stone-900">
         <span>{label}</span>
-        {hint ? <span className="text-[11.5px] font-normal text-stone-500">{hint}</span> : null}
+        {hint ? <span className="text-[12px] font-normal text-stone-600">{hint}</span> : null}
       </span>
       {children}
     </label>
@@ -33,7 +35,7 @@ export function SellerField({ label, hint, children }: { label: string; hint?: R
 
 export function SellerCard({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="space-y-4 rounded-xl border border-stone-200 bg-white p-4">
+    <section className="space-y-4">
       <div>
         <h3 className="text-[14px] font-semibold text-stone-900">{title}</h3>
         {hint ? <p className="mt-1 text-[12.5px] leading-5 text-stone-500">{hint}</p> : null}

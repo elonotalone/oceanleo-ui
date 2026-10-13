@@ -74,7 +74,7 @@ export function AppManagePane(props: BayPaneProps): ReactElement | null {
           type="button"
           data-bay-action="view-app"
           onClick={() => openBay({ kind: "app", id: app.id })}
-          className="shrink-0 rounded-lg border border-neutral-200 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+          className="shrink-0 rounded-full border border-neutral-900 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
         >
           {tt("查看作品页")}
         </button>

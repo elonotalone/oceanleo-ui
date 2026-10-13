@@ -155,7 +155,7 @@ export function DealComposer({
           aria-label={tt("发文件")}
           title={tt("发文件")}
           onClick={() => inputRef.current?.click()}
-          className="rounded-lg border border-neutral-200 px-2.5 py-2 text-[13px] font-medium text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+          className="rounded-full border border-neutral-900 px-2.5 py-2 text-[13px] font-medium text-stone-600 hover:bg-stone-50 disabled:opacity-40"
         >
           📎
         </button>
@@ -170,14 +170,14 @@ export function DealComposer({
           aria-label={tt("消息内容")}
           data-composer-input
           data-bay-deal-composer
-          className="max-h-32 min-h-[38px] min-w-0 flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[14px] text-neutral-900"
+          className="max-h-32 min-h-[38px] min-w-0 flex-1 resize-none rounded-full border border-neutral-900 bg-white px-3 py-2 text-[14px] text-neutral-900"
         />
         <button
           type="button"
           disabled={!canSend}
           data-action="send"
           onClick={() => void submit()}
-          className="rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-800 disabled:opacity-40"
+          className="rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-stone-800 disabled:opacity-40"
         >
           {tt("发送")}
         </button>
@@ -213,7 +213,7 @@ export function DealLockedBar({ onOpenProject }: DealLockedBarProps) {
         type="button"
         data-action="open-project"
         onClick={onOpenProject}
-        className="rounded-lg bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800"
+        className="rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800"
       >
         {tt("打开项目群")}
       </button>
@@ -237,7 +237,7 @@ export function DealBlockedBar({ busy = false, onUnblock }: DealBlockedBarProps)
         disabled={busy}
         data-action="unblock"
         onClick={onUnblock}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+        className="rounded-full border border-neutral-900 bg-white px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
       >
         {tt("解除拉黑")}
       </button>

@@ -4,13 +4,12 @@
 
 import { type BayPaneProps } from "../shell/bay-state";
 import { GetHelpForm } from "./GetHelpForm";
-import { PaneBody } from "./need-ui";
 
 export function PostNeedPane({ target, siteKey }: BayPaneProps) {
   if (target.kind !== "post-need") return null;
   return (
-    <PaneBody pane="post-need">
-      <GetHelpForm siteKey={siteKey} presetCategory={target.category} defaultMode="public" />
-    </PaneBody>
+    <section data-bay-pane="post-need">
+      <GetHelpForm siteKey={siteKey} presetCategory={target.category} defaultMode="public" showListingPicker />
+    </section>
   );
 }

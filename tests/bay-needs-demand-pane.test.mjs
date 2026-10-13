@@ -28,6 +28,8 @@ for (const [name, value] of Object.entries({
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
   Element: dom.window.Element,
   Node: dom.window.Node,
   Event: dom.window.Event,
@@ -68,6 +70,7 @@ const stateStub = dataModule(`
   globalThis.__bayOpened ??= [];
   globalThis.__bayLoginAsked ??= 0;
   export function openBay(target){ globalThis.__bayOpened.push(target); }
+  export function replaceBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
   export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function useBayTaskContext(){ return globalThis.__bayTask ?? null; }
@@ -87,7 +90,11 @@ const settingsStub = dataModule(`
   export function openBaySettings(pane){ globalThis.__baySettingsOpened ??= []; globalThis.__baySettingsOpened.push(pane); }
 `);
 const domainStub = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = "com";
+  export function currentDomainFamily(){ return "com"; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function familyForHost(){ return "com"; }
   export function currentFamilySubsiteOrigin(label){ return ["slide", "design", "3d"].includes(label) ? "https://" + label + ".oceanleo.test" : undefined; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }
 `);
@@ -494,7 +501,11 @@ test("发布者点「编辑需求」换成编辑表单，取消回到详情", as
   await view.click('[data-bay-action="edit"]');
   const editor = view.host.querySelector('[data-bay-demand-editor="edit"]');
   assert.ok(editor);
-  assert.equal(editor.querySelector("input").value, "做一份路演稿");
+  assert.ok(editor.querySelector('[data-bay-reveal-item="title"]'));
+  assert.ok(editor.querySelectorAll("[data-bay-reveal-open]").length >= 2);
+  assert.equal(editor.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(editor.querySelector("[data-bay-demand-title]").value, "做一份路演稿");
+  assert.ok(editor.querySelector("[data-bay-demand-description]"));
   const cancel = [...editor.querySelectorAll("button")].find((node) => /取消/.test(node.textContent));
   await act(async () => cancel.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
   await settle();

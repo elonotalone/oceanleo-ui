@@ -62,6 +62,8 @@ function reset(patch = {}) {
   pageState.signedIn = true;
   pageState.enabled = true;
   pageState.feed = { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} };
+  globalThis.__bay4Filters = [];
+  globalThis.__bay4OnFilter = null;
   Object.assign(pageState, patch);
 }
 
@@ -71,7 +73,11 @@ const stateStub = dataModule(`
   export function replaceBay(){}
   export function bayBack(){}
   export function requireBayLogin(){ return true; }
-  export function setBayFilter(){}
+  export function setBayFilter(filter){
+    (globalThis.__bay4Filters ||= []).push(filter);
+    const on = globalThis.__bay4OnFilter;
+    if (typeof on === "function") on(filter);
+  }
   export function setBaySiteKey(){}
   export function registerBayPage(){ return () => {}; }
   export function bayEnabledHere(){ return s().enabled; }
@@ -141,6 +147,7 @@ const stubs = {
 };
 
 const { LeoBayPage } = await import(await compileModule("src/shell/bay/shell/LeoBayPage.tsx", stubs));
+const { BayViewSwitch } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
 
 globalThis.__bay4FeedCalls = [];
 const { useBayFeed } = await import(
@@ -190,14 +197,76 @@ test("页头只有两个 data-bay-action：mine 和 publish；没有 data-bay-ki
   await view.unmount();
 });
 
-test("有 data-bay-view 五个 tab", async () => {
+test("逛页顶栏是卖/买两档，卖的种类在下拉里", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   assert.equal(tabs.getAttribute("role"), "tablist");
-  const views = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.getAttribute("data-view"));
-  assert.deepEqual(views, ["service", "asset", "app", "lesson", "request"]);
+  const intents = [...tabs.querySelectorAll("[data-bay-browse-intent]")].map((node) => node.getAttribute("data-bay-browse-intent"));
+  assert.deepEqual(intents, ["sell", "buy"]);
+  const intentTabs = [...tabs.querySelectorAll('[role="tab"]')];
+  assert.equal(intentTabs.length, 2);
+  assert.equal(intentTabs[0].getAttribute("data-bay-browse-intent"), "sell");
+  assert.equal(intentTabs[1].getAttribute("data-bay-browse-intent"), "buy");
+  const kind = tabs.querySelector("[data-bay-browse-kind]");
+  assert.ok(kind);
+  const views = [...kind.querySelectorAll("[data-view]")].map((node) => node.getAttribute("data-view"));
+  assert.deepEqual(views, ["service", "asset", "app", "lesson"]);
+  await view.unmount();
+});
+
+function SwitchProbe({ initialKind = "service" }) {
+  const [filter, setFilter] = React.useState({ kind: initialKind });
+  React.useLayoutEffect(() => {
+    globalThis.__bay4OnFilter = (next) => setFilter(next);
+    return () => {
+      globalThis.__bay4OnFilter = null;
+    };
+  }, []);
+  return React.createElement(BayViewSwitch, { filter, accent: "#0ea5e9" });
+}
+
+test("点买落到 request；点卖从 request 回到上次卖的种类，没有则 service", async () => {
+  reset();
+  const fresh = await mount(React.createElement(SwitchProbe, { initialKind: "request" }));
+  const sellFromEmpty = fresh.host.querySelector('[data-bay-browse-intent="sell"]');
+  await act(() => sellFromEmpty.click());
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "service");
+  await fresh.unmount();
+
+  reset();
+  const view = await mount(React.createElement(SwitchProbe, { initialKind: "asset" }));
+  const buy = view.host.querySelector('[data-bay-browse-intent="buy"]');
+  const sell = view.host.querySelector('[data-bay-browse-intent="sell"]');
+  await act(() => buy.click());
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "request");
+  assert.equal(view.host.querySelector("[data-bay-browse-kind]"), null);
+  await act(() => sell.click());
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "asset");
+  await view.unmount();
+});
+
+test("种类下拉仍能切到素材 / 作品 / 课程", async () => {
+  reset();
+  const view = await mount(React.createElement(SwitchProbe, { initialKind: "service" }));
+  const select = view.host.querySelector("[data-bay-browse-kind] select");
+  assert.ok(select);
+  select.value = "app";
+  await act(() => {
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "app");
+  select.value = "lesson";
+  await act(() => {
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "lesson");
+  select.value = "asset";
+  await act(() => {
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "asset");
   await view.unmount();
 });
 

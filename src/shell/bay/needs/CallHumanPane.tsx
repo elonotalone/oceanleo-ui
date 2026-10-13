@@ -4,13 +4,12 @@
 
 import { type BayPaneProps } from "../shell/bay-state";
 import { GetHelpForm } from "./GetHelpForm";
-import { PaneBody } from "./need-ui";
 
 export function CallHumanPane({ target, siteKey }: BayPaneProps) {
   if (target.kind !== "call-human") return null;
   return (
-    <PaneBody pane="call-human">
+    <section data-bay-pane="call-human">
       <GetHelpForm siteKey={siteKey} presetCategory={target.category} defaultMode="open" />
-    </PaneBody>
+    </section>
   );
 }

@@ -2,9 +2,10 @@
 
 // 服务详情（移植自 talent `app/services/[id]/page.tsx`，外壳不搬）。
 // 不登录也能看；下单、先聊聊、收藏、举报要登录（requireBayLogin）。卖家本人看到「编辑」，看不到下单与先聊聊。
-// 用户内容（标题、描述、常见问题、评价）一律纯文本；媒体只认 http(s)，不内嵌任何别站页面。
+// 用户内容（标题、描述、条款、评价）一律纯文本；媒体只认 http(s)，不内嵌任何别站页面。买家页不画授权罐头句和 FAQ。
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { LibraryItem } from "../../library-data";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
@@ -15,6 +16,7 @@ import {
   enabledTiers,
   formatBayMoney,
   getBayService,
+  getBayServiceWorkPreview,
   isOwnService,
   reportBayService,
   serviceSelection,
@@ -31,6 +33,9 @@ import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel, w
 import { ItemReviews } from "../reviews/ItemReviews";
 import { DigitalTerms, DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, Section, SellerCard } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
+import { cleanGalleryUrls } from "../form/bay-gallery";
+import { BayImageStage } from "../form/BayImageGallery";
+import { BayTypedPreview } from "../form/BayTypedPreview";
 
 export function ServicePane({ target, layout }: BayPaneProps) {
   const tt = useUI();
@@ -64,7 +69,7 @@ function MediaView({ media }: { media: BayServiceMedia }) {
 function TierCard({ tier, selected, currency, onSelect }: { tier: BayServiceTier; selected: boolean; currency?: string; onSelect: () => void }) {
   const tt = useUI();
   return (
-    <article data-bay-tier={tier.tier} data-selected={selected ? "true" : "false"} className={"rounded-xl border p-3 " + (selected ? "border-neutral-900" : "border-neutral-200")}>
+    <article data-bay-tier={tier.tier} data-selected={selected ? "true" : "false"} className={"py-2 " + (selected ? "font-medium" : "")}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] text-neutral-500">{tierLabel(tt, tier.tier)}</p>
@@ -111,6 +116,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
   const [tierName, setTierName] = useState<string>(defaultTier(service)?.tier || "");
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [activeMedia, setActiveMedia] = useState(0);
+  const [workPreview, setWorkPreview] = useState<LibraryItem | null>(null);
   const [talking, setTalking] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] } | null>(null);
@@ -129,6 +135,19 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     if (list.length || !cover) return list;
     return [{ id: "cover", kind: "image" as const, url: cover, poster_url: null, caption: service.title }];
   }, [service]);
+
+  useEffect(() => {
+    if (!digital) {
+      setWorkPreview(null);
+      return;
+    }
+    const controller = new AbortController();
+    void getBayServiceWorkPreview(service.id, { signal: controller.signal }).then((item) => {
+      if (controller.signal.aborted) return;
+      setWorkPreview(item);
+    });
+    return () => controller.abort();
+  }, [digital, service.id]);
 
   function order() {
     if (!requireBayLogin()) return;
@@ -175,7 +194,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       data-bay-action="claim"
       disabled={claiming}
       onClick={() => void claim()}
-      className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+      className="rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
     >
       {claiming ? tt("正在领取…") : tt("免费获取")}
     </button>
@@ -184,7 +203,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       type="button"
       data-bay-action="order"
       onClick={order}
-      className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
+      className="rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
     >
       {tt("购买")}
     </button>
@@ -194,14 +213,14 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       data-bay-action="order"
       disabled={!selection.tier}
       onClick={order}
-      className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+      className="rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
     >
       {selection.tier ? tt("立即下单") : tt("暂时无法下单")}
     </button>
   );
 
   const summary = (
-    <section data-bay-service-summary className="rounded-xl border border-neutral-200 p-3">
+    <section data-bay-service-summary className="space-y-1">
       {digital ? (
         <p data-bay-total className="text-[16px] font-semibold text-neutral-900">
           {moneyOrFree(tt, priceFen, currency)}
@@ -212,7 +231,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
           <p className="mt-0.5 text-[14px] font-semibold text-neutral-900">
             {selection.tier ? `${tierLabel(tt, selection.tier.tier)} · ${selection.tier.title}` : tt("暂时无法下单")}
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-neutral-50 p-2.5">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
               <p className="text-[11px] text-neutral-500">{tt("合计")}</p>
               <p data-bay-total className="mt-0.5 text-[16px] font-semibold text-neutral-900">
@@ -234,7 +253,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
               type="button"
               data-bay-action="edit"
               onClick={() => openBay({ kind: "service-editor", serviceId: service.id })}
-              className="rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
+              className="rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
             >
               {tt("编辑")}
             </button>
@@ -247,7 +266,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
               data-bay-action="talk"
               disabled={talking}
               onClick={() => void talk()}
-              className="rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+              className="rounded-full border border-neutral-900 px-3 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
             >
               {talking ? tt("正在打开…") : tt("先聊聊")}
             </button>
@@ -276,33 +295,29 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     </section>
   );
 
+  const imageUrls = cleanGalleryUrls(
+    media.filter((item) => item.kind === "image").map((item) => item.url),
+    service.cover_url,
+  );
+  const showTypedPreview = digital && Boolean(workPreview);
   const main = (
     <div className="min-w-0">
       <section>
-        {media.length ? (
+        {showTypedPreview && workPreview ? (
+          <BayTypedPreview
+            artifactId={workPreview.artifactId || workPreview.id}
+            workTitle={workPreview.title}
+            imageUrls={imageUrls}
+            item={workPreview}
+            emptyLabel={tt("卖家暂未上传作品图")}
+          />
+        ) : imageUrls.length ? (
+          <BayImageStage urls={imageUrls} active={activeMedia} onActive={setActiveMedia} emptyLabel={tt("卖家暂未上传作品图")} />
+        ) : media.length ? (
           <MediaView media={media[Math.min(activeMedia, media.length - 1)]} />
         ) : (
           <div className="grid aspect-video place-items-center rounded-xl bg-neutral-100 text-[13px] text-neutral-400">{tt("卖家暂未上传作品图")}</div>
         )}
-        {media.length > 1 ? (
-          <div className="mt-2 grid grid-cols-5 gap-1.5">
-            {media.map((item, index) => {
-              const thumb = item.kind === "image" ? safeHttpUrl(item.url) : null;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={activeMedia === index}
-                  aria-label={tt("第 {n} 项", { n: index + 1 })}
-                  onClick={() => setActiveMedia(index)}
-                  className={"overflow-hidden rounded-lg border " + (activeMedia === index ? "border-neutral-900" : "border-neutral-200")}
-                >
-                  {thumb ? <img src={thumb} alt="" className="aspect-video w-full object-cover" /> : <span className="grid aspect-video place-items-center bg-neutral-100 text-[10px] text-neutral-500">▶</span>}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
       </section>
 
       <section className="mt-4">
@@ -323,7 +338,13 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
         {service.description ? <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{service.description}</p> : null}
       </section>
 
-      {digital ? <DigitalTerms license={service.license} /> : <DoneMeans service={service} />}
+      <DigitalTerms
+        listingKind={digital ? "digital" : "service"}
+        deliveryDays={digital ? null : selection.deliveryDays ?? service.delivery_days}
+        deadlineAt={service.deadline_at}
+        customTerms={service.custom_terms}
+      />
+      {digital ? null : <DoneMeans service={service} />}
 
       {digital ? null : (
       <Section title={tt("选择档位")}>
@@ -345,7 +366,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
             {addons.map((addon) => {
               const checked = addonIds.includes(addon.id);
               return (
-                <label key={addon.id} data-bay-addon={addon.id} className={"flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 " + (checked ? "border-neutral-900" : "border-neutral-200")}>
+                <label key={addon.id} data-bay-addon={addon.id} className="flex cursor-pointer items-start gap-2.5 py-2">
                   <input
                     type="checkbox"
                     checked={checked}
@@ -368,19 +389,6 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       ) : null}
 
       {wide ? null : <div className="mt-5">{summary}</div>}
-
-      {(service.faq || []).length ? (
-        <Section title={tt("常见问题")}>
-          <div className="space-y-2">
-            {service.faq.map((item) => (
-              <details key={item.id} className="rounded-xl border border-neutral-200 px-3 py-2">
-                <summary className="cursor-pointer break-words text-[13px] font-medium text-neutral-800">{item.question}</summary>
-                <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] text-neutral-600">{item.answer}</p>
-              </details>
-            ))}
-          </div>
-        </Section>
-      ) : null}
 
       <Section title={tt("买家评价")}>
         <ItemReviews itemKind="service" itemId={service.id} />

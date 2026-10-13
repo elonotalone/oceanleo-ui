@@ -26,14 +26,14 @@ export function safeAppUrl(raw: string): URL | null {
 
 export type EmbedDecision =
   | { mode: "frame"; src: string }
-  | { mode: "link"; reason: "creator" | "blocked" | "first-party" | "invalid"; href: string | null };
+  | { mode: "link"; reason: "external" | "blocked" | "first-party" | "invalid"; href: string | null };
 
-export function embedDecision(app: Pick<BayApp, "url" | "embed_mode" | "embed_ok">): EmbedDecision {
+export function embedDecision(app: Pick<BayApp, "url" | "source_kind" | "embed_ok">): EmbedDecision {
   const parsed = safeAppUrl(app.url);
   if (!parsed) return { mode: "link", reason: "invalid", href: null };
   const href = parsed.href;
   if (isFirstPartyHost(parsed.hostname)) return { mode: "link", reason: "first-party", href };
-  if (app.embed_mode === "link") return { mode: "link", reason: "creator", href };
+  if (app.source_kind !== "hosted") return { mode: "link", reason: "external", href };
   if (app.embed_ok === false) return { mode: "link", reason: "blocked", href };
   return { mode: "frame", src: href };
 }

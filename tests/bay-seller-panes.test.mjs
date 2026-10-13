@@ -63,6 +63,7 @@ const settingsStub = dataModule(`
 const linksStub = dataModule(`
   export function baySiteName(key){ return key === "design" ? "LeoDesign" : key || null; }
   export function baySubsiteLabel(key){ return key || null; }
+  export function stripLeoCategoryPrefix(name){ return String(name || "").replace(/^Leo/, ""); }
 `);
 const authStub = dataModule(`
   export async function getUserId(){ return globalThis.__bayViewer || "me"; }
@@ -97,11 +98,21 @@ const agentStub = dataModule(`
 
 const toastStub = dataModule(`export function useToast(){ return { toast(){}, dismiss(){} }; }`);
 const confirmStub = dataModule(`export function ConfirmDialog(){ return null; }`);
+const databaseStub = dataModule(`
+  export async function uploadFile(file, opts) {
+    (globalThis.__bayCoverUploads ||= []).push({ file, opts });
+    return { ok: true, data: { file: { url: "https://cdn.example/avatar.png" } } };
+  }
+  export async function getStorageUsage() {
+    return { ok: true, data: { remaining_bytes: 20 * 1024 * 1024 * 1024, unavailable: false } };
+  }
+`);
 
 const sellerStubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/auth/client": authStub,
   "../../../lib/bay/http": httpStub,
+  "../../../lib/database": databaseStub,
   "../../../lib/agent": agentStub,
   "../agent": agentStub,
   "../shell/bay-state": stateStub,
@@ -227,11 +238,21 @@ function setInput(node, value) {
   node.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+async function fillReveal(view, id, value) {
+  const selector = `[data-bay-reveal-item="${id}"]`;
+  const row = view.host.querySelector(selector);
+  assert.ok(row, selector);
+  if (!row.hasAttribute("data-bay-reveal-open")) await view.click(selector);
+  const field = view.host.querySelector(`[data-bay-field="${id}"]`);
+  assert.ok(field, `field ${id}`);
+  setInput(field, value);
+}
+
 test("卖家资料：保存请求体没有 timezone；作品集加入用 pickLibraryWork 的返回", async () => {
   reset();
   const view = await mount(React.createElement(BaySellerProfileSection));
-  setInput(view.host.querySelector('[data-bay-field="handle"]'), "leo");
-  setInput(view.host.querySelector('[data-bay-field="display_name"]'), "Leo");
+  await fillReveal(view, "handle", "leo");
+  await fillReveal(view, "display_name", "Leo");
   await view.click("[data-bay-save-profile]");
   const put = globalThis.__baySellerCalls.find((row) => row.method === "PUT" && row.path === "/v1/talent/me");
   assert.ok(put);
@@ -246,13 +267,14 @@ test("卖家资料：保存请求体没有 timezone；作品集加入用 pickLib
 test("资质审核：提交与申诉请求形状；领域选项没有医疗、法律、宠物医疗", async () => {
   reset();
   const view = await mount(React.createElement(BayVettingSection));
+  await view.click('[data-bay-reveal-item="domain"]');
   const options = [...view.host.querySelectorAll('[data-bay-field="domain"] option')].map((node) => node.value);
   assert.ok(options.includes("tax"));
   assert.ok(!options.includes("medical"));
   assert.ok(!options.includes("legal"));
   assert.ok(!options.includes("vet"));
-  setInput(view.host.querySelector('[data-bay-field="credential_no"]'), "A-123");
-  setInput(view.host.querySelector('[data-bay-field="source"]'), "学信网");
+  await fillReveal(view, "credential_no", "A-123");
+  await fillReveal(view, "source", "学信网");
   await view.click("[data-bay-submit-vetting]");
   const submit = globalThis.__baySellerCalls.find((row) => row.path === "/v1/talent/vetting/submit");
   assert.equal(submit.body.domain, "tax");

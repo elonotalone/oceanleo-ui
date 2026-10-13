@@ -74,7 +74,7 @@ export function AppVerifyPanel({
   }
 
   return (
-    <section data-bay-app-verify className="space-y-3 rounded-xl border border-stone-200 bg-white p-4">
+    <section data-bay-app-verify className="space-y-3">
       <h3 className="text-[14px] font-semibold text-stone-900">{tt("证明这个网站是你的")}</h3>
       {loadError ? <SellerNotice tone="error">{loadError}</SellerNotice> : null}
       {proof ? (

@@ -8,15 +8,17 @@ import { htmlLang, normalizeLocale } from "../../../i18n/config";
 import { useUI } from "../../../i18n/ui/useUI";
 import { orderStatusLabel, type BayOrderStatus } from "../../../lib/bay/orders";
 import { requireBayLogin } from "../shell/bay-state";
+import {
+  BAY_FORM_DANGER_BUTTON_CLASS,
+  BAY_FORM_INPUT_CLASS,
+  BAY_FORM_PRIMARY_BUTTON_CLASS,
+  BAY_FORM_SECONDARY_BUTTON_CLASS,
+} from "../form/form-ui";
 
-export const ORDER_BUTTON =
-  "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50";
-export const ORDER_BUTTON_QUIET =
-  "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12.5px] text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50";
-export const ORDER_BUTTON_DANGER =
-  "rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12.5px] text-rose-700 hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50";
-export const ORDER_INPUT =
-  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-stone-400";
+export const ORDER_BUTTON = BAY_FORM_PRIMARY_BUTTON_CLASS;
+export const ORDER_BUTTON_QUIET = BAY_FORM_SECONDARY_BUTTON_CLASS;
+export const ORDER_BUTTON_DANGER = BAY_FORM_DANGER_BUTTON_CLASS;
+export const ORDER_INPUT = BAY_FORM_INPUT_CLASS;
 
 export function orderStatusTone(status: BayOrderStatus | string | undefined): string {
   switch (status) {

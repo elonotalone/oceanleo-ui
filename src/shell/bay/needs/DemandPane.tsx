@@ -204,7 +204,7 @@ function DemandSummary({ demand }: { demand: BayDemandDetail }) {
         </div>
       ) : null}
       <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-stone-700">
-        {demand.description || tt("发布者还没有补充详细说明。")}
+        {demand.description || tt("发布者还没有补充详细介绍。")}
       </p>
       {demand.supplemental_notes ? (
         <div className="rounded-xl bg-stone-50 px-3 py-2.5">
@@ -302,7 +302,7 @@ function VisitorSection({
   return (
     <section className="space-y-3 border-t border-stone-100 pt-4" data-bay-demand-visitor>
       {mine ? (
-        <div className="rounded-xl border border-stone-200 px-3 py-2.5" data-bay-my-proposal={mine.status}>
+        <div className="py-1" data-bay-my-proposal={mine.status}>
           <div className="flex items-center justify-between gap-2">
             <p className="text-[13px] font-medium text-stone-800">{tt("我的报价")}</p>
             <span className="text-[11px] text-stone-500">{proposalStatusText(tt, mine.status)}</span>
@@ -483,7 +483,7 @@ function OwnerSection({
           ) : null}
         </div>
         {inviteUrl ? (
-          <div className="space-y-1.5 rounded-xl border border-stone-200 px-3 py-2.5" data-bay-invite-url>
+          <div className="space-y-1.5" data-bay-invite-url>
             <p className="text-[12px] text-stone-600">{tt("把这个链接发给你认识的人，对方打开就能看到这条需求并报价。链接只能被领取一次。")}</p>
             <input readOnly value={inviteUrl} className={INPUT} onFocus={(event) => event.currentTarget.select()} aria-label={tt("邀请链接")} />
             <button type="button" className={BTN_QUIET} disabled={busy === "revoke"} onClick={() => void revokeInvite()}>
@@ -492,7 +492,7 @@ function OwnerSection({
           </div>
         ) : null}
         {closing ? (
-          <div className="space-y-2 rounded-xl border border-stone-200 px-3 py-2.5" data-bay-close-form>
+          <div className="space-y-2" data-bay-close-form>
             <p className="text-[12px] text-stone-600">{tt("写一句原因，报过价的人能知道这条需求为什么不再开放。")}</p>
             <textarea
               value={reason}
@@ -572,7 +572,7 @@ function ProposalRow({
 }) {
   const seller = proposal.seller;
   return (
-    <li className="rounded-xl border border-stone-200 px-3 py-2.5" data-bay-proposal={proposal.status}>
+    <li className="py-2" data-bay-proposal={proposal.status}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {seller?.handle ? (

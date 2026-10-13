@@ -100,7 +100,7 @@ export function DealOfferCard({
                   type="button"
                   data-offer-open-order
                   onClick={() => offer.contract_id && onOpenOrder(offer.contract_id)}
-                  className="rounded-lg border border-neutral-200 px-2.5 py-0.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                  className="rounded-full border border-neutral-900 px-2.5 py-0.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
                 >
                   {tt("查看订单")}
                 </button>
@@ -117,7 +117,7 @@ export function DealOfferCard({
               disabled={busy}
               data-offer-action="accept"
               onClick={() => onAct(offerId, "accept")}
-              className="rounded-lg bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800 disabled:opacity-50"
             >
               {tt("接受报价")}
             </button>
@@ -128,7 +128,7 @@ export function DealOfferCard({
               disabled={busy}
               data-offer-action="decline"
               onClick={() => onAct(offerId, "decline")}
-              className="rounded-lg border border-neutral-200 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              className="rounded-full border border-neutral-900 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
             >
               {tt("拒绝")}
             </button>
@@ -139,7 +139,7 @@ export function DealOfferCard({
               disabled={busy}
               data-offer-action="withdraw"
               onClick={() => onAct(offerId, "withdraw")}
-              className="rounded-lg border border-neutral-200 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              className="rounded-full border border-neutral-900 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
             >
               {tt("撤回报价")}
             </button>

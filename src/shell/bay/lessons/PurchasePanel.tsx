@@ -61,7 +61,7 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
   }
 
   return (
-    <section data-bay-purchase={stage} className="mt-5 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+    <section data-bay-purchase={stage} className="mt-5 space-y-1">
       <h3 className="text-[14px] font-semibold text-neutral-900">{tt("我的购买")}</h3>
       {stage === "held" ? (
         <p className="mt-1 text-[13px] text-neutral-700">
@@ -95,7 +95,7 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
               setError("");
               setAsk("confirm");
             }}
-            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+            className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
           >
             {tt("确认，没问题")}
           </button>
@@ -108,7 +108,7 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
               setError("");
               setAsk("refund");
             }}
-            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+            className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
           >
             {tt("申请退款")}
           </button>
@@ -121,7 +121,7 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
               setError("");
               setAsk("escalate");
             }}
-            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+            className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
           >
             {tt("请平台介入")}
           </button>
@@ -129,19 +129,19 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
       </div>
 
       {ask === "confirm" ? (
-        <div data-bay-confirm="confirm" className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+        <div data-bay-confirm="confirm" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("确认收货并把款项付给卖家？")}</p>
           <p className="mt-1 text-[12px] text-neutral-600">{tt("确认后款项付给卖家，不能再退")}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <button type="button" disabled={busy} onClick={() => setAsk(null)} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60">
+            <button type="button" disabled={busy} onClick={() => setAsk(null)} className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60">
               {tt("取消")}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void run(() => confirmBayLessonOrder(row.id))}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+              className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
             >
               {busy ? tt("正在处理…") : tt("确认")}
             </button>
@@ -150,7 +150,7 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
       ) : null}
 
       {ask === "refund" ? (
-        <div data-bay-confirm="refund" className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+        <div data-bay-confirm="refund" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("确认退款")}</p>
           {needsRefundReason(row) ? (
             <label className="mt-2 block text-[12px] text-neutral-700">
@@ -161,7 +161,7 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
                 maxLength={2000}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder={tt("请写下退款原因")}
-                className="mt-1 w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
+                className="mt-1 w-full rounded-full border border-neutral-900 px-2 py-1.5 text-[13px]"
               />
             </label>
           ) : (
@@ -169,10 +169,10 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
           )}
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <button type="button" disabled={busy} onClick={() => setAsk(null)} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60">
+            <button type="button" disabled={busy} onClick={() => setAsk(null)} className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60">
               {tt("取消")}
             </button>
-            <button type="button" disabled={busy} onClick={() => void submitRefund()} className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60">
+            <button type="button" disabled={busy} onClick={() => void submitRefund()} className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60">
               {busy ? tt("正在处理…") : tt("确认")}
             </button>
           </div>
@@ -180,19 +180,19 @@ export function PurchasePanel({ purchase, onReload }: { purchase: BayLessonPurch
       ) : null}
 
       {ask === "escalate" ? (
-        <div data-bay-confirm="escalate" className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+        <div data-bay-confirm="escalate" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("确认请平台介入")}</p>
           <p className="mt-1 text-[12px] text-neutral-600">{tt("卖家拒绝后，你可以请平台介入。由操作员裁定。")}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <button type="button" disabled={busy} onClick={() => setAsk(null)} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60">
+            <button type="button" disabled={busy} onClick={() => setAsk(null)} className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60">
               {tt("取消")}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => void run(() => escalateBayLessonRefund(row.id))}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+              className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
             >
               {busy ? tt("正在处理…") : tt("确认")}
             </button>

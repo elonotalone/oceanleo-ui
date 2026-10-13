@@ -33,7 +33,7 @@ export function ShareLinkButton({ appId }: { appId: string }): ReactElement {
         type="button"
         data-bay-share-copy
         onClick={() => void copy()}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
+        className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
       >
         {copied ? tt("已复制") : tt("复制")}
       </button>

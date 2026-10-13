@@ -2,6 +2,7 @@
 // 覆盖：价格/天数/说明；先过卖家条款再提交；没卖家资料去设置；未登录点提交走登录；
 // 不能给自己的需求报价；窗格不自带返回栏。
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -192,6 +193,10 @@ test("未登录点提交只弹登录", async () => {
   globalThis.__baySignedIn = false;
   const view = await mount(React.createElement(ProposePane, props));
   assert.match(view.host.textContent, /登录后才能报价/);
+  assert.doesNotMatch(view.host.textContent, /请填写报价金额|Please enter|填金额/);
+  assert.ok(view.host.querySelectorAll("[data-bay-reveal-open]").length >= 2);
+  assert.ok(view.host.querySelector("[data-bay-propose-price]"));
+  assert.ok(view.host.querySelector("[data-bay-propose-days]"));
   await view.type("[data-bay-propose-price]", "800");
   await view.click("[data-bay-submit]");
   assert.equal(globalThis.__bayLoginAsked, 1);
@@ -205,6 +210,12 @@ test("先过卖家条款再提交价格、天数、说明", async () => {
   const view = await mount(React.createElement(ProposePane, props));
   assert.equal(view.host.querySelector("header"), null);
   assert.match(view.host.textContent, /做一份路演稿/);
+  assert.match(view.host.textContent, /你的报价/);
+  assert.match(view.host.textContent, /交付天数/);
+  assert.match(view.host.textContent, /方案说明/);
+  assert.ok(view.host.querySelectorAll("[data-bay-reveal-open]").length >= 3);
+  assert.equal(view.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "price");
+  assert.ok(view.host.querySelector("[data-bay-propose-days]"));
   await view.type("[data-bay-propose-price]", "800");
   await view.type("[data-bay-propose-days]", "5");
   await view.type("[data-bay-propose-message]", "我做过三十多份路演稿");
@@ -230,4 +241,11 @@ test("后端说没有卖家资料 → 去设置里建", async () => {
   await view.click('[data-bay-action="profile"]');
   assert.deepEqual(globalThis.__baySettingsOpened, ["profile"]);
   await view.unmount();
+});
+
+test("报价页灰字不用 400，没有白板页脚", () => {
+  const src = readFileSync(new URL("../src/shell/bay/needs/ProposePane.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /text-neutral-400|text-stone-400/);
+  assert.doesNotMatch(src, /bg-white\/95/);
+  assert.doesNotMatch(src, /-mx-4/);
 });

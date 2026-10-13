@@ -2,7 +2,7 @@
 
 // LeoBay 个人主页：封面 + 身份 + 一叠「版块」。版面来自一份 JSON（`page_doc`），颜色与字体由主题决定。
 // 同一个组件既是别人看到的主页，也是本人编辑时的画布（`editing`）：编辑时文字原地可改，每个版块多出一条操作条。
-// 自动列出的三种版块（我的发布 / 作品集 / 评价）放在白底卡里，所以深色主题下也看得清。
+// 自动列出的三种版块（我的发布 / 作品集 / 评价）直接铺在页上。
 
 import type { CSSProperties, ReactNode } from "react";
 
@@ -18,6 +18,7 @@ import {
 } from "../../../lib/bay/page-doc";
 import type { BayService } from "../../../lib/bay/services";
 import type { BayFeedItem } from "../../../lib/bay/types";
+import { BayCoverDrop } from "../form";
 import { openBay } from "../shell/bay-state";
 import { ratingShort, responseTimeText, safeHttpUrl } from "../supply/format";
 import { Avatar, PracticeLine, ReputationGrid, ReviewList } from "../supply/parts";
@@ -112,9 +113,9 @@ function BlockTitle({ block, editing, onBlock, fallback }: { block: BayPageBlock
   );
 }
 
-/** 白底卡：里面放共用的服务卡、评价列表（它们只有浅色一套）。 */
+/** 浅色内容区：里面放共用的服务卡、评价列表（它们只有浅色一套）。 */
 function LightCard({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-stone-200 bg-white p-3 text-stone-900 sm:p-4">{children}</div>;
+  return <div className="text-stone-900">{children}</div>;
 }
 
 function EmptyLine({ text }: { text: string }) {
@@ -277,10 +278,14 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
             </div>
           ) : editing ? (
             <div className="mt-4">
-              <EmptyLine text={tt("还没有图片。在下面粘贴图片地址（https:// 开头）。")} />
+              <EmptyLine text={tt("还没有图片。拖一张图进来或从本地选择。")} />
             </div>
           ) : null}
-          {editing && images.length < 24 ? <ImageUrlAdder label={tt("图片地址")} onAdd={(url) => patch({ images: [...images, { url, caption: "" }] })} /> : null}
+          {editing && images.length < 24 ? (
+            <div className="mt-3">
+              <BayCoverDrop url="" onUrl={(url) => patch({ images: [...images, { url, caption: "" }] })} />
+            </div>
+          ) : null}
         </div>
       );
     }
@@ -638,7 +643,7 @@ export function ProfilePage(props: ProfilePageProps) {
             <div className="min-w-0">
               <p className="text-[15px] font-semibold tracking-tight">{tt("官方素材")}</p>
               <p className="mt-1 text-[13px]" style={{ color: "var(--bp-muted)" }}>
-                {tt("图片、模板、视频、音乐、3D……全部免费，拿去直接用。")}
+                {tt("图片、模板、视频、音乐、3D……由 OceanLeo 官方发布，拿去直接用。")}
               </p>
             </div>
             <AccentButton label={tt("逛官方素材")} onClick={onBrowseMaterials} />

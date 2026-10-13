@@ -80,8 +80,8 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
               onClick={() => setDays(value)}
               className={
                 value === days
-                  ? "rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] font-semibold text-white"
-                  : "rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-50"
+                  ? "rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-semibold text-white"
+                  : "rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-50"
               }
             >
               {value === 7 ? tt("7 天") : value === 30 ? tt("30 天") : value === 90 ? tt("90 天") : tt("一年")}

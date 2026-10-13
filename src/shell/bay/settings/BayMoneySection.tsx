@@ -172,7 +172,7 @@ export function BayMoneySection() {
         <button
           type="button"
           onClick={() => requireBayLogin()}
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-[13px] hover:bg-neutral-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
+          className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] hover:bg-neutral-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
         >
           {tt("登录")}
         </button>

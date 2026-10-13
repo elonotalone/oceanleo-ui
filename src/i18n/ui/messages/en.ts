@@ -69,6 +69,7 @@ const en: Record<string, string> = {
   "会议录音纪要": "Meeting recording minutes",
   "余额调整": "Balance adjustment",
   "作品": "Works",
+  "网站与软件服务": "Website & software service",
   "你加入的": "Joined by you",
   "你在全 OceanLeo 系列产出的作品、上传的素材与知识库（跨站共享）": "Works, assets and knowledge you've created across all of OceanLeo (shared site to site)",
   "你在全 OceanLeo 系列里产出的作品、上传的素材与知识库，统一汇集于此，跨站可用。": "Everything you've produced across OceanLeo—works, uploaded assets and knowledge—gathered here and usable site to site.",

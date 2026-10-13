@@ -28,8 +28,8 @@ import {
   subStatusLabelKey,
 } from "./paid-model";
 
-const PRIMARY = "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60";
-const SECONDARY = "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
+const PRIMARY = "rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60";
+const SECONDARY = "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
 
 function appTitle(apps: BayApp[], id: string, fallback: string): string {
   return apps.find((row) => row.id === id)?.title || fallback;
@@ -151,7 +151,7 @@ export function MyBoughtAppsPane(): ReactElement | null {
                     ) : null}
                   </div>
                   {ask?.kind === "cancel-sub" && ask.id === row.id ? (
-                    <div data-bay-confirm="cancel-sub" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                    <div data-bay-confirm="cancel-sub" className="mt-3 space-y-2">
                       <p className="text-[12px] text-neutral-600">{tt("不再续费，已付的这一期用到 {date}", { date: periodEnd })}</p>
                       <div className="mt-3 flex justify-end gap-2">
                         <button type="button" className={SECONDARY} onClick={() => setAsk(null)}>
@@ -270,7 +270,7 @@ function TrialRow({
         </div>
       ) : null}
       {asking === "buy" ? (
-        <div data-bay-confirm="buy" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="buy" className="mt-3 space-y-2">
           <p className="text-[12px] text-neutral-600">
             {tt("将支付 {price}。款项托管 7 天；7 天内没打开过作品可直接全额退，打开过的需写理由由作者处理。", {
               price: formatBayFen(app?.price_fen || 0, "CNY", locale),
@@ -287,7 +287,7 @@ function TrialRow({
         </div>
       ) : null}
       {asking === "subscribe" ? (
-        <div data-bay-confirm="subscribe" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="subscribe" className="mt-3 space-y-2">
           <p className="text-[12px] text-neutral-600">
             {tt("将按 {price} / 月订阅。每期托管 7 天；7 天内没打开过可直接全额退，打开过的需写理由由作者处理。", {
               price: formatBayFen(app?.price_fen || 0, "CNY", locale),

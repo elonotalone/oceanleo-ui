@@ -8,15 +8,23 @@ import { requireBayLogin, type BayTarget } from "../shell/bay-state";
 import { categoryName } from "./need-categories";
 import { siteLabel } from "./need-format";
 import { handlingHref, workPreviewHref } from "./need-links";
+import { BayMenuSelect } from "../form/BayMenuSelect";
+import {
+  BAY_FORM_BAR_CLASS,
+  BAY_FORM_INPUT_CLASS,
+  BAY_FORM_PRIMARY_BUTTON_CLASS,
+  BAY_FORM_SECONDARY_BUTTON_CLASS,
+  BAY_FORM_TEXTAREA_CLASS,
+} from "../form/form-ui";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
-export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-[13px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
-export const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
-export const BTN_QUIET = `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-stone-500 ${MOTION} hover:bg-stone-100 hover:text-stone-700 disabled:opacity-50`;
-export const INPUT = `w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-stone-700 outline-none ${MOTION} focus:border-stone-400`;
-export const CHIP = `rounded-lg border px-2.5 py-1 text-[12px] ${MOTION}`;
-export const ATTACHED_WORK_BOX = "rounded-xl border border-stone-200 bg-stone-50 px-3 py-2";
+export const BTN_PRIMARY = `${BAY_FORM_PRIMARY_BUTTON_CLASS} ${MOTION}`;
+export const BTN_SECONDARY = `${BAY_FORM_SECONDARY_BUTTON_CLASS} ${MOTION}`;
+export const BTN_QUIET = `inline-flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-medium text-stone-500 ${MOTION} hover:bg-neutral-100 hover:text-stone-700 disabled:opacity-50`;
+export const INPUT = BAY_FORM_INPUT_CLASS;
+export const TEXTAREA = BAY_FORM_TEXTAREA_CLASS;
+export const ATTACHED_WORK_BOX = "py-1";
 export const TEXT_LINK = "font-medium text-stone-900 underline underline-offset-2";
 
 /** 后端的中文 `detail.message` 原样过 tt()；没有就用兜底句。 */
@@ -45,7 +53,7 @@ export function PaneBody({ children, footer, pane }: { children: ReactNode; foot
     <section className="flex min-h-full flex-col" data-bay-pane={pane}>
       <div className="flex-1 space-y-4 px-4 py-4">{children}</div>
       {footer ? (
-        <footer className="sticky bottom-0 border-t border-stone-100 bg-white px-4 py-3 dark:border-white/10 dark:bg-neutral-900">
+        <footer className={`${BAY_FORM_BAR_CLASS} px-4`}>
           {footer}
         </footer>
       ) : null}
@@ -133,24 +141,17 @@ export function CategoryChooser({
     return <p className="text-[12px] text-amber-700">{tt("类目暂时读不出来，请稍后再试。")}</p>;
   }
   return (
-    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={tt("类目")}>
-      {categories.map((row) => {
-        const active = row.slug === value;
-        return (
-          <button
-            key={row.slug}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            data-bay-category={row.slug}
-            onClick={() => onChange(row.slug)}
-            className={`${CHIP} ${active ? "border-stone-800 bg-stone-800 text-white" : "border-stone-200 text-stone-600 hover:bg-stone-50"}`}
-          >
-            {categoryName(tt, row)}
-          </button>
-        );
-      })}
-    </div>
+    <BayMenuSelect
+      value={value}
+      emptyLabel={tt("请选择")}
+      onChange={onChange}
+      selectProps={{ "aria-label": tt("类目"), "data-bay-category-select": "" }}
+      options={categories.map((row) => ({
+        value: row.slug,
+        label: categoryName(tt, row),
+        attrs: { "data-bay-category": row.slug },
+      }))}
+    />
   );
 }
 

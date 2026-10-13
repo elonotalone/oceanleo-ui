@@ -32,7 +32,7 @@ test("AppShell 的滚动范围是一个说得清的枚举，默认导航键不�
   assert.match(appShell, /export type ShellSidebarScroll = "history" \| "whole"/);
   assert.match(
     appShell,
-    /WHOLE_SCROLL_SIDEBAR_SITES = new Set\(\["asset", "aitools"\]\)/,
+    /WHOLE_SCROLL_SIDEBAR_SITES = new Set\(\["aitools"\]\)/,
   );
   assert.match(appShell, /\? "whole"\s*:\s*"history"\)/);
   assert.match(appShell, /data-oceanleo-pinned-nav/);

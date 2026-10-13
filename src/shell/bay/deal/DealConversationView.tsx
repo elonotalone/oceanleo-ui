@@ -337,7 +337,7 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
           onClick={() => {
             if (requireBayLogin()) void reload(false);
           }}
-          className="rounded-lg bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800"
+          className="rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800"
         >
           {tt("登录")}
         </button>
@@ -352,7 +352,7 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
             type="button"
             data-action="retry"
             onClick={() => void reload(false)}
-            className="rounded-lg border border-neutral-200 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+            className="rounded-full border border-neutral-900 px-3 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
           >
             {tt("重试")}
           </button>

@@ -12,18 +12,40 @@ import {
   type BayLessonMine,
 } from "../../../lib/bay/lessons";
 import { BayApiError } from "../../../lib/bay/http";
-import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerField, SellerNotice, TEXTAREA_CLASS } from "../seller/seller-ui";
-import { DEFAULT_CURRENCY, yuanText } from "../seller/editor-model";
+import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerNotice, TEXTAREA_CLASS } from "../seller/seller-ui";
+import { yuanText } from "../seller/editor-model";
 import { useBayCategoryName } from "../shell/BayList";
 import { BaySignInPrompt } from "../shell/BayMine";
-import { openBay, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { BAY_ADVICE_ZONE } from "../shell/bay-links";
+import { openBay, useBayFilter, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { useBayCategories } from "../shell/use-bay-data";
+import {
+  BayCustomTerms,
+  BayDeadlineField,
+  BayImageGallery,
+  BayMenuSelect,
+  BayPublishKindPair,
+  BayPublishShell,
+  BayPublishSubcategoryLabel,
+  BayRevealForm,
+  BAY_CATEGORY_LABEL,
+  BAY_FORM_AMOUNT_INPUT_CLASS,
+  BAY_FORM_BAR_CLASS,
+  BAY_FORM_PAGE_CLASS,
+  howYouDeliverRow,
+  isPriceInputText,
+  listingAudienceItem,
+  listingSectionGroups,
+  type BayPostSnapshot,
+  type BayRevealItem,
+} from "../form";
 import { ChapterList } from "./ChapterList";
 import {
   draftFromLesson,
   emptyLessonDraft,
   lessonDraftProblems,
   lessonPatch,
+  lessonTermsWrite,
   parseLessonPriceFen,
   type LessonDraft,
 } from "./lesson-editor-model";
@@ -35,7 +57,7 @@ function errorText(error: unknown, fallback: string): string {
 export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
   const tt = useUI();
   const signedIn = useBaySignedIn();
-  const currency = DEFAULT_CURRENCY;
+  const filter = useBayFilter();
   const categoriesView = useBayCategories();
   const categoryName = useBayCategoryName();
   const routeId = props.target.kind === "lesson-editor" ? props.target.lessonId || "" : "";
@@ -45,6 +67,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
   const [load, setLoad] = useState({ loading: true, error: "" });
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState<"save" | "publish" | "create" | "">("");
+  const [showProblems, setShowProblems] = useState(false);
 
   const applyLesson = useCallback((row: BayLessonMine, nextChapters?: BayLessonChapter[]) => {
     setLesson(row);
@@ -56,6 +79,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
     if (!signedIn || props.target.kind !== "lesson-editor") return;
     let alive = true;
     setActionError("");
+    setShowProblems(false);
     if (!routeId) {
       setLesson(null);
       setChapters([]);
@@ -87,7 +111,8 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
   const narrow = props.layout === "docked" || props.layout === "mobile";
   const knownSlugs = new Set(categoriesView.categories.map((row) => row.slug));
   const localProblems = lessonDraftProblems(draft, parseLessonPriceFen);
-  const coverPreview = draft.coverUrl.startsWith("https://") ? draft.coverUrl : "";
+  const categoryRow = categoriesView.categories.find((row) => row.slug === draft.category);
+  const locked = Boolean(busy);
 
   function patch(next: Partial<LessonDraft>) {
     setDraft((current) => ({ ...current, ...next }));
@@ -100,9 +125,11 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
       summary: draft.summary,
       description: draft.description,
       cover_url: draft.coverUrl.trim() === "" ? null : draft.coverUrl,
+      gallery_urls: draft.galleryUrls,
       category: draft.category || null,
       posted_site: props.siteKey || null,
       price_fen: fen ?? 0,
+      ...lessonTermsWrite(draft),
     };
   }
 
@@ -117,6 +144,8 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
 
   async function createThenEdit() {
     if (busy) return;
+    setShowProblems(true);
+    if (lessonDraftProblems(draft, parseLessonPriceFen).length) return;
     setBusy("create");
     setActionError("");
     try {
@@ -131,6 +160,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
 
   async function saveDraft() {
     if (!lesson || busy) return;
+    setShowProblems(true);
     setBusy("save");
     setActionError("");
     try {
@@ -144,6 +174,8 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
 
   async function publish() {
     if (!lesson || busy) return;
+    setShowProblems(true);
+    if (localProblems.length) return;
     setBusy("publish");
     setActionError("");
     try {
@@ -174,86 +206,218 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
     );
   }
 
-  const infoBlock = (
-    <SellerCard title={tt("课程资料")}>
-      <SellerField label={tt("名称")} hint={`${draft.title.length}/80`}>
-        <input className={INPUT_CLASS} maxLength={80} value={draft.title} onChange={(event) => patch({ title: event.target.value })} />
-      </SellerField>
-      <SellerField label={tt("一句话简介")} hint={`${draft.summary.length}/200`}>
-        <input className={INPUT_CLASS} maxLength={200} value={draft.summary} onChange={(event) => patch({ summary: event.target.value })} />
-      </SellerField>
-      <SellerField label={tt("详细介绍")} hint={`${draft.description.length}/4000`}>
-        <textarea className={TEXTAREA_CLASS} rows={5} maxLength={4000} value={draft.description} onChange={(event) => patch({ description: event.target.value })} />
-      </SellerField>
-      <SellerField label={tt("封面图地址")}>
-        <div className="flex items-start gap-3">
-          <input className={INPUT_CLASS} value={draft.coverUrl} onChange={(event) => patch({ coverUrl: event.target.value })} />
-          {coverPreview ? <img src={coverPreview} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" /> : null}
-        </div>
-      </SellerField>
-      <SellerField label={tt("类目")}>
-        <select className={INPUT_CLASS} value={draft.category} onChange={(event) => patch({ category: event.target.value })}>
-          <option value="">{tt("请选择类目")}</option>
-          {draft.category && !knownSlugs.has(draft.category) ? <option value={draft.category}>{draft.category}</option> : null}
-          {categoriesView.categories.map((row) => (
-            <option key={row.slug} value={row.slug}>
-              {categoryName(row)}
-            </option>
-          ))}
-        </select>
-      </SellerField>
-    </SellerCard>
+  const creating = !routeId;
+  const subcategorySelect = (
+    <BayMenuSelect
+      value={draft.category}
+      emptyLabel={tt("请选择")}
+      onChange={(slug) => patch({ category: slug })}
+      disabled={locked}
+      options={[
+        ...(draft.category && !knownSlugs.has(draft.category) ? [{ value: draft.category, label: draft.category }] : []),
+        ...categoriesView.categories.map((row) => ({ value: row.slug, label: categoryName(row) })),
+      ]}
+    />
   );
 
-  const priceBlock = (
-    <SellerCard title={tt("定价")}>
-      <SellerField label={tt("价格")}>
-        <div className="flex items-center gap-2">
-          <input className={INPUT_CLASS} inputMode="decimal" value={draft.price} onChange={(event) => patch({ price: event.target.value })} />
-          <span className="shrink-0 text-[13px] text-stone-500">{currency}</span>
+  const productItems: BayRevealItem[] = [
+    {
+      id: "cover",
+      label: tt("作品图"),
+      done: draft.coverUrl.startsWith("https://") || draft.galleryUrls.length > 0,
+      summary: draft.galleryUrls.length || draft.coverUrl.startsWith("https://") ? tt("已填好") : undefined,
+      alwaysOpen: true,
+      children: (
+        <BayImageGallery
+          urls={draft.galleryUrls.length ? draft.galleryUrls : draft.coverUrl ? [draft.coverUrl] : []}
+          onUrls={(urls) => patch({ coverUrl: urls[0] || "", galleryUrls: urls })}
+          disabled={locked}
+        />
+      ),
+    },
+    {
+      id: "title",
+      label: tt("标题"),
+      done: Boolean(draft.title.trim()),
+      summary: draft.title.trim() || undefined,
+      children: (
+        <input
+          className={INPUT_CLASS}
+          maxLength={80}
+          value={draft.title}
+          disabled={locked}
+          onChange={(event) => patch({ title: event.target.value })}
+        />
+      ),
+    },
+    {
+      id: "description",
+      label: tt("详细介绍"),
+      done: Boolean(draft.description.trim()),
+      optional: true,
+      summary: draft.description.trim() ? draft.description.trim().slice(0, 80) : undefined,
+      children: (
+        <textarea
+          className={TEXTAREA_CLASS}
+          rows={8}
+          maxLength={4000}
+          value={draft.description}
+          disabled={locked}
+          onChange={(event) => patch({ description: event.target.value })}
+        />
+      ),
+    },
+    ...(creating
+      ? []
+      : [
+          {
+            id: "category",
+            label: tt(BAY_CATEGORY_LABEL),
+            done: Boolean(draft.category.trim()),
+            summary: categoryRow ? categoryName(categoryRow) : draft.category || undefined,
+            children: subcategorySelect,
+          } satisfies BayRevealItem,
+        ]),
+  ];
+  const priceItems: BayRevealItem[] = [
+    {
+      id: "price",
+      label: "",
+      done: !draft.price.trim() || parseLessonPriceFen(draft.price) !== null,
+      optional: true,
+      summary: draft.price.trim()
+        ? parseLessonPriceFen(draft.price) === 0
+          ? tt("免费")
+          : `${draft.price} USD`
+        : undefined,
+      children: (
+        <div className="flex items-center gap-2" data-bay-price-amount="">
+          <input
+            className={BAY_FORM_AMOUNT_INPUT_CLASS}
+            inputMode="decimal"
+            value={draft.price}
+            disabled={locked}
+            onChange={(event) => {
+              if (isPriceInputText(event.target.value)) patch({ price: event.target.value });
+            }}
+          />
+          <span className="shrink-0 text-[13px] text-neutral-600" data-bay-price-currency="">
+            USD
+          </span>
         </div>
-      </SellerField>
-      <p className="text-[12.5px] leading-5 text-stone-500">
-        {tt("买家付款时另加支付通道费，平台不抽成。款项先托管 7 天，买家确认或到期后到账")}
-      </p>
-    </SellerCard>
-  );
+      ),
+    },
+  ];
+  const termsItems: BayRevealItem[] = [
+    {
+      id: "deadline",
+      label: tt("截止日期"),
+      done: true,
+      optional: true,
+      summary: draft.deadlineAt || tt("交期可协商"),
+      children: (
+        <BayDeadlineField
+          value={draft.deadlineAt}
+          disabled={locked}
+          onChange={(deadlineAt) => patch({ deadlineAt })}
+        />
+      ),
+    },
+    {
+      id: "custom-terms",
+      label: tt("用户自定义"),
+      done: true,
+      optional: true,
+      summary: draft.customTerms.trim() ? tt("已填好") : undefined,
+      children: <BayCustomTerms value={draft.customTerms} disabled={locked} onChange={(customTerms) => patch({ customTerms })} />,
+    },
+  ];
+  const groups = listingSectionGroups({
+    tt,
+    intent: "sell",
+    productItems,
+    priceItems,
+    audienceItems: [listingAudienceItem(tt, draft.audience, (audience) => patch({ audience }), { disabled: locked })],
+    offerItems: [howYouDeliverRow(tt, "lesson", () => {}, { disabled: true })],
+    termsItems,
+  });
+
+  const snapshot: BayPostSnapshot = {
+    kind: "lesson",
+    title: draft.title,
+    summary: draft.summary,
+    description: draft.description,
+    coverUrl: draft.coverUrl,
+    coverUrls: draft.galleryUrls.length ? draft.galleryUrls : draft.coverUrl ? [draft.coverUrl] : [],
+    categoryLabel: categoryRow ? categoryName(categoryRow) : draft.category || undefined,
+    priceFen: parseLessonPriceFen(draft.price) ?? 0,
+    customTerms: draft.customTerms,
+    deadlineLabel: draft.deadlineAt || undefined,
+  };
 
   return (
-    <section data-bay-pane="lesson-editor" className={`space-y-4 p-4 sm:p-6 ${narrow ? "" : "mx-auto w-full max-w-3xl"}`}>
-      {infoBlock}
-      {priceBlock}
+    <BayPublishShell
+      kind="lesson"
+      snapshot={snapshot}
+      onApply={(next) =>
+        patch({
+          title: next.title || draft.title,
+          summary: next.summary || draft.summary,
+          description: next.description || draft.description,
+          coverUrl: next.coverUrls?.[0] || (next.coverUrl?.startsWith("https://") ? next.coverUrl : draft.coverUrl),
+          galleryUrls: next.coverUrls?.length ? next.coverUrls : draft.galleryUrls,
+          price: next.priceFen != null ? String(next.priceFen / 100) : draft.price,
+          customTerms: next.customTerms != null ? next.customTerms : draft.customTerms,
+          deadlineAt: next.deadlineLabel || draft.deadlineAt,
+        })
+      }
+    >
+    <section data-bay-pane="lesson-editor" className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
+      {creating ? (
+        <BayPublishKindPair
+          listing="lesson"
+          siteCategory={filter.category && filter.category !== BAY_ADVICE_ZONE ? filter.category : undefined}
+          subcategory={
+            <>
+              <BayPublishSubcategoryLabel />
+              {subcategorySelect}
+            </>
+          }
+        />
+      ) : null}
+      <BayRevealForm groups={groups} />
       {lesson ? (
         <SellerCard title={tt("章节")}>
           <ChapterList
             lessonId={lesson.id}
             chapters={chapters}
-            disabled={Boolean(busy)}
+            disabled={locked}
             onChapters={setChapters}
             onError={setActionError}
           />
         </SellerCard>
       ) : null}
-      {localProblems.length ? (
+      {showProblems && localProblems.length ? (
         <p className="text-[12.5px] text-stone-500">{localProblems.map((item) => tt(item)).join("、")}</p>
       ) : null}
       {actionError ? <SellerNotice tone="error">{actionError}</SellerNotice> : null}
-      <footer className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200/70 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      <footer className={`${BAY_FORM_BAR_CLASS} justify-end`}>
         {lesson ? (
           <>
-            <button type="button" disabled={Boolean(busy)} className={SECONDARY_BUTTON} onClick={() => void saveDraft()}>
+            <button type="button" disabled={locked} className={SECONDARY_BUTTON} onClick={() => void saveDraft()}>
               {busy === "save" ? tt("正在保存…") : tt("存草稿")}
             </button>
-            <button type="button" disabled={Boolean(busy)} className={PRIMARY_BUTTON} onClick={() => void publish()}>
+            <button type="button" disabled={locked} className={PRIMARY_BUTTON} onClick={() => void publish()}>
               {busy === "publish" ? tt("正在上架…") : tt("上架")}
             </button>
           </>
         ) : (
-          <button type="button" disabled={Boolean(busy)} className={PRIMARY_BUTTON} onClick={() => void createThenEdit()}>
-            {busy === "create" ? tt("正在保存…") : tt("下一步：添加章节")}
+          <button type="button" disabled={locked} className={PRIMARY_BUTTON} onClick={() => void createThenEdit()}>
+            {busy === "create" ? tt("正在保存…") : tt("保存")}
           </button>
         )}
       </footer>
     </section>
+    </BayPublishShell>
   );
 }

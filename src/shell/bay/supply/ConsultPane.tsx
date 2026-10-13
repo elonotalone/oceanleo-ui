@@ -139,13 +139,13 @@ export function ConsultDetailView({ consult, domain, domainsLoading = false, buy
       </header>
 
       <div data-zone="knowledge" className="mt-4 space-y-3">
-        <section className="rounded-xl border border-neutral-200 p-3">
+        <section className="space-y-1">
           <h3 className="text-[13px] font-semibold text-neutral-900">{tt("能问什么")}</h3>
           {consult.summary ? <p className="mt-1 whitespace-pre-wrap break-words text-[13px] text-neutral-700">{consult.summary}</p> : null}
           {consult.scope_note ? <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] text-neutral-600">{consult.scope_note}</p> : null}
         </section>
         {forbidden ? (
-          <section className="rounded-xl border border-neutral-200 p-3">
+          <section className="space-y-1">
             <h3 className="text-[13px] font-semibold text-neutral-900">{tt("不能问什么")}</h3>
             <p className="mt-1 whitespace-pre-wrap break-words text-[13px] text-neutral-700">{forbidden}</p>
           </section>
@@ -162,7 +162,7 @@ export function ConsultDetailView({ consult, domain, domainsLoading = false, buy
 
       <hr className="my-5 border-neutral-200" />
 
-      <section data-zone="conversion" className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+      <section data-zone="conversion" className="space-y-1">
         <h3 className="text-[14px] font-semibold text-neutral-900">{tt("预约这次答疑")}</h3>
         <p className="mt-1 text-[12px] text-neutral-500">{tt("对话本身就是交付物：按轮次或按时长验收，全过程有时间戳。")}</p>
         <p data-bay-pay-hint className="mt-1 text-[12px] text-neutral-500">
@@ -192,7 +192,7 @@ export function ConsultDetailView({ consult, domain, domainsLoading = false, buy
           data-bay-action="book"
           disabled={booking || Boolean(blocked) || waitingPrompts}
           onClick={() => void book()}
-          className="mt-3 w-full rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50 sm:w-auto"
+          className="mt-3 w-full rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50 sm:w-auto"
         >
           {blocked || (booking ? tt("正在建立答疑合同…") : tt("预约答疑"))}
         </button>

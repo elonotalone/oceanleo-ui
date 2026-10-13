@@ -27,6 +27,8 @@ import { BAY_DASHBOARD_MESSAGES } from "./bay-dashboard-copy";
 import { BAY_APP_INSIGHTS_MESSAGES } from "./bay-app-insights-copy";
 import { BAY_APP_RELEASES_MESSAGES } from "./bay-app-releases-copy";
 import { BAY_APP_ENDPOINT_MESSAGES } from "./bay-app-endpoint-copy";
+import { BAY_FORM_MESSAGES } from "./bay-form-copy";
+import { BAY_POSTING_MESSAGES } from "./bay-posting-copy";
 
 const PARTS = [
   BAY_SHELL_MESSAGES,
@@ -55,6 +57,8 @@ const PARTS = [
   BAY_APP_INSIGHTS_MESSAGES,
   BAY_APP_RELEASES_MESSAGES,
   BAY_APP_ENDPOINT_MESSAGES,
+  BAY_FORM_MESSAGES,
+  BAY_POSTING_MESSAGES,
 ];
 
 export const BAY_MESSAGES: Record<Locale, Record<string, string>> =

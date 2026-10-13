@@ -53,7 +53,7 @@ export interface BayFilterSelectProps {
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 const TRIGGER =
-  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 
 const PAD = 8;
 const MENU_MIN = 208;
@@ -268,7 +268,7 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
           }
         }}
         style={picked && accent ? { borderColor: accent, color: accent } : undefined}
-        className={`${TRIGGER} ${picked ? "border-stone-900 bg-white font-medium text-stone-900" : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:text-stone-900"}`}
+        className={`${TRIGGER} ${picked ? "border-neutral-900 bg-white font-medium text-neutral-900" : "border-neutral-900 bg-white text-neutral-700 hover:text-neutral-900"}`}
       >
         <span className={picked ? "opacity-70" : undefined}>{label}</span>
         {picked || allLabel ? <span className="max-w-[10rem] truncate">{picked ? current?.label : allLabel}</span> : null}
@@ -301,7 +301,7 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
                   aria-activedescendant={activeId}
                   onChange={(event) => setNeedle(event.target.value)}
                   onKeyDown={onMenuKeyDown}
-                  className="mb-1 w-full rounded-md border border-stone-200 px-2.5 py-1.5 text-[13px] outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300"
+                  className="mb-1 w-full rounded-full border-0 bg-neutral-200 px-4 py-2 text-[13px] outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-300"
                 />
               ) : null}
               <div className="min-h-0 flex-1 overflow-y-auto">

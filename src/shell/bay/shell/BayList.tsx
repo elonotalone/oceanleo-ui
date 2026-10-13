@@ -1,15 +1,16 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、服务/素材/作品/课程/需求分段切换、站点下拉（含专业咨询）、信息流本体。
+// LeoBay 页的信息流部件：搜索、卖/买两档（卖的一侧用种类下拉）、站点下拉（含专业咨询）、信息流本体。
 // LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
 import { DemandCard, HelpRequestCard } from "../needs";
 import { ConsultCard, ServiceCard } from "../supply";
-import { BayCategoryIcon, BayIcon } from "./bay-icons";
-import { BAY_ADVICE_ZONE, BAY_FEED_KINDS, canonicalBayFeedKind, stripLeoCategoryPrefix } from "./bay-links";
+import { rememberPublishListing } from "../form/publish-listing";
+import { BayCategoryIcon } from "./bay-icons";
+import { BAY_ADVICE_ZONE, BAY_FEED_KINDS, canonicalBayFeedKind, stripLeoCategoryPrefix, type BayFeedKind } from "./bay-links";
 import { BayFilterSelect, type BayFilterOption } from "./BayFilterSelect";
 import {
   openBay,
@@ -45,19 +46,28 @@ export function startPostNeed(category?: string): void {
   openBay(category ? { kind: "post-need", category } : { kind: "post-need" });
 }
 
-export function startPublish(category?: string): void {
+export function startPublish(category?: string, feedKind?: string): void {
   if (!requireBayLogin()) return;
+  const feed = canonicalBayFeedKind(feedKind);
+  if (feed === "request") {
+    openBay(category && category !== BAY_ADVICE_ZONE ? { kind: "post-need", category } : { kind: "post-need" });
+    return;
+  }
+  const listing = feed === "app" ? "app" : feed === "lesson" ? "lesson" : feed === "asset" ? "digital" : "service";
+  rememberPublishListing(listing);
   openBay(category && category !== BAY_ADVICE_ZONE ? { kind: "publish", category } : { kind: "publish" });
 }
 
 export function startPublishApp(): void {
   if (!requireBayLogin()) return;
-  openBay({ kind: "app-editor" });
+  rememberPublishListing("app");
+  openBay({ kind: "publish" });
 }
 
 export function startPublishLesson(): void {
   if (!requireBayLogin()) return;
-  openBay({ kind: "lesson-editor" });
+  rememberPublishListing("lesson");
+  openBay({ kind: "publish" });
 }
 
 export function startServiceEditor(): void {
@@ -125,52 +135,97 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 
 // ---- 种类 ---------------------------------------------------------------------
 
-const VIEW_LABEL: Record<(typeof BAY_FEED_KINDS)[number], string> = {
+type SellFeedKind = Exclude<BayFeedKind, "request">;
+
+const SELL_FEED_KINDS = BAY_FEED_KINDS.filter((kind): kind is SellFeedKind => kind !== "request");
+
+const SELL_KIND_LABEL: Record<SellFeedKind, string> = {
   service: "服务",
   asset: "素材",
   app: "作品",
   lesson: "课程",
-  request: "需求",
 };
 
+function isSellKind(kind: string): kind is SellFeedKind {
+  return kind !== "request" && (SELL_FEED_KINDS as readonly string[]).includes(kind);
+}
+
+const INTENT_TAB =
+  "whitespace-nowrap px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+
 /**
- * 服务 / 素材 / 作品 / 课程 / 需求五段切换，五个键连成一组。选中的那一个用站点主色填满（没给主色用黑色）。
+ * 顶栏两档：我想要卖 / 我想要买。卖的一侧底下「种类」下拉切服务、素材、作品、课程。
+ * 点买落到 request；点卖且当前是 request 时回到上次卖的种类，没有则 service。
+ * 选中的那一档用站点主色填满（没给主色用黑色）。
  */
 export function BayViewSwitch({ filter, accent }: { filter: BayFeedFilter; accent?: string }) {
   const tt = useUI();
   const value = canonicalBayFeedKind(filter.kind);
+  const lastSellRef = useRef<SellFeedKind>(isSellKind(value) ? value : "service");
+  if (isSellKind(value)) lastSellRef.current = value;
+  const selling = value !== "request";
+  const sellKind = isSellKind(value) ? value : lastSellRef.current;
+
+  const applyKind = (kind: BayFeedKind) => {
+    if (isSellKind(kind)) lastSellRef.current = kind;
+    setBayFilter({
+      ...filter,
+      kind,
+      category: kind !== "service" && filter.category === BAY_ADVICE_ZONE ? undefined : filter.category,
+    });
+  };
+
   return (
     <div
       role="tablist"
-      aria-label={tt("看服务、素材、作品、课程还是需求")}
+      aria-label={tt("看别人在卖还是在买")}
       data-bay-view
-      className="inline-flex shrink-0 items-center overflow-hidden rounded-lg bg-stone-100"
+      className="inline-flex shrink-0 items-center gap-2"
     >
-      {BAY_FEED_KINDS.map((kind) => {
-        const active = kind === value;
-        return (
-          <button
-            key={kind}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            data-view={kind}
-            onClick={() =>
-              setBayFilter({
-                ...filter,
-                kind,
-                category: kind !== "service" && filter.category === BAY_ADVICE_ZONE ? undefined : filter.category,
-              })
-            }
-            style={active ? { background: accent || "#111113" } : undefined}
-            className={`whitespace-nowrap px-3.5 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-              active ? "font-medium text-white" : "text-stone-600 hover:bg-stone-200 hover:text-stone-900"
-            }`}
+      <div className="inline-flex overflow-hidden rounded-lg bg-stone-100">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selling}
+          data-bay-browse-intent="sell"
+          onClick={() => applyKind(selling ? value : lastSellRef.current)}
+          style={selling ? { background: accent || "#111113" } : undefined}
+          className={`${INTENT_TAB} ${selling ? "font-medium text-white" : "text-stone-600 hover:bg-stone-200 hover:text-stone-900"}`}
+        >
+          {tt("我想要卖")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!selling}
+          data-bay-browse-intent="buy"
+          onClick={() => applyKind("request")}
+          style={!selling ? { background: accent || "#111113" } : undefined}
+          className={`${INTENT_TAB} ${!selling ? "font-medium text-white" : "text-stone-600 hover:bg-stone-200 hover:text-stone-900"}`}
+        >
+          {tt("我想要买")}
+        </button>
+      </div>
+      {selling ? (
+        <label data-bay-browse-kind className="inline-flex shrink-0 items-center gap-1.5 text-[13px] text-stone-600">
+          <span>{tt("种类")}</span>
+          <select
+            aria-label={tt("种类")}
+            value={sellKind}
+            onChange={(event) => {
+              const next = event.target.value;
+              if (isSellKind(next)) applyKind(next);
+            }}
+            className="cursor-pointer rounded-lg bg-stone-100 px-2 py-1.5 text-[13px] text-stone-700 outline-none"
           >
-            {tt(VIEW_LABEL[kind])}
-          </button>
-        );
-      })}
+            {SELL_FEED_KINDS.map((kind) => (
+              <option key={kind} value={kind} data-view={kind}>
+                {tt(SELL_KIND_LABEL[kind])}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
     </div>
   );
 }
@@ -248,7 +303,7 @@ function FeedCard({ item, variant }: { item: BayFeedItem; variant: BayFeedCardVa
 }
 
 const QUIET_BUTTON =
-  "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
+  "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
 
 function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
   const tt = useUI();
@@ -279,21 +334,15 @@ function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
   );
 }
 
-/**
- * 信息流本体。list：一行一条（浮窗）；grid：卡片网格（/bay 页）。
- * `emptyAction` 只在「Bay 里一条内容都没有」时出现在说明下面；由调用方决定放什么，
- * 所以同一个按键不会既在顶上又在空状态里各出现一次。
- */
+/** 信息流本体。list：一行一条（浮窗）；grid：卡片网格（/bay 页）。空列表不摆提示、不摆发布。 */
 export function BayFeed({
   filter,
   activeKey,
   variant = "list",
-  emptyAction,
 }: {
   filter: BayFeedFilter;
   activeKey: string | null;
   variant?: "list" | "grid";
-  emptyAction?: ReactNode;
 }) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
@@ -346,29 +395,13 @@ export function BayFeed({
         </div>
       ) : null}
       {empty ? (
-        <div className={`flex flex-col items-center px-4 text-center ${grid ? "py-16" : "py-10"}`} data-bay-empty={pristine ? "pristine" : "filtered"}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/5 text-neutral-400 dark:bg-white/10">
-            <BayIcon className="h-5 w-5" strokeWidth={1.7} />
-          </span>
-          <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-500">
-            {pristine
-              ? tt("LeoBay 里还没有内容，发第一条需求或服务吧")
-              : tt(
-                  canonicalBayFeedKind(filter.kind) === "request"
-                    ? "这里还没有需求"
-                    : canonicalBayFeedKind(filter.kind) === "asset"
-                      ? "这里还没有素材"
-                      : "这里还没有服务",
-                )}
-          </p>
-          {pristine ? (
-            emptyAction ? (
-              <div className="mt-4">{emptyAction}</div>
-            ) : null
-          ) : (
-            <button type="button" onClick={() => setBayFilter({ kind: "service" })} className={`mt-4 ${QUIET_BUTTON}`} data-bay-clear-filters>
-              {tt("清除筛选")}
-            </button>
+        <div data-bay-empty={pristine ? "pristine" : "filtered"}>
+          {pristine ? null : (
+            <div className={`flex flex-col items-center px-4 text-center ${grid ? "py-16" : "py-10"}`}>
+              <button type="button" onClick={() => setBayFilter({ kind: "service" })} className={QUIET_BUTTON} data-bay-clear-filters>
+                {tt("清除筛选")}
+              </button>
+            </div>
           )}
         </div>
       ) : null}

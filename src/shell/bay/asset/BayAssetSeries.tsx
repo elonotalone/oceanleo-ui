@@ -153,7 +153,7 @@ export function BayAssetSeries({
             <button
               type="button"
               onClick={loadMore}
-              className="rounded-lg border border-stone-200 bg-white px-6 py-2.5 text-[13px] font-medium text-stone-700 hover:bg-stone-50"
+              className="rounded-full border border-neutral-900 bg-white px-6 py-2.5 text-[13px] font-medium text-stone-700 hover:bg-stone-50"
             >
               {tt("加载更多")}
             </button>

@@ -1,31 +1,48 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   DEMAND_DESCRIPTION_MAX_LENGTH,
   DEMAND_TITLE_MAX_LENGTH,
   createDemand,
-  parseMoneyInput,
   updateDemand,
   type BayDemandDetail,
   type DemandInput,
 } from "../../../lib/bay/demands";
-import type { BayWorkRef } from "../../../lib/bay/types";
 import { useToast } from "../../../ui/Toast";
+import { BAY_FORM_BAR_CLASS, BAY_FORM_PAGE_CLASS } from "../form/form-ui";
+import { audienceDone, audienceMemberIds, normalizeAudience, type BayAudience } from "../form/bay-audience";
+import {
+  applyDigitalWorks,
+  BAY_FILES_LABEL,
+  BayDigitalWorksField,
+  BayImageGallery,
+  BayPublishKindPair,
+  BayPublishSubcategoryLabel,
+  BayPublishShell,
+  BayRevealForm,
+  engagementOf,
+  howYouDeliverRow,
+  listingAudienceItem,
+  listingPriceItems,
+  listingSectionGroups,
+  listingTermsItems,
+  offerFromListing,
+  type BayOfferKind,
+  type BayPostSnapshot,
+  type DigitalWorkRef,
+  type ListingAppPriceModel,
+  type ListingBilling,
+} from "../form";
+import { INPUT_CLASS, TEXTAREA_CLASS } from "../seller/seller-ui";
 import { ensureBayTerms } from "../settings";
-import { requireBayLogin, useBayTaskContext } from "../shell/bay-state";
-import { pickLibraryWork, LibraryWorkPickerHost } from "./LibraryWorkPicker";
-import { defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
-import { budgetText, siteLabel } from "./need-format";
-import { safeHttpLink } from "./need-links";
-import { ATTACHED_WORK_BOX, BTN_PRIMARY, BTN_QUIET, BTN_SECONDARY, CategoryChooser, Field, INPUT, PaneNotice, errorText } from "./need-ui";
+import { requireBayLogin } from "../shell/bay-state";
+import { LibraryWorkPickerHost } from "./LibraryWorkPicker";
+import { categoryNameBySlug, defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
+import { BTN_PRIMARY, BTN_SECONDARY, CategoryChooser, PaneNotice, errorText } from "./need-ui";
 
 const DESCRIPTION_MIN_LENGTH = 20;
-
-function splitValues(input: string): string[] {
-  return Array.from(new Set(input.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean)));
-}
 
 function dateInput(value: string | null | undefined): string {
   if (!value) return "";
@@ -33,15 +50,21 @@ function dateInput(value: string | null | undefined): string {
   return Number.isNaN(at.getTime()) ? "" : at.toISOString().slice(0, 10);
 }
 
-function yuanInput(fen: number | null | undefined): string {
-  return typeof fen === "number" && Number.isFinite(fen) ? String(fen / 100) : "";
+function billingOf(kind: string | undefined): ListingBilling {
+  if (kind === "hourly") return "hour";
+  if (kind === "session") return "session";
+  return "service";
+}
+
+function appPriceOf(kind: string | undefined): ListingAppPriceModel {
+  if (kind === "free") return "free";
+  if (kind === "retainer") return "subscription";
+  return "one_time";
 }
 
 export interface DemandEditorProps {
   siteKey: string;
-  /** 有值 = 编辑这条需求；没有 = 发新需求。 */
   initial?: BayDemandDetail | null;
-  /** 深链 `post-need:<category>` 带来的类目。 */
   presetCategory?: string;
   onDone: (demandId: string) => void;
   onCancel?: () => void;
@@ -50,7 +73,6 @@ export interface DemandEditorProps {
 export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCancel }: DemandEditorProps) {
   const tt = useUI();
   const toast = useToast();
-  const taskContext = useBayTaskContext();
   const { response, categories, loading: categoriesLoading } = useNeedCategories();
   const editing = Boolean(initial?.id);
 
@@ -58,50 +80,46 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
   const [description, setDescription] = useState(initial?.description || "");
   const [category, setCategory] = useState(initial?.category || "");
   const [categoryTouched, setCategoryTouched] = useState(Boolean(initial?.category));
-  const [skills, setSkills] = useState((initial?.skills || []).join("，"));
-  const [budgetMin, setBudgetMin] = useState(yuanInput(initial?.budget_min_fen));
-  const [budgetMax, setBudgetMax] = useState(yuanInput(initial?.budget_max_fen));
-  const [deadline, setDeadline] = useState(dateInput(initial?.deadline_at));
-  const [links, setLinks] = useState((initial?.reference_links || []).join("\n"));
-  const [work, setWork] = useState<BayWorkRef | null>(initial?.attached_work ?? null);
+  const [coverUrls, setCoverUrls] = useState<string[]>(initial?.cover_url ? [initial.cover_url] : []);
+  const [files, setFiles] = useState<DigitalWorkRef[]>(() =>
+    initial?.attached_work
+      ? [{ id: initial.attached_work.id, title: initial.attached_work.title || "", kind: initial.attached_work.kind }]
+      : [],
+  );
   const [workChanged, setWorkChanged] = useState(false);
+  const [offerKind, setOfferKind] = useState<BayOfferKind>(() => offerFromListing(initial?.listing_kind || "digital"));
+  const [priceFen, setPriceFen] = useState<number | null>(initial?.budget_min_fen ?? initial?.budget_max_fen ?? null);
+  const [billing, setBilling] = useState<ListingBilling>(() => billingOf(initial?.engagement_kind));
+  const [appPriceModel, setAppPriceModel] = useState<ListingAppPriceModel>(() => appPriceOf(initial?.engagement_kind));
+  const [deliveryDays, setDeliveryDays] = useState<number | null>(initial?.delivery_days ?? null);
+  const [revisions, setRevisions] = useState(initial?.revisions ?? 0);
+  const [consultRounds, setConsultRounds] = useState<number | null>(initial?.consult_rounds ?? null);
+  const [consultMinutes, setConsultMinutes] = useState<number | null>(initial?.consult_minutes ?? null);
+  const [deadline, setDeadline] = useState(dateInput(initial?.deadline_at));
+  const [audience, setAudience] = useState<BayAudience>(() =>
+    normalizeAudience({
+      mode: initial?.audience_mode || "public",
+      handle: initial?.audience_handle || "",
+      members: (initial?.audience_member_ids || []).map((userId) => ({ userId, name: userId })),
+    }),
+  );
+  const [customTerms, setCustomTerms] = useState(initial?.custom_terms || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 类目默认按站预选（门户为空、必须自己选）；用户点过就不再覆盖。
   useEffect(() => {
     if (categoryTouched || !response) return;
     const preset = presetCategory && isNeedCategory(presetCategory, response) ? presetCategory : null;
     setCategory(preset || defaultNeedCategory(siteKey, response) || "");
   }, [categoryTouched, presetCategory, response, siteKey]);
 
-  const minFen = useMemo(() => parseMoneyInput(budgetMin), [budgetMin]);
-  const maxFen = useMemo(() => parseMoneyInput(budgetMax), [budgetMax]);
-  const budgetError =
-    Number.isNaN(minFen) || Number.isNaN(maxFen)
-      ? tt("预算要填大于或等于 0 的数字")
-      : minFen !== null && maxFen !== null && maxFen < minFen
-        ? tt("预算上限不能低于下限")
-        : "";
-
   const validate = (): string => {
+    if (!coverUrls.length) return tt("至少一张预览图");
     if (!title.trim()) return tt("请先写需求标题");
-    if (description.trim().length < DESCRIPTION_MIN_LENGTH) return tt("请把详细说明写到至少 20 个字");
+    if (description.trim().length < DESCRIPTION_MIN_LENGTH) return tt("请把详细介绍写到至少 20 个字");
     if (!category || !isNeedCategory(category, response)) return tt("请选择类目");
-    if (budgetError) return budgetError;
-    const rawLinks = splitValues(links);
-    if (rawLinks.some((href) => !safeHttpLink(href))) return tt("参考链接要以 http:// 或 https:// 开头");
+    if (!audienceDone(audience)) return tt("请选择要给谁看");
     return "";
-  };
-
-  const attachWork = (next: BayWorkRef | null) => {
-    setWork(next);
-    setWorkChanged(true);
-  };
-
-  const chooseFromLibrary = async () => {
-    const picked = await pickLibraryWork({ title: tt("给需求附一个作品") });
-    if (picked) attachWork(picked);
   };
 
   const submit = async () => {
@@ -111,23 +129,38 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
     if (invalid) return;
     if (!requireBayLogin()) return;
     if (!(await ensureBayTerms("buyer"))) return;
+    const first = files[0];
     const input: DemandInput = {
       title: title.trim().slice(0, DEMAND_TITLE_MAX_LENGTH),
       description: description.trim().slice(0, DEMAND_DESCRIPTION_MAX_LENGTH),
       category,
-      skills: splitValues(skills),
-      budget_min_fen: Number.isNaN(minFen) ? null : minFen,
-      budget_max_fen: Number.isNaN(maxFen) ? null : maxFen,
+      skills: initial?.skills || [],
+      reference_links: initial?.reference_links || [],
+      budget_min_fen: priceFen,
+      budget_max_fen: priceFen,
       deadline_at: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null,
-      reference_links: splitValues(links).map((href) => safeHttpLink(href) || "").filter(Boolean),
       status: "open",
+      audience_mode: audience.mode === "verified_first" ? "public" : audience.mode,
+      audience_handle: audience.mode === "invited" ? audience.handle.trim() || audience.members[0]?.name || null : null,
+      audience_member_ids: audience.mode === "invited" || audience.mode === "group" ? audienceMemberIds(audience) : [],
+      custom_terms: customTerms.trim() || null,
+      listing_kind: offerKind,
+      delivery_days: offerKind === "service" && deliveryDays && deliveryDays > 0 ? deliveryDays : null,
+      cover_url: coverUrls[0] || null,
+      engagement_kind: engagementOf(offerKind, billing, appPriceModel),
+      revisions: offerKind === "service" ? revisions : null,
+      consult_rounds: offerKind === "service" && billing === "session" ? consultRounds : null,
+      consult_minutes: offerKind === "service" && billing === "hour" ? consultMinutes : null,
     };
     setBusy(true);
     try {
-      const ref = work ? { kind: "task" as const, id: work.id } : null;
-      const result = editing && initial
-        ? await updateDemand(initial.id, input, workChanged ? ref : undefined)
-        : await createDemand(input, { postedSite: siteKey, attachedWork: ref });
+      const ref = first?.id
+        ? { kind: (first.kind === "artifact" ? "artifact" : "task") as "artifact" | "task", id: first.id }
+        : null;
+      const result =
+        editing && initial
+          ? await updateDemand(initial.id, input, workChanged ? ref : undefined)
+          : await createDemand(input, { postedSite: siteKey, attachedWork: ref });
       toast.success(editing ? tt("需求已更新") : tt("需求已发布"));
       onDone(result.demand?.id || initial?.id || "");
     } catch (reason) {
@@ -137,113 +170,182 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
     }
   };
 
-  const currentTaskAttached = Boolean(taskContext && work?.id === taskContext.taskId);
+  const subcategoryField = (
+    <>
+      <BayPublishSubcategoryLabel />
+      <CategoryChooser
+        categories={categories}
+        value={category}
+        loading={categoriesLoading}
+        onChange={(slug) => {
+          setCategory(slug);
+          setCategoryTouched(true);
+        }}
+      />
+    </>
+  );
 
-  return (
-    <div className="space-y-4" data-bay-demand-editor={editing ? "edit" : "create"}>
-      <LibraryWorkPickerHost />
-      <Field label={tt("标题")}>
+  const productItems = [
+    {
+      id: "cover",
+      label: tt("作品图"),
+      done: coverUrls.length > 0,
+      alwaysOpen: true,
+      summary: coverUrls.length ? tt("已填好") : undefined,
+      children: <BayImageGallery urls={coverUrls} onUrls={setCoverUrls} />,
+    },
+    {
+      id: "title",
+      label: tt("标题"),
+      done: Boolean(title.trim()),
+      summary: title.trim() || undefined,
+      children: (
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           maxLength={DEMAND_TITLE_MAX_LENGTH}
-          placeholder={tt("例：给新品发布会做一份 15 页的演示稿")}
-          className={INPUT}
+          className={INPUT_CLASS}
+          data-bay-demand-title=""
+          data-bay-field="title"
         />
-      </Field>
-      <Field label={tt("详细说明")} hint={`${description.length} / ${DEMAND_DESCRIPTION_MAX_LENGTH}`}>
+      ),
+    },
+    {
+      id: "description",
+      label: tt("详细介绍"),
+      done: description.trim().length >= DESCRIPTION_MIN_LENGTH,
+      summary: description.trim() ? tt("已填好") : undefined,
+      children: (
         <textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          rows={6}
+          rows={8}
           maxLength={DEMAND_DESCRIPTION_MAX_LENGTH}
-          placeholder={tt("写清交付物、验收标准、已有资料，以及不在范围内的事情")}
-          className={`${INPUT} resize-y leading-5`}
+          className={TEXTAREA_CLASS}
+          data-bay-demand-description=""
+          data-bay-field="description"
         />
-      </Field>
-      <Field
-        label={tt("类目")}
-        hint={!category && !categoriesLoading ? tt("先选一个类目，合适的人才看得到。") : undefined}
-      >
-        <CategoryChooser
-          categories={categories}
-          value={category}
-          loading={categoriesLoading}
-          onChange={(slug) => {
-            setCategory(slug);
-            setCategoryTouched(true);
+      ),
+    },
+    {
+      id: "files",
+      label: tt(BAY_FILES_LABEL),
+      done: files.length > 0,
+      optional: true,
+      alwaysOpen: true,
+      summary: files[0]?.title || files[0]?.id,
+      children: (
+        <BayDigitalWorksField
+          works={files}
+          onChange={(works) => {
+            setFiles(applyDigitalWorks(works).digitalWorks);
+            setWorkChanged(true);
           }}
         />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label={tt("预算下限")}>
-          <input value={budgetMin} onChange={(event) => setBudgetMin(event.target.value)} inputMode="decimal" placeholder={tt("面议可留空")} className={INPUT} />
-        </Field>
-        <Field label={tt("预算上限")}>
-          <input value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} inputMode="decimal" placeholder={tt("面议可留空")} className={INPUT} />
-        </Field>
-      </div>
-      <p className="-mt-2 text-[12px] text-stone-500" data-bay-budget-preview>
-        {budgetError || budgetText(tt, Number.isNaN(minFen) ? null : minFen, Number.isNaN(maxFen) ? null : maxFen)}
-      </p>
-      <Field label={tt("截止日期")} hint={tt("不填就是交期可协商。")}>
-        <input type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} className={INPUT} />
-      </Field>
-      <Field label={tt("需要的技能")} hint={tt("用逗号分隔，例如：PPT，数据可视化")}>
-        <input value={skills} onChange={(event) => setSkills(event.target.value)} className={INPUT} />
-      </Field>
-      <Field label={tt("参考链接")} hint={tt("每行一个；只有登录的人能看到。")}>
-        <textarea value={links} onChange={(event) => setLinks(event.target.value)} rows={2} placeholder="https://" className={`${INPUT} resize-y`} />
-      </Field>
+      ),
+    },
+  ];
 
-      <section className="space-y-2" data-bay-attach-work>
-        <h3 className="text-[13px] font-medium text-stone-700">{tt("附一个作品")}</h3>
-        {work ? (
-          <div className={`flex items-center gap-2 ${ATTACHED_WORK_BOX}`}>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium text-stone-800">
-                {currentTaskAttached ? tt("当前任务") : work.title || tt("一个作品")}
-              </span>
-              {work.site_key ? <span className="block text-[11px] text-stone-500">{siteLabel(tt, work.site_key)}</span> : null}
-            </span>
-            <button type="button" className={BTN_QUIET} onClick={() => attachWork(null)}>
-              {tt("移除")}
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {taskContext ? (
-              <button
-                type="button"
-                className={BTN_SECONDARY}
-                data-bay-attach-current-task
-                onClick={() => attachWork({ kind: "task", id: taskContext.taskId, site_key: siteKey })}
-              >
-                {tt("附上当前任务")}
+  const priceItems = listingPriceItems(tt, {
+    offerKind,
+    priceFen,
+    onPriceFen: setPriceFen,
+    billing,
+    onBilling: setBilling,
+    appPriceModel,
+    onAppPriceModel: (value) => {
+      setAppPriceModel(value);
+      if (value === "free") setPriceFen(0);
+    },
+  });
+  const termsItems = listingTermsItems(tt, {
+    offerKind,
+    billing,
+    deliveryDays,
+    onDeliveryDays: setDeliveryDays,
+    revisions,
+    onRevisions: setRevisions,
+    consultRounds,
+    onConsultRounds: setConsultRounds,
+    consultMinutes,
+    onConsultMinutes: setConsultMinutes,
+    deadline,
+    onDeadline: setDeadline,
+    customTerms,
+    onCustomTerms: setCustomTerms,
+  });
+
+  const leftover = [
+    coverUrls.length === 0,
+    !title.trim(),
+    description.trim().length < DESCRIPTION_MIN_LENGTH,
+    !category,
+    !audienceDone(audience),
+  ].filter(Boolean).length;
+
+  const snapshot: BayPostSnapshot = {
+    kind: "need",
+    title,
+    description,
+    coverUrl: coverUrls[0],
+    coverUrls,
+    categoryLabel: categoryNameBySlug(tt, category, response) || undefined,
+    budgetFen: priceFen,
+    priceFen: priceFen ?? undefined,
+    deadlineLabel: deadline || undefined,
+    customTerms,
+    previewArtifactId: files[0]?.kind === "artifact" ? files[0].id : undefined,
+    previewWorkTitle: files[0]?.kind === "artifact" ? files[0].title : undefined,
+  };
+
+  return (
+    <BayPublishShell
+      kind="need"
+      snapshot={snapshot}
+      onApply={(next) => {
+        if (next.title) setTitle(next.title.slice(0, DEMAND_TITLE_MAX_LENGTH));
+        if (next.description) setDescription(next.description.slice(0, DEMAND_DESCRIPTION_MAX_LENGTH));
+        if (next.priceFen != null) setPriceFen(next.priceFen);
+        else if (next.budgetFen != null) setPriceFen(next.budgetFen);
+        if (next.coverUrls?.length) setCoverUrls(next.coverUrls);
+        if (next.customTerms != null) setCustomTerms(next.customTerms);
+      }}
+    >
+      <div className={BAY_FORM_PAGE_CLASS} data-bay-demand-editor={editing ? "edit" : "create"}>
+        <LibraryWorkPickerHost />
+        {editing ? null : (
+          <BayPublishKindPair listing="need" siteCategory={presetCategory} subcategory={subcategoryField} />
+        )}
+        <BayRevealForm
+          groups={listingSectionGroups({
+            tt,
+            intent: "buy",
+            productItems,
+            priceItems,
+            audienceItems: [listingAudienceItem(tt, audience, setAudience)],
+            offerItems: [howYouDeliverRow(tt, offerKind, setOfferKind, { buy: true })],
+            termsItems,
+          })}
+        />
+
+        {error ? <PaneNotice tone="error">{error}</PaneNotice> : null}
+
+        <footer data-bay-publish-bar className={`${BAY_FORM_BAR_CLASS} justify-between`}>
+          <p className={`text-[13px] font-medium ${leftover ? "text-neutral-600" : "text-emerald-600"}`}>
+            {leftover ? tt("还差 {n} 项就能发布", { n: leftover }) : tt("可以发布了")}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {onCancel ? (
+              <button type="button" className={BTN_SECONDARY} disabled={busy} onClick={onCancel}>
+                {tt("取消")}
               </button>
             ) : null}
-            <button type="button" className={BTN_SECONDARY} onClick={() => void chooseFromLibrary()}>
-              {tt("从我的库挑一个")}
+            <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={() => void submit()} data-bay-submit>
+              {busy ? tt("正在提交…") : editing ? tt("保存修改") : tt("发布需求")}
             </button>
           </div>
-        )}
-        <p className="text-[11px] leading-4 text-stone-400">
-          {tt("报价的人签约前只能只读预览；签约后可以在作品所在的站一起改。")}
-        </p>
-      </section>
-
-      {error ? <PaneNotice tone="error">{error}</PaneNotice> : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={() => void submit()} data-bay-submit>
-          {busy ? tt("正在提交…") : editing ? tt("保存修改") : tt("发布需求")}
-        </button>
-        {onCancel ? (
-          <button type="button" className={BTN_SECONDARY} disabled={busy} onClick={onCancel}>
-            {tt("取消")}
-          </button>
-        ) : null}
+        </footer>
       </div>
-    </div>
+    </BayPublishShell>
   );
 }

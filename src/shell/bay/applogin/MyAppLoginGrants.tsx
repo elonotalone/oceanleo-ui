@@ -33,7 +33,7 @@ function GrantRow({
 }): ReactElement {
   const tt = useUI();
   return (
-    <li data-bay-login-grant={item.app_id} className="rounded-xl border border-neutral-200 bg-white p-3">
+    <li data-bay-login-grant={item.app_id} className="space-y-2 py-2">
       <button
         type="button"
         data-bay-login-grant-open
@@ -48,7 +48,7 @@ function GrantRow({
         {item.last_at ? <span>{tt("最近 {time}", { time: timeText(item.last_at) })}</span> : null}
       </p>
       {asking ? (
-        <div data-bay-login-revoke-confirm={item.app_id} className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-login-revoke-confirm={item.app_id} className="mt-3 space-y-2">
           <p className="text-[13px] text-neutral-800">{tt("撤回后这个作品要再让你同意一次才能登录")}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{error}</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -57,7 +57,7 @@ function GrantRow({
               data-bay-login-revoke-yes
               disabled={busy}
               onClick={onRevoke}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+              className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
             >
               {busy ? tt("正在撤回…") : tt("撤回授权")}
             </button>
@@ -65,7 +65,7 @@ function GrantRow({
               type="button"
               disabled={busy}
               onClick={onCancel}
-              className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+              className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
             >
               {tt("取消")}
             </button>
@@ -77,7 +77,7 @@ function GrantRow({
           data-bay-login-revoke
           disabled={busy}
           onClick={onAsk}
-          className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+          className="mt-3 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
         >
           {tt("撤回授权")}
         </button>
@@ -120,7 +120,7 @@ export function MyAppLoginGrants(): ReactElement {
           onClick={() => {
             requireBayLogin();
           }}
-          className="mt-3 rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] text-white"
+          className="mt-3 rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] text-white"
         >
           {tt("登录")}
         </button>

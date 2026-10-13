@@ -69,11 +69,12 @@ export interface BayCategoriesResponse {
 }
 
 export interface BayWorkRef {
-  kind: "task";
+  kind: "task" | "artifact";
   id: string;
   site_key?: string;
   title?: string;
   preview_url?: string | null;
+  thumb_url?: string | null;
 }
 
 export interface BaySummary {

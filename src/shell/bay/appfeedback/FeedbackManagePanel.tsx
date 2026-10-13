@@ -238,7 +238,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
             data-bay-action="refresh-digest"
             disabled={refreshing}
             onClick={() => void rewriteDigest()}
-            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+            className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
           >
             {refreshing ? tt("重写中…") : tt("现在重写")}
           </button>

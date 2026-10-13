@@ -69,7 +69,7 @@ export function ReviewComposer({
   return (
     <form
       data-bay-review-composer
-      className="space-y-2 rounded-xl border border-neutral-200 p-3"
+      className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
         void publish();
@@ -96,7 +96,7 @@ export function ReviewComposer({
         rows={4}
         maxLength={2000}
         placeholder={tt("可以说说这次买到的怎么样（可选）")}
-        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-stone-400"
+        className="w-full rounded-full border border-neutral-900 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus:border-stone-400"
       />
       <ReviewPhotoFields urls={photos} onChange={setPhotos} disabled={busy} />
       <label className="flex items-center gap-2 text-[12.5px] text-neutral-700">
@@ -107,7 +107,7 @@ export function ReviewComposer({
       <button
         type="submit"
         disabled={busy}
-        className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+        className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
       >
         {tt("发布")}
       </button>

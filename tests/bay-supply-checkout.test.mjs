@@ -4,6 +4,7 @@
 // buyer_ready 为 true 才出现付款按钮，点了才调 startBayPayment（桩）；服务页勾的加购带到下单页。
 // 付款模块整个是桩：这份测试里不存在任何真实的付款调用。
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -169,6 +170,15 @@ async function mount(element) {
   return { host, setValue, click, unmount: () => act(() => root.unmount()) };
 }
 
+/** 展开表单同一时刻只有一项有输入框。先点行再填（旧行为：五个框同时在 DOM）。 */
+async function fillCheckoutField(view, id, value) {
+  const selector = `[data-bay-reveal-item="${id}"]`;
+  const row = view.host.querySelector(selector);
+  assert.ok(row, `找不到 ${selector}`);
+  if (!row.hasAttribute("data-bay-reveal-open")) await view.click(selector);
+  await view.setValue(`[data-bay-field="${id}"]`, value);
+}
+
 const pane = (tier) => React.createElement(supply.CheckoutPane, { target: { kind: "checkout", serviceId: "svc-1", tier }, layout: "docked", siteKey: "design" });
 const startCalls = () => globalThis.__bayPayCalls.filter((call) => call.startsWith("start:"));
 
@@ -176,10 +186,14 @@ test("付款没开放：下单只建订单，不调付款，没有付款按钮�
   reset({ buyerReady: false });
   const view = await mount(pane("premium"));
   assert.match(view.host.textContent, /三版/);
+  const selectedTier = view.host.querySelector('[data-bay-tier="premium"]');
+  assert.ok(selectedTier);
+  assert.match(selectedTier.className, /bg-white/);
+  assert.match(selectedTier.className, /ring-1 ring-neutral-900/);
   assert.match(view.host.querySelector("[data-bay-pay-hint]").textContent, /付款暂未开放/);
   assert.match(view.host.querySelector("[data-bay-done-means]").textContent, /交付格式.*AI, PNG/);
-  await view.setValue('[data-bay-field="what"]', "三版方案，含源文件");
-  await view.setValue('[data-bay-field="links"]', "https://a.example\nhttps://b.example");
+  await fillCheckoutField(view, "what", "三版方案，含源文件");
+  await fillCheckoutField(view, "links", "https://a.example\nhttps://b.example");
   await view.click('[data-bay-action="place-order"]');
   assert.deepEqual(globalThis.__bayTerms, ["buyer"], "下单前先过买家条款");
   const orders = globalThis.__bayHttpCalls.filter((call) => call.method === "POST");
@@ -204,7 +218,7 @@ test("拒绝买家条款：不建订单", async () => {
   reset();
   globalThis.__bayTermsAccept = false;
   const view = await mount(pane("basic"));
-  await view.setValue('[data-bay-field="what"]', "要做什么");
+  await fillCheckoutField(view, "what", "要做什么");
   await view.click('[data-bay-action="place-order"]');
   assert.deepEqual(globalThis.__bayTerms, ["buyer"]);
   assert.equal(globalThis.__bayHttpCalls.filter((call) => call.method === "POST").length, 0);
@@ -217,8 +231,8 @@ test("缺需求、缺标题：不建订单、不问条款，告诉用户缺什�
   const view = await mount(pane("basic"));
   await view.click('[data-bay-action="place-order"]');
   assert.equal(view.host.querySelector("[data-bay-problem]").getAttribute("data-bay-problem"), "what");
-  await view.setValue('[data-bay-field="what"]', "要做什么");
-  await view.setValue('[data-bay-field="title"]', "  ");
+  await fillCheckoutField(view, "what", "要做什么");
+  await fillCheckoutField(view, "title", "  ");
   await view.click('[data-bay-action="place-order"]');
   assert.equal(view.host.querySelector("[data-bay-problem]").getAttribute("data-bay-problem"), "title");
   assert.deepEqual(globalThis.__bayTerms, []);
@@ -230,7 +244,7 @@ test("未登录：点下单只弹登录", async () => {
   reset();
   globalThis.__baySignedIn = false;
   const view = await mount(pane("basic"));
-  await view.setValue('[data-bay-field="what"]', "要做什么");
+  await fillCheckoutField(view, "what", "要做什么");
   await view.click('[data-bay-action="place-order"]');
   assert.deepEqual(globalThis.__bayTerms, []);
   assert.equal(globalThis.__bayHttpCalls.filter((call) => call.method === "POST").length, 0);
@@ -243,7 +257,7 @@ test("后端拒绝时把原因说出来，不跳到已下单", async () => {
   globalThis.__bayHttpRespond = (method, path, body) =>
     method === "POST" ? Promise.reject(Object.assign(new Error("这个服务档位暂时不能下单"), { status: 400 })) : respond(method, path, body);
   const view = await mount(pane("basic"));
-  await view.setValue('[data-bay-field="what"]', "要做什么");
+  await fillCheckoutField(view, "what", "要做什么");
   await view.click('[data-bay-action="place-order"]');
   assert.match(view.host.querySelector("[data-bay-error]").textContent, /这个服务档位暂时不能下单/);
   assert.equal(view.host.querySelector("[data-bay-placed]"), null);
@@ -255,7 +269,7 @@ test("付款就绪：下单后才出现付款按钮，点了才调 startBayPayme
   reset({ buyerReady: true });
   const view = await mount(pane("basic"));
   assert.match(view.host.querySelector("[data-bay-pay-hint]").textContent, /下单后去付款/);
-  await view.setValue('[data-bay-field="what"]', "要做什么");
+  await fillCheckoutField(view, "what", "要做什么");
   await view.click('[data-bay-action="place-order"]');
   assert.deepEqual(startCalls(), [], "建订单这一步不付款");
   const payButton = view.host.querySelector("[data-bay-pay]");
@@ -277,6 +291,8 @@ test("服务页勾的加购带到下单页；停用的档位提示换一个", as
   await servicePane.unmount();
   const view = await mount(pane("basic"));
   assert.equal(view.host.querySelector('[data-bay-addon="a1"] input').checked, true);
+  assert.match(view.host.querySelector('[data-bay-addon="a1"]').className, /bg-white/);
+  assert.match(view.host.querySelector('[data-bay-addon="a1"]').className, /ring-1 ring-neutral-900/);
   assert.match(view.host.querySelector("[data-bay-total]").textContent, /¥350/);
   await view.unmount();
   const stale = await mount(pane("standard"));
@@ -307,4 +323,12 @@ test("卖家本人打开自己服务的下单页：不给下单", async () => {
   assert.match(view.host.textContent, /这是你发布的服务/);
   assert.equal(view.host.querySelector('[data-bay-action="place-order"]'), null);
   await view.unmount();
+});
+
+test("下单档位行是白底，选中有深色描边；源码不用 400 灰字、没有白板页脚", () => {
+  const src = readFileSync(new URL("../src/shell/bay/supply/CheckoutPane.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /text-neutral-400|text-stone-400/);
+  assert.doesNotMatch(src, /bg-white\/95/);
+  assert.doesNotMatch(src, /-mx-4/);
+  assert.match(src, /ring-1 ring-neutral-900/);
 });

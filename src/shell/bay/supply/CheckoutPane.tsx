@@ -34,6 +34,8 @@ import {
   serviceSelection,
   type BayServiceDetail,
 } from "../../../lib/bay/services";
+import { BAY_FORM_LABEL_CLASS } from "../form/form-ui";
+import { BayRevealForm, type BayRevealItem } from "../form/BayRevealForm";
 import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, type BayLayout, type BayPaneProps } from "../shell/bay-state";
 import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel } from "./format";
@@ -68,6 +70,12 @@ function problemText(tt: UITranslate, problem: BayCheckoutProblem): string {
     default:
       return tt("请说明要做什么");
   }
+}
+
+function summaryLine(value: string): string | undefined {
+  const line = value.trim().split("\n")[0];
+  if (!line) return undefined;
+  return line.length > 72 ? `${line.slice(0, 72)}…` : line;
 }
 
 export interface CheckoutViewProps {
@@ -133,8 +141,8 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
   if (placed) return <PlacedView contract={placed.contract} payStep={placed.payStep} totalText={total} />;
 
   const summary = (
-    <aside data-bay-checkout-summary className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-      <p className="text-[12px] text-neutral-500">{tt("你正在购买")}</p>
+    <aside data-bay-checkout-summary className="space-y-1">
+      <p className="text-[12px] text-neutral-600">{tt("你正在购买")}</p>
       <p className="mt-0.5 break-words text-[14px] font-semibold text-neutral-900">{service.title}</p>
       {selection.tier && !digital ? (
         <p className="mt-2 text-[12px] text-neutral-600">
@@ -159,25 +167,81 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
           {selection.tier ? total : "—"}
         </span>
       </div>
-      {digital ? null : <p className="mt-1 text-[12px] text-neutral-500">{deliveryDaysText(tt, selection.deliveryDays)}</p>}
-      <p data-bay-pay-hint className="mt-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-[12px] text-neutral-600">
+      {digital ? null : <p className="mt-1 text-[12px] text-neutral-600">{deliveryDaysText(tt, selection.deliveryDays)}</p>}
+      <p data-bay-pay-hint className="mt-2 text-[12px] text-neutral-600">
         {buyerReady ? tt("下单后去付款，验收通过后钱才付给卖家。") : tt("付款暂未开放：订单会先建好，开放后在「我的订单」里付款。")}
       </p>
     </aside>
   );
 
-  const field = "mt-1 w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-neutral-400";
+  const field = "w-full rounded-full border border-neutral-900 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-neutral-400";
+  const items: BayRevealItem[] = [
+    {
+      id: "title",
+      label: tt("需求标题"),
+      done: Boolean(form.title.trim()),
+      summary: summaryLine(form.title),
+      children: (
+        <input data-bay-field="title" value={form.title} maxLength={BAY_CHECKOUT_LIMITS.title} onChange={(event) => patch({ title: event.target.value })} className={field} />
+      ),
+    },
+    {
+      id: "what",
+      label: tt("要做什么"),
+      done: Boolean(form.what.trim()),
+      summary: summaryLine(form.what),
+      children: (
+        <textarea data-bay-field="what" value={form.what} rows={6} maxLength={BAY_CHECKOUT_LIMITS.what} onChange={(event) => patch({ what: event.target.value })} className={field} />
+      ),
+    },
+    {
+      id: "links",
+      label: tt("参考链接"),
+      done: Boolean(form.links.trim()),
+      summary: summaryLine(form.links),
+      children: (
+        <textarea data-bay-field="links" value={form.links} rows={3} onChange={(event) => patch({ links: event.target.value })} className={field} />
+      ),
+    },
+    {
+      id: "deadline",
+      label: tt("期望截止时间"),
+      done: Boolean(form.deadline.trim()),
+      optional: true,
+      summary: form.deadline.trim() || undefined,
+      children: (
+        <input data-bay-field="deadline" type="date" value={form.deadline} onChange={(event) => patch({ deadline: event.target.value })} className={field + " sm:max-w-xs"} />
+      ),
+    },
+    {
+      id: "notes",
+      label: tt("补充说明"),
+      done: Boolean(form.notes.trim()),
+      optional: true,
+      summary: summaryLine(form.notes),
+      children: (
+        <textarea data-bay-field="notes" value={form.notes} rows={3} maxLength={BAY_CHECKOUT_LIMITS.notes} onChange={(event) => patch({ notes: event.target.value })} className={field} />
+      ),
+    },
+  ];
   const formView = (
-    <div className="min-w-0">
-      <fieldset className="mt-1">
-        <legend className="text-[13px] font-semibold text-neutral-900">{tt("选择档位")}</legend>
+    <div className="flex min-w-0 flex-col gap-6">
+      <fieldset>
+        <legend className={BAY_FORM_LABEL_CLASS}>{tt("选择档位")}</legend>
         <div className="mt-2 space-y-1.5">
           {tiers.map((tier) => (
-            <label key={tier.id} data-bay-tier={tier.tier} className={"flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 " + (selection.tier?.tier === tier.tier ? "border-neutral-900" : "border-neutral-200")}>
+            <label
+              key={tier.id}
+              data-bay-tier={tier.tier}
+              className={
+                "flex cursor-pointer items-center gap-2.5 rounded-lg border bg-white px-3 py-2 " +
+                (selection.tier?.tier === tier.tier ? "border-neutral-900 ring-1 ring-neutral-900" : "border-neutral-200")
+              }
+            >
               <input type="radio" name={`bay-tier-${service.id}`} checked={selection.tier?.tier === tier.tier} onChange={() => setTierName(tier.tier)} />
               <span className="min-w-0 flex-1 break-words text-[13px] text-neutral-800">
                 {tierLabel(tt, tier.tier)} · {tier.title}
-                {digital ? null : <span className="ml-1 text-[12px] text-neutral-500">{deliveryDaysText(tt, tier.delivery_days)}</span>}
+                {digital ? null : <span className="ml-1 text-[12px] text-neutral-600">{deliveryDaysText(tt, tier.delivery_days)}</span>}
               </span>
               <span className="shrink-0 text-[13px] font-medium text-neutral-900">{moneyOrFree(tt, tier.price_fen, tier.currency || service.currency)}</span>
             </label>
@@ -186,11 +250,18 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
       </fieldset>
 
       {addons.length ? (
-        <fieldset className="mt-4">
-          <legend className="text-[13px] font-semibold text-neutral-900">{tt("可选加购")}</legend>
+        <fieldset>
+          <legend className={BAY_FORM_LABEL_CLASS}>{tt("可选加购")}</legend>
           <div className="mt-2 space-y-1.5">
             {addons.map((addon) => (
-              <label key={addon.id} data-bay-addon={addon.id} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-neutral-200 px-3 py-2">
+              <label
+                key={addon.id}
+                data-bay-addon={addon.id}
+                className={
+                  "flex cursor-pointer items-center gap-2.5 rounded-lg border bg-white px-3 py-2 " +
+                  (addonIds.includes(addon.id) ? "border-neutral-900 ring-1 ring-neutral-900" : "border-neutral-200")
+                }
+              >
                 <input
                   type="checkbox"
                   checked={addonIds.includes(addon.id)}
@@ -207,41 +278,26 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
         </fieldset>
       ) : null}
 
-      {digital ? <DigitalTerms license={service.license} /> : <DoneMeans service={service} />}
+      <DigitalTerms
+        listingKind={digital ? "digital" : "service"}
+        deliveryDays={digital ? null : selection.deliveryDays ?? service.delivery_days}
+        deadlineAt={service.deadline_at}
+        customTerms={service.custom_terms}
+      />
+      {digital ? null : <DoneMeans service={service} />}
 
-      <div className="mt-5 space-y-3">
-        <label className="block text-[13px] font-medium text-neutral-800">
-          {tt("需求标题")}
-          <input data-bay-field="title" value={form.title} maxLength={BAY_CHECKOUT_LIMITS.title} onChange={(event) => patch({ title: event.target.value })} placeholder={tt("一句话说清这次需要交付什么")} className={field} />
-        </label>
-        <label className="block text-[13px] font-medium text-neutral-800">
-          {tt("要做什么")}
-          <textarea data-bay-field="what" value={form.what} rows={6} maxLength={BAY_CHECKOUT_LIMITS.what} onChange={(event) => patch({ what: event.target.value })} placeholder={tt("目标、交付范围、使用场景、必须满足的要求")} className={field} />
-        </label>
-        <label className="block text-[13px] font-medium text-neutral-800">
-          {tt("参考链接")}
-          <textarea data-bay-field="links" value={form.links} rows={3} onChange={(event) => patch({ links: event.target.value })} placeholder={tt("每行一个链接，https://…")} className={field} />
-        </label>
-        <label className="block text-[13px] font-medium text-neutral-800 sm:max-w-xs">
-          {tt("期望截止时间")}
-          <input data-bay-field="deadline" type="date" value={form.deadline} onChange={(event) => patch({ deadline: event.target.value })} className={field} />
-        </label>
-        <label className="block text-[13px] font-medium text-neutral-800">
-          {tt("补充说明")}
-          <textarea data-bay-field="notes" value={form.notes} rows={3} maxLength={BAY_CHECKOUT_LIMITS.notes} onChange={(event) => patch({ notes: event.target.value })} placeholder={tt("已有素材、沟通偏好、其他提醒（可选）")} className={field} />
-        </label>
-      </div>
+      <BayRevealForm items={items} />
 
-      {wide ? null : <div className="mt-5">{summary}</div>}
+      {wide ? null : <div>{summary}</div>}
 
-      {problem && (touched || problem === "tier") ? <p data-bay-problem={problem} className="mt-3 text-[12px] text-rose-600">{problemText(tt, problem)}</p> : null}
-      {error ? <p data-bay-error className="mt-3 text-[12px] text-rose-600">{tt(error)}</p> : null}
+      {problem && (touched || problem === "tier") ? <p data-bay-problem={problem} className="text-[12px] text-rose-600">{problemText(tt, problem)}</p> : null}
+      {error ? <p data-bay-error className="text-[12px] text-rose-600">{tt(error)}</p> : null}
       <button
         type="button"
         data-bay-action="place-order"
         disabled={phase !== "form" || !selection.tier}
         onClick={() => void submit()}
-        className="mt-4 w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+        className="w-full rounded-full bg-neutral-900 px-4 py-2.5 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
       >
         {phase === "terms" ? tt("正在核对条款…") : phase === "placing" ? tt("正在下单…") : tt("确认下单 · {price}", { price: selection.tier ? total : "—" })}
       </button>
@@ -305,7 +361,7 @@ function PlacedView({ contract, payStep, totalText }: { contract: BayOrderContra
           <p className="mt-1 text-[12.5px] text-amber-900">{tt("订单已经建好。付款开放后，可以在「我的订单」里继续。")}</p>
         </div>
       ) : payStep === "free" ? (
-        <p className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-[12.5px] text-neutral-700">{tt("这是免费订单，不用付款。")}</p>
+        <p className="mt-4 text-[12.5px] text-neutral-700">{tt("这是免费订单，不用付款。")}</p>
       ) : null}
       {payError ? <p className="mt-3 text-[12px] text-rose-600">{tt(payError)}</p> : null}
       <div className="mt-4 flex flex-wrap gap-2">
@@ -315,7 +371,7 @@ function PlacedView({ contract, payStep, totalText }: { contract: BayOrderContra
             data-bay-pay
             disabled={paying}
             onClick={() => void pay()}
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+            className="rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
           >
             {paying ? tt("正在跳转付款…") : tt("去付款 · {price}", { price: totalText })}
           </button>

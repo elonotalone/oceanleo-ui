@@ -185,7 +185,7 @@ export function MyOrdersPane({
           {tt("这一组暂时没有订单。")}
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white">
+        <ul className="divide-y divide-neutral-100">
           {visible.map((order) => (
             <li key={order.id}>
               <button

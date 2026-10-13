@@ -11,9 +11,9 @@ import { PaneLoading, PaneMessage } from "../supply/parts";
 import { errorText, useBayResource } from "../supply/use-bay-resource";
 import { formatPaidDate, formatPaidDateTime, purchaseStatusLabelKey, purchaseStage, refundHoursLeft, soldSummary, sortSoldPurchases, subStatusLabelKey } from "./paid-model";
 
-const PRIMARY = "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60";
-const SECONDARY = "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
-const DANGER = "rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12px] text-rose-700 disabled:opacity-60";
+const PRIMARY = "rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60";
+const SECONDARY = "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
+const DANGER = "rounded-full border border-rose-300 bg-white px-3 py-1.5 text-[12px] text-rose-700 disabled:opacity-60";
 
 export function MySoldAppsPane(): ReactElement | null {
   const tt = useUI();
@@ -84,7 +84,7 @@ export function MySoldAppsPane(): ReactElement | null {
             ))}
           </ul>
           {pending?.agree ? (
-            <div data-bay-confirm="agree-refund" className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <div data-bay-confirm="agree-refund" className="space-y-2">
               <p className="text-[13px] font-medium text-neutral-900">{tt("确定同意这笔退款？")}</p>
               <div className="mt-3 flex justify-end gap-2">
                 <button type="button" className={SECONDARY} onClick={() => setPending(null)}>
@@ -97,10 +97,10 @@ export function MySoldAppsPane(): ReactElement | null {
             </div>
           ) : null}
           {pending && !pending.agree ? (
-            <div data-bay-confirm="decline-refund" className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <div data-bay-confirm="decline-refund" className="space-y-2">
               <p className="text-[13px] font-medium text-neutral-900">{tt("确定拒绝这笔退款？")}</p>
               <textarea
-                className="w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
+                className="w-full rounded-full border border-neutral-900 px-2 py-1.5 text-[13px]"
                 rows={3}
                 value={note}
                 placeholder={tt("请写一句拒绝说明")}

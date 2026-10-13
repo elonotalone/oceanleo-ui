@@ -66,7 +66,7 @@ export function DealAttachmentView({ attachment }: { attachment: Partial<DealAtt
       rel="noopener noreferrer"
       download
       data-attachment={dealAttachmentKind(attachment.kind)}
-      className="flex max-w-full items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-stone-700 hover:bg-stone-50"
+      className="flex max-w-full items-center gap-1.5 rounded-full border border-neutral-900 bg-white px-2.5 py-1.5 text-[13px] text-stone-700 hover:bg-stone-50"
     >
       <span aria-hidden="true">📎</span>
       <span className="truncate underline underline-offset-2">{name}</span>
@@ -121,7 +121,7 @@ export function DealMessageList(props: DealMessageListProps) {
             disabled={loadingMore}
             data-action="load-more"
             onClick={onLoadMore}
-            className="rounded-lg border border-neutral-200 px-3 py-1 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+            className="rounded-full border border-neutral-900 px-3 py-1 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
           >
             {loadingMore ? tt("加载中…") : tt("加载更早的消息")}
           </button>

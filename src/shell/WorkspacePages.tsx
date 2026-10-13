@@ -54,7 +54,7 @@ export interface WorkspaceNavOptions {
   withExplore?: boolean;
   /** 是否显示 LeoBay 这一项。与 withExplore 同义；任一为 false 就不显示。默认 true。 */
   withBay?: boolean;
-  /** 是否包含 playground 页（主站 oceanleo.com 用）。默认 false。 */
+  /** @deprecated 作废：开了也不再多一行。货架在工作台「全部」。 */
   withPlayground?: boolean;
   /** 是否显示 LeoChat 这一行。默认 true。境内由 workspaceNav 再用 bayEnabledHere() 拦掉。 */
   withMessages?: boolean;
@@ -167,7 +167,7 @@ export function useWorkspaceNavLabels(): Record<WorkspacePage, string> {
   return labels;
 }
 
-/** 构造 AppShell 的导航。顺序：首页 → LeoBay → LeoChat → 工作台 → 我的库 → 我的任务 (→ playground)。 */
+/** 构造 AppShell 的导航。顺序：首页 → LeoBay → LeoChat → 工作台 → 我的库 → 我的任务。 */
 export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const base = opts.basePath || "";
   const labels = { ...DEFAULT_LABELS, ...(opts.labels || {}) };
@@ -176,6 +176,7 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   // 哪几页、什么次序、受哪个开关控制 —— 全部来自 nav-source，本文件不再自持。
   return navEntries("workspace", resolveOptions(opts))
     .filter((entry) => entry.id !== "leochat" || bayEnabledHere())
+    .filter((entry) => entry.id !== "playground")
     .map((entry) => {
     const p = entry.id as WorkspacePage;
     const legacyHistory =

@@ -86,7 +86,7 @@ export function LessonOutline({
     <section data-bay-outline className="mt-5">
       <h3 className="text-[14px] font-semibold text-neutral-900">{tt("课程大纲")}</h3>
       {hint ? <p className="mt-2 text-[12px] text-rose-600">{hint}</p> : null}
-      <ol className="mt-2 divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+      <ol className="mt-2 divide-y divide-neutral-100">
         {ordered.map((chapter, index) => {
           const access = chapterAccess(chapter, owned);
           const learned = done.has(chapter.id);

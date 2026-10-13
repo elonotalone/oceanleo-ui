@@ -90,7 +90,7 @@ function BundleDetailView({ payload, onReload }: { payload: BayLessonBundleDetai
       {viewer.is_owner && viewer.purchase ? <PurchasePanel purchase={viewer.purchase} onReload={onReload} /> : null}
 
       <section className="mt-5">
-        <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+        <ul className="divide-y divide-neutral-100">
           {lessons.map((lesson) => {
             const thumb = safeHttpUrl(lesson.cover_url);
             const canGo = viewer.owned || ownedIds.has(lesson.id);
@@ -113,7 +113,7 @@ function BundleDetailView({ payload, onReload }: { payload: BayLessonBundleDetai
                   <button
                     type="button"
                     onClick={() => openBay({ kind: "lesson", id: lesson.id })}
-                    className="shrink-0 rounded-lg border border-neutral-200 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                    className="shrink-0 rounded-full border border-neutral-900 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
                   >
                     {tt("去学习")}
                   </button>

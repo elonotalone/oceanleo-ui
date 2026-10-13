@@ -50,8 +50,8 @@ export function SourcesManagePanel({ appId }: { appId: string }): ReactElement {
             onClick={() => setDays(value)}
             className={
               value === days
-                ? "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white"
-                : "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
+                ? "rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white"
+                : "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
             }
           >
             {tt(sourceRangeLabel(value))}
@@ -111,7 +111,7 @@ export function SourcesManagePanel({ appId }: { appId: string }): ReactElement {
           <button
             type="button"
             onClick={resource.reload}
-            className="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
+            className="mt-2 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
           >
             {tt("重试")}
           </button>

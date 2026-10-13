@@ -19,6 +19,8 @@ import {
   type BaySellerCategory,
   type BayServiceMediaKind,
 } from "../../../lib/bay/seller";
+import { BayImageGallery, BayMenuSelect } from "../form";
+import { cleanGalleryUrls } from "../form/bay-gallery";
 import {
   MIN_DESCRIPTION,
   SUMMARY_MAX,
@@ -32,11 +34,12 @@ import {
   type DraftTier,
   type PublishCheck,
 } from "./editor-model";
-import { INPUT_CLASS, SECONDARY_BUTTON, SellerCard, SellerEmpty, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
+import { DANGER_BUTTON, INPUT_CLASS, SECONDARY_BUTTON, SellerCard, SellerEmpty, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
 
-const OPTION_CLASS = "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left";
-const OPTION_ON = "border-stone-900 bg-stone-50";
-const OPTION_OFF = "border-stone-200 bg-white";
+// 几选一的一项：白底圆角小块；选中的深色边框，没选的浅边框（与 form/BayChoice 同一长相）。
+const OPTION_CLASS = "flex cursor-pointer items-start gap-3 rounded-xl border bg-white px-3.5 py-3 text-left transition-colors";
+const OPTION_ON = "border-neutral-900 ring-1 ring-neutral-900";
+const OPTION_OFF = "border-neutral-200 hover:border-neutral-300";
 
 function StepFrame({ title, hint, plain, children }: { title: string; hint?: string; plain?: boolean; children: ReactNode }) {
   if (plain) return <div className="space-y-4">{children}</div>;
@@ -123,6 +126,7 @@ export function DomainStep({
   category,
   onCategory,
   plain,
+  showCategory = true,
 }: {
   domains: BayConsultDomain[];
   loading: boolean;
@@ -134,6 +138,7 @@ export function DomainStep({
   category: string;
   onCategory: (slug: string) => void;
   plain?: boolean;
+  showCategory?: boolean;
 }) {
   const tt = useUI();
   return (
@@ -160,7 +165,7 @@ export function DomainStep({
           ))}
         </div>
       )}
-      {domain ? (
+      {domain && showCategory ? (
         <SellerField label={tt("这个领域下的类目")}>
           <CategorySelect categories={categories} value={category} onChange={onCategory} />
           {categories.length === 0 ? <p className="mt-1 text-[12px] text-amber-700">{tt("这个领域下还没有可选的类目，换一个领域试试。")}</p> : null}
@@ -173,14 +178,15 @@ export function DomainStep({
 export function CategorySelect({ categories, value, onChange }: { categories: BaySellerCategory[]; value: string; onChange: (slug: string) => void }) {
   const tt = useUI();
   return (
-    <select className={INPUT_CLASS} value={value} onChange={(event) => onChange(event.target.value)} data-bay-category-select>
-      <option value="">{tt("请选择类目")}</option>
-      {categories.map((item) => (
-        <option key={item.slug} value={item.slug}>
-          {stripLeoCategoryPrefix(tt(item.name_zh))}
-        </option>
-      ))}
-    </select>
+    <BayMenuSelect
+      value={value}
+      onChange={onChange}
+      selectProps={{ "data-bay-category-select": "" }}
+      options={categories.map((item) => ({
+        value: item.slug,
+        label: stripLeoCategoryPrefix(tt(item.name_zh)),
+      }))}
+    />
   );
 }
 
@@ -228,7 +234,7 @@ export function PromptsStep({
 function ReadOnlyBlock({ label, warn, children }: { label: string; warn?: boolean; children: ReactNode }) {
   const tt = useUI();
   return (
-    <section className={`rounded-xl border p-3 ${warn ? "border-rose-200 bg-rose-50" : "border-stone-200 bg-stone-50"}`}>
+    <section className={warn ? "rounded-xl border border-rose-200 bg-rose-50 p-3" : "space-y-1"}>
       <p className="flex flex-wrap items-center justify-between gap-2 text-[12.5px] font-semibold text-stone-800">
         <span>{label}</span>
         <span className="text-[11px] font-normal text-stone-500">{tt("平台给定 · 不可编辑")}</span>
@@ -272,7 +278,7 @@ export function BasicsStep({
   return (
     <SellerCard title={tt("它是什么")} hint={tt("让买家十秒内看懂你交付什么，再谈价格。")}>
       <SellerField label={consult ? tt("答疑标题") : tt("服务标题")} hint={`${title.length}/${TITLE_MAX}`}>
-        <input className={INPUT_CLASS} data-bay-field="title" value={title} maxLength={TITLE_MAX} onChange={(event) => onTitle(event.target.value)} placeholder={consult ? tt("例如：讲清个税汇算里常见的三类问题") : tt("例如：为你的产品设计一套可开发的核心界面")} />
+        <input className={INPUT_CLASS} data-bay-field="title" value={title} maxLength={TITLE_MAX} onChange={(event) => onTitle(event.target.value)} />
         <OverreachHintList text={title} />
       </SellerField>
       {consult ? null : (
@@ -280,10 +286,6 @@ export function BasicsStep({
           <CategorySelect categories={categories} value={category} onChange={onCategory} />
         </SellerField>
       )}
-      <SellerField label={tt("一句话介绍")} hint={`${summary.length}/${SUMMARY_MAX}`}>
-        <textarea className={TEXTAREA_CLASS} data-bay-field="summary" rows={3} maxLength={SUMMARY_MAX} value={summary} onChange={(event) => onSummary(event.target.value)} placeholder={tt("适合谁、解决什么问题、最后拿到什么。")} />
-        <OverreachHintList text={summary} />
-      </SellerField>
       {consult ? (
         <SellerField label={tt("能答范围")} hint={tt("哪些问题能答、哪些不在范围内")}>
           <textarea className={TEXTAREA_CLASS} rows={3} maxLength={1000} value={scopeNote} onChange={(event) => onScopeNote(event.target.value)} />
@@ -330,7 +332,7 @@ export function ModelStep({
 }) {
   const tt = useUI();
   return (
-    <StepFrame title={tt("计费方式")} hint={tt("从平台给定的几种里选一种，它决定怎么结算、几天自动验收。本平台不抽佣。")} plain={plain}>
+    <StepFrame title={tt("计费方式")} plain={plain}>
       {loading ? (
         <p className="text-[12.5px] text-stone-500">{tt("正在加载…")}</p>
       ) : models.length === 0 ? (
@@ -348,7 +350,7 @@ export function ModelStep({
               <span className="min-w-0">
                 <span className="block text-[13px] font-semibold text-stone-900">{tt(model.name_zh)}</span>
                 <span className="mt-0.5 block text-[12px] leading-5 text-stone-600">{tt(model.settlement_rule_zh)}</span>
-                <span className="mt-0.5 block text-[11.5px] text-stone-500">
+                <span className="mt-0.5 block text-[12px] text-stone-600">
                   {model.auto_accept_days_default ? tt("交付后 {n} 天自动验收", { n: model.auto_accept_days_default }) : tt("不自动验收")}
                 </span>
               </span>
@@ -391,12 +393,12 @@ export function FieldsStep({
   );
 }
 
-function RequiredField({ spec, value, onChange }: { spec: BayFieldSpec; value: BayFieldValue | undefined; onChange: (value: BayFieldValue) => void }) {
+export function RequiredField({ spec, value, onChange }: { spec: BayFieldSpec; value: BayFieldValue | undefined; onChange: (value: BayFieldValue) => void }) {
   const tt = useUI();
   const label = tt(spec.label_zh);
   if (spec.type === "bool") {
     return (
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-stone-200 px-3 py-2.5 text-[13px] text-stone-800">
+      <label className="flex cursor-pointer items-center gap-3 py-2 text-[13px] text-stone-800">
         <input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} />
         <span>{label}</span>
       </label>
@@ -406,7 +408,7 @@ function RequiredField({ spec, value, onChange }: { spec: BayFieldSpec; value: B
     return (
       <SellerField label={label}>
         <select className={INPUT_CLASS} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)}>
-          <option value="">{tt("请选择")}</option>
+          <option value=""></option>
           {(spec.enum || []).map((option) => (
             <option key={option} value={option}>
               {option}
@@ -469,13 +471,13 @@ export function TiersStep({
   return (
     <StepFrame title={tt("价格与交期")} hint={free ? tt("免费协作：每档价格都是 0。") : tt("最多三档。价格、交付天数、修改次数和包含的内容都会直接展示给买家。")} plain={plain}>
       <div className="flex justify-end">
-        <button type="button" onClick={onBasicOnly} className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-stone-700">
+        <button type="button" onClick={onBasicOnly} className={SECONDARY_BUTTON}>
           {tt("只用一档")}
         </button>
       </div>
       <div className="space-y-3">
         {tiers.map((tier, index) => (
-          <article key={tier.tier} data-bay-tier={tier.tier} className={`space-y-3 rounded-xl border p-3 ${tier.enabled ? "border-stone-300 bg-white" : "border-stone-200 bg-stone-50 opacity-70"}`}>
+          <article key={tier.tier} data-bay-tier={tier.tier} className={`space-y-3 py-2 ${tier.enabled ? "" : "opacity-70"}`}>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[13px] font-semibold text-stone-900">{tt(TIER_LABEL[tier.tier])}</p>
               <label className="flex items-center gap-2 text-[12px] text-stone-600">
@@ -491,22 +493,16 @@ export function TiersStep({
                 <SellerField label={tt("简短说明")}>
                   <input className={INPUT_CLASS} value={tier.description} maxLength={200} onChange={(event) => onChange(index, { description: event.target.value })} />
                 </SellerField>
-                <div className="flex flex-wrap gap-3">
-                  <div className="min-w-[7rem] flex-1">
-                    <SellerField label={tt("价格（{currency}）", { currency })}>
-                      <input className={INPUT_CLASS} inputMode="decimal" disabled={free} value={yuanText(tier.price_fen)} onChange={(event) => onChange(index, { price_fen: toFen(event.target.value) })} />
-                    </SellerField>
-                  </div>
-                  <div className="min-w-[7rem] flex-1">
-                    <SellerField label={tt("交付天数")}>
-                      <input className={INPUT_CLASS} inputMode="numeric" value={tier.delivery_days == null ? "" : String(tier.delivery_days)} onChange={(event) => onChange(index, { delivery_days: intOrNull(event.target.value, 1, 365) })} />
-                    </SellerField>
-                  </div>
-                  <div className="min-w-[7rem] flex-1">
-                    <SellerField label={tt("修改次数")} hint={tt("-1 表示不限")}>
-                      <input className={INPUT_CLASS} inputMode="numeric" value={String(tier.revisions)} onChange={(event) => onChange(index, { revisions: intOrNull(event.target.value, -1, 100) ?? 0 })} />
-                    </SellerField>
-                  </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SellerField label={tt("价格（{currency}）", { currency })}>
+                    <input className={INPUT_CLASS} inputMode="decimal" disabled={free} value={yuanText(tier.price_fen)} onChange={(event) => onChange(index, { price_fen: toFen(event.target.value) })} />
+                  </SellerField>
+                  <SellerField label={tt("交付天数")}>
+                    <input className={INPUT_CLASS} inputMode="numeric" value={tier.delivery_days == null ? "" : String(tier.delivery_days)} onChange={(event) => onChange(index, { delivery_days: intOrNull(event.target.value, 1, 365) })} />
+                  </SellerField>
+                  <SellerField label={tt("修改次数")} hint={tt("-1 表示不限")}>
+                    <input className={INPUT_CLASS} inputMode="numeric" value={String(tier.revisions)} onChange={(event) => onChange(index, { revisions: intOrNull(event.target.value, -1, 100) ?? 0 })} />
+                  </SellerField>
                 </div>
                 <SellerField label={tt("包含内容")} hint={tt("每行一项")}>
                   <textarea className={TEXTAREA_CLASS} rows={3} value={tier.features.join("\n")} onChange={(event) => onChange(index, { features: event.target.value.split("\n").slice(0, 20) })} />
@@ -551,7 +547,7 @@ export function ConsultPricingStep({
 }) {
   const tt = useUI();
   return (
-    <StepFrame title={tt("价格")} hint={tt("答疑只有两种计价：按次、按小时。本平台不抽佣。")} plain={plain}>
+    <StepFrame title={tt("价格")} plain={plain}>
       <div className="space-y-2" role="radiogroup">
         {(["session", "hour"] as BayConsultUnit[]).map((value) => (
           <label key={value} className={`${OPTION_CLASS} ${unit === value ? OPTION_ON : OPTION_OFF}`}>
@@ -579,7 +575,7 @@ export function ConsultPricingStep({
               <input className={INPUT_CLASS} data-bay-field="consult-minutes" inputMode="numeric" value={minutes == null ? "" : String(minutes)} onChange={(event) => onMinutes(intOrNull(event.target.value, 5, 600))} />
             </SellerField>
           )}
-          <SellerField label={tt("多久内回复")} hint={tt("例如：24 小时内")}>
+          <SellerField label={tt("多久内回复")}>
             <input className={INPUT_CLASS} data-bay-field="consult-window" value={responseWindow} maxLength={60} onChange={(event) => onResponseWindow(event.target.value)} />
           </SellerField>
         </>
@@ -612,7 +608,7 @@ export function ConsultTermsFields({
   const tt = useUI();
   return (
     <div className="space-y-4">
-      <SellerField label={tt("能答范围")} hint={tt("哪些问题能答、哪些不在范围内")}>
+      <SellerField label={tt("能答范围")}>
         <textarea className={TEXTAREA_CLASS} data-bay-field="scope" rows={3} maxLength={1000} value={scopeNote} onChange={(event) => onScopeNote(event.target.value)} />
       </SellerField>
       {unit === "session" ? (
@@ -624,7 +620,7 @@ export function ConsultTermsFields({
           <input className={INPUT_CLASS} data-bay-field="consult-minutes" inputMode="numeric" value={minutes == null ? "" : String(minutes)} onChange={(event) => onMinutes(intOrNull(event.target.value, 5, 600))} />
         </SellerField>
       )}
-      <SellerField label={tt("最长响应时间")} hint={tt("例如：24 小时内")}>
+      <SellerField label={tt("最长响应时间")}>
         <input className={INPUT_CLASS} data-bay-field="consult-window" value={responseWindow} maxLength={60} onChange={(event) => onResponseWindow(event.target.value)} />
       </SellerField>
     </div>
@@ -653,24 +649,20 @@ export function AddonsStep({
     <StepFrame title={tt("加购项")} hint={tt("把加急、源文件、多一个版本写成可选项，买家不用反复问价。")} plain={plain}>
       {addons.length === 0 ? <SellerEmpty>{tt("还没有加购项；价格档已经包含全部内容的话可以直接继续。")}</SellerEmpty> : null}
       {addons.map((addon) => (
-        <article key={addon.key} className="space-y-3 rounded-xl border border-stone-200 p-3">
+        <article key={addon.key} className="space-y-3 py-2">
           <SellerField label={tt("名称")}>
             <input className={INPUT_CLASS} value={addon.title} maxLength={80} onChange={(event) => onChange(addon.key, { title: event.target.value })} />
           </SellerField>
           <SellerField label={tt("说明")}>
             <input className={INPUT_CLASS} value={addon.description} maxLength={200} onChange={(event) => onChange(addon.key, { description: event.target.value })} />
           </SellerField>
-          <div className="flex flex-wrap gap-3">
-            <div className="min-w-[7rem] flex-1">
-              <SellerField label={tt("加价（{currency}）", { currency })}>
-                <input className={INPUT_CLASS} inputMode="decimal" value={yuanText(addon.price_fen)} onChange={(event) => onChange(addon.key, { price_fen: toFen(event.target.value) })} />
-              </SellerField>
-            </div>
-            <div className="min-w-[7rem] flex-1">
-              <SellerField label={tt("多加几天")}>
-                <input className={INPUT_CLASS} inputMode="numeric" value={String(addon.extra_days)} onChange={(event) => onChange(addon.key, { extra_days: intOrNull(event.target.value, 0, 365) ?? 0 })} />
-              </SellerField>
-            </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SellerField label={tt("加价（{currency}）", { currency })}>
+              <input className={INPUT_CLASS} inputMode="decimal" value={yuanText(addon.price_fen)} onChange={(event) => onChange(addon.key, { price_fen: toFen(event.target.value) })} />
+            </SellerField>
+            <SellerField label={tt("多加几天")}>
+              <input className={INPUT_CLASS} inputMode="numeric" value={String(addon.extra_days)} onChange={(event) => onChange(addon.key, { extra_days: intOrNull(event.target.value, 0, 365) ?? 0 })} />
+            </SellerField>
           </div>
           <div className="flex justify-end">
             <button type="button" onClick={() => onRemove(addon.key)} className="text-[12px] font-medium text-rose-600">
@@ -689,35 +681,24 @@ export function AddonsStep({
 export function DetailsStep({
   description,
   onDescription,
-  buyerInputs,
-  onBuyerInputs,
   plain,
-  showBuyerInputs = true,
   minChars = MIN_DESCRIPTION,
 }: {
   description: string;
   onDescription: (value: string) => void;
-  buyerInputs: string;
-  onBuyerInputs: (value: string) => void;
   plain?: boolean;
-  showBuyerInputs?: boolean;
   minChars?: number;
 }) {
   const tt = useUI();
   const length = description.trim().length;
   return (
-    <StepFrame title={tt("详情")} hint={minChars > 0 ? tt("写清交付边界、合作方式、不包含什么。上架至少需要 30 个字。") : tt("写清交付边界、合作方式、不包含什么。")} plain={plain}>
+    <StepFrame title={tt("详细介绍")} hint={minChars > 0 ? tt("写清交付边界、合作方式、不包含什么。上架至少需要 30 个字。") : tt("写清交付边界、合作方式、不包含什么。")} plain={plain}>
       <SellerField
-        label={tt("服务详情")}
+        label={tt("详细介绍")}
         hint={minChars > 0 ? <span className={length >= minChars ? "text-emerald-700" : "text-amber-700"}>{tt("{n} 字 / 至少 30 字", { n: length })}</span> : undefined}
       >
         <textarea className={TEXTAREA_CLASS} data-bay-field="description" rows={8} maxLength={20000} value={description} onChange={(event) => onDescription(event.target.value)} />
       </SellerField>
-      {showBuyerInputs ? (
-        <SellerField label={tt("开始前需要买家提供什么")} hint={tt("会作为常见问题第一条展示给买家")}>
-          <textarea className={TEXTAREA_CLASS} data-bay-field="buyer-inputs" rows={3} maxLength={2000} value={buyerInputs} onChange={(event) => onBuyerInputs(event.target.value)} placeholder={tt("例如：品牌名称与标志、参考案例、使用场景")} />
-        </SellerField>
-      ) : null}
     </StepFrame>
   );
 }
@@ -740,7 +721,7 @@ export function FaqStep({
     <StepFrame title={tt("常见问题")} hint={tt("提前回答交付格式、修改范围、开始条件，少一些下单前的来回。")} plain={plain}>
       {items.length === 0 ? <SellerEmpty>{tt("还没有常见问题，没有要补充的也可以直接继续。")}</SellerEmpty> : null}
       {items.map((item, index) => (
-        <article key={item.key} className="space-y-3 rounded-xl border border-stone-200 p-3">
+        <article key={item.key} className="space-y-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[12.5px] font-semibold text-stone-800">{tt("问题 {n}", { n: index + 1 })}</p>
             <button type="button" onClick={() => onRemove(item.key)} className="text-[12px] font-medium text-rose-600">
@@ -770,6 +751,7 @@ export function MediaStep({
   coverUrl,
   onChange,
   onCover,
+  onUrls,
   onAdd,
   onRemove,
   onMove,
@@ -780,6 +762,7 @@ export function MediaStep({
   coverUrl: string;
   onChange: (key: string, patch: Partial<DraftMedia>) => void;
   onCover: (url: string) => void;
+  onUrls?: (urls: string[]) => void;
   onAdd: () => void;
   onRemove: (key: string) => void;
   onMove: (index: number, direction: -1 | 1) => void;
@@ -787,15 +770,30 @@ export function MediaStep({
   imagesOnly?: boolean;
 }) {
   const tt = useUI();
-  const kinds = imagesOnly ? (["image"] as BayServiceMediaKind[]) : MEDIA_KINDS;
+  if (imagesOnly) {
+    const urls = cleanGalleryUrls(
+      items.filter((item) => item.kind === "image").map((item) => item.url),
+      coverUrl,
+    );
+    return (
+      <BayImageGallery
+        urls={urls}
+        onUrls={(next) => {
+          if (onUrls) onUrls(next);
+          else onCover(next[0] || "");
+        }}
+      />
+    );
+  }
+  const kinds = MEDIA_KINDS;
   return (
     <StepFrame title={tt("作品图")} hint={tt("粘贴公开可访问的 https 地址，排好顺序，选一张作为列表里的封面。")} plain={plain}>
       {items.length === 0 ? <SellerEmpty>{tt("还没有作品图。上架前至少放一张。")}</SellerEmpty> : null}
       {items.map((item, index) => {
         const safe = safeHttpUrl(item.url);
         return (
-          <article key={item.key} className="space-y-3 rounded-xl border border-stone-200 p-3" data-bay-media={item.kind}>
-            <div className="flex h-28 items-center justify-center overflow-hidden rounded-lg bg-stone-100 text-[12px] text-stone-400">
+          <article key={item.key} className="space-y-3 py-2" data-bay-media={item.kind}>
+            <div className="flex h-28 items-center justify-center overflow-hidden rounded-lg bg-stone-100 text-[12px] text-stone-600">
               {item.kind === "image" && safe ? <img src={safe} alt="" className="h-full w-full object-cover" loading="lazy" /> : <span>{safe ? tt(MEDIA_KIND_LABEL[item.kind]) : tt("填好地址后这里会显示预览")}</span>}
             </div>
             <div className="flex flex-wrap gap-3">
@@ -814,7 +812,7 @@ export function MediaStep({
               )}
               <div className="min-w-[10rem] flex-1">
                 <SellerField label={tt("地址")}>
-                  <input className={INPUT_CLASS} value={item.url} maxLength={1024} placeholder="https://" onChange={(event) => onChange(item.key, { url: event.target.value })} />
+                  <input className={INPUT_CLASS} value={item.url} maxLength={1024} onChange={(event) => onChange(item.key, { url: event.target.value })} />
                 </SellerField>
               </div>
             </div>
@@ -823,17 +821,17 @@ export function MediaStep({
               <input className={INPUT_CLASS} value={item.caption} maxLength={200} onChange={(event) => onChange(item.key, { caption: event.target.value })} />
             </SellerField>
             <div className="flex flex-wrap items-center gap-2 text-[12px]">
-              <label className="flex items-center gap-2 rounded-lg border border-stone-200 px-2.5 py-1.5">
+              <label className="flex items-center gap-2 rounded-full border border-neutral-900 bg-white px-4 py-2">
                 <input type="radio" name="bay-service-cover" disabled={!safe} checked={Boolean(safe) && coverUrl === item.url} onChange={() => onCover(item.url)} />
                 {tt("设为封面")}
               </label>
-              <button type="button" disabled={index === 0} onClick={() => onMove(index, -1)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 disabled:opacity-40">
+              <button type="button" disabled={index === 0} onClick={() => onMove(index, -1)} className={SECONDARY_BUTTON}>
                 {tt("上移")}
               </button>
-              <button type="button" disabled={index === items.length - 1} onClick={() => onMove(index, 1)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 disabled:opacity-40">
+              <button type="button" disabled={index === items.length - 1} onClick={() => onMove(index, 1)} className={SECONDARY_BUTTON}>
                 {tt("下移")}
               </button>
-              <button type="button" onClick={() => onRemove(item.key)} className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-rose-600">
+              <button type="button" onClick={() => onRemove(item.key)} className={DANGER_BUTTON}>
                 {tt("移除")}
               </button>
             </div>

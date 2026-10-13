@@ -4,7 +4,7 @@
 // 病根（本文件存在的理由，W24 2026-08-31 实测）：外壳有两套**各自手写**的导航——
 //   A. `WorkspacePages.tsx` 的 `workspaceNav()`：31 个租户站走这套；
 //   B. 门户 `oceanleo/app/_components/clone-shell.tsx` 的 `usePrimaryNav()`：
-//      主站 oceanleo.com 走这套（它比功能站多出项目/Playground/插件/计划四项，
+//      主站 oceanleo.com 走这套（它比功能站多出项目/计划等项，
 //      当初套不进 `workspaceNav()`，于是整份复制着手写）。
 // 两套不同步，而且**已经真实发病过一次**：`/bay` 页（原 `/explore`）上线后
 // 门户侧栏却一直没有入口，用户只能手打 URL 才进得去（`clone-shell.tsx` 的注释里
@@ -136,8 +136,9 @@ export interface NavSourceEntry {
 /**
  * 唯一事实源。**加一页只改这一处**，两套外壳自动跟上。
  *
- * `order` 留白 10：两套外壳的次序本来就不同（门户把 Playground 放在工作台之后，
- * 租户站放在末位），所以次序是**每套外壳各自的数据**，不是全局的一条。
+ * `order` 留白 10：两套外壳的次序本来就不同，所以次序是**每套外壳各自的数据**，
+ * 不是全局的一条。playground 条目仍留在表里（类型 / withPlayground 开关还在），
+ * `navEntries` 不再产出这一行。
  */
 export const NAV_SOURCE: readonly NavSourceEntry[] = [
   {
@@ -202,9 +203,9 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     labelKey: "playground",
     iconId: "sparkles",
     placements: {
-      // 租户站默认没有 Playground，要显式打开，且排在末位。
+      // 落位保留，避免「死数据」闸；navEntries 恒跳过 id=playground。
       workspace: { order: 60, option: "withPlayground", optionDefault: false },
-      // 门户恒有，且紧跟工作台。
+      // 门户侧栏已无此项；不挂 option，避免跨仓把 playground 当成「有条件显示」的项。
       portal: { order: 60 },
     },
   },
@@ -256,6 +257,8 @@ function placementVisible(
   placement: NavPlacement,
   options: NavResolveOptions,
 ): boolean {
+  // withPlayground 作废：开了也不再多一行。货架并进工作台「全部」。
+  if (placement.option === "withPlayground") return false;
   if (!placement.option) return true;
   if (placement.option === "withExplore" || placement.option === "withBay") {
     if (options.withExplore === false || options.withBay === false) return false;
@@ -280,6 +283,7 @@ export function navEntries(
   section: NavSection = "primary",
 ): ResolvedNavEntry[] {
   return NAV_SOURCE.filter((entry) => {
+    if (entry.id === "playground") return false;
     const placement = entry.placements[scope];
     if (!placement) return false;
     if ((placement.section ?? "primary") !== section) return false;

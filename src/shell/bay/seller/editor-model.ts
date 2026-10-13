@@ -2,6 +2,25 @@
 // 不碰 React 与网络，测试直接调用。界面文案在这里只写中文原文，由调用方 tt() 翻译。
 
 import type { BayFeedItem } from "../../../lib/bay/types";
+import { BAY_GALLERY_MAX, cleanGalleryUrls } from "../form/bay-gallery";
+import {
+  applyDigitalWorks,
+  digitalWorksFromLoaded,
+  httpsWorkUrl,
+  isBayWorkCaption,
+  mediaKindForWork,
+  workCaptionFor,
+  workIdFromCaption,
+  type DigitalWorkRef,
+} from "../form/bay-digital-works";
+import {
+  audienceDone,
+  audienceMemberIds,
+  emptyAudience,
+  normalizeAudience,
+  type BayAudience,
+} from "../form/bay-audience";
+import { offerFromListing, type BayOfferKind } from "../form/bay-listing";
 import {
   isSellerRestrictedDomain,
   type BayCatalogKind,
@@ -132,9 +151,6 @@ export interface EditorDraft {
   deliveryMode: BayDeliveryMode;
   description: string;
   coverUrl: string;
-  /** 开始前需要买家提供什么（存成常见问题里的第一条）。 */
-  buyerInputs: string;
-  buyerInputsFaqId: string;
   pricingModel: string;
   fieldValues: BayFieldValues;
   tiers: DraftTier[];
@@ -151,10 +167,16 @@ export interface EditorDraft {
   scopeNote: string;
   responseWindow: string;
   listingKind: BayListingKind;
+  offerKind: BayOfferKind;
   license: BayLicense | "";
-  digitalWork: { id: string; title: string } | null;
+  digitalWork: DigitalWorkRef | null;
+  digitalWorks: DigitalWorkRef[];
   simplePrice: boolean;
   official: boolean;
+  customTerms: string;
+  audience: BayAudience;
+  deadlineAt: string;
+  priceUnset: boolean;
 }
 
 let keySeq = 0;
@@ -183,8 +205,6 @@ export function emptyDraft(tt: Translate): EditorDraft {
     deliveryMode: "on_platform",
     description: "",
     coverUrl: "",
-    buyerInputs: "",
-    buyerInputsFaqId: "",
     pricingModel: "",
     fieldValues: {},
     tiers: defaultTiers(tt),
@@ -201,11 +221,27 @@ export function emptyDraft(tt: Translate): EditorDraft {
     scopeNote: "",
     responseWindow: "",
     listingKind: "service",
+    offerKind: "service",
     license: "",
     digitalWork: null,
+    digitalWorks: [],
     simplePrice: true,
     official: false,
+    customTerms: "",
+    audience: emptyAudience(),
+    deadlineAt: "",
+    priceUnset: true,
   };
+}
+
+export function freshPublishDraft(tt: Translate, listing: BayOfferKind | "digital" | "service" = "digital"): EditorDraft {
+  const next = emptyDraft(tt);
+  const offer = offerFromListing(listing);
+  next.catalogKind = "delivery";
+  next.offerKind = offer;
+  next.listingKind = offer === "service" ? "service" : "digital";
+  next.simplePrice = true;
+  return next;
 }
 
 export function stepsFor(kind: BayCatalogKind | ""): EditorStep[] {
@@ -243,15 +279,7 @@ export function moneyText(minor: number, currency: string): string {
   return symbol ? `${symbol}${number}` : `${number} ${code}`;
 }
 
-/** 输入框里显示的金额（主单位）；0 显示为空，方便直接输入。 */
-export function yuanText(fen: number): string {
-  return fen ? String(fen / 100) : "";
-}
-
-export function toFen(value: string): number {
-  const amount = Number(String(value).replace(/[,\s]/g, ""));
-  return Number.isFinite(amount) && amount >= 0 ? Math.min(Math.round(amount * 100), 1_000_000_000) : 0;
-}
+export { yuanText, toFen } from "../form/bay-price";
 
 export function fieldFilled(value: BayFieldValue | undefined | null): boolean {
   if (value === undefined || value === null) return false;
@@ -355,20 +383,27 @@ function priceUnitOf(model: BayPricingModel | undefined): BaySellerPriceUnit {
   return unit === "session" || unit === "hour" || unit === "day" || unit === "month" ? unit : "project";
 }
 
+export function primaryDigitalWork(draft: Pick<EditorDraft, "digitalWork" | "digitalWorks">): DigitalWorkRef | null {
+  return (draft.digitalWorks && draft.digitalWorks[0]) || draft.digitalWork || null;
+}
+
 export function listingPayload(draft: EditorDraft): {
   listing_kind: BayListingKind;
   license: BayLicense | null;
-  digital_work: { kind: "task"; id: string } | null;
+  digital_work: { kind: "task" | "artifact"; id: string } | null;
 } {
+  const first = primaryDigitalWork(draft);
   return {
-    listing_kind: draft.listingKind,
+    listing_kind: draft.offerKind === "service" ? "service" : draft.offerKind === "app" || draft.offerKind === "lesson" ? draft.offerKind : "digital",
     license: draft.license === "personal" || draft.license === "commercial" ? draft.license : null,
-    digital_work: draft.listingKind === "digital" && draft.digitalWork?.id ? { kind: "task", id: draft.digitalWork.id } : null,
+    digital_work:
+      draft.listingKind === "digital" && first?.id
+        ? { kind: first.kind === "artifact" ? "artifact" : "task", id: first.id }
+        : null,
   };
 }
 
 export function resolvedPricingModel(draft: EditorDraft): string {
-  if (draft.official) return "free";
   if (draft.listingKind === "digital" || draft.simplePrice) {
     return (draft.tiers[0]?.price_fen || 0) === 0 ? "free" : "fixed";
   }
@@ -376,7 +411,6 @@ export function resolvedPricingModel(draft: EditorDraft): string {
 }
 
 export function resolvedPriceFen(draft: EditorDraft): number {
-  if (draft.official) return 0;
   return enabledTiers(draft)[0]?.price_fen || draft.tiers[0]?.price_fen || 0;
 }
 
@@ -391,7 +425,7 @@ export function serviceInput(draft: EditorDraft, model?: BayPricingModel): BaySe
     category: draft.category,
     cover_url: safeHttpUrl(draft.coverUrl),
     engagement_kind: resolvedPricingModel(draft) || undefined,
-    delivery_mode: draft.deliveryMode,
+    delivery_mode: "on_platform",
     price_fen: resolvedPriceFen(draft),
     price_unit: priceUnitOf(model),
     delivery_days: primary?.delivery_days || null,
@@ -401,6 +435,11 @@ export function serviceInput(draft: EditorDraft, model?: BayPricingModel): BaySe
     listing_kind: extra.listing_kind,
     license: extra.license,
     digital_work: extra.digital_work,
+    custom_terms: draft.customTerms.trim() || null,
+    audience_mode: draft.audience.mode,
+    audience_handle: draft.audience.mode === "invited" ? draft.audience.handle.trim() || draft.audience.members[0]?.name || null : null,
+    audience_member_ids: draft.audience.mode === "invited" || draft.audience.mode === "group" ? audienceMemberIds(draft.audience) : [],
+    deadline_at: draft.deadlineAt ? new Date(`${draft.deadlineAt}T23:59:59`).toISOString() : null,
   };
 }
 
@@ -411,26 +450,25 @@ export function consultInput(draft: EditorDraft, status: "draft" | "published"):
     regulated_domain: draft.domain,
     title: draft.title.trim().slice(0, TITLE_MAX),
     summary: draft.summary.trim().slice(0, SUMMARY_MAX),
-    scope_note: draft.scopeNote.trim(),
+    scope_note: (draft.customTerms.trim() || draft.scopeNote.trim()),
     price_fen: price,
     price_unit: draft.consultUnit,
     rounds: draft.consultUnit === "session" ? draft.consultRounds : null,
     minutes: draft.consultUnit === "hour" ? draft.consultMinutes : null,
     response_window: draft.responseWindow.trim(),
     status,
+    custom_terms: draft.customTerms.trim() || null,
+    audience_mode: draft.audience.mode,
+    audience_handle: draft.audience.mode === "invited" ? draft.audience.handle.trim() || draft.audience.members[0]?.name || null : null,
+    audience_member_ids: draft.audience.mode === "invited" || draft.audience.mode === "group" ? audienceMemberIds(draft.audience) : [],
+    deadline_at: draft.deadlineAt ? new Date(`${draft.deadlineAt}T23:59:59`).toISOString() : null,
   };
 }
 
-/** 要存的常见问题：「开始前需要我提供什么」放第一条，其余照卖家的顺序。 */
-export function faqRowsForSave(draft: EditorDraft, buyerInputsQuestion: string): { rows: DraftFaq[]; deleted: string[] } {
+/** 要存的常见问题：空行不存，其余照卖家的顺序。 */
+export function faqRowsForSave(draft: EditorDraft): { rows: DraftFaq[]; deleted: string[] } {
   const rows: DraftFaq[] = [];
   const deleted = [...draft.deletedFaqIds];
-  const inputs = draft.buyerInputs.trim();
-  if (inputs) {
-    rows.push({ key: "buyer-inputs", id: draft.buyerInputsFaqId || undefined, question: buyerInputsQuestion, answer: inputs });
-  } else if (draft.buyerInputsFaqId) {
-    deleted.push(draft.buyerInputsFaqId);
-  }
   for (const faq of draft.faqs) {
     if (!faq.question.trim() && !faq.answer.trim()) {
       if (faq.id) deleted.push(faq.id);
@@ -471,9 +509,7 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
         }
       : fallback;
   });
-  const marker = tt("开始前需要我提供什么？");
   const faqRows = [...(loaded.faq || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
-  const inputsRow = faqRows.find((row) => row.question === marker);
   const pricing = loaded.pricing;
   const extras = extrasFromService(service);
   const enabledCount = tiers.filter((tier) => tier.enabled).length;
@@ -487,11 +523,9 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
     title: service.title || "",
     category: service.category || "",
     summary: service.summary || "",
-    deliveryMode: service.delivery_mode === "off_platform" ? "off_platform" : "on_platform",
+    deliveryMode: "on_platform",
     description: service.description || "",
     coverUrl: service.cover_url || "",
-    buyerInputs: inputsRow?.answer || "",
-    buyerInputsFaqId: inputsRow?.id || "",
     pricingModel: pricing?.pricing_model?.key || service.engagement_kind || "",
     fieldValues: { ...(pricing?.values || {}) },
     tiers,
@@ -504,30 +538,61 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
       extra_days: row.extra_days || 0,
       enabled: row.enabled !== false,
     })),
-    faqs: faqRows.filter((row) => row !== inputsRow).map((row) => ({ key: row.id, id: row.id, question: row.question || "", answer: row.answer || "" })),
+    faqs: faqRows.map((row) => ({ key: row.id, id: row.id, question: row.question || "", answer: row.answer || "" })),
     media: [...(loaded.media || [])]
       .sort((a, b) => (a.position || 0) - (b.position || 0))
       .map((row) => ({ key: row.id, id: row.id, kind: row.kind, url: row.url || "", poster_url: row.poster_url || "", caption: row.caption || "" })),
     listingKind: extras.listingKind,
+    offerKind: extras.offerKind,
     license: extras.license,
-    digitalWork: extras.digitalWork,
+    ...applyDigitalWorks(digitalWorksFromLoaded({ digitalWork: extras.digitalWork, media: loaded.media || [] })),
     official: extras.official,
     simplePrice: extras.listingKind === "digital" || (enabledCount <= 1 && addonCount === 0),
+    customTerms: extras.customTerms,
+    audience: extras.audience,
+    deadlineAt: extras.deadlineAt,
+    priceUnset: false,
   };
+}
+
+function dateInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? "" : at.toISOString().slice(0, 10);
 }
 
 function extrasFromService(service: BayOwnService): {
   listingKind: BayListingKind;
+  offerKind: BayOfferKind;
   license: BayLicense | "";
-  digitalWork: { id: string; title: string } | null;
+  digitalWork: DigitalWorkRef | null;
   official: boolean;
+  customTerms: string;
+  audience: BayAudience;
+  deadlineAt: string;
 } {
   const work = (service as BayOwnService & { digital_work?: { kind?: string; id?: string; title?: string } | null }).digital_work;
+  const offer = offerFromListing(service.listing_kind);
   return {
-    listingKind: service.listing_kind === "digital" ? "digital" : "service",
+    listingKind: offer === "service" ? "service" : "digital",
+    offerKind: offer,
     license: service.license === "personal" || service.license === "commercial" ? service.license : "",
-    digitalWork: work && typeof work.id === "string" && work.id ? { id: work.id, title: typeof work.title === "string" ? work.title : "" } : null,
+    digitalWork:
+      work && typeof work.id === "string" && work.id
+        ? {
+            id: work.id,
+            title: typeof work.title === "string" ? work.title : "",
+            kind: work.kind === "artifact" ? "artifact" : "task",
+          }
+        : null,
     official: service.official === true,
+    customTerms: typeof service.custom_terms === "string" ? service.custom_terms : "",
+    audience: normalizeAudience({
+      mode: service.audience_mode || "public",
+      handle: service.audience_handle || "",
+      members: (service.audience_member_ids || []).map((userId) => ({ userId, name: userId })),
+    }),
+    deadlineAt: dateInputValue(service.deadline_at),
   };
 }
 
@@ -566,7 +631,7 @@ export function blockedReason(step: EditorStep, draft: EditorDraft, ctx: EditorC
   }
   if (step === "pricing") {
     if (draft.catalogKind === "consult") {
-      if (!(draft.tiers[0]?.price_fen > 0)) return { message: "答疑价格要大于 0" };
+      if (!Number.isFinite(draft.tiers[0]?.price_fen) || draft.tiers[0].price_fen < 0) return { message: "答疑价格不能是负数" };
       if (draft.consultUnit === "session" && !(draft.consultRounds && draft.consultRounds > 0)) return { message: "按次答疑要写明一次包含几轮问答" };
       if (draft.consultUnit === "hour" && !(draft.consultMinutes && draft.consultMinutes > 0)) return { message: "按小时答疑要写明一小时按多少分钟计" };
     } else {
@@ -596,8 +661,90 @@ export function publishKindOf(draft: Pick<EditorDraft, "catalogKind" | "listingK
   return "";
 }
 
+function isCoverMedia(item: Pick<DraftMedia, "kind" | "caption" | "url">): boolean {
+  return item.kind === "image" && !isBayWorkCaption(item.caption);
+}
+
 export function hasPreviewImage(draft: Pick<EditorDraft, "coverUrl" | "media">): boolean {
-  return Boolean(safeHttpUrl(draft.coverUrl)) || draft.media.some((item) => Boolean(safeHttpUrl(item.url)));
+  return Boolean(safeHttpUrl(draft.coverUrl)) || draft.media.some((item) => isCoverMedia(item) && Boolean(safeHttpUrl(item.url)));
+}
+
+export function imageUrlsOf(draft: Pick<EditorDraft, "coverUrl" | "media">): string[] {
+  return cleanGalleryUrls([
+    draft.coverUrl,
+    ...draft.media.filter(isCoverMedia).map((item) => item.url),
+  ]);
+}
+
+export function draftFromGalleryUrls(draft: EditorDraft, urls: string[]): Partial<EditorDraft> {
+  const cleaned = cleanGalleryUrls(urls).slice(0, BAY_GALLERY_MAX);
+  const galleryImage = (item: DraftMedia) => item.kind === "image" && !isBayWorkCaption(item.caption);
+  const byUrl = new Map(draft.media.filter(galleryImage).map((item) => [safeHttpUrl(item.url) || item.url, item]));
+  const used = new Set<string>();
+  const images = cleaned.map((url) => {
+    const prev = byUrl.get(url);
+    if (prev) {
+      used.add(prev.key);
+      return { ...prev, url, kind: "image" as const };
+    }
+    return { key: clientKey("media"), kind: "image" as const, url, poster_url: "", caption: "" };
+  });
+  const dropped = draft.media.filter((item) => galleryImage(item) && !used.has(item.key));
+  const deleted = dropped.map((item) => item.id).filter((id): id is string => Boolean(id));
+  const others = draft.media.filter((item) => !galleryImage(item));
+  return {
+    coverUrl: cleaned[0] || "",
+    media: [...images, ...others],
+    deletedMediaIds: [...draft.deletedMediaIds, ...deleted],
+  };
+}
+
+/** 其余份写成 service media；第一份只走 `digital_work`，不进 media。 */
+export function mediaForDigitalWorks(draft: EditorDraft): { media: DraftMedia[]; deletedMediaIds: string[] } {
+  const works = applyDigitalWorks(draft.digitalWorks?.length ? draft.digitalWorks : draft.digitalWork ? [draft.digitalWork] : []).digitalWorks;
+  const extra = works.slice(1);
+  const extraById = new Map(extra.map((work) => [work.id, work]));
+  const kept: DraftMedia[] = [];
+  const deleted = [...draft.deletedMediaIds];
+  const seenExtra = new Set<string>();
+  const firstId = works[0]?.id || "";
+
+  for (const item of draft.media) {
+    const workId = workIdFromCaption(item.caption);
+    if (!workId) {
+      kept.push(item);
+      continue;
+    }
+    const work = extraById.get(workId);
+    const url = (work && httpsWorkUrl(work.url)) || (item.url.startsWith("https://") ? item.url : undefined);
+    if (!work || workId === firstId || !url) {
+      if (item.id) deleted.push(item.id);
+      continue;
+    }
+    seenExtra.add(workId);
+    kept.push({
+      ...item,
+      url,
+      poster_url: (work && httpsWorkUrl(work.thumbUrl)) || item.poster_url,
+      caption: workCaptionFor(workId, work.title),
+      kind: mediaKindForWork(work),
+    });
+  }
+
+  for (const work of extra) {
+    if (seenExtra.has(work.id)) continue;
+    const url = httpsWorkUrl(work.url);
+    if (!url) continue;
+    kept.push({
+      key: clientKey("media"),
+      kind: mediaKindForWork(work),
+      url,
+      poster_url: httpsWorkUrl(work.thumbUrl) || "",
+      caption: workCaptionFor(work.id, work.title),
+    });
+  }
+
+  return { media: kept, deletedMediaIds: deleted };
 }
 
 export function termsSpecs(specs: BayFieldSpec[]): BayFieldSpec[] {
@@ -618,32 +765,32 @@ export function sectionMissing(draft: EditorDraft, ctx: EditorContext): Record<P
     if (!draft.title.trim()) product.push("标题");
     if (!categoryKnown) product.push("分类");
     if (!preview) product.push("至少一张预览图");
-    if (!draft.digitalWork?.id) product.push("要卖的作品");
-    if (draft.license !== "personal" && draft.license !== "commercial") terms.push("授权范围");
+    if ((draft.offerKind === "digital" || draft.offerKind === "app") && !primaryDigitalWork(draft)?.id) product.push("放文件");
+    if (!audienceDone(draft.audience)) terms.push("向谁展示");
   } else if (kind === "service") {
     if (!draft.title.trim()) product.push("标题");
     if (!categoryKnown) product.push("分类");
     if (!preview) product.push("至少一张预览图");
     if (draft.simplePrice) {
-      if (!(draft.tiers[0]?.delivery_days && draft.tiers[0].delivery_days > 0)) price.push("交付天数");
+      if (!(draft.tiers[0]?.delivery_days && draft.tiers[0].delivery_days > 0)) terms.push("交付天数");
     } else {
-      if (!resolvedPricingModel(draft) && !draft.pricingModel) price.push("计费方式");
+      if (!resolvedPricingModel(draft) && !draft.pricingModel) terms.push("计费方式");
       if (!enabledTiers(draft).length) price.push("至少启用一档价格");
       else if (!pricesLegal({ ...draft, pricingModel: resolvedPricingModel(draft) || draft.pricingModel })) {
         price.push(draft.pricingModel === "free" ? "免费协作的每档价格都要是 0" : "每档价格都要大于 0");
       } else if (!pricesOrdered(draft)) price.push("启用的价格档要按基础、标准、高级从低到高");
     }
-    for (const spec of missingFields(termsSpecs(ctx.specs), draft.fieldValues)) terms.push(spec.label_zh);
+    if (!audienceDone(draft.audience)) terms.push("向谁展示");
   } else if (kind === "consult") {
     if (!draft.domain || isSellerRestrictedDomain(draft.domain) || !ctx.domainKeys.includes(draft.domain)) product.push("领域");
-    if (!draft.category) product.push("领域下的类目");
+    if (!draft.category) product.push("分类");
     if (!draft.title.trim()) product.push("标题");
-    if (!draft.official && !(draft.tiers[0]?.price_fen > 0)) price.push("价格");
-    if (!draft.scopeNote.trim()) terms.push("能答范围");
+    if (!Number.isFinite(draft.tiers[0]?.price_fen) || draft.tiers[0].price_fen < 0) price.push("价格");
     if (draft.consultUnit === "session") {
       if (!(draft.consultRounds && draft.consultRounds > 0)) terms.push("单次轮次");
     } else if (!(draft.consultMinutes && draft.consultMinutes > 0)) terms.push("单次时长");
     if (!draft.responseWindow.trim()) terms.push("最长响应时间");
+    if (!audienceDone(draft.audience)) terms.push("向谁展示");
   }
   return { product, price, terms };
 }

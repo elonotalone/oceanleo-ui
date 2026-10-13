@@ -11,7 +11,8 @@ import {
   type BayEndpointComputer,
 } from "../../../lib/bay/app-endpoints";
 import { BayApiError } from "../../../lib/bay/http";
-import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerEmpty, SellerField, SellerNotice } from "../seller/seller-ui";
+import { BayChoice, BayRevealForm, type BayRevealItem } from "../form";
+import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerEmpty, SellerNotice } from "../seller/seller-ui";
 import { requireBayLogin } from "../shell/bay-state";
 import {
   checkHintText,
@@ -84,7 +85,6 @@ export function EndpointPicker({
   const selected = endpoints.find((item) => item.id === selectedId) || null;
   const suffix = suffixFromEndpoints(endpoints);
   const preview = previewPublicUrl(slugDraft, suffix);
-  const portIssue = portDraft.trim() ? portProblem(portDraft) : null;
   const slugIssue = slugProblem(slugDraft);
 
   async function create() {
@@ -205,8 +205,8 @@ export function EndpointPicker({
                     setCheckHint("");
                     onSelect(item);
                   }}
-                  className={`block w-full rounded-xl border px-3 py-2 text-left disabled:opacity-40 ${
-                    selectedId === item.id ? "border-neutral-900 bg-neutral-50" : "border-stone-200 bg-white hover:bg-stone-50"
+                  className={`block w-full py-2 text-left disabled:opacity-40 ${
+                    selectedId === item.id ? "font-medium" : "hover:opacity-80"
                   }`}
                 >
                   <span className="block truncate text-[13px] font-medium text-stone-900">{item.url}</span>
@@ -220,64 +220,81 @@ export function EndpointPicker({
         )}
       </div>
 
-      <div data-bay-endpoint-create className="space-y-3 rounded-xl border border-stone-200 bg-white p-3">
+      <div data-bay-endpoint-create data-bay-reveal className="space-y-3">
         <p className="text-[13px] font-medium text-stone-800">{tt("新开一个")}</p>
-        <div className="space-y-2" role="radiogroup" aria-label={tt("云电脑")}>
-          {computers.map((row) => (
-            <label
-              key={row.id}
-              data-bay-endpoint-computer={row.id}
-              className={`flex items-start gap-3 rounded-xl border p-3 ${
-                !row.usable ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-              } ${computerId === row.id ? "border-neutral-900 bg-neutral-50" : "border-neutral-200 bg-white"}`}
-            >
-              <input
-                type="radio"
-                name="bay-endpoint-computer"
-                className="mt-1"
-                disabled={!row.usable || Boolean(disabled || busy)}
-                checked={computerId === row.id}
-                onChange={() => setComputerId(row.id)}
-              />
-              <span>
-                <span className="block text-[13px] font-medium text-stone-900">{row.name}</span>
-                <span className="mt-0.5 block text-[12px] text-stone-500">
-                  {!row.online ? tt("不在线") : null}
-                  {!row.usable && row.blocked_reason ? ` ${row.blocked_reason}` : null}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <SellerField label={tt("端口")} hint={tt("你的应用在云电脑上监听的端口，例如 3000")}>
-          <input
-            className={INPUT_CLASS}
-            inputMode="numeric"
-            value={portDraft}
-            disabled={Boolean(disabled || busy)}
-            onChange={(event) => {
-              setPortDraft(event.target.value);
-              setFormError("");
-            }}
-          />
-        </SellerField>
-        {portIssue ? <p className="text-[12.5px] text-rose-600">{tt(portIssue)}</p> : null}
-        <SellerField label={tt("名字")} hint={tt("可选")}>
-          <input
-            className={INPUT_CLASS}
-            value={slugDraft}
-            disabled={Boolean(disabled || busy)}
-            onChange={(event) => {
-              setSlugDraft(event.target.value);
-              setFormError("");
-            }}
-          />
-        </SellerField>
-        <p className="text-[12px] leading-5 text-stone-500">
-          {tt("3–32 位小写字母、数字和连字符；不要以连字符开头或结尾，也不要连续两个连字符。")}
-        </p>
-        {slugIssue ? <p className="text-[12.5px] text-rose-600">{tt(slugIssue)}</p> : null}
-        {preview ? <p className="text-[12.5px] text-stone-600">{tt("网址会是 {url}", { url: preview })}</p> : null}
+        <BayRevealForm
+          items={
+            [
+              {
+                id: "computer",
+                label: tt("云电脑"),
+                done: Boolean(computerId),
+                summary: computers.find((row) => row.id === computerId)?.name,
+                children: (
+                  <BayChoice
+                    columns={1}
+                    label={tt("云电脑")}
+                    value={computerId}
+                    onChange={setComputerId}
+                    disabled={Boolean(disabled || busy)}
+                    options={computers.map((row) => {
+                      const bits = [
+                        !row.online ? tt("不在线") : "",
+                        !row.usable && row.blocked_reason ? row.blocked_reason : "",
+                      ].filter(Boolean);
+                      return {
+                        value: row.id,
+                        title: row.name,
+                        detail: bits.length ? bits.join(" ") : undefined,
+                        disabled: !row.usable,
+                      };
+                    })}
+                    optionProps={(value) => ({ "data-bay-endpoint-computer": value })}
+                  />
+                ),
+              },
+              {
+                id: "port",
+                label: tt("端口"),
+                done: parsePort(portDraft) != null,
+                summary: parsePort(portDraft) != null ? portDraft.trim() : undefined,
+                children: (
+                  <input
+                    className={INPUT_CLASS}
+                    inputMode="numeric"
+                    value={portDraft}
+                    disabled={Boolean(disabled || busy)}
+                    onChange={(event) => {
+                      setPortDraft(event.target.value);
+                      setFormError("");
+                    }}
+                  />
+                ),
+              },
+              {
+                id: "name",
+                label: tt("名字"),
+                done: Boolean(slugDraft.trim()) && !slugIssue,
+                optional: true,
+                summary: slugDraft.trim() || undefined,
+                children: (
+                  <div className="space-y-2">
+                    <input
+                      className={INPUT_CLASS}
+                      value={slugDraft}
+                      disabled={Boolean(disabled || busy)}
+                      onChange={(event) => {
+                        setSlugDraft(event.target.value);
+                        setFormError("");
+                      }}
+                    />
+                    {preview ? <p className="text-[12.5px] text-stone-600">{tt("网址会是 {url}", { url: preview })}</p> : null}
+                  </div>
+                ),
+              },
+            ] satisfies BayRevealItem[]
+          }
+        />
         {formError ? <SellerNotice tone="error">{formError}</SellerNotice> : null}
         <button
           type="button"
@@ -291,7 +308,7 @@ export function EndpointPicker({
       </div>
 
       {selected ? (
-        <div data-bay-endpoint-selected className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
+        <div data-bay-endpoint-selected className="space-y-2">
           <p className="break-all text-[13px] font-medium text-stone-900">{selected.url}</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" data-bay-action="copy-endpoint" className={SECONDARY_BUTTON} onClick={() => void copyUrl(selected.url)}>

@@ -97,6 +97,7 @@ const familyStub = dataModule(`
   export function currentDomainFamily() { return "com"; }
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
   export function currentFamilySubsiteOrigin(label) { return "https://" + label + ".oceanleo.com"; }
+  export function familyForHost() { return "com"; }
 `);
 const AUTH_SIGNED_OUT = dataModule(`
   export const AUTH_STATE_EVENT = "oceanleo:auth-state";
@@ -322,12 +323,12 @@ test("match: site 多出说明，含类目标签", async () => {
   await view.unmount();
 });
 
-test("空结果有发需求；失败可重试", async () => {
+test("空结果不写招揽文案；失败可重试", async () => {
   resetRelated({ items: [], match: "none", q: "无人", site: "ppt" });
   const empty = await mount(panelEl({ active: true, request: { nonce: "n4", query: "无人", category: "ppt" } }));
   await waitFor(() => assert.ok(empty.host.querySelector("[data-bay-related-empty]")));
-  assert.match(empty.host.textContent, /还没有相关的服务。/);
-  assert.ok(empty.host.querySelector("[data-bay-related-post-need]"));
+  assert.equal(empty.host.textContent.includes("还没有相关的服务。"), false);
+  assert.equal(empty.host.querySelector("[data-bay-related-post-need]"), null);
   await empty.unmount();
 
   let fail = true;

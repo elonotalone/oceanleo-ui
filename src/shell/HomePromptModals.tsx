@@ -196,7 +196,7 @@ export function AddPromptModal({
               )}
             </div>
             <p className="mt-3 text-[11.5px] text-stone-400">
-              {tt("添加后会成为你的卡片，重新打开网站仍在；也会显示在 oceanleo.com/playground。")}
+              {tt("添加后会成为你的卡片，重新打开网站仍在；也会显示在工作台。")}
             </p>
           </div>
         ) : (

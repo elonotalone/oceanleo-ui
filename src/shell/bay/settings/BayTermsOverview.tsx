@@ -51,13 +51,13 @@ export function BayTermsOverview() {
           <button
             type="button"
             onClick={() => requireBayLogin()}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-[13px] hover:bg-neutral-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
+            className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] hover:bg-neutral-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
           >
             {tt("登录")}
           </button>
         </div>
       ) : (
-        <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-700">
+        <div>
           <h4 className="text-[13px] font-semibold">{tt("你同意过的条款")}</h4>
           {current ? (
             <p className="mt-1 text-[12px] text-neutral-500">{tt("当前版本 {version}", { version: current.version })}</p>

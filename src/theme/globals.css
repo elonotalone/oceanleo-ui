@@ -71,6 +71,7 @@
  *   --leo-d-surface  主区内容面（卡片外的次级面）      #181818
  *   --leo-d-card     卡片 / 输入框 / 悬浮面（最亮层）  #202020
  *   --leo-d-card-2   卡片内再高一层（hover / 选中）    #2a2a2a
+ *   --leo-d-well     可看见的输入槽（比卡片再亮一档）  #3f3f3f
  *   --leo-d-border   低对比描边（几乎不可见）          rgba(255,255,255,.055)
  *   --leo-d-border-s 更弱的分隔线                      rgba(255,255,255,.035)
  *   --leo-d-fg       主文字（非纯白，柔和）           #ececec
@@ -89,6 +90,7 @@ html.dark {
   --leo-d-surface: #181818;
   --leo-d-card: #202020;
   --leo-d-card-2: #2a2a2a;
+  --leo-d-well: #3f3f3f;
   --leo-d-border: rgba(255, 255, 255, 0.055);
   --leo-d-border-s: rgba(255, 255, 255, 0.035);
   --leo-d-fg: #ececec;
@@ -158,6 +160,85 @@ html.dark [data-oceanleo-chrome] {
 html.dark [data-oceanleo-chrome][data-oceanleo-sidebar-mode] {
   border-right-color: rgba(255, 255, 255, 0.22) !important;
 }
+/* 折叠轨顶键：默认站标，悬停或键盘聚焦换成展开图标。两键并一键。 */
+[data-oceanleo-sidebar-expand] {
+  position: relative;
+  border-radius: 10px;
+}
+[data-oceanleo-sidebar-expand] [data-oceanleo-rail-expand-icon] {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+}
+[data-oceanleo-sidebar-expand]:hover,
+[data-oceanleo-sidebar-expand]:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
+  color: #171717;
+}
+html.dark [data-oceanleo-sidebar-expand]:hover,
+html.dark [data-oceanleo-sidebar-expand]:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--leo-d-fg);
+}
+[data-oceanleo-sidebar-expand]:hover [data-oceanleo-rail-brand],
+[data-oceanleo-sidebar-expand]:focus-visible [data-oceanleo-rail-brand] {
+  opacity: 0;
+}
+[data-oceanleo-sidebar-expand]:hover [data-oceanleo-rail-expand-icon],
+[data-oceanleo-sidebar-expand]:focus-visible [data-oceanleo-rail-expand-icon] {
+  opacity: 1;
+}
+/* 折叠轨悬停提示：黑底白字圆角块，贴在图标右侧（对照 ChatGPT）。 */
+[data-oceanleo-rail-tip-bubble] {
+  position: fixed;
+  z-index: 70;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #171717;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  transform: translateY(-50%);
+  animation: leo-rail-tip-in var(--leo-dur-3, 160ms) var(--leo-ease-standard, ease-out);
+}
+[data-oceanleo-rail-tip-bubble][data-rtl] {
+  transform: translate(-100%, -50%);
+  animation-name: leo-rail-tip-in-rtl;
+}
+html.dark [data-oceanleo-rail-tip-bubble] {
+  background: #f4f4f5;
+  color: #18181b;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+@keyframes leo-rail-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+}
+@keyframes leo-rail-tip-in-rtl {
+  from {
+    opacity: 0;
+    transform: translate(-100%, -50%) translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-100%, -50%);
+  }
+}
 /* 侧栏 / drawer 写死的 bg-[#f7f7f7] / bg-[#fafafa]（任意值浅底）→ 侧栏层色。 */
 html.dark .bg-\[\#f7f7f7\],
 html.dark .bg-\[\#f7f7f7\]\/85,
@@ -215,6 +296,19 @@ html.dark .bg-stone-200,
 html.dark .bg-gray-200,
 html.dark .bg-zinc-200,
 html.dark .bg-slate-200 {
+  background-color: var(--leo-d-card-2) !important;
+}
+/* 再深一档的槽（bg-neutral-300）。浅色页是看得见的灰井；夜间不能停在卡片色，
+   否则输入槽和底板糊成一块。映到 well，字仍走 --leo-d-fg。 */
+html.dark .bg-neutral-300,
+html.dark .disabled\:bg-neutral-300:disabled {
+  background-color: var(--leo-d-well) !important;
+}
+/* 白底板上的浅灰输入槽。夜间 100 / 200/80 会贴底板，抬到 card-2。 */
+html.dark [data-bay-page-paper] .bg-neutral-100,
+html.dark [data-bay-page-paper] .disabled\:bg-neutral-100:disabled,
+html.dark [data-bay-page-paper] .bg-neutral-200\/80,
+html.dark [data-bay-page-paper] .disabled\:bg-neutral-200\/80:disabled {
   background-color: var(--leo-d-card-2) !important;
 }
 /* 半透明中性底（hover / 选中 / 次级块的 bg-*-50../-100../-200/xx）→ 轻微提亮而非纯色块。 */

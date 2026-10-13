@@ -38,29 +38,29 @@ test("safeAppUrl：只收 https、无账号密码、主机非空", () => {
   assert.equal(safeAppUrl("not a url"), null);
 });
 
-test("embedDecision：五种结果各一条", () => {
-  assert.deepEqual(embedDecision({ url: "javascript:alert(1)", embed_mode: "embed", embed_ok: true }), {
+test("embedDecision：本平台站可嵌，外链与第一方域只跳转", () => {
+  assert.deepEqual(embedDecision({ url: "javascript:alert(1)", source_kind: "hosted", embed_ok: true }), {
     mode: "link",
     reason: "invalid",
     href: null,
   });
-  assert.deepEqual(embedDecision({ url: "https://www.oceanleo.com/bay", embed_mode: "embed", embed_ok: true }), {
+  assert.deepEqual(embedDecision({ url: "https://www.oceanleo.com/bay", source_kind: "hosted", embed_ok: true }), {
     mode: "link",
     reason: "first-party",
     href: "https://www.oceanleo.com/bay",
   });
-  assert.deepEqual(embedDecision({ url: "https://maker.example.com/app", embed_mode: "link", embed_ok: true }), {
+  assert.deepEqual(embedDecision({ url: "https://maker.example.com/app", source_kind: "external", embed_ok: true }), {
     mode: "link",
-    reason: "creator",
+    reason: "external",
     href: "https://maker.example.com/app",
   });
-  assert.deepEqual(embedDecision({ url: "https://maker.example.com/app", embed_mode: "embed", embed_ok: false }), {
+  assert.deepEqual(embedDecision({ url: "https://shop.oceanleo.app/", source_kind: "hosted", embed_ok: false }), {
     mode: "link",
     reason: "blocked",
-    href: "https://maker.example.com/app",
+    href: "https://shop.oceanleo.app/",
   });
-  assert.deepEqual(embedDecision({ url: "https://maker.example.com/app", embed_mode: "embed", embed_ok: null }), {
+  assert.deepEqual(embedDecision({ url: "https://shop.oceanleo.app/", source_kind: "hosted", embed_ok: null }), {
     mode: "frame",
-    src: "https://maker.example.com/app",
+    src: "https://shop.oceanleo.app/",
   });
 });

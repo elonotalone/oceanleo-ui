@@ -57,7 +57,7 @@ export function ChapterList({
     await run("add", async () => {
       const body = await addBayLessonChapter(lessonId, {
         title: picked.title || "",
-        work: { kind: "task", id: picked.id },
+        work: { kind: picked.kind === "artifact" ? "artifact" : "task", id: picked.id },
       });
       return body.chapters;
     });
@@ -110,7 +110,7 @@ export function ChapterList({
           {chapters.map((row, index) => {
             const site = baySiteName(row.work_site_key, tt) || row.work_site_key || "";
             return (
-              <li key={row.id} className="rounded-xl border border-stone-200 bg-white p-3">
+              <li key={row.id} className="py-2">
                 <div className="flex flex-wrap items-start gap-2">
                   <span className="mt-2 w-6 shrink-0 text-[12px] font-medium text-stone-500">{index + 1}</span>
                   <div className="min-w-[10rem] flex-1">

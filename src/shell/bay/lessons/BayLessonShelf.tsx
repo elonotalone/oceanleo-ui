@@ -6,7 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { BayBundleCard } from "./BayBundleCard";
 import { BayLessonCard } from "./BayLessonCard";
 import { useBayLessonBundles, useBayLessons } from "./use-bay-lessons";
-import { openBay, requireBayLogin, type BayFeedFilter } from "../shell/bay-state";
+import type { BayFeedFilter } from "../shell/bay-state";
 
 export interface BayLessonShelfProps {
   filter: BayFeedFilter;
@@ -16,10 +16,7 @@ export interface BayLessonShelfProps {
 
 const GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
 const QUIET_BUTTON =
-  "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
-const PRIMARY_BUTTON =
-  "inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-
+  "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
 type LessonTab = "lesson" | "bundle";
 
 function ShelfSkeleton(): ReactElement {
@@ -38,7 +35,7 @@ function ShelfSkeleton(): ReactElement {
   );
 }
 
-function LessonGrid({ filter, siteKey, accent }: BayLessonShelfProps): ReactElement {
+function LessonGrid({ filter, siteKey }: BayLessonShelfProps): ReactElement {
   const tt = useUI();
   const feed = useBayLessons(filter, siteKey);
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -76,22 +73,7 @@ function LessonGrid({ filter, siteKey, accent }: BayLessonShelfProps): ReactElem
           </button>
         </div>
       ) : null}
-      {empty ? (
-        <div className="flex flex-col items-center px-4 py-16 text-center" data-bay-lesson-empty>
-          <p className="max-w-xs text-[13px] leading-relaxed text-neutral-500">{tt("这里还没有课程")}</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (!requireBayLogin()) return;
-              openBay({ kind: "lesson-editor" });
-            }}
-            style={{ background: accent || "#111113" }}
-            className={`mt-4 ${PRIMARY_BUTTON}`}
-          >
-            {tt("发布课程")}
-          </button>
-        </div>
-      ) : null}
+      {empty ? <div data-bay-lesson-empty /> : null}
       {feed.hasMore ? (
         <div ref={sentinel} className="mt-3 flex justify-center">
           <button type="button" onClick={feed.loadMore} data-bay-lesson-more className={QUIET_BUTTON}>
@@ -141,11 +123,7 @@ function BundleGrid({ filter }: { filter: BayFeedFilter }): ReactElement {
           </button>
         </div>
       ) : null}
-      {empty ? (
-        <div className="flex flex-col items-center px-4 py-16 text-center" data-bay-lesson-empty>
-          <p className="max-w-xs text-[13px] leading-relaxed text-neutral-500">{tt("这里还没有套餐")}</p>
-        </div>
-      ) : null}
+      {empty ? <div data-bay-lesson-empty /> : null}
       {feed.hasMore ? (
         <div ref={sentinel} className="mt-3 flex justify-center">
           <button type="button" onClick={feed.loadMore} data-bay-lesson-more className={QUIET_BUTTON}>

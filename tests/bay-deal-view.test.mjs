@@ -434,3 +434,11 @@ test("talent-api.ts 原有导出一个不少", async () => {
     assert.match(source, new RegExp(`export (interface|type) ${name}\\b`), `talent-api.ts 少了类型 ${name}`);
   }
 });
+
+test("报价表单灰字不用 400，没有白板页脚；项间分界是上方内容的 border-t", () => {
+  const offer = readFileSync(new URL("../src/shell/bay/deal/DealOfferForm.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(offer, /text-neutral-400|text-stone-400/);
+  assert.doesNotMatch(offer, /bg-white\/95/);
+  assert.doesNotMatch(offer, /-mx-4/);
+  assert.match(offer, /data-deal-offer-form/);
+});

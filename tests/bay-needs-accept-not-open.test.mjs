@@ -41,6 +41,7 @@ for (const [name, value] of Object.entries({
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
   Element: dom.window.Element,
   Node: dom.window.Node,
   Event: dom.window.Event,
@@ -123,6 +124,7 @@ const stateStub = dataModule(`
   globalThis.__bayOpened ??= [];
   globalThis.__bayLoginAsked ??= 0;
   export function openBay(target){ globalThis.__bayOpened.push(target); }
+  export function replaceBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
   export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function useBayTaskContext(){ return globalThis.__bayTask ?? null; }

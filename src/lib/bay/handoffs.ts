@@ -19,7 +19,7 @@ import type { BayWorkRef } from "./types";
 export type { Handoff, HandoffContextGrant, HandoffContextItem, HandoffMode, HandoffOriginKind };
 
 /** Bay 里看到的一条求助：在 talent 求助上多了站点、作品与去处理的站。 */
-export interface BayHandoff extends Handoff {
+export interface BayHandoff extends Omit<Handoff, "attached_work"> {
   posted_site?: string | null;
   handling_site?: string;
   attached_work?: BayWorkRef | null;
@@ -52,7 +52,7 @@ export interface BayHandoffBody {
   invited_handle: string | null;
   context: HandoffContextGrant;
   posted_site: string | null;
-  attached_work: { kind: "task"; id: string } | null;
+  attached_work: { kind: "task" | "artifact"; id: string } | null;
 }
 
 const BASE = "/v1/talent/handoffs";
@@ -85,7 +85,10 @@ export function buildHandoffBody(input: BayHandoffInput): BayHandoffBody {
       input.mode === "invited" ? String(input.invitedHandle || "").trim().replace(/^@/, "") || null : null,
     context: normalizeHandoffContext(input.context),
     posted_site: String(input.postedSite || "").trim() || null,
-    attached_work: input.attachedWork?.kind === "task" && workId ? { kind: "task", id: workId } : null,
+    attached_work:
+      workId && (input.attachedWork?.kind === "artifact" || input.attachedWork?.kind === "task")
+        ? { kind: input.attachedWork.kind, id: workId }
+        : null,
   };
 }
 

@@ -35,7 +35,7 @@ export function StatTile({
       </p>
     </>
   );
-  const box = "rounded-xl border border-neutral-200 p-3 text-left";
+  const box = "text-left";
   if (onActivate) {
     return (
       <button type="button" data-bay-stat={marker} onClick={onActivate} className={`${box} hover:bg-neutral-50`}>

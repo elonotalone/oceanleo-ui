@@ -6,7 +6,8 @@
 // app:<id>（作品详情）、app-editor[:<id>]（上架 / 编辑作品）、lesson:<id>、bundle:<id>（课程 / 套餐详情）、
 // lesson-editor[:<id>]、bundle-editor[:<id>]（发布 / 编辑课程、套餐）、app-manage:<id>[:<分页>]（管理作品）、
 // app-thread:<id>（作品下的一条留言）、dashboard（开发者面板）、app-login（账号登录授权页）。认不出的值一律当没有。
-// 2026-10-11：`/bay` 页按 service / asset / app / lesson / request 五栏逛；老 `?kind=` 值照样认（见 normalizeBayFeedKind）。
+// 2026-10-13：`/bay` 顶栏是卖 / 买两档；卖的一侧用种类下拉切 service / asset / app / lesson。
+// URL `?kind=` 仍是这五个值（含 request），老值照样认（见 normalizeBayFeedKind）。
 // 「我的」改成五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；老的 `mine:<tab>` 值落到对应的新块。
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { BayMineTab, BayTarget } from "./bay-state";
@@ -32,7 +33,8 @@ export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab 
 }
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
 /**
- * `/bay?kind=<值>`：`service`（默认，不写进地址）= 这个类目里的服务（含答疑）；
+ * `/bay?kind=<值>`（五值 URL 合同，界面不再并排五键）：
+ * `service`（默认，不写进地址）= 这个类目里的服务（含答疑）；
  * `asset` = 素材库（类型、来源分区、文书区）；`app` = 作品栏；`lesson` = 课程栏；`request` = 这个类目里的需求（含求助）。
  * 老值 `supply`/`all`/`consult` → service，`demand`/`help` → request，`material` → asset。
  */
@@ -58,7 +60,7 @@ export function normalizeBayFeedKind(raw: string | null | undefined): BayFeedKin
   return Object.prototype.hasOwnProperty.call(LEGACY_FEED_KINDS, text) ? LEGACY_FEED_KINDS[text] : null;
 }
 
-/** 页面或测试可能仍传入老值；落到五栏之一。 */
+/** 页面或测试可能仍传入老值；落到五个 URL 值之一。 */
 export function canonicalBayFeedKind(raw: string | null | undefined): BayFeedKind {
   return normalizeBayFeedKind(raw) ?? DEFAULT_BAY_FEED_KIND;
 }

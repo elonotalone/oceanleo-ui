@@ -69,7 +69,7 @@ export function BayOrderCard({ contractId, compact = false }: BayOrderCardProps)
       type="button"
       data-bay-order-open={contractId}
       onClick={open}
-      className="rounded-lg bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800"
+      className="rounded-full bg-neutral-900 px-3 py-1 text-[12px] text-white hover:bg-neutral-800"
     >
       {tt("查看订单")}
     </button>

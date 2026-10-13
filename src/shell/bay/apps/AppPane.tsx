@@ -3,6 +3,8 @@
 // 作品详情：简介、作者、收费条、页内嵌入窗口、在新窗口打开、更新日志、买家评价、留言与反馈、举报。
 // 收费条、关注、更新日志、留言、登录提示各是别的目录里的组件，按文件路径引用；本文件只负责把它们摆在一起。
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { BayImageStage } from "../form/BayImageGallery";
+import { cleanGalleryUrls } from "../form/bay-gallery";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getBayApp, recordBayAppEvent, reportBayApp, type BayApp, type BayAppMine } from "../../../lib/bay/apps";
@@ -64,6 +66,8 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
   const banner = ownerBanner(app, owner);
   const author = app.author;
   const authorName = author?.display_name || author?.handle || "";
+  const coverUrls = cleanGalleryUrls(app.gallery_urls, app.cover_url);
+  const [activeCover, setActiveCover] = useState(0);
 
   useEffect(() => {
     if (owner || viewedRef.current) return;
@@ -97,6 +101,12 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
         <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个作品还没上架")}</p>
       ) : null}
 
+      {coverUrls.length ? (
+        <div className="mb-4">
+          <BayImageStage urls={coverUrls} active={activeCover} onActive={setActiveCover} emptyLabel={tt("封面")} />
+        </div>
+      ) : null}
+
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -106,7 +116,7 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
                 type="button"
                 data-bay-action="edit"
                 onClick={() => openBay({ kind: "app-editor", appId: app.id })}
-                className="rounded-lg border border-neutral-200 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                className="rounded-full border border-neutral-900 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
               >
                 {tt("编辑")}
               </button>
@@ -116,7 +126,7 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
                 type="button"
                 data-bay-action="manage"
                 onClick={() => openBay({ kind: "app-manage", appId: app.id })}
-                className="rounded-lg border border-neutral-200 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                className="rounded-full border border-neutral-900 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
               >
                 {tt("管理")}
               </button>
@@ -155,9 +165,9 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
           <button
             type="button"
             onClick={openExternal}
-            className="shrink-0 rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
+            className="shrink-0 rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
           >
-            {tt("在新窗口打开")}
+            {tt(decision.mode === "frame" ? "在新窗口打开" : "打开网站")}
           </button>
         ) : (
           <p className="max-w-[14rem] shrink-0 text-right text-[12px] text-rose-600">{tt("这个作品的地址有问题，暂时打不开")}</p>
@@ -174,14 +184,16 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
         {locked ? (
           <div
             data-bay-app-locked
-            className="grid min-h-[20rem] place-items-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-10 text-center"
+            className="grid min-h-[20rem] place-items-center px-0 py-10 text-center"
           >
             <p className="max-w-[24rem] text-[14px] font-medium text-neutral-800">
               {app.trial_days > 0 ? tt("这个作品需要购买或开始试用后才能使用") : tt("这个作品需要购买后才能使用")}
             </p>
           </div>
-        ) : (
+        ) : decision.mode === "frame" ? (
           <AppWindow decision={decision} title={app.title} host={app.url_host} onOpenExternal={openExternal} onReady={recordOpen} />
+        ) : (
+          <LinkOutCard host={app.url_host} href={decision.href} onOpen={openExternal} />
         )}
       </div>
 
@@ -219,57 +231,38 @@ function AppWindow({
   onOpenExternal,
   onReady,
 }: {
-  decision: EmbedDecision;
+  decision: Extract<EmbedDecision, { mode: "frame" }>;
   title: string;
   host: string;
   onOpenExternal: () => void;
   onReady: () => void;
 }): ReactElement {
-  const tt = useUI();
-  if (decision.mode === "frame") {
-    return <AppEmbedFrame src={decision.src} host={host} title={title} onOpenExternal={onOpenExternal} onReady={onReady} />;
-  }
-  if (decision.reason === "blocked") {
-    return <FallbackCard marker="blocked" title={tt("这个网站不允许在别的页面里显示")} href={decision.href} onOpen={onOpenExternal} />;
-  }
-  if (decision.reason === "creator") {
-    return <FallbackCard marker="creator" title={tt("这个作品需要在它自己的网站上使用")} href={decision.href} onOpen={onOpenExternal} />;
-  }
-  if (decision.reason === "first-party") {
-    return <FallbackCard marker="first-party" title={tt("这个作品需要在它自己的网站上使用")} href={decision.href} onOpen={onOpenExternal} />;
-  }
-  return <FallbackCard marker="invalid" title={tt("这个作品的地址有问题，暂时打不开")} href={null} onOpen={onOpenExternal} />;
+  return <AppEmbedFrame src={decision.src} host={host} title={title} onOpenExternal={onOpenExternal} onReady={onReady} />;
 }
 
-function FallbackCard({
-  marker,
-  title,
+function LinkOutCard({
+  host,
   href,
   onOpen,
 }: {
-  marker: "creator" | "blocked" | "first-party" | "invalid";
-  title: string;
+  host: string;
   href: string | null;
   onOpen: () => void;
 }): ReactElement {
   const tt = useUI();
   return (
-    <div
-      data-bay-app-fallback={marker === "blocked" ? "blocked" : marker === "creator" ? "creator" : marker === "first-party" ? "first-party" : "invalid"}
-      className="grid min-h-[32rem] place-items-center rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-10 text-center"
-    >
-      <div>
-        <p className="text-[14px] font-medium text-neutral-800">{title}</p>
-        {href ? (
-          <button
-            type="button"
-            onClick={onOpen}
-            className="mt-4 rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800"
-          >
-            {tt("打开网站")}
-          </button>
-        ) : null}
-      </div>
+    <div data-bay-app-link-out className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-8 text-center">
+      {host ? <p className="text-[12px] text-neutral-500">{host}</p> : null}
+      <p className="mt-1 text-[14px] font-medium text-neutral-800">{tt("这个作品需要在它自己的网站上使用")}</p>
+      {href ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-4 rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800"
+        >
+          {tt("打开网站")}
+        </button>
+      ) : null}
     </div>
   );
 }

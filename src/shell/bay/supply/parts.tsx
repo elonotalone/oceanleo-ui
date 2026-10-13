@@ -15,6 +15,17 @@ import { openBay, requireBayLogin } from "../shell/bay-state";
 import { initialOf, ratingShort, responseTimeText, safeHttpUrl } from "./format";
 import { errorText, useBayResource } from "./use-bay-resource";
 
+/** 有日期就写成「YYYY-MM-DD 截止」；已经是一句人话则原样留下。没有值则空。 */
+export function deadlineCopy(tt: UITranslate, value: string | null | undefined): string {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  const day = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (day) return tt("{date} 截止", { date: day[1] });
+  const at = Date.parse(raw);
+  if (Number.isFinite(at)) return tt("{date} 截止", { date: new Date(at).toISOString().slice(0, 10) });
+  return raw;
+}
+
 export function PaneLoading() {
   return (
     <div data-bay-loading className="space-y-3 p-4" aria-busy="true">
@@ -31,7 +42,7 @@ export function PaneMessage({ text, onRetry }: { text: string; onRetry?: () => v
     <div data-bay-pane-message className="px-4 py-12 text-center">
       <p className="text-[14px] font-medium text-neutral-800">{text}</p>
       {onRetry ? (
-        <button type="button" onClick={onRetry} className="mt-4 rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-50">
+        <button type="button" onClick={onRetry} className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-900 bg-white px-4 py-2 text-[13px] font-medium text-neutral-900">
           {tt("重试")}
         </button>
       ) : null}
@@ -39,22 +50,40 @@ export function PaneMessage({ text, onRetry }: { text: string; onRetry?: () => v
   );
 }
 
-/** 数字商品的授权范围与三条固定条款。 */
-export function DigitalTerms({ license }: { license?: string | null }) {
+/** 按类型写清交付方式；自定义条款原样显示。没有条款、截止日期或交付句就不画空块。 */
+export function DigitalTerms({
+  listingKind,
+  deliveryDays,
+  deadlineAt,
+  customTerms,
+}: {
+  listingKind?: string | null;
+  deliveryDays?: number | null;
+  deadlineAt?: string | null;
+  customTerms?: string | null;
+}) {
   const tt = useUI();
-  const scope = license === "commercial" ? tt("可商用") : license === "personal" ? tt("个人使用") : "";
+  const kind = listingKind || "service";
+  const terms = (customTerms || "").trim();
+  const deadline = deadlineCopy(tt, deadlineAt);
+  const delivery =
+    kind === "digital"
+      ? tt("付款后立即交付")
+      : kind === "app" || kind === "lesson"
+        ? ""
+        : typeof deliveryDays === "number" && deliveryDays > 0
+          ? tt("{n} 天交付", { n: deliveryDays })
+          : "";
+  if (!delivery && !deadline && !terms) return null;
   return (
     <div data-bay-digital-terms className="mt-5 space-y-2 text-[13px] text-neutral-700">
-      {scope ? (
-        <p data-bay-license>
-          {tt("授权范围")}：{scope}
+      {delivery ? <p data-bay-delivery>{delivery}</p> : null}
+      {deadline ? <p data-bay-deadline>{deadline}</p> : null}
+      {terms ? (
+        <p data-bay-custom-terms className="whitespace-pre-wrap break-words">
+          {terms}
         </p>
       ) : null}
-      <ul className="list-disc space-y-1 pl-5">
-        <li>{tt("付款后立即交付")}</li>
-        <li>{tt("已交付的数字商品不退款")}</li>
-        <li>{tt("不得转售原文件")}</li>
-      </ul>
     </div>
   );
 }
@@ -178,10 +207,10 @@ export function ReportBox({ onSubmit, label }: { onSubmit: (reason: BayReportRea
   }
 
   return (
-    <div data-bay-report-form className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-[13px]">
+    <div data-bay-report-form className="w-full space-y-2 text-[13px]">
       <label className="block text-[12px] font-medium text-neutral-700">
         {tt("举报原因")}
-        <select value={reason} onChange={(event) => setReason(event.target.value as BayReportReason)} className="mt-1 w-full rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-[13px]">
+        <select value={reason} onChange={(event) => setReason(event.target.value as BayReportReason)} className="mt-1 w-full rounded-full border border-neutral-900 bg-white px-2 py-1.5 text-[13px]">
           {BAY_REPORT_REASONS.map((value) => (
             <option key={value} value={value}>
               {reasonLabel(tt, value)}
@@ -195,14 +224,14 @@ export function ReportBox({ onSubmit, label }: { onSubmit: (reason: BayReportRea
         rows={3}
         onChange={(event) => setDetail(event.target.value)}
         placeholder={tt("补充说明（可选）")}
-        className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-[13px]"
+        className="mt-2 w-full rounded-full border border-neutral-900 bg-white px-2 py-1.5 text-[13px]"
       />
       {error ? <p className="mt-1 text-[12px] text-rose-600">{tt(error)}</p> : null}
       <div className="mt-2 flex gap-2">
-        <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60">
+        <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60">
           {tt("提交举报")}
         </button>
-        <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700">
+        <button type="button" onClick={() => setOpen(false)} className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700">
           {tt("取消")}
         </button>
       </div>
@@ -249,7 +278,7 @@ export function SellerCard({ seller }: { seller: BayPublicProfile }) {
   const tt = useUI();
   const name = profileDisplayName(seller);
   return (
-    <section data-bay-seller-card className="rounded-xl border border-neutral-200 p-3">
+    <section data-bay-seller-card className="space-y-2">
       <div className="flex items-start gap-3">
         <Avatar url={seller.avatar_url} name={name} />
         <div className="min-w-0 flex-1">
@@ -300,7 +329,7 @@ export function DoneMeans({ service }: { service: Pick<BayService, "category" | 
     <Section title={tt("什么叫完成")} hint={tt("卖家挂牌时写明的交付标准，有争议时按这几项核对。")}>
       <dl data-bay-done-means className="grid gap-2 sm:grid-cols-2">
         {fields.map((field) => (
-          <div key={field.key} className="rounded-lg bg-neutral-50 p-2.5">
+          <div key={field.key}>
             <dt className="text-[11px] text-neutral-500">{tt(field.label_zh)}</dt>
             <dd className="mt-0.5 break-words text-[13px] text-neutral-800">{fieldValueText(tt, values[field.key])}</dd>
           </div>
@@ -316,7 +345,7 @@ export function ReviewList({ reviews, empty }: { reviews: BayReview[]; empty: st
   return (
     <ul data-bay-reviews className="space-y-2">
       {reviews.map((review) => (
-        <li key={review.id} className="rounded-xl border border-neutral-200 p-3">
+        <li key={review.id} className="py-2">
           <div className="flex items-center justify-between gap-2 text-[12px]">
             <span className="min-w-0 truncate text-neutral-600">
               {profileDisplayName(review.author) || tt("OceanLeo 用户")}

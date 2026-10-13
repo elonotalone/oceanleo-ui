@@ -7,7 +7,7 @@ import { rememberBayAppEntry } from "../appinsights/app-source";
 import { shelfOpenEntry } from "../appinsights/insights-model";
 import { BayAppCard } from "./BayAppCard";
 import { useBayApps } from "./use-bay-apps";
-import { openBay, requireBayLogin, type BayFeedFilter } from "../shell/bay-state";
+import type { BayFeedFilter } from "../shell/bay-state";
 
 export interface BayAppShelfProps {
   filter: BayFeedFilter;
@@ -17,10 +17,7 @@ export interface BayAppShelfProps {
 
 const GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
 const QUIET_BUTTON =
-  "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
-const PRIMARY_BUTTON =
-  "inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-
+  "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
 function ShelfSkeleton(): ReactElement {
   const tt = useUI();
   return (
@@ -37,7 +34,7 @@ function ShelfSkeleton(): ReactElement {
   );
 }
 
-export function BayAppShelf({ filter, siteKey, accent }: BayAppShelfProps): ReactElement {
+export function BayAppShelf({ filter, siteKey }: BayAppShelfProps): ReactElement {
   const tt = useUI();
   const feed = useBayApps(filter, siteKey);
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -79,22 +76,7 @@ export function BayAppShelf({ filter, siteKey, accent }: BayAppShelfProps): Reac
           </button>
         </div>
       ) : null}
-      {empty ? (
-        <div className="flex flex-col items-center px-4 py-16 text-center" data-bay-app-empty>
-          <p className="max-w-xs text-[13px] leading-relaxed text-neutral-500">{tt("这里还没有作品")}</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (!requireBayLogin()) return;
-              openBay({ kind: "app-editor" });
-            }}
-            style={{ background: accent || "#111113" }}
-            className={`mt-4 ${PRIMARY_BUTTON}`}
-          >
-            {tt("上架作品")}
-          </button>
-        </div>
-      ) : null}
+      {empty ? <div data-bay-app-empty /> : null}
       {feed.hasMore ? (
         <div ref={sentinel} className="mt-3 flex justify-center">
           <button type="button" onClick={feed.loadMore} data-bay-app-more className={QUIET_BUTTON}>

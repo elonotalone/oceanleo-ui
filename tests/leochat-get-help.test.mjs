@@ -28,6 +28,8 @@ for (const [name, value] of Object.entries({
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  HTMLButtonElement: dom.window.HTMLButtonElement,
   Element: dom.window.Element,
   Node: dom.window.Node,
   Event: dom.window.Event,
@@ -110,7 +112,11 @@ const pickerStub = dataModule(`
   export async function pickLibraryWork(){ return null; }
 `);
 const domainStub = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = "com";
+  export function currentDomainFamily(){ return "com"; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function familyForHost(){ return "com"; }
   export function currentFamilySubsiteOrigin(){ return undefined; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }
 `);
@@ -123,6 +129,36 @@ const moneyStub = dataModule(`
 const formStubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
+  "../../../lib/bay/demands": dataModule(`
+    export const DEMAND_TITLE_MAX_LENGTH = 120;
+    export const DEMAND_DESCRIPTION_MAX_LENGTH = 8000;
+    export function formatBayFen(fen) { return String(fen ?? 0); }
+    export async function createDemand(input, placement) {
+      const body = Object.assign({}, input, {
+        posted_site: placement && placement.postedSite || null,
+        attached_work: placement && placement.attachedWork || null,
+      });
+      (globalThis.__bayHttpCalls ||= []).push({ method: "POST", path: "/v1/talent/demands", body });
+      return { demand: { id: "d-new", ...body } };
+    }
+  `),
+  "../../../lib/bay/handoffs": dataModule(`
+    export async function createBayHandoff(input) {
+      const body = {
+        origin_kind: input.originKind,
+        origin_ref: input.originRef,
+        category: input.category,
+        brief: input.brief,
+        budget_fen: input.budgetFen,
+        mode: input.mode,
+        posted_site: input.postedSite,
+        attached_work: input.attachedWork,
+        context: input.context,
+      };
+      (globalThis.__bayHttpCalls ||= []).push({ method: "POST", path: "/v1/talent/handoffs", body });
+      return { handoff: { id: "h-new", ...body } };
+    }
+  `),
   "../../../lib/agent": agentStub,
   "../shell/bay-state": stateStub,
   "../settings": settingsStub,
@@ -131,11 +167,26 @@ const formStubs = {
   "./LibraryWorkPicker": pickerStub,
   "../../../contracts/domain-family": domainStub,
   "../../../lib/money": moneyStub,
+  "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
+  "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
+  "./BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "../../../lib/database": dataModule(`
+    export async function uploadFile(){ return { ok: true, data: { file: { url: "https://cdn.example/a.png" } } }; }
+    export async function getStorageUsage(){ return { ok: true, data: { remaining_bytes: 20 * 1024 * 1024 * 1024, unavailable: false } }; }
+  `),
+  "../../../lib/im/people-api": dataModule(`
+    export async function listContacts(){ return []; }
+    export async function searchDirectory(){ return []; }
+  `),
+  "../../../lib/im/inbox-api": dataModule(`export async function fetchConversations(){ return { items: [], next_cursor: null }; }`),
+  "../../../lib/im/groups-api": dataModule(`export async function getConversationDetail(){ return { id: "", title: "", members: [] }; }`),
 };
 
 const { GetHelpForm } = await import(await compileModule("src/shell/bay/needs/GetHelpForm.tsx", formStubs));
 const { PostNeedPane } = await import(await compileModule("src/shell/bay/needs/PostNeedPane.tsx", formStubs));
 const { CallHumanPane } = await import(await compileModule("src/shell/bay/needs/CallHumanPane.tsx", formStubs));
+const { primeNeedCategoriesForTests } = await import(await compileModule("src/shell/bay/needs/need-categories.ts", formStubs));
+const { resetBayCategoriesCache } = await import(await compileModule("src/lib/bay/categories.ts", formStubs));
 const { bayDetailTitleKey } = await import(
   await compileModule("src/shell/bay/shell/BayDetail.tsx", {
     "../../../i18n/ui/useUI": uiStub,
@@ -193,6 +244,8 @@ const CATEGORIES = {
 };
 
 function reset() {
+  resetBayCategoriesCache();
+  primeNeedCategoriesForTests(CATEGORIES);
   globalThis.__bayHttpCalls = [];
   globalThis.__bayHttpRespond = (method, path, body) => {
     if (method === "GET" && path === "/v1/talent/categories") return CATEGORIES;
@@ -210,7 +263,7 @@ function reset() {
 }
 
 async function settle() {
-  for (let i = 0; i < 6; i += 1) await act(async () => {});
+  for (let i = 0; i < 12; i += 1) await act(async () => {});
 }
 
 async function mount(element) {
@@ -241,63 +294,54 @@ async function mount(element) {
   };
 }
 
-test("默认只看得到文字、类目、预算、更多选项和发布", async () => {
+test("标题、分类、价格、向谁展示一次看见，没有更多选项", async () => {
   reset();
   const view = await mount(React.createElement(GetHelpForm, { siteKey: "ppt", defaultMode: "public" }));
   assert.ok(view.host.querySelector("[data-bay-help-text]"));
-  assert.ok(view.host.querySelector("[data-bay-help-category]"));
-  assert.ok(view.host.querySelector("[data-bay-help-budget]"));
-  assert.ok(view.host.querySelector("[data-bay-help-more]"));
+  assert.ok(view.host.querySelector('[data-bay-reveal-item="who"]'));
   assert.ok(view.host.querySelector("[data-bay-submit]"));
-  assert.equal(view.host.querySelector("[data-bay-help-mode]"), null);
-  assert.equal(view.host.querySelector("[data-bay-help-deadline]"), null);
-  assert.equal(view.host.querySelector("[data-bay-attach-work]"), null);
+  assert.equal(view.host.querySelector("[data-bay-help-more]"), null);
+  assert.ok(view.host.querySelector("[data-bay-help-mode]"));
+  assert.ok(view.host.querySelector('[data-bay-help-mode="group"]'));
+  assert.equal(view.host.querySelector('[data-bay-reveal-item="budget"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-help-mode="open"]'), null);
+  assert.ok(view.host.querySelector('[data-bay-field="price"]'));
   await view.unmount();
 });
 
-test("展开后三种找谁都在；public 走 demands，open 走 handoffs，invited 不填用户名不发", async () => {
+test("所有人走 demands；指定某人没选好友不发", async () => {
   reset();
   const publicView = await mount(React.createElement(GetHelpForm, { siteKey: "ppt", defaultMode: "public" }));
-  await publicView.click("[data-bay-help-more]");
-  assert.ok(publicView.host.querySelector('[data-bay-help-mode="public"]'));
-  assert.ok(publicView.host.querySelector('[data-bay-help-mode="open"]'));
-  assert.ok(publicView.host.querySelector('[data-bay-help-mode="invited"]'));
   const longLine = "要做一份演示稿".repeat(10);
-  assert.ok(longLine.length > 60);
-  await publicView.type("[data-bay-help-text]", `${longLine}\n需要十五页含财务预测和英文版说明。`);
-  await publicView.type("[data-bay-help-budget]", "10");
-  await publicView.click('[data-bay-help-mode="public"]');
+  await publicView.type("[data-bay-help-text]", "演示稿");
+  await publicView.type('[data-bay-field="description"]', `${longLine}需要十五页含财务预测和英文版说明。`);
+  await publicView.click('[data-bay-reveal-item="who"]');
+  assert.ok(publicView.host.querySelector('[data-bay-help-mode="public"]'));
+  assert.ok(publicView.host.querySelector('[data-bay-help-mode="invited"]'));
+  assert.ok(publicView.host.querySelector('[data-bay-help-mode="group"]'));
+  assert.equal(publicView.host.querySelector('[data-bay-help-mode="open"]'), null);
+  assert.ok(publicView.host.querySelector('[data-bay-choice-option="public"][data-bay-choice-selected]'));
+  assert.equal(publicView.host.querySelector('[data-bay-help-mode="public"]').getAttribute("aria-pressed"), "true");
   await publicView.click("[data-bay-submit]");
   const demand = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/demands");
   assert.ok(demand);
-  assert.equal(demand.body.title, `${longLine.slice(0, 60)}…`);
-  assert.equal(demand.body.budget_min_fen, 1000);
-  assert.equal(demand.body.budget_max_fen, 1000);
+  assert.equal(demand.body.title, "演示稿");
+  assert.equal(demand.body.budget_min_fen, null);
+  assert.equal(demand.body.budget_max_fen, null);
   await publicView.unmount();
-
-  reset();
-  const openView = await mount(React.createElement(GetHelpForm, { siteKey: "ppt", defaultMode: "public" }));
-  await openView.type("[data-bay-help-text]", "海报改一下层次和字号再压一压");
-  await openView.click("[data-bay-help-more]");
-  await openView.click('[data-bay-help-mode="open"]');
-  await openView.click("[data-bay-submit]");
-  const handoff = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
-  assert.ok(handoff);
-  assert.equal(handoff.body.mode, "open");
-  await openView.unmount();
 
   reset();
   const invited = await mount(React.createElement(GetHelpForm, { siteKey: "ppt", defaultMode: "public" }));
   await invited.type("[data-bay-help-text]", "海报改一下层次和字号再压一压");
-  await invited.click("[data-bay-help-more]");
+  await invited.click('[data-bay-reveal-item="who"]');
   await invited.click('[data-bay-help-mode="invited"]');
   await invited.click("[data-bay-submit]");
-  assert.match(invited.host.textContent, /请填写要请的那个人的用户名/);
+  assert.match(invited.host.textContent, /请选择要给谁看/);
   assert.equal(globalThis.__bayHttpCalls.filter((call) => call.method === "POST").length, 0);
   await invited.unmount();
 });
 
-test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 → 需求」进来标题是发需求，叫真人仍是找人帮忙", async () => {
+test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 → 需求」进来标题是发布，叫真人仍是找人帮忙", async () => {
   reset();
   const post = await mount(React.createElement(PostNeedPane, { target: { kind: "post-need" }, layout: "docked", siteKey: "ppt" }));
   assert.ok(post.host.querySelector("[data-bay-get-help]"));
@@ -305,7 +349,7 @@ test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 →
   const call = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "ppt" }));
   assert.ok(call.host.querySelector("[data-bay-get-help]"));
   await call.unmount();
-  assert.equal(bayDetailTitleKey({ kind: "post-need" }), "发需求");
+  assert.equal(bayDetailTitleKey({ kind: "post-need" }), "发布");
   assert.equal(bayDetailTitleKey({ kind: "publish" }), "发布");
   assert.equal(bayDetailTitleKey({ kind: "call-human" }), "找人帮忙");
 });

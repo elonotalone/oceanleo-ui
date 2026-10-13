@@ -5,49 +5,67 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { HANDOFF_BRIEF_MAX_LENGTH } from "../../../api/talent-handoff";
 import {
   DEMAND_DESCRIPTION_MAX_LENGTH,
+  DEMAND_TITLE_MAX_LENGTH,
   createDemand,
-  parseMoneyInput,
 } from "../../../lib/bay/demands";
 import { createBayHandoff } from "../../../lib/bay/handoffs";
-import type { BayWorkRef } from "../../../lib/bay/types";
-import { Select } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
+import { BayMenuSelect } from "../form/BayMenuSelect";
+import { BAY_FORM_BAR_CLASS, BAY_FORM_PAGE_CLASS } from "../form/form-ui";
+import { audienceDone, audienceMemberIds, emptyAudience, type BayAudience } from "../form/bay-audience";
+import {
+  applyDigitalWorks,
+  BAY_FILES_LABEL,
+  BayDigitalWorksField,
+  BayImageGallery,
+  BayPublishKindPair,
+  BayPublishSubcategoryLabel,
+  BayPublishShell,
+  BayRevealForm,
+  engagementOf,
+  howYouDeliverRow,
+  listingAudienceItem,
+  listingPriceItems,
+  listingSectionGroups,
+  listingTermsItems,
+  type BayOfferKind,
+  type BayPostSnapshot,
+  type DigitalWorkRef,
+  type ListingAppPriceModel,
+  type ListingBilling,
+} from "../form";
+import { INPUT_CLASS, TEXTAREA_CLASS } from "../seller/seller-ui";
 import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, useBayTaskContext } from "../shell/bay-state";
-import { LibraryWorkPickerHost, pickLibraryWork } from "./LibraryWorkPicker";
+import { LibraryWorkPickerHost } from "./LibraryWorkPicker";
 import {
   HandoffContextPicker,
   candidatesFromTaskMessages,
   selectedHandoffRefs,
   toggleHandoffPick,
 } from "./handoff-context";
-import { categoryName, defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
-import { siteLabel } from "./need-format";
-import { ATTACHED_WORK_BOX, BTN_PRIMARY, BTN_QUIET, BTN_SECONDARY, Field, INPUT, LoginPrompt, PaneNotice, errorText } from "./need-ui";
+import { categoryName, categoryNameBySlug, defaultNeedCategory, isNeedCategory, useNeedCategories } from "./need-categories";
+import { BTN_PRIMARY, LoginPrompt, PaneNotice, errorText } from "./need-ui";
 
-export type GetHelpMode = "public" | "open" | "invited";
+export type GetHelpMode = "public" | "open" | "invited" | "group";
+
+function audienceFromMode(mode: GetHelpMode): BayAudience {
+  const next = emptyAudience();
+  if (mode === "invited") next.mode = "invited";
+  else if (mode === "group") next.mode = "group";
+  else next.mode = "public";
+  return next;
+}
 
 export interface GetHelpFormProps {
   siteKey: string;
-  /** 深链带来的类目 */
   presetCategory?: string;
-  /** 默认「找谁」：从「找人帮忙」进来 = "public"；从 AI 任务页进来 = "open" */
   defaultMode: GetHelpMode;
+  showListingPicker?: boolean;
 }
-
-function demandTitleFromText(text: string): string {
-  const first = text.split("\n")[0] ?? "";
-  return first.length > 60 ? `${first.slice(0, 60)}…` : first;
-}
-
-const MODES: readonly { value: GetHelpMode; name: string; hint: string }[] = [
-  { value: "public", name: "公开征集", hint: "所有人可见，别人报价，你来挑" },
-  { value: "open", name: "尽快接手", hint: "只给认证过的人看，谁先接就由谁来做" },
-  { value: "invited", name: "指定某人", hint: "只有这个人能看到" },
-];
 
 export function GetHelpForm(props: GetHelpFormProps) {
-  const { siteKey, presetCategory, defaultMode } = props;
+  const { siteKey, presetCategory, defaultMode, showListingPicker } = props;
   const tt = useUI();
   const ttRef = useRef(tt);
   ttRef.current = tt;
@@ -59,18 +77,28 @@ export function GetHelpForm(props: GetHelpFormProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [category, setCategory] = useState("");
   const [categoryTouched, setCategoryTouched] = useState(Boolean(presetCategory));
-  const [text, setText] = useState("");
-  const [budget, setBudget] = useState("");
-  const [mode, setMode] = useState<GetHelpMode>(defaultMode);
-  const [handle, setHandle] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [coverUrls, setCoverUrls] = useState<string[]>([]);
+  const [files, setFiles] = useState<DigitalWorkRef[]>([]);
+  const [offerKind, setOfferKind] = useState<BayOfferKind>("digital");
+  const [priceFen, setPriceFen] = useState<number | null>(null);
+  const [billing, setBilling] = useState<ListingBilling>("service");
+  const [appPriceModel, setAppPriceModel] = useState<ListingAppPriceModel>("one_time");
+  const [deliveryDays, setDeliveryDays] = useState<number | null>(null);
+  const [revisions, setRevisions] = useState(0);
+  const [consultRounds, setConsultRounds] = useState<number | null>(null);
+  const [consultMinutes, setConsultMinutes] = useState<number | null>(null);
+  const [audience, setAudience] = useState<BayAudience>(() => audienceFromMode(defaultMode));
   const [deadline, setDeadline] = useState("");
-  const [more, setMore] = useState(defaultMode === "open" && Boolean(task));
-  const [work, setWork] = useState<BayWorkRef | null>(null);
+  const [customTerms, setCustomTerms] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const limit = mode === "public" ? DEMAND_DESCRIPTION_MAX_LENGTH : HANDOFF_BRIEF_MAX_LENGTH;
-  const modeName = tt(MODES.find((row) => row.value === mode)?.name || MODES[0].name);
+  const mode = audience.mode;
+  const publicCall = mode === "public" || mode === "group";
+  /** 公开征集（发需求）才要 20 字；叫真人走求助，不套这道门槛。 */
+  const publicDemand = publicCall && defaultMode !== "open";
 
   useEffect(() => {
     if (categoryTouched || !response) return;
@@ -79,31 +107,28 @@ export function GetHelpForm(props: GetHelpFormProps) {
   }, [categoryTouched, presetCategory, response, siteKey]);
 
   useEffect(() => {
-    if (defaultMode === "open" && task?.taskId && !work) {
-      setWork({ kind: "task", id: task.taskId, site_key: siteKey, title: ttRef.current("当前任务") });
+    if (defaultMode === "open" && task?.taskId && files.length === 0) {
+      setFiles([{ id: task.taskId, title: ttRef.current("当前任务"), kind: "task" }]);
     }
-  }, [defaultMode, siteKey, task?.taskId, work]);
+  }, [defaultMode, task?.taskId, files.length]);
 
   const candidates = useMemo(() => (task?.messages ? candidatesFromTaskMessages(task.messages) : []), [task]);
   const grant = useMemo(() => selectedHandoffRefs(candidates, selected), [candidates, selected]);
-  const currentTaskAttached = Boolean(task && work?.id === task.taskId);
-
-  const chooseFromLibrary = async () => {
-    const picked = await pickLibraryWork({
-      title: mode === "public" ? tt("给需求附一个作品") : tt("给求助附一个作品"),
-    });
-    if (picked) setWork(picked);
-  };
 
   const submit = async () => {
     if (busy) return;
     if (!requireBayLogin()) return;
-    const trimmed = text.trim();
-    if (!trimmed) {
-      setError(tt("请先写清要做什么"));
+    const titleLine = title.trim();
+    const details = description.trim();
+    if (showListingPicker && coverUrls.length === 0) {
+      setError(tt("至少一张预览图"));
       return;
     }
-    if (mode === "public" && trimmed.length < 20) {
+    if (!titleLine) {
+      setError(tt("请先写标题"));
+      return;
+    }
+    if (publicDemand && details.length < 20) {
       setError(tt("公开征集请至少写 20 个字"));
       return;
     }
@@ -111,30 +136,42 @@ export function GetHelpForm(props: GetHelpFormProps) {
       setError(tt("请选择类目"));
       return;
     }
-    const fen = parseMoneyInput(budget);
-    if (Number.isNaN(fen)) {
-      setError(tt("预算要填大于或等于 0 的数字"));
-      return;
-    }
-    if (mode === "invited" && !handle.trim()) {
-      setError(tt("请填写要请的那个人的用户名"));
+    if (!audienceDone(audience)) {
+      setError(tt("请选择要给谁看"));
       return;
     }
     setError(null);
     if (!(await ensureBayTerms("buyer"))) return;
-    const attachedWork = work ? { kind: "task" as const, id: work.id } : null;
+    const first = files[0];
+    const attachedWork = first?.id
+      ? { kind: (first.kind === "artifact" ? "artifact" : "task") as "artifact" | "task", id: first.id }
+      : null;
+    const due = deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null;
+    const brief = details || titleLine;
+    const asDemand = defaultMode !== "open";
     setBusy(true);
     try {
-      if (mode === "public") {
+      if (asDemand) {
         const result = await createDemand(
           {
-            title: demandTitleFromText(trimmed),
-            description: trimmed,
+            title: titleLine.slice(0, DEMAND_TITLE_MAX_LENGTH),
+            description: brief.slice(0, DEMAND_DESCRIPTION_MAX_LENGTH),
             category,
-            budget_min_fen: fen,
-            budget_max_fen: fen,
-            deadline_at: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null,
+            budget_min_fen: priceFen,
+            budget_max_fen: priceFen,
+            deadline_at: due,
             status: "open",
+            audience_mode: mode === "verified_first" ? "public" : mode,
+            audience_handle: mode === "invited" ? audience.handle.trim() || audience.members[0]?.name || null : null,
+            audience_member_ids: mode === "invited" || mode === "group" ? audienceMemberIds(audience) : [],
+            custom_terms: customTerms.trim() || null,
+            listing_kind: offerKind,
+            delivery_days: offerKind === "service" && deliveryDays && deliveryDays > 0 ? deliveryDays : null,
+            cover_url: coverUrls[0] || null,
+            engagement_kind: engagementOf(offerKind, billing, appPriceModel),
+            revisions: offerKind === "service" ? revisions : null,
+            consult_rounds: offerKind === "service" && billing === "session" ? consultRounds : null,
+            consult_minutes: offerKind === "service" && billing === "hour" ? consultMinutes : null,
           },
           { postedSite: siteKey, attachedWork },
         );
@@ -146,10 +183,10 @@ export function GetHelpForm(props: GetHelpFormProps) {
           originKind: task?.taskId ? "conversation" : "manual",
           originRef: task?.taskId || "",
           category,
-          brief: trimmed,
-          budgetFen: fen ?? 0,
+          brief: brief.slice(0, HANDOFF_BRIEF_MAX_LENGTH),
+          budgetFen: priceFen ?? 0,
           mode: mode === "invited" ? "invited" : "open",
-          invitedHandle: mode === "invited" ? handle : null,
+          invitedHandle: mode === "invited" ? audience.handle.trim() : null,
           context: grant,
           postedSite: siteKey,
           attachedWork,
@@ -165,173 +202,207 @@ export function GetHelpForm(props: GetHelpFormProps) {
     }
   };
 
-  return (
-    <div className="space-y-4" data-bay-get-help>
-      <LibraryWorkPickerHost />
-      {!signedIn ? <LoginPrompt message={tt("登录后才能找人帮忙。")} /> : null}
-
-      <Field label={tt("要做什么")} hint={`${text.length} / ${limit}`}>
-        <textarea
-          value={text}
-          onChange={(event) => setText(event.target.value.slice(0, limit))}
-          rows={4}
-          placeholder={tt("例：把这份 15 页的方案做成演示稿，周五前要。")}
-          className={`${INPUT} resize-y leading-5`}
-          data-bay-help-text
+  const subcategoryField = (
+    <div data-bay-help-category>
+      <BayPublishSubcategoryLabel />
+      {categoriesLoading && categories.length === 0 ? (
+        <div className="animate-pulse rounded-xl bg-stone-100 py-5" />
+      ) : categories.length === 0 ? (
+        <p className="text-[12px] text-amber-700">{tt("类目暂时读不出来，请稍后再试。")}</p>
+      ) : (
+        <BayMenuSelect
+          value={category}
+          emptyLabel={tt("请选择")}
+          onChange={(slug) => {
+            setCategory(slug);
+            setCategoryTouched(true);
+          }}
+          selectProps={{ "data-bay-category-select": "" }}
+          options={categories.map((row) => ({
+            value: row.slug,
+            label: categoryName(tt, row),
+            attrs: { "data-bay-category": row.slug },
+          }))}
         />
-      </Field>
+      )}
+    </div>
+  );
 
-      <Field label={tt("类目")}>
-        <div data-bay-help-category>
-          {categoriesLoading && categories.length === 0 ? (
-            <div className="animate-pulse rounded-xl bg-stone-100 py-5" />
-          ) : categories.length === 0 ? (
-            <p className="text-[12px] text-amber-700">{tt("类目暂时读不出来，请稍后再试。")}</p>
-          ) : (
-            <Select
-              options={categories.map((row) => ({ id: row.slug, label: categoryName(tt, row) }))}
-              value={category}
-              onChange={(slug) => {
-                setCategory(slug);
-                setCategoryTouched(true);
-              }}
-            />
-          )}
-        </div>
-      </Field>
-
-      <Field label={tt("预算")}>
-        <input
-          value={budget}
-          onChange={(event) => setBudget(event.target.value)}
-          inputMode="decimal"
-          placeholder={tt("留空 = 面议")}
-          className={INPUT}
-          data-bay-help-budget
-        />
-      </Field>
-
-      <button
-        type="button"
-        data-bay-help-more
-        aria-expanded={more}
-        onClick={() => setMore((open) => !open)}
-        className="flex w-full items-center justify-between rounded-xl px-1 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-stone-900"
-      >
-        <span>{tt("更多选项")}</span>
-        <span className="text-[12px] font-normal text-stone-400">{modeName}</span>
-      </button>
-
-      {more ? (
-        <div className="space-y-4" data-bay-help-options>
-          <div role="radiogroup" className="space-y-1">
-            {MODES.map((row) => {
-              const checked = mode === row.value;
-              return (
-                <button
-                  key={row.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={checked}
-                  data-bay-help-mode={row.value}
-                  onClick={() => setMode(row.value)}
-                  className="flex w-full items-start gap-3 rounded-xl px-1 py-1.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
-                >
-                  <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                      checked ? "border-stone-800" : "border-stone-300"
-                    }`}
-                  >
-                    {checked ? <span className="h-2 w-2 rounded-full bg-stone-800" /> : null}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-medium text-stone-800">{tt(row.name)}</span>
-                    <span className="block text-[12px] text-stone-500">{tt(row.hint)}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {mode === "invited" ? (
-            <input
-              value={handle}
-              onChange={(event) => setHandle(event.target.value)}
-              placeholder={tt("对方的用户名（handle）")}
-              className={INPUT}
-              data-bay-help-handle
-            />
-          ) : null}
-          {mode === "public" ? (
-            <Field label={tt("截止日期")} hint={tt("不填就是交期可协商。")}>
-              <input
-                type="date"
-                value={deadline}
-                onChange={(event) => setDeadline(event.target.value)}
-                className={INPUT}
-                data-bay-help-deadline
-              />
-            </Field>
-          ) : null}
-
-          <section className="space-y-2" data-bay-attach-work>
-            <h3 className="text-[13px] font-medium text-stone-700">{tt("附一个作品")}</h3>
-            {work ? (
-              <div className={`flex items-center gap-2 ${ATTACHED_WORK_BOX}`}>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium text-stone-800">
-                    {currentTaskAttached ? tt("当前任务") : work.title || tt("一个作品")}
-                  </span>
-                  {work.site_key ? <span className="block text-[11px] text-stone-500">{siteLabel(tt, work.site_key)}</span> : null}
-                </span>
-                <button type="button" className={BTN_QUIET} onClick={() => setWork(null)}>
-                  {tt("移除")}
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className={BTN_SECONDARY} onClick={() => void chooseFromLibrary()} data-bay-pick-work>
-                  {tt("从我的库挑一个")}
-                </button>
-                {task && !currentTaskAttached ? (
-                  <button
-                    type="button"
-                    className={BTN_SECONDARY}
-                    data-bay-attach-current-task
-                    onClick={() =>
-                      setWork({ kind: "task", id: task.taskId, site_key: siteKey, title: tt("当前任务") })
-                    }
-                  >
-                    {tt("附上当前任务")}
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </section>
-
-          {task && mode !== "public" ? (
-            <section className="space-y-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <h3 className="text-[13px] font-medium text-stone-700">{tt("要给对方看的内容")}</h3>
-                <span className="text-[12px] text-stone-400">{tt("已选 {n} 条", { n: grant.messages.length + grant.artifacts.length })}</span>
-              </div>
-              <p className="text-[12px] leading-5 text-stone-500">
-                {tt("只有你勾选的内容会给对方看到，之后随时可以撤回。默认一条都不给。")}
-              </p>
+  const contextItem =
+    task
+      ? {
+          id: "context",
+          label: tt("要给对方看的内容"),
+          done: grant.messages.length + grant.artifacts.length > 0,
+          optional: true,
+          summary: tt("已选 {n} 条", { n: grant.messages.length + grant.artifacts.length }),
+          children: (
+            <section>
               <HandoffContextPicker
                 items={candidates}
                 selected={selected}
                 onToggle={(item) => setSelected((current) => toggleHandoffPick(current, item))}
               />
             </section>
-          ) : null}
-        </div>
-      ) : null}
+          ),
+        }
+      : null;
 
-      {error ? <PaneNotice tone="error">{error}</PaneNotice> : null}
+  const productItems = [
+    {
+      id: "cover",
+      label: tt("作品图"),
+      done: coverUrls.length > 0,
+      optional: !showListingPicker,
+      alwaysOpen: true,
+      summary: coverUrls.length ? tt("已填好") : undefined,
+      children: <BayImageGallery urls={coverUrls} onUrls={setCoverUrls} />,
+    },
+    {
+      id: "title",
+      label: tt("标题"),
+      done: Boolean(title.trim()),
+      summary: title.trim() || undefined,
+      children: (
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value.slice(0, DEMAND_TITLE_MAX_LENGTH))}
+          maxLength={DEMAND_TITLE_MAX_LENGTH}
+          className={INPUT_CLASS}
+          data-bay-field="title"
+          data-bay-help-text=""
+          data-bay-demand-title=""
+        />
+      ),
+    },
+    {
+      id: "description",
+      label: tt("详细介绍"),
+      done: publicDemand ? description.trim().length >= 20 : Boolean(description.trim()),
+      optional: !publicDemand,
+      summary: description.trim() ? tt("已填好") : undefined,
+      children: (
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value.slice(0, DEMAND_DESCRIPTION_MAX_LENGTH))}
+          rows={8}
+          maxLength={DEMAND_DESCRIPTION_MAX_LENGTH}
+          className={TEXTAREA_CLASS}
+          data-bay-field="description"
+          data-bay-demand-description=""
+        />
+      ),
+    },
+    {
+      id: "files",
+      label: tt(BAY_FILES_LABEL),
+      done: files.length > 0,
+      optional: true,
+      alwaysOpen: true,
+      summary: files[0]?.title || files[0]?.id,
+      children: (
+        <BayDigitalWorksField
+          works={files}
+          onChange={(works) => setFiles(applyDigitalWorks(works).digitalWorks)}
+        />
+      ),
+    },
+    ...(contextItem ? [contextItem] : []),
+  ];
 
-      <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={() => void submit()} data-bay-submit>
-        {busy ? tt("正在提交…") : tt("发布")}
-      </button>
-    </div>
+  const priceItems = listingPriceItems(tt, {
+    offerKind,
+    priceFen,
+    onPriceFen: setPriceFen,
+    billing,
+    onBilling: setBilling,
+    appPriceModel,
+    onAppPriceModel: (value) => {
+      setAppPriceModel(value);
+      if (value === "free") setPriceFen(0);
+    },
+  });
+  const termsItems = listingTermsItems(tt, {
+    offerKind,
+    billing,
+    deliveryDays,
+    onDeliveryDays: setDeliveryDays,
+    revisions,
+    onRevisions: setRevisions,
+    consultRounds,
+    onConsultRounds: setConsultRounds,
+    consultMinutes,
+    onConsultMinutes: setConsultMinutes,
+    deadline,
+    onDeadline: setDeadline,
+    customTerms,
+    onCustomTerms: setCustomTerms,
+  });
+
+  const groups = listingSectionGroups({
+    tt,
+    intent: "buy",
+    productItems,
+    priceItems,
+    audienceItems: [listingAudienceItem(tt, audience, setAudience)],
+    offerItems: [howYouDeliverRow(tt, offerKind, setOfferKind, { buy: true })],
+    termsItems,
+  });
+
+  const leftover = [
+    showListingPicker && coverUrls.length === 0,
+    !title.trim(),
+    publicDemand && description.trim().length < 20,
+    !category,
+    !audienceDone(audience),
+  ].filter(Boolean).length;
+  const snapshot: BayPostSnapshot = {
+    kind: "need",
+    title: title.trim(),
+    description,
+    coverUrl: coverUrls[0],
+    coverUrls,
+    categoryLabel: categoryNameBySlug(tt, category, response) || undefined,
+    budgetFen: priceFen,
+    priceFen: priceFen ?? undefined,
+    deadlineLabel: deadline || undefined,
+    customTerms,
+  };
+
+  return (
+    <BayPublishShell
+      kind="need"
+      snapshot={snapshot}
+      onApply={(next) => {
+        if (next.title) setTitle(next.title.slice(0, DEMAND_TITLE_MAX_LENGTH));
+        if (next.description) setDescription(next.description.slice(0, DEMAND_DESCRIPTION_MAX_LENGTH));
+        if (next.priceFen != null) setPriceFen(next.priceFen);
+        else if (next.budgetFen != null) setPriceFen(next.budgetFen);
+        if (next.coverUrls?.length) setCoverUrls(next.coverUrls);
+        else if (next.coverUrl) setCoverUrls([next.coverUrl]);
+        if (next.customTerms != null) setCustomTerms(next.customTerms);
+      }}
+    >
+      <div className={BAY_FORM_PAGE_CLASS} data-bay-get-help>
+        <LibraryWorkPickerHost />
+        {showListingPicker ? (
+          <BayPublishKindPair listing="need" siteCategory={presetCategory} subcategory={subcategoryField} />
+        ) : null}
+        {!signedIn ? <LoginPrompt message={tt("登录后才能找人帮忙。")} /> : null}
+
+        <BayRevealForm groups={groups} />
+
+        {error ? <PaneNotice tone="error">{error}</PaneNotice> : null}
+
+        <footer data-bay-publish-bar className={`${BAY_FORM_BAR_CLASS} justify-between`}>
+          <p className={`text-[13px] font-medium ${leftover ? "text-neutral-600" : "text-emerald-600"}`}>
+            {leftover ? tt("还差 {n} 项就能发布", { n: leftover }) : tt("可以发布了")}
+          </p>
+          <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={() => void submit()} data-bay-submit>
+            {busy ? tt("正在提交…") : tt("发布")}
+          </button>
+        </footer>
+      </div>
+    </BayPublishShell>
   );
 }

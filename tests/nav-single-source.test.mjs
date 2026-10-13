@@ -148,7 +148,10 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
   );
 
   const withPg = navEntries("workspace", { withPlayground: true }).map((e) => e.id);
-  assert.equal(withPg[withPg.length - 1], "playground");
+  assert.ok(
+    !withPg.includes("playground"),
+    "withPlayground 已作废：开了也不再多一行",
+  );
 
   // withExplore 是旧名、withBay 是新名，语义都是「显示 LeoBay 这一项」；任一为 false 就不显示。
   const noExplore = navEntries("workspace", { withExplore: false }).map((e) => e.id);
@@ -160,6 +163,7 @@ test("navEntries: 可见性开关生效，默认值符合各外壳约定", () =>
   const portal = navEntries("portal");
   const portalIds = portal.map((e) => e.id);
   assert.ok(!portalIds.includes("talent"), "不再有站外 talent 项（真人协作已并入各站的 LeoBay）");
+  assert.ok(!portalIds.includes("playground"), "门户侧栏不再有 playground");
   assert.ok(!portalIds.includes("messages"), "门户主导航不再有 messages 行");
   // LeoChat 整页在主导航里，紧跟 LeoBay；没有 explore（素材并进了 LeoBay）。
   assert.ok(portalIds.includes("leochat"), "门户主导航有 leochat");

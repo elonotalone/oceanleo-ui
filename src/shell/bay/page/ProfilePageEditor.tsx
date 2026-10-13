@@ -26,16 +26,16 @@ import {
   patchBlock,
   patchTheme,
   removeBlock,
-  safePageUrl,
   type BayPageBlock,
   type BayPageBlockType,
   type BayPageDoc,
 } from "../../../lib/bay/page-doc";
+import { BayCoverDrop } from "../form";
 import { ProfilePage } from "./ProfilePage";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 const BAR_BUTTON = `rounded-lg px-3 py-1.5 text-[13px] font-medium ${MOTION}`;
-const CHROME_BUTTON = `rounded-lg bg-stone-900 px-3 py-1.5 text-[12px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-30`;
+const CHROME_BUTTON = `rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-30`;
 
 export interface ProfilePageEditorProps {
   page: BayProfilePage;
@@ -82,7 +82,7 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
   return (
     <div className="mx-auto w-full max-w-5xl px-5 pb-10 sm:px-8" data-bay-page-add>
       {open ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-4 text-stone-900">
+        <div className="text-stone-900">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[14px] font-semibold">{tt("添加版块")}</p>
             <button type="button" onClick={() => setOpen(false)} className={`${BAR_BUTTON} text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900`}>
@@ -99,7 +99,7 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
                   onPick(type);
                   setOpen(false);
                 }}
-                className={`rounded-xl border border-stone-200 px-4 py-3 text-left ${MOTION} hover:border-stone-400 hover:bg-stone-50`}
+                className={`px-0 py-3 text-left ${MOTION} hover:opacity-80`}
               >
                 <span className="block text-[14px] font-semibold">{tt(BAY_PAGE_BLOCK_LABELS[type].name)}</span>
                 <span className="mt-0.5 block text-[12px] text-neutral-500">{tt(BAY_PAGE_BLOCK_LABELS[type].hint)}</span>
@@ -112,7 +112,7 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
           type="button"
           onClick={() => setOpen(true)}
           data-bay-page-add-open
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-4 text-[13px] font-medium text-stone-600 ${MOTION} hover:border-stone-900 hover:text-stone-900`}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-4 text-[13px] font-medium text-stone-600 ${MOTION} hover:border-stone-900 hover:text-stone-900`}
         >
           <span aria-hidden className="text-[18px] leading-none">
             +
@@ -129,11 +129,9 @@ export function ProfilePageEditor({ page, initial, saving, error, onSave, onCanc
   // 进入编辑那一刻的版面：之后父组件再怎么重画，「有没有改动」都跟它比。
   const [base] = useState<BayPageDoc>(initial);
   const [doc, setDoc] = useState<BayPageDoc>(initial);
-  const [coverDraft, setCoverDraft] = useState(initial.theme.cover_url);
   const theme = doc.theme;
   const dirty = doc !== base;
   const tooBig = useMemo(() => pageDocBytes(doc) > BAY_PAGE_MAX_BYTES, [doc]);
-  const coverInvalid = Boolean(coverDraft.trim()) && !safePageUrl(coverDraft);
 
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
 
@@ -239,24 +237,11 @@ export function ProfilePageEditor({ page, initial, saving, error, onSave, onCanc
           </div>
         </div>
         {theme.cover_style === "image" ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              type="url"
-              inputMode="url"
-              value={coverDraft}
-              placeholder="https://"
-              aria-label={tt("封面图地址")}
-              onChange={(event) => {
-                const value = event.target.value;
-                setCoverDraft(value);
-                const safe = safePageUrl(value);
-                if (safe || !value.trim()) setDoc((current) => patchTheme(current, { cover_url: safe }));
-              }}
-              className={`min-w-0 flex-1 rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-[13px] outline-none ${MOTION} focus-visible:ring-2 focus-visible:ring-neutral-300`}
+          <div className="mt-3">
+            <BayCoverDrop
+              url={theme.cover_url}
+              onUrl={(url) => setDoc((current) => patchTheme(current, { cover_url: url }))}
             />
-            <span className={`text-[12px] ${coverInvalid ? "text-rose-600" : "text-neutral-500"}`}>
-              {coverInvalid ? tt("地址要以 https:// 开头") : tt("粘贴一张横向大图的地址")}
-            </span>
           </div>
         ) : null}
         {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}

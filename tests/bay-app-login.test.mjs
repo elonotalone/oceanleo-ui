@@ -136,3 +136,26 @@ test("授权页源码：点劫持判断、跳转前核对、无注入、不把�
   assert.doesNotMatch(pane, /fetch\(/);
   assert.doesNotMatch(manage, /\/v1\//);
 });
+
+test("登录填写页回调地址用展开表单，不事先堆提示小字", () => {
+  const manage = source("src/shell/bay/applogin/LoginManagePanel.tsx");
+  assert.match(manage, /BayRevealForm/);
+  assert.match(manage, /from ["']\.\.\/form["']/);
+  assert.match(manage, /id:\s*"redirects"/);
+  assert.match(manage, /data-bay-login-uri/);
+  assert.match(manage, /data-bay-login-uri-add/);
+  assert.match(manage, /data-bay-login-enabled/);
+  assert.doesNotMatch(manage, /placeholder=/);
+  assert.doesNotMatch(manage, /Please enter/i);
+  assert.doesNotMatch(manage, /开通登录至少要有一个回调地址/);
+  assert.doesNotMatch(manage, /最多 5 个回调地址/);
+  assert.doesNotMatch(manage, /请填写回调地址/);
+});
+
+test("登录设置填写页灰字可读、没有整页白板页脚", () => {
+  const manage = source("src/shell/bay/applogin/LoginManagePanel.tsx");
+  assert.doesNotMatch(manage, /text-neutral-400/);
+  assert.doesNotMatch(manage, /text-stone-400/);
+  assert.doesNotMatch(manage, /bg-white\/95/);
+  assert.doesNotMatch(manage, /-mx-4/);
+});

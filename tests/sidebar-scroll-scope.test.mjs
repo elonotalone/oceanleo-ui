@@ -3,7 +3,7 @@
 //   第 1 类 `oceanleo.com` 主站  —— 一行不改。它走自己的 clone-shell，
 //                                   根本不吃这个外壳，所以这份用例里没有它。
 //   第 2 类 其余 OceanLeo 系列站 —— 导航标题行钉死，只有任务行与历史区滚动。
-//   第 3 类 asset / aitools      —— 整条侧栏一起滚，只有左下角账户按钮不动。
+//   第 3 类 aitools              —— 整条侧栏一起滚，只有左下角账户按钮不动。
 //
 // 用例判的是**包含关系**而不是 class 字符串：滚不滚由「在不在那个滚动容器里」决定，
 // 换一套 class 名不该让这份用例变绿。
@@ -172,7 +172,7 @@ test("第 2 类（默认）：导航键一个都不动，只有下方历史区�
 });
 
 test("第 3 类：整条侧栏一起滚，只有左下角账户按钮不动", () => {
-  const html = renderShell({ siteId: "asset", onSearch: () => {} });
+  const html = renderShell({ siteId: "aitools", onSearch: () => {} });
   const scrollArea = elementHtml(html, 'data-oceanleo-sidebar-scroll="whole"');
 
   // 品牌、搜索、全部导航、历史、余额 —— 一整块一起走。
@@ -196,27 +196,25 @@ test("第 3 类：整条侧栏一起滚，只有左下角账户按钮不动", ()
   assert.ok(!html.includes("data-oceanleo-pinned-nav"));
 });
 
-// asset / aitools 现在 pin 的是已发布的 v0.210.0，那个包里没有 `sidebarScroll`；
-// 在它们自己的仓里传这个 prop，它们下一次构建就会红。所以整体滚动是**共享包按 siteId
-// 给的默认值**，两个站点仓一行不改，开发版立刻是对的。
-test("asset / aitools 不用改自己的接线就拿到整体滚动，其余站不受影响", () => {
-  for (const siteId of ["asset", "aitools"]) {
-    const html = renderShell({ siteId });
-    assert.ok(
-      html.includes('data-oceanleo-sidebar-scroll="whole"'),
-      `${siteId} 没有拿到整体滚动`,
-    );
-  }
-  for (const siteId of ["word", "image", "default"]) {
+// aitools 现在 pin 的是已发布的 v0.210.0，那个包里没有 `sidebarScroll`；
+// 在它自己的仓里传这个 prop，下一次构建就会红。所以整体滚动是**共享包按 siteId
+// 给的默认值**，站点仓一行不改，开发版立刻是对的。asset 站 2026-10 下线，不再整页滚。
+test("aitools 不用改自己的接线就拿到整体滚动，其余站不受影响", () => {
+  const html = renderShell({ siteId: "aitools" });
+  assert.ok(
+    html.includes('data-oceanleo-sidebar-scroll="whole"'),
+    "aitools 没有拿到整体滚动",
+  );
+  for (const siteId of ["asset", "word", "image", "default"]) {
     const html = renderShell({ siteId });
     assert.ok(
       html.includes('data-oceanleo-sidebar-scroll="history"'),
       `${siteId} 的侧栏被误判成整体滚动`,
     );
   }
-  // 站点显式声明时以站点为准（发布之后 asset 想把这件事写在自己的接线里）。
+  // 站点显式声明时以站点为准（发布之后 aitools 想把这件事写在自己的接线里）。
   assert.ok(
-    renderShell({ siteId: "asset", sidebarScroll: "history" }).includes(
+    renderShell({ siteId: "aitools", sidebarScroll: "history" }).includes(
       'data-oceanleo-sidebar-scroll="history"',
     ),
   );

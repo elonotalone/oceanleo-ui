@@ -18,7 +18,8 @@ import {
   type BayMyVetting,
   type BayVettingKind,
 } from "../../../lib/bay/vetting";
-import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerField, SellerNotice } from "./seller-ui";
+import { BayRevealForm } from "../form";
+import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerNotice } from "./seller-ui";
 
 const DOMAIN_LABEL: Record<string, string> = {
   tax: "税务",
@@ -47,6 +48,10 @@ const VERDICT_LABEL: Record<string, string> = {
   reject: "未通过",
   manual: "人工复核中",
 };
+
+function filled(value: string): boolean {
+  return Boolean(value.trim());
+}
 
 export function BayVettingSection() {
   const tt = useUI();
@@ -123,31 +128,59 @@ export function BayVettingSection() {
     <section data-bay-vetting className="mx-auto w-full max-w-xl space-y-4">
       {error ? <SellerNotice tone="error">{tt(error)}</SellerNotice> : null}
 
-      <SellerCard title={tt("提交核验")} hint={tt("只填公开可查的编号和查验来源。医疗、法律、宠物医疗这一期不开放。")}>
-        <SellerField label={tt("领域")}>
-          <select data-bay-field="domain" className={INPUT_CLASS} value={domain} onChange={(event) => setDomain(event.target.value as (typeof BAY_VETTING_DOMAINS)[number])}>
-            {BAY_VETTING_DOMAINS.map((value) => (
-              <option key={value} value={value}>
-                {tt(DOMAIN_LABEL[value])}
-              </option>
-            ))}
-          </select>
-        </SellerField>
-        <SellerField label={tt("凭证种类")}>
-          <select data-bay-field="kind" className={INPUT_CLASS} value={kind} onChange={(event) => setKind(event.target.value as BayVettingKind)}>
-            {BAY_VETTING_KIND_CHOICES.map((value) => (
-              <option key={value} value={value}>
-                {tt(KIND_LABEL[value])}
-              </option>
-            ))}
-          </select>
-        </SellerField>
-        <SellerField label={tt("编号")}>
-          <input data-bay-field="credential_no" className={INPUT_CLASS} value={credentialNo} maxLength={64} onChange={(event) => setCredentialNo(event.target.value)} />
-        </SellerField>
-        <SellerField label={tt("查验来源")} hint={tt("例如发证机关的公开查询入口")}>
-          <input data-bay-field="source" className={INPUT_CLASS} value={source} maxLength={200} onChange={(event) => setSource(event.target.value)} />
-        </SellerField>
+      <SellerCard title={tt("提交核验")}>
+        <BayRevealForm
+          items={[
+            {
+              id: "domain",
+              label: tt("领域"),
+              done: Boolean(domain),
+              summary: tt(DOMAIN_LABEL[domain]),
+              children: (
+                <select data-bay-field="domain" className={INPUT_CLASS} value={domain} onChange={(event) => setDomain(event.target.value as (typeof BAY_VETTING_DOMAINS)[number])}>
+                  {BAY_VETTING_DOMAINS.map((value) => (
+                    <option key={value} value={value}>
+                      {tt(DOMAIN_LABEL[value])}
+                    </option>
+                  ))}
+                </select>
+              ),
+            },
+            {
+              id: "kind",
+              label: tt("凭证种类"),
+              done: Boolean(kind),
+              summary: tt(KIND_LABEL[kind]),
+              children: (
+                <select data-bay-field="kind" className={INPUT_CLASS} value={kind} onChange={(event) => setKind(event.target.value as BayVettingKind)}>
+                  {BAY_VETTING_KIND_CHOICES.map((value) => (
+                    <option key={value} value={value}>
+                      {tt(KIND_LABEL[value])}
+                    </option>
+                  ))}
+                </select>
+              ),
+            },
+            {
+              id: "credential_no",
+              label: tt("编号"),
+              done: filled(credentialNo),
+              summary: credentialNo,
+              children: (
+                <input data-bay-field="credential_no" className={INPUT_CLASS} value={credentialNo} maxLength={64} onChange={(event) => setCredentialNo(event.target.value)} />
+              ),
+            },
+            {
+              id: "source",
+              label: tt("查验来源"),
+              done: filled(source),
+              summary: source,
+              children: (
+                <input data-bay-field="source" className={INPUT_CLASS} value={source} maxLength={200} onChange={(event) => setSource(event.target.value)} />
+              ),
+            },
+          ]}
+        />
         <button type="button" data-bay-submit-vetting disabled={busy} onClick={() => void submit()} className={PRIMARY_BUTTON}>
           {busy ? tt("提交中…") : tt("提交核验")}
         </button>

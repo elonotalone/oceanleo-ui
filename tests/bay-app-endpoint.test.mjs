@@ -128,17 +128,24 @@ test("computer 草稿只在换了公开网址时带 endpoint_id", () => {
   assert.deepEqual(patchFromDraft({ ...same, endpointId: "e2" }, app), { endpoint_id: "e2" });
 });
 
-test("AppEditorPane 有第三种来源，选 computer 时不渲染 AppVerifyPanel", () => {
+test("发布页不再把云电脑应用当成一种来源", () => {
   const editor = src("src/shell/bay/apps/AppEditorPane.tsx");
-  assert.match(editor, /我的云电脑上的应用/);
-  assert.match(editor, /data-bay-app-source="computer"/);
-  assert.match(editor, /EndpointPicker/);
-  assert.match(editor, /source_kind:\s*"computer"/);
-  assert.match(editor, /endpoint_id:\s*computerPick\.id/);
-  assert.match(editor, /embed_mode:\s*"link"/);
-  assert.match(editor, /source_kind === "computer"/);
-  assert.match(editor, /app\.source_kind === "external" \? <AppVerifyPanel/);
-  assert.doesNotMatch(editor, /source_kind === "computer"[\s\S]{0,80}AppVerifyPanel/);
+  assert.doesNotMatch(editor, /source_kind:\s*"computer"/);
+  assert.doesNotMatch(editor, /data-bay-app-source="computer"/);
+  assert.doesNotMatch(editor, /AppVerifyPanel/);
+  assert.doesNotMatch(editor, /data-bay-app-source="hosted"/);
+  assert.doesNotMatch(editor, /data-bay-app-source="external"/);
+});
+
+test("EndpointPicker 用展开表单，没有端口名字并排空框和事先小字", () => {
+  // 本任务要改掉的旧行为：端口与名字同时摆空框、例如 3000、名字格式说明事先小字。
+  const picker = src("src/shell/bay/appendpoint/EndpointPicker.tsx");
+  assert.match(picker, /data-bay-reveal/);
+  assert.match(picker, /BayRevealForm/);
+  assert.doesNotMatch(picker, /例如 3000/);
+  assert.doesNotMatch(picker, /3–32 位小写字母/);
+  const editor = src("src/shell/bay/apps/AppEditorPane.tsx");
+  assert.doesNotMatch(editor, /请先选定一个公开网址/);
 });
 
 test("EndpointPicker / EndpointManagePanel 的标记与客户端函数", () => {
@@ -174,4 +181,17 @@ test("新实现不拼域名，--live. 只留在说明文字", () => {
   assert.doesNotMatch(editor, /--live\./);
   const copy = src("src/i18n/ui/messages/bay-app-endpoint-copy.ts");
   assert.doesNotMatch(copy, /--live\./);
+});
+
+test("EndpointPicker 云电脑用 BayChoice，灰字可读", () => {
+  const picker = src("src/shell/bay/appendpoint/EndpointPicker.tsx");
+  const choice = src("src/shell/bay/form/BayChoice.tsx");
+  assert.match(picker, /<BayChoice/);
+  assert.match(picker, /columns=\{1\}/);
+  assert.match(picker, /data-bay-endpoint-computer/);
+  assert.match(choice, /data-bay-choice-option=\{option\.value\}/);
+  assert.match(choice, /data-bay-choice-selected=\{selected \? "" : undefined\}/);
+  assert.doesNotMatch(picker, /type="radio"/);
+  assert.doesNotMatch(picker, /text-neutral-400/);
+  assert.doesNotMatch(picker, /text-stone-400/);
 });

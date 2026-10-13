@@ -63,6 +63,16 @@ export interface BayDemand {
   posted_site?: string | null;
   handling_site?: string;
   attached_work?: BayWorkRef | null;
+  audience_mode?: "public" | "verified_first" | "invited" | "group" | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  custom_terms?: string | null;
+  listing_kind?: "digital" | "service" | "app" | "lesson" | null;
+  delivery_days?: number | null;
+  cover_url?: string | null;
+  revisions?: number | null;
+  consult_rounds?: number | null;
+  consult_minutes?: number | null;
 }
 
 export interface DemandInviteLink {
@@ -108,6 +118,16 @@ export interface DemandInput {
   reference_links?: string[];
   supplemental_notes?: string;
   status?: "draft" | "open";
+  audience_mode?: "public" | "verified_first" | "invited" | "group";
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  custom_terms?: string | null;
+  listing_kind?: "digital" | "service" | "app" | "lesson";
+  delivery_days?: number | null;
+  cover_url?: string | null;
+  revisions?: number | null;
+  consult_rounds?: number | null;
+  consult_minutes?: number | null;
 }
 
 /** 发布时的站点与附带作品。客户端只传作品的 kind + id，标题与所在站由服务端补全。 */
@@ -118,7 +138,7 @@ export interface DemandPlacement {
 
 export interface DemandRequestBody extends DemandInput {
   posted_site: string | null;
-  attached_work: { kind: "task"; id: string } | null;
+  attached_work: { kind: "task" | "artifact"; id: string } | null;
   catalog_kind: "delivery";
   regulated_domain: "none";
 }
@@ -168,9 +188,12 @@ function cleanList(values: readonly string[] | undefined): string[] {
   return [...seen];
 }
 
-function workRef(work: DemandPlacement["attachedWork"]): { kind: "task"; id: string } | null {
+function workRef(work: DemandPlacement["attachedWork"]): { kind: "task" | "artifact"; id: string } | null {
   const workId = String(work?.id || "").trim();
-  return work?.kind === "task" && workId ? { kind: "task", id: workId } : null;
+  if (!workId) return null;
+  if (work?.kind === "artifact") return { kind: "artifact", id: workId };
+  if (work?.kind === "task") return { kind: "task", id: workId };
+  return null;
 }
 
 /** Bay 只发交付型需求（答疑不上架），请求体总带上发布站点与附带作品。 */

@@ -9,6 +9,7 @@ import {
   saveBayAppLoginClient,
   type BayAppLoginClient,
 } from "../../../lib/bay/app-login";
+import { BayRevealForm } from "../form";
 import { PaneLoading, Section } from "../supply/parts";
 import { errorText, useBayResource } from "../supply/use-bay-resource";
 import {
@@ -42,7 +43,7 @@ function CopyRow({
         type="button"
         data-bay-login-copy={name}
         onClick={() => onCopy(name, value)}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
+        className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
       >
         {copied === name ? tt("已复制") : tt("复制")}
       </button>
@@ -128,6 +129,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
   const firstUri = (client.redirect_uris[0] || uris[0] || "").trim();
   const sdkUrl = sdkScriptUrl(client.token_url);
   const sample = opened && client.client_id && firstUri ? loginSampleCode(client.client_id, firstUri, sdkUrl) : "";
+  const filledUris = uris.map((item) => item.trim()).filter(Boolean);
 
   return (
     <div data-bay-login-manage className="space-y-5">
@@ -142,46 +144,55 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
         <span>{tt("允许访客用 OceanLeo 账号登录这个作品")}</span>
       </label>
 
-      <Section title={tt("回调地址")}>
-        <div className="space-y-2">
-          {uris.map((uri, index) => (
-            <div key={index} className="flex flex-wrap gap-2">
-              <input
-                data-bay-login-uri={index}
-                value={uri}
-                onChange={(event) => {
-                  const next = [...uris];
-                  next[index] = event.target.value;
-                  setUris(next);
-                }}
-                className="h-10 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
-              />
-              <button
-                type="button"
-                data-bay-login-uri-remove={index}
-                onClick={() => setUris(uris.filter((_, item) => item !== index))}
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
-              >
-                {tt("删除")}
-              </button>
-            </div>
-          ))}
-          {uris.length === 0 ? <p className="text-[13px] text-neutral-500">{tt("开通登录至少要有一个回调地址")}</p> : null}
-          <button
-            type="button"
-            data-bay-login-uri-add
-            disabled={uris.length >= MAX_REDIRECT_URIS}
-            onClick={() => {
-              if (uris.length >= MAX_REDIRECT_URIS) return;
-              setUris([...uris, ""]);
-            }}
-            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
-          >
-            {tt("添加回调地址")}
-          </button>
-          {uris.length >= MAX_REDIRECT_URIS ? <p className="text-[12px] text-neutral-500">{tt("最多 5 个回调地址")}</p> : null}
-        </div>
-      </Section>
+      <BayRevealForm
+        items={[
+          {
+            id: "redirects",
+            label: tt("回调地址"),
+            done: !enabled || filledUris.length > 0,
+            optional: !enabled,
+            summary: filledUris[0],
+            children: (
+              <div className="space-y-2">
+                {uris.map((uri, index) => (
+                  <div key={index} className="flex flex-wrap gap-2">
+                    <input
+                      data-bay-login-uri={index}
+                      value={uri}
+                      onChange={(event) => {
+                        const next = [...uris];
+                        next[index] = event.target.value;
+                        setUris(next);
+                      }}
+                      className="h-10 min-w-0 flex-1 rounded-full border border-neutral-900 bg-white px-3 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
+                    />
+                    <button
+                      type="button"
+                      data-bay-login-uri-remove={index}
+                      onClick={() => setUris(uris.filter((_, item) => item !== index))}
+                      className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700"
+                    >
+                      {tt("删除")}
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  data-bay-login-uri-add
+                  disabled={uris.length >= MAX_REDIRECT_URIS}
+                  onClick={() => {
+                    if (uris.length >= MAX_REDIRECT_URIS) return;
+                    setUris([...uris, ""]);
+                  }}
+                  className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+                >
+                  {tt("添加回调地址")}
+                </button>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {formError ? <p data-bay-login-save-error className="text-[12px] text-rose-600">{formError}</p> : null}
 
@@ -190,7 +201,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
         data-bay-login-save
         disabled={busy}
         onClick={() => void save()}
-        className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] text-white disabled:opacity-60"
+        className="rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] text-white disabled:opacity-60"
       >
         {busy ? tt("正在保存…") : tt("保存")}
       </button>

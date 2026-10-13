@@ -2,6 +2,8 @@
 
 // 课程详情：大纲、试看、购买、看课、确认与退款、买家评论区。本文件归 V2 单元；组件名与 props 是合同，不许改。
 import { useEffect, useState, type ReactElement } from "react";
+import { BayImageStage } from "../form/BayImageGallery";
+import { cleanGalleryUrls } from "../form/bay-gallery";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getBayLesson, getBayLessonProgress, reportBayLesson, type BayLessonDetail } from "../../../lib/bay/lessons";
@@ -38,7 +40,9 @@ function LessonDetailView({ payload, onReload }: { payload: BayLessonDetail; onR
   const progress = useBayResource(canProgress ? `lesson-progress:${lesson.id}` : null, () => getBayLessonProgress(lesson.id));
   const [doneIds, setDoneIds] = useState<string[]>([]);
   const [continueError, setContinueError] = useState("");
-  const cover = safeHttpUrl(lesson.cover_url);
+  const coverUrls = cleanGalleryUrls(lesson.gallery_urls, lesson.cover_url);
+  const [activeCover, setActiveCover] = useState(0);
+  const cover = coverUrls[0] || safeHttpUrl(lesson.cover_url);
   const author = lesson.author;
   const authorName = author?.display_name || author?.handle || "";
 
@@ -65,7 +69,13 @@ function LessonDetailView({ payload, onReload }: { payload: BayLessonDetail; onR
 
   return (
     <div data-bay-pane="lesson" className="p-4">
-      {cover ? <img src={cover} alt="" className="mb-4 aspect-video w-full rounded-xl bg-neutral-100 object-cover" /> : null}
+      {coverUrls.length ? (
+        <div className="mb-4">
+          <BayImageStage urls={coverUrls} active={activeCover} onActive={setActiveCover} emptyLabel={tt("封面")} />
+        </div>
+      ) : cover ? (
+        <img src={cover} alt="" className="mb-4 aspect-video w-full rounded-xl bg-neutral-100 object-cover" />
+      ) : null}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="break-words text-[18px] font-semibold text-neutral-950">{lesson.title}</h2>

@@ -41,6 +41,50 @@ test("图标轨只画栏目图标，点「我的任务」会展开侧栏并打�
   assert.match(appShell, /\{!rail && \(\s*<span className="flex-1 truncate">\{labelText\}<\/span>/);
 });
 
+test("折叠轨顶上一颗键：默认站标，悬停换成展开，不再并排两颗", () => {
+  const globals = readFileSync(
+    new URL("../src/theme/globals.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(appShell, /data-oceanleo-sidebar-expand/);
+  assert.match(appShell, /data-oceanleo-rail-brand/);
+  assert.match(appShell, /data-oceanleo-rail-expand-icon/);
+  assert.doesNotMatch(
+    appShell,
+    /renderBrandMark\(true\)/,
+    "折叠态不许再单独画一颗站标键，再在下面叠一颗展开键",
+  );
+  const railStart = appShell.indexOf("if (rail) {\n      return (");
+  const railEnd = appShell.indexOf("\n    }\n    return (", railStart);
+  assert.ok(railStart > 0 && railEnd > railStart, "必须切得到折叠头");
+  const railBranch = appShell.slice(railStart, railEnd);
+  assert.match(railBranch, /data-oceanleo-sidebar-expand/);
+  assert.match(railBranch, /\{brand\.logo\}/);
+  assert.match(railBranch, /<IconPanel \/>/);
+  assert.equal(
+    (railBranch.match(/<button/g) || []).length,
+    2,
+    "折叠头只该有展开键 + 可选搜索键，不能再多一颗站标键",
+  );
+  assert.match(
+    globals,
+    /\[data-oceanleo-sidebar-expand\]:hover \[data-oceanleo-rail-brand\]/,
+  );
+  assert.match(
+    globals,
+    /\[data-oceanleo-sidebar-expand\]:hover \[data-oceanleo-rail-expand-icon\]/,
+  );
+  assert.match(railBranch, /data-oceanleo-rail-tip=\{tt\("展开侧栏"\)\}/);
+  assert.doesNotMatch(
+    railBranch,
+    /title=\{tt\("展开侧栏"\)\}/,
+    "折叠顶键不许再用浏览器自带 title，必须走黑底浮层",
+  );
+  assert.match(appShell, /<SidebarRailTipLayer \/>/);
+  assert.match(globals, /\[data-oceanleo-rail-tip-bubble\]/);
+  assert.match(globals, /background: #171717;/);
+});
+
 test("手机抽屉仍用完整侧栏，不被桌面收起态带成窄轨", () => {
   assert.match(appShell, /\{collapsed \? railBody : sidebarBody\}/);
   const drawerAt = appShell.indexOf("leo-safe-drawer");
@@ -134,6 +178,7 @@ test("收起后真画出图标轨，点「我的任务」会展开并露出任�
     Node: window.Node,
     Event: window.Event,
     MouseEvent: window.MouseEvent,
+    getComputedStyle: window.getComputedStyle.bind(window),
     localStorage: window.localStorage,
   })) {
     const had = name in globalThis;
@@ -194,6 +239,53 @@ test("收起后真画出图标轨，点「我的任务」会展开并露出任�
     const aside = container.querySelector("[data-oceanleo-sidebar-mode]");
     assert.equal(aside?.getAttribute("data-oceanleo-sidebar-mode"), "rail");
     assert.ok(container.querySelector("[data-oceanleo-sidebar-rail-nav]"));
+    const expand = container.querySelector("[data-oceanleo-sidebar-expand]");
+    assert.ok(expand, "折叠轨顶上必须有展开键");
+    assert.ok(
+      expand.querySelector("[data-oceanleo-rail-brand]"),
+      "展开键默认必须还带着站标",
+    );
+    assert.ok(
+      expand.querySelector("[data-oceanleo-rail-expand-icon]"),
+      "展开键里必须藏着展开图标，悬停才露出来",
+    );
+    assert.equal(
+      aside.querySelectorAll("[data-oceanleo-sidebar-expand]").length,
+      1,
+      "折叠轨顶上只能有一颗展开键",
+    );
+    assert.equal(expand.getAttribute("title"), null);
+    await act(async () =>
+      expand.dispatchEvent(new window.Event("pointerover", { bubbles: true })),
+    );
+    const bubble = window.document.body.querySelector(
+      "[data-oceanleo-rail-tip-bubble]",
+    );
+    assert.ok(bubble, "悬停必须出现黑底浮层，不能只靠浏览器 title");
+    assert.equal(bubble.textContent, "展开侧栏");
+    await act(async () =>
+      expand.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
+    );
+    assert.equal(
+      container
+        .querySelector("[data-oceanleo-sidebar-mode]")
+        ?.getAttribute("data-oceanleo-sidebar-mode"),
+      "expanded",
+      "点顶上那颗合成键必须展开侧栏",
+    );
+    const collapse = [...container.querySelectorAll("button")].find(
+      (el) => el.getAttribute("title") === "收起侧栏",
+    );
+    assert.ok(collapse, "展开后必须还能收起");
+    await act(async () =>
+      collapse.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
+    );
+    assert.equal(
+      container
+        .querySelector("[data-oceanleo-sidebar-mode]")
+        ?.getAttribute("data-oceanleo-sidebar-mode"),
+      "rail",
+    );
     assert.ok(container.querySelector('[data-icon="home"]'));
     assert.ok(container.querySelector('[data-icon="history"]'));
     assert.equal(container.querySelector("[data-task-list]"), null);

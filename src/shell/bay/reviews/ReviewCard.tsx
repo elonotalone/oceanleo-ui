@@ -105,7 +105,7 @@ export function ReviewCard({
   }
 
   return (
-    <article data-bay-item-review={review.id} className="rounded-xl border border-neutral-200 p-3">
+    <article data-bay-item-review={review.id} className="py-2">
       <div className="flex items-start gap-3">
         {avatar && safePhotos([avatar])[0] ? (
           handle ? (
@@ -166,7 +166,7 @@ export function ReviewCard({
                     rows={3}
                     maxLength={2000}
                     placeholder={tt("追评最多 2000 个字")}
-                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
+                    className="w-full rounded-full border border-neutral-900 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
                   />
                   <ReviewPhotoFields urls={followupPhotos} onChange={setFollowupPhotos} disabled={busy} />
                   <button
@@ -182,7 +182,7 @@ export function ReviewCard({
                         setFollowupPhotos([]);
                       })
                     }
-                    className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
+                    className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
                   >
                     {tt("发布")}
                   </button>
@@ -205,7 +205,7 @@ export function ReviewCard({
                     rows={3}
                     maxLength={2000}
                     placeholder={tt("回复这条评价")}
-                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
+                    className="w-full rounded-full border border-neutral-900 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
                   />
                   <button
                     type="button"
@@ -219,7 +219,7 @@ export function ReviewCard({
                         setReplyBody("");
                       })
                     }
-                    className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
+                    className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
                   >
                     {tt("回复")}
                   </button>
@@ -242,7 +242,7 @@ export function ReviewCard({
                     rows={3}
                     maxLength={2000}
                     placeholder={tt("回复这条追评")}
-                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
+                    className="w-full rounded-full border border-neutral-900 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
                   />
                   <button
                     type="button"
@@ -256,7 +256,7 @@ export function ReviewCard({
                         setFollowupReplyBody("");
                       })
                     }
-                    className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
+                    className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50"
                   >
                     {tt("回复")}
                   </button>

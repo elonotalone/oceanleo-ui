@@ -228,7 +228,7 @@ export function OrderPane({ target }: BayPaneProps) {
             ))}
           </ul>
           {actions.submitMilestone && pendingMilestone ? (
-            <div className="space-y-2 rounded-xl border border-neutral-200 p-3">
+            <div className="space-y-2">
               <textarea
                 data-bay-milestone-note
                 value={milestoneNote}
@@ -337,7 +337,7 @@ export function OrderPane({ target }: BayPaneProps) {
         <section data-bay-order-deliveries className="space-y-2">
           <h3 className="text-[13px] font-semibold">{tt("交付")}</h3>
           {deliveries.map((item) => (
-            <article key={item.id} data-bay-delivery={item.id} className="rounded-xl border border-neutral-200 p-3">
+            <article key={item.id} data-bay-delivery={item.id} className="py-2">
               <p className="text-[12.5px] font-medium">
                 {tt("第 {n} 轮", { n: item.round })} · {deliveryStateLabel(tt, item.state)}
               </p>
@@ -363,7 +363,7 @@ export function OrderPane({ target }: BayPaneProps) {
           ))}
           {actions.deliver ? (
             <form
-              className="space-y-2 rounded-xl border border-neutral-200 p-3"
+              className="space-y-2"
               onSubmit={(event) => {
                 event.preventDefault();
                 void run(
@@ -568,7 +568,7 @@ function MilestoneRow({ item, order }: { item: BayOrderMilestone; order: BayOrde
   const tt = useUI();
   const formatDate = useOrderDate();
   return (
-    <li data-bay-milestone={item.id} className="rounded-xl border border-neutral-200 px-3 py-2">
+    <li data-bay-milestone={item.id} className="py-2">
       <p className="text-[13px] font-medium text-neutral-900">
         {item.title || tt("里程碑")}
         <span className="ms-2 text-[12px] font-normal text-neutral-500">{milestoneStatusLabel(tt, item.status)}</span>

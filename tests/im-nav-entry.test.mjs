@@ -54,7 +54,6 @@ test("导航里是 bay 和 leochat（紧跟），没有 explore、没有消息�
     "workspace",
     "library",
     "history",
-    "playground",
   ]);
   assert.equal(
     navEntries("workspace", { withMessages: false }).some((e) => e.id === "leochat"),

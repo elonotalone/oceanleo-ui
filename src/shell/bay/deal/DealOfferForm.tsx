@@ -5,6 +5,8 @@
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { DealOfferInput } from "../../../lib/bay/threads";
+import { BAY_FORM_HELP_CLASS, BAY_FORM_INPUT_CLASS, BAY_FORM_TEXTAREA_CLASS } from "../form/form-ui";
+import { BayRevealForm, type BayRevealItem } from "../form/BayRevealForm";
 import { checkOfferForm, parseAmountToFen, type OfferFormProblem } from "./deal-model";
 
 export interface DealOfferFormProps {
@@ -67,9 +69,94 @@ export function DealOfferForm({ currency, defaultTitle = "", onSubmit, onCancel 
     }
   }
 
-  const label = "block text-[11.5px] font-medium text-neutral-600";
-  const input =
-    "mt-1 w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-neutral-900 focus:border-neutral-400 focus:outline-none";
+  const input = BAY_FORM_INPUT_CLASS;
+  const daysNum = Number(days);
+  const daysDone = Number.isInteger(daysNum) && daysNum >= 1 && daysNum <= 3650;
+  const revNum = Number(revisions);
+  const revisionsDone = unlimited || (Number.isInteger(revNum) && revNum >= 0 && revNum <= 100);
+  const items: BayRevealItem[] = [
+    {
+      id: "title",
+      label: tt("报价标题"),
+      done: Boolean(title.trim()),
+      summary: title.trim() || undefined,
+      children: (
+        <input data-offer-field="title" value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} className={input} />
+      ),
+    },
+    {
+      id: "amount",
+      label: tt("价格（{currency}）", { currency: currency.toUpperCase() }),
+      done: parseAmountToFen(amount) !== null,
+      summary: amount.trim() || undefined,
+      children: (
+        <input data-offer-field="amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} className={input} />
+      ),
+    },
+    {
+      id: "days",
+      label: tt("交付天数"),
+      done: daysDone,
+      summary: daysDone ? days : undefined,
+      children: (
+        <input
+          data-offer-field="days"
+          type="number"
+          min={1}
+          max={3650}
+          value={days}
+          onChange={(event) => setDays(event.target.value)}
+          className={input}
+        />
+      ),
+    },
+    {
+      id: "revisions",
+      label: tt("修改次数"),
+      done: revisionsDone,
+      summary: unlimited ? tt("不限改稿") : revisionsDone ? revisions : undefined,
+      children: (
+        <div className="space-y-2">
+          <input
+            data-offer-field="revisions"
+            type="number"
+            min={0}
+            max={100}
+            disabled={unlimited}
+            value={unlimited ? "" : revisions}
+            onChange={(event) => setRevisions(event.target.value)}
+            className={input + " disabled:bg-neutral-200/80"}
+          />
+          <label className={`flex items-center gap-1.5 ${BAY_FORM_HELP_CLASS}`}>
+            <input
+              data-offer-field="unlimited"
+              type="checkbox"
+              checked={unlimited}
+              onChange={(event) => setUnlimited(event.target.checked)}
+            />
+            {tt("不限改稿")}
+          </label>
+        </div>
+      ),
+    },
+    {
+      id: "scope",
+      label: tt("范围说明"),
+      done: Boolean(scope.trim()),
+      optional: true,
+      summary: scope.trim() || undefined,
+      children: (
+        <textarea
+          data-offer-field="scope"
+          rows={3}
+          maxLength={20000}
+          value={scope}
+          onChange={(event) => setScope(event.target.value)}
+          className={BAY_FORM_TEXTAREA_CLASS}
+        />
+      ),
+    },
+  ];
   return (
     <form
       data-deal-offer-form
@@ -81,80 +168,14 @@ export function DealOfferForm({ currency, defaultTitle = "", onSubmit, onCancel 
     >
       <div className="flex items-center justify-between">
         <p className="text-[13px] font-semibold text-neutral-900">{tt("发一份新报价")}</p>
-        <button type="button" data-action="offer-cancel" onClick={onCancel} className="text-[12px] text-neutral-500 hover:text-neutral-800">
+        <button type="button" data-action="offer-cancel" onClick={onCancel} className="text-[12px] text-neutral-600 hover:text-neutral-800">
           {tt("取消")}
         </button>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <label className={label + " col-span-2"}>
-          {tt("报价标题")}
-          <input
-            data-offer-field="title"
-            value={title}
-            maxLength={200}
-            onChange={(event) => setTitle(event.target.value)}
-            className={input}
-          />
-        </label>
-        <label className={label}>
-          {tt("价格（{currency}）", { currency: currency.toUpperCase() })}
-          <input
-            data-offer-field="amount"
-            inputMode="decimal"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="0.00"
-            className={input}
-          />
-        </label>
-        <label className={label}>
-          {tt("交付天数")}
-          <input
-            data-offer-field="days"
-            type="number"
-            min={1}
-            max={3650}
-            value={days}
-            onChange={(event) => setDays(event.target.value)}
-            className={input}
-          />
-        </label>
-        <label className={label}>
-          {tt("修改次数")}
-          <input
-            data-offer-field="revisions"
-            type="number"
-            min={0}
-            max={100}
-            disabled={unlimited}
-            value={unlimited ? "" : revisions}
-            onChange={(event) => setRevisions(event.target.value)}
-            className={input + " disabled:bg-neutral-100"}
-          />
-        </label>
-        <label className="flex items-end gap-1.5 pb-1.5 text-[12px] text-neutral-600">
-          <input
-            data-offer-field="unlimited"
-            type="checkbox"
-            checked={unlimited}
-            onChange={(event) => setUnlimited(event.target.checked)}
-          />
-          {tt("不限改稿")}
-        </label>
-        <label className={label + " col-span-2"}>
-          {tt("范围说明")}
-          <textarea
-            data-offer-field="scope"
-            rows={3}
-            maxLength={20000}
-            value={scope}
-            onChange={(event) => setScope(event.target.value)}
-            placeholder={tt("写清楚包含什么、不包含什么")}
-            className={input + " resize-y"}
-          />
-        </label>
+      <div className="mt-2">
+        <BayRevealForm items={items} />
       </div>
-      <p className="mt-1.5 text-[11.5px] text-neutral-500">{tt("发出新报价后，之前没处理的报价会自动撤回。")}</p>
+      <p className={`mt-1.5 ${BAY_FORM_HELP_CLASS}`}>{tt("发出新报价后，之前没处理的报价会自动撤回。")}</p>
       {problem || error ? (
         <p role="alert" data-offer-form-error className="mt-1.5 text-[12px] text-red-600">
           {problemText(problem) ?? error}
@@ -165,7 +186,7 @@ export function DealOfferForm({ currency, defaultTitle = "", onSubmit, onCancel 
           type="submit"
           disabled={busy}
           data-action="offer-submit"
-          className="rounded-lg bg-neutral-900 px-4 py-1.5 text-[13px] text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
         >
           {busy ? tt("发送中…") : tt("发送报价")}
         </button>

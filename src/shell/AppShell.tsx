@@ -7,7 +7,8 @@
 //   左侧 248px 侧边栏：站点 Logo + 站名 / 搜索 / 收放键 / 主功能目录（高亮当前页）
 //                      / 可选「最近列表」插槽 / 底部 token 余额 / 账户按钮
 //   右侧主区：可选 headerRight 浮层 + main（各站业务内容 children）
-//   收起：w-[256px] → w-14 图标轨（只收文字、栏目图标留着）；点「我的任务」自动展开
+//   收起：w-[256px] → w-14 图标轨（只收文字、栏目图标留着）。顶上站标与展开键合成
+//                      一颗：默认站标，悬停/聚焦换成展开图标。点「我的任务」自动展开
 //                      才能露出任务列表。移动端仍是抽屉 + 汉堡键；状态存 localStorage
 //
 // 「各站保留品牌色」：传 brand.accent。布局/交互/中性底色全站统一，只有 accent
@@ -37,6 +38,7 @@ import { formatMoney, useLedgerCurrency } from "../lib/money";
 import { ToastProvider } from "../ui";
 import { IconPanel, IconSearch } from "./icons";
 import { SidebarAccountCluster } from "./account/SidebarAccountCluster";
+import { SidebarRailTipLayer } from "./sidebar-rail-tip";
 import { SettingsModalHost, openSettingsModal } from "./account/SettingsModalHost";
 import { setBaySiteKey } from "./bay/shell/bay-state";
 import { MessagesHost } from "./messages/MessagesHost";
@@ -75,10 +77,10 @@ export type AppShellLayout = "sidebar" | "topbar";
  *
  * - `"history"`（默认）：导航**标题行**钉死（新建任务 / 探索 / 工作台 / 我的库 /
  *   我的任务），只有 disclosure 里的具体任务行与下方最近区滚动。
- *   这是除主站与 asset / aitools 之外所有 OceanLeo 系列站要的行为。
+ *   这是除主站与 aitools 之外所有 OceanLeo 系列站要的行为。
  * - `"whole"`：整条侧栏当成一整块一起滚（品牌、搜索、导航含展开体、余额全都跟着走），
- *   **只有左下角的账户按钮固定**。asset 与 aitools 要的是这一种：
- *   它们的左栏是一条很长的类型轴，分段滚反而让人找不到自己在哪。
+ *   **只有左下角的账户按钮固定**。aitools 要的是这一种：
+ *   它的左栏是一条很长的类型轴，分段滚反而让人找不到自己在哪。
  *
  * 第三类行为（`oceanleo.com` 主站）不在这里：主站走自己的
  * `app/_components/clone-shell.tsx`，根本不吃这个外壳，所以本开关碰不到它。
@@ -86,15 +88,15 @@ export type AppShellLayout = "sidebar" | "topbar";
 export type ShellSidebarScroll = "history" | "whole";
 
 /**
- * 默认整体滚动的站（操作员点名的 asset 与 aitools）。
+ * 默认整体滚动的站（aitools；asset 站 2026-10 下线后不再列）。
  *
- * 为什么是共享包里的一张默认表，而不是站点侧传 prop：这两个站现在 pin 的是已发布的
- * `@oceanleo/ui` v0.210.0，那个包里还没有 `sidebarScroll`。在它们自己的仓里传这个
- * prop，它们下一次构建就会当场红掉——而本轮的边界是**只到开发版**，不发布新版本。
- * 默认值放在这里，开发版立刻是对的，两个站点仓一行不用改；将来真发布之后，
+ * 为什么是共享包里的一张默认表，而不是站点侧传 prop：aitools 现在 pin 的是已发布的
+ * `@oceanleo/ui` v0.210.0，那个包里还没有 `sidebarScroll`。在它自己的仓里传这个
+ * prop，下一次构建就会当场红掉——而本轮的边界是**只到开发版**，不发布新版本。
+ * 默认值放在这里，开发版立刻是对的，站点仓一行不用改；将来真发布之后，
  * 站点想把这件事写在自己的接线里，传 prop 就能覆盖这张表。
  */
-const WHOLE_SCROLL_SIDEBAR_SITES = new Set(["asset", "aitools"]);
+const WHOLE_SCROLL_SIDEBAR_SITES = new Set(["aitools"]);
 
 // 手机客户端打开的就是这套网页端，所以「像不像一个 app」全靠网页端这一侧收口。
 // phone-shell.css 的触感段（不闪灰、骨架不弹系统菜单、整页不橡皮筋）全部挂在
@@ -242,7 +244,7 @@ export interface AppShellProps {
   /** 侧栏中部「最近列表」插槽（聊天历史 / 最近生成等，各站自填；无则不渲染） */
   recentSlot?: ReactNode;
   /**
-   * 侧栏滚动范围。不传时按 `siteId` 取默认：asset / aitools 整体滚，其余只滚历史区。
+   * 侧栏滚动范围。不传时按 `siteId` 取默认：aitools 整体滚，其余只滚历史区。
    * 见 `ShellSidebarScroll` 与 `WHOLE_SCROLL_SIDEBAR_SITES`。
    */
   sidebarScroll?: ShellSidebarScroll;
@@ -615,7 +617,8 @@ function AppShellInner({
           }}
           aria-expanded={rail ? false : disclosureOpen}
           aria-label={labelAttr}
-          title={labelAttr}
+          title={rail ? undefined : labelAttr}
+          data-oceanleo-rail-tip={rail ? labelAttr : undefined}
           className={cls}
           style={style}
           data-oceanleo-nav-disclosure={rail ? "rail" : "expanded"}
@@ -633,7 +636,7 @@ function AppShellInner({
             item.onClick?.();
           }}
           aria-label={rail ? labelAttr : undefined}
-          title={rail ? labelAttr : undefined}
+          data-oceanleo-rail-tip={rail ? labelAttr : undefined}
           className={cls}
           style={style}
         >
@@ -662,7 +665,7 @@ function AppShellInner({
             navigateRoute(navHref, event);
           }}
           aria-label={rail ? labelAttr : undefined}
-          title={rail ? labelAttr : undefined}
+          data-oceanleo-rail-tip={rail ? labelAttr : undefined}
           className={cls}
           style={style}
         >
@@ -708,22 +711,16 @@ function AppShellInner({
   const showHeaderTools =
     !hideHeader && (showModelPicker || Boolean(headerRight));
 
-  function renderBrandMark(rail = false): ReactNode {
+  function renderBrandMark(): ReactNode {
     const mark = (
       <>
         <span className="flex h-5 w-5 items-center justify-center" style={{ color: brand.accent }}>
           {brand.logo}
         </span>
-        {!rail && (
-          <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
-        )}
+        <span className="text-[15px] font-semibold tracking-tight">{brand.name}</span>
       </>
     );
-    const markCls = `${
-      rail
-        ? "leo-tap-icon flex items-center justify-center rounded-md p-1.5"
-        : "leo-tap-row flex items-center gap-2"
-    } text-neutral-900`;
+    const markCls = "leo-tap-row flex items-center gap-2 text-neutral-900";
     return onBrandClick ? (
       <button
         type="button"
@@ -732,18 +729,11 @@ function AppShellInner({
           onBrandClick();
         }}
         className={markCls}
-        title={rail ? brand.name : undefined}
-        aria-label={rail ? brand.name : undefined}
       >
         {mark}
       </button>
     ) : (
-      <Link
-        href={shellHref("/")}
-        className={markCls}
-        title={rail ? brand.name : undefined}
-        aria-label={rail ? brand.name : undefined}
-      >
+      <Link href={shellHref("/")} className={markCls}>
         {mark}
       </Link>
     );
@@ -753,14 +743,25 @@ function AppShellInner({
     if (rail) {
       return (
         <div className="flex flex-col items-center gap-1 px-1 pb-2 pt-3">
-          {renderBrandMark(true)}
           <button
             type="button"
             onClick={() => toggleCollapsed(false)}
-            className="leo-tap-icon rounded-md p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
-            title={tt("展开侧栏")}
+            className="leo-tap-icon p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
+            aria-label={tt("展开侧栏")}
+            data-oceanleo-sidebar-expand
+            data-oceanleo-rail-tip={tt("展开侧栏")}
           >
-            <IconPanel />
+            <span
+              className="flex h-5 w-5 items-center justify-center"
+              style={{ color: brand.accent }}
+              data-oceanleo-rail-brand
+              aria-hidden
+            >
+              {brand.logo}
+            </span>
+            <span data-oceanleo-rail-expand-icon aria-hidden>
+              <IconPanel />
+            </span>
           </button>
           {onSearch && (
             <button
@@ -769,8 +770,9 @@ function AppShellInner({
                 toggleCollapsed(false);
                 setSearchOpen(true);
               }}
-              className="leo-tap-icon rounded-md p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
-              title={tt("搜索")}
+              className="leo-tap-icon rounded-lg p-1.5 text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50"
+              aria-label={tt("搜索")}
+              data-oceanleo-rail-tip={tt("搜索")}
             >
               <IconSearch />
             </button>
@@ -1105,6 +1107,7 @@ function AppShellInner({
     /* 根容器透明 → 透出 body 的全家桶浅色渐变（单一事实源在 theme/globals.css）。
        侧栏保留半透明浅灰与主区渐变区分；主区不再铺白，统一渐变底。 */
     <div className="leo-safe-shell flex min-h-screen bg-transparent" data-oceanleo-shell>
+      <SidebarRailTipLayer />
       {/* desktop sidebar。固定宽度 256px（2026-07-02 对齐主站 oceanleo.com 侧栏宽，
           利于显示历史记录的 AI 概括标题）——主导航态与覆盖式子栏态共用同一宽度，
           点「工作台 / 文件库 / 历史记录」等带子栏的项时侧栏不再变宽。 */}

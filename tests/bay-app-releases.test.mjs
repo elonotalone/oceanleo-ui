@@ -144,3 +144,20 @@ test("组件只走 app-releases 客户端，没有 fetch /v1/ 或注入点", () 
   assert.match(mine, /openBay\(\{ kind: "app", id: appId \}\)/);
   assert.match(mine, /referrerPolicy="no-referrer"/);
 });
+
+test("更新日志发布表用展开表单，不摆事先提示小字", () => {
+  const manage = src("src/shell/bay/appreleases/ReleasesManagePanel.tsx");
+  assert.match(manage, /BayRevealForm/);
+  assert.match(manage, /from ["']\.\.\/form["']/);
+  assert.match(manage, /id:\s*"version"/);
+  assert.match(manage, /id:\s*"title"/);
+  assert.match(manage, /id:\s*"body"/);
+  assert.match(manage, /optional:\s*true/);
+  assert.doesNotMatch(manage, /placeholder=/);
+  assert.doesNotMatch(manage, /Please enter/i);
+  assert.doesNotMatch(manage, /例如 1\.2\.0/);
+  assert.doesNotMatch(manage, /可选，最多 40 个字/);
+  assert.doesNotMatch(manage, /text-neutral-400|text-stone-400/);
+  assert.doesNotMatch(manage, /bg-white\/95/);
+  assert.doesNotMatch(manage, /-mx-4/);
+});

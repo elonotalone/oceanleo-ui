@@ -297,6 +297,7 @@ export function PlaygroundDetail({
   renderBoard,
   renderSites,
   onRequestLogin,
+  pileSwitch,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
   siteOrigin: Record<string, string>;
@@ -318,6 +319,8 @@ export function PlaygroundDetail({
   }) => ReactNode;
   /** 市场里未登录用户点「加入工作台」时打开消费端自己的登录入口。 */
   onRequestLogin?: () => void;
+  /** 门户工作台「全部 | 我的」开关；嵌在标题旁。不传则只显示「工作台」。 */
+  pileSwitch?: ReactNode;
 }) {
   const tt = useUI();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -411,7 +414,10 @@ export function PlaygroundDetail({
   );
 
   const pageTitle = (
-    <h1 className={APP_PAGE_TITLE_CLASS}>{tt("Playground")}</h1>
+    <div className="flex min-w-0 flex-wrap items-center gap-3">
+      <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
+      {pileSwitch}
+    </div>
   );
   const tabsBar = (
     <PlaygroundTabs

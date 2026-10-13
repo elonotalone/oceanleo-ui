@@ -101,7 +101,7 @@ export function FollowButton({ appId, isOwner }: { appId: string; isOwner: boole
             aria-pressed="false"
             disabled={busy}
             onClick={() => void runFollow()}
-            className="rounded-lg bg-neutral-900 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+            className="rounded-full bg-neutral-900 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
           >
             {busy ? tt("正在关注…") : tt("关注")}
           </button>
@@ -111,7 +111,7 @@ export function FollowButton({ appId, isOwner }: { appId: string; isOwner: boole
         </span>
       </span>
       {confirmUnfollow ? (
-        <div data-bay-confirm="unfollow" className="mt-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="unfollow" className="mt-2 space-y-2">
           <p className="text-[12px] text-neutral-800">{tt("确定取消关注这个作品？")}</p>
           {error ? <p className="mt-1 text-[12px] text-rose-600">{tt(error)}</p> : null}
           <div className="mt-2 flex flex-wrap justify-end gap-2">
@@ -119,7 +119,7 @@ export function FollowButton({ appId, isOwner }: { appId: string; isOwner: boole
               type="button"
               disabled={busy}
               onClick={() => setConfirmUnfollow(false)}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+              className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
             >
               {tt("取消")}
             </button>
@@ -128,7 +128,7 @@ export function FollowButton({ appId, isOwner }: { appId: string; isOwner: boole
               data-bay-action="confirm-unfollow"
               disabled={busy}
               onClick={() => void runUnfollow()}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+              className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
             >
               {busy ? tt("正在取消关注…") : tt("取消关注")}
             </button>

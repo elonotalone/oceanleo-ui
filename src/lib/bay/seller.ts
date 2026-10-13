@@ -7,8 +7,9 @@ import { BayApiError, bayDelete, bayGet, bayPatch, bayPost } from "./http";
 import type { BayPageDoc } from "./page-doc";
 import type { BayCategory, BayWorkRef } from "./types";
 
-export type BayListingKind = "service" | "digital";
+export type BayListingKind = "service" | "digital" | "app" | "lesson";
 export type BayLicense = "personal" | "commercial";
+export type BayAudienceMode = "public" | "verified_first" | "invited" | "group";
 
 export type BayServiceStatus = "draft" | "published" | "paused";
 export type BayCatalogKind = "delivery" | "consult";
@@ -164,6 +165,11 @@ export interface BayOwnService {
   license?: BayLicense | null;
   has_digital_work?: boolean;
   official?: boolean;
+  custom_terms?: string | null;
+  audience_mode?: BayAudienceMode | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 /** 向导写入的载荷（不含 posted_site：那个只在新建时由 `createMyService` 加上）。 */
@@ -188,7 +194,12 @@ export interface BayServiceInput {
   license?: BayLicense | null;
   has_digital_work?: boolean;
   official?: boolean;
-  digital_work?: { kind: "task"; id: string } | null;
+  digital_work?: { kind: "task" | "artifact"; id: string } | null;
+  custom_terms?: string | null;
+  audience_mode?: BayAudienceMode | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 export interface BayServiceTierRow {
@@ -501,6 +512,11 @@ export interface BayConsultInput {
   minutes?: number | null;
   response_window?: string;
   status: "draft" | "published";
+  custom_terms?: string | null;
+  audience_mode?: BayAudienceMode | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 export function newConsultBody(input: BayConsultInput, siteKey: string): BayConsultInput & { posted_site: string | null } {

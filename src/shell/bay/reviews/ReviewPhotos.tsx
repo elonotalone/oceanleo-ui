@@ -162,7 +162,7 @@ export function ReviewPhotoFields({
           type="button"
           disabled={disabled || busy}
           onClick={() => inputRef.current?.click()}
-          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+          className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
         >
           {busy ? progress || tt("上传中") : tt("添加图片")}
         </button>

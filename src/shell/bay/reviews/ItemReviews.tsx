@@ -78,7 +78,7 @@ export function ItemReviews({ itemKind, itemId }: ItemReviewsProps): ReactElemen
           <button
             type="button"
             onClick={() => setComposerOpen(true)}
-            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50"
+            className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50"
           >
             {tt("写评价")}
           </button>

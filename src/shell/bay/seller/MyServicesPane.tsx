@@ -79,7 +79,7 @@ export function SellerOverview() {
       <OverviewCell label={tt("进行中的订单")} value={String(active)} />
       <OverviewCell label={tt("待回复")} value={String(replies)} />
       <OverviewCell label={tt("评分")} value={rating == null ? tt("暂无评价") : rating.toFixed(1)} />
-      <button type="button" data-bay-money-entry onClick={() => openBaySettings("money")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-left hover:bg-stone-50">
+      <button type="button" data-bay-money-entry onClick={() => openBaySettings("money")} className="px-0 py-1 text-left hover:opacity-80">
         <span className="block text-[11px] text-stone-500">{tt("收款与账单")}</span>
         <span className="mt-1 block text-[13px] font-semibold text-stone-900">{tt("去设置里看")}</span>
       </button>
@@ -220,7 +220,7 @@ export function MyServicesPane({ overview = false, hideNew = false }: BayPanePro
 
 function OverviewCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-stone-200 bg-white px-3 py-2">
+    <div className="py-1">
       <p className="text-[11px] text-stone-500">{label}</p>
       <p className="mt-1 text-[16px] font-semibold text-stone-900">{value}</p>
     </div>

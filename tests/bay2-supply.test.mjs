@@ -1,4 +1,4 @@
-// LeoBay 第二波 W3：数字商品卡的角标与免费；详情不出档位表，出授权与三条条款；免费获取。
+// LeoBay 第二波 W3：数字商品卡的角标与免费；详情不出档位表，出按类型的交付与自定义条款；免费获取。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -51,6 +51,13 @@ const stubs = {
   "../../../lib/auth/client": authStub,
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
+  "../form/BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "../form/BayImageGallery": dataModule(`export function BayImageStage(){ return null; } export function BayImageGallery(){ return null; }`),
+  "../auth/config": dataModule(`export const GATEWAY_BASE = "https://api.example.test";`),
+  "../../../lib/database": dataModule(`export async function uploadFile(){ return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } }; }`),
+  "../../../contracts/domain-family": dataModule(`export function currentDomainFamily(){ return "com"; }`),
+  "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
+  "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
 };
 const { ServiceCard } = await import(await compileModule("src/shell/bay/supply/ServiceCard.tsx", stubs));
 const { ServiceDetailView } = await import(await compileModule("src/shell/bay/supply/ServicePane.tsx", stubs));
@@ -129,19 +136,39 @@ test("数字商品卡：角标是数字商品，价格为 0 写免费，官方�
   assert.doesNotMatch(out, />服务</);
 });
 
-test("数字商品详情：不出档位表与加购，出授权范围与三条条款，免费时按钮是免费获取", () => {
+test("数字商品详情：不出档位表与加购，出立即交付，不出授权罐头句，免费时按钮是免费获取", () => {
   const out = html(React.createElement(ServiceDetailView, { service: digitalService(), viewerId: "buyer-1", layout: "docked" }));
   assert.doesNotMatch(out, /选择档位/);
   assert.doesNotMatch(out, /data-bay-tier=/);
   assert.doesNotMatch(out, /data-bay-addon=/);
   assert.doesNotMatch(out, /天交付/);
   assert.match(out, /data-bay-digital-terms/);
-  assert.match(out, /授权范围/);
-  assert.match(out, /个人使用/);
   assert.match(out, /付款后立即交付/);
-  assert.match(out, /已交付的数字商品不退款/);
-  assert.match(out, /不得转售原文件/);
+  assert.doesNotMatch(out, /授权范围/);
+  assert.doesNotMatch(out, /个人使用/);
+  assert.doesNotMatch(out, /可商用/);
+  assert.doesNotMatch(out, /已交付的数字商品不退款/);
+  assert.doesNotMatch(out, /不得转售原文件/);
+  assert.doesNotMatch(out, /data-bay-custom-terms/);
+  assert.doesNotMatch(out, /data-bay-deadline/);
   assert.match(out, /data-bay-action="claim"/);
   assert.match(out, /免费获取/);
   assert.doesNotMatch(out, /立即下单/);
+});
+
+test("数字商品详情：自定义条款原样出现，有截止日期就写出", () => {
+  const out = html(
+    React.createElement(ServiceDetailView, {
+      service: digitalService({ custom_terms: "只给甲方用\n不得外传", deadline_at: "2026-12-01T23:59:59Z" }),
+      viewerId: "buyer-1",
+      layout: "docked",
+    }),
+  );
+  assert.match(out, /data-bay-custom-terms/);
+  assert.match(out, /只给甲方用/);
+  assert.match(out, /不得外传/);
+  assert.match(out, /data-bay-deadline/);
+  assert.match(out, /2026-12-01 截止/);
+  assert.doesNotMatch(out, /授权范围/);
+  assert.doesNotMatch(out, /个人使用/);
 });

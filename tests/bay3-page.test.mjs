@@ -230,7 +230,7 @@ test("切换是「服务 / 素材 / 需求」", async () => {
   const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   const labels = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.textContent.replace(/\s+/g, ""));
-  assert.deepEqual(labels, ["服务", "素材", "作品", "课程", "需求"]);
+  assert.deepEqual(labels, ["我想要卖", "我想要买"]);
   await view.unmount();
 });
 
@@ -327,7 +327,7 @@ test("服务/素材/需求切换连成一组，自身不换行", () => {
   assert.doesNotMatch(out, /\bflex-wrap\b/);
   assert.match(out, /inline-flex/);
   assert.doesNotMatch(out, /overflow-x-auto/);
-  assert.equal(count(out, /role="tab"/g), 5);
+  assert.equal(count(out, /role="tab"/g), 2);
 });
 
 const DISPLAY = new Set(["block", "inline-block", "inline", "flex", "inline-flex", "grid", "inline-grid", "hidden", "contents"]);

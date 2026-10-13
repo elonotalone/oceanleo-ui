@@ -1,5 +1,5 @@
 // W05：服务详情窗格。
-// 覆盖：档位/加购/常见问题/作品图/评价/卖家卡的展示与合计；卖家本人看到「编辑」看不到下单；
+// 覆盖：档位/加购/作品图/评价/卖家卡的展示与合计；不画 FAQ；自定义条款原样出现；卖家本人看到「编辑」看不到下单；
 // 未登录点下单、先聊聊、收藏都只弹登录；下单带档位与加购；先聊聊走 openTradeThread；收藏的请求形状；
 // 用户内容当纯文本、媒体只认 http(s)。网络、登录、浮窗状态、交易会话全部用桩。
 import assert from "node:assert/strict";
@@ -73,6 +73,13 @@ const stubs = {
   "../../../lib/auth/client": authStub,
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
+  "../form/BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "../form/BayImageGallery": dataModule(`export function BayImageStage(){ return null; } export function BayImageGallery(){ return null; }`),
+  "../auth/config": dataModule(`export const GATEWAY_BASE = "https://api.example.test";`),
+  "../../../lib/database": dataModule(`export async function uploadFile(){ return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } }; }`),
+  "../../../contracts/domain-family": dataModule(`export function currentDomainFamily(){ return "com"; }`),
+  "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
+  "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
 };
 const { ServicePane, ServiceDetailView } = await import(await compileModule("src/shell/bay/supply/ServicePane.tsx", stubs));
 
@@ -123,14 +130,16 @@ function reset() {
 
 const html = (props) => renderToStaticMarkup(React.createElement(ServiceDetailView, props));
 
-test("服务详情：档位、加购、常见问题、作品图、评价、卖家卡与合计", () => {
+test("服务详情：档位、加购、作品图、评价、卖家卡与合计，不画常见问题", () => {
   reset();
   const out = html({ service: fixture(), viewerId: "buyer-1", layout: "docked" });
   assert.match(out, /品牌 Logo 设计/);
   assert.match(out, /data-bay-tier="basic" data-selected="true"/, "默认选最便宜的档");
   assert.match(out, /data-bay-tier="premium" data-selected="false"/);
   assert.match(out, /data-bay-addon="a1"/);
-  assert.match(out, /能开发票吗？/);
+  assert.doesNotMatch(out, /常见问题/);
+  assert.doesNotMatch(out, /能开发票吗？/);
+  assert.doesNotMatch(out, /data-bay-custom-terms/);
   assert.match(out, /data-bay-item-reviews/);
   assert.match(out, /data-bay-seller-card/);
   assert.match(out, /十年品牌设计/);
@@ -140,6 +149,22 @@ test("服务详情：档位、加购、常见问题、作品图、评价、卖�
   assert.match(out, /data-bay-action="talk"/);
   assert.doesNotMatch(out, /data-bay-action="edit"/);
   assert.match(out, /data-bay-favorite="off"/);
+});
+
+test("服务详情：自定义条款原样出现，有截止日期写出，条款当纯文本", () => {
+  reset();
+  const out = html({
+    service: fixture({ custom_terms: "<script>alert(1)</script>\n含源文件", deadline_at: "2026-11-01T00:00:00Z" }),
+    viewerId: "buyer-1",
+    layout: "docked",
+  });
+  assert.match(out, /data-bay-custom-terms/);
+  assert.match(out, /含源文件/);
+  assert.ok(!out.includes("<script>alert(1)</script>"));
+  assert.ok(out.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
+  assert.match(out, /data-bay-deadline/);
+  assert.match(out, /2026-11-01 截止/);
+  assert.doesNotMatch(out, /常见问题/);
 });
 
 test("服务详情：卖家本人看到「编辑」，看不到下单、先聊聊、举报", () => {

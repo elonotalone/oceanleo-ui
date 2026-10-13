@@ -24,7 +24,7 @@ export function ThreadCard({
       type="button"
       data-bay-thread={thread.id}
       onClick={() => openBay({ kind: "app-thread", id: thread.id })}
-      className="block w-full rounded-xl border border-neutral-200 p-3 text-left hover:bg-neutral-50"
+      className="block w-full py-3 text-left hover:opacity-80"
     >
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
         <span data-bay-thread-kind={thread.kind} className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-neutral-600">

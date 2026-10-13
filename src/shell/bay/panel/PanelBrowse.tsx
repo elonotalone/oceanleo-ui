@@ -6,7 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
 import { BayLessonShelf } from "../lessons/BayLessonShelf";
-import { BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, startPublishLesson, useBayCategoryName, useBaySearchText } from "../shell/BayList";
+import { BayFeed, BayViewSwitch, openMine, startPublish, useBayCategoryName, useBaySearchText } from "../shell/BayList";
 import { BayFilterSelect, type BayFilterOption } from "../shell/BayFilterSelect";
 import { BAY_ADVICE_ZONE, canonicalBayFeedKind } from "../shell/bay-links";
 import { BayCategoryIcon, BayGlyph } from "../shell/bay-icons";
@@ -52,7 +52,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
     <section data-bay-panel="browse" className="flex h-full min-h-0 flex-col overflow-y-auto p-3">
       <div className="flex flex-wrap items-center gap-2">
         <label
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-stone-900"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-stone-900"
           data-bay-panel-search
         >
           <BayGlyph name="search" className="h-3.5 w-3.5 shrink-0 text-stone-400" />
@@ -75,9 +75,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
         <button
           type="button"
           onClick={() => {
-            if (app) startPublishApp();
-            else if (lesson) startPublishLesson();
-            else startPublish(filter.category);
+            startPublish(filter.category, filter.kind);
           }}
           data-bay-action="publish"
           className={BTN_PRIMARY}

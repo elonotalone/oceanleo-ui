@@ -109,10 +109,8 @@ function collectNamedConstants() {
   const mine = readFileSync(join(REPO, "src/shell/bay/shell/BayMine.tsx"), "utf8");
   for (const key of extractQuotedChinese(sliceConst(mine, "MINE_LABELS"))) keys.add(key);
 
-  const pane = readFileSync(join(REPO, "src/shell/bay/seller/ServiceEditorPane.tsx"), "utf8");
-  for (const marker of ["KIND_CARDS", "SECTION_HINT"]) {
-    for (const key of extractQuotedChinese(sliceConst(pane, marker))) keys.add(key);
-  }
+  const picker = readFileSync(join(REPO, "src/shell/bay/form/PublishCategoryPicker.tsx"), "utf8");
+  for (const key of extractQuotedChinese(sliceConst(picker, "OPTIONS"))) keys.add(key);
 
   const model = readFileSync(join(REPO, "src/shell/bay/seller/editor-model.ts"), "utf8");
   for (const marker of ["SECTION_LABELS", "PUBLISH_KIND_LABELS"]) {

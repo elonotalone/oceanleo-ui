@@ -1,4 +1,4 @@
-// V1：课程栏导航——五栏顺序、深链、页头发布与「我的」课程段。
+// V1：课程栏导航——URL 五值合同、深链、页头发布与「我的」课程段。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,9 +12,13 @@ function src(rel) {
   return readFileSync(join(REPO, "src", rel), "utf8");
 }
 
-test("BAY_FEED_KINDS 是五个且顺序是 service / asset / app / lesson / request", () => {
+test("BAY_FEED_KINDS 常量仍是五值（URL 合同），逛页不要求五个 tab 按钮", () => {
   assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "lesson", "request"]);
   assert.equal(links.DEFAULT_BAY_FEED_KIND, "service");
+  const list = src("shell/bay/shell/BayList.tsx");
+  assert.match(list, /data-bay-browse-intent="sell"/);
+  assert.match(list, /data-bay-browse-intent="buy"/);
+  assert.doesNotMatch(list, /BAY_FEED_KINDS\.map\(/);
 });
 
 test("normalizeBayFeedKind 认 lesson，老值仍落到原来的栏", () => {
@@ -66,11 +70,14 @@ test("parseBayParam / formatBayParam 对四种课程目标互逆；非法 id 为
   assert.equal(links.parseBayParam("bundle-editor:../x"), null);
 });
 
-test("LeoBayPage 课程栏渲染 BayLessonShelf，页头发布走 startPublishLesson", () => {
+test("LeoBayPage 课程栏渲染 BayLessonShelf，页头发布走 startPublish", () => {
   const page = src("shell/bay/shell/LeoBayPage.tsx");
+  const list = src("shell/bay/shell/BayList.tsx");
   assert.match(page, /BayLessonShelf/);
-  assert.match(page, /startPublishLesson/);
-  assert.match(page, /canonicalBayFeedKind\(filter\.kind\) === "lesson" \? startPublishLesson\(\)/);
+  assert.match(page, /startPublish\(filter\.category, filter\.kind\)/);
+  assert.match(list, /feed === "lesson"/);
+  assert.match(list, /rememberPublishListing\("lesson"\)/);
+  assert.match(list, /kind: "publish"/);
 });
 
 test("MyPublishedPane 与 MyBoughtPane 都有课程段", () => {

@@ -24,19 +24,26 @@ const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).hre
 if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
 else delete require.cache[canvasEntry];
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://design.oceanleo.com/bay" });
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: "https://design.oceanleo.com/bay",
+});
 for (const [name, value] of Object.entries({
   window: dom.window,
   document: dom.window.document,
   navigator: dom.window.navigator,
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
   Element: dom.window.Element,
   Node: dom.window.Node,
   Event: dom.window.Event,
   MouseEvent: dom.window.MouseEvent,
   InputEvent: dom.window.InputEvent,
+  DragEvent: dom.window.DragEvent,
+  File: dom.window.File,
+  DataTransfer: dom.window.DataTransfer,
 })) {
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 }
@@ -68,6 +75,7 @@ const stateStub = dataModule(`
   globalThis.__bayLoginAsked ??= 0;
   globalThis.__bayFilters ??= [];
   export function openBay(target){ globalThis.__bayOpened.push(target); }
+  export function replaceBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
   export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function setBayFilter(filter){ globalThis.__bayFilters.push(filter); }
@@ -83,12 +91,20 @@ const mineStub = dataModule(`
   export function BaySignInPrompt({ text }){ return R.createElement("p", { "data-bay-sign-in": "" }, text); }
   export function BayMine(){ return null; }
 `);
+const databaseStub = dataModule(`
+  export async function uploadFile(file, opts) {
+    (globalThis.__bayCoverUploads ||= []).push({ file, opts });
+    const responder = globalThis.__bayCoverUpload;
+    return responder ? responder(file, opts) : { ok: true, data: { file: { url: "https://cdn.example/cover.png" } } };
+  }
+`);
 
 const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
   "../../../lib/agent": agentStub,
   "../../../lib/auth/client": authStub,
+  "../../../lib/database": databaseStub,
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
   "../shell/BayMine": mineStub,
@@ -150,6 +166,34 @@ function reset() {
   globalThis.__bayThreads = [];
   globalThis.__bayViewer = "buyer-1";
   globalThis.__bayFilters = [];
+  globalThis.__bayCoverUploads = [];
+  globalThis.__bayCoverUpload = async () => ({ ok: true, data: { file: { url: "https://cdn.example/cover.png" } } });
+}
+
+function tinyPngFile() {
+  const png = Uint8Array.from(
+    atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+    (ch) => ch.charCodeAt(0),
+  );
+  return new File([png], "cover.png", { type: "image/png" });
+}
+
+function assignInputFile(input, file) {
+  if (typeof window.DataTransfer === "function") {
+    const transfer = new window.DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    return;
+  }
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+}
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 async function mount(element) {
@@ -218,6 +262,8 @@ test("官方主页有「官方」标和「逛官方素材」", () => {
   assert.match(out, /data-bay-official/);
   assert.match(out, />官方</);
   assert.match(out, /逛官方素材/);
+  assert.match(out, /由 OceanLeo 官方发布/);
+  assert.equal(out.includes("全部免费，拿去直接用"), false);
 });
 
 test("进编辑后有主题栏、每个版块有上移 / 下移 / 删除、有「添加版块」", async () => {
@@ -255,7 +301,8 @@ test("没改动时「保存主页」不可点；点删除后那个版块没了�
   await view.unmount();
 });
 
-test("封面选「图片」时出现地址输入框，填 http:// 提示要 https", async () => {
+test("封面选「图片」后出现封面拖拽上传，没有封面地址框", async () => {
+  // 本任务要改掉的旧行为：封面选图片时出现 type=url / aria-label「封面图地址」，填 http:// 提示要 https。
   reset();
   const page = ownPage({ page_doc: defaultPageDoc({ display_name: "Leo" }) });
   const view = await mount(React.createElement(ProfileDetailView, { page, viewerId: "seller-1" }));
@@ -265,15 +312,24 @@ test("封面选「图片」时出现地址输入框，填 http:// 提示要 http
   await act(() => {
     imageBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
-  const input = view.host.querySelector('input[aria-label="封面图地址"]');
-  assert.ok(input);
-  await act(() => {
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-    setter.call(input, "http://cdn.example/cover.png");
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+  const toolbar = view.host.querySelector("[data-bay-page-toolbar]");
+  assert.ok(toolbar);
+  assert.ok(toolbar.querySelector("[data-bay-cover-drop]"));
+  assert.equal(toolbar.querySelector('input[aria-label="封面图地址"]'), null);
+  assert.equal(toolbar.querySelector('input[type="url"]'), null);
+  assert.doesNotMatch(toolbar.textContent, /封面图地址/);
+  assert.doesNotMatch(toolbar.textContent, /粘贴一张横向大图的地址/);
+  const fileInput = toolbar.querySelector('input[type="file"]');
+  assert.ok(fileInput);
+  assignInputFile(fileInput, tinyPngFile());
+  await act(async () => {
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
   });
-  assert.match(view.host.textContent, /地址要以 https:\/\/ 开头/);
+  await flush();
+  assert.equal(globalThis.__bayCoverUploads.length, 1);
+  assert.ok(toolbar.querySelector("img[src='https://cdn.example/cover.png']"));
   await view.unmount();
 });
 
@@ -289,6 +345,19 @@ test("源码没有 dangerouslySetInnerHTML、没有 contenteditable", () => {
     assert.doesNotMatch(text, /contenteditable\s*=/i, file);
     assert.doesNotMatch(text, /\bcontentEditable\s*=/, file);
   }
+});
+
+test("编辑器封面与图集走 BayCoverDrop，链接版块仍是网址", () => {
+  const editor = src("shell/bay/page/ProfilePageEditor.tsx");
+  const page = src("shell/bay/page/ProfilePage.tsx");
+  assert.match(editor, /BayCoverDrop/);
+  assert.doesNotMatch(editor, /封面图地址/);
+  assert.doesNotMatch(editor, /粘贴一张横向大图的地址/);
+  assert.doesNotMatch(editor, /type="url"/);
+  assert.match(page, /BayCoverDrop/);
+  assert.match(page, /还没有图片。拖一张图进来或从本地选择。/);
+  assert.doesNotMatch(page, /在下面粘贴图片地址/);
+  assert.match(page, /链接地址/);
 });
 
 test("别人点「先聊聊」走交易会话", async () => {

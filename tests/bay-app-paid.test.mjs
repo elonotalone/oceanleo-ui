@@ -353,6 +353,34 @@ test("组件 data-bay 标记与客户端函数", () => {
   assert.doesNotMatch(all, /innerHTML\s*=/);
 });
 
+test("收费填写页用展开表单，不摆通道费说明和事先提示小字", () => {
+  const pricing = source("src/shell/bay/apppaid/PricingManagePanel.tsx");
+  assert.match(pricing, /BayRevealForm/);
+  assert.match(pricing, /from ["']\.\.\/form["']/);
+  assert.match(pricing, /id:\s*"price"/);
+  assert.match(pricing, /id:\s*"trial"/);
+  assert.match(pricing, /data-bay-price-input/);
+  assert.match(pricing, /data-bay-trial-input/);
+  assert.doesNotMatch(pricing, /平台不抽成/);
+  assert.doesNotMatch(pricing, /支付通道费/);
+  assert.doesNotMatch(pricing, /每笔托管 7 天/);
+  assert.doesNotMatch(pricing, /pricingRules/);
+  assert.doesNotMatch(pricing, /placeholder=/);
+  assert.doesNotMatch(pricing, /Please enter/i);
+  assert.doesNotMatch(pricing, /请填写/);
+});
+
+test("收费方式已是深色实心小药丸；输入框白底；灰字可读", () => {
+  const pricing = source("src/shell/bay/apppaid/PricingManagePanel.tsx");
+  assert.match(pricing, /data-bay-price-model/);
+  assert.match(pricing, /bg-neutral-900/);
+  assert.match(pricing, /bg-white/);
+  assert.doesNotMatch(pricing, /text-neutral-400/);
+  assert.doesNotMatch(pricing, /text-stone-400/);
+  assert.doesNotMatch(pricing, /bg-white\/95/);
+  assert.doesNotMatch(pricing, /-mx-4/);
+});
+
 test("AppPurchaseBar 每个成功分支都调用 onAccess", () => {
   const bar = source("src/shell/bay/apppaid/AppPurchaseBar.tsx");
   assert.match(bar, /getBayAppAccess/);

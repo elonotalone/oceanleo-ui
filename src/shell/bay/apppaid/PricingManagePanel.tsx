@@ -5,13 +5,15 @@ import { useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getBayApp } from "../../../lib/bay/apps";
 import { saveBayAppPricing, type BayAppPriceModel } from "../../../lib/bay/app-paid";
+import { BayRevealForm } from "../form";
 import { openBay } from "../shell/bay-state";
 import { PaneLoading, PaneMessage } from "../supply/parts";
 import { errorStatus, errorText, useBayResource } from "../supply/use-bay-resource";
-import { fenToPriceInput, offersMoneySettings, pricingPayload } from "./paid-model";
+import { fenToPriceInput, offersMoneySettings, parsePriceInput, parseTrialDays, pricingPayload } from "./paid-model";
 
-const PRIMARY = "rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-60";
-const SECONDARY = "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
+const PRIMARY = "rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-60";
+const SECONDARY = "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
+const FIELD = "mt-1 w-full max-w-xs rounded-full border border-neutral-900 bg-white px-2 py-1.5 text-[13px]";
 
 const MODELS: { id: BayAppPriceModel; label: string }[] = [
   { id: "free", label: "免费" },
@@ -79,6 +81,9 @@ export function PricingManagePanel({ appId }: { appId: string }): ReactElement |
     }
   }
 
+  const priceParsed = parsePriceInput(price);
+  const trialParsed = parseTrialDays(trial);
+
   return (
     <section data-bay-pricing className="space-y-4">
       <div role="radiogroup" aria-label={tt("收费方式")} className="flex flex-wrap gap-2">
@@ -101,8 +106,8 @@ export function PricingManagePanel({ appId }: { appId: string }): ReactElement |
             }}
             className={
               model === item.id
-                ? "rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white"
-                : "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] text-neutral-700"
+                ? "rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white"
+                : "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] text-neutral-700"
             }
           >
             {tt(item.label)}
@@ -111,45 +116,54 @@ export function PricingManagePanel({ appId }: { appId: string }): ReactElement |
       </div>
 
       {model !== "free" ? (
-        <div className="space-y-3">
-          <label className="block text-[12px] text-neutral-700">
-            {tt("价格")}
-            <input
-              type="text"
-              inputMode="decimal"
-              value={price}
-              data-bay-price-input
-              onChange={(event) => {
-                setPrice(event.target.value);
-                setPriceError("");
-                setSaved(false);
-              }}
-              className="mt-1 w-full max-w-xs rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
-            />
-          </label>
-          {priceError ? <p className="text-[12px] text-rose-600">{priceError}</p> : null}
-          <label className="block text-[12px] text-neutral-700">
-            {tt("免费试用天数")}
-            <input
-              type="text"
-              inputMode="numeric"
-              value={trial}
-              data-bay-trial-input
-              onChange={(event) => {
-                setTrial(event.target.value);
-                setTrialError("");
-                setSaved(false);
-              }}
-              className="mt-1 w-full max-w-xs rounded-lg border border-neutral-200 px-2 py-1.5 text-[13px]"
-            />
-          </label>
-          {trialError ? <p className="text-[12px] text-rose-600">{trialError}</p> : null}
-        </div>
+        <BayRevealForm
+          items={[
+            {
+              id: "price",
+              label: tt("价格"),
+              done: priceParsed.ok,
+              summary: priceParsed.ok ? price.trim() : undefined,
+              children: (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={price}
+                  data-bay-price-input
+                  onChange={(event) => {
+                    setPrice(event.target.value);
+                    setPriceError("");
+                    setSaved(false);
+                  }}
+                  className={FIELD}
+                />
+              ),
+            },
+            {
+              id: "trial",
+              label: tt("免费试用天数"),
+              done: trialParsed.ok,
+              summary: trial.trim() || undefined,
+              children: (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={trial}
+                  data-bay-trial-input
+                  onChange={(event) => {
+                    setTrial(event.target.value);
+                    setTrialError("");
+                    setSaved(false);
+                  }}
+                  className={FIELD}
+                />
+              ),
+            },
+          ]}
+        />
       ) : null}
 
-      <p className="text-[12px] leading-5 text-neutral-500">
-        {tt("平台不抽成，买家另付支付通道费。每笔托管 7 天后到账；7 天内没打开过可直接退，打开过的由作者处理。改价只影响之后的买家。")}
-      </p>
+      {priceError ? <p className="text-[12px] text-rose-600">{priceError}</p> : null}
+      {trialError ? <p className="text-[12px] text-rose-600">{trialError}</p> : null}
 
       {error ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
       {needPayout ? (

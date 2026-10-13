@@ -41,7 +41,7 @@ export function BayMineTabs({
   const select = onSelect ?? ((next: BayMineTab) => replaceBay({ kind: "mine", tab: next }));
   if (variant === "page") {
     return (
-      <div className="shrink-0 px-4 pt-4">
+      <div className="shrink-0">
         <div role="tablist" aria-label={tt("我的")} data-bay-mine-tabs="page" className="inline-flex max-w-full flex-wrap rounded-xl bg-neutral-100 p-1">
           {BAY_MINE_UI_TABS.map((id) => {
             const active = id === shown;
@@ -84,7 +84,7 @@ export function BaySignInPrompt({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => requireBayLogin()}
-        className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
+        className="mt-4 rounded-full bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800"
       >
         {tt("登录")}
       </button>

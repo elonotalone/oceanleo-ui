@@ -29,7 +29,7 @@ export function BayAppCard({ app }: { app: BayApp }): ReactElement {
   const showCover = Boolean(cover) && !broken;
   const author = app.author?.display_name?.trim() || "";
   const official = app.author?.official === true;
-  const linkOnly = app.embed_mode === "link" || app.embed_ok === false;
+  const linkOnly = app.source_kind !== "hosted" || app.embed_ok === false;
   const opens = new Intl.NumberFormat(locale, { notation: "compact", compactDisplay: "short" }).format(
     Number.isFinite(app.open_count) ? app.open_count : 0,
   );

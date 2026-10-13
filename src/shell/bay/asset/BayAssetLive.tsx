@@ -120,9 +120,7 @@ export function BayAssetLive({
           ))}
         </div>
       ) : items.length === 0 && !error ? (
-        <div className="rounded-xl border border-dashed border-stone-300 py-16 text-center text-[13px] text-stone-400" data-bay-asset-empty>
-          {tt("没有找到匹配的开源素材，换个关键词或类型试试。")}
-        </div>
+        <div data-bay-asset-empty />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" data-bay-asset-grid>
           {items.map((asset) => (
@@ -138,7 +136,7 @@ export function BayAssetLive({
           <button
             type="button"
             onClick={loadMore}
-            className="rounded-lg border border-stone-200 bg-white px-6 py-2.5 text-[13px] font-medium text-stone-700 hover:bg-stone-50"
+            className="rounded-full border border-neutral-900 bg-white px-6 py-2.5 text-[13px] font-medium text-stone-700 hover:bg-stone-50"
           >
             {tt("加载更多")}
           </button>

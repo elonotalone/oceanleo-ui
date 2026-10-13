@@ -29,6 +29,8 @@ for (const [name, value] of Object.entries({
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  HTMLButtonElement: dom.window.HTMLButtonElement,
   Element: dom.window.Element,
   Node: dom.window.Node,
   Event: dom.window.Event,
@@ -71,6 +73,7 @@ const stateStub = dataModule(`
   globalThis.__bayOpened ??= [];
   globalThis.__bayLoginAsked ??= 0;
   export function openBay(target){ globalThis.__bayOpened.push(target); }
+  export function replaceBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
   export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function useBayTaskContext(){ return globalThis.__bayTask ?? null; }
@@ -92,7 +95,11 @@ const settingsStub = dataModule(`
   export function openBaySettings(pane){ globalThis.__baySettingsOpened.push(pane); }
 `);
 const domainStub = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = "com";
+  export function currentDomainFamily(){ return "com"; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function familyForHost(){ return "com"; }
   export function currentFamilySubsiteOrigin(label){ return ["slide", "design", "3d"].includes(label) ? "https://" + label + ".oceanleo.test" : undefined; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }
 `);
@@ -153,12 +160,29 @@ const stubs = {
   "../../../ui": uiBarrelStub,
   "../../../lib/money": moneyStub,
   "./LibraryWorkPicker": pickerStub,
+  "../../../lib/database": dataModule(`
+    export async function uploadFile(file, opts) {
+      (globalThis.__bayCoverUploads ||= []).push({ file, opts });
+      return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } };
+    }
+    export async function getStorageUsage() {
+      return { ok: true, data: { remaining_bytes: 20 * 1024 * 1024 * 1024, unavailable: false } };
+    }
+  `),
+  "../../../lib/im/people-api": dataModule(`
+    export async function listContacts(){ return []; }
+    export async function searchDirectory(){ return []; }
+  `),
+  "../../../lib/im/inbox-api": dataModule(`export async function fetchConversations(){ return { items: [], next_cursor: null }; }`),
+  "../../../lib/im/groups-api": dataModule(`export async function getConversationDetail(){ return { id: "", title: "", members: [] }; }`),
 };
 
 const { CallHumanPane } = await import(await compileModule("src/shell/bay/needs/CallHumanPane.tsx", stubs));
 const { HelpRequestPane } = await import(await compileModule("src/shell/bay/needs/HelpRequestPane.tsx", stubs));
 const { MyHelpRequestsPane } = await import(await compileModule("src/shell/bay/needs/MyHelpRequestsPane.tsx", stubs));
 const { MyNeedsPane } = await import(await compileModule("src/shell/bay/needs/MyNeedsPane.tsx", stubs));
+const { primeNeedCategoriesForTests } = await import(await compileModule("src/shell/bay/needs/need-categories.ts", stubs));
+const { resetBayCategoriesCache } = await import(await compileModule("src/lib/bay/categories.ts", stubs));
 const handoffCtx = await import(await compileModule("src/shell/bay/needs/handoff-context.tsx", stubs));
 const talent = await import(await compileModule("src/api/talent-handoff.ts", { "../lib/agent": agentStub, "../lib/money": moneyStub }));
 
@@ -175,6 +199,8 @@ const CATEGORIES = {
 };
 
 function reset() {
+  resetBayCategoriesCache();
+  primeNeedCategoriesForTests(CATEGORIES);
   globalThis.__bayHttpCalls = [];
   globalThis.__authedCalls = [];
   globalThis.__authedReply = { ok: true, data: { handoff: { id: "h-new" } } };
@@ -253,6 +279,18 @@ async function mount(element) {
   };
 }
 
+async function expandTerms(view) {
+  const terms = view.host.querySelector('[data-bay-section="terms"]');
+  if (terms && terms.hasAttribute("data-bay-section-collapsed")) {
+    await view.click('[data-bay-section="terms"] [data-bay-section-toggle]');
+  }
+}
+
+async function fillHelp(view, title, description) {
+  await view.type("[data-bay-help-text]", title);
+  await view.type('[data-bay-field="description"]', description);
+}
+
 function source(relative) {
   return readFileSync(fileURLToPath(new URL(`../src/${relative}`, import.meta.url)), "utf8");
 }
@@ -264,19 +302,30 @@ test("目标对不上时三窗格都不画", () => {
   assert.equal(renderToStaticMarkup(React.createElement(MyHelpRequestsPane, props)), "");
 });
 
-test("叫真人：类目按站预选、门户为空、答疑不出现、默认不勾其他", async () => {
+test("叫真人：三块表单、类目按站预选、门户为空、答疑不出现", async () => {
   reset();
   const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
   assert.equal(view.host.querySelector("header"), null);
-  const selected = view.host.querySelector('[data-bay-category][aria-checked="true"]');
-  assert.equal(selected?.getAttribute("data-bay-category"), "design");
-  assert.equal(view.host.querySelector('[data-bay-category="legal"]'), null);
-  assert.equal(view.host.querySelector('[data-bay-category="other"][aria-checked="true"]'), null);
+  assert.ok(view.host.querySelectorAll("[data-bay-reveal-open]").length >= 2);
+  assert.equal(view.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "cover");
+  assert.ok(view.host.querySelector('[data-bay-section="product"]'));
+  assert.ok(view.host.querySelector('[data-bay-section="price"]'));
+  assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
+  assert.doesNotMatch(view.host.textContent, /法律咨询|医疗咨询|所属分类/);
+  await fillHelp(view, "海报改一下层次和字号", "请把封面层次再压一压，字号对齐。");
+  await view.click("[data-bay-submit]");
+  const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
+  assert.ok(created);
+  assert.equal(created.body.category, "design");
+  assert.notEqual(created.body.category, "other");
   await view.unmount();
 
   reset();
   const portal = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "oceanleo" }));
-  assert.equal(portal.host.querySelector('[data-bay-category][aria-checked="true"]'), null);
+  await fillHelp(portal, "封面层次再压一压", "请把封面的层次再压一压，字号对齐。");
+  await portal.click("[data-bay-submit]");
+  assert.equal(globalThis.__bayHttpCalls.filter((call) => call.method === "POST").length, 0);
+  assert.match(portal.host.textContent, /请选择类目/);
   await portal.unmount();
 });
 
@@ -284,7 +333,7 @@ test("叫真人：未登录点提交走登录；登录后请求体带 posted_sit
   reset();
   globalThis.__baySignedIn = false;
   const guest = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
-  await guest.type("[data-bay-help-text]", "海报改一下层次和字号");
+  await fillHelp(guest, "海报改一下层次和字号", "请把封面层次再压一压，字号对齐。");
   await guest.click("[data-bay-submit]");
   assert.equal(globalThis.__bayLoginAsked, 1);
   assert.equal(globalThis.__bayHttpCalls.filter((call) => call.method === "POST").length, 0);
@@ -293,9 +342,8 @@ test("叫真人：未登录点提交走登录；登录后请求体带 posted_sit
   reset();
   globalThis.__bayPicked = { kind: "task", id: "task-9" };
   const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
-  await view.click("[data-bay-help-more]");
-  await view.click("[data-bay-pick-work]");
-  await view.type("[data-bay-help-text]", "海报改一下层次和字号");
+  await fillHelp(view, "海报改一下层次和字号", "请把封面层次再压一压，字号对齐。");
+  await view.click("[data-bay-work-library]");
   await view.click("[data-bay-submit]");
   assert.deepEqual(globalThis.__bayTermsAsked, ["buyer"]);
   const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
@@ -318,11 +366,12 @@ test("任务页叫真人：自动带当前任务，逐条勾选，默认一条�
     ],
   };
   const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
-  assert.match(view.host.textContent, /当前任务/);
+  assert.match(view.host.querySelector('[data-bay-reveal-item="files"]').textContent, /当前任务/);
+  await fillHelp(view, "封面层次再压一压", "请把封面的层次再压一压，字号对齐。");
+  await view.click('[data-bay-reveal-item="context"]');
   assert.ok(view.host.querySelector('[data-bay-handoff-pick="message:7"]'));
   assert.equal(view.host.querySelector('[data-bay-handoff-pick="message:7"]').checked, false);
   await view.click('[data-bay-handoff-pick="message:7"]');
-  await view.type("[data-bay-help-text]", "封面层次再压一压");
   await view.click("[data-bay-submit]");
   const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
   assert.equal(created.body.origin_kind, "conversation");
@@ -414,8 +463,63 @@ test("HumanHandoffDialog 不再默认其他；选中集合仍留在 Dialog", () 
   assert.doesNotMatch(dialog, /postMessage|iframe|仲裁|抽成|服务费|佣金/);
 });
 
+test("找人帮忙表单字段都开着：标签和输入都看得见", async () => {
+  reset();
+  const form = source("shell/bay/needs/GetHelpForm.tsx");
+  assert.match(form, /BayRevealForm/);
+  assert.match(form, /listingSectionGroups/);
+  assert.doesNotMatch(form, /data-bay-help-more/);
+  assert.doesNotMatch(form, /placeholder=/);
+  assert.doesNotMatch(form, /Please enter|请填写名称/);
+  const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
+  const text = view.host.textContent;
+  assert.match(text, /标题/);
+  assert.match(text, /详细介绍/);
+  assert.doesNotMatch(text, /所属分类/);
+  assert.doesNotMatch(text, /要做什么/);
+  assert.equal(view.host.querySelector('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
+  const priceRow = view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="price"]');
+  const priceIds = [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item"));
+  assert.ok(priceRow, `买页价格行 id 应是 price，实际 ${priceIds.join(",") || "(空)"}`);
+  assert.doesNotMatch(priceRow.textContent, /预算/);
+  assert.ok(view.host.querySelector('[data-bay-section="price"] [data-bay-field="price"]'));
+  assert.equal(view.host.querySelector('[data-bay-section="price"] [data-bay-field="price"]').value, "");
+  assert.match(view.host.querySelector("[data-bay-price-currency]").textContent, /USD/);
+  assert.match(text, /向谁展示/);
+  assert.match(text, /交付给你的是什么/);
+  assert.match(text, /放文件/);
+  assert.deepEqual(
+    [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["cover", "title", "description", "files"],
+  );
+  assert.ok(view.host.querySelector("[data-bay-how-you-deliver]"));
+  assert.ok(view.host.querySelector("[data-bay-reveal-open] [data-bay-help-text]"));
+  assert.ok(view.host.querySelector("[data-bay-work-library]"));
+  assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
+  await view.unmount();
+});
+
 test("HumanHandoffStatus 点开 Bay 里那条求助", () => {
   const status = source("shell/HumanHandoffStatus.tsx");
   assert.match(status, /openBay\(\{\s*kind:\s*"help"/);
   assert.doesNotMatch(status, /talent\.oceanleo|\/requests\//);
+});
+
+test("向谁展示用 BayAudienceField：选中项带 data-bay-choice-selected；源码不用 400 灰字、没有白板页脚", async () => {
+  reset();
+  const form = source("shell/bay/needs/GetHelpForm.tsx");
+  assert.match(form, /listingTermsItems/);
+  assert.match(form, /listingPriceItems/);
+  assert.match(form, /listingAudienceItem/);
+  assert.match(source("shell/bay/form/BayAudienceField.tsx"), /BayAudienceField/);
+  assert.doesNotMatch(form, /text-neutral-400|text-stone-400/);
+  assert.doesNotMatch(form, /bg-white\/95/);
+  assert.doesNotMatch(form, /-mx-4/);
+  const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
+  await view.click('[data-bay-reveal-item="who"]');
+  assert.ok(view.host.querySelector("[data-bay-choice-option][data-bay-choice-selected]"));
+  assert.ok(view.host.querySelector("[data-bay-help-mode][data-bay-choice-selected]"));
+  assert.equal(view.host.querySelector('[data-bay-help-mode="open"]'), null);
+  assert.match(view.host.querySelector('[data-bay-help-mode="public"]').textContent, /所有人/);
+  await view.unmount();
 });

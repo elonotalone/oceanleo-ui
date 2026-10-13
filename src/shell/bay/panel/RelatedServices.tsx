@@ -5,7 +5,6 @@ import { useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { fetchBayRelated, type BayRelatedPage } from "../../../lib/bay/related";
 import { ConsultCard, ServiceCard } from "../supply";
-import { startPostNeed } from "../shell/BayList";
 import { bayCategoryLabel } from "../shell/bay-links";
 import { openBay } from "../shell/bay-state";
 import type { BayPanelRequest } from "./BayPanel";
@@ -19,7 +18,6 @@ export interface RelatedServicesProps {
 
 const BTN =
   "inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
 const BTN_SECONDARY = `${BTN} border border-stone-200 bg-white text-stone-700 hover:bg-stone-50`;
 const BTN_QUIET = `${BTN} text-stone-600 hover:bg-stone-100 hover:text-stone-900`;
 
@@ -88,23 +86,7 @@ export function RelatedServices({ siteKey, request, active, onBrowseAll }: Relat
           </button>
         </div>
       ) : null}
-      {status === "ok" && page && page.items.length === 0 ? (
-        <div data-bay-related-empty className="flex flex-col items-center px-4 py-10 text-center">
-          <p className="text-[13px] text-stone-600">{tt("还没有相关的服务。")}</p>
-          <p className="mt-1 text-[12px] text-stone-500">{tt("你可以发一条需求，让会做的人来找你。")}</p>
-          <button
-            type="button"
-            data-bay-related-post-need
-            onClick={() => startPostNeed(request.category || undefined)}
-            className={`mt-4 ${BTN_PRIMARY}`}
-          >
-            {tt("发需求")}
-          </button>
-          <button type="button" data-bay-related-browse onClick={onBrowseAll} className={`mt-2 ${BTN_QUIET}`}>
-            {tt("逛全部 LeoBay")}
-          </button>
-        </div>
-      ) : null}
+      {status === "ok" && page && page.items.length === 0 ? <div data-bay-related-empty /> : null}
       {status === "ok" && page && page.items.length > 0 ? (
         <>
           <div data-bay-related-list className="mt-3">

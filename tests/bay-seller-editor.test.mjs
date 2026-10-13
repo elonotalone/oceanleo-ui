@@ -95,7 +95,15 @@ const stateStub = dataModule(`
   export function useBaySiteKey() { return globalThis.__baySiteKey || "oceanleo"; }
 `);
 const supplyStub = dataModule(`export function ServiceCard({ item }) { globalThis.__bayPreview = item; return null; }`);
-const domainStub = dataModule(`export function portalHref(path) { return "https://oceanleo.com" + path; }`);
+const domainStub = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = "com";
+  export function currentDomainFamily(){ return "com"; }
+  export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.com/" }; }
+  export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.com/" }; }
+  export function familyForHost(){ return "com"; }
+  export function currentFamilySubsiteOrigin(label){ return ["slide", "design", "3d"].includes(label) ? "https://" + label + ".oceanleo.com" : undefined; }
+  export function portalHref(path) { return "https://oceanleo.com" + path; }
+`);
 const reactHref = pathToFileURL(require.resolve("react")).href;
 const confirmStub = dataModule(`
   import { createElement as h } from ${JSON.stringify(reactHref)};
@@ -120,6 +128,18 @@ const stubs = {
   "../shell/bay-state": stateStub,
   "../supply": supplyStub,
   "../needs/LibraryWorkPicker": dataModule(`export async function pickLibraryWork(){ return null; } export function LibraryWorkPickerHost(){ return null; }`),
+  "../form/BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "./BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
+  "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
+  "../../../lib/database": dataModule(`
+    export async function uploadFile() {
+      return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } };
+    }
+    export async function getStorageUsage() {
+      return { ok: true, data: { remaining_bytes: 20 * 1024 * 1024 * 1024, unavailable: false } };
+    }
+  `),
 };
 const { ServiceEditorPane } = await import(await compileModule("src/shell/bay/seller/ServiceEditorPane.tsx", stubs));
 const model = await import(await compileModule("src/shell/bay/seller/editor-model.ts", stubs));
@@ -225,6 +245,7 @@ async function mount(target) {
     const proto = node.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : node.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, "value").set.call(node, value);
     await act(async () => node.dispatchEvent(new window.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })));
+    await settle();
   };
   const click = async (selector) => {
     const node = find(selector);
@@ -232,6 +253,18 @@ async function mount(target) {
     await settle();
   };
   return { host, find, setValue, click, unmount: () => act(() => root.unmount()) };
+}
+
+async function expandTerms(view) {
+  const terms = view.host.querySelector('[data-bay-section="terms"]');
+  if (terms && terms.hasAttribute("data-bay-section-collapsed")) {
+    await view.click('[data-bay-section="terms"] [data-bay-section-toggle]');
+  }
+}
+
+async function pickHowYouDeliver(view, kind) {
+  await expandTerms(view);
+  await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
 }
 
 const calls = (method, path) => globalThis.__bayCalls.filter((call) => call.method === method && (path === undefined || call.path === path));
@@ -288,7 +321,8 @@ test("字段校验：每一步缺什么就拦在本地", () => {
   const consult = { catalogKind: "consult", domain: "tax", category: "tax-basic" };
   assert.equal(blocked("domain", { ...consult, domain: "medical" }), "先选一个领域", "受限领域选不上");
   assert.equal(blocked("domain", { ...consult, category: "" }), "再选一个这个领域下的类目");
-  assert.equal(blocked("pricing", { ...consult, ...withTiers([0, 0, 0]) }), "答疑价格要大于 0");
+  assert.equal(blocked("pricing", { ...consult, consultRounds: 3, ...withTiers([0, 0, 0]) }), null);
+  assert.equal(blocked("pricing", { ...consult, ...withTiers([0, 0, 0]) }), "按次答疑要写明一次包含几轮问答");
   assert.equal(blocked("pricing", { ...consult, consultUnit: "hour", consultMinutes: null }), "按小时答疑要写明一小时按多少分钟计");
 });
 
@@ -315,6 +349,7 @@ test("载荷：整份覆盖带全量与当前状态；新建一律草稿；封�
   assert.equal(input.price_unit, "project");
   assert.equal(input.engagement_kind, "fixed");
   assert.equal(input.catalog_kind, "delivery");
+  assert.equal(input.delivery_mode, "on_platform");
   assert.equal(input.regulated_domain, "none");
   assert.equal("posted_site" in input, false);
   assert.equal(model.serviceInput(filledDraft({ serviceId: "", status: "published" })).status, "draft");
@@ -331,24 +366,20 @@ test("载荷：整份覆盖带全量与当前状态；新建一律草稿；封�
   assert.equal(consult.price_unit, "hour");
 });
 
-test("常见问题：「开始前需要我提供什么」放第一条；清空就删掉；空行不存", () => {
+test("常见问题：空行不存，其余按顺序留下", () => {
   const draft = filledDraft({
-    buyerInputs: "  品牌名  ",
-    buyerInputsFaqId: "f0",
     faqs: [
       { key: "a", id: "f1", question: "能开发票吗", answer: "可以" },
       { key: "b", id: "f2", question: " ", answer: "" },
       { key: "c", question: "", answer: "" },
     ],
   });
-  const saved = model.faqRowsForSave(draft, "开始前需要我提供什么？");
-  assert.deepEqual(saved.rows.map((row) => [row.id, row.question]), [["f0", "开始前需要我提供什么？"], ["f1", "能开发票吗"]]);
-  assert.equal(saved.rows[0].answer, "品牌名");
+  const saved = model.faqRowsForSave(draft);
+  assert.deepEqual(saved.rows.map((row) => [row.id, row.question]), [["f1", "能开发票吗"]]);
   assert.deepEqual(saved.deleted, ["f2"]);
-  assert.deepEqual(model.faqRowsForSave({ ...draft, buyerInputs: " ", faqs: [] }, "开始前需要我提供什么？").deleted, ["f0"]);
 });
 
-test("载入已有服务：档位、常见问题里的「需要买家提供什么」、作品图顺序都映射回来", () => {
+test("载入已有服务：档位、常见问题、作品图顺序都映射回来", () => {
   const draft = model.draftFromLoaded(
     {
       service: existingService({ status: "paused", moderation_hidden: true }),
@@ -369,9 +400,7 @@ test("载入已有服务：档位、常见问题里的「需要买家提供什�
   assert.equal(draft.status, "paused");
   assert.equal(draft.moderationHidden, true);
   assert.equal(draft.catalogKind, "delivery");
-  assert.equal(draft.buyerInputs, "品牌名");
-  assert.equal(draft.buyerInputsFaqId, "f1");
-  assert.deepEqual(draft.faqs.map((faq) => faq.id), ["f2"]);
+  assert.deepEqual(draft.faqs.map((faq) => faq.id), ["f1", "f2"]);
   assert.deepEqual(draft.media.map((item) => item.id), ["m1", "m2"]);
   assert.deepEqual(draft.tiers.map((tier) => [tier.tier, tier.enabled, tier.price_fen]), [["basic", true, 0], ["standard", false, 0], ["premium", true, 50000]]);
   assert.equal(draft.pricingModel, "fixed");
@@ -432,6 +461,69 @@ test("删除路径：点删除后出现确认弹窗、点取消没有发出 DELE
   );
   assert.equal(globalThis.__bayToasts.at(-1).title, "服务已删除");
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "published" });
+  await view.unmount();
+});
+
+test("发布表：三块在一张常开表单里，标签和输入都看得见", async () => {
+  reset();
+  const view = await mount({ kind: "service-editor" });
+  await pickHowYouDeliver(view, "service");
+  for (const section of ["product", "price", "terms"]) {
+    const card = view.find(`[data-bay-section="${section}"]`);
+    assert.ok(card.querySelector("[data-bay-reveal], [data-bay-reveal-item]"), `${section} 没有展开行`);
+  }
+  assert.ok(view.host.querySelectorAll("[data-bay-publish=\"form\"] [data-bay-reveal-open]").length >= 3);
+  assert.match(view.host.textContent, /标题/);
+  assert.match(view.host.textContent, /分类/);
+  assert.doesNotMatch(view.host.textContent, /所属分类/);
+  assert.match(view.host.textContent, /作品图/);
+  assert.ok(view.host.querySelector("[data-bay-cover-drop]"), "作品图一直看得见");
+  assert.ok(view.host.querySelector('[data-bay-reveal-item="cover"][data-bay-reveal-pinned]'));
+  assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-category-select]"), "分类一直开着");
+  assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
+  assert.ok(view.host.querySelector("[data-bay-field='title']"));
+  assert.ok(view.host.querySelector("[data-bay-field='price']"));
+  assert.ok(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="billing"]'));
+  assert.equal(view.host.querySelector('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
+  assert.match(view.host.querySelector("[data-bay-price-currency]").textContent, /USD/);
+  assert.doesNotMatch(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="price"]').textContent, /预算/);
+  assert.deepEqual(
+    [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["billing", "price"],
+  );
+  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="revisions"]'));
+  await view.unmount();
+});
+
+test("点收起的行会打开它；封面是拖拽上传，没有地址框", async () => {
+  reset();
+  const view = await mount({ kind: "service-editor" });
+  await pickHowYouDeliver(view, "digital");
+  assert.equal(view.host.querySelector('input[placeholder="https://"]'), null);
+  assert.equal(view.host.querySelector('input[name="bay-service-cover"]'), null);
+  assert.ok(view.find("[data-bay-cover-drop]").querySelector('input[type="file"]'));
+  assert.ok(view.host.querySelector('[data-bay-reveal-item="cover"][data-bay-reveal-pinned]'));
+  assert.equal(view.host.querySelector("[data-bay-free]"), null);
+  await view.click('[data-bay-reveal-item="price"]');
+  const priceInput = view.find("[data-bay-field='price']");
+  assert.equal(priceInput.disabled, false);
+  assert.equal(priceInput.value, "");
+  await view.unmount();
+});
+
+test("填写页没有事先提示小字、没有通道费/托管说明", async () => {
+  reset();
+  const view = await mount({ kind: "service-editor" });
+  await pickHowYouDeliver(view, "digital");
+  const text = view.find('[data-bay-publish="form"]').textContent;
+  assert.equal(text.includes("请选择类目"), false);
+  assert.equal(text.includes("请填写"), false);
+  assert.equal(text.includes("请写一句话简介"), false);
+  assert.equal(text.includes("通道费"), false);
+  assert.equal(text.includes("托管 7"), false);
+  assert.equal(text.includes("不抽成"), false);
+  assert.equal(text.includes("不抽佣"), false);
+  assert.equal(text.includes("标题、预览图和要卖的作品"), false, "SectionCard hint 已从填写页删掉");
   await view.unmount();
 });
 

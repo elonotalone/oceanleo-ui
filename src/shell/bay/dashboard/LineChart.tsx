@@ -49,7 +49,7 @@ export function LineChart({
   }
 
   return (
-    <section data-bay-chart={marker} className="rounded-xl border border-neutral-200 p-3">
+    <section data-bay-chart={marker} className="space-y-2">
       <h3 className="text-[14px] font-semibold text-neutral-900">{title}</h3>
       {!showLine ? (
         <p data-bay-chart-empty className="py-8 text-center text-[13px] text-neutral-500">

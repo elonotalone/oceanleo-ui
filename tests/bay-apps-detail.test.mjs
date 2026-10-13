@@ -35,12 +35,12 @@ test("AppPane 记 view/open，作者本人不上报，举报走 reportBayApp", (
   assert.match(pane, /<ReportBox onSubmit=\{\(reason, detail\) => reportBayApp\(app\.id, reason, detail\)\} \/>/);
 });
 
-test("三种回退卡的 data- 标记都在", () => {
+test("外链作品是跳转卡，本平台站才有页内窗口", () => {
   const pane = source("src/shell/bay/apps/AppPane.tsx");
   const frame = source("src/shell/bay/apps/AppEmbedFrame.tsx");
-  assert.match(pane, /data-bay-app-fallback=\{marker === "blocked" \? "blocked"/);
-  assert.match(pane, /"creator"/);
-  assert.match(pane, /"first-party"/);
+  assert.match(pane, /data-bay-app-link-out/);
+  assert.match(pane, /decision\.mode === "frame"/);
+  assert.doesNotMatch(pane, /data-bay-app-fallback=\{/);
   assert.match(frame, /data-bay-app-fallback="timeout"/);
 });
 

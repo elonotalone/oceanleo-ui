@@ -278,7 +278,7 @@ function useWorkspaceApps(siteOrigin: Record<string, string>) {
 // ----------------------------------------------------------------------------
 export function WorkspaceSubNav({
   accent = "#0ea5e9",
-  addAgentHref = "/playground",
+  addAgentHref = "/workspace?pile=all",
 }: {
   accent?: string;
   addAgentHref?: string;
@@ -301,7 +301,7 @@ export function WorkspaceSubNav({
       {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载 app / agent…")}</p>}
       {!loading && chatAgents.length === 0 && (
         <p className="px-3 py-2 text-[12px] leading-relaxed text-neutral-400">
-          {tt("还没有 app 或 agent。点下方「＋ 添加 app / agent」，到「Playground」里挑选 app（能干活）或 agent（纯聊天）。")}
+          {tt("暂无")}
         </p>
       )}
       {chatAgents.map((a) => {
@@ -380,10 +380,12 @@ export function WorkspaceDetail({
   siteOrigin,
   accent = "#0ea5e9",
   homeSiteId = "",
-  addAgentHref = "/playground",
+  addAgentHref = "/workspace?pile=all",
   sites = [],
   renderBoard,
   renderSites,
+  pileSwitch,
+  onShowAll,
 }: {
   siteOrigin: Record<string, string>;
   accent?: string;
@@ -412,6 +414,10 @@ export function WorkspaceDetail({
     toolbarLeading?: ReactNode;
     belowToolbar?: ReactNode;
   }) => ReactNode;
+  /** 门户工作台「全部 | 我的」开关；嵌在标题旁。 */
+  pileSwitch?: ReactNode;
+  /** 空的「我的」切到全部堆。门户 WorkspaceDesk 传入；各站不传。 */
+  onShowAll?: () => void;
 }) {
   const tt = useUI();
   const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps(siteOrigin);
@@ -446,7 +452,21 @@ export function WorkspaceDetail({
       : []),
   ];
   const pageTitle = (
-    <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
+    <div className="flex min-w-0 flex-wrap items-center gap-3">
+      <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
+      {pileSwitch}
+    </div>
+  );
+  const addClassName =
+    "text-[13px] font-medium text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-sky-600";
+  const addControl = onShowAll ? (
+    <button type="button" onClick={onShowAll} className={addClassName}>
+      {tt("＋ 添加 app / agent")}
+    </button>
+  ) : (
+    <a href={addAgentHref} className={addClassName}>
+      {tt("＋ 添加 app / agent")}
+    </a>
   );
   const tabsBar = (
     <div className="flex flex-wrap items-center gap-3">
@@ -466,12 +486,7 @@ export function WorkspaceDetail({
           </button>
         ))}
       </div>
-      <a
-        href={addAgentHref}
-        className="text-[13px] font-medium text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-sky-600"
-      >
-        {tt("＋ 添加 app / agent")}
-      </a>
+      {addControl}
     </div>
   );
 
@@ -569,19 +584,33 @@ export function WorkspaceDetail({
     accent, site_id: s.key,
   }));
 
+  const emptyCtaClass =
+    "inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white";
   const emptyState = (label: string) => (
     <div className="grid place-items-center rounded-2xl border border-dashed border-stone-300 bg-white/40 p-10 text-center">
       <div className="max-w-sm space-y-3">
         <p className="text-sm text-stone-500">
-          {tt("还没有{label}。到「Playground」里挑选加入——", { label })}
+          {tt("暂无")}
+          {label}
         </p>
-        <a
-          href={addAgentHref}
-          className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-white"
-          style={{ background: accent }}
-        >
-          {tt("＋ 去 Playground 挑选")}
-        </a>
+        {onShowAll ? (
+          <button
+            type="button"
+            onClick={onShowAll}
+            className={emptyCtaClass}
+            style={{ background: accent }}
+          >
+            {tt("全部")}
+          </button>
+        ) : (
+          <a
+            href={addAgentHref}
+            className={emptyCtaClass}
+            style={{ background: accent }}
+          >
+            {tt("＋ 添加 app / agent")}
+          </a>
+        )}
       </div>
     </div>
   );

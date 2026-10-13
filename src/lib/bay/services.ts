@@ -1,7 +1,9 @@
 // Bay 的服务取数与计算（移植自 talent `lib/talent/directory.ts` 的服务段与服务详情页的逻辑）。
 // 详情不登录也能看；举报要登录。金额一律是「分」，只在渲染时换算。
 
-import { bayGet, bayPost } from "./http";
+import { GATEWAY_BASE } from "../auth/config";
+import { BayApiError, bayGet, bayPost } from "./http";
+import type { LibraryItem } from "../../shell/library-data";
 import type { BayPublicProfile, BayReview } from "./directory";
 import type { BayListingKind, BayLicense, BayServiceMediaRow } from "./seller";
 import type { BayWorkRef } from "./types";
@@ -84,7 +86,11 @@ export interface BayService {
   listing_kind?: BayListingKind;
   license?: BayLicense | null;
   has_digital_work?: boolean;
+  preview_work?: { kind: "artifact" | "task"; id: string } | null;
   official?: boolean;
+  custom_terms?: string | null;
+  audience_mode?: "public" | "verified_first" | "invited" | "group" | null;
+  deadline_at?: string | null;
 }
 
 export interface BayServiceDetail extends BayService {
@@ -104,6 +110,109 @@ export function claimBayService(serviceId: string): Promise<{ work: BayAttachedW
   return bayPost<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] }>(
     `/v1/talent/services/${encodeURIComponent(serviceId)}/claim`,
   );
+}
+
+const LIBRARY_KINDS = new Set<LibraryItem["kind"]>([
+  "website",
+  "canvas",
+  "ppt",
+  "sheet",
+  "document",
+  "image",
+  "video",
+  "video_canvas",
+  "audio",
+  "xhs",
+  "threed",
+  "game",
+  "geo_map",
+  "interactive_doc",
+  "file",
+]);
+
+function textField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function recordField(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function httpsField(value: unknown): string {
+  const text = textField(value);
+  if (text.startsWith("https://")) return text;
+  if (text.startsWith("/")) {
+    const base = String(GATEWAY_BASE || "").replace(/\/+$/, "");
+    return base ? `${base}${text}` : text;
+  }
+  return "";
+}
+
+function kindFromPreviewMedia(mediaType: string, fallback: LibraryItem["kind"]): LibraryItem["kind"] {
+  const type = mediaType.split(";")[0].trim().toLowerCase();
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
+  if (type === "text/html" || type === "application/xhtml+xml") return "website";
+  if (type === "application/pdf" || type.includes("word") || type.includes("opendocument.text")) return "document";
+  if (type.includes("presentation") || type.includes("powerpoint")) return "ppt";
+  if (type.includes("spreadsheet") || type.includes("excel") || type === "text/csv") return "sheet";
+  return fallback;
+}
+
+function asLibraryItem(data: unknown): LibraryItem | null {
+  if (!data || typeof data !== "object") return null;
+  const row = data as { item?: unknown };
+  const raw = row.item && typeof row.item === "object" ? row.item : data;
+  const item = recordField(raw);
+  if (!item) return null;
+  const id = textField(item.id) || textField(item.artifactId);
+  if (!id) return null;
+  const preview = recordField(item.preview);
+  const thumbnail = recordField(item.thumbnail);
+  const previewUrl =
+    httpsField(item.previewUrl) || httpsField(preview?.url) || httpsField(preview?.accessUrl);
+  const thumbUrl =
+    httpsField(item.thumbUrl) || httpsField(thumbnail?.url) || httpsField(thumbnail?.accessUrl);
+  const declared = textField(item.kind);
+  const fallback: LibraryItem["kind"] = LIBRARY_KINDS.has(declared as LibraryItem["kind"])
+    ? (declared as LibraryItem["kind"])
+    : "file";
+  const kind = kindFromPreviewMedia(textField(preview?.mediaType), fallback);
+  const title = textField(item.title);
+  return {
+    key: textField(item.key) || id,
+    source: "artifact",
+    id,
+    title,
+    kind,
+    siteId: textField(item.siteId),
+    url: httpsField(item.url) || previewUrl || undefined,
+    previewUrl: previewUrl || undefined,
+    thumbUrl: thumbUrl || undefined,
+    posterUrl: thumbUrl || (kind === "image" ? previewUrl : "") || undefined,
+    favorite: false,
+    meta: recordField(item.meta) || {},
+    artifactId: textField(item.artifactId) || id,
+    revisionId: textField(item.revisionId) || undefined,
+  };
+}
+
+/** 上架帖公开预览档。B 未落或 404 时返回 null，舞台退回照片。 */
+export async function getBayServiceWorkPreview(
+  serviceId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<LibraryItem | null> {
+  try {
+    const data = await bayGet<unknown>(
+      `/v1/talent/services/${encodeURIComponent(serviceId)}/work-preview`,
+      { anonymous: true, signal: opts?.signal },
+    );
+    return asLibraryItem(data);
+  } catch (error) {
+    if (error instanceof BayApiError && (error.status === 404 || error.status === 0)) return null;
+    return null;
+  }
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = { CNY: "¥", RMB: "¥", USD: "$", EUR: "€", GBP: "£", JPY: "¥", HKD: "HK$" };

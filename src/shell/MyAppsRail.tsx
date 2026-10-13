@@ -16,9 +16,9 @@ import { appIconThumbSrc } from "../lib/app-icon-image";
 export const marketAppOpenHref = marketAppOpenUrl;
 export { sortMyApps };
 
-/** “我的应用”统一回到主站应用市场，并直接表达要打开“我的”视图。 */
+/** “我的应用”统一回到门户工作台「我的」堆（原市场上 view=mine）。 */
 export const MY_APPS_MARKET_HREF =
-  "https://oceanleo.com/playground?tab=app&view=mine";
+  "https://oceanleo.com/workspace?pile=mine&tab=app";
 
 const SIDEBAR_APP_LIMIT = 8;
 

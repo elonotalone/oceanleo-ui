@@ -8,6 +8,7 @@ import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS }
 import type { ExplorePageProps } from "../../ExplorePage";
 import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
+import { BAY_FORM_PAPER_CLASS } from "../form/form-ui";
 import { BayLessonShelf } from "../lessons/BayLessonShelf";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
@@ -26,7 +27,7 @@ import {
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
 import { BayToolbarFilterSlot, BayToolbarSlotProvider } from "./BayFilterSelect";
-import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, startPublishApp, startPublishLesson, useBaySearchText } from "./BayList";
+import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, useBaySearchText } from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -55,10 +56,16 @@ function useAvailability(): Availability {
 }
 
 const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`;
+/** 有白板的详情：左右仍露出页框，上下贴齐，不再垫 pt-3 / pb-5。 */
+const PAPER_FRAME_CLASS = "mx-auto flex h-[calc(100dvh-1px)] min-h-0 w-full max-w-6xl flex-col px-4";
+const PAPER_HEADER_CLASS = "sticky top-0 z-0 flex min-h-14 shrink-0 items-center justify-between gap-3";
 const BTN =
-  "inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const BTN_GHOST = `${BTN} text-stone-600 hover:bg-stone-100 hover:text-stone-900`;
-const BTN_PRIMARY = `${BTN} bg-stone-900 text-white hover:bg-stone-800`;
+  "inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+const BTN_GHOST = `${BTN} border border-neutral-900 bg-white text-neutral-900`;
+/** 详情页「返回」：无描边，左缘不留键内边距，贴着页框左边。 */
+const BTN_BACK =
+  "inline-flex shrink-0 items-center justify-center gap-1 rounded-full py-2 pr-4 text-[13px] font-medium text-neutral-900";
+const BTN_PRIMARY = `${BTN} bg-neutral-900 text-white`;
 
 /** 页头：标题、两个按键。搜索在下面那一行工具条里。 */
 function Hero({ filter }: { filter: BayFeedFilter }) {
@@ -73,7 +80,7 @@ function Hero({ filter }: { filter: BayFeedFilter }) {
           </button>
           <button
             type="button"
-            onClick={() => (canonicalBayFeedKind(filter.kind) === "app" ? startPublishApp() : canonicalBayFeedKind(filter.kind) === "lesson" ? startPublishLesson() : startPublish(filter.category))}
+            onClick={() => startPublish(filter.category, filter.kind)}
             data-bay-action="publish"
             className={BTN_PRIMARY}
           >
@@ -91,7 +98,7 @@ function BayPageSearch({ filter }: { filter: BayFeedFilter }) {
   const search = useBaySearchText(filter);
   return (
     <label
-      className="flex min-w-0 flex-1 max-w-sm items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-stone-900"
+      className="flex min-w-0 flex-1 max-w-sm items-center gap-2 rounded-full border-0 bg-neutral-200 px-4 py-2 text-neutral-900"
       data-bay-page-search
     >
       <BayGlyph name="search" className="h-3.5 w-3.5 shrink-0 text-stone-400" />
@@ -105,7 +112,7 @@ function BayPageSearch({ filter }: { filter: BayFeedFilter }) {
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing) search.commit(event.currentTarget.value);
         }}
-        className="min-w-0 flex-1 border-0 bg-transparent text-[13px] outline-none placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300"
+        className="min-w-0 flex-1 border-0 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
       />
     </label>
   );
@@ -171,21 +178,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           </div>
         ) : (
           <div className="mt-5">
-            <BayFeed
-              filter={filter}
-              activeKey={null}
-              variant="grid"
-              emptyAction={
-                <button
-                  type="button"
-                  onClick={() => startPublish(filter.category)}
-                  data-bay-action="publish"
-                  className={BTN_PRIMARY}
-                >
-                  {tt("发布")}
-                </button>
-              }
-            />
+            <BayFeed filter={filter} activeKey={null} variant="grid" />
           </div>
         )}
       </div>
@@ -207,37 +200,77 @@ const WIDE_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(
   "bundle",
   "lesson-editor",
   "bundle-editor",
+  "dashboard",
 ]);
 
-/** 点开的那一条：一行「返回 + 标题」，正文在一张卡里（卡内滚动，底部的操作条贴在卡的底边）。 */
+/** 填写页：页标题行和表单排在同一列里，左边缘对齐。发布、编辑类自己排这一列；发需求、报价由这里给。 */
+const FORM_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>([
+  "publish",
+  "service-editor",
+  "app-editor",
+  "lesson-editor",
+  "bundle-editor",
+  "post-need",
+  "call-human",
+  "propose",
+]);
+
+/** 发帖、我的、数据面板：正文垫白底圆角板。返回和标题留在板外。 */
+const PAPER_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>([
+  "publish",
+  "post-need",
+  "mine",
+  "dashboard",
+  "app-editor",
+  "lesson-editor",
+  "bundle-editor",
+]);
+
+/** 点开的那一条：一行「返回 + 标题」。发帖白底板跟页一起滚，板上不出滚动条；下滑后白板盖住返回和标题。 */
 function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed" }>; siteKey: string }) {
   const tt = useUI();
   const title = bayDetailTitleKey(target);
-  const width = WIDE_DETAILS.has(target.kind) ? "" : "max-w-3xl";
-  return (
-    <>
-      <header className={APP_PAGE_HEADER_ROW_CLASS} data-bay-page-detail-header>
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={bayBack}
-            data-bay-page-back
-            className={`${BTN_GHOST} gap-1`}
-          >
-            <BayGlyph name="back" className="h-4 w-4" />
-            {tt("返回")}
-          </button>
-          <h2 className={`min-w-0 truncate ${APP_PAGE_TITLE_CLASS}`}>{title ? tt(title) : null}</h2>
-        </div>
-      </header>
-      <div
-        className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white ${width}`}
-        data-bay-page-detail={target.kind}
-      >
-        <div key={formatBayParam(target)} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <BayDetailPane target={target} layout="page" siteKey={siteKey} />
+  const form = FORM_DETAILS.has(target.kind);
+  const paper = PAPER_DETAILS.has(target.kind);
+  // 发需求、报价的窗格自己带 px-4（need-ui 的 PaneBody），这里只给居中的那一列。
+  const width = WIDE_DETAILS.has(target.kind) ? "" : form ? "" : "max-w-3xl";
+  const pane = (
+    <div
+      className={paper ? `w-full ${width}` : `flex min-h-0 w-full flex-1 flex-col overflow-hidden ${width}`}
+      data-bay-page-detail={target.kind}
+    >
+      <div key={formatBayParam(target)} className={paper ? undefined : "flex min-h-0 flex-1 flex-col overflow-y-auto"}>
+        <BayDetailPane target={target} layout="page" siteKey={siteKey} />
+      </div>
+    </div>
+  );
+  const header = (
+    <header className={paper ? PAPER_HEADER_CLASS : APP_PAGE_HEADER_ROW_CLASS} data-bay-page-detail-header>
+      <div className="flex min-w-0 items-center gap-3">
+        <button type="button" onClick={bayBack} data-bay-page-back className={BTN_BACK}>
+          <BayGlyph name="back" className="h-4 w-4" />
+          {tt("返回")}
+        </button>
+        <h2 className={`min-w-0 truncate ${APP_PAGE_TITLE_CLASS}`}>{title ? tt(title) : null}</h2>
+      </div>
+    </header>
+  );
+  if (paper) {
+    return (
+      <div className="relative min-h-0 flex-1 overflow-y-auto" data-bay-page-scroll="">
+        <div className="flex min-h-full flex-col">
+          {header}
+          <div className={BAY_FORM_PAPER_CLASS} data-bay-page-paper={target.kind}>
+            {pane}
+          </div>
         </div>
       </div>
+    );
+  }
+  return (
+    <>
+      {header}
+      {pane}
     </>
   );
 }
@@ -248,6 +281,7 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   const { current } = useBayState();
   const storeSiteKey = useBaySiteKey();
   const browsing = current.kind === "feed";
+  const paperPage = current.kind !== "feed" && PAPER_DETAILS.has(current.kind);
 
   useEffect(() => {
     setBaySiteKey(siteKey);
@@ -269,7 +303,7 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   }
 
   return (
-    <div className={FRAME_CLASS} data-bay-page={browsing ? "browse" : "detail"}>
+    <div className={paperPage ? PAPER_FRAME_CLASS : FRAME_CLASS} data-bay-page={browsing ? "browse" : "detail"}>
       <div className={browsing ? "flex min-h-0 flex-1 flex-col" : "hidden"} data-bay-page-browse>
         <Browse filter={filter} accent={accent} visible={browsing} siteKey={storeSiteKey || siteKey} />
       </div>

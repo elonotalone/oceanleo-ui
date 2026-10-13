@@ -22,6 +22,7 @@ export interface BayApp {
   summary: string;
   description: string;
   cover_url: string | null;
+  gallery_urls?: string[];
   /** 类目 = 站 key（或 `other`）。 */
   category: string | null;
   posted_site: string | null;
@@ -29,7 +30,7 @@ export interface BayApp {
   /** 打开作品的 https 地址。 */
   url: string;
   url_host: string;
-  /** 创作者选的：`embed` = 可以在 Bay 页内的窗口里用；`link` = 只跳转。 */
+  /** 由来源决定：本平台托管站是 `embed`，外链和云电脑是 `link`。 */
   embed_mode: BayAppEmbedMode;
   /** 网关探测的结果：对方站是否允许被嵌入。`null` = 没测过。 */
   embed_ok: boolean | null;
@@ -57,6 +58,11 @@ export interface BayApp {
   fresh?: boolean;
   /** 列表与详情里带：作者的公开名片。 */
   author?: BayAppAuthor | null;
+  custom_terms?: string | null;
+  audience_mode?: "public" | "verified_first" | "invited" | "group" | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 export interface BayAppAuthor {
@@ -101,9 +107,15 @@ export interface BayAppDraftInput {
   summary?: string;
   description?: string;
   cover_url?: string | null;
+  gallery_urls?: string[];
   category?: string | null;
   posted_site?: string | null;
   embed_mode?: BayAppEmbedMode;
+  custom_terms?: string | null;
+  audience_mode?: "public" | "verified_first" | "invited" | "group" | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 export type BayAppPatchInput = Partial<Omit<BayAppDraftInput, "source_kind" | "hosted_site_id">>;

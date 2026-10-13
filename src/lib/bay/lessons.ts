@@ -16,6 +16,7 @@ export interface BayLesson {
   summary: string;
   description: string;
   cover_url: string | null;
+  gallery_urls?: string[];
   category: string | null;
   posted_site: string | null;
   /** 0 = 免费。 */
@@ -28,6 +29,11 @@ export interface BayLesson {
   published_at: string | null;
   updated_at: string | null;
   author?: BayAppAuthor | null;
+  custom_terms?: string | null;
+  audience_mode?: "public" | "verified_first" | "invited" | "group" | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 export interface BayLessonMine extends BayLesson {
@@ -89,15 +95,21 @@ export interface BayLessonInput {
   summary?: string;
   description?: string;
   cover_url?: string | null;
+  gallery_urls?: string[];
   category?: string | null;
   posted_site?: string | null;
   price_fen?: number;
+  custom_terms?: string | null;
+  audience_mode?: "public" | "verified_first" | "invited" | "group" | null;
+  audience_handle?: string | null;
+  audience_member_ids?: string[];
+  deadline_at?: string | null;
 }
 
 export interface BayLessonChapterInput {
   title?: string;
-  /** 卖家库里的一个作品（agent 任务）。新建时必填，建好后不能换。 */
-  work?: { kind: "task"; id: string };
+  /** 卖家库里的一份文件。新建时必填，建好后不能换。 */
+  work?: { kind: "task" | "artifact"; id: string };
   free_preview?: boolean;
 }
 
@@ -115,6 +127,7 @@ export interface BayLessonBundle {
   title: string;
   summary: string;
   cover_url: string | null;
+  gallery_urls?: string[];
   price_fen: number;
   status: BayLessonStatus;
   sales_count: number;
@@ -144,6 +157,7 @@ export interface BayLessonBundleInput {
   title?: string;
   summary?: string;
   cover_url?: string | null;
+  gallery_urls?: string[];
   price_fen?: number;
 }
 

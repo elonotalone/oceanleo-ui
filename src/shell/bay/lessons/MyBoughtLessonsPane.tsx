@@ -76,7 +76,7 @@ export function MyBoughtLessonsPane(_props: MyBoughtLessonsPaneProps): ReactElem
           <button
             type="button"
             onClick={() => openBay({ kind: "feed", filter: { kind: "lesson" } })}
-            className="mt-3 rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800"
+            className="mt-3 rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800"
           >
             {tt("去逛课程")}
           </button>
@@ -112,7 +112,7 @@ export function MyBoughtLessonsPane(_props: MyBoughtLessonsPaneProps): ReactElem
                 <button
                   type="button"
                   onClick={() => openBay({ kind: "lesson", id: row.lesson.id })}
-                  className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800"
+                  className="shrink-0 rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800"
                 >
                   {tt("继续学习")}
                 </button>

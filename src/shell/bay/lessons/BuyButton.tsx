@@ -47,7 +47,7 @@ export function BuyButton({
         onClick={() =>
           openBay(itemKind === "bundle" ? { kind: "bundle-editor", bundleId: itemId } : { kind: "lesson-editor", lessonId: itemId })
         }
-        className="shrink-0 rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50"
+        className="shrink-0 rounded-full border border-neutral-900 px-3 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50"
       >
         {tt("编辑")}
       </button>
@@ -57,7 +57,7 @@ export function BuyButton({
   if (owned) {
     if (itemKind === "bundle") {
       return (
-        <span data-bay-owned className="shrink-0 rounded-lg border border-neutral-200 px-3 py-2 text-[13px] font-medium text-neutral-700">
+        <span data-bay-owned className="shrink-0 rounded-full border border-neutral-900 px-3 py-2 text-[13px] font-medium text-neutral-700">
           {tt("已拥有")}
         </span>
       );
@@ -67,7 +67,7 @@ export function BuyButton({
         type="button"
         data-bay-action="continue"
         onClick={() => onContinue?.()}
-        className="shrink-0 rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
+        className="shrink-0 rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
       >
         {tt("继续学习")}
       </button>
@@ -102,7 +102,7 @@ export function BuyButton({
         data-bay-action="buy"
         disabled={busy}
         onClick={startBuy}
-        className="w-full rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
+        className="w-full rounded-full bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
       >
         {paid
           ? tt(itemKind === "bundle" ? "购买套餐 · {price}" : "购买 · {price}", { price: paidLabel })
@@ -110,7 +110,7 @@ export function BuyButton({
       </button>
       {paid ? <p className="mt-1.5 text-left text-[11px] leading-4 text-neutral-500">{tt("另加支付通道费，平台不抽成。付款后 7 天内可申请退款")}</p> : null}
       {confirming ? (
-        <div data-bay-confirm="buy" className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-left">
+        <div data-bay-confirm="buy" className="mt-3 space-y-2 text-left">
           <p className="text-[12px] font-semibold text-neutral-900">{paid ? tt("确认购买") : tt("确认领取")}</p>
           <p className="mt-1 break-words text-[13px] text-neutral-800">{title}</p>
           <p className="mt-1 text-[13px] font-medium text-neutral-900">{priceLabel}</p>
@@ -121,7 +121,7 @@ export function BuyButton({
               type="button"
               disabled={busy}
               onClick={() => setConfirming(false)}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
+              className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60"
             >
               {tt("取消")}
             </button>
@@ -129,7 +129,7 @@ export function BuyButton({
               type="button"
               disabled={busy}
               onClick={() => void submit()}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
+              className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-60"
             >
               {busy ? tt("正在处理…") : tt("确认")}
             </button>

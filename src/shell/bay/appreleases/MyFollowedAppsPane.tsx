@@ -105,7 +105,7 @@ export function MyFollowedAppsPane(): ReactElement | null {
                   data-bay-action="unfollow-followed"
                   disabled={busyId === row.app.id}
                   onClick={() => void unfollow(row.app.id)}
-                  className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+                  className="shrink-0 rounded-full border border-neutral-900 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
                 >
                   {busyId === row.app.id ? tt("正在取消关注…") : tt("取消关注")}
                 </button>

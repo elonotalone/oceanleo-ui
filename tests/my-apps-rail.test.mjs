@@ -209,7 +209,7 @@ test("排序稳定，打开地址按 site_url + open_path 拼接", () => {
     }),
     "https://word.oceanleo.com/",
   );
-  assert.match(MY_APPS_MARKET_HREF, /playground\?.*view=mine/);
+  assert.match(MY_APPS_MARKET_HREF, /\/workspace\?pile=mine/);
 });
 
 test("未登录整块不渲染；登录后的首帧是骨架", () => {

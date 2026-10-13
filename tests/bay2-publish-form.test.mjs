@@ -102,17 +102,31 @@ const confirmStub = dataModule(`
 const needsStub = dataModule(`
   export async function pickLibraryWork(){ return globalThis.__bayPickedWork ?? { kind: "task", id: "task-42", title: "季度汇报" }; }
 `);
+const databaseStub = dataModule(`
+  export async function uploadFile(file, opts) {
+    (globalThis.__bayCoverUploads ||= []).push({ file, opts });
+    return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } };
+  }
+  export async function getStorageUsage() {
+    return { ok: true, data: { remaining_bytes: 20 * 1024 * 1024 * 1024, unavailable: false } };
+  }
+`);
 
 const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
   "../../../lib/agent": agentStub,
   "../../../lib/bay/categories": categoriesStub,
+  "../../../lib/database": databaseStub,
   "../../../ui": confirmStub,
   "../../../ui/Toast": toastStub,
   "../settings": settingsStub,
   "../shell/bay-state": stateStub,
   "../needs/LibraryWorkPicker": needsStub,
+  "../form/BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "./BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
+  "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
 };
 const { ServiceEditorPane } = await import(await compileModule("src/shell/bay/seller/ServiceEditorPane.tsx", stubs));
 
@@ -158,103 +172,180 @@ async function mount(target = { kind: "service-editor" }) {
     assert.ok(node, `找不到 ${selector}`);
     return node;
   };
+  const setValue = async (selector, value) => {
+    const node = find(selector);
+    const proto = node.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : node.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(node, value);
+    await act(async () => node.dispatchEvent(new window.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })));
+    await settle();
+  };
   const click = async (selector) => {
     const node = find(selector);
     await act(async () => node.click());
     await settle();
   };
-  return { host, find, click, unmount: () => act(() => root.unmount()) };
+  return { host, find, setValue, click, unmount: () => act(() => root.unmount()) };
 }
 
-test("新草稿先出三张种类卡", async () => {
+async function expandTerms(view) {
+  const terms = view.host.querySelector('[data-bay-section="terms"]');
+  if (terms && terms.hasAttribute("data-bay-section-collapsed")) {
+    await view.click('[data-bay-section="terms"] [data-bay-section-toggle]');
+  }
+}
+
+async function pickHowYouDeliver(view, kind) {
+  await expandTerms(view);
+  await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
+}
+
+test("新草稿直接出表单，顶上是卖买和分类，默认打开封面", async () => {
   reset();
   const view = await mount();
-  assert.equal(view.host.querySelector('[data-bay-publish="pick"]')?.getAttribute("data-bay-pane"), "service-editor");
+  assert.equal(view.host.querySelector('[data-bay-publish="pick"]'), null);
+  assert.equal(view.find('[data-bay-publish="form"]').getAttribute("data-bay-pane"), "service-editor");
+  assert.equal(view.find("[data-bay-publish-intent]").tagName, "SELECT");
+  assert.ok(view.host.querySelector("[data-bay-publish-category-field] [data-bay-menu-trigger]"));
+  assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-category-select]"));
+  assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
+  assert.equal(view.find("[data-bay-how-you-deliver]").tagName, "DIV");
+  assert.equal(view.find("[data-bay-how-you-deliver]").getAttribute("data-bay-publish-category"), "digital");
+  assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="digital"]'));
+  assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="service"]'));
+  assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="app"]'));
+  assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="lesson"]'));
   assert.ok(view.host.querySelector('[data-bay-kind="digital"]'));
   assert.ok(view.host.querySelector('[data-bay-kind="service"]'));
+  assert.ok(view.host.querySelector('[data-bay-kind="app"]'));
+  assert.ok(view.host.querySelector('[data-bay-kind="lesson"]'));
   assert.ok(view.host.querySelector('[data-bay-kind="need"]'));
   assert.equal(view.host.querySelector('[data-bay-kind="consult"]'), null);
-  assert.equal(view.host.querySelector('[data-bay-publish="form"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-publish="form"] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "cover");
+  assert.deepEqual(
+    [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["cover", "title", "description", "files"],
+  );
+  assert.equal(view.find('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
+  assert.deepEqual(
+    [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["price"],
+  );
+  assert.doesNotMatch(view.find('[data-bay-section="price"] [data-bay-reveal-item="price"]').textContent, /预算/);
+  assert.equal(view.find('[data-bay-section="price"] [data-bay-field="price"]').value, "");
+  assert.match(view.find("[data-bay-price-currency]").textContent, /USD/);
+  assert.equal(view.find('[data-bay-section="terms"]').getAttribute("data-bay-section-collapsed"), "");
+  assert.ok(view.host.querySelector("[data-bay-cover-drop]"));
+  assert.doesNotMatch(view.host.textContent, /所属分类/);
+  assert.equal(view.host.querySelector('[data-bay-reveal-item="website"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-reveal-item="links"]'), null);
   await view.unmount();
 });
 
 test("选素材后出三块、没有步骤条、没有档位表", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
+  await pickHowYouDeliver(view, "digital");
   assert.equal(view.find('[data-bay-publish="form"]').getAttribute("data-bay-pane"), "service-editor");
   assert.ok(view.host.querySelector('[data-bay-section="product"]'));
   assert.ok(view.host.querySelector('[data-bay-section="price"]'));
   assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
   assert.equal(view.host.querySelector("[data-bay-steps]"), null);
   assert.equal(view.host.querySelector("[data-bay-tier]"), null);
-  assert.match(view.host.textContent, /素材/);
-  assert.ok(view.host.querySelector("[data-bay-category-select]"));
+  assert.match(view.host.textContent, /现成文件/);
+  assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-reveal-item='category']"));
   await view.unmount();
 });
 
 test("选服务后「更多定价」默认收起", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="service"]');
+  await pickHowYouDeliver(view, "service");
   assert.equal(view.find("[data-bay-more-pricing-toggle]").getAttribute("aria-expanded"), "false");
   assert.equal(view.host.querySelector("[data-bay-more-pricing]"), null);
   assert.equal(view.host.querySelector("[data-bay-tier]"), null);
-  assert.ok(view.host.querySelector("[data-bay-category-select]"));
+  assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-reveal-item='category']"));
   await view.unmount();
 });
 
 test("底部操作栏有「存草稿」「发布」", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
   const bar = view.find("[data-bay-publish-bar]");
   assert.equal(bar.querySelector('[data-bay-action="save-draft"]').textContent, "存草稿");
   assert.equal(bar.querySelector('[data-bay-action="publish"]').textContent, "发布");
   await view.unmount();
 });
 
-test("没有步骤条文案；未保存时可换一种", async () => {
+test("没有步骤条文案；换类别仍在表单里", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="service"]');
+  await pickHowYouDeliver(view, "service");
   assert.equal(view.host.textContent.includes("第 "), false);
   assert.equal(view.host.textContent.includes("共 "), false);
-  await view.click("[data-bay-switch-kind]");
-  assert.ok(view.host.querySelector('[data-bay-publish="pick"]'));
+  assert.ok(view.host.querySelector('[data-bay-publish="form"]'));
+  assert.equal(view.host.querySelector('[data-bay-publish="pick"]'), null);
   await view.unmount();
 });
 
-test("选服务后再切答疑：仍是三块，没有步骤条", async () => {
+test("选服务后再切按次：仍是三块，产品信息还是封面标题介绍文件", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="service"]');
-  await view.click('[data-bay-service-form-option="consult"]');
+  await pickHowYouDeliver(view, "service");
+  await view.click('[data-bay-section="price"] [data-bay-service-form-option="consult"]');
   assert.ok(view.host.querySelector('[data-bay-section="product"]'));
   assert.ok(view.host.querySelector('[data-bay-section="price"]'));
   assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
   assert.equal(view.host.querySelector("[data-bay-steps]"), null);
-  assert.match(view.host.textContent, /答疑/);
+  assert.ok(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="billing"]'));
+  assert.deepEqual(
+    [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["billing", "price"],
+  );
+  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="consult-rounds"]'));
+  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="revisions"]'));
+  assert.deepEqual(
+    [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["cover", "title", "description", "files"],
+  );
+  assert.doesNotMatch(view.find('[data-bay-section="product"]').textContent, /领域/);
+  assert.equal(view.host.querySelector("[data-bay-domains]"), null);
   await view.unmount();
 });
 
-test("素材有授权范围和分类选择，没有档位", async () => {
+test("素材：向谁展示和交付内容在交付条款上方；条款里是截止日期和用户自定义，没有授权范围和 FAQ", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
-  assert.ok(view.host.querySelector('[data-bay-license="personal"]'));
-  assert.ok(view.host.querySelector('[data-bay-license="commercial"]'));
-  assert.ok(view.host.querySelector("[data-bay-digital-terms]"));
-  assert.ok(view.host.querySelector("[data-bay-category-select]"));
+  assert.ok(view.host.querySelector('[data-bay-section="audience"] [data-bay-reveal-item="who"]'));
+  assert.ok(view.host.querySelector('[data-bay-section="offer"] [data-bay-how-you-deliver]'));
+  assert.match(view.find('[data-bay-section="audience"] [data-bay-section-title]').textContent, /向谁展示/);
+  assert.match(view.find('[data-bay-section="offer"] [data-bay-section-title]').textContent, /你交付什么/);
+  await expandTerms(view);
+  const terms = view.find('[data-bay-section="terms"]');
+  assert.deepEqual(
+    [...terms.querySelectorAll("[data-bay-reveal-item]")].map((node) => node.getAttribute("data-bay-reveal-item")),
+    ["deadline", "custom-terms"],
+  );
+  assert.equal(terms.querySelector('[data-bay-reveal-item="delivery-mode"]'), null);
+  assert.ok(terms.querySelector('[data-bay-reveal-item="deadline"]'));
+  const deadline = terms.querySelector("[data-bay-deadline-field]");
+  assert.ok(deadline);
+  assert.match(deadline.className, /\bw-40\b/);
+  assert.ok(terms.querySelector('[data-bay-reveal-item="custom-terms"]'));
+  assert.ok(view.host.querySelector("[data-bay-audience]"));
+  assert.ok(view.host.querySelector('[data-bay-field="custom-terms"]'));
+  assert.equal(terms.querySelector('[data-bay-reveal-item="billing"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-reveal-item="license"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-license="personal"]'), null);
+  assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-reveal-item='category']"));
   assert.equal(view.host.querySelector("[data-bay-tier]"), null);
   assert.equal(view.host.querySelector("[data-bay-faq-toggle]"), null);
+  assert.doesNotMatch(terms.textContent, /网站|我的链接|FAQ/);
   await view.unmount();
 });
 
 test("点发布而有没填的：不弹窗，标出缺项", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
   await view.click('[data-bay-action="publish"]');
   assert.deepEqual(globalThis.__bayTerms, [], "缺项时不问条款");
   assert.equal(view.host.querySelector("[data-bay-confirm]"), null);
@@ -265,7 +356,6 @@ test("点发布而有没填的：不弹窗，标出缺项", async () => {
 test("素材没选类目时点发布：缺项有分类，不发发布请求", async () => {
   reset();
   const view = await mount();
-  await view.click('[data-bay-kind="digital"]');
   assert.equal(view.find("[data-bay-category-select]").value, "");
   const before = globalThis.__bayCalls.filter((call) => call.method === "POST").length;
   await view.click('[data-bay-action="publish"]');

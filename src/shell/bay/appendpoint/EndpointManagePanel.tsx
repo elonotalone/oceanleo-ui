@@ -99,7 +99,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
 
   return (
     <section data-bay-endpoint-manage className="space-y-4">
-      <div className="space-y-2 rounded-xl border border-stone-200 bg-white p-4">
+      <div className="space-y-2">
         <p className="break-all text-[13px] font-medium text-stone-900">{current.url}</p>
         <dl className="grid gap-2 text-[13px] text-stone-700 sm:grid-cols-2">
           <div>
@@ -190,7 +190,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
         {actionError ? <SellerNotice tone="error">{actionError}</SellerNotice> : null}
 
         {ask === "pause" ? (
-          <div data-bay-confirm="pause" className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+          <div data-bay-confirm="pause" className="space-y-2">
             <p className="text-[13px] text-stone-800">{tt("访客会看到「这个应用暂时没有开放」")}</p>
             <div className="mt-3 flex flex-wrap justify-end gap-2">
               <button type="button" disabled={Boolean(busy)} className={SECONDARY_BUTTON} onClick={() => setAsk(null)}>
@@ -214,7 +214,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
         ) : null}
 
         {ask === "delete" ? (
-          <div data-bay-confirm="delete" className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+          <div data-bay-confirm="delete" className="space-y-2">
             <p className="text-[13px] text-stone-800">{tt("删除后这个作品会自动下架")}</p>
             <div className="mt-3 flex flex-wrap justify-end gap-2">
               <button type="button" disabled={Boolean(busy)} className={SECONDARY_BUTTON} onClick={() => setAsk(null)}>

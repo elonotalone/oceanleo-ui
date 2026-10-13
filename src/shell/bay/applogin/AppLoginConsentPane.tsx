@@ -78,7 +78,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
           onClick={() => {
             requireBayLogin();
           }}
-          className="mt-4 rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] text-white"
+          className="mt-4 rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] text-white"
         >
           {tt("登录")}
         </button>
@@ -169,7 +169,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
           data-bay-login-approve
           disabled={busy}
           onClick={() => void approve()}
-          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[13px] text-white disabled:opacity-60"
+          className="rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] text-white disabled:opacity-60"
         >
           {busy ? tt("正在确认…") : tt("同意并继续")}
         </button>
@@ -178,7 +178,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
           data-bay-login-cancel
           disabled={busy}
           onClick={() => openBay({ kind: "feed" })}
-          className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[13px] text-neutral-700 disabled:opacity-60"
+          className="rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] text-neutral-700 disabled:opacity-60"
         >
           {tt("取消")}
         </button>

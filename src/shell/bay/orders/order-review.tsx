@@ -105,7 +105,7 @@ export function OrderReviewSection({
       {canWrite && !mine && viewerRole === "seller" ? (
         <form
           data-bay-review-form
-          className="space-y-2 rounded-xl border border-neutral-200 p-3"
+          className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
             const input = { contract_id: contractId, ...scores, body };
@@ -164,7 +164,7 @@ export function OrderReviewSection({
 
       {revealed
         ? reviews.map((item) => (
-            <article key={item.id} data-bay-review={item.id} className="rounded-xl border border-neutral-200 p-3">
+            <article key={item.id} data-bay-review={item.id} className="py-2">
               <p className="text-[12.5px] font-medium text-neutral-800">
                 {item.author_role === "buyer" ? tt("买家评价") : tt("卖家评价")}
                 {item.rating ? <span className="ms-2 text-neutral-500">{tt("{n} 分", { n: item.rating })}</span> : null}

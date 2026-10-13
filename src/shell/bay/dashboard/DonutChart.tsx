@@ -22,7 +22,7 @@ export function DonutChart({
   const segments = donutSegments(items.map((item) => item.share));
   if (!items.length || !segments.length) {
     return (
-      <section data-bay-donut className="rounded-xl border border-neutral-200 p-3">
+      <section data-bay-donut className="space-y-2">
         <h3 className="text-[14px] font-semibold text-neutral-900">{tt("分商品收入")}</h3>
         <p data-bay-donut-empty className="py-8 text-center text-[13px] text-neutral-500">
           {tt("这段时间还没有收入")}
@@ -31,7 +31,7 @@ export function DonutChart({
     );
   }
   return (
-    <section data-bay-donut className="rounded-xl border border-neutral-200 p-3">
+    <section data-bay-donut className="space-y-2">
       <h3 className="text-[14px] font-semibold text-neutral-900">{tt("分商品收入")}</h3>
       <div className="mt-3 flex flex-wrap items-center gap-4">
         <svg viewBox="0 0 160 160" width="160" height="160" role="img" aria-label={ariaLabel} className="shrink-0">

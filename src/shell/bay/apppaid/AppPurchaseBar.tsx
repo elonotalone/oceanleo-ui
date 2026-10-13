@@ -27,8 +27,8 @@ export interface AppPurchaseBarProps {
   onAccess: (access: BayAppAccess | null) => void;
 }
 
-const PRIMARY = "rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60";
-const SECONDARY = "rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
+const PRIMARY = "rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60";
+const SECONDARY = "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[12px] text-neutral-700 disabled:opacity-60";
 
 export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps): ReactElement {
   const tt = useUI();
@@ -135,7 +135,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
   const trialEnd = formatPaidDate(access?.trial?.ends_at, locale);
 
   return (
-    <section data-bay-app-purchase className="rounded-xl border border-neutral-200 bg-white p-3">
+    <section data-bay-app-purchase className="space-y-1">
       <p data-bay-app-price className="text-[14px] font-semibold text-neutral-900">
         {model === "subscription" ? tt("{price} / 月", { price }) : tt("{price} · 一次买断", { price })}
       </p>
@@ -219,7 +219,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       {buttons?.trial ? <p className="mt-1.5 text-[11px] leading-4 text-neutral-500">{tt("不扣款，不需要绑卡；到期后要继续用需要购买")}</p> : null}
 
       {ask === "buy" ? (
-        <div data-bay-confirm="buy" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="buy" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("确认购买")}</p>
           <p className="mt-1 text-[12px] text-neutral-600">{tt("将支付 {price}。款项托管 7 天；7 天内没打开过作品可直接全额退，打开过的需写理由由作者处理。", { price })}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
@@ -235,7 +235,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       ) : null}
 
       {ask === "subscribe" ? (
-        <div data-bay-confirm="subscribe" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="subscribe" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("确认订阅")}</p>
           <p className="mt-1 text-[12px] text-neutral-600">{tt("将按 {price} / 月订阅。每期托管 7 天；7 天内没打开过可直接全额退，打开过的需写理由由作者处理。", { price })}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
@@ -251,7 +251,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       ) : null}
 
       {ask === "trial" ? (
-        <div data-bay-confirm="trial" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="trial" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("免费试用 {n} 天", { n: access?.trial_days || app.trial_days })}</p>
           <p className="mt-1 text-[12px] text-neutral-600">{tt("不扣款，不需要绑卡；到期后要继续用需要购买")}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
@@ -275,7 +275,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       ) : null}
 
       {ask === "cancel-sub" && access?.subscription ? (
-        <div data-bay-confirm="cancel-sub" className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div data-bay-confirm="cancel-sub" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("取消订阅")}</p>
           <p className="mt-1 text-[12px] text-neutral-600">{tt("不再续费，已付的这一期用到 {date}", { date: periodEnd })}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}

@@ -162,7 +162,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
           const ai = post.author_kind === "ai";
           const owner = post.author_kind === "owner";
           return (
-            <article key={post.id} data-bay-thread-post={post.id} className="rounded-xl border border-neutral-200 p-3">
+            <article key={post.id} data-bay-thread-post={post.id} className="py-2">
               <div className="flex flex-wrap items-center gap-2 text-[12px] text-neutral-500">
                 {ai ? null : <Avatar url={post.author.avatar_url} name={name} size="sm" />}
                 <span className="font-medium text-neutral-800">{ai ? tt("AI 助手") : name}</span>
@@ -185,7 +185,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
             rows={4}
             data-bay-field="reply"
             onChange={(event) => setReply(event.target.value)}
-            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
+            className="w-full rounded-full border border-neutral-900 bg-white px-3 py-2 text-[13px] outline-none focus:border-stone-400"
           />
           {replyError ? (
             <p data-bay-field-error="reply" className="text-[12px] text-rose-600">
@@ -198,7 +198,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
               data-bay-action="reply"
               disabled={busy}
               onClick={() => void sendReply()}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] text-white disabled:opacity-50"
+              className="rounded-full bg-neutral-900 px-3 py-1.5 text-[12.5px] text-white disabled:opacity-50"
             >
               {busy ? tt("回复中…") : tt("回复")}
             </button>
@@ -207,7 +207,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
               data-bay-action={statusAction.next === "resolved" ? "resolve" : "reopen"}
               disabled={busy}
               onClick={() => void changeStatus()}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12.5px] text-neutral-700 disabled:opacity-50"
+              className="rounded-full border border-neutral-900 px-3 py-1.5 text-[12.5px] text-neutral-700 disabled:opacity-50"
             >
               {tt(statusAction.label)}
             </button>

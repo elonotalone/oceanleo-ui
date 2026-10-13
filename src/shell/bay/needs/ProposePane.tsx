@@ -7,19 +7,21 @@ import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   PROPOSAL_MESSAGE_MAX_LENGTH,
+  formatBayFen,
   getDemand,
   parseMoneyInput,
   submitProposal,
   type BayDemandDetail,
 } from "../../../lib/bay/demands";
 import { useToast } from "../../../ui/Toast";
+import { BAY_FORM_HELP_CLASS } from "../form/form-ui";
+import { BayRevealForm, type BayRevealItem } from "../form/BayRevealForm";
 import { openBaySettings, ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { budgetText } from "./need-format";
 import {
   BTN_PRIMARY,
   BTN_SECONDARY,
-  Field,
   INPUT,
   LoginPrompt,
   PaneBody,
@@ -99,6 +101,7 @@ function ProposeForm({ demand }: { demand: BayDemandDetail }) {
     const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : Number.NaN;
   }, [days]);
+  const messageLine = message.trim().split("\n")[0] ?? "";
 
   const submit = async () => {
     if (busy) return;
@@ -135,44 +138,69 @@ function ProposeForm({ demand }: { demand: BayDemandDetail }) {
     }
   };
 
-  return (
-    <div className="space-y-4" data-bay-propose>
-      <div>
-        <p className="text-[13px] font-medium text-stone-800">{demand.title}</p>
-        <p className="mt-0.5 text-[12px] text-stone-500">
-          {tt("买家预算")} · {budgetText(tt, demand.budget_min_fen, demand.budget_max_fen, demand.currency)}
-        </p>
-      </div>
-      <Field label={tt("你的报价")}>
+  const items: BayRevealItem[] = [
+    {
+      id: "price",
+      label: tt("你的报价"),
+      done: !Number.isNaN(priceFen) && priceFen !== null,
+      summary: !Number.isNaN(priceFen) && priceFen !== null ? formatBayFen(priceFen, demand.currency) : undefined,
+      children: (
         <input
           value={price}
           onChange={(event) => setPrice(event.target.value)}
           inputMode="decimal"
-          placeholder={tt("填金额")}
           className={INPUT}
           data-bay-propose-price
         />
-      </Field>
-      <Field label={tt("交付天数")} hint={tt("不填就是交期可协商。")}>
+      ),
+    },
+    {
+      id: "days",
+      label: tt("交付天数"),
+      done: !Number.isNaN(deliveryDays),
+      optional: true,
+      summary: deliveryDays ? tt("{n} 天交付", { n: deliveryDays }) : tt("交期可协商"),
+      children: (
         <input
           value={days}
           onChange={(event) => setDays(event.target.value)}
           inputMode="numeric"
-          placeholder={tt("例如 5")}
           className={INPUT}
           data-bay-propose-days
         />
-      </Field>
-      <Field label={tt("方案说明")} hint={`${message.length} / ${PROPOSAL_MESSAGE_MAX_LENGTH}`}>
+      ),
+    },
+    {
+      id: "message",
+      label: tt("方案说明"),
+      done: Boolean(message.trim()),
+      optional: true,
+      summary: messageLine
+        ? messageLine.length > 60
+          ? `${messageLine.slice(0, 60)}…`
+          : messageLine
+        : undefined,
+      children: (
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value.slice(0, PROPOSAL_MESSAGE_MAX_LENGTH))}
           rows={5}
-          placeholder={tt("写你会怎么做、以前做过什么、需要对方准备什么")}
           className={`${INPUT} resize-y leading-5`}
           data-bay-propose-message
         />
-      </Field>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6" data-bay-propose>
+      <div>
+        <p className="text-[13px] font-medium text-stone-800">{demand.title}</p>
+        <p className={`mt-0.5 ${BAY_FORM_HELP_CLASS}`}>
+          {tt("买家预算")} · {budgetText(tt, demand.budget_min_fen, demand.budget_max_fen, demand.currency)}
+        </p>
+      </div>
+      <BayRevealForm items={items} />
       {needProfile ? (
         <PaneNotice
           tone="warn"

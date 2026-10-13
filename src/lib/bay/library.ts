@@ -6,12 +6,13 @@ import { BayApiError } from "./http";
 import type { BayWorkRef } from "./types";
 
 export interface BayLibraryWork {
-  kind: "task";
+  kind: "task" | "artifact";
   id: string;
   site_key: string;
   title: string;
   status: string;
   created_at: string | null;
+  thumb_url?: string;
 }
 
 export async function listLibraryWorks(options: { limit?: number } = {}): Promise<BayLibraryWork[]> {
@@ -44,5 +45,5 @@ export function filterLibraryWorks(works: readonly BayLibraryWork[], query: stri
 }
 
 export function libraryWorkRef(work: BayLibraryWork): BayWorkRef {
-  return { kind: "task", id: work.id, site_key: work.site_key, title: work.title };
+  return { kind: work.kind, id: work.id, site_key: work.site_key, title: work.title, thumb_url: work.thumb_url };
 }

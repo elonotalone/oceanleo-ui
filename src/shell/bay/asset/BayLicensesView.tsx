@@ -112,9 +112,9 @@ const DUTY_ROWS: DutyRow[] = [
 ];
 
 const TONE_CLASS: Record<DutyRow["tone"], string> = {
-  emerald: "border-emerald-200 bg-emerald-50",
-  amber: "border-amber-200 bg-amber-50",
-  rose: "border-rose-200 bg-rose-50",
+  emerald: "text-emerald-800",
+  amber: "text-amber-800",
+  rose: "text-rose-800",
 };
 
 function Emphasized({ text }: { text: string }) {
@@ -150,7 +150,7 @@ function LicensesBody() {
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+        <div>
           <p className="text-sm font-semibold text-sky-900">
             {tt("OceanLeo 自产")}
             <span className="ml-2 font-normal text-sky-700">
@@ -171,7 +171,7 @@ function LicensesBody() {
             {tt("完整条款")} ↗
           </a>
         </div>
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
+        <div>
           <p className="text-sm font-semibold text-stone-900">
             {tt("外部素材")}
             <span className="ml-2 font-normal text-stone-600">
@@ -192,7 +192,7 @@ function LicensesBody() {
       </p>
       <div className="mt-3 flex flex-col gap-2">
         {DUTY_ROWS.map((row) => (
-          <div key={row.codes} className={`rounded-xl border px-4 py-3 ${TONE_CLASS[row.tone]}`}>
+          <div key={row.codes} className={`py-2 ${TONE_CLASS[row.tone]}`}>
             <p className="text-sm font-semibold text-stone-900">
               {tt(row.codes)}
               <span className="ml-2 text-xs font-normal text-stone-600">{tt(row.what)}</span>
@@ -211,7 +211,7 @@ function LicensesBody() {
           { sources: SHELF_SOURCES.length, total, date: SHELF_GENERATED_AT },
         )}
       </p>
-      <div className="mt-3 overflow-hidden rounded-xl border border-stone-200">
+      <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>

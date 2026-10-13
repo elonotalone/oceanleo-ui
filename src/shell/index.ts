@@ -56,6 +56,8 @@ export { ShellChromeProvider, useShellChrome } from "./ShellChrome";
 // doctrine v7：工作台 master-detail（主区自带 网站/app/skill 目录 + 内嵌 + 返回）。
 export { WorkspaceSubNav, WorkspaceDetail, ConsoleFnSubNav } from "./WorkspaceMasterDetail";
 export type { ConsoleFnItem, WorkspaceSiteItem } from "./WorkspaceMasterDetail";
+export { WorkspaceDesk, parseWorkspacePile } from "./WorkspaceDesk";
+export type { WorkspacePile } from "./WorkspaceDesk";
 // v5：历史记录列表在主侧栏内联展开（可删除），主区负责回看。
 // 「待处理」（PendingSubNav / PendingDetail）已于 2026-07-01 下线，全部会话进历史记录。
 export {

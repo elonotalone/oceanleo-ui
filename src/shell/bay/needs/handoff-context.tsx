@@ -126,7 +126,7 @@ export function HandoffContextPicker({
     );
   }
   return (
-    <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-stone-200 p-1.5" data-bay-handoff-picks>
+    <div className="max-h-56 space-y-1 overflow-y-auto" data-bay-handoff-picks>
       {items.map((item) => {
         const key = handoffCandidateKey(item);
         const checked = selected.has(key);

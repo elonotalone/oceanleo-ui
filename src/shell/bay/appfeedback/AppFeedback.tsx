@@ -134,7 +134,7 @@ export function AppFeedback({ appId, isOwner }: AppFeedbackProps): ReactElement 
           type="button"
           data-bay-action="manage-feedback"
           onClick={() => openBay({ kind: "app-manage", appId, tab: "feedback" })}
-          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50"
+          className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50"
         >
           {tt("去管理留言")}
         </button>
@@ -154,7 +154,7 @@ export function AppFeedback({ appId, isOwner }: AppFeedbackProps): ReactElement 
             onClick={() => {
               if (requireBayLogin()) setComposerOpen(true);
             }}
-            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50"
+            className="rounded-full border border-neutral-900 px-3 py-1.5 text-[13px] text-neutral-800 hover:bg-neutral-50"
           >
             {tt("写留言")}
           </button>

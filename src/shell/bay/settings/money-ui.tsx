@@ -25,7 +25,7 @@ export function useBayMoneyLocale(): string {
 
 export function MoneyCard({ title, children, id }: { title: string; children: ReactNode; id: string }) {
   return (
-    <section className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-700" data-bay-money-card={id}>
+    <section className="space-y-2" data-bay-money-card={id}>
       <h4 className="text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">{title}</h4>
       <div className="mt-2">{children}</div>
     </section>
@@ -34,7 +34,7 @@ export function MoneyCard({ title, children, id }: { title: string; children: Re
 
 export function MoneyStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-700">
+    <div>
       <p className="text-[11px] text-neutral-500 dark:text-neutral-400">{label}</p>
       <p className="mt-1 text-[18px] font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{value}</p>
       {hint ? <p className="mt-1 text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">{hint}</p> : null}
@@ -171,7 +171,7 @@ export function StatementPanel({
     statement.counterparty?.display_name || (statement.counterparty?.handle ? `@${statement.counterparty.handle}` : "");
   return (
     <section
-      className="rounded-xl border border-stone-200 bg-stone-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/40"
+      className="space-y-2"
       data-bay-statement={statement.contract_id}
     >
       <div className="flex items-start justify-between gap-3">
@@ -187,7 +187,7 @@ export function StatementPanel({
         <button
           type="button"
           onClick={onClose}
-          className="shrink-0 rounded-lg border border-neutral-300 px-2.5 py-1 text-[12px] hover:bg-neutral-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
+          className="shrink-0 rounded-full border border-neutral-900 px-2.5 py-1 text-[12px] hover:bg-neutral-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
         >
           {tt("关闭")}
         </button>
@@ -203,13 +203,13 @@ export function StatementPanel({
       {statement.tier || statement.addons.length ? (
         <ul className="mt-3 space-y-1.5 text-[12px]" data-bay-statement-items>
           {statement.tier ? (
-            <li className="flex items-start justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 dark:bg-neutral-900/40">
+            <li className="flex items-start justify-between gap-3 py-1">
               <span className="min-w-0 break-words">{tt("档位：{title}", { title: statement.tier.title })}</span>
               <strong className="shrink-0 tabular-nums">{formatBayFen(statement.tier.price_fen, statement.currency, locale)}</strong>
             </li>
           ) : null}
           {statement.addons.map((addon, index) => (
-            <li key={`${addon.title}-${index}`} className="flex items-start justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 dark:bg-neutral-900/40">
+            <li key={`${addon.title}-${index}`} className="flex items-start justify-between gap-3 py-1">
               <span className="min-w-0 break-words">{tt("加购：{title}", { title: addon.title })}</span>
               <strong className="shrink-0 tabular-nums">{formatBayFen(addon.price_fen, statement.currency, locale)}</strong>
             </li>

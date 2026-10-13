@@ -169,3 +169,24 @@ test("留言只当文本渲染：没有注入点、没有拼出来的链接", ()
     assert.doesNotMatch(text, /\/v1\//, `${file} 不得写 /v1/`);
   }
 });
+
+test("留言撰写用展开表单，不摆事先提示小字", () => {
+  const composer = src("src/shell/bay/appfeedback/ThreadComposer.tsx");
+  assert.match(composer, /BayRevealForm/);
+  assert.match(composer, /from ["']\.\.\/form["']/);
+  assert.match(composer, /id:\s*"kind"/);
+  assert.match(composer, /id:\s*"visibility"/);
+  assert.match(composer, /id:\s*"title"/);
+  assert.match(composer, /id:\s*"body"/);
+  assert.match(composer, /data-bay-composer-kind/);
+  assert.match(composer, /data-bay-visibility/);
+  assert.match(composer, /data-bay-field="title"/);
+  assert.match(composer, /data-bay-field="body"/);
+  assert.doesNotMatch(composer, /placeholder=/);
+  assert.doesNotMatch(composer, /Please enter/i);
+  assert.doesNotMatch(composer, /报错里有账号、截图等私人内容时选只给作者看/);
+  assert.match(composer, /CHIP_OFF = "border-neutral-200 bg-white/);
+  assert.doesNotMatch(composer, /text-neutral-400|text-stone-400/);
+  assert.doesNotMatch(composer, /bg-white\/95/);
+  assert.doesNotMatch(composer, /-mx-4/);
+});

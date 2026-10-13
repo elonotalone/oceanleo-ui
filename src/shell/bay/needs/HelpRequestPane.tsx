@@ -122,7 +122,7 @@ function GrantedContext({ handoffId }: { handoffId: string }) {
       ) : (
         <ul className="space-y-1.5">
           {items.map((item) => (
-            <li key={`${item.kind}:${item.ref}`} className="rounded-xl border border-stone-200 px-3 py-2">
+            <li key={`${item.kind}:${item.ref}`} className="py-2">
               <p className="text-[11px] text-stone-400">{item.kind === "artifact" ? tt("产物") : tt("消息")}</p>
               <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-stone-700">{item.preview}</p>
             </li>
