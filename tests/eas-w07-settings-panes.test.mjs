@@ -91,9 +91,20 @@ const navigationStub = dataModule(`
   export function useSearchParams() { return new URLSearchParams(window.location.search); }
   export function useRouter() {
     return {
-      push(href) { window.history.pushState(null, "", href); },
-      replace(href) { window.history.replaceState(null, "", href); },
-      refresh() {}, back() {}, prefetch() {},
+      push(href) {
+        (window.__settingsNav ??= []).push(["push", href]);
+        window.history.pushState(null, "", href);
+      },
+      replace(href) {
+        (window.__settingsNav ??= []).push(["replace", href]);
+        window.history.replaceState(null, "", href);
+      },
+      refresh() {},
+      back() {
+        (window.__settingsNav ??= []).push(["back"]);
+        window.history.back();
+      },
+      prefetch() {},
     };
   }
 `);
@@ -195,6 +206,9 @@ const {
   settingsPath,
   tabFromSettingsLocation,
   isSettingsPathname,
+  sanitizeSettingsReturnTo,
+  captureSettingsReturnTo,
+  readSettingsReturnTo,
 } = await import(await compileModule("src/pages/settings/settings-tabs.ts"));
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -208,6 +222,7 @@ async function settle(rounds = 6) {
 }
 
 async function mount(element, path = "/agent") {
+  window.__settingsNav = [];
   window.history.replaceState(null, "", path);
   const host = window.document.createElement("div");
   window.document.body.append(host);
@@ -269,6 +284,26 @@ test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
   assert.equal(isSettingsPathname("/settings/ai-models"), true);
   assert.equal(isSettingsPathname("/settings/ai-models/"), true);
   assert.equal(isSettingsPathname("/settings/api"), true);
+});
+
+test("关掉设置窗的回跳地址：只要站内非设置页，协议相对路径丢掉", () => {
+  assert.equal(sanitizeSettingsReturnTo("/agent"), "/agent");
+  assert.equal(sanitizeSettingsReturnTo("/library?tab=a"), "/library?tab=a");
+  assert.equal(sanitizeSettingsReturnTo("/settings/account"), "/");
+  assert.equal(sanitizeSettingsReturnTo("/settings"), "/");
+  assert.equal(sanitizeSettingsReturnTo("//evil.example/"), "/");
+  assert.equal(sanitizeSettingsReturnTo("https://evil.example/"), "/");
+  assert.equal(sanitizeSettingsReturnTo(undefined), "/");
+  assert.equal(readSettingsReturnTo({ settingsReturnTo: "/projects" }), "/projects");
+  assert.equal(readSettingsReturnTo({ settingsReturnTo: "/settings/billing" }), "/");
+  assert.equal(
+    captureSettingsReturnTo("https://oceanleo.com/library?x=1", null),
+    "/library?x=1",
+  );
+  assert.equal(
+    captureSettingsReturnTo("https://oceanleo.com/settings/account", { settingsReturnTo: "/bay" }),
+    "/bay",
+  );
 });
 
 test("设置窗里点「AI 模型」「插件与连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
@@ -410,6 +445,38 @@ test("设置窗开着时浏览器后退 → 设置窗关闭", async () => {
   assert.equal(window.location.pathname, "/agent");
   assert.equal(window.location.hash, "");
   assert.equal(dialog() === null, true, "后退到打开设置窗之前的那一页，设置窗关掉");
+  await view.cleanup();
+});
+
+test("点关闭：回到打开前的页面，走 router.replace 不走 history.back", async () => {
+  const view = await mount(React.createElement(SettingsModalHost), "/agent");
+  await open("account");
+  assert.equal(window.location.pathname, "/settings/account");
+  assert.equal(window.history.state.settingsReturnTo, "/agent");
+  await click(inDialog('[aria-label="关闭"]'), "关闭");
+  assert.equal(window.location.pathname, "/agent");
+  assert.deepEqual(
+    window.__settingsNav.filter((row) => row[0] === "replace"),
+    [["replace", "/agent"]],
+  );
+  assert.equal(
+    window.__settingsNav.some((row) => row[0] === "back"),
+    false,
+    "关掉设置窗不能 history.back：登录后主区会停在空白 /settings 页",
+  );
+  await view.cleanup();
+});
+
+test("整页落到 /settings/account（登录后常见）关掉后回到首页，不能只改地址栏", async () => {
+  const view = await mount(React.createElement(SettingsModalHost), "/settings/account");
+  assert.ok(dialog(), "地址就是设置页时窗应当自己打开");
+  window.history.replaceState({ __NA: true }, "", "/settings/account");
+  await click(inDialog('[aria-label="关闭"]'), "关闭");
+  assert.equal(window.location.pathname, "/");
+  assert.ok(
+    window.__settingsNav.some((row) => row[0] === "replace" && row[1] === "/"),
+    "必须 router.replace('/')，Next 才会把空的设置页换成主页面",
+  );
   await view.cleanup();
 });
 

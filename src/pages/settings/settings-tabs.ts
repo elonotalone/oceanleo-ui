@@ -77,6 +77,8 @@ export type BillingPaneView = "overview" | "usage-details" | "topup";
 type SettingsHistoryState = {
   settingsOverlay?: boolean;
   settingsBillingView?: BillingPaneView;
+  /** 关掉设置窗时回到的站内地址。不能是 `/settings…`，否则主区还是那张空页。 */
+  settingsReturnTo?: string;
 };
 
 /** 旧栏目 id / 调用方 tab → 页内页签。`billing` 与未知值都是总览。 */
@@ -261,6 +263,47 @@ function herePath(): string {
   return `${window.location.pathname}${window.location.search}`;
 }
 
+/**
+ * 关掉设置窗要回去的站内地址。拒绝协议相对路径、设置页自己、以及非本站绝对地址。
+ */
+export function sanitizeSettingsReturnTo(raw: unknown): string {
+  if (typeof raw !== "string") return "/";
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("://")) return "/";
+  try {
+    const url = new URL(trimmed, "https://oceanleo.com");
+    if (url.pathname.includes("\\")) return "/";
+    if (isSettingsPathname(url.pathname)) return "/";
+    return `${url.pathname}${url.search}` || "/";
+  } catch {
+    return "/";
+  }
+}
+
+export function readSettingsReturnTo(
+  state?: { settingsReturnTo?: string } | null,
+): string {
+  return sanitizeSettingsReturnTo(state?.settingsReturnTo);
+}
+
+/** 打开设置前记下当前页；已经在设置地址上则沿用上次记下的那一页。 */
+export function captureSettingsReturnTo(
+  href?: string,
+  state?: { settingsReturnTo?: string } | null,
+): string {
+  const stored = readSettingsReturnTo(state);
+  try {
+    const url = new URL(
+      href || (typeof window !== "undefined" ? window.location.href : "https://oceanleo.com/"),
+      "https://oceanleo.com",
+    );
+    if (isSettingsPathname(url.pathname)) return stored;
+    return sanitizeSettingsReturnTo(`${url.pathname}${url.search}`);
+  } catch {
+    return stored;
+  }
+}
+
 /** 打开设置卡片并把地址写成 `/settings/<tab>`。不从 Host 文件导出，避免把整窗拖进输入框模块图。 */
 export function openSettingsModal(tab = "general") {
   if (typeof window === "undefined") return;
@@ -271,6 +314,7 @@ export function openSettingsModal(tab = "general") {
   const state: SettingsHistoryState = {
     ...prev,
     settingsOverlay: true,
+    settingsReturnTo: captureSettingsReturnTo(undefined, prev),
     settingsBillingView:
       resolved === "billing" && billingView !== "overview" ? billingView : undefined,
   };

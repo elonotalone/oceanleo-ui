@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { SettingsModal } from "../../pages/settings/SettingsModal";
 import type { SettingsHubProps, SettingsSection } from "../../pages/settings/SettingsHub";
 import {
+  captureSettingsReturnTo,
   isSettingsPathname,
   openSettingsModal,
   readSettingsBillingView,
+  readSettingsReturnTo,
   resolveSettingsTab,
   settingsPath,
   tabFromSettingsLocation,
@@ -36,6 +38,7 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
   wallet?: SettingsHubProps["wallet"];
 } = {}) {
   const pathname = usePathname();
+  const router = useRouter();
   const [tab, setTab] = useState<string | null>(null);
   const extraRef = useRef(extraSections);
   extraRef.current = extraSections;
@@ -64,12 +67,16 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
       const resolved = tabFromSettingsLocation(href, extras);
       const canonical = settingsPath(resolved);
       const billingView = readSettingsBillingView(href);
-      const prev = (window.history.state as { settingsBillingView?: string } | null) || {};
+      const prev = (window.history.state as {
+        settingsBillingView?: string;
+        settingsReturnTo?: string;
+      } | null) || {};
       if (isSettingsPathname(window.location.pathname) && herePath() !== canonical) {
         window.history.replaceState(
           {
             ...prev,
             settingsOverlay: true,
+            settingsReturnTo: captureSettingsReturnTo(undefined, prev),
             settingsBillingView:
               resolved === "billing" && billingView !== "overview" ? billingView : undefined,
           },
@@ -91,16 +98,18 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
 
   function close() {
     if (typeof window === "undefined") return;
-    const overlay = Boolean((window.history.state as { settingsOverlay?: boolean } | null)?.settingsOverlay);
-    if (overlay && window.history.length > 1) {
-      window.history.back();
-      return;
-    }
-    if (isSettingsPathname(window.location.pathname)) {
-      window.history.replaceState(window.history.state, "", "/");
-      window.dispatchEvent(new Event("popstate"));
-    }
+    const returnTo = readSettingsReturnTo(
+      window.history.state as { settingsReturnTo?: string } | null,
+    );
     setTab(null);
+    const onSettings =
+      isSettingsPathname(window.location.pathname) ||
+      isSettingsPathname(pathname || "");
+    if (!onSettings) return;
+    // Next 16 把带 `__NA` 的 replaceState 当成内部调用，只改地址栏、不换页面。
+    // `/settings/<tab>` 本身是空页；history.back() 也回不到主页面（登录后常是
+    // 整页落到设置地址）。必须走 App Router，把主区真正换成打开前的那一页。
+    router.replace(returnTo);
   }
 
   return <SettingsModal open={tab !== null} initialTab={tab || "general"} onClose={close}
@@ -110,7 +119,14 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
       const resolved = resolveSettingsTab(next, extraIdsOf(extraSections));
       const canonical = settingsPath(resolved);
       if (herePath() !== canonical) {
-        window.history.replaceState({ ...(window.history.state as object), settingsOverlay: true }, "", canonical);
+        window.history.replaceState({
+          ...(window.history.state as object),
+          settingsOverlay: true,
+          settingsReturnTo: captureSettingsReturnTo(
+            undefined,
+            window.history.state as { settingsReturnTo?: string } | null,
+          ),
+        }, "", canonical);
       }
       setTab(resolved);
     }} onSignedOut={() => { close(); onSignedOut?.(); }} />;

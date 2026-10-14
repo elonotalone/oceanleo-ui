@@ -37,6 +37,7 @@ import {
   accountSettingsPath,
   accountSettingsView,
   canonicalSettingsTab,
+  captureSettingsReturnTo,
   isReservedSettingsTab,
   readSettingsBillingView,
   rememberSettingsBillingView,
@@ -338,7 +339,14 @@ export function SettingsHub({
     setAccountView(view);
     if (typeof window !== "undefined") {
       window.history.replaceState(
-        { ...(window.history.state as object), settingsOverlay: true },
+        {
+          ...(window.history.state as object),
+          settingsOverlay: true,
+          settingsReturnTo: captureSettingsReturnTo(
+            undefined,
+            window.history.state as { settingsReturnTo?: string } | null,
+          ),
+        },
         "",
         accountSettingsPath(view),
       );
