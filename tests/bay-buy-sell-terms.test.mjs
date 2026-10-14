@@ -285,7 +285,7 @@ async function assertKind(kind, buy, sell, expected, extra) {
   extra?.();
 }
 
-test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格组标题是价格；交付条款默认收起；四种交付在交付条款正上方", async () => {
+test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格组标题是价格；交付条款默认收起；四种交付在交付条款正上方（五种，含其他）", async () => {
   const { buy, sell } = await mountPair();
   for (const view of [buy, sell]) {
     assert.ok(view.host.querySelector('[data-bay-section="product"]'));
@@ -301,7 +301,7 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
       ["cover", "title", "description", "files"],
     );
     assert.ok(view.host.querySelector('[data-bay-section="offer"] [data-bay-how-you-deliver]'));
-    for (const kind of ["digital", "service", "app", "lesson"]) {
+    for (const kind of ["digital", "service", "app", "lesson", "other"]) {
       assert.ok(view.host.querySelector(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`), `缺交付内容 ${kind}`);
     }
     assert.match(view.find('[data-bay-how-you-deliver] [data-bay-choice-option="service"]').textContent, /人工服务/);

@@ -8,7 +8,7 @@ import { BayMenuSelect } from "./BayMenuSelect";
 import { rememberPublishListing } from "./publish-listing";
 
 export type PublishIntentId = "sell" | "buy";
-export type PublishDeliveryId = "digital" | "service" | "app" | "lesson";
+export type PublishDeliveryId = "digital" | "service" | "app" | "lesson" | "other";
 export type PublishCategoryId = PublishDeliveryId | "need";
 
 const INTENT_OPTIONS: { id: PublishIntentId; label: string }[] = [
@@ -21,7 +21,7 @@ export function intentOfListing(value?: PublishCategoryId | ""): PublishIntentId
 }
 
 export function deliveryOfListing(value?: PublishCategoryId | ""): PublishDeliveryId {
-  if (value === "service" || value === "app" || value === "lesson") return value;
+  if (value === "service" || value === "app" || value === "lesson" || value === "other") return value;
   return "digital";
 }
 

@@ -15,7 +15,7 @@ export function BayPublishKindPair({
 }: {
   listing: PublishCategoryId;
   siteCategory?: string;
-  onPickListing?: (id: "digital" | "service" | "app" | "lesson") => void;
+  onPickListing?: (id: "digital" | "service" | "app" | "lesson" | "other") => void;
   disabled?: boolean;
   subcategory?: ReactNode;
 }): ReactElement {

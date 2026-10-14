@@ -67,7 +67,7 @@ export interface BayDemand {
   audience_handle?: string | null;
   audience_member_ids?: string[];
   custom_terms?: string | null;
-  listing_kind?: "digital" | "service" | "app" | "lesson" | null;
+  listing_kind?: "digital" | "service" | "app" | "lesson" | "other" | null;
   delivery_days?: number | null;
   cover_url?: string | null;
   revisions?: number | null;
@@ -122,7 +122,7 @@ export interface DemandInput {
   audience_handle?: string | null;
   audience_member_ids?: string[];
   custom_terms?: string | null;
-  listing_kind?: "digital" | "service" | "app" | "lesson";
+  listing_kind?: "digital" | "service" | "app" | "lesson" | "other";
   delivery_days?: number | null;
   cover_url?: string | null;
   revisions?: number | null;

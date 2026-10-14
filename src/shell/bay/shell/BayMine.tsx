@@ -3,10 +3,11 @@
 // 「我的」六块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 我的主页 / 数据面板。没登录先请登录。
 // 每一块的正文在 `../mine/` 里（主页与数据面板借用 `../supply/ProfilePane` 与 `../dashboard/DashboardPane`），
 // 这个文件只管分区标签和登录提示。标签允许换行，不出横向滚动条。
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { MyBoughtPane, MyFavoritesPane, MyPublishedPane, MySoldPane } from "../mine";
 import { BayMineDashboardTab } from "../mine/MyDashboardTab";
+import { MineCategoryBar, type MineCategory, type MinePaneProps } from "../mine/MineCategoryBar";
 import { PaneLoading } from "../supply/parts";
 import { BAY_MINE_UI_TABS } from "./bay-links";
 import { replaceBay, requireBayLogin, useBaySignedIn, type BayLayout, type BayMineTab, type BayPaneProps } from "./bay-state";
@@ -28,7 +29,10 @@ function shownMineTab(tab: BayMineTab): BayMineTab {
   return BAY_MINE_UI_TABS.includes(tab) ? tab : "published";
 }
 
-function MinePane({ tab, ...props }: BayPaneProps & { tab: BayMineTab }) {
+/** 类别选择条管的四个页面；主页与数据面板不分类。 */
+const CATEGORY_TABS: readonly BayMineTab[] = ["published", "sold", "bought", "favorites"];
+
+function MinePane({ tab, ...props }: MinePaneProps & { tab: BayMineTab }) {
   if (tab === "sold") return <MySoldPane {...props} />;
   if (tab === "bought") return <MyBoughtPane {...props} />;
   if (tab === "favorites") return <MyFavoritesPane {...props} />;
@@ -112,12 +116,15 @@ export function BayMine({ tab, layout, siteKey }: { tab: BayMineTab; layout: Bay
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const shown = shownMineTab(tab);
+  const [category, setCategory] = useState<MineCategory>("all");
+  const categorised = CATEGORY_TABS.includes(shown);
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-bay-mine={shown}>
       <BayMineTabs tab={tab} variant={layout === "page" ? "page" : "overlay"} />
+      {signedIn && categorised ? <MineCategoryBar value={category} onChange={setCategory} /> : null}
       {signedIn ? (
         <div className="min-h-0 flex-1">
-          <MinePane tab={shown} target={{ kind: "mine", tab: shown }} layout={layout} siteKey={siteKey} />
+          <MinePane tab={shown} target={{ kind: "mine", tab: shown }} layout={layout} siteKey={siteKey} category={categorised ? category : "all"} />
         </div>
       ) : (
         <BaySignInPrompt text={tt("登录后查看你发布的、卖出的、买到的和收藏")} />

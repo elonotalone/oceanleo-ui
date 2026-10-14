@@ -15,7 +15,10 @@ import {
   type BayOrderGroup,
   type BayOrderRole,
 } from "../../../lib/bay/orders";
+import { getBayService } from "../../../lib/bay/services";
+import type { PublishedCategory } from "../mine/PublishedCategoryTag";
 import { openTradeThread } from "../deal/open-trade-thread";
+import type { MineCategory } from "../mine/MineCategoryBar";
 import { openBay, type BayPaneProps } from "../shell/bay-state";
 import {
   countOrderGroups,
@@ -40,11 +43,49 @@ function groupLabel(tt: (zh: string) => string, group: BayOrderGroup): string {
   }
 }
 
+/** 来源服务的种类；查不到（服务已下架、无权限）按「人工服务」算。 */
+function useServiceKinds(ids: string[]): Record<string, PublishedCategory> {
+  const [kinds, setKinds] = useState<Record<string, PublishedCategory>>({});
+  const key = [...new Set(ids)].sort().join(",");
+  useEffect(() => {
+    const missing = key ? key.split(",").filter((id) => !(id in kinds)) : [];
+    if (missing.length === 0) return;
+    let live = true;
+    void Promise.all(
+      missing.slice(0, 60).map((id) =>
+        getBayService(id).then(
+          (row) => [id, categoryOfListingKind(row.service?.listing_kind)] as const,
+          () => [id, "service" as PublishedCategory] as const,
+        ),
+      ),
+    ).then((pairs) => {
+      if (live) setKinds((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    });
+    return () => {
+      live = false;
+    };
+    // kinds 只用来跳过已查过的 id，不作为依赖，避免查完又查。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return kinds;
+}
+
+function categoryOfListingKind(kind: string | null | undefined): PublishedCategory {
+  if (kind === "digital" || kind === "app" || kind === "lesson" || kind === "other") return kind;
+  return "service";
+}
+
+function orderCategory(sourceServiceId: string | null | undefined, kinds: Record<string, PublishedCategory>): PublishedCategory {
+  if (!sourceServiceId) return "service";
+  return kinds[sourceServiceId] ?? "service";
+}
+
 export function MyOrdersPane({
   target: _target,
   layout: _layout,
   fixedRole,
-}: BayPaneProps & { fixedRole?: "buyer" | "seller" }) {
+  category = "all",
+}: BayPaneProps & { fixedRole?: "buyer" | "seller"; category?: MineCategory }) {
   const tt = useUI();
   const gate = useBayPaymentsGate();
   const [viewer, setViewer] = useState<string | null | undefined>(undefined);
@@ -95,7 +136,13 @@ export function MyOrdersPane({
 
   const mine = useMemo(() => (items ?? []).filter((row) => row.my_role === role), [items, role]);
   const counts = useMemo(() => countOrderGroups(mine, gate), [mine, gate]);
-  const visible = useMemo(() => visibleMyOrders(items ?? [], { role, group, query, gate }), [items, role, group, query, gate]);
+  const visibleAll = useMemo(() => visibleMyOrders(items ?? [], { role, group, query, gate }), [items, role, group, query, gate]);
+  // 订单本身不带「种类」；按类别筛时，去查每一单的来源服务，看它是成品文件、人工服务还是其他。
+  const serviceKinds = useServiceKinds(category === "all" ? [] : visibleAll.map((order) => order.source_service_id || "").filter(Boolean));
+  const visible = useMemo(
+    () => (category === "all" ? visibleAll : visibleAll.filter((order) => orderCategory(order.source_service_id, serviceKinds) === category)),
+    [category, visibleAll, serviceKinds],
+  );
 
   if (viewer === undefined) return <OrderLoading pane="mine-orders" />;
   if (!viewer || error === "login") {
@@ -107,7 +154,8 @@ export function MyOrdersPane({
   }
 
   const emptyAll = mine.length === 0;
-  const emptyGroup = !emptyAll && visible.length === 0;
+  const emptyGroup = !emptyAll && visible.length === 0 && category === "all";
+  const emptyCategory = !emptyAll && visible.length === 0 && category !== "all";
 
   const emptyCopy =
     fixedRole === "buyer"
@@ -174,9 +222,9 @@ export function MyOrdersPane({
             {tt("去发布服务")}
           </button>
         </div>
-      ) : emptyGroup ? (
-        <p data-bay-empty="group" className="px-1 py-6 text-center text-[13px] text-neutral-500">
-          {tt("这一组暂时没有订单。")}
+      ) : emptyGroup || emptyCategory ? (
+        <p data-bay-empty={emptyCategory ? "category" : "group"} className="px-1 py-6 text-center text-[13px] text-neutral-500">
+          {emptyCategory ? tt("这一类还没有订单。") : tt("这一组暂时没有订单。")}
         </p>
       ) : (
         <ul className="divide-y divide-neutral-100">

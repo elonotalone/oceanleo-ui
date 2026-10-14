@@ -5,7 +5,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { MyBoughtLessonsPaneProps } from "../lessons/MyBoughtLessonsPane";
 import { MyOrdersPane } from "../orders/MyOrdersPane";
-import type { BayPaneProps } from "../shell/bay-state";
+import { ordersShownFor, type MinePaneProps } from "./MineCategoryBar";
 import { LazySection } from "./LazySection";
 
 const loadBoughtApps = () => import("../apppaid/MyBoughtAppsPane").then((mod) => mod.MyBoughtAppsPane);
@@ -34,19 +34,22 @@ function BoughtLessons(props: MyBoughtLessonsPaneProps) {
   return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
 }
 
-export function MyBoughtPane(props: BayPaneProps) {
+export function MyBoughtPane({ category = "all", ...props }: MinePaneProps) {
   const tt = useUI();
+  const all = category === "all";
   return (
     <section data-bay-pane="mine-bought" className="space-y-6">
-      <MyOrdersPane {...props} fixedRole="buyer" />
-      <div data-bay-mine-section="lessons">
-        <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("课程")}</h3>
-        <BoughtLessons layout={props.layout} siteKey={props.siteKey} />
-      </div>
-      <LazySection marker="apps" title="作品" load={loadBoughtApps} />
-      <LazySection marker="following" title="关注的作品" load={loadFollowedApps} />
-      <LazySection marker="threads" title="我的留言" load={loadMyThreads} />
-      <LazySection marker="logins" title="用 OceanLeo 账号登录过的作品" load={loadLoginGrants} />
+      {ordersShownFor(category) ? <MyOrdersPane {...props} fixedRole="buyer" category={category} /> : null}
+      {all || category === "lesson" ? (
+        <div data-bay-mine-section="lessons">
+          <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("课程")}</h3>
+          <BoughtLessons layout={props.layout} siteKey={props.siteKey} />
+        </div>
+      ) : null}
+      {all || category === "app" ? <LazySection marker="apps" title="作品" load={loadBoughtApps} /> : null}
+      {all ? <LazySection marker="following" title="关注的作品" load={loadFollowedApps} /> : null}
+      {all ? <LazySection marker="threads" title="我的留言" load={loadMyThreads} /> : null}
+      {all ? <LazySection marker="logins" title="用 OceanLeo 账号登录过的作品" load={loadLoginGrants} /> : null}
     </section>
   );
 }

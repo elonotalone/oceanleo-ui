@@ -13,7 +13,9 @@ import {
   type BayFavoriteKind,
 } from "../../../lib/bay/favorites";
 import { categoryNameBySlug, useNeedCategories } from "../needs/need-categories";
-import { openBay, type BayPaneProps } from "../shell/bay-state";
+import { openBay } from "../shell/bay-state";
+import { type MinePaneProps } from "./MineCategoryBar";
+import type { PublishedCategory } from "./PublishedCategoryTag";
 import { PaneLoading, PaneMessage } from "../supply/parts";
 import { errorText } from "../supply/use-bay-resource";
 
@@ -29,7 +31,14 @@ const GROUPS: ReadonlyArray<{ kind: BayFavoriteKind; label: string }> = [
   { kind: "demand", label: "需求" },
 ];
 
-export function MyFavoritesPane(_props: BayPaneProps) {
+/** 收藏的服务：目标里带了种类就按种类归；没带（老数据）按「人工服务」。 */
+function favoriteCategory(item: BayFavorite): PublishedCategory {
+  const kind = item.target?.listing_kind;
+  if (kind === "digital" || kind === "app" || kind === "lesson" || kind === "other") return kind;
+  return "service";
+}
+
+export function MyFavoritesPane({ category = "all" }: MinePaneProps) {
   const tt = useUI();
   const categories = useNeedCategories();
   const [tick, setTick] = useState(0);
@@ -90,6 +99,8 @@ export function MyFavoritesPane(_props: BayPaneProps) {
     );
   }
   const list = items || [];
+  // 类别只对「素材与服务」这一段有意义；卖家与需求只在「全部」里出现。
+  const shown = category === "all" ? list : list.filter((item) => item.target_kind === "service" && favoriteCategory(item) === category);
   if (list.length === 0) {
     return (
       <section data-bay-pane="mine-favorites">
@@ -103,8 +114,14 @@ export function MyFavoritesPane(_props: BayPaneProps) {
 
   return (
     <section data-bay-pane="mine-favorites" className="py-2">
+      {shown.length === 0 ? (
+        <p data-bay-empty="category" className="px-4 py-12 text-center text-[13px] text-stone-500">
+          {tt("这一类还没有收藏。")}
+        </p>
+      ) : null}
       {GROUPS.map((group) => {
-        const rows = list.filter((item) => item.target_kind === group.kind);
+        if (category !== "all" && group.kind !== "service") return null;
+        const rows = shown.filter((item) => item.target_kind === group.kind);
         if (rows.length === 0) return null;
         return (
           <div key={group.kind} data-bay-fav-group={group.kind}>

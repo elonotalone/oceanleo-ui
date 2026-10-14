@@ -5,7 +5,7 @@ import type { UITranslate } from "../../../i18n/ui/useUI";
 import { BayChoice } from "./BayChoice";
 import { BayCustomTerms } from "./BayCustomTerms";
 import { BayDeadlineField } from "./BayDeadlineField";
-import type { BayOfferKind } from "./bay-listing";
+import { isPricedOffer, type BayOfferKind } from "./bay-listing";
 import { formatPriceInput, isPriceInputText, parsePriceInput } from "./bay-price";
 import { BAY_FORM_AMOUNT_INPUT_CLASS, BAY_FORM_INPUT_CLASS as INPUT_CLASS } from "./form-ui";
 import type { BayRevealItem } from "./BayRevealForm";
@@ -81,8 +81,8 @@ export function engagementOf(
     if (appPriceModel === "subscription") return "retainer";
     return "fixed";
   }
-  if (offerKind === "service" && billing === "hour") return "hourly";
-  if (offerKind === "service" && billing === "session") return "session";
+  if (isPricedOffer(offerKind) && billing === "hour") return "hourly";
+  if (isPricedOffer(offerKind) && billing === "session") return "session";
   return "fixed";
 }
 
@@ -103,7 +103,7 @@ export function listingPriceItems(
   const priceLabel =
     input.appPriceModel === "free" || priceFen == null ? (input.appPriceModel === "free" ? tt("免费") : undefined) : priceFen <= 0 ? tt("免费") : formatPriceInput(priceFen);
   const billingRow =
-    input.offerKind === "service"
+    isPricedOffer(input.offerKind)
       ? revealRow(
           "billing",
           tt("计费方式"),
@@ -190,7 +190,7 @@ export function listingTermsItems(
   },
 ): BayRevealItem[] {
   const typeSpecificTerms: BayRevealItem[] =
-    input.offerKind === "service"
+    isPricedOffer(input.offerKind)
       ? [
           ...(input.billing === "session"
             ? [

@@ -318,7 +318,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     if (draft.offerKind === next && !draft.serviceId) return;
     pickKind(next === "service" ? "service" : "digital", {
       offerKind: next,
-      listingKind: next === "service" ? "service" : "digital",
+      listingKind: next === "service" || next === "other" ? "service" : "digital",
       catalogKind: "delivery",
     });
   }
@@ -667,6 +667,8 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     { summary: draft.title.trim() || undefined },
   );
   const offerKind: BayOfferKind = draft.offerKind || (publishKind === "service" ? "service" : "digital");
+  // 人工服务与「其他」都走服务的定价与条款；成品文件、作品、课程各有自己的一套。
+  const pricedOffer = offerKind === "service" || offerKind === "other";
   const coverRow = revealRow("cover", tt("作品图"), coverDone, <MediaStep {...mediaProps} plain imagesOnly />, {
     summary: coverDone ? tt("已填好") : undefined,
     alwaysOpen: true,
@@ -696,13 +698,13 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     {
       summary: (draft.digitalWorks[0] ?? draft.digitalWork)?.title || (draft.digitalWorks[0] ?? draft.digitalWork)?.id,
       alwaysOpen: true,
-      optional: offerKind === "service" || offerKind === "lesson",
+      optional: pricedOffer || offerKind === "lesson",
     },
   );
   const productItems: BayRevealItem[] = [coverRow, titleRow, descriptionRow, filesRow];
   const priceFen = draft.priceUnset ? null : draft.tiers[0]?.price_fen ?? null;
   const billingValue: "service" | "session" | "hour" =
-    offerKind !== "service" ? "service" : draft.pricingModel === "hour" ? "hour" : draft.pricingModel === "session" ? "session" : "service";
+    !pricedOffer ? "service" : draft.pricingModel === "hour" ? "hour" : draft.pricingModel === "session" ? "session" : "service";
   const appPriceModel = draft.pricingModel === "subscription" ? "subscription" : draft.pricingModel === "free" ? "free" : "one_time";
   const priceItems = listingPriceItems(tt, {
     offerKind,
@@ -733,7 +735,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     onCustomTerms: (customTerms) => patch({ customTerms }),
   });
 
-  const listingKind = offerKind === "service" ? "service" : offerKind;
+  const listingKind = pricedOffer ? "service" : offerKind;
   const previewWork = draft.digitalWorks[0] ?? draft.digitalWork;
   const snapshot: BayPostSnapshot = {
     kind: listingKind,
@@ -746,7 +748,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     previewWorkTitle: previewWork?.title,
     categoryLabel: categoryName,
     priceFen: priceFen ?? undefined,
-    billing: offerKind === "service" ? (billingValue === "hour" ? "hour" : billingValue === "session" ? "session" : "delivery") : "delivery",
+    billing: pricedOffer ? (billingValue === "hour" ? "hour" : billingValue === "session" ? "session" : "delivery") : "delivery",
     deliveryDays: draft.tiers[0]?.delivery_days ?? null,
     license: draft.license,
     customTerms: draft.customTerms,
@@ -770,7 +772,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         </div>
       ) : (
         <BayPublishKindPair
-          listing={offerKind === "service" ? "service" : offerKind === "app" ? "app" : offerKind === "lesson" ? "lesson" : "digital"}
+          listing={offerKind === "service" || offerKind === "other" ? "service" : offerKind === "app" ? "app" : offerKind === "lesson" ? "lesson" : "digital"}
           siteCategory={presetCategory}
           subcategory={
             <>
@@ -803,7 +805,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
             terms: missing.terms.map((item) => tt(item)),
           },
           priceExtra:
-            offerKind === "service" ? (
+            pricedOffer ? (
               <div>
                 <button type="button" data-bay-more-pricing-toggle aria-expanded={morePricing} onClick={() => setMorePricing((open) => !open)} className={SECONDARY_BUTTON}>
                   {tt("更多定价")}

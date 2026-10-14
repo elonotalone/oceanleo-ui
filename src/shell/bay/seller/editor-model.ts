@@ -239,7 +239,7 @@ export function freshPublishDraft(tt: Translate, listing: BayOfferKind | "digita
   const offer = offerFromListing(listing);
   next.catalogKind = "delivery";
   next.offerKind = offer;
-  next.listingKind = offer === "service" ? "service" : "digital";
+  next.listingKind = offer === "service" || offer === "other" ? "service" : "digital";
   next.simplePrice = true;
   return next;
 }
@@ -394,7 +394,7 @@ export function listingPayload(draft: EditorDraft): {
 } {
   const first = primaryDigitalWork(draft);
   return {
-    listing_kind: draft.offerKind === "service" ? "service" : draft.offerKind === "app" || draft.offerKind === "lesson" ? draft.offerKind : "digital",
+    listing_kind: draft.offerKind === "service" ? "service" : draft.offerKind === "app" || draft.offerKind === "lesson" || draft.offerKind === "other" ? draft.offerKind : "digital",
     license: draft.license === "personal" || draft.license === "commercial" ? draft.license : null,
     digital_work:
       draft.listingKind === "digital" && first?.id
@@ -574,7 +574,7 @@ function extrasFromService(service: BayOwnService): {
   const work = (service as BayOwnService & { digital_work?: { kind?: string; id?: string; title?: string } | null }).digital_work;
   const offer = offerFromListing(service.listing_kind);
   return {
-    listingKind: offer === "service" ? "service" : "digital",
+    listingKind: offer === "service" || offer === "other" ? "service" : "digital",
     offerKind: offer,
     license: service.license === "personal" || service.license === "commercial" ? service.license : "",
     digitalWork:

@@ -7,7 +7,8 @@ import { useUI } from "../../../i18n/ui/useUI";
 import type { MyAppsPaneProps } from "../apps";
 import type { MyLessonsPaneProps } from "../lessons/MyLessonsPane";
 import { MyServicesPane } from "../seller/MyServicesPane";
-import { openBay, type BayPaneProps } from "../shell/bay-state";
+import { openBay } from "../shell/bay-state";
+import { type MinePaneProps } from "./MineCategoryBar";
 
 // 按需加载：静态 import ../apps 会经 MyAppsPane → BayMine → mine/index 绕回本文件。
 // 加载失败时这一段要说出来，不能看上去像「你没有作品」。
@@ -53,8 +54,12 @@ function PublishedLessons(props: MyLessonsPaneProps) {
   return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
 }
 
-export function MyPublishedPane(props: BayPaneProps) {
+export function MyPublishedPane({ category = "all", ...props }: MinePaneProps) {
   const tt = useUI();
+  // 成品文件、人工服务、其他都是服务表里的行；作品、课程各有自己的一段。
+  const showServices = category !== "app" && category !== "lesson";
+  const showApps = category === "all" || category === "app";
+  const showLessons = category === "all" || category === "lesson";
   return (
     <section data-bay-pane="mine-published" className="space-y-4">
       <div className="flex justify-end px-4 pt-4">
@@ -67,15 +72,21 @@ export function MyPublishedPane(props: BayPaneProps) {
           {tt("发布")}
         </button>
       </div>
-      <div data-bay-mine-section="supply">
-        <MyServicesPane {...props} hideNew />
-      </div>
-      <div data-bay-mine-section="apps">
-        <PublishedApps layout={props.layout} siteKey={props.siteKey} />
-      </div>
-      <div data-bay-mine-section="lessons">
-        <PublishedLessons layout={props.layout} siteKey={props.siteKey} />
-      </div>
+      {showServices ? (
+        <div data-bay-mine-section="supply">
+          <MyServicesPane {...props} hideNew category={category} />
+        </div>
+      ) : null}
+      {showApps ? (
+        <div data-bay-mine-section="apps">
+          <PublishedApps layout={props.layout} siteKey={props.siteKey} />
+        </div>
+      ) : null}
+      {showLessons ? (
+        <div data-bay-mine-section="lessons">
+          <PublishedLessons layout={props.layout} siteKey={props.siteKey} />
+        </div>
+      ) : null}
     </section>
   );
 }

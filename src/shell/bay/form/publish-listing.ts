@@ -1,4 +1,4 @@
-export type PublishListingId = "digital" | "service" | "app" | "lesson" | "need";
+export type PublishListingId = "digital" | "service" | "app" | "lesson" | "other" | "need";
 
 let pending: PublishListingId | null = null;
 

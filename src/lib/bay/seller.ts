@@ -7,7 +7,7 @@ import { BayApiError, bayDelete, bayGet, bayPatch, bayPost } from "./http";
 import type { BayPageDoc } from "./page-doc";
 import type { BayCategory, BayWorkRef } from "./types";
 
-export type BayListingKind = "service" | "digital" | "app" | "lesson";
+export type BayListingKind = "service" | "digital" | "app" | "lesson" | "other";
 export type BayLicense = "personal" | "commercial";
 export type BayAudienceMode = "public" | "verified_first" | "invited" | "group";
 

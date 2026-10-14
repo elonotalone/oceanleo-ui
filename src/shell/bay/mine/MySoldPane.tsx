@@ -10,7 +10,8 @@ import { SellerNotice } from "../seller/seller-ui";
 import { MyProposalsPane } from "../needs/MyProposalsPane";
 import { MyOrdersPane } from "../orders/MyOrdersPane";
 import { SellerOverview } from "../seller/MyServicesPane";
-import { useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { useBaySignedIn } from "../shell/bay-state";
+import { ordersShownFor, type MinePaneProps } from "./MineCategoryBar";
 import { PaneLoading } from "../supply/parts";
 import { LazySection } from "./LazySection";
 
@@ -50,28 +51,37 @@ function SoldLessons() {
   );
 }
 
-export function MySoldPane(props: BayPaneProps) {
+export function MySoldPane({ category = "all", ...props }: MinePaneProps) {
   const tt = useUI();
+  const all = category === "all";
   return (
     <section data-bay-pane="mine-sold" className="space-y-6">
-      <div className="px-4 pt-4">
-        <SellerOverview />
-      </div>
-      <div data-bay-mine-section="proposals">
-        <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("报价中")}</h3>
-        <MyProposalsPane {...props} />
-      </div>
-      <div data-bay-mine-section="orders">
-        <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("卖出的订单")}</h3>
-        <MyOrdersPane {...props} fixedRole="seller" />
-      </div>
-      <div data-bay-mine-section="sold-lessons">
-        <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("卖出的课程")}</h3>
-        <div className="px-4">
-          <SoldLessons />
+      {all ? (
+        <div className="px-4 pt-4">
+          <SellerOverview />
         </div>
-      </div>
-      <LazySection marker="app-orders" title="作品订单" load={loadSoldApps} />
+      ) : null}
+      {all ? (
+        <div data-bay-mine-section="proposals">
+          <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("报价中")}</h3>
+          <MyProposalsPane {...props} />
+        </div>
+      ) : null}
+      {ordersShownFor(category) ? (
+        <div data-bay-mine-section="orders">
+          <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("卖出的订单")}</h3>
+          <MyOrdersPane {...props} fixedRole="seller" category={category} />
+        </div>
+      ) : null}
+      {all || category === "lesson" ? (
+        <div data-bay-mine-section="sold-lessons">
+          <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("卖出的课程")}</h3>
+          <div className="px-4">
+            <SoldLessons />
+          </div>
+        </div>
+      ) : null}
+      {all || category === "app" ? <LazySection marker="app-orders" title="作品订单" load={loadSoldApps} /> : null}
     </section>
   );
 }

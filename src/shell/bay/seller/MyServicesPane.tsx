@@ -29,6 +29,7 @@ import { openBaySettings } from "../settings";
 import { baySiteName } from "../shell/bay-links";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { PublishedCategoryTag } from "../mine/PublishedCategoryTag";
+import type { MineCategory } from "../mine/MineCategoryBar";
 import { HiddenByPlatformNotice } from "./seller-ui";
 
 const GROUP_TITLES: Record<BayServiceGroup, string> = {
@@ -88,7 +89,11 @@ export function SellerOverview() {
   );
 }
 
-export function MyServicesPane({ overview = false, hideNew = false }: BayPaneProps & { overview?: boolean; hideNew?: boolean }) {
+export function MyServicesPane({
+  overview = false,
+  hideNew = false,
+  category = "all",
+}: BayPaneProps & { overview?: boolean; hideNew?: boolean; category?: MineCategory }) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -159,8 +164,12 @@ export function MyServicesPane({ overview = false, hideNew = false }: BayPanePro
     );
   }
 
-  const groups = groupMyServices(loaded.services);
+  // 类别选择条：只留选中的那一类。答疑算「人工服务」。
+  const shownServices = category === "all" ? loaded.services : loaded.services.filter((service) => listingCategory(service) === category);
+  const shownConsults = category === "all" || category === "service" ? loaded.consults : [];
+  const groups = groupMyServices(shownServices);
   const empty = loaded.services.length === 0 && loaded.consults.length === 0;
+  const filteredEmpty = !empty && shownServices.length === 0 && shownConsults.length === 0;
 
   return (
     <section data-bay-pane="mine-services" className="space-y-4 p-4">
@@ -182,6 +191,10 @@ export function MyServicesPane({ overview = false, hideNew = false }: BayPanePro
             {tt("发布第一个服务")}
           </button>
         </div>
+      ) : filteredEmpty ? (
+        <p data-bay-empty="category" className="px-1 py-6 text-center text-[13px] text-stone-500">
+          {tt("这一类还没有发布的东西。")}
+        </p>
       ) : (
         BAY_SERVICE_GROUP_ORDER.filter((group) => groups[group].length > 0).map((group) => (
           <div key={group} data-bay-group={group}>
@@ -200,10 +213,10 @@ export function MyServicesPane({ overview = false, hideNew = false }: BayPanePro
         ))
       )}
 
-      {loaded.consults.length ? (
+      {shownConsults.length ? (
         <div data-bay-group="consults">
           <ul>
-            {loaded.consults.map((consult) => (
+            {shownConsults.map((consult) => (
               <li key={consult.id} className="border-b border-stone-100 px-1 py-2.5 text-[13px] text-stone-800">
                 <span className="flex items-start justify-between gap-2">
                   <span className="block min-w-0 truncate font-semibold">{consult.title || tt("未命名服务")}</span>
@@ -228,9 +241,11 @@ function OverviewCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-// 类别只有「成品文件」（数字商品）与「人工服务」（服务、答疑）两种；右边标签见 PublishedCategoryTag。
-function listingCategory(service: BayOwnService): "digital" | "service" {
-  return service.listing_kind === "digital" ? "digital" : "service";
+// 服务表里的行只有三类：成品文件（数字商品）、其他、人工服务（服务、答疑）；右边标签见 PublishedCategoryTag。
+function listingCategory(service: BayOwnService): "digital" | "service" | "other" {
+  if (service.listing_kind === "digital") return "digital";
+  if (service.listing_kind === "other") return "other";
+  return "service";
 }
 
 function ServiceRow({ service }: { service: BayOwnService }) {
