@@ -480,6 +480,24 @@ test("agent choices survive remount, while existing history keeps its own config
   } finally { view.cleanup(); }
 });
 
+test("temporary machine offline automatically reconnects and clears stale errors without resending a prompt", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "session_opened", program: "cursor", acp_session: "recover-history" });
+    const count = FakeSocket.sockets.length;
+    await server({ t: "error", program: "", code: "computer_offline" });
+    assert.equal(view.$('[data-oceanleo-cc-dialog-input]').closest('form').querySelector('button[type="submit"]').disabled, true);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+    await until(() => FakeSocket.sockets.length > count && openSocket().readyState === WebSocket.OPEN, "automatic reconnect");
+    assert.equal(view.$('[data-oceanleo-cc-dialog-input]').closest('form').querySelector('button[type="submit"]').disabled, true, "transport open alone does not prove the node is back");
+    await server(STATUS);
+    assert.equal(view.$('[data-oceanleo-cc-dialog-input]').closest('form').querySelector('button[type="submit"]').disabled, false);
+    assert.equal(view.$('[data-oceanleo-cc-notice="computer_offline"]'), null);
+    assert.equal(sentFrames().some(frame => frame.t === "prompt"), false);
+    assert.equal(new URL(window.location.href).searchParams.get('session'), 'recover-history');
+  } finally { view.cleanup(); }
+});
+
 test("程序状态未到时 Cursor 不写未安装；本地 agent 读失败也不画到 Cursor", async () => {
   const computer = { ...COMPUTER, id: `cc_${++computerSequence}` };
   FakeSocket.sockets.length = 0;

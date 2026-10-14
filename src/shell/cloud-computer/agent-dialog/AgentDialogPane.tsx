@@ -30,7 +30,7 @@ export function AgentDialogPane({
     <div
       className={`relative flex min-h-0 flex-1 flex-col ${tone.page}`}
       data-oceanleo-cc-agent-dialog-pane=""
-      data-oceanleo-cc-reconnect={dialog.offline ? "paused" : "on"}
+      data-oceanleo-cc-reconnect={dialog.offline ? "retrying" : "on"}
     >
       <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${tone.border}`}>
         <p className={`text-[12px] ${tone.muted}`}>{title}</p>

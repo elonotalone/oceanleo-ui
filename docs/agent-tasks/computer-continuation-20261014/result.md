@@ -22,3 +22,11 @@ subtests, full node Go tests, and a real harmless sudo environment probe. No
 browser or existing user conversation prompts. Release source is isolated from
 the unrelated uncommitted LeoBay work before regenerating CSS and pinning the
 twin with the standard bump preflights. Production release remains untouched.
+
+Follow-up screenshot: a transient computer_offline error permanently disabled
+reconnection. Recovery now closes the rejected connection and retries with
+backoff; only a valid status response resets backoff and clears stale offline
+state/notices. A computer-wide error also applies when an existing history
+view is focused. No prompt is automatically resent. Focused regression is now
+46 behavioral tests, including recovery without clicking Retry. This UI-only
+follow-up does not replace the gateway again.

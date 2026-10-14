@@ -675,11 +675,11 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     });
     assert.equal(
       view.host.querySelector("[data-oceanleo-cc-agent-dialog-pane]").getAttribute("data-oceanleo-cc-reconnect"),
-      "paused",
+      "retrying",
     );
     assert.match(view.host.textContent || "", /机器离线/);
     const count = FakeSocket.sockets.length;
-    view.socket().close();
+    assert.equal(view.socket(), null, "offline already closed the rejected socket to start recovery");
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
     });

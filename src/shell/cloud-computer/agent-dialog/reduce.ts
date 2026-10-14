@@ -468,7 +468,13 @@ function installMatches(state: DialogState, frame: Record<string, unknown>): boo
 
 function onFrame(state: DialogState, frame: Record<string, unknown>): DialogState {
   const kind = str(frame.t);
-  if (kind === "status") return { ...state, programs: parsePrograms(frame.programs) };
+  if (kind === "status") return {
+    ...state,
+    programs: parsePrograms(frame.programs),
+    offline: false,
+    messages: state.messages.filter((message) => message.kind !== "notice" ||
+      (message.code !== "computer_offline" && message.code !== "dialog_unreachable")),
+  };
   if (kind === "install_progress" && installMatches(state, frame)) {
     const text = str(frame.text);
     if (!text) return state;

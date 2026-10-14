@@ -150,7 +150,6 @@ export function useAgentDialog({
   const localOceanleoRef = useRef(localOceanleo);
   const socketRef = useRef<WebSocket | null>(null);
   const connectGen = useRef(0);
-  const haltRef = useRef(false);
   const delayRef = useRef(1000);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef<() => Promise<WebSocket | null>>(async () => null);
@@ -221,9 +220,16 @@ export function useAgentDialog({
       return;
     }
     if (frame.t === "error" && frame.code === "computer_offline") {
-      haltRef.current = true;
-      clearTimer();
+      // A node reconnects after gateway replacement. Treat offline as a
+      // retryable connection loss, not a permanent stop requiring a click.
+      socketRef.current?.close();
+      // Offline belongs to the computer, including when the focused view is
+      // an existing session and the gateway error carries no session id.
+      stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
+      dispatch({ type: "frame", frame });
+      return;
     }
+    if (frame.t === "status") delayRef.current = 1000;
     const cached = presentationFor(computerIdRef.current);
     if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
     if (frame.t === "sessions" && typeof frame.program === "string" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
@@ -297,7 +303,7 @@ export function useAgentDialog({
   }, [clearTimer, initialSessionId, mountProgram]);
 
   const scheduleReconnect = useCallback(() => {
-    if (!enabledRef.current || !activeRef.current || haltRef.current) return;
+    if (!enabledRef.current || !activeRef.current) return;
     clearTimer();
     const wait = delayRef.current;
     delayRef.current = nextReconnectDelay(wait);
@@ -319,7 +325,7 @@ export function useAgentDialog({
     return run;
 
     async function openSocket(): Promise<WebSocket | null> {
-    if (!enabledRef.current || haltRef.current) return null;
+    if (!enabledRef.current) return null;
     const gen = (connectGen.current += 1);
     const previous = socketRef.current;
     socketRef.current = null;
@@ -333,7 +339,7 @@ export function useAgentDialog({
     } catch {
       token = "";
     }
-    if (gen !== connectGen.current || !enabledRef.current || haltRef.current) return null;
+    if (gen !== connectGen.current || !enabledRef.current) return null;
     if (!token) {
       dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
       scheduleReconnect();
@@ -374,7 +380,6 @@ export function useAgentDialog({
             finish(null);
             return;
           }
-          delayRef.current = 1000;
           sendJson(socket, { t: "status" });
           const program = stateRef.current.program;
           if (usesDialogSocket(program, localOceanleoRef.current)) {
@@ -398,7 +403,7 @@ export function useAgentDialog({
           return;
         }
         finish(null);
-        if (!enabledRef.current || haltRef.current) return;
+        if (!enabledRef.current) return;
         scheduleReconnect();
       });
     });
@@ -654,7 +659,6 @@ export function useAgentDialog({
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
       return;
     }
-    haltRef.current = false;
     dispatch({ type: "clear-offline" });
     delayRef.current = 1000;
     void connect();
@@ -1098,7 +1102,6 @@ export function useAgentDialog({
     // 「重试」对整个对话框一视同仁：WS 开着就重发 status（Key 保存后程序行靠它刷新，
     // key 的 POST/DELETE 是纯 REST、后端不推 status），没开着就重连；
     // oceanleo 额外再拉 agentState（REST 侧真相）。
-    haltRef.current = false;
     delayRef.current = 1000;
     dispatch({ type: "clear-offline" });
     const socket = socketRef.current;
