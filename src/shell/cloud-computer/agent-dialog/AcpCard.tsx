@@ -312,12 +312,12 @@ export function AcpCard({
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}
                   <button type="button" disabled={!oceanleoLoaded || oceanleoInstalling} onClick={() => void installLocalAgent()} data-oceanleo-acp-oceanleo-install="" className="ml-2 underline disabled:opacity-50">{oceanleoInstalling ? tt("正在安装…") : tt("安装")}</button>
                 </p>
-              ) : selected !== "oceanleo" && (!currentWsRow?.installed || (currentWsRow.logged_in !== true && currentWsRow.auth !== "key")) ? (
-                <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs ${tone.border} ${tone.muted}`}>
+              ) : selected !== "oceanleo" && currentWsRow && (!currentWsRow.installed || (currentWsRow.logged_in !== true && currentWsRow.auth !== "key")) ? (
+                <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs ${tone.border} ${tone.muted}`} data-oceanleo-acp-ws-setup="">
                   <span className="min-w-0 flex-1">
-                    {!currentWsRow?.installed ? tt("未安装") : tt("未登录")}
+                    {!currentWsRow.installed ? tt("未安装") : tt("未登录")}
                   </span>
-                  {!currentWsRow?.installed ? (
+                  {!currentWsRow.installed ? (
                     <button type="button" className="underline-offset-2 hover:underline" onClick={() => requestInstall(selected)}>
                       {tt("安装")}
                     </button>
@@ -342,7 +342,7 @@ export function AcpCard({
             </div>
           </div>
 
-      {oceanleoError ? (
+      {oceanleoError && selected === "oceanleo" ? (
         <p className={`mx-4 mb-4 rounded-lg border px-3 py-2 text-xs ${tone.danger}`} data-oceanleo-acp-oceanleo-error="">
           {oceanleoError}
         </p>

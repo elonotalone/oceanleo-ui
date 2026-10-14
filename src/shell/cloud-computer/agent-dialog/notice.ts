@@ -65,7 +65,7 @@ export function noticeAction(
   if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
     return "install";
   }
-  if (code === "computer_offline") return "retry";
+  if (code === "computer_offline" || code === "dialog_unreachable") return "retry";
   return null;
 }
 

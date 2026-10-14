@@ -339,6 +339,41 @@ test("程序条展示状态、无选择页；缺安装与凭据时顶部操作�
   } finally { view.cleanup(); }
 });
 
+test("程序状态未到时 Cursor 不写未安装；本地 agent 读失败也不画到 Cursor", async () => {
+  const computer = { ...COMPUTER, id: `cc_${++computerSequence}` };
+  FakeSocket.sockets.length = 0;
+  globalThis.__acpApi = {
+    ...freshApi(),
+    oceanleoPending: Promise.reject(new Error("probe failed")),
+  };
+  globalThis.__acpRouter.replaced = [];
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => {
+      root.render(React.createElement(AcpCard, { computer, initialProgram: "cursor" }));
+    });
+    await until(() => sentFrames().some((frame) => frame.t === "status"), "status frame");
+    assert.equal(host.querySelector("[data-oceanleo-acp-ws-setup]"), null);
+    assert.equal((host.textContent || "").includes("未安装"), false);
+    assert.equal(host.querySelector("[data-oceanleo-acp-oceanleo-error]"), null);
+    await act(async () => {
+      openSocket().server(STATUS);
+    });
+    assert.equal(host.querySelector("[data-oceanleo-acp-ws-setup]"), null);
+    assert.equal((host.textContent || "").includes("未安装"), false);
+    await click(host.querySelector('[data-oceanleo-program-strip-item="oceanleo"]'));
+    await until(() => host.querySelector("[data-oceanleo-acp-oceanleo-error]"), "oceanleo error stays on oceanleo");
+    assert.match(host.textContent || "", /未能读取本地 agent 状态/);
+    await click(host.querySelector('[data-oceanleo-program-strip-item="cursor"]'));
+    assert.equal(host.querySelector("[data-oceanleo-acp-oceanleo-error]"), null);
+  } finally {
+    act(() => root.unmount());
+    host.remove();
+  }
+});
+
 test("OceanLeo 未装：横幅安装按钮调 installOceanleoAgent，装完移除云端提示", async () => {
   const view = await boot();
   try {

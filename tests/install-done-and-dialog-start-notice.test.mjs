@@ -247,6 +247,8 @@ test("acp_unavailable：只有尚未安装才带安装按钮；已知已安装�
   assert.equal(noticeCopy(tt, "acp_unavailable", null), STILL_NEEDS_INSTALL);
   assert.equal(noticeAction("acp_unavailable", null), null);
   assert.equal(noticeAction("program_missing", null), "install");
+  assert.equal(noticeAction("dialog_unreachable"), "retry");
+  assert.equal(noticeAction("computer_offline"), "retry");
 });
 
 test("黄字：名单或刚装完的路径能证明已安装时，不再给安装按钮", async () => {
