@@ -345,7 +345,7 @@ test("程序条展示状态、无选择页；缺安装与凭据时顶部操作�
   } finally { view.cleanup(); }
 });
 
-test("新对话在过去的对话上方，标题旁复制当前机器、程序和会话地址", async () => {
+test("新对话在过去的对话上方，标题旁复制服务器上的对话文件路径", async () => {
   window.history.replaceState(null, "", "/computers/old?card=cli&program=codex&session=old&overlay=dev#messages");
   const copied = [];
   Object.defineProperty(navigator, "clipboard", {
@@ -362,32 +362,30 @@ test("新对话在过去的对话上方，标题旁复制当前机器、程序�
     assert.equal(button.parentElement.firstElementChild.textContent, "Cursor");
     assert.equal(button.parentElement.lastElementChild, button);
     assert.match(button.className, /ml-auto/);
-    await server({ t: "session_opened", program: "cursor", acp_session: "chat /?&中文", cwd: "/root", replayed: 0 });
+    const cursorPath = "/root/.cursor/acp-sessions/9100123f-6459-4781-a624-62d57f0e6a05";
+    await server({ t: "session_opened", program: "cursor", acp_session: "9100123f-6459-4781-a624-62d57f0e6a05", cwd: "/root", path: cursorPath, replayed: 0 });
     await click(button);
-    let url = new URL(copied.at(-1));
-    assert.equal(url.origin, window.location.origin);
-    assert.equal(url.pathname, `/computers/${view.computer.id}`);
-    assert.equal(url.searchParams.get("card"), "acp");
-    assert.equal(url.searchParams.get("program"), "cursor");
-    assert.equal(url.searchParams.get("session"), "chat /?&中文");
-    assert.equal(url.searchParams.get("overlay"), "dev");
-    assert.equal(url.hash, "#messages");
-    assert.equal(button.getAttribute("aria-label"), "已复制会话地址");
+    assert.equal(copied.at(-1), cursorPath);
+    assert.equal(copied.at(-1).startsWith("https://"), false);
+    assert.equal(button.getAttribute("aria-label"), "已复制对话位置");
 
     await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
     assert.equal(button.parentElement.firstElementChild.textContent, "Claude Code");
-    assert.equal(button.getAttribute("aria-label"), "复制会话地址");
+    assert.equal(button.getAttribute("aria-label"), "复制对话位置");
     await server({ t: "session_opened", program: "claude", acp_session: "claude-recent", cwd: "/root", replayed: 0 });
+    const beforeLookup = copied.length;
     await click(button);
-    url = new URL(copied.at(-1));
-    assert.equal(url.searchParams.get("program"), "claude");
-    assert.equal(url.searchParams.get("session"), "claude-recent");
+    assert.equal(copied.length, beforeLookup);
+    assert.ok(sentFrames().some((frame) => frame.t === "session_path" && frame.program === "claude" && frame.acp_session === "claude-recent"));
+    const claudePath = "/root/.claude/projects/-root/claude-recent.jsonl";
+    await server({ t: "session_path", program: "claude", acp_session: "claude-recent", path: claudePath });
+    await until(() => copied.at(-1) === claudePath, "copied located path");
+    assert.equal(button.getAttribute("aria-label"), "已复制对话位置");
 
     await click(view.$("[data-oceanleo-acp-new-session]"));
     await click(button);
-    url = new URL(copied.at(-1));
-    assert.equal(url.searchParams.get("program"), "claude");
-    assert.equal(url.searchParams.has("session"), false);
+    assert.equal(button.getAttribute("aria-label"), "还没有可复制的对话文件");
+    assert.equal(copied.at(-1), claudePath);
   } finally {
     view.cleanup();
     delete navigator.clipboard;
@@ -400,13 +398,14 @@ test("复制地址时剪贴板不可用或拒绝，不显示已复制", async ()
   try {
     const button = view.$("[data-oceanleo-acp-copy-link]");
     await click(button);
-    assert.equal(button.getAttribute("aria-label"), "复制会话地址");
+    assert.equal(button.getAttribute("aria-label"), "还没有可复制的对话文件");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { async writeText() { throw new Error("permission denied"); } },
     });
+    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", path: "/root/.cursor/acp-sessions/one", replayed: 0 });
     await click(button);
-    assert.equal(button.getAttribute("aria-label"), "复制会话地址");
+    assert.equal(button.getAttribute("aria-label"), "复制对话位置");
   } finally {
     view.cleanup();
     delete navigator.clipboard;

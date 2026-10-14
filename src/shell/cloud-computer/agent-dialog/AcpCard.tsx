@@ -95,6 +95,7 @@ export function AcpCard({
   const [oceanleoInstalling, setOceanleoInstalling] = useState(false);
   const [oceanleoError, setOceanleoError] = useState("");
   const [copiedLink, setCopiedLink] = useState("");
+  const [pendingCopy, setPendingCopy] = useState("");
   const initialSessionApplied = useRef("");
 
   const dialog = useAgentDialog({
@@ -148,17 +149,64 @@ export function AcpCard({
     replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
   }
 
-  function copyConversationLink() {
+  function conversationFilePath(): string {
+    const listed = dialog.sessions.find((session) => session.id === dialog.activeSession)?.path || "";
+    const path = dialog.sessionPath || listed;
+    return path.startsWith("/") ? path : "";
+  }
+
+  function copyConversationPath(path: string, target: string) {
     const write = navigator.clipboard?.writeText;
-    if (!write) return;
-    replaceAddress(selected, dialog.program === selected ? dialog.activeSession : undefined);
-    const target = `${computer.id}:${selected}:${dialog.activeSession || ""}`;
-    setCopiedLink("");
-    void write.call(navigator.clipboard, window.location.href).then(
-      () => setCopiedLink(target),
-      () => setCopiedLink(""),
+    if (!write) {
+      setPendingCopy("");
+      setCopiedLink("");
+      return;
+    }
+    void write.call(navigator.clipboard, path).then(
+      () => {
+        setPendingCopy("");
+        setCopiedLink(target);
+      },
+      () => {
+        setPendingCopy("");
+        setCopiedLink("");
+      },
     );
   }
+
+  function copyConversationLink() {
+    const target = `${computer.id}:${selected}:${dialog.activeSession || ""}`;
+    const path = conversationFilePath();
+    setCopiedLink("");
+    if (path) {
+      copyConversationPath(path, target);
+      return;
+    }
+    if (dialog.activeSession && dialog.program === selected) {
+      setPendingCopy(target);
+      dialog.requestSessionPath();
+      return;
+    }
+    setPendingCopy("");
+    setCopiedLink("missing");
+  }
+
+  useEffect(() => {
+    if (!pendingCopy) return;
+    const path = conversationFilePath();
+    if (path) {
+      copyConversationPath(path, pendingCopy);
+      return;
+    }
+    if (dialog.sessionPathResolved) {
+      setPendingCopy("");
+      setCopiedLink("missing");
+    }
+  }, [pendingCopy, dialog.sessionPath, dialog.sessionPathResolved, dialog.sessions, dialog.activeSession]);
+
+  useEffect(() => {
+    setPendingCopy("");
+  }, [computer.id, selected]);
 
   useEffect(() => {
     try { window.localStorage.setItem(`oceanleo.serverPage.lastProgram.${computer.id}`, selected); } catch { /* Storage may be unavailable. */ }
@@ -226,6 +274,8 @@ export function AcpCard({
     : undefined;
   const sessionTitle = dialog.sessions.find((session) => session.id === dialog.activeSession)?.title;
   const linkCopied = copiedLink === `${computer.id}:${selected}:${dialog.activeSession || ""}`;
+  const copyMissing = copiedLink === "missing";
+  const copyLabel = linkCopied ? tt("已复制对话位置") : copyMissing ? tt("还没有可复制的对话文件") : tt("复制对话位置");
   const keyRow = keyProgram ? statusOf(keyProgram, dialog.programs) : undefined;
 
   return (
@@ -332,15 +382,15 @@ export function AcpCard({
                   type="button"
                   onClick={copyConversationLink}
                   className={`ml-auto inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 ${tone.hover}`}
-                  aria-label={linkCopied ? tt("已复制会话地址") : tt("复制会话地址")}
-                  title={linkCopied ? tt("已复制会话地址") : tt("复制会话地址")}
+                  aria-label={copyLabel}
+                  title={copyLabel}
                   data-oceanleo-acp-copy-link=""
                 >
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" className="size-3.5">
                     <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
                     <path d="M10.5 5.5v-2A1 1 0 0 0 9.5 2.5h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
                   </svg>
-                  <span>{linkCopied ? tt("已复制会话地址") : tt("复制会话地址")}</span>
+                  <span>{copyLabel}</span>
                 </button>
               </header>
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (

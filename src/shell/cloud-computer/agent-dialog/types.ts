@@ -65,6 +65,8 @@ export type DialogSession = {
   title: string;
   cwd: string;
   updatedAt: string;
+  /** Absolute transcript/session path on the connected computer. */
+  path?: string;
 };
 
 export type DialogConfigOption = {
@@ -217,6 +219,9 @@ export type DialogState = {
   sessions: DialogSession[];
   sessionsSupported: boolean | null;
   activeSession: string;
+  /** Absolute conversation file path on the computer, when known. */
+  sessionPath: string;
+  sessionPathResolved: boolean;
   /** Local turn identity before ACP assigns a session id. */
   draftRef?: string;
   serverActiveSession: string;
@@ -260,6 +265,9 @@ export type AgentDialogController = {
   sessionLoading: boolean;
   draftRef?: string;
   requestSessions: () => void;
+  requestSessionPath: () => void;
+  sessionPath: string;
+  sessionPathResolved: boolean;
   openSession: (id: string) => void;
   newSession: (cwd?: string) => void;
   attachments: DialogAttachment[];

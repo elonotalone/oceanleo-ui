@@ -15,6 +15,7 @@ import {
   parseSessions,
   parseTool,
   toolTitleOf,
+  conversationPath,
 } from "./parse";
 import { isModelFamilyConfig } from "./notice";
 import { normalizeUserMessage } from "./message-attachments";
@@ -134,6 +135,8 @@ export function initialDialogState(): DialogState {
     sessions: [],
     sessionsSupported: null,
     activeSession: "",
+    sessionPath: "",
+    sessionPathResolved: false,
     serverActiveSession: "",
     busySession: "",
     liveTurns: {},
@@ -180,6 +183,8 @@ export type DialogEvent =
       sessions: DialogState["sessions"];
       sessionsSupported: boolean | null;
       sessionLoading: boolean;
+      sessionPath?: string;
+      sessionPathResolved?: boolean;
       models: DialogState["models"];
       modelSource: string;
       selectedModel: string;
@@ -541,12 +546,26 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     for (const session of Array.isArray(frame.busy) ? frame.busy : []) {
       if (typeof session === "string") liveTurns[turnKey(state.program, session)] = true;
     }
+    const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
     return {
       ...state,
       liveTurns,
       sessionsSupported: frame.supported !== false,
-      sessions: frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      sessions,
       serverActiveSession: str(frame.active),
+      sessionPath: listedPath || state.sessionPath,
+      sessionPathResolved: Boolean(listedPath) || state.sessionPathResolved,
+    };
+  }
+  if (kind === "session_path") {
+    const id = str(frame.acp_session);
+    const path = conversationPath(frame.path);
+    return {
+      ...state,
+      sessions: state.sessions.map((session) => (session.id === id ? { ...session, ...(path ? { path } : {}) } : session)),
+      sessionPath: id === state.activeSession ? path : state.sessionPath,
+      sessionPathResolved: id === state.activeSession ? true : state.sessionPathResolved,
     };
   }
   if (kind === "transcript") {
@@ -578,10 +597,13 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     const session = str(frame.acp_session);
     const opened = rememberSession(state, frame);
     const live = isLiveTurn(opened.liveTurns, opened.program, session);
+    const path = conversationPath(frame.path) || opened.sessions.find((row) => row.id === session)?.path || "";
     return {
       ...opened,
       activeSession: session,
       sessionLoading: false,
+      sessionPath: path,
+      sessionPathResolved: Boolean(path),
       busy: live,
       busySession: live ? session : "",
     };
@@ -695,6 +717,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessions: [],
         sessionsSupported: null,
         activeSession: "",
+        sessionPath: "",
+        sessionPathResolved: false,
         sessionLoading: false,
         busy: false,
         agentBusy: false,
@@ -709,6 +733,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessions: event.sessions,
         sessionsSupported: event.sessionsSupported,
         sessionLoading: event.sessionLoading,
+        sessionPath: event.sessionPath ?? "",
+        sessionPathResolved: event.sessionPathResolved ?? false,
         models: event.models,
         modelSource: event.modelSource,
         selectedModel: event.selectedModel,
@@ -786,6 +812,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         ...state,
         activeSession: event.id,
         sessionLoading: true,
+        sessionPath: state.sessions.find((session) => session.id === event.id)?.path || "",
+        sessionPathResolved: Boolean(state.sessions.find((session) => session.id === event.id)?.path),
         messages: event.messages ?? [],
         commands: [],
         busy: isLiveTurn(state.liveTurns, state.program, event.id),
@@ -798,6 +826,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessions: [],
         sessionsSupported: false,
         activeSession: "",
+        sessionPath: "",
+        sessionPathResolved: false,
         sessionLoading: false,
       };
     case "open-install": {

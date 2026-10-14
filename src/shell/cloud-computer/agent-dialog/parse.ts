@@ -34,6 +34,12 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+export function conversationPath(value: unknown): string {
+  const path = str(value);
+  if (!path.startsWith("/") || path.includes("\0") || path.includes("\n") || path.includes("\r")) return "";
+  return path;
+}
+
 function optionWire(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -220,11 +226,13 @@ export function parseSessions(raw: unknown): DialogSession[] {
     const row = asRecord(item);
     if (!row || !str(row.id)) continue;
     const id = str(row.id);
+    const path = conversationPath(row.path);
     out.push({
       id,
       title: str(row.title) || id,
       cwd: str(row.cwd),
       updatedAt: str(row.updated_at),
+      ...(path ? { path } : {}),
     });
   }
   return out;

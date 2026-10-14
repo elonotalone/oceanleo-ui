@@ -63,6 +63,8 @@ type ViewSnap = {
   sessions: ReturnType<typeof initialDialogState>["sessions"];
   sessionsSupported: boolean | null;
   sessionLoading: boolean;
+  sessionPath: string;
+  sessionPathResolved: boolean;
   models: ReturnType<typeof initialDialogState>["models"];
   modelSource: string;
   selectedModel: string;
@@ -88,6 +90,8 @@ function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
     sessions: state.sessions,
     sessionsSupported: state.sessionsSupported,
     sessionLoading: state.sessionLoading,
+    sessionPath: state.sessionPath,
+    sessionPathResolved: state.sessionPathResolved,
     models: state.models,
     modelSource: state.modelSource,
     selectedModel: state.selectedModel,
@@ -240,7 +244,7 @@ export function useAgentDialog({
     }
     const frameSession = typeof frame.acp_session === "string" ? frame.acp_session : "";
     const frameProgram = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
-    const related = new Set(["user_message", "turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "error"]);
+    const related = new Set(["user_message", "turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "session_path", "error"]);
     if (related.has(String(frame.t)) && (isWsProgram(frameProgram) || frameProgram === "oceanleo")) {
       const ref = typeof frame.ref === "string" ? frame.ref : "";
       const pendingKey = ref ? pendingRefs.current.get(ref) : frame.t === "session_opened" && frameProgram === stateRef.current.program && !stateRef.current.activeSession ? viewKeyRef.current : undefined;
@@ -885,6 +889,18 @@ export function useAgentDialog({
     })();
   }, [ensureOpen]);
 
+  const requestSessionPath = useCallback(() => {
+    const program = stateRef.current.program;
+    const acpSession = stateRef.current.activeSession.trim();
+    if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
+    const sent = sendJson(socketRef.current, { t: "session_path", program, acp_session: acpSession });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "session_path", program, acp_session: acpSession });
+    })();
+  }, [ensureOpen]);
+
   const openSession = useCallback((id: string) => {
     const acpSession = id.trim();
     const program = stateRef.current.program;
@@ -916,6 +932,8 @@ export function useAgentDialog({
     stateRef.current = {
       ...stateRef.current,
       activeSession: "",
+      sessionPath: "",
+      sessionPathResolved: false,
       sessionLoading: false,
       messages: [],
       commands: [],
@@ -1192,6 +1210,9 @@ export function useAgentDialog({
     draftRef: state.draftRef,
     sessionLoading: state.sessionLoading,
     requestSessions,
+    requestSessionPath,
+    sessionPath: state.sessionPath,
+    sessionPathResolved: state.sessionPathResolved,
     openSession,
     newSession,
     attachments,
