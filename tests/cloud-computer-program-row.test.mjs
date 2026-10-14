@@ -282,7 +282,8 @@ test("已有 key 的行：移除打开 Key 卡 hasKey 态，DELETE 走 query pro
     const sheet = view.host.querySelector('[data-oceanleo-cc-key-sheet-program="cursor"]');
     assert.ok(sheet);
     assert.ok(sheet.querySelector("[data-oceanleo-cc-key-saved-badge]"));
-    assert.equal(sheet.querySelector("[data-oceanleo-cc-key-input]"), null);
+    assert.ok(sheet.querySelector("[data-oceanleo-cc-key-input]"));
+    assert.ok(sheet.querySelector("[data-oceanleo-cc-key-replace-hint]"));
     await click(sheet.querySelector("[data-oceanleo-cc-key-remove]"));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -290,6 +291,52 @@ test("已有 key 的行：移除打开 Key 卡 hasKey 态，DELETE 走 query pro
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "https://gateway.test/v1/computers/cc_1/programs/cursor/key");
     assert.equal(calls[0].method, "DELETE");
+    assert.equal(dc.retry, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    view.cleanup();
+    marker.remove();
+  }
+});
+
+test("已有 key 的行：Key 卡能再贴一把换掉，POST 新 key", async () => {
+  const marker = document.createElement("div");
+  marker.setAttribute("data-oceanleo-cc-shell-task", "task_1");
+  document.body.append(marker);
+  const calls = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : null;
+    calls.push({ url: String(url), method: init?.method, body });
+    return { ok: true, status: 200, json: async () => ({ ok: true, auth: "key" }) };
+  };
+  const { calls: dc, dialog } = fakeDialog();
+  const view = await render(dialog);
+  try {
+    await click(view.host.querySelector('[data-oceanleo-cc-key-remove="cursor"]'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const sheet = view.host.querySelector('[data-oceanleo-cc-key-sheet-program="cursor"]');
+    assert.ok(sheet);
+    const input = sheet.querySelector("[data-oceanleo-cc-key-input]");
+    assert.ok(input);
+    const propKey = Object.keys(input).find((name) => name.startsWith("__reactProps"));
+    assert.ok(propKey);
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+      setter.call(input, "key_replacement");
+      input[propKey].onChange({ target: input, currentTarget: input });
+    });
+    await click(sheet.querySelector("[data-oceanleo-cc-key-save]"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://gateway.test/v1/computers/cc_1/programs/cursor/key");
+    assert.equal(calls[0].method, "POST");
+    assert.deepEqual(calls[0].body, { key: "key_replacement", provider: "" });
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-key-sheet]"), null);
     assert.equal(dc.retry, 1);
   } finally {
     globalThis.fetch = previousFetch;
