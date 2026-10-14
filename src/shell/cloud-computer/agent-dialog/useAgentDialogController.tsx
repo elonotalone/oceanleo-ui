@@ -56,6 +56,7 @@ type Presentation = Pick<ReturnType<typeof initialDialogState>, "programs" | "se
 type ViewSnap = {
   messages: AgentDialogMessage[];
   activeSession: string;
+  draftRef?: string;
   sessions: ReturnType<typeof initialDialogState>["sessions"];
   sessionsSupported: boolean | null;
   sessionLoading: boolean;
@@ -67,11 +68,11 @@ type ViewSnap = {
   configOptions: ReturnType<typeof initialDialogState>["configOptions"];
   commands: ReturnType<typeof initialDialogState>["commands"];
 };
-const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">>; views: Map<string, ViewSnap> }>();
+const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">>; views: Map<string, ViewSnap>; last: Map<string, string> }>();
 function presentationFor(id: string) {
   let cached = presentationCache.get(id);
   if (!cached) {
-    cached = { programs: [], sessions: new Map(), views: new Map() };
+    cached = { programs: [], sessions: new Map(), views: new Map(), last: new Map() };
     presentationCache.set(id, cached);
   }
   return cached;
@@ -80,6 +81,7 @@ function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
   return {
     messages: state.messages,
     activeSession: state.activeSession,
+    draftRef: state.draftRef,
     sessions: state.sessions,
     sessionsSupported: state.sessionsSupported,
     sessionLoading: state.sessionLoading,
@@ -104,6 +106,7 @@ export function useAgentDialog({
   localOceanleo = false,
   active = true,
   initialProgram = "oceanleo",
+  initialSessionId,
   oceanleoReady = true,
 }: {
   computerId: string;
@@ -112,16 +115,18 @@ export function useAgentDialog({
   localOceanleo?: boolean;
   active?: boolean;
   initialProgram?: AgentProgram;
+  initialSessionId?: string;
   oceanleoReady?: boolean;
 }): AgentDialogControllerV2 {
   const tt = useUI();
   const [mountProgram] = useState(() => initialProgram);
+  const [mountRef] = useState(() => `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
   const [state, dispatch] = useReducer(
     (previous: ReturnType<typeof initialDialogState>, event: Parameters<typeof applyDialog>[1]) => {
       const next = applyDialog(previous, event);
       if (event.type === "reset") next.program = mountProgram;
       return event.type === "reset" || event.type === "program" ? hydratePresentation(computerId, next) : next;
-    }, undefined, () => hydratePresentation(computerId, { ...initialDialogState(), program: mountProgram }),
+    }, undefined, () => hydratePresentation(computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }),
   );
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
@@ -161,14 +166,23 @@ export function useAgentDialog({
   } | null>(null);
   // 程序切换时消息列表按程序分开：切走前把当前列表存进缓存，切回来时恢复；
   // oceanleo 的缓存只是过渡，进入时一律用 agentState/getTask 的服务端真相覆盖。
-  const messagesCacheRef = useRef(new Map<string, AgentDialogMessage[]>());
+  const messagesCacheRef = useRef(new Map<string, AgentDialogMessage[]>()); // REST OceanLeo only
+  const newRefs = useRef(new Map<AgentProgram, string>([[mountProgram, mountRef]]));
+  const pendingRefs = useRef(new Map<string, string>());
+  const viewKeyRef = useRef(`${mountProgram}::new:${mountRef}`);
+  const initialOpened = useRef(new Set<string>());
+  const pendingConfig = useRef(new Map<string, Record<string, string | boolean>>());
+  function clientRef(program: AgentProgram): string {
+    let ref = newRefs.current.get(program);
+    if (!ref) { ref = `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`; newRefs.current.set(program, ref); }
+    return ref;
+  }
 
   stateRef.current = state;
   if (state.program) {
-    presentationFor(computerId).views.set(state.program, viewSnapOf(state));
-    if (state.activeSession) {
-      messagesCacheRef.current.set(`${state.program}::${state.activeSession}`, state.messages);
-    }
+    const cached = presentationFor(computerId);
+    cached.views.set(viewKeyRef.current, viewSnapOf(state));
+    cached.last.set(state.program, viewKeyRef.current);
   }
   draftRef.current = draft;
   attachmentsRef.current = attachments;
@@ -213,59 +227,70 @@ export function useAgentDialog({
       cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
     }
     const frameSession = typeof frame.acp_session === "string" ? frame.acp_session : "";
-    const talk = frame.t === "user_message" || frame.t === "turn_start" || frame.t === "delta" || frame.t === "thought" || frame.t === "tool" || frame.t === "plan" || frame.t === "usage" || frame.t === "done" || frame.t === "transcript";
-    const frameProgram = typeof frame.program === "string" ? frame.program : "";
-    const otherProgram = Boolean(frameProgram && stateRef.current.program && frameProgram !== stateRef.current.program);
-    const otherSession = Boolean(
-      talk &&
-        frameSession &&
-        stateRef.current.activeSession &&
-        frameSession !== stateRef.current.activeSession,
-    );
-    const skipCurrentTalk = Boolean((otherSession || otherProgram) && talk);
-    if (otherProgram || otherSession) {
-      if (talk || frame.t === "error" || frame.t === "done") {
-        const program = (otherProgram ? frameProgram : stateRef.current.program) ?? "";
-        const session = frameSession || (otherProgram ? "" : stateRef.current.activeSession);
-        const key = `${program}::${session}`;
-        const cachedView = presentationFor(computerIdRef.current).views.get(program);
-        const shadow = applyDialog(
-          {
-            ...initialDialogState(),
-            program: program as AgentProgram,
-            activeSession: session,
-            messages: messagesCacheRef.current.get(key) ?? cachedView?.messages ?? [],
-            liveTurns: stateRef.current.liveTurns,
-          },
-          { type: "frame", frame },
-        );
-        messagesCacheRef.current.set(key, shadow.messages);
-        if (program) {
-          const current = presentationFor(computerIdRef.current).views.get(program);
-          presentationFor(computerIdRef.current).views.set(program, {
-            ...(current ?? viewSnapOf(shadow)),
-            messages: session && current?.activeSession === session ? shadow.messages : current?.messages ?? shadow.messages,
-            activeSession: current?.activeSession ?? session,
-          });
-        }
-        if (shadow.liveTurns !== stateRef.current.liveTurns) {
-          dispatch({ type: "set-live-turns", liveTurns: shadow.liveTurns });
-        }
+    const frameProgram = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+    const related = new Set(["user_message", "turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "error"]);
+    if (related.has(String(frame.t)) && (isWsProgram(frameProgram) || frameProgram === "oceanleo")) {
+      const ref = typeof frame.ref === "string" ? frame.ref : "";
+      const pendingKey = ref ? pendingRefs.current.get(ref) : frame.t === "session_opened" && frameProgram === stateRef.current.program && !stateRef.current.activeSession ? viewKeyRef.current : undefined;
+      if (ref && !pendingKey && !frameSession) return;
+      let key = frameSession ? `${frameProgram}::${frameSession}` : `${frameProgram}::new`;
+      if (pendingKey && !frameSession) key = pendingKey;
+      // A model query may create a spare ACP session. It is metadata for the
+      // new view, not a user-selected history session.
+      if (!stateRef.current.activeSession && frameProgram === stateRef.current.program && ["models", "config", "commands"].includes(String(frame.t))) {
+        key = viewKeyRef.current;
       }
-    }
-    if (!skipCurrentTalk) {
+      if (pendingKey && frameSession && pendingKey !== key) {
+        const snapshot = cached.views.get(pendingKey);
+        if (snapshot) cached.views.set(key, { ...snapshot, activeSession: frameSession, draftRef: undefined });
+        if (viewKeyRef.current === pendingKey) {
+          viewKeyRef.current = key;
+          stateRef.current = { ...stateRef.current, activeSession: frameSession, draftRef: undefined };
+          dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
+        }
+        cached.views.delete(pendingKey);
+        pendingRefs.current.set(ref, key);
+        const live = { ...stateRef.current.liveTurns };
+        if (live[`${frameProgram}::new:${ref}`]) live[`${frameProgram}::${frameSession}`] = true;
+        delete live[`${frameProgram}::new:${ref}`];
+        stateRef.current = { ...stateRef.current, liveTurns: live };
+        dispatch({ type: "set-live-turns", liveTurns: live });
+        sendJson(socketRef.current, { t: "sessions", program: frameProgram });
+      }
+      // Frames without a session belong only to a new view.
+      if (!frameSession && !pendingKey && stateRef.current.activeSession && frame.t !== "error") return;
+      const isCurrent = key === viewKeyRef.current || (!frameSession && !stateRef.current.activeSession && frameProgram === stateRef.current.program);
+      const source = isCurrent ? stateRef.current : {
+        ...initialDialogState(), ...cached.views.get(key),
+        program: frameProgram as AgentProgram, activeSession: frameSession,
+        liveTurns: stateRef.current.liveTurns,
+      };
+      const next = applyDialog(source, { type: "frame", frame });
+      cached.views.set(key, viewSnapOf(next));
+      if (isCurrent) {
+        stateRef.current = next;
+        dispatch({ type: "frame", frame });
+      } else {
+        stateRef.current = applyDialog(stateRef.current, { type: "set-live-turns", liveTurns: next.liveTurns });
+        dispatch({ type: "set-live-turns", liveTurns: next.liveTurns });
+      }
+    } else {
+      stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
       dispatch({ type: "frame", frame });
     }
-    if (frame.t === "sessions") {
-      const active = typeof frame.active === "string" ? frame.active.trim() : "";
-      if (active && !stateRef.current.activeSession && !stateRef.current.sessionLoading) {
-        queueMicrotask(() => openSessionRef.current(active));
+    if (frame.t === "sessions" && frameProgram === stateRef.current.program) {
+      const program = frameProgram as AgentProgram;
+      const target = program === mountProgram && initialSessionId ? initialSessionId : typeof frame.active === "string" ? frame.active.trim() : "";
+      if (target && !initialOpened.current.has(program) && !stateRef.current.activeSession && !stateRef.current.sessionLoading) {
+        initialOpened.current.add(program);
+        queueMicrotask(() => openSessionRef.current(target));
       }
     }
     if (frame.t === "install_done" || frame.t === "login_done") {
       sendJson(socketRef.current, { t: "status" });
     }
-  }, [clearTimer]);
+    if (frame.t === "done" && frameProgram) sendJson(socketRef.current, { t: "sessions", program: frameProgram });
+  }, [clearTimer, initialSessionId, mountProgram]);
 
   const scheduleReconnect = useCallback(() => {
     if (!enabledRef.current || !activeRef.current || haltRef.current) return;
@@ -703,21 +728,18 @@ export function useAgentDialog({
       const prev = stateRef.current.program;
       // 同一程序再选一次（如对话中点当前 agent 的齿轮）不能清掉模型、会话和消息。
       if (prev === next) return;
+      const cached = presentationFor(computerIdRef.current);
       if (prev) {
-        messagesCacheRef.current.set(prev, stateRef.current.messages);
-        if (stateRef.current.activeSession) {
-          messagesCacheRef.current.set(`${prev}::${stateRef.current.activeSession}`, stateRef.current.messages);
-        }
-        presentationFor(computerIdRef.current).views.set(prev, viewSnapOf(stateRef.current));
+        cached.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
+        cached.last.set(prev, viewKeyRef.current);
       }
+      const key = cached.last.get(next) ?? `${next}::new:${clientRef(next)}`;
+      const saved = cached.views.get(key);
+      viewKeyRef.current = key;
+      const switched = applyDialog(stateRef.current, { type: "program", program: next });
+      stateRef.current = saved ? applyDialog(switched, { type: "restore-view", ...saved }) : { ...switched, messages: [], draftRef: `new:${clientRef(next)}` };
       dispatch({ type: "program", program: next });
-      const saved = presentationFor(computerIdRef.current).views.get(next);
-      const restored = saved?.messages ?? messagesCacheRef.current.get(next) ?? messagesCacheRef.current.get(`${next}::${saved?.activeSession ?? ""}`) ?? [];
-      if (saved) {
-        dispatch({ type: "restore-view", ...saved, messages: restored });
-      } else {
-        dispatch({ type: "messages-replace", messages: restored });
-      }
+      dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
       if (next === "oceanleo" && !localOceanleoRef.current) {
         dispatch({ type: "sessions-unavailable" });
         // 进入即拉服务端真相（覆盖上面的缓存过渡）；离开 oceanleo 则停掉轮询。
@@ -746,8 +768,8 @@ export function useAgentDialog({
     }
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     const current = stateRef.current;
-    const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession);
-    if (thisBusy || current.offline) return;
+    const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession || current.draftRef || "");
+    if (thisBusy || current.offline || current.sessionLoading) return;
     const text = draftRef.current.trim();
     const files = attachmentsRef.current;
     if (!text && files.length === 0) return;
@@ -758,33 +780,36 @@ export function useAgentDialog({
     stateRef.current = applyDialog(current, { type: "send-began" });
     const model = current.selectedModel;
     const mode = current.selectedMode;
-    const freshTurn = freshRef.current;
+    const origin = viewKeyRef.current;
+    const acpSession = current.activeSession;
+    const ref = acpSession ? "" : clientRef(program);
+    if (ref) pendingRefs.current.set(ref, origin);
+    const config = pendingConfig.current.get(origin);
+    presentationFor(computerIdRef.current).views.set(origin, viewSnapOf(stateRef.current));
     dispatch({ type: "send-began" });
     const socket = await ensureOpen();
     if (!socket) {
-      dispatch({ type: "send-failed" });
+      ingest(JSON.stringify({ t: "error", code: "dialog_unreachable", program, ...(acpSession ? { acp_session: acpSession } : { ref }) }));
       return;
     }
     const frame: Record<string, unknown> = { t: "prompt", program, text };
-    if (stateRef.current.activeSession) {
-      frame.acp_session = stateRef.current.activeSession;
+    if (acpSession) frame.acp_session = acpSession;
+    else {
+      frame.ref = ref;
+      if (model) frame.model = model;
+      if (mode) frame.mode = mode;
+      if (config) frame.config = config;
     }
-    if (model) frame.model = model;
-    if (mode) frame.mode = mode;
-    if (freshTurn) frame.fresh = true;
     if (files.length) {
       frame.files = files.map((item) => ({ name: item.name, mime: item.mime, data: item.data }));
     }
     socket.send(JSON.stringify(frame));
-    dispatch({
-      type: "user",
-      text,
-      attachments: files.map((item) => ({ name: item.name, mime: item.mime })),
-    });
+    ingest(JSON.stringify({ t: "user_message", program, text, ...(acpSession ? { acp_session: acpSession } : { ref }), attachments: files.map((item) => ({ name: item.name, mime: item.mime })) }));
+    pendingConfig.current.delete(origin);
     setDraft("");
     setAttachments([]);
     setFresh(false);
-  }, [ensureOpen]);
+  }, [ensureOpen, ingest]);
 
   const abort = useCallback(() => {
     const program = stateRef.current.program;
@@ -810,6 +835,7 @@ export function useAgentDialog({
     if (usesDialogSocket(program, localOceanleoRef.current)) {
       const frame: Record<string, unknown> = { t: "cancel", program };
       if (stateRef.current.activeSession) frame.acp_session = stateRef.current.activeSession;
+      else frame.ref = newRefs.current.get(program);
       sendJson(socketRef.current, frame);
     }
     dispatch({ type: "cancel-local" });
@@ -843,22 +869,17 @@ export function useAgentDialog({
     const acpSession = id.trim();
     const program = stateRef.current.program;
     if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
+    if (stateRef.current.activeSession === acpSession && stateRef.current.sessionLoading) return;
+    const cache = presentationFor(computerIdRef.current);
+    cache.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
     const cacheKey = `${program}::${acpSession}`;
-    if (stateRef.current.activeSession && stateRef.current.activeSession !== acpSession) {
-      messagesCacheRef.current.set(
-        `${program}::${stateRef.current.activeSession}`,
-        stateRef.current.messages,
-      );
-    }
-    const cached = messagesCacheRef.current.get(cacheKey);
-    stateRef.current = {
-      ...stateRef.current,
-      activeSession: acpSession,
-      sessionLoading: true,
-      messages: cached ?? stateRef.current.messages,
-      commands: [],
-    };
-    dispatch({ type: "session-loading", id: acpSession, messages: cached });
+    const saved = cache.views.get(cacheKey);
+    viewKeyRef.current = cacheKey;
+    initialOpened.current.add(program);
+    const restored = { ...initialDialogState(), ...saved, program, activeSession: acpSession, sessions: stateRef.current.sessions,
+      sessionsSupported: stateRef.current.sessionsSupported, liveTurns: stateRef.current.liveTurns, sessionLoading: true };
+    stateRef.current = { ...stateRef.current, ...viewSnapOf(restored) };
+    dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) {
@@ -875,13 +896,20 @@ export function useAgentDialog({
     stateRef.current = {
       ...stateRef.current,
       activeSession: "",
-      sessionLoading: true,
+      sessionLoading: false,
       messages: [],
       commands: [],
       busy: false,
       agentBusy: false,
     };
-    dispatch({ type: "session-loading", id: "" });
+    if (program) {
+      newRefs.current.delete(program);
+      const ref = clientRef(program);
+      viewKeyRef.current = `${program}::new:${ref}`;
+      stateRef.current = { ...stateRef.current, draftRef: `new:${ref}` };
+      initialOpened.current.add(program);
+    }
+    dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
     if (program === "oceanleo" && !localOceanleoRef.current) {
       oceanGen.current += 1;
       clearOceanWait();
@@ -896,17 +924,7 @@ export function useAgentDialog({
       });
       return;
     }
-    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
-    void (async () => {
-      const socket = await ensureOpen();
-      if (!socket) {
-        dispatch({ type: "send-failed" });
-        return;
-      }
-      const frame: Record<string, unknown> = { t: "new_session", program };
-      if (cwd?.trim()) frame.cwd = cwd.trim();
-      sendJson(socket, frame);
-    })();
+    void cwd; // New adapter sessions are created only with the first prompt.
   }, [clearOceanWait, ensureOpen]);
 
   const openInstall = useCallback((program: WsProgram) => {
@@ -989,25 +1007,39 @@ export function useAgentDialog({
   const setSelectedModel = useCallback((id: string) => {
     const program = stateRef.current.program;
     dispatch({ type: "set-model", id });
+    stateRef.current = applyDialog(stateRef.current, { type: "set-model", id });
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    const acpSession = stateRef.current.activeSession;
+    if (!acpSession) {
+      pendingConfig.current.delete(viewKeyRef.current);
+      return;
+    }
+    const modelOption = stateRef.current.configOptions.find(
+      (option) => option.id === "model" || option.category === "model",
+    );
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) return;
-      const modelOption = stateRef.current.configOptions.find(
-        (option) => option.id === "model" || option.category === "model",
-      );
-      sendJson(socket, { t: "set_config", program, id: modelOption?.id || "model", value: id });
+      sendJson(socket, { t: "set_config", program, acp_session: acpSession, id: modelOption?.id || "model", value: id });
     })();
   }, [ensureOpen]);
 
   const setConfig = useCallback((id: string, value: string | boolean) => {
     const program = stateRef.current.program;
     dispatch({ type: "set-config", id, value });
+    stateRef.current = applyDialog(stateRef.current, { type: "set-config", id, value });
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    const acpSession = stateRef.current.activeSession;
+    if (!acpSession) {
+      if (id !== "mode" && id !== stateRef.current.mode?.id) {
+        pendingConfig.current.set(viewKeyRef.current, { ...pendingConfig.current.get(viewKeyRef.current), [id]: value });
+      }
+      return;
+    }
     void (async () => {
       const socket = await ensureOpen();
       if (!socket) return;
-      sendJson(socket, { t: "set_config", program, id, value });
+      sendJson(socket, { t: "set_config", program, acp_session: acpSession, id, value });
     })();
   }, [ensureOpen]);
 
@@ -1128,6 +1160,7 @@ export function useAgentDialog({
     sessions: state.sessions,
     sessionsSupported: state.sessionsSupported,
     activeSession: state.activeSession,
+    draftRef: state.draftRef,
     sessionLoading: state.sessionLoading,
     requestSessions,
     openSession,

@@ -171,7 +171,7 @@ export function Composer({
   useEffect(() => {
     const program = dialog.program;
     const model = dialog.selectedModel;
-    if (!program || !model) return;
+    if (!program || !model || dialog.activeSession) return;
     const params = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
     if (!params.length) return;
     const computerId = dialog.computerId || shellInfo.computerId || "";
@@ -188,7 +188,7 @@ export function Composer({
     for (const { option, wire } of restoresForModel(params, merged)) {
       dialog.setConfig(option.id, coerceOptionValue(option, wire));
     }
-  }, [dialog.program, dialog.selectedModel, dialog.configOptions, dialog.mode?.id, dialog.computerId, dialog.setConfig, shellInfo.computerId]);
+  }, [dialog.program, dialog.activeSession, dialog.selectedModel, dialog.configOptions, dialog.mode?.id, dialog.computerId, dialog.setConfig, shellInfo.computerId]);
   useEffect(() => {
     if (!openTuning) return;
     const onPointer = (event: PointerEvent) => {
@@ -211,7 +211,7 @@ export function Composer({
   const alternative = dialog.models.find((model) => model.usable !== false && model.id !== creditNotice?.model && model.id !== dialog.selectedModel);
   const showModels = dialog.models.length > 0;
   const thisSessionBusy = Array.isArray(dialog.busySessions)
-    ? dialog.busySessions.includes(dialog.activeSession)
+    ? dialog.busySessions.includes(dialog.activeSession || dialog.draftRef || "")
     : Boolean(dialog.busy);
   const showStop = thisSessionBusy;
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
@@ -459,7 +459,7 @@ export function Composer({
         ) : (
           <button
             type="submit"
-            disabled={dialog.offline}
+            disabled={dialog.offline || dialog.sessionLoading}
             className={`rounded-lg px-3 py-2 text-[12px] font-medium disabled:opacity-40 ${tone.primary}`}
           >
             {tt("发送")}

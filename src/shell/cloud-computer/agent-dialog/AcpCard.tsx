@@ -101,6 +101,7 @@ export function AcpCard({
     enabled: true,
     active,
     initialProgram: selected,
+    initialSessionId: mountSession,
     oceanleoReady: oceanleoLoaded || oceanleoStatus !== null,
     localOceanleo: oceanleoStatus?.installed === true,
   });

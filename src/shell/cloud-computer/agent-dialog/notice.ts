@@ -64,7 +64,6 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
     case "acp_exited":
       return tt("这个程序的对话进程退出了，重新发一句会再启动。");
     case "acp_unavailable":
-      if (installed === true) return tt(SESSION_UNAVAILABLE);
       return tt("这个程序的对话组件还没就绪。安装会一并补齐。");
     case "runtime_missing":
       return tt("运行这个程序还缺运行时。安装会一并补齐。");
@@ -87,7 +86,7 @@ export function noticeAction(
 ): "login" | "install" | "retry" | null {
   if (code === "acp_start_failed") return null;
   if (code === "acp_exited") return null;
-  if (code === "acp_unavailable") return installed === false ? "install" : null;
+  if (code === "acp_unavailable") return "install";
   if (code === "not_logged_in") return "login";
   if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
     return "install";

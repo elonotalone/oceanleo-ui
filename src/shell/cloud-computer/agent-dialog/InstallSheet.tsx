@@ -25,7 +25,8 @@ export function InstallSheet({ dialog }: { dialog: AgentDialogController }) {
   const row = dialog.programs.find((item) => item.id === install.program);
   const capability = row?.dir_capability ?? "full";
   // 已装好的程序不再出「开始安装」：状态帧可能先于用户点按到达，此时只给实话。
-  const alreadyInstalled = row?.installed === true && !install.running && !install.failedText && !install.donePath;
+  const componentMissing = (dialog.messages ?? []).some((message) => message.kind === "notice" && message.code === "acp_unavailable" && message.program === install.program);
+  const alreadyInstalled = row?.installed === true && !componentMissing && !install.running && !install.failedText && !install.donePath;
   const dirLocked = capability === "none" || install.running || alreadyInstalled;
   return (
     <div

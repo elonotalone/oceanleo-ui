@@ -249,26 +249,26 @@ test("acp_start_failed：一句话，没有安装按钮", () => {
   );
 });
 
-test("acp_unavailable：只有尚未安装才带安装按钮；已知已安装则与启动失败同一句", () => {
+test("acp_unavailable：程序已装也提供补装缺失对话组件的入口", () => {
   assert.equal(noticeCopy(tt, "acp_unavailable", false), STILL_NEEDS_INSTALL);
   assert.equal(noticeAction("acp_unavailable", false), "install");
-  assert.equal(noticeCopy(tt, "acp_unavailable", true), SESSION_UNAVAILABLE);
-  assert.equal(noticeAction("acp_unavailable", true), null);
+  assert.equal(noticeCopy(tt, "acp_unavailable", true), STILL_NEEDS_INSTALL);
+  assert.equal(noticeAction("acp_unavailable", true), "install");
   assert.equal(noticeCopy(tt, "acp_unavailable", null), STILL_NEEDS_INSTALL);
-  assert.equal(noticeAction("acp_unavailable", null), null);
+  assert.equal(noticeAction("acp_unavailable", null), "install");
   assert.equal(noticeAction("program_missing", null), "install");
   assert.equal(noticeAction("dialog_unreachable"), "retry");
   assert.equal(noticeAction("computer_offline"), "retry");
 });
 
-test("黄字：名单或刚装完的路径能证明已安装时，不再给安装按钮", async () => {
+test("黄字：程序本体已安装或刚安装后，缺组件仍能补装", async () => {
   const installed = await render(
     createElement(MessageList, { dialog: noticeDialog({ code: "acp_unavailable", installed: true }) }),
   );
   try {
     const notice = installed.host.querySelector("[data-oceanleo-cc-notice='acp_unavailable']");
-    assert.equal(notice.querySelector("p").textContent, SESSION_UNAVAILABLE);
-    assert.equal(notice.querySelector("button"), null);
+    assert.equal(notice.querySelector("p").textContent, STILL_NEEDS_INSTALL);
+    assert.equal(notice.querySelector("button")?.textContent, "安装");
   } finally {
     await installed.unmount();
   }
@@ -280,8 +280,8 @@ test("黄字：名单或刚装完的路径能证明已安装时，不再给安�
   );
   try {
     const notice = justInstalled.host.querySelector("[data-oceanleo-cc-notice='acp_unavailable']");
-    assert.equal(notice.querySelector("p").textContent, SESSION_UNAVAILABLE);
-    assert.equal(notice.querySelector("button"), null);
+    assert.equal(notice.querySelector("p").textContent, STILL_NEEDS_INSTALL);
+    assert.equal(notice.querySelector("button")?.textContent, "安装");
   } finally {
     await justInstalled.unmount();
   }

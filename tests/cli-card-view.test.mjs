@@ -368,6 +368,28 @@ test("不支持读取 CLI 历史时显示明确提示", async () => {
   }
 });
 
+test("CLI 历史请求失败不是不支持，重试后恢复原生记录", async () => {
+  const api = createClient();
+  const list = api.listCliSessions;
+  let fail = true;
+  api.listCliSessions = async (...args) => {
+    if (fail) throw new Error("temporary unavailable");
+    return list(...args);
+  };
+  const view = await renderCard({ api });
+  try {
+    assert.match(view.host.textContent || "", /过去的对话读取失败，请重试/);
+    assert.equal(view.host.querySelector("[data-oceanleo-cli-history-unsupported]"), null);
+    fail = false;
+    const retry = [...view.host.querySelectorAll("button")].find(button => button.textContent === "重试");
+    assert.ok(retry);
+    await act(async () => retry.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    assert.doesNotMatch(view.host.textContent || "", /过去的对话读取失败/);
+    assert.match(view.host.textContent || "", /最近对话/);
+  } finally { view.cleanup(); }
+});
+
 test("旧节点缺少 CLI kind 时，启动后的会话仍保持可见", async () => {
   const api = createClient();
   const listTerminals = api.listTerminalsWithRecords;

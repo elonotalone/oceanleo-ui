@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { TypewriterMarkdown } from "../../Markdown";
 import { useUI } from "../../../i18n/ui/useUI";
 import { tone } from "../server-page/tone";
 import { lineDiff } from "./diff-lines";
@@ -257,56 +258,24 @@ function QuestionView({
   );
 }
 
-// 裸 URL → 真链接（oceanleo 程序的产物行因此可点）。行内代码段里的 URL 不变链接。
-// 不解析 HTML；textContent 与纯文本渲染完全一致。
-const URL_PART = /(https?:\/\/[^\s<>()"']+)/;
+const MARKDOWN_DARK_CSS = `
+.dark [data-oceanleo-cc-assistant] :is(h1,h2,h3,h4,p,ul,ol,td,blockquote) { color: #e5e7eb; }
+.dark [data-oceanleo-cc-assistant] a { color: #93c5fd; }
+.dark [data-oceanleo-cc-assistant] :not(pre) > code { background-color: #262626; color: #f5f5f5; }
+.dark [data-oceanleo-cc-assistant] thead { background-color: #262626; color: #e5e7eb; }
+.dark [data-oceanleo-cc-assistant] :is(th,td,blockquote) { border-color: #404040; }
+`;
 
-function AssistantText({ text }: { text: string }) {
-  const parts = text.split(/(`[^`\n]+`)/g);
-  return (
-    <p className="whitespace-pre-wrap text-[13px]">
-      {parts.map((part, index) => {
-        if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
-          return (
-            <code
-              key={index}
-              className={`rounded px-1 font-mono text-[12px] ${tone.chip}`}
-            >
-              {part.slice(1, -1)}
-            </code>
-          );
-        }
-        return (
-          <span key={index}>
-            {part.split(URL_PART).map((segment, segIndex) =>
-              segIndex % 2 === 1 ? (
-                <a
-                  key={segIndex}
-                  data-oceanleo-cc-link=""
-                  href={segment}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="break-all text-sky-700 underline dark:text-sky-300"
-                >
-                  {segment}
-                </a>
-              ) : (
-                segment
-              ),
-            )}
-          </span>
-        );
-      })}
-    </p>
-  );
+function AssistantText({ text, active }: { text: string; active: boolean }) {
+  return <TypewriterMarkdown content={text} active={active} className="text-[13px] leading-relaxed" />;
 }
 
-function ItemView({ item, dialog }: { item: TurnItem; dialog: AgentDialogController }) {
+function ItemView({ item, dialog, active = false }: { item: TurnItem; dialog: AgentDialogController; active?: boolean }) {
   const tt = useUI();
   if (item.kind === "assistant") {
     return (
       <div data-oceanleo-cc-assistant="">
-        <AssistantText text={item.text} />
+        <AssistantText text={item.text} active={active} />
       </div>
     );
   }
@@ -516,6 +485,8 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
   const avatar = AGENT_AVATAR[dialog.program ?? "oceanleo"];
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <style>{MARKDOWN_DARK_CSS}</style>
+      {dialog.sessionLoading ? <p role="status" data-oceanleo-dialog-history-loading="" className={`px-3 py-2 text-[12px] ${tone.muted}`}>{tt("正在读取…")}</p> : null}
       <div
         ref={ref}
         data-oceanleo-cc-messages=""
@@ -544,9 +515,9 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                     <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
                   </svg>
                 </span>
-                <div className="min-w-0 rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50">
+                <div className="min-w-0">
                   {message.text ? (
-                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
+                    <p className="rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
                   ) : null}
                   {message.attachments?.length ? (
                     <ul className="mt-1.5 flex flex-wrap gap-1.5 text-[12px] opacity-80" data-oceanleo-cc-user-files="">
@@ -570,7 +541,7 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
               <div className="min-w-0 flex-1 space-y-2 break-words [overflow-wrap:anywhere]">
                 {message.items.map((item) =>
                   isBlockingPrompt(item) ? null : (
-                    <ItemView key={item.id} item={item} dialog={dialog} />
+                    <ItemView key={item.id} item={item} dialog={dialog} active={!message.stop && dialog.busy} />
                   ),
                 )}
               </div>

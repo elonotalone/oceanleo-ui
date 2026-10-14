@@ -99,6 +99,12 @@ class FakeSocket {
     for (const fn of [...(this.listeners.get(type) ?? [])]) fn(event);
   }
   server(frame) {
+    // The gateway contract now tags all session frames explicitly.
+    this.sessionIds ??= new Map();
+    if (frame.acp_session && ["session_opened", "turn_start"].includes(frame.t)) this.sessionIds.set(frame.program, frame.acp_session);
+    const sessionFrames = new Set(["models", "config", "commands", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "error"]);
+    const sid = this.sessionIds.get(frame.program);
+    if (sid && !frame.acp_session && sessionFrames.has(frame.t)) frame = { ...frame, acp_session: sid };
     this.emit("message", { data: JSON.stringify(frame) });
   }
 }
@@ -516,7 +522,7 @@ test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 
     await until(() => sentFrames().some((frame) => frame.t === "set_config" && frame.id === "model"), "set_config model");
     assert.deepEqual(
       sentFrames().find((frame) => frame.t === "set_config" && frame.id === "model"),
-      { t: "set_config", program: "cursor", id: "model", value: "sonnet" },
+      { t: "set_config", program: "cursor", acp_session: "s-old", id: "model", value: "sonnet" },
     );
 
     const turnsBefore = view.$$("[data-oceanleo-cc-turn]").length;
@@ -547,7 +553,7 @@ test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 
     await until(() => sentFrames().some((frame) => frame.t === "prompt"), "prompt");
     assert.deepEqual(
       sentFrames().find((frame) => frame.t === "prompt"),
-      { t: "prompt", program: "cursor", text: "继续", acp_session: "s-old", model: "sonnet" },
+      { t: "prompt", program: "cursor", text: "继续", acp_session: "s-old" },
     );
 
     await server({ t: "turn_start", program: "cursor", acp_session: "s-old" });
@@ -568,8 +574,8 @@ test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 
     assert.doesNotMatch(view.text(), /关掉会话/);
 
     await click(view.$("[data-oceanleo-acp-new-session]"));
-    await until(() => sentFrames().some((frame) => frame.t === "new_session"), "new_session");
-    assert.deepEqual(sentFrames().find((frame) => frame.t === "new_session"), { t: "new_session", program: "cursor" });
+    assert.equal(sentFrames().some((frame) => frame.t === "new_session"), false);
+    assert.equal(view.$$("[data-oceanleo-cc-turn]").length, 0);
   } finally {
     view.cleanup();
   }
@@ -604,15 +610,18 @@ test("程序条设置：模型 / 模式 / 其它配置项；危险操作先问�
   const view = await boot({ initialProgram: "cursor" });
   try {
     await until(() => sentFrames().some((frame) => frame.t === "models" && frame.program === "cursor"), "cursor models");
+    await server({ t: "session_opened", program: "cursor", acp_session: "settings-session" });
     await server({
       t: "models",
       program: "cursor",
+      acp_session: "settings-session",
       source: "acp",
       models: [{ id: "gpt-5", name: "GPT-5", default: true }, { id: "sonnet", name: "Sonnet" }],
     });
     await server({
       t: "config",
       program: "cursor",
+      acp_session: "settings-session",
       options: [
         { id: "mode", name: "模式", category: "mode", current: "ask", options: [{ value: "ask", name: "Ask" }, { value: "agent", name: "Agent" }] },
         { id: "reasoning", name: "推理强度", type: "select", current: "low", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] },
@@ -798,5 +807,82 @@ test("本地 OceanLeo 探针完成后才应用初始会话，且只应用一次"
     await until(() => sentFrames().some(f => f.t === "open_session" && f.acp_session === "local-deep"), "local deep link");
     assert.equal(FakeSocket.sockets.length, 1);
     assert.equal(calls("agentState").length, 0);
+  } finally { view.cleanup(); }
+});
+
+test("两段对话各自保留消息与模型，完整历史替换缓存，打开不改参数", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  const modelFrame = (sid, selected) => ({ t: "models", program: "cursor", acp_session: sid, source: "acp",
+    models: [{ id: "a", name: "Model A", default: selected === "a" }, { id: "b", name: "Model B", default: selected === "b" }] });
+  const transcript = (sid, text, live = false) => ({ t: "transcript", program: "cursor", acp_session: sid, live,
+    frames: [{ t: "user_message", program: "cursor", acp_session: sid, replay: true, text: `question-${sid}` },
+             { t: "delta", program: "cursor", acp_session: sid, replay: true, text }] });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "a", title: "A history", cwd: "/root", updated_at: "2026-10-07T00:00:00Z" },
+      { id: "b", title: "B history", cwd: "/root", updated_at: "2026-10-09T00:00:00Z" }], active: "" });
+    await click(view.$('[data-oceanleo-acp-session="a"]'));
+    assert.ok(view.$('[data-oceanleo-dialog-history-loading]'));
+    await server(transcript("a", "## Alpha\n\n**alpha reply**\n\n- first\n- second\n"));
+    await server({ t: "session_opened", program: "cursor", acp_session: "a" });
+    await server(modelFrame("a", "a"));
+    assert.ok(view.$('[data-oceanleo-cc-assistant] h2'));
+    assert.ok(view.$('[data-oceanleo-cc-assistant] strong'));
+    assert.equal(view.$$('[data-oceanleo-cc-assistant] li').length, 2);
+    await click(view.$('[data-oceanleo-acp-session="b"]'));
+    await server(transcript("b", "beta reply"));
+    await server({ t: "session_opened", program: "cursor", acp_session: "b" });
+    await server(modelFrame("b", "b"));
+    await server({ t: "turn_start", program: "cursor", acp_session: "a" });
+    await server({ t: "delta", program: "cursor", acp_session: "a", text: "alpha continuation" });
+    await server({ t: "config", program: "cursor", acp_session: "a", options: [{ id: "model", category: "model", current: "a", options: [{ value: "a", name: "Model A" }, { value: "b", name: "Model B" }] }] });
+    assert.equal(view.$('[data-oceanleo-cc-model]').value, "b");
+    assert.equal(view.$('[data-oceanleo-cc-assistant]').textContent, "beta reply");
+    await click(view.$('[data-oceanleo-acp-session="a"]'));
+    assert.match(view.text(), /alpha continuation/);
+    assert.equal(view.$('[data-oceanleo-cc-model]').value, "a");
+    await server(transcript("a", "machine complete history", false));
+    assert.equal(view.$$('[data-oceanleo-cc-user]').length, 1);
+    assert.equal(view.$('[data-oceanleo-cc-assistant]').textContent, "machine complete history");
+    assert.equal(sentFrames().some(frame => frame.t === "set_config"), false);
+  } finally { view.cleanup(); }
+});
+
+test("新对话只在第一句创建，ref 把迟到的回复绑回正确视图", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "models", program: "cursor", source: "acp", models: [{ id: "a", name: "A", default: true }] });
+    await setValue(view.$('[data-oceanleo-cc-dialog-input]'), "first draft");
+    await pressEnter(view.$('[data-oceanleo-cc-dialog-input]'));
+    const first = sentFrames().find(frame => frame.t === "prompt");
+    assert.match(first.ref, /^[A-Za-z0-9_-]{1,64}$/);
+    assert.equal(first.acp_session, undefined);
+    assert.ok(view.$('[data-oceanleo-cc-stop]'), "pending first prompt can be stopped before a session ID arrives");
+    await click(view.$('[data-oceanleo-acp-new-session]'));
+    assert.equal(view.$('[data-oceanleo-cc-stop]'), null, "another pending draft does not make this new view busy");
+    await setValue(view.$('[data-oceanleo-cc-dialog-input]'), "second draft");
+    await pressEnter(view.$('[data-oceanleo-cc-dialog-input]'));
+    const second = sentFrames().filter(frame => frame.t === "prompt")[1];
+    assert.ok(second, "a new draft is not blocked by another pending draft");
+    assert.notEqual(second.ref, first.ref);
+    assert.ok(view.$('[data-oceanleo-cc-stop]'));
+    await server({ t: "session_opened", program: "cursor", acp_session: "first-real", ref: first.ref });
+    await server({ t: "turn_start", program: "cursor", acp_session: "first-real", ref: first.ref });
+    await server({ t: "delta", program: "cursor", acp_session: "first-real", text: "first answer" });
+    assert.doesNotMatch(view.text(), /first answer/);
+    await server({ t: "session_opened", program: "cursor", acp_session: "second-real", ref: second.ref });
+    await server({ t: "turn_start", program: "cursor", acp_session: "second-real", ref: second.ref });
+    await server({ t: "delta", program: "cursor", acp_session: "second-real", text: "second answer" });
+    assert.match(view.text(), /second answer/);
+    assert.doesNotMatch(view.text(), /first answer/);
+    assert.equal(sentFrames().some(frame => frame.t === "new_session"), false);
+  } finally { view.cleanup(); }
+});
+
+test("地址栏会话优先于服务器 active，只发一次打开请求", async () => {
+  const view = await boot({ initialProgram: "cursor", initialSessionId: "url-session" });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [], active: "other-session" });
+    assert.deepEqual(sentFrames().filter(frame => frame.t === "open_session").map(frame => frame.acp_session), ["url-session"]);
   } finally { view.cleanup(); }
 });

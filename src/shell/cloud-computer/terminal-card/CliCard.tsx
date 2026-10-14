@@ -95,6 +95,10 @@ export function CliCard({
   const [loadingChatProgram, setLoadingChatProgram] = useState<string | null>(null);
   const loadingChats = loadingChatProgram === programId && !chatLists.has(programId);
   const [failed, setFailed] = useState(false);
+  const [chatErrors, setChatErrors] = useState(new Set<string>());
+  const computerIdRef = useRef(computer.id);
+  computerIdRef.current = computer.id;
+  const chatRequestVersions = useRef(new Map<string, number>());
   const [notice, setNotice] = useState<string | null>(null);
   const [noticeKind, setNoticeKind] = useState<NoticeKind>("info");
   const legacyCliPrograms = useRef(new Map<string, string>());
@@ -158,18 +162,21 @@ export function CliCard({
 
   const refreshChats = useCallback(async () => {
     if (!programId) return;
+    const version = (chatRequestVersions.current.get(programId) ?? 0) + 1;
+    chatRequestVersions.current.set(programId, version);
+    const current = () => computerIdRef.current === computer.id && chatRequestVersions.current.get(programId) === version;
     setLoadingChatProgram(programId);
+    setChatErrors((errors) => { const next = new Set(errors); next.delete(programId); return next; });
     try {
       const result = await client.listCliSessions(computer.id, programId);
+      if (!current()) return;
       const next = { supported: result.supported, sessions: sortCliChats(result.sessions || []) };
       cache.chats.set(programId, next);
       setChatLists((current) => new Map(current).set(programId, next));
     } catch {
-      if (!cache.chats.has(programId)) {
-        setChatLists((current) => new Map(current).set(programId, { supported: false, sessions: [] }));
-      }
+      if (current()) setChatErrors((errors) => new Set(errors).add(programId));
     } finally {
-      setLoadingChatProgram((current) => current === programId ? null : current);
+      if (current()) setLoadingChatProgram((selected) => selected === programId ? null : selected);
     }
   }, [cache, client, computer.id, programId]);
 
@@ -188,16 +195,8 @@ export function CliCard({
   }, [cache, client, computer.id, refreshPrograms, refreshTerminals]);
 
   useEffect(() => {
-    if (!cache.chats.has(programId)) void refreshChats();
+    void refreshChats();
   }, [cache, programId, refreshChats]);
-
-  useEffect(() => {
-    if (cache.chats.has(initial.program)) void client.listCliSessions(computer.id, initial.program).then((result) => {
-      const next = { supported: result.supported, sessions: sortCliChats(result.sessions || []) };
-      cache.chats.set(initial.program, next);
-      setChatLists((current) => new Map(current).set(initial.program, next));
-    }).catch(() => {});
-  }, [cache, client, computer.id, initial.program]);
 
   useEffect(() => {
     if (!active || refreshIntervalMs <= 0) return;
@@ -441,7 +440,12 @@ export function CliCard({
             <h3 className={`mt-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${tone.muted}`}>
               {tt("过去的对话")}
             </h3>
-            {loadingChats ? (
+            {chatErrors.has(programId) ? (
+              <div role="alert" data-oceanleo-cli-history-error="" className={`px-2 py-2 text-[11px] ${tone.danger}`}>
+                <p>{tt("过去的对话读取失败，请重试。")}</p>
+                <button type="button" onClick={() => void refreshChats()} className="underline">{tt("重试")}</button>
+              </div>
+            ) : loadingChats ? (
               <p className={`px-2 py-2 text-[11px] ${tone.muted}`}>{tt("加载中…")}</p>
             ) : chatsSupported ? (
               <div className="grid gap-1">

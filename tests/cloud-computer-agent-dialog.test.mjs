@@ -99,6 +99,12 @@ class FakeSocket {
     for (const fn of [...(this.listeners.get(type) ?? [])]) fn(event);
   }
   server(frame) {
+    // The gateway contract now tags all session frames explicitly.
+    this.sessionIds ??= new Map();
+    if (frame.acp_session && ["session_opened", "turn_start"].includes(frame.t)) this.sessionIds.set(frame.program, frame.acp_session);
+    const sessionFrames = new Set(["models", "config", "commands", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "error"]);
+    const sid = this.sessionIds.get(frame.program);
+    if (sid && !frame.acp_session && sessionFrames.has(frame.t)) frame = { ...frame, acp_session: sid };
     this.emit("message", { data: JSON.stringify(frame) });
   }
 }
@@ -464,9 +470,9 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       setControlValue(thinking, "fast");
       setControlValue(mode, "agent");
     });
-    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "mode" && frame.value === "agent"));
-    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast" && frame.value === false));
-    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level" && frame.value === "fast"));
+    assert.equal(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "mode"), false, "new-dialog mode is staged locally");
+    assert.equal(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast"), false, "new-dialog parameters wait for the first prompt");
+    assert.equal(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level"), false, "new-dialog parameters wait for the first prompt");
     await act(async () => {
       setControlValue(model, "a");
     });
@@ -535,8 +541,8 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
         }],
       });
     });
-    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level" && frame.value === "fast"));
-    assert.ok(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast" && frame.value === false));
+    assert.equal(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "thought_level"), false, "new-dialog parameters wait for the first prompt");
+    assert.equal(view.socket().sent.some((frame) => frame.t === "set_config" && frame.id === "fast"), false, "new-dialog parameters wait for the first prompt");
     assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]').value, "fast");
     assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]').value, "false");
     await act(async () => {
@@ -574,10 +580,12 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     await pressEnter(input, false);
     await until(() => view.socket().sent.some((frame) => frame.t === "prompt"), "prompt");
     const prompt = view.socket().sent.find((frame) => frame.t === "prompt");
-    assert.deepEqual(prompt, { t: "prompt", program: "cursor", text: "hello", model: "a", mode: "agent", fresh: true });
+    assert.match(prompt.ref, /^[A-Za-z0-9_-]{1,64}$/);
+    assert.deepEqual(prompt, { t: "prompt", program: "cursor", text: "hello", model: "a", mode: "agent", ref: prompt.ref });
 
     await act(async () => {
-      view.socket().server({ t: "turn_start", program: "cursor", acp_session: "s1" });
+      view.socket().server({ t: "session_opened", program: "cursor", acp_session: "s1", ref: prompt.ref });
+      view.socket().server({ t: "turn_start", program: "cursor", acp_session: "s1", ref: prompt.ref });
       view.socket().server({ t: "thought", program: "cursor", text: "hmm" });
       view.socket().server({ t: "delta", program: "cursor", text: "see `<img onerror=alert(1)>` " });
       view.socket().server({

@@ -38,11 +38,11 @@ export function encodeTermText(text: string): string {
   return btoa(bin);
 }
 
-export function decodeTermB64(dataB64: string): string {
+export function decodeTermB64(dataB64: string, decoder?: TextDecoder): string {
   const bin = atob(dataB64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
+  return (decoder ?? new TextDecoder()).decode(bytes, { stream: Boolean(decoder) });
 }
 
 const TERMINAL_TAIL_LIMIT = 4000;
@@ -128,6 +128,7 @@ export function useComputerTerminal({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<TermHandle | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const outputDecoder = useRef(new TextDecoder());
   const fitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const giveUpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,6 +234,7 @@ export function useComputerTerminal({
       if (applied.effect.type === "reset_screen") {
         // 重连成功：清屏、重算尺寸并通知节点，然后接受节点回放。
         clearConnTimers();
+        outputDecoder.current = new TextDecoder();
         termRef.current?.reset();
         announceSize();
       }
@@ -281,7 +283,7 @@ export function useComputerTerminal({
           return;
         }
         if (frame.t === "out" && frame.data_b64) {
-          termRef.current?.write(decodeTermB64(frame.data_b64));
+          termRef.current?.write(decodeTermB64(frame.data_b64, outputDecoder.current));
         }
         const record = terminalRecordNotice(frame);
         if (record) onRecordRef.current?.(record);
@@ -320,6 +322,7 @@ export function useComputerTerminal({
     connRef.current = { kind: "live" };
     ctxRef.current = { sid: sessionId, lifeToken };
     tailRef.current = "";
+    outputDecoder.current = new TextDecoder();
     let disposed = false;
     let removeResize: (() => void) | undefined;
     let removeSelection: (() => void) | undefined;

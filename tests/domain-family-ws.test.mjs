@@ -267,6 +267,7 @@ test("ws/3 缺省家族（com）进程：Hosted 六件与 MCP 承载面逐字不
 
 // 违反后果：分身页被 Vercel 同一项目的 production env 拽去 api.oceanleo.com，
 // 对话/设置全失败，设置页把「没读到状态」写成「未安装」。
+// UC-7: docs/architecture/oceanleo-untrusted-content-isolation.md — twin auth remains host-scoped.
 test("ws/4 oceanbizs.com 页拒绝把 GATEWAY 叠到 api.oceanleo.com", () => {
   const probe = `
     globalThis.window = { location: { host: "oceanbizs.com" } };

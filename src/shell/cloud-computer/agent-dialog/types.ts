@@ -217,6 +217,8 @@ export type DialogState = {
   sessions: DialogSession[];
   sessionsSupported: boolean | null;
   activeSession: string;
+  /** Local turn identity before ACP assigns a session id. */
+  draftRef?: string;
   serverActiveSession: string;
   busySession: string;
   /** `${program}::${acpSession}` keys that still have an open turn. */
@@ -254,6 +256,7 @@ export type AgentDialogController = {
   sessionsSupported: boolean | null;
   activeSession: string;
   sessionLoading: boolean;
+  draftRef?: string;
   requestSessions: () => void;
   openSession: (id: string) => void;
   newSession: (cwd?: string) => void;

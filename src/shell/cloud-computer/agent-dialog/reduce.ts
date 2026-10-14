@@ -76,7 +76,7 @@ function markTurn(state: DialogState, program: string | null, session: string, l
   const liveTurns = { ...state.liveTurns };
   if (live) liveTurns[key] = true;
   else delete liveTurns[key];
-  const currentKey = turnKey(state.program, state.activeSession);
+  const currentKey = turnKey(state.program, state.activeSession || state.draftRef || "");
   const busy = Boolean(liveTurns[currentKey]);
   return {
     ...state,
@@ -175,6 +175,7 @@ export type DialogEvent =
       type: "restore-view";
       messages: AgentDialogMessage[];
       activeSession: string;
+      draftRef?: string;
       sessions: DialogState["sessions"];
       sessionsSupported: boolean | null;
       sessionLoading: boolean;
@@ -402,7 +403,7 @@ function onDone(state: DialogState, frame: Record<string, unknown>): DialogState
     }
   }
   const program = str(frame.program) || state.program;
-  const ended = session || state.activeSession;
+  const ended = session || state.activeSession || state.draftRef || "";
   return markTurn({ ...state, messages }, program, ended, false);
 }
 
@@ -450,10 +451,11 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
     ...state,
     agentBusy: code === "agent_busy" ? matches : state.agentBusy,
     offline: code === "computer_offline" ? true : state.offline,
+    sessionLoading: matches ? false : state.sessionLoading,
     messages: same || !matches ? state.messages : [...state.messages, notice],
   };
   if (endsTurn) {
-    return markTurn(next, program || state.program, session || state.activeSession, false);
+    return markTurn(next, program || state.program, session || state.activeSession || state.draftRef || "", false);
   }
   return next;
 }
@@ -541,10 +543,15 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   state = finishLoginOnAgentBusy(state, frame);
   if (!forCurrent(state, frame)) return state;
   if (kind === "sessions") {
+    const liveTurns = { ...state.liveTurns };
+    for (const session of Array.isArray(frame.busy) ? frame.busy : []) {
+      if (typeof session === "string") liveTurns[turnKey(state.program, session)] = true;
+    }
     return {
       ...state,
+      liveTurns,
       sessionsSupported: frame.supported !== false,
-      sessions: frame.supported === false ? [] : parseSessions(frame.sessions),
+      sessions: frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       serverActiveSession: str(frame.active),
     };
   }
@@ -562,10 +569,13 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       const item = asRecord(raw);
       if (item) next = onFrame(next, item);
     }
-    const live = isLiveTurn(keptTurns, next.program, next.activeSession);
+    const live = typeof frame.live === "boolean" ? frame.live : isLiveTurn(keptTurns, next.program, next.activeSession);
+    const liveTurns = { ...keptTurns };
+    if (live) liveTurns[turnKey(next.program, next.activeSession)] = true;
+    else delete liveTurns[turnKey(next.program, next.activeSession)];
     return rememberSession({
       ...next,
-      liveTurns: keptTurns,
+      liveTurns,
       busy: live,
       busySession: live ? next.activeSession : "",
     }, frame);
@@ -586,18 +596,17 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     const models = parseModels(frame.models);
     const source = str(frame.source);
     const fallback = models.find((model) => model.default)?.id ?? models[0]?.id ?? "";
-    const selected = models.some((model) => model.id === state.selectedModel)
-      ? state.selectedModel
-      : fallback;
-    return { ...state, models, modelSource: source, selectedModel: selected };
+    return { ...state, models, modelSource: source, selectedModel: fallback };
   }
   if (kind === "config") {
     const configOptions = parseConfigOptions(frame.options);
     const mode = parseMode(frame.options);
+    const model = configOptions.find((option) => option.id === "model" || option.category === "model");
     return {
       ...state,
       configOptions,
       mode,
+      selectedModel: typeof model?.current === "string" ? model.current : state.selectedModel,
       selectedMode: mode?.current || state.selectedMode,
     };
   }
@@ -685,6 +694,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         ...state,
         messages: event.messages,
         activeSession: event.activeSession,
+        draftRef: event.draftRef,
         sessions: event.sessions,
         sessionsSupported: event.sessionsSupported,
         sessionLoading: event.sessionLoading,
@@ -696,11 +706,11 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         configOptions: event.configOptions,
         commands: event.commands,
       };
-      const live = isLiveTurn(next.liveTurns, next.program, next.activeSession);
+      const live = isLiveTurn(next.liveTurns, next.program, next.activeSession || next.draftRef || "");
       return { ...next, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };
     }
     case "send-began":
-      return markTurn(state, state.program, state.activeSession, true);
+      return markTurn(state, state.program, state.activeSession || state.draftRef || "", true);
     case "send-failed":
       return markTurn(
         {
@@ -708,7 +718,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
           messages: pushNotice(state.messages, "dialog_unreachable", state.program ?? ""),
         },
         state.program,
-        state.activeSession,
+        state.activeSession || state.draftRef || "",
         false,
       );
     case "user":
@@ -723,7 +733,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
           }],
         },
         state.program,
-        state.activeSession,
+        state.activeSession || state.draftRef || "",
         true,
       );
     case "cancel-local":
@@ -864,7 +874,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         }),
       };
     case "set-live-turns": {
-      const live = isLiveTurn(event.liveTurns, state.program, state.activeSession);
+      const live = isLiveTurn(event.liveTurns, state.program, state.activeSession || state.draftRef || "");
       return {
         ...state,
         liveTurns: event.liveTurns,
