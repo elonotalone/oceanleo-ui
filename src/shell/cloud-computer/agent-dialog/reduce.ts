@@ -596,18 +596,33 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     const models = parseModels(frame.models);
     const source = str(frame.source);
     const fallback = models.find((model) => model.default)?.id ?? models[0]?.id ?? "";
-    return { ...state, models, modelSource: source, selectedModel: fallback };
+    const selectedModel = models.some((model) => model.id === state.selectedModel && model.usable !== false)
+      ? state.selectedModel : fallback;
+    return { ...state, models, modelSource: source, selectedModel };
   }
   if (kind === "config") {
-    const configOptions = parseConfigOptions(frame.options);
+    let configOptions = parseConfigOptions(frame.options);
     const mode = parseMode(frame.options);
     const model = configOptions.find((option) => option.id === "model" || option.category === "model");
+    // A fresh view's choices belong to the user, not the spare session used
+    // to discover the adapter's options. Existing history remains authoritative.
+    if (!state.activeSession) {
+      configOptions = configOptions.map((option) => {
+        const previous = state.configOptions.find((item) => item.id === option.id);
+        const want = option === model ? state.selectedModel
+          : option.id === mode?.id ? state.selectedMode : previous?.current;
+        return option.options.some((choice) => choice.value === String(want))
+          ? { ...option, current: want as string | boolean } : option;
+      });
+    }
+    const liveModel = configOptions.find((option) => option.id === model?.id);
+    const liveMode = configOptions.find((option) => option.id === mode?.id);
     return {
       ...state,
       configOptions,
-      mode,
-      selectedModel: typeof model?.current === "string" ? model.current : state.selectedModel,
-      selectedMode: mode?.current || state.selectedMode,
+      mode: mode && liveMode ? { ...mode, current: String(liveMode.current) } : mode,
+      selectedModel: typeof liveModel?.current === "string" ? liveModel.current : state.selectedModel,
+      selectedMode: liveMode ? String(liveMode.current) : state.selectedMode,
     };
   }
   if (kind === "user_message") {

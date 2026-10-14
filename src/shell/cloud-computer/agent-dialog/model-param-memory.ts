@@ -3,6 +3,26 @@ import type { DialogConfigOption } from "./types";
 export type ModelParamMemory = Record<string, Record<string, string>>;
 
 const PREFIX = "oceanleo.acp.modelParams.";
+const SELECTION_PREFIX = "oceanleo.acp.selection.";
+
+export function readProgramSelection(computerId: string, program: string): { model?: string; mode?: string } {
+  try {
+    const raw = storage()?.getItem(`${SELECTION_PREFIX}${computerId || "local"}.${program}`);
+    const value = raw ? JSON.parse(raw) : null;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return {
+      ...(typeof value.model === "string" ? { model: value.model } : {}),
+      ...(typeof value.mode === "string" ? { mode: value.mode } : {}),
+    };
+  } catch { return {}; }
+}
+
+export function rememberProgramSelection(computerId: string, program: string, patch: { model?: string; mode?: string }): void {
+  try {
+    storage()?.setItem(`${SELECTION_PREFIX}${computerId || "local"}.${program}`,
+      JSON.stringify({ ...readProgramSelection(computerId, program), ...patch }));
+  } catch { /* Storage may be unavailable. */ }
+}
 
 function storage(): Storage | null {
   try {
@@ -35,9 +55,9 @@ export function coerceOptionValue(option: DialogConfigOption, wire: string): str
 }
 
 export function readModelParamMemory(computerId: string, program: string): ModelParamMemory {
-  const raw = storage()?.getItem(modelParamMemoryKey(computerId, program));
-  if (!raw) return {};
   try {
+    const raw = storage()?.getItem(modelParamMemoryKey(computerId, program));
+    if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const out: ModelParamMemory = {};
@@ -117,7 +137,7 @@ export function clearModelParamMemory(): void {
   const keys: string[] = [];
   for (let index = 0; index < store.length; index += 1) {
     const key = store.key(index);
-    if (key?.startsWith(PREFIX)) keys.push(key);
+    if (key?.startsWith(PREFIX) || key?.startsWith(SELECTION_PREFIX)) keys.push(key);
   }
   for (const key of keys) store.removeItem(key);
 }
@@ -130,4 +150,3 @@ export function tuningSummary(
   if (modeName) parts.push(modeName);
   return parts.filter(Boolean).join(" · ");
 }
-

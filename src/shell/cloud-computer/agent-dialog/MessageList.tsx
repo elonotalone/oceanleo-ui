@@ -460,6 +460,7 @@ function blockingPrompts(messages: AgentDialogMessage[]): TurnItem[] {
 export function MessageList({ dialog }: { dialog: AgentDialogController }) {
   const tt = useUI();
   const ref = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   // Remember the position before React grows the content, not the new distance
   // after a streaming chunk has already increased scrollHeight.
   const following = useRef(true);
@@ -467,6 +468,22 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
   const [showLatest, setShowLatest] = useState(false);
   const firstId = dialog.messages[0]?.id;
   const identity = useRef({ program: dialog.program, session: dialog.activeSession, firstId });
+  // Markdown reveals text after the message frame renders. Observe the actual
+  // content height as well as message updates so those later lines stay visible.
+  useEffect(() => {
+    const node = ref.current;
+    const content = contentRef.current;
+    if (!node || !content || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (following.current) {
+        smoothFollowing.current = false;
+        node.scrollTop = node.scrollHeight;
+      }
+    });
+    observer.observe(content);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
@@ -490,10 +507,14 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
       <div
         ref={ref}
         data-oceanleo-cc-messages=""
-        onWheel={() => { following.current = false; smoothFollowing.current = false; }}
-        onTouchStart={() => { following.current = false; smoothFollowing.current = false; }}
-        onPointerDown={() => { following.current = false; smoothFollowing.current = false; }}
-        onKeyDown={() => { following.current = false; smoothFollowing.current = false; }}
+        onWheel={(event) => {
+          if (event.deltaY < 0) { following.current = false; smoothFollowing.current = false; }
+        }}
+        onKeyDown={(event) => {
+          if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
+            following.current = false; smoothFollowing.current = false;
+          }
+        }}
         onScroll={() => {
           const node = ref.current;
           if (!node) return;
@@ -503,8 +524,9 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
           following.current = nearBottom;
           setShowLatest(!following.current);
         }}
-        className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 pt-3 pb-6 [overflow-anchor:none]"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-6 [overflow-anchor:none]"
       >
+        <div ref={contentRef} className="space-y-5" data-oceanleo-cc-message-content="">
         {dialog.messages.map((message) => {
           if (message.kind === "user") {
             return (
@@ -548,6 +570,7 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
             </div>
           );
         })}
+        </div>
       </div>
       {blockingPrompts(dialog.messages).map((item) => (
         <div

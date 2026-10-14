@@ -94,6 +94,7 @@ export function AcpCard({
   const [oceanleoLoaded, setOceanleoLoaded] = useState(false);
   const [oceanleoInstalling, setOceanleoInstalling] = useState(false);
   const [oceanleoError, setOceanleoError] = useState("");
+  const [copiedLink, setCopiedLink] = useState("");
   const initialSessionApplied = useRef("");
 
   const dialog = useAgentDialog({
@@ -145,6 +146,18 @@ export function AcpCard({
 
   function replaceAddress(program: AgentProgram, session?: string) {
     replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
+  }
+
+  function copyConversationLink() {
+    const write = navigator.clipboard?.writeText;
+    if (!write) return;
+    replaceAddress(selected, dialog.program === selected ? dialog.activeSession : undefined);
+    const target = `${computer.id}:${selected}:${dialog.activeSession || ""}`;
+    setCopiedLink("");
+    void write.call(navigator.clipboard, window.location.href).then(
+      () => setCopiedLink(target),
+      () => setCopiedLink(""),
+    );
   }
 
   useEffect(() => {
@@ -212,6 +225,7 @@ export function AcpCard({
     ? statusOf(selected, dialog.programs)
     : undefined;
   const sessionTitle = dialog.sessions.find((session) => session.id === dialog.activeSession)?.title;
+  const linkCopied = copiedLink === `${computer.id}:${selected}:${dialog.activeSession || ""}`;
   const keyRow = keyProgram ? statusOf(keyProgram, dialog.programs) : undefined;
 
   return (
@@ -241,7 +255,18 @@ export function AcpCard({
               className={`flex min-h-0 max-h-48 w-full shrink-0 flex-col border-b p-3 md:max-h-none md:w-60 md:border-b-0 md:border-r ${tone.border}`}
               data-oceanleo-acp-sessions=""
             >
-              <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  dialog.newSession();
+                  replaceAddress(selected);
+                }}
+                className="w-full px-2 py-1.5 text-left text-sm"
+                data-oceanleo-acp-new-session=""
+              >
+                {tt("新对话")}
+              </button>
+              <div className="mt-3 flex items-center justify-between gap-2">
                 <p className={`text-xs font-medium ${tone.muted}`}>{tt("过去的对话")}</p>
                 <button
                   type="button"
@@ -253,17 +278,6 @@ export function AcpCard({
                   <IconRefresh className="size-3.5" />
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  dialog.newSession();
-                  replaceAddress(selected);
-                }}
-                className="mt-3 w-full px-2 py-1.5 text-left text-sm"
-                data-oceanleo-acp-new-session=""
-              >
-                {tt("新对话")}
-              </button>
               <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
                 {dialog.sessionsSupported === false ? (
                   <p className={`text-xs leading-5 ${tone.muted}`} data-oceanleo-acp-sessions-unsupported="">
@@ -305,8 +319,23 @@ export function AcpCard({
             </aside>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
-              <header className={`shrink-0 truncate border-b px-3 py-2 text-xs ${tone.border} ${tone.muted}`}>
-                {sessionTitle || PROGRAM_LABEL[selected]}
+              <header className={`flex shrink-0 items-center gap-2 border-b px-3 py-2 text-xs ${tone.border} ${tone.muted}`}>
+                <span className="shrink-0">{PROGRAM_LABEL[selected]}</span>
+                <button
+                  type="button"
+                  onClick={copyConversationLink}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 ${tone.hover}`}
+                  aria-label={linkCopied ? tt("已复制对话地址") : tt("复制对话地址")}
+                  title={linkCopied ? tt("已复制对话地址") : tt("复制对话地址")}
+                  data-oceanleo-acp-copy-link=""
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" className="size-3.5">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                    <path d="M10.5 5.5v-2A1 1 0 0 0 9.5 2.5h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+                  </svg>
+                  <span>{linkCopied ? tt("已复制对话地址") : tt("复制对话地址")}</span>
+                </button>
+                {sessionTitle ? <span className="min-w-0 truncate" title={sessionTitle}>{sessionTitle}</span> : null}
               </header>
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (
                 <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">

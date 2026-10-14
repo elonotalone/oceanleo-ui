@@ -14,6 +14,7 @@ import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oc
 import { isWsProgram } from "./parse";
 import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
+import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
 import type {
   AgentDialogController,
   AgentDialogMessage,
@@ -96,7 +97,10 @@ function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
 }
 function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>) {
   const cached = presentationFor(id);
-  return { ...state, programs: cached.programs, ...cached.sessions.get(state.program ?? "") };
+  const selection = readProgramSelection(id, state.program ?? "");
+  return { ...state, programs: cached.programs, ...cached.sessions.get(state.program ?? ""),
+    ...(!state.activeSession ? { selectedModel: selection.model || state.selectedModel,
+      selectedMode: selection.mode || state.selectedMode } : {}) };
 }
 
 export function useAgentDialog({
@@ -736,7 +740,7 @@ export function useAgentDialog({
       const key = cached.last.get(next) ?? `${next}::new:${clientRef(next)}`;
       const saved = cached.views.get(key);
       viewKeyRef.current = key;
-      const switched = applyDialog(stateRef.current, { type: "program", program: next });
+      const switched = hydratePresentation(computerIdRef.current, applyDialog(stateRef.current, { type: "program", program: next }));
       stateRef.current = saved ? applyDialog(switched, { type: "restore-view", ...saved }) : { ...switched, messages: [], draftRef: `new:${clientRef(next)}` };
       dispatch({ type: "program", program: next });
       dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
@@ -784,7 +788,14 @@ export function useAgentDialog({
     const acpSession = current.activeSession;
     const ref = acpSession ? "" : clientRef(program);
     if (ref) pendingRefs.current.set(ref, origin);
-    const config = pendingConfig.current.get(origin);
+    const config = {
+      ...Object.fromEntries(current.configOptions.filter((option) =>
+        option.id !== "model" && option.category !== "model" && option.id !== current.mode?.id &&
+        option.id !== "mode" && option.category !== "mode" &&
+        option.options.some((choice) => choice.value === String(option.current)),
+      ).map((option) => [option.id, option.current])),
+      ...pendingConfig.current.get(origin),
+    };
     presentationFor(computerIdRef.current).views.set(origin, viewSnapOf(stateRef.current));
     dispatch({ type: "send-began" });
     const socket = await ensureOpen();
@@ -798,7 +809,7 @@ export function useAgentDialog({
       frame.ref = ref;
       if (model) frame.model = model;
       if (mode) frame.mode = mode;
-      if (config) frame.config = config;
+      if (Object.keys(config).length) frame.config = config;
     }
     if (files.length) {
       frame.files = files.map((item) => ({ name: item.name, mime: item.mime, data: item.data }));
@@ -1006,6 +1017,7 @@ export function useAgentDialog({
 
   const setSelectedModel = useCallback((id: string) => {
     const program = stateRef.current.program;
+    if (program) rememberProgramSelection(computerIdRef.current, program, { model: id });
     dispatch({ type: "set-model", id });
     stateRef.current = applyDialog(stateRef.current, { type: "set-model", id });
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
@@ -1026,6 +1038,12 @@ export function useAgentDialog({
 
   const setConfig = useCallback((id: string, value: string | boolean) => {
     const program = stateRef.current.program;
+    if (program && stateRef.current.selectedModel) {
+      rememberModelParam(computerIdRef.current, program, stateRef.current.selectedModel, id, String(value));
+    }
+    if (program && (id === "mode" || id === stateRef.current.mode?.id)) {
+      rememberProgramSelection(computerIdRef.current, program, { mode: String(value) });
+    }
     dispatch({ type: "set-config", id, value });
     stateRef.current = applyDialog(stateRef.current, { type: "set-config", id, value });
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;

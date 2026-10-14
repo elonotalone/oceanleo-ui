@@ -172,7 +172,8 @@ export function Composer({
     const program = dialog.program;
     const model = dialog.selectedModel;
     if (!program || !model || dialog.activeSession) return;
-    const params = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
+    const params = (dialog.configOptions || []).filter((option) =>
+      option.id !== "model" && option.category !== "model");
     if (!params.length) return;
     const computerId = dialog.computerId || shellInfo.computerId || "";
     const memory = readModelParamMemory(computerId, program);
@@ -186,7 +187,8 @@ export function Composer({
       writeModelParamMemory(computerId, program, memory);
     }
     for (const { option, wire } of restoresForModel(params, merged)) {
-      dialog.setConfig(option.id, coerceOptionValue(option, wire));
+      if (option.id === dialog.mode?.id) dialog.setMode(wire);
+      else dialog.setConfig(option.id, coerceOptionValue(option, wire));
     }
   }, [dialog.program, dialog.activeSession, dialog.selectedModel, dialog.configOptions, dialog.mode?.id, dialog.computerId, dialog.setConfig, shellInfo.computerId]);
   useEffect(() => {

@@ -581,7 +581,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     await until(() => view.socket().sent.some((frame) => frame.t === "prompt"), "prompt");
     const prompt = view.socket().sent.find((frame) => frame.t === "prompt");
     assert.match(prompt.ref, /^[A-Za-z0-9_-]{1,64}$/);
-    assert.deepEqual(prompt, { t: "prompt", program: "cursor", text: "hello", model: "a", mode: "agent", ref: prompt.ref });
+    assert.deepEqual(prompt, { t: "prompt", program: "cursor", text: "hello", model: "a", mode: "agent", config: { thought_level: "high" }, ref: prompt.ref });
 
     await act(async () => {
       view.socket().server({ t: "session_opened", program: "cursor", acp_session: "s1", ref: prompt.ref });

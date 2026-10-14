@@ -345,6 +345,141 @@ test("程序条展示状态、无选择页；缺安装与凭据时顶部操作�
   } finally { view.cleanup(); }
 });
 
+test("新对话在过去的对话上方，标题旁复制当前机器、程序和会话地址", async () => {
+  window.history.replaceState(null, "", "/computers/old?card=cli&program=codex&session=old&overlay=dev#messages");
+  const copied = [];
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { async writeText(value) { copied.push(value); } },
+  });
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    const aside = view.$("[data-oceanleo-acp-sessions]");
+    assert.equal(aside.firstElementChild, view.$("[data-oceanleo-acp-new-session]"));
+    const button = view.$("[data-oceanleo-acp-copy-link]");
+    assert.equal(button.previousElementSibling.textContent, "Cursor");
+    await server({ t: "session_opened", program: "cursor", acp_session: "chat /?&中文", cwd: "/root", replayed: 0 });
+    await click(button);
+    let url = new URL(copied.at(-1));
+    assert.equal(url.origin, window.location.origin);
+    assert.equal(url.pathname, `/computers/${view.computer.id}`);
+    assert.equal(url.searchParams.get("card"), "acp");
+    assert.equal(url.searchParams.get("program"), "cursor");
+    assert.equal(url.searchParams.get("session"), "chat /?&中文");
+    assert.equal(url.searchParams.get("overlay"), "dev");
+    assert.equal(url.hash, "#messages");
+    assert.equal(button.getAttribute("aria-label"), "已复制对话地址");
+
+    await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
+    assert.equal(button.previousElementSibling.textContent, "Claude Code");
+    assert.equal(button.getAttribute("aria-label"), "复制对话地址");
+    await server({ t: "session_opened", program: "claude", acp_session: "claude-recent", cwd: "/root", replayed: 0 });
+    await click(button);
+    url = new URL(copied.at(-1));
+    assert.equal(url.searchParams.get("program"), "claude");
+    assert.equal(url.searchParams.get("session"), "claude-recent");
+
+    await click(view.$("[data-oceanleo-acp-new-session]"));
+    await click(button);
+    url = new URL(copied.at(-1));
+    assert.equal(url.searchParams.get("program"), "claude");
+    assert.equal(url.searchParams.has("session"), false);
+  } finally {
+    view.cleanup();
+    delete navigator.clipboard;
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("复制地址时剪贴板不可用或拒绝，不显示已复制", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    const button = view.$("[data-oceanleo-acp-copy-link]");
+    await click(button);
+    assert.equal(button.getAttribute("aria-label"), "复制对话地址");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { async writeText() { throw new Error("permission denied"); } },
+    });
+    await click(button);
+    assert.equal(button.getAttribute("aria-label"), "复制对话地址");
+  } finally {
+    view.cleanup();
+    delete navigator.clipboard;
+  }
+});
+
+test("Claude → Codex → Claude preserves model and bottom options after refreshed catalogs", async () => {
+  const view = await boot({ initialProgram: "claude" });
+  const catalog = program => ({ t: "models", program, models: [
+    { id: "sonnet", name: "Sonnet", default: true }, { id: "opus", name: "Opus" },
+  ] });
+  const options = [
+    { id: "model", category: "model", current: "sonnet", options: [{ value: "sonnet", name: "Sonnet" }, { value: "opus", name: "Opus" }] },
+    { id: "effort", current: "low", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] },
+    { id: "fast", type: "bool", current: false, options: [{ value: "false", name: "Off" }, { value: "true", name: "On" }] },
+    { id: "mode", category: "mode", current: "ask", options: [{ value: "ask", name: "Ask" }, { value: "agent", name: "Agent" }] },
+  ];
+  try {
+    await server(catalog("claude"));
+    await setValue(view.$('[data-oceanleo-cc-model]'), "opus");
+    await server({ t: "config", program: "claude", options });
+    assert.equal(view.$('[data-oceanleo-cc-model]').value, "opus");
+    await setValue(view.$('[data-oceanleo-cc-config="effort"]'), "high");
+    await setValue(view.$('[data-oceanleo-cc-config="fast"]'), "true");
+    await setValue(view.$('[data-oceanleo-cc-mode]'), "agent");
+    await click(view.$('[data-oceanleo-program-strip-item="codex"]'));
+    await server({ t: "models", program: "codex", models: [{ id: "gpt", name: "GPT", default: true }] });
+    await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
+    await server(catalog("claude"));
+    await server({ t: "config", program: "claude", options });
+    assert.equal(view.$('[data-oceanleo-cc-model]').value, "opus");
+    assert.equal(view.$('[data-oceanleo-cc-config="effort"]').value, "high");
+    assert.equal(view.$('[data-oceanleo-cc-config="fast"]').value, "true");
+    assert.equal(view.$('[data-oceanleo-cc-mode]').value, "agent");
+    await click(view.$('[data-oceanleo-acp-new-session]'));
+    await setValue(view.$('[data-oceanleo-cc-dialog-input]'), "continue");
+    await click(view.$('[data-oceanleo-cc-dialog-input]').closest('form').querySelector('button[type="submit"]'));
+    await until(() => sentFrames().some(frame => frame.t === "prompt" && frame.program === "claude"), "prompt");
+    const prompt = sentFrames().find(frame => frame.t === "prompt" && frame.program === "claude");
+    assert.equal(prompt.model, "opus");
+    assert.equal(prompt.mode, "agent");
+    assert.deepEqual(prompt.config, { effort: "high", fast: true });
+  } finally { view.cleanup(); }
+});
+
+test("agent choices survive remount, while existing history keeps its own configuration", async () => {
+  let view = await boot({ initialProgram: "claude" });
+  const computer = view.computer;
+  const models = { t: "models", program: "claude", models: [
+    { id: "sonnet", name: "Sonnet", default: true }, { id: "opus", name: "Opus" },
+  ] };
+  const options = [
+    { id: "model", category: "model", current: "sonnet", options: [{ value: "sonnet", name: "Sonnet" }, { value: "opus", name: "Opus" }] },
+    { id: "effort", current: "low", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] },
+    { id: "mode", category: "mode", current: "ask", options: [{ value: "ask", name: "Ask" }, { value: "agent", name: "Agent" }] },
+  ];
+  try {
+    await server(models);
+    await setValue(view.$('[data-oceanleo-cc-model]'), "opus");
+    await server({ t: "config", program: "claude", options });
+    await setValue(view.$('[data-oceanleo-cc-config="effort"]'), "high");
+    await setValue(view.$('[data-oceanleo-cc-mode]'), "agent");
+    view.cleanup();
+    view = await boot({ computer, initialProgram: "claude" });
+    await server(models);
+    await server({ t: "config", program: "claude", options });
+    assert.equal(view.$('[data-oceanleo-cc-model]').value, "opus");
+    assert.equal(view.$('[data-oceanleo-cc-config="effort"]').value, "high");
+    assert.equal(view.$('[data-oceanleo-cc-mode]').value, "agent");
+    await server({ t: "session_opened", program: "claude", acp_session: "old-history" });
+    await server({ t: "config", program: "claude", acp_session: "old-history", options });
+    assert.equal(view.$('[data-oceanleo-cc-model]').value, "sonnet");
+    assert.equal(view.$('[data-oceanleo-cc-config="effort"]').value, "low");
+    assert.equal(view.$('[data-oceanleo-cc-mode]').value, "ask");
+  } finally { view.cleanup(); }
+});
+
 test("程序状态未到时 Cursor 不写未安装；本地 agent 读失败也不画到 Cursor", async () => {
   const computer = { ...COMPUTER, id: `cc_${++computerSequence}` };
   FakeSocket.sockets.length = 0;

@@ -30,6 +30,8 @@ const SOURCE = {
   thisAction: "这项操作",
   autoAllowed: "已自动允许：{name}",
   dialogDidNotStart: "程序没能开新会话。",
+  copyLink: "复制对话地址",
+  linkCopied: "已复制对话地址",
 } as const;
 
 export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
@@ -60,6 +62,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "this action",
     autoAllowed: "Automatically allowed: {name}",
     dialogDidNotStart: "The program could not open a new session.",
+    copyLink: "Copy conversation link",
+    linkCopied: "Link copied",
   },
   de: {
     installedVersion: "Installiert · {version}",
@@ -88,6 +92,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "diese Aktion",
     autoAllowed: "Automatisch erlaubt: {name}",
     dialogDidNotStart: "Das Programm konnte keine neue Sitzung öffnen.",
+    copyLink: "Link zur Unterhaltung kopieren",
+    linkCopied: "Link kopiert",
   },
   es: {
     installedVersion: "Instalado · {version}",
@@ -116,6 +122,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "esta acción",
     autoAllowed: "Permitido automáticamente: {name}",
     dialogDidNotStart: "El programa no pudo abrir una sesión nueva.",
+    copyLink: "Copiar enlace de la conversación",
+    linkCopied: "Enlace copiado",
   },
   "es-419": {
     installedVersion: "Instalado · {version}",
@@ -144,6 +152,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "esta acción",
     autoAllowed: "Permitido automáticamente: {name}",
     dialogDidNotStart: "El programa no pudo abrir una sesión nueva.",
+    copyLink: "Copiar enlace de la conversación",
+    linkCopied: "Enlace copiado",
   },
   fr: {
     installedVersion: "Installé · {version}",
@@ -172,6 +182,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "cette action",
     autoAllowed: "Autorisé automatiquement : {name}",
     dialogDidNotStart: "Le programme n’a pas pu ouvrir une nouvelle session.",
+    copyLink: "Copier le lien de la conversation",
+    linkCopied: "Lien copié",
   },
   it: {
     installedVersion: "Installato · {version}",
@@ -200,6 +212,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "questa azione",
     autoAllowed: "Consentito automaticamente: {name}",
     dialogDidNotStart: "Il programma non è riuscito ad aprire una nuova sessione.",
+    copyLink: "Copia il link della conversazione",
+    linkCopied: "Link copiato",
   },
   "pt-BR": {
     installedVersion: "Instalado · {version}",
@@ -228,6 +242,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "esta ação",
     autoAllowed: "Permitido automaticamente: {name}",
     dialogDidNotStart: "O programa não conseguiu abrir uma nova sessão.",
+    copyLink: "Copiar link da conversa",
+    linkCopied: "Link copiado",
   },
   "pt-PT": {
     installedVersion: "Instalado · {version}",
@@ -256,6 +272,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "esta ação",
     autoAllowed: "Permitido automaticamente: {name}",
     dialogDidNotStart: "O programa não conseguiu abrir uma nova sessão.",
+    copyLink: "Copiar ligação da conversa",
+    linkCopied: "Ligação copiada",
   },
   vi: {
     installedVersion: "Đã cài · {version}",
@@ -284,6 +302,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "thao tác này",
     autoAllowed: "Đã tự động cho phép: {name}",
     dialogDidNotStart: "Chương trình không mở được phiên mới.",
+    copyLink: "Sao chép liên kết cuộc trò chuyện",
+    linkCopied: "Đã sao chép liên kết",
   },
   tr: {
     installedVersion: "Yüklü · {version}",
@@ -312,6 +332,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "bu işlem",
     autoAllowed: "Otomatik olarak izin verildi: {name}",
     dialogDidNotStart: "Program yeni bir oturum açamadı.",
+    copyLink: "Konuşma bağlantısını kopyala",
+    linkCopied: "Bağlantı kopyalandı",
   },
   "zh-TW": {
     installedVersion: "已安裝 · {version}",
@@ -340,6 +362,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "這項操作",
     autoAllowed: "已自動允許：{name}",
     dialogDidNotStart: "程式沒能開新會話。",
+    copyLink: "複製對話網址",
+    linkCopied: "已複製網址",
   },
   ja: {
     installedVersion: "インストール済み · {version}",
@@ -368,6 +392,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "この操作",
     autoAllowed: "自動で許可しました：{name}",
     dialogDidNotStart: "プログラムは新しいセッションを開けませんでした。",
+    copyLink: "会話のリンクをコピー",
+    linkCopied: "リンクをコピーしました",
   },
   ko: {
     installedVersion: "설치됨 · {version}",
@@ -396,6 +422,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "이 작업",
     autoAllowed: "자동으로 허용됨: {name}",
     dialogDidNotStart: "프로그램이 새 세션을 열지 못했습니다.",
+    copyLink: "대화 링크 복사",
+    linkCopied: "링크를 복사했습니다",
   },
   ar: {
     installedVersion: "مثبّت · {version}",
@@ -424,6 +452,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "هذه العملية",
     autoAllowed: "سُمح تلقائيًا: {name}",
     dialogDidNotStart: "تعذر على البرنامج فتح جلسة جديدة.",
+    copyLink: "نسخ رابط المحادثة",
+    linkCopied: "تم نسخ الرابط",
   },
   th: {
     installedVersion: "ติดตั้งแล้ว · {version}",
@@ -452,6 +482,8 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "การดำเนินการนี้",
     autoAllowed: "อนุญาตอัตโนมัติแล้ว: {name}",
     dialogDidNotStart: "โปรแกรมเปิดเซสชันใหม่ไม่ได้",
+    copyLink: "คัดลอกลิงก์การสนทนา",
+    linkCopied: "คัดลอกลิงก์แล้ว",
   },
   hi: {
     installedVersion: "इंस्टॉल है · {version}",
@@ -480,5 +512,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     thisAction: "यह काम",
     autoAllowed: "अपने आप अनुमति दी गई: {name}",
     dialogDidNotStart: "प्रोग्राम नया सत्र नहीं खोल सका।",
+    copyLink: "बातचीत का लिंक कॉपी करें",
+    linkCopied: "लिंक कॉपी हो गया",
   },
 });

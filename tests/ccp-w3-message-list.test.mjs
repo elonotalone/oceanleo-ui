@@ -19,6 +19,12 @@ for (const [name, value] of Object.entries({ window, document: window.document, 
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const resizeObservers = new Set();
+globalThis.ResizeObserver = class {
+  constructor(callback) { this.callback = callback; resizeObservers.add(this); }
+  observe() {}
+  disconnect() { resizeObservers.delete(this); }
+};
 const { MessageList } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", {
   "../../../i18n/ui/useUI": dataModule('const tt = (s) => s; export function useUI() { return tt; }'),
 }));
@@ -46,7 +52,10 @@ async function mount(t) {
     await act(async () => { node.scrollTop = top; node.dispatchEvent(new window.Event("scroll")); });
   };
   t.after(async () => { await act(async () => root.unmount()); host.remove(); });
-  return { host, node, render, scroll, grow: (value) => { height = value; } };
+  const resized = async () => {
+    await act(async () => { for (const observer of resizeObservers) observer.callback([]); });
+  };
+  return { host, node, render, scroll, resized, grow: (value) => { height = value; } };
 }
 
 test("user bubble has a human icon and larger text; each agent turn has one avatar for all blocks", async (t) => {
@@ -120,4 +129,32 @@ test("replacement history, session and program changes reset to bottom", async (
     assert.equal(node.scrollTop, 1000);
     assert.equal(host.querySelector('[data-oceanleo-cc-latest]'), null);
   }
+});
+
+test("Markdown height growth without a new frame follows the tail; reading history stays put", async (t) => {
+  const { host, node, scroll, resized, grow } = await mount(t);
+  await scroll(800);
+  grow(1400);
+  await resized();
+  assert.equal(node.scrollTop, 1400);
+  await scroll(250);
+  grow(1800);
+  await resized();
+  assert.equal(node.scrollTop, 250);
+  assert.ok(host.querySelector('[data-oceanleo-cc-latest]'));
+  await scroll(1600);
+  grow(2000);
+  await resized();
+  assert.equal(node.scrollTop, 2000);
+});
+
+test("clicking text or scrolling down at the bottom does not disable following", async (t) => {
+  const { node, resized, grow } = await mount(t);
+  await act(async () => {
+    node.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+    node.dispatchEvent(new window.WheelEvent('wheel', { bubbles: true, deltaY: 50 }));
+  });
+  grow(1200);
+  await resized();
+  assert.equal(node.scrollTop, 1200);
 });
