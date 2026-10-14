@@ -901,3 +901,41 @@ test("opening 超 20 s 无 login_url 自动转失败展示", async () => {
     host.remove();
   }
 });
+
+test("Codex模型与推理强度独立选择，设置只使用程序目录里的值，停止按钮为红色", async () => {
+  const view = await boot();
+  try {
+    await act(async () => {
+      view.socket().server({ ...STATUS, programs: STATUS.programs.map(program => program.id === "codex" ? { ...program, installed: true, logged_in: true, path: "/codex" } : program) });
+    });
+    await click(view.host.querySelector("[data-oceanleo-cc-dialog-codex]"));
+    await act(async () => {
+      view.socket().server({ t: "models", program: "codex", source: "acp", models: [
+        { id: "gpt-example[low]", name: "Example (low)", default: false },
+        { id: "gpt-example[high]", name: "Example (high)", default: true },
+        { id: "gpt-next[medium]", name: "Next (medium)", default: false },
+      ] });
+      view.socket().server({ t: "config", program: "codex", options: [
+        { id: "model", name: "Model", category: "model", current: "gpt-example", options: [{ value: "gpt-example", name: "Example" }, { value: "gpt-next", name: "Next" }] },
+        { id: "reasoning_effort", name: "Reasoning effort", category: "thought_level", current: "high", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] },
+      ] });
+    });
+    const selector = view.host.querySelector("[data-oceanleo-cc-model]");
+    assert.deepEqual([...selector.options].map(option => option.value), ["gpt-example", "gpt-next"]);
+    assert.equal(selector.value, "gpt-example");
+    const effort = view.host.querySelector('[data-oceanleo-cc-config="reasoning_effort"]');
+    assert.deepEqual([...effort.options].map(option => option.value), ["low", "high"]);
+    await act(async () => { setControlValue(effort, "low"); });
+    await fillText(view.host.querySelector("[data-oceanleo-cc-dialog-input]"), "hello");
+    await pressEnter(view.host.querySelector("[data-oceanleo-cc-dialog-input]"));
+    await until(() => view.socket().sent.some(frame => frame.t === "prompt" && frame.program === "codex"), "codex prompt");
+    const prompt = view.socket().sent.find(frame => frame.t === "prompt" && frame.program === "codex");
+    assert.equal(prompt.model, "gpt-example");
+    assert.equal(prompt.config.reasoning_effort, "low");
+    await act(async () => { view.socket().server({ t: "turn_start", program: "codex", acp_session: "codex-test", ref: prompt.ref }); });
+    const stop = view.host.querySelector("[data-oceanleo-cc-stop]");
+    assert.ok(stop);
+    assert.ok(stop.classList.contains("text-red-700"));
+    assert.ok(stop.classList.contains("dark:text-red-300"));
+  } finally { view.cleanup(); }
+});

@@ -58,6 +58,29 @@ async function mount(t) {
   return { host, node, render, scroll, resized, grow: (value) => { height = value; } };
 }
 
+test("Codex history image links render as attachment indications without serial text", async (t) => {
+  const { host, render } = await mount(t);
+  await render({ messages: [{ kind: "user", id: "image-history", text: "Look here\n[@image](data:image/png;base64," + "a".repeat(200000) + ")" }] });
+  const bubble = host.querySelector("[data-oceanleo-cc-user]");
+  assert.equal(bubble.querySelector("p").textContent, "Look here\n");
+  assert.equal(bubble.querySelector("[data-oceanleo-cc-user-files]").textContent.trim(), "图片");
+  assert.ok(bubble.textContent.length < 100);
+  await render({ messages: [{ kind: "user", id: "photo-only", text: "[@image](data:image/jpeg;base64,YWJj)" }] });
+  assert.equal(host.querySelector("[data-oceanleo-cc-user] p"), null);
+  assert.ok(host.querySelector("[data-oceanleo-cc-user-files]"));
+  const image = host.querySelector("[data-oceanleo-cc-user-image]");
+  assert.equal(image.getAttribute("src"), "data:image/jpeg;base64,YWJj");
+  await act(async () => { image.dispatchEvent(new window.Event("error")); });
+  assert.equal(image.hidden, true);
+  assert.equal(host.querySelector("[data-oceanleo-cc-user-files]").textContent.trim(), "图片");
+  await render({ messages: [{ kind: "user", id: "unsafe-photo", text: "", attachments: [
+    { name: "vector.svg", mime: "image/svg+xml", preview: "data:image/svg+xml;base64,YWJj" },
+    { name: "remote.png", mime: "image/png", preview: "https://example.com/a.png" },
+  ] }] });
+  assert.equal(host.querySelector("[data-oceanleo-cc-user-image]"), null);
+  assert.match(host.querySelector("[data-oceanleo-cc-user-files]").textContent, /vector.svg/);
+});
+
 test("user bubble has a human icon and larger text; each agent turn has one avatar for all blocks", async (t) => {
   const { host, render, node } = await mount(t);
   const userNode = host.querySelector("[data-oceanleo-cc-user]");

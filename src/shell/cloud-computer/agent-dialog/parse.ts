@@ -19,6 +19,7 @@ import type {
   WsProgram,
 } from "./types";
 import { WS_PROGRAMS } from "./types";
+export { userAttachments as parseUserAttachments } from "./message-attachments";
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;

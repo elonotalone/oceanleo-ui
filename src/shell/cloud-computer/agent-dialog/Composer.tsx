@@ -16,6 +16,7 @@ import {
   restoresForModel,
   writeModelParamMemory,
 } from "./model-param-memory";
+import { modelControls } from "./model-controls";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -211,13 +212,15 @@ export function Composer({
   const lastMessage = dialog.messages[dialog.messages.length - 1];
   const creditNotice = lastMessage?.kind === "notice" && lastMessage.code === "provider_needs_credits" ? lastMessage : null;
   const alternative = dialog.models.find((model) => model.usable !== false && model.id !== creditNotice?.model && model.id !== dialog.selectedModel);
-  const showModels = dialog.models.length > 0;
+  const controls = modelControls(dialog.program, dialog.models, dialog.configOptions || [], dialog.selectedModel,
+    readModelParamMemory(dialog.computerId || shellInfo.computerId || "", dialog.program));
+  const showModels = controls.models.length > 0;
   const thisSessionBusy = Array.isArray(dialog.busySessions)
     ? dialog.busySessions.includes(dialog.activeSession || dialog.draftRef || "")
     : Boolean(dialog.busy);
   const showStop = thisSessionBusy;
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
-  const showTuning = tuningParams.length > 0 || Boolean(dialog.mode && dialog.mode.options.length > 0);
+  const showTuning = tuningParams.length > 0 || Boolean(controls.effort) || Boolean(dialog.mode && dialog.mode.options.length > 0);
   const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
   const leoContext: LeoContext = context ?? { page: "shell", ...shellInfo };
   const commandQuery = dialog.draft.startsWith("/")
@@ -367,12 +370,12 @@ export function Composer({
                 {tt("模型")}
                 <select
                   data-oceanleo-cc-model=""
-                  value={dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? dialog.selectedModel : ""}
+                  value={controls.models.some((m) => m.id === controls.selected && m.usable !== false) ? controls.selected : ""}
                   onChange={(event) => dialog.setSelectedModel(event.target.value)}
                   className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
                 >
-                  {!dialog.models.some((m) => m.id === dialog.selectedModel && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
-                  {modelGroups(dialog.models).map((group) => group.label ? (
+                  {!controls.models.some((m) => m.id === controls.selected && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
+                  {modelGroups(controls.models).map((group) => group.label ? (
                     <optgroup key={group.label} label={group.label}>{group.models.map((model) => <option key={model.id} value={model.id}>{modelDisplayName(model)}</option>)}</optgroup>
                   ) : group.models.map((model) => <option key={model.id} value={model.id}>{modelDisplayName(model)}</option>))}
                 </select>
@@ -384,13 +387,30 @@ export function Composer({
                 className="flex flex-wrap items-center gap-1"
                 data-oceanleo-cc-tuning=""
               >
+                {controls.effort ? (
+                  <ComposerTuningChip
+                    configId="reasoning_effort"
+                    category={tt("推理强度")}
+                    current={controls.effort.current}
+                    currentName={controls.effort.options.find((choice) => choice.value === controls.effort?.current)?.name || ""}
+                    options={controls.effort.options}
+                    open={openTuning === "reasoning_effort"}
+                    onToggle={() => setOpenTuning((id) => id === "reasoning_effort" ? null : "reasoning_effort")}
+                    onPick={(wire) => {
+                      setOpenTuning(null);
+                      const effort = controls.effort?.options.find((choice) => choice.value === wire)?.name;
+                      if (effort && dialog.program) rememberModelParam(dialog.computerId || shellInfo.computerId || "", dialog.program, controls.memoryModel, "reasoning_effort", effort);
+                      dialog.setSelectedModel(wire);
+                    }}
+                  />
+                ) : null}
                 {tuningParams.map((option) => {
                   const current = optionCurrentWire(option);
                   return (
                     <ComposerTuningChip
                       key={option.id}
                       configId={option.id}
-                      category={option.name || option.id}
+                      category={option.id === "reasoning_effort" ? tt("推理强度") : option.name || option.id}
                       current={current}
                       currentName={optionChoiceName(option) || option.name || option.id}
                       options={option.options}
@@ -403,7 +423,7 @@ export function Composer({
                           rememberModelParam(
                             dialog.computerId || shellInfo.computerId || "",
                             program,
-                            dialog.selectedModel,
+                            controls.memoryModel,
                             option.id,
                             raw,
                           );
@@ -454,7 +474,7 @@ export function Composer({
             type="button"
             data-oceanleo-cc-stop=""
             onClick={dialog.abort}
-            className={`rounded-lg border px-3 py-2 text-[12px] ${tone.border}`}
+            className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
           >
             {tt("停止")}
           </button>

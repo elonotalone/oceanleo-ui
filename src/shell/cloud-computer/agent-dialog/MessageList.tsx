@@ -8,6 +8,7 @@ import { lineDiff } from "./diff-lines";
 import { noticeAction, visibleNoticeCopy } from "./notice";
 import { isWsProgram } from "./parse";
 import { normalizeQuestions } from "./questions";
+import { normalizeUserMessage } from "./message-attachments";
 import { AgentText } from "./text";
 import type { AgentDialogController, AgentDialogMessage, ToolCard, TurnItem } from "./types";
 
@@ -529,6 +530,7 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
         <div ref={contentRef} className="space-y-5" data-oceanleo-cc-message-content="">
         {dialog.messages.map((message) => {
           if (message.kind === "user") {
+            const visible = normalizeUserMessage(message.text, message.attachments);
             return (
               <div key={message.id} data-oceanleo-cc-user="" className="flex items-start gap-2.5">
                 <span data-oceanleo-cc-user-avatar="" aria-hidden="true" className="mt-2 flex size-[22px] shrink-0 items-center justify-center rounded-full bg-zinc-200 text-zinc-700 dark:bg-neutral-700 dark:text-neutral-200">
@@ -538,14 +540,27 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                   </svg>
                 </span>
                 <div className="min-w-0">
-                  {message.text ? (
-                    <p className="rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
+                  {visible.text ? (
+                    <p className="rounded-xl bg-zinc-100 px-3 py-2 text-[15px] leading-relaxed text-zinc-950 dark:bg-neutral-800 dark:text-neutral-50 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{visible.text}</p>
                   ) : null}
-                  {message.attachments?.length ? (
+                  {visible.attachments.length ? (
                     <ul className="mt-1.5 flex flex-wrap gap-1.5 text-[12px] opacity-80" data-oceanleo-cc-user-files="">
-                      {message.attachments.map((item) => (
-                        <li key={item.name} className="rounded-md bg-black/5 px-1.5 py-0.5 dark:bg-white/10">
-                          {item.name}
+                      {visible.attachments.map((item, index) => (
+                        <li key={`${item.name}-${index}`} className="rounded-md bg-black/5 px-1.5 py-0.5 dark:bg-white/10">
+                          {/* UC-4: validated, bounded raster data only; no HTML,
+                              SVG, remote fetch, or navigation from attachments. */}
+                          {item.preview ? (
+                            <img
+                              data-oceanleo-cc-user-image=""
+                              src={item.preview}
+                              alt={item.name === "图片" ? tt("图片") : item.name}
+                              loading="lazy"
+                              decoding="async"
+                              className="mb-1 max-h-32 max-w-48 rounded object-contain"
+                              onError={(event) => { event.currentTarget.hidden = true; }}
+                            />
+                          ) : null}
+                          {item.name === "图片" ? tt("图片") : item.name}
                         </li>
                       ))}
                     </ul>

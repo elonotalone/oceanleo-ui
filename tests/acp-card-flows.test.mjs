@@ -356,8 +356,12 @@ test("新对话在过去的对话上方，标题旁复制当前机器、程序�
   try {
     const aside = view.$("[data-oceanleo-acp-sessions]");
     assert.equal(aside.firstElementChild, view.$("[data-oceanleo-acp-new-session]"));
+    assert.equal(aside.firstElementChild.textContent.trim(), "+ 新会话");
+    assert.match(aside.textContent, /过去的会话/);
     const button = view.$("[data-oceanleo-acp-copy-link]");
-    assert.equal(button.previousElementSibling.textContent, "Cursor");
+    assert.equal(button.parentElement.firstElementChild.textContent, "Cursor");
+    assert.equal(button.parentElement.lastElementChild, button);
+    assert.match(button.className, /ml-auto/);
     await server({ t: "session_opened", program: "cursor", acp_session: "chat /?&中文", cwd: "/root", replayed: 0 });
     await click(button);
     let url = new URL(copied.at(-1));
@@ -368,11 +372,11 @@ test("新对话在过去的对话上方，标题旁复制当前机器、程序�
     assert.equal(url.searchParams.get("session"), "chat /?&中文");
     assert.equal(url.searchParams.get("overlay"), "dev");
     assert.equal(url.hash, "#messages");
-    assert.equal(button.getAttribute("aria-label"), "已复制对话地址");
+    assert.equal(button.getAttribute("aria-label"), "已复制会话地址");
 
     await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
-    assert.equal(button.previousElementSibling.textContent, "Claude Code");
-    assert.equal(button.getAttribute("aria-label"), "复制对话地址");
+    assert.equal(button.parentElement.firstElementChild.textContent, "Claude Code");
+    assert.equal(button.getAttribute("aria-label"), "复制会话地址");
     await server({ t: "session_opened", program: "claude", acp_session: "claude-recent", cwd: "/root", replayed: 0 });
     await click(button);
     url = new URL(copied.at(-1));
@@ -396,17 +400,71 @@ test("复制地址时剪贴板不可用或拒绝，不显示已复制", async ()
   try {
     const button = view.$("[data-oceanleo-acp-copy-link]");
     await click(button);
-    assert.equal(button.getAttribute("aria-label"), "复制对话地址");
+    assert.equal(button.getAttribute("aria-label"), "复制会话地址");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { async writeText() { throw new Error("permission denied"); } },
     });
     await click(button);
-    assert.equal(button.getAttribute("aria-label"), "复制对话地址");
+    assert.equal(button.getAttribute("aria-label"), "复制会话地址");
   } finally {
     view.cleanup();
     delete navigator.clipboard;
   }
+});
+
+test("会话标题前显示绿色呼吸运行点，后台取消变红且不串到其它会话", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "one", title: "First", cwd: "/root", updated_at: "" },
+      { id: "two", title: "Second", cwd: "/root", updated_at: "" },
+      { id: "unknown", title: "Unopened", cwd: "/root", updated_at: "" },
+    ] });
+    await click(view.$('[data-oceanleo-acp-session="one"]'));
+    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", replayed: 0 });
+    await server({ t: "turn_start", program: "cursor", acp_session: "one" });
+    const row = view.$('[data-oceanleo-acp-session="one"]');
+    let dot = row.querySelector('[data-oceanleo-acp-session-status="running"]');
+    assert.ok(dot);
+    assert.match(dot.className, /bg-emerald-500/);
+    assert.match(dot.className, /motion-safe:animate-pulse/);
+    assert.equal(dot.parentElement.firstElementChild, dot);
+    assert.equal(dot.nextElementSibling.textContent, "First");
+    await click(view.$('[data-oceanleo-acp-session="two"]'));
+    await server({ t: "session_opened", program: "cursor", acp_session: "two", cwd: "/root", replayed: 0 });
+    await server({ t: "done", program: "cursor", acp_session: "one", stop: "cancelled" });
+    dot = row.querySelector('[data-oceanleo-acp-session-status="interrupted"]');
+    assert.ok(dot);
+    assert.match(dot.className, /bg-red-500/);
+    assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
+    assert.equal(view.$('[data-oceanleo-acp-session="unknown"] [data-oceanleo-acp-session-status]'), null);
+    await server({ t: "turn_start", program: "cursor", acp_session: "one" });
+    assert.ok(row.querySelector('[data-oceanleo-acp-session-status="running"]'));
+    await server({ t: "done", program: "cursor", acp_session: "one", stop: "end_turn" });
+    assert.equal(row.querySelector('[data-oceanleo-acp-session-status]'), null);
+    await server({ t: "turn_start", program: "cursor", acp_session: "two" });
+    await server({ t: "error", program: "cursor", acp_session: "two", code: "acp_exited" });
+    assert.ok(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status="interrupted"]'));
+    assert.equal(row.querySelector('[data-oceanleo-acp-session-status]'), null);
+  } finally { view.cleanup(); }
+});
+
+test("模型目录刷新保留配置菜单中已选的基础模型，不退回旧组合型号", () => {
+  let state = { ...initialDialogState(), program: "codex", activeSession: "existing" };
+  state = applyDialog(state, { type: "frame", frame: { t: "config", program: "codex", options: [{
+    id: "model", name: "Model", category: "model", type: "select", current: "gpt-5.4",
+    options: [{ value: "gpt-5.4", name: "GPT-5.4" }, { value: "gpt-5.3", name: "GPT-5.3" }],
+  }] } });
+  state = applyDialog(state, { type: "frame", frame: { t: "models", program: "codex", models: [
+    { id: "gpt-5.4-high", name: "GPT-5.4 High", default: true },
+  ] } });
+  assert.equal(state.selectedModel, "gpt-5.4");
+  state = applyDialog(state, { type: "frame", frame: { t: "models", program: "codex", models: [
+    { id: "gpt-5.4", name: "GPT-5.4", usable: false },
+    { id: "gpt-5.3", name: "GPT-5.3", default: true },
+  ] } });
+  assert.equal(state.selectedModel, "gpt-5.3", "explicitly unavailable models still fall back");
 });
 
 test("Claude → Codex → Claude preserves model and bottom options after refreshed catalogs", async () => {
@@ -563,7 +621,7 @@ test("OceanLeo 未装：进入走云端 REST（agentState），不发 WS 程序�
     assert.ok(view.$("[data-oceanleo-acp-conversation]"));
     assert.equal(sentFrames().some((frame) => frame.program === "oceanleo"), false);
     assert.ok(view.$("[data-oceanleo-acp-sessions-unsupported]"));
-    assert.match(view.text(), /这个程序不支持列出过去的对话/);
+    assert.match(view.text(), /这个程序不支持列出过去的会话/);
     assert.match(view.text(), /当前使用云端 OceanLeo agent/);
     assert.equal(window.location.search, "?card=acp&program=oceanleo");
     assert.equal(globalThis.__acpRouter.replaced.length, 0);
@@ -740,7 +798,7 @@ test("会话栏：程序回 supported:false 时写明不支持列出过去的对
     await until(() => sentFrames().some((frame) => frame.t === "sessions" && frame.program === "hermes"), "hermes sessions");
     await server({ t: "sessions", program: "hermes", supported: false, sessions: [] });
     assert.ok(view.$("[data-oceanleo-acp-sessions-unsupported]"));
-    assert.match(view.text(), /这个程序不支持列出过去的对话/);
+    assert.match(view.text(), /这个程序不支持列出过去的会话/);
   } finally {
     view.cleanup();
   }

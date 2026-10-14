@@ -264,10 +264,10 @@ export function AcpCard({
                 className="w-full px-2 py-1.5 text-left text-sm"
                 data-oceanleo-acp-new-session=""
               >
-                {tt("新对话")}
+                {tt("+ 新会话")}
               </button>
               <div className="mt-3 flex items-center justify-between gap-2">
-                <p className={`text-xs font-medium ${tone.muted}`}>{tt("过去的对话")}</p>
+                <p className={`text-xs font-medium ${tone.muted}`}>{tt("过去的会话")}</p>
                 <button
                   type="button"
                   className={`${tone.iconBtn} size-7`}
@@ -281,11 +281,11 @@ export function AcpCard({
               <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
                 {dialog.sessionsSupported === false ? (
                   <p className={`text-xs leading-5 ${tone.muted}`} data-oceanleo-acp-sessions-unsupported="">
-                    {tt("这个程序不支持列出过去的对话")}
+                    {tt("这个程序不支持列出过去的会话")}
                   </p>
                 ) : dialog.sessions.length === 0 ? (
                   <p className={`text-xs leading-5 ${tone.muted}`} data-oceanleo-acp-sessions-empty="">
-                    {dialog.sessionsSupported === null ? tt("正在读取…") : tt("还没有过去的对话")}
+                    {dialog.sessionsSupported === null ? tt("正在读取…") : tt("还没有过去的会话")}
                   </p>
                 ) : (
                   dialog.sessions.map((session) => (
@@ -301,11 +301,17 @@ export function AcpCard({
                       }`}
                       data-oceanleo-acp-session={session.id}
                     >
-                      <span className="block truncate text-xs font-medium">
-                        {session.title}
-                        {dialog.busySessions?.includes(session.id) ? (
-                          <span className={`ml-1 text-[10px] ${tone.muted}`}>{tt("进行中")}</span>
+                      <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
+                        {dialog.busySessions?.includes(session.id) || dialog.interruptedSessions?.includes(session.id) ? (
+                          <span
+                            className={`size-1.5 shrink-0 rounded-full ${dialog.busySessions?.includes(session.id) ? "bg-emerald-500 motion-safe:animate-pulse" : "bg-red-500"}`}
+                            role="img"
+                            aria-label={dialog.busySessions?.includes(session.id) ? tt("进行中") : tt("已中断")}
+                            title={dialog.busySessions?.includes(session.id) ? tt("进行中") : tt("已中断")}
+                            data-oceanleo-acp-session-status={dialog.busySessions?.includes(session.id) ? "running" : "interrupted"}
+                          />
                         ) : null}
+                        <span className="min-w-0 truncate">{session.title}</span>
                       </span>
                       {session.updatedAt ? (
                         <span className={`mt-1 block text-[11px] ${tone.muted}`}>
@@ -321,21 +327,21 @@ export function AcpCard({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
               <header className={`flex shrink-0 items-center gap-2 border-b px-3 py-2 text-xs ${tone.border} ${tone.muted}`}>
                 <span className="shrink-0">{PROGRAM_LABEL[selected]}</span>
+                {sessionTitle ? <span className="min-w-0 truncate" title={sessionTitle}>{sessionTitle}</span> : null}
                 <button
                   type="button"
                   onClick={copyConversationLink}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 ${tone.hover}`}
-                  aria-label={linkCopied ? tt("已复制对话地址") : tt("复制对话地址")}
-                  title={linkCopied ? tt("已复制对话地址") : tt("复制对话地址")}
+                  className={`ml-auto inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 ${tone.hover}`}
+                  aria-label={linkCopied ? tt("已复制会话地址") : tt("复制会话地址")}
+                  title={linkCopied ? tt("已复制会话地址") : tt("复制会话地址")}
                   data-oceanleo-acp-copy-link=""
                 >
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" className="size-3.5">
                     <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
                     <path d="M10.5 5.5v-2A1 1 0 0 0 9.5 2.5h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
                   </svg>
-                  <span>{linkCopied ? tt("已复制对话地址") : tt("复制对话地址")}</span>
+                  <span>{linkCopied ? tt("已复制会话地址") : tt("复制会话地址")}</span>
                 </button>
-                {sessionTitle ? <span className="min-w-0 truncate" title={sessionTitle}>{sessionTitle}</span> : null}
               </header>
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (
                 <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">

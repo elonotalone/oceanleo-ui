@@ -160,7 +160,7 @@ export type DialogAttachment = {
 };
 
 export type AgentDialogMessage =
-  | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: { name: string; mime: string }[] }
+  | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: { name: string; mime: string; preview?: string }[] }
   | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
@@ -239,6 +239,8 @@ export type AgentDialogController = {
   busy: boolean;
   /** ACP session ids of the current program that still have an open turn. */
   busySessions?: string[];
+  /** Known interrupted sessions of the current program, without inferring unopened history. */
+  interruptedSessions?: string[];
   send: () => Promise<void>;
   abort: () => void;
   programs: ProgramStatus[];

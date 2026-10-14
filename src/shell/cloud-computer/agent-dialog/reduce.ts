@@ -17,6 +17,7 @@ import {
   toolTitleOf,
 } from "./parse";
 import { isModelFamilyConfig } from "./notice";
+import { normalizeUserMessage } from "./message-attachments";
 import type {
   AgentDialogMessage,
   AgentProgram,
@@ -150,7 +151,7 @@ export type DialogEvent =
   | { type: "program"; program: AgentProgram }
   | { type: "send-began" }
   | { type: "send-failed" }
-  | { type: "user"; text: string; attachments?: { name: string; mime: string }[] }
+  | { type: "user"; text: string; attachments?: { name: string; mime: string; preview?: string }[] }
   | { type: "cancel-local" }
   | { type: "clear-offline" }
   | { type: "set-model"; id: string }
@@ -190,19 +191,6 @@ export type DialogEvent =
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
-}
-
-function parseUserAttachments(raw: unknown): { name: string; mime: string }[] {
-  if (!Array.isArray(raw)) return [];
-  const out: { name: string; mime: string }[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const row = item as { name?: unknown; mime?: unknown };
-    const name = typeof row.name === "string" ? row.name : "";
-    if (!name) continue;
-    out.push({ name, mime: typeof row.mime === "string" ? row.mime : "" });
-  }
-  return out;
 }
 
 function forCurrent(state: DialogState, frame: Record<string, unknown>): boolean {
@@ -602,7 +590,10 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     const models = parseModels(frame.models);
     const source = str(frame.source);
     const fallback = models.find((model) => model.default)?.id ?? models[0]?.id ?? "";
-    const selectedModel = models.some((model) => model.id === state.selectedModel && model.usable !== false)
+    const configModel = state.configOptions.find((option) => option.id === "model" || option.category === "model");
+    const selectedModel = (models.some((model) => model.id === state.selectedModel && model.usable !== false) ||
+      (!models.some((model) => model.id === state.selectedModel) &&
+        configModel?.options.some((option) => option.value === state.selectedModel)))
       ? state.selectedModel : fallback;
     return { ...state, models, modelSource: source, selectedModel };
   }
@@ -632,8 +623,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     };
   }
   if (kind === "user_message") {
-    const text = str(frame.text);
-    const attachments = parseUserAttachments(frame.attachments);
+    const { text, attachments } = normalizeUserMessage(str(frame.text), frame.attachments);
     if (!text && attachments.length === 0) return state;
     const last = state.messages[state.messages.length - 1];
     if (
@@ -742,21 +732,23 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         state.activeSession || state.draftRef || "",
         false,
       );
-    case "user":
+    case "user": {
+      const { text, attachments } = normalizeUserMessage(event.text, event.attachments);
       return markTurn(
         {
           ...state,
           messages: [...state.messages, {
             kind: "user",
             id: nextId(),
-            text: event.text,
-            ...(event.attachments?.length ? { attachments: event.attachments } : {}),
+            text,
+            ...(attachments.length ? { attachments } : {}),
           }],
         },
         state.program,
         state.activeSession || state.draftRef || "",
         true,
       );
+    }
     case "cancel-local":
       return markTurn({ ...state, agentBusy: false }, state.program, state.activeSession, false);
     case "clear-offline":

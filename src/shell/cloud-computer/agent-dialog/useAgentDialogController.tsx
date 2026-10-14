@@ -14,6 +14,8 @@ import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oc
 import { isWsProgram } from "./parse";
 import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
+import { sessionInterrupted } from "./session-status";
+import { safeImagePreview } from "./message-attachments";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
 import type {
   AgentDialogController,
@@ -819,7 +821,10 @@ export function useAgentDialog({
       frame.files = files.map((item) => ({ name: item.name, mime: item.mime, data: item.data }));
     }
     socket.send(JSON.stringify(frame));
-    ingest(JSON.stringify({ t: "user_message", program, text, ...(acpSession ? { acp_session: acpSession } : { ref }), attachments: files.map((item) => ({ name: item.name, mime: item.mime })) }));
+    ingest(JSON.stringify({ t: "user_message", program, text, ...(acpSession ? { acp_session: acpSession } : { ref }), attachments: files.map((item) => {
+      const preview = safeImagePreview(`data:${item.mime};base64,${item.data}`);
+      return { name: item.name, mime: item.mime, ...(preview ? { preview } : {}) };
+    }) }));
     pendingConfig.current.delete(origin);
     setDraft("");
     setAttachments([]);
@@ -1165,6 +1170,9 @@ export function useAgentDialog({
     setDraft,
     busy: state.busy,
     busySessions: busySessionsFor(state.liveTurns, state.program),
+    interruptedSessions: [...presentationFor(computerId).views.entries()]
+      .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))
+      .map(([, view]) => view.activeSession),
     send,
     abort,
     programs: state.programs,
