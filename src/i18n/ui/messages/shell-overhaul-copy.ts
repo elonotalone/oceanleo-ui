@@ -14,6 +14,10 @@ import { SHELL_ENDED_MESSAGES } from "./shell-ended-copy";
 import { SERVER_PAGE_MESSAGES } from "./server-page-copy";
 import { TERMINAL_CARD_MESSAGES } from "./terminal-card-copy";
 import { ACP_CARD_MESSAGES } from "./acp-card-copy";
+import { COMPUTER_OVERHAUL_DIALOG_MESSAGES } from "./computer-overhaul-dialog-copy";
+import { COMPUTER_OVERHAUL_PERIPHERY_MESSAGES } from "./computer-overhaul-periphery-copy";
+import { COMPUTER_OVERHAUL_CLI_MESSAGES } from "./computer-overhaul-cli-copy";
+import { COMPUTER_OVERHAUL_TERMINAL_MESSAGES } from "./computer-overhaul-terminal-copy";
 import { APPROVAL_CARD_MESSAGES } from "./approval-card-copy";
 import { ACCOUNT_DELIVERY_MESSAGES } from "./account-delivery-copy";
 import { CCP_W1_MESSAGES } from "./ccp-w1-copy";
@@ -69,6 +73,10 @@ const PARTS = [
   SERVER_PAGE_MESSAGES,
   TERMINAL_CARD_MESSAGES,
   ACP_CARD_MESSAGES,
+  COMPUTER_OVERHAUL_DIALOG_MESSAGES,
+  COMPUTER_OVERHAUL_PERIPHERY_MESSAGES,
+  COMPUTER_OVERHAUL_CLI_MESSAGES,
+  COMPUTER_OVERHAUL_TERMINAL_MESSAGES,
   CCP_W1_MESSAGES,
   CCP_W2_MESSAGES,
   CCP_W3_MESSAGES,
