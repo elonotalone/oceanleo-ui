@@ -129,7 +129,7 @@ export function AcpCard({
   }, [computer.id]);
 
   useEffect(() => {
-    if (!selected || dialog.program === selected || dialog.busy) return;
+    if (!selected || dialog.program === selected) return;
     dialog.setProgram(selected);
   }, [dialog, selected]);
 
@@ -157,14 +157,12 @@ export function AcpCard({
   }, [active, computer.id, selected, dialog.program, dialog.activeSession, mountSession]);
 
   function openProgram(program: AgentProgram) {
-    if (dialog.busy && dialog.program !== program) return;
     dialog.setProgram(program);
     setSelected(program);
     replaceAddress(program);
   }
 
   function openSettings(program: AgentProgram) {
-    if (dialog.busy && dialog.program !== program) return;
     dialog.setProgram(program);
     if (selected) {
       setSelected(program);
@@ -228,7 +226,7 @@ export function AcpCard({
             const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
             return { id: program, label: PROGRAM_LABEL[program],
               dot: program === "oceanleo" ? "green" : !row?.installed ? "gray" : row.logged_in || row.auth === "key" ? "green" : "yellow",
-              running: row?.running, disabled: dialog.busy && selected !== program };
+              running: row?.running || (selected === program && (dialog.busySessions?.length ?? 0) > 0), disabled: false };
           })}
           selected={selected}
           onSelect={(id) => { const program = agentProgram(id); if (program) openProgram(program); }}
@@ -288,7 +286,12 @@ export function AcpCard({
                       }`}
                       data-oceanleo-acp-session={session.id}
                     >
-                      <span className="block truncate text-xs font-medium">{session.title}</span>
+                      <span className="block truncate text-xs font-medium">
+                        {session.title}
+                        {dialog.busySessions?.includes(session.id) ? (
+                          <span className={`ml-1 text-[10px] ${tone.muted}`}>{tt("进行中")}</span>
+                        ) : null}
+                      </span>
                       {session.updatedAt ? (
                         <span className={`mt-1 block text-[11px] ${tone.muted}`}>
                           {relativeTime(session.updatedAt, tt)}

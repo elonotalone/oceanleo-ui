@@ -514,7 +514,7 @@ test("reducer：transcript 立刻换成服务端历史；另一路 session 的 a
   assert.equal(state.agentBusy, false);
 });
 
-test("reducer：未知帧忽略（不报 dialog_unreachable），busy 时不许切程序", () => {
+test("reducer：未知帧忽略（不报 dialog_unreachable），busy 时仍可切程序", () => {
   let state = initialDialogState();
   const before = state;
   // 无 program 的未知帧会走完所有分支落到「忽略」；带别的 program 的在 forCurrent 就返回。
@@ -528,10 +528,56 @@ test("reducer：未知帧忽略（不报 dialog_unreachable），busy 时不许�
   state = applyDialog(state, { type: "send-began" });
   assert.equal(state.busy, true);
   state = applyDialog(state, { type: "program", program: "cursor" });
-  assert.equal(state.program, "oceanleo");
-  state = applyDialog(state, { type: "cancel-local" });
-  state = applyDialog(state, { type: "program", program: "cursor" });
   assert.equal(state.program, "cursor");
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["oceanleo::"]), true);
+});
+
+test("reducer：turn_start 补上会话 id 后当前轮次仍显示 Stop", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, true);
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s1" } });
+  assert.equal(state.activeSession, "s1");
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::s1"]), true);
+  assert.equal(Boolean(state.liveTurns["cursor::"]), false);
+});
+
+test("reducer：多会话 liveTurns 互不打断；普通错误不把当前轮次打成 Send", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "session-loading", id: "s-a" });
+  state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
+
+  state = applyDialog(state, { type: "session-loading", id: "s-b" });
+  assert.equal(state.activeSession, "s-b");
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
+
+  state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
+
+  state = applyDialog(state, { type: "frame", frame: { t: "error", program: "cursor", code: "invalid_argument", acp_session: "s-b" } });
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
+
+  state = applyDialog(state, { type: "frame", frame: { t: "done", program: "cursor", stop: "end_turn", acp_session: "s-b" } });
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
+
+  state = applyDialog(state, { type: "restore-view", messages: [], activeSession: "s-a", sessions: [], sessionsSupported: true, sessionLoading: false, models: [], modelSource: "", selectedModel: "", mode: null, selectedMode: "", configOptions: [], commands: [] });
+  assert.equal(state.busy, true);
+  assert.equal(state.activeSession, "s-a");
+
+  state = applyDialog(state, { type: "program", program: "claude" });
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
 });
 
 // ---------------------------------------------------------------------------

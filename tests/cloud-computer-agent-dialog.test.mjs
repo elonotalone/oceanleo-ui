@@ -648,7 +648,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     await click(view.host.querySelector("[data-oceanleo-cc-stop]"));
     assert.deepEqual(
       view.socket().sent.find((frame) => frame.t === "cancel"),
-      { t: "cancel", program: "cursor" },
+      { t: "cancel", program: "cursor", acp_session: "s1" },
     );
     // 决定 7：不显示「关掉会话」，程序闲置 30 分钟由网关回收。
     assert.equal(view.host.querySelector("[data-oceanleo-cc-close-session]"), null);
@@ -660,7 +660,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.socket().server({ t: "error", program: "cursor", code: "agent_busy" });
     });
     assert.equal(view.host.querySelector("[data-oceanleo-cc-model]"), null);
-    assert.equal(view.host.querySelector("[data-oceanleo-cc-dialog-input]").disabled, true);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dialog-input]").disabled, false);
 
     await act(async () => {
       view.socket().server({ t: "error", program: "", code: "computer_offline" });

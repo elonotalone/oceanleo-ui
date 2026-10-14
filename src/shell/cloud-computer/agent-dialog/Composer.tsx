@@ -210,7 +210,10 @@ export function Composer({
   const creditNotice = lastMessage?.kind === "notice" && lastMessage.code === "provider_needs_credits" ? lastMessage : null;
   const alternative = dialog.models.find((model) => model.usable !== false && model.id !== creditNotice?.model && model.id !== dialog.selectedModel);
   const showModels = dialog.models.length > 0;
-  const showStop = dialog.busy || dialog.agentBusy;
+  const thisSessionBusy = Array.isArray(dialog.busySessions)
+    ? dialog.busySessions.includes(dialog.activeSession)
+    : Boolean(dialog.busy);
+  const showStop = thisSessionBusy;
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
   const showTuning = tuningParams.length > 0 || Boolean(dialog.mode && dialog.mode.options.length > 0);
   const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
@@ -281,7 +284,6 @@ export function Composer({
           <textarea
             data-oceanleo-cc-dialog-input=""
             value={dialog.draft}
-            disabled={dialog.agentBusy || dialog.offline}
             onChange={(event) => dialog.setDraft(event.target.value)}
             onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
               const files = Array.from(event.clipboardData?.files || []);

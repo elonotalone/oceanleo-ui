@@ -219,6 +219,8 @@ export type DialogState = {
   activeSession: string;
   serverActiveSession: string;
   busySession: string;
+  /** `${program}::${acpSession}` keys that still have an open turn. */
+  liveTurns: Record<string, true>;
   sessionLoading: boolean;
   install: InstallState;
   login: LoginState;
@@ -233,6 +235,8 @@ export type AgentDialogController = {
   draft: string;
   setDraft: (value: string) => void;
   busy: boolean;
+  /** ACP session ids of the current program that still have an open turn. */
+  busySessions?: string[];
   send: () => Promise<void>;
   abort: () => void;
   programs: ProgramStatus[];

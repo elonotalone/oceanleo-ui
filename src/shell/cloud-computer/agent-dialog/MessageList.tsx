@@ -519,10 +519,10 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
       <div
         ref={ref}
         data-oceanleo-cc-messages=""
-        onWheel={() => { smoothFollowing.current = false; }}
-        onTouchStart={() => { smoothFollowing.current = false; }}
-        onPointerDown={() => { smoothFollowing.current = false; }}
-        onKeyDown={() => { smoothFollowing.current = false; }}
+        onWheel={() => { following.current = false; smoothFollowing.current = false; }}
+        onTouchStart={() => { following.current = false; smoothFollowing.current = false; }}
+        onPointerDown={() => { following.current = false; smoothFollowing.current = false; }}
+        onKeyDown={() => { following.current = false; smoothFollowing.current = false; }}
         onScroll={() => {
           const node = ref.current;
           if (!node) return;

@@ -12,7 +12,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
 import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
-import { applyDialog, initialDialogState } from "./reduce";
+import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
 import type {
   AgentDialogController,
@@ -53,14 +53,44 @@ function usesDialogSocket(
 
 // Only parsed presentation state is retained; authentication and socket URLs never enter this cache.
 type Presentation = Pick<ReturnType<typeof initialDialogState>, "programs" | "sessions" | "sessionsSupported">;
-const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">> }>();
+type ViewSnap = {
+  messages: AgentDialogMessage[];
+  activeSession: string;
+  sessions: ReturnType<typeof initialDialogState>["sessions"];
+  sessionsSupported: boolean | null;
+  sessionLoading: boolean;
+  models: ReturnType<typeof initialDialogState>["models"];
+  modelSource: string;
+  selectedModel: string;
+  mode: ReturnType<typeof initialDialogState>["mode"];
+  selectedMode: string;
+  configOptions: ReturnType<typeof initialDialogState>["configOptions"];
+  commands: ReturnType<typeof initialDialogState>["commands"];
+};
+const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">>; views: Map<string, ViewSnap> }>();
 function presentationFor(id: string) {
   let cached = presentationCache.get(id);
   if (!cached) {
-    cached = { programs: [], sessions: new Map() };
+    cached = { programs: [], sessions: new Map(), views: new Map() };
     presentationCache.set(id, cached);
   }
   return cached;
+}
+function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
+  return {
+    messages: state.messages,
+    activeSession: state.activeSession,
+    sessions: state.sessions,
+    sessionsSupported: state.sessionsSupported,
+    sessionLoading: state.sessionLoading,
+    models: state.models,
+    modelSource: state.modelSource,
+    selectedModel: state.selectedModel,
+    mode: state.mode,
+    selectedMode: state.selectedMode,
+    configOptions: state.configOptions,
+    commands: state.commands,
+  };
 }
 function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>) {
   const cached = presentationFor(id);
@@ -134,8 +164,11 @@ export function useAgentDialog({
   const messagesCacheRef = useRef(new Map<string, AgentDialogMessage[]>());
 
   stateRef.current = state;
-  if (state.program && state.activeSession) {
-    messagesCacheRef.current.set(`${state.program}::${state.activeSession}`, state.messages);
+  if (state.program) {
+    presentationFor(computerId).views.set(state.program, viewSnapOf(state));
+    if (state.activeSession) {
+      messagesCacheRef.current.set(`${state.program}::${state.activeSession}`, state.messages);
+    }
   }
   draftRef.current = draft;
   attachmentsRef.current = attachments;
@@ -181,24 +214,46 @@ export function useAgentDialog({
     }
     const frameSession = typeof frame.acp_session === "string" ? frame.acp_session : "";
     const talk = frame.t === "user_message" || frame.t === "turn_start" || frame.t === "delta" || frame.t === "thought" || frame.t === "tool" || frame.t === "plan" || frame.t === "usage" || frame.t === "done" || frame.t === "transcript";
-    if (
+    const frameProgram = typeof frame.program === "string" ? frame.program : "";
+    const otherProgram = Boolean(frameProgram && stateRef.current.program && frameProgram !== stateRef.current.program);
+    const otherSession = Boolean(
       talk &&
-      frameSession &&
-      stateRef.current.activeSession &&
-      frameSession !== stateRef.current.activeSession
-    ) {
-      const key = `${stateRef.current.program ?? ""}::${frameSession}`;
-      const shadow = applyDialog(
-        {
-          ...initialDialogState(),
-          program: stateRef.current.program,
-          activeSession: frameSession,
-          messages: messagesCacheRef.current.get(key) ?? [],
-        },
-        { type: "frame", frame },
-      );
-      messagesCacheRef.current.set(key, shadow.messages);
-    } else {
+        frameSession &&
+        stateRef.current.activeSession &&
+        frameSession !== stateRef.current.activeSession,
+    );
+    const skipCurrentTalk = Boolean((otherSession || otherProgram) && talk);
+    if (otherProgram || otherSession) {
+      if (talk || frame.t === "error" || frame.t === "done") {
+        const program = (otherProgram ? frameProgram : stateRef.current.program) ?? "";
+        const session = frameSession || (otherProgram ? "" : stateRef.current.activeSession);
+        const key = `${program}::${session}`;
+        const cachedView = presentationFor(computerIdRef.current).views.get(program);
+        const shadow = applyDialog(
+          {
+            ...initialDialogState(),
+            program: program as AgentProgram,
+            activeSession: session,
+            messages: messagesCacheRef.current.get(key) ?? cachedView?.messages ?? [],
+            liveTurns: stateRef.current.liveTurns,
+          },
+          { type: "frame", frame },
+        );
+        messagesCacheRef.current.set(key, shadow.messages);
+        if (program) {
+          const current = presentationFor(computerIdRef.current).views.get(program);
+          presentationFor(computerIdRef.current).views.set(program, {
+            ...(current ?? viewSnapOf(shadow)),
+            messages: session && current?.activeSession === session ? shadow.messages : current?.messages ?? shadow.messages,
+            activeSession: current?.activeSession ?? session,
+          });
+        }
+        if (shadow.liveTurns !== stateRef.current.liveTurns) {
+          dispatch({ type: "set-live-turns", liveTurns: shadow.liveTurns });
+        }
+      }
+    }
+    if (!skipCurrentTalk) {
       dispatch({ type: "frame", frame });
     }
     if (frame.t === "sessions") {
@@ -645,7 +700,6 @@ export function useAgentDialog({
     (next: AgentProgram) => {
       // OceanLeo 本地安装后走同一条 ACP WS；没安装时保留既有 REST 云端 agent。
       if (!isWsProgram(next) && next !== "oceanleo") return;
-      if (stateRef.current.busy) return;
       const prev = stateRef.current.program;
       // 同一程序再选一次（如对话中点当前 agent 的齿轮）不能清掉模型、会话和消息。
       if (prev === next) return;
@@ -654,12 +708,16 @@ export function useAgentDialog({
         if (stateRef.current.activeSession) {
           messagesCacheRef.current.set(`${prev}::${stateRef.current.activeSession}`, stateRef.current.messages);
         }
+        presentationFor(computerIdRef.current).views.set(prev, viewSnapOf(stateRef.current));
       }
       dispatch({ type: "program", program: next });
-      dispatch({
-        type: "messages-replace",
-        messages: messagesCacheRef.current.get(next) ?? [],
-      });
+      const saved = presentationFor(computerIdRef.current).views.get(next);
+      const restored = saved?.messages ?? messagesCacheRef.current.get(next) ?? messagesCacheRef.current.get(`${next}::${saved?.activeSession ?? ""}`) ?? [];
+      if (saved) {
+        dispatch({ type: "restore-view", ...saved, messages: restored });
+      } else {
+        dispatch({ type: "messages-replace", messages: restored });
+      }
       if (next === "oceanleo" && !localOceanleoRef.current) {
         dispatch({ type: "sessions-unavailable" });
         // 进入即拉服务端真相（覆盖上面的缓存过渡）；离开 oceanleo 则停掉轮询。
@@ -688,9 +746,7 @@ export function useAgentDialog({
     }
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     const current = stateRef.current;
-    const thisBusy =
-      (current.busy || current.agentBusy) &&
-      (!current.busySession || current.busySession === current.activeSession);
+    const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession);
     if (thisBusy || current.offline) return;
     const text = draftRef.current.trim();
     const files = attachmentsRef.current;
@@ -699,14 +755,13 @@ export function useAgentDialog({
       dispatch({ type: "notice", code: "invalid_argument", program });
       return;
     }
-    stateRef.current = { ...current, busy: true, busySession: current.activeSession };
+    stateRef.current = applyDialog(current, { type: "send-began" });
     const model = current.selectedModel;
     const mode = current.selectedMode;
     const freshTurn = freshRef.current;
     dispatch({ type: "send-began" });
     const socket = await ensureOpen();
     if (!socket) {
-      stateRef.current = { ...stateRef.current, busy: false };
       dispatch({ type: "send-failed" });
       return;
     }
@@ -1056,6 +1111,7 @@ export function useAgentDialog({
     draft,
     setDraft,
     busy: state.busy,
+    busySessions: busySessionsFor(state.liveTurns, state.program),
     send,
     abort,
     programs: state.programs,
