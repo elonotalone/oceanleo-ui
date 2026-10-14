@@ -36,7 +36,7 @@ function filled(value: string | undefined | null): boolean {
   return Boolean(value && value.trim());
 }
 
-/** `onSaved`：保存成功后把新资料交给外面（「个人卡片」用它当场刷新上面的预览）。 */
+/** `onSaved`：保存成功后把新资料交给外面（「我的主页」编辑时用它当场刷新页面上的卡片）。 */
 export function BaySellerProfileSection({ onSaved }: { onSaved?: (profile: BaySellerProfile) => void } = {}) {
   const tt = useUI();
   const [profile, setProfile] = useState<BaySellerProfile | null>(null);

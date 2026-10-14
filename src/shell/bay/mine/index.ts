@@ -3,4 +3,3 @@ export { MyPublishedPane } from "./MyPublishedPane";
 export { MySoldPane } from "./MySoldPane";
 export { MyBoughtPane } from "./MyBoughtPane";
 export { MyFavoritesPane } from "./MyFavoritesPane";
-export { MyCardPane } from "./MyCardPane";

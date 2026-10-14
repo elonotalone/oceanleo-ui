@@ -1,7 +1,8 @@
 "use client";
 
 // 个人主页窗格：别人的主页（`profile:<handle>`）与我自己的主页（`profile:me`）。
-// 版面由 `page/ProfilePage` 按 `page_doc` 画；本人多一个「编辑主页」，进编辑后是 `page/ProfilePageEditor`。
+// 版面由 `page/ProfilePage` 按 `page_doc` 画。我自己看到的和别人看到的一模一样，默认不可编辑；
+// 点「编辑主页」才进 `page/ProfilePageEditor`，编辑时资料表单（`BaySellerProfileSection`）接在下面。
 // 不登录也能看别人的主页；先聊聊、收藏、举报、拉黑要登录。
 
 import { useMemo, useState } from "react";
@@ -29,6 +30,7 @@ import type { BayService } from "../../../lib/bay/services";
 import { openTradeThread } from "../deal";
 import { ProfilePage } from "../page/ProfilePage";
 import { ProfilePageEditor } from "../page/ProfilePageEditor";
+import { BaySellerProfileSection } from "../seller/BaySellerProfileSection";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { openBay, requireBayLogin, setBayFilter, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { FavoriteButton, PaneLoading, PaneMessage, ReportBox } from "./parts";
@@ -190,7 +192,15 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
   }
 
   if (own && editing) {
-    return <ProfilePageEditor page={page} initial={doc} saving={saving} error={saveError} onSave={(next) => void save(next)} onCancel={() => setEditing(false)} />;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-bay-profile="own-editing">
+        <ProfilePageEditor page={page} initial={doc} saving={saving} error={saveError} onSave={(next) => void save(next)} onCancel={() => setEditing(false)} />
+        <section className="space-y-3 border-t border-neutral-100 bg-white px-4 py-6" data-bay-own-profile-form>
+          <h3 className="text-[13px] font-semibold text-stone-800">{tt("资料")}</h3>
+          <BaySellerProfileSection onSaved={() => onChanged?.()} />
+        </section>
+      </div>
+    );
   }
 
   const official = Boolean(profile.official) && profile.handle === BAY_OFFICIAL_HANDLE;
@@ -203,9 +213,6 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
           {tt("公开主页")}
         </button>
       ) : null}
-      <button type="button" data-bay-page-action="settings" onClick={() => openBay({ kind: "settings", pane: "profile" })} className={ACTION_SECONDARY}>
-        {tt("资料")}
-      </button>
       <button type="button" data-bay-page-action="edit" onClick={() => setEditing(true)} className={ACTION_PRIMARY}>
         {tt("编辑主页")}
       </button>
@@ -221,11 +228,6 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-bay-profile={own ? "own" : "public"}>
-      {own && !published ? (
-        <p className="shrink-0 bg-amber-50 px-4 py-2.5 text-center text-[12.5px] text-amber-900" data-bay-page-unpublished>
-          {tt("这张主页现在只有你自己看得到。公开之后别人才能访问，发布商品或服务时也会自动公开。")}
-        </p>
-      ) : null}
       {saveError && !editing ? <p className="shrink-0 bg-rose-50 px-4 py-2 text-center text-[12.5px] text-rose-700">{tt(saveError)}</p> : null}
       {talkError ? <p className="shrink-0 bg-rose-50 px-4 py-2 text-center text-[12.5px] text-rose-700">{tt(talkError)}</p> : null}
       <ProfilePage

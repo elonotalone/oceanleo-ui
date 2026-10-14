@@ -62,7 +62,8 @@ test("深链：契约 §5 的每一种都能解析，并且能原样写回", () 
     ["mine:sold", { kind: "mine", tab: "sold" }],
     ["mine:bought", { kind: "mine", tab: "bought" }],
     ["mine:favorites", { kind: "mine", tab: "favorites" }],
-    ["mine:card", { kind: "mine", tab: "card" }],
+    ["mine:page", { kind: "mine", tab: "page" }],
+    ["mine:dashboard", { kind: "mine", tab: "dashboard" }],
     ["settings", { kind: "settings" }],
     ["settings:profile", { kind: "settings", pane: "profile" }],
     ["settings:vetting", { kind: "settings", pane: "vetting" }],
@@ -132,12 +133,14 @@ test("normalizeBayFeedKind：现用值原样，老值 supply/all/consult→servi
   assert.equal(links.canonicalBayFeedKind(""), "service");
 });
 
-test("normalizeBayMineTab：现用五块原样，老值 needs/services/help→published、proposals→sold、orders→bought", () => {
+test("normalizeBayMineTab：现用六块原样，老值 needs/services/help→published、proposals→sold、orders→bought、card→page", () => {
   assert.equal(links.normalizeBayMineTab("published"), "published");
   assert.equal(links.normalizeBayMineTab("sold"), "sold");
   assert.equal(links.normalizeBayMineTab("bought"), "bought");
   assert.equal(links.normalizeBayMineTab("favorites"), "favorites");
-  assert.equal(links.normalizeBayMineTab("card"), "card");
+  assert.equal(links.normalizeBayMineTab("page"), "page");
+  assert.equal(links.normalizeBayMineTab("dashboard"), "dashboard");
+  assert.equal(links.normalizeBayMineTab("card"), "page");
   assert.equal(links.normalizeBayMineTab("needs"), "published");
   assert.equal(links.normalizeBayMineTab("services"), "published");
   assert.equal(links.normalizeBayMineTab("help"), "published");

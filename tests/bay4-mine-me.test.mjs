@@ -1,6 +1,5 @@
-// W4：我的收藏、个人卡片。
-// 覆盖：收藏三段分组、空状态、取消收藏的 DELETE 与行消失、点行打开目标、三个纯函数；
-// 卡片预览、卖家资料表单、三个链接；资料没公开时的提示。网络与浮窗状态打桩。
+// W4：我的收藏。（个人卡片已并入「我的主页」与「数据面板」，见 bay-shell-state 与 supply 的主页测试。）
+// 覆盖：收藏三段分组、空状态、取消收藏的 DELETE 与行消失、点行打开目标、三个纯函数。网络与浮窗状态打桩。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -42,6 +41,8 @@ const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m,k)=> k in vars ? String(vars[k]) : m) : zh; }",
 );
 const stateStub = dataModule(`
+  export function replaceBay(){}
+  export function bayHrefOnSite(){ return "#"; }
   globalThis.__bayOpened ??= [];
   globalThis.__bayLoginAsked ??= 0;
   globalThis.__baySignedIn ??= true;
@@ -82,6 +83,10 @@ const pickerStub = dataModule(`
   export async function pickLibraryWork(){ return null; }
 `);
 const domainStub = dataModule(`
+  export function familyForHost(){ return undefined; }
+  export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export function currentDomainFamily(){ return undefined; }
+  export function domainProfileForHost(){ return undefined; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }
 `);
@@ -93,6 +98,7 @@ const authStub = dataModule(`
 `);
 
 const paneStubs = {
+  "../deal/open-trade-thread": dataModule("export async function openTradeThread(){}"),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
   "../../../lib/agent": agentStub,
@@ -104,11 +110,9 @@ const paneStubs = {
 };
 
 const { MyFavoritesPane } = await import(await compileModule("src/shell/bay/mine/MyFavoritesPane.tsx", paneStubs));
-const { MyCardPane } = await import(await compileModule("src/shell/bay/mine/MyCardPane.tsx", paneStubs));
 const favorites = await import(await compileModule("src/lib/bay/favorites.ts", { "./http": httpStub }));
 
 const paneProps = { target: { kind: "mine", tab: "favorites" }, layout: "docked", siteKey: "design" };
-const cardProps = { target: { kind: "mine", tab: "card" }, layout: "docked", siteKey: "design" };
 
 function favoriteItems() {
   return [
@@ -145,33 +149,6 @@ function resetFavorites(items = favoriteItems()) {
   globalThis.__bayHttpRespond = (method, path) => {
     if (method === "GET" && path.startsWith("/v1/talent/favorites")) return { items, total: items.length };
     if (method === "DELETE" && path.startsWith("/v1/talent/favorites")) return { ok: true };
-    return {};
-  };
-}
-
-function resetCard(published = true) {
-  globalThis.__bayOpened = [];
-  globalThis.__baySettings = [];
-  globalThis.__bayHttpCalls = [];
-  globalThis.__bayAuthed = null;
-  const profile = {
-    user_id: "me",
-    handle: "leo",
-    display_name: "Leo",
-    avatar_url: null,
-    headline: "十年品牌设计",
-    bio: "",
-    published,
-    skills: ["Logo"],
-    languages: ["中文"],
-    rating_avg: 4.9,
-    rating_count: 8,
-  };
-  globalThis.__bayHttpRespond = (method, path) => {
-    if (path === "/v1/talent/me") return { profile };
-    if (path === "/v1/talent/me/showcase") return { items: [] };
-    if (path === "/v1/moderation/my-cases") return { cases: [] };
-    if (String(path).startsWith("/v1/talent/reputation/")) return {};
     return {};
   };
 }
@@ -257,42 +234,5 @@ test("我的收藏：取消收藏后行消失，请求打到 DELETE", async () =
   const deleted = globalThis.__bayHttpCalls.find((call) => call.method === "DELETE");
   assert.ok(deleted);
   assert.equal(deleted.path, "/v1/talent/favorites?target_kind=service&target_ref=svc-1");
-  view.unmount();
-});
-
-test("个人卡片：预览、编辑表单、三个链接", async () => {
-  resetCard(true);
-  const view = await mount(React.createElement(MyCardPane, cardProps));
-  assert.ok(view.host.querySelector('[data-bay-pane="mine-card"]'));
-  assert.ok(view.host.querySelector("[data-bay-card-preview]"));
-  assert.ok(view.host.querySelector("[data-bay-seller-card]"));
-  assert.match(view.host.querySelector("[data-bay-card-preview]").textContent, /买家看到的样子/);
-  assert.match(view.host.querySelector("[data-bay-seller-card]").textContent, /Leo/);
-  assert.ok(view.host.querySelector("[data-bay-seller-profile]"));
-  const links = view.host.querySelector("[data-bay-card-links]");
-  assert.ok(links);
-  assert.match(links.textContent, /打开我的主页/);
-  assert.match(links.textContent, /认证/);
-  assert.match(links.textContent, /收款/);
-  const buttons = [...links.querySelectorAll("button")];
-  await act(() => {
-    buttons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "profile", handle: "me" });
-  await act(() => {
-    buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await act(() => {
-    buttons[2].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  assert.deepEqual(globalThis.__baySettings, ["vetting", "money"]);
-  view.unmount();
-});
-
-test("个人卡片：资料没公开时有提示", async () => {
-  resetCard(false);
-  const view = await mount(React.createElement(MyCardPane, cardProps));
-  assert.match(view.host.textContent, /资料还没有公开。公开后买家才能看到这张卡片，你才能上架服务。/);
-  assert.ok(view.host.querySelector("[data-bay-seller-card]"));
   view.unmount();
 });

@@ -15,6 +15,10 @@ test("MyBoughtLessonsPane 调 listPurchasedBayLessons，空态与状态标来自
   const pane = source("src/shell/bay/lessons/MyBoughtLessonsPane.tsx");
   assert.match(pane, /listPurchasedBayLessons/);
   assert.match(pane, /data-bay-pane="mine-bought-lessons"/);
-  assert.match(pane, /data-bay-empty="bought-lessons"/);
   assert.match(pane, /purchaseStage/);
+  // 空态不再给「去逛课程」；每一单有交易状态、联系卖家、去评价。
+  assert.doesNotMatch(pane, /去逛课程/);
+  assert.match(pane, /data-bay-lesson-contact=/);
+  assert.match(pane, /data-bay-lesson-review=/);
+  assert.match(pane, /openTradeThread/);
 });

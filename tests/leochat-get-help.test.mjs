@@ -227,7 +227,7 @@ const { BayMineTabs } = await import(
       export function MyFavoritesPane(){ return null; }
       export function MyCardPane(){ return null; }
     `),
-    "./bay-links": dataModule(`export const BAY_MINE_UI_TABS = ["published", "sold", "bought", "favorites", "card"];`),
+    "./bay-links": dataModule(`export const BAY_MINE_UI_TABS = ["published", "sold", "bought", "favorites", "page", "dashboard"];`),
     "./bay-state": stateStub,
   })
 );
@@ -354,13 +354,13 @@ test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 →
   assert.equal(bayDetailTitleKey({ kind: "call-human" }), "找人帮忙");
 });
 
-test("BayMineTabs 恰好五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；认不出的值高亮我发布的", () => {
+test("BayMineTabs 恰好六块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 我的主页 / 数据面板；认不出的值高亮我发布的", () => {
   const html = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "help" }));
   assert.deepEqual(
     [...html.matchAll(/data-mine-tab="([a-z]+)"/g)].map((match) => match[1]),
-    ["published", "sold", "bought", "favorites", "card"],
+    ["published", "sold", "bought", "favorites", "page", "dashboard"],
   );
-  for (const label of ["我发布的", "我卖出的", "我买到的", "我的收藏", "个人卡片"]) assert.ok(html.includes(label), label);
+  for (const label of ["我发布的", "我卖出的", "我买到的", "我的收藏", "我的主页", "数据面板"]) assert.ok(html.includes(label), label);
   assert.doesNotMatch(html, /我的求助|我发出的|我的报价|我的服务|我的订单/);
   assert.match(html, /aria-selected="true"[^>]*data-mine-tab="published"|data-mine-tab="published"[^>]*aria-selected="true"/);
   const sold = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "sold" }));

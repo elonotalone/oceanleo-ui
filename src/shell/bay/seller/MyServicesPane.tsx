@@ -28,6 +28,7 @@ import {
 import { openBaySettings } from "../settings";
 import { baySiteName } from "../shell/bay-links";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { PublishedCategoryTag } from "../mine/PublishedCategoryTag";
 import { HiddenByPlatformNotice } from "./seller-ui";
 
 const GROUP_TITLES: Record<BayServiceGroup, string> = {
@@ -201,13 +202,13 @@ export function MyServicesPane({ overview = false, hideNew = false }: BayPanePro
 
       {loaded.consults.length ? (
         <div data-bay-group="consults">
-          <h3 className="mb-2 text-[12px] font-semibold text-stone-500">
-            {tt("答疑")} · {loaded.consults.length}
-          </h3>
           <ul>
             {loaded.consults.map((consult) => (
               <li key={consult.id} className="border-b border-stone-100 px-1 py-2.5 text-[13px] text-stone-800">
-                <span className="block font-semibold">{consult.title || tt("未命名服务")}</span>
+                <span className="flex items-start justify-between gap-2">
+                  <span className="block min-w-0 truncate font-semibold">{consult.title || tt("未命名服务")}</span>
+                  <PublishedCategoryTag category="service" />
+                </span>
                 <span className="mt-0.5 block text-[12px] text-stone-500">{tt("答疑上架后暂时不能修改")}</span>
               </li>
             ))}
@@ -227,16 +228,15 @@ function OverviewCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function listingLabel(service: BayOwnService): { kind: "digital" | "service" | "consult"; label: string } {
-  if (service.listing_kind === "digital") return { kind: "digital", label: "数字商品" };
-  if (service.catalog_kind === "consult") return { kind: "consult", label: "答疑" };
-  return { kind: "service", label: "服务" };
+// 类别只有「成品文件」（数字商品）与「人工服务」（服务、答疑）两种；右边标签见 PublishedCategoryTag。
+function listingCategory(service: BayOwnService): "digital" | "service" {
+  return service.listing_kind === "digital" ? "digital" : "service";
 }
 
 function ServiceRow({ service }: { service: BayOwnService }) {
   const tt = useUI();
   const site = baySiteName(service.posted_site);
-  const listing = listingLabel(service);
+  const category = listingCategory(service);
   return (
     <button
       type="button"
@@ -244,11 +244,9 @@ function ServiceRow({ service }: { service: BayOwnService }) {
       onClick={() => openBay({ kind: "service-editor", serviceId: service.id })}
       className="block w-full border-b border-stone-100 px-1 py-2.5 text-left hover:bg-stone-50"
     >
-      <span className="flex items-center gap-2">
-        <span data-bay-listing-kind={listing.kind} className="shrink-0 text-[12px] text-neutral-500">
-          {tt(listing.label)}
-        </span>
+      <span className="flex items-start justify-between gap-2">
         <span className="block min-w-0 truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
+        <PublishedCategoryTag category={category} />
       </span>
       {service.summary ? <span className="mt-0.5 line-clamp-2 text-[12px] text-stone-500">{service.summary}</span> : null}
       <span className="mt-1 flex flex-wrap gap-x-2 text-[12px] text-stone-500">

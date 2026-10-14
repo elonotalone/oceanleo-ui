@@ -19,7 +19,7 @@ import { BAY_ADVICE_ZONE, BAY_KIND_PARAM, DEFAULT_BAY_FEED_KIND, normalizeBayFee
 export type BayLayout = "docked" | "full" | "mobile" | "page";
 
 /** 「我的」五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片。 */
-export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "card";
+export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "page" | "dashboard";
 
 /** 「管理作品」页的七个分页。 */
 export const BAY_APP_MANAGE_TABS = ["feedback", "login", "pricing", "releases", "errors", "sources", "endpoint"] as const;

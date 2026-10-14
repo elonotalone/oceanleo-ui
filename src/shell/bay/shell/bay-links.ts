@@ -8,12 +8,12 @@
 // app-thread:<id>（作品下的一条留言）、dashboard（开发者面板）、app-login（账号登录授权页）。认不出的值一律当没有。
 // 2026-10-13：`/bay` 顶栏是卖 / 买两档；卖的一侧用种类下拉切 service / asset / app / lesson。
 // URL `?kind=` 仍是这五个值（含 request），老值照样认（见 normalizeBayFeedKind）。
-// 「我的」改成五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片；老的 `mine:<tab>` 值落到对应的新块。
+// 「我的」六块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 我的主页 / 数据面板；老的 `mine:<tab>` 值落到对应的新块（card 落到主页）。
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import type { BayMineTab, BayTarget } from "./bay-state";
 
 export const BAY_PARAM = "bay";
-export const BAY_MINE_TABS: readonly BayMineTab[] = ["published", "sold", "bought", "favorites", "card"];
+export const BAY_MINE_TABS: readonly BayMineTab[] = ["published", "sold", "bought", "favorites", "page", "dashboard"];
 export const BAY_MINE_UI_TABS: readonly BayMineTab[] = BAY_MINE_TABS;
 /** 老链接（通知、邮件、别人存的地址）里的 `mine:<tab>` → 现在的那一块。 */
 const LEGACY_MINE_TABS: Readonly<Record<string, BayMineTab>> = {
@@ -22,6 +22,7 @@ const LEGACY_MINE_TABS: Readonly<Record<string, BayMineTab>> = {
   help: "published",
   proposals: "sold",
   orders: "bought",
+  card: "page",
 };
 
 export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab | null {

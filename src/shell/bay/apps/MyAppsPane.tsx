@@ -1,6 +1,6 @@
 "use client";
 
-// 「我的」→「我发布的」里的作品一段：我的作品、状态、数据、上下架。本文件归 U3 单元；组件名与 props 是合同，不许改。
+// 「我的」→「我发布的」里的作品一段：我的作品、状态、数据、上下架；每行右边标「网站与软件服务」。本文件归 U3 单元；组件名与 props 是合同，不许改。
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -17,6 +17,7 @@ import { ConfirmDialog } from "../../../ui";
 import { DANGER_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerNotice } from "../seller/seller-ui";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { openBay, useBaySignedIn, type BayLayout } from "../shell/bay-state";
+import { PublishedCategoryTag } from "../mine/PublishedCategoryTag";
 import { AppStatsBars } from "./AppStatsBars";
 import { statusLabel } from "./app-editor-model";
 
@@ -181,7 +182,10 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
                     <span className="h-12 w-12 shrink-0 rounded-xl bg-stone-100" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold text-stone-800">{row.title || tt("未命名作品")}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 truncate text-[14px] font-semibold text-stone-800">{row.title || tt("未命名作品")}</p>
+                      <PublishedCategoryTag category="app" />
+                    </div>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-stone-500">
                       <span className="rounded-md bg-stone-100 px-2 py-0.5 font-medium text-stone-600">{tt(statusLabel(row))}</span>
                       {row.status === "published" ? (

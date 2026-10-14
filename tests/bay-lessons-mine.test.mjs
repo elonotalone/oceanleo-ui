@@ -7,13 +7,17 @@ import test from "node:test";
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = (rel) => readFileSync(join(REPO, rel), "utf8");
 
-test("我的课程三段与 pane 标记都在", () => {
+test("我发布的课程只列我的课：没有套餐段、没有卖出的订单段（卖出的课程在「我卖出的」）", () => {
   const mine = src("src/shell/bay/lessons/MyLessonsPane.tsx");
   assert.match(mine, /data-bay-pane="mine-lessons"/);
-  assert.match(mine, /data-bay-section="my-lessons"/);
-  assert.match(mine, /data-bay-section="my-bundles"/);
-  assert.match(mine, /data-bay-section="sold-orders"/);
-  assert.match(mine, /SoldOrders/);
+  assert.match(mine, /PublishedCategoryTag category="lesson"/);
+  assert.doesNotMatch(mine, /my-bundles/);
+  assert.doesNotMatch(mine, /deleteBayLessonBundle|listMyBayLessonBundles/);
+  assert.doesNotMatch(mine, /sold-orders/);
+  assert.doesNotMatch(mine, /SoldOrders/);
+  const sold = src("src/shell/bay/mine/MySoldPane.tsx");
+  assert.match(sold, /SoldOrders/);
+  assert.match(sold, /listSoldBayLessonOrders/);
 });
 
 test("状态标来自 lessonStatusLabel", () => {
@@ -36,5 +40,4 @@ test("删除有确认", () => {
   assert.match(mine, /ConfirmDialog/);
   assert.match(mine, /pendingDelete/);
   assert.match(mine, /deleteBayLesson/);
-  assert.match(mine, /deleteBayLessonBundle/);
 });

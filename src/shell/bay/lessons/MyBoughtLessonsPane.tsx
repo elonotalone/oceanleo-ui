@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { listPurchasedBayLessons, type BayPurchasedLesson } from "../../../lib/bay/lessons";
+import { openTradeThread } from "../deal/open-trade-thread";
 import { openBay, useBaySignedIn, type BayLayout } from "../shell/bay-state";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { PaneLoading, PaneMessage } from "../supply/parts";
@@ -70,18 +71,7 @@ export function MyBoughtLessonsPane(_props: MyBoughtLessonsPaneProps): ReactElem
 
   return (
     <section data-bay-pane="mine-bought-lessons" className="space-y-3 p-4">
-      {items.length === 0 ? (
-        <div data-bay-empty="bought-lessons" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center">
-          <p className="text-[13px] text-neutral-600">{tt("你还没有买过课程")}</p>
-          <button
-            type="button"
-            onClick={() => openBay({ kind: "feed", filter: { kind: "lesson" } })}
-            className="mt-3 rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800"
-          >
-            {tt("去逛课程")}
-          </button>
-        </div>
-      ) : (
+      {items.length === 0 ? null : (
         <ul className="divide-y divide-neutral-100">
           {items.map((row) => {
             const cover = safeHttpUrl(row.lesson.cover_url);
@@ -102,12 +92,31 @@ export function MyBoughtLessonsPane(_props: MyBoughtLessonsPaneProps): ReactElem
                   </button>
                   <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-neutral-500">
                     <span>{tt("已学 {done} / {total} 节", { done: row.done_count, total: row.lesson.chapter_count })}</span>
-                    {stage !== "none" ? (
+                    <span>
+                      {tt("交易状态")}：
                       <span data-bay-purchase-stage={stage} className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-600">
                         {stageLabel(stage, tt)}
                       </span>
-                    ) : null}
+                    </span>
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-bay-lesson-contact={row.lesson.id}
+                      onClick={() => void openTradeThread({ kind: "direct", userId: row.purchase.seller_id })}
+                      className="rounded-full border border-neutral-200 px-3 py-1 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
+                    >
+                      {tt("联系卖家")}
+                    </button>
+                    <button
+                      type="button"
+                      data-bay-lesson-review={row.lesson.id}
+                      onClick={() => openBay({ kind: "lesson", id: row.lesson.id })}
+                      className="rounded-full border border-neutral-200 px-3 py-1 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
+                    >
+                      {tt("去评价")}
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="button"

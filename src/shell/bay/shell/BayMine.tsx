@@ -1,18 +1,27 @@
 "use client";
 
-// 「我的」五块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 个人卡片。没登录先请登录。
-// 每一块的正文在 `../mine/` 里，这个文件只管分区标签和登录提示。标签允许换行，不出横向滚动条。
+// 「我的」六块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 我的主页 / 数据面板。没登录先请登录。
+// 每一块的正文在 `../mine/` 里（主页与数据面板借用 `../supply/ProfilePane` 与 `../dashboard/DashboardPane`），
+// 这个文件只管分区标签和登录提示。标签允许换行，不出横向滚动条。
+import { lazy, Suspense } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { MyBoughtPane, MyCardPane, MyFavoritesPane, MyPublishedPane, MySoldPane } from "../mine";
+import { MyBoughtPane, MyFavoritesPane, MyPublishedPane, MySoldPane } from "../mine";
+import { BayMineDashboardTab } from "../mine/MyDashboardTab";
+import { PaneLoading } from "../supply/parts";
 import { BAY_MINE_UI_TABS } from "./bay-links";
 import { replaceBay, requireBayLogin, useBaySignedIn, type BayLayout, type BayMineTab, type BayPaneProps } from "./bay-state";
+
+// 「我自己的主页」= profile:me。懒加载：ProfilePane 经 BayMine 绕回本文件（同 mine/MyPublishedPane 的做法）。
+const OWN_HANDLE = "me";
+const ProfilePane = lazy(() => import("../supply/ProfilePane").then((mod) => ({ default: mod.ProfilePane })));
 
 const MINE_LABELS: Readonly<Record<BayMineTab, string>> = {
   published: "我发布的",
   sold: "我卖出的",
   bought: "我买到的",
   favorites: "我的收藏",
-  card: "个人卡片",
+  page: "我的主页",
+  dashboard: "数据面板",
 };
 
 function shownMineTab(tab: BayMineTab): BayMineTab {
@@ -23,7 +32,14 @@ function MinePane({ tab, ...props }: BayPaneProps & { tab: BayMineTab }) {
   if (tab === "sold") return <MySoldPane {...props} />;
   if (tab === "bought") return <MyBoughtPane {...props} />;
   if (tab === "favorites") return <MyFavoritesPane {...props} />;
-  if (tab === "card") return <MyCardPane {...props} />;
+  if (tab === "page") {
+    return (
+      <Suspense fallback={<PaneLoading />}>
+        <ProfilePane {...props} target={{ kind: "profile", handle: OWN_HANDLE }} />
+      </Suspense>
+    );
+  }
+  if (tab === "dashboard") return <BayMineDashboardTab {...props} />;
   return <MyPublishedPane {...props} />;
 }
 

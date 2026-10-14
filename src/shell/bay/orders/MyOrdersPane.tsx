@@ -15,6 +15,7 @@ import {
   type BayOrderGroup,
   type BayOrderRole,
 } from "../../../lib/bay/orders";
+import { openTradeThread } from "../deal/open-trade-thread";
 import { openBay, type BayPaneProps } from "../shell/bay-state";
 import {
   countOrderGroups,
@@ -166,18 +167,11 @@ export function MyOrdersPane({
         placeholder={tt("搜索标题或对方名字")}
         className={ORDER_INPUT}
       />
-      {emptyAll ? (
+      {emptyAll && role === "buyer" ? null : emptyAll ? (
         <div data-bay-empty="all" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-[13px] text-neutral-600">
           <p>{emptyCopy}</p>
-          <button
-            type="button"
-            data-bay-action={role === "buyer" ? "browse-services" : "publish-service"}
-            onClick={() =>
-              openBay(role === "buyer" ? { kind: "feed", filter: { kind: "service" } } : { kind: "publish" })
-            }
-            className={"mt-3 " + ORDER_BUTTON}
-          >
-            {role === "buyer" ? tt("去逛逛") : tt("去发布服务")}
+          <button type="button" data-bay-action="publish-service" onClick={() => openBay({ kind: "publish" })} className={"mt-3 " + ORDER_BUTTON}>
+            {tt("去发布服务")}
           </button>
         </div>
       ) : emptyGroup ? (
@@ -199,10 +193,34 @@ export function MyOrdersPane({
                   <p className="mt-0.5 truncate text-[12px] text-neutral-500">{nextActionText(tt, order, gate)}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <OrderStatusChip status={order.status} />
+                  {role === "buyer" ? null : <OrderStatusChip status={order.status} />}
                   <span className="text-[12.5px] font-medium text-neutral-800">{orderAmountText(tt, order)}</span>
                 </div>
               </button>
+              {role === "buyer" ? (
+                <div className="flex flex-wrap items-center gap-2 px-3 pb-2.5">
+                  <span className="flex items-center gap-1.5 text-[12px] text-neutral-500">
+                    {tt("交易状态")}
+                    <OrderStatusChip status={order.status} />
+                  </span>
+                  <button
+                    type="button"
+                    data-bay-order-contact={order.id}
+                    onClick={() => void openTradeThread({ kind: "direct", userId: order.seller_user_id })}
+                    className="rounded-full border border-neutral-200 px-3 py-1 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    {tt("联系卖家")}
+                  </button>
+                  <button
+                    type="button"
+                    data-bay-order-review={order.id}
+                    onClick={() => openBay({ kind: "order", id: order.id })}
+                    className="rounded-full border border-neutral-200 px-3 py-1 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    {tt("去评价")}
+                  </button>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

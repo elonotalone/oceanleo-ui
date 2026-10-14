@@ -1,11 +1,54 @@
 "use client";
 
-// 「我的」→「我卖出的」：卖家概况、我给别人需求报的价、我作为卖家的订单。
+// 「我的」→「我卖出的」：卖家概况、我给别人需求报的价、我作为卖家的订单、卖出的课程订单、卖出的作品订单。
+import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { listSoldBayLessonOrders, type BayLessonPurchase } from "../../../lib/bay/lessons";
+import { SoldOrders } from "../lessons/SoldOrders";
+import { DEFAULT_CURRENCY } from "../seller/editor-model";
+import { SellerNotice } from "../seller/seller-ui";
 import { MyProposalsPane } from "../needs/MyProposalsPane";
 import { MyOrdersPane } from "../orders/MyOrdersPane";
 import { SellerOverview } from "../seller/MyServicesPane";
-import type { BayPaneProps } from "../shell/bay-state";
+import { useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
+import { PaneLoading } from "../supply/parts";
+import { LazySection } from "./LazySection";
+
+const loadSoldApps = () => import("../apppaid/MySoldAppsPane").then((mod) => mod.MySoldAppsPane);
+
+function SoldLessons() {
+  const tt = useUI();
+  const signedIn = useBaySignedIn();
+  const [items, setItems] = useState<BayLessonPurchase[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [rowError, setRowError] = useState("");
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let alive = true;
+    void listSoldBayLessonOrders().then(
+      (body) => {
+        if (alive) setItems(body.items || []);
+      },
+      () => {
+        if (alive) setFailed(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [signedIn, nonce]);
+
+  if (failed) return <SellerNotice tone="error">{tt("课程订单没读出来，请稍后再试。")}</SellerNotice>;
+  if (items === null) return <PaneLoading />;
+  return (
+    <div className="space-y-3">
+      <SoldOrders items={items} currency={DEFAULT_CURRENCY} onChanged={() => setNonce((value) => value + 1)} onError={setRowError} />
+      {rowError ? <SellerNotice tone="error">{rowError}</SellerNotice> : null}
+    </div>
+  );
+}
 
 export function MySoldPane(props: BayPaneProps) {
   const tt = useUI();
@@ -22,6 +65,13 @@ export function MySoldPane(props: BayPaneProps) {
         <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("卖出的订单")}</h3>
         <MyOrdersPane {...props} fixedRole="seller" />
       </div>
+      <div data-bay-mine-section="sold-lessons">
+        <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("卖出的课程")}</h3>
+        <div className="px-4">
+          <SoldLessons />
+        </div>
+      </div>
+      <LazySection marker="app-orders" title="作品订单" load={loadSoldApps} />
     </section>
   );
 }

@@ -59,6 +59,8 @@ const authStub = dataModule(`
   export function cachedAccessToken(){ return "t"; }
 `);
 const stateStub = dataModule(`
+  export function replaceBay(){}
+  export function bayHrefOnSite(){ return "#"; }
   globalThis.__bayOpened ??= [];
   globalThis.__bayLoginAsked ??= 0;
   export function openBay(target){ globalThis.__bayOpened.push(target); }

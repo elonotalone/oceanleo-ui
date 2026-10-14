@@ -100,6 +100,10 @@ const paymentsStub = dataModule(`
 `);
 const agentStub = dataModule(`export async function authed(){ return { ok: true, data: {} }; }`);
 const domainStub = dataModule(`
+  export function familyForHost(){ return undefined; }
+  export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export function currentDomainFamily(){ return undefined; }
+  export function domainProfileForHost(){ return undefined; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
   export function currentFamilySubsiteOrigin(){ return undefined; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }
@@ -108,6 +112,11 @@ const localeStub = dataModule("export function useLocale(){ return 'zh'; }");
 const messagesStub = dataModule("export function openMessages(){}");
 
 const STUBS = {
+  "../apppaid/MySoldAppsPane": dataModule("export function MySoldAppsPane(){ return null; }"),
+  "../lessons/SoldOrders": dataModule("export function SoldOrders(){ return null; }"),
+  "../supply/parts": dataModule("export function PaneLoading(){ return null; } export function PaneMessage(){ return null; }"),
+  "../../../lib/bay/lessons": dataModule("export async function listSoldBayLessonOrders(){ return { items: [] }; } export async function decideBayLessonRefund(){}"),
+  "../deal/open-trade-thread": dataModule("export async function openTradeThread(){}"),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
   "../../../lib/bay/payments": paymentsStub,
@@ -229,16 +238,19 @@ async function mount(element) {
 
 const props = (tab) => ({ target: { kind: "mine", tab }, layout: "docked", siteKey: "design" });
 
-test("我发布的：有 supply、needs 两段，只有一个发布按钮", async () => {
+test("我发布的：一张统一列表，没有需求、没有分区标题，每行右边标类别，只有一个发布按钮", async () => {
   reset();
   const view = await mount(React.createElement(MyPublishedPane, props("published")));
   assert.ok(view.q('[data-bay-pane="mine-published"]'));
   assert.ok(view.q('[data-bay-mine-section="supply"]'));
-  assert.ok(view.q('[data-bay-mine-section="needs"]'));
-  assert.match(view.host.textContent, /素材与服务/);
-  assert.match(view.host.textContent, /需求/);
+  assert.equal(view.q('[data-bay-mine-section="needs"]'), null);
+  assert.equal(view.q('[data-bay-mine-section="app-orders"]'), null);
+  assert.equal(view.q("[data-bay-mine-dashboard]"), null);
+  assert.doesNotMatch(view.host.textContent, /需求/);
+  assert.doesNotMatch(view.host.textContent, /素材与服务/);
   assert.match(view.host.textContent, /Logo/);
-  assert.match(view.host.textContent, /做一份路演稿/);
+  assert.doesNotMatch(view.host.textContent, /做一份路演稿/);
+  assert.match(view.host.textContent, /人工服务|成品文件/);
   assert.equal(view.qa("[data-bay-mine-publish]").length, 1);
   assert.equal(view.qa("[data-bay-new-service]").length, 0);
   assert.equal(
@@ -266,22 +278,23 @@ test("我卖出的：概况、报价中、卖出的订单；没有买卖切换�
   await view.unmount();
 });
 
-test("我买到的：只出买家订单；空状态是还没有买过东西和去逛逛", async () => {
+test("我买到的：只出买家订单；每一单有交易状态、联系卖家、去评价；没有空状态的去逛逛", async () => {
   reset();
   const view = await mount(React.createElement(MyBoughtPane, props("bought")));
   assert.ok(view.q('[data-bay-pane="mine-bought"]'));
   assert.equal(view.q("[data-bay-role]"), null);
   assert.ok(view.q("[data-bay-order-row=buy-1]"));
   assert.equal(view.q("[data-bay-order-row=sell-1]"), null);
+  assert.match(view.host.textContent, /交易状态/);
+  assert.ok(view.q("[data-bay-order-contact=buy-1]"));
+  assert.ok(view.q("[data-bay-order-review=buy-1]"));
   await view.unmount();
 
   reset([]);
   const empty = await mount(React.createElement(MyBoughtPane, props("bought")));
-  assert.ok(empty.q("[data-bay-empty=all]"));
-  assert.match(empty.host.textContent, /你还没有买过东西。/);
-  assert.match(empty.host.textContent, /去逛逛/);
-  await empty.click("[data-bay-action=browse-services]");
-  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "service" } });
+  assert.equal(empty.q("[data-bay-empty=all]"), null);
+  assert.doesNotMatch(empty.host.textContent, /你还没有买过东西/);
+  assert.doesNotMatch(empty.host.textContent, /去逛逛/);
   await empty.unmount();
 });
 
