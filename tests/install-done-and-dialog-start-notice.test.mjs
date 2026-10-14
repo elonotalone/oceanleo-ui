@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { LOCALES } from "../src/i18n/config.ts";
 import { ACP_CARD_MESSAGES } from "../src/i18n/ui/messages/acp-card-copy.ts";
 import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
-import { noticeAction, noticeCopy } from "../src/shell/cloud-computer/agent-dialog/notice.ts";
+import { isOpaqueDialogDidNotStart, noticeAction, noticeCopy, visibleNoticeCopy } from "../src/shell/cloud-computer/agent-dialog/notice.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -46,7 +46,8 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const DID_NOT_START = "对话没有启动。";
+const SESSION_NOT_OPENED = "程序没能开新会话。";
+const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
 const STILL_NEEDS_INSTALL = "这个程序的对话组件还没就绪。安装会一并补齐。";
 const tt = (zh, vars) => {
   if (!vars) return zh;
@@ -233,16 +234,25 @@ test("还在跑或已经失败时，不把主按钮写成完成", async () => {
 });
 
 test("acp_start_failed：一句话，没有安装按钮", () => {
-  assert.equal(noticeCopy(tt, "acp_start_failed"), DID_NOT_START);
-  assert.equal(noticeCopy(tt, "acp_start_failed", false), DID_NOT_START);
+  assert.equal(noticeCopy(tt, "acp_start_failed"), SESSION_NOT_OPENED);
+  assert.equal(noticeCopy(tt, "acp_start_failed", false), SESSION_NOT_OPENED);
+  assert.equal(isOpaqueDialogDidNotStart(noticeCopy(tt, "acp_start_failed")), false);
   assert.equal(noticeAction("acp_start_failed", false), null);
   assert.equal(noticeAction("acp_start_failed", true), null);
+  assert.equal(
+    visibleNoticeCopy(tt, "acp_start_failed", true, "The dialog did not start."),
+    SESSION_NOT_OPENED,
+  );
+  assert.equal(
+    visibleNoticeCopy(tt, "acp_start_failed", true, "工作目录必须是这台电脑上已有的绝对路径。"),
+    "工作目录必须是这台电脑上已有的绝对路径。",
+  );
 });
 
 test("acp_unavailable：只有尚未安装才带安装按钮；已知已安装则与启动失败同一句", () => {
   assert.equal(noticeCopy(tt, "acp_unavailable", false), STILL_NEEDS_INSTALL);
   assert.equal(noticeAction("acp_unavailable", false), "install");
-  assert.equal(noticeCopy(tt, "acp_unavailable", true), DID_NOT_START);
+  assert.equal(noticeCopy(tt, "acp_unavailable", true), SESSION_UNAVAILABLE);
   assert.equal(noticeAction("acp_unavailable", true), null);
   assert.equal(noticeCopy(tt, "acp_unavailable", null), STILL_NEEDS_INSTALL);
   assert.equal(noticeAction("acp_unavailable", null), null);
@@ -257,7 +267,7 @@ test("黄字：名单或刚装完的路径能证明已安装时，不再给安�
   );
   try {
     const notice = installed.host.querySelector("[data-oceanleo-cc-notice='acp_unavailable']");
-    assert.equal(notice.querySelector("p").textContent, DID_NOT_START);
+    assert.equal(notice.querySelector("p").textContent, SESSION_UNAVAILABLE);
     assert.equal(notice.querySelector("button"), null);
   } finally {
     await installed.unmount();
@@ -270,7 +280,7 @@ test("黄字：名单或刚装完的路径能证明已安装时，不再给安�
   );
   try {
     const notice = justInstalled.host.querySelector("[data-oceanleo-cc-notice='acp_unavailable']");
-    assert.equal(notice.querySelector("p").textContent, DID_NOT_START);
+    assert.equal(notice.querySelector("p").textContent, SESSION_UNAVAILABLE);
     assert.equal(notice.querySelector("button"), null);
   } finally {
     await justInstalled.unmount();
@@ -292,20 +302,22 @@ test("黄字：名单或刚装完的路径能证明已安装时，不再给安�
   );
   try {
     const notice = failedStart.host.querySelector("[data-oceanleo-cc-notice='acp_start_failed']");
-    assert.equal(notice.querySelector("p").textContent, DID_NOT_START);
+    assert.equal(notice.querySelector("p").textContent, SESSION_NOT_OPENED);
     assert.equal(notice.querySelector("button"), null);
   } finally {
     await failedStart.unmount();
   }
 });
 
-test("对话没启动这句在 17 种语言里都有译文", () => {
-  assert.equal(LOCALES.length, 17);
+test("电脑页从不显示 The dialog did not start", () => {
   for (const locale of LOCALES) {
-    const value = ACP_CARD_MESSAGES[locale][DID_NOT_START] ?? UI_MESSAGES[locale][DID_NOT_START];
+    const value = ACP_CARD_MESSAGES[locale][SESSION_NOT_OPENED] ?? UI_MESSAGES[locale]?.[SESSION_NOT_OPENED];
     assert.equal(typeof value, "string", locale);
     assert.equal(value.length > 0, true, locale);
+    assert.equal(isOpaqueDialogDidNotStart(value), false, locale);
   }
-  assert.equal(ACP_CARD_MESSAGES.en[DID_NOT_START], UI_MESSAGES.en[DID_NOT_START]);
-  assert.equal(UI_MESSAGES.en[DID_NOT_START], "The dialog did not start.");
+  assert.equal(ACP_CARD_MESSAGES.en[SESSION_NOT_OPENED], UI_MESSAGES.en[SESSION_NOT_OPENED]);
+  assert.equal(UI_MESSAGES.en[SESSION_NOT_OPENED], "The program could not open a new session.");
+  assert.equal(UI_MESSAGES.en["对话没有启动。"], "The program could not open a new session.");
+  assert.notEqual(UI_MESSAGES.en["对话没有启动。"], "The dialog did not start.");
 });

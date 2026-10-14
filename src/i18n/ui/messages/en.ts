@@ -6607,8 +6607,12 @@ const en: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · the main agent uses your quota",
   "已配置 {n} 家：{names}": "{n} configured: {names}",
   "管理 →": "Manage →",
-  // 对话起不来时的黄字（2026-09-22）。没有具体原因时用这句。
-  "对话组件没有启动。请再发一次。": "The dialog did not start.",
-  "对话没有启动。": "The dialog did not start.",
+  // 电脑页黄字：会话没建起来时说原因，禁止「The dialog did not start.」
+  "对话组件没有启动。请再发一次。": "The program could not open a new session.",
+  "对话没有启动。": "The program could not open a new session.",
+  "程序没能开新会话。": "The program could not open a new session.",
+  "这个程序现在开不了会话。": "This program cannot open a session right now.",
+  "工作目录必须是这台电脑上已有的绝对路径。": "The working directory must be an existing absolute path on this computer.",
+  "读不到这台电脑的家目录，会话没建起来。": "Could not read this computer's home directory, so the session was not created.",
 };
 export default en;

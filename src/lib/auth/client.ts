@@ -11,6 +11,7 @@ import {
   configured,
   isLeoDevPreviewHost,
 } from "./config";
+import { forgetRememberedComputers } from "../cloud-computer-memory";
 import {
   createLeoDevPreviewCookieJar,
   writePreviewGuestLatch,
@@ -635,6 +636,7 @@ export function needsMfaChallenge(aal: AalState): boolean {
 }
 
 export async function signOutEverywhere(): Promise<void> {
+  forgetRememberedComputers();
   const host = typeof window !== "undefined" ? window.location.host : "";
   const preview = isLeoDevPreviewHost(host);
   const c = browserClient();

@@ -125,6 +125,22 @@ test("unchanged lists and rows retain references; changed rows replace only them
   } finally { view.cleanup(); }
 });
 
+test("unsigned list response forgets the cached computers", async () => {
+  window.sessionStorage.setItem(cacheKey, JSON.stringify([pc()]));
+  window.localStorage.setItem("oceanleo.cc.mounted", "cc_1");
+  window.localStorage.setItem("oceanleo.cc.mounted.name", "Server");
+  const err = Object.assign(new Error("login"), { status: 401, code: "unauthorized" });
+  const view = await mount({ async listComputers() { throw err; } });
+  try {
+    assert.deepEqual(view.current.computers, []);
+    assert.equal(view.current.error, null);
+    const persisted = window.sessionStorage.getItem(cacheKey);
+    assert.equal(Boolean(persisted && persisted.includes("cc_1")), false);
+    assert.equal(window.localStorage.getItem("oceanleo.cc.mounted"), null);
+    assert.equal(window.localStorage.getItem("oceanleo.cc.mounted.name"), null);
+  } finally { view.cleanup(); }
+});
+
 test("hidden pages stop polling and visible pages refresh and restart", async () => {
   const originalInterval = globalThis.setInterval, originalClear = globalThis.clearInterval;
   const visibility = Object.getOwnPropertyDescriptor(document, "visibilityState");

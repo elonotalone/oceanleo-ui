@@ -3,7 +3,34 @@ import type { DialogConfigOption, DialogModel } from "./types";
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
 
-const DIALOG_DID_NOT_START = "对话没有启动。";
+const SESSION_NOT_OPENED = "程序没能开新会话。";
+const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
+const OPAQUE_DIALOG_DID_NOT_START = new Set([
+  "对话没有启动。",
+  "The dialog did not start.",
+  "对话组件没有启动。请再发一次。",
+  "The dialog piece did not start. Send again.",
+]);
+
+export function isOpaqueDialogDidNotStart(text: string): boolean {
+  return OPAQUE_DIALOG_DID_NOT_START.has(text.trim());
+}
+
+export function visibleNoticeCopy(
+  tt: Translate,
+  code: string,
+  installed: boolean | null = null,
+  spoken = "",
+): string {
+  const trimmed = spoken.trim();
+  const translated = trimmed ? tt(trimmed) : "";
+  if (translated && !isOpaqueDialogDidNotStart(translated) && !isOpaqueDialogDidNotStart(trimmed)) {
+    return translated;
+  }
+  const fallback = noticeCopy(tt, code, installed);
+  if (isOpaqueDialogDidNotStart(fallback)) return tt(SESSION_NOT_OPENED);
+  return fallback;
+}
 
 export function noticeCopy(tt: Translate, code: string, installed: boolean | null = null, provider = "nous"): string {
   switch (code) {
@@ -33,11 +60,11 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
     case "feature_disabled":
       return tt("这个功能在当前站点不可用。");
     case "acp_start_failed":
-      return tt(DIALOG_DID_NOT_START);
+      return tt(SESSION_NOT_OPENED);
     case "acp_exited":
       return tt("这个程序的对话进程退出了，重新发一句会再启动。");
     case "acp_unavailable":
-      if (installed === true) return tt(DIALOG_DID_NOT_START);
+      if (installed === true) return tt(SESSION_UNAVAILABLE);
       return tt("这个程序的对话组件还没就绪。安装会一并补齐。");
     case "runtime_missing":
       return tt("运行这个程序还缺运行时。安装会一并补齐。");

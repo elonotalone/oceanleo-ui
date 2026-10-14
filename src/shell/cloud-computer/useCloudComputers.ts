@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  COMPUTER_LIST_CACHE_KEY,
+  forgetRememberedComputers,
+} from "../../lib/cloud-computer-memory";
+import {
   cloudComputerApi,
   isMountable,
   readMountedComputerId,
@@ -23,8 +27,6 @@ function rememberMountedComputerName(name: string | null): void {
 }
 
 export const CC_POLL_MS = 15_000;
-
-const LIST_CACHE_KEY = "oceanleo.computers.list.v1";
 const listCache = new WeakMap<CloudComputerClient, Computer[]>();
 const noopSubscribe = () => () => {};
 // Deliberately enumerate persisted scalar fields: future API credentials and
@@ -54,7 +56,7 @@ function readListCache(client: CloudComputerClient): Computer[] | undefined {
   if (memory) return memory;
   if (client !== cloudComputerApi) return undefined;
   try {
-    const rows: unknown = JSON.parse(window.sessionStorage.getItem(LIST_CACHE_KEY) || "null");
+    const rows: unknown = JSON.parse(window.sessionStorage.getItem(COMPUTER_LIST_CACHE_KEY) || "null");
     if (!Array.isArray(rows) || !rows.every((row) => row && typeof row === "object"
       && ["id", "name", "source", "status", "edition", "created_at", "updated_at"].every((key) => typeof row[key] === "string")
       && typeof row.node_online === "boolean")) return undefined;
@@ -68,7 +70,7 @@ function writeListCache(client: CloudComputerClient, items: Computer[]): void {
   if (typeof window === "undefined") return;
   listCache.set(client, items);
   if (client !== cloudComputerApi) return;
-  try { window.sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(items.map(persistedComputer))); }
+  try { window.sessionStorage.setItem(COMPUTER_LIST_CACHE_KEY, JSON.stringify(items.map(persistedComputer))); }
   catch { /* Memory cache still works when browser storage is unavailable. */ }
 }
 
@@ -133,6 +135,18 @@ export function newShellEnabled(computer: Computer | null | undefined): boolean 
   return canOpenShell(computer);
 }
 
+function isSignedOutListError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = "status" in err ? Number((err as { status: unknown }).status) : 0;
+  const code = "code" in err ? String((err as { code: unknown }).code) : "";
+  return status === 401 || code === "unauthorized";
+}
+
+function forgetList(client: CloudComputerClient): void {
+  listCache.delete(client);
+  forgetRememberedComputers();
+}
+
 export function useCloudComputers(options?: {
   client?: CloudComputerClient;
   computers?: Computer[];
@@ -175,7 +189,13 @@ export function useCloudComputers(options?: {
       setError(null);
       applyList(data.items || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (isSignedOutListError(err)) {
+        forgetList(client);
+        applyList([]);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -206,6 +226,12 @@ export function useCloudComputers(options?: {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        if (isSignedOutListError(err)) {
+          forgetList(client);
+          applyList([]);
+          setError(null);
+          return;
+        }
         setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {

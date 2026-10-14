@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { tone } from "../server-page/tone";
 import { lineDiff } from "./diff-lines";
-import { noticeAction, noticeCopy } from "./notice";
+import { noticeAction, visibleNoticeCopy } from "./notice";
 import { isWsProgram } from "./parse";
 import { normalizeQuestions } from "./questions";
 import { AgentText } from "./text";
@@ -427,10 +427,10 @@ function NoticeView({
   // oceanleo 程序的离线行在这里说人话；其余 code 全站一份文案，走 notice.ts 词典。
   const copy = message.code === "computer_offline" && message.program === "oceanleo"
     ? tt("这台电脑不在线")
-    : noticeCopy(tt, message.code, installed);
+    : visibleNoticeCopy(tt, message.code, installed, spoken);
   return (
     <div data-oceanleo-cc-notice={message.code} className="space-y-1 text-[12px] text-amber-700 dark:text-amber-200">
-      <p>{spoken || copy}</p>
+      <p>{copy}</p>
       {action === "login" && program ? (
         <button
           type="button"

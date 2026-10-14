@@ -115,7 +115,8 @@ const { ComputerDock } = await import(
   })
 );
 
-const DID_NOT_START = "对话没有启动。";
+const SESSION_NOT_OPENED = "程序没能开新会话。";
+const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
 const UNSUPPORTED = "这个程序不接受 acp 子命令，对话起不来。";
 const STILL_NEEDS_INSTALL = "这个程序的对话组件还没就绪。安装会一并补齐。";
 const tt = (zh) => zh;
@@ -160,12 +161,13 @@ async function renderDock(props) {
   };
 }
 
-test("acp_start_failed 的默认句是「对话没有启动。」，不含请再发一次", () => {
+test("acp_start_failed 的默认句是程序没能开新会话，不含请再发一次，也不含对话没有启动", () => {
   const copy = noticeCopy(tt, "acp_start_failed");
-  assert.equal(copy, DID_NOT_START);
+  assert.equal(copy, SESSION_NOT_OPENED);
   assert.equal(copy.includes("请再发一次"), false);
-  assert.equal(noticeCopy(tt, "acp_start_failed", true), DID_NOT_START);
-  assert.equal(noticeCopy(tt, "acp_unavailable", true), DID_NOT_START);
+  assert.equal(copy.includes("对话没有启动"), false);
+  assert.equal(noticeCopy(tt, "acp_start_failed", true), SESSION_NOT_OPENED);
+  assert.equal(noticeCopy(tt, "acp_unavailable", true), SESSION_UNAVAILABLE);
   assert.equal(noticeCopy(tt, "acp_unavailable", true).includes("请再发一次"), false);
   assert.equal(noticeCopy(tt, "acp_unavailable", true).includes("安装会一并补齐"), false);
   assert.equal(noticeCopy(tt, "acp_unavailable", false), STILL_NEEDS_INSTALL);

@@ -9,9 +9,17 @@
 
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
+import {
+  MOUNTED_COMPUTER_NAME_STORAGE_KEY,
+  MOUNTED_COMPUTER_STORAGE_KEY,
+} from "./cloud-computer-memory";
 
-export const MOUNTED_COMPUTER_STORAGE_KEY = "oceanleo.cc.mounted";
-export const MOUNTED_COMPUTER_NAME_STORAGE_KEY = "oceanleo.cc.mounted.name";
+export {
+  COMPUTER_LIST_CACHE_KEY,
+  forgetRememberedComputers,
+  MOUNTED_COMPUTER_NAME_STORAGE_KEY,
+  MOUNTED_COMPUTER_STORAGE_KEY,
+} from "./cloud-computer-memory";
 
 export class CloudComputerError extends Error {
   readonly code: string;
