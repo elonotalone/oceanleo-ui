@@ -68,12 +68,10 @@ export const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "";
 
-// 网关 origin。env 仍然优先；没给时按**当前家族**取，海外与本地开发解析出来
-// 的仍然是 https://api.oceanleo.com（与本轮改动前逐字相同）。
-export const GATEWAY_BASE =
-  process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
-  process.env.NEXT_PUBLIC_GATEWAY_URL ||
-  currentDomainProfile().gatewayOrigin;
+// 网关 origin。以当前家族档案为准（含同家族的 LeoDev overlay）。
+// 不能把 NEXT_PUBLIC_OCEANLEO_GATEWAY_URL 无条件叠上去：分身 oceanbizs.com
+// 与正式站共用 Vercel 项目的 production env，那条 env 钉的是 api.oceanleo.com。
+export const GATEWAY_BASE = currentDomainProfile().gatewayOrigin;
 
 // 跨子站 cookie 的 Domain。缺省不再是一个写死的字面量，而是**请求 host 所属
 // 家族**那一行的 cookieDomain：`.com` host 得到 `.oceanleo.com`，

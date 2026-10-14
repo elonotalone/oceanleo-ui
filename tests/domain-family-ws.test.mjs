@@ -265,6 +265,61 @@ test("ws/3 缺省家族（com）进程：Hosted 六件与 MCP 承载面逐字不
   assert.equal(com.deckProd, true);
 });
 
+// 违反后果：分身页被 Vercel 同一项目的 production env 拽去 api.oceanleo.com，
+// 对话/设置全失败，设置页把「没读到状态」写成「未安装」。
+test("ws/4 oceanbizs.com 页拒绝把 GATEWAY 叠到 api.oceanleo.com", () => {
+  const probe = `
+    globalThis.window = { location: { host: "oceanbizs.com" } };
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    const cfg = await import(${JSON.stringify(CONFIG_URL)});
+    process.stdout.write(JSON.stringify({
+      family: family.currentDomainFamily(),
+      gateway: cfg.GATEWAY_BASE,
+      profileGateway: family.currentDomainProfile().gatewayOrigin,
+    }));
+  `;
+  const baked = runProbe(probe, {
+    NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+    NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "https://api.oceanleo.com",
+    NEXT_PUBLIC_GATEWAY_URL: "",
+  });
+  assert.equal(baked.family, "ws");
+  assert.equal(baked.gateway, "https://api.oceanbizs.com");
+  assert.equal(baked.profileGateway, "https://api.oceanbizs.com");
+
+  const preview = runProbe(
+    `
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    const cfg = await import(${JSON.stringify(CONFIG_URL)});
+    process.stdout.write(JSON.stringify({
+      family: family.currentDomainFamily(),
+      gateway: cfg.GATEWAY_BASE,
+    }));
+    `,
+    {
+      NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "ws",
+      NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "https://api.oceanleo.com",
+      NEXT_PUBLIC_GATEWAY_URL: "",
+    },
+  );
+  assert.equal(preview.family, "ws");
+  assert.equal(preview.gateway, "https://api.oceanbizs.com");
+
+  const sameFamily = runProbe(
+    `
+    globalThis.window = { location: { host: "oceanbizs.com" } };
+    const cfg = await import(${JSON.stringify(CONFIG_URL)});
+    process.stdout.write(JSON.stringify({ gateway: cfg.GATEWAY_BASE }));
+    `,
+    {
+      NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "",
+      NEXT_PUBLIC_OCEANLEO_GATEWAY_URL: "https://api.oceanbizs.com",
+      NEXT_PUBLIC_GATEWAY_URL: "",
+    },
+  );
+  assert.equal(sameFamily.gateway, "https://api.oceanbizs.com");
+});
+
 let sandboxConsts;
 function sandboxConst(name) {
   if (!sandboxConsts) {

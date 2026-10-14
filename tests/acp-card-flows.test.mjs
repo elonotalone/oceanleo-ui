@@ -358,6 +358,13 @@ test("程序状态未到时 Cursor 不写未安装；本地 agent 读失败也�
     assert.equal(host.querySelector("[data-oceanleo-acp-ws-setup]"), null);
     assert.equal((host.textContent || "").includes("未安装"), false);
     assert.equal(host.querySelector("[data-oceanleo-acp-oceanleo-error]"), null);
+    await click(host.querySelector('[data-oceanleo-program-strip-settings="cursor"]'));
+    await until(() => host.querySelector('[data-oceanleo-acp-settings="cursor"]'), "settings open");
+    const loginState = host.querySelector("[data-oceanleo-acp-settings-login-state]");
+    assert.equal(loginState?.getAttribute("data-oceanleo-acp-settings-login-state"), "reading");
+    assert.equal((host.querySelector("[data-oceanleo-acp-settings]")?.textContent || "").includes("未安装"), false);
+    assert.equal(host.querySelector("[data-oceanleo-acp-settings-login]"), null);
+    await click(host.querySelector("[data-oceanleo-acp-settings-close]"));
     await act(async () => {
       openSocket().server(STATUS);
     });

@@ -180,6 +180,25 @@ test("cn slot env: help, gateway overlay, host-only cookie, .cn subsites, LeoDev
   assert.equal(got.comHostCookie, null);
 });
 
+test("cn slot on LeoDev host still overlays api-cn.dev.oceanleo.com", () => {
+  const got = probe(
+    `
+    globalThis.window = { location: { host: ${JSON.stringify(LEODEV_HOST)} } };
+    const family = await import(${JSON.stringify(FAMILY_URL)});
+    const cfg = await import(${JSON.stringify(CONFIG_URL)});
+    process.stdout.write(JSON.stringify({
+      family: family.currentDomainFamily(),
+      gateway: cfg.GATEWAY_BASE,
+      profileGateway: family.currentDomainProfile().gatewayOrigin,
+    }));
+    `,
+    CN_SLOT_ENV,
+  );
+  assert.equal(got.family, "cn");
+  assert.equal(got.gateway, "https://api-cn.dev.oceanleo.com");
+  assert.equal(got.profileGateway, "https://api-cn.dev.oceanleo.com");
+});
+
 // UC-1 §8.1（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // Overlay host must be a real p-<32hex>.dev.oceanleo.com slot; user.oceanleo.app and lookalikes must not become portalOrigin.
 test("LeoDev portal overlay: preview origin, not oceanleo.com / oceanleo.cn", () => {

@@ -373,6 +373,13 @@ export function currentDomainFamily(): DomainFamily {
  * `.com` / `.cn` rows stay the frozen table). Never accepts the user-content
  * registrable domains.
  */
+function pageHostFamily(): DomainFamily | undefined {
+  if (typeof window !== "undefined" && window.location) {
+    return familyForHost(window.location.host);
+  }
+  return undefined;
+}
+
 function configuredGatewayOrigin(): string | undefined {
   const raw = (
     process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
@@ -385,6 +392,23 @@ function configuredGatewayOrigin(): string | undefined {
     if (url.protocol !== "https:") return undefined;
     if (url.username || url.password) return undefined;
     if (isUntrustedContentDomainHost(url.hostname)) return undefined;
+    // Vercel 同一项目的 production env 钉的是 api.oceanleo.com。oceanbizs.com
+    // 也吃那次构建：env 不得把 ws 页改去连 com 网关（那台现在经常关着，
+    // 对话、设置、程序状态会一起死，并谎称没装）。
+    // 境内 LeoDev 槽跑在 p-<32hex>.dev.oceanleo.com 上，网关也是
+    // api-cn.dev.oceanleo.com（都是 com 主机）——那种 overlay 必须留下。
+    const hostFamily = pageHostFamily();
+    const envFamily = familyForHost(url.hostname);
+    if (envFamily) {
+      if (hostFamily && hostFamily !== envFamily) return undefined;
+      if (
+        !hostFamily &&
+        CONFIGURED_DOMAIN_FAMILY === "ws" &&
+        envFamily !== "ws"
+      ) {
+        return undefined;
+      }
+    }
     return url.origin;
   } catch {
     return undefined;

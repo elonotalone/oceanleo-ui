@@ -101,7 +101,7 @@ export function AcpSettings({
         if (generation === loadGeneration.current) setSettings(next);
       })
       .catch(() => {
-        if (generation === loadGeneration.current) setError(tt("设置保存失败，请稍后重试。"));
+        if (generation === loadGeneration.current) setError(tt("对话连不上这台电脑。"));
       })
       .finally(() => {
         if (generation === loadGeneration.current) setLoading(false);
@@ -307,17 +307,32 @@ export function AcpSettings({
           {wsProgram ? (
             <section className={`rounded-xl border p-3 ${tone.border}`}>
               <p className="text-[13px] font-medium">{tt("登录")}</p>
-              <p className={`mt-1 text-xs ${tone.muted}`}>
-                {!programStatus?.installed
-                  ? tt("未安装")
-                  : programStatus.logged_in === true
-                    ? tt("已登录")
-                    : programStatus.logged_in === false
-                      ? tt("未登录")
-                      : tt("未知")}
+              <p
+                className={`mt-1 text-xs ${tone.muted}`}
+                data-oceanleo-acp-settings-login-state={
+                  !programStatus
+                    ? "reading"
+                    : !programStatus.installed
+                      ? "not_installed"
+                      : programStatus.logged_in === true
+                        ? "signed_in"
+                        : programStatus.logged_in === false
+                          ? "signed_out"
+                          : "unknown"
+                }
+              >
+                {!programStatus
+                  ? tt("正在读取…")
+                  : !programStatus.installed
+                    ? tt("未安装")
+                    : programStatus.logged_in === true
+                      ? tt("已登录")
+                      : programStatus.logged_in === false
+                        ? tt("未登录")
+                        : tt("未知")}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {!programStatus?.installed ? (
+                {!programStatus ? null : !programStatus.installed ? (
                   <button
                     type="button"
                     className={`h-11 rounded-lg px-3 py-1.5 text-xs ${tone.primary}`}
