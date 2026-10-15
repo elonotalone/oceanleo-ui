@@ -229,6 +229,11 @@ export type DialogState = {
   /** `${program}::${acpSession}` keys that still have an open turn. */
   liveTurns: Record<string, true>;
   sessionLoading: boolean;
+  /** Index of the first loaded transcript frame in the gateway store. */
+  historyOffset: number;
+  historyTotal: number;
+  hasOlder: boolean;
+  historyLoading: boolean;
   install: InstallState;
   login: LoginState;
   opened: AgentProgram[];
@@ -263,12 +268,16 @@ export type AgentDialogController = {
   sessionsSupported: boolean | null;
   activeSession: string;
   sessionLoading: boolean;
+  historyOffset: number;
+  hasOlder: boolean;
+  historyLoading: boolean;
   draftRef?: string;
   requestSessions: () => void;
   requestSessionPath: () => void;
   sessionPath: string;
   sessionPathResolved: boolean;
   openSession: (id: string) => void;
+  loadOlderHistory: () => void;
   newSession: (cwd?: string) => void;
   attachments: DialogAttachment[];
   addAttachments: (files: File[]) => void;

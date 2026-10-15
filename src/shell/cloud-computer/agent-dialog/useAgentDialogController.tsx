@@ -66,6 +66,10 @@ type ViewSnap = {
   sessions: ReturnType<typeof initialDialogState>["sessions"];
   sessionsSupported: boolean | null;
   sessionLoading: boolean;
+  historyOffset: number;
+  historyTotal: number;
+  hasOlder: boolean;
+  historyLoading: boolean;
   sessionPath: string;
   sessionPathResolved: boolean;
   models: ReturnType<typeof initialDialogState>["models"];
@@ -93,6 +97,10 @@ function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
     sessions: state.sessions,
     sessionsSupported: state.sessionsSupported,
     sessionLoading: state.sessionLoading,
+    historyOffset: state.historyOffset,
+    historyTotal: state.historyTotal,
+    hasOlder: state.hasOlder,
+    historyLoading: state.historyLoading,
     sessionPath: state.sessionPath,
     sessionPathResolved: state.sessionPathResolved,
     models: state.models,
@@ -975,6 +983,31 @@ export function useAgentDialog({
   }, [ensureOpen]);
   openSessionRef.current = openSession;
 
+  const loadOlderHistory = useCallback(() => {
+    const current = stateRef.current;
+    const program = current.program;
+    const acpSession = current.activeSession.trim();
+    if (
+      !acpSession
+      || !current.hasOlder
+      || current.historyLoading
+      || current.sessionLoading
+      || current.historyOffset < 1
+      || !usesDialogSocket(program, localOceanleoRef.current)
+    ) return;
+    dispatch({ type: "history-loading" });
+    stateRef.current = applyDialog(stateRef.current, { type: "history-loading" });
+    const before = current.historyOffset;
+    void (async () => {
+      const socket = socketRef.current?.readyState === WebSocket.OPEN ? socketRef.current : await ensureOpen();
+      const sent = sendJson(socket, { t: "load_history", program, acp_session: acpSession, before });
+      if (!sent) {
+        dispatch({ type: "history-idle" });
+        stateRef.current = applyDialog(stateRef.current, { type: "history-idle" });
+      }
+    })();
+  }, [ensureOpen]);
+
   const newSession = useCallback((cwd?: string) => {
     const program = stateRef.current.program;
     stateRef.current = {
@@ -983,6 +1016,10 @@ export function useAgentDialog({
       sessionPath: "",
       sessionPathResolved: false,
       sessionLoading: false,
+      historyOffset: 0,
+      historyTotal: 0,
+      hasOlder: false,
+      historyLoading: false,
       messages: [],
       commands: [],
       busy: false,
@@ -1265,11 +1302,15 @@ export function useAgentDialog({
     activeSession: state.activeSession,
     draftRef: state.draftRef,
     sessionLoading: state.sessionLoading,
+    historyOffset: state.historyOffset,
+    hasOlder: state.hasOlder,
+    historyLoading: state.historyLoading,
     requestSessions,
     requestSessionPath,
     sessionPath: state.sessionPath,
     sessionPathResolved: state.sessionPathResolved,
     openSession,
+    loadOlderHistory,
     newSession,
     attachments,
     addAttachments,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { TypewriterMarkdown } from "../../Markdown";
 import { useUI } from "../../../i18n/ui/useUI";
 import { tone } from "../server-page/tone";
@@ -477,6 +477,47 @@ function isBlockingPrompt(item: TurnItem): boolean {
   return false;
 }
 
+const LAZY_TAIL = 12;
+const LOAD_OLDER_PX = 96;
+
+function LazyBody({
+  root,
+  force,
+  children,
+}: {
+  root: HTMLElement | null;
+  force: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const height = useRef(48);
+  const [show, setShow] = useState(force || typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    if (force || typeof IntersectionObserver === "undefined") {
+      setShow(true);
+      return;
+    }
+    const node = ref.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) setShow(entry.isIntersecting);
+      },
+      { root, rootMargin: "1600px 0px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [force, root]);
+  useLayoutEffect(() => {
+    if (show && ref.current) height.current = Math.max(48, ref.current.offsetHeight);
+  }, [show, children]);
+  return (
+    <div ref={ref} data-oceanleo-cc-lazy={show ? "on" : "off"} style={show ? undefined : { minHeight: height.current }}>
+      {show ? children : null}
+    </div>
+  );
+}
+
 function blockingPrompts(messages: AgentDialogMessage[]): TurnItem[] {
   const out: TurnItem[] = [];
   for (const message of messages) {
@@ -496,9 +537,17 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
   // after a streaming chunk has already increased scrollHeight.
   const following = useRef(true);
   const smoothFollowing = useRef(false);
+  const savedHeight = useRef(0);
   const [showLatest, setShowLatest] = useState(false);
+  const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null);
   const firstId = dialog.messages[0]?.id;
-  const identity = useRef({ program: dialog.program, session: dialog.activeSession, firstId });
+  const historyOffset = dialog.historyOffset ?? 0;
+  const identity = useRef({
+    program: dialog.program,
+    session: dialog.activeSession,
+    firstId,
+    historyOffset,
+  });
   // Markdown reveals text after the message frame renders. Observe the actual
   // content height as well as message updates so those later lines stay visible.
   useEffect(() => {
@@ -515,13 +564,18 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
     const previous = identity.current;
-    const changed = previous.program !== dialog.program || previous.session !== dialog.activeSession || previous.firstId !== firstId;
-    identity.current = { program: dialog.program, session: dialog.activeSession, firstId };
-    if (changed || following.current) {
+    const sessionChanged =
+      previous.program !== dialog.program || previous.session !== dialog.activeSession;
+    const prepended = !sessionChanged && historyOffset < previous.historyOffset;
+    const replaced = !sessionChanged && !prepended && previous.firstId !== firstId;
+    identity.current = { program: dialog.program, session: dialog.activeSession, firstId, historyOffset };
+    if (prepended) {
+      node.scrollTop += node.scrollHeight - savedHeight.current;
+    } else if (sessionChanged || replaced || following.current) {
       smoothFollowing.current = false;
       node.scrollTop = node.scrollHeight;
       following.current = true;
@@ -529,14 +583,25 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
     } else {
       setShowLatest(true);
     }
-  }, [dialog.messages, dialog.program, dialog.activeSession, firstId]);
+    savedHeight.current = node.scrollHeight;
+    if (
+      dialog.hasOlder
+      && !dialog.historyLoading
+      && node.scrollHeight <= node.clientHeight + LOAD_OLDER_PX
+    ) {
+      dialog.loadOlderHistory?.();
+    }
+  }, [dialog.messages, dialog.program, dialog.activeSession, firstId, historyOffset, dialog.hasOlder, dialog.historyLoading]);
   const avatar = AGENT_AVATAR[dialog.program ?? "oceanleo"];
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <style>{MARKDOWN_DARK_CSS}</style>
       {dialog.sessionLoading ? <p role="status" data-oceanleo-dialog-history-loading="" className={`px-3 py-2 text-[12px] ${tone.muted}`}>{tt("正在读取…")}</p> : null}
       <div
-        ref={ref}
+        ref={(node) => {
+          ref.current = node;
+          if (node !== scrollRoot) setScrollRoot(node);
+        }}
         data-oceanleo-cc-messages=""
         onWheel={(event) => {
           if (event.deltaY < 0) { following.current = false; smoothFollowing.current = false; }
@@ -554,11 +619,27 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
           smoothFollowing.current = false;
           following.current = nearBottom;
           setShowLatest(!following.current);
+          if (node.scrollTop < LOAD_OLDER_PX && dialog.hasOlder && !dialog.historyLoading) {
+            dialog.loadOlderHistory?.();
+          }
         }}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-6 [overflow-anchor:none]"
       >
         <div ref={contentRef} className="space-y-5" data-oceanleo-cc-message-content="">
-        {dialog.messages.map((message) => {
+        {dialog.hasOlder || dialog.historyLoading ? (
+          <button
+            type="button"
+            data-oceanleo-cc-history-older=""
+            disabled={dialog.historyLoading || !dialog.hasOlder}
+            onClick={() => dialog.loadOlderHistory?.()}
+            className={`block w-full text-center text-[12px] ${tone.muted}`}
+          >
+            {dialog.historyLoading ? tt("正在读取…") : tt("向上滑动查看更早的对话")}
+          </button>
+        ) : null}
+        {dialog.messages.map((message, index) => {
+          const force = index >= dialog.messages.length - LAZY_TAIL;
+          const body = (() => {
           if (message.kind === "user") {
             const visible = normalizeUserMessage(message.text, message.attachments);
             return (
@@ -613,6 +694,12 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                 )}
               </div>
             </div>
+          );
+          })();
+          return (
+            <LazyBody key={message.id} root={scrollRoot} force={force}>
+              {body}
+            </LazyBody>
           );
         })}
         </div>

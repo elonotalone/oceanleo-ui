@@ -141,6 +141,10 @@ export function initialDialogState(): DialogState {
     busySession: "",
     liveTurns: {},
     sessionLoading: false,
+    historyOffset: 0,
+    historyTotal: 0,
+    hasOlder: false,
+    historyLoading: false,
     install: blankInstall(),
     login: blankLogin(),
     opened: [],
@@ -161,6 +165,8 @@ export type DialogEvent =
   | { type: "set-mode"; value: string }
   | { type: "set-config"; id: string; value: string | boolean }
   | { type: "session-loading"; id: string; messages?: AgentDialogMessage[] }
+  | { type: "history-loading" }
+  | { type: "history-idle" }
   | { type: "sessions-unavailable" }
   | { type: "open-install"; program: WsProgram }
   | { type: "close-install" }
@@ -183,6 +189,10 @@ export type DialogEvent =
       sessions: DialogState["sessions"];
       sessionsSupported: boolean | null;
       sessionLoading: boolean;
+      historyOffset?: number;
+      historyTotal?: number;
+      hasOlder?: boolean;
+      historyLoading?: boolean;
       sessionPath?: string;
       sessionPathResolved?: boolean;
       models: DialogState["models"];
@@ -232,6 +242,42 @@ function mapOpenTurn(
     items: update([]),
   };
   return { ...state, messages: [...messages, turn] };
+}
+
+function num(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function mergeTurnItems(older: TurnItem[], newer: TurnItem[]): TurnItem[] {
+  if (!older.length) return newer;
+  if (!newer.length) return older;
+  const last = older[older.length - 1];
+  const first = newer[0];
+  if (last.kind === "assistant" && first.kind === "assistant") {
+    return [...older.slice(0, -1), { ...last, text: last.text + first.text }, ...newer.slice(1)];
+  }
+  if (last.kind === "thought" && first.kind === "thought") {
+    return [...older.slice(0, -1), { ...last, text: last.text + first.text }, ...newer.slice(1)];
+  }
+  return [...older, ...newer];
+}
+
+function mergeMessageLists(
+  older: AgentDialogMessage[],
+  newer: AgentDialogMessage[],
+): AgentDialogMessage[] {
+  if (!older.length) return newer;
+  if (!newer.length) return older;
+  const last = older[older.length - 1];
+  const first = newer[0];
+  if (last.kind === "turn" && first.kind === "turn" && last.acpSession === first.acpSession && !last.stop) {
+    return [
+      ...older.slice(0, -1),
+      { ...first, items: mergeTurnItems(last.items, first.items), stop: first.stop || last.stop },
+      ...newer.slice(1),
+    ];
+  }
+  return [...older, ...newer];
 }
 
 function rememberSession(state: DialogState, frame: Record<string, unknown>): DialogState {
@@ -571,11 +617,43 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (kind === "transcript") {
     const session = str(frame.acp_session);
     const frames = Array.isArray(frame.frames) ? frame.frames : [];
+    const mode = str(frame.mode) || "replace";
+    const incomingOffset = num(frame.offset) ?? 0;
+    const incomingTotal = num(frame.total);
+    if (mode === "prepend") {
+      if (session && state.activeSession && session !== state.activeSession) {
+        return { ...state, historyLoading: false };
+      }
+      if (!frames.length) {
+        return { ...state, historyLoading: false, hasOlder: false };
+      }
+      if (incomingOffset >= state.historyOffset && state.historyOffset > 0) {
+        return { ...state, historyLoading: false };
+      }
+      let prefix: DialogState = { ...state, messages: [], liveTurns: {}, busy: false, historyLoading: false };
+      for (const raw of frames) {
+        const item = asRecord(raw);
+        if (item) prefix = onFrame(prefix, item);
+      }
+      return rememberSession({
+        ...state,
+        messages: mergeMessageLists(prefix.messages, state.messages),
+        historyOffset: incomingOffset,
+        historyTotal: incomingTotal ?? state.historyTotal,
+        hasOlder: frame.has_older === true || incomingOffset > 0,
+        historyLoading: false,
+        sessionLoading: false,
+      }, frame);
+    }
     const keptTurns = state.liveTurns;
     let next: DialogState = {
       ...state,
       activeSession: session || state.activeSession,
       sessionLoading: false,
+      historyLoading: false,
+      historyOffset: incomingOffset,
+      historyTotal: incomingTotal ?? frames.length,
+      hasOlder: frame.has_older === true || incomingOffset > 0,
       messages: [],
     };
     for (const raw of frames) {
@@ -731,6 +809,10 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessionPath: "",
         sessionPathResolved: false,
         sessionLoading: false,
+        historyOffset: 0,
+        historyTotal: 0,
+        hasOlder: false,
+        historyLoading: false,
         busy: false,
         agentBusy: false,
         busySession: "",
@@ -744,6 +826,10 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessions: event.sessions,
         sessionsSupported: event.sessionsSupported,
         sessionLoading: event.sessionLoading,
+        historyOffset: event.historyOffset ?? 0,
+        historyTotal: event.historyTotal ?? 0,
+        hasOlder: event.hasOlder ?? false,
+        historyLoading: event.historyLoading ?? false,
         sessionPath: event.sessionPath ?? "",
         sessionPathResolved: event.sessionPathResolved ?? false,
         models: event.models,
@@ -816,6 +902,10 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         ...state,
         activeSession: event.id,
         sessionLoading: true,
+        historyOffset: 0,
+        historyTotal: 0,
+        hasOlder: false,
+        historyLoading: false,
         sessionPath: state.sessions.find((session) => session.id === event.id)?.path || "",
         sessionPathResolved: Boolean(state.sessions.find((session) => session.id === event.id)?.path),
         messages: event.messages ?? [],
@@ -833,7 +923,15 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         sessionPath: "",
         sessionPathResolved: false,
         sessionLoading: false,
+        historyOffset: 0,
+        historyTotal: 0,
+        hasOlder: false,
+        historyLoading: false,
       };
+    case "history-loading":
+      return state.historyLoading ? state : { ...state, historyLoading: true };
+    case "history-idle":
+      return state.historyLoading ? { ...state, historyLoading: false } : state;
     case "open-install": {
       if (state.install.running && state.install.program && state.install.program !== event.program) {
         return { ...state, install: { ...state.install, open: true } };

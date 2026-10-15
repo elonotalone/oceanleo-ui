@@ -506,6 +506,55 @@ test("reducer：transcript 立刻换成服务端历史；另一路 session 的 a
   const turn = state.messages.find((message) => message.kind === "turn");
   assert.ok(turn);
   assert.equal(turn.items.some((item) => item.kind === "assistant" && item.text === "world"), true);
+  assert.equal(state.hasOlder, false);
+  assert.equal(state.historyOffset, 0);
+
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "transcript",
+      program: "cursor",
+      acp_session: "s-keep",
+      mode: "replace",
+      offset: 4,
+      total: 8,
+      has_older: true,
+      frames: [
+        { t: "user_message", program: "cursor", text: "later", acp_session: "s-keep" },
+        { t: "turn_start", program: "cursor", acp_session: "s-keep" },
+        { t: "delta", program: "cursor", text: "tail", acp_session: "s-keep" },
+        { t: "done", program: "cursor", stop: "end_turn", acp_session: "s-keep" },
+      ],
+    },
+  });
+  assert.equal(state.hasOlder, true);
+  assert.equal(state.historyOffset, 4);
+  assert.equal(state.messages[0].text, "later");
+  state = applyDialog(state, { type: "history-loading" });
+  assert.equal(state.historyLoading, true);
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "transcript",
+      program: "cursor",
+      acp_session: "s-keep",
+      mode: "prepend",
+      offset: 0,
+      total: 8,
+      has_older: false,
+      frames: [
+        { t: "user_message", program: "cursor", text: "earlier", acp_session: "s-keep" },
+        { t: "turn_start", program: "cursor", acp_session: "s-keep" },
+        { t: "delta", program: "cursor", text: "head", acp_session: "s-keep" },
+        { t: "done", program: "cursor", stop: "end_turn", acp_session: "s-keep" },
+      ],
+    },
+  });
+  assert.equal(state.historyLoading, false);
+  assert.equal(state.hasOlder, false);
+  assert.equal(state.historyOffset, 0);
+  assert.equal(state.messages[0].text, "earlier");
+  assert.equal(state.messages.some((message) => message.kind === "user" && message.text === "later"), true);
 
   state = applyDialog(state, { type: "frame", frame: { t: "sessions", program: "cursor", supported: true, sessions: [{ id: "s-keep", title: "hello" }], active: "s-keep" } });
   assert.equal(state.serverActiveSession, "s-keep");

@@ -171,6 +171,31 @@ test("Markdown height growth without a new frame follows the tail; reading histo
   assert.equal(node.scrollTop, 2000);
 });
 
+test("near the top asks for older history; prepending keeps the same row on screen", async (t) => {
+  let asked = 0;
+  const { host, node, render, scroll, grow } = await mount(t);
+  await render({
+    hasOlder: true,
+    historyOffset: 8,
+    historyLoading: false,
+    loadOlderHistory: () => { asked += 1; },
+  });
+  assert.equal(asked, 0);
+  assert.match(host.querySelector("[data-oceanleo-cc-history-older]").textContent, /向上滑动查看更早的对话/);
+  await scroll(20);
+  assert.equal(asked, 1);
+  await act(async () => host.querySelector("[data-oceanleo-cc-history-older]").click());
+  assert.equal(asked, 2);
+  grow(1800);
+  await render({
+    hasOlder: false,
+    historyOffset: 0,
+    messages: [user("old"), user(), turn()],
+    loadOlderHistory: () => { asked += 1; },
+  });
+  assert.equal(node.scrollTop, 820);
+});
+
 test("clicking text or scrolling down at the bottom does not disable following", async (t) => {
   const { node, resized, grow } = await mount(t);
   await act(async () => {
