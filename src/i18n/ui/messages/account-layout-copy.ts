@@ -58,7 +58,7 @@ export const ACCOUNT_LAYOUT_MESSAGES = assembleCopy(ACCOUNT_LAYOUT_SOURCE, {
     "用户 ID": "User ID",
     "复制": "Copy",
     "已复制。": "Copied.",
-    "登录方式": "Sign-in methods",
+    "登录方式": "Sign-in method",
     "管理用于登录 OceanLeo 的第三方账号。": "Manage third-party accounts for signing in to OceanLeo.",
     "管理": "Manage",
     "已连接的设备": "Connected devices",

@@ -53,9 +53,9 @@ test("bay-posting 文案 17 语齐全、占位符不丢、非中日韩不含汉�
   assert.equal(BAY_POSTING_SOURCE.whoToShow, "向谁展示");
   assert.equal(BAY_POSTING_SOURCE.humanService, "人工服务");
   assert.equal(BAY_POSTING_MESSAGES.en["价格条款"], "Pricing terms");
-  assert.equal(BAY_POSTING_MESSAGES.en["价格"], "price");
+  assert.equal(BAY_POSTING_MESSAGES.en["价格"], "Pricing");
   assert.equal(BAY_POSTING_MESSAGES.en["向谁展示"], "Who to show");
-  assert.equal(BAY_POSTING_MESSAGES.en["所有人"], "everyone");
+  assert.equal(BAY_POSTING_MESSAGES.en["所有人"], "Everyone");
   assert.equal(BAY_POSTING_MESSAGES.en["你交付什么"], "What you deliver");
   assert.equal(BAY_POSTING_MESSAGES.en["交付给你的是什么"], "What is delivered to you");
   assert.equal(BAY_POSTING_MESSAGES.en["人工服务"], "Human service");

@@ -56,3 +56,20 @@ test("UI dictionary namespace extraction is safe and deterministic", () => {
     {},
   );
 });
+
+test("新增缺口译文在 16 个请求语种与总表中一致", async () => {
+  const { LOCALES } = await import("../src/i18n/config.ts");
+  const { loadUiMessages } = await import("../src/i18n/ui/messages/load.ts");
+  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+  const { FOLLOW_THROUGH_SOURCE, FOLLOW_THROUGH_MESSAGES } = await import(
+    "../src/i18n/ui/messages/follow-through-copy.ts"
+  );
+  for (const locale of LOCALES.filter((locale) => locale !== "zh")) {
+    const runtime = await loadUiMessages(locale);
+    for (const key of Object.values(FOLLOW_THROUGH_SOURCE)) {
+      assert.ok(runtime[key]?.trim(), `${locale} 请求词典缺译文：${key}`);
+      assert.equal(runtime[key], FOLLOW_THROUGH_MESSAGES[locale][key], `${locale} 请求译文被覆盖：${key}`);
+      assert.equal(runtime[key], UI_MESSAGES[locale][key], `${locale} 请求词典与总表不一致：${key}`);
+    }
+  }
+});

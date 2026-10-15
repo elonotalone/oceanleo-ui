@@ -33,7 +33,7 @@ export const SHELL_OVERHAUL_SETTINGS_MESSAGES = assembleCopy(SOURCE, {
     backToHome: "Back to home",
     usageDetails: "Usage details",
     overview: "Overview",
-    modelsMarket: "Model marketplace",
+    modelsMarket: "Model market",
   },
   de: {
     usageAndBilling: "Nutzung & Abrechnung",

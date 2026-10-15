@@ -21,7 +21,7 @@ export function localizeGap(tt: UITranslate, text: string | null | undefined): s
   const pieces: string[] = [];
   if (parts.days) pieces.push(tt("{n} 天", { n: parts.days }));
   if (parts.hours) pieces.push(tt("{n} 小时", { n: parts.hours }));
-  if (parts.minutes && !parts.days) pieces.push(tt("{n} 分", { n: parts.minutes }));
+  if (parts.minutes && !parts.days) pieces.push(tt("{n} 分钟", { n: parts.minutes }));
   if (!parts.days && !parts.hours && !parts.minutes && parts.seconds) pieces.push(tt("{n} 秒", { n: parts.seconds }));
   return tt("跳过 {span}", { span: pieces.join(" ") });
 }

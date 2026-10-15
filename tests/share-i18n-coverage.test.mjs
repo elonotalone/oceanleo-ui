@@ -51,7 +51,6 @@ const PRE_EXISTING_GAPS = new Set([
   "当前会话为只读状态。",
   "暂无成员",
   "请确认后继续。",
-  "需要你确认",
 ]);
 
 function sourceFiles() {

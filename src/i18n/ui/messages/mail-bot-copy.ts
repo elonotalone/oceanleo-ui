@@ -33,7 +33,7 @@ const SOURCE = {
 } as const;
 
 const EN = {
-  "邮件": "Mail",
+  "邮件": "Email",
   "登录后才能使用邮件": "Sign in to use Mail",
   "邮件还没启用": "Mail is not available yet",
   "OceanLeo 的邮箱": "OceanLeo’s email",

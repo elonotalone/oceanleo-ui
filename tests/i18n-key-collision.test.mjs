@@ -106,7 +106,7 @@ test("服务器页分表不改写全站词典，也不互相改写", async () =>
   assert.equal(seen["登录"], "Log in");
 });
 
-// work-chat（消息 / 多人同改 / 工作回放）11 张分表各归一个工作单元，互相不知道对方的
+// work-chat（消息 / 多人同改 / 工作回放）分表各归一个工作单元，互相不知道对方的
 // 词典内容；汇总顺序见 work-chat-copy.ts 的 PARTS 数组（后者覆盖前者，Object.assign
 // 语义）。同一个中文键在两张表里翻译不一样时，后汇总的会悄悄赢，界面哪边先渲染就看哪边
 // 的表在 PARTS 里更靠后——这不是产品决定的，是巧合。2026-10-06 集成时发现过 9 处这种
@@ -126,13 +126,24 @@ const WORK_CHAT_FRAGMENTS = [
   ["collab-visual-copy", "COLLAB_VISUAL_MESSAGES"],
   ["collab-media-copy", "COLLAB_MEDIA_MESSAGES"],
   ["work-replay-copy", "WORK_REPLAY_MESSAGES"],
+  ["collab-pdf-copy", "COLLAB_PDF_MESSAGES"],
+  ["collab-workflow-copy", "COLLAB_WORKFLOW_MESSAGES"],
+  ["collab-grid-copy", "COLLAB_GRID_MESSAGES"],
 ];
 
 // 每一项都必须说明为什么同一中文键在两张 work-chat 分表里可以故意有不同英文——这代表
 // 两处字面相同的中文背后其实是不同的产品含义，拆键成本大于加一条有说明的豁免时才用。
 const WORK_CHAT_ALLOWED_OVERRIDES = new Map([]);
 
-test("work-chat 11 张分表不改写全站词典，也不互相改写", async () => {
+test("work-chat 扫描清单与聚合器注册的分表一致", () => {
+  const source = readFileSync(new URL("work-chat-copy.ts", messagesDir), "utf8");
+  const parts = source.match(/const PARTS = \[([\s\S]*?)\];/)?.[1];
+  assert.ok(parts, "work-chat 聚合器缺少 PARTS 注册表");
+  const names = [...parts.matchAll(/\b[A-Z][A-Z0-9_]*\b/g)].map(([name]) => name);
+  assert.deepEqual(WORK_CHAT_FRAGMENTS.map(([, name]) => name), names);
+});
+
+test("work-chat 全部分表不改写全站词典，也不互相改写", async () => {
   const { UI_MESSAGES } = await import(new URL("index.ts", messagesDir));
   const seen = { ...UI_MESSAGES.en };
   const owner = {};

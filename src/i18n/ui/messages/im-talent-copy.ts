@@ -105,7 +105,7 @@ export const IM_TALENT_MESSAGES = assembleCopy(SOURCE, {
     reasonHarassment: "Belästigung, Beleidigung oder Drohung",
   },
   en: {
-    offerDays: "Delivery in {n} days",
+    offerDays: "{n} days to deliver",
     offerRevisionsUnlimited: "Unlimited revisions",
     offerRevisions: "{n} revisions",
     reportInvalid: "The report isn't valid. Please check it and try again.",

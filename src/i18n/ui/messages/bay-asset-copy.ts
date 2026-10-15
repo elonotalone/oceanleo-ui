@@ -33,7 +33,7 @@ const latin = {
   originStocked: "Open source (in library)",
   originLive: "Live search",
   originLiveOff: "This type has no live open-source source.",
-  assetOrigin: "Asset origin",
+  assetOrigin: "Asset source",
   attributionNeeded: "Attribution required",
   assetLoadFailed: "Couldn't load assets. Try again later.",
   noAssetsHere: "No assets in this category yet.",

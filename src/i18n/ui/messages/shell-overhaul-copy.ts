@@ -59,6 +59,7 @@ import { SETTINGS_I18N_MESSAGES } from "./settings-i18n-copy";
 import { MCP_CATALOG_MESSAGES } from "./mcp-catalog-copy";
 import { ACCOUNT_LAYOUT_MESSAGES } from "./account-layout-copy";
 import { MAIL_BOT_MESSAGES } from "./mail-bot-copy";
+import { FOLLOW_THROUGH_MESSAGES } from "./follow-through-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -118,6 +119,7 @@ const PARTS = [
   MAIL_BOT_MESSAGES,
   APPROVAL_CARD_MESSAGES,
   ACCOUNT_DELIVERY_MESSAGES,
+  FOLLOW_THROUGH_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

@@ -96,7 +96,7 @@ test("英文对齐截图且无汉字；占位符与 support 邮箱不丢", () =>
   assert.equal(en["更改"], "Change");
   assert.equal(en["用户 ID"], "User ID");
   assert.equal(en["复制"], "Copy");
-  assert.equal(en["登录方式"], "Sign-in methods");
+  assert.equal(en["登录方式"], "Sign-in method");
   assert.equal(en["管理"], "Manage");
   assert.equal(en["已连接的设备"], "Connected devices");
   assert.equal(en["删除账户"], "Delete account");
