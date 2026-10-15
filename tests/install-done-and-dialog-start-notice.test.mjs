@@ -259,6 +259,7 @@ test("acp_unavailable：程序已装也提供补装缺失对话组件的入口",
   assert.equal(noticeAction("program_missing", null), "install");
   assert.equal(noticeAction("dialog_unreachable"), "retry");
   assert.equal(noticeAction("computer_offline"), "retry");
+  assert.equal(noticeAction("computer_reconnecting"), "retry");
 });
 
 test("黄字：程序本体已安装或刚安装后，缺组件仍能补装", async () => {

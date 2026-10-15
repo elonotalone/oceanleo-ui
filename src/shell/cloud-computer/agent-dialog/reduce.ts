@@ -68,9 +68,15 @@ const TURN_END_ERRORS = new Set([
   "missing_program",
   "runtime_missing",
   "not_logged_in",
-  "computer_offline",
   "node_error",
   "dialog_unreachable",
+]);
+
+const COMPUTER_WIDE_ERRORS = new Set([
+  "computer_offline",
+  "computer_reconnecting",
+  "dialog_unreachable",
+  "acp_exited",
 ]);
 
 function markTurn(state: DialogState, program: string | null, session: string, live: boolean): DialogState {
@@ -484,12 +490,14 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
   };
   const notice = text ? { ...base, text } : base;
   const session = str(frame.acp_session);
-  const matches = !session || !state.activeSession || session === state.activeSession;
+  const matches = session
+    ? !state.activeSession || session === state.activeSession
+    : !state.activeSession || COMPUTER_WIDE_ERRORS.has(code);
   const endsTurn = matches && TURN_END_ERRORS.has(code);
   const next = {
     ...state,
     agentBusy: code === "agent_busy" ? matches : state.agentBusy,
-    offline: code === "computer_offline" ? true : state.offline,
+    offline: code === "computer_offline" || code === "computer_reconnecting" ? true : state.offline,
     sessionLoading: matches ? false : state.sessionLoading,
     messages: same || !matches ? state.messages : [...state.messages, notice],
   };
@@ -512,7 +520,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     programs: parsePrograms(frame.programs),
     offline: false,
     messages: state.messages.filter((message) => message.kind !== "notice" ||
-      (message.code !== "computer_offline" && message.code !== "dialog_unreachable")),
+      (message.code !== "computer_offline" && message.code !== "computer_reconnecting" && message.code !== "dialog_unreachable")),
   };
   if (kind === "install_progress" && installMatches(state, frame)) {
     const text = str(frame.text);

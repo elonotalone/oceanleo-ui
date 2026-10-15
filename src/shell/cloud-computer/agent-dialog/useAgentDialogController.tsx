@@ -243,7 +243,7 @@ export function useAgentDialog({
       dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
       return;
     }
-    if (frame.t === "error" && frame.code === "computer_offline") {
+    if (frame.t === "error" && (frame.code === "computer_offline" || frame.code === "computer_reconnecting")) {
       // A node reconnects after gateway replacement. Treat offline as a
       // retryable connection loss, not a permanent stop requiring a click.
       socketRef.current?.close();

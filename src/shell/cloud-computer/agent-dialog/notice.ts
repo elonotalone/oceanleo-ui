@@ -46,7 +46,8 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
     case "agent_busy":
       return tt("上一轮还在跑，等它结束或先停止。");
     case "computer_offline":
-      return tt("机器离线");
+    case "computer_reconnecting":
+      return tt("正在重新连接这台电脑。");
     case "computer_not_confirmed":
       return tt("这台电脑还没确认。");
     case "not_owner":
@@ -93,7 +94,7 @@ export function noticeAction(
   if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
     return "install";
   }
-  if (code === "computer_offline" || code === "dialog_unreachable") return "retry";
+  if (code === "computer_offline" || code === "computer_reconnecting" || code === "dialog_unreachable") return "retry";
   return null;
 }
 
@@ -108,6 +109,7 @@ export function keyErrorCopy(
   if (code === "invalid_argument" && serverMessage) return serverMessage;
   if (
     code === "computer_offline" ||
+    code === "computer_reconnecting" ||
     code === "not_owner" ||
     code === "computer_not_found" ||
     code === "feature_disabled"

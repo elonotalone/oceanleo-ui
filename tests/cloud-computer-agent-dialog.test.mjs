@@ -748,7 +748,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.host.querySelector("[data-oceanleo-cc-agent-dialog-pane]").getAttribute("data-oceanleo-cc-reconnect"),
       "retrying",
     );
-    assert.match(view.host.textContent || "", /机器离线/);
+    assert.match(view.host.textContent || "", /正在重新连接这台电脑/);
     const count = FakeSocket.sockets.length;
     assert.equal(view.socket(), null, "offline already closed the rejected socket to start recovery");
     await act(async () => {
