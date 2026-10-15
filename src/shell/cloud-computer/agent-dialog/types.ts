@@ -228,6 +228,8 @@ export type DialogState = {
   busySession: string;
   /** `${program}::${acpSession}` keys that still have an open turn. */
   liveTurns: Record<string, true>;
+  /** ACP session ids whose process is still alive on this computer. */
+  runningSessions: string[];
   sessionLoading: boolean;
   /** Index of the first loaded transcript frame in the gateway store. */
   historyOffset: number;
@@ -249,6 +251,8 @@ export type AgentDialogController = {
   busy: boolean;
   /** ACP session ids of the current program that still have an open turn. */
   busySessions?: string[];
+  /** ACP session ids whose process is still alive, even if the turn ended. */
+  runningSessions?: string[];
   /** Known interrupted sessions of the current program, without inferring unopened history. */
   interruptedSessions?: string[];
   send: () => Promise<void>;

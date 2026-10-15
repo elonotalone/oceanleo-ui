@@ -762,6 +762,25 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
   }
 });
 
+test("dialog_detached 不把电脑标成离线，输入仍可发", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, {
+    type: "frame",
+    frame: { t: "session_opened", program: "cursor", acp_session: "s1" },
+  });
+  state = applyDialog(state, {
+    type: "frame",
+    frame: { t: "error", program: "cursor", code: "dialog_detached", acp_session: "s1" },
+  });
+  assert.equal(state.offline, false);
+  state = applyDialog(state, {
+    type: "frame",
+    frame: { t: "sessions", program: "cursor", supported: true, sessions: [{ id: "s1", title: "one" }], running: ["s1"], busy: [] },
+  });
+  assert.deepEqual(state.runningSessions, ["s1"]);
+});
+
 test("OceanLeo agent 恒在程序行第一项", async () => {
   const view = await boot();
   try {

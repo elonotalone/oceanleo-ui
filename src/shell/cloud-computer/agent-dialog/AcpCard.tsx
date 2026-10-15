@@ -299,7 +299,7 @@ export function AcpCard({
             const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
             return { id: program, label: PROGRAM_LABEL[program],
               dot: program === "oceanleo" ? "green" : !row?.installed ? "gray" : row.logged_in || row.auth === "key" ? "green" : "yellow",
-              running: row?.running || (selected === program && (dialog.busySessions?.length ?? 0) > 0), disabled: false };
+              running: row?.running || (selected === program && ((dialog.busySessions?.length ?? 0) > 0 || (dialog.runningSessions?.length ?? 0) > 0)), disabled: false };
           })}
           selected={selected}
           onSelect={(id) => { const program = agentProgram(id); if (program) openProgram(program); }}
@@ -360,13 +360,37 @@ export function AcpCard({
                       data-oceanleo-acp-session={session.id}
                     >
                       <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
-                        {dialog.busySessions?.includes(session.id) || dialog.interruptedSessions?.includes(session.id) ? (
+                        {dialog.busySessions?.includes(session.id) || dialog.interruptedSessions?.includes(session.id) || dialog.runningSessions?.includes(session.id) ? (
                           <span
-                            className={`size-1.5 shrink-0 rounded-full ${dialog.busySessions?.includes(session.id) ? "bg-emerald-500 motion-safe:animate-pulse" : "bg-red-500"}`}
+                            className={`size-1.5 shrink-0 rounded-full ${
+                              dialog.busySessions?.includes(session.id)
+                                ? "bg-emerald-500 motion-safe:animate-pulse"
+                                : dialog.interruptedSessions?.includes(session.id)
+                                  ? "bg-red-500"
+                                  : "bg-emerald-500"
+                            }`}
                             role="img"
-                            aria-label={dialog.busySessions?.includes(session.id) ? tt("进行中") : tt("已中断")}
-                            title={dialog.busySessions?.includes(session.id) ? tt("进行中") : tt("已中断")}
-                            data-oceanleo-acp-session-status={dialog.busySessions?.includes(session.id) ? "running" : "interrupted"}
+                            aria-label={
+                              dialog.busySessions?.includes(session.id)
+                                ? tt("进行中")
+                                : dialog.interruptedSessions?.includes(session.id)
+                                  ? tt("已中断")
+                                  : tt("进程还在")
+                            }
+                            title={
+                              dialog.busySessions?.includes(session.id)
+                                ? tt("进行中")
+                                : dialog.interruptedSessions?.includes(session.id)
+                                  ? tt("已中断")
+                                  : tt("进程还在")
+                            }
+                            data-oceanleo-acp-session-status={
+                              dialog.busySessions?.includes(session.id)
+                                ? "running"
+                                : dialog.interruptedSessions?.includes(session.id)
+                                  ? "interrupted"
+                                  : "alive"
+                            }
                           />
                         ) : null}
                         <span className="min-w-0 truncate">{session.title}</span>

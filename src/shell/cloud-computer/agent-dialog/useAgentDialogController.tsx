@@ -1281,6 +1281,7 @@ export function useAgentDialog({
     setDraft,
     busy: state.busy,
     busySessions: busySessionsFor(state.liveTurns, state.program),
+    runningSessions: state.runningSessions,
     interruptedSessions: [...presentationFor(computerId).views.entries()]
       .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))
       .map(([, view]) => view.activeSession),

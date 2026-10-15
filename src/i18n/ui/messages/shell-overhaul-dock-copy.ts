@@ -86,6 +86,7 @@ const SOURCE = {
   keySaveFailed: "Key 没存上。稍后再试。",
   keyRemoveFailed: "移除没成功。稍后再试。",
   acpExited: "这个程序的对话进程退出了，重新发一句会再启动。",
+  dialogDetached: "对话连接断了，进程还在。再发一句会接上。",
   alreadyInstalled: "这个程序已经装好了。",
 } as const;
 
@@ -172,6 +173,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "The key was not saved. Try again later.",
     keyRemoveFailed: "The key was not removed. Try again later.",
     acpExited: "This program’s chat process exited. Send another message to start it again.",
+    dialogDetached: "The dialog connection dropped. The process is still running. Send again to reconnect.",
     alreadyInstalled: "This program is already installed.",
   },
   de: {
@@ -256,6 +258,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Der Key wurde nicht gespeichert. Versuchen Sie es später erneut.",
     keyRemoveFailed: "Der Key wurde nicht entfernt. Versuchen Sie es später erneut.",
     acpExited: "Der Dialogprozess dieses Programms wurde beendet. Senden Sie erneut eine Nachricht, um ihn wieder zu starten.",
+    dialogDetached: "Die Dialogverbindung ist getrennt. Der Prozess läuft weiter. Senden Sie erneut, um wieder zu verbinden.",
     alreadyInstalled: "Dieses Programm ist bereits installiert.",
   },
   es: {
@@ -340,6 +343,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La key no se guardó. Inténtalo más tarde.",
     keyRemoveFailed: "La key no se eliminó. Inténtalo más tarde.",
     acpExited: "El proceso de diálogo de este programa se cerró. Envía otro mensaje para iniciarlo de nuevo.",
+    dialogDetached: "La conexión del diálogo se cortó. El proceso sigue en marcha. Envía otra frase para reconectar.",
     alreadyInstalled: "Este programa ya está instalado.",
   },
   "es-419": {
@@ -424,6 +428,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La key no se guardó. Intenta más tarde.",
     keyRemoveFailed: "La key no se eliminó. Intenta más tarde.",
     acpExited: "El proceso de diálogo de este programa se cerró. Envía otro mensaje para iniciarlo de nuevo.",
+    dialogDetached: "La conexión del diálogo se cortó. El proceso sigue en marcha. Envía otra frase para reconectar.",
     alreadyInstalled: "Este programa ya está instalado.",
   },
   fr: {
@@ -508,6 +513,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La clé n’a pas été enregistrée. Réessayez plus tard.",
     keyRemoveFailed: "La clé n’a pas été supprimée. Réessayez plus tard.",
     acpExited: "Le processus de dialogue de ce programme s’est arrêté. Renvoyez un message pour le relancer.",
+    dialogDetached: "La connexion du dialogue s’est coupée. Le processus tourne encore. Renvoyez un message pour le reprendre.",
     alreadyInstalled: "Ce programme est déjà installé.",
   },
   it: {
@@ -592,6 +598,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La key non è stata salvata. Riprova più tardi.",
     keyRemoveFailed: "La rimozione non è riuscita. Riprova più tardi.",
     acpExited: "Il processo di dialogo di questo programma è terminato. Invia un altro messaggio per riavviarlo.",
+    dialogDetached: "La connessione del dialogo si è interrotta. Il processo è ancora in esecuzione. Invia di nuovo per ricollegarti.",
     alreadyInstalled: "Questo programma è già installato.",
   },
   "pt-BR": {
@@ -676,6 +683,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "A key não foi salva. Tente mais tarde.",
     keyRemoveFailed: "A remoção não funcionou. Tente mais tarde.",
     acpExited: "O processo de diálogo deste programa terminou. Envie outra mensagem para iniciá-lo de novo.",
+    dialogDetached: "A ligação do diálogo caiu. O processo continua a correr. Envie outra mensagem para voltar a ligar.",
     alreadyInstalled: "Este programa já está instalado.",
   },
   "pt-PT": {
@@ -760,6 +768,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "A key não foi guardada. Tente mais tarde.",
     keyRemoveFailed: "A remoção falhou. Tente mais tarde.",
     acpExited: "O processo de diálogo deste programa terminou. Envie outra mensagem para o iniciar de novo.",
+    dialogDetached: "A conexão do diálogo caiu. O processo continua em execução. Envie outra mensagem para reconectar.",
     alreadyInstalled: "Este programa já está instalado.",
   },
   vi: {
@@ -844,6 +853,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Chưa lưu được key. Thử lại sau.",
     keyRemoveFailed: "Chưa gỡ được. Thử lại sau.",
     acpExited: "Tiến trình hội thoại của chương trình này đã thoát, gửi thêm một câu sẽ khởi động lại.",
+    dialogDetached: "Kết nối hội thoại bị ngắt, tiến trình vẫn chạy. Gửi lại một câu sẽ nối tiếp.",
     alreadyInstalled: "Chương trình này đã được cài.",
   },
   tr: {
@@ -928,6 +938,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key kaydedilemedi. Daha sonra tekrar deneyin.",
     keyRemoveFailed: "Kaldırma başarısız. Daha sonra tekrar deneyin.",
     acpExited: "Bu programın diyalog süreci kapandı. Yeniden başlatmak için bir mesaj daha gönderin.",
+    dialogDetached: "Diyalog bağlantısı koptu. Süreç hâlâ çalışıyor. Yeniden bağlanmak için tekrar gönderin.",
     alreadyInstalled: "Bu program zaten kurulu.",
   },
   "zh-TW": {
@@ -1012,6 +1023,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key 沒存上。稍後再試。",
     keyRemoveFailed: "移除沒成功。稍後再試。",
     acpExited: "這個程式的對話處理程序結束了，重新發一句會再啟動。",
+    dialogDetached: "對話連線斷了，處理程序還在。再發一句會接上。",
     alreadyInstalled: "這個程式已經裝好了。",
   },
   ja: {
@@ -1096,6 +1108,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key を保存できませんでした。後でもう一度試してください。",
     keyRemoveFailed: "削除できませんでした。後でもう一度試してください。",
     acpExited: "このプログラムの対話プロセスが終了しました。もう一文送ると再起動します。",
+    dialogDetached: "対話の接続が切れましたが、プロセスは残っています。もう一文送るとつながります。",
     alreadyInstalled: "このプログラムはすでにインストールされています。",
   },
   ko: {
@@ -1180,6 +1193,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key를 저장하지 못했습니다. 나중에 다시 시도하세요.",
     keyRemoveFailed: "제거하지 못했습니다. 나중에 다시 시도하세요.",
     acpExited: "이 프로그램의 대화 프로세스가 종료되었습니다. 다시 한 문장 보내면 다시 시작됩니다.",
+    dialogDetached: "대화 연결이 끊겼지만 프로세스는 살아 있습니다. 다시 한 문장 보내면 이어집니다.",
     alreadyInstalled: "이 프로그램은 이미 설치되어 있습니다.",
   },
   ar: {
@@ -1264,6 +1278,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "لم يُحفظ المفتاح. حاول لاحقًا.",
     keyRemoveFailed: "لم تنجح الإزالة. حاول لاحقًا.",
     acpExited: "توقفت عملية الحوار لهذا البرنامج. أرسل رسالة أخرى لإعادة تشغيلها.",
+    dialogDetached: "انقطع اتصال الحوار، لكن العملية ما زالت تعمل. أرسل مرة أخرى لإعادة الوصل.",
     alreadyInstalled: "هذا البرنامج مثبت بالفعل.",
   },
   th: {
@@ -1348,6 +1363,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "บันทึก key ไม่สำเร็จ ลองใหม่ภายหลัง",
     keyRemoveFailed: "ลบไม่สำเร็จ ลองใหม่ภายหลัง",
     acpExited: "โปรเซสสนทนาของโปรแกรมนี้ปิดไปแล้ว ส่งข้อความอีกครั้งเพื่อเริ่มใหม่",
+    dialogDetached: "การเชื่อมต่อบทสนทนาขาด แต่โปรเซสยังทำงาน ส่งอีกครั้งเพื่อต่อใหม่",
     alreadyInstalled: "โปรแกรมนี้ติดตั้งอยู่แล้ว",
   },
   hi: {
@@ -1432,6 +1448,7 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key सहेजी नहीं गई। बाद में फिर कोशिश करें।",
     keyRemoveFailed: "हटाया नहीं गया। बाद में फिर कोशिश करें।",
     acpExited: "इस प्रोग्राम की बातचीत प्रक्रिया बंद हो गई। फिर एक संदेश भेजने से वह फिर शुरू होगी।",
+    dialogDetached: "बातचीत का कनेक्शन टूट गया, प्रक्रिया अभी चल रही है। फिर से भेजने पर जुड़ जाएगी।",
     alreadyInstalled: "यह प्रोग्राम पहले से इंस्टॉल है।",
   },
 });

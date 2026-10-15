@@ -48,6 +48,8 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
     case "computer_offline":
     case "computer_reconnecting":
       return tt("正在重新连接这台电脑。");
+    case "dialog_detached":
+      return tt("对话连接断了，进程还在。再发一句会接上。");
     case "computer_not_confirmed":
       return tt("这台电脑还没确认。");
     case "not_owner":

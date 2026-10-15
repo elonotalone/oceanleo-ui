@@ -70,6 +70,7 @@ const TURN_END_ERRORS = new Set([
   "not_logged_in",
   "node_error",
   "dialog_unreachable",
+  "dialog_detached",
 ]);
 
 const COMPUTER_WIDE_ERRORS = new Set([
@@ -146,6 +147,7 @@ export function initialDialogState(): DialogState {
     serverActiveSession: "",
     busySession: "",
     liveTurns: {},
+    runningSessions: [],
     sessionLoading: false,
     historyOffset: 0,
     historyTotal: 0,
@@ -602,9 +604,13 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     }
     const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
+    const runningSessions = Array.isArray(frame.running)
+      ? frame.running.filter((id): id is string => typeof id === "string" && Boolean(id))
+      : state.runningSessions;
     return {
       ...state,
       liveTurns,
+      runningSessions,
       sessionsSupported: frame.supported !== false,
       sessions,
       serverActiveSession: str(frame.active),
