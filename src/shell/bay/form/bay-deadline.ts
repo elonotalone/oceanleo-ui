@@ -59,17 +59,31 @@ export function zonedParts(ms: number, zone: string): ZonedParts {
 /** 该时区在某时刻相对 UTC 的偏移（毫秒，东为正）。 */
 export function zoneOffsetMs(ms: number, zone: string): number {
   const p = zonedParts(ms, zone);
-  const wall = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const wall = wallMs(p);
   return wall - Math.floor(ms / 1000) * 1000;
 }
 
-/** 某时区里的墙上时间 → 绝对时刻（毫秒）。夏令时空洞/重叠取离「猜测值」最近的合法时刻。 */
+function wallMs(parts: ZonedParts): number {
+  const date = new Date(0);
+  date.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  date.setUTCHours(parts.hour, parts.minute, parts.second, 0);
+  return date.getTime();
+}
+
+/** 墙上时间 → 时刻。DST 重叠取第一次；空洞向前顺延空洞长度；非法日期返回 NaN。 */
 export function zonedToInstant(parts: ZonedParts, zone: string): number {
-  const wall = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-  let guess = wall - zoneOffsetMs(wall, zone);
-  const second = wall - zoneOffsetMs(guess, zone);
-  if (second !== guess) guess = second;
-  return guess;
+  if (!Object.values(parts).every(Number.isInteger)) return NaN;
+  const wall = wallMs(parts);
+  const date = new Date(wall);
+  if (!Number.isFinite(wall) || date.getUTCFullYear() !== parts.year || date.getUTCMonth() + 1 !== parts.month ||
+      date.getUTCDate() !== parts.day || date.getUTCHours() !== parts.hour ||
+      date.getUTCMinutes() !== parts.minute || date.getUTCSeconds() !== parts.second) return NaN;
+  // 取切换前后的偏移，不能通过两次迭代猜测（空洞时会在两边来回跳）。
+  const offsets = new Set([-2, -1, 0, 1, 2].map((day) => zoneOffsetMs(wall + day * 86400000, zone)));
+  const candidates = [...offsets].map((offset) => wall - offset).sort((a, b) => a - b);
+  const exact = candidates.find((at) => wallMs(zonedParts(at, zone)) === wall);
+  if (exact !== undefined) return exact;
+  return candidates.find((at) => wallMs(zonedParts(at, zone)) > wall) ?? NaN;
 }
 
 /** 「UTC+8」「UTC+5:30」「UTC」。 */

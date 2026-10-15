@@ -8,7 +8,7 @@ const AUTO_TEXTAREA_CLASS =
 
 export function BayAutoTextarea(props: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "rows">): ReactElement {
   const ref = useRef<HTMLTextAreaElement | null>(null);
-  const { className, value, ...rest } = props;
+  const { className, value, onInput, onFocus, ...rest } = props;
 
   // 框藏在收起的组里（display:none）时 scrollHeight 是 0：不能把高度写成 0，
   // 得等它真正显示出来、宽度确定后再量。
@@ -17,8 +17,14 @@ export function BayAutoTextarea(props: Omit<TextareaHTMLAttributes<HTMLTextAreaE
     if (!node) return;
     node.style.height = "auto";
     const next = node.scrollHeight;
-    if (next > 0) node.style.height = `${next}px`;
-    else node.style.removeProperty("height");
+    if (next > 0) {
+      const style = window.getComputedStyle(node);
+      const px = (value: string) => Number.parseFloat(value) || 0;
+      const adjustment = style.boxSizing === "border-box"
+        ? px(style.borderTopWidth) + px(style.borderBottomWidth)
+        : -px(style.paddingTop) - px(style.paddingBottom);
+      node.style.height = `${next + adjustment}px`;
+    } else node.style.removeProperty("height");
   }, []);
 
   useLayoutEffect(() => {
@@ -38,5 +44,15 @@ export function BayAutoTextarea(props: Omit<TextareaHTMLAttributes<HTMLTextAreaE
     return () => observer.disconnect();
   }, [fit]);
 
-  return <textarea ref={ref} rows={1} value={value} className={className ? `${AUTO_TEXTAREA_CLASS} ${className}` : AUTO_TEXTAREA_CLASS} {...rest} />;
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      className={className ? `${AUTO_TEXTAREA_CLASS} ${className}` : AUTO_TEXTAREA_CLASS}
+      {...rest}
+      onInput={(event) => { fit(); onInput?.(event); }}
+      onFocus={(event) => { fit(); onFocus?.(event); }}
+    />
+  );
 }

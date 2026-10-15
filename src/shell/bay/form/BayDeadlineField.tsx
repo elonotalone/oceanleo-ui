@@ -56,23 +56,33 @@ function TimeBox(props: {
   disabled?: boolean;
   onChange: (value: number) => void;
 }): ReactElement {
+  const [text, setText] = useState(() => String(props.value).padStart(2, "0"));
+  useEffect(() => {
+    // 打字时保留「1」和空串，否则每次补零会把下一位挡在 maxLength 外。
+    setText((current) => Number(current) === props.value ? current : String(props.value).padStart(2, "0"));
+  }, [props.value]);
   return (
     <input
       aria-label={props.label}
       inputMode="numeric"
       maxLength={2}
       disabled={props.disabled}
-      value={String(props.value).padStart(2, "0")}
+      value={text}
       onFocus={(event) => event.currentTarget.select()}
+      onBlur={() => setText(String(props.value).padStart(2, "0"))}
       onChange={(event) => {
         const digits = event.target.value.replace(/\D/g, "").slice(-2);
-        props.onChange(clamp(Number(digits || 0), 0, props.max));
+        const next = clamp(Number(digits || 0), 0, props.max);
+        setText(Number(digits) === next ? digits : String(next));
+        props.onChange(next);
       }}
       onKeyDown={(event) => {
         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
           event.preventDefault();
           const step = event.key === "ArrowUp" ? 1 : -1;
-          props.onChange((props.value + step + props.max + 1) % (props.max + 1));
+          const next = (props.value + step + props.max + 1) % (props.max + 1);
+          setText(String(next).padStart(2, "0"));
+          props.onChange(next);
         }
       }}
       className="h-10 w-14 rounded-full border-0 bg-neutral-200/80 text-center text-[14px] tabular-nums text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
@@ -120,11 +130,13 @@ export function BayDeadlineField(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  const zones = useMemo(() => (open ? selectableZones() : []), [open]);
+  const zones = useMemo(() => (open ? Array.from(new Set([tz, ...selectableZones()])) : []), [open, tz]);
   const weekdays = useMemo(() => weekdayLabels(locale), [locale]);
 
   function emit(next: ZonedParts) {
-    props.onChange(new Date(zonedToInstant(next, tz)).toISOString());
+    if (props.disabled) return;
+    const instant = zonedToInstant(next, tz);
+    if (Number.isFinite(instant)) props.onChange(new Date(instant).toISOString());
   }
 
   function pickDay(day: number) {
@@ -144,6 +156,7 @@ export function BayDeadlineField(props: {
   }
 
   function changeZone(next: string) {
+    if (props.disabled) return;
     setZone(next);
     storeZone(next);
   }
@@ -183,7 +196,7 @@ export function BayDeadlineField(props: {
       </button>
 
       {open ? (
-        <div data-bay-deadline-panel="" className="mt-3 w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-4">
+        <fieldset disabled={props.disabled} data-bay-deadline-panel="" className="mt-3 w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-4">
           <div className="flex items-center justify-between">
             <button type="button" aria-label={tt("上个月")} onClick={() => shiftMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
               <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -247,12 +260,11 @@ export function BayDeadlineField(props: {
               onChange={(event) => changeZone(event.target.value)}
               className="h-11 w-full rounded-full border-0 bg-neutral-200/80 px-4 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
             >
-              <option value={DEVICE_ZONE}>{`${tt("按我设备的时间")} · ${device} (${offsetLabel(Date.now(), device)})`}</option>
+              <option value={DEVICE_ZONE}>{`${tt("按我设备的时间")} · ${device} (${offsetLabel(at ?? Date.now(), device)})`}</option>
               {zones
-                .filter((name) => name !== device)
                 .map((name) => (
                   <option key={name} value={name}>
-                    {`${name} (${offsetLabel(Date.now(), name)})`}
+                    {`${name} (${offsetLabel(at ?? Date.now(), name)})`}
                   </option>
                 ))}
             </select>
@@ -282,7 +294,7 @@ export function BayDeadlineField(props: {
               {tt("完成")}
             </button>
           </div>
-        </div>
+        </fieldset>
       ) : null}
     </div>
   );
