@@ -629,6 +629,31 @@ test("reducer：多会话 liveTurns 互不打断；普通错误不把当前轮�
   assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
 });
 
+test("reducer：sessions.busy 清掉已结束的回合，不把空闲 running 当成进行中", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "session-loading", id: "s-a" });
+  state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "session-loading", id: "s-b" });
+  state = applyDialog(state, { type: "send-began" });
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
+  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "sessions",
+      program: "cursor",
+      supported: true,
+      sessions: [{ id: "s-a", title: "A" }, { id: "s-b", title: "B" }],
+      busy: ["s-b"],
+      running: ["s-a", "s-b"],
+    },
+  });
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
+  assert.deepEqual(state.runningSessions, ["s-a", "s-b"]);
+});
+
 // ---------------------------------------------------------------------------
 // 控制器：oceanleo 走 REST turn + 轮询，不碰 WS 的 prompt 通道
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import { ProgramStrip, type ProgramStripItem } from "../server-page/ProgramStrip
 import { ServerPageStripPortal } from "../server-page/server-page-chrome";
 import { tone } from "../server-page/tone";
 import { AcpSettings } from "./AcpSettings";
+import { sessionListStatus } from "./session-status";
 import { Composer } from "./Composer";
 import { InstallSheet } from "./InstallSheet";
 import { KeySheet } from "./KeySheet";
@@ -299,7 +300,7 @@ export function AcpCard({
             const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
             return { id: program, label: PROGRAM_LABEL[program],
               dot: program === "oceanleo" ? "green" : !row?.installed ? "gray" : row.logged_in || row.auth === "key" ? "green" : "yellow",
-              running: row?.running || (selected === program && ((dialog.busySessions?.length ?? 0) > 0 || (dialog.runningSessions?.length ?? 0) > 0)), disabled: false };
+              running: row?.running || (selected === program && (dialog.busySessions?.length ?? 0) > 0), disabled: false };
           })}
           selected={selected}
           onSelect={(id) => { const program = agentProgram(id); if (program) openProgram(program); }}
@@ -346,62 +347,49 @@ export function AcpCard({
                     {dialog.sessionsSupported === null ? tt("正在读取…") : tt("还没有过去的会话")}
                   </p>
                 ) : (
-                  dialog.sessions.map((session) => (
-                    <button
-                      key={session.id}
-                      type="button"
-                      onClick={() => {
-                        dialog.openSession(session.id);
-                        replaceAddress(selected, session.id);
-                      }}
-                      className={`block w-full rounded-lg px-2 py-2 text-left ${tone.hover} ${
-                        dialog.activeSession === session.id ? tone.rowActive : ""
-                      }`}
-                      data-oceanleo-acp-session={session.id}
-                    >
-                      <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
-                        {dialog.busySessions?.includes(session.id) || dialog.interruptedSessions?.includes(session.id) || dialog.runningSessions?.includes(session.id) ? (
-                          <span
-                            className={`size-1.5 shrink-0 rounded-full ${
-                              dialog.busySessions?.includes(session.id)
-                                ? "bg-emerald-500 motion-safe:animate-pulse"
-                                : dialog.interruptedSessions?.includes(session.id)
-                                  ? "bg-red-500"
-                                  : "bg-emerald-500"
-                            }`}
-                            role="img"
-                            aria-label={
-                              dialog.busySessions?.includes(session.id)
-                                ? tt("进行中")
-                                : dialog.interruptedSessions?.includes(session.id)
-                                  ? tt("已中断")
-                                  : tt("进程还在")
-                            }
-                            title={
-                              dialog.busySessions?.includes(session.id)
-                                ? tt("进行中")
-                                : dialog.interruptedSessions?.includes(session.id)
-                                  ? tt("已中断")
-                                  : tt("进程还在")
-                            }
-                            data-oceanleo-acp-session-status={
-                              dialog.busySessions?.includes(session.id)
-                                ? "running"
-                                : dialog.interruptedSessions?.includes(session.id)
-                                  ? "interrupted"
-                                  : "alive"
-                            }
-                          />
-                        ) : null}
-                        <span className="min-w-0 truncate">{session.title}</span>
-                      </span>
-                      {session.updatedAt ? (
-                        <span className={`mt-1 block text-[11px] ${tone.muted}`}>
-                          {relativeTime(session.updatedAt, tt)}
+                  dialog.sessions.map((session) => {
+                    const status = sessionListStatus(
+                      session.id,
+                      dialog.busySessions,
+                      dialog.interruptedSessions,
+                    );
+                    return (
+                      <button
+                        key={session.id}
+                        type="button"
+                        onClick={() => {
+                          dialog.openSession(session.id);
+                          replaceAddress(selected, session.id);
+                        }}
+                        className={`block w-full rounded-lg px-2 py-2 text-left ${tone.hover} ${
+                          dialog.activeSession === session.id ? tone.rowActive : ""
+                        }`}
+                        data-oceanleo-acp-session={session.id}
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
+                          {status ? (
+                            <span
+                              className={`size-1.5 shrink-0 rounded-full ${
+                                status === "running"
+                                  ? "bg-emerald-500 motion-safe:animate-pulse"
+                                  : "bg-red-500"
+                              }`}
+                              role="img"
+                              aria-label={status === "running" ? tt("进行中") : tt("已中断")}
+                              title={status === "running" ? tt("进行中") : tt("已中断")}
+                              data-oceanleo-acp-session-status={status}
+                            />
+                          ) : null}
+                          <span className="min-w-0 truncate">{session.title}</span>
                         </span>
-                      ) : null}
-                    </button>
-                  ))
+                        {session.updatedAt ? (
+                          <span className={`mt-1 block text-[11px] ${tone.muted}`}>
+                            {relativeTime(session.updatedAt, tt)}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </aside>

@@ -478,6 +478,40 @@ test("会话标题前显示绿色呼吸运行点，后台取消变红且不串�
   } finally { view.cleanup(); }
 });
 
+test("Past sessions 绿点只标进行中的回合，空闲进程不亮", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({
+      t: "sessions",
+      program: "cursor",
+      supported: true,
+      sessions: [
+        { id: "one", title: "Working", cwd: "/root", updated_at: "" },
+        { id: "two", title: "Idle", cwd: "/root", updated_at: "" },
+        { id: "three", title: "Also idle", cwd: "/root", updated_at: "" },
+      ],
+      busy: ["one"],
+      running: ["one", "two", "three"],
+    });
+    assert.ok(view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status="running"]'));
+    assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
+    assert.equal(view.$('[data-oceanleo-acp-session="three"] [data-oceanleo-acp-session-status]'), null);
+    await server({
+      t: "sessions",
+      program: "cursor",
+      supported: true,
+      sessions: [
+        { id: "one", title: "Working", cwd: "/root", updated_at: "" },
+        { id: "two", title: "Idle", cwd: "/root", updated_at: "" },
+      ],
+      busy: [],
+      running: ["one", "two"],
+    });
+    assert.equal(view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status]'), null);
+    assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
+  } finally { view.cleanup(); }
+});
+
 test("模型目录刷新保留配置菜单中已选的基础模型，不退回旧组合型号", () => {
   let state = { ...initialDialogState(), program: "codex", activeSession: "existing" };
   state = applyDialog(state, { type: "frame", frame: { t: "config", program: "codex", options: [{

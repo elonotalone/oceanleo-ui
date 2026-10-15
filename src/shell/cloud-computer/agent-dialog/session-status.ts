@@ -6,6 +6,19 @@ const INTERRUPTED_ERRORS = new Set([
   "runtime_missing", "not_logged_in", "node_error", "dialog_unreachable",
 ]);
 
+export type SessionListStatus = "running" | "interrupted";
+
+/** Past-sessions dots: a live idle process is not "in progress". */
+export function sessionListStatus(
+  sessionId: string,
+  busySessions?: readonly string[],
+  interruptedSessions?: readonly string[],
+): SessionListStatus | null {
+  if (busySessions?.includes(sessionId)) return "running";
+  if (interruptedSessions?.includes(sessionId)) return "interrupted";
+  return null;
+}
+
 /** Only known outcomes count; unopened history rows have no inferred status. */
 export function sessionInterrupted(messages: AgentDialogMessage[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {

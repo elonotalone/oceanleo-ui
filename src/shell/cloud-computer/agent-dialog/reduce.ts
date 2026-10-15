@@ -599,8 +599,19 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (!forCurrent(state, frame)) return state;
   if (kind === "sessions") {
     const liveTurns = { ...state.liveTurns };
-    for (const session of Array.isArray(frame.busy) ? frame.busy : []) {
-      if (typeof session === "string") liveTurns[turnKey(state.program, session)] = true;
+    if (Array.isArray(frame.busy)) {
+      const prefix = `${state.program ?? ""}::`;
+      const busy = new Set(
+        frame.busy.filter((id): id is string => typeof id === "string" && Boolean(id)),
+      );
+      const current = state.activeSession || state.draftRef || "";
+      for (const key of Object.keys(liveTurns)) {
+        if (!key.startsWith(prefix)) continue;
+        const id = key.slice(prefix.length);
+        if (busy.has(id) || (id === current && state.busy)) continue;
+        delete liveTurns[key];
+      }
+      for (const id of busy) liveTurns[turnKey(state.program, id)] = true;
     }
     const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
