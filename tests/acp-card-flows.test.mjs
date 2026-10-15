@@ -1110,15 +1110,18 @@ test("过去的会话列表自动刷新：新会话开出来、窗口重新获�
     const asked = () => sentFrames().filter((frame) => frame.t === "sessions" && frame.program === "cursor").length;
     const before = asked();
     await server({ t: "session_opened", program: "cursor", acp_session: "two", cwd: "/root", replayed: 0 });
+    // Activity within a second of the previous list request merges into one trailing request.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     const afterOpen = asked();
-    assert.ok(afterOpen > before, "新会话开出来后要重新拉列表");
-    await act(async () => window.dispatchEvent(new window.Event("focus")));
-    assert.ok(asked() > afterOpen, "窗口重新获得焦点要重新拉列表");
+    assert.equal(afterOpen, before + 1, "新会话开出来后要重新拉列表");
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
       { id: "one", title: "First", cwd: "/root", updated_at: "" },
       { id: "two", title: "Second", cwd: "/root", updated_at: "" },
     ] });
     assert.ok(view.$('[data-oceanleo-acp-session="two"]'));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
+    assert.equal(asked(), afterOpen + 1, "窗口重新获得焦点要重新拉列表");
   } finally {
     view.cleanup();
   }

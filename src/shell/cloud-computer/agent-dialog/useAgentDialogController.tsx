@@ -15,6 +15,7 @@ import { isWsProgram } from "./parse";
 import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
 import { sessionInterrupted } from "./session-status";
+import { createSessionRefresh } from "./session-refresh";
 import { safeImagePreview } from "./message-attachments";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
 import type {
@@ -157,6 +158,13 @@ export function useAgentDialog({
   const sessionIdRef = useRef(sessionId);
   const localOceanleoRef = useRef(localOceanleo);
   const socketRef = useRef<WebSocket | null>(null);
+  const sessionsRefreshRef = useRef<ReturnType<typeof createSessionRefresh> | null>(null);
+  if (!sessionsRefreshRef.current) sessionsRefreshRef.current = createSessionRefresh({
+    allowed: (program) => enabledRef.current && activeRef.current
+      && (typeof document === "undefined" || !document.hidden)
+      && (isWsProgram(program) || (program === "oceanleo" && localOceanleoRef.current)),
+    send: (program) => sendJson(socketRef.current, { t: "sessions", program }),
+  });
   const connectGen = useRef(0);
   const delayRef = useRef(1000);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -241,6 +249,7 @@ export function useAgentDialog({
     const cached = presentationFor(computerIdRef.current);
     if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
     if (frame.t === "sessions" && typeof frame.program === "string" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
+      sessionsRefreshRef.current?.receive(frame.program, JSON.stringify([frame.sessions, frame.active, frame.busy]), frame.supported !== false);
       const parsed = applyDialog({ ...stateRef.current, program: frame.program }, { type: "frame", frame });
       cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
     }
@@ -273,7 +282,7 @@ export function useAgentDialog({
         delete live[`${frameProgram}::new:${ref}`];
         stateRef.current = { ...stateRef.current, liveTurns: live };
         dispatch({ type: "set-live-turns", liveTurns: live });
-        sendJson(socketRef.current, { t: "sessions", program: frameProgram });
+        sessionsRefreshRef.current?.request(frameProgram, "activity");
       }
       // Frames without a session belong only to a new view.
       if (!frameSession && !pendingKey && stateRef.current.activeSession && frame.t !== "error") return;
@@ -309,7 +318,7 @@ export function useAgentDialog({
     }
     // New sessions and fresh activity must show up in "Past sessions" without a manual refresh.
     if ((frame.t === "done" || frame.t === "session_opened" || frame.t === "turn_start") && frameProgram) {
-      sendJson(socketRef.current, { t: "sessions", program: frameProgram });
+      sessionsRefreshRef.current?.request(frameProgram, "activity");
     }
   }, [clearTimer, initialSessionId, mountProgram]);
 
@@ -392,9 +401,10 @@ export function useAgentDialog({
             return;
           }
           sendJson(socket, { t: "status" });
+          sessionsRefreshRef.current?.reset();
           const program = stateRef.current.program;
           if (usesDialogSocket(program, localOceanleoRef.current)) {
-            if (!sessionIdRef.current) sendJson(socket, { t: "sessions", program });
+            sessionsRefreshRef.current?.request(program);
             sendJson(socket, { t: "models", program });
           }
           finish(socket);
@@ -413,6 +423,7 @@ export function useAgentDialog({
           finish(null);
           return;
         }
+        sessionsRefreshRef.current?.reset();
         finish(null);
         if (!enabledRef.current) return;
         scheduleReconnect();
@@ -660,6 +671,7 @@ export function useAgentDialog({
 
   useEffect(() => {
     if (!enabled) {
+      sessionsRefreshRef.current?.reset();
       connectGen.current += 1;
       inflightRef.current = null;
       clearTimer();
@@ -679,6 +691,7 @@ export function useAgentDialog({
       void refreshOceanRef.current();
     }
     return () => {
+      sessionsRefreshRef.current?.reset();
       connectGen.current += 1;
       inflightRef.current = null;
       clearTimer();
@@ -735,7 +748,7 @@ export function useAgentDialog({
     oceanSendRef.current = null;
     void (async () => {
       const socket = await connectRef.current();
-      sendJson(socket, { t: "sessions", program: "oceanleo" });
+      sessionsRefreshRef.current?.request("oceanleo");
       sendJson(socket, { t: "models", program: "oceanleo" });
     })();
   }, [enabled, localOceanleo, clearOceanWait]);
@@ -771,7 +784,7 @@ export function useAgentDialog({
       }
       const socket = socketRef.current;
       if (usesDialogSocket(next, localOceanleoRef.current) && socket && socket.readyState === WebSocket.OPEN) {
-        if (!sessionIdRef.current) sendJson(socket, { t: "sessions", program: next });
+        sessionsRefreshRef.current?.request(next);
         sendJson(socket, { t: "models", program: next });
       }
     },
@@ -886,11 +899,11 @@ export function useAgentDialog({
       dispatch({ type: "sessions-unavailable" });
       return;
     }
-    const sent = sendJson(socketRef.current, { t: "sessions", program });
-    if (sent) return;
+    sessionsRefreshRef.current?.request(program, "manual");
+    if (socketRef.current?.readyState === WebSocket.OPEN) return;
     void (async () => {
-      const socket = await ensureOpen();
-      sendJson(socket, { t: "sessions", program });
+      await ensureOpen();
+      if (stateRef.current.program === program) sessionsRefreshRef.current?.request(program);
     })();
   }, [ensureOpen]);
 
@@ -898,21 +911,31 @@ export function useAgentDialog({
   // so keep the list fresh while the dialog is on screen and when it regains focus.
   useEffect(() => {
     if (!enabled || !active) return;
-    const refresh = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = (reason: "wake" | "poll" = "wake") => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (typeof document !== "undefined" && document.hidden) {
+        sessionsRefreshRef.current?.pause();
+        return;
+      }
       const program = stateRef.current.program;
-      if (!usesDialogSocket(program, localOceanleoRef.current)) return;
-      sendJson(socketRef.current, { t: "sessions", program });
+      if (usesDialogSocket(program, localOceanleoRef.current)) {
+        sessionsRefreshRef.current?.request(program, reason);
+        timer = setTimeout(() => refresh("poll"), SESSIONS_REFRESH_MS);
+      }
     };
-    const timer = setInterval(refresh, SESSIONS_REFRESH_MS);
-    document.addEventListener("visibilitychange", refresh);
-    window.addEventListener("focus", refresh);
+    const wake = () => refresh();
+    refresh();
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
     return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", refresh);
-      window.removeEventListener("focus", refresh);
+      if (timer) clearTimeout(timer);
+      sessionsRefreshRef.current?.pause();
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
     };
-  }, [enabled, active]);
+  }, [enabled, active, state.program, localOceanleo]);
 
   const requestSessionPath = useCallback(() => {
     const program = stateRef.current.program;
