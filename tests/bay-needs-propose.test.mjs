@@ -1,5 +1,5 @@
 // W04：报价窗格（ProposePane）。
-// 覆盖：价格/天数/说明；先过卖家条款再提交；没卖家资料去设置；未登录点提交走登录；
+// 覆盖：价格/天数/说明；先过卖家条款再提交；没卖家资料去我的主页；未登录点提交走登录；
 // 不能给自己的需求报价；窗格不自带返回栏。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -227,7 +227,7 @@ test("先过卖家条款再提交价格、天数、说明", async () => {
   await view.unmount();
 });
 
-test("后端说没有卖家资料 → 去设置里建", async () => {
+test("后端说没有卖家资料 → 去我的主页建", async () => {
   reset();
   globalThis.__bayHttpRespond = (method, path) => {
     if (method === "GET" && path === "/v1/talent/demands/d1") return { demand: demand() };
@@ -239,7 +239,8 @@ test("后端说没有卖家资料 → 去设置里建", async () => {
   await view.click("[data-bay-submit]");
   assert.match(view.host.textContent, /先建好并公开卖家资料/);
   await view.click('[data-bay-action="profile"]');
-  assert.deepEqual(globalThis.__baySettingsOpened, ["profile"]);
+  assert.deepEqual(globalThis.__bayOpened, [{ kind: "mine", tab: "page" }]);
+  assert.deepEqual(globalThis.__baySettingsOpened, []);
   await view.unmount();
 });
 

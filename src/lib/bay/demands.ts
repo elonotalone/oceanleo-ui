@@ -103,7 +103,7 @@ export interface BayProposal {
   created_at?: string;
   currency?: string;
   seller?: BayPartyProfile;
-  demand?: Pick<BayDemand, "id" | "title" | "status" | "category"> & { posted_site?: string | null };
+  demand?: Pick<BayDemand, "id" | "title" | "status" | "category" | "listing_kind"> & { posted_site?: string | null };
 }
 
 export interface DemandInput {

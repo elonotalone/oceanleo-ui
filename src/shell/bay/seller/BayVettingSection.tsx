@@ -18,7 +18,7 @@ import {
   type BayMyVetting,
   type BayVettingKind,
 } from "../../../lib/bay/vetting";
-import { BayRevealForm } from "../form";
+import { BayRevealForm } from "../form/BayRevealForm";
 import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerNotice } from "./seller-ui";
 
 const DOMAIN_LABEL: Record<string, string> = {

@@ -67,7 +67,12 @@ const httpStub = dataModule(`
   export const bayDelete = (path) => reply("DELETE", path);
 `);
 const agentStub = dataModule(`
-  export async function authed(){ return { ok: true, data: {} }; }
+  globalThis.__bayAuthedCalls ??= [];
+  export async function authed(path, init){
+    const body = init && init.body ? JSON.parse(init.body) : undefined;
+    globalThis.__bayAuthedCalls.push({ method: (init && init.method) || "GET", path, body });
+    return { ok: true, data: { profile: { handle: "leo", display_name: "Leo", published: true, page_doc: body && body.page_doc ? body.page_doc : null } } };
+  }
 `);
 const authStub = dataModule(`export async function getUserId(){ return globalThis.__bayViewer ?? null; }`);
 const stateStub = dataModule(`
@@ -85,6 +90,14 @@ const dealStub = dataModule(`
   globalThis.__bayThreads ??= [];
   export async function openTradeThread(subject){ globalThis.__bayThreads.push(subject); }
   export function DealConversationView(){ return null; }
+`);
+const pickerStub = dataModule(`
+  export async function pickLibraryWork(){ return globalThis.__bayPickedWork ?? { kind: "task", id: "task-42", site_key: "ppt", title: "季度汇报" }; }
+`);
+const configStub = dataModule(`
+  export const GATEWAY_BASE = "https://api.test";
+  export function cookieDomainFor(){ return ""; }
+  export function isLeoDevPreviewHost(){ return true; }
 `);
 const mineStub = dataModule(`
   const R = globalThis.React;
@@ -108,6 +121,8 @@ const stubs = {
   "../shell/bay-state": stateStub,
   "../deal": dealStub,
   "../shell/BayMine": mineStub,
+  "../needs/LibraryWorkPicker": pickerStub,
+  "../../../lib/auth/config": configStub,
 };
 globalThis.React = React;
 
@@ -145,12 +160,12 @@ function ownPage(extra = {}) {
   page.seller = {
     handle: page.profile.handle,
     display_name: page.profile.display_name,
-    avatar_url: null,
+    avatar_url: page.profile.avatar_url || null,
     headline: page.profile.headline || "",
     bio: page.profile.bio || "",
-    categories: [],
-    skills: [],
-    languages: [],
+    categories: page.profile.categories || [],
+    skills: page.profile.skills || [],
+    languages: page.profile.languages || [],
     published: page.profile.published !== false,
     ...extra.seller,
   };
@@ -168,6 +183,8 @@ function reset() {
   globalThis.__bayFilters = [];
   globalThis.__bayCoverUploads = [];
   globalThis.__bayCoverUpload = async () => ({ ok: true, data: { file: { url: "https://cdn.example/cover.png" } } });
+  globalThis.__bayAuthedCalls = [];
+  globalThis.__bayPickedWork = { kind: "task", id: "task-42", site_key: "ppt", title: "季度汇报" };
 }
 
 function tinyPngFile() {
@@ -228,11 +245,12 @@ test("别人的主页有「先聊聊」、没有「编辑主页」", () => {
   assert.doesNotMatch(out, /data-bay-page-action="edit"/);
 });
 
-test("本人的主页有「编辑主页」「资料」", () => {
+test("本人的主页有「编辑主页」，没有第二张资料表", () => {
   reset();
   const out = renderToStaticMarkup(React.createElement(ProfileDetailView, { page: ownPage(), viewerId: "seller-1" }));
   assert.match(out, /编辑主页/);
-  assert.match(out, /资料/);
+  assert.doesNotMatch(out, /data-bay-own-profile-form/);
+  assert.doesNotMatch(out, /卖家资料/);
   assert.doesNotMatch(out, /data-bay-talk/);
 });
 
@@ -282,6 +300,16 @@ test("进编辑后有主题栏、每个版块有上移 / 下移 / 删除、有�
   assert.ok(view.host.querySelector('[data-bay-page-block-action="down"]'));
   assert.ok(view.host.querySelector('[data-bay-page-block-action="remove"]'));
   assert.match(view.host.textContent, /添加版块/);
+  assert.equal(view.host.querySelector("[data-bay-own-profile-form]"), null);
+  assert.doesNotMatch(view.host.textContent, /卖家资料/);
+  assert.ok(view.host.querySelector('[data-bay-field="handle"]'));
+  assert.ok(view.host.querySelector('[data-bay-field="display_name"]'));
+  assert.ok(view.host.querySelector('[data-bay-field="skills"]'));
+  assert.ok(view.host.querySelector('[data-bay-field="languages"]'));
+  assert.ok(view.host.querySelector('[data-bay-cover-variant="avatar"]'));
+  assert.doesNotMatch(view.host.textContent, /These are the items buyers see/);
+  assert.doesNotMatch(view.host.textContent, /Seller profile/);
+  assert.doesNotMatch(view.host.textContent, /Profile handle/);
   await view.unmount();
 });
 
@@ -357,6 +385,8 @@ test("编辑器封面与图集走 BayCoverDrop，链接版块仍是网址", () =
   assert.match(page, /BayCoverDrop/);
   assert.match(page, /还没有图片。拖一张图进来或从本地选择。/);
   assert.doesNotMatch(page, /在下面粘贴图片地址/);
+  assert.doesNotMatch(page, /在设置的 LeoBay/);
+  assert.match(page, /还没有作品。从「我的库」挑进来。/);
   assert.match(page, /链接地址/);
 });
 
@@ -391,6 +421,59 @@ test("本人主页用户内容当纯文本", () => {
   assert.ok(out.includes("&lt;img src=x"));
   assert.ok(!out.includes("<script>x</script>"));
   assert.ok(!out.includes("<b>x</b>"));
+});
+
+test("保存主页一次写下资料和版面，请求体没有 timezone", async () => {
+  reset();
+  const page = ownPage({ page_doc: defaultPageDoc({ display_name: "Leo", headline: "十年品牌设计", bio: "只做品牌" }) });
+  const view = await mount(React.createElement(ProfileDetailView, { page, viewerId: "seller-1" }));
+  await view.click('[data-bay-page-action="edit"]');
+  const name = view.host.querySelector('[data-bay-field="display_name"] [data-bay-page-editable]');
+  assert.ok(name);
+  await act(() => {
+    const proto = window.HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(name, "Leo Chen");
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const save = view.host.querySelector('[data-bay-page-action="save"]');
+  assert.equal(save.disabled, false);
+  await view.click('[data-bay-page-action="save"]');
+  await flush();
+  const profilePut = globalThis.__bayAuthedCalls.find((row) => row.method === "PUT" && row.path === "/v1/talent/me");
+  const pagePut = globalThis.__bayAuthedCalls.find((row) => row.method === "PUT" && row.path === "/v1/talent/me/profile/page");
+  assert.ok(profilePut);
+  assert.ok(pagePut);
+  assert.equal(Object.prototype.hasOwnProperty.call(profilePut.body, "timezone"), false);
+  assert.equal(profilePut.body.handle, "leo");
+  assert.equal(profilePut.body.display_name, "Leo Chen");
+  assert.equal(profilePut.body.headline, "十年品牌设计");
+  assert.equal(profilePut.body.bio, "只做品牌");
+  assert.deepEqual(profilePut.body.skills, ["Logo"]);
+  assert.ok(pagePut.body.page_doc);
+  const hero = pagePut.body.page_doc.blocks.find((block) => block.type === "hero");
+  assert.equal(hero.title, "Leo Chen");
+  assert.equal(hero.subtitle, "十年品牌设计");
+  await view.unmount();
+});
+
+test("作品集在画布上从我的库导入", async () => {
+  reset();
+  globalThis.__bayHttpRespond = (method, path) => {
+    if (method === "POST" && String(path).includes("/showcase/import-tasks")) {
+      return { items: [{ id: "sh-1", title: "季度汇报", summary: "", cover_url: null, source_kind: "task" }] };
+    }
+    return {};
+  };
+  const page = ownPage({ page_doc: defaultPageDoc({ display_name: "Leo" }) });
+  const view = await mount(React.createElement(ProfileDetailView, { page, viewerId: "seller-1" }));
+  await view.click('[data-bay-page-action="edit"]');
+  await view.click("[data-bay-import-work]");
+  await flush();
+  const post = globalThis.__bayHttpCalls.find((row) => String(row.path).includes("/showcase/import-tasks"));
+  assert.ok(post);
+  assert.deepEqual(post.body, { task_ids: ["task-42"], detail_level: "summary" });
+  assert.ok(view.host.querySelector('[data-bay-showcase="sh-1"]'));
+  await view.unmount();
 });
 
 test("官方主页点「逛官方素材」停在素材栏", async () => {

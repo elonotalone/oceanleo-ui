@@ -30,17 +30,6 @@ export interface BayServiceTier {
   currency?: string;
 }
 
-export interface BayServiceAddon {
-  id: string;
-  service_id: string;
-  title: string;
-  description: string;
-  price_fen: number;
-  extra_days: number;
-  position?: number;
-  enabled: boolean;
-}
-
 export interface BayServiceFaq {
   id: string;
   question: string;
@@ -95,7 +84,6 @@ export interface BayService {
 
 export interface BayServiceDetail extends BayService {
   tiers: BayServiceTier[];
-  addons: BayServiceAddon[];
   faq: BayServiceFaq[];
   media: BayServiceMedia[];
   reviews: BayReview[];
@@ -233,10 +221,6 @@ export function enabledTiers(service: Pick<BayServiceDetail, "tiers"> | null | u
   return (service?.tiers || []).filter((tier) => tier.enabled).sort((a, b) => rank(a) - rank(b));
 }
 
-export function enabledAddons(service: Pick<BayServiceDetail, "addons"> | null | undefined): BayServiceAddon[] {
-  return (service?.addons || []).filter((addon) => addon.enabled);
-}
-
 /** 打开服务时默认选中的档位：最便宜的那一档（与 talent 一致）。 */
 export function defaultTier(service: Pick<BayServiceDetail, "tiers"> | null | undefined): BayServiceTier | undefined {
   return [...enabledTiers(service)].sort((a, b) => a.price_fen - b.price_fen)[0];
@@ -244,29 +228,21 @@ export function defaultTier(service: Pick<BayServiceDetail, "tiers"> | null | un
 
 export interface BayServiceSelection {
   tier: BayServiceTier | undefined;
-  addons: BayServiceAddon[];
-  invalidAddonIds: string[];
   totalFen: number;
   /** null = 交期面议。 */
   deliveryDays: number | null;
 }
 
-/** 档位 + 加购 → 合计与交期。`tierName` 指定了却不存在时 tier 为 undefined（不偷偷换档）。 */
+/** 档位 → 合计与交期。`tierName` 指定了却不存在时 tier 为 undefined（不偷偷换档）。 */
 export function serviceSelection(
-  service: Pick<BayServiceDetail, "tiers" | "addons" | "delivery_days"> | null | undefined,
+  service: Pick<BayServiceDetail, "tiers" | "delivery_days"> | null | undefined,
   tierName: string | null | undefined,
-  addonIds: Iterable<string>,
 ): BayServiceSelection {
   const tiers = enabledTiers(service);
   const tier = tierName ? tiers.find((item) => item.tier === tierName) : defaultTier(service);
-  const pool = enabledAddons(service);
-  const ids = Array.from(new Set(Array.from(addonIds).filter(Boolean)));
-  const addons = ids.map((id) => pool.find((item) => item.id === id)).filter((item): item is BayServiceAddon => Boolean(item));
-  const invalidAddonIds = ids.filter((id) => !pool.some((item) => item.id === id));
-  const totalFen = (tier?.price_fen || 0) + addons.reduce((sum, item) => sum + (item.price_fen || 0), 0);
-  const base = tier?.delivery_days ?? service?.delivery_days ?? null;
-  const deliveryDays = base === null || base === undefined ? null : base + addons.reduce((sum, item) => sum + (item.extra_days || 0), 0);
-  return { tier, addons, invalidAddonIds, totalFen, deliveryDays };
+  const totalFen = tier?.price_fen || 0;
+  const deliveryDays = tier?.delivery_days ?? service?.delivery_days ?? null;
+  return { tier, totalFen, deliveryDays };
 }
 
 /** 限定领域（医疗、法律、宠物医疗）第一版不上架，任何列表里都不出现。 */

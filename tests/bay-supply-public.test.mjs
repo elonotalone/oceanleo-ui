@@ -85,7 +85,6 @@ function serviceRaw(extra = {}) {
         { tier: "basic", title: "基础", price_fen: 30000, currency: "CNY", delivery_days: 3, revisions: 1, enabled: true },
         { tier: "standard", title: "标准", price_fen: 60000, currency: "CNY", delivery_days: null, revisions: 2, enabled: true },
       ],
-      addons: [],
       faq: [{ id: "f1", question: "含源文件吗", answer: "含" }],
       media: [],
       reviews: [{ id: "r1", rating: 5, body: "很好", author: { display_name: "买家" } }],

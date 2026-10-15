@@ -34,19 +34,6 @@ export function BayServicePublic({ data }: { data: BayServicePublicData }) {
         </section>
       ) : null}
 
-      {data.addons.length ? (
-        <section data-bay-public-section="addons" className="mt-6">
-          {data.addons.map((addon) => (
-            <p key={addon.id} data-bay-public-addon={addon.id} className="border-b border-neutral-100 py-2 text-[13px] text-neutral-800">
-              <span className="font-medium">{addon.title}</span>
-              <span className="ml-2 text-neutral-500">{publicPrice(tt, addon.price_fen, addon.currency)}</span>
-              {addon.extra_days > 0 ? <span className="ml-2 text-neutral-500">{tt("+{n} 天", { n: addon.extra_days })}</span> : null}
-              {addon.description ? <span className="mt-0.5 block break-words text-[12px] text-neutral-500">{addon.description}</span> : null}
-            </p>
-          ))}
-        </section>
-      ) : null}
-
       {data.faq.length ? (
         <section data-bay-public-section="faq" className="mt-6">
           <p className="text-[14px] font-semibold text-neutral-900">{tt("常见问题")}</p>

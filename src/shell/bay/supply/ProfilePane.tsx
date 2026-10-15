@@ -2,7 +2,7 @@
 
 // 个人主页窗格：别人的主页（`profile:<handle>`）与我自己的主页（`profile:me`）。
 // 版面由 `page/ProfilePage` 按 `page_doc` 画。我自己看到的和别人看到的一模一样，默认不可编辑；
-// 点「编辑主页」才进 `page/ProfilePageEditor`，编辑时资料表单（`BaySellerProfileSection`）接在下面。
+// 点「编辑主页」才进 `page/ProfilePageEditor`。名字、地址、头像、技能都在画布上改，没有第二张表。
 // 不登录也能看别人的主页；先聊聊、收藏、举报、拉黑要登录。
 
 import { useMemo, useState } from "react";
@@ -16,7 +16,7 @@ import {
   type BayProfilePage,
   type BayReview,
 } from "../../../lib/bay/directory";
-import { defaultPageDoc, normalizePageDoc, type BayPageDoc } from "../../../lib/bay/page-doc";
+import { defaultPageDoc, normalizePageDoc, pageCopyFromDoc, syncHeroName, type BayPageDoc } from "../../../lib/bay/page-doc";
 import {
   getSellerProfile,
   listMyServices,
@@ -28,9 +28,9 @@ import {
 } from "../../../lib/bay/seller";
 import type { BayService } from "../../../lib/bay/services";
 import { openTradeThread } from "../deal";
-import { ProfilePage } from "../page/ProfilePage";
+import { takeMinePageEdit } from "../page/mine-page-edit";
+import { ProfilePage, type BayPageIdentity } from "../page/ProfilePage";
 import { ProfilePageEditor } from "../page/ProfilePageEditor";
-import { BaySellerProfileSection } from "../seller/BaySellerProfileSection";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { openBay, requireBayLogin, setBayFilter, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { FavoriteButton, PaneLoading, PaneMessage, ReportBox } from "./parts";
@@ -86,6 +86,24 @@ function isOwnPage(page: BayProfilePage): page is OwnPage {
   return (page as Partial<OwnPage>).own === true;
 }
 
+function identityFromProfile(row: {
+  handle?: string | null;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  skills?: readonly string[] | null;
+  languages?: readonly string[] | null;
+  published?: boolean | null;
+}): BayPageIdentity {
+  return {
+    handle: row.handle || "",
+    display_name: row.display_name || "",
+    avatar_url: row.avatar_url || "",
+    skills: [...(row.skills || [])],
+    languages: [...(row.languages || [])],
+    published: Boolean(row.published),
+  };
+}
+
 export function ProfilePane({ target }: BayPaneProps) {
   const tt = useUI();
   const handle = target.kind === "profile" ? target.handle : "";
@@ -107,7 +125,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
   const tt = useUI();
   const profile = page.profile as BayProfilePage["profile"] & { page_doc?: unknown; official?: boolean };
   const own = isOwnPage(page) || Boolean(viewerId && profile.user_id && viewerId === profile.user_id);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(() => own && takeMinePageEdit());
   const [savedDoc, setSavedDoc] = useState<BayPageDoc | null>(null);
   const [published, setPublished] = useState(Boolean(profile.published ?? true));
   const [saving, setSaving] = useState(false);
@@ -144,14 +162,37 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
     }
   }
 
-  async function save(next: BayPageDoc) {
+  async function save(next: BayPageDoc, identity: BayPageIdentity) {
     if (saving) return;
     setSaving(true);
     setSaveError("");
     try {
-      const result = await saveSellerPage(next);
-      setSavedDoc(normalizePageDoc(result.profile.page_doc) ?? next);
+      const seed = isOwnPage(page) ? page.seller : page.profile;
+      const docToSave = syncHeroName(next, seed.display_name || "", identity.display_name);
+      const copy = pageCopyFromDoc(docToSave);
+      await saveSellerProfile(
+        sellerProfileBody({
+          handle: identity.handle.trim().toLowerCase(),
+          display_name: identity.display_name.trim(),
+          avatar_url: identity.avatar_url || "",
+          headline: copy.headline,
+          bio: copy.bio,
+          categories: seed.categories || [],
+          skills: identity.skills,
+          languages: identity.languages,
+          availability: seed.availability || "open",
+          engagement_kinds: seed.engagement_kinds || ["fixed"],
+          hourly_rate_fen: seed.hourly_rate_fen ?? null,
+          min_budget_fen: seed.min_budget_fen ?? null,
+          offplatform_delivery_opt_in: isOwnPage(page) ? page.seller.offplatform_delivery_opt_in : undefined,
+          published: identity.published,
+        }),
+      );
+      const result = await saveSellerPage(docToSave);
+      setSavedDoc(normalizePageDoc(result.profile?.page_doc) ?? docToSave);
+      setPublished(identity.published);
       setEditing(false);
+      onChanged?.();
     } catch (error) {
       setSaveError(errorText(error) || tt("没保存成功，请稍后再试。"));
     } finally {
@@ -192,13 +233,18 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
   }
 
   if (own && editing) {
+    const seed = isOwnPage(page) ? page.seller : page.profile;
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-bay-profile="own-editing">
-        <ProfilePageEditor page={page} initial={doc} saving={saving} error={saveError} onSave={(next) => void save(next)} onCancel={() => setEditing(false)} />
-        <section className="space-y-3 border-t border-neutral-100 bg-white px-4 py-6" data-bay-own-profile-form>
-          <h3 className="text-[13px] font-semibold text-stone-800">{tt("资料")}</h3>
-          <BaySellerProfileSection onSaved={() => onChanged?.()} />
-        </section>
+        <ProfilePageEditor
+          page={page}
+          initial={doc}
+          initialIdentity={identityFromProfile(seed)}
+          saving={saving}
+          error={saveError}
+          onSave={(next, identity) => void save(next, identity)}
+          onCancel={() => setEditing(false)}
+        />
       </div>
     );
   }
@@ -233,6 +279,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
       <ProfilePage
         page={page}
         doc={doc}
+        unpublished={own && !published}
         actions={actions}
         onTalk={canTalk ? () => void talk() : undefined}
         onBrowseMaterials={

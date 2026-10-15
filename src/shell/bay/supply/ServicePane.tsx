@@ -9,12 +9,9 @@ import type { LibraryItem } from "../../library-data";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
-import { rememberCheckoutAddons } from "../../../lib/bay/checkout";
 import {
   claimBayService,
-  enabledAddons,
   enabledTiers,
-  formatBayMoney,
   getBayService,
   getBayServiceWorkPreview,
   isOwnService,
@@ -66,13 +63,13 @@ function MediaView({ media }: { media: BayServiceMedia }) {
   );
 }
 
-function TierCard({ tier, selected, currency, onSelect }: { tier: BayServiceTier; selected: boolean; currency?: string; onSelect: () => void }) {
+function TierCard({ tier, selected, currency, showLabel, onSelect }: { tier: BayServiceTier; selected: boolean; currency?: string; showLabel: boolean; onSelect: () => void }) {
   const tt = useUI();
   return (
     <article data-bay-tier={tier.tier} data-selected={selected ? "true" : "false"} className={"py-2 " + (selected ? "font-medium" : "")}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] text-neutral-500">{tierLabel(tt, tier.tier)}</p>
+          {showLabel ? <p className="text-[11px] text-neutral-500">{tierLabel(tt, tier.tier)}</p> : null}
           <p className="break-words text-[14px] font-semibold text-neutral-900">{tier.title}</p>
         </div>
         <span className="shrink-0 text-[14px] font-semibold text-neutral-900">{moneyOrFree(tt, tier.price_fen, tier.currency || currency)}</span>
@@ -112,16 +109,14 @@ export interface ServiceDetailViewProps {
 export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailViewProps) {
   const tt = useUI();
   const tiers = enabledTiers(service);
-  const addons = enabledAddons(service);
   const [tierName, setTierName] = useState<string>(defaultTier(service)?.tier || "");
-  const [addonIds, setAddonIds] = useState<string[]>([]);
   const [activeMedia, setActiveMedia] = useState(0);
   const [workPreview, setWorkPreview] = useState<LibraryItem | null>(null);
   const [talking, setTalking] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] } | null>(null);
   const [error, setError] = useState("");
-  const selection = serviceSelection(service, tierName, addonIds);
+  const selection = serviceSelection(service, tierName);
   const owner = isOwnService(service, viewerId);
   const currency = selection.tier?.currency || service.currency;
   const wide = layout === "page" || layout === "full";
@@ -156,7 +151,6 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       return;
     }
     if (!selection.tier) return;
-    rememberCheckoutAddons(service.id, addonIds);
     openBay({ kind: "checkout", serviceId: service.id, tier: selection.tier.tier });
   }
 
@@ -229,7 +223,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
         <>
           <p className="text-[11px] text-neutral-500">{tt("当前选择")}</p>
           <p className="mt-0.5 text-[14px] font-semibold text-neutral-900">
-            {selection.tier ? `${tierLabel(tt, selection.tier.tier)} · ${selection.tier.title}` : tt("暂时无法下单")}
+            {selection.tier ? (tiers.length > 1 ? `${tierLabel(tt, selection.tier.tier)} · ${selection.tier.title}` : selection.tier.title) : tt("暂时无法下单")}
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
@@ -347,11 +341,11 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       {digital ? null : <DoneMeans service={service} />}
 
       {digital ? null : (
-      <Section title={tt("选择档位")}>
+      <Section title={tiers.length > 1 ? tt("选择档位") : tt("价格与交付")}>
         {tiers.length ? (
           <div className={wide ? "grid gap-2 md:grid-cols-3" : "grid gap-2"}>
             {tiers.map((tier) => (
-              <TierCard key={tier.id} tier={tier} currency={service.currency} selected={selection.tier?.tier === tier.tier} onSelect={() => setTierName(tier.tier)} />
+              <TierCard key={tier.id} tier={tier} currency={service.currency} showLabel={tiers.length > 1} selected={selection.tier?.tier === tier.tier} onSelect={() => setTierName(tier.tier)} />
             ))}
           </div>
         ) : (
@@ -359,34 +353,6 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
         )}
       </Section>
       )}
-
-      {!digital && addons.length ? (
-        <Section title={tt("可选加购")}>
-          <div className="space-y-2">
-            {addons.map((addon) => {
-              const checked = addonIds.includes(addon.id);
-              return (
-                <label key={addon.id} data-bay-addon={addon.id} className="flex cursor-pointer items-start gap-2.5 py-2">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(event) => setAddonIds((current) => (event.target.checked ? [...current, addon.id] : current.filter((id) => id !== addon.id)))}
-                    className="mt-0.5"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words text-[13px] font-medium text-neutral-900">{addon.title}</span>
-                    {addon.description ? <span className="mt-0.5 block break-words text-[12px] text-neutral-500">{addon.description}</span> : null}
-                  </span>
-                  <span className="shrink-0 text-right text-[12px] font-medium text-neutral-800">
-                    +{formatBayMoney(addon.price_fen, currency)}
-                    {addon.extra_days ? <span className="block font-normal text-neutral-500">{tt("+{n} 天", { n: addon.extra_days })}</span> : null}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </Section>
-      ) : null}
 
       {wide ? null : <div className="mt-5">{summary}</div>}
 

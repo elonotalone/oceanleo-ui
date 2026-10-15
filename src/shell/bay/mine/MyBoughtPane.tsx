@@ -1,55 +1,132 @@
 "use client";
 
-// 「我的」→「我买到的」：我作为买家的订单、买到的课程与作品，以及我关注、留过言、授权登录过的作品。
-import { useEffect, useState, type ComponentType } from "react";
+// 「我的」→「我买到的」：服务单、课程单、作品单合成一张列表，行右边标明类别。
 import { useUI } from "../../../i18n/ui/useUI";
-import type { MyBoughtLessonsPaneProps } from "../lessons/MyBoughtLessonsPane";
-import { MyOrdersPane } from "../orders/MyOrdersPane";
-import { ordersShownFor, type MinePaneProps } from "./MineCategoryBar";
-import { LazySection } from "./LazySection";
+import { listBoughtBayApps } from "../../../lib/bay/app-paid";
+import { formatBayFen } from "../../../lib/bay/demands";
+import { hiddenKey, listBayMineHidden } from "../../../lib/bay/mine-hidden";
+import { listBoughtBayLessonOrders } from "../../../lib/bay/lessons";
+import { listBayOrders, orderAmountText, orderStatusLabel } from "../../../lib/bay/orders";
+import { openBay, useBaySignedIn } from "../shell/bay-state";
+import { useMineBundle, type MinePaneProps } from "./mine-bundle";
+import {
+  categoryOfListingKind,
+  isMergedPaidOrder,
+  joinMeta,
+  mineEmptyText,
+  orderIsSettled,
+  paidContractIds,
+  purchaseIsSettled,
+  purchaseStatusText,
+  rowMatchesCategory,
+  subscriptionIsSettled,
+  subscriptionStatusText,
+} from "./mine-category";
+import { loadServiceCategories } from "./mine-load";
+import { hideRowProps } from "./mine-hide";
+import { MineTradeList, type MineTradeRow } from "./MineTradeList";
 
-const loadBoughtApps = () => import("../apppaid/MyBoughtAppsPane").then((mod) => mod.MyBoughtAppsPane);
-const loadFollowedApps = () => import("../appreleases/MyFollowedAppsPane").then((mod) => mod.MyFollowedAppsPane);
-const loadMyThreads = () => import("../appfeedback/MyThreadsPane").then((mod) => mod.MyThreadsPane);
-const loadLoginGrants = () => import("../applogin/MyAppLoginGrants").then((mod) => mod.MyAppLoginGrants);
+type BoughtBundle = {
+  orders: Awaited<ReturnType<typeof listBayOrders>>;
+  lessons: Awaited<ReturnType<typeof listBoughtBayLessonOrders>>["items"];
+  apps: Awaited<ReturnType<typeof listBoughtBayApps>>;
+  serviceKinds: Awaited<ReturnType<typeof loadServiceCategories>>;
+  hidden: Set<string>;
+};
 
-function BoughtLessons(props: MyBoughtLessonsPaneProps) {
-  const tt = useUI();
-  const [Pane, setPane] = useState<ComponentType<MyBoughtLessonsPaneProps> | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void import("../lessons/MyBoughtLessonsPane")
-      .then((mod) => {
-        if (alive) setPane(() => mod.MyBoughtLessonsPane);
-      })
-      .catch(() => {
-        if (alive) setFailed(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  if (failed) return <p className="px-4 py-3 text-[13px] text-stone-500">{tt("课程没加载出来，请刷新页面再试。")}</p>;
-  return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
+async function loadBought(): Promise<BoughtBundle> {
+  const [orders, lessons, apps, hidden] = await Promise.all([
+    listBayOrders({ role: "buyer", limit: 200 }).then(
+      (rows) => rows.filter((row) => row.my_role === "buyer"),
+      () => [] as BoughtBundle["orders"],
+    ),
+    listBoughtBayLessonOrders().then(
+      (body) => body.items || [],
+      () => [] as BoughtBundle["lessons"],
+    ),
+    listBoughtBayApps().then(
+      (body) => ({
+        purchases: body.purchases || [],
+        subscriptions: body.subscriptions || [],
+        trials: body.trials || [],
+        apps: body.apps || [],
+      }),
+      () => ({ purchases: [], subscriptions: [], trials: [], apps: [] }),
+    ),
+    listBayMineHidden(),
+  ]);
+  const paidIds = paidContractIds(lessons, apps.purchases);
+  const tradeOrders = orders.filter((order) => !isMergedPaidOrder(order, paidIds));
+  const serviceKinds = await loadServiceCategories(tradeOrders.map((order) => order.source_service_id || ""));
+  return { orders: tradeOrders, lessons, apps, serviceKinds, hidden };
 }
 
-export function MyBoughtPane({ category = "all", ...props }: MinePaneProps) {
+export function MyBoughtPane({ category = "all" }: MinePaneProps) {
   const tt = useUI();
-  const all = category === "all";
+  const signedIn = useBaySignedIn();
+  const bundle = useMineBundle(signedIn, loadBought, tt("列表没读出来，请稍后再试。"));
+  const data = bundle.data;
+  const rows: MineTradeRow[] = [];
+  if (data) {
+    for (const order of data.orders) {
+      if (data.hidden.has(hiddenKey("order", order.id))) continue;
+      const kind = categoryOfListingKind(data.serviceKinds[order.source_service_id || ""] || "service");
+      if (!rowMatchesCategory(category, kind)) continue;
+      rows.push({
+        id: `order:${order.id}`,
+        title: order.title || tt("订单"),
+        subtitle: joinMeta([orderStatusLabel(tt, order.status), orderAmountText(tt, order)]),
+        category: kind,
+        orderId: order.id,
+        ...hideRowProps(tt, bundle.reload, orderIsSettled(order.status), "order", order.id),
+        onOpen: () => openBay({ kind: "order", id: order.id }),
+      });
+    }
+    for (const row of data.lessons) {
+      if (data.hidden.has(hiddenKey("lesson-order", row.id))) continue;
+      if (!rowMatchesCategory(category, "lesson")) continue;
+      rows.push({
+        id: `lesson-order:${row.id}`,
+        title: row.item_title || tt("未命名课程"),
+        subtitle: joinMeta([tt(purchaseStatusText(row.status)), row.price_fen ? formatBayFen(row.price_fen) : tt("免费")]),
+        category: "lesson",
+        ...hideRowProps(tt, bundle.reload, purchaseIsSettled(row.status), "lesson-order", row.id),
+        onOpen: () => openBay(row.item_kind === "bundle" ? { kind: "bundle", id: row.item_id } : { kind: "lesson", id: row.item_id }),
+      });
+    }
+    for (const row of data.apps.purchases) {
+      if (data.hidden.has(hiddenKey("app-order", row.id))) continue;
+      if (!rowMatchesCategory(category, "app")) continue;
+      rows.push({
+        id: `app-order:${row.id}`,
+        title: row.item_title || tt("未命名作品"),
+        subtitle: joinMeta([tt(purchaseStatusText(row.status)), row.price_fen ? formatBayFen(row.price_fen) : tt("免费")]),
+        category: "app",
+        ...hideRowProps(tt, bundle.reload, purchaseIsSettled(row.status), "app-order", row.id),
+        onOpen: () => openBay({ kind: "app", id: row.item_id }),
+      });
+    }
+    for (const row of data.apps.subscriptions) {
+      if (data.hidden.has(hiddenKey("app-sub", row.id))) continue;
+      if (!rowMatchesCategory(category, "app")) continue;
+      rows.push({
+        id: `app-sub:${row.id}`,
+        title: row.app_title || tt("未命名作品"),
+        subtitle: joinMeta([tt(subscriptionStatusText(row.status)), row.price_fen ? formatBayFen(row.price_fen) : ""]),
+        category: "app",
+        ...hideRowProps(tt, bundle.reload, subscriptionIsSettled(row.status), "app-sub", row.id),
+        onOpen: () => openBay({ kind: "app", id: row.app_id }),
+      });
+    }
+  }
   return (
-    <section data-bay-pane="mine-bought" className="space-y-6">
-      {ordersShownFor(category) ? <MyOrdersPane {...props} fixedRole="buyer" category={category} /> : null}
-      {all || category === "lesson" ? (
-        <div data-bay-mine-section="lessons">
-          <h3 className="px-4 text-[13px] font-semibold text-stone-700">{tt("课程")}</h3>
-          <BoughtLessons layout={props.layout} siteKey={props.siteKey} />
-        </div>
-      ) : null}
-      {all || category === "app" ? <LazySection marker="apps" title="作品" load={loadBoughtApps} /> : null}
-      {all ? <LazySection marker="following" title="关注的作品" load={loadFollowedApps} /> : null}
-      {all ? <LazySection marker="threads" title="我的留言" load={loadMyThreads} /> : null}
-      {all ? <LazySection marker="logins" title="用 OceanLeo 账号登录过的作品" load={loadLoginGrants} /> : null}
-    </section>
+    <MineTradeList
+      pane="mine-bought"
+      rows={rows}
+      loading={bundle.loading}
+      error={bundle.error}
+      onRetry={bundle.reload}
+      emptyText={mineEmptyText("bought")}
+    />
   );
 }

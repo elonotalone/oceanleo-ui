@@ -4,7 +4,7 @@
 // 同一个组件既是别人看到的主页，也是本人编辑时的画布（`editing`）：编辑时文字原地可改，每个版块多出一条操作条。
 // 自动列出的三种版块（我的发布 / 作品集 / 评价）直接铺在页上。
 
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayProfilePage, BayPublicProfile } from "../../../lib/bay/directory";
@@ -18,7 +18,7 @@ import {
 } from "../../../lib/bay/page-doc";
 import type { BayService } from "../../../lib/bay/services";
 import type { BayFeedItem } from "../../../lib/bay/types";
-import { BayCoverDrop } from "../form";
+import { BayCoverDrop } from "../form/BayCoverDrop";
 import { openBay } from "../shell/bay-state";
 import { ratingShort, responseTimeText, safeHttpUrl } from "../supply/format";
 import { Avatar, PracticeLine, ReputationGrid, ReviewList } from "../supply/parts";
@@ -26,6 +26,16 @@ import { ServiceCard } from "../supply/ServiceCard";
 import { EditableText } from "./EditableText";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+
+/** 画布上能改的那几项身份（名字、地址、头像、技能、语言、是否公开）。简介在开场/文字版块里。 */
+export interface BayPageIdentity {
+  handle: string;
+  display_name: string;
+  avatar_url: string;
+  skills: string[];
+  languages: string[];
+  published: boolean;
+}
 
 export interface ProfilePageProps {
   page: BayProfilePage;
@@ -41,6 +51,13 @@ export interface ProfilePageProps {
   onTalk?: () => void;
   /** 官方账号主页上的「逛官方素材」。 */
   onBrowseMaterials?: () => void;
+  identity?: BayPageIdentity;
+  onIdentity?: (patch: Partial<BayPageIdentity>) => void;
+  onShowcaseImport?: () => void;
+  onShowcaseRemove?: (id: string) => void;
+  showcaseBusy?: boolean;
+  /** 本人看未公开的主页：一条提示，不是第二张表。 */
+  unpublished?: boolean;
 }
 
 function asFeedItem(service: BayService, profile: BayPublicProfile): BayFeedItem & { delivery_days: number | null } {
@@ -153,6 +170,92 @@ function ImageUrlAdder({ onAdd, label }: { onAdd: (url: string) => void; label: 
         {tt("添加")}
       </button>
     </form>
+  );
+}
+
+function TagPills({
+  items,
+  editing,
+  onChange,
+  addLabel,
+  field,
+  tone,
+}: {
+  items: string[];
+  editing: boolean;
+  onChange?: (items: string[]) => void;
+  addLabel: string;
+  field: string;
+  tone: "accent" | "outline";
+}) {
+  const tt = useUI();
+  const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const chip =
+    tone === "accent"
+      ? "rounded-full px-3 py-1 font-medium"
+      : "rounded-full border px-3 py-1";
+  const chipStyle: CSSProperties =
+    tone === "accent" ? { background: "var(--bp-accent-soft)" } : { borderColor: "var(--bp-border)", color: "var(--bp-muted)" };
+
+  function commit(raw: string) {
+    const value = raw.trim();
+    setDraft("");
+    setAdding(false);
+    if (!value || items.includes(value) || items.length >= 20) return;
+    onChange?.([...items, value]);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" data-bay-field={field}>
+      {items.map((item) => (
+        <span key={`${field}-${item}`} className={`inline-flex items-center gap-1 ${chip}`} style={chipStyle}>
+          {item}
+          {editing ? (
+            <button
+              type="button"
+              aria-label={tt("移除")}
+              onClick={() => onChange?.(items.filter((row) => row !== item))}
+              className={`rounded-full px-1 text-[11px] leading-none ${MOTION} hover:opacity-60`}
+            >
+              ×
+            </button>
+          ) : null}
+        </span>
+      ))}
+      {editing && adding ? (
+        <input
+          autoFocus
+          value={draft}
+          maxLength={40}
+          aria-label={addLabel}
+          onChange={(event) => setDraft(event.target.value.replace(/\n/g, " "))}
+          onBlur={() => commit(draft)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commit(draft);
+            }
+            if (event.key === "Escape") {
+              setDraft("");
+              setAdding(false);
+            }
+          }}
+          className={`w-28 rounded-full border bg-transparent px-3 py-1 text-[12px] outline-none ${MOTION} focus-visible:ring-2 focus-visible:ring-neutral-300`}
+          style={{ borderColor: "var(--bp-border)", color: "var(--bp-fg)" }}
+        />
+      ) : null}
+      {editing && !adding && items.length < 20 ? (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className={`rounded-full border border-dashed px-3 py-1 text-[12px] font-medium ${MOTION} hover:opacity-70`}
+          style={{ borderColor: "var(--bp-border)", color: "var(--bp-muted)" }}
+        >
+          + {addLabel}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -362,6 +465,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
     case "showcase": {
       const { portfolio, verified } = splitShowcase(showcase);
       const items = [...portfolio, ...verified];
+      const { onShowcaseImport, onShowcaseRemove, showcaseBusy } = props;
       return (
         <div>
           <BlockTitle block={block} editing={editing} onBlock={onBlock} fallback={tt("作品集")} />
@@ -371,7 +475,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
                 {items.map((item) => {
                   const cover = safeHttpUrl(item.cover_url);
                   return (
-                    <article key={item.id} data-bay-showcase className="overflow-hidden rounded-xl" style={{ background: "var(--bp-surface)" }}>
+                    <article key={item.id} data-bay-showcase={item.id} className="relative overflow-hidden rounded-xl" style={{ background: "var(--bp-surface)" }}>
                       {cover ? (
                         <img src={cover} alt="" loading="lazy" className="aspect-[4/3] w-full object-cover" />
                       ) : (
@@ -385,13 +489,26 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
                           </p>
                         ) : null}
                       </div>
+                      {editing ? <RemoveChip label={tt("移除")} onClick={() => onShowcaseRemove?.(item.id)} /> : null}
                     </article>
                   );
                 })}
               </div>
             ) : (
-              <EmptyLine text={tt("还没有作品。在设置的 LeoBay 里从「我的库」挑作品放进来。")} />
+              <EmptyLine text={tt("还没有作品。从「我的库」挑进来。")} />
             )}
+            {editing ? (
+              <button
+                type="button"
+                data-bay-import-work
+                disabled={showcaseBusy}
+                onClick={() => onShowcaseImport?.()}
+                className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-4 text-[13px] font-medium ${MOTION} hover:opacity-80 disabled:opacity-40`}
+                style={{ borderColor: "var(--bp-border)", color: "var(--bp-muted)" }}
+              >
+                {showcaseBusy ? tt("正在导入…") : tt("从我的库导入")}
+              </button>
+            ) : null}
           </div>
         </div>
       );
@@ -567,13 +684,19 @@ function OfficialBadge() {
 
 export function ProfilePage(props: ProfilePageProps) {
   const tt = useUI();
-  const { page, doc, editing = false, renderBlockChrome, actions, onBrowseMaterials } = props;
+  const { page, doc, editing = false, renderBlockChrome, actions, onBrowseMaterials, identity, onIdentity, unpublished } = props;
   const profile = page.profile as BayProfilePage["profile"] & { official?: boolean };
-  const name = profileDisplayName(profile);
+  const handle = identity?.handle ?? profile.handle ?? "";
+  const displayName = identity?.display_name ?? profile.display_name ?? "";
+  const avatarUrl = identity ? identity.avatar_url : profile.avatar_url || "";
+  const skills = identity?.skills ?? profile.skills ?? [];
+  const languages = identity?.languages ?? profile.languages ?? [];
+  const name = profileDisplayName({ ...profile, display_name: displayName, handle });
   const theme = doc.theme;
   const coverImage = theme.cover_style === "image" ? safePageUrl(theme.cover_url) : "";
   const showCover = theme.cover_style !== "none";
-  const tags = [...(profile.categories || []), ...(profile.skills || [])].slice(0, 10);
+  const categories = (profile.categories || []).slice(0, 10);
+  const showTags = editing || categories.length > 0 || skills.length > 0 || languages.length > 0;
 
   return (
     <article
@@ -596,21 +719,60 @@ export function ProfilePage(props: ProfilePageProps) {
       ) : null}
 
       <div className="mx-auto w-full max-w-5xl px-5 pb-16 sm:px-8">
+        {unpublished ? (
+          <p data-bay-page-unpublished className="pt-5 text-[13px] leading-5" style={{ color: "var(--bp-muted)" }}>
+            {tt("这张主页现在只有你自己看得到。公开之后别人才能访问，发布商品或服务时也会自动公开。")}
+          </p>
+        ) : null}
         <header className={`flex flex-wrap items-end justify-between gap-4 ${showCover ? "-mt-10 sm:-mt-12" : "pt-8"}`} data-bay-page-identity>
           <div className="flex min-w-0 items-end gap-4">
             <span className="shrink-0 rounded-full p-1 shadow-md" style={{ background: "var(--bp-bg)" }}>
-              <Avatar url={profile.avatar_url} name={name} size="lg" />
+              {editing ? (
+                <BayCoverDrop url={avatarUrl} onUrl={(url) => onIdentity?.({ avatar_url: url })} variant="avatar" />
+              ) : (
+                <Avatar url={avatarUrl} name={name} size="lg" />
+              )}
             </span>
             <div className="min-w-0 pb-1">
               <p className="flex flex-wrap items-center gap-2">
-                <span data-bay-profile-name className="break-words text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]">
-                  {name}
-                </span>
+                {editing ? (
+                  <span data-bay-field="display_name" className="min-w-0">
+                    <EditableText
+                      as="span"
+                      value={displayName}
+                      editing
+                      onChange={(value) => onIdentity?.({ display_name: value })}
+                      maxLength={80}
+                      label={tt("显示名")}
+                      className="break-words text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]"
+                    />
+                  </span>
+                ) : (
+                  <span data-bay-profile-name className="break-words text-[22px] font-bold leading-tight tracking-tight sm:text-[26px]">
+                    {name}
+                  </span>
+                )}
                 {profile.official ? <OfficialBadge /> : null}
               </p>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" style={{ color: "var(--bp-muted)" }}>
-                <span>@{profile.handle}</span>
-                {profile.official ? null : (
+                {editing ? (
+                  <span className="inline-flex min-w-0 items-baseline gap-0.5" data-bay-field="handle">
+                    <span aria-hidden>@</span>
+                    <EditableText
+                      as="span"
+                      value={handle}
+                      editing
+                      onChange={(value) => onIdentity?.({ handle: value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })}
+                      maxLength={32}
+                      label={tt("主页地址")}
+                      placeholder=""
+                      className="min-w-[8rem] text-[13px]"
+                    />
+                  </span>
+                ) : (
+                  <span>@{handle}</span>
+                )}
+                {profile.official || editing ? null : (
                   <>
                     <span>{ratingShort(tt, profile.rating_avg, profile.rating_count)}</span>
                     <span>{responseTimeText(tt, profile.response_minutes)}</span>
@@ -622,19 +784,30 @@ export function ProfilePage(props: ProfilePageProps) {
           {actions ? <div className="flex flex-wrap items-center gap-2 pb-1">{actions}</div> : null}
         </header>
 
-        {tags.length || (profile.languages || []).length ? (
+        {showTags ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px]">
             <PracticeLine source={profile} />
-            {tags.map((item, index) => (
-              <span key={`${item}-${index}`} className="rounded-full px-3 py-1 font-medium" style={{ background: "var(--bp-accent-soft)" }}>
+            {categories.map((item, index) => (
+              <span key={`c-${item}-${index}`} className="rounded-full px-3 py-1 font-medium" style={{ background: "var(--bp-accent-soft)" }}>
                 {item}
               </span>
             ))}
-            {(profile.languages || []).map((item) => (
-              <span key={`l-${item}`} className="rounded-full border px-3 py-1" style={{ borderColor: "var(--bp-border)", color: "var(--bp-muted)" }}>
-                {item}
-              </span>
-            ))}
+            <TagPills
+              items={skills}
+              editing={editing}
+              field="skills"
+              addLabel={tt("技能")}
+              tone="accent"
+              onChange={(next) => onIdentity?.({ skills: next })}
+            />
+            <TagPills
+              items={languages}
+              editing={editing}
+              field="languages"
+              addLabel={tt("语言")}
+              tone="outline"
+              onChange={(next) => onIdentity?.({ languages: next })}
+            />
           </div>
         ) : null}
 

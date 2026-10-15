@@ -17,7 +17,8 @@ import {
 import { useToast } from "../../../ui/Toast";
 import { openMessages } from "../../messages/host-state";
 import { openTradeThread } from "../deal";
-import { ensureBayTerms, openBaySettings } from "../settings";
+import { requestMinePageEdit } from "../page/mine-page-edit";
+import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { categoryNameBySlug, useNeedCategories } from "./need-categories";
 import { handoffStateText } from "./need-format";
@@ -227,7 +228,15 @@ function HelpActions({ handoff, onChanged }: { handoff: BayHandoff; onChanged: (
         <PaneNotice
           tone="warn"
           action={
-            <button type="button" className={BTN_SECONDARY} onClick={() => openBaySettings("profile")} data-bay-action="profile">
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              onClick={() => {
+                requestMinePageEdit();
+                openBay({ kind: "mine", tab: "page" });
+              }}
+              data-bay-action="profile"
+            >
               {tt("去建资料")}
             </button>
           }

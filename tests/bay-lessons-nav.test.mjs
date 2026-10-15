@@ -80,13 +80,13 @@ test("LeoBayPage 课程栏渲染 BayLessonShelf，页头发布走 startPublish",
   assert.match(list, /kind: "publish"/);
 });
 
-test("MyPublishedPane 与 MyBoughtPane 都有课程段", () => {
+test("MyPublishedPane 与 MyBoughtPane 都把课程并进同一张清单", () => {
   const published = src("shell/bay/mine/MyPublishedPane.tsx");
   const bought = src("shell/bay/mine/MyBoughtPane.tsx");
-  assert.match(published, /data-bay-mine-section="lessons"/);
-  assert.match(published, /MyLessonsPane/);
-  assert.match(published, /import\("\.\.\/lessons\/MyLessonsPane"\)/);
-  assert.match(bought, /data-bay-mine-section="lessons"/);
-  assert.match(bought, /MyBoughtLessonsPane/);
-  assert.match(bought, /import\("\.\.\/lessons\/MyBoughtLessonsPane"\)/);
+  assert.match(published, /listMyBayLessons/);
+  assert.match(published, /MineTradeList/);
+  assert.doesNotMatch(published, /MyLessonsPane/);
+  assert.match(bought, /listBoughtBayLessonOrders/);
+  assert.match(bought, /MineTradeList/);
+  assert.doesNotMatch(bought, /MyBoughtLessonsPane/);
 });

@@ -48,15 +48,6 @@ export interface BayServiceTierPublic {
   features: string[];
 }
 
-export interface BayServiceAddonPublic {
-  id: string;
-  title: string;
-  description: string;
-  price_fen: number;
-  currency: string;
-  extra_days: number;
-}
-
 export interface BayServiceFaqPublic {
   id: string;
   question: string;
@@ -106,7 +97,6 @@ export interface BayServicePublicData {
   order_count: number;
   tags: string[];
   tiers: BayServiceTierPublic[];
-  addons: BayServiceAddonPublic[];
   faq: BayServiceFaqPublic[];
   media: BayServiceMediaPublic[];
   reviews: BayReviewPublic[];
@@ -273,21 +263,6 @@ function tierOf(value: unknown): BayServiceTierPublic | null {
 }
 
 const TIER_RANK: Record<BayPublicPriceTier, number> = { basic: 0, standard: 1, premium: 2 };
-
-function addonOf(value: unknown): BayServiceAddonPublic | null {
-  const row = asRaw(value);
-  const id = text(row.id, 80);
-  const title = text(row.title, 120);
-  if (!id || !title || row.enabled === false) return null;
-  return {
-    id,
-    title,
-    description: text(row.description, 400),
-    price_fen: wholeNumber(row.price_fen),
-    currency: currencyOf(row.currency),
-    extra_days: wholeNumber(row.extra_days),
-  };
-}
 
 function faqOf(value: unknown): BayServiceFaqPublic | null {
   const row = asRaw(value);
@@ -461,9 +436,6 @@ export function toBayServicePublic(raw: unknown): BayServicePublicData | null {
     order_count: wholeNumber(service.order_count),
     tags: textList(service.tags, 6, 40),
     tiers,
-    addons: asList(service.addons)
-      .map(addonOf)
-      .filter((item): item is BayServiceAddonPublic => item !== null),
     faq: asList(service.faq)
       .map(faqOf)
       .filter((item): item is BayServiceFaqPublic => item !== null),

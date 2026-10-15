@@ -79,9 +79,9 @@ test("LeoBayPage 作品栏渲染 BayAppShelf，页头发布走 startPublish", ()
   assert.match(list, /kind: "publish"/);
 });
 
-test("MyPublishedPane 有作品段并渲染 MyAppsPane", () => {
+test("MyPublishedPane 把作品并进同一张清单", () => {
   const mine = src("shell/bay/mine/MyPublishedPane.tsx");
-  assert.match(mine, /data-bay-mine-section="apps"/);
-  assert.match(mine, /MyAppsPane/);
-  assert.match(mine, /from "\.\.\/apps"/);
+  assert.match(mine, /listMyBayApps/);
+  assert.match(mine, /MineTradeList/);
+  assert.doesNotMatch(mine, /MyAppsPane/);
 });

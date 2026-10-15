@@ -8,6 +8,8 @@ export function BayCoverDrop(props: {
   url: string;
   onUrl: (url: string) => void;
   disabled?: boolean;
+  /** `avatar`：主页页头圆形头像；默认是封面/图集那块方槽。 */
+  variant?: "tile" | "avatar";
 }): ReactElement {
   const tt = useUI();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -15,6 +17,7 @@ export function BayCoverDrop(props: {
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const disabled = Boolean(props.disabled);
+  const avatar = props.variant === "avatar";
 
   async function addFile(file: File | undefined) {
     if (!file || disabled || busy) return;
@@ -62,13 +65,14 @@ export function BayCoverDrop(props: {
     <div className="flex items-start gap-3">
       <div
         data-bay-cover-drop=""
+        data-bay-cover-variant={avatar ? "avatar" : "tile"}
         data-bay-cover-state={props.url ? "filled" : "empty"}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
-        className={`relative h-20 w-20 overflow-hidden rounded-xl border border-dashed ${
-          dragging ? "border-neutral-400 bg-neutral-50" : "border-neutral-300 bg-white"
-        }`}
+        className={`relative overflow-hidden border border-dashed ${
+          avatar ? "h-16 w-16 rounded-full" : "h-20 w-20 rounded-xl"
+        } ${dragging ? "border-neutral-400 bg-neutral-50" : "border-neutral-300 bg-white"}`}
       >
         <p data-bay-cover-hint="" className="hidden">
           {busy ? tt("上传中") : tt("把图片拖到这里")}
@@ -79,6 +83,7 @@ export function BayCoverDrop(props: {
         <button
           type="button"
           data-bay-cover-pick=""
+          aria-label={props.url ? tt("换一张") : tt("选择图片")}
           disabled={disabled || busy}
           onClick={() => inputRef.current?.click()}
           className={`absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium disabled:opacity-60 ${
@@ -89,7 +94,8 @@ export function BayCoverDrop(props: {
             tt("换一张")
           ) : (
             <>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5" aria-hidden="true"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>{busy ? tt("上传中") : tt("选择图片")}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={avatar ? "h-4 w-4" : "h-5 w-5"} aria-hidden="true"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
+              {avatar ? null : busy ? tt("上传中") : tt("选择图片")}
             </>
           )}
         </button>

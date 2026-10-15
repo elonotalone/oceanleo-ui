@@ -27,7 +27,6 @@ export interface BayOrderRequirements {
 export interface BayServiceOrderInput {
   service_id: string;
   tier: BayServiceTierName;
-  addon_ids: string[];
   requirements: BayOrderRequirements;
 }
 
@@ -43,17 +42,6 @@ export interface BayOrderContract {
 }
 
 export const BAY_CHECKOUT_LIMITS = { title: 200, what: 10000, notes: 5000, links: 20 } as const;
-
-// 服务页上勾的加购带到下单页（深链 `checkout:<id>[:<tier>]` 只带档位）。只在本页内存里，换页即忘。
-const addonDrafts = new Map<string, string[]>();
-
-export function rememberCheckoutAddons(serviceId: string, addonIds: Iterable<string>): void {
-  addonDrafts.set(serviceId, Array.from(new Set(Array.from(addonIds).filter(Boolean))));
-}
-
-export function recallCheckoutAddons(serviceId: string): string[] {
-  return addonDrafts.get(serviceId) ?? [];
-}
 
 export function emptyCheckoutForm(title = ""): BayCheckoutForm {
   return { title, what: "", links: "", deadline: "", notes: "" };
@@ -82,29 +70,26 @@ export function checkoutRequirements(form: BayCheckoutForm): BayOrderRequirement
   };
 }
 
-export type BayCheckoutProblem = "tier" | "addons" | "title" | "what";
+export type BayCheckoutProblem = "tier" | "title" | "what";
 
 /** 还差什么才能下单；能下单时返回 null。 */
 export function checkoutProblem(selection: BayServiceSelection, form: BayCheckoutForm): BayCheckoutProblem | null {
   if (!selection.tier) return "tier";
-  if (selection.invalidAddonIds.length) return "addons";
   if (!form.title.trim()) return "title";
   if (!form.what.trim()) return "what";
   return null;
 }
 
 export function checkoutInput(
-  service: Pick<BayServiceDetail, "id" | "tiers" | "addons" | "delivery_days">,
+  service: Pick<BayServiceDetail, "id" | "tiers" | "delivery_days">,
   tierName: string | null | undefined,
-  addonIds: Iterable<string>,
   form: BayCheckoutForm,
 ): BayServiceOrderInput | null {
-  const selection = serviceSelection(service, tierName, addonIds);
+  const selection = serviceSelection(service, tierName);
   if (checkoutProblem(selection, form) || !selection.tier) return null;
   return {
     service_id: service.id,
     tier: selection.tier.tier,
-    addon_ids: selection.addons.map((addon) => addon.id),
     requirements: checkoutRequirements(form),
   };
 }

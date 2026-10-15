@@ -369,6 +369,28 @@ export function accentAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** 开场副标题 = 一句话介绍；第一段文字 = 简介。保存资料时从版面带回这两项，不再另开一张表。 */
+export function pageCopyFromDoc(doc: BayPageDoc): { headline: string; bio: string } {
+  const hero = doc.blocks.find((block) => block.type === "hero");
+  const text = doc.blocks.find((block) => block.type === "text");
+  return {
+    headline: (hero?.subtitle || "").trim(),
+    bio: (text?.body || "").trim(),
+  };
+}
+
+/** 页头改了名字、开场大标题还是旧名字时跟着改。大标题已经写成别的句子就不动。 */
+export function syncHeroName(doc: BayPageDoc, previousName: string, nextName: string): BayPageDoc {
+  const prev = previousName.trim();
+  const next = nextName.trim();
+  if (!next || prev === next) return doc;
+  const hero = doc.blocks.find((block) => block.type === "hero");
+  if (!hero) return doc;
+  const title = (hero.title || "").trim();
+  if (title && title !== prev) return doc;
+  return patchBlock(doc, hero.id, { title: next });
+}
+
 /** 整张主页的 CSS 变量（挂在主页根节点的 style 上）。 */
 export function pageThemeVars(theme: BayPageTheme): Record<string, string> {
   const palette = BAY_PAGE_PALETTES[theme.tone] ?? BAY_PAGE_PALETTES.light;

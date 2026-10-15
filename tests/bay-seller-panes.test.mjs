@@ -1,7 +1,7 @@
-// W08：我的服务、卖家资料、资质审核。
+// W08：我的服务、资质审核。
 // 覆盖：概况数字与收款入口、空状态、状态分组、窗格无返回栏；
-// 资料保存请求体没有 timezone；作品集加入用 pickLibraryWork 的返回；
 // 审核提交与申诉请求形状；受限领域不出现在领域选项里。
+// 卖家资料已归并进主页画布，见 bay3-profile.test.mjs。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -125,7 +125,6 @@ const sellerStubs = {
 };
 
 const { MyServicesPane } = await import(await compileModule("src/shell/bay/seller/MyServicesPane.tsx", sellerStubs));
-const { BaySellerProfileSection } = await import(await compileModule("src/shell/bay/seller/BaySellerProfileSection.tsx", sellerStubs));
 const { BayVettingSection } = await import(await compileModule("src/shell/bay/seller/BayVettingSection.tsx", sellerStubs));
 const sellerIndex = await import(await compileModule("src/shell/bay/seller/index.ts", sellerStubs));
 
@@ -190,9 +189,10 @@ async function mount(element) {
 }
 
 test("出口：seller 的 index.ts 导出契约里的全部名字", () => {
-  for (const name of ["MyServicesPane", "ServiceEditorPane", "BaySellerProfileSection", "BayVettingSection"]) {
+  for (const name of ["MyServicesPane", "ServiceEditorPane", "BayVettingSection"]) {
     assert.equal(typeof sellerIndex[name], "function", name);
   }
+  assert.equal("BaySellerProfileSection" in sellerIndex, false);
 });
 
 test("我的服务：概况、分组、空状态入口；没有返回栏；钱只给设置入口", async () => {
@@ -247,22 +247,6 @@ async function fillReveal(view, id, value) {
   assert.ok(field, `field ${id}`);
   setInput(field, value);
 }
-
-test("卖家资料：保存请求体没有 timezone；作品集加入用 pickLibraryWork 的返回", async () => {
-  reset();
-  const view = await mount(React.createElement(BaySellerProfileSection));
-  await fillReveal(view, "handle", "leo");
-  await fillReveal(view, "display_name", "Leo");
-  await view.click("[data-bay-save-profile]");
-  const put = globalThis.__baySellerCalls.find((row) => row.method === "PUT" && row.path === "/v1/talent/me");
-  assert.ok(put);
-  assert.equal(Object.prototype.hasOwnProperty.call(put.body, "timezone"), false);
-  assert.equal(put.body.handle, "leo");
-  await view.click("[data-bay-import-work]");
-  const add = globalThis.__baySellerCalls.find((row) => row.path === "/v1/talent/me/showcase/import-tasks");
-  assert.deepEqual(add.body, { task_ids: ["task-42"], detail_level: "summary" });
-  view.unmount();
-});
 
 test("资质审核：提交与申诉请求形状；领域选项没有医疗、法律、宠物医疗", async () => {
   reset();

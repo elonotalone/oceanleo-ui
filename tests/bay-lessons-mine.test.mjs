@@ -16,8 +16,9 @@ test("我发布的课程只列我的课：没有套餐段、没有卖出的订�
   assert.doesNotMatch(mine, /sold-orders/);
   assert.doesNotMatch(mine, /SoldOrders/);
   const sold = src("src/shell/bay/mine/MySoldPane.tsx");
-  assert.match(sold, /SoldOrders/);
   assert.match(sold, /listSoldBayLessonOrders/);
+  assert.match(sold, /MineTradeList/);
+  assert.doesNotMatch(sold, /SoldOrders/);
 });
 
 test("状态标来自 lessonStatusLabel", () => {

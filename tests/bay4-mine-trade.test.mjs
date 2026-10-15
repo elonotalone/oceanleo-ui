@@ -115,7 +115,13 @@ const STUBS = {
   "../apppaid/MySoldAppsPane": dataModule("export function MySoldAppsPane(){ return null; }"),
   "../lessons/SoldOrders": dataModule("export function SoldOrders(){ return null; }"),
   "../supply/parts": dataModule("export function PaneLoading(){ return null; } export function PaneMessage(){ return null; }"),
-  "../../../lib/bay/lessons": dataModule("export async function listSoldBayLessonOrders(){ return { items: [] }; } export async function decideBayLessonRefund(){}"),
+  "../../../lib/bay/lessons": dataModule(`
+    export async function listSoldBayLessonOrders(){ return { items: globalThis.__w3mine.soldLessons || [] }; }
+    export async function listBoughtBayLessonOrders(){ return { items: globalThis.__w3mine.boughtLessons || [] }; }
+    export async function listMyBayLessons(){ return { items: globalThis.__w3mine.myLessons || [] }; }
+    export async function decideBayLessonRefund(){}
+    export async function deleteBayLesson(id){ globalThis.__w3mine.calls.push({ method: "DELETE", path: "/v1/bay/lessons/" + id }); return { ok: true }; }
+  `),
   "../deal/open-trade-thread": dataModule("export async function openTradeThread(){}"),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
@@ -167,6 +173,15 @@ function reset(orders) {
     contract({ id: "buy-1", title: "我买的稿", status: "delivered", payment_state: "disabled" }),
     contract({ id: "sell-1", title: "我卖的稿", my_role: "seller", status: "active", payment_state: "disabled" }),
   ];
+  W.myApps = [{ id: "a1", title: "我的计算器", status: "published" }];
+  W.myLessons = [{ id: "l1", title: "PPT 入门", status: "published" }];
+  W.soldLessons = [];
+  W.boughtLessons = [];
+  W.soldAppPurchases = [];
+  W.soldAppSubs = [];
+  W.boughtAppPurchases = [];
+  W.boughtAppSubs = [];
+  W.serviceKinds = {};
   globalThis.__w3HttpRespond = (method, path) => {
     if (method !== "GET") return {};
     if (path === "/v1/talent/categories") {
@@ -178,7 +193,23 @@ function reset(orders) {
       };
     }
     if (path === "/v1/talent/me/services") {
-      return { items: [{ id: "s1", title: "Logo", status: "published", summary: "三版", order_count: 2, posted_site: "design" }] };
+      return {
+        items: [
+          { id: "s1", title: "Logo", status: "published", listing_kind: "service", summary: "三版", order_count: 2, posted_site: "design" },
+          { id: "s-digital", title: "一套图标", status: "published", listing_kind: "digital" },
+        ],
+      };
+    }
+    if (path === "/v1/bay/apps/mine") return { items: W.myApps || [] };
+    if (path === "/v1/bay/app-paid/mine/sold") {
+      return { purchases: W.soldAppPurchases || [], subscriptions: W.soldAppSubs || [] };
+    }
+    if (path === "/v1/bay/app-paid/mine/bought") {
+      return { purchases: W.boughtAppPurchases || [], subscriptions: W.boughtAppSubs || [], trials: [], apps: [] };
+    }
+    if (String(path).startsWith("/v1/talent/services/")) {
+      const id = String(path).split("/").pop();
+      return { service: { id, listing_kind: (W.serviceKinds && W.serviceKinds[id]) || "service" } };
     }
     if (path === "/v1/talent/consults/mine" || String(path).endsWith("/consults/mine")) return { items: [] };
     if (path === "/v1/talent/me/stats") return { orders_by_status: { active: 2, delivered: 1 }, rating_avg: 4.6, rating_count: 8, pending_orders: 0 };
@@ -192,7 +223,17 @@ function reset(orders) {
     }
     if (String(path).startsWith("/v1/talent/proposals/mine")) {
       return {
-        items: [{ id: "p1", demand_id: "d1", price_fen: 80000, currency: "CNY", status: "pending", created_at: new Date().toISOString(), demand: { id: "d1", title: "做一份路演稿", status: "open", category: "doc" } }],
+        items: [
+          {
+            id: "p1",
+            demand_id: "d1",
+            price_fen: 80000,
+            currency: "CNY",
+            status: "pending",
+            created_at: new Date().toISOString(),
+            demand: { id: "d1", title: "做一份路演稿", status: "open", category: "doc", listing_kind: "digital" },
+          },
+        ],
         next_cursor: null,
       };
     }
@@ -238,63 +279,112 @@ async function mount(element) {
 
 const props = (tab) => ({ target: { kind: "mine", tab }, layout: "docked", siteKey: "design" });
 
-test("我发布的：一张统一列表，没有需求、没有分区标题，每行右边标类别，只有一个发布按钮", async () => {
+test("我发布的：一张统一列表，没有需求、没有分区标题，每行右边标类别，没有页内发布按钮", async () => {
   reset();
   const view = await mount(React.createElement(MyPublishedPane, props("published")));
   assert.ok(view.q('[data-bay-pane="mine-published"]'));
-  assert.ok(view.q('[data-bay-mine-section="supply"]'));
-  assert.equal(view.q('[data-bay-mine-section="needs"]'), null);
-  assert.equal(view.q('[data-bay-mine-section="app-orders"]'), null);
+  assert.equal(view.q("[data-bay-mine-section]"), null);
   assert.equal(view.q("[data-bay-mine-dashboard]"), null);
   assert.doesNotMatch(view.host.textContent, /需求/);
   assert.doesNotMatch(view.host.textContent, /素材与服务/);
   assert.match(view.host.textContent, /Logo/);
   assert.doesNotMatch(view.host.textContent, /做一份路演稿/);
-  assert.match(view.host.textContent, /人工服务|成品文件/);
-  assert.equal(view.qa("[data-bay-mine-publish]").length, 1);
+  assert.match(view.host.textContent, /人工服务/);
+  assert.match(view.host.textContent, /成品文件/);
+  assert.match(view.host.textContent, /作品/);
+  assert.match(view.host.textContent, /课程/);
+  assert.match(view.host.textContent, /我的计算器/);
+  assert.match(view.host.textContent, /PPT 入门/);
+  assert.ok(view.q('[data-bay-mine-row="app:a1"] [data-bay-listing-kind="app"]'));
+  assert.ok(view.q('[data-bay-mine-row="lesson:l1"] [data-bay-listing-kind="lesson"]'));
+  assert.ok(view.q('[data-bay-mine-row="service:s-digital"] [data-bay-listing-kind="digital"]'));
+  assert.equal(view.qa("[data-bay-mine-publish]").length, 0);
   assert.equal(view.qa("[data-bay-new-service]").length, 0);
   assert.equal(
     view.qa("button").filter((node) => node.textContent.trim() === "发布").length,
-    1,
+    0,
   );
-  await view.click("[data-bay-mine-publish]");
-  assert.deepEqual(W.opened.at(-1), { kind: "publish" });
+  await view.click('[data-bay-mine-row="service:s1"]');
+  assert.deepEqual(W.opened.at(-1), { kind: "service-editor", serviceId: "s1" });
   await view.unmount();
 });
 
-test("我卖出的：概况、报价中、卖出的订单；没有买卖切换，只出卖家订单", async () => {
+test("我发布的：类别条筛到作品时只留作品", async () => {
+  reset();
+  const view = await mount(React.createElement(MyPublishedPane, { ...props("published"), category: "app" }));
+  assert.match(view.host.textContent, /我的计算器/);
+  assert.doesNotMatch(view.host.textContent, /Logo/);
+  assert.doesNotMatch(view.host.textContent, /一套图标/);
+  assert.doesNotMatch(view.host.textContent, /PPT 入门/);
+  await view.unmount();
+});
+
+test("我卖出的：报价和卖家订单在同一张清单；没有概况、没有分段标题、没有买卖切换", async () => {
   reset();
   const view = await mount(React.createElement(MySoldPane, props("sold")));
   assert.ok(view.q('[data-bay-pane="mine-sold"]'));
-  assert.ok(view.q("[data-bay-seller-overview]"));
-  assert.ok(view.q('[data-bay-mine-section="proposals"]'));
-  assert.ok(view.q('[data-bay-mine-section="orders"]'));
-  assert.match(view.host.textContent, /报价中/);
-  assert.match(view.host.textContent, /卖出的订单/);
+  assert.equal(view.q("[data-bay-seller-overview]"), null);
+  assert.equal(view.q("[data-bay-mine-section]"), null);
+  assert.doesNotMatch(view.host.textContent, /报价中/);
+  assert.doesNotMatch(view.host.textContent, /卖出的订单/);
   assert.match(view.host.textContent, /做一份路演稿/);
+  assert.ok(view.q('[data-bay-mine-row="proposal:p1"] [data-bay-listing-kind="digital"]'));
   assert.equal(view.q("[data-bay-role]"), null);
   assert.ok(view.q("[data-bay-order-row=sell-1]"));
   assert.equal(view.q("[data-bay-order-row=buy-1]"), null);
+  assert.match(view.host.textContent, /人工服务|成品文件|作品|课程|其他/);
   await view.unmount();
 });
 
-test("我买到的：只出买家订单；每一单有交易状态、联系卖家、去评价；没有空状态的去逛逛", async () => {
+test("我卖出的：课程购买行留下，对应的 talent 合同不重复出现", async () => {
+  reset([
+    contract({ id: "sell-1", title: "我卖的稿", my_role: "seller", status: "active", payment_state: "disabled" }),
+    contract({
+      id: "sell-lesson-contract",
+      title: "课程：PPT 入门",
+      my_role: "seller",
+      status: "delivered",
+      payment_state: "disabled",
+      requirements: { _lesson_order: { item_kind: "lesson", item_id: "l1" } },
+    }),
+  ]);
+  W.soldLessons = [
+    {
+      id: "lo1",
+      item_title: "PPT 入门",
+      item_kind: "lesson",
+      item_id: "l1",
+      status: "completed",
+      price_fen: 9900,
+      contract_id: "sell-lesson-contract",
+    },
+  ];
+  const view = await mount(React.createElement(MySoldPane, props("sold")));
+  assert.ok(view.q('[data-bay-mine-row="lesson-order:lo1"]'));
+  assert.ok(view.q('[data-bay-mine-row="lesson-order:lo1"] [data-bay-listing-kind="lesson"]'));
+  assert.equal(view.q("[data-bay-order-row=sell-lesson-contract]"), null);
+  assert.ok(view.q("[data-bay-order-row=sell-1]"));
+  await view.unmount();
+});
+
+test("我买到的：只出买家订单；行上没有联系卖家和去评价；空态没有去逛逛", async () => {
   reset();
   const view = await mount(React.createElement(MyBoughtPane, props("bought")));
   assert.ok(view.q('[data-bay-pane="mine-bought"]'));
   assert.equal(view.q("[data-bay-role]"), null);
   assert.ok(view.q("[data-bay-order-row=buy-1]"));
   assert.equal(view.q("[data-bay-order-row=sell-1]"), null);
-  assert.match(view.host.textContent, /交易状态/);
-  assert.ok(view.q("[data-bay-order-contact=buy-1]"));
-  assert.ok(view.q("[data-bay-order-review=buy-1]"));
+  assert.doesNotMatch(view.host.textContent, /交易状态/);
+  assert.equal(view.q("[data-bay-order-contact=buy-1]"), null);
+  assert.equal(view.q("[data-bay-order-review=buy-1]"), null);
   await view.unmount();
 
   reset([]);
   const empty = await mount(React.createElement(MyBoughtPane, props("bought")));
-  assert.equal(empty.q("[data-bay-empty=all]"), null);
+  assert.ok(empty.q("[data-bay-empty=category]"));
   assert.doesNotMatch(empty.host.textContent, /你还没有买过东西/);
   assert.doesNotMatch(empty.host.textContent, /去逛逛/);
+  assert.doesNotMatch(empty.host.textContent, /去发布/);
   await empty.unmount();
 });
 
@@ -308,4 +398,83 @@ test("MyOrdersPane 不传 fixedRole 时买卖切换仍在", async () => {
   await view.click("[data-bay-role=seller]");
   assert.ok(view.q("[data-bay-order-row=sell-1]"));
   await view.unmount();
+});
+
+const clickConfirm = async (view, kind, id) => {
+  await view.click(`[data-bay-mine-delete="${id}"]`);
+  assert.ok(view.q(`[data-bay-mine-confirm="${id}"]`), `${kind} 要先二次确认，不能一点就删`);
+  await view.click(`[data-bay-mine-delete-confirm="${id}"]`);
+};
+
+test("我发布的：每一行都能删除，先二次确认，再调对应的删除接口", async () => {
+  reset();
+  const view = await mount(React.createElement(MyPublishedPane, props("published")));
+  for (const id of ["service:s1", "service:s-digital", "app:a1", "lesson:l1"]) {
+    assert.ok(view.q(`[data-bay-mine-delete="${id}"]`), `${id} 缺少删除按钮`);
+  }
+  await view.click('[data-bay-mine-delete="service:s1"]');
+  assert.ok(view.q('[data-bay-mine-confirm="service:s1"]'));
+  assert.equal(W.calls.some((call) => call.method === "DELETE"), false, "确认之前不能发请求");
+  await view.click('[data-bay-mine-delete-confirm="service:s1"]');
+  assert.ok(W.calls.some((call) => call.method === "DELETE" && call.path === "/v1/talent/me/services/s1"));
+  await view.unmount();
+
+  reset();
+  const apps = await mount(React.createElement(MyPublishedPane, props("published")));
+  await clickConfirm(apps, "作品", "app:a1");
+  assert.ok(W.calls.some((call) => call.method === "DELETE" && call.path === "/v1/bay/apps/a1"));
+  await clickConfirm(apps, "课程", "lesson:l1");
+  assert.ok(W.calls.some((call) => call.method === "DELETE" && call.path === "/v1/bay/lessons/l1"));
+  await apps.unmount();
+});
+
+test("我发布的：服务端不让删时，原因显示在这一行下面，行还在", async () => {
+  reset();
+  const base = globalThis.__w3HttpRespond;
+  globalThis.__w3HttpRespond = (method, path, ...rest) => {
+    if (method === "DELETE") throw new Error("这条服务还有进行中的订单，处理完再删除");
+    return base(method, path, ...rest);
+  };
+  const view = await mount(React.createElement(MyPublishedPane, props("published")));
+  await clickConfirm(view, "服务", "service:s1");
+  const error = view.q('[data-bay-mine-delete-error="service:s1"]');
+  assert.ok(error);
+  assert.match(error.textContent, /进行中的订单/);
+  assert.ok(view.q('[data-bay-mine-row="service:s1"]'));
+  await view.unmount();
+});
+
+test("我卖出的：只有已了结的订单能删，删的是「从我的列表移除」，不碰订单本身", async () => {
+  reset([
+    contract({ id: "sell-done", title: "做完的稿", my_role: "seller", status: "completed" }),
+    contract({ id: "sell-live", title: "在做的稿", my_role: "seller", status: "active" }),
+  ]);
+  const view = await mount(React.createElement(MySoldPane, props("sold")));
+  assert.ok(view.q('[data-bay-mine-delete="order:sell-done"]'));
+  assert.equal(view.q('[data-bay-mine-delete="order:sell-live"]'), null, "进行中的订单不给删除");
+  assert.equal(view.q('[data-bay-mine-delete="proposal:p1"]'), null, "等回复的报价不给删除");
+  await clickConfirm(view, "订单", "order:sell-done");
+  const post = W.calls.find((call) => call.method === "POST" && call.path === "/v1/bay/mine/hidden");
+  assert.deepEqual(post && post.body, { item_kind: "order", item_ref: "sell-done" });
+  assert.equal(W.calls.some((call) => call.method === "DELETE"), false, "订单本身不能被真删");
+  await view.unmount();
+});
+
+test("我卖出的 / 我买到的：已移除的行不再出现", async () => {
+  reset([
+    contract({ id: "sell-done", title: "做完的稿", my_role: "seller", status: "completed" }),
+    contract({ id: "buy-done", title: "买到的稿", my_role: "buyer", status: "cancelled" }),
+  ]);
+  const base = globalThis.__w3HttpRespond;
+  globalThis.__w3HttpRespond = (method, path, ...rest) =>
+    method === "GET" && path === "/v1/bay/mine/hidden"
+      ? { items: [{ item_kind: "order", item_ref: "sell-done" }] }
+      : base(method, path, ...rest);
+  const sold = await mount(React.createElement(MySoldPane, props("sold")));
+  assert.equal(sold.q("[data-bay-order-row=sell-done]"), null);
+  await sold.unmount();
+  const bought = await mount(React.createElement(MyBoughtPane, props("bought")));
+  assert.ok(bought.q("[data-bay-order-row=buy-done]"));
+  assert.ok(bought.q('[data-bay-mine-delete="order:buy-done"]'), "已取消的买入订单可以移除");
+  await bought.unmount();
 });

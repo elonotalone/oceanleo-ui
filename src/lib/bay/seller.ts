@@ -108,6 +108,13 @@ export interface BaySellerProfileInput {
   published?: boolean;
 }
 
+/** 与网关 `HANDLE_RE` 同一条：3–32 位，字母或数字开头，其余小写字母 / 数字 / 下划线 / 连字符。 */
+export const BAY_HANDLE_RE = /^[a-z0-9][a-z0-9_-]{2,31}$/;
+
+export function isBayHandle(value: string): boolean {
+  return BAY_HANDLE_RE.test(value.trim().toLowerCase());
+}
+
 const PROFILE_BODY_KEYS = [
   "handle",
   "display_name",
@@ -215,17 +222,6 @@ export interface BayServiceTierRow {
   enabled: boolean;
 }
 
-export interface BayServiceAddonRow {
-  id: string;
-  service_id?: string;
-  title: string;
-  description: string;
-  price_fen: number;
-  extra_days: number;
-  position: number;
-  enabled: boolean;
-}
-
 export interface BayServiceFaqRow {
   id: string;
   service_id?: string;
@@ -261,7 +257,7 @@ export interface BaySellerStats {
 
 export interface BayShowcaseItem {
   id: string;
-  source_kind: string;
+  source_kind: "task" | "artifact" | "manual";
   source_ref: string;
   title: string;
   summary: string;
@@ -342,6 +338,11 @@ export function updateMyService(serviceId: string, input: BayServiceInput): Prom
   return bayPut<{ service: BayOwnService }>(servicePath(serviceId), input);
 }
 
+/** 删除自己的答疑挂牌。已有预约记录时服务端返回 409，文案直接可展示。 */
+export function deleteMyConsult(consultId: string): Promise<{ ok: boolean }> {
+  return bayDelete<{ ok: boolean }>(`/v1/talent/consults/${encodeURIComponent(consultId)}`);
+}
+
 export function deleteMyService(serviceId: string): Promise<{ ok: boolean }> {
   return bayDelete<{ ok: boolean }>(servicePath(serviceId));
 }
@@ -404,25 +405,8 @@ export function saveServiceQuickPrice(
   });
 }
 
-type AddonInput = Omit<BayServiceAddonRow, "id" | "service_id">;
 type FaqInput = Omit<BayServiceFaqRow, "id" | "service_id">;
 type MediaInput = Omit<BayServiceMediaRow, "id" | "service_id">;
-
-export function listServiceAddons(serviceId: string): Promise<{ items: BayServiceAddonRow[] }> {
-  return bayGet<{ items: BayServiceAddonRow[] }>(`${servicePath(serviceId)}/addons`);
-}
-
-export function createServiceAddon(serviceId: string, input: AddonInput): Promise<{ item: BayServiceAddonRow }> {
-  return bayPost<{ item: BayServiceAddonRow }>(`${servicePath(serviceId)}/addons`, input);
-}
-
-export function patchServiceAddon(serviceId: string, addonId: string, input: Partial<AddonInput>): Promise<{ item: BayServiceAddonRow }> {
-  return bayPatch<{ item: BayServiceAddonRow }>(`${servicePath(serviceId)}/addons/${encodeURIComponent(addonId)}`, input);
-}
-
-export function deleteServiceAddon(serviceId: string, addonId: string): Promise<{ ok: boolean }> {
-  return bayDelete<{ ok: boolean }>(`${servicePath(serviceId)}/addons/${encodeURIComponent(addonId)}`);
-}
 
 export function listServiceFaq(serviceId: string): Promise<{ items: BayServiceFaqRow[] }> {
   return bayGet<{ items: BayServiceFaqRow[] }>(`${servicePath(serviceId)}/faq`);

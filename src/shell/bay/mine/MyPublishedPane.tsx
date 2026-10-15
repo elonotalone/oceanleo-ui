@@ -1,92 +1,109 @@
 "use client";
 
-// 「我的」→「我发布的」：一张列表。成品文件、人工服务、网站与软件服务、课程都在这里，每一行右边标明类别。
-// 没有需求、没有套餐、没有分区标题；右上角一个「发布」。
-import { useEffect, useState, type ComponentType } from "react";
+// 「我的」→「我发布的」：一张列表。成品文件、人工服务、作品、课程、其他都在这里，每一行右边标明类别。
 import { useUI } from "../../../i18n/ui/useUI";
-import type { MyAppsPaneProps } from "../apps";
-import type { MyLessonsPaneProps } from "../lessons/MyLessonsPane";
-import { MyServicesPane } from "../seller/MyServicesPane";
-import { openBay } from "../shell/bay-state";
-import { type MinePaneProps } from "./MineCategoryBar";
+import { deleteBayApp, listMyBayApps } from "../../../lib/bay/apps";
+import { deleteBayLesson, listMyBayLessons } from "../../../lib/bay/lessons";
+import { deleteMyConsult, deleteMyService, listMyConsults, listMyServices } from "../../../lib/bay/seller";
+import { openBay, useBaySignedIn } from "../shell/bay-state";
+import { useMineBundle, type MinePaneProps } from "./mine-bundle";
+import { categoryOfListingKind, listingStatusText, mineEmptyText, rowMatchesCategory } from "./mine-category";
+import { MineTradeList, type MineTradeRow } from "./MineTradeList";
+import type { PublishedCategory } from "./PublishedCategoryTag";
 
-// 按需加载：静态 import ../apps 会经 MyAppsPane → BayMine → mine/index 绕回本文件。
-// 加载失败时这一段要说出来，不能看上去像「你没有作品」。
-function PublishedApps(props: MyAppsPaneProps) {
-  const tt = useUI();
-  const [Pane, setPane] = useState<ComponentType<MyAppsPaneProps> | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void import("../apps/MyAppsPane")
-      .then((mod) => {
-        if (alive) setPane(() => mod.MyAppsPane);
-      })
-      .catch(() => {
-        if (alive) setFailed(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  if (failed) return <p className="px-4 py-3 text-[13px] text-stone-500">{tt("作品没加载出来，请刷新页面再试。")}</p>;
-  return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
+type PublishedBundle = {
+  services: Awaited<ReturnType<typeof listMyServices>>["items"];
+  consults: Awaited<ReturnType<typeof listMyConsults>>["items"];
+  apps: Awaited<ReturnType<typeof listMyBayApps>>["items"];
+  lessons: Awaited<ReturnType<typeof listMyBayLessons>>["items"];
+};
+
+async function loadPublished(): Promise<PublishedBundle> {
+  const [services, consults, apps, lessons] = await Promise.all([
+    listMyServices(),
+    listMyConsults().catch(() => ({ items: [] as PublishedBundle["consults"] })),
+    listMyBayApps().catch(() => ({ items: [] as PublishedBundle["apps"] })),
+    listMyBayLessons().catch(() => ({ items: [] as PublishedBundle["lessons"] })),
+  ]);
+  return {
+    services: services.items || [],
+    consults: consults.items || [],
+    apps: apps.items || [],
+    lessons: lessons.items || [],
+  };
 }
 
-function PublishedLessons(props: MyLessonsPaneProps) {
+export function MyPublishedPane({ category = "all" }: MinePaneProps) {
   const tt = useUI();
-  const [Pane, setPane] = useState<ComponentType<MyLessonsPaneProps> | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void import("../lessons/MyLessonsPane")
-      .then((mod) => {
-        if (alive) setPane(() => mod.MyLessonsPane);
-      })
-      .catch(() => {
-        if (alive) setFailed(true);
+  const signedIn = useBaySignedIn();
+  const bundle = useMineBundle(signedIn, loadPublished, tt("列表没读出来，请稍后再试。"));
+  const data = bundle.data;
+  const rows: MineTradeRow[] = [];
+  const hint = tt("确定删除这条帖子吗？删除后不能恢复。");
+  // 删完重新读一遍列表；服务端不让删时（有进行中的订单等）错误文案由列表显示在这一行下面。
+  const remover = (call: () => Promise<unknown>) => async () => {
+    await call();
+    bundle.reload();
+  };
+  if (data) {
+    for (const service of data.services) {
+      const kind: PublishedCategory = categoryOfListingKind(service.listing_kind);
+      if (!rowMatchesCategory(category, kind)) continue;
+      rows.push({
+        id: `service:${service.id}`,
+        title: service.title || tt("未命名服务"),
+        subtitle: tt(listingStatusText(service.status, service.moderation_hidden)),
+        category: kind,
+        onOpen: () => openBay({ kind: "service-editor", serviceId: service.id }),
+        onDelete: remover(() => deleteMyService(service.id)),
+        deleteHint: hint,
       });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  if (failed) return <p className="px-4 py-3 text-[13px] text-stone-500">{tt("课程没加载出来，请刷新页面再试。")}</p>;
-  return Pane ? <Pane layout={props.layout} siteKey={props.siteKey} /> : null;
-}
-
-export function MyPublishedPane({ category = "all", ...props }: MinePaneProps) {
-  const tt = useUI();
-  // 成品文件、人工服务、其他都是服务表里的行；作品、课程各有自己的一段。
-  const showServices = category !== "app" && category !== "lesson";
-  const showApps = category === "all" || category === "app";
-  const showLessons = category === "all" || category === "lesson";
+    }
+    for (const consult of data.consults) {
+      if (!rowMatchesCategory(category, "service")) continue;
+      rows.push({
+        id: `consult:${consult.id}`,
+        title: consult.title || tt("未命名服务"),
+        subtitle: tt(listingStatusText(consult.status, consult.moderation_hidden)),
+        category: "service",
+        onOpen: () => openBay({ kind: "consult", id: consult.id }),
+        onDelete: remover(() => deleteMyConsult(consult.id)),
+        deleteHint: hint,
+      });
+    }
+    for (const app of data.apps) {
+      if (!rowMatchesCategory(category, "app")) continue;
+      rows.push({
+        id: `app:${app.id}`,
+        title: app.title || tt("未命名作品"),
+        subtitle: tt(listingStatusText(app.status, app.moderation_hidden)),
+        category: "app",
+        onOpen: () => openBay({ kind: "app-editor", appId: app.id }),
+        onDelete: remover(() => deleteBayApp(app.id)),
+        deleteHint: hint,
+      });
+    }
+    for (const lesson of data.lessons) {
+      if (!rowMatchesCategory(category, "lesson")) continue;
+      rows.push({
+        id: `lesson:${lesson.id}`,
+        title: lesson.title || tt("未命名课程"),
+        subtitle: tt(listingStatusText(lesson.status, lesson.moderation_hidden)),
+        category: "lesson",
+        onOpen: () => openBay({ kind: "lesson-editor", lessonId: lesson.id }),
+        onDelete: remover(() => deleteBayLesson(lesson.id)),
+        deleteHint: hint,
+      });
+    }
+  }
   return (
-    <section data-bay-pane="mine-published" className="space-y-4">
-      <div className="flex justify-end px-4 pt-4">
-        <button
-          type="button"
-          data-bay-mine-publish
-          onClick={() => openBay({ kind: "publish" })}
-          className="rounded-xl bg-stone-900 px-3 py-1.5 text-[13px] font-semibold text-white transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-800"
-        >
-          {tt("发布")}
-        </button>
-      </div>
-      {showServices ? (
-        <div data-bay-mine-section="supply">
-          <MyServicesPane {...props} hideNew category={category} />
-        </div>
-      ) : null}
-      {showApps ? (
-        <div data-bay-mine-section="apps">
-          <PublishedApps layout={props.layout} siteKey={props.siteKey} />
-        </div>
-      ) : null}
-      {showLessons ? (
-        <div data-bay-mine-section="lessons">
-          <PublishedLessons layout={props.layout} siteKey={props.siteKey} />
-        </div>
-      ) : null}
-    </section>
+    <MineTradeList
+      pane="mine-published"
+      rows={rows}
+      loading={bundle.loading}
+      error={bundle.error}
+      onRetry={bundle.reload}
+      emptyText={mineEmptyText("published")}
+    />
   );
 }

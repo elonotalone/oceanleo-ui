@@ -200,20 +200,12 @@ export function StatementPanel({
       </div>
       <p className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">{tt(BAY_NO_PLATFORM_FEE_NOTE)}</p>
 
-      {statement.tier || statement.addons.length ? (
+      {statement.tier ? (
         <ul className="mt-3 space-y-1.5 text-[12px]" data-bay-statement-items>
-          {statement.tier ? (
-            <li className="flex items-start justify-between gap-3 py-1">
-              <span className="min-w-0 break-words">{tt("档位：{title}", { title: statement.tier.title })}</span>
-              <strong className="shrink-0 tabular-nums">{formatBayFen(statement.tier.price_fen, statement.currency, locale)}</strong>
-            </li>
-          ) : null}
-          {statement.addons.map((addon, index) => (
-            <li key={`${addon.title}-${index}`} className="flex items-start justify-between gap-3 py-1">
-              <span className="min-w-0 break-words">{tt("加购：{title}", { title: addon.title })}</span>
-              <strong className="shrink-0 tabular-nums">{formatBayFen(addon.price_fen, statement.currency, locale)}</strong>
-            </li>
-          ))}
+          <li className="flex items-start justify-between gap-3 py-1">
+            <span className="min-w-0 break-words">{tt("档位：{title}", { title: statement.tier.title })}</span>
+            <strong className="shrink-0 tabular-nums">{formatBayFen(statement.tier.price_fen, statement.currency, locale)}</strong>
+          </li>
         </ul>
       ) : null}
 

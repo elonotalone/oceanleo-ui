@@ -17,7 +17,6 @@ import {
   emptyCheckoutForm,
   loadBayPaymentConfig,
   placeBayServiceOrder,
-  recallCheckoutAddons,
   type BayCheckoutForm,
   type BayCheckoutProblem,
   type BayOrderContract,
@@ -26,9 +25,7 @@ import {
 import type { BayPaymentConfig } from "../../../lib/bay/payments";
 import { startBayPayment } from "../../../lib/bay/payments";
 import {
-  enabledAddons,
   enabledTiers,
-  formatBayMoney,
   getBayService,
   isOwnService,
   serviceSelection,
@@ -65,8 +62,6 @@ function problemText(tt: UITranslate, problem: BayCheckoutProblem): string {
   switch (problem) {
     case "tier":
       return tt("所选档位已停用，请换一个档位。");
-    case "addons":
-      return tt("有加购已停用，请重新选择。");
     case "title":
       return tt("请写一句需求标题");
     default:
@@ -93,15 +88,13 @@ export interface CheckoutViewProps {
 export function CheckoutView({ service, initialTier = "", payment, layout, initialPlaced = null }: CheckoutViewProps) {
   const tt = useUI();
   const tiers = enabledTiers(service);
-  const addons = enabledAddons(service);
   const [tierName, setTierName] = useState(initialTier);
-  const [addonIds, setAddonIds] = useState<string[]>(() => recallCheckoutAddons(service.id).filter((id) => addons.some((addon) => addon.id === id)));
   const [form, setForm] = useState<BayCheckoutForm>(() => emptyCheckoutForm(service.title));
   const [phase, setPhase] = useState<"form" | "terms" | "placing">("form");
   const [placed, setPlaced] = useState(initialPlaced);
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState("");
-  const selection = serviceSelection(service, tierName || undefined, addonIds);
+  const selection = serviceSelection(service, tierName || undefined);
   const problem = checkoutProblem(selection, form);
   const currency = selection.tier?.currency || service.currency;
   const total = moneyOrFree(tt, selection.totalFen, currency);
@@ -117,7 +110,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
     if (phase !== "form" || !requireBayLogin()) return;
     setTouched(true);
     setError("");
-    const input = checkoutInput(service, tierName || undefined, addonIds, form);
+    const input = checkoutInput(service, tierName || undefined, form);
     if (!input) return;
     setPhase("terms");
     let accepted = false;
@@ -148,20 +141,10 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
       <p className="mt-0.5 break-words text-[14px] font-semibold text-neutral-900">{service.title}</p>
       {selection.tier && !digital ? (
         <p className="mt-2 text-[12px] text-neutral-600">
-          {tierLabel(tt, selection.tier.tier)} · {selection.tier.title}
+          {tiers.length > 1 ? `${tierLabel(tt, selection.tier.tier)} · ` : ""}{selection.tier.title}
           {" · "}
           {revisionsText(tt, selection.tier.revisions)}
         </p>
-      ) : null}
-      {selection.addons.length ? (
-        <ul className="mt-2 space-y-1 text-[12px] text-neutral-600">
-          {selection.addons.map((addon) => (
-            <li key={addon.id} className="flex justify-between gap-2">
-              <span className="min-w-0 break-words">{addon.title}</span>
-              <span className="shrink-0">+{formatBayMoney(addon.price_fen, currency)}</span>
-            </li>
-          ))}
-        </ul>
       ) : null}
       <div className="mt-3 flex items-end justify-between gap-2 border-t border-neutral-200 pt-3">
         <span className="text-[13px] text-neutral-600">{tt("订单总额")}</span>
@@ -226,6 +209,8 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
   ];
   const formView = (
     <div className="flex min-w-0 flex-col gap-6">
+      {/* 价格档位已下线：一个服务只有一个价格，不用选。只有没清理掉的旧多档服务才会走到这里。 */}
+      {tiers.length > 1 ? (
       <fieldset>
         <legend className={BAY_FORM_LABEL_CLASS}>{tt("选择档位")}</legend>
         <div className="mt-2 space-y-1.5">
@@ -248,34 +233,6 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
           ))}
         </div>
       </fieldset>
-
-      {addons.length ? (
-        <fieldset>
-          <legend className={BAY_FORM_LABEL_CLASS}>{tt("可选加购")}</legend>
-          <div className="mt-2 space-y-1.5">
-            {addons.map((addon) => (
-              <label
-                key={addon.id}
-                data-bay-addon={addon.id}
-                className={
-                  "flex cursor-pointer items-center gap-2.5 rounded-lg border bg-white px-3 py-2 " +
-                  (addonIds.includes(addon.id) ? "border-neutral-900 ring-1 ring-neutral-900" : "border-neutral-200")
-                }
-              >
-                <input
-                  type="checkbox"
-                  checked={addonIds.includes(addon.id)}
-                  onChange={(event) => setAddonIds((current) => (event.target.checked ? [...current, addon.id] : current.filter((id) => id !== addon.id)))}
-                />
-                <span className="min-w-0 flex-1 break-words text-[13px] text-neutral-800">{addon.title}</span>
-                <span className="shrink-0 text-[12px] text-neutral-700">
-                  +{formatBayMoney(addon.price_fen, currency)}
-                  {addon.extra_days ? ` · ${tt("+{n} 天", { n: addon.extra_days })}` : ""}
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
       ) : null}
 
       <DigitalTerms

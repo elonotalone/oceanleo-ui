@@ -239,7 +239,6 @@ test("载入已有数字商品：listingKind、license、digitalWork、official�
         digital_work: { kind: "task", id: "task-9", title: "图标包" },
       },
       tiers: [{ tier: "basic", title: "基础版", description: "", price_fen: 0, delivery_days: null, revisions: 1, features: [], enabled: true }],
-      addons: [],
       faq: [],
       media: [],
       pricing: null,
@@ -290,7 +289,6 @@ test("载入 digital_work 加 bay-work media 还原 digitalWorks；gallery 图�
         digital_work: { kind: "artifact", id: "art-1", title: "主件" },
       },
       tiers: [{ tier: "basic", title: "基础版", description: "", price_fen: 0, delivery_days: null, revisions: 1, features: [], enabled: true }],
-      addons: [],
       faq: [],
       media: [
         { id: "m0", kind: "image", url: "https://cdn.example.com/a.png", poster_url: "", caption: "", position: 0 },

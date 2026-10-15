@@ -64,8 +64,10 @@ const stateStub = dataModule(`
   export function requireBayLogin() { globalThis.__bayLoginCalls = (globalThis.__bayLoginCalls || 0) + 1; return false; }
 `);
 const sellerStub = dataModule(`
-  export function BaySellerProfileSection() { return null; }
   export function BayVettingSection() { return null; }
+`);
+const profileDoorStub = dataModule(`
+  export function BaySettingsProfileDoor() { return null; }
 `);
 const settingsTabsStub = dataModule(`
   export function openSettingsModal(tab) {
@@ -108,8 +110,8 @@ async function loadSection() {
     "../../../lib/bay/http": httpStub,
     "../shell/bay-state": stateStub,
     "../seller": sellerStub,
-    "../seller/BaySellerProfileSection": sellerStub,
     "../seller/BayVettingSection": sellerStub,
+    "./BaySettingsProfileDoor": profileDoorStub,
     "../../../i18n/ui/useUI": uiStub,
   });
   return import(`${url}?case=${Math.random().toString(36).slice(2)}`);

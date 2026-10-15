@@ -73,7 +73,6 @@ export interface BayOrderDelivery {
 
 export interface BayOrderSnapshot {
   tier: { tier?: string; title?: string; price_fen: number; revisions: number; delivery_days?: number | null };
-  addons: { id: string; title: string; price_fen: number; extra_days?: number }[];
   delivery_days: number | null;
   total_fen: number;
 }

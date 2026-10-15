@@ -1,12 +1,12 @@
 "use client";
 
-// 编辑主页：顶上一条主题栏（底色风格、主色、字体、封面），下面就是主页本身——点文字直接改，
-// 每个版块右上角有上移 / 下移 / 删除，版块之间和页面最下面可以添加版块。只改版面，不产生任何代码。
+// 编辑主页：顶上一条主题栏（底色、主色、字体、封面、是否公开），下面就是主页本身——点文字直接改，
+// 页头改名字 / 地址 / 头像 / 技能，每个版块右上角有上移 / 下移 / 删除。只改版面，不产生任何代码。
 
 import { useMemo, useState, type ReactNode } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
-import type { BayProfilePage } from "../../../lib/bay/directory";
+import type { BayProfilePage, BayShowcaseItem } from "../../../lib/bay/directory";
 import {
   BAY_PAGE_ACCENTS,
   BAY_PAGE_BLOCK_LABELS,
@@ -30,19 +30,26 @@ import {
   type BayPageBlockType,
   type BayPageDoc,
 } from "../../../lib/bay/page-doc";
-import { BayCoverDrop } from "../form";
-import { ProfilePage } from "./ProfilePage";
+import { addShowcaseWork, isBayHandle, removeShowcaseItem } from "../../../lib/bay/seller";
+import { BayCoverDrop } from "../form/BayCoverDrop";
+import { pickLibraryWork } from "../needs/LibraryWorkPicker";
+import { ProfilePage, type BayPageIdentity } from "./ProfilePage";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 const BAR_BUTTON = `rounded-lg px-3 py-1.5 text-[13px] font-medium ${MOTION}`;
 const CHROME_BUTTON = `rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-30`;
 
+function sameIdentity(left: BayPageIdentity, right: BayPageIdentity): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export interface ProfilePageEditorProps {
   page: BayProfilePage;
   initial: BayPageDoc;
+  initialIdentity: BayPageIdentity;
   saving: boolean;
   error: string;
-  onSave: (doc: BayPageDoc) => void;
+  onSave: (doc: BayPageDoc, identity: BayPageIdentity) => void;
   onCancel: () => void;
 }
 
@@ -124,16 +131,50 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
   );
 }
 
-export function ProfilePageEditor({ page, initial, saving, error, onSave, onCancel }: ProfilePageEditorProps) {
+export function ProfilePageEditor({ page, initial, initialIdentity, saving, error, onSave, onCancel }: ProfilePageEditorProps) {
   const tt = useUI();
   // 进入编辑那一刻的版面：之后父组件再怎么重画，「有没有改动」都跟它比。
   const [base] = useState<BayPageDoc>(initial);
+  const [baseIdentity] = useState<BayPageIdentity>(initialIdentity);
   const [doc, setDoc] = useState<BayPageDoc>(initial);
+  const [identity, setIdentity] = useState<BayPageIdentity>(initialIdentity);
+  const [showcase, setShowcase] = useState<BayShowcaseItem[]>(() => page.showcase || []);
+  const [showcaseBusy, setShowcaseBusy] = useState(false);
+  const [showcaseError, setShowcaseError] = useState("");
   const theme = doc.theme;
-  const dirty = doc !== base;
+  const handleOk = isBayHandle(identity.handle);
+  const dirty = doc !== base || !sameIdentity(identity, baseIdentity);
   const tooBig = useMemo(() => pageDocBytes(doc) > BAY_PAGE_MAX_BYTES, [doc]);
+  const canvasPage = useMemo(() => ({ ...page, showcase, profile: { ...page.profile, ...identity, avatar_url: identity.avatar_url || null } }), [page, showcase, identity]);
 
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
+  const onIdentity = (patch: Partial<BayPageIdentity>) => setIdentity((current) => ({ ...current, ...patch }));
+
+  async function importWork() {
+    if (showcaseBusy) return;
+    setShowcaseBusy(true);
+    setShowcaseError("");
+    try {
+      const work = await pickLibraryWork({ title: tt("从我的库挑一件作品") });
+      if (!work) return;
+      const next = await addShowcaseWork(work);
+      setShowcase(next.items || []);
+    } catch (err) {
+      setShowcaseError(err instanceof Error ? err.message : "");
+    } finally {
+      setShowcaseBusy(false);
+    }
+  }
+
+  async function dropWork(id: string) {
+    setShowcaseError("");
+    try {
+      await removeShowcaseItem(id);
+      setShowcase((items) => items.filter((item) => item.id !== id));
+    } catch (err) {
+      setShowcaseError(err instanceof Error ? err.message : "");
+    }
+  }
 
   const renderBlockChrome = (block: BayPageBlock, index: number, children: ReactNode) => (
     <div className="group/block relative rounded-xl outline-dashed outline-1 outline-offset-8 outline-transparent hover:outline-stone-400/70 focus-within:outline-stone-400/70" data-bay-page-block-edit={block.id}>
@@ -222,13 +263,23 @@ export function ProfilePageEditor({ page, initial, saving, error, onSave, onCanc
             </Group>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={identity.published}
+              data-bay-page-published={identity.published ? "true" : "false"}
+              onClick={() => onIdentity({ published: !identity.published })}
+              className={`${BAR_BUTTON} ${identity.published ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
+            >
+              {tt("公开主页")}
+            </button>
             <button type="button" onClick={onCancel} disabled={saving} data-bay-page-action="cancel" className={`${BAR_BUTTON} border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50`}>
               {tt("取消")}
             </button>
             <button
               type="button"
-              onClick={() => onSave(doc)}
-              disabled={saving || tooBig || !dirty}
+              onClick={() => onSave(doc, identity)}
+              disabled={saving || tooBig || !dirty || !handleOk || !identity.display_name.trim()}
               data-bay-page-action="save"
               className={`${BAR_BUTTON} bg-neutral-900 px-6 text-white hover:bg-neutral-800 disabled:opacity-40`}
             >
@@ -245,11 +296,24 @@ export function ProfilePageEditor({ page, initial, saving, error, onSave, onCanc
           </div>
         ) : null}
         {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
+        {showcaseError ? <p className="mt-2 text-[12px] text-rose-600">{tt(showcaseError)}</p> : null}
+        {!handleOk ? <p className="mt-2 text-[12px] text-rose-600">{tt("主页地址要用 3–32 位小写字母、数字、下划线或连字符，以字母或数字开头。")}</p> : null}
         {tooBig ? <p className="mt-2 text-[12px] text-rose-600">{tt("内容太多了，删掉一些文字或图片再保存。")}</p> : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-bay-page-canvas>
-        <ProfilePage page={page} doc={doc} editing onBlock={onBlock} renderBlockChrome={renderBlockChrome} />
+        <ProfilePage
+          page={canvasPage}
+          doc={doc}
+          editing
+          identity={identity}
+          onIdentity={onIdentity}
+          onBlock={onBlock}
+          renderBlockChrome={renderBlockChrome}
+          onShowcaseImport={() => void importWork()}
+          onShowcaseRemove={(id) => void dropWork(id)}
+          showcaseBusy={showcaseBusy}
+        />
         <div style={{ background: BAY_PAGE_PALETTES[theme.tone].bg }}>
           <AddBlockMenu disabled={doc.blocks.length >= BAY_PAGE_MAX_BLOCKS} onPick={(type) => setDoc((current) => insertBlock(current, newBlock(type, tt)))} />
         </div>

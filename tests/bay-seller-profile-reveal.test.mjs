@@ -1,5 +1,6 @@
 // 安全矩阵：不适用（填写页展开表单，无不可信注入）
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -116,7 +117,6 @@ const sellerStubs = {
   "../../../ui/Toast": toastStub,
 };
 
-const { BaySellerProfileSection } = await import(await compileModule("src/shell/bay/seller/BaySellerProfileSection.tsx", sellerStubs));
 const { BayVettingSection } = await import(await compileModule("src/shell/bay/seller/BayVettingSection.tsx", sellerStubs));
 
 function reset() {
@@ -172,33 +172,21 @@ function labelsOf(host, ids) {
   });
 }
 
-test("卖家资料：七项标签都看得见；字段都开着；头像是拖拽上传不是地址框", async () => {
-  reset();
-  const view = await mount(React.createElement(BaySellerProfileSection));
-  const ids = ["handle", "display_name", "avatar", "headline", "bio", "skills", "languages"];
-  const expected = {
-    handle: "主页地址",
-    display_name: "显示名",
-    avatar: "头像",
-    headline: "一句话介绍",
-    bio: "简介",
-    skills: "技能",
-    languages: "语言",
-  };
-  const rows = labelsOf(view.host, ids);
-  for (const row of rows) {
-    assert.match(row.label, new RegExp(expected[row.id]));
-  }
-  assert.ok(view.host.querySelectorAll("[data-bay-seller-profile] [data-bay-reveal-open]").length >= 4);
-  assert.equal(view.host.querySelector("[data-bay-seller-profile] [data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "handle");
-  assert.doesNotMatch(view.host.textContent, /https:\/\/ 开头/);
-  assert.doesNotMatch(view.host.textContent, /逗号分隔/);
-  assert.doesNotMatch(view.host.textContent, /头像地址/);
-  const avatarOpen = view.host.querySelector('[data-bay-reveal-item="avatar"][data-bay-reveal-open]');
-  assert.ok(avatarOpen);
-  assert.ok(avatarOpen.querySelector("[data-bay-cover-drop]"));
-  assert.equal(avatarOpen.querySelector('input:not([type="file"]):not([type="hidden"])'), null);
-  view.unmount();
+test("卖家资料不再是第二张表：主页编辑源码没有展开字段、设置只留一扇门", () => {
+  const pane = readFileSync(new URL("../src/shell/bay/supply/ProfilePane.tsx", import.meta.url), "utf8");
+  const editor = readFileSync(new URL("../src/shell/bay/page/ProfilePageEditor.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/shell/bay/page/ProfilePage.tsx", import.meta.url), "utf8");
+  const settings = readFileSync(new URL("../src/shell/bay/settings/BaySettingsSection.tsx", import.meta.url), "utf8");
+  const door = readFileSync(new URL("../src/shell/bay/settings/BaySettingsProfileDoor.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(pane, /BaySellerProfileSection/);
+  assert.doesNotMatch(pane, /data-bay-own-profile-form/);
+  assert.doesNotMatch(editor, /BayRevealForm/);
+  assert.match(page, /data-bay-field="handle"/);
+  assert.match(page, /data-bay-field="display_name"/);
+  assert.match(page, /variant="avatar"/);
+  assert.match(settings, /BaySettingsProfileDoor/);
+  assert.match(door, /requestMinePageEdit/);
+  assert.match(door, /编辑主页/);
 });
 
 test("核验：标签看得见；字段都开着；领域选项没有医疗/法律/宠物医疗", async () => {

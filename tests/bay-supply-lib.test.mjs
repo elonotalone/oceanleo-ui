@@ -62,11 +62,6 @@ function serviceFixture() {
       { id: "t1", service_id: "svc-1", tier: "basic", title: "B", description: "", price_fen: 30000, delivery_days: 3, revisions: 1, features: [], enabled: true },
       { id: "t2", service_id: "svc-1", tier: "standard", title: "S", description: "", price_fen: 60000, delivery_days: null, revisions: 2, features: [], enabled: false },
     ],
-    addons: [
-      { id: "a1", service_id: "svc-1", title: "加急", description: "", price_fen: 5000, extra_days: 1, enabled: true },
-      { id: "a2", service_id: "svc-1", title: "源文件", description: "", price_fen: 2000, extra_days: 0, enabled: true },
-      { id: "a3", service_id: "svc-1", title: "停用", description: "", price_fen: 1, extra_days: 0, enabled: false },
-    ],
   };
 }
 
@@ -159,20 +154,18 @@ test("举报服务、举报主页、拉黑：调现有接口", async () => {
   ]);
 });
 
-test("档位与加购：默认最便宜的档、停用的不算、合计与交期", () => {
+test("档位：默认最便宜的档、停用的不算、合计与交期", () => {
   const service = serviceFixture();
   assert.deepEqual(services.enabledTiers(service).map((t) => t.tier), ["basic", "premium"]);
-  const first = services.serviceSelection(service, "", []);
+  const first = services.serviceSelection(service, "");
   assert.equal(first.tier.tier, "basic");
   assert.equal(first.totalFen, 30000);
   assert.equal(first.deliveryDays, 3);
-  const picked = services.serviceSelection(service, "premium", ["a1", "a2", "a1"]);
-  assert.equal(picked.totalFen, 90000 + 5000 + 2000);
-  assert.equal(picked.deliveryDays, 11);
-  assert.deepEqual(picked.invalidAddonIds, []);
-  const stale = services.serviceSelection(service, "standard", ["a3", "zz"]);
+  const picked = services.serviceSelection(service, "premium");
+  assert.equal(picked.totalFen, 90000);
+  assert.equal(picked.deliveryDays, 10);
+  const stale = services.serviceSelection(service, "standard");
   assert.equal(stale.tier, undefined, "停用的档位不偷偷换成别的档");
-  assert.deepEqual(stale.invalidAddonIds, ["a3", "zz"]);
   assert.equal(services.formatBayMoney(128000, "CNY"), "¥1,280");
   assert.equal(services.formatBayMoney(1250, "usd"), "$12.50");
   assert.equal(services.formatBayMoney(100, "XYZ"), "1 XYZ");
@@ -251,11 +244,10 @@ test("下单：付款没就绪时只建订单，不发起付款", async () => {
   reset(() => ({ contract: { id: "k-77", status: "active" } }));
   const service = serviceFixture();
   const form = { title: " 做一套 Logo ", what: "三版方案", links: "https://a.example\n\n https://b.example ", deadline: "2026-10-30", notes: "" };
-  const input = checkout.checkoutInput(service, "basic", ["a2"], form);
+  const input = checkout.checkoutInput(service, "basic", form);
   assert.deepEqual(input, {
     service_id: "svc-1",
     tier: "basic",
-    addon_ids: ["a2"],
     requirements: { title: "做一套 Logo", what: "三版方案", reference_links: ["https://a.example", "https://b.example"], deadline: "2026-10-30", notes: "" },
   });
   const result = await checkout.placeBayServiceOrder(input, 32000);
@@ -268,7 +260,7 @@ test("下单：付款没就绪时只建订单，不发起付款", async () => {
 test("下单：付款配置取不到按没就绪处理；免费单不用付；就绪才给付款这一步", async () => {
   reset(() => ({ contract: { id: "k-1" } }));
   globalThis.__bayPayConfigError = true;
-  const failed = await checkout.placeBayServiceOrder({ service_id: "s", tier: "basic", addon_ids: [], requirements: {} }, 100);
+  const failed = await checkout.placeBayServiceOrder({ service_id: "s", tier: "basic", requirements: {} }, 100);
   assert.equal(failed.payStep, "unavailable");
   assert.ok(!globalThis.__bayPayCalls.some((c) => c.startsWith("start:")));
   assert.equal(checkout.payStepFor({ buyer_ready: false }, 100), "unavailable");
@@ -277,15 +269,14 @@ test("下单：付款配置取不到按没就绪处理；免费单不用付；�
   assert.equal(checkout.payStepFor({ buyer_ready: true }, 0), "free");
 });
 
-test("下单：缺标题、缺需求、档位停用、加购停用都不能下单", () => {
+test("下单：缺标题、缺需求、档位停用都不能下单", () => {
   const service = serviceFixture();
   const ok = { title: "t", what: "w", links: "", deadline: "", notes: "" };
-  const sel = (tier, addons = []) => services.serviceSelection(service, tier, addons);
+  const sel = (tier) => services.serviceSelection(service, tier);
   assert.equal(checkout.checkoutProblem(sel("basic"), ok), null);
   assert.equal(checkout.checkoutProblem(sel("standard"), ok), "tier");
-  assert.equal(checkout.checkoutProblem(sel("basic", ["a3"]), ok), "addons");
   assert.equal(checkout.checkoutProblem(sel("basic"), { ...ok, title: " " }), "title");
   assert.equal(checkout.checkoutProblem(sel("basic"), { ...ok, what: "" }), "what");
-  assert.equal(checkout.checkoutInput(service, "basic", [], { ...ok, what: "" }), null);
+  assert.equal(checkout.checkoutInput(service, "basic", { ...ok, what: "" }), null);
   assert.equal(checkout.checkoutRequirements({ ...ok, deadline: "明天" }).deadline, "");
 });

@@ -9,7 +9,7 @@ import { MyBoughtPane, MyFavoritesPane, MyPublishedPane, MySoldPane } from "../m
 import { BayMineDashboardTab } from "../mine/MyDashboardTab";
 import { MineCategoryBar, type MineCategory, type MinePaneProps } from "../mine/MineCategoryBar";
 import { PaneLoading } from "../supply/parts";
-import { BAY_MINE_UI_TABS } from "./bay-links";
+import { BAY_MINE_TABS, BAY_MINE_UI_TABS } from "./bay-links";
 import { replaceBay, requireBayLogin, useBaySignedIn, type BayLayout, type BayMineTab, type BayPaneProps } from "./bay-state";
 
 // 「我自己的主页」= profile:me。懒加载：ProfilePane 经 BayMine 绕回本文件（同 mine/MyPublishedPane 的做法）。
@@ -26,10 +26,10 @@ const MINE_LABELS: Readonly<Record<BayMineTab, string>> = {
 };
 
 function shownMineTab(tab: BayMineTab): BayMineTab {
-  return BAY_MINE_UI_TABS.includes(tab) ? tab : "published";
+  return BAY_MINE_TABS.includes(tab) ? tab : "published";
 }
 
-/** 类别选择条管的四个页面；主页与数据面板不分类。 */
+/** 类别选择条只管四块交易清单；主页与数据面板不分类。 */
 const CATEGORY_TABS: readonly BayMineTab[] = ["published", "sold", "bought", "favorites"];
 
 function MinePane({ tab, ...props }: MinePaneProps & { tab: BayMineTab }) {

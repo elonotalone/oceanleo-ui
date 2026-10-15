@@ -1,5 +1,4 @@
-// W4：我的收藏。（个人卡片已并入「我的主页」与「数据面板」，见 bay-shell-state 与 supply 的主页测试。）
-// 覆盖：收藏三段分组、空状态、取消收藏的 DELETE 与行消失、点行打开目标、三个纯函数。网络与浮窗状态打桩。
+// W4：我的收藏。一张带类别标签的清单；空状态没有招生句，行上没有取消收藏。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -101,8 +100,10 @@ const paneStubs = {
   "../deal/open-trade-thread": dataModule("export async function openTradeThread(){}"),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
+  "../../../lib/bay/directory": dataModule("export function bayQuery(){ return ''; }"),
   "../../../lib/agent": agentStub,
   "../../../lib/auth/client": authStub,
+  "../../../lib/auth/config": dataModule("export const GATEWAY_BASE = 'https://api.test';"),
   "../shell/bay-state": stateStub,
   "../settings/settings-open": settingsOpenStub,
   "../needs/LibraryWorkPicker": pickerStub,
@@ -110,7 +111,14 @@ const paneStubs = {
 };
 
 const { MyFavoritesPane } = await import(await compileModule("src/shell/bay/mine/MyFavoritesPane.tsx", paneStubs));
-const favorites = await import(await compileModule("src/lib/bay/favorites.ts", { "./http": httpStub }));
+const favorites = await import(
+  await compileModule("src/lib/bay/favorites.ts", {
+    "./http": httpStub,
+    "./directory": dataModule("export function bayQuery(){ return ''; }"),
+    "../auth/config": dataModule("export const GATEWAY_BASE = 'https://api.test';"),
+    "../../contracts/domain-family": domainStub,
+  })
+);
 
 const paneProps = { target: { kind: "mine", tab: "favorites" }, layout: "docked", siteKey: "design" };
 
@@ -195,16 +203,18 @@ test("收藏纯函数：标题、副标题、打开目标", () => {
   );
 });
 
-test("我的收藏：服务、卖家、需求三段；点行打开对应目标", async () => {
+test("我的收藏：一张清单，行右边标类别；点行打开对应目标", async () => {
   resetFavorites();
   const view = await mount(React.createElement(MyFavoritesPane, paneProps));
   assert.ok(view.host.querySelector('[data-bay-pane="mine-favorites"]'));
-  assert.ok(view.host.querySelector('[data-bay-fav-group="service"]'));
-  assert.ok(view.host.querySelector('[data-bay-fav-group="profile"]'));
-  assert.ok(view.host.querySelector('[data-bay-fav-group="demand"]'));
-  assert.match(view.host.querySelector('[data-bay-fav-group="service"]').textContent, /Logo 设计/);
-  assert.match(view.host.querySelector('[data-bay-fav-group="profile"]').textContent, /高手/);
-  assert.match(view.host.querySelector('[data-bay-fav-group="demand"]').textContent, /路演稿/);
+  assert.equal(view.host.querySelector("[data-bay-fav-group]"), null);
+  assert.match(view.host.textContent, /Logo 设计/);
+  assert.match(view.host.textContent, /高手/);
+  assert.match(view.host.textContent, /路演稿/);
+  assert.match(view.host.textContent, /人工服务|成品文件/);
+  assert.match(view.host.textContent, /其他/);
+  assert.equal(view.host.querySelector("[data-bay-fav-remove]"), null);
+  assert.equal(view.host.querySelector("[data-bay-fav-group]"), null);
   await view.click('[data-bay-fav-row="f-svc"] button');
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "service", id: "svc-1" });
   await view.click('[data-bay-fav-row="f-pro"] button');
@@ -214,25 +224,13 @@ test("我的收藏：服务、卖家、需求三段；点行打开对应目标",
   view.unmount();
 });
 
-test("我的收藏：空状态", async () => {
+test("我的收藏：空状态没有招生句，也没有取消收藏键", async () => {
   resetFavorites([]);
   const view = await mount(React.createElement(MyFavoritesPane, paneProps));
-  const empty = view.host.querySelector('[data-bay-empty="favorites"]');
+  const empty = view.host.querySelector('[data-bay-empty="category"]');
   assert.ok(empty);
-  assert.match(empty.textContent, /你还没有收藏。/);
-  assert.match(empty.textContent, /看到喜欢的服务、卖家或需求，点「收藏」，就会出现在这里。/);
-  assert.equal(view.host.querySelector("[data-bay-fav-group]"), null);
-  view.unmount();
-});
-
-test("我的收藏：取消收藏后行消失，请求打到 DELETE", async () => {
-  resetFavorites();
-  const view = await mount(React.createElement(MyFavoritesPane, paneProps));
-  assert.ok(view.host.querySelector('[data-bay-fav-row="f-svc"]'));
-  await view.click('[data-bay-fav-row="f-svc"] [data-bay-fav-remove]');
-  assert.equal(view.host.querySelector('[data-bay-fav-row="f-svc"]'), null);
-  const deleted = globalThis.__bayHttpCalls.find((call) => call.method === "DELETE");
-  assert.ok(deleted);
-  assert.equal(deleted.path, "/v1/talent/favorites?target_kind=service&target_ref=svc-1");
+  assert.match(empty.textContent, /这一类还没有收藏。/);
+  assert.doesNotMatch(empty.textContent, /看到喜欢的服务、卖家或需求/);
+  assert.equal(view.host.querySelector("[data-bay-fav-remove]"), null);
   view.unmount();
 });

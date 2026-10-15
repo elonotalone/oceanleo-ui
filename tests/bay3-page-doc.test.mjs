@@ -11,7 +11,9 @@ import {
   moveBlock,
   newBlock,
   normalizePageDoc,
+  pageCopyFromDoc,
   pageThemeVars,
+  syncHeroName,
   patchBlock,
   patchTheme,
   removeBlock,
@@ -233,4 +235,22 @@ test("normalizePageDoc：丢掉不认识的顶层键和非法主色", () => {
   assert.equal("splash" in out.theme, false);
   assert.equal(out.blocks[0].type, "quote");
   assert.equal(out.blocks[0].body, "一句话");
+});
+
+test("pageCopyFromDoc：开场副标题是一句话介绍，第一段文字是简介", () => {
+  const out = pageCopyFromDoc(
+    defaultPageDoc({ display_name: "Leo", headline: "十年品牌", bio: "只做品牌" }),
+  );
+  assert.equal(out.headline, "十年品牌");
+  assert.equal(out.bio, "只做品牌");
+});
+
+test("syncHeroName：大标题还是旧名字时跟着改，写成别的句子就不动", () => {
+  const start = defaultPageDoc({ display_name: "Leo", headline: "十年品牌" });
+  const renamed = syncHeroName(start, "Leo", "Leo Chen");
+  assert.equal(renamed.blocks[0].title, "Leo Chen");
+  assert.equal(renamed.blocks[0].subtitle, "十年品牌");
+  const custom = patchBlock(start, start.blocks[0].id, { title: "你好，我是设计师" });
+  assert.equal(syncHeroName(custom, "Leo", "Leo Chen").blocks[0].title, "你好，我是设计师");
+  assert.equal(syncHeroName(start, "Leo", "Leo"), start);
 });

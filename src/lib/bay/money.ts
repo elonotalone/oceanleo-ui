@@ -84,7 +84,6 @@ export interface BayStatement {
   accepted_at: string | null;
   completed_at: string | null;
   tier: { title: string; price_fen: number; delivery_days: number } | null;
-  addons: { title: string; price_fen: number }[];
   timeline: BayLedgerEntry[];
   amount_fen: number;
   currency: string;
@@ -223,12 +222,6 @@ export async function fetchBayStatement(contractId: string): Promise<BayStatemen
     accepted_at: strOrNull(terms?.accepted_at),
     completed_at: strOrNull(terms?.completed_at),
     tier: tier ? { title: str(tier.title), price_fen: Math.max(0, int(tier.price_fen)), delivery_days: Math.max(0, int(tier.delivery_days)) } : null,
-    addons: Array.isArray(data.addons)
-      ? data.addons
-          .map(record)
-          .filter((row): row is Record<string, unknown> => row !== null)
-          .map((row) => ({ title: str(row.title), price_fen: Math.max(0, int(row.price_fen)) }))
-      : [],
     timeline: entriesOf(data.timeline),
     amount_fen: Math.max(0, int(data.amount_fen)),
     currency: str(data.currency) || "CNY",

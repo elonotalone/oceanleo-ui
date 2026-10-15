@@ -37,7 +37,7 @@ export function errorStatus(error: unknown): number {
   return error instanceof BayApiError ? error.status : 0;
 }
 
-/** 后端说还没有卖家资料时，把人带到设置里去建。 */
+/** 后端说还没有卖家资料时，把人带到「我的主页」去建。 */
 export function isSellerProfileError(error: unknown): boolean {
   const code = error instanceof BayApiError ? String(error.code || "") : "";
   const message = error instanceof Error ? error.message : "";

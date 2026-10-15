@@ -1,7 +1,7 @@
 "use client";
 
 // 给一条需求报价：价格、交付天数、说明。提交前先过卖家条款；
-// 后端说还没有卖家资料 → 去设置里建。没登录先登录。不自带返回栏。
+// 后端说还没有卖家资料 → 去「我的主页」画布上建。没登录先登录。不自带返回栏。
 
 import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -16,7 +16,8 @@ import {
 import { useToast } from "../../../ui/Toast";
 import { BAY_FORM_HELP_CLASS } from "../form/form-ui";
 import { BayRevealForm, type BayRevealItem } from "../form/BayRevealForm";
-import { openBaySettings, ensureBayTerms } from "../settings";
+import { requestMinePageEdit } from "../page/mine-page-edit";
+import { ensureBayTerms } from "../settings";
 import { openBay, requireBayLogin, useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { budgetText } from "./need-format";
 import {
@@ -205,7 +206,15 @@ function ProposeForm({ demand }: { demand: BayDemandDetail }) {
         <PaneNotice
           tone="warn"
           action={
-            <button type="button" className={BTN_SECONDARY} onClick={() => openBaySettings("profile")} data-bay-action="profile">
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              onClick={() => {
+                requestMinePageEdit();
+                openBay({ kind: "mine", tab: "page" });
+              }}
+              data-bay-action="profile"
+            >
               {tt("去建资料")}
             </button>
           }

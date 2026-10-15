@@ -170,6 +170,8 @@ const formStubs = {
   "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
   "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
   "./BayTypedPreview": dataModule(`export function BayTypedPreview(){ return null; }`),
+  "../form/bay-typed-preview": dataModule(`export function kindFromUrl(){ return "file"; } export function slidesFrom(){ return []; }`),
+  "./bay-typed-preview": dataModule(`export function kindFromUrl(){ return "file"; } export function slidesFrom(){ return []; }`),
   "../../../lib/database": dataModule(`
     export async function uploadFile(){ return { ok: true, data: { file: { url: "https://cdn.example/a.png" } } }; }
     export async function getStorageUsage(){ return { ok: true, data: { remaining_bytes: 20 * 1024 * 1024 * 1024, unavailable: false } }; }
@@ -227,7 +229,10 @@ const { BayMineTabs } = await import(
       export function MyFavoritesPane(){ return null; }
       export function MyCardPane(){ return null; }
     `),
-    "./bay-links": dataModule(`export const BAY_MINE_UI_TABS = ["published", "sold", "bought", "favorites", "page", "dashboard"];`),
+    "./bay-links": dataModule(`export const BAY_MINE_TABS = ["published", "sold", "bought", "favorites", "page", "dashboard"]; export const BAY_MINE_UI_TABS = ["published", "sold", "bought", "favorites", "page", "dashboard"];`),
+    "../mine/MyDashboardTab": dataModule("export function BayMineDashboardTab(){ return null; }"),
+    "../mine/MineCategoryBar": dataModule("export function MineCategoryBar(){ return null; }"),
+    "../supply/parts": dataModule("export function PaneLoading(){ return null; }"),
     "./bay-state": stateStub,
   })
 );
@@ -354,7 +359,7 @@ test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 →
   assert.equal(bayDetailTitleKey({ kind: "call-human" }), "找人帮忙");
 });
 
-test("BayMineTabs 恰好六块：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 我的主页 / 数据面板；认不出的值高亮我发布的", () => {
+test("BayMineTabs 六块：四块交易加我的主页、数据面板；认不出的值高亮我发布的", () => {
   const html = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "help" }));
   assert.deepEqual(
     [...html.matchAll(/data-mine-tab="([a-z]+)"/g)].map((match) => match[1]),
@@ -365,4 +370,6 @@ test("BayMineTabs 恰好六块：我发布的 / 我卖出的 / 我买到的 / �
   assert.match(html, /aria-selected="true"[^>]*data-mine-tab="published"|data-mine-tab="published"[^>]*aria-selected="true"/);
   const sold = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "sold" }));
   assert.match(sold, /aria-selected="true"[^>]*data-mine-tab="sold"|data-mine-tab="sold"[^>]*aria-selected="true"/);
+  const page = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "page" }));
+  assert.match(page, /aria-selected="true"[^>]*data-mine-tab="page"|data-mine-tab="page"[^>]*aria-selected="true"/);
 });
