@@ -311,11 +311,6 @@
         },
         {
           "kind": "type",
-          "name": "BayServiceAddonPublic",
-          "source": ""
-        },
-        {
-          "kind": "type",
           "name": "BayServiceFaqPublic",
           "source": ""
         },
@@ -5012,6 +5007,12 @@
         },
         {
           "kind": "named",
+          "name": "parseWorkspacePile",
+          "importedName": "parseWorkspacePile",
+          "source": "./WorkspaceDesk"
+        },
+        {
+          "kind": "named",
           "name": "partitionSelectionInspectorControls",
           "importedName": "partitionSelectionInspectorControls",
           "source": "./selection-inspector-groups"
@@ -6164,6 +6165,12 @@
         },
         {
           "kind": "named",
+          "name": "WorkspaceDesk",
+          "importedName": "WorkspaceDesk",
+          "source": "./WorkspaceDesk"
+        },
+        {
+          "kind": "named",
           "name": "WorkspaceDetail",
           "importedName": "WorkspaceDetail",
           "source": "./WorkspaceMasterDetail"
@@ -6209,6 +6216,12 @@
           "name": "WorkspacePage",
           "importedName": "WorkspacePage",
           "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspacePile",
+          "importedName": "WorkspacePile",
+          "source": "./WorkspaceDesk"
         },
         {
           "kind": "named",
